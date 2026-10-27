@@ -30,9 +30,9 @@ programa que deixe escolher o microfone.
 python -m pip install -r requirements.txt
 ```
 
-O modelo de batida (`modelos/compasso.onnx`, ~83 MB) fica fora do git: baixe da release
-`modelo-compasso-v1` e ponha em `modelos/`. Sem ele tudo funciona, mas a passagem no tempo
-acerta menos (só com o detector em numpy).
+O modelo de batida (`modelos/compasso.onnx`, ~83 MB) já vem no repositório. Ele sai do
+`dev/exporta_compasso.py`; sem ele tudo funciona, mas a passagem no tempo acerta menos (só
+com o detector em numpy).
 
 ## Uso
 

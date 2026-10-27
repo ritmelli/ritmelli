@@ -6,7 +6,7 @@ Por que a rede e nao um juiz nosso como o do batida.py: contra o gabarito dela e
 melhor juiz de numpy (bumbo contra caixa para o par 1 e 3, mudanca de acorde e de baixo para o 1) acertava 71% e so
 ficava sem erro em 13% das janelas (o bumbo do Overdose bate mais forte no 2 e no 4, o do Stay With Me no 3).
 
-O modelo (compasso.onnx, ~83 MB, fora do git) sai do dev/exporta_compasso.py; sem ele, uns() devolve None e a
+O modelo (compasso.onnx, ~83 MB, no git) sai do dev/exporta_compasso.py; sem ele, uns() devolve None e a
 passagem segue sem o 1. A entrada e a mesma da rede original (mel de 128 faixas a 22050 Hz, 50 quadros por segundo,
 log1p(1000 x)), refeita em numpy; a saida passa pelo pos-processamento minimo dela (pico local de 7 quadros com logit
 acima de 0, o 1 grudado na batida mais perto)."""
