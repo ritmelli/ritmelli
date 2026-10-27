@@ -1,0 +1,10 @@
+# Python 3.12 ou mais novo, no Windows 10/11
+numpy>=2.0
+scipy>=1.13
+sounddevice>=0.5
+pedalboard>=0.9
+aiohttp>=3.9
+yt-dlp[default]
+ytmusicapi>=1.8
+onnxruntime>=1.18
+comtypes>=1.4; sys_platform == "win32"

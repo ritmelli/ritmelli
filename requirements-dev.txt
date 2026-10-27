@@ -1,0 +1,7 @@
+-r requirements.txt
+# dev/shot.py, dev/fitcheck.py, dev/perfcheck.py e dev/celular.py falam com o Chrome pelo DevTools
+websockets>=12
+# dev/texturas.py
+pillow>=10
+# O dev/exporta_compasso.py (gera o modelos/compasso.onnx) roda num venv separado, com
+# torch de CPU, beat_this e safetensors; quem so usa o app baixa o modelo pronto da release.

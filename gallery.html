@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soundboard: estilos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #e9e6df; --ink: #1d1b18; --muted: #6b665d; --line: #cfc9bd; --card: #f6f4ef;
+    --pick: #2f5bd3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #171614; --ink: #eceae4; --muted: #9a958b; --line: #34312c; --card: #201f1c; --pick: #7f9cff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.5 "Bricolage Grotesque", system-ui, sans-serif; }
+  header { padding: 40px 24px 8px; max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: clamp(32px, 5vw, 64px); line-height: 1; margin: 0 0 12px; font-weight: 800;
+       letter-spacing: -0.02em; }
+  header p { margin: 0; color: var(--muted); max-width: 60ch; }
+  main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  .grid { display: grid; gap: 28px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr)); }
+  .t { background: var(--card); border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+       display: flex; flex-direction: column; }
+  .t.sel { outline: 3px solid var(--pick); outline-offset: 2px; }
+  .shot { aspect-ratio: 16 / 10; background: var(--line); display: block; overflow: hidden; }
+  .shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
+  .shot .none { display: grid; place-items: center; height: 100%; color: var(--muted); font-size: 14px; }
+  .body { padding: 14px 16px 16px; display: grid; gap: 6px; flex: 1; }
+  .body h2 { margin: 0; font-size: 22px; font-weight: 600; }
+  .dir { color: var(--muted); font-size: 14px; }
+  .autor { justify-self: start; font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 3px;
+           border: 1px solid var(--line); color: var(--muted); }
+  .row { display: flex; gap: 10px; margin-top: auto; padding-top: 8px; flex-wrap: wrap; }
+  a.btn, button { font: inherit; font-size: 15px; border-radius: 4px; padding: 7px 14px; cursor: pointer;
+                  border: 1px solid var(--ink); background: var(--ink); color: var(--bg); text-decoration: none; }
+  button.ghost { background: transparent; color: var(--ink); }
+  a.btn:focus-visible, button:focus-visible { outline: 3px solid var(--pick); outline-offset: 2px; }
+  #cmp { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 5; flex-direction: column; }
+  #cmp.on { display: flex; }
+  #cmp .bar { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  #cmp .bar span { flex: 1; color: var(--muted); }
+  #cmp .panes { flex: 1; display: grid; grid-template-columns: 1fr 1fr; }
+  #cmp iframe { width: 100%; height: 100%; border: 0; border-right: 1px solid var(--line); }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Vitrola: temas</h1>
+  <p>As interfaces da Vitrola. Abra uma para usar, ou marque duas e compare lado a lado; todas
+     controlam o mesmo áudio.</p>
+</header>
+<main>
+  <div class="grid" id="grid"><p class="empty">Carregando os temas...</p></div>
+</main>
+<div id="cmp" role="dialog" aria-label="Comparação">
+  <div class="bar"><span id="cmpt"></span><button class="ghost" id="close">Fechar comparação</button></div>
+  <div class="panes"><iframe id="fa" title="Tema A"></iframe><iframe id="fb" title="Tema B"></iframe></div>
+</div>
+<script>
+const sel = [];
+const grid = document.getElementById('grid');
+function card(t) {
+  const el = document.createElement('article');
+  el.className = 't';
+  el.innerHTML = `
+    <a class="shot" href="${t.url}" aria-label="Abrir ${t.name || t.slug}">
+      <img src="${t.url}preview.png" alt="" loading="lazy"
+           onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'none',textContent:'sem prévia ainda'}))">
+    </a>
+    <div class="body">
+      <h2></h2><div class="autor"></div><div class="dir"></div><div class="blurb"></div>
+      <div class="row"><a class="btn" href="${t.url}">Abrir</a>
+        <button class="ghost" type="button">Comparar</button></div>
+    </div>`;
+  el.querySelector('h2').textContent = t.name || t.slug;
+  el.querySelector('.dir').textContent = t.direction || '';
+  const au = el.querySelector('.autor');
+  if (t.autor) au.textContent = `feito pelo ${t.autor}`; else au.remove();
+  el.querySelector('.blurb').textContent = t.blurb || '';
+  const b = el.querySelector('button');
+  b.onclick = () => {
+    const i = sel.indexOf(t);
+    if (i >= 0) { sel.splice(i, 1); el.classList.remove('sel'); b.textContent = 'Comparar'; return; }
+    sel.push(t); el.classList.add('sel'); b.textContent = 'Marcado';
+    if (sel.length === 2) openCmp();
+  };
+  t.el = el; t.btn = b;
+  return el;
+}
+function openCmp() {
+  const [a, b] = sel;
+  document.getElementById('fa').src = a.url;
+  document.getElementById('fb').src = b.url;
+  document.getElementById('cmpt').textContent = `${a.name || a.slug} e ${b.name || b.slug}`;
+  document.getElementById('cmp').classList.add('on');
+}
+document.getElementById('close').onclick = () => {
+  document.getElementById('cmp').classList.remove('on');
+  document.getElementById('fa').src = 'about:blank';
+  document.getElementById('fb').src = 'about:blank';
+  sel.splice(0).forEach(t => { t.el.classList.remove('sel'); t.btn.textContent = 'Comparar'; });
+};
+fetch('/api/themes').then(r => r.json()).then(ts => {
+  grid.innerHTML = '';
+  if (!ts.length) { grid.innerHTML = '<p class="empty">Nenhum tema em themes/ ainda.</p>'; return; }
+  // agrupado por autor: quem fez fica visível em cada cartão
+  ts.sort((a, b) => (a.autor || '').localeCompare(b.autor || '') || a.slug.localeCompare(b.slug));
+  ts.forEach(t => grid.appendChild(card(t)));
+}).catch(() => { grid.innerHTML = '<p class="empty">O servidor do soundboard não respondeu. Rode soundboard.ps1 start.</p>'; });
+</script>
+</body>
+</html>

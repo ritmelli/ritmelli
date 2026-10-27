@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv*/
+dev/.venv*/
+
+# dados de quem usa: audio baixado, biblioteca, escolhas e logs
+library/
+logs/
+
+# o modelo de batida (~83 MB) vem da release, fora do git
+modelos/
+
+# gerados pelo dev/previews.py
+themes/*/preview.png
