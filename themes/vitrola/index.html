@@ -1428,8 +1428,11 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
      logo embaixo), e a gaveta de efeitos por ultimo. Medidor acima do
      volume: a mao que arrasta cobre o que fica abaixo do dedo, nunca a agulha, e quem mexe no
      volume ve o resultado na mesma tela. O seletor sai: a gaveta tem o dela */
+  /* o receiver e o FX-12 param de crescer na largura que tem no iPhone 14 (390 px de tela): nos celulares maiores
+     o salto da maleta (312) para eles ficava grande; o fio da calha acha o plugue pela beira do receiver (medirCabos) */
   .palco .receptor {
     order: 2; grid-template-columns: minmax(0, 1fr); gap: 14px;
+    width: 100%; max-width: 358px; margin-inline: auto;
     padding: 25px 20px 15px 20px; border-radius: 6px;
   }
   .palco .medidores { display: contents; }
@@ -1450,7 +1453,7 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
     order: 3;
     display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px 12px;
     grid-template-areas: "cabeca cabeca" "visor visor" "ouvir ouvir" "dica dica" "lista lista";
-    margin: 0; padding: 22px 18px 18px;
+    width: 100%; max-width: 358px; margin: 0 auto; padding: 22px 18px 18px;   /* a largura do receiver */
     /* painel forrado de feltro pendurado na parede, com os pedais presos por velcro, como se monta
        na vida real (o movel todo de madeira e a pedaleira no piso sairam). Grafite puxado pro
        marrom, quente como o resto do app sem sumir contra a parede de jacaranda, fosco: penugem
@@ -1569,7 +1572,9 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
     border-image: var(--mold-etiqueta);
   }
   .palco #banco {
-    position: relative; padding: 14px 10px 16px;
+    /* a largura da pedaleira no celular de teste (360 px): 3 pedais de 80, os vaos de 12, as margens de 4
+       e de 10. Em tela mais larga ela fica no meio do feltro, nesse tamanho, em vez de esticar os pedais */
+    position: relative; max-width: 292px; margin-inline: auto; padding: 14px 10px 16px;
     /* os pedais direto no feltro do painel, presos por velcro: sem tabua e sem cavidade */
     background: none; box-shadow: none;
   }
@@ -2680,7 +2685,9 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
     /* as camadas da maleta (os metais, a frente, o disco arrastado) ficam dentro dela: sem o isolation o z-index delas
        passava o da barra de cima do palco, e na rolagem a frente e as ferragens subiam por cima da barra (23/10) */
     isolation: isolate;
-    position: relative; min-width: 0; gap: 0; margin: 20px 8px 26px; padding: 26px 0 0;
+    /* a largura da maleta no celular de teste (360 px), como a da pedaleira: em tela mais larga ela fica no meio, desse
+       tamanho, em vez de esticar; em tela mais estreita sobram os 8 px de cada lado */
+    position: relative; min-width: 0; gap: 0; margin: 20px max(8px, calc((100% - 312px) / 2)) 26px; padding: 26px 0 0;
     border: 0; border-radius: 0; box-shadow: none;
     background: var(--m-casco-tampa);
   }
@@ -4369,10 +4376,12 @@ function medirCabos() {
   if (!m.offsetParent) return;
   pedacosFios();
   const pr = p.getBoundingClientRect(), mr = m.getBoundingClientRect(), rr = r.getBoundingClientRect();
-  const R = p.clientWidth - 1;   // os plugues das pontas se alinham por aqui (a 1 px da tela)
+  const R = p.clientWidth - 1;   // a calha e os plugues do toca-discos se alinham por aqui (a 1 px da tela)
+  // os do receiver, pela beira dele: o .cabo-rec passa 15 px dela, e no celular grande o receiver nao chega na calha
+  const Rr = Math.min(R, Math.round(rr.right - pr.left) + 15);
   const mb = mr.bottom - pr.top + p.scrollTop, rt = rr.top - pr.top + p.scrollTop;
   // o canto do canvas num terco de px: a celula de 4/3 px cai em 4 px de tela no celular de densidade 3
-  const x0 = R - 72, y0 = Math.round((mb - 30) * 3) / 3, alt = Math.max(60, rt + 20 - y0);
+  const x0 = Rr - 72, y0 = Math.round((mb - 30) * 3) / 3, alt = Math.max(60, rt + 20 - y0);
   const pt = (x, y) => [x - x0, y - y0];
   const fio = (a, c1, c2, b, e, f1, f2, z) => [...bezier(pt(...a), pt(...c1), pt(...c2), pt(...b)), ...bezier(pt(...e), pt(...f1), pt(...f2), pt(...z))];
   // a textura do palco cobre o conteudo inteiro (ate o fim da gaveta), nao so a tela
@@ -4382,10 +4391,10 @@ function medirCabos() {
   if (cv._geo === geo) return;
   cv._geo = geo;
   cv.style.left = x0 + 'px'; cv.style.top = y0 + 'px';
-  fiosPixel(cv, 72, alt, [
+  fiosPixel(cv, R - x0, alt, [
     // o par a 5 celulas um do outro na calha (o contorno do meio e dos dois), cada um no meio de uma celula
-    { pts: fio([R - 55, mb - 20], [R - 47, mb + 4], [R - 18, mb - 4], [R - 14, mb + 24], [R - 14, rt - 31], [R - 17, rt - 7], [R - 46, rt - 15], [R - 54, rt + 11]), cor: 'branco' },
-    { pts: fio([R - 39, mb - 20], [R - 33, mb - 2], [R - 9.33, mb - 8], [R - 7.33, mb + 24], [R - 7.33, rt - 31], [R - 9.33, rt - 1], [R - 31, rt - 11], [R - 38, rt + 11]), cor: 'vermelho' },
+    { pts: fio([R - 55, mb - 20], [R - 47, mb + 4], [R - 18, mb - 4], [R - 14, mb + 24], [R - 14, rt - 31], [R - 17, rt - 7], [Rr - 46, rt - 15], [Rr - 54, rt + 11]), cor: 'branco' },
+    { pts: fio([R - 39, mb - 20], [R - 33, mb - 2], [R - 9.33, mb - 8], [R - 7.33, mb + 24], [R - 7.33, rt - 31], [R - 9.33, rt - 1], [Rr - 31, rt - 11], [Rr - 38, rt + 11]), cor: 'vermelho' },
   ], []);
 }
 /* cabos dos pedais em pixel como no mock "Cabos B corrigido",
