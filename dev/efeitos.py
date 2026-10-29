@@ -80,7 +80,7 @@ def main():
     seno = (0.3 * np.sin(2 * np.pi * 300 * np.arange(SR) / SR)).astype(np.float32)
     real = ler_wav(OUT / "_microfone_real.wav") if (OUT / "_microfone_real.wav").exists() else None
     falhas = 0
-    for _, eid, nome, _, _ in fx.CATALOGO:
+    for _, eid, nome, _, _ in fx.CATALOGO + fx.MODOS:
         e = fx.criar(eid)
         y, ts = stream(e, fala)
         ok = len(y) == len(fala) - len(fala) % B and np.isfinite(y).all() and np.abs(y).max() <= 1

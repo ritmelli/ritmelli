@@ -48,7 +48,7 @@ def main():
         fala = np.sqrt(np.mean(x[:len(x) // B * B].reshape(-1, B) ** 2, axis=1)) > 10 ** (-40 / 20)
         fala[: SR // B] = False  # o nivelador assenta no primeiro segundo
         linha = []
-        for _, eid, *_ in fx.CATALOGO:
+        for _, eid, *_ in fx.CATALOGO + fx.MODOS:
             y, _ = ef.stream(fx.criar(eid), x)
             linha.append(f"{eid} {diferenca_db(x, y, fala):+.1f}")
         print(f"{nome}: " + " | ".join(linha))

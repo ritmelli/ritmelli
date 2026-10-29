@@ -38,7 +38,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   que o servidor lê, em JSON, e o que o yt-dlp diz vai para o log de erros.
 - `fx.py`: efeitos de voz no estilo Voicemod (rádio de polícia com bip de câmbio, megafone,
   locutor de rádio FM, eco, banheiro, catedral, robô, voz grossa, esquilo, demônio, alienígena,
-  alto-falante estourado), aplicados na voz antes da mistura, com o volume compensado
+  alto-falante estourado, e o locutor caricato, um modo do Locutor que fica fora da lista e o tema
+  liga pelo botão CARICATO do pedal), aplicados na voz antes da mistura, com o volume compensado
   para a troca não sumir nem estourar; o tom é mudado em casa porque o da pedalboard
   atrasa 1 s. O efeito sempre começa desligado quando o servidor sobe. Banco de teste:
   `python dev/efeitos.py` (grava um .wav por efeito em `logs/efeitos/` para ouvir).
@@ -192,7 +193,8 @@ tira o som de caixa em 400 a 500 Hz e põe de volta a presença de 3 a 5 kHz. A 
 de uma leitura gravada nos dois microfones ao mesmo tempo (17/10) e, numa segunda leitura
 que ela não viu, deixou o Quest a 1,2 dB do SM58.
 
-- Hoje ele entra só dentro do "Locutor de rádio FM", que foi ajustado em cima dele.
+- Hoje ele entra só nos dois modos do "Locutor de rádio FM": no natural, que foi ajustado em
+  cima dele, e no caricato, que foi comparado no ouvido com ele na frente.
 - Para usar em outro lugar: `f = fx.QuestComoSM58()` e `y = f(bloco)`, com bloco numpy
   float32 mono a 48 kHz de qualquer tamanho; a instância guarda o estado entre blocos.
   Dentro de um efeito, entra na lista `antes=[...]` do `fx.Efeito`.

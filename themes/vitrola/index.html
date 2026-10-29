@@ -4143,9 +4143,18 @@ const KNOB_DO_GRUPO = { 'Rádio e alto-falante': 'frango', 'Ambiente': 'baquelit
 /* o Locutor tem o unico controle de verdade da pedaleira, porque os knobs sao enfeite: no
    celular, os botoes de fliperama dos dois modos (ARCADE, do dev/pecas.py) no lugar do knob e do footswitch. O
    toque na metade de cima e o NATURAL, na de baixo o CARICATO: liga naquele modo, troca para ele com o pedal ligado
-   e, no botao aceso, desliga. No computador e no teclado o pedal segue inteiro, ligando no ultimo modo. Por
-   enquanto o modo e so da tela: o som e o do Locutor nos dois */
+   e, no botao aceso, desliga. No computador e no teclado o pedal segue inteiro, ligando no ultimo modo. Cada
+   modo e um efeito do servidor: o NATURAL e o proprio Locutor, o CARICATO o locutor-caricato, que fica fora
+   do /api/effects para nao virar outro pedal */
 const CHAVE_MODOS = { locutor: ['natural', 'caricato'] };
+const EFEITO_DO_MODO = { locutor: { natural: 'locutor', caricato: 'locutor-caricato' } };
+// o pedal e o modo de um efeito: o de um modo acende o pedal dono, naquele botao; os outros sao o proprio pedal
+function pedalDoEfeito(id) {
+  for (const [pedal, modos] of Object.entries(EFEITO_DO_MODO))
+    for (const [modo, ef] of Object.entries(modos)) if (ef === id) return { pedal, modo };
+  return { pedal: id, modo: null };
+}
+const efeitoDaTecla = b => (EFEITO_DO_MODO[b.dataset.ef] || {})[b.dataset.modo] || b.dataset.ef;
 // o que o visor da gaveta (celular) diz com o pedal ligado em cada modo
 const VISOR_MODOS = { locutor: { natural: 'LOCUTOR DE RADIO FM VOZ NATURAL', caricato: 'LOCUTOR DE RADIO FM VOZ CARICATA' } };
 const lerModo = id => { try { return localStorage.getItem('vitrola.modo.' + id); } catch { return null; } };
@@ -4893,17 +4902,19 @@ function lcd14(el) {
 }
 const lcdEf = lcd14($('#seg-ef')), lcdEfGav = lcd14($('#seg-ef-gav'));
 
+// id e o pedal: o efeito de um modo (o locutor-caricato) aparece como o pedal dono
 function efeitoAtual() {
-  const id = (S.state && S.state.effect) || SEM_EFEITO;
-  return { id, ef: S.efeitos ? S.efeitos.find(x => x.id === id) : null };
+  const { pedal: id, modo } = pedalDoEfeito((S.state && S.state.effect) || SEM_EFEITO);
+  return { id, modo, ef: S.efeitos ? S.efeitos.find(x => x.id === id) : null };
 }
 
 function desenharEfeito() {
   const s = S.state; if (!s) return;
-  const { id, ef } = efeitoAtual();
+  const { id, modo, ef } = efeitoAtual();
   const com = id !== SEM_EFEITO;
   document.querySelectorAll('.tecla[data-ef]').forEach(b => {
     const on = b.dataset.ef === id;
+    if (on && modo) b.dataset.modo = modo;   // acende o modo que esta no ar, mesmo trocado de outro aparelho
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
     b.querySelector('.lampada').className = 'lampada' + (on ? ' acesa' : '');
   });
@@ -4913,10 +4924,9 @@ function desenharEfeito() {
   const ms = ef && ef.latencia_ms > 0 ? Math.round(ef.latencia_ms) : 0;
   $('#atraso-ef').textContent = ms ? `${ms} MS` : '';
   $('#atraso-ef-sr').textContent = ms ? `, atraso de ${ms} ms` : '';
-  // o visor da gaveta diz o modo do pedal que tem os botoes; o do computador segue com o nome
-  const tm = VISOR_MODOS[id] && document.querySelector(`#banco .tecla[data-ef="${id}"]`);
-  const nomeGav = (tm && VISOR_MODOS[id][tm.dataset.modo]) || $('#nome-ef').textContent;
-  lcdEf.por($('#nome-ef').textContent); lcdEfGav.por(nomeGav);
+  // os dois visores dizem o modo do pedal que tem os botoes, o do computador tambem, porque o som muda
+  const nomeGav = (VISOR_MODOS[id] && VISOR_MODOS[id][modo]) || $('#nome-ef').textContent;
+  lcdEf.por(nomeGav); lcdEfGav.por(nomeGav);
   const n = S.efeitos ? S.efeitos.length : 0, i = S.efeitos ? S.efeitos.findIndex(x => x.id === id) : -1;
   $('#ponteiro').style.setProperty('--ang', angDial(Math.max(0, i), n) + 'deg');
   $('#ponteiro-gav').style.setProperty('--ang', angDial(Math.max(0, i), n) + 'deg');
@@ -6483,17 +6493,16 @@ function desligarEfeito() { escolherEfeito(SEM_EFEITO); }   // sem aviso: o viso
 $('#gaveta').addEventListener('click', e => {
   const b = e.target.closest('.tecla[data-ef]'); if (!b) return;
   const modo = e.detail ? modoDoToque(b, e) : null;   // o clique do teclado (detail 0) segue sendo o pedal inteiro
+  const ligado = !!S.state && efeitoAtual().id === b.dataset.ef;
   if (modo) {   // o botao de um modo: liga nele, troca para ele, ou, aceso, desliga
-    const ligado = S.state && S.state.effect === b.dataset.ef;
     if (ligado && b.dataset.modo === modo) { desligarEfeito(); return; }
     b.dataset.modo = modo;
     gravarModo(b.dataset.ef, modo);
-    if (ligado) desenharEfeito();   // so o visor muda: o som e o mesmo nos dois modos por enquanto
-    else escolherEfeito(b.dataset.ef);
+    escolherEfeito(efeitoDaTecla(b));
     return;
   }
-  if (b.dataset.ef !== SEM_EFEITO && S.state && b.dataset.ef === S.state.effect) desligarEfeito();
-  else escolherEfeito(b.dataset.ef);
+  if (b.dataset.ef !== SEM_EFEITO && ligado) desligarEfeito();
+  else escolherEfeito(efeitoDaTecla(b));   // o pedal inteiro liga no ultimo modo
 });
 $('#desliga-ef').addEventListener('click', desligarEfeito);
 $('#b-efeito').addEventListener('click', () => {

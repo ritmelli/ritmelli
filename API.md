@@ -91,6 +91,9 @@ reconecta sozinho; mostre que está reconectando.
 - `monitor_on` = o arquivo toca também no fone do usuário.
 - `loop` = repete o arquivo sem parar.
 - `effect` = efeito de voz ativo (id de `/api/effects`); o servidor sempre sobe em `nenhum`.
+  Aceita também `locutor-caricato`, o modo caricato do "Locutor de rádio FM", que fica fora
+  de `/api/effects` para não virar outro efeito na lista: o tema que o oferece faz dele um
+  modo do Locutor, e com ele ligado (escolhido de outro aparelho) marca o Locutor.
 - `por_cima` = sons curtos tocando agora junto da música (ver `POST /api/play`); não mexem
   em `track`, `status` nem na barra, e o pausar e o parar calam todos.
 - `voice_monitor` = a voz, já com o efeito, toca também no fone do usuário; vale mesmo com

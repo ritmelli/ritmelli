@@ -469,6 +469,19 @@ def _locutor():
                           PassaBaixa(15000)])
 
 
+def _locutor_caricato():
+    # o modo CARICATO do Locutor: a versao exagerada de 17/10 que serviu de referencia para o
+    # processador de FM (grave +9, embolado -5, presenca +6, brilho +4, compressor 6:1 e um
+    # pouco de saturacao, como o clipador das emissoras). Soa como outro locutor, nao como
+    # quem fala; a comparacao no ouvido foi com o microfone do Quest ja passado pela curva
+    # QuestComoSM58, e assim ela entra aqui
+    return Efeito(nivelar=True, antes=[QuestComoSM58(), PortaoRuido(piso_db=-24), PassaAlta(70)],
+                  placa=[pb.LowShelfFilter(180, 9, 0.7), pb.PeakFilter(350, -5, 1.0),
+                         pb.PeakFilter(3000, 6, 0.9), pb.HighShelfFilter(9000, 4, 0.7),
+                         pb.Compressor(threshold_db=-30, ratio=6, attack_ms=3, release_ms=80),
+                         pb.Distortion(6), pb.Limiter(-1.0, 50)])
+
+
 def _radio():
     # radio portatil de policia: microfone comprimido e estourado, audio digital de 8 kHz,
     # faixa estreita de 350 a 2700 Hz com o meio na cara; o chiado e o bip vem antes de tudo
@@ -515,17 +528,24 @@ CATALOGO = [
     ("Personagem", "estourado", "Alto-falante estourado", "Distorção pesada, como caixa no talo.",
      lambda: Efeito(nivelar=True, placa=[pb.Distortion(32), pb.LowpassFilter(5000), pb.Gain(-12)])),
 ]
-_POR_ID = {c[1]: c for c in CATALOGO}
+# os modos de um pedal: efeito que liga pelo botao do modo (o CARICATO do Locutor) e nao vira
+# pedal na lista do /api/effects; o primeiro campo e o pedal dono, no lugar do grupo
+MODOS = [
+    ("locutor", "locutor-caricato", "Locutor de rádio FM caricato",
+     "Locutor de FM exagerado, com cara de outra pessoa falando.", _locutor_caricato),
+]
+_POR_ID = {c[1]: c for c in CATALOGO + MODOS}
 
 # compensa o volume de cada efeito para a troca nao sumir nem estourar a voz: o inverso do
 # nivel medido durante a fala pelo dev/efeitos.py (17/10, fala do TTS a ~-14 dBFS de pico;
 # radio e megafone remedidos depois do filtro de faixa estreita; o locutor entrou no lugar
 # do telefone em 17/10 e virou o processador de FM no mesmo dia: o AGC dele
 # sobe a voz fraca ate 30 dB e o nivelador so desce 20, entao com -4 a voz 24 dB mais baixa
-# saia +5,3 dB acima da crua; com -10, +2,5 no TTS e +0,4 no Quest)
-COMPENSA_DB = {"radio-policia": -8.6, "megafone": -2.4, "locutor": -10.0, "eco": 2.7, "banheiro": -4.3,
-               "catedral": -5.8, "robo": 2.2, "esquilo": 0.7, "demonio": -10.2, "alien": 5,
-               "estourado": -7.4}
+# saia +5,3 dB acima da crua; com -10, +2,5 no TTS e +0,4 no Quest; o caricato, medido em
+# 29/10 sem o nivelador, sai +3,0 dB no TTS e +2,0 no Quest)
+COMPENSA_DB = {"radio-policia": -8.6, "megafone": -2.4, "locutor": -10.0, "locutor-caricato": -3.0,
+               "eco": 2.7, "banheiro": -4.3, "catedral": -5.8, "robo": 2.2, "esquilo": 0.7,
+               "demonio": -10.2, "alien": 5, "estourado": -7.4}
 
 
 def criar(efeito_id):
@@ -536,6 +556,11 @@ def criar(efeito_id):
     if e is not None:
         e.ganho = 10 ** (COMPENSA_DB.get(efeito_id, 0) / 20)
     return e
+
+
+def existe(efeito_id):
+    """O efeito da lista ou o de um modo de pedal."""
+    return efeito_id in _POR_ID
 
 
 def lista():

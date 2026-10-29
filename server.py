@@ -1588,7 +1588,7 @@ def build(app_state):
         try:
             importlib.reload(fx)
             efeitos[:] = fx.lista()
-            E.set_effect(E.effect if E.effect in {e["id"] for e in efeitos} else "nenhum")
+            E.set_effect(E.effect if fx.existe(E.effect) else "nenhum")  # o de um modo fica fora da lista
         except Exception as ex:  # noqa: BLE001
             return j_err(f"Não consegui recarregar os efeitos ({str(ex)[:200]}).", 500)
         return j_ok(effects=len(efeitos), effect=E.effect)
