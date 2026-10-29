@@ -3,7 +3,7 @@ estalava bastante): o yt-dlp segurava o interpretador do servidor em rajadas de 
 stream, e o callback do audio e de 10 ms. O servidor deixa um processo destes ja aberto, com as bibliotecas
 carregadas, esperando o pedido (Fora); cada pedido usa um e ja abre o proximo.
 
-    python yt_fora.py   (o pedido em JSON na entrada: {"op": ..., ...})
+    python vitrola.py --yt   (o pedido em JSON na entrada: {"op": ..., ...}; no app, vitrola.exe --yt)
 
 A saida e uma linha JSON por evento: {"progresso": f} no download e, no fim, {"r": resultado} ou {"erro": motivo}.
 Do yt-dlp volta so o que o servidor le (enxuto): o info inteiro nao e JSON e e grande."""
@@ -75,7 +75,7 @@ def faz(p):
     raise ValueError(f"pedido desconhecido: {op}")
 
 
-if __name__ == "__main__":
+def main():
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # o servidor le o cano em utf-8
     try:
         import ytmusicapi  # noqa: F401 - carregada ja na espera, como o yt-dlp
@@ -88,3 +88,7 @@ if __name__ == "__main__":
         print(json.dumps({"r": faz(json.loads(pedido))}), flush=True)
     except Exception as ex:  # noqa: BLE001 - o servidor poe o motivo no log e na tela
         print(json.dumps({"erro": str(ex) or type(ex).__name__}), flush=True)
+
+
+if __name__ == "__main__":
+    main()

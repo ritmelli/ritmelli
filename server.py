@@ -29,10 +29,11 @@ from aiohttp.web_runner import GracefulExit
 import andamento as an
 import engine as eng
 import fx
+import pastas
 from versao import VERSAO
 
 HERE = Path(__file__).resolve().parent
-LIB = HERE / "library"  # audio baixado (fora do git); library.json e config.json moram em --data-dir
+LIB = pastas.LIB  # audio baixado; library.json e config.json moram em --data-dir
 THEMES = HERE / "themes"
 YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 YT_URL = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
@@ -43,6 +44,11 @@ BUSCA_MAX = 200  # o carregar mais da busca vai ate aqui
 # yt-dlp procura so o Deno por padrao, e aqui o que tem e o Node (sem nenhum, alguns formatos
 # faltavam e o stream falhava de vez em quando; 18/10)
 YDL = {"quiet": True, "no_warnings": True, "js_runtimes": {"deno": {}, "node": {}}}
+# o deno e o ffmpeg que vem com o app (bin/): quem instala nao tem nenhum dos dois no PATH
+if deno := pastas.ferramenta("deno"):
+    YDL["js_runtimes"]["deno"]["path"] = deno
+if ffmpeg := pastas.ferramenta("ffmpeg"):
+    YDL["ffmpeg_location"] = ffmpeg
 ANTERIOR_REINICIA_S = 3.0  # depois disso o Anterior volta ao comeco do disco, como no Spotify
 HISTORICO_MAX = 50
 AUTO_FILA = 5  # o Automatico mantem tantas parecidas no fim do A seguir
@@ -59,8 +65,16 @@ FORA_LIMITE_S = 120.0  # pedido ao YouTube (fora o download) que nao volta nisso
 REDE_VIGIA_S = 3.0  # a porta do celular se confere a cada isso, e se caiu (o PC dormiu) abre de novo
 
 
+def auxiliar(modo):
+    """O comando de um processo auxiliar (--yt, --andamento; ver o vitrola.py): no app congelado, o proprio
+    executavel; no codigo, o mesmo caminho pelo python."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable, modo]
+    return [sys.executable, str(HERE / "vitrola.py"), modo]
+
+
 class Fora:
-    """O YouTube pelo yt_fora.py, num processo a parte (o audio estalava com o yt-dlp aqui dentro): um
+    """O YouTube pelo yt_fora.py (auxiliar --yt), num processo a parte (o audio estalava com o yt-dlp aqui dentro): um
     processo fica aberto de reserva, com as bibliotecas ja carregadas; cada pedido leva o de reserva e abre o
     proximo, e pedidos ao mesmo tempo nao esperam um pelo outro."""
 
@@ -72,7 +86,7 @@ class Fora:
     def _abre():
         # sem o cursor de carregando no mouse; o stderr (os erros do yt-dlp) vem por um cano e vai para o log do
         # servidor: herdar o stderr do servidor falha sem console (pelo pythonw, WinError 50 no DuplicateHandle)
-        p = subprocess.Popen([sys.executable, str(HERE / "yt_fora.py")], stdin=subprocess.PIPE,
+        p = subprocess.Popen(auxiliar("--yt"), stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
                              errors="replace", cwd=str(HERE), creationflags=eng.NO_WINDOW, startupinfo=eng.sem_cursor())
         threading.Thread(target=Fora._repassa, args=(p.stderr,), daemon=True).start()
@@ -272,7 +286,7 @@ def save_json(path, data):
 
 class Library:
     def __init__(self, path, keep_files=False):
-        LIB.mkdir(exist_ok=True)
+        LIB.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.keep_files = keep_files
         self.lock = threading.Lock()
@@ -369,7 +383,7 @@ class App:
             if k in self.cfg:
                 v = self.cfg[k]
                 setattr(self.engine, k, v if isinstance(v, bool) else max(0.0, min(1.0, float(v))))
-        self.engine.start(reserva=True)
+        self.engine.liga()
         threading.Thread(target=self._vigia_fila, daemon=True).start()
         threading.Thread(target=self._conta_escuta, daemon=True).start()
         threading.Thread(target=self._vigia_auto, daemon=True).start()
@@ -474,7 +488,7 @@ class App:
             self.job_update(j, progress=i / 10 * 0.99)
         bases = [x for x in self.lib.items if (LIB / x["file"]).exists()]
         if not bases:
-            raise RuntimeError("--mock precisa de pelo menos um áudio em library/")
+            raise RuntimeError(f"--mock precisa de pelo menos um áudio em {LIB}")
         base = min(bases, key=lambda x: x.get("duration") or 1e9)  # o mais curto
         yid = target if YT_ID.match(target) else None
         title, channel = j["label"], None
@@ -1218,7 +1232,7 @@ class App:
             pedido = {"yt": self.alvo_yt(x["youtube_id"]), "opts": self.opts_stream(), "dur": x.get("duration")}
         else:
             return None
-        p = subprocess.run([sys.executable, str(HERE / "andamento.py")],
+        p = subprocess.run(auxiliar("--andamento"),
                            input=json.dumps(pedido), capture_output=True,
                            text=True, encoding="utf-8", errors="replace", timeout=180, cwd=str(HERE),
                            creationflags=eng.NO_WINDOW | ABAIXO_DO_NORMAL, startupinfo=eng.sem_cursor())
@@ -1744,8 +1758,13 @@ async def servir(A, app, porta, rede):
 
 
 def main():
+    # o soundboard.ps1 manda a saida para arquivo, e ai o Python escreve em cp1252: um caractere fora dele (27/10,
+    # uma seta num print) derrubava o pedido, e o "you're" do yt-dlp virava lixo no log
+    for cano in (sys.stdout, sys.stderr):
+        if cano:
+            cano.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=8799)
+    ap.add_argument("--port", type=int, default=pastas.PORTA)
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--mock", action="store_true", help="sem audio: relogio falso, download fingido")
     ap.add_argument("--data-dir", default=str(LIB), help="onde moram library.json e config.json")
@@ -1757,7 +1776,7 @@ def main():
     d = A.engine.active
     print(f"mic: {d['mic']} | cabo: {d['out']} | fone: {d['monitor'] or '-'}", flush=True)
     url = f"http://127.0.0.1:{a.port}/"
-    print(f"Vitrola {VERSAO} em {url}{' (MOCK, sem som)' if a.mock else ''}", flush=True)
+    print(f"Vitrola {VERSAO} em {url}{' (MOCK, sem som)' if a.mock else ''} | dados em {pastas.DADOS}", flush=True)
     if not a.no_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
     try:

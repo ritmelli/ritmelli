@@ -6,8 +6,8 @@ baixar nada: baixar 1 h de musica a cada disco que troca e demais), acha o som e
 motor (medir_inicio, medir_fim) e mede a batida nos mesmos 20 s que a passagem mede: o batida.py e, sem batida
 firme, a rede. O stream e o mesmo que toca (~130 kbps): no formato leve (~50 kbps) a intro de ukulele da Riptide dava
 98,1 firme, e no que toca o motor nao firmava, e a fila tinha posto ela no lugar de uma passagem no tempo (22/10).
-Roda num processo a parte (python andamento.py, o pedido em JSON na entrada): a rede pesa ~800 MB e uns segundos
-de processador, e o audio do servidor nao divide nada com ela.
+Roda num processo a parte (python vitrola.py --andamento, o pedido em JSON na entrada): a rede pesa ~800 MB e uns
+segundos de processador, e o audio do servidor nao divide nada com ela.
 
 A ordem anda no circulo das oitavas (60 e 120 BPM no mesmo lugar: a passagem casa em meia ou dobrada), sempre
 subindo: a proxima e a que fica menos acima do fim da anterior. Quando nenhuma cabe no alcance da passagem (o
@@ -32,7 +32,7 @@ ALCANCE = math.log2((1 + eng.TEMPO_MAX) * (1 + eng.SAI_MAX))
 def le(fonte, hdr, de, dur):
     """dur segundos de audio a partir de de, do arquivo ou do stream (com os cabecalhos que o yt-dlp mandou)."""
     a = ["-headers", hdr] if hdr else []
-    ff = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", *a, "-ss", f"{de:.3f}", "-i", fonte, "-t", f"{dur:.3f}",
+    ff = subprocess.run([eng.FFMPEG, "-v", "error", "-nostdin", *a, "-ss", f"{de:.3f}", "-i", fonte, "-t", f"{dur:.3f}",
                          "-f", "f32le", "-ac", "2", "-ar", str(eng.SR), "-"],
                         capture_output=True, timeout=90, creationflags=eng.NO_WINDOW, startupinfo=eng.sem_cursor())
     return np.frombuffer(ff.stdout[: len(ff.stdout) // 8 * 8], np.float32).reshape(-1, 2)
@@ -114,7 +114,7 @@ def ordena(cursor, salto, cands, tempo, n, autores=lambda c: frozenset(), antes=
     return saida
 
 
-if __name__ == "__main__":
+def main():
     p = json.loads(sys.stdin.read())
     try:
         fonte, hdr, dur = p.get("fonte"), p.get("hdr") or "", p.get("dur")
@@ -130,3 +130,7 @@ if __name__ == "__main__":
     finally:
         import compasso
         compasso.fecha()
+
+
+if __name__ == "__main__":
+    main()

@@ -6,8 +6,12 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
 ## Peças
 
 - `engine.py`: mistura em WASAPI 48 kHz, blocos de 10 ms; ffmpeg decodifica; voz com no
-  máximo ~80 ms de atraso; `MockEngine` sem áudio para teste. Áudio de até 15 s (buzina,
-  bordão) toca por cima da música em vez de trocar, e o posto nos Sons rápidos pela mão
+  máximo ~80 ms de atraso; `MockEngine` sem áudio para teste. O Windows converte os 48 kHz
+  para a taxa de cada aparelho (sem isso, um aparelho a 44,1 kHz recusava o stream). Se o
+  áudio não abre ao ligar (sem o CABLE Input, por exemplo), o servidor sobe mesmo assim com o
+  erro na tela e tenta de novo logo depois e quando a lista de aparelhos muda. Áudio de
+  até 15 s (buzina, bordão) toca por cima da música em vez de trocar, e o posto nos Sons
+  rápidos pela mão
   também, inteiro até 2 min: vários juntos, no volume da música,
   o repetido sai na hora (fica decodificado na memória), e o pausar e o parar calam todos.
 - `batida.py`: andamento e grade de batidas de um trecho de música para a passagem no tempo
@@ -28,14 +32,25 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   YouTube que toca (~1 MB por disco, sem baixar nada; no formato leve de ~50 kbps a intro da
   Riptide dava batida firme e no que toca não), e mede nos mesmos 20 s que a passagem mede (o
   `batida.py` e, sem batida firme, a rede). Roda num processo à parte com prioridade baixa
-  (`python andamento.py`, o pedido em JSON na entrada), ~3 a 5 s por disco, e o endereço do
+  (`vitrola.py --andamento`, o pedido em JSON na entrada), ~3 a 5 s por disco, e o endereço do
   stream ele mesmo pede ao YouTube (o `stream_yt` do `yt_fora.py`).
 - `yt_fora.py`: o YouTube (yt-dlp e ytmusicapi) num processo à parte, nunca no do servidor:
   com o yt-dlp lá dentro, cada endereço de stream travava o processo do áudio em rajadas de
   30 a 45 ms num notebook e o som estalava (o callback é de 10 ms). O servidor deixa um aberto
   de reserva, com as bibliotecas carregadas, e cada pedido (stream, busca, download com o
   progresso, rádio, Mix, versão só de áudio) leva o de reserva e abre o próximo; volta só o
-  que o servidor lê, em JSON, e o que o yt-dlp diz vai para o log de erros.
+  que o servidor lê, em JSON, e o que o yt-dlp diz vai para o log de erros. Abre como
+  `vitrola.py --yt`.
+- `vitrola.py`: o ponto de entrada, o mesmo do executável. Sem modo, liga o servidor. Se
+  outra Vitrola já está ligada na mesma porta (o atalho clicado de novo), só abre a página
+  dela; se ela ainda está ligando, sai sem fazer nada, porque a página abre quando ela
+  termina (uma trava do Windows marca a porta desde o começo). Com `--yt` ou `--andamento`,
+  vira o processo auxiliar. No app congelado não há `python` nem
+  `.py` para abrir, só o próprio executável, e o servidor abre os auxiliares por ele
+  (`auxiliar` no `server.py`); no código, pelo `python vitrola.py`, o mesmo caminho. Sem
+  console (o executável, ou o `pythonw`), a saída e os erros do servidor vão para os
+  arquivos de log, os mesmos que o `soundboard.ps1` grava, e os da vez anterior ficam ao
+  lado (`server.anterior.log`), para o motivo de uma queda não sumir quando o app reabre.
 - `fx.py`: efeitos de voz no estilo Voicemod (rádio de polícia com bip de câmbio, megafone,
   locutor de rádio FM, eco, banheiro, catedral, robô, voz grossa, esquilo, demônio, alienígena,
   alto-falante estourado), aplicados na voz antes da mistura, com o volume compensado
@@ -53,7 +68,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     yt-dlp dá o endereço do áudio em 1 a 3 s e o ffmpeg toca dele), com o download seguindo
     por trás. Quando o arquivo chega, o motor passa para ele sem cortar, do ponto onde o
     áudio já decodificado termina. O stream tenta três vezes (a última aceitando qualquer
-    formato de áudio) e cada falha vai para o `logs/server.err` com o motivo; se não abrir, a
+    formato de áudio) e cada falha vai para o `server.err` (nos logs, ver `pastas.py`) com o motivo; se não abrir, a
     tela avisa e o disco toca quando o download chegar. Se o endereço sai mas o ffmpeg não
     recebe nada dele (o YouTube às vezes responde 403), o prato fica carregando, sem erro,
     e toca o arquivo quando o download chega; se o download também falha, o prato para.
@@ -182,8 +197,13 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   o LED dos pedais, os botões de fliperama e o logo do Locutor, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as
   variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo`, a
   `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL` no tema) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria).
-- `library/` (fora do git): áudio baixado, a lista da biblioteca e as escolhas de volume
-  e dispositivo.
+- `pastas.py`: os dados de quem usa moram em `%LOCALAPPDATA%\Vitrola`, fora da pasta do
+  código, porque instalado em Program Files ela não aceita escrita. Em `library/`, o áudio
+  baixado, a lista da biblioteca e as escolhas de volume e dispositivo; em `logs/`, a saída e
+  os erros do servidor. Os logs das ferramentas de `dev/` (`logs/efeitos/`) seguem na pasta do código.
+  O ffmpeg, o ffprobe e o Deno vêm da `bin/` do app (a do executável, ou a do código), que o
+  instalador vai encher; sem ela, do PATH. O yt-dlp recebe os dois que acharem (`YDL` no
+  `server.py`).
 - `versao.py`: a versão (semver), que o servidor mostra no Estado e no `--version`; a tag da
   release tem que bater com ela.
 

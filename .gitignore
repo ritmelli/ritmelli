@@ -3,9 +3,18 @@ __pycache__/
 .venv*/
 dev/.venv*/
 
-# dados de quem usa: audio baixado, biblioteca, escolhas e logs
+# os dados de quem usa moram em %LOCALAPPDATA%\Vitrola (pastas.py); a library/ fica aqui
+# so para nunca subir audio de uma versao antiga. Os logs/ sao os do dev/ (logs/efeitos/:
+# a voz de quem grava)
 library/
 logs/
+
+# ffmpeg, ffprobe e deno que o app usa no lugar dos do PATH (pastas.py): no app, o instalador poe
+bin/
+
+# o que o PyInstaller gera (vitrola.spec)
+build/
+dist/
 
 # gerados pelo dev/previews.py
 themes/*/preview.png
