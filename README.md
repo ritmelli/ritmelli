@@ -48,6 +48,7 @@ com o detector em numpy).
   volta no fone.
 - Microfone e fone seguem o padrão do Windows, inclusive quando ele muda com o servidor
   ligado. A escolha feita na interface fica gravada em `library/config.json`.
+- A versão: `python server.py --version`.
 - **No celular**, no mesmo Wi-Fi: o `start` e o `status` mostram o endereço
   (`http://<ip do PC>:8799/`). Qualquer aparelho do Wi-Fi alcança, sem senha;
   `server.py --so-local` atende só o PC.
@@ -61,6 +62,7 @@ com o detector em numpy).
 | `engine.py` | motor de áudio: mistura, dois decks, passagem de DJ |
 | `batida.py`, `compasso.py`, `andamento.py` | andamento, grade de batidas e o 1 do compasso |
 | `fx.py` | efeitos de voz |
+| `versao.py` | a versão do app |
 | `yt_fora.py` | YouTube (yt-dlp e ytmusicapi) num processo à parte |
 | `winvol.py` | volume do microfone no Windows |
 | `themes/vitrola/` | a interface |

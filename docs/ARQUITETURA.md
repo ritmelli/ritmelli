@@ -54,7 +54,9 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     por trás. Quando o arquivo chega, o motor passa para ele sem cortar, do ponto onde o
     áudio já decodificado termina. O stream tenta três vezes (a última aceitando qualquer
     formato de áudio) e cada falha vai para o `logs/server.err` com o motivo; se não abrir, a
-    tela avisa e o disco toca quando o download chegar.
+    tela avisa e o disco toca quando o download chegar. Se o endereço sai mas o ffmpeg não
+    recebe nada dele (o YouTube às vezes responde 403), o prato fica carregando, sem erro,
+    e toca o arquivo quando o download chega; se o download também falha, o prato para.
   - Fila (A seguir): quando o disco do prato acaba, o primeiro da fila entra, do arquivo
     ou pelo stream. O que entra na fila sem estar na prateleira já começa a baixar. O
     Repetir manda (ligado, o disco não acaba). Com nada no prato (parado, ou o disco já
@@ -182,6 +184,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL` no tema) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria).
 - `library/` (fora do git): áudio baixado, a lista da biblioteca e as escolhas de volume
   e dispositivo.
+- `versao.py`: a versão (semver), que o servidor mostra no Estado e no `--version`; a tag da
+  release tem que bater com ela.
 
 ## Filtro "Quest como SM58"
 

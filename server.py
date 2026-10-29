@@ -29,6 +29,7 @@ from aiohttp.web_runner import GracefulExit
 import andamento as an
 import engine as eng
 import fx
+from versao import VERSAO
 
 HERE = Path(__file__).resolve().parent
 LIB = HERE / "library"  # audio baixado (fora do git); library.json e config.json moram em --data-dir
@@ -380,7 +381,7 @@ class App:
         Anterior tem."""
         with self.fila_lock:
             extra = {"queue": [self._com_bpm(x) for x in self.fila], "shuffle": self.fila_ordem is not None,
-                     "auto": self.auto, "history": len(self.historico)}
+                     "auto": self.auto, "history": len(self.historico), "versao": VERSAO}
         return {**self.engine.snapshot(), **extra}
 
     def _com_bpm(self, x):
@@ -523,7 +524,7 @@ class App:
             self.job_update(j, status="error", finished=time.time(),
                             error=f"O download falhou ({yt_msg(ex)}). Confira o link ou tente outro vídeo.")
             tr = self.engine.track
-            if tr is not None and tr.get("job") == j["id"] and not tr.get("path"):
+            if tr is not None and tr.get("job") == j["id"] and (not tr.get("path") or self.engine.esperando_arquivo()):
                 self.engine.stop()  # sem stream e sem arquivo: o prato nao fica carregando para sempre
 
     # tocar ----------------------------------------------------------------
@@ -1749,13 +1750,14 @@ def main():
     ap.add_argument("--mock", action="store_true", help="sem audio: relogio falso, download fingido")
     ap.add_argument("--data-dir", default=str(LIB), help="onde moram library.json e config.json")
     ap.add_argument("--so-local", action="store_true", help="nao atende a rede de casa (celular)")
+    ap.add_argument("--version", action="version", version=f"Vitrola {VERSAO}")
     a = ap.parse_args()
     A = App(a.port, Path(a.data_dir), mock=a.mock)
     threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
     print(f"mic: {d['mic']} | cabo: {d['out']} | fone: {d['monitor'] or '-'}", flush=True)
     url = f"http://127.0.0.1:{a.port}/"
-    print(f"soundboard em {url}{' (MOCK, sem som)' if a.mock else ''}", flush=True)
+    print(f"Vitrola {VERSAO} em {url}{' (MOCK, sem som)' if a.mock else ''}", flush=True)
     if not a.no_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
     try:

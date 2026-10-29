@@ -48,8 +48,10 @@ reconecta sozinho; mostre que está reconectando.
  "devices": {"mic": "default", "out": "CABLE Input", "monitor": "default"},
  "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "out": "CABLE Input (VB-Audio Virtual Cable)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
  "error": null ou "texto",
- "queue": [Entrada], "shuffle": false, "auto": false, "history": 3}
+ "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
+ "versao": "0.1.0"}
 ```
+- `versao` = a versão do servidor (`versao.py`), para mostrar na tela.
 - `track` tocando pelo stream do YouTube (vídeo que ainda não chegou na prateleira) vem
   com `"stream": true` e `"job": "<id do download>"`; o `id` é o do vídeo, que vira o id do
   disco quando o download termina. Enquanto o endereço do stream não sai (1 a 3 s), o

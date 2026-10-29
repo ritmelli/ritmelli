@@ -408,6 +408,7 @@ class Engine:
         self.ended = False
         self.pos = 0.0
         self.error = None
+        self._espera_arquivo = None  # o _gen do stream que falhou com o download a caminho (esperando_arquivo)
         self.levels = {"mic": 0.0, "track": 0.0, "out": 0.0}
         self._deck = Deck()    # o disco do prato: _q, _gen e _eof_gen sao os dele
         self._qlock = threading.Lock()
@@ -822,6 +823,7 @@ class Engine:
     def _reader(self, gen, track, start, deck):
         t = start
         path = track["path"]
+        stream = str(path).startswith("http")  # o YouTube direto, antes de o download chegar
         while gen == deck.gen:
             ff = subprocess.Popen(["ffmpeg", "-v", "error", *self._entrada(track), "-ss", str(t), "-i", path,
                                    "-f", "f32le", "-ac", "2", "-ar", str(SR), "-"],
@@ -848,6 +850,12 @@ class Engine:
                 ff.kill()
                 ff.wait()
             if gen != deck.gen:
+                return
+            if n == 0 and stream and track.get("job") and deck is self._deck:
+                # o download do mesmo disco esta a caminho (27/10: o YouTube deu 403 ao ffmpeg em 2 de ~15 streams, e
+                # o download chegava 2 s depois): sem erro e sem fim, o prato fica carregando e o trocar_fonte toca
+                # o arquivo de onde parou; se o download falhar, o servidor para o prato (esperando_arquivo)
+                self._espera_arquivo = gen
                 return
             if n == 0 and deck is not self._deck:  # a proxima que nao decodifica so nao entra
                 deck.eof_gen = gen
@@ -1345,6 +1353,10 @@ class Engine:
                 self._eof_gen = -1
             threading.Thread(target=self._reader, args=(gen, novo, t, self._deck), daemon=True).start()
             return True
+
+    def esperando_arquivo(self):
+        """O stream do disco no prato falhou e ele espera o download para tocar (ver o _reader)."""
+        return self._espera_arquivo is not None and self._espera_arquivo == self._gen
 
     def por_cima(self, track):
         """Toca o item junto do que estiver tocando, sem trocar a musica nem mexer na barra
