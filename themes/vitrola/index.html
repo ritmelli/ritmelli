@@ -1228,6 +1228,29 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 .fora code { font-family: inherit; font-weight: 700; font-stretch: 92%; background: rgba(42,24,18,.1); padding: 1px 6px; border-radius: 4px; }
 .fora .tentando { font-size: .8125rem; color: var(--tinta-2); }
 
+/* celular: no PC, o botao Celular mostra o QR e o codigo (#dlg-cel); o celular ainda nao pareado digita o codigo
+   no #tela-parear, por cima de tudo */
+#dlg-cel { width: min(600px, calc(100vw - 32px)); }
+.cel-par { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.cel-qr { flex: none; border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px #7E7466, 0 2px 0 rgba(0,0,0,.25); }
+.cel-passos { flex: 1 1 220px; display: grid; gap: 8px; justify-items: start; }
+.cel-url { font-weight: 700; overflow-wrap: anywhere; }
+/* a Jersey 10 em 3x (56 px): 1 pixel da letra = 3 px de CSS */
+.dlg .cel-codigo { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 56px; font-weight: 400; font-stretch: 100%; line-height: .85714; letter-spacing: .04em; color: var(--tinta); }
+.cel-par.queimado .cel-qr, .cel-par.queimado .cel-passo { display: none; }
+.dlg .em-uso.erro { color: #8E1E14; }
+.dlg h3 { font-size: .9375rem; font-weight: 600; }
+.cel-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cel-lista li { display: flex; gap: 12px; align-items: center; padding: 8px 8px 8px 12px; border-radius: 8px; background: rgba(42,24,18,.08); }
+.cel-lista .cel-quem { flex: 1; min-width: 0; display: grid; }
+.cel-lista .cel-nome { font-weight: 600; font-size: .9375rem; }
+.cel-lista .cel-quando { font-size: .8125rem; color: var(--tinta-2); }
+.cel-vazio { font-size: .875rem; color: var(--tinta-2); }
+#tela-parear { overflow-y: auto; }
+#pa-in { height: 3.25rem; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; letter-spacing: .12em; text-align: center; }
+/* o teclado do celular sobe por cima da metade de baixo: o cartao fica no alto */
+@media (max-width: 899.98px) { #tela-parear { align-items: start; padding-top: 48px; } }
+
 /* ---------- celular: a pagina e a biblioteca (busca, sons rapidos, prateleira); o toca-discos,
    os volumes e os efeitos abrem por cima pela barra de baixo, como o "tocando agora" dos apps de
    musica. No computador o palco some (display: contents) e nada muda. ---------- */
@@ -3346,6 +3369,11 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
       <button class="btn" type="submit"><svg class="lupa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span class="rot-busca">Buscar</span></button>
     </form>
     <div class="botoes-topo">
+      <!-- so no PC (127.0.0.1): o codigo e os celulares conectados nao vao para a rede -->
+      <button class="btn-madeira" id="b-cel" type="button" title="Conectar o celular" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10.5 18.5h3"/></svg>
+        <span class="rot">Celular</span>
+      </button>
       <button class="btn-madeira" id="b-disp" type="button" title="Microfone e fone">
         <!-- engrenagem: o microfone fica so no mutar, eram dois iguais na mesma tela -->
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(12 12) scale(.82) translate(-12 -12)"><circle cx="12" cy="12" r="3" vector-effect="non-scaling-stroke"/><path vector-effect="non-scaling-stroke" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></g></svg>
@@ -3745,6 +3773,27 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
   </form>
 </dialog>
 
+<dialog id="dlg-cel" aria-labelledby="dcel-t">
+  <form method="dialog" class="dlg">
+    <h2 id="dcel-t">Conectar o celular</h2>
+    <p id="dcel-semrede" hidden>Este PC não está em nenhuma rede agora, e o celular não alcança a Vitrola. Ligue o Wi-Fi ou o cabo de rede do PC: o QR aparece aqui sozinho.</p>
+    <div class="cel-par" id="dcel-par" hidden>
+      <div class="cel-qr" id="dcel-qr"></div>
+      <div class="cel-passos">
+        <p class="cel-passo">Aponte a câmera do celular para o QR. Ele precisa estar no mesmo Wi-Fi que este PC.</p>
+        <p class="cel-passo">Ou abra <span class="cel-url" id="dcel-url"></span> no navegador do celular e digite o código:</p>
+        <p class="cel-codigo cel-passo" id="dcel-cod"></p>
+        <p class="em-uso" id="dcel-vale"></p>
+        <button class="btn" type="button" id="dcel-outro">Outro código</button>
+      </div>
+    </div>
+    <p class="msg-dlg" id="dcel-msg" role="status"></p>
+    <h3>Celulares conectados</h3>
+    <ul class="cel-lista" id="dcel-lista"></ul>
+    <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
+  </form>
+</dialog>
+
 <div class="aviso" id="aviso" role="status" aria-live="polite" hidden></div>
 
 <div class="fora" id="fora" hidden>
@@ -3753,6 +3802,17 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
     <p id="fora-p"></p>
     <p class="tentando" id="fora-tentando">Tentando conectar de novo a cada poucos segundos. Esta página volta sozinha quando ele responder.</p>
   </div>
+</div>
+
+<div class="fora" id="tela-parear" hidden>
+  <form class="cartao dlg" id="form-parear" role="dialog" aria-modal="true" aria-labelledby="pa-t" aria-describedby="pa-p" novalidate>
+    <h2 id="pa-t"><span class="lampada" aria-hidden="true"></span>Conectar este celular</h2>
+    <p id="pa-desc" hidden>Este celular foi desconectado no PC.</p>
+    <p id="pa-p">No PC, abra a Vitrola e clique em <b>Celular</b>, no alto da tela. Aponte a câmera do celular para o QR que aparece, ou digite aqui o código de 6 números que aparece junto dele.</p>
+    <label class="campo">Código do PC<input type="text" id="pa-in" inputmode="numeric" autocomplete="one-time-code" maxlength="7" spellcheck="false"></label>
+    <p class="msg-dlg" id="pa-msg" role="status"></p>
+    <div class="rodape"><button class="btn" type="submit" id="pa-ok">Conectar</button></div>
+  </form>
 </div>
 
 <script>
@@ -3765,6 +3825,7 @@ const reduz = matchMedia('(prefers-reduced-motion: reduce)');
 const S = {
   state: null, lib: [], jobs: [], pos: 0, levels: { mic: 0, track: 0, out: 0 },
   online: null, jaConectou: false, desligado: false,
+  pareando: false,        // celular sem pareamento: o #tela-parear pede o codigo do PC
   busca: null,            // null = prateleira; {q, link, itens, carregando, erro}
   buscaSeq: 0,
   jobAlvo: {},            // id do job -> youtube_id
@@ -3829,8 +3890,10 @@ async function api(method, path, data) {
   let j = null;
   try { j = await r.json(); } catch (e) { /* corpo vazio */ }
   if (!r.ok || (j && j.ok === false)) {
+    if (r.status === 401 && j && j.parear) pedirPareamento(j.desconectado);
     const msg = (j && j.error) || `O soundboard respondeu com erro ${r.status}.`;
-    throw new Error(ERROS[msg] || msg);
+    const e = new Error(ERROS[msg] || msg); e.status = r.status;
+    throw e;
   }
   return j;
 }
@@ -6404,13 +6467,109 @@ async function desligar() {
   catch (e) { avisar(e.message, true); }
 }
 
+/* ---------- celular (no PC): o QR, o codigo e os conectados. Aberto, confere a cada 2 s: o celular que acabou de
+   parear aparece na lista, e o codigo vencido ou usado da lugar a outro ---------- */
+let celT = 0, celQR = '', celIds = null, celLista = '';
+async function abrirCelular() {
+  const msg = $('#dcel-msg');
+  celIds = null;
+  msg.className = 'msg-dlg'; msg.textContent = 'Preparando o código.';
+  $('#dlg-cel').showModal();
+  if (await atualizarCelular()) msg.textContent = '';
+  conferirCelular();
+}
+/* a proxima conferencia so sai depois da resposta: com o setInterval, uma resposta lenta podia chegar depois da
+   seguinte e mostrar o codigo de antes */
+function conferirCelular() {
+  clearTimeout(celT);
+  if ($('#dlg-cel').open) celT = setTimeout(async () => { await atualizarCelular(); conferirCelular(); }, 2000);
+}
+$('#dlg-cel').addEventListener('close', () => { clearTimeout(celT); celQR = ''; });
+async function atualizarCelular() {
+  const msg = $('#dcel-msg');
+  let r;
+  try { r = await api('GET', `/api/pareamento?caminho=${encodeURIComponent(location.pathname)}`); }
+  catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; return false; }
+  $('#dcel-semrede').hidden = !!r.url;
+  $('#dcel-par').hidden = !r.url;
+  $('#dcel-par').classList.toggle('queimado', r.queimado);
+  $('#dcel-url').textContent = r.url || '';
+  $('#dcel-cod').textContent = r.codigo ? r.codigo.replace(/^(\d{3})(\d{3})$/, '$1 $2') : '';
+  const vale = $('#dcel-vale');
+  vale.classList.toggle('erro', r.queimado);
+  vale.textContent = r.queimado
+    ? 'Alguém digitou o código errado várias vezes no celular, e ele deixou de valer. Clique em Outro código.'
+    : `Vale por mais ${Math.max(1, Math.ceil(r.vale_s / 60))} min, uma vez só.`;
+  const chaveQR = r.qr ? r.qr.join('') : '';
+  if (chaveQR !== celQR) { celQR = chaveQR; $('#dcel-qr').innerHTML = r.qr ? desenharQR(r.qr) : ''; }
+  desenharCelulares(r.celulares || []);
+  return true;
+}
+/* o QR em pixels inteiros da tela (com a escala do Windows tambem): modulo borrado a camera le pior */
+function desenharQR(linhas) {
+  const n = linhas.length, borda = 4, lado = n + 2 * borda;
+  const dpr = devicePixelRatio || 1, px = Math.max(3, Math.floor(220 * dpr / lado)) / dpr;
+  let d = '';
+  linhas.forEach((l, y) => {
+    for (let x = 0; x < n;) {
+      if (l[x] !== '1') { x++; continue; }
+      let f = x; while (f < n && l[f] === '1') f++;
+      d += `M${x + borda} ${y + borda}h${f - x}v1h${x - f}z`;
+      x = f;
+    }
+  });
+  return `<svg width="${lado * px}" height="${lado * px}" viewBox="0 0 ${lado} ${lado}" shape-rendering="crispEdges" role="img" aria-label="QR com o link da Vitrola para o celular"><rect width="${lado}" height="${lado}" fill="#F4EFE6"/><path fill="#2A1812" d="${d}"/></svg>`;
+}
+function quando(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  if (d.toDateString() === new Date().toDateString()) return `hoje às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  return `em ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
+}
+function desenharCelulares(lista) {
+  const ids = lista.map(c => c.id);
+  const novo = celIds && lista.find(c => !celIds.includes(c.id));
+  if (novo) { const m = $('#dcel-msg'); m.className = 'msg-dlg'; m.textContent = `Pronto: ${novo.nome} conectado.`; }
+  celIds = ids;
+  const ul = $('#dcel-lista'), v = JSON.stringify(lista);
+  if (v === celLista) return;   // a cada 2 s: so redesenha quando muda (o foco num Desconectar nao pula)
+  celLista = v;
+  ul.replaceChildren();
+  if (!lista.length) { ul.append(el('li', 'cel-vazio', 'Nenhum celular conectado ainda.')); return; }
+  for (const c of lista) {
+    const li = el('li'), quem = el('span', 'cel-quem');
+    quem.append(el('span', 'cel-nome', c.nome), el('span', 'cel-quando', `conectado ${quando(c.desde)} · usado por último ${quando(c.visto)}`));
+    const b = el('button', 'btn', 'Desconectar'); b.type = 'button'; b.dataset.id = c.id;
+    b.setAttribute('aria-label', `Desconectar ${c.nome}, conectado ${quando(c.desde)}`);
+    li.append(quem, b);
+    ul.append(li);
+  }
+}
+$('#dcel-lista').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-id]'); if (!b) return;
+  const msg = $('#dcel-msg');
+  b.disabled = true;
+  try {
+    await api('DELETE', `/api/pareamento/${encodeURIComponent(b.dataset.id)}`);
+    msg.className = 'msg-dlg'; msg.textContent = 'Desconectado. Para usar a Vitrola de novo, aquele celular vai precisar do código.';
+    await atualizarCelular();
+  } catch (err) { msg.className = 'msg-dlg erro'; msg.textContent = err.message; b.disabled = false; }
+});
+$('#dcel-outro').addEventListener('click', async () => {
+  const msg = $('#dcel-msg');
+  try { await api('POST', '/api/pareamento/codigo'); msg.textContent = ''; await atualizarCelular(); }
+  catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
+});
+
 /* ---------- conexao ---------- */
 let es = null, foraT = null, reconT = null;
 function conectar() {
   clearTimeout(reconT);
   if (es) es.close();
   try { es = new EventSource('/api/events'); } catch (e) { reconT = setTimeout(conectar, 3000); return; }
+  const fonte = es;
   es.addEventListener('open', () => online(true));
+  es.addEventListener('desconectado', () => pedirPareamento(true));
   es.addEventListener('state', e => {
     online(true); S.state = JSON.parse(e.data);
     desenharFaixa(); desenharReceptor(); desenharFila(); if (S.busca) atualizarResultados();
@@ -6428,8 +6587,14 @@ function conectar() {
     desenharTempo(); acordarAgulhas();
   });
   es.onerror = () => {
+    if (S.pareando) return;
     online(false);
-    if (es.readyState === EventSource.CLOSED) { es.close(); reconT = setTimeout(conectar, 3000); }
+    if (fonte.readyState !== EventSource.CLOSED) return;
+    fonte.close();
+    // recusada de cara: o servidor fora, ou o 401 do celular desconectado no PC (o EventSource nao diz o status;
+    // o /api/state diz, e o api() ja abre o pedido do codigo)
+    api('GET', '/api/state').then(() => true, e => e.status !== 401)
+      .then(volta => { if (volta && !S.pareando) reconT = setTimeout(conectar, 3000); });
   };
 }
 /* o aviso de fora do ar so conta o tempo com a pagina na tela (ao desbloquear o celular o aviso
@@ -6438,12 +6603,12 @@ function conectar() {
    e a nova traz o estado) e o prazo comeca dali */
 function armarFora() {
   clearTimeout(foraT);
-  if (document.hidden) return;
+  if (document.hidden || S.pareando) return;
   foraT = setTimeout(() => { if (!S.online && !document.hidden) mostrarFora(); }, S.desligado ? 0 : 2500);
 }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { clearTimeout(foraT); return; }
-  if (S.desligado) return;
+  if (S.desligado || S.pareando) return;
   conectar();
   if (!S.online) armarFora();
 });
@@ -6476,6 +6641,43 @@ function mostrarFora() {
   $('#conexao').classList.remove('sr');
   f.hidden = false;
 }
+
+/* ---------- pareamento (no celular): a API responde 401 ate o celular mandar o codigo que o PC mostra. O QR ja
+   traz o codigo no link (?parear=), e ai nada se digita ---------- */
+let codigoQR = new URLSearchParams(location.search).get('parear');
+if (codigoQR) history.replaceState(null, '', location.pathname + location.hash);  // o codigo usado nao fica no historico
+function pedirPareamento(desconectado) {
+  if (S.pareando) return;
+  S.pareando = true; S.online = false;
+  clearTimeout(reconT); clearTimeout(foraT);
+  if (es) { es.close(); es = null; }
+  fecharMenu(false);
+  document.querySelectorAll('dialog[open]').forEach(d => d.close());
+  $('#fora').hidden = true;
+  $('#pa-desc').hidden = !desconectado;
+  $('#pa-msg').textContent = '';
+  $('#lamp').className = 'lampada'; $('#conexao').textContent = 'sem acesso'; $('#conexao').classList.remove('sr');
+  $('#tela-parear').hidden = false;
+}
+async function parear(codigo) {
+  const msg = $('#pa-msg');
+  msg.className = 'msg-dlg'; msg.textContent = 'Conectando.';
+  $('#pa-ok').disabled = true;
+  try { await api('POST', '/api/parear', { codigo }); }
+  catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; $('#pa-ok').disabled = false; return; }
+  $('#pa-ok').disabled = false;
+  S.pareando = false;
+  $('#tela-parear').hidden = true; $('#pa-in').value = '';
+  avisar('Pronto: este celular está conectado.');
+  carregar();
+}
+$('#form-parear').addEventListener('submit', e => {
+  e.preventDefault();
+  const c = $('#pa-in').value.replace(/\D/g, '');
+  if (c.length !== 6) { const m = $('#pa-msg'); m.className = 'msg-dlg erro'; m.textContent = 'O código tem 6 números.'; return; }
+  $('#pa-in').blur();   // fecha o teclado: a resposta aparece embaixo do campo
+  parear(c);
+});
 
 /* ---------- eventos da interface ---------- */
 $('#estante').addEventListener('click', e => {
@@ -6745,6 +6947,8 @@ $('#b-sair-busca').addEventListener('click', () => { fecharBusca(); $('#q').valu
 // limpar: no primeiro toque, com ou sem o cursor no campo; o campo fica pronto para a busca nova
 // (os resultados de antes ficam ate ela sair, como enquanto digita)
 $('#b-limpar-q').addEventListener('click', () => { clearTimeout(buscaT); const q = $('#q'); q.value = ''; q.focus(); });
+$('#b-cel').hidden = !['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
+$('#b-cel').addEventListener('click', abrirCelular);
 $('#b-disp').addEventListener('click', abrirDispositivos);
 $('#dica-ouvir').addEventListener('click', e => { if (e.target.closest('.ir-disp')) abrirDispositivos(); });
 $('#b-desligar').addEventListener('click', desligar);
@@ -6755,7 +6959,7 @@ function campoDeTexto(t) {
   const i = t.closest('input');
   return !!i && !['range', 'checkbox', 'radio', 'button', 'submit'].includes(i.type);
 }
-function dialogoAberto() { return !!document.querySelector('dialog[open]') || !$('#fora').hidden; }
+function dialogoAberto() { return !!document.querySelector('dialog[open]') || !$('#fora').hidden || !$('#tela-parear').hidden; }
 document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$('#menu').hidden) { if (e.key === 'Escape') { e.preventDefault(); fecharMenu(true); } return; }
@@ -6783,13 +6987,20 @@ inertPalco();
 FADERS.forEach(([fi]) => pintarFader($(fi)));
 carregarEfeitos();
 if (location.hash === '#efeitos' && !celular()) abrirGaveta(true);
-Promise.all([api('GET', '/api/state'), api('GET', '/api/library'), api('GET', '/api/jobs')])
-  .then(([st, lib, jobs]) => {
-    S.state = st; S.pos = st.pos || 0; S.levels = st.levels || S.levels; S.lib = ordenarLib(lib); S.jobs = jobs;
-    online(true); desenharFaixa(); desenharReceptor(); desenharPrateleira(); desenharFila();
-  })
-  .catch(() => { online(false); })
-  .finally(conectar);
+function carregar() {
+  Promise.all([api('GET', '/api/state'), api('GET', '/api/library'), api('GET', '/api/jobs')])
+    .then(([st, lib, jobs]) => {
+      S.state = st; S.pos = st.pos || 0; S.levels = st.levels || S.levels; S.lib = ordenarLib(lib); S.jobs = jobs;
+      online(true); desenharFaixa(); desenharReceptor(); desenharPrateleira(); desenharFila();
+    })
+    .catch(e => {
+      if (e.status !== 401) { online(false); return; }
+      // o codigo do QR so se usa sem pareamento: ja pareado (ou no proprio PC), ele segue valendo para outro celular
+      if (codigoQR) { const c = codigoQR; codigoQR = null; parear(c); }
+    })
+    .finally(() => { if (!S.pareando) conectar(); });
+}
+carregar();
 </script>
 </body>
 </html>

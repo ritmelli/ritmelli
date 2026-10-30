@@ -4,6 +4,7 @@ scipy>=1.13
 sounddevice>=0.5
 pedalboard>=0.9
 aiohttp>=3.9
+segno>=1.6
 yt-dlp[default]
 ytmusicapi>=1.8
 onnxruntime>=1.18

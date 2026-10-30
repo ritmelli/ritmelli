@@ -60,8 +60,22 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   `python dev/efeitos.py` (grava um .wav por efeito em `logs/efeitos/` para ouvir).
 - `winvol.py`: o volume do microfone no Windows (IAudioEndpointVolume pelo comtypes); a "Voz"
   da interface é esse número, gravado e lido de volta por uma thread do engine.
+- `pareamento.py`: o celular pareado. O instalador libera a entrada no firewall também em
+  rede pública, e sem senha qualquer aparelho do mesmo Wi-Fi tocava no microfone do jogo e
+  baixava do YouTube. O PC é quem fala pelo `127.0.0.1` (pelo endereço de quem conectou, não
+  pelo Host, que quem pede escreve como quiser) e usa tudo; da rede, a API só responde com a
+  chave de um celular pareado. O botão Celular mostra um código de 6 números e um QR (do
+  `segno`) com o link que já leva o código. O código vale 5 min e uma vez só, e morre com 5
+  tentativas erradas, quando só o PC gera outro: sem isso, quem estivesse na rede podia
+  tentar até acertar. Pareado, o celular guarda a chave num cookie até o PC desconectar; o
+  `celulares.json` (na pasta de dados) guarda só o hash dela; estragado, ele não impede o app
+  de abrir, e os celulares pareiam de novo. O cookie vale para o IP do PC: se o roteador der
+  outro IP ao PC, o celular pareia de novo. Sem HTTPS (um certificado próprio faria o celular
+  avisar "não seguro"): numa Wi-Fi aberta, quem estiver na rede pode copiar o código ou o
+  cookie no ar, então é para a rede de casa.
 - `server.py`: aiohttp no 127.0.0.1 e no IP da rede de casa (Host fixo contra DNS
-  rebinding, Origin conhecida em toda escrita contra CSRF), SSE em `/api/events`, busca e
+  rebinding, Origin conhecida em toda escrita contra CSRF, a API da rede só para o celular
+  pareado), SSE em `/api/events`, busca e
   download pelo yt_dlp (no `yt_fora.py`). Instalar com `pip install -U "yt-dlp[default]"` (traz o yt-dlp-ejs) e
   ter um runtime de JavaScript (Node ou Deno): sem ele o YouTube esconde formatos e o stream
   falha de vez em quando. O servidor habilita o Node e o Deno nas opções do yt-dlp.
@@ -200,8 +214,10 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL` no tema) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria).
 - `pastas.py`: os dados de quem usa moram em `%LOCALAPPDATA%\Vitrola`, fora da pasta do
   código, porque instalado em Program Files ela não aceita escrita. Em `library/`, o áudio
-  baixado, a lista da biblioteca e as escolhas de volume e dispositivo; em `logs/`, a saída e
-  os erros do servidor. Os logs das ferramentas de `dev/` (`logs/efeitos/`) seguem na pasta do código.
+  baixado, a lista da biblioteca, as escolhas de volume e dispositivo e os celulares pareados;
+  em `logs/`, a saída e os erros do servidor. Os `.json` de lá se gravam pelo `save_json` (num
+  `.tmp` e troca de uma vez, para o app caindo no meio não deixar o arquivo pela metade). Os
+  logs das ferramentas de `dev/` (`logs/efeitos/`) seguem na pasta do código.
   O ffmpeg, o ffprobe e o Deno vêm da `bin/` do app (a do executável, ou a do código), que o
   instalador vai encher; sem ela, do PATH. O yt-dlp recebe os dois que acharem (`YDL` no
   `server.py`).
