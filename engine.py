@@ -19,8 +19,12 @@ from scipy import signal
 import batida
 import compasso
 import fx
+import pastas
 
 SR = 48000
+# o modo compartilhado do Windows so aceita a taxa em que o aparelho esta configurado: sem converter, o som da
+# VirtualBox, a 44,1 kHz, recusava os 48 kHz e o app nem abria (29/10)
+WASAPI = sd.WasapiSettings(auto_convert=True)
 BLOCK = 480  # 10 ms
 AHEAD = 200  # blocos decodificados adiante (~2 s)
 MIC_MAX = 8  # nunca mais de ~80 ms de atraso na voz
@@ -29,6 +33,8 @@ SOBRE_MAX = 8  # sons por cima tocando juntos (o mais antigo sai)
 SOBRE_CACHE = 24  # sons por cima decodificados guardados (buzina repetida sai na hora)
 SOBRE_CACHE_MB = 512  # e no maximo isso de memoria neles: o posto pela mao pode ser uma musica inteira
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+FFMPEG = pastas.ferramenta("ffmpeg") or "ffmpeg"  # o que vem com o app, ou o do PATH
+FFPROBE = pastas.ferramenta("ffprobe") or "ffprobe"
 CURTO_MAX_S = 15  # ate isso o pad toca por cima da musica em vez de trocar
 RAPIDO_MAX_S = 120  # o posto nos Sons rapidos pela mao toca inteiro por cima ate isso (2 minutos)
 VIGIA_S = 2.0  # de quanto em quanto o vigia le a lista de aparelhos do Windows
@@ -373,7 +379,7 @@ def find_dev(name, kind):
 
 
 def probe_duration(path):
-    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+    r = subprocess.run([FFPROBE, "-v", "error", "-show_entries", "format=duration",
                         "-of", "default=nw=1:nk=1", path], capture_output=True, text=True,
                        encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
     try:
@@ -408,6 +414,7 @@ class Engine:
         self.ended = False
         self.pos = 0.0
         self.error = None
+        self._espera_arquivo = None  # o _gen do stream que falhou com o download a caminho (esperando_arquivo)
         self.levels = {"mic": 0.0, "track": 0.0, "out": 0.0}
         self._deck = Deck()    # o disco do prato: _q, _gen e _eof_gen sao os dele
         self._qlock = threading.Lock()
@@ -500,6 +507,13 @@ class Engine:
         # plano o audio estalava (num notebook, aos ~30 s do Where's My Love, 22/10); aqui ainda nao toca nada
         threading.Thread(target=compasso.abre_ja, daemon=True).start()
         self._fechado = False
+        # antes de procurar os aparelhos: a partida que nao acha o cabo fica esperando ele pelo vigia
+        if self._wv is None:
+            self._wv = queue.Queue()
+            threading.Thread(target=self._winvol_loop, daemon=True).start()
+        if self._vigia is None:
+            self._vigia = threading.Thread(target=self._vigia_loop, daemon=True)
+            self._vigia.start()
         act = self.resolve()
         faltou = []
         if reserva:
@@ -509,12 +523,6 @@ class Engine:
         mon_i = find_dev(act["monitor"], "out")[0] if act["monitor"] else None
         self.active = {"mic": mic_d["name"], "out": out_d["name"],
                        "monitor": sd.query_devices(mon_i)["name"] if mon_i is not None else ""}
-        if self._wv is None:
-            self._wv = queue.Queue()
-            threading.Thread(target=self._winvol_loop, daemon=True).start()
-        if self._vigia is None:
-            self._vigia = threading.Thread(target=self._vigia_loop, daemon=True)
-            self._vigia.start()
         if "cable" in mic_d["name"].lower():
             raise ValueError("O microfone não pode ser o próprio cabo: a voz voltaria em eco sem fim.")
         if mon_i is not None and "cable" in self.active["monitor"].lower():
@@ -523,14 +531,14 @@ class Engine:
         try:
             st.enter_context(sd.InputStream(device=mic_i, channels=mic_d["max_input_channels"],
                                             samplerate=SR, blocksize=BLOCK, dtype="float32",
-                                            callback=self._mic_cb))
+                                            extra_settings=WASAPI, callback=self._mic_cb))
             st.enter_context(sd.OutputStream(device=out_i, channels=2, samplerate=SR,
                                              blocksize=BLOCK, dtype="float32",
-                                             callback=self._out_cb))
+                                             extra_settings=WASAPI, callback=self._out_cb))
             if mon_i is not None:
                 st.enter_context(sd.OutputStream(device=mon_i, channels=2, samplerate=SR,
                                                  blocksize=BLOCK, dtype="float32",
-                                                 callback=self._mon_cb))
+                                                 extra_settings=WASAPI, callback=self._mon_cb))
         except Exception:
             st.close()
             raise
@@ -541,6 +549,16 @@ class Engine:
                 f"{'ele voltar' if len(faltou) == 1 else 'eles voltarem'}.")
         elif self._aviso is not None and self.error == self._aviso:
             self.error = None  # o aparelho escolhido voltou: sai so o aviso, nunca um erro de tocar
+
+    def liga(self):
+        """A partida do servidor. Se o audio nao abre (sem o CABLE Input, aparelho que recusa), o servidor sobe mesmo
+        assim com o erro na tela, e o vigia (logo depois, e de novo quando a lista muda) ou a troca de aparelho pela
+        interface tentam de novo. Antes, o app inteiro caia com o erro do Python (29/10)."""
+        with self._lock:
+            try:
+                self.start(reserva=True)
+            except Exception as ex:  # noqa: BLE001
+                self._sem_audio(ex)
 
     def close(self):
         with self._lock:
@@ -596,9 +614,13 @@ class Engine:
             self.start(reserva=True)
             self._caiu_no_vigia = False
         except Exception as ex:  # noqa: BLE001 - tenta de novo na volta, dentro do VIGIA_TENTATIVAS
-            self._caiu_no_vigia = True
-            self._aviso = self.error = (
-                f"Não consegui reabrir o áudio depois que os aparelhos mudaram ({str(ex)[:120]}).")
+            self._sem_audio(ex)
+
+    def _sem_audio(self, ex):
+        """O audio nao abriu: o erro fica na tela e o vigia pode tentar de novo. A mesma frase na partida e na
+        reabertura: a partida que falha tambem passa pelo vigia logo depois."""
+        self._caiu_no_vigia = True
+        self._aviso = self.error = f"Não consegui abrir o áudio ({str(ex)[:160]})."
 
     # nivel do mic no Windows ----------------------------------------------
     def set_mic_vol(self, v):
@@ -822,8 +844,9 @@ class Engine:
     def _reader(self, gen, track, start, deck):
         t = start
         path = track["path"]
+        stream = str(path).startswith("http")  # o YouTube direto, antes de o download chegar
         while gen == deck.gen:
-            ff = subprocess.Popen(["ffmpeg", "-v", "error", *self._entrada(track), "-ss", str(t), "-i", path,
+            ff = subprocess.Popen([FFMPEG, "-v", "error", *self._entrada(track), "-ss", str(t), "-i", path,
                                    "-f", "f32le", "-ac", "2", "-ar", str(SR), "-"],
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                   creationflags=NO_WINDOW)
@@ -849,6 +872,12 @@ class Engine:
                 ff.wait()
             if gen != deck.gen:
                 return
+            if n == 0 and stream and track.get("job") and deck is self._deck:
+                # o download do mesmo disco esta a caminho (27/10: o YouTube deu 403 ao ffmpeg em 2 de ~15 streams, e
+                # o download chegava 2 s depois): sem erro e sem fim, o prato fica carregando e o trocar_fonte toca
+                # o arquivo de onde parou; se o download falhar, o servidor para o prato (esperando_arquivo)
+                self._espera_arquivo = gen
+                return
             if n == 0 and deck is not self._deck:  # a proxima que nao decodifica so nao entra
                 deck.eof_gen = gen
                 return
@@ -869,7 +898,7 @@ class Engine:
             t = 0.0
 
     def _decodifica(self, path, limite):
-        ff = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-t", str(limite),
+        ff = subprocess.run([FFMPEG, "-v", "error", "-i", path, "-t", str(limite),
                              "-f", "f32le", "-ac", "2", "-ar", str(SR), "-"],
                             capture_output=True, creationflags=NO_WINDOW)
         a = np.frombuffer(ff.stdout[: len(ff.stdout) // 8 * 8], np.float32).reshape(-1, 2)
@@ -1345,6 +1374,10 @@ class Engine:
                 self._eof_gen = -1
             threading.Thread(target=self._reader, args=(gen, novo, t, self._deck), daemon=True).start()
             return True
+
+    def esperando_arquivo(self):
+        """O stream do disco no prato falhou e ele espera o download para tocar (ver o _reader)."""
+        return self._espera_arquivo is not None and self._espera_arquivo == self._gen
 
     def por_cima(self, track):
         """Toca o item junto do que estiver tocando, sem trocar a musica nem mexer na barra

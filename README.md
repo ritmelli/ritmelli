@@ -20,9 +20,9 @@ programa que deixe escolher o microfone.
 - Python 3.12 ou mais novo.
 - [VB-Audio Virtual Cable](https://vb-audio.com/Cable/): o cabo que leva o som para o
   microfone do jogo.
-- ffmpeg no PATH.
+- ffmpeg (com o ffprobe) no PATH, ou numa pasta `bin/` ao lado do código.
 - Node ou Deno: o yt-dlp precisa de um runtime de JavaScript para o YouTube entregar todos os
-  formatos.
+  formatos. O Deno também vale na `bin/`.
 
 ## Instalação
 
@@ -47,20 +47,45 @@ com o detector em numpy).
 - "Escutar este dispositivo" no CABLE Output precisa ficar desligado, senão a própria voz
   volta no fone.
 - Microfone e fone seguem o padrão do Windows, inclusive quando ele muda com o servidor
-  ligado. A escolha feita na interface fica gravada em `library/config.json`.
+  ligado. A escolha feita na interface fica gravada em
+  `%LOCALAPPDATA%\Vitrola\library\config.json`.
+- Os dados de quem usa (áudio baixado, biblioteca, escolhas) moram em
+  `%LOCALAPPDATA%\Vitrola\library`, e os logs do servidor em
+  `%LOCALAPPDATA%\Vitrola\logs`.
+- Sem o `soundboard.ps1`: `python vitrola.py` (aceita os mesmos argumentos do `server.py`).
+- A versão: `python vitrola.py --version`.
 - **No celular**, no mesmo Wi-Fi: o `start` e o `status` mostram o endereço
   (`http://<ip do PC>:8799/`). Qualquer aparelho do Wi-Fi alcança, sem senha;
   `server.py --so-local` atende só o PC.
 - Para mexer na interface sem som: `python server.py --mock --port 8801 --data-dir <pasta>`.
 
+## Executável
+
+O `vitrola.spec` gera o `vitrola.exe` pelo PyInstaller, num ambiente só com as dependências
+do app:
+
+```powershell
+python -m venv .venv-build
+.venv-build\Scripts\python -m pip install -r requirements.txt pyinstaller
+.venv-build\Scripts\pyinstaller --noconfirm vitrola.spec
+```
+
+Sai em `dist\vitrola\` (o `vitrola.exe` e a `_internal\`). O ffmpeg, o ffprobe e o Deno não
+vão junto: copie para `dist\vitrola\bin\` (cada build apaga a pasta). Sem console, os logs
+ficam em `%LOCALAPPDATA%\Vitrola\logs`, e o `soundboard.ps1 stop` desliga o exe também.
+
 ## Estrutura
 
 | Arquivo | O que é |
 | --- | --- |
+| `vitrola.py` | o ponto de entrada (o mesmo do executável): o servidor e os processos auxiliares |
+| `vitrola.spec` | a receita do executável (PyInstaller) |
 | `server.py` | servidor aiohttp: API, eventos (SSE), fila, Automático, busca e download |
 | `engine.py` | motor de áudio: mistura, dois decks, passagem de DJ |
 | `batida.py`, `compasso.py`, `andamento.py` | andamento, grade de batidas e o 1 do compasso |
 | `fx.py` | efeitos de voz |
+| `versao.py` | a versão do app |
+| `pastas.py` | onde moram os dados de quem usa, e onde o app acha o ffmpeg, o ffprobe e o Deno |
 | `yt_fora.py` | YouTube (yt-dlp e ytmusicapi) num processo à parte |
 | `winvol.py` | volume do microfone no Windows |
 | `themes/vitrola/` | a interface |

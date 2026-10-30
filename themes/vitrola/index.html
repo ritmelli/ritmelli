@@ -5613,7 +5613,10 @@ function motivoDownload(t) {
   if (/unavailable|private|indispon/i.test(t)) return 'O vídeo está indisponível ou é privado.';
   if (/429|too many/i.test(t)) return 'O YouTube recusou por excesso de pedidos. Espere alguns minutos e tente de novo.';
   if (/getaddrinfo|network|timed out|connection|resolve/i.test(t)) return 'Sem internet, ou o YouTube não respondeu. Confira a conexão e tente de novo.';
-  if (/sign in|confirm your age|age[- ]restricted|members[- ]only|login/i.test(t)) return 'O YouTube pede login para este vídeo, então ele não baixa por aqui.';
+  // o "not a bot" tambem diz "sign in", mas e o YouTube desconfiando dos pedidos, nao o video: vem antes
+  if (/not a bot/i.test(t)) return 'O YouTube desconfiou dos pedidos daqui e bloqueou por um tempo. Espere alguns minutos e tente de novo.';
+  if (/confirm your age|age[- ]restricted|inappropriate/i.test(t)) return 'O vídeo tem restrição de idade, e o YouTube só libera para quem está logado. Ele não baixa por aqui.';
+  if (/sign in|members[- ]only|login/i.test(t)) return 'O YouTube pede login para este vídeo, então ele não baixa por aqui.';
   return 'O download parou com erro. Confira o link, tente de novo ou busque outro vídeo.';
 }
 function fecharBusca() {
@@ -6467,7 +6470,7 @@ function mostrarFora() {
     $('#fora-p').innerHTML = 'A sua voz parou de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade. Para ligar de novo, rode <code>soundboard.ps1 start</code> no PC, na pasta da Vitrola.';
   } else {
     $('#fora-tt').textContent = S.jaConectou ? 'O soundboard parou de responder' : 'O soundboard não está respondendo';
-    $('#fora-p').innerHTML = 'O servidor caiu ou foi desligado, e a sua voz não está passando pelo cabo. Para ligar, rode <code>soundboard.ps1 start</code> no PC, na pasta da Vitrola. Se ele já estiver rodando, o motivo aparece no log da pasta <code>logs</code>.';
+    $('#fora-p').innerHTML = 'O servidor caiu ou foi desligado, e a sua voz não está passando pelo cabo. Para ligar, rode <code>soundboard.ps1 start</code> no PC, na pasta da Vitrola. Se ele já estiver rodando, o motivo aparece no log em <code>%LOCALAPPDATA%\\Vitrola\\logs</code>.';
   }
   $('#lamp').className = 'lampada'; $('#conexao').textContent = S.desligado ? 'desligado' : 'fora do ar';
   $('#conexao').classList.remove('sr');

@@ -26,7 +26,7 @@ tres pares com bumbo dao CONTRATEMPO; com o de hoje, NO TEMPO.
 
     python dev/bumbo.py <arquivo A> <arquivo B> [--codigo <pasta com engine.py e batida.py>]
 
-Os arquivos sao os da prateleira (library/), pelo nome (ex. xQAuZnie2G0.webm H08YWE4CIFQ.webm)."""
+Os arquivos sao os da prateleira (pastas.LIB), pelo nome (ex. xQAuZnie2G0.webm H08YWE4CIFQ.webm)."""
 import json
 import subprocess
 import sys
@@ -44,11 +44,12 @@ if "--codigo" in args:
     codigo = Path(args[i + 1])
     del args[i:i + 2]
 sys.path.insert(0, str(codigo))
+sys.path.insert(1, str(SB))  # o pastas.py de agora, mesmo com --codigo de antes dele
 import batida  # noqa: E402
 import engine as eng  # noqa: E402
+from pastas import LIB  # noqa: E402
 
 SR = eng.SR
-LIB = SB / "library"
 lib = {x["file"]: x for x in json.load(open(LIB / "library.json", encoding="utf-8"))}
 TOL = 0.040        # bumbo ate 40 ms da linha conta como em cima dela
 LP = signal.butter(4, 120, "lowpass", fs=SR, output="sos")
