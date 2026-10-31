@@ -2972,20 +2972,24 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 @media (hover: hover) {
   .palco .medidores .btn:hover:not(:disabled, [aria-pressed="true"]), .palco .mesa-gav .btn:hover:not(:disabled, [aria-pressed="true"]) { background: var(--escovado), #EEE8DD; }
 }
-/* no computador a gaveta toma o lugar da parede: o FX-12 e uma faixa baixa, com o visor, o Ouvir e o Voltar numa
-   linha, e os pedais rolam por dentro no feltro. Os grupos ficam lado a lado (a largura e a de 6 pedais de 80, os vaos,
-   e os 30 de margem para os cabos); os plugues e cabos saem pelas margens do banco */
+/* no computador a gaveta toma o lugar da parede: o FX-12 e uma faixa baixa, com a plaqueta, o Ouvir e o Voltar numa
+   linha, e os pedais rolam por dentro no feltro. O visor sai: o seletor do receiver, logo acima, ja mostra o efeito (o
+   visor e do celular, que nao tem o seletor), e o pedal aceso desliga pisando de novo. Os grupos ficam lado a lado (a
+   largura e a de 6 pedais de 80, os vaos, e os 30 de margem para os cabos); os plugues e cabos saem pelas margens do
+   banco */
 @media (min-width: 900px) {
   .palco .gaveta {
-    margin: 0; padding: 20px 14px 0;
-    grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto auto minmax(0, 1fr);
-    grid-template-areas: "cabeca cabeca cabeca" "visor ouvir fechar" "dica dica dica" "lista lista lista";
+    margin: 0; padding: 14px 14px 0;
+    grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "cabeca ouvir fechar" "dica dica dica" "lista lista lista";
   }
   .palco .gaveta:has(.dica-ouvir.so-dica) {
-    grid-template-rows: auto auto minmax(0, 1fr);
-    grid-template-areas: "cabeca cabeca cabeca" "visor ouvir fechar" "lista lista lista";
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "cabeca ouvir fechar" "lista lista lista";
   }
-  .palco .gaveta::after { grid-row: 1 / span 2; }
+  .palco .gaveta::after { grid-row: 1; }
+  .palco .visor-gav { display: none; }
+  @container (max-width: 34rem) { .palco .cabeca-gav::after { display: none; } }   /* so o VITROLA: o resto nao cabe ao lado das teclas */
   #b-fechar-gav { grid-area: fechar; position: relative; z-index: 2; gap: .28em; }
   @container (max-width: 40rem) { .a-prateleira { display: none; } }
   .palco .gaveta > .rolo { align-self: stretch; margin: 6px -14px 0; padding: 0; }
@@ -3153,11 +3157,6 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .faixa { gap: 6px; }
   .canal-faixa { margin-top: -2px; }
   .palco .receptor { padding: 25px 18px 14px; column-gap: 20px; }   /* 25 em cima: a faixa da plaqueta R-77; 18 dos lados: a madeira e a chapa */
-  /* a faixa do FX-12 sem a plaqueta: sobra uma fileira inteira de pedais */
-  .palco .cabeca-gav { display: none; }
-  .palco .gaveta { padding-top: 14px; row-gap: 0; }
-  .palco .gaveta > .rolo { margin-top: 12px; }
-  .palco .dica-ouvir { margin-top: 15px; margin-bottom: -6px; }
   .medidores { gap: 10px; }
   .chave { padding: 6px 10px; gap: 8px; font-size: .875rem; }
   .gaveta { gap: 10px; padding-bottom: 12px; }
