@@ -211,19 +211,20 @@ def main():
             desenho = " ".join((Path(__file__).parent / m["arquivo"]).read_text(encoding="utf-8").split())
             uri = "data:image/svg+xml," + quote(desenho.replace("> <", "><"), safe=" '=/:,.-")
             corte, sai = m["corte"], m["sai"]
-            linhas.append(f'    --mold-{nome}: url("{uri}") {" ".join(map(str, corte))} / {pontos(*corte)} / '
+            linhas.append(f'  --mold-{nome}: url("{uri}") {" ".join(map(str, corte))} / {pontos(*corte)} / '
                           f"{pontos(*sai)} stretch;")
             continue
         px, larg, alt, prof = desenha(m)
         uri = "data:image/svg+xml," + quote(svg(px, larg, alt), safe=" '=/:,.-")
         baixo = prof + m["sombra"]
         sai, sai_b = m["sai"], m["sai"] + m["sombra"]
-        linhas.append(f'    --mold-{nome}: url("{uri}") {prof} {prof} {baixo} {prof} / {pontos(prof, prof, baixo, prof)} / '
+        linhas.append(f'  --mold-{nome}: url("{uri}") {prof} {prof} {baixo} {prof} / {pontos(prof, prof, baixo, prof)} / '
                       f"{pontos(sai, sai, sai_b, sai)} stretch;")
-    bloco = ("  /* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */\n"
-             "  .app, .menu {\n" + "\n".join(linhas) + "\n  }\n  /* molduras:fim */")   # o menu mora fora do .app
+    # fora do bloco do celular: as molduras valem nas duas telas
+    bloco = ("/* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */\n"
+             ".app, .menu {\n" + "\n".join(linhas) + "\n}\n/* molduras:fim */")   # o menu mora fora do .app
     txt = TEMA.read_text(encoding="utf-8")
-    novo, n = re.subn(r"  /\* molduras:inicio.*?/\* molduras:fim \*/", lambda _: bloco, txt, flags=re.S)
+    novo, n = re.subn(r"^/\* molduras:inicio.*?/\* molduras:fim \*/", lambda _: bloco, txt, flags=re.S | re.M)
     if n != 1:
         sys.exit("bloco molduras:inicio/fim nao encontrado no tema (ou repetido)")
     if novo != txt:

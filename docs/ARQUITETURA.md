@@ -206,9 +206,9 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   detector de bumbo próprio; no final seco para um começo sem bumbo, confere a primeira nota
   contra o bumbo do que sai: sai 0 no tempo, 1 contratempo ou fora, 3 sem plano ou sem bumbo), `dev/texturas.py` (gera as
   texturas de ruído da vitrola em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
-  (desenha as molduras de pixel da vitrola no celular, contorno, linha clara, bisel e
-  cantos em degrau, e grava as variáveis `--mold-*` de border-image no tema, com o tamanho do
-  ponto na variável `--px`, 1px quando o tema não a define),
+  (desenha as molduras de pixel da vitrola, contorno, linha clara, bisel e cantos em degrau, e
+  grava as variáveis `--mold-*` de border-image no tema, fora do bloco do celular, porque valem
+  nas duas telas, com o tamanho do ponto na variável `--px`, 1px quando o tema não a define),
   `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos no celular, em duas
   camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema),
   `dev/pecas.py` (desenha em pixel o braço do toca-discos, já inclinado em três ângulos, a
