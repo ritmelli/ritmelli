@@ -5,7 +5,8 @@
 
 Regra por tamanho:
 - tela de computador (largura >= 900): a pagina nao rola, nem na vertical nem na
-  horizontal; o que nao cabe rola por dentro de um painel (lista, prateleira);
+  horizontal; o que nao cabe rola por dentro de um painel (lista, prateleira). O celular
+  grande deitado (915x412, 932x430) passa de 900 e cai no layout do computador: vale a mesma regra;
 - celular e tablet em pe (largura < 900): rola so na vertical, nunca de lado.
 Alem disso confere cada controle (botao, link, campo, slider) fora de painel que rola:
 o centro dele tem que estar na tela e ser dele mesmo, nao recortado por um pai com
@@ -28,7 +29,7 @@ import websockets
 
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 SIZES = ("1024x600,1280x650,1280x720,1366x657,1366x768,1436x765,1440x900,1536x730,"
-         "1600x900,1920x960,1920x1080,2560x1300,1180x820,390x844,360x780,768x1024")
+         "1600x900,1920x960,1920x1080,2560x1300,1180x820,915x412,932x430,390x844,360x780,768x1024")
 
 PROBE = r"""(() => {
   const vw = innerWidth, vh = innerHeight, d = document.documentElement;

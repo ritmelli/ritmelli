@@ -195,7 +195,10 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
 - `API.md`: contrato da API e checklist de todo tema.
 - `themes/<slug>/`: as interfaces; `gallery.html` lista e compara lado a lado.
 - `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
-  de "cabe em qualquer tela", de 1024x600 a 2560x1300 e no celular), `dev/perfcheck.py`
+  de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
+  deitado), `dev/compara.py` (gate de "o celular não mudou": prints do tema em estados fixos,
+  com uma prateleira de mentira e o servidor em `--mock`, comparados pixel a pixel com os de
+  referência gravados antes da mudança), `dev/perfcheck.py`
   (quanto o tema redesenha por segundo com música tocando, no celular emulado),
   `dev/celular.py` (mede rolagem, puxão e abrir do palco no Chrome do celular de verdade,
   por USB com adb; o emulado não reproduz o que trava lá), `dev/bumbo.py` (confere se a passagem
@@ -204,7 +207,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   contra o bumbo do que sai: sai 0 no tempo, 1 contratempo ou fora, 3 sem plano ou sem bumbo), `dev/texturas.py` (gera as
   texturas de ruído da vitrola em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
   (desenha as molduras de pixel da vitrola no celular, contorno, linha clara, bisel e
-  cantos em degrau, e grava as variáveis `--mold-*` de border-image no tema),
+  cantos em degrau, e grava as variáveis `--mold-*` de border-image no tema, com o tamanho do
+  ponto na variável `--px`, 1px quando o tema não a define),
   `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos no celular, em duas
   camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema),
   `dev/pecas.py` (desenha em pixel o braço do toca-discos, já inclinado em três ângulos, a
