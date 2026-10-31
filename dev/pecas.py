@@ -1433,59 +1433,60 @@ def main():
     s = CELULA_BRACO
     for nome, ang in ANGULOS.items():
         pb, w, h, x0, y0 = braco(ang)
-        linhas += [f"    --braco-{nome}-arte: {uri(pb, w, h)};",
-                   f"    --braco-{nome}-esq: {x0 * s:.2f}cqw; --braco-{nome}-topo: {y0 * s:.2f}cqw; --braco-{nome}-larg: {w * s:.2f}cqw; --braco-{nome}-alt: {h * s:.2f}cqw;",
-                   f"    --braco-{nome}-origem: {-x0 * s:.2f}cqw {-y0 * s:.2f}cqw; --braco-{nome}-desfaz: {-ang}deg;"]
+        linhas += [f"  --braco-{nome}-arte: {uri(pb, w, h)};",
+                   f"  --braco-{nome}-esq: {x0 * s:.2f}cqw; --braco-{nome}-topo: {y0 * s:.2f}cqw; --braco-{nome}-larg: {w * s:.2f}cqw; --braco-{nome}-alt: {h * s:.2f}cqw;",
+                   f"  --braco-{nome}-origem: {-x0 * s:.2f}cqw {-y0 * s:.2f}cqw; --braco-{nome}-desfaz: {-ang}deg;"]
     pb, w, h, x0, y0 = base_braco()
-    linhas.append(f"    --base-braco: {uri(pb, w, h)};   /* {w} x {h} celulas, o prato em ({-x0}, {-y0}) */")
+    linhas.append(f"  --base-braco: {uri(pb, w, h)};   /* {w} x {h} celulas, o prato em ({-x0}, {-y0}) */")
     pb, w, h, x0, y0 = descanso()
-    linhas.append(f"    --descanso: {uri(pb, w, h)};   /* {w} x {h} celulas, o descanso em ({-x0}, {-y0}) */")
+    linhas.append(f"  --descanso: {uri(pb, w, h)};   /* {w} x {h} celulas, o descanso em ({-x0}, {-y0}) */")
     # o grande: 40 celulas de 2 px = 80 px; o pequeno: 40 de 4/3 px = 53,3 px (o tema centra), com o
     # filete da face de 1 celula
     for nome, face, anel, linha, filete in (("grande", 14, 4, 1, 2), ("mini", 14, 4, 1, 1)):
         for estado in ("parado", "tocando"):
             pb, w, h, x0, y0 = botao(face, anel, linha, ANEIS[estado], contorno=2, filete=filete)
-            linhas.append(f"    --tocar-{nome}-{estado}: {uri(pb, w, h)};   /* {w} x {h} celulas */")
-        linhas.append(f"    --tocar-{nome}-sombra: {uri(*silhueta(face, anel, (20, 8, 2, .58), contorno=2)[:3])};")
+            linhas.append(f"  --tocar-{nome}-{estado}: {uri(pb, w, h)};   /* {w} x {h} celulas */")
+        linhas.append(f"  --tocar-{nome}-sombra: {uri(*silhueta(face, anel, (20, 8, 2, .58), contorno=2)[:3])};")
         for tipo in ("tocar", "pausar"):
-            linhas.append(f"    --icone-{nome}-{tipo}: {uri(*icone(tipo, nome, TINTA))};")
-        linhas.append(f"    --icone-{nome}-tocar-apagado: {uri(*icone('tocar', nome, TINTA[:3] + (.35,)))};")
+            linhas.append(f"  --icone-{nome}-{tipo}: {uri(*icone(tipo, nome, TINTA))};")
+        linhas.append(f"  --icone-{nome}-tocar-apagado: {uri(*icone('tocar', nome, TINTA[:3] + (.35,)))};")
     knobs, margem = knob()
-    linhas.append(f"    --knob-margem: {margem};   /* poe o centro do tampo do knob em {KN_CENTRO} na caixa do .p-grande */")
+    linhas.append(f"  --knob-margem: {margem};   /* poe o centro do tampo do knob em {KN_CENTRO} na caixa do .p-grande */")
     svg_led, recuo = led()
-    linhas.append(f"    --led-recuo: -{recuo}px;   /* o desenho do LED sai da caixa de {LED_N} px o tanto do brilho */")
-    linhas.append(f"    --arcade-recuo: -{ARC_MARGEM}px;   /* o desenho dos botoes do Locutor sai do botao o tanto do brilho */")
-    linhas.append(f"    --trilho-moldura: {trilho_moldura()};   /* 6 x 7 celulas: fatias 2 2 3 2 */")
-    linhas.append(f"    --trilho-fundo: {faixas_css(CH_COR['trilho'])};")
-    linhas.append(f"    --trilho-aceso: {faixas_css(CH_COR['aceso'])};")
+    linhas.append(f"  --led-recuo: -{recuo}px;   /* o desenho do LED sai da caixa de {LED_N} px o tanto do brilho */")
+    linhas.append(f"  --arcade-recuo: -{ARC_MARGEM}px;   /* o desenho dos botoes do Locutor sai do botao o tanto do brilho */")
+    linhas.append(f"  --trilho-moldura: {trilho_moldura()};   /* 6 x 7 celulas: fatias 2 2 3 2 */")
+    linhas.append(f"  --trilho-fundo: {faixas_css(CH_COR['trilho'])};")
+    linhas.append(f"  --trilho-aceso: {faixas_css(CH_COR['aceso'])};")
     pb, w, h, _, _ = recorta(pino_px())
-    linhas.append(f"    --cursor-pino: {uri(pb, w, h)};   /* {w} x {h} celulas, com a sombra dura */")
+    linhas.append(f"  --cursor-pino: {uri(pb, w, h)};   /* {w} x {h} celulas, com a sombra dura */")
     salvar, acesas, n_aro = salvar_pixel()
-    linhas.append("    " + " ".join(f"--salvar-aceso-{k}: #{r:02X}{g:02X}{bl:02X};" for k, (r, g, bl, _) in acesas.items())
+    linhas.append("  " + " ".join(f"--salvar-aceso-{k}: #{r:02X}{g:02X}{bl:02X};" for k, (r, g, bl, _) in acesas.items())
                   + f"   /* o aro do salvar aceso ({n_aro} celulas) */")
     for nome, (direita, baixo) in (("a", (False, False)), ("b", (True, False)), ("c", (False, True)), ("d", (True, True))):
         pb, w, h, _, _ = maleta_canto(direita, baixo)
-        linhas.append(f"    --maleta-canto-{nome}: {uri(pb, w, h)};   /* {w} x {h} celulas */")
+        linhas.append(f"  --maleta-canto-{nome}: {uri(pb, w, h)};   /* {w} x {h} celulas */")
     for nome, desenho in (("dobradica", maleta_dobradica), ("fecho", maleta_fecho), ("alca", maleta_alca)):
         pb, w, h, _, _ = desenho()
-        linhas.append(f"    --maleta-{nome}: {uri(pb, w, h)};   /* {w} x {h} celulas */")
+        linhas.append(f"  --maleta-{nome}: {uri(pb, w, h)};   /* {w} x {h} celulas */")
     for lado, direita in (("esq", False), ("dir", True)):
         for nome, desenho in (("meio", maleta_meio), ("boca", maleta_boca), ("boca-curta", lambda d: maleta_boca(d, aba=False))):
             pb, w, h, _, _ = desenho(direita)
-            linhas.append(f"    --maleta-{nome}-{lado}: {uri(pb, w, h)};   /* {w} x {h} celulas */")
+            linhas.append(f"  --maleta-{nome}-{lado}: {uri(pb, w, h)};   /* {w} x {h} celulas */")
     for nome, tampa in (("tampa", TAMPA_ENTREABERTA), ("tampa-aberta", TAMPA_ABERTA)):
         pb, w, h = maleta_tampa(*tampa)
         for lado, p in (("esq", pb), ("dir", espelha(pb, w))):
-            linhas.append(f"    --maleta-{nome}-{lado}: {uri(p, w, h)};   /* {w} x {h} px */")
+            linhas.append(f"  --maleta-{nome}-{lado}: {uri(p, w, h)};   /* {w} x {h} px */")
     for nome, lado, topo in (("borda", 0, 0), ("papel", 2, 2), ("foto", 4, 5)):
-        linhas.append(f"    --maleta-disco-{nome}: {disco_entreaberto(lado, topo)};")
+        linhas.append(f"  --maleta-disco-{nome}: {disco_entreaberto(lado, topo)};")
     pb, w, h = maleta_base()
     for lado, p, direita in (("esq", pb, False), ("dir", espelha(pb, w), True)):
-        linhas.append(f"    --maleta-base-{lado}: {uri_esticada(p, w, h, costura_base(direita))};   /* {w} px x {h} degraus, esticada na altura */")
-    bloco = ("  /* pecas:inicio (gravado pelo dev/pecas.py: o desenho mora la, nao editar aqui) */\n"
-             "  .app {\n" + "\n".join(linhas) + "\n  }\n  /* pecas:fim */")
+        linhas.append(f"  --maleta-base-{lado}: {uri_esticada(p, w, h, costura_base(direita))};   /* {w} px x {h} degraus, esticada na altura */")
+    # fora do bloco do celular: as pecas valem nas duas telas
+    bloco = ("/* pecas:inicio (gravado pelo dev/pecas.py: o desenho mora la, nao editar aqui) */\n"
+             ".app {\n" + "\n".join(linhas) + "\n}\n/* pecas:fim */")
     txt = TEMA.read_text(encoding="utf-8")
-    novo, n = re.subn(r"  /\* pecas:inicio.*?/\* pecas:fim \*/", lambda _: bloco, txt, flags=re.S)
+    novo, n = re.subn(r"^/\* pecas:inicio.*?/\* pecas:fim \*/", lambda _: bloco, txt, flags=re.S | re.M)
     if n != 1:
         sys.exit("bloco pecas:inicio/fim nao encontrado no tema (ou repetido)")
     novo, n = re.subn(r"const PE_SVG = '[^\n]*';(\nconst LED_SVG = '[^\n]*';)?",

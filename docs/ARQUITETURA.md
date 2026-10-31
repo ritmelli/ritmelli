@@ -149,7 +149,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     baixinhos depois de 2 s de silêncio, e o plano que mirava a queda de 20 dB cortava os 20 s). A grade de mais adiante não é estendida de volta até a intro: em 9 músicas ela
     caía fora dos ataques da intro. O log diz o que fez (`passagem: no tempo: ...`) ou por que
     não alinhou.
-  - Automático (chave no A seguir, salva no `config.json`): com ele ligado, a fila nunca
+  - Automático (a chave "Só este disco / Tocar parecidas" embaixo dos botões do toca-discos,
+    salva no `config.json`): com ele ligado, a fila nunca
     acaba. O último disco escolhido à mão é a semente, e o rádio do YouTube Music dela (o
     "Iniciar rádio", pela `ytmusicapi` sem login, 50 músicas do catálogo em ~1 s, com artista
     e título separados) mantém 5 parecidas no fim da fila. Sem a
@@ -211,11 +212,11 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   nas duas telas, com o tamanho do ponto na variável `--px`, 1px quando o tema não a define),
   `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos no celular, em duas
   camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema),
-  `dev/pecas.py` (desenha em pixel o braço do toca-discos, já inclinado em três ângulos, a
+  `dev/pecas.py` (desenha em pixel o braço do toca-discos, já inclinado em seis ângulos, a
   base e o descanso dele, os botões de tocar do palco e do mini player e o pisador, os knobs e
   o LED dos pedais, os botões de fliperama e o logo do Locutor, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as
-  variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo`, a
-  `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL` no tema) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria).
+  variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo` no
+  tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria).
 - `pastas.py`: os dados de quem usa moram em `%LOCALAPPDATA%\Vitrola`, fora da pasta do
   código, porque instalado em Program Files ela não aceita escrita. Em `library/`, o áudio
   baixado, a lista da biblioteca, as escolhas de volume e dispositivo e os celulares pareados;
