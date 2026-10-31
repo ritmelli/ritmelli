@@ -2888,7 +2888,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .mesa { aspect-ratio: 5 / 4; align-self: center; }
   /* a altura da tela manda no toca-discos, e a faixa embaixo dele e o que divide a coluna com ele: a chave do fim do
      disco na altura dela (o toque e so na chave, a linha nao precisa dos 44 px do dedo), colada nas teclas */
-  .palco .faixa > .fim-disco:not([hidden]) { min-height: 0; margin-top: 0; }
+  .palco .faixa > .fim-disco:not([hidden]) { min-height: 0; margin-top: 0; position: relative; top: 5px; }   /* desce sem somar altura: o tocar nao fica grudado, e o tampo segue do tamanho que a coluna conta */
   .palco .linha-tempo { margin-top: 0; }
 }
 /* pele: o receiver, nas duas telas */
