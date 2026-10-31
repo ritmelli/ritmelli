@@ -324,10 +324,12 @@ async def prints(a, porta, destino):
         shutil.rmtree(prof, ignore_errors=True)
 
 
-def compara(pasta):
+def compara(pasta, tamanhos):
     ref, agora, diff = pasta / "ref", pasta / "agora", pasta / "diff"
     shutil.rmtree(diff, ignore_errors=True)
-    nomes = sorted({p.name for p in ref.glob("*.png")} | {p.name for p in agora.glob("*.png")})
+    # so os tamanhos desta rodada: com --sizes, os outros nao sumiram
+    desta = {p.name for p in ref.glob("*.png") if any(f"-{t}-" in p.name for t in tamanhos)}
+    nomes = sorted(desta | {p.name for p in agora.glob("*.png")})
     mudou = 0
     for nome in nomes:
         a, b = ref / nome, agora / nome
@@ -361,7 +363,8 @@ def main():
     pasta = Path(a.pasta)
     if not a.ref and not (pasta / "ref").exists():
         sys.exit(f"sem referencia em {pasta / 'ref'}: rode antes com --ref, no tema de antes da mudanca")
-    destino = pasta / ("ref" if a.ref else "agora")
+    # a referencia nova nasce ao lado da antiga: refazer a antiga pede o tema de antes da mudanca
+    destino = pasta / ("ref.novo" if a.ref else "agora")
     shutil.rmtree(destino, ignore_errors=True)
     shutil.rmtree(pasta / "instavel", ignore_errors=True)
     destino.mkdir(parents=True)
@@ -379,9 +382,14 @@ def main():
     for i in instaveis:
         print(f"INSTAVEL {i} (dois prints seguidos sairam diferentes)")
     if a.ref:
-        print(f"{len(list(destino.glob('*.png')))} prints de referencia em {destino}")
-        return 1 if erros or instaveis else 0
-    return 1 if compara(pasta) or erros or instaveis else 0
+        if erros or instaveis:
+            print(f"a referencia de antes fica: os prints novos estao em {destino}")
+            return 1
+        shutil.rmtree(pasta / "ref", ignore_errors=True)
+        destino.rename(pasta / "ref")
+        print(f"{len(list((pasta / 'ref').glob('*.png')))} prints de referencia em {pasta / 'ref'}")
+        return 0
+    return 1 if compara(pasta, [s.split("@")[0] for s in a.sizes.split(",")]) or erros or instaveis else 0
 
 
 if __name__ == "__main__":

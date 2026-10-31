@@ -753,8 +753,6 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .erro-job { color: var(--marfim); font-size: .8125rem; line-height: 1.3; }
 .erro-job small { display: block; margin-top: 4px; color: var(--marfim-2); font-size: .75rem; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.disco-item.falhou .acoes { flex-direction: column; align-items: flex-start; }
-.disco-item.falhou .info .canal { color: var(--sinal); }
 
 .vazio { grid-column: 1 / -1; padding: 28px 0; color: var(--marfim-2); max-width: 46ch; }
 .vazio strong { display: block; color: var(--marfim); font-size: 1.125rem; font-weight: 600; margin-bottom: 4px; }
@@ -1266,7 +1264,6 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
    da tecla Sem efeito, mostrando o efeito escolhido (a lista embaixo e o menu dele); com
    efeito ligado, um x no visor desliga */
 @media (max-width: 899.98px) { .palco .medidores .seletor { display: none; } }
-.palco .mesa-gav .zero { display: none; }
 .palco .visor-gav {
   grid-area: visor; display: flex; align-items: center; gap: 10px; min-width: 0; width: auto;
   padding: 4px 5px; border-radius: 7px; border: 1px solid #7E7466;
@@ -1916,7 +1913,6 @@ body { background: var(--parede-casa); }
 .app {
   --contorno: #1A0B04;
   --duro: 0 0 0 2.5px var(--contorno), 0 4px 0 2.5px rgba(20,8,2,.62);   /* objeto e tecla */
-  --duro-apertado: 0 0 0 2.5px var(--contorno), 0 1px 0 2.5px rgba(20,8,2,.62);
   --caixa: 0 0 0 2.5px var(--contorno), 0 5px 0 2.5px rgba(20,8,2,.5);    /* caixa: o mesmo contorno, a sombra mais baixa */
   --luz-dentro: inset 0 0 0 2px rgba(255,236,214,.3);                     /* a linha clara da moldura dupla, onde o contorno e box-shadow */
   --madeira-ap: #9A4E25;   /* a madeira alaranjada dos aparelhos do palco, a mesma do aro da prateleira (o p1) */
@@ -3103,9 +3099,12 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   #cab-prat { grid-area: cab; }
   #rolo-prateleira { grid-area: prat; }
   .continuar { grid-area: cont; }
-  .parede:has(> #vista-busca:not([hidden])) { grid-template: minmax(0, 1fr) / minmax(0, 1fr); align-content: stretch; }
-  .parede:has(> #vista-busca:not([hidden])) .fila-parede { display: none; }
-  #vista-busca { min-height: 0; display: flex; flex-direction: column; }
+  /* com a busca aberta a maleta so aparece aberta (o Abrir do aviso), por cima dos resultados, que ficam */
+  .parede:has(> #vista-busca:not([hidden])) { grid-template: "fila" auto "busca" minmax(0, 1fr) / minmax(0, 1fr); align-content: stretch; }
+  .parede:has(> #vista-busca:not([hidden])):has(> .fila-parede.aberta) { grid-template-rows: auto minmax(220px, 1fr); }
+  .parede:has(> #vista-busca:not([hidden])) .fila-parede { justify-self: center; }
+  .parede:has(> #vista-busca:not([hidden])) .fila-parede:not(.aberta) { display: none; }
+  #vista-busca { grid-area: busca; min-height: 0; display: flex; flex-direction: column; }
   .fila.maleta .cabeca-fila .limpar-fila { flex: none; min-height: 0; margin-right: 8px; font-size: .8125rem; color: var(--tinta); text-shadow: none; text-decoration-color: rgba(42,24,18,.45); }
   .chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 6px 0 4px; }
   .compacto, .chips:has(> .compacto:nth-child(5)) > .compacto { width: 96px; max-width: none; }
@@ -3113,7 +3112,11 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .estante { --gap: 14px; padding: 12px 7px 4px; row-gap: 18px; }
   .estante .ficha .nome { -webkit-line-clamp: 2; }
   .estante .disco-item[data-id] .acoes { display: contents; }
-  .estante .ficha .btn-texto { display: none; }
+  /* o disco que nao baixou: o nome, o motivo e o Tentar de novo cabem na capa; o detalhe tecnico fica no title */
+  .estante .falhou .ficha { background: rgba(18,10,6,.92); }
+  .estante .falhou .btn-texto { min-height: 0; font-size: .75rem; }
+  .estante .erro-job { font-size: .75rem; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .estante .erro-job small { display: none; }
   .estante .ficha .mais {
     position: absolute; right: 5px; top: 5px; width: 26px; height: 26px; margin: 0; border: 0; border-radius: 2px; opacity: 0;
     color: #FBEFD9; background: #2B1B12; box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.55);
@@ -3159,11 +3162,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .palco .faixa > .canal-faixa { margin-bottom: 12px; }
   .deck { gap: 12px; }
   .faixa { gap: 6px; }
-  .canal-faixa { margin-top: -2px; }
   .palco .receptor { padding: 25px 18px 14px; column-gap: 20px; }   /* 25 em cima: a faixa da plaqueta R-77; 18 dos lados: a madeira e a chapa */
   .medidores { gap: 10px; }
   .chave { padding: 6px 10px; gap: 8px; font-size: .875rem; }
-  .gaveta { gap: 10px; padding-bottom: 12px; }
   .estante { grid-template-columns: repeat(auto-fill, minmax(min(100%, 8.5rem), 1fr)); }
   /* com largura sobrando, cada fader vira uma linha so: nome, canaleta, valor (a legenda fica para o leitor de tela) */
   @container (min-width: 300px) {
@@ -3374,7 +3375,6 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       </span>
     </div>
     <div class="mesa-gav">
-      <div class="teclas zero" id="zero" role="group" aria-label="Voz natural"></div>
       <button class="btn chave ouvir" id="b-ouvir" type="button" aria-pressed="false" aria-describedby="dica-ouvir"><span class="lampada" aria-hidden="true"></span>Ouvir minha voz</button>
       <button class="btn" id="b-fechar-gav" type="button">Voltar<span class="a-prateleira"> para a prateleira</span></button>
       <p class="dica-ouvir" id="dica-ouvir">Vale mesmo com a voz mutada: teste o efeito sem ninguém no jogo ouvir.</p>
@@ -3566,12 +3566,6 @@ function fmt(s) {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
   const p = n => String(n).padStart(2, '0');
   return h ? `${h}:${p(m)}:${p(x)}` : `${m}:${p(x)}`;
-}
-function fmtLongo(s) {
-  s = Math.max(0, Math.floor(s || 0));
-  const m = Math.floor(s / 60), x = s % 60;
-  if (!m) return `${x} segundos`;
-  return x ? `${m} min e ${x} s` : `${m} min`;
 }
 
 async function api(method, path, data) {
@@ -3794,8 +3788,7 @@ new ResizeObserver(() => { cancelAnimationFrame(medindoTitulo); medindoTitulo = 
 reduz.addEventListener('change', medirTitulo);
 if (document.fonts) document.fonts.ready.then(medirTitulo);
 
-/* texto sob "Nenhum disco no prato": com a prateleira vazia, apontar a busca; as teclas 1 a 9
-   so onde ha teclado (o celular esconde os numeros das capas) */
+/* texto sob "Nenhum disco no prato": com a prateleira vazia, aponta a busca */
 function dicaPrato() {
   return S.lib.length ? 'Toque numa capa da prateleira para tocar.' : 'A prateleira está vazia. Busque um som no campo lá em cima.';
 }
@@ -3975,36 +3968,32 @@ function tecla(ef) {
   b.setAttribute('aria-pressed', 'false');
   b.append(el('span', 'lampada'));
   const n = el('span', 't-nome');
-  if (ef.id === SEM_EFEITO) { const k = el('kbd', null, '0'); k.title = 'Tecla 0 volta para Sem efeito'; n.append(k); }
   n.append(document.createTextNode(ef.nome || ef.id));
   b.append(n);
   if (ef.descricao) b.append(el('span', 't-desc', ef.descricao));
   // so os de mudanca de tom atrasam a voz: diz quanto, discreto
   if (ef.latencia_ms > 0) b.append(el('span', 't-atraso', `atraso de ${Math.round(ef.latencia_ms)} ms`));
-  if (ef.id !== SEM_EFEITO) vestirPedal(b, ef);
+  vestirPedal(b, ef);
   return b;
 }
 
 function montarGaveta() {
-  const zero = $('#zero'), banco = $('#banco');
+  const banco = $('#banco');
   const foco = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.ef : null;
-  zero.replaceChildren(); banco.replaceChildren();
+  banco.replaceChildren();
   if (!S.efeitos) {
     banco.append(el('p', 'aviso-gav', S.erroEfeitos
       ? 'Não deu para ler a lista de efeitos. Ela aparece sozinha quando o soundboard responder.'
       : 'Lendo a lista de efeitos.'));
-    zero.hidden = true;
     montarMarcas();
     return;
   }
   const grupos = new Map();
   for (const ef of S.efeitos) {
-    const b = tecla(ef);
-    if (!ef.grupo) { zero.append(b); continue; }   // grupo vazio = Sem efeito
+    if (!ef.grupo) continue;   // grupo vazio = Sem efeito: nao tem pedal
     if (!grupos.has(ef.grupo)) grupos.set(ef.grupo, []);
-    grupos.get(ef.grupo).push(b);
+    grupos.get(ef.grupo).push(tecla(ef));
   }
-  zero.hidden = !zero.children.length;
   for (const [g, teclas] of grupos) {
     const sec = el('div', 'grupo-ef');
     const h = el('h3', 'suporte', g);
@@ -4167,7 +4156,7 @@ function cabosDoComputador() {
   if (cv._geo === geo) return;
   cv._geo = geo;
   const x0 = Math.round((t.right - 32) * d) / d, y0 = Math.round((Math.min(t.top, r.top) + 20) * d) / d;
-  const fundo = Math.min(t.bottom - 40, t.top + clamp(t.height * .3, 120, 190));   // o ponto mais baixo do fio branco
+  const fundo = Math.max(t.top + 60, Math.min(t.bottom - 40, t.top + clamp(t.height * .3, 120, 190)));   // o ponto mais baixo do fio branco
   const entra = Math.max(3, (78 - (r.left - t.right)) / 2);
   const plugue = (x, y, ang, cor) => {   // pelo meio da ponta; o rabo e de onde sai o fio
     const a = ang * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
@@ -4636,7 +4625,7 @@ function dicaDoPedal(p) {
   d.style.left = clamp(r.left + r.width / 2 - q.width / 2, 8, innerWidth - q.width - 8) + 'px';
   d.style.top = (r.top - q.height - 8 >= 8 ? r.top - q.height - 8 : r.bottom + 8) + 'px';
 }
-$('#banco').addEventListener('pointerover', e => { if (e.pointerType === 'mouse') dicaDoPedal(e.target.closest('.tecla')); });
+$('#banco').addEventListener('pointerover', e => { if (e.pointerType === 'mouse' && !celular()) dicaDoPedal(e.target.closest('.tecla')); });
 $('#banco').addEventListener('pointerleave', () => dicaDoPedal(null));
 $('#banco').addEventListener('focusin', e => { if (!celular()) dicaDoPedal(e.target.matches(':focus-visible') ? e.target.closest('.tecla') : null); });
 $('#banco').addEventListener('focusout', () => dicaDoPedal(null));
@@ -5003,7 +4992,7 @@ addEventListener('pageshow', e => { if (e.persisted) repintarCanvas(); });
 
 /* ---------- prateleira ---------- */
 const nos = new Map();     // chave -> li
-function chaveItem(it, i) { return [it.title, it.thumb, it.channel, it.duration, Math.round(it.last_pos || 0) > 5 ? Math.round(it.last_pos) : 0, i].join('|'); }
+function chaveItem(it, i) { return [it.title, it.thumb, it.channel, it.duration, i].join('|'); }
 
 function svgMais() {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>';
@@ -5053,12 +5042,6 @@ function liDisco(it, i) {
   const info = el('p', 'info');
   info.append(el('span', 'canal', it.channel ? it.channel.trim() : 'Sem canal'), el('span', 'dur', fmt(it.duration)));
   const acoes = el('div', 'acoes');
-  if ((it.last_pos || 0) > 5) {
-    const c = el('button', 'btn-texto', `Continuar de ${fmt(it.last_pos)}`);
-    c.type = 'button'; c.dataset.role = 'continuar';
-    c.setAttribute('aria-label', `Continuar de ${fmt(it.last_pos)}: ${it.title}`);
-    acoes.append(c);
-  }
   const mais = el('button', 'mais'); mais.type = 'button'; mais.dataset.role = 'mais';
   mais.setAttribute('aria-label', `Mais ações: ${it.title}`); mais.setAttribute('aria-haspopup', 'menu'); mais.setAttribute('aria-expanded', 'false');
   mais.innerHTML = svgMais();
@@ -5103,7 +5086,7 @@ function atualizarJob(li, j) {
   if (j.status === 'error') {
     info.replaceChildren(el('span', 'canal', 'Não deu para baixar'));
     const pe = el('p', 'erro-job', motivoDownload(j.error));
-    if (j.error) { pe.append(el('small', null, detalheErro(j.error))); }
+    if (j.error) { pe.append(el('small', null, detalheErro(j.error))); pe.title = detalheErro(j.error); }
     acoes.append(pe);
     if (S.jobCorpo[j.id]) {
       const b = el('button', 'btn-texto', 'Tentar de novo'); b.type = 'button'; b.dataset.role = 'retentar'; b.dataset.job = j.id;
@@ -5302,6 +5285,7 @@ async function buscar(q) {
   q = q.trim();
   if (!q) { $('#q').focus(); return; }
   abrirGaveta(false);   // os resultados aparecem na parede, onde a gaveta estava
+  if (!celular()) abrirMaleta(false);   // a maleta aberta na prateleira nao entra na frente deles
   const seq = ++S.buscaSeq;
   if (ehLink(q)) {
     S.busca = { q, link: true, itens: [{ link: q, youtube_id: idDoLink(q) }], carregando: false, erro: null };
@@ -5730,7 +5714,6 @@ document.addEventListener('pointerdown', e => {
 })();
 // o teclado do celular sumindo muda so a altura: as opcoes ficam
 addEventListener('resize', () => { if (innerWidth !== larguraMenu) fecharMenu(false); });
-$('.parede').addEventListener('scroll', () => fecharMenu(false), { passive: true });
 
 /* ---------- fila (A seguir) ---------- */
 /* o que nao esta na prateleira ja comeca a baixar quando entra na fila; na vez dele toca do arquivo,
@@ -6063,7 +6046,7 @@ document.querySelectorAll('.rolo').forEach(r => {
   r.addEventListener('scroll', () => { fecharMenu(false); sombrear(r); }, { passive: true });
   const ro = new ResizeObserver(() => sombrear(r));
   ro.observe(r);
-  for (const c of r.children) ro.observe(c);
+  for (const c of r.querySelectorAll(':scope > *, #vista-prateleira > *')) ro.observe(c);   // a vista da parede nao tem caixa
 });
 
 /* ---------- dialogos ---------- */
@@ -6382,7 +6365,6 @@ $('#estante').addEventListener('click', e => {
   const li = b.closest('li');
   const id = li && li.dataset.id;
   if (b.dataset.role === 'capa' && id) { if (Date.now() - seguradaEm > 900) tocar(id); }   // soltar depois de segurar nao toca
-  else if (b.dataset.role === 'continuar' && id) tocar(id, { resume: true });
   else if (b.dataset.role === 'mais' && id) { if (menuBotao === b) fecharMenu(true); else { fecharMenu(false); abrirMenu(b, { tipo: 'disco', id }); } }
   else if (b.dataset.role === 'retentar') { const c = S.jobCorpo[b.dataset.job]; if (c) baixar(c, S.jobAlvo[b.dataset.job]); }
 });
@@ -6427,7 +6409,6 @@ function textoBusca() { $('#q').placeholder = celular() ? 'Buscar ou colar um li
 textoBusca();
 matchMedia('(max-width: 899.98px)').addEventListener('change', () => {
   abrirGaveta(S.gaveta); if (!celular()) abrirPalco(false); inertPalco(); textoBusca();
-  if (S.state && !S.state.track) $('#canal-faixa').textContent = dicaPrato();
 });
 $('#b-tocar').addEventListener('click', alternar);
 $('#mini-tocar').addEventListener('click', alternar);
