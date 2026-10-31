@@ -135,16 +135,18 @@ kbd { font: inherit; }
    o que sobra vai para a parede, e a prateleira rola por dentro. */
 @media (min-width: 900px) {
   .app {
-    /* altura de tudo na coluna do deck que nao e o tampo (topo, faixa, folgas) */
-    --resto: 21rem;
-    --deck-w: clamp(300px, min(42vw, (100dvh - var(--resto)) * 1.25), 1100px);
+    /* altura de tudo na coluna do deck que nao e o tampo (topo, faixa, folgas), medida: a coluna sai da largura que o
+       tampo consegue ter, e o visor e a barra de tempo, que enchem a coluna, ficam da largura do toca-discos. Cresce
+       com a tela porque a letra do visor cresce. O piso cabe as teclas */
+    --resto: calc(360px + 6.75dvh);
+    --deck-w: clamp(344px, min(42vw, (100dvh - var(--resto)) * 1.25), 1100px);
     --pad-y: 18px;
     height: 100vh; height: 100dvh;
     grid-template-columns: var(--deck-w) minmax(0, 1fr);
     grid-template-rows: auto auto minmax(0, 1fr);
     grid-template-areas: "topo topo" "deck receptor" "deck parede";
     --fresta: 20px;
-    column-gap: clamp(24px, 3vw, 56px); row-gap: var(--fresta);
+    column-gap: clamp(60px, 5.5vw, 76px); row-gap: var(--fresta);   /* o vao do par de cabos: com menos, os plugues somem */
     padding: var(--pad-y) clamp(20px, 2.4vw, 44px);
   }
   .deck { min-height: 0; }
@@ -3130,8 +3132,8 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .rapidos, .fila-parede { margin-top: 20px; }
 }
 /* tela baixa: a legenda de atalhos sai (as teclas seguem nos discos e no titulo do botao) */
-@media (min-width: 900px) and (max-height: 819.98px) {
-  .app { --resto: 19.75rem; --pad-y: 16px; --fresta: 18px; }
+@media (min-width: 900px) and (max-height: 899.98px) {
+  .app { --resto: 360px; --pad-y: 16px; --fresta: 18px; }
   .atalhos { display: none; }
   /* o topo mais baixo: plaqueta, teclas e caixilho da busca encolhem, e sobra para o toca-discos (no celular grande
      deitado a fileira quebra em duas, e cada uma pesa) */
@@ -3143,7 +3145,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 }
 /* tela bem baixa: tudo mais justo, o prato continua sendo o maior da tela */
 @media (min-width: 900px) and (max-height: 699.98px) {
-  .app { --alvo: 2.25rem; --resto: 15.5rem; --pad-y: 12px; --fresta: 14px; }
+  .app { --alvo: 2.25rem; --resto: 316px; --pad-y: 12px; --fresta: 14px; }
   .nome-marca { font-size: 1.5rem; }
   .palco .faixa > .titulo-faixa { margin-top: 11px; }
   .palco .faixa > .canal-faixa { margin-bottom: 12px; }
