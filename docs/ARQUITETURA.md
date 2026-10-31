@@ -210,8 +210,9 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   (desenha as molduras de pixel da vitrola, contorno, linha clara, bisel e cantos em degrau, e
   grava as variáveis `--mold-*` de border-image no tema, fora do bloco do celular, porque valem
   nas duas telas, com o tamanho do ponto na variável `--px`, 1px quando o tema não a define),
-  `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos no celular, em duas
-  camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema),
+  `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos, em duas
+  camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema, fora
+  do bloco do celular),
   `dev/pecas.py` (desenha em pixel o braço do toca-discos, já inclinado em seis ângulos, a
   base e o descanso dele, os botões de tocar do palco e do mini player e o pisador, os knobs e
   o LED dos pedais, os botões de fliperama e o logo do Locutor, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as

@@ -152,9 +152,8 @@ kbd { font: inherit; }
   .mesa { flex: 0 1 calc(var(--deck-w) * .8); min-height: 0; container-type: size; }
   .mesa .tampo { width: min(100cqw, 125cqh); }
   .faixa { flex: none; }
-  .parede { display: flex; flex-direction: column; min-height: 0; }
-  .vista { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-  .vista .cabeca-sec { margin-bottom: 2px; }
+  .parede { min-height: 0; margin-inline: -10px; }
+  #vista-busca .cabeca-sec { margin-bottom: 2px; }
   .rolo {
     flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     padding: 18px 4px 12px 0;   /* folga para a capa levantada e o anel de foco */
@@ -164,6 +163,7 @@ kbd { font: inherit; }
             mask-image: linear-gradient(180deg, transparent, #000 var(--fc), #000 calc(100% - var(--fb)), transparent);
     transition: --fc .25s ease, --fb .25s ease;
   }
+  .parede.rolo { padding: 8px 10px 12px; }
   .rolo.mais-cima { --fc: 30px; }
   .rolo.mais-baixo { --fb: clamp(28px, 14%, 56px); }
 }
@@ -403,11 +403,11 @@ body[data-status="playing"] .tocar-grande, body[data-status="buffering"] .tocar-
   box-shadow: 0 0 0 3px var(--ambar), 0 0 16px 3px rgba(243,167,60,.5), 0 6px 12px rgba(30,15,8,.45);
 }
 .deck:has(.erro-faixa:not([hidden])) .atalhos { display: none; }
-.atalhos { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: .8125rem; color: var(--marfim-2); }
+.atalhos { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: .8125rem; color: var(--marfim-2); text-shadow: 0 1.5px 0 var(--contorno); }
 .atalhos kbd, .nome kbd {
-  display: inline-block; min-width: 1.5em; padding: 0 .4em; border-radius: 4px;
-  font-size: .75rem; font-weight: 600; line-height: 1.5; text-align: center; color: var(--tinta); vertical-align: 1px;
-  background: linear-gradient(180deg, var(--aluminio-claro), var(--aluminio)); box-shadow: 0 1px 0 rgba(0,0,0,.5);
+  display: inline-block; min-width: 1.6em; padding: 0 4px 1px; vertical-align: 1px; text-align: center;
+  font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; line-height: 1.25;
+  color: var(--tinta); background: #EFE4CF; border-image: var(--mold-etiqueta);
 }
 .atalhos kbd { margin: 0 2px; }
 @media (max-width: 899.98px) { .atalhos { display: none; } }
@@ -663,7 +663,7 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 @keyframes puxar { from { transform: translateY(-48px); } }
 
 /* ---------- parede e prateleira ---------- */
-.parede { min-width: 0; padding-right: 4px; }
+.parede { min-width: 0; }
 .cabeca-sec { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
 .cabeca-sec h2 { font-size: 1.375rem; font-weight: 300; font-stretch: 125%; letter-spacing: .01em; }
 .cabeca-sec .conta { color: var(--marfim-2); font-size: .875rem; }
@@ -678,12 +678,11 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 }
 .disco-item { position: relative; display: flex; flex-direction: column; min-width: 0; container-type: inline-size; }
 .capa {
-  position: relative; display: block; width: 100%; aspect-ratio: 1; padding: 0; border: 0; border-radius: 2px;
+  position: relative; display: block; width: 100%; aspect-ratio: 1; padding: 0; border: 0;
   /* altura em pixel inteiro: as tabuas da mesma fileira caem no mesmo pixel */
   height: 100cqw; height: round(nearest, 100cqw, 1px);
   background: var(--vinil); overflow: hidden; container-type: inline-size;
-  box-shadow: 7px 2px 14px rgba(0,0,0,.45), 1px 0 0 rgba(255,255,255,.06) inset;
-  transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s;
+  transition: transform .25s cubic-bezier(.2,.8,.2,1);
 }
 .capa img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .capa::after { /* desgaste e luz da capa */
@@ -699,14 +698,9 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
   font-size: .75rem; font-stretch: 112%; z-index: 1;
 }
 .disco-item.no-prato .no-prato-tag { display: inline-flex; }
-.disco-item.no-prato .capa { transform: translateY(-10px); box-shadow: 9px 12px 18px rgba(0,0,0,.55); }
-.borda {
-  height: 13px; margin: 0 calc(var(--gap) / -2); position: relative; z-index: 0;
-  background: linear-gradient(180deg, #7a4d36 0 2px, #5a3726 2px 5px, #43281b 5px 100%);
-  box-shadow: 0 8px 12px -4px rgba(0,0,0,.55);
-}
+.disco-item.no-prato .capa { transform: translateY(-10px); }
+.borda { margin: 0 calc(var(--gap) / -2); position: relative; }
 .disco-item:last-child .borda { margin-right: -200vw; }
-.ficha { padding-top: 10px; display: grid; gap: 3px; min-width: 0; }
 .nome { font-size: .9375rem; font-weight: 600; line-height: 1.25; font-stretch: 96%; overflow-wrap: anywhere;
         display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .nome kbd { margin-right: 6px; }
@@ -722,21 +716,7 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .mais[aria-expanded="true"] { color: var(--marfim); border-color: rgba(238,227,207,.3); background: rgba(255,240,220,.06); }
 @media (hover: hover) { .mais:hover { color: var(--marfim); border-color: rgba(238,227,207,.3); background: rgba(255,240,220,.06); } }
 .mais svg { width: 1.125rem; height: 1.125rem; }
-/* o menu de cada disco nao tem linha propria (review: no computador o "..." sobrava sozinho numa
-   linha): no celular fica ao lado do nome, como no Spotify; no computador, onde a capa e mais
-   estreita, no fim da linha do canal, para o nome nao perder espaco. A linha de baixo so existe
-   quando tem Continuar de, e cada fileira encolhe */
-.ficha { grid-template-columns: minmax(0, 1fr) auto; column-gap: 2px; }
-.ficha .nome { grid-column: 1; grid-row: 1; }
-.ficha .info { grid-column: 1 / -1; }
 .ficha .acoes { display: contents; }
-.ficha .acoes > * { grid-column: 1 / -1; justify-self: start; }
-.ficha .acoes > .mais { grid-column: 2; grid-row: 1; align-self: start; margin: -6px -8px 0 0; }
-@media (min-width: 900px) {
-  .ficha .nome { grid-column: 1 / -1; }
-  .ficha .info { grid-column: 1; grid-row: 2; }
-  .ficha .acoes > .mais { grid-row: 2; align-self: center; margin: -8px -8px -8px 2px; }
-}
 
 /* capa gerada para som sem capa */
 .capa-gerada {
@@ -847,7 +827,6 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
   .resultado .miniatura .dur-m { display: none; }
   .resultado .sub .dur-s { display: inline; }
   .resultado .tit { font-size: .9375rem; line-height: 1.22; }
-  .estante { --gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 24px; }
   .receptor { grid-template-columns: 1fr; }
 }
 
@@ -899,9 +878,7 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .fila { display: grid; gap: 6px; }
 .fila[hidden] { display: none; }
 .cabeca-fila { display: flex; align-items: baseline; gap: 12px; }
-.cabeca-fila h2 { font-size: 1.125rem; font-weight: 300; font-stretch: 125%; letter-spacing: .01em; }
-.cabeca-fila .conta { color: var(--marfim-2); font-size: .8125rem; }
-.cabeca-fila .limpar-fila { margin-left: auto; font-size: .8125rem; }
+.cabeca-fila h2 { letter-spacing: .01em; }
 .cabeca-fila .limpar-fila[hidden] { display: none; }
 /* a parecida no prato vai para a prateleira pelo ⊕ da busca na ponta da linha do canal (dentro
    do visor da musica, embaixo a direita; o "Mix de" sobrava com a chave do Tocar
@@ -915,7 +892,7 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .salvar.pixel .px-sombra, .salvar.pixel .px-botao { display: none; }
 .lista-fila { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .item-fila { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; align-items: center; border-radius: 8px; }
-.item-fila.arrastando { position: relative; z-index: 2; background: #3a2419; box-shadow: 0 8px 22px rgba(0,0,0,.55); }
+.item-fila.arrastando { position: relative; z-index: 2; }
 .tocar-fila {
   display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; min-width: 0;
   padding: 6px; border: 0; border-radius: 8px; background: none; color: inherit; text-align: left;
@@ -935,12 +912,8 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .item-fila .tirar svg, .item-fila .alca svg { width: 20px; height: 20px; }
 .item-fila .alca { cursor: grab; touch-action: none; }
 .item-fila.arrastando .alca { cursor: grabbing; }
-.fila.realce .cabeca-fila h2 { color: var(--ambar-claro); }
 @media (min-width: 900px) {
   .fila-palco { display: none; }
-  .fila-parede { flex: none; max-height: 36%; min-height: 0; display: flex; flex-direction: column; margin-bottom: 10px; }
-  .fila-parede .lista-fila { overflow-y: auto; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #8a5a40 rgba(0,0,0,.18); }
-  .fila-parede[hidden] { display: none; }
 }
 @media (max-width: 899.98px) {
   .fila-parede { display: none; }
@@ -1521,12 +1494,12 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
   color: var(--tinta); background: #EFE4CF; white-space: nowrap;
   border-image: var(--mold-etiqueta);   /* o selo do atraso na moldura miuda, reto (o degrau inclinado borrava) */
 }
-@media (max-width: 899.98px) {
 
-  /* sons rapidos: os de ate 15 s, que tocam por cima da musica */
-  .rapidos { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 26px; }
-  /* titulo igual ao da Prateleira: o cinza pequeno com explicacao parecia rotulo provisorio */
-  .rapidos .cabeca-sec { margin-bottom: 4px; }
+/* sons rapidos: os de ate 15 s, que tocam por cima da musica */
+.rapidos { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 26px; }
+/* titulo igual ao da Prateleira: o cinza pequeno com explicacao parecia rotulo provisorio */
+.rapidos .cabeca-sec { margin-bottom: 4px; }
+@media (max-width: 899.98px) {
 
   /* resultados no celular como no YouTube Music: a seta de voltar mora dentro
      do campo, e a linha de titulo e do Voltar para a prateleira, que repetia a busca, fica so
@@ -1547,46 +1520,50 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
   .dica-ouvir .ir-disp::after { content: ""; position: absolute; inset: -14px -6px; }
   input[type=range] { height: 44px; }
   .botoes-topo .btn-madeira { min-width: 44px; min-height: 44px; justify-content: center; }
+}
 
-  /* ---------- primeira pagina como o Jukebox digital do YouTube Music ---------- */
-  /* sons rapidos como compactos de 7 polegadas (ideia de review): o disco gira e a
-     lampada acende enquanto o som toca por cima da musica */
-  .chips { display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px; padding: 2px 16px 4px; scrollbar-width: none; overscroll-behavior-x: contain; }
+/* ---------- primeira pagina como o Jukebox digital do YouTube Music ---------- */
+/* sons rapidos como compactos de 7 polegadas (ideia de review): o disco gira e a
+   lampada acende enquanto o som toca por cima da musica */
+.chips { display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px; padding: 2px 16px 4px; scrollbar-width: none; overscroll-behavior-x: contain; }
+@media (max-width: 899.98px) {
   .chips::-webkit-scrollbar { display: none; }
-  .compacto {
-    flex: none; position: relative; width: 92px; display: grid; justify-items: center; align-content: start; gap: 1px;
-    padding: 0 0 2px; border: 0; background: none; color: var(--marfim); font: inherit; text-align: center; cursor: pointer;
-  }
-  .sete {
-    position: relative; width: 78px; height: 78px; margin-bottom: 7px; border-radius: 50%;
-    background: repeating-radial-gradient(circle, #19120f 0 1px, #0e0a08 1px 2.6px);
-    box-shadow: 0 5px 10px -2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.05) inset;
-  }
-  .sete::before {   /* brilho do vinil, parado mesmo com o disco girando */
-    content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; z-index: 2;
-    background: conic-gradient(from 25deg, rgba(255,255,255,0) 0deg, rgba(255,240,220,.16) 28deg, rgba(255,255,255,0) 58deg 180deg, rgba(255,240,220,.1) 208deg, rgba(255,255,255,0) 238deg);
-  }
-  .sete-gira { position: absolute; inset: 0; border-radius: 50%; }
-  .sete-rot {   /* selo de papel com o furo grande do compacto e o miolo ambar (o adaptador de 45) */
-    position: absolute; inset: 21px; border-radius: 50%;
-    background: radial-gradient(circle, var(--vinil) 0 5.5px, var(--ambar) 5.5px 9px, rgba(0,0,0,.25) 9px 9.6px, transparent 9.6px),
-                repeating-radial-gradient(circle, rgba(0,0,0,0) 0 13.5px, rgba(0,0,0,.18) 13.5px 14px), var(--bg);
-  }
-  .sete-rot::after {   /* risca do selo: mostra o giro */
-    content: ""; position: absolute; left: 50%; top: 3px; width: 2px; height: 6px; margin-left: -1px; border-radius: 1px; background: var(--fg); opacity: .8;
-  }
-  .compacto.tocando .sete-gira { animation: girar 1.33s linear infinite; }
-  .compacto .lampada { position: absolute; top: 2px; right: 8px; width: 9px; height: 9px; }
-  .compacto .t { width: 100%; font-size: .8125rem; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere;
-                 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .compacto .d { font-size: .75rem; color: var(--marfim-2); font-variant-numeric: tabular-nums; }
-  .compacto:active .sete, .compacto.apertado .sete { transform: scale(.96); }
+}
+.compacto {
+  flex: none; position: relative; width: 92px; display: grid; justify-items: center; align-content: start; gap: 1px;
+  padding: 0 0 2px; border: 0; background: none; color: var(--marfim); font: inherit; text-align: center; cursor: pointer;
+}
+.sete {
+  position: relative; width: 78px; height: 78px; margin-bottom: 7px; border-radius: 50%;
+  background: repeating-radial-gradient(circle, #19120f 0 1px, #0e0a08 1px 2.6px);
+  box-shadow: 0 5px 10px -2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.05) inset;
+}
+.sete::before {   /* brilho do vinil, parado mesmo com o disco girando */
+  content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; z-index: 2;
+  background: conic-gradient(from 25deg, rgba(255,255,255,0) 0deg, rgba(255,240,220,.16) 28deg, rgba(255,255,255,0) 58deg 180deg, rgba(255,240,220,.1) 208deg, rgba(255,255,255,0) 238deg);
+}
+.sete-gira { position: absolute; inset: 0; border-radius: 50%; }
+.sete-rot {   /* selo de papel com o furo grande do compacto e o miolo ambar (o adaptador de 45) */
+  position: absolute; inset: 21px; border-radius: 50%;
+  background: radial-gradient(circle, var(--vinil) 0 5.5px, var(--ambar) 5.5px 9px, rgba(0,0,0,.25) 9px 9.6px, transparent 9.6px),
+              repeating-radial-gradient(circle, rgba(0,0,0,0) 0 13.5px, rgba(0,0,0,.18) 13.5px 14px), var(--bg);
+}
+.sete-rot::after {   /* risca do selo: mostra o giro */
+  content: ""; position: absolute; left: 50%; top: 3px; width: 2px; height: 6px; margin-left: -1px; border-radius: 1px; background: var(--fg); opacity: .8;
+}
+.compacto.tocando .sete-gira { animation: girar 1.33s linear infinite; }
+.compacto .lampada { position: absolute; top: 2px; right: 8px; width: 9px; height: 9px; }
+.compacto .t { width: 100%; font-size: .8125rem; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere;
+               display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.compacto .d { font-size: .75rem; color: var(--marfim-2); font-variant-numeric: tabular-nums; }
+.compacto:active .sete, .compacto.apertado .sete { transform: scale(.96); }
 
-  /* prateleira: grade de 3 x 3 capas por pagina, que corre de lado (os pontos dizem a pagina);
-     o nome vai por cima da capa e as tabuas seguem embaixo de cada fileira. Segurar a capa abre o
-     menu (Continuar de, fila, renomear, apagar) */
-  #cab-prat { margin-bottom: 8px; }
-  #cab-prat h2, .continuar h2, .rapidos h2 { font-size: 1.5rem; font-weight: 400; }
+/* prateleira: grade de 3 x 3 capas por pagina, que corre de lado (os pontos dizem a pagina);
+   o nome vai por cima da capa e as tabuas seguem embaixo de cada fileira. Segurar a capa abre o
+   menu (Continuar de, fila, renomear, apagar) */
+#cab-prat { margin-bottom: 8px; }
+#cab-prat h2, .continuar h2, .rapidos h2 { font-size: 1.5rem; font-weight: 400; }
+@media (max-width: 899.98px) {
   .estante {
     --gap: 10px;
     grid-template-columns: none; grid-auto-flow: column; grid-template-rows: repeat(3, auto);
@@ -1600,38 +1577,44 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
   .estante > .vazio { grid-column: span 3; }
   .estante .disco-item:last-child .borda { margin-right: calc(var(--gap) / -2); }
   .estante .capa, .compacto { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-  .estante .ficha {
-    position: absolute; left: 0; right: 0; top: 0; height: round(nearest, 100cqw, 1px); padding: 0 7px 6px;
-    display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; pointer-events: none; border-radius: 2px;
-    background: linear-gradient(180deg, rgba(10,6,4,0) 48%, rgba(10,6,4,.8));
-    transition: transform .25s cubic-bezier(.2,.8,.2,1);
-  }
-  .estante .ficha .nome { font-size: .8125rem; font-weight: 700; line-height: 1.2; color: #fff; -webkit-line-clamp: 1; overflow-wrap: anywhere;
-                          text-shadow: 0 2px 0 var(--contorno); }   /* a sombra dura dos textos na madeira, no lugar da borrada */
-  .estante .ficha .info, .estante .disco-item[data-id] .acoes { display: none; }
-  .estante .ficha .acoes > * { pointer-events: auto; }
-  .estante .disco-item.no-prato .ficha { transform: translateY(-10px); }
-  .estante .no-prato-tag { left: 6px; top: 6px; padding: 3px 7px 3px 6px; gap: 5px; font-size: .6875rem; }
+}
+.estante .ficha {
+  position: absolute; left: 0; right: 0; top: 0; height: round(nearest, 100cqw, 1px); padding: 0 7px 6px;
+  display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; pointer-events: none; border-radius: 2px;
+  background: linear-gradient(180deg, rgba(10,6,4,0) 48%, rgba(10,6,4,.8));
+  transition: transform .25s cubic-bezier(.2,.8,.2,1);
+}
+.estante .ficha .nome { font-size: .8125rem; font-weight: 700; line-height: 1.2; color: #fff; -webkit-line-clamp: 1; overflow-wrap: anywhere;
+                        text-shadow: 0 2px 0 var(--contorno); }   /* a sombra dura dos textos na madeira, no lugar da borrada */
+.estante .ficha .info, .estante .disco-item[data-id] .acoes { display: none; }
+.estante .ficha .acoes > * { pointer-events: auto; }
+.estante .disco-item.no-prato .ficha { transform: translateY(-10px); }
+.estante .no-prato-tag { left: 6px; top: 6px; padding: 3px 7px 3px 6px; gap: 5px; font-size: .6875rem; }
+@media (max-width: 899.98px) {
   .pontos { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
   .pontos span { width: 7px; height: 7px; border-radius: 50%; background: rgba(238,227,207,.25); transition: background .2s; }
   .pontos span.aqui { background: var(--marfim); }
+}
 
-  /* continuar ouvindo: os discos que pararam no meio, com o quanto ja tocou */
-  .continuar { display: block; margin-top: 30px; }
-  .continuar .cabeca-sec { margin-bottom: 12px; }
-  .cartoes { list-style: none; display: flex; gap: 12px; margin: 0 -16px; padding: 0 16px 4px; overflow-x: auto;
-             scroll-snap-type: x proximity; scroll-padding: 0 16px; scrollbar-width: none; overscroll-behavior-x: contain; }
+/* continuar ouvindo: os discos que pararam no meio, com o quanto ja tocou */
+.continuar { display: block; margin-top: 30px; }
+.continuar .cabeca-sec { margin-bottom: 12px; }
+.cartoes { list-style: none; display: flex; gap: 12px; margin: 0 -16px; padding: 0 16px 4px; overflow-x: auto;
+           scroll-snap-type: x proximity; scroll-padding: 0 16px; scrollbar-width: none; overscroll-behavior-x: contain; }
+@media (max-width: 899.98px) {
   .cartoes::-webkit-scrollbar { display: none; }
-  .cartao { flex: none; width: 176px; scroll-snap-align: start; }
-  .cartao-b { display: grid; gap: 3px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-  .cartao-capa { position: relative; display: block; aspect-ratio: 16 / 9; margin-bottom: 5px; border-radius: 3px; overflow: hidden;
-                 background: var(--vinil); box-shadow: 5px 4px 12px rgba(0,0,0,.45); container-type: inline-size; }
-  .cartao-capa img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .cartao-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(23,17,15,.75); }
-  .cartao-prog::before { content: ""; position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(var(--p, 0)); background: var(--ambar); }
-  .cartao-b:active .cartao-capa, .cartao-b.apertado .cartao-capa { filter: brightness(.88); }
-  .cartao-tit { font-size: .875rem; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-  .cartao-sub { font-size: .8125rem; color: var(--marfim-2); font-variant-numeric: tabular-nums; }
+}
+.cartao { flex: none; width: 176px; scroll-snap-align: start; }
+.cartao-b { display: grid; gap: 3px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cartao-capa { position: relative; display: block; aspect-ratio: 16 / 9; margin-bottom: 5px; border-radius: 3px; overflow: hidden;
+               background: var(--vinil); box-shadow: 5px 4px 12px rgba(0,0,0,.45); container-type: inline-size; }
+.cartao-capa img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cartao-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(23,17,15,.75); }
+.cartao-prog::before { content: ""; position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(var(--p, 0)); background: var(--ambar); }
+.cartao-b:active .cartao-capa, .cartao-b.apertado .cartao-capa { filter: brightness(.88); }
+.cartao-tit { font-size: .875rem; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.cartao-sub { font-size: .8125rem; color: var(--marfim-2); font-variant-numeric: tabular-nums; }
+@media (max-width: 899.98px) {
 
   /* ---------- pagina inicial com corpo de movel (a pagina inicial ainda
      era magra demais; dos mocks feitos a partir do print ficou o 6, e a pagina segue
@@ -1677,11 +1660,12 @@ body { background: var(--parede-casa); }
      degrade do tampo do toca-discos e das laterais do receiver fazia o aparelho se misturar com ela
      em alguns trechos; o volume fica nos filetes de luz e sombra das bordas */
   .tampo { background: var(--veio), var(--tampo); }
-  .parede { padding-right: 0; }
   /* capa apertada: encolhe um pouco em vez de escurecer (o filtro repintava a capa a cada toque) */
   .estante .capa { transition: transform .25s cubic-bezier(.2,.8,.2,1); }
   .pontos span { transition: none; }
-  .cartao-b .cartao-capa { transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+}
+.cartao-b .cartao-capa { transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+@media (max-width: 899.98px) {
   button.capa:active, button.capa.apertado, .cartao-b:active .cartao-capa, .cartao-b.apertado .cartao-capa { filter: none; transform: scale(.98); }
 
   /* topo: a plaqueta e as teclas soltas na parede, e a busca num rebaixo dentro do caixilho de
@@ -1693,65 +1677,69 @@ body { background: var(--parede-casa); }
     background: var(--veio), linear-gradient(180deg, #84431F 0%, #6C3517 50%, #552811 100%);
     box-shadow: inset 0 1.5px 0 rgba(255,200,150,.4), inset 1px 0 0 rgba(255,200,150,.16), inset 0 -2px 0 rgba(0,0,0,.5), 0 0 0 1px #1A0B04, 0 8px 14px -5px rgba(0,0,0,.72);
   }
+}
 
-  /* titulo de cada secao: letra marfim grande gravada na parede, na letra de sempre, e a contagem
-     menor e apagada logo depois */
-  #vista-prateleira .cabeca-sec { align-items: baseline; gap: 16px; margin: 0 0 10px; }
-  #vista-prateleira .cabeca-sec h2 {
-    font-weight: 800; line-height: 1.15; color: #F2E6D0;
-    text-shadow: 0 -1px 0 rgba(255,238,206,.16), 0 1.5px 0 rgba(20,9,4,.7), 0 3px 8px rgba(0,0,0,.4);
-  }
-  #vista-prateleira .cabeca-sec .conta { color: #D2BE9F; font-size: .9375rem; text-shadow: 0 1px 0 rgba(20,9,4,.6); }
+/* titulo de cada secao: letra marfim grande gravada na parede, na letra de sempre, e a contagem
+   menor e apagada logo depois */
+#vista-prateleira .cabeca-sec { align-items: baseline; gap: 16px; margin: 0 0 10px; }
+#vista-prateleira .cabeca-sec h2 {
+  font-weight: 800; line-height: 1.15; color: #F2E6D0;
+  text-shadow: 0 -1px 0 rgba(255,238,206,.16), 0 1.5px 0 rgba(20,9,4,.7), 0 3px 8px rgba(0,0,0,.4);
+}
+#vista-prateleira .cabeca-sec .conta { color: #D2BE9F; font-size: .9375rem; text-shadow: 0 1px 0 rgba(20,9,4,.6); }
 
-  /* sons rapidos: os compactos direto na parede, com o pino de latao no canto. Os quatro de hoje
-     cabem inteiros de 360 a 430 px; com mais de quatro o quinto aparece pela metade na beirada e
-     diz que a fileira corre de lado */
-  .rapidos { gap: 0; margin-bottom: 24px; }
-  .chips { --vao: 6px; gap: var(--vao); margin: 0 calc(-1 * var(--beira)); padding: 6px 8px 4px; }
-  .compacto { width: calc((100% - 3 * var(--vao)) / 4); max-width: 128px; gap: 2px; }   /* no tablet ficam juntos na esquerda */
-  .chips:has(> .compacto:nth-child(5)) > .compacto { width: calc((100% - 4 * var(--vao)) / 4.4); }
-  /* o compacto acompanha a largura do cartao, ate o tamanho de antes */
-  .sete { width: 100%; max-width: 80px; height: auto; aspect-ratio: 1; margin-bottom: 6px; box-shadow: 0 7px 12px -2px rgba(0,0,0,.72), 0 0 0 1px rgba(255,255,255,.05) inset; }
-  .sete-rot { inset: 27%; }
-  /* o pino de latao no canto do compacto; acende ambar quando o som toca */
-  .compacto .lampada { top: 0; right: max(2px, calc(50% - 46px)); width: 10px; height: 10px; }   /* junto do disco, nao da beira do cartao */
-  .compacto .lampada:not(.acesa) {
-    background: radial-gradient(circle at 35% 30%, #FFF0C8 0 1px, #E2BC74 2.2px, #A57C3C 4px, #5E421E 100%);
-    box-shadow: 0 1px 2px rgba(0,0,0,.75), 0 0 0 1px rgba(20,12,6,.5);
-  }
-  .compacto .t { color: #F6F0E7; font-size: .8125rem; font-weight: 700; line-height: 1.2; text-shadow: 0 1px 2px rgba(0,0,0,.65); }
-  .compacto .d { color: #CDB99B; font-size: .75rem; text-shadow: 0 1px 1px rgba(0,0,0,.5); }
+/* sons rapidos: os compactos direto na parede, com o pino de latao no canto. Os quatro de hoje
+   cabem inteiros de 360 a 430 px; com mais de quatro o quinto aparece pela metade na beirada e
+   diz que a fileira corre de lado */
+.rapidos { gap: 0; margin-bottom: 24px; }
+.chips { --vao: 6px; gap: var(--vao); margin: 0 calc(-1 * var(--beira)); padding: 6px 8px 4px; }
+.compacto { width: calc((100% - 3 * var(--vao)) / 4); max-width: 128px; gap: 2px; }   /* no tablet ficam juntos na esquerda */
+.chips:has(> .compacto:nth-child(5)) > .compacto { width: calc((100% - 4 * var(--vao)) / 4.4); }
+/* o compacto acompanha a largura do cartao, ate o tamanho de antes */
+.sete { width: 100%; max-width: 80px; height: auto; aspect-ratio: 1; margin-bottom: 6px; box-shadow: 0 7px 12px -2px rgba(0,0,0,.72), 0 0 0 1px rgba(255,255,255,.05) inset; }
+.sete-rot { inset: 27%; }
+/* o pino de latao no canto do compacto; acende ambar quando o som toca */
+.compacto .lampada { top: 0; right: max(2px, calc(50% - 46px)); width: 10px; height: 10px; }   /* junto do disco, nao da beira do cartao */
+.compacto .lampada:not(.acesa) {
+  background: radial-gradient(circle at 35% 30%, #FFF0C8 0 1px, #E2BC74 2.2px, #A57C3C 4px, #5E421E 100%);
+  box-shadow: 0 1px 2px rgba(0,0,0,.75), 0 0 0 1px rgba(20,12,6,.5);
+}
+.compacto .t { color: #F6F0E7; font-size: .8125rem; font-weight: 700; line-height: 1.2; text-shadow: 0 1px 2px rgba(0,0,0,.65); }
+.compacto .d { color: #CDB99B; font-size: .75rem; text-shadow: 0 1px 1px rgba(0,0,0,.5); }
 
-  /* prateleira: um painel de jacaranda mais claro pregado na parede, de cantos de cima redondos e
-     sombra na parede, com o titulo dentro e tres tabuas grossas flutuando. O painel e o ::before do
-     rolo, subindo a altura do titulo (52 px fixos); o rolo nao rola (quem rola de lado e a estante
-     dentro dele) */
-  #vista-prateleira #cab-prat { position: relative; z-index: 1; height: 52px; margin: 0 calc(-1 * var(--beira)); padding: 16px 16px 0; }
-  #rolo-prateleira { position: relative; z-index: 0; margin-inline: calc(-1 * var(--beira)); padding: 2px 10px 16px; }
-  #rolo-prateleira::before {
-    content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: -52px; bottom: 0; border-radius: 6px 6px 4px 4px; pointer-events: none;
-    background:
-      radial-gradient(120% 40% at 10% 0%, rgba(255,170,90,.2), rgba(255,170,90,0) 70%),
-      linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,.28) 100%),
-      var(--veio-v) 0 0 / 420px 900px,
-      linear-gradient(180deg, #5A2A12 0%, #44200D 50%, #331708 100%);
-    box-shadow: inset 0 0 0 5px #7A3C1B, inset 0 2px 0 5px rgba(255,190,130,.32), inset 0 0 0 6px rgba(0,0,0,.45), inset 0 8px 14px 4px rgba(0,0,0,.35),
-      0 0 0 1px #1A0B04, 0 18px 30px -10px rgba(0,0,0,.72), 0 4px 10px rgba(0,0,0,.35);
-  }
+/* prateleira: um painel de jacaranda mais claro pregado na parede, de cantos de cima redondos e
+   sombra na parede, com o titulo dentro e tres tabuas grossas flutuando. O painel e o ::before do
+   rolo, subindo a altura do titulo (52 px fixos); o rolo nao rola (quem rola de lado e a estante
+   dentro dele) */
+#vista-prateleira #cab-prat { position: relative; z-index: 1; height: 52px; margin: 0 calc(-1 * var(--beira)); padding: 16px 16px 0; }
+#rolo-prateleira { position: relative; z-index: 0; margin-inline: calc(-1 * var(--beira)); padding: 2px 10px 16px; }
+#rolo-prateleira::before {
+  content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: -52px; bottom: 0; border-radius: 6px 6px 4px 4px; pointer-events: none;
+  background:
+    radial-gradient(120% 40% at 10% 0%, rgba(255,170,90,.2), rgba(255,170,90,0) 70%),
+    linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,.28) 100%),
+    var(--veio-v) 0 0 / 420px 900px,
+    linear-gradient(180deg, #5A2A12 0%, #44200D 50%, #331708 100%);
+  box-shadow: inset 0 0 0 5px #7A3C1B, inset 0 2px 0 5px rgba(255,190,130,.32), inset 0 0 0 6px rgba(0,0,0,.45), inset 0 8px 14px 4px rgba(0,0,0,.35),
+    0 0 0 1px #1A0B04, 0 18px 30px -10px rgba(0,0,0,.72), 0 4px 10px rgba(0,0,0,.35);
+}
+@media (max-width: 899.98px) {
   /* sem folga de lado na estante: as paginas encaixam no mesmo ponto */
   .estante { border-radius: 0; padding: 12px 0 4px; row-gap: 18px; }
-  .estante .capa { border-radius: 2px; box-shadow: 0 9px 9px -6px rgba(0,0,0,.85), 4px 2px 12px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,248,235,.22); }
-  .estante .disco-item.no-prato .capa { box-shadow: 0 18px 14px -8px rgba(0,0,0,.7), 5px 8px 16px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,248,235,.22); }
-  .estante .ficha { padding: 0 6px 5px; background: linear-gradient(180deg, rgba(12,7,4,0) 42%, rgba(12,7,4,.72) 72%, rgba(18,10,6,.92) 100%); }
-  /* tabua grossa flutuando: o tampo de cima aceso pela luz, a frente de veio e a sombra embaixo */
-  .estante .borda {
-    height: 18px; z-index: 2;
-    background:
-      linear-gradient(180deg, #E8A06A 0 1px, #B8683A 1px 5px, #87451F 5px 6px, transparent 6px),
-      var(--veio),
-      linear-gradient(180deg, #82401C 0%, #6A3214 70%, #4C220C 100%);
-    box-shadow: inset 0 -1.5px 0 rgba(0,0,0,.5), 0 1px 0 rgba(0,0,0,.65), 0 14px 14px -6px rgba(0,0,0,.78);
-  }
+}
+.estante .capa { border-radius: 2px; box-shadow: 0 9px 9px -6px rgba(0,0,0,.85), 4px 2px 12px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,248,235,.22); }
+.estante .disco-item.no-prato .capa { box-shadow: 0 18px 14px -8px rgba(0,0,0,.7), 5px 8px 16px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,248,235,.22); }
+.estante .ficha { padding: 0 6px 5px; background: linear-gradient(180deg, rgba(12,7,4,0) 42%, rgba(12,7,4,.72) 72%, rgba(18,10,6,.92) 100%); }
+/* tabua grossa flutuando: o tampo de cima aceso pela luz, a frente de veio e a sombra embaixo */
+.estante .borda {
+  height: 18px; z-index: 2;
+  background:
+    linear-gradient(180deg, #E8A06A 0 1px, #B8683A 1px 5px, #87451F 5px 6px, transparent 6px),
+    var(--veio),
+    linear-gradient(180deg, #82401C 0%, #6A3214 70%, #4C220C 100%);
+  box-shadow: inset 0 -1.5px 0 rgba(0,0,0,.5), 0 1px 0 rgba(0,0,0,.65), 0 14px 14px -6px rgba(0,0,0,.78);
+}
+@media (max-width: 899.98px) {
   /* as paginas viram lampadas piloto embutidas no pe do painel */
   .pontos {
     width: fit-content; margin: 12px auto 0; padding: 5px 14px; border-radius: 99px; gap: 10px; background: #1A0E08;
@@ -1769,56 +1757,58 @@ body { background: var(--parede-casa); }
       var(--escovado), linear-gradient(180deg, #DCD4C7, var(--aluminio) 50%, #BCB3A3);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.75), inset 0 0 0 1px rgba(42,24,18,.18);
   }
+}
 
-  /* continuar ouvindo: fitas cassete dos anos 70 (a carcaca com os parafusos, a etiqueta creme
-     com a faixa laranja, a janela fume com os dois carreteis por cima da capa e o quanto ja tocou) */
-  .continuar { margin-top: 24px; }
-  .cartoes { border-radius: 0; gap: 14px; padding: 4px 16px 12px; }
-  .cartao { width: 196px; }
-  .cartao-b {
-    position: relative; grid-template-rows: auto auto auto; gap: 0; padding: 9px 10px 13px; border-radius: 7px; border: 1px solid #0E0806;
-    background:
-      radial-gradient(circle at 7px 7px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
-      radial-gradient(circle at calc(100% - 7px) 7px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
-      radial-gradient(circle at 7px calc(100% - 7px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
-      radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
-      linear-gradient(180deg, #352A24 0%, #241C18 74%, #1A1310 100%);
-    box-shadow: inset 0 1px 0 rgba(255,245,230,.18), inset 0 -4px 0 #120C09, 0 3px 0 #120B08, 0 10px 16px -5px rgba(0,0,0,.76);
-  }
-  /* o trapezio das cabecas na base da fita */
-  .cartao-b::after {
-    content: ""; position: absolute; left: 24px; right: 24px; bottom: 2px; height: 7px; border-radius: 2px 2px 0 0; pointer-events: none;
-    background:
-      radial-gradient(circle at 22% 55%, #0D0806 0 2px, transparent 2.2px),
-      radial-gradient(circle at 50% 55%, #0D0806 0 2.2px, transparent 2.4px),
-      radial-gradient(circle at 78% 55%, #0D0806 0 2px, transparent 2.2px),
-      linear-gradient(180deg, #2D231E, #1E1612);
-    box-shadow: inset 0 1px 0 rgba(255,240,220,.14), 0 -1px 0 rgba(0,0,0,.6);
-  }
-  .cartao-tit {
-    grid-row: 1; padding: 5px 7px 0; border-radius: 4px 4px 0 0; border-bottom: 2px solid #F3E9D6;
-    background: linear-gradient(180deg, #D46527 0 3px, #F3A73C 3px 5px, transparent 5px), #F3E9D6;
-    color: var(--tinta); font-size: .8125rem; font-weight: 800; line-height: 1.18; min-height: 2.36em;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
-  }
-  .cartao-sub {
-    grid-row: 2; padding: 1px 7px 4px; background: #E6D8BE; color: #8E3B10;
-    font-size: .6875rem; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid #9E8A6C;
-  }
-  .cartao-capa {
-    grid-row: 3; aspect-ratio: 2.15 / 1; margin: 0; border-radius: 0 0 4px 4px; border: 3px solid #1C1512;
-    box-shadow: inset 0 2px 6px rgba(0,0,0,.85), 0 1px 0 rgba(255,240,220,.12);
-  }
-  .cartao-capa::before, .cartao-capa::after {
-    content: ""; position: absolute; top: 50%; width: 34px; height: 34px; margin-top: -19px; border-radius: 50%; z-index: 2; pointer-events: none;
-    background:
-      radial-gradient(circle, #120C09 0 5px, #E8E0D2 5.5px 9.5px, #2B211C 10px 12.5px, rgba(20,13,9,.68) 13px 100%),
-      repeating-conic-gradient(#F4EDE0 0 15deg, #2A201B 15deg 30deg);
-    box-shadow: 0 0 0 2px rgba(238,227,207,.55), 0 2px 5px rgba(0,0,0,.75);
-  }
-  .cartao-capa::before { left: 18px; }
-  .cartao-capa::after { right: 18px; }
-  .cartao-prog { z-index: 3; height: 5px; background: rgba(18,11,8,.88); }
+/* continuar ouvindo: fitas cassete dos anos 70 (a carcaca com os parafusos, a etiqueta creme
+   com a faixa laranja, a janela fume com os dois carreteis por cima da capa e o quanto ja tocou) */
+.continuar { margin-top: 24px; }
+.cartoes { border-radius: 0; gap: 14px; padding: 4px 16px 12px; }
+.cartao { width: 196px; }
+.cartao-b {
+  position: relative; grid-template-rows: auto auto auto; gap: 0; padding: 9px 10px 13px; border-radius: 7px; border: 1px solid #0E0806;
+  background:
+    radial-gradient(circle at 7px 7px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 7px) 7px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at 7px calc(100% - 7px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    linear-gradient(180deg, #352A24 0%, #241C18 74%, #1A1310 100%);
+  box-shadow: inset 0 1px 0 rgba(255,245,230,.18), inset 0 -4px 0 #120C09, 0 3px 0 #120B08, 0 10px 16px -5px rgba(0,0,0,.76);
+}
+/* o trapezio das cabecas na base da fita */
+.cartao-b::after {
+  content: ""; position: absolute; left: 24px; right: 24px; bottom: 2px; height: 7px; border-radius: 2px 2px 0 0; pointer-events: none;
+  background:
+    radial-gradient(circle at 22% 55%, #0D0806 0 2px, transparent 2.2px),
+    radial-gradient(circle at 50% 55%, #0D0806 0 2.2px, transparent 2.4px),
+    radial-gradient(circle at 78% 55%, #0D0806 0 2px, transparent 2.2px),
+    linear-gradient(180deg, #2D231E, #1E1612);
+  box-shadow: inset 0 1px 0 rgba(255,240,220,.14), 0 -1px 0 rgba(0,0,0,.6);
+}
+.cartao-tit {
+  grid-row: 1; padding: 5px 7px 0; border-radius: 4px 4px 0 0; border-bottom: 2px solid #F3E9D6;
+  background: linear-gradient(180deg, #D46527 0 3px, #F3A73C 3px 5px, transparent 5px), #F3E9D6;
+  color: var(--tinta); font-size: .8125rem; font-weight: 800; line-height: 1.18; min-height: 2.36em;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+}
+.cartao-sub {
+  grid-row: 2; padding: 1px 7px 4px; background: #E6D8BE; color: #8E3B10;
+  font-size: .6875rem; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid #9E8A6C;
+}
+.cartao-capa {
+  grid-row: 3; aspect-ratio: 2.15 / 1; margin: 0; border-radius: 0 0 4px 4px; border: 3px solid #1C1512;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.85), 0 1px 0 rgba(255,240,220,.12);
+}
+.cartao-capa::before, .cartao-capa::after {
+  content: ""; position: absolute; top: 50%; width: 34px; height: 34px; margin-top: -19px; border-radius: 50%; z-index: 2; pointer-events: none;
+  background:
+    radial-gradient(circle, #120C09 0 5px, #E8E0D2 5.5px 9.5px, #2B211C 10px 12.5px, rgba(20,13,9,.68) 13px 100%),
+    repeating-conic-gradient(#F4EDE0 0 15deg, #2A201B 15deg 30deg);
+  box-shadow: 0 0 0 2px rgba(238,227,207,.55), 0 2px 5px rgba(0,0,0,.75);
+}
+.cartao-capa::before { left: 18px; }
+.cartao-capa::after { right: 18px; }
+.cartao-prog { z-index: 3; height: 5px; background: rgba(18,11,8,.88); }
+@media (max-width: 899.98px) {
 
   /* barra: a beirada do palco recolhido, com o disco no prato, cortar voz e tocar; tocar nela
      abre o palco. Gruda no alto do palco (sticky) por cima do cabecalho e some (opacidade) no
@@ -1957,13 +1947,13 @@ body { background: var(--parede-casa); }
   --mold-pedal: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 57' width='48' height='57' shape-rendering='crispEdges'%3E%3Cg fill='%230C0603' fill-opacity='.68'%3E%3Crect x='3' y='46' width='3' height='5'/%3E%3Crect x='6' y='49' width='3' height='5'/%3E%3Crect x='9' y='52' width='30' height='5'/%3E%3Crect x='39' y='49' width='3' height='5'/%3E%3Crect x='42' y='46' width='3' height='5'/%3E%3C/g%3E%3Cg fill='%231A0B04'%3E%3Crect x='9' y='0' width='30' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='39' y='3' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='42' y='6' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='34'/%3E%3Crect x='45' y='9' width='3' height='34'/%3E%3Crect x='0' y='43' width='6' height='3'/%3E%3Crect x='42' y='43' width='6' height='3'/%3E%3Crect x='3' y='46' width='6' height='3'/%3E%3Crect x='39' y='46' width='6' height='3'/%3E%3Crect x='9' y='49' width='30' height='3'/%3E%3C/g%3E%3Cg fill='%23FFECD6'%3E%3Crect x='9' y='3' width='30' height='1' fill-opacity='.5'/%3E%3Crect x='6' y='6' width='3' height='1' fill-opacity='.5'/%3E%3Crect x='39' y='6' width='3' height='1' fill-opacity='.5'/%3E%3Crect x='9' y='4' width='1' height='2' fill-opacity='.45'/%3E%3Crect x='3' y='9' width='1' height='24' fill-opacity='.45'/%3E%3Crect x='38' y='4' width='1' height='2' fill-opacity='.18'/%3E%3Crect x='41' y='7' width='1' height='2' fill-opacity='.18'/%3E%3Crect x='44' y='9' width='1' height='24' fill-opacity='.16'/%3E%3C/g%3E%3Cg fill='%231A0B04'%3E%3Crect x='43' y='9' width='1' height='23' fill-opacity='.14'/%3E%3Crect x='3' y='32' width='3' height='1' fill-opacity='.16'/%3E%3Crect x='6' y='35' width='3' height='1' fill-opacity='.16'/%3E%3Crect x='9' y='38' width='30' height='1' fill-opacity='.16'/%3E%3Crect x='39' y='35' width='3' height='1' fill-opacity='.16'/%3E%3Crect x='42' y='32' width='3' height='1' fill-opacity='.16'/%3E%3C/g%3E%3Cg fill='%23FFF0DE' fill-opacity='.58'%3E%3Crect x='3' y='33' width='3' height='1'/%3E%3Crect x='6' y='36' width='3' height='1'/%3E%3Crect x='9' y='39' width='30' height='1'/%3E%3Crect x='39' y='36' width='3' height='1'/%3E%3Crect x='42' y='33' width='3' height='1'/%3E%3C/g%3E%3Cg fill='%231A0B04' fill-opacity='.48'%3E%3Crect x='3' y='34' width='3' height='1'/%3E%3Crect x='6' y='37' width='3' height='1'/%3E%3Crect x='9' y='40' width='30' height='1'/%3E%3Crect x='39' y='37' width='3' height='1'/%3E%3Crect x='42' y='34' width='3' height='1'/%3E%3C/g%3E%3Crect x='3' y='35' width='3' height='5' fill='%23200F07' fill-opacity='.52'/%3E%3Crect x='3' y='35' width='1' height='5' fill='%23FFECD6' fill-opacity='.22'/%3E%3Crect x='3' y='40' width='3' height='1' fill='%23120803' fill-opacity='.62'/%3E%3Crect x='42' y='35' width='3' height='5' fill='%23180B04' fill-opacity='.62'/%3E%3Crect x='42' y='40' width='3' height='1' fill='%23120803' fill-opacity='.7'/%3E%3Crect x='6' y='38' width='3' height='3' fill='%2326140A' fill-opacity='.44'/%3E%3Crect x='6' y='41' width='3' height='2' fill='%23120803' fill-opacity='.15'/%3E%3Crect x='6' y='43' width='3' height='1' fill='%23120803' fill-opacity='.32'/%3E%3Crect x='39' y='38' width='3' height='3' fill='%231E0E06' fill-opacity='.52'/%3E%3Crect x='39' y='41' width='3' height='2' fill='%23120803' fill-opacity='.27'/%3E%3Crect x='39' y='43' width='3' height='1' fill='%23120803' fill-opacity='.42'/%3E%3Crect x='9' y='41' width='1' height='5' fill='%23FFECD6' fill-opacity='.1'/%3E%3Crect x='36' y='41' width='3' height='6' fill='%23120803' fill-opacity='.1'/%3E%3Crect x='3' y='41' width='3' height='2' fill='%23120803' fill-opacity='.42'/%3E%3Crect x='42' y='41' width='3' height='2' fill='%23120803' fill-opacity='.5'/%3E%3Crect x='6' y='44' width='3' height='2' fill='%23120803' fill-opacity='.42'/%3E%3Crect x='39' y='44' width='3' height='2' fill='%23120803' fill-opacity='.5'/%3E%3C/svg%3E") 18 18 27 18 / calc(18 * var(--px, 1px)) calc(18 * var(--px, 1px)) calc(27 * var(--px, 1px)) calc(18 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(8 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
 }
 /* molduras:fim */
+/* compactos:inicio (gravado pelo dev/compactos.py: o desenho mora la, nao editar aqui) */
+.app {
+  --compacto-base: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='42' height='44' viewBox='0 0 42 44' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='17' y='0' width='8' height='1'/%3E%3Crect x='17' y='41' width='8' height='1'/%3E%3Crect x='14' y='1' width='3' height='1'/%3E%3Crect x='14' y='40' width='3' height='1'/%3E%3Crect x='25' y='1' width='3' height='1'/%3E%3Crect x='25' y='40' width='3' height='1'/%3E%3Crect x='12' y='2' width='2' height='1'/%3E%3Crect x='12' y='39' width='2' height='1'/%3E%3Crect x='28' y='2' width='2' height='1'/%3E%3Crect x='28' y='39' width='2' height='1'/%3E%3Crect x='10' y='3' width='2' height='1'/%3E%3Crect x='10' y='38' width='2' height='1'/%3E%3Crect x='30' y='3' width='2' height='1'/%3E%3Crect x='30' y='38' width='2' height='1'/%3E%3Crect x='9' y='4' width='1' height='1'/%3E%3Crect x='9' y='37' width='1' height='1'/%3E%3Crect x='32' y='4' width='1' height='1'/%3E%3Crect x='32' y='37' width='1' height='1'/%3E%3Crect x='7' y='5' width='2' height='1'/%3E%3Crect x='7' y='36' width='2' height='1'/%3E%3Crect x='33' y='5' width='2' height='1'/%3E%3Crect x='33' y='36' width='2' height='1'/%3E%3Crect x='6' y='6' width='1' height='1'/%3E%3Crect x='6' y='35' width='1' height='1'/%3E%3Crect x='35' y='6' width='1' height='1'/%3E%3Crect x='35' y='35' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='2'/%3E%3Crect x='5' y='33' width='1' height='2'/%3E%3Crect x='36' y='7' width='1' height='2'/%3E%3Crect x='36' y='33' width='1' height='2'/%3E%3Crect x='4' y='9' width='1' height='1'/%3E%3Crect x='4' y='32' width='1' height='1'/%3E%3Crect x='37' y='9' width='1' height='1'/%3E%3Crect x='37' y='32' width='1' height='1'/%3E%3Crect x='3' y='10' width='1' height='2'/%3E%3Crect x='3' y='30' width='1' height='2'/%3E%3Crect x='38' y='10' width='1' height='2'/%3E%3Crect x='38' y='30' width='1' height='2'/%3E%3Crect x='2' y='12' width='1' height='2'/%3E%3Crect x='2' y='28' width='1' height='2'/%3E%3Crect x='39' y='12' width='1' height='2'/%3E%3Crect x='39' y='28' width='1' height='2'/%3E%3Crect x='1' y='14' width='1' height='3'/%3E%3Crect x='1' y='25' width='1' height='3'/%3E%3Crect x='40' y='14' width='1' height='3'/%3E%3Crect x='40' y='25' width='1' height='3'/%3E%3Crect x='0' y='17' width='1' height='8'/%3E%3Crect x='41' y='17' width='1' height='8'/%3E%3C/g%3E%3Cg fill='%23403631'%3E%3Crect x='17' y='1' width='8' height='1'/%3E%3Crect x='14' y='2' width='3' height='1'/%3E%3Crect x='25' y='2' width='3' height='1'/%3E%3Crect x='12' y='3' width='2' height='1'/%3E%3Crect x='10' y='4' width='2' height='1'/%3E%3Crect x='9' y='5' width='1' height='1'/%3E%3Crect x='7' y='6' width='2' height='1'/%3E%3Crect x='6' y='7' width='2' height='1'/%3E%3Crect x='6' y='8' width='1' height='1'/%3E%3Crect x='5' y='9' width='1' height='1'/%3E%3Crect x='4' y='10' width='1' height='2'/%3E%3Crect x='3' y='12' width='1' height='2'/%3E%3Crect x='2' y='14' width='1' height='3'/%3E%3Crect x='2' y='25' width='1' height='3'/%3E%3Crect x='1' y='17' width='1' height='8'/%3E%3C/g%3E%3Cg fill='%23261E1B'%3E%3Crect x='17' y='2' width='8' height='1'/%3E%3Crect x='17' y='4' width='8' height='1'/%3E%3Crect x='17' y='6' width='8' height='1'/%3E%3Crect x='17' y='8' width='8' height='1'/%3E%3Crect x='17' y='33' width='8' height='1'/%3E%3Crect x='17' y='35' width='8' height='1'/%3E%3Crect x='17' y='37' width='8' height='1'/%3E%3Crect x='17' y='39' width='8' height='1'/%3E%3Crect x='14' y='3' width='3' height='1'/%3E%3Crect x='14' y='5' width='3' height='1'/%3E%3Crect x='14' y='7' width='3' height='1'/%3E%3Crect x='14' y='38' width='3' height='1'/%3E%3Crect x='25' y='3' width='3' height='1'/%3E%3Crect x='25' y='34' width='3' height='1'/%3E%3Crect x='25' y='36' width='3' height='1'/%3E%3Crect x='25' y='38' width='3' height='1'/%3E%3Crect x='12' y='4' width='2' height='1'/%3E%3Crect x='12' y='6' width='2' height='1'/%3E%3Crect x='12' y='11' width='2' height='1'/%3E%3Crect x='12' y='37' width='2' height='1'/%3E%3Crect x='28' y='4' width='2' height='1'/%3E%3Crect x='28' y='30' width='2' height='1'/%3E%3Crect x='28' y='35' width='2' height='1'/%3E%3Crect x='28' y='37' width='2' height='1'/%3E%3Crect x='10' y='5' width='2' height='1'/%3E%3Crect x='10' y='10' width='2' height='1'/%3E%3Crect x='10' y='13' width='2' height='1'/%3E%3Crect x='10' y='36' width='2' height='1'/%3E%3Crect x='25' y='5' width='2' height='1'/%3E%3Crect x='25' y='7' width='2' height='1'/%3E%3Crect x='30' y='5' width='2' height='1'/%3E%3Crect x='30' y='28' width='2' height='1'/%3E%3Crect x='30' y='31' width='2' height='1'/%3E%3Crect x='30' y='36' width='2' height='1'/%3E%3Crect x='9' y='6' width='1' height='1'/%3E%3Crect x='9' y='12' width='1' height='1'/%3E%3Crect x='9' y='15' width='1' height='2'/%3E%3Crect x='9' y='25' width='1' height='2'/%3E%3Crect x='9' y='35' width='1' height='1'/%3E%3Crect x='29' y='6' width='1' height='1'/%3E%3Crect x='29' y='14' width='1' height='1'/%3E%3Crect x='29' y='18' width='1' height='6'/%3E%3Crect x='29' y='27' width='1' height='1'/%3E%3Crect x='32' y='6' width='1' height='1'/%3E%3Crect x='32' y='15' width='1' height='2'/%3E%3Crect x='32' y='25' width='1' height='2'/%3E%3Crect x='32' y='29' width='1' height='1'/%3E%3Crect x='32' y='35' width='1' height='1'/%3E%3Crect x='8' y='7' width='1' height='1'/%3E%3Crect x='8' y='10' width='1' height='1'/%3E%3Crect x='8' y='13' width='1' height='1'/%3E%3Crect x='8' y='18' width='1' height='6'/%3E%3Crect x='8' y='34' width='1' height='1'/%3E%3Crect x='11' y='7' width='1' height='1'/%3E%3Crect x='11' y='16' width='1' height='2'/%3E%3Crect x='11' y='24' width='1' height='2'/%3E%3Crect x='33' y='7' width='1' height='1'/%3E%3Crect x='33' y='18' width='1' height='6'/%3E%3Crect x='33' y='28' width='1' height='1'/%3E%3Crect x='33' y='31' width='1' height='1'/%3E%3Crect x='33' y='34' width='1' height='1'/%3E%3Crect x='7' y='8' width='1' height='1'/%3E%3Crect x='7' y='11' width='1' height='1'/%3E%3Crect x='7' y='15' width='1' height='2'/%3E%3Crect x='7' y='25' width='1' height='2'/%3E%3Crect x='7' y='30' width='1' height='1'/%3E%3Crect x='7' y='33' width='1' height='1'/%3E%3Crect x='9' y='8' width='2' height='1'/%3E%3Crect x='9' y='11' width='2' height='1'/%3E%3Crect x='13' y='8' width='2' height='1'/%3E%3Crect x='13' y='10' width='2' height='1'/%3E%3Crect x='27' y='8' width='1' height='1'/%3E%3Crect x='27' y='15' width='1' height='1'/%3E%3Crect x='27' y='19' width='1' height='4'/%3E%3Crect x='27' y='26' width='1' height='1'/%3E%3Crect x='34' y='8' width='1' height='1'/%3E%3Crect x='34' y='11' width='1' height='1'/%3E%3Crect x='34' y='15' width='1' height='2'/%3E%3Crect x='34' y='25' width='1' height='2'/%3E%3Crect x='34' y='30' width='1' height='1'/%3E%3Crect x='34' y='33' width='1' height='1'/%3E%3Crect x='6' y='9' width='1' height='1'/%3E%3Crect x='6' y='12' width='1' height='2'/%3E%3Crect x='6' y='17' width='1' height='8'/%3E%3Crect x='6' y='28' width='1' height='2'/%3E%3Crect x='6' y='32' width='1' height='1'/%3E%3Crect x='8' y='9' width='2' height='1'/%3E%3Crect x='8' y='17' width='2' height='1'/%3E%3Crect x='8' y='24' width='2' height='1'/%3E%3Crect x='11' y='9' width='2' height='1'/%3E%3Crect x='11' y='12' width='2' height='1'/%3E%3Crect x='11' y='15' width='2' height='1'/%3E%3Crect x='11' y='26' width='2' height='1'/%3E%3Crect x='15' y='9' width='3' height='1'/%3E%3Crect x='15' y='11' width='3' height='1'/%3E%3Crect x='15' y='30' width='3' height='1'/%3E%3Crect x='15' y='32' width='3' height='1'/%3E%3Crect x='24' y='9' width='3' height='1'/%3E%3Crect x='24' y='11' width='3' height='1'/%3E%3Crect x='24' y='30' width='3' height='1'/%3E%3Crect x='24' y='32' width='3' height='1'/%3E%3Crect x='35' y='9' width='1' height='1'/%3E%3Crect x='35' y='12' width='1' height='2'/%3E%3Crect x='35' y='17' width='1' height='8'/%3E%3Crect x='35' y='28' width='1' height='2'/%3E%3Crect x='35' y='32' width='1' height='1'/%3E%3Crect x='5' y='10' width='1' height='2'/%3E%3Crect x='5' y='14' width='1' height='3'/%3E%3Crect x='5' y='25' width='1' height='3'/%3E%3Crect x='5' y='30' width='1' height='2'/%3E%3Crect x='18' y='10' width='6' height='1'/%3E%3Crect x='18' y='12' width='6' height='1'/%3E%3Crect x='18' y='14' width='6' height='1'/%3E%3Crect x='18' y='27' width='6' height='1'/%3E%3Crect x='18' y='29' width='6' height='1'/%3E%3Crect x='18' y='31' width='6' height='1'/%3E%3Crect x='36' y='10' width='1' height='2'/%3E%3Crect x='36' y='14' width='1' height='3'/%3E%3Crect x='36' y='25' width='1' height='3'/%3E%3Crect x='36' y='30' width='1' height='2'/%3E%3Crect x='4' y='12' width='1' height='2'/%3E%3Crect x='4' y='17' width='1' height='8'/%3E%3Crect x='4' y='28' width='1' height='2'/%3E%3Crect x='14' y='12' width='2' height='1'/%3E%3Crect x='14' y='18' width='2' height='1'/%3E%3Crect x='14' y='23' width='2' height='1'/%3E%3Crect x='14' y='29' width='2' height='1'/%3E%3Crect x='26' y='12' width='2' height='1'/%3E%3Crect x='26' y='18' width='2' height='1'/%3E%3Crect x='26' y='23' width='2' height='1'/%3E%3Crect x='26' y='29' width='2' height='1'/%3E%3Crect x='37' y='12' width='1' height='2'/%3E%3Crect x='37' y='17' width='1' height='8'/%3E%3Crect x='37' y='28' width='1' height='2'/%3E%3Crect x='13' y='13' width='1' height='1'/%3E%3Crect x='13' y='16' width='1' height='2'/%3E%3Crect x='13' y='24' width='1' height='2'/%3E%3Crect x='13' y='28' width='1' height='1'/%3E%3Crect x='16' y='13' width='2' height='1'/%3E%3Crect x='16' y='28' width='2' height='1'/%3E%3Crect x='24' y='13' width='2' height='1'/%3E%3Crect x='24' y='28' width='2' height='1'/%3E%3Crect x='28' y='13' width='1' height='1'/%3E%3Crect x='28' y='16' width='1' height='2'/%3E%3Crect x='28' y='24' width='1' height='2'/%3E%3Crect x='28' y='28' width='1' height='1'/%3E%3Crect x='3' y='14' width='1' height='3'/%3E%3Crect x='3' y='25' width='1' height='3'/%3E%3Crect x='7' y='14' width='2' height='1'/%3E%3Crect x='7' y='27' width='2' height='1'/%3E%3Crect x='10' y='14' width='1' height='1'/%3E%3Crect x='10' y='18' width='1' height='6'/%3E%3Crect x='10' y='27' width='1' height='1'/%3E%3Crect x='12' y='14' width='1' height='1'/%3E%3Crect x='12' y='18' width='1' height='6'/%3E%3Crect x='12' y='27' width='1' height='1'/%3E%3Crect x='12' y='35' width='1' height='1'/%3E%3Crect x='15' y='14' width='1' height='1'/%3E%3Crect x='15' y='17' width='1' height='1'/%3E%3Crect x='15' y='24' width='1' height='1'/%3E%3Crect x='15' y='27' width='1' height='1'/%3E%3Crect x='26' y='14' width='1' height='1'/%3E%3Crect x='26' y='17' width='1' height='1'/%3E%3Crect x='26' y='24' width='1' height='1'/%3E%3Crect x='26' y='27' width='1' height='1'/%3E%3Crect x='31' y='14' width='1' height='1'/%3E%3Crect x='31' y='18' width='1' height='6'/%3E%3Crect x='31' y='27' width='1' height='1'/%3E%3Crect x='33' y='14' width='2' height='1'/%3E%3Crect x='33' y='27' width='2' height='1'/%3E%3Crect x='38' y='14' width='1' height='3'/%3E%3Crect x='38' y='25' width='1' height='3'/%3E%3Crect x='14' y='15' width='1' height='1'/%3E%3Crect x='14' y='19' width='1' height='4'/%3E%3Crect x='14' y='26' width='1' height='1'/%3E%3Crect x='14' y='33' width='1' height='1'/%3E%3Crect x='17' y='15' width='2' height='1'/%3E%3Crect x='17' y='17' width='2' height='1'/%3E%3Crect x='17' y='24' width='2' height='1'/%3E%3Crect x='17' y='26' width='2' height='1'/%3E%3Crect x='23' y='15' width='2' height='1'/%3E%3Crect x='23' y='17' width='2' height='1'/%3E%3Crect x='23' y='24' width='2' height='1'/%3E%3Crect x='23' y='26' width='2' height='1'/%3E%3Crect x='29' y='15' width='2' height='1'/%3E%3Crect x='29' y='26' width='2' height='1'/%3E%3Crect x='29' y='29' width='2' height='1'/%3E%3Crect x='29' y='32' width='2' height='1'/%3E%3Crect x='16' y='16' width='1' height='1'/%3E%3Crect x='16' y='19' width='1' height='4'/%3E%3Crect x='16' y='25' width='1' height='1'/%3E%3Crect x='19' y='16' width='4' height='1'/%3E%3Crect x='19' y='18' width='4' height='1'/%3E%3Crect x='19' y='23' width='4' height='1'/%3E%3Crect x='19' y='25' width='4' height='1'/%3E%3Crect x='25' y='16' width='1' height='1'/%3E%3Crect x='25' y='19' width='1' height='4'/%3E%3Crect x='25' y='25' width='1' height='1'/%3E%3Crect x='30' y='16' width='1' height='2'/%3E%3Crect x='30' y='24' width='1' height='2'/%3E%3Crect x='30' y='34' width='1' height='1'/%3E%3Crect x='2' y='17' width='1' height='8'/%3E%3Crect x='32' y='17' width='2' height='1'/%3E%3Crect x='32' y='24' width='2' height='1'/%3E%3Crect x='32' y='32' width='2' height='1'/%3E%3Crect x='39' y='17' width='1' height='8'/%3E%3Crect x='17' y='18' width='1' height='1'/%3E%3Crect x='17' y='23' width='1' height='1'/%3E%3Crect x='24' y='18' width='1' height='1'/%3E%3Crect x='24' y='23' width='1' height='1'/%3E%3Crect x='18' y='19' width='2' height='1'/%3E%3Crect x='18' y='22' width='2' height='1'/%3E%3Crect x='22' y='19' width='2' height='1'/%3E%3Crect x='22' y='22' width='2' height='1'/%3E%3Crect x='18' y='20' width='1' height='2'/%3E%3Crect x='20' y='20' width='2' height='2'/%3E%3Crect x='23' y='20' width='1' height='2'/%3E%3Crect x='31' y='30' width='2' height='1'/%3E%3Crect x='31' y='33' width='2' height='1'/%3E%3Crect x='27' y='31' width='2' height='1'/%3E%3Crect x='27' y='33' width='2' height='1'/%3E%3Crect x='15' y='34' width='2' height='1'/%3E%3Crect x='15' y='36' width='2' height='1'/%3E%3C/g%3E%3Cg fill='%23120D0B'%3E%3Crect x='17' y='3' width='8' height='1'/%3E%3Crect x='17' y='5' width='8' height='1'/%3E%3Crect x='17' y='7' width='8' height='1'/%3E%3Crect x='17' y='34' width='8' height='1'/%3E%3Crect x='17' y='36' width='8' height='1'/%3E%3Crect x='17' y='38' width='8' height='1'/%3E%3Crect x='14' y='4' width='3' height='1'/%3E%3Crect x='14' y='6' width='3' height='1'/%3E%3Crect x='14' y='35' width='3' height='1'/%3E%3Crect x='14' y='37' width='3' height='1'/%3E%3Crect x='25' y='4' width='3' height='1'/%3E%3Crect x='25' y='6' width='3' height='1'/%3E%3Crect x='25' y='35' width='3' height='1'/%3E%3Crect x='25' y='37' width='3' height='1'/%3E%3Crect x='12' y='5' width='2' height='1'/%3E%3Crect x='12' y='7' width='2' height='1'/%3E%3Crect x='12' y='36' width='2' height='1'/%3E%3Crect x='28' y='5' width='2' height='1'/%3E%3Crect x='28' y='34' width='2' height='1'/%3E%3Crect x='28' y='36' width='2' height='1'/%3E%3Crect x='10' y='6' width='2' height='1'/%3E%3Crect x='9' y='7' width='2' height='1'/%3E%3Crect x='28' y='7' width='1' height='1'/%3E%3Crect x='28' y='12' width='1' height='1'/%3E%3Crect x='28' y='15' width='1' height='1'/%3E%3Crect x='28' y='18' width='1' height='6'/%3E%3Crect x='28' y='26' width='1' height='1'/%3E%3Crect x='28' y='29' width='1' height='1'/%3E%3Crect x='8' y='8' width='1' height='1'/%3E%3Crect x='8' y='11' width='1' height='1'/%3E%3Crect x='8' y='15' width='1' height='2'/%3E%3Crect x='8' y='25' width='1' height='2'/%3E%3Crect x='11' y='8' width='2' height='1'/%3E%3Crect x='15' y='8' width='2' height='1'/%3E%3Crect x='15' y='15' width='2' height='1'/%3E%3Crect x='15' y='26' width='2' height='1'/%3E%3Crect x='15' y='33' width='2' height='1'/%3E%3Crect x='25' y='8' width='2' height='1'/%3E%3Crect x='25' y='15' width='2' height='1'/%3E%3Crect x='25' y='26' width='2' height='1'/%3E%3Crect x='25' y='33' width='2' height='1'/%3E%3Crect x='7' y='9' width='1' height='1'/%3E%3Crect x='7' y='13' width='1' height='1'/%3E%3Crect x='7' y='17' width='1' height='8'/%3E%3Crect x='7' y='28' width='1' height='1'/%3E%3Crect x='10' y='9' width='1' height='1'/%3E%3Crect x='10' y='12' width='1' height='1'/%3E%3Crect x='10' y='15' width='1' height='3'/%3E%3Crect x='10' y='24' width='1' height='3'/%3E%3Crect x='13' y='9' width='2' height='1'/%3E%3Crect x='13' y='14' width='2' height='1'/%3E%3Crect x='13' y='27' width='2' height='1'/%3E%3Crect x='18' y='9' width='6' height='1'/%3E%3Crect x='18' y='11' width='6' height='1'/%3E%3Crect x='18' y='13' width='6' height='1'/%3E%3Crect x='18' y='28' width='6' height='1'/%3E%3Crect x='18' y='30' width='6' height='1'/%3E%3Crect x='18' y='32' width='6' height='1'/%3E%3Crect x='27' y='9' width='1' height='1'/%3E%3Crect x='27' y='17' width='1' height='1'/%3E%3Crect x='27' y='24' width='1' height='1'/%3E%3Crect x='27' y='30' width='1' height='1'/%3E%3Crect x='6' y='10' width='2' height='1'/%3E%3Crect x='9' y='10' width='1' height='1'/%3E%3Crect x='9' y='13' width='1' height='2'/%3E%3Crect x='9' y='18' width='1' height='6'/%3E%3Crect x='9' y='27' width='1' height='2'/%3E%3Crect x='12' y='10' width='1' height='1'/%3E%3Crect x='12' y='13' width='1' height='1'/%3E%3Crect x='12' y='16' width='1' height='2'/%3E%3Crect x='12' y='24' width='1' height='2'/%3E%3Crect x='12' y='28' width='1' height='1'/%3E%3Crect x='15' y='10' width='3' height='1'/%3E%3Crect x='15' y='31' width='3' height='1'/%3E%3Crect x='24' y='10' width='3' height='1'/%3E%3Crect x='24' y='31' width='3' height='1'/%3E%3Crect x='35' y='10' width='1' height='2'/%3E%3Crect x='35' y='14' width='1' height='3'/%3E%3Crect x='35' y='25' width='1' height='3'/%3E%3Crect x='35' y='30' width='1' height='1'/%3E%3Crect x='6' y='11' width='1' height='1'/%3E%3Crect x='6' y='14' width='1' height='3'/%3E%3Crect x='6' y='25' width='1' height='3'/%3E%3Crect x='6' y='30' width='1' height='2'/%3E%3Crect x='11' y='11' width='1' height='1'/%3E%3Crect x='11' y='14' width='1' height='1'/%3E%3Crect x='11' y='18' width='1' height='6'/%3E%3Crect x='11' y='27' width='1' height='1'/%3E%3Crect x='14' y='11' width='1' height='1'/%3E%3Crect x='14' y='17' width='1' height='1'/%3E%3Crect x='14' y='24' width='1' height='1'/%3E%3Crect x='14' y='32' width='1' height='1'/%3E%3Crect x='5' y='12' width='1' height='2'/%3E%3Crect x='5' y='17' width='1' height='8'/%3E%3Crect x='5' y='28' width='1' height='2'/%3E%3Crect x='7' y='12' width='2' height='1'/%3E%3Crect x='7' y='29' width='2' height='1'/%3E%3Crect x='13' y='12' width='1' height='1'/%3E%3Crect x='13' y='15' width='1' height='1'/%3E%3Crect x='13' y='18' width='1' height='6'/%3E%3Crect x='13' y='26' width='1' height='1'/%3E%3Crect x='13' y='29' width='1' height='1'/%3E%3Crect x='13' y='34' width='1' height='1'/%3E%3Crect x='16' y='12' width='2' height='1'/%3E%3Crect x='16' y='14' width='2' height='1'/%3E%3Crect x='16' y='27' width='2' height='1'/%3E%3Crect x='16' y='29' width='2' height='1'/%3E%3Crect x='24' y='12' width='2' height='1'/%3E%3Crect x='24' y='14' width='2' height='1'/%3E%3Crect x='24' y='27' width='2' height='1'/%3E%3Crect x='24' y='29' width='2' height='1'/%3E%3Crect x='33' y='12' width='2' height='1'/%3E%3Crect x='33' y='29' width='2' height='1'/%3E%3Crect x='36' y='12' width='1' height='2'/%3E%3Crect x='36' y='17' width='1' height='8'/%3E%3Crect x='36' y='28' width='1' height='2'/%3E%3Crect x='14' y='13' width='2' height='1'/%3E%3Crect x='14' y='16' width='2' height='1'/%3E%3Crect x='14' y='25' width='2' height='1'/%3E%3Crect x='14' y='28' width='2' height='1'/%3E%3Crect x='26' y='13' width='2' height='1'/%3E%3Crect x='26' y='16' width='2' height='1'/%3E%3Crect x='26' y='25' width='2' height='1'/%3E%3Crect x='26' y='28' width='2' height='1'/%3E%3Crect x='29' y='13' width='1' height='1'/%3E%3Crect x='29' y='16' width='1' height='2'/%3E%3Crect x='29' y='24' width='1' height='2'/%3E%3Crect x='29' y='28' width='1' height='1'/%3E%3Crect x='29' y='31' width='1' height='1'/%3E%3Crect x='32' y='13' width='1' height='2'/%3E%3Crect x='32' y='18' width='1' height='6'/%3E%3Crect x='32' y='27' width='1' height='2'/%3E%3Crect x='32' y='31' width='1' height='1'/%3E%3Crect x='34' y='13' width='1' height='1'/%3E%3Crect x='34' y='17' width='1' height='8'/%3E%3Crect x='34' y='28' width='1' height='1'/%3E%3Crect x='34' y='32' width='1' height='1'/%3E%3Crect x='4' y='14' width='1' height='3'/%3E%3Crect x='4' y='25' width='1' height='3'/%3E%3Crect x='27' y='14' width='2' height='1'/%3E%3Crect x='27' y='27' width='2' height='1'/%3E%3Crect x='27' y='32' width='2' height='1'/%3E%3Crect x='30' y='14' width='1' height='1'/%3E%3Crect x='30' y='18' width='1' height='6'/%3E%3Crect x='30' y='27' width='1' height='1'/%3E%3Crect x='30' y='30' width='1' height='1'/%3E%3Crect x='37' y='14' width='1' height='3'/%3E%3Crect x='37' y='25' width='1' height='3'/%3E%3Crect x='19' y='15' width='4' height='1'/%3E%3Crect x='19' y='17' width='4' height='1'/%3E%3Crect x='19' y='24' width='4' height='1'/%3E%3Crect x='19' y='26' width='4' height='1'/%3E%3Crect x='31' y='15' width='1' height='3'/%3E%3Crect x='31' y='24' width='1' height='3'/%3E%3Crect x='31' y='29' width='1' height='1'/%3E%3Crect x='31' y='32' width='1' height='1'/%3E%3Crect x='33' y='15' width='1' height='2'/%3E%3Crect x='33' y='25' width='1' height='2'/%3E%3Crect x='33' y='30' width='1' height='1'/%3E%3Crect x='33' y='33' width='1' height='1'/%3E%3Crect x='17' y='16' width='2' height='1'/%3E%3Crect x='17' y='25' width='2' height='1'/%3E%3Crect x='23' y='16' width='2' height='1'/%3E%3Crect x='23' y='25' width='2' height='1'/%3E%3Crect x='3' y='17' width='1' height='8'/%3E%3Crect x='16' y='17' width='1' height='2'/%3E%3Crect x='16' y='23' width='1' height='2'/%3E%3Crect x='25' y='17' width='1' height='2'/%3E%3Crect x='25' y='23' width='1' height='2'/%3E%3Crect x='38' y='17' width='1' height='8'/%3E%3Crect x='18' y='18' width='1' height='1'/%3E%3Crect x='18' y='23' width='1' height='1'/%3E%3Crect x='23' y='18' width='1' height='1'/%3E%3Crect x='23' y='23' width='1' height='1'/%3E%3Crect x='15' y='19' width='1' height='4'/%3E%3Crect x='17' y='19' width='1' height='4'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='22' width='2' height='1'/%3E%3Crect x='24' y='19' width='1' height='4'/%3E%3Crect x='26' y='19' width='1' height='4'/%3E%3Crect x='19' y='20' width='1' height='2'/%3E%3Crect x='22' y='20' width='1' height='2'/%3E%3Crect x='34' y='31' width='2' height='1'/%3E%3Crect x='29' y='33' width='2' height='1'/%3E%3Crect x='31' y='34' width='2' height='1'/%3E%3Crect x='30' y='35' width='2' height='1'/%3E%3C/g%3E%3Cg fill='%231E1815'%3E%3Crect x='28' y='3' width='2' height='1'/%3E%3Crect x='30' y='4' width='2' height='1'/%3E%3Crect x='32' y='5' width='1' height='1'/%3E%3Crect x='33' y='6' width='2' height='1'/%3E%3Crect x='34' y='7' width='2' height='1'/%3E%3Crect x='35' y='8' width='1' height='1'/%3E%3Crect x='36' y='9' width='1' height='1'/%3E%3Crect x='37' y='10' width='1' height='2'/%3E%3Crect x='38' y='12' width='1' height='2'/%3E%3Crect x='3' y='28' width='1' height='2'/%3E%3Crect x='4' y='30' width='1' height='2'/%3E%3Crect x='5' y='32' width='1' height='1'/%3E%3Crect x='6' y='33' width='1' height='1'/%3E%3Crect x='6' y='34' width='2' height='1'/%3E%3Crect x='7' y='35' width='2' height='1'/%3E%3Crect x='9' y='36' width='1' height='1'/%3E%3Crect x='10' y='37' width='2' height='1'/%3E%3Crect x='12' y='38' width='2' height='1'/%3E%3C/g%3E%3Cg fill='%23544B45'%3E%3Crect x='27' y='5' width='1' height='1'/%3E%3Crect x='27' y='7' width='1' height='1'/%3E%3Crect x='28' y='6' width='1' height='1'/%3E%3Crect x='28' y='8' width='1' height='1'/%3E%3Crect x='30' y='7' width='1' height='1'/%3E%3Crect x='31' y='8' width='2' height='1'/%3E%3Crect x='31' y='11' width='2' height='1'/%3E%3Crect x='29' y='9' width='2' height='1'/%3E%3Crect x='29' y='12' width='2' height='1'/%3E%3Crect x='32' y='9' width='2' height='1'/%3E%3Crect x='27' y='10' width='2' height='1'/%3E%3Crect x='30' y='10' width='2' height='1'/%3E%3Crect x='30' y='13' width='2' height='1'/%3E%3Crect x='33' y='10' width='1' height='1'/%3E%3Crect x='33' y='13' width='1' height='1'/%3E%3Crect x='28' y='11' width='2' height='1'/%3E%3Crect x='32' y='12' width='1' height='1'/%3E%3Crect x='8' y='28' width='1' height='1'/%3E%3Crect x='8' y='31' width='1' height='1'/%3E%3Crect x='10' y='28' width='2' height='1'/%3E%3Crect x='10' y='31' width='2' height='1'/%3E%3Crect x='9' y='29' width='1' height='1'/%3E%3Crect x='11' y='29' width='2' height='1'/%3E%3Crect x='11' y='32' width='2' height='1'/%3E%3Crect x='9' y='30' width='2' height='1'/%3E%3Crect x='9' y='33' width='2' height='1'/%3E%3Crect x='12' y='30' width='2' height='1'/%3E%3Crect x='13' y='31' width='2' height='1'/%3E%3Crect x='8' y='32' width='2' height='1'/%3E%3Crect x='13' y='33' width='1' height='1'/%3E%3Crect x='13' y='35' width='1' height='1'/%3E%3Crect x='11' y='34' width='1' height='1'/%3E%3Crect x='14' y='34' width='1' height='1'/%3E%3Crect x='14' y='36' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%232E2723'%3E%3Crect x='30' y='6' width='2' height='1'/%3E%3Crect x='29' y='7' width='1' height='1'/%3E%3Crect x='29' y='10' width='1' height='1'/%3E%3Crect x='31' y='7' width='2' height='1'/%3E%3Crect x='29' y='8' width='2' height='1'/%3E%3Crect x='33' y='8' width='1' height='1'/%3E%3Crect x='33' y='11' width='1' height='1'/%3E%3Crect x='28' y='9' width='1' height='1'/%3E%3Crect x='31' y='9' width='1' height='1'/%3E%3Crect x='31' y='12' width='1' height='1'/%3E%3Crect x='34' y='9' width='1' height='2'/%3E%3Crect x='32' y='10' width='1' height='1'/%3E%3Crect x='27' y='11' width='1' height='1'/%3E%3Crect x='30' y='11' width='1' height='1'/%3E%3Crect x='10' y='29' width='1' height='1'/%3E%3Crect x='10' y='32' width='1' height='1'/%3E%3Crect x='8' y='30' width='1' height='1'/%3E%3Crect x='8' y='33' width='1' height='1'/%3E%3Crect x='11' y='30' width='1' height='1'/%3E%3Crect x='14' y='30' width='1' height='1'/%3E%3Crect x='7' y='31' width='1' height='2'/%3E%3Crect x='9' y='31' width='1' height='1'/%3E%3Crect x='12' y='31' width='1' height='1'/%3E%3Crect x='12' y='34' width='1' height='1'/%3E%3Crect x='13' y='32' width='1' height='1'/%3E%3Crect x='11' y='33' width='2' height='1'/%3E%3Crect x='9' y='34' width='2' height='1'/%3E%3Crect x='10' y='35' width='2' height='1'/%3E%3C/g%3E%3Cg fill='%230A0706'%3E%3Crect x='39' y='14' width='1' height='3'/%3E%3Crect x='39' y='25' width='1' height='3'/%3E%3Crect x='40' y='17' width='1' height='8'/%3E%3Crect x='38' y='28' width='1' height='2'/%3E%3Crect x='37' y='30' width='1' height='2'/%3E%3Crect x='36' y='32' width='1' height='1'/%3E%3Crect x='35' y='33' width='1' height='1'/%3E%3Crect x='34' y='34' width='2' height='1'/%3E%3Crect x='33' y='35' width='2' height='1'/%3E%3Crect x='32' y='36' width='1' height='1'/%3E%3Crect x='30' y='37' width='2' height='1'/%3E%3Crect x='28' y='38' width='2' height='1'/%3E%3Crect x='14' y='39' width='3' height='1'/%3E%3Crect x='25' y='39' width='3' height='1'/%3E%3Crect x='17' y='40' width='8' height='1'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.62'%3E%3Crect x='0' y='25' width='1' height='2'/%3E%3Crect x='41' y='25' width='1' height='2'/%3E%3Crect x='1' y='28' width='1' height='2'/%3E%3Crect x='40' y='28' width='1' height='2'/%3E%3Crect x='2' y='30' width='1' height='2'/%3E%3Crect x='39' y='30' width='1' height='2'/%3E%3Crect x='3' y='32' width='1' height='1'/%3E%3Crect x='38' y='32' width='1' height='1'/%3E%3Crect x='3' y='33' width='2' height='1'/%3E%3Crect x='37' y='33' width='2' height='1'/%3E%3Crect x='4' y='34' width='1' height='1'/%3E%3Crect x='37' y='34' width='1' height='1'/%3E%3Crect x='5' y='35' width='1' height='1'/%3E%3Crect x='36' y='35' width='1' height='1'/%3E%3Crect x='5' y='36' width='2' height='1'/%3E%3Crect x='35' y='36' width='2' height='1'/%3E%3Crect x='6' y='37' width='3' height='1'/%3E%3Crect x='33' y='37' width='3' height='1'/%3E%3Crect x='7' y='38' width='3' height='1'/%3E%3Crect x='32' y='38' width='3' height='1'/%3E%3Crect x='9' y='39' width='3' height='1'/%3E%3Crect x='30' y='39' width='3' height='1'/%3E%3Crect x='10' y='40' width='4' height='1'/%3E%3Crect x='28' y='40' width='4' height='1'/%3E%3Crect x='12' y='41' width='5' height='1'/%3E%3Crect x='25' y='41' width='5' height='1'/%3E%3Crect x='14' y='42' width='14' height='1'/%3E%3Crect x='17' y='43' width='8' height='1'/%3E%3C/g%3E%3C/svg%3E");
+  --compacto-tampa: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40' shape-rendering='crispEdges'%3E%3Cg fill='%23120D0B'%3E%3Crect x='16' y='9' width='1' height='1'/%3E%3Crect x='16' y='30' width='1' height='1'/%3E%3Crect x='23' y='9' width='1' height='1'/%3E%3Crect x='23' y='30' width='1' height='1'/%3E%3Crect x='17' y='10' width='6' height='1'/%3E%3Crect x='17' y='29' width='6' height='1'/%3E%3Crect x='15' y='11' width='2' height='1'/%3E%3Crect x='15' y='28' width='2' height='1'/%3E%3Crect x='23' y='11' width='2' height='1'/%3E%3Crect x='23' y='28' width='2' height='1'/%3E%3Crect x='13' y='12' width='2' height='1'/%3E%3Crect x='13' y='27' width='2' height='1'/%3E%3Crect x='25' y='12' width='2' height='1'/%3E%3Crect x='25' y='27' width='2' height='1'/%3E%3Crect x='12' y='13' width='2' height='1'/%3E%3Crect x='12' y='26' width='2' height='1'/%3E%3Crect x='26' y='13' width='2' height='1'/%3E%3Crect x='26' y='26' width='2' height='1'/%3E%3Crect x='12' y='14' width='1' height='1'/%3E%3Crect x='12' y='25' width='1' height='1'/%3E%3Crect x='27' y='14' width='1' height='1'/%3E%3Crect x='27' y='25' width='1' height='1'/%3E%3Crect x='11' y='15' width='1' height='2'/%3E%3Crect x='11' y='23' width='1' height='2'/%3E%3Crect x='28' y='15' width='1' height='2'/%3E%3Crect x='28' y='23' width='1' height='2'/%3E%3Crect x='9' y='16' width='1' height='1'/%3E%3Crect x='9' y='23' width='1' height='1'/%3E%3Crect x='30' y='16' width='1' height='1'/%3E%3Crect x='30' y='23' width='1' height='1'/%3E%3Crect x='10' y='17' width='1' height='6'/%3E%3Crect x='29' y='17' width='1' height='6'/%3E%3C/g%3E%3Cg fill='%23261E1B'%3E%3Crect x='17' y='9' width='6' height='1'/%3E%3Crect x='17' y='30' width='6' height='1'/%3E%3Crect x='14' y='10' width='3' height='1'/%3E%3Crect x='14' y='29' width='3' height='1'/%3E%3Crect x='23' y='10' width='3' height='1'/%3E%3Crect x='23' y='29' width='3' height='1'/%3E%3Crect x='13' y='11' width='2' height='1'/%3E%3Crect x='13' y='28' width='2' height='1'/%3E%3Crect x='25' y='11' width='2' height='1'/%3E%3Crect x='25' y='28' width='2' height='1'/%3E%3Crect x='12' y='12' width='1' height='1'/%3E%3Crect x='12' y='27' width='1' height='1'/%3E%3Crect x='27' y='12' width='1' height='1'/%3E%3Crect x='27' y='27' width='1' height='1'/%3E%3Crect x='11' y='13' width='1' height='1'/%3E%3Crect x='11' y='26' width='1' height='1'/%3E%3Crect x='28' y='13' width='1' height='1'/%3E%3Crect x='28' y='26' width='1' height='1'/%3E%3Crect x='10' y='14' width='2' height='1'/%3E%3Crect x='10' y='25' width='2' height='1'/%3E%3Crect x='28' y='14' width='2' height='1'/%3E%3Crect x='28' y='25' width='2' height='1'/%3E%3Crect x='10' y='15' width='1' height='2'/%3E%3Crect x='10' y='23' width='1' height='2'/%3E%3Crect x='29' y='15' width='1' height='2'/%3E%3Crect x='29' y='23' width='1' height='2'/%3E%3Crect x='9' y='17' width='1' height='6'/%3E%3Crect x='30' y='17' width='1' height='6'/%3E%3C/g%3E%3Cg fill='%23FFFAEB' fill-opacity='0.32'%3E%3Crect x='17' y='11' width='6' height='1'/%3E%3Crect x='15' y='12' width='2' height='1'/%3E%3Crect x='14' y='13' width='1' height='1'/%3E%3Crect x='13' y='14' width='1' height='1'/%3E%3Crect x='12' y='15' width='1' height='2'/%3E%3Crect x='11' y='17' width='1' height='6'/%3E%3C/g%3E%3Cg fill='%23FFFAEB' fill-opacity='0.14'%3E%3Crect x='16' y='13' width='3' height='1'/%3E%3Crect x='16' y='26' width='3' height='1'/%3E%3Crect x='21' y='13' width='3' height='1'/%3E%3Crect x='21' y='26' width='3' height='1'/%3E%3Crect x='15' y='14' width='1' height='1'/%3E%3Crect x='15' y='25' width='1' height='1'/%3E%3Crect x='24' y='14' width='1' height='1'/%3E%3Crect x='24' y='25' width='1' height='1'/%3E%3Crect x='14' y='15' width='1' height='1'/%3E%3Crect x='14' y='24' width='1' height='1'/%3E%3Crect x='25' y='15' width='1' height='1'/%3E%3Crect x='25' y='24' width='1' height='1'/%3E%3Crect x='13' y='16' width='1' height='3'/%3E%3Crect x='13' y='21' width='1' height='3'/%3E%3Crect x='26' y='16' width='1' height='3'/%3E%3Crect x='26' y='21' width='1' height='3'/%3E%3C/g%3E%3Cg fill='%233C1800' fill-opacity='0.34'%3E%3Crect x='18' y='14' width='4' height='1'/%3E%3Crect x='18' y='25' width='4' height='1'/%3E%3Crect x='16' y='15' width='2' height='1'/%3E%3Crect x='16' y='24' width='2' height='1'/%3E%3Crect x='22' y='15' width='2' height='1'/%3E%3Crect x='22' y='24' width='2' height='1'/%3E%3Crect x='15' y='16' width='1' height='2'/%3E%3Crect x='15' y='22' width='1' height='2'/%3E%3Crect x='24' y='16' width='1' height='2'/%3E%3Crect x='24' y='22' width='1' height='2'/%3E%3Crect x='14' y='18' width='1' height='4'/%3E%3Crect x='25' y='18' width='1' height='4'/%3E%3C/g%3E%3Cg fill='%23FFD48A'%3E%3Crect x='18' y='15' width='4' height='1'/%3E%3Crect x='16' y='16' width='2' height='1'/%3E%3Crect x='16' y='17' width='1' height='1'/%3E%3Crect x='15' y='18' width='1' height='4'/%3E%3C/g%3E%3Cg fill='%23F3A73C'%3E%3Crect x='18' y='16' width='6' height='1'/%3E%3Crect x='17' y='17' width='1' height='1'/%3E%3Crect x='22' y='17' width='2' height='1'/%3E%3Crect x='16' y='18' width='1' height='4'/%3E%3Crect x='23' y='18' width='1' height='4'/%3E%3Crect x='16' y='22' width='2' height='1'/%3E%3Crect x='22' y='22' width='1' height='1'/%3E%3Crect x='16' y='23' width='6' height='1'/%3E%3C/g%3E%3Cg fill='%23221C19'%3E%3Crect x='18' y='17' width='4' height='1'/%3E%3Crect x='18' y='22' width='4' height='1'/%3E%3Crect x='17' y='18' width='4' height='1'/%3E%3Crect x='22' y='18' width='1' height='1'/%3E%3Crect x='17' y='19' width='6' height='3'/%3E%3C/g%3E%3Cg fill='%23281200' fill-opacity='0.2'%3E%3Crect x='28' y='17' width='1' height='6'/%3E%3Crect x='27' y='23' width='1' height='2'/%3E%3Crect x='26' y='25' width='1' height='1'/%3E%3Crect x='25' y='26' width='1' height='1'/%3E%3Crect x='23' y='27' width='2' height='1'/%3E%3Crect x='17' y='28' width='6' height='1'/%3E%3C/g%3E%3Cg fill='%234E443E'%3E%3Crect x='21' y='18' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23C77A23'%3E%3Crect x='24' y='18' width='1' height='4'/%3E%3Crect x='23' y='22' width='1' height='1'/%3E%3Crect x='22' y='23' width='2' height='1'/%3E%3Crect x='18' y='24' width='4' height='1'/%3E%3C/g%3E%3C/svg%3E");
+}
+/* compactos:fim */
 @media (max-width: 899.98px) {
-  /* compactos:inicio (gravado pelo dev/compactos.py: o desenho mora la, nao editar aqui) */
-  .app {
-    --compacto-base: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='42' height='44' viewBox='0 0 42 44' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='17' y='0' width='8' height='1'/%3E%3Crect x='17' y='41' width='8' height='1'/%3E%3Crect x='14' y='1' width='3' height='1'/%3E%3Crect x='14' y='40' width='3' height='1'/%3E%3Crect x='25' y='1' width='3' height='1'/%3E%3Crect x='25' y='40' width='3' height='1'/%3E%3Crect x='12' y='2' width='2' height='1'/%3E%3Crect x='12' y='39' width='2' height='1'/%3E%3Crect x='28' y='2' width='2' height='1'/%3E%3Crect x='28' y='39' width='2' height='1'/%3E%3Crect x='10' y='3' width='2' height='1'/%3E%3Crect x='10' y='38' width='2' height='1'/%3E%3Crect x='30' y='3' width='2' height='1'/%3E%3Crect x='30' y='38' width='2' height='1'/%3E%3Crect x='9' y='4' width='1' height='1'/%3E%3Crect x='9' y='37' width='1' height='1'/%3E%3Crect x='32' y='4' width='1' height='1'/%3E%3Crect x='32' y='37' width='1' height='1'/%3E%3Crect x='7' y='5' width='2' height='1'/%3E%3Crect x='7' y='36' width='2' height='1'/%3E%3Crect x='33' y='5' width='2' height='1'/%3E%3Crect x='33' y='36' width='2' height='1'/%3E%3Crect x='6' y='6' width='1' height='1'/%3E%3Crect x='6' y='35' width='1' height='1'/%3E%3Crect x='35' y='6' width='1' height='1'/%3E%3Crect x='35' y='35' width='1' height='1'/%3E%3Crect x='5' y='7' width='1' height='2'/%3E%3Crect x='5' y='33' width='1' height='2'/%3E%3Crect x='36' y='7' width='1' height='2'/%3E%3Crect x='36' y='33' width='1' height='2'/%3E%3Crect x='4' y='9' width='1' height='1'/%3E%3Crect x='4' y='32' width='1' height='1'/%3E%3Crect x='37' y='9' width='1' height='1'/%3E%3Crect x='37' y='32' width='1' height='1'/%3E%3Crect x='3' y='10' width='1' height='2'/%3E%3Crect x='3' y='30' width='1' height='2'/%3E%3Crect x='38' y='10' width='1' height='2'/%3E%3Crect x='38' y='30' width='1' height='2'/%3E%3Crect x='2' y='12' width='1' height='2'/%3E%3Crect x='2' y='28' width='1' height='2'/%3E%3Crect x='39' y='12' width='1' height='2'/%3E%3Crect x='39' y='28' width='1' height='2'/%3E%3Crect x='1' y='14' width='1' height='3'/%3E%3Crect x='1' y='25' width='1' height='3'/%3E%3Crect x='40' y='14' width='1' height='3'/%3E%3Crect x='40' y='25' width='1' height='3'/%3E%3Crect x='0' y='17' width='1' height='8'/%3E%3Crect x='41' y='17' width='1' height='8'/%3E%3C/g%3E%3Cg fill='%23403631'%3E%3Crect x='17' y='1' width='8' height='1'/%3E%3Crect x='14' y='2' width='3' height='1'/%3E%3Crect x='25' y='2' width='3' height='1'/%3E%3Crect x='12' y='3' width='2' height='1'/%3E%3Crect x='10' y='4' width='2' height='1'/%3E%3Crect x='9' y='5' width='1' height='1'/%3E%3Crect x='7' y='6' width='2' height='1'/%3E%3Crect x='6' y='7' width='2' height='1'/%3E%3Crect x='6' y='8' width='1' height='1'/%3E%3Crect x='5' y='9' width='1' height='1'/%3E%3Crect x='4' y='10' width='1' height='2'/%3E%3Crect x='3' y='12' width='1' height='2'/%3E%3Crect x='2' y='14' width='1' height='3'/%3E%3Crect x='2' y='25' width='1' height='3'/%3E%3Crect x='1' y='17' width='1' height='8'/%3E%3C/g%3E%3Cg fill='%23261E1B'%3E%3Crect x='17' y='2' width='8' height='1'/%3E%3Crect x='17' y='4' width='8' height='1'/%3E%3Crect x='17' y='6' width='8' height='1'/%3E%3Crect x='17' y='8' width='8' height='1'/%3E%3Crect x='17' y='33' width='8' height='1'/%3E%3Crect x='17' y='35' width='8' height='1'/%3E%3Crect x='17' y='37' width='8' height='1'/%3E%3Crect x='17' y='39' width='8' height='1'/%3E%3Crect x='14' y='3' width='3' height='1'/%3E%3Crect x='14' y='5' width='3' height='1'/%3E%3Crect x='14' y='7' width='3' height='1'/%3E%3Crect x='14' y='38' width='3' height='1'/%3E%3Crect x='25' y='3' width='3' height='1'/%3E%3Crect x='25' y='34' width='3' height='1'/%3E%3Crect x='25' y='36' width='3' height='1'/%3E%3Crect x='25' y='38' width='3' height='1'/%3E%3Crect x='12' y='4' width='2' height='1'/%3E%3Crect x='12' y='6' width='2' height='1'/%3E%3Crect x='12' y='11' width='2' height='1'/%3E%3Crect x='12' y='37' width='2' height='1'/%3E%3Crect x='28' y='4' width='2' height='1'/%3E%3Crect x='28' y='30' width='2' height='1'/%3E%3Crect x='28' y='35' width='2' height='1'/%3E%3Crect x='28' y='37' width='2' height='1'/%3E%3Crect x='10' y='5' width='2' height='1'/%3E%3Crect x='10' y='10' width='2' height='1'/%3E%3Crect x='10' y='13' width='2' height='1'/%3E%3Crect x='10' y='36' width='2' height='1'/%3E%3Crect x='25' y='5' width='2' height='1'/%3E%3Crect x='25' y='7' width='2' height='1'/%3E%3Crect x='30' y='5' width='2' height='1'/%3E%3Crect x='30' y='28' width='2' height='1'/%3E%3Crect x='30' y='31' width='2' height='1'/%3E%3Crect x='30' y='36' width='2' height='1'/%3E%3Crect x='9' y='6' width='1' height='1'/%3E%3Crect x='9' y='12' width='1' height='1'/%3E%3Crect x='9' y='15' width='1' height='2'/%3E%3Crect x='9' y='25' width='1' height='2'/%3E%3Crect x='9' y='35' width='1' height='1'/%3E%3Crect x='29' y='6' width='1' height='1'/%3E%3Crect x='29' y='14' width='1' height='1'/%3E%3Crect x='29' y='18' width='1' height='6'/%3E%3Crect x='29' y='27' width='1' height='1'/%3E%3Crect x='32' y='6' width='1' height='1'/%3E%3Crect x='32' y='15' width='1' height='2'/%3E%3Crect x='32' y='25' width='1' height='2'/%3E%3Crect x='32' y='29' width='1' height='1'/%3E%3Crect x='32' y='35' width='1' height='1'/%3E%3Crect x='8' y='7' width='1' height='1'/%3E%3Crect x='8' y='10' width='1' height='1'/%3E%3Crect x='8' y='13' width='1' height='1'/%3E%3Crect x='8' y='18' width='1' height='6'/%3E%3Crect x='8' y='34' width='1' height='1'/%3E%3Crect x='11' y='7' width='1' height='1'/%3E%3Crect x='11' y='16' width='1' height='2'/%3E%3Crect x='11' y='24' width='1' height='2'/%3E%3Crect x='33' y='7' width='1' height='1'/%3E%3Crect x='33' y='18' width='1' height='6'/%3E%3Crect x='33' y='28' width='1' height='1'/%3E%3Crect x='33' y='31' width='1' height='1'/%3E%3Crect x='33' y='34' width='1' height='1'/%3E%3Crect x='7' y='8' width='1' height='1'/%3E%3Crect x='7' y='11' width='1' height='1'/%3E%3Crect x='7' y='15' width='1' height='2'/%3E%3Crect x='7' y='25' width='1' height='2'/%3E%3Crect x='7' y='30' width='1' height='1'/%3E%3Crect x='7' y='33' width='1' height='1'/%3E%3Crect x='9' y='8' width='2' height='1'/%3E%3Crect x='9' y='11' width='2' height='1'/%3E%3Crect x='13' y='8' width='2' height='1'/%3E%3Crect x='13' y='10' width='2' height='1'/%3E%3Crect x='27' y='8' width='1' height='1'/%3E%3Crect x='27' y='15' width='1' height='1'/%3E%3Crect x='27' y='19' width='1' height='4'/%3E%3Crect x='27' y='26' width='1' height='1'/%3E%3Crect x='34' y='8' width='1' height='1'/%3E%3Crect x='34' y='11' width='1' height='1'/%3E%3Crect x='34' y='15' width='1' height='2'/%3E%3Crect x='34' y='25' width='1' height='2'/%3E%3Crect x='34' y='30' width='1' height='1'/%3E%3Crect x='34' y='33' width='1' height='1'/%3E%3Crect x='6' y='9' width='1' height='1'/%3E%3Crect x='6' y='12' width='1' height='2'/%3E%3Crect x='6' y='17' width='1' height='8'/%3E%3Crect x='6' y='28' width='1' height='2'/%3E%3Crect x='6' y='32' width='1' height='1'/%3E%3Crect x='8' y='9' width='2' height='1'/%3E%3Crect x='8' y='17' width='2' height='1'/%3E%3Crect x='8' y='24' width='2' height='1'/%3E%3Crect x='11' y='9' width='2' height='1'/%3E%3Crect x='11' y='12' width='2' height='1'/%3E%3Crect x='11' y='15' width='2' height='1'/%3E%3Crect x='11' y='26' width='2' height='1'/%3E%3Crect x='15' y='9' width='3' height='1'/%3E%3Crect x='15' y='11' width='3' height='1'/%3E%3Crect x='15' y='30' width='3' height='1'/%3E%3Crect x='15' y='32' width='3' height='1'/%3E%3Crect x='24' y='9' width='3' height='1'/%3E%3Crect x='24' y='11' width='3' height='1'/%3E%3Crect x='24' y='30' width='3' height='1'/%3E%3Crect x='24' y='32' width='3' height='1'/%3E%3Crect x='35' y='9' width='1' height='1'/%3E%3Crect x='35' y='12' width='1' height='2'/%3E%3Crect x='35' y='17' width='1' height='8'/%3E%3Crect x='35' y='28' width='1' height='2'/%3E%3Crect x='35' y='32' width='1' height='1'/%3E%3Crect x='5' y='10' width='1' height='2'/%3E%3Crect x='5' y='14' width='1' height='3'/%3E%3Crect x='5' y='25' width='1' height='3'/%3E%3Crect x='5' y='30' width='1' height='2'/%3E%3Crect x='18' y='10' width='6' height='1'/%3E%3Crect x='18' y='12' width='6' height='1'/%3E%3Crect x='18' y='14' width='6' height='1'/%3E%3Crect x='18' y='27' width='6' height='1'/%3E%3Crect x='18' y='29' width='6' height='1'/%3E%3Crect x='18' y='31' width='6' height='1'/%3E%3Crect x='36' y='10' width='1' height='2'/%3E%3Crect x='36' y='14' width='1' height='3'/%3E%3Crect x='36' y='25' width='1' height='3'/%3E%3Crect x='36' y='30' width='1' height='2'/%3E%3Crect x='4' y='12' width='1' height='2'/%3E%3Crect x='4' y='17' width='1' height='8'/%3E%3Crect x='4' y='28' width='1' height='2'/%3E%3Crect x='14' y='12' width='2' height='1'/%3E%3Crect x='14' y='18' width='2' height='1'/%3E%3Crect x='14' y='23' width='2' height='1'/%3E%3Crect x='14' y='29' width='2' height='1'/%3E%3Crect x='26' y='12' width='2' height='1'/%3E%3Crect x='26' y='18' width='2' height='1'/%3E%3Crect x='26' y='23' width='2' height='1'/%3E%3Crect x='26' y='29' width='2' height='1'/%3E%3Crect x='37' y='12' width='1' height='2'/%3E%3Crect x='37' y='17' width='1' height='8'/%3E%3Crect x='37' y='28' width='1' height='2'/%3E%3Crect x='13' y='13' width='1' height='1'/%3E%3Crect x='13' y='16' width='1' height='2'/%3E%3Crect x='13' y='24' width='1' height='2'/%3E%3Crect x='13' y='28' width='1' height='1'/%3E%3Crect x='16' y='13' width='2' height='1'/%3E%3Crect x='16' y='28' width='2' height='1'/%3E%3Crect x='24' y='13' width='2' height='1'/%3E%3Crect x='24' y='28' width='2' height='1'/%3E%3Crect x='28' y='13' width='1' height='1'/%3E%3Crect x='28' y='16' width='1' height='2'/%3E%3Crect x='28' y='24' width='1' height='2'/%3E%3Crect x='28' y='28' width='1' height='1'/%3E%3Crect x='3' y='14' width='1' height='3'/%3E%3Crect x='3' y='25' width='1' height='3'/%3E%3Crect x='7' y='14' width='2' height='1'/%3E%3Crect x='7' y='27' width='2' height='1'/%3E%3Crect x='10' y='14' width='1' height='1'/%3E%3Crect x='10' y='18' width='1' height='6'/%3E%3Crect x='10' y='27' width='1' height='1'/%3E%3Crect x='12' y='14' width='1' height='1'/%3E%3Crect x='12' y='18' width='1' height='6'/%3E%3Crect x='12' y='27' width='1' height='1'/%3E%3Crect x='12' y='35' width='1' height='1'/%3E%3Crect x='15' y='14' width='1' height='1'/%3E%3Crect x='15' y='17' width='1' height='1'/%3E%3Crect x='15' y='24' width='1' height='1'/%3E%3Crect x='15' y='27' width='1' height='1'/%3E%3Crect x='26' y='14' width='1' height='1'/%3E%3Crect x='26' y='17' width='1' height='1'/%3E%3Crect x='26' y='24' width='1' height='1'/%3E%3Crect x='26' y='27' width='1' height='1'/%3E%3Crect x='31' y='14' width='1' height='1'/%3E%3Crect x='31' y='18' width='1' height='6'/%3E%3Crect x='31' y='27' width='1' height='1'/%3E%3Crect x='33' y='14' width='2' height='1'/%3E%3Crect x='33' y='27' width='2' height='1'/%3E%3Crect x='38' y='14' width='1' height='3'/%3E%3Crect x='38' y='25' width='1' height='3'/%3E%3Crect x='14' y='15' width='1' height='1'/%3E%3Crect x='14' y='19' width='1' height='4'/%3E%3Crect x='14' y='26' width='1' height='1'/%3E%3Crect x='14' y='33' width='1' height='1'/%3E%3Crect x='17' y='15' width='2' height='1'/%3E%3Crect x='17' y='17' width='2' height='1'/%3E%3Crect x='17' y='24' width='2' height='1'/%3E%3Crect x='17' y='26' width='2' height='1'/%3E%3Crect x='23' y='15' width='2' height='1'/%3E%3Crect x='23' y='17' width='2' height='1'/%3E%3Crect x='23' y='24' width='2' height='1'/%3E%3Crect x='23' y='26' width='2' height='1'/%3E%3Crect x='29' y='15' width='2' height='1'/%3E%3Crect x='29' y='26' width='2' height='1'/%3E%3Crect x='29' y='29' width='2' height='1'/%3E%3Crect x='29' y='32' width='2' height='1'/%3E%3Crect x='16' y='16' width='1' height='1'/%3E%3Crect x='16' y='19' width='1' height='4'/%3E%3Crect x='16' y='25' width='1' height='1'/%3E%3Crect x='19' y='16' width='4' height='1'/%3E%3Crect x='19' y='18' width='4' height='1'/%3E%3Crect x='19' y='23' width='4' height='1'/%3E%3Crect x='19' y='25' width='4' height='1'/%3E%3Crect x='25' y='16' width='1' height='1'/%3E%3Crect x='25' y='19' width='1' height='4'/%3E%3Crect x='25' y='25' width='1' height='1'/%3E%3Crect x='30' y='16' width='1' height='2'/%3E%3Crect x='30' y='24' width='1' height='2'/%3E%3Crect x='30' y='34' width='1' height='1'/%3E%3Crect x='2' y='17' width='1' height='8'/%3E%3Crect x='32' y='17' width='2' height='1'/%3E%3Crect x='32' y='24' width='2' height='1'/%3E%3Crect x='32' y='32' width='2' height='1'/%3E%3Crect x='39' y='17' width='1' height='8'/%3E%3Crect x='17' y='18' width='1' height='1'/%3E%3Crect x='17' y='23' width='1' height='1'/%3E%3Crect x='24' y='18' width='1' height='1'/%3E%3Crect x='24' y='23' width='1' height='1'/%3E%3Crect x='18' y='19' width='2' height='1'/%3E%3Crect x='18' y='22' width='2' height='1'/%3E%3Crect x='22' y='19' width='2' height='1'/%3E%3Crect x='22' y='22' width='2' height='1'/%3E%3Crect x='18' y='20' width='1' height='2'/%3E%3Crect x='20' y='20' width='2' height='2'/%3E%3Crect x='23' y='20' width='1' height='2'/%3E%3Crect x='31' y='30' width='2' height='1'/%3E%3Crect x='31' y='33' width='2' height='1'/%3E%3Crect x='27' y='31' width='2' height='1'/%3E%3Crect x='27' y='33' width='2' height='1'/%3E%3Crect x='15' y='34' width='2' height='1'/%3E%3Crect x='15' y='36' width='2' height='1'/%3E%3C/g%3E%3Cg fill='%23120D0B'%3E%3Crect x='17' y='3' width='8' height='1'/%3E%3Crect x='17' y='5' width='8' height='1'/%3E%3Crect x='17' y='7' width='8' height='1'/%3E%3Crect x='17' y='34' width='8' height='1'/%3E%3Crect x='17' y='36' width='8' height='1'/%3E%3Crect x='17' y='38' width='8' height='1'/%3E%3Crect x='14' y='4' width='3' height='1'/%3E%3Crect x='14' y='6' width='3' height='1'/%3E%3Crect x='14' y='35' width='3' height='1'/%3E%3Crect x='14' y='37' width='3' height='1'/%3E%3Crect x='25' y='4' width='3' height='1'/%3E%3Crect x='25' y='6' width='3' height='1'/%3E%3Crect x='25' y='35' width='3' height='1'/%3E%3Crect x='25' y='37' width='3' height='1'/%3E%3Crect x='12' y='5' width='2' height='1'/%3E%3Crect x='12' y='7' width='2' height='1'/%3E%3Crect x='12' y='36' width='2' height='1'/%3E%3Crect x='28' y='5' width='2' height='1'/%3E%3Crect x='28' y='34' width='2' height='1'/%3E%3Crect x='28' y='36' width='2' height='1'/%3E%3Crect x='10' y='6' width='2' height='1'/%3E%3Crect x='9' y='7' width='2' height='1'/%3E%3Crect x='28' y='7' width='1' height='1'/%3E%3Crect x='28' y='12' width='1' height='1'/%3E%3Crect x='28' y='15' width='1' height='1'/%3E%3Crect x='28' y='18' width='1' height='6'/%3E%3Crect x='28' y='26' width='1' height='1'/%3E%3Crect x='28' y='29' width='1' height='1'/%3E%3Crect x='8' y='8' width='1' height='1'/%3E%3Crect x='8' y='11' width='1' height='1'/%3E%3Crect x='8' y='15' width='1' height='2'/%3E%3Crect x='8' y='25' width='1' height='2'/%3E%3Crect x='11' y='8' width='2' height='1'/%3E%3Crect x='15' y='8' width='2' height='1'/%3E%3Crect x='15' y='15' width='2' height='1'/%3E%3Crect x='15' y='26' width='2' height='1'/%3E%3Crect x='15' y='33' width='2' height='1'/%3E%3Crect x='25' y='8' width='2' height='1'/%3E%3Crect x='25' y='15' width='2' height='1'/%3E%3Crect x='25' y='26' width='2' height='1'/%3E%3Crect x='25' y='33' width='2' height='1'/%3E%3Crect x='7' y='9' width='1' height='1'/%3E%3Crect x='7' y='13' width='1' height='1'/%3E%3Crect x='7' y='17' width='1' height='8'/%3E%3Crect x='7' y='28' width='1' height='1'/%3E%3Crect x='10' y='9' width='1' height='1'/%3E%3Crect x='10' y='12' width='1' height='1'/%3E%3Crect x='10' y='15' width='1' height='3'/%3E%3Crect x='10' y='24' width='1' height='3'/%3E%3Crect x='13' y='9' width='2' height='1'/%3E%3Crect x='13' y='14' width='2' height='1'/%3E%3Crect x='13' y='27' width='2' height='1'/%3E%3Crect x='18' y='9' width='6' height='1'/%3E%3Crect x='18' y='11' width='6' height='1'/%3E%3Crect x='18' y='13' width='6' height='1'/%3E%3Crect x='18' y='28' width='6' height='1'/%3E%3Crect x='18' y='30' width='6' height='1'/%3E%3Crect x='18' y='32' width='6' height='1'/%3E%3Crect x='27' y='9' width='1' height='1'/%3E%3Crect x='27' y='17' width='1' height='1'/%3E%3Crect x='27' y='24' width='1' height='1'/%3E%3Crect x='27' y='30' width='1' height='1'/%3E%3Crect x='6' y='10' width='2' height='1'/%3E%3Crect x='9' y='10' width='1' height='1'/%3E%3Crect x='9' y='13' width='1' height='2'/%3E%3Crect x='9' y='18' width='1' height='6'/%3E%3Crect x='9' y='27' width='1' height='2'/%3E%3Crect x='12' y='10' width='1' height='1'/%3E%3Crect x='12' y='13' width='1' height='1'/%3E%3Crect x='12' y='16' width='1' height='2'/%3E%3Crect x='12' y='24' width='1' height='2'/%3E%3Crect x='12' y='28' width='1' height='1'/%3E%3Crect x='15' y='10' width='3' height='1'/%3E%3Crect x='15' y='31' width='3' height='1'/%3E%3Crect x='24' y='10' width='3' height='1'/%3E%3Crect x='24' y='31' width='3' height='1'/%3E%3Crect x='35' y='10' width='1' height='2'/%3E%3Crect x='35' y='14' width='1' height='3'/%3E%3Crect x='35' y='25' width='1' height='3'/%3E%3Crect x='35' y='30' width='1' height='1'/%3E%3Crect x='6' y='11' width='1' height='1'/%3E%3Crect x='6' y='14' width='1' height='3'/%3E%3Crect x='6' y='25' width='1' height='3'/%3E%3Crect x='6' y='30' width='1' height='2'/%3E%3Crect x='11' y='11' width='1' height='1'/%3E%3Crect x='11' y='14' width='1' height='1'/%3E%3Crect x='11' y='18' width='1' height='6'/%3E%3Crect x='11' y='27' width='1' height='1'/%3E%3Crect x='14' y='11' width='1' height='1'/%3E%3Crect x='14' y='17' width='1' height='1'/%3E%3Crect x='14' y='24' width='1' height='1'/%3E%3Crect x='14' y='32' width='1' height='1'/%3E%3Crect x='5' y='12' width='1' height='2'/%3E%3Crect x='5' y='17' width='1' height='8'/%3E%3Crect x='5' y='28' width='1' height='2'/%3E%3Crect x='7' y='12' width='2' height='1'/%3E%3Crect x='7' y='29' width='2' height='1'/%3E%3Crect x='13' y='12' width='1' height='1'/%3E%3Crect x='13' y='15' width='1' height='1'/%3E%3Crect x='13' y='18' width='1' height='6'/%3E%3Crect x='13' y='26' width='1' height='1'/%3E%3Crect x='13' y='29' width='1' height='1'/%3E%3Crect x='13' y='34' width='1' height='1'/%3E%3Crect x='16' y='12' width='2' height='1'/%3E%3Crect x='16' y='14' width='2' height='1'/%3E%3Crect x='16' y='27' width='2' height='1'/%3E%3Crect x='16' y='29' width='2' height='1'/%3E%3Crect x='24' y='12' width='2' height='1'/%3E%3Crect x='24' y='14' width='2' height='1'/%3E%3Crect x='24' y='27' width='2' height='1'/%3E%3Crect x='24' y='29' width='2' height='1'/%3E%3Crect x='33' y='12' width='2' height='1'/%3E%3Crect x='33' y='29' width='2' height='1'/%3E%3Crect x='36' y='12' width='1' height='2'/%3E%3Crect x='36' y='17' width='1' height='8'/%3E%3Crect x='36' y='28' width='1' height='2'/%3E%3Crect x='14' y='13' width='2' height='1'/%3E%3Crect x='14' y='16' width='2' height='1'/%3E%3Crect x='14' y='25' width='2' height='1'/%3E%3Crect x='14' y='28' width='2' height='1'/%3E%3Crect x='26' y='13' width='2' height='1'/%3E%3Crect x='26' y='16' width='2' height='1'/%3E%3Crect x='26' y='25' width='2' height='1'/%3E%3Crect x='26' y='28' width='2' height='1'/%3E%3Crect x='29' y='13' width='1' height='1'/%3E%3Crect x='29' y='16' width='1' height='2'/%3E%3Crect x='29' y='24' width='1' height='2'/%3E%3Crect x='29' y='28' width='1' height='1'/%3E%3Crect x='29' y='31' width='1' height='1'/%3E%3Crect x='32' y='13' width='1' height='2'/%3E%3Crect x='32' y='18' width='1' height='6'/%3E%3Crect x='32' y='27' width='1' height='2'/%3E%3Crect x='32' y='31' width='1' height='1'/%3E%3Crect x='34' y='13' width='1' height='1'/%3E%3Crect x='34' y='17' width='1' height='8'/%3E%3Crect x='34' y='28' width='1' height='1'/%3E%3Crect x='34' y='32' width='1' height='1'/%3E%3Crect x='4' y='14' width='1' height='3'/%3E%3Crect x='4' y='25' width='1' height='3'/%3E%3Crect x='27' y='14' width='2' height='1'/%3E%3Crect x='27' y='27' width='2' height='1'/%3E%3Crect x='27' y='32' width='2' height='1'/%3E%3Crect x='30' y='14' width='1' height='1'/%3E%3Crect x='30' y='18' width='1' height='6'/%3E%3Crect x='30' y='27' width='1' height='1'/%3E%3Crect x='30' y='30' width='1' height='1'/%3E%3Crect x='37' y='14' width='1' height='3'/%3E%3Crect x='37' y='25' width='1' height='3'/%3E%3Crect x='19' y='15' width='4' height='1'/%3E%3Crect x='19' y='17' width='4' height='1'/%3E%3Crect x='19' y='24' width='4' height='1'/%3E%3Crect x='19' y='26' width='4' height='1'/%3E%3Crect x='31' y='15' width='1' height='3'/%3E%3Crect x='31' y='24' width='1' height='3'/%3E%3Crect x='31' y='29' width='1' height='1'/%3E%3Crect x='31' y='32' width='1' height='1'/%3E%3Crect x='33' y='15' width='1' height='2'/%3E%3Crect x='33' y='25' width='1' height='2'/%3E%3Crect x='33' y='30' width='1' height='1'/%3E%3Crect x='33' y='33' width='1' height='1'/%3E%3Crect x='17' y='16' width='2' height='1'/%3E%3Crect x='17' y='25' width='2' height='1'/%3E%3Crect x='23' y='16' width='2' height='1'/%3E%3Crect x='23' y='25' width='2' height='1'/%3E%3Crect x='3' y='17' width='1' height='8'/%3E%3Crect x='16' y='17' width='1' height='2'/%3E%3Crect x='16' y='23' width='1' height='2'/%3E%3Crect x='25' y='17' width='1' height='2'/%3E%3Crect x='25' y='23' width='1' height='2'/%3E%3Crect x='38' y='17' width='1' height='8'/%3E%3Crect x='18' y='18' width='1' height='1'/%3E%3Crect x='18' y='23' width='1' height='1'/%3E%3Crect x='23' y='18' width='1' height='1'/%3E%3Crect x='23' y='23' width='1' height='1'/%3E%3Crect x='15' y='19' width='1' height='4'/%3E%3Crect x='17' y='19' width='1' height='4'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='22' width='2' height='1'/%3E%3Crect x='24' y='19' width='1' height='4'/%3E%3Crect x='26' y='19' width='1' height='4'/%3E%3Crect x='19' y='20' width='1' height='2'/%3E%3Crect x='22' y='20' width='1' height='2'/%3E%3Crect x='34' y='31' width='2' height='1'/%3E%3Crect x='29' y='33' width='2' height='1'/%3E%3Crect x='31' y='34' width='2' height='1'/%3E%3Crect x='30' y='35' width='2' height='1'/%3E%3C/g%3E%3Cg fill='%231E1815'%3E%3Crect x='28' y='3' width='2' height='1'/%3E%3Crect x='30' y='4' width='2' height='1'/%3E%3Crect x='32' y='5' width='1' height='1'/%3E%3Crect x='33' y='6' width='2' height='1'/%3E%3Crect x='34' y='7' width='2' height='1'/%3E%3Crect x='35' y='8' width='1' height='1'/%3E%3Crect x='36' y='9' width='1' height='1'/%3E%3Crect x='37' y='10' width='1' height='2'/%3E%3Crect x='38' y='12' width='1' height='2'/%3E%3Crect x='3' y='28' width='1' height='2'/%3E%3Crect x='4' y='30' width='1' height='2'/%3E%3Crect x='5' y='32' width='1' height='1'/%3E%3Crect x='6' y='33' width='1' height='1'/%3E%3Crect x='6' y='34' width='2' height='1'/%3E%3Crect x='7' y='35' width='2' height='1'/%3E%3Crect x='9' y='36' width='1' height='1'/%3E%3Crect x='10' y='37' width='2' height='1'/%3E%3Crect x='12' y='38' width='2' height='1'/%3E%3C/g%3E%3Cg fill='%23544B45'%3E%3Crect x='27' y='5' width='1' height='1'/%3E%3Crect x='27' y='7' width='1' height='1'/%3E%3Crect x='28' y='6' width='1' height='1'/%3E%3Crect x='28' y='8' width='1' height='1'/%3E%3Crect x='30' y='7' width='1' height='1'/%3E%3Crect x='31' y='8' width='2' height='1'/%3E%3Crect x='31' y='11' width='2' height='1'/%3E%3Crect x='29' y='9' width='2' height='1'/%3E%3Crect x='29' y='12' width='2' height='1'/%3E%3Crect x='32' y='9' width='2' height='1'/%3E%3Crect x='27' y='10' width='2' height='1'/%3E%3Crect x='30' y='10' width='2' height='1'/%3E%3Crect x='30' y='13' width='2' height='1'/%3E%3Crect x='33' y='10' width='1' height='1'/%3E%3Crect x='33' y='13' width='1' height='1'/%3E%3Crect x='28' y='11' width='2' height='1'/%3E%3Crect x='32' y='12' width='1' height='1'/%3E%3Crect x='8' y='28' width='1' height='1'/%3E%3Crect x='8' y='31' width='1' height='1'/%3E%3Crect x='10' y='28' width='2' height='1'/%3E%3Crect x='10' y='31' width='2' height='1'/%3E%3Crect x='9' y='29' width='1' height='1'/%3E%3Crect x='11' y='29' width='2' height='1'/%3E%3Crect x='11' y='32' width='2' height='1'/%3E%3Crect x='9' y='30' width='2' height='1'/%3E%3Crect x='9' y='33' width='2' height='1'/%3E%3Crect x='12' y='30' width='2' height='1'/%3E%3Crect x='13' y='31' width='2' height='1'/%3E%3Crect x='8' y='32' width='2' height='1'/%3E%3Crect x='13' y='33' width='1' height='1'/%3E%3Crect x='13' y='35' width='1' height='1'/%3E%3Crect x='11' y='34' width='1' height='1'/%3E%3Crect x='14' y='34' width='1' height='1'/%3E%3Crect x='14' y='36' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%232E2723'%3E%3Crect x='30' y='6' width='2' height='1'/%3E%3Crect x='29' y='7' width='1' height='1'/%3E%3Crect x='29' y='10' width='1' height='1'/%3E%3Crect x='31' y='7' width='2' height='1'/%3E%3Crect x='29' y='8' width='2' height='1'/%3E%3Crect x='33' y='8' width='1' height='1'/%3E%3Crect x='33' y='11' width='1' height='1'/%3E%3Crect x='28' y='9' width='1' height='1'/%3E%3Crect x='31' y='9' width='1' height='1'/%3E%3Crect x='31' y='12' width='1' height='1'/%3E%3Crect x='34' y='9' width='1' height='2'/%3E%3Crect x='32' y='10' width='1' height='1'/%3E%3Crect x='27' y='11' width='1' height='1'/%3E%3Crect x='30' y='11' width='1' height='1'/%3E%3Crect x='10' y='29' width='1' height='1'/%3E%3Crect x='10' y='32' width='1' height='1'/%3E%3Crect x='8' y='30' width='1' height='1'/%3E%3Crect x='8' y='33' width='1' height='1'/%3E%3Crect x='11' y='30' width='1' height='1'/%3E%3Crect x='14' y='30' width='1' height='1'/%3E%3Crect x='7' y='31' width='1' height='2'/%3E%3Crect x='9' y='31' width='1' height='1'/%3E%3Crect x='12' y='31' width='1' height='1'/%3E%3Crect x='12' y='34' width='1' height='1'/%3E%3Crect x='13' y='32' width='1' height='1'/%3E%3Crect x='11' y='33' width='2' height='1'/%3E%3Crect x='9' y='34' width='2' height='1'/%3E%3Crect x='10' y='35' width='2' height='1'/%3E%3C/g%3E%3Cg fill='%230A0706'%3E%3Crect x='39' y='14' width='1' height='3'/%3E%3Crect x='39' y='25' width='1' height='3'/%3E%3Crect x='40' y='17' width='1' height='8'/%3E%3Crect x='38' y='28' width='1' height='2'/%3E%3Crect x='37' y='30' width='1' height='2'/%3E%3Crect x='36' y='32' width='1' height='1'/%3E%3Crect x='35' y='33' width='1' height='1'/%3E%3Crect x='34' y='34' width='2' height='1'/%3E%3Crect x='33' y='35' width='2' height='1'/%3E%3Crect x='32' y='36' width='1' height='1'/%3E%3Crect x='30' y='37' width='2' height='1'/%3E%3Crect x='28' y='38' width='2' height='1'/%3E%3Crect x='14' y='39' width='3' height='1'/%3E%3Crect x='25' y='39' width='3' height='1'/%3E%3Crect x='17' y='40' width='8' height='1'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.62'%3E%3Crect x='0' y='25' width='1' height='2'/%3E%3Crect x='41' y='25' width='1' height='2'/%3E%3Crect x='1' y='28' width='1' height='2'/%3E%3Crect x='40' y='28' width='1' height='2'/%3E%3Crect x='2' y='30' width='1' height='2'/%3E%3Crect x='39' y='30' width='1' height='2'/%3E%3Crect x='3' y='32' width='1' height='1'/%3E%3Crect x='38' y='32' width='1' height='1'/%3E%3Crect x='3' y='33' width='2' height='1'/%3E%3Crect x='37' y='33' width='2' height='1'/%3E%3Crect x='4' y='34' width='1' height='1'/%3E%3Crect x='37' y='34' width='1' height='1'/%3E%3Crect x='5' y='35' width='1' height='1'/%3E%3Crect x='36' y='35' width='1' height='1'/%3E%3Crect x='5' y='36' width='2' height='1'/%3E%3Crect x='35' y='36' width='2' height='1'/%3E%3Crect x='6' y='37' width='3' height='1'/%3E%3Crect x='33' y='37' width='3' height='1'/%3E%3Crect x='7' y='38' width='3' height='1'/%3E%3Crect x='32' y='38' width='3' height='1'/%3E%3Crect x='9' y='39' width='3' height='1'/%3E%3Crect x='30' y='39' width='3' height='1'/%3E%3Crect x='10' y='40' width='4' height='1'/%3E%3Crect x='28' y='40' width='4' height='1'/%3E%3Crect x='12' y='41' width='5' height='1'/%3E%3Crect x='25' y='41' width='5' height='1'/%3E%3Crect x='14' y='42' width='14' height='1'/%3E%3Crect x='17' y='43' width='8' height='1'/%3E%3C/g%3E%3C/svg%3E");
-    --compacto-tampa: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40' shape-rendering='crispEdges'%3E%3Cg fill='%23120D0B'%3E%3Crect x='16' y='9' width='1' height='1'/%3E%3Crect x='16' y='30' width='1' height='1'/%3E%3Crect x='23' y='9' width='1' height='1'/%3E%3Crect x='23' y='30' width='1' height='1'/%3E%3Crect x='17' y='10' width='6' height='1'/%3E%3Crect x='17' y='29' width='6' height='1'/%3E%3Crect x='15' y='11' width='2' height='1'/%3E%3Crect x='15' y='28' width='2' height='1'/%3E%3Crect x='23' y='11' width='2' height='1'/%3E%3Crect x='23' y='28' width='2' height='1'/%3E%3Crect x='13' y='12' width='2' height='1'/%3E%3Crect x='13' y='27' width='2' height='1'/%3E%3Crect x='25' y='12' width='2' height='1'/%3E%3Crect x='25' y='27' width='2' height='1'/%3E%3Crect x='12' y='13' width='2' height='1'/%3E%3Crect x='12' y='26' width='2' height='1'/%3E%3Crect x='26' y='13' width='2' height='1'/%3E%3Crect x='26' y='26' width='2' height='1'/%3E%3Crect x='12' y='14' width='1' height='1'/%3E%3Crect x='12' y='25' width='1' height='1'/%3E%3Crect x='27' y='14' width='1' height='1'/%3E%3Crect x='27' y='25' width='1' height='1'/%3E%3Crect x='11' y='15' width='1' height='2'/%3E%3Crect x='11' y='23' width='1' height='2'/%3E%3Crect x='28' y='15' width='1' height='2'/%3E%3Crect x='28' y='23' width='1' height='2'/%3E%3Crect x='9' y='16' width='1' height='1'/%3E%3Crect x='9' y='23' width='1' height='1'/%3E%3Crect x='30' y='16' width='1' height='1'/%3E%3Crect x='30' y='23' width='1' height='1'/%3E%3Crect x='10' y='17' width='1' height='6'/%3E%3Crect x='29' y='17' width='1' height='6'/%3E%3C/g%3E%3Cg fill='%23261E1B'%3E%3Crect x='17' y='9' width='6' height='1'/%3E%3Crect x='17' y='30' width='6' height='1'/%3E%3Crect x='14' y='10' width='3' height='1'/%3E%3Crect x='14' y='29' width='3' height='1'/%3E%3Crect x='23' y='10' width='3' height='1'/%3E%3Crect x='23' y='29' width='3' height='1'/%3E%3Crect x='13' y='11' width='2' height='1'/%3E%3Crect x='13' y='28' width='2' height='1'/%3E%3Crect x='25' y='11' width='2' height='1'/%3E%3Crect x='25' y='28' width='2' height='1'/%3E%3Crect x='12' y='12' width='1' height='1'/%3E%3Crect x='12' y='27' width='1' height='1'/%3E%3Crect x='27' y='12' width='1' height='1'/%3E%3Crect x='27' y='27' width='1' height='1'/%3E%3Crect x='11' y='13' width='1' height='1'/%3E%3Crect x='11' y='26' width='1' height='1'/%3E%3Crect x='28' y='13' width='1' height='1'/%3E%3Crect x='28' y='26' width='1' height='1'/%3E%3Crect x='10' y='14' width='2' height='1'/%3E%3Crect x='10' y='25' width='2' height='1'/%3E%3Crect x='28' y='14' width='2' height='1'/%3E%3Crect x='28' y='25' width='2' height='1'/%3E%3Crect x='10' y='15' width='1' height='2'/%3E%3Crect x='10' y='23' width='1' height='2'/%3E%3Crect x='29' y='15' width='1' height='2'/%3E%3Crect x='29' y='23' width='1' height='2'/%3E%3Crect x='9' y='17' width='1' height='6'/%3E%3Crect x='30' y='17' width='1' height='6'/%3E%3C/g%3E%3Cg fill='%23FFFAEB' fill-opacity='0.32'%3E%3Crect x='17' y='11' width='6' height='1'/%3E%3Crect x='15' y='12' width='2' height='1'/%3E%3Crect x='14' y='13' width='1' height='1'/%3E%3Crect x='13' y='14' width='1' height='1'/%3E%3Crect x='12' y='15' width='1' height='2'/%3E%3Crect x='11' y='17' width='1' height='6'/%3E%3C/g%3E%3Cg fill='%23FFFAEB' fill-opacity='0.14'%3E%3Crect x='16' y='13' width='3' height='1'/%3E%3Crect x='16' y='26' width='3' height='1'/%3E%3Crect x='21' y='13' width='3' height='1'/%3E%3Crect x='21' y='26' width='3' height='1'/%3E%3Crect x='15' y='14' width='1' height='1'/%3E%3Crect x='15' y='25' width='1' height='1'/%3E%3Crect x='24' y='14' width='1' height='1'/%3E%3Crect x='24' y='25' width='1' height='1'/%3E%3Crect x='14' y='15' width='1' height='1'/%3E%3Crect x='14' y='24' width='1' height='1'/%3E%3Crect x='25' y='15' width='1' height='1'/%3E%3Crect x='25' y='24' width='1' height='1'/%3E%3Crect x='13' y='16' width='1' height='3'/%3E%3Crect x='13' y='21' width='1' height='3'/%3E%3Crect x='26' y='16' width='1' height='3'/%3E%3Crect x='26' y='21' width='1' height='3'/%3E%3C/g%3E%3Cg fill='%233C1800' fill-opacity='0.34'%3E%3Crect x='18' y='14' width='4' height='1'/%3E%3Crect x='18' y='25' width='4' height='1'/%3E%3Crect x='16' y='15' width='2' height='1'/%3E%3Crect x='16' y='24' width='2' height='1'/%3E%3Crect x='22' y='15' width='2' height='1'/%3E%3Crect x='22' y='24' width='2' height='1'/%3E%3Crect x='15' y='16' width='1' height='2'/%3E%3Crect x='15' y='22' width='1' height='2'/%3E%3Crect x='24' y='16' width='1' height='2'/%3E%3Crect x='24' y='22' width='1' height='2'/%3E%3Crect x='14' y='18' width='1' height='4'/%3E%3Crect x='25' y='18' width='1' height='4'/%3E%3C/g%3E%3Cg fill='%23FFD48A'%3E%3Crect x='18' y='15' width='4' height='1'/%3E%3Crect x='16' y='16' width='2' height='1'/%3E%3Crect x='16' y='17' width='1' height='1'/%3E%3Crect x='15' y='18' width='1' height='4'/%3E%3C/g%3E%3Cg fill='%23F3A73C'%3E%3Crect x='18' y='16' width='6' height='1'/%3E%3Crect x='17' y='17' width='1' height='1'/%3E%3Crect x='22' y='17' width='2' height='1'/%3E%3Crect x='16' y='18' width='1' height='4'/%3E%3Crect x='23' y='18' width='1' height='4'/%3E%3Crect x='16' y='22' width='2' height='1'/%3E%3Crect x='22' y='22' width='1' height='1'/%3E%3Crect x='16' y='23' width='6' height='1'/%3E%3C/g%3E%3Cg fill='%23221C19'%3E%3Crect x='18' y='17' width='4' height='1'/%3E%3Crect x='18' y='22' width='4' height='1'/%3E%3Crect x='17' y='18' width='4' height='1'/%3E%3Crect x='22' y='18' width='1' height='1'/%3E%3Crect x='17' y='19' width='6' height='3'/%3E%3C/g%3E%3Cg fill='%23281200' fill-opacity='0.2'%3E%3Crect x='28' y='17' width='1' height='6'/%3E%3Crect x='27' y='23' width='1' height='2'/%3E%3Crect x='26' y='25' width='1' height='1'/%3E%3Crect x='25' y='26' width='1' height='1'/%3E%3Crect x='23' y='27' width='2' height='1'/%3E%3Crect x='17' y='28' width='6' height='1'/%3E%3C/g%3E%3Cg fill='%234E443E'%3E%3Crect x='21' y='18' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23C77A23'%3E%3Crect x='24' y='18' width='1' height='4'/%3E%3Crect x='23' y='22' width='1' height='1'/%3E%3Crect x='22' y='23' width='2' height='1'/%3E%3Crect x='18' y='24' width='4' height='1'/%3E%3C/g%3E%3C/svg%3E");
-  }
-  /* compactos:fim */
 }
 /* pele: as pecas de pixel do dev/pecas.py, nas duas telas */
 /* pecas:inicio (gravado pelo dev/pecas.py: o desenho mora la, nao editar aqui) */
@@ -2133,33 +2123,33 @@ body { background: var(--parede-casa); }
   .botoes-topo .btn-madeira { width: auto; aspect-ratio: 1; padding: 0; justify-content: center; }
   .botoes-topo .rot { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 }
-@media (max-width: 899.98px) {
 
-  /* sons rapidos: o compacto em pixel art como no mock h1 (19/10), desenhado pelo
-     dev/compactos.py: silhueta em degrau com o contorno, sulcos, a borda com bisel, o brilho em
-     xadrez nas diagonais e a sombra dura. Ele gira enquanto o som toca, e degrau girando balanca:
-     o desenho fica parado em duas camadas (a base por baixo do selo, a tampa por cima) e so o selo
-     redondo gira entre elas. A tampa esconde a beira redonda do selo num anel em degrau da cor do
-     vinil, e a risca do selo mostra o giro. O pino de latao liso com o ponto de luz duro */
-  .compacto .sete { background: none; box-shadow: none; }
-  .compacto .sete::before {   /* a base sai 1 celula (2 px) para os lados e para cima e 3 para baixo: o contorno e a sombra */
-    content: ""; z-index: auto; inset: -2.5% -2.5% -7.5%; border-radius: 0;
-    background: var(--compacto-base) 0 0 / 100% 100% no-repeat;
-  }
-  .compacto .sete::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: var(--compacto-tampa) 0 0 / 100% 100% no-repeat; }
-  .compacto .sete-rot { inset: 24.85%; background: var(--bg); }   /* o raio do selo do dev/compactos.py (SELO_R) */
-  .compacto .lampada:not(.acesa) {
-    background: radial-gradient(circle at 35% 35%, #FFF3CF 0 1.5px, #D6A758 1.5px);
-    box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.45);
-  }
-  .compacto .t { text-shadow: 0 2px 0 var(--contorno), 1px 1px 0 var(--contorno), -1px 1px 0 var(--contorno); }
-  .compacto .d { text-shadow: 0 1.5px 0 var(--contorno); }
-  /* a mesma sombra dura de baixo nos textos soltos na madeira, a dos rotulos da chave do fim do disco: a fila do palco e os
-     resultados da busca, 2 px na linha principal e 1,5 px na pequena, como no compacto, e nos icones da ponta (o tirar
-     e a alca da fila, o ... e o + da busca) num drop-shadow */
-  .cabeca-fila h2, .cabeca-fila .limpar-fila, .tocar-fila .t, .resultado .tit { text-shadow: 0 2px 0 var(--contorno); }
-  .cabeca-fila .conta, .tocar-fila .s, .resultado .sub { text-shadow: 0 1.5px 0 var(--contorno); }
-  .item-fila .tirar svg, .item-fila .alca svg, .resultado .acao-res > svg { filter: drop-shadow(0 1.5px 0 var(--contorno)); }
+/* sons rapidos: o compacto em pixel art como no mock h1 (19/10), desenhado pelo
+   dev/compactos.py: silhueta em degrau com o contorno, sulcos, a borda com bisel, o brilho em
+   xadrez nas diagonais e a sombra dura. Ele gira enquanto o som toca, e degrau girando balanca:
+   o desenho fica parado em duas camadas (a base por baixo do selo, a tampa por cima) e so o selo
+   redondo gira entre elas. A tampa esconde a beira redonda do selo num anel em degrau da cor do
+   vinil, e a risca do selo mostra o giro. O pino de latao liso com o ponto de luz duro */
+.compacto .sete { background: none; box-shadow: none; }
+.compacto .sete::before {   /* a base sai 1 celula (2 px) para os lados e para cima e 3 para baixo: o contorno e a sombra */
+  content: ""; z-index: auto; inset: -2.5% -2.5% -7.5%; border-radius: 0;
+  background: var(--compacto-base) 0 0 / 100% 100% no-repeat;
+}
+.compacto .sete::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: var(--compacto-tampa) 0 0 / 100% 100% no-repeat; }
+.compacto .sete-rot { inset: 24.85%; background: var(--bg); }   /* o raio do selo do dev/compactos.py (SELO_R) */
+.compacto .lampada:not(.acesa) {
+  background: radial-gradient(circle at 35% 35%, #FFF3CF 0 1.5px, #D6A758 1.5px);
+  box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.45);
+}
+.compacto .t { text-shadow: 0 2px 0 var(--contorno), 1px 1px 0 var(--contorno), -1px 1px 0 var(--contorno); }
+.compacto .d { text-shadow: 0 1.5px 0 var(--contorno); }
+/* a mesma sombra dura de baixo nos textos soltos na madeira, a dos rotulos da chave do fim do disco: a fila do palco e os
+   resultados da busca, 2 px na linha principal e 1,5 px na pequena, como no compacto, e nos icones da ponta (o tirar
+   e a alca da fila, o ... e o + da busca) num drop-shadow */
+.cabeca-fila h2, .cabeca-fila .limpar-fila, .tocar-fila .t, .resultado .tit { text-shadow: 0 2px 0 var(--contorno); }
+.cabeca-fila .conta, .tocar-fila .s, .resultado .sub { text-shadow: 0 1.5px 0 var(--contorno); }
+.item-fila .tirar svg, .item-fila .alca svg, .resultado .acao-res > svg { filter: drop-shadow(0 1.5px 0 var(--contorno)); }
+@media (max-width: 899.98px) {
   /* o tirar e a alca da fila pegam o dedo so em cima do desenho, para nao tirar nem mexer sem querer (a
      area de toque do tamanho do desenho): o botao segue com 44 px na grade e nao pega o toque, e o
      ::after cobre o traco do icone de 24 em 20 px com a ponta redonda (o x 10 x 10 px, as duas linhas 13 x 7 px) */
@@ -2171,56 +2161,60 @@ body { background: var(--parede-casa); }
      ficava grande demais): o receiver e o nome e o
      artista do player de baixo; no preto do visor a do canal fica com a dura de 2 px do titulo, mais abaixo */
   .mini-tit, .mini-sub { text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
+}
 
-  /* prateleira: o painel e as tabuas na versao leve; a capa com o contorno por dentro (o ::after,
-     que fica por cima da foto e nao vaza da pagina que corre de lado) e a sombra dura reta embaixo */
-  /* o painel em cor lisa, com a moldura de pixel por fora e o caixilho de madeira por dentro */
-  #rolo-prateleira::before {
-    border-radius: 4px; border-image: var(--mold-caixa);
-    background: var(--veio-v) 0 0 / 420px 900px, #48210E;
-    box-shadow: inset 0 0 0 6px #9A4E25, inset 0 2px 0 6px rgba(255,200,145,.55), inset 0 0 0 9px var(--contorno), inset 0 12px 0 0 rgba(0,0,0,.2);
-  }
-  /* tabua de brinquedo: contorno em cima, a quina acesa, o tampo, a frente de veio em cor lisa, o
-     contorno de baixo e a sombra dura reta (sem contorno dos lados: as tabuas de cada capa se emendam) */
-  .estante .borda {
-    background:
-      linear-gradient(180deg, var(--contorno) 0 2px, #F7BC88 2px 4px, #CC7A42 4px 7px, #7E3D1A 7px 8px, transparent 8px),
-      var(--veio),
-      #77391A;
-    box-shadow: inset 0 -3px 0 var(--contorno), 0 6px 0 rgba(20,8,2,.55);
-  }
-  .estante .capa { border-radius: 3px; box-shadow: 0 4px 0 rgba(20,8,2,.62); }
-  .estante .disco-item.no-prato .capa { box-shadow: 0 12px 0 -1px rgba(20,8,2,.36); }
-  .estante .capa::after { border-radius: inherit; box-shadow: inset 0 0 0 2.5px var(--contorno), inset 0 0 0 3.5px rgba(255,240,220,.3); }
-  /* o No prato vira uma pilula grossa contornada */
-  .estante .no-prato-tag {
-    background: #2B1B12; color: #FBEFD9; font-weight: 700;
-    box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.55), inset 0 1px 0 rgba(255,230,200,.2);
-  }
+/* prateleira: o painel e as tabuas na versao leve; a capa com o contorno por dentro (o ::after,
+   que fica por cima da foto e nao vaza da pagina que corre de lado) e a sombra dura reta embaixo */
+/* o painel em cor lisa, com a moldura de pixel por fora e o caixilho de madeira por dentro */
+#rolo-prateleira::before {
+  border-radius: 4px; border-image: var(--mold-caixa);
+  background: var(--veio-v) 0 0 / 420px 900px, #48210E;
+  box-shadow: inset 0 0 0 6px #9A4E25, inset 0 2px 0 6px rgba(255,200,145,.55), inset 0 0 0 9px var(--contorno), inset 0 12px 0 0 rgba(0,0,0,.2);
+}
+/* tabua de brinquedo: contorno em cima, a quina acesa, o tampo, a frente de veio em cor lisa, o
+   contorno de baixo e a sombra dura reta (sem contorno dos lados: as tabuas de cada capa se emendam) */
+.estante .borda {
+  background:
+    linear-gradient(180deg, var(--contorno) 0 2px, #F7BC88 2px 4px, #CC7A42 4px 7px, #7E3D1A 7px 8px, transparent 8px),
+    var(--veio),
+    #77391A;
+  box-shadow: inset 0 -3px 0 var(--contorno), 0 6px 0 rgba(20,8,2,.55);
+}
+.estante .capa { border-radius: 3px; box-shadow: 0 4px 0 rgba(20,8,2,.62); }
+.estante .disco-item.no-prato .capa { box-shadow: 0 12px 0 -1px rgba(20,8,2,.36); }
+.estante .capa::after { border-radius: inherit; box-shadow: inset 0 0 0 2.5px var(--contorno), inset 0 0 0 3.5px rgba(255,240,220,.3); }
+/* o No prato vira uma pilula grossa contornada */
+.estante .no-prato-tag {
+  background: #2B1B12; color: #FBEFD9; font-weight: 700;
+  box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.55), inset 0 1px 0 rgba(255,230,200,.2);
+}
+@media (max-width: 899.98px) {
   /* as paginas: lampadas num trilho escuro com borda firme */
   .pontos { box-shadow: var(--luz-dentro), inset 0 4px 0 rgba(0,0,0,.6), var(--duro); }
   .pontos span { background: #4A3426; box-shadow: 0 0 0 2px var(--contorno), inset 1px 1px 0 rgba(255,236,214,.25); }
   .pontos span.aqui { background: radial-gradient(circle at 35% 35%, #FFF2C8 0 1.5px, var(--ambar) 1.5px); box-shadow: 0 0 0 2px var(--contorno), 0 0 8px 2px rgba(243,167,60,.55); }
+}
 
-  /* fitas: a carcaca lisa na moldura de pixel (os parafusos para dentro, longe do degrau), a base
-     das cabecas lisa e a janela com a sombra dura */
-  .cartao-b {
-    border: 0; border-radius: 4px; border-image: var(--mold-objeto); box-shadow: inset 0 -4px 0 #120C09;
-    background:
-      radial-gradient(circle at 9px 9px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
-      radial-gradient(circle at calc(100% - 9px) 9px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
-      radial-gradient(circle at 9px calc(100% - 9px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
-      radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
-      #2B221D;
-  }
-  .cartao-b::after {
-    background:
-      radial-gradient(circle at 22% 55%, #0D0806 0 2px, transparent 2.2px),
-      radial-gradient(circle at 50% 55%, #0D0806 0 2.2px, transparent 2.4px),
-      radial-gradient(circle at 78% 55%, #0D0806 0 2px, transparent 2.2px),
-      #251C17;
-  }
-  .cartao-capa { box-shadow: inset 0 3px 0 rgba(0,0,0,.6), 0 1px 0 rgba(255,240,220,.12); }
+/* fitas: a carcaca lisa na moldura de pixel (os parafusos para dentro, longe do degrau), a base
+   das cabecas lisa e a janela com a sombra dura */
+.cartao-b {
+  border: 0; border-radius: 4px; border-image: var(--mold-objeto); box-shadow: inset 0 -4px 0 #120C09;
+  background:
+    radial-gradient(circle at 9px 9px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 9px) 9px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at 9px calc(100% - 9px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    #2B221D;
+}
+.cartao-b::after {
+  background:
+    radial-gradient(circle at 22% 55%, #0D0806 0 2px, transparent 2.2px),
+    radial-gradient(circle at 50% 55%, #0D0806 0 2.2px, transparent 2.4px),
+    radial-gradient(circle at 78% 55%, #0D0806 0 2px, transparent 2.2px),
+    #251C17;
+}
+.cartao-capa { box-shadow: inset 0 3px 0 rgba(0,0,0,.6), 0 1px 0 rgba(255,240,220,.12); }
+@media (max-width: 899.98px) {
 
   /* barra do player: a placa de aluminio liso na moldura de pixel por dentro (por fora o palco
      cortaria), com o degrau so nas quinas de cima; o disco e o tocar com contorno, o tocar liso com
@@ -2365,337 +2359,335 @@ body { background: var(--parede-casa); }
 .palco .fim-disco[aria-checked="false"] .op-so { color: #F3E7D3; font-weight: 600; }
 .palco .fim-disco[aria-checked="true"] .op-par { color: var(--ambar-claro); font-weight: 600; }
 .palco .fim-disco[aria-checked="true"] .ch-des, .palco .fim-disco[aria-checked="false"] .ch-lig { display: none; }
-@media (max-width: 899.98px) {
-  /* o A seguir e uma maleta de discos, copiada do mock da maleta (a maleta do mock
-     anterior; uma lista que inicia fechada e so abre num botao; o disco nao e a propria thumbnail
-     do video como se fosse o album inteiro). A do mock escolhido (23/10), com a
-     perspectiva do mock levada para o codigo: o
-     casco nao e uma caixa reta. A tampa aberta afina da beira de cima ate a cintura e a caixa de baixo abre de novo ate a
-     frente, com as paredes de couro em degraus de 1 px do dev/pecas.py (--maleta-tampa-*, do tamanho da tampa, e
-     --maleta-base-*, que estica com os discos); cada disco e um pouco mais largo que o de tras, rente a parede (o JS poe
-     o lugar em --i e o total em --n). Na cintura, a beira de tras da caixa e as juntas de latao; na frente, a beira
-     grossa, as cantoneiras da boca, os fechos e a alca em U. Na tampa a plaqueta creme com o A seguir, o Limpar e a
-     tecla de abrir e fechar; os discos em pe, cada capa a propria foto do video e a etiqueta de preco por cima (creme os
-     postos na fila, ambar as parecidas do Automatico), o proximo atras. Fechada, a tampa com o proximo e a frente, com "Próximo:"
-     na etiqueta e sem tirar nem alca */
-  .palco .fila-palco {
-    /* a tampa entreaberta, curta, com a plaqueta fina; aberta ela cresce (as --m-* da .aberta, mais abaixo). As
-       alturas sao as de TAMPA_ENTREABERTA e TAMPA_ABERTA do dev/pecas.py */
-    --m-tampa: 122px;   /* da beira de cima ate a cintura, no pe do disco de tras */
-    --m-tampa-esq: var(--maleta-tampa-esq); --m-tampa-dir: var(--maleta-tampa-dir);
-    --m-sombra-placa: 38px;   /* a sombra da plaqueta no forro, abaixo da beira de cima */
-    --m-cint: 14px;     /* o recuo da caixa de baixo na cintura: CINTURA */
-    --m-parede: 15px;   /* a parede da caixa de baixo: as faixas de BASE_LADO */
-    --m-pe: 68px;       /* a frente */
-    /* o disco e a capa quadrada inteira e afina de cima para baixo em 30 degraus de 1 px (um a cada ~10 px de altura),
-       com o degrauzinho de pixel nas quatro quinas, como no mock (23/10). O contorno, o papelao 2 px para dentro e
-       a foto mais 2 px nos lados e embaixo e 3 em cima (a boca do papelao); o pe com a borda como os lados (o
-       fim do disco ficava sem borda), que aparece no disco levantado */
-    --disco-borda: polygon(2px 0, calc(100% - 2px) 0, calc(100% - 2px) 1px, calc(100% - 1px) 1px, calc(100% - 1px) 2px, 100% 2px,
-      100% 3.23%, calc(100% - 1px) 3.23%, calc(100% - 1px) 6.45%, calc(100% - 2px) 6.45%, calc(100% - 2px) 9.68%,
-      calc(100% - 3px) 9.68%, calc(100% - 3px) 12.90%, calc(100% - 4px) 12.90%, calc(100% - 4px) 16.13%,
-      calc(100% - 5px) 16.13%, calc(100% - 5px) 19.35%, calc(100% - 6px) 19.35%, calc(100% - 6px) 22.58%,
-      calc(100% - 7px) 22.58%, calc(100% - 7px) 25.81%, calc(100% - 8px) 25.81%, calc(100% - 8px) 29.03%,
-      calc(100% - 9px) 29.03%, calc(100% - 9px) 32.26%, calc(100% - 10px) 32.26%, calc(100% - 10px) 35.48%,
-      calc(100% - 11px) 35.48%, calc(100% - 11px) 38.71%, calc(100% - 12px) 38.71%, calc(100% - 12px) 41.94%,
-      calc(100% - 13px) 41.94%, calc(100% - 13px) 45.16%, calc(100% - 14px) 45.16%, calc(100% - 14px) 48.39%,
-      calc(100% - 15px) 48.39%, calc(100% - 15px) 51.61%, calc(100% - 16px) 51.61%, calc(100% - 16px) 54.84%,
-      calc(100% - 17px) 54.84%, calc(100% - 17px) 58.06%, calc(100% - 18px) 58.06%, calc(100% - 18px) 61.29%,
-      calc(100% - 19px) 61.29%, calc(100% - 19px) 64.52%, calc(100% - 20px) 64.52%, calc(100% - 20px) 67.74%,
-      calc(100% - 21px) 67.74%, calc(100% - 21px) 70.97%, calc(100% - 22px) 70.97%, calc(100% - 22px) 74.19%,
-      calc(100% - 23px) 74.19%, calc(100% - 23px) 77.42%, calc(100% - 24px) 77.42%, calc(100% - 24px) 80.65%,
-      calc(100% - 25px) 80.65%, calc(100% - 25px) 83.87%, calc(100% - 26px) 83.87%, calc(100% - 26px) 87.10%,
-      calc(100% - 27px) 87.10%, calc(100% - 27px) 90.32%, calc(100% - 28px) 90.32%, calc(100% - 28px) 93.55%,
-      calc(100% - 29px) 93.55%, calc(100% - 29px) 96.77%, calc(100% - 30px) 96.77%, calc(100% - 30px) calc(100% - 2px),
-      calc(100% - 31px) calc(100% - 2px), calc(100% - 31px) calc(100% - 1px), calc(100% - 32px) calc(100% - 1px),
-      calc(100% - 32px) 100%, 32px 100%, 32px calc(100% - 1px), 31px calc(100% - 1px), 31px calc(100% - 2px),
-      30px calc(100% - 2px), 30px 96.77%, 29px 96.77%, 29px 93.55%, 28px 93.55%, 28px 90.32%, 27px 90.32%, 27px 87.10%,
-      26px 87.10%, 26px 83.87%, 25px 83.87%, 25px 80.65%, 24px 80.65%, 24px 77.42%, 23px 77.42%, 23px 74.19%,
-      22px 74.19%, 22px 70.97%, 21px 70.97%, 21px 67.74%, 20px 67.74%, 20px 64.52%, 19px 64.52%, 19px 61.29%,
-      18px 61.29%, 18px 58.06%, 17px 58.06%, 17px 54.84%, 16px 54.84%, 16px 51.61%, 15px 51.61%, 15px 48.39%,
-      14px 48.39%, 14px 45.16%, 13px 45.16%, 13px 41.94%, 12px 41.94%, 12px 38.71%, 11px 38.71%, 11px 35.48%,
-      10px 35.48%, 10px 32.26%, 9px 32.26%, 9px 29.03%, 8px 29.03%, 8px 25.81%, 7px 25.81%, 7px 22.58%, 6px 22.58%,
-      6px 19.35%, 5px 19.35%, 5px 16.13%, 4px 16.13%, 4px 12.90%, 3px 12.90%, 3px 9.68%, 2px 9.68%, 2px 6.45%,
-      1px 6.45%, 1px 3.23%, 0 3.23%, 0 2px, 1px 2px, 1px 1px, 2px 1px);
-    --disco-papel: polygon(4px 2px, calc(100% - 4px) 2px, calc(100% - 4px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 4px,
-      calc(100% - 2px) 4px, calc(100% - 2px) 3.23%, calc(100% - 3px) 3.23%, calc(100% - 3px) 6.45%,
-      calc(100% - 4px) 6.45%, calc(100% - 4px) 9.68%, calc(100% - 5px) 9.68%, calc(100% - 5px) 12.90%,
-      calc(100% - 6px) 12.90%, calc(100% - 6px) 16.13%, calc(100% - 7px) 16.13%, calc(100% - 7px) 19.35%,
-      calc(100% - 8px) 19.35%, calc(100% - 8px) 22.58%, calc(100% - 9px) 22.58%, calc(100% - 9px) 25.81%,
-      calc(100% - 10px) 25.81%, calc(100% - 10px) 29.03%, calc(100% - 11px) 29.03%, calc(100% - 11px) 32.26%,
-      calc(100% - 12px) 32.26%, calc(100% - 12px) 35.48%, calc(100% - 13px) 35.48%, calc(100% - 13px) 38.71%,
-      calc(100% - 14px) 38.71%, calc(100% - 14px) 41.94%, calc(100% - 15px) 41.94%, calc(100% - 15px) 45.16%,
-      calc(100% - 16px) 45.16%, calc(100% - 16px) 48.39%, calc(100% - 17px) 48.39%, calc(100% - 17px) 51.61%,
-      calc(100% - 18px) 51.61%, calc(100% - 18px) 54.84%, calc(100% - 19px) 54.84%, calc(100% - 19px) 58.06%,
-      calc(100% - 20px) 58.06%, calc(100% - 20px) 61.29%, calc(100% - 21px) 61.29%, calc(100% - 21px) 64.52%,
-      calc(100% - 22px) 64.52%, calc(100% - 22px) 67.74%, calc(100% - 23px) 67.74%, calc(100% - 23px) 70.97%,
-      calc(100% - 24px) 70.97%, calc(100% - 24px) 74.19%, calc(100% - 25px) 74.19%, calc(100% - 25px) 77.42%,
-      calc(100% - 26px) 77.42%, calc(100% - 26px) 80.65%, calc(100% - 27px) 80.65%, calc(100% - 27px) 83.87%,
-      calc(100% - 28px) 83.87%, calc(100% - 28px) 87.10%, calc(100% - 29px) 87.10%, calc(100% - 29px) 90.32%,
-      calc(100% - 30px) 90.32%, calc(100% - 30px) 93.55%, calc(100% - 31px) 93.55%, calc(100% - 31px) 96.77%,
-      calc(100% - 32px) 96.77%, calc(100% - 32px) calc(100% - 4px), calc(100% - 33px) calc(100% - 4px),
-      calc(100% - 33px) calc(100% - 3px), calc(100% - 34px) calc(100% - 3px), calc(100% - 34px) calc(100% - 2px),
-      34px calc(100% - 2px), 34px calc(100% - 3px), 33px calc(100% - 3px), 33px calc(100% - 4px),
-      32px calc(100% - 4px), 32px 96.77%, 31px 96.77%, 31px 93.55%, 30px 93.55%, 30px 90.32%, 29px 90.32%, 29px 87.10%,
-      28px 87.10%, 28px 83.87%, 27px 83.87%, 27px 80.65%, 26px 80.65%, 26px 77.42%, 25px 77.42%, 25px 74.19%,
-      24px 74.19%, 24px 70.97%, 23px 70.97%, 23px 67.74%, 22px 67.74%, 22px 64.52%, 21px 64.52%, 21px 61.29%,
-      20px 61.29%, 20px 58.06%, 19px 58.06%, 19px 54.84%, 18px 54.84%, 18px 51.61%, 17px 51.61%, 17px 48.39%,
-      16px 48.39%, 16px 45.16%, 15px 45.16%, 15px 41.94%, 14px 41.94%, 14px 38.71%, 13px 38.71%, 13px 35.48%,
-      12px 35.48%, 12px 32.26%, 11px 32.26%, 11px 29.03%, 10px 29.03%, 10px 25.81%, 9px 25.81%, 9px 22.58%, 8px 22.58%,
-      8px 19.35%, 7px 19.35%, 7px 16.13%, 6px 16.13%, 6px 12.90%, 5px 12.90%, 5px 9.68%, 4px 9.68%, 4px 6.45%,
-      3px 6.45%, 3px 3.23%, 2px 3.23%, 2px 4px, 3px 4px, 3px 3px, 4px 3px);
-    --disco-foto: polygon(6px 5px, calc(100% - 6px) 5px, calc(100% - 6px) 6px, calc(100% - 5px) 6px, calc(100% - 5px) 7px,
-      calc(100% - 4px) 7px, calc(100% - 4px) 3.23%, calc(100% - 5px) 3.23%, calc(100% - 5px) 6.45%,
-      calc(100% - 6px) 6.45%, calc(100% - 6px) 9.68%, calc(100% - 7px) 9.68%, calc(100% - 7px) 12.90%,
-      calc(100% - 8px) 12.90%, calc(100% - 8px) 16.13%, calc(100% - 9px) 16.13%, calc(100% - 9px) 19.35%,
-      calc(100% - 10px) 19.35%, calc(100% - 10px) 22.58%, calc(100% - 11px) 22.58%, calc(100% - 11px) 25.81%,
-      calc(100% - 12px) 25.81%, calc(100% - 12px) 29.03%, calc(100% - 13px) 29.03%, calc(100% - 13px) 32.26%,
-      calc(100% - 14px) 32.26%, calc(100% - 14px) 35.48%, calc(100% - 15px) 35.48%, calc(100% - 15px) 38.71%,
-      calc(100% - 16px) 38.71%, calc(100% - 16px) 41.94%, calc(100% - 17px) 41.94%, calc(100% - 17px) 45.16%,
-      calc(100% - 18px) 45.16%, calc(100% - 18px) 48.39%, calc(100% - 19px) 48.39%, calc(100% - 19px) 51.61%,
-      calc(100% - 20px) 51.61%, calc(100% - 20px) 54.84%, calc(100% - 21px) 54.84%, calc(100% - 21px) 58.06%,
-      calc(100% - 22px) 58.06%, calc(100% - 22px) 61.29%, calc(100% - 23px) 61.29%, calc(100% - 23px) 64.52%,
-      calc(100% - 24px) 64.52%, calc(100% - 24px) 67.74%, calc(100% - 25px) 67.74%, calc(100% - 25px) 70.97%,
-      calc(100% - 26px) 70.97%, calc(100% - 26px) 74.19%, calc(100% - 27px) 74.19%, calc(100% - 27px) 77.42%,
-      calc(100% - 28px) 77.42%, calc(100% - 28px) 80.65%, calc(100% - 29px) 80.65%, calc(100% - 29px) 83.87%,
-      calc(100% - 30px) 83.87%, calc(100% - 30px) 87.10%, calc(100% - 31px) 87.10%, calc(100% - 31px) 90.32%,
-      calc(100% - 32px) 90.32%, calc(100% - 32px) 93.55%, calc(100% - 33px) 93.55%, calc(100% - 33px) 96.77%,
-      calc(100% - 34px) 96.77%, calc(100% - 34px) calc(100% - 6px), calc(100% - 35px) calc(100% - 6px),
-      calc(100% - 35px) calc(100% - 5px), calc(100% - 36px) calc(100% - 5px), calc(100% - 36px) calc(100% - 4px),
-      36px calc(100% - 4px), 36px calc(100% - 5px), 35px calc(100% - 5px), 35px calc(100% - 6px),
-      34px calc(100% - 6px), 34px 96.77%, 33px 96.77%, 33px 93.55%, 32px 93.55%, 32px 90.32%, 31px 90.32%, 31px 87.10%,
-      30px 87.10%, 30px 83.87%, 29px 83.87%, 29px 80.65%, 28px 80.65%, 28px 77.42%, 27px 77.42%, 27px 74.19%,
-      26px 74.19%, 26px 70.97%, 25px 70.97%, 25px 67.74%, 24px 67.74%, 24px 64.52%, 23px 64.52%, 23px 61.29%,
-      22px 61.29%, 22px 58.06%, 21px 58.06%, 21px 54.84%, 20px 54.84%, 20px 51.61%, 19px 51.61%, 19px 48.39%,
-      18px 48.39%, 18px 45.16%, 17px 45.16%, 17px 41.94%, 16px 41.94%, 16px 38.71%, 15px 38.71%, 15px 35.48%,
-      14px 35.48%, 14px 32.26%, 13px 32.26%, 13px 29.03%, 12px 29.03%, 12px 25.81%, 11px 25.81%, 11px 22.58%,
-      10px 22.58%, 10px 19.35%, 9px 19.35%, 9px 16.13%, 8px 16.13%, 8px 12.90%, 7px 12.90%, 7px 9.68%, 6px 9.68%,
-      6px 6.45%, 5px 6.45%, 5px 3.23%, 4px 3.23%, 4px 7px, 5px 7px, 5px 6px, 6px 6px);
-    --m-casco-tampa:
-      /* a costura da beira de cima */
-      repeating-linear-gradient(90deg, #D9AE74 0 5px, transparent 5px 9px) 30px 7px / calc(100% - 60px) 2px no-repeat,
-      var(--m-tampa-esq) left top / 32px var(--m-tampa) no-repeat,
-      var(--m-tampa-dir) right top / 32px var(--m-tampa) no-repeat,
-      /* entre os lados, a beira de cima (as faixas de TAMPA_CIMA) e o forro, com a sombra da plaqueta */
-      linear-gradient(180deg, var(--contorno) 0 2px, #B87442 2px 4px, #7A3F1E 4px 12px, var(--contorno) 12px 14px, #4E240E 14px 20px) 32px 0 / calc(100% - 64px) 20px no-repeat,
-      linear-gradient(180deg, #261107 0 var(--m-sombra-placa), #140802 var(--m-sombra-placa) calc(var(--m-sombra-placa) + 6px), #261107 calc(var(--m-sombra-placa) + 6px)) 32px 20px / calc(100% - 64px) calc(var(--m-tampa) - 20px) no-repeat;
-    /* a coluna nunca passa da maleta: a plaqueta (o A seguir, a contagem e as teclas) nao cabe inteira em 360 px e
-       alargava a coluna, e a frente saia 11 px da caixa, por cima do fio (23/10, no celular
-       de teste); a contagem e que encurta */
-    grid-template-columns: minmax(0, 1fr);
-    /* as camadas da maleta (os metais, a frente, o disco arrastado) ficam dentro dela: sem o isolation o z-index delas
-       passava o da barra de cima do palco, e na rolagem a frente e as ferragens subiam por cima da barra (23/10) */
-    isolation: isolate;
-    /* a largura da maleta no celular de teste (360 px), como a da pedaleira: em tela mais larga ela fica no meio, desse
-       tamanho, em vez de esticar; em tela mais estreita sobram os 8 px de cada lado */
-    position: relative; min-width: 0; gap: 0; margin: 20px max(8px, calc((100% - 312px) / 2)) 26px; padding: 26px 0 0;
-    border: 0; border-radius: 0; box-shadow: none;
-    background: var(--m-casco-tampa);
-  }
-  /* aberta, a tampa cresce (como no modelo de
-     plaquinha mais grossa), com o mesmo topo e a mesma cintura (o mesmo angulo da tampa nos dois modos); a
-     plaqueta fica a fina (nao cresce quando abre) e no mesmo lugar (nao desce
-     quando abre), e os 16 px a mais sao forro entre ela e o disco de tras */
-  .palco .fila-palco.aberta {
-    --m-tampa: 138px; --m-tampa-esq: var(--maleta-tampa-aberta-esq); --m-tampa-dir: var(--maleta-tampa-aberta-dir);
-    --m-sombra-placa: 38px;
-    background:
-      /* a beira de tras da caixa de baixo, na cintura: na frente do pe da tampa e atras do disco de tras */
-      linear-gradient(180deg, var(--contorno) 0 2px, #B87442 2px 4px, #7A3F1E 4px 8px, var(--contorno) 8px 10px) var(--m-cint) calc(var(--m-tampa) - 6px) / calc(100% - 2 * var(--m-cint)) 10px no-repeat,
-      var(--m-casco-tampa),
-      var(--maleta-base-esq) left 0 top var(--m-tampa) / 31px max(0px, calc(100% - var(--m-tampa) - var(--m-pe) + 6px)) no-repeat,
-      var(--maleta-base-dir) right 0 top var(--m-tampa) / 31px max(0px, calc(100% - var(--m-tampa) - var(--m-pe) + 6px)) no-repeat,
-      linear-gradient(#241007, #241007) 31px var(--m-tampa) / calc(100% - 62px) max(0px, calc(100% - var(--m-tampa) - var(--m-pe) + 6px)) no-repeat;
-  }
-  /* os metais: os fechos da tampa por cima da plaqueta, aberta e entreaberta (a entreaberta tambem leva
-     as ferragens do topo da aberta), os cantos de latao da beira de cima e os de baixo
-     da frente */
-  .palco .fila-palco::after {
-    content: ""; position: absolute; z-index: 4; inset: -2px 0 -6px; pointer-events: none;
-    background:
-      var(--maleta-dobradica) left 18% top 4px / 22px 26px no-repeat,
-      var(--maleta-dobradica) right 18% top 4px / 22px 26px no-repeat,
-      var(--maleta-canto-a) left top / 28px 30px no-repeat,
-      var(--maleta-canto-b) right top / 28px 30px no-repeat,
-      var(--maleta-canto-c) left bottom / 28px 30px no-repeat,
-      var(--maleta-canto-d) right bottom / 28px 30px no-repeat;
-  }
-  .palco .fila-palco.aberta::after {   /* aberta: os fechos da tampa por cima da plaqueta e as juntas da cintura */
-    background:
-      var(--maleta-dobradica) left 18% top 4px / 22px 26px no-repeat,
-      var(--maleta-dobradica) right 18% top 4px / 22px 26px no-repeat,
-      /* as juntas em cima da parede, o lado de fora no contorno da cintura (antes saiam 8 px da maleta) */
-      var(--maleta-meio-esq) left calc(var(--m-cint) - 1px) top calc(var(--m-tampa) - 11px) / 14px 26px no-repeat,
-      var(--maleta-meio-dir) right calc(var(--m-cint) - 1px) top calc(var(--m-tampa) - 11px) / 14px 26px no-repeat,
-      var(--maleta-canto-a) left top / 28px 30px no-repeat,
-      var(--maleta-canto-b) right top / 28px 30px no-repeat,
-      var(--maleta-canto-c) left bottom / 28px 30px no-repeat,
-      var(--maleta-canto-d) right bottom / 28px 30px no-repeat;
-  }
-  .palco .fila-palco.aberta:has(.item-fila:only-child)::after {   /* um disco so: sem caixa de baixo, sem juntas na cintura */
-    background:
-      var(--maleta-dobradica) left 18% top 4px / 22px 26px no-repeat,
-      var(--maleta-dobradica) right 18% top 4px / 22px 26px no-repeat,
-      var(--maleta-canto-a) left top / 28px 30px no-repeat,
-      var(--maleta-canto-b) right top / 28px 30px no-repeat,
-      var(--maleta-canto-c) left bottom / 28px 30px no-repeat,
-      var(--maleta-canto-d) right bottom / 28px 30px no-repeat;
-  }
-  .palco .fila-palco .cabeca-fila {
-    /* 34 px da beira: com o forro em volta, sem encostar na parede da tampa (encostada na parte
-       marrom, parecia solta em cima da caixa) */
-    position: relative; z-index: 2; align-items: center; gap: 4px; box-sizing: border-box; height: 32px; min-height: 0;
-    margin: 0 34px; padding: 3px 6px 3px 10px;
-    background:
-      repeating-linear-gradient(90deg, rgba(122, 63, 30, .06) 0 2px, transparent 2px 4px),
-      #DFD5C2;
-    border-image: var(--mold-etiqueta);
-    box-shadow:
-      inset 0 0 0 2px #EFE7D6,
-      inset 0 0 0 3px #8A7962,
-      0 2px 0 rgba(0, 0, 0, .45);
-  }
-  .palco .fila-palco.aberta .lista-fila { margin-top: 28px; }
-  .palco .fila-palco .cabeca-fila h2 { flex: none; white-space: nowrap; font-size: 1rem; font-weight: 800; font-stretch: 100%; color: var(--tinta); text-shadow: 0 1px 0 rgba(255, 255, 255, .75); }
-  .palco .fila-palco.realce .cabeca-fila h2 { color: #A8561A; }
-  .palco .fila-palco .cabeca-fila .conta { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8125rem; font-weight: 700; color: #3A2618; text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
-  .palco .fila-palco .cabeca-fila .conta:not(:empty)::before { content: "· "; }
-  /* a tecla de abrir e fechar e a marrom do mock (a de antes era grande demais; das cinco
-     versoes com a plaqueta fina, a do mock): 24 x 20 de desenho, chapada, com o contorno, a luz em cima e a esquerda e a
-     sombra embaixo e a direita, e o toque de 44 x 44 em volta; o triangulo de 5 x 3 celulas de 2 px (menor
-     que o de antes). O Limpar saiu da maleta (sem uso ali); o
-     do computador fica */
-  .palco .fila-palco .abre-fila {
-    flex: none; display: grid; place-items: center; position: relative; width: 24px; height: 20px; margin: 0 0 0 auto; padding: 0;
-    border: 0; border-radius: 0; border-image: none; background: #5A2A14; color: #F7EBD6;
-    box-shadow: inset 0 0 0 1px var(--contorno), inset 2px 2px 0 #8C4C26, inset -2px -2px 0 #3A1A0A, 0 2px 0 rgba(0, 0, 0, .4);
-  }
-  .palco .fila-palco .abre-fila::after { content: ""; position: absolute; inset: -12px -10px; }
-  .palco .fila-palco .abre-fila svg { display: block; filter: drop-shadow(0 1px 0 var(--contorno)); }
-  .palco .fila-palco.aberta .abre-fila svg { transform: scaleY(-1); filter: drop-shadow(0 -1px 0 var(--contorno)); }
-  .palco .fila-palco .abre-fila:active, .palco .fila-palco .abre-fila.apertado {
-    transform: translateY(2px); box-shadow: inset 0 0 0 1px var(--contorno), inset 2px 2px 0 #3A1A0A, inset -2px -2px 0 #6E3418;
-  }
-
-  /* os discos: o de tras na tampa, os outros na caixa de baixo, cada um rente a parede na altura dele (a parede vai de
-     --m-cint na cintura a 0 na frente). Cada disco e uma capa em pe inclinada, como no mock (retos, os discos
-     pareciam tirinhas dentro da maleta): afina de cima para baixo em degraus (--disco-*), com o
-     papelao claro na beira e a boca gasta em cima, encostada na de tras, que fica com a sombra dela embaixo. Finos como
-     no mock, 48 px (o de tras 52) com a etiqueta e a letra menores (23/10, entre os de 58 e uma copia com estes,
-     ficaram os finos). O li e so a faixa que aparece; o disco inteiro (a capa quadrada) e a
-     .capinha, que desce atras dos da frente: arrastado, ele sobe por cima dos outros inteiro e as capas de tras aparecem
-     onde ele estava (com os quadrados inteiros, a troca de lugar fica mais realista). A lista corta no pe da frente, para os quadrados nao
-     sairem por baixo da maleta */
-  .palco .fila-palco .lista-fila { position: relative; z-index: 1; gap: 0; margin: 12px 0 0; padding: 0; clip-path: inset(-100vh -32px calc(2px - var(--m-pe)) -32px); }
-  .palco .fila-palco .item-fila {
-    position: relative; isolation: isolate; container-type: inline-size; margin-inline: calc(var(--m-cint) + var(--m-parede) + 2px);
-    grid-template-columns: minmax(0, 1fr) 26px 32px; min-height: 52px; border-radius: 0; background: none; box-shadow: none;
-  }
-  .palco .fila-palco .item-fila.arrastando { background: none; box-shadow: none; }
-  .palco .fila-palco.aberta .item-fila + .item-fila {
-    margin-top: 0; min-height: 48px;
-    margin-inline: round(calc(var(--m-cint) * (var(--n) - var(--i)) / (var(--n) - 1) + var(--m-parede) - 1px), 1px);
-  }
-  .palco .fila-palco .item-fila::before {   /* a etiqueta de preco, pequena na capa como no mock */
-    content: ""; position: absolute; z-index: 1; left: 39%; right: 9px; top: 9px; bottom: 9px; pointer-events: none;
-    background: #EFE6D5; border-image: var(--mold-etiqueta);
-    box-shadow: 0 2px 0 rgba(0, 0, 0, .35);
-  }
-  .palco .fila-palco .item-fila.auto::before { background: #F5B851; }
-  /* a sombra que o disco faz no pe do de tras, logo acima da beira dele: e do disco da frente, entao fica com os discos
-     parados quando um e arrastado, e o levantado nao faz sombra (antes a sombra do
-     disco da frente se movia junto com o arrastado) */
-  .palco .fila-palco .tocar-fila::after {
-    content: ""; position: absolute; z-index: 1; left: 0; right: 0; top: -6px; height: 6px; pointer-events: none;
-    background: linear-gradient(180deg, transparent 0 1px, rgba(0, 0, 0, .3) 1px 3px, rgba(0, 0, 0, .6) 3px);
-  }
-  .palco .fila-palco .item-fila:first-child .tocar-fila::after, .palco .fila-palco .item-fila.arrastando .tocar-fila::after { content: none; }
-  .palco .fila-palco .tocar-fila {
-    grid-template-columns: minmax(0, 1fr); align-self: stretch; padding: 9px 0 9px calc(39cqw + 9px); border-radius: 0;
-  }
-  /* o disco e a capa quadrada inteira, da largura dele, e os da frente cobrem o resto: so o topo dela aparece
-     (23/10, entre a foto esticada no disco e esta, o disco inteiro com os discos da
-     frente cobrindo). A capa e a do album quando o video e so ela (as faixas cortadas pelo capaInteira()), e o meio do
-     video nos outros */
-  .palco .fila-palco .tocar-fila .capinha {
-    position: absolute; z-index: 0; left: 0; right: 0; top: 0; width: auto; height: auto; aspect-ratio: 1; border-radius: 0;
-    background: var(--contorno); clip-path: var(--disco-borda); pointer-events: none;
-  }
-  /* entreaberta, o disco fica mais em pe: 1 px para dentro a cada 16 de altura (o --maleta-disco-* do dev/pecas.py;
-     23/10: a cada 12, depois a cada 16); aberto, segue o de cima */
-  .palco .fila-palco:not(.aberta) {
-    --disco-borda: var(--maleta-disco-borda); --disco-papel: var(--maleta-disco-papel); --disco-foto: var(--maleta-disco-foto);
-  }
-  .palco .fila-palco .tocar-fila .capinha::before {   /* o papelao da capa, atras da foto: a boca gasta em cima e a beira clara dos lados */
-    content: ""; position: absolute; inset: 0;
-    background: linear-gradient(180deg, #F6EFE2 0 2px, #C9B796 2px 3px, #E4D7BF 3px);
-    clip-path: var(--disco-papel);
-  }
-  .palco .fila-palco .tocar-fila .capinha > * { position: absolute; inset: 0; width: 100%; height: 100%; object-position: 50% 50%; clip-path: var(--disco-foto); }
-  .palco .fila-palco .tocar-fila:active .capinha, .palco .fila-palco .tocar-fila.apertado .capinha { filter: brightness(.6); }
-  .palco .fila-palco .tocar-fila:active, .palco .fila-palco .tocar-fila.apertado { background: none; }
-  .palco .fila-palco .tocar-fila .txt { position: relative; z-index: 2; }
-  /* a letra das etiquetas estreita, 85% da largura do Archivo: cabem uns 15% a mais (23/10, a variante B) */
-  .palco .fila-palco .tocar-fila :is(.t, .s) { font-stretch: 85%; }
-  .palco .fila-palco .tocar-fila .t { font-size: .75rem; line-height: 1.2; font-weight: 700; color: var(--tinta); text-shadow: 0 1px 0 rgba(255, 255, 255, .6); }
-  .palco .fila-palco .tocar-fila .s { font-size: .625rem; line-height: 1.2; color: #4E3826; text-shadow: none; }
-  .palco .fila-palco .item-fila.auto .tocar-fila .s { color: #4A2A08; }
-  .palco .fila-palco .item-fila :is(.tirar, .alca) { z-index: 2; width: 100%; color: var(--tinta); }
-  /* a alca de trocar de lugar: pega o dedo no botao todo e mais a beira da direita do disco (48 x 44 px), e o desenho sai
-     da beira da etiqueta, 10 px para dentro (a area de toque era
-     pequena e colada na borda; antes, 22/10, ela pegava so em cima do desenho). O tirar segue so no desenho */
-  .palco .fila-palco.aberta .item-fila { grid-template-columns: minmax(0, 1fr) 20px 34px; padding-right: 10px; }
-  .palco .fila-palco .item-fila .alca::after { inset: 0 -10px 0 2px; }
-  /* o x mais perto da alca, 10 px de vao entre os desenhos (23/10); o toque dele nao
-     encosta no da alca */
-  .palco .fila-palco .item-fila .tirar { transform: translateX(6px); }
-  .palco .fila-palco .item-fila :is(.tirar, .alca) svg { filter: none; }
-
-  /* a frente (.maleta-pe): a beira grossa que abraca a boca da caixa, as cantoneiras da boca, os fechos e a alca */
-  .palco .fila-palco .maleta-pe {
-    position: relative; z-index: 3; display: block; height: var(--m-pe); margin: -2px 0 0; pointer-events: none;
-    background:
-      var(--maleta-fecho) left 14% top 2px / 30px 44px no-repeat,
-      var(--maleta-fecho) right 14% top 2px / 30px 44px no-repeat,
-      var(--maleta-alca) center top 10px / 140px 52px no-repeat,
-      /* a costura logo abaixo da beira e a da beira de baixo */
-      repeating-linear-gradient(90deg, #D9AE74 0 5px, transparent 5px 9px) 24px 18px / calc(100% - 48px) 2px no-repeat,
-      repeating-linear-gradient(90deg, #D9AE74 0 5px, transparent 5px 9px) 24px calc(100% - 8px) / calc(100% - 48px) 2px no-repeat,
-      /* a beira grossa (luz em cima, sombra embaixo) e o corpo da frente */
-      linear-gradient(180deg,
-        var(--contorno) 0 2px, #C88A52 2px 5px, #8C4C26 5px 8px, #38190A 8px 10px, #6B3518 10px 16px,
-        #582A12 16px calc(100% - 4px), #38190A calc(100% - 4px) calc(100% - 2px), var(--contorno) calc(100% - 2px));
-    box-shadow:
-      inset 2px 0 0 var(--contorno), inset -2px 0 0 var(--contorno),
-      inset 5px 0 0 #8C4C26, inset -5px 0 0 #8C4C26,
-      0 6px 0 rgba(0, 0, 0, .45);
-  }
-  .palco .fila-palco .maleta-pe::before {   /* as cantoneiras de latao nas quinas da boca */
-    content: ""; position: absolute; z-index: 4; inset: -14px -4px 0; pointer-events: none;
-    background:
-      var(--maleta-boca-esq) left top / 22px 32px no-repeat,
-      var(--maleta-boca-dir) right top / 22px 32px no-repeat;
-  }
-  /* sem a caixa de baixo a vista (fechada, ou aberta com um disco so) a cantoneira fica sem a aba de cima: ela subiria no
-     ar ao lado da tampa, onde a camera, de cima e da frente, nao a ve (23/10) */
-  .palco .fila-palco:is(:not(.aberta), :has(.item-fila:only-child)) .maleta-pe::before {
-    top: -2px;
-    background:
-      var(--maleta-boca-curta-esq) left top / 22px 20px no-repeat,
-      var(--maleta-boca-curta-dir) right top / 22px 20px no-repeat;
-  }
-  .palco .fila-palco .maleta-pe::after {   /* a sombra que a beira da frente faz nos discos */
-    content: ""; position: absolute; z-index: -1; left: 10px; right: 10px; top: -6px; height: 8px; pointer-events: none;
-    background: linear-gradient(180deg, transparent 0 2px, rgba(0, 0, 0, .35) 2px 5px, rgba(0, 0, 0, .6) 5px);
-  }
-
-  /* fechada: a tampa so com o proximo, encostada na frente */
-  .palco .fila-palco:not(.aberta) :is(.item-fila:nth-child(n+2), .tirar, .alca, .tocar-fila .s) { display: none; }
-  .palco .fila-palco:not(.aberta) .item-fila { grid-template-columns: minmax(0, 1fr); }
-  .palco .fila-palco:not(.aberta) .item-fila::before { right: 11px; }
-  .palco .fila-palco:not(.aberta) .tocar-fila { padding-right: 18px; }
-  .palco .fila-palco:not(.aberta) .tocar-fila .txt::before { content: "Próximo:"; display: block; font-size: .625rem; font-weight: 700; font-stretch: 85%; line-height: 1.2; color: #3A2618; }
+/* pele: a maleta do A seguir, nas duas telas */
+/* o A seguir e uma maleta de discos, copiada do mock da maleta (a maleta do mock
+   anterior; uma lista que inicia fechada e so abre num botao; o disco nao e a propria thumbnail
+   do video como se fosse o album inteiro). A do mock escolhido (23/10), com a
+   perspectiva do mock levada para o codigo: o
+   casco nao e uma caixa reta. A tampa aberta afina da beira de cima ate a cintura e a caixa de baixo abre de novo ate a
+   frente, com as paredes de couro em degraus de 1 px do dev/pecas.py (--maleta-tampa-*, do tamanho da tampa, e
+   --maleta-base-*, que estica com os discos); cada disco e um pouco mais largo que o de tras, rente a parede (o JS poe
+   o lugar em --i e o total em --n). Na cintura, a beira de tras da caixa e as juntas de latao; na frente, a beira
+   grossa, as cantoneiras da boca, os fechos e a alca em U. Na tampa a plaqueta creme com o A seguir, o Limpar e a
+   tecla de abrir e fechar; os discos em pe, cada capa a propria foto do video e a etiqueta de preco por cima (creme os
+   postos na fila, ambar as parecidas do Automatico), o proximo atras. Fechada, a tampa com o proximo e a frente, com "Próximo:"
+   na etiqueta e sem tirar nem alca */
+.fila.maleta {
+  /* a tampa entreaberta, curta, com a plaqueta fina; aberta ela cresce (as --m-* da .aberta, mais abaixo). As
+     alturas sao as de TAMPA_ENTREABERTA e TAMPA_ABERTA do dev/pecas.py */
+  --m-tampa: 122px;   /* da beira de cima ate a cintura, no pe do disco de tras */
+  --m-tampa-esq: var(--maleta-tampa-esq); --m-tampa-dir: var(--maleta-tampa-dir);
+  --m-sombra-placa: 38px;   /* a sombra da plaqueta no forro, abaixo da beira de cima */
+  --m-cint: 14px;     /* o recuo da caixa de baixo na cintura: CINTURA */
+  --m-parede: 15px;   /* a parede da caixa de baixo: as faixas de BASE_LADO */
+  --m-pe: 68px;       /* a frente */
+  /* o disco e a capa quadrada inteira e afina de cima para baixo em 30 degraus de 1 px (um a cada ~10 px de altura),
+     com o degrauzinho de pixel nas quatro quinas, como no mock (23/10). O contorno, o papelao 2 px para dentro e
+     a foto mais 2 px nos lados e embaixo e 3 em cima (a boca do papelao); o pe com a borda como os lados (o
+     fim do disco ficava sem borda), que aparece no disco levantado */
+  --disco-borda: polygon(2px 0, calc(100% - 2px) 0, calc(100% - 2px) 1px, calc(100% - 1px) 1px, calc(100% - 1px) 2px, 100% 2px,
+    100% 3.23%, calc(100% - 1px) 3.23%, calc(100% - 1px) 6.45%, calc(100% - 2px) 6.45%, calc(100% - 2px) 9.68%,
+    calc(100% - 3px) 9.68%, calc(100% - 3px) 12.90%, calc(100% - 4px) 12.90%, calc(100% - 4px) 16.13%,
+    calc(100% - 5px) 16.13%, calc(100% - 5px) 19.35%, calc(100% - 6px) 19.35%, calc(100% - 6px) 22.58%,
+    calc(100% - 7px) 22.58%, calc(100% - 7px) 25.81%, calc(100% - 8px) 25.81%, calc(100% - 8px) 29.03%,
+    calc(100% - 9px) 29.03%, calc(100% - 9px) 32.26%, calc(100% - 10px) 32.26%, calc(100% - 10px) 35.48%,
+    calc(100% - 11px) 35.48%, calc(100% - 11px) 38.71%, calc(100% - 12px) 38.71%, calc(100% - 12px) 41.94%,
+    calc(100% - 13px) 41.94%, calc(100% - 13px) 45.16%, calc(100% - 14px) 45.16%, calc(100% - 14px) 48.39%,
+    calc(100% - 15px) 48.39%, calc(100% - 15px) 51.61%, calc(100% - 16px) 51.61%, calc(100% - 16px) 54.84%,
+    calc(100% - 17px) 54.84%, calc(100% - 17px) 58.06%, calc(100% - 18px) 58.06%, calc(100% - 18px) 61.29%,
+    calc(100% - 19px) 61.29%, calc(100% - 19px) 64.52%, calc(100% - 20px) 64.52%, calc(100% - 20px) 67.74%,
+    calc(100% - 21px) 67.74%, calc(100% - 21px) 70.97%, calc(100% - 22px) 70.97%, calc(100% - 22px) 74.19%,
+    calc(100% - 23px) 74.19%, calc(100% - 23px) 77.42%, calc(100% - 24px) 77.42%, calc(100% - 24px) 80.65%,
+    calc(100% - 25px) 80.65%, calc(100% - 25px) 83.87%, calc(100% - 26px) 83.87%, calc(100% - 26px) 87.10%,
+    calc(100% - 27px) 87.10%, calc(100% - 27px) 90.32%, calc(100% - 28px) 90.32%, calc(100% - 28px) 93.55%,
+    calc(100% - 29px) 93.55%, calc(100% - 29px) 96.77%, calc(100% - 30px) 96.77%, calc(100% - 30px) calc(100% - 2px),
+    calc(100% - 31px) calc(100% - 2px), calc(100% - 31px) calc(100% - 1px), calc(100% - 32px) calc(100% - 1px),
+    calc(100% - 32px) 100%, 32px 100%, 32px calc(100% - 1px), 31px calc(100% - 1px), 31px calc(100% - 2px),
+    30px calc(100% - 2px), 30px 96.77%, 29px 96.77%, 29px 93.55%, 28px 93.55%, 28px 90.32%, 27px 90.32%, 27px 87.10%,
+    26px 87.10%, 26px 83.87%, 25px 83.87%, 25px 80.65%, 24px 80.65%, 24px 77.42%, 23px 77.42%, 23px 74.19%,
+    22px 74.19%, 22px 70.97%, 21px 70.97%, 21px 67.74%, 20px 67.74%, 20px 64.52%, 19px 64.52%, 19px 61.29%,
+    18px 61.29%, 18px 58.06%, 17px 58.06%, 17px 54.84%, 16px 54.84%, 16px 51.61%, 15px 51.61%, 15px 48.39%,
+    14px 48.39%, 14px 45.16%, 13px 45.16%, 13px 41.94%, 12px 41.94%, 12px 38.71%, 11px 38.71%, 11px 35.48%,
+    10px 35.48%, 10px 32.26%, 9px 32.26%, 9px 29.03%, 8px 29.03%, 8px 25.81%, 7px 25.81%, 7px 22.58%, 6px 22.58%,
+    6px 19.35%, 5px 19.35%, 5px 16.13%, 4px 16.13%, 4px 12.90%, 3px 12.90%, 3px 9.68%, 2px 9.68%, 2px 6.45%,
+    1px 6.45%, 1px 3.23%, 0 3.23%, 0 2px, 1px 2px, 1px 1px, 2px 1px);
+  --disco-papel: polygon(4px 2px, calc(100% - 4px) 2px, calc(100% - 4px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 4px,
+    calc(100% - 2px) 4px, calc(100% - 2px) 3.23%, calc(100% - 3px) 3.23%, calc(100% - 3px) 6.45%,
+    calc(100% - 4px) 6.45%, calc(100% - 4px) 9.68%, calc(100% - 5px) 9.68%, calc(100% - 5px) 12.90%,
+    calc(100% - 6px) 12.90%, calc(100% - 6px) 16.13%, calc(100% - 7px) 16.13%, calc(100% - 7px) 19.35%,
+    calc(100% - 8px) 19.35%, calc(100% - 8px) 22.58%, calc(100% - 9px) 22.58%, calc(100% - 9px) 25.81%,
+    calc(100% - 10px) 25.81%, calc(100% - 10px) 29.03%, calc(100% - 11px) 29.03%, calc(100% - 11px) 32.26%,
+    calc(100% - 12px) 32.26%, calc(100% - 12px) 35.48%, calc(100% - 13px) 35.48%, calc(100% - 13px) 38.71%,
+    calc(100% - 14px) 38.71%, calc(100% - 14px) 41.94%, calc(100% - 15px) 41.94%, calc(100% - 15px) 45.16%,
+    calc(100% - 16px) 45.16%, calc(100% - 16px) 48.39%, calc(100% - 17px) 48.39%, calc(100% - 17px) 51.61%,
+    calc(100% - 18px) 51.61%, calc(100% - 18px) 54.84%, calc(100% - 19px) 54.84%, calc(100% - 19px) 58.06%,
+    calc(100% - 20px) 58.06%, calc(100% - 20px) 61.29%, calc(100% - 21px) 61.29%, calc(100% - 21px) 64.52%,
+    calc(100% - 22px) 64.52%, calc(100% - 22px) 67.74%, calc(100% - 23px) 67.74%, calc(100% - 23px) 70.97%,
+    calc(100% - 24px) 70.97%, calc(100% - 24px) 74.19%, calc(100% - 25px) 74.19%, calc(100% - 25px) 77.42%,
+    calc(100% - 26px) 77.42%, calc(100% - 26px) 80.65%, calc(100% - 27px) 80.65%, calc(100% - 27px) 83.87%,
+    calc(100% - 28px) 83.87%, calc(100% - 28px) 87.10%, calc(100% - 29px) 87.10%, calc(100% - 29px) 90.32%,
+    calc(100% - 30px) 90.32%, calc(100% - 30px) 93.55%, calc(100% - 31px) 93.55%, calc(100% - 31px) 96.77%,
+    calc(100% - 32px) 96.77%, calc(100% - 32px) calc(100% - 4px), calc(100% - 33px) calc(100% - 4px),
+    calc(100% - 33px) calc(100% - 3px), calc(100% - 34px) calc(100% - 3px), calc(100% - 34px) calc(100% - 2px),
+    34px calc(100% - 2px), 34px calc(100% - 3px), 33px calc(100% - 3px), 33px calc(100% - 4px),
+    32px calc(100% - 4px), 32px 96.77%, 31px 96.77%, 31px 93.55%, 30px 93.55%, 30px 90.32%, 29px 90.32%, 29px 87.10%,
+    28px 87.10%, 28px 83.87%, 27px 83.87%, 27px 80.65%, 26px 80.65%, 26px 77.42%, 25px 77.42%, 25px 74.19%,
+    24px 74.19%, 24px 70.97%, 23px 70.97%, 23px 67.74%, 22px 67.74%, 22px 64.52%, 21px 64.52%, 21px 61.29%,
+    20px 61.29%, 20px 58.06%, 19px 58.06%, 19px 54.84%, 18px 54.84%, 18px 51.61%, 17px 51.61%, 17px 48.39%,
+    16px 48.39%, 16px 45.16%, 15px 45.16%, 15px 41.94%, 14px 41.94%, 14px 38.71%, 13px 38.71%, 13px 35.48%,
+    12px 35.48%, 12px 32.26%, 11px 32.26%, 11px 29.03%, 10px 29.03%, 10px 25.81%, 9px 25.81%, 9px 22.58%, 8px 22.58%,
+    8px 19.35%, 7px 19.35%, 7px 16.13%, 6px 16.13%, 6px 12.90%, 5px 12.90%, 5px 9.68%, 4px 9.68%, 4px 6.45%,
+    3px 6.45%, 3px 3.23%, 2px 3.23%, 2px 4px, 3px 4px, 3px 3px, 4px 3px);
+  --disco-foto: polygon(6px 5px, calc(100% - 6px) 5px, calc(100% - 6px) 6px, calc(100% - 5px) 6px, calc(100% - 5px) 7px,
+    calc(100% - 4px) 7px, calc(100% - 4px) 3.23%, calc(100% - 5px) 3.23%, calc(100% - 5px) 6.45%,
+    calc(100% - 6px) 6.45%, calc(100% - 6px) 9.68%, calc(100% - 7px) 9.68%, calc(100% - 7px) 12.90%,
+    calc(100% - 8px) 12.90%, calc(100% - 8px) 16.13%, calc(100% - 9px) 16.13%, calc(100% - 9px) 19.35%,
+    calc(100% - 10px) 19.35%, calc(100% - 10px) 22.58%, calc(100% - 11px) 22.58%, calc(100% - 11px) 25.81%,
+    calc(100% - 12px) 25.81%, calc(100% - 12px) 29.03%, calc(100% - 13px) 29.03%, calc(100% - 13px) 32.26%,
+    calc(100% - 14px) 32.26%, calc(100% - 14px) 35.48%, calc(100% - 15px) 35.48%, calc(100% - 15px) 38.71%,
+    calc(100% - 16px) 38.71%, calc(100% - 16px) 41.94%, calc(100% - 17px) 41.94%, calc(100% - 17px) 45.16%,
+    calc(100% - 18px) 45.16%, calc(100% - 18px) 48.39%, calc(100% - 19px) 48.39%, calc(100% - 19px) 51.61%,
+    calc(100% - 20px) 51.61%, calc(100% - 20px) 54.84%, calc(100% - 21px) 54.84%, calc(100% - 21px) 58.06%,
+    calc(100% - 22px) 58.06%, calc(100% - 22px) 61.29%, calc(100% - 23px) 61.29%, calc(100% - 23px) 64.52%,
+    calc(100% - 24px) 64.52%, calc(100% - 24px) 67.74%, calc(100% - 25px) 67.74%, calc(100% - 25px) 70.97%,
+    calc(100% - 26px) 70.97%, calc(100% - 26px) 74.19%, calc(100% - 27px) 74.19%, calc(100% - 27px) 77.42%,
+    calc(100% - 28px) 77.42%, calc(100% - 28px) 80.65%, calc(100% - 29px) 80.65%, calc(100% - 29px) 83.87%,
+    calc(100% - 30px) 83.87%, calc(100% - 30px) 87.10%, calc(100% - 31px) 87.10%, calc(100% - 31px) 90.32%,
+    calc(100% - 32px) 90.32%, calc(100% - 32px) 93.55%, calc(100% - 33px) 93.55%, calc(100% - 33px) 96.77%,
+    calc(100% - 34px) 96.77%, calc(100% - 34px) calc(100% - 6px), calc(100% - 35px) calc(100% - 6px),
+    calc(100% - 35px) calc(100% - 5px), calc(100% - 36px) calc(100% - 5px), calc(100% - 36px) calc(100% - 4px),
+    36px calc(100% - 4px), 36px calc(100% - 5px), 35px calc(100% - 5px), 35px calc(100% - 6px),
+    34px calc(100% - 6px), 34px 96.77%, 33px 96.77%, 33px 93.55%, 32px 93.55%, 32px 90.32%, 31px 90.32%, 31px 87.10%,
+    30px 87.10%, 30px 83.87%, 29px 83.87%, 29px 80.65%, 28px 80.65%, 28px 77.42%, 27px 77.42%, 27px 74.19%,
+    26px 74.19%, 26px 70.97%, 25px 70.97%, 25px 67.74%, 24px 67.74%, 24px 64.52%, 23px 64.52%, 23px 61.29%,
+    22px 61.29%, 22px 58.06%, 21px 58.06%, 21px 54.84%, 20px 54.84%, 20px 51.61%, 19px 51.61%, 19px 48.39%,
+    18px 48.39%, 18px 45.16%, 17px 45.16%, 17px 41.94%, 16px 41.94%, 16px 38.71%, 15px 38.71%, 15px 35.48%,
+    14px 35.48%, 14px 32.26%, 13px 32.26%, 13px 29.03%, 12px 29.03%, 12px 25.81%, 11px 25.81%, 11px 22.58%,
+    10px 22.58%, 10px 19.35%, 9px 19.35%, 9px 16.13%, 8px 16.13%, 8px 12.90%, 7px 12.90%, 7px 9.68%, 6px 9.68%,
+    6px 6.45%, 5px 6.45%, 5px 3.23%, 4px 3.23%, 4px 7px, 5px 7px, 5px 6px, 6px 6px);
+  --m-casco-tampa:
+    /* a costura da beira de cima */
+    repeating-linear-gradient(90deg, #D9AE74 0 5px, transparent 5px 9px) 30px 7px / calc(100% - 60px) 2px no-repeat,
+    var(--m-tampa-esq) left top / 32px var(--m-tampa) no-repeat,
+    var(--m-tampa-dir) right top / 32px var(--m-tampa) no-repeat,
+    /* entre os lados, a beira de cima (as faixas de TAMPA_CIMA) e o forro, com a sombra da plaqueta */
+    linear-gradient(180deg, var(--contorno) 0 2px, #B87442 2px 4px, #7A3F1E 4px 12px, var(--contorno) 12px 14px, #4E240E 14px 20px) 32px 0 / calc(100% - 64px) 20px no-repeat,
+    linear-gradient(180deg, #261107 0 var(--m-sombra-placa), #140802 var(--m-sombra-placa) calc(var(--m-sombra-placa) + 6px), #261107 calc(var(--m-sombra-placa) + 6px)) 32px 20px / calc(100% - 64px) calc(var(--m-tampa) - 20px) no-repeat;
+  /* a coluna nunca passa da maleta: a plaqueta (o A seguir, a contagem e as teclas) nao cabe inteira em 360 px e
+     alargava a coluna, e a frente saia 11 px da caixa, por cima do fio (23/10, no celular
+     de teste); a contagem e que encurta */
+  grid-template-columns: minmax(0, 1fr);
+  /* as camadas da maleta (os metais, a frente, o disco arrastado) ficam dentro dela: sem o isolation o z-index delas
+     passava o da barra de cima do palco, e na rolagem a frente e as ferragens subiam por cima da barra (23/10) */
+  isolation: isolate;
+  /* a largura da maleta no celular de teste (360 px), como a da pedaleira: em tela mais larga ela fica no meio, desse
+     tamanho, em vez de esticar; em tela mais estreita sobram os 8 px de cada lado */
+  position: relative; min-width: 0; gap: 0; margin: 20px max(8px, calc((100% - 312px) / 2)) 26px; padding: 26px 0 0;
+  border: 0; border-radius: 0; box-shadow: none;
+  background: var(--m-casco-tampa);
 }
+/* aberta, a tampa cresce (como no modelo de
+   plaquinha mais grossa), com o mesmo topo e a mesma cintura (o mesmo angulo da tampa nos dois modos); a
+   plaqueta fica a fina (nao cresce quando abre) e no mesmo lugar (nao desce
+   quando abre), e os 16 px a mais sao forro entre ela e o disco de tras */
+.fila.maleta.aberta {
+  --m-tampa: 138px; --m-tampa-esq: var(--maleta-tampa-aberta-esq); --m-tampa-dir: var(--maleta-tampa-aberta-dir);
+  --m-sombra-placa: 38px;
+  background:
+    /* a beira de tras da caixa de baixo, na cintura: na frente do pe da tampa e atras do disco de tras */
+    linear-gradient(180deg, var(--contorno) 0 2px, #B87442 2px 4px, #7A3F1E 4px 8px, var(--contorno) 8px 10px) var(--m-cint) calc(var(--m-tampa) - 6px) / calc(100% - 2 * var(--m-cint)) 10px no-repeat,
+    var(--m-casco-tampa),
+    var(--maleta-base-esq) left 0 top var(--m-tampa) / 31px max(0px, calc(100% - var(--m-tampa) - var(--m-pe) + 6px)) no-repeat,
+    var(--maleta-base-dir) right 0 top var(--m-tampa) / 31px max(0px, calc(100% - var(--m-tampa) - var(--m-pe) + 6px)) no-repeat,
+    linear-gradient(#241007, #241007) 31px var(--m-tampa) / calc(100% - 62px) max(0px, calc(100% - var(--m-tampa) - var(--m-pe) + 6px)) no-repeat;
+}
+/* os metais: os fechos da tampa por cima da plaqueta, aberta e entreaberta (a entreaberta tambem leva
+   as ferragens do topo da aberta), os cantos de latao da beira de cima e os de baixo
+   da frente */
+.fila.maleta::after {
+  content: ""; position: absolute; z-index: 4; inset: -2px 0 -6px; pointer-events: none;
+  background:
+    var(--maleta-dobradica) left 18% top 4px / 22px 26px no-repeat,
+    var(--maleta-dobradica) right 18% top 4px / 22px 26px no-repeat,
+    var(--maleta-canto-a) left top / 28px 30px no-repeat,
+    var(--maleta-canto-b) right top / 28px 30px no-repeat,
+    var(--maleta-canto-c) left bottom / 28px 30px no-repeat,
+    var(--maleta-canto-d) right bottom / 28px 30px no-repeat;
+}
+.fila.maleta.aberta::after {   /* aberta: os fechos da tampa por cima da plaqueta e as juntas da cintura */
+  background:
+    var(--maleta-dobradica) left 18% top 4px / 22px 26px no-repeat,
+    var(--maleta-dobradica) right 18% top 4px / 22px 26px no-repeat,
+    /* as juntas em cima da parede, o lado de fora no contorno da cintura (antes saiam 8 px da maleta) */
+    var(--maleta-meio-esq) left calc(var(--m-cint) - 1px) top calc(var(--m-tampa) - 11px) / 14px 26px no-repeat,
+    var(--maleta-meio-dir) right calc(var(--m-cint) - 1px) top calc(var(--m-tampa) - 11px) / 14px 26px no-repeat,
+    var(--maleta-canto-a) left top / 28px 30px no-repeat,
+    var(--maleta-canto-b) right top / 28px 30px no-repeat,
+    var(--maleta-canto-c) left bottom / 28px 30px no-repeat,
+    var(--maleta-canto-d) right bottom / 28px 30px no-repeat;
+}
+.fila.maleta.aberta:has(.item-fila:only-child)::after {   /* um disco so: sem caixa de baixo, sem juntas na cintura */
+  background:
+    var(--maleta-dobradica) left 18% top 4px / 22px 26px no-repeat,
+    var(--maleta-dobradica) right 18% top 4px / 22px 26px no-repeat,
+    var(--maleta-canto-a) left top / 28px 30px no-repeat,
+    var(--maleta-canto-b) right top / 28px 30px no-repeat,
+    var(--maleta-canto-c) left bottom / 28px 30px no-repeat,
+    var(--maleta-canto-d) right bottom / 28px 30px no-repeat;
+}
+.fila.maleta .cabeca-fila {
+  /* 34 px da beira: com o forro em volta, sem encostar na parede da tampa (encostada na parte
+     marrom, parecia solta em cima da caixa) */
+  position: relative; z-index: 2; align-items: center; gap: 4px; box-sizing: border-box; height: 32px; min-height: 0;
+  margin: 0 34px; padding: 3px 6px 3px 10px;
+  background:
+    repeating-linear-gradient(90deg, rgba(122, 63, 30, .06) 0 2px, transparent 2px 4px),
+    #DFD5C2;
+  border-image: var(--mold-etiqueta);
+  box-shadow:
+    inset 0 0 0 2px #EFE7D6,
+    inset 0 0 0 3px #8A7962,
+    0 2px 0 rgba(0, 0, 0, .45);
+}
+.fila.maleta.aberta .lista-fila { margin-top: 28px; }
+.fila.maleta .cabeca-fila h2 { flex: none; white-space: nowrap; font-size: 1rem; font-weight: 800; font-stretch: 100%; color: var(--tinta); text-shadow: 0 1px 0 rgba(255, 255, 255, .75); }
+.fila.maleta.realce .cabeca-fila h2 { color: #A8561A; }
+.fila.maleta .cabeca-fila .conta { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8125rem; font-weight: 700; color: #3A2618; text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
+.fila.maleta .cabeca-fila .conta:not(:empty)::before { content: "· "; }
+/* a tecla de abrir e fechar e a marrom do mock (a de antes era grande demais; das cinco
+   versoes com a plaqueta fina, a do mock): 24 x 20 de desenho, chapada, com o contorno, a luz em cima e a esquerda e a
+   sombra embaixo e a direita, e o toque de 44 x 44 em volta; o triangulo de 5 x 3 celulas de 2 px (menor
+   que o de antes). O Limpar saiu da maleta (sem uso ali); o
+   do computador fica */
+.fila.maleta .abre-fila {
+  flex: none; display: grid; place-items: center; position: relative; width: 24px; height: 20px; margin: 0 0 0 auto; padding: 0;
+  border: 0; border-radius: 0; border-image: none; background: #5A2A14; color: #F7EBD6;
+  box-shadow: inset 0 0 0 1px var(--contorno), inset 2px 2px 0 #8C4C26, inset -2px -2px 0 #3A1A0A, 0 2px 0 rgba(0, 0, 0, .4);
+}
+.fila.maleta .abre-fila::after { content: ""; position: absolute; inset: -12px -10px; }
+.fila.maleta .abre-fila svg { display: block; filter: drop-shadow(0 1px 0 var(--contorno)); }
+.fila.maleta.aberta .abre-fila svg { transform: scaleY(-1); filter: drop-shadow(0 -1px 0 var(--contorno)); }
+.fila.maleta .abre-fila:active, .fila.maleta .abre-fila.apertado {
+  transform: translateY(2px); box-shadow: inset 0 0 0 1px var(--contorno), inset 2px 2px 0 #3A1A0A, inset -2px -2px 0 #6E3418;
+}
+
+/* os discos: o de tras na tampa, os outros na caixa de baixo, cada um rente a parede na altura dele (a parede vai de
+   --m-cint na cintura a 0 na frente). Cada disco e uma capa em pe inclinada, como no mock (retos, os discos
+   pareciam tirinhas dentro da maleta): afina de cima para baixo em degraus (--disco-*), com o
+   papelao claro na beira e a boca gasta em cima, encostada na de tras, que fica com a sombra dela embaixo. Finos como
+   no mock, 48 px (o de tras 52) com a etiqueta e a letra menores (23/10, entre os de 58 e uma copia com estes,
+   ficaram os finos). O li e so a faixa que aparece; o disco inteiro (a capa quadrada) e a
+   .capinha, que desce atras dos da frente: arrastado, ele sobe por cima dos outros inteiro e as capas de tras aparecem
+   onde ele estava (com os quadrados inteiros, a troca de lugar fica mais realista). A lista corta no pe da frente, para os quadrados nao
+   sairem por baixo da maleta */
+.fila.maleta .lista-fila { position: relative; z-index: 1; gap: 0; margin: 12px 0 0; padding: 0; clip-path: inset(-100vh -32px calc(2px - var(--m-pe)) -32px); }
+.fila.maleta .item-fila {
+  position: relative; isolation: isolate; container-type: inline-size; margin-inline: calc(var(--m-cint) + var(--m-parede) + 2px);
+  grid-template-columns: minmax(0, 1fr) 26px 32px; min-height: 52px; border-radius: 0; background: none; box-shadow: none;
+}
+.fila.maleta.aberta .item-fila + .item-fila {
+  margin-top: 0; min-height: 48px;
+  margin-inline: round(calc(var(--m-cint) * (var(--n) - var(--i)) / (var(--n) - 1) + var(--m-parede) - 1px), 1px);
+}
+.fila.maleta .item-fila::before {   /* a etiqueta de preco, pequena na capa como no mock */
+  content: ""; position: absolute; z-index: 1; left: 39%; right: 9px; top: 9px; bottom: 9px; pointer-events: none;
+  background: #EFE6D5; border-image: var(--mold-etiqueta);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .35);
+}
+.fila.maleta .item-fila.auto::before { background: #F5B851; }
+/* a sombra que o disco faz no pe do de tras, logo acima da beira dele: e do disco da frente, entao fica com os discos
+   parados quando um e arrastado, e o levantado nao faz sombra (antes a sombra do
+   disco da frente se movia junto com o arrastado) */
+.fila.maleta .tocar-fila::after {
+  content: ""; position: absolute; z-index: 1; left: 0; right: 0; top: -6px; height: 6px; pointer-events: none;
+  background: linear-gradient(180deg, transparent 0 1px, rgba(0, 0, 0, .3) 1px 3px, rgba(0, 0, 0, .6) 3px);
+}
+.fila.maleta .item-fila:first-child .tocar-fila::after, .fila.maleta .item-fila.arrastando .tocar-fila::after { content: none; }
+.fila.maleta .tocar-fila {
+  grid-template-columns: minmax(0, 1fr); align-self: stretch; padding: 9px 0 9px calc(39cqw + 9px); border-radius: 0;
+}
+/* o disco e a capa quadrada inteira, da largura dele, e os da frente cobrem o resto: so o topo dela aparece
+   (23/10, entre a foto esticada no disco e esta, o disco inteiro com os discos da
+   frente cobrindo). A capa e a do album quando o video e so ela (as faixas cortadas pelo capaInteira()), e o meio do
+   video nos outros */
+.fila.maleta .tocar-fila .capinha {
+  position: absolute; z-index: 0; left: 0; right: 0; top: 0; width: auto; height: auto; aspect-ratio: 1; border-radius: 0;
+  background: var(--contorno); clip-path: var(--disco-borda); pointer-events: none;
+}
+/* entreaberta, o disco fica mais em pe: 1 px para dentro a cada 16 de altura (o --maleta-disco-* do dev/pecas.py;
+   23/10: a cada 12, depois a cada 16); aberto, segue o de cima */
+.fila.maleta:not(.aberta) {
+  --disco-borda: var(--maleta-disco-borda); --disco-papel: var(--maleta-disco-papel); --disco-foto: var(--maleta-disco-foto);
+}
+.fila.maleta .tocar-fila .capinha::before {   /* o papelao da capa, atras da foto: a boca gasta em cima e a beira clara dos lados */
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, #F6EFE2 0 2px, #C9B796 2px 3px, #E4D7BF 3px);
+  clip-path: var(--disco-papel);
+}
+.fila.maleta .tocar-fila .capinha > * { position: absolute; inset: 0; width: 100%; height: 100%; object-position: 50% 50%; clip-path: var(--disco-foto); }
+.fila.maleta .tocar-fila:active .capinha, .fila.maleta .tocar-fila.apertado .capinha { filter: brightness(.6); }
+.fila.maleta .tocar-fila:active, .fila.maleta .tocar-fila.apertado { background: none; }
+.fila.maleta .tocar-fila .txt { position: relative; z-index: 2; }
+/* a letra das etiquetas estreita, 85% da largura do Archivo: cabem uns 15% a mais (23/10, a variante B) */
+.fila.maleta .tocar-fila :is(.t, .s) { font-stretch: 85%; }
+.fila.maleta .tocar-fila .t { font-size: .75rem; line-height: 1.2; font-weight: 700; color: var(--tinta); text-shadow: 0 1px 0 rgba(255, 255, 255, .6); }
+.fila.maleta .tocar-fila .s { font-size: .625rem; line-height: 1.2; color: #4E3826; text-shadow: none; }
+.fila.maleta .item-fila.auto .tocar-fila .s { color: #4A2A08; }
+.fila.maleta .item-fila :is(.tirar, .alca) { z-index: 2; width: 100%; color: var(--tinta); }
+/* a alca de trocar de lugar: pega o dedo no botao todo e mais a beira da direita do disco (48 x 44 px), e o desenho sai
+   da beira da etiqueta, 10 px para dentro (a area de toque era
+   pequena e colada na borda; antes, 22/10, ela pegava so em cima do desenho). O tirar segue so no desenho */
+.fila.maleta.aberta .item-fila { grid-template-columns: minmax(0, 1fr) 20px 34px; padding-right: 10px; }
+.fila.maleta .item-fila .alca::after { inset: 0 -10px 0 2px; }
+/* o x mais perto da alca, 10 px de vao entre os desenhos (23/10); o toque dele nao
+   encosta no da alca */
+.fila.maleta .item-fila .tirar { transform: translateX(6px); }
+.fila.maleta .item-fila :is(.tirar, .alca) svg { filter: none; }
+
+/* a frente (.maleta-pe): a beira grossa que abraca a boca da caixa, as cantoneiras da boca, os fechos e a alca */
+.fila.maleta .maleta-pe {
+  position: relative; z-index: 3; display: block; height: var(--m-pe); margin: -2px 0 0; pointer-events: none;
+  background:
+    var(--maleta-fecho) left 14% top 2px / 30px 44px no-repeat,
+    var(--maleta-fecho) right 14% top 2px / 30px 44px no-repeat,
+    var(--maleta-alca) center top 10px / 140px 52px no-repeat,
+    /* a costura logo abaixo da beira e a da beira de baixo */
+    repeating-linear-gradient(90deg, #D9AE74 0 5px, transparent 5px 9px) 24px 18px / calc(100% - 48px) 2px no-repeat,
+    repeating-linear-gradient(90deg, #D9AE74 0 5px, transparent 5px 9px) 24px calc(100% - 8px) / calc(100% - 48px) 2px no-repeat,
+    /* a beira grossa (luz em cima, sombra embaixo) e o corpo da frente */
+    linear-gradient(180deg,
+      var(--contorno) 0 2px, #C88A52 2px 5px, #8C4C26 5px 8px, #38190A 8px 10px, #6B3518 10px 16px,
+      #582A12 16px calc(100% - 4px), #38190A calc(100% - 4px) calc(100% - 2px), var(--contorno) calc(100% - 2px));
+  box-shadow:
+    inset 2px 0 0 var(--contorno), inset -2px 0 0 var(--contorno),
+    inset 5px 0 0 #8C4C26, inset -5px 0 0 #8C4C26,
+    0 6px 0 rgba(0, 0, 0, .45);
+}
+.fila.maleta .maleta-pe::before {   /* as cantoneiras de latao nas quinas da boca */
+  content: ""; position: absolute; z-index: 4; inset: -14px -4px 0; pointer-events: none;
+  background:
+    var(--maleta-boca-esq) left top / 22px 32px no-repeat,
+    var(--maleta-boca-dir) right top / 22px 32px no-repeat;
+}
+/* sem a caixa de baixo a vista (fechada, ou aberta com um disco so) a cantoneira fica sem a aba de cima: ela subiria no
+   ar ao lado da tampa, onde a camera, de cima e da frente, nao a ve (23/10) */
+.fila.maleta:is(:not(.aberta), :has(.item-fila:only-child)) .maleta-pe::before {
+  top: -2px;
+  background:
+    var(--maleta-boca-curta-esq) left top / 22px 20px no-repeat,
+    var(--maleta-boca-curta-dir) right top / 22px 20px no-repeat;
+}
+.fila.maleta .maleta-pe::after {   /* a sombra que a beira da frente faz nos discos */
+  content: ""; position: absolute; z-index: -1; left: 10px; right: 10px; top: -6px; height: 8px; pointer-events: none;
+  background: linear-gradient(180deg, transparent 0 2px, rgba(0, 0, 0, .35) 2px 5px, rgba(0, 0, 0, .6) 5px);
+}
+
+/* fechada: a tampa so com o proximo, encostada na frente */
+.fila.maleta:not(.aberta) :is(.item-fila:nth-child(n+2), .tirar, .alca, .tocar-fila .s) { display: none; }
+.fila.maleta:not(.aberta) .item-fila { grid-template-columns: minmax(0, 1fr); }
+.fila.maleta:not(.aberta) .item-fila::before { right: 11px; }
+.fila.maleta:not(.aberta) .tocar-fila { padding-right: 18px; }
+.fila.maleta:not(.aberta) .tocar-fila .txt::before { content: "Próximo:"; display: block; font-size: .625rem; font-weight: 700; font-stretch: 85%; line-height: 1.2; color: #3A2618; }
 /* pele: o salvar, o tempo, as barras e as teclas do transporte, nas duas telas */
 /* o salvar da parecida: o tocar em miniatura do
    dev/pecas.py, 32 px num toque de 44, no canto de baixo do visor, encostado na beira do texto. A sombra dura
@@ -3084,6 +3076,45 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   clip-path: inset(0 0 calc(100% - 31px) 0);
 }
 
+/* a parede no computador: rola inteira, como a pagina do celular, numa grade. A maleta fica ao lado dos compactos (uma
+   em cima da outra, as duas tomavam a parede e a prateleira saia da tela), e em tela baixa as duas vao para baixo da
+   prateleira, que e o que se procura primeiro. Os resultados da busca rolam por dentro, com o titulo e o Voltar a vista.
+   Os compactos e as fitas quebram de linha (correr de lado, com o mouse, ninguem alcanca); o nome fica sobre a capa, em
+   ate duas linhas, e o ... da capa aparece com o mouse em cima ou com o foco. A maleta tem o Limpar na plaqueta */
+@media (min-width: 900px) {
+  .app { --beira: 0px; }
+  .parede {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; align-content: start;
+    grid-template-areas: "rapidos fila" "cab cab" "prat prat" "cont cont";
+  }
+  #vista-prateleira { display: contents; }
+  .rapidos { grid-area: rapidos; }
+  .fila-parede { grid-area: fila; align-self: start; width: 316px; margin: 0 0 14px; }
+  #cab-prat { grid-area: cab; }
+  #rolo-prateleira { grid-area: prat; }
+  .continuar { grid-area: cont; }
+  .parede:has(> #vista-busca:not([hidden])) { grid-template: minmax(0, 1fr) / minmax(0, 1fr); align-content: stretch; }
+  .parede:has(> #vista-busca:not([hidden])) .fila-parede { display: none; }
+  #vista-busca { min-height: 0; display: flex; flex-direction: column; }
+  .fila.maleta .cabeca-fila .limpar-fila { flex: none; min-height: 0; margin-right: 8px; font-size: .8125rem; color: var(--tinta); text-shadow: none; text-decoration-color: rgba(42,24,18,.45); }
+  .chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 6px 0 4px; }
+  .compacto, .chips:has(> .compacto:nth-child(5)) > .compacto { width: 96px; max-width: none; }
+  .cartoes { flex-wrap: wrap; overflow: visible; margin: 0; padding: 4px 0 12px; }
+  .estante { --gap: 14px; padding: 12px 7px 4px; row-gap: 18px; }
+  .estante .ficha .nome { -webkit-line-clamp: 2; }
+  .estante .disco-item[data-id] .acoes { display: contents; }
+  .estante .ficha .btn-texto { display: none; }
+  .estante .ficha .mais {
+    position: absolute; right: 5px; top: 5px; width: 26px; height: 26px; margin: 0; border: 0; border-radius: 2px; opacity: 0;
+    color: #FBEFD9; background: #2B1B12; box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.55);
+  }
+  .disco-item:hover .mais, .disco-item:focus-within .mais, .estante .ficha .mais[aria-expanded="true"] { opacity: 1; }
+  /* as opcoes do disco: o menu flutuante na moldura de pixel, com os mesmos icones da contracapa do celular */
+  .menu { padding: 4px; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: #EFE4CB; }
+  .menu button { border-radius: 0; }
+  .menu button svg { width: 24px; height: 24px; }
+}
+
 /* ---------- formato da tela: em pe e baixa (vem por ultimo para ganhar das regras de cada parte) ---------- */
 /* monitor em pe (mais alto que largo): deck e receptor lado a lado em cima, parede inteira embaixo */
 @media (min-width: 900px) and (max-aspect-ratio: 19/20) {
@@ -3092,6 +3123,11 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     grid-template-areas: "topo topo" "deck receptor" "parede parede";
   }
   .receptor { grid-template-columns: minmax(0, 1fr); align-self: start; }
+}
+/* tela baixa: a prateleira primeiro */
+@media (min-width: 900px) and (max-height: 819.98px) {
+  .parede { grid-template-areas: "cab cab" "prat prat" "rapidos fila" "cont cont"; }
+  .rapidos, .fila-parede { margin-top: 20px; }
 }
 /* tela baixa: a legenda de atalhos sai (as teclas seguem nos discos e no titulo do botao) */
 @media (min-width: 900px) and (max-height: 819.98px) {
@@ -3122,9 +3158,8 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .palco .dica-ouvir { margin-top: 15px; margin-bottom: -6px; }
   .medidores { gap: 10px; }
   .chave { padding: 6px 10px; gap: 8px; font-size: .875rem; }
-  .vista .cabeca-sec h2, .cabeca-gav h2 { font-size: 1.25rem; }
   .gaveta { gap: 10px; padding-bottom: 12px; }
-  .estante { --gap: 20px; row-gap: 22px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 8.5rem), 1fr)); }
+  .estante { grid-template-columns: repeat(auto-fill, minmax(min(100%, 8.5rem), 1fr)); }
   /* com largura sobrando, cada fader vira uma linha so: nome, canaleta, valor (a legenda fica para o leitor de tela) */
   @container (min-width: 300px) {
     .fader { grid-template-columns: 6.25rem minmax(0, 1fr) 3rem; align-items: center; column-gap: 10px; }
@@ -3272,7 +3307,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       <button class="fim-disco" id="b-parecidas" type="button" role="switch" aria-checked="false" aria-label="Tocar músicas parecidas quando este disco acabar" hidden><span class="op op-so">Só este disco</span><span class="ch" aria-hidden="true"></span><span class="op op-par">Tocar parecidas</span></button>
       <p class="erro-faixa" id="erro-faixa" role="alert" hidden><span class="lampada alerta" aria-hidden="true"></span><span id="erro-faixa-txt"></span></p>
     </div>
-    <section class="fila fila-palco" aria-label="A seguir" hidden>
+    <section class="fila maleta fila-palco" aria-label="A seguir" hidden>
       <div class="cabeca-fila"><h2>A seguir</h2><p class="conta"></p><button class="abre-fila" type="button" aria-expanded="false" aria-label="Abrir o A seguir" title="Abrir o A seguir"><svg viewBox="0 0 5 3" width="10" height="6" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h5v1h-5zM1 1h3v1h-3zM2 2h1v1h-1z"/></svg></button></div>
       <ol class="lista-fila" inert></ol>
       <span class="maleta-pe" aria-hidden="true"></span>
@@ -3344,10 +3379,11 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   <div class="dica-pedal" id="dica-pedal" aria-hidden="true" hidden></div>
   </div>
 
-  <section class="parede" aria-label="Discos">
-    <section class="fila fila-parede" aria-label="A seguir" hidden>
-      <div class="cabeca-fila"><h2>A seguir</h2><p class="conta"></p><button class="btn-texto limpar-fila" type="button">Limpar</button></div>
-      <ol class="lista-fila"></ol>
+  <section class="parede rolo" aria-label="Discos">
+    <section class="fila maleta fila-parede" aria-label="A seguir" hidden>
+      <div class="cabeca-fila"><h2>A seguir</h2><p class="conta"></p><button class="btn-texto limpar-fila" type="button">Limpar</button><button class="abre-fila" type="button" aria-expanded="false" aria-label="Abrir o A seguir" title="Abrir o A seguir"><svg viewBox="0 0 5 3" width="10" height="6" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h5v1h-5zM1 1h3v1h-3zM2 2h1v1h-1z"/></svg></button></div>
+      <ol class="lista-fila" inert></ol>
+      <span class="maleta-pe" aria-hidden="true"></span>
     </section>
     <div class="vista" id="vista-busca" hidden>
       <div class="cabeca-sec">
@@ -3369,7 +3405,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
         <h2>Prateleira</h2>
         <p class="conta" id="conta"></p>
       </div>
-      <div class="rolo" id="rolo-prateleira">
+      <div id="rolo-prateleira">
         <ul class="estante" id="estante"></ul>
         <div class="pontos" id="pontos" aria-hidden="true" hidden></div>
       </div>
@@ -5156,7 +5192,7 @@ function marcarPonto() {
   [...box.children].forEach((p, k) => p.classList.toggle('aqui', k === i));
 }
 
-/* continuar ouvindo (celular): os discos que pararam no meio, do jeito que estao na prateleira */
+/* continuar ouvindo: os discos que pararam no meio, do jeito que estao na prateleira */
 function desenharContinuar() {
   const its = S.lib.filter(it => (it.last_pos || 0) > 5 && it.duration - it.last_pos > 10).slice(0, 12);
   const ul = $('#cartoes');
@@ -5177,7 +5213,7 @@ function desenharContinuar() {
   }));
 }
 
-/* sons rapidos (celular): os de ate 15 s, que o servidor toca por cima da musica, e os discos postos pelo
+/* sons rapidos: os de ate 15 s, que o servidor toca por cima da musica, e os discos postos pelo
    menu de segurar (25/10), que tocam por cima inteiros, ate 2 min (RAPIDO_MAX_S do motor); a lampada acende
    enquanto o som esta tocando */
 const CURTO_S = 15, RAPIDO_MAX_S = 120;
@@ -5533,8 +5569,8 @@ function itensMenu(ctx) {
   if (ctx.tipo === 'disco') {
     const it = ctx.it;
     if ((it.last_pos || 0) > 5) out.unshift(['continuar', `Continuar de ${fmt(it.last_pos)}`, IC.continuar]);
-    // os Sons rapidos so existem no celular; os de ate 15 s ja estao la sozinhos
-    if (celular() && !curto(it)) {
+    // os de ate 15 s ja estao nos Sons rapidos sozinhos
+    if (!curto(it)) {
       out.push(it.rapido ? ['semRapido', 'Tirar de Sons rápidos', IC.semRapido]
         : ['rapido', 'Adicionar a Sons rápidos', IC.rapido]);
     }
@@ -5560,13 +5596,13 @@ function abrirMenu(botao, ctx) {
   $('#menu-cab').replaceChildren(capa, txt);
   const lista = $('#menu-itens');
   lista.setAttribute('aria-label', `Opções: ${titulo}`);
-  // na folha do celular a contracapa do LP: os icones de pixel, o LADO A antes da primeira faixa e o Apagar
-  // sozinho no LADO B (os dois letreiros so desenho: o leitor de tela le as acoes)
+  // na folha do celular a contracapa do LP: o LADO A antes da primeira faixa e o Apagar sozinho no LADO B (os dois
+  // letreiros so desenho: o leitor de tela le as acoes)
   const folha = celular();
   const lado = (txt, cls) => { const x = el('div', cls, txt); x.setAttribute('aria-hidden', 'true'); return x; };
   lista.replaceChildren(...itensMenu(ctx).flatMap(([acao, rot, ic, cls], i) => {
     const b = el('button', cls); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.dataset.acao = acao;
-    b.innerHTML = folha && IC_PX[acao] || ic; b.append(el('span', null, rot));
+    b.innerHTML = IC_PX[acao] || ic; b.append(el('span', null, rot));
     if (!folha) return [b];
     if (cls === 'perigo') return [lado('Lado B', 'lado lado-b'), b];
     return i === 0 ? [lado('Lado A', 'lado'), b] : [b];
@@ -5710,7 +5746,8 @@ async function enfileirar(corpo, seguir, titulo, alvo) {
 /* "Abrir" do aviso: no celular abre o toca-discos ja na fila; no computador ela esta no alto da parede */
 function abrirFila() {
   const f = $(celular() ? '.fila-palco' : '.fila-parede');
-  if (celular()) { abrirPalcoComHistoria(); abrirMaleta(true); }
+  if (celular()) abrirPalcoComHistoria();
+  abrirMaleta(true);
   if (!f || f.hidden) return;
   requestAnimationFrame(() => {
     f.scrollIntoView({ block: celular() ? 'start' : 'nearest', behavior: reduz.matches ? 'auto' : 'smooth' });
@@ -5726,7 +5763,7 @@ function estadoEntrada(x) {
 /* a maleta do A seguir no celular comeca fechada, so com o proximo, e so a tecla abre e fecha; a
    lista fechada nao pega toque nem foco */
 function abrirMaleta(on) {
-  const sec = $('.fila-palco'), b = sec.querySelector('.abre-fila'), rot = on ? 'Fechar o A seguir' : 'Abrir o A seguir';
+  const sec = $(celular() ? '.fila-palco' : '.fila-parede'), b = sec.querySelector('.abre-fila'), rot = on ? 'Fechar o A seguir' : 'Abrir o A seguir';
   sec.classList.toggle('aberta', on);
   b.setAttribute('aria-expanded', on ? 'true' : 'false');
   b.setAttribute('aria-label', rot); b.title = rot;
@@ -5816,7 +5853,7 @@ function partirTitulo(x) {
   }
   return { musica: musica || x.title, artista };
 }
-function liFila(x, maleta) {
+function liFila(x) {
   const li = el('li', 'item-fila'); li.dataset.qid = x.qid;
   if (x.auto) li.classList.add('auto');
   const b = el('button', 'tocar-fila'); b.type = 'button'; b.dataset.role = 'tocar-fila';
@@ -5824,14 +5861,12 @@ function liFila(x, maleta) {
   const capa = el('span', 'capinha');
   capa.append(arte({ thumb: x.thumb, id: x.id || x.youtube_id || x.qid, title: x.title }, true));
   const est = estadoEntrada(x);
-  const p = maleta ? partirTitulo(x) : null;
+  const p = partirTitulo(x);
   const s = est.startsWith('baixando') ? `Baixando ${est.split(' ')[1]}%`
     : est === 'erro' ? 'Não baixou: toca pelo YouTube'
-    : p ? [x.auto ? 'Automático' : null, p.artista, x.bpm ? `${Math.round(x.bpm)} BPM` : null,
-           x.duration ? fmt(x.duration) : null].filter(Boolean).join(' · ')
-    : [x.auto ? 'Automático' : null, x.bpm ? `${Math.round(x.bpm)} BPM` : null, x.channel,
+    : [x.auto ? 'Automático' : null, p.artista, x.bpm ? `${Math.round(x.bpm)} BPM` : null,
        x.duration ? fmt(x.duration) : null].filter(Boolean).join(' · ');
-  const txt = el('span', 'txt'); txt.append(el('span', 't', p ? p.musica : x.title || 'Sem título'), el('span', 's', s || ' '));
+  const txt = el('span', 'txt'); txt.append(el('span', 't', p.musica), el('span', 's', s || ' '));
   b.append(capa, txt);
   const tirar = el('button', 'tirar'); tirar.type = 'button'; tirar.dataset.role = 'tirar';
   tirar.setAttribute('aria-label', `Tirar da fila: ${x.title}`); tirar.innerHTML = IC.tirar;
@@ -5873,12 +5908,11 @@ function desenharFila() {
     // o A seguir so aparece com fila: a chave do Tocar parecidas mora embaixo dos botoes do toca-discos
     sec.hidden = !fila.length;
     sec.querySelector('.conta').textContent = !fila.length ? '' : fila.length === 1 ? '1 disco' : `${fila.length} discos`;
-    const limpar = sec.querySelector('.limpar-fila');   // a maleta do celular nao tem (sem uso ali)
+    const limpar = sec.querySelector('.limpar-fila');   // so a do computador tem
     if (limpar) limpar.hidden = !fila.length;
-    const maleta = sec.classList.contains('fila-palco');
-    sec.querySelector('.lista-fila').replaceChildren(...fila.map(x => liFila(x, maleta)));
+    sec.querySelector('.lista-fila').replaceChildren(...fila.map(liFila));
     numerarFila(sec);
-    if (sec.classList.contains('fila-palco')) for (const img of sec.querySelectorAll('.capinha img')) capaInteira(img);
+    for (const img of sec.querySelectorAll('.capinha img')) capaInteira(img);
   }
   if (foco) {
     const alvo = [...foco.lista.children].find(x => x.dataset.qid === foco.qid);
@@ -6497,18 +6531,18 @@ $('#chips').addEventListener('click', e => {
   const b = e.target.closest('.compacto');
   if (b && Date.now() - seguradaEm > 900) tocar(b.dataset.id, { por_cima: true });   // soltar depois de segurar nao toca
 });
-/* celular: segurar a capa abre o menu do disco (como no YouTube Music), no lugar dos tres pontos; segurar um
-   compacto dos Sons rapidos abre o mesmo menu (25/10) */
+/* segurar a capa no celular, ou o botao direito no computador, abre o menu do disco (como no YouTube Music); num
+   compacto dos Sons rapidos, que nao tem os tres pontos, abre o mesmo menu (25/10) */
 let seguradaEm = 0;
 $('#estante').addEventListener('contextmenu', e => {
   const b = e.target.closest('.capa'), li = b && b.closest('li[data-id]');
-  if (!li || !celular()) return;
+  if (!li) return;
   e.preventDefault(); seguradaEm = Date.now();
   fecharMenu(false); abrirMenu(b, { tipo: 'disco', id: li.dataset.id });
 });
 $('#chips').addEventListener('contextmenu', e => {
   const b = e.target.closest('.compacto');
-  if (!b || !celular()) return;
+  if (!b) return;
   e.preventDefault(); seguradaEm = Date.now();
   fecharMenu(false); abrirMenu(b, { tipo: 'disco', id: b.dataset.id });
 });

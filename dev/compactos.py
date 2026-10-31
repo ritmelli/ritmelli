@@ -126,11 +126,11 @@ def main():
     linhas = []
     for nome, (px, larg, alt) in (("base", base()), ("tampa", tampa())):
         uri = "data:image/svg+xml," + quote(svg(px, larg, alt), safe=" '=/:,.-")
-        linhas.append(f'    --compacto-{nome}: url("{uri}");')
-    bloco = ("  /* compactos:inicio (gravado pelo dev/compactos.py: o desenho mora la, nao editar aqui) */\n"
-             "  .app {\n" + "\n".join(linhas) + "\n  }\n  /* compactos:fim */")
+        linhas.append(f'  --compacto-{nome}: url("{uri}");')
+    bloco = ("/* compactos:inicio (gravado pelo dev/compactos.py: o desenho mora la, nao editar aqui) */\n"
+             ".app {\n" + "\n".join(linhas) + "\n}\n/* compactos:fim */")
     txt = TEMA.read_text(encoding="utf-8")
-    novo, n = re.subn(r"  /\* compactos:inicio.*?/\* compactos:fim \*/", lambda _: bloco, txt, flags=re.S)
+    novo, n = re.subn(r"^/\* compactos:inicio.*?/\* compactos:fim \*/", lambda _: bloco, txt, flags=re.S | re.M)
     if n != 1:
         sys.exit("bloco compactos:inicio/fim nao encontrado no tema (ou repetido)")
     if novo != txt:
