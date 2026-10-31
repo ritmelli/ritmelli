@@ -1,6 +1,7 @@
 """Custo de um tema com musica tocando, como num celular (390x844, 3x, CPU 4x mais lenta).
 
     python dev/perfcheck.py http://127.0.0.1:8806/t/vitrola/ --play <id da biblioteca>
+    python dev/perfcheck.py http://127.0.0.1:8806/t/vitrola/ --play <id> --size 1366x768@1 --cpu 1
 
 Grava 3 s de trace do Chrome com a faixa tocando e conta por segundo: quadros do thread
 principal, pinturas e rasterizacoes (o que trava a rolagem no celular), e de onde vem a
@@ -76,9 +77,12 @@ async def run(a):
                     f"body: {json.dumps(json.dumps(corpo))}}}).then(r => r.status)"))
 
             await cmd("Page.enable")
-            await cmd("Emulation.setDeviceMetricsOverride", width=390, height=844,
-                      deviceScaleFactor=3, mobile=True)
-            await cmd("Emulation.setTouchEmulationEnabled", enabled=True, maxTouchPoints=5)
+            tam, dpr = a.size.split("@")
+            w, h = map(int, tam.split("x"))
+            await cmd("Emulation.setDeviceMetricsOverride", width=w, height=h,
+                      deviceScaleFactor=float(dpr), mobile=w < 900)
+            if w < 900:
+                await cmd("Emulation.setTouchEmulationEnabled", enabled=True, maxTouchPoints=5)
             await cmd("Emulation.setCPUThrottlingRate", rate=a.cpu)
             await cmd("Page.navigate", url=a.url)
             await asyncio.sleep(2.5)
@@ -116,6 +120,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("url")
     ap.add_argument("--play", help="id da biblioteca para tocar antes de medir")
+    ap.add_argument("--size", default="390x844@3", help="largura x altura @ densidade (de 900 de largura para cima, a tela do computador)")
     ap.add_argument("--cpu", type=float, default=4, help="quantas vezes mais lenta que o PC")
     ap.add_argument("--seg", type=float, default=3)
     ap.add_argument("--top", type=int, default=6, help="quantas fontes de invalidacao mostrar")

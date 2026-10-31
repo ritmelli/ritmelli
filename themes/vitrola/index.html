@@ -125,16 +125,10 @@ kbd { font: inherit; }
 .deck { grid-area: deck; }
 .receptor {
   position: relative; z-index: 2;
-  display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 16px 24px; align-items: center;
-  padding: 20px 24px 12px 22px; border-radius: 6px; color: var(--tinta);
-  background: var(--escovado), linear-gradient(180deg, #E2DBD0 0%, #D6CEBF 14%, var(--aluminio) 54%, #B8B0A0 93%, #938B7C 100%);
-  box-shadow:
-    inset 0 2px 0 rgba(255,252,245,.82),
-    inset 0 3px 0 rgba(42,24,18,.14),
-    inset 0 -3px 0 #70685B,
-    inset 0 -5px 0 rgba(20,10,6,.65),
-    0 20px 32px -14px rgba(0,0,0,.76),
-    0 3px 0 #1C110C;
+  display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 16px 26px; align-items: center;
+  color: var(--tinta);
+  /* o chassi cobre tudo; este fundo so aparece na beira, misturado, quando a rolagem cai entre dois pixels da tela */
+  background: var(--escovado), linear-gradient(180deg, #DCD4C7, var(--aluminio) 50%, #BCB3A3);
 }
 .parede { grid-area: parede; }
 
@@ -449,67 +443,30 @@ input[type=range]:disabled { cursor: default; opacity: .5; }
 input[type=range]:focus-visible { outline-offset: 2px; }
 
 /* ---------- receptor ---------- */
-.receptor {
-  display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 16px 26px; align-items: center;
-  padding: 16px 20px 16px 16px; border-radius: 12px; color: var(--tinta);
-  background: var(--escovado), linear-gradient(180deg, #DCD4C7, var(--aluminio) 50%, #BCB3A3);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -2px 0 rgba(0,0,0,.18), 0 18px 30px -14px rgba(0,0,0,.7), 0 2px 0 rgba(0,0,0,.5);
-}
-.janela {
-  position: relative; display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 8px; overflow: hidden;
-  background: radial-gradient(120% 140% at 50% 85%, var(--ambar-claro), var(--ambar) 52%, #C77A23 100%);
-  box-shadow: inset 0 0 0 2px #3a2a1f, inset 0 0 0 4px rgba(0,0,0,.25), inset 0 6px 14px rgba(80,40,0,.35);
-  transition: filter .4s;
-}
-.janela::after { /* vidro */
-  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 3;
-  background: linear-gradient(170deg, rgba(255,255,255,.28), rgba(255,255,255,0) 38%);
-}
+.janela { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; }
 .medidores { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-.mostrador { position: relative; padding: 8px 4px 0; container-type: inline-size; }
-.mostrador + .mostrador { box-shadow: inset 2px 0 0 rgba(60,30,10,.55); }
+.mostrador { position: relative; container-type: inline-size; }
 .mostrador svg { width: 100%; height: auto; overflow: visible; }
 /* moldura e nome ficam por cima da lampada: com a voz cortada so o mostrador apaga */
-.mostrador svg.tampa-m { position: absolute; left: 4px; top: 8px; width: calc(100% - 8px); z-index: 2; pointer-events: none; }
+.mostrador svg.tampa-m { position: absolute; left: 4px; top: 3px; width: calc(100% - 8px); z-index: 2; pointer-events: none; }
 .mostrador::before {
   content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
   background: rgba(40,17,6,.64); opacity: 0; transition: opacity .3s;
 }
 .mostrador.apagado::before { opacity: 1; }
-.mostrador .escala { fill: none; stroke: #3b2414; stroke-width: 1; }
-.mostrador .zona { fill: none; stroke: #8E1E14; stroke-width: 3; }
-.mostrador .marca { stroke: #3b2414; stroke-width: 1; }
-.mostrador .marca.grossa { stroke-width: 1.6; }
-.mostrador text { fill: #3b2414; font-family: "Archivo", sans-serif; font-size: 9.5px; font-weight: 500; font-stretch: 100%; text-anchor: middle; }
-.mostrador text.zona-txt { fill: #8E1E14; }
-.mostrador .agulha { stroke: #1d120c; stroke-width: 1.5; stroke-linecap: round; }
-/* agulha numa camada propria por cima da escala, girando em volta do pivo (60, 96 no viewBox
-   120x78): girar a camada nao redesenha nada, girar a linha dentro do svg redesenhava a tela.
-   A camada e um span em volta do svg: no Android o Chrome nunca leva para a GPU a animacao de
-   transform num elemento SVG (o zoom interno e a densidade da tela), e a agulha girava no
-   processador a cada quadro, travando a rolagem do palco (medido no celular de teste, 18/10) */
-.mostrador .agulha-m { position: absolute; display: block; left: 4px; top: 8px; width: calc(100% - 8px); pointer-events: none;
-  transform-origin: 50% 123.077%; will-change: transform; transition: transform 300ms cubic-bezier(.2,.7,.3,1); }
-.mostrador .agulha-m svg { display: block; }
-.mostrador canvas { display: none; }   /* os VUs de pixel: so o celular mostra */
-.mostrador .moldura { fill: #3a2417; }
-.mostrador .nome-m { /* nome em HTML sobre a faixa escura: nunca menor que 12 px, mesmo com o mostrador pequeno */
+/* a camada da agulha, por cima da face */
+.mostrador .agulha-m { position: absolute; display: block; left: 4px; top: 3px; width: calc(100% - 8px); aspect-ratio: 120 / 78; pointer-events: none; }
+.mostrador .moldura { fill: #2D1A0F; }
+.mostrador .nome-m { /* nome em HTML sobre a faixa escura */
   position: absolute; left: 0; right: 0; z-index: 2; pointer-events: none;
-  top: calc(8px + 100cqw * .56); transform: translateY(-50%);
+  transform: translateY(-50%);
   text-align: center; white-space: nowrap; line-height: 1;
-  font-size: max(12px, 100cqw * .0958); font-weight: 500; font-stretch: 118%; letter-spacing: .1em;
   text-transform: uppercase;   /* impresso no mostrador, como num medidor de verdade */
   color: var(--ambar-claro);
 }
-/* mostrador estreito: a faixa escura desce uns pixels para o nome de 12 px caber nela */
-@container (max-width: 100px) {
-  .mostrador > svg:first-child { margin-bottom: 6px; }
-  .mostrador .nome-m { top: calc(11px + 100cqw * .554); font-stretch: 90%; letter-spacing: .06em; }
-}
-.mostrador.apagado .nome-m { color: var(--sinal); font-weight: 600; }
-/* VOZ MUTADA e o nome mais comprido: letras mais juntas para caber com folga no mostrador estreito */
-.mostrador.apagado .nome-m { font-stretch: 100%; letter-spacing: .03em; }
-@container (max-width: 100px) { .mostrador.apagado .nome-m { font-stretch: 82%; letter-spacing: 0; } }
+/* mostrador estreito: a faixa escura desce uns pixels para o nome caber nela */
+@container (max-width: 100px) { .mostrador > svg:first-child { margin-bottom: 6px; } }
+.mostrador.apagado .nome-m { color: var(--sinal); }
 .controles { display: grid; gap: 4px; container-type: inline-size; }
 .fader { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; }
 .fader label { font-weight: 600; font-size: .875rem; line-height: 1.2; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -520,20 +477,13 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 .fader output { grid-row: 1; grid-column: 2; }
 .fader input { grid-row: 2; grid-column: 1 / -1; margin-top: 0; }
 .receptor input[type=range]:focus-visible { outline-offset: 0; }
-.receptor input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, #C9781F 0 var(--p), rgba(42,24,18,.75) var(--p) 100%); box-shadow: inset 0 1px 2px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.55); }
 .chaves { display: flex; gap: 10px; flex-wrap: wrap; }
 .chaves .btn { flex: 1 1 auto; }
 .chave { gap: 10px; padding: 8px 14px; }
 .chave .lampada { width: 9px; height: 9px; }
-/* chave ligada afunda como as teclas da gaveta: so a lampada de 9 px nao lia numa olhada (review
-   de frontend). O Mutar voz ligado fica vermelho, como o microfone da barra */
-.chave[aria-pressed="true"], .chave[aria-pressed="true"]:hover:not(:disabled) {
-  transform: translateY(1px);
-  background: var(--escovado), linear-gradient(180deg, #978D7E, #BAB1A3 24%, #C2B9AB 80%, #B9B0A2);
-  box-shadow: inset 0 5px 7px -2px rgba(30,15,8,.55), inset 0 -1px 0 #A49A8B, 0 1px 0 rgba(0,0,0,.35);
-}
+/* o Mutar voz ligado fica vermelho, como o microfone da barra (e afunda, na pele das teclas) */
 #b-cortar[aria-pressed="true"], #b-cortar[aria-pressed="true"]:hover:not(:disabled) {
-  color: #8E1E14; background: var(--escovado), linear-gradient(180deg, #CF9888, #E2B5A7 26%, #E6BDB0 80%, #DCAD9F);
+  color: #8E1E14; background: var(--escovado), #E2B5A7;
 }
 
 /* seletor de funcao: chave rotativa e visor do efeito, logo abaixo do mostrador da voz.
@@ -542,12 +492,10 @@ input[type=range]:focus-visible { outline-offset: 2px; }
    os apagados ficam de fantasma; sem luz, o vidro cinza-oliva do LCD desligado ainda le
    (18/10). Fonte DSEG14 (SIL OFL 1.1, fonts/LICENSE.txt) */
 @font-face { font-family: "DSEG14"; src: url(fonts/DSEG14Classic-BoldItalic.woff2) format("woff2"); font-display: block; }
-/* a letra de pixel dos titulos de secao no celular (Jersey 10, OFL, fonts/Jersey10-OFL.txt; so o latim);
-   o computador nao usa e nao baixa */
+/* a letra de pixel dos titulos de secao (Jersey 10, OFL, fonts/Jersey10-OFL.txt; so o latim) */
 @font-face { font-family: "Jersey 10"; src: url(fonts/Jersey10.woff2) format("woff2"); font-display: block; }
 /* a letra de pixel miuda das plaquinhas dos pedais no celular (Silkscreen, OFL, fonts/Silkscreen-OFL.txt; so o latim) */
 @font-face { font-family: "Silkscreen"; src: url(fonts/Silkscreen.woff2) format("woff2"); font-display: block; }
-.receptor { position: relative; z-index: 2; }
 .seletor { justify-content: flex-start; gap: 10px; width: 100%; min-width: 0; padding: 3px 12px 3px 5px; text-align: left; container-type: inline-size; }
 /* seletor estreito: o atraso sai do visor (segue na tecla e no titulo do botao) */
 @container (max-width: 290px) { .seletor .atraso-ef { display: none; } }
@@ -558,23 +506,18 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 .knob {
   position: absolute; inset: 19%; border-radius: 50%;
   background: repeating-conic-gradient(#7d7366 0 7.5deg, #e6e0d5 7.5deg 15deg);
-  box-shadow: 0 1.5px 2.5px rgba(30,15,8,.5);
 }
-.knob::before { content: ""; position: absolute; inset: 2px; border-radius: 50%; background: radial-gradient(circle at 38% 30%, #fdfaf4, #d5cdbf 45%, #a1988a 88%); }
+.knob::before { content: ""; position: absolute; inset: 2px; border-radius: 50%; }
 .ponteiro { position: absolute; inset: 0; transform: rotate(var(--ang, -135deg)); transition: transform .45s cubic-bezier(.3,.7,.3,1); }
 .ponteiro::after { content: ""; position: absolute; left: 50%; top: 2px; width: 2px; height: 38%; margin-left: -1px; border-radius: 1px; background: var(--tinta); }
 .visor-ef {
   --seg: rgba(26, 25, 14, .8); --fantasma: rgba(30, 30, 12, .075); --sombra-seg: rgba(0, 0, 0, .14);
   flex: 1 1 auto; min-width: 0; height: calc(var(--alvo) - 14px); display: flex; align-items: center; gap: 8px;
-  padding: 0 8px 0 9px; border-radius: 4px; color: var(--seg);
-  background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,0) 38%), linear-gradient(180deg, #8B876E, #A19D82);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.6), inset 0 3px 7px rgba(0,0,0,.4), 0 1px 0 rgba(255,255,255,.6);
+  padding: 0 8px 0 9px; color: var(--seg);
   transition: box-shadow .3s;
 }
 .seletor.com-efeito .visor-ef {
   --seg: rgba(36, 18, 2, .88); --fantasma: rgba(84, 44, 4, .11); --sombra-seg: rgba(128, 64, 0, .3);
-  background: linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,0) 38%), radial-gradient(140% 230% at 50% 125%, #FFE09A, #F6B54C 48%, #DE922C);
-  box-shadow: inset 0 0 0 1px rgba(60,28,0,.6), inset 0 3px 7px rgba(80,38,0,.42), 0 0 14px rgba(243,167,60,.38), 0 1px 0 rgba(255,255,255,.6);
 }
 /* o nome em 14 segmentos: casas fixas, todas com o fantasma "~" (todos os segmentos) atras */
 .seg-ef {
@@ -649,45 +592,8 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 .receptor > .controles,
 .receptor > .janela { position: relative; z-index: 1; }
 
-/* NOVO: chassi do Receiver R-77 (painel frontal, bochechas de madeira jacarandá, parafusos e pés) */
-.chassi-rec {
-  position: absolute; inset: 0; z-index: 0; pointer-events: none; border-radius: 6px;
-  /* cobre qualquer ponta interna de cabo RCA com z-index: -1 */
-  background:
-    linear-gradient(180deg, rgba(42,24,18,.08) 0 18px, rgba(42,24,18,.22) 18px 19px, rgba(255,255,255,.55) 19px 20px, transparent 20px),
-    var(--escovado),
-    linear-gradient(180deg, #E2DBD0 0%, #D6CEBF 14%, var(--aluminio) 54%, #B8B0A0 93%, #938B7C 100%);
-  box-shadow:
-    inset 0 2px 0 rgba(255,252,245,.82),
-    inset 0 -3px 0 #70685B,
-    inset 0 -5px 0 rgba(20,10,6,.65);
-}
-/* bochechas laterais de madeira maciça (jacarandá/nogueira anos 70, 1px mais altas que o alumínio) */
-.chassi-rec::before,
-.chassi-rec::after {
-  content: ""; position: absolute; top: -2px; bottom: -2px; width: 12px; z-index: 2;
-  background-image:
-    var(--veio-v),
-    linear-gradient(180deg, #74422B 0%, #58311F 18%, #432416 68%, #28140C 94%, #1A0C07 100%);
-  border-top: 1px solid rgba(255,214,170,.36);
-  border-bottom: 2px solid #140905;
-}
-.chassi-rec::before {
-  left: 0; border-radius: 5px 2px 2px 5px;
-  box-shadow:
-    inset 1px 0 0 rgba(255,214,170,.25),
-    inset -2px 0 0 #24120B,
-    2px 0 4px rgba(20,10,5,.42),
-    3px 0 0 rgba(255,255,255,.45);
-}
-.chassi-rec::after {
-  right: 0; border-radius: 2px 5px 5px 2px;
-  box-shadow:
-    inset 2px 0 0 rgba(255,214,170,.18),
-    inset -2px 0 0 #1B0D07,
-    -2px 0 4px rgba(20,10,5,.42),
-    -3px 0 0 rgba(42,24,18,.25);
-}
+/* chassi do Receiver R-77 (a madeira, a chapa e os pes) */
+.chassi-rec { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 
 /* parafusos escareados nos 4 cantos do painel do receiver */
 .parafusos-rec::before,
@@ -1448,7 +1354,6 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
   .palco .receptor {
     order: 2; grid-template-columns: minmax(0, 1fr); gap: 14px;
     width: 100%; max-width: 358px; margin-inline: auto;
-    padding: 25px 20px 15px 20px; border-radius: 6px;
   }
   .palco .medidores { display: contents; }
   .palco .janela { order: 1; }
@@ -1911,7 +1816,6 @@ body { background: var(--parede-casa); }
      degrade do tampo do toca-discos e das laterais do receiver fazia o aparelho se misturar com ela
      em alguns trechos; o volume fica nos filetes de luz e sombra das bordas */
   .tampo { background: var(--veio), var(--tampo); }
-  .chassi-rec::before, .chassi-rec::after { background-image: var(--veio-v); background-color: var(--tampo); }
   .parede { padding-right: 0; }
   /* capa apertada: encolhe um pouco em vez de escurecer (o filtro repintava a capa a cada toque) */
   .estante .capa { transition: transform .25s cubic-bezier(.2,.8,.2,1); }
@@ -2405,7 +2309,7 @@ body { background: var(--parede-casa); }
   /* no creme a sombra preta dobrava a letra: la vai uma clara, de 1 px, que deixa o texto gravado (a de 2 px
      ficava grande demais): o receiver e o nome e o
      artista do player de baixo; no preto do visor a do canal fica com a dura de 2 px do titulo, mais abaixo */
-  .mini-tit, .mini-sub, .fader label, .fader output { text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
+  .mini-tit, .mini-sub { text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
 
   /* prateleira: o painel e as tabuas na versao leve; a capa com o contorno por dentro (o ::after,
      que fica por cima da foto e nao vaza da pagina que corre de lado) e a sombra dura reta embaixo */
@@ -3140,75 +3044,60 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .palco .faixa > .fim-disco:not([hidden]) { min-height: 0; margin-top: 0; }
   .palco .linha-tempo { margin-top: 0; }
 }
+/* pele: o receiver, nas duas telas */
+/* receiver: a caixa em duas camadas. A face da moldura (contorno, linha clara e bisel) num pseudo
+   por cima das laterais de madeira, que cobriam a linha clara de dentro; a sombra dura noutro, por
+   baixo do chassi, para os pes ficarem por cima dela (os pes descem 2 px a mais: o contorno por
+   cima comeria a ponta de cima deles) */
+.palco .receptor { border-radius: 4px; }
+.palco .receptor::before, .palco .receptor::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 4px; }
+.palco .receptor::before { z-index: -1; border-image: var(--mold-caixa-sombra); }
+.palco .receptor::after { z-index: 0; border-image: var(--mold-caixa-face); }
+/* o gabinete de madeira inteiro em volta da chapa, como no p1 (19/10): o chassi e a
+   madeira alaranjada do toca-discos (as laterais saem: a caixa toda e madeira) e a chapa creme e a
+   .parafusos-rec, recuada da beira e com o contorno por fora. Por dentro do mesmo tamanho de antes:
+   a madeira de cima e de baixo saem do respiro (o painel desce 2 px, o vao do VU aos volumes
+   encolhe 4, o de baixo cresce 2). Em cima a madeira e fina, so a quina acesa (no p1 a chapa
+   encosta no contorno), dos lados e de 10 px e embaixo de 6, com os pes */
+.palco .receptor { padding: 27px 20px 17px; row-gap: 10px; }
+.palco .chassi-rec { border-radius: 4px; background: var(--veio-v), var(--madeira-ap); }
+.palco .parafusos-rec {
+  position: absolute; inset: 5px 12px 8px;
+  background:
+    linear-gradient(180deg, rgba(42,24,18,.08) 0 15px, rgba(42,24,18,.5) 15px 17px, rgba(255,255,255,.6) 17px 19px, transparent 19px),
+    var(--escovado), #D6CFC2;
+  box-shadow: 0 0 0 2px var(--contorno), inset 2px 0 0 rgba(255,255,255,.6), inset -2px 0 0 rgba(42,24,18,.18), inset 0 -2px 0 rgba(42,24,18,.18);
+}
+.palco .parafusos-rec::before, .palco .parafusos-rec::after { left: 4px; right: 4px; }
+.palco .parafusos-rec::before { top: 4px; }
+.palco .parafusos-rec::after { bottom: 3px; }
+.palco .marca-ap { top: 6px; }
+.palco .marca-ap::after { background: rgba(42,24,18,.28); }
+/* os VUs na janela de moldura dupla em degrau (contorno, linha clara, a sombra dura do rebaixo em
+   cima e o beico claro da chapa embaixo) */
+.palco .janela { border-radius: 4px; border-image: var(--mold-vu); background: #FDB238; }
+/* o mostrador do mock p1, com as cores amostradas dele: o ambar chapado e mais vivo, sem o reflexo de vidro;
+   as divisoes pretas com o filete claro; a faixa do nome reta (a curva era nossa) e um pouco mais escura, ate o
+   fundo da janela */
+.palco .mostrador + .mostrador { box-shadow: inset 2px 0 0 #120A04, inset 3px 0 0 rgba(255,214,120,.9); }
+/* a escala 5 px mais alta, perto do topo como no mock; os 5 px passam para baixo da faixa do nome,
+   e o receiver fica do mesmo tamanho */
+.palco .mostrador { padding: 3px 4px 5px; }
+.palco .mostrador .nome-m { top: calc(4px + 100cqw * .56); }
+@container (max-width: 100px) { .palco .mostrador .nome-m { top: calc(7px + 100cqw * .554); } }
+/* VOZ, DISCO e JOGO na letra de pixel dos titulos (Jersey 10): 18,667 px da 1 px
+   de CSS por pixel da letra, sem pixel borrado, e o tamanho dos nomes do mock (o recuo da esquerda
+   devolve o espaco de depois da ultima letra, para o nome ficar no meio); o VOZ MUTADA sem o espaco
+   entre as letras, senao nao cabe */
+.palco .mostrador .nome-m { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; letter-spacing: .1em; padding-left: .1em; }
+.palco .mostrador.apagado .nome-m { letter-spacing: .02em; padding-left: .02em; }
+/* os VUs em pixel: a face e a agulha nos canvas de celulas de 1 px do JS (desenharVUs); o svg vazio segura a
+   altura do mostrador */
+.palco .mostrador canvas { display: block; image-rendering: pixelated; }
+.palco .mostrador .vu-face { position: absolute; left: 4px; top: 3px; }
+.palco .mostrador .vu-agulha { position: absolute; left: 0; top: 0; }
+.fader label, .fader output { text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
 @media (max-width: 899.98px) {
-
-  /* receiver: a caixa em duas camadas. A face da moldura (contorno, linha clara e bisel) num pseudo
-     por cima das laterais de madeira, que cobriam a linha clara de dentro; a sombra dura noutro, por
-     baixo do chassi, para os pes ficarem por cima dela (os pes descem 2 px a mais: o contorno por
-     cima comeria a ponta de cima deles) */
-  .palco .receptor { border-radius: 4px; box-shadow: none; }
-  .palco .receptor::before, .palco .receptor::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 4px; }
-  .palco .receptor::before { z-index: -1; border-image: var(--mold-caixa-sombra); }
-  .palco .receptor::after { z-index: 0; border-image: var(--mold-caixa-face); }
-  /* o gabinete de madeira inteiro em volta da chapa, como no p1 (19/10): o chassi e a
-     madeira alaranjada do toca-discos (as laterais saem: a caixa toda e madeira) e a chapa creme e a
-     .parafusos-rec, recuada da beira e com o contorno por fora. Por dentro do mesmo tamanho de antes:
-     a madeira de cima e de baixo saem do respiro (o painel desce 2 px, o vao do VU aos volumes
-     encolhe 4, o de baixo cresce 2). Em cima a madeira e fina, so a quina acesa (no p1 a chapa
-     encosta no contorno), dos lados e de 10 px e embaixo de 6, com os pes */
-  .palco .receptor { padding-top: 27px; padding-bottom: 17px; row-gap: 10px; }
-  .palco .chassi-rec { border-radius: 4px; box-shadow: none; background: var(--veio-v), var(--madeira-ap); }
-  .palco .chassi-rec::before, .palco .chassi-rec::after { content: none; }
-  .palco .parafusos-rec {
-    position: absolute; inset: 5px 12px 8px;
-    background:
-      linear-gradient(180deg, rgba(42,24,18,.08) 0 15px, rgba(42,24,18,.5) 15px 17px, rgba(255,255,255,.6) 17px 19px, transparent 19px),
-      var(--escovado), #D6CFC2;
-    box-shadow: 0 0 0 2px var(--contorno), inset 2px 0 0 rgba(255,255,255,.6), inset -2px 0 0 rgba(42,24,18,.18), inset 0 -2px 0 rgba(42,24,18,.18);
-  }
-  .palco .parafusos-rec::before, .palco .parafusos-rec::after { left: 4px; right: 4px; }
-  .palco .parafusos-rec::before { top: 4px; }
-  .palco .parafusos-rec::after { bottom: 3px; }
-  .palco .marca-ap { top: 6px; }
-  .palco .marca-ap::after { background: rgba(42,24,18,.28); }
-  /* os VUs na janela de moldura dupla em degrau (contorno, linha clara, a sombra dura do rebaixo em
-     cima e o beico claro da chapa embaixo); o mostrador aceso em ambar liso e o vidro num reflexo de
-     borda seca, recuado da moldura (por cima dela o reflexo clareava o contorno na quina) */
-  .palco .janela { border-radius: 4px; box-shadow: none; border-image: var(--mold-vu); background: #FDB238; }
-  /* o mostrador do mock p1, com as cores amostradas dele: o ambar chapado e mais
-     vivo, sem o reflexo de vidro; escala, marcas e numeros pretos e grossos, em degrau (sem suavizar);
-     a zona do 0 em vermelho escuro; as divisoes pretas com o filete claro; a faixa do nome reta (a
-     curva era nossa) e um pouco mais escura */
-  .palco .janela::after { content: none; }
-  .palco .mostrador + .mostrador { box-shadow: inset 2px 0 0 #120A04, inset 3px 0 0 rgba(255,214,120,.9); }
-  .palco .mostrador .escala { stroke: #120A04; stroke-width: 2.2; shape-rendering: crispEdges; }
-  .palco .mostrador .marca { stroke: #120A04; stroke-width: 1.6; shape-rendering: crispEdges; }
-  .palco .mostrador .marca.grossa { stroke-width: 2.6; }
-  .palco .mostrador .zona { stroke: #8A0202; stroke-width: 2.6; shape-rendering: crispEdges; }
-  /* a escala 5 px mais alta, perto do topo como no mock; os 5 px passam para baixo da faixa do nome,
-     e o receiver fica do mesmo tamanho */
-  .palco .mostrador { padding: 3px 4px 5px; }
-  .palco .mostrador .agulha-m, .palco .mostrador svg.tampa-m { top: 3px; }
-  .palco .mostrador .nome-m { top: calc(4px + 100cqw * .56); }
-  @container (max-width: 100px) { .palco .mostrador .nome-m { top: calc(7px + 100cqw * .554); } }
-  .palco .mostrador .agulha { shape-rendering: crispEdges; }
-  .palco .mostrador text { fill: #120A04; font-size: 10.5px; font-weight: 800; }
-  .palco .mostrador text.zona-txt { fill: #8A0202; }
-  .palco .mostrador .moldura { d: path("M-8 54.5 L128 54.5 L128 104 L-8 104 Z"); fill: #2D1A0F; }   /* ate o fundo da janela, cobrindo o pe da agulha */
-  /* VOZ, DISCO e JOGO na letra de pixel dos titulos (Jersey 10): 18,667 px da 1 px
-     de CSS por pixel da letra, sem pixel borrado, e o tamanho dos nomes do mock (o recuo da esquerda
-     devolve o espaco de depois da ultima letra, para o nome ficar no meio); o VOZ MUTADA sem o espaco
-     entre as letras, senao nao cabe */
-  .palco .mostrador .nome-m { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; letter-spacing: .1em; padding-left: .1em; }
-  .palco .mostrador.apagado .nome-m { letter-spacing: .02em; padding-left: .02em; }
-  /* os VUs em pixel: a face e a agulha nos canvas de celulas de 1 px do JS
-     (desenharVUs); o SVG de sempre fica sem pintar, segurando a altura do mostrador, e a agulha do
-     celular nao gira mais (o canvas e redesenhado) */
-  .palco .mostrador > svg:first-child, .palco .mostrador .agulha-m svg { visibility: hidden; }
-  .palco .mostrador .agulha-m { transform: none; transition: none; will-change: auto; }
-  .palco .mostrador canvas { display: block; image-rendering: pixelated; }
-  .palco .mostrador .vu-face { position: absolute; left: 4px; top: 3px; }
-  .palco .mostrador .vu-agulha { position: absolute; left: 0; top: 0; }
 
   /* FX-12: o corpo de aluminio liso na moldura de pixel, rente ao feltro (sem sombra, desde 18/10);
      o VITROLA na moldura miuda; o painel do visor numa chapa fina por dentro; o LCD liso de contorno
@@ -3217,21 +3106,30 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .palco .gaveta::after { border-radius: 3px; box-shadow: none; border-image: var(--mold-embutido); background: var(--escovado), #D6CFC2; }
   .palco .cabeca-gav::before { border-radius: 0; box-shadow: none; border-image: var(--mold-etiqueta-escura); }
   .palco .visor-gav { border-color: transparent; border-radius: 10px; box-shadow: none; border-image: var(--mold-chapa); background: var(--escovado), #E2DBCF; }
-  .palco .visor-gav .visor-ef {
-    border-radius: 2px; background: #9A967D;
-    box-shadow: inset 0 0 0 2px var(--contorno), inset 0 5px 0 rgba(0,0,0,.16), 0 2px 0 rgba(255,255,255,.6);
-  }
-  .palco .visor-gav.com-efeito .visor-ef {
-    background: #F4B252;
-    box-shadow: inset 0 0 0 2px var(--contorno), inset 0 5px 0 rgba(120,56,0,.16), 0 0 14px rgba(243,167,60,.38), 0 2px 0 rgba(255,255,255,.6);
-  }
-  .palco .visor-gav .knob { box-shadow: 0 0 0 2px var(--contorno), 0 3px 0 2px rgba(20,8,2,.4); }
-  .palco .visor-gav .knob::before { background: #E8E2D7; box-shadow: inset 2px 2px 0 rgba(255,255,255,.75), inset -2px -2px 0 rgba(42,24,18,.18); }
-  .palco .mesa-gav .ouvir { border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
-  .palco .mesa-gav .ouvir:active:not(:disabled), .palco .mesa-gav .ouvir.apertado:not(:disabled), .palco .mesa-gav .ouvir[aria-pressed="true"] {
-    transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(42,24,18,.16); border-image: var(--mold-objeto-apertado);
-  }
-  .palco .mesa-gav .ouvir[aria-pressed="true"] { background: var(--escovado), #C4BBAD; }
+}
+/* pele: o LCD, o botao giratorio e as teclas de chapa. Afundam no aperto e o Ouvir e o Mutar voz ficam afundados
+   enquanto ligam: nas duas telas, o seletor e o Mutar voz so aparecem no computador */
+.palco .seletor .visor-ef {
+  border-radius: 2px; background: #9A967D;
+  box-shadow: inset 0 0 0 2px var(--contorno), inset 0 5px 0 rgba(0,0,0,.16), 0 2px 0 rgba(255,255,255,.6);
+}
+.palco .seletor.com-efeito .visor-ef {
+  background: #F4B252;
+  box-shadow: inset 0 0 0 2px var(--contorno), inset 0 5px 0 rgba(120,56,0,.16), 0 0 14px rgba(243,167,60,.38), 0 2px 0 rgba(255,255,255,.6);
+}
+.palco .seletor .knob { box-shadow: 0 0 0 2px var(--contorno), 0 3px 0 2px rgba(20,8,2,.4); }
+.palco .seletor .knob::before { background: #E8E2D7; box-shadow: inset 2px 2px 0 rgba(255,255,255,.75), inset -2px -2px 0 rgba(42,24,18,.18); }
+.palco .mesa-gav .ouvir, .palco .medidores .seletor, .palco .chave { border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
+.palco .mesa-gav .ouvir:active:not(:disabled), .palco .mesa-gav .ouvir.apertado:not(:disabled), .palco .mesa-gav .ouvir[aria-pressed="true"],
+.palco .medidores .seletor:active:not(:disabled), .palco .medidores .seletor.apertado:not(:disabled),
+.palco .chave:active:not(:disabled), .palco .chave.apertado:not(:disabled), .palco .chave[aria-pressed="true"] {
+  transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(42,24,18,.16); border-image: var(--mold-objeto-apertado);
+}
+.palco .mesa-gav .ouvir[aria-pressed="true"] { background: var(--escovado), #C4BBAD; }
+@media (hover: hover) {
+  .palco .medidores .seletor:hover:not(:disabled), .palco .chave:hover:not(:disabled) { background: var(--escovado), #EEE8DD; }
+}
+@media (max-width: 899.98px) {
 
   /* opcoes do disco: a contracapa do LP subindo (o mock de 20/10, com os
      textos fora do pixel art). O papelao creme na moldura de pixel da barra, so com o degrau em cima
@@ -3279,11 +3177,6 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 @media (max-width: 899.98px) {
   .cabo-rca .svg-desk { display: none; }
 
-  
-
-  
-  
-
   /* no celular o FX-12 e o painel de feltro com o aparelho embutido: a moldura de aluminio, os
      trilhos, os parafusos, o puxador e a plaqueta solta saem (a serigrafia e do aparelho) */
   .palco .chassi-gav { background: none; box-shadow: none; }
@@ -3303,8 +3196,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   /* o par do toca-discos ao receiver: um traco so por cor, desenhado pelo JS (medirCabos) */
   .cabo-calha { display: block; position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none; }
   /* os fios e plugues em pixel como no mock p1: o JS (fiosPixel) desenha cada
-     pedaco num canvas de celulas de 4/3 px que o CSS amplia sem suavizar; os svg de antes saem */
-  .cabo-rca .svg-cel { display: none; }
+     pedaco num canvas de celulas de 4/3 px que o CSS amplia sem suavizar */
   .cabo-calha, .fios-pixel { image-rendering: pixelated; }
   .fios-pixel { position: absolute; left: -4px; top: -4px; }
   /* alça de cabos RCA cruzando a fresta de 22px entre o receiver e o módulo de efeitos */
@@ -3316,16 +3208,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   }
 }
 @media (min-width: 900px) {
-  .cabo-rca .svg-cel { display: none; }
-
-  /* alça dupla de cabos RCA saindo detrás do toca-discos e pendendo no vão de 24..56px até o receiver */
-  .cabo-mesa {
-    left: calc(100% - 14px); top: 18px; width: 76px; height: 156px; z-index: 1;
-  }
-  /* plugues RCA entrando na traseira superior esquerda do receiver */
-  .cabo-rec {
-    left: -21px; top: 16px; width: 34px; height: 72px; z-index: -1;
-  }
+  /* o par do toca-discos ao receiver: um canvas so, atras dos dois aparelhos (medirCabos); os pedacos sao do celular */
+  .cabo-calha { display: block; position: absolute; z-index: -1; pointer-events: none; image-rendering: pixelated; }
+  .cabo-mesa, .cabo-rec, .cabo-rca .fios-pixel { display: none; }
   /* alça curta de cabos RCA no recuo lateral de 14px ligando o fundo do receiver à gaveta aberta */
   .cabo-gav {
     left: -14px; top: -12px; width: 36px; height: 96px; z-index: -1;
@@ -3362,7 +3247,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .deck { gap: 12px; }
   .faixa { gap: 6px; }
   .canal-faixa { margin-top: -2px; }
-  .receptor { padding: 17px 18px 9px 18px; gap: 10px 20px; }   /* 17 em cima: a plaqueta R-77; 18 dos lados: as laterais de madeira */
+  .palco .receptor { padding: 25px 18px 14px; column-gap: 20px; }   /* 25 em cima: a faixa da plaqueta R-77; 18 dos lados: a madeira e a chapa */
   .medidores { gap: 10px; }
   .chave { padding: 6px 10px; gap: 8px; font-size: .875rem; }
   .vista .cabeca-sec h2, .cabeca-gav h2 { font-size: 1.25rem; }
@@ -3383,7 +3268,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 @media (prefers-reduced-motion: reduce) {
   .giratorio { animation: none; }
   .lampada.piscando { animation: none; }
-  .braco, .disco, .brilho, .capa, .janela, .mostrador::before, .rolo { transition: none; }
+  .braco, .disco, .brilho, .capa, .mostrador::before, .rolo { transition: none; }
   .disco-item.no-prato .capa { transform: none; }
   .estante .disco-item.no-prato .ficha { transform: none; }
   .compacto.tocando .sete-gira { animation: none; }
@@ -3391,7 +3276,6 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .ponteiro, .visor-ef, .tecla, .seletor .seta-gav { transition: none; }
   .palco, .palco.anima, body.com-palco .palco { transition: none; }
   .mini-gira { animation: none; }
-  .mostrador .agulha-m { transition: none; }
   .menu.folha { animation: none; transition: none; }
   .resultado.voltando .corpo, .resultado .fundo-fila svg { transition: none; }
 }
@@ -3482,58 +3366,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       </div>
     </div>
     <span class="pes-mesa" aria-hidden="true"></span>
-    <span class="cabo-rca cabo-mesa" aria-hidden="true">
-      <svg class="svg-desk" viewBox="0 0 76 156" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="nql-a" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#5B534A"/><stop offset="28%" stop-color="#EFE8DC"/>
-            <stop offset="50%" stop-color="#FFFDF8"/><stop offset="78%" stop-color="#8F8679"/><stop offset="100%" stop-color="#3E3832"/>
-          </linearGradient>
-        </defs>
-        <!-- sombras dos cabos -->
-        <path d="M 14 25 C 36 26, 31 124, 49 124 C 63 124, 60 44, 75 42" stroke="rgba(12,5,2,.62)" stroke-width="6.5" stroke-linecap="round"/>
-        <path d="M 14 43 C 29 44, 24 142, 45 142 C 64 142, 62 60, 75 58" stroke="rgba(12,5,2,.62)" stroke-width="6.5" stroke-linecap="round"/>
-        <!-- cabo branco (L) -->
-        <path d="M 12 22 C 35 23, 30 120, 48 120 C 62 120, 59 41, 74 39" stroke="#3E332A" stroke-width="6.6" stroke-linecap="round"/>
-        <path d="M 12 22 C 35 23, 30 120, 48 120 C 62 120, 59 41, 74 39" stroke="#CFC4B2" stroke-width="5.2" stroke-linecap="round"/>
-        <path d="M 12 21.2 C 35 22.2, 30 119.2, 48 119.2 C 62 119.2, 59 40.2, 74 38.2" stroke="rgba(255,250,240,.65)" stroke-width="1.4" stroke-linecap="round"/>
-        <!-- cabo vermelho (R) -->
-        <path d="M 12 40 C 28 41, 23 138, 44 138 C 63 138, 61 57, 74 55" stroke="#42110C" stroke-width="6.6" stroke-linecap="round"/>
-        <path d="M 12 40 C 28 41, 23 138, 44 138 C 63 138, 61 57, 74 55" stroke="#A8362B" stroke-width="5.2" stroke-linecap="round"/>
-        <path d="M 12 39.2 C 28 40.2, 23 137.2, 44 137.2 C 63 137.2, 61 56.2, 74 54.2" stroke="rgba(255,182,165,.5)" stroke-width="1.4" stroke-linecap="round"/>
-        <!-- plugue RCA branco saindo do prato -->
-        <g transform="translate(2,15) rotate(8)">
-          <rect x="0" y="1" width="14" height="10" rx="2" fill="url(#nql-a)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3.5" y="1.4" width="2.6" height="9.2" fill="#E5DBC8"/>
-          <line x1="8.5" y1="1.5" x2="8.5" y2="10.5" stroke="#3E362E" stroke-width="1"/>
-          <path d="M14 2.4 L21 3.4 L21 8.6 L14 9.6 Z" fill="#2A221E" stroke="#16110E" stroke-width=".7"/>
-          <line x1="16.5" y1="2.8" x2="16.5" y2="9.2" stroke="#52463F" stroke-width="1"/>
-          <line x1="19" y1="3.1" x2="19" y2="8.9" stroke="#52463F" stroke-width="1"/>
-        </g>
-        <!-- plugue RCA vermelho saindo do prato -->
-        <g transform="translate(2,33) rotate(10)">
-          <rect x="0" y="1" width="14" height="10" rx="2" fill="url(#nql-a)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3.5" y="1.4" width="2.6" height="9.2" fill="#C83E30"/>
-          <line x1="8.5" y1="1.5" x2="8.5" y2="10.5" stroke="#3E362E" stroke-width="1"/>
-          <path d="M14 2.4 L21 3.4 L21 8.6 L14 9.6 Z" fill="#2A221E" stroke="#16110E" stroke-width=".7"/>
-          <line x1="16.5" y1="2.8" x2="16.5" y2="9.2" stroke="#52463F" stroke-width="1"/>
-          <line x1="19" y1="3.1" x2="19" y2="8.9" stroke="#52463F" stroke-width="1"/>
-        </g>
-      </svg>
-      <svg class="svg-cel" viewBox="0 0 68 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- plugues saindo por baixo do tampo -->
-        <g transform="translate(19,-2) rotate(72)">
-          <rect x="0" y="0" width="13" height="9" rx="1.8" fill="url(#nql-a)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3" y=".5" width="2.4" height="8" fill="#E5DBC8"/>
-          <path d="M13 1.4 L19 2.3 L19 6.7 L13 7.6 Z" fill="#2A221E"/>
-        </g>
-        <g transform="translate(35,-2) rotate(74)">
-          <rect x="0" y="0" width="13" height="9" rx="1.8" fill="url(#nql-a)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3" y=".5" width="2.4" height="8" fill="#C83E30"/>
-          <path d="M13 1.4 L19 2.3 L19 6.7 L13 7.6 Z" fill="#2A221E"/>
-        </g>
-      </svg>
-    </span>
+    <span class="cabo-rca cabo-mesa" aria-hidden="true"></span>
     </div>
 
     <div class="faixa">
@@ -3581,45 +3414,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       <span class="parafusos-rec"></span>
       <span class="pes-ap"></span>
     </span>
-    <span class="cabo-rca cabo-rec" aria-hidden="true">
-      <svg class="svg-desk" viewBox="0 0 34 72" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="nql-b" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#5B534A"/><stop offset="30%" stop-color="#EFE8DC"/>
-            <stop offset="52%" stop-color="#FFFDF8"/><stop offset="80%" stop-color="#8F8679"/><stop offset="100%" stop-color="#3E3832"/>
-          </linearGradient>
-        </defs>
-        <!-- plugue RCA branco entrando atrás do receptor -->
-        <g transform="translate(30,28) rotate(172)">
-          <rect x="0" y="1" width="14" height="10" rx="2" fill="url(#nql-b)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3.5" y="1.4" width="2.6" height="9.2" fill="#E5DBC8"/>
-          <line x1="8.5" y1="1.5" x2="8.5" y2="10.5" stroke="#3E362E" stroke-width="1"/>
-          <path d="M14 2.4 L21 3.4 L21 8.6 L14 9.6 Z" fill="#2A221E" stroke="#16110E" stroke-width=".7"/>
-          <line x1="16.5" y1="2.8" x2="16.5" y2="9.2" stroke="#52463F" stroke-width="1"/>
-        </g>
-        <!-- plugue RCA vermelho entrando atrás do receptor -->
-        <g transform="translate(30,45) rotate(170)">
-          <rect x="0" y="1" width="14" height="10" rx="2" fill="url(#nql-b)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3.5" y="1.4" width="2.6" height="9.2" fill="#C83E30"/>
-          <line x1="8.5" y1="1.5" x2="8.5" y2="10.5" stroke="#3E362E" stroke-width="1"/>
-          <path d="M14 2.4 L21 3.4 L21 8.6 L14 9.6 Z" fill="#2A221E" stroke="#16110E" stroke-width=".7"/>
-          <line x1="16.5" y1="2.8" x2="16.5" y2="9.2" stroke="#52463F" stroke-width="1"/>
-        </g>
-      </svg>
-      <svg class="svg-cel" viewBox="0 0 68 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- plugues entrando atrás do topo do receptor -->
-        <g transform="translate(11,50) rotate(-78)">
-          <rect x="0" y="0" width="13" height="9" rx="1.8" fill="url(#nql-b)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3" y=".5" width="2.4" height="8" fill="#E5DBC8"/>
-          <path d="M13 1.4 L19 2.3 L19 6.7 L13 7.6 Z" fill="#2A221E"/>
-        </g>
-        <g transform="translate(27,50) rotate(-76)">
-          <rect x="0" y="0" width="13" height="9" rx="1.8" fill="url(#nql-b)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3" y=".5" width="2.4" height="8" fill="#C83E30"/>
-          <path d="M13 1.4 L19 2.3 L19 6.7 L13 7.6 Z" fill="#2A221E"/>
-        </g>
-      </svg>
-    </span>
+    <span class="cabo-rca cabo-rec" aria-hidden="true"></span>
     <div class="medidores">
       <div class="janela" id="janela" role="img" aria-label="Medidores ao vivo: voz, disco e o que vai para o jogo">
         <div class="mostrador" data-k="mic" data-nome="voz"></div>
@@ -3661,38 +3456,6 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       <span class="puxador-gav"></span>
     </span>
     <span class="cabo-rca cabo-gav" aria-hidden="true">
-      <svg class="svg-cel" viewBox="0 0 116 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="nql-c" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stop-color="#5B534A"/><stop offset="30%" stop-color="#EFE8DC"/>
-            <stop offset="52%" stop-color="#FFFDF8"/><stop offset="80%" stop-color="#8F8679"/><stop offset="100%" stop-color="#3E3832"/>
-          </linearGradient>
-        </defs>
-        <!-- sombras na parede de jacaranda (luz de cima a esquerda) -->
-        <path d="M 26 11 C 28.5 22, 40.5 24, 39.5 35" stroke="rgba(12,5,2,.42)" stroke-width="7.8" stroke-linecap="round"/>
-        <path d="M 25.4 10.6 C 27.9 21.2, 39.9 23.2, 38.9 34.6" stroke="rgba(12,5,2,.64)" stroke-width="6.2" stroke-linecap="round"/>
-        <path d="M 42.5 11 C 45.5 23, 54.5 24, 52.5 35" stroke="rgba(12,5,2,.42)" stroke-width="7.8" stroke-linecap="round"/>
-        <path d="M 41.9 10.6 C 44.9 22.2, 53.9 23.2, 51.9 34.6" stroke="rgba(12,5,2,.64)" stroke-width="6.2" stroke-linecap="round"/>
-        <!-- cabo branco (L): sai do plugue, faz barriga suave na fresta e desce reto atras do feltro -->
-        <path d="M 24.5 10 C 27 20, 39 22, 38 34" stroke="#3E332A" stroke-width="6.4" stroke-linecap="round"/>
-        <path d="M 24.5 10 C 27 20, 39 22, 38 34" stroke="#CFC4B2" stroke-width="5" stroke-linecap="round"/>
-        <path d="M 23.8 9.4 C 26.3 19.4, 38.3 21.4, 37.3 33.4" stroke="rgba(255,250,240,.68)" stroke-width="1.3" stroke-linecap="round"/>
-        <!-- cabo vermelho (R): arco ligeiramente diferente, aproximando-se do par antes de sumir atras do painel -->
-        <path d="M 41 10 C 44 21, 53 22, 51 34" stroke="#42110C" stroke-width="6.4" stroke-linecap="round"/>
-        <path d="M 41 10 C 44 21, 53 22, 51 34" stroke="#A8362B" stroke-width="5" stroke-linecap="round"/>
-        <path d="M 40.3 9.4 C 43.3 20.4, 52.3 21.4, 50.3 33.4" stroke="rgba(255,182,165,.52)" stroke-width="1.3" stroke-linecap="round"/>
-        <!-- plugues saindo por baixo do receptor -->
-        <g transform="translate(27,-2) rotate(72)">
-          <rect x="0" y="0" width="13" height="9" rx="1.8" fill="url(#nql-c)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3" y=".5" width="2.4" height="8" fill="#E5DBC8"/>
-          <path d="M13 1.4 L18 2.2 L18 6.8 L13 7.6 Z" fill="#2A221E"/>
-        </g>
-        <g transform="translate(43,-2) rotate(70)">
-          <rect x="0" y="0" width="13" height="9" rx="1.8" fill="url(#nql-c)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3" y=".5" width="2.4" height="8" fill="#C83E30"/>
-          <path d="M13 1.4 L18 2.2 L18 6.8 L13 7.6 Z" fill="#2A221E"/>
-        </g>
-      </svg>
       <svg class="svg-desk" viewBox="0 0 36 96" fill="none" xmlns="http://www.w3.org/2000/svg">
         <!-- alça lateral ligando o fundo do receptor à gaveta FX-12 no desktop -->
         <path d="M 22 4 C 4 14, 4 64, 24 72" stroke="rgba(12,5,2,.65)" stroke-width="6.2" stroke-linecap="round"/>
@@ -4413,8 +4176,8 @@ function bezier(a, c1, c2, b, n = 20) {
   }
   return out;
 }
-function fiosPixel(cv, larg, alt, fios, plugues) {
-  const W = Math.ceil(larg / CEL), H = Math.ceil(alt / CEL), px = new Uint8ClampedArray(W * H * 4);
+function fiosPixel(cv, larg, alt, fios, plugues, cel = CEL) {
+  const W = Math.ceil(larg / cel), H = Math.ceil(alt / cel), px = new Uint8ClampedArray(W * H * 4);
   const pinta = (i, [r, g, b], a = 255) => { px.set([r, g, b, a], i * 4); };
   const faixas = pts => {   // celula -> distancia com sinal ao traco, em celulas (+ do lado da luz)
     const d = new Map();
@@ -4422,11 +4185,11 @@ function fiosPixel(cv, larg, alt, fios, plugues) {
       const [ax, ay] = pts[i], [bx, by] = pts[i + 1], dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1, L = Math.sqrt(L2);
       let nx = -dy / L, ny = dx / L;
       if (nx + ny > 0) { nx = -nx; ny = -ny; }
-      const r = 3 * CEL;
-      for (let j = Math.max(0, Math.floor((Math.min(ay, by) - r) / CEL)); j <= Math.min(H - 1, Math.floor((Math.max(ay, by) + r) / CEL)); j++)
-        for (let k = Math.max(0, Math.floor((Math.min(ax, bx) - r) / CEL)); k <= Math.min(W - 1, Math.floor((Math.max(ax, bx) + r) / CEL)); k++) {
-          const cx = (k + .5) * CEL, cy = (j + .5) * CEL, t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / L2));
-          const ex = cx - ax - t * dx, ey = cy - ay - t * dy, s = Math.hypot(ex, ey) / CEL, o = d.get(j * W + k);
+      const r = 3 * cel;
+      for (let j = Math.max(0, Math.floor((Math.min(ay, by) - r) / cel)); j <= Math.min(H - 1, Math.floor((Math.max(ay, by) + r) / cel)); j++)
+        for (let k = Math.max(0, Math.floor((Math.min(ax, bx) - r) / cel)); k <= Math.min(W - 1, Math.floor((Math.max(ax, bx) + r) / cel)); k++) {
+          const cx = (k + .5) * cel, cy = (j + .5) * cel, t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / L2));
+          const ex = cx - ax - t * dx, ey = cy - ay - t * dy, s = Math.hypot(ex, ey) / cel, o = d.get(j * W + k);
           if (s <= 3 && (o === undefined || s < Math.abs(o))) d.set(j * W + k, ex * nx + ey * ny >= 0 ? s : -s);
         }
     }
@@ -4441,9 +4204,9 @@ function fiosPixel(cv, larg, alt, fios, plugues) {
     for (const [i, s] of d) pinta(i, Math.abs(s) > 2 ? CONTORNO_FIO : s > 1 ? brilho : s > 0 ? corpo : s > -1 ? sombra : escuro);
   for (const { t: [tx, ty], ang, cor } of plugues) {   // o plugue: corpo de metal, anel e capa da cor do fio (como no mock)
     const a = ang * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a), lado = Math.sign(sn - cs) || 1, dentro = new Map();
-    for (let j = Math.max(0, Math.floor((ty - 22) / CEL)); j <= Math.min(H - 1, Math.floor((ty + 22) / CEL)); j++)
-      for (let k = Math.max(0, Math.floor((tx - 22) / CEL)); k <= Math.min(W - 1, Math.floor((tx + 22) / CEL)); k++) {
-        const ex = (k + .5) * CEL - tx, ey = (j + .5) * CEL - ty, lx = ex * cs + ey * sn, ly = -ex * sn + ey * cs;
+    for (let j = Math.max(0, Math.floor((ty - 22) / cel)); j <= Math.min(H - 1, Math.floor((ty + 22) / cel)); j++)
+      for (let k = Math.max(0, Math.floor((tx - 22) / cel)); k <= Math.min(W - 1, Math.floor((tx + 22) / cel)); k++) {
+        const ex = (k + .5) * cel - tx, ey = (j + .5) * cel - ty, lx = ex * cs + ey * sn, ly = -ex * sn + ey * cs;
         let c = null;
         if (lx >= 0 && lx <= 13 && ly >= 0 && ly <= 9) {
           const u = (ly - 4.5) * lado;
@@ -4456,7 +4219,7 @@ function fiosPixel(cv, larg, alt, fios, plugues) {
     for (const [i, c] of dentro) pinta(i, c);
   }
   cv.width = W; cv.height = H;
-  cv.style.width = W * CEL + 'px'; cv.style.height = H * CEL + 'px';
+  cv.style.width = W * cel + 'px'; cv.style.height = H * cel + 'px';
   cv.getContext('2d').putImageData(new ImageData(px, W, H), 0, 0);
 }
 /* os pedacos parados (os plugues do toca-discos e do receiver e a alca do receiver ao FX-12), nas
@@ -4482,8 +4245,8 @@ function pedacosFios(repinta) {   // repinta: os que ja existem tambem (o canvas
    curvas das pontas sao as do mock, ligadas por uma reta na calha; o vao entre os aparelhos
    (titulo, fila, erro) vem do layout */
 function medirCabos() {
+  if (!celular()) { cabosDoComputador(); return; }
   const cv = $('#cabo-calha'), p = $('#palco');
-  if (!celular()) return;
   const m = p.querySelector('.mesa'), r = p.querySelector('.receptor');
   if (!m.offsetParent) return;
   pedacosFios();
@@ -4508,6 +4271,35 @@ function medirCabos() {
     { pts: fio([R - 55, mb - 20], [R - 47, mb + 4], [R - 18, mb - 4], [R - 14, mb + 24], [R - 14, rt - 31], [R - 17, rt - 7], [Rr - 46, rt - 15], [Rr - 54, rt + 11]), cor: 'branco' },
     { pts: fio([R - 39, mb - 20], [R - 33, mb - 2], [R - 9.33, mb - 8], [R - 7.33, mb + 24], [R - 7.33, rt - 31], [R - 9.33, rt - 1], [Rr - 31, rt - 11], [Rr - 38, rt + 11]), cor: 'vermelho' },
   ], []);
+}
+/* cabos RCA no computador: o par sai de tras do toca-discos, pende no vao e entra de lado no receiver, com os fios e
+   os plugues num canvas so, atras dos dois aparelhos. As curvas sao proporcoes do vao, para o par sempre chegar nos
+   dois lados; com o vao estreito o plugue entra mais, e sobra fio. A celula e o pixel inteiro de tela mais perto dos
+   4/3 px do celular, e o canto do canvas cai na grade da tela */
+function cabosDoComputador() {
+  const cv = $('#cabo-calha'), t = $('.tampo').getBoundingClientRect(), r = $('.receptor').getBoundingClientRect();
+  const d = devicePixelRatio || 1, cel = Math.max(1, Math.round(d * 4 / 3)) / d;
+  const geo = ['pc', t.right, t.top, t.height, r.left, r.top, cel].join('|');
+  if (cv._geo === geo) return;
+  cv._geo = geo;
+  const x0 = Math.round((t.right - 32) * d) / d, y0 = Math.round((Math.min(t.top, r.top) + 20) * d) / d;
+  const fundo = Math.min(t.bottom - 40, t.top + clamp(t.height * .3, 120, 190));   // o ponto mais baixo do fio branco
+  const entra = Math.max(3, (78 - (r.left - t.right)) / 2);
+  const plugue = (x, y, ang, cor) => {   // pelo meio da ponta; o rabo e de onde sai o fio
+    const a = ang * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
+    return { t: [x - x0 + 4.5 * sn, y - y0 - 4.5 * cs], ang, cor, rabo: [x - x0 + 18 * cs, y - y0 + 18 * sn] };
+  };
+  const fio = (a, b, f, [k1, k2, k3, k4, k5], cor) => {   // da ponta a ao fundo f e dali a b, em proporcoes do vao
+    const x = k => a.rabo[0] + k * (b.rabo[0] - a.rabo[0]), [xa, ya] = a.rabo, [xb, yb] = b.rabo;
+    return { pts: [...bezier([xa, ya], [x(k1), ya + 1], [x(k2), f], [x(k3), f]), ...bezier([x(k3), f], [x(k4), f], [x(k5), yb + 2], [xb, yb])], cor };
+  };
+  const pb = plugue(t.right - entra, t.top + 40, 8, 'branco'), pv = plugue(t.right - entra, t.top + 58, 8, 'vermelho');
+  const qb = plugue(r.left + entra, r.top + 44, 172, 'branco'), qv = plugue(r.left + entra, r.top + 61, 170, 'vermelho');
+  cv.style.left = x0 + 'px'; cv.style.top = y0 + 'px';
+  fiosPixel(cv, r.left + 32 - x0, fundo + 32 - y0, [
+    fio(pb, qb, fundo - y0, [.37, .29, .58, .81, .76], 'branco'),
+    fio(pv, qv, fundo + 18 - y0, [.26, .18, .52, .82, .79], 'vermelho'),
+  ], [pb, pv, qb, qv], cel);
 }
 /* cabos dos pedais em pixel como no mock "Cabos B corrigido",
    de quem ligou com pressa so para fazer funcionar num show: entre vizinhos da
@@ -4946,7 +4738,7 @@ function medirCabosPedais() {
 }
 
 const roCabos = new ResizeObserver(() => medirCabos());
-for (const x of document.querySelectorAll('.palco .deck, .palco .receptor, .palco .gaveta')) roCabos.observe(x);
+for (const x of document.querySelectorAll('.palco .deck, .palco .mesa, .palco .receptor, .palco .gaveta')) roCabos.observe(x);
 addEventListener('resize', medirCabos);
 new ResizeObserver(() => { caberNomes(); medirCabosPedais(); }).observe($('#banco'));
 /* toque: a cara de apertado entra no instante do dedo e sai 90 ms depois de soltar no minimo. O :active do Chrome no celular so chega depois de ele decidir que o toque
@@ -5179,37 +4971,21 @@ function abrirPalcoComHistoria() {
 const ANG = 50;
 function dbParaAng(db) { const t = clamp((db + 50) / 50, 0, 1); return -ANG + 2 * ANG * Math.pow(t, 1.6); }
 function montarMostradores() {
-  const px = 60, py = 96, r = 66;
-  const ponto = (a, rr) => { const t = a * Math.PI / 180; return [px + rr * Math.sin(t), py - rr * Math.cos(t)]; };
-  const arco = (a1, a2, rr) => { const [x1, y1] = ponto(a1, rr), [x2, y2] = ponto(a2, rr); return `M${x1.toFixed(2)} ${y1.toFixed(2)} A${rr} ${rr} 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`; };
-  let svg = `<svg viewBox="0 0 120 78" aria-hidden="true"><path class="escala" d="${arco(-ANG, ANG, r)}"/><path class="zona" d="${arco(dbParaAng(-3), ANG, r + 1.5)}"/>`;
-  const marcas = [[-40, '40'], [-20, '20'], [-10, '10'], [-5, '5'], [0, '0']];
-  for (const [db, t] of marcas) {
-    const a = dbParaAng(db);
-    const [x1, y1] = ponto(a, r), [x2, y2] = ponto(a, r - 7), [tx, ty] = ponto(a, r + 9);
-    svg += `<line class="marca grossa" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}"/>`;
-    svg += `<text x="${tx.toFixed(2)}" y="${(ty + 3.2).toFixed(2)}"${db > -4 ? ' class="zona-txt"' : ''}>${db === 0 ? '0' : '−' + t}</text>`;
-  }
-  for (let db = -48; db < 0; db += 2) {
-    if (marcas.some(m => m[0] === db)) continue;
-    const a = dbParaAng(db); const [x1, y1] = ponto(a, r), [x2, y2] = ponto(a, r - 3.5);
-    svg += `<line class="marca" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}"/>`;
-  }
-  svg += `</svg><canvas class="vu-face" aria-hidden="true"></canvas><span class="agulha-m" aria-hidden="true"><svg viewBox="0 0 120 78"><line class="agulha" x1="${px}" y1="${py}" x2="${px}" y2="${py - r - 3}"/></svg><canvas class="vu-agulha"></canvas></span>`;
+  // o svg vazio so segura a altura do mostrador: a face e a agulha sao os canvas de pixel (desenharVUs)
+  const face = `<svg viewBox="0 0 120 78" aria-hidden="true"></svg><canvas class="vu-face" aria-hidden="true"></canvas><span class="agulha-m" aria-hidden="true"><canvas class="vu-agulha"></canvas></span>`;
   // moldura e nome numa camada propria, acima do escurecimento da voz cortada
-  const tampa = nome => `<svg class="tampa-m" viewBox="0 0 120 78" aria-hidden="true"><path class="moldura" d="M-8 60 Q60 50 128 60 L128 90 L-8 90 Z"/></svg><span class="nome-m" aria-hidden="true">${nome}</span>`;
+  const tampa = nome => `<svg class="tampa-m" viewBox="0 0 120 78" aria-hidden="true"><path class="moldura" d="M-8 54.5 L128 54.5 L128 104 L-8 104 Z"/></svg><span class="nome-m" aria-hidden="true">${nome}</span>`;
   document.querySelectorAll('.mostrador').forEach(m => {
-    m.insertAdjacentHTML('afterbegin', svg + tampa(m.dataset.nome));
+    m.insertAdjacentHTML('afterbegin', face + tampa(m.dataset.nome));
   });
 }
-/* os VUs em pixel no celular: a face (arco, marcas, numeros e a zona do 0) e a agulha
+/* os VUs em pixel: a face (arco, marcas, numeros e a zona do 0) e a agulha
    em celulas de 1 px, cada uma num canvas do tamanho em celulas que o CSS mostra sem suavizar, nas
-   medidas do SVG de sempre (o viewBox 120 x 78 na largura do mostrador). A face so se redesenha quando a
+   medidas do viewBox 120 x 78 na largura do mostrador. A face so se redesenha quando a
    medida muda; os numeros em algarismos de pixel proprios, 6 de altura com a haste de 2 (os grossos do
    mock p1: a Silkscreen fina ficava leve e, em negrito, fechava o 4). A agulha anda a cada leitura
    do servidor (15 por segundo, o passo dos objetos do hotel), sem laco de quadro: sobe na hora e cai
-   devagar, como a transicao de 80 e 300 ms do computador, e um temporizador termina a queda quando as
-   leituras param */
+   devagar, com a constante de 300 ms, e um temporizador termina a queda quando as leituras param */
 const VU_COR = '#120A04', VU_ZONA = '#8A0202', VU_AGULHA = '#1D120C';
 const VU_DIGITO = {
   '-': ['....', '....', '####', '####', '....', '....'],
@@ -5299,7 +5075,6 @@ function agulhasPixel() {
   if (mexe) caindo = setTimeout(agulhasPixel, 66);
 }
 function desenharVUs() {
-  if (!celular()) return;
   document.querySelectorAll('.mostrador').forEach(desenharFaceVU);
   agulhasPixel();
 }
@@ -5312,31 +5087,14 @@ let repintando = 0;
 function repintarCanvas() {
   cancelAnimationFrame(repintando);
   repintando = requestAnimationFrame(() => {
-    if (!celular()) return;
     for (const cv of document.querySelectorAll('#cabo-calha, #cabos-pedais')) cv._geo = '';
-    pedacosFios(true); medirCabos(); medirCabosPedais(); desenharVUs();
+    if (celular()) pedacosFios(true);
+    medirCabos(); medirCabosPedais(); desenharVUs();
   });
 }
 document.addEventListener('contextrestored', repintarCanvas, true);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) repintarCanvas(); });
 addEventListener('pageshow', e => { if (e.persisted) repintarCanvas(); });
-const agulhas = {};
-const angAtual = { mic: -ANG, track: -ANG, out: -ANG }, angEscrito = {};
-/* ponteiros: cada tick do servidor (15 por segundo) vira o alvo de uma transicao de CSS, que a
-   placa de video anima sozinha. O laco de requestAnimationFrame fazia 60 quadros por segundo de
-   trabalho na pagina enquanto tocava musica, e no celular isso brigava com a rolagem do palco. Sobe rapido e cai devagar, como a fisica do laco (80 e 300 ms) */
-function acordarAgulhas() {
-  if (celular()) { agulhasPixel(); return; }
-  for (const k of ['mic', 'track', 'out']) {
-    const r = S.online ? (S.levels[k] || 0) : 0;
-    const alvo = dbParaAng(20 * Math.log10(Math.max(r, 1e-6)));
-    const t = `rotate(${alvo.toFixed(1)}deg)`;
-    if (t === angEscrito[k] || !agulhas[k]) continue;
-    agulhas[k].style.transitionDuration = alvo > angAtual[k] ? '80ms' : '300ms';
-    agulhas[k].style.transform = angEscrito[k] = t;
-    angAtual[k] = alvo;
-  }
-}
 
 /* ---------- prateleira ---------- */
 const nos = new Map();     // chave -> li
@@ -6620,7 +6378,7 @@ function conectar() {
   es.addEventListener('tick', e => {
     const t = JSON.parse(e.data);
     S.pos = t.pos; S.levels = t.levels || S.levels;
-    desenharTempo(); acordarAgulhas();
+    desenharTempo(); agulhasPixel();
   });
   es.onerror = () => {
     if (S.pareando) return;
@@ -6650,7 +6408,7 @@ document.addEventListener('visibilitychange', () => {
 });
 function online(on) {
   if (on === S.online) return;
-  S.online = on; acordarAgulhas();
+  S.online = on; agulhasPixel();
   const lamp = $('#lamp'), cx = $('#conexao');
   if (on) {
     S.jaConectou = true; S.desligado = false;
@@ -7015,9 +6773,7 @@ document.addEventListener('keyup', e => {
 
 /* ---------- inicio ---------- */
 montarMostradores();
-document.querySelectorAll('.mostrador').forEach(m => { agulhas[m.dataset.k] = m.querySelector('.agulha-m'); });
 new ResizeObserver(desenharVUs).observe($('.janela'));
-acordarAgulhas();
 $('#mini-cortar').innerHTML = $('#palco-cortar').innerHTML = IC_MIC;
 inertPalco();
 FADERS.forEach(([fi]) => pintarFader($(fi)));
