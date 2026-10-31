@@ -2979,7 +2979,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
    banco */
 @media (min-width: 900px) {
   .palco .gaveta {
-    margin: 0; padding: 14px 14px 0;
+    margin: 0; padding: 9px 14px 0;
     grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto minmax(0, 1fr);
     grid-template-areas: "cabeca ouvir fechar" "dica dica dica" "lista lista lista";
   }
@@ -2987,12 +2987,16 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas: "cabeca ouvir fechar" "lista lista lista";
   }
-  .palco .gaveta::after { grid-row: 1; }
+  .palco .gaveta::after { grid-row: 1; margin: -6px -8px -10px; }
+  /* as duas teclas baixas, para a faixa ocupar pouco; a moldura sai 3 px da caixa (7 embaixo, com a parede), e o clique
+     pega nela tambem */
+  .palco .mesa-gav .btn { min-height: 26px; padding-block: 0; font-size: .8125rem; }
+  .palco .mesa-gav .btn::after { content: ""; position: absolute; inset: -3px -3px -7px; }
   .palco .visor-gav { display: none; }
   @container (max-width: 34rem) { .palco .cabeca-gav::after { display: none; } }   /* so o VITROLA: o resto nao cabe ao lado das teclas */
   #b-fechar-gav { grid-area: fechar; position: relative; z-index: 2; gap: .28em; }
   @container (max-width: 40rem) { .a-prateleira { display: none; } }
-  .palco .gaveta > .rolo { align-self: stretch; margin: 6px -14px 0; padding: 0; }
+  .palco .gaveta > .rolo { align-self: stretch; margin: 2px -14px 0; padding: 0; }
   .palco #banco { display: flex; flex-wrap: wrap; gap: 16px 24px; max-width: 628px; margin-inline: auto; padding: 2px 30px 0; }
   .palco .grupo-ef { min-width: 0; }
   .palco .grupo-ef + .grupo-ef { margin-top: 0; }
