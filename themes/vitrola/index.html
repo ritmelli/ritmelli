@@ -3132,6 +3132,13 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 @media (min-width: 900px) {
   .situacao { display: none; }
   .tocar-grande { width: 68px; height: 68px; }
+  /* a mesa no formato do tampo, centrada: em tela baixa ele fica mais estreito que a coluna, e os pes e os cabos,
+     que moram na mesa, ficavam soltos na largura dela */
+  .mesa { aspect-ratio: 5 / 4; align-self: center; }
+  /* a altura da tela manda no toca-discos, e a faixa embaixo dele e o que divide a coluna com ele: a chave do fim do
+     disco na altura dela (o toque e so na chave, a linha nao precisa dos 44 px do dedo), colada nas teclas */
+  .palco .faixa > .fim-disco:not([hidden]) { min-height: 0; margin-top: 0; }
+  .palco .linha-tempo { margin-top: 0; }
 }
 @media (max-width: 899.98px) {
 
@@ -3338,18 +3345,20 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 @media (min-width: 900px) and (max-height: 819.98px) {
   .app { --resto: 19.75rem; --pad-y: 16px; --fresta: 18px; }
   .atalhos { display: none; }
-}
-/* tela bem baixa: tudo mais justo, o prato continua sendo o maior da tela */
-@media (min-width: 900px) and (max-height: 699.98px) {
-  .app { --alvo: 2.25rem; --resto: 15.5rem; --pad-y: 12px; --fresta: 14px; }
-  .nome-marca { font-size: 1.5rem; }
-  /* o topo mais baixo: plaqueta, teclas e caixilho da busca encolhem (no celular grande deitado a
-     fileira quebra em duas, e cada uma pesa) */
+  /* o topo mais baixo: plaqueta, teclas e caixilho da busca encolhem, e sobra para o toca-discos (no celular grande
+     deitado a fileira quebra em duas, e cada uma pesa) */
   .topo { gap: 12px; }
   .marca { min-height: calc(36px + 8 * var(--px, 1px)); }
   .botoes-topo .btn-madeira, .cabeca-sec .btn-madeira { height: calc(36px + 8 * var(--px, 1px)); }
   .busca { --caixilho: calc(2px + 3 * var(--px, 1px)); }
   .busca input { height: calc(32px + 6 * var(--px, 1px)); }
+}
+/* tela bem baixa: tudo mais justo, o prato continua sendo o maior da tela */
+@media (min-width: 900px) and (max-height: 699.98px) {
+  .app { --alvo: 2.25rem; --resto: 15.5rem; --pad-y: 12px; --fresta: 14px; }
+  .nome-marca { font-size: 1.5rem; }
+  .palco .faixa > .titulo-faixa { margin-top: 11px; }
+  .palco .faixa > .canal-faixa { margin-bottom: 12px; }
   .deck { gap: 12px; }
   .faixa { gap: 6px; }
   .canal-faixa { margin-top: -2px; }
@@ -4141,8 +4150,7 @@ if (document.fonts) document.fonts.ready.then(medirTitulo);
 /* texto sob "Nenhum disco no prato": com a prateleira vazia, apontar a busca; as teclas 1 a 9
    so onde ha teclado (o celular esconde os numeros das capas) */
 function dicaPrato() {
-  return S.lib.length ? 'Toque numa capa da prateleira para tocar.' + (celular() ? '' : ' As teclas 1 a 9 também tocam.')
-    : 'A prateleira está vazia. Busque um som no campo lá em cima.';
+  return S.lib.length ? 'Toque numa capa da prateleira para tocar.' : 'A prateleira está vazia. Busque um som no campo lá em cima.';
 }
 /* o mesmo na barra de baixo, curto: com a prateleira vazia nao ha capa para tocar */
 function dicaMini() { return S.lib.length ? 'Toque numa capa para tocar' : 'Busque um som lá em cima'; }
