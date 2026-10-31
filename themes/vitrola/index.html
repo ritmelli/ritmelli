@@ -107,7 +107,6 @@ kbd { font: inherit; }
 .lampada.acesa { background: radial-gradient(circle at 35% 35%, #fff2c8, var(--ambar) 55%, #b9701c); box-shadow: 0 0 10px 2px rgba(243,167,60,.55); }
 .lampada.alerta { background: radial-gradient(circle at 35% 35%, #ffd1c6, var(--sinal) 55%, #9b2f20); box-shadow: 0 0 10px 2px rgba(242,115,94,.5); }
 .lampada.piscando { animation: piscar 1.1s steps(2, jump-none) infinite; }
-.lampada > svg { display: none; }   /* o LED de pixel dos pedais: so a pedaleira do celular mostra */
 @keyframes piscar { 50% { opacity: .25; } }
 
 /* ---------- grade ---------- */
@@ -494,7 +493,7 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 @font-face { font-family: "DSEG14"; src: url(fonts/DSEG14Classic-BoldItalic.woff2) format("woff2"); font-display: block; }
 /* a letra de pixel dos titulos de secao (Jersey 10, OFL, fonts/Jersey10-OFL.txt; so o latim) */
 @font-face { font-family: "Jersey 10"; src: url(fonts/Jersey10.woff2) format("woff2"); font-display: block; }
-/* a letra de pixel miuda das plaquinhas dos pedais no celular (Silkscreen, OFL, fonts/Silkscreen-OFL.txt; so o latim) */
+/* a letra de pixel miuda das plaquinhas dos pedais (Silkscreen, OFL, fonts/Silkscreen-OFL.txt; so o latim) */
 @font-face { font-family: "Silkscreen"; src: url(fonts/Silkscreen.woff2) format("woff2"); font-display: block; }
 .seletor { justify-content: flex-start; gap: 10px; width: 100%; min-width: 0; padding: 3px 12px 3px 5px; text-align: left; container-type: inline-size; }
 /* seletor estreito: o atraso sai do visor (segue na tecla e no titulo do botao) */
@@ -532,19 +531,7 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 @media (min-width: 900px) { .seletor[aria-expanded="true"] .seta-gav { transform: rotate(180deg); } }
 
 /* ---------- gaveta de efeitos: sai de baixo do receptor ---------- */
-.gaveta {
-  grid-area: efeitos; position: relative; z-index: 1; min-width: 0;
-  display: flex; flex-direction: column; gap: 12px; container-type: inline-size;
-  margin: calc(-1 * var(--fresta) - 10px) 14px 0;
-  padding: calc(10px + 26px) 20px 16px; border-radius: 0 0 6px 6px; color: var(--tinta);
-  background: var(--escovado), linear-gradient(180deg, #B5ACA0 0%, #CEC6B8 18%, #C4BCAE 72%, #AE9F8E 100%);
-  box-shadow:
-    inset 0 16px 14px -10px rgba(24,11,5,.65),
-    inset 0 -3px 0 #3A302A,
-    inset 0 -5px 0 rgba(255,255,255,.35),
-    0 20px 32px -14px rgba(0,0,0,.74),
-    0 3px 0 #18110E;
-}
+.gaveta { grid-area: efeitos; position: relative; z-index: 1; min-width: 0; container-type: inline-size; }
 
 /* ---------- aparelhos separados ligados por cabos RCA (do mock escolhido): selo e
    pes no toca-discos, chassi do receiver R-77 com laterais de jacaranda, chassi proprio do FX-12
@@ -641,87 +628,12 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 .gaveta > .mesa-gav,
 .gaveta > .rolo { position: relative; z-index: 1; }
 
-/* NOVO: chassi do módulo de Efeitos FX-12 (trilhos anodizados grafite/bronze, fendas de rack e grelha) */
-.chassi-gav {
-  position: absolute; inset: 0; z-index: 0; pointer-events: none; border-radius: inherit;
-  background:
-    linear-gradient(180deg, rgba(22,10,5,.48) 0 10px, rgba(42,24,18,.12) 10px 31px, rgba(42,24,18,.26) 31px 32px, rgba(255,255,255,.52) 32px 33px, transparent 33px),
-    var(--escovado),
-    linear-gradient(180deg, #B5ACA0 0%, #CEC6B8 18%, #C4BCAE 72%, #B2A899 100%);
-  box-shadow:
-    inset 0 0 0 1px rgba(42,24,18,.28),
-    inset 0 -3px 0 #2B231F,
-    inset 0 -4px 0 rgba(255,255,255,.42);
-}
-/* trilhos laterais metálicos anodizados escuros (diferenciam da madeira do receiver) */
-.chassi-gav::before,
-.chassi-gav::after {
-  content: ""; position: absolute; top: 0; bottom: 0; width: 8px; z-index: 2;
-  background:
-    repeating-linear-gradient(180deg, transparent 0 18px, rgba(0,0,0,.45) 18px 22px, rgba(255,255,255,.14) 22px 23px),
-    linear-gradient(90deg, #3A312C, #241E1B 60%, #171210);
-}
-.chassi-gav::before {
-  left: 0; border-radius: inherit; border-top-right-radius: 0; border-bottom-right-radius: 0;
-  box-shadow: 1px 0 0 rgba(255,255,255,.55), 2px 0 3px rgba(0,0,0,.22);
-}
-.chassi-gav::after {
-  right: 0; border-radius: inherit; border-top-left-radius: 0; border-bottom-left-radius: 0;
-  box-shadow: -1px 0 0 rgba(42,24,18,.35), -2px 0 3px rgba(0,0,0,.22);
-}
-
-/* serigrafia invertida de estúdio no FX-12 + grelha de ventilação */
-.marca-fx { top: 14px; left: 16px; right: 16px; }
-.marca-fx b {
-  padding: 2px 5px 1px; border-radius: 2px;
-  background: #2A1E19; color: var(--marfim);
-  box-shadow: 0 1px 0 rgba(255,255,255,.45);
-  letter-spacing: .16em;
-}
-.marca-fx::after { display: none; }
-.grade-ar {
-  margin-left: auto; width: 58px; height: 7px; border-radius: 1px;
-  background: repeating-linear-gradient(90deg, #281D17 0 3px, rgba(255,255,255,.4) 3px 4px, transparent 4px 7px);
-   opacity: .75;
-}
-
-/* parafusos sextavados e puxador frisado inferior da gaveta FX-12 */
-.parafusos-gav::before,
-.parafusos-gav::after {
-  content: ""; position: absolute; left: 12px; right: 12px; height: 6px; z-index: 2;
-  background:
-    radial-gradient(circle at 3px 3px, #1D1612 0 1.4px, #8F8578 1.5px 2.8px, transparent 3px),
-    radial-gradient(circle at calc(100% - 3px) 3px, #1D1612 0 1.4px, #8F8578 1.5px 2.8px, transparent 3px);
-}
-.parafusos-gav::before { top: 17px; }
-.parafusos-gav::after { bottom: 8px; }
-.puxador-gav {
-  position: absolute; left: 32%; right: 32%; bottom: 3px; height: 4px; z-index: 2;
-  border-radius: 2px;
-  background: linear-gradient(180deg, #3A302A, #8C8275 55%, #FFF8EC);
-  box-shadow: 0 1px 2px rgba(0,0,0,.45);
-}
-
 /* NOVO: regras base dos cabos RCA */
 .cabo-rca { position: absolute; pointer-events: none; user-select: none; }
-.cabo-rca svg { display: block; width: 100%; height: 100%; overflow: visible; }
 
-.cabeca-gav { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.cabeca-gav h2 { font-size: 1.375rem; font-weight: 400; font-stretch: 125%; letter-spacing: .01em; line-height: 1.1; margin-right: auto; }
-/* a tecla Sem efeito e o "ouvir minha voz" ficam fixos; so as teclas de baixo rolam */
-.mesa-gav {
-  display: grid; grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: "zero" "ouvir" "dica"; gap: 6px 16px; align-items: center;
-}
-.mesa-gav .zero { grid-area: zero; grid-template-columns: minmax(0, 1fr); align-self: stretch; }
-.mesa-gav .ouvir { grid-area: ouvir; justify-self: start; }
+/* a tecla do Sem efeito sai: o x do visor desliga. So os pedais rolam */
+.mesa-gav .ouvir { grid-area: ouvir; }
 .dica-ouvir { grid-area: dica; }
-@container (min-width: 22rem) {
-  .mesa-gav { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "zero ouvir" "dica dica"; }
-}
-@container (min-width: 38rem) {
-  .mesa-gav { grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr); grid-template-areas: "zero ouvir" "zero dica"; column-gap: 18px; }
-}
 .dica-ouvir { font-size: .8125rem; line-height: 1.35; color: var(--tinta-2); max-width: 62ch; }
 .dica-ouvir b { font-weight: 600; color: var(--tinta); }
 /* sem fone: a dica abre o Microfone e fone direto (no celular esse nome nem aparece, o botao e so a engrenagem) */
@@ -731,48 +643,9 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 }
 @media (hover: hover) { .dica-ouvir .ir-disp:hover { text-decoration-color: #8F4A0C; } }
 
-/* teclas de piano, cada uma no seu recorte escuro do painel (fileira curta nao deixa buraco);
-   a do efeito em uso fica afundada, com a lampada acesa */
-.teclas {
-  --recorte: #3b281c;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 12.5rem), 1fr)); gap: 3px;
-  padding: 3px;
-}
-.tecla {
-  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 9px; row-gap: 1px; align-content: start;
-  min-height: 3.25rem; padding: 7px 10px 10px; text-align: left; border: 0; border-radius: 3px 3px 5px 5px;
-  color: var(--tinta);
-  background: var(--escovado), linear-gradient(180deg, #F0EBE2, var(--aluminio-claro) 26%, var(--aluminio) 80%, #B7AE9F);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), inset 0 -4px 0 #A49A8B, inset 0 -5px 0 rgba(0,0,0,.25), 0 0 0 3px var(--recorte);
-  transition: box-shadow .08s, background .08s;
-}
-@media (hover: hover) { .tecla:hover { background: var(--escovado), linear-gradient(180deg, #F6F2EA, #E8E2D7 26%, var(--aluminio-claro) 80%, #C2B9AA); } }
-.tecla:active, .tecla.apertado, .tecla[aria-pressed="true"] {
-  padding-top: 9px; padding-bottom: 8px;
-  background: var(--escovado), linear-gradient(180deg, #978D7E, #BAB1A3 24%, #C2B9AB 80%, #B9B0A2);
-  box-shadow: inset 0 5px 7px -2px rgba(30,15,8,.55), inset 0 -1px 0 #A49A8B, 0 0 0 3px var(--recorte);
-}
-.gaveta .tecla:focus-visible { outline: 3px solid var(--ambar); outline-offset: 3px; }
+.teclas { display: grid; }
 .tecla { scroll-margin: 10px; }
-.tecla .lampada { grid-row: 1; grid-column: 1; align-self: center; width: 9px; height: 9px; }
-.t-nome { grid-row: 1; grid-column: 2; font-weight: 600; font-size: .9375rem; line-height: 1.25; font-stretch: 100%; }
-.t-desc { grid-column: 2; font-size: .8125rem; line-height: 1.3; color: var(--tinta-2); }
-.t-atraso { grid-column: 2; margin-top: 3px; font-size: .75rem; line-height: 1.2; color: var(--tinta-2); font-variant-numeric: tabular-nums; }
-.tecla kbd {
-  display: inline-block; min-width: 1.45em; margin-right: 7px; padding: 0 .35em; border-radius: 3px;
-  font-size: .75rem; font-weight: 700; line-height: 1.5; text-align: center; vertical-align: 1px;
-  color: var(--aluminio-claro); background: rgba(42,24,18,.86);
-}
-
-/* suporte impresso que agrupa as teclas, como no painel dos receivers */
-.grupo-ef + .grupo-ef { margin-top: 14px; }
-.suporte {
-  display: flex; align-items: center; gap: 10px; margin: 0 0 6px;
-  font-size: .8125rem; font-weight: 500; font-stretch: 118%; letter-spacing: .02em; line-height: 1.2; color: var(--tinta-2);
-}
-.suporte::before, .suporte::after { content: ""; height: 6px; margin-top: 7px; border-top: 1px solid rgba(92,74,60,.75); }
-.suporte::before { flex: 0 0 14px; border-left: 1px solid rgba(92,74,60,.75); border-top-left-radius: 2px; }
-.suporte::after { flex: 1 1 0; border-right: 1px solid rgba(92,74,60,.75); border-top-right-radius: 2px; }
+.gaveta .tecla:focus-visible { outline: 3px solid var(--ambar); outline-offset: 3px; }
 .aviso-gav { font-size: .875rem; color: var(--tinta-2); padding: 6px 0; }
 
 /* no celular a gaveta fica sempre aberta, logo abaixo do receptor (a pagina rola) */
@@ -785,7 +658,6 @@ input[type=range]:focus-visible { outline-offset: 2px; }
   body:not(.com-gaveta) .gaveta { display: none; }
   body.com-gaveta .parede { visibility: hidden; }
   body.com-gaveta .gaveta { animation: puxar .32s cubic-bezier(.2,.8,.25,1); }
-  .gaveta .rolo { padding: 6px 6px 8px 3px; margin: -4px 0 0 -3px; }
   .gaveta .rolo.mais-baixo { --fb: 34px; }
 }
 @keyframes puxar { from { transform: translateY(-48px); } }
@@ -1153,8 +1025,6 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
    os volumes e os efeitos abrem por cima pela barra de baixo, como o "tocando agora" dos apps de
    musica. No computador o palco some (display: contents) e nada muda. ---------- */
 .palco-topo, .rapidos, .mini, .visor-gav { display: none; }
-/* pecas do pedal (knob, footswitch, tipo, fita do atraso): so a pedaleira do celular mostra */
-.p-grande, .p-pe, .p-tipo, .p-adesivo, .p-logo { display: none; }
 .cabo-calha { display: none; }
 /* paginas da prateleira e Continuar ouvindo: so a primeira pagina do celular tem */
 .pontos, .continuar { display: none; }
@@ -1364,303 +1234,294 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
   .palco .gaveta { order: 3; }
   /* a Voz e o volume do mic no Windows: no celular so tomava lugar */
   .palco .fader-voz { display: none; }
-
-  /* gaveta no celular: visor no alto, logo embaixo o Ouvir minha voz largo (liga e testa o
-     efeito sem rolar ate o fim da lista) e entao os efeitos em duas colunas.
-     A dica embaixo do botao so aparece quando informa (sem fone, ou voz mutada com o teste
-     ligado); a dica fixa de uso sai e a lista sobe */
+}
+/* pele: a gaveta de efeitos e a pedaleira, nas duas telas */
+/* gaveta no celular: visor no alto, logo embaixo o Ouvir minha voz largo (liga e testa o efeito sem rolar ate o fim
+   da lista) e entao os pedais. A dica embaixo do botao so aparece quando informa (sem fone, ou voz mutada com o teste
+   ligado); a dica fixa de uso sai e a lista sobe */
+@media (max-width: 899.98px) {
   .palco .gaveta {
-    order: 3;
-    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px 12px;
+    grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas: "cabeca cabeca" "visor visor" "ouvir ouvir" "dica dica" "lista lista";
-    width: 100%; max-width: 358px; margin: 0 auto; padding: 22px 18px 18px;   /* a largura do receiver */
-    /* painel forrado de feltro pendurado na parede, com os pedais presos por velcro, como se monta
-       na vida real (o movel todo de madeira e a pedaleira no piso sairam). Grafite puxado pro
-       marrom, quente como o resto do app sem sumir contra a parede de jacaranda, fosco: penugem
-       fina e manchas largas de feltro prensado no lugar do granulado de lixa (19/10, a variante
-       "liso"). Borda macia do tecido esticado, a luz quente de cima a esquerda
-       caindo ate o pe e a sombra na parede */
-    color: var(--marfim); border-radius: 12px;
-    background:
-      radial-gradient(120% 50% at 12% 0%, rgba(255,214,160,.13), rgba(255,214,160,0) 64%),
-      linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,.26) 100%),
-      var(--feltro-penugem), var(--feltro-mancha),
-      linear-gradient(180deg, #3B322B 0%, #2F2722 55%, #241D19 100%);
-    background-size: auto, auto, 180px 180px, 520px 520px, auto;
-    box-shadow:
-      inset 0 2px 2px rgba(255,248,235,.10),
-      inset 2px 0 2px rgba(255,248,235,.05),
-      inset -2px 0 3px rgba(0,0,0,.35),
-      inset 0 -3px 4px rgba(0,0,0,.45),
-      0 1px 1px rgba(0,0,0,.55),
-      0 14px 22px -10px rgba(0,0,0,.75);
+    width: 100%; max-width: 358px; margin: 0 auto;   /* a largura do receiver */
   }
-  .palco .dica-ouvir, .palco .aviso-gav { color: var(--marfim-2); }
-  /* o FX-12 e um aparelho de aluminio embutido num recorte do feltro: a serigrafia, o visor e a
-     tecla Ouvir minha voz moram nele (a tecla nao fica solta
-     num feltro); a dica, quando aparece, fica no feltro embaixo. O corpo e o ::after da gaveta,
-     item da grade nas tres primeiras linhas, com a margem negativa como folga em volta */
-  .palco .gaveta::after {
-    content: ""; grid-column: 1 / -1; grid-row: 1 / span 3; align-self: stretch; margin: -11px -8px -12px;
-    position: relative; z-index: 1; pointer-events: none; border-radius: 3px;
-    background: var(--escovado), linear-gradient(180deg, var(--aluminio-claro) 0%, var(--aluminio) 55%, #B9B0A0 100%);
-    /* enfiado no feltro, rente a face: sem sombra e sem borda grossa, so a
-       fresta fina do corte e as fibras do feltro amassadas em volta */
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.5),
-      inset 0 -1px 0 rgba(42,24,18,.22),
-      0 0 0 1px rgba(10,8,6,.8),
-      0 0 0 2.5px rgba(0,0,0,.22);
-  }
-  .palco .cabeca-gav, .palco .visor-gav, .palco .mesa-gav .ouvir { position: relative; z-index: 2; }
-  .palco .dica-ouvir.so-dica { display: none; }
   .palco .gaveta:has(.dica-ouvir.so-dica) { grid-template-areas: "cabeca cabeca" "visor visor" "ouvir ouvir" "lista lista"; }
-  /* no celular a gaveta e um painel como os outros, com a mesma folga: saindo de baixo dos
-     volumes, como no computador, parecia presa neles */
-  /* o seletor com seta tinha cara de menu e so rolava ate a lista logo acima:
-     sai do receptor no celular. A chave rotativa e o visor voltam no alto da gaveta, no lugar
-     da tecla Sem efeito, mostrando o efeito escolhido (a lista embaixo e o menu dele); com
-     efeito ligado, um x no visor desliga */
-  .palco .medidores .seletor { display: none; }
-  .palco .mesa-gav .zero { display: none; }
-  .palco .visor-gav {
-    grid-area: visor; display: flex; align-items: center; gap: 10px; min-width: 0; width: auto;
-    padding: 4px 5px; border-radius: 7px; border: 1px solid #7E7466;
-    background: var(--escovado), linear-gradient(180deg, var(--aluminio-claro), var(--aluminio) 55%, #BDB4A4);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.65), inset 0 -1px 0 rgba(42,24,18,.3), 0 1px 0 rgba(255,255,255,.55), 0 -1px 0 rgba(42,24,18,.18);
-  }
-  .palco .visor-gav .dial { width: 42px; }
-  .palco .visor-gav .visor-ef { height: 40px; padding-right: 4px; font-size: .9375rem; }
-  /* o toque pega o canto inteiro do visor; o quadrado que aparece e menor, com folga das bordas
-     (da altura do visor, parecia grudado nas laterais) */
-  .desliga-ef {
-    position: relative; margin: 0 -4px 0 auto; flex: none; width: 44px; height: 40px; display: grid; place-items: center;
-    padding: 0; border: 0; color: inherit; background: none;
-  }
-  .desliga-ef::before {
-    content: ""; position: absolute; top: 5px; right: 6px; width: 30px; height: 30px; border-radius: 5px;
-    background: rgba(42,24,18,.14);
-  }
-  /* o X e desenhado com segmentos de LCD, no formato, na cor e na sombra dos caracteres, como os
-     icones dos visores de aparelho: o X da fonte de 14 segmentos tem as
-     diagonais curtas e quase em pe, e lia como ")(". No centro os quatro se encaixam com a
-     fresta fina dos visores (0,64 de 16; mais fina some no celular) */
-  .desliga-ef .x-lcd { position: relative; width: 14px; height: 14px; margin-left: 2px; filter: drop-shadow(1px 1px 0 var(--sombra-seg)); }
-  .desliga-ef:active, .desliga-ef.apertado { transform: scale(.94); }
-  .palco .cabeca-gav { grid-area: cabeca; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
-  /* o "Efeitos de voz" generico sai da tela e fica so para o leitor de tela */
-  .palco .cabeca-gav h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .palco .cabeca-gav::before {
-    content: "VITROLA" / ""; padding: 2px 5px 1px; border-radius: 2px;
-    background: #2A1E19; color: var(--marfim); box-shadow: 0 1px 0 rgba(255,255,255,.45);
-    font-size: .625rem; font-weight: 850; font-stretch: 125%; letter-spacing: .16em; line-height: 1;
-  }
-  .palco .cabeca-gav::after {
-    content: "EFEITOS DE VOZ FX-12" / ""; white-space: nowrap; color: var(--tinta-2);
-    font-size: .625rem; font-weight: 600; font-stretch: 88%; letter-spacing: .12em; line-height: 1;
-  }
-  .palco .mesa-gav { display: contents; }
-  .palco .gaveta > .rolo { grid-area: lista; }
-  .palco .mesa-gav .ouvir { justify-self: stretch; }
-  /* com o .mesa-gav em display: contents, a dica perdia o z-index do .mesa-gav e a moldura do
-     FX-12 (posicionada) era pintada por cima; o Ouvir minha voz tem o z-index do aparelho, acima */
-  .palco .dica-ouvir { position: relative; z-index: 1; margin-top: 8px; }   /* abaixo da borda do aparelho */
-  .palco .teclas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .palco .teclas.zero { grid-template-columns: minmax(0, 1fr); }
-  .palco .tecla { min-height: 3rem; padding: 7px 9px 9px; column-gap: 7px; }
-  .palco .tecla:active, .palco .tecla.apertado, .palco .tecla[aria-pressed="true"] { padding-top: 9px; padding-bottom: 7px; }
-  .palco .t-nome { font-size: .875rem; line-height: 1.2; min-width: 0; overflow-wrap: anywhere;
-                   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .palco .tecla .lampada { align-self: start; margin-top: 4px; }
-  /* so o nome: com a fonte do celular a descricao virava meia frase cortada */
-  .palco .t-desc { display: none; }
-  .palco .tecla { align-content: center; }
-  .palco .t-atraso { display: none; }
-  .palco .grupo-ef + .grupo-ef { margin-top: 10px; }
+}
+.palco .gaveta {
+  display: grid; align-items: center; gap: 10px 12px; padding: 22px 18px 18px;
+  /* painel forrado de feltro pendurado na parede, com os pedais presos por velcro, como se monta
+     na vida real (o movel todo de madeira e a pedaleira no piso sairam). Grafite puxado pro
+     marrom, quente como o resto do app sem sumir contra a parede de jacaranda, fosco: penugem
+     fina e manchas largas de feltro prensado no lugar do granulado de lixa (19/10, a variante
+     "liso"). Borda macia do tecido esticado, a luz quente de cima a esquerda
+     caindo ate o pe e a sombra na parede */
+  color: var(--marfim); border-radius: 12px;
+  background:
+    radial-gradient(120% 50% at 12% 0%, rgba(255,214,160,.13), rgba(255,214,160,0) 64%),
+    linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,.26) 100%),
+    var(--feltro-penugem), var(--feltro-mancha),
+    linear-gradient(180deg, #3B322B 0%, #2F2722 55%, #241D19 100%);
+  background-size: auto, auto, 180px 180px, 520px 520px, auto;
+  /* so o contorno de fora e a sombra dura fraca, com a linha clara bem fraca por dentro; a borda macia do tecido fica */
+  box-shadow: inset 0 0 0 2px rgba(255,236,214,.1), inset 0 2px 2px rgba(255,248,235,.10), inset 2px 0 2px rgba(255,248,235,.05), inset -2px 0 3px rgba(0,0,0,.35), inset 0 -3px 4px rgba(0,0,0,.45), var(--caixa);
+}
+.palco .dica-ouvir, .palco .aviso-gav { color: var(--marfim-2); }
+/* o FX-12 e um aparelho de aluminio embutido num recorte do feltro: a serigrafia, o visor e a
+   tecla Ouvir minha voz moram nele (a tecla nao fica solta
+   num feltro); a dica, quando aparece, fica no feltro embaixo. O corpo e o ::after da gaveta,
+   item da grade nas tres primeiras linhas, com a margem negativa como folga em volta */
+.palco .gaveta::after {
+  content: ""; grid-column: 1 / -1; grid-row: 1 / span 3; align-self: stretch; margin: -11px -8px -12px;
+  position: relative; z-index: 1; pointer-events: none; border-radius: 3px;
+  background: var(--escovado), linear-gradient(180deg, var(--aluminio-claro) 0%, var(--aluminio) 55%, #B9B0A0 100%);
+  /* enfiado no feltro, rente a face: sem sombra e sem borda grossa, so a
+     fresta fina do corte e as fibras do feltro amassadas em volta */
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.5),
+    inset 0 -1px 0 rgba(42,24,18,.22),
+    0 0 0 1px rgba(10,8,6,.8),
+    0 0 0 2.5px rgba(0,0,0,.22);
+}
+.palco .cabeca-gav, .palco .visor-gav, .palco .mesa-gav .ouvir { position: relative; z-index: 2; }
+.palco .dica-ouvir.so-dica { display: none; }
+/* no celular a gaveta e um painel como os outros, com a mesma folga: saindo de baixo dos
+   volumes, como no computador, parecia presa neles */
+/* o seletor com seta tinha cara de menu e so rolava ate a lista logo acima:
+   sai do receptor no celular. A chave rotativa e o visor voltam no alto da gaveta, no lugar
+   da tecla Sem efeito, mostrando o efeito escolhido (a lista embaixo e o menu dele); com
+   efeito ligado, um x no visor desliga */
+@media (max-width: 899.98px) { .palco .medidores .seletor { display: none; } }
+.palco .mesa-gav .zero { display: none; }
+.palco .visor-gav {
+  grid-area: visor; display: flex; align-items: center; gap: 10px; min-width: 0; width: auto;
+  padding: 4px 5px; border-radius: 7px; border: 1px solid #7E7466;
+  background: var(--escovado), linear-gradient(180deg, var(--aluminio-claro), var(--aluminio) 55%, #BDB4A4);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.65), inset 0 -1px 0 rgba(42,24,18,.3), 0 1px 0 rgba(255,255,255,.55), 0 -1px 0 rgba(42,24,18,.18);
+}
+.palco .visor-gav .dial { width: 42px; }
+.palco .visor-gav .visor-ef { height: 40px; padding-right: 4px; font-size: .9375rem; }
+/* o toque pega o canto inteiro do visor; o quadrado que aparece e menor, com folga das bordas
+   (da altura do visor, parecia grudado nas laterais) */
+.desliga-ef {
+  position: relative; margin: 0 -4px 0 auto; flex: none; width: 44px; height: 40px; display: grid; place-items: center;
+  padding: 0; border: 0; color: inherit; background: none;
+}
+.desliga-ef::before {
+  content: ""; position: absolute; top: 5px; right: 6px; width: 30px; height: 30px; border-radius: 5px;
+  background: rgba(42,24,18,.14);
+}
+/* o X e desenhado com segmentos de LCD, no formato, na cor e na sombra dos caracteres, como os
+   icones dos visores de aparelho: o X da fonte de 14 segmentos tem as
+   diagonais curtas e quase em pe, e lia como ")(". No centro os quatro se encaixam com a
+   fresta fina dos visores (0,64 de 16; mais fina some no celular) */
+.desliga-ef .x-lcd { position: relative; width: 14px; height: 14px; margin-left: 2px; filter: drop-shadow(1px 1px 0 var(--sombra-seg)); }
+.desliga-ef:active, .desliga-ef.apertado { transform: scale(.94); }
+.palco .cabeca-gav { grid-area: cabeca; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+/* o "Efeitos de voz" generico sai da tela e fica so para o leitor de tela */
+.palco .cabeca-gav h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.palco .cabeca-gav::before {
+  content: "VITROLA" / ""; padding: 2px 5px 1px; border-radius: 2px;
+  background: #2A1E19; color: var(--marfim); box-shadow: 0 1px 0 rgba(255,255,255,.45);
+  font-size: .625rem; font-weight: 850; font-stretch: 125%; letter-spacing: .16em; line-height: 1;
+}
+.palco .cabeca-gav::after {
+  content: "EFEITOS DE VOZ FX-12" / ""; white-space: nowrap; color: var(--tinta-2);
+  font-size: .625rem; font-weight: 600; font-stretch: 88%; letter-spacing: .12em; line-height: 1;
+}
+.palco .mesa-gav { display: contents; }
+.palco .gaveta > .rolo { grid-area: lista; }
+.palco .mesa-gav .ouvir { justify-self: stretch; }
+/* com o .mesa-gav em display: contents, a dica perdia o z-index do .mesa-gav e a moldura do
+   FX-12 (posicionada) era pintada por cima; o Ouvir minha voz tem o z-index do aparelho, acima */
+.palco .dica-ouvir { position: relative; z-index: 1; margin-top: 8px; }   /* abaixo da borda do aparelho */
+.palco .t-nome { font-size: .875rem; line-height: 1.2; min-width: 0; overflow-wrap: anywhere;
+                 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.palco .tecla .lampada { align-self: start; margin-top: 4px; }
+/* so o nome: com a fonte do celular a descricao virava meia frase cortada */
+.palco .t-desc { display: none; }
+.palco .t-atraso { display: none; }
 
-  /* ---------- pedaleira: no celular cada efeito e um pedal mini, tres por
-     fileira, no leiaute dos micro pedais (Mooer, TC mini, MXR mini): knob, LED vermelho, nome,
-     footswitch e as tomadas nas laterais. Sem os knobs pequenos dos cantos (pareciam tripofobia). O knob e pintura: o pedal inteiro e o botao. Pisar liga, pisar no ligado
-     desliga. No computador seguem as teclas de piano ---------- */
-  /* os cabos em pixel (medirCabosPedais) por cima dos pedais: os plugues encostam no contorno deles */
-  .cabos-pedais { position: absolute; z-index: 0; pointer-events: none; user-select: none; display: block; image-rendering: pixelated; }
-  /* a fita escrita a mao no cabo SHOW SEXTA, na letra e na moldura do selo do atraso (a VOZ, torta, e pintada no canvas) */
-  .palco .fita-escrita {
-    position: absolute; z-index: 3; pointer-events: none; user-select: none;
-    padding: .5px 5px 2px; font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; line-height: 1.25;
-    color: var(--tinta); background: #EFE4CF; white-space: nowrap;
-    border-image: var(--mold-etiqueta);
-  }
-  .palco #banco {
-    /* a largura da pedaleira no celular de teste (360 px): 3 pedais de 80, os vaos de 12, as margens de 4
-       e de 10. Em tela mais larga ela fica no meio do feltro, nesse tamanho, em vez de esticar os pedais */
-    position: relative; max-width: 292px; margin-inline: auto; padding: 14px 10px 16px;
-    /* os pedais direto no feltro do painel, presos por velcro: sem tabua e sem cavidade */
-    background: none; box-shadow: none;
-  }
-  .palco .grupo-ef + .grupo-ef { margin-top: 16px; }
-  /* a fita crepe com o nome do grupo em pixel: reta na moldura de fita (o contorno, os
-     filetes, a sombra dura e as pontas rasgadas em degrau, dev/molduras.py) e o nome na Jersey 10 dos
-     titulos, 1 px por pixel da letra, com 1 pixel entre as letras; a esquerda soma os 2 pixels que a
-     ultima letra deixa a direita, para o nome ficar no meio */
-  .palco .suporte {
-    display: inline-block; margin: 0 0 11px 4px; padding: 2px 9px 2px 11px;
-    font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; line-height: .85714;
-    letter-spacing: .05357em; text-transform: uppercase; color: var(--tinta);
-    background: #E2D3B3; border-image: var(--mold-fita);
-  }
-  .palco .suporte::before, .palco .suporte::after { content: none; }
-  /* tamanhos das pecas do mock (knob e footswitch em SVG) */
-  .palco .p-grande { width: 34px; height: 38px; margin-bottom: -4px; }
-  .palco .p-grande > svg { display: block; overflow: visible; margin: var(--knob-margem); }   /* o tamanho e a margem vem do dev/pecas.py */
-  .palco .p-pe { width: 36px; height: 36px; }
-  .palco .p-pe svg { display: block; width: 100%; height: 100%; }
-  .palco .p-pe .tampa-pisada { display: none; }
-  /* corpo do pedal do mock (18/10): caixa fundida tipo 1590A com a borda arredondada e o
-     rebaixo da tampa, paredes sem costura e base de borracha, escala serigrafada no knob, LED de 3 mm
-     com aro, tomada de fonte no topo, porcas das tomadas e acoplador cilindrico entre os pedais */
-  .palco .teclas { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px 12px; padding: 2px 4px 17px; }   /* a parede do pedal desce 8 px e a sombra tem 5 */
-  .palco .tecla, .palco .tecla:hover, .palco .tecla:active, .palco .tecla.apertado, .palco .tecla[aria-pressed="true"] {
-    position: relative; display: grid; grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "grande" "led" "nome" "pe" "tipo"; grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-    justify-items: center; align-content: stretch; row-gap: 4px;
-    /* a face tem os 160 px da fileira e nao muda (o pedal nao aumenta; quem cede e o
-       nome, que cabe no que sobra, .t-nome); embaixo dela a parede da caixa, a profundidade dos pedais
-       de antes do pixel, desce 8 px por fora da fileira: a caixa tem 168 e a margem
-       de baixo devolve 8. A plaquinha do tipo pousa 7 px acima do pe da face, com o footswitch logo acima,
-       9 px abaixo de antes (na linha da COMP do Locutor e com mais altura para os nomes) */
-    height: 168px; min-height: 0; margin-bottom: -8px; padding: 20px 6px 15px; border: 0; border-radius: 6px;
-    text-align: center; color: var(--letra);
-    /* na lingua do Habbo (quinta rodada, 19/10): o esmalte numa cor
-       lisa, e a caixa na moldura de pixel (--mold-pedal, desenho do mock em dev/pedal.svg):
-       contorno com a quina em degrau, a linha clara colada por dentro, a parede da caixa embaixo da face
-       e a sombra dura no feltro (no lugar das seis paredes e das duas sombras esfumadas). A cor da parede
-       vem do --cor, por cima da textura martelada e por baixo da moldura: a frente em 5 px e o pe
-       escuro em 3 (a borracha, sem a linha marrom fixa que saia igual em todos) */
-    background: var(--cor);
-    box-shadow: inset 0 -3px 0 0 color-mix(in srgb, var(--cor) 48%, #1E0E06), inset 0 -8px 0 0 color-mix(in srgb, var(--cor) 66%, #382012);
-    border-image: var(--mold-pedal);
-  }
-  /* tracos serigrafados de IN/OUT na altura dos jacks (o rebaixo esfumado da tampa saiu) */
-  .palco .tecla::before {
-    content: ""; position: absolute; inset: 3.5px 3.5px 8.5px; pointer-events: none;
-    --traco: color-mix(in srgb, var(--letra) 48%, transparent);
-    background: linear-gradient(90deg, var(--traco) 0 3.5px, transparent 3.5px calc(100% - 3.5px), var(--traco) calc(100% - 3.5px) 100%) no-repeat 0 47px / 100% 1.5px;
-  }
-  /* pintura martelada (hammertone) de equipamento dos anos 60/70: a textura fica, sem o brilho por cima */
-  .palco .tecla[data-acabamento="martelado"], .palco .tecla[data-acabamento="martelado"]:hover, .palco .tecla[data-acabamento="martelado"]:active, .palco .tecla[data-acabamento="martelado"].apertado, .palco .tecla[data-acabamento="martelado"][aria-pressed="true"] {
-    background-image: image-set(url("texturas/martelado.webp") 3x);
-    background-size: 48px 48px;
-    background-color: var(--cor);
-  }
+/* ---------- pedaleira: cada efeito e um pedal mini, no leiaute dos micro pedais (Mooer, TC mini, MXR mini): knob, LED
+   vermelho, nome, footswitch e as tomadas nas laterais. Sem os knobs pequenos dos cantos (pareciam tripofobia). O knob e
+   pintura: o pedal inteiro e o botao. Pisar liga, pisar no ligado desliga. Tres por fileira no celular; no computador
+   os grupos ficam lado a lado, ate seis ---------- */
+/* os cabos em pixel (medirCabosPedais) por cima dos pedais: os plugues encostam no contorno deles */
+.cabos-pedais { position: absolute; z-index: 0; pointer-events: none; user-select: none; display: block; image-rendering: pixelated; }
+/* a fita escrita a mao no cabo SHOW SEXTA, na letra e na moldura do selo do atraso (a VOZ, torta, e pintada no canvas) */
+.palco .fita-escrita {
+  position: absolute; z-index: 3; pointer-events: none; user-select: none;
+  padding: .5px 5px 2px; font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; line-height: 1.25;
+  color: var(--tinta); background: #EFE4CF; white-space: nowrap;
+  border-image: var(--mold-etiqueta);
+}
+/* os pedais direto no feltro do painel, presos por velcro: sem tabua e sem cavidade */
+.palco #banco { position: relative; background: none; box-shadow: none; }
+/* a largura da pedaleira no celular de teste (360 px): 3 pedais de 80, os vaos de 12, as margens de 4
+   e de 10. Em tela mais larga ela fica no meio do feltro, nesse tamanho, em vez de esticar os pedais */
+@media (max-width: 899.98px) { .palco #banco { max-width: 292px; margin-inline: auto; padding: 14px 10px 16px; } }
+.palco .grupo-ef + .grupo-ef { margin-top: 16px; }
+/* a fita crepe com o nome do grupo em pixel: reta na moldura de fita (o contorno, os
+   filetes, a sombra dura e as pontas rasgadas em degrau, dev/molduras.py) e o nome na Jersey 10 dos
+   titulos, 1 px por pixel da letra, com 1 pixel entre as letras; a esquerda soma os 2 pixels que a
+   ultima letra deixa a direita, para o nome ficar no meio */
+.palco .suporte {
+  display: inline-block; margin: 0 0 11px 4px; padding: 2px 9px 2px 11px;
+  font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; line-height: .85714;
+  letter-spacing: .05357em; text-transform: uppercase; color: var(--tinta);
+  background: #E2D3B3; border-image: var(--mold-fita);
+}
+/* tamanhos das pecas do mock (knob e footswitch em SVG) */
+.palco .p-grande { width: 34px; height: 38px; margin-bottom: -4px; }
+.palco .p-grande > svg { display: block; overflow: visible; margin: var(--knob-margem); }   /* o tamanho e a margem vem do dev/pecas.py */
+.palco .p-pe { width: 36px; height: 36px; }
+.palco .p-pe svg { display: block; width: 100%; height: 100%; }
+.palco .p-pe .tampa-pisada { display: none; }
+/* corpo do pedal do mock (18/10): caixa fundida tipo 1590A com a borda arredondada e o
+   rebaixo da tampa, paredes sem costura e base de borracha, escala serigrafada no knob, LED de 3 mm
+   com aro, tomada de fonte no topo, porcas das tomadas e acoplador cilindrico entre os pedais */
+.palco .teclas { gap: 24px 12px; padding: 2px 4px 17px; }   /* a parede do pedal desce 8 px e a sombra tem 5 */
+@media (max-width: 899.98px) { .palco .teclas { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.palco .tecla {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "grande" "led" "nome" "pe" "tipo"; grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  justify-items: center; align-content: stretch; row-gap: 4px;
+  /* a face tem os 160 px da fileira e nao muda (o pedal nao aumenta; quem cede e o
+     nome, que cabe no que sobra, .t-nome); embaixo dela a parede da caixa, a profundidade dos pedais
+     de antes do pixel, desce 8 px por fora da fileira: a caixa tem 168 e a margem
+     de baixo devolve 8. A plaquinha do tipo pousa 7 px acima do pe da face, com o footswitch logo acima,
+     9 px abaixo de antes (na linha da COMP do Locutor e com mais altura para os nomes) */
+  height: 168px; min-height: 0; margin-bottom: -8px; padding: 20px 6px 15px; border: 0; border-radius: 6px;
+  text-align: center; color: var(--letra);
+  /* na lingua do Habbo (quinta rodada, 19/10): o esmalte numa cor
+     lisa, e a caixa na moldura de pixel (--mold-pedal, desenho do mock em dev/pedal.svg):
+     contorno com a quina em degrau, a linha clara colada por dentro, a parede da caixa embaixo da face
+     e a sombra dura no feltro (no lugar das seis paredes e das duas sombras esfumadas). A cor da parede
+     vem do --cor, por cima da textura martelada e por baixo da moldura: a frente em 5 px e o pe
+     escuro em 3 (a borracha, sem a linha marrom fixa que saia igual em todos) */
+  background: var(--cor);
+  box-shadow: inset 0 -3px 0 0 color-mix(in srgb, var(--cor) 48%, #1E0E06), inset 0 -8px 0 0 color-mix(in srgb, var(--cor) 66%, #382012);
+  border-image: var(--mold-pedal);
+}
+/* tracos serigrafados de IN/OUT na altura dos jacks (o rebaixo esfumado da tampa saiu) */
+.palco .tecla::before {
+  content: ""; position: absolute; inset: 3.5px 3.5px 8.5px; pointer-events: none;
+  --traco: color-mix(in srgb, var(--letra) 48%, transparent);
+  background: linear-gradient(90deg, var(--traco) 0 3.5px, transparent 3.5px calc(100% - 3.5px), var(--traco) calc(100% - 3.5px) 100%) no-repeat 0 47px / 100% 1.5px;
+}
+/* pintura martelada (hammertone) de equipamento dos anos 60/70: a textura fica, sem o brilho por cima */
+.palco .tecla[data-acabamento="martelado"] {
+  background-image: image-set(url("texturas/martelado.webp") 3x);
+  background-size: 48px 48px;
+  background-color: var(--cor);
+}
 
-  /* pisar: o botao entra na porca; o pedal e a porca ficam. Afunda no instante do toque e volta
-     logo, como um pe rapido: o :active do Chrome no celular so chegava depois
-     de ele decidir que o toque nao era rolagem, e o pedal parecia demorar para ligar */
-  .palco .tecla.pisando .p-pe .tampa { display: none; }   /* troca de quadro: o pisado desce 1 px (PE_DESCE do dev/pecas.py) */
-  .palco .tecla.pisando .p-pe .tampa-pisada { display: inline; }
+/* pisar: o botao entra na porca; o pedal e a porca ficam. Afunda no instante do toque e volta
+   logo, como um pe rapido: o :active do Chrome no celular so chegava depois
+   de ele decidir que o toque nao era rolagem, e o pedal parecia demorar para ligar */
+.palco .tecla.pisando .p-pe .tampa { display: none; }   /* troca de quadro: o pisado desce 1 px (PE_DESCE do dev/pecas.py) */
+.palco .tecla.pisando .p-pe .tampa-pisada { display: inline; }
 
-  /* knob de pixel com a escala serigrafada de 11 riscos e o arco no proprio SVG (dev/pecas.py), na cor da letra */
-  .palco .p-grande {
-    grid-area: grande; position: relative; z-index: 1;
-    display: grid; place-items: center; line-height: 0;
-  }
-  .palco .p-grande .escala { fill: var(--letra); opacity: .9; }
-  /* o Locutor do fliperama (o mock fliperama 3, levado para o tema): sem o
-     footswitch e sem o LED, os dois botoes de capa transparente (ARCADE, dev/pecas.py), NATURAL no lugar do knob e
-     CARICATO no do footswitch, e o logo "Locutor FM" numa linha no meio, no lugar do nome (que fica para o leitor
-     de tela e para a tomada do ::after). O botao do modo ligado acende, troca de quadro sem animacao; desligado e o
-     estado sem luz. Os botoes quadrados de 52 cabem com a margem de cima de 7, a COMP perto da beira de baixo
-     (como a plaquinha de todos) e o vao de 3 (mais espaco em cima, a plaquinha mais para baixo); o NATURAL e o logo
-     sobem 1 px e o CARICATO 3, para ele desgrudar da COMP */
-  .palco .tecla.com-chave { grid-template-areas: "grande" "nome" "pe" "tipo"; grid-template-rows: auto minmax(0, 1fr) auto auto; padding-top: 7px; row-gap: 3px; }
-  .palco .tecla.com-chave .p-grande, .palco .tecla.com-chave .p-logo { top: -1px; }
-  .palco .tecla.com-chave .p-pe { top: -3px; }
-  .palco .tecla.com-chave .lampada { display: none; }
-  .palco .tecla.com-chave .p-grande, .palco .tecla.com-chave .p-pe { width: auto; height: auto; margin: 0; }
-  .palco .tecla.com-chave .arcade { display: block; width: auto; height: auto; margin: var(--arcade-recuo); }
-  .palco .tecla .arc-aceso,
-  .palco .tecla[aria-pressed="true"][data-modo="natural"] .p-grande .arc-apagado,
-  .palco .tecla[aria-pressed="true"][data-modo="caricato"] .p-pe .arc-apagado { display: none; }
-  .palco .tecla[aria-pressed="true"][data-modo="natural"] .p-grande .arc-aceso,
-  .palco .tecla[aria-pressed="true"][data-modo="caricato"] .p-pe .arc-aceso { display: inline; }
-  .palco .tecla.com-chave .t-nome { color: transparent; text-shadow: none; }
-  .palco .tecla .p-logo { grid-area: nome; align-self: center; justify-self: center; display: block; position: relative; z-index: 1; line-height: 0; }
-  .palco .tecla .p-logo > svg { display: block; }
+/* knob de pixel com a escala serigrafada de 11 riscos e o arco no proprio SVG (dev/pecas.py), na cor da letra */
+.palco .p-grande {
+  grid-area: grande; position: relative; z-index: 1;
+  display: grid; place-items: center; line-height: 0;
+}
+.palco .p-grande .escala { fill: var(--letra); opacity: .9; }
+/* o Locutor do fliperama (o mock fliperama 3, levado para o tema): sem o
+   footswitch e sem o LED, os dois botoes de capa transparente (ARCADE, dev/pecas.py), NATURAL no lugar do knob e
+   CARICATO no do footswitch, e o logo "Locutor FM" numa linha no meio, no lugar do nome (que fica para o leitor
+   de tela e para a tomada do ::after). O botao do modo ligado acende, troca de quadro sem animacao; desligado e o
+   estado sem luz. Os botoes quadrados de 52 cabem com a margem de cima de 7, a COMP perto da beira de baixo
+   (como a plaquinha de todos) e o vao de 3 (mais espaco em cima, a plaquinha mais para baixo); o NATURAL e o logo
+   sobem 1 px e o CARICATO 3, para ele desgrudar da COMP */
+.palco .tecla.com-chave { grid-template-areas: "grande" "nome" "pe" "tipo"; grid-template-rows: auto minmax(0, 1fr) auto auto; padding-top: 7px; row-gap: 3px; }
+.palco .tecla.com-chave .p-grande, .palco .tecla.com-chave .p-logo { top: -1px; }
+.palco .tecla.com-chave .p-pe { top: -3px; }
+.palco .tecla.com-chave .lampada { display: none; }
+.palco .tecla.com-chave .p-grande, .palco .tecla.com-chave .p-pe { width: auto; height: auto; margin: 0; }
+.palco .tecla.com-chave .arcade { display: block; width: auto; height: auto; margin: var(--arcade-recuo); }
+.palco .tecla .arc-aceso,
+.palco .tecla[aria-pressed="true"][data-modo="natural"] .p-grande .arc-apagado,
+.palco .tecla[aria-pressed="true"][data-modo="caricato"] .p-pe .arc-apagado { display: none; }
+.palco .tecla[aria-pressed="true"][data-modo="natural"] .p-grande .arc-aceso,
+.palco .tecla[aria-pressed="true"][data-modo="caricato"] .p-pe .arc-aceso { display: inline; }
+.palco .tecla.com-chave .t-nome { color: transparent; text-shadow: none; }
+.palco .tecla .p-logo { grid-area: nome; align-self: center; justify-self: center; display: block; position: relative; z-index: 1; line-height: 0; }
+.palco .tecla .p-logo > svg { display: block; }
 
-  /* LED vermelho de pixel, como o dos pedais de verdade,
-     desenhado no dev/pecas.py (LED_SVG): o vidro de 8 px com o contorno, apagado com o ponto de luz e a
-     sombra dura, aceso com o miolo claro e o brilho em dois aneis de degrau; a classe acesa troca o
-     quadro, sem animacao. A caixa segue com os 8 px do vidro, o desenho sai dela o tanto do brilho */
-  .palco .tecla .lampada {
-    grid-area: led; position: relative; z-index: 1;
-    width: 8px; height: 8px; border-radius: 0; background: none; box-shadow: none;
-  }
-  .palco .tecla .lampada > svg { display: block; position: absolute; left: var(--led-recuo); top: var(--led-recuo); }
-  .palco .tecla .lampada .led-aceso, .palco .tecla .lampada.acesa .led-apagado { display: none; }
-  .palco .tecla .lampada.acesa .led-aceso { display: inline; }
+/* LED vermelho de pixel, como o dos pedais de verdade,
+   desenhado no dev/pecas.py (LED_SVG): o vidro de 8 px com o contorno, apagado com o ponto de luz e a
+   sombra dura, aceso com o miolo claro e o brilho em dois aneis de degrau; a classe acesa troca o
+   quadro, sem animacao. A caixa segue com os 8 px do vidro, o desenho sai dela o tanto do brilho */
+.palco .tecla .lampada {
+  grid-area: led; position: relative; z-index: 1;
+  width: 8px; height: 8px; border-radius: 0; background: none; box-shadow: none;
+}
+.palco .tecla .lampada > svg { display: block; position: absolute; left: var(--led-recuo); top: var(--led-recuo); }
+.palco .tecla .lampada .led-aceso, .palco .tecla .lampada.acesa .led-apagado { display: none; }
+.palco .tecla .lampada.acesa .led-aceso { display: inline; }
 
-  /* nome serigrafado + tomada 9V DC no topo */
-  /* o nome em pixel na Jersey 10 dos titulos: 18,667 px da 1 px de CSS por pixel da
-     letra e 12,444 px da 2/3 (2 px de tela no celular de teste), os dois tamanhos sem pixel borrado; o
-     caberNomes() fica no maior que cabe. A linha de 16 pixels da letra poe a base num pixel inteiro e
-     cabe o acento da maiuscula; a sombra dura desce 1 pixel da letra. Todos no negrito de pixel (a letra
-     repetida 1 pixel a direita, para engrossar os nomes), e os estilos: larga e estreita em
-     maiuscula, italica e normal como o nome e escrito (a letra de pixel inclinada borra) */
-  .palco .tecla .t-nome {
-    grid-area: nome; align-self: center; max-width: 100%; padding: 0;
-    font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; line-height: .85714;
-    /* preso a altura que sobra entre a luz e o pisador, para o caberNomes() descer para a letra menor em
-       vez de o nome bater na luz; a margem de cima menor desce o nome 1 px, para a
-       letra ficar no meio entre a luz e a porca do pisador */
-    margin: -1px 0 -3px; max-height: calc(100% + 4px);
-    color: var(--letra); text-wrap: balance; overflow-wrap: normal;
-    /* o negrito come o pixel entre as letras: 1 pixel a mais entre
-       elas, e o mesmo na esquerda para o nome seguir no meio */
-    letter-spacing: .05357em; padding-left: .05357em;
-    text-shadow: .05357em 0 0 var(--letra), 0 .05357em 0 rgba(0,0,0,.20);
-  }
-  .palco .tecla[data-fonte="larga"] .t-nome, .palco .tecla[data-fonte="estreita"] .t-nome { text-transform: uppercase; }
-  /* a letra menor (o caberNomes() poe a classe): linha de 15 pixels da letra (10 px, a base ainda num pixel
-     inteiro de tela), para as duas linhas ficarem longe da luz */
-  .palco .tecla .t-nome.miuda { font-size: 12.444px; line-height: 10px; }
-  /* o nome grande que passa do miolo usa a margem do pedal, 3 px de cada lado, antes de descer para a letra menor
-     (o MEGAFONE grande, em negrito e com as letras mais afastadas, 73 px no pedal de 80) */
-  .palco .tecla .t-nome.na-margem { margin-left: -3px; margin-right: -3px; max-width: calc(100% + 6px); }
-  /* a tomada de fonte sai por cima do contorno, lisa e contornada; as tomadas das laterais ficam por
-     baixo dos plugues que o medirCabosPedais desenha */
-  .palco .tecla .t-nome::after {
-    content: ""; position: absolute; top: -6px; left: calc(50% - 7px); width: 14px; height: 6px;
-    pointer-events: none;
-    background: linear-gradient(90deg, #2E2724 0 3px, #5A4E45 3px 5px, #1E1916 5px 9px, #5A4E45 9px 11px, #2E2724 11px);
-    box-shadow: 0 0 0 1.5px var(--contorno), inset 0 1.5px 0 rgba(255,236,214,.25);
-  }
+/* nome serigrafado + tomada 9V DC no topo */
+/* o nome em pixel na Jersey 10 dos titulos: 18,667 px da 1 px de CSS por pixel da
+   letra e 12,444 px da 2/3 (2 px de tela no celular de teste), os dois tamanhos sem pixel borrado; o
+   caberNomes() fica no maior que cabe. A linha de 16 pixels da letra poe a base num pixel inteiro e
+   cabe o acento da maiuscula; a sombra dura desce 1 pixel da letra. Todos no negrito de pixel (a letra
+   repetida 1 pixel a direita, para engrossar os nomes), e os estilos: larga e estreita em
+   maiuscula, italica e normal como o nome e escrito (a letra de pixel inclinada borra) */
+.palco .tecla .t-nome {
+  grid-area: nome; align-self: center; max-width: 100%; padding: 0;
+  font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; line-height: .85714;
+  /* preso a altura que sobra entre a luz e o pisador, para o caberNomes() descer para a letra menor em
+     vez de o nome bater na luz; a margem de cima menor desce o nome 1 px, para a
+     letra ficar no meio entre a luz e a porca do pisador */
+  margin: -1px 0 -3px; max-height: calc(100% + 4px);
+  color: var(--letra); text-wrap: balance; overflow-wrap: normal;
+  /* o negrito come o pixel entre as letras: 1 pixel a mais entre
+     elas, e o mesmo na esquerda para o nome seguir no meio */
+  letter-spacing: .05357em; padding-left: .05357em;
+  text-shadow: .05357em 0 0 var(--letra), 0 .05357em 0 rgba(0,0,0,.20);
+}
+.palco .tecla[data-fonte="larga"] .t-nome, .palco .tecla[data-fonte="estreita"] .t-nome { text-transform: uppercase; }
+/* a letra menor (o caberNomes() poe a classe): linha de 15 pixels da letra (10 px, a base ainda num pixel
+   inteiro de tela), para as duas linhas ficarem longe da luz */
+.palco .tecla .t-nome.miuda { font-size: 12.444px; line-height: 10px; }
+/* o nome grande que passa do miolo usa a margem do pedal, 3 px de cada lado, antes de descer para a letra menor
+   (o MEGAFONE grande, em negrito e com as letras mais afastadas, 73 px no pedal de 80) */
+.palco .tecla .t-nome.na-margem { margin-left: -3px; margin-right: -3px; max-width: calc(100% + 6px); }
+/* a tomada de fonte sai por cima do contorno, lisa e contornada; as tomadas das laterais ficam por
+   baixo dos plugues que o medirCabosPedais desenha */
+.palco .tecla .t-nome::after {
+  content: ""; position: absolute; top: -6px; left: calc(50% - 7px); width: 14px; height: 6px;
+  pointer-events: none;
+  background: linear-gradient(90deg, #2E2724 0 3px, #5A4E45 3px 5px, #1E1916 5px 9px, #5A4E45 9px 11px, #2E2724 11px);
+  box-shadow: 0 0 0 1.5px var(--contorno), inset 0 1.5px 0 rgba(255,236,214,.25);
+}
 
-  /* footswitch ancorado na chapa + tipo do efeito numa plaquinha */
-  .palco .p-pe {
-    grid-area: pe; position: relative; z-index: 1;
-    display: grid; place-items: center; line-height: 0;
-  }
-  /* o tipo numa plaquinha invertida (a cor da letra de fundo, a do pedal na letra) na moldura miuda,
-     logo acima da frente da caixa; meio px mais alta que a fileira de antes, o nome guarda o espaco.
-     A moldura entra 3 px na plaquinha: 7 px de cada lado deixam 4 px entre ela e a letra (o texto encostava), e a direita desconta o espacamento que sobra depois da ultima letra. A
-     letra na largura normal: na estendida o RING MOD enchia o pedal de 80 px numa tela de 360 px */
-  .palco .p-tipo {
-    grid-area: tipo; position: relative; z-index: 1;
-    display: block; margin: 0; padding: 0 6px 1.5px;   /* a base da Silkscreen fica mais baixa que a da Archivo: 1 px acima centra */
-    font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; font-stretch: 100%; letter-spacing: 0; line-height: 1;
-    color: var(--cor); background: var(--letra); white-space: nowrap;
-    border-image: var(--mold-etiqueta-escura);
-  }
+/* footswitch ancorado na chapa + tipo do efeito numa plaquinha */
+.palco .p-pe {
+  grid-area: pe; position: relative; z-index: 1;
+  display: grid; place-items: center; line-height: 0;
+}
+/* o tipo numa plaquinha invertida (a cor da letra de fundo, a do pedal na letra) na moldura miuda,
+   logo acima da frente da caixa; meio px mais alta que a fileira de antes, o nome guarda o espaco.
+   A moldura entra 3 px na plaquinha: 7 px de cada lado deixam 4 px entre ela e a letra (o texto encostava), e a direita desconta o espacamento que sobra depois da ultima letra. A
+   letra na largura normal: na estendida o RING MOD enchia o pedal de 80 px numa tela de 360 px */
+.palco .p-tipo {
+  grid-area: tipo; position: relative; z-index: 1;
+  display: block; margin: 0; padding: 0 6px 1.5px;   /* a base da Silkscreen fica mais baixa que a da Archivo: 1 px acima centra */
+  font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; font-stretch: 100%; letter-spacing: 0; line-height: 1;
+  color: var(--cor); background: var(--letra); white-space: nowrap;
+  border-image: var(--mold-etiqueta-escura);
+}
 
-  /* etiqueta de fita crepe colada na borda superior para os efeitos com atraso */
-  .palco .p-adesivo {
-    display: block; position: absolute; z-index: 3; top: 3px; left: 50%; transform: translateX(-50%);
-    padding: .5px 5px 2px; font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; line-height: 1.25;
-    color: var(--tinta); background: #EFE4CF; white-space: nowrap;
-    border-image: var(--mold-etiqueta);   /* o selo do atraso na moldura miuda, reto (o degrau inclinado borrava) */
-  }
-
+/* etiqueta de fita crepe colada na borda superior para os efeitos com atraso */
+.palco .p-adesivo {
+  display: block; position: absolute; z-index: 3; top: 3px; left: 50%; transform: translateX(-50%);
+  padding: .5px 5px 2px; font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; line-height: 1.25;
+  color: var(--tinta); background: #EFE4CF; white-space: nowrap;
+  border-image: var(--mold-etiqueta);   /* o selo do atraso na moldura miuda, reto (o degrau inclinado borrava) */
+}
+@media (max-width: 899.98px) {
 
   /* sons rapidos: os de ate 15 s, que tocam por cima da musica */
   .rapidos { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 26px; }
@@ -2471,14 +2332,6 @@ body { background: var(--parede-casa); }
       #17100D calc(100% - 22px) calc(100% - 15px), #CCA05A calc(100% - 15px) calc(100% - 6px), #17100D calc(100% - 6px) 100%) 0 0 / 100% 7px no-repeat,
     linear-gradient(90deg, rgba(0,0,0,.45) 0 22px, transparent 22px calc(100% - 22px), rgba(0,0,0,.45) calc(100% - 22px)) 0 100% / 100% 2px no-repeat;
 }
-@media (max-width: 899.98px) {
-  /* o feltro: so o contorno de fora e a sombra dura fraca, com a linha clara bem fraca por dentro; a
-     borda macia do tecido fica */
-  .palco .gaveta {
-    box-shadow: inset 0 0 0 2px rgba(255,236,214,.1), inset 0 2px 2px rgba(255,248,235,.10), inset 2px 0 2px rgba(255,248,235,.05), inset -2px 0 3px rgba(0,0,0,.35), inset 0 -3px 4px rgba(0,0,0,.45), var(--caixa);
-  }
-
-}
 /* pele: o visor da faixa e a chave do fim do disco, nas duas telas */
 /* titulo e canal num visor escuro rebaixado dentro de um caixilho de madeira, como a busca (o p1):
    o caixilho e o ::before e o visor o ::after da faixa, itens da grade nas duas primeiras linhas;
@@ -3097,18 +2950,15 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 .palco .mostrador .vu-face { position: absolute; left: 4px; top: 3px; }
 .palco .mostrador .vu-agulha { position: absolute; left: 0; top: 0; }
 .fader label, .fader output { text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
-@media (max-width: 899.98px) {
-
-  /* FX-12: o corpo de aluminio liso na moldura de pixel, rente ao feltro (sem sombra, desde 18/10);
-     o VITROLA na moldura miuda; o painel do visor numa chapa fina por dentro; o LCD liso de contorno
-     duro; o botao giratorio e o Ouvir minha voz com o contorno e a sombra dura, o Ouvir afundando no
-     aperto e ficando afundado enquanto liga */
-  .palco .gaveta::after { border-radius: 3px; box-shadow: none; border-image: var(--mold-embutido); background: var(--escovado), #D6CFC2; }
-  .palco .cabeca-gav::before { border-radius: 0; box-shadow: none; border-image: var(--mold-etiqueta-escura); }
-  .palco .visor-gav { border-color: transparent; border-radius: 10px; box-shadow: none; border-image: var(--mold-chapa); background: var(--escovado), #E2DBCF; }
-}
+/* FX-12: o corpo de aluminio liso na moldura de pixel, rente ao feltro (sem sombra, desde 18/10);
+   o VITROLA na moldura miuda; o painel do visor numa chapa fina por dentro; o LCD liso de contorno
+   duro; o botao giratorio e o Ouvir minha voz com o contorno e a sombra dura, o Ouvir afundando no
+   aperto e ficando afundado enquanto liga */
+.palco .gaveta::after { border-radius: 3px; box-shadow: none; border-image: var(--mold-embutido); background: var(--escovado), #D6CFC2; }
+.palco .cabeca-gav::before { border-radius: 0; box-shadow: none; border-image: var(--mold-etiqueta-escura); }
+.palco .visor-gav { border-color: transparent; border-radius: 10px; box-shadow: none; border-image: var(--mold-chapa); background: var(--escovado), #E2DBCF; }
 /* pele: o LCD, o botao giratorio e as teclas de chapa. Afundam no aperto e o Ouvir e o Mutar voz ficam afundados
-   enquanto ligam: nas duas telas, o seletor e o Mutar voz so aparecem no computador */
+   enquanto ligam: nas duas telas, mas o seletor, o Mutar voz e o Voltar so aparecem no computador */
 .palco .seletor .visor-ef {
   border-radius: 2px; background: #9A967D;
   box-shadow: inset 0 0 0 2px var(--contorno), inset 0 5px 0 rgba(0,0,0,.16), 0 2px 0 rgba(255,255,255,.6);
@@ -3119,15 +2969,44 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 }
 .palco .seletor .knob { box-shadow: 0 0 0 2px var(--contorno), 0 3px 0 2px rgba(20,8,2,.4); }
 .palco .seletor .knob::before { background: #E8E2D7; box-shadow: inset 2px 2px 0 rgba(255,255,255,.75), inset -2px -2px 0 rgba(42,24,18,.18); }
-.palco .mesa-gav .ouvir, .palco .medidores .seletor, .palco .chave { border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
-.palco .mesa-gav .ouvir:active:not(:disabled), .palco .mesa-gav .ouvir.apertado:not(:disabled), .palco .mesa-gav .ouvir[aria-pressed="true"],
-.palco .medidores .seletor:active:not(:disabled), .palco .medidores .seletor.apertado:not(:disabled),
-.palco .chave:active:not(:disabled), .palco .chave.apertado:not(:disabled), .palco .chave[aria-pressed="true"] {
+.palco .mesa-gav .btn, .palco .medidores .btn { border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
+.palco .mesa-gav .btn:active:not(:disabled), .palco .mesa-gav .btn.apertado:not(:disabled),
+.palco .medidores .btn:active:not(:disabled), .palco .medidores .btn.apertado:not(:disabled), .palco .chave[aria-pressed="true"] {
   transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(42,24,18,.16); border-image: var(--mold-objeto-apertado);
 }
-.palco .mesa-gav .ouvir[aria-pressed="true"] { background: var(--escovado), #C4BBAD; }
+.palco .chave[aria-pressed="true"] { background: var(--escovado), #C4BBAD; }
 @media (hover: hover) {
-  .palco .medidores .seletor:hover:not(:disabled), .palco .chave:hover:not(:disabled) { background: var(--escovado), #EEE8DD; }
+  .palco .medidores .btn:hover:not(:disabled, [aria-pressed="true"]), .palco .mesa-gav .btn:hover:not(:disabled, [aria-pressed="true"]) { background: var(--escovado), #EEE8DD; }
+}
+/* no computador a gaveta toma o lugar da parede: o FX-12 e uma faixa baixa, com o visor, o Ouvir e o Voltar numa
+   linha, e os pedais rolam por dentro no feltro. Os grupos ficam lado a lado (a largura e a de 6 pedais de 80, os vaos,
+   e os 30 de margem para os cabos); os plugues e cabos saem pelas margens do banco */
+@media (min-width: 900px) {
+  .palco .gaveta {
+    margin: 0; padding: 20px 14px 0;
+    grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-areas: "cabeca cabeca cabeca" "visor ouvir fechar" "dica dica dica" "lista lista lista";
+  }
+  .palco .gaveta:has(.dica-ouvir.so-dica) {
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "cabeca cabeca cabeca" "visor ouvir fechar" "lista lista lista";
+  }
+  .palco .gaveta::after { grid-row: 1 / span 2; }
+  #b-fechar-gav { grid-area: fechar; position: relative; z-index: 2; gap: .28em; }
+  @container (max-width: 40rem) { .a-prateleira { display: none; } }
+  .palco .gaveta > .rolo { align-self: stretch; margin: 6px -14px 0; padding: 0; }
+  .palco #banco { display: flex; flex-wrap: wrap; gap: 16px 24px; max-width: 628px; margin-inline: auto; padding: 2px 30px 0; }
+  .palco .grupo-ef { min-width: 0; }
+  .palco .grupo-ef + .grupo-ef { margin-top: 0; }
+  .palco .teclas { display: flex; flex-wrap: wrap; }
+  .palco .tecla { flex: 0 0 80px; }
+  .palco .t-desc { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }   /* a etiqueta mostra; fica para o leitor de tela */
+}
+/* a descricao do efeito numa etiqueta por cima do pedal (fixa na tela, para o rolo da gaveta nao cortar) */
+.dica-pedal {
+  position: fixed; z-index: 30; max-width: 280px; padding: 3px 7px 4px; pointer-events: none;
+  font-size: .8125rem; line-height: 1.3; color: var(--tinta); background: #EFE4CF;
+  border-image: var(--mold-etiqueta);
 }
 @media (max-width: 899.98px) {
 
@@ -3175,14 +3054,6 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 
 /* aparelhos e cabos RCA: celular e computador */
 @media (max-width: 899.98px) {
-  .cabo-rca .svg-desk { display: none; }
-
-  /* no celular o FX-12 e o painel de feltro com o aparelho embutido: a moldura de aluminio, os
-     trilhos, os parafusos, o puxador e a plaqueta solta saem (a serigrafia e do aparelho) */
-  .palco .chassi-gav { background: none; box-shadow: none; }
-  .palco .chassi-gav::before, .palco .chassi-gav::after, .palco .parafusos-gav, .palco .puxador-gav, .palco .marca-fx .grade-ar { display: none; }
-  .palco .marca-fx { display: none; }
-
   /* cabo RCA saindo por trás do canto inferior direito do toca-discos para a calha de 16px */
   .cabo-mesa {
     /* alinhado pela beirada da tela, como o do receiver: o toca-discos e mais estreito (340 px) e
@@ -3195,26 +3066,22 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   }
   /* o par do toca-discos ao receiver: um traco so por cor, desenhado pelo JS (medirCabos) */
   .cabo-calha { display: block; position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none; }
-  /* os fios e plugues em pixel como no mock p1: o JS (fiosPixel) desenha cada
-     pedaco num canvas de celulas de 4/3 px que o CSS amplia sem suavizar */
-  .cabo-calha, .fios-pixel { image-rendering: pixelated; }
-  .fios-pixel { position: absolute; left: -4px; top: -4px; }
-  /* alça de cabos RCA cruzando a fresta de 22px entre o receiver e o módulo de efeitos */
-  .cabo-gav {
-    right: 18px; top: -31px; width: 116px; height: 48px; z-index: -1;
-    /* os cabos passam por tras do painel de feltro: o desenho acaba na borda de
-       cima da gaveta, que forma contexto de empilhamento e por isso nao cobriria o z-index -1 */
-    clip-path: inset(0 0 calc(100% - 31px) 0);
-  }
 }
 @media (min-width: 900px) {
   /* o par do toca-discos ao receiver: um canvas so, atras dos dois aparelhos (medirCabos); os pedacos sao do celular */
-  .cabo-calha { display: block; position: absolute; z-index: -1; pointer-events: none; image-rendering: pixelated; }
-  .cabo-mesa, .cabo-rec, .cabo-rca .fios-pixel { display: none; }
-  /* alça curta de cabos RCA no recuo lateral de 14px ligando o fundo do receiver à gaveta aberta */
-  .cabo-gav {
-    left: -14px; top: -12px; width: 36px; height: 96px; z-index: -1;
-  }
+  .cabo-calha { display: block; position: absolute; z-index: -1; pointer-events: none; }
+  .cabo-mesa, .cabo-rec { display: none; }
+}
+/* os fios e plugues em pixel como no mock p1: o JS (fiosPixel) desenha cada
+   pedaco num canvas de celulas de 4/3 px que o CSS amplia sem suavizar */
+.cabo-calha, .fios-pixel { image-rendering: pixelated; }
+.fios-pixel { position: absolute; left: -4px; top: -4px; }
+/* alça de cabos RCA cruzando a fresta entre o receiver e o módulo de efeitos */
+.cabo-gav {
+  right: 18px; top: -31px; width: 116px; height: 48px; z-index: -1;
+  /* os cabos passam por tras do painel de feltro: o desenho acaba na borda de
+     cima da gaveta, que forma contexto de empilhamento e por isso nao cobriria o z-index -1 */
+  clip-path: inset(0 0 calc(100% - 31px) 0);
 }
 
 /* ---------- formato da tela: em pe e baixa (vem por ultimo para ganhar das regras de cada parte) ---------- */
@@ -3248,6 +3115,11 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .faixa { gap: 6px; }
   .canal-faixa { margin-top: -2px; }
   .palco .receptor { padding: 25px 18px 14px; column-gap: 20px; }   /* 25 em cima: a faixa da plaqueta R-77; 18 dos lados: a madeira e a chapa */
+  /* a faixa do FX-12 sem a plaqueta: sobra uma fileira inteira de pedais */
+  .palco .cabeca-gav { display: none; }
+  .palco .gaveta { padding-top: 14px; row-gap: 0; }
+  .palco .gaveta > .rolo { margin-top: 12px; }
+  .palco .dica-ouvir { margin-top: 15px; margin-bottom: -6px; }
   .medidores { gap: 10px; }
   .chave { padding: 6px 10px; gap: 8px; font-size: .875rem; }
   .vista .cabeca-sec h2, .cabeca-gav h2 { font-size: 1.25rem; }
@@ -3273,7 +3145,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .estante .disco-item.no-prato .ficha { transform: none; }
   .compacto.tocando .sete-gira { animation: none; }
   body.com-gaveta .gaveta { animation: none; }
-  .ponteiro, .visor-ef, .tecla, .seletor .seta-gav { transition: none; }
+  .ponteiro, .visor-ef, .seletor .seta-gav { transition: none; }
   .palco, .palco.anima, body.com-palco .palco { transition: none; }
   .mini-gira { animation: none; }
   .menu.folha { animation: none; transition: none; }
@@ -3450,42 +3322,11 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   </section>
 
   <section class="gaveta" id="gaveta" aria-labelledby="gav-t">
-    <span class="chassi-gav" aria-hidden="true">
-      <span class="marca-ap marca-fx"><b>VITROLA</b><span>EFEITOS DE VOZ FX-12</span><i class="grade-ar"></i></span>
-      <span class="parafusos-gav"></span>
-      <span class="puxador-gav"></span>
-    </span>
-    <span class="cabo-rca cabo-gav" aria-hidden="true">
-      <svg class="svg-desk" viewBox="0 0 36 96" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- alça lateral ligando o fundo do receptor à gaveta FX-12 no desktop -->
-        <path d="M 22 4 C 4 14, 4 64, 24 72" stroke="rgba(12,5,2,.65)" stroke-width="6.2" stroke-linecap="round"/>
-        <path d="M 25 14 C 9 24, 9 76, 24 85" stroke="rgba(12,5,2,.65)" stroke-width="6.2" stroke-linecap="round"/>
-        <!-- cabo branco (L) -->
-        <path d="M 21 2 C 3 12, 3 62, 23 70" stroke="#3E332A" stroke-width="6" stroke-linecap="round"/>
-        <path d="M 21 2 C 3 12, 3 62, 23 70" stroke="#CFC4B2" stroke-width="4.6" stroke-linecap="round"/>
-        <path d="M 20.4 1.4 C 2.4 11.4, 2.4 61.4, 22.4 69.4" stroke="rgba(255,250,240,.65)" stroke-width="1.2" stroke-linecap="round"/>
-        <!-- cabo vermelho (R) -->
-        <path d="M 24 12 C 8 22, 8 74, 23 83" stroke="#42110C" stroke-width="6" stroke-linecap="round"/>
-        <path d="M 24 12 C 8 22, 8 74, 23 83" stroke="#A8362B" stroke-width="4.6" stroke-linecap="round"/>
-        <path d="M 23.4 11.4 C 7.4 21.4, 7.4 73.4, 22.4 82.4" stroke="rgba(255,182,165,.5)" stroke-width="1.2" stroke-linecap="round"/>
-        <!-- plugues entrando na lateral traseira da gaveta -->
-        <g transform="translate(32,74) rotate(192)">
-          <rect x="0" y="0" width="12" height="8.5" rx="1.6" fill="url(#nql-c)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3" y=".5" width="2.2" height="7.5" fill="#E5DBC8"/>
-          <path d="M12 1.2 L17 2 L17 6.5 L12 7.3 Z" fill="#2A221E"/>
-        </g>
-        <g transform="translate(32,87) rotate(192)">
-          <rect x="0" y="0" width="12" height="8.5" rx="1.6" fill="url(#nql-c)" stroke="#2A2019" stroke-width=".8"/>
-          <rect x="3" y=".5" width="2.2" height="7.5" fill="#C83E30"/>
-          <path d="M12 1.2 L17 2 L17 6.5 L12 7.3 Z" fill="#2A221E"/>
-        </g>
-      </svg>
-    </span>
+    <span class="cabo-rca cabo-gav" aria-hidden="true"></span>
     <div class="cabeca-gav">
       <h2 id="gav-t">Efeitos de voz</h2>
-      <button class="btn" id="b-fechar-gav" type="button">Voltar para a prateleira</button>
     </div>
-    <!-- celular: a chave rotativa e o visor do efeito escolhido, no lugar da tecla Sem efeito -->
+    <!-- a chave rotativa e o visor do efeito escolhido, no lugar da tecla Sem efeito -->
     <div class="seletor visor-gav" id="visor-gav">
       <span class="dial" aria-hidden="true"><svg class="marcas" id="marcas-gav" viewBox="0 0 40 40"></svg><span class="knob"><span class="ponteiro" id="ponteiro-gav"></span></span></span>
       <span class="visor-ef"><span class="sr">Efeito de voz: </span><span class="sr" id="nome-ef-gav">Sem efeito</span><span class="seg-ef" id="seg-ef-gav" aria-hidden="true"></span>
@@ -3495,10 +3336,12 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     <div class="mesa-gav">
       <div class="teclas zero" id="zero" role="group" aria-label="Voz natural"></div>
       <button class="btn chave ouvir" id="b-ouvir" type="button" aria-pressed="false" aria-describedby="dica-ouvir"><span class="lampada" aria-hidden="true"></span>Ouvir minha voz</button>
+      <button class="btn" id="b-fechar-gav" type="button">Voltar<span class="a-prateleira"> para a prateleira</span></button>
       <p class="dica-ouvir" id="dica-ouvir">Vale mesmo com a voz mutada: teste o efeito sem ninguém no jogo ouvir.</p>
     </div>
     <div class="rolo" id="rolo-gav"><div class="banco" id="banco"><p class="aviso-gav">Lendo a lista de efeitos.</p></div></div>
   </section>
+  <div class="dica-pedal" id="dica-pedal" aria-hidden="true" hidden></div>
   </div>
 
   <section class="parede" aria-label="Discos">
@@ -4037,13 +3880,13 @@ function pedalDoEfeito(id) {
   return { pedal: id, modo: null };
 }
 const efeitoDaTecla = b => (EFEITO_DO_MODO[b.dataset.ef] || {})[b.dataset.modo] || b.dataset.ef;
-// o que o visor da gaveta (celular) diz com o pedal ligado em cada modo
+// o que o visor da gaveta diz com o pedal ligado em cada modo
 const VISOR_MODOS = { locutor: { natural: 'LOCUTOR DE RADIO FM VOZ NATURAL', caricato: 'LOCUTOR DE RADIO FM VOZ CARICATA' } };
 const lerModo = id => { try { return localStorage.getItem('vitrola.modo.' + id); } catch { return null; } };
 const gravarModo = (id, m) => { try { localStorage.setItem('vitrola.modo.' + id, m); } catch { /* sem guardar, o modo vale ate recarregar */ } };
-// o modo do botao que o toque pegou num pedal com os botoes (no celular, onde ele os desenha): a metade de cima e o
-// primeiro modo, a de baixo o segundo; fora disso, nenhum
-const modoDoToque = (b, e) => b.classList.contains('com-chave') && celular()
+// o modo do botao que o toque pegou num pedal com os botoes: a metade de cima e o primeiro modo, a de baixo o segundo;
+// fora disso, nenhum
+const modoDoToque = (b, e) => b.classList.contains('com-chave')
   ? CHAVE_MODOS[b.dataset.ef][e.clientY < b.getBoundingClientRect().top + b.offsetHeight / 2 ? 0 : 1] : null;
 const KNOBS = {
   creme: ['<svg viewBox="0 0 49 42" width="49" height="42" shape-rendering="crispEdges"><g class="escala"><path class="riscos" d="M24 0h1v5h-1zM13 3h1v1h-1zM35 3h1v1h-1zM14 4h1v2h-1zM34 4h1v2h-1zM15 6h1v1h-1zM33 6h1v1h-1zM3 13h1v1h-1zM45 13h1v1h-1zM4 14h2v1h-2zM43 14h2v1h-2zM6 15h1v1h-1zM42 15h1v1h-1zM0 24h5v1h-5zM44 24h5v1h-5zM5 30h1v1h-1zM43 30h1v1h-1zM2 31h3v1h-3zM44 31h3v1h-3zM11 37h1v1h-1zM37 37h1v1h-1zM10 38h1v1h-1zM38 38h1v1h-1zM9 39h1v1h-1zM39 39h1v1h-1zM8 40h1v1h-1zM40 40h1v1h-1z"/><path class="arco" d="M20 4h4v1h-4zM25 4h4v1h-4zM17 5h3v1h-3zM29 5h3v1h-3zM16 6h1v1h-1zM32 6h1v1h-1zM13 7h2v1h-2zM34 7h2v1h-2zM12 8h1v1h-1zM36 8h1v1h-1zM11 9h1v1h-1zM37 9h1v1h-1zM10 10h1v1h-1zM38 10h1v1h-1zM9 11h1v1h-1zM9 37h1v1h-1zM39 11h1v1h-1zM39 37h1v1h-1zM8 12h1v1h-1zM8 36h1v1h-1zM40 12h1v1h-1zM40 36h1v1h-1zM7 13h1v2h-1zM7 34h1v2h-1zM41 13h1v2h-1zM41 34h1v2h-1zM6 16h1v1h-1zM6 32h1v2h-1zM42 16h1v1h-1zM42 32h1v2h-1zM5 17h1v3h-1zM5 29h1v1h-1zM5 31h1v1h-1zM43 17h1v3h-1zM43 29h1v1h-1zM43 31h1v1h-1zM4 20h1v4h-1zM4 25h1v4h-1zM44 20h1v4h-1zM44 25h1v4h-1z"/></g><path fill="#EADCC4" d="M21 10h7v1h-7zM21 30h7v1h-7zM19 11h11v1h-11zM19 29h11v1h-11zM18 12h13v1h-13zM18 28h13v1h-13zM33 12h1v1h-1zM17 13h18v1h-18zM16 14h19v1h-19zM15 15h21v2h-21zM14 17h22v1h-22zM14 18h21v4h-21zM13 22h22v1h-22zM12 23h23v1h-23zM13 24h21v2h-21zM14 26h19v1h-19zM14 27h18v1h-18zM15 28h1v1h-1z"/><path fill="#1A0B04" d="M21 6h7v1h-7zM21 34h7v1h-7zM21 39h7v1h-7zM18 7h13v1h-13zM18 33h13v1h-13zM18 38h13v1h-13zM16 8h5v1h-5zM16 32h5v1h-5zM16 37h5v1h-5zM28 8h5v1h-5zM28 32h5v1h-5zM28 37h5v1h-5zM15 9h4v1h-4zM15 31h4v1h-4zM15 36h4v1h-4zM30 9h4v1h-4zM30 31h4v1h-4zM30 36h4v1h-4zM14 10h3v1h-3zM14 30h3v1h-3zM14 35h3v1h-3zM32 10h3v1h-3zM32 30h3v1h-3zM32 35h3v1h-3zM13 11h3v1h-3zM13 34h3v1h-3zM33 11h3v1h-3zM33 34h3v1h-3zM12 12h3v1h-3zM12 33h3v1h-3zM34 12h3v1h-3zM34 33h3v1h-3zM12 13h2v1h-2zM12 32h2v1h-2zM35 13h2v1h-2zM35 32h2v1h-2zM11 14h3v1h-3zM11 31h3v1h-3zM35 14h3v1h-3zM35 31h3v1h-3zM11 15h2v2h-2zM11 30h2v1h-2zM36 15h2v2h-2zM36 30h2v1h-2zM10 17h2v7h-2zM37 17h2v7h-2zM10 24h3v2h-3zM36 24h3v2h-3zM10 26h4v2h-4zM35 26h4v2h-4zM10 28h5v1h-5zM34 28h5v1h-5zM11 29h5v1h-5zM33 29h5v1h-5z"/><path fill="#0C0603" fill-opacity="0.42" d="M10 29h1v2h-1zM38 29h1v2h-1zM11 32h1v2h-1zM37 32h1v2h-1zM12 34h1v1h-1zM36 34h1v1h-1zM12 35h2v1h-2zM35 35h2v1h-2zM13 36h2v1h-2zM34 36h2v1h-2zM14 37h2v1h-2zM33 37h2v1h-2zM15 38h3v1h-3zM31 38h3v1h-3zM16 39h5v1h-5zM28 39h5v1h-5zM18 40h13v1h-13zM21 41h7v1h-7z"/><path fill="#B9A182" d="M36 17h1v1h-1zM35 18h2v6h-2zM34 24h2v2h-2zM33 26h2v1h-2zM32 27h3v1h-3zM16 28h2v1h-2zM31 28h3v1h-3zM16 29h3v1h-3zM30 29h3v1h-3zM17 30h4v1h-4zM28 30h4v1h-4zM19 31h11v1h-11zM21 32h7v1h-7z"/><path fill="#FFF8EA" d="M21 8h7v1h-7zM19 9h11v1h-11zM17 10h4v1h-4zM28 10h4v1h-4zM16 11h3v1h-3zM30 11h3v1h-3zM15 12h3v1h-3zM31 12h2v1h-2zM14 13h3v1h-3zM14 14h2v1h-2zM13 15h2v2h-2zM12 17h2v5h-2zM12 22h1v1h-1z"/><path fill="#D8C6AA" d="M13 30h1v1h-1zM14 31h1v1h-1zM14 32h2v1h-2zM15 33h3v1h-3zM16 34h2v1h-2zM17 35h1v1h-1z"/><path fill="#7A6752" d="M35 30h1v1h-1zM34 31h1v1h-1zM33 32h2v1h-2zM31 33h3v1h-3zM28 34h5v1h-5zM27 35h5v1h-5zM27 36h3v1h-3zM27 37h1v1h-1z"/><path fill="#9C8469" d="M18 34h3v1h-3zM18 35h9v1h-9zM19 36h8v1h-8zM21 37h6v1h-6z"/>PONTEIRO</svg>', ['<path fill="#1A0B04" d="M21 21h3v1h-3zM20 22h2v1h-2zM20 25h2v1h-2zM23 22h1v1h-1zM19 23h2v1h-2zM19 26h2v1h-2zM22 23h2v1h-2zM18 24h2v1h-2zM18 27h2v1h-2zM21 24h2v1h-2zM17 25h2v1h-2zM16 26h2v1h-2zM16 27h1v1h-1zM16 28h3v1h-3z"/><path fill="#5A4535" d="M22 22h1v1h-1zM21 23h1v1h-1zM20 24h1v1h-1zM19 25h1v1h-1zM18 26h1v1h-1zM17 27h1v1h-1z"/>', '<path fill="#1A0B04" d="M19 20h5v1h-5zM16 21h4v1h-4zM23 21h1v1h-1zM14 22h3v1h-3zM20 22h4v1h-4zM14 23h1v1h-1zM17 23h4v1h-4zM14 24h4v1h-4z"/><path fill="#5A4535" d="M20 21h3v1h-3zM17 22h3v1h-3zM15 23h2v1h-2z"/>', '<path fill="#1A0B04" d="M13 19h11v1h-11zM13 21h11v1h-11zM13 20h1v1h-1zM23 20h1v1h-1z"/><path fill="#5A4535" d="M14 20h9v1h-9z"/>', '<path fill="#1A0B04" d="M14 14h3v1h-3zM14 15h1v1h-1zM16 15h3v1h-3zM14 16h2v1h-2zM18 16h3v1h-3zM15 17h3v1h-3zM20 17h3v1h-3zM17 18h3v1h-3zM22 18h2v1h-2zM19 19h3v1h-3zM23 19h1v1h-1zM21 20h3v1h-3z"/><path fill="#5A4535" d="M15 15h1v1h-1zM16 16h2v1h-2zM18 17h2v1h-2zM20 18h2v1h-2zM22 19h1v1h-1z"/>', '<path fill="#1A0B04" d="M18 10h3v1h-3zM18 11h1v1h-1zM20 11h2v1h-2zM20 16h2v1h-2zM18 12h2v1h-2zM21 12h1v1h-1zM21 17h1v1h-1zM19 13h1v1h-1zM21 13h2v1h-2zM21 18h2v1h-2zM19 14h2v1h-2zM22 14h1v1h-1zM20 15h1v1h-1zM22 15h2v1h-2zM23 16h1v1h-1zM23 17h2v1h-2zM24 18h1v1h-1zM22 19h3v1h-3z"/><path fill="#5A4535" d="M19 11h1v1h-1zM20 12h1v2h-1zM21 14h1v2h-1zM22 16h1v2h-1zM23 18h1v1h-1z"/>', '<path fill="#1A0B04" d="M23 9h3v1h-3zM23 19h3v1h-3zM23 10h1v9h-1zM25 10h1v9h-1z"/><path fill="#5A4535" d="M24 10h1v9h-1z"/>', '<path fill="#1A0B04" d="M28 10h3v1h-3zM27 11h2v1h-2zM27 16h2v1h-2zM30 11h1v1h-1zM27 12h1v1h-1zM27 17h1v1h-1zM29 12h2v1h-2zM26 13h2v1h-2zM26 18h2v1h-2zM29 13h1v1h-1zM26 14h1v1h-1zM28 14h2v1h-2zM25 15h2v1h-2zM28 15h1v1h-1zM25 16h1v1h-1zM24 17h2v1h-2zM24 18h1v1h-1zM24 19h3v1h-3z"/><path fill="#5A4535" d="M29 11h1v1h-1zM28 12h1v2h-1zM27 14h1v2h-1zM26 16h1v2h-1zM25 18h1v1h-1z"/>', '<path fill="#1A0B04" d="M32 14h3v1h-3zM30 15h3v1h-3zM34 15h1v1h-1zM28 16h3v1h-3zM33 16h2v1h-2zM26 17h3v1h-3zM31 17h3v1h-3zM25 18h2v1h-2zM29 18h3v1h-3zM25 19h1v1h-1zM27 19h3v1h-3zM25 20h3v1h-3z"/><path fill="#5A4535" d="M33 15h1v1h-1zM31 16h2v1h-2zM29 17h2v1h-2zM27 18h2v1h-2zM26 19h1v1h-1z"/>', '<path fill="#1A0B04" d="M25 19h11v1h-11zM25 21h11v1h-11zM25 20h1v1h-1zM35 20h1v1h-1z"/><path fill="#5A4535" d="M26 20h9v1h-9z"/>', '<path fill="#1A0B04" d="M25 20h5v1h-5zM25 21h1v1h-1zM29 21h4v1h-4zM25 22h4v1h-4zM32 22h3v1h-3zM28 23h4v1h-4zM34 23h1v1h-1zM31 24h4v1h-4z"/><path fill="#5A4535" d="M26 21h3v1h-3zM29 22h3v1h-3zM32 23h2v1h-2z"/>', '<path fill="#1A0B04" d="M25 21h3v1h-3zM25 22h1v1h-1zM27 22h2v1h-2zM27 25h2v1h-2zM25 23h2v1h-2zM28 23h2v1h-2zM28 26h2v1h-2zM26 24h2v1h-2zM29 24h2v1h-2zM29 27h2v1h-2zM30 25h2v1h-2zM31 26h2v1h-2zM32 27h1v1h-1zM30 28h3v1h-3z"/><path fill="#5A4535" d="M26 22h1v1h-1zM27 23h1v1h-1zM28 24h1v1h-1zM29 25h1v1h-1zM30 26h1v1h-1zM31 27h1v1h-1z"/>']],
@@ -4141,7 +3984,6 @@ function montarGaveta() {
    sem pixel borrado */
 const linhasDoTexto = e => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].map(q => Math.round(q.top))).size; };
 function caberNomes() {
-  if (!celular()) return;
   for (const n of document.querySelectorAll('#banco .tecla .t-nome')) {
     n.classList.remove('miuda', 'na-margem');
     if (!n.clientWidth) continue;   // gaveta fora da tela de verdade (sem caixa): mede quando aparecer
@@ -4277,6 +4119,7 @@ function medirCabos() {
    dois lados; com o vao estreito o plugue entra mais, e sobra fio. A celula e o pixel inteiro de tela mais perto dos
    4/3 px do celular, e o canto do canvas cai na grade da tela */
 function cabosDoComputador() {
+  pedacosFios();
   const cv = $('#cabo-calha'), t = $('.tampo').getBoundingClientRect(), r = $('.receptor').getBoundingClientRect();
   const d = devicePixelRatio || 1, cel = Math.max(1, Math.round(d * 4 / 3)) / d;
   const geo = ['pc', t.right, t.top, t.height, r.left, r.top, cel].join('|');
@@ -4591,9 +4434,9 @@ const CAMINHO_MOCK = [
 function medirCabosPedais() {
   const banco = $('#banco');
   const limpa = () => { $('#cabos-pedais')?.remove(); banco?.querySelectorAll('.fita-escrita').forEach(x => x.remove()); };
-  if (!celular()) { limpa(); return; }
   if (!banco || !banco.offsetParent) return;
-  const gav = banco.closest('.gaveta'), listas = banco.querySelectorAll('.teclas');
+  // as margens dos cabos: o feltro no celular, o proprio banco no computador, com a lista rolando sob o FX-12
+  const gav = celular() ? banco.closest('.gaveta') : banco, listas = banco.querySelectorAll('.teclas');
   if (!listas.length) { limpa(); return; }
   let cv = $('#cabos-pedais');
   if (!cv) {
@@ -4613,18 +4456,22 @@ function medirCabosPedais() {
   const X = v => Math.round(v - gr.left), Y = v => Math.round(v - br.top);
   /* cada fileira: as caixas dos pedais (esquerda e direita), a linha das tomadas (y, a dos tracos de
      IN/OUT), o topo livre de cima (a etiqueta do grupo, quando a fileira abre um), topo e pe das caixas */
-  const filas = [];
+  const linhas = [];   // os pedais pela altura: no computador uma fileira pode juntar dois grupos
   for (const t of listas) {
-    const pedais = t.querySelectorAll(':scope > .tecla'), rot = t.previousElementSibling;
-    for (let i = 0; i < pedais.length; i += 3) {
-      const fila = [...pedais].slice(i, i + 3).map(p => p.getBoundingClientRect());
-      const topoP = Math.min(...fila.map(r => r.top));
-      filas.push({
-        cx: fila.map(r => [X(r.left), X(r.right)]), y: Y(fila[0].top) + 51, topoP: Y(topoP),
-        topo: Y(Math.min(topoP, i === 0 && rot ? rot.getBoundingClientRect().top : Infinity)), pe: Y(Math.max(...fila.map(r => r.bottom))),
-      });
-    }
+    const rot = t.previousElementSibling;
+    t.querySelectorAll(':scope > .tecla').forEach((p, i) => {
+      const r = p.getBoundingClientRect(), l = linhas[linhas.length - 1];
+      if (l && Math.abs(l.rs[0].top - r.top) < 1) l.rs.push(r);
+      else linhas.push({ rs: [r], rot: i === 0 ? rot : null });
+    });
   }
+  const filas = linhas.map(({ rs, rot }) => {
+    const topoP = Math.min(...rs.map(r => r.top));
+    return {
+      cx: rs.map(r => [X(r.left), X(r.right)]), y: Y(rs[0].top) + 51, topoP: Y(topoP),
+      topo: Y(Math.min(topoP, rot ? rot.getBoundingClientRect().top : Infinity)), pe: Y(Math.max(...rs.map(r => r.bottom))),
+    };
+  });
   const geo = `${W}|${Wc}|${H}|${xOff}|` + filas.map(q => [...q.cx.flat(), q.y, q.topo, q.pe].join(',')).join(';');
   if (cv._geo === geo) return;
   cv._geo = geo;
@@ -4737,6 +4584,23 @@ function medirCabosPedais() {
   for (const e of banco.querySelectorAll('.fita-escrita')) if (!vivas.has(e)) e.remove();
 }
 
+/* a descricao do efeito no computador: ao passar o mouse ou com o foco do teclado no pedal (o leitor de tela le a do
+   proprio pedal). Em cima dele, ou embaixo se nao couber */
+function dicaDoPedal(p) {
+  const d = $('#dica-pedal'), txt = p && p.querySelector('.t-desc');
+  d.hidden = !txt;
+  if (!txt) return;
+  d.textContent = txt.textContent;
+  const r = p.getBoundingClientRect(), q = d.getBoundingClientRect();
+  d.style.left = clamp(r.left + r.width / 2 - q.width / 2, 8, innerWidth - q.width - 8) + 'px';
+  d.style.top = (r.top - q.height - 8 >= 8 ? r.top - q.height - 8 : r.bottom + 8) + 'px';
+}
+$('#banco').addEventListener('pointerover', e => { if (e.pointerType === 'mouse') dicaDoPedal(e.target.closest('.tecla')); });
+$('#banco').addEventListener('pointerleave', () => dicaDoPedal(null));
+$('#banco').addEventListener('focusin', e => { if (!celular()) dicaDoPedal(e.target.matches(':focus-visible') ? e.target.closest('.tecla') : null); });
+$('#banco').addEventListener('focusout', () => dicaDoPedal(null));
+$('#rolo-gav').addEventListener('scroll', () => dicaDoPedal(null), { passive: true });
+
 const roCabos = new ResizeObserver(() => medirCabos());
 for (const x of document.querySelectorAll('.palco .deck, .palco .mesa, .palco .receptor, .palco .gaveta')) roCabos.observe(x);
 addEventListener('resize', medirCabos);
@@ -4844,7 +4708,7 @@ function desenharEfeito() {
   $('#ponteiro').style.setProperty('--ang', angDial(Math.max(0, i), n) + 'deg');
   $('#ponteiro-gav').style.setProperty('--ang', angDial(Math.max(0, i), n) + 'deg');
   document.querySelectorAll('#marcas line, #marcas-gav line').forEach(l => l.classList.toggle('ativa', +l.dataset.i === i));
-  // visor da gaveta (celular): o efeito escolhido e o x que desliga
+  // visor da gaveta: o efeito escolhido e o x que desliga
   $('#visor-gav').classList.toggle('com-efeito', com);
   $('#nome-ef-gav').textContent = nomeGav;
   $('#desliga-ef').hidden = !com;
@@ -5088,7 +4952,7 @@ function repintarCanvas() {
   cancelAnimationFrame(repintando);
   repintando = requestAnimationFrame(() => {
     for (const cv of document.querySelectorAll('#cabo-calha, #cabos-pedais')) cv._geo = '';
-    if (celular()) pedacosFios(true);
+    pedacosFios(true);
     medirCabos(); medirCabosPedais(); desenharVUs();
   });
 }
