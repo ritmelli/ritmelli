@@ -13,7 +13,6 @@
   /* materiais: madeira = movel, aluminio = maquina, ambar = luz, feltro = prato, vinil = disco */
   --jacaranda: #2A1812;
   --jacaranda-2: #351F17;
-  --tampo: #4A2B1E;
   --aluminio: #CFC7B8;
   --aluminio-claro: #E2DBCF;
   --aluminio-escuro: #8E8576;
@@ -302,7 +301,6 @@ body[data-status="playing"] .giratorio, body[data-status="buffering"] .giratorio
   position: absolute; left: 90.6cqw; top: 58cqw; width: 4.4cqw; height: 4.4cqw; transform: translate(-50%, -50%);
   border-radius: 50%;
 }
-.descanso::after { content: ""; position: absolute; left: 50%; top: 50%; width: 1.8cqw; height: 2.6cqw; transform: translate(-50%, -50%); border-radius: .5cqw; background: #2b2420; }
 .braco {
   position: absolute; left: 88cqw; top: 12cqw; width: 0; height: 0;
   transform: rotate(var(--ang, -3deg));
@@ -808,8 +806,8 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .cabeca-fila .limpar-fila[hidden] { display: none; }
 /* a parecida no prato vai para a prateleira pelo ⊕ da busca na ponta da linha do canal (dentro
    do visor da musica, embaixo a direita; o "Mix de" sobrava com a chave do Tocar
-   parecidas ligada): o toque segue com 44 px, mas a linha fica da altura do texto e o icone encosta na beira; no
-   celular ele e de pixel (no bloco do Habbo) */
+   parecidas ligada): o toque segue com 44 px, mas a linha fica da altura do texto e o icone encosta na beira; ele e
+   de pixel (no bloco do Habbo) */
 .canal-faixa { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .canal-faixa > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .canal-faixa .salvar { flex: none; margin: -12px -11px -12px 0; }
@@ -846,8 +844,7 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 
 dialog, .menu, .fora .cartao { color-scheme: light; }
 /* dialogos, fora do ar e codigo do celular: a chapa creme num caixilho de madeira, como o toca-discos. A borda
-   transparente deixa a madeira aparecer em volta da chapa, e a moldura de pixel vai por cima dela. Tudo isso mora fora
-   do .app, entao as --mold-* e o --contorno sao declarados tambem aqui */
+   transparente deixa a madeira aparecer em volta da chapa, e a moldura de pixel vai por cima dela */
 dialog, .fora .cartao {
   border: 8px solid transparent; border-radius: 4px; color: var(--tinta); border-image: var(--mold-caixa);
   background: linear-gradient(#EFE4CB, #EFE4CB) padding-box, var(--veio) border-box, #74391A;
@@ -856,40 +853,29 @@ dialog, .fora .cartao {
 dialog { width: min(520px, calc(100vw - 32px)); padding: 0; }
 dialog::backdrop { background: rgba(20,10,6,.62); }
 .dlg { padding: 18px 20px 16px; display: grid; gap: 14px; }
-/* a letra de pixel nos titulos e nas etiquetas, em multiplos da grade dela (37,333 e 18,667 px); o texto corrido, os
-   nomes e o que se digita seguem na letra de sempre */
+/* a letra de pixel nos titulos e nas etiquetas, em multiplos da grade dela (37,333 e 18,667 px); o texto corrido e o
+   que se digita seguem na letra de sempre */
 .dlg h2, .fora h2 {
   font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; font-weight: 400; font-stretch: 100%; line-height: 36px;
   overflow-wrap: anywhere;
 }
+/* o titulo do confirmar leva o nome do disco: ate 3 linhas, para um nome comprido nao tomar o dialogo */
+#dc-t { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .dlg h3, .dlg label.campo { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; line-height: 1.1; }
 .dlg p { font-size: .9375rem; color: #3f2f24; }
 .dlg .rodape { display: flex; gap: 14px; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
-/* os campos sao o rebaixo escuro da busca, com o contorno aceso no foco */
+/* os campos sao o rebaixo escuro da busca: a moldura e o foco moram na regra dela */
 .dlg input[type=text], .dlg select {
-  width: 100%; height: calc(40px + 6 * var(--px, 1px)); padding: 0 12px; color: var(--marfim);
+  width: 100%; padding: 0 12px;
   font-family: "Archivo", system-ui, sans-serif; font-size: .9375rem; line-height: normal;
-  border: calc(3 * var(--px, 1px)) solid var(--contorno); border-radius: calc(15 * var(--px, 1px)); border-image: var(--mold-rebaixo);
-  background: #16110E;
-}
-.dlg input[type=text]:focus-visible, .dlg select:focus-visible { outline: none; border-image: var(--mold-rebaixo-foco); }
-.dlg select {
-  appearance: none; padding-right: 34px; text-overflow: ellipsis; color-scheme: dark;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 5 3' shape-rendering='crispEdges'%3E%3Cpath fill='%23EEE3CF' d='M0 0h5v1H4v1H3v1H2V2H1V1H0z'/%3E%3C/svg%3E") right 12px center no-repeat, #16110E;
 }
 .dlg select:disabled { color: var(--marfim-2); }
 .dlg label.campo { display: grid; gap: 6px; }
 .dlg .em-uso { font-family: "Archivo", system-ui, sans-serif; font-weight: 400; font-size: .8125rem; line-height: 1.45; color: var(--tinta-2); }
-/* as teclas sao as do FX-12: a moldura de pixel, o aluminio chapado e o aperto que afunda */
-.dlg .btn { min-height: 2.75rem; border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
-.dlg .btn:active:not(:disabled), .dlg .btn.apertado:not(:disabled) {
-  transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(42,24,18,.16); border-image: var(--mold-objeto-apertado);
-}
+/* as teclas sao as do FX-12: a moldura, o aluminio e o aperto moram na regra delas */
+.dlg .btn { min-height: 2.75rem; }
 .dlg .btn.perigo { color: #fff; background: #97301F; }
-@media (hover: hover) {
-  .dlg .btn:hover:not(:disabled) { background: var(--escovado), #EEE8DD; }
-  .dlg .btn.perigo:hover:not(:disabled) { background: #A93A27; }
-}
+@media (hover: hover) { .dlg .btn.perigo:hover:not(:disabled) { background: #A93A27; } }
 .lembrete { display: grid; grid-template-columns: auto 1fr; gap: 10px; margin: 2px; padding: 10px 12px; background: #E2D3B3; border-image: var(--mold-etiqueta); font-size: .875rem; }
 .lembrete .lampada { margin-top: 5px; }
 .lembrete b { font-weight: 700; }
@@ -1611,7 +1597,6 @@ body { background: var(--parede-casa); }
   /* madeira dos aparelhos em cor chapada: com a parede tambem em degrade, o
      degrade do tampo do toca-discos e das laterais do receiver fazia o aparelho se misturar com ela
      em alguns trechos; o volume fica nos filetes de luz e sombra das bordas */
-  .tampo { background: var(--veio), var(--tampo); }
   /* capa apertada: encolhe um pouco em vez de escurecer (o filtro repintava a capa a cada toque) */
   .estante .capa { transition: transform .25s cubic-bezier(.2,.8,.2,1); }
   .pontos span { transition: none; }
@@ -1740,7 +1725,7 @@ body { background: var(--parede-casa); }
   grid-row: 1; padding: 5px 7px 0; border-radius: 4px 4px 0 0; border-bottom: 2px solid #F3E9D6;
   background: linear-gradient(180deg, #D46527 0 3px, #F3A73C 3px 5px, transparent 5px), #F3E9D6;
   color: var(--tinta); font-size: .8125rem; font-weight: 800; line-height: 1.18;
-  min-height: calc(2.36em + 7px);   /* as 2 linhas mais o padding e a borda: titulo de 1 linha ou de 2, a fita e a mesma */
+  box-sizing: content-box; min-height: 2.36em;   /* as 2 linhas, sem contar o padding e a borda: titulo de 1 linha ou de 2, a fita e a mesma */
   box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
 }
 .cartao-sub {
@@ -1851,7 +1836,7 @@ body { background: var(--parede-casa); }
      as teclas do transporte em madeira escura de chanfro forte. Parede e fotos ficam como estavam.
      Sombra dura sem desfoque e mais barata de pintar que a esfumada. Teclas afundam: a sombra de
      baixo encolhe enquanto a tecla desce (no aperto a sombra vai escrita: a var() de dentro de
-     --duro ja chega resolvida na .app).
+     --duro ja chega resolvida no :root).
      Terceira rodada (19/10, as quatro coisas que faltavam para o mock): luz chapada
      (a parede numa cor so e os objetos de tocar em cor lisa, o relevo num bisel duro de pixel: luz em
      cima e a esquerda, sombra embaixo e a direita); moldura dupla (a linha clara colada por dentro do
@@ -1863,8 +1848,9 @@ body { background: var(--parede-casa); }
      no toca-discos, no receiver e no FX-12, no fim do bloco. Quinta (19/10): os pedais,
      direto no bloco da pedaleira ---------- */
 }
-/* pele: as variaveis do toque de Habbo e as molduras de pixel, nas duas telas */
-.app, dialog, .aviso, .fora {
+/* pele: as variaveis do toque de Habbo e as molduras de pixel, nas duas telas. No :root, porque o menu, os dialogos,
+   o aviso e o fora do ar moram fora do .app */
+:root {
   --contorno: #1A0B04;
   --duro: 0 0 0 2.5px var(--contorno), 0 4px 0 2.5px rgba(20,8,2,.62);   /* objeto e tecla */
   --caixa: 0 0 0 2.5px var(--contorno), 0 5px 0 2.5px rgba(20,8,2,.5);    /* caixa: o mesmo contorno, a sombra mais baixa */
@@ -1881,7 +1867,7 @@ body { background: var(--parede-casa); }
     2px 2px 0 var(--contorno), -2px 2px 0 var(--contorno), 2px -2px 0 var(--contorno), -2px -2px 0 var(--contorno);
 }
 /* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */
-.app, .menu, dialog, .aviso, .fora {
+:root {
   --mold-objeto: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='32' viewBox='0 0 28 32' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.62'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.3'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.24'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.62'%3E%3Crect x='0' y='22' width='3' height='3'/%3E%3Crect x='25' y='22' width='3' height='3'/%3E%3Crect x='0' y='25' width='6' height='1'/%3E%3Crect x='22' y='25' width='6' height='1'/%3E%3Crect x='3' y='26' width='3' height='2'/%3E%3Crect x='22' y='26' width='3' height='2'/%3E%3Crect x='3' y='28' width='22' height='1'/%3E%3Crect x='6' y='29' width='16' height='3'/%3E%3C/g%3E%3C/svg%3E") 13 13 17 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(17 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(7 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
   --mold-objeto-apertado: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='29' viewBox='0 0 28 29' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.5'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.3'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.16'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.62'%3E%3Crect x='0' y='22' width='3' height='1'/%3E%3Crect x='25' y='22' width='3' height='1'/%3E%3Crect x='3' y='25' width='3' height='1'/%3E%3Crect x='22' y='25' width='3' height='1'/%3E%3Crect x='6' y='28' width='16' height='1'/%3E%3C/g%3E%3C/svg%3E") 13 13 14 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(14 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(4 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
   --mold-caixa: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='33' viewBox='0 0 28 33' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.55'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.28'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.24'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.5'%3E%3Crect x='0' y='22' width='3' height='3'/%3E%3Crect x='25' y='22' width='3' height='3'/%3E%3Crect x='0' y='25' width='6' height='2'/%3E%3Crect x='22' y='25' width='6' height='2'/%3E%3Crect x='3' y='27' width='3' height='1'/%3E%3Crect x='22' y='27' width='3' height='1'/%3E%3Crect x='3' y='28' width='22' height='2'/%3E%3Crect x='6' y='30' width='16' height='3'/%3E%3C/g%3E%3C/svg%3E") 13 13 18 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(18 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(8 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
@@ -2022,14 +2008,18 @@ body { background: var(--parede-casa); }
 .cabeca-sec .btn-madeira:active, .cabeca-sec .btn-madeira.apertado {
   transform: translateY(calc(3 * var(--px, 1px))); box-shadow: none; border-image: var(--mold-objeto-apertado);
 }
-.busca input {
+.busca input, .dlg input[type=text], .dlg select {
   height: calc(40px + 6 * var(--px, 1px)); color: var(--marfim);
   border: calc(3 * var(--px, 1px)) solid var(--contorno); border-radius: calc(15 * var(--px, 1px)); border-image: var(--mold-rebaixo);
-  background: #16110E; box-shadow: none;
+  background: #16110E;
+}
+.dlg select {
+  appearance: none; padding-right: 34px; text-overflow: ellipsis; color-scheme: dark;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 5 3' shape-rendering='crispEdges'%3E%3Cpath fill='%23EEE3CF' d='M0 0h5v1H4v1H3v1H2V2H1V1H0z'/%3E%3C/svg%3E") right 12px center no-repeat, #16110E;
 }
 .busca input::placeholder { color: #C9B79D; }
 /* com o foco o contorno da busca acende em ambar, no mesmo degrau (o anel do outline sairia redondo) */
-.busca input:focus-visible { outline: none; border-image: var(--mold-rebaixo-foco); }
+.busca input:focus-visible, .dlg input[type=text]:focus-visible, .dlg select:focus-visible { outline: none; border-image: var(--mold-rebaixo-foco); }
 
 /* titulos de secao e contagem na letra de pixel, contornada e com a sombra dura de baixo. A Jersey 10
    e a mais perto da Volter grossa dos titulos do hotel: proporcional, com minuscula e a boca do C
@@ -2261,7 +2251,7 @@ body { background: var(--parede-casa); }
    e riscava uma linha de um pe ao outro; os do toca-discos abaixo da barra do palco (z 3), senao passavam
    por cima dela na rolagem */
 .palco .pes-mesa {
-  z-index: 2; bottom: -10px; height: 9px; box-shadow: none; border-radius: 0;
+  z-index: 2; bottom: -10px; height: 9px;
   background:
     linear-gradient(90deg,
       #160F0C 0 8px, #C89B54 8px 18px, #160F0C 18px 26px,
@@ -2270,7 +2260,7 @@ body { background: var(--parede-casa); }
     linear-gradient(90deg, rgba(0,0,0,.45) 0 26px, transparent 26px calc(100% - 26px), rgba(0,0,0,.45) calc(100% - 26px)) 0 100% / 100% 2px no-repeat;
 }
 .palco .pes-ap {
-  bottom: -12px; height: 9px; box-shadow: none;
+  bottom: -12px; height: 9px;
   background:
     linear-gradient(90deg,
       #17100D 0 6px, #CCA05A 6px 15px, #17100D 15px 22px,
@@ -2719,7 +2709,6 @@ body { background: var(--parede-casa); }
 .palco .transp:disabled { opacity: 1; }
 .palco .transp:disabled svg { opacity: .32; }
 .palco .transp .lampada { bottom: 5px; }
-/* o tocar segue redondo e grande, com o aro grosso e o anel ambar tocando; a face lisa com o bisel duro */
 .palco .tocar-grande:active:not(:disabled), .palco .tocar-grande.apertado:not(:disabled) { transform: translateY(2px); }
 /* o tocar em pixel como no p1 (19/10; antes era liso demais), do dev/pecas.py: o contorno em
    degrau, a linha clara por dentro dele, o aro gordo e liso (cinza parado, ambar tocando, com a
@@ -2759,8 +2748,8 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
    com o filete aceso por fora e o contorno da chapa por dentro. Ela cresce para dentro (o aparelho
    fica do tamanho de antes) e o prato encolhe 4% em volta do proprio centro para nao encostar na
    chapa; o centro e o mesmo e o anguloPara() encolhe o raio do sulco junto, para a agulha seguir no disco */
-.palco .tampo { border-radius: 4px; box-shadow: none; border-image: var(--mold-caixa); background: var(--veio), var(--madeira-ap); }
-.palco .placa { inset: 3cqw; border-radius: 10px; box-shadow: none; border-image: var(--mold-chapa); background: var(--escovado), #D6CFC2; }
+.palco .tampo { border-radius: 4px; border-image: var(--mold-caixa); background: var(--veio), var(--madeira-ap); }
+.palco .placa { inset: 3cqw; border-radius: 10px; border-image: var(--mold-chapa); background: var(--escovado), #D6CFC2; }
 /* o prato com o contorno e a sombra dura no lugar da esfumada, e o brilho do vinil em duas cunhas
    de borda seca (so o que fica parado: o giratorio e o anel nao mudam) */
 .palco .prato { transform: scale(.96); box-shadow: 0 0 0 2px var(--contorno), 0 3px 0 2px rgba(20,8,2,.42); }
@@ -2806,15 +2795,13 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 }
 /* a base do pivo e o descanso nao giram: degrau de verdade, num pseudo que sai do elemento o contorno
    (1 celula) e a sombra (a base 3 celulas, o descanso 2) */
-.palco .base-braco, .palco .descanso { background: none; box-shadow: none; }
 .palco .base-braco::before, .palco .descanso::before { content: ""; position: absolute; pointer-events: none; }
 .palco .base-braco { width: 10cqw; height: 10cqw; }   /* do tamanho do mock (11 era maior que a dele) */
 .palco .base-braco::before { inset: -4% -4% -16%; background: var(--base-braco) 0 0 / 100% 100% no-repeat; }
 .palco .descanso::before { inset: -8.333% -8.333% -25%; background: var(--descanso) 0 0 / 100% 100% no-repeat; }
-.palco .descanso::after { content: none; }   /* a fenda vem no desenho */
 .palco .descanso { left: 88cqw; }   /* debaixo do braco reto (o moverBraco() descansa ele a 0 grau no celular) */
 /* o selo 33/45: a etiqueta lisa na moldura miuda de contorno e quina comida (a letra e a mesma) */
-.palco .selo-placa { border-color: transparent; border-radius: 0; background: #E9E3D8; box-shadow: none; border-image: var(--mold-etiqueta); }
+.palco .selo-placa { border-color: transparent; background: #E9E3D8; border-image: var(--mold-etiqueta); }
 /* no computador, como no celular: sem o "Tocando/Pausado" (o botao grande e o disco girando ja
    dizem), e o tocar de pixel no tamanho para que foi desenhado */
 @media (min-width: 900px) {
@@ -2900,14 +2887,15 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 }
 .palco .seletor .knob { box-shadow: 0 0 0 2px var(--contorno), 0 3px 0 2px rgba(20,8,2,.4); }
 .palco .seletor .knob::before { background: #E8E2D7; box-shadow: inset 2px 2px 0 rgba(255,255,255,.75), inset -2px -2px 0 rgba(42,24,18,.18); }
-.palco .mesa-gav .btn, .palco .medidores .btn { border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
+.palco .mesa-gav .btn, .palco .medidores .btn, .dlg .btn { border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
 .palco .mesa-gav .btn:active:not(:disabled), .palco .mesa-gav .btn.apertado:not(:disabled),
-.palco .medidores .btn:active:not(:disabled), .palco .medidores .btn.apertado:not(:disabled), .palco .chave[aria-pressed="true"] {
+.palco .medidores .btn:active:not(:disabled), .palco .medidores .btn.apertado:not(:disabled),
+.dlg .btn:active:not(:disabled), .dlg .btn.apertado:not(:disabled), .palco .chave[aria-pressed="true"] {
   transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(42,24,18,.16); border-image: var(--mold-objeto-apertado);
 }
 .palco .chave[aria-pressed="true"] { background: var(--escovado), #C4BBAD; }
 @media (hover: hover) {
-  .palco .medidores .btn:hover:not(:disabled, [aria-pressed="true"]), .palco .mesa-gav .btn:hover:not(:disabled, [aria-pressed="true"]) { background: var(--escovado), #EEE8DD; }
+  .palco .medidores .btn:hover:not(:disabled, [aria-pressed="true"]), .palco .mesa-gav .btn:hover:not(:disabled, [aria-pressed="true"]), .dlg .btn:hover:not(:disabled) { background: var(--escovado), #EEE8DD; }
 }
 /* no computador a gaveta toma o lugar da parede: o FX-12 e uma faixa baixa, com a plaqueta, o Ouvir e o Voltar numa
    linha, e os pedais rolam por dentro no feltro. O visor sai: o seletor do receiver, logo acima, ja mostra o efeito (o
@@ -2956,7 +2944,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
      filetes entre as faixas e o Apagar sozinho no LADO B, depois do pontilhado. Os icones em pixel; a letra e a
      de sempre */
   .menu.folha {
-    padding: 0 14px calc(14px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; box-shadow: none;
+    padding: 0 14px calc(14px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0;
     border-image: var(--mold-barra); border-image-width: 13px 13px 0 13px;
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 110 110' shape-rendering='crispEdges'%3E%3Cpath fill='%232A1812' fill-opacity='.07' d='M46 1h18v1h-18zM42 2h26v1h-26zM38 3h14v1h-14zM58 3h14v1h-14zM35 4h9v1h-9zM66 4h9v1h-9zM33 5h7v1h-7zM70 5h7v1h-7zM31 6h6v1h-6zM73 6h6v1h-6zM29 7h6v1h-6zM75 7h6v1h-6zM27 8h6v1h-6zM77 8h6v1h-6zM26 9h5v1h-5zM79 9h5v1h-5zM24 10h5v1h-5zM81 10h5v1h-5zM23 11h4v1h-4zM83 11h4v1h-4zM21 12h5v1h-5zM84 12h5v1h-5zM20 13h4v1h-4zM86 13h4v1h-4zM19 14h4v1h-4zM87 14h4v1h-4zM18 15h4v1h-4zM88 15h4v1h-4zM17 16h4v1h-4zM89 16h4v1h-4zM16 17h4v1h-4zM90 17h4v1h-4zM15 18h4v1h-4zM91 18h4v1h-4zM14 19h4v1h-4zM92 19h4v1h-4zM13 20h4v1h-4zM93 20h4v1h-4zM12 21h4v1h-4zM94 21h4v1h-4zM12 22h3v1h-3zM95 22h3v1h-3zM11 23h3v1h-3zM96 23h3v1h-3zM10 24h3v1h-3zM97 24h3v1h-3zM10 25h3v1h-3zM97 25h3v1h-3zM9 26h3v1h-3zM98 26h3v1h-3zM8 27h3v1h-3zM99 27h3v1h-3zM8 28h3v1h-3zM99 28h3v1h-3zM7 29h3v1h-3zM100 29h3v1h-3zM7 30h3v1h-3zM100 30h3v1h-3zM6 31h3v1h-3zM101 31h3v1h-3zM6 32h3v1h-3zM101 32h3v1h-3zM5 33h3v1h-3zM102 33h3v1h-3zM5 34h3v1h-3zM102 34h3v1h-3zM4 35h3v1h-3zM103 35h3v1h-3zM4 36h3v1h-3zM103 36h3v1h-3zM4 37h2v1h-2zM104 37h2v1h-2zM3 38h3v1h-3zM104 38h3v1h-3zM3 39h3v1h-3zM104 39h3v1h-3zM3 40h2v1h-2zM105 40h2v1h-2zM3 41h2v1h-2zM105 41h2v1h-2zM2 42h3v1h-3zM105 42h3v1h-3zM2 43h3v1h-3zM105 43h3v1h-3zM2 44h2v1h-2zM106 44h2v1h-2zM2 45h2v1h-2zM106 45h2v1h-2zM1 46h3v1h-3zM106 46h3v1h-3zM1 47h3v1h-3zM106 47h3v1h-3zM1 48h3v1h-3zM106 48h3v1h-3zM1 49h3v1h-3zM106 49h3v1h-3zM1 50h3v1h-3zM106 50h3v1h-3zM1 51h3v1h-3zM106 51h3v1h-3zM1 52h2v1h-2zM107 52h2v1h-2zM1 53h2v1h-2zM107 53h2v1h-2zM1 54h2v1h-2zM107 54h2v1h-2zM1 55h2v1h-2zM107 55h2v1h-2zM1 56h2v1h-2zM107 56h2v1h-2zM1 57h2v1h-2zM107 57h2v1h-2zM1 58h3v1h-3zM106 58h3v1h-3zM1 59h3v1h-3zM106 59h3v1h-3zM1 60h3v1h-3zM106 60h3v1h-3zM1 61h3v1h-3zM106 61h3v1h-3zM1 62h3v1h-3zM106 62h3v1h-3zM1 63h3v1h-3zM106 63h3v1h-3zM2 64h2v1h-2zM106 64h2v1h-2zM2 65h2v1h-2zM106 65h2v1h-2zM2 66h3v1h-3zM105 66h3v1h-3zM2 67h3v1h-3zM105 67h3v1h-3zM3 68h2v1h-2zM105 68h2v1h-2zM3 69h2v1h-2zM105 69h2v1h-2zM3 70h3v1h-3zM104 70h3v1h-3zM3 71h3v1h-3zM104 71h3v1h-3zM4 72h2v1h-2zM104 72h2v1h-2zM4 73h3v1h-3zM103 73h3v1h-3zM4 74h3v1h-3zM103 74h3v1h-3zM5 75h3v1h-3zM102 75h3v1h-3zM5 76h3v1h-3zM102 76h3v1h-3zM6 77h3v1h-3zM101 77h3v1h-3zM6 78h3v1h-3zM101 78h3v1h-3zM7 79h3v1h-3zM100 79h3v1h-3zM7 80h3v1h-3zM100 80h3v1h-3zM8 81h3v1h-3zM99 81h3v1h-3zM8 82h3v1h-3zM99 82h3v1h-3zM9 83h3v1h-3zM98 83h3v1h-3zM10 84h3v1h-3zM97 84h3v1h-3zM10 85h3v1h-3zM97 85h3v1h-3zM11 86h3v1h-3zM96 86h3v1h-3zM12 87h3v1h-3zM95 87h3v1h-3zM12 88h4v1h-4zM94 88h4v1h-4zM13 89h4v1h-4zM93 89h4v1h-4zM14 90h4v1h-4zM92 90h4v1h-4zM15 91h4v1h-4zM91 91h4v1h-4zM16 92h4v1h-4zM90 92h4v1h-4zM17 93h4v1h-4zM89 93h4v1h-4zM18 94h4v1h-4zM88 94h4v1h-4zM19 95h4v1h-4zM87 95h4v1h-4zM20 96h4v1h-4zM86 96h4v1h-4zM21 97h5v1h-5zM84 97h5v1h-5zM23 98h4v1h-4zM83 98h4v1h-4zM24 99h5v1h-5zM81 99h5v1h-5zM26 100h5v1h-5zM79 100h5v1h-5zM27 101h6v1h-6zM77 101h6v1h-6zM29 102h6v1h-6zM75 102h6v1h-6zM31 103h6v1h-6zM73 103h6v1h-6zM33 104h7v1h-7zM70 104h7v1h-7zM35 105h9v1h-9zM66 105h9v1h-9zM38 106h14v1h-14zM58 106h14v1h-14zM42 107h26v1h-26zM46 108h18v1h-18z'/%3E%3C/svg%3E") right -46px top 112px / 220px 220px no-repeat, #EFE4CB;
   }
@@ -3047,7 +3035,6 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   /* com a busca aberta a maleta so aparece aberta (o Abrir do aviso), por cima dos resultados, que ficam */
   .parede:has(> #vista-busca:not([hidden])) { grid-template: "fila" auto "busca" minmax(0, 1fr) / minmax(0, 1fr); align-content: stretch; }
   .parede:has(> #vista-busca:not([hidden])):has(> .fila-parede.aberta) { grid-template-rows: auto minmax(220px, 1fr); }
-  .parede:has(> #vista-busca:not([hidden])) .fila-parede { justify-self: center; }
   .parede:has(> #vista-busca:not([hidden])) .fila-parede:not(.aberta) { display: none; }
   #vista-busca { grid-area: busca; min-height: 0; display: flex; flex-direction: column; }
   .fila.maleta .cabeca-fila .limpar-fila { flex: none; min-height: 0; margin-right: 8px; font-size: .8125rem; color: var(--tinta); text-shadow: none; text-decoration-color: rgba(42,24,18,.45); }
@@ -3068,7 +3055,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   }
   .disco-item:hover .mais, .disco-item:focus-within .mais, .estante .ficha .mais[aria-expanded="true"] { opacity: 1; }
   /* as opcoes do disco: o menu flutuante na moldura de pixel, com os mesmos icones da contracapa do celular */
-  .menu { padding: 4px; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: #EFE4CB; }
+  .menu { padding: 4px; border-radius: 4px; border-image: var(--mold-objeto); background: #EFE4CB; }
   .menu button { border-radius: 0; }
   .menu button svg { width: 24px; height: 24px; }
 }
