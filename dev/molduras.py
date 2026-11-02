@@ -1,9 +1,10 @@
-"""Molduras de pixel da vitrola no celular (o toque de Habbo): contorno escuro, linha clara por dentro,
+"""Molduras de pixel da vitrola (o toque de Habbo): contorno escuro, linha clara por dentro,
 bisel e cantos em degrau, desenhados pixel a pixel e usados como border-image de 9 partes.
 
     python dev/molduras.py
 
-Grava as variaveis --mold-* no bloco entre "molduras:inicio" e "molduras:fim" do themes/vitrola/index.html.
+Grava as variaveis --mold-* no bloco entre "molduras:inicio" e "molduras:fim" do themes/vitrola/index.html e
+do gallery.html (a pagina inicial, que fica fora do tema e leva so as que usa).
 Cada moldura e um SVG pequeno (1 unidade = 1 ponto, shape-rendering crispEdges) com a quina
 inteira desenhada e o meio de cada lado esticado; a variavel ja leva o corte, a largura e o quanto a
 moldura sai para fora da caixa, entao no tema basta border-image: var(--mold-objeto).
@@ -36,7 +37,10 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
-TEMA = Path(__file__).resolve().parent.parent / "themes" / "vitrola" / "index.html"
+RAIZ = Path(__file__).resolve().parent.parent
+TEMA = RAIZ / "themes" / "vitrola" / "index.html"
+GALERIA = RAIZ / "gallery.html"
+NA_GALERIA = ("objeto", "objeto-apertado", "caixa")
 CONTORNO = (26, 11, 4, 1)          # #1A0B04, o --contorno do tema
 LUZ = (255, 236, 214)              # marfim quente: sobre aluminio clareia, sobre madeira vira o filete aceso
 DEGRAU = (6, 3)                    # de onde cada fileira de 3 px comeca, a partir da quina de fora
@@ -205,32 +209,38 @@ def pontos(*ns):
     return " ".join(f"calc({n} * var(--px, 1px))" if n else "0" for n in ns)
 
 
+def grava(arquivo, seletor, linhas):
+    bloco = ("/* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */\n"
+             f"{seletor} {{\n" + "\n".join(linhas) + "\n}\n/* molduras:fim */")
+    txt = arquivo.read_text(encoding="utf-8")
+    novo, n = re.subn(r"^/\* molduras:inicio.*?/\* molduras:fim \*/", lambda _: bloco, txt, flags=re.S | re.M)
+    if n != 1:
+        sys.exit(f"bloco molduras:inicio/fim nao encontrado em {arquivo.name} (ou repetido)")
+    if novo != txt:
+        arquivo.write_text(novo, encoding="utf-8", newline="\n")
+    return novo != txt
+
+
 def main():
-    linhas = []
+    linhas = {}
     for nome, m in MOLDURAS.items():
         if "arquivo" in m:
             desenho = " ".join((Path(__file__).parent / m["arquivo"]).read_text(encoding="utf-8").split())
             uri = "data:image/svg+xml," + quote(desenho.replace("> <", "><"), safe=" '=/:,.-")
             corte, sai = m["corte"], m["sai"]
-            linhas.append(f'  --mold-{nome}: url("{uri}") {" ".join(map(str, corte))} / {pontos(*corte)} / '
-                          f"{pontos(*sai)} stretch;")
+            linhas[nome] = (f'  --mold-{nome}: url("{uri}") {" ".join(map(str, corte))} / {pontos(*corte)} / '
+                            f"{pontos(*sai)} stretch;")
             continue
         px, larg, alt, prof = desenha(m)
         uri = "data:image/svg+xml," + quote(svg(px, larg, alt), safe=" '=/:,.-")
         baixo = prof + m["sombra"]
         sai, sai_b = m["sai"], m["sai"] + m["sombra"]
-        linhas.append(f'  --mold-{nome}: url("{uri}") {prof} {prof} {baixo} {prof} / {pontos(prof, prof, baixo, prof)} / '
-                      f"{pontos(sai, sai, sai_b, sai)} stretch;")
+        linhas[nome] = (f'  --mold-{nome}: url("{uri}") {prof} {prof} {baixo} {prof} / {pontos(prof, prof, baixo, prof)} / '
+                        f"{pontos(sai, sai, sai_b, sai)} stretch;")
     # fora do bloco do celular: as molduras valem nas duas telas
-    bloco = ("/* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */\n"
-             ".app, .menu, dialog, .aviso, .fora {\n" + "\n".join(linhas) + "\n}\n/* molduras:fim */")   # esses moram fora do .app
-    txt = TEMA.read_text(encoding="utf-8")
-    novo, n = re.subn(r"^/\* molduras:inicio.*?/\* molduras:fim \*/", lambda _: bloco, txt, flags=re.S | re.M)
-    if n != 1:
-        sys.exit("bloco molduras:inicio/fim nao encontrado no tema (ou repetido)")
-    if novo != txt:
-        TEMA.write_text(novo, encoding="utf-8", newline="\n")
-    print(f"{len(MOLDURAS)} molduras, {sum(len(x) for x in linhas)} caracteres" + ("" if novo != txt else " (sem mudanca)"))
+    mudou = grava(TEMA, ".app, .menu, dialog, .aviso, .fora", list(linhas.values()))   # esses moram fora do .app
+    mudou |= grava(GALERIA, ":root", [linhas[n] for n in NA_GALERIA])
+    print(f"{len(MOLDURAS)} molduras, {sum(map(len, linhas.values()))} caracteres" + ("" if mudou else " (sem mudanca)"))
 
 
 if __name__ == "__main__":

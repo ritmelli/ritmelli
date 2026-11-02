@@ -15,6 +15,3 @@ bin/
 # o que o PyInstaller gera (vitrola.spec)
 build/
 dist/
-
-# gerados pelo dev/previews.py
-themes/*/preview.png

@@ -3,50 +3,81 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Soundboard: estilos</title>
+<title>Vitrola: temas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
 <style>
+  /* a pagina inicial na pele do tema: a parede, a chapa creme no caixilho de madeira e as teclas de pixel. As letras, as
+     texturas e a medida do pixel sao as do tema; as molduras sao gravadas aqui pelo dev/molduras.py */
+  @font-face { font-family: "Jersey 10"; src: url(/t/vitrola/fonts/Jersey10.woff2) format("woff2"); font-display: block; }
   :root {
-    --bg: #e9e6df; --ink: #1d1b18; --muted: #6b665d; --line: #cfc9bd; --card: #f6f4ef;
-    --pick: #2f5bd3;
+    color-scheme: dark;
+    --jacaranda: #2A1812; --marfim: #EEE3CF; --marfim-2: #BDA88C; --tinta: #2A1812; --tinta-2: #5C4A3C;
+    --ambar: #F3A73C; --contorno: #1A0B04;
+    --veio: image-set(url("/t/vitrola/texturas/veio.webp") 2x);
+    --veio-v: image-set(url("/t/vitrola/texturas/veio-v.webp") 2x);
+    --escovado: repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0 1px, rgba(60,40,20,.045) 1px 2px, rgba(255,255,255,0) 2px 3px);
+    --parede-casa:
+      linear-gradient(90deg, rgba(40,14,0,.55) 0 2px, rgba(255,150,40,.22) 2px 3px, rgba(0,0,0,0) 3px) 0 0 / 148px 100%,
+      var(--veio-v) 0 0 / 420px 900px,
+      #6C3208;
+    --letra-contorno:
+      2px 0 0 var(--contorno), -2px 0 0 var(--contorno), 0 2px 0 var(--contorno), 0 -2px 0 var(--contorno),
+      2px 2px 0 var(--contorno), -2px 2px 0 var(--contorno), 2px -2px 0 var(--contorno), -2px -2px 0 var(--contorno),
+      0 4px 0 var(--contorno), 2px 4px 0 var(--contorno), -2px 4px 0 var(--contorno);
   }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #171614; --ink: #eceae4; --muted: #9a958b; --line: #34312c; --card: #201f1c; --pick: #7f9cff; }
-  }
+/* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */
+:root {
+  --mold-objeto: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='32' viewBox='0 0 28 32' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.62'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.3'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.24'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.62'%3E%3Crect x='0' y='22' width='3' height='3'/%3E%3Crect x='25' y='22' width='3' height='3'/%3E%3Crect x='0' y='25' width='6' height='1'/%3E%3Crect x='22' y='25' width='6' height='1'/%3E%3Crect x='3' y='26' width='3' height='2'/%3E%3Crect x='22' y='26' width='3' height='2'/%3E%3Crect x='3' y='28' width='22' height='1'/%3E%3Crect x='6' y='29' width='16' height='3'/%3E%3C/g%3E%3C/svg%3E") 13 13 17 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(17 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(7 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
+  --mold-objeto-apertado: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='29' viewBox='0 0 28 29' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.5'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.3'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.16'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.62'%3E%3Crect x='0' y='22' width='3' height='1'/%3E%3Crect x='25' y='22' width='3' height='1'/%3E%3Crect x='3' y='25' width='3' height='1'/%3E%3Crect x='22' y='25' width='3' height='1'/%3E%3Crect x='6' y='28' width='16' height='1'/%3E%3C/g%3E%3C/svg%3E") 13 13 14 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(14 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(4 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
+  --mold-caixa: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='33' viewBox='0 0 28 33' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.55'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.28'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.24'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.5'%3E%3Crect x='0' y='22' width='3' height='3'/%3E%3Crect x='25' y='22' width='3' height='3'/%3E%3Crect x='0' y='25' width='6' height='2'/%3E%3Crect x='22' y='25' width='6' height='2'/%3E%3Crect x='3' y='27' width='3' height='1'/%3E%3Crect x='22' y='27' width='3' height='1'/%3E%3Crect x='3' y='28' width='22' height='2'/%3E%3Crect x='6' y='30' width='16' height='3'/%3E%3C/g%3E%3C/svg%3E") 13 13 18 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(18 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(8 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
+}
+/* molduras:fim */
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
-         font: 16px/1.5 "Bricolage Grotesque", system-ui, sans-serif; }
-  header { padding: 40px 24px 8px; max-width: 1400px; margin: 0 auto; }
-  h1 { font-size: clamp(32px, 5vw, 64px); line-height: 1; margin: 0 0 12px; font-weight: 800;
-       letter-spacing: -0.02em; }
-  header p { margin: 0; color: var(--muted); max-width: 60ch; }
+  body { margin: 0; min-height: 100vh; background: var(--parede-casa); color: var(--marfim);
+         font-family: "Archivo", system-ui, sans-serif; font-size: 16px; line-height: 1.45; }
+  h1, h2, p { margin: 0; }
+  header { padding: 32px 24px 8px; max-width: 1400px; margin: 0 auto; }
+  /* a Jersey 10 em multiplos da grade dela: 56 px da 3 px de CSS por pixel, e 37,333 px da 2 */
+  h1 { margin-bottom: 14px; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 56px; font-weight: 400; line-height: 52px;
+       color: #FBEFD9; text-shadow: var(--letra-contorno); }
+  header p { max-width: 60ch; text-shadow: 0 1.5px 0 var(--contorno); }
   main { max-width: 1400px; margin: 0 auto; padding: 24px; }
-  .grid { display: grid; gap: 28px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr)); }
-  .t { background: var(--card); border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
-       display: flex; flex-direction: column; }
-  .t.sel { outline: 3px solid var(--pick); outline-offset: 2px; }
-  .shot { aspect-ratio: 16 / 10; background: var(--line); display: block; overflow: hidden; }
+  .grid { display: grid; gap: 32px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr)); }
+  .t { display: flex; flex-direction: column; padding: 16px; color: var(--tinta);
+       border: 8px solid transparent; border-radius: 4px; border-image: var(--mold-caixa);
+       background: linear-gradient(#EFE4CB, #EFE4CB) padding-box, var(--veio) border-box, #74391A;
+       box-shadow: inset 0 0 0 2px var(--contorno), inset 2px 2px 0 2px rgba(255,255,255,.7), inset -2px -2px 0 2px rgba(42,24,18,.14); }
+  .t.sel { outline: 3px solid var(--ambar); outline-offset: 6px; }
+  .shot { aspect-ratio: 16 / 10; margin: 2px; background: #16110E; display: block; overflow: hidden;
+          box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.45); }
   .shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
-  .shot .none { display: grid; place-items: center; height: 100%; color: var(--muted); font-size: 14px; }
-  .body { padding: 14px 16px 16px; display: grid; gap: 6px; flex: 1; }
-  .body h2 { margin: 0; font-size: 22px; font-weight: 600; }
-  .dir { color: var(--muted); font-size: 14px; }
-  .autor { justify-self: start; font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 3px;
-           border: 1px solid var(--line); color: var(--muted); }
-  .row { display: flex; gap: 10px; margin-top: auto; padding-top: 8px; flex-wrap: wrap; }
-  a.btn, button { font: inherit; font-size: 15px; border-radius: 4px; padding: 7px 14px; cursor: pointer;
-                  border: 1px solid var(--ink); background: var(--ink); color: var(--bg); text-decoration: none; }
-  button.ghost { background: transparent; color: var(--ink); }
-  a.btn:focus-visible, button:focus-visible { outline: 3px solid var(--pick); outline-offset: 2px; }
-  #cmp { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 5; flex-direction: column; }
+  .shot .none { display: grid; place-items: center; height: 100%; color: var(--marfim-2); font-size: 14px; }
+  .body { padding: 14px 0 0; display: grid; gap: 6px; flex: 1; }
+  .body h2 { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; font-weight: 400; line-height: 36px; }
+  .dir { color: var(--tinta-2); font-size: 14px; }
+  .blurb { font-size: 15px; color: #3f2f24; }
+  .autor { justify-self: start; font-size: 13px; font-weight: 600; padding: 2px 8px; background: #E2D3B3; color: var(--tinta-2); }
+  .row { display: flex; gap: 14px; margin-top: auto; padding-top: 12px; flex-wrap: wrap; }
+  a.btn, button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; cursor: pointer;
+                  font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1.1; color: var(--tinta); text-decoration: none;
+                  border: 0; border-radius: 4px; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
+  a.btn { background: var(--ambar); }
+  @media (hover: hover) {
+    button:hover { background: var(--escovado), #EEE8DD; }
+    a.btn:hover { background: #F7B859; }
+  }
+  a.btn:active, button:active { transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(42,24,18,.16); border-image: var(--mold-objeto-apertado); }
+  a.btn:focus-visible, button:focus-visible, .shot:focus-visible { outline: 3px solid var(--ambar); outline-offset: 3px; }
+  .t a.btn:focus-visible, .t button:focus-visible, .t .shot:focus-visible { outline-color: #8F4A0C; }
+  #cmp { display: none; position: fixed; inset: 0; background: var(--parede-casa); z-index: 5; flex-direction: column; }
   #cmp.on { display: flex; }
-  #cmp .bar { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
-  #cmp .bar span { flex: 1; color: var(--muted); }
+  #cmp .bar { display: flex; gap: 12px; align-items: center; padding: 10px 16px; background: var(--jacaranda); box-shadow: inset 0 -3px 0 var(--contorno); }
+  #cmp .bar span { flex: 1; color: var(--marfim-2); }
   #cmp .panes { flex: 1; display: grid; grid-template-columns: 1fr 1fr; }
-  #cmp iframe { width: 100%; height: 100%; border: 0; border-right: 1px solid var(--line); }
-  .empty { color: var(--muted); }
+  #cmp iframe { width: 100%; height: 100%; border: 0; border-right: 3px solid var(--contorno); }
+  .empty { text-shadow: 0 1.5px 0 var(--contorno); }
 </style>
 </head>
 <body>

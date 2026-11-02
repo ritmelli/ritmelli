@@ -194,7 +194,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     fila como o YouTube Music e, desligado, volta a ordem montada. Pausar cala também os
     sons por cima.
 - `API.md`: contrato da API e checklist de todo tema.
-- `themes/<slug>/`: as interfaces; `gallery.html` lista e compara lado a lado.
+- `themes/<slug>/`: as interfaces; `gallery.html` lista e compara lado a lado, com as letras e as texturas do tema
+  da vitrola.
 - `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
   de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
   deitado), `dev/compara.py` (gate de "o celular não mudou": prints do tema em estados fixos,
@@ -209,7 +210,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   texturas de ruído da vitrola em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
   (desenha as molduras de pixel da vitrola, contorno, linha clara, bisel e cantos em degrau, e
   grava as variáveis `--mold-*` de border-image no tema, fora do bloco do celular, porque valem
-  nas duas telas, com o tamanho do ponto na variável `--px`, 1px quando o tema não a define),
+  nas duas telas, com o tamanho do ponto na variável `--px`, 1px quando o tema não a define, e no
+  `gallery.html` as que a galeria usa),
   `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos, em duas
   camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema, fora
   do bloco do celular),
@@ -217,7 +219,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   base e o descanso dele, os botões de tocar do palco e do mini player e o pisador, os knobs e
   o LED dos pedais, os botões de fliperama e o logo do Locutor, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as
   variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo` no
-  tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria).
+  tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria, com a prateleira de mentira do
+  `dev/compara.py`; ele entra no git porque o instalador leva a pasta do tema como ela está).
 - `pastas.py`: os dados de quem usa moram em `%LOCALAPPDATA%\Vitrola`, fora da pasta do
   código, porque instalado em Program Files ela não aceita escrita. Em `library/`, o áudio
   baixado, a lista da biblioteca, as escolhas de volume e dispositivo e os celulares pareados;
