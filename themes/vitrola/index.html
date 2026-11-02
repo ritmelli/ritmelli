@@ -1815,7 +1815,8 @@ body { background: var(--parede-casa); }
 .cartao-tit {
   grid-row: 1; padding: 5px 7px 0; border-radius: 4px 4px 0 0; border-bottom: 2px solid #F3E9D6;
   background: linear-gradient(180deg, #D46527 0 3px, #F3A73C 3px 5px, transparent 5px), #F3E9D6;
-  color: var(--tinta); font-size: .8125rem; font-weight: 800; line-height: 1.18; min-height: 2.36em;
+  color: var(--tinta); font-size: .8125rem; font-weight: 800; line-height: 1.18;
+  min-height: calc(2.36em + 7px);   /* as 2 linhas mais o padding e a borda: titulo de 1 linha ou de 2, a fita e a mesma */
   box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
 }
 .cartao-sub {
@@ -3124,7 +3125,11 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   }
   #vista-prateleira { display: contents; }
   .rapidos { grid-area: rapidos; }
-  .fila-parede { grid-area: fila; align-self: start; width: 316px; margin: 0 0 14px; }
+  /* com fila, a maleta fica com a metade da fileira, no meio dela; sem fila, os Sons rapidos ficam com a fileira inteira,
+     e sem Sons rapidos ela fica no meio da fileira inteira */
+  .parede:has(> .fila-parede:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(316px, 1fr); }
+  .parede:has(#rapidos[hidden]) .fila-parede { grid-column: 1 / -1; }
+  .fila-parede { grid-area: fila; align-self: start; justify-self: center; width: 100%; max-width: 520px; margin: 0 0 14px; }
   #cab-prat { grid-area: cab; }
   #rolo-prateleira { grid-area: prat; }
   .continuar { grid-area: cont; }
