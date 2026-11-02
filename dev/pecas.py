@@ -1,4 +1,4 @@
-"""Pecas de pixel do palco da vitrola no celular (o toque de Habbo, mock p1): o braco do toca-discos
+"""Pecas de pixel da vitrola (o toque de Habbo, mock p1): o braco do toca-discos
 com a base e o descanso e o botao de tocar redondo (o grande do palco e o pequeno da barra de baixo),
 e o pisador (footswitch), o knob e o LED dos pedais, os botoes de fliperama e o logo do Locutor, a chave 110/220
 do fim do disco e as barras do palco, desenhados celula a celula.
