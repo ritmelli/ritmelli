@@ -10,7 +10,8 @@ moldura sai para fora da caixa, entao no tema basta border-image: var(--mold-obj
 
 O tamanho do ponto e a variavel --px do tema (sem ela, 1px, o do celular): a tela maior pede o ponto
 maior, para a moldura acompanhar as pecas desenhadas em proporcao (o braco, os knobs). As --mold-*
-resolvem o --px onde sao declaradas (no .app e no .menu), entao ele mora no :root ou nesses dois.
+resolvem o --px onde sao declaradas (no .app e no que mora fora dele: menu, dialogos, aviso e fora do
+ar), entao ele mora no :root ou nesses.
 
 Por que imagem e nao box-shadow: a sombra segue o retangulo (ou o arco do border-radius), nunca o
 degrau, e o recorte (clip-path) comia o proprio contorno. A sombra dura de baixo vai assada no desenho
@@ -222,7 +223,7 @@ def main():
                       f"{pontos(sai, sai, sai_b, sai)} stretch;")
     # fora do bloco do celular: as molduras valem nas duas telas
     bloco = ("/* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */\n"
-             ".app, .menu {\n" + "\n".join(linhas) + "\n}\n/* molduras:fim */")   # o menu mora fora do .app
+             ".app, .menu, dialog, .aviso, .fora {\n" + "\n".join(linhas) + "\n}\n/* molduras:fim */")   # esses moram fora do .app
     txt = TEMA.read_text(encoding="utf-8")
     novo, n = re.subn(r"^/\* molduras:inicio.*?/\* molduras:fim \*/", lambda _: bloco, txt, flags=re.S | re.M)
     if n != 1:

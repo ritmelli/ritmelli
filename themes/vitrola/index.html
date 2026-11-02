@@ -921,76 +921,105 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 }
 
 dialog, .menu, .fora .cartao { color-scheme: light; }
-dialog {
-  width: min(520px, calc(100vw - 32px)); padding: 0; border: 0; border-radius: 14px; color: var(--tinta);
-  background: var(--escovado), linear-gradient(180deg, #E3DCD0, var(--aluminio));
-  box-shadow: 0 30px 70px rgba(0,0,0,.6), 0 0 0 1px #7E7466;
+/* dialogos, fora do ar e codigo do celular: a chapa creme num caixilho de madeira, como o toca-discos. A borda
+   transparente deixa a madeira aparecer em volta da chapa, e a moldura de pixel vai por cima dela. Tudo isso mora fora
+   do .app, entao as --mold-* e o --contorno sao declarados tambem aqui */
+dialog, .fora .cartao {
+  border: 8px solid transparent; border-radius: 4px; color: var(--tinta); border-image: var(--mold-caixa);
+  background: linear-gradient(#EFE4CB, #EFE4CB) padding-box, var(--veio) border-box, #74391A;
+  box-shadow: inset 0 0 0 2px var(--contorno), inset 2px 2px 0 2px rgba(255,255,255,.7), inset -2px -2px 0 2px rgba(42,24,18,.14);
 }
+dialog { width: min(520px, calc(100vw - 32px)); padding: 0; }
 dialog::backdrop { background: rgba(20,10,6,.62); }
-.dlg { padding: 22px 22px 18px; display: grid; gap: 14px; }
-.dlg h2 { font-size: 1.3125rem; font-weight: 600; font-stretch: 100%; line-height: 1.2; }
-.dlg p { font-size: .9375rem; color: #3f2f24; }
-.dlg .rodape { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
-.dlg input[type=text], .dlg select {
-  width: 100%; height: 2.625rem; padding: 0 12px; border-radius: 8px; border: 1px solid #7E7466;
-  background: #F4EFE6; color: var(--tinta); font-size: .9375rem;
+.dlg { padding: 18px 20px 16px; display: grid; gap: 14px; }
+/* a letra de pixel nos titulos e nas etiquetas, em multiplos da grade dela (37,333 e 18,667 px); o texto corrido, os
+   nomes e o que se digita seguem na letra de sempre */
+.dlg h2, .fora h2 {
+  font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; font-weight: 400; font-stretch: 100%; line-height: 36px;
+  overflow-wrap: anywhere;
 }
-.dlg label.campo { display: grid; gap: 6px; font-weight: 600; font-size: .875rem; }
-.dlg .em-uso { font-weight: 400; font-size: .8125rem; color: var(--tinta-2); }
-.btn.perigo { color: #fff; background: linear-gradient(180deg, #a53a2a, #7e2318); border-color: #5a170f; box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 2px 0 rgba(0,0,0,.35); }
-@media (hover: hover) { .btn.perigo:hover:not(:disabled) { background: linear-gradient(180deg, #b6442f, #8a281b); } }
-.lembrete { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 12px; border-radius: 8px; background: rgba(42,24,18,.08); font-size: .875rem; }
-.lembrete .lampada { margin-top: 6px; }
+.dlg h3, .dlg label.campo { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; line-height: 1.1; }
+.dlg p { font-size: .9375rem; color: #3f2f24; }
+.dlg .rodape { display: flex; gap: 14px; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
+/* os campos sao o rebaixo escuro da busca, com o contorno aceso no foco */
+.dlg input[type=text], .dlg select {
+  width: 100%; height: calc(40px + 6 * var(--px, 1px)); padding: 0 12px; color: var(--marfim);
+  font-family: "Archivo", system-ui, sans-serif; font-size: .9375rem; line-height: normal;
+  border: calc(3 * var(--px, 1px)) solid var(--contorno); border-radius: calc(15 * var(--px, 1px)); border-image: var(--mold-rebaixo);
+  background: #16110E;
+}
+.dlg input[type=text]:focus-visible, .dlg select:focus-visible { outline: none; border-image: var(--mold-rebaixo-foco); }
+.dlg select {
+  appearance: none; padding-right: 34px; text-overflow: ellipsis; color-scheme: dark;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 5 3' shape-rendering='crispEdges'%3E%3Cpath fill='%23EEE3CF' d='M0 0h5v1H4v1H3v1H2V2H1V1H0z'/%3E%3C/svg%3E") right 12px center no-repeat, #16110E;
+}
+.dlg select:disabled { color: var(--marfim-2); }
+.dlg label.campo { display: grid; gap: 6px; }
+.dlg .em-uso { font-family: "Archivo", system-ui, sans-serif; font-weight: 400; font-size: .8125rem; line-height: 1.45; color: var(--tinta-2); }
+/* as teclas sao as do FX-12: a moldura de pixel, o aluminio chapado e o aperto que afunda */
+.dlg .btn { min-height: 2.75rem; border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
+.dlg .btn:active:not(:disabled), .dlg .btn.apertado:not(:disabled) {
+  transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(42,24,18,.16); border-image: var(--mold-objeto-apertado);
+}
+.dlg .btn.perigo { color: #fff; background: #97301F; }
+@media (hover: hover) {
+  .dlg .btn:hover:not(:disabled) { background: var(--escovado), #EEE8DD; }
+  .dlg .btn.perigo:hover:not(:disabled) { background: #A93A27; }
+}
+.lembrete { display: grid; grid-template-columns: auto 1fr; gap: 10px; margin: 2px; padding: 10px 12px; background: #E2D3B3; border-image: var(--mold-etiqueta); font-size: .875rem; }
+.lembrete .lampada { margin-top: 5px; }
 .lembrete b { font-weight: 700; }
+.lembrete .lampada, .fora .lampada, .aviso .lampada { box-shadow: 0 0 0 2px var(--contorno); }
 .msg-dlg { font-size: .875rem; }
 .msg-dlg:empty { display: none; }
 .msg-dlg.erro { color: #8E1E14; }
 
+/* centrado por margem, nao por transform: com largura impar o translate cairia entre dois pixels e borraria a moldura */
 .aviso {
-  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 40;
-  max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 8px; font-size: .9375rem;
-  background: rgba(23,17,15,.94); color: var(--marfim); box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 0 0 1px rgba(238,227,207,.16);
+  position: fixed; left: 0; right: 0; bottom: 22px; z-index: 40; width: fit-content; margin-inline: auto;
+  max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 4px; font-size: .9375rem;
+  background: var(--jacaranda); color: var(--marfim); border-image: var(--mold-objeto);
   display: flex; gap: 10px; align-items: center;
 }
 /* aviso com acao (Na fila: ... Abrir): o texto encolhe numa linha e o botao fica inteiro */
 .aviso.com-acao { padding: 0 6px 0 16px; width: max-content; }
 .aviso.com-acao .aviso-t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.aviso-acao { flex: none; min-height: 44px; padding: 0 12px; border: 0; border-radius: 6px; background: none; color: var(--ambar-claro); font-weight: 700; }
+.aviso-acao { flex: none; min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--ambar-claro); font-weight: 700; }
 .aviso-acao:active, .aviso-acao.apertado { background: rgba(255,240,220,.1); }
 .fora {
   position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px;
-  background: rgba(20,10,6,.78); backdrop-filter: blur(3px);
+  background: rgba(20,10,6,.78);
 }
-.fora .cartao {
-  width: min(560px, 100%); padding: 26px 24px; border-radius: 14px; color: var(--tinta); display: grid; gap: 12px;
-  background: var(--escovado), linear-gradient(180deg, #E3DCD0, var(--aluminio));
-  box-shadow: 0 30px 70px rgba(0,0,0,.6), 0 0 0 1px #7E7466;
-}
-.fora h2 { font-size: 1.375rem; font-weight: 600; display: flex; align-items: center; gap: 12px; }
+.fora .cartao { width: min(560px, 100%); padding: 20px 22px; display: grid; gap: 12px; }
+.fora h2 { display: flex; align-items: flex-start; gap: 12px; }
+.fora h2 .lampada { margin-top: 13px; }   /* na primeira linha, quando o titulo quebra no celular */
 .fora p { font-size: .9375rem; color: #3f2f24; }
-.fora code { font-family: inherit; font-weight: 700; font-stretch: 92%; background: rgba(42,24,18,.1); padding: 1px 6px; border-radius: 4px; }
+.fora code { font-family: inherit; font-weight: 700; font-stretch: 92%; background: rgba(42,24,18,.1); padding: 1px 6px; }
 .fora .tentando { font-size: .8125rem; color: var(--tinta-2); }
 
 /* celular: no PC, o botao Celular mostra o QR e o codigo (#dlg-cel); o celular ainda nao pareado digita o codigo
    no #tela-parear, por cima de tudo */
 #dlg-cel { width: min(600px, calc(100vw - 32px)); }
 .cel-par { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
-.cel-qr { flex: none; border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px #7E7466, 0 2px 0 rgba(0,0,0,.25); }
+.cel-qr { flex: none; margin: 2px; overflow: hidden; box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.45); }
 .cel-passos { flex: 1 1 220px; display: grid; gap: 8px; justify-items: start; }
 .cel-url { font-weight: 700; overflow-wrap: anywhere; }
 /* a Jersey 10 em 3x (56 px): 1 pixel da letra = 3 px de CSS */
 .dlg .cel-codigo { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 56px; font-weight: 400; font-stretch: 100%; line-height: .85714; letter-spacing: .04em; color: var(--tinta); }
 .cel-par.queimado .cel-qr, .cel-par.queimado .cel-passo { display: none; }
 .dlg .em-uso.erro { color: #8E1E14; }
-.dlg h3 { font-size: .9375rem; font-weight: 600; }
-.cel-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.cel-lista li { display: flex; gap: 12px; align-items: center; padding: 8px 8px 8px 12px; border-radius: 8px; background: rgba(42,24,18,.08); }
+.cel-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cel-lista li { display: flex; gap: 12px; align-items: center; margin: 2px; padding: 6px 6px 9px 10px; background: #E2D3B3; border-image: var(--mold-etiqueta); }
+.dlg .cel-lista .btn { min-height: 1.875rem; padding: .125rem .75rem; font-size: .8125rem; }
+.cel-lista li.cel-vazio { margin: 0; padding: 0; background: none; border-image: none; }
+/* com celular na lista, o Fechar recua a margem e o padding da linha, e fica alinhado na direita com o Desconectar */
+#dlg-cel:has(.cel-lista .btn) .rodape { padding-right: 8px; }
 .cel-lista .cel-quem { flex: 1; min-width: 0; display: grid; }
-.cel-lista .cel-nome { font-weight: 600; font-size: .9375rem; }
-.cel-lista .cel-quando { font-size: .8125rem; color: var(--tinta-2); }
+.cel-lista .cel-nome { font-weight: 600; font-size: .875rem; line-height: 1.3; }
+.cel-lista .cel-quando { font-size: .75rem; line-height: 1.3; color: var(--tinta-2); }
 .cel-vazio { font-size: .875rem; color: var(--tinta-2); }
 #tela-parear { overflow-y: auto; }
-#pa-in { height: 3.25rem; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; letter-spacing: .12em; text-align: center; }
+.dlg #pa-in { height: 3.25rem; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; letter-spacing: .12em; text-align: center; color: var(--ambar-claro); }
 /* o teclado do celular sobe por cima da metade de baixo: o cartao fica no alto */
 @media (max-width: 899.98px) { #tela-parear { align-items: start; padding-top: 48px; } }
 
@@ -1910,7 +1939,7 @@ body { background: var(--parede-casa); }
      direto no bloco da pedaleira ---------- */
 }
 /* pele: as variaveis do toque de Habbo e as molduras de pixel, nas duas telas */
-.app {
+.app, dialog, .aviso, .fora {
   --contorno: #1A0B04;
   --duro: 0 0 0 2.5px var(--contorno), 0 4px 0 2.5px rgba(20,8,2,.62);   /* objeto e tecla */
   --caixa: 0 0 0 2.5px var(--contorno), 0 5px 0 2.5px rgba(20,8,2,.5);    /* caixa: o mesmo contorno, a sombra mais baixa */
@@ -1927,7 +1956,7 @@ body { background: var(--parede-casa); }
     2px 2px 0 var(--contorno), -2px 2px 0 var(--contorno), 2px -2px 0 var(--contorno), -2px -2px 0 var(--contorno);
 }
 /* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */
-.app, .menu {
+.app, .menu, dialog, .aviso, .fora {
   --mold-objeto: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='32' viewBox='0 0 28 32' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.62'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.3'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.24'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.62'%3E%3Crect x='0' y='22' width='3' height='3'/%3E%3Crect x='25' y='22' width='3' height='3'/%3E%3Crect x='0' y='25' width='6' height='1'/%3E%3Crect x='22' y='25' width='6' height='1'/%3E%3Crect x='3' y='26' width='3' height='2'/%3E%3Crect x='22' y='26' width='3' height='2'/%3E%3Crect x='3' y='28' width='22' height='1'/%3E%3Crect x='6' y='29' width='16' height='3'/%3E%3C/g%3E%3C/svg%3E") 13 13 17 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(17 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(7 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
   --mold-objeto-apertado: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='29' viewBox='0 0 28 29' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.5'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.3'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.16'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.62'%3E%3Crect x='0' y='22' width='3' height='1'/%3E%3Crect x='25' y='22' width='3' height='1'/%3E%3Crect x='3' y='25' width='3' height='1'/%3E%3Crect x='22' y='25' width='3' height='1'/%3E%3Crect x='6' y='28' width='16' height='1'/%3E%3C/g%3E%3C/svg%3E") 13 13 14 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(14 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(4 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
   --mold-caixa: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='33' viewBox='0 0 28 33' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.55'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.28'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.24'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.5'%3E%3Crect x='0' y='22' width='3' height='3'/%3E%3Crect x='25' y='22' width='3' height='3'/%3E%3Crect x='0' y='25' width='6' height='2'/%3E%3Crect x='22' y='25' width='6' height='2'/%3E%3Crect x='3' y='27' width='3' height='1'/%3E%3Crect x='22' y='27' width='3' height='1'/%3E%3Crect x='3' y='28' width='22' height='2'/%3E%3Crect x='6' y='30' width='16' height='3'/%3E%3C/g%3E%3C/svg%3E") 13 13 18 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(18 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(8 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
