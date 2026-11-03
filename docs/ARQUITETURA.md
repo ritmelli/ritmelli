@@ -89,7 +89,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     e toca o arquivo quando o download chega; se o download também falha, o prato para.
   - Fila (A seguir): quando o disco do prato acaba, o primeiro da fila entra, do arquivo
     ou pelo stream. O que entra na fila sem estar na prateleira já começa a baixar. O
-    Repetir manda (ligado, o disco não acaba). Com nada no prato (parado, ou o disco já
+    Repetir manda (ligado, o disco não acaba), mas vale só para o disco do prato: outro
+    entrando desliga, como o "repetir uma" do Spotify. Com nada no prato (parado, ou o disco já
     acabou), o que entra na fila toca na hora; pausado ainda é disco no prato, e a fila só
     guarda. A fila vive na memória: reiniciar o servidor esvazia.
   - Passagem de DJ: a 45 s do fim, o servidor prepara o primeiro da fila num segundo deck do
