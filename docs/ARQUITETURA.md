@@ -73,6 +73,14 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   outro IP ao PC, o celular pareia de novo. Sem HTTPS (um certificado próprio faria o celular
   avisar "não seguro"): numa Wi-Fi aberta, quem estiver na rede pode copiar o código ou o
   cookie no ar, então é para a rede de casa.
+- `atualizacao.py`: o aviso de versão nova e a atualização pelo instalador (o caminho A do
+  `PLANO.md` do vitrola-server). O app baixa o manifesto das versões e a assinatura dele, e só
+  aceita o que a chave pública Ed25519 embutida no módulo assinou, e só para uma versão mais nova
+  que a dele (um manifesto velho não volta a versão). O setup.exe novo vem com o tamanho e o hash
+  conferidos e roda em modo silencioso, com o pedido de permissão do Windows: o instalador fecha
+  a Vitrola, troca a pasta dela e abre de novo. Os downloads ficam em
+  `%LOCALAPPDATA%\Vitrola\atualizacao`. Enquanto o endereço do manifesto e a chave estão vazios, e
+  sempre que roda pelo código, nada é consultado. Teste: `python dev/testa_atualizacao.py`.
 - `server.py`: aiohttp no 127.0.0.1 e no IP da rede de casa (Host fixo contra DNS
   rebinding, Origin conhecida em toda escrita contra CSRF, a API da rede só para o celular
   pareado), SSE em `/api/events`, busca e

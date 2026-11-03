@@ -51,9 +51,13 @@ reconecta sozinho; mostre que está reconectando.
  "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "out": "CABLE Input (VB-Audio Virtual Cable)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
  "error": null ou "texto",
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
- "versao": "0.1.0"}
+ "versao": "0.1.0",
+ "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou "texto"}}
 ```
 - `versao` = a versão do servidor (`versao.py`), para mostrar na tela.
+- `atualizacao` = a versão nova (ver "Versão nova"): `nova` é o número dela, ou `null`;
+  `estado` é `parado`, `consultando`, `baixando`, `pronta` (o instalador baixado e conferido) ou
+  `instalando`; `progresso` vai de 0 a 1 no download.
 - `track` tocando pelo stream do YouTube (vídeo que ainda não chegou na prateleira) vem
   com `"stream": true` e `"job": "<id do download>"`; o `id` é o do vídeo, que vira o id do
   disco quando o download termina. Enquanto o endereço do stream não sai (1 a 3 s), o
@@ -176,6 +180,10 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `GET /api/pareamento?caminho=/t/<slug>/` | - | só no PC: `{"url", "codigo", "vale_s", "queimado", "qr", "celulares"}` (ver "Celular: pareamento") |
 | `POST /api/pareamento/codigo` | - | só no PC: troca o código (e traz um de volta depois de queimado) |
 | `DELETE /api/pareamento/<id>` | - | só no PC: desconecta o celular, que volta a precisar do código |
+| `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho"} ou null}` (ver "Versão nova") |
+| `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
+| `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
+| `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; recusado ou ainda não baixado, 409 com o motivo |
 
 ## Celular: pareamento
 
@@ -199,6 +207,21 @@ vez, peça o `/api/state` para saber se é o 401.
   com o nome tirado do navegador ("Android · Chrome") e as datas em ISO local.
 - O tema que abre com `?parear=<codigo>` no endereço manda o código sozinho se ainda não
   estiver pareado, e tira o código do endereço.
+
+## Versão nova
+
+O app consulta o manifesto das versões uns 30 s depois de abrir e de 6 em 6 horas
+(`atualizacao.py`). Só vale o manifesto assinado pela chave da Vitrola, e só para uma versão
+mais nova que a que está rodando. Pelo código (`python server.py`), e enquanto o endereço do
+manifesto e a chave não estão no `atualizacao.py`, nada é consultado e `ativa` vem `false`.
+
+- O `estado` anda assim: `parado` (com ou sem `nova`), `baixando`, `pronta` e, depois do
+  `POST /api/atualizacao/instalar`, `instalando`. Um download que falha volta para `parado`, com
+  o motivo em `erro`.
+- O instalador roda em silêncio: o Windows pede a permissão, o instalador fecha a Vitrola, troca
+  a pasta dela e abre de novo, sem abrir outra aba. A página que estava aberta perde a conexão e
+  deve recarregar quando ela voltar, porque o tema também pode ter mudado.
+- Do celular, os quatro respondem 403: a versão nova se instala no PC.
 
 ## O que todo tema cobre
 
@@ -240,6 +263,9 @@ vez, peça o `/api/state` para saber se é o 401.
 12. Celular: no PC, um botão mostra o QR, o endereço e o código, e a lista dos celulares
     conectados, cada um com o botão de desconectar; no celular sem pareamento (o 401), uma tela
     por cima de tudo pede o código e explica onde achar.
+13. Versão nova: no PC, com `atualizacao.nova`, um botão que mostra a versão, as notas e o
+    tamanho, baixa com o progresso e instala; enquanto o instalador roda, a tela diz que a
+    Vitrola volta sozinha, e a página recarrega quando ela volta.
 
 Cabe em qualquer tela: no computador (largura de 900 px ou mais) a
 página nunca rola, nem de lado; o que não cabe rola por dentro de um painel (lista,

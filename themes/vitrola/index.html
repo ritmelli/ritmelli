@@ -928,6 +928,19 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 .cel-lista .cel-nome { font-weight: 600; font-size: .875rem; line-height: 1.3; }
 .cel-lista .cel-quando { font-size: .75rem; line-height: 1.3; color: var(--tinta-2); }
 .cel-vazio { font-size: .875rem; color: var(--tinta-2); }
+/* a versao nova: o led ambar na tecla do topo, as notas e o download numa barra de rebaixo que o ambar enche (--p de 0
+   a 1) */
+#b-atualizar { position: relative; }
+#b-atualizar::after {
+  content: ""; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; pointer-events: none;
+  background: var(--ambar); box-shadow: 0 0 0 2px var(--contorno), 0 0 8px 2px rgba(243,167,60,.6);
+}
+.notas-versao { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: .9375rem; color: #3f2f24; }
+.barra-baixa {
+  height: calc(12px + 6 * var(--px, 1px));
+  border: calc(3 * var(--px, 1px)) solid var(--contorno); border-radius: calc(15 * var(--px, 1px)); border-image: var(--mold-rebaixo);
+  background: linear-gradient(90deg, var(--ambar) calc(var(--p, 0) * 100%), #16110E 0);
+}
 #tela-parear { overflow-y: auto; }
 .dlg #pa-in { height: 3.25rem; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; letter-spacing: .12em; text-align: center; color: var(--ambar-claro); }
 /* o teclado do celular sobe por cima da metade de baixo: o cartao fica no alto */
@@ -3149,6 +3162,11 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       <button class="btn" type="submit"><svg class="lupa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span class="rot-busca">Buscar</span></button>
     </form>
     <div class="botoes-topo">
+      <!-- so no PC, quando ha versao nova (atualizacao.py) -->
+      <button class="btn-madeira" id="b-atualizar" type="button" title="Versão nova" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5v11"/><path d="M7.5 10l4.5 4.5 4.5-4.5"/><path d="M4.5 16.5v3h15v-3"/></svg>
+        <span class="rot">Versão nova</span>
+      </button>
       <!-- so no PC (127.0.0.1): o codigo e os celulares conectados nao vao para a rede -->
       <button class="btn-madeira" id="b-cel" type="button" title="Conectar o celular" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10.5 18.5h3"/></svg>
@@ -3421,6 +3439,20 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   </form>
 </dialog>
 
+<dialog id="dlg-atualizar" aria-labelledby="da-t">
+  <form method="dialog" class="dlg">
+    <h2 id="da-t">Versão nova</h2>
+    <p id="da-p"></p>
+    <ul class="notas-versao" id="da-notas" hidden></ul>
+    <div class="barra-baixa" id="da-barra" role="progressbar" aria-label="Download da versão nova" hidden></div>
+    <p class="msg-dlg" id="da-msg" role="status"></p>
+    <div class="rodape">
+      <button class="btn" value="nao" id="da-nao">Agora não</button>
+      <button class="btn" type="button" id="da-ok">Baixar e instalar</button>
+    </div>
+  </form>
+</dialog>
+
 <div class="aviso" id="aviso" role="status" aria-live="polite" hidden></div>
 
 <div class="fora" id="fora" hidden>
@@ -3453,6 +3485,7 @@ const S = {
   state: null, lib: [], jobs: [], pos: 0, levels: { mic: 0, track: 0, out: 0 },
   online: null, jaConectou: false, desligado: false,
   pareando: false,        // celular sem pareamento: o #tela-parear pede o codigo do PC
+  atualizando: null,      // a versao que o instalador esta pondo: a pagina recarrega quando a Vitrola voltar
   busca: null,            // null = prateleira; {q, link, itens, carregando, erro}
   buscaSeq: 0,
   jobAlvo: {},            // id do job -> youtube_id
@@ -6161,6 +6194,60 @@ $('#dcel-outro').addEventListener('click', async () => {
   catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
 });
 
+/* ---------- versao nova (atualizacao.py): so no PC, que e onde o instalador roda. O aviso vem no estado ao vivo, e o
+   dialogo pede as notas; baixado e conferido o setup, o Instalar agora roda o instalador, que fecha a Vitrola e abre de
+   novo ---------- */
+const NO_PC = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
+function desenharAtualizacao() {
+  const a = S.state && S.state.atualizacao, b = $('#b-atualizar');
+  b.hidden = !(NO_PC && a && a.nova);
+  if (a && a.nova) b.title = `Versão nova: ${a.nova}`;
+  if ($('#dlg-atualizar').open && a) pintarAtualizacao(a);
+}
+function pintarAtualizacao(a) {
+  const ok = $('#da-ok'), barra = $('#da-barra'), msg = $('#da-msg');
+  barra.hidden = a.estado !== 'baixando';
+  barra.style.setProperty('--p', a.progresso || 0);
+  barra.setAttribute('aria-valuenow', Math.round((a.progresso || 0) * 100));
+  ok.disabled = ['baixando', 'consultando', 'instalando'].includes(a.estado);
+  ok.textContent = a.estado === 'pronta' ? 'Instalar agora' : a.estado === 'baixando' ? `Baixando ${Math.round((a.progresso || 0) * 100)}%` : 'Baixar e instalar';
+  msg.className = 'msg-dlg' + (a.erro ? ' erro' : '');
+  msg.textContent = a.erro || (a.estado === 'pronta' ? 'O Windows vai pedir permissão para instalar. A Vitrola fecha e abre de novo sozinha.' : '');
+}
+async function abrirAtualizacao() {
+  let a;
+  try { a = await api('GET', '/api/atualizacao'); } catch (e) { avisar(e.message, true); return; }
+  if (!a.nova) { avisar('Não há versão nova agora.'); return; }
+  $('#da-t').textContent = `Versão nova: ${a.nova.versao}`;
+  $('#da-p').textContent = `Você está na ${a.versao}. O download tem ${Math.max(1, Math.round(a.nova.tamanho / 1048576))} MB, e a música para durante a instalação.`;
+  const ul = $('#da-notas');
+  ul.replaceChildren(...a.nova.notas.map(n => el('li', null, n)));
+  ul.hidden = !a.nova.notas.length;
+  pintarAtualizacao(a);
+  $('#dlg-atualizar').showModal();
+}
+$('#b-atualizar').addEventListener('click', abrirAtualizacao);
+$('#da-ok').addEventListener('click', async () => {
+  const a = S.state && S.state.atualizacao, msg = $('#da-msg');
+  try {
+    if (a && a.estado === 'pronta') {
+      await api('POST', '/api/atualizacao/instalar');
+      S.atualizando = a.nova;
+      $('#dlg-atualizar').close();
+      mostrarFora();
+    } else {
+      await api('POST', '/api/atualizacao/baixar');
+    }
+  } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
+});
+/* o instalador fecha a Vitrola: no lugar do fora do ar, a tela diz que ela volta sozinha */
+function mostrarAtualizando(f) {
+  $('#fora-tt').textContent = 'Atualizando a Vitrola';
+  $('#fora-p').textContent = `O instalador está pondo a versão ${S.atualizando}. A Vitrola fecha e abre de novo sozinha, em menos de um minuto, e esta página volta junto.`;
+  $('#lamp').className = 'lampada alerta piscando';
+  f.hidden = false;
+}
+
 /* ---------- conexao ---------- */
 let es = null, foraT = null, reconT = null;
 function conectar() {
@@ -6173,6 +6260,7 @@ function conectar() {
   es.addEventListener('state', e => {
     online(true); S.state = JSON.parse(e.data);
     desenharFaixa(); desenharReceptor(); desenharFila(); if (S.busca) atualizarResultados();
+    desenharAtualizacao();
   });
   es.addEventListener('library', e => { S.lib = ordenarLib(JSON.parse(e.data)); desenharPrateleira(); desenharFila(); if (S.busca) atualizarResultados(); });
   es.addEventListener('jobs', e => {
@@ -6218,6 +6306,7 @@ function online(on) {
   const lamp = $('#lamp'), cx = $('#conexao');
   if (on) {
     S.jaConectou = true; S.desligado = false;
+    if (S.atualizando) { location.reload(); return; }   // a versao nova abriu: a pagina passa a ser a dela
     clearTimeout(foraT); $('#fora').hidden = true;
     if (!S.efeitos && S.erroEfeitos) carregarEfeitos();
     lamp.className = 'lampada acesa'; cx.textContent = 'ligado';
@@ -6230,6 +6319,7 @@ function online(on) {
 function mostrarFora() {
   const f = $('#fora');
   fecharMenu(false);
+  if (S.atualizando) { mostrarAtualizando(f); return; }
   if (S.desligado) {
     $('#fora-tt').textContent = 'Soundboard desligado';
     $('#fora-p').innerHTML = 'A sua voz parou de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade. Para ligar de novo, rode <code>soundboard.ps1 start</code> no PC, na pasta da Vitrola.';

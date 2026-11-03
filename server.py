@@ -27,6 +27,7 @@ from aiohttp import web
 from aiohttp.web_runner import GracefulExit
 
 import andamento as an
+import atualizacao as atu
 import engine as eng
 import fx
 import pareamento as par
@@ -372,6 +373,7 @@ class App:
         self.preparando = None  # (disco, qid) da passagem sendo preparada (o stream leva 1 a 3 s)
         self.passagem_falhou = None  # (disco, qid) que nao deu para preparar: toca no fim, como antes
         self.closing = False
+        self.atualizacao = atu.Atualizacao()  # a versao nova (atualizacao.py); sem endereco e chave, fica parada
         cls = eng.MockEngine if mock else eng.Engine
         self.engine = cls(mic=self.cfg.get("mic", "default"), out=self.cfg.get("out", "CABLE Input"),
                           monitor=self.cfg.get("monitor", "default"))
@@ -386,13 +388,16 @@ class App:
         threading.Thread(target=self._vigia_auto, daemon=True).start()
         threading.Thread(target=self._vigia_passagem, daemon=True).start()
         threading.Thread(target=self._vigia_andamento, daemon=True).start()
+        if self.atualizacao.ativa:
+            threading.Thread(target=self.atualizacao.vigia, daemon=True).start()
 
     def snapshot(self):
         """Estado do motor mais a fila (A seguir), o Aleatorio, o Automatico e quantos discos o
         Anterior tem."""
         with self.fila_lock:
             extra = {"queue": [self._com_bpm(x) for x in self.fila], "shuffle": self.fila_ordem is not None,
-                     "auto": self.auto, "history": len(self.historico), "versao": VERSAO}
+                     "auto": self.auto, "history": len(self.historico), "versao": VERSAO,
+                     "atualizacao": self.atualizacao.resumo()}
         return {**self.engine.snapshot(), **extra}
 
     def _com_bpm(self, x):
@@ -1390,6 +1395,8 @@ def build(app_state):
         celular = request.path.startswith("/api/") and not do_pc(request)
         if celular and request.path.startswith("/api/pareamento"):
             return j_err("O código e os celulares conectados só aparecem no PC.", 403)
+        if celular and request.path.startswith("/api/atualizacao"):
+            return j_err("A versão nova se instala no PC.", 403)
         if celular and (request.method, request.path) not in livres:
             chave = request.cookies.get(par.COOKIE)
             if not A.celulares.confere(chave):
@@ -1671,13 +1678,41 @@ def build(app_state):
             out.append({"slug": d.name, "url": f"/t/{d.name}/", **meta})
         return web.json_response(out)
 
-    @r.post("/api/shutdown")
-    async def shutdown(_):
+    def desliga():
         A.closing = True  # os SSE abertos terminam no proximo tick
         A.remember_pos()
         def _exit():
             raise GracefulExit()  # SystemExit: sai do asyncio.run, o finally fecha o audio
         loop_().call_later(0.3, _exit)
+
+    @r.post("/api/shutdown")
+    async def shutdown(_):
+        desliga()
+        return j_ok()
+
+    # a versao nova (atualizacao.py), so no PC: e nele que o instalador roda
+    @r.get("/api/atualizacao")
+    async def atualizacao(_):
+        return web.json_response(A.atualizacao.publico())
+
+    @r.post("/api/atualizacao/consultar")
+    async def atualizacao_consulta(_):
+        await loop_().run_in_executor(pool, A.atualizacao.consultar)
+        return web.json_response(A.atualizacao.publico())
+
+    @r.post("/api/atualizacao/baixar")
+    async def atualizacao_baixa(_):
+        if not A.atualizacao.baixar():
+            return j_err("Não há versão nova para baixar agora.", 409)
+        return j_ok()
+
+    @r.post("/api/atualizacao/instalar")
+    async def atualizacao_instala(_):
+        # espera a resposta do pedido de permissao do Windows, fora do loop
+        ok, motivo = await loop_().run_in_executor(pool, A.atualizacao.instalar)
+        if not ok:
+            return j_err(motivo, 409)
+        desliga()  # o instalador fecharia a Vitrola; saindo antes, nada fica no meio de uma gravacao
         return j_ok()
 
     @r.get("/api/events")
