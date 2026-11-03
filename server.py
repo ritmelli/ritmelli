@@ -1711,7 +1711,8 @@ def build(app_state):
     @r.post("/api/parear")
     async def parear(request):
         b = await body(request)
-        codigo = re.sub(r"\D", "", str(b.get("codigo") or ""))  # "482 913" vale
+        # "482 913" vale. So 0 a 9: o \D deixa passar digito de outro alfabeto, e o compare_digest recusa com excecao
+        codigo = re.sub(r"[^0-9]", "", str(b.get("codigo") or ""))
         nome = par.nome_do_aparelho(request.headers.get("User-Agent", ""))
         chave, motivo = A.celulares.parear(codigo, nome)
         if chave is None:
