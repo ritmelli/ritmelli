@@ -94,8 +94,9 @@ reconecta sozinho; mostre que está reconectando.
 - `mic_mute` = voz cortada (o arquivo segue indo).
 - `monitor_on` = o arquivo toca também no fone do usuário.
 - `loop` = repete o disco do prato sem parar. Vale só para esse disco: outro entrando (prateleira,
-  Próxima, Anterior, fila) desliga, e o `loop` do `POST /api/play` manda sobre isso. O mesmo disco
-  tocado de novo, a troca do stream para o arquivo e o som por cima não desligam.
+  Próxima, Anterior, fila) ou o disco saindo do prato (`POST /api/stop`) desliga, e o `loop` do
+  `POST /api/play` manda sobre isso. O mesmo disco tocado de novo, a troca do stream para o arquivo
+  e o som por cima não desligam. Ligado com o prato vazio, vale para o disco que entrar.
 - `effect` = efeito de voz ativo (id de `/api/effects`); o servidor sempre sobe em `nenhum`.
   Aceita também `locutor-caricato`, o modo caricato do "Locutor de rádio FM", que fica fora
   de `/api/effects` para não virar outro efeito na lista: o tema que o oferece faz dele um
@@ -151,7 +152,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `POST /api/play` | `{"id": "<item>", "start": 12.5?, "resume": true?, "loop": bool?, "por_cima": bool?}` | toca o item (do zero, de `start`, ou de `last_pos` com `resume`); item de até 15 s sem `start` nem `resume` toca **por cima** da música (buzina, bordão: não troca a faixa, vários juntos, até 8) e responde `{"ok": true, "por_cima": true}`; `por_cima` força um ou outro |
 | `POST /api/toggle` | - | pausa ou continua; pausar cala também os sons por cima |
 | `POST /api/pause` / `POST /api/resume` | - | idem, explícito |
-| `POST /api/stop` | - | descarrega o arquivo e cala os sons por cima (a voz segue); o disco entra no `history` |
+| `POST /api/stop` | - | descarrega o arquivo, desliga o `loop` e cala os sons por cima (a voz segue); o disco entra no `history` |
 | `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca; fila vazia = 409 |
 | `POST /api/prev` | - | Anterior do Spotify: com mais de 3 s de disco (ou nada antes dele), volta ao começo (`{"did": "inicio"}`); senão toca o último do `history`, e o disco do prato vai para o topo da `queue` (`{"did": "anterior"}`); nada no prato nem antes = 409 |
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
