@@ -143,7 +143,7 @@ fetch('/api/themes').then(r => r.json()).then(ts => {
   // agrupado por autor: quem fez fica visível em cada cartão
   ts.sort((a, b) => (a.autor || '').localeCompare(b.autor || '') || a.slug.localeCompare(b.slug));
   ts.forEach(t => grid.appendChild(card(t)));
-}).catch(() => { grid.innerHTML = '<p class="empty">O servidor do soundboard não respondeu. Rode soundboard.ps1 start.</p>'; });
+}).catch(() => { grid.innerHTML = '<p class="empty">A Vitrola não respondeu. Abra o app no PC, pelo menu Iniciar, e recarregue esta página.</p>'; });
 </script>
 </body>
 </html>
