@@ -149,7 +149,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     baixinhos depois de 2 s de silêncio, e o plano que mirava a queda de 20 dB cortava os 20 s). A grade de mais adiante não é estendida de volta até a intro: em 9 músicas ela
     caía fora dos ataques da intro. O log diz o que fez (`passagem: no tempo: ...`) ou por que
     não alinhou.
-  - Automático (chave no A seguir, salva no `config.json`): com ele ligado, a fila nunca
+  - Automático (a chave "Só este disco / Tocar parecidas" embaixo dos botões do toca-discos,
+    salva no `config.json`): com ele ligado, a fila nunca
     acaba. O último disco escolhido à mão é a semente, e o rádio do YouTube Music dela (o
     "Iniciar rádio", pela `ytmusicapi` sem login, 50 músicas do catálogo em ~1 s, com artista
     e título separados) mantém 5 parecidas no fim da fila. Sem a
@@ -195,7 +196,10 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
 - `API.md`: contrato da API e checklist de todo tema.
 - `themes/<slug>/`: as interfaces; `gallery.html` lista e compara lado a lado.
 - `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
-  de "cabe em qualquer tela", de 1024x600 a 2560x1300 e no celular), `dev/perfcheck.py`
+  de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
+  deitado), `dev/compara.py` (gate de "o celular não mudou": prints do tema em estados fixos,
+  com uma prateleira de mentira e o servidor em `--mock`, comparados pixel a pixel com os de
+  referência gravados antes da mudança), `dev/perfcheck.py`
   (quanto o tema redesenha por segundo com música tocando, no celular emulado),
   `dev/celular.py` (mede rolagem, puxão e abrir do palco no Chrome do celular de verdade,
   por USB com adb; o emulado não reproduz o que trava lá), `dev/bumbo.py` (confere se a passagem
@@ -203,15 +207,17 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   detector de bumbo próprio; no final seco para um começo sem bumbo, confere a primeira nota
   contra o bumbo do que sai: sai 0 no tempo, 1 contratempo ou fora, 3 sem plano ou sem bumbo), `dev/texturas.py` (gera as
   texturas de ruído da vitrola em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
-  (desenha as molduras de pixel da vitrola no celular, contorno, linha clara, bisel e
-  cantos em degrau, e grava as variáveis `--mold-*` de border-image no tema),
-  `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos no celular, em duas
-  camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema),
-  `dev/pecas.py` (desenha em pixel o braço do toca-discos, já inclinado em três ângulos, a
+  (desenha as molduras de pixel da vitrola, contorno, linha clara, bisel e cantos em degrau, e
+  grava as variáveis `--mold-*` de border-image no tema, fora do bloco do celular, porque valem
+  nas duas telas, com o tamanho do ponto na variável `--px`, 1px quando o tema não a define),
+  `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos, em duas
+  camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema, fora
+  do bloco do celular),
+  `dev/pecas.py` (desenha em pixel o braço do toca-discos, já inclinado em seis ângulos, a
   base e o descanso dele, os botões de tocar do palco e do mini player e o pisador, os knobs e
   o LED dos pedais, os botões de fliperama e o logo do Locutor, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as
-  variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo`, a
-  `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL` no tema) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria).
+  variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo` no
+  tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria).
 - `pastas.py`: os dados de quem usa moram em `%LOCALAPPDATA%\Vitrola`, fora da pasta do
   código, porque instalado em Program Files ela não aceita escrita. Em `library/`, o áudio
   baixado, a lista da biblioteca, as escolhas de volume e dispositivo e os celulares pareados;

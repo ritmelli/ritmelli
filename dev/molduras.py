@@ -4,9 +4,13 @@ bisel e cantos em degrau, desenhados pixel a pixel e usados como border-image de
     python dev/molduras.py
 
 Grava as variaveis --mold-* no bloco entre "molduras:inicio" e "molduras:fim" do themes/vitrola/index.html.
-Cada moldura e um SVG pequeno (1 unidade = 1 px de CSS, shape-rendering crispEdges) com a quina
+Cada moldura e um SVG pequeno (1 unidade = 1 ponto, shape-rendering crispEdges) com a quina
 inteira desenhada e o meio de cada lado esticado; a variavel ja leva o corte, a largura e o quanto a
 moldura sai para fora da caixa, entao no tema basta border-image: var(--mold-objeto).
+
+O tamanho do ponto e a variavel --px do tema (sem ela, 1px, o do celular): a tela maior pede o ponto
+maior, para a moldura acompanhar as pecas desenhadas em proporcao (o braco, os knobs). As --mold-*
+resolvem o --px onde sao declaradas (no .app e no .menu), entao ele mora no :root ou nesses dois.
 
 Por que imagem e nao box-shadow: a sombra segue o retangulo (ou o arco do border-radius), nunca o
 degrau, e o recorte (clip-path) comia o proprio contorno. A sombra dura de baixo vai assada no desenho
@@ -195,26 +199,32 @@ def svg(px, larg, alt):
             f"shape-rendering='crispEdges'>{''.join(grupos)}</svg>")
 
 
+def pontos(*ns):
+    """n pontos da moldura em CSS, na escala do --px."""
+    return " ".join(f"calc({n} * var(--px, 1px))" if n else "0" for n in ns)
+
+
 def main():
     linhas = []
     for nome, m in MOLDURAS.items():
         if "arquivo" in m:
             desenho = " ".join((Path(__file__).parent / m["arquivo"]).read_text(encoding="utf-8").split())
             uri = "data:image/svg+xml," + quote(desenho.replace("> <", "><"), safe=" '=/:,.-")
-            (ct, cd, cb, ce), (st, sd, sb, se) = m["corte"], m["sai"]
-            linhas.append(f'    --mold-{nome}: url("{uri}") {ct} {cd} {cb} {ce} / {ct}px {cd}px {cb}px {ce}px / '
-                          f"{st}px {sd}px {sb}px {se}px stretch;")
+            corte, sai = m["corte"], m["sai"]
+            linhas.append(f'  --mold-{nome}: url("{uri}") {" ".join(map(str, corte))} / {pontos(*corte)} / '
+                          f"{pontos(*sai)} stretch;")
             continue
         px, larg, alt, prof = desenha(m)
         uri = "data:image/svg+xml," + quote(svg(px, larg, alt), safe=" '=/:,.-")
         baixo = prof + m["sombra"]
         sai, sai_b = m["sai"], m["sai"] + m["sombra"]
-        linhas.append(f'    --mold-{nome}: url("{uri}") {prof} {prof} {baixo} {prof} / {prof}px {prof}px {baixo}px {prof}px / '
-                      f"{sai}px {sai}px {sai_b}px {sai}px stretch;")
-    bloco = ("  /* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */\n"
-             "  .app, .menu {\n" + "\n".join(linhas) + "\n  }\n  /* molduras:fim */")   # o menu mora fora do .app
+        linhas.append(f'  --mold-{nome}: url("{uri}") {prof} {prof} {baixo} {prof} / {pontos(prof, prof, baixo, prof)} / '
+                      f"{pontos(sai, sai, sai_b, sai)} stretch;")
+    # fora do bloco do celular: as molduras valem nas duas telas
+    bloco = ("/* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */\n"
+             ".app, .menu {\n" + "\n".join(linhas) + "\n}\n/* molduras:fim */")   # o menu mora fora do .app
     txt = TEMA.read_text(encoding="utf-8")
-    novo, n = re.subn(r"  /\* molduras:inicio.*?/\* molduras:fim \*/", lambda _: bloco, txt, flags=re.S)
+    novo, n = re.subn(r"^/\* molduras:inicio.*?/\* molduras:fim \*/", lambda _: bloco, txt, flags=re.S | re.M)
     if n != 1:
         sys.exit("bloco molduras:inicio/fim nao encontrado no tema (ou repetido)")
     if novo != txt:
