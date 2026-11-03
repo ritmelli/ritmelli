@@ -93,7 +93,9 @@ reconecta sozinho; mostre que está reconectando.
 - `mic_vol` = volume do microfone em uso nas configurações de som do Windows, 0 a 1 (o mesmo número de lá): o servidor grava no Windows e lê de volta, então mudar por lá também mexe na barra. O soundboard não tem ganho próprio de voz, e o valor não vai no `config.json` (quem guarda é o Windows).
 - `mic_mute` = voz cortada (o arquivo segue indo).
 - `monitor_on` = o arquivo toca também no fone do usuário.
-- `loop` = repete o arquivo sem parar.
+- `loop` = repete o disco do prato sem parar. Vale só para esse disco: outro entrando (prateleira,
+  Próxima, Anterior, fila) desliga, e o `loop` do `POST /api/play` manda sobre isso. O mesmo disco
+  tocado de novo, a troca do stream para o arquivo e o som por cima não desligam.
 - `effect` = efeito de voz ativo (id de `/api/effects`); o servidor sempre sobe em `nenhum`.
   Aceita também `locutor-caricato`, o modo caricato do "Locutor de rádio FM", que fica fora
   de `/api/effects` para não virar outro efeito na lista: o tema que o oferece faz dele um

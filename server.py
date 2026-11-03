@@ -544,6 +544,13 @@ class App:
         if e.track is not None and e.status() in ("playing", "paused"):
             self.lib.update(e.track["id"], last_pos=round(e.pos, 1))
 
+    def repetir_so_neste(self, novo_id):
+        """O Repetir vale para o disco do prato (o "repetir uma" do Spotify): outro disco entrando desliga. O mesmo
+        disco tocado de novo e o prato vazio (ligou antes de escolher) nao contam."""
+        tr = self.engine.track
+        if tr is not None and tr["id"] != novo_id:
+            self.engine.set_loop(False)
+
     def play_item(self, item, start, loop=None, historico=True, extra=None):
         self.remember_pos()
         if historico:
@@ -551,6 +558,8 @@ class App:
         tr = dict(item, path=str(LIB / item["file"]), **(extra or {}))
         if loop is not None:
             self.engine.set_loop(loop)
+        else:
+            self.repetir_so_neste(item["id"])
         self.engine.load(tr, start=start)
 
     def tocar_remoto(self, j, target, meta, historico=True):
@@ -566,6 +575,7 @@ class App:
         self.remember_pos()
         if historico:
             self.guardar_historico(tr["id"])
+        self.repetir_so_neste(tr["id"])
         self.engine.espera(tr)
         threading.Thread(target=self._abre_stream, args=(tr, target, bool(meta.get("title"))),
                          daemon=True).start()
