@@ -17,7 +17,8 @@ só com esta API.
   `method` e, quando tem corpo, `Content-Type: application/json`.
 - Texto da interface em português do Brasil, com acentuação completa e sem travessão.
 - O tema abre também no celular, pela rede de casa (`http://<ip do PC>:8799/`): nada de
-  endereço `127.0.0.1` escrito no tema e nada que dependa de mouse.
+  endereço `127.0.0.1` escrito no tema e nada que dependa de mouse. Pela rede, a API só
+  responde ao celular pareado (ver "Celular: pareamento").
 
 ## Estado ao vivo: `GET /api/events` (SSE)
 
@@ -29,6 +30,7 @@ Use `new EventSource('/api/events')`. Eventos:
 | `library` | ao conectar e a cada mudança | lista de Item |
 | `jobs` | ao conectar e a cada mudança | lista de Job (o terminado some depois de 20 s) |
 | `tick` | 15 vezes por segundo | `{"pos": s, "levels": {"mic": r, "track": r, "out": r}}` |
+| `desconectado` | o PC desconectou este celular (logo depois a conexão fecha) | `{}` |
 
 `levels` é RMS linear de 0 a 1, com queda suave (dBFS = 20·log10(r); -60 dB já é
 silêncio). `mic` = voz (mesmo mutada, para mostrar que o microfone vive), `track` = arquivo
@@ -167,6 +169,33 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `GET /api/themes` | - | `[{"slug","url","name","direction","blurb"}]` |
 | `POST /api/shutdown` | - | desliga o servidor (a voz para de passar pelo cabo) |
 | `GET /api/lan` | - | `{"url": endereço do PC na rede de casa, ou null}` |
+| `POST /api/parear` | `{"codigo": "482913"}` (espaço vale) | o celular manda o código que o PC mostra; certo, responde com o cookie da chave; errado, 403 com o motivo |
+| `GET /api/pareamento?caminho=/t/<slug>/` | - | só no PC: `{"url", "codigo", "vale_s", "queimado", "qr", "celulares"}` (ver "Celular: pareamento") |
+| `POST /api/pareamento/codigo` | - | só no PC: troca o código (e traz um de volta depois de queimado) |
+| `DELETE /api/pareamento/<id>` | - | só no PC: desconecta o celular, que volta a precisar do código |
+
+## Celular: pareamento
+
+O PC (quem fala pelo `127.0.0.1`) usa tudo. Pela rede de casa, as páginas dos temas, a
+galeria e o `GET /api/themes` abrem para qualquer um, mas o resto da API responde **401**
+`{"ok": false, "parear": true, "desconectado": bool, "error": "..."}` até o celular parear;
+`desconectado` diz que ele mandou uma chave que não vale mais (o PC desconectou). O
+`/api/events` também responde 401, e o `EventSource` não mostra o status: quando ele fecha de
+vez, peça o `/api/state` para saber se é o 401.
+
+- O código tem 6 números, vale 5 minutos e uma vez só, e morre com 5 tentativas erradas
+  (`queimado`); aí só o `POST /api/pareamento/codigo` traz outro. O vencido e o usado dão
+  lugar a outro sozinhos no próximo `GET /api/pareamento`.
+- Pareado, o celular ganha a chave num cookie (`HttpOnly`, `SameSite=Strict`), que vale até o
+  PC desconectar. Cada `GET /api/state` renova o prazo do cookie no navegador.
+- `GET /api/pareamento`: `url` = o endereço do tema (`caminho`) na rede de casa, ou `null`
+  sem rede (aí `codigo` e `qr` também vêm `null`); `codigo` = o de agora, ou `null` quando
+  `queimado`; `vale_s` = quantos segundos ele ainda vale; `qr` = as linhas do QR do link
+  `<url>?parear=<codigo>`, de cima para baixo, com `"1"` no módulo escuro e sem a margem
+  (desenhe 4 módulos claros em volta); `celulares` = `[{"id", "nome", "desde", "visto"}]`,
+  com o nome tirado do navegador ("Android · Chrome") e as datas em ISO local.
+- O tema que abre com `?parear=<codigo>` no endereço manda o código sozinho se ainda não
+  estiver pareado, e tira o código do endereço.
 
 ## O que todo tema cobre
 
@@ -205,6 +234,9 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
     nada com cara de menu que só rola até a lista. "Ouvir minha voz" (`voice_monitor`) diz que funciona mesmo com a voz
     cortada, para testar sem ninguém ouvir, e não tem volume próprio: ligar manda
     `voice_mon_vol: 1` junto, porque em 100% o teste sai no mesmo nível que vai para o jogo.
+12. Celular: no PC, um botão mostra o QR, o endereço e o código, e a lista dos celulares
+    conectados, cada um com o botão de desconectar; no celular sem pareamento (o 401), uma tela
+    por cima de tudo pede o código e explica onde achar.
 
 Cabe em qualquer tela: no computador (largura de 900 px ou mais) a
 página nunca rola, nem de lado; o que não cabe rola por dentro de um painel (lista,

@@ -54,8 +54,11 @@ com o detector em numpy).
   `%LOCALAPPDATA%\Vitrola\logs`.
 - Sem o `soundboard.ps1`: `python vitrola.py` (aceita os mesmos argumentos do `server.py`).
 - A versão: `python vitrola.py --version`.
-- **No celular**, no mesmo Wi-Fi: o `start` e o `status` mostram o endereço
-  (`http://<ip do PC>:8799/`). Qualquer aparelho do Wi-Fi alcança, sem senha;
+- **No celular**, no mesmo Wi-Fi: no PC, o botão Celular da interface mostra um QR. Aponte a
+  câmera do celular para ele, ou abra o endereço que aparece ao lado e digite o código. O
+  celular fica conectado até ser desconectado na mesma tela do PC. Sem esse pareamento, outro
+  aparelho do Wi-Fi abre a página, mas não mexe em nada. A conversa entre o celular e o PC
+  não é criptografada (HTTP): use na rede de casa, não em Wi-Fi aberta de café ou hotel.
   `server.py --so-local` atende só o PC.
 - Para mexer na interface sem som: `python server.py --mock --port 8801 --data-dir <pasta>`.
 
@@ -86,6 +89,7 @@ ficam em `%LOCALAPPDATA%\Vitrola\logs`, e o `soundboard.ps1 stop` desliga o exe 
 | `fx.py` | efeitos de voz |
 | `versao.py` | a versão do app |
 | `pastas.py` | onde moram os dados de quem usa, e onde o app acha o ffmpeg, o ffprobe e o Deno |
+| `pareamento.py` | o código e o QR do celular, e os celulares conectados |
 | `yt_fora.py` | YouTube (yt-dlp e ytmusicapi) num processo à parte |
 | `winvol.py` | volume do microfone no Windows |
 | `themes/vitrola/` | a interface |

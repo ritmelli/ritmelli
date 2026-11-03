@@ -2,7 +2,9 @@
 ela nao aceita escrita: audio baixado, biblioteca e escolhas em library/; os logs do servidor em logs/. Os logs
 das ferramentas de dev/ (logs/efeitos/) seguem na pasta do codigo. O ffmpeg, o ffprobe e o deno vem na bin/ do
 app (o instalador poe); sem ela, saem do PATH, como no codigo. A porta do servidor mora aqui tambem: o vitrola.py
-precisa dela antes de carregar o servidor."""
+precisa dela antes de carregar o servidor. E o jeito de gravar os .json dos dados (save_json), o mesmo para o
+servidor e para o pareamento."""
+import json
 import os
 import sys
 from pathlib import Path
@@ -20,3 +22,10 @@ def ferramenta(nome):
     """O caminho de nome.exe na BIN, ou None (ai vale o do PATH)."""
     p = BIN / f"{nome}.exe"
     return str(p) if p.exists() else None
+
+
+def save_json(path, data):
+    """Grava num .tmp e troca de uma vez: o app caindo no meio nunca deixa o arquivo pela metade."""
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(path)

@@ -19,7 +19,7 @@ switch ($Cmd) {
     if (-not $s) { "nao subiu; veja $logs\server.err"; Get-Content "$logs\server.err" -Tail 15; exit 1 }
     "ligado em $base/ | mic: $($s.active_devices.mic) | fone: $($s.active_devices.monitor)"
     "no VRChat o microfone precisa ser CABLE Output (VB-Audio Virtual Cable)"
-    if ($c = Get-Celular) { "celular (mesmo Wi-Fi): $c" }
+    if ($c = Get-Celular) { "celular (mesmo Wi-Fi): $c (o botao Celular da interface mostra o QR e o codigo)" }
     if (-not $NoBrowser) { Start-Process "$base/" }
   }
   'stop' {

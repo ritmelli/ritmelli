@@ -1,6 +1,6 @@
 """Soundboard do VRChat: servidor local que toca audio no microfone do jogo pelo VB-Cable e
 serve as interfaces de themes/. Contrato da API: API.md. Atende a propria maquina e o celular
-na rede de casa (para mexer enquanto joga).
+pareado na rede de casa (para mexer enquanto joga; ver o pareamento.py).
 
     python server.py [--port 8799] [--no-browser] [--so-local]
     python server.py --mock --port 8801 --data-dir <pasta>   (sem som, pra testar tema)
@@ -29,7 +29,9 @@ from aiohttp.web_runner import GracefulExit
 import andamento as an
 import engine as eng
 import fx
+import pareamento as par
 import pastas
+from pastas import save_json
 from versao import VERSAO
 
 HERE = Path(__file__).resolve().parent
@@ -278,12 +280,6 @@ def marca_auto(x):
     return {"auto": True, "auto_de": x.get("auto_de")} if x.get("auto") else {}
 
 
-def save_json(path, data):
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(path)
-
-
 class Library:
     def __init__(self, path, keep_files=False):
         LIB.mkdir(parents=True, exist_ok=True)
@@ -341,8 +337,9 @@ class App:
             lib_json.write_text((LIB / "library.json").read_text(encoding="utf-8"), encoding="utf-8")
         self.cfg = (json.loads(self.cfg_path.read_text(encoding="utf-8"))
                     if self.cfg_path.exists() else {})
-        self.cfg.pop("lan_token", None)  # a chave do link do celular saiu
+        self.cfg.pop("lan_token", None)  # a chave do link do celular de antes, que saiu (hoje e o pareamento.py)
         self.lan_ip = None
+        self.celulares = par.Pareamento(data_dir / "celulares.json")
         self.lib = Library(lib_json, keep_files=mock)
         self.jobs = {}
         self.jobs_version = 0
@@ -1342,9 +1339,13 @@ async def body(request):
     if not request.can_read_body:
         return {}
     try:
-        return await request.json()
+        b = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
         raise web.HTTPBadRequest(text="O corpo precisa ser JSON em UTF-8.")
+    # toda rota le campos: uma lista ou um numero dava o erro 500, e o /api/parear e aberto a rede de casa
+    if not isinstance(b, dict):
+        raise web.HTTPBadRequest(text="O corpo precisa ser um objeto JSON ({...}).")
+    return b
 
 
 def build(app_state):
@@ -1352,13 +1353,23 @@ def build(app_state):
     E = A.engine
     loop_ = asyncio.get_running_loop
     locais = {f"127.0.0.1:{A.port}", f"localhost:{A.port}"}
+    livres = {("GET", "/api/themes"), ("POST", "/api/parear")}  # o que o celular alcanca antes de parear
+
+    def do_pc(request):
+        # pelo endereco de quem conectou: o Host quem pede escreve o que quiser
+        return request.remote in ("127.0.0.1", "::1")
+
+    def com_chave(resp, chave):
+        resp.set_cookie(par.COOKIE, chave, max_age=par.COOKIE_S, path="/", httponly=True, samesite="Strict")
+        return resp
 
     @web.middleware
     async def guard(request, handler):
-        # Host fixo (DNS rebinding) e Origin conhecida em escrita (CSRF). Sem chave na rede de
-        # casa: qualquer aparelho do Wi-Fi alcanca (o python.exe tem
-        # entrada liberada no firewall no perfil Publico); --so-local fecha. O IP da rede e o de
-        # agora: a porta do celular pode reabrir em outro (servir)
+        # Host fixo (DNS rebinding) e Origin conhecida em escrita (CSRF). Da rede de casa, a API so
+        # com a chave do pareamento (pareamento.py): o instalador libera a entrada no firewall
+        # tambem no perfil Publico; --so-local fecha a rede. O IP da rede e o de agora: a porta do
+        # celular pode reabrir em outro (servir). As paginas dos temas sao livres: e nelas que o
+        # celular digita o codigo
         allowed = locais | {f"{A.lan_ip}:{A.port}"} if A.lan_ip else locais
         if request.host not in allowed:
             return web.Response(status=403, text="host não permitido")
@@ -1366,7 +1377,20 @@ def build(app_state):
             origin = request.headers.get("Origin")
             if origin and origin.split("://", 1)[-1] not in allowed:
                 return web.Response(status=403, text="origem não permitida")
-        return await handler(request)
+        celular = request.path.startswith("/api/") and not do_pc(request)
+        if celular and request.path.startswith("/api/pareamento"):
+            return j_err("O código e os celulares conectados só aparecem no PC.", 403)
+        if celular and (request.method, request.path) not in livres:
+            chave = request.cookies.get(par.COOKIE)
+            if not A.celulares.confere(chave):
+                return web.json_response({
+                    "ok": False, "parear": True, "desconectado": bool(chave),
+                    "error": "Este celular não está conectado à Vitrola. No PC, clique em Celular e "
+                             "aponte a câmera para o QR."}, status=401)
+        resp = await handler(request)
+        if celular and request.path == "/api/state":
+            com_chave(resp, request.cookies[par.COOKIE])  # cada abertura do tema renova o prazo do cookie
+        return resp
 
     r = web.RouteTableDef()
 
@@ -1652,12 +1676,16 @@ def build(app_state):
                                            "Cache-Control": "no-cache"})
         await resp.prepare(request)
         last = {"state": None, "library": -1, "jobs": None}
+        chave = None if do_pc(request) else request.cookies.get(par.COOKIE)
 
         async def send(ev, data):
             await resp.write(f"event: {ev}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
                              .encode("utf-8"))
         try:
             while not A.closing:
+                if chave is not None and not A.celulares.vale(chave):
+                    await send("desconectado", {})  # desconectado no PC: o tema pede o codigo sem esperar a reconexao
+                    break
                 s = A.snapshot()
                 if s != last["state"]:
                     last["state"] = s
@@ -1679,6 +1707,47 @@ def build(app_state):
     @r.get("/api/lan")
     async def lan(request):
         return web.json_response({"url": f"http://{A.lan_ip}:{A.port}/" if A.lan_ip else None})
+
+    @r.post("/api/parear")
+    async def parear(request):
+        b = await body(request)
+        codigo = re.sub(r"\D", "", str(b.get("codigo") or ""))  # "482 913" vale
+        nome = par.nome_do_aparelho(request.headers.get("User-Agent", ""))
+        chave, motivo = A.celulares.parear(codigo, nome)
+        if chave is None:
+            return j_err("O código foi digitado errado muitas vezes e deixou de valer. No PC, clique em "
+                         "Outro código." if motivo == "queimado" else
+                         f"Esse código não confere. Ele vale por {par.CODIGO_S // 60} minutos e uma vez só: "
+                         "confira o que aparece no PC agora.", 403)
+        print(f"celular: pareado ({nome})", flush=True)
+        return com_chave(j_ok(), chave)
+
+    @r.get("/api/pareamento")
+    async def pareamento(request):
+        # o tema manda o proprio caminho: o QR abre o mesmo tema no celular
+        caminho = request.query.get("caminho", "/")
+        if not re.fullmatch(r"/(t/[A-Za-z0-9_-]+/)?", caminho):
+            caminho = "/"
+        out = {"url": None, "codigo": None, "vale_s": 0, "queimado": False, "qr": None,
+               "celulares": A.celulares.publico()}
+        if A.lan_ip:
+            codigo, vale_s = A.celulares.codigo_atual()
+            out.update(url=f"http://{A.lan_ip}:{A.port}{caminho}", codigo=codigo, vale_s=vale_s,
+                       queimado=codigo is None)
+            if codigo:
+                out["qr"] = par.qr(f"{out['url']}?parear={codigo}")
+        return web.json_response(out)
+
+    @r.post("/api/pareamento/codigo")
+    async def outro_codigo(_):
+        A.celulares.outro_codigo()
+        return j_ok()
+
+    @r.delete("/api/pareamento/{aid}")
+    async def desconecta(request):
+        if not A.celulares.desconecta(request.match_info["aid"]):
+            return j_err("Esse celular já não estava conectado.", 404)
+        return j_ok()
 
     @r.get("/favicon.ico")
     async def favicon(_):
