@@ -13,7 +13,6 @@
   /* materiais: madeira = movel, aluminio = maquina, ambar = luz, feltro = prato, vinil = disco */
   --jacaranda: #2A1812;
   --jacaranda-2: #351F17;
-  --tampo: #4A2B1E;
   --aluminio: #CFC7B8;
   --aluminio-claro: #E2DBCF;
   --aluminio-escuro: #8E8576;
@@ -48,12 +47,6 @@ html, body { margin: 0; }
 html { -webkit-tap-highlight-color: transparent; }
 body {
   min-height: 100vh;
-  background-color: var(--jacaranda);
-  /* lambri: ripas de jacaranda na parede */
-  background-image:
-    linear-gradient(90deg, rgba(0,0,0,.32) 0 1px, rgba(255,214,170,.045) 1px 2px, rgba(0,0,0,0) 2px),
-    var(--veio-v);
-  background-size: 148px 100%, 420px 900px;
   color: var(--marfim);
   font-family: "Archivo", system-ui, sans-serif;
   font-size: 1rem;
@@ -179,9 +172,7 @@ kbd { font: inherit; }
 .conexao { font-size: .8125rem; color: var(--marfim-2); font-stretch: 112%; }
 .busca { display: flex; gap: 8px; flex: 1 1 420px; max-width: 600px; }
 .busca input {
-  flex: 1; min-width: 0; height: calc(var(--alvo) + 2px); padding: 0 14px; border-radius: 8px;
-  background: rgba(0,0,0,.28); color: var(--marfim);
-  border: 1px solid rgba(238,227,207,.22); box-shadow: inset 0 2px 6px rgba(0,0,0,.4);
+  flex: 1; min-width: 0; height: calc(var(--alvo) + 2px); padding: 0 14px; color: var(--marfim);
   font-size: .9375rem;
 }
 .busca input::placeholder { color: var(--marfim-2); opacity: 1; }
@@ -243,23 +234,12 @@ kbd { font: inherit; }
 .tampo {
   container-type: inline-size;
   position: relative; z-index: 2; width: 100%; aspect-ratio: 100 / 80;
-  border-radius: 14px;
-  background: var(--veio), linear-gradient(160deg, #5a3524, var(--tampo) 45%, #3c2218);
-  box-shadow:
-    inset 0 2px 0 rgba(255,214,170,.18),
-    inset 0 -4px 0 rgba(18,8,4,.55),
-    inset 0 -5px 0 rgba(255,214,170,.08),
-    0 24px 40px -16px rgba(0,0,0,.7),
-    0 2px 0 rgba(0,0,0,.5);
 }
 .placa {
-  position: absolute; inset: 2.2cqw; border-radius: 1.4cqw;
-  background: var(--escovado), linear-gradient(170deg, #DDD5C8, var(--aluminio) 40%, #B9B0A0);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.5);
+  position: absolute; inset: 2.2cqw;
 }
 .prato {
   position: absolute; left: 4cqw; top: 4cqw; width: 72cqw; height: 72cqw; border-radius: 50%;
-  box-shadow: 0 1.2cqw 2.4cqw rgba(30,15,8,.55);
   /* recorte: sem ele, o quadrado do disco girando faz o celular rasterizar a pagina inteira a cada quadro */
   contain: paint;
 }
@@ -271,9 +251,6 @@ body[data-status="playing"] .giratorio, body[data-status="buffering"] .giratorio
 @keyframes girar { to { transform: rotate(360deg); } }
 .aro {
   position: absolute; inset: 0; border-radius: 50%;
-  background:
-    radial-gradient(circle, rgba(0,0,0,0) 66%, rgba(255,255,255,.35) 68.5%, rgba(0,0,0,0) 70%),
-    repeating-conic-gradient(#8a8173 0 1.6deg, #E4DED3 1.6deg 4deg);
 }
 .feltro {
   position: absolute; inset: 2.3cqw; border-radius: 50%;
@@ -312,51 +289,24 @@ body[data-status="playing"] .giratorio, body[data-status="buffering"] .giratorio
 .prato.com-disco .brilho { opacity: 1; }
 .eixo {
   position: absolute; left: 50%; top: 50%; width: 2.2cqw; height: 2.2cqw; transform: translate(-50%, -50%);
-  border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff, #b8b0a2 60%, #6d6457);
-  box-shadow: 0 .3cqw .6cqw rgba(0,0,0,.6);
+  border-radius: 50%;
 }
 
 /* braco */
 .base-braco {
   position: absolute; left: 88cqw; top: 12cqw; width: 11cqw; height: 11cqw; transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #f3eee5, #c3baab 45%, #8b8274 75%, #6f665a);
-  box-shadow: 0 .6cqw 1.4cqw rgba(30,15,8,.5), inset 0 0 0 .3cqw rgba(0,0,0,.08);
 }
 .descanso {
   position: absolute; left: 90.6cqw; top: 58cqw; width: 4.4cqw; height: 4.4cqw; transform: translate(-50%, -50%);
-  border-radius: 50%; background: radial-gradient(circle at 40% 35%, #f1ece3, #a59c8d 60%, #6d6457);
-  box-shadow: 0 .5cqw 1cqw rgba(30,15,8,.45);
+  border-radius: 50%;
 }
-.descanso::after { content: ""; position: absolute; left: 50%; top: 50%; width: 1.8cqw; height: 2.6cqw; transform: translate(-50%, -50%); border-radius: .5cqw; background: #2b2420; }
 .braco {
   position: absolute; left: 88cqw; top: 12cqw; width: 0; height: 0;
   transform: rotate(var(--ang, -3deg));
   transition: transform 1s cubic-bezier(.35,.7,.25,1);
-  filter: drop-shadow(1.1cqw 1.4cqw .9cqw rgba(30,15,8,.45));
 }
 .braco > div { position: absolute; }
-.contrapeso {
-  left: -2.5cqw; top: -13cqw; width: 5cqw; height: 7cqw; border-radius: .9cqw;
-  background: linear-gradient(90deg, #3d3530, #7d7366 35%, #4a413a 70%, #2e2723);
-}
-.tubo {
-  left: -.65cqw; top: -6.5cqw; width: 1.3cqw; height: 62cqw; border-radius: .65cqw;
-  background: linear-gradient(90deg, #8a8173, #f4efe6 40%, #b1a898 70%, #7a7164);
-}
-.pivo {
-  left: -2.4cqw; top: -2.4cqw; width: 4.8cqw; height: 4.8cqw; border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #fbf8f2, #a39a8b 60%, #5e564b);
-}
-.cabeca {
-  left: -2cqw; top: 53.5cqw; width: 4cqw; height: 9cqw; border-radius: .5cqw;
-  transform-origin: 50% 0; transform: rotate(24deg);
-  background: linear-gradient(90deg, #26201d, #4b423c 50%, #1d1816);
-}
-.cabeca::after { /* levantador */
-  content: ""; position: absolute; left: 3.2cqw; top: 1cqw; width: 2.6cqw; height: .8cqw; border-radius: .4cqw;
-  background: linear-gradient(#ece6dc, #9d9485);
-}
 
 /* faixa abaixo do prato */
 .faixa { display: grid; gap: 10px; }
@@ -395,15 +345,10 @@ body[data-status="playing"] .giratorio, body[data-status="buffering"] .giratorio
 @media (hover: hover) { .transp:hover:not(:disabled) { background: rgba(255,240,220,.08); } }
 .tocar-grande {
   display: grid; place-items: center; flex: none; width: 52px; height: 52px; padding: 0; border: 0; border-radius: 50%; color: var(--tinta);
-  background: radial-gradient(circle at 40% 30%, #fbf7f0, #d8d0c2 45%, #a69d8e 80%);
-  box-shadow: 0 0 0 3px #9b9283, 0 0 0 5px rgba(0,0,0,.25), 0 6px 12px rgba(30,15,8,.45);
 }
 .tocar-grande svg { width: 24px; height: 24px; }
 .tocar-grande:active:not(:disabled), .tocar-grande.apertado:not(:disabled) { transform: translateY(1px); }
 .tocar-grande:disabled { color: rgba(42,24,18,.35); }
-body[data-status="playing"] .tocar-grande, body[data-status="buffering"] .tocar-grande {
-  box-shadow: 0 0 0 3px var(--ambar), 0 0 16px 3px rgba(243,167,60,.5), 0 6px 12px rgba(30,15,8,.45);
-}
 .deck:has(.erro-faixa:not([hidden])) .atalhos { display: none; }
 .atalhos { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: .8125rem; color: var(--marfim-2); text-shadow: 0 1.5px 0 var(--contorno); }
 .atalhos kbd, .nome kbd {
@@ -547,13 +492,6 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 .pes-mesa {
   position: absolute; left: 22px; right: 22px; bottom: -5px; height: 6px;
   z-index: 1; pointer-events: none;
-  background:
-    linear-gradient(90deg,
-      #160F0C 0 8px, #C89B54 8px 18px, #160F0C 18px 26px,
-      transparent 26px calc(100% - 26px),
-      #160F0C calc(100% - 26px) calc(100% - 18px), #C89B54 calc(100% - 18px) calc(100% - 8px), #160F0C calc(100% - 8px) 100%);
-  border-radius: 0 0 3px 3px;
-  box-shadow: 0 3px 5px rgba(0,0,0,.55);
 }
 
 /* NOVO: serigrafia e parafusos de canto na placa de alumínio do toca-discos */
@@ -563,10 +501,8 @@ input[type=range]:focus-visible { outline-offset: 2px; }
      fonte maior, a plaquinha crescia e invadia o prato */
   position: absolute; right: 3cqi; bottom: 2.4cqi; z-index: 2; pointer-events: none;
   display: inline-flex; flex-direction: column; align-items: flex-end; gap: .3em;
-  padding: .4em .6em .35em; border-radius: 2px; text-align: right;
+  padding: .4em .6em .35em; text-align: right;
   border: 1px solid rgba(42,24,18,.32);
-  background: linear-gradient(180deg, rgba(255,255,255,.22), rgba(42,24,18,.05));
-  box-shadow: 0 1px 0 rgba(255,255,255,.55);
   color: var(--tinta); font-size: min(2.4cqi, 10px); line-height: 1;
 }
 .selo-placa b {
@@ -598,12 +534,6 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 /* pés de borracha com anel de latão sob o receiver */
 .pes-ap {
   position: absolute; left: 18px; right: 18px; bottom: -5px; height: 5px; z-index: -1;
-  background:
-    linear-gradient(90deg,
-      #17100D 0 6px, #CCA05A 6px 15px, #17100D 15px 22px,
-      transparent 22px calc(100% - 22px),
-      #17100D calc(100% - 22px) calc(100% - 15px), #CCA05A calc(100% - 15px) calc(100% - 6px), #17100D calc(100% - 6px) 100%);
-  box-shadow: 0 3px 5px rgba(0,0,0,.6);
 }
 
 /* serigrafia de marca e modelo nos aparelhos */
@@ -620,7 +550,6 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 }
 .marca-ap::after {
   content: ""; flex: 1; height: 1px; margin-left: 4px;
-  background: linear-gradient(90deg, rgba(42,24,18,.28), rgba(42,24,18,.08));
   box-shadow: 0 1px 0 rgba(255,255,255,.5);
 }
 
@@ -696,7 +625,7 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .capa:focus-visible { outline-offset: 4px; }
 .no-prato-tag {
   position: absolute; left: 8px; top: 8px; display: none; align-items: center; gap: 7px;
-  padding: 4px 9px 4px 8px; border-radius: 99px; background: rgba(23,17,15,.82); color: var(--marfim);
+  padding: 4px 9px 4px 8px; border-radius: 99px; color: var(--marfim);
   font-size: .75rem; font-stretch: 112%; z-index: 1;
 }
 .disco-item.no-prato .no-prato-tag { display: inline-flex; }
@@ -706,9 +635,6 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .nome { font-size: .9375rem; font-weight: 600; line-height: 1.25; font-stretch: 96%; overflow-wrap: anywhere;
         display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .nome kbd { margin-right: 6px; }
-.info { display: flex; gap: 10px; font-size: .8125rem; color: var(--marfim-2); min-width: 0; }
-.info .canal { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.info .dur { margin-left: auto; font-variant-numeric: tabular-nums; flex: none; }
 .acoes { display: flex; align-items: center; gap: 6px; min-height: 2rem; }
 .acoes .btn-texto { font-size: .8125rem; }
 .mais {
@@ -832,9 +758,7 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 
 /* ---------- menu, dialogos, aviso, fora do ar ---------- */
 .menu {
-  position: fixed; z-index: 30; min-width: 220px; padding: 6px; border-radius: 10px; color: var(--tinta);
-  background: var(--escovado), linear-gradient(180deg, var(--aluminio-claro), var(--aluminio));
-  box-shadow: 0 16px 34px rgba(0,0,0,.55), 0 0 0 1px #7E7466;
+  position: fixed; z-index: 30; min-width: 220px; padding: 6px; color: var(--tinta);
 }
 .menu button {
   display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 6px; background: none;
@@ -882,14 +806,12 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .cabeca-fila .limpar-fila[hidden] { display: none; }
 /* a parecida no prato vai para a prateleira pelo ⊕ da busca na ponta da linha do canal (dentro
    do visor da musica, embaixo a direita; o "Mix de" sobrava com a chave do Tocar
-   parecidas ligada): o toque segue com 44 px, mas a linha fica da altura do texto e o icone encosta na beira; no
-   celular ele e de pixel (no bloco do Habbo) */
+   parecidas ligada): o toque segue com 44 px, mas a linha fica da altura do texto e o icone encosta na beira; ele e
+   de pixel (no bloco do Habbo) */
 .canal-faixa { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .canal-faixa > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .canal-faixa .salvar { flex: none; margin: -12px -11px -12px 0; }
 .canal-faixa .salvar[hidden] { display: none; }
-.salvar .classico { display: grid; place-items: center; }
-.salvar.pixel .px-sombra, .salvar.pixel .px-botao { display: none; }
 .lista-fila { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .item-fila { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; align-items: center; border-radius: 8px; }
 .item-fila.arrastando { position: relative; z-index: 2; }
@@ -921,76 +843,93 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 }
 
 dialog, .menu, .fora .cartao { color-scheme: light; }
-dialog {
-  width: min(520px, calc(100vw - 32px)); padding: 0; border: 0; border-radius: 14px; color: var(--tinta);
-  background: var(--escovado), linear-gradient(180deg, #E3DCD0, var(--aluminio));
-  box-shadow: 0 30px 70px rgba(0,0,0,.6), 0 0 0 1px #7E7466;
+/* dialogos, fora do ar e codigo do celular: a chapa creme num caixilho de madeira, como o toca-discos. A borda
+   transparente deixa a madeira aparecer em volta da chapa, e a moldura de pixel vai por cima dela */
+dialog, .fora .cartao {
+  border: 8px solid transparent; border-radius: 4px; color: var(--tinta); border-image: var(--mold-caixa);
+  background: linear-gradient(#EFE4CB, #EFE4CB) padding-box, var(--veio) border-box, #74391A;
+  box-shadow: inset 0 0 0 2px var(--contorno), inset 2px 2px 0 2px rgba(255,255,255,.7), inset -2px -2px 0 2px rgba(42,24,18,.14);
 }
+dialog { width: min(520px, calc(100vw - 32px)); padding: 0; }
 dialog::backdrop { background: rgba(20,10,6,.62); }
-.dlg { padding: 22px 22px 18px; display: grid; gap: 14px; }
-.dlg h2 { font-size: 1.3125rem; font-weight: 600; font-stretch: 100%; line-height: 1.2; }
-.dlg p { font-size: .9375rem; color: #3f2f24; }
-.dlg .rodape { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
-.dlg input[type=text], .dlg select {
-  width: 100%; height: 2.625rem; padding: 0 12px; border-radius: 8px; border: 1px solid #7E7466;
-  background: #F4EFE6; color: var(--tinta); font-size: .9375rem;
+.dlg { padding: 18px 20px 16px; display: grid; gap: 14px; }
+/* a letra de pixel nos titulos e nas etiquetas, em multiplos da grade dela (37,333 e 18,667 px); o texto corrido e o
+   que se digita seguem na letra de sempre */
+.dlg h2, .fora h2 {
+  font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; font-weight: 400; font-stretch: 100%; line-height: 36px;
+  overflow-wrap: anywhere;
 }
-.dlg label.campo { display: grid; gap: 6px; font-weight: 600; font-size: .875rem; }
-.dlg .em-uso { font-weight: 400; font-size: .8125rem; color: var(--tinta-2); }
-.btn.perigo { color: #fff; background: linear-gradient(180deg, #a53a2a, #7e2318); border-color: #5a170f; box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 2px 0 rgba(0,0,0,.35); }
-@media (hover: hover) { .btn.perigo:hover:not(:disabled) { background: linear-gradient(180deg, #b6442f, #8a281b); } }
-.lembrete { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 12px; border-radius: 8px; background: rgba(42,24,18,.08); font-size: .875rem; }
-.lembrete .lampada { margin-top: 6px; }
+/* o titulo do confirmar leva o nome do disco: ate 3 linhas, para um nome comprido nao tomar o dialogo */
+#dc-t { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.dlg h3, .dlg label.campo { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; line-height: 1.1; }
+.dlg p { font-size: .9375rem; color: #3f2f24; }
+.dlg .rodape { display: flex; gap: 14px; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
+/* os campos sao o rebaixo escuro da busca: a moldura e o foco moram na regra dela */
+.dlg input[type=text], .dlg select {
+  width: 100%; padding: 0 12px;
+  font-family: "Archivo", system-ui, sans-serif; font-size: .9375rem; line-height: normal;
+}
+.dlg select:disabled { color: var(--marfim-2); }
+.dlg label.campo { display: grid; gap: 6px; }
+.dlg .em-uso { font-family: "Archivo", system-ui, sans-serif; font-weight: 400; font-size: .8125rem; line-height: 1.45; color: var(--tinta-2); }
+/* as teclas sao as do FX-12: a moldura, o aluminio e o aperto moram na regra delas */
+.dlg .btn { min-height: 2.75rem; }
+.dlg .btn.perigo { color: #fff; background: #97301F; }
+@media (hover: hover) { .dlg .btn.perigo:hover:not(:disabled) { background: #A93A27; } }
+.lembrete { display: grid; grid-template-columns: auto 1fr; gap: 10px; margin: 2px; padding: 10px 12px; background: #E2D3B3; border-image: var(--mold-etiqueta); font-size: .875rem; }
+.lembrete .lampada { margin-top: 5px; }
 .lembrete b { font-weight: 700; }
+.lembrete .lampada, .fora .lampada, .aviso .lampada { box-shadow: 0 0 0 2px var(--contorno); }
 .msg-dlg { font-size: .875rem; }
 .msg-dlg:empty { display: none; }
 .msg-dlg.erro { color: #8E1E14; }
 
+/* centrado por margem, nao por transform: com largura impar o translate cairia entre dois pixels e borraria a moldura */
 .aviso {
-  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 40;
-  max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 8px; font-size: .9375rem;
-  background: rgba(23,17,15,.94); color: var(--marfim); box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 0 0 1px rgba(238,227,207,.16);
+  position: fixed; left: 0; right: 0; bottom: 22px; z-index: 40; width: fit-content; margin-inline: auto;
+  max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 4px; font-size: .9375rem;
+  background: var(--jacaranda); color: var(--marfim); border-image: var(--mold-objeto);
   display: flex; gap: 10px; align-items: center;
 }
 /* aviso com acao (Na fila: ... Abrir): o texto encolhe numa linha e o botao fica inteiro */
 .aviso.com-acao { padding: 0 6px 0 16px; width: max-content; }
 .aviso.com-acao .aviso-t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.aviso-acao { flex: none; min-height: 44px; padding: 0 12px; border: 0; border-radius: 6px; background: none; color: var(--ambar-claro); font-weight: 700; }
+.aviso-acao { flex: none; min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--ambar-claro); font-weight: 700; }
 .aviso-acao:active, .aviso-acao.apertado { background: rgba(255,240,220,.1); }
 .fora {
   position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px;
-  background: rgba(20,10,6,.78); backdrop-filter: blur(3px);
+  background: rgba(20,10,6,.78);
 }
-.fora .cartao {
-  width: min(560px, 100%); padding: 26px 24px; border-radius: 14px; color: var(--tinta); display: grid; gap: 12px;
-  background: var(--escovado), linear-gradient(180deg, #E3DCD0, var(--aluminio));
-  box-shadow: 0 30px 70px rgba(0,0,0,.6), 0 0 0 1px #7E7466;
-}
-.fora h2 { font-size: 1.375rem; font-weight: 600; display: flex; align-items: center; gap: 12px; }
+.fora .cartao { width: min(560px, 100%); padding: 20px 22px; display: grid; gap: 12px; }
+.fora h2 { display: flex; align-items: flex-start; gap: 12px; }
+.fora h2 .lampada { margin-top: 13px; }   /* na primeira linha, quando o titulo quebra no celular */
 .fora p { font-size: .9375rem; color: #3f2f24; }
-.fora code { font-family: inherit; font-weight: 700; font-stretch: 92%; background: rgba(42,24,18,.1); padding: 1px 6px; border-radius: 4px; }
+.fora code { font-family: inherit; font-weight: 700; font-stretch: 92%; background: rgba(42,24,18,.1); padding: 1px 6px; }
 .fora .tentando { font-size: .8125rem; color: var(--tinta-2); }
 
 /* celular: no PC, o botao Celular mostra o QR e o codigo (#dlg-cel); o celular ainda nao pareado digita o codigo
    no #tela-parear, por cima de tudo */
 #dlg-cel { width: min(600px, calc(100vw - 32px)); }
 .cel-par { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
-.cel-qr { flex: none; border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px #7E7466, 0 2px 0 rgba(0,0,0,.25); }
+.cel-qr { flex: none; margin: 2px; overflow: hidden; box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.45); }
 .cel-passos { flex: 1 1 220px; display: grid; gap: 8px; justify-items: start; }
 .cel-url { font-weight: 700; overflow-wrap: anywhere; }
 /* a Jersey 10 em 3x (56 px): 1 pixel da letra = 3 px de CSS */
 .dlg .cel-codigo { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 56px; font-weight: 400; font-stretch: 100%; line-height: .85714; letter-spacing: .04em; color: var(--tinta); }
 .cel-par.queimado .cel-qr, .cel-par.queimado .cel-passo { display: none; }
 .dlg .em-uso.erro { color: #8E1E14; }
-.dlg h3 { font-size: .9375rem; font-weight: 600; }
-.cel-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.cel-lista li { display: flex; gap: 12px; align-items: center; padding: 8px 8px 8px 12px; border-radius: 8px; background: rgba(42,24,18,.08); }
+.cel-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cel-lista li { display: flex; gap: 12px; align-items: center; margin: 2px; padding: 6px 6px 9px 10px; background: #E2D3B3; border-image: var(--mold-etiqueta); }
+.dlg .cel-lista .btn { min-height: 1.875rem; padding: .125rem .75rem; font-size: .8125rem; }
+.cel-lista li.cel-vazio { margin: 0; padding: 0; background: none; border-image: none; }
+/* com celular na lista, o Fechar recua a margem e o padding da linha, e fica alinhado na direita com o Desconectar */
+#dlg-cel:has(.cel-lista .btn) .rodape { padding-right: 8px; }
 .cel-lista .cel-quem { flex: 1; min-width: 0; display: grid; }
-.cel-lista .cel-nome { font-weight: 600; font-size: .9375rem; }
-.cel-lista .cel-quando { font-size: .8125rem; color: var(--tinta-2); }
+.cel-lista .cel-nome { font-weight: 600; font-size: .875rem; line-height: 1.3; }
+.cel-lista .cel-quando { font-size: .75rem; line-height: 1.3; color: var(--tinta-2); }
 .cel-vazio { font-size: .875rem; color: var(--tinta-2); }
 #tela-parear { overflow-y: auto; }
-#pa-in { height: 3.25rem; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; letter-spacing: .12em; text-align: center; }
+.dlg #pa-in { height: 3.25rem; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; letter-spacing: .12em; text-align: center; color: var(--ambar-claro); }
 /* o teclado do celular sobe por cima da metade de baixo: o cartao fica no alto */
 @media (max-width: 899.98px) { #tela-parear { align-items: start; padding-top: 48px; } }
 
@@ -1585,7 +1524,7 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 }
 .estante .ficha .nome { font-size: .8125rem; font-weight: 700; line-height: 1.2; color: #fff; -webkit-line-clamp: 1; overflow-wrap: anywhere;
                         text-shadow: 0 2px 0 var(--contorno); }   /* a sombra dura dos textos na madeira, no lugar da borrada */
-.estante .ficha .info, .estante .disco-item[data-id] .acoes { display: none; }
+.estante .disco-item[data-id] .acoes { display: none; }
 .estante .ficha .acoes > * { pointer-events: auto; }
 .estante .disco-item.no-prato .ficha { transform: translateY(-10px); }
 .estante .no-prato-tag { left: 6px; top: 6px; padding: 3px 7px 3px 6px; gap: 5px; font-size: .6875rem; }
@@ -1658,7 +1597,6 @@ body { background: var(--parede-casa); }
   /* madeira dos aparelhos em cor chapada: com a parede tambem em degrade, o
      degrade do tampo do toca-discos e das laterais do receiver fazia o aparelho se misturar com ela
      em alguns trechos; o volume fica nos filetes de luz e sombra das bordas */
-  .tampo { background: var(--veio), var(--tampo); }
   /* capa apertada: encolhe um pouco em vez de escurecer (o filtro repintava a capa a cada toque) */
   .estante .capa { transition: transform .25s cubic-bezier(.2,.8,.2,1); }
   .pontos span { transition: none; }
@@ -1786,7 +1724,8 @@ body { background: var(--parede-casa); }
 .cartao-tit {
   grid-row: 1; padding: 5px 7px 0; border-radius: 4px 4px 0 0; border-bottom: 2px solid #F3E9D6;
   background: linear-gradient(180deg, #D46527 0 3px, #F3A73C 3px 5px, transparent 5px), #F3E9D6;
-  color: var(--tinta); font-size: .8125rem; font-weight: 800; line-height: 1.18; min-height: 2.36em;
+  color: var(--tinta); font-size: .8125rem; font-weight: 800; line-height: 1.18;
+  box-sizing: content-box; min-height: 2.36em;   /* as 2 linhas, sem contar o padding e a borda: titulo de 1 linha ou de 2, a fita e a mesma */
   box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
 }
 .cartao-sub {
@@ -1897,7 +1836,7 @@ body { background: var(--parede-casa); }
      as teclas do transporte em madeira escura de chanfro forte. Parede e fotos ficam como estavam.
      Sombra dura sem desfoque e mais barata de pintar que a esfumada. Teclas afundam: a sombra de
      baixo encolhe enquanto a tecla desce (no aperto a sombra vai escrita: a var() de dentro de
-     --duro ja chega resolvida na .app).
+     --duro ja chega resolvida no :root).
      Terceira rodada (19/10, as quatro coisas que faltavam para o mock): luz chapada
      (a parede numa cor so e os objetos de tocar em cor lisa, o relevo num bisel duro de pixel: luz em
      cima e a esquerda, sombra embaixo e a direita); moldura dupla (a linha clara colada por dentro do
@@ -1909,8 +1848,9 @@ body { background: var(--parede-casa); }
      no toca-discos, no receiver e no FX-12, no fim do bloco. Quinta (19/10): os pedais,
      direto no bloco da pedaleira ---------- */
 }
-/* pele: as variaveis do toque de Habbo e as molduras de pixel, nas duas telas */
-.app {
+/* pele: as variaveis do toque de Habbo e as molduras de pixel, nas duas telas. No :root, porque o menu, os dialogos,
+   o aviso e o fora do ar moram fora do .app */
+:root {
   --contorno: #1A0B04;
   --duro: 0 0 0 2.5px var(--contorno), 0 4px 0 2.5px rgba(20,8,2,.62);   /* objeto e tecla */
   --caixa: 0 0 0 2.5px var(--contorno), 0 5px 0 2.5px rgba(20,8,2,.5);    /* caixa: o mesmo contorno, a sombra mais baixa */
@@ -1927,7 +1867,7 @@ body { background: var(--parede-casa); }
     2px 2px 0 var(--contorno), -2px 2px 0 var(--contorno), 2px -2px 0 var(--contorno), -2px -2px 0 var(--contorno);
 }
 /* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */
-.app, .menu {
+:root {
   --mold-objeto: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='32' viewBox='0 0 28 32' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.62'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.3'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.24'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.62'%3E%3Crect x='0' y='22' width='3' height='3'/%3E%3Crect x='25' y='22' width='3' height='3'/%3E%3Crect x='0' y='25' width='6' height='1'/%3E%3Crect x='22' y='25' width='6' height='1'/%3E%3Crect x='3' y='26' width='3' height='2'/%3E%3Crect x='22' y='26' width='3' height='2'/%3E%3Crect x='3' y='28' width='22' height='1'/%3E%3Crect x='6' y='29' width='16' height='3'/%3E%3C/g%3E%3C/svg%3E") 13 13 17 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(17 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(7 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
   --mold-objeto-apertado: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='29' viewBox='0 0 28 29' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.5'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.3'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.16'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.62'%3E%3Crect x='0' y='22' width='3' height='1'/%3E%3Crect x='25' y='22' width='3' height='1'/%3E%3Crect x='3' y='25' width='3' height='1'/%3E%3Crect x='22' y='25' width='3' height='1'/%3E%3Crect x='6' y='28' width='16' height='1'/%3E%3C/g%3E%3C/svg%3E") 13 13 14 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(14 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(4 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
   --mold-caixa: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='33' viewBox='0 0 28 33' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='6' y='0' width='16' height='3'/%3E%3Crect x='6' y='25' width='16' height='3'/%3E%3Crect x='3' y='3' width='6' height='3'/%3E%3Crect x='3' y='22' width='6' height='3'/%3E%3Crect x='19' y='3' width='6' height='3'/%3E%3Crect x='19' y='22' width='6' height='3'/%3E%3Crect x='0' y='6' width='6' height='3'/%3E%3Crect x='0' y='19' width='6' height='3'/%3E%3Crect x='22' y='6' width='6' height='3'/%3E%3Crect x='22' y='19' width='6' height='3'/%3E%3Crect x='0' y='9' width='3' height='10'/%3E%3Crect x='25' y='9' width='3' height='10'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.55'%3E%3Crect x='9' y='3' width='10' height='2'/%3E%3Crect x='9' y='5' width='2' height='1'/%3E%3Crect x='17' y='5' width='2' height='1'/%3E%3Crect x='6' y='6' width='5' height='2'/%3E%3Crect x='17' y='6' width='5' height='1'/%3E%3Crect x='17' y='7' width='4' height='1'/%3E%3Crect x='6' y='8' width='2' height='1'/%3E%3Crect x='6' y='19' width='2' height='2'/%3E%3Crect x='3' y='9' width='5' height='2'/%3E%3Crect x='3' y='17' width='5' height='2'/%3E%3Crect x='3' y='11' width='2' height='6'/%3E%3Crect x='6' y='21' width='1' height='1'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.28'%3E%3Crect x='21' y='7' width='1' height='1'/%3E%3Crect x='20' y='8' width='2' height='1'/%3E%3Crect x='20' y='19' width='2' height='1'/%3E%3Crect x='20' y='9' width='5' height='2'/%3E%3Crect x='20' y='17' width='5' height='2'/%3E%3Crect x='23' y='11' width='2' height='6'/%3E%3Crect x='8' y='20' width='3' height='1'/%3E%3Crect x='17' y='20' width='5' height='2'/%3E%3Crect x='7' y='21' width='4' height='1'/%3E%3Crect x='9' y='22' width='2' height='1'/%3E%3Crect x='17' y='22' width='2' height='1'/%3E%3Crect x='9' y='23' width='10' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.2'%3E%3Crect x='19' y='9' width='1' height='1'/%3E%3Crect x='19' y='18' width='1' height='1'/%3E%3Crect x='18' y='10' width='2' height='1'/%3E%3Crect x='18' y='17' width='2' height='1'/%3E%3Crect x='18' y='11' width='5' height='2'/%3E%3Crect x='18' y='15' width='5' height='2'/%3E%3Crect x='21' y='13' width='2' height='2'/%3E%3C/g%3E%3Cg fill='%23000000' fill-opacity='0.24'%3E%3Crect x='10' y='18' width='3' height='1'/%3E%3Crect x='15' y='18' width='4' height='1'/%3E%3Crect x='9' y='19' width='4' height='1'/%3E%3Crect x='15' y='19' width='5' height='1'/%3E%3Crect x='11' y='20' width='2' height='1'/%3E%3Crect x='15' y='20' width='2' height='1'/%3E%3Crect x='11' y='21' width='6' height='2'/%3E%3C/g%3E%3Cg fill='%23140802' fill-opacity='0.5'%3E%3Crect x='0' y='22' width='3' height='3'/%3E%3Crect x='25' y='22' width='3' height='3'/%3E%3Crect x='0' y='25' width='6' height='2'/%3E%3Crect x='22' y='25' width='6' height='2'/%3E%3Crect x='3' y='27' width='3' height='1'/%3E%3Crect x='22' y='27' width='3' height='1'/%3E%3Crect x='3' y='28' width='22' height='2'/%3E%3Crect x='6' y='30' width='16' height='3'/%3E%3C/g%3E%3C/svg%3E") 13 13 18 13 / calc(13 * var(--px, 1px)) calc(13 * var(--px, 1px)) calc(18 * var(--px, 1px)) calc(13 * var(--px, 1px)) / calc(3 * var(--px, 1px)) calc(3 * var(--px, 1px)) calc(8 * var(--px, 1px)) calc(3 * var(--px, 1px)) stretch;
@@ -2068,14 +2008,18 @@ body { background: var(--parede-casa); }
 .cabeca-sec .btn-madeira:active, .cabeca-sec .btn-madeira.apertado {
   transform: translateY(calc(3 * var(--px, 1px))); box-shadow: none; border-image: var(--mold-objeto-apertado);
 }
-.busca input {
+.busca input, .dlg input[type=text], .dlg select {
   height: calc(40px + 6 * var(--px, 1px)); color: var(--marfim);
   border: calc(3 * var(--px, 1px)) solid var(--contorno); border-radius: calc(15 * var(--px, 1px)); border-image: var(--mold-rebaixo);
-  background: #16110E; box-shadow: none;
+  background: #16110E;
+}
+.dlg select {
+  appearance: none; padding-right: 34px; text-overflow: ellipsis; color-scheme: dark;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 5 3' shape-rendering='crispEdges'%3E%3Cpath fill='%23EEE3CF' d='M0 0h5v1H4v1H3v1H2V2H1V1H0z'/%3E%3C/svg%3E") right 12px center no-repeat, #16110E;
 }
 .busca input::placeholder { color: #C9B79D; }
 /* com o foco o contorno da busca acende em ambar, no mesmo degrau (o anel do outline sairia redondo) */
-.busca input:focus-visible { outline: none; border-image: var(--mold-rebaixo-foco); }
+.busca input:focus-visible, .dlg input[type=text]:focus-visible, .dlg select:focus-visible { outline: none; border-image: var(--mold-rebaixo-foco); }
 
 /* titulos de secao e contagem na letra de pixel, contornada e com a sombra dura de baixo. A Jersey 10
    e a mais perto da Volter grossa dos titulos do hotel: proporcional, com minuscula e a boca do C
@@ -2307,7 +2251,7 @@ body { background: var(--parede-casa); }
    e riscava uma linha de um pe ao outro; os do toca-discos abaixo da barra do palco (z 3), senao passavam
    por cima dela na rolagem */
 .palco .pes-mesa {
-  z-index: 2; bottom: -10px; height: 9px; box-shadow: none; border-radius: 0;
+  z-index: 2; bottom: -10px; height: 9px;
   background:
     linear-gradient(90deg,
       #160F0C 0 8px, #C89B54 8px 18px, #160F0C 18px 26px,
@@ -2316,7 +2260,7 @@ body { background: var(--parede-casa); }
     linear-gradient(90deg, rgba(0,0,0,.45) 0 26px, transparent 26px calc(100% - 26px), rgba(0,0,0,.45) calc(100% - 26px)) 0 100% / 100% 2px no-repeat;
 }
 .palco .pes-ap {
-  bottom: -12px; height: 9px; box-shadow: none;
+  bottom: -12px; height: 9px;
   background:
     linear-gradient(90deg,
       #17100D 0 6px, #CCA05A 6px 15px, #17100D 15px 22px,
@@ -2694,7 +2638,6 @@ body { background: var(--parede-casa); }
    (22/10): na linha do canal ficava 8 px de tela em cima e 22 embaixo; 3 px abaixo, 17 e 13 (o desenho anda
    de px em px: com 2, 14 e 16 ainda pareciam mais perto do titulo) */
 .palco .canal-faixa .salvar { margin-right: -6px; top: 3px; }
-.salvar.pixel .classico { display: none; }
 .salvar.pixel, .salvar.pixel:hover, .salvar.pixel:active, .salvar.pixel.apertado { position: relative; background: none; }
 .salvar.pixel .px-sombra, .salvar.pixel .px-botao { display: block; position: absolute; left: 6px; top: 5px; width: 32px; height: 32px; }
 .salvar.pixel .px-sombra { top: calc(5px + 8px / 3); }
@@ -2766,21 +2709,13 @@ body { background: var(--parede-casa); }
 .palco .transp:disabled { opacity: 1; }
 .palco .transp:disabled svg { opacity: .32; }
 .palco .transp .lampada { bottom: 5px; }
-/* o tocar segue redondo e grande, com o aro grosso e o anel ambar tocando; a face lisa com o bisel duro */
-.palco .tocar-grande {
-  background: #E6DFD3;
-  box-shadow: inset 0 3px 0 rgba(255,255,255,.8), inset 0 -3px 0 rgba(42,24,18,.22), 0 0 0 4px #9b9283, 0 0 0 7px var(--contorno), 0 var(--fundo, 4px) 0 7px rgba(20,8,2,.58);
-}
-body[data-status="playing"] .palco .tocar-grande, body[data-status="buffering"] .palco .tocar-grande {
-  box-shadow: inset 0 3px 0 rgba(255,255,255,.8), inset 0 -3px 0 rgba(42,24,18,.22), 0 0 0 4px var(--ambar), 0 0 0 7px var(--contorno), 0 var(--fundo, 4px) 0 7px rgba(20,8,2,.58), 0 0 18px 6px rgba(243,167,60,.42);
-}
-.palco .tocar-grande:active:not(:disabled), .palco .tocar-grande.apertado:not(:disabled) { --fundo: 1px; transform: translateY(2px); }
+.palco .tocar-grande:active:not(:disabled), .palco .tocar-grande.apertado:not(:disabled) { transform: translateY(2px); }
 /* o tocar em pixel como no p1 (19/10; antes era liso demais), do dev/pecas.py: o contorno em
    degrau, a linha clara por dentro dele, o aro gordo e liso (cinza parado, ambar tocando, com a
    celula escura embaixo), a linha escura, a face creme com filete de luz e faixa de sombra e a sombra dura, num pseudo por tras; o icone de tocar e o de pausar em degrau
    (o svg fica, escondido: o JS segue trocando ele e o rotulo). Apertado a sombra encolhe 2 px e o
    botao desce 2; o brilho borrado de tocando sai (o aro ambar diz) */
-.palco .tocar-grande, body[data-status="playing"] .palco .tocar-grande, body[data-status="buffering"] .palco .tocar-grande { position: relative; background: none; box-shadow: none; }
+.palco .tocar-grande { position: relative; background: none; }
 .palco .tocar-grande svg { visibility: hidden; }
 .palco .tocar-grande::before, .palco .tocar-grande::after { content: ""; position: absolute; pointer-events: none; }
 .palco .tocar-grande::before {   /* a face (80 px com o contorno) e por baixo a silhueta descida, que e a sombra */
@@ -2813,8 +2748,8 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
    com o filete aceso por fora e o contorno da chapa por dentro. Ela cresce para dentro (o aparelho
    fica do tamanho de antes) e o prato encolhe 4% em volta do proprio centro para nao encostar na
    chapa; o centro e o mesmo e o anguloPara() encolhe o raio do sulco junto, para a agulha seguir no disco */
-.palco .tampo { border-radius: 4px; box-shadow: none; border-image: var(--mold-caixa); background: var(--veio), var(--madeira-ap); }
-.palco .placa { inset: 3cqw; border-radius: 10px; box-shadow: none; border-image: var(--mold-chapa); background: var(--escovado), #D6CFC2; }
+.palco .tampo { border-radius: 4px; border-image: var(--mold-caixa); background: var(--veio), var(--madeira-ap); }
+.palco .placa { inset: 3cqw; border-radius: 10px; border-image: var(--mold-chapa); background: var(--escovado), #D6CFC2; }
 /* o prato com o contorno e a sombra dura no lugar da esfumada, e o brilho do vinil em duas cunhas
    de borda seca (so o que fica parado: o giratorio e o anel nao mudam) */
 .palco .prato { transform: scale(.96); box-shadow: 0 0 0 2px var(--contorno), 0 3px 0 2px rgba(20,8,2,.42); }
@@ -2826,19 +2761,14 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
                              rgba(255,240,220,.08) 188deg 210deg, rgba(255,240,220,0) 210deg);
 }
 .palco .eixo { background: #EEE8DE; box-shadow: 0 0 0 1.5px var(--contorno); }
-/* o braco sem o filtro da sombra esfumada: cada peca com o contorno, a cor lisa e a sombra dura
-   (a sombra gira junto com o braco, poucos graus) */
-.palco .braco { filter: none; }
 /* o braco em pixel como no p1 (19/10; antes era liso demais): o dev/pecas.py desenha o braco inteiro
    (contrapeso, tubo, cabeca, levantador e a bola do pivo) ja inclinado, com o degrau na tela: o
    descanso e cinco angulos no curso do disco, de 4 em 4 graus; o desenhoBraco() poe a faixa do angulo
-   no data-desenho. O desenho mora no .tubo (as outras pecas saem), girado de volta em volta do pivo:
-   sobram no maximo 2 graus de giro (com 5, a alca fina da cabeca virava zigue-zague) */
-.palco .braco > .contrapeso, .palco .braco > .cabeca, .palco .braco > .pivo { display: none; }
+   no data-desenho. O desenho mora no .tubo, girado de volta em volta do pivo: sobram no maximo 2 graus
+   de giro (com 5, a alca fina da cabeca virava zigue-zague) */
 /* o braco passa por cima da plaquinha VITROLA (z-index 2): parado, a cabeca descia por baixo dela
    (19/10) */
 .palco .braco { z-index: 3; }
-.palco .braco > .tubo { border-radius: 0; box-shadow: none; }
 .palco .braco > .tubo, .palco .braco[data-desenho="a"] > .tubo {
   left: var(--braco-a-esq); top: var(--braco-a-topo); width: var(--braco-a-larg); height: var(--braco-a-alt);
   transform-origin: var(--braco-a-origem); transform: rotate(var(--braco-a-desfaz)); background: var(--braco-a-arte) 0 0 / 100% 100% no-repeat;
@@ -2865,15 +2795,13 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 }
 /* a base do pivo e o descanso nao giram: degrau de verdade, num pseudo que sai do elemento o contorno
    (1 celula) e a sombra (a base 3 celulas, o descanso 2) */
-.palco .base-braco, .palco .descanso { background: none; box-shadow: none; }
 .palco .base-braco::before, .palco .descanso::before { content: ""; position: absolute; pointer-events: none; }
 .palco .base-braco { width: 10cqw; height: 10cqw; }   /* do tamanho do mock (11 era maior que a dele) */
 .palco .base-braco::before { inset: -4% -4% -16%; background: var(--base-braco) 0 0 / 100% 100% no-repeat; }
 .palco .descanso::before { inset: -8.333% -8.333% -25%; background: var(--descanso) 0 0 / 100% 100% no-repeat; }
-.palco .descanso::after { content: none; }   /* a fenda vem no desenho */
 .palco .descanso { left: 88cqw; }   /* debaixo do braco reto (o moverBraco() descansa ele a 0 grau no celular) */
 /* o selo 33/45: a etiqueta lisa na moldura miuda de contorno e quina comida (a letra e a mesma) */
-.palco .selo-placa { border-color: transparent; border-radius: 0; background: #E9E3D8; box-shadow: none; border-image: var(--mold-etiqueta); }
+.palco .selo-placa { border-color: transparent; background: #E9E3D8; border-image: var(--mold-etiqueta); }
 /* no computador, como no celular: sem o "Tocando/Pausado" (o botao grande e o disco girando ja
    dizem), e o tocar de pixel no tamanho para que foi desenhado */
 @media (min-width: 900px) {
@@ -2959,14 +2887,15 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 }
 .palco .seletor .knob { box-shadow: 0 0 0 2px var(--contorno), 0 3px 0 2px rgba(20,8,2,.4); }
 .palco .seletor .knob::before { background: #E8E2D7; box-shadow: inset 2px 2px 0 rgba(255,255,255,.75), inset -2px -2px 0 rgba(42,24,18,.18); }
-.palco .mesa-gav .btn, .palco .medidores .btn { border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
+.palco .mesa-gav .btn, .palco .medidores .btn, .dlg .btn { border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
 .palco .mesa-gav .btn:active:not(:disabled), .palco .mesa-gav .btn.apertado:not(:disabled),
-.palco .medidores .btn:active:not(:disabled), .palco .medidores .btn.apertado:not(:disabled), .palco .chave[aria-pressed="true"] {
+.palco .medidores .btn:active:not(:disabled), .palco .medidores .btn.apertado:not(:disabled),
+.dlg .btn:active:not(:disabled), .dlg .btn.apertado:not(:disabled), .palco .chave[aria-pressed="true"] {
   transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(42,24,18,.16); border-image: var(--mold-objeto-apertado);
 }
 .palco .chave[aria-pressed="true"] { background: var(--escovado), #C4BBAD; }
 @media (hover: hover) {
-  .palco .medidores .btn:hover:not(:disabled, [aria-pressed="true"]), .palco .mesa-gav .btn:hover:not(:disabled, [aria-pressed="true"]) { background: var(--escovado), #EEE8DD; }
+  .palco .medidores .btn:hover:not(:disabled, [aria-pressed="true"]), .palco .mesa-gav .btn:hover:not(:disabled, [aria-pressed="true"]), .dlg .btn:hover:not(:disabled) { background: var(--escovado), #EEE8DD; }
 }
 /* no computador a gaveta toma o lugar da parede: o FX-12 e uma faixa baixa, com a plaqueta, o Ouvir e o Voltar numa
    linha, e os pedais rolam por dentro no feltro. O visor sai: o seletor do receiver, logo acima, ja mostra o efeito (o
@@ -3015,7 +2944,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
      filetes entre as faixas e o Apagar sozinho no LADO B, depois do pontilhado. Os icones em pixel; a letra e a
      de sempre */
   .menu.folha {
-    padding: 0 14px calc(14px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; box-shadow: none;
+    padding: 0 14px calc(14px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0;
     border-image: var(--mold-barra); border-image-width: 13px 13px 0 13px;
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 110 110' shape-rendering='crispEdges'%3E%3Cpath fill='%232A1812' fill-opacity='.07' d='M46 1h18v1h-18zM42 2h26v1h-26zM38 3h14v1h-14zM58 3h14v1h-14zM35 4h9v1h-9zM66 4h9v1h-9zM33 5h7v1h-7zM70 5h7v1h-7zM31 6h6v1h-6zM73 6h6v1h-6zM29 7h6v1h-6zM75 7h6v1h-6zM27 8h6v1h-6zM77 8h6v1h-6zM26 9h5v1h-5zM79 9h5v1h-5zM24 10h5v1h-5zM81 10h5v1h-5zM23 11h4v1h-4zM83 11h4v1h-4zM21 12h5v1h-5zM84 12h5v1h-5zM20 13h4v1h-4zM86 13h4v1h-4zM19 14h4v1h-4zM87 14h4v1h-4zM18 15h4v1h-4zM88 15h4v1h-4zM17 16h4v1h-4zM89 16h4v1h-4zM16 17h4v1h-4zM90 17h4v1h-4zM15 18h4v1h-4zM91 18h4v1h-4zM14 19h4v1h-4zM92 19h4v1h-4zM13 20h4v1h-4zM93 20h4v1h-4zM12 21h4v1h-4zM94 21h4v1h-4zM12 22h3v1h-3zM95 22h3v1h-3zM11 23h3v1h-3zM96 23h3v1h-3zM10 24h3v1h-3zM97 24h3v1h-3zM10 25h3v1h-3zM97 25h3v1h-3zM9 26h3v1h-3zM98 26h3v1h-3zM8 27h3v1h-3zM99 27h3v1h-3zM8 28h3v1h-3zM99 28h3v1h-3zM7 29h3v1h-3zM100 29h3v1h-3zM7 30h3v1h-3zM100 30h3v1h-3zM6 31h3v1h-3zM101 31h3v1h-3zM6 32h3v1h-3zM101 32h3v1h-3zM5 33h3v1h-3zM102 33h3v1h-3zM5 34h3v1h-3zM102 34h3v1h-3zM4 35h3v1h-3zM103 35h3v1h-3zM4 36h3v1h-3zM103 36h3v1h-3zM4 37h2v1h-2zM104 37h2v1h-2zM3 38h3v1h-3zM104 38h3v1h-3zM3 39h3v1h-3zM104 39h3v1h-3zM3 40h2v1h-2zM105 40h2v1h-2zM3 41h2v1h-2zM105 41h2v1h-2zM2 42h3v1h-3zM105 42h3v1h-3zM2 43h3v1h-3zM105 43h3v1h-3zM2 44h2v1h-2zM106 44h2v1h-2zM2 45h2v1h-2zM106 45h2v1h-2zM1 46h3v1h-3zM106 46h3v1h-3zM1 47h3v1h-3zM106 47h3v1h-3zM1 48h3v1h-3zM106 48h3v1h-3zM1 49h3v1h-3zM106 49h3v1h-3zM1 50h3v1h-3zM106 50h3v1h-3zM1 51h3v1h-3zM106 51h3v1h-3zM1 52h2v1h-2zM107 52h2v1h-2zM1 53h2v1h-2zM107 53h2v1h-2zM1 54h2v1h-2zM107 54h2v1h-2zM1 55h2v1h-2zM107 55h2v1h-2zM1 56h2v1h-2zM107 56h2v1h-2zM1 57h2v1h-2zM107 57h2v1h-2zM1 58h3v1h-3zM106 58h3v1h-3zM1 59h3v1h-3zM106 59h3v1h-3zM1 60h3v1h-3zM106 60h3v1h-3zM1 61h3v1h-3zM106 61h3v1h-3zM1 62h3v1h-3zM106 62h3v1h-3zM1 63h3v1h-3zM106 63h3v1h-3zM2 64h2v1h-2zM106 64h2v1h-2zM2 65h2v1h-2zM106 65h2v1h-2zM2 66h3v1h-3zM105 66h3v1h-3zM2 67h3v1h-3zM105 67h3v1h-3zM3 68h2v1h-2zM105 68h2v1h-2zM3 69h2v1h-2zM105 69h2v1h-2zM3 70h3v1h-3zM104 70h3v1h-3zM3 71h3v1h-3zM104 71h3v1h-3zM4 72h2v1h-2zM104 72h2v1h-2zM4 73h3v1h-3zM103 73h3v1h-3zM4 74h3v1h-3zM103 74h3v1h-3zM5 75h3v1h-3zM102 75h3v1h-3zM5 76h3v1h-3zM102 76h3v1h-3zM6 77h3v1h-3zM101 77h3v1h-3zM6 78h3v1h-3zM101 78h3v1h-3zM7 79h3v1h-3zM100 79h3v1h-3zM7 80h3v1h-3zM100 80h3v1h-3zM8 81h3v1h-3zM99 81h3v1h-3zM8 82h3v1h-3zM99 82h3v1h-3zM9 83h3v1h-3zM98 83h3v1h-3zM10 84h3v1h-3zM97 84h3v1h-3zM10 85h3v1h-3zM97 85h3v1h-3zM11 86h3v1h-3zM96 86h3v1h-3zM12 87h3v1h-3zM95 87h3v1h-3zM12 88h4v1h-4zM94 88h4v1h-4zM13 89h4v1h-4zM93 89h4v1h-4zM14 90h4v1h-4zM92 90h4v1h-4zM15 91h4v1h-4zM91 91h4v1h-4zM16 92h4v1h-4zM90 92h4v1h-4zM17 93h4v1h-4zM89 93h4v1h-4zM18 94h4v1h-4zM88 94h4v1h-4zM19 95h4v1h-4zM87 95h4v1h-4zM20 96h4v1h-4zM86 96h4v1h-4zM21 97h5v1h-5zM84 97h5v1h-5zM23 98h4v1h-4zM83 98h4v1h-4zM24 99h5v1h-5zM81 99h5v1h-5zM26 100h5v1h-5zM79 100h5v1h-5zM27 101h6v1h-6zM77 101h6v1h-6zM29 102h6v1h-6zM75 102h6v1h-6zM31 103h6v1h-6zM73 103h6v1h-6zM33 104h7v1h-7zM70 104h7v1h-7zM35 105h9v1h-9zM66 105h9v1h-9zM38 106h14v1h-14zM58 106h14v1h-14zM42 107h26v1h-26zM46 108h18v1h-18z'/%3E%3C/svg%3E") right -46px top 112px / 220px 220px no-repeat, #EFE4CB;
   }
@@ -3095,14 +3024,17 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   }
   #vista-prateleira { display: contents; }
   .rapidos { grid-area: rapidos; }
-  .fila-parede { grid-area: fila; align-self: start; width: 316px; margin: 0 0 14px; }
+  /* com fila, a maleta fica com a metade da fileira, no meio dela; sem fila, os Sons rapidos ficam com a fileira inteira,
+     e sem Sons rapidos ela fica no meio da fileira inteira */
+  .parede:has(> .fila-parede:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(316px, 1fr); }
+  .parede:has(#rapidos[hidden]) .fila-parede { grid-column: 1 / -1; }
+  .fila-parede { grid-area: fila; align-self: start; justify-self: center; width: 100%; max-width: 520px; margin: 0 0 14px; }
   #cab-prat { grid-area: cab; }
   #rolo-prateleira { grid-area: prat; }
   .continuar { grid-area: cont; }
   /* com a busca aberta a maleta so aparece aberta (o Abrir do aviso), por cima dos resultados, que ficam */
   .parede:has(> #vista-busca:not([hidden])) { grid-template: "fila" auto "busca" minmax(0, 1fr) / minmax(0, 1fr); align-content: stretch; }
   .parede:has(> #vista-busca:not([hidden])):has(> .fila-parede.aberta) { grid-template-rows: auto minmax(220px, 1fr); }
-  .parede:has(> #vista-busca:not([hidden])) .fila-parede { justify-self: center; }
   .parede:has(> #vista-busca:not([hidden])) .fila-parede:not(.aberta) { display: none; }
   #vista-busca { grid-area: busca; min-height: 0; display: flex; flex-direction: column; }
   .fila.maleta .cabeca-fila .limpar-fila { flex: none; min-height: 0; margin-right: 8px; font-size: .8125rem; color: var(--tinta); text-shadow: none; text-decoration-color: rgba(42,24,18,.45); }
@@ -3123,7 +3055,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   }
   .disco-item:hover .mais, .disco-item:focus-within .mais, .estante .ficha .mais[aria-expanded="true"] { opacity: 1; }
   /* as opcoes do disco: o menu flutuante na moldura de pixel, com os mesmos icones da contracapa do celular */
-  .menu { padding: 4px; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: #EFE4CB; }
+  .menu { padding: 4px; border-radius: 4px; border-image: var(--mold-objeto); background: #EFE4CB; }
   .menu button { border-radius: 0; }
   .menu button svg { width: 24px; height: 24px; }
 }
@@ -3272,10 +3204,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       <div class="descanso" aria-hidden="true"></div>
       <div class="base-braco" aria-hidden="true"></div>
       <div class="braco" id="braco" aria-hidden="true">
-        <div class="contrapeso"></div>
         <div class="tubo"></div>
-        <div class="cabeca"></div>
-        <div class="pivo"></div>
       </div>
     </div>
     <span class="pes-mesa" aria-hidden="true"></span>
@@ -3935,7 +3864,7 @@ const ARCADE = {
 const CHAVE_PARECIDAS = '<svg viewBox="0 0 45 24" width="45" height="24" shape-rendering="crispEdges"><g class="ch-des"><path fill="#140802" fill-opacity="0.62" d="M0 19h1v1h-1zM44 19h1v1h-1zM0 20h2v1h-2zM43 20h2v1h-2zM0 21h45v1h-45zM1 22h43v1h-43zM2 23h41v1h-41z"/><path fill="#1A0B04" d="M2 0h41v1h-41zM2 20h41v1h-41zM1 1h43v1h-43zM1 19h43v1h-43zM0 2h2v17h-2zM43 2h2v17h-2zM10 4h25v1h-25zM10 16h25v1h-25zM10 5h1v11h-1zM34 5h1v11h-1zM4 8h3v1h-3zM4 12h3v1h-3zM38 8h3v1h-3zM38 12h3v1h-3zM3 9h1v3h-1zM7 9h1v3h-1zM37 9h1v3h-1zM41 9h1v3h-1z"/><path fill="#421E0F" d="M42 3h1v15h-1zM3 18h40v1h-40z"/><path fill="#C3A590" d="M2 2h41v1h-41zM2 3h1v16h-1z"/><path fill="#966448" d="M11 17h23v1h-23z"/><path fill="#66301A" d="M3 3h39v1h-39zM3 4h7v4h-7zM3 13h7v4h-7zM35 4h7v4h-7zM35 13h7v4h-7zM3 8h1v1h-1zM3 12h1v1h-1zM7 8h3v1h-3zM7 12h3v1h-3zM35 8h3v1h-3zM35 12h3v1h-3zM41 8h1v1h-1zM41 12h1v1h-1zM8 9h2v3h-2zM35 9h2v3h-2zM3 17h8v1h-8zM34 17h8v1h-8z"/><path fill="#ECEEF0" d="M4 9h1v1h-1zM38 9h1v1h-1z"/><path fill="#2E2826" d="M6 9h1v1h-1zM40 9h1v1h-1zM5 10h1v1h-1zM39 10h1v1h-1zM4 11h1v1h-1zM38 11h1v1h-1z"/><path fill="#BEC2C7" d="M5 9h1v1h-1zM5 11h1v1h-1zM39 9h1v1h-1zM39 11h1v1h-1zM4 10h1v1h-1zM6 10h1v1h-1zM38 10h1v1h-1zM40 10h1v1h-1z"/><path fill="#808388" d="M6 11h1v1h-1zM40 11h1v1h-1z"/><path fill="#FF785E" d="M11 5h9v1h-9zM11 6h1v9h-1zM16 7h1v7h-1z"/><path fill="#961810" d="M21 5h13v1h-13zM21 6h1v10h-1z"/><path fill="#9C1A12" d="M20 5h1v10h-1zM11 15h10v1h-10z"/><path fill="#CE2A1E" d="M22 6h12v2h-12zM22 13h12v3h-12zM22 8h1v1h-1zM22 10h1v2h-1zM24 8h3v1h-3zM24 10h3v2h-3zM28 8h3v1h-3zM32 8h2v1h-2zM32 12h2v1h-2zM24 9h2v1h-2zM28 9h2v3h-2zM31 9h1v3h-1zM33 9h1v3h-1zM25 12h1v1h-1zM29 12h2v1h-2z"/><path fill="#E43E2C" d="M12 6h8v1h-8zM12 14h8v1h-8zM12 7h3v7h-3zM17 7h3v7h-3z"/><path fill="#78100A" d="M15 7h1v7h-1z"/><path fill="#FFECD6" d="M23 8h1v1h-1zM23 10h1v2h-1zM27 8h1v1h-1zM27 10h1v2h-1zM31 8h1v1h-1zM31 12h1v1h-1zM22 9h2v1h-2zM26 9h2v1h-2zM30 9h1v3h-1zM32 9h1v3h-1zM22 12h3v1h-3zM26 12h3v1h-3z"/></g><g class="ch-lig"><path fill="#140802" fill-opacity="0.62" d="M0 19h1v1h-1zM44 19h1v1h-1zM0 20h2v1h-2zM43 20h2v1h-2zM0 21h45v1h-45zM1 22h43v1h-43zM2 23h41v1h-41z"/><path fill="#1A0B04" d="M2 0h41v1h-41zM2 20h41v1h-41zM1 1h43v1h-43zM1 19h43v1h-43zM0 2h2v17h-2zM43 2h2v17h-2zM10 4h25v1h-25zM10 16h25v1h-25zM10 5h1v11h-1zM34 5h1v11h-1zM4 8h3v1h-3zM4 12h3v1h-3zM38 8h3v1h-3zM38 12h3v1h-3zM3 9h1v3h-1zM7 9h1v3h-1zM37 9h1v3h-1zM41 9h1v3h-1z"/><path fill="#421E0F" d="M42 3h1v15h-1zM3 18h40v1h-40z"/><path fill="#C3A590" d="M2 2h41v1h-41zM2 3h1v16h-1z"/><path fill="#966448" d="M11 17h23v1h-23z"/><path fill="#66301A" d="M3 3h39v1h-39zM3 4h7v4h-7zM3 13h7v4h-7zM35 4h7v4h-7zM35 13h7v4h-7zM3 8h1v1h-1zM3 12h1v1h-1zM7 8h3v1h-3zM7 12h3v1h-3zM35 8h3v1h-3zM35 12h3v1h-3zM41 8h1v1h-1zM41 12h1v1h-1zM8 9h2v3h-2zM35 9h2v3h-2zM3 17h8v1h-8zM34 17h8v1h-8z"/><path fill="#ECEEF0" d="M4 9h1v1h-1zM38 9h1v1h-1z"/><path fill="#2E2826" d="M6 9h1v1h-1zM40 9h1v1h-1zM5 10h1v1h-1zM39 10h1v1h-1zM4 11h1v1h-1zM38 11h1v1h-1z"/><path fill="#BEC2C7" d="M5 9h1v1h-1zM5 11h1v1h-1zM39 9h1v1h-1zM39 11h1v1h-1zM4 10h1v1h-1zM6 10h1v1h-1zM38 10h1v1h-1zM40 10h1v1h-1z"/><path fill="#808388" d="M6 11h1v1h-1zM40 11h1v1h-1z"/><path fill="#961810" d="M11 5h13v1h-13z"/><path fill="#FF785E" d="M24 5h9v1h-9zM24 6h1v9h-1zM29 7h1v7h-1z"/><path fill="#CE2A1E" d="M11 6h13v2h-13zM11 13h13v3h-13zM11 8h1v1h-1zM11 11h1v2h-1zM14 8h2v1h-2zM18 8h3v1h-3zM22 8h2v1h-2zM22 12h2v1h-2zM11 9h3v1h-3zM15 9h3v1h-3zM19 9h1v1h-1zM21 9h1v3h-1zM23 9h1v3h-1zM11 10h2v1h-2zM14 10h3v1h-3zM18 10h2v1h-2zM13 11h3v1h-3zM17 11h3v1h-3zM15 12h1v1h-1zM19 12h2v1h-2z"/><path fill="#9C1A12" d="M33 5h1v10h-1zM24 15h10v1h-10z"/><path fill="#E43E2C" d="M25 6h8v1h-8zM25 14h8v1h-8zM25 7h3v7h-3zM30 7h3v7h-3z"/><path fill="#78100A" d="M28 7h1v7h-1z"/><path fill="#FFECD6" d="M12 8h2v1h-2zM16 8h2v1h-2zM21 8h1v1h-1zM21 12h1v1h-1zM14 9h1v1h-1zM18 9h1v1h-1zM20 9h1v3h-1zM22 9h1v3h-1zM13 10h1v1h-1zM17 10h1v1h-1zM12 11h1v1h-1zM16 11h1v1h-1zM12 12h3v1h-3zM16 12h3v1h-3z"/></g></svg>';
 $('#b-parecidas .ch').innerHTML = CHAVE_PARECIDAS;
 const SALVAR_PIXEL = '<span class="px-sombra"><svg viewBox="0 0 24 24" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><path fill="#140802" fill-opacity="0.58" d="M9 0h6v1h-6zM9 23h6v1h-6zM7 1h10v1h-10zM7 22h10v1h-10zM5 2h14v1h-14zM5 21h14v1h-14zM4 3h16v1h-16zM4 20h16v1h-16zM3 4h18v1h-18zM3 19h18v1h-18zM2 5h20v2h-20zM2 17h20v2h-20zM1 7h22v2h-22zM1 15h22v2h-22zM0 9h24v6h-24z"/></svg></span><span class="px-botao"><svg viewBox="0 0 24 24" width="24" height="24" shape-rendering="crispEdges" aria-hidden="true"><path fill="#EEE7DA" d="M10 7h6v1h-6zM8 8h9v2h-9zM7 10h10v4h-10zM7 14h9v2h-9zM8 16h6v1h-6z"/><path fill="#1A0B04" d="M9 0h6v1h-6zM9 5h6v1h-6zM9 18h6v1h-6zM9 23h6v1h-6zM7 1h10v1h-10zM7 22h10v1h-10zM5 2h4v1h-4zM5 21h4v1h-4zM15 2h4v1h-4zM15 21h4v1h-4zM4 3h3v1h-3zM4 20h3v1h-3zM17 3h3v1h-3zM17 20h3v1h-3zM3 4h2v1h-2zM3 19h2v1h-2zM19 4h2v1h-2zM19 19h2v1h-2zM2 5h2v2h-2zM2 17h2v2h-2zM20 5h2v2h-2zM20 17h2v2h-2zM8 6h2v1h-2zM8 17h2v1h-2zM14 6h2v1h-2zM14 17h2v1h-2zM1 7h2v2h-2zM1 15h2v2h-2zM7 7h1v1h-1zM7 16h1v1h-1zM16 7h1v1h-1zM16 16h1v1h-1zM21 7h2v2h-2zM21 15h2v2h-2zM6 8h1v1h-1zM6 15h1v1h-1zM17 8h1v1h-1zM17 15h1v1h-1zM0 9h2v6h-2zM5 9h2v1h-2zM5 14h2v1h-2zM17 9h2v1h-2zM17 14h2v1h-2zM22 9h2v6h-2zM5 10h1v4h-1zM18 10h1v4h-1z"/><path fill="#D4CAB9" d="M17 10h1v4h-1zM16 14h1v2h-1zM14 16h2v1h-2zM10 17h4v1h-4z"/><path fill="#FFFCF4" d="M10 6h4v1h-4zM8 7h2v1h-2zM7 8h1v2h-1zM6 10h1v4h-1z"/><g class="sv-aro"><rect x="12" y="2" width="1" height="1" fill="#DED7CB" class="l"/><rect x="12" y="3" width="1" height="1" fill="#9B9283" class="m"/><rect x="12" y="4" width="1" height="1" fill="#9B9283" class="m"/><rect x="13" y="2" width="1" height="1" fill="#DED7CB" class="l"/><rect x="13" y="3" width="1" height="1" fill="#9B9283" class="m"/><rect x="13" y="4" width="1" height="1" fill="#9B9283" class="m"/><rect x="14" y="2" width="1" height="1" fill="#DED7CB" class="l"/><rect x="14" y="3" width="1" height="1" fill="#9B9283" class="m"/><rect x="14" y="4" width="1" height="1" fill="#9B9283" class="m"/><rect x="15" y="3" width="1" height="1" fill="#DED7CB" class="l"/><rect x="15" y="4" width="1" height="1" fill="#9B9283" class="m"/><rect x="16" y="3" width="1" height="1" fill="#DED7CB" class="l"/><rect x="15" y="5" width="1" height="1" fill="#9B9283" class="m"/><rect x="16" y="4" width="1" height="1" fill="#9B9283" class="m"/><rect x="16" y="5" width="1" height="1" fill="#9B9283" class="m"/><rect x="17" y="4" width="1" height="1" fill="#DED7CB" class="l"/><rect x="16" y="6" width="1" height="1" fill="#9B9283" class="m"/><rect x="17" y="5" width="1" height="1" fill="#9B9283" class="m"/><rect x="18" y="4" width="1" height="1" fill="#DED7CB" class="l"/><rect x="17" y="6" width="1" height="1" fill="#9B9283" class="m"/><rect x="18" y="5" width="1" height="1" fill="#DED7CB" class="l"/><rect x="19" y="5" width="1" height="1" fill="#DED7CB" class="l"/><rect x="18" y="6" width="1" height="1" fill="#9B9283" class="m"/><rect x="17" y="7" width="1" height="1" fill="#9B9283" class="m"/><rect x="19" y="6" width="1" height="1" fill="#DED7CB" class="l"/><rect x="18" y="7" width="1" height="1" fill="#9B9283" class="m"/><rect x="19" y="7" width="1" height="1" fill="#9B9283" class="m"/><rect x="18" y="8" width="1" height="1" fill="#9B9283" class="m"/><rect x="20" y="7" width="1" height="1" fill="#DED7CB" class="l"/><rect x="19" y="8" width="1" height="1" fill="#9B9283" class="m"/><rect x="20" y="8" width="1" height="1" fill="#DED7CB" class="l"/><rect x="19" y="9" width="1" height="1" fill="#9B9283" class="m"/><rect x="20" y="9" width="1" height="1" fill="#6F665A" class="e"/><rect x="21" y="9" width="1" height="1" fill="#DED7CB" class="l"/><rect x="19" y="10" width="1" height="1" fill="#9B9283" class="m"/><rect x="20" y="10" width="1" height="1" fill="#6F665A" class="e"/><rect x="21" y="10" width="1" height="1" fill="#DED7CB" class="l"/><rect x="19" y="11" width="1" height="1" fill="#9B9283" class="m"/><rect x="20" y="11" width="1" height="1" fill="#6F665A" class="e"/><rect x="21" y="11" width="1" height="1" fill="#DED7CB" class="l"/><rect x="21" y="12" width="1" height="1" fill="#DED7CB" class="l"/><rect x="20" y="12" width="1" height="1" fill="#6F665A" class="e"/><rect x="19" y="12" width="1" height="1" fill="#9B9283" class="m"/><rect x="21" y="13" width="1" height="1" fill="#DED7CB" class="l"/><rect x="20" y="13" width="1" height="1" fill="#6F665A" class="e"/><rect x="19" y="13" width="1" height="1" fill="#9B9283" class="m"/><rect x="21" y="14" width="1" height="1" fill="#DED7CB" class="l"/><rect x="20" y="14" width="1" height="1" fill="#6F665A" class="e"/><rect x="19" y="14" width="1" height="1" fill="#9B9283" class="m"/><rect x="20" y="15" width="1" height="1" fill="#DED7CB" class="l"/><rect x="19" y="15" width="1" height="1" fill="#6F665A" class="e"/><rect x="20" y="16" width="1" height="1" fill="#DED7CB" class="l"/><rect x="18" y="15" width="1" height="1" fill="#9B9283" class="m"/><rect x="19" y="16" width="1" height="1" fill="#6F665A" class="e"/><rect x="18" y="16" width="1" height="1" fill="#9B9283" class="m"/><rect x="19" y="17" width="1" height="1" fill="#DED7CB" class="l"/><rect x="17" y="16" width="1" height="1" fill="#9B9283" class="m"/><rect x="18" y="17" width="1" height="1" fill="#6F665A" class="e"/><rect x="19" y="18" width="1" height="1" fill="#DED7CB" class="l"/><rect x="18" y="18" width="1" height="1" fill="#DED7CB" class="l"/><rect x="17" y="17" width="1" height="1" fill="#9B9283" class="m"/><rect x="18" y="19" width="1" height="1" fill="#DED7CB" class="l"/><rect x="17" y="18" width="1" height="1" fill="#6F665A" class="e"/><rect x="16" y="17" width="1" height="1" fill="#9B9283" class="m"/><rect x="17" y="19" width="1" height="1" fill="#DED7CB" class="l"/><rect x="16" y="18" width="1" height="1" fill="#9B9283" class="m"/><rect x="16" y="19" width="1" height="1" fill="#6F665A" class="e"/><rect x="15" y="18" width="1" height="1" fill="#9B9283" class="m"/><rect x="16" y="20" width="1" height="1" fill="#DED7CB" class="l"/><rect x="15" y="19" width="1" height="1" fill="#6F665A" class="e"/><rect x="15" y="20" width="1" height="1" fill="#DED7CB" class="l"/><rect x="14" y="19" width="1" height="1" fill="#9B9283" class="m"/><rect x="14" y="20" width="1" height="1" fill="#6F665A" class="e"/><rect x="14" y="21" width="1" height="1" fill="#DED7CB" class="l"/><rect x="13" y="19" width="1" height="1" fill="#9B9283" class="m"/><rect x="13" y="20" width="1" height="1" fill="#6F665A" class="e"/><rect x="13" y="21" width="1" height="1" fill="#DED7CB" class="l"/><rect x="12" y="19" width="1" height="1" fill="#9B9283" class="m"/><rect x="12" y="20" width="1" height="1" fill="#6F665A" class="e"/><rect x="12" y="21" width="1" height="1" fill="#DED7CB" class="l"/><rect x="11" y="21" width="1" height="1" fill="#DED7CB" class="l"/><rect x="11" y="20" width="1" height="1" fill="#6F665A" class="e"/><rect x="11" y="19" width="1" height="1" fill="#9B9283" class="m"/><rect x="10" y="21" width="1" height="1" fill="#DED7CB" class="l"/><rect x="10" y="20" width="1" height="1" fill="#6F665A" class="e"/><rect x="10" y="19" width="1" height="1" fill="#9B9283" class="m"/><rect x="9" y="21" width="1" height="1" fill="#DED7CB" class="l"/><rect x="9" y="20" width="1" height="1" fill="#6F665A" class="e"/><rect x="9" y="19" width="1" height="1" fill="#9B9283" class="m"/><rect x="8" y="20" width="1" height="1" fill="#DED7CB" class="l"/><rect x="8" y="19" width="1" height="1" fill="#9B9283" class="m"/><rect x="7" y="20" width="1" height="1" fill="#DED7CB" class="l"/><rect x="8" y="18" width="1" height="1" fill="#9B9283" class="m"/><rect x="7" y="19" width="1" height="1" fill="#9B9283" class="m"/><rect x="7" y="18" width="1" height="1" fill="#9B9283" class="m"/><rect x="6" y="19" width="1" height="1" fill="#DED7CB" class="l"/><rect x="7" y="17" width="1" height="1" fill="#9B9283" class="m"/><rect x="6" y="18" width="1" height="1" fill="#9B9283" class="m"/><rect x="5" y="19" width="1" height="1" fill="#DED7CB" class="l"/><rect x="6" y="17" width="1" height="1" fill="#9B9283" class="m"/><rect x="5" y="18" width="1" height="1" fill="#DED7CB" class="l"/><rect x="4" y="18" width="1" height="1" fill="#DED7CB" class="l"/><rect x="5" y="17" width="1" height="1" fill="#9B9283" class="m"/><rect x="6" y="16" width="1" height="1" fill="#9B9283" class="m"/><rect x="4" y="17" width="1" height="1" fill="#DED7CB" class="l"/><rect x="5" y="16" width="1" height="1" fill="#9B9283" class="m"/><rect x="4" y="16" width="1" height="1" fill="#9B9283" class="m"/><rect x="5" y="15" width="1" height="1" fill="#9B9283" class="m"/><rect x="3" y="16" width="1" height="1" fill="#DED7CB" class="l"/><rect x="4" y="15" width="1" height="1" fill="#9B9283" class="m"/><rect x="3" y="15" width="1" height="1" fill="#DED7CB" class="l"/><rect x="4" y="14" width="1" height="1" fill="#9B9283" class="m"/><rect x="3" y="14" width="1" height="1" fill="#9B9283" class="m"/><rect x="2" y="14" width="1" height="1" fill="#DED7CB" class="l"/><rect x="4" y="13" width="1" height="1" fill="#9B9283" class="m"/><rect x="3" y="13" width="1" height="1" fill="#9B9283" class="m"/><rect x="2" y="13" width="1" height="1" fill="#DED7CB" class="l"/><rect x="4" y="12" width="1" height="1" fill="#9B9283" class="m"/><rect x="3" y="12" width="1" height="1" fill="#9B9283" class="m"/><rect x="2" y="12" width="1" height="1" fill="#DED7CB" class="l"/><rect x="2" y="11" width="1" height="1" fill="#DED7CB" class="l"/><rect x="3" y="11" width="1" height="1" fill="#9B9283" class="m"/><rect x="4" y="11" width="1" height="1" fill="#9B9283" class="m"/><rect x="2" y="10" width="1" height="1" fill="#DED7CB" class="l"/><rect x="3" y="10" width="1" height="1" fill="#9B9283" class="m"/><rect x="4" y="10" width="1" height="1" fill="#9B9283" class="m"/><rect x="2" y="9" width="1" height="1" fill="#DED7CB" class="l"/><rect x="3" y="9" width="1" height="1" fill="#9B9283" class="m"/><rect x="4" y="9" width="1" height="1" fill="#9B9283" class="m"/><rect x="3" y="8" width="1" height="1" fill="#DED7CB" class="l"/><rect x="4" y="8" width="1" height="1" fill="#9B9283" class="m"/><rect x="3" y="7" width="1" height="1" fill="#DED7CB" class="l"/><rect x="5" y="8" width="1" height="1" fill="#9B9283" class="m"/><rect x="4" y="7" width="1" height="1" fill="#9B9283" class="m"/><rect x="5" y="7" width="1" height="1" fill="#9B9283" class="m"/><rect x="4" y="6" width="1" height="1" fill="#DED7CB" class="l"/><rect x="6" y="7" width="1" height="1" fill="#9B9283" class="m"/><rect x="5" y="6" width="1" height="1" fill="#9B9283" class="m"/><rect x="4" y="5" width="1" height="1" fill="#DED7CB" class="l"/><rect x="5" y="5" width="1" height="1" fill="#DED7CB" class="l"/><rect x="6" y="6" width="1" height="1" fill="#9B9283" class="m"/><rect x="5" y="4" width="1" height="1" fill="#DED7CB" class="l"/><rect x="6" y="5" width="1" height="1" fill="#9B9283" class="m"/><rect x="7" y="6" width="1" height="1" fill="#9B9283" class="m"/><rect x="6" y="4" width="1" height="1" fill="#DED7CB" class="l"/><rect x="7" y="5" width="1" height="1" fill="#9B9283" class="m"/><rect x="7" y="4" width="1" height="1" fill="#9B9283" class="m"/><rect x="8" y="5" width="1" height="1" fill="#9B9283" class="m"/><rect x="7" y="3" width="1" height="1" fill="#DED7CB" class="l"/><rect x="8" y="4" width="1" height="1" fill="#9B9283" class="m"/><rect x="8" y="3" width="1" height="1" fill="#DED7CB" class="l"/><rect x="9" y="4" width="1" height="1" fill="#9B9283" class="m"/><rect x="9" y="3" width="1" height="1" fill="#9B9283" class="m"/><rect x="9" y="2" width="1" height="1" fill="#DED7CB" class="l"/><rect x="10" y="4" width="1" height="1" fill="#9B9283" class="m"/><rect x="10" y="3" width="1" height="1" fill="#9B9283" class="m"/><rect x="10" y="2" width="1" height="1" fill="#DED7CB" class="l"/><rect x="11" y="4" width="1" height="1" fill="#9B9283" class="m"/><rect x="11" y="3" width="1" height="1" fill="#9B9283" class="m"/><rect x="11" y="2" width="1" height="1" fill="#DED7CB" class="l"/></g><g class="sv-mais"><path fill="#2A1812" d="M11 8h2v3h-2zM11 13h2v3h-2zM8 11h8v2h-8z"/></g><g class="sv-visto"><path fill="#2A1812" d="M15 9h2v1h-2zM14 10h3v1h-3zM13 11h3v1h-3zM7 12h2v1h-2zM12 12h3v1h-3zM7 13h3v1h-3zM11 13h3v1h-3zM8 14h5v1h-5zM9 15h3v1h-3z"/></g></svg></span>';
-$('#b-guardar').innerHTML = SALVAR_PIXEL + '<span class="classico"></span>';   // o de pixel no celular, o ⊕ de sempre no computador
+$('#b-guardar').innerHTML = SALVAR_PIXEL;
 const PE_SVG = '<svg viewBox="0 0 36 36" shape-rendering="crispEdges"><path fill="#1C0900" d="M11 2h14v1h-14zM11 9h14v1h-14zM11 32h14v1h-14zM10 3h2v1h-2zM24 3h2v1h-2zM9 4h2v1h-2zM9 20h2v1h-2zM9 30h2v1h-2zM25 4h2v1h-2zM25 20h2v1h-2zM25 30h2v1h-2zM8 5h2v1h-2zM8 17h2v2h-2zM8 28h2v1h-2zM26 5h2v1h-2zM26 17h2v2h-2zM26 28h2v1h-2zM7 6h2v1h-2zM7 27h2v1h-2zM27 6h2v1h-2zM27 27h2v1h-2zM6 7h2v1h-2zM6 25h2v1h-2zM16 7h4v1h-4zM28 7h2v1h-2zM28 25h2v1h-2zM5 8h2v1h-2zM5 24h2v1h-2zM13 8h11v1h-11zM29 8h2v1h-2zM29 24h2v1h-2zM4 9h2v1h-2zM4 22h2v1h-2zM30 9h2v1h-2zM30 22h2v1h-2zM3 10h2v1h-2zM3 21h2v1h-2zM10 10h6v1h-6zM21 10h5v1h-5zM31 10h2v1h-2zM31 21h2v1h-2zM2 11h2v1h-2zM2 19h2v1h-2zM9 11h5v1h-5zM23 11h4v1h-4zM32 11h2v1h-2zM32 19h2v1h-2zM1 12h2v1h-2zM1 18h2v1h-2zM8 12h5v1h-5zM24 12h4v2h-4zM33 12h2v1h-2zM33 18h2v1h-2zM1 13h1v5h-1zM8 13h4v2h-4zM34 13h1v5h-1zM25 14h3v3h-3zM25 19h3v1h-3zM8 15h3v2h-3zM8 19h3v1h-3zM3 20h1v1h-1zM32 20h1v1h-1zM9 21h3v1h-3zM24 21h3v1h-3zM10 22h4v1h-4zM22 22h4v1h-4zM5 23h1v1h-1zM11 23h4v1h-4zM21 23h4v1h-4zM30 23h1v1h-1zM12 24h12v1h-12zM13 25h9v1h-9zM7 26h1v1h-1zM28 26h1v1h-1zM9 29h1v1h-1zM26 29h1v1h-1zM10 31h16v1h-16z"/><path fill="#FAFAFB" d="M12 3h12v1h-12zM11 4h1v1h-1zM10 5h1v1h-1zM9 6h1v1h-1zM8 7h1v1h-1zM7 8h1v1h-1zM6 9h1v1h-1zM5 10h1v1h-1zM4 11h1v1h-1zM3 12h1v1h-1zM3 18h1v1h-1zM2 13h1v5h-1zM28 13h1v5h-1z"/><path fill="#D4D9DF" d="M12 4h11v1h-11zM11 5h12v1h-12zM10 6h14v1h-14zM9 7h7v1h-7zM20 7h5v1h-5zM8 8h5v1h-5zM24 8h2v1h-2zM7 9h4v1h-4zM25 9h2v1h-2zM6 10h4v1h-4zM26 10h1v1h-1zM5 11h4v1h-4zM4 12h4v1h-4zM3 13h4v1h-4zM3 14h3v1h-3zM29 14h1v3h-1zM3 15h1v3h-1zM4 19h1v2h-1zM5 21h1v1h-1zM6 22h1v2h-1zM7 24h1v1h-1zM8 25h1v2h-1zM22 25h2v1h-2zM9 27h1v1h-1z"/><path fill="#C0C5CA" d="M23 4h2v1h-2zM23 5h3v1h-3zM24 6h3v1h-3zM25 7h3v1h-3zM26 8h3v1h-3zM27 9h3v1h-3zM27 10h4v1h-4zM27 11h5v1h-5zM28 12h5v1h-5zM7 13h1v1h-1zM29 13h5v1h-5zM6 14h2v1h-2zM30 14h2v1h-2zM4 15h4v4h-4zM5 19h3v1h-3zM5 20h4v1h-4zM6 21h3v1h-3zM7 22h3v1h-3zM7 23h4v1h-4zM8 24h4v1h-4zM9 25h4v1h-4zM9 26h2v1h-2zM10 27h1v1h-1zM10 28h15v1h-15z"/><path fill="#221007" d="M16 10h5v1h-5zM14 11h9v1h-9zM13 12h11v1h-11zM12 13h12v1h-12zM12 21h12v1h-12zM12 14h13v1h-13zM11 15h14v2h-14zM11 19h14v2h-14zM10 17h16v2h-16zM14 22h8v1h-8zM15 23h6v1h-6z"/><path fill="#929599" d="M32 14h2v1h-2zM30 15h4v2h-4zM29 17h5v1h-5zM28 18h5v1h-5zM28 19h4v1h-4zM27 20h5v1h-5zM27 21h4v1h-4zM26 22h4v1h-4zM25 23h5v1h-5zM24 24h5v1h-5zM24 25h4v1h-4zM11 26h17v1h-17zM11 27h16v1h-16zM25 28h1v1h-1z"/><path fill="#140800" fill-opacity="0.32" d="M1 19h1v1h-1zM34 19h1v1h-1zM2 20h1v1h-1zM33 20h1v1h-1zM3 22h1v1h-1zM32 22h1v1h-1zM4 23h1v1h-1zM31 23h1v1h-1zM5 25h1v1h-1zM30 25h1v1h-1zM6 26h1v1h-1zM29 26h1v1h-1zM7 28h1v1h-1zM28 28h1v1h-1zM8 29h1v1h-1zM27 29h1v1h-1zM9 31h1v1h-1zM26 31h1v1h-1zM10 32h1v1h-1zM25 32h1v1h-1zM11 33h14v1h-14z"/><path fill="#76797D" d="M10 29h15v1h-15zM11 30h14v1h-14z"/><path fill="#565658" d="M25 29h1v1h-1z"/><g class="tampa"><path fill="#1C0900" d="M15 4h7v1h-7zM13 5h2v1h-2zM21 5h2v1h-2zM12 6h1v1h-1zM22 6h2v1h-2zM22 18h2v1h-2zM11 7h1v1h-1zM11 16h1v1h-1zM24 7h1v1h-1zM24 16h1v1h-1zM10 8h1v1h-1zM25 8h1v2h-1zM9 9h2v1h-2zM9 13h2v3h-2zM9 10h1v3h-1zM9 16h1v1h-1zM25 10h2v5h-2zM24 15h3v1h-3zM26 16h1v1h-1zM11 17h2v1h-2zM23 17h2v1h-2zM12 18h3v1h-3zM14 19h8v1h-8z"/><path fill="#FAFAFB" d="M15 5h6v1h-6zM13 6h3v1h-3zM20 6h2v1h-2zM12 7h2v1h-2zM12 19h2v3h-2zM11 8h2v1h-2zM11 14h2v1h-2zM11 9h1v1h-1zM11 13h1v1h-1zM11 18h1v1h-1zM10 10h2v3h-2zM11 15h3v1h-3zM12 16h3v1h-3z"/><path fill="#D4D9DF" d="M16 6h4v1h-4zM14 7h9v1h-9zM14 15h9v1h-9zM13 8h10v1h-10zM13 14h10v1h-10zM12 9h12v5h-12zM15 16h7v1h-7zM15 17h4v1h-4zM14 20h1v3h-1z"/><path fill="#929599" d="M23 7h1v1h-1zM23 15h1v1h-1zM23 8h2v1h-2zM23 14h2v1h-2zM24 9h1v5h-1zM13 17h2v1h-2zM19 17h3v1h-3zM15 18h5v1h-5zM15 20h6v4h-6z"/><path fill="#76797D" d="M10 16h1v3h-1zM11 19h1v2h-1zM21 20h1v3h-1z"/><path fill="#565658" d="M22 16h2v1h-2zM22 21h2v1h-2zM25 16h1v2h-1zM22 17h1v1h-1zM20 18h2v1h-2zM24 18h2v1h-2zM22 19h3v2h-3z"/></g><g class="tampa-pisada"><path fill="#1C0900" d="M15 5h7v1h-7zM13 6h2v1h-2zM21 6h2v1h-2zM12 7h1v1h-1zM22 7h2v1h-2zM22 19h2v1h-2zM11 8h1v1h-1zM11 17h1v1h-1zM24 8h1v1h-1zM24 17h1v1h-1zM10 9h1v1h-1zM25 9h1v2h-1zM9 10h2v1h-2zM9 14h2v3h-2zM9 11h1v3h-1zM25 11h2v5h-2zM24 16h3v1h-3zM11 18h2v1h-2zM23 18h2v1h-2zM12 19h3v1h-3zM14 20h8v1h-8z"/><path fill="#FAFAFB" d="M15 6h6v1h-6zM13 7h3v1h-3zM20 7h2v1h-2zM12 8h2v1h-2zM12 20h2v2h-2zM11 9h2v1h-2zM11 15h2v1h-2zM11 10h1v1h-1zM11 14h1v1h-1zM11 19h1v1h-1zM10 11h2v3h-2zM11 16h3v1h-3zM12 17h3v1h-3z"/><path fill="#D4D9DF" d="M16 7h4v1h-4zM14 8h9v1h-9zM14 16h9v1h-9zM13 9h10v1h-10zM13 15h10v1h-10zM12 10h12v5h-12zM15 17h7v1h-7zM15 18h4v1h-4zM14 21h1v2h-1z"/><path fill="#929599" d="M23 8h1v1h-1zM23 16h1v1h-1zM23 9h2v1h-2zM23 15h2v1h-2zM24 10h1v5h-1zM13 18h2v1h-2zM19 18h3v1h-3zM15 19h5v1h-5zM15 21h6v3h-6z"/><path fill="#76797D" d="M10 17h1v2h-1zM11 20h1v1h-1zM21 21h1v2h-1z"/><path fill="#565658" d="M22 17h2v1h-2zM22 21h2v1h-2zM25 17h1v2h-1zM22 18h1v1h-1zM20 19h2v1h-2zM24 19h1v1h-1zM22 20h3v1h-3z"/></g></svg>';
 const LED_SVG = '<svg viewBox="0 0 22 24" width="22" height="24" shape-rendering="crispEdges"><g class="led-apagado"><path fill="#1A0B04" d="M9 6h4v1h-4zM9 15h4v1h-4zM8 7h1v1h-1zM8 14h1v1h-1zM13 7h1v1h-1zM13 14h1v1h-1zM7 8h1v1h-1zM7 13h1v1h-1zM14 8h1v1h-1zM14 13h1v1h-1zM6 9h1v4h-1zM15 9h1v4h-1z"/><path fill="#5C1A15" d="M9 7h4v1h-4zM8 8h6v1h-6zM7 9h2v2h-2zM11 9h4v1h-4zM10 10h5v1h-5zM7 11h7v1h-7zM7 12h6v1h-6zM8 13h4v1h-4zM9 14h2v1h-2z"/><path fill="#42110E" d="M14 11h1v1h-1zM13 12h2v1h-2zM12 13h2v1h-2zM11 14h2v1h-2z"/><path fill="#FFECD6" fill-opacity="0.5" d="M9 9h2v1h-2zM9 10h1v1h-1z"/><path fill="#0C0603" fill-opacity="0.45" d="M6 13h1v1h-1zM15 13h1v1h-1zM6 14h2v1h-2zM14 14h2v1h-2zM7 15h2v1h-2zM13 15h2v1h-2zM8 16h6v1h-6zM9 17h4v1h-4z"/></g><g class="led-aceso"><path fill="#3D0C08" d="M9 6h4v1h-4zM9 15h4v1h-4zM8 7h1v1h-1zM8 14h1v1h-1zM13 7h1v1h-1zM13 14h1v1h-1zM7 8h1v1h-1zM7 13h1v1h-1zM14 8h1v1h-1zM14 13h1v1h-1zM6 9h1v4h-1zM15 9h1v4h-1z"/><path fill="#E42A1F" d="M9 7h4v1h-4zM8 8h2v1h-2zM11 8h3v1h-3zM7 9h2v1h-2zM7 11h2v1h-2zM12 9h3v1h-3zM7 10h1v1h-1zM13 10h2v1h-2zM12 11h2v1h-2zM7 12h3v1h-3zM11 12h2v1h-2zM8 13h4v1h-4zM9 14h2v1h-2z"/><path fill="#FF7056" d="M10 8h1v1h-1zM10 12h1v1h-1zM11 9h1v1h-1zM8 10h1v1h-1zM10 10h3v1h-3zM9 11h3v1h-3z"/><path fill="#B81A13" d="M14 11h1v1h-1zM13 12h2v1h-2zM12 13h2v1h-2zM11 14h2v1h-2z"/><path fill="#FFE4D6" d="M9 9h2v1h-2zM9 10h1v1h-1z"/><path fill="#FF3626" fill-opacity="0.5" d="M8 3h6v1h-6zM8 18h6v1h-6zM6 4h10v1h-10zM6 17h10v1h-10zM5 5h12v1h-12zM5 16h12v1h-12zM4 6h5v1h-5zM4 15h5v1h-5zM13 6h5v1h-5zM13 15h5v1h-5zM4 7h4v1h-4zM4 14h4v1h-4zM14 7h4v1h-4zM14 14h4v1h-4zM3 8h4v1h-4zM3 13h4v1h-4zM15 8h4v1h-4zM15 13h4v1h-4zM3 9h3v4h-3zM16 9h3v4h-3z"/><path fill="#FF3626" fill-opacity="0.2" d="M8 0h6v1h-6zM8 21h6v1h-6zM5 1h12v1h-12zM5 20h12v1h-12zM4 2h14v1h-14zM4 19h14v1h-14zM3 3h5v1h-5zM3 18h5v1h-5zM14 3h5v1h-5zM14 18h5v1h-5zM2 4h4v1h-4zM2 17h4v1h-4zM16 4h4v1h-4zM16 17h4v1h-4zM1 5h4v1h-4zM1 16h4v1h-4zM17 5h4v1h-4zM17 16h4v1h-4zM1 6h3v2h-3zM1 14h3v2h-3zM18 6h3v2h-3zM18 14h3v2h-3zM0 8h3v6h-3zM19 8h3v6h-3z"/></g></svg>';
 const hashTxt = t => { let h = 7; for (const c of String(t)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
@@ -5016,7 +4945,7 @@ const IC = {
 const PX = d => `<svg viewBox="0 0 24 24" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="${d}"/></svg>`;
 const IC_PX = {
   continuar: PX('M7 4h2v1h-2zM7 5h3v1h-3zM7 6h4v1h-4zM7 7h6v1h-6zM7 8h8v1h-8zM7 9h9v1h-9zM7 10h10v1h-10zM7 11h12v1h-12zM7 12h12v1h-12zM7 13h10v1h-10zM7 14h9v1h-9zM7 15h8v1h-8zM7 16h6v1h-6zM7 17h4v1h-4zM7 18h3v1h-3zM7 19h2v1h-2z'),
-  aSeguir: PX('M3 5h13v1h-13zM3 6h13v1h-13zM3 10h13v1h-13zM3 11h13v1h-13zM13 13h2v1h-2zM13 14h3v1h-3zM3 15h7v1h-7zM13 15h5v1h-5zM3 16h7v1h-7zM13 16h6v1h-6zM13 17h7v1h-7zM13 18h6v1h-6zM13 19h5v1h-5zM13 20h3v1h-3zM13 21h2v1h-2z'),
+  seguir: PX('M3 5h13v1h-13zM3 6h13v1h-13zM3 10h13v1h-13zM3 11h13v1h-13zM13 13h2v1h-2zM13 14h3v1h-3zM3 15h7v1h-7zM13 15h5v1h-5zM3 16h7v1h-7zM13 16h6v1h-6zM13 17h7v1h-7zM13 18h6v1h-6zM13 19h5v1h-5zM13 20h3v1h-3zM13 21h2v1h-2z'),
   fila: PX('M3 5h13v1h-13zM3 6h13v1h-13zM3 10h13v1h-13zM3 11h13v1h-13zM16 12h2v1h-2zM16 13h2v1h-2zM16 14h2v1h-2zM3 15h7v1h-7zM16 15h2v1h-2zM3 16h7v1h-7zM12 16h10v1h-10zM12 17h10v1h-10zM16 18h2v1h-2zM16 19h2v1h-2zM16 20h2v1h-2zM16 21h2v1h-2z'),
   renomear: PX('M15 5h1v1h-1zM14 6h3v1h-3zM14 7h4v1h-4zM12 8h1v1h-1zM15 8h4v1h-4zM11 9h3v1h-3zM16 9h2v1h-2zM10 10h5v1h-5zM9 11h7v1h-7zM8 12h7v1h-7zM7 13h7v1h-7zM6 14h7v1h-7zM5 15h7v1h-7zM4 16h1v1h-1zM6 16h5v1h-5zM4 17h2v1h-2zM7 17h3v1h-3zM4 18h3v1h-3zM8 18h1v1h-1zM4 19h4v1h-4z'),
   youtube: PX('M13 3h8v1h-8zM13 4h8v1h-8zM18 5h3v1h-3zM3 6h7v1h-7zM17 6h4v1h-4zM3 7h7v1h-7zM16 7h5v1h-5zM3 8h2v1h-2zM15 8h3v1h-3zM19 8h2v1h-2zM3 9h2v1h-2zM14 9h3v1h-3zM19 9h2v1h-2zM3 10h2v1h-2zM13 10h3v1h-3zM19 10h2v1h-2zM3 11h2v1h-2zM12 11h3v1h-3zM3 12h2v1h-2zM11 12h3v1h-3zM3 13h2v1h-2zM10 13h3v1h-3zM16 13h2v1h-2zM3 14h2v1h-2zM10 14h2v1h-2zM16 14h2v1h-2zM3 15h2v1h-2zM16 15h2v1h-2zM3 16h2v1h-2zM16 16h2v1h-2zM3 17h2v1h-2zM16 17h2v1h-2zM3 18h2v1h-2zM16 18h2v1h-2zM3 19h15v1h-15zM3 20h15v1h-15z'),
@@ -5039,14 +4968,12 @@ function liDisco(it, i) {
   const nome = el('p', 'nome');
   if (i < 9) { const k = el('kbd', null, String(i + 1)); k.title = `Tecla ${i + 1} toca este disco`; nome.append(k); }
   nome.append(document.createTextNode(it.title));
-  const info = el('p', 'info');
-  info.append(el('span', 'canal', it.channel ? it.channel.trim() : 'Sem canal'), el('span', 'dur', fmt(it.duration)));
   const acoes = el('div', 'acoes');
   const mais = el('button', 'mais'); mais.type = 'button'; mais.dataset.role = 'mais';
   mais.setAttribute('aria-label', `Mais ações: ${it.title}`); mais.setAttribute('aria-haspopup', 'menu'); mais.setAttribute('aria-expanded', 'false');
   mais.innerHTML = svgMais();
   acoes.append(mais);
-  ficha.append(nome, info, acoes);
+  ficha.append(nome, acoes);
   li.append(capa, borda, ficha);
   li._chave = chaveItem(it, i);
   return li;
@@ -5063,7 +4990,7 @@ function liJob(j) {
   papel.append(furo); capa.append(papel);
   const borda = el('div', 'borda'); borda.setAttribute('aria-hidden', 'true');
   const ficha = el('div', 'ficha');
-  ficha.append(el('p', 'nome', j.label), el('p', 'info'), el('div', 'acoes'));
+  ficha.append(el('p', 'nome', j.label), el('div', 'acoes'));
   li.append(capa, borda, ficha);
   atualizarJob(li, j);
   return li;
@@ -5073,18 +5000,12 @@ function atualizarJob(li, j) {
   li.querySelector('.furo').style.setProperty('--pr', pr + '%');
   li.classList.toggle('falhou', j.status === 'error');
   li.querySelector('.nome').textContent = j.label;
-  const info = li.querySelector('.info'), acoes = li.querySelector('.acoes');
+  const acoes = li.querySelector('.acoes');
   const sig = j.status + '|' + (j.error || '');
-  if (j.status === 'running') {
-    info.replaceChildren(el('span', 'canal', 'Baixando'), el('span', 'dur', pr + '%'));
-  } else if (j.status === 'done') {
-    info.replaceChildren(el('span', 'canal', 'Pronto, entrando na prateleira'));
-  }
   if (li._sig === sig) return;
   li._sig = sig;
   acoes.replaceChildren();
   if (j.status === 'error') {
-    info.replaceChildren(el('span', 'canal', 'Não deu para baixar'));
     const pe = el('p', 'erro-job', motivoDownload(j.error));
     if (j.error) { pe.append(el('small', null, detalheErro(j.error))); pe.title = detalheErro(j.error); }
     acoes.append(pe);
@@ -5503,9 +5424,8 @@ function pintarSalvar(s, est, pr, t) {
     const aro = s.querySelectorAll('.sv-aro rect'), k = est === 'baixando' ? Math.round(aro.length * pr / 100) : 0;
     aro.forEach((r, i) => r.classList.toggle('on', i < k));
   }
-  const ic = pixel ? s.querySelector('.classico') : s;   // o ⊕ de sempre: no pixel, o do computador
   s.style.setProperty('--pr', pr + '%');
-  ic.innerHTML = est === 'salvo' ? IC.salvo : est === 'baixando' ? '<span class="anel" aria-hidden="true"></span>' : IC.salvar;
+  if (!pixel) s.innerHTML = est === 'salvo' ? IC.salvo : est === 'baixando' ? '<span class="anel" aria-hidden="true"></span>' : IC.salvar;
 }
 
 const corpoDe = r => r.link ? { url: r.link } : { youtube_id: r.youtube_id, title: r.title, channel: r.channel, thumb: r.thumb, duration: r.duration };

@@ -1,4 +1,4 @@
-"""Compactos dos Sons rapidos da vitrola no celular em pixel art (o toque de Habbo, mock h1): a
+"""Compactos dos Sons rapidos da vitrola em pixel art (o toque de Habbo, mock h1): a
 silhueta em degrau com o contorno, os sulcos, a borda com bisel, o brilho pixelado na diagonal e a
 sombra dura, desenhados celula a celula.
 
