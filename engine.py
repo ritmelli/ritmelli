@@ -1420,6 +1420,7 @@ class Engine:
                 self._gen += 1
                 self._q.clear()
             self.track = None
+            self.loop = False  # o Repetir vale para o disco do prato, e ele saiu
             self.paused = False
             self.ended = False
             self.error = None
