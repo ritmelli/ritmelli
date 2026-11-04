@@ -63,7 +63,7 @@ def ja_ligado():
         c.close()
     if atende and not a.no_browser:
         import webbrowser
-        webbrowser.open(f"http://127.0.0.1:{a.port}/")
+        webbrowser.open(f"http://127.0.0.1:{a.port}{pastas.PAGINA}")
     return True
 
 

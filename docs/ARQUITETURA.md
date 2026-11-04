@@ -197,7 +197,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     sons por cima.
 - `API.md`: contrato da API e checklist de todo tema.
 - `themes/<slug>/`: as interfaces; `gallery.html` lista e compara lado a lado, com as letras e as texturas do tema
-  da vitrola.
+  da vitrola. O app abre direto no tema da vitrola (`pastas.PAGINA`), e a galeria fica em `/`. Na primeira
+  vez, o tema abre as boas-vindas por cima (ver o `API.md`).
 - `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
   de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
   deitado), `dev/compara.py` (gate de "o celular não mudou": prints do tema em estados fixos,

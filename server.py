@@ -408,6 +408,15 @@ class App:
                         voice_mon_vol=e.voice_mon_vol, auto=self.auto)
         save_json(self.cfg_path, self.cfg)
 
+    def boas_vindas_pendentes(self):
+        """As boas-vindas aparecem na primeira vez: prateleira vazia e nunca fechadas. Quem ja usava o app antes delas
+        (com disco na prateleira) nao ve."""
+        return not self.cfg.get("boas_vindas") and not self.lib.items
+
+    def boas_vindas_vistas(self):
+        self.cfg["boas_vindas"] = True
+        save_json(self.cfg_path, self.cfg)
+
     # jobs -----------------------------------------------------------------
     def new_job(self, label, play, alvo=None):
         j = {"id": uuid.uuid4().hex[:8], "kind": "download", "label": label, "status": "running",
@@ -1661,6 +1670,18 @@ def build(app_state):
         A.save_cfg()
         return j_ok()
 
+    # as boas-vindas da primeira vez, so no PC: e nele que se instala o cabo e se escolhe o microfone
+    @r.get("/api/boas-vindas")
+    async def boas_vindas(request):
+        return web.json_response({"mostrar": do_pc(request) and A.boas_vindas_pendentes()})
+
+    @r.post("/api/boas-vindas")
+    async def boas_vindas_vistas(request):
+        if not do_pc(request):
+            return j_err("As boas-vindas são só no PC.", 403)
+        A.boas_vindas_vistas()
+        return j_ok()
+
     @r.get("/api/themes")
     async def themes(_):
         out = []
@@ -1855,7 +1876,7 @@ def main():
     threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
     print(f"mic: {d['mic']} | cabo: {d['out']} | fone: {d['monitor'] or '-'}", flush=True)
-    url = f"http://127.0.0.1:{a.port}/"
+    url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
     print(f"Vitrola {VERSAO} em {url}{' (MOCK, sem som)' if a.mock else ''} | dados em {pastas.DADOS}", flush=True)
     if not a.no_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()

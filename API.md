@@ -169,6 +169,8 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `DELETE /api/library/<id>` | - | apaga da biblioteca (e o arquivo); o disco no prato segue tocando e o arquivo dele sai quando o motor largar |
 | `GET /api/devices` | - | `{"inputs": [...], "outputs": [...], "default_input", "default_output", "current", "active"}` |
 | `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou "", "out"?: nome}` | troca dispositivo (reabre o áudio) |
+| `GET /api/boas-vindas` | - | `{"mostrar": bool}`: verdadeiro na primeira vez no PC (prateleira vazia e as boas-vindas nunca fechadas); pelo celular, sempre falso |
+| `POST /api/boas-vindas` | - | só no PC: as boas-vindas foram vistas e não voltam (fica no `config.json`) |
 | `GET /api/themes` | - | `[{"slug","url","name","direction","blurb"}]` |
 | `POST /api/shutdown` | - | desliga o servidor (a voz para de passar pelo cabo) |
 | `GET /api/lan` | - | `{"url": endereço do PC na rede de casa, ou null}` |
@@ -264,6 +266,11 @@ grande; e os sons curtos (até 15 s, tocam por cima) ficam em botões no alto da
 No toque, barra de volume e da faixa só muda arrastando o cursor:
 encostar em outro ponto da canaleta, sem querer ao rolar a página, não muda nada. Mouse e
 teclado seguem como sempre (clicar na canaleta pula para lá).
+
+Na primeira vez no PC (`GET /api/boas-vindas`), a vitrola abre as boas-vindas: o passo a
+passo do cabo (o VB-Cable, conferido pelo `GET /api/devices`, com a página oficial da VB-Audio
+quando falta), do microfone e do fone, do microfone no VRChat, da busca e do celular. Fechar de
+qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.
 
 ## Teste sem som
 
