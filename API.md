@@ -12,6 +12,9 @@ só com esta API.
   extra (fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
   relativo (`./x.svg`), servido em `/t/<slug>/x.svg`.
 - `themes/<slug>/meta.json`: `{"name": "...", "direction": "...", "blurb": "uma frase"}`.
+- O ícone é do servidor, igual para todo tema: a aba do navegador pega o `/favicon.ico`
+  sem nada no tema, e o atalho na tela inicial do celular pede
+  `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` no `<head>`.
 - Fonte externa só do Google Fonts; script externo nenhum.
 - API sempre por caminho absoluto (`/api/...`), mesma origem. Escrita é `fetch` com
   `method` e, quando tem corpo, `Content-Type: application/json`.
