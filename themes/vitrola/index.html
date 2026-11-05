@@ -153,17 +153,16 @@ kbd { font: inherit; }
     flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     padding: 18px 4px 12px 0;   /* folga para a capa levantada e o anel de foco */
     scrollbar-width: thin; scrollbar-color: #8a5a40 rgba(0,0,0,.18);
-    /* esmaece a borda onde ainda ha disco escondido */
-    -webkit-mask-image: linear-gradient(180deg, transparent, #000 var(--fc), #000 calc(100% - var(--fb)), transparent);
-            mask-image: linear-gradient(180deg, transparent, #000 var(--fc), #000 calc(100% - var(--fb)), transparent);
-    transition: --fc .25s ease, --fb .25s ease;
+    /* esmaece a borda de cima quando ainda ha disco escondido la; embaixo nao (ordem dele, 05/11: o esmaecido no pe
+       da tela parecia defeito), e a parede desce ate a barra, que cobre o que passa */
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 var(--fc));
+            mask-image: linear-gradient(180deg, transparent, #000 var(--fc));
+    transition: --fc .25s ease;
   }
   .parede.rolo { padding: 8px 10px 12px; }
   .rolo.mais-cima { --fc: 30px; }
-  .rolo.mais-baixo { --fb: clamp(28px, 14%, 56px); }
 }
 @property --fc { syntax: '<length>'; inherits: false; initial-value: 0px; }
-@property --fb { syntax: '<length-percentage>'; inherits: false; initial-value: 0px; }
 
 /* ---------- topo ---------- */
 .topo { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
@@ -589,7 +588,6 @@ input[type=range]:focus-visible { outline-offset: 2px; }
   body:not(.com-gaveta) .gaveta { display: none; }
   body.com-gaveta .parede { visibility: hidden; }
   body.com-gaveta .gaveta { animation: puxar .32s cubic-bezier(.2,.8,.25,1); }
-  .gaveta .rolo.mais-baixo { --fb: 34px; }
 }
 @keyframes puxar { from { transform: translateY(-48px); } }
 
@@ -3149,6 +3147,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   }
   .fila-vazia b { display: block; margin-bottom: 2px; font-size: 1.0625rem; color: var(--marfim); }
   .aviso { bottom: calc(var(--barra-h) + 14px); }
+  .parede { margin-bottom: calc(-1 * var(--fresta)); }
 
   /* a barra: o disco e o nome na esquerda (o clique abre a pagina), o mudo encostado nos pulos, os pulos no meio, o tempo
      e a seta na direita. As cinco colunas: a esquerda e a direita do mesmo tamanho, entao os pulos ficam no centro */
@@ -6120,11 +6119,10 @@ $('#resultados').addEventListener('click', e => {
   ul.addEventListener('pointercancel', e => soltar(e, true));
 })();
 
-/* rolos da parede (so no computador): esmaecem a borda onde ainda ha disco escondido */
+/* rolos da parede (so no computador): esmaecem a borda de cima quando ainda ha disco escondido la */
 function sombrear(r) {
   const fim = r.scrollHeight - r.clientHeight;
   r.classList.toggle('mais-cima', fim > 1 && r.scrollTop > 2);
-  r.classList.toggle('mais-baixo', fim > 1 && r.scrollTop < fim - 2);
 }
 document.querySelectorAll('.rolo').forEach(r => {
   r.addEventListener('scroll', () => { fecharMenu(false); sombrear(r); }, { passive: true });
