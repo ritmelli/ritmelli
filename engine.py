@@ -2,14 +2,17 @@
 o CABLE Output como microfone, entao a voz segue passando) e so o arquivo -> fone
 de quem toca (sem ouvir a propria voz). Sucessor do mic_mix.py de 16/10:
 o controle e por metodo (o server.py expoe por HTTP), nao por arquivo PAUSA/VOL."""
+import base64
 import collections
 import contextlib
 import ctypes
+import os
 import queue
 import subprocess
 import sys
 import threading
 import time
+import zlib
 
 import numpy as np
 import sounddevice as sd
@@ -93,6 +96,14 @@ SEGURA_BATIDAS = 8         # no final seco no tempo, a proxima fica no andamento
                            # esticada e a que entra por baixo antes do corte)
 _GRAVE_LP = signal.butter(2, GRAVE_HZ, "lowpass", fs=SR, output="sos")  # ida e volta: 4a ordem, fase zero
 _GRAVE_HP = np.vstack([signal.butter(2, GRAVE_HZ, "highpass", fs=SR, output="sos")] * 2)  # Linkwitz-Riley
+# o visor de DJ do tema (a onda do disco correndo, a grade de batidas e a proxima entrando na passagem): a onda sai em
+# colunas de VISOR_PASSO com a energia de tres faixas, como a onda colorida do Rekordbox
+VISOR_PASSO = 0.04         # 25 colunas por segundo: uma celula de pixel do visor por coluna
+VISOR_SR = 12000           # o arquivo da prateleira se decodifica a parte so para a onda, nessa taxa
+VISOR_FAIXAS = ((30.0, 200.0), (200.0, 2000.0), (2000.0, 6000.0))  # grave (bumbo e baixo), medio (voz, caixa), agudo
+VISOR_DB = (-60.0, 0.0)    # a escala de cada faixa no byte: -60 dBFS = 0, 0 dBFS = 255
+VISOR_CACHE = 8            # ondas guardadas na memoria (a do prato e a da proxima nunca saem)
+ABAIXO_DO_NORMAL = 0x00004000 if sys.platform == "win32" else 0  # o ffmpeg da onda cede o processador ao audio
 
 
 def sem_cursor():
@@ -308,6 +319,123 @@ def _fase_rede(x, periodo, perto):
     return float((perto + np.median(d)) % periodo) if len(d) >= 3 else None
 
 
+def colunas_onda(x, sr):
+    """As colunas da onda do visor do audio mono x, que comeca num limite de coluna: (n, 3) bytes, a energia do grave,
+    do medio e do agudo (VISOR_FAIXAS) em cada coluna inteira de VISOR_PASSO, em dB na escala VISOR_DB. A mesma conta a
+    12 kHz (o arquivo, a parte) e a 48 kHz (o stream, no leitor): as faixas de frequencia sao as mesmas (25 Hz por
+    faixa da FFT nas duas) e a potencia sai normalizada pela janela, entao as duas ondas batem. Em pedacos de 1 s: a
+    conta inteira de uma vez prende o interpretador e o audio do cabo espera."""
+    m = int(round(sr * VISOR_PASSO))
+    n = len(x) // m
+    out = np.zeros((n, 3), np.uint8)
+    if not n:
+        return out
+    w = np.hanning(m).astype(np.float32)
+    f = np.fft.rfftfreq(m, 1.0 / sr)
+    faixas = [(f >= a) & (f < b) for a, b in VISOR_FAIXAS]
+    esc = 2.0 / (m * float((w * w).sum()))  # soma do espectro -> media quadratica do sinal na faixa (Parseval)
+    lo, hi = VISOR_DB
+    por = int(round(1.0 / VISOR_PASSO))
+    for a in range(0, n, por):
+        q = np.asarray(x[a * m:min(n, a + por) * m], np.float32).reshape(-1, m) * w
+        p = np.abs(np.fft.rfft(q, axis=1)) ** 2
+        for j, fx_ in enumerate(faixas):
+            db = 10.0 * np.log10(p[:, fx_].sum(axis=1) * esc + 1e-12)
+            out[a:a + len(q), j] = np.clip((db - lo) / (hi - lo) * 255.0, 0.0, 255.0).astype(np.uint8)
+    return out
+
+
+class Onda:
+    """A onda de um disco para o visor do tema: colunas de VISOR_PASSO (grave, medio, agudo), escritas aos pedacos. O
+    disco da prateleira e lido inteiro a parte (fonte "arquivo"); o do stream, conforme o leitor decodifica (fonte
+    "stream": o futuro so aparece ate onde ja decodificou, ~2 s, e na passagem o fim deste e o comeco da proxima
+    inteiros). Coluna nao escrita fica zero."""
+
+    def __init__(self, fonte, dur=None):
+        self.fonte = fonte
+        self.cols = np.zeros((int(np.ceil((dur or 0) / VISOR_PASSO)) + 1, 3), np.uint8)
+        self.n = 0              # colunas ate a ultima escrita
+        self.completa = False
+        self.versao = 0
+
+    def escreve(self, c0, cols):
+        fim = c0 + len(cols)
+        if c0 < 0 or not len(cols):
+            return
+        if fim > len(self.cols):
+            mais = np.zeros((max(fim, len(self.cols) * 3 // 2) - len(self.cols), 3), np.uint8)
+            self.cols = np.concatenate([self.cols, mais])
+        self.cols[c0:fim] = cols
+        self.n = max(self.n, fim)
+        self.versao += 1
+
+
+class _AcumOnda:
+    """A onda do stream feita no leitor: junta 1 s de audio decodificado e escreve as colunas dele (uma FFT de 25
+    colunas por segundo de audio, fora do lock do callback). Um por leitor: os blocos chegam em seguida, sem buraco."""
+
+    def __init__(self, motor, onda):
+        self.motor, self.onda = motor, onda
+        self.t0, self.buf, self.tam = None, [], 0
+
+    def bloco(self, t, arr):
+        if not len(arr):
+            return
+        if self.t0 is None:
+            self.t0 = t
+        self.buf.append(arr.mean(axis=1))
+        self.tam += len(arr)
+        if self.tam >= SR:
+            self.escreve()
+
+    def escreve(self):
+        if not self.buf:
+            return
+        x = np.concatenate(self.buf)
+        m = int(round(SR * VISOR_PASSO))
+        c0 = int(np.ceil(self.t0 / VISOR_PASSO - 1e-6))
+        de = max(0, int(round((c0 * VISOR_PASSO - self.t0) * SR)))
+        k = (len(x) - de) // m
+        if k > 0:
+            cols = colunas_onda(x[de:de + k * m], SR)
+            with self.motor._olock:
+                self.onda.escreve(c0, cols)
+            resto = x[de + k * m:]
+            self.t0 = (c0 + k) * VISOR_PASSO
+        else:
+            resto = x
+        self.buf, self.tam = ([resto], len(resto)) if len(resto) else ([], 0)
+        if not len(resto):
+            self.t0 = None
+
+
+def _visor_grade(g, fase, de, ate):
+    """A grade de batidas para o visor: o periodo e uma batida no tempo do proprio disco, e o trecho onde ela vale."""
+    return {"bpm": round(float(g.bpm), 2), "periodo": float(g.periodo), "fase": float(fase), "de": float(de),
+            "ate": float(ate)}
+
+
+def _visor_rampa(ini, ate, s, n_sob, n_rampa):
+    """A velocidade da proxima no visor, a mesma conta do esticar: s por n_sob amostras de saida e a volta a 1 em
+    n_rampa, meio cosseno de amplitude k (a soma do meio cosseno de n amostras e n/2 + 1/2). (vb, sob, rampa, k), os
+    tempos em s de saida."""
+    alvo = int(round((ate - ini) * SR))
+    return float(s), n_sob / SR, n_rampa / SR, float((alvo - s * n_sob - n_rampa) / (n_rampa / 2 + 0.5))
+
+
+def _visor_publico(de, para, visor):
+    """A passagem no formato do visor (ver o Engine.snapshot), com os numeros arredondados para o estado sair curto."""
+    def r(v):
+        if isinstance(v, dict):
+            return {k: r(x) for k, x in v.items()}
+        if isinstance(v, (list, tuple)):
+            return [r(x) for x in v]
+        if isinstance(v, (float, np.floating)):
+            return round(float(v), 4)
+        return v
+    return {"de": (de or {}).get("id"), "para": (para or {}).get("id"), **r(visor)}
+
+
 def medir_inicio(niv):
     """Onde comeca o som: o primeiro bloco acima do silencio (0 se nao ha)."""
     if not niv:
@@ -446,6 +574,15 @@ class Engine:
         self.virou = None        # (o que saiu, o que entrou, a tag) para o servidor tirar da fila
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
         self.pronto_falhou = None  # a tag da proxima que nao decodificou: o servidor nao prepara de novo
+        # o visor de DJ do tema: as ondas por id do disco (_onda_pede, onda) e a passagem que vem e a que acabou de
+        # acontecer, no formato do visor (_mede, _vira; ver o snapshot)
+        self._ondas = collections.OrderedDict()
+        self._olock = threading.Lock()
+        self._ondas_versao = 0   # sobe quando uma onda do arquivo fica pronta: o tema pede de novo
+        self._onda_fila = None   # a fila da thread da onda do arquivo (sobe no primeiro pedido)
+        self._onda_lendo = set()  # os ids com a onda do arquivo na fila ou sendo lida
+        self._visor_pas = None   # a passagem medida deste para a proxima
+        self._visor_feita = None  # a que trouxe este disco, enquanto o tema ainda desenha a sobreposicao
         self._mic = collections.deque()
         self._mon = collections.deque()
         self._stack = None
@@ -964,6 +1101,8 @@ class Engine:
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                   creationflags=NO_WINDOW)
             n = 0
+            # o stream nao tem arquivo para a onda do visor ler a parte: ela sai do que este leitor decodifica
+            acc = self._onda_acumulador(track) if stream else None
             try:
                 while gen == deck.gen:
                     if len(deck.q) > deck.ahead:
@@ -974,6 +1113,8 @@ class Engine:
                         break
                     arr = np.frombuffer(b[: len(b) // 8 * 8], np.float32).reshape(-1, 2)
                     rms = float(np.sqrt(np.mean(arr * arr))) if len(arr) else 0.0  # fora do lock do callback
+                    if acc is not None:
+                        acc.bloco(t + n / SR, arr)
                     with self._qlock:
                         if gen != deck.gen:
                             break
@@ -983,6 +1124,8 @@ class Engine:
             finally:
                 ff.kill()
                 ff.wait()
+                if acc is not None:
+                    acc.escreve()
             if gen != deck.gen:
                 return
             if n == 0 and stream and track.get("job") and deck is self._deck:
@@ -1055,6 +1198,7 @@ class Engine:
         self.error = None
         if not self.track.get("path"):  # disco ainda esperando o stream abrir: sem leitor
             return
+        self._onda_pede(self.track)
         threading.Thread(target=self._reader, args=(gen, self.track, start, self._deck), daemon=True).start()
 
     # passagem para a proxima ------------------------------------------------
@@ -1071,6 +1215,7 @@ class Engine:
                 self._pronto, self.pronto_tag = d, tag
                 self._deck.ahead = 10 ** 9  # o fim deste inteiro na memoria para medir (45 s sao ~17 MB)
                 atual = self._deck
+            self._onda_pede(track)
             threading.Thread(target=self._reader, args=(1, track, 0.0, d), daemon=True).start()
             threading.Thread(target=self._mede, args=(atual, d, self.track), daemon=True).start()
             return True
@@ -1085,12 +1230,14 @@ class Engine:
         passagem que esta soando."""
         if self._pronto is not None:
             self._pronto.gen += 1
+            self._visor_pas = None
         self._pronto = self.pronto_tag = self._virar_em = None
         self._deck.ahead = AHEAD
         if tudo:
             if self._saindo is not None:
                 self._saindo[0].gen += 1
             self._saindo = self._entrando = None
+            self._visor_pas = self._visor_feita = None  # pulou: a sobreposicao e a velocidade dela nao valem mais
 
     def _mede(self, atual, prox, tr_atual):
         """Espera o fim deste disco e o comeco da proxima decodificados e marca a virada: o final
@@ -1161,12 +1308,19 @@ class Engine:
                 self._sobrepor, self._entrar, self._grave = plano["sai"], plano["entra"], plano["grave"]
                 self.periodo_saida = plano["periodo_saida"]
                 self._virar_em = plano["virar"] - BLOCK / (2 * SR)  # vira no fim do bloco que acaba ali
+                visor = plano["visor"]
             else:
                 while prox.q and prox.q[0][0] + len(prox.q[0][1]) / SR <= ini:  # a proxima comeca no som
                     prox.q.popleft()
                 self._sobrepor = self._entrar = int(sobrepor * SR)
                 self._grave = None
                 self._virar_em = max(self.pos, virar)
+                # o visor: so o cruzamento de volume, sem grade nenhuma (nada promete batida casada)
+                visor = {"no_tempo": False, "v": self._virar_em, "t0": self._virar_em,
+                         "ini": prox.q[0][0] if prox.q else ini, "va": 1.0, "vb": 1.0, "sob": 0.0, "rampa": 0.0,
+                         "k": 0.0, "sai": sobrepor, "entra": sobrepor, "grave": None, "grade_de": None,
+                         "grade_para": None, "motivo": motivo}
+            self._visor_pas = _visor_publico(tr_atual, prox.track, visor)
         jeito = f"fade-out de {caindo:.1f} s" if fade else "final seco"
         print(f"passagem: {tr_atual.get('title')!r} -> {prox.track.get('title')!r}: som ate "
               f"{fim:.2f} s, {jeito}, vira em {virar:.2f} s sobrepondo {sobrepor:.2f} s, a proxima comeca em {ini:.2f} s",
@@ -1308,8 +1462,16 @@ class Engine:
                     t = ini + (phi[u - pad] / SR if u >= pad else (u - pad) / SR)
                     cabeca.append((max(0.0, t), saida[u:u + BLOCK]))
             sai = int(min(max(fim - t0, TRANS_SECO_S), 1.0) * SR)
+            # o visor: a proxima esticada pelas SEGURA_BATIDAS deste e de volta devagar (ou no andamento dela); a grade
+            # deste vai ate a batida em que a primeira dela cai, mesmo passado o fim do som dele
+            vb, sob, rampa, kr = ((1.0, 0.0, 0.0, 0.0) if esticada is None else
+                                  _visor_rampa(ini, ate, s, int((pb / s + SEGURA_BATIDAS * pa) * SR), n_rampa))
+            visor = {"no_tempo": True, "v": v, "t0": t0, "ini": ini, "va": 1.0, "vb": vb, "sob": sob, "rampa": rampa,
+                     "k": kr, "sai": sai / SR, "entra": (pad + int(ENTRA_SECO_S * SR)) / SR, "grave": None,
+                     "grade_de": _visor_grade(ga, a0, t_a, max(fim, a0 + k * pa) + 0.01),
+                     "grade_para": _visor_grade(gb, ini + vb * tau, ini, ini + BATIDA_S) if gb.firme else None}
             return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": silencio, "sai": sai,
-                    "entra": pad + int(ENTRA_SECO_S * SR), "grave": None, "periodo_saida": pa,
+                    "entra": pad + int(ENTRA_SECO_S * SR), "grave": None, "periodo_saida": pa, "visor": visor,
                     "log": (f"final seco, {quem} em {a0 + k * pa:.2f} s, na grade deste ({ga.bpm:.1f} BPM), "
                             f"ela comeca em {t0:.3f} s")}, None
         s, m = min(((pb / (pa * m), m) for m in (0.5, 1.0, 2.0)), key=lambda v: abs(np.log(v[0])))
@@ -1353,8 +1515,13 @@ class Engine:
         for u in range(0, len(saida), BLOCK):
             t = ini + (phi[u - pad] / SR if u >= pad else (u - pad) / SR)
             cabeca.append((max(0.0, t), saida[u:u + BLOCK]))
+        vb, sob, rampa, kr = _visor_rampa(ini, ate, s, n_sob, n_rampa)
+        visor = {"no_tempo": True, "v": v, "t0": t0, "ini": ini, "va": 1.0, "vb": vb, "sob": sob, "rampa": rampa,
+                 "k": kr, "sai": (pad + n_sob) / SR, "entra": (pad + n_sob) / SR, "grave": [w0 / SR, w1 / SR],
+                 "grade_de": _visor_grade(ga, a0, t_a, baixo),
+                 "grade_para": _visor_grade(gb, ini + s * tau, ini, ini + BATIDA_S)}
         return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": 0, "sai": pad + n_sob, "entra": pad + n_sob,
-                "grave": (w0, w1), "periodo_saida": pa,
+                "grave": (w0, w1), "periodo_saida": pa, "visor": visor,
                 "log": (f"{ga.bpm:.1f} BPM saindo, {gb.bpm:.1f} BPM entrando, a proxima a {s * 100 - 100:+.2f}% "
                         f"ate o fim da sobreposicao e de volta em {n_rampa / SR:.1f} s, a primeira batida dela em "
                         f"{t0 + tau:.3f} s, na grade deste; os graves trocam em {tm:.2f} s")}, None
@@ -1420,8 +1587,18 @@ class Engine:
             t = ini + (phi[u - pad] / SR if u >= pad else (u - pad) / SR)
             cabeca.append((max(0.0, t), saida[u:u + BLOCK]))
         novos = [(t_r + phi_a[u] / SR, z_a[u:u + BLOCK]) for u in range(0, len(z_a), BLOCK)]
+
+        def disco_a(i):
+            """A posicao deste disco na amostra i da saida dele (desde t_r)."""
+            return t_r + phi_a[min(len(phi_a) - 1, max(0, int(round(i))))] / SR
+
+        vb, sob, rampa, kr = _visor_rampa(ini, ate, sb, n_sob, n_rampa)
+        visor = {"no_tempo": True, "v": v, "t0": disco_a(t0), "ini": ini, "va": sa, "vb": vb, "sob": sob,
+                 "rampa": rampa, "k": kr, "sai": (pad + n_sob) / SR, "entra": (pad + n_sob) / SR,
+                 "grave": [w0 / SR, w1 / SR], "grade_de": _visor_grade(ga, disco_a(a0), a_longa - ga.fase, baixo),
+                 "grade_para": _visor_grade(gb, ini + sb * tau, ini, ini + BATIDA_S)}
         return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": 0, "sai": pad + n_sob, "entra": pad + n_sob,
-                "grave": (w0, w1), "sai_q": (t_r, novos), "periodo_saida": P / SR,
+                "grave": (w0, w1), "sai_q": (t_r, novos), "periodo_saida": P / SR, "visor": visor,
                 "log": (f"{ga.bpm:.1f} BPM saindo, {gb.bpm:.1f} BPM entrando, longe {(s - 1) * 100:+.1f}%: a que sai a "
                         f"{(sa - 1) * 100:+.2f}% em {n_ra / SR:.0f} s desde {t_r:.2f} s, a proxima a "
                         f"{(sb - 1) * 100:+.2f}% ate o fim da sobreposicao e de volta em {n_rampa / SR:.1f} s, a "
@@ -1448,12 +1625,130 @@ class Engine:
             ne = self._entrar if medida else 0
             self._entrando = [ne, 0] if ne else None
             self._deck = prox
+            # o visor segue desenhando a passagem que acabou de virar (a sobreposicao vem toda depois da virada)
+            self._visor_feita, self._visor_pas = (self._visor_pas if medida else None), None
             self._pronto = self.pronto_tag = self._virar_em = None
             prox.ahead = AHEAD
             self.track = prox.track
             self.pos = prox.q[0][0] if prox.q else 0.0
             self.ended = False
             self.virou = (sai, prox.track, tag)
+
+    # visor de DJ do tema ----------------------------------------------------
+    def _onda_pede(self, track):
+        """Garante a onda do disco para o visor (o tema pede pelo GET /api/onda/<id>, ver onda): o da prateleira e lido
+        inteiro uma vez, numa thread a parte, pelo ffmpeg em prioridade baixa e a VISOR_SR (o leitor do prato segue so
+        2 s adiante e nao serve para mostrar o que vem); o do stream sai do proprio leitor (_onda_acumulador), sem
+        abrir o stream de novo. Nada disso passa pelo callback de audio."""
+        iid = track.get("id") if track else None
+        path = str(track.get("path") or "") if track else ""
+        if not iid or not path:
+            return
+        dur = track.get("duration")
+        with self._olock:
+            o = self._ondas.get(iid)
+            if o is not None:
+                self._ondas.move_to_end(iid)
+            if path.startswith("http"):
+                if o is None:
+                    self._guarda_onda(iid, Onda("stream", dur))
+                return
+            if (o is not None and o.fonte == "arquivo") or iid in self._onda_lendo:
+                return
+            self._onda_lendo.add(iid)
+            if self._onda_fila is None:
+                self._onda_fila = queue.Queue()
+                threading.Thread(target=self._onda_loop, daemon=True).start()
+        self._onda_fila.put((iid, path, dur))
+
+    def _guarda_onda(self, iid, o):
+        """Com _olock: poe a onda no cache; sai a mais antiga que nao e a do prato nem a da proxima."""
+        self._ondas[iid] = o
+        self._ondas.move_to_end(iid)
+        vivas = {(self.track or {}).get("id"), (self._pronto.track or {}).get("id") if self._pronto else None}
+        for k in [k for k in self._ondas if k not in vivas][:max(0, len(self._ondas) - VISOR_CACHE)]:
+            del self._ondas[k]
+
+    def _onda_loop(self):
+        while True:
+            iid, path, dur = self._onda_fila.get()
+            try:
+                self._onda_arquivo(iid, path, dur)
+            except Exception as ex:  # noqa: BLE001 - sem a onda, o visor fica so com a linha do meio
+                print(f"visor: nao li a onda de {iid}: {ex!r}", file=sys.stderr, flush=True)
+            finally:
+                with self._olock:
+                    self._onda_lendo.discard(iid)
+
+    def _onda_arquivo(self, iid, path, dur):
+        """A onda do arquivo inteiro, 1 s de audio por vez (o ffmpeg decodifica no processo dele; aqui, uma FFT de 25
+        colunas por segundo). Aparece no cache a cada 30 s lidos (um disco de 1 h leva uns segundos) e de vez no fim,
+        quando o _ondas_versao sobe; a do stream do mesmo disco so sai quando esta termina."""
+        if not os.path.exists(path):
+            return
+        # estereo, e o mono pela media dos dois lados aqui, como o leitor do stream faz: o -ac 1 do ffmpeg soma os dois
+        # a -3 dB, e a onda do mesmo disco saia 3 dB mais alta que a do stream
+        ff = subprocess.Popen([FFMPEG, "-v", "error", "-nostdin", "-i", path, "-vn", "-f", "f32le", "-ac", "2",
+                               "-ar", str(VISOR_SR), "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              creationflags=NO_WINDOW | ABAIXO_DO_NORMAL, startupinfo=sem_cursor())
+        o = Onda("arquivo", dur)
+        m = int(round(VISOR_SR * VISOR_PASSO))
+        c, resto, mostra = 0, np.zeros(0, np.float32), int(30 / VISOR_PASSO)
+        try:
+            while True:
+                b = ff.stdout.read(VISOR_SR * 8)
+                if not b:
+                    break
+                lr = np.frombuffer(b[: len(b) // 8 * 8], np.float32).reshape(-1, 2)
+                x = np.concatenate([resto, lr.mean(axis=1)])
+                k = len(x) // m
+                if k:
+                    cols = colunas_onda(x[:k * m], VISOR_SR)
+                    with self._olock:
+                        o.escreve(c, cols)
+                        if c // mostra != (c + k) // mostra:
+                            atual = self._ondas.get(iid)
+                            if atual is None or atual.fonte == "arquivo":
+                                self._guarda_onda(iid, o)
+                    c += k
+                resto = x[k * m:]
+        finally:
+            ff.kill()
+            ff.wait()
+        with self._olock:
+            o.completa = True
+            if o.n:
+                self._guarda_onda(iid, o)
+                self._ondas_versao += 1
+
+    def _onda_acumulador(self, track):
+        """O _AcumOnda do leitor de stream de track, ou None (sem id, ou a onda do arquivo dele ja lida)."""
+        iid = track.get("id")
+        if not iid:
+            return None
+        with self._olock:
+            o = self._ondas.get(iid)
+            if o is None:
+                o = Onda("stream", track.get("duration"))
+                self._guarda_onda(iid, o)
+            if o.fonte != "stream":
+                return None
+        return _AcumOnda(self, o)
+
+    def onda(self, iid):
+        """A onda do disco iid para o visor do tema, ou None se o motor nao tem (ainda nao tocou ou saiu do cache):
+        {"id", "passo": VISOR_PASSO, "n": colunas, "completa": bool, "fonte": "arquivo" | "stream", "versao",
+        "onda": base64 de n x 3 bytes}. Cada coluna e (grave, medio, agudo), em dB de -60 a 0 dBFS lineares no byte
+        (0 = -60 dB ou menos, 255 = 0 dB), coluna i = o audio de i*passo a (i+1)*passo s do disco. Incompleta (o
+        arquivo ainda sendo lido, ou o stream, que so chega ate onde o leitor decodificou), vale pedir de novo; coluna
+        ainda nao lida vem zero. ~18 KB para 4 min (24 KB em base64)."""
+        with self._olock:
+            o = self._ondas.get(iid)
+            if o is None:
+                return None
+            dados, n, completa, fonte, versao = o.cols[:o.n].tobytes(), o.n, o.completa, o.fonte, o.versao
+        return {"id": iid, "passo": VISOR_PASSO, "n": n, "completa": completa, "fonte": fonte, "versao": versao,
+                "onda": base64.b64encode(dados).decode("ascii")}
 
     # comandos -------------------------------------------------------------
     def espera(self, track):
@@ -1472,6 +1767,7 @@ class Engine:
         with self._lock:
             if self.track is not atual:
                 return False
+            self._onda_pede(novo)
             if not atual.get("path"):
                 self.track = novo
                 self._restart(self._clamp(self.pos))
@@ -1576,6 +1872,22 @@ class Engine:
         return "playing"
 
     def snapshot(self):
+        """O estado do motor para a tela. O "visor" e o do visor de DJ do tema: "ondas" sobe quando uma onda de
+        arquivo fica pronta (pedir de novo o GET /api/onda/<id>), e "passagens" traz ate duas, a que trouxe o disco do
+        prato (enquanto ele e o "para" dela) e a medida dele para a proxima (ele e o "de"):
+        {"de", "para": ids dos discos, "no_tempo": bool (false = so o cruzamento de volume, sem grade),
+         "t0": onde a proxima comeca, no tempo do "de"; "ini": onde ela comeca no tempo dela;
+         "v": onde os volumes comecam a cruzar, no tempo do "de" (a virada do motor; ate uns ms antes do t0);
+         "va": a velocidade do "de" ali (1, ou a dele ja mudada quando os dois mudam);
+         "vb", "sob", "rampa", "k": a velocidade da proxima em s de saida desde o t0: vb por sob s, depois
+           1 + k * (1 + cos(pi * r / rampa)) / 2 por rampa s (r desde o fim do sob), depois 1;
+         "sai", "entra": quanto o "de" leva para calar (cosseno) e a proxima para subir (seno), em s de saida desde o v;
+         "grave": [g0, g1] em s de saida desde o v, a troca de grave (ate g0 o grave e do "de", depois de g1 da
+           proxima), ou null;
+         "grade_de", "grade_para": a grade de cada um no tempo do proprio disco, {"bpm", "periodo", "fase" (uma batida),
+           "de", "ate" (o trecho onde ela foi medida e vale)}, ou null;
+         "motivo": por que nao foi no tempo (texto do log), so quando no_tempo e false}.
+        Tempo de saida = o do relogio do som; no tempo de um disco que anda na velocidade v, 1 s de saida e v s dele."""
         tr = self.track
         return {
             "status": self.status(),
@@ -1590,6 +1902,8 @@ class Engine:
             "devices": dict(self.devices), "active_devices": dict(self.active),
             "error": self.error,
             "mina": self._mina.estado if self._mina is not None else "desligada",
+            "visor": {"ondas": self._ondas_versao,
+                      "passagens": [p for p in (self._visor_feita, self._visor_pas) if p is not None]},
         }
 
 
@@ -1624,6 +1938,108 @@ class MockEngine(Engine):
             if v is not None:
                 self.devices[k] = v
         self.active = self._real_names()
+
+    # o visor de DJ sem medir nada: a onda e a grade de mentira saem do id do disco (sempre as mesmas para ele), e a
+    # passagem e montada no fim do disco no mesmo formato da do motor, para o tema ter o que desenhar e printar
+    @staticmethod
+    def _falso(iid):
+        """O andamento de mentira do disco: (bpm na oitava lenta, periodo, a primeira batida), de 96 a 104 BPM (quase
+        toda passagem cai no alcance da passagem no tempo; a que nao cai mostra o cruzamento)."""
+        h = zlib.crc32(str(iid).encode())
+        bpm = 96.0 + h % 9
+        periodo = 60.0 / bpm
+        return bpm, periodo, 0.15 + (h >> 8) % 100 / 100 * periodo
+
+    def _onda_falsa(self, iid, dur):
+        """A onda de mentira: o bumbo em cada batida da grade, a caixa no meio, o chimbal em quatro, partes de 16
+        batidas com forca sorteada (as 4 primeiras batidas e uma ou outra parte sem bateria, nunca nos ultimos 30 s: a
+        passagem de mentira mostra as batidas das duas) e o fade dos ultimos 10 s."""
+        _, p, fase = self._falso(iid)
+        dur = float(dur or 180.0)
+        rng = np.random.default_rng(zlib.crc32(str(iid).encode()))
+        t = (np.arange(int(dur / VISOR_PASSO)) + 0.5) * VISOR_PASSO
+        b = (t - fase) / p
+        bumbo = np.exp(-(b % 1.0) * p / 0.09)
+        caixa = np.exp(-((b + 0.5) % 1.0) * p / 0.1)
+        chimbal = np.exp(-((b * 4) % 1.0) * p / 4 / 0.025)
+        parte = np.floor(np.maximum(b, 0) / 16).astype(int)
+        forca = rng.uniform(0.55, 1.0, parte.max() + 2)[parte]
+        bateria = ~(((b < 4) | (rng.random(parte.max() + 2) < 0.15)[parte]) & (t < dur - 30))
+        g = np.clip((dur - t) / 10.0, 0.02, 1.0) ** 1.5 * forca
+
+        def ruido():
+            return rng.uniform(0.9, 1.1, len(t))
+        # perto dos niveis da onda do Without Me (05/11): o grave a -21 dB entre os bumbos e -10 neles, o medio a -23 e -16
+        # na caixa, o agudo a -33 e -24 no chimbal
+        a = np.stack([(0.09 + 0.23 * bumbo * bateria) * g * ruido(),
+                      (0.07 + 0.09 * caixa * bateria) * g * ruido(),
+                      (0.022 + 0.04 * chimbal * bateria) * g * ruido()], axis=1)
+        lo, hi = VISOR_DB
+        return np.clip((20 * np.log10(np.maximum(a, 1e-6)) - lo) / (hi - lo) * 255, 0, 255).astype(np.uint8)
+
+    def _onda_pede(self, track):
+        iid = track.get("id") if track else None
+        if not iid:
+            return
+        with self._olock:
+            if iid in self._ondas:
+                self._ondas.move_to_end(iid)
+                return
+        o = Onda("arquivo", track.get("duration"))
+        o.escreve(0, self._onda_falsa(iid, track.get("duration")))
+        o.completa = True
+        with self._olock:
+            self._guarda_onda(iid, o)
+            self._ondas_versao += 1
+
+    def _mede(self, atual, prox, tr_atual):
+        """A passagem de mentira: espera o comeco da proxima decodificar (ou falhar, e ai ela toca no fim, como no
+        motor) e marca a virada 12 s antes do fim deste, com a primeira batida dela numa batida dele e 8 s de
+        sobreposicao; com os andamentos longe ou a batida ja passada, so o cruzamento de 6 s. O som dela entra sem
+        esticar: o visor e que mostra a velocidade do plano."""
+        limite = time.monotonic() + 5.0
+        while True:
+            if self._pronto is not prox or self._deck is not atual:
+                return
+            if prox.q or prox.eof_gen == prox.gen or time.monotonic() > limite:
+                break
+            time.sleep(0.05)
+        dur = float(tr_atual.get("duration") or 0)
+        with self._qlock:
+            if self._pronto is not prox or self._deck is not atual:
+                return
+            if not prox.q or not dur:
+                self.pronto_falhou = self.pronto_tag
+                self._cancela_passagem()
+                return
+            ini = prox.q[0][0]
+            bpm_a, pa, fa = self._falso(tr_atual.get("id"))
+            bpm_b, pb, fb = self._falso(prox.track.get("id"))
+            s = min((pb / (pa * m) for m in (0.5, 1.0, 2.0)), key=lambda v: abs(np.log(v)))
+            primeira = fb + max(0, np.ceil((ini - fb) / pb)) * pb  # a primeira batida dela, no tempo dela
+            u_b = (primeira - ini) / s
+            t0 = fa + round((dur - 12.0 + u_b - fa) / pa) * pa - u_b
+            if abs(s - 1) <= TEMPO_MAX and t0 - self.pos >= FOLGA_S:
+                sob = TRANS_MAX_S
+                tm = fa + round((t0 + sob / 2 - fa) / pa) * pa  # a troca de grave na batida dele do meio
+                visor = {"no_tempo": True, "v": t0, "t0": t0, "ini": ini, "va": 1.0, "vb": s, "sob": sob,
+                         "rampa": min(max(abs(s - 1) / RAMPA_TAXA, RAMPA_MIN_S), RAMPA_MAX_S), "k": s - 1,
+                         "sai": sob, "entra": sob, "grave": [tm - t0 - pa / 4, tm - t0 + pa / 4],
+                         "grade_de": {"bpm": bpm_a, "periodo": pa, "fase": fa, "de": dur - 4.0 - BATIDA_S, "ate": dur},
+                         "grade_para": {"bpm": bpm_b, "periodo": pb, "fase": primeira, "de": ini,
+                                        "ate": ini + BATIDA_S}}
+            else:
+                sob, t0 = 6.0, max(self.pos + 1.0, dur - 8.0)
+                visor = {"no_tempo": False, "v": t0, "t0": t0, "ini": ini, "va": 1.0, "vb": 1.0, "sob": 0.0,
+                         "rampa": 0.0, "k": 0.0, "sai": sob, "entra": sob, "grave": None, "grade_de": None,
+                         "grade_para": None, "motivo": (f"andamentos longe, {bpm_a:.1f} e {bpm_b:.1f} BPM"
+                                                        if abs(s - 1) > TEMPO_MAX else "a batida da virada ja passou")}
+            self._sobrepor = self._entrar = int(sob * SR)
+            self._grave = None
+            self._virar_em = t0 - BLOCK / (2 * SR)
+            self._visor_pas = _visor_publico(tr_atual, prox.track, visor)
+        print(f"passagem (mock): {tr_atual.get('title')!r} -> {prox.track.get('title')!r}: "
+              f"{'no tempo' if visor['no_tempo'] else 'so o cruzamento'}, vira em {t0:.2f} s", file=sys.stderr, flush=True)
 
     def _clock(self):
         out = np.zeros((BLOCK, 2), np.float32)
