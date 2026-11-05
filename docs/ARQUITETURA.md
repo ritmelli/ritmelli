@@ -58,6 +58,13 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   para a troca não sumir nem estourar; o tom é mudado em casa porque o da pedalboard
   atrasa 1 s. O efeito sempre começa desligado quando o servidor sobe. Banco de teste:
   `python dev/efeitos.py` (grava um .wav por efeito em `logs/efeitos/` para ouvir).
+- O pedal da mina: um módulo `mina` opcional, que não mora neste repo. Onde ele está ao lado do
+  código, o `fx.py` põe o pedal "Mina DJ" no lugar do alto-falante estourado e o `engine.py` o
+  liga e desliga com o pedal; sem ele, o app é o mesmo de sempre. O contrato: o engine chama
+  `mina.Mina(engine)`, `liga()`, `desliga()`, `microfone(x)` (a voz crua de quem toca, só com
+  a voz indo pro jogo) e `tocou(x)`; o módulo devolve a voz pelo `mina_voz` (a fila do cabo e
+  do fone, com 0,1 s de folga de rede), cala pelo `mina_cala` e acha a API pela `porta` do
+  engine. No `--mock` o pedal não liga.
 - `winvol.py`: o volume do microfone no Windows (IAudioEndpointVolume pelo comtypes); a "Voz"
   da interface é esse número, gravado e lido de volta por uma thread do engine.
 - `pareamento.py`: o celular pareado. O instalador libera a entrada no firewall também em
