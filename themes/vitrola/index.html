@@ -3257,6 +3257,23 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     grid-template-areas: "topo topo" "deck receptor" "parede parede" "mini mini";
   }
 }
+/* tela deitada com largura para as tres: a maleta aberta entre o toca-discos e o receiver, da altura toda (pedido dele,
+   05/11), e o receiver na coluna da direita. O toca-discos encolhe pela largura que sobra das duas (312 da maleta, 358 do
+   receiver, os dois vaos dos cabos); abaixo de 1160 px nao cabem as tres, e a maleta fica embaixo do receiver */
+@media (min-width: 1160px) and (min-aspect-ratio: 20/19) {
+  body.com-disco .app {
+    grid-template-columns: var(--deck-w) 312px minmax(0, 1fr);
+    grid-template-areas: "topo topo topo" "deck parede receptor" "deck parede ." "mini mini mini";
+    --deck-w: clamp(320px, min(42vw, 100vw - 2 * clamp(20px, 2.4vw, 44px) - 312px - 358px - 2 * clamp(60px, 5.5vw, 76px),
+                               (100dvh - var(--resto) - var(--barra-h) - var(--fresta)) * 1.25), 1100px);
+  }
+  /* o alto da maleta na linha do alto do toca-discos e do receiver (a margem de cima e do celular; os 8 da folga do rolo) */
+  body.com-disco .fila-parede { margin-top: -8px; }
+}
+/* tela muito baixa (o celular grande deitado): o receiver de uma coluna passava 10 px da tela; os vaos dele encolhem */
+@media (min-width: 900px) and (max-height: 499.98px) {
+  .palco .receptor { row-gap: 6px; padding-bottom: 10px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .giratorio { animation: none; }
