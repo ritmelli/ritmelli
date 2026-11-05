@@ -39,6 +39,7 @@ LIB = pastas.LIB  # audio baixado; library.json e config.json moram em --data-di
 THEMES = HERE / "themes"
 YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 YT_URL = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
+PAGINA_FOLGA = 8  # a busca pede tantos a mais na pagina de resultados: canal e playlist ocupam lugar e saem
 TICK = 1 / 15
 ESCUTA_S = 30.0  # tocando de fato esse tempo (ou 80% do disco, se for mais curto), conta uma escuta
 BUSCA_MAX = 200  # o carregar mais da busca vai ate aqui
@@ -375,6 +376,7 @@ class App:
         cls = eng.MockEngine if mock else eng.Engine
         self.engine = cls(mic=self.cfg.get("mic", "default"), out=self.cfg.get("out", "CABLE Input"),
                           monitor=self.cfg.get("monitor", "default"))
+        self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
         self.cfg.pop("mic_vol", None)  # o nivel da voz e o do Windows, que guarda sozinho (18/10)
         for k in ("vol", "mon_vol", "monitor_on", "voice_mon_vol"):
             if k in self.cfg:
@@ -466,9 +468,15 @@ class App:
                 return []  # link colado e um video so: nao ha mais
             info = {"entries": [fora.pede("info", alvo=f"https://www.youtube.com/watch?v={alvo}", opts=opts)]}
         else:
-            info = fora.pede("info", alvo=f"ytsearch{start + n}:{q}", opts=opts)
+            # a pagina de resultados do YouTube, a mesma do site, com a correcao de digitacao dele: "ma meillere
+            # enemy c'est toi" acha Ma Meilleure Ennemie. O ytsearch do yt-dlp desliga essa correcao e devolvia
+            # nada pra pedido torto (03/11). Canal e playlist vem misturados na pagina: saem no filtro de id abaixo,
+            # e a folga de PAGINA_FOLGA cobre o lugar deles pra fatia de start a start+n sair cheia.
+            from urllib.parse import quote
+            opts = {**opts, "playlistend": start + n + PAGINA_FOLGA}
+            info = fora.pede("info", alvo=f"https://www.youtube.com/results?search_query={quote(q)}", opts=opts)
         out = []
-        for e in list(info.get("entries") or [])[0 if alvo else start:]:
+        for e in list(info.get("entries") or []):
             yid = e.get("id")
             if not yid or not YT_ID.match(yid):
                 continue
@@ -476,7 +484,7 @@ class App:
                         "duration": e.get("duration"),
                         "channel": e.get("channel") or e.get("uploader"),
                         "thumb": thumb(yid), "in_library": False})
-        return out
+        return out if alvo else out[start:start + n]
 
     def mock_download(self, j, target):
         # --mock: finge o download (3 s de progresso) e reaproveita um audio que ja existe
