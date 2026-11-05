@@ -3317,93 +3317,421 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   /* o alto da maleta na linha do alto do toca-discos e do receiver (a margem de cima e do celular; os 8 da folga do rolo) */
   body.com-disco .fila-parede { margin-top: -8px; }
 }
-/* tela do notebook dele (1440 de largura) para cima: quatro colunas (pedido dele, 05/11). A maleta e o receiver mais
-   estreitos, os vaos curtos, e a pedaleira de efeitos na direita, da altura toda, como a do celular: a plaqueta do FX-12
-   com o visor do efeito e o Ouvir minha voz, e os pedais tres por fileira rolando por dentro. Os outros tamanhos ficam
-   para depois */
+/* ---------- mesa de DJ (pedido dele, 05/11: "abrir o aplicativo e ter a impressao de estar olhando a mesa de um DJ em
+   um show ao vivo", o mock B), na tela do notebook dele para cima (1400 de largura, deitada), onde a pagina unica ja
+   valia: tudo numa tela, sem a barra e sem a troca de pagina. Em cima a maleta do A seguir aberta (os discos em pe lado
+   a lado) e a prateleira numa fileira que corre de lado; no meio os dois toca-discos, um de cada lado, e entre eles a
+   tela grande com o visor de DJ, o mixer (os VUs, os volumes em pe, as chaves do set, o crossfader) e os pads dos Sons
+   rapidos; embaixo a pedaleira, metade de cada lado do mixer. O deck no ar troca de lado a cada passagem (o data-lado
+   do body, montarMesa e desenharMesa); a parede desmonta (display: contents) e cada parte dela vira uma peca da grade.
+   A busca abre por cima da prateleira e do deck da direita ---------- */
 @media (min-width: 1400px) and (min-aspect-ratio: 20/19) {
-  body.com-disco .app {
-    --mal-w: 272px; --rec-w: 300px; --gav-w: 332px; --vao: 24px;
-    grid-template-columns: var(--deck-w) var(--mal-w) var(--rec-w) var(--gav-w);
-    grid-template-areas: "topo topo topo topo" "deck parede receptor efeitos" "deck parede . efeitos";
-    column-gap: var(--vao);
-    --deck-w: clamp(320px, min(42vw, 100vw - 2 * clamp(20px, 2.4vw, 44px) - var(--mal-w) - var(--rec-w) - var(--gav-w) - 3 * var(--vao),
-                               (100dvh - var(--resto)) * 1.25), 1100px);
-  }
-  /* a pedaleira sempre a vista: a gaveta deixa de abrir por cima da maleta */
-  body.com-disco .palco .gaveta { display: grid; grid-area: efeitos; align-self: stretch; min-height: 0; animation: none; }
-  body.com-disco.com-gaveta .parede { visibility: visible; }
-  body.com-disco .cabo-gav { display: none; }
-  body.com-disco .palco .gaveta {
-    grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto minmax(0, 1fr);
-    grid-template-areas: "cabeca" "visor" "ouvir" "dica" "lista";
-    padding: 22px 18px 0;
-  }
-  body.com-disco .palco .gaveta:has(.dica-ouvir.so-dica) { grid-template-rows: auto auto auto minmax(0, 1fr); grid-template-areas: "cabeca" "visor" "ouvir" "lista"; }
-  body.com-disco .palco .gaveta::after { grid-row: 1 / span 3; margin: -11px -8px -12px; }
-  body.com-disco .palco .cabeca-gav::after { display: inline; }   /* o EFEITOS DE VOZ FX-12 cabe: so a tecla de fechar saiu */
-  body.com-disco #b-fechar-gav { display: none; }
-  body.com-disco .palco .mesa-gav .btn { min-height: 36px; font-size: .875rem; }
-  /* os pedais como no celular, tres por fileira; o banco tem as margens dos cabos dos lados (30 px) */
-  body.com-disco .palco .gaveta > .rolo { margin: 4px -18px 0; }
-  body.com-disco .palco #banco { display: block; max-width: none; margin: 0; padding: 14px 30px 16px; }
-  body.com-disco .palco .grupo-ef + .grupo-ef { margin-top: 16px; }
-  body.com-disco .palco .teclas { display: grid; grid-template-columns: repeat(3, 80px); }
-}
-/* pagina unica (pedido dele, 05/11: "colocar tudo na mesma pagina"), por enquanto so na tela do notebook dele (1400
-   de largura para cima, deitada). O toca-discos na esquerda; em cima a maleta aberta, o receiver e a pedaleira; embaixo
-   os Sons rapidos e a prateleira, que corre de lado em duas fileiras (a rodinha do mouse corre ela). Sem a barra e sem a
-   troca de pagina: a parede desmonta (display: contents) e cada parte dela vira uma peca da grade; a busca toma o lugar
-   da prateleira. A maleta e a pedaleira tem a altura da faixa de cima e rolam por dentro (o contain: size tira as duas
-   da medida da faixa, que fica com a altura do receiver). O Continuar ouvindo fica de fora por enquanto */
-@media (min-width: 1400px) and (min-aspect-ratio: 20/19) {
-  body.com-disco .app {
-    grid-template-rows: auto auto auto minmax(0, 1fr);
-    grid-template-areas: "topo topo topo topo" "deck fila receptor efeitos" "deck rapidos cab cab" "deck rapidos prat prat";
-  }
-  body.com-disco .app:has(#rapidos[hidden]) {
-    grid-template-areas: "topo topo topo topo" "deck fila receptor efeitos" "deck cab cab cab" "deck prat prat prat";
-  }
   #b-pagina { display: none; }
-  body.com-disco .parede { display: contents; }
-  body.com-disco .parede > #vista-prateleira { display: contents; }
-  body.com-disco .parede > #vista-busca:not([hidden]) { display: flex; grid-row: cab-start / prat-end; grid-column: cab-start / prat-end; min-height: 0; }
-  body.com-disco #continuar { display: none; }
-  /* a maleta aberta da altura da faixa, com os discos rolando entre a tampa e a frente */
-  body.com-disco .fila-parede {
+  body.mesa-dj.com-disco .app {
+    --vao: 12px;
+    --pad-y: 14px;
+    /* o meio (a tela grande; embaixo dela o mixer e os pads) cresce com a tela; o mixer passa um pouco da metade da
+       faixa de cima, para a maleta e a prateleira ficarem quase do mesmo tamanho */
+    --centro: clamp(400px, 28vw, 640px);
+    --mix-a: calc(var(--centro) * .47);
+    --mix-b: calc(var(--centro) * .1);
+    --pads-w: calc(var(--centro) - var(--mix-a) - var(--mix-b) - 2 * var(--vao));
+    grid-template-columns: minmax(0, 1fr) var(--mix-a) var(--mix-b) var(--pads-w) minmax(0, 1fr);
+    grid-template-rows: auto clamp(146px, 21.5dvh, 300px) clamp(138px, 21dvh, 340px) minmax(0, 1fr) 188px;
+    grid-template-areas:
+      "topo topo topo topo topo"
+      "fila fila prat prat prat"
+      "esq tv tv tv dir"
+      "esq mix mix pads dir"
+      "pedA mix mix pads pedB";
+    column-gap: var(--vao); row-gap: var(--vao);
+    padding: var(--pad-y) 20px;
+  }
+  body.mesa-dj .parede { display: contents; }
+  body.mesa-dj .parede > #vista-prateleira { display: contents; }
+  body.mesa-dj #continuar, body.mesa-dj #rapidos, body.mesa-dj .mini { display: none; }
+  /* sem os enfeites do toca-discos sozinho: os pes, os cabos e a legenda de atalhos */
+  body.mesa-dj .palco :is(.pes-mesa, .cabo-rca, .atalhos, .fila-palco) { display: none; }
+  /* a troca de lado: o braco e o disco de cada deck mudam de vez (o deck de cada lado e outro elemento) */
+  body.mesa-troca .palco :is(.braco, .disco, .brilho) { transition: none !important; }
+
+  /* ---- os dois toca-discos: a caixa de madeira e a chapa creme ficam no deck inteiro, com o prato e o braco na
+     esquerda e a tela do titulo, o tempo, a luz, o andamento e o transporte na direita (como a pickup do mock) ---- */
+  body.mesa-dj .palco .deck:not(.deck-deixa) { grid-area: esq; }
+  body.mesa-dj .palco .deck.deck-deixa { grid-area: dir; }
+  body.mesa-dj[data-lado="b"] .palco .deck:not(.deck-deixa) { grid-area: dir; }
+  body.mesa-dj[data-lado="b"] .palco .deck.deck-deixa { grid-area: esq; }
+  body.mesa-dj .palco .deck {
+    position: relative; z-index: 1; min-width: 0; min-height: 0;
+    display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); column-gap: 8px;
+    padding: 14px 16px 16px 14px; container-type: size;
+    border-radius: 4px; border-image: var(--mold-caixa); background: var(--veio), var(--madeira-ap);
+  }
+  body.mesa-dj .palco .deck::before {   /* a chapa creme, com a moldura fina por dentro da madeira */
+    content: ""; position: absolute; inset: 10px; z-index: 0; pointer-events: none;
+    border-radius: 10px; border-image: var(--mold-chapa); background: var(--escovado), #D6CFC2;
+  }
+  /* o prato do tamanho que a altura deixa, sem passar da largura que a coluna da direita precisa (o transporte) */
+  body.mesa-dj .palco .deck .mesa {
+    --tw: round(down, min(calc(100cqh * 1.25), calc(100cqw - clamp(178px, 34cqw, 320px))), 2px);
+    grid-column: 1; align-self: center; position: relative; z-index: 1;
+    width: var(--tw); height: calc(var(--tw) * .8); flex: none; aspect-ratio: auto; margin: 0;
+  }
+  body.mesa-dj .palco .deck .tampo { border-image: none; background: none; border-radius: 0; }
+  body.mesa-dj .palco .deck .placa { border-image: none; background: none; }
+  body.mesa-dj .palco .deck .selo-placa { right: 2cqi; bottom: .5cqi; }
+  /* o deck da deixa parado e mais apagado; o disco que sai segue girando ate a passagem acabar */
+  body.mesa-dj .palco .deck-deixa .giratorio { animation-play-state: paused; }
+  body.mesa-dj .palco .deck-deixa.gira .giratorio { animation-play-state: running; }
+  body.mesa-dj .palco .deck-deixa:not(.saindo) :is(.mesa, .faixa > :not(.deck-cab)) { filter: brightness(.74) saturate(.8); }
+  /* a letra do lado na quina de cima da chapa, como a do mock: o lado e do lugar, nao do deck */
+  body.mesa-dj .palco .deck-letra {
+    position: absolute; z-index: 4; left: 18px; top: 18px; display: grid; place-items: center; width: 34px; height: 34px;
+    padding-top: 1px; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; line-height: 1; color: var(--tinta);
+    background: #EFE6D5; border-image: var(--mold-etiqueta); box-shadow: 0 2px 0 rgba(42,24,18,.35);
+  }
+  body.mesa-dj .palco .deck-letra::before { content: "A"; }
+  body.mesa-dj[data-lado="b"] .palco .deck:not(.deck-deixa) .deck-letra::before, body.mesa-dj .palco .deck-deixa .deck-letra::before { content: "B"; }
+  body.mesa-dj[data-lado="b"] .palco .deck-deixa .deck-letra::before { content: "A"; }
+  /* a coluna da direita: a luz e o andamento, a tela do titulo, o tempo e o transporte */
+  body.mesa-dj .palco .deck .faixa {
+    grid-column: 2; align-self: center; position: relative; z-index: 1; min-width: 0;
+    grid-template-columns: minmax(0, 1fr); row-gap: 0;
+  }
+  /* a luz em cima da tela do titulo; o andamento dentro dela, embaixo do artista, como no visor de uma CDJ */
+  body.mesa-dj .palco .deck .faixa > .deck-cab { display: contents; }
+  body.mesa-dj .palco .deck .faixa > .deck-cab .deck-luz { grid-area: 1 / 1; justify-self: start; margin-bottom: 4px; }
+  body.mesa-dj .palco .deck .faixa > .titulo-faixa { grid-area: 2 / 1; }
+  body.mesa-dj .palco .deck .faixa > .canal-faixa { grid-area: 3 / 1; }
+  body.mesa-dj .palco .deck .faixa > .deck-cab .deck-bpm { grid-area: 4 / 1; position: relative; z-index: 1; }
+  body.mesa-dj .palco .deck .faixa::before, body.mesa-dj .palco .deck .faixa::after { grid-row: 2 / 5; }
+  body.mesa-dj .palco .deck .faixa > .linha-tempo { grid-area: 5 / 1; margin-top: 6px; }
+  body.mesa-dj .palco .deck .faixa > .comandos { grid-area: 6 / 1; margin-top: 4px; }
+  body.mesa-dj .palco .deck .faixa > .erro-faixa { grid-area: 7 / 1; margin-top: 6px; padding: 6px 8px; font-size: .75rem; line-height: 1.3; color: var(--tinta); }
+  body.mesa-dj .palco .deck .faixa > :is(.fim-disco, .situacao) { display: none; }
+  body.mesa-dj .palco .deck .faixa > .titulo-faixa { margin-top: 12px; font-size: 1.25rem; }
+  body.mesa-dj .palco .deck .faixa > .canal-faixa { margin-bottom: 0; font-size: .875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.mesa-dj .palco .deck-deixa.vazia .faixa > .canal-faixa { white-space: normal; font-size: .75rem; line-height: 1.3; }
+  body.mesa-dj .palco .deck .tempo { font-size: .875rem; min-width: 4ch; color: var(--tinta); text-shadow: 0 1px 0 rgba(255,255,255,.6); }
+  body.mesa-dj .palco .deck .tempo.total { color: var(--tinta-2); }
+  body.mesa-dj .palco .deck .linha-tempo { gap: 8px; }
+  body.mesa-dj .palco .deck .comandos { gap: 10px; }
+  body.mesa-dj .palco .deck .transp { width: 44px; }
+  body.mesa-dj .palco .deck .transp svg { width: 25px; height: 25px; }
+  body.mesa-dj .palco .deck :is(#b-aleatorio, #b-repetir) { display: none; }   /* moram no mixer: valem para o set */
+  /* o tocar da deixa e sempre o tocar (o estado do disco no ar nao e o dele) */
+  body.mesa-dj .palco .deck-deixa .tocar-grande::before { background-image: var(--tocar-grande-parado), var(--tocar-grande-sombra); }
+  body.mesa-dj .palco .deck-deixa .tocar-grande::after { background-image: var(--icone-grande-tocar); }
+  body.mesa-dj .palco .deck-deixa .tocar-grande:disabled::after { background-image: var(--icone-grande-tocar-apagado); }
+  /* a luz do deck numa etiqueta creme, e o andamento num visor escuro do lado */
+  body.mesa-dj .palco .deck .deck-cab[hidden] { display: none; }
+  body.mesa-dj .palco .deck .deck-luz {
+    display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 1px 9px 0 8px;
+    font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; line-height: 1; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--tinta); background: #EFE6D5; border-image: var(--mold-etiqueta); box-shadow: 0 2px 0 rgba(42,24,18,.3);
+  }
+  body.mesa-dj .palco .deck .deck-luz .lampada { width: 9px; height: 9px; }
+  body.mesa-dj .palco .deck .deck-bpm {
+    display: flex; align-items: baseline; gap: 6px; margin: 3px 7px 13px; padding: 0 11px;
+    font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; line-height: 1; color: var(--ambar); white-space: nowrap;
+  }
+  body.mesa-dj .palco .deck .deck-bpm .bpm-r { color: #A88A66; }
+  body.mesa-dj .palco .deck .deck-bpm b { font-weight: 400; min-width: 3.1ch; text-align: right; }
+  body.mesa-dj .palco .deck .deck-bpm .bpm-pitch { color: #7FE3F5; }
+  body.mesa-dj .palco .deck .deck-bpm .bpm-pitch:empty { display: none; }
+
+  /* ---- a tela grande: o monitor antigo de madeira, o vidro escuro com o visor de DJ (o mesmo desenho, maior), a
+     etiqueta do que ele mostra no alto e as leituras embaixo; do lado a luz, os botoes e a grade do alto-falante ---- */
+  body.mesa-dj #tv {
+    grid-area: tv; position: relative; z-index: 1; min-width: 0; min-height: 0;
+    display: grid; grid-template-columns: minmax(0, 1fr) 30px; column-gap: 8px; padding: 13px 12px 14px 13px;
+    border-radius: 4px; border-image: var(--mold-caixa); background: var(--veio), var(--madeira-ap);
+  }
+  body.mesa-dj .tv-vidro {
+    position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; container-type: inline-size;
+    padding: 18px 10px 6px; border-radius: 10px; border-image: var(--mold-rebaixo); background: #0B0807;
+    box-shadow: inset 0 0 18px rgba(255, 190, 110, .06);
+  }
+  body.mesa-dj .tv-cab {
+    position: absolute; z-index: 2; left: 50%; top: -9px; transform: translateX(-50%); white-space: nowrap;
+    padding: 2px 12px 1px; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; line-height: 1;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--tinta);
+    background: #E2D3B3; border-image: var(--mold-etiqueta); box-shadow: 0 2px 0 rgba(0,0,0,.45);
+  }
+  body.mesa-dj .tv-tela { position: relative; min-height: 0; }
+  body.mesa-dj .tv-tela > .visor-dj { position: absolute; inset: 0; z-index: 1; display: block; margin: 0; height: auto; background: #0B0807; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+  body.mesa-dj .tv-tela > .visor-dj.arrastando { cursor: grabbing; }
+  body.mesa-dj .tv-tela > .visor-dj .vdj-selo { bottom: 12px; }
+  body.mesa-dj .tv-leituras {
+    display: flex; align-items: center; gap: 4px 10px; min-width: 0; height: 22px; padding-top: 4px;
+    overflow: hidden; white-space: nowrap; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; line-height: 1;
+    letter-spacing: .04em; text-transform: uppercase; color: #CDB99B; border-top: 2px solid #2E2219;
+  }
+  body.mesa-dj .tv-leituras .tl { display: inline-flex; align-items: center; gap: 4px; }
+  body.mesa-dj .tv-leituras .tl-vao { flex: 1; }
+  /* os dois andamentos so com a tela larga (cada deck ja mostra o dele) */
+  @container (max-width: 440px) { body.mesa-dj .tv-leituras .tl.bpm { display: none; } }
+  body.mesa-dj .tv-leituras .tl b { display: inline-block; width: 14px; height: 16px; font-weight: 400; line-height: 17px; text-align: center; color: #0B0807; background: #CDB99B; }
+  body.mesa-dj .tv-leituras .tl.ar { color: var(--ambar); }
+  body.mesa-dj .tv-leituras .tl.ar b { background: var(--ambar); }
+  body.mesa-dj .tv-leituras .tl.dx { color: #7FE3F5; }
+  body.mesa-dj .tv-leituras .tl.dx b { background: #7FE3F5; }
+  body.mesa-dj .tv-leituras .tl.auto.on { color: #9BE07A; }
+  body.mesa-dj .tv-lado {
+    display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); justify-items: center; align-content: start; gap: 9px; padding-top: 6px;
+  }
+  body.mesa-dj .tv-lado .lampada.alerta { box-shadow: 0 0 8px 2px rgba(242,115,94,.55); }
+  body.mesa-dj .tv-knob {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #5C4A3C 0 3px, #2A1E19 3px 8px, #1A120E 8px 9px, transparent 9.5px),
+      repeating-conic-gradient(#3A2C24 0 15deg, #241A15 15deg 30deg);
+    box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.45);
+  }
+  body.mesa-dj .tv-grade {   /* a grade do alto-falante, em fendas */
+    align-self: stretch; width: 18px; margin-top: 4px; min-height: 20px;
+    background: repeating-linear-gradient(180deg, #2A1A10 0 3px, transparent 3px 6px);
+    box-shadow: 0 0 0 2px rgba(42,24,18,.35);
+  }
+
+  /* ---- o mixer: o receiver vira o mixer do set. Os VUs em cima, os tres volumes em pe (a canaleta de pixel girada,
+     o ambar subindo do pe), as chaves do set (Aleatorio, Repetir e Tocar parecidas saem do deck), o crossfader que anda
+     sozinho na passagem e a luz da transicao automatica ---- */
+  body.mesa-dj .palco .receptor {
+    grid-area: mix; width: auto; max-width: none; justify-self: stretch; align-self: stretch; min-height: 0;
+    display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+    row-gap: 6px; align-items: stretch; padding: 26px 18px 12px;
+  }
+  body.mesa-dj .palco .controles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); column-gap: 4px; min-height: 0; container-type: normal; }
+  body.mesa-dj .palco .fader {
+    position: relative; min-height: 0; container-type: size;
+    display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; justify-items: center; row-gap: 2px;
+  }
+  body.mesa-dj .palco .fader + .fader { margin-top: 0; }
+  body.mesa-dj .palco .fader label {
+    grid-row: 1; grid-column: 1; max-width: min(100%, 4.6em); white-space: normal; text-align: center;
+    font-size: .6875rem; line-height: 1.1;
+  }
+  body.mesa-dj .palco .fader label small { display: none; }
+  body.mesa-dj .palco .fader output { grid-row: 3; grid-column: 1; text-align: center; font-size: .75rem; }
+  /* a canaleta em pe: o range girado no meio do espaco que sobra (a medida do giro em px pares, a grade da arte) */
+  body.mesa-dj .palco .fader input {
+    position: absolute; left: 50%; top: calc(50% + 2px); grid-row: auto; grid-column: auto; margin: 0;
+    width: max(24px, round(down, calc(100cqh - 52px), 2px)); transform: translate(-50%, -50%) rotate(-90deg);
+  }
+  body.mesa-dj .palco .fader:has(label small:not(:empty)) input { opacity: .5; }
+  /* as chaves do set: teclas de madeira pequenas, com a luz e o nome em pixel embaixo */
+  body.mesa-dj .palco .marca-ap span { display: none; }
+  body.mesa-dj .palco .janela { order: 1; }
+  body.mesa-dj .palco .controles { order: 2; }
+  body.mesa-dj .mix-set { order: 3; position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  body.mesa-dj .tecla-set {
+    position: relative; display: grid; grid-template-rows: 28px auto; justify-items: center; row-gap: 2px;
+    padding: 0; border: 0; background: none; color: #F7EBD6;
+  }
+  body.mesa-dj .tecla-set::before {
+    content: ""; grid-row: 1; grid-column: 1; width: 34px; height: 28px; border-radius: 4px;
+    background: var(--veio), #66301A; border-image: var(--mold-objeto);
+  }
+  body.mesa-dj .tecla-set svg { grid-row: 1; grid-column: 1; align-self: center; position: relative; width: 19px; height: 19px; stroke-width: 2.4; }
+  body.mesa-dj .tecla-set[aria-pressed="true"] { color: var(--ambar-claro); }
+  body.mesa-dj .tecla-set .lampada { position: absolute; top: -3px; right: calc(50% - 21px); width: 7px; height: 7px; }
+  body.mesa-dj .tecla-set .rot-set {
+    grid-row: 2; padding-top: 2px; font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; line-height: 1.25; letter-spacing: 0;
+    text-transform: uppercase; color: var(--tinta); white-space: nowrap;
+  }
+  body.mesa-dj .tecla-set:active::before, body.mesa-dj .tecla-set.apertado::before { border-image: var(--mold-objeto-apertado); }
+  body.mesa-dj .tecla-set:active svg, body.mesa-dj .tecla-set.apertado svg { transform: translateY(2px); }
+  body.mesa-dj .tecla-set:focus-visible { outline: 3px solid #8F4A0C; outline-offset: 2px; }
+  /* o crossfader: a canaleta de pixel deitada com o pino creme, o A e o B nas pontas (aceso o lado no ar) */
+  body.mesa-dj .xfader { order: 4; position: relative; z-index: 1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 32px; }
+  body.mesa-dj .xf-l {
+    display: grid; place-items: center; width: 20px; height: 20px; padding-top: 1px;
+    font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; line-height: 1; color: var(--tinta);
+    background: #EFE6D5; border-image: var(--mold-etiqueta);
+  }
+  body.mesa-dj:not([data-lado="b"]) .xf-a, body.mesa-dj[data-lado="b"] .xf-b { background: var(--ambar); }
+  body.mesa-dj .xf-trilho {
+    position: relative; height: 16px; box-sizing: border-box;
+    border-style: solid; border-color: transparent; border-width: calc(8px / 3) calc(8px / 3) 4px;
+    border-image: var(--trilho-moldura) 2 2 3 2 / calc(8px / 3) calc(8px / 3) 4px stretch;
+    background: var(--trilho-fundo); background-clip: padding-box;
+  }
+  body.mesa-dj .xf-pino {
+    position: absolute; top: calc(50% - 46px / 3); left: calc(var(--x, 0) * (100% - 24px)); width: 24px; height: calc(92px / 3);
+    background: var(--cursor-pino) 0 0 / 100% 100% no-repeat; transition: left .07s linear;
+  }
+  body.mesa-dj .auto-luz {
+    order: 5; position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+    font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; line-height: 1; text-transform: uppercase; color: var(--tinta);
+  }
+  body.mesa-dj .auto-luz .lampada { width: 8px; height: 8px; }
+
+  /* ---- os Sons rapidos em pads de pixel, na caixa de madeira do lado do mixer: os de verdade da prateleira, cada um
+     numa cor, e as casas que sobram apagadas ---- */
+  body.mesa-dj #pads {
+    grid-area: pads; align-self: start; position: relative; z-index: 1; min-width: 0;
+    display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 8px; padding: 12px 14px 16px;
+    border-radius: 4px; border-image: var(--mold-caixa); background: var(--veio), var(--madeira-ap);
+  }
+  body.mesa-dj #pads h2 {
+    justify-self: center; padding: 2px 10px 1px; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400;
+    line-height: 1; letter-spacing: .05em; text-transform: uppercase; color: var(--tinta);
+    background: #E2D3B3; border-image: var(--mold-etiqueta); box-shadow: 0 2px 0 rgba(0,0,0,.4);
+  }
+  body.mesa-dj .pads-grade { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 8px; }
+  body.mesa-dj .pad { display: grid; grid-template-rows: auto auto; row-gap: 4px; min-width: 0; padding: 0; border: 0; background: none; color: var(--tinta); }
+  body.mesa-dj .pad-face {
+    display: block; aspect-ratio: 1; border-radius: 3px; background: var(--pad, #2B211C);
+    box-shadow: 0 0 0 2px var(--contorno), inset 3px 3px 0 rgba(255,255,255,.38), inset -3px -3px 0 rgba(0,0,0,.26), 0 4px 0 2px rgba(20,8,2,.5);
+  }
+  body.mesa-dj .pad.sem-som .pad-face {
+    background: #2B211C; box-shadow: 0 0 0 2px var(--contorno), inset 2px 2px 0 rgba(255,255,255,.07), inset -2px -2px 0 rgba(0,0,0,.4), 0 4px 0 2px rgba(20,8,2,.5);
+  }
+  body.mesa-dj .pad.tocando .pad-face {
+    filter: brightness(1.3) saturate(1.15);
+    box-shadow: 0 0 0 2px var(--contorno), inset 3px 3px 0 rgba(255,255,255,.55), inset -3px -3px 0 rgba(0,0,0,.2), 0 4px 0 2px rgba(20,8,2,.5), 0 0 14px 4px color-mix(in srgb, var(--pad) 70%, transparent);
+  }
+  body.mesa-dj .pad:active .pad-face, body.mesa-dj .pad.apertado .pad-face { transform: translateY(2px); box-shadow: 0 0 0 2px var(--contorno), inset 2px 2px 0 rgba(0,0,0,.2), 0 2px 0 2px rgba(20,8,2,.5); }
+  body.mesa-dj .pad-nome {
+    display: block; min-width: 0; padding: 1px 3px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: .625rem; font-weight: 700; font-stretch: 85%; line-height: 1.25; text-align: center; color: var(--tinta);
+    background: #EFE6D5; border-image: var(--mold-etiqueta);
+  }
+  body.mesa-dj .pad:focus-visible { outline: 3px solid var(--ambar); outline-offset: 3px; }
+  body.mesa-dj .pads-vazio { display: none; font-size: .75rem; line-height: 1.3; text-align: center; color: var(--marfim); text-shadow: 0 1px 0 var(--contorno); }
+  body.mesa-dj #pads.sem-sons .pads-vazio { display: block; }
+
+  /* ---- a pedaleira: metade de cada lado do mixer, cada uma no feltro dela, sem a plaqueta do FX-12 (o LED do pedal
+     ja diz qual esta ligado, e pisar no aceso desliga). Quem corre de lado e o painel inteiro, com o feltro preso nos
+     pedais (pedido dele, 05/11: o feltro parado com os pedais passando por cima irritava) ---- */
+  body.mesa-dj .palco .gaveta { display: grid; grid-area: pedA; align-self: stretch; min-height: 0; contain: size; animation: none; }
+  body.mesa-dj .palco .gaveta-dir { grid-area: pedB; }
+  body.mesa-dj.com-gaveta .parede { visibility: visible; }
+  body.mesa-dj .palco .gaveta,
+  body.mesa-dj .palco .gaveta:has(.dica-ouvir.so-dica) { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "lista"; padding: 0; }
+  body.mesa-dj .palco .gaveta::after, body.mesa-dj .palco :is(.cabeca-gav, .mesa-gav, .visor-gav, .cabo-gav) { display: none; }
+  body.mesa-dj .palco .gaveta { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #6a5246 rgba(0,0,0,.25); background-attachment: local; }
+  body.mesa-dj .palco .gaveta > .rolo { grid-area: lista; overflow: visible; margin: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }
+  body.mesa-dj .palco .banco { position: relative; display: flex; flex-wrap: nowrap; gap: 0 22px; width: max-content; max-width: none; margin: 0; padding: 10px 30px 2px; }
+  body.mesa-dj .palco .grupo-ef + .grupo-ef { margin-top: 0; }
+  body.mesa-dj .palco .teclas { display: flex; flex-wrap: nowrap; padding-bottom: 10px; }
+  body.mesa-dj .palco .suporte { display: none; }
+
+  /* ---- a maleta do A seguir aberta, deitada: a tampa com a plaqueta em cima, os discos em pe lado a lado (a capa
+     inteira e a etiqueta creme por cima, ambar nas parecidas do Automatico) e a frente com os fechos. Muitos discos
+     correm de lado, com a rodinha ---- */
+  body.mesa-dj .fila-parede.maleta {
     grid-area: fila; align-self: stretch; justify-self: stretch; contain: size; width: auto; max-width: none; margin: 0;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
+    padding: 8px 0 0; isolation: isolate;
+    background:
+      /* a costura da beira de cima e o forro escuro por dentro, com a sombra da beira */
+      repeating-linear-gradient(90deg, #D9AE74 0 5px, transparent 5px 9px) 30px 5px / calc(100% - 60px) 2px no-repeat,
+      linear-gradient(180deg, #140802 0 6px, #241007 6px) 16px 16px / calc(100% - 32px) calc(100% - 16px) no-repeat,
+      linear-gradient(180deg, var(--contorno) 0 2px, #B87442 2px 4px, #7A3F1E 4px 12px, #6B3518 12px);
+    box-shadow: 0 0 0 2px var(--contorno), inset 2px 0 0 #8C4C26, inset -2px 0 0 #4E240E, 0 6px 0 2px rgba(20,8,2,.45);
   }
-  body.com-disco .fila-parede .lista-fila { min-height: 0; align-content: start; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; clip-path: none; }
-  body.com-disco .palco .gaveta { contain: size; }
-  /* a pedaleira na faixa de cima: so o feltro e os pedais, numa fileira que corre de lado como a prateleira
-     (empilhados, so uma lasca da primeira fileira cabia). A plaqueta do FX-12 sai inteira (pedido dele, 05/11): a marca,
-     o visor do efeito (o LED de cada pedal ja diz qual esta ligado, e pisar no aceso desliga) e o Ouvir minha voz */
-  body.com-disco .palco .gaveta,
-  body.com-disco .palco .gaveta:has(.dica-ouvir.so-dica) { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "lista"; padding: 0; }
-  body.com-disco .palco .gaveta::after, body.com-disco .palco .cabeca-gav, body.com-disco .palco .mesa-gav { display: none; }
-  body.com-disco .palco .suporte { margin-bottom: 6px; }
-  /* quem corre e o painel inteiro, com o feltro preso nos pedais (background-attachment: local; pedido dele, 05/11: na
-     vida real os pedais estao presos no feltro, e o feltro parado com os pedais passando por cima irritava); a borda e
-     a sombra do painel ficam paradas, como a moldura */
-  body.com-disco .palco .gaveta { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; background-attachment: local; }
-  body.com-disco .palco .gaveta > .rolo { overflow: visible; margin: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }
-  body.com-disco .palco #banco { display: flex; flex-wrap: nowrap; gap: 0 24px; width: max-content; padding: 16px 30px 6px; }
-  body.com-disco .palco .grupo-ef + .grupo-ef { margin-top: 0; }
-  body.com-disco .palco .teclas { display: flex; flex-wrap: nowrap; }
-  /* os Sons rapidos numa coluna embaixo da maleta, rolando por dentro se forem muitos */
-  body.com-disco .rapidos { grid-area: rapidos; align-self: stretch; align-content: start; min-height: 0; margin: 0; padding-top: 16px; overflow-y: auto; scrollbar-width: none; }
-  /* a prateleira: o painel desce a fresta para encostar no titulo; as capas em duas fileiras do tamanho da altura que
-     sobra (100cqh menos as folgas, as tabuas, o vao entre as fileiras e a barra de rolagem), correndo de lado */
-  body.com-disco #rolo-prateleira { min-height: 0; margin-top: calc(-1 * var(--fresta)); container-type: size; }
-  body.com-disco .estante {
-    height: 100%; grid-template-columns: none; grid-auto-flow: column; grid-template-rows: repeat(2, auto);
-    grid-auto-columns: calc((100cqh - 80px) / 2); align-content: start;
-    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x proximity;
-    scrollbar-width: thin; scrollbar-color: #8a5a40 rgba(0,0,0,.18);
+  body.mesa-dj .fila-parede.maleta::after {
+    inset: -4px -4px -4px;
+    background:
+      var(--maleta-dobradica) left 20% top 0 / 22px 26px no-repeat,
+      var(--maleta-dobradica) right 20% top 0 / 22px 26px no-repeat,
+      var(--maleta-canto-a) left top / 28px 30px no-repeat,
+      var(--maleta-canto-b) right top / 28px 30px no-repeat,
+      var(--maleta-canto-c) left bottom / 28px 30px no-repeat,
+      var(--maleta-canto-d) right bottom / 28px 30px no-repeat;
   }
-  body.com-disco .estante > li { scroll-snap-align: start; }
-  body.com-disco .estante .disco-item:last-child .borda { margin-right: calc(var(--gap) / -2); }   /* a tabua comprida do fim alargava a rolagem */
+  body.mesa-dj .fila-parede.maleta .cabeca-fila { justify-self: center; width: min(100% - 80px, 360px); margin: 0; }
+  body.mesa-dj .fila-parede.maleta .abre-fila { display: none; }
+  body.mesa-dj .fila-parede.maleta .lista-fila {
+    display: flex; flex-wrap: nowrap; align-items: stretch; gap: 10px; min-height: 0; margin: 8px 18px 0; padding: 4px 4px 2px;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; clip-path: none;
+  }
+  body.mesa-dj .fila-parede.maleta .item-fila {
+    position: relative; flex: none; display: block; width: auto; height: 100%; aspect-ratio: 1; min-height: 0; margin: 0 !important;
+    padding: 0; container-type: normal;
+  }
+  body.mesa-dj .fila-parede.maleta .item-fila::before {   /* a etiqueta creme no pe da capa */
+    left: 4px; right: 4px; top: auto; bottom: 4px; height: 34px;
+  }
+  body.mesa-dj .fila-parede.maleta .tocar-fila {
+    position: absolute; inset: 0; display: block; padding: 0; border-radius: 0;
+  }
+  body.mesa-dj .fila-parede.maleta .tocar-fila::after { content: none; }
+  body.mesa-dj .fila-parede.maleta .tocar-fila .capinha {
+    position: absolute; inset: 0; width: auto; height: auto; aspect-ratio: auto; clip-path: none; border-radius: 0;
+    background: #E4D7BF; box-shadow: 0 0 0 2px var(--contorno), 0 4px 0 2px rgba(0,0,0,.45);
+  }
+  body.mesa-dj .fila-parede.maleta .tocar-fila .capinha::before { content: none; }
+  body.mesa-dj .fila-parede.maleta .tocar-fila .capinha > * { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); clip-path: none; object-fit: cover; }
+  body.mesa-dj .fila-parede.maleta .tocar-fila .txt {
+    position: absolute; z-index: 2; left: 10px; right: 26px; bottom: 9px; display: block;
+  }
+  body.mesa-dj .fila-parede.maleta .tocar-fila .t { font-size: .75rem; line-height: 1.15; }
+  body.mesa-dj .fila-parede.maleta .tocar-fila .s { font-size: .625rem; line-height: 1.2; }
+  body.mesa-dj .fila-parede.maleta .item-fila .tirar {
+    position: absolute; z-index: 3; right: 6px; bottom: 9px; width: 20px; height: 24px; transform: none; border-radius: 0;
+  }
+  body.mesa-dj .fila-parede.maleta .item-fila .tirar svg { width: 15px; height: 15px; }
+  body.mesa-dj .fila-parede.maleta .item-fila .alca {
+    position: absolute; z-index: 3; right: 4px; top: 4px; width: 22px; height: 18px; border-radius: 0; opacity: 0;
+    color: #FBEFD9; background: #2B1B12; box-shadow: 0 0 0 2px var(--contorno);
+  }
+  body.mesa-dj .fila-parede.maleta .item-fila .alca svg { width: 14px; height: 14px; }
+  body.mesa-dj .fila-parede.maleta .item-fila:is(:hover, :focus-within) .alca, body.mesa-dj .fila-parede.maleta .item-fila.arrastando .alca { opacity: 1; }
+  body.mesa-dj .fila-parede.maleta .item-fila.arrastando { z-index: 5; }
+  /* a frente baixa, so a beira grossa com os dois fechos */
+  body.mesa-dj .fila-parede.maleta .maleta-pe {
+    height: 18px; margin: 6px 0 0;
+    background:
+      var(--maleta-fecho) left 22% top -6px / 15px 22px no-repeat,
+      var(--maleta-fecho) right 22% top -6px / 15px 22px no-repeat,
+      linear-gradient(180deg, var(--contorno) 0 2px, #C88A52 2px 4px, #8C4C26 4px 7px, #582A12 7px calc(100% - 2px), var(--contorno) calc(100% - 2px));
+    box-shadow: none;
+  }
+  body.mesa-dj .fila-parede.maleta .maleta-pe::before, body.mesa-dj .fila-parede.maleta .maleta-pe::after { content: none; }
+  /* vazia: a maleta aberta com o aviso dentro */
+  body.mesa-dj .fila-vazia:not([hidden]) {
+    display: block; grid-area: fila; align-self: center; justify-self: center; position: relative; z-index: 3; max-width: 30rem;
+    margin: 18px 0 0; padding: 0 12px; text-align: center; text-wrap: balance; font-size: .875rem; line-height: 1.45; color: var(--marfim-2);
+  }
+
+  /* ---- a prateleira: o painel de jacaranda com a plaqueta no alto, as capas numa fileira so que corre de lado (a
+     rodinha e as setas) ---- */
+  body.mesa-dj #vista-prateleira #cab-prat {
+    grid-area: prat; align-self: start; justify-self: center; position: relative; z-index: 2; height: auto; margin: 10px 0 0; padding: 3px 12px 2px;
+    background: #E2D3B3; border-image: var(--mold-etiqueta); box-shadow: 0 2px 0 rgba(0,0,0,.45);
+  }
+  body.mesa-dj #vista-prateleira #cab-prat { display: flex; align-items: baseline; gap: 8px; margin-bottom: 0; }
+  body.mesa-dj #cab-prat h2 { font-size: 1.125rem; color: var(--tinta); text-shadow: none; }
+  body.mesa-dj #cab-prat .conta { color: var(--tinta-2); text-shadow: none; }
+  body.mesa-dj #rolo-prateleira { grid-area: prat; position: relative; min-height: 0; margin: 0; padding: 42px 40px 12px; container-type: size; }
+  body.mesa-dj #rolo-prateleira::before { top: 0; }
+  body.mesa-dj .estante {
+    --gap: 14px; height: 100%; padding: 6px 7px 0; row-gap: 0;
+    grid-template-columns: none; grid-auto-flow: column; grid-template-rows: auto; grid-auto-columns: calc(100cqh - 26px); align-content: start;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none;
+  }
+  body.mesa-dj .estante > li { scroll-snap-align: start; }
+  body.mesa-dj .estante .ficha .nome { -webkit-line-clamp: 2; font-size: .75rem; }
+  body.mesa-dj .estante .disco-item:last-child .borda { margin-right: calc(var(--gap) / -2); }
+  body.mesa-dj .prat-seta {
+    position: absolute; z-index: 3; top: calc(42px + (100% - 54px - 18px) / 2 - 22px); width: 26px; height: 44px; display: grid; place-items: center;
+    padding: 0; color: #F7EBD6; border-radius: 4px; background: var(--veio), #66301A; border-image: var(--mold-objeto);
+  }
+  body.mesa-dj .prat-seta.esq { left: 9px; }
+  body.mesa-dj .prat-seta.dir { right: 9px; }
+  body.mesa-dj .prat-seta:disabled svg { opacity: .3; }
+  body.mesa-dj .prat-seta:active:not(:disabled) { transform: translateY(2px); border-image: var(--mold-objeto-apertado); }
+  /* a busca cai do campo como uma gaveta, por cima da mesa (no painel de jacaranda da prateleira), e a mesa fica
+     inteira embaixo: a prateleira e a maleta seguem no lugar (o montarMesa mede o campo) */
+  body.mesa-dj .parede > #vista-prateleira[hidden] { display: contents !important; }
+  body.mesa-dj .parede > #vista-busca:not([hidden]) {
+    display: flex; position: fixed; z-index: 30; left: var(--busca-x, 200px); top: var(--busca-y, 70px); bottom: 22px;
+    width: max(var(--busca-w, 540px), 660px); min-height: 0; padding: 14px 16px 10px;
+    border-radius: 6px; background: var(--veio-v) 0 0 / 420px 900px, linear-gradient(180deg, #5A2A12 0%, #44200D 50%, #331708 100%);
+    box-shadow: inset 0 0 0 5px #7A3C1B, inset 0 0 0 6px rgba(0,0,0,.45), 0 0 0 1px #1A0B04, 0 22px 44px 6px rgba(0,0,0,.72);
+  }
 }
 /* tela muito baixa (o celular grande deitado): o receiver de uma coluna passava 10 px da tela; os vaos dele encolhem */
 @media (min-width: 900px) and (max-height: 499.98px) {
@@ -3555,6 +3883,8 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       </div>
       <button class="fim-disco" id="b-parecidas" type="button" role="switch" aria-checked="false" aria-label="Tocar músicas parecidas quando este disco acabar" hidden><span class="op op-so">Só este disco</span><span class="ch" aria-hidden="true"></span><span class="op op-par">Tocar parecidas</span></button>
       <p class="erro-faixa" id="erro-faixa" role="alert" hidden><span class="lampada alerta" aria-hidden="true"></span><span id="erro-faixa-txt"></span></p>
+      <!-- so na mesa de DJ: a luz do deck (NO AR) e o andamento medido -->
+      <p class="deck-cab" hidden><span class="deck-luz"><span class="lampada" id="luz-ar" aria-hidden="true"></span><span class="deck-luz-t" id="luz-ar-t">No ar</span></span><span class="deck-bpm" id="bpm-ar-caixa"><span class="bpm-r">BPM</span><b id="bpm-ar">--,-</b><span class="bpm-pitch" id="pitch-ar"></span></span></p>
     </div>
     <section class="fila maleta fila-palco" aria-label="A seguir" hidden>
       <div class="cabeca-fila"><h2>A seguir</h2><p class="conta"></p><button class="abre-fila" type="button" aria-expanded="false" aria-label="Abrir o A seguir" title="Abrir o A seguir"><svg viewBox="0 0 5 3" width="10" height="6" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h5v1h-5zM1 1h3v1h-3zM2 2h1v1h-1z"/></svg></button></div>
@@ -3562,6 +3892,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       <span class="maleta-pe" aria-hidden="true"></span>
     </section>
     <p class="atalhos"><span><kbd>espaço</kbd> tocar ou pausar</span><span><kbd>1</kbd> a <kbd>9</kbd> tocar um disco da prateleira</span><span><kbd>0</kbd> sem efeito de voz</span><span><kbd>Esc</kbd> parar</span></p>
+    <span class="deck-letra" aria-hidden="true" hidden></span>
   </section>
 
   <section class="receptor" aria-label="Volumes e medidores">
@@ -3603,6 +3934,14 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
         <output for="f-mic" id="o-mic">100%</output>
       </div>
     </div>
+    <!-- so na mesa de DJ: o que vale para o set inteiro saiu dos decks e mora aqui -->
+    <div class="mix-set" role="group" aria-label="O set" hidden>
+      <button class="tecla-set" id="m-aleatorio" type="button" aria-pressed="false" title="Aleatório: embaralha o A seguir"><span class="lampada" aria-hidden="true"></span><span class="rot-set">Aleatório</span></button>
+      <button class="tecla-set" id="m-repetir" type="button" aria-pressed="false" title="Repetir o disco no ar"><span class="lampada" aria-hidden="true"></span><span class="rot-set">Repetir</span></button>
+      <button class="tecla-set" id="m-parecidas" type="button" aria-pressed="false" title="Tocar parecidas: a fila nunca acaba"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8.5c-2 0-3.5 1.6-3.5 3.5S6 15.5 8 15.5c3 0 5-7 8-7 2 0 3.5 1.6 3.5 3.5S18 15.5 16 15.5c-3 0-5-7-8-7z"/></svg><span class="lampada" aria-hidden="true"></span><span class="rot-set">Parecidas</span></button>
+    </div>
+    <div class="xfader" id="xfader" role="img" aria-label="Crossfader" hidden><span class="xf-l xf-a">A</span><span class="xf-trilho"><span class="xf-pino" id="xf-pino"></span></span><span class="xf-l xf-b">B</span></div>
+    <p class="auto-luz" id="auto-luz" hidden><span class="lampada" id="lamp-auto" aria-hidden="true"></span><span>Transição automática</span></p>
   </section>
 
   <section class="gaveta" id="gaveta" aria-labelledby="gav-t">
@@ -3625,6 +3964,63 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     <div class="rolo" id="rolo-gav"><div class="banco" id="banco"><p class="aviso-gav">Lendo a lista de efeitos.</p></div></div>
   </section>
   <div class="dica-pedal" id="dica-pedal" aria-hidden="true" hidden></div>
+  <!-- mesa de DJ (computador largo): o segundo toca-discos, com a proxima da fila; os decks se revezam no ar -->
+  <section class="deck deck-deixa" id="deck-deixa" aria-label="Toca-discos da deixa" hidden>
+    <div class="mesa"><div class="tampo">
+      <div class="placa">
+        <span class="selo-placa" aria-hidden="true"><b>VITROLA</b><span>33 / 45 RPM</span></span>
+      </div>
+      <div class="prato" id="prato-d">
+        <div class="giratorio">
+          <div class="aro"></div>
+          <div class="feltro"><span>vitrola</span></div>
+          <div class="disco"><div class="rotulo" id="rotulo-d"></div></div>
+        </div>
+        <div class="brilho"></div>
+        <div class="eixo"></div>
+      </div>
+      <div class="descanso" aria-hidden="true"></div>
+      <div class="base-braco" aria-hidden="true"></div>
+      <div class="braco" id="braco-d" data-desenho="repouso" aria-hidden="true">
+        <div class="tubo"></div>
+      </div>
+    </div></div>
+    <div class="faixa">
+      <h2 class="titulo-faixa" id="tit-d">Nada na deixa</h2>
+      <p class="canal-faixa"><span id="canal-d"></span></p>
+      <div class="linha-tempo">
+        <span class="tempo" id="pos-d">0:00</span>
+        <input type="range" id="seek-d" min="0" max="1" step="0.1" value="0" tabindex="-1" aria-hidden="true" disabled>
+        <span class="tempo total" id="dur-d">0:00</span>
+      </div>
+      <div class="comandos">
+        <button class="transp pulo" id="ant-d" type="button" aria-label="Anterior" title="O Anterior é do deck no ar" disabled></button>
+        <button class="tocar-grande" id="tocar-d" type="button" aria-label="Tocar agora" title="Tocar agora: entra no lugar do que está no ar" disabled></button>
+        <button class="transp pulo" id="prox-d" type="button" aria-label="Tirar da fila" title="Próxima: tira esta da fila" disabled></button>
+      </div>
+      <p class="deck-cab"><span class="deck-luz"><span class="lampada" id="luz-d" aria-hidden="true"></span><span class="deck-luz-t" id="luz-d-t">Na deixa</span></span><span class="deck-bpm"><span class="bpm-r">BPM</span><b id="bpm-d">--,-</b><span class="bpm-pitch" id="pitch-d"></span></span></p>
+    </div>
+    <span class="deck-letra" aria-hidden="true"></span>
+  </section>
+  <!-- a tela grande do meio: o visor de DJ (o JS muda ele de lugar), o que ele mostra no alto e as leituras -->
+  <section class="tv" id="tv" aria-label="Visor de DJ" hidden>
+    <div class="tv-vidro">
+      <p class="tv-cab"><span id="tv-titulo">Visor</span></p>
+      <div class="tv-tela" id="tv-tela"></div>
+      <p class="tv-leituras" id="tv-leituras"></p>
+    </div>
+    <span class="tv-lado" aria-hidden="true"><span class="lampada" id="tv-luz"></span><span class="tv-knob"></span><span class="tv-knob"></span><span class="tv-grade"></span></span>
+  </section>
+  <!-- os Sons rapidos como pads, do lado do mixer -->
+  <section class="pads" id="pads" aria-labelledby="pads-t" hidden>
+    <h2 id="pads-t">Sons rápidos</h2>
+    <div class="pads-grade" id="pads-grade"></div>
+    <p class="pads-vazio">No menu ⋯ de um disco da prateleira, Adicionar a Sons rápidos.</p>
+  </section>
+  <!-- a segunda metade da pedaleira, do outro lado do mixer (o montarGaveta reparte os grupos) -->
+  <section class="gaveta gaveta-dir" id="gaveta-dir" aria-label="Efeitos de voz" hidden>
+    <div class="rolo" id="rolo-gav-dir"><div class="banco" id="banco-dir"></div></div>
+  </section>
   </div>
 
   <section class="parede rolo" aria-label="Discos">
@@ -3657,6 +4053,8 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       <div id="rolo-prateleira">
         <ul class="estante" id="estante"></ul>
         <div class="pontos" id="pontos" aria-hidden="true" hidden></div>
+        <button class="prat-seta esq" id="prat-esq" type="button" aria-label="Discos de antes" title="Discos de antes" hidden><svg viewBox="0 0 5 7" width="10" height="14" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M3 0h2v1h-2zM2 1h2v1h-2zM1 2h2v1h-2zM0 3h2v1h-2zM1 4h2v1h-2zM2 5h2v1h-2zM3 6h2v1h-2z"/></svg></button>
+        <button class="prat-seta dir" id="prat-dir" type="button" aria-label="Mais discos" title="Mais discos" hidden><svg viewBox="0 0 5 7" width="10" height="14" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h2v1h-2zM1 1h2v1h-2zM2 2h2v1h-2zM3 3h2v1h-2zM2 4h2v1h-2zM1 5h2v1h-2zM0 6h2v1h-2z"/></svg></button>
       </div>
       <section class="continuar" id="continuar" aria-labelledby="cont-t" hidden>
         <div class="cabeca-sec"><h2 id="cont-t">Continuar ouvindo</h2></div>
@@ -3781,6 +4179,10 @@ const S = {
   palco: false,           // toca-discos aberto por cima da prateleira (so no celular)
 };
 const SEM_EFEITO = 'nenhum';
+/* a mesa de DJ (computador largo): lado = onde esta o deck no ar ('a' na esquerda, 'b' na direita); o deck da deixa
+   fica com a proxima da fila; antes = o disco que saiu na ultima troca de lado (ele segue no deck dele enquanto soa
+   na passagem); bpm = o andamento medido de cada disco que passou pela fila */
+const MESA = { montada: null, lado: 'a', idAr: null, trAr: null, antes: null, deixa: null, bpm: new Map(), trocaT: 0 };
 
 const SITUACAO = { idle: 'Parado', buffering: 'Carregando', playing: 'Tocando', paused: 'Pausado', ended: 'Chegou ao fim' };
 const ERROS = {
@@ -4001,6 +4403,7 @@ function desenharFaixa() {
 
   marcarPrateleira();
   desenharTempo();
+  desenharMesa();
 }
 
 /* titulo do disco numa linha: se nao cabe, uma copia vem atras e o par desliza para a esquerda
@@ -4062,6 +4465,7 @@ function desenharTempo() {
     mudar($('#mini-tempo'), 'textContent', `${fmt(p)} / ${fmt(dur)}`);
   }
   moverBraco();
+  tempoMesa();
 }
 const escritos = new WeakMap();
 function mudar(el, chave, v) {
@@ -4600,6 +5004,7 @@ function montarGaveta() {
   const banco = $('#banco');
   const foco = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.ef : null;
   banco.replaceChildren();
+  $('#banco-dir').replaceChildren();
   if (!S.efeitos) {
     banco.append(el('p', 'aviso-gav', S.erroEfeitos
       ? 'Não deu para ler a lista de efeitos. Ela aparece sozinha quando o soundboard responder.'
@@ -4622,6 +5027,7 @@ function montarGaveta() {
     banco.append(sec);
   }
   if (!S.efeitos.length) banco.append(el('p', 'aviso-gav', 'O soundboard não mandou nenhum efeito.'));
+  repartirPedais();
   montarMarcas();
   caberNomes();
   medirCabosPedais();
@@ -4633,7 +5039,7 @@ function montarGaveta() {
    sem pixel borrado */
 const linhasDoTexto = e => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].map(q => Math.round(q.top))).size; };
 function caberNomes() {
-  for (const n of document.querySelectorAll('#banco .tecla .t-nome')) {
+  for (const n of document.querySelectorAll('.banco .tecla .t-nome')) {
     n.classList.remove('miuda', 'na-margem');
     if (!n.clientWidth) continue;   // gaveta fora da tela de verdade (sem caixa): mede quando aparecer
     // a letra de pixel so tem dois tamanhos sem borrar (1 e 2/3 de px por pixel): a maior em ate duas linhas,
@@ -4658,6 +5064,7 @@ const CEL = 4 / 3, CONTORNO_FIO = [16, 14, 14];
 const COR_FIO = {   // brilho, corpo, sombra clara, sombra escura
   branco: [[255, 252, 245], [240, 234, 226], [205, 201, 188], [130, 132, 126]],
   vermelho: [[250, 90, 88], [246, 50, 50], [214, 16, 18], [128, 0, 0]],
+  preto: [[118, 115, 113], [68, 66, 66], [36, 35, 36], [20, 19, 20]],   // o da mesa de DJ
 };
 function bezier(a, c1, c2, b, n = 20) {
   const out = [];
@@ -4768,6 +5175,7 @@ function medirCabos() {
    dois lados; com o vao estreito o plugue entra mais, e sobra fio. A celula e o pixel inteiro de tela mais perto dos
    4/3 px do celular, e o canto do canvas cai na grade da tela */
 function cabosDoComputador() {
+  if (MESA.montada) { cabosDaMesa(); return; }
   pedacosFios();
   const cv = $('#cabo-calha'), t = $('.tampo').getBoundingClientRect(), r = $('.receptor').getBoundingClientRect();
   const d = devicePixelRatio || 1, cel = Math.max(1, Math.round(d * 4 / 3)) / d;
@@ -4792,6 +5200,33 @@ function cabosDoComputador() {
     fio(pb, qb, fundo - y0, [.37, .29, .58, .81, .76], 'branco'),
     fio(pv, qv, fundo + 18 - y0, [.26, .18, .52, .82, .79], 'vermelho'),
   ], [pb, pv, qb, qv], cel);
+}
+/* os cabos da mesa de DJ, no mesmo canvas da calha (atras dos aparelhos: a ponta de cada plugue some dentro do
+   aparelho dele): o par RCA desce do pe dos pads e entra de lado na pedaleira da direita, e o preto volta para o
+   mixer, pendurados na parede do vao embaixo dos pads, como os do mock */
+function cabosDaMesa() {
+  const cv = $('#cabo-calha'), P = $('#pads').getBoundingClientRect(), M = $('.palco .receptor').getBoundingClientRect();
+  const G = $('#gaveta-dir').getBoundingClientRect();
+  const d = devicePixelRatio || 1, cel = Math.max(1, Math.round(d * 4 / 3)) / d;
+  const geo = ['mesa', P.left, P.width, P.bottom, M.right, M.bottom, G.left, G.top, G.height, cel].join('|');
+  if (!P.width || !G.width || cv._geo === geo) return;
+  cv._geo = geo;
+  const x0 = Math.round((M.right - 36) * d) / d, y0 = Math.round((P.bottom - 32) * d) / d;
+  const plugue = (x, y, ang, cor) => {   // pelo meio da ponta; o rabo e de onde sai o fio
+    const a = ang * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
+    return { t: [x - x0 + 4.5 * sn, y - y0 - 4.5 * cs], ang, cor, rabo: [x - x0 + 18 * cs, y - y0 + 18 * sn] };
+  };
+  const fio = (a, b, c1, c2, cor) => ({ pts: bezier(a.rabo, [a.rabo[0] + c1[0], a.rabo[1] + c1[1]], [b.rabo[0] + c2[0], b.rabo[1] + c2[1]], b.rabo), cor });
+  const pp = plugue(P.left + P.width * .22, P.bottom - 3, 90, 'preto'), pb = plugue(P.left + P.width * .5, P.bottom - 3, 90, 'branco');
+  const pv = plugue(P.left + P.width * .7, P.bottom - 3, 90, 'vermelho');
+  const qb = plugue(G.left + 5, G.top + G.height * .6, 180, 'branco'), qv = plugue(G.left + 5, G.top + G.height * .38, 180, 'vermelho');
+  const qp = plugue(M.right - 5, Math.min(M.bottom - 40, P.bottom + 70), 0, 'preto');
+  cv.style.left = x0 + 'px'; cv.style.top = y0 + 'px';
+  fiosPixel(cv, G.left + 30 - x0, Math.max(G.bottom, M.bottom) - y0, [
+    fio(pb, qb, [0, 58], [-40, 2], 'branco'),
+    fio(pv, qv, [2, 30], [-22, 4], 'vermelho'),
+    fio(pp, qp, [-2, 58], [30, 6], 'preto'),
+  ], [pp, pb, pv, qb, qv, qp], cel);
 }
 /* cabos dos pedais em pixel como no mock "Cabos B corrigido",
    de quem ligou com pressa so para fazer funcionar num show: entre vizinhos da
@@ -5081,16 +5516,19 @@ const CAMINHO_MOCK = [
 ];
 
 function medirCabosPedais() {
-  const banco = $('#banco');
-  const limpa = () => { $('#cabos-pedais')?.remove(); banco?.querySelectorAll('.fita-escrita').forEach(x => x.remove()); };
-  if (!banco || !banco.offsetParent) return;
+  medirCabosBanco($('#banco'));
+  medirCabosBanco($('#banco-dir'));   // a outra metade, na mesa de DJ
+}
+function medirCabosBanco(banco) {
+  const limpa = () => { banco?.querySelector(':scope > .cabos-pedais')?.remove(); banco?.querySelectorAll('.fita-escrita').forEach(x => x.remove()); };
+  if (!banco || !banco.offsetParent) { if (banco && banco.id === 'banco-dir') limpa(); return; }
   // as margens dos cabos: o feltro no celular, o proprio banco no computador, com a lista rolando sob o FX-12
   const gav = celular() ? banco.closest('.gaveta') : banco, listas = banco.querySelectorAll('.teclas');
   if (!listas.length) { limpa(); return; }
-  let cv = $('#cabos-pedais');
+  let cv = banco.querySelector(':scope > .cabos-pedais');
   if (!cv) {
     cv = document.createElement('canvas');
-    cv.id = 'cabos-pedais';
+    if (banco.id === 'banco') cv.id = 'cabos-pedais';
     cv.className = 'cabos-pedais';
     cv.setAttribute('aria-hidden', 'true');
   }
@@ -5244,16 +5682,17 @@ function dicaDoPedal(p) {
   d.style.left = clamp(r.left + r.width / 2 - q.width / 2, 8, innerWidth - q.width - 8) + 'px';
   d.style.top = (r.top - q.height - 8 >= 8 ? r.top - q.height - 8 : r.bottom + 8) + 'px';
 }
-$('#banco').addEventListener('pointerover', e => { if (e.pointerType === 'mouse' && !celular()) dicaDoPedal(e.target.closest('.tecla')); });
-$('#banco').addEventListener('pointerleave', () => dicaDoPedal(null));
-$('#banco').addEventListener('focusin', e => { if (!celular()) dicaDoPedal(e.target.matches(':focus-visible') ? e.target.closest('.tecla') : null); });
-$('#banco').addEventListener('focusout', () => dicaDoPedal(null));
-$('#rolo-gav').addEventListener('scroll', () => dicaDoPedal(null), { passive: true });
+for (const bc of [$('#banco'), $('#banco-dir')]) bc.addEventListener('pointerover', e => { if (e.pointerType === 'mouse' && !celular()) dicaDoPedal(e.target.closest('.tecla')); });
+for (const bc of [$('#banco'), $('#banco-dir')]) bc.addEventListener('pointerleave', () => dicaDoPedal(null));
+for (const bc of [$('#banco'), $('#banco-dir')]) bc.addEventListener('focusin', e => { if (!celular()) dicaDoPedal(e.target.matches(':focus-visible') ? e.target.closest('.tecla') : null); });
+for (const bc of [$('#banco'), $('#banco-dir')]) bc.addEventListener('focusout', () => dicaDoPedal(null));
+for (const r of [$('#rolo-gav'), $('#gaveta'), $('#gaveta-dir')]) r.addEventListener('scroll', () => dicaDoPedal(null), { passive: true });
 
 const roCabos = new ResizeObserver(() => medirCabos());
 for (const x of document.querySelectorAll('.palco .deck, .palco .mesa, .palco .receptor, .palco .gaveta')) roCabos.observe(x);
 addEventListener('resize', medirCabos);
-new ResizeObserver(() => { caberNomes(); medirCabosPedais(); }).observe($('#banco'));
+const roBanco = new ResizeObserver(() => { caberNomes(); medirCabosPedais(); });
+roBanco.observe($('#banco')); roBanco.observe($('#banco-dir'));
 /* toque: a cara de apertado entra no instante do dedo e sai 90 ms depois de soltar no minimo. O :active do Chrome no celular so chega depois de ele decidir que o toque
    nao e rolagem, e um toque rapido nem mostrava o botao apertado; a rolagem solta na hora */
 const PRESSAVEIS = '.btn, .btn-madeira, .limpar-q, .sair-busca, .transp, .tocar-grande, .tecla, .capa, .resultado .linha, .acao-res, .tocar-fila, .aviso-acao, .desliga-ef, .compacto, .cartao-b, .mini-btn, .mini-abrir, .mais, .mini-ef';
@@ -5273,13 +5712,13 @@ document.addEventListener('pointerdown', e => {
 document.addEventListener('pointerup', e => { if (e.pointerType === 'touch') soltarApertados(false); }, { capture: true, passive: true });
 document.addEventListener('pointercancel', e => { if (e.pointerType === 'touch') soltarApertados(true); }, { capture: true, passive: true });
 // pisar: o botao afunda no toque e volta em 90 ms no minimo (um toque rapido ainda mostra a pisada)
-$('#banco').addEventListener('pointerdown', e => {
+for (const bc of [$('#banco'), $('#banco-dir')]) bc.addEventListener('pointerdown', e => {
   const t = e.target.closest('.tecla'); if (!t || modoDoToque(t, e)) return;   // nos botoes dos modos nao ha pe para afundar
   clearTimeout(t._pisa); t.classList.add('pisando'); t._pisouEm = performance.now();
 });
 // solta onde o dedo (ou o mouse) sair; a rolagem que comeca no pedal (pointercancel) solta na hora
 const soltarPe = e => {
-  for (const t of document.querySelectorAll('#banco .tecla.pisando')) {
+  for (const t of document.querySelectorAll('.banco .tecla.pisando')) {
     clearTimeout(t._pisa);
     t._pisa = setTimeout(() => t.classList.remove('pisando'), e.type === 'pointercancel' ? 0 : Math.max(0, 90 - (performance.now() - t._pisouEm)));
   }
@@ -5498,6 +5937,249 @@ function abrirDisco(on) {
   rotularMini();
 }
 
+/* ---------- mesa de DJ (pedido dele, 05/11: "abrir o aplicativo e ter a impressao de estar olhando a mesa de um DJ em
+   um show ao vivo", o mock B), so no computador largo, onde a pagina unica ja valia. Dois toca-discos que se revezam
+   como num set: o deck no ar e o de sempre (o mesmo HTML e o mesmo JS do toca-discos), e o outro, o da deixa, mostra
+   a proxima da fila, mais apagado. Quando a passagem (ou o Proxima) poe no ar o disco da deixa, os papeis trocam de
+   lado e o disco fica no deck dele: o lado do deck no ar e o data-lado do body, e a grade troca os dois de lugar. O
+   que saiu segue no deck de la enquanto ainda soa na passagem (SAINDO), e so entao a proxima da fila entra nele.
+   Outro disco qualquer (a prateleira, o Anterior) troca so o do deck no ar. No meio, a tela grande com o visor de DJ
+   (o mesmo desenho, so maior), o mixer com os volumes em pe, as chaves do set e o crossfader que anda sozinho pela
+   passagem do visor; do lado, os Sons rapidos como pads; embaixo, a pedaleira em dois paineis. As leituras sao so
+   as que o motor da (o tempo, a passagem medida, o andamento medido): o que ele nao mediu fica em branco ---------- */
+const mesaDj = () => paginaUnica();
+function montarMesa() {
+  const on = mesaDj();
+  if (MESA.montada === on || (!on && MESA.montada === null)) { MESA.montada = on; return; }
+  MESA.montada = on;
+  document.body.classList.toggle('mesa-dj', on);
+  for (const e of document.querySelectorAll('#deck-deixa, #tv, #pads, #gaveta-dir, .mix-set, .xfader, .auto-luz, .deck-letra, .deck .faixa > .deck-cab, .prat-seta'))
+    e.hidden = !on;
+  // o visor de DJ muda de lugar: a tela grande do meio na mesa, a tela do titulo fora dela
+  const v = $('#visor-dj');
+  if (on) $('#tv-tela').append(v); else $('.deck .canal-faixa').after(v);
+  V.img = null; V.sujo = true;
+  if (on) abrirMaleta(true);
+  rodinhas(on);
+  montarGaveta(); S.filaSig = null; desenharFila(); desenharRapidos(); desenharMesa(); setasPrateleira();
+  $('#cabo-calha')._geo = ''; requestAnimationFrame(medirCabos);
+  medirBusca();
+}
+/* onde a busca cai: debaixo do campo, da largura dele (ou mais) */
+function medirBusca() {
+  if (!MESA.montada) return;
+  const r = $('#form-busca').getBoundingClientRect(), b = document.body.style;
+  b.setProperty('--busca-x', Math.round(r.left) + 'px');
+  b.setProperty('--busca-y', Math.round(r.bottom + 10) + 'px');
+  b.setProperty('--busca-w', Math.round(r.width) + 'px');
+}
+addEventListener('resize', medirBusca);
+/* a mesma entrada da fila e o disco do prato: pelo id da prateleira ou pelo do video (o stream usa o do video) */
+function mesmoDisco(x, tr) {
+  return !!x && !!tr && ((!!x.id && x.id === tr.id) || (!!x.youtube_id && (x.youtube_id === tr.youtube_id || x.youtube_id === tr.id)));
+}
+/* o andamento medido do disco: o que veio com ele (a fila e o prato trazem), ou o guardado de quando estava na fila */
+function bpmDe(x) {
+  if (!x) return null;
+  return x.bpm || MESA.bpm.get(x.youtube_id) || MESA.bpm.get(x.id) || null;
+}
+const fmtBpm = b => b ? b.toFixed(1).replace('.', ',') : '--,-';
+const fmtPitch = v => Math.abs(v) < .0005 ? '' : `${v > 0 ? '+' : '-'}${Math.abs(v * 100).toFixed(1).replace('.', ',')}%`;
+/* a troca de lado sem o braco e o disco deslizando de um jeito para o outro (o deck de cada lado e outro elemento) */
+function semAnimar() {
+  document.body.classList.add('mesa-troca');
+  clearTimeout(MESA.trocaT);
+  MESA.trocaT = setTimeout(() => document.body.classList.remove('mesa-troca'), 120);
+}
+function desenharMesa() {
+  if (!MESA.montada || !S.state) return;
+  const s = S.state, tr = s.track, fila = temFila() ? s.queue : [];
+  for (const x of [...fila, tr]) if (x && x.bpm) { if (x.youtube_id) MESA.bpm.set(x.youtube_id, x.bpm); if (x.id) MESA.bpm.set(x.id, x.bpm); }
+  const id = tr ? tr.id : null;
+  if (id !== MESA.idAr) {
+    if (tr && mesmoDisco(MESA.deixa, tr)) {
+      MESA.lado = MESA.lado === 'a' ? 'b' : 'a';
+      MESA.antes = MESA.trAr;
+      semAnimar();
+    } else MESA.antes = null;
+    MESA.idAr = id;
+  }
+  MESA.trAr = tr;
+  // a deixa: a primeira da fila que nao e o disco do prato (na virada o prato troca um instante antes de a fila andar)
+  MESA.deixa = fila.find(x => !mesmoDisco(x, tr)) || null;
+  document.body.dataset.lado = MESA.lado;
+  // as chaves do set no mixer, no estado das do toca-discos (que ficam escondidas na mesa)
+  const transp = 'shuffle' in s, auto = temAuto();
+  $('#m-aleatorio').hidden = !transp; ligarChave($('#m-aleatorio'), transp && s.shuffle);
+  ligarChave($('#m-repetir'), !!s.loop);
+  $('#m-parecidas').hidden = !auto; ligarChave($('#m-parecidas'), auto && s.auto);
+  desenharDeixa();
+  tempoMesa();
+  setasPrateleira();
+}
+/* o disco que saiu ainda soando na passagem que trouxe o do prato: ate o fim do cruzamento dele (o sai, em s de saida
+   desde o t0), com a posicao dele (t) e o quanto da passagem ja foi (u, no relogio do visor) */
+function saindoAgora() {
+  const a = MESA.antes, s = S.state;
+  if (!a || !s || !s.track) return null;
+  const p = vdjPassagens().feita;
+  if (!p || p.de !== a.id) return null;
+  const u = vdjFiInv(p, S.pos - p.ini), e = (p.v - p.t0) / p.va;
+  if (u > e + p.sai) return null;
+  return { tr: a, p, u, e, t: p.t0 + p.va * Math.max(0, u) };
+}
+function bracoEm(b, ang) {
+  mudar(b, '--ang', ang.toFixed(1) + 'deg');
+  const f = ang < 15 ? 'repouso' : ang < 34 ? 'a' : ang < 38 ? 'b' : ang < 42 ? 'c' : ang < 46 ? 'd' : 'e';
+  if (b.dataset.desenho !== f) b.dataset.desenho = f;
+}
+function desenharDeixa() {
+  const d = $('#deck-deixa'), x = MESA.deixa, sai = saindoAgora(), mostra = sai ? sai.tr : x;
+  d.classList.toggle('saindo', !!sai);
+  d.classList.toggle('vazia', !mostra);
+  const chave = sai ? 'sai:' + sai.tr.id : x ? `x:${x.qid}|${x.thumb || ''}|${x.title}` : '';
+  if (d._chave !== chave) {
+    d._chave = chave;
+    $('#prato-d').classList.toggle('com-disco', !!mostra);
+    $('#rotulo-d').replaceChildren(mostra ? arte({ thumb: mostra.thumb, id: mostra.id || mostra.youtube_id || mostra.qid, title: mostra.title }, true) : '');
+    $('#tit-d').textContent = mostra ? mostra.title : 'Nada na deixa';
+    $('#tit-d').title = mostra ? mostra.title : '';
+    $('#canal-d').textContent = mostra ? (mostra.channel || 'Sem canal').replace(/ - Topic$/, '')
+      : 'Ponha um disco no A seguir.';
+    $('#dur-d').textContent = fmt(mostra && mostra.duration);
+    const sk = $('#seek-d');
+    sk.max = (mostra && mostra.duration) || 1;
+    $('#tocar-d').setAttribute('aria-label', x ? `Tocar agora: ${x.title}` : 'Tocar agora');
+    $('#prox-d').setAttribute('aria-label', x ? `Tirar da fila: ${x.title}` : 'Tirar da fila');
+  }
+  $('#tocar-d').disabled = !x || !!sai;
+  $('#prox-d').disabled = !x || !!sai;
+  mudar($('#luz-d-t'), 'textContent', sai ? 'Saindo' : x ? 'Na deixa' : 'Vazio');
+  mudar($('#luz-d'), 'class', 'lampada' + (sai ? ' acesa piscando' : x ? ' acesa' : ''));
+}
+/* o que anda com o tempo: o braco e o tempo do disco que sai, os andamentos, o crossfader, a luz da transicao e a
+   tela grande (o tick chega 15 vezes por segundo, e o mudar so escreve o que mudou) */
+function tempoMesa() {
+  if (!MESA.montada || !S.state) return;
+  const s = S.state, tr = s.track, fila = temFila() ? s.queue : [], pos = S.pos;
+  const dur = s.duration || (tr && tr.duration) || 0, sai = saindoAgora(), d = $('#deck-deixa');
+  if (!!sai !== d.classList.contains('saindo')) desenharDeixa();
+  const { feita, vem } = tr ? vdjPassagens() : { feita: null, vem: null };
+  // o deck da deixa: parado, com o braco no descanso; saindo, girando com o braco no sulco do disco que sai
+  d.classList.toggle('gira', !!sai && s.status === 'playing');
+  const sk = $('#seek-d');
+  if (sai) {
+    const dd = sai.tr.duration || 0, f = dd ? clamp(sai.t / dd, 0, 1) : 0;
+    bracoEm($('#braco-d'), anguloPara(f));
+    mudar($('#pos-d'), 'textContent', fmt(sai.t));
+    sk.value = sai.t; mudar(sk, '--f', f.toFixed(4)); mudar(sk, '--p', (f * 100).toFixed(1) + '%');
+  } else {
+    bracoEm($('#braco-d'), 0);
+    mudar($('#pos-d'), 'textContent', '0:00');
+    sk.value = 0; mudar(sk, '--f', '0'); mudar(sk, '--p', '0%');
+  }
+  // a luz do deck no ar: acesa tocando, piscando carregando, apagada pausado
+  const st = s.status;
+  mudar($('#luz-ar'), 'class', 'lampada' + (!tr ? '' : st === 'playing' ? ' acesa' : st === 'buffering' ? ' acesa piscando' : ''));
+  mudar($('#luz-ar-t'), 'textContent', !tr ? 'Vazio' : st === 'paused' ? 'Pausado' : st === 'ended' ? 'Acabou' : 'No ar');
+  // os andamentos: o medido na passagem (o fim do que sai e o comeco do que entra) vale mais que o de antes, e o
+  // quanto a passagem estica cada um (o do no ar volta a 1 devagar depois da virada)
+  let bAr = bpmDe(tr), pAr = 0;
+  if (vem && vem.grade_de) bAr = vem.grade_de.bpm;
+  else if (feita && feita.grade_para) bAr = feita.grade_para.bpm;
+  if (feita && feita.no_tempo) pAr = vdjVel(feita, vdjFiInv(feita, pos - feita.ini)) - 1;
+  let bDx = bpmDe(MESA.deixa), pDx = 0;
+  if (sai) { bDx = sai.p.grade_de ? sai.p.grade_de.bpm : bpmDe(sai.tr); pDx = sai.p.va - 1; }
+  else if (vem && MESA.deixa && mesmoDisco(MESA.deixa, { id: vem.para, youtube_id: vem.para })) {
+    if (vem.grade_para) bDx = vem.grade_para.bpm;
+    if (vem.no_tempo) pDx = vem.vb - 1;
+  }
+  mudar($('#bpm-ar'), 'textContent', fmtBpm(bAr)); mudar($('#pitch-ar'), 'textContent', fmtPitch(pAr));
+  mudar($('#bpm-d'), 'textContent', fmtBpm(bDx)); mudar($('#pitch-d'), 'textContent', fmtPitch(pDx));
+  // o crossfader: todo no lado do deck no ar; na passagem, pelos volumes do plano (o que sai cai no cosseno e o que
+  // entra sobe no seno), a fracao de potencia do que entra
+  let xf = MESA.lado === 'a' ? 0 : 1;
+  if (sai) {
+    const p = sai.p, r = sai.u - sai.e;
+    const gIn = Math.sin(clamp(r / Math.max(1e-3, p.entra), 0, 1) * Math.PI / 2), gOut = Math.cos(clamp(r / Math.max(1e-3, p.sai), 0, 1) * Math.PI / 2);
+    const f = Math.atan2(gIn, gOut) / (Math.PI / 2);
+    xf = MESA.lado === 'a' ? 1 - f : f;
+  }
+  mudar($('#xf-pino'), '--x', xf.toFixed(3));
+  $('#xfader').setAttribute('aria-label', `Crossfader: ${xf < .02 ? 'todo no A' : xf > .98 ? 'todo no B' : `${Math.round((1 - xf) * 100)}% A, ${Math.round(xf * 100)}% B`}`);
+  // a luz da transicao automatica: acesa com a proxima na fila (ela entra sozinha), piscando na passagem
+  const armada = !!tr && fila.some(x => !mesmoDisco(x, tr)) && !s.loop;
+  mudar($('#lamp-auto'), 'class', 'lampada' + (sai ? ' acesa piscando' : armada ? ' acesa' : ''));
+  const falta = vem ? Math.max(0, vem.t0 - pos) : 0;
+  mudar($('#auto-luz'), 'title', sai ? 'A passagem está acontecendo.'
+    : vem ? `A próxima entra sozinha em ${fmt(falta)}, ${vem.no_tempo ? 'no tempo do disco no ar' : 'só no volume'}.`
+    : armada ? 'A próxima da fila entra sozinha no fim do disco no ar.'
+    : tr && s.loop ? 'Repetir ligado: o disco no ar não sai.' : 'Sem próxima na fila: o set para no fim do disco no ar.');
+  // a tela grande: no alto o que ela mostra; embaixo os tempos dos dois lados, a passagem, os andamentos e o Automatico
+  const p = sai ? sai.p : vem;
+  mudar($('#tv-titulo'), 'textContent', p ? (p.no_tempo ? 'Passagem no tempo' : 'Passagem no volume')
+    : s.error && st !== 'playing' ? 'Parou com erro' : (SITUACAO[st] || 'Visor'));
+  mudar($('#tv-luz'), 'class', 'lampada' + (tr && st === 'playing' ? ' alerta' : ''));
+  const ar = tr ? fmt(pos) : '-:--', dx = sai ? fmt(sai.t) : MESA.deixa ? '0:00' : '-:--';
+  const [ta, tb] = MESA.lado === 'a' ? [ar, dx] : [dx, ar];
+  const [ca, cb] = MESA.lado === 'a' ? ['ar', 'dx'] : ['dx', 'ar'];
+  const passagem = vem ? `Passagem em ${fmt(falta)}` : sai ? 'Cruzando' : armada ? `Fim em ${fmt(Math.max(0, dur - pos))}`
+    : tr && s.loop ? 'Repetindo' : tr ? 'Sem próxima' : '';
+  const [ba, bb] = MESA.lado === 'a' ? [bAr, bDx] : [bDx, bAr];
+  const bpm = ba || bb ? `<span class="tl bpm">${fmtBpm(ba)}/${fmtBpm(bb)} BPM</span>` : '';
+  const h = `<span class="tl ${ca}"><b>A</b>${ta}</span><span class="tl ${cb}"><b>B</b>${tb}</span><span class="tl-vao"></span>` +
+            (passagem ? `<span class="tl">${passagem}</span>` : '') + bpm;
+  const lt = $('#tv-leituras');
+  if (lt._h !== h) { lt._h = h; lt.innerHTML = h; }
+}
+/* os Sons rapidos como pads de controladora: os de verdade, na ordem da prateleira, cada um numa cor; as casas que
+   sobram ficam apagadas (o pad sem som de uma controladora de verdade), tres por fileira */
+const PAD_CORES = ['#E9B23A', '#4FA845', '#39B5C6', '#D9493B', '#9B5CC8', '#3E6FD1', '#C9509E', '#E07B2C', '#8FBF3A'];
+function desenharPads(curtos) {
+  if (!MESA.montada) return;
+  const g = $('#pads-grade'), chave = curtos.map(it => it.id + '|' + it.title).join('/');
+  if (g._chave !== chave) {
+    g._chave = chave;
+    const pads = curtos.map((it, i) => {
+      const b = el('button', 'pad'); b.type = 'button'; b.dataset.id = it.id;
+      b.style.setProperty('--pad', PAD_CORES[i % PAD_CORES.length]);
+      b.setAttribute('aria-label', `Tocar por cima da música: ${it.title}`);
+      b.title = `${it.title} (${fmt(Math.min(it.duration || 0, it.rapido ? RAPIDO_MAX_S : CURTO_S))})`;
+      b.append(el('span', 'pad-face'), el('span', 'pad-nome', it.title));
+      return b;
+    });
+    while (pads.length < Math.max(9, Math.ceil(curtos.length / 3) * 3)) {
+      const v = el('span', 'pad sem-som'); v.setAttribute('aria-hidden', 'true'); v.append(el('span', 'pad-face'));
+      pads.push(v);
+    }
+    g.replaceChildren(...pads);
+    $('#pads').classList.toggle('sem-sons', !curtos.length);
+    requestAnimationFrame(medirCabos);   // a caixa dos pads mudou de altura: os cabos saem do pe dela
+  }
+  const tocando = new Set(((S.state && S.state.por_cima) || []).map(x => x.id));
+  g.querySelectorAll('.pad[data-id]').forEach(b => b.classList.toggle('tocando', tocando.has(b.dataset.id)));
+}
+/* na mesa a pedaleira e dois paineis, um de cada lado do mixer: os grupos ficam na esquerda ate ela ter metade dos
+   pedais, e o resto vai para a direita (a corrente segue: a saida da esquerda vai para o mixer, e a entrada da
+   direita vem dele) */
+function repartirPedais() {
+  if (!MESA.montada) return;
+  const grupos = [...$('#banco').querySelectorAll(':scope > .grupo-ef')];
+  const total = grupos.reduce((n, g) => n + g.querySelectorAll('.tecla').length, 0);
+  let n = 0;
+  for (const g of grupos) {
+    if (n >= total / 2) $('#banco-dir').append(g);
+    n += g.querySelectorAll('.tecla').length;
+  }
+}
+/* as setas da prateleira apagam na ponta */
+function setasPrateleira() {
+  if (!MESA.montada) return;
+  const ul = $('#estante'), fim = ul.scrollWidth - ul.clientWidth;
+  $('#prat-esq').disabled = ul.scrollLeft <= 2;
+  $('#prat-dir').disabled = ul.scrollLeft >= fim - 2;
+}
+
 /* mostradores VU: escala em dBFS, -50 a 0 */
 const ANG = 50;
 function dbParaAng(db) { const t = clamp((db + 50) / 50, 0, 1); return -ANG + 2 * ANG * Math.pow(t, 1.6); }
@@ -5618,7 +6300,7 @@ let repintando = 0;
 function repintarCanvas() {
   cancelAnimationFrame(repintando);
   repintando = requestAnimationFrame(() => {
-    for (const cv of document.querySelectorAll('#cabo-calha, #cabos-pedais')) cv._geo = '';
+    for (const cv of document.querySelectorAll('#cabo-calha, .cabos-pedais')) cv._geo = '';
     pedacosFios(true);
     medirCabos(); medirCabosPedais(); desenharVUs();
   });
@@ -5861,6 +6543,7 @@ function desenharRapidos() {
     mudar(b.querySelector('.lampada'), 'class', 'lampada' + (on ? ' acesa' : ''));
     mudar(b, 'class', 'compacto' + (on ? ' tocando' : ''));
   });
+  desenharPads(curtos);
 }
 
 function marcarPrateleira() {
@@ -5914,7 +6597,7 @@ async function buscar(q) {
   q = q.trim();
   if (!q) { $('#q').focus(); return; }
   abrirGaveta(false);   // os resultados aparecem na parede, onde a gaveta estava
-  if (!celular()) abrirMaleta(false);   // a maleta aberta na prateleira nao entra na frente deles
+  if (!celular() && !MESA.montada) abrirMaleta(false);   // a maleta aberta na prateleira nao entra na frente deles (na mesa a busca cai por cima de tudo)
   const seq = ++S.buscaSeq;
   if (ehLink(q)) {
     S.busca = { q, link: true, itens: [{ link: q, youtube_id: idDoLink(q) }], carregando: false, erro: null };
@@ -6029,6 +6712,7 @@ function desenharBusca() {
   vb.hidden = !b; vp.hidden = !!b;
   document.body.classList.toggle('com-busca', !!b);   // a seta de voltar dentro do campo, no celular
   if (!b) return;
+  medirBusca();   // na mesa a busca cai debaixo do campo
   $('#titulo-busca').textContent = b.link ? 'Link colado' : `Resultados para “${b.q}”`;
   $('#titulo-busca').title = $('#titulo-busca').textContent;
   const av = $('#aviso-busca'); av.className = 'aviso-busca'; av.replaceChildren();
@@ -6509,6 +7193,7 @@ $('#b-guardar').addEventListener('click', () => {
 });
 function desenharFila() {
   desenharAuto();  // a linha do prato muda com o disco, os downloads e a prateleira, como a fila
+  desenharMesa();  // a deixa e a primeira da fila
   const fila = temFila() ? S.state.queue : [];
   const auto = temAuto(), ligado = auto && S.state.auto;
   const fim = $('#b-parecidas');
@@ -6523,7 +7208,8 @@ function desenharFila() {
   const foco = li ? { qid: li.dataset.qid, role: ativo.dataset.role, lista: li.parentElement } : null;
   for (const sec of document.querySelectorAll('.fila')) {
     // o A seguir so aparece com fila: a chave do Tocar parecidas mora embaixo dos botoes do toca-discos
-    sec.hidden = !fila.length;
+    // na mesa a maleta fica aberta mesmo vazia, com o aviso dentro
+    sec.hidden = !fila.length && !(MESA.montada && sec.classList.contains('fila-parede'));
     sec.querySelector('.conta').textContent = !fila.length ? '' : fila.length === 1 ? '1 disco' : `${fila.length} discos`;
     const limpar = sec.querySelector('.limpar-fila');   // so a do computador tem
     if (limpar) limpar.hidden = !fila.length;
@@ -6574,10 +7260,12 @@ for (const sec of document.querySelectorAll('.fila')) {
   });
   // teclado: as setas na alca sobem ou descem a entrada um lugar
   sec.addEventListener('keydown', e => {
-    const a = e.target.closest('.alca'); if (!a || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    const a = e.target.closest('.alca'), deLado = MESA.montada && sec.classList.contains('fila-parede');
+    const antes = e.key === 'ArrowUp' || (deLado && e.key === 'ArrowLeft'), depois = e.key === 'ArrowDown' || (deLado && e.key === 'ArrowRight');
+    if (!a || (!antes && !depois)) return;
     e.preventDefault();
     const li = a.closest('.item-fila'), i = [...li.parentElement.children].indexOf(li);
-    const to = e.key === 'ArrowUp' ? i - 1 : i + 1;
+    const to = antes ? i - 1 : i + 1;
     if (to < 0 || to >= li.parentElement.children.length) return;
     moverNaFila(li.dataset.qid, to);
   });
@@ -6588,16 +7276,19 @@ for (const sec of document.querySelectorAll('.fila')) {
     const a = e.target.closest('.alca'); if (!a || e.button > 0 || !noDesenho(a)) return;
     const li = a.closest('.item-fila'), ul = li.parentElement;
     const de = [...ul.children].indexOf(li);
-    let y0 = e.clientY;
+    // na mesa os discos da maleta estao lado a lado: o arrasto anda de lado
+    const deLado = MESA.montada && sec.classList.contains('fila-parede'), eixo = ev => deLado ? ev.clientX : ev.clientY;
+    const tam = x => deLado ? x.offsetWidth : x.offsetHeight;
+    let y0 = eixo(e);
     a.setPointerCapture(e.pointerId);
     S.arrastandoFila = true; li.classList.add('arrastando');
     const mover = ev => {
-      let dy = ev.clientY - y0;
+      let dy = eixo(ev) - y0;
       const ant = li.previousElementSibling, prox = li.nextElementSibling;
-      if (ant && dy < -ant.offsetHeight / 2) { li.after(ant); y0 -= ant.offsetHeight; dy += ant.offsetHeight; }
-      else if (prox && dy > prox.offsetHeight / 2) { ul.insertBefore(prox, li); y0 += prox.offsetHeight; dy -= prox.offsetHeight; }
+      if (ant && dy < -tam(ant) / 2) { li.after(ant); y0 -= tam(ant); dy += tam(ant); }
+      else if (prox && dy > tam(prox) / 2) { ul.insertBefore(prox, li); y0 += tam(prox); dy -= tam(prox); }
       numerarFila(sec);
-      li.style.transform = `translateY(${dy}px)`;
+      li.style.transform = deLado ? `translateX(${dy}px)` : `translateY(${dy}px)`;
     };
     const soltar = () => {
       a.removeEventListener('pointermove', mover); a.removeEventListener('pointerup', soltar); a.removeEventListener('pointercancel', soltar);
@@ -7011,7 +7702,7 @@ $('#b-ouvir').addEventListener('click', () => {
 });
 function desligarEfeito() { escolherEfeito(SEM_EFEITO); }   // sem aviso: o visor ja mostra Sem efeito
 // tocar de novo no efeito ligado desliga, como no Voicemod
-$('#gaveta').addEventListener('click', e => {
+const pisarPedal = e => {
   const b = e.target.closest('.tecla[data-ef]'); if (!b) return;
   const modo = e.detail ? modoDoToque(b, e) : null;   // o clique do teclado (detail 0) segue sendo o pedal inteiro
   const ligado = !!S.state && efeitoAtual().id === b.dataset.ef;
@@ -7024,7 +7715,9 @@ $('#gaveta').addEventListener('click', e => {
   }
   if (b.dataset.ef !== SEM_EFEITO && ligado) desligarEfeito();
   else escolherEfeito(efeitoDaTecla(b));   // o pedal inteiro liga no ultimo modo
-});
+};
+$('#gaveta').addEventListener('click', pisarPedal);
+$('#gaveta-dir').addEventListener('click', pisarPedal);
 $('#desliga-ef').addEventListener('click', desligarEfeito);
 $('#b-efeito').addEventListener('click', () => {
   // no celular a gaveta ja esta aberta logo abaixo: o seletor so leva ate ela
@@ -7049,14 +7742,20 @@ $('#b-mudo-topo').addEventListener('click', mutarComAviso);
 $('#b-pagina').addEventListener('click', () => abrirDisco(!S.disco));
 mqUnica.addEventListener('change', () => { if (paginaUnica()) abrirDisco(true); });
 if (paginaUnica()) abrirDisco(true);
-/* na pagina unica a prateleira e os pedais correm de lado: a rodinha do mouse, que rola em pe, corre os dois */
-for (const rolo of [$('#estante'), $('#gaveta')]) rolo.addEventListener('wheel', e => {
+/* na mesa a prateleira, os pedais e a maleta correm de lado: a rodinha do mouse, que rola em pe, corre os tres. O
+   ouvinte so existe com a mesa montada (montarMesa): o wheel que bloqueia a rolagem, preso na pedaleira em toda tela,
+   mudava o desenho do feltro no celular (um a seis pontos de cor, no compara) */
+const rodaDeLado = e => {
   if (!paginaUnica() || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
   const ul = e.currentTarget;
   if (ul.scrollWidth <= ul.clientWidth + 1) return;
   e.preventDefault();
   ul.scrollLeft += e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? ul.clientWidth : 1);
-}, { passive: false });
+};
+function rodinhas(on) {
+  for (const rolo of [$('#estante'), $('#gaveta'), $('#gaveta-dir'), $('.fila-parede .lista-fila')])
+    rolo[on ? 'addEventListener' : 'removeEventListener']('wheel', rodaDeLado, { passive: false });
+}
 $('#palco-cortar').addEventListener('click', mutarComAviso);
 $('#mini-abrir').addEventListener('click', () => celular() ? abrirPalcoComHistoria() : abrirDisco(!S.disco));
 $('#mini-seta').addEventListener('click', () => abrirDisco(!S.disco));
@@ -7298,6 +7997,37 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => {
   if ((e.code === 'Space' || e.key === ' ') && !dialogoAberto() && !campoDeTexto(e.target) && $('#menu').hidden) e.preventDefault();
 });
+
+/* ---------- mesa de DJ: os botoes ---------- */
+for (const [de, para] of [['#b-anterior', '#ant-d'], ['#b-tocar', '#tocar-d'], ['#b-proxima', '#prox-d'], ['#b-aleatorio', '#m-aleatorio'], ['#b-repetir', '#m-repetir']]) {
+  const c = $(de + ' svg').cloneNode(true); c.removeAttribute('id'); $(para).prepend(c);
+}
+// a deixa: o Tocar e o Proximo de hoje (a fila anda, o que esta no ar sai na hora); o Proxima dela tira da fila
+$('#tocar-d').addEventListener('click', () => { if (MESA.deixa) cmd('/api/next'); });
+$('#prox-d').addEventListener('click', () => {
+  const x = MESA.deixa;
+  if (x) api('DELETE', `/api/queue/${encodeURIComponent(x.qid)}`).catch(err => avisar(err.message, true));
+});
+$('#m-aleatorio').addEventListener('click', () => { $('#b-aleatorio').click(); ligarChave($('#m-aleatorio'), !!(S.state && S.state.shuffle)); });
+$('#m-repetir').addEventListener('click', () => { $('#b-repetir').click(); ligarChave($('#m-repetir'), !!(S.state && S.state.loop)); });
+$('#m-parecidas').addEventListener('click', () => { if (!S.state) return; const v = !S.state.auto; ligarChave($('#m-parecidas'), v); ajustar('auto', v); });
+$('#pads-grade').addEventListener('click', e => {
+  const b = e.target.closest('.pad[data-id]');
+  if (b && Date.now() - seguradaEm > 900) tocar(b.dataset.id, { por_cima: true });
+});
+$('#pads-grade').addEventListener('contextmenu', e => {
+  const b = e.target.closest('.pad[data-id]'); if (!b) return;
+  e.preventDefault(); seguradaEm = Date.now();
+  fecharMenu(false); abrirMenu(b, { tipo: 'disco', id: b.dataset.id });
+});
+for (const [b, lado] of [[$('#prat-esq'), -1], [$('#prat-dir'), 1]]) b.addEventListener('click', () => {
+  const ul = $('#estante');
+  ul.scrollBy({ left: lado * Math.max(120, ul.clientWidth * .8), behavior: reduz.matches ? 'auto' : 'smooth' });
+});
+$('#estante').addEventListener('scroll', () => requestAnimationFrame(setasPrateleira), { passive: true });
+new ResizeObserver(setasPrateleira).observe($('#estante'));
+mqUnica.addEventListener('change', montarMesa);
+montarMesa();
 
 /* ---------- inicio ---------- */
 montarMostradores();

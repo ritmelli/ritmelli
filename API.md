@@ -55,6 +55,8 @@ reconecta sozinho; mostre que está reconectando.
  "visor": {"ondas": 3, "passagens": [Passagem]}}
 ```
 - `versao` = a versão do servidor (`versao.py`), para mostrar na tela.
+- `track.bpm` = o andamento do disco do prato quando já foi medido (o mesmo `bpm` da Entrada da fila: o
+  do começo dele, ou o do fim); sem medida, não vem.
 - `visor` = o que o visor de DJ desenha (a onda correndo, a grade de batidas e a próxima entrando no
   tempo). `ondas` sobe quando a onda de um disco da prateleira fica pronta (peça de novo o
   `GET /api/onda/<id>`). `passagens` traz até duas: a que trouxe o disco do prato (ele é o `para`
