@@ -132,7 +132,7 @@ kbd { font: inherit; }
        tampo consegue ter, e o visor e a barra de tempo, que enchem a coluna, ficam da largura do toca-discos. Cresce
        com a tela porque a letra do visor cresce. O piso cabe as teclas */
     --resto: calc(360px + 6.75dvh);
-    --deck-w: clamp(344px, min(42vw, (100dvh - var(--resto)) * 1.25), 1100px);
+    --deck-w: clamp(320px, min(36vw, (100dvh - var(--resto)) * 1.12), 980px);
     --pad-y: 18px;
     height: 100vh; height: 100dvh;
     grid-template-columns: var(--deck-w) minmax(0, 1fr);
@@ -812,6 +812,7 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .canal-faixa > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .canal-faixa .salvar { flex: none; margin: -12px -11px -12px 0; }
 .canal-faixa .salvar[hidden] { display: none; }
+.prox-faixa { display: none; }
 .lista-fila { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .item-fila { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; align-items: center; border-radius: 8px; }
 .item-fila.arrastando { position: relative; z-index: 2; }
@@ -3023,7 +3024,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     grid-template-areas: "rapidos fila" "cab cab" "prat prat" "cont cont";
   }
   #vista-prateleira { display: contents; }
-  .rapidos { grid-area: rapidos; }
+  .rapidos { grid-area: rapidos; align-self: start; }   /* com a maleta aberta ao lado, os sons ficam no alto (desciam para o meio dela) */
   /* com fila, a maleta fica com a metade da fileira, no meio dela; sem fila, os Sons rapidos ficam com a fileira inteira,
      e sem Sons rapidos ela fica no meio da fileira inteira */
   .parede:has(> .fila-parede:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(316px, 1fr); }
@@ -3041,7 +3042,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 6px 0 4px; }
   .compacto, .chips:has(> .compacto:nth-child(5)) > .compacto { width: 96px; max-width: none; }
   .cartoes { flex-wrap: wrap; overflow: visible; margin: 0; padding: 4px 0 12px; }
-  .estante { --gap: 14px; padding: 12px 7px 4px; row-gap: 18px; }
+  .estante { --gap: 14px; padding: 12px 7px 4px; row-gap: 18px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 7rem), 1fr)); }
   .estante .ficha .nome { -webkit-line-clamp: 2; }
   .estante .disco-item[data-id] .acoes { display: contents; }
   /* o disco que nao baixou: o nome, o motivo e o Tentar de novo cabem na capa; o detalhe tecnico fica no title */
@@ -3072,7 +3073,28 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 /* tela baixa: a prateleira primeiro */
 @media (min-width: 900px) and (max-height: 819.98px) {
   .parede { grid-template-areas: "cab cab" "prat prat" "rapidos fila" "cont cont"; }
+  /* a maleta fica la embaixo: o proximo dela aparece embaixo dos botoes, e o clique abre a maleta e rola ate ela */
+  .palco .faixa > .prox-faixa:not([hidden]) { display: flex; grid-area: 7 / 1; justify-content: center; min-width: 0; margin-top: 2px; }
+  .prox-faixa .btn-texto {
+    display: block; max-width: 100%; min-height: 0; padding: 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: .875rem; font-weight: 500; color: var(--marfim); text-shadow: 0 2px 0 var(--contorno);
+    text-decoration-color: rgba(238, 227, 207, .35);
+  }
+  .prox-faixa .r { color: var(--ambar); font-weight: 700; }
   .rapidos, .fila-parede { margin-top: 20px; }
+}
+/* tela de notebook: com largura sobrando, cada fader vira uma linha so (nome, canaleta, valor) e o receiver fica mais
+   baixo, sobrando altura para a prateleira */
+@media (min-width: 900px) and (max-height: 899.98px) {
+  @container (min-width: 300px) {
+    .fader { grid-template-columns: 6.25rem minmax(0, 1fr) 3rem; align-items: center; column-gap: 10px; }
+    .fader + .fader { margin-top: 4px; }
+    .fader label, .fader input, .fader output { grid-row: 1; }
+    .fader label { grid-column: 1; }
+    .fader input { grid-column: 2; }
+    .fader output { grid-column: 3; }
+    .fader label small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  }
 }
 /* tela baixa: a legenda de atalhos sai (as teclas seguem nos discos e no titulo do botao) */
 @media (min-width: 900px) and (max-height: 899.98px) {
@@ -3097,7 +3119,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .palco .receptor { padding: 25px 18px 14px; column-gap: 20px; }   /* 25 em cima: a faixa da plaqueta R-77; 18 dos lados: a madeira e a chapa */
   .medidores { gap: 10px; }
   .chave { padding: 6px 10px; gap: 8px; font-size: .875rem; }
-  .estante { grid-template-columns: repeat(auto-fill, minmax(min(100%, 8.5rem), 1fr)); }
+  .estante { grid-template-columns: repeat(auto-fill, minmax(min(100%, 6.5rem), 1fr)); }
   /* com largura sobrando, cada fader vira uma linha so: nome, canaleta, valor (a legenda fica para o leitor de tela) */
   @container (min-width: 300px) {
     .fader { grid-template-columns: 6.25rem minmax(0, 1fr) 3rem; align-items: center; column-gap: 10px; }
@@ -3240,6 +3262,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
         </button>
       </div>
       <button class="fim-disco" id="b-parecidas" type="button" role="switch" aria-checked="false" aria-label="Tocar músicas parecidas quando este disco acabar" hidden><span class="op op-so">Só este disco</span><span class="ch" aria-hidden="true"></span><span class="op op-par">Tocar parecidas</span></button>
+      <p class="prox-faixa" id="prox-faixa" hidden><button class="btn-texto" id="b-prox" type="button" title="Abrir o A seguir"><span class="r">A seguir:</span> <span id="prox-tit"></span></button></p>
       <p class="erro-faixa" id="erro-faixa" role="alert" hidden><span class="lampada alerta" aria-hidden="true"></span><span id="erro-faixa-txt"></span></p>
     </div>
     <section class="fila maleta fila-palco" aria-label="A seguir" hidden>
@@ -5810,6 +5833,9 @@ function desenharFila() {
   const sig = fila.map(x => [x.qid, x.title, estadoEntrada(x)].join('/')).join('|');
   if (sig === S.filaSig || S.arrastandoFila) return;
   S.filaSig = sig;
+  const prox = $('#prox-faixa');   // a linha do proximo embaixo dos botoes (so aparece no computador de tela baixa)
+  prox.hidden = !fila.length;
+  $('#prox-tit').textContent = !fila.length ? '' : fila.length === 1 ? fila[0].title : `${fila[0].title} · mais ${fila.length - 1}`;
   // o foco (teclado) volta para o mesmo botao da mesma entrada depois de remontar
   const ativo = document.activeElement, li = ativo && ativo.closest && ativo.closest('.item-fila');
   const foco = li ? { qid: li.dataset.qid, role: ativo.dataset.role, lista: li.parentElement } : null;
@@ -6290,6 +6316,7 @@ $('#estante').addEventListener('click', e => {
   else if (b.dataset.role === 'retentar') { const c = S.jobCorpo[b.dataset.job]; if (c) baixar(c, S.jobAlvo[b.dataset.job]); }
 });
 $('#b-anterior').addEventListener('click', () => cmd('/api/prev'));
+$('#b-prox').addEventListener('click', () => abrirFila());
 $('#b-proxima').addEventListener('click', () => cmd('/api/next'));
 $('#b-aleatorio').addEventListener('click', () => { const v = !(S.state && S.state.shuffle); ligarChave($('#b-aleatorio'), v); ajustar('shuffle', v); });
 $('#b-repetir').addEventListener('click', () => { const v = !(S.state && S.state.loop); ligarChave($('#b-repetir'), v); ajustar('loop', v); });
