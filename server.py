@@ -1417,6 +1417,15 @@ def build(app_state):
         return web.json_response({**A.snapshot(), "pos": round(E.pos, 2),
                                   "levels": dict(E.levels)})
 
+    @r.get("/api/onda/{iid}")
+    async def onda(request):
+        # a onda do disco para o visor de DJ do tema (o formato no Engine.onda); o motor guarda as dos discos que
+        # passaram pelo prato ou pela proxima, e o estado avisa quando uma fica pronta (visor.ondas)
+        o = E.onda(request.match_info["iid"])
+        if o is None:
+            return j_err("A onda desse disco ainda não foi lida.", 404)
+        return web.json_response(o)
+
     @r.get("/api/library")
     async def library(_):
         return web.json_response(A.lib.public())
