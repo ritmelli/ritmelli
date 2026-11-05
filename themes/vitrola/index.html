@@ -3112,7 +3112,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
    prateleira) toma a tela; o disco no prato vai para a barra de baixo, a mesma placa de aluminio da barra do celular,
    larga, com os pulos e o tempo; e a seta dela abre a pagina do disco: o toca-discos, o receiver e a maleta do A seguir
    (a gaveta de efeitos abre por cima da maleta, como abria por cima da prateleira). No celular nada muda ---------- */
-.mini .mini-pc, .fila-vazia { display: none; }
+.mini .mini-pc, .fila-vazia, .botoes-topo .so-pc { display: none; }
 @media (min-width: 900px) {
   :root { --barra-h: 76px; }
   /* recolhido: a parede e a barra */
@@ -3134,9 +3134,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body:not(.com-disco) .rapidos .chips { flex-direction: column; align-items: center; gap: 14px; padding: 0; }
   /* aberta: a grade de antes, com a maleta no lugar da prateleira e a barra embaixo (o toca-discos conta a altura dela) */
   body.com-disco .app {
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
-    grid-template-areas: "topo topo" "deck receptor" "deck parede" "mini mini";
-    --deck-w: clamp(320px, min(42vw, (100dvh - var(--resto) - var(--barra-h) - var(--fresta)) * 1.25), 1100px);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "topo topo" "deck receptor" "deck parede";
+    --deck-w: clamp(320px, min(42vw, (100dvh - var(--resto)) * 1.25), 1100px);
   }
   body.com-disco .parede > :is(#vista-busca, #vista-prateleira) { display: none; }
   body.com-disco .app > .parede:has(> #vista-prateleira):has(> .fila-parede) { grid-template: "fila" auto / minmax(0, 1fr); }
@@ -3159,6 +3159,18 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .fila-vazia b { display: block; margin-bottom: 2px; font-size: 1.0625rem; color: var(--marfim); }
   .aviso { bottom: calc(var(--barra-h) + 14px); }
   .parede { margin-bottom: calc(-1 * var(--fresta)); }
+  /* a pagina do disco sem a barra (05/11): ela repetia o toca-discos (o nome, o tempo e os pulos). A volta para a
+     prateleira e o mutar da voz moram no topo; o aviso desce para o pe da tela */
+  body.com-disco .mini { display: none; }
+  body.com-disco .aviso { bottom: 22px; }
+  body.com-disco .parede { margin-bottom: 0; }
+  .botoes-topo .so-pc { display: inline-flex; }
+  body:not(.com-disco) #b-mudo-topo { display: none; }
+  body.com-disco #b-pagina .vai-disco, body:not(.com-disco) #b-pagina .vai-prat { display: none; }
+  .ic-mic { display: contents; }
+  /* a voz mutada acende em vermelho, como o microfone da barra */
+  #b-mudo-topo.cortada { color: #8E1E14; background-color: #EFC3B7; }
+  @media (hover: hover) { #b-mudo-topo.cortada:hover { background-color: #F3CFC5; } }
 
   /* a barra: o disco e o nome na esquerda (o clique abre a pagina), o mudo encostado nos pulos, os pulos no meio, o tempo
      e a seta na direita. As cinco colunas: a esquerda e a direita do mesmo tamanho, entao os pulos ficam no centro */
@@ -3250,11 +3262,11 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .mini-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #4A362A; box-shadow: inset 0 1px 1px rgba(0,0,0,.5); overflow: hidden; }
   .mini-prog span { display: block; height: 100%; background: linear-gradient(180deg, #FFD08A 0 1px, var(--ambar) 1px); transform-origin: 0 50%; transform: scaleX(var(--prog, 0)); will-change: transform; }
 }
-/* monitor em pe: o toca-discos e o receiver lado a lado em cima, a maleta embaixo, a barra no pe */
+/* monitor em pe: o toca-discos e o receiver lado a lado em cima, a maleta embaixo */
 @media (min-width: 900px) and (max-aspect-ratio: 19/20) {
   body.com-disco .app {
-    --deck-w: clamp(300px, min(50vw, (100dvh - 20rem - var(--barra-h)) * .55), 900px);
-    grid-template-areas: "topo topo" "deck receptor" "parede parede" "mini mini";
+    --deck-w: clamp(300px, min(50vw, (100dvh - 20rem) * .55), 900px);
+    grid-template-areas: "topo topo" "deck receptor" "parede parede";
   }
 }
 /* tela deitada com largura para as tres: a maleta aberta entre o toca-discos e o receiver, da altura toda (pedido dele,
@@ -3263,9 +3275,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 @media (min-width: 1160px) and (min-aspect-ratio: 20/19) {
   body.com-disco .app {
     grid-template-columns: var(--deck-w) 312px minmax(0, 1fr);
-    grid-template-areas: "topo topo topo" "deck parede receptor" "deck parede ." "mini mini mini";
+    grid-template-areas: "topo topo topo" "deck parede receptor" "deck parede .";
     --deck-w: clamp(320px, min(42vw, 100vw - 2 * clamp(20px, 2.4vw, 44px) - 312px - 358px - 2 * clamp(60px, 5.5vw, 76px),
-                               (100dvh - var(--resto) - var(--barra-h) - var(--fresta)) * 1.25), 1100px);
+                               (100dvh - var(--resto)) * 1.25), 1100px);
   }
   /* o alto da maleta na linha do alto do toca-discos e do receiver (a margem de cima e do celular; os 8 da folga do rolo) */
   body.com-disco .fila-parede { margin-top: -8px; }
@@ -3278,10 +3290,10 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.com-disco .app {
     --mal-w: 272px; --rec-w: 300px; --gav-w: 332px; --vao: 24px;
     grid-template-columns: var(--deck-w) var(--mal-w) var(--rec-w) var(--gav-w);
-    grid-template-areas: "topo topo topo topo" "deck parede receptor efeitos" "deck parede . efeitos" "mini mini mini mini";
+    grid-template-areas: "topo topo topo topo" "deck parede receptor efeitos" "deck parede . efeitos";
     column-gap: var(--vao);
     --deck-w: clamp(320px, min(42vw, 100vw - 2 * clamp(20px, 2.4vw, 44px) - var(--mal-w) - var(--rec-w) - var(--gav-w) - 3 * var(--vao),
-                               (100dvh - var(--resto) - var(--barra-h) - var(--fresta)) * 1.25), 1100px);
+                               (100dvh - var(--resto)) * 1.25), 1100px);
   }
   /* a pedaleira sempre a vista: a gaveta deixa de abrir por cima da maleta */
   body.com-disco .palco .gaveta { display: grid; grid-area: efeitos; align-self: stretch; min-height: 0; animation: none; }
@@ -3294,7 +3306,6 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   }
   body.com-disco .palco .gaveta:has(.dica-ouvir.so-dica) { grid-template-rows: auto auto auto minmax(0, 1fr); grid-template-areas: "cabeca" "visor" "ouvir" "lista"; }
   body.com-disco .palco .gaveta::after { grid-row: 1 / span 3; margin: -11px -8px -12px; }
-  body.com-disco .palco .visor-gav { display: flex; }
   body.com-disco .palco .cabeca-gav::after { display: inline; }   /* o EFEITOS DE VOZ FX-12 cabe: so a tecla de fechar saiu */
   body.com-disco #b-fechar-gav { display: none; }
   body.com-disco .palco .mesa-gav .btn { min-height: 36px; font-size: .875rem; }
@@ -3303,6 +3314,61 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.com-disco .palco #banco { display: block; max-width: none; margin: 0; padding: 14px 30px 16px; }
   body.com-disco .palco .grupo-ef + .grupo-ef { margin-top: 16px; }
   body.com-disco .palco .teclas { display: grid; grid-template-columns: repeat(3, 80px); }
+}
+/* pagina unica (pedido dele, 05/11: "colocar tudo na mesma pagina"), por enquanto so na tela do notebook dele (1400
+   de largura para cima, deitada). O toca-discos na esquerda; em cima a maleta aberta, o receiver e a pedaleira; embaixo
+   os Sons rapidos e a prateleira, que corre de lado em duas fileiras (a rodinha do mouse corre ela). Sem a barra e sem a
+   troca de pagina: a parede desmonta (display: contents) e cada parte dela vira uma peca da grade; a busca toma o lugar
+   da prateleira. A maleta e a pedaleira tem a altura da faixa de cima e rolam por dentro (o contain: size tira as duas
+   da medida da faixa, que fica com a altura do receiver). O Continuar ouvindo fica de fora por enquanto */
+@media (min-width: 1400px) and (min-aspect-ratio: 20/19) {
+  body.com-disco .app {
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-areas: "topo topo topo topo" "deck fila receptor efeitos" "deck rapidos cab cab" "deck rapidos prat prat";
+  }
+  body.com-disco .app:has(#rapidos[hidden]) {
+    grid-template-areas: "topo topo topo topo" "deck fila receptor efeitos" "deck cab cab cab" "deck prat prat prat";
+  }
+  #b-pagina { display: none; }
+  body.com-disco .parede { display: contents; }
+  body.com-disco .parede > #vista-prateleira { display: contents; }
+  body.com-disco .parede > #vista-busca:not([hidden]) { display: flex; grid-row: cab-start / prat-end; grid-column: cab-start / prat-end; min-height: 0; }
+  body.com-disco #continuar { display: none; }
+  /* a maleta aberta da altura da faixa, com os discos rolando entre a tampa e a frente */
+  body.com-disco .fila-parede {
+    grid-area: fila; align-self: stretch; justify-self: stretch; contain: size; width: auto; max-width: none; margin: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  body.com-disco .fila-parede .lista-fila { min-height: 0; align-content: start; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; clip-path: none; }
+  body.com-disco .palco .gaveta { contain: size; }
+  /* a pedaleira na faixa de cima: so o feltro e os pedais, numa fileira que corre de lado como a prateleira
+     (empilhados, so uma lasca da primeira fileira cabia). A plaqueta do FX-12 sai inteira (pedido dele, 05/11): a marca,
+     o visor do efeito (o LED de cada pedal ja diz qual esta ligado, e pisar no aceso desliga) e o Ouvir minha voz */
+  body.com-disco .palco .gaveta,
+  body.com-disco .palco .gaveta:has(.dica-ouvir.so-dica) { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "lista"; padding: 0; }
+  body.com-disco .palco .gaveta::after, body.com-disco .palco .cabeca-gav, body.com-disco .palco .mesa-gav { display: none; }
+  body.com-disco .palco .suporte { margin-bottom: 6px; }
+  /* quem corre e o painel inteiro, com o feltro preso nos pedais (background-attachment: local; pedido dele, 05/11: na
+     vida real os pedais estao presos no feltro, e o feltro parado com os pedais passando por cima irritava); a borda e
+     a sombra do painel ficam paradas, como a moldura */
+  body.com-disco .palco .gaveta { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; background-attachment: local; }
+  body.com-disco .palco .gaveta > .rolo { overflow: visible; margin: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }
+  body.com-disco .palco #banco { display: flex; flex-wrap: nowrap; gap: 0 24px; width: max-content; padding: 16px 30px 6px; }
+  body.com-disco .palco .grupo-ef + .grupo-ef { margin-top: 0; }
+  body.com-disco .palco .teclas { display: flex; flex-wrap: nowrap; }
+  /* os Sons rapidos numa coluna embaixo da maleta, rolando por dentro se forem muitos */
+  body.com-disco .rapidos { grid-area: rapidos; align-self: stretch; align-content: start; min-height: 0; margin: 0; padding-top: 16px; overflow-y: auto; scrollbar-width: none; }
+  /* a prateleira: o painel desce a fresta para encostar no titulo; as capas em duas fileiras do tamanho da altura que
+     sobra (100cqh menos as folgas, as tabuas, o vao entre as fileiras e a barra de rolagem), correndo de lado */
+  body.com-disco #rolo-prateleira { min-height: 0; margin-top: calc(-1 * var(--fresta)); container-type: size; }
+  body.com-disco .estante {
+    height: 100%; grid-template-columns: none; grid-auto-flow: column; grid-template-rows: repeat(2, auto);
+    grid-auto-columns: calc((100cqh - 80px) / 2); align-content: start;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x proximity;
+    scrollbar-width: thin; scrollbar-color: #8a5a40 rgba(0,0,0,.18);
+  }
+  body.com-disco .estante > li { scroll-snap-align: start; }
+  body.com-disco .estante .disco-item:last-child .borda { margin-right: calc(var(--gap) / -2); }   /* a tabua comprida do fim alargava a rolagem */
 }
 /* tela muito baixa (o celular grande deitado): o receiver de uma coluna passava 10 px da tela; os vaos dele encolhem */
 @media (min-width: 900px) and (max-height: 499.98px) {
@@ -3349,6 +3415,14 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       <button class="btn" type="submit"><svg class="lupa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span class="rot-busca">Buscar</span></button>
     </form>
     <div class="botoes-topo">
+      <!-- so no computador: a troca entre a prateleira e o toca-discos (a pagina do disco nao tem a barra de baixo) e,
+           na pagina do disco, o mutar da voz -->
+      <button class="btn-madeira so-pc" id="b-pagina" type="button" title="Abrir o toca-discos">
+        <svg class="vai-disco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.4"/></svg>
+        <svg class="vai-prat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="4.2" height="13.5" rx=".8"/><rect x="9.5" y="5" width="4.2" height="13.5" rx=".8"/><rect x="15.6" y="5.6" width="4.2" height="13" rx=".8" transform="rotate(14 17.7 12.1)"/><path d="M2.5 21h19"/></svg>
+        <span class="rot"><span class="vai-disco">Toca-discos</span><span class="vai-prat">Prateleira</span></span>
+      </button>
+      <button class="btn-madeira so-pc" id="b-mudo-topo" type="button" aria-pressed="false" title="Mutar voz"><span class="ic-mic"></span><span class="rot">Mutar voz</span></button>
       <!-- so no PC (127.0.0.1): o codigo e os celulares conectados nao vao para a rede -->
       <button class="btn-madeira" id="b-cel" type="button" title="Conectar celular" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10.5 18.5h3"/></svg>
@@ -3993,6 +4067,15 @@ function desenharReceptor() {
     mc.classList.toggle('cortada', !!s.mic_mute);
     mc.title = s.mic_mute ? 'Voz mutada: toque para voltar' : 'Mutar voz';
     mc.innerHTML = s.mic_mute ? IC_MIC_CORTADO : IC_MIC;
+  }
+  const mt = $('#b-mudo-topo');   // o do topo na pagina do disco (computador): o icone e o nome dizem o estado
+  if (mt._cortada !== !!s.mic_mute) {
+    mt._cortada = !!s.mic_mute;
+    mt.setAttribute('aria-pressed', s.mic_mute ? 'true' : 'false');
+    mt.classList.toggle('cortada', !!s.mic_mute);
+    mt.title = s.mic_mute ? 'Voz mutada: clique para voltar' : 'Mutar voz';
+    mt.querySelector('.ic-mic').innerHTML = s.mic_mute ? IC_MIC_CORTADO : IC_MIC;
+    mt.querySelector('.rot').textContent = s.mic_mute ? 'Voz mutada' : 'Mutar voz';
   }
   const mic = document.querySelector('.mostrador[data-k="mic"]');
   mic.classList.toggle('apagado', !!s.mic_mute);
@@ -5002,14 +5085,19 @@ function abrirPalcoComHistoria() {
 }
 /* ---------- pagina do disco (computador): a seta da barra de baixo troca a parede pelo toca-discos, o receiver e a
    maleta do A seguir, como a pagina do player do YouTube Music. A seta de novo, o Esc ou uma busca voltam ---------- */
+/* pagina unica (computador largo): tudo numa tela so, a do toca-discos, que nao fecha */
+const mqUnica = matchMedia('(min-width: 1400px) and (min-aspect-ratio: 20/19)');
+function paginaUnica() { return mqUnica.matches; }
 function abrirDisco(on) {
   on = !!on && !celular();
+  if (!on && paginaUnica()) return;
   if (on === !!S.disco) return;
   S.disco = on;
   document.body.classList.toggle('com-disco', on);
   if (on) { fecharMenu(false); abrirMaleta(true); }
   else if (S.gaveta) abrirGaveta(false);
   const rot = on ? 'Voltar para a prateleira' : 'Abrir o toca-discos', seta = $('#mini-seta');
+  $('#b-pagina').title = rot;
   seta.setAttribute('aria-expanded', on ? 'true' : 'false'); seta.setAttribute('aria-label', rot); seta.title = rot;
   rotularMini();
 }
@@ -6561,6 +6649,18 @@ function mutarComAviso() {
   avisar(S.state && S.state.mic_mute ? 'Voz mutada: ninguém no jogo ouve você.' : 'Voz de volta no jogo.');
 }
 $('#mini-cortar').addEventListener('click', mutarComAviso);
+$('#b-mudo-topo').addEventListener('click', mutarComAviso);
+$('#b-pagina').addEventListener('click', () => abrirDisco(!S.disco));
+mqUnica.addEventListener('change', () => { if (paginaUnica()) abrirDisco(true); });
+if (paginaUnica()) abrirDisco(true);
+/* na pagina unica a prateleira e os pedais correm de lado: a rodinha do mouse, que rola em pe, corre os dois */
+for (const rolo of [$('#estante'), $('#gaveta')]) rolo.addEventListener('wheel', e => {
+  if (!paginaUnica() || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+  const ul = e.currentTarget;
+  if (ul.scrollWidth <= ul.clientWidth + 1) return;
+  e.preventDefault();
+  ul.scrollLeft += e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? ul.clientWidth : 1);
+}, { passive: false });
 $('#palco-cortar').addEventListener('click', mutarComAviso);
 $('#mini-abrir').addEventListener('click', () => celular() ? abrirPalcoComHistoria() : abrirDisco(!S.disco));
 $('#mini-seta').addEventListener('click', () => abrirDisco(!S.disco));
@@ -6789,7 +6889,7 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!$('#menu').hidden) { if (e.key === 'Escape') { e.preventDefault(); fecharMenu(true); } return; }
   if (S.palco && e.key === 'Escape' && !dialogoAberto()) { e.preventDefault(); fecharPalco(); return; }
-  if (S.disco && e.key === 'Escape' && !dialogoAberto() && !campoDeTexto(e.target)) { e.preventDefault(); abrirDisco(false); return; }
+  if (S.disco && !paginaUnica() && e.key === 'Escape' && !dialogoAberto() && !campoDeTexto(e.target)) { e.preventDefault(); abrirDisco(false); return; }
   if (dialogoAberto() || campoDeTexto(e.target)) return;
   if (e.code === 'Space' || e.key === ' ') { e.preventDefault(); if (!e.repeat) alternar(); }
   else if (/^[1-9]$/.test(e.key)) { const it = S.lib[+e.key - 1]; if (it) { e.preventDefault(); tocar(it.id); } }
