@@ -3150,7 +3150,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     </form>
     <div class="botoes-topo">
       <!-- so no PC (127.0.0.1): o codigo e os celulares conectados nao vao para a rede -->
-      <button class="btn-madeira" id="b-cel" type="button" title="Conectar o celular" hidden>
+      <button class="btn-madeira" id="b-cel" type="button" title="Conectar celular" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10.5 18.5h3"/></svg>
         <span class="rot">Celular</span>
       </button>
@@ -3402,20 +3402,20 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 
 <dialog id="dlg-cel" aria-labelledby="dcel-t">
   <form method="dialog" class="dlg">
-    <h2 id="dcel-t">Conectar o celular</h2>
-    <p id="dcel-semrede" hidden>Este PC não está em nenhuma rede agora, e o celular não alcança a Vitrola. Ligue o Wi-Fi ou o cabo de rede do PC: o QR aparece aqui sozinho.</p>
+    <h2 id="dcel-t">Conectar celular</h2>
+    <p id="dcel-semrede" hidden>Este computador não está conectado a uma rede. Conecte-o ao Wi-Fi ou a um cabo de rede para exibir o QR code.</p>
     <div class="cel-par" id="dcel-par" hidden>
       <div class="cel-qr" id="dcel-qr"></div>
       <div class="cel-passos">
-        <p class="cel-passo">Aponte a câmera do celular para o QR. Ele precisa estar no mesmo Wi-Fi que este PC.</p>
-        <p class="cel-passo">Ou abra <span class="cel-url" id="dcel-url"></span> no navegador do celular e digite o código:</p>
+        <p class="cel-passo">Escaneie o QR code com a câmera do celular. O celular deve estar na mesma rede Wi-Fi deste computador.</p>
+        <p class="cel-passo">Ou acesse <span class="cel-url" id="dcel-url"></span> no navegador do celular e informe o código:</p>
         <p class="cel-codigo cel-passo" id="dcel-cod"></p>
         <p class="em-uso" id="dcel-vale"></p>
-        <button class="btn" type="button" id="dcel-outro">Outro código</button>
+        <button class="btn" type="button" id="dcel-outro">Gerar novo código</button>
       </div>
     </div>
     <p class="msg-dlg" id="dcel-msg" role="status"></p>
-    <h3>Celulares conectados</h3>
+    <h3>Dispositivos conectados</h3>
     <ul class="cel-lista" id="dcel-lista"></ul>
     <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
   </form>
@@ -3433,10 +3433,10 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 
 <div class="fora" id="tela-parear" hidden>
   <form class="cartao dlg" id="form-parear" role="dialog" aria-modal="true" aria-labelledby="pa-t" aria-describedby="pa-p" novalidate>
-    <h2 id="pa-t"><span class="lampada" aria-hidden="true"></span>Conectar este celular</h2>
-    <p id="pa-desc" hidden>Este celular foi desconectado no PC.</p>
-    <p id="pa-p">No PC, abra a Vitrola e clique em <b>Celular</b>, no alto da tela. Aponte a câmera do celular para o QR que aparece, ou digite aqui o código de 6 números que aparece junto dele.</p>
-    <label class="campo">Código do PC<input type="text" id="pa-in" inputmode="numeric" autocomplete="one-time-code" maxlength="7" spellcheck="false"></label>
+    <h2 id="pa-t"><span class="lampada" aria-hidden="true"></span>Conectar à Vitrola</h2>
+    <p id="pa-desc" hidden>Este celular foi desconectado pelo computador.</p>
+    <p id="pa-p">No computador, abra a Vitrola e clique em <b>Celular</b>, no topo da tela. Escaneie o QR code exibido ou informe abaixo o código de 6 dígitos.</p>
+    <label class="campo">Código de conexão<input type="text" id="pa-in" inputmode="numeric" autocomplete="one-time-code" maxlength="7" spellcheck="false"></label>
     <p class="msg-dlg" id="pa-msg" role="status"></p>
     <div class="rodape"><button class="btn" type="submit" id="pa-ok">Conectar</button></div>
   </form>
@@ -6074,7 +6074,7 @@ let celT = 0, celQR = '', celIds = null, celLista = '';
 async function abrirCelular() {
   const msg = $('#dcel-msg');
   celIds = null;
-  msg.className = 'msg-dlg'; msg.textContent = 'Preparando o código.';
+  msg.className = 'msg-dlg'; msg.textContent = 'Gerando código...';
   $('#dlg-cel').showModal();
   if (await atualizarCelular()) msg.textContent = '';
   conferirCelular();
@@ -6099,8 +6099,8 @@ async function atualizarCelular() {
   const vale = $('#dcel-vale');
   vale.classList.toggle('erro', r.queimado);
   vale.textContent = r.queimado
-    ? 'Alguém digitou o código errado várias vezes no celular, e ele deixou de valer. Clique em Outro código.'
-    : `Vale por mais ${Math.max(1, Math.ceil(r.vale_s / 60))} min, uma vez só.`;
+    ? 'Código bloqueado após várias tentativas incorretas. Gere um novo código.'
+    : `Válido por ${Math.max(1, Math.ceil(r.vale_s / 60))} min. Uso único.`;
   const chaveQR = r.qr ? r.qr.join('') : '';
   if (chaveQR !== celQR) { celQR = chaveQR; $('#dcel-qr').innerHTML = r.qr ? desenharQR(r.qr) : ''; }
   desenharCelulares(r.celulares || []);
@@ -6119,7 +6119,7 @@ function desenharQR(linhas) {
       x = f;
     }
   });
-  return `<svg width="${lado * px}" height="${lado * px}" viewBox="0 0 ${lado} ${lado}" shape-rendering="crispEdges" role="img" aria-label="QR com o link da Vitrola para o celular"><rect width="${lado}" height="${lado}" fill="#F4EFE6"/><path fill="#2A1812" d="${d}"/></svg>`;
+  return `<svg width="${lado * px}" height="${lado * px}" viewBox="0 0 ${lado} ${lado}" shape-rendering="crispEdges" role="img" aria-label="QR code para conectar o celular à Vitrola"><rect width="${lado}" height="${lado}" fill="#F4EFE6"/><path fill="#2A1812" d="${d}"/></svg>`;
 }
 function quando(iso) {
   const d = new Date(iso);
@@ -6130,16 +6130,16 @@ function quando(iso) {
 function desenharCelulares(lista) {
   const ids = lista.map(c => c.id);
   const novo = celIds && lista.find(c => !celIds.includes(c.id));
-  if (novo) { const m = $('#dcel-msg'); m.className = 'msg-dlg'; m.textContent = `Pronto: ${novo.nome} conectado.`; }
+  if (novo) { const m = $('#dcel-msg'); m.className = 'msg-dlg'; m.textContent = `${novo.nome} conectado com sucesso.`; }
   celIds = ids;
   const ul = $('#dcel-lista'), v = JSON.stringify(lista);
   if (v === celLista) return;   // a cada 2 s: so redesenha quando muda (o foco num Desconectar nao pula)
   celLista = v;
   ul.replaceChildren();
-  if (!lista.length) { ul.append(el('li', 'cel-vazio', 'Nenhum celular conectado ainda.')); return; }
+  if (!lista.length) { ul.append(el('li', 'cel-vazio', 'Nenhum dispositivo conectado.')); return; }
   for (const c of lista) {
     const li = el('li'), quem = el('span', 'cel-quem');
-    quem.append(el('span', 'cel-nome', c.nome), el('span', 'cel-quando', `conectado ${quando(c.desde)} · usado por último ${quando(c.visto)}`));
+    quem.append(el('span', 'cel-nome', c.nome), el('span', 'cel-quando', `Conectado ${quando(c.desde)} · Último acesso ${quando(c.visto)}`));
     const b = el('button', 'btn', 'Desconectar'); b.type = 'button'; b.dataset.id = c.id;
     b.setAttribute('aria-label', `Desconectar ${c.nome}, conectado ${quando(c.desde)}`);
     li.append(quem, b);
@@ -6152,7 +6152,7 @@ $('#dcel-lista').addEventListener('click', async e => {
   b.disabled = true;
   try {
     await api('DELETE', `/api/pareamento/${encodeURIComponent(b.dataset.id)}`);
-    msg.className = 'msg-dlg'; msg.textContent = 'Desconectado. Para usar a Vitrola de novo, aquele celular vai precisar do código.';
+    msg.className = 'msg-dlg'; msg.textContent = 'Dispositivo desconectado. Para usá-lo novamente, será necessário um novo código.';
     await atualizarCelular();
   } catch (err) { msg.className = 'msg-dlg erro'; msg.textContent = err.message; b.disabled = false; }
 });
@@ -6262,20 +6262,20 @@ function pedirPareamento(desconectado) {
 }
 async function parear(codigo) {
   const msg = $('#pa-msg');
-  msg.className = 'msg-dlg'; msg.textContent = 'Conectando.';
+  msg.className = 'msg-dlg'; msg.textContent = 'Conectando...';
   $('#pa-ok').disabled = true;
   try { await api('POST', '/api/parear', { codigo }); }
   catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; $('#pa-ok').disabled = false; return; }
   $('#pa-ok').disabled = false;
   S.pareando = false;
   $('#tela-parear').hidden = true; $('#pa-in').value = '';
-  avisar('Pronto: este celular está conectado.');
+  avisar('Celular conectado com sucesso.');
   carregar();
 }
 $('#form-parear').addEventListener('submit', e => {
   e.preventDefault();
   const c = $('#pa-in').value.replace(/\D/g, '');
-  if (c.length !== 6) { const m = $('#pa-msg'); m.className = 'msg-dlg erro'; m.textContent = 'O código tem 6 números.'; return; }
+  if (c.length !== 6) { const m = $('#pa-msg'); m.className = 'msg-dlg erro'; m.textContent = 'Informe o código de 6 dígitos.'; return; }
   $('#pa-in').blur();   // fecha o teclado: a resposta aparece embaixo do campo
   parear(c);
 });

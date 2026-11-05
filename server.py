@@ -1397,14 +1397,14 @@ def build(app_state):
                 return web.Response(status=403, text="origem não permitida")
         celular = request.path.startswith("/api/") and not do_pc(request)
         if celular and request.path.startswith("/api/pareamento"):
-            return j_err("O código e os celulares conectados só aparecem no PC.", 403)
+            return j_err("O código e os dispositivos conectados só podem ser consultados no computador.", 403)
         if celular and (request.method, request.path) not in livres:
             chave = request.cookies.get(par.COOKIE)
             if not A.celulares.confere(chave):
                 return web.json_response({
                     "ok": False, "parear": True, "desconectado": bool(chave),
-                    "error": "Este celular não está conectado à Vitrola. No PC, clique em Celular e "
-                             "aponte a câmera para o QR."}, status=401)
+                    "error": "Este celular não está conectado à Vitrola. No computador, clique em Celular e "
+                             "escaneie o QR code."}, status=401)
         resp = await handler(request)
         if celular and request.path == "/api/state":
             com_chave(resp, request.cookies[par.COOKIE])  # cada abertura do tema renova o prazo do cookie
@@ -1734,10 +1734,10 @@ def build(app_state):
         nome = par.nome_do_aparelho(request.headers.get("User-Agent", ""))
         chave, motivo = A.celulares.parear(codigo, nome)
         if chave is None:
-            return j_err("O código foi digitado errado muitas vezes e deixou de valer. No PC, clique em "
-                         "Outro código." if motivo == "queimado" else
-                         f"Esse código não confere. Ele vale por {par.CODIGO_S // 60} minutos e uma vez só: "
-                         "confira o que aparece no PC agora.", 403)
+            return j_err("Código bloqueado após várias tentativas incorretas. No computador, gere um novo código."
+                         if motivo == "queimado" else
+                         f"Código inválido ou expirado. Cada código vale por {par.CODIGO_S // 60} minutos e pode "
+                         "ser usado uma única vez. Confira o código exibido no computador.", 403)
         print(f"celular: pareado ({nome})", flush=True)
         return com_chave(j_ok(), chave)
 
