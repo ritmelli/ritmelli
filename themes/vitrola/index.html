@@ -3143,6 +3143,15 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   /* a maleta na proporcao do celular (pedido dele, 05/11): a largura da de la, 312 px, com o desenho no mesmo tamanho; com
      600 px os discos ficavam achatados (a capa quadrada some atras dos da frente, e so a faixa de 48 px aparece) */
   body.com-disco .fila-parede { width: 312px; max-width: 100%; }
+  /* o receiver como o do celular (pedido dele, 05/11: largo, ele parecia grande demais): uma coluna so, da largura de la,
+     com os medidores em cima, os volumes embaixo e o Mutar voz no pe. Os efeitos saem dele (o seletor); onde eles vao
+     morar no computador ele ainda decide */
+  .palco .receptor { grid-template-columns: minmax(0, 1fr); row-gap: 14px; justify-self: start; align-self: start; width: 358px; max-width: 100%; }
+  .palco .medidores { display: contents; }
+  .palco .janela { order: 1; }
+  .palco .controles { order: 2; }
+  .palco .chaves { order: 3; position: relative; z-index: 1; }
+  .palco .medidores .seletor { display: none; }
   body.com-disco .fila-vazia:not([hidden]) {
     display: block; grid-area: fila; align-self: start; justify-self: center; max-width: 40rem; margin: 6px 0 0; padding: 0 12px; text-wrap: balance;
     text-align: center; font-size: .9375rem; line-height: 1.5; color: var(--marfim-2);
