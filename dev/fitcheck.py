@@ -1,7 +1,9 @@
 """Confere se um tema cabe na tela em varios tamanhos (regra: se adequar a qualquer tela).
 
     python dev/fitcheck.py http://127.0.0.1:8806/t/vitrola/ [--sizes 1366x657,1920x1080]
-        [--shots <pasta>]
+        [--shots <pasta>] [--js "document.querySelector('#mini-seta').click()"]
+
+O --js roda depois da carga, antes da conferencia (abrir uma pagina ou um painel e conferir ela tambem).
 
 Regra por tamanho:
 - tela de computador (largura >= 900): a pagina nao rola, nem na vertical nem na
@@ -113,6 +115,9 @@ async def run(a):
                           deviceScaleFactor=1, mobile=w < 600)
                 await cmd("Page.navigate", url=a.url)
                 await asyncio.sleep(a.wait)
+                if a.js:
+                    await cmd("Runtime.evaluate", expression=a.js)
+                    await asyncio.sleep(a.wait)
                 r = await cmd("Runtime.evaluate", expression=PROBE, returnByValue=True)
                 v = r["result"]["value"]
                 desk = w >= 900
@@ -147,6 +152,7 @@ def main():
     ap.add_argument("--sizes", default=SIZES)
     ap.add_argument("--wait", type=float, default=1.5)
     ap.add_argument("--shots", help="pasta para salvar um print por tamanho")
+    ap.add_argument("--js", help="JS que roda depois da carga, antes da conferencia")
     sys.exit(asyncio.run(run(ap.parse_args())))
 
 
