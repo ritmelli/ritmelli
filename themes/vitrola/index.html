@@ -934,6 +934,34 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 /* o teclado do celular sobe por cima da metade de baixo: o cartao fica no alto */
 @media (max-width: 899.98px) { #tela-parear { align-items: start; padding-top: 48px; } }
 
+/* boas-vindas: cada passo numa etiqueta, como os celulares conectados, com o numero na letra de pixel. Em duas
+   colunas, para caber sem rolar numa tela de notebook; o celular, que e opcional, fica na faixa de baixo */
+#dlg-boas { width: min(880px, calc(100vw - 32px)); }
+.boas-passos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; counter-reset: passo; }
+.boas-passos li {
+  counter-increment: passo; position: relative; display: grid; gap: 6px; justify-items: start; align-content: start;
+  margin: 2px; padding: 6px 12px 9px 44px; background: #E2D3B3; border-image: var(--mold-etiqueta);
+}
+/* a faixa de baixo, larga: o botao vai ao lado do texto */
+.boas-passos li:last-child { grid-column: 1 / -1; grid-template-columns: 1fr auto; column-gap: 16px; align-items: center; }
+.boas-passos li:last-child h3 { grid-column: 1 / -1; }
+@media (max-width: 759.98px) {
+  .boas-passos { grid-template-columns: 1fr; }
+  .boas-passos li:last-child { grid-template-columns: 1fr; }
+}
+/* o foco comeca no titulo, que nao e botao: o primeiro botao aceso parecia a acao principal */
+#db-t:focus { outline: none; }
+.boas-passos li::before {
+  content: counter(passo); position: absolute; left: 14px; top: 4px;
+  font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; line-height: 36px; color: var(--tinta-2);
+}
+.dlg .boas-passos p { font-size: .875rem; }
+.dlg .boas-status { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; }
+.boas-status .lampada { margin-top: 5px; box-shadow: 0 0 0 2px var(--contorno); }
+#db-disp span { display: block; }
+.boas-falta { display: grid; gap: 8px; justify-items: start; }
+.dlg .boas-passos .btn { min-height: 1.875rem; padding: .125rem .75rem; font-size: .8125rem; text-decoration: none; }
+
 /* ---------- celular: a pagina e a biblioteca (busca, sons rapidos, prateleira); o toca-discos,
    os volumes e os efeitos abrem por cima pela barra de baixo, como o "tocando agora" dos apps de
    musica. No computador o palco some (display: contents) e nada muda. ---------- */
@@ -3398,6 +3426,47 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       <span>No VRChat, o microfone precisa ser <b>CABLE Output (VB-Audio Virtual Cable)</b>. É por ele que o jogo recebe a sua voz e o som.</span></div>
     <p class="msg-dlg" id="dd-msg" role="status"></p>
     <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
+  </form>
+</dialog>
+
+<!-- boas-vindas: o passo a passo da primeira vez no PC (GET /api/boas-vindas); o cabo e os dispositivos saem do JS -->
+<dialog id="dlg-boas" aria-labelledby="db-t">
+  <form method="dialog" class="dlg">
+    <h2 id="db-t" tabindex="-1" autofocus>Boas-vindas à Vitrola</h2>
+    <p>A Vitrola toca música no microfone do VRChat, junto com a sua voz. Confira estes passos uma vez e pronto.</p>
+    <ol class="boas-passos">
+      <li>
+        <h3>O cabo de áudio</h3>
+        <p>O VB-Cable leva o som da Vitrola para o microfone do jogo. É gratuito, da VB-Audio.</p>
+        <p class="boas-status"><span class="lampada" id="db-cabo-l" aria-hidden="true"></span><span id="db-cabo">Conferindo se ele está instalado.</span></p>
+        <div class="boas-falta" id="db-cabo-falta" hidden>
+          <p>Na página do VB-Cable, baixe o pacote para Windows (.zip) e extraia. Clique com o botão direito em <b>VBCABLE_Setup_x64.exe</b>, escolha <b>Executar como administrador</b> e clique em <b>Install Driver</b>. Se ele não aparecer aqui depois, reinicie o PC.</p>
+          <a class="btn" href="https://vb-audio.com/Cable/" target="_blank" rel="noopener">Abrir a página do VB-Cable</a>
+        </div>
+      </li>
+      <li>
+        <h3>O seu microfone e o seu fone</h3>
+        <p>A sua voz sai do microfone, e você ouve a música no fone.</p>
+        <p class="boas-status"><span class="lampada" id="db-disp-l" aria-hidden="true"></span><span id="db-disp">Lendo os dispositivos do Windows.</span></p>
+        <button class="btn" type="button" id="db-trocar">Trocar</button>
+      </li>
+      <li>
+        <h3>No VRChat</h3>
+        <p>Nas configurações de áudio do jogo, escolha <b>CABLE Output (VB-Audio Virtual Cable)</b> como microfone.</p>
+      </li>
+      <li>
+        <h3>O primeiro disco</h3>
+        <p>Busque no YouTube ou cole um link na busca, no alto da tela.</p>
+        <button class="btn" value="buscar">Buscar agora</button>
+      </li>
+      <li>
+        <h3>O celular, se quiser</h3>
+        <p>No mesmo Wi-Fi do PC, o celular vira um controle da Vitrola. Dá para conectar depois, no botão Celular.</p>
+        <button class="btn" type="button" id="db-cel">Conectar o celular</button>
+      </li>
+    </ol>
+    <p class="msg-dlg" id="db-msg" role="status"></p>
+    <div class="rodape"><button class="btn" value="ok">Começar</button></div>
   </form>
 </dialog>
 
@@ -6281,6 +6350,46 @@ $('#form-parear').addEventListener('submit', e => {
   parear(c);
 });
 
+/* ---------- boas-vindas (so no PC): o passo a passo da primeira vez, quando o GET /api/boas-vindas diz. Fechar de
+   qualquer jeito marca como vistas, e elas nao voltam. Abertas, conferem o cabo e os dispositivos a cada 3 s: o cabo
+   instalado com elas na tela acende sozinho ---------- */
+let boasT = 0, boasPedidas = false;
+async function boasVindasSePrecisar() {
+  // o mesmo teste do botao Celular; o servidor tambem so diz que sim para o PC
+  if (boasPedidas || !['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname)) return;
+  boasPedidas = true;
+  let r;
+  try { r = await api('GET', '/api/boas-vindas'); } catch (e) { return; }
+  if (r.mostrar && !dialogoAberto()) { $('#dlg-boas').showModal(); conferirBoasVindas(); }
+}
+async function conferirBoasVindas() {
+  clearTimeout(boasT);
+  const d = $('#dlg-boas'), msg = $('#db-msg');
+  if (!d.open) return;
+  try {
+    const r = await api('GET', '/api/devices'), act = r.active || {};
+    const cabo = (r.outputs || []).some(n => /cable input/i.test(n));
+    $('#db-cabo-l').className = `lampada ${cabo ? 'acesa' : 'alerta'}`;
+    $('#db-cabo').textContent = cabo ? 'Instalado.' : 'Ainda não está instalado.';
+    $('#db-cabo-falta').hidden = cabo;
+    $('#db-disp-l').className = `lampada ${act.mic ? 'acesa' : 'alerta'}`;
+    if (act.mic) $('#db-disp').replaceChildren(el('span', null, `Microfone: ${act.mic}`),
+                                                el('span', null, `Fone: ${act.monitor || 'nenhum, a música não toca no seu fone'}`));
+    else $('#db-disp').textContent = 'Não achei nenhum microfone. Conecte um e ele aparece aqui.';
+    msg.textContent = '';
+  } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
+  if (d.open) boasT = setTimeout(conferirBoasVindas, 3000);
+}
+$('#dlg-boas').addEventListener('close', () => {
+  clearTimeout(boasT);
+  api('POST', '/api/boas-vindas').catch(() => {});
+  if ($('#dlg-boas').returnValue === 'buscar') $('#q').focus();
+});
+$('#db-trocar').addEventListener('click', abrirDispositivos);
+// a troca feita no dialogo de dispositivos aparece no passo na hora, sem esperar a proxima conferencia
+$('#dlg-disp').addEventListener('close', () => { if ($('#dlg-boas').open) conferirBoasVindas(); });
+$('#db-cel').addEventListener('click', abrirCelular);
+
 /* ---------- eventos da interface ---------- */
 $('#estante').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -6590,6 +6699,7 @@ function carregar() {
     .then(([st, lib, jobs]) => {
       S.state = st; S.pos = st.pos || 0; S.levels = st.levels || S.levels; S.lib = ordenarLib(lib); S.jobs = jobs;
       online(true); desenharFaixa(); desenharReceptor(); desenharPrateleira(); desenharFila();
+      boasVindasSePrecisar();
     })
     .catch(e => {
       if (e.status !== 401) { online(false); return; }

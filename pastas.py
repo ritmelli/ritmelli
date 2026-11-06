@@ -1,9 +1,9 @@
 """Onde moram as coisas. Os dados de quem usa ficam fora da pasta do app, porque instalado em Program Files
 ela nao aceita escrita: audio baixado, biblioteca e escolhas em library/; os logs do servidor em logs/. Os logs
 das ferramentas de dev/ (logs/efeitos/) seguem na pasta do codigo. O ffmpeg, o ffprobe e o deno vem na bin/ do
-app (o instalador poe); sem ela, saem do PATH, como no codigo. A porta do servidor mora aqui tambem: o vitrola.py
-precisa dela antes de carregar o servidor. E o jeito de gravar os .json dos dados (save_json), o mesmo para o
-servidor e para o pareamento."""
+app (o instalador poe); sem ela, saem do PATH, como no codigo. A porta do servidor e a pagina que o app abre moram
+aqui tambem: o vitrola.py precisa delas antes de carregar o servidor. E o jeito de gravar os .json dos dados
+(save_json), o mesmo para o servidor e para o pareamento."""
 import json
 import os
 import sys
@@ -16,6 +16,8 @@ LOGS = DADOS / "logs"
 APP = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 BIN = APP / "bin"
 PORTA = 8799  # a do servidor: o PC abre em 127.0.0.1, o celular no IP da rede de casa
+# o tema, e nao a galeria de temas (que segue em /): quem acabou de instalar cai direto no toca-discos
+PAGINA = "/t/vitrola/"
 
 
 def ferramenta(nome):
