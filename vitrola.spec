@@ -15,6 +15,9 @@ datas = [
     ("gallery.html", "."),
     ("modelos/compasso.onnx", "modelos"),
     ("modelos/LICENSE-beat_this.txt", "modelos"),  # o modelo e MIT: a licenca vai junto com ele
+    # o icone da aba do navegador e o do celular (server.py); o setup tambem pega o .ico daqui
+    ("icone/vitrola.ico", "icone"),
+    ("icone/toque.png", "icone"),
 ]
 datas += collect_data_files("ytmusicapi")  # os idiomas (locales\): sem hook pronto
 
@@ -46,5 +49,6 @@ versao = VSVersionInfo(
     ])
 
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="vitrola", console=False, version=versao)
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="vitrola", console=False, version=versao,
+          icon=os.path.join(SPECPATH, "icone", "vitrola.ico"))
 coll = COLLECT(exe, a.binaries, a.datas, name="vitrola")

@@ -1768,9 +1768,15 @@ def build(app_state):
             return j_err("Esse celular já não estava conectado.", 404)
         return j_ok()
 
+    # o icone vale para todo tema: a aba pede o /favicon.ico sozinha, e o iPhone o /apple-touch-icon.png
+    # ao salvar na tela inicial (o Android so com o <link> no tema)
     @r.get("/favicon.ico")
     async def favicon(_):
-        return web.Response(status=204)
+        return web.FileResponse(HERE / "icone" / "vitrola.ico")
+
+    @r.get("/apple-touch-icon.png")
+    async def icone_celular(_):
+        return web.FileResponse(HERE / "icone" / "toque.png")
 
     @r.get("/")
     async def index(_):

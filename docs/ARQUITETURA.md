@@ -230,6 +230,11 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo` no
   tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria, com a prateleira de mentira do
   `dev/compara.py`; ele entra no git porque o instalador leva a pasta do tema como ela está).
+- `icone/`: o ícone da Vitrola, o toca-discos do tema visto de cima, que o `dev/icone.py` desenha
+  em pixel em cada tamanho (o de 16 px a mão): o `vitrola.ico`, que é o do exe, o do setup e o da
+  aba do navegador (pelo `/favicon.ico`), e o `toque.png`, o do atalho na tela inicial do celular
+  (pelo `/apple-touch-icon.png`). Com `--instalador`, o script grava também as imagens do
+  assistente do Inno Setup na `instalador/` do vitrola-server.
 - `pastas.py`: os dados de quem usa moram em `%LOCALAPPDATA%\Vitrola`, fora da pasta do
   código, porque instalado em Program Files ela não aceita escrita. Em `library/`, o áudio
   baixado, a lista da biblioteca, as escolhas de volume e dispositivo e os celulares pareados;
