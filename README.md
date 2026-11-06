@@ -101,4 +101,5 @@ entre o servidor e a interface em [API.md](API.md).
 
 ## Licença
 
-[GPLv3](LICENSE). As fontes da interface são SIL OFL 1.1 (`themes/vitrola/fonts/`).
+[GPLv3](LICENSE). As fontes da interface são SIL OFL 1.1 (`themes/vitrola/fonts/`), e o modelo de
+batidas (`modelos/compasso.onnx`, exportado do beat_this) é MIT (`modelos/LICENSE-beat_this.txt`).
