@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vitrola</title>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
@@ -926,10 +927,51 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 .cel-lista .cel-nome { font-weight: 600; font-size: .875rem; line-height: 1.3; }
 .cel-lista .cel-quando { font-size: .75rem; line-height: 1.3; color: var(--tinta-2); }
 .cel-vazio { font-size: .875rem; color: var(--tinta-2); }
+/* a versao nova: o led ambar na tecla do topo, as notas e o download numa barra de rebaixo que o ambar enche (--p de 0
+   a 1) */
+#b-atualizar { position: relative; }
+#b-atualizar::after {
+  content: ""; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; pointer-events: none;
+  background: var(--ambar); box-shadow: 0 0 0 2px var(--contorno), 0 0 8px 2px rgba(243,167,60,.6);
+}
+.notas-versao { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: .9375rem; color: #3f2f24; }
+.barra-baixa {
+  height: calc(12px + 6 * var(--px, 1px));
+  border: calc(3 * var(--px, 1px)) solid var(--contorno); border-radius: calc(15 * var(--px, 1px)); border-image: var(--mold-rebaixo);
+  background: linear-gradient(90deg, var(--ambar) calc(var(--p, 0) * 100%), #16110E 0);
+}
 #tela-parear { overflow-y: auto; }
 .dlg #pa-in { height: 3.25rem; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; letter-spacing: .12em; text-align: center; color: var(--ambar-claro); }
 /* o teclado do celular sobe por cima da metade de baixo: o cartao fica no alto */
 @media (max-width: 899.98px) { #tela-parear { align-items: start; padding-top: 48px; } }
+
+/* boas-vindas: cada passo numa etiqueta, como os celulares conectados, com o numero na letra de pixel. Em duas
+   colunas, para caber sem rolar numa tela de notebook; o celular, que e opcional, fica na faixa de baixo */
+#dlg-boas { width: min(880px, calc(100vw - 32px)); }
+.boas-passos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; counter-reset: passo; }
+.boas-passos li {
+  counter-increment: passo; position: relative; display: grid; gap: 6px; justify-items: start; align-content: start;
+  margin: 2px; padding: 6px 12px 9px 44px; background: #E2D3B3; border-image: var(--mold-etiqueta);
+}
+/* a faixa de baixo, larga: o botao vai ao lado do texto */
+.boas-passos li:last-child { grid-column: 1 / -1; grid-template-columns: 1fr auto; column-gap: 16px; align-items: center; }
+.boas-passos li:last-child h3 { grid-column: 1 / -1; }
+@media (max-width: 759.98px) {
+  .boas-passos { grid-template-columns: 1fr; }
+  .boas-passos li:last-child { grid-template-columns: 1fr; }
+}
+/* o foco comeca no titulo, que nao e botao: o primeiro botao aceso parecia a acao principal */
+#db-t:focus { outline: none; }
+.boas-passos li::before {
+  content: counter(passo); position: absolute; left: 14px; top: 4px;
+  font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; line-height: 36px; color: var(--tinta-2);
+}
+.dlg .boas-passos p { font-size: .875rem; }
+.dlg .boas-status { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; }
+.boas-status .lampada { margin-top: 5px; box-shadow: 0 0 0 2px var(--contorno); }
+#db-disp span { display: block; }
+.boas-falta { display: grid; gap: 8px; justify-items: start; }
+.dlg .boas-passos .btn { min-height: 1.875rem; padding: .125rem .75rem; font-size: .8125rem; text-decoration: none; }
 
 /* ---------- celular: a pagina e a biblioteca (busca, sons rapidos, prateleira); o toca-discos,
    os volumes e os efeitos abrem por cima pela barra de baixo, como o "tocando agora" dos apps de
@@ -4006,6 +4048,11 @@ body.mesa-dj .palco .receptor > :is(.mx-placa-px, .mx-rot-px) { image-rendering:
         <span class="rot"><span class="vai-disco">Toca-discos</span><span class="vai-prat">Prateleira</span></span>
       </button>
       <button class="btn-madeira so-pc" id="b-mudo-topo" type="button" aria-pressed="false" title="Mutar voz"><span class="ic-mic"></span><span class="rot">Mutar voz</span></button>
+      <!-- so no PC, quando ha versao nova (atualizacao.py) -->
+      <button class="btn-madeira" id="b-atualizar" type="button" title="Versão nova" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5v11"/><path d="M7.5 10l4.5 4.5 4.5-4.5"/><path d="M4.5 16.5v3h15v-3"/></svg>
+        <span class="rot">Versão nova</span>
+      </button>
       <!-- so no PC (127.0.0.1): o codigo e os celulares conectados nao vao para a rede -->
       <button class="btn-madeira" id="b-cel" type="button" title="Conectar celular" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10.5 18.5h3"/></svg>
@@ -4016,7 +4063,7 @@ body.mesa-dj .palco .receptor > :is(.mx-placa-px, .mx-rot-px) { image-rendering:
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(12 12) scale(.82) translate(-12 -12)"><circle cx="12" cy="12" r="3" vector-effect="non-scaling-stroke"/><path vector-effect="non-scaling-stroke" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></g></svg>
         <span class="rot">Microfone e fone</span>
       </button>
-      <button class="btn-madeira" id="b-desligar" type="button" title="Desligar o soundboard">
+      <button class="btn-madeira" id="b-desligar" type="button" title="Desligar a Vitrola">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0"/></svg>
         <span class="rot">Desligar</span>
       </button>
@@ -4333,6 +4380,47 @@ body.mesa-dj .palco .receptor > :is(.mx-placa-px, .mx-rot-px) { image-rendering:
   </form>
 </dialog>
 
+<!-- boas-vindas: o passo a passo da primeira vez no PC (GET /api/boas-vindas); o cabo e os dispositivos saem do JS -->
+<dialog id="dlg-boas" aria-labelledby="db-t">
+  <form method="dialog" class="dlg">
+    <h2 id="db-t" tabindex="-1" autofocus>Boas-vindas à Vitrola</h2>
+    <p>A Vitrola toca música no microfone do VRChat, junto com a sua voz. Confira estes passos uma vez e pronto.</p>
+    <ol class="boas-passos">
+      <li>
+        <h3>O cabo de áudio</h3>
+        <p>O VB-Cable leva o som da Vitrola para o microfone do jogo. É gratuito, da VB-Audio.</p>
+        <p class="boas-status"><span class="lampada" id="db-cabo-l" aria-hidden="true"></span><span id="db-cabo">Conferindo se ele está instalado.</span></p>
+        <div class="boas-falta" id="db-cabo-falta" hidden>
+          <p>Na página do VB-Cable, baixe o pacote para Windows (.zip) e extraia. Clique com o botão direito em <b>VBCABLE_Setup_x64.exe</b>, escolha <b>Executar como administrador</b> e clique em <b>Install Driver</b>. Se ele não aparecer aqui depois, reinicie o PC.</p>
+          <a class="btn" href="https://vb-audio.com/Cable/" target="_blank" rel="noopener">Abrir a página do VB-Cable</a>
+        </div>
+      </li>
+      <li>
+        <h3>O seu microfone e o seu fone</h3>
+        <p>A sua voz sai do microfone, e você ouve a música no fone.</p>
+        <p class="boas-status"><span class="lampada" id="db-disp-l" aria-hidden="true"></span><span id="db-disp">Lendo os dispositivos do Windows.</span></p>
+        <button class="btn" type="button" id="db-trocar">Trocar</button>
+      </li>
+      <li>
+        <h3>No VRChat</h3>
+        <p>Nas configurações de áudio do jogo, escolha <b>CABLE Output (VB-Audio Virtual Cable)</b> como microfone.</p>
+      </li>
+      <li>
+        <h3>O primeiro disco</h3>
+        <p>Busque no YouTube ou cole um link na busca, no alto da tela.</p>
+        <button class="btn" value="buscar">Buscar agora</button>
+      </li>
+      <li>
+        <h3>O celular, se quiser</h3>
+        <p>No mesmo Wi-Fi do PC, o celular vira um controle da Vitrola. Dá para conectar depois, no botão Celular.</p>
+        <button class="btn" type="button" id="db-cel">Conectar o celular</button>
+      </li>
+    </ol>
+    <p class="msg-dlg" id="db-msg" role="status"></p>
+    <div class="rodape"><button class="btn" value="ok">Começar</button></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-cel" aria-labelledby="dcel-t">
   <form method="dialog" class="dlg">
     <h2 id="dcel-t">Conectar celular</h2>
@@ -4354,13 +4442,27 @@ body.mesa-dj .palco .receptor > :is(.mx-placa-px, .mx-rot-px) { image-rendering:
   </form>
 </dialog>
 
+<dialog id="dlg-atualizar" aria-labelledby="da-t">
+  <form method="dialog" class="dlg">
+    <h2 id="da-t">Versão nova</h2>
+    <p id="da-p"></p>
+    <ul class="notas-versao" id="da-notas" hidden></ul>
+    <div class="barra-baixa" id="da-barra" role="progressbar" aria-label="Download da versão nova" hidden></div>
+    <p class="msg-dlg" id="da-msg" role="status"></p>
+    <div class="rodape">
+      <button class="btn" value="nao" id="da-nao">Agora não</button>
+      <button class="btn" type="button" id="da-ok">Baixar e instalar</button>
+    </div>
+  </form>
+</dialog>
+
 <div class="aviso" id="aviso" role="status" aria-live="polite" hidden></div>
 
 <div class="fora" id="fora" hidden>
   <div class="cartao" role="alertdialog" aria-modal="true" aria-labelledby="fora-t" aria-describedby="fora-p">
-    <h2 id="fora-t"><span class="lampada" aria-hidden="true"></span><span id="fora-tt">O soundboard não está respondendo</span></h2>
+    <h2 id="fora-t"><span class="lampada" aria-hidden="true"></span><span id="fora-tt">A Vitrola não está respondendo</span></h2>
     <p id="fora-p"></p>
-    <p class="tentando" id="fora-tentando">Tentando conectar de novo a cada poucos segundos. Esta página volta sozinha quando ele responder.</p>
+    <p class="tentando" id="fora-tentando">Tentando conectar de novo a cada poucos segundos. Esta página volta sozinha quando ela responder.</p>
   </div>
 </div>
 
@@ -4420,6 +4522,7 @@ const S = {
   state: null, lib: [], jobs: [], pos: 0, levels: { mic: 0, track: 0, out: 0 },
   online: null, jaConectou: false, desligado: false,
   pareando: false,        // celular sem pareamento: o #tela-parear pede o codigo do PC
+  atualizando: null,      // a versao que o instalador esta pondo: a pagina recarrega quando a Vitrola voltar
   busca: null,            // null = prateleira; {q, link, itens, carregando, erro}
   buscaSeq: 0,
   jobAlvo: {},            // id do job -> youtube_id
@@ -4477,13 +4580,13 @@ async function api(method, path, data) {
       body: data ? JSON.stringify(data) : undefined,
     });
   } catch (e) {
-    throw new Error('O soundboard não respondeu. Confira se ele está ligado.');
+    throw new Error('A Vitrola não respondeu. Confira se ela está ligada.');
   }
   let j = null;
   try { j = await r.json(); } catch (e) { /* corpo vazio */ }
   if (!r.ok || (j && j.ok === false)) {
     if (r.status === 401 && j && j.parear) pedirPareamento(j.desconectado);
-    const msg = (j && j.error) || `O soundboard respondeu com erro ${r.status}.`;
+    const msg = (j && j.error) || `A Vitrola respondeu com erro ${r.status}.`;
     const e = new Error(ERROS[msg] || msg); e.status = r.status;
     throw e;
   }
@@ -5270,7 +5373,7 @@ function montarGaveta() {
   $('#banco-dir').replaceChildren();
   if (!S.efeitos) {
     banco.append(el('p', 'aviso-gav', S.erroEfeitos
-      ? 'Não deu para ler a lista de efeitos. Ela aparece sozinha quando o soundboard responder.'
+      ? 'Não deu para ler a lista de efeitos. Ela aparece sozinha quando a Vitrola responder.'
       : 'Lendo a lista de efeitos.'));
     montarMarcas();
     return;
@@ -5289,7 +5392,7 @@ function montarGaveta() {
     sec.append(h, t);
     banco.append(sec);
   }
-  if (!S.efeitos.length) banco.append(el('p', 'aviso-gav', 'O soundboard não mandou nenhum efeito.'));
+  if (!S.efeitos.length) banco.append(el('p', 'aviso-gav', 'A Vitrola não mandou nenhum efeito.'));
   repartirPedais();
   montarMarcas();
   caberNomes();
@@ -6992,7 +7095,7 @@ function desenharBusca() {
     const fora = /não respondeu/.test(b.erro);
     const doYoutube = /busca (no YouTube )?falhou/i.test(b.erro);
     if (fora) {
-      av.append(el('strong', null, 'O soundboard não respondeu. '), document.createTextNode('Confira se ele está ligado e busque de novo.'));
+      av.append(el('strong', null, 'A Vitrola não respondeu. '), document.createTextNode('Confira se ela está ligada e busque de novo.'));
     } else if (doYoutube || limite) {
       const dica = limite ? 'O YouTube recusou por excesso de buscas. Espere alguns minutos e tente de novo, ou cole o link do vídeo.'
         : 'Confira a internet e tente de novo, ou cole o link do vídeo.';
@@ -7729,7 +7832,7 @@ $('#dd-mic').addEventListener('change', e => trocarDispositivo('mic', e.target.v
 $('#dd-mon').addEventListener('change', e => trocarDispositivo('monitor', e.target.value));
 
 async function desligar() {
-  const ok = await confirmar('Desligar o soundboard?', 'A sua voz para de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade.', 'Desligar');
+  const ok = await confirmar('Desligar a Vitrola?', 'A sua voz para de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade.', 'Desligar');
   if (!ok) return;
   try { await api('POST', '/api/shutdown'); S.desligado = true; mostrarFora(); }
   catch (e) { avisar(e.message, true); }
@@ -7829,6 +7932,60 @@ $('#dcel-outro').addEventListener('click', async () => {
   catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
 });
 
+/* ---------- versao nova (atualizacao.py): so no PC, que e onde o instalador roda. O aviso vem no estado ao vivo, e o
+   dialogo pede as notas; baixado e conferido o setup, o Instalar agora roda o instalador, que fecha a Vitrola e abre de
+   novo ---------- */
+const NO_PC = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
+function desenharAtualizacao() {
+  const a = S.state && S.state.atualizacao, b = $('#b-atualizar');
+  b.hidden = !(NO_PC && a && a.nova);
+  if (a && a.nova) b.title = `Versão nova: ${a.nova}`;
+  if ($('#dlg-atualizar').open && a) pintarAtualizacao(a);
+}
+function pintarAtualizacao(a) {
+  const ok = $('#da-ok'), barra = $('#da-barra'), msg = $('#da-msg');
+  barra.hidden = a.estado !== 'baixando';
+  barra.style.setProperty('--p', a.progresso || 0);
+  barra.setAttribute('aria-valuenow', Math.round((a.progresso || 0) * 100));
+  ok.disabled = ['baixando', 'consultando', 'instalando'].includes(a.estado);
+  ok.textContent = a.estado === 'pronta' ? 'Instalar agora' : a.estado === 'baixando' ? `Baixando ${Math.round((a.progresso || 0) * 100)}%` : 'Baixar e instalar';
+  msg.className = 'msg-dlg' + (a.erro ? ' erro' : '');
+  msg.textContent = a.erro || (a.estado === 'pronta' ? 'O Windows vai pedir permissão para instalar. A Vitrola fecha e abre de novo sozinha.' : '');
+}
+async function abrirAtualizacao() {
+  let a;
+  try { a = await api('GET', '/api/atualizacao'); } catch (e) { avisar(e.message, true); return; }
+  if (!a.nova) { avisar('Não há versão nova agora.'); return; }
+  $('#da-t').textContent = `Versão nova: ${a.nova.versao}`;
+  $('#da-p').textContent = `Você está na ${a.versao}. O download tem ${Math.max(1, Math.round(a.nova.tamanho / 1048576))} MB, e a música para durante a instalação.`;
+  const ul = $('#da-notas');
+  ul.replaceChildren(...a.nova.notas.map(n => el('li', null, n)));
+  ul.hidden = !a.nova.notas.length;
+  pintarAtualizacao(a);
+  $('#dlg-atualizar').showModal();
+}
+$('#b-atualizar').addEventListener('click', abrirAtualizacao);
+$('#da-ok').addEventListener('click', async () => {
+  const a = S.state && S.state.atualizacao, msg = $('#da-msg');
+  try {
+    if (a && a.estado === 'pronta') {
+      await api('POST', '/api/atualizacao/instalar');
+      S.atualizando = a.nova;
+      $('#dlg-atualizar').close();
+      mostrarFora();
+    } else {
+      await api('POST', '/api/atualizacao/baixar');
+    }
+  } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
+});
+/* o instalador fecha a Vitrola: no lugar do fora do ar, a tela diz que ela volta sozinha */
+function mostrarAtualizando(f) {
+  $('#fora-tt').textContent = 'Atualizando a Vitrola';
+  $('#fora-p').textContent = `O instalador está pondo a versão ${S.atualizando}. A Vitrola fecha e abre de novo sozinha, em menos de um minuto, e esta página volta junto.`;
+  $('#lamp').className = 'lampada alerta piscando';
+  f.hidden = false;
+}
+
 /* ---------- conexao ---------- */
 let es = null, foraT = null, reconT = null;
 function conectar() {
@@ -7841,6 +7998,7 @@ function conectar() {
   es.addEventListener('state', e => {
     online(true); S.state = JSON.parse(e.data);
     desenharFaixa(); desenharReceptor(); desenharFila(); if (S.busca) atualizarResultados();
+    desenharAtualizacao();
   });
   es.addEventListener('library', e => { S.lib = ordenarLib(JSON.parse(e.data)); desenharPrateleira(); desenharFila(); if (S.busca) atualizarResultados(); });
   es.addEventListener('jobs', e => {
@@ -7886,9 +8044,10 @@ function online(on) {
   const lamp = $('#lamp'), cx = $('#conexao');
   if (on) {
     S.jaConectou = true; S.desligado = false;
+    if (S.atualizando) { location.reload(); return; }   // a versao nova abriu: a pagina passa a ser a dela
     clearTimeout(foraT); $('#fora').hidden = true;
     if (!S.efeitos && S.erroEfeitos) carregarEfeitos();
-    lamp.className = 'lampada acesa'; cx.textContent = 'ligado';
+    lamp.className = 'lampada acesa'; cx.textContent = 'ligada';
   } else {
     lamp.className = 'lampada alerta piscando'; cx.textContent = 'reconectando';
     armarFora();
@@ -7898,14 +8057,15 @@ function online(on) {
 function mostrarFora() {
   const f = $('#fora');
   fecharMenu(false);
+  if (S.atualizando) { mostrarAtualizando(f); return; }
   if (S.desligado) {
-    $('#fora-tt').textContent = 'Soundboard desligado';
-    $('#fora-p').innerHTML = 'A sua voz parou de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade. Para ligar de novo, rode <code>soundboard.ps1 start</code> no PC, na pasta da Vitrola.';
+    $('#fora-tt').textContent = 'Vitrola desligada';
+    $('#fora-p').innerHTML = 'A sua voz parou de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade. Para ligar de novo, abra a Vitrola no PC, pelo menu Iniciar.';
   } else {
-    $('#fora-tt').textContent = S.jaConectou ? 'O soundboard parou de responder' : 'O soundboard não está respondendo';
-    $('#fora-p').innerHTML = 'O servidor caiu ou foi desligado, e a sua voz não está passando pelo cabo. Para ligar, rode <code>soundboard.ps1 start</code> no PC, na pasta da Vitrola. Se ele já estiver rodando, o motivo aparece no log em <code>%LOCALAPPDATA%\\Vitrola\\logs</code>.';
+    $('#fora-tt').textContent = S.jaConectou ? 'A Vitrola parou de responder' : 'A Vitrola não está respondendo';
+    $('#fora-p').innerHTML = 'O servidor caiu ou foi desligado, e a sua voz não está passando pelo cabo. Para ligar, abra a Vitrola no PC, pelo menu Iniciar. Se ela já estiver aberta, o motivo aparece no log em <code>%LOCALAPPDATA%\\Vitrola\\logs</code>.';
   }
-  $('#lamp').className = 'lampada'; $('#conexao').textContent = S.desligado ? 'desligado' : 'fora do ar';
+  $('#lamp').className = 'lampada'; $('#conexao').textContent = S.desligado ? 'desligada' : 'fora do ar';
   $('#conexao').classList.remove('sr');
   f.hidden = false;
 }
@@ -7946,6 +8106,46 @@ $('#form-parear').addEventListener('submit', e => {
   $('#pa-in').blur();   // fecha o teclado: a resposta aparece embaixo do campo
   parear(c);
 });
+
+/* ---------- boas-vindas (so no PC): o passo a passo da primeira vez, quando o GET /api/boas-vindas diz. Fechar de
+   qualquer jeito marca como vistas, e elas nao voltam. Abertas, conferem o cabo e os dispositivos a cada 3 s: o cabo
+   instalado com elas na tela acende sozinho ---------- */
+let boasT = 0, boasPedidas = false;
+async function boasVindasSePrecisar() {
+  // o mesmo teste do botao Celular; o servidor tambem so diz que sim para o PC
+  if (boasPedidas || !['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname)) return;
+  boasPedidas = true;
+  let r;
+  try { r = await api('GET', '/api/boas-vindas'); } catch (e) { return; }
+  if (r.mostrar && !dialogoAberto()) { $('#dlg-boas').showModal(); conferirBoasVindas(); }
+}
+async function conferirBoasVindas() {
+  clearTimeout(boasT);
+  const d = $('#dlg-boas'), msg = $('#db-msg');
+  if (!d.open) return;
+  try {
+    const r = await api('GET', '/api/devices'), act = r.active || {};
+    const cabo = (r.outputs || []).some(n => /cable input/i.test(n));
+    $('#db-cabo-l').className = `lampada ${cabo ? 'acesa' : 'alerta'}`;
+    $('#db-cabo').textContent = cabo ? 'Instalado.' : 'Ainda não está instalado.';
+    $('#db-cabo-falta').hidden = cabo;
+    $('#db-disp-l').className = `lampada ${act.mic ? 'acesa' : 'alerta'}`;
+    if (act.mic) $('#db-disp').replaceChildren(el('span', null, `Microfone: ${act.mic}`),
+                                                el('span', null, `Fone: ${act.monitor || 'nenhum, a música não toca no seu fone'}`));
+    else $('#db-disp').textContent = 'Não achei nenhum microfone. Conecte um e ele aparece aqui.';
+    msg.textContent = '';
+  } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
+  if (d.open) boasT = setTimeout(conferirBoasVindas, 3000);
+}
+$('#dlg-boas').addEventListener('close', () => {
+  clearTimeout(boasT);
+  api('POST', '/api/boas-vindas').catch(() => {});
+  if ($('#dlg-boas').returnValue === 'buscar') $('#q').focus();
+});
+$('#db-trocar').addEventListener('click', abrirDispositivos);
+// a troca feita no dialogo de dispositivos aparece no passo na hora, sem esperar a proxima conferencia
+$('#dlg-disp').addEventListener('close', () => { if ($('#dlg-boas').open) conferirBoasVindas(); });
+$('#db-cel').addEventListener('click', abrirCelular);
 
 /* ---------- eventos da interface ---------- */
 $('#estante').addEventListener('click', e => {
@@ -8311,6 +8511,7 @@ function carregar() {
     .then(([st, lib, jobs]) => {
       S.state = st; S.pos = st.pos || 0; S.levels = st.levels || S.levels; S.lib = ordenarLib(lib); S.jobs = jobs;
       online(true); desenharFaixa(); desenharReceptor(); desenharPrateleira(); desenharFila();
+      boasVindasSePrecisar();
     })
     .catch(e => {
       if (e.status !== 401) { online(false); return; }

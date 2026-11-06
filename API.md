@@ -12,6 +12,9 @@ só com esta API.
   extra (fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
   relativo (`./x.svg`), servido em `/t/<slug>/x.svg`.
 - `themes/<slug>/meta.json`: `{"name": "...", "direction": "...", "blurb": "uma frase"}`.
+- O ícone é do servidor, igual para todo tema: a aba do navegador pega o `/favicon.ico`
+  sem nada no tema, e o atalho na tela inicial do celular pede
+  `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` no `<head>`.
 - Fonte externa só do Google Fonts; script externo nenhum.
 - API sempre por caminho absoluto (`/api/...`), mesma origem. Escrita é `fetch` com
   `method` e, quando tem corpo, `Content-Type: application/json`.
@@ -52,9 +55,13 @@ reconecta sozinho; mostre que está reconectando.
  "error": null ou "texto",
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
  "versao": "0.1.0",
- "visor": {"ondas": 3, "passagens": [Passagem]}}
+ "visor": {"ondas": 3, "passagens": [Passagem]},
+ "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou "texto"}}
 ```
 - `versao` = a versão do servidor (`versao.py`), para mostrar na tela.
+- `atualizacao` = a versão nova (ver "Versão nova"): `nova` é o número dela, ou `null`;
+  `estado` é `parado`, `consultando`, `baixando`, `pronta` (o instalador baixado e conferido) ou
+  `instalando`; `progresso` vai de 0 a 1 no download.
 - `track.bpm` = o andamento do disco do prato quando já foi medido (o mesmo `bpm` da Entrada da fila: o
   do começo dele, ou o do fim); sem medida, não vem.
 - `visor` = o que o visor de DJ desenha (a onda correndo, a grade de batidas e a próxima entrando no
@@ -196,6 +203,8 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `DELETE /api/library/<id>` | - | apaga da biblioteca (e o arquivo); o disco no prato segue tocando e o arquivo dele sai quando o motor largar |
 | `GET /api/devices` | - | `{"inputs": [...], "outputs": [...], "default_input", "default_output", "current", "active"}` |
 | `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou "", "out"?: nome}` | troca dispositivo (reabre o áudio) |
+| `GET /api/boas-vindas` | - | `{"mostrar": bool}`: verdadeiro na primeira vez no PC (prateleira vazia e as boas-vindas nunca fechadas); pelo celular, sempre falso |
+| `POST /api/boas-vindas` | - | só no PC: as boas-vindas foram vistas e não voltam (fica no `config.json`) |
 | `GET /api/themes` | - | `[{"slug","url","name","direction","blurb"}]` |
 | `POST /api/shutdown` | - | desliga o servidor (a voz para de passar pelo cabo) |
 | `GET /api/lan` | - | `{"url": endereço do PC na rede de casa, ou null}` |
@@ -203,6 +212,10 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `GET /api/pareamento?caminho=/t/<slug>/` | - | só no PC: `{"url", "codigo", "vale_s", "queimado", "qr", "celulares"}` (ver "Celular: pareamento") |
 | `POST /api/pareamento/codigo` | - | só no PC: troca o código (e traz um de volta depois de queimado) |
 | `DELETE /api/pareamento/<id>` | - | só no PC: desconecta o celular, que volta a precisar do código |
+| `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho"} ou null}` (ver "Versão nova") |
+| `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
+| `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
+| `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; recusado ou ainda não baixado, 409 com o motivo |
 
 ## Celular: pareamento
 
@@ -226,6 +239,21 @@ vez, peça o `/api/state` para saber se é o 401.
   com o nome tirado do navegador ("Android · Chrome") e as datas em ISO local.
 - O tema que abre com `?parear=<codigo>` no endereço manda o código sozinho se ainda não
   estiver pareado, e tira o código do endereço.
+
+## Versão nova
+
+O app consulta o manifesto das versões uns 30 s depois de abrir e de 6 em 6 horas
+(`atualizacao.py`). Só vale o manifesto assinado pela chave da Vitrola, e só para uma versão
+mais nova que a que está rodando. Pelo código (`python server.py`), e enquanto o endereço do
+manifesto e a chave não estão no `atualizacao.py`, nada é consultado e `ativa` vem `false`.
+
+- O `estado` anda assim: `parado` (com ou sem `nova`), `baixando`, `pronta` e, depois do
+  `POST /api/atualizacao/instalar`, `instalando`. Um download que falha volta para `parado`, com
+  o motivo em `erro`.
+- O instalador roda em silêncio: o Windows pede a permissão, o instalador fecha a Vitrola, troca
+  a pasta dela e abre de novo, sem abrir outra aba. A página que estava aberta perde a conexão e
+  deve recarregar quando ela voltar, porque o tema também pode ter mudado.
+- Do celular, os quatro respondem 403: a versão nova se instala no PC.
 
 ## O que todo tema cobre
 
@@ -267,6 +295,9 @@ vez, peça o `/api/state` para saber se é o 401.
 12. Celular: no PC, um botão mostra o QR, o endereço e o código, e a lista dos celulares
     conectados, cada um com o botão de desconectar; no celular sem pareamento (o 401), uma tela
     por cima de tudo pede o código e explica onde achar.
+13. Versão nova: no PC, com `atualizacao.nova`, um botão que mostra a versão, as notas e o
+    tamanho, baixa com o progresso e instala; enquanto o instalador roda, a tela diz que a
+    Vitrola volta sozinha, e a página recarrega quando ela volta.
 
 Cabe em qualquer tela: no computador (largura de 900 px ou mais) a
 página nunca rola, nem de lado; o que não cabe rola por dentro de um painel (lista,
@@ -291,6 +322,11 @@ grande; e os sons curtos (até 15 s, tocam por cima) ficam em botões no alto da
 No toque, barra de volume e da faixa só muda arrastando o cursor:
 encostar em outro ponto da canaleta, sem querer ao rolar a página, não muda nada. Mouse e
 teclado seguem como sempre (clicar na canaleta pula para lá).
+
+Na primeira vez no PC (`GET /api/boas-vindas`), a vitrola abre as boas-vindas: o passo a
+passo do cabo (o VB-Cable, conferido pelo `GET /api/devices`, com a página oficial da VB-Audio
+quando falta), do microfone e do fone, do microfone no VRChat, da busca e do celular. Fechar de
+qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.
 
 ## Teste sem som
 

@@ -27,6 +27,7 @@ from aiohttp import web
 from aiohttp.web_runner import GracefulExit
 
 import andamento as an
+import atualizacao as atu
 import engine as eng
 import fx
 import pareamento as par
@@ -373,6 +374,7 @@ class App:
         self.preparando = None  # (disco, qid) da passagem sendo preparada (o stream leva 1 a 3 s)
         self.passagem_falhou = None  # (disco, qid) que nao deu para preparar: toca no fim, como antes
         self.closing = False
+        self.atualizacao = atu.Atualizacao()  # a versao nova (atualizacao.py); sem endereco e chave, fica parada
         cls = eng.MockEngine if mock else eng.Engine
         self.engine = cls(mic=self.cfg.get("mic", "default"), out=self.cfg.get("out", "CABLE Input"),
                           monitor=self.cfg.get("monitor", "default"))
@@ -388,6 +390,8 @@ class App:
         threading.Thread(target=self._vigia_auto, daemon=True).start()
         threading.Thread(target=self._vigia_passagem, daemon=True).start()
         threading.Thread(target=self._vigia_andamento, daemon=True).start()
+        if self.atualizacao.ativa:
+            threading.Thread(target=self.atualizacao.vigia, daemon=True).start()
 
     def snapshot(self):
         """Estado do motor mais a fila (A seguir), o Aleatorio, o Automatico e quantos discos o
@@ -395,7 +399,8 @@ class App:
         snap = self.engine.snapshot()
         with self.fila_lock:
             extra = {"queue": [self._com_bpm(x) for x in self.fila], "shuffle": self.fila_ordem is not None,
-                     "auto": self.auto, "history": len(self.historico), "versao": VERSAO}
+                     "auto": self.auto, "history": len(self.historico), "versao": VERSAO,
+                     "atualizacao": self.atualizacao.resumo()}
             if snap.get("track"):
                 extra["track"] = self._com_bpm(snap["track"])  # o andamento ja medido do disco do prato, para o deck do tema
         return {**snap, **extra}
@@ -411,6 +416,15 @@ class App:
         self.cfg.update(mic=e.devices["mic"], out=e.devices["out"], monitor=e.devices["monitor"],
                         vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
                         voice_mon_vol=e.voice_mon_vol, auto=self.auto)
+        save_json(self.cfg_path, self.cfg)
+
+    def boas_vindas_pendentes(self):
+        """As boas-vindas aparecem na primeira vez: prateleira vazia e nunca fechadas. Quem ja usava o app antes delas
+        (com disco na prateleira) nao ve."""
+        return not self.cfg.get("boas_vindas") and not self.lib.items
+
+    def boas_vindas_vistas(self):
+        self.cfg["boas_vindas"] = True
         save_json(self.cfg_path, self.cfg)
 
     # jobs -----------------------------------------------------------------
@@ -1401,6 +1415,8 @@ def build(app_state):
         celular = request.path.startswith("/api/") and not do_pc(request)
         if celular and request.path.startswith("/api/pareamento"):
             return j_err("O código e os dispositivos conectados só podem ser consultados no computador.", 403)
+        if celular and request.path.startswith("/api/atualizacao"):
+            return j_err("A versão nova se instala no PC.", 403)
         if celular and (request.method, request.path) not in livres:
             chave = request.cookies.get(par.COOKIE)
             if not A.celulares.confere(chave):
@@ -1681,6 +1697,18 @@ def build(app_state):
         A.save_cfg()
         return j_ok()
 
+    # as boas-vindas da primeira vez, so no PC: e nele que se instala o cabo e se escolhe o microfone
+    @r.get("/api/boas-vindas")
+    async def boas_vindas(request):
+        return web.json_response({"mostrar": do_pc(request) and A.boas_vindas_pendentes()})
+
+    @r.post("/api/boas-vindas")
+    async def boas_vindas_vistas(request):
+        if not do_pc(request):
+            return j_err("As boas-vindas são só no PC.", 403)
+        A.boas_vindas_vistas()
+        return j_ok()
+
     @r.get("/api/themes")
     async def themes(_):
         out = []
@@ -1691,13 +1719,41 @@ def build(app_state):
             out.append({"slug": d.name, "url": f"/t/{d.name}/", **meta})
         return web.json_response(out)
 
-    @r.post("/api/shutdown")
-    async def shutdown(_):
+    def desliga():
         A.closing = True  # os SSE abertos terminam no proximo tick
         A.remember_pos()
         def _exit():
             raise GracefulExit()  # SystemExit: sai do asyncio.run, o finally fecha o audio
         loop_().call_later(0.3, _exit)
+
+    @r.post("/api/shutdown")
+    async def shutdown(_):
+        desliga()
+        return j_ok()
+
+    # a versao nova (atualizacao.py), so no PC: e nele que o instalador roda
+    @r.get("/api/atualizacao")
+    async def atualizacao(_):
+        return web.json_response(A.atualizacao.publico())
+
+    @r.post("/api/atualizacao/consultar")
+    async def atualizacao_consulta(_):
+        await loop_().run_in_executor(pool, A.atualizacao.consultar)
+        return web.json_response(A.atualizacao.publico())
+
+    @r.post("/api/atualizacao/baixar")
+    async def atualizacao_baixa(_):
+        if not A.atualizacao.baixar():
+            return j_err("Não há versão nova para baixar agora.", 409)
+        return j_ok()
+
+    @r.post("/api/atualizacao/instalar")
+    async def atualizacao_instala(_):
+        # espera a resposta do pedido de permissao do Windows, fora do loop
+        ok, motivo = await loop_().run_in_executor(pool, A.atualizacao.instalar)
+        if not ok:
+            return j_err(motivo, 409)
+        desliga()  # o instalador fecharia a Vitrola; saindo antes, nada fica no meio de uma gravacao
         return j_ok()
 
     @r.get("/api/events")
@@ -1780,9 +1836,15 @@ def build(app_state):
             return j_err("Esse celular já não estava conectado.", 404)
         return j_ok()
 
+    # o icone vale para todo tema: a aba pede o /favicon.ico sozinha, e o iPhone o /apple-touch-icon.png
+    # ao salvar na tela inicial (o Android so com o <link> no tema)
     @r.get("/favicon.ico")
     async def favicon(_):
-        return web.Response(status=204)
+        return web.FileResponse(HERE / "icone" / "vitrola.ico")
+
+    @r.get("/apple-touch-icon.png")
+    async def icone_celular(_):
+        return web.FileResponse(HERE / "icone" / "toque.png")
 
     @r.get("/")
     async def index(_):
@@ -1875,7 +1937,7 @@ def main():
     threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
     print(f"mic: {d['mic']} | cabo: {d['out']} | fone: {d['monitor'] or '-'}", flush=True)
-    url = f"http://127.0.0.1:{a.port}/"
+    url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
     print(f"Vitrola {VERSAO} em {url}{' (MOCK, sem som)' if a.mock else ''} | dados em {pastas.DADOS}", flush=True)
     if not a.no_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()

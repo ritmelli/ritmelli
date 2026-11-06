@@ -6,6 +6,7 @@ pedalboard>=0.9
 aiohttp>=3.9
 segno>=1.6
 yt-dlp[default]
+pycryptodomex>=3.20  # a assinatura das versoes novas (atualizacao.py)
 ytmusicapi>=1.8
 onnxruntime>=1.18
 comtypes>=1.4; sys_platform == "win32"

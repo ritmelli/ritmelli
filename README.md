@@ -94,6 +94,7 @@ ficam em `%LOCALAPPDATA%\Vitrola\logs`, e o `soundboard.ps1 stop` desliga o exe 
 | `winvol.py` | volume do microfone no Windows |
 | `themes/vitrola/` | a interface |
 | `gallery.html` | a página inicial, que lista os temas |
+| `icone/` | o ícone do app (o exe, o instalador, a aba do navegador e o celular), desenhado pelo `dev/icone.py` |
 | `dev/` | ferramentas de desenvolvimento: prints, medição no celular, geração do pixel art |
 
 O funcionamento de cada peça está em [docs/ARQUITETURA.md](docs/ARQUITETURA.md), e o contrato
@@ -101,4 +102,5 @@ entre o servidor e a interface em [API.md](API.md).
 
 ## Licença
 
-[GPLv3](LICENSE). As fontes da interface são SIL OFL 1.1 (`themes/vitrola/fonts/`).
+[GPLv3](LICENSE). As fontes da interface são SIL OFL 1.1 (`themes/vitrola/fonts/`), e o modelo de
+batidas (`modelos/compasso.onnx`, exportado do beat_this) é MIT (`modelos/LICENSE-beat_this.txt`).
