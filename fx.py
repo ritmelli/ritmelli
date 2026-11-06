@@ -11,6 +11,8 @@ O HighpassFilter/LowpassFilter dela e de primeira ordem (6 dB/oitava): numa faix
 radio de 450 a 2800 Hz cortava so 5 a 13 dB fora dela e a voz passava quase inteira
 (17/10). Faixa estreita de verdade = FiltroBanda (Butterworth do scipy).
 """
+import importlib.util
+
 import numpy as np
 import pedalboard as pb
 from scipy import signal
@@ -528,6 +530,12 @@ CATALOGO = [
     ("Personagem", "estourado", "Alto-falante estourado", "Distorção pesada, como caixa no talo.",
      lambda: Efeito(nivelar=True, placa=[pb.Distortion(32), pb.LowpassFilter(5000), pb.Gain(-12)])),
 ]
+# o pedal da mina (mina.py, modulo de fora deste repo, ver o engine.py): onde o modulo esta ao lado do codigo, ele
+# entra no lugar do alto-falante estourado e liga a DJ que conversa com quem chega; a voz de quem toca passa sem efeito
+if importlib.util.find_spec("mina") is not None:
+    CATALOGO = [c for c in CATALOGO if c[1] != "estourado"] + [
+        ("Personagem", "mina", "Mina DJ", "Liga a DJ que conversa com quem chega e toca o que pedirem.",
+         lambda: None)]
 # os modos de um pedal: efeito que liga pelo botao do modo (o CARICATO do Locutor) e nao vira
 # pedal na lista do /api/effects; o primeiro campo e o pedal dono, no lugar do grupo
 MODOS = [

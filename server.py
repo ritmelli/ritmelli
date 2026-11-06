@@ -40,6 +40,7 @@ LIB = pastas.LIB  # audio baixado; library.json e config.json moram em --data-di
 THEMES = HERE / "themes"
 YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 YT_URL = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
+PAGINA_FOLGA = 8  # a busca pede tantos a mais na pagina de resultados: canal e playlist ocupam lugar e saem
 TICK = 1 / 15
 ESCUTA_S = 30.0  # tocando de fato esse tempo (ou 80% do disco, se for mais curto), conta uma escuta
 BUSCA_MAX = 200  # o carregar mais da busca vai ate aqui
@@ -377,6 +378,7 @@ class App:
         cls = eng.MockEngine if mock else eng.Engine
         self.engine = cls(mic=self.cfg.get("mic", "default"), out=self.cfg.get("out", "CABLE Input"),
                           monitor=self.cfg.get("monitor", "default"))
+        self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
         self.cfg.pop("mic_vol", None)  # o nivel da voz e o do Windows, que guarda sozinho (18/10)
         for k in ("vol", "mon_vol", "monitor_on", "voice_mon_vol"):
             if k in self.cfg:
@@ -411,6 +413,15 @@ class App:
         self.cfg.update(mic=e.devices["mic"], out=e.devices["out"], monitor=e.devices["monitor"],
                         vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
                         voice_mon_vol=e.voice_mon_vol, auto=self.auto)
+        save_json(self.cfg_path, self.cfg)
+
+    def boas_vindas_pendentes(self):
+        """As boas-vindas aparecem na primeira vez: prateleira vazia e nunca fechadas. Quem ja usava o app antes delas
+        (com disco na prateleira) nao ve."""
+        return not self.cfg.get("boas_vindas") and not self.lib.items
+
+    def boas_vindas_vistas(self):
+        self.cfg["boas_vindas"] = True
         save_json(self.cfg_path, self.cfg)
 
     # jobs -----------------------------------------------------------------
@@ -471,9 +482,15 @@ class App:
                 return []  # link colado e um video so: nao ha mais
             info = {"entries": [fora.pede("info", alvo=f"https://www.youtube.com/watch?v={alvo}", opts=opts)]}
         else:
-            info = fora.pede("info", alvo=f"ytsearch{start + n}:{q}", opts=opts)
+            # a pagina de resultados do YouTube, a mesma do site, com a correcao de digitacao dele: "ma meillere
+            # enemy c'est toi" acha Ma Meilleure Ennemie. O ytsearch do yt-dlp desliga essa correcao e devolvia
+            # nada pra pedido torto (03/11). Canal e playlist vem misturados na pagina: saem no filtro de id abaixo,
+            # e a folga de PAGINA_FOLGA cobre o lugar deles pra fatia de start a start+n sair cheia.
+            from urllib.parse import quote
+            opts = {**opts, "playlistend": start + n + PAGINA_FOLGA}
+            info = fora.pede("info", alvo=f"https://www.youtube.com/results?search_query={quote(q)}", opts=opts)
         out = []
-        for e in list(info.get("entries") or [])[0 if alvo else start:]:
+        for e in list(info.get("entries") or []):
             yid = e.get("id")
             if not yid or not YT_ID.match(yid):
                 continue
@@ -481,7 +498,7 @@ class App:
                         "duration": e.get("duration"),
                         "channel": e.get("channel") or e.get("uploader"),
                         "thumb": thumb(yid), "in_library": False})
-        return out
+        return out if alvo else out[start:start + n]
 
     def mock_download(self, j, target):
         # --mock: finge o download (3 s de progresso) e reaproveita um audio que ja existe
@@ -1394,7 +1411,7 @@ def build(app_state):
                 return web.Response(status=403, text="origem não permitida")
         celular = request.path.startswith("/api/") and not do_pc(request)
         if celular and request.path.startswith("/api/pareamento"):
-            return j_err("O código e os celulares conectados só aparecem no PC.", 403)
+            return j_err("O código e os dispositivos conectados só podem ser consultados no computador.", 403)
         if celular and request.path.startswith("/api/atualizacao"):
             return j_err("A versão nova se instala no PC.", 403)
         if celular and (request.method, request.path) not in livres:
@@ -1402,8 +1419,8 @@ def build(app_state):
             if not A.celulares.confere(chave):
                 return web.json_response({
                     "ok": False, "parear": True, "desconectado": bool(chave),
-                    "error": "Este celular não está conectado à Vitrola. No PC, clique em Celular e "
-                             "aponte a câmera para o QR."}, status=401)
+                    "error": "Este celular não está conectado à Vitrola. No computador, clique em Celular e "
+                             "escaneie o QR code."}, status=401)
         resp = await handler(request)
         if celular and request.path == "/api/state":
             com_chave(resp, request.cookies[par.COOKIE])  # cada abertura do tema renova o prazo do cookie
@@ -1668,6 +1685,18 @@ def build(app_state):
         A.save_cfg()
         return j_ok()
 
+    # as boas-vindas da primeira vez, so no PC: e nele que se instala o cabo e se escolhe o microfone
+    @r.get("/api/boas-vindas")
+    async def boas_vindas(request):
+        return web.json_response({"mostrar": do_pc(request) and A.boas_vindas_pendentes()})
+
+    @r.post("/api/boas-vindas")
+    async def boas_vindas_vistas(request):
+        if not do_pc(request):
+            return j_err("As boas-vindas são só no PC.", 403)
+        A.boas_vindas_vistas()
+        return j_ok()
+
     @r.get("/api/themes")
     async def themes(_):
         out = []
@@ -1761,10 +1790,10 @@ def build(app_state):
         nome = par.nome_do_aparelho(request.headers.get("User-Agent", ""))
         chave, motivo = A.celulares.parear(codigo, nome)
         if chave is None:
-            return j_err("O código foi digitado errado muitas vezes e deixou de valer. No PC, clique em "
-                         "Outro código." if motivo == "queimado" else
-                         f"Esse código não confere. Ele vale por {par.CODIGO_S // 60} minutos e uma vez só: "
-                         "confira o que aparece no PC agora.", 403)
+            return j_err("Código bloqueado após várias tentativas incorretas. No computador, gere um novo código."
+                         if motivo == "queimado" else
+                         f"Código inválido ou expirado. Cada código vale por {par.CODIGO_S // 60} minutos e pode "
+                         "ser usado uma única vez. Confira o código exibido no computador.", 403)
         print(f"celular: pareado ({nome})", flush=True)
         return com_chave(j_ok(), chave)
 
@@ -1795,9 +1824,15 @@ def build(app_state):
             return j_err("Esse celular já não estava conectado.", 404)
         return j_ok()
 
+    # o icone vale para todo tema: a aba pede o /favicon.ico sozinha, e o iPhone o /apple-touch-icon.png
+    # ao salvar na tela inicial (o Android so com o <link> no tema)
     @r.get("/favicon.ico")
     async def favicon(_):
-        return web.Response(status=204)
+        return web.FileResponse(HERE / "icone" / "vitrola.ico")
+
+    @r.get("/apple-touch-icon.png")
+    async def icone_celular(_):
+        return web.FileResponse(HERE / "icone" / "toque.png")
 
     @r.get("/")
     async def index(_):
@@ -1890,7 +1925,7 @@ def main():
     threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
     print(f"mic: {d['mic']} | cabo: {d['out']} | fone: {d['monitor'] or '-'}", flush=True)
-    url = f"http://127.0.0.1:{a.port}/"
+    url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
     print(f"Vitrola {VERSAO} em {url}{' (MOCK, sem som)' if a.mock else ''} | dados em {pastas.DADOS}", flush=True)
     if not a.no_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()

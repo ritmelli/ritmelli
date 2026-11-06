@@ -21,6 +21,11 @@ import compasso
 import fx
 import pastas
 
+try:  # o pedal da mina: modulo de fora deste repo, posto ao lado do codigo so onde ela roda
+    import mina
+except ImportError:
+    mina = None
+
 SR = 48000
 # o modo compartilhado do Windows so aceita a taxa em que o aparelho esta configurado: sem converter, o som da
 # VirtualBox, a 44,1 kHz, recusava os 48 kHz e o app nem abria (29/10)
@@ -37,6 +42,8 @@ FFMPEG = pastas.ferramenta("ffmpeg") or "ffmpeg"  # o que vem com o app, ou o do
 FFPROBE = pastas.ferramenta("ffprobe") or "ffprobe"
 CURTO_MAX_S = 15  # ate isso o pad toca por cima da musica em vez de trocar
 RAPIDO_MAX_S = 120  # o posto nos Sons rapidos pela mao toca inteiro por cima ate isso (2 minutos)
+MINA_FOLGA_S = 0.1  # a voz da mina (mina.py) chega em pedacos de 100 ms, com folga de rede: a fila vazia recomeca com isso
+MINA_FILA_MAX_S = 1.0  # fila dela maior que isso (a rede segurou e despejou): o silencio do comeco sai
 VIGIA_S = 2.0  # de quanto em quanto o vigia le a lista de aparelhos do Windows
 VIGIA_TENTATIVAS = 3  # reaberturas por mudanca da lista (o PortAudio as vezes ainda nao ve o aparelho)
 # passagem de uma musica para a proxima da fila (a transicao de DJ)
@@ -402,6 +409,14 @@ class Engine:
         self.loop = False
         self.effect = "nenhum"  # efeito de voz (fx.py); sempre comeca sem efeito
         self._fx = None
+        # a mina do pedal MINA (mina.py): a voz dela vai pro cabo e pro fone como a voz de quem toca
+        self.mina_permitida = True
+        self._mina = None
+        self._mina_buf = np.zeros(0, np.float32)
+        self._mina_lock = threading.Lock()
+        self._mina_voz_em = -1e9  # monotonic do ultimo pedaco com voz dela que tocou
+        self._mina_int_n = 0  # amostras da frente da fila que sao a interjeicao dela (nao seguram o guarda)
+        self._fone_calado = False  # a mina ouvindo o aparelho inteiro que e o fone: o fone fica mudo (mina_cala_fone)
         self.voice_monitor = False  # ouvir a propria voz (com o efeito) no fone
         self.voice_mon_vol = 0.8
         # sons por cima (buzina, bordao): tocam junto da musica sem parar ela; cada um e
@@ -561,6 +576,8 @@ class Engine:
                 self._sem_audio(ex)
 
     def close(self):
+        if self._mina is not None:
+            self._mina.desliga()
         with self._lock:
             self._fechado = True
             self._gen += 1
@@ -692,6 +709,11 @@ class Engine:
         self._push_mic(indata.mean(axis=1) if indata.shape[1] > 1 else indata[:, 0].copy())
 
     def _push_mic(self, x):
+        mi = self._mina
+        # a mina ouve quem toca tambem (a voz crua, sem o efeito), mas so com a voz indo pro jogo: com a voz cortada
+        # (o notebook do bot) o mic nao e a voz de ninguem no mapa, e ela ouvia quem estava do lado do notebook (03/11)
+        if mi is not None and not self.mic_mute:
+            mi.microfone(x)
         f = self._fx
         if f is not None:
             try:
@@ -706,6 +728,85 @@ class Engine:
     def set_effect(self, effect_id):
         self._fx = fx.criar(effect_id)  # instancia nova: estado zerado; ValueError se nao existe
         self.effect = effect_id
+        if effect_id == "mina":
+            self._mina_liga()
+        elif self._mina is not None:
+            self._mina.desliga()
+
+    # a mina (mina.py) -----------------------------------------------------
+    def _mina_liga(self):
+        if not self.mina_permitida or mina is None:
+            return
+        if self._mina is None:
+            self._mina = mina.Mina(self)
+        try:
+            self._mina.liga()
+        except ValueError as ex:  # sem a chave: o pedal fica aceso e o aviso sai na interface
+            self.error = str(ex)
+
+    def mina_voz(self, x):
+        """A voz dela, float32 48 kHz mono, na fila do cabo. Volta em quantos segundos ela comeca a tocar (a gravacao
+        da mina poe o texto dela na hora do som)."""
+        n = len(x)
+        with self._mina_lock:
+            if not len(self._mina_buf):
+                x = np.concatenate([np.zeros(int(MINA_FOLGA_S * SR), np.float32), x])
+            b = np.concatenate([self._mina_buf, x])
+            if len(b) > MINA_FILA_MAX_S * SR:  # a rede despejou: o silencio do comeco sai
+                k = 0
+                while len(b) - k > MINA_FOLGA_S * SR and np.max(np.abs(b[k:k + BLOCK])) < mina.QUIET_RMS:
+                    k += BLOCK
+                b = b[k:]
+                self._mina_int_n = max(0, self._mina_int_n - k)
+            self._mina_buf = b
+            return (len(b) - n) / SR
+
+    def mina_cala(self):
+        """Interromperam a mina (ElevenAgents, mina.CEDE_EL): a voz dela que ainda nao tocou sai da fila."""
+        with self._mina_lock:
+            self._mina_buf = self._mina_buf[:0]
+            self._mina_int_n = 0
+
+    def mina_interjeicao(self, x):
+        """A interjeicao dela (mina.py), float32 48 kHz mono, na hora em que quem fala com ela parou: so entra com a
+        fila so de silencio (a resposta do GPT-Live ainda nao chegou; quando chega, toca logo depois dela) e nao
+        conta como a voz dela pro guarda, que segue mandando o jogo pro GPT-Live. Volta se entrou."""
+        with self._mina_lock:
+            b = self._mina_buf
+            if len(b) and float(np.max(np.abs(b))) >= mina.QUIET_RMS:  # a voz da resposta ja esta na fila
+                return False
+            # o que estava na fila e o silencio que o GPT-Live manda sem parar com a sessao aberta (a fila vazia,
+            # como era a condicao, nunca acontecia: no jogo de 01/11 nenhuma interjeicao entrou)
+            self._mina_buf = np.asarray(x, np.float32)
+            self._mina_int_n = len(self._mina_buf)
+        return True
+
+    def mina_cala_fone(self, aparelho):
+        """A mina ouvindo o aparelho inteiro (sem o loopback por processo): se o fone e ele, o fone fica mudo
+        enquanto ela esta ligada, senao a musica e a voz dela entram no ouvido dela. None devolve o fone."""
+        fone = (self.active.get("monitor") or "").strip().lower()
+        a = (aparelho or "").strip().lower()
+        calar = bool(a and fone and (a == fone or a.startswith(fone) or fone.startswith(a)))
+        if calar != self._fone_calado:
+            self._fone_calado = calar
+            print(f"mina: {'calei o fone (' + self.active['monitor'] + '), que e o aparelho que ela ouve' if calar else 'fone de volta'}",
+                  file=sys.stderr, flush=True)
+
+    def mina_falando(self):
+        """A voz dela tocando agora (ou ate mina.TAIL_S depois): o guarda dela segura o jogo."""
+        return time.monotonic() - self._mina_voz_em < mina.TAIL_S
+
+    def _mina_tira(self, frames):
+        if not len(self._mina_buf):
+            return None
+        with self._mina_lock:
+            m, self._mina_buf = self._mina_buf[:frames], self._mina_buf[frames:]
+            k = min(len(m), self._mina_int_n)  # a interjeicao nao segura o guarda
+            self._mina_int_n -= k
+        v = m[k:]
+        if len(v) and float(np.sqrt(np.mean(v * v))) >= mina.QUIET_RMS:
+            self._mina_voz_em = time.monotonic()
+        return m
 
     def _mon_cb(self, outdata, frames, t, status):
         if self._mon:
@@ -807,7 +908,19 @@ class Engine:
                 fone[:n, 1] += v
         else:
             self.levels["mic"] *= DECAY
-        if fone is not None:
+        mv = self._mina_tira(frames)
+        if mv is not None and len(mv):  # a mina: no cabo como a voz, e no fone pra quem toca ouvir o que ela fala
+            if self._mina is not None:
+                self._mina.tocou(mv)  # so enfileira: a gravacao dela
+            n = len(mv)
+            buf[:n, 0] += mv
+            buf[:n, 1] += mv
+            if com_fone:
+                if fone is None:
+                    fone = np.zeros((frames, 2), np.float32)
+                fone[:n, 0] += mv * self.voice_mon_vol
+                fone[:n, 1] += mv * self.voice_mon_vol
+        if fone is not None and not self._fone_calado:
             self._mon.append(np.clip(fone, -1, 1))
         np.clip(buf, -1, 1, out=buf)
         self._meter("out", buf)
@@ -1476,6 +1589,7 @@ class Engine:
             "voice_mon_vol": round(self.voice_mon_vol, 3),
             "devices": dict(self.devices), "active_devices": dict(self.active),
             "error": self.error,
+            "mina": self._mina.estado if self._mina is not None else "desligada",
         }
 
 
@@ -1501,6 +1615,9 @@ class MockEngine(Engine):
     def close(self):
         self._gen += 1
         self._run = False
+
+    def _mina_liga(self):
+        pass  # sem som, sem a mina: a sessao custaria e nao tocaria em lugar nenhum
 
     def set_devices(self, mic=None, out=None, monitor=None):
         for k, v in (("mic", mic), ("out", out), ("monitor", monitor)):
