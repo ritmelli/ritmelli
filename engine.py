@@ -6,6 +6,7 @@ import base64
 import collections
 import contextlib
 import ctypes
+import json
 import os
 import queue
 import subprocess
@@ -89,8 +90,31 @@ RAMPA_MIN_S = 8.0          # e nunca em menos que isso, nem em mais que RAMPA_MA
 RAMPA_MAX_S = 60.0
 GRAVE_HZ = 180.0           # a troca de grave: abaixo disso, um disco de cada vez
 FOLGA_S = 0.3              # o plano so entra se a virada ainda esta pelo menos isso adiante
+# a passagem como a de um DJ (pedido dele, 06/11: no phonk o grave morria no comeco da queda e a proxima subia devagar,
+# 6 s de trecho baixo em media): a troca e o fim do corpo da que sai (o comeco da queda, na batida dela mais perto); a
+# proxima entra por baixo antes, no tempo e sem grave, subindo ate ficar cheia na troca; na troca os graves trocam em
+# meia batida e a que sai some em poucas batidas
+DJ_BATIDAS = 16            # a proxima entra isso de batidas deste antes da troca (4 compassos), sem o corpo dela medido...
+DJ_MIN_BATIDAS = 8         # ... ou o tanto que o drop dela pede (a introducao inteira por baixo), em degraus de 4, entre
+DJ_MAX_BATIDAS = 32        # estes dois...
+DJ_MAX_S = 24.0            # ... e no maximo isso de segundos; com a introducao maior, ela comeca ja dentro dela
+CORPO_DB = 3.0             # o corpo da proxima (o drop depois da introducao) comeca onde o nivel chega a isso do normal...
+CORPO_FICA_S = 2.0         # ... e fica pelo menos isso
+CORPO_MAX_S = 45.0         # drop medido depois disso do comeco nao vale (a proxima decodifica 75 s adiante)
+DJ_SAI_BATIDAS = 4         # depois da troca, a que sai some nisso de batidas dela
+DJ_NIVEL_ANTES = 0.5       # antes da troca a proxima sobe so ate a metade (-6 dB, o fader do DJ): os masters ja batem
+                           # no teto e as duas cheias somavam o dobro; na troca ela vai a cheia, junto com o grave
 ENTRA_SECO_S = 0.005       # no final seco no tempo, a proxima entra cheia (so o que evita o estalo)
 FIM_CORTE_S = 1.0          # no final seco no tempo, a proxima entra no maximo isso antes do fim do som (o resto abaixa)
+RABO_SECO_S = 3.0          # no final seco no tempo, o resto abaixo de FIM_DB depois da queda que dura ate isso e rabo
+                           # (eco do ultimo golpe): a proxima entra na batida depois do fim para o ouvido, nao depois do
+                           # rabo (a FATALITY tem 1,8 s dele, e a virada no fim do som deixava um vazio, 06/11); mais longo
+                           # e musica baixinha que se toca (o Bota Tudo Em Mim, 18 s depois de 2 s de silencio)
+INTRO_SECO_BATIDAS = 8     # no final seco no tempo, a proxima que comeca quase sem som (os primeiros INTRO_SECO_OUVE_S
+INTRO_SECO_OUVE_S = 2.0    # FIM_DB abaixo do normal dela) e so chega ao corpo (medir_corpo) depois de pelo menos isso de
+                           # batidas deste entra por baixo antes, como no fade, e o corpo dela cai onde o deste acaba (a
+                           # WAKE UP sobe de -60 dB por 14 s; do comeco, depois de um final seco, era um vazio). Introducao
+                           # que se ouve (a do Better, a -12 dB) entra do comeco, como sempre: por baixo seria voz sobre voz
 SEGURA_BATIDAS = 8         # no final seco no tempo, a proxima fica no andamento deste isso de batidas dele depois da
                            # primeira dela e so entao volta devagar ao dela (escolhida em 24/10 entre a anterior, a
                            # esticada e a que entra por baixo antes do corte)
@@ -159,6 +183,80 @@ def medir_fim(niv):
     i = perto[-1]
     abaixo = np.nonzero(alis[i:] < ref - FIM_DB)[0]
     return fim, float(t[i]), (float(t[i + abaixo[0]]) if len(abaixo) else fim)
+
+
+FIM_RETRATO_S = 40.0       # o resumo do fim no log: as janelas de FIM_JANELA_S nos ultimos isso antes do som acabar
+FIM_JANELA_S = 5.0
+
+
+def retrato_fim(niv, fim):
+    """O nivel do fim do disco para o registro das passagens: (normal, t0, decimos, janelas). normal e o mesmo
+    do medir_fim (o percentil 90 alisado, em dBFS); decimos e o nivel (dBFS) de cada decimo de segundo desde t0;
+    janelas e o nivel medio de cada FIM_JANELA_S dos ultimos FIM_RETRATO_S antes do fim, relativo ao normal (dB).
+    None sem nivel."""
+    if not niv or fim is None:
+        return None
+    t, q, r = _niveis(niv)
+    db = 20 * np.log10(np.maximum(r, 1e-6))
+    alis = np.convolve(np.pad(db, 25, mode="edge"), np.ones(51) / 51, mode="valid")
+    normal = float(np.percentile(alis, 90))
+    t0 = float(t[0])
+    n = max(0, int((fim - t0) / 0.1) + 1)
+    k = np.clip(((t - t0) / 0.1).astype(int), 0, max(0, n - 1))
+    soma, conta = np.bincount(k, r ** 2, minlength=n)[:n], np.bincount(k, minlength=n)[:n]
+    decimos = [round(float(10 * np.log10(soma[i] / conta[i] + 1e-12)), 1) if conta[i] else None for i in range(n)]
+    janelas = []
+    a = fim - FIM_RETRATO_S
+    while a < fim - 1e-6:
+        sel = (t >= a) & (t < a + FIM_JANELA_S)
+        janelas.append(round(float(10 * np.log10(np.mean(r[sel] ** 2) + 1e-12)) - normal, 1) if sel.any() else None)
+        a += FIM_JANELA_S
+    return round(normal, 1), t0, decimos, janelas
+
+
+def ganho_sai(u, segura, n):
+    """O volume do que sai na amostra u desde a virada: cheio ate segura, depois um quarto de cosseno ate n."""
+    return np.cos(np.clip((u - segura) / max(1, n - segura), 0.0, 1.0) * (np.pi / 2)).astype(np.float32)
+
+
+def ganho_entra(u, n, nivel=1.0, cheia=0):
+    """O volume da proxima na amostra u desde a virada: um quarto de seno ate nivel em n; com nivel abaixo de 1, dali
+    sobe reto ate cheio em cheia (a troca de grave da passagem de DJ)."""
+    g = nivel * np.sin(np.minimum(u / max(1, n), 1.0) * (np.pi / 2))
+    if nivel < 1.0:
+        g = g + (1.0 - nivel) * np.clip((u - n) / max(1, cheia - n), 0.0, 1.0)
+    return g.astype(np.float32)
+
+
+def nivel_trecho(niv, a, b):
+    """O nivel medio (potencia) dos blocos entre a e b, em dB relativos ao normal do que esta decodificado (o percentil 90
+    alisado em meio segundo, o mesmo do medir_corpo). None sem nivel no trecho."""
+    if not niv:
+        return None
+    t, q, r = _niveis(niv)
+    db = 20 * np.log10(np.maximum(r, 1e-6))
+    alis = np.convolve(np.pad(db, 25, mode="edge"), np.ones(51) / 51, mode="valid")
+    no = (t >= a) & (t < b)
+    if not no.any():
+        return None
+    return float(10 * np.log10(np.mean(r[no] ** 2) + 1e-12) - np.percentile(alis, 90))
+
+
+def medir_corpo(niv, ini):
+    """Onde comeca o corpo do disco (o drop depois da introducao): o primeiro ponto desde ini em que o nivel alisado
+    (meio segundo) chega a CORPO_DB do normal (o percentil 90 do que esta decodificado) e fica CORPO_FICA_S. None sem
+    nivel ou sem corpo ate CORPO_MAX_S."""
+    if not niv:
+        return None
+    t, q, r = _niveis(niv)
+    db = 20 * np.log10(np.maximum(r, 1e-6))
+    alis = np.convolve(np.pad(db, 25, mode="edge"), np.ones(51) / 51, mode="valid")
+    ok = alis >= np.percentile(alis, 90) - CORPO_DB
+    fica = int(CORPO_FICA_S * SR / BLOCK)
+    for i in np.nonzero(ok & (t >= ini) & (t <= ini + CORPO_MAX_S))[0]:
+        if ok[i:i + fica].all():
+            return float(t[i])
+    return None
 
 
 def _junta(blocos, t_ini, t_fim):
@@ -568,9 +666,12 @@ class Engine:
         self._virar_em = None    # a posicao deste disco em que a proxima entra (None: medindo)
         self._sobrepor = 0       # quadros em que o que sai abaixa (a sobreposicao da passagem medida)
         self._entrar = 0         # quadros em que a proxima sobe (no final seco no tempo, quase nada)
+        self._segura = 0         # quadros depois da virada em que o que sai segue cheio (a passagem de DJ: ate a troca)
+        self._nivel_entra = 1.0  # ate onde a proxima sobe em _entrar quadros (a passagem de DJ: a metade)...
+        self._cheia = 0          # ... e em que quadro ela fica cheia (o fim da troca de grave)
         self._grave = None       # (de, ate) em quadros desde a virada: a troca de grave da passagem no tempo
-        self._saindo = None      # [deck, quadros, feitos, grave]: o disco que sai, abaixando por baixo
-        self._entrando = None    # [quadros, feitos]: a proxima subindo
+        self._saindo = None      # [deck, quadros, feitos, grave, segura]: o disco que sai, abaixando por baixo
+        self._entrando = None    # [quadros, feitos, nivel, cheia]: a proxima subindo
         self.virou = None        # (o que saiu, o que entrou, a tag) para o servidor tirar da fila
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
         self.pronto_falhou = None  # a tag da proxima que nao decodificou: o servidor nao prepara de novo
@@ -977,11 +1078,11 @@ class Engine:
                 n += len(s)
             self.pos = item[-1][0] + len(item[-1][1]) / SR
             ent = self._entrando
-            if ent is not None:  # a proxima subindo: um quarto de seno, potencia constante com a que sai
-                g = np.sin(np.minimum((ent[1] + np.arange(n)) / ent[0], 1.0) * (np.pi / 2)).astype(np.float32)
+            if ent is not None:  # a proxima subindo: um quarto de seno (e na passagem de DJ, ate cheia na troca)
+                g = ganho_entra(ent[1] + np.arange(n), ent[0], ent[2], ent[3])
                 som[:n] *= g[:, None]
                 ent[1] += n
-                if ent[1] >= ent[0]:
+                if ent[1] >= max(ent[0], ent[3]):
                     self._entrando = None
         sai = self._saindo
         if sai is not None and not self.paused:  # o que sai: o fim dele, abaixando em cosseno
@@ -994,7 +1095,7 @@ class Engine:
                 s = blk[0][1] if len(blk) == 1 else np.concatenate([b[1] for b in blk])
                 n = len(s)
                 u = sai[2] + np.arange(n)
-                g = np.cos(np.minimum(u / sai[1], 1.0) * (np.pi / 2)).astype(np.float32)
+                g = ganho_sai(u, sai[4], sai[1])
                 if sai[3] is not None:  # a troca de grave: o grave dele sai enquanto o da proxima entra
                     gr = sai[3]
                     agudo, gr[1] = signal.sosfilt(_GRAVE_HP, s, axis=0, zi=gr[1])
@@ -1270,7 +1371,10 @@ class Engine:
             fim = self.pos
         caindo = baixo - queda if queda is not None and baixo is not None else 0.0
         fade = caindo >= FADE_MIN_S
-        if fade:  # fade-out: a proxima sobe enquanto ele cai, e o rabo baixinho fica para tras
+        if fade:  # fade-out: sem plano no tempo (os andamentos nao casam ou falta batida), o fade de sempre: a proxima
+            # sobe do comeco enquanto ele cai, e o rabo baixinho fica para tras. A passagem de DJ (a troca no fim do
+            # corpo, a introducao por baixo) e so a do plano no tempo: no fade, a introducao por baixo juntava dois
+            # andamentos e o corte no drop soou estranho (GigaChad 64 BPM -> Close Eyes 88,5, pedido dele, 06/11)
             sobrepor = min(caindo, TRANS_MAX_S)
             virar = baixo - sobrepor
         if not fade or virar < self.pos:
@@ -1306,6 +1410,8 @@ class Engine:
                         atual.q.append((t, np.zeros((BLOCK, 2), np.float32)))
                         t += BLOCK / SR
                 self._sobrepor, self._entrar, self._grave = plano["sai"], plano["entra"], plano["grave"]
+                self._segura = plano.get("segura", 0)
+                self._nivel_entra, self._cheia = plano.get("nivel", 1.0), plano.get("cheia", 0)
                 self.periodo_saida = plano["periodo_saida"]
                 self._virar_em = plano["virar"] - BLOCK / (2 * SR)  # vira no fim do bloco que acaba ali
                 visor = plano["visor"]
@@ -1313,6 +1419,7 @@ class Engine:
                 while prox.q and prox.q[0][0] + len(prox.q[0][1]) / SR <= ini:  # a proxima comeca no som
                     prox.q.popleft()
                 self._sobrepor = self._entrar = int(sobrepor * SR)
+                self._segura, self._nivel_entra, self._cheia = 0, 1.0, 0
                 self._grave = None
                 self._virar_em = max(self.pos, virar)
                 # o visor: so o cruzamento de volume, sem grade nenhuma (nada promete batida casada)
@@ -1331,6 +1438,45 @@ class Engine:
         print(f"passagem: preparada a {fim - pos_plano + (t_plano - t_prep):.0f} s do fim; esperou "
               f"{t_plano - t_prep:.1f} s pelo audio, planejou em {time.perf_counter() - t_plano:.1f} s; a virada ficou "
               f"{virar - self.pos:.1f} s adiante", file=sys.stderr, flush=True)
+        self._registra_fim(cauda, tr_atual, prox.track, fim, queda, baixo, fade, caindo, virar, sobrepor,
+                           plano, motivo)
+
+    def _registra_fim(self, cauda, tr_atual, tr_prox, fim, queda, baixo, fade, caindo, virar, sobrepor, plano, motivo):
+        """O fim de cada disco que passou, para estudar a passagem (o final baixo e comprido que atrasa a virada): no
+        log, o nivel de 5 em 5 s dos ultimos 40 s relativo ao normal do fim; em logs/passagens/AAAA-MM-DD.jsonl, o
+        nivel em decimos dos ultimos 90 s, as tres faixas do visor no mesmo trecho e o plano. Nunca derruba a passagem."""
+        try:
+            ret = retrato_fim(cauda, fim)
+            if ret is None:
+                return
+            normal, t0, decimos, janelas = ret
+            virou = plano["virar"] if plano is not None else virar
+            print(f"passagem: fim de {tr_atual.get('title')!r}: normal {normal:.1f} dBFS; de 5 em 5 s nos ultimos "
+                  f"{FIM_RETRATO_S:.0f} s: {' '.join('-' if j is None else f'{j:+.0f}' for j in janelas)} dB; "
+                  f"queda em {queda if queda is None else round(queda, 2)} s, baixo em "
+                  f"{baixo if baixo is None else round(baixo, 2)} s, vira em {virou:.2f} s ({fim - virou:.1f} s antes "
+                  f"do fim do som)", file=sys.stderr, flush=True)
+            faixas = None
+            with self._olock:
+                o = self._ondas.get(tr_atual.get("id"))
+                if o is not None:
+                    c0, c1 = max(0, int(t0 / VISOR_PASSO)), min(o.n, int(np.ceil(fim / VISOR_PASSO)))
+                    if c1 > c0:
+                        faixas = {"c0": c0, "b64": base64.b64encode(o.cols[c0:c1].tobytes()).decode("ascii")}
+            reg = {"quando": time.strftime("%Y-%m-%d %H:%M:%S"),
+                   "sai": {k: tr_atual.get(k) for k in ("id", "title", "channel", "duration")},
+                   "entra": {k: tr_prox.get(k) for k in ("id", "title", "channel", "duration")},
+                   "fim": round(fim, 3), "queda": None if queda is None else round(queda, 3),
+                   "baixo": None if baixo is None else round(baixo, 3), "fade": fade, "caindo": round(caindo, 3),
+                   "vira": round(virou, 3), "sobrepor": round(sobrepor, 3), "no_tempo": plano is not None,
+                   "motivo": motivo, "normal": normal, "t0": round(t0, 3), "decimos": decimos, "janelas": janelas,
+                   "visor": {"passo": VISOR_PASSO, "db": list(VISOR_DB), "faixas": faixas}}
+            pasta = pastas.LOGS / "passagens"
+            pasta.mkdir(parents=True, exist_ok=True)
+            with open(pasta / (time.strftime("%Y-%m-%d") + ".jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps(reg, ensure_ascii=False) + "\n")
+        except Exception as ex:  # noqa: BLE001 - o registro e so estudo: falhando, a passagem segue igual
+            print(f"passagem: o registro do fim falhou: {ex!r}", file=sys.stderr, flush=True)
 
     def _plano_batida(self, atual, prox, fade, fim, queda, baixo, ini, virar, sobrepor):
         """A passagem no tempo, pela grade de batidas do fim deste e do comeco da proxima. No fade-out com os
@@ -1372,6 +1518,13 @@ class Engine:
             return None, f"o comeco da proxima sem batida firme, {gb.motivo}"
         pa, pb = ga.periodo, gb.periodo
         a_longa, b_longa = t_a + ga.fase, t_b + gb.fase  # uma batida de cada grade dos 20 s (o bumbo escolheu o lado)
+        intro = False
+        if not fade and gb.firme:  # final seco com a introducao baixa da proxima: ela entra por baixo antes
+            with self._qlock:
+                niv_b = list(prox.niveis)
+            corpo, comeco = medir_corpo(niv_b, ini), nivel_trecho(niv_b, ini, ini + INTRO_SECO_OUVE_S)
+            intro = (corpo is not None and corpo - ini >= INTRO_SECO_BATIDAS * pa
+                     and comeco is not None and comeco < -FIM_DB)
 
         def fase_em(blocos, t1, t2, periodo, quem, longa, x=None):
             """Uma batida (em s do disco) da grade de periodo dado, afinada em t1-t2 (ou no audio x, que comeca
@@ -1406,7 +1559,7 @@ class Engine:
             v = float(inicios[max(0, np.searchsorted(inicios, t0, side="right") - 1)])
             return v, 0, int(round((t0 - v) * SR))
 
-        if not fade:
+        if not fade and not intro:
             a0, motivo = fase_em(blocos_a, fim - 8.0, fim, pa, "do fim deste", a_longa)
             if a0 is None:
                 return None, motivo
@@ -1445,8 +1598,9 @@ class Engine:
             # entra mais de FIM_CORTE_S antes desse fim: o que a passagem de volume toca, a no tempo nao corta
             # (o Bota Tudo Em Mim tem 2 s de silencio e 18 s baixinhos depois da musica; o plano mirava a queda
             # de 20 dB e cortava os 20 s)
-            k = int(np.ceil((fim - TRANS_SECO_S - a0) / pa))
-            while a0 + k * pa - tau < fim - FIM_CORTE_S:
+            fim_o = baixo if baixo is not None and fim - baixo <= RABO_SECO_S else fim   # o rabo curto fica para tras
+            k = int(np.ceil((fim_o - TRANS_SECO_S - a0) / pa))
+            while a0 + k * pa - tau < fim_o - FIM_CORTE_S:
                 k += 1
             t0 = a0 + k * pa - tau
             v, silencio, pad = virada(t0)
@@ -1480,12 +1634,18 @@ class Engine:
             sa = (1 + TEMPO_MAX if s > 1 else 1 - TEMPO_MAX) / s
             if abs(sa - 1) > SAI_MAX:
                 return None, f"andamentos longe, {ga.bpm:.1f} e {gb.bpm:.1f} BPM ({(s - 1) * 100:+.1f}%)"
-            return self._plano_dois(blocos_a, blocos_b, ga, gb, s, sa, a_longa, b_longa, virar, sobrepor, baixo,
-                                    ini, fase_em)
-        a0, motivo = fase_em(blocos_a, virar - FASE_ANTES_S, baixo, pa, "do fim deste", a_longa)
+            nb, ini = self._entrada_dj(prox, ini, pa, pb, s * sa, b_longa)
+            return self._plano_dois(blocos_a, blocos_b, ga, gb, s, sa, a_longa, b_longa, queda - nb * pa,
+                                    (nb + DJ_SAI_BATIDAS) * pa, queda, ini, fase_em)
+        troca_t = queda
+        nb, ini = self._entrada_dj(prox, ini, pa, pb, s, b_longa)
+        virar = troca_t - nb * pa
+        a0, motivo = fase_em(blocos_a, virar - FASE_ANTES_S, troca_t, pa, "do fim deste", a_longa)
         if a0 is None:
             return None, motivo
-        n_sob = int(sobrepor * SR)
+        n_fade = int(DJ_SAI_BATIDAS * pa * SR)
+        n_sob = int(nb * pa * SR) + n_fade
+        sobrepor = n_sob / SR
         esticada, motivo = _esticar_comeco(blocos_b, ini, s, n_sob)
         if esticada is None:
             return None, motivo
@@ -1501,11 +1661,13 @@ class Engine:
             return None, "a batida da virada ja passou"
         if silencio:
             return None, "a virada no tempo caiu depois do fim do arquivo"
-        # os graves trocam na batida dele mais perto do meio da sobreposicao, em meia batida: ate la a
-        # proxima vem sem grave, dali em diante e o que sai que fica sem (no callback)
-        tm = a0 + round((t0 + sobrepor / 2 - a0) / pa) * pa
+        # os graves trocam na batida dele mais perto da troca (o fim do corpo), em meia batida: ate la a proxima vem
+        # sem grave, dali em diante e o que sai que fica sem (no callback); a que sai segue cheia ate ali e some em
+        # DJ_SAI_BATIDAS; a proxima chega cheia no meio da troca
+        tm = a0 + round((troca_t - a0) / pa) * pa
         w0 = max(pad, pad + int((tm - t0 - pa / 4) * SR))
         w1 = w0 + int(pa / 2 * SR)
+        segura, entra = w0, w0
         corte = min(len(z), w1 - pad + SR // 2)
         grave = signal.sosfiltfilt(_GRAVE_LP, z[:corte], axis=0).astype(np.float32)
         entra_grave = np.clip((np.arange(corte) + pad - w0) / (w1 - w0), 0.0, 1.0).astype(np.float32)
@@ -1516,15 +1678,41 @@ class Engine:
             t = ini + (phi[u - pad] / SR if u >= pad else (u - pad) / SR)
             cabeca.append((max(0.0, t), saida[u:u + BLOCK]))
         vb, sob, rampa, kr = _visor_rampa(ini, ate, s, n_sob, n_rampa)
+        sai = segura + n_fade
         visor = {"no_tempo": True, "v": v, "t0": t0, "ini": ini, "va": 1.0, "vb": vb, "sob": sob, "rampa": rampa,
-                 "k": kr, "sai": (pad + n_sob) / SR, "entra": (pad + n_sob) / SR, "grave": [w0 / SR, w1 / SR],
+                 "k": kr, "sai": sai / SR, "entra": entra / SR, "segura": segura / SR, "nivel": DJ_NIVEL_ANTES,
+                 "cheia": w1 / SR, "grave": [w0 / SR, w1 / SR],
                  "grade_de": _visor_grade(ga, a0, t_a, baixo),
                  "grade_para": _visor_grade(gb, ini + s * tau, ini, ini + BATIDA_S)}
-        return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": 0, "sai": pad + n_sob, "entra": pad + n_sob,
-                "grave": (w0, w1), "periodo_saida": pa, "visor": visor,
+        return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": 0, "sai": sai, "entra": entra, "segura": segura,
+                "nivel": DJ_NIVEL_ANTES, "cheia": w1, "grave": (w0, w1), "periodo_saida": pa, "visor": visor,
                 "log": (f"{ga.bpm:.1f} BPM saindo, {gb.bpm:.1f} BPM entrando, a proxima a {s * 100 - 100:+.2f}% "
-                        f"ate o fim da sobreposicao e de volta em {n_rampa / SR:.1f} s, a primeira batida dela em "
-                        f"{t0 + tau:.3f} s, na grade deste; os graves trocam em {tm:.2f} s")}, None
+                        f"por {nb} batidas antes da troca e {DJ_SAI_BATIDAS} depois, e de volta em {n_rampa / SR:.1f} s; "
+                        f"a primeira batida dela em {t0 + tau:.3f} s, na grade deste; os graves trocam em {tm:.2f} s "
+                        f"(o corpo deste acaba em {troca_t:.2f} s)")}, None
+
+    def _entrada_dj(self, prox, ini, pa, pb, s, b_longa):
+        """Quantas batidas deste (nb) a proxima entra antes da troca, e de onde dela (ini): o bastante para o drop dela
+        (medir_corpo, numa batida dela) cair na troca, em degraus de 4, de DJ_MIN_BATIDAS a DJ_MAX_BATIDAS e ate
+        DJ_MAX_S; com a introducao maior, ela comeca dentro dela, um numero inteiro de compassos antes do drop. Sem o
+        corpo medido, DJ_BATIDAS desde o comeco dela. s e a velocidade dela na sobreposicao."""
+        teto = DJ_MAX_BATIDAS
+        while teto > DJ_MIN_BATIDAS and teto * pa > DJ_MAX_S:
+            teto -= 4
+        with self._qlock:
+            niv = list(prox.niveis)
+        corpo = medir_corpo(niv, ini)
+        if corpo is None:
+            return min(DJ_BATIDAS, teto), ini
+        corpo = b_longa + round((corpo - b_longa) / pb) * pb   # o drop numa batida dela
+        nb = int(round((corpo - ini) / (s * pa) / 4)) * 4      # a introducao, em compassos deste
+        nb = max(DJ_MIN_BATIDAS, min(teto, nb))
+        comeco = corpo - nb * pa * s
+        if comeco < ini - 1e-6:   # introducao curta: ela entra do comeco (o drop chega antes da troca)
+            return nb, ini
+        print(f"passagem: a introducao da proxima vai ate {corpo:.2f} s; ela entra de {comeco:.2f} s, {nb} batidas "
+              f"antes da troca", file=sys.stderr, flush=True)
+        return nb, comeco
 
     def _plano_dois(self, blocos_a, blocos_b, ga, gb, s, sa, a_longa, b_longa, virar, sobrepor, baixo, ini, fase_em):
         """O fade-out no tempo com os andamentos a mais de TEMPO_MAX: a que sai vai devagar (RAMPA_TAXA) para a
@@ -1551,7 +1739,7 @@ class Engine:
             return int(np.searchsorted(phi_a, (t - t_r) * SR))
 
         P = pa / sa * SR  # o periodo deste na saida, em amostras
-        i1, i2 = saida_a(virar - FASE_ANTES_S), saida_a(baixo)
+        i1, i2 = saida_a(virar - FASE_ANTES_S), saida_a(baixo)   # baixo aqui e a troca (o fim do corpo)
         perto = (saida_a(a_longa + round((virar - a_longa) / pa) * pa) - i1) / SR
         f, motivo = fase_em(None, 0.0, None, P / SR, "do fim deste (ja mudado)", perto, x=z_a[i1:i2])
         if f is None:
@@ -1574,9 +1762,11 @@ class Engine:
         if j * BLOCK >= len(z_a):
             return None, "a virada no tempo caiu depois do fim do arquivo"
         v = t_r + phi_a[j * BLOCK] / SR
-        tm = a0 + round((t0 + n_sob / 2 - a0) / P) * P  # a troca de grave na batida deste mais perto do meio
+        tm = a0 + round((saida_a(baixo) - a0) / P) * P  # a troca de grave na batida deste mais perto da troca
         w0 = max(pad, pad + int(tm - t0 - P / 4))
         w1 = w0 + int(P / 2)
+        segura, entra = w0, w0
+        sai = segura + int(DJ_SAI_BATIDAS * P)
         corte = min(len(z), w1 - pad + SR // 2)
         grave = signal.sosfiltfilt(_GRAVE_LP, z[:corte], axis=0).astype(np.float32)
         entra_grave = np.clip((np.arange(corte) + pad - w0) / (w1 - w0), 0.0, 1.0).astype(np.float32)
@@ -1594,11 +1784,12 @@ class Engine:
 
         vb, sob, rampa, kr = _visor_rampa(ini, ate, sb, n_sob, n_rampa)
         visor = {"no_tempo": True, "v": v, "t0": disco_a(t0), "ini": ini, "va": sa, "vb": vb, "sob": sob,
-                 "rampa": rampa, "k": kr, "sai": (pad + n_sob) / SR, "entra": (pad + n_sob) / SR,
-                 "grave": [w0 / SR, w1 / SR], "grade_de": _visor_grade(ga, disco_a(a0), a_longa - ga.fase, baixo),
+                 "rampa": rampa, "k": kr, "sai": sai / SR, "entra": entra / SR, "segura": segura / SR,
+                 "nivel": DJ_NIVEL_ANTES, "cheia": w1 / SR, "grave": [w0 / SR, w1 / SR], "grade_de": _visor_grade(ga, disco_a(a0), a_longa - ga.fase, baixo),
                  "grade_para": _visor_grade(gb, ini + sb * tau, ini, ini + BATIDA_S)}
-        return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": 0, "sai": pad + n_sob, "entra": pad + n_sob,
-                "grave": (w0, w1), "sai_q": (t_r, novos), "periodo_saida": P / SR, "visor": visor,
+        return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": 0, "sai": sai, "entra": entra, "segura": segura,
+                "nivel": DJ_NIVEL_ANTES, "cheia": w1, "grave": (w0, w1), "sai_q": (t_r, novos), "periodo_saida": P / SR,
+                "visor": visor,
                 "log": (f"{ga.bpm:.1f} BPM saindo, {gb.bpm:.1f} BPM entrando, longe {(s - 1) * 100:+.1f}%: a que sai a "
                         f"{(sa - 1) * 100:+.2f}% em {n_ra / SR:.0f} s desde {t_r:.2f} s, a proxima a "
                         f"{(sb - 1) * 100:+.2f}% ate o fim da sobreposicao e de volta em {n_rampa / SR:.1f} s, a "
@@ -1619,11 +1810,13 @@ class Engine:
             grave = None
             if medida and self._grave is not None:
                 grave = [_GRAVE_HP, np.zeros((_GRAVE_HP.shape[0], 2, 2)), *self._grave]
-            self._saindo = [velho, n, 0, grave] if n and velho.q else None
+            self._saindo = [velho, n, 0, grave, self._segura if medida else 0] if n and velho.q else None
+            self._segura = 0
             if self._saindo is None:
                 velho.gen += 1
             ne = self._entrar if medida else 0
-            self._entrando = [ne, 0] if ne else None
+            self._entrando = [ne, 0, self._nivel_entra if medida else 1.0, self._cheia if medida else 0] if ne else None
+            self._nivel_entra, self._cheia = 1.0, 0
             self._deck = prox
             # o visor segue desenhando a passagem que acabou de virar (a sobreposicao vem toda depois da virada)
             self._visor_feita, self._visor_pas = (self._visor_pas if medida else None), None

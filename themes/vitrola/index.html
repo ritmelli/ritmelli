@@ -3104,11 +3104,14 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 }
 /* tela baixa: a prateleira primeiro */
 @media (min-width: 900px) and (max-height: 819.98px) {
+  :where(body:not(.mesa-dj)) {
   .parede { grid-template-areas: "cab cab" "prat prat" "rapidos fila" "cont cont"; }
   .rapidos, .fila-parede { margin-top: 20px; }
+  }
 }
 /* tela baixa: a legenda de atalhos sai (as teclas seguem nos discos e no titulo do botao) */
 @media (min-width: 900px) and (max-height: 899.98px) {
+  :where(body:not(.mesa-dj)) {
   .app { --resto: 360px; --pad-y: 16px; --fresta: 18px; }
   .atalhos { display: none; }
   /* o topo mais baixo: plaqueta, teclas e caixilho da busca encolhem, e sobra para o toca-discos (no celular grande
@@ -3118,9 +3121,11 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .botoes-topo .btn-madeira, .cabeca-sec .btn-madeira { height: calc(36px + 8 * var(--px, 1px)); }
   .busca { --caixilho: calc(2px + 3 * var(--px, 1px)); }
   .busca input { height: calc(32px + 6 * var(--px, 1px)); }
+  }
 }
 /* tela bem baixa: tudo mais justo, o prato continua sendo o maior da tela */
 @media (min-width: 900px) and (max-height: 699.98px) {
+  :where(body:not(.mesa-dj)) {
   .app { --alvo: 2.25rem; --resto: 316px; --pad-y: 12px; --fresta: 14px; }
   .nome-marca { font-size: 1.5rem; }
   .palco .faixa > .titulo-faixa { margin-top: 11px; }
@@ -3140,6 +3145,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     .fader input { grid-column: 2; }
     .fader output { grid-column: 3; }
     .fader label small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  }
   }
 }
 
@@ -3327,17 +3333,31 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
    A busca abre por cima da prateleira e do deck da direita ---------- */
 @media (min-width: 1400px) and (min-aspect-ratio: 20/19) {
   #b-pagina { display: none; }
+  /* o palco (pedido dele, 06/11): a mesa monta sempre num tamanho de projeto (1920 de largura, 950 de altura no minimo;
+     o ajustarPalco poe --palco-w e --palco-h) e a pagina escala ela inteira para caber na janela, como uma imagem, em
+     vez de rearrumar as pecas no espaco que a tela da: o desenho e um so em toda tela. As medidas que eram da tela (vw,
+     dvh, a letra da raiz) passam a ser do palco */
+  html:has(> body.mesa-dj) { font-size: clamp(16px, min(calc(var(--palco-w, 100vw) * .009), calc(var(--palco-h, 100dvh) * .016)), 20px); overflow: hidden; }
+  body.mesa-dj { min-height: 0; overflow: hidden; }
+  body.mesa-dj .app {
+    position: fixed; left: 0; top: 0; margin: 0; max-width: none;
+    width: var(--palco-w, 100vw); height: var(--palco-h, 100dvh); min-height: 0;
+    transform: translate(var(--palco-x, 0px), var(--palco-y, 0px)) scale(var(--palco-k, 1)); transform-origin: 0 0;
+  }
   body.mesa-dj.com-disco .app {
     --vao: 12px;
     --pad-y: 14px;
     /* o meio (a tela grande; embaixo dela o mixer e os pads) cresce com a tela; o mixer passa um pouco da metade da
        faixa de cima, para a maleta e a prateleira ficarem quase do mesmo tamanho */
-    --centro: clamp(400px, 28vw, 640px);
+    --centro: clamp(400px, calc(var(--palco-w, 100vw) * .28), 640px);
     --mix-a: calc(var(--centro) * .47);
     --mix-b: calc(var(--centro) * .1);
     --pads-w: calc(var(--centro) - var(--mix-a) - var(--mix-b) - 2 * var(--vao));
     grid-template-columns: minmax(0, 1fr) var(--mix-a) var(--mix-b) var(--pads-w) minmax(0, 1fr);
-    grid-template-rows: auto clamp(146px, 21.5dvh, 300px) clamp(138px, 21dvh, 340px) minmax(0, 1fr) 188px;
+    /* as fileiras na medida do mock B no palco de 1026: a maleta e a prateleira 245, a pedaleira 250; os toca-discos
+       (o visor + o que sobra) ficam com ~400, como no mock (pedido dele, 06/11: estavam altos demais). O visor fica com
+       216, a altura que tinha antes do palco fixo (pedido dele: a de 240 do mock ficou alta) */
+    grid-template-rows: auto 245px 216px minmax(0, 1fr) 250px;
     grid-template-areas:
       "topo topo topo topo topo"
       "fila fila prat prat prat"
@@ -3887,7 +3907,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 }
 /* tela muito baixa (o celular grande deitado): o receiver de uma coluna passava 10 px da tela; os vaos dele encolhem */
 @media (min-width: 900px) and (max-height: 499.98px) {
+  :where(body:not(.mesa-dj)) {
   .palco .receptor { row-gap: 6px; padding-bottom: 10px; }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3942,7 +3964,7 @@ body.mesa-dj .palco .receptor.mx-ok::before, body.mesa-dj .palco .receptor.mx-ok
 body.mesa-dj .palco .receptor.mx-ok :is(.janela, .fader label, .fader output, .fader input, .tecla-set, .xfader, .auto-luz) { opacity: 0 !important; }
 body.mesa-dj .palco .receptor.mx-ok .janela { column-gap: 4px; }
 /* a canaleta em pe entre o rotulo (36 px) e o valor (22 px) */
-body.mesa-dj .palco .receptor.mx-ok .fader input { --w: round(down, calc(100cqh - 62px), 2px); width: var(--w); top: calc(40px + var(--w) / 2); }
+body.mesa-dj .palco .receptor.mx-ok .fader input { --w: round(down, calc(100cqh - 66px), 2px); width: var(--w); top: calc(40px + var(--w) / 2); }
 /* as chaves do set sairam da mesa (ordem dele, 06/11): o tocar parecidas fica sempre ligado pelo JS da mesa */
 body.mesa-dj .palco .receptor .mix-set { display: none !important; }
 /* os rotulos dos volumes e o nome da placa em letra normal (Archivo em negrito), por cima do canvas, como no mock */
@@ -4359,6 +4381,40 @@ const $ = (s, r = document) => r.querySelector(s);
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const reduz = matchMedia('(prefers-reduced-motion: reduce)');
+/* o palco da mesa (pedido dele, 06/11): a mesa monta sempre num tamanho fixo, PALCO_W x PALCO_H (a proporcao do mock
+   B), e a pagina escala tudo para caber na janela, centrado; o que a janela tem de outra proporcao vira faixa de parede.
+   Quando da, a escala cai num numero inteiro de pixels da tela por celula de 2 px (no notebook dele, 3x3), para o
+   pixel art ficar nitido e sem costura (o ajustarPalco diz quanto pode passar ou perder). O getBoundingClientRect vem escalado; o rectP devolve a
+   caixa no tamanho do palco, com a origem no canto dele */
+const PALCO_W = 1920, PALCO_H = 1026, PALCO = { k: 1, w: 0, h: 0, x: 0, y: 0 };
+function ajustarPalco() {
+  const st = document.documentElement.style;
+  if (!document.body.classList.contains('mesa-dj')) {
+    PALCO.k = 1; PALCO.x = PALCO.y = 0;
+    for (const p of ['--palco-k', '--palco-w', '--palco-h', '--palco-x', '--palco-y']) st.removeProperty(p);
+    return;
+  }
+  const W = innerWidth, H = innerHeight, d = devicePixelRatio || 1, enc = Math.min(W / PALCO_W, H / PALCO_H);
+  // a celula num numero inteiro de pixels da tela: o inteiro de cima, se o palco passa no maximo 1,2% da janela (corta
+  // so a folga da beira; a janela do notebook dele tem 768 de altura, e 0,7485 punha 2 costuras na onda, pedido dele);
+  // senao o de baixo, perdendo no maximo 10% do tamanho; senao o encaixe exato
+  const x2 = 2 * enc * d, cima = Math.ceil(x2 - 1e-6), baixo = Math.floor(x2 + 1e-6);
+  const k = cima >= 1 && cima / x2 <= 1.012 ? cima / (2 * d) : baixo >= 1 && baixo / x2 >= .9 ? baixo / (2 * d) : enc;
+  // centrado, com a origem num pixel inteiro da tela
+  const px_ = v => Math.round(v * d) / d;
+  PALCO.k = k; PALCO.w = PALCO_W; PALCO.h = PALCO_H; PALCO.x = px_((W - PALCO_W * k) / 2); PALCO.y = px_((H - PALCO_H * k) / 2);
+  st.setProperty('--palco-k', String(k)); st.setProperty('--palco-w', PALCO_W + 'px'); st.setProperty('--palco-h', PALCO_H + 'px');
+  st.setProperty('--palco-x', PALCO.x + 'px'); st.setProperty('--palco-y', PALCO.y + 'px');
+}
+addEventListener('resize', ajustarPalco);
+function rectP(e) {
+  const r = e.getBoundingClientRect(), k = PALCO.k;
+  if (k === 1 && !PALCO.x && !PALCO.y) return r;
+  const left = (r.left - PALCO.x) / k, top = (r.top - PALCO.y) / k, width = r.width / k, height = r.height / k;
+  return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top };
+}
+// a largura do palco (ou da janela, sem a mesa), para prender o que abre por cima dentro dele
+const larguraPalco = () => PALCO.k === 1 ? innerWidth : PALCO.w;
 
 const S = {
   state: null, lib: [], jobs: [], pos: 0, levels: { mic: 0, track: 0, out: 0 },
@@ -4859,6 +4915,10 @@ function desenharVisor(agora) {
     esq = V.ancora.esq;
   }
   const agulha = Math.floor((agoraX - esq) / VDJ_PASSO + 1e-6);
+  // a coluna x e a celula iEsq + x, contada em inteiros: somar esq + x * VDJ_PASSO em ponto flutuante caia um tiquinho
+  // abaixo da celula em algumas colunas, que liam a coluna vizinha da onda; como esq muda a cada passo, as colunas
+  // erradas mudavam junto e a onda piscava (linhas que aparecem e somem, pedido dele, 06/11)
+  const iEsq = Math.round(esq / VDJ_PASSO);
   V.mapa = { esq, p, dur };
 
   const ambar = vdjPaleta(VDJ_AMBAR);   // o mapa de baixo
@@ -4887,7 +4947,7 @@ function desenharVisor(agora) {
   // de dentro, para o eixo
   const metade = (x, onda, t, g, gr, base, foi, dir) => {
     if (!onda) return null;
-    const i = Math.floor(t / onda.passo);
+    const i = Math.floor(t / onda.passo + 1e-6);
     if (i < 0 || i >= onda.n) return null;
     const pal = vdjPaleta(base, g), cor = foi ? pal.foi : pal.vem, a = onda.alt, alt = (.7 + .3 * g) * meia;
     const hg = Math.round(a[onda.cols[3 * i]] * gr * alt), hm = Math.round(a[onda.cols[3 * i + 1]] * alt);
@@ -4896,13 +4956,18 @@ function desenharVisor(agora) {
     return ha ? cor[2] : hm ? cor[1] : top ? cor[0] : null;
   };
   for (let x = 0; x < W; x++) {
-    const xu = esq + x * VDJ_PASSO, foi = xu < agoraX;
+    const xu = (iEsq + x) * VDJ_PASSO, foi = xu < agoraX;
     let sobe = null, desce = null;   // [onda, t, g, gr, paleta]
     if (!p) {
       if (tr) sobe = desce = [ondaAtual, xu, 1, 1, VDJ_AMBAR];
     } else {
-      const sai = [ondaDe, p.t0 + p.va * xu, xu < e ? 1 : Math.cos(clamp((xu - e) / p.sai, 0, 1) * Math.PI / 2), p.grave ? 1 - troca(xu) : 1, VDJ_AMBAR];
-      const entra = xu >= 0 ? [ondaPara, p.ini + vdjFi(p, xu), Math.sin(clamp((xu - e) / Math.max(1e-3, p.entra), 0, 1) * Math.PI / 2), troca(xu), cEntra] : null;
+      // o que sai segue cheio ate a troca (p.segura, a passagem de DJ do motor) e cai no cosseno ate p.sai
+      const seg = p.segura || 0;
+      const sai = [ondaDe, p.t0 + p.va * xu, xu < e + seg ? 1 : Math.cos(clamp((xu - e - seg) / Math.max(1e-3, p.sai - seg), 0, 1) * Math.PI / 2), p.grave ? 1 - troca(xu) : 1, VDJ_AMBAR];
+      // a que entra sobe em seno ate p.nivel em p.entra e dali reto ate cheia em p.cheia (a passagem de DJ do motor)
+      const nv = p.nivel == null ? 1 : p.nivel;
+      const gEntra = nv * Math.sin(clamp((xu - e) / Math.max(1e-3, p.entra), 0, 1) * Math.PI / 2) + (nv < 1 ? (1 - nv) * clamp((xu - e - p.entra) / Math.max(1e-3, (p.cheia || p.entra) - p.entra), 0, 1) : 0);
+      const entra = xu >= 0 ? [ondaPara, p.ini + vdjFi(p, xu), gEntra, troca(xu), cEntra] : null;
       if (!entra) sobe = desce = sai;
       else if (xu > fimSai) sobe = desce = entra;
       else { sobe = sai; desce = entra; }
@@ -5142,7 +5207,7 @@ const gravarModo = (id, m) => { try { localStorage.setItem('vitrola.modo.' + id,
 // o modo do botao que o toque pegou num pedal com os botoes: a metade de cima e o primeiro modo, a de baixo o segundo;
 // fora disso, nenhum
 const modoDoToque = (b, e) => b.classList.contains('com-chave')
-  ? CHAVE_MODOS[b.dataset.ef][e.clientY < b.getBoundingClientRect().top + b.offsetHeight / 2 ? 0 : 1] : null;
+  ? CHAVE_MODOS[b.dataset.ef][(rb => e.clientY < rb.top + rb.height / 2)(b.getBoundingClientRect()) ? 0 : 1] : null;
 const KNOBS = {
   creme: ['<svg viewBox="0 0 49 42" width="49" height="42" shape-rendering="crispEdges"><g class="escala"><path class="riscos" d="M24 0h1v5h-1zM13 3h1v1h-1zM35 3h1v1h-1zM14 4h1v2h-1zM34 4h1v2h-1zM15 6h1v1h-1zM33 6h1v1h-1zM3 13h1v1h-1zM45 13h1v1h-1zM4 14h2v1h-2zM43 14h2v1h-2zM6 15h1v1h-1zM42 15h1v1h-1zM0 24h5v1h-5zM44 24h5v1h-5zM5 30h1v1h-1zM43 30h1v1h-1zM2 31h3v1h-3zM44 31h3v1h-3zM11 37h1v1h-1zM37 37h1v1h-1zM10 38h1v1h-1zM38 38h1v1h-1zM9 39h1v1h-1zM39 39h1v1h-1zM8 40h1v1h-1zM40 40h1v1h-1z"/><path class="arco" d="M20 4h4v1h-4zM25 4h4v1h-4zM17 5h3v1h-3zM29 5h3v1h-3zM16 6h1v1h-1zM32 6h1v1h-1zM13 7h2v1h-2zM34 7h2v1h-2zM12 8h1v1h-1zM36 8h1v1h-1zM11 9h1v1h-1zM37 9h1v1h-1zM10 10h1v1h-1zM38 10h1v1h-1zM9 11h1v1h-1zM9 37h1v1h-1zM39 11h1v1h-1zM39 37h1v1h-1zM8 12h1v1h-1zM8 36h1v1h-1zM40 12h1v1h-1zM40 36h1v1h-1zM7 13h1v2h-1zM7 34h1v2h-1zM41 13h1v2h-1zM41 34h1v2h-1zM6 16h1v1h-1zM6 32h1v2h-1zM42 16h1v1h-1zM42 32h1v2h-1zM5 17h1v3h-1zM5 29h1v1h-1zM5 31h1v1h-1zM43 17h1v3h-1zM43 29h1v1h-1zM43 31h1v1h-1zM4 20h1v4h-1zM4 25h1v4h-1zM44 20h1v4h-1zM44 25h1v4h-1z"/></g><path fill="#EADCC4" d="M21 10h7v1h-7zM21 30h7v1h-7zM19 11h11v1h-11zM19 29h11v1h-11zM18 12h13v1h-13zM18 28h13v1h-13zM33 12h1v1h-1zM17 13h18v1h-18zM16 14h19v1h-19zM15 15h21v2h-21zM14 17h22v1h-22zM14 18h21v4h-21zM13 22h22v1h-22zM12 23h23v1h-23zM13 24h21v2h-21zM14 26h19v1h-19zM14 27h18v1h-18zM15 28h1v1h-1z"/><path fill="#1A0B04" d="M21 6h7v1h-7zM21 34h7v1h-7zM21 39h7v1h-7zM18 7h13v1h-13zM18 33h13v1h-13zM18 38h13v1h-13zM16 8h5v1h-5zM16 32h5v1h-5zM16 37h5v1h-5zM28 8h5v1h-5zM28 32h5v1h-5zM28 37h5v1h-5zM15 9h4v1h-4zM15 31h4v1h-4zM15 36h4v1h-4zM30 9h4v1h-4zM30 31h4v1h-4zM30 36h4v1h-4zM14 10h3v1h-3zM14 30h3v1h-3zM14 35h3v1h-3zM32 10h3v1h-3zM32 30h3v1h-3zM32 35h3v1h-3zM13 11h3v1h-3zM13 34h3v1h-3zM33 11h3v1h-3zM33 34h3v1h-3zM12 12h3v1h-3zM12 33h3v1h-3zM34 12h3v1h-3zM34 33h3v1h-3zM12 13h2v1h-2zM12 32h2v1h-2zM35 13h2v1h-2zM35 32h2v1h-2zM11 14h3v1h-3zM11 31h3v1h-3zM35 14h3v1h-3zM35 31h3v1h-3zM11 15h2v2h-2zM11 30h2v1h-2zM36 15h2v2h-2zM36 30h2v1h-2zM10 17h2v7h-2zM37 17h2v7h-2zM10 24h3v2h-3zM36 24h3v2h-3zM10 26h4v2h-4zM35 26h4v2h-4zM10 28h5v1h-5zM34 28h5v1h-5zM11 29h5v1h-5zM33 29h5v1h-5z"/><path fill="#0C0603" fill-opacity="0.42" d="M10 29h1v2h-1zM38 29h1v2h-1zM11 32h1v2h-1zM37 32h1v2h-1zM12 34h1v1h-1zM36 34h1v1h-1zM12 35h2v1h-2zM35 35h2v1h-2zM13 36h2v1h-2zM34 36h2v1h-2zM14 37h2v1h-2zM33 37h2v1h-2zM15 38h3v1h-3zM31 38h3v1h-3zM16 39h5v1h-5zM28 39h5v1h-5zM18 40h13v1h-13zM21 41h7v1h-7z"/><path fill="#B9A182" d="M36 17h1v1h-1zM35 18h2v6h-2zM34 24h2v2h-2zM33 26h2v1h-2zM32 27h3v1h-3zM16 28h2v1h-2zM31 28h3v1h-3zM16 29h3v1h-3zM30 29h3v1h-3zM17 30h4v1h-4zM28 30h4v1h-4zM19 31h11v1h-11zM21 32h7v1h-7z"/><path fill="#FFF8EA" d="M21 8h7v1h-7zM19 9h11v1h-11zM17 10h4v1h-4zM28 10h4v1h-4zM16 11h3v1h-3zM30 11h3v1h-3zM15 12h3v1h-3zM31 12h2v1h-2zM14 13h3v1h-3zM14 14h2v1h-2zM13 15h2v2h-2zM12 17h2v5h-2zM12 22h1v1h-1z"/><path fill="#D8C6AA" d="M13 30h1v1h-1zM14 31h1v1h-1zM14 32h2v1h-2zM15 33h3v1h-3zM16 34h2v1h-2zM17 35h1v1h-1z"/><path fill="#7A6752" d="M35 30h1v1h-1zM34 31h1v1h-1zM33 32h2v1h-2zM31 33h3v1h-3zM28 34h5v1h-5zM27 35h5v1h-5zM27 36h3v1h-3zM27 37h1v1h-1z"/><path fill="#9C8469" d="M18 34h3v1h-3zM18 35h9v1h-9zM19 36h8v1h-8zM21 37h6v1h-6z"/>PONTEIRO</svg>', ['<path fill="#1A0B04" d="M21 21h3v1h-3zM20 22h2v1h-2zM20 25h2v1h-2zM23 22h1v1h-1zM19 23h2v1h-2zM19 26h2v1h-2zM22 23h2v1h-2zM18 24h2v1h-2zM18 27h2v1h-2zM21 24h2v1h-2zM17 25h2v1h-2zM16 26h2v1h-2zM16 27h1v1h-1zM16 28h3v1h-3z"/><path fill="#5A4535" d="M22 22h1v1h-1zM21 23h1v1h-1zM20 24h1v1h-1zM19 25h1v1h-1zM18 26h1v1h-1zM17 27h1v1h-1z"/>', '<path fill="#1A0B04" d="M19 20h5v1h-5zM16 21h4v1h-4zM23 21h1v1h-1zM14 22h3v1h-3zM20 22h4v1h-4zM14 23h1v1h-1zM17 23h4v1h-4zM14 24h4v1h-4z"/><path fill="#5A4535" d="M20 21h3v1h-3zM17 22h3v1h-3zM15 23h2v1h-2z"/>', '<path fill="#1A0B04" d="M13 19h11v1h-11zM13 21h11v1h-11zM13 20h1v1h-1zM23 20h1v1h-1z"/><path fill="#5A4535" d="M14 20h9v1h-9z"/>', '<path fill="#1A0B04" d="M14 14h3v1h-3zM14 15h1v1h-1zM16 15h3v1h-3zM14 16h2v1h-2zM18 16h3v1h-3zM15 17h3v1h-3zM20 17h3v1h-3zM17 18h3v1h-3zM22 18h2v1h-2zM19 19h3v1h-3zM23 19h1v1h-1zM21 20h3v1h-3z"/><path fill="#5A4535" d="M15 15h1v1h-1zM16 16h2v1h-2zM18 17h2v1h-2zM20 18h2v1h-2zM22 19h1v1h-1z"/>', '<path fill="#1A0B04" d="M18 10h3v1h-3zM18 11h1v1h-1zM20 11h2v1h-2zM20 16h2v1h-2zM18 12h2v1h-2zM21 12h1v1h-1zM21 17h1v1h-1zM19 13h1v1h-1zM21 13h2v1h-2zM21 18h2v1h-2zM19 14h2v1h-2zM22 14h1v1h-1zM20 15h1v1h-1zM22 15h2v1h-2zM23 16h1v1h-1zM23 17h2v1h-2zM24 18h1v1h-1zM22 19h3v1h-3z"/><path fill="#5A4535" d="M19 11h1v1h-1zM20 12h1v2h-1zM21 14h1v2h-1zM22 16h1v2h-1zM23 18h1v1h-1z"/>', '<path fill="#1A0B04" d="M23 9h3v1h-3zM23 19h3v1h-3zM23 10h1v9h-1zM25 10h1v9h-1z"/><path fill="#5A4535" d="M24 10h1v9h-1z"/>', '<path fill="#1A0B04" d="M28 10h3v1h-3zM27 11h2v1h-2zM27 16h2v1h-2zM30 11h1v1h-1zM27 12h1v1h-1zM27 17h1v1h-1zM29 12h2v1h-2zM26 13h2v1h-2zM26 18h2v1h-2zM29 13h1v1h-1zM26 14h1v1h-1zM28 14h2v1h-2zM25 15h2v1h-2zM28 15h1v1h-1zM25 16h1v1h-1zM24 17h2v1h-2zM24 18h1v1h-1zM24 19h3v1h-3z"/><path fill="#5A4535" d="M29 11h1v1h-1zM28 12h1v2h-1zM27 14h1v2h-1zM26 16h1v2h-1zM25 18h1v1h-1z"/>', '<path fill="#1A0B04" d="M32 14h3v1h-3zM30 15h3v1h-3zM34 15h1v1h-1zM28 16h3v1h-3zM33 16h2v1h-2zM26 17h3v1h-3zM31 17h3v1h-3zM25 18h2v1h-2zM29 18h3v1h-3zM25 19h1v1h-1zM27 19h3v1h-3zM25 20h3v1h-3z"/><path fill="#5A4535" d="M33 15h1v1h-1zM31 16h2v1h-2zM29 17h2v1h-2zM27 18h2v1h-2zM26 19h1v1h-1z"/>', '<path fill="#1A0B04" d="M25 19h11v1h-11zM25 21h11v1h-11zM25 20h1v1h-1zM35 20h1v1h-1z"/><path fill="#5A4535" d="M26 20h9v1h-9z"/>', '<path fill="#1A0B04" d="M25 20h5v1h-5zM25 21h1v1h-1zM29 21h4v1h-4zM25 22h4v1h-4zM32 22h3v1h-3zM28 23h4v1h-4zM34 23h1v1h-1zM31 24h4v1h-4z"/><path fill="#5A4535" d="M26 21h3v1h-3zM29 22h3v1h-3zM32 23h2v1h-2z"/>', '<path fill="#1A0B04" d="M25 21h3v1h-3zM25 22h1v1h-1zM27 22h2v1h-2zM27 25h2v1h-2zM25 23h2v1h-2zM28 23h2v1h-2zM28 26h2v1h-2zM26 24h2v1h-2zM29 24h2v1h-2zM29 27h2v1h-2zM30 25h2v1h-2zM31 26h2v1h-2zM32 27h1v1h-1zM30 28h3v1h-3z"/><path fill="#5A4535" d="M26 22h1v1h-1zM27 23h1v1h-1zM28 24h1v1h-1zM29 25h1v1h-1zM30 26h1v1h-1zM31 27h1v1h-1z"/>']],
   baquelite: ['<svg viewBox="0 0 49 42" width="49" height="42" shape-rendering="crispEdges"><g class="escala"><path class="riscos" d="M24 0h1v5h-1zM13 3h1v1h-1zM35 3h1v1h-1zM14 4h1v2h-1zM34 4h1v2h-1zM15 6h1v1h-1zM33 6h1v1h-1zM3 13h1v1h-1zM45 13h1v1h-1zM4 14h2v1h-2zM43 14h2v1h-2zM6 15h1v1h-1zM42 15h1v1h-1zM0 24h5v1h-5zM44 24h5v1h-5zM5 30h1v1h-1zM43 30h1v1h-1zM2 31h3v1h-3zM44 31h3v1h-3zM11 37h1v1h-1zM37 37h1v1h-1zM10 38h1v1h-1zM38 38h1v1h-1zM9 39h1v1h-1zM39 39h1v1h-1zM8 40h1v1h-1zM40 40h1v1h-1z"/><path class="arco" d="M20 4h4v1h-4zM25 4h4v1h-4zM17 5h3v1h-3zM29 5h3v1h-3zM16 6h1v1h-1zM32 6h1v1h-1zM13 7h2v1h-2zM34 7h2v1h-2zM12 8h1v1h-1zM36 8h1v1h-1zM11 9h1v1h-1zM37 9h1v1h-1zM10 10h1v1h-1zM38 10h1v1h-1zM9 11h1v1h-1zM9 37h1v1h-1zM39 11h1v1h-1zM39 37h1v1h-1zM8 12h1v1h-1zM8 36h1v1h-1zM40 12h1v1h-1zM40 36h1v1h-1zM7 13h1v2h-1zM7 34h1v2h-1zM41 13h1v2h-1zM41 34h1v2h-1zM6 16h1v1h-1zM6 32h1v2h-1zM42 16h1v1h-1zM42 32h1v2h-1zM5 17h1v3h-1zM5 29h1v1h-1zM5 31h1v1h-1zM43 17h1v3h-1zM43 29h1v1h-1zM43 31h1v1h-1zM4 20h1v4h-1zM4 25h1v4h-1zM44 20h1v4h-1zM44 25h1v4h-1z"/></g><path fill="#4E2F1F" d="M21 10h7v1h-7zM21 30h7v1h-7zM19 11h11v1h-11zM19 29h11v1h-11zM18 12h13v1h-13zM18 28h13v1h-13zM33 12h1v1h-1zM17 13h18v1h-18zM16 14h19v1h-19zM15 15h21v2h-21zM14 17h22v1h-22zM14 18h21v4h-21zM13 22h22v1h-22zM12 23h23v1h-23zM13 24h21v2h-21zM14 26h19v1h-19zM14 27h18v1h-18zM15 28h1v1h-1z"/><path fill="#1A0B04" d="M21 6h7v1h-7zM21 34h7v1h-7zM21 39h7v1h-7zM18 7h13v1h-13zM18 33h13v1h-13zM18 38h13v1h-13zM16 8h5v1h-5zM16 32h5v1h-5zM16 37h5v1h-5zM28 8h5v1h-5zM28 37h5v1h-5zM15 9h4v1h-4zM15 31h4v1h-4zM15 36h4v1h-4zM30 9h4v1h-4zM30 31h4v1h-4zM14 10h3v1h-3zM14 30h3v1h-3zM14 35h3v1h-3zM32 10h3v1h-3zM32 30h3v1h-3zM32 35h3v1h-3zM13 11h3v1h-3zM13 34h3v1h-3zM33 11h3v1h-3zM33 34h3v1h-3zM12 12h3v1h-3zM12 33h3v1h-3zM34 12h3v1h-3zM12 13h2v1h-2zM12 32h2v1h-2zM35 13h2v1h-2zM35 32h2v1h-2zM11 14h3v1h-3zM11 31h3v1h-3zM35 14h3v1h-3zM35 31h3v1h-3zM11 15h2v2h-2zM11 30h2v1h-2zM36 15h2v2h-2zM36 30h2v1h-2zM10 17h2v7h-2zM37 17h2v7h-2zM10 24h3v2h-3zM36 24h3v2h-3zM10 26h4v2h-4zM35 26h4v2h-4zM10 28h5v1h-5zM34 28h5v1h-5zM11 29h5v1h-5zM33 29h5v1h-5zM28 32h6v1h-6zM33 33h4v1h-4zM29 34h1v2h-1zM29 36h5v1h-5z"/><path fill="#0C0603" fill-opacity="0.42" d="M10 29h1v2h-1zM38 29h1v2h-1zM11 32h1v2h-1zM37 32h1v2h-1zM12 34h1v1h-1zM36 34h1v1h-1zM12 35h2v1h-2zM35 35h2v1h-2zM13 36h2v1h-2zM34 36h2v1h-2zM14 37h2v1h-2zM33 37h2v1h-2zM15 38h3v1h-3zM31 38h3v1h-3zM16 39h5v1h-5zM28 39h5v1h-5zM18 40h13v1h-13zM21 41h7v1h-7z"/><path fill="#341E13" d="M36 17h1v1h-1zM35 18h2v6h-2zM34 24h2v2h-2zM33 26h2v1h-2zM32 27h3v1h-3zM16 28h2v1h-2zM31 28h3v1h-3zM16 29h3v1h-3zM30 29h3v1h-3zM17 30h4v1h-4zM28 30h4v1h-4zM19 31h11v1h-11zM21 32h7v1h-7z"/><path fill="#784E36" d="M21 8h7v1h-7zM19 9h11v1h-11zM17 10h4v1h-4zM28 10h4v1h-4zM16 11h3v1h-3zM30 11h3v1h-3zM15 12h3v1h-3zM31 12h2v1h-2zM14 13h3v1h-3zM14 14h2v1h-2zM13 15h2v2h-2zM12 17h2v5h-2zM12 22h1v1h-1z"/><path fill="#623D29" d="M13 30h1v1h-1zM14 31h1v2h-1zM16 33h2v2h-2zM17 35h1v1h-1z"/><path fill="#2F1B11" d="M35 30h1v1h-1zM34 31h1v2h-1zM31 33h2v1h-2zM19 34h1v3h-1zM28 34h1v1h-1zM30 34h3v1h-3zM24 35h1v3h-1zM27 35h2v2h-2zM30 35h2v1h-2zM27 37h1v1h-1z"/><path fill="#462A1C" d="M15 32h1v2h-1zM18 34h1v2h-1zM20 34h1v1h-1zM20 35h4v2h-4zM25 35h2v3h-2zM21 37h3v1h-3z"/>PONTEIRO</svg>', ['<path fill="#EEE0C6" d="M20 24h2v1h-2zM19 25h2v1h-2zM18 26h2v1h-2zM17 27h2v1h-2zM16 28h2v1h-2z"/>', '<path fill="#EEE0C6" d="M17 22h3v1h-3zM14 23h6v1h-6zM14 24h3v1h-3z"/>', '<path fill="#EEE0C6" d="M13 20h7v2h-7z"/>', '<path fill="#EEE0C6" d="M14 15h2v1h-2zM14 16h4v1h-4zM16 17h4v1h-4zM18 18h2v1h-2z"/>', '<path fill="#EEE0C6" d="M19 10h2v2h-2zM20 12h2v2h-2zM21 14h2v2h-2z"/>', '<path fill="#EEE0C6" d="M24 9h2v7h-2z"/>', '<path fill="#EEE0C6" d="M29 10h2v2h-2zM28 12h2v2h-2zM27 14h2v2h-2z"/>', '<path fill="#EEE0C6" d="M33 15h2v1h-2zM31 16h4v1h-4zM29 17h4v1h-4zM29 18h2v1h-2z"/>', '<path fill="#EEE0C6" d="M29 20h7v2h-7z"/>', '<path fill="#EEE0C6" d="M29 22h3v1h-3zM29 23h6v1h-6zM32 24h3v1h-3z"/>', '<path fill="#EEE0C6" d="M28 24h2v1h-2zM29 25h2v1h-2zM30 26h2v1h-2zM31 27h2v1h-2zM32 28h2v1h-2z"/>']],
@@ -5403,9 +5468,9 @@ function cabosDoComputador() {
    aparelho dele): o par RCA desce do pe dos pads e entra de lado na pedaleira da direita, e o preto volta para o
    mixer, pendurados na parede do vao embaixo dos pads, como os do mock */
 function cabosDaMesa() {
-  const cv = $('#cabo-calha'), P = $('#pads').getBoundingClientRect(), M = $('.palco .receptor').getBoundingClientRect();
-  const G = $('#gaveta-dir').getBoundingClientRect();
-  const d = devicePixelRatio || 1, cel = Math.max(1, Math.round(d * 4 / 3)) / d;
+  const cv = $('#cabo-calha'), P = rectP($('#pads')), M = rectP($('.palco .receptor'));
+  const G = rectP($('#gaveta-dir'));
+  const d = (devicePixelRatio || 1) * PALCO.k, cel = Math.max(1, Math.round(d * 4 / 3)) / d;
   const geo = ['mesa', P.left, P.width, P.bottom, M.right, M.bottom, G.left, G.top, G.height, cel].join('|');
   if (!P.width || !G.width || cv._geo === geo) return;
   cv._geo = geo;
@@ -5733,11 +5798,11 @@ function medirCabosBanco(banco) {
   if (cv.parentNode !== banco) { cv._geo = ''; banco.append(cv); }
 
   // a grade das celulas comeca na borda da gaveta, em px inteiros do banco (os pedais caem em px inteiros dela)
-  const gr = gav.getBoundingClientRect(), br = banco.getBoundingClientRect();
+  const gr = rectP(gav), br = rectP(banco);
   const xOff = Math.round(br.left - gr.left), W = Math.round(gr.width), H = Math.ceil(br.height);
   // o canvas passa da beira do feltro ate perto da beira do palco, para a fita VOZ sair por cima da parede;
   // W segue a largura do feltro, a beira de tudo o mais
-  const Wc = Math.max(W, Math.round(banco.closest('.palco').getBoundingClientRect().right - 2 - gr.left));
+  const Wc = Math.max(W, Math.round(rectP(banco.closest('.palco')).right - 2 - gr.left));
   const X = v => Math.round(v - gr.left), Y = v => Math.round(v - br.top);
   /* cada fileira: as caixas dos pedais (esquerda e direita), a linha das tomadas (y, a dos tracos de
      IN/OUT), o topo livre de cima (a etiqueta do grupo, quando a fileira abre um), topo e pe das caixas */
@@ -5745,7 +5810,7 @@ function medirCabosBanco(banco) {
   for (const t of listas) {
     const rot = t.previousElementSibling;
     t.querySelectorAll(':scope > .tecla').forEach((p, i) => {
-      const r = p.getBoundingClientRect(), l = linhas[linhas.length - 1];
+      const r = rectP(p), l = linhas[linhas.length - 1];
       if (l && Math.abs(l.rs[0].top - r.top) < 1) l.rs.push(r);
       else linhas.push({ rs: [r], rot: i === 0 ? rot : null });
     });
@@ -5754,7 +5819,7 @@ function medirCabosBanco(banco) {
     const topoP = Math.min(...rs.map(r => r.top));
     return {
       cx: rs.map(r => [X(r.left), X(r.right)]), y: Y(rs[0].top) + 51, topoP: Y(topoP),
-      topo: Y(Math.min(topoP, rot ? rot.getBoundingClientRect().top : Infinity)), pe: Y(Math.max(...rs.map(r => r.bottom))),
+      topo: Y(Math.min(topoP, rot ? rectP(rot).top : Infinity)), pe: Y(Math.max(...rs.map(r => r.bottom))),
     };
   });
   const geo = `${W}|${Wc}|${H}|${xOff}|` + filas.map(q => [...q.cx.flat(), q.y, q.topo, q.pe].join(',')).join(';');
@@ -5876,8 +5941,8 @@ function dicaDoPedal(p) {
   d.hidden = !txt;
   if (!txt) return;
   d.textContent = txt.textContent;
-  const r = p.getBoundingClientRect(), q = d.getBoundingClientRect();
-  d.style.left = clamp(r.left + r.width / 2 - q.width / 2, 8, innerWidth - q.width - 8) + 'px';
+  const r = rectP(p), q = rectP(d);
+  d.style.left = clamp(r.left + r.width / 2 - q.width / 2, 8, larguraPalco() - q.width - 8) + 'px';
   d.style.top = (r.top - q.height - 8 >= 8 ? r.top - q.height - 8 : r.bottom + 8) + 'px';
 }
 for (const bc of [$('#banco'), $('#banco-dir')]) bc.addEventListener('pointerover', e => { if (e.pointerType === 'mouse' && !celular()) dicaDoPedal(e.target.closest('.tecla')); });
@@ -6051,7 +6116,7 @@ function abrirGaveta(on) {
     // a tecla do efeito em uso aparece sem precisar rolar
     const ativa = document.querySelector('#banco .tecla[aria-pressed="true"]'), rolo = $('#rolo-gav');
     if (ativa) {
-      const r = ativa.getBoundingClientRect(), q = rolo.getBoundingClientRect();
+      const r = rectP(ativa), q = rectP(rolo);
       if (r.bottom > q.bottom - 30 || r.top < q.top) rolo.scrollTop += r.top - q.top - (q.height - r.height) / 2;
     }
   }
@@ -6151,6 +6216,7 @@ function montarMesa() {
   if (MESA.montada === on || (!on && MESA.montada === null)) { MESA.montada = on; return; }
   MESA.montada = on;
   document.body.classList.toggle('mesa-dj', on);
+  ajustarPalco();
   for (const e of document.querySelectorAll('#deck-deixa, #tv, #pads, #gaveta-dir, .mix-set, .xfader, .auto-luz, .deck-letra, .deck .faixa > .deck-cab, .prat-seta'))
     e.hidden = !on;
   // o visor de DJ muda de lugar: a tela grande do meio na mesa, a tela do titulo fora dela
@@ -6166,7 +6232,7 @@ function montarMesa() {
 /* onde a busca cai: debaixo do campo, da largura dele (ou mais) */
 function medirBusca() {
   if (!MESA.montada) return;
-  const r = $('#form-busca').getBoundingClientRect(), b = document.body.style;
+  const r = rectP($('#form-busca')), b = document.body.style;
   b.setProperty('--busca-x', Math.round(r.left) + 'px');
   b.setProperty('--busca-y', Math.round(r.bottom + 10) + 'px');
   b.setProperty('--busca-w', Math.round(r.width) + 'px');
@@ -6301,7 +6367,10 @@ function tempoMesa() {
   let xf = MESA.lado === 'a' ? 0 : 1;
   if (sai) {
     const p = sai.p, r = sai.u - sai.e;
-    const gIn = Math.sin(clamp(r / Math.max(1e-3, p.entra), 0, 1) * Math.PI / 2), gOut = Math.cos(clamp(r / Math.max(1e-3, p.sai), 0, 1) * Math.PI / 2);
+    const seg = p.segura || 0;   // o que sai segue cheio ate a troca (a passagem de DJ do motor)
+    const nv = p.nivel == null ? 1 : p.nivel;
+    const gIn = nv * Math.sin(clamp(r / Math.max(1e-3, p.entra), 0, 1) * Math.PI / 2) + (nv < 1 ? (1 - nv) * clamp((r - p.entra) / Math.max(1e-3, (p.cheia || p.entra) - p.entra), 0, 1) : 0);
+    const gOut = Math.cos(clamp((r - seg) / Math.max(1e-3, p.sai - seg), 0, 1) * Math.PI / 2);
     const f = Math.atan2(gIn, gOut) / (Math.PI / 2);
     xf = MESA.lado === 'a' ? 1 - f : f;
   }
@@ -7435,8 +7504,8 @@ addEventListener('pointerdown', e => { ultimoToque = e.pointerType === 'touch' ?
 function noDesenho(b) {
   const s = getComputedStyle(b, '::after');
   if (!ultimoToque || s.content === 'none') return true;
-  const r = b.getBoundingClientRect(), x = r.left + parseFloat(s.left), y = r.top + parseFloat(s.top);
-  return ultimoToque.x >= x && ultimoToque.x <= x + parseFloat(s.width) && ultimoToque.y >= y && ultimoToque.y <= y + parseFloat(s.height);
+  const r = b.getBoundingClientRect(), k = PALCO.k, x = r.left + k * parseFloat(s.left), y = r.top + k * parseFloat(s.top);
+  return ultimoToque.x >= x && ultimoToque.x <= x + k * parseFloat(s.width) && ultimoToque.y >= y && ultimoToque.y <= y + k * parseFloat(s.height);
 }
 // so o vermelho da chave pega o toque (nao a linha toda) e alterna, como o teclado
 $('#b-parecidas').addEventListener('click', e => {
@@ -8086,7 +8155,7 @@ document.querySelectorAll('input[type=range]').forEach(r => {
     antes = r.value;
     if (e.pointerType !== 'touch') { vale = true; return; }
     const b = r.getBoundingClientRect(), min = +r.min, max = +r.max;
-    const cw = parseFloat(getComputedStyle(r).getPropertyValue('--cursor-w')) || CURSOR_PX;   // o pino do palco tem 24 px
+    const cw = PALCO.k * (parseFloat(getComputedStyle(r).getPropertyValue('--cursor-w')) || CURSOR_PX);   // o pino do palco tem 24 px
     const x = b.left + cw / 2 + (max > min ? (r.value - min) / (max - min) : 0) * (b.width - cw);
     vale = Math.abs(e.clientX - x) <= DEDO_PX;
   }, { capture: true, passive: true });
@@ -8630,7 +8699,7 @@ carregar();
   // ---------------- os decks
   const decks = new Map();
   const ang = el => { const m = getComputedStyle(el).transform; if (!m || m === 'none') return 0; const v = m.match(/-?[\d.e]+/g).map(Number); return Math.atan2(v[1], v[0]); };
-  const rel = (el, D) => { const r = el.getBoundingClientRect(); return { x0: Math.round((r.left - D.left) / 2), y0: Math.round((r.top - D.top) / 2), x1: Math.round((r.right - D.left) / 2), y1: Math.round((r.bottom - D.top) / 2), w: r.width, h: r.height }; };
+  const rel = (el, D) => { const r = rectP(el); return { x0: Math.round((r.left - D.left) / 2), y0: Math.round((r.top - D.top) / 2), x1: Math.round((r.right - D.left) / 2), y1: Math.round((r.bottom - D.top) / 2), w: r.width, h: r.height }; };
   const visivel = el => el && el.offsetParent !== null && getComputedStyle(el).display !== 'none';
   // o angulo do braco da pagina (geometria G do JS dela, em cqw) vira o nosso (prato maior, pivo 3 celulas a direita)
   const G = { cx: 40, cy: 40, R: (36 - 2.6) * .96, px: 88, py: 12, L: 62 };
@@ -9180,14 +9249,14 @@ carregar();
   }
 
   function snap(el) {
-    const r = el.getBoundingClientRect(), v = (el.dataset.dkSnap || '0 0').split(' ').map(Number);
+    const r = rectP(el), v = (el.dataset.dkSnap || '0 0').split(' ').map(Number);
     const bx = r.left - v[0], by = r.top - v[1];
     const nx = Math.round(bx / 2) * 2 - bx, ny = Math.round(by / 2) * 2 - by;
     if (Math.abs(nx - v[0]) > .01 || Math.abs(ny - v[1]) > .01) { el.style.translate = `${nx}px ${ny}px`; el.dataset.dkSnap = nx + ' ' + ny; }
   }
 
   function desenha(d) {
-    const D = d.deck.getBoundingClientRect(), tR = d.tampo.getBoundingClientRect();
+    const D = rectP(d.deck), tR = rectP(d.tampo);
     if (!D.width || !tR.width) return;
     const W = Math.ceil(D.width / 2), H = Math.ceil(D.height / 2), uc = tR.width / 200;
     const tx0 = (tR.left - D.left) / 2, ty0 = (tR.top - D.top) / 2;
@@ -9608,12 +9677,14 @@ carregar();
     C: [".####", "##...", "##...", "##...", "##...", ".####"], J: ["...##", "...##", "...##", "...##", "##.##", ".###."],
     G: [".####", "##...", "##.##", "##.##", "##.##", ".####"],
   };
-  const ARCO = [3, 3, 2, 2, 1, 1, 1];
+  const ARCOS = { 9: [1, 1, 1, 1, 1, 1, 1], 10: [2, 1, 1, 1, 1, 1, 1], 11: [2, 2, 1, 1, 1, 1, 1], 12: [2, 2, 2, 1, 1, 1, 1],
+                  13: [2, 2, 2, 2, 1, 1, 1], 14: [3, 2, 2, 2, 1, 1, 1], 15: [3, 3, 2, 2, 1, 1, 1] };
   function vuFace(P, x0, y0, x1, y1, nome, apagado) {
     sombraCaixa(P, x0, y0, x1, y1, 1, 1, 2);
     caixa(P, x0, y0, x1, y1, VUC.banda, VUC.bandaL, VUC.bandaS, 2);
     const fx0 = x0 + 2, fx1 = x1 - 2, fy0 = y0 + 2, fy1 = y0 + 22, FW = fx1 - fx0, cx = Math.floor(FW / 2), top = 10, PY = 30.1;
-    const g = { fx0, fx1, fy0, fy1, cx, acx: fx0 + cx + .5, acy: fy0 + PY, ar: 19.6, hx: fx0 + cx + .5, hy: fy0 + 18.5 };
+    const h = Math.max(9, Math.min(15, FW - 3 - cx)), ARCO = ARCOS[h], sx = h / 15;
+    const g = { fx0, fx1, fy0, fy1, cx, acx: fx0 + cx + .5, acy: fy0 + PY, ar: 19.6, sx, hx: fx0 + cx + .5, hy: fy0 + 18.5 };
     if (apagado) P.dim = .55;
     for (let y = fy0; y < fy1; y++) for (let x = fx0; x < fx1; x++) {
       const ex = Math.min(x - fx0, fx1 - 1 - x), ey = Math.min(y - fy0, fy1 - 1 - y);
@@ -9635,8 +9706,9 @@ carregar();
       for (let k = 1; k <= n; k++) { tx = k === 1 ? x : x + (Math.abs(ux) > .3 ? Math.sign(ux) : 0); ty = y - k; px(P, fx0 + tx, fy0 + ty, c); }
       if (txt) { const tw = larg35(txt); texto35(P, txt, fx0 + Math.round(tx + .5 - tw / 2), fy0 + ty - 6, VUC.escala); }
     };
-    marca(7, 2, VUC.escala, '40'); marca(cx, 2, VUC.escala, '20'); marca(FW - 8, 2, VUC.escala, '10');
-    for (const x of [cx - 4, cx + 4]) px(P, fx0 + x, fy0 + ay[x] - 2, VUC.escala);
+    const off = Math.round(10 * sx), tres = off >= 8;
+    marca(cx - off, 2, VUC.escala, '40'); marca(cx, 2, VUC.escala, tres ? '20' : ''); marca(cx + off, 2, VUC.escala, '10');
+    if (tres) for (const x of [cx - 4, cx + 4]) px(P, fx0 + x, fy0 + ay[x] - 2, VUC.escala);
     P.dim = 1;
     const nm = nome.toUpperCase(), gl_ = [...nm].map(ch => NOMEV[ch]).filter(Boolean);
     const tw = gl_.reduce((a, q) => a + q[0].length + 1, -1);
@@ -9648,7 +9720,7 @@ carregar();
   function vuAgulha(P, g, aPag, apagado) {
     recorte(P, g.fx0, g.fy0 + 1, g.fx1, g.fy1);
     if (apagado) P.dim = .55;
-    const db = angDb(aPag), alvo = d_ => { const t = escAng(d_) * Math.PI / 180; return [g.acx + g.ar * Math.sin(t), g.acy - g.ar * Math.cos(t)]; };
+    const db = angDb(aPag), alvo = d_ => { const t = escAng(d_) * Math.PI / 180; return [g.acx + g.sx * g.ar * Math.sin(t), g.acy - g.ar * Math.cos(t)]; };
     let [tx, ty] = alvo(Math.max(-40, db)), vx = tx - g.hx, vy = ty - g.hy, L = Math.hypot(vx, vy) + 1.2;
     let a = Math.atan2(vx, -vy);
     // parada: deitada em degraus de 2 e 3 (1 para 2,5), logo alem do 40
@@ -9701,7 +9773,7 @@ carregar();
     px(P, x1 - 2, y0 + 7, cor(188, 178, 162)); px(P, x1 - 2, y0 + 8, cor(172, 162, 144)); px(P, x1 - 2, y0 + 9, cor(156, 146, 127));
     if (foco) for (let x = x0 - 1; x <= x1; x++) for (let y = y0 - 1; y <= y1; y++) if (x === x0 - 1 || x === x1 || y === y0 - 1 || y === y1) px(P, x, y, cor(143, 74, 12));
     P.dim = 1;
-    texto35(P, valor, Math.round(F.col + .5 - larg35(valor) / 2), sy1 + 2, CINZA_M);
+    texto35(P, valor, Math.round(F.col + .5 - larg35(valor) / 2), sy1 + 4, CINZA_M);
   }
 
   // ---- as chaves do set: teclas de madeira com o icone creme (ambar ligadas), a luz no canto e o nome miudo embaixo
@@ -9849,7 +9921,7 @@ carregar();
   const ROT0 = { alt: 8, esp: 2, cor: [46, 33, 26], grav: true };   // 4 + 2: mais espaco e gravado (escolha dele, 06/11)
   const PLACA0 = { esp: 2, alt: 8, linhas: 1, folga: false, grav: false };   // 1: mais espaco entre as letras (escolha dele, 06/11)
   window.mxRedesenha = () => { if (mx) mx.chaveE = ''; };
-  const relM = (el, D) => { const r = el.getBoundingClientRect(); return { x0: Math.round((r.left - D.left) / 2), y0: Math.round((r.top - D.top) / 2), x1: Math.round((r.right - D.left) / 2), y1: Math.round((r.bottom - D.top) / 2), h: r.height, w: r.width }; };
+  const relM = (el, D) => { const r = rectP(el); return { x0: Math.round((r.left - D.left) / 2), y0: Math.round((r.top - D.top) / 2), x1: Math.round((r.right - D.left) / 2), y1: Math.round((r.bottom - D.top) / 2), h: r.height, w: r.width }; };
   const vis = el => el && !el.hidden && el.offsetParent !== null && getComputedStyle(el).display !== 'none';
   function preparaMx(rec) {
     if (mx && mx.rec === rec) return mx;
@@ -9872,8 +9944,12 @@ carregar();
     return out;
   }
   function desenhaMx(m) {
-    const D = m.rec.getBoundingClientRect();
+    const D = rectP(m.rec);
     if (!D.width) return;
+    // o pixel das letras dos rotulos e da placa: 1 px do palco no desenho, mas nunca menos de 1 px CSS e sempre um numero
+    // inteiro de pixels da tela (no notebook dele, palco a 0,75: 2 px de tela por pixel da letra, nao 1,5, pedido dele)
+    const dT = (devicePixelRatio || 1) * PALCO.k, LS = Math.max(Math.round(dT), Math.ceil((devicePixelRatio || 1) - 1e-6)) / dT;
+    const gx = v => Math.round((D.left + v) * dT) / dT - D.left, gy = v => Math.round((D.top + v) * dT) / dT - D.top;
     const W = Math.round(D.width / 2), H = Math.round(D.height / 2), M_ = 3;
     const J = relM(m.janela, D);
     const fs = m.faders.filter(vis).map(f => {
@@ -9888,7 +9964,7 @@ carregar();
     const apag = m.metros.map(e => e.classList.contains('apagado'));
     const geo = [W, H, J.x0, J.y0, J.x1, J.y1, fs.map(f => [f.C.x0, f.C.y0, f.C.x1, f.C.y1, f.sy0, f.sy1, f.cx, f.txt, f.apag].join(',')).join(';'),
                  ts.map(t => [t.T.x0, t.T.y0, t.T.x1, t.rot].join(',')).join(';'), X ? [X.x0, X.y0, X.x1].join(',') : '', A ? [A.x0, A.y0, A.x1].join(',') : '',
-                 apag.join(), fontesMx].join('|');
+                 apag.join(), fontesMx, LS].join('|');
     if (geo !== m.chaveE) {
       m.cv.width = W + M_; m.cv.height = H + M_; m.cv.style.width = 2 * (W + M_) + 'px'; m.cv.style.height = 2 * (H + M_) + 'px';
       const P = pincel(W + M_, H + M_);
@@ -9916,7 +9992,7 @@ carregar();
       const quebra8 = t => {
         const ps = t.toUpperCase().split(/\s+/), out = [];
         let cur = '';
-        for (const p_ of ps) { const n_ = cur ? cur + ' ' + p_ : p_; if (cur && lg(n_) > 2 * mw - 6) { out.push(cur); cur = p_; } else cur = n_; }
+        for (const p_ of ps) { const n_ = cur ? cur + ' ' + p_ : p_; if (cur && lg(n_) * LS > 2 * mw - 6) { out.push(cur); cur = p_; } else cur = n_; }
         if (cur) out.push(cur);
         return out;
       };
@@ -9932,14 +10008,14 @@ carregar();
         cv.style.display = '';
         const linhas = f.l8;
         const AL = FR.h, w = Math.max(...linhas.map(lg)), LH = AL + 4, h = 3 + (linhas.length - 1) * LH + AL + 3;
-        cv.width = w; cv.height = h; cv.style.width = w + 'px'; cv.style.height = h + 'px';
+        cv.width = w; cv.height = h; cv.style.width = w * LS + 'px'; cv.style.height = h * LS + 'px';
         const c = cv.getContext('2d'), im = c.createImageData(w, h);
         if (RT.grav) linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 4 + j * LH, [250, 248, 242], FR, RT.esp));
         linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 3 + j * LH, RT.cor, FR, RT.esp));
         c.putImageData(im, 0, 0);
-        const base = 2 * f.C.y0 + 34, left = Math.round(2 * f.col + 1 - w / 2), top = base - (3 + (NL - 1) * LH + AL) + (NL - linhas.length) * LH / 2;
+        const base = 2 * f.C.y0 + 34, left = gx(2 * f.col + 1 - w * LS / 2), top = gy(base - LS * (3 + (NL - 1) * LH + AL) + LS * (NL - linhas.length) * LH / 2);
         cv.style.left = left + 'px'; cv.style.top = top + 'px';
-        f.cal = [Math.floor(left / 2) - 2, Math.floor(top / 2), Math.ceil((left + w) / 2) + 2, Math.ceil((top + h) / 2)];
+        f.cal = [Math.floor(left / 2) - 2, Math.floor(top / 2), Math.ceil((left + w * LS) / 2) + 2, Math.ceil((top + h * LS) / 2)];
       });
       if (A) {
         // o nome da placa sem suavizar (ordem dele, 06/11): a mesma letra desenhada num canvas de 1 px, cada pixel cheio ou
@@ -9949,17 +10025,17 @@ carregar();
         const PL = Object.assign({}, PLACA0, window.MX_PLACA || {}), FP = PL.alt === 10 ? F10 : F8, lp = t_ => largB(t_, FP, PL.esp);
         const t = (m.auto.textContent || '').trim().toUpperCase(), ls = PL.linhas === 2 ? t.split(/\s+/) : [t];
         const g_ = PL.grav ? 1 : 0, LH = FP.h + 5, w = Math.max(...ls.map(lp)) + g_, h = 3 + (ls.length - 1) * LH + FP.h + 3 + g_;
-        cv.width = w; cv.height = h; cv.style.width = w + 'px'; cv.style.height = h + 'px';
+        cv.width = w; cv.height = h; cv.style.width = w * LS + 'px'; cv.style.height = h * LS + 'px';
         const c = cv.getContext('2d'), im = c.createImageData(w, h);
         if (PL.grav) ls.forEach((l, j) => textoB(im, l, Math.floor((w - g_ - lp(l)) / 2), 3 + j * LH, [176, 164, 142], FP, PL.esp));
         ls.forEach((l, j) => textoB(im, l, Math.floor((w - g_ - lp(l)) / 2) + g_, 3 + j * LH + g_, [15, 8, 5], FP, PL.esp));
         c.putImageData(im, 0, 0);
-        A.tw = Math.ceil(w / 2); A.thp = h; A.el = cv; A.PL = PL; A.yMax = H - 5;
+        A.tw = Math.ceil(w * LS / 2); A.thp = h * LS; A.el = cv; A.PL = PL; A.yMax = H - 5;
       }
       const calmos = [];
       for (const f of fs) {
         calmos.push(f.cal);
-        calmos.push([f.col - 9, f.sy1 + 1, f.col + 10, f.sy1 + 9]);
+        calmos.push([f.col - 9, f.sy1 + 3, f.col + 10, f.sy1 + 10]);
       }
       for (const t of ts) { const w = larg35(t.rot), x0 = Math.round(t.T.col + .5 - w / 2); calmos.push([x0 - 2, t.T.y0 + 15, x0 + w + 2, t.T.y0 + 26]); }
       const calmo = (x, y) => calmos.some(q => x >= q[0] && x < q[2] && y >= q[1] && y < q[3]);
@@ -9985,7 +10061,7 @@ carregar();
       m.vg = m.metros.map((e, i) => ({ k: e.dataset.k, apag: apag[i], g: vuFace(P, vx0(i), J.y0, vx0(i) + mw, J.y1, e.dataset.nome || '', apag[i]) }));
       for (const f of fs) faderEst(P, f);
       if (X) crossEst(P, X);
-      if (A) { placaEst(P, A, A.PL); A.el.style.left = Math.round(2 * A.tcx - A.el.width / 2) + 'px'; A.el.style.top = A.ttop + 'px'; }
+      if (A) { placaEst(P, A, A.PL); A.el.style.left = gx(2 * A.tcx - A.el.width * LS / 2) + 'px'; A.el.style.top = gy(A.ttop) + 'px'; }
       m.est = P; m.fs = fs; m.ts = ts; m.X = X; m.A = A; m.chaveE = geo; m.chaveD = '';
       m.dyn = pincel(W + M_, H + M_); m.img = m.ctx.createImageData(W + M_, H + M_); m.imgU = new Uint32Array(m.img.data.buffer);
     }
@@ -10016,7 +10092,7 @@ carregar();
     m.ctx.putImageData(m.img, 0, 0);
   }
   function snapM(el) {
-    const r = el.getBoundingClientRect(), v = (el.dataset.mxSnap || '0 0').split(' ').map(Number);
+    const r = rectP(el), v = (el.dataset.mxSnap || '0 0').split(' ').map(Number);
     const bx = r.left - v[0], by = r.top - v[1];
     const nx = Math.round(bx / 2) * 2 - bx, ny = Math.round(by / 2) * 2 - by;
     if (Math.abs(nx - v[0]) > .01 || Math.abs(ny - v[1]) > .01) { el.style.translate = `${nx}px ${ny}px`; el.dataset.mxSnap = nx + ' ' + ny; }
