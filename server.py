@@ -396,11 +396,14 @@ class App:
     def snapshot(self):
         """Estado do motor mais a fila (A seguir), o Aleatorio, o Automatico e quantos discos o
         Anterior tem."""
+        snap = self.engine.snapshot()
         with self.fila_lock:
             extra = {"queue": [self._com_bpm(x) for x in self.fila], "shuffle": self.fila_ordem is not None,
                      "auto": self.auto, "history": len(self.historico), "versao": VERSAO,
                      "atualizacao": self.atualizacao.resumo()}
-        return {**self.engine.snapshot(), **extra}
+            if snap.get("track"):
+                extra["track"] = self._com_bpm(snap["track"])  # o andamento ja medido do disco do prato, para o deck do tema
+        return {**snap, **extra}
 
     def _com_bpm(self, x):
         """A entrada da fila para a tela, com o andamento do comeco dela quando ja foi medido."""
@@ -1432,6 +1435,15 @@ def build(app_state):
     async def state(_):
         return web.json_response({**A.snapshot(), "pos": round(E.pos, 2),
                                   "levels": dict(E.levels)})
+
+    @r.get("/api/onda/{iid}")
+    async def onda(request):
+        # a onda do disco para o visor de DJ do tema (o formato no Engine.onda); o motor guarda as dos discos que
+        # passaram pelo prato ou pela proxima, e o estado avisa quando uma fica pronta (visor.ondas)
+        o = E.onda(request.match_info["iid"])
+        if o is None:
+            return j_err("A onda desse disco ainda não foi lida.", 404)
+        return web.json_response(o)
 
     @r.get("/api/library")
     async def library(_):

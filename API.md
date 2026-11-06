@@ -55,12 +55,38 @@ reconecta sozinho; mostre que está reconectando.
  "error": null ou "texto",
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
  "versao": "0.1.0",
+ "visor": {"ondas": 3, "passagens": [Passagem]},
  "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou "texto"}}
 ```
 - `versao` = a versão do servidor (`versao.py`), para mostrar na tela.
 - `atualizacao` = a versão nova (ver "Versão nova"): `nova` é o número dela, ou `null`;
   `estado` é `parado`, `consultando`, `baixando`, `pronta` (o instalador baixado e conferido) ou
   `instalando`; `progresso` vai de 0 a 1 no download.
+- `track.bpm` = o andamento do disco do prato quando já foi medido (o mesmo `bpm` da Entrada da fila: o
+  do começo dele, ou o do fim); sem medida, não vem.
+- `visor` = o que o visor de DJ desenha (a onda correndo, a grade de batidas e a próxima entrando no
+  tempo). `ondas` sobe quando a onda de um disco da prateleira fica pronta (peça de novo o
+  `GET /api/onda/<id>`). `passagens` traz até duas: a que trouxe o disco do prato (ele é o `para`
+  dela), enquanto a sobreposição e a volta da velocidade ainda importam, e a medida dele para a
+  próxima da fila (ele é o `de`), que aparece quando o motor termina de medir (a ~3 min do fim) e some
+  se a fila muda. Pular, parar ou trocar de disco limpa as duas. **Passagem**:
+  ```json
+  {"de": "id do que sai", "para": "id da que entra", "no_tempo": true,
+   "t0": 286.0, "ini": 0.8, "v": 285.99, "va": 1.0,
+   "vb": 1.02, "sob": 8.0, "rampa": 20.4, "k": 0.02, "sai": 8.0, "entra": 8.0, "grave": [3.8, 4.1],
+   "grade_de": {"bpm": 100.0, "periodo": 0.6, "fase": 279.4, "de": 274.0, "ate": 294.0},
+   "grade_para": {"bpm": 98.0, "periodo": 0.61, "fase": 1.27, "de": 0.8, "ate": 20.8}}
+  ```
+  `t0` = onde a próxima começa, no tempo do `de`; `ini` = onde ela começa no tempo dela; `v` = onde
+  os volumes começam a cruzar (até uns ms antes do `t0`); `va` = a velocidade do `de` ali (1, ou a dele
+  já mudada quando os dois andamentos mudam). A velocidade da próxima, em segundos de saída (o relógio
+  do som) desde o `t0`: `vb` por `sob` s, depois `1 + k·(1 + cos(π·r/rampa))/2` por `rampa` s (`r`
+  desde o fim do `sob`), depois 1. `sai` e `entra` = quanto o `de` leva para calar (cosseno) e a
+  próxima para subir (seno), em s de saída desde o `v`; `grave` = a troca de grave no mesmo relógio
+  (até o primeiro o grave é do `de`, depois do segundo é da próxima), ou `null`. `grade_de` e
+  `grade_para` = a grade de batidas de cada um no tempo do próprio disco (`fase` é uma batida), válida
+  de `de` a `ate`, ou `null`. `no_tempo: false` = só o cruzamento de volume: sem grade e com o
+  `motivo` (texto do log).
 - `track` tocando pelo stream do YouTube (vídeo que ainda não chegou na prateleira) vem
   com `"stream": true` e `"job": "<id do download>"`; o `id` é o do vídeo, que vira o id do
   disco quando o download termina. Enquanto o endereço do stream não sai (1 a 3 s), o
@@ -164,6 +190,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `POST /api/prev` | - | Anterior do Spotify: com mais de 3 s de disco (ou nada antes dele), volta ao começo (`{"did": "inicio"}`); senão toca o último do `history`, e o disco do prato vai para o topo da `queue` (`{"did": "anterior"}`); nada no prato nem antes = 409 |
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
 | `POST /api/settings` | qualquer de `vol`, `mon_vol`, `mic_vol`, `mic_mute`, `monitor_on`, `loop`, `shuffle`, `auto`, `effect`, `voice_monitor`, `voice_mon_vol` | ajusta ao vivo; salva `vol`, `mon_vol`, `monitor_on`, `voice_mon_vol` e `auto` (`mic_vol` vai direto para o Windows); `mic_mute`, `loop`, `shuffle`, `voice_monitor` e o efeito voltam ao padrão quando o servidor sobe |
+| `GET /api/onda/<id>` | - | a onda do disco para o visor de DJ: `{"id", "passo": 0.04, "n", "completa", "fonte": "arquivo" ou "stream", "versao", "onda"}`, `onda` em base64 de `n` colunas de 3 bytes (grave até 200 Hz, médio até 2 kHz, agudo até 6 kHz), cada uma de `passo` s do disco, em dB de -60 (0) a 0 (255); ~24 KB para 4 min. O motor lê a do disco da prateleira inteira quando ele entra no prato ou na passagem; a do stream só chega até onde o áudio já foi decodificado (`completa: false`: peça de novo). 404 = ainda não tem |
 | `GET /api/effects` | - | `[{"id","nome","grupo","descricao","latencia_ms"}]`, na ordem de exibição; `grupo` vazio é o "Sem efeito"; os grupos hoje são "Rádio e alto-falante", "Ambiente" e "Personagem" |
 | `GET /api/search?q=<texto ou link>&n=8&start=0` | - | busca no YouTube (link ou id colado devolve o próprio vídeo): `[{"youtube_id","title","duration","channel","thumb","in_library","id"}]` (leva 2 a 6 s); `n` até 20 por vez, `start` pula os primeiros (o "carregar mais": o servidor pede `start+n` ao YouTube e devolve do `start` em diante, até 200; link com `start` devolve vazio) |
 | `POST /api/library` | `{"youtube_id": "..."}` ou `{"url": "..."}` ou `{"query": "..."}`, mais `"play": bool`, `"title"?`, `"channel"?`, `"thumb"?`, `"duration"?` | baixa para a biblioteca (Job); com `play`, toca na hora pelo stream do YouTube enquanto baixa e responde `{"job": ..., "streaming": true}` (título, canal, capa e duração do corpo aparecem no prato desde o primeiro instante); se já existe, responde `{"item": ...}` e toca na hora; o mesmo vídeo já baixando não baixa de novo |
