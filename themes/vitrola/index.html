@@ -3159,7 +3159,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(12 12) scale(.82) translate(-12 -12)"><circle cx="12" cy="12" r="3" vector-effect="non-scaling-stroke"/><path vector-effect="non-scaling-stroke" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></g></svg>
         <span class="rot">Microfone e fone</span>
       </button>
-      <button class="btn-madeira" id="b-desligar" type="button" title="Desligar o soundboard">
+      <button class="btn-madeira" id="b-desligar" type="button" title="Desligar a Vitrola">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0"/></svg>
         <span class="rot">Desligar</span>
       </button>
@@ -3425,9 +3425,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 
 <div class="fora" id="fora" hidden>
   <div class="cartao" role="alertdialog" aria-modal="true" aria-labelledby="fora-t" aria-describedby="fora-p">
-    <h2 id="fora-t"><span class="lampada" aria-hidden="true"></span><span id="fora-tt">O soundboard não está respondendo</span></h2>
+    <h2 id="fora-t"><span class="lampada" aria-hidden="true"></span><span id="fora-tt">A Vitrola não está respondendo</span></h2>
     <p id="fora-p"></p>
-    <p class="tentando" id="fora-tentando">Tentando conectar de novo a cada poucos segundos. Esta página volta sozinha quando ele responder.</p>
+    <p class="tentando" id="fora-tentando">Tentando conectar de novo a cada poucos segundos. Esta página volta sozinha quando ela responder.</p>
   </div>
 </div>
 
@@ -3506,13 +3506,13 @@ async function api(method, path, data) {
       body: data ? JSON.stringify(data) : undefined,
     });
   } catch (e) {
-    throw new Error('O soundboard não respondeu. Confira se ele está ligado.');
+    throw new Error('A Vitrola não respondeu. Confira se ela está ligada.');
   }
   let j = null;
   try { j = await r.json(); } catch (e) { /* corpo vazio */ }
   if (!r.ok || (j && j.ok === false)) {
     if (r.status === 401 && j && j.parear) pedirPareamento(j.desconectado);
-    const msg = (j && j.error) || `O soundboard respondeu com erro ${r.status}.`;
+    const msg = (j && j.error) || `A Vitrola respondeu com erro ${r.status}.`;
     const e = new Error(ERROS[msg] || msg); e.status = r.status;
     throw e;
   }
@@ -3913,7 +3913,7 @@ function montarGaveta() {
   banco.replaceChildren();
   if (!S.efeitos) {
     banco.append(el('p', 'aviso-gav', S.erroEfeitos
-      ? 'Não deu para ler a lista de efeitos. Ela aparece sozinha quando o soundboard responder.'
+      ? 'Não deu para ler a lista de efeitos. Ela aparece sozinha quando a Vitrola responder.'
       : 'Lendo a lista de efeitos.'));
     montarMarcas();
     return;
@@ -3932,7 +3932,7 @@ function montarGaveta() {
     sec.append(h, t);
     banco.append(sec);
   }
-  if (!S.efeitos.length) banco.append(el('p', 'aviso-gav', 'O soundboard não mandou nenhum efeito.'));
+  if (!S.efeitos.length) banco.append(el('p', 'aviso-gav', 'A Vitrola não mandou nenhum efeito.'));
   montarMarcas();
   caberNomes();
   medirCabosPedais();
@@ -5332,7 +5332,7 @@ function desenharBusca() {
     const fora = /não respondeu/.test(b.erro);
     const doYoutube = /busca (no YouTube )?falhou/i.test(b.erro);
     if (fora) {
-      av.append(el('strong', null, 'O soundboard não respondeu. '), document.createTextNode('Confira se ele está ligado e busque de novo.'));
+      av.append(el('strong', null, 'A Vitrola não respondeu. '), document.createTextNode('Confira se ela está ligada e busque de novo.'));
     } else if (doYoutube || limite) {
       const dica = limite ? 'O YouTube recusou por excesso de buscas. Espere alguns minutos e tente de novo, ou cole o link do vídeo.'
         : 'Confira a internet e tente de novo, ou cole o link do vídeo.';
@@ -6062,7 +6062,7 @@ $('#dd-mic').addEventListener('change', e => trocarDispositivo('mic', e.target.v
 $('#dd-mon').addEventListener('change', e => trocarDispositivo('monitor', e.target.value));
 
 async function desligar() {
-  const ok = await confirmar('Desligar o soundboard?', 'A sua voz para de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade.', 'Desligar');
+  const ok = await confirmar('Desligar a Vitrola?', 'A sua voz para de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade.', 'Desligar');
   if (!ok) return;
   try { await api('POST', '/api/shutdown'); S.desligado = true; mostrarFora(); }
   catch (e) { avisar(e.message, true); }
@@ -6221,7 +6221,7 @@ function online(on) {
     S.jaConectou = true; S.desligado = false;
     clearTimeout(foraT); $('#fora').hidden = true;
     if (!S.efeitos && S.erroEfeitos) carregarEfeitos();
-    lamp.className = 'lampada acesa'; cx.textContent = 'ligado';
+    lamp.className = 'lampada acesa'; cx.textContent = 'ligada';
   } else {
     lamp.className = 'lampada alerta piscando'; cx.textContent = 'reconectando';
     armarFora();
@@ -6232,13 +6232,13 @@ function mostrarFora() {
   const f = $('#fora');
   fecharMenu(false);
   if (S.desligado) {
-    $('#fora-tt').textContent = 'Soundboard desligado';
-    $('#fora-p').innerHTML = 'A sua voz parou de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade. Para ligar de novo, rode <code>soundboard.ps1 start</code> no PC, na pasta da Vitrola.';
+    $('#fora-tt').textContent = 'Vitrola desligada';
+    $('#fora-p').innerHTML = 'A sua voz parou de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade. Para ligar de novo, abra a Vitrola no PC, pelo menu Iniciar.';
   } else {
-    $('#fora-tt').textContent = S.jaConectou ? 'O soundboard parou de responder' : 'O soundboard não está respondendo';
-    $('#fora-p').innerHTML = 'O servidor caiu ou foi desligado, e a sua voz não está passando pelo cabo. Para ligar, rode <code>soundboard.ps1 start</code> no PC, na pasta da Vitrola. Se ele já estiver rodando, o motivo aparece no log em <code>%LOCALAPPDATA%\\Vitrola\\logs</code>.';
+    $('#fora-tt').textContent = S.jaConectou ? 'A Vitrola parou de responder' : 'A Vitrola não está respondendo';
+    $('#fora-p').innerHTML = 'O servidor caiu ou foi desligado, e a sua voz não está passando pelo cabo. Para ligar, abra a Vitrola no PC, pelo menu Iniciar. Se ela já estiver aberta, o motivo aparece no log em <code>%LOCALAPPDATA%\\Vitrola\\logs</code>.';
   }
-  $('#lamp').className = 'lampada'; $('#conexao').textContent = S.desligado ? 'desligado' : 'fora do ar';
+  $('#lamp').className = 'lampada'; $('#conexao').textContent = S.desligado ? 'desligada' : 'fora do ar';
   $('#conexao').classList.remove('sr');
   f.hidden = false;
 }
