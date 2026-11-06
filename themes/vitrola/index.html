@@ -4015,6 +4015,21 @@ body.mesa-dj .palco .receptor > .mx-rot { width: max-content; font-size: 13px; l
 body.mesa-dj .palco .receptor > .mx-placa { white-space: nowrap; font-size: 11px; line-height: 12px; font-weight: 800; font-stretch: 86%; letter-spacing: .04em; text-transform: uppercase; color: #0F0805; }
 body:not(.mesa-dj) .mx-txt { display: none !important; }
 body.mesa-dj .palco .receptor > :is(.mx-placa-px, .mx-rot-px) { image-rendering: pixelated; }
+/* PADS-INICIO: os Sons rapidos em pixel art (1 celula = 2 px): a caixa inteira num canvas por baixo dos pads de verdade,
+   que ficam transparentes (o clique, o foco e o lugar sao deles); os nomes num canvas de letra de meia celula por cima */
+body.mesa-dj #pads.px-ok { border-image: none; background: none; border-radius: 0; padding: 60px 22px 30px; row-gap: 0; }
+body.mesa-dj #pads.px-ok > h2 { position: absolute; opacity: 0; pointer-events: none; }
+body.mesa-dj #pads.px-ok .pads-grade { position: relative; z-index: 2; grid-template-columns: repeat(3, 50px); gap: 8px 6px; justify-content: center; }
+body.mesa-dj #pads.px-ok .pad { grid-template-rows: 50px 20px; row-gap: 4px; }
+body.mesa-dj #pads.px-ok .pad-face { width: 50px; height: 50px; aspect-ratio: auto; opacity: 0; }
+body.mesa-dj #pads.px-ok .pad-nome { height: 20px; padding: 0; opacity: 0; }
+body.mesa-dj #pads.px-ok .pads-vazio { position: relative; z-index: 2; }
+body.mesa-dj #pads > canvas.pads-px { position: absolute; left: 0; top: 0; z-index: 0; display: block; pointer-events: none; image-rendering: pixelated; }
+body.mesa-dj #pads > canvas.pads-nomes { position: absolute; z-index: 1; display: block; pointer-events: none; image-rendering: pixelated; }
+body:not(.mesa-dj) #pads > canvas { display: none; }
+body:not(.mesa-dj) #pads { translate: none !important; }
+body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome { opacity: 1; padding: 0 5px; font-family: "Archivo", sans-serif; font-weight: 700; font-size: 12px; font-stretch: 70%; line-height: 20px; letter-spacing: -.01em; text-align: center; color: #2A1812; background: none; border-image: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* PADS-FIM */
 /* MIX-FIM */</style>
 </head>
 <body data-status="idle">
@@ -6506,7 +6521,7 @@ function tempoMesa() {
 }
 /* os Sons rapidos como pads de controladora: os de verdade, na ordem da prateleira, cada um numa cor; as casas que
    sobram ficam apagadas (o pad sem som de uma controladora de verdade), tres por fileira */
-const PAD_CORES = ['#E9B23A', '#4FA845', '#39B5C6', '#D9493B', '#9B5CC8', '#3E6FD1', '#C9509E', '#E07B2C', '#8FBF3A'];
+const PAD_CORES = ['#F2D21E', '#38C83A', '#2FD3E0', '#E02C34', '#9240E2', '#2F6BE0', '#DE52D6', '#FF8A1C', '#9ACD32'];
 function desenharPads(curtos) {
   if (!MESA.montada) return;
   const g = $('#pads-grade'), chave = curtos.map(it => it.id + '|' + it.title).join('/');
@@ -10298,6 +10313,325 @@ carregar();
     const nx = Math.round(bx / 2) * 2 - bx, ny = Math.round(by / 2) * 2 - by;
     if (Math.abs(nx - v[0]) > .01 || Math.abs(ny - v[1]) > .01) { el.style.translate = `${nx}px ${ny}px`; el.dataset.mxSnap = nx + ' ' + ny; }
   }
+
+  // ---------------- os Sons rapidos: a caixa de madeira com a costura e as cantoneiras de latao, o fundo escuro, o titulo
+  // e os pads de controladora com a plaquinha creme do nome
+  let pd = null;
+  const hexCor = h => cor(parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16));
+  const mistura = (c, d, k) => cor(((c & 255) * (1 - k) + (d & 255) * k) | 0, (((c >> 8) & 255) * (1 - k) + ((d >> 8) & 255) * k) | 0,
+                                   (((c >> 16) & 255) * (1 - k) + ((d >> 16) & 255) * k) | 0);
+  const BRANCO = cor(255, 255, 255);
+  // a cor em HSL, para as rampas que viram o matiz: o claro puxa para o amarelo, o escuro para o outro lado
+  function paraHsl(c) {
+    const r = (c & 255) / 255, g = ((c >> 8) & 255) / 255, b = ((c >> 16) & 255) / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+    let h = 0, s_ = 0;
+    if (mx !== mn) {
+      const d = mx - mn; s_ = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+      h = 60 * (mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4);
+    }
+    return [h, s_, l];
+  }
+  function deHsl(h, s_, l) {
+    h = ((h % 360) + 360) % 360; s_ = Math.min(1, Math.max(0, s_)); l = Math.min(1, Math.max(0, l));
+    const a = s_ * Math.min(l, 1 - l), f = n => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+    return cor(f(0), f(8), f(4));
+  }
+  const lEstrela = c => {
+    const lin = v => { v /= 255; return v <= .04045 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+    const Y = .2126 * lin(c & 255) + .7152 * lin((c >> 8) & 255) + .0722 * lin((c >> 16) & 255);
+    return Y > .008856 ? 116 * Math.cbrt(Y) - 16 : 903.3 * Y;
+  };
+  const rumo = (h, alvo, g) => { const d = ((alvo - h + 540) % 360) - 180; return h + Math.sign(d) * Math.min(Math.abs(d), g); };
+  function rampa(base, aceso) {
+    const [h, s_, l] = paraHsl(base), a = aceso ? .12 : 0, cl = (dh, ds, dl) => deHsl(rumo(h, dh >= 0 ? 60 : 240, Math.abs(dh)), s_ + ds, l + dl + a);
+    // o brilho parado: o menor passo de luz que sobe 6 de L* (e o anel da borda dele, 3), igual em todas as cores
+    const L0 = lEstrela(cl(0, 0, 0)), passo = alvo => { let k = 0; while (k < .4 && lEstrela(cl(4, .06, k)) - L0 < alvo) k += .005; return cl(4, .06, k); };
+    const claraDemais = L0 > 75;
+    return { sulco: cl(-14, -.04, -.17), sombra: cl(-8, 0, -.07), base: cl(0, 0, 0), meio: passo(claraDemais ? 11 : 6), anel: passo(claraDemais ? 6 : 3), claro: aceso ? cl(10, .12, .13) : null,
+             aro: cl(12, .1, .27), aro2: cl(8, .08, .15), aroB: cl(-8, 0, -.07), aroM2: cl(5, .05, .07), especular: aceso ? BRANCO : cl(14, .1, .36) };
+  }
+  const LATAO = { l: cor(255, 234, 150), m: cor(222, 170, 70), s: cor(166, 108, 34), d: cor(116, 72, 22) };
+  const PAINEL = { b: cor(71, 35, 26), e: cor(63, 30, 22), somb: cor(34, 20, 12), somb2: cor(50, 25, 18), luz: cor(94, 52, 32) };
+  const MAD = { realce: cor(232, 160, 100), escuro: cor(92, 42, 18), face: cor(150, 74, 38), faceS: cor(124, 58, 30), rebaixo: cor(104, 48, 24),
+                veio: cor(134, 65, 33), veioS: cor(110, 51, 26) };
+  const COSTURA = cor(236, 212, 168), FURO = cor(92, 42, 18), PLACA = { face: cor(239, 229, 208), luz: cor(250, 243, 228), somb: cor(204, 168, 116), dir: cor(224, 206, 174) };
+  function preparaPads(sec) {
+    if (pd && pd.sec === sec) return pd;
+    const cv = document.createElement('canvas'), nm = document.createElement('canvas');
+    cv.className = 'pads-px'; nm.className = 'pads-nomes';
+    for (const c of [cv, nm]) { c.setAttribute('aria-hidden', 'true'); sec.prepend(c); }
+    pd = { sec, cv, ctx: cv.getContext('2d'), nm, chave: '' };
+    sec.classList.add('px-ok');
+    return pd;
+  }
+  // a moldura de E: contorno, 1 de luz (em cima e a esquerda) ou de sombra, 4 de madeira com veios longos e raros, a costura
+  // na 3a celula da madeira e o contorno de dentro
+  function moldura(P, W, H, E, L) {
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const ex = Math.min(x, W - 1 - x), ey = Math.min(y, H - 1 - y), d = Math.min(ex, ey);
+      if (ex + ey < 2 || d >= E) continue;
+      const ao = ey <= ex, al = ao ? x : y, fundo = ao ? y > H / 2 : x > W / 2;
+      let c;
+      if (ex + ey === 2 || d === 0) c = O;
+      else if (d === E - 1) c = O2;
+      else if (d === 1) c = fundo ? MAD.escuro : MAD.realce;
+      else if (d === E - 2 || d === E - 3) {
+        c = d === E - 2 ? (fundo ? MAD.faceS : MAD.rebaixo) : (fundo ? MAD.faceS : MAD.face);
+        // os veios escuros: so na faixa do rebaixo, de 3 a 8 celulas, um a cada 15 a 30 (o comeco de cada um sorteado)
+        const lado = (ao ? 1 : 2) + (fundo ? 2 : 0), comp = ao ? W : H;
+        let ini = L + 2 + Math.floor(hsM(lado, 0, 31) * 8), achou = false;
+        for (let n = 1; ini < comp - L - 2 && !achou; n++) {
+          const len = 3 + Math.floor(hsM(lado, n, 32) * 6);
+          if (d === E - 2 && al >= ini && al < Math.min(ini + len, comp - L - 2)) achou = true;
+          ini += len + 15 + Math.floor(hsM(lado, n, 33) * 16);
+        }
+        if (achou) c = fundo ? cor(100, 46, 24) : cor(82, 36, 18);
+      }
+      else {
+        c = fundo ? MAD.faceS : MAD.face;
+        // os veios: tracos de 1 de 4 a 8 ao longo da travessa, um a cada 13, em tracos alternados
+        const seg = Math.floor((al + d * 11) / 23), pos = (al + d * 11 + Math.floor(hsM(d, Math.floor((al + d * 11) / 23), 7) * 9)) % 23,
+              len = 3 + Math.floor(hsM(d, seg, 6) * 4);
+        const comp = ao ? W : H;
+        if (d === 2 && al > L + 1 && al < comp - L - 2 && hsM(d, seg, ao ? 3 : 4) < .45 && pos >= 3 && pos < 3 + len) c = fundo ? MAD.veioS : cor(166, 86, 46);
+      }
+      px(P, x, y, c);
+    }
+    // a costura: pontos de 3 com 2 de folga na 3a celula, o furo escuro na saida de cada ponto, parando antes das cantoneiras
+    const k = 3, a0 = L + 1;
+    const lado = (n, f) => {
+      const k_ = Math.floor((n + 1) / 5), o = Math.floor((n - (5 * k_ - 1)) / 2);
+      for (let i = 0; i < k_; i++) { for (let t = 0; t < 3; t++) f(o + 5 * i + t, COSTURA, true); f(o + 5 * i + 3, FURO, false); }
+    };
+    lado(W - 2 * a0, (t, c, sb) => { t += 1; px(P, a0 + t, k, c); px(P, a0 + t, H - 1 - k, c); if (sb) { px(P, a0 + t, k + 1, MAD.rebaixo); px(P, a0 + t, H - k, MAD.escuro); } });
+    lado(H - 2 * a0, (t, c, sb) => { px(P, k, a0 + t, c); px(P, W - 1 - k, a0 + t, c); if (sb) { px(P, k + 1, a0 + t, MAD.rebaixo); px(P, W - k, a0 + t, MAD.escuro); } });
+  }
+  // a cantoneira de latao em L com a borda de dentro na diagonal (pernas de L, largura w, chanfro de 2 na quina) e dois
+  // rebites; a luz e de cima e da esquerda em qualquer canto, e a sombra de contato cai na madeira
+  function cantoneira(P, W, H, sx, sy, L, w) {
+    const X = i => sx < 0 ? i : W - 1 - i, Y = j => sy < 0 ? j : H - 1 - j;
+    const den = (i, j) => i >= 0 && j >= 0 && i < L && j < L && i + j >= 2 && i + j <= L - 1 + w;
+    const tela = new Map();
+    for (let j = 0; j < L; j++) for (let i = 0; i < L; i++) if (den(i, j)) tela.set(X(i) + ',' + Y(j), 1);
+    const tem = (x, y) => tela.has(x + ',' + y);
+    for (let j = -1; j <= L; j++) for (let i = -1; i <= L; i++) {
+      const x = X(i), y = Y(j);
+      if (!tem(x, y) && tem(x - 1, y - 1)) px(P, x, y, SOMBRA_F);
+    }
+    for (const key of tela.keys()) {
+      const [x, y] = key.split(',').map(Number);
+      const borda = !tem(x - 1, y) || !tem(x + 1, y) || !tem(x, y - 1) || !tem(x, y + 1);
+      let c = LATAO.m;
+      const luz = !tem(x, y - 2) || !tem(x - 2, y), somb = !tem(x, y + 2) || !tem(x + 2, y);
+      if (borda) c = O;
+      else if (luz && !somb) c = LATAO.l;
+      else if (luz && somb) c = cor(246, 212, 120);
+      else if (somb) c = LATAO.s;
+      px(P, x, y, c);
+    }
+    const rebite = (i, j) => {   // a cupula de 3x3 na tela, com a luz de cima e da esquerda em qualquer canto
+      const x = Math.min(X(i), X(i + 2)), y = Math.min(Y(j), Y(j + 2));
+      const k = { H: cor(255, 234, 150), W: cor(255, 250, 205), A: cor(246, 212, 120), m: LATAO.m, s: LATAO.s, D: LATAO.d };
+      ["mWm", "HAs", "msD"].forEach((l, b) => [...l].forEach((q, a) => px(P, x + a, y + b, k[q])));
+    };
+    rebite(3, 6); rebite(6, 3);
+  }
+  // o pad de S: contorno com chanfro de 2, aro de 1 (claro em cima e a esquerda, meio-tom embaixo e a direita), o filete
+  // escuro de 1 com chanfro de 1 e a face: o brilho redondo no meio e a sombra em L na coluna e na fileira de fora
+  function pad(P, x0, y0, S, base, aceso, apagado) {
+    const t = apagado ? { sulco: cor(34, 26, 22), sombra: cor(44, 35, 30), base: cor(50, 40, 34), meio: cor(50, 40, 34), claro: null,
+                          aro: cor(104, 90, 80), aro2: cor(80, 68, 60), aroB: cor(44, 35, 30), aroM2: cor(62, 51, 44), especular: cor(138, 124, 114) } : rampa(base, aceso);
+    const cx = Math.floor((S - 1) / 2) - 1;
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+      const dx = Math.min(i, S - 1 - i), dy = Math.min(j, S - 1 - j), d = Math.min(dx, dy), tl = i + j < S - 1;
+      if (dx + dy < 3) continue;
+      let c;
+      if (dx + dy === 3 || d === 0) c = O;
+      else if (d === 1 || dx + dy === 4) c = tl ? t.aro : t.aroB;                 // o aro de 2: a celula de fora...
+      else if (d === 2 || dx + dy === 5) c = tl ? (t.aro2 || t.aro) : (t.aroM2 || t.aroM);   // ... e a de dentro, um degrau abaixo
+      else if (d === 3 || dx + dy === 6) c = tl ? t.sombra : t.sulco;            // o sulco nos quatro lados
+      else if (i === S - 5 || j === S - 5) c = t.sombra;                         // a sombra de 1 embaixo e a direita
+      else {
+        const q = Math.pow(Math.pow(Math.abs(i - cx), 3) + Math.pow(Math.abs(j - cx), 3), 1 / 3);
+        c = t.claro && q <= 2.6 ? t.claro : q <= 4.8 ? t.meio : q <= 5.8 ? (t.anel || t.meio) : t.base;
+      }
+      px(P, x0 + i, y0 + j, c);
+    }
+    // o traco de brilho no aro de cima (6) e no da esquerda (3), e o reflexo de dentro
+    for (let i = 4; i <= 8; i++) px(P, x0 + i, y0 + 1, t.especular);
+    for (let j = 4; j <= 6; j++) px(P, x0 + 1, y0 + j, t.especular);
+    px(P, x0 + 4, y0 + 5, t.especular); px(P, x0 + 5, y0 + 4, t.especular);
+  }
+  // o titulo em negrito de 9 (a 5x7 com as linhas 3 e 5 dobradas, hastes de 2), 1 celula entre as letras, o acento de 2x2
+  // separado da letra por 1 linha, a sombra embaixo e a direita
+  function glifoTit(ch) {
+    let b = ch, marca = null;
+    if (ACENTO[ch]) { b = ACENTO[ch][0]; marca = ACENTO[ch][1]; }
+    if (TIT9[b]) {
+      const rows = TIT9[b].map(l => [...l].map(q => q === '#' ? 1 : 0));
+      return { w: rows[0].length, rows, marca, maius: b === b.toUpperCase() && b !== b.toLowerCase() };
+    }
+    const rows = b === 'r' ? ["....", "....", "#.##", "#...", "#...", "#...", "#..."] : (F57[b] || F57[' ']), w0 = rows[0].length, out = [],
+          baixa = b === b.toLowerCase() && b !== b.toUpperCase();
+    const dobra = baixa ? [3, 5] : [1, 5];
+    rows.forEach((l, j) => {
+      const r = new Array(w0 + 1).fill(0);
+      [...l].forEach((q, i) => { if (q === '#') { r[i] = 1; r[i + 1] = 1; } });
+      out.push(r); if (dobra.includes(j)) out.push(r.slice());
+    });
+    let x0 = w0 + 1, x1 = -1;
+    out.forEach(r => r.forEach((v, i) => { if (v) { x0 = Math.min(x0, i); x1 = Math.max(x1, i); } }));
+    if (x1 < 0) return { w: 3, rows: [], marca: null };
+    return { w: x1 - x0 + 1, rows: out.map(r => r.slice(x0, x1 + 1)), marca, maius: b === b.toUpperCase() && b !== b.toLowerCase() };
+  }
+  const TIT9 = {   // linhas 0 a 8 (caixa alta 9, x de 7 a partir da 2), pernas em 9 e 10
+    S: [".######", "##.....", "##.....", "##.....", ".#####.", ".....##", ".....##", ".....##", "######."],
+    o: ["......", "......", ".####.", "##..##", "##..##", "##..##", "##..##", "##..##", ".####."],
+    n: ["......", "......", "#####.", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##"],
+    s: ["......", "......", ".#####", "##....", "##....", ".####.", "....##", "....##", "#####."],
+    r: ["......", "......", "##.###", "###...", "##....", "##....", "##....", "##....", "##...."],
+    a: ["......", "......", ".####.", "....##", ".#####", "##..##", "##..##", "##..##", ".#####"],
+    p: ["......", "......", "#####.", "##..##", "##..##", "##..##", "##..##", "##..##", "#####.", "##....", "##...."],
+    i: ["##", "..", "##", "##", "##", "##", "##", "##", "##"],
+    d: ["....##", "....##", ".#####", "##..##", "##..##", "##..##", "##..##", "##..##", ".#####"],
+  };
+  const MARCA_T = { "́": ["..##", ".##."], "̀": ["##..", ".##."], "̂": [".##.", "#..#"], "̃": [".#.#", "#.#."] };
+  function larguraTit(s) { return [...s].reduce((t, ch, i) => t + (ch === ' ' ? 4 : glifoTit(ch).w) + (i ? 1 : 0), 0); }
+  function titulo(P, s, x, yb, c) {
+    const passa = (k, ox, oy) => {
+      let pen = x;
+      for (const ch of s) {
+        if (ch === ' ') { pen += 5; continue; }
+        const g = glifoTit(ch), top = yb - 9;
+        g.rows.forEach((r, j) => r.forEach((v, i) => { if (v) px(P, pen + i + ox, top + j + oy, k); }));
+        const m = g.marca && MARCA_T[g.marca];
+        if (m) {
+          const mx = pen + Math.ceil((g.w - m[0].length) / 2), my = g.maius ? top - 3 : top - 1;
+          m.forEach((l, j) => [...l].forEach((q, i) => { if (q === '#') px(P, mx + i + ox, my + j + oy, k); }));
+        }
+        pen += g.w + 1;
+      }
+    };
+    for (const [ox, oy] of [[1, 1], [2, 1], [1, 2], [2, 2]]) passa(cor(34, 20, 12), ox, oy);
+    for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) passa(O, ox, oy);
+    passa(c, 0, 0);
+    // o segundo tom: as 4 linhas de baixo da caixa alta e do x, so dentro das letras
+    const meio = cor(232, 210, 172);
+    for (let y = yb - 4; y < yb + 3; y++) for (let xx = x; xx < x + larguraTit(s) + 1; xx++) {
+      const i = y * P.W + xx;
+      if (xx >= 0 && y >= 0 && xx < P.W && y < P.H && P.u[i] === c) P.u[i] = meio;
+    }
+  }
+  function placa(P, x0, y0, x1, y1, k) {
+    const dentro = (x, y) => { if (x < x0 || x >= x1 || y < y0 || y >= y1) return false; return Math.min(x - x0, x1 - 1 - x) + Math.min(y - y0, y1 - 1 - y) >= 2; };
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (!dentro(x, y) && dentro(x - 1, y - 1)) px(P, x, y, cor(34, 20, 12));
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      const dx = Math.min(x - x0, x1 - 1 - x), dy = Math.min(y - y0, y1 - 1 - y);
+      if (dx + dy < 2) continue;
+      const luz = y === y0 + 1 || x === x0 + 1 || (dx + dy === 3 && x < (x0 + x1) / 2 && y < (y0 + y1) / 2);
+      const somb = y === y1 - 2 || (dx + dy === 3 && y > (y0 + y1) / 2);
+      px(P, x, y, dx + dy === 2 || dx === 0 || dy === 0 ? O : somb ? k.somb : luz ? k.luz : x === x1 - 2 ? k.dir : k.face);
+    }
+  }
+  function desenhaPads(p) {
+    const D = rectP(p.sec);
+    if (!D.width) return;
+    const W = Math.floor(D.width / 2), H = Math.floor(D.height / 2), M_ = 2;
+    const faces = [...p.sec.querySelectorAll('.pad')].map(b => {
+      const f = b.querySelector('.pad-face'), n = b.querySelector('.pad-nome');
+      const F_ = relM(f, D), N_ = n ? relM(n, D) : null;
+      return { b, F: F_, N: N_, nome: n ? n.textContent.trim() : '', cor: b.style.getPropertyValue('--pad').trim(),
+               aceso: b.classList.contains('tocando'), aperta: b.matches(':active') || b.classList.contains('apertado'), vazio: b.classList.contains('sem-som') };
+    });
+    const dT = (devicePixelRatio || 1) * PALCO.k, LS = Math.max(Math.round(dT), Math.ceil((devicePixelRatio || 1) - 1e-6)) / dT;
+    const tit = ((p.sec.querySelector('h2') || {}).textContent || 'Sons rápidos').trim();
+    // os nomes na letra normal estreita, a da maleta (escolha dele, 06/11: a de pixel cortava em 4 letras no notebook);
+    // a de pixel fica pelo window.PAD_NOMES = 'pixel'
+    const modo = window.PAD_NOMES === 'pixel' ? 'pixel' : 'vetor';
+    p.sec.classList.toggle('nomes-vetor', modo === 'vetor');
+    const altN = Math.round(((faces.find(f => f.N) || {}).N || { h: 20 }).h / 2);
+    const chave = [modo, altN, W, H, LS, tit, fontesMx, faces.map(f => [f.F.x0, f.F.y0, f.F.x1, f.N ? f.N.y0 : '', f.nome, f.cor, f.aceso, f.aperta, f.vazio].join(',')).join(';')].join('|');
+    if (chave === p.chave) return;
+    const geoNomes = [modo, altN, W, H, LS, faces.map(f => [f.F.x0, f.N ? f.N.y0 : '', f.nome].join(',')).join(';')].join('|');
+    p.chave = chave;
+    const P = pincel(W + M_, H + M_);
+    sombraCaixa(P, 0, 0, W, H, 2, 2, 2);   // a sombra da caixa na parede
+    const E = 7, L = 13;
+    moldura(P, W, H, E, L);
+    // o titulo: o de 9 se cabe, senao o negrito de 7
+    const tw = larguraTit(tit), yb = E + 15;
+    const ocupado = [];
+    if (tw <= W - 2 * (E + 3)) { ocupado.push([Math.floor((W - tw) / 2) - 1, yb - 12, Math.floor((W - tw) / 2) + tw + 2, yb + 3]); }
+    else { const t2 = larg('fb', tit) - 1; ocupado.push([Math.floor((W - t2) / 2) - 1, yb - 9, Math.floor((W - t2) / 2) + t2 + 2, yb + 3]); }
+    for (const f of faces) {
+      const S = f.F.x1 - f.F.x0;
+      ocupado.push([f.F.x0 - 1, f.F.y0 - 1, f.F.x0 + S + 2, f.F.y0 + S + 2]);
+      const ny = f.N ? f.N.y0 : f.F.y0 + S + 2;
+      ocupado.push([f.F.x0 - 1, ny - 1, f.F.x0 + S + 2, ny + 12]);
+    }
+    const livre = (x, y) => !ocupado.some(q => x >= q[0] && x < q[2] && y >= q[1] && y < q[3]);
+    // o fundo escuro rebaixado: a sombra da moldura em cima e a esquerda, o filete claro embaixo e a direita, e so manchas
+    // escuras deitadas de 2 a 3, raras, longe dos contornos
+    for (let y = E; y < H - E; y++) for (let x = E; x < W - E; x++) {
+      let c = PAINEL.b;
+      if (y === E || x === E) c = PAINEL.somb;
+      else if ((y === E + 1 && x > E) || (x === E + 1 && y > E)) c = PAINEL.somb2;
+      else if (y === H - E - 1 || x === W - E - 1) c = PAINEL.luz;
+      px(P, x, y, c);
+    }
+    for (let y = E + 4; y < H - E - 3; y += 6) for (let x0 = E + 4 + ((y / 6 | 0) % 2) * 6; x0 < W - E - 5; x0 += 13) {
+      const x = x0 + Math.floor(hsM(x0, y, 13) * 3);
+      let ok = true;
+      for (let t = -1; t <= 2; t++) for (let v = -1; v <= 1; v++) if (!livre(x + t, y + v)) ok = false;
+      if (ok) { px(P, x, y, PAINEL.e); px(P, x + 1, y, PAINEL.e); }
+    }
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) cantoneira(P, W, H, sx, sy, L, 5);
+    if (tw <= W - 2 * (E + 3)) titulo(P, tit, Math.floor((W - tw) / 2), yb, cor(252, 242, 220));
+    else { const t2 = larg('fb', tit) - 1; texto(P, 'fb', tit, Math.round((W - t2) / 2), yb, CREME_L, { sombra: O }); }
+    // os pads e as plaquinhas
+    for (const f of faces) {
+      const S = f.F.x1 - f.F.x0, dy = f.aperta && !f.vazio ? 1 : 0;
+      if (!dy) for (let j = 1; j <= S; j++) for (let i = 1; i <= S; i++) {
+        const den = (a, b) => a >= 0 && b >= 0 && a < S && b < S && Math.min(a, S - 1 - a) + Math.min(b, S - 1 - b) >= 3;
+        if (!den(i, j) && den(i - 1, j - 1)) px(P, f.F.x0 + i, f.F.y0 + j, cor(34, 20, 12));
+      }
+      pad(P, f.F.x0, f.F.y0 + dy, S, f.vazio ? 0 : hexCor(f.cor || '#888888'), f.aceso, f.vazio);
+      const ny0 = f.N ? f.N.y0 : f.F.y0 + S + 2, nx0 = f.F.x0, nx1 = f.F.x0 + S, ny1 = ny0 + altN;
+      placa(P, nx0, ny0, nx1, ny1, f.vazio ? { face: cor(76, 64, 52), luz: cor(90, 78, 64), somb: cor(62, 51, 44), dir: cor(68, 57, 46) } : PLACA);
+    }
+    p.cv.width = W + M_; p.cv.height = H + M_; p.cv.style.width = 2 * (W + M_) + 'px'; p.cv.style.height = 2 * (H + M_) + 'px';
+    const img = p.ctx.createImageData(W + M_, H + M_);
+    new Uint32Array(img.data.buffer).set(P.u);
+    p.ctx.putImageData(img, 0, 0);
+    // os nomes: letra 5x7 de meia celula (nunca abaixo de 1 px CSS, sempre em pixel inteiro da tela), com 2 px de creme
+    // ate cada borda; o que nao cabe e cortado com '..'
+    if (geoNomes !== p.geoNomes) {
+      p.geoNomes = geoNomes;
+      const wc = Math.ceil(D.width / LS), hc = Math.ceil(D.height / LS);
+      p.nm.width = wc; p.nm.height = hc; p.nm.style.width = wc * LS + 'px'; p.nm.style.height = hc * LS + 'px';
+      p.nm.style.left = (Math.round(D.left * dT) / dT - D.left) + 'px'; p.nm.style.top = (Math.round(D.top * dT) / dT - D.top) + 'px';
+      const c = p.nm.getContext('2d'), im = c.createImageData(wc, hc);
+      const put = (X, Y) => { if (X < 0 || Y < 0 || X >= wc || Y >= hc) return; const q = 4 * (Y * wc + X); im.data[q] = 42; im.data[q + 1] = 24; im.data[q + 2] = 18; im.data[q + 3] = 255; };
+      const lw = t => larg('f', t) - 1;
+      const corta = (t, maxw) => { if (lw(t) <= maxw) return t; while (t && lw(t.trimEnd() + '..') > maxw) t = t.slice(0, -1); return t.trimEnd() + '..'; };
+      for (const f of faces) {
+        if (modo === 'vetor' || !f.N || !f.nome) continue;
+        const S = f.F.x1 - f.F.x0, maxw = Math.floor((2 * S - 12) / LS);
+        const linhas = [corta(f.nome, maxw)];
+        const meio = (2 * f.N.y0 + f.N.h / 2) / LS, bloco = 7 + 9 * (linhas.length - 1);
+        linhas.forEach((t, k) => {
+          const x0 = Math.round((2 * f.F.x0 + S) / LS - lw(t) / 2), yb2 = Math.round(meio - bloco / 2 - .5) + 7 + 9 * k;
+          let pen = x0;
+          for (const ch of t) {
+            const g = gl('f', ch);
+            for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) if (g.bits[j * g.w + i]) put(pen + g.dx + i, yb2 + g.dy + j);
+            pen += g.adv;
+          }
+        });
+      }
+      c.putImageData(im, 0, 0);
+    }
+  }
   function quadroMx() {
     if (document.body.classList.contains('mesa-dj')) {
       const rec = document.querySelector('.palco .receptor');
@@ -10305,6 +10639,12 @@ carregar();
         const m = preparaMx(rec);
         snapM(rec);
         try { desenhaMx(m); } catch (e) { console.error('mx', e); }
+      }
+      const sp = document.getElementById('pads');
+      if (sp && !sp.hidden && sp.offsetParent) {
+        const p = preparaPads(sp);
+        snapM(sp);
+        try { desenhaPads(p); } catch (e) { console.error('pads', e); }
       }
     }
     requestAnimationFrame(quadroMx);
