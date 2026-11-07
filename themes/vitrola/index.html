@@ -10883,10 +10883,13 @@ carregar();
       const padsEl = document.getElementById('pads');
       if (padsEl && padsEl.offsetParent) {
         const Pr = rectP(padsEl), cyJ = Math.round((Math.min(D.top + D.height - 40, Pr.top + Pr.height + 70) - D.top) / 2);
-        for (let y = cyJ - 3; y <= cyJ + 3; y++) for (let x = W - 5; x <= W - 1; x++) {
-          const borda = x === W - 5 || x === W - 1 || y === cyJ - 3 || y === cyJ + 3;
-          px(P, x, y, borda ? O : y === cyJ - 2 ? cor(220, 220, 215) : x === W - 4 ? cor(110, 112, 110) : cor(150, 152, 150));
+        // (r23) no eixo do plugue (o contorno de cima 1 celula acima) e na luz da casa: faixas horizontais na rampa quente
+        // dos parafusos (o brilho em cima, a base escura), com a sombra de 1 celula embaixo
+        for (let y = cyJ - 4; y <= cyJ + 3; y++) for (let x = W - 5; x <= W - 1; x++) {
+          const borda = x === W - 5 || x === W - 1 || y === cyJ - 4 || y === cyJ + 3;
+          px(P, x, y, borda ? O : y === cyJ - 3 ? cor(224, 221, 214) : y === cyJ + 2 ? cor(96, 90, 84) : cor(154, 145, 137));
         }
+        for (let x = W - 4; x <= W - 2; x++) px(P, x, cyJ + 4, cor(154, 145, 137));
       }
       m.vg = m.metros.map((e, i) => ({ k: e.dataset.k, apag: apag[i], g: vuFace(P, vx0(i), J.y0, vx0(i) + mw, J.y1, e.dataset.nome || '', apag[i]) }));
       for (const f of fs) faderEst(P, f);
