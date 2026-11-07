@@ -10530,7 +10530,9 @@ carregar();
         if (RT.grav) linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 4 + j * LH, [250, 248, 242], FR, RT.esp));
         linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 3 + j * LH, RT.cor, FR, RT.esp));
         c.putImageData(im, 0, 0);
-        const base = 2 * f.C.y0 + 36, left = gx(2 * f.col + 1 - w * LS / 2), top = gy(base - LS * (3 + (NL - 1) * LH + AL) + LS * (NL - linhas.length) * LH);
+        // (r05) a linha de base 1 celula acima: o rotulo colava no topo do trilho (e no cursor em 100%); o vao para o VU
+        // e para o trilho fica igual
+        const base = 2 * f.C.y0 + 34, left = gx(2 * f.col + 1 - w * LS / 2), top = gy(base - LS * (3 + (NL - 1) * LH + AL) + LS * (NL - linhas.length) * LH);
         cv.style.left = left + 'px'; cv.style.top = top + 'px';
         f.cal = [Math.floor(left / 2) - 2, Math.floor(top / 2), Math.ceil((left + w * LS) / 2) + 2, Math.ceil((top + h * LS) / 2)];
       });
