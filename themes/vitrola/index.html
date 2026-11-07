@@ -4046,6 +4046,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.mesa-dj .prat-seta.dir:disabled { background-image: var(--pr-seta-dir-off); }
   body.mesa-dj .prat-seta:active:not(:disabled) { border-image: none; }
   /* PRATELEIRA-FIM */
+  /* (r05) a placa da Prateleira 2 celulas abaixo: a linha de base do titulo na mesma da placa do A seguir (fora do
+     bloco gerado pelo integra_prat.py) */
+  body.mesa-dj #vista-prateleira #cab-prat { top: 4px; }
   /* a busca cai do campo como uma gaveta, por cima da mesa (no painel de jacaranda da prateleira), e a mesa fica
      inteira embaixo: a prateleira e a maleta seguem no lugar (o montarMesa mede o campo) */
   body.mesa-dj .parede > #vista-prateleira[hidden] { display: contents !important; }
