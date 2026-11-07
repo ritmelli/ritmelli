@@ -10412,7 +10412,7 @@ carregar();
         if (ao >= r0 && ao <= r1 && Math.abs(cx * dy - cy * dx) <= meia) px(P, x, y, c);
       }
   }
-  const ESC = [[-50, -31.1], [-45, -31.1], [-40, -31.1], [-30, -12.1], [-20, 0], [-15, 12.1], [-10, 31.1], [-7, 34], [-5, 37.6], [-3, 41.7], [0, 50]];
+  const ESC = [[-50, -34.1], [-45, -34.1], [-40, -34.1], [-30, -13.3], [-20, 0], [-15, 13.3], [-10, 34.1], [-7, 36.5], [-5, 39.6], [-3, 43], [0, 50]];   // (r15) o 40 e o 10 1 celula para fora (a escala com sinal de menos pedia vao entre os grupos)
   const escAng = db => {
     if (db <= ESC[0][0]) return ESC[0][1];
     for (let i = 1; i < ESC.length; i++) if (db <= ESC[i][0]) { const [a, b] = [ESC[i - 1], ESC[i]]; return a[1] + (b[1] - a[1]) * (db - a[0]) / (b[0] - a[0]); }
@@ -10446,7 +10446,7 @@ carregar();
   function vuFace(P, x0, y0, x1, y1, nome, apagado) {
     sombraCaixa(P, x0, y0, x1, y1, 1, 1, 2);
     caixa(P, x0, y0, x1, y1, VUC.banda, VUC.bandaL, VUC.bandaS, 2);
-    const fx0 = x0 + 2, fx1 = x1 - 2, fy0 = y0 + 2, fy1 = y0 + 22, FW = fx1 - fx0, cx = Math.floor(FW / 2), top = 10, PY = 30.1;
+    const fx0 = x0 + 2, fx1 = x1 - 2, fy0 = y0 + 2, fy1 = y0 + 22, FW = fx1 - fx0, cx = Math.floor(FW / 2), top = 11, PY = 31.1;   // (r15) a escala 1 celula abaixo: o -20 colava no reflexo do topo
     const h = Math.max(9, Math.min(15, FW - 3 - cx)), ARCO = ARCOS[h], sx = h / 15;
     const g = { fx0, fx1, fy0, fy1, cx, acx: fx0 + cx + .5, acy: fy0 + PY, ar: 19.6, sx, hx: fx0 + cx + .5, hy: fy0 + 18.5 };
     if (apagado) P.dim = .55;
@@ -10471,7 +10471,7 @@ carregar();
       // (r13) o sinal de menos da escala em dB (o numero fica no lugar, o traco de 2 celulas 1 celula antes dele)
       if (txt) { const tw = larg35(txt), nx = fx0 + Math.round(tx + .5 - tw / 2); texto35(P, txt, nx, fy0 + ty - 6, VUC.escala); px(P, nx - 3, fy0 + ty - 4, VUC.escala); px(P, nx - 2, fy0 + ty - 4, VUC.escala); }
     };
-    const off = Math.round(10 * sx), tres = off >= 8;
+    const tres = Math.round(10 * sx) >= 8, off = Math.round(10 * sx) + (tres ? 1 : 0);   // (r15) 2 celulas entre os grupos -40 -20 -10, 1 dentro de cada
     marca(cx - off, 2, VUC.arco, '40'); marca(cx, 2, VUC.arco, tres ? '20' : ''); marca(cx + off, 2, VUC.arco, '10');
     if (tres) for (const x of [cx - 4, cx + 4]) { px(P, fx0 + x, fy0 + ay[x] - 2, VUC.arco); px(P, fx0 + x, fy0 + ay[x] - 1, VUC.arco); }
     P.dim = 1;
