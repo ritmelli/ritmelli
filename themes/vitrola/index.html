@@ -5738,7 +5738,7 @@ function bezier(a, c1, c2, b, n = 20) {
   }
   return out;
 }
-function fiosPixel(cv, larg, alt, fios, plugues, cel = CEL) {
+function fiosPixel(cv, larg, alt, fios, plugues, cel = CEL, pal = COR_FIO, cont = CONTORNO_FIO) {   // (r21) pal e cont: a mesa passa a rampa dos cabos de dentro (PAL_CABO)
   const W = Math.ceil(larg / cel), H = Math.ceil(alt / cel), px = new Uint8ClampedArray(W * H * 4);
   const pinta = (i, [r, g, b], a = 255) => { px.set([r, g, b, a], i * 4); };
   const faixas = pts => {   // celula -> distancia com sinal ao traco, em celulas (+ do lado da luz)
@@ -5757,7 +5757,7 @@ function fiosPixel(cv, larg, alt, fios, plugues, cel = CEL) {
     }
     return d;
   };
-  const tracos = fios.map(f => [faixas(f.pts), COR_FIO[f.cor]]);
+  const tracos = fios.map(f => [faixas(f.pts), pal[f.cor]]);
   // (r11) sem dente de 1 coluna: no fundo de uma curva a distancia ao traco cai de um lado e a coluna do meio ganhava 1
   // celula a mais embaixo (ou em cima); quando as duas vizinhas concordam entre si, a coluna copia a da esquerda
   for (const [d] of tracos) {
@@ -5777,7 +5777,7 @@ function fiosPixel(cv, larg, alt, fios, plugues, cel = CEL) {
     if (k < W * H && px[k * 4 + 3] === 0) pinta(k, [12, 5, 2], 115);
   }
   for (const [d, [brilho, corpo, sombra, escuro]] of tracos)
-    for (const [i, s] of d) pinta(i, Math.abs(s) > 2 ? CONTORNO_FIO : s > 1 ? brilho : s > 0 ? corpo : s > -1 ? sombra : escuro);
+    for (const [i, s] of d) pinta(i, Math.abs(s) > 2 ? cont : s > 1 ? brilho : s > 0 ? corpo : s > -1 ? sombra : escuro);
   for (const { t: [tx, ty], ang, cor } of plugues) {   // o plugue: corpo de metal, anel e capa da cor do fio (como no mock)
     const a = ang * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a), lado = Math.sign(sn - cs) || 1, dentro = new Map();
     for (let j = Math.max(0, Math.floor((ty - 22) / cel)); j <= Math.min(H - 1, Math.floor((ty + 22) / cel)); j++)
@@ -5786,12 +5786,12 @@ function fiosPixel(cv, larg, alt, fios, plugues, cel = CEL) {
         let c = null;
         if (lx >= 0 && lx <= 13 && ly >= 0 && ly <= 9) {
           const u = (ly - 4.5) * lado;
-          c = lx >= 3 && lx <= 5.4 ? COR_FIO[cor][1] : u > 1.5 ? [238, 236, 230] : u < -1.5 ? [140, 138, 132] : [200, 198, 192];
-        } else if (lx > 13 && lx <= 19 && Math.abs(ly - 4.5) <= 3.1 - (lx - 13) * .15) c = COR_FIO[cor][2];
+          c = lx >= 3 && lx <= 5.4 ? pal[cor][1] : u > 1.5 ? [238, 236, 230] : u < -1.5 ? [140, 138, 132] : [200, 198, 192];
+        } else if (lx > 13 && lx <= 19 && Math.abs(ly - 4.5) <= 3.1 - (lx - 13) * .15) c = pal[cor][2];
         if (c) dentro.set(j * W + k, c);
       }
     for (const i of dentro.keys())
-      for (const v of [i - 1, i + 1, i - W, i + W]) if (v >= 0 && v < W * H && !dentro.has(v)) pinta(v, CONTORNO_FIO);
+      for (const v of [i - 1, i + 1, i - W, i + W]) if (v >= 0 && v < W * H && !dentro.has(v)) pinta(v, cont);
     for (const [i, c] of dentro) pinta(i, c);
   }
   cv.width = W; cv.height = H;
@@ -5906,7 +5906,7 @@ function cabosDaMesa() {
     fio(pb, qb, [0, 58], [-40, 2], 'branco'),
     fio(pv, qv, [2, 30], [-22, 4], 'vermelho'),
     fio(pp, qp, [-2, 58], [30, 6], 'preto'),
-  ], [pp, pb, pv, qb, qv, qp], cel);
+  ], [pp, pb, pv, qb, qv, qp], cel, PAL_CABO, CONTORNO_PIX);   // (r21) a rampa e o contorno dos cabos de dentro da pedaleira: o vermelho mudava de cor ao atravessar o jack
 }
 /* cabos dos pedais em pixel como no mock "Cabos B corrigido",
    de quem ligou com pressa so para fazer funcionar num show: entre vizinhos da
