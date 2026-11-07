@@ -3201,7 +3201,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   /* com fila, a maleta fica com a metade da fileira, no meio dela; sem fila, os Sons rapidos ficam com a fileira inteira,
      e sem Sons rapidos ela fica no meio da fileira inteira */
   .parede:has(> .fila-parede:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(316px, 1fr); }
-  .parede:has(#rapidos[hidden]) .fila-parede { grid-column: 1 / -1; }
+  /* (07/11, pedido do dono) so fora da mesa: na mesa os Sons rapidos ficam escondidos ate a prateleira carregar, e no F5 a
+     maleta esticava na fileira inteira, por tras da prateleira */
+  body:not(.mesa-dj) .parede:has(#rapidos[hidden]) .fila-parede { grid-column: 1 / -1; }
   .fila-parede { grid-area: fila; align-self: start; justify-self: center; width: 100%; max-width: 520px; margin: 0 0 14px; }
   #cab-prat { grid-area: cab; }
   #rolo-prateleira { grid-area: prat; }
