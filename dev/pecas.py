@@ -479,8 +479,8 @@ def gota(px_, py_, r1, r2, h):
     return a * px_ + b * py_ - r1
 
 
-KF_CHAPEU = (9., 1., 16.)   # (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
-KF_SOBE = 2                 # o chapeu acima do tampo da saia (a parede dele, em linhas)
+KF_CHAPEU = (7., 1., 15.)   # (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
+KF_SOBE = 0                 # o chapeu acima do tampo da saia (r11: chato; a parede de 2 virava uma faixa preta de 3 css)
 # a saia na mesma paleta do chapeu: um tom abaixo (o tampo dela no aro) escurecia o knob e ele lia como duas pecas
 # empilhadas; no mesmo creme ele segue da familia dos outros e a gota se le pelo contorno
 KF_SAIA_LETRA = None
@@ -538,10 +538,10 @@ def knob_frango_quadro(graus, cx, cy, n, recuo=0.):
     chapeu = _frango_camada(graus, cx, cy - KF_SOBE, n, r1, r2, h, KF_SOBE)
     px.update(chapeu)
     # o traco so no chapeu (passando dele ele riscava a saia)
+    # (r11) o ponteiro e 1 linha escura no eixo do chapeu, sem a borda preta em volta (com ela o bico virava uma massa
+    # escura colada no contorno)
     risco = linha_pixel(cx, cy - KF_SOBE, graus, KF_TRACO[0], h + r2 - KF_TRACO[1]) & set(chapeu)
-    borda = {(x + dx, y + dy) for x, y in risco for dx in (-1, 0, 1) for dy in (-1, 0, 1)} - risco
-    px.update({c: "O" for c in borda if c in chapeu})
-    px.update({c: "P" for c in risco})
+    px.update({c: "O" for c in risco})
     for x, y in list(px):
         if (x, y + 2) not in px:
             px[(x, y + 2)] = "s"
