@@ -8855,7 +8855,7 @@ carregar();
   // cada letra em x inteiro, com 1 px entre elas: o limiar nao cola uma na outra
   // (r05) kana e kanji na reserva do sistema em negrito de 12 px (a Jersey nao tem; a reserva fina a 18,667 saia mais
   // alta que a caixa-alta e falhada no corte do alfa): a fonte por letra e o corte mais baixo so nelas
-  const CJK = /[぀-ヿ㐀-鿿豈-﫿ｦ-ﾟ가-힯]/, FONTE_CJK = 'bold 12px "Yu Gothic UI", "Meiryo", sans-serif';
+  const CJK = /[぀-ヿ㐀-鿿豈-﫿ｦ-ﾟ가-힯]/, FONTE_CJK = 'bold 12px "MS Gothic", "Yu Gothic UI", "Meiryo", sans-serif';   /* (r11) a MS Gothic tem bitmap de 12 px: kana nitido (na Yu Gothic o na virava borrao) */
   const avanco = (c, ch) => { if (!CJK.test(ch)) return Math.round(c.measureText(ch).width) + 1;
     c.font = FONTE_CJK; const v = Math.round(c.measureText(ch).width) + 1; c.font = FONTE; return v; };
   const largura = (c, s) => [...s].reduce((t, ch) => t + avanco(c, ch), 0) - (s ? 1 : 0);
