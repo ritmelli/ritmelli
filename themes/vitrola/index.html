@@ -1298,6 +1298,9 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
    os grupos ficam lado a lado, ate seis ---------- */
 /* os cabos em pixel (medirCabosPedais) por cima dos pedais: os plugues encostam no contorno deles */
 .cabos-pedais { position: absolute; z-index: 0; pointer-events: none; user-select: none; display: block; image-rendering: pixelated; }
+/* (madrugada) a contagem e os nomes em pixel da prateleira sao so da mesa: a regra que os esconde fora dela mora no bloco
+   da mesa, dentro do @media de tela grande, e no celular o canvas da contagem aparecia ao lado da do DOM (54 discos . 54 discos) */
+body:not(.mesa-dj) :is(canvas.conta-px, canvas.nome-px) { display: none; }
 /* a fita escrita a mao no cabo SHOW SEXTA, na letra e na moldura do selo do atraso (a VOZ, torta, e pintada no canvas) */
 .palco .fita-escrita {
   position: absolute; z-index: 3; pointer-events: none; user-select: none;
