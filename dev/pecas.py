@@ -479,7 +479,7 @@ def gota(px_, py_, r1, r2, h):
     return a * px_ + b * py_ - r1
 
 
-KF_CHAPEU = (7., 1., 15.)   # (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
+KF_CHAPEU = (7., 1.5, 17.)   # (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
 KF_SOBE = 0                 # o chapeu acima do tampo da saia (r11: chato; a parede de 2 virava uma faixa preta de 3 css)
 # a saia na mesma paleta do chapeu: um tom abaixo (o tampo dela no aro) escurecia o knob e ele lia como duas pecas
 # empilhadas; no mesmo creme ele segue da familia dos outros e a gota se le pelo contorno
@@ -535,13 +535,14 @@ def knob_frango_quadro(graus, cx, cy, n, recuo=0.):
     r1, r2, h = KF_CHAPEU
     h -= recuo
     px = _frango_camada(graus, cx, cy, n, KF_CORPO, KF_CORPO, 0, KN_SAIA, KF_SAIA_LETRA)
+    saia = dict(px)
     chapeu = _frango_camada(graus, cx, cy - KF_SOBE, n, r1, r2, h, KF_SOBE)
-    px.update(chapeu)
-    # o traco so no chapeu (passando dele ele riscava a saia)
-    # (r11) o ponteiro e 1 linha escura no eixo do chapeu, sem a borda preta em volta (com ela o bico virava uma massa
-    # escura colada no contorno)
+    # (r12) uma silhueta so: o contorno preto so por fora (a saia e o bico que passa dela); o contorno do chapeu por
+    # dentro do tampo da saia vira o degrau de sombra (A), sem o segundo anel escuro
+    px.update({c: ("A" if v == "O" and saia.get(c) not in (None, "O", "s") else v) for c, v in chapeu.items()})
+    # o ponteiro so no chapeu, numa linha de meia celula no tom medio da parede (T): escuro ele lia como espeto (r11)
     risco = linha_pixel(cx, cy - KF_SOBE, graus, KF_TRACO[0], h + r2 - KF_TRACO[1]) & set(chapeu)
-    px.update({c: "O" for c in risco})
+    px.update({c: "T" for c in risco})
     for x, y in list(px):
         if (x, y + 2) not in px:
             px[(x, y + 2)] = "s"
