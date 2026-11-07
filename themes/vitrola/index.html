@@ -9159,7 +9159,7 @@ carregar();
         const sulco = [.57, .7, .82].some(q => Math.abs(r - q * g.Rf) < .5);
         let c = f > .9 ? cor(25, 42, 34) : cor(33, 55, 45);
         if (arco && da <= 12) c = cor(52, 82, 68); else if (arco && da <= 20) c = cor(43, 69, 57);
-        if (sulco) c = arco && da <= 20 ? cor(36, 58, 48) : cor(29, 48, 39);
+        if (sulco) c = arco && da <= 20 ? cor(60, 92, 77) : cor(41, 67, 56);
         px(P, x, y, c); continue;
       }
       if (r <= Ri) { P.u[y * W + x] = 0; continue; }
@@ -9268,7 +9268,8 @@ carregar();
       recorte(P, ix0 + 3, iy0, ix1 - 3, iy1);
       P.dim = g.dim;
       const let_ = d.titulo.querySelector('.letreiro');
-      const tt = (let_ ? (let_.firstElementChild || let_).textContent : d.titulo.textContent).trim();
+      const tt = !g.com && !d.deck.classList.contains('deck-deixa') ? 'Nada no prato'
+        : (let_ ? (let_.firstElementChild || let_).textContent : d.titulo.textContent).trim();
       const wt = larg('fb', tt), area = ix1 - 3 - (ix0 + 3), SEP = '  \u2022  ', ws = larg('fb', SEP);
       const BR = cor(251, 239, 217);
       // o letreiro so quando nao cabe: parado 2 s no comeco de cada volta, depois anda 12 celulas por segundo
@@ -9283,10 +9284,17 @@ carregar();
           for (const [x, cheio] of [[ix0 + 3, true], [ix0 + 4, false], [ix1 - 4, true], [ix1 - 5, false]])
             if (cheio || (x + y) % 2) P.u[y * P.W + x] = VIDRO;
       } else texto(P, 'fb', tt, ix0 + 3, y1, BR, { sombra: O });
-      const art = (d.canal ? d.canal.textContent : '').trim();
+      // a dica do prato vazio na forma curta que cabe inteira (a prateleira esta logo acima): o texto do app segue no DOM
+      const art0 = (d.canal ? d.canal.textContent : '').trim();
+      const art = /^Toque numa capa/.test(art0) ? 'Toque numa capa' : /^A prateleira est/.test(art0) ? 'Busque um som' : art0;
       let a2 = art;
       const maxa = ix1 - 3 - (ix0 + 3);
-      if (larg('f', a2) > maxa) { while (a2.length > 1 && larg('f', a2 + '...') > maxa) a2 = a2.slice(0, -1); a2 = a2.trimEnd() + '...'; }
+      if (larg('f', a2) > maxa) {
+        while (a2.length > 1 && larg('f', a2 + '...') > maxa) a2 = a2.slice(0, -1);
+        const esp = a2.lastIndexOf(' ');
+        if (!/\s/.test(art[a2.length] || ' ') && esp > a2.length / 2) a2 = a2.slice(0, esp);
+        a2 = a2.trimEnd().replace(/[,.;:\-]+$/, '') + '...';
+      }
       texto(P, 'f', a2, ix0 + 3, y1 + 10, cor(176, 160, 138), { sombra: O });
       P.dim = 1;
       if (d.bpm && visivel(d.bpm)) {
@@ -9618,7 +9626,7 @@ carregar();
     const W = Math.ceil(D.width / 2), H = Math.ceil(D.height / 2), uc = tR.width / 200;
     const tx0 = (tR.left - D.left) / 2, ty0 = (tR.top - D.top) / 2;
     const com = d.prato.classList.contains('com-disco');
-    const dim = d.deck.classList.contains('deck-deixa') && !d.deck.classList.contains('saindo') ? .74 : 1;
+    const dim = 1;   // o deck da deixa com a cor cheia (decisao do dono): o estado vai na etiqueta de cima da tela
     const lt = getComputedStyle(d.letra, '::before').content.replace(/["']/g, '');
     const fx = rel(d.faixa, D), cmd = d.deck.querySelector('.comandos'), cmdY1 = cmd ? rel(cmd, D).y1 : H - 30;
     const chaveE = [W, H, Math.round(tx0), Math.round(ty0), Math.round(uc * 100), com, dim, lt, fx.x0, fx.x1, cmdY1, fontesOk].join('|');
