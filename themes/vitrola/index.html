@@ -10988,7 +10988,8 @@ carregar();
       for (let i = 0; i < k_; i++) { for (let t = 0; t < 3; t++) f(o + 5 * i + t, COSTURA, true); f(o + 5 * i + 3, FURO, false); }
     };
     lado(W - 2 * a0, (t, c, sb) => { t += 1; px(P, a0 + t, k, c); px(P, a0 + t, H - 1 - k, c); if (sb) { px(P, a0 + t, k + 1, MAD.rebaixo); px(P, a0 + t, H - k, MAD.escuro); } });
-    lado(H - 2 * a0, (t, c, sb) => { px(P, k, a0 + t, c); px(P, W - 1 - k, a0 + t, c); if (sb) { px(P, k + 1, a0 + t, MAD.rebaixo); px(P, W - k, a0 + t, MAD.escuro); } });
+    // (r15) a lateral 1 celula abaixo: com a base encurtada (r13) ela ficava a 1 celula da cantoneira de cima e a 3 da de baixo
+    lado(H - 2 * a0, (t, c, sb) => { t += 1; px(P, k, a0 + t, c); px(P, W - 1 - k, a0 + t, c); if (sb) { px(P, k + 1, a0 + t, MAD.rebaixo); px(P, W - k, a0 + t, MAD.escuro); } });
   }
   // a cantoneira de latao em L com a borda de dentro na diagonal (pernas de L, largura w, chanfro de 2 na quina) e dois
   // rebites; a luz e de cima e da esquerda em qualquer canto, e a sombra de contato cai na madeira
