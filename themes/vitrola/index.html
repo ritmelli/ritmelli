@@ -10501,6 +10501,7 @@ carregar();
     ARCO.forEach((n, i) => { for (let k = 0; k < n; k++) { ay[l - 1 - k] = top + 1 + i; ay[r + 1 + k] = top + 1 + i; } l -= n; r += n; });
     const z0 = r - 4;
     for (const x in ay) px(P, fx0 + +x, fy0 + ay[x], +x < z0 ? VUC.arco : VUC.zona);
+    g.arcoCel = new Set(Object.keys(ay).map(x => (fx0 + +x) + ',' + (fy0 + ay[x])));   // (r19) a agulha para 1 celula antes dele
     for (let x = z0; x < r; x++) px(P, fx0 + x, fy0 + ay[x] + 1, VUC.zonaE);
     const pk = ay[r] - 4, rk = r + 1;   // (r15) a lampada de pico 1 celula a direita e 1 abaixo: colada no 0 do -10 lia como -10 com ponto
     px(P, fx0 + rk, fy0 + pk, cor(255, 150, 120)); px(P, fx0 + rk + 1, fy0 + pk, VUC.zona); px(P, fx0 + rk, fy0 + pk + 1, VUC.zona); px(P, fx0 + rk + 1, fy0 + pk + 1, VUC.zonaE);
@@ -10532,7 +10533,10 @@ carregar();
     if (db < -41) { a = -Math.atan(2.5); L -= 1.5; }
     const pts = [];
     for (let q = 0; q <= L + 1e-9; q += .1) pts.push([g.hx + q * Math.sin(a), g.hy - q * Math.cos(a)]);
-    for (const [x, y] of caminho(pts)) px(P, x, y, VUC.agulha);
+    // (r19) a ponta para 1 celula antes do arco em qualquer angulo (perto do -40 ele e quase tangente e a ponta pousava nele)
+    const cel = caminho(pts), perto = ([x, y]) => g.arcoCel && [-1, 0, 1].some(dx => [-1, 0, 1].some(dy => g.arcoCel.has((x + dx) + ',' + (y + dy))));
+    while (cel.length > 2 && perto(cel[cel.length - 1])) cel.pop();
+    for (const [x, y] of cel) px(P, x, y, VUC.agulha);
     // o pivo: a cupula de 7, 5 e 3 na cor da faixa, o brilho de 1 em cima a esquerda
     const bx = g.fx0 + g.cx, by = g.fy1 - 1;
     for (let k = 0; k < 2; k++) for (let x = bx - 2 + k; x <= bx + 2 - k; x++) px(P, x, by - k, x === bx - 2 + k ? VUC.bandaL : VUC.banda);
