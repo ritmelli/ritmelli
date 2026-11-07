@@ -3681,7 +3681,12 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.mesa-dj .palco .gaveta::after, body.mesa-dj .palco :is(.cabeca-gav, .mesa-gav, .visor-gav, .cabo-gav) { display: none; }
   body.mesa-dj .palco .gaveta { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #6a5246 rgba(0,0,0,.25); background-attachment: local; }
   body.mesa-dj .palco .gaveta > .rolo { grid-area: lista; overflow: visible; margin: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }
-  body.mesa-dj .palco .banco { position: relative; display: flex; flex-wrap: nowrap; gap: 0 22px; width: max-content; max-width: none; margin: 0; padding: 10px 30px 2px; }
+  /* a fileira no meio da caixa e centrada nela; a da direita tem as plaquinhas de tempo em cima dos pedais, entao desce
+     8 a menos e os corpos dos pedais ficam na mesma linha nas duas (madrugada, 07/11) */
+  body.mesa-dj .palco .banco { position: relative; display: flex; flex-wrap: nowrap; gap: 0 22px; width: max-content; max-width: none; margin: 0 auto; padding: 38px 30px 2px; }
+  body.mesa-dj .palco #banco { padding-top: 38px; }
+  /* os nomes em maiuscula nos doze pedais, como no mock (os de letra normal ficavam em caixa mista) */
+  body.mesa-dj .palco .tecla .t-nome { text-transform: uppercase; }
   body.mesa-dj .palco .grupo-ef + .grupo-ef { margin-top: 0; }
   body.mesa-dj .palco .teclas { display: flex; flex-wrap: nowrap; padding-bottom: 10px; }
   body.mesa-dj .palco .suporte { display: none; }
