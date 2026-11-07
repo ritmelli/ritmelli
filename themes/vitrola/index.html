@@ -4029,7 +4029,7 @@ body.mesa-dj .palco .deck.dk-ok .comandos { margin-top: 12px; }
 body.mesa-dj .palco .receptor > canvas.mx-px { position: absolute; left: 0; top: 0; z-index: 6; display: block; pointer-events: none; image-rendering: pixelated; }
 body:not(.mesa-dj) canvas.mx-px { display: none; }
 body:not(.mesa-dj) .palco .receptor { translate: none !important; }
-body.mesa-dj .palco .receptor.mx-ok { background: none !important; padding: 18px 16px 14px; row-gap: 0; grid-template-rows: 66px minmax(0, 1fr) 46px 54px; }
+body.mesa-dj .palco .receptor.mx-ok { background: none !important; padding: 16px 16px 14px; row-gap: 0; grid-template-rows: 68px minmax(0, 1fr) 46px 54px; }
 body.mesa-dj .palco .receptor.mx-ok::before, body.mesa-dj .palco .receptor.mx-ok::after, body.mesa-dj .palco .receptor.mx-ok .chassi-rec { visibility: hidden; }
 body.mesa-dj .palco .receptor.mx-ok :is(.janela, .fader label, .fader output, .fader input, .tecla-set, .xfader, .auto-luz) { opacity: 0 !important; }
 body.mesa-dj .palco .receptor.mx-ok .janela { column-gap: 4px; }
@@ -9994,7 +9994,7 @@ carregar();
                 bandaL: cor(124, 82, 56), bandaS: cor(38, 18, 10), nome: cor(246, 230, 200), nomeOff: cor(242, 115, 94), escala: cor(60, 32, 20), agulha: cor(26, 11, 4), faceL: cor(255, 200, 98), faceE: cor(232, 168, 60), faceB: cor(255, 212, 124), arco: cor(60, 32, 20), zonaE: cor(176, 28, 18), zonaB: cor(150, 22, 14) };
   const TINTA_M = cor(52, 40, 34), CINZA_M = cor(78, 68, 60);
   const parafusoM = (P, x, y) => {
-    const f = [".###.", "#hhs#", "#hxm#", "#smd#", ".###."];
+    const f = [".###.", "#hhx#", "#hxm#", "#xmd#", ".###."];
     const k = { "#": cor(52, 40, 34), h: cor(250, 248, 242), m: cor(204, 200, 192), s: cor(156, 150, 142), d: cor(120, 112, 104), x: cor(96, 90, 84) };
     f.forEach((l, j) => [...l].forEach((q, i) => { if (q !== '.') px(P, x + i, y + j, k[q]); }));
     f.forEach((l, j) => [...l].forEach((q, i) => {
@@ -10089,7 +10089,7 @@ carregar();
     let [tx, ty] = alvo(Math.max(-40, db)), vx = tx - g.hx, vy = ty - g.hy, L = Math.hypot(vx, vy) + 1.2;
     let a = Math.atan2(vx, -vy);
     // parada: deitada em degraus de 2 e 3 (1 para 2,5), logo alem do 40
-    if (db < -41) { a = -Math.atan(2.5); L -= 3.5; }
+    if (db < -41) { a = -Math.atan(2.5); L -= .5; }
     const pts = [];
     for (let q = 0; q <= L + 1e-9; q += .1) pts.push([g.hx + q * Math.sin(a), g.hy - q * Math.cos(a)]);
     for (const [x, y] of caminho(pts)) px(P, x, y, VUC.agulha);
@@ -10104,9 +10104,9 @@ carregar();
   // creme com o sulco no meio e o valor embaixo
   function faderEst(P, F) {
     const { cx, sy0, sy1 } = F;
-    const curso = sy1 - sy0 - 11, nk = Math.max(2, Math.round(curso / 5) + 1);
+    const curso = sy1 - sy0 - 11, nk = Math.max(2, Math.floor(curso / 5) + 1), k0 = sy0 + 5 + Math.floor((curso - (nk - 1) * 5) / 2);
     for (let k = 0; k < nk; k++) {
-      const y = Math.round(sy0 + 5 + k * curso / (nk - 1));
+      const y = k0 + 5 * k;
       for (const [a, b] of [[cx - 16, cx - 11], [cx + 12, cx + 17]]) for (let x = a; x < b; x++) { px(P, x, y, cor(80, 74, 68)); px(P, x, y + 1, cor(226, 223, 216)); }
     }
     // a canaleta: contorno de 1 com as pontas arredondadas, 3 de miolo (a parede da esquerda na sombra)
@@ -10183,7 +10183,7 @@ carregar();
 
   // ---- a placa da transicao automatica: a luz dela (verde) e mais seis que acendem com a passagem, e o nome
   function placaEst(P, A, PL) {
-    const tTop = 19 + (PL.folga ? 2 : 0), rows = Math.ceil((tTop + A.thp) / 2) + 4;
+    const tTop = 21 + (PL.folga ? 2 : 0), rows = Math.ceil((tTop + A.thp) / 2) + 4;
     const w = Math.max(A.tw + 14, 7 * 8 + 15), x0 = Math.round((A.x0 + A.x1 - w) / 2), x1 = x0 + w;
     let y0 = A.y0 + 4;
     if (y0 + rows > A.yMax) y0 = Math.max(A.y0 + 1, A.yMax - rows);
@@ -10378,7 +10378,7 @@ carregar();
         if (RT.grav) linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 4 + j * LH, [250, 248, 242], FR, RT.esp));
         linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 3 + j * LH, RT.cor, FR, RT.esp));
         c.putImageData(im, 0, 0);
-        const base = 2 * f.C.y0 + 34, left = gx(2 * f.col + 1 - w * LS / 2), top = gy(base - LS * (3 + (NL - 1) * LH + AL) + LS * (NL - linhas.length) * LH / 2);
+        const base = 2 * f.C.y0 + 36, left = gx(2 * f.col + 1 - w * LS / 2), top = gy(base - LS * (3 + (NL - 1) * LH + AL) + LS * (NL - linhas.length) * LH / 2);
         cv.style.left = left + 'px'; cv.style.top = top + 'px';
         f.cal = [Math.floor(left / 2) - 2, Math.floor(top / 2), Math.ceil((left + w * LS) / 2) + 2, Math.ceil((top + h * LS) / 2)];
       });
@@ -10422,7 +10422,7 @@ carregar();
         px(P, x, y, c);
       }
       for (let x = 2; x < W - 2; x++) { px(P, x, ySplit + 1, MET.sulco); px(P, x, ySplit + 2, MET.luz); }
-      for (const [x, y] of [[2, 2], [W - 7, 2], [2, H - 7], [W - 7, H - 7]]) parafusoM(P, x, y);
+      for (const [x, y] of [[2, 2], [W - 7, 2], [2, H - 9], [W - 7, H - 9]]) parafusoM(P, x, y);
       m.vg = m.metros.map((e, i) => ({ k: e.dataset.k, apag: apag[i], g: vuFace(P, vx0(i), J.y0, vx0(i) + mw, J.y1, e.dataset.nome || '', apag[i]) }));
       for (const f of fs) faderEst(P, f);
       if (X) crossEst(P, X);
