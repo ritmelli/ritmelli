@@ -2083,6 +2083,15 @@ body { background: var(--parede-casa); }
   background: url("texturas/sala-iso.webp") right bottom / contain no-repeat;
 }
 .botoes-topo { order: 2; }
+/* na mesa: o bibelo em pixel (gramofone, livros e planta na prateleirinha, copiado do mock, 60x28 celulas a 2 px) no
+   lugar da sala isometrica reamostrada, encostado nas teclas; a busca ocupa a fileira da plaqueta ate ele (o MESA-TOPO
+   poe a plaqueta e as teclas em largura par, e a sobra da busca tambem cai em celula inteira) */
+body.mesa-dj .topo::before {
+  flex: 0 0 120px; max-width: none; height: 56px; margin: 0; align-self: flex-end;
+  background: url("texturas/bibelo.png") 0 0 / 120px 56px no-repeat; image-rendering: pixelated;
+}
+body.mesa-dj .topo .marca { margin-right: 0; }
+body.mesa-dj .topo .busca { flex: 1 1 0; max-width: none; }
 /* no computador as teclas levam o nome, e a busca divide a fileira com a plaqueta e as teclas: o
    caixilho de madeira abraca so ela (no celular ele e o ::after do topo, atras da fileira de baixo) */
 @media (min-width: 900px) {
@@ -8754,6 +8763,28 @@ carregar();
   desenhaTit();
 })();
 /* MALETA-TIT-FIM */</script>
+<script>/* MESA-TOPO-INICIO: na mesa a plaqueta e as teclas do topo em largura par do palco. Com a largura do texto (176,8 px
+   na plaqueta) tudo a direita andava meia celula e a moldura de pixel borrava; a largura vem do estilo computado, que
+   nao sofre a escala do palco */
+(() => {
+  const topo = document.querySelector('header.topo');
+  if (!topo) return;
+  function ajusta() {
+    const els = [topo.querySelector('.marca'), ...topo.querySelectorAll('.botoes-topo > .btn-madeira')].filter(Boolean);
+    for (const e of els) e.style.width = '';
+    if (!document.body.classList.contains('mesa-dj')) return;
+    for (const e of els) {
+      const w = parseFloat(getComputedStyle(e).width);
+      if (w > 0) e.style.width = 2 * Math.ceil(w / 2 - 1e-3) + 'px';
+    }
+  }
+  const mo = new MutationObserver(() => requestAnimationFrame(ajusta));
+  mo.observe(topo, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'class', 'aria-pressed'] });
+  mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  if (document.fonts) document.fonts.ready.then(ajusta);
+  ajusta();
+})();
+/* MESA-TOPO-FIM */</script>
 
 <script>/* DECK-JS-INICIO: os dois toca-discos da mesa inteiros em pixel art (1 celula = 2 px), num canvas por deck por cima
    dele: a caixa de madeira e a chapa creme com os parafusos, a letra do lado, o prato (anel do estroboscopio em marcas
