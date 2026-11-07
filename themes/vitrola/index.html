@@ -5715,6 +5715,20 @@ function fiosPixel(cv, larg, alt, fios, plugues, cel = CEL) {
     return d;
   };
   const tracos = fios.map(f => [faixas(f.pts), COR_FIO[f.cor]]);
+  // (r11) sem dente de 1 coluna: no fundo de uma curva a distancia ao traco cai de um lado e a coluna do meio ganhava 1
+  // celula a mais embaixo (ou em cima); quando as duas vizinhas concordam entre si, a coluna copia a da esquerda
+  for (const [d] of tracos) {
+    const col = new Map();
+    for (const i of d.keys()) { const k = i % W, j = (i / W) | 0, c = col.get(k); if (c) { c.t = Math.min(c.t, j); c.b = Math.max(c.b, j); } else col.set(k, { t: j, b: j }); }
+    for (const [k, c] of col) {
+      const e = col.get(k - 1), f = col.get(k + 1);
+      if (!e || !f || e.t !== f.t || e.b !== f.b || (c.t === e.t && c.b === e.b) || Math.abs(c.t - e.t) > 1 || Math.abs(c.b - e.b) > 1) continue;
+      for (let j = Math.min(c.t, e.t); j <= Math.max(c.b, e.b); j++) {
+        const i = j * W + k, v = d.get(i - 1);
+        if (v === undefined) d.delete(i); else d.set(i, v);
+      }
+    }
+  }
   for (const [d] of tracos) for (const i of d.keys()) {   // a sombra dura: 1 celula para baixo e a direita
     const k = i + W + 1;
     if (k < W * H && px[k * 4 + 3] === 0) pinta(k, [12, 5, 2], 115);
