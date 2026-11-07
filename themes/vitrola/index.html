@@ -1368,6 +1368,9 @@ body:not(.mesa-dj) :is(canvas.conta-px, canvas.nome-px) { display: none; }
   background-size: 48px 48px;
   background-color: var(--cor);
 }
+/* (r17) na mesa o martelado em celula: covinhas de 1 celula (o fundo escuro e a borda clara de cima a esquerda) numa
+   grade de passo 6 com desvio, no lugar do ruido de 144 texels (abaixo da meia celula, lia como filtro de foto) */
+body.mesa-dj .palco .tecla[data-acabamento="martelado"] { background-image: url("texturas/martelado_px.png"); image-rendering: pixelated; }
 
 /* pisar: o botao entra na porca; o pedal e a porca ficam. Afunda no instante do toque e volta
    logo, como um pe rapido: o :active do Chrome no celular so chegava depois
