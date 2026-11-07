@@ -2101,6 +2101,19 @@ body.mesa-dj .topo .botoes-topo { gap: 18px; }   /* o vao que se ve entre as mol
 body.mesa-dj .topo .botoes-topo .btn-madeira { height: 50px; }
 body.mesa-dj .topo .busca { --caixilho: 6px; }
 body.mesa-dj .topo .busca input { height: 38px; }
+/* a moldura de pixel na celula do palco: a --mold-* resolve o --px na raiz (1 px), entao a largura e o recuo dela se
+   refazem aqui com o --px do topo (2/3 de px: os 3 pontos da celula dao 2 px); o contorno de fora das placas cai na
+   coluna das pecas de baixo (2 px de recuo em cada ponta) */
+body.mesa-dj .topo { padding: 0 2px; }
+body.mesa-dj .topo :is(.marca, .botoes-topo .btn-madeira, .busca) {
+  border-image-width: calc(13 * var(--px)) calc(13 * var(--px)) calc(17 * var(--px)) calc(13 * var(--px));
+  border-image-outset: calc(3 * var(--px)) calc(3 * var(--px)) calc(7 * var(--px)) calc(3 * var(--px));
+}
+body.mesa-dj .topo .botoes-topo .btn-madeira:is(:active, .apertado) {
+  border-image-width: calc(13 * var(--px)) calc(13 * var(--px)) calc(14 * var(--px)) calc(13 * var(--px));
+  border-image-outset: calc(3 * var(--px)) calc(3 * var(--px)) calc(4 * var(--px)) calc(3 * var(--px));
+}
+body.mesa-dj .topo .busca input { border-image-width: calc(12 * var(--px)); }
 /* no computador as teclas levam o nome, e a busca divide a fileira com a plaqueta e as teclas: o
    caixilho de madeira abraca so ela (no celular ele e o ::after do topo, atras da fileira de baixo) */
 @media (min-width: 900px) {
