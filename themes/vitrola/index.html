@@ -9703,7 +9703,7 @@ carregar();
   function desenha(d) {
     const D = rectP(d.deck), tR = rectP(d.tampo);
     if (!D.width || !tR.width) return;
-    const W = Math.ceil(D.width / 2), H = Math.ceil(D.height / 2), uc = tR.width / 200;
+    const W = Math.ceil(D.width / 2), H = Math.floor(D.height / 2), uc = tR.width / 200;   // a altura impar (405) desce: o vao ate a pedaleira fica 12
     const tx0 = (tR.left - D.left) / 2, ty0 = (tR.top - D.top) / 2;
     const com = d.prato.classList.contains('com-disco');
     const dim = 1;   // o deck da deixa com a cor cheia (decisao do dono): o estado vai na etiqueta de cima da tela
