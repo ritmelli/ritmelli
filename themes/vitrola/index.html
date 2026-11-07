@@ -1420,6 +1420,7 @@ body.mesa-dj .palco .p-adesivo { top: 2px; left: 20px; width: 40px; transform: n
 body.mesa-dj .palco .p-tipo { padding-bottom: 2px; text-align: center; }   /* (r06) 10 px de altura (5 celulas), nao 9,5 */
 /* (r07) o footswitch 1 px abaixo (em px par: a plaquinha de 10 o subiu meio px) */
 body.mesa-dj .palco .tecla:not(.com-chave) .p-pe { position: relative; top: 1px; }
+body.mesa-dj .palco .t-nome .lin { display: block; }
 /* (r08) o selo do atraso com os 12 de altura, colado na borda de cima (top 0, a fita crepe na beira): o de 10 da r07
    deixava o filete de sombra da moldura grudado embaixo do texto, como um sublinhado; assim a folga do tique fica */
 body.mesa-dj .palco .p-adesivo { top: 0; }
@@ -5592,6 +5593,7 @@ function montarGaveta() {
 const linhasDoTexto = e => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].map(q => Math.round(q.top))).size; };
 function caberNomes() {
   for (const n of document.querySelectorAll('.banco .tecla .t-nome')) {
+    if (n.querySelector('.lin')) n.textContent = n.textContent;   // (r08) desfaz as linhas em span da medida anterior
     n.classList.remove('miuda', 'na-margem', 'duas');
     n.style.marginLeft = n.style.marginTop = '';
     if (!n.clientWidth) continue;   // gaveta fora da tela de verdade (sem caixa): mede quando aparecer
@@ -5619,6 +5621,30 @@ function caberNomes() {
     const dx = um ? Math.round(x / 2) * 2 - x : 0, dy = Math.round(y / 2) * 2 - y;
     if (Math.abs(dx) > .01) n.style.marginLeft = parseFloat(cs.marginLeft) + 2 * dx + 'px';
     if (Math.abs(dy) > .01) n.style.marginTop = parseFloat(cs.marginTop) + 2 * dy + 'px';
+    // (r08) o de 2 linhas: cada linha num span de bloco, com a primeira letra em px par (left relativo no span: o nome
+    // continua o pai da tomada do ::after); o texto do nome fica igual (o espaco da quebra fica no fim da 1a)
+    const tn = n.firstChild;
+    if (!um && tn && tn.nodeType === 3 && n.childNodes.length === 1) {
+      const txt = tn.textContent, rg = document.createRange();
+      let corte = -1, topo0 = null;
+      for (let i = 0; i < txt.length; i++) {
+        rg.setStart(tn, i); rg.setEnd(tn, i + 1);
+        const rr = rg.getClientRects()[0];
+        if (!rr || !rr.width) continue;
+        if (topo0 === null) topo0 = rr.top; else if (rr.top > topo0 + 2) { corte = i; break; }
+      }
+      if (corte > 0) {
+        n.textContent = '';
+        for (const parte of [txt.slice(0, corte), txt.slice(corte)]) { const sp = document.createElement('span'); sp.className = 'lin'; sp.textContent = parte; n.append(sp); }
+        for (const sp of n.querySelectorAll('.lin')) {
+          const r2 = document.createRange(); r2.selectNodeContents(sp);
+          const q = r2.getClientRects()[0];
+          if (!q) continue;
+          const xl = (q.left - PALCO.x) / PALCO.k, dl = Math.round(xl / 2) * 2 - xl;
+          if (Math.abs(dl) > .01) { sp.style.position = 'relative'; sp.style.left = dl + 'px'; }
+        }
+      }
+    }
   }
   // (r06) a plaquinha do tipo em numero par de celulas (largura multipla de 4 px: no pedal de 80, centrada, a moldura
   // comeca em px par) e o topo em px par; pela largura do texto 6 das 12 caiam 1 px de tela fora da grade
