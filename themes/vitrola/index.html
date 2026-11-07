@@ -2119,6 +2119,9 @@ body.mesa-dj .topo .marca { min-height: 0; height: 50px; padding: 0 16px 0 16px;
 body.mesa-dj .topo .botoes-topo { gap: 16px; }   /* o vao que se ve entre as molduras no ritmo do mock; com 16 a busca cobre a junta da madeira em 1172 e a de 1304 cai atras do vaso */
 body.mesa-dj .topo .botoes-topo .btn-madeira { height: 50px; }
 body.mesa-dj .topo .busca { --caixilho: 6px; }
+/* (r05) o caixilho da busca mais claro que a parede (o marrom #74391A tinha a luminancia da madeira e a caixa so se
+   separava pelo contorno) */
+body.mesa-dj .topo .busca { background: var(--veio), #92542D; }
 body.mesa-dj .topo .busca input { height: 38px; }
 /* os rotulos das teclas e o texto da busca em 18 px do palco (eram 15,4: pequenos para placas de 50, como no mock) */
 body.mesa-dj .topo .botoes-topo .btn-madeira, body.mesa-dj .topo .busca input { font-size: 18px; }
