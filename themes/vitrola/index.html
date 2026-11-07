@@ -3920,6 +3920,11 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     display: block; grid-area: fila; align-self: start; justify-self: center; position: relative; z-index: 3; max-width: 30rem;
     margin: 130px 0 0; padding: 0 12px; text-align: center; text-wrap: balance; font-size: .875rem; line-height: 1.45; color: var(--marfim-2);
   }
+  /* (r08) o aviso na letra de pixel da tela dos toca-discos (VT323 a 25 px, 1 pixel da letra = 1 celula), com a sombra dura
+     de 1 celula: era a unica letra lisa dentro da mesa */
+  body.mesa-dj .fila-vazia:not([hidden]) { font-family: "VT323", monospace; font-size: 25px; line-height: 20px; letter-spacing: 0;
+    color: #B0A08A; text-shadow: 0 2px 0 #1A0B04; max-width: 640px; margin-top: 118px; -webkit-font-smoothing: none; }
+  body.mesa-dj .fila-vazia b { font-size: 25px; font-weight: 400; color: #FBEFD9; margin-bottom: 4px; }
 
   /* ---- a prateleira: o painel de jacaranda com a plaqueta no alto, as capas numa fileira so que corre de lado (a
      rodinha e as setas) ---- */
