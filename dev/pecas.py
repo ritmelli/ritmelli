@@ -539,10 +539,14 @@ def knob_frango_quadro(graus, cx, cy, n, recuo=0.):
     chapeu = _frango_camada(graus, cx, cy - KF_SOBE, n, r1, r2, h, KF_SOBE)
     # (r12) uma silhueta so: o contorno preto so por fora (a saia e o bico que passa dela); o contorno do chapeu por
     # dentro do tampo da saia vira o degrau de sombra (A), sem o segundo anel escuro
-    px.update({c: ("A" if v == "O" and saia.get(c) not in (None, "O", "s") else v) for c, v in chapeu.items()})
-    # o ponteiro so no chapeu, numa linha de meia celula no tom medio da parede (T): escuro ele lia como espeto (r11)
-    risco = linha_pixel(cx, cy - KF_SOBE, graus, KF_TRACO[0], h + r2 - KF_TRACO[1]) & set(chapeu)
-    px.update({c: "T" for c in risco})
+    # (r13) por dentro do tampo o chapeu nao desenha nada (o degrau bege e a luz dele se desfaziam em pixels soltos
+    # girados): so o bico que passa do disco, por cima do contorno da saia, e o ponteiro
+    px.update({c: v for c, v in chapeu.items() if saia.get(c) in (None, "O", "s")})
+    # o ponteiro: a linha escura de 1 celula (2 px, como o dos knobs redondos) do centro ate a ponta, que vira a
+    # extremidade dele; engrossa para baixo deitado e para a direita em pe
+    risco = linha_pixel(cx, cy - KF_SOBE, graus, KF_TRACO[0], h + r2)
+    lado = (0, 1) if 45 < abs(graus) % 180 < 135 else (1, 0)
+    px.update({c: "O" for c in (risco | {(x + lado[0], y + lado[1]) for x, y in risco}) if c in chapeu})
     for x, y in list(px):
         if (x, y + 2) not in px:
             px[(x, y + 2)] = "s"
