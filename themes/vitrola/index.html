@@ -3679,7 +3679,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.mesa-dj .palco .gaveta,
   body.mesa-dj .palco .gaveta:has(.dica-ouvir.so-dica) { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "lista"; padding: 0; }
   body.mesa-dj .palco .gaveta::after, body.mesa-dj .palco :is(.cabeca-gav, .mesa-gav, .visor-gav, .cabo-gav) { display: none; }
-  body.mesa-dj .palco .gaveta { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #6a5246 rgba(0,0,0,.25); background-attachment: local; }
+  /* sem recorte: os seis pedais de cada lado sempre cabem, e o recorte na beira de dentro da moldura cortava a fita VOZ do
+     cabo de saida, que passa por cima dela (madrugada, 07/11) */
+  body.mesa-dj .palco .gaveta { overflow: visible; background-attachment: local; }
   body.mesa-dj .palco .gaveta > .rolo { grid-area: lista; overflow: visible; margin: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }
   /* a fileira no meio da caixa e centrada nela; a da direita tem as plaquinhas de tempo em cima dos pedais, entao desce
      8 a menos e os corpos dos pedais ficam na mesma linha nas duas (madrugada, 07/11) */
@@ -5832,22 +5834,26 @@ const LETRAS_FITA = {   // 5 x 6 celulas, o traco da caneta
   O: ['.XXX.', 'X...X', 'X...X', 'X...X', 'X...X', '.XXX.'],
   Z: ['XXXXX', '...X.', '..X..', '.X...', 'X....', 'XXXXX'],
 };
-function fitaEscrita(T, cx, cy, i, texto, inclina) {
+function fitaEscrita(T, cx, cy, i, texto, inclina, lado = 1) {
   const m = new Map(), [luz, meio, esc] = PAL_PECA.crepe, caneta = [38, 24, 18], alt = 10, esq = 3, dir = 4, folga = 3;
   const x0 = cx - esq, dobra = esq + dir, larg = dobra + texto.length * 6 - 1 + 2 * folga;   // a manga: do cabo ate 1 alem dele a direita
   const sobe = c => Math.round((c - esq) * inclina), y0 = cy - alt / 2;
+  // lado -1: a bandeirinha sai para a esquerda do cabo (na mesa, a beira da pedaleira cortava a da direita); a coluna c
+  // da fita fica em xc(c), espelhada no cabo, e o texto segue lido da esquerda para a direita
+  const xc = c => lado > 0 ? x0 + c : cx + esq - c;
   for (let c = 0; c < larg; c++) for (let j = 0; j < alt; j++) {
     if (c === larg - 1 && sorteCabo(i, c * 7 + j) < .45) continue;   // a ponta rasgada
-    const k = T.cel(x0 + c, Math.round(y0 + j - sobe(c)));
+    const k = T.cel(xc(c), Math.round(y0 + j - sobe(c)));
     if (k < 0) continue;
     // a manga: o cilindro com a luz a esquerda e a dobra escura na beira de saida; a bandeirinha: chapada, a beira
     // de cima clara e a de baixo escura
     m.set(k, c < dobra ? (c < 2 ? luz : c === dobra - 1 ? esc : j === 0 ? luz : meio) : j === 0 ? luz : j === alt - 1 ? esc : meio);
   }
   [...texto].forEach((l, n) => {
-    const c0 = dobra + folga + n * 6, s = sobe(c0 + 2);   // a letra inteira sobe o tanto do meio dela
+    // espelhada, a letra n vai na coluna da fita que fica n letras a direita do fim do texto
+    const c0 = lado > 0 ? dobra + folga + n * 6 : dobra + folga + (texto.length - 1 - n) * 6 + 4, s = sobe(c0 + 2 * lado);   // a letra inteira sobe o tanto do meio dela
     (LETRAS_FITA[l] || []).forEach((linha, j) => [...linha].forEach((v, c) => {
-      const k = T.cel(x0 + c0 + c, Math.round(y0 + 2 + j - s));
+      const k = T.cel(xc(c0) + c, Math.round(y0 + 2 + j - s));
       if (v === 'X' && k >= 0) m.set(k, caneta);
     }));
   });
@@ -5946,7 +5952,8 @@ function medirCabosBanco(banco) {
   const xOff = Math.round(br.left - gr.left), W = Math.round(gr.width), H = Math.ceil(br.height);
   // o canvas passa da beira do feltro ate perto da beira do palco, para a fita VOZ sair por cima da parede;
   // W segue a largura do feltro, a beira de tudo o mais
-  const Wc = Math.max(W, Math.round(rectP(banco.closest('.palco')).right - 2 - gr.left));
+  // (na mesa o .palco nao tem caixa, display: contents: a beira vem da pedaleira, ate a borda de fora dela)
+  const Wc = Math.max(W, Math.round((MESA.montada ? rectP(banco.closest('.gaveta')).right : rectP(banco.closest('.palco')).right - 2) - gr.left));
   const X = v => Math.round(v - gr.left), Y = v => Math.round(v - br.top);
   /* cada fileira: as caixas dos pedais (esquerda e direita), a linha das tomadas (y, a dos tracos de
      IN/OUT), o topo livre de cima (a etiqueta do grupo, quando a fileira abre um), topo e pe das caixas */
