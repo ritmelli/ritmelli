@@ -9312,7 +9312,8 @@ carregar();
       } else texto(P, 'fb', tt, ix0 + 3, y1, BR, { sombra: O });
       // a dica do prato vazio na forma curta que cabe inteira (a prateleira esta logo acima): o texto do app segue no DOM
       const art0 = (d.canal ? d.canal.textContent : '').trim();
-      const art = /^Toque numa capa/.test(art0) ? 'Toque numa capa' : /^A prateleira est/.test(art0) ? 'Busque um som' : art0;
+      const art = /^Toque numa capa/.test(art0) ? 'Toque numa capa' : /^A prateleira est/.test(art0) ? 'Busque um som'
+        : /^Ponha um disco no A seguir/.test(art0) ? 'Vem do A seguir' : art0;
       let a2 = art;
       const maxa = ix1 - 3 - (ix0 + 3);
       if (larg('f', a2) > maxa) {
@@ -9388,7 +9389,7 @@ carregar();
         for (let x = x0 + 4; x < x1 - 4; x++) { px(P, x, y0 + 3, cor(146, 76, 42)); px(P, x, yf - 4, cor(146, 76, 42)); }
         for (let y = y0 + 4; y < yf - 4; y++) { px(P, x0 + 3, y, cor(146, 76, 42)); px(P, x1 - 4, y, cor(146, 76, 42)); }
         const nome = /ant/.test(b.id) ? 'ant' : 'prox';
-        icone(P, nome, (x0 + x1) / 2, (y0 + y1) / 2, b.disabled ? cor(150, 104, 80) : cor(247, 235, 214));
+        icone(P, nome, (x0 + x1) / 2, (y0 + y1) / 2, b.disabled ? cor(172, 124, 96) : cor(247, 235, 214));   // apagado no contraste do play apagado
       }
     }
     P.dim = 1;
