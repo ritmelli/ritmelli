@@ -10811,7 +10811,7 @@ carregar();
       }
       for (const t of ts) { const w = larg35(t.rot), x0 = Math.round(t.T.col + .5 - w / 2); calmos.push([x0 - 2, t.T.y0 + 15, x0 + w + 2, t.T.y0 + 26]); }
       const calmo = (x, y) => calmos.some(q => x >= q[0] && x < q[2] && y >= q[1] && y < q[3]);
-      const ySplit = X ? X.y0 + 1 : H - 30;
+      const ySplit = X ? X.y0 + 2 : H - 30;   // (r12) o sulco 1 celula abaixo: o filete escuro na linha do contorno de baixo dos Sons rapidos
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const ex = Math.min(x, W - 1 - x), ey = Math.min(y, H - 1 - y);
         if (ex + ey < 2) continue;
