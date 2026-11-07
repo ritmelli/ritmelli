@@ -4185,7 +4185,7 @@ body.mesa-dj .palco .receptor.mx-ok :is(.janela, .fader label, .fader output, .f
    celulas): o canvas desenha os dois pelo lugar dos elementos, e a margem negativa sobe sem mexer na fileira do trilho */
 body.mesa-dj .palco .receptor.mx-ok .xfader { margin-top: -4px; }
 body.mesa-dj .palco .receptor.mx-ok .auto-luz { margin-top: -2px; }
-body.mesa-dj .palco .receptor.mx-ok .janela { column-gap: 4px; }
+body.mesa-dj .palco .receptor.mx-ok .janela { column-gap: 4px; margin-top: 2px; margin-bottom: -2px; }   /* (r15) os VUs 1 celula abaixo: os parafusos de cima encostavam nos cantos deles (a celula sai do vao ate os rotulos) */
 /* a canaleta em pe entre o rotulo (36 px) e o valor (22 px) */
 body.mesa-dj .palco .receptor.mx-ok .fader input { --w: round(down, calc(100cqh - 66px), 2px); width: var(--w); top: calc(40px + var(--w) / 2); }
 /* as chaves do set sairam da mesa (ordem dele, 06/11): o tocar parecidas fica sempre ligado pelo JS da mesa */
@@ -10488,8 +10488,8 @@ carregar();
     const z0 = r - 4;
     for (const x in ay) px(P, fx0 + +x, fy0 + ay[x], +x < z0 ? VUC.arco : VUC.zona);
     for (let x = z0; x < r; x++) px(P, fx0 + x, fy0 + ay[x] + 1, VUC.zonaE);
-    const pk = ay[r] - 5;
-    px(P, fx0 + r, fy0 + pk, cor(255, 150, 120)); px(P, fx0 + r + 1, fy0 + pk, VUC.zona); px(P, fx0 + r, fy0 + pk + 1, VUC.zona); px(P, fx0 + r + 1, fy0 + pk + 1, VUC.zonaE);
+    const pk = ay[r] - 4, rk = r + 1;   // (r15) a lampada de pico 1 celula a direita e 1 abaixo: colada no 0 do -10 lia como -10 com ponto
+    px(P, fx0 + rk, fy0 + pk, cor(255, 150, 120)); px(P, fx0 + rk + 1, fy0 + pk, VUC.zona); px(P, fx0 + rk, fy0 + pk + 1, VUC.zona); px(P, fx0 + rk + 1, fy0 + pk + 1, VUC.zonaE);
     const marca = (x, n, c, txt) => {
       const y = ay[x], dx = x - cx, dy = y + .5 - PY, d = Math.hypot(dx, dy), ux = dx / d, uy = dy / d;
       let tx = x, ty = y;
