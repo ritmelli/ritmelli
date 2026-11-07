@@ -4057,6 +4057,10 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   /* (r05) a placa da Prateleira 2 celulas abaixo: a linha de base do titulo na mesma da placa do A seguir (fora do
      bloco gerado pelo integra_prat.py) */
   body.mesa-dj #vista-prateleira #cab-prat { top: 4px; }
+  /* (r06) as setas 4 celulas para dentro: a direita furava a linha da margem direita (a do Desligar, do deck B e da
+     pedaleira B) e a sombra caia na parede; agora as duas ficam sobre os postes do quadro */
+  body.mesa-dj .prat-seta.esq { left: 0; }
+  body.mesa-dj .prat-seta.dir { right: -4px; }
   /* a busca cai do campo como uma gaveta, por cima da mesa (no painel de jacaranda da prateleira), e a mesa fica
      inteira embaixo: a prateleira e a maleta seguem no lugar (o montarMesa mede o campo) */
   body.mesa-dj .parede > #vista-prateleira[hidden] { display: contents !important; }
