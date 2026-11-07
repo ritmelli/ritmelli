@@ -10374,7 +10374,7 @@ carregar();
   function crossEst(P, X) {
     const cy = X.cy, tx0 = X.x0 + 17, tx1 = X.x1 - 17;
     const dentro = (x, y) => x >= tx0 && x < tx1 && y >= cy - 2 && y <= cy + 2 && Math.min(x - tx0, tx1 - 1 - x) + Math.min(y - (cy - 2), cy + 2 - y) >= 1;
-    for (let x = tx0; x <= tx1; x++) for (let y = cy - 1; y <= cy + 3; y++) if (!dentro(x, y) && dentro(x - 1, y - 1)) px(P, x, y, SOMBRA_F);
+    // (r08) a canaleta sem sombra, como as dos volumes (dois modelos de luz para a mesma peca; e somava com a do pino)
     for (let x = tx0; x < tx1; x++) for (let y = cy - 2; y <= cy + 2; y++) {
       if (!dentro(x, y)) continue;
       const ex = Math.min(x - tx0, tx1 - 1 - x), ey = Math.min(y - (cy - 2), cy + 2 - y);
@@ -10393,7 +10393,10 @@ carregar();
     const tx0 = X.x0 + 17, tx1 = X.x1 - 17, w = 12, xc0 = Math.round(tx0 + xv * (tx1 - tx0 - w)), y0 = cy - 7, y1 = cy + 8;
     sombraAlta(P, xc0, y0, xc0 + w, y1);
     caixa(P, xc0, y0, xc0 + w, y1, cor(240, 233, 220), cor(252, 249, 242), cor(188, 178, 162), 1);
-    for (let y = y0 + 3; y < y1 - 3; y++) for (const gx of [3, 5, 7]) { px(P, xc0 + gx, y, cor(170, 158, 140)); px(P, xc0 + gx + 1, y, cor(252, 249, 242)); }
+    for (let y = y0 + 3; y < y1 - 4; y++) for (const gx of [3, 5, 7]) { px(P, xc0 + gx, y, cor(170, 158, 140)); px(P, xc0 + gx + 1, y, cor(252, 249, 242)); }
+    // (r08) a face da frente em 3 fileiras, como a dos volumes (com 1 so o pino parecia uma pastilha chapada)
+    for (let x = xc0 + 1; x < xc0 + w - 2; x++) { px(P, x, y1 - 4, cor(248, 238, 220)); px(P, x, y1 - 3, cor(214, 198, 172)); px(P, x, y1 - 2, cor(184, 166, 140)); }
+    px(P, xc0 + w - 2, y1 - 4, cor(188, 178, 162)); px(P, xc0 + w - 2, y1 - 3, cor(172, 162, 144)); px(P, xc0 + w - 2, y1 - 2, cor(156, 146, 127));
   }
 
   // ---- a placa da transicao automatica: a luz dela (verde) e mais seis que acendem com a passagem, e o nome
