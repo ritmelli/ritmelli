@@ -479,11 +479,11 @@ def gota(px_, py_, r1, r2, h):
     return a * px_ + b * py_ - r1
 
 
-KF_CHAPEU = (6., 1.5, 15.5)   # (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
+KF_CHAPEU = (6., 2.5, 15.)    # (r15) ponta de 2,5: o bico que passa da saia com recheio creme por dentro do contorno (com 1,5 era so contorno). (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
 KF_SOBE = 0                 # o chapeu acima do tampo da saia (r11: chato; a parede de 2 virava uma faixa preta de 3 css)
 # a saia na mesma paleta do chapeu: um tom abaixo (o tampo dela no aro) escurecia o knob e ele lia como duas pecas
 # empilhadas; no mesmo creme ele segue da familia dos outros e a gota se le pelo contorno
-KF_SAIA_LETRA = {"W": "L", "F": "A", "A": "T", "L": "A", "T": "T", "E": "E"}   # (r14) a face redonda baixada um tom: a gota creme le por cima dela
+KF_SAIA_LETRA = {"W": "F", "F": "L", "A": "A", "L": "A", "T": "T", "E": "E"}   # (r15) a face redonda em (216,198,170), entre o creme e o taupe da r14 (no mostarda do MEGAFONE o taupe sumia); a parede segue nos dois tons de sombra
 
 
 def _frango_camada(graus, cx, cy, n, r1, r2, h, saia, letra=None):
@@ -542,6 +542,11 @@ def knob_frango_quadro(graus, cx, cy, n, recuo=0.):
     # (r14) a gota creme inteira, com o contorno e a luz dela, por cima da face redonda baixada um tom (KF_SAIA_LETRA):
     # o formato de bico se le pela cor e pelo contorno, e a ponta creme passa da saia
     px.update(chapeu)
+    # (r15) a sombra da gota na face: 1 px (T) embaixo e a direita do contorno dela, longe da luz (cima a esquerda)
+    face = {c for c, v in _frango_camada(graus, cx, cy, n, KF_CORPO, KF_CORPO, 0, KN_SAIA).items() if v in ("W", "F", "A")}
+    for x, y in chapeu:
+        if (x + 1, y + 1) in face and (x + 1, y + 1) not in chapeu:
+            px[(x + 1, y + 1)] = "T"
     # o ponteiro: 1 px escuro no eixo, so por dentro do bico (a ponta creme contornada e a extremidade dele)
     risco = linha_pixel(cx, cy - KF_SOBE, graus, KF_TRACO[0], h + r2 - 3)
     px.update({c: "O" for c in risco if chapeu.get(c) not in (None, "O")})
