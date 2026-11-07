@@ -3835,6 +3835,8 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
   body.mesa-dj .fila-parede.maleta .cabeca-fila canvas.tit-px { position: absolute; top: 6px; image-rendering: pixelated; pointer-events: none; }
+  /* a sombra dura de 2 celulas, a das outras pecas, seguindo a silhueta (a tampa inclinada, os fechos e a alca) */
+  body.mesa-dj .fila-parede.maleta { filter: drop-shadow(4px 4px 0 rgba(30, 12, 4, .43)); }
   /* MALETA-B-FIM */
   /* vazia: a maleta aberta com o aviso dentro */
   body.mesa-dj .fila-vazia:not([hidden]) {
@@ -3891,7 +3893,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     --pr-etiqueta: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='47' height='8' viewBox='0 0 47 8' shape-rendering='crispEdges'%3E%3Cpath fill='%230E0703' d='M2 0h43v1h-43zM1 1h1v1h-1zM45 1h1v1h-1zM0 2h1v5h-1zM6 2h2v1h-2zM6 5h2v1h-2zM46 2h1v5h-1zM5 3h1v2h-1zM8 3h1v2h-1zM17 3h1v1h-1zM23 3h1v1h-1zM23 5h1v1h-1zM27 3h1v1h-1zM27 5h1v1h-1zM31 3h1v1h-1zM31 5h1v1h-1zM34 3h1v1h-1zM36 3h1v1h-1zM39 3h1v1h-1zM12 4h1v1h-1zM24 4h1v1h-1zM28 4h1v1h-1zM28 6h1v1h-1zM13 5h1v1h-1zM11 6h1v1h-1zM14 6h1v1h-1zM16 6h3v1h-3zM22 6h1v1h-1zM26 6h1v1h-1zM30 6h1v1h-1zM32 6h1v1h-1zM35 6h1v1h-1zM38 6h3v1h-3zM0 7h47v1h-47z'/%3E%3Cpath fill='%232A1A12' d='M2 1h43v1h-43zM2 2h4v1h-4zM2 5h4v1h-4zM8 2h3v1h-3zM8 5h3v1h-3zM12 2h2v1h-2zM12 6h2v1h-2zM15 2h1v5h-1zM19 2h3v5h-3zM24 2h2v1h-2zM24 5h2v1h-2zM28 2h3v1h-3zM32 2h2v1h-2zM37 2h1v2h-1zM41 2h5v5h-5zM2 3h3v2h-3zM9 3h2v2h-2zM13 3h1v1h-1zM25 3h1v2h-1zM29 3h1v4h-1zM33 3h1v1h-1zM17 4h1v1h-1zM33 4h2v3h-2zM36 4h2v3h-2zM39 4h1v1h-1zM12 5h1v1h-1zM2 6h9v1h-9zM23 6h3v1h-3zM27 6h1v1h-1zM31 6h1v1h-1z'/%3E%3Cpath fill='%2360402E' d='M1 2h1v5h-1z'/%3E%3Cpath fill='%23FBEFD9' d='M11 2h1v1h-1zM11 4h1v2h-1zM14 2h1v2h-1zM14 5h1v1h-1zM16 2h3v1h-3zM16 5h3v1h-3zM22 2h2v1h-2zM22 4h2v1h-2zM26 2h2v1h-2zM26 4h2v1h-2zM31 2h1v1h-1zM34 2h3v1h-3zM38 2h3v1h-3zM38 5h3v1h-3zM11 3h2v1h-2zM16 3h1v2h-1zM18 3h1v2h-1zM22 3h1v1h-1zM22 5h1v1h-1zM24 3h1v1h-1zM26 3h1v1h-1zM26 5h1v1h-1zM28 3h1v1h-1zM28 5h1v1h-1zM30 3h1v1h-1zM30 5h1v1h-1zM32 3h1v1h-1zM32 5h1v1h-1zM35 3h1v3h-1zM38 3h1v2h-1zM40 3h1v2h-1zM13 4h2v1h-2zM30 4h3v1h-3z'/%3E%3Cpath fill='%23FFDC96' d='M6 3h1v1h-1z'/%3E%3Cpath fill='%23E88C28' d='M7 3h1v1h-1zM6 4h1v1h-1z'/%3E%3Cpath fill='%23AA5014' d='M7 4h1v1h-1z'/%3E%3C/svg%3E");
     align-self: start; justify-self: start; position: relative; top: 0; z-index: 0;
     width: round(down, 100%, 2px); height: 180px; margin: 36px 0 0; padding: 0; container-type: normal; contain: none;
-    box-shadow: none; filter: drop-shadow(4px 4px 0 rgba(0, 0, 0, .4));   /* a sombra segue o chanfro dos cantos */
+    box-shadow: none; filter: drop-shadow(4px 4px 0 rgba(30, 12, 4, .43));   /* a sombra segue o chanfro dos cantos, na cor da das pecas de pixel */
   }
   body.mesa-dj #rolo-prateleira::before {
     content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; left: 12px; right: 12px; pointer-events: none;
