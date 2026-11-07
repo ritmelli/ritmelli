@@ -10878,7 +10878,7 @@ carregar();
         px(P, x, y, c);
       }
       for (let x = 2; x < W - 2; x++) { px(P, x, ySplit + 1, MET.sulco); px(P, x, ySplit + 2, MET.luz); }
-      for (const [x, y] of [[3, 3], [W - 9, 3], [3, H - 9], [W - 9, H - 9]]) parafusoM(P, x, y);   // (r13) 1 celula para dentro: a sombra pintava por cima do chanfro   // os da direita fora do chanfro claro; (r06) os de baixo a 1 celula do contorno, como os outros
+      for (const [x, y] of [[3, 3], [W - 8, 3], [3, H - 8], [W - 8, H - 8]]) parafusoM(P, x, y);   // (r25) os da direita e os de baixo no espelho dos outros pelo corpo (como VUs, A/B e rebites), a sombra no chanfro   // (r13) 1 celula para dentro: a sombra pintava por cima do chanfro   // os da direita fora do chanfro claro; (r06) os de baixo a 1 celula do contorno, como os outros
       // (r22) a tomada de aco na borda direita onde chega o cabo preto dos Sons rapidos (o cabosDaMesa poe o plugue em
       // min(base do mixer - 40, pe dos pads + 70)): a mesma das pedaleiras, espelhada; sem ela o plugue batia na chapa
       const padsEl = document.getElementById('pads');
