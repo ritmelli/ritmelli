@@ -10565,7 +10565,7 @@ carregar();
     px(P, x1 - 2, y0 + 7, cor(188, 178, 162)); px(P, x1 - 2, y0 + 8, cor(172, 162, 144)); px(P, x1 - 2, y0 + 9, cor(156, 146, 127));
     if (foco) for (let x = x0 - 1; x <= x1; x++) for (let y = y0 - 1; y <= y1; y++) if (x === x0 - 1 || x === x1 || y === y0 - 1 || y === y1) px(P, x, y, cor(143, 74, 12));
     P.dim = 1;
-    texto35(P, valor, Math.round(F.col + .5 - larg35(valor) / 2), sy1 + 4, CINZA_M);
+    texto35(P, valor, Math.round(F.col + .5 - larg35(valor) / 2), sy1 + 3, CINZA_M);   // (r17) 1 celula acima: com os faders descidos o % ficava mais perto do sulco que do trilho
   }
 
   // ---- as chaves do set: teclas de madeira com o icone creme (ambar ligadas), a luz no canto e o nome miudo embaixo
