@@ -9284,16 +9284,23 @@ carregar();
     // o descanso visto de cima: o pe redondo de 9 com a luz em cima a esquerda e a sombra embaixo a direita, e o garfo de
     // duas abas de 2x4 abertas na largura do tubo com contorno (5): no deck vazio o vao e escuro, na deixa o tubo passa nele
     {
+      // (r04) o pedestal de metal em degrau, mais largo que o tubo, e o garfo claro de duas pontas dos lados dele: o oval
+      // com as abas escuras, cortado pelo tubo, lia como "( )"
       const fx_ = Math.floor(g.Px), fy = Math.round(g.Dy) - 2;
-      for (let y = fy - 5; y <= fy + 6; y++) for (let x = fx_ - 8; x <= fx_ + 9; x++) {
-        const qx = (x + .5 - fx_ - .5) / 5.6, qy = (y + .5 - fy - .5) / 3.1, e = qx * qx + qy * qy;
-        const qx2 = (x - .5 - fx_ - .5) / 6.6, qy2 = (y - 1.5 - fy - .5) / 4.1;
-        if (e <= 1) px(P, x, y, qy < -.5 ? cor(248, 244, 234) : qy > .5 ? cor(186, 176, 158) : cor(220, 213, 198));
-        else if ((x + .5 - fx_ - .5) ** 2 / 6.6 ** 2 + (y + .5 - fy - .5) ** 2 / 4.1 ** 2 <= 1) px(P, x, y, O);
-        else if (qx2 * qx2 + qy2 * qy2 <= 1) px(P, x, y, SOMBRA_F);
+      const x0 = fx_ - 6, x1 = fx_ + 7, y0 = fy - 3, y1 = fy + 3;
+      for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+        const ex = Math.min(x - (x0 - 1), x1 + 1 - x), ey = Math.min(y - (y0 - 1), y1 + 1 - y);
+        if (ex + ey < 1) continue;
+        const borda = x === x0 - 1 || x === x1 + 1 || y === y0 - 1 || y === y1 + 1 || ex + ey === 1;
+        px(P, x, y, borda ? O : y === y0 ? cor(248, 244, 234) : y === y1 ? cor(186, 176, 158) : x === x0 ? cor(236, 230, 218) : cor(220, 213, 198));
       }
-      for (const ax of [fx_ - 3, fx_ + 3]) ret(P, ax, fy - 2, ax + 1, fy + 2, cor(84, 76, 66));
-      ret(P, fx_ - 2, fy + 1, fx_ + 3, fy + 2, cor(70, 62, 54));
+      for (let x = x0 + 1; x <= x1 + 2; x++) px(P, x, y1 + 2, SOMBRA_F);
+      for (let y = y0 + 1; y <= y1 + 2; y++) px(P, x1 + 2, y, SOMBRA_F);
+      for (const ax of [fx_ - 4, fx_ + 4]) {
+        ret(P, ax - 1, fy - 3, ax + 2, fy + 2, O);
+        ret(P, ax, fy - 2, ax + 1, fy + 1, cor(240, 236, 226));
+        px(P, ax + 1, fy + 1, cor(172, 164, 148));
+      }
     }
     P.dim = 1;
     // a plaquinha VITROLA no meio da coluna da direita, embaixo do transporte
