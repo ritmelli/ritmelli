@@ -5561,6 +5561,7 @@ const linhasDoTexto = e => { const r = document.createRange(); r.selectNodeConte
 function caberNomes() {
   for (const n of document.querySelectorAll('.banco .tecla .t-nome')) {
     n.classList.remove('miuda', 'na-margem');
+    n.style.marginLeft = n.style.marginTop = '';
     if (!n.clientWidth) continue;   // gaveta fora da tela de verdade (sem caixa): mede quando aparecer
     // a letra de pixel so tem dois tamanhos sem borrar (1 e 2/3 de px por pixel): a maior em ate duas linhas,
     // desde que nenhuma palavra passe da largura (com o pisador 9 px abaixo o nome grande
@@ -5572,6 +5573,16 @@ function caberNomes() {
     n.classList.add('na-margem');   // a grande ainda pode usar a margem do pedal (o MEGAFONE na tela de 360)
     if (cabe()) continue;
     n.classList.replace('na-margem', 'miuda');
+  }
+  // (r05) na mesa o nome de uma linha comeca em px par do palco (celula inteira): centrado, ele caia em x fracionario
+  // (175,516...) e a letra de pixel borrava (a miuda, 1 px de tela por pixel da letra, inteira). O item e centrado na
+  // grade do pedal, entao a margem a mais m o desloca m/2 (translate e top fariam do nome o pai da tomada do ::after)
+  if (document.body.classList.contains('mesa-dj')) for (const n of document.querySelectorAll('.banco .tecla .t-nome')) {
+    if (!n.clientWidth || linhasDoTexto(n) !== 1) continue;
+    const r = rectP(n), cs = getComputedStyle(n), x = r.left + parseFloat(cs.paddingLeft), y = r.top;
+    const dx = Math.round(x / 2) * 2 - x, dy = Math.round(y / 2) * 2 - y;
+    if (Math.abs(dx) > .01) n.style.marginLeft = parseFloat(cs.marginLeft) + 2 * dx + 'px';
+    if (Math.abs(dy) > .01) n.style.marginTop = parseFloat(cs.marginTop) + 2 * dy + 'px';
   }
 }
 document.fonts.ready.then(caberNomes);
