@@ -94,6 +94,8 @@ FOLGA_S = 0.3              # o plano so entra se a virada ainda esta pelo menos 
 # 6 s de trecho baixo em media): a troca e o fim do corpo da que sai (o comeco da queda, na batida dela mais perto); a
 # proxima entra por baixo antes, no tempo e sem grave, subindo ate ficar cheia na troca; na troca os graves trocam em
 # meia batida e a que sai some em poucas batidas
+# (por baixo so entra a proxima que comeca quase sem som, como no final seco; a que se ouve desde o comeco entra na troca,
+# pedido dele, 06/11: o funk tocava 22 s de voz sobre voz)
 DJ_BATIDAS = 16            # a proxima entra isso de batidas deste antes da troca (4 compassos), sem o corpo dela medido...
 DJ_MIN_BATIDAS = 8         # ... ou o tanto que o drop dela pede (a introducao inteira por baixo), em degraus de 4, entre
 DJ_MAX_BATIDAS = 32        # estes dois...
@@ -118,6 +120,18 @@ INTRO_SECO_OUVE_S = 2.0    # FIM_DB abaixo do normal dela) e so chega ao corpo (
 SEGURA_BATIDAS = 8         # no final seco no tempo, a proxima fica no andamento deste isso de batidas dele depois da
                            # primeira dela e so entao volta devagar ao dela (escolhida em 24/10 entre a anterior, a
                            # esticada e a que entra por baixo antes do corte)
+GOLPE_DB = 6.0             # o corte no 1 do final seco no tempo (a djeco, escolha dele, 06/11): o golpe final e a ultima
+GOLPE_VOLTA = 8            # batida da grade com o pico a ate GOLPE_DB do normal das de antes, ate GOLPE_VOLTA batidas
+GOLPE_PERTO = 2            # antes da que a proxima pegaria e no maximo GOLPE_PERTO batidas antes do fim do corpo; a
+                           # primeira batida dela cai nele e o canal deste fecha ali (o 1 dela substitui o golpe dele)
+CORTE_RAMPA_S = 0.010      # o fecho do canal deste, terminando CORTE_ANTES_S antes do golpe
+CORTE_ANTES_S = 0.005
+CORTE_TAU_MAX = 0.35       # com mais disso dela antes da primeira batida, o comeco dela tocaria por cima deste: sem corte
+ECO_VOLTAS = 6             # o eco do mixer ligado antes de fechar o canal: o ultimo tempo deste (no tempo da proxima, o
+ECO_NIVEL = 0.6            # do mixer depois da troca), sem grave, volta ECO_VOLTAS vezes, a primeira a ECO_NIVEL e cada
+ECO_CAI = 0.5              # uma ECO_CAI da anterior (-6 dB)
+ECO_MEDE_S = 30.0          # o tempo da proxima sai da rede nesse tanto do comeco dela: a rede ve 30 s por vez, e com
+                           # menos as batidas saem irregulares (a Amo Minha Favela: 12 s irregulares, 30 s a 0,46 s)
 _GRAVE_LP = signal.butter(2, GRAVE_HZ, "lowpass", fs=SR, output="sos")  # ida e volta: 4a ordem, fase zero
 _GRAVE_HP = np.vstack([signal.butter(2, GRAVE_HZ, "highpass", fs=SR, output="sos")] * 2)  # Linkwitz-Riley
 # o visor de DJ do tema (a onda do disco correndo, a grade de batidas e a proxima entrando na passagem): a onda sai em
@@ -417,6 +431,73 @@ def _fase_rede(x, periodo, perto):
     return float((perto + np.median(d)) % periodo) if len(d) >= 3 else None
 
 
+def _golpe_final(blocos, b1, pa, queda):
+    """O golpe final deste para o corte no 1 do final seco: a ultima batida da grade antes de b1 (a batida em que a
+    proxima entraria depois do fim para o ouvido) com o pico a ate GOLPE_DB do normal das de antes (o percentil 75 dos
+    picos de 2 a 29 batidas antes de b1), no maximo GOLPE_VOLTA batidas antes de b1 e GOLPE_PERTO antes do fim do corpo
+    (queda). None sem o audio ou sem golpe: no SENTADAO o golpe e o 1 do ultimo compasso, a 1,4 s do b1 e 0,4 s antes da
+    queda, e o resto e o eco gravado dele."""
+    t, x = _junta(blocos, b1 - 30 * pa - 0.1, b1 + 0.2)
+    if x is None:
+        return None
+    m = x.mean(axis=1)
+    h = int(0.01 * SR)
+
+    def pico(tb):
+        i, j = int(round((tb - 0.05 - t) * SR)), int(round((tb + 0.15 - t) * SR))
+        if i < 0 or j > len(m):
+            return None
+        a = m[i:j]
+        a = a[:len(a) // h * h].reshape(-1, h)
+        return 10 * np.log10(max(1e-10, float((a * a).mean(axis=1).max())))
+
+    picos = [p for p in (pico(b1 - k * pa) for k in range(2, 30)) if p is not None]
+    if len(picos) < 8:
+        return None
+    ref = float(np.percentile(picos, 75))
+    for k in range(1, GOLPE_VOLTA + 1):
+        tb = b1 - k * pa
+        if tb < queda - GOLPE_PERTO * pa:
+            return None
+        p = pico(tb)
+        if p is not None and p >= ref - GOLPE_DB:
+            return tb
+    return None
+
+
+def _batida_tocada(x, reserva):
+    """O tempo da proxima como ela vai tocar (o periodo mediano das batidas da rede no comeco dela, ja esticado), para o
+    eco do corte: a grade dos juizes pode cair no 3 por 2 (a Amo Minha Favela, de 130 BPM, medida a 86,6). Sem a rede,
+    com pouco audio ou com as batidas irregulares, reserva."""
+    r = compasso.uns(x, SR) if x is not None and len(x) >= 0.8 * ECO_MEDE_S * SR else None
+    if r is None or len(r[0]) < 6:
+        return reserva
+    ibi, ok = _regular(r[0])
+    return float(np.median(ibi)) if ok else reserva
+
+
+def _eco_corte(blocos, golpe, d):
+    """O eco do corte no 1: o ultimo tempo (d s) deste antes do golpe, com o fecho do canal, sem grave, repetido a cada d
+    s a partir do golpe, ECO_NIVEL na primeira volta e ECO_CAI a cada uma das ECO_VOLTAS. None sem o audio."""
+    t, x = _junta(blocos, golpe - d - 0.1, golpe + 0.1)
+    if x is None:
+        return None
+    i0, i1 = int(round((golpe - d - t) * SR)), int(round((golpe - CORTE_ANTES_S - t) * SR))
+    if i0 < 0 or i1 > len(x) or i1 - i0 < int(0.05 * SR):
+        return None
+    y = x[i0:i1].astype(np.float32)
+    nr, nf = min(len(y), int(CORTE_RAMPA_S * SR)), int(0.005 * SR)
+    g = np.ones(len(y), np.float32)
+    g[len(y) - nr:] = ganho_sai(np.arange(nr), 0, nr)
+    g[:nf] *= np.linspace(0.0, 1.0, nf, dtype=np.float32)
+    y = signal.sosfilt(_GRAVE_HP, y * g[:, None], axis=0).astype(np.float32)
+    nd = int(round(d * SR))
+    eco = np.zeros(((ECO_VOLTAS - 1) * nd + len(y), 2), np.float32)
+    for r in range(ECO_VOLTAS):
+        eco[r * nd:r * nd + len(y)] += y * np.float32(ECO_NIVEL * ECO_CAI ** r)
+    return eco
+
+
 def colunas_onda(x, sr):
     """As colunas da onda do visor do audio mono x, que comeca num limite de coluna: (n, 3) bytes, a energia do grave,
     do medio e do agudo (VISOR_FAIXAS) em cada coluna inteira de VISOR_PASSO, em dB na escala VISOR_DB. A mesma conta a
@@ -671,6 +752,8 @@ class Engine:
         self._cheia = 0          # ... e em que quadro ela fica cheia (o fim da troca de grave)
         self._grave = None       # (de, ate) em quadros desde a virada: a troca de grave da passagem no tempo
         self._saindo = None      # [deck, quadros, feitos, grave, segura]: o disco que sai, abaixando por baixo
+        self._eco = None         # [audio, feitos]: o eco do corte no 1, por cima da que entra (feitos < 0: ainda nao)
+        self._eco_plano = None   # (audio, quadros depois da virada) do plano medido, ate a virada
         self._entrando = None    # [quadros, feitos, nivel, cheia]: a proxima subindo
         self.virou = None        # (o que saiu, o que entrou, a tag) para o servidor tirar da fila
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
@@ -1105,6 +1188,19 @@ class Engine:
                     som = np.zeros((frames, 2), np.float32)
                 som[:n] += s * g[:, None]
                 sai[2] += n
+        eco = self._eco
+        if eco is not None and not self.paused:  # o eco do corte no 1, comecando no golpe
+            a, p = eco
+            i0 = max(0, -p)
+            if i0 < frames:
+                k = min(frames - i0, len(a) - max(0, p))
+                if k > 0:
+                    if som is None:
+                        som = np.zeros((frames, 2), np.float32)
+                    som[i0:i0 + k] += a[max(0, p):max(0, p) + k]
+            eco[1] = p + frames
+            if eco[1] >= len(a):
+                self._eco = None
         if self._sobre:
             with self._slock:
                 vivos = []
@@ -1333,11 +1429,12 @@ class Engine:
             self._pronto.gen += 1
             self._visor_pas = None
         self._pronto = self.pronto_tag = self._virar_em = None
+        self._eco_plano = None
         self._deck.ahead = AHEAD
         if tudo:
             if self._saindo is not None:
                 self._saindo[0].gen += 1
-            self._saindo = self._entrando = None
+            self._saindo = self._entrando = self._eco = None
             self._visor_pas = self._visor_feita = None  # pulou: a sobreposicao e a velocidade dela nao valem mais
 
     def _mede(self, atual, prox, tr_atual):
@@ -1412,6 +1509,7 @@ class Engine:
                 self._sobrepor, self._entrar, self._grave = plano["sai"], plano["entra"], plano["grave"]
                 self._segura = plano.get("segura", 0)
                 self._nivel_entra, self._cheia = plano.get("nivel", 1.0), plano.get("cheia", 0)
+                self._eco_plano = plano.get("eco")
                 self.periodo_saida = plano["periodo_saida"]
                 self._virar_em = plano["virar"] - BLOCK / (2 * SR)  # vira no fim do bloco que acaba ali
                 visor = plano["visor"]
@@ -1421,6 +1519,7 @@ class Engine:
                 self._sobrepor = self._entrar = int(sobrepor * SR)
                 self._segura, self._nivel_entra, self._cheia = 0, 1.0, 0
                 self._grave = None
+                self._eco_plano = None
                 self._virar_em = max(self.pos, virar)
                 # o visor: so o cruzamento de volume, sem grade nenhuma (nada promete batida casada)
                 visor = {"no_tempo": False, "v": self._virar_em, "t0": self._virar_em,
@@ -1602,8 +1701,21 @@ class Engine:
             k = int(np.ceil((fim_o - TRANS_SECO_S - a0) / pa))
             while a0 + k * pa - tau < fim_o - FIM_CORTE_S:
                 k += 1
-            t0 = a0 + k * pa - tau
-            v, silencio, pad = virada(t0)
+            # o corte no 1 do DJ (a djeco, escolha dele, 06/11): a primeira batida dela cai no golpe final deste, o canal
+            # deste fecha ali e o eco do ultimo tempo dele fica por baixo dela; sem golpe, ou com o comeco dela longo
+            # antes da primeira batida (tocaria por cima deste), ela entra na batida depois do fim para o ouvido
+            golpe = _golpe_final(blocos_a, a0 + k * pa, pa, queda) if tau <= CORTE_TAU_MAX else None
+            b1 = golpe if golpe is not None else a0 + k * pa
+            t0 = b1 - tau
+            if golpe is not None:  # a virada antes do fecho do canal deste, que vai inteiro depois dela; ela comeca em t0
+                v, silencio, pad = virada(min(t0, golpe - CORTE_ANTES_S - CORTE_RAMPA_S))
+                if v is None:  # o golpe ficou perto demais (plano tardio): a batida depois do fim, como antes
+                    golpe, b1 = None, a0 + k * pa
+                    t0 = b1 - tau
+                else:
+                    pad = int(round((t0 - v) * SR))
+            if golpe is None:
+                v, silencio, pad = virada(t0)
             if v is None:
                 return None, "a batida da virada ja passou"
             if esticada is None:
@@ -1615,7 +1727,19 @@ class Engine:
                 for u in range(0, len(saida), BLOCK):
                     t = ini + (phi[u - pad] / SR if u >= pad else (u - pad) / SR)
                     cabeca.append((max(0.0, t), saida[u:u + BLOCK]))
-            sai = int(min(max(fim - t0, TRANS_SECO_S), 1.0) * SR)
+            segura, eco, corte = 0, None, ""
+            if golpe is None:
+                sai = int(min(max(fim - t0, TRANS_SECO_S), 1.0) * SR)
+            else:
+                sai = max(1, int(round((golpe - CORTE_ANTES_S - v) * SR)))
+                segura = max(0, sai - int(CORTE_RAMPA_S * SR))
+                # o tempo dela pela rede no audio cru (esticada, ela toca 1/s mais devagar durante o eco)
+                d = _batida_tocada(_junta(blocos_b, ini, ini + ECO_MEDE_S)[1], pb) / (1.0 if esticada is None else s)
+                e = _eco_corte(blocos_a, golpe, d)
+                if e is not None:
+                    eco = (e, int(round((golpe - v) * SR)))
+                corte = (f"; corte no 1 do golpe final ({fim - golpe:.2f} s antes do fim do som)"
+                         + (f", eco de {d:.3f} s" if e is not None else ", sem o eco"))
             # o visor: a proxima esticada pelas SEGURA_BATIDAS deste e de volta devagar (ou no andamento dela); a grade
             # deste vai ate a batida em que a primeira dela cai, mesmo passado o fim do som dele
             vb, sob, rampa, kr = ((1.0, 0.0, 0.0, 0.0) if esticada is None else
@@ -1624,10 +1748,10 @@ class Engine:
                      "k": kr, "sai": sai / SR, "entra": (pad + int(ENTRA_SECO_S * SR)) / SR, "grave": None,
                      "grade_de": _visor_grade(ga, a0, t_a, max(fim, a0 + k * pa) + 0.01),
                      "grade_para": _visor_grade(gb, ini + vb * tau, ini, ini + BATIDA_S) if gb.firme else None}
-            return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": silencio, "sai": sai,
+            return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": silencio, "sai": sai, "segura": segura,
                     "entra": pad + int(ENTRA_SECO_S * SR), "grave": None, "periodo_saida": pa, "visor": visor,
-                    "log": (f"final seco, {quem} em {a0 + k * pa:.2f} s, na grade deste ({ga.bpm:.1f} BPM), "
-                            f"ela comeca em {t0:.3f} s")}, None
+                    "eco": eco, "log": (f"final seco, {quem} em {b1:.2f} s, na grade deste ({ga.bpm:.1f} BPM), "
+                                        f"ela comeca em {t0:.3f} s{corte}")}, None
         s, m = min(((pb / (pa * m), m) for m in (0.5, 1.0, 2.0)), key=lambda v: abs(np.log(v[0])))
         if abs(s - 1) > TEMPO_MAX:
             # a proxima fica em TEMPO_MAX e a que sai anda o resto, se couber em SAI_MAX
@@ -1692,7 +1816,9 @@ class Engine:
                         f"(o corpo deste acaba em {troca_t:.2f} s)")}, None
 
     def _entrada_dj(self, prox, ini, pa, pb, s, b_longa):
-        """Quantas batidas deste (nb) a proxima entra antes da troca, e de onde dela (ini): o bastante para o drop dela
+        """Quantas batidas deste (nb) a proxima entra antes da troca, e de onde dela (ini). So a que comeca quase sem som
+        (INTRO_SECO_OUVE_S a FIM_DB abaixo do normal dela) entra por baixo antes; a que se ouve desde o comeco entra na
+        troca (nb = 0). A que entra por baixo leva o bastante para o drop dela
         (medir_corpo, numa batida dela) cair na troca, em degraus de 4, de DJ_MIN_BATIDAS a DJ_MAX_BATIDAS e ate
         DJ_MAX_S; com a introducao maior, ela comeca dentro dela, um numero inteiro de compassos antes do drop. Sem o
         corpo medido, DJ_BATIDAS desde o comeco dela. s e a velocidade dela na sobreposicao."""
@@ -1701,6 +1827,11 @@ class Engine:
             teto -= 4
         with self._qlock:
             niv = list(prox.niveis)
+        comeco_db = nivel_trecho(niv, ini, ini + INTRO_SECO_OUVE_S)
+        if comeco_db is None or comeco_db >= -FIM_DB:
+            # o comeco dela se ouve: nada dela por baixo da que sai, que seria voz sobre voz (o funk tocava 22 s junto,
+            # pedido dele, 06/11). Ela entra na troca, cheia em meia batida, e a que sai some por baixo dela
+            return 0, ini
         corpo = medir_corpo(niv, ini)
         if corpo is None:
             return min(DJ_BATIDAS, teto), ini
@@ -1817,6 +1948,8 @@ class Engine:
             ne = self._entrar if medida else 0
             self._entrando = [ne, 0, self._nivel_entra if medida else 1.0, self._cheia if medida else 0] if ne else None
             self._nivel_entra, self._cheia = 1.0, 0
+            self._eco = [self._eco_plano[0], -self._eco_plano[1]] if medida and self._eco_plano is not None else None
+            self._eco_plano = None
             self._deck = prox
             # o visor segue desenhando a passagem que acabou de virar (a sobreposicao vem toda depois da virada)
             self._visor_feita, self._visor_pas = (self._visor_pas if medida else None), None
