@@ -4518,7 +4518,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 
   <section class="parede rolo" aria-label="Discos">
     <section class="fila maleta fila-parede" aria-label="A seguir" hidden>
-      <div class="cabeca-fila"><h2>A seguir</h2><p class="conta"></p><button class="btn-texto limpar-fila" type="button">Limpar</button><button class="abre-fila" type="button" aria-expanded="false" aria-label="Abrir o A seguir" title="Abrir o A seguir"><svg viewBox="0 0 5 3" width="10" height="6" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h5v1h-5zM1 1h3v1h-3zM2 2h1v1h-1z"/></svg></button></div>
+      <div class="cabeca-fila"><h2>A seguir</h2><p class="conta"></p><button class="abre-fila" type="button" aria-expanded="false" aria-label="Abrir o A seguir" title="Abrir o A seguir"><svg viewBox="0 0 5 3" width="10" height="6" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h5v1h-5zM1 1h3v1h-3zM2 2h1v1h-1z"/></svg></button></div>
       <ol class="lista-fila" inert></ol>
       <span class="maleta-pe" aria-hidden="true"></span>
     </section>
@@ -4880,8 +4880,11 @@ function arte(it, curta) {
 /* ---------- braco: o angulo segue o raio do sulco ---------- */
 // o prato e 4% menor que o lugar dele, em volta do mesmo centro (a moldura grossa do toca-discos, 19/10): o sulco tambem
 const G = { cx: 40, cy: 40, R: (36 - 2.6) * .96, px: 88, py: 12, L: 62 };
+// (07/11, pedido do dono) o fim do curso em 50% do raio, na ultima ranhura: com 41% a cabeca do braco parava em cima
+// do selo (que vai ate ~43% do raio)
+const BRACO_FIM = 0.50;
 function anguloPara(p) {
-  const alvo = G.R * (0.95 - p * (0.95 - 0.41));
+  const alvo = G.R * (0.95 - p * (0.95 - BRACO_FIM));
   let a = 10, b = 70;
   for (let i = 0; i < 26; i++) {
     const m = (a + b) / 2, r = m * Math.PI / 180;
@@ -5233,7 +5236,14 @@ function desenharVisor(agora) {
     const u = (pos - vem.t0) / vem.va;
     if (u > -(span + 2)) { p = vem; ondaDe = ondaAtual; ondaPara = ondaVem; agoraU = u; }
   }
-  const agoraX = p ? agoraU : pos;   // o "agora" na coordenada da tela: s de saida desde o t0, ou o tempo do disco
+  let agoraX = p ? agoraU : pos;   // o "agora" na coordenada da tela: s de saida desde o t0, ou o tempo do disco
+  // (07/11, pedido do dono) tocando, o agora da tela nunca volta por um tiquinho: a posicao chega 15 vezes por segundo,
+  // em centesimos, e a correcao de cada tick puxava o agora uns ms para tras; na beira de uma celula a tela inteira voltava
+  // 1 coluna e avancava no quadro seguinte (a linha da batida tremia 1 pixel para o lado enquanto passava). Pulo de verdade
+  // (mais de 0,25 s, outro disco, outra passagem, arrasto) segue na hora
+  const kMono = p ? `${p.de}>${p.para}` : `${tr && tr.id}`, mono = V.mono;
+  if (tocando && !V.arrasto && mono && mono.k === kMono && agoraX < mono.x && mono.x - agoraX < .25) agoraX = mono.x;
+  V.mono = { k: kMono, x: agoraX };
   // a esquerda da tela, presa na grade das celulas (a tela so muda de celula em celula, 25 vezes por segundo): com o
   // ponto de toque no meio; com movimento reduzido, a pagina fica e o ponto anda
   let esq = (Math.floor(agoraX / VDJ_PASSO) - Math.floor(W / 2)) * VDJ_PASSO;
