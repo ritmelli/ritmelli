@@ -1418,11 +1418,11 @@ body.mesa-dj .palco .tecla:not(.com-chave) .p-grande { top: 2px; }
 body.mesa-dj .palco .p-adesivo { top: 2px; left: 20px; width: 40px; transform: none; text-align: center;
   padding: .5px 0 1.5px; box-sizing: border-box; }
 body.mesa-dj .palco .p-tipo { padding-bottom: 2px; text-align: center; }   /* (r06) 10 px de altura (5 celulas), nao 9,5 */
-/* (r07) o footswitch 1 px abaixo (em px par: a plaquinha de 10 o subiu meio px) e a entrelinha do nome de 2 linhas em 14 */
+/* (r07) o footswitch 1 px abaixo (em px par: a plaquinha de 10 o subiu meio px) */
 body.mesa-dj .palco .tecla:not(.com-chave) .p-pe { position: relative; top: 1px; }
-body.mesa-dj .palco .tecla .t-nome.duas { line-height: 14px; }
-/* (r07) o selo do atraso com 10 de altura (5 celulas): o de 12 encostava no tique das 12h da escala */
-body.mesa-dj .palco .p-adesivo { line-height: 8px; padding-top: 1px; padding-bottom: 1px; }
+/* (r08) o selo do atraso com os 12 de altura, colado na borda de cima (top 0, a fita crepe na beira): o de 10 da r07
+   deixava o filete de sombra da moldura grudado embaixo do texto, como um sublinhado; assim a folga do tique fica */
+body.mesa-dj .palco .p-adesivo { top: 0; }
 body.mesa-dj .palco .p-tipo { border-image-source: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='2' y='0' width='8' height='2'/%3E%3Crect x='2' y='10' width='8' height='2'/%3E%3Crect x='0' y='2' width='4' height='2'/%3E%3Crect x='0' y='8' width='4' height='2'/%3E%3Crect x='8' y='2' width='4' height='2'/%3E%3Crect x='8' y='8' width='4' height='2'/%3E%3Crect x='0' y='4' width='2' height='4'/%3E%3Crect x='10' y='4' width='2' height='4'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.15'%3E%3Crect x='4' y='2' width='4' height='1'/%3E%3C/g%3E%3C/svg%3E"); }
 
 /* LED vermelho de pixel, como o dos pedais de verdade,
