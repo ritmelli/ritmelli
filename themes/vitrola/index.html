@@ -2168,7 +2168,8 @@ body.mesa-dj .topo .botoes-topo .btn-madeira { justify-content: center; text-sha
 body.mesa-dj .topo #b-cel > * { position: relative; left: -2px; }
 body.mesa-dj .topo :is(#b-mudo-topo, #b-desligar) > * { position: relative; left: -2px; }   /* (r18) o mesmo do celular: pela tinta, o conteudo ficava 1 a 1,25 css a direita do meio */
 body.mesa-dj .topo #b-disp > svg { margin-right: 2px; }
-body.mesa-dj .topo #b-mudo-topo > .ic-mic { left: -4px; }   /* (r22) o microfone 1 celula a mais para a esquerda: ate o M eram 8,5 css, nos outros botoes 10 */   /* (r18) a engrenagem ocupa a caixa toda do icone: 1 px a mais ate o texto, o vao dos outros (10,5 css) */   /* (r13) o glifo do celular tem respiro dos lados: o conjunto 1 celula a esquerda fica no meio */
+body.mesa-dj .topo #b-mudo-topo > .ic-mic { left: -4px; }
+body.mesa-dj .topo .botoes-topo .btn-madeira :is(svg, .ic-mic) { filter: drop-shadow(0 2px 0 rgba(255,255,255,.6)); }   /* (r25) o icone gravado como o texto (o mesmo realce claro de 1 celula embaixo): sem ele o icone parecia impresso por cima */   /* (r22) o microfone 1 celula a mais para a esquerda: ate o M eram 8,5 css, nos outros botoes 10 */   /* (r18) a engrenagem ocupa a caixa toda do icone: 1 px a mais ate o texto, o vao dos outros (10,5 css) */   /* (r13) o glifo do celular tem respiro dos lados: o conjunto 1 celula a esquerda fica no meio */
 /* (r06) os icones das teclas no peso do rotulo 600 (o traco de 1,8 ficava fino ao lado) e o logo 1,25 vez maior: com os
    rotulos maiores ele perdia a forca (x de 12 px numa placa de 40; no mock a palavra pesa o dobro do rotulo) */
 body.mesa-dj .topo .botoes-topo .btn-madeira svg { stroke-width: 2.5; }
