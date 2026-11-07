@@ -10728,12 +10728,7 @@ carregar();
       else if (y === H - E - 1 || x === W - E - 1) c = PAINEL.luz;
       px(P, x, y, c);
     }
-    for (let y = E + 4; y < H - E - 3; y += 6) for (let x0 = E + 4 + ((y / 6 | 0) % 2) * 6; x0 < W - E - 5; x0 += 13) {
-      const x = x0 + Math.floor(hsM(x0, y, 13) * 3);
-      let ok = true;
-      for (let t = -1; t <= 2; t++) for (let v = -1; v <= 1; v++) if (!livre(x + t, y + v)) ok = false;
-      if (ok) { px(P, x, y, PAINEL.e); px(P, x + 1, y, PAINEL.e); }
-    }
+    // o couro liso: as manchas so cabiam na faixa de baixo e liam como uma fileira solta (r02)
     for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) cantoneira(P, W, H, sx, sy, L, 5);
     if (tw <= W - 2 * (E + 3)) titulo(P, tit, Math.floor((W - tw) / 2), yb, cor(252, 242, 220));
     else { const t2 = larg('fb', tit) - 1; texto(P, 'fb', tit, Math.round((W - t2) / 2), yb, CREME_L, { sombra: O }); }
@@ -11101,7 +11096,7 @@ carregar();
   function desenhaTv(t) {
     const D0 = rectP(t.sec);
     if (!D0.width) return;
-    const EX = 1, D = { left: D0.left - 2 * EX, top: D0.top, width: D0.width + 2 * EX, height: D0.height };   // o trilho esquerdo cresce para fora
+    const EX = 0, D = { left: D0.left - 2 * EX, top: D0.top, width: D0.width + 2 * EX, height: D0.height };   // no prumo do mixer e dos pads (EX = 1 passava 1 celula na esquerda)
     const W = Math.ceil(D.width / 2 - .05), H = Math.ceil(D.height / 2 - .05), M_ = 2;   // a caixa toda, sem a fresta da parede
     const q = s => t.sec.querySelector(s);
     const tl = q('#tv-tela'), le = q('#tv-leituras'), luz = q('#tv-luz');
