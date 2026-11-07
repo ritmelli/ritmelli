@@ -10083,7 +10083,7 @@ carregar();
   const MET = { a: cor(207, 203, 195), b: cor(211, 207, 199), c: cor(215, 211, 203), luz2: cor(224, 221, 214), luz: cor(246, 244, 239), somb: cor(160, 154, 146), somb2: cor(186, 181, 172), sulco: cor(110, 104, 96) };
   const hsM = (a, b, c = 0) => { const h = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453; return h - Math.floor(h); };
   const VUC = { face: cor(252, 186, 72), faceS: cor(224, 148, 46), tinta: cor(36, 22, 14), zona: cor(222, 44, 28), banda: cor(60, 32, 20),
-                bandaL: cor(124, 82, 56), bandaS: cor(38, 18, 10), nome: cor(246, 230, 200), nomeOff: cor(242, 115, 94), escala: cor(60, 32, 20), agulha: cor(26, 11, 4), faceL: cor(255, 200, 98), faceE: cor(232, 168, 60), faceB: cor(255, 212, 124), arco: cor(60, 32, 20), zonaE: cor(176, 28, 18), zonaB: cor(150, 22, 14) };
+                bandaL: cor(124, 82, 56), bandaS: cor(38, 18, 10), nome: cor(246, 230, 200), nomeOff: cor(242, 115, 94), escala: cor(60, 32, 20), agulha: cor(26, 11, 4), faceL: cor(255, 200, 98), faceE: cor(232, 168, 60), faceB: cor(255, 212, 124), arco: cor(150, 88, 36), zonaE: cor(176, 28, 18), zonaB: cor(150, 22, 14) };
   const TINTA_M = cor(52, 40, 34), CINZA_M = cor(78, 68, 60);
   const parafusoM = (P, x, y) => {
     const f = [".###.", "#hhx#", "#hxm#", "#xmd#", ".###."];
@@ -10164,8 +10164,8 @@ carregar();
       if (txt) { const tw = larg35(txt); texto35(P, txt, fx0 + Math.round(tx + .5 - tw / 2), fy0 + ty - 6, VUC.escala); }
     };
     const off = Math.round(10 * sx), tres = off >= 8;
-    marca(cx - off, 2, VUC.escala, '40'); marca(cx, 2, VUC.escala, tres ? '20' : ''); marca(cx + off, 2, VUC.escala, '10');
-    if (tres) for (const x of [cx - 4, cx + 4]) { px(P, fx0 + x, fy0 + ay[x] - 2, VUC.escala); px(P, fx0 + x, fy0 + ay[x] - 1, VUC.escala); }
+    marca(cx - off, 2, VUC.arco, '40'); marca(cx, 2, VUC.arco, tres ? '20' : ''); marca(cx + off, 2, VUC.arco, '10');
+    if (tres) for (const x of [cx - 4, cx + 4]) { px(P, fx0 + x, fy0 + ay[x] - 2, VUC.arco); px(P, fx0 + x, fy0 + ay[x] - 1, VUC.arco); }
     P.dim = 1;
     const nm = nome.toUpperCase(), gl_ = [...nm].map(ch => NOMEV[ch]).filter(Boolean);
     const tw = gl_.reduce((a, q) => a + q[0].length + 1, -1);
@@ -10209,7 +10209,7 @@ carregar();
     }
   }
   // um tom so, sem degrade (o app nao tem degrade em lugar nenhum; ordem dele, 06/11)
-  const SOMBRA_A = cor(30, 12, 4, 185);
+  const SOMBRA_A = cor(30, 12, 4, 110);   // a das outras sombras do painel (185 lia como base preta embaixo do pino)
   function sombraAlta(P, x0, y0, x1, y1) {
     for (let y = y0 + 2; y < y1; y++) px(P, x1, y, SOMBRA_A);
     px(P, x1 - 1, y1 - 1, SOMBRA_A);
