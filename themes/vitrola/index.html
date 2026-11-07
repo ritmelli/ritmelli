@@ -10258,7 +10258,7 @@ carregar();
     for (let y = fy0; y < fy1; y++) for (let x = fx0; x < fx1; x++) {
       const ex = Math.min(x - fx0, fx1 - 1 - x), ey = Math.min(y - fy0, fy1 - 1 - y);
       if (ex + ey < 1) continue;
-      px(P, x, y, (y === fy0 || x === fx0) ? VUC.faceS : (y === fy1 - 1 || x === fx1 - 1) ? VUC.faceB : y <= fy0 + 2 ? VUC.faceL : VUC.face);
+      px(P, x, y, (y === fy0 || x === fx0) ? VUC.faceS : (y === fy1 - 1 || x === fx1 - 1) ? VUC.faceB : y <= fy0 + 1 ? VUC.faceL : VUC.face);   // (r07) o reflexo com 1 fileira: o 20 da escala entrava na 2a
     }
     const ay = {};
     for (let x = cx - 2; x <= cx + 2; x++) ay[x] = top;
@@ -10540,7 +10540,9 @@ carregar();
       // a sombra do painel na parede
       for (let y = 2; y < H + 2; y++) for (let x = 2; x < W + 2; x++) {
         const ex = Math.min(x - 2, W + 1 - x), ey = Math.min(y - 2, H + 1 - y);
-        if (ex + ey >= 2 && (x >= W || y >= H)) px(P, x, y, SOMBRA);
+        // (r07) tambem dentro da caixa onde o chanfro do painel tira o canto (sobrava um L de madeira na quina de baixo)
+        const fora = x >= W || y >= H || Math.min(x, W - 1 - x) + Math.min(y, H - 1 - y) < 2;
+        if (ex + ey >= 2 && fora) px(P, x, y, SOMBRA);
       }
       const nm = m.metros.length || 3, gap = 4, mw = Math.floor((J.x1 - J.x0 - gap * (nm - 1)) / nm), sobra = (J.x1 - J.x0) - (mw * nm + gap * (nm - 1));
       const vx0 = i => J.x0 + Math.floor(sobra / 2) + i * (mw + gap);
