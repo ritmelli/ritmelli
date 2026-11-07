@@ -4129,7 +4129,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   }
   body.mesa-dj .estante .disco-item.no-prato .capa { box-shadow: 0 0 0 2px var(--contorno), 0 4px 0 2px rgba(0, 0, 0, .45); }
   body.mesa-dj .estante .capa img { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); object-fit: cover; }
-  body.mesa-dj .estante .capa:active img, body.mesa-dj .estante .capa.apertado img { filter: brightness(.6); }
+  /* (07/11, pedido do dono) sem a plaquinha No prato e sem o disco que toca levantado: so a subidinha do clique (no JS) */
+  body.mesa-dj .estante .no-prato-tag { display: none; }
+  body.mesa-dj .estante .disco-item.no-prato { top: 0; }
   body.mesa-dj .estante canvas:is(.foto-px, .nome-px) { display: none; }
   body.mesa-dj .estante .no-prato-tag { left: 0; }
   body.mesa-dj .estante .ficha {
@@ -8584,7 +8586,14 @@ $('#estante').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   const li = b.closest('li');
   const id = li && li.dataset.id;
-  if (b.dataset.role === 'capa' && id) { if (Date.now() - seguradaEm > 900) tocar(id); }   // soltar depois de segurar nao toca
+  if (b.dataset.role === 'capa' && id) {
+    if (Date.now() - seguradaEm > 900) {   // soltar depois de segurar nao toca
+      tocar(id);
+      // (07/11, pedido do dono) na mesa o disco clicado da uma subidinha e volta ao lugar (o que toca nao fica mais levantado)
+      if (MESA.montada && !reduz.matches && li.animate)
+        li.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-6px)', offset: .35 }, { transform: 'translateY(0)' }], { duration: 300, easing: 'ease-out' });
+    }
+  }
   else if (b.dataset.role === 'mais' && id) { if (menuBotao === b) fecharMenu(true); else { fecharMenu(false); abrirMenu(b, { tipo: 'disco', id }); } }
   else if (b.dataset.role === 'retentar') { const c = S.jobCorpo[b.dataset.job]; if (c) baixar(c, S.jobAlvo[b.dataset.job]); }
 });
