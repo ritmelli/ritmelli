@@ -10878,6 +10878,16 @@ carregar();
       }
       for (let x = 2; x < W - 2; x++) { px(P, x, ySplit + 1, MET.sulco); px(P, x, ySplit + 2, MET.luz); }
       for (const [x, y] of [[3, 3], [W - 9, 3], [3, H - 9], [W - 9, H - 9]]) parafusoM(P, x, y);   // (r13) 1 celula para dentro: a sombra pintava por cima do chanfro   // os da direita fora do chanfro claro; (r06) os de baixo a 1 celula do contorno, como os outros
+      // (r22) a tomada de aco na borda direita onde chega o cabo preto dos Sons rapidos (o cabosDaMesa poe o plugue em
+      // min(base do mixer - 40, pe dos pads + 70)): a mesma das pedaleiras, espelhada; sem ela o plugue batia na chapa
+      const padsEl = document.getElementById('pads');
+      if (padsEl && padsEl.offsetParent) {
+        const Pr = rectP(padsEl), cyJ = Math.round((Math.min(D.top + D.height - 40, Pr.top + Pr.height + 70) - D.top) / 2);
+        for (let y = cyJ - 3; y <= cyJ + 3; y++) for (let x = W - 5; x <= W - 1; x++) {
+          const borda = x === W - 5 || x === W - 1 || y === cyJ - 3 || y === cyJ + 3;
+          px(P, x, y, borda ? O : y === cyJ - 2 ? cor(220, 220, 215) : x === W - 4 ? cor(110, 112, 110) : cor(150, 152, 150));
+        }
+      }
       m.vg = m.metros.map((e, i) => ({ k: e.dataset.k, apag: apag[i], g: vuFace(P, vx0(i), J.y0, vx0(i) + mw, J.y1, e.dataset.nome || '', apag[i]) }));
       for (const f of fs) faderEst(P, f);
       if (X) crossEst(P, X);
