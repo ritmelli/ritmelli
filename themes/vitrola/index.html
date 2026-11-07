@@ -5891,9 +5891,13 @@ function telaPixel(W, H) {
         if (ilhos) {
           // o passa-cabo maior que o cabo (a boca aparece em volta da ponta): o fundo escuro e o labio de 1 celula, claro
           // embaixo e a direita (a parede de dentro que pega a luz de cima a esquerda) e escuro em cima (r03)
-          const r = Math.hypot(ox, oy), R = 5.4, k = (ox + oy) / (r || 1);
-          if (r <= R - 1.2) pinta(c, [14, 11, 9], -2);
-          else if (r <= R) pinta(c, k > -.2 ? [96, 88, 80] : [30, 26, 23], -2);
+          // (r06) o ilhos de niquel de verdade em volta da boca (o labio escuro de 1 celula lia como a ponta cortada do cabo):
+          // contorno escuro, anel de metal com a luz em cima a esquerda, a parede de dentro e o fundo escuro
+          const r = Math.hypot(ox, oy), R = 7.4, k = (ox + oy) / (r || 1);
+          if (r <= R - 3.4) pinta(c, [12, 10, 8], -2);
+          else if (r <= R - 2.2) pinta(c, k > -.2 ? [74, 68, 62] : [26, 22, 20], -2);
+          else if (r <= R - 1) pinta(c, k < -.35 ? [226, 222, 214] : k > .35 ? [112, 108, 102] : [168, 164, 156], -2);
+          else if (r <= R) pinta(c, [20, 16, 14], -2);
           continue;
         }
         const a = Math.atan2(oy, ox), r = Math.hypot(ox, oy), R = 4.6 + 1.5 * sorteCabo(i, Math.round((a + Math.PI) * 2.2));
