@@ -3477,14 +3477,15 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.mesa-dj { background: #80380D; }
   body.mesa-dj .app::before {
     content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-    background: url("texturas/mesa-fundo.png") -16px 0 / 1746px 1028px repeat; image-rendering: pixelated;
-    /* (r06) 8 celulas para a esquerda: as juntas das tabuas caiam tangentes as linguetas, aos fechos e a ponta da alca
-       da maleta (x 164, 544 e 776); em -24 uma junta entrava no vao entre o mixer e os pads. O ::after (a junta da
-       beira direita) fica */
+    background: url("texturas/mesa-fundo.png") 54px 0 / 1746px 1028px repeat; image-rendering: pixelated;
+    /* (r07) a madeira 27 celulas para a direita, escolhida pela pagina inteira (madr/fundo_juntas.py: a mascara das pecas
+       contra o fundo, cada junta que aparece com peca a menos de 3 celulas por 10 linhas ou mais): em 0 as juntas
+       tangenciavam a maleta e o topo, em -16 o topo e os pads; 54 e 56 zeram, 58 cai no vao pads-deck B. O ::after
+       segue a mesma fase (a madeira continua em 1746) */
   }
   body.mesa-dj .app::after {
     content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; left: 1746px; right: 0; pointer-events: none;
-    background: url("texturas/mesa-fundo.png") 8px 0 / 1746px 1028px repeat; image-rendering: pixelated;
+    background: url("texturas/mesa-fundo.png") 54px 0 / 1746px 1028px repeat; image-rendering: pixelated;
   }
   body.mesa-dj.com-disco .app {
     --vao: 12px;
