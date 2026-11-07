@@ -4025,6 +4025,15 @@ body.mesa-dj #pads.px-ok .pad-face { width: 50px; height: 50px; aspect-ratio: au
 body.mesa-dj #pads.px-ok .pad-nome { height: 20px; padding: 0; opacity: 0; }
 body.mesa-dj #pads.px-ok .pads-vazio { position: relative; z-index: 2; }
 body.mesa-dj #pads > canvas.pads-px { position: absolute; left: 0; top: 0; z-index: 0; display: block; pointer-events: none; image-rendering: pixelated; }
+/* o visor de DJ em pixel art (o MIX-JS desenha o gabinete, a moldura do tubo, a luz, os botoes e a grade num canvas por
+   baixo); o vidro e o que ele mostra seguem os de antes */
+body.mesa-dj #tv.px-ok { border-image: none; background: none; border-radius: 0; padding: 12px 12px 16px 12px; }
+body.mesa-dj #tv > canvas.tv-px { position: absolute; left: 0; top: 0; z-index: 0; display: block; pointer-events: none; image-rendering: pixelated; }
+body.mesa-dj #tv.px-ok .tv-vidro { border-image: none; background: none; box-shadow: none; border-radius: 0; padding: 14px 10px 10px; }
+body.mesa-dj #tv.px-ok .tv-lado { padding-top: 12px; gap: 12px; }
+body.mesa-dj #tv.px-ok .tv-lado > * { visibility: hidden; }
+body.mesa-dj #tv.px-ok .tv-lado .lampada { width: 14px; height: 14px; }
+body.mesa-dj #tv.px-ok .tv-knob { width: 26px; height: 26px; }
 body.mesa-dj #pads > canvas.pads-nomes { position: absolute; z-index: 1; display: block; pointer-events: none; image-rendering: pixelated; }
 body:not(.mesa-dj) #pads > canvas { display: none; }
 body:not(.mesa-dj) #pads { translate: none !important; }
@@ -10632,6 +10641,385 @@ carregar();
       c.putImageData(im, 0, 0);
     }
   }
+  // ---------------- o visor de DJ: o gabinete de madeira com as cantoneiras de latao, a moldura escura do tubo em volta do
+  // vidro, e no painel da direita a luz vermelha, os dois botoes e a grade do alto-falante. O vidro e o que ele mostra
+  // seguem os de antes (pedido dele, 06/11: so o de fora muda); a geometria sai da tela e das leituras de dentro
+  let tvp = null;
+  function preparaTv(sec) {
+    if (tvp && tvp.sec === sec) return tvp;
+    const cv = document.createElement('canvas');
+    cv.className = 'tv-px'; cv.setAttribute('aria-hidden', 'true'); sec.prepend(cv);
+    tvp = { sec, cv, ctx: cv.getContext('2d'), chave: '' };
+    sec.classList.add('px-ok');
+    return tvp;
+  }
+  const VIDRO = cor(11, 8, 7), CARVAO = cor(22, 20, 19);
+  // a madeira do gabinete, puxada para o marrom do mock; tudo opaco (a sombra de contato e a propria lateral escura)
+  const MT = { face: cor(152, 84, 52), luz: cor(222, 152, 112), escuro: cor(96, 48, 26), lado: cor(116, 60, 34), dir: cor(130, 70, 42),
+               veio: cor(134, 72, 44), veioM: cor(116, 60, 34), veioP: cor(143, 78, 48), veioC: cor(172, 102, 66), friso: cor(186, 116, 78) };
+  const LAT = { face: cor(222, 170, 70), luz: cor(246, 212, 120), dobra: cor(166, 108, 34), escuro: cor(116, 72, 22), brilho: cor(255, 250, 205) };
+  // a moldura do tubo: as faixas de fora (1) para dentro (4) depois do contorno, com a luz (L, e LL no primeiro terco do
+  // topo e da esquerda), o meio (M, nas quinas que viram) e a sombra (S); o recesso entre o chanfro da abertura e o arco
+  const TK = cor(28, 18, 13), TD = cor(26, 16, 10), TM = cor(54, 32, 20), TS = cor(40, 24, 15);
+  const TUBO = { L: [TM, TM, TM, TD], LL: cor(90, 58, 36), LM: cor(72, 44, 26), M: [TM, TM, cor(33, 20, 12), TD], S: [cor(33, 20, 12), cor(33, 20, 12), TS, cor(72, 44, 26)] };
+  void TK;
+  const ARCO = [5, 3, 2, 1, 1];   // o arco de fora da moldura (o recorte por linha a partir da quina): degraus 2-1-1-2
+  const QVIDRO = { t: [5, 3, 2, 1, 1], b: [5, 3, 2, 1, 1] };   // a quina do vidro, em cima e embaixo (o selo A embaixo a esquerda)
+  // dentro do retangulo R = [x0, y0, x1, y1) com as quinas recortadas pela tabela T (T[j] celulas na linha j de cada quina)
+  function dentroT(x, y, R, T) {
+    if (x < R[0] || y < R[1] || x >= R[2] || y >= R[3]) return false;
+    const i = Math.min(x - R[0], R[2] - 1 - x), j = Math.min(y - R[1], R[3] - 1 - y);
+    const t = Array.isArray(T) ? T : (y - R[1] <= R[3] - 1 - y ? T.t : T.b);
+    return !(j < t.length && i < t[j]);
+  }
+  // dentro do retangulo redondo de raio r (o gabinete), crescido de k (k negativo encolhe)
+  function arred(x, y, R, r, k = 0) {
+    const x0 = R[0] - k, y0 = R[1] - k, x1 = R[2] + k, y1 = R[3] + k, rr = Math.max(0, r + k);
+    if (x < x0 || y < y0 || x >= x1 || y >= y1) return false;
+    const cx = x < x0 + rr ? x0 + rr : x > x1 - 1 - rr ? x1 - 1 - rr : x, cy = y < y0 + rr ? y0 + rr : y > y1 - 1 - rr ? y1 - 1 - rr : y;
+    return Math.hypot(x - cx, y - cy) <= rr + .4;
+  }
+  // o lado da borda mais perto: 't' em cima, 'b' embaixo, 'l' a esquerda, 'r' a direita
+  const lado = (x, y, R) => {
+    const ex = Math.min(x - R[0], R[2] - 1 - x), ey = Math.min(y - R[1], R[3] - 1 - y);
+    return ey <= ex ? (y < (R[1] + R[3]) / 2 ? 't' : 'b') : (x < (R[0] + R[2]) / 2 ? 'l' : 'r');
+  };
+  const daLuz = l => l === 't' || l === 'l';
+  // para onde a borda de R olha (pela quina de raio r): 1 para a luz de cima e da esquerda, -1 para o outro lado, 0 de lado
+  const luzD = (x, y, R, r) => {
+    const cx = Math.min(Math.max(x, R[0] + r), R[2] - 1 - r), cy = Math.min(Math.max(y, R[1] + r), R[3] - 1 - r), nx = x - cx, ny = y - cy;
+    return nx || ny ? -(nx + ny) / (Math.hypot(nx, ny) * Math.SQRT2) : 0;
+  };
+  const olhaLuz = (x, y, R, r) => {
+    const cx = Math.min(Math.max(x, R[0] + r), R[2] - 1 - r), cy = Math.min(Math.max(y, R[1] + r), R[3] - 1 - r);
+    let nx = x - cx, ny = y - cy;
+    if (!nx && !ny) { const l = lado(x, y, R); nx = l === 'l' ? -1 : l === 'r' ? 1 : 0; ny = l === 't' ? -1 : l === 'b' ? 1 : 0; }
+    const d = -(nx + ny) / (Math.hypot(nx, ny) * Math.SQRT2);
+    return d > .35 ? 1 : d < -.35 ? -1 : 0;
+  };
+  // um sprite redondo de diametro n (impar), em camadas de fora para dentro: corDe(camada, dx, dy) por celula, com a sombra
+  // de contato de 1 celula embaixo e a direita
+  function redondo(P, x0, y0, n, corDe, perfil = null) {
+    const c = (n - 1) / 2, r2 = (c + .5) * (c + .5);
+    const den = (i, j) => i >= 0 && j >= 0 && i < n && j < n && (perfil ? Math.abs(i - c) <= (perfil[j] - 1) / 2 : (i - c) ** 2 + (j - c) ** 2 <= r2);
+    const cam = new Int8Array(n * n).fill(-1);
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) if (den(i, j)) cam[j * n + i] = 99;
+    for (let k = 0; k < n; k++) for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      if (cam[j * n + i] !== 99) continue;
+      const v = (a, b) => (a < 0 || b < 0 || a >= n || b >= n) ? -1 : cam[b * n + a];
+      if ([v(i - 1, j), v(i + 1, j), v(i, j - 1), v(i, j + 1)].some(q => q !== 99 && q < k)) cam[j * n + i] = k;
+    }
+    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) if (!den(i, j) && den(i - 1, j - 1)) px(P, x0 + i, y0 + j, MT.lado);
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const k = cam[j * n + i];
+      if (k < 0) continue;
+      const cc = corDe(k, i - c, j - c);
+      if (cc) px(P, x0 + i, y0 + j, cc);
+    }
+  }
+  // o gabinete: contorno, a luz de 1 em cima e a esquerda, a espessura escura de 2 embaixo e de 1 a direita, a face, e a
+  // borda da abertura (o mesmo arco da moldura): 1 celula de sombra em cima e a esquerda, de luz embaixo e a direita
+  function gabinete(P, W, H, B) {
+    const R = [0, 0, W, H], naB = (x, y) => dentroT(x, y, B, ARCO);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!arred(x, y, R, 3) || naB(x, y)) continue;
+      const l = lado(x, y, R);
+      let c = MT.face;
+      if (!arred(x, y, R, 3, -1)) c = O;
+      else if (!arred(x, y, R, 3, -2)) c = daLuz(l) ? MT.luz : MT.escuro;
+      else if (!arred(x, y, R, 3, -3) && !daLuz(l)) c = MT.lado;
+      if (c === MT.face && [[0, -1], [-1, 0], [1, 0], [0, 1]].some(([a, b]) => naB(x + a, y + b))) {
+        const o = olhaLuz(x, y, B, 5);
+        c = o > 0 ? MT.escuro : o < 0 ? MT.luz : luzD(x, y, B, 5) < 0 ? MT.friso : MT.veio;
+      }
+      px(P, x, y, c);
+    }
+  }
+  // os veios: fibras de 1 a 3 tracos de 8 a 24 celulas com quebras de 2 a 4, o miolo mais escuro de 1 a 2 numa ponta e as
+  // vezes um fio claro do lado, nas linhas (deitadas) e colunas (em pe) dadas; so em celula de face, sem encostar de lado
+  // em contorno ou em sombra de controle
+  function veios(P, linhas, colunas) {
+    const hsM = (a, b, c = 0) => {
+      let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) + Math.imul(c | 0, 1274126177);
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    };
+    const f0 = (a, b) => a >= 0 && b >= 0 && a < P.W && b < P.H && P.u[b * P.W + a] === MT.face;
+    const duro = new Set([O, CARVAO, MT.lado, MT.escuro, MT.friso, LAT.face, LAT.luz]);
+    const livre = (a, b) => !(a >= 0 && b >= 0 && a < P.W && b < P.H) || !duro.has(P.u[b * P.W + a]);
+    const VEIO = new Set([MT.veio, MT.veioM, MT.veioP]);
+    const ve = (a, b) => a >= 0 && b >= 0 && a < P.W && b < P.H && VEIO.has(P.u[b * P.W + a]);
+    const sob = (a, b) => ve(a, b - 1) || ve(a, b + 1);
+    const fibra = (ini, fim, fixo, deitado, semente, solto) => {
+      let p = ini + Math.floor(hsM(semente, 0, 91) * 14), n = 0;
+      while (p < fim) {
+        const tracos = 2 + Math.floor(hsM(semente, n, 92) * 3);
+        for (let t = 0; t < tracos && p < fim; t++, n++) {
+          const len = 3 + Math.floor(hsM(semente, n, 93) * (deitado ? 12 : 4)), cel = [];
+          for (let u = 0; u < len && p + u < fim; u++) cel.push(deitado ? [p + u, fixo] : [fixo, p + u]);
+          // o traco aparece so nos trechos livres de 3 ou mais (entre os controles, ele some e volta)
+          const deg = deitado && len >= 8 && hsM(semente, n, 88) < .3 ? (hsM(semente, n, 87) < .5 ? -1 : 1) : 0;
+          if (deg) for (let u = Math.floor(cel.length / 2); u < cel.length; u++) cel[u] = [cel[u][0], cel[u][1] + deg];
+          const bom = ([a, b]) => f0(a, b) && (solto || (deitado ? livre(a, b - 1) && livre(a, b + 1) : livre(a - 1, b) && livre(a + 1, b)))
+            && !(deitado && sob(a, b) && sob(a - 1, b) && sob(a + 1, b));
+          const trechos = [];
+          let cur = [];
+          for (const q of cel) { if (bom(q)) cur.push(q); else { if (cur.length) trechos.push(cur); cur = []; } }
+          if (cur.length) trechos.push(cur);
+          trechos.filter(tr => tr.length >= 3).forEach((tr, m) => {
+            const sorte = hsM(semente, n + m, 85), tom = sorte < .3 && deitado ? MT.veioM : sorte < .75 ? MT.veio : MT.veioP;
+            tr.forEach(([a, b], u) => px(P, a, b, tr.length >= 5 && (u === 0 || u === tr.length - 1) ? MT.veioP : tom));
+            if (deitado && tom === MT.veio && hsM(semente, n + m, 86) < .25) for (const [a, b] of tr.slice(0, 2)) if (f0(a, b + 1)) px(P, a, b + 1, MT.veioC);
+            if (tr.length >= 8 && hsM(semente, n + m, 96) < .35) {
+              const [a, b] = tr[Math.floor(tr.length / 2)], [la, lb] = deitado ? [a, b - 1] : [a - 1, b];
+              for (let u = -2; u <= 2; u++) { const qa = deitado ? la + u : la, qb = deitado ? lb : lb + u; if (f0(qa, qb)) px(P, qa, qb, MT.veioC); }
+            }
+          });
+          p += len + (deitado ? 1 : 3 + Math.floor(hsM(semente, n, 94) * 3));
+        }
+        p += 20 + Math.floor(hsM(semente, n, 98) * 26);
+      }
+    };
+    linhas.forEach(([y, x0, x1], i) => fibra(x0, x1, y, true, 300 + i * 7 + y, false));
+    colunas.forEach(([x, y0, y1, solto], i) => fibra(y0, y1, x, false, 700 + i * 11 + x, !!solto));
+  }
+  // a moldura do tubo: o arco de fora (ARCO) em contorno e 4 faixas contadas por erosao de 8 vizinhos a partir dele (cada
+  // faixa repete o arco, sem chanfro); o vidro com a quina QVIDRO manda. O brilho da faixa 2 so num arco de ~12 celulas em
+  // volta da quina de cima a esquerda, com 2 celulas de meio-tom
+  function moldTubo(P, B, G) {
+    const W_ = B[2] - B[0], H_ = B[3] - B[1], cam = new Int8Array(W_ * H_).fill(-1), crista = new Set();
+    for (let y = 0; y < H_; y++) for (let x = 0; x < W_; x++) if (dentroT(B[0] + x, B[1] + y, B, ARCO)) cam[y * W_ + x] = 99;
+    const v = (x, y) => (x < 0 || y < 0 || x >= W_ || y >= H_) ? -1 : cam[y * W_ + x];
+    for (let y = 0; y < H_; y++) for (let x = 0; x < W_; x++)
+      if (cam[y * W_ + x] === 99 && [v(x - 1, y), v(x + 1, y), v(x, y - 1), v(x, y + 1)].some(q => q < 0)) cam[y * W_ + x] = 0;
+    for (let k = 1; k < 5; k++) for (let y = 0; y < H_; y++) for (let x = 0; x < W_; x++) {
+      if (cam[y * W_ + x] !== 99) continue;
+      let borda = false;
+      for (let b = -1; b <= 1 && !borda; b++) for (let a = -1; a <= 1; a++) { const q = v(x + a, y + b); if (q !== 99 && q < k) { borda = true; break; } }
+      if (borda) cam[y * W_ + x] = k;
+    }
+    for (let y = B[1]; y < B[3]; y++) for (let x = B[0]; x < B[2]; x++) {
+      const k = cam[(y - B[1]) * W_ + (x - B[0])];
+      if (k < 0) continue;
+      let c;
+      if (dentroT(x, y, G, QVIDRO)) c = VIDRO;
+      else if (k === 0) c = O;
+      else {
+        const colaVidro = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => dentroT(x + a, y + b, G, QVIDRO));
+        const f = colaVidro ? 4 : Math.min(4, k), o = olhaLuz(x, y, G, 3), l = lado(x, y, G);
+        c = (o > 0 ? TUBO.L : o < 0 ? TUBO.S : TUBO.M)[f - 1];
+        const bx = x - B[0], by = y - B[1];
+        if (o >= 0 && f === 2 && [v(bx - 1, by), v(bx + 1, by), v(bx, by - 1), v(bx, by + 1)].some(q => q === 1)) {
+          c = l === 't' || l === 'l' ? TUBO.LL : TUBO.LM;   // a crista inteira no claro, o meio-tom na quina que vira
+          crista.add(x + ',' + y);
+        }
+      }
+      px(P, x, y, c);
+    }
+    for (let y = B[1]; y < B[3]; y++) for (let x = B[0]; x < B[2]; x++) {
+      if (P.u[y * P.W + x] !== TD) continue;
+      const vz = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([a, b]) => P.u[(y + b) * P.W + x + a] === TD).length;
+      if (!vz) P.u[y * P.W + x] = TS;
+    }
+    for (let y = B[1]; y < B[3]; y++) for (let x = B[0]; x < B[2]; x++) {
+      const c = P.u[y * P.W + x], e = P.u[y * P.W + x - 1], d = P.u[y * P.W + x + 1], u = P.u[(y - 1) * P.W + x], b = P.u[(y + 1) * P.W + x];
+      if (c === TM && ((e === TD && d === TD) || (u === TD && b === TD))) P.u[y * P.W + x] = TS;
+      else if (c === TD && [e, d, u, b].every(q => q === TM || q === TS)) P.u[y * P.W + x] = TM;
+    }
+    for (let y = B[1]; y < B[3]; y++) for (let x = B[0]; x < B[2]; x++) {
+      if (P.u[y * P.W + x] !== TUBO.S[3] || crista.has(x + ',' + y)) continue;
+      if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => P.u[(y + b) * P.W + x + a] === VIDRO)) { P.u[y * P.W + x] = TS; continue; }
+      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => P.u[(y + b) * P.W + x + a] === TD)) P.u[y * P.W + x] = TM;
+    }
+    const acerto = (ox, oy, lista, c) => lista.forEach(([a, b]) => { P.u[(oy + b) * P.W + ox + a] = c; });
+    const quinas = () => {
+      const TR = [B[2] - 1, B[1]], BL = [B[0], B[3] - 1], TL = [B[0], B[1]];
+      acerto(...TR, [[-6, 4], [-5, 4]], TM);
+      acerto(...TR, [[-5, 5], [-4, 5], [-4, 6], [-3, 6], [-2, 5], [-4, 8], [-4, 9]], TS);
+      acerto(...BL, [[4, -5], [5, -5]], TM);
+      acerto(...BL, [[5, -4], [6, -4], [6, -3]], TS);
+      acerto(...BL, [[7, -5]], TD);
+      acerto(...TL, [[6, 7]], TD);
+      acerto(...TR, [[-6, 7]], TD);
+      acerto(...TL, [[8, 4], [9, 4], [6, 5], [7, 5], [5, 6], [4, 7], [4, 8], [4, 9]], TM);
+      acerto(...TR, [[-9, 4], [-8, 4], [-3, 4]], TM);
+      acerto(...TR, [[-7, 5], [-6, 5], [-5, 6]], TS);
+      acerto(...TR, [[-5, 7]], TUBO.S[3]);
+      acerto(...BL, [[4, -7]], TD);
+      acerto(...BL, [[4, -6]], TM);
+    };
+    // as pontas da crista (as celulas com um vizinho so) apagam em 2 celulas de meio-tom escuro
+    const viz8 = (x, y) => [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]].map(([a, b]) => [x + a, y + b]).filter(([a, b]) => crista.has(a + ',' + b));
+    for (const key of crista) {
+      const [x, y] = key.split(',').map(Number), vz = viz8(x, y);
+      if (vz.length !== 1) continue;
+      P.u[y * P.W + x] = TS;
+      const [a, b] = vz[0];
+      P.u[b * P.W + a] = TS;
+    }
+    quinas();
+  }
+  // a cantoneira de latao: o pentagono de pernas de 11 que abraca a quina do gabinete (2 celulas para fora dele), a diagonal
+  // de dentro longe da abertura e as pontas retas; contorno, a luz de 1 nas bordas que olham para cima e para a esquerda, a
+  // dobra escura nas que olham para baixo e para a direita; a sombra de contato na madeira (sem encostar no labio) e, fora
+  // do gabinete, na mesa; o rebite em cupula com a sombra em latao. Desenha no pincel com a margem M (o gabinete em M, M)
+  function cantoneiraTv(P, W, H, sx, sy, M) {
+    const X = i => sx < 0 ? M - 1 + i : M + W - i, Y = j => sy < 0 ? M - 1 + j : M + H - j;
+    const den = (i, j) => i >= 0 && j >= 0 && i <= 10 && j <= 10 && i + j >= 2 && i + j <= 13;
+    const tela = new Set();
+    for (let j = 0; j <= 10; j++) for (let i = 0; i <= 10; i++) if (den(i, j)) tela.add(X(i) + ',' + Y(j));
+    const tem = (x, y) => tela.has(x + ',' + y);
+    const madeira = new Set([MT.face, MT.veio, MT.veioM, MT.veioC, MT.veioP]);
+    for (const key of tela) {
+      const [x, y] = key.split(',').map(Number), a = x + 1, b = y + 1;
+      if (tem(a, b) || a >= P.W || b >= P.H) continue;
+      const q = P.u[b * P.W + a], viz = [[0, -1], [-1, 0], [1, 0], [0, 1]].map(([p, r]) => P.u[(b + r) * P.W + a + p]);
+      if (madeira.has(q) || q === MT.luz) { if ((tem(a - 1, b) || tem(a, b - 1)) && !viz.includes(MT.escuro)) px(P, a, b, MT.lado); }
+      else if (!(q >>> 24) || q === SOMBRA) px(P, a, b, SOMBRA);
+      const a2 = x + 2, b2 = y + 2;
+      if (!tem(a2, b2) && a2 < P.W && b2 < P.H) { const q2 = P.u[b2 * P.W + a2]; if (!(q2 >>> 24)) px(P, a2, b2, SOMBRA); }
+    }
+    for (const key of tela) {
+      const [x, y] = key.split(',').map(Number);
+      let c = LAT.face;
+      if (!tem(x - 1, y) || !tem(x + 1, y) || !tem(x, y - 1) || !tem(x, y + 1)) c = O;
+      else {
+        const luz = !tem(x, y - 2) || !tem(x - 2, y) || !tem(x - 1, y - 1), somb = !tem(x, y + 2) || !tem(x + 2, y) || !tem(x + 1, y + 1);
+        if (luz && !somb) c = LAT.luz;
+        else if (somb && !luz) c = LAT.dobra;
+      }
+      P.u[y * P.W + x] = c;
+    }
+    const x0 = Math.min(X(3), X(6)), y0 = Math.min(Y(3), Y(6)), kr = { W: LAT.brilho, L: LAT.luz, a: LAT.dobra, m: LAT.face, d: cor(116, 72, 15) };
+    [".aa.", "aWLd", "aLmd", ".dd."].forEach((ln, b) => [...ln].forEach((q, a) => { if (q !== '.') P.u[(y0 + b) * P.W + x0 + a] = kr[q]; }));
+  }
+  // a luz: o aro de metal continuo com o contorno carvao e a lente redonda (borda vinho, o brilho de 2 no alto a esquerda, a
+  // sombra de dentro embaixo a direita); acesa, o brilho em volta
+  function luzTv(P, x0, y0, acesa) {
+    if (acesa) for (let j = -2; j < 11; j++) for (let i = -2; i < 11; i++) {
+      const r = Math.hypot(i - 4, j - 4);
+      if (r > 4.6 && r <= 6.2) px(P, x0 + i, y0 + j, cor(255, 70, 50, r <= 5.4 ? 100 : 50));
+    }
+    const L = acesa ? { borda: cor(176, 32, 22), base: cor(236, 58, 40), meio: cor(255, 130, 100), brilho: cor(255, 236, 226) }
+                    : { borda: cor(74, 18, 14), base: cor(118, 30, 24), meio: cor(168, 58, 48), brilho: cor(204, 128, 116) };
+    redondo(P, x0, y0, 9, (k, dx, dy) => {
+      if (k === 0) return CARVAO;
+      if (k === 1) {
+        if (dx === -1 && dy === -3) return cor(212, 206, 196);   // o reflexo do aro
+        return dx + dy < -2 ? cor(176, 170, 162) : dx + dy > 2 ? cor(96, 90, 84) : cor(138, 132, 126);
+      }
+      if (dx === -1 && dy === -1) return L.brilho;
+      if ((dx === -2 && dy === -1) || (dx === -1 && dy === -2)) return L.meio;
+      if (k === 2) return dx + dy >= 0 ? L.borda : L.base;   // a borda da lente escurece embaixo a direita
+      if (dx + dy >= 2) return L.borda;   // o crescente de sombra
+      return L.base;
+    }, [3, 7, 7, 9, 9, 9, 7, 7, 3]);
+  }
+  // o botao preto: o bisel claro em cima e a esquerda, a lateral escura embaixo e a direita, o quadrante de cima um tom acima,
+  // o brilho de 1 (com 2 de meio-tom) no alto a esquerda, o crescente de sombra, o ponteiro claro do centro para a borda e
+  // tres marcas de 2 em arco
+  function botaoTv(P, x0, y0, ang = -60) {
+    const n = 11, c = 5;
+    for (const [dx, dy] of [[0, -8], [0, -7], [-5, -5], [5, -5]]) px(P, x0 + c + dx, y0 + c + dy, LAT.face);
+    redondo(P, x0, y0, n, (k, dx, dy) => {
+      const s = dx + dy;
+      if (k === 0) return cor(18, 17, 16);
+      if (k === 1) return s < -1 ? cor(150, 146, 142) : s > 1 ? cor(36, 34, 33) : cor(95, 92, 89);   // o anel de metal
+      const q = dx + ',' + dy;
+      if (q === '-2,-2') return cor(150, 146, 142);   // o brilho de cupula, longe do ponteiro
+      if (q === '-3,-2' || q === '-3,-1' || q === '-3,0' || q === '-2,0' || q === '-2,-1') return cor(95, 92, 89);
+      const fundo = s >= 2 ? Math.floor((s - 2) / 2) : -1;   // a espessura do crescente cresce com a diagonal
+      if (k - 2 <= fundo) return cor(36, 34, 33);   // o crescente de sombra
+      if (s >= 1 && k - 2 <= fundo + 1) return cor(47, 45, 43);
+      return cor(62, 59, 57);
+    });
+    // o ponteiro, do centro para a marca: em pe (-90) ou para a de 1h (-60)
+    const rastro = ang === -90 ? [[0, 0], [0, -1], [0, -2]] : [[0, 0], [1, -1], [2, -2]];
+    rastro.forEach(([a, b], r) => px(P, x0 + c + a, y0 + c + b, r === rastro.length - 1 ? cor(212, 206, 196) : cor(248, 244, 236)));   // o ponteiro, do centro para a borda
+  }
+  // a grade: fendas em capsula (o miolo quase preto de 2 com o contorno nas pontas) e o labio claro de 9 embaixo
+  function gradeTv(P, x0, y0, n) {
+    for (let s = 0; s < n; s++) {
+      const y = y0 + s * 5;
+      for (let x = x0 + 1; x < x0 + 10; x++) px(P, x, y, O);
+      for (let x = x0; x < x0 + 11; x++) px(P, x, y + 1, x === x0 || x === x0 + 10 ? O : cor(40, 17, 7));
+      for (let x = x0 + 1; x < x0 + 10; x++) px(P, x, y + 2, x === x0 + 1 || x === x0 + 9 ? O : cor(56, 25, 11));
+      for (let x = x0 + 1; x < x0 + 10; x++) px(P, x, y + 3, MT.friso);
+    }
+  }
+  // o painel rebaixado da coluna: o friso escuro em cima e a esquerda, o claro embaixo e a direita
+  function painelTv(P, x0, y0, x1, y1) {
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      const dTL = (x - x0) + (y - y0), dTR = (x1 - 1 - x) + (y - y0), dBL = (x - x0) + (y1 - 1 - y), dBR = (x1 - 1 - x) + (y1 - 1 - y);
+      if (dTL < 3 || dTR < 3 || dBL < 3 || dBR < 3) continue;   // a madeira fica
+      if (dBR === 3 || (dTR === 3 && x === x1 - 1) || (dBL === 3 && y === y1 - 1)) px(P, x, y, MT.friso);
+      else if (dTL === 3 || dTR === 3 || dBL === 3) px(P, x, y, MT.escuro);
+      else if (y === y0 || x === x0) px(P, x, y, MT.escuro);
+      else if (y === y1 - 1 || x === x1 - 1) px(P, x, y, MT.friso);
+    }
+  }
+  function desenhaTv(t) {
+    const D0 = rectP(t.sec);
+    if (!D0.width) return;
+    const EX = 1, D = { left: D0.left - 2 * EX, top: D0.top, width: D0.width + 2 * EX, height: D0.height };   // o trilho esquerdo cresce para fora
+    const W = Math.ceil(D.width / 2 - .05), H = Math.ceil(D.height / 2 - .05), M_ = 2;   // a caixa toda, sem a fresta da parede
+    const q = s => t.sec.querySelector(s);
+    const tl = q('#tv-tela'), le = q('#tv-leituras'), luz = q('#tv-luz');
+    if (!tl || !le || !luz) return;
+    const T = relM(tl, D), Lt = relM(le, D);
+    const acesa = /alerta|acesa/.test(luz.className);
+    const chave = [W, H, T.x0, T.y0, T.x1, Lt.y1, acesa].join('|');
+    if (chave === t.chave) return;
+    t.chave = chave;
+    // o vidro (1 celula alem da tela e das leituras, 2 em cima), a moldura de 5 em volta e a abertura na madeira, que e a
+    // moldura com as quinas chanfradas
+    const G = [Math.min(T.x0, Lt.x0) - 1, T.y0 - 2, Math.max(T.x1, Lt.x1) + 1, Lt.y1 + 1], B = [G[0] - 5, G[1] - 5, G[2] + 5, G[3] + 5];
+    // o painel da direita, alinhado com a borda da abertura em cima e embaixo, e a pilha centrada nele
+    const Pn = [B[2] + 3, B[1] + 2, W - 4, B[3] - 1], cx = Math.floor((Pn[0] + Pn[2]) / 2);
+    // de cima para baixo: a luz (11 e 1 de sombra), as marcas (3) e o botao (13 e 1), as marcas e o outro botao, as fendas;
+    // os cinco vaos iguais
+    const nG = 6, conteudo = 10 + 3 + 12 + 3 + 12 + (5 * nG - 1), vao = Math.max(2, Math.floor((Pn[3] - Pn[1] - 2 - conteudo) / 5));
+    const sobra = Pn[3] - Pn[1] - 2 - conteudo - 5 * vao;
+    const yL = Pn[1] + 1 + vao + Math.floor(sobra / 2), yK1 = yL + 10 + vao + 3, yK2 = yK1 + 12 + vao + 3, yG = yK2 + 12 + vao;
+    const P = pincel(W + M_, H + M_);
+    sombraCaixa(P, 0, 0, W, H, 2, 2, 2);
+    gabinete(P, W, H, B);
+    painelTv(P, Pn[0], Pn[1], Pn[2], Pn[3]);
+    moldTubo(P, B, G);
+    luzTv(P, cx - 4, yL, acesa);
+    botaoTv(P, cx - 5, yK1);
+    botaoTv(P, cx - 5, yK2, -90);
+    gradeTv(P, cx - 5, yG, nG);
+    // um no de 2 por regua, no sentido do veio
+    for (const [a, b, dx, dy] of [[Math.round(W * .63), H - 5, 1, 0], [Math.round(W * .3), 3, 1, 0], [2, Math.round(H * .55), 0, 1], [W - 5, Math.round(H * .4), 0, 1]])
+      if (P.u[b * P.W + a] === MT.face && P.u[(b + dy) * P.W + a + dx] === MT.face) { px(P, a, b, MT.veioM); px(P, a + dx, b + dy, MT.veioM); }
+    veios(P, [[2, 30, W - 8], [3, 8, W - 8], [4, 14, W - 8], [H - 6, 8, W - 8], [H - 5, 20, W - 8], [H - 4, 8, W - 8]],
+          [[2, 9, H - 9], [3, 16, H - 16, true], [W - 3, 12, H - 12, true], [B[2] + 1, B[1] + 4, B[3] - 4, true]]);
+    const okP = new Set([MT.face, MT.escuro, MT.friso, MT.veio, MT.veioP]);
+    for (const [x, sem] of [[Pn[0] + 1, 41], [Pn[2] - 2, 43]]) {
+      let y = Pn[1] + 3 + Math.floor(hsM(sem, 0, 81) * 6), n = 0;
+      while (y < Pn[3] - 3) {
+        const len = 3 + Math.floor(hsM(sem, n, 82) * 3), tr = [];
+        for (let u = 0; u < len && y + u < Pn[3] - 3; u++) {
+          const yy = y + u;
+          let ok = P.u[yy * P.W + x] === MT.face;
+          for (let b = -1; b <= 1 && ok; b++) for (let a = -1; a <= 1; a++) if (!okP.has(P.u[(yy + b) * P.W + x + a])) { ok = false; break; }
+          if (ok) tr.push(yy);
+        }
+        tr.forEach(yy => px(P, x, yy, MT.veio));
+        y += len + 2 + Math.floor(hsM(sem, n, 83) * 4); n++;
+      }
+    }
+    // as cantoneiras passam 2 celulas para fora do gabinete: o canvas ganha a margem MG em volta
+    const MG = 2, Q = pincel(W + M_ + 2 * MG, H + M_ + 2 * MG);
+    for (let y = 0; y < P.H; y++) Q.u.set(P.u.subarray(y * P.W, (y + 1) * P.W), (y + MG) * Q.W + MG);
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) cantoneiraTv(Q, W, H, sx, sy, MG);
+    t.cv.width = Q.W; t.cv.height = Q.H; t.cv.style.width = 2 * Q.W + 'px'; t.cv.style.height = 2 * Q.H + 'px';
+    t.cv.style.left = -2 * (MG + EX) + 'px'; t.cv.style.top = -2 * MG + 'px';
+    const img = t.ctx.createImageData(Q.W, Q.H);
+    new Uint32Array(img.data.buffer).set(Q.u);
+    t.ctx.putImageData(img, 0, 0);
+  }
   function quadroMx() {
     if (document.body.classList.contains('mesa-dj')) {
       const rec = document.querySelector('.palco .receptor');
@@ -10639,6 +11027,12 @@ carregar();
         const m = preparaMx(rec);
         snapM(rec);
         try { desenhaMx(m); } catch (e) { console.error('mx', e); }
+      }
+      const tv = document.getElementById('tv');
+      if (tv && !tv.hidden && tv.offsetParent) {
+        const t = preparaTv(tv);
+        snapM(tv);
+        try { desenhaTv(t); } catch (e) { console.error('tv', e); }
       }
       const sp = document.getElementById('pads');
       if (sp && !sp.hidden && sp.offsetParent) {
