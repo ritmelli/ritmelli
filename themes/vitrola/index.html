@@ -3926,6 +3926,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.mesa-dj .fila-vazia:not([hidden]) { font-family: "VT323", monospace; font-size: 25px; line-height: 20px; letter-spacing: 0;
     color: #B0A08A; text-shadow: 0 2px 0 #1A0B04; max-width: 640px; margin-top: 118px; -webkit-font-smoothing: none; }
   body.mesa-dj .fila-vazia b { font-size: 25px; font-weight: 400; color: #FBEFD9; margin-bottom: 4px; }
+  /* (r09) com a letra das telas desenhada no canvas (MALETA-VAZIA), o texto do DOM fica so para leitura e selecao */
+  body.mesa-dj .fila-vazia.px-ok, body.mesa-dj .fila-vazia.px-ok b { color: transparent; text-shadow: none; }
+  body.mesa-dj .fila-vazia canvas.vazia-px { position: absolute; image-rendering: pixelated; pointer-events: none; }
 
   /* ---- a prateleira: o painel de jacaranda com a plaqueta no alto, as capas numa fileira so que corre de lado (a
      rodinha e as setas) ---- */
@@ -9115,6 +9118,7 @@ carregar();
     "_": [".....", ".....", ".....", ".....", ".....", ".....", ".....", "#####"], "@": [".###.", "#...#", "#.###", "#.#.#", "#.###", "#....", ".###."],
     "•": ["...", "...", ".#.", "###", ".#.", "...", "..."], "·": [".", ".", ".", "#", ".", ".", "."], "~": [".....", ".....", ".#..#", "#.##.", ".....", ".....", "....."],
     "$": [".###.", "#.#.#", "#.#..", ".###.", "..#.#", "#.#.#", ".###."], "<": ["...#", "..#.", ".#..", "#...", ".#..", "..#.", "...#"], ">": ["#...", ".#..", "..#.", "...#", "..#.", ".#..", "#..."],
+    "⋯": [".....", ".....", ".....", ".....", "#.#.#", ".....", "....."],   // (r09) o menu do disco, no meio da altura de x
   };
   const MARCA = { "́": ["..#", ".#."], "̀": ["#..", ".#."], "̂": [".#.", "#.#"], "̃": [".#.#", "#.#."], "̈": ["#.#"] };
   const ACENTO = { "á": "á", "à": "à", "â": "â", "ã": "ã", "ä": "ä", "é": "é", "è": "è", "ê": "ê", "ë": "ë",
@@ -9158,6 +9162,7 @@ carregar();
   }
   const gl = (fk, ch) => (fk === 'f' || fk === 'fb' || fk === 'ft') ? (glifo57(ch, fk !== 'f', fk === 'ft') || glifo('v', ch)) : glifo(fk, ch);
   const larg = (fk, s, bold) => [...s].reduce((t, ch) => t + gl(fk, ch).adv + (bold ? 1 : 0), 0);
+  window.PX_LETRA = { gl, larg, pronto: () => fontesOk };   // (r09) a mesma letra para o aviso de vazio da maleta
 
   // ---------------- o pincel: um buffer de celulas com recorte e escurecimento
   function pincel(W, H) { return { u: new Uint32Array(W * H), W, H, cx0: 0, cy0: 0, cx1: W, cy1: H, dim: 1 }; }
@@ -9954,11 +9959,77 @@ carregar();
     }
     requestAnimationFrame(quadro);
   }
-  Promise.all([document.fonts.load('300px "Jersey 10"'), document.fonts.load('300px "VT323"')]).then(() => { fontesOk = true; });
+  Promise.all([document.fonts.load('300px "Jersey 10"'), document.fonts.load('300px "VT323"')]).then(() => { fontesOk = true; document.dispatchEvent(new Event('px-letra')); });
   const liga = () => requestAnimationFrame(quadro);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', liga); else liga();
 })();
 /* DECK-JS-FIM */</script>
+<script>/* MALETA-VAZIA-INICIO: (r09) o aviso de vazio do A seguir na letra das telas dos toca-discos (a 5x7 do deck, 1 pixel
+   da letra = 1 celula), num canvas de 1 px por celula mostrado a 2x, sem suavizar; o texto do DOM segue por cima, transparente.
+   Cada linha centrada no eixo da maleta; o titulo na negrita (a do "Nada no prato"), a dica na regular, a sombra de 1 celula */
+(() => {
+  const BR = [251, 239, 217], DICA = [176, 160, 138], SOMB = [26, 11, 4];
+  // do topo do aviso (a linha do chao da bandeja) ao topo das maiusculas, em px do palco; de base a base, em celulas
+  const TOPO = 4, PASSO1 = 11, PASSO2 = 10, MAX = 300;
+  function quebra(L, s) {   // o menor numero de linhas que cabe em MAX celulas, com as linhas o mais iguais possivel
+    const pal = s.split(/\s+/).filter(Boolean), w = t => L.larg('f', t) - 1;
+    const gulosa = lim => { const ls = []; let cur = ''; for (const p of pal) { const t = cur ? cur + ' ' + p : p; if (cur && w(t) > lim) { ls.push(cur); cur = p; } else cur = t; } if (cur) ls.push(cur); return ls; };
+    const n = gulosa(MAX).length;
+    let lo = 1, hi = MAX;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (gulosa(m).length <= n) hi = m; else lo = m + 1; }
+    return gulosa(lo);
+  }
+  function desenha() {
+    const p = document.getElementById('fila-vazia'), L = window.PX_LETRA, mal = document.querySelector('.fila-parede.maleta');
+    if (!p) return;
+    const cv0 = p.querySelector('canvas.vazia-px');
+    if (!document.body.classList.contains('mesa-dj') || p.hidden || !L || !L.pronto() || !mal || !mal.getBoundingClientRect().width) {
+      p.classList.remove('px-ok'); if (cv0) cv0.remove(); return;
+    }
+    const b = p.querySelector('b'), tit = (b ? b.textContent : '').trim();
+    const dica = [...p.childNodes].filter(n => n !== b && n.nodeType === 3).map(n => n.textContent).join(' ').replace(/\s+/g, ' ').trim();
+    const linhas = [[tit, 'fb', BR], ...quebra(L, dica).map(t => [t, 'f', DICA])];
+    const ws = linhas.map(([t, fk]) => L.larg(fk, t) - 1), W = Math.max(...ws) + 2;
+    const base = linhas.map((_, i) => 7 + (i ? PASSO1 + (i - 1) * PASSO2 : 0)), H = base[base.length - 1] + 3;
+    const rp = rectP(p), rm = rectP(mal), cx = rm.left + rm.width / 2;   // o eixo da maleta em px do palco
+    const left = 2 * Math.floor((cx - W) / 2), top = 2 * Math.round((rp.top + TOPO) / 2), eixo = (cx - left) / 2;
+    const cv = cv0 || Object.assign(document.createElement('canvas'), { className: 'vazia-px' });
+    if (!cv0) { cv.setAttribute('aria-hidden', 'true'); p.appendChild(cv); }
+    cv.width = W; cv.height = H; cv.style.width = 2 * W + 'px'; cv.style.height = 2 * H + 'px';
+    cv.style.left = left - rp.left + 'px'; cv.style.top = top - rp.top + 'px';
+    const c = cv.getContext('2d'), im = c.createImageData(W, H);
+    const ponto = (x, y, k) => { if (x < 0 || y < 0 || x >= W || y >= H) return; const o = (y * W + x) * 4; im.data[o] = k[0]; im.data[o + 1] = k[1]; im.data[o + 2] = k[2]; im.data[o + 3] = 255; };
+    const escreve = (t, fk, x, yb, k, dy) => {
+      let pen = x;
+      for (const ch of t) {
+        const g = L.gl(fk, ch);
+        for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) if (g.bits[j * g.w + i]) ponto(pen + g.dx + i, yb + g.dy + j + dy, k);
+        pen += g.adv;
+      }
+    };
+    const xs = linhas.map((_, i) => Math.round(eixo - ws[i] / 2));
+    linhas.forEach(([t, fk], i) => escreve(t, fk, xs[i], base[i], SOMB, 1));
+    linhas.forEach(([t, fk, k], i) => escreve(t, fk, xs[i], base[i], k, 0));
+    c.putImageData(im, 0, 0);
+    p.classList.add('px-ok');
+  }
+  const p = document.getElementById('fila-vazia');
+  const agenda = () => requestAnimationFrame(desenha);
+  if (p) {
+    new MutationObserver(agenda).observe(p, { attributes: true, attributeFilter: ['hidden'] });
+    new ResizeObserver(agenda).observe(p);
+  }
+  new MutationObserver(agenda).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  // o palco (o ajustarPalco grava a escala no estilo do html) e a parede (a prateleira que carrega muda a grade) mexem no
+  // lugar do aviso sem mudar o tamanho dele
+  new MutationObserver(agenda).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+  const par = document.querySelector('.parede');
+  if (par) new ResizeObserver(agenda).observe(par);
+  addEventListener('resize', agenda);
+  document.addEventListener('px-letra', agenda);
+  agenda();
+})();
+/* MALETA-VAZIA-FIM */</script>
 <script>/* MIX-JS-INICIO: o mixer da mesa inteiro em pixel art (1 celula = 2 px), num canvas por cima do receptor: o painel
    de metal escovado com os parafusos, os tres VUs (a janela ambar, o arco, os numeros e a agulha do medidor da
    pagina), os volumes em pe com as marcas e o pino creme, as chaves do set, o crossfader e a placa da transicao
