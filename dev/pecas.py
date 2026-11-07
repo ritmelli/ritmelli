@@ -479,11 +479,11 @@ def gota(px_, py_, r1, r2, h):
     return a * px_ + b * py_ - r1
 
 
-KF_CHAPEU = (7., 1.5, 17.)   # (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
+KF_CHAPEU = (6., 1.5, 15.5)   # (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
 KF_SOBE = 0                 # o chapeu acima do tampo da saia (r11: chato; a parede de 2 virava uma faixa preta de 3 css)
 # a saia na mesma paleta do chapeu: um tom abaixo (o tampo dela no aro) escurecia o knob e ele lia como duas pecas
 # empilhadas; no mesmo creme ele segue da familia dos outros e a gota se le pelo contorno
-KF_SAIA_LETRA = None
+KF_SAIA_LETRA = {"W": "L", "F": "A", "A": "T", "L": "A", "T": "T", "E": "E"}   # (r14) a face redonda baixada um tom: a gota creme le por cima dela
 
 
 def _frango_camada(graus, cx, cy, n, r1, r2, h, saia, letra=None):
@@ -539,14 +539,12 @@ def knob_frango_quadro(graus, cx, cy, n, recuo=0.):
     chapeu = _frango_camada(graus, cx, cy - KF_SOBE, n, r1, r2, h, KF_SOBE)
     # (r12) uma silhueta so: o contorno preto so por fora (a saia e o bico que passa dela); o contorno do chapeu por
     # dentro do tampo da saia vira o degrau de sombra (A), sem o segundo anel escuro
-    # (r13) por dentro do tampo o chapeu nao desenha nada (o degrau bege e a luz dele se desfaziam em pixels soltos
-    # girados): so o bico que passa do disco, por cima do contorno da saia, e o ponteiro
-    px.update({c: v for c, v in chapeu.items() if saia.get(c) in (None, "O", "s")})
-    # o ponteiro: a linha escura de 1 celula (2 px, como o dos knobs redondos) do centro ate a ponta, que vira a
-    # extremidade dele; engrossa para baixo deitado e para a direita em pe
-    risco = linha_pixel(cx, cy - KF_SOBE, graus, KF_TRACO[0], h + r2)
-    lado = (0, 1) if 45 < abs(graus) % 180 < 135 else (1, 0)
-    px.update({c: "O" for c in (risco | {(x + lado[0], y + lado[1]) for x, y in risco}) if c in chapeu})
+    # (r14) a gota creme inteira, com o contorno e a luz dela, por cima da face redonda baixada um tom (KF_SAIA_LETRA):
+    # o formato de bico se le pela cor e pelo contorno, e a ponta creme passa da saia
+    px.update(chapeu)
+    # o ponteiro: 1 px escuro no eixo, so por dentro do bico (a ponta creme contornada e a extremidade dele)
+    risco = linha_pixel(cx, cy - KF_SOBE, graus, KF_TRACO[0], h + r2 - 3)
+    px.update({c: "O" for c in risco if chapeu.get(c) not in (None, "O")})
     for x, y in list(px):
         if (x, y + 2) not in px:
             px[(x, y + 2)] = "s"
