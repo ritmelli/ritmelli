@@ -10633,7 +10633,7 @@ carregar();
   // ---- a placa da transicao automatica: a luz dela (verde) e mais seis que acendem com a passagem, e o nome
   function placaEst(P, A, PL) {
     const tTop = 21 + (PL.folga ? 2 : 0), rows = Math.ceil((tTop + A.thp) / 2) + 4;
-    const w = Math.max(A.tw + 14, 7 * 8 + 15), x0 = Math.round((A.x0 + A.x1 - w) / 2), x1 = x0 + w;
+    const w = Math.max(A.tw + 18, 7 * 8 + 19), x0 = Math.round((A.x0 + A.x1 - w) / 2), x1 = x0 + w;   // (r24) 2 celulas a mais de cada lado: os rebites de baixo encostavam nas pontas do texto; as bordas na dos botoes A e B
     let y0 = A.y0 + 3;   // (r18) a placa sobe junto com o crossfader
     if (y0 + rows > A.yMax) y0 = Math.max(A.y0 + 1, A.yMax - rows);
     const y1 = y0 + rows;
