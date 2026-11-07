@@ -4130,6 +4130,10 @@ body:not(.mesa-dj) .palco .receptor { translate: none !important; }
 body.mesa-dj .palco .receptor.mx-ok { background: none !important; padding: 16px 16px 14px; row-gap: 0; grid-template-rows: 68px minmax(0, 1fr) 46px 54px; }   /* (r05) os 4 px da r04 encurtavam o trilho e a regua saia do curso do cursor */
 body.mesa-dj .palco .receptor.mx-ok::before, body.mesa-dj .palco .receptor.mx-ok::after, body.mesa-dj .palco .receptor.mx-ok .chassi-rec { visibility: hidden; }
 body.mesa-dj .palco .receptor.mx-ok :is(.janela, .fader label, .fader output, .fader input, .tecla-set, .xfader, .auto-luz) { opacity: 0 !important; }
+/* (r06) o filete e o crossfader 2 celulas acima e a placa 1 (o trilho mais longo da r05 apertou o bloco de baixo em 7/3/2/1
+   celulas): o canvas desenha os dois pelo lugar dos elementos, e a margem negativa sobe sem mexer na fileira do trilho */
+body.mesa-dj .palco .receptor.mx-ok .xfader { margin-top: -4px; }
+body.mesa-dj .palco .receptor.mx-ok .auto-luz { margin-top: -2px; }
 body.mesa-dj .palco .receptor.mx-ok .janela { column-gap: 4px; }
 /* a canaleta em pe entre o rotulo (36 px) e o valor (22 px) */
 body.mesa-dj .palco .receptor.mx-ok .fader input { --w: round(down, calc(100cqh - 66px), 2px); width: var(--w); top: calc(40px + var(--w) / 2); }
@@ -9886,7 +9890,7 @@ carregar();
               P35: cor(150, 70, 38), W6: cor(142, 67, 35), W5: cor(134, 64, 33), P4: cor(120, 52, 26) };
   const CH = { veio: cor(223, 216, 201), base: cor(227, 220, 205), risca: cor(220, 213, 197), risca2: cor(231, 225, 212), luz: cor(244, 239, 228), sombra: cor(196, 187, 170) };
   const TINTA = cor(42, 24, 18), CREME = cor(239, 230, 213), CREME_L = cor(252, 247, 236), CREME_S = cor(206, 192, 168);
-  const AMBAR = [cor(255, 214, 110), cor(240, 170, 54), cor(178, 106, 28)];
+  const AMBAR = [cor(255, 214, 110), cor(252, 186, 72), cor(224, 148, 46)];   // (r06) a canaleta do crossfader no ambar dos volumes (a de baixo lia marrom)
 
   // ---------------- as fontes de bitmap: cada letra desenhada grande e lida na grade da propria fonte
   const FONTES = { j: { fam: '"Jersey 10"', S: 300, u: 32 }, v: { fam: '"VT323"', S: 300, u: 24 } };
@@ -10592,7 +10596,7 @@ carregar();
         px(P, x, y, c);
       }
       for (let x = 2; x < W - 2; x++) { px(P, x, ySplit + 1, MET.sulco); px(P, x, ySplit + 2, MET.luz); }
-      for (const [x, y] of [[2, 2], [W - 8, 2], [2, H - 9], [W - 8, H - 9]]) parafusoM(P, x, y);   // os da direita fora do chanfro claro
+      for (const [x, y] of [[2, 2], [W - 8, 2], [2, H - 8], [W - 8, H - 8]]) parafusoM(P, x, y);   // os da direita fora do chanfro claro; (r06) os de baixo a 1 celula do contorno, como os outros
       m.vg = m.metros.map((e, i) => ({ k: e.dataset.k, apag: apag[i], g: vuFace(P, vx0(i), J.y0, vx0(i) + mw, J.y1, e.dataset.nome || '', apag[i]) }));
       for (const f of fs) faderEst(P, f);
       if (X) crossEst(P, X);
