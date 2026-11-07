@@ -9327,11 +9327,13 @@ carregar();
         const f = r / g.Rf;
         let a = Math.atan2(dx, -dy) * 180 / Math.PI;
         if (a < 0) a += 360;
-        const da = Math.min(Math.abs(a - 315), 360 - Math.abs(a - 315)), arco = f > .72 && f < .9;
+        const da = Math.min(Math.abs(a - 315), 360 - Math.abs(a - 315));
+        // (r06) o brilho afina nas pontas (a meia largura cai com o angulo): o setor reto terminava em bloco quadrado
+        const hw = .09 * Math.max(0, 1 - (da / 23) ** 2), dr = Math.abs(f - .81), arco = dr < hw;
         const sulco = [.57, .7, .82].some(q => Math.abs(r - q * g.Rf) < .5);
         let c = f > .9 ? cor(25, 42, 34) : cor(33, 55, 45);
-        if (arco && da <= 12) c = cor(52, 82, 68); else if (arco && da <= 20) c = cor(43, 69, 57);
-        if (sulco) c = arco && da <= 20 ? cor(60, 92, 77) : cor(41, 67, 56);
+        if (arco && dr < hw * .6 && da <= 15) c = cor(52, 82, 68); else if (arco) c = cor(43, 69, 57);
+        if (sulco) c = arco ? cor(60, 92, 77) : cor(41, 67, 56);
         px(P, x, y, c); continue;
       }
       if (r <= Ri) { P.u[y * W + x] = 0; continue; }
