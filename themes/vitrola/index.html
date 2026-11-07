@@ -10533,9 +10533,10 @@ carregar();
     if (db < -41) { a = -Math.atan(2.5); L -= 1.5; }
     const pts = [];
     for (let q = 0; q <= L + 1e-9; q += .1) pts.push([g.hx + q * Math.sin(a), g.hy - q * Math.cos(a)]);
-    // (r19) a ponta para 1 celula antes do arco em qualquer angulo (perto do -40 ele e quase tangente e a ponta pousava nele)
+    // (r20) a ponta cruza o arco em 1 celula, como no mock (parada antes dele a agulha virava toco); so em repouso, deitada
+    // quase tangente ao arco perto do -40, ela para 1 celula antes (r19: ali a ponta pousava no arco e fazia um no)
     const cel = caminho(pts), perto = ([x, y]) => g.arcoCel && [-1, 0, 1].some(dx => [-1, 0, 1].some(dy => g.arcoCel.has((x + dx) + ',' + (y + dy))));
-    while (cel.length > 2 && perto(cel[cel.length - 1])) cel.pop();
+    while (db < -41 && cel.length > 2 && perto(cel[cel.length - 1])) cel.pop();
     for (const [x, y] of cel) px(P, x, y, VUC.agulha);
     // o pivo: a cupula de 7, 5 e 3 na cor da faixa, o brilho de 1 em cima a esquerda
     const bx = g.fx0 + g.cx, by = g.fy1 - 1;
