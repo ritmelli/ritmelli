@@ -2144,7 +2144,7 @@ body.mesa-dj .topo .botoes-topo .btn-madeira svg { stroke-width: 2.5; }
 /* (r07) a lupa da busca no mesmo peso dos icones das teclas e na cor do texto de exemplo (era o unico icone fino) */
 body.mesa-dj .topo #form-busca .btn { color: #C9B79D; }
 body.mesa-dj .topo #form-busca .lupa { stroke-width: 2.75; }
-body.mesa-dj .topo .nome-marca { font-size: 37.5px; }
+body.mesa-dj .topo .nome-marca { font-size: 37.5px; text-shadow: 0 2px 0 rgba(255,255,255,.6); }   /* (r10) o gravado em 1 celula inteira (a de 1 px era 1/3 de celula) */
 /* a moldura de pixel na celula do palco: a --mold-* resolve o --px na raiz (1 px), entao a largura e o recuo dela se
    refazem aqui com o --px do topo (2/3 de px: os 3 pontos da celula dao 2 px); o contorno de fora das placas cai na
    coluna das pecas de baixo (2 px de recuo em cada ponta) */
@@ -9128,7 +9128,7 @@ carregar();
     "4": ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."], "5": ["#####", "#....", "####.", "....#", "....#", "#...#", ".###."],
     "6": ["..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."], "7": ["#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."],
     "8": [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."], "9": [".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."],
-    " ": ["...", "...", "...", "...", "...", "...", "..."], ".": [".", ".", ".", ".", ".", ".", "#"], ",": ["..", "..", "..", "..", "..", "..", ".#", "#."],
+    " ": ["...", "...", "...", "...", "...", "...", "..."], ".": [".", ".", ".", ".", ".", ".", "#"], ",": ["..", "..", "..", "..", "..", "..", ".#", ".#", "#."],   /* (r10) 3 celulas: com 2 a virgula lia como ponto */
     ":": [".", ".", "#", ".", ".", "#", "."], ";": ["..", "..", ".#", "..", "..", ".#", "#."], "-": ["....", "....", "....", "####", "....", "....", "...."],
     "–": [".....", ".....", ".....", "#####", ".....", ".....", "....."], "—": ["......", "......", "......", "######", "......", "......", "......"],
     "|": ["#", "#", "#", "#", "#", "#", "#", "#", "#"], "/": ["....#", "...#.", "...#.", "..#..", ".#...", ".#...", "#...."],
@@ -9994,7 +9994,7 @@ carregar();
 (() => {
   const BR = [251, 239, 217], DICA = [176, 160, 138], SOMB = [26, 11, 4];
   // do topo do aviso (a linha do chao da bandeja) ao topo das maiusculas, em px do palco; de base a base, em celulas
-  const TOPO = 4, PASSO1 = 11, PASSO2 = 10, MAX = 300;
+  const TOPO = 6, PASSO1 = 11, PASSO2 = 10, MAX = 300;   // (r10) 3 celulas da costura: com 2 o titulo parecia encostado nela
   function quebra(L, s) {   // o menor numero de linhas que cabe em MAX celulas, com as linhas o mais iguais possivel
     const pal = s.split(/\s+/).filter(Boolean), w = t => L.larg('f', t) - 1;
     const gulosa = lim => { const ls = []; let cur = ''; for (const p of pal) { const t = cur ? cur + ' ' + p : p; if (cur && w(t) > lim) { ls.push(cur); cur = p; } else cur = t; } if (cur) ls.push(cur); return ls; };
