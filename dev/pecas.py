@@ -479,44 +479,69 @@ def gota(px_, py_, r1, r2, h):
     return a * px_ + b * py_ - r1
 
 
-def knob_frango_quadro(graus, cx, cy, n, recuo=0.):
-    """Um quadro do chicken-head apontado para graus (0 para cima, horario), em letras de KF_COR: o tampo em
-    gota e a parede de KN_SAIA linhas embaixo dele, com a linha preta de KN_TRACO por dentro da beira e na
-    divisa do tampo com a parede (pela distancia, como no creme), a luz em crescente em cima a esquerda e o aro
-    escuro embaixo a direita, a parede clara a esquerda e escura a direita, o traco escuro com o contorno e a
-    sombra dura. recuo encurta a ponta (celulas)."""
-    sx, sy = math.sin(math.radians(graus)), -math.cos(math.radians(graus))
-    u1, r2 = KF_PONTA[0] - recuo, KF_PONTA[1]
+KF_CHAPEU = (9., 1., 16.)   # (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
+KF_SOBE = 2                 # o chapeu acima do tampo da saia (a parede dele, em linhas)
+# a saia na mesma paleta do chapeu: um tom abaixo (o tampo dela no aro) escurecia o knob e ele lia como duas pecas
+# empilhadas; no mesmo creme ele segue da familia dos outros e a gota se le pelo contorno
+KF_SAIA_LETRA = None
 
-    def tampo(x, y, desce=0):   # a gota baixada desce linhas
+
+def _frango_camada(graus, cx, cy, n, r1, r2, h, saia, letra=None):
+    """Uma camada do chicken-head (a saia redonda ou o chapeu em gota) apontada para graus, com o tampo em cy e a
+    parede de saia linhas embaixo: a linha preta de KN_TRACO por dentro da beira e na divisa do tampo com a parede,
+    a luz em crescente em cima a esquerda e o aro escuro embaixo a direita, a parede clara a esquerda e escura a
+    direita. letra (opcional) troca as letras da camada."""
+    sx, sy = math.sin(math.radians(graus)), -math.cos(math.radians(graus))
+
+    def tampo(x, y, desce=0):
         dx, dy = x + .5 - cx, y + .5 - (cy + desce)
+        if h <= 0:
+            return math.hypot(dx, dy) - r1
         u, v = dx * sx + dy * sy, dx * -sy + dy * sx
-        return gota(v, u, KF_CORPO, r2, u1)
+        return gota(v, u, r1, r2, h)
 
     fino, grosso = KN_TRACO
     px = {}
     for y in range(n):
         for x in range(n):
-            ks = [k for k in range(KN_SAIA + 1) if tampo(x, y, k) < 0]
+            ks = [k for k in range(saia + 1) if tampo(x, y, k) < 0]
             if not ks:
                 continue
-            solido, topo = min(tampo(x, y, k) for k in range(KN_SAIA + 1)), tampo(x, y)
-            if solido >= -(grosso if ks[0] > 0 else fino) or -fino <= topo < 0:   # >=: no eixo a distancia cai inteira
+            solido, topo = min(tampo(x, y, k) for k in range(saia + 1)), tampo(x, y)
+            if solido >= -(grosso if ks[0] > 0 else fino) or -fino <= topo < 0:
                 px[(x, y)] = "O"
-            elif topo < 0:   # o tampo: a luz e o aro pela normal da beira, na faixa de 2 celulas colada na linha
+            elif topo < 0:
                 gx, gy = tampo(x + .2, y) - tampo(x - .2, y), tampo(x, y + .2) - tampo(x, y - .2)
                 ang = math.degrees(math.atan2(gx, -gy))
                 perto = topo > -fino - 2
                 px[(x, y)] = "W" if perto and -100 <= ang <= 45 else "A" if perto and (ang >= 75 or ang <= -135) else "F"
-            else:   # a parede: clara a esquerda, escura a direita, pela normal da beira de cima que fica atras
+            else:
                 k = ks[0]
                 gx, gy = tampo(x + .2, y, k) - tampo(x - .2, y, k), tampo(x, y + .2, k) - tampo(x, y - .2, k)
                 nx = gx / (math.hypot(gx, gy) or 1)
                 px[(x, y)] = "L" if nx < -.45 else "T" if nx < .2 else "E"
-    risco = linha_pixel(cx, cy, graus, KF_TRACO[0], u1 + r2 - KF_TRACO[1])
+    if letra:
+        px = {c: letra.get(v, v) for c, v in px.items()}
+    return px
+
+
+def knob_frango_quadro(graus, cx, cy, n, recuo=0.):
+    """Um quadro do chicken-head apontado para graus (0 para cima, horario), em letras de KF_COR. (r09) Em duas
+    camadas, como o de verdade: a saia redonda do raio do creme (KF_CORPO), na mesma paleta, com a parede de
+    KN_SAIA linhas; e por cima dela o chapeu em gota (KF_CHAPEU), KF_SOBE linhas mais alto, mais estreito que a
+    saia e com a ponta passando dela: de qualquer angulo a ponta le contra o redondo de baixo (a gota do
+    tamanho da saia, de antes, lia como knob redondo nos angulos oblíquos). O traco escuro do ponteiro com o
+    contorno vai do centro ate perto da ponta, e a sombra dura embaixo. recuo encurta a ponta (celulas)."""
+    r1, r2, h = KF_CHAPEU
+    h -= recuo
+    px = _frango_camada(graus, cx, cy, n, KF_CORPO, KF_CORPO, 0, KN_SAIA, KF_SAIA_LETRA)
+    chapeu = _frango_camada(graus, cx, cy - KF_SOBE, n, r1, r2, h, KF_SOBE)
+    px.update(chapeu)
+    # o traco so no chapeu (passando dele ele riscava a saia)
+    risco = linha_pixel(cx, cy - KF_SOBE, graus, KF_TRACO[0], h + r2 - KF_TRACO[1]) & set(chapeu)
     borda = {(x + dx, y + dy) for x, y in risco for dx in (-1, 0, 1) for dy in (-1, 0, 1)} - risco
-    px.update({c: "O" for c in borda if c in px})
-    px.update({c: "P" for c in risco if c in px})
+    px.update({c: "O" for c in borda if c in chapeu})
+    px.update({c: "P" for c in risco})
     for x, y in list(px):
         if (x, y + 2) not in px:
             px[(x, y + 2)] = "s"
