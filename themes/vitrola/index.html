@@ -5618,7 +5618,10 @@ function caberNomes() {
     if (!n.clientWidth) continue;
     const um = linhasDoTexto(n) === 1;   // o de 2 linhas so na vertical (cada linha centra por si)
     const r = rectP(n), cs = getComputedStyle(n), x = r.left + parseFloat(cs.paddingLeft), y = r.top;
-    const dx = um ? Math.round(x / 2) * 2 - x : 0, dy = Math.round(y / 2) * 2 - y;
+    // (r09) o de 2 linhas 1 celula acima (a entrelinha da r08 cresceu so para baixo e colou no footswitch) e o miudo 1
+    // celula abaixo (alinhado pelo topo ficava 1,25 CSS alto): os dois centrados na faixa dos nomes de uma linha
+    const ajuste = !um ? -2 : n.classList.contains('miuda') ? 2 : 0;
+    const dx = um ? Math.round(x / 2) * 2 - x : 0, dy = Math.round(y / 2) * 2 - y + ajuste;
     if (Math.abs(dx) > .01) n.style.marginLeft = parseFloat(cs.marginLeft) + 2 * dx + 'px';
     if (Math.abs(dy) > .01) n.style.marginTop = parseFloat(cs.marginTop) + 2 * dy + 'px';
     // (r08) o de 2 linhas: cada linha num span de bloco, com a primeira letra em px par (left relativo no span: o nome
