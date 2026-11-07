@@ -1417,6 +1417,7 @@ body.mesa-dj .palco .tecla::before { background: none; }
 body.mesa-dj .palco .tecla:not(.com-chave) .p-grande { top: 2px; }
 body.mesa-dj .palco .p-adesivo { top: 2px; left: 20px; width: 40px; transform: none; text-align: center;
   padding: .5px 0 1.5px; box-sizing: border-box; }
+body.mesa-dj .palco .p-tipo { padding-bottom: 2px; text-align: center; }   /* (r06) 10 px de altura (5 celulas), nao 9,5 */
 body.mesa-dj .palco .p-tipo { border-image-source: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='2' y='0' width='8' height='2'/%3E%3Crect x='2' y='10' width='8' height='2'/%3E%3Crect x='0' y='2' width='4' height='2'/%3E%3Crect x='0' y='8' width='4' height='2'/%3E%3Crect x='8' y='2' width='4' height='2'/%3E%3Crect x='8' y='8' width='4' height='2'/%3E%3Crect x='0' y='4' width='2' height='4'/%3E%3Crect x='10' y='4' width='2' height='4'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.15'%3E%3Crect x='4' y='2' width='4' height='1'/%3E%3C/g%3E%3C/svg%3E"); }
 
 /* LED vermelho de pixel, como o dos pedais de verdade,
@@ -5592,6 +5593,15 @@ function caberNomes() {
     const dx = Math.round(x / 2) * 2 - x, dy = Math.round(y / 2) * 2 - y;
     if (Math.abs(dx) > .01) n.style.marginLeft = parseFloat(cs.marginLeft) + 2 * dx + 'px';
     if (Math.abs(dy) > .01) n.style.marginTop = parseFloat(cs.marginTop) + 2 * dy + 'px';
+  }
+  // (r06) a plaquinha do tipo em numero par de celulas (largura multipla de 4 px: no pedal de 80, centrada, a moldura
+  // comeca em px par) e o topo em px par; pela largura do texto 6 das 12 caiam 1 px de tela fora da grade
+  if (document.body.classList.contains('mesa-dj')) for (const t of document.querySelectorAll('.banco .tecla .p-tipo')) {
+    t.style.width = t.style.top = '';
+    if (!t.clientWidth) continue;
+    t.style.width = Math.ceil(rectP(t).width / 4 - 1e-3) * 4 + 'px';
+    const y = rectP(t).top, dy = Math.round(y / 2) * 2 - y;
+    if (Math.abs(dy) > .01) t.style.top = (parseFloat(getComputedStyle(t).top) || 0) + dy + 'px';
   }
 }
 document.fonts.ready.then(caberNomes);
