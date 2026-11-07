@@ -1403,6 +1403,11 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 body.mesa-dj .palco .tecla .p-logo > svg.logo-mesa { display: block; }
 /* no palco a fileira do logo cai em 864,25: o quarto de pixel sai, para o logo ficar na celula */
 body.mesa-dj .palco .tecla.com-chave .p-logo { top: -1.25px; }
+/* no palco a 0,75 o recuo de 3 px da moldura do pedal cai em meio pixel da tela (4,5) e as fatias deixavam uma fresta
+   de 1 px no contorno; com 2 px (3 da tela) as emendas caem em pixel inteiro. E os tracos de IN/OUT saem: ficavam
+   soltos ao lado dos plugues (r03) */
+body.mesa-dj .palco .tecla { border-image-outset: 2px 2px 8px 2px; }
+body.mesa-dj .palco .tecla::before { background: none; }
 
 /* LED vermelho de pixel, como o dos pedais de verdade,
    desenhado no dev/pecas.py (LED_SVG): o vidro de 8 px com o contorno, apagado com o ponto de luz e a
