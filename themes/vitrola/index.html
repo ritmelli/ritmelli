@@ -4036,7 +4036,7 @@ body:not(.mesa-dj) .mx-txt { display: none !important; }
 body.mesa-dj .palco .receptor > :is(.mx-placa-px, .mx-rot-px) { image-rendering: pixelated; }
 /* PADS-INICIO: os Sons rapidos em pixel art (1 celula = 2 px): a caixa inteira num canvas por baixo dos pads de verdade,
    que ficam transparentes (o clique, o foco e o lugar sao deles); os nomes num canvas de letra de meia celula por cima */
-body.mesa-dj #pads.px-ok { border-image: none; background: none; border-radius: 0; padding: 60px 22px 30px; row-gap: 0; }
+body.mesa-dj #pads.px-ok { border-image: none; background: none; border-radius: 0; padding: 60px 22px 34px; row-gap: 0; }   /* a base na linha da divisoria do mixer */
 body.mesa-dj #pads.px-ok > h2 { position: absolute; opacity: 0; pointer-events: none; }
 body.mesa-dj #pads.px-ok .pads-grade { position: relative; z-index: 2; grid-template-columns: repeat(3, 50px); gap: 8px 6px; justify-content: center; }
 body.mesa-dj #pads.px-ok .pad { grid-template-rows: 50px 20px; row-gap: 4px; }
@@ -5628,7 +5628,9 @@ function cabosDaMesa() {
   const fio = (a, b, c1, c2, cor) => ({ pts: bezier(a.rabo, [a.rabo[0] + c1[0], a.rabo[1] + c1[1]], [b.rabo[0] + c2[0], b.rabo[1] + c2[1]], b.rabo), cor });
   const pp = plugue(P.left + P.width * .22, P.bottom - 3, 90, 'preto'), pb = plugue(P.left + P.width * .5, P.bottom - 3, 90, 'branco');
   const pv = plugue(P.left + P.width * .7, P.bottom - 3, 90, 'vermelho');
-  const qb = plugue(G.left + 5, G.top + G.height * .6, 180, 'branco'), qv = plugue(G.left + 5, G.top + G.height * .38, 180, 'vermelho');
+  // as duas entradas abaixo do pe dos pads (a 38% o vermelho subia escondido atras do painel e so o V aparecia), o
+  // vermelho em cima do branco, sem cruzar
+  const qb = plugue(G.left + 5, G.top + G.height * .76, 180, 'branco'), qv = plugue(G.left + 5, G.top + G.height * .62, 180, 'vermelho');
   const qp = plugue(M.right - 5, Math.min(M.bottom - 40, P.bottom + 70), 0, 'preto');
   cv.style.left = x0 + 'px'; cv.style.top = y0 + 'px';
   fiosPixel(cv, G.left + 30 - x0, Math.max(G.bottom, M.bottom) - y0, [
