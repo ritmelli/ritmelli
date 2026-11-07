@@ -2126,8 +2126,8 @@ body { background: var(--parede-casa); }
    lugar da sala isometrica reamostrada, encostado nas teclas; a busca ocupa a fileira da plaqueta ate ele (o MESA-TOPO
    poe a plaqueta e as teclas em largura par, e a sobra da busca tambem cai em celula inteira) */
 body.mesa-dj .topo::before {
-  flex: 0 0 120px; max-width: none; height: 56px; margin: 0 0 4px; align-self: flex-end;   /* a prateleirinha com o contorno de baixo no das placas (r06: estava 1 celula acima) */
-  background: url("texturas/bibelo.png") 0 0 / 120px 56px no-repeat; image-rendering: pixelated;
+  flex: 0 0 124px; max-width: none; height: 56px; margin: 0 0 4px; align-self: flex-end;   /* (r17) 62 celulas: a tabua 2 mais longa, livros e planta 1 a direita (a corneta colava nos livros e a folha caia na ponta da tabua) */   /* a prateleirinha com o contorno de baixo no das placas (r06: estava 1 celula acima) */
+  background: url("texturas/bibelo.png") 0 0 / 124px 56px no-repeat; image-rendering: pixelated;
   filter: drop-shadow(4px 4px 0 rgba(30, 12, 4, .43));   /* (r06) a sombra das placas e das pecas, no lugar das 2 linhas escuras do png */
 }
 body.mesa-dj .topo::before { margin-left: -2px; }   /* (r12) a esquerda, a junta da madeira em 738 css corria colada no gargalo do gramofone; (r13) 1 celula so: com 2 ele encostava na busca */
