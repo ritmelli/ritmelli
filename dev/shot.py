@@ -2,7 +2,7 @@
 os erros do console no fim. Pra quem desenha tema conferir o proprio trabalho.
 
     python dev/shot.py http://127.0.0.1:8811/t/meu-tema/ out.png
-        [--size 1440x900] [--wait 2.5] [--js "document.querySelector('#x').click()"]...
+        [--size 1440x900] [--dpr 2] [--wait 2.5] [--js "document.querySelector('#x').click()"]...
         [--full] [--tab N] [--reduced-motion] [--offline-ok]
 
 Cada --js roda em ordem, com --wait segundos depois de cada um, todos no mesmo escopo
@@ -99,7 +99,7 @@ async def run(a):
             await cmd("Runtime.enable")
             await cmd("Log.enable")
             await cmd("Emulation.setDeviceMetricsOverride", width=w, height=h,
-                      deviceScaleFactor=1, mobile=w < 600)
+                      deviceScaleFactor=a.dpr, mobile=w < 600)
             # sem isso a aba headless nunca tem foco e :focus-visible nao aparece no print
             await cmd("Emulation.setFocusEmulationEnabled", enabled=True)
             if a.reduced_motion:
@@ -149,6 +149,7 @@ def main():
     ap.add_argument("url")
     ap.add_argument("out")
     ap.add_argument("--size", default="1440x900")
+    ap.add_argument("--dpr", type=float, default=1, help="pixels de tela por px CSS (o notebook: 2)")
     ap.add_argument("--wait", type=float, default=2.5)
     ap.add_argument("--js", action="append", default=[])
     ap.add_argument("--full", action="store_true", help="pagina inteira (ate 6000 px)")
