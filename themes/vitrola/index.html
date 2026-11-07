@@ -3450,10 +3450,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.mesa-dj .palco .deck .tampo { border-image: none; background: none; border-radius: 0; }
   body.mesa-dj .palco .deck .placa { border-image: none; background: none; }
   body.mesa-dj .palco .deck .selo-placa { right: 2cqi; bottom: .5cqi; }
-  /* o deck da deixa parado e mais apagado; o disco que sai segue girando ate a passagem acabar */
+  /* o disco que sai segue girando ate a passagem acabar (o deck da deixa tem a cor cheia: o estado e a etiqueta da tela) */
   body.mesa-dj .palco .deck-deixa .giratorio { animation-play-state: paused; }
   body.mesa-dj .palco .deck-deixa.gira .giratorio { animation-play-state: running; }
-  body.mesa-dj .palco .deck-deixa:not(.saindo) :is(.mesa, .faixa > :not(.deck-cab)) { filter: brightness(.74) saturate(.8); }
   /* a letra do lado na quina de cima da chapa, como a do mock: o lado e do lugar, nao do deck */
   body.mesa-dj .palco .deck-letra {
     position: absolute; z-index: 4; left: 18px; top: 18px; display: grid; place-items: center; width: 34px; height: 34px;
@@ -3481,7 +3480,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.mesa-dj .palco .deck .faixa > :is(.fim-disco, .situacao) { display: none; }
   body.mesa-dj .palco .deck .faixa > .titulo-faixa { margin-top: 12px; font-size: 1.25rem; }
   body.mesa-dj .palco .deck .faixa > .canal-faixa { margin-bottom: 0; font-size: .875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  body.mesa-dj .palco .deck-deixa.vazia .faixa > .canal-faixa { white-space: normal; font-size: .75rem; line-height: 1.3; }
+  body.mesa-dj .palco .deck .faixa > .canal-faixa { height: 16px; font-size: .75rem !important; line-height: 16px !important; white-space: nowrap !important; }
   body.mesa-dj .palco .deck .tempo { font-size: .875rem; min-width: 4ch; color: var(--tinta); text-shadow: 0 1px 0 rgba(255,255,255,.6); }
   body.mesa-dj .palco .deck .tempo.total { color: var(--tinta-2); }
   body.mesa-dj .palco .deck .linha-tempo { gap: 8px; }
@@ -9099,7 +9098,17 @@ carregar();
       }
       if (r > Rin + 1) { px(P, x, y, r > Rp - 1 && (dx + dy) < -.35 * r ? cor(100, 94, 90) : cor(36, 33, 31)); continue; }
       if (r > Rin) { px(P, x, y, O); continue; }
-      if (!com) { px(P, x, y, r < g.Rf * .5 ? cor(43, 69, 57) : r > g.Rf * .86 ? cor(25, 42, 34) : cor(33, 55, 45)); continue; }
+      if (!com) {
+        const f = r / g.Rf;
+        let a = Math.atan2(dx, -dy) * 180 / Math.PI;
+        if (a < 0) a += 360;
+        const da = Math.min(Math.abs(a - 315), 360 - Math.abs(a - 315)), arco = f > .72 && f < .9;
+        const sulco = [.57, .7, .82].some(q => Math.abs(r - q * g.Rf) < .5);
+        let c = f > .9 ? cor(25, 42, 34) : cor(33, 55, 45);
+        if (arco && da <= 12) c = cor(52, 82, 68); else if (arco && da <= 20) c = cor(43, 69, 57);
+        if (sulco) c = arco && da <= 20 ? cor(36, 58, 48) : cor(29, 48, 39);
+        px(P, x, y, c); continue;
+      }
       if (r <= Ri) { P.u[y * W + x] = 0; continue; }
       if (r <= Rl - 1) { px(P, x, y, (dx + dy) < 0 ? cor(198, 186, 166) : cor(156, 144, 126)); continue; }
       if (r <= Rl) { px(P, x, y, O); continue; }
@@ -9119,9 +9128,10 @@ carregar();
     }
     // o eixo: 4x4 sem as quinas, com o contorno e o brilho em cima a esquerda
     if (com || true) {
-      const ex0 = Math.round(cx) - 2, ey0 = Math.round(cy) - 2;
-      [".##.", "#hl#", "#ls#", ".##."].forEach((l, j) => [...l].forEach((q, i) => {
-        if (q !== '.') px(P, ex0 + i, ey0 + j, { "#": O, h: cor(255, 252, 244), l: cor(226, 220, 208), s: cor(160, 152, 140) }[q]);
+      const ex0 = Math.round(cx) - 3, ey0 = Math.round(cy) - 3;
+      [".####..", "#hlll#.", "#llls#z", "#llss#z", "#lsss#z", ".####z.", "..zzz.."].forEach((l, j) => [...l].forEach((q, i) => {
+        if (q !== '.') px(P, ex0 + i, ey0 + j, { "#": O, h: cor(248, 244, 234), l: cor(212, 205, 190), s: cor(140, 128, 110),
+                                                 z: com ? cor(10, 9, 8) : cor(18, 30, 24) }[q]);
       }));
     }
     // o anel do estroboscopio parado: 64 quadrados de 4x4 no meio da faixa (passo ~6.6, vao ~2.6), um oitavo calculado e
@@ -9213,6 +9223,12 @@ carregar();
       if (wt > area) {
         const off = d.mqOff || 0;
         texto(P, 'fb', tt + SEP + tt + SEP, ix0 + 3 + off, y1, BR, { sombra: O });
+        // as pontas da janela apagam ate o vidro (a coluna de fora inteira, a de dentro em xadrez): a letra entra e sai por
+        // baixo da moldura em vez de aparecer cortada no meio
+        const VIDRO = cor(22, 17, 14);
+        for (let y = Math.max(iy0 + 1, y1 - 10); y < Math.min(iy1, y1 + 3); y++)
+          for (const [x, cheio] of [[ix0 + 3, true], [ix0 + 4, false], [ix1 - 4, true], [ix1 - 5, false]])
+            if (cheio || (x + y) % 2) P.u[y * P.W + x] = VIDRO;
       } else texto(P, 'fb', tt, ix0 + 3, y1, BR, { sombra: O });
       const art = (d.canal ? d.canal.textContent : '').trim();
       let a2 = art;
@@ -9260,9 +9276,15 @@ carregar();
         const cx = (R.x0 + R.x1) / 2, cy = (R.y0 + R.y1) / 2 + (aperta ? 1 : 0), Rr = 18;
         // o aro em rampa que acompanha a curva: 5 faixas pelo angulo com a luz (de cima e da esquerda)
         const face = esfera3(cor(243, 236, 222), cor(255, 253, 248), cor(208, 196, 176), Rr - 5, 1.6);
+        const off = b.disabled;
         disco(P, cx, cy, Rr, (dx, dy2, r) => {
           if (r > Rr - 4) {
             const c_ = -(dx + dy2) / (r * Math.SQRT2);
+            if (off) {   // desligado: o latao fosco, sem o ambar aceso
+              if (r > Rr - 1 && c_ < -.3) return cor(120, 96, 58);
+              if (r <= Rr - 3 && c_ > .62) return cor(232, 216, 182);
+              return c_ > .5 ? cor(218, 196, 150) : c_ > -.05 ? cor(200, 176, 128) : c_ > -.55 ? cor(172, 146, 98) : cor(150, 124, 80);
+            }
             if (r > Rr - 1 && c_ < -.3) return AMBAR[2];                               // a borda de fora escura embaixo
             if (r <= Rr - 3 && c_ > .62) return cor(255, 238, 178);                    // o filete aceso por dentro, em cima
             return c_ > .5 ? AMBAR[0] : c_ > -.05 ? cor(250, 194, 84) : c_ > -.55 ? AMBAR[1] : cor(214, 140, 42);
