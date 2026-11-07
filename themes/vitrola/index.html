@@ -4118,6 +4118,48 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.mesa-dj .prat-seta.dir:disabled { background-image: var(--pr-seta-dir-off); }
   body.mesa-dj .prat-seta:active:not(:disabled) { border-image: none; }
   /* PRATELEIRA-FIM */
+  /* PRATELEIRA-CARTAO (07/11, pedido do dono): o cartao da prateleira no molde do da maleta, fora do bloco gerado pelo
+     integra_prat.py: a capa lisa com a beira creme de 3 px, o contorno e a sombra dura de baixo; a etiqueta creme de
+     moldura miuda no pe da capa, com a tecla, a musica em negrito, o artista e a duracao, e o menu no lugar do x */
+  body.mesa-dj .estante > li.disco-item, body.mesa-dj .estante .disco-item.no-prato { filter: none; }
+  body.mesa-dj .estante .borda { display: none; }
+  body.mesa-dj .estante .capa {
+    left: 0; top: 0; width: 130px; height: 142px; background: #E4D7BF;
+    box-shadow: 0 0 0 2px var(--contorno), 0 4px 0 2px rgba(0, 0, 0, .45);
+  }
+  body.mesa-dj .estante .disco-item.no-prato .capa { box-shadow: 0 0 0 2px var(--contorno), 0 4px 0 2px rgba(0, 0, 0, .45); }
+  body.mesa-dj .estante .capa img { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); object-fit: cover; }
+  body.mesa-dj .estante .capa:active img, body.mesa-dj .estante .capa.apertado img { filter: brightness(.6); }
+  body.mesa-dj .estante canvas:is(.foto-px, .nome-px) { display: none; }
+  body.mesa-dj .estante .no-prato-tag { left: 0; }
+  body.mesa-dj .estante .ficha {
+    position: absolute; z-index: 2; left: 4px; right: 4px; top: auto; bottom: 4px; height: 34px; padding: 0; display: block;
+    border: 0; border-image: var(--mold-etiqueta); background: #EFE6D5; box-shadow: 0 2px 0 rgba(0, 0, 0, .35); pointer-events: none;
+  }
+  body.mesa-dj .estante .ficha .nome { position: absolute; inset: 0; margin: 0; font-size: 0; color: transparent; text-shadow: none; text-indent: 0; }
+  /* a tecla do numero em traco de tinta no creme (o sprite era para a etiqueta escura) */
+  body.mesa-dj .estante .ficha .nome kbd[data-k] {
+    left: 6px; top: 5px; width: 13px; height: 14px; display: grid; place-items: center; box-sizing: border-box;
+    font: 700 .625rem/1 "Archivo", sans-serif; font-stretch: 85%; color: var(--tinta);
+    background: #F8F1E4; background-image: none; border: 1.5px solid var(--tinta); border-radius: 2px; box-shadow: 0 1.5px 0 var(--tinta);
+  }
+  body.mesa-dj .estante .ficha :is(.prat-t, .prat-s) {
+    position: absolute; left: 6px; right: 22px; display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-stretch: 85%;
+  }
+  body.mesa-dj .estante .ficha .prat-t { top: 4px; font-size: .75rem; line-height: 1.15; font-weight: 700; color: var(--tinta); text-shadow: 0 1px 0 rgba(255, 255, 255, .6); }
+  body.mesa-dj .estante .ficha .nome:has(kbd) ~ .prat-t { left: 23px; }
+  body.mesa-dj .estante .ficha .prat-s { top: 19px; font-size: .625rem; line-height: 1.2; color: #4E3826; }
+  body:not(.mesa-dj) .estante .ficha :is(.prat-t, .prat-s) { display: none; }
+  body.mesa-dj .estante .ficha .acoes { position: static; }
+  body.mesa-dj .estante .ficha .mais {
+    position: absolute; z-index: 3; top: 5px; right: 3px; width: 18px; height: 24px; pointer-events: auto;   /* o x da maleta fica a 2 px da moldura */
+    color: var(--tinta); background: none; border: 0; border-radius: 0; box-shadow: none; opacity: 1;
+  }
+  body.mesa-dj .estante .ficha .mais svg { width: 15px; height: 15px; filter: none; }
+  body.mesa-dj .estante .disco-item.chegando .ficha .nome {
+    inset: 4px 6px auto 6px; font-size: .75rem; line-height: 1.15; font-weight: 700; color: var(--tinta); overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  /* PRATELEIRA-CARTAO-FIM */
   /* (r05) a placa da Prateleira 2 celulas abaixo: a linha de base do titulo na mesma da placa do A seguir (fora do
      bloco gerado pelo integra_prat.py) */
   body.mesa-dj #vista-prateleira #cab-prat { top: 0; }   /* (r09) a placa com 20 linhas: o topo 1 celula acima; (r13) a placa toda 1 celula acima, 3 celulas ate as capas */
@@ -7118,7 +7160,10 @@ function liDisco(it, i) {
   mais.setAttribute('aria-label', `Mais ações: ${it.title}`); mais.setAttribute('aria-haspopup', 'menu'); mais.setAttribute('aria-expanded', 'false');
   mais.innerHTML = svgMais();
   acoes.append(mais);
-  ficha.append(nome, acoes);
+  // (07/11, pedido do dono) na mesa o cartao da prateleira e o da maleta: a musica em negrito e o artista e a duracao embaixo
+  const pt = partirTitulo(it);
+  ficha.append(nome, el('span', 'prat-t', pt.musica),
+               el('span', 'prat-s', [pt.artista, it.duration ? fmt(it.duration) : null].filter(Boolean).join(' · ') || ' '), acoes);
   li.append(capa, borda, ficha);
   li._chave = chaveItem(it, i);
   return li;
@@ -9051,17 +9096,14 @@ carregar();
     capa.classList.add('foto-px');
   }
   function marcaTeclas() {
-    if (document.body.classList.contains('mesa-dj')) document.querySelectorAll('#estante .capa img').forEach(pixelaCapa);
+    // (07/11, pedido do dono) a capa lisa e o nome em letra normal, como na maleta: sem o pixelaCapa e o desenhaNomes
     document.querySelectorAll('#estante kbd:not([data-k])').forEach(k => { k.dataset.k = k.textContent.trim(); });
-    desenhaNomes();
   }
   function liga() {
     const conta = document.getElementById('conta'), est = document.getElementById('estante');
     if (conta) new MutationObserver(desenhaConta).observe(conta, { childList: true, characterData: true, subtree: true });
     if (est) new MutationObserver(marcaTeclas).observe(est, { childList: true, subtree: true });
     desenhaConta(); marcaTeclas();
-    if (document.fonts) document.fonts.load(FONTE).then(() => { document.querySelectorAll('#estante canvas.nome-px').forEach(c => { c.dataset.t = ''; }); desenhaNomes(); });
-    new MutationObserver(desenhaNomes).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', liga); else liga();
 })();
