@@ -4184,7 +4184,7 @@ body.mesa-dj .palco .receptor > :is(.mx-placa-px, .mx-rot-px) { image-rendering:
 body.mesa-dj .palco .gaveta.gav-ok { position: relative; isolation: isolate; background: none; box-shadow: none; border-radius: 0; }
 body.mesa-dj .palco .gaveta > canvas.gav-px { position: absolute; left: 0; top: 0; z-index: -1; display: block; pointer-events: none; image-rendering: pixelated; }
 body:not(.mesa-dj) canvas.gav-px { display: none; }
-body.mesa-dj #pads.px-ok { border-image: none; background: none; border-radius: 0; padding: 60px 22px 34px; row-gap: 0; }   /* a base na linha da divisoria do mixer */
+body.mesa-dj #pads.px-ok { border-image: none; background: none; border-radius: 0; padding: 60px 22px 32px; row-gap: 0; }   /* a base na linha da divisoria do mixer (r10: 1 celula a menos embaixo, o contorno caia 1 celula abaixo do sulco do crossfader) */
 body.mesa-dj #pads.px-ok > h2 { position: absolute; opacity: 0; pointer-events: none; }
 body.mesa-dj #pads.px-ok .pads-grade { position: relative; z-index: 2; grid-template-columns: repeat(3, 50px); gap: 8px 6px; justify-content: center; }
 body.mesa-dj #pads.px-ok .pad { grid-template-rows: 50px 20px; row-gap: 4px; }
