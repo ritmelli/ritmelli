@@ -479,7 +479,7 @@ def gota(px_, py_, r1, r2, h):
     return a * px_ + b * py_ - r1
 
 
-KF_CHAPEU = (6., 2.5, 15.)    # (r15) ponta de 2,5: o bico que passa da saia com recheio creme por dentro do contorno (com 1,5 era so contorno). (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
+KF_CHAPEU = (6., 3., 14.5)    # (r16) ponta de 3: o miolo creme cabe na ponta tambem na horizontal (o MEGAFONE virava toco preto). (r15) ponta de 2,5: o bico que passa da saia com recheio creme por dentro do contorno (com 1,5 era so contorno). (madrugada r09) o chapeu em gota por cima da saia: raio de tras, raio da ponta, distancia da ponta
 KF_SOBE = 0                 # o chapeu acima do tampo da saia (r11: chato; a parede de 2 virava uma faixa preta de 3 css)
 # a saia na mesma paleta do chapeu: um tom abaixo (o tampo dela no aro) escurecia o knob e ele lia como duas pecas
 # empilhadas; no mesmo creme ele segue da familia dos outros e a gota se le pelo contorno
@@ -514,7 +514,9 @@ def _frango_camada(graus, cx, cy, n, r1, r2, h, saia, letra=None):
                 gx, gy = tampo(x + .2, y) - tampo(x - .2, y), tampo(x, y + .2) - tampo(x, y - .2)
                 ang = math.degrees(math.atan2(gx, -gy))
                 perto = topo > -fino - 2
-                px[(x, y)] = "W" if perto and -100 <= ang <= 45 else "A" if perto and (ang >= 75 or ang <= -135) else "F"
+                # (r16) a luz de cima a esquerda pega o flanco de normal ate -125 graus (com -100 o bico apontado para as 11h
+                # ficava sem o filete claro no flanco esquerdo)
+                px[(x, y)] = "W" if perto and -125 <= ang <= 45 else "A" if perto and (ang >= 75 or ang <= -150) else "F"
             else:
                 k = ks[0]
                 gx, gy = tampo(x + .2, y, k) - tampo(x - .2, y, k), tampo(x, y + .2, k) - tampo(x, y - .2, k)
@@ -682,7 +684,8 @@ def arcade_botao(palavra):
     capa = retangulo_degrau(k, k, bw - k, bh - k, [1])
     miolo = {(x, y) for x in range(mi, bw - mi) for y in range(mi, bh - mi)}
     letras, tw = texto_pixel(ARC_LETRA, palavra)
-    ox, oy = mi + (bw - 2 * mi - tw) // 2, mi + (bh - 2 * mi - 10) // 2
+    # (r16) centrado na area clara da etiqueta (sem a borda e a sombra de 1 na esquerda): o C do CARICATO encostava no chanfro
+    ox, oy = mi + 2 + (bw - 2 * mi - 3 - tw) // 2, mi + (bh - 2 * mi - 10) // 2
     camadas = {}
     for estado in ("apagado", "aceso"):
         aceso = estado == "aceso"
