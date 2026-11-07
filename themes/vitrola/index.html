@@ -1410,6 +1410,13 @@ body.mesa-dj .palco .tecla { border-image-outset: 2px 2px 8px 2px; }
 body.mesa-dj .palco .tecla::before { background: none; }
 /* (r05) a plaquinha escura do tipo com o brilho so na linha de cima, simetrico e mais fraco (o L do lado esquerdo lia
    como um colchete antes do nome: "[LO-FI") */
+/* (r05) o selo do atraso com largura fixa de 20 celulas no eixo do pedal de 80 (pela largura do texto saia 38 ou 39 px,
+   meio pixel fora da grade, e o contorno abria uma fresta) e 6 celulas de altura, 1 celula mais alto (folga do arco) */
+/* (r05) o knob e o arco 1 celula abaixo em todos os pedais (no mesmo prumo na fileira): o tique das 12h saia de baixo
+   do selo do atraso */
+body.mesa-dj .palco .tecla:not(.com-chave) .p-grande { top: 2px; }
+body.mesa-dj .palco .p-adesivo { top: 2px; left: 20px; width: 40px; transform: none; text-align: center;
+  padding: .5px 0 1.5px; box-sizing: border-box; }
 body.mesa-dj .palco .p-tipo { border-image-source: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='2' y='0' width='8' height='2'/%3E%3Crect x='2' y='10' width='8' height='2'/%3E%3Crect x='0' y='2' width='4' height='2'/%3E%3Crect x='0' y='8' width='4' height='2'/%3E%3Crect x='8' y='2' width='4' height='2'/%3E%3Crect x='8' y='8' width='4' height='2'/%3E%3Crect x='0' y='4' width='2' height='4'/%3E%3Crect x='10' y='4' width='2' height='4'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.15'%3E%3Crect x='4' y='2' width='4' height='1'/%3E%3C/g%3E%3C/svg%3E"); }
 
 /* LED vermelho de pixel, como o dos pedais de verdade,
