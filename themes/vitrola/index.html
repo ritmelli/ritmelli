@@ -4125,6 +4125,7 @@ body.mesa-dj .palco .deck.dk-ok .tempo { min-width: 0; letter-spacing: -2px; }
 body.mesa-dj .palco .deck.dk-ok .linha-tempo { grid-template-columns: auto 1fr auto; grid-template-areas: "p . d" "s s s"; row-gap: 2px; column-gap: 0; }
 body.mesa-dj .palco .deck.dk-ok .linha-tempo > .tempo:not(.total) { grid-area: p; justify-self: start; line-height: 16px; }
 body.mesa-dj .palco .deck.dk-ok .linha-tempo > .tempo.total { grid-area: d; justify-self: end; line-height: 16px; }
+body.mesa-dj .palco .deck.dk-ok .linha-tempo > .tempo.total { margin-right: -2px; }   /* (r08) a borda direita na da tela e da barra (sobrava o espaco da ultima letra) */
 body.mesa-dj .palco .deck.dk-ok .linha-tempo > input { grid-area: s; width: auto; }
 body.mesa-dj .palco .deck.dk-ok .faixa { translate: -6px var(--dk-sobe, -20px); }
 body.mesa-dj .palco .deck.dk-ok .comandos { margin-top: 12px; }
@@ -9376,9 +9377,11 @@ carregar();
     // espelhado celula a celula nos outros sete
     {
       const N = 64, rm = (Rin + Rp) / 2, C0 = Math.round(cx), C1 = Math.round(cy), cel = [];
-      for (let k = 0; k <= N / 8; k++) {
+      // (r08) o padrao meio passo girado: com o centro na fronteira de celula, o ponto de 3 no eixo saia 4x3; assim os
+      // eixos ficam num vao e os pontos vem em pares espelhados, todos 3x3
+      for (let k = 0; k < N / 8; k++) {
         // (r07) quadrados de 3x3: os de 4x4 quase se tocavam nas diagonais (folga de 1 contra 4 nos eixos, cara de ziper)
-        const a = k * 2 * Math.PI / N, i0 = Math.round(rm * Math.cos(a) - 1.5), j0 = Math.round(rm * Math.sin(a) - 1.5);
+        const a = (k + .5) * 2 * Math.PI / N, i0 = Math.round(rm * Math.cos(a) - 1.5), j0 = Math.round(rm * Math.sin(a) - 1.5);
         for (let di = 0; di < 3; di++) for (let dj = 0; dj < 3; dj++) cel.push([i0 + di, j0 + dj]);
       }
       for (const [i, j] of cel) for (const [a, b] of [[i, j], [j, i]]) for (const sx of [1, -1]) for (const sy of [1, -1])
