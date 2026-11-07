@@ -2123,6 +2123,7 @@ body.mesa-dj .topo::before {
   background: url("texturas/bibelo.png") 0 0 / 120px 56px no-repeat; image-rendering: pixelated;
   filter: drop-shadow(4px 4px 0 rgba(30, 12, 4, .43));   /* (r06) a sombra das placas e das pecas, no lugar das 2 linhas escuras do png */
 }
+body.mesa-dj .topo::before { margin-left: -4px; }   /* (r12) 2 celulas a esquerda: a junta da madeira em 738 css corria colada no gargalo do gramofone */
 body.mesa-dj .topo .marca { margin-right: -2px; }   /* (r09) o vao que se ve ate a busca em 6 celulas, o das outras pecas (a sombra da plaqueta come 2): eram 7 */
 body.mesa-dj .topo .busca { flex: 1 1 0; max-width: none; }
 /* a barra do topo na celula do palco: as molduras de pixel (3 pontos por celula) a 2/3 de px desenham a celula em 2 px,
@@ -2144,6 +2145,9 @@ body.mesa-dj .topo .botoes-topo .btn-madeira { padding: 0 18px; }   /* o rotulo 
 /* (r05) o rotulo das teclas em 20 px e peso 600: a 18 a caixa-alta tinha 19,5% da placa (no mock 27%) e a placa
    parecia vazia em volta; a busca cede a largura */
 body.mesa-dj .topo .botoes-topo .btn-madeira { font-size: 20px; font-weight: 600; padding: 0 22px; }
+/* (r12) com a sobra da busca as teclas alargam: o rotulo no meio delas (ficava encostado a esquerda), e gravado como o logo
+   (o fio de luz embaixo; sem ele o Chrome desenhava o rotulo com franja colorida de subpixel) */
+body.mesa-dj .topo .botoes-topo .btn-madeira { justify-content: center; text-shadow: 0 2px 0 rgba(255,255,255,.6); }
 /* (r06) os icones das teclas no peso do rotulo 600 (o traco de 1,8 ficava fino ao lado) e o logo 1,25 vez maior: com os
    rotulos maiores ele perdia a forca (x de 12 px numa placa de 40; no mock a palavra pesa o dobro do rotulo) */
 body.mesa-dj .topo .botoes-topo .btn-madeira svg { stroke-width: 2.5; }
