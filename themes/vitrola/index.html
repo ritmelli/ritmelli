@@ -9355,7 +9355,7 @@ carregar();
         gl.forEach((l, j) => [...l].forEach((q, i) => { if (q === '#') px(P, ox + i, oy + j, TINTA); })); }
     }
     // o botao redondo do canto de baixo a esquerda (o liga do mock)
-    disco(P, chx0 + 13, chy1 - 13, 4.5, (dx, dy, r) => r < 1.5 ? O : esfera3(cor(228, 222, 210), cor(255, 252, 244), cor(176, 168, 154), 4.5, 1.1)(dx, dy), [1, 1]);
+    disco(P, chx0 + 13, chy1 - 13, 4.5, (dx, dy, r) => r < 1.5 ? O : esfera3(cor(228, 222, 210), cor(255, 252, 244), cor(176, 168, 154), 4.5, 1.1)(dx, dy), [1, 2]);   // (r09) a sombra 1 a direita e 2 embaixo, como as outras pecas em relevo
     // o prato (centro inteiro: os quadrantes saem iguais): a lateral escura embaixo, a sombra curta, o contorno, o aro com o
     // filete aceso no arco de cima e da esquerda, a linha escura do vinil, os sulcos finos, o brilho em duas cunhas, o rotulo
     const { cx, cy, Rp, Rr, Rl, Ri, com } = g;
@@ -9453,14 +9453,14 @@ carregar();
     }
     P.dim = 1;
     // a plaquinha VITROLA no meio da coluna da direita, embaixo do transporte
-    const w1 = lg('VITROLA', VITROLA), w2 = lg('33 / 45 RPM', MIUDA), sw = Math.max(w1, w2) + 10, sh = 20;
+    const w1 = lg('VITROLA', VITROLA), w2 = lg('33 / 45 RPM', MIUDA), sw = Math.max(w1, w2) + 10, sh = 22;   // (r09) 2 celulas mais alta embaixo: 2 de folga entre o filete e as letras
     const fx = g.faixa, sx0 = Math.round((fx.x0 + fx.x1 - sw) / 2), sy0 = g.cmdY1 + 10;   // (r07) 3 celulas mais longe do play
     sombraCaixa(P, sx0, sy0, sx0 + sw, sy0 + sh, 1, 2);
     caixa(P, sx0, sy0, sx0 + sw, sy0 + sh, CREME, CREME_L, CREME_S);
     for (let x = sx0 + 2; x < sx0 + sw - 2; x++) { px(P, x, sy0 + 2, cor(198, 182, 156)); px(P, x, sy0 + sh - 3, cor(198, 182, 156)); }
     for (let y = sy0 + 2; y < sy0 + sh - 2; y++) { px(P, sx0 + 2, y, cor(198, 182, 156)); px(P, sx0 + sw - 3, y, cor(198, 182, 156)); }
-    mapa(P, 'VITROLA', VITROLA, sx0 + Math.floor((sw - w1) / 2), sy0 + 4, TINTA);
-    mapa(P, '33 / 45 RPM', MIUDA, sx0 + Math.floor((sw - w2) / 2), sy0 + 11, cor(48, 34, 26));
+    mapa(P, 'VITROLA', VITROLA, sx0 + Math.floor((sw - w1) / 2), sy0 + 5, TINTA);
+    mapa(P, '33 / 45 RPM', MIUDA, sx0 + Math.floor((sw - w2) / 2), sy0 + 12, cor(48, 34, 26));
     return P;
   }
 
