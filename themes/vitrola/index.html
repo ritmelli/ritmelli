@@ -1408,6 +1408,9 @@ body.mesa-dj .palco .tecla.com-chave .p-logo { top: -1.25px; }
    soltos ao lado dos plugues (r03) */
 body.mesa-dj .palco .tecla { border-image-outset: 2px 2px 8px 2px; }
 body.mesa-dj .palco .tecla::before { background: none; }
+/* (r05) a plaquinha escura do tipo com o brilho so na linha de cima, simetrico e mais fraco (o L do lado esquerdo lia
+   como um colchete antes do nome: "[LO-FI") */
+body.mesa-dj .palco .p-tipo { border-image-source: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cg fill='%231A0B04'%3E%3Crect x='2' y='0' width='8' height='2'/%3E%3Crect x='2' y='10' width='8' height='2'/%3E%3Crect x='0' y='2' width='4' height='2'/%3E%3Crect x='0' y='8' width='4' height='2'/%3E%3Crect x='8' y='2' width='4' height='2'/%3E%3Crect x='8' y='8' width='4' height='2'/%3E%3Crect x='0' y='4' width='2' height='4'/%3E%3Crect x='10' y='4' width='2' height='4'/%3E%3C/g%3E%3Cg fill='%23FFECD6' fill-opacity='0.15'%3E%3Crect x='4' y='2' width='4' height='1'/%3E%3C/g%3E%3C/svg%3E"); }
 
 /* LED vermelho de pixel, como o dos pedais de verdade,
    desenhado no dev/pecas.py (LED_SVG): o vidro de 8 px com o contorno, apagado com o ponto de luz e a
