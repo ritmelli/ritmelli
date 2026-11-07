@@ -9983,7 +9983,7 @@ carregar();
     const p = document.getElementById('fila-vazia'), L = window.PX_LETRA, mal = document.querySelector('.fila-parede.maleta');
     if (!p) return;
     const cv0 = p.querySelector('canvas.vazia-px');
-    if (!document.body.classList.contains('mesa-dj') || p.hidden || !L || !L.pronto() || !mal || !mal.getBoundingClientRect().width) {
+    if (!document.body.classList.contains('mesa-dj') || p.hidden || !L || !L.pronto() || !mal || !mal.offsetWidth || mal.offsetParent !== p.offsetParent) {
       p.classList.remove('px-ok'); if (cv0) cv0.remove(); return;
     }
     const b = p.querySelector('b'), tit = (b ? b.textContent : '').trim();
@@ -9991,12 +9991,14 @@ carregar();
     const linhas = [[tit, 'fb', BR], ...quebra(L, dica).map(t => [t, 'f', DICA])];
     const ws = linhas.map(([t, fk]) => L.larg(fk, t) - 1), W = Math.max(...ws) + 2;
     const base = linhas.map((_, i) => 7 + (i ? PASSO1 + (i - 1) * PASSO2 : 0)), H = base[base.length - 1] + 3;
-    const rp = rectP(p), rm = rectP(mal), cx = rm.left + rm.width / 2;   // o eixo da maleta em px do palco
-    const left = 2 * Math.floor((cx - W) / 2), top = 2 * Math.round((rp.top + TOPO) / 2), eixo = (cx - left) / 2;
+    // em px do layout (o do palco, sem a escala dele): o aviso e a maleta tem o mesmo pai de posicao, entao o eixo da
+    // maleta e o canto do aviso se medem um contra o outro na hora, sem depender da escala nem de quando o palco assentou
+    const px0 = p.offsetLeft, py0 = p.offsetTop, cx = mal.offsetLeft + mal.offsetWidth / 2;
+    const left = 2 * Math.floor((cx - W) / 2), top = 2 * Math.round((py0 + TOPO) / 2), eixo = (cx - left) / 2;
     const cv = cv0 || Object.assign(document.createElement('canvas'), { className: 'vazia-px' });
     if (!cv0) { cv.setAttribute('aria-hidden', 'true'); p.appendChild(cv); }
     cv.width = W; cv.height = H; cv.style.width = 2 * W + 'px'; cv.style.height = 2 * H + 'px';
-    cv.style.left = left - rp.left + 'px'; cv.style.top = top - rp.top + 'px';
+    cv.style.left = left - px0 + 'px'; cv.style.top = top - py0 + 'px';
     const c = cv.getContext('2d'), im = c.createImageData(W, H);
     const ponto = (x, y, k) => { if (x < 0 || y < 0 || x >= W || y >= H) return; const o = (y * W + x) * 4; im.data[o] = k[0]; im.data[o + 1] = k[1]; im.data[o + 2] = k[2]; im.data[o + 3] = 255; };
     const escreve = (t, fk, x, yb, k, dy) => {
@@ -10020,11 +10022,11 @@ carregar();
     new ResizeObserver(agenda).observe(p);
   }
   new MutationObserver(agenda).observe(document.body, { attributes: true, attributeFilter: ['class'] });
-  // o palco (o ajustarPalco grava a escala no estilo do html) e a parede (a prateleira que carrega muda a grade) mexem no
-  // lugar do aviso sem mudar o tamanho dele
+  // o palco (o ajustarPalco grava a escala no estilo do html) e a maleta (a fileira que muda de largura) mexem no lugar
+  // do aviso sem mudar o tamanho dele
   new MutationObserver(agenda).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
-  const par = document.querySelector('.parede');
-  if (par) new ResizeObserver(agenda).observe(par);
+  const mal = document.querySelector('.fila-parede.maleta');
+  if (mal) new ResizeObserver(agenda).observe(mal);
   addEventListener('resize', agenda);
   document.addEventListener('px-letra', agenda);
   agenda();
