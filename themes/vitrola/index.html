@@ -8720,7 +8720,11 @@ carregar();
   const SO_SEP = /^[\-|\u2013\u2014:]+$/;
   const BRANCO = [255, 248, 236], SOMBRA_N = [14, 7, 3];
   // cada letra em x inteiro, com 1 px entre elas: o limiar nao cola uma na outra
-  const avanco = (c, ch) => Math.round(c.measureText(ch).width) + 1;
+  // (r05) kana e kanji na reserva do sistema em negrito de 12 px (a Jersey nao tem; a reserva fina a 18,667 saia mais
+  // alta que a caixa-alta e falhada no corte do alfa): a fonte por letra e o corte mais baixo so nelas
+  const CJK = /[぀-ヿ㐀-鿿豈-﫿ｦ-ﾟ가-힯]/, FONTE_CJK = 'bold 12px "Yu Gothic UI", "Meiryo", sans-serif';
+  const avanco = (c, ch) => { if (!CJK.test(ch)) return Math.round(c.measureText(ch).width) + 1;
+    c.font = FONTE_CJK; const v = Math.round(c.measureText(ch).width) + 1; c.font = FONTE; return v; };
   const largura = (c, s) => [...s].reduce((t, ch) => t + avanco(c, ch), 0) - (s ? 1 : 0);
   const SEPARA = /[\s\-|\u2013\u2014:,;]+$/;
   function quebra(c, texto, largs) {
@@ -8751,7 +8755,15 @@ carregar();
     }
     return linhas;
   }
-  function escreve(c, s, x, y) { for (const ch of s) { c.fillText(ch, x, y); x += avanco(c, ch); } return x; }
+  function escreve(c, s, x, y) {
+    for (const ch of s) {
+      const a = avanco(c, ch);
+      if (CJK.test(ch)) { c.font = FONTE_CJK; c.fillText(ch, x, y); c.font = FONTE; c.cjk.push([x, x + a, y]); }
+      else c.fillText(ch, x, y);
+      x += a;
+    }
+    return x;
+  }
   function desenhaNome(ficha) {
     const nome = ficha.querySelector('.nome');
     if (!nome) return;
@@ -8765,16 +8777,17 @@ carregar();
     if (!cv) { cv = document.createElement('canvas'); cv.className = 'nome-px'; cv.setAttribute('aria-hidden', 'true'); ficha.appendChild(cv); }
     cv.width = w; cv.height = h; cv.dataset.t = texto;
     const c = cv.getContext('2d');
-    c.font = FONTE; c.textBaseline = 'alphabetic'; c.fillStyle = '#fff';
+    c.font = FONTE; c.textBaseline = 'alphabetic'; c.fillStyle = '#fff'; c.cjk = [];
     const [l1, l2] = quebra(c, texto, [w - RECUO, w]);
     const reti = l2.endsWith('\u2026'), t2 = reti ? l2.slice(0, -1) : l2;
     escreve(c, l1, RECUO, 16);
     const xf = escreve(c, t2, 0, 16 + LINHA);
     if (reti) { for (let k = 0; k < 3; k++) c.fillRect(xf + 1 + 3 * k, 14 + LINHA, 2, 2); }
-    const img = c.getImageData(0, 0, w, h), d = img.data, cheio = new Uint8Array(w * h);
+    const img = c.getImageData(0, 0, w, h), d = img.data, cheio = new Uint8Array(w * h), corte = new Uint8Array(w * h).fill(128);
+    for (const [x0, x1, yb] of c.cjk) for (let y = Math.max(0, yb - 13); y < Math.min(h, yb + 3); y++) for (let x = x0; x < Math.min(w, x1); x++) corte[y * w + x] = 100;
     for (let i = 0; i < w * h; i++) {
       const a = d[4 * i + 3];
-      if (a < 128) { d[4 * i + 3] = 0; continue; }
+      if (a < corte[i]) { d[4 * i + 3] = 0; continue; }
       cheio[i] = 1; d[4 * i + 3] = 255;
       const r = d[4 * i], g = d[4 * i + 1], b = d[4 * i + 2];
       if (Math.min(r, g, b) > 150 && Math.max(r, g, b) - Math.min(r, g, b) < 40) { d[4 * i] = BRANCO[0]; d[4 * i + 1] = BRANCO[1]; d[4 * i + 2] = BRANCO[2]; }
