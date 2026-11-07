@@ -9318,10 +9318,12 @@ carregar();
       }
       for (let x = x0 + 1; x <= x1 + 2; x++) px(P, x, y1 + 2, SOMBRA_F);
       for (let y = y0 + 1; y <= y1 + 2; y++) px(P, x1 + 2, y, SOMBRA_F);
+      // (r05) cada ponta do garfo sem o contorno escuro em volta (o contorno fechado com o fundo escuro lia "UU"): o pino
+      // claro em pe com a sombra so a direita e embaixo, no corpo do pedestal
       for (const ax of [fx_ - 4, fx_ + 4]) {
-        ret(P, ax - 1, fy - 3, ax + 2, fy + 2, O);
-        ret(P, ax, fy - 2, ax + 1, fy + 1, cor(240, 236, 226));
-        px(P, ax + 1, fy + 1, cor(172, 164, 148));
+        ret(P, ax, fy - 3, ax + 1, fy + 1, cor(240, 236, 226));
+        ret(P, ax + 1, fy - 2, ax + 2, fy + 2, cor(172, 164, 148));
+        px(P, ax, fy + 1, cor(172, 164, 148));
       }
     }
     P.dim = 1;
