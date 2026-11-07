@@ -10649,13 +10649,15 @@ carregar();
         if (!cv) { cv = document.createElement('canvas'); cv.className = 'mx-txt mx-placa-px'; cv.setAttribute('aria-hidden', 'true'); m.rec.appendChild(cv); m.placaCv = cv; }
         const PL = Object.assign({}, PLACA0, window.MX_PLACA || {}), FP = PL.alt === 10 ? F10 : F8, lp = t_ => largB(t_, FP, PL.esp);
         const t = (m.auto.textContent || '').trim().toUpperCase(), ls = PL.linhas === 2 ? t.split(/\s+/) : [t];
-        const g_ = PL.grav ? 1 : 0, LH = FP.h + 5, w = Math.max(...ls.map(lp)) + g_, h = 3 + (ls.length - 1) * LH + FP.h + 3 + g_;
+        // (r09) 1 fileira vazia em cima (h0 + 1, o canvas 1 pixel acima): o top cai em 1/64 de px do layout, fora da
+        // tela, e o Chrome estica a fileira 0 em 1 px de tela; com ela vazia, o acento do A e do til deixa de engordar
+        const g_ = PL.grav ? 1 : 0, LH = FP.h + 5, w = Math.max(...ls.map(lp)) + g_, h0 = 3 + (ls.length - 1) * LH + FP.h + 3 + g_, h = h0 + 1;
         cv.width = w; cv.height = h; cv.style.width = w * LS + 'px'; cv.style.height = h * LS + 'px';
         const c = cv.getContext('2d'), im = c.createImageData(w, h);
-        if (PL.grav) ls.forEach((l, j) => textoB(im, l, Math.floor((w - g_ - lp(l)) / 2), 3 + j * LH, [176, 164, 142], FP, PL.esp));
-        ls.forEach((l, j) => textoB(im, l, Math.floor((w - g_ - lp(l)) / 2) + g_, 3 + j * LH + g_, [15, 8, 5], FP, PL.esp));
+        if (PL.grav) ls.forEach((l, j) => textoB(im, l, Math.floor((w - g_ - lp(l)) / 2), 4 + j * LH, [176, 164, 142], FP, PL.esp));
+        ls.forEach((l, j) => textoB(im, l, Math.floor((w - g_ - lp(l)) / 2) + g_, 4 + j * LH + g_, [15, 8, 5], FP, PL.esp));
         c.putImageData(im, 0, 0);
-        A.tw = Math.ceil(w * LS / 2); A.thp = h * LS; A.el = cv; A.PL = PL; A.yMax = H - 5;
+        A.tw = Math.ceil(w * LS / 2); A.thp = h0 * LS; A.el = cv; A.PL = PL; A.yMax = H - 5;
       }
       const calmos = [];
       for (const f of fs) {
@@ -10686,7 +10688,7 @@ carregar();
       m.vg = m.metros.map((e, i) => ({ k: e.dataset.k, apag: apag[i], g: vuFace(P, vx0(i), J.y0, vx0(i) + mw, J.y1, e.dataset.nome || '', apag[i]) }));
       for (const f of fs) faderEst(P, f);
       if (X) crossEst(P, X);
-      if (A) { placaEst(P, A, A.PL); A.el.style.left = gx(2 * A.tcx - A.el.width * LS / 2) + 'px'; A.el.style.top = gy(A.ttop) + 'px'; }
+      if (A) { placaEst(P, A, A.PL); A.el.style.left = gx(2 * A.tcx - A.el.width * LS / 2) + 'px'; A.el.style.top = gy(A.ttop) - LS + 'px'; }
       m.est = P; m.fs = fs; m.ts = ts; m.X = X; m.A = A; m.chaveE = geo; m.chaveD = '';
       m.dyn = pincel(W + M_, H + M_); m.img = m.ctx.createImageData(W + M_, H + M_); m.imgU = new Uint32Array(m.img.data.buffer);
     }
