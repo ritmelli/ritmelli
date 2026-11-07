@@ -3498,7 +3498,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
       "esq mix mix pads dir"
       "pedA mix mix pads pedB";
     column-gap: var(--vao); row-gap: var(--vao);
-    padding: var(--pad-y) 20px;
+    /* (r05) 4 px a menos em cima: o palco de 1026 a 0,75 passa 1,5 px da janela de 768 e a margem de baixo que se via era
+       9,5 contra 13 em cima; tudo sobe 2 celulas (os vaos de 12 ficam), em cima 11 e embaixo 12,5 */
+    padding: calc(var(--pad-y) - 4px) 20px calc(var(--pad-y) + 4px);
   }
   body.mesa-dj .parede { display: contents; }
   body.mesa-dj .parede > #vista-prateleira { display: contents; }
