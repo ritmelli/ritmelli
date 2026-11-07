@@ -6336,7 +6336,7 @@ function medirCabosBanco(banco) {
     const tom = new Map();
     T.caixa(tom, xp, yv - 3, 5, 7, PAL_PECA.niquel);
     T.caixa(tom, xp + 5, yv - 4, 7, 9, PAL_PECA.preto);
-    liga([[xp + 11, yv], [pin.x - 6, yv], [pin.x, yv - 8], [pin.x, pin.y]], PAL_CABO.preto, pin, { m: tom });
+    liga([[xp + 11, yv], [pin.x - 6, yv], [pin.x, yv - 8], [pin.x, pin.y]], PAL_CABO.vermelho, pin, { m: tom });   // (r13) o vermelho de fora continua por dentro
     T.peca(T.caixa(new Map(), xp, yb - 3, 4, 7, PAL_PECA.preto));
   } else {
     const pin = plugueL(T, q0.cx[0][0] - 1, q0.y, -1, -1, PAL_PECA.cromo);
@@ -6351,7 +6351,7 @@ function medirCabosBanco(banco) {
   liga([[pout.x, pout.y], [pout.x, pout.y + 12], [pout.x + 1, pout.y + 26], [sx - 5, sy - 9], [sx, sy]], PAL_CABO.branco, pout);
   T.buraco(sx, sy, 101, [.5, 1]);
   // a fita VOZ enrolada no cabo branco, a bandeirinha subindo para a direita por cima do feltro e da parede
-  T.peca(fitaEscrita(T, Math.round(pout.x), Math.round(pout.y + 17), 102, 'VOZ', .4));
+  T.peca(fitaEscrita(T, Math.round(pout.x), Math.round(pout.y + 17), 102, 'VOZ', 0));   // (r13) reta: girada, a letra de meia celula serrilhava
 
   T.sombra();
   cv.style.cssText = `left:${-xOff}px;top:0;width:${Wc}px;height:${H}px`;
