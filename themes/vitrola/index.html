@@ -2087,8 +2087,8 @@ body { background: var(--parede-casa); }
    lugar da sala isometrica reamostrada, encostado nas teclas; a busca ocupa a fileira da plaqueta ate ele (o MESA-TOPO
    poe a plaqueta e as teclas em largura par, e a sobra da busca tambem cai em celula inteira) */
 body.mesa-dj .topo::before {
-  flex: 0 0 120px; max-width: none; height: 56px; margin: 0 0 6px; align-self: flex-end;   /* a prateleirinha na base das teclas */
-  background: url("texturas/bibelo.png") 0 0 / 120px 56px no-repeat; image-rendering: pixelated;
+  flex: 0 0 120px; max-width: none; height: 60px; margin: 0 0 2px; align-self: flex-end;   /* a prateleirinha na base das teclas, com a sombra de 2 celulas embaixo como a das placas */
+  background: url("texturas/bibelo.png") 0 0 / 120px 60px no-repeat; image-rendering: pixelated;
 }
 body.mesa-dj .topo .marca { margin-right: 0; }
 body.mesa-dj .topo .busca { flex: 1 1 0; max-width: none; }
@@ -2097,7 +2097,7 @@ body.mesa-dj .topo .busca { flex: 1 1 0; max-width: none; }
    com o caixilho na mesma altura de 50 (topos e bases batendo, como no mock), centradas na fileira de 62 */
 body.mesa-dj .topo { --px: .666667px; min-height: 62px; }
 body.mesa-dj .topo .marca { min-height: 0; height: 50px; }
-body.mesa-dj .topo .botoes-topo { gap: 12px; }
+body.mesa-dj .topo .botoes-topo { gap: 18px; }   /* o vao que se ve entre as molduras (sem a sombra delas) no ritmo do mock */
 body.mesa-dj .topo .botoes-topo .btn-madeira { height: 50px; }
 body.mesa-dj .topo .busca { --caixilho: 6px; }
 body.mesa-dj .topo .busca input { height: 38px; }
