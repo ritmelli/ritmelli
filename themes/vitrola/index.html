@@ -4163,6 +4163,8 @@ body.mesa-dj #pads > canvas.pads-nomes { position: absolute; z-index: 1; display
 body:not(.mesa-dj) #pads > canvas { display: none; }
 body:not(.mesa-dj) #pads { translate: none !important; }
 body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome { opacity: 1; padding: 0 5px; font-family: "Archivo", sans-serif; font-weight: 700; font-size: 12px; font-stretch: 70%; line-height: 20px; letter-spacing: -.01em; text-align: center; color: #2A1812; background: none; border-image: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto] { font-size: 0; }
+body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: attr(data-curto); font-size: 12px; }
 /* PADS-FIM */
 /* MIX-FIM */</style>
 </head>
@@ -10848,6 +10850,19 @@ carregar();
     // a de pixel fica pelo window.PAD_NOMES = 'pixel'
     const modo = window.PAD_NOMES === 'pixel' ? 'pixel' : 'vetor';
     p.sec.classList.toggle('nomes-vetor', modo === 'vetor');
+    // (r05) o nome que nao cabe corta na palavra, sem reticencia ("Buzina", nao "Buzina ..."): o texto do elemento fica
+    // inteiro (leitor de tela e o title do botao), o curto vai no data-curto e o CSS mostra so ele
+    if (modo === 'vetor') for (const n of p.sec.querySelectorAll('.pad-nome')) {
+      const cheio = n.textContent, chave = cheio + '|' + n.clientWidth;
+      if (!n.clientWidth || n.dataset.medido === chave) continue;
+      n.dataset.medido = chave; delete n.dataset.curto;
+      const pal = cheio.trim().split(/\s+/);
+      if (pal.length < 2 || n.scrollWidth <= n.clientWidth) continue;   // a palavra unica fica como estava
+      let k = pal.length - 1;
+      for (; k > 1; k--) { n.textContent = pal.slice(0, k).join(' '); if (n.scrollWidth <= n.clientWidth) break; }
+      n.textContent = cheio;
+      n.dataset.curto = pal.slice(0, Math.max(1, k)).join(' ');
+    }
     const altN = Math.round(((faces.find(f => f.N) || {}).N || { h: 20 }).h / 2);
     const chave = [modo, altN, W, H, LS, tit, fontesMx, faces.map(f => [f.F.x0, f.F.y0, f.F.x1, f.N ? f.N.y0 : '', f.nome, f.cor, f.aceso, f.aperta, f.vazio].join(',')).join(';')].join('|');
     if (chave === p.chave) return;
