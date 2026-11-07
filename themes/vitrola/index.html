@@ -6154,7 +6154,9 @@ function medirCabosBanco(banco) {
   const limpa = () => { banco?.querySelector(':scope > .cabos-pedais')?.remove(); banco?.querySelectorAll('.fita-escrita').forEach(x => x.remove()); };
   if (!banco || !banco.offsetParent) { if (banco && banco.id === 'banco-dir') limpa(); return; }
   // as margens dos cabos: o feltro no celular, o proprio banco no computador, com a lista rolando sob o FX-12
-  const gav = celular() ? banco.closest('.gaveta') : banco, listas = banco.querySelectorAll('.teclas');
+  // (r09) na mesa a metade da direita conta da gaveta: o cabo de entrada vai ate a tomada na parede dela, 26 px antes do banco
+  const naParede = MESA.montada && banco.id === 'banco-dir';
+  const gav = celular() || naParede ? banco.closest('.gaveta') : banco, listas = banco.querySelectorAll('.teclas');
   if (!listas.length) { limpa(); return; }
   let cv = banco.querySelector(':scope > .cabos-pedais');
   if (!cv) {
@@ -6284,11 +6286,26 @@ function medirCabosBanco(banco) {
 
   // as pontas da corrente: a entrada sai de um buraco em cima a esquerda e a saida, branca, entra num embaixo a direita
   const q0 = filas[0], qn = filas[filas.length - 1];
-  const pin = plugueL(T, q0.cx[0][0] - 1, q0.y, -1, -1, PAL_PECA.cromo);
-  const hx = Math.max(7, Math.round(pin.x - 12)), hy = Math.round(pin.y - 30);
-  T.buraco(hx, hy, 100);
-  liga([[hx, hy], [hx + 1, hy + 9], [pin.x, pin.y - 14], [pin.x, pin.y]], PAL_CABO.preto, pin);
-  T.buraco(hx, hy, 100, [-.2, -1]);
+  if (naParede) {
+    // (r09) na metade da direita da mesa a entrada vem da tomada de cima da parede (onde chega o vermelho dos Sons rapidos):
+    // o plugue reto (o tubo de niquel e o corpo preto) por dentro dela, o cabo corre rente ao chao e sobe ate o plugue em L
+    // do primeiro pedal, que desce; a tomada de baixo (a do branco) fica com a tampinha de borracha. As tomadas sao as do
+    // desenhaGav (a 62% e a 76% da altura da gaveta, em celulas de 2 px)
+    const G = rectP(banco.closest('.gaveta')), Hg = Math.round(G.height / 2), xp = Math.round(G.left + 10 - gr.left);
+    const meio = f => Math.round(G.top + 2 * Math.round(Hg * f) + 1 - br.top);
+    const pin = plugueL(T, q0.cx[0][0] - 1, q0.y, -1, 1, PAL_PECA.cromo), yv = meio(.62), yb = meio(.76);
+    const tom = new Map();
+    T.caixa(tom, xp, yv - 3, 5, 7, PAL_PECA.niquel);
+    T.caixa(tom, xp + 5, yv - 4, 7, 9, PAL_PECA.preto);
+    liga([[xp + 11, yv], [pin.x - 6, yv], [pin.x, yv - 8], [pin.x, pin.y]], PAL_CABO.preto, pin, { m: tom });
+    T.peca(T.caixa(new Map(), xp, yb - 3, 4, 7, PAL_PECA.preto));
+  } else {
+    const pin = plugueL(T, q0.cx[0][0] - 1, q0.y, -1, -1, PAL_PECA.cromo);
+    const hx = Math.max(7, Math.round(pin.x - 12)), hy = Math.round(pin.y - 30);
+    T.buraco(hx, hy, 100);
+    liga([[hx, hy], [hx + 1, hy + 9], [pin.x, pin.y - 14], [pin.x, pin.y]], PAL_CABO.preto, pin);
+    T.buraco(hx, hy, 100, [-.2, -1]);
+  }
   const rn = qn.cx[qn.cx.length - 1][1], pout = plugueL(T, rn, qn.y, 1, 1, PAL_PECA.branco);
   const sx = Math.min(W - 9, Math.round(pout.x + 14)), sy = Math.round(pout.y + 44);
   T.buraco(sx, sy, 101);
