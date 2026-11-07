@@ -5979,6 +5979,13 @@ function plugueAng(T, borda, y, lado, pal) {
   const m = new Map(), x0 = Math.min(borda - lado * 3, borda + lado * 4);
   T.caixa(m, x0, y - 6, 8, 12, pal);
   for (let j = -5; j <= 2; j++) m.set(T.cel(x0 + 1, y + j), pal[0]);   // o brilho do lado da luz
+  // (r09) a porca do jack na lateral do pedal, saindo de tras da cabeca (os plugues em L das pontas ja tinham): 2 colunas
+  // de niquel por 6 linhas na linha da tomada, a de cima clara
+  const xn = lado > 0 ? x0 - 2 : x0 + 8;
+  for (let j = -3; j <= 2; j++) for (let c = 0; c < 2; c++) {
+    const i = T.cel(xn + c, y + j);
+    if (i >= 0) m.set(i, j === -3 ? [242, 242, 242] : c === (lado > 0 ? 1 : 0) ? [150, 152, 156] : [112, 114, 118]);
+  }
   for (let j = 1; j <= 3; j++) for (let c = 1; c <= 6; c++) {
     const i = T.cel(x0 + c, y + 5 + j);
     if (i >= 0) m.set(i, j % 2 ? pal[1] : pal[2]);
