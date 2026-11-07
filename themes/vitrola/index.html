@@ -10619,7 +10619,7 @@ carregar();
   function placaEst(P, A, PL) {
     const tTop = 21 + (PL.folga ? 2 : 0), rows = Math.ceil((tTop + A.thp) / 2) + 4;
     const w = Math.max(A.tw + 14, 7 * 8 + 15), x0 = Math.round((A.x0 + A.x1 - w) / 2), x1 = x0 + w;
-    let y0 = A.y0 + 4;
+    let y0 = A.y0 + 3;   // (r18) a placa sobe junto com o crossfader
     if (y0 + rows > A.yMax) y0 = Math.max(A.y0 + 1, A.yMax - rows);
     const y1 = y0 + rows;
     sombraCaixa(P, x0, y0, x1, y1, 1, 1, 2);
@@ -10759,7 +10759,7 @@ carregar();
     });
     const ts = m.teclas.filter(vis).map(t => ({ el: t, T: relM(t, D), rot: t.querySelector('.rot-set').textContent.trim() }));
     const X = vis(m.xf) ? relM(m.xf, D) : null, A = vis(m.auto) ? relM(m.auto, D) : null;
-    if (X) X.cy = X.y0 + 14;
+    if (X) X.cy = X.y0 + 13;   // (r18) a linha do crossfader 1 celula acima (o sulco fica no X.y0, na base dos Sons rapidos): o rodape ficava com 2 celulas
     const apag = m.metros.map(e => e.classList.contains('apagado'));
     const geo = [W, H, J.x0, J.y0, J.x1, J.y1, fs.map(f => [f.C.x0, f.C.y0, f.C.x1, f.C.y1, f.sy0, f.sy1, f.cx, f.txt, f.apag].join(',')).join(';'),
                  ts.map(t => [t.T.x0, t.T.y0, t.T.x1, t.rot].join(',')).join(';'), X ? [X.x0, X.y0, X.x1].join(',') : '', A ? [A.x0, A.y0, A.x1].join(',') : '',
