@@ -6128,9 +6128,8 @@ function fitaEscrita(T, cx, cy, i, texto, inclina, lado = 1) {
   // da fita fica em xc(c), espelhada no cabo, e o texto segue lido da esquerda para a direita
   const xc = c => lado > 0 ? x0 + c : cx + esq - c;
   for (let c = 0; c < larg; c++) for (let j = 0; j < alt; j++) {
-    // a ponta rasgada em tres dentes de 2 linhas (r05: o sorteio por linha, com a inclinacao, soltava celulas e quebrava
-    // o contorno da ponta)
-    if (c === larg - 1 && (j % 4 === 2 || j % 4 === 3)) continue;
+    // (r18) a ponta em rabo de andorinha: um V so, no meio da altura (os tres dentes de 2 linhas da r05 liam como "VOZ:")
+    if ((c === larg - 1 && j >= 3 && j <= 6) || (c === larg - 2 && j >= 4 && j <= 5)) continue;
     const k = T.cel(xc(c), Math.round(y0 + j - sobe(c)));
     if (k < 0) continue;
     // a manga: o cilindro com a luz a esquerda e a dobra escura na beira de saida; a bandeirinha: chapada, a beira
@@ -6139,7 +6138,8 @@ function fitaEscrita(T, cx, cy, i, texto, inclina, lado = 1) {
   }
   [...texto].forEach((l, n) => {
     // espelhada, a letra n vai na coluna da fita que fica n letras a direita do fim do texto
-    const c0 = lado > 0 ? dobra + folga + n * 6 : dobra + folga + (texto.length - 1 - n) * 6 + 4, s = sobe(c0 + 2 * lado);   // a letra inteira sobe o tanto do meio dela
+    // (r18) o texto 1 px para o lado da dobra: com a ponta em V ele fica no meio entre a dobra e o fundo do V
+    const c0 = lado > 0 ? dobra + folga - 1 + n * 6 : dobra + folga - 1 + (texto.length - 1 - n) * 6 + 4, s = sobe(c0 + 2 * lado);   // a letra inteira sobe o tanto do meio dela
     (LETRAS_FITA[l] || []).forEach((linha, j) => [...linha].forEach((v, c) => {
       const k = T.cel(xc(c0) + c, Math.round(y0 + 2 + j - s));
       if (v === 'X' && k >= 0) m.set(k, caneta);
