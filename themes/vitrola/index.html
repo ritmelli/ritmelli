@@ -3386,6 +3386,14 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     width: var(--palco-w, 100vw); height: var(--palco-h, 100dvh); min-height: 0;
     transform: translate(var(--palco-x, 0px), var(--palco-y, 0px)) scale(var(--palco-k, 1)); transform-origin: 0 0;
   }
+  /* o fundo da mesa: a madeira do mock (pedido dele, 07/11; o mock sem as pecas, pelo Codex), em celula de 2 px do palco
+     dentro do palco escalado, para a celula cair no mesmo pixel de tela que a das pecas; o ladrilho vai de uma junta de
+     tabua a outra e repete sem costura. Fora do palco (a faixa da janela de outra proporcao) fica a cor media dela */
+  body.mesa-dj { background: #80380D; }
+  body.mesa-dj .app::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background: url("texturas/mesa-fundo.png") 0 0 / 1746px 1028px repeat; image-rendering: pixelated;
+  }
   body.mesa-dj.com-disco .app {
     --vao: 12px;
     --pad-y: 14px;
