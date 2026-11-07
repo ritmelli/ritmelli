@@ -62,6 +62,8 @@ AUTO_ESPERA_S = 60.0  # busca de parecidas que falhou so tenta de novo depois di
 AUTO_JANELA_S = 3600  # a ordem por andamento escolhe entre as parecidas da proxima 1 h da lista
 ANDAMENTO_APOS_S = 30.0  # o disco fica isso no prato antes de medir: pular de disco em disco nao le nada
 ANDAMENTO_ESPERA_S = 600.0  # medida que falhou (stream fora do ar) so tenta de novo depois disso
+CAPA_TAM = 544             # a capa do album do YouTube Music, quadrada, em px (o endereco aceita qualquer tamanho)
+CAPA_PASSO_S = 2.0         # entre uma busca de capa e a proxima: a prateleira inteira sai devagar, sem rajada
 ABAIXO_DO_NORMAL = 0x00004000  # prioridade do processo da medida no Windows: cede o processador ao audio
 
 pool = ThreadPoolExecutor(4)
@@ -254,6 +256,16 @@ def mesma_faixa(c, r):
     return bool(rt and rt <= ct and (ct - rt) <= (ra | cc) and (ra & (ct | cc)) and d and dc - 150 <= d <= dc + 20)
 
 
+def capa_da_musica(r):
+    """A capa quadrada (a do album) da faixa r da busca de musicas do YouTube Music em CAPA_TAM px, ou None: o endereco
+    do googleusercontent traz o tamanho no fim (=w120-h120) e serve qualquer um."""
+    ts = [t for t in r.get("thumbnails") or [] if t.get("url")]
+    if not ts:
+        return None
+    url = max(ts, key=lambda t: t.get("width") or 0)["url"]
+    return re.sub(r"=w\d+-h\d+", f"=w{CAPA_TAM}-h{CAPA_TAM}", url)
+
+
 def busca_de(x):
     """O texto da busca da versao de audio da parecida: o titulo sem os parenteses so de video ("[Official Video]";
     o "(Remix)" fica) e, no clipe oficial, os artistas na frente quando o titulo nao os traz (no video com letra o
@@ -390,6 +402,7 @@ class App:
         threading.Thread(target=self._vigia_auto, daemon=True).start()
         threading.Thread(target=self._vigia_passagem, daemon=True).start()
         threading.Thread(target=self._vigia_andamento, daemon=True).start()
+        threading.Thread(target=self._vigia_capas, daemon=True).start()
         if self.atualizacao.ativa:
             threading.Thread(target=self.atualizacao.vigia, daemon=True).start()
 
@@ -1248,6 +1261,42 @@ class App:
             if c and c not in self.andamentos and agora - self.andamento_falhou.get(c, 0.0) >= ANDAMENTO_ESPERA_S:
                 return "medir", dict(x)
         return None, None
+
+    # capa do album dos discos da prateleira ---------------------------
+    @staticmethod
+    def capa_musica(it):
+        """A capa do album do disco da prateleira que veio de um video do YouTube: a da faixa da busca de musicas do
+        YouTube Music que e a mesma (mesma_faixa, a regra das parecidas), ou None (musica so do YouTube, ou a busca so
+        traz outras)."""
+        for r in fora.pede("musicas", q=busca_de(it)):
+            if r.get("videoId") and YT_ID.match(r["videoId"]) and mesma_faixa(it, r):
+                return capa_da_musica(r)
+        return None
+
+    def _vigia_capas(self):
+        """(07/11, pedido do dono) A capa do album no lugar da miniatura do video nos discos da prateleira, como as
+        parecidas do Automatico: um disco por vez, CAPA_PASSO_S entre eles, uma vez so por disco (o capa_procurada fica
+        no library.json; o disco novo entra na volta seguinte). Sem a mesma faixa no YouTube Music fica a miniatura do
+        video; a dela fica guardada em thumb_video."""
+        while True:
+            time.sleep(CAPA_PASSO_S)
+            with self.lib.lock:
+                alvo = next((dict(x) for x in self.lib.items
+                             if not x.get("capa_procurada") and x.get("title") and x.get("duration")), None)
+            if alvo is None:
+                continue
+            try:
+                capa = self.capa_musica(alvo)
+            except Exception as ex:  # noqa: BLE001 - sem a busca, o disco fica com a miniatura e tenta de novo depois
+                print(f"capa: nao busquei {alvo.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
+                time.sleep(60)
+                continue
+            kw = {"capa_procurada": True}
+            if capa:
+                kw.update(thumb=capa, thumb_video=alvo.get("thumb_video") or alvo.get("thumb"))
+            self.lib.update(alvo["id"], **kw)
+            print(f"capa: {alvo.get('title')!r}: " + ("a do album" if capa else "fica a do video"),
+                  file=sys.stderr, flush=True)
 
     def _mede_andamento(self, x):
         """{"ini", "fim"} do disco pelo andamento.py num processo a parte, com prioridade baixa: da prateleira, o
