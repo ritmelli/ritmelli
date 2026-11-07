@@ -5756,9 +5756,19 @@ function telaPixel(W, H) {
     // buraco rasgado no feltro: o miolo escuro, a beira de baixo pegando a luz e a de cima na sombra, e
     // fibras soltas; frente = so a metade do lado (ux, uy), repintada por cima da ponta do cabo que entra
     buraco(hx, hy, i, frente) {
+      // na mesa a caixa e de tolex: um ilhos de metal de 1 celula (a luz em cima a esquerda, a sombra embaixo a direita),
+      // o miolo escuro com a parede de baixo pegando um pouco de luz, sem fibra solta
+      const ilhos = document.body.classList.contains('mesa-dj');
       for (let y = hy - 9; y <= hy + 9; y++) for (let x = hx - 9; x <= hx + 9; x++) {
         const c = cel(x, y), ox = x + .5 - hx, oy = y + .5 - hy;
         if (c < 0 || (frente && ox * frente[0] + oy * frente[1] < .8)) continue;
+        if (ilhos) {
+          const r = Math.hypot(ox, oy), R = 4.6, k = (ox + oy) / (r || 1);
+          if (r <= R - 2) pinta(c, [4, 3, 3], -2);
+          else if (r <= R - 1) pinta(c, oy > .5 ? [26, 22, 20] : [4, 3, 3], -2);
+          else if (r <= R) pinta(c, k < -.45 ? [158, 144, 126] : k > .45 ? [72, 69, 67] : [118, 115, 113], -2);
+          continue;
+        }
         const a = Math.atan2(oy, ox), r = Math.hypot(ox, oy), R = 4.6 + 1.5 * sorteCabo(i, Math.round((a + Math.PI) * 2.2));
         if (r <= R) pinta(c, r <= R - 1.2 ? [4, 3, 3] : [14, 11, 10], -2);
         else if (r <= R + 1.4) pinta(c, oy > -1 ? [158, 144, 126] : [104, 94, 84], -2);
