@@ -11282,6 +11282,15 @@ carregar();
       px(P, x, y, c);
     }
     for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) cantoneira(P, W, H, sx, sy, 12, 4);
+    // na pedaleira da direita, as duas tomadas de aco na parede esquerda onde chegam os cabos vermelho e branco dos Sons
+    // rapidos (o cabosDaMesa poe os plugues em 62% e 76% da altura): o plugue entra nelas em vez de bater na parede
+    if (g.id === 'gaveta-dir') for (const f of [.62, .76]) {
+      const cy = Math.round(H * f);
+      for (let y = cy - 3; y <= cy + 3; y++) for (let x = 0; x <= 4; x++) {
+        const borda = x === 0 || x === 4 || y === cy - 3 || y === cy + 3;
+        px(P, x, y, borda ? GAV.o : y === cy - 2 ? cor(220, 220, 215) : x === 3 ? cor(110, 112, 110) : cor(150, 152, 150));
+      }
+    }
     q.cv.width = W + M_; q.cv.height = H + M_; q.cv.style.width = 2 * (W + M_) + 'px'; q.cv.style.height = 2 * (H + M_) + 'px';
     const img = q.ctx.createImageData(W + M_, H + M_);
     new Uint32Array(img.data.buffer).set(P.u);
