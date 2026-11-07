@@ -136,7 +136,8 @@ _GRAVE_LP = signal.butter(2, GRAVE_HZ, "lowpass", fs=SR, output="sos")  # ida e 
 _GRAVE_HP = np.vstack([signal.butter(2, GRAVE_HZ, "highpass", fs=SR, output="sos")] * 2)  # Linkwitz-Riley
 # o visor de DJ do tema (a onda do disco correndo, a grade de batidas e a proxima entrando na passagem): a onda sai em
 # colunas de VISOR_PASSO com a energia de tres faixas, como a onda colorida do Rekordbox
-VISOR_PASSO = 0.04         # 25 colunas por segundo: uma celula de pixel do visor por coluna
+VISOR_PASSO = 1 / 30       # 30 colunas por segundo: uma celula de pixel do visor por coluna (07/11, pedido do dono: com 25
+                           # o passo da tela caia em 2 e 3 quadros de 60 Hz; com 30, sempre 2, e 4 em 120 Hz)
 VISOR_SR = 12000           # o arquivo da prateleira se decodifica a parte so para a onda, nessa taxa
 VISOR_FAIXAS = ((30.0, 200.0), (200.0, 2000.0), (2000.0, 6000.0))  # grave (bumbo e baixo), medio (voz, caixa), agudo
 VISOR_DB = (-60.0, 0.0)    # a escala de cada faixa no byte: -60 dBFS = 0, 0 dBFS = 255
@@ -501,8 +502,8 @@ def _eco_corte(blocos, golpe, d):
 def colunas_onda(x, sr):
     """As colunas da onda do visor do audio mono x, que comeca num limite de coluna: (n, 3) bytes, a energia do grave,
     do medio e do agudo (VISOR_FAIXAS) em cada coluna inteira de VISOR_PASSO, em dB na escala VISOR_DB. A mesma conta a
-    12 kHz (o arquivo, a parte) e a 48 kHz (o stream, no leitor): as faixas de frequencia sao as mesmas (25 Hz por
-    faixa da FFT nas duas) e a potencia sai normalizada pela janela, entao as duas ondas batem. Em pedacos de 1 s: a
+    12 kHz (o arquivo, a parte) e a 48 kHz (o stream, no leitor): as faixas de frequencia sao as mesmas (30 Hz por
+    faixa da FFT nas duas, com o passo de 1/30) e a potencia sai normalizada pela janela, entao as duas ondas batem. Em pedacos de 1 s: a
     conta inteira de uma vez prende o interpretador e o audio do cabo espera."""
     m = int(round(sr * VISOR_PASSO))
     n = len(x) // m

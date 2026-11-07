@@ -5081,7 +5081,7 @@ function ligarChave(b, on) {
    Desenho por quadro so com o disco tocando e o visor na tela (no celular, nem o temporizador roda); parado, so quando
    algo muda. A posicao anda pelo relogio da pagina entre um tick e outro e se corrige devagar em cada um, para a onda
    correr lisa. Com movimento reduzido a onda fica parada e o ponto de toque anda por ela, virando a pagina na beira ---------- */
-const VDJ_CEL = 2, VDJ_PASSO = 0.04;
+const VDJ_CEL = 2, VDJ_PASSO = 1 / 30;   // 30 colunas por segundo, o VISOR_PASSO do engine (07/11)
 const VDJ_AMP = Float32Array.from({ length: 256 }, (_, b) => b ? Math.pow(10, (b / 255 * 60 - 60) / 20) : 0);   // o byte e dB de -60 a 0
 const vdjRgb = (r, g, b) => (255 << 24 | b << 16 | g << 8 | r) >>> 0;
 const vdjMistura = (a, b, f) => a.map((x, i) => Math.round(x + (b[i] - x) * f));
@@ -5244,7 +5244,7 @@ function desenharVisor(agora) {
   const kMono = p ? `${p.de}>${p.para}` : `${tr && tr.id}`, mono = V.mono;
   if (tocando && !V.arrasto && mono && mono.k === kMono && agoraX < mono.x && mono.x - agoraX < .25) agoraX = mono.x;
   V.mono = { k: kMono, x: agoraX };
-  // a esquerda da tela, presa na grade das celulas (a tela so muda de celula em celula, 25 vezes por segundo): com o
+  // a esquerda da tela, presa na grade das celulas (a tela so muda de celula em celula, 30 vezes por segundo): com o
   // ponto de toque no meio; com movimento reduzido, a pagina fica e o ponto anda
   let esq = (Math.floor(agoraX / VDJ_PASSO) - Math.floor(W / 2)) * VDJ_PASSO;
   if (reduz.matches) {
