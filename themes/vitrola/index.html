@@ -1371,6 +1371,13 @@ body:not(.mesa-dj) :is(canvas.conta-px, canvas.nome-px) { display: none; }
 /* (r17) na mesa o martelado em celula: covinhas de 1 celula (o fundo escuro e a borda clara de cima a esquerda) numa
    grade de passo 6 com desvio, no lugar do ruido de 144 texels (abaixo da meia celula, lia como filtro de foto) */
 body.mesa-dj .palco .tecla[data-acabamento="martelado"] { background-image: url("texturas/martelado_px.png"); image-rendering: pixelated; }
+/* (r19) cada pedal com a textura do tamanho dele (40 x 84 celulas, madr/martelado/por_pedal.py): as covinhas so fora da
+   escala, do LED, do nome, do footswitch e da plaqueta, com 1 celula de folga (no ladrilho elas colavam nas letras) */
+body.mesa-dj .palco .tecla[data-acabamento="martelado"]:is([data-ef="radio-policia"], [data-ef="eco"], [data-ef="robo"], [data-ef="estourado"], [data-ef="mina"]) { background-size: 80px 168px; background-repeat: no-repeat; }
+body.mesa-dj .palco .tecla[data-ef="radio-policia"] { background-image: url("texturas/martelado_radio.png"); }
+body.mesa-dj .palco .tecla[data-ef="eco"] { background-image: url("texturas/martelado_eco.png"); }
+body.mesa-dj .palco .tecla[data-ef="robo"] { background-image: url("texturas/martelado_robo.png"); }
+body.mesa-dj .palco .tecla:is([data-ef="estourado"], [data-ef="mina"]) { background-image: url("texturas/martelado_estourado.png"); }
 
 /* pisar: o botao entra na porca; o pedal e a porca ficam. Afunda no instante do toque e volta
    logo, como um pe rapido: o :active do Chrome no celular so chegava depois
