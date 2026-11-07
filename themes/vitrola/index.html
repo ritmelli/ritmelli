@@ -2122,7 +2122,7 @@ body.mesa-dj .topo .botoes-topo .btn-madeira { height: 50px; }
 body.mesa-dj .topo .busca { --caixilho: 6px; }
 /* (r05) o caixilho da busca mais claro que a parede (o marrom #74391A tinha a luminancia da madeira e a caixa so se
    separava pelo contorno) */
-body.mesa-dj .topo .busca { background: var(--veio), #92542D; }
+body.mesa-dj .topo .busca { background: #92542D; }   /* (r06) chapado: o veio liso variava a cada pixel da tela, fora da celula */
 body.mesa-dj .topo .busca input { height: 38px; }
 /* os rotulos das teclas e o texto da busca em 18 px do palco (eram 15,4: pequenos para placas de 50, como no mock) */
 body.mesa-dj .topo .botoes-topo .btn-madeira, body.mesa-dj .topo .busca input { font-size: 18px; }
@@ -2130,6 +2130,10 @@ body.mesa-dj .topo .botoes-topo .btn-madeira { padding: 0 18px; }   /* o rotulo 
 /* (r05) o rotulo das teclas em 20 px e peso 600: a 18 a caixa-alta tinha 19,5% da placa (no mock 27%) e a placa
    parecia vazia em volta; a busca cede a largura */
 body.mesa-dj .topo .botoes-topo .btn-madeira { font-size: 20px; font-weight: 600; padding: 0 22px; }
+/* (r06) os icones das teclas no peso do rotulo 600 (o traco de 1,8 ficava fino ao lado) e o logo 1,25 vez maior: com os
+   rotulos maiores ele perdia a forca (x de 12 px numa placa de 40; no mock a palavra pesa o dobro do rotulo) */
+body.mesa-dj .topo .botoes-topo .btn-madeira svg { stroke-width: 2.5; }
+body.mesa-dj .topo .nome-marca { font-size: 37.5px; }
 /* a moldura de pixel na celula do palco: a --mold-* resolve o --px na raiz (1 px), entao a largura e o recuo dela se
    refazem aqui com o --px do topo (2/3 de px: os 3 pontos da celula dao 2 px); o contorno de fora das placas cai na
    coluna das pecas de baixo (2 px de recuo em cada ponta) */
