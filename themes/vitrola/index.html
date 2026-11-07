@@ -4097,6 +4097,11 @@ body.mesa-dj .palco .deck.dk-ok .linha-tempo > .tempo.total { grid-area: d; just
 body.mesa-dj .palco .deck.dk-ok .linha-tempo > input { grid-area: s; width: auto; }
 body.mesa-dj .palco .deck.dk-ok .faixa { translate: -6px var(--dk-sobe, -20px); }
 body.mesa-dj .palco .deck.dk-ok .comandos { margin-top: 12px; }
+/* (r05) a coluna da direita no ritmo do prato: a etiqueta e a tela 11 celulas acima (o topo da etiqueta no topo do aro;
+   antes sobravam 31 px de creme vazio em cima e os tempos colavam na tela) e os tempos com a barra 4 acima; o transporte
+   fica. O canvas desenha cada controle pelo lugar do elemento, entao o top relativo leva o desenho junto */
+body.mesa-dj .palco .deck.dk-ok :is(.deck-luz, .titulo-faixa, .canal-faixa, .deck-bpm) { position: relative; top: -22px; }
+body.mesa-dj .palco .deck.dk-ok .linha-tempo { position: relative; top: -8px; }
 /* DECK-FIM */</style>
 <style>/* MIX-INICIO */
 /* o mixer inteiro em pixel art: o canvas do mx por cima do receptor; o que ele desenha some do CSS (os elementos ficam,
