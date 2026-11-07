@@ -8762,8 +8762,9 @@ carregar();
       const wC = extra.reduce((s, ch, i) => s + larg(ch, G) + (i < extra.length - 1 ? 1 : 0), 0);
       const w = wT + (extra.length ? 4 + wC : 0), h = TA + 2;
       cv.width = w; cv.height = h; cv.style.width = (2 * w) + 'px'; cv.style.height = (2 * h) + 'px';
-      // no meio do vao entre os parafusos e o botao (celula 68 da placa), numa celula inteira
-      cv.style.left = (2 * Math.round(68 - w / 2)) + 'px';
+      // no eixo da placa (celula 74,5 do recorte dela), o mesmo da alca e do texto de vazio, numa celula inteira; no
+      // meio do vao ate o botao ele ficava 6 celulas a esquerda e destoava do "Nada no A seguir" logo abaixo (r02)
+      cv.style.left = (2 * Math.round(74.5 - w / 2)) + 'px';
       const c = cv.getContext('2d');
       c.clearRect(0, 0, w, h);
       c.fillStyle = TINTA;
