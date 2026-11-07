@@ -5765,10 +5765,11 @@ function telaPixel(W, H) {
         const c = cel(x, y), ox = x + .5 - hx, oy = y + .5 - hy;
         if (c < 0 || (frente && ox * frente[0] + oy * frente[1] < .8)) continue;
         if (ilhos) {
-          const r = Math.hypot(ox, oy), R = 4.6, k = (ox + oy) / (r || 1);
-          if (r <= R - 2) pinta(c, [4, 3, 3], -2);
-          else if (r <= R - 1) pinta(c, oy > .5 ? [26, 22, 20] : [4, 3, 3], -2);
-          else if (r <= R) pinta(c, k < -.45 ? [158, 144, 126] : k > .45 ? [72, 69, 67] : [118, 115, 113], -2);
+          // o passa-cabo maior que o cabo (a boca aparece em volta da ponta): o fundo escuro e o labio de 1 celula, claro
+          // embaixo e a direita (a parede de dentro que pega a luz de cima a esquerda) e escuro em cima (r03)
+          const r = Math.hypot(ox, oy), R = 5.4, k = (ox + oy) / (r || 1);
+          if (r <= R - 1.2) pinta(c, [14, 11, 9], -2);
+          else if (r <= R) pinta(c, k > -.2 ? [96, 88, 80] : [30, 26, 23], -2);
           continue;
         }
         const a = Math.atan2(oy, ox), r = Math.hypot(ox, oy), R = 4.6 + 1.5 * sorteCabo(i, Math.round((a + Math.PI) * 2.2));
