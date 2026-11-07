@@ -1301,6 +1301,8 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 /* (madrugada) a contagem e os nomes em pixel da prateleira sao so da mesa: a regra que os esconde fora dela mora no bloco
    da mesa, dentro do @media de tela grande, e no celular o canvas da contagem aparecia ao lado da do DOM (54 discos . 54 discos) */
 body:not(.mesa-dj) :is(canvas.conta-px, canvas.nome-px) { display: none; }
+/* (07/11) a musica e o artista da etiqueta da prateleira sao so da mesa: no celular e no PC sem mesa fica o nome inteiro */
+body:not(.mesa-dj) .estante .ficha :is(.prat-t, .prat-s) { display: none; }
 /* a fita escrita a mao no cabo SHOW SEXTA, na letra e na moldura do selo do atraso (a VOZ, torta, e pintada no canvas) */
 .palco .fita-escrita {
   position: absolute; z-index: 3; pointer-events: none; user-select: none;
@@ -4151,7 +4153,6 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   body.mesa-dj .estante .ficha .prat-t { top: 4px; font-size: .75rem; line-height: 1.15; font-weight: 700; color: var(--tinta); text-shadow: 0 1px 0 rgba(255, 255, 255, .6); }
   body.mesa-dj .estante .ficha .nome:has(kbd) ~ .prat-t { left: 23px; }
   body.mesa-dj .estante .ficha .prat-s { top: 19px; font-size: .625rem; line-height: 1.2; color: #4E3826; }
-  body:not(.mesa-dj) .estante .ficha :is(.prat-t, .prat-s) { display: none; }
   body.mesa-dj .estante .ficha .acoes { position: static; }
   body.mesa-dj .estante .ficha .mais {
     position: absolute; z-index: 3; top: 5px; right: 3px; width: 18px; height: 24px; pointer-events: auto;   /* o x da maleta fica a 2 px da moldura */
