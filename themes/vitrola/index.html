@@ -3425,6 +3425,10 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
     background: url("texturas/mesa-fundo.png") 0 0 / 1746px 1028px repeat; image-rendering: pixelated;
   }
+  body.mesa-dj .app::after {
+    content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; left: 1746px; right: 0; pointer-events: none;
+    background: url("texturas/mesa-fundo.png") 8px 0 / 1746px 1028px repeat; image-rendering: pixelated;
+  }
   body.mesa-dj.com-disco .app {
     --vao: 12px;
     --pad-y: 14px;
@@ -10373,7 +10377,7 @@ carregar();
     // inteiro de pixels da tela (no notebook dele, palco a 0,75: 2 px de tela por pixel da letra, nao 1,5, pedido dele)
     const dT = (devicePixelRatio || 1) * PALCO.k, LS = Math.max(Math.round(dT), Math.ceil((devicePixelRatio || 1) - 1e-6)) / dT;
     const gx = v => Math.round((D.left + v) * dT) / dT - D.left, gy = v => Math.round((D.top + v) * dT) / dT - D.top;
-    const W = Math.round(D.width / 2), H = Math.round(D.height / 2), M_ = 3;
+    const W = Math.round(D.width / 2), H = Math.floor(D.height / 2), M_ = 3;   // a altura impar (439) desce para a celula de baixo: a base na das pedaleiras
     const J = relM(m.janela, D);
     const fs = m.faders.filter(vis).map(f => {
       const lab = f.querySelector('label'), inp = f.querySelector('input'), out = f.querySelector('output'), sm = lab.querySelector('small');
