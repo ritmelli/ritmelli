@@ -4195,7 +4195,7 @@ body.mesa-dj .palco .receptor > :is(.mx-placa-px, .mx-rot-px) { image-rendering:
 body.mesa-dj .palco .gaveta.gav-ok { position: relative; isolation: isolate; background: none; box-shadow: none; border-radius: 0; }
 body.mesa-dj .palco .gaveta > canvas.gav-px { position: absolute; left: 0; top: 0; z-index: -1; display: block; pointer-events: none; image-rendering: pixelated; }
 body:not(.mesa-dj) canvas.gav-px { display: none; }
-body.mesa-dj #pads.px-ok { border-image: none; background: none; border-radius: 0; padding: 60px 22px 32px; row-gap: 0; }   /* a base na linha da divisoria do mixer (r10: 1 celula a menos embaixo, o contorno caia 1 celula abaixo do sulco do crossfader) */
+body.mesa-dj #pads.px-ok { border-image: none; background: none; border-radius: 0; padding: 60px 22px 28px; row-gap: 0; }   /* a base na linha da divisoria do mixer (r10: 1 celula a menos embaixo; r13: mais 2, com o sulco no meio da faixa dele) */
 body.mesa-dj #pads.px-ok > h2 { position: absolute; opacity: 0; pointer-events: none; }
 body.mesa-dj #pads.px-ok .pads-grade { position: relative; z-index: 2; grid-template-columns: repeat(3, 50px); gap: 8px 6px; justify-content: center; }
 body.mesa-dj #pads.px-ok .pad { grid-template-rows: 50px 20px; row-gap: 4px; }
@@ -10468,7 +10468,8 @@ carregar();
       const y = ay[x], dx = x - cx, dy = y + .5 - PY, d = Math.hypot(dx, dy), ux = dx / d, uy = dy / d;
       let tx = x, ty = y;
       for (let k = 1; k <= n; k++) { tx = k === 1 ? x : x + (Math.abs(ux) > .3 ? Math.sign(ux) : 0); ty = y - k; px(P, fx0 + tx, fy0 + ty, c); }
-      if (txt) { const tw = larg35(txt); texto35(P, txt, fx0 + Math.round(tx + .5 - tw / 2), fy0 + ty - 6, VUC.escala); }
+      // (r13) o sinal de menos da escala em dB (o numero fica no lugar, o traco de 2 celulas 1 celula antes dele)
+      if (txt) { const tw = larg35(txt), nx = fx0 + Math.round(tx + .5 - tw / 2); texto35(P, txt, nx, fy0 + ty - 6, VUC.escala); px(P, nx - 3, fy0 + ty - 4, VUC.escala); px(P, nx - 2, fy0 + ty - 4, VUC.escala); }
     };
     const off = Math.round(10 * sx), tres = off >= 8;
     marca(cx - off, 2, VUC.arco, '40'); marca(cx, 2, VUC.arco, tres ? '20' : ''); marca(cx + off, 2, VUC.arco, '10');
@@ -10812,7 +10813,7 @@ carregar();
       }
       for (const t of ts) { const w = larg35(t.rot), x0 = Math.round(t.T.col + .5 - w / 2); calmos.push([x0 - 2, t.T.y0 + 15, x0 + w + 2, t.T.y0 + 26]); }
       const calmo = (x, y) => calmos.some(q => x >= q[0] && x < q[2] && y >= q[1] && y < q[3]);
-      const ySplit = X ? X.y0 + 2 : H - 30;   // (r12) o sulco 1 celula abaixo: o filete escuro na linha do contorno de baixo dos Sons rapidos
+      const ySplit = X ? X.y0 : H - 30;   // (r13) o sulco no meio da faixa livre entre os rotulos e o knob do crossfader (4 celulas de cada lado); a base dos Sons rapidos vem para a linha dele
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const ex = Math.min(x, W - 1 - x), ey = Math.min(y, H - 1 - y);
         if (ex + ey < 2) continue;
@@ -10830,7 +10831,7 @@ carregar();
         px(P, x, y, c);
       }
       for (let x = 2; x < W - 2; x++) { px(P, x, ySplit + 1, MET.sulco); px(P, x, ySplit + 2, MET.luz); }
-      for (const [x, y] of [[2, 2], [W - 8, 2], [2, H - 8], [W - 8, H - 8]]) parafusoM(P, x, y);   // os da direita fora do chanfro claro; (r06) os de baixo a 1 celula do contorno, como os outros
+      for (const [x, y] of [[3, 3], [W - 9, 3], [3, H - 9], [W - 9, H - 9]]) parafusoM(P, x, y);   // (r13) 1 celula para dentro: a sombra pintava por cima do chanfro   // os da direita fora do chanfro claro; (r06) os de baixo a 1 celula do contorno, como os outros
       m.vg = m.metros.map((e, i) => ({ k: e.dataset.k, apag: apag[i], g: vuFace(P, vx0(i), J.y0, vx0(i) + mw, J.y1, e.dataset.nome || '', apag[i]) }));
       for (const f of fs) faderEst(P, f);
       if (X) crossEst(P, X);
