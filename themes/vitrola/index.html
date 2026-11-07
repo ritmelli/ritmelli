@@ -10117,7 +10117,7 @@ carregar();
     let [tx, ty] = alvo(Math.max(-40, db)), vx = tx - g.hx, vy = ty - g.hy, L = Math.hypot(vx, vy) + 1.2;
     let a = Math.atan2(vx, -vy);
     // parada: deitada em degraus de 2 e 3 (1 para 2,5), logo alem do 40
-    if (db < -41) { a = -Math.atan(2.5); L -= .5; }
+    if (db < -41) { a = -Math.atan(2.5); L -= 1.5; }
     const pts = [];
     for (let q = 0; q <= L + 1e-9; q += .1) pts.push([g.hx + q * Math.sin(a), g.hy - q * Math.cos(a)]);
     for (const [x, y] of caminho(pts)) px(P, x, y, VUC.agulha);
@@ -10222,10 +10222,10 @@ carregar();
     for (const [px_, py_] of reb) {
       px(P, px_, py_, cor(250, 246, 236)); px(P, px_ + 1, py_, cor(170, 158, 136)); px(P, px_, py_ + 1, cor(170, 158, 136)); px(P, px_ + 1, py_ + 1, cor(130, 118, 98));
     }
-    A.tcx = (x0 + x1) / 2; A.ttop = 2 * y0 + tTop;
+    A.tcx = (x0 + x1) / 2; A.ttop = 2 * y0 + tTop + 2;
     const l0 = Math.round((x0 + x1 - 53) / 2);
     A.lx = [...Array(7)].map((_, i) => l0 + i * 8);
-    A.ly = y0 + 5;
+    A.ly = y0 + 6;
   }
   const LED = [".##.", "#ab%", "#bc%", ".%%."];
   function led(P, x, y, a, b, c, aro = cor(58, 40, 30), aroL = aro) {
@@ -10406,7 +10406,7 @@ carregar();
         if (RT.grav) linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 4 + j * LH, [250, 248, 242], FR, RT.esp));
         linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 3 + j * LH, RT.cor, FR, RT.esp));
         c.putImageData(im, 0, 0);
-        const base = 2 * f.C.y0 + 36, left = gx(2 * f.col + 1 - w * LS / 2), top = gy(base - LS * (3 + (NL - 1) * LH + AL) + LS * (NL - linhas.length) * LH / 2);
+        const base = 2 * f.C.y0 + 36, left = gx(2 * f.col + 1 - w * LS / 2), top = gy(base - LS * (3 + (NL - 1) * LH + AL) + LS * (NL - linhas.length) * LH);
         cv.style.left = left + 'px'; cv.style.top = top + 'px';
         f.cal = [Math.floor(left / 2) - 2, Math.floor(top / 2), Math.ceil((left + w * LS) / 2) + 2, Math.ceil((top + h * LS) / 2)];
       });
