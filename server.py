@@ -762,7 +762,7 @@ class App:
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],
                  "channel": it.get("channel"), "thumb": it.get("thumb"), "duration": it.get("duration"),
-                 "job": None}
+                 "ytm_titulo": it.get("ytm_titulo"), "ytm_artista": it.get("ytm_artista"), "job": None}
         else:
             alvo = yid or target
             j = self.job_rodando(alvo)
@@ -1265,19 +1265,21 @@ class App:
     # capa do album dos discos da prateleira ---------------------------
     @staticmethod
     def capa_musica(it):
-        """A capa do album do disco da prateleira que veio de um video do YouTube: a da faixa da busca de musicas do
-        YouTube Music que e a mesma (mesma_faixa, a regra das parecidas), ou None (musica so do YouTube, ou a busca so
-        traz outras)."""
+        """A faixa do YouTube Music do disco da prateleira que veio de um video do YouTube, a da busca de musicas que e a
+        mesma (mesma_faixa, a regra das parecidas): {"thumb": a capa do album ou None, "ytm_titulo": o nome da musica,
+        "ytm_artista": os artistas}, ou None (musica so do YouTube, ou a busca so traz outras)."""
         for r in fora.pede("musicas", q=busca_de(it)):
             if r.get("videoId") and YT_ID.match(r["videoId"]) and mesma_faixa(it, r):
-                return capa_da_musica(r)
+                artistas = ", ".join(a["name"] for a in r.get("artists") or [] if a.get("name"))
+                return {"thumb": capa_da_musica(r), "ytm_titulo": r.get("title") or None, "ytm_artista": artistas or None}
         return None
 
     def _vigia_capas(self):
         """(07/11, pedido do dono) A capa do album no lugar da miniatura do video nos discos da prateleira, como as
         parecidas do Automatico: um disco por vez, CAPA_PASSO_S entre eles, uma vez so por disco (o capa_procurada fica
         no library.json; o disco novo entra na volta seguinte). Sem a mesma faixa no YouTube Music fica a miniatura do
-        video; a dela fica guardada em thumb_video."""
+        video; a dela fica guardada em thumb_video. Junto vem o nome da musica e o artista do YouTube Music (ytm_titulo,
+        ytm_artista), que a etiqueta mostra no lugar do titulo do video."""
         while True:
             time.sleep(CAPA_PASSO_S)
             with self.lib.lock:
@@ -1286,17 +1288,19 @@ class App:
             if alvo is None:
                 continue
             try:
-                capa = self.capa_musica(alvo)
+                v = self.capa_musica(alvo)
             except Exception as ex:  # noqa: BLE001 - sem a busca, o disco fica com a miniatura e tenta de novo depois
                 print(f"capa: nao busquei {alvo.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
                 time.sleep(60)
                 continue
             kw = {"capa_procurada": True}
-            if capa:
-                kw.update(thumb=capa, thumb_video=alvo.get("thumb_video") or alvo.get("thumb"))
+            if v:
+                kw.update(ytm_titulo=v["ytm_titulo"], ytm_artista=v["ytm_artista"])
+                if v["thumb"]:
+                    kw.update(thumb=v["thumb"], thumb_video=alvo.get("thumb_video") or alvo.get("thumb"))
             self.lib.update(alvo["id"], **kw)
-            print(f"capa: {alvo.get('title')!r}: " + ("a do album" if capa else "fica a do video"),
-                  file=sys.stderr, flush=True)
+            print(f"capa: {alvo.get('title')!r}: " + (f"a do album ({v['ytm_artista']} - {v['ytm_titulo']})" if v
+                                                       else "fica a do video"), file=sys.stderr, flush=True)
 
     def _mede_andamento(self, x):
         """{"ini", "fim"} do disco pelo andamento.py num processo a parte, com prioridade baixa: da prateleira, o

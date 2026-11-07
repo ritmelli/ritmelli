@@ -7946,6 +7946,8 @@ const TITULO_LIXO = /\s*[\(\[](official( music)? video|official audio|audio|vide
 function partirTitulo(x) {
   const norm = v => (v || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
   const canal = (x.channel || '').replace(/ - Topic$/, '');
+  // (07/11, pedido do dono) o disco que o servidor achou no YouTube Music traz o nome da musica e o artista de la
+  if (x.ytm_titulo) return { musica: x.ytm_titulo, artista: x.ytm_artista || canal };
   let musica = (x.title || 'Sem título').replace(TITULO_LIXO, '').trim(), artista = canal;
   const i = musica.indexOf(' - ');
   if (i > 0) {
