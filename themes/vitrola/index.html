@@ -7952,10 +7952,13 @@ function desenharFila() {
   const fim = $('#b-parecidas');
   fim.hidden = !auto;
   fim.setAttribute('aria-checked', ligado ? 'true' : 'false');
-  const sig = fila.map(x => [x.qid, x.title, estadoEntrada(x)].join('/')).join('|');
+  // (07/11) a chegada do estado tambem conta: a fila vazia antes e depois dele tinha a mesma assinatura e o aviso nunca saia
+  const sig = (S.state ? '' : 'sem-estado|') + fila.map(x => [x.qid, x.title, estadoEntrada(x)].join('/')).join('|');
   if (sig === S.filaSig || S.arrastandoFila) return;
   S.filaSig = sig;
-  $('#fila-vazia').hidden = !!fila.length;
+  // (07/11, pedido do dono) so com o estado na mao: no F5, antes dele chegar, a fila parecia vazia e o aviso aparecia no
+  // meio da maleta ainda esticada (a prateleira sem discos), por cima de onde a prateleira fica
+  $('#fila-vazia').hidden = !!fila.length || !S.state;
   // o foco (teclado) volta para o mesmo botao da mesma entrada depois de remontar
   const ativo = document.activeElement, li = ativo && ativo.closest && ativo.closest('.item-fila');
   const foco = li ? { qid: li.dataset.qid, role: ativo.dataset.role, lista: li.parentElement } : null;
