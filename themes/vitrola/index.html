@@ -10550,7 +10550,7 @@ carregar();
   // ---- um volume em pe: o rotulo em cima, as marcas dos dois lados, a canaleta escura com o ambar subindo do pe, o pino
   // creme com o sulco no meio e o valor embaixo
   function faderEst(P, F) {
-    const { cx, sy0, sy1 } = F;
+    const { cx, sy0 } = F, sy1 = F.sy1 - 1;   // (r26) o trilho 1 celula mais curto embaixo: o curso de 75 celulas, o da regua de 16 tracos (era 76 e o 0% caia 1 celula abaixo do ultimo)
     const curso = sy1 - sy0 - 11, nk = Math.max(2, Math.floor(curso / 5) + 1), k0 = sy0 + 5 + Math.floor((curso - (nk - 1) * 5) / 2);
     for (let k = 0; k < nk; k++) {
       const y = k0 + 5 * k;
@@ -10571,7 +10571,7 @@ carregar();
     for (let d = 0; d < 3; d++) { const ins = d === 2 ? 1 : 0; for (let x = x0 + 1 + ins; x <= x1 - ins; x++) px(P, x, y1 + d, SOMBRA_A); }
   }
   function faderDin(P, F, f, valor, apag, foco) {
-    const { cx, sy0, sy1, L } = F;
+    const { cx, sy0, L } = F, sy1 = F.sy1 - 1;   // (r26) o fim do trilho encurtado (faderEst); o % fica onde estava (F.sy1 + 3)
     const yc = Math.round(sy0 + 5 + (1 - f) * (sy1 - sy0 - 11));
     if (apag) P.dim = .7;
     for (let y = yc + 6; y < sy1 - 1; y++) {
@@ -10585,7 +10585,7 @@ carregar();
     px(P, x1 - 2, y0 + 7, cor(188, 178, 162)); px(P, x1 - 2, y0 + 8, cor(172, 162, 144)); px(P, x1 - 2, y0 + 9, cor(156, 146, 127));
     if (foco) for (let x = x0 - 1; x <= x1; x++) for (let y = y0 - 1; y <= y1; y++) if (x === x0 - 1 || x === x1 || y === y0 - 1 || y === y1) px(P, x, y, cor(143, 74, 12));
     P.dim = 1;
-    texto35(P, valor, Math.round(F.col + .5 - larg35(valor) / 2), sy1 + 3, CINZA_M);   // (r17) 1 celula acima: com os faders descidos o % ficava mais perto do sulco que do trilho
+    texto35(P, valor, Math.round(F.col + .5 - larg35(valor) / 2), F.sy1 + 3, CINZA_M);   // (r17) 1 celula acima: com os faders descidos o % ficava mais perto do sulco que do trilho
   }
 
   // ---- as chaves do set: teclas de madeira com o icone creme (ambar ligadas), a luz no canto e o nome miudo embaixo
