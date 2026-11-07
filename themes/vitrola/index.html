@@ -9158,9 +9158,10 @@ carregar();
   }
   const esfera = (c, luz, somb, R) => (dx, dy) => (dx + dy) / R > .55 ? somb : Math.hypot(dx + R * .4, dy + R * .4) < R * .38 ? luz : c;
   // a esfera em tres massas: o brilho pequeno em cima a esquerda, o meio-tom e o crescente de sombra embaixo a direita
-  const esfera3 = (c, luz, somb, R, hb = 1.1) => (dx, dy) => {
+  // rl e kc (opcionais): o raio do brilho e o quanto ele vai para o canto (o padrao: R * .2 e .42)
+  const esfera3 = (c, luz, somb, R, hb = 1.1, rl = null, kc = .42) => (dx, dy) => {
     const r = Math.hypot(dx, dy), k = (dx + dy) / (r * Math.SQRT2 || 1);
-    if (Math.hypot(dx + R * .42, dy + R * .42) < Math.max(hb, R * .2)) return luz;
+    if (Math.hypot(dx + R * kc, dy + R * kc) < (rl ?? Math.max(hb, R * .2))) return luz;
     if ((r > R - 1.7 && k > .25) || (dx + dy) / R > 1.05) return somb;
     return c;
   };
@@ -9279,7 +9280,8 @@ carregar();
     parafuso(chx1 - 11, chy0 + 4); parafuso(chx1 - 11, chy1 - 12);
     // a letra do lado: plaquinha pessego de 17 com a quina em degrau de 2, o filete de dentro e a letra de 8x9
     if (d.letraTxt) {
-      const lx0 = chx0 + 5, ly0 = chy0 + 5, lx1 = lx0 + 23, ly1 = ly0 + 17;
+      // (r06) 1 celula mais alta em cima e embaixo, a letra no mesmo lugar: as 11 linhas dela encostavam nos filetes
+      const lx0 = chx0 + 5, ly0 = chy0 + 4, lx1 = lx0 + 23, ly1 = ly0 + 19;
       sombraCaixa(P, lx0, ly0, lx1, ly1, 1, 2, 2);
       caixa(P, lx0, ly0, lx1, ly1, cor(250, 222, 180), cor(255, 240, 214), cor(222, 182, 132), 2);
       for (let x = lx0 + 3; x < lx1 - 3; x++) { px(P, x, ly0 + 2, cor(236, 200, 152)); px(P, x, ly1 - 3, cor(236, 200, 152)); }
@@ -9289,7 +9291,7 @@ carregar();
                       B: ["########.", "#########", "###...###", "###...###", "########.", "########.", "###...###", "###...###", "###...###",
                           "#########", "########."] };
       const gl = LETRA[d.letraTxt];
-      if (gl) { const ox = lx0 + Math.floor((23 - gl[0].length + 1) / 2), oy = ly0 + 3;
+      if (gl) { const ox = lx0 + Math.floor((23 - gl[0].length + 1) / 2), oy = ly0 + 4;
         gl.forEach((l, j) => [...l].forEach((q, i) => { if (q === '#') px(P, ox + i, oy + j, TINTA); })); }
     }
     // o botao redondo do canto de baixo a esquerda (o liga do mock)
@@ -9421,7 +9423,7 @@ carregar();
       const deixa = d.deck.classList.contains('deck-deixa');
       const ambar = deixa && cl.contains('acesa');
       const w = larg('fb', t) + 17, lx0 = tx0 + 3, ly1 = ty0 + 1, ly0 = ly1 - 13;
-      sombraCaixa(P, lx0, ly0, lx0 + w, ly1, 1, 1);
+      sombraCaixa(P, lx0, ly0, lx0 + w, ly1, 1, 1, 2);   // (r06) o corte da sombra no da etiqueta (2), sem o furo na quina
       if (ambar) caixa(P, lx0, ly0, lx0 + w, ly1, cor(240, 170, 60), cor(255, 214, 120), cor(186, 112, 30), 2);
       else caixa(P, lx0, ly0, lx0 + w, ly1, CREME, CREME_L, CREME_S, 2);
       const led = !acesa ? [cor(196, 150, 140), cor(128, 72, 62), cor(90, 46, 40)]
@@ -9505,7 +9507,8 @@ carregar();
       if (b.classList.contains('tocar-grande')) {
         const cx = (R.x0 + R.x1) / 2, cy = (R.y0 + R.y1) / 2 + (aperta ? 1 : 0), Rr = 18;
         // o aro em rampa que acompanha a curva: 5 faixas pelo angulo com a luz (de cima e da esquerda)
-        const face = esfera3(cor(243, 236, 222), cor(255, 253, 248), cor(208, 196, 176), Rr - 5, 1.6);
+        // (r06) o brilho de 3x3 celulas, 1 celula mais para o canto: o de 4x4 encostava no triangulo do play
+        const face = esfera3(cor(243, 236, 222), cor(255, 253, 248), cor(208, 196, 176), Rr - 5, 1.6, 1.6, .55);
         const off = b.disabled;
         disco(P, cx, cy, Rr, (dx, dy2, r) => {
           if (r > Rr - 4) {
@@ -9525,7 +9528,7 @@ carregar();
         icone(P, tocando ? 'pausar' : 'tocar', cx + (tocando ? 0 : 1), cy, b.disabled ? cor(140, 126, 108) : TINTA, 1);   // apagado, mas legivel (3,4:1 no creme)
       } else {
         const x0 = R.x0, x1 = R.x1, y0 = R.y0 + (aperta ? 2 : 0), y1 = R.y1;
-        sombraCaixa(P, x0, y0, x1, y1, 1, 1);
+        sombraCaixa(P, x0, y0, x1, y1, 1, 1, 2);   // (r06) o corte da sombra no do botao (2): com 1 sobrava um furo de fundo na quina
         const yf = y1;
         caixa(P, x0, y0, x1, yf, cor(124, 62, 33), cor(196, 124, 78), cor(92, 44, 22), 2);
         for (let x = x0 + 4; x < x1 - 4; x++) { px(P, x, y0 + 3, cor(146, 76, 42)); px(P, x, yf - 4, cor(146, 76, 42)); }
