@@ -4028,6 +4028,8 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
    elementos ficam, transparentes, para o clique, o estado e o lugar) */
 body.mesa-dj .palco .deck > canvas.dk-px { position: absolute; left: 0; top: 0; z-index: 6; display: block; pointer-events: none; image-rendering: pixelated; }
 body:not(.mesa-dj) canvas.dk-px { display: none; }
+body.mesa-dj .palco .deck > canvas.dk-sombra { position: absolute; z-index: 5; display: block; pointer-events: none; image-rendering: pixelated; }
+body:not(.mesa-dj) canvas.dk-sombra { display: none; }
 body.mesa-dj .palco .deck.dk-ok { border-image: none !important; background: none !important; }
 body.mesa-dj .palco .deck.dk-ok::before, body.mesa-dj .palco .deck.dk-ok .faixa::before, body.mesa-dj .palco .deck.dk-ok .faixa::after { visibility: hidden; }
 body.mesa-dj .palco .deck.dk-ok :is(.mesa, .deck-letra, .deck-luz, .deck-bpm, .linha-tempo, .comandos, .titulo-faixa, .canal-faixa) { opacity: 0 !important; }
@@ -9673,6 +9675,19 @@ carregar();
     const chaveE = [W, H, Math.round(tx0), Math.round(ty0), Math.round(uc * 100), com, dim, lt, fx.x0, fx.x1, cmdY1, fontesOk].join('|');
     if (chaveE !== d.chaveE) {
       d.cv.width = W; d.cv.height = H; d.cv.style.width = 2 * W + 'px'; d.cv.style.height = 2 * H + 'px';
+      // a sombra dura de 2 celulas a direita e embaixo, a mesma do visor, do mixer e das pedaleiras, num canvas por baixo
+      // do desenho (os toca-discos eram as unicas pecas sem ela, r03)
+      if (!d.sv) {
+        d.sv = document.createElement('canvas'); d.sv.className = 'dk-sombra'; d.sv.setAttribute('aria-hidden', 'true');
+        d.cv.before(d.sv);
+      }
+      const PS = pincel(W + 2, H + 2);
+      sombraCaixa(PS, 0, 0, W, H, 2, 2, 4);
+      d.sv.width = W + 2; d.sv.height = H + 2; d.sv.style.width = 2 * (W + 2) + 'px'; d.sv.style.height = 2 * (H + 2) + 'px';
+      d.sv.style.left = d.cv.style.left; d.sv.style.top = d.cv.style.top;
+      const imS = d.sv.getContext('2d').createImageData(W + 2, H + 2);
+      new Uint32Array(imS.data.buffer).set(PS.u);
+      d.sv.getContext('2d').putImageData(imS, 0, 0);
       const Rp = 38.25 * uc + 2, Rr = Rp - 9, Rl = Rr * .40;
       d.g = { cx: Math.round(tx0 + 40 * uc + 6), cy: Math.round(ty0 + 40 * uc), Rp, Rr, Rf: Rp * .935, Rl, Ri: Rl - 2, Re: Math.max(1.6, 1.1 * uc), com, dim,
               Px: Math.round(tx0 + 88 * uc + 5) + .5, Py: Math.round(ty0 + 12 * uc) + .5, L: 62.8 * uc, Rb: Math.round(7.1 * uc) - .5, Rm: 4.1 * uc, Dy: ty0 + 58 * uc, faixa: fx, cmdY1 };
