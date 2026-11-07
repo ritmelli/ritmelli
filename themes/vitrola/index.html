@@ -9432,7 +9432,7 @@ carregar();
           if (r > Rr - 5) return O;
           return face(dx, dy2);
         }, aperta ? [0, 1] : [1, 2]);
-        icone(P, tocando ? 'pausar' : 'tocar', cx + (tocando ? 0 : 1), cy, b.disabled ? cor(176, 160, 140) : TINTA, 1);
+        icone(P, tocando ? 'pausar' : 'tocar', cx + (tocando ? 0 : 1), cy, b.disabled ? cor(140, 126, 108) : TINTA, 1);   // apagado, mas legivel (3,4:1 no creme)
       } else {
         const x0 = R.x0, x1 = R.x1, y0 = R.y0 + (aperta ? 2 : 0), y1 = R.y1;
         sombraCaixa(P, x0, y0, x1, y1, 1, 1);
@@ -9441,7 +9441,7 @@ carregar();
         for (let x = x0 + 4; x < x1 - 4; x++) { px(P, x, y0 + 3, cor(146, 76, 42)); px(P, x, yf - 4, cor(146, 76, 42)); }
         for (let y = y0 + 4; y < yf - 4; y++) { px(P, x0 + 3, y, cor(146, 76, 42)); px(P, x1 - 4, y, cor(146, 76, 42)); }
         const nome = /ant/.test(b.id) ? 'ant' : 'prox';
-        icone(P, nome, (x0 + x1) / 2, (y0 + y1) / 2, b.disabled ? cor(172, 124, 96) : cor(247, 235, 214));   // apagado no contraste do play apagado
+        icone(P, nome, (x0 + x1) / 2, (y0 + y1) / 2, b.disabled ? cor(200, 156, 126) : cor(247, 235, 214));   // apagado, mas legivel (3,3:1 na face)
       }
     }
     P.dim = 1;
