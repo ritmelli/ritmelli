@@ -2196,22 +2196,16 @@ body.mesa-dj .topo .botoes-topo .btn-madeira:is(:active, .apertado) {
 body.mesa-dj .topo .busca input { border-image-width: calc(12 * var(--px)); }
 /* os parafusos das placas e das teclas em pixel, 4x4 celulas com a fenda (os do gradiente eram redondos e lisos e
    encostavam no degrau do canto), 1 celula para dentro da moldura; (r05) a cabeca em anel de miolo claro, sem a fenda escura (12 celulas escuras pesavam
-   mais que o rotulo); o escovado no passo da celula */
+   mais que o rotulo); o fundo e o escovado fino de antes da madrugada (07/11, pedido do dono: o da celula ficou artificial) */
 body.mesa-dj .topo :is(.marca, .botoes-topo .btn-madeira) {
   --parafuso-px: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4' shape-rendering='crispEdges'%3E%3Crect x='1' y='0' width='1' height='1' fill='%233B3029'/%3E%3Crect x='2' y='0' width='1' height='1' fill='%233B3029'/%3E%3Crect x='0' y='1' width='1' height='1' fill='%233B3029'/%3E%3Crect x='1' y='1' width='1' height='1' fill='%23ECE6DC'/%3E%3Crect x='2' y='1' width='1' height='1' fill='%23B8B0A4'/%3E%3Crect x='3' y='1' width='1' height='1' fill='%233B3029'/%3E%3Crect x='0' y='2' width='1' height='1' fill='%233B3029'/%3E%3Crect x='1' y='2' width='1' height='1' fill='%23B8B0A4'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%238C8378'/%3E%3Crect x='3' y='2' width='1' height='1' fill='%233B3029'/%3E%3Crect x='1' y='3' width='1' height='1' fill='%233B3029'/%3E%3Crect x='2' y='3' width='1' height='1' fill='%233B3029'/%3E%3C/svg%3E");
   background-image: var(--parafuso-px), var(--parafuso-px), var(--parafuso-px), var(--parafuso-px),
-    repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0px 2px, rgba(60,40,20,.045) 2px 6px, rgba(255,255,255,0) 6px 8px, rgba(255,255,255,.07) 8px 10px, rgba(60,40,20,.045) 10px 12px, rgba(255,255,255,0) 12px 18px, rgba(255,255,255,.07) 18px 22px, rgba(60,40,20,.045) 22px 24px, rgba(255,255,255,0) 24px 26px, rgba(255,255,255,.07) 26px 28px, rgba(60,40,20,.045) 28px 34px, rgba(255,255,255,0) 34px 38px);
-  background-position: left 6px top 6px, right 6px top 6px, left 6px bottom 6px, right 6px bottom 6px, var(--escovado-x, 0px) 0;
+    var(--escovado);   /* (07/11, pedido do dono) o escovado fino de antes da madrugada, fora da grade das celulas */
+  background-position: left 6px top 6px, right 6px top 6px, left 6px bottom 6px, right 6px bottom 6px, 0 0;
   background-size: 8px 8px, 8px 8px, 8px 8px, 8px 8px, auto;
   background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
   image-rendering: pixelated;
 }
-/* (r10) o escovado em riscos de larguras variadas (1 a 3 celulas, periodo de 19): o ciclo fixo de 3 lia como tecido
-   canelado; cada placa comeca num ponto do ciclo, para as vizinhas nao sairem iguais */
-body.mesa-dj .topo .botoes-topo .btn-madeira:nth-child(1) { --escovado-x: 6px; }
-body.mesa-dj .topo .botoes-topo .btn-madeira:nth-child(2) { --escovado-x: 16px; }
-body.mesa-dj .topo .botoes-topo .btn-madeira:nth-child(3) { --escovado-x: 24px; }
-body.mesa-dj .topo .botoes-topo .btn-madeira:nth-child(4) { --escovado-x: 32px; }
 /* a luz da plaqueta em pixel, 8x8 celulas redondas (era o degrade liso com o anel), na celula; acesa, apagada e em alerta */
 body.mesa-dj .topo .marca .lampada {
   width: 16px; height: 16px; border-radius: 0; box-shadow: none; position: relative; top: 3px; image-rendering: pixelated;   /* (r15) 2 celulas abaixo: no meio do corpo das minusculas (alto, lia como expoente) */
