@@ -5171,13 +5171,20 @@ function vdjPos(agora) {
   if (V.arrasto && V.arrasto.alvo != null) return V.arrasto.alvo;
   const b = V.base;
   if (S.pos !== V.ultPos || !b || b.id !== id || b.tocando !== tocando) {
-    let p = S.pos;
+    const pf = vdjPassagens().feita, velEm = q => pf ? vdjVel(pf, vdjFiInv(pf, q - pf.ini)) : 1;
+    let p = S.pos, ajuste = 0;
     if (b && b.id === id && b.tocando && tocando && S.pos !== V.ultPos) {
-      const prev = b.pos + (agora - b.t) / 1000 * b.vel, err = S.pos - prev;
-      if (Math.abs(err) < .25) p = prev + err * .25;
+      // (07/11, pedido do dono) o relogio anda liso: o erro se mede na hora em que o tick chegou (no quadro ele vinha ate
+      // 16 ms atrasado), ate 15 ms e ruido (a posicao vem em centesimos, 15 vezes por segundo) e nao corrige; acima disso
+      // a velocidade fecha o erro em ~1 s, sem salto (puxar 1/4 do erro a cada tick tirava o passo da tela da cadencia de
+      // 2 quadros, e o grafico inteiro dava mexidinhas para o lado); mais de 0,25 s e pulo de verdade
+      const em = S.posEmDe === S.pos ? S.posEm : agora, err = S.pos - (b.pos + (em - b.t) / 1000 * b.vel);
+      if (Math.abs(err) < .25) {
+        p = b.pos + (agora - b.t) / 1000 * b.vel;
+        ajuste = Math.abs(err) < .015 ? 0 : clamp(err, -.1, .1);
+      }
     } else if (b && b.id === id && S.pos === V.ultPos) p = b.pos + (b.tocando ? (agora - b.t) / 1000 * b.vel : 0);
-    const pf = vdjPassagens().feita;
-    V.base = { pos: p, t: agora, id, tocando, vel: pf ? vdjVel(pf, vdjFiInv(pf, p - pf.ini)) : 1 };
+    V.base = { pos: p, t: agora, id, tocando, vel: velEm(p) * (1 + ajuste) };
     V.ultPos = S.pos;
   }
   return V.base.tocando ? V.base.pos + (agora - V.base.t) / 1000 * V.base.vel : V.base.pos;
@@ -5188,9 +5195,11 @@ function vdjPassagens() {
 }
 
 function vdjPedeQuadro() { if (!V.raf) V.raf = requestAnimationFrame(vdjQuadro); }
-function vdjQuadro() {
+function vdjQuadro(ts) {
   V.raf = 0;
-  if (desenharVisor(performance.now()) && !reduz.matches) vdjPedeQuadro();
+  // o tempo do quadro (o da tela, de 16,7 em 16,7 ms) e nao a hora em que o callback rodou: o relogio do visor anda
+  // exatamente um quadro por quadro
+  if (desenharVisor(ts || performance.now()) && !reduz.matches) vdjPedeQuadro();
 }
 /* parado (ou com movimento reduzido), o visor so se redesenha quando algo muda: o temporizador olha 15 vezes por segundo,
    e so no computador com a pagina do disco aberta */
@@ -8382,6 +8391,7 @@ function conectar() {
   es.addEventListener('tick', e => {
     const t = JSON.parse(e.data);
     S.pos = t.pos; S.levels = t.levels || S.levels;
+    S.posEm = performance.now(); S.posEmDe = t.pos;   // quando a posicao chegou: o relogio do visor mede o erro ali
     desenharTempo(); agulhasPixel();
   });
   es.onerror = () => {

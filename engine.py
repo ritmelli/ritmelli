@@ -1996,11 +1996,17 @@ class Engine:
         for k in [k for k in self._ondas if k not in vivas][:max(0, len(self._ondas) - VISOR_CACHE)]:
             del self._ondas[k]
 
+    def _onda_viva(self, iid):
+        """A onda de iid ainda serve: e o disco do prato ou o proximo (07/11: o pulado ficava na frente da fila e o disco
+        novo esperava a leitura inteira dele, com o visor so ate a agulha)."""
+        return iid in ((self.track or {}).get("id"), (self._pronto.track or {}).get("id") if self._pronto else None)
+
     def _onda_loop(self):
         while True:
             iid, path, dur = self._onda_fila.get()
             try:
-                self._onda_arquivo(iid, path, dur)
+                if self._onda_viva(iid):
+                    self._onda_arquivo(iid, path, dur)
             except Exception as ex:  # noqa: BLE001 - sem a onda, o visor fica so com a linha do meio
                 print(f"visor: nao li a onda de {iid}: {ex!r}", file=sys.stderr, flush=True)
             finally:
@@ -2026,6 +2032,8 @@ class Engine:
                 b = ff.stdout.read(VISOR_SR * 8)
                 if not b:
                     break
+                if not self._onda_viva(iid):
+                    return   # o disco saiu do prato no meio da leitura: o proximo da fila nao espera
                 lr = np.frombuffer(b[: len(b) // 8 * 8], np.float32).reshape(-1, 2)
                 x = np.concatenate([resto, lr.mean(axis=1)])
                 k = len(x) // m
