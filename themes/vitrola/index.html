@@ -4096,7 +4096,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   /* PRATELEIRA-FIM */
   /* (r05) a placa da Prateleira 2 celulas abaixo: a linha de base do titulo na mesma da placa do A seguir (fora do
      bloco gerado pelo integra_prat.py) */
-  body.mesa-dj #vista-prateleira #cab-prat { top: 2px; }   /* (r09) a placa com 20 linhas: o topo 1 celula acima, a base no lugar */
+  body.mesa-dj #vista-prateleira #cab-prat { top: 0; }   /* (r09) a placa com 20 linhas: o topo 1 celula acima; (r13) a placa toda 1 celula acima, 3 celulas ate as capas */
   /* a busca cai do campo como uma gaveta, por cima da mesa (no painel de jacaranda da prateleira), e a mesa fica
      inteira embaixo: a prateleira e a maleta seguem no lugar (o montarMesa mede o campo) */
   body.mesa-dj .parede > #vista-prateleira[hidden] { display: contents !important; }
@@ -8916,7 +8916,7 @@ carregar();
   function escreve(c, s, x, y) {
     for (const ch of s) {
       const a = avanco(c, ch);
-      if (CJK.test(ch)) { c.font = FONTE_CJK; c.fillText(ch, x, y); c.font = FONTE; c.cjk.push([x, x + a, y]); }
+      if (CJK.test(ch)) { c.font = FONTE_CJK; c.fillText(ch, x, y); c.font = FONTE; c.cjk.push([x, x + a, y]); }   // (r13) em duas passadas o laco do na fechava: o kana fica no traco do bitmap
       else c.fillText(ch, x, y);
       x += a;
     }
