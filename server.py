@@ -55,6 +55,7 @@ if ffmpeg := pastas.ferramenta("ffmpeg"):
     YDL["ffmpeg_location"] = ffmpeg
 ANTERIOR_REINICIA_S = 3.0  # depois disso o Anterior volta ao comeco do disco, como no Spotify
 HISTORICO_MAX = 50
+TOCADAS_MAX = 2000  # GET /api/tocadas: os youtube_id que tocaram desde que o servidor subiu (o historico e do Anterior)
 AUTO_FILA = 5  # o Automatico mantem tantas parecidas no fim do A seguir
 AUTO_LOTE = 50  # quantas parecidas cada busca traz (o radio do YouTube Music da 50 em ~1 s, 21/10)
 AUTO_DUR = (60, 600)  # fora disso nao entra: vinheta, compilado de 1 h, live sem fim
@@ -360,6 +361,9 @@ class App:
         self.fila = []  # A seguir: entradas que tocam quando o disco do prato acaba
         self.fila_ordem = None  # Aleatorio ligado: a fila na ordem que o usuario montou, para voltar
         self.historico = []  # discos que sairam do prato, o mais recente no fim (o Anterior)
+        # os youtube_id de todo disco que saiu do prato nesta sessao, sem teto curto e sem o Anterior tirar: quem pede
+        # "outra do mesmo artista" (o bot) pula o que ja tocou hoje
+        self.tocadas = []
         self.fila_lock = threading.Lock()
         # Automatico: a semente e o ultimo disco que o usuario escolheu; o mix, o Mix do YouTube ainda
         # nao usado de mix_base (a semente, ou a ultima parecida quando o da semente acaba);
@@ -674,6 +678,9 @@ class App:
         tr = tr or self.engine.track
         if tr is None or tr["id"] == novo_id:
             return
+        if tr.get("youtube_id") and (not self.tocadas or self.tocadas[-1] != tr["youtube_id"]):
+            self.tocadas.append(tr["youtube_id"])
+            del self.tocadas[:-TOCADAS_MAX]
         x = self.entrada_de(tr)
         if x is None:
             return
@@ -1501,6 +1508,11 @@ def build(app_state):
     @r.get("/api/library")
     async def library(_):
         return web.json_response(A.lib.public())
+
+    @r.get("/api/tocadas")
+    async def tocadas(_):
+        """Os youtube_id que sairam do prato desde que o servidor subiu, o mais recente no fim."""
+        return web.json_response(list(A.tocadas))
 
     @r.get("/api/jobs")
     async def jobs(_):
