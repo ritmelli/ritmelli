@@ -49,6 +49,9 @@ com o detector em numpy).
 - Microfone e fone seguem o padrão do Windows, inclusive quando ele muda com o servidor
   ligado. A escolha feita na interface fica gravada em
   `%LOCALAPPDATA%\Vitrola\library\config.json`.
+- O microfone ou o fone escolhido que está desligado cai no padrão do Windows até voltar. Se
+  o padrão de gravação for o próprio cabo, entra o primeiro microfone de verdade, porque o
+  cabo como microfone devolveria a voz em eco.
 - Os dados de quem usa (áudio baixado, biblioteca, escolhas) moram em
   `%LOCALAPPDATA%\Vitrola\library`, e os logs do servidor em
   `%LOCALAPPDATA%\Vitrola\logs`.

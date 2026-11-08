@@ -675,6 +675,16 @@ def _rescan():
     sd._initialize()  # noqa: SLF001
 
 
+def _mic_padrao(d):
+    """O microfone padrao do Windows; se ele e o cabo, o primeiro microfone de verdade da lista (None sem nenhum). No
+    notebook do bot o padrao de gravacao e o CABLE Output, por onde o VRChat dele fala, e o cabo como microfone e
+    recusado (a voz voltaria em eco): com o microfone escolhido desligado o audio nem abria (08/11)."""
+    pad = d["default_input"]
+    if pad is None or "cable" not in pad.lower():
+        return pad
+    return next((x for x in d["inputs"] if "cable" not in x.lower()), None)
+
+
 def _na_lista(nome, lista):
     """O nome como o find_dev acha (pedaco do nome, sem caixa) numa lista de nomes; None se
     nao tem."""
@@ -701,6 +711,14 @@ def probe_duration(path):
         return float(r.stdout.strip())
     except ValueError:
         return None
+
+
+def _aviso_reserva(faltou):
+    """A frase da tela quando a partida usou a reserva: o que faltou e o que entrou no lugar."""
+    sumiu = " nem o ".join(f'{nome} "{escolhido}"' for nome, escolhido, _ in faltou)
+    usou = " e ".join(f'"{usado}"' if usado else "nenhum fone" for _, _, usado in faltou)
+    volta = "ele voltar" if len(faltou) == 1 else "eles voltarem"
+    return f"Não achei o {sumiu}; usei {usou} até {volta}."
 
 
 class Engine:
@@ -806,7 +824,7 @@ class Engine:
         mic = self.devices["mic"]
         mon = self.devices["monitor"]
         if mic == "default":
-            mic = d["default_input"]
+            mic = _mic_padrao(d)
         if mon == "default":
             mon = d["default_output"] or ""
             if "cable" in mon.lower():
@@ -814,21 +832,21 @@ class Engine:
         return {"mic": mic, "out": self.devices["out"], "monitor": mon}
 
     def _reserva(self, act, d=None):
-        """O mic ou o fone escolhidos que nao estao conectados caem no padrao do Windows: o
-        Quest desligado leva o fone do Virtual Desktop junto, e o servidor nao subia (20/10).
-        Devolve (o que abrir, o que faltou); a escolha do usuario continua gravada, e a troca pela
-        interface segue recusando o que nao existe."""
+        """O mic ou o fone escolhidos que nao estao conectados caem no padrao do Windows (o mic
+        pula o cabo, ver _mic_padrao): o Quest desligado leva o fone do Virtual Desktop junto, e o
+        servidor nao subia (20/10). Devolve (o que abrir, o que faltou: nome, escolhido, usado); a
+        escolha do usuario continua gravada, e a troca pela interface segue recusando o que nao existe."""
         d = d or list_devices()
         faltou = []
         for k, lista, nome in (("mic", d["inputs"], "microfone"), ("monitor", d["outputs"], "fone")):
             if not act[k] or _na_lista(act[k], lista):
                 continue
-            pad = d["default_input"] if k == "mic" else d["default_output"] or ""
+            pad = _mic_padrao(d) if k == "mic" else d["default_output"] or ""
             if pad is None:
                 continue  # sem microfone nenhum: o find_dev do start avisa
             if k == "monitor" and "cable" in pad.lower():
                 pad = ""
-            faltou.append(f"{nome} \"{act[k]}\"")
+            faltou.append((nome, act[k], pad))
             act[k] = pad
         return act, faltou
 
@@ -881,9 +899,7 @@ class Engine:
             raise
         self._stack = st
         if faltou:
-            self._aviso = self.error = (
-                f"Não achei o {' nem o '.join(faltou)}; usei o padrão do Windows até "
-                f"{'ele voltar' if len(faltou) == 1 else 'eles voltarem'}.")
+            self._aviso = self.error = _aviso_reserva(faltou)
         elif self._aviso is not None and self.error == self._aviso:
             self.error = None  # o aparelho escolhido voltou: sai so o aviso, nunca um erro de tocar
 
