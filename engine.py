@@ -831,15 +831,16 @@ class Engine:
                 mon = ""
         return {"mic": mic, "out": self.devices["out"], "monitor": mon}
 
-    def _reserva(self, act, d=None):
+    def _reserva(self, act, d=None, fixos=()):
         """O mic ou o fone escolhidos que nao estao conectados caem no padrao do Windows (o mic
         pula o cabo, ver _mic_padrao): o Quest desligado leva o fone do Virtual Desktop junto, e o
         servidor nao subia (20/10). Devolve (o que abrir, o que faltou: nome, escolhido, usado); a
-        escolha do usuario continua gravada, e a troca pela interface segue recusando o que nao existe."""
+        escolha do usuario continua gravada. fixos = o que a pessoa acabou de escolher na tela: esse
+        nao cai na reserva, e o find_dev do start recusa se nao existe."""
         d = d or list_devices()
         faltou = []
         for k, lista, nome in (("mic", d["inputs"], "microfone"), ("monitor", d["outputs"], "fone")):
-            if not act[k] or _na_lista(act[k], lista):
+            if k in fixos or not act[k] or _na_lista(act[k], lista):
                 continue
             pad = _mic_padrao(d) if k == "mic" else d["default_output"] or ""
             if pad is None:
@@ -856,7 +857,7 @@ class Engine:
         return {"mic": _na_lista(act["mic"], d["inputs"]),
                 "monitor": _na_lista(act["monitor"], d["outputs"]) or ""}
 
-    def start(self, reserva=False):
+    def start(self, reserva=False, fixos=()):
         _com_init()
         # o modelo da rede abre ja e fica aberto (~100 MB): abrir segura o interpretador ~0,6 s, e reabrindo a cada
         # plano o audio estalava (num notebook, aos ~30 s do Where's My Love, 22/10); aqui ainda nao toca nada
@@ -872,7 +873,7 @@ class Engine:
         act = self.resolve()
         faltou = []
         if reserva:
-            act, faltou = self._reserva(act)
+            act, faltou = self._reserva(act, fixos=fixos)
         mic_i, mic_d = find_dev(act["mic"], "in")
         out_i, out_d = find_dev(act["out"], "out")
         mon_i = find_dev(act["monitor"], "out")[0] if act["monitor"] else None
@@ -1031,8 +1032,11 @@ class Engine:
                 self._stack = None
             _rescan()
             self.devices = new
+            # so o que veio na troca tem que existir; o outro escolhido que esta desligado segue na reserva: trocar o
+            # mic pro do notebook com o fone da UMC desligada recusava tudo (08/11)
+            fixos = tuple(k for k, v in (("mic", mic), ("monitor", monitor)) if v is not None)
             try:
-                self.start()
+                self.start(reserva=True, fixos=fixos)
             except Exception:
                 self.devices = old
                 self.start(reserva=True)  # a escolha antiga pode ser o fone que sumiu
