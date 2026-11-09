@@ -35,6 +35,7 @@ import pareamento as par
 import pastas
 from pastas import save_json
 from versao import VERSAO
+from yt_erros import erro_do_video
 
 HERE = Path(__file__).resolve().parent
 LIB = pastas.LIB  # audio baixado; library.json e config.json moram em --data-dir
@@ -90,11 +91,9 @@ VIVO_MAX_S = 3600.0
 # quantos vivos (cada um com o seu YoutubeDL quente): com um so, o endereco adiantado pelo palpite torto da mina
 # ocupava o vivo e o do pedido certo, logo atras, caia num processo de reserva (0,55 s no placar r08, contra 0,15)
 VIVOS = 2
-# o erro do proprio video (indisponivel, privado, com idade) nao e do processo: o vivo fica quente. Antes ele saia e o
-# pedido seguinte pagava o vivo frio (0,51 e 0,55 s no placar r12, com o endereco especulativo de um candidato); "not a
-# bot", 429 e o resto seguem trocando o vivo
-ERRO_DO_VIDEO = re.compile(r"video unavailable|this video is (?:not available|unavailable|private)|private video|"
-                           r"confirm your age|age[- ]restricted|has been removed|copyright", re.I)
+# o erro do proprio video (indisponivel, privado, com idade: yt_erros.erro_do_video) nao e do processo: o vivo fica
+# quente. Antes ele saia e o pedido seguinte pagava o vivo frio (0,51 e 0,55 s no placar r12, com o endereco
+# especulativo de um candidato); "not a bot", 429, rate-limit e o resto seguem trocando o vivo
 # os pedidos que vao de preferencia ao vivo: so o endereco (o mesmo YoutubeDL). A busca de musica no vivo nao ganhou
 # nada (09/11, placar: ~0,7 s igual, o tempo e do YouTube Music) e ocupava o vivo na hora do endereco
 VIVO_OPS = ("stream",)
@@ -282,7 +281,7 @@ class Fora:
         finally:
             if relogio:
                 relogio.cancel()
-        if r is None or n >= VIVO_MAX or ("erro" in r and not ERRO_DO_VIDEO.search(str(r["erro"]))):
+        if r is None or n >= VIVO_MAX or ("erro" in r and not erro_do_video(r["erro"])):
             self._solta_vivo(v)
         if r is None:
             raise RuntimeError("o YouTube não respondeu a tempo" if estourou.is_set() else
@@ -881,6 +880,8 @@ class App:
             except Exception as ex:  # noqa: BLE001 - o motivo vai para o log e para a tela
                 motivo = yt_msg(ex)
                 print(f"stream: tentativa {i + 1} de 3 falhou para {target}: {motivo}", file=sys.stderr, flush=True)
+                if erro_do_video(ex):  # o video nao toca pra ninguem: tentar de novo so gasta ~2 s e o IP de casa
+                    break
                 time.sleep(1.0)
         if info is None:
             if self.engine.track is not tr:

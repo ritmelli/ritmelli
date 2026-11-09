@@ -90,6 +90,42 @@ class Rapido(unittest.TestCase):
         self.assertEqual(len(self.chamadas), 3)
         yt_fora._rapido_falhas = 0
 
+    def test_video_com_idade_nao_desliga_o_rapido(self):
+        """Dois discos com idade (o rapido e o de sempre falham pelo video) e um bom: o bom vai pelo rapido."""
+        def stream_yt(alvo, opts):
+            yt = (opts.get("extractor_args") or {}).get("youtube") or {}
+            self.chamadas.append((alvo, bool(yt)))
+            if alvo == "idade":
+                raise RuntimeError("ERROR: [youtube] x: Sign in to confirm your age. This video may be inappropriate")
+            return {"url": "u", "id": "x"}, "h"
+        with mock.patch.object(yt_fora, "stream_yt", stream_yt):
+            for alvo in ("idade", "idade"):
+                with self.assertRaisesRegex(RuntimeError, "confirm your age"):
+                    yt_fora.faz({"op": "stream", "alvo": alvo, "opts": OPTS, "rapido": True})
+            yt_fora.faz({"op": "stream", "alvo": "bom", "opts": OPTS, "rapido": True})
+        self.assertEqual(self.chamadas[-1], ("bom", True), "o rapido segue ligado")
+        self.assertEqual(yt_fora._rapido_falhas, 0)
+
+    def test_rate_limit_com_video_indisponivel_conta(self):
+        """O rate-limit que vem junto do 'Video unavailable' e do YouTube com a gente: conta no disjuntor."""
+        def stream_yt(alvo, opts):
+            raise RuntimeError("Video unavailable. This content isn't available, try again later")
+        with mock.patch.object(yt_fora, "stream_yt", stream_yt):
+            with self.assertRaises(RuntimeError):
+                yt_fora.faz({"op": "stream", "alvo": "a", "opts": OPTS, "rapido": True})
+        self.assertEqual(yt_fora._rapido_falhas, 1)
+        yt_fora._rapido_falhas = 0
+
+    def test_erro_do_video(self):
+        from yt_erros import erro_do_video
+        for m in ("ERROR: [youtube] x: Video unavailable", "This video is private", "Sign in to confirm your age",
+                  "This video is unavailable. Error code: 152 - 18"):
+            self.assertTrue(erro_do_video(m), m)
+        for m in ("Sign in to confirm you're not a bot", "HTTP Error 429: Too Many Requests",
+                  "Video unavailable. This content isn't available, try again later", "o YouTube recusou",
+                  "Requested format is not available", None):
+            self.assertFalse(erro_do_video(m), m)
+
     def test_canal_depois(self):
         pedidos = []
         song = types.SimpleNamespace(headers={"X-Goog-Visitor-Id": "Cgt"},

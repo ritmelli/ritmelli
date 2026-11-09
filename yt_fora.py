@@ -17,7 +17,9 @@ from pathlib import Path
 
 import yt_dlp
 
-CAMPOS = ("id", "title", "duration", "channel", "uploader")
+from yt_erros import erro_do_video
+
+CAMPOS =("id", "title", "duration", "channel", "uploader")
 ABAIXO_DO_NORMAL = 0x00004000  # o download cede o processador ao audio, como a medida de andamento
 
 
@@ -316,18 +318,27 @@ def faz(p):
         p["opts"] = {**p["opts"], "logtostderr": True}  # a saida e so do JSON: o que o yt-dlp diz vai para o log
     if op == "stream":
         global _rapido_falhas
-        info = None
+        info, antes, erro_rapido = None, _rapido_falhas, None
         if p.get("rapido") and _rapido_falhas < RAPIDO_FALHAS_MAX:
             try:
                 info, hdr = stream_yt(p["alvo"], opts_rapido(p["opts"]))
                 _rapido_falhas = 0
             except Exception as ex:  # noqa: BLE001 - o de sempre logo em seguida, no mesmo processo
-                _rapido_falhas = RAPIDO_FALHAS_MAX if "not a bot" in str(ex) else _rapido_falhas + 1
+                erro_rapido = str(ex)
+                _rapido_falhas = RAPIDO_FALHAS_MAX if "not a bot" in erro_rapido else _rapido_falhas + 1
                 fora = ": desligado neste processo" if _rapido_falhas >= RAPIDO_FALHAS_MAX else ""
-                print(f"stream: o rapido falhou em {p['alvo']} ({str(ex)[:120]}): vai pelo de sempre{fora}",
+                print(f"stream: o rapido falhou em {p['alvo']} ({erro_rapido[:120]}): vai pelo de sempre{fora}",
                       file=sys.stderr, flush=True)
         if info is None:
-            info, hdr = stream_yt(p["alvo"], p["opts"])
+            try:
+                info, hdr = stream_yt(p["alvo"], p["opts"])
+            except Exception as ex:
+                # o de sempre tambem diz que o video nao toca: a culpa e do video, nao do rapido, e o contador volta
+                # (o vivo agora fica depois do erro do video: um disco com idade desligava o rapido dele por ate 1 h;
+                # revisao da r12b)
+                if erro_rapido is not None and erro_do_video(erro_rapido) and erro_do_video(ex):
+                    _rapido_falhas = antes
+                raise
         return {"info": dict(enxuto(info), url=info["url"]), "hdr": hdr}
     if op == "canal":  # o que o endereco rapido nao traz, pedido depois do som (server.canal_depois)
         return {"channel": canal_do(p["yid"])}

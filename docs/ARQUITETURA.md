@@ -46,10 +46,13 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   palpite errado da mina não segura o do pedido certo), e com todos ocupados vai pelo de
   reserva. Cada um sai
   no erro, no estouro do limite, depois de `VIVO_MAX` pedidos e de `VIVO_MAX_S` (o
-  `VIVO_MAX = 0` desliga). O endereço do primeiro resultado da busca de música (`/api/musica`) sai
+  `VIVO_MAX = 0` desliga); o erro do próprio vídeo (indisponível, privado, com idade:
+  `yt_erros.py`, que o servidor e o `yt_fora.py` leem, sem o yt-dlp) não troca o vivo, não
+  conta no disjuntor do caminho rápido e não ganha as outras tentativas do stream. O endereço do primeiro resultado da busca de música (`/api/musica`) sai
   logo atrás dela (`ADIANTA`), antes de a mina pôr na fila: o tocar usa o que já está pronto ou a
   caminho (no "outra", o do primeiro que não toca, não está na fila, não tocou e não é outra versão
-  da que toca, como a mina escolhe). E sai pelo caminho rápido (`ENDERECO_RAPIDO`): só o cliente visionos, sem a página do
+  da que toca, como a mina escolhe); o adiantado usado deixa a marca por `ADIANTA_S`, e a busca
+  que chega depois (a do cérebro, a do lote) não pede de novo o endereço do disco que já toca. E sai pelo caminho rápido (`ENDERECO_RAPIDO`): só o cliente visionos, sem a página do
   vídeo, com o visitor id do YouTube Music (0,15 s em vez de 0,8 s); falhou, o de sempre. O
   rápido não traz o canal: ele vem do YouTube Music depois de o disco já tocar (`canal_depois`).
   Assim que o endereço adiantado sai, o motor já abre o ffmpeg dele e guarda 2 s do começo
