@@ -69,6 +69,10 @@ CAPA_PASSO_S = 2.0         # entre uma busca de capa e a proxima: a prateleira i
 ABAIXO_DO_NORMAL = 0x00004000  # prioridade do processo da medida no Windows: cede o processador ao audio
 
 pool = ThreadPoolExecutor(4)
+# o caminho do pedido falado (09/11): a /api/musica, o endereco adiantado e o canal que o endereco rapido nao traz, fora
+# do pool dos downloads (o download segura a thread dele inteiro: com 3 ou 4 baixando, o adiantado esperava ate um
+# acabar e o disco ficava carregando; revisao da r04)
+pool_rapido = ThreadPoolExecutor(4, thread_name_prefix="vitrola-rapido")
 BUSCA_MUSICA_S = 4.0  # a busca do YouTube Music (/api/musica) que passa disso falha: quem pediu cai na do YouTube
 # processos do YouTube abertos de reserva, com as bibliotecas carregadas (09/11: com um so, a busca antecipada da mina
 # pegava a reserva e a busca do lote, logo atras, caia num processo frio, 1,3 a 1,55 s no placar)
@@ -602,13 +606,31 @@ class App:
         return {**YDL, "noplaylist": True, "skip_download": True,
                 "format": formato or "bestaudio[protocol^=http]/bestaudio/best"}
 
-    def stream_info(self, target, formato=None, canal=False):
+    def stream_info(self, target, formato=None):
         """Endereco direto do audio no YouTube, para o ffmpeg tocar sem baixar antes (sai em
         1 a 3 s; um download leva bem mais). Volta o info do yt-dlp (enxuto: o endereco em url, id, title,
-        channel, uploader e duration) e os cabecalhos HTTP."""
+        channel, uploader e duration) e os cabecalhos HTTP. O endereco rapido nao traz o canal: canal_depois."""
         r = fora.pede("stream", alvo=self.alvo_yt(target), opts=self.opts_stream(formato),
-                      rapido=ENDERECO_RAPIDO and formato is None, canal=canal)
+                      rapido=ENDERECO_RAPIDO and formato is None)
         return r["info"], r["hdr"]
+
+    def canal_depois(self, tr):
+        """O canal do disco tr que veio sem (o endereco rapido pula o initial data, de onde o yt-dlp tira o canal), pelo
+        YouTube Music, depois de o disco ja tocar: grava no proprio dict. Antes ele vinha junto do endereco, +0,15 a
+        0,3 s no primeiro som do link colado (revisao da r04)."""
+        yid = tr.get("youtube_id")
+        if tr.get("channel") or not yid or not YT_ID.match(yid):
+            return
+
+        def faz():
+            try:
+                ch = fora.pede("canal", yid=yid).get("channel")
+            except Exception as ex:  # noqa: BLE001 - fica sem o canal
+                print(f"stream: o canal de {yid} nao veio ({yt_msg(ex)})", file=sys.stderr, flush=True)
+                return
+            if ch and not tr.get("channel"):
+                tr["channel"] = ch
+        pool_rapido.submit(faz)
 
     @staticmethod
     def search(q, n, start=0):
@@ -754,7 +776,19 @@ class App:
                 del self._adiantados[k]
             if yid in self._adiantados:
                 return
-            self._adiantados[yid] = (pool.submit(self.stream_info, yid), agora)
+            fut = pool_rapido.submit(self.stream_info, yid)
+            self._adiantados[yid] = (fut, agora)
+        fut.add_done_callback(self._preabre)
+
+    def _preabre(self, fut):
+        """O endereco adiantado saiu: o ffmpeg dele ja abre (engine.PREABRE), e o tocar comeca sem esperar o ffmpeg."""
+        if fut.cancelled() or fut.exception() is not None:
+            return
+        info, hdr = fut.result()
+        try:
+            self.engine.preabre(info.get("url"), hdr)
+        except Exception as ex:  # noqa: BLE001 - sem o aberto antes, o leitor abre o dele como antes
+            print(f"stream: o ffmpeg aberto antes falhou ({str(ex)[:120]})", file=sys.stderr, flush=True)
 
     def endereco_adiantado(self, yid):
         """O Future do endereco adiantado de yid (uma vez so), ou None."""
@@ -769,6 +803,8 @@ class App:
         info = hdr = None
         motivo = ""
         adiantado = self.endereco_adiantado(tr.get("youtube_id"))
+        if adiantado is not None and adiantado.cancel():  # nem comecou (o executor cheio): pede aqui mesmo
+            adiantado = None
         for i, formato in enumerate((None, None, "bestaudio/best")):
             if self.engine.track is not tr:
                 return  # trocou de disco no meio
@@ -779,7 +815,7 @@ class App:
                     print(f"stream: o adiantado de {tr.get('youtube_id')} esperou mais {time.monotonic() - t0:.2f} s",
                           file=sys.stderr, flush=True)
                 else:
-                    info, hdr = self.stream_info(target, formato, canal=not tr.get("channel"))
+                    info, hdr = self.stream_info(target, formato)
                 break
             except Exception as ex:  # noqa: BLE001 - o motivo vai para o log e para a tela
                 motivo = yt_msg(ex)
@@ -803,7 +839,8 @@ class App:
                     title=tr["title"] if tem_titulo else info.get("title") or tr["title"],
                     channel=tr["channel"] or info.get("channel") or info.get("uploader"),
                     thumb=tr["thumb"] or thumb(yid), duration=tr["duration"] or info.get("duration"))
-        self.engine.trocar_fonte(tr, novo)
+        if self.engine.trocar_fonte(tr, novo):
+            self.canal_depois(novo)
 
     def religar_stream(self, tr, pos, desistir):
         """O leitor do motor (na thread dele): o stream da parecida do Automatico caiu em pos, sem audio ou antes do
@@ -821,7 +858,7 @@ class App:
         print(f"stream: {nome!r} caiu em {quando}: pego um endereco novo ({k} de {STREAM_RELIGA})",
               file=sys.stderr, flush=True)
         try:
-            info, hdr = self.stream_info(tr.get("youtube_id") or tr.get("alvo"), canal=not tr.get("channel"))
+            info, hdr = self.stream_info(tr.get("youtube_id") or tr.get("alvo"))
         except Exception as ex:  # noqa: BLE001 - sem endereco, o disco acaba como antes
             print(f"stream: o endereco novo de {nome!r} falhou ({yt_msg(ex)}): passo para a proxima",
                   file=sys.stderr, flush=True)
@@ -1101,13 +1138,15 @@ class App:
         auto = x.get("auto") and x.get("youtube_id")
         if not alvo or not (auto or (j and j["status"] == "running")):
             return None
-        info, hdr = self.stream_info(alvo, canal=not x.get("channel"))
+        info, hdr = self.stream_info(alvo)
         yid = x.get("youtube_id") or info.get("id")
-        return {"id": yid or f"job-{j['id']}", "title": x.get("title") or info.get("title") or alvo,
-                "channel": x.get("channel") or info.get("channel") or info.get("uploader"),
-                "thumb": x.get("thumb") or thumb(yid), "duration": x.get("duration") or info.get("duration"),
-                "youtube_id": yid, "alvo": None if yid else alvo, "path": info["url"], "headers": hdr,
-                "stream": True, "job": None if auto else j["id"], **marca_auto(x)}
+        d = {"id": yid or f"job-{j['id']}", "title": x.get("title") or info.get("title") or alvo,
+             "channel": x.get("channel") or info.get("channel") or info.get("uploader"),
+             "thumb": x.get("thumb") or thumb(yid), "duration": x.get("duration") or info.get("duration"),
+             "youtube_id": yid, "alvo": None if yid else alvo, "path": info["url"], "headers": hdr,
+             "stream": True, "job": None if auto else j["id"], **marca_auto(x)}
+        self.canal_depois(d)
+        return d
 
     def _prepara(self, tr, x, chave):
         try:
@@ -1728,7 +1767,7 @@ def build(app_state):
             return j_err("Diga o que procurar.")
         try:
             res = await loop_().run_in_executor(
-                pool, lambda: fora.pede("musica", q=q, n=n, limite=BUSCA_MUSICA_S))
+                pool_rapido, lambda: fora.pede("musica", q=q, n=n, limite=BUSCA_MUSICA_S))
         except Exception as ex:  # noqa: BLE001
             return j_err(f"A busca no YouTube Music falhou ({yt_msg(ex)}).", 502)
         for x in res:

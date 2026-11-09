@@ -281,9 +281,9 @@ def faz(p):
                       file=sys.stderr, flush=True)
         if info is None:
             info, hdr = stream_yt(p["alvo"], p["opts"])
-        if p.get("canal") and not info.get("channel"):
-            info["channel"] = canal_do(info.get("id"))
         return {"info": dict(enxuto(info), url=info["url"]), "hdr": hdr}
+    if op == "canal":  # o que o endereco rapido nao traz, pedido depois do som (server.canal_depois)
+        return {"channel": canal_do(p["yid"])}
     if op == "info":
         with yt_dlp.YoutubeDL(p["opts"]) as y:
             return enxuto(y.extract_info(p["alvo"], download=False))

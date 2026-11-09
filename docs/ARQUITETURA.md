@@ -47,7 +47,14 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   `VIVO_MAX = 0` desliga). O endereço do primeiro resultado da busca de música (`/api/musica`) sai
   logo atrás dela (`ADIANTA`), antes de a mina pôr na fila: o tocar usa o que já está pronto ou a
   caminho. E sai pelo caminho rápido (`ENDERECO_RAPIDO`): só o cliente visionos, sem a página do
-  vídeo, com o visitor id do YouTube Music (0,15 s em vez de 0,8 s); falhou, o de sempre.
+  vídeo, com o visitor id do YouTube Music (0,15 s em vez de 0,8 s); falhou, o de sempre. O
+  rápido não traz o canal: ele vem do YouTube Music depois de o disco já tocar (`canal_depois`).
+  Assim que o endereço adiantado sai, o motor já abre o ffmpeg dele e guarda 2 s do começo
+  (`PREABRE` no `engine.py`): o disco entra no prato e o som sai sem esperar o ffmpeg. A busca de
+  música, o adiantado e o canal correm num executor próprio (`pool_rapido`), fora do dos
+  downloads. Ficam dois processos de reserva (`RESERVAS`), e a busca de até 3 resultados tenta
+  antes a sugestão do YouTube Music (`SUGESTAO`, ~0,1 s), que só vale se for uma música com
+  todas as palavras do pedido.
 - `vitrola.py`: o ponto de entrada, o mesmo do executável. Sem modo, liga o servidor. Se
   outra Vitrola já está ligada na mesma porta (o atalho clicado de novo), só abre a página
   dela; se ela ainda está ligando, sai sem fazer nada, porque a página abre quando ela

@@ -47,6 +47,13 @@ FFPROBE = pastas.ferramenta("ffprobe") or "ffprobe"
 CURTO_MAX_S = 15  # ate isso o pad toca por cima da musica em vez de trocar
 STREAM_CAIU_S = 5.0  # o stream que para mais que isso antes do fim (ou sem audio nenhum) caiu: o servidor religa
 RAPIDO_MAX_S = 120  # o posto nos Sons rapidos pela mao toca inteiro por cima ate isso (2 minutos)
+# o stream aberto antes (09/11, a latencia do pedido falado): o servidor abre o ffmpeg do endereco adiantado logo que
+# ele sai, antes de o disco entrar no prato; o leitor que toca esse endereco do comeco continua desse ffmpeg (o
+# ffmpeg novo levava ~0,1 a 0,25 s ate o primeiro bloco: processo, TLS e o comeco do googlevideo). False desliga
+PREABRE = True
+PRE_S = 2.0        # o tanto do comeco que o aberto antes decodifica e guarda; depois o cano cheio segura o ffmpeg
+PRE_VALE_S = 20.0  # o aberto antes que ninguem pegou nisso fecha sozinho
+PRE_MAX = 2        # abertos antes ao mesmo tempo (o palpite torto da mina pode adiantar outro): o mais velho fecha
 MINA_FOLGA_S = 0.1  # a voz da mina (mina.py) chega em pedacos de 100 ms, com folga de rede: a fila vazia recomeca com isso
 MINA_FILA_MAX_S = 1.0  # fila dela maior que isso (a rede segurou e despejou): o silencio do comeco sai
 VIGIA_S = 2.0  # de quanto em quanto o vigia le a lista de aparelhos do Windows
@@ -722,6 +729,63 @@ def _aviso_reserva(faltou):
     return f"Não achei o {sumiu}; usei {usou} até {volta}."
 
 
+class Preaberto:
+    """O ffmpeg de um stream aberto antes de o disco entrar no prato (Engine.preabre): uma thread le ate PRE_S do
+    comeco em blocos e para (o cano cheio segura o ffmpeg). pega() para essa thread (espera o bloco em curso) e entrega
+    os blocos lidos e o ffmpeg ao leitor do prato, uma vez; ninguem pegou em PRE_VALE_S, ele fecha sozinho."""
+
+    def __init__(self, url, entrada):
+        self.url, self.t = url, time.monotonic()
+        self.blocos = []
+        self.morto = False
+        self._pego = False
+        self._lk = threading.Lock()
+        self.ff = subprocess.Popen([FFMPEG, "-v", "error", *entrada, "-ss", "0.0", "-i", url,
+                                    "-f", "f32le", "-ac", "2", "-ar", str(SR), "-"],
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
+        self._th = threading.Thread(target=self._le, daemon=True, name="vitrola-preabre")
+        self._th.start()
+        self._vence = threading.Timer(PRE_VALE_S, self.fecha)
+        self._vence.daemon = True
+        self._vence.start()
+
+    def _le(self):
+        n, teto = 0, int(PRE_S * SR) * 8
+        try:
+            while n < teto:
+                with self._lk:
+                    if self._pego:
+                        return
+                b = self.ff.stdout.read(BLOCK * 8)
+                if not b:
+                    return
+                self.blocos.append(b)
+                n += len(b)
+        except (OSError, ValueError):  # fechado no meio
+            return
+
+    def pega(self):
+        """(blocos ja lidos, ffmpeg) para o leitor do prato, ou None se ele ja fechou (venceu ou foi o mais velho)."""
+        with self._lk:
+            if self._pego:
+                return None
+            self._pego = True
+        self._vence.cancel()
+        self._th.join()
+        return self.blocos, self.ff
+
+    def fecha(self):
+        with self._lk:
+            if self._pego:
+                return
+            self._pego = self.morto = True
+        self.ff.kill()
+        try:
+            self.ff.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+
+
 class Engine:
     def __init__(self, mic, out, monitor):
         self.devices = {"mic": mic, "out": out, "monitor": monitor}  # nome, 'default' ou '' (sem fone)
@@ -762,6 +826,8 @@ class Engine:
         # servidor tira e escreve no log (nada de print no callback)
         self._prato = None
         self._soou = None
+        self._preabertos = {}  # url -> Preaberto (ver preabre), sob _pre_lock
+        self._pre_lock = threading.Lock()
         self.levels = {"mic": 0.0, "track": 0.0, "out": 0.0}
         self._deck = Deck()    # o disco do prato: _q, _gen e _eof_gen sao os dele
         self._qlock = threading.Lock()
@@ -1322,15 +1388,57 @@ class Engine:
             a += ["-headers", track["headers"]]
         return a
 
+    # o stream aberto antes (ver PREABRE) ------------------------------------
+    def preabre(self, url, headers=None):
+        """Abre ja o ffmpeg do stream de url (o endereco adiantado de um pedido falado), sem tocar: o leitor que tocar
+        esse url do comeco em PRE_VALE_S continua dele. Volta se abriu agora."""
+        if not PREABRE or not str(url or "").startswith("http"):
+            return False
+        with self._pre_lock:
+            self._pre_poda()
+            if url in self._preabertos:
+                return False
+        p = Preaberto(url, self._entrada({"stream": True, "path": url, "headers": headers}))  # o Popen fora da trava
+        fora = []
+        with self._pre_lock:
+            if url in self._preabertos:  # outro abriu o mesmo junto
+                fora.append(p)
+            else:
+                while len(self._preabertos) >= PRE_MAX:
+                    fora.append(self._preabertos.pop(next(iter(self._preabertos))))
+                self._preabertos[url] = p
+        for x in fora:
+            x.fecha()
+        return p not in fora
+
+    def _pre_pega(self, url):
+        """O (blocos, ffmpeg) aberto antes para url, uma vez, ou None."""
+        with self._pre_lock:
+            self._pre_poda()
+            p = self._preabertos.pop(url, None)
+        return p.pega() if p is not None else None
+
+    def _pre_poda(self):
+        for u in [u for u, p in self._preabertos.items() if p.morto]:
+            del self._preabertos[u]
+
     def _reader(self, gen, track, start, deck):
         t = start
         path = track["path"]
         stream = str(path).startswith("http")  # o YouTube direto, antes de o download chegar
+        pre = self._pre_pega(path) if stream and start == 0 else None
         while gen == deck.gen:
-            ff = subprocess.Popen([FFMPEG, "-v", "error", *self._entrada(track), "-ss", str(t), "-i", path,
-                                   "-f", "f32le", "-ac", "2", "-ar", str(SR), "-"],
-                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                  creationflags=NO_WINDOW)
+            if pre is not None:
+                blocos, ff = pre
+                pre = None
+                print(f"stream: {track.get('title')!r} entrou pelo ffmpeg aberto antes "
+                      f"({sum(map(len, blocos)) / 8 / SR:.2f} s ja decodificados)", file=sys.stderr, flush=True)
+            else:
+                blocos = []
+                ff = subprocess.Popen([FFMPEG, "-v", "error", *self._entrada(track), "-ss", str(t), "-i", path,
+                                       "-f", "f32le", "-ac", "2", "-ar", str(SR), "-"],
+                                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                      creationflags=NO_WINDOW)
             n = 0
             # o stream nao tem arquivo para a onda do visor ler a parte: ela sai do que este leitor decodifica
             acc = self._onda_acumulador(track) if stream else None
@@ -1339,7 +1447,7 @@ class Engine:
                     if len(deck.q) > deck.ahead:
                         time.sleep(0.01)
                         continue
-                    b = ff.stdout.read(BLOCK * 8)
+                    b = blocos.pop(0) if blocos else ff.stdout.read(BLOCK * 8)
                     if not b:
                         break
                     arr = np.frombuffer(b[: len(b) // 8 * 8], np.float32).reshape(-1, 2)

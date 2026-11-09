@@ -1,7 +1,9 @@
 """Testa o endereco adiantado (server.App.adianta_endereco, endereco_adiantado e o _abre_stream que usa o adiantado)
 sem o YouTube: o stream_info e um falso que conta os pedidos. Cobre: o tocar usa o adiantado sem pedir outro; sem
 adiantado, pede; o adiantado que falhou cai no pedido normal; o vencido (ADIANTA_S) nao vale; ADIANTA = False nao
-adianta; o mesmo video adiantado duas vezes e um pedido so. Sai 1 se algo falhar.
+adianta; o mesmo video adiantado duas vezes e um pedido so; o adiantado que saiu abre o ffmpeg antes (preabre) e o que
+falhou nao; o adiantado que nem comecou (executor cheio) e cancelado e o tocar pede na hora; o disco que entrou sem
+canal pede o canal depois. Sai 1 se algo falhar.
 
     python dev/testa_adianta.py
 """
@@ -36,7 +38,11 @@ class Adianta(unittest.TestCase):
                 raise RuntimeError("o YouTube recusou")
             return {"url": f"https://audio/{target}", "id": YID, "title": "x"}, "h"
         app.stream_info = stream_info
-        app.engine = types.SimpleNamespace(track=self.tr, trocar_fonte=lambda a, n: self.trocas.append(n))
+        self.preabertos, self.canais = [], []
+        app.engine = types.SimpleNamespace(track=self.tr, trocar_fonte=lambda a, n: self.trocas.append(n) or True,
+                                           preabre=lambda url, h=None: self.preabertos.append(url))
+        app._preabre = lambda fut: server.App._preabre(app, fut)
+        app.canal_depois = lambda tr: self.canais.append(tr.get("youtube_id"))
         app.adianta_endereco = lambda yid: server.App.adianta_endereco(app, yid)
         app.endereco_adiantado = lambda yid: server.App.endereco_adiantado(app, yid)
         self.app = app
@@ -80,6 +86,33 @@ class Adianta(unittest.TestCase):
         self.app.adianta_endereco(YID)
         time.sleep(0.2)
         self.assertEqual(self.pedidos, [YID])
+
+    def test_preabre_o_que_saiu(self):
+        self.app.adianta_endereco(YID)
+        time.sleep(0.2)
+        self.assertEqual(self.preabertos, [f"https://audio/{YID}"])
+        self.falha.add("abcdefghijk")
+        self.app.adianta_endereco("abcdefghijk")
+        time.sleep(0.2)
+        self.assertEqual(len(self.preabertos), 1, "o que falhou nao abre ffmpeg")
+
+    def test_adiantado_que_nem_comecou_e_cancelado(self):
+        trava = threading.Event()
+        lento = server.ThreadPoolExecutor(1)
+        lento.submit(trava.wait)  # o executor ocupado: o adiantado fica na fila
+        try:
+            with mock.patch.object(server, "pool_rapido", lento):
+                self.app.adianta_endereco(YID)
+                self.abre()
+        finally:
+            trava.set()
+            lento.shutdown()
+        self.assertEqual(self.pedidos, [YID], "pediu na hora, o da fila nao rodou")
+        self.assertEqual(self.trocas[0]["path"], f"https://audio/{YID}")
+
+    def test_canal_depois(self):
+        self.abre()
+        self.assertEqual(self.canais, [YID], "entrou sem canal: pede depois")
 
     def test_so_id_de_video(self):
         self.app.adianta_endereco("Raul Seixas")

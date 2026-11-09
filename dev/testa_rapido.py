@@ -6,6 +6,7 @@ rapido, so o de sempre; o servidor pede rapido so no formato padrao e com ENDERE
     python dev/testa_rapido.py
 """
 import sys
+import time
 import types
 import unittest
 from pathlib import Path
@@ -89,14 +90,29 @@ class Rapido(unittest.TestCase):
         self.assertEqual(len(self.chamadas), 3)
         yt_fora._rapido_falhas = 0
 
-    def test_canal_quando_falta(self):
+    def test_canal_depois(self):
+        pedidos = []
         song = types.SimpleNamespace(headers={"X-Goog-Visitor-Id": "Cgt"},
-                                     get_song=lambda yid: {"videoDetails": {"author": "Raul Seixas"}})
+                                     get_song=lambda yid: pedidos.append(yid) or {"videoDetails": {"author": "Raul Seixas"}})
         with mock.patch.object(yt_fora, "ytm", lambda: song):
-            r = yt_fora.faz({"op": "stream", "alvo": "a", "opts": OPTS, "rapido": True, "canal": True})
-            s = yt_fora.faz({"op": "stream", "alvo": "a", "opts": OPTS, "rapido": True})
-        self.assertEqual(r["info"]["channel"], "Raul Seixas")
-        self.assertIsNone(s["info"]["channel"], "sem o pedido do canal, nada a mais")
+            s = yt_fora.faz({"op": "stream", "alvo": "a", "opts": OPTS, "rapido": True, "canal": True})
+            self.assertEqual(pedidos, [], "o endereco nao espera o canal")
+            r = yt_fora.faz({"op": "canal", "yid": "CmB4sfoZkwo"})
+        self.assertIsNone(s["info"]["channel"])
+        self.assertEqual(r, {"channel": "Raul Seixas"})
+
+    def test_servidor_canal_depois(self):
+        tr = {"youtube_id": "CmB4sfoZkwo", "channel": None}
+        with mock.patch.object(server.fora, "pede", lambda op, **kw: {"channel": "Raul Seixas"} if op == "canal" else None):
+            server.App.canal_depois(types.SimpleNamespace(), tr)
+            for _ in range(50):
+                if tr["channel"]:
+                    break
+                time.sleep(0.02)
+        self.assertEqual(tr["channel"], "Raul Seixas")
+        com = {"youtube_id": "CmB4sfoZkwo", "channel": "Outro"}
+        with mock.patch.object(server.fora, "pede", lambda op, **kw: self.fail("ja tinha canal")):
+            server.App.canal_depois(types.SimpleNamespace(), com)
 
     def test_ytm_guarda_o_cliente_novo(self):
         criados = []
@@ -121,7 +137,7 @@ class Rapido(unittest.TestCase):
 
         def pede(op, **kw):
             pedidos.append(kw.get("rapido"))
-            self.assertIn("canal", kw)
+            self.assertNotIn("canal", kw, "o canal vem depois do som (canal_depois)")
             return {"info": {}, "hdr": ""}
         app = types.SimpleNamespace(alvo_yt=server.App.alvo_yt, opts_stream=server.App.opts_stream)
         with mock.patch.object(server.fora, "pede", pede):
