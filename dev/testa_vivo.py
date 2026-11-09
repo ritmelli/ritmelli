@@ -29,8 +29,13 @@ def faz(p):
     if p.get("alvo") == "dorme":
         time.sleep(float(p.get("s", 3)))
     yt_fora._N = getattr(yt_fora, "_N", 0) + 1
-    return {{"pid": os.getpid(), "n": yt_fora._N, "vivo": yt_fora.VIVO}}
+    return {{"pid": os.getpid(), "n": yt_fora._N, "vivo": yt_fora.VIVO, "aq": getattr(yt_fora, "_AQ", 0),
+            "aq_opts": getattr(yt_fora, "_AQ_OPTS", None)}}
+def aquece(p):
+    yt_fora._AQ = getattr(yt_fora, "_AQ", 0) + 1
+    yt_fora._AQ_OPTS = "opts" in p
 yt_fora.faz = faz
+yt_fora.aquece = aquece
 yt_fora.aquece_ytm = lambda: None  # sem o GET do YouTube Music: o teste nao sai para a rede
 yt_fora.main()
 '''
@@ -173,6 +178,78 @@ class Vivo(unittest.TestCase):
             a, b = self.stream(), self.stream()
         self.assertNotEqual(a["pid"], b["pid"])
         self.assertFalse(a["vivo"] or b["vivo"])
+
+
+class Prepara(unittest.TestCase):
+    """O aviso da fala que abre (Fora.prepara, r14): o vivo vazio ja abre aquecido, o parado ha mais de AQUECE_OCIOSA_S
+    e a reserva aberta ha mais disso recebem o "aquece" (que nao responde e nao conta como pedido), o usado ha pouco e o
+    ocupado nao."""
+    OPTS = {"format": "bestaudio"}
+    setUp, tearDown, stream = Vivo.setUp, Vivo.tearDown, Vivo.stream
+
+    def test_o_vivo_vazio_abre_aquecido(self):
+        self.assertEqual(self.f.prepara(self.OPTS, True), server.VIVOS, "os dois vivos vazios abrem")
+        a = self.stream()
+        self.assertEqual((a["n"], a["aq"], a["aq_opts"], a["vivo"]), (1, 1, True, True),
+                         "o primeiro pedido acha o processo ja aquecido com as opts do endereco")
+        self.assertEqual(a["pid"], self.f.vivos[0].p.pid)
+
+    def test_o_usado_ha_pouco_nao_recebe(self):
+        a = self.stream()
+        self.f.prepara(self.OPTS, True)  # o segundo vivo, vazio, abre; o primeiro foi usado agora
+        self.assertEqual(self.stream()["aq"], 0)
+        self.assertEqual(self.stream()["pid"], a["pid"])
+
+    def test_o_parado_e_renovado_no_mesmo_processo(self):
+        a = self.stream()
+        self.f.vivos[0].usado -= server.AQUECE_OCIOSA_S + 1
+        self.f.prepara(self.OPTS, True)
+        b = self.stream()
+        self.assertEqual((b["pid"], b["n"], b["aq"]), (a["pid"], 2, 1), "mesmo processo, o aquece nao conta como pedido")
+
+    def test_o_ocupado_nao_recebe(self):
+        with self.f.vivos[0].lock, self.f.vivos[1].lock:
+            self.assertEqual(self.f.prepara(self.OPTS, True), 0)
+
+    def test_a_reserva_parada_aquece_e_segue_esperando(self):
+        self.f.aquece()
+        with self.f.lock:
+            for p in self.f.reservas:
+                p.aquecido -= server.AQUECE_OCIOSA_S + 1
+        with mock.patch.object(server, "VIVO_MAX", 0):  # so as reservas (sem vivo elas atendem o endereco tambem)
+            self.assertEqual(self.f.prepara(self.OPTS, True), server.RESERVAS, "as duas reservas paradas")
+            self.assertEqual(self.f.prepara(self.OPTS, True), 0, "acabaram de aquecer")
+        i = self.f.pede("info", alvo="x")
+        self.assertEqual((i["aq"], i["aq_opts"], i["vivo"]), (1, False, False),
+                         "a reserva recebeu o aquece e atendeu o pedido de verdade depois")
+
+    def test_uma_reserva_quente_fica_para_a_busca(self):
+        """Os dois vivos vazios nao levam as duas reservas quentes: a busca chega antes do endereco e cairia num
+        processo aberto no aviso (revisao da r14)."""
+        self.f.aquece()
+        with self.f.lock:
+            quentes = {p.pid for p in self.f.reservas}
+        self.assertEqual(len(quentes), server.RESERVAS)
+        self.assertEqual(self.f.prepara(self.OPTS, True), server.VIVOS)
+        vivos = {v.p.pid for v in self.f.vivos}
+        self.assertEqual(len(vivos & quentes), 1, "um vivo leva uma reserva, o outro abre um processo novo")
+        with self.f.lock:
+            ficou = {p.pid for p in self.f.reservas} & quentes
+        self.assertEqual(len(ficou), 1, "uma reserva quente segue esperando a busca")
+        self.assertEqual(self.f.pede("info", alvo="x")["pid"], ficou.pop())
+
+    def test_o_quase_vencido_e_trocado(self):
+        a = self.stream()
+        self.f.vivos[0].desde -= server.VIVO_MAX_S - 30  # vence em 30 s: o pedido chegaria depois
+        self.f.prepara(self.OPTS, True)
+        b = self.stream()
+        self.assertNotEqual(b["pid"], a["pid"])
+        self.assertEqual((b["n"], b["aq"]), (1, 1), "o novo, ja aquecido")
+
+    def test_desligado(self):
+        with mock.patch.object(server, "AQUECE_OCIOSA_S", None):
+            self.assertEqual(self.f.prepara(self.OPTS, True), 0)
+        self.assertEqual(self.stream()["aq"], 0)
 
 
 if __name__ == "__main__":
