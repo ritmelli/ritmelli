@@ -55,6 +55,8 @@ if ffmpeg := pastas.ferramenta("ffmpeg"):
     YDL["ffmpeg_location"] = ffmpeg
 ANTERIOR_REINICIA_S = 3.0  # depois disso o Anterior volta ao comeco do disco, como no Spotify
 HISTORICO_MAX = 50
+STREAM_RELIGA = 2  # enderecos novos que a parecida do Automatico ganha quando o stream cai, antes de passar adiante
+TOCADAS_MAX = 2000  # GET /api/tocadas: os youtube_id que tocaram desde que o servidor subiu (o historico e do Anterior)
 AUTO_FILA = 5  # o Automatico mantem tantas parecidas no fim do A seguir
 AUTO_LOTE = 50  # quantas parecidas cada busca traz (o radio do YouTube Music da 50 em ~1 s, 21/10)
 AUTO_DUR = (60, 600)  # fora disso nao entra: vinheta, compilado de 1 h, live sem fim
@@ -360,6 +362,9 @@ class App:
         self.fila = []  # A seguir: entradas que tocam quando o disco do prato acaba
         self.fila_ordem = None  # Aleatorio ligado: a fila na ordem que o usuario montou, para voltar
         self.historico = []  # discos que sairam do prato, o mais recente no fim (o Anterior)
+        # os youtube_id de todo disco que saiu do prato nesta sessao, sem teto curto e sem o Anterior tirar: quem pede
+        # "outra do mesmo artista" (o bot) pula o que ja tocou hoje
+        self.tocadas = []
         self.fila_lock = threading.Lock()
         # Automatico: a semente e o ultimo disco que o usuario escolheu; o mix, o Mix do YouTube ainda
         # nao usado de mix_base (a semente, ou a ultima parecida quando o da semente acaba);
@@ -391,6 +396,7 @@ class App:
         self.engine = cls(mic=self.cfg.get("mic", "default"), out=self.cfg.get("out", "CABLE Input"),
                           monitor=self.cfg.get("monitor", "default"))
         self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
+        self.engine.religar_stream = self.religar_stream
         self.cfg.pop("mic_vol", None)  # o nivel da voz e o do Windows, que guarda sozinho (18/10)
         for k in ("vol", "mon_vol", "monitor_on", "voice_mon_vol"):
             if k in self.cfg:
@@ -654,6 +660,30 @@ class App:
                     thumb=tr["thumb"] or thumb(yid), duration=tr["duration"] or info.get("duration"))
         self.engine.trocar_fonte(tr, novo)
 
+    def religar_stream(self, tr, pos, desistir):
+        """O leitor do motor (na thread dele): o stream da parecida do Automatico caiu em pos, sem audio ou antes do
+        fim (o YouTube corta o endereco as vezes: 2 de ~15 em 27/10). Ate STREAM_RELIGA vezes por disco, um endereco
+        novo toca de onde parou; depois disso, ou sem endereco, desistir() acaba o disco e a fila segue. Toda queda
+        vai para o log."""
+        nome = tr.get("title") or tr.get("youtube_id")
+        quando = f"{int(pos // 60)}:{int(pos % 60):02d}"
+        k = tr.get("religou", 0) + 1
+        if k > STREAM_RELIGA:
+            print(f"stream: {nome!r} caiu de novo em {quando} depois de {STREAM_RELIGA} enderecos novos: "
+                  "passo para a proxima", file=sys.stderr, flush=True)
+            desistir()
+            return
+        print(f"stream: {nome!r} caiu em {quando}: pego um endereco novo ({k} de {STREAM_RELIGA})",
+              file=sys.stderr, flush=True)
+        try:
+            info, hdr = self.stream_info(tr.get("youtube_id") or tr.get("alvo"))
+        except Exception as ex:  # noqa: BLE001 - sem endereco, o disco acaba como antes
+            print(f"stream: o endereco novo de {nome!r} falhou ({yt_msg(ex)}): passo para a proxima",
+                  file=sys.stderr, flush=True)
+            desistir()
+            return
+        self.engine.trocar_fonte(tr, dict(tr, path=info["url"], headers=hdr, religou=k))
+
     # historico (Anterior) -------------------------------------------------
     def entrada_de(self, tr):
         """O disco do prato no formato de entrada da fila: o Anterior o devolve para o topo da
@@ -674,6 +704,9 @@ class App:
         tr = tr or self.engine.track
         if tr is None or tr["id"] == novo_id:
             return
+        if tr.get("youtube_id") and (not self.tocadas or self.tocadas[-1] != tr["youtube_id"]):
+            self.tocadas.append(tr["youtube_id"])
+            del self.tocadas[:-TOCADAS_MAX]
         x = self.entrada_de(tr)
         if x is None:
             return
@@ -1501,6 +1534,11 @@ def build(app_state):
     @r.get("/api/library")
     async def library(_):
         return web.json_response(A.lib.public())
+
+    @r.get("/api/tocadas")
+    async def tocadas(_):
+        """Os youtube_id que sairam do prato desde que o servidor subiu, o mais recente no fim."""
+        return web.json_response(list(A.tocadas))
 
     @r.get("/api/jobs")
     async def jobs(_):

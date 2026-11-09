@@ -8226,17 +8226,21 @@ async function abrirDispositivos() {
     msg.textContent = '';
   } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
 }
-function opcoes(sel, lista, atual) {
+/* a escolha gravada que esta desligada nao entra na lista (08/11): fica marcado o que esta em uso, e a escolha volta
+   sozinha quando o aparelho voltar */
+function opcoes(sel, lista, atual, emUso) {
   sel.replaceChildren();
   for (const [v, t] of lista) { const o = el('option', null, t); o.value = v; sel.append(o); }
-  if (![...sel.options].some(o => o.value === atual)) { const o = el('option', null, atual); o.value = atual; sel.append(o); }
-  sel.value = atual;
+  const tem = v => v != null && [...sel.options].some(o => o.value === v);
+  sel.value = tem(atual) ? atual : tem(emUso) ? emUso : 'default';
 }
 function preencherDispositivos(r) {
   const cur = r.current || {}, act = r.active || {};
   const semCabo = n => !/cable/i.test(n);
-  opcoes($('#dd-mic'), [['default', `Padrão do Windows (${r.default_input || 'nenhum'})`], ...(r.inputs || []).filter(semCabo).map(n => [n, n])], cur.mic || 'default');
-  opcoes($('#dd-mon'), [['default', `Padrão do Windows (${r.default_output || 'nenhum'})`], ...(r.outputs || []).filter(semCabo).map(n => [n, n]), ['', 'Nenhum (o som não toca no seu fone)']], cur.monitor == null ? 'default' : cur.monitor);
+  // o padrao que e o cabo cede ao primeiro microfone de verdade, como no motor
+  const micPadrao = r.default_input && !semCabo(r.default_input) ? (r.inputs || []).find(semCabo) : r.default_input;
+  opcoes($('#dd-mic'), [['default', `Padrão do Windows (${micPadrao || 'nenhum'})`], ...(r.inputs || []).filter(semCabo).map(n => [n, n])], cur.mic || 'default', act.mic);
+  opcoes($('#dd-mon'), [['default', `Padrão do Windows (${r.default_output || 'nenhum'})`], ...(r.outputs || []).filter(semCabo).map(n => [n, n]), ['', 'Nenhum (o som não toca no seu fone)']], cur.monitor == null ? 'default' : cur.monitor, act.monitor);
   $('#dd-mic').disabled = $('#dd-mon').disabled = false;
   mostrarAtivos(act);
 }
