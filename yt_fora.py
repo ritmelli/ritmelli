@@ -52,6 +52,10 @@ def _ydl(opts):
 # tocando no ffmpeg. Falhou, vai o de sempre no mesmo processo (faz)
 RAPIDO_ARGS = {"player_client": ["visionos"], "player_skip": ["webpage", "configs", "initial_data", "js"],
                "skip": ["hls"]}
+# o disjuntor do rapido (revisao da r01): falhou isso de vezes seguidas (ou uma com "not a bot"), o processo para de
+# tentar o rapido ate ser renovado, sem dobrar os pedidos de player no IP de casa
+RAPIDO_FALHAS_MAX = 2
+_rapido_falhas = 0
 
 
 def opts_rapido(opts):
@@ -62,6 +66,17 @@ def opts_rapido(opts):
     ea = dict(opts.get("extractor_args") or {})
     ea["youtube"] = {**(ea.get("youtube") or {}), **RAPIDO_ARGS, "visitor_data": [vid]}
     return {**opts, "extractor_args": ea}
+
+
+def canal_do(yid):
+    """O nome do canal de um video pelo cliente do YouTube Music: o rapido pula o initial data, de onde o yt-dlp tira o
+    canal (revisao da r01); so quando quem pediu nao tem o canal (link colado, a passagem sem ele). None se falhou."""
+    if not yid:
+        return None
+    try:
+        return ((ytm().get_song(yid) or {}).get("videoDetails") or {}).get("author") or None
+    except Exception:  # noqa: BLE001 - fica sem o canal, como antes de ter o rapido
+        return None
 
 
 def stream_yt(alvo, opts):
@@ -135,8 +150,8 @@ def _item(x, artista=None):
 # O cliente do YouTube Music aquecido na espera (09/11): o primeiro pedido de um cliente novo busca antes o visitor id
 # (abre a pagina inicial do YouTube Music), 0,53 a 0,60 s medidos no PC com a ytmusicapi 1.12.3, e todo pedido e um
 # processo novo, entao toda busca pagava isso (1,3 s contra 0,7 com o cliente ja usado). O processo de reserva faz isso
-# numa thread enquanto espera; o pedido que nao e do YouTube Music (o endereco de stream, logo depois da busca) nao
-# espera por ela
+# numa thread enquanto espera. O endereco rapido (opts_rapido) usa o visitor id dele e espera o aquecimento: num
+# processo recem-aberto isso entra no primeiro endereco
 _YTM = None
 _AQUECE = None
 _AQUECE_ERRO = None
@@ -154,7 +169,10 @@ def aquece_ytm():
 
 
 def ytm():
-    """O cliente do YouTube Music: o aquecido (esperando o aquecimento terminar) ou, se ele falhou, um novo."""
+    """O cliente do YouTube Music: o aquecido (esperando o aquecimento terminar) ou, se ele falhou, um novo, que fica
+    para os pedidos seguintes deste processo quando consegue o visitor id (sem isso o processo vivo pagaria o GET do
+    YouTube Music em todo endereco rapido; revisao da r01)."""
+    global _YTM, _AQUECE_ERRO
     from ytmusicapi import YTMusic
     if _AQUECE is not None:
         _AQUECE.join()
@@ -162,7 +180,14 @@ def ytm():
         return _YTM
     if _AQUECE_ERRO:
         print(f"YouTube Music: o aquecimento falhou ({_AQUECE_ERRO}): cliente novo", file=sys.stderr)
-    return YTMusic()
+        _AQUECE_ERRO = None
+    yt = YTMusic()
+    try:
+        yt.headers  # noqa: B018 - o visitor id
+        _YTM = yt
+    except Exception:  # noqa: BLE001 - sem rede: o pedido segue e o proximo tenta de novo
+        pass
+    return yt
 
 
 def musica(q, n, yt=None):
@@ -199,15 +224,21 @@ def faz(p):
     if "opts" in p:
         p["opts"] = {**p["opts"], "logtostderr": True}  # a saida e so do JSON: o que o yt-dlp diz vai para o log
     if op == "stream":
+        global _rapido_falhas
         info = None
-        if p.get("rapido"):
+        if p.get("rapido") and _rapido_falhas < RAPIDO_FALHAS_MAX:
             try:
                 info, hdr = stream_yt(p["alvo"], opts_rapido(p["opts"]))
+                _rapido_falhas = 0
             except Exception as ex:  # noqa: BLE001 - o de sempre logo em seguida, no mesmo processo
-                print(f"stream: o rapido falhou em {p['alvo']} ({str(ex)[:120]}): vai pelo de sempre", file=sys.stderr,
-                      flush=True)
+                _rapido_falhas = RAPIDO_FALHAS_MAX if "not a bot" in str(ex) else _rapido_falhas + 1
+                fora = ": desligado neste processo" if _rapido_falhas >= RAPIDO_FALHAS_MAX else ""
+                print(f"stream: o rapido falhou em {p['alvo']} ({str(ex)[:120]}): vai pelo de sempre{fora}",
+                      file=sys.stderr, flush=True)
         if info is None:
             info, hdr = stream_yt(p["alvo"], p["opts"])
+        if p.get("canal") and not info.get("channel"):
+            info["channel"] = canal_do(info.get("id"))
         return {"info": dict(enxuto(info), url=info["url"]), "hdr": hdr}
     if op == "info":
         with yt_dlp.YoutubeDL(p["opts"]) as y:

@@ -29,6 +29,7 @@ def faz(p):
     yt_fora._N = getattr(yt_fora, "_N", 0) + 1
     return {{"pid": os.getpid(), "n": yt_fora._N, "vivo": yt_fora.VIVO}}
 yt_fora.faz = faz
+yt_fora.aquece_ytm = lambda: None  # sem o GET do YouTube Music: o teste nao sai para a rede
 yt_fora.main()
 '''
 

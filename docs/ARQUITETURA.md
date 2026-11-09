@@ -44,7 +44,10 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   atende um pedido por linha com o mesmo `YoutubeDL`, que guarda o player do YouTube já lido
   (no notebook, 0,80 s por endereço em vez de 1,48 s); ocupado, vai pelo de reserva, e ele sai
   no erro, no estouro do limite, depois de `VIVO_MAX` pedidos e de `VIVO_MAX_S` (o
-  `VIVO_MAX = 0` desliga).
+  `VIVO_MAX = 0` desliga). O endereço do primeiro resultado da busca de música (`/api/musica`) sai
+  logo atrás dela (`ADIANTA`), antes de a mina pôr na fila: o tocar usa o que já está pronto ou a
+  caminho. E sai pelo caminho rápido (`ENDERECO_RAPIDO`): só o cliente visionos, sem a página do
+  vídeo, com o visitor id do YouTube Music (0,15 s em vez de 0,8 s); falhou, o de sempre.
 - `vitrola.py`: o ponto de entrada, o mesmo do executável. Sem modo, liga o servidor. Se
   outra Vitrola já está ligada na mesma porta (o atalho clicado de novo), só abre a página
   dela; se ela ainda está ligando, sai sem fazer nada, porque a página abre quando ela

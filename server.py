@@ -75,6 +75,13 @@ FORA_LIMITE_S = 120.0  # pedido ao YouTube (fora o download) que nao volta nisso
 # seguinte abrir outro. VIVO_MAX = 0 desliga: todo endereco num processo novo, como antes de 09/11
 VIVO_MAX = 40
 VIVO_MAX_S = 3600.0
+# os pedidos que vao de preferencia ao vivo: so o endereco (o mesmo YoutubeDL). A busca de musica no vivo nao ganhou
+# nada (09/11, placar: ~0,7 s igual, o tempo e do YouTube Music) e ocupava o vivo na hora do endereco
+VIVO_OPS = ("stream",)
+# o endereco adiantado (09/11, a latencia do pedido falado): o do primeiro resultado da /api/musica sai logo atras da
+# busca, enquanto a mina ainda poe na fila, e o tocar usa o que ja esta pronto ou a caminho. False desliga
+ADIANTA = True
+ADIANTA_S = 60.0  # o adiantado que ninguem tocou nisso some
 # o endereco rapido (yt_fora.RAPIDO_ARGS, 09/11): so o cliente visionos, sem a pagina do video; falhou, o de sempre no
 # mesmo processo. False = sempre o de sempre
 ENDERECO_RAPIDO = True
@@ -141,7 +148,7 @@ class Fora:
     def pede(self, op, progresso=None, limite=FORA_LIMITE_S, **args):
         """O resultado do pedido op (ver o yt_fora.py); progresso(f) recebe o andamento do download. Erro do
         YouTube vira RuntimeError com o motivo."""
-        if op == "stream" and VIVO_MAX and self.vivo_lock.acquire(blocking=False):
+        if op in VIVO_OPS and VIVO_MAX and self.vivo_lock.acquire(blocking=False):
             try:
                 return self._pede_vivo(op, limite, args)
             finally:
@@ -451,6 +458,8 @@ class App:
         self.cfg.pop("lan_token", None)  # a chave do link do celular de antes, que saiu (hoje e o pareamento.py)
         self.lan_ip = None
         self.celulares = par.Pareamento(data_dir / "celulares.json")
+        self._adiantados = {}  # youtube_id -> (Future do endereco, hora em que saiu): ver adianta_endereco
+        self._adi_lock = threading.Lock()
         self.lib = Library(lib_json, keep_files=mock)
         self.jobs = {}
         self.jobs_version = 0
@@ -579,12 +588,12 @@ class App:
         return {**YDL, "noplaylist": True, "skip_download": True,
                 "format": formato or "bestaudio[protocol^=http]/bestaudio/best"}
 
-    def stream_info(self, target, formato=None):
+    def stream_info(self, target, formato=None, canal=False):
         """Endereco direto do audio no YouTube, para o ffmpeg tocar sem baixar antes (sai em
         1 a 3 s; um download leva bem mais). Volta o info do yt-dlp (enxuto: o endereco em url, id, title,
         channel, uploader e duration) e os cabecalhos HTTP."""
         r = fora.pede("stream", alvo=self.alvo_yt(target), opts=self.opts_stream(formato),
-                      rapido=ENDERECO_RAPIDO and formato is None)
+                      rapido=ENDERECO_RAPIDO and formato is None, canal=canal)
         return r["info"], r["hdr"]
 
     @staticmethod
@@ -720,17 +729,43 @@ class App:
         threading.Thread(target=self._abre_stream, args=(tr, target, bool(meta.get("title"))),
                          daemon=True).start()
 
+    def adianta_endereco(self, yid):
+        """Pede ja o endereco do stream de yid (o primeiro resultado da busca do pedido falado), sem tocar: o tocar
+        que vier em ADIANTA_S usa este em vez de pedir outro."""
+        if not ADIANTA or not yid or not YT_ID.match(yid):
+            return
+        agora = time.monotonic()
+        with self._adi_lock:
+            for k in [k for k, (_, t) in self._adiantados.items() if agora - t > ADIANTA_S]:
+                del self._adiantados[k]
+            if yid in self._adiantados:
+                return
+            self._adiantados[yid] = (pool.submit(self.stream_info, yid), agora)
+
+    def endereco_adiantado(self, yid):
+        """O Future do endereco adiantado de yid (uma vez so), ou None."""
+        with self._adi_lock:
+            x = self._adiantados.pop(yid, None) if yid else None
+        return x[0] if x and time.monotonic() - x[1] <= ADIANTA_S else None
+
     def _abre_stream(self, tr, target, tem_titulo):
         """O YouTube as vezes recusa o endereco do audio e na tentativa seguinte libera (um disco de 1h45 so tocou depois de baixar, calado). Tenta tres vezes, a ultima
         aceitando qualquer formato de audio; cada falha vai para o log com o motivo, e sem stream
         a tela diz que o disco toca quando terminar de baixar."""
         info = hdr = None
         motivo = ""
+        adiantado = self.endereco_adiantado(tr.get("youtube_id"))
         for i, formato in enumerate((None, None, "bestaudio/best")):
             if self.engine.track is not tr:
                 return  # trocou de disco no meio
             try:
-                info, hdr = self.stream_info(target, formato)
+                if i == 0 and adiantado is not None:
+                    t0 = time.monotonic()
+                    info, hdr = adiantado.result(timeout=FORA_LIMITE_S)
+                    print(f"stream: o adiantado de {tr.get('youtube_id')} esperou mais {time.monotonic() - t0:.2f} s",
+                          file=sys.stderr, flush=True)
+                else:
+                    info, hdr = self.stream_info(target, formato, canal=not tr.get("channel"))
                 break
             except Exception as ex:  # noqa: BLE001 - o motivo vai para o log e para a tela
                 motivo = yt_msg(ex)
@@ -772,7 +807,7 @@ class App:
         print(f"stream: {nome!r} caiu em {quando}: pego um endereco novo ({k} de {STREAM_RELIGA})",
               file=sys.stderr, flush=True)
         try:
-            info, hdr = self.stream_info(tr.get("youtube_id") or tr.get("alvo"))
+            info, hdr = self.stream_info(tr.get("youtube_id") or tr.get("alvo"), canal=not tr.get("channel"))
         except Exception as ex:  # noqa: BLE001 - sem endereco, o disco acaba como antes
             print(f"stream: o endereco novo de {nome!r} falhou ({yt_msg(ex)}): passo para a proxima",
                   file=sys.stderr, flush=True)
@@ -1052,7 +1087,7 @@ class App:
         auto = x.get("auto") and x.get("youtube_id")
         if not alvo or not (auto or (j and j["status"] == "running")):
             return None
-        info, hdr = self.stream_info(alvo)
+        info, hdr = self.stream_info(alvo, canal=not x.get("channel"))
         yid = x.get("youtube_id") or info.get("id")
         return {"id": yid or f"job-{j['id']}", "title": x.get("title") or info.get("title") or alvo,
                 "channel": x.get("channel") or info.get("channel") or info.get("uploader"),
@@ -1686,6 +1721,8 @@ def build(app_state):
             it = A.lib.by_youtube(x["youtube_id"])
             x["in_library"] = bool(it)
             x["id"] = it["id"] if it else None
+        if res and n <= 3 and not res[0]["in_library"]:  # o "outra" (n maior) escolhe outro: nao adianta
+            A.adianta_endereco(res[0]["youtube_id"])
         return web.json_response(res)
 
     @r.post("/api/library")

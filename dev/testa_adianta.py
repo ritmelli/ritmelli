@@ -1,0 +1,91 @@
+"""Testa o endereco adiantado (server.App.adianta_endereco, endereco_adiantado e o _abre_stream que usa o adiantado)
+sem o YouTube: o stream_info e um falso que conta os pedidos. Cobre: o tocar usa o adiantado sem pedir outro; sem
+adiantado, pede; o adiantado que falhou cai no pedido normal; o vencido (ADIANTA_S) nao vale; ADIANTA = False nao
+adianta; o mesmo video adiantado duas vezes e um pedido so. Sai 1 se algo falhar.
+
+    python dev/testa_adianta.py
+"""
+import sys
+import threading
+import time
+import types
+import unittest
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import server  # noqa: E402
+
+YID = "CmB4sfoZkwo"
+
+
+class Adianta(unittest.TestCase):
+    def setUp(self):
+        self.pedidos = []
+        self.falha = set()
+        self.trocas = []
+        self.tr = {"id": YID, "youtube_id": YID, "title": "Metamorfose Ambulante", "channel": None, "thumb": None,
+                   "duration": None, "path": None, "stream": True, "job": None}
+        app = types.SimpleNamespace(_adiantados={}, _adi_lock=threading.Lock())
+
+        def stream_info(target, formato=None, canal=False):
+            self.pedidos.append(target)
+            time.sleep(0.05)
+            if target in self.falha:
+                self.falha.discard(target)
+                raise RuntimeError("o YouTube recusou")
+            return {"url": f"https://audio/{target}", "id": YID, "title": "x"}, "h"
+        app.stream_info = stream_info
+        app.engine = types.SimpleNamespace(track=self.tr, trocar_fonte=lambda a, n: self.trocas.append(n))
+        app.adianta_endereco = lambda yid: server.App.adianta_endereco(app, yid)
+        app.endereco_adiantado = lambda yid: server.App.endereco_adiantado(app, yid)
+        self.app = app
+
+    def abre(self):
+        with mock.patch.object(server.time, "sleep", lambda s: None):
+            server.App._abre_stream(self.app, self.tr, YID, True)
+
+    def test_tocar_usa_o_adiantado(self):
+        self.app.adianta_endereco(YID)
+        self.abre()
+        self.assertEqual(self.pedidos, [YID], "um pedido so: o do adiantado")
+        self.assertEqual(self.trocas[0]["path"], f"https://audio/{YID}")
+
+    def test_sem_adiantado_pede(self):
+        self.abre()
+        self.assertEqual(self.pedidos, [YID])
+        self.assertEqual(len(self.trocas), 1)
+
+    def test_adiantado_que_falhou_pede_de_novo(self):
+        self.falha.add(YID)
+        self.app.adianta_endereco(YID)
+        self.abre()
+        self.assertEqual(self.pedidos, [YID, YID])
+        self.assertEqual(self.trocas[0]["path"], f"https://audio/{YID}")
+
+    def test_vencido_nao_vale(self):
+        with mock.patch.object(server, "ADIANTA_S", 0.0):
+            self.app.adianta_endereco(YID)
+            time.sleep(0.1)
+            self.abre()
+        self.assertEqual(len(self.pedidos), 2, "o vencido nao conta: o tocar pede outro")
+
+    def test_desligado(self):
+        with mock.patch.object(server, "ADIANTA", False):
+            self.app.adianta_endereco(YID)
+        self.assertEqual(self.app._adiantados, {})
+
+    def test_o_mesmo_duas_vezes(self):
+        self.app.adianta_endereco(YID)
+        self.app.adianta_endereco(YID)
+        time.sleep(0.2)
+        self.assertEqual(self.pedidos, [YID])
+
+    def test_so_id_de_video(self):
+        self.app.adianta_endereco("Raul Seixas")
+        self.app.adianta_endereco(None)
+        self.assertEqual(self.app._adiantados, {})
+
+
+if __name__ == "__main__":
+    sys.exit(0 if unittest.main(verbosity=2, exit=False).result.wasSuccessful() else 1)

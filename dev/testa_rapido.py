@@ -22,12 +22,13 @@ class Rapido(unittest.TestCase):
     def setUp(self):
         self.chamadas = []
         self.falha_rapido = False
+        yt_fora._rapido_falhas = 0
 
         def stream_yt(alvo, opts):
             yt = (opts.get("extractor_args") or {}).get("youtube") or {}
             self.chamadas.append(yt)
             if yt and self.falha_rapido:
-                raise RuntimeError("Sign in to confirm you're not a bot")
+                raise RuntimeError("o YouTube recusou o cliente")
             return {"url": "https://audio/x", "id": "x", "title": "t"}, "h"
         self.p1 = mock.patch.object(yt_fora, "stream_yt", stream_yt)
         self.p2 = mock.patch.object(yt_fora, "ytm", lambda: types.SimpleNamespace(headers={"X-Goog-Visitor-Id": "Cgt"}))
@@ -68,11 +69,59 @@ class Rapido(unittest.TestCase):
         yt_fora.faz({"op": "stream", "alvo": "a", "opts": OPTS})
         self.assertEqual(self.chamadas, [{}])
 
+    def test_disjuntor(self):
+        self.falha_rapido = True
+        for _ in range(3):
+            yt_fora.faz({"op": "stream", "alvo": "a", "opts": OPTS, "rapido": True})
+        self.assertEqual(len(self.chamadas), 5, "duas falhas do rapido, depois so o de sempre")
+        yt_fora._rapido_falhas = 0
+
+    def test_not_a_bot_desliga_na_hora(self):
+        def stream_yt(alvo, opts):
+            yt = (opts.get("extractor_args") or {}).get("youtube") or {}
+            self.chamadas.append(yt)
+            if yt:
+                raise RuntimeError("Sign in to confirm you're not a bot")
+            return {"url": "u", "id": "x"}, "h"
+        with mock.patch.object(yt_fora, "stream_yt", stream_yt):
+            yt_fora.faz({"op": "stream", "alvo": "a", "opts": OPTS, "rapido": True})
+            yt_fora.faz({"op": "stream", "alvo": "a", "opts": OPTS, "rapido": True})
+        self.assertEqual(len(self.chamadas), 3)
+        yt_fora._rapido_falhas = 0
+
+    def test_canal_quando_falta(self):
+        song = types.SimpleNamespace(headers={"X-Goog-Visitor-Id": "Cgt"},
+                                     get_song=lambda yid: {"videoDetails": {"author": "Raul Seixas"}})
+        with mock.patch.object(yt_fora, "ytm", lambda: song):
+            r = yt_fora.faz({"op": "stream", "alvo": "a", "opts": OPTS, "rapido": True, "canal": True})
+            s = yt_fora.faz({"op": "stream", "alvo": "a", "opts": OPTS, "rapido": True})
+        self.assertEqual(r["info"]["channel"], "Raul Seixas")
+        self.assertIsNone(s["info"]["channel"], "sem o pedido do canal, nada a mais")
+
+    def test_ytm_guarda_o_cliente_novo(self):
+        criados = []
+
+        class YTM:
+            def __init__(self):
+                criados.append(self)
+                self.headers = {"X-Goog-Visitor-Id": "Cgt"}
+        self.p2.stop()
+        try:
+            with mock.patch.object(yt_fora, "_AQUECE", None), mock.patch.object(yt_fora, "_YTM", None), \
+                    mock.patch.object(yt_fora, "_AQUECE_ERRO", "sem rede"), \
+                    mock.patch.dict(sys.modules, {"ytmusicapi": types.SimpleNamespace(YTMusic=YTM)}):
+                a, b = yt_fora.ytm(), yt_fora.ytm()
+        finally:
+            self.p2.start()
+        self.assertIs(a, b)
+        self.assertEqual(len(criados), 1, "o cliente novo que conseguiu o visitor id fica")
+
     def test_servidor_pede_rapido(self):
         pedidos = []
 
         def pede(op, **kw):
             pedidos.append(kw.get("rapido"))
+            self.assertIn("canal", kw)
             return {"info": {}, "hdr": ""}
         app = types.SimpleNamespace(alvo_yt=server.App.alvo_yt, opts_stream=server.App.opts_stream)
         with mock.patch.object(server.fora, "pede", pede):
