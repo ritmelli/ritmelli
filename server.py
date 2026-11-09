@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 import unicodedata
 import uuid
 import webbrowser
@@ -34,6 +35,7 @@ import pareamento as par
 import pastas
 from pastas import save_json
 from versao import VERSAO
+from yt_erros import erro_do_video
 
 HERE = Path(__file__).resolve().parent
 LIB = pastas.LIB  # audio baixado; library.json e config.json moram em --data-dir
@@ -69,13 +71,62 @@ CAPA_PASSO_S = 2.0         # entre uma busca de capa e a proxima: a prateleira i
 ABAIXO_DO_NORMAL = 0x00004000  # prioridade do processo da medida no Windows: cede o processador ao audio
 
 pool = ThreadPoolExecutor(4)
+# o caminho do pedido falado (09/11): a /api/musica, o endereco adiantado e o canal que o endereco rapido nao traz, fora
+# do pool dos downloads (o download segura a thread dele inteiro: com 3 ou 4 baixando, o adiantado esperava ate um
+# acabar e o disco ficava carregando; revisao da r04)
+pool_rapido = ThreadPoolExecutor(8, thread_name_prefix="vitrola-rapido")
+# o canal que o endereco rapido nao traz sai so depois disso, com limite curto: ele so aparece na tela, e na hora em que
+# o disco comeca ele tomava um processo de reserva de um "nao, toca Y" logo atras (revisao da r07)
+CANAL_DEPOIS_S = 3.0
+CANAL_LIMITE_S = 10.0
 BUSCA_MUSICA_S = 4.0  # a busca do YouTube Music (/api/musica) que passa disso falha: quem pediu cai na do YouTube
+# processos do YouTube abertos de reserva, com as bibliotecas carregadas (09/11: com um so, a busca antecipada da mina
+# pegava a reserva e a busca do lote, logo atras, caia num processo frio, 1,3 a 1,55 s no placar)
+RESERVAS = 2
 FORA_LIMITE_S = 120.0  # pedido ao YouTube (fora o download) que nao volta nisso morre: o disco nao fica esperando
 # o processo vivo dos enderecos (Fora._pede_vivo): quantos ele atende e por quanto tempo, antes de sair e o
 # seguinte abrir outro. VIVO_MAX = 0 desliga: todo endereco num processo novo, como antes de 09/11
 VIVO_MAX = 40
 VIVO_MAX_S = 3600.0
+# quantos vivos (cada um com o seu YoutubeDL quente): com um so, o endereco adiantado pelo palpite torto da mina
+# ocupava o vivo e o do pedido certo, logo atras, caia num processo de reserva (0,55 s no placar r08, contra 0,15)
+VIVOS = 2
+# o erro do proprio video (indisponivel, privado, com idade: yt_erros.erro_do_video) nao e do processo: o vivo fica
+# quente. Antes ele saia e o pedido seguinte pagava o vivo frio (0,51 e 0,55 s no placar r12, com o endereco
+# especulativo de um candidato); "not a bot", 429, rate-limit e o resto seguem trocando o vivo
+# os pedidos que vao de preferencia ao vivo: so o endereco (o mesmo YoutubeDL). A busca de musica no vivo nao ganhou
+# nada (09/11, placar: ~0,7 s igual, o tempo e do YouTube Music) e ocupava o vivo na hora do endereco
+VIVO_OPS = ("stream",)
+# o endereco adiantado (09/11, a latencia do pedido falado): o do primeiro resultado da /api/musica sai logo atras da
+# busca, enquanto a mina ainda poe na fila, e o tocar usa o que ja esta pronto ou a caminho. False desliga
+ADIANTA = True
+ADIANTA_S = 60.0  # o adiantado que ninguem tocou nisso some
+# o endereco rapido (yt_fora.RAPIDO_ARGS, 09/11): so o cliente visionos, sem a pagina do video; falhou, o de sempre no
+# mesmo processo. False = sempre o de sempre
+ENDERECO_RAPIDO = True
 REDE_VIGIA_S = 3.0  # a porta do celular se confere a cada isso, e se caiu (o PC dormiu) abre de novo
+
+
+def nome_da_musica(titulo, inteiro=False):
+    """O nome da musica no titulo, minusculo, sem acento e sem pontuacao: o que vem depois do " - ", sem parenteses nem
+    colchetes ("O REI DA CACIMBINHA - MURIÇOCA (Ao Vivo)" -> "muricoca"), como o _musica da mina; inteiro = o titulo
+    todo, so normalizado (onde a mina procura a que toca)."""
+    t = titulo or ""
+    if not inteiro:
+        t = re.sub(r"[(\[].*?[)\]]", " ", t.split(" - ")[-1])
+    t = "".join(c for c in unicodedata.normalize("NFKD", t.lower()) if not unicodedata.combining(c))
+    return " ".join(re.sub(r"[^a-z ]", " ", t).split())
+
+
+def nome_da_musica(titulo, inteiro=False):
+    """O nome da musica no titulo, minusculo, sem acento e sem pontuacao: o que vem depois do " - ", sem parenteses nem
+    colchetes ("O REI DA CACIMBINHA - MURIÇOCA (Ao Vivo)" -> "muricoca"), como o _musica da mina; inteiro = o titulo
+    todo, so normalizado (onde a mina procura a que toca)."""
+    t = titulo or ""
+    if not inteiro:
+        t = re.sub(r"[(\[].*?[)\]]", " ", t.split(" - ")[-1])
+    t = "".join(c for c in unicodedata.normalize("NFKD", t.lower()) if not unicodedata.combining(c))
+    return " ".join(re.sub(r"[^a-z ]", " ", t).split())
 
 
 def auxiliar(modo):
@@ -94,11 +145,10 @@ class Fora:
 
     def __init__(self):
         self.lock = threading.Lock()
-        self.reserva = None
-        self.vivo = None  # o processo vivo dos enderecos, sob vivo_lock
-        self.vivo_lock = threading.Lock()
-        self.vivo_n = 0
-        self.vivo_desde = 0.0
+        self.reservas = []  # os abertos esperando pedido (ate RESERVAS), sob lock
+        # os processos vivos dos enderecos (ate VIVOS): cada um com p (o processo), n (pedidos atendidos), desde e
+        # a trava dele, sob a qual o resto se mexe
+        self.vivos = [types.SimpleNamespace(p=None, n=0, desde=0.0, lock=threading.Lock()) for _ in range(VIVOS)]
 
     @staticmethod
     def _abre():
@@ -117,20 +167,31 @@ class Fora:
                 print(linha, end="", file=sys.stderr, flush=True)
 
     def aquece(self):
-        """Abre o de reserva, se ainda nao ha um."""
-        p = self._abre()
-        with self.lock:
-            if self.reserva is None or self.reserva.poll() is not None:
-                self.reserva, p = p, None
-        if p is not None:
-            p.stdin.close()  # ja havia um: este sai sem pedido
-            p.wait()
+        """Abre os de reserva que faltam ate RESERVAS."""
+        while True:
+            with self.lock:
+                self.reservas = [p for p in self.reservas if p.poll() is None]
+                if len(self.reservas) >= RESERVAS:
+                    return
+            p = self._abre()
+            with self.lock:
+                if len(self.reservas) < RESERVAS:
+                    self.reservas.append(p)
+                    p = None
+            if p is not None:
+                p.stdin.close()  # outra thread ja completou: este sai sem pedido
+                p.wait()
+                return
 
     def _tira_reserva(self):
-        """O de reserva (ou um novo, se nao ha), ja abrindo o seguinte."""
+        """Um de reserva (ou um novo, se nao ha), ja abrindo o que falta."""
+        p = None
         with self.lock:
-            p, self.reserva = self.reserva, None
-        if p is None or p.poll() is not None:
+            while self.reservas and p is None:
+                q = self.reservas.pop(0)
+                if q.poll() is None:
+                    p = q
+        if p is None:
             p = self._abre()
         threading.Thread(target=self.aquece, daemon=True).start()
         return p
@@ -138,11 +199,16 @@ class Fora:
     def pede(self, op, progresso=None, limite=FORA_LIMITE_S, **args):
         """O resultado do pedido op (ver o yt_fora.py); progresso(f) recebe o andamento do download. Erro do
         YouTube vira RuntimeError com o motivo."""
-        if op == "stream" and VIVO_MAX and self.vivo_lock.acquire(blocking=False):
-            try:
-                return self._pede_vivo(op, limite, args)
-            finally:
-                self.vivo_lock.release()
+        if op in VIVO_OPS and VIVO_MAX:
+            # o livre quente antes do livre vazio: o vazio (o que saiu no VIVO_MAX ou no erro) paga o primeiro pedido
+            # cheio, ~0,35 s, com o outro quente parado ao lado (k12 do placar r12b); todos ocupados, vai pelo de
+            # reserva
+            for v in sorted(self.vivos, key=lambda v: not self._quente(v)):
+                if v.lock.acquire(blocking=False):
+                    try:
+                        return self._pede_vivo(v, op, limite, args)
+                    finally:
+                        v.lock.release()
         p, t0 = self._tira_reserva(), time.monotonic()
         estourou = threading.Event()
         relogio = threading.Timer(limite, lambda: (estourou.set(), p.kill())) if limite else None
@@ -178,22 +244,29 @@ class Fora:
                   f"{' (o vivo estava ocupado)' if VIVO_MAX else ''}", file=sys.stderr, flush=True)
         return r["r"]
 
-    def _pede_vivo(self, op, limite, args):
-        """(sob vivo_lock) O pedido pelo processo vivo: no yt_fora o YoutubeDL e o mesmo de um pedido ao outro e
+    @staticmethod
+    def _quente(v):
+        """O vivo v tem um processo que atende o proximo pedido sem sair antes (lido sem a trava: so ordena a escolha)."""
+        p = v.p
+        return p is not None and p.poll() is None and time.monotonic() - v.desde <= VIVO_MAX_S
+
+    def _pede_vivo(self, v, op, limite, args):
+        """(sob v.lock) O pedido pelo processo vivo v: no yt_fora o YoutubeDL e o mesmo de um pedido ao outro e
         guarda o player do YouTube ja lido, e o endereco sai em 0,80 s em vez de 1,48 (notebook, 09/11). Um pedido
-        por vez: quem chega com ele ocupado vai pelo de reserva, como antes. Ele sai depois de VIVO_MAX pedidos ou
+        por vez em cada um dos VIVOS: quem chega com todos ocupados vai pelo de reserva. Ele sai depois de VIVO_MAX
+        pedidos ou
         VIVO_MAX_S, e no erro e no estouro do limite (o YouTube recusando pode ser estado velho dele); o seguinte
         abre outro com o de reserva."""
-        p = self.vivo
-        if p is not None and (p.poll() is not None or time.monotonic() - self.vivo_desde > VIVO_MAX_S):
-            self._solta_vivo()
+        p = v.p
+        if p is not None and (p.poll() is not None or time.monotonic() - v.desde > VIVO_MAX_S):
+            self._solta_vivo(v)
             p = None
         novo = p is None
         if novo:
-            p = self.vivo = self._tira_reserva()
-            self.vivo_n, self.vivo_desde = 0, time.monotonic()
-        self.vivo_n += 1
-        n, t0 = self.vivo_n, time.monotonic()
+            p = v.p = self._tira_reserva()
+            v.n, v.desde = 0, time.monotonic()
+        v.n += 1
+        n, t0 = v.n, time.monotonic()
         estourou = threading.Event()
         relogio = threading.Timer(limite, lambda: (estourou.set(), p.kill())) if limite else None
         if relogio:
@@ -217,8 +290,8 @@ class Fora:
         finally:
             if relogio:
                 relogio.cancel()
-        if r is None or "erro" in r or n >= VIVO_MAX:
-            self._solta_vivo()
+        if r is None or n >= VIVO_MAX or ("erro" in r and not erro_do_video(r["erro"])):
+            self._solta_vivo(v)
         if r is None:
             raise RuntimeError("o YouTube não respondeu a tempo" if estourou.is_set() else
                                "o processo do YouTube saiu sem resposta")
@@ -228,9 +301,9 @@ class Fora:
               f"{', o primeiro paga o preço cheio' if novo else ''})", file=sys.stderr, flush=True)
         return r["r"]
 
-    def _solta_vivo(self):
-        """(sob vivo_lock) O vivo sai: le o fim da entrada e termina; se nao terminar em 5 s, morre."""
-        p, self.vivo = self.vivo, None
+    def _solta_vivo(self, v):
+        """(sob v.lock) O vivo v sai: le o fim da entrada e termina; se nao terminar em 5 s, morre."""
+        p, v.p = v.p, None
         if p is None:
             return
         try:
@@ -448,6 +521,8 @@ class App:
         self.cfg.pop("lan_token", None)  # a chave do link do celular de antes, que saiu (hoje e o pareamento.py)
         self.lan_ip = None
         self.celulares = par.Pareamento(data_dir / "celulares.json")
+        self._adiantados = {}  # youtube_id -> (Future do endereco, hora em que saiu): ver adianta_endereco
+        self._adi_lock = threading.Lock()
         self.lib = Library(lib_json, keep_files=mock)
         self.jobs = {}
         self.jobs_version = 0
@@ -579,9 +654,33 @@ class App:
     def stream_info(self, target, formato=None):
         """Endereco direto do audio no YouTube, para o ffmpeg tocar sem baixar antes (sai em
         1 a 3 s; um download leva bem mais). Volta o info do yt-dlp (enxuto: o endereco em url, id, title,
-        channel, uploader e duration) e os cabecalhos HTTP."""
-        r = fora.pede("stream", alvo=self.alvo_yt(target), opts=self.opts_stream(formato))
+        channel, uploader e duration) e os cabecalhos HTTP. O endereco rapido nao traz o canal: canal_depois."""
+        r = fora.pede("stream", alvo=self.alvo_yt(target), opts=self.opts_stream(formato),
+                      rapido=ENDERECO_RAPIDO and formato is None)
         return r["info"], r["hdr"]
+
+    def canal_depois(self, tr, no_prato=False):
+        """O canal do disco tr que veio sem (o endereco rapido pula o initial data, de onde o yt-dlp tira o canal), pelo
+        YouTube Music, depois de o disco ja tocar: grava no proprio dict. Antes ele vinha junto do endereco, +0,15 a
+        0,3 s no primeiro som do link colado (revisao da r04)."""
+        yid = tr.get("youtube_id")
+        if tr.get("channel") or not yid or not YT_ID.match(yid):
+            return
+
+        def faz():
+            try:
+                ch = fora.pede("canal", yid=yid, limite=CANAL_LIMITE_S).get("channel")
+            except Exception as ex:  # noqa: BLE001 - fica sem o canal
+                print(f"stream: o canal de {yid} nao veio ({yt_msg(ex)})", file=sys.stderr, flush=True)
+                return
+            if ch and not tr.get("channel"):
+                tr["channel"] = ch
+        def sai():  # no_prato: o disco que saiu nesse meio tempo (o "nao, toca Y") nao pede (revisao da r09)
+            if not no_prato or self.engine.track is tr:
+                pool_rapido.submit(faz)
+        t = threading.Timer(CANAL_DEPOIS_S, sai)
+        t.daemon = True
+        t.start()
 
     @staticmethod
     def search(q, n, start=0):
@@ -716,21 +815,82 @@ class App:
         threading.Thread(target=self._abre_stream, args=(tr, target, bool(meta.get("title"))),
                          daemon=True).start()
 
+    def adianta_endereco(self, yid):
+        """Pede ja o endereco do stream de yid (o primeiro resultado da busca do pedido falado), sem tocar: o tocar
+        que vier em ADIANTA_S usa este em vez de pedir outro."""
+        if not ADIANTA or not yid or not YT_ID.match(yid):
+            return
+        agora = time.monotonic()
+        with self._adi_lock:
+            for k in [k for k, (_, t) in self._adiantados.items() if agora - t > ADIANTA_S]:
+                del self._adiantados[k]
+            if yid in self._adiantados:
+                return
+            fut = pool_rapido.submit(self.stream_info, yid)
+            self._adiantados[yid] = (fut, agora)
+        fut.add_done_callback(self._preabre)
+
+    def _preabre(self, fut):
+        """O endereco adiantado saiu: o ffmpeg dele ja abre (engine.PREABRE), e o tocar comeca sem esperar o ffmpeg."""
+        if fut.cancelled() or fut.exception() is not None:
+            return
+        info, hdr = fut.result()
+        try:
+            self.engine.preabre(info.get("url"), hdr)
+        except Exception as ex:  # noqa: BLE001 - sem o aberto antes, o leitor abre o dele como antes
+            print(f"stream: o ffmpeg aberto antes falhou ({str(ex)[:120]})", file=sys.stderr, flush=True)
+
+    def adianta_da_busca(self, res, n):
+        """O endereco que a busca de musica falada (/api/musica) adianta: ate 3 resultados, o do primeiro; o "outra" (n
+        maior), o do primeiro que nao toca, nao esta na fila e nao tocou, como a mina escolhe (antes o outra nao
+        adiantava nada: 0,47 s ate o som no placar r08). O da prateleira toca do arquivo: nada."""
+        if not res:
+            return
+        x = res[0]
+        if n > 3:
+            tr = self.engine.track or {}
+            fora = set(self.tocadas) | {tr.get("youtube_id")} | {f.get("youtube_id") for f in self.fila}
+            atual = nome_da_musica(tr.get("title"))  # outra versao da que toca (o ao vivo dela) a mina pula
+            x = next((r for r in res if r.get("youtube_id") not in fora
+                      and not (len(atual) >= 4 and atual in nome_da_musica(r.get("title"), inteiro=True))), None)
+        if x is not None and not x.get("in_library"):
+            self.adianta_endereco(x["youtube_id"])
+
+    def endereco_adiantado(self, yid):
+        """O Future do endereco adiantado de yid (uma vez so), ou None."""
+        with self._adi_lock:
+            x = self._adiantados.pop(yid, None) if yid else None
+            if x is not None and x[0] is not None:  # a marca do usado: a busca que chega depois (a da LLM, a do
+                self._adiantados[yid] = (None, time.monotonic())  # lote) nao pede de novo o endereco do disco que ja
+                # toca (revisao da r12: um endereco e um ffmpeg orfao a cada uso da antecipada)
+        return x[0] if x and x[0] is not None and time.monotonic() - x[1] <= ADIANTA_S else None
+
     def _abre_stream(self, tr, target, tem_titulo):
         """O YouTube as vezes recusa o endereco do audio e na tentativa seguinte libera (um disco de 1h45 so tocou depois de baixar, calado). Tenta tres vezes, a ultima
         aceitando qualquer formato de audio; cada falha vai para o log com o motivo, e sem stream
         a tela diz que o disco toca quando terminar de baixar."""
         info = hdr = None
         motivo = ""
+        adiantado = self.endereco_adiantado(tr.get("youtube_id"))
+        if adiantado is not None and adiantado.cancel():  # nem comecou (o executor cheio): pede aqui mesmo
+            adiantado = None
         for i, formato in enumerate((None, None, "bestaudio/best")):
             if self.engine.track is not tr:
                 return  # trocou de disco no meio
             try:
-                info, hdr = self.stream_info(target, formato)
+                if i == 0 and adiantado is not None:
+                    t0 = time.monotonic()
+                    info, hdr = adiantado.result(timeout=FORA_LIMITE_S)
+                    print(f"stream: o adiantado de {tr.get('youtube_id')} esperou mais {time.monotonic() - t0:.2f} s",
+                          file=sys.stderr, flush=True)
+                else:
+                    info, hdr = self.stream_info(target, formato)
                 break
             except Exception as ex:  # noqa: BLE001 - o motivo vai para o log e para a tela
                 motivo = yt_msg(ex)
                 print(f"stream: tentativa {i + 1} de 3 falhou para {target}: {motivo}", file=sys.stderr, flush=True)
+                if erro_do_video(ex):  # o video nao toca pra ninguem: tentar de novo so gasta ~2 s e o IP de casa
+                    break
                 time.sleep(1.0)
         if info is None:
             if self.engine.track is not tr:
@@ -750,7 +910,8 @@ class App:
                     title=tr["title"] if tem_titulo else info.get("title") or tr["title"],
                     channel=tr["channel"] or info.get("channel") or info.get("uploader"),
                     thumb=tr["thumb"] or thumb(yid), duration=tr["duration"] or info.get("duration"))
-        self.engine.trocar_fonte(tr, novo)
+        if self.engine.trocar_fonte(tr, novo):
+            self.canal_depois(novo, no_prato=True)
 
     def religar_stream(self, tr, pos, desistir):
         """O leitor do motor (na thread dele): o stream da parecida do Automatico caiu em pos, sem audio ou antes do
@@ -1011,6 +1172,11 @@ class App:
         while True:
             time.sleep(0.1)
             e = self.engine
+            soou = e.tira_soou()
+            if soou:  # a hora do primeiro som de cada disco (relogio = a do Windows, pra alinhar com quem pediu)
+                titulo, stream, entrou, em = soou
+                print(f"som: {titulo!r} soou {em - entrou:.2f} s depois de entrar no prato "
+                      f"({'stream' if stream else 'arquivo'}; relogio={em:.3f})", file=sys.stderr, flush=True)
             tr = e.track
             if tr is None or e.status() != "ended":
                 visto = None
@@ -1045,11 +1211,13 @@ class App:
             return None
         info, hdr = self.stream_info(alvo)
         yid = x.get("youtube_id") or info.get("id")
-        return {"id": yid or f"job-{j['id']}", "title": x.get("title") or info.get("title") or alvo,
-                "channel": x.get("channel") or info.get("channel") or info.get("uploader"),
-                "thumb": x.get("thumb") or thumb(yid), "duration": x.get("duration") or info.get("duration"),
-                "youtube_id": yid, "alvo": None if yid else alvo, "path": info["url"], "headers": hdr,
-                "stream": True, "job": None if auto else j["id"], **marca_auto(x)}
+        d = {"id": yid or f"job-{j['id']}", "title": x.get("title") or info.get("title") or alvo,
+             "channel": x.get("channel") or info.get("channel") or info.get("uploader"),
+             "thumb": x.get("thumb") or thumb(yid), "duration": x.get("duration") or info.get("duration"),
+             "youtube_id": yid, "alvo": None if yid else alvo, "path": info["url"], "headers": hdr,
+             "stream": True, "job": None if auto else j["id"], **marca_auto(x)}
+        self.canal_depois(d)
+        return d
 
     def _prepara(self, tr, x, chave):
         try:
@@ -1670,13 +1838,14 @@ def build(app_state):
             return j_err("Diga o que procurar.")
         try:
             res = await loop_().run_in_executor(
-                pool, lambda: fora.pede("musica", q=q, n=n, limite=BUSCA_MUSICA_S))
+                pool_rapido, lambda: fora.pede("musica", q=q, n=n, limite=BUSCA_MUSICA_S))
         except Exception as ex:  # noqa: BLE001
             return j_err(f"A busca no YouTube Music falhou ({yt_msg(ex)}).", 502)
         for x in res:
             it = A.lib.by_youtube(x["youtube_id"])
             x["in_library"] = bool(it)
             x["id"] = it["id"] if it else None
+        A.adianta_da_busca(res, n)
         return web.json_response(res)
 
     @r.post("/api/library")

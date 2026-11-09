@@ -17,7 +17,9 @@ from pathlib import Path
 
 import yt_dlp
 
-CAMPOS = ("id", "title", "duration", "channel", "uploader")
+from yt_erros import erro_do_video
+
+CAMPOS =("id", "title", "duration", "channel", "uploader")
 ABAIXO_DO_NORMAL = 0x00004000  # o download cede o processador ao audio, como a medida de andamento
 
 
@@ -43,6 +45,40 @@ def _ydl(opts):
     if k not in _YDLS:
         _YDLS[k] = yt_dlp.YoutubeDL(opts)
     return _YDLS[k]
+
+
+# O endereco rapido (09/11): com o YoutubeDL quente, 0,68 s dos 0,89 s do endereco eram a pagina do video; sem ela o
+# yt-dlp pede o initial data (0,5 a 0,7 s) e o cliente web com o JS do player. So o cliente visionos (o que da o
+# audio 251 sem o desafio de JS), sem a pagina, o initial data, os configs e o JS, com o visitor data do cliente do
+# YouTube Music (sem ele o YouTube pede "Sign in to confirm you're not a bot"): no PC, 6 videos em 0,14 a 0,21 s, todos
+# tocando no ffmpeg. Falhou, vai o de sempre no mesmo processo (faz)
+RAPIDO_ARGS = {"player_client": ["visionos"], "player_skip": ["webpage", "configs", "initial_data", "js"],
+               "skip": ["hls"]}
+# o disjuntor do rapido (revisao da r01): falhou isso de vezes seguidas (ou uma com "not a bot"), o processo para de
+# tentar o rapido ate ser renovado, sem dobrar os pedidos de player no IP de casa
+RAPIDO_FALHAS_MAX = 2
+_rapido_falhas = 0
+
+
+def opts_rapido(opts):
+    """As opts do endereco rapido (ver RAPIDO_ARGS), com o visitor id do cliente do YouTube Music."""
+    vid = ytm().headers.get("X-Goog-Visitor-Id")
+    if not vid:
+        raise RuntimeError("sem o visitor id do YouTube Music")
+    ea = dict(opts.get("extractor_args") or {})
+    ea["youtube"] = {**(ea.get("youtube") or {}), **RAPIDO_ARGS, "visitor_data": [vid]}
+    return {**opts, "extractor_args": ea}
+
+
+def canal_do(yid):
+    """O nome do canal de um video pelo cliente do YouTube Music: o rapido pula o initial data, de onde o yt-dlp tira o
+    canal (revisao da r01); so quando quem pediu nao tem o canal (link colado, a passagem sem ele). None se falhou."""
+    if not yid:
+        return None
+    try:
+        return ((ytm().get_song(yid) or {}).get("videoDetails") or {}).get("author") or None
+    except Exception:  # noqa: BLE001 - fica sem o canal, como antes de ter o rapido
+        return None
 
 
 def stream_yt(alvo, opts):
@@ -116,8 +152,8 @@ def _item(x, artista=None):
 # O cliente do YouTube Music aquecido na espera (09/11): o primeiro pedido de um cliente novo busca antes o visitor id
 # (abre a pagina inicial do YouTube Music), 0,53 a 0,60 s medidos no PC com a ytmusicapi 1.12.3, e todo pedido e um
 # processo novo, entao toda busca pagava isso (1,3 s contra 0,7 com o cliente ja usado). O processo de reserva faz isso
-# numa thread enquanto espera; o pedido que nao e do YouTube Music (o endereco de stream, logo depois da busca) nao
-# espera por ela
+# numa thread enquanto espera. O endereco rapido (opts_rapido) usa o visitor id dele e espera o aquecimento: num
+# processo recem-aberto isso entra no primeiro endereco
 _YTM = None
 _AQUECE = None
 _AQUECE_ERRO = None
@@ -135,7 +171,10 @@ def aquece_ytm():
 
 
 def ytm():
-    """O cliente do YouTube Music: o aquecido (esperando o aquecimento terminar) ou, se ele falhou, um novo."""
+    """O cliente do YouTube Music: o aquecido (esperando o aquecimento terminar) ou, se ele falhou, um novo, que fica
+    para os pedidos seguintes deste processo quando consegue o visitor id (sem isso o processo vivo pagaria o GET do
+    YouTube Music em todo endereco rapido; revisao da r01)."""
+    global _YTM, _AQUECE_ERRO
     from ytmusicapi import YTMusic
     if _AQUECE is not None:
         _AQUECE.join()
@@ -143,18 +182,119 @@ def ytm():
         return _YTM
     if _AQUECE_ERRO:
         print(f"YouTube Music: o aquecimento falhou ({_AQUECE_ERRO}): cliente novo", file=sys.stderr)
-    return YTMusic()
+        _AQUECE_ERRO = None
+    yt = YTMusic()
+    try:
+        yt.headers  # noqa: B018 - o visitor id
+        _YTM = yt
+    except Exception:  # noqa: BLE001 - sem rede: o pedido segue e o proximo tenta de novo
+        pass
+    return yt
+
+
+# a sugestao da caixa de busca (09/11, a latencia do pedido falado): o YouTube Music sugere musicas enquanto se digita,
+# em 0,11 s de mediana contra 0,71 s da busca (14 pedidos, cliente quente), e a primeira costuma ser a faixa oficial
+# ("Murder In My Mind" do Kordhell em vez do Slowed + Reverb). Mas em metade dos pedidos falados de verdade (20 de 40,
+# os longos e os tortos) nao vem musica nenhuma, e as vezes vem outra ("Uma Rapariga e Bom Demais" -> "Raparigas").
+# Vale a primeira do tipo Song (o audio oficial; o Video pode ser remix), mesmo depois de um video, com todas as
+# palavras do pedido no titulo ou no artista (a regra do so_artista). O pedido que e so o nome de um artista sugerido
+# (o item do artista, ou o artista de uma das musicas, com o id do canal) vai a pagina dele, como a busca faria, sem
+# ela: o "toca outra do X" levava ~1 s de busca + pagina, e vai em ~0,35 s (r08). Senao, a busca de sempre. False =
+# so a busca
+SUGESTAO = True
+# a versao que a sugestao traz e o pedido nao falou ("Chuva de Arroz (Ao Vivo)" para "Chuva de Arroz Luan Santana",
+# onde a busca dava a de estudio): essa musica sugerida fica de fora (r08, nos 40 pedidos falados das sessoes)
+VERSAO = re.compile(r"\b(?:ao vivo|live|remix|slowed|sped up|speed up|acustic[oa]|acoustic|cover|karaoke|"
+                    r"instrumental|reverb|8d|funk remix|versao)\b")
+
+
+def sugestoes(q, yt):
+    """As sugestoes do YouTube Music para q (a caixa de busca do app, ~0,1 s contra ~0,7 s da busca): (artistas,
+    musicas). artistas = [(nome, id do canal)], do item de artista e do artista de cada musica, sem repetir; musicas =
+    so as Song (video fica de fora: remix, ao vivo), no formato do /api/search, na ordem dele."""
+    r = yt._send_request("music/get_search_suggestions", {"input": q})
+    artistas, musicas, vistos = [], [], set()
+
+    def artista(nome, be):
+        bid = be.get("browseId") or ""
+        tipo = ((be.get("browseEndpointContextSupportedConfigs") or {}).get("browseEndpointContextMusicConfig")
+                or {}).get("pageType")
+        if nome and bid.startswith("UC") and tipo == "MUSIC_PAGE_TYPE_ARTIST" and bid not in vistos:
+            vistos.add(bid)
+            artistas.append((nome, bid))
+    for sec in r.get("contents") or []:
+        for it in (sec.get("searchSuggestionsSectionRenderer") or {}).get("contents") or []:
+            m = it.get("musicResponsiveListItemRenderer")
+            if not m:
+                continue
+            runs = [((c.get("musicResponsiveListItemFlexColumnRenderer") or {}).get("text") or {}).get("runs") or []
+                    for c in m.get("flexColumns") or []]
+            cols = ["".join(x.get("text", "") for x in rs) for rs in runs]
+            nav = m.get("navigationEndpoint") or {}
+            if cols:
+                artista(cols[0], nav.get("browseEndpoint") or {})  # o item que e o proprio artista
+            for x in runs[1] if len(runs) > 1 else []:
+                artista(x.get("text"), (x.get("navigationEndpoint") or {}).get("browseEndpoint") or {})
+            yid = (m.get("playlistItemData") or {}).get("videoId") or (nav.get("watchEndpoint") or {}).get("videoId")
+            partes = (cols[1] if len(cols) > 1 else "").split(" • ")
+            if yid and cols and partes[0] == "Song" and len(partes) >= 2:
+                musicas.append({"youtube_id": yid, "title": cols[0], "channel": partes[1]})
+    return artistas, musicas
+
+
+def versao_a_mais(q, titulo):
+    """O titulo e uma versao (ao vivo, remix, slowed...) que o pedido q nao pediu."""
+    def norm(t):  # sem acento e sem pontuacao, com as palavras curtas (o palavras() tira o "ao" do "ao vivo")
+        t = "".join(c for c in unicodedata.normalize("NFKD", (t or "").lower()) if not unicodedata.combining(c))
+        return " ".join(re.sub(r"[^a-z0-9 ]", " ", t).split())
+    v = VERSAO.search(norm(titulo))
+    return bool(v) and not re.search(rf"\b{v.group(0)}\b", norm(q))
+
+
+def do_artista(q, bid, nome, yt):
+    """(nome, as mais tocadas da pagina do artista bid) se o pedido q e so o nome dele (o da pagina vale); senao
+    (nome, [])."""
+    pag = yt.get_artist(bid) or {}
+    nome = pag.get("name") or nome
+    if not so_artista(q, nome or ""):
+        return nome, []
+    return nome, [i for i in (_item(x, nome) for x in ((pag.get("songs") or {}).get("results") or [])) if i]
 
 
 def musica(q, n, yt=None):
     """A busca de musica do YouTube Music, como o app dele busca (09/11, o pedido falado da mina): a busca do YouTube
     devolvia o que nao e musica ("Toca Raul" achou um video de financas; nos 90 pedidos falados das sessoes, ~7 assim),
-    e a do YouTube Music devolveu musica nos 90, em 0,74 s de mediana contra 1,41. O melhor resultado sendo um artista
-    e o pedido so o nome dele: as mais tocadas da pagina dele ("Raul" -> Metamorfose Ambulante, "Radiohead" -> Creep);
-    com o nome da musica junto, as musicas e videos da busca ("Luan Santana Chuva de Arroz" -> Chuva de Arroz). Volta
-    a lista no formato do /api/search, vazia se nada achou."""
+    e a do YouTube Music devolveu musica nos 90, em 0,74 s de mediana contra 1,41. Ate 3 resultados, vale antes a
+    primeira musica sugerida com todas as palavras do pedido (SUGESTAO): no pedido que e so o nome do artista, isso e
+    a primeira musica dele que o YouTube Music sugere, nao a mais tocada da pagina ("Raul" -> Tente Outra Vez, "The
+    Weeknd" -> Earned It; revisao da r07: escolha do dono, SUGESTAO = False volta a pagina). O "outra" (a lista) e o
+    pedido sem musica sugerida que e so o nome de um artista: as mais tocadas da pagina dele ("Raul" -> Metamorfose
+    Ambulante, "Radiohead" -> Creep), pela sugestao ou pela busca; com o nome da musica junto, as musicas e videos da
+    busca ("Luan Santana Chuva de Arroz" -> Chuva de Arroz). Volta a lista no formato do /api/search, vazia se nada
+    achou."""
     if yt is None:
         yt = ytm()
+    if SUGESTAO:
+        try:
+            arts, mus = sugestoes(q, yt)
+        except Exception as ex:  # noqa: BLE001 - a busca de sempre
+            arts, mus = [], []
+            print(f"busca: a sugestao de {q!r} falhou ({str(ex)[:100]})", file=sys.stderr)
+        # ate 3 (o "toca X"): a primeira musica sugerida com todas as palavras do pedido no titulo ou no artista
+        s = next((x for x in mus if so_artista(q, f"{x['title']} {x['channel']}") and not versao_a_mais(q, x["title"])),
+                 None) if n <= 3 else None
+        if s:
+            print(f"busca: {q!r} pela sugestao: {s['title']} ({s['channel']})", file=sys.stderr)
+            return [s]
+        # o pedido e so o nome de um artista sugerido: as mais tocadas da pagina dele, como a busca faria quando o
+        # topo e o artista, sem os ~0,7 s dela (o "toca outra do X", que quer a lista, cai sempre aqui)
+        art = next(((nome, bid) for nome, bid in arts if so_artista(q, nome)), None)
+        if art:
+            nome, itens = do_artista(q, art[1], art[0], yt)
+            if itens:
+                print(f"busca: {q!r} é o artista {nome} (pela sugestão): a mais tocada, {itens[0]['title']}",
+                      file=sys.stderr)
+                return itens[:n]
     res = yt.search(q, limit=10) or []
     topo = res[0] if res else {}
     if topo.get("resultType") == "artist":
@@ -162,13 +302,10 @@ def musica(q, n, yt=None):
         bid = topo.get("browseId") or dono.get("id")
         nome = dono.get("name") or topo.get("artist")
         if bid and (nome is None or so_artista(q, nome)):
-            pag = yt.get_artist(bid) or {}
-            nome = pag.get("name") or nome
-            if so_artista(q, nome or ""):
-                itens = [i for i in (_item(x, nome) for x in ((pag.get("songs") or {}).get("results") or [])) if i]
-                if itens:
-                    print(f"busca: {q!r} é o artista {nome}: a mais tocada, {itens[0]['title']}", file=sys.stderr)
-                    return itens[:n]
+            nome, itens = do_artista(q, bid, nome, yt)
+            if itens:
+                print(f"busca: {q!r} é o artista {nome}: a mais tocada, {itens[0]['title']}", file=sys.stderr)
+                return itens[:n]
     itens = [i for i in (_item(x) for x in res if x.get("resultType") in ("song", "video")) if i]
     if itens:
         print(f"busca: {q!r} no YouTube Music: {itens[0]['title']} ({itens[0].get('channel') or '?'})", file=sys.stderr)
@@ -180,8 +317,31 @@ def faz(p):
     if "opts" in p:
         p["opts"] = {**p["opts"], "logtostderr": True}  # a saida e so do JSON: o que o yt-dlp diz vai para o log
     if op == "stream":
-        info, hdr = stream_yt(p["alvo"], p["opts"])
+        global _rapido_falhas
+        info, antes, erro_rapido = None, _rapido_falhas, None
+        if p.get("rapido") and _rapido_falhas < RAPIDO_FALHAS_MAX:
+            try:
+                info, hdr = stream_yt(p["alvo"], opts_rapido(p["opts"]))
+                _rapido_falhas = 0
+            except Exception as ex:  # noqa: BLE001 - o de sempre logo em seguida, no mesmo processo
+                erro_rapido = str(ex)
+                _rapido_falhas = RAPIDO_FALHAS_MAX if "not a bot" in erro_rapido else _rapido_falhas + 1
+                fora = ": desligado neste processo" if _rapido_falhas >= RAPIDO_FALHAS_MAX else ""
+                print(f"stream: o rapido falhou em {p['alvo']} ({erro_rapido[:120]}): vai pelo de sempre{fora}",
+                      file=sys.stderr, flush=True)
+        if info is None:
+            try:
+                info, hdr = stream_yt(p["alvo"], p["opts"])
+            except Exception as ex:
+                # o de sempre tambem diz que o video nao toca: a culpa e do video, nao do rapido, e o contador volta
+                # (o vivo agora fica depois do erro do video: um disco com idade desligava o rapido dele por ate 1 h;
+                # revisao da r12b)
+                if erro_rapido is not None and erro_do_video(erro_rapido) and erro_do_video(ex):
+                    _rapido_falhas = antes
+                raise
         return {"info": dict(enxuto(info), url=info["url"]), "hdr": hdr}
+    if op == "canal":  # o que o endereco rapido nao traz, pedido depois do som (server.canal_depois)
+        return {"channel": canal_do(p["yid"])}
     if op == "info":
         with yt_dlp.YoutubeDL(p["opts"]) as y:
             return enxuto(y.extract_info(p["alvo"], download=False))
