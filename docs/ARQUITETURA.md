@@ -42,11 +42,14 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   que o servidor lê, em JSON, e o que o yt-dlp diz vai para o log de erros. Abre como
   `vitrola.py --yt`. O endereço de stream vai de preferência a um processo que fica vivo e
   atende um pedido por linha com o mesmo `YoutubeDL`, que guarda o player do YouTube já lido
-  (no notebook, 0,80 s por endereço em vez de 1,48 s); ocupado, vai pelo de reserva, e ele sai
+  (no notebook, 0,80 s por endereço em vez de 1,48 s); são `VIVOS` deles (2: o endereço do
+  palpite errado da mina não segura o do pedido certo), e com todos ocupados vai pelo de
+  reserva. Cada um sai
   no erro, no estouro do limite, depois de `VIVO_MAX` pedidos e de `VIVO_MAX_S` (o
   `VIVO_MAX = 0` desliga). O endereço do primeiro resultado da busca de música (`/api/musica`) sai
   logo atrás dela (`ADIANTA`), antes de a mina pôr na fila: o tocar usa o que já está pronto ou a
-  caminho. E sai pelo caminho rápido (`ENDERECO_RAPIDO`): só o cliente visionos, sem a página do
+  caminho (no "outra", o do primeiro que não toca, não está na fila, não tocou e não é outra versão
+  da que toca, como a mina escolhe). E sai pelo caminho rápido (`ENDERECO_RAPIDO`): só o cliente visionos, sem a página do
   vídeo, com o visitor id do YouTube Music (0,15 s em vez de 0,8 s); falhou, o de sempre. O
   rápido não traz o canal: ele vem do YouTube Music depois de o disco já tocar (`canal_depois`).
   Assim que o endereço adiantado sai, o motor já abre o ffmpeg dele e guarda 2 s do começo

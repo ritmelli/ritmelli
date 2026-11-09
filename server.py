@@ -103,6 +103,28 @@ ENDERECO_RAPIDO = True
 REDE_VIGIA_S = 3.0  # a porta do celular se confere a cada isso, e se caiu (o PC dormiu) abre de novo
 
 
+def nome_da_musica(titulo, inteiro=False):
+    """O nome da musica no titulo, minusculo, sem acento e sem pontuacao: o que vem depois do " - ", sem parenteses nem
+    colchetes ("O REI DA CACIMBINHA - MURIÇOCA (Ao Vivo)" -> "muricoca"), como o _musica da mina; inteiro = o titulo
+    todo, so normalizado (onde a mina procura a que toca)."""
+    t = titulo or ""
+    if not inteiro:
+        t = re.sub(r"[(\[].*?[)\]]", " ", t.split(" - ")[-1])
+    t = "".join(c for c in unicodedata.normalize("NFKD", t.lower()) if not unicodedata.combining(c))
+    return " ".join(re.sub(r"[^a-z ]", " ", t).split())
+
+
+def nome_da_musica(titulo, inteiro=False):
+    """O nome da musica no titulo, minusculo, sem acento e sem pontuacao: o que vem depois do " - ", sem parenteses nem
+    colchetes ("O REI DA CACIMBINHA - MURIÇOCA (Ao Vivo)" -> "muricoca"), como o _musica da mina; inteiro = o titulo
+    todo, so normalizado (onde a mina procura a que toca)."""
+    t = titulo or ""
+    if not inteiro:
+        t = re.sub(r"[(\[].*?[)\]]", " ", t.split(" - ")[-1])
+    t = "".join(c for c in unicodedata.normalize("NFKD", t.lower()) if not unicodedata.combining(c))
+    return " ".join(re.sub(r"[^a-z ]", " ", t).split())
+
+
 def auxiliar(modo):
     """O comando de um processo auxiliar (--yt, --andamento; ver o vitrola.py): no app congelado, o proprio
     executavel; no codigo, o mesmo caminho pelo python."""
@@ -218,7 +240,8 @@ class Fora:
     def _pede_vivo(self, v, op, limite, args):
         """(sob v.lock) O pedido pelo processo vivo v: no yt_fora o YoutubeDL e o mesmo de um pedido ao outro e
         guarda o player do YouTube ja lido, e o endereco sai em 0,80 s em vez de 1,48 (notebook, 09/11). Um pedido
-        por vez: quem chega com ele ocupado vai pelo de reserva, como antes. Ele sai depois de VIVO_MAX pedidos ou
+        por vez em cada um dos VIVOS: quem chega com todos ocupados vai pelo de reserva. Ele sai depois de VIVO_MAX
+        pedidos ou
         VIVO_MAX_S, e no erro e no estouro do limite (o YouTube recusando pode ser estado velho dele); o seguinte
         abre outro com o de reserva."""
         p = v.p
@@ -623,7 +646,7 @@ class App:
                       rapido=ENDERECO_RAPIDO and formato is None)
         return r["info"], r["hdr"]
 
-    def canal_depois(self, tr):
+    def canal_depois(self, tr, no_prato=False):
         """O canal do disco tr que veio sem (o endereco rapido pula o initial data, de onde o yt-dlp tira o canal), pelo
         YouTube Music, depois de o disco ja tocar: grava no proprio dict. Antes ele vinha junto do endereco, +0,15 a
         0,3 s no primeiro som do link colado (revisao da r04)."""
@@ -639,7 +662,10 @@ class App:
                 return
             if ch and not tr.get("channel"):
                 tr["channel"] = ch
-        t = threading.Timer(CANAL_DEPOIS_S, lambda: pool_rapido.submit(faz))
+        def sai():  # no_prato: o disco que saiu nesse meio tempo (o "nao, toca Y") nao pede (revisao da r09)
+            if not no_prato or self.engine.track is tr:
+                pool_rapido.submit(faz)
+        t = threading.Timer(CANAL_DEPOIS_S, sai)
         t.daemon = True
         t.start()
 
@@ -809,9 +835,11 @@ class App:
             return
         x = res[0]
         if n > 3:
-            fora = set(self.tocadas) | {(self.engine.track or {}).get("youtube_id")} | \
-                {f.get("youtube_id") for f in self.fila}
-            x = next((r for r in res if r.get("youtube_id") not in fora), None)
+            tr = self.engine.track or {}
+            fora = set(self.tocadas) | {tr.get("youtube_id")} | {f.get("youtube_id") for f in self.fila}
+            atual = nome_da_musica(tr.get("title"))  # outra versao da que toca (o ao vivo dela) a mina pula
+            x = next((r for r in res if r.get("youtube_id") not in fora
+                      and not (len(atual) >= 4 and atual in nome_da_musica(r.get("title"), inteiro=True))), None)
         if x is not None and not x.get("in_library"):
             self.adianta_endereco(x["youtube_id"])
 
@@ -865,7 +893,7 @@ class App:
                     channel=tr["channel"] or info.get("channel") or info.get("uploader"),
                     thumb=tr["thumb"] or thumb(yid), duration=tr["duration"] or info.get("duration"))
         if self.engine.trocar_fonte(tr, novo):
-            self.canal_depois(novo)
+            self.canal_depois(novo, no_prato=True)
 
     def religar_stream(self, tr, pos, desistir):
         """O leitor do motor (na thread dele): o stream da parecida do Automatico caiu em pos, sem audio ou antes do

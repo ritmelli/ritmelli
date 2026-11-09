@@ -1402,7 +1402,9 @@ class Engine:
         p = Preaberto(url, self._entrada({"stream": True, "path": url, "headers": headers}))  # o Popen fora da trava
         fora = []
         with self._pre_lock:
-            if url in self._preabertos:  # outro abriu o mesmo junto
+            # outro abriu o mesmo junto, ou o leitor pediu esse endereco durante o Popen (o set_result acorda o leitor
+            # e o _preabre juntos: sem conferir de novo, o deste ficava orfao; revisao da r09, 20 em 20)
+            if url in self._preabertos or url in self._pre_usados:
                 fora.append(p)
             else:
                 while len(self._preabertos) >= PRE_MAX:

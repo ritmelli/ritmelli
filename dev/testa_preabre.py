@@ -138,6 +138,39 @@ class Preabre(unittest.TestCase):
             time.sleep(0.01)
             self.assertTrue(self.e.preabre(url), "vencido, o endereco pode abrir de novo")
 
+    def test_leitor_durante_o_popen_nao_deixa_orfao(self):
+        """O set_result acorda o leitor e o _preabre juntos: o leitor pede o endereco enquanto o Popen do aberto antes
+        roda (fora da trava). Esse aberto antes fecha em vez de ficar orfao (revisao da r09)."""
+        url = self.base + "a.wav"
+        original = eng.Preaberto
+
+        def lento(*a, **kw):  # o Popen do aberto antes, com o leitor chegando no meio dele
+            self.e._pre_pega(url)
+            return original(*a, **kw)
+        with mock.patch.object(eng, "Preaberto", lento):
+            self.assertFalse(self.e.preabre(url))
+        self.assertEqual(self.e._preabertos, {}, "nada orfao")
+
+    def test_concorrente_com_future(self):
+        """Como no servidor: o endereco num Future, o _preabre no done_callback e o leitor esperando o result()."""
+        import concurrent.futures
+        orfaos = 0
+        for i in range(10):
+            url = self.base + f"a.wav?{i}"
+            e = eng.Engine.__new__(eng.Engine)
+            e._preabertos, e._pre_usados, e._pre_lock = {}, {}, threading.Lock()
+            f = concurrent.futures.Future()
+            f.add_done_callback(lambda f, e=e: e.preabre(f.result()))
+            leitor = threading.Thread(target=lambda f=f, e=e: e._pre_pega(f.result()))
+            leitor.start()
+            f.set_result(url)
+            leitor.join()
+            time.sleep(0.05)
+            for p in e._preabertos.values():
+                orfaos += 1
+                p.fecha()
+        self.assertEqual(orfaos, 0)
+
     def test_desligado_e_nao_http(self):
         with mock.patch.object(eng, "PREABRE", False):
             self.assertFalse(self.e.preabre(self.base + "a.wav"))

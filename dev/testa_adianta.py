@@ -42,7 +42,7 @@ class Adianta(unittest.TestCase):
         app.engine = types.SimpleNamespace(track=self.tr, trocar_fonte=lambda a, n: self.trocas.append(n) or True,
                                            preabre=lambda url, h=None: self.preabertos.append(url))
         app._preabre = lambda fut: server.App._preabre(app, fut)
-        app.canal_depois = lambda tr: self.canais.append(tr.get("youtube_id"))
+        app.canal_depois = lambda tr, no_prato=False: self.canais.append(tr.get("youtube_id"))
         app.adianta_endereco = lambda yid: server.App.adianta_endereco(app, yid)
         app.endereco_adiantado = lambda yid: server.App.endereco_adiantado(app, yid)
         self.app = app
@@ -114,6 +114,17 @@ class Adianta(unittest.TestCase):
         self.abre()
         self.assertEqual(self.canais, [YID], "entrou sem canal: pede depois")
 
+    def test_canal_do_disco_que_saiu_nao_pede(self):
+        pedidos = []
+        tr = {"youtube_id": YID, "channel": None}
+        app = types.SimpleNamespace(engine=types.SimpleNamespace(track=tr))
+        with mock.patch.object(server.fora, "pede", lambda op, **kw: pedidos.append(op) or {"channel": "x"}), \
+                mock.patch.object(server, "CANAL_DEPOIS_S", 0.1):
+            server.App.canal_depois(app, tr, no_prato=True)
+            app.engine.track = {"youtube_id": "outro"}  # "nao, toca Y" antes do timer
+            time.sleep(0.4)
+        self.assertEqual(pedidos, [])
+
     def test_da_busca(self):
         feitos = []
         app = types.SimpleNamespace(tocadas=["t1"], engine=types.SimpleNamespace(track={"youtube_id": "t2"}),
@@ -124,6 +135,12 @@ class Adianta(unittest.TestCase):
         server.App.adianta_da_busca(app, res[4:], 8)
         server.App.adianta_da_busca(app, [], 3)
         self.assertEqual(feitos, ["t1", "t4"], "ate 3 o primeiro; o outra o primeiro que nao tocou; prateleira nada")
+        feitos.clear()
+        app.engine.track = {"youtube_id": "t2", "title": "O REI DA CACIMBINHA - Meu Pai É Foda"}
+        res = [{"youtube_id": "v1", "title": "Meu Pai É Foda (Ao Vivo)", "in_library": False},
+               {"youtube_id": "v2", "title": "Bicicletinha", "in_library": False}]
+        server.App.adianta_da_busca(app, res, 8)
+        self.assertEqual(feitos, ["v2"], "outra versao da que toca a mina pula: o servidor tambem")
 
     def test_so_id_de_video(self):
         self.app.adianta_endereco("Raul Seixas")
