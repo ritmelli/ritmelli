@@ -43,8 +43,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   `vitrola.py --yt`. O endereço de stream vai de preferência a um processo que fica vivo e
   atende um pedido por linha com o mesmo `YoutubeDL`, que guarda o player do YouTube já lido
   (no notebook, 0,80 s por endereço em vez de 1,48 s); são `VIVOS` deles (2: o endereço do
-  palpite errado da mina não segura o do pedido certo), e com todos ocupados vai pelo de
-  reserva. Cada um sai
+  palpite errado da mina não segura o do pedido certo): o pedido vai ao livre que já tem
+  processo quente antes do livre vazio, e com todos ocupados vai pelo de reserva. Cada um sai
   no erro, no estouro do limite, depois de `VIVO_MAX` pedidos e de `VIVO_MAX_S` (o
   `VIVO_MAX = 0` desliga); o erro do próprio vídeo (indisponível, privado, com idade:
   `yt_erros.py`, que o servidor e o `yt_fora.py` leem, sem o yt-dlp) não troca o vivo, não

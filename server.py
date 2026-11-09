@@ -200,7 +200,10 @@ class Fora:
         """O resultado do pedido op (ver o yt_fora.py); progresso(f) recebe o andamento do download. Erro do
         YouTube vira RuntimeError com o motivo."""
         if op in VIVO_OPS and VIVO_MAX:
-            for v in self.vivos:  # o primeiro livre; todos ocupados, vai pelo de reserva
+            # o livre quente antes do livre vazio: o vazio (o que saiu no VIVO_MAX ou no erro) paga o primeiro pedido
+            # cheio, ~0,35 s, com o outro quente parado ao lado (k12 do placar r12b); todos ocupados, vai pelo de
+            # reserva
+            for v in sorted(self.vivos, key=lambda v: not self._quente(v)):
                 if v.lock.acquire(blocking=False):
                     try:
                         return self._pede_vivo(v, op, limite, args)
@@ -240,6 +243,12 @@ class Fora:
             print(f"stream: {time.monotonic() - t0:.2f} s num processo novo"
                   f"{' (o vivo estava ocupado)' if VIVO_MAX else ''}", file=sys.stderr, flush=True)
         return r["r"]
+
+    @staticmethod
+    def _quente(v):
+        """O vivo v tem um processo que atende o proximo pedido sem sair antes (lido sem a trava: so ordena a escolha)."""
+        p = v.p
+        return p is not None and p.poll() is None and time.monotonic() - v.desde <= VIVO_MAX_S
 
     def _pede_vivo(self, v, op, limite, args):
         """(sob v.lock) O pedido pelo processo vivo v: no yt_fora o YoutubeDL e o mesmo de um pedido ao outro e

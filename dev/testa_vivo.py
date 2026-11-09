@@ -2,7 +2,7 @@
 e o yt_fora de verdade com o faz trocado por um falso que devolve o pid e quantos pedidos aquele processo ja atendeu.
 Cobre: dois enderecos no mesmo processo; os outros pedidos por fora dele; o vivo saindo no erro, no estouro do limite,
 depois de VIVO_MAX pedidos e de VIVO_MAX_S; o vivo ocupado (o pedido vai ao segundo vivo; os VIVOS ocupados, por um
-processo novo); e desligado (VIVO_MAX = 0). Sai 1 se algo falhar.
+processo novo); o livre quente escolhido antes do livre vazio; e desligado (VIVO_MAX = 0). Sai 1 se algo falhar.
 
     python dev/testa_vivo.py
 """
@@ -135,6 +135,20 @@ class Vivo(unittest.TestCase):
         self.assertNotEqual(lentos[2]["pid"], a["pid"])
         self.assertFalse(c["vivo"], "os dois vivos ocupados: processo novo")
         self.assertEqual(self.stream()["pid"], a["pid"], "o primeiro vivo segue o mesmo")
+
+    def test_o_livre_quente_antes_do_vazio(self):
+        a = self.stream()
+        lento = {}
+        th = threading.Thread(target=lambda: lento.update(self.stream("dorme", s=2)))
+        th.start()
+        time.sleep(0.5)  # o primeiro vivo ocupado: o seguinte esquenta o segundo
+        b = self.stream()
+        th.join()
+        self.assertNotEqual(b["pid"], a["pid"])
+        with self.f.vivos[0].lock:
+            self.f._solta_vivo(self.f.vivos[0])  # o primeiro sai (o VIVO_MAX ou o erro) e fica vazio
+        c = self.stream()
+        self.assertEqual((c["pid"], c["n"]), (b["pid"], b["n"] + 1), "o segundo, quente, antes do primeiro, vazio")
 
     def test_um_vivo_so(self):
         with mock.patch.object(server, "VIVOS", 1):
