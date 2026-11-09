@@ -757,6 +757,11 @@ class Engine:
         self.pos = 0.0
         self.error = None
         self._espera_arquivo = None  # o _gen do stream que falhou com o download a caminho (esperando_arquivo)
+        # o primeiro som do disco que entrou no prato (09/11, a latencia do pedido falado): espera e load marcam
+        # (id, hora do relogio), o _out_cb troca pelo (titulo, stream?, entrou, soou) no primeiro bloco dele, e o
+        # servidor tira e escreve no log (nada de print no callback)
+        self._prato = None
+        self._soou = None
         self.levels = {"mic": 0.0, "track": 0.0, "out": 0.0}
         self._deck = Deck()    # o disco do prato: _q, _gen e _eof_gen sao os dele
         self._qlock = threading.Lock()
@@ -1177,6 +1182,10 @@ class Engine:
                 item = self._tira(self._q, frames)
             if not item and self._eof_gen == self._gen:
                 self.ended = True
+            p, tr = self._prato, self.track
+            if item and p is not None and tr.get("id") == p[0]:
+                self._prato = None
+                self._soou = (tr.get("title"), str(tr.get("path") or "").startswith("http"), p[1], time.time())
         som = None  # arquivo + sons por cima, antes do volume
         if item:
             som = np.zeros((frames, 2), np.float32)
@@ -2136,7 +2145,13 @@ class Engine:
         with self._lock:
             self.track = track
             self.paused = False
+            self._prato = (track.get("id"), time.time())
             self._restart(0.0)
+
+    def tira_soou(self):
+        """O primeiro som do ultimo disco que entrou no prato, uma vez: (titulo, stream?, entrou, soou) ou None."""
+        s, self._soou = self._soou, None
+        return s
 
     def trocar_fonte(self, atual, novo):
         """Troca o audio do disco no prato sem cortar: da espera para o stream, ou do stream
@@ -2177,6 +2192,7 @@ class Engine:
         with self._lock:
             self.track = track
             self.paused = paused
+            self._prato = (track.get("id"), time.time())
             self._restart(self._clamp(start))
 
     def _clamp(self, t):

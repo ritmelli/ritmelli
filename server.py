@@ -1011,6 +1011,11 @@ class App:
         while True:
             time.sleep(0.1)
             e = self.engine
+            soou = e.tira_soou()
+            if soou:  # a hora do primeiro som de cada disco (relogio = a do Windows, pra alinhar com quem pediu)
+                titulo, stream, entrou, em = soou
+                print(f"som: {titulo!r} soou {em - entrou:.2f} s depois de entrar no prato "
+                      f"({'stream' if stream else 'arquivo'}; relogio={em:.3f})", file=sys.stderr, flush=True)
             tr = e.track
             if tr is None or e.status() != "ended":
                 visto = None
