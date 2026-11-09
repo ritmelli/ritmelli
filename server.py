@@ -69,6 +69,7 @@ CAPA_PASSO_S = 2.0         # entre uma busca de capa e a proxima: a prateleira i
 ABAIXO_DO_NORMAL = 0x00004000  # prioridade do processo da medida no Windows: cede o processador ao audio
 
 pool = ThreadPoolExecutor(4)
+BUSCA_MUSICA_S = 4.0  # a busca do YouTube Music (/api/musica) que passa disso falha: quem pediu cai na do YouTube
 FORA_LIMITE_S = 120.0  # pedido ao YouTube (fora o download) que nao volta nisso morre: o disco nao fica esperando
 REDE_VIGIA_S = 3.0  # a porta do celular se confere a cada isso, e se caiu (o PC dormiu) abre de novo
 
@@ -1559,6 +1560,28 @@ def build(app_state):
         except Exception as ex:  # noqa: BLE001
             return j_err(f"A busca no YouTube falhou ({yt_msg(ex)}). Confira a internet e tente de novo.",
                          502)
+        for x in res:
+            it = A.lib.by_youtube(x["youtube_id"])
+            x["in_library"] = bool(it)
+            x["id"] = it["id"] if it else None
+        return web.json_response(res)
+
+    @r.get("/api/musica")
+    async def busca_musica(request):
+        """A busca de musica pelo YouTube Music (yt_fora.musica), no processo do YouTube como as outras: o pedido
+        falado da mina usa esta e, se ela falha ou nao acha nada, a /api/search."""
+        q = (request.query.get("q") or "").strip()
+        try:
+            n = max(1, min(20, int(request.query.get("n", 3))))
+        except ValueError:
+            return j_err("O parâmetro n precisa ser um número de 1 a 20.")
+        if not q:
+            return j_err("Diga o que procurar.")
+        try:
+            res = await loop_().run_in_executor(
+                pool, lambda: fora.pede("musica", q=q, n=n, limite=BUSCA_MUSICA_S))
+        except Exception as ex:  # noqa: BLE001
+            return j_err(f"A busca no YouTube Music falhou ({yt_msg(ex)}).", 502)
         for x in res:
             it = A.lib.by_youtube(x["youtube_id"])
             x["in_library"] = bool(it)

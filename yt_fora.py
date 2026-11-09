@@ -7,8 +7,11 @@ carregadas, esperando o pedido (Fora); cada pedido usa um e ja abre o proximo.
 
 A saida e uma linha JSON por evento: {"progresso": f} no download e, no fim, {"r": resultado} ou {"erro": motivo}.
 Do yt-dlp volta so o que o servidor le (enxuto): o info inteiro nao e JSON e e grande."""
+import difflib
 import json
+import re
 import sys
+import unicodedata
 from pathlib import Path
 
 import yt_dlp
@@ -54,6 +57,72 @@ def baixar(alvo, opts):
         return {"info": enxuto(info), "file": Path(y.prepare_filename(info)).name}
 
 
+# palavras que nao contam na comparacao do pedido com o nome do artista
+VAZIAS = {"mc", "dj", "e", "do", "da", "de", "dos", "das", "o", "a", "os", "as", "the", "musica", "musicas", "uma", "um"}
+
+
+def palavras(texto):
+    """As palavras que contam: minusculo, sem acento, as iniciais com ponto juntas ("M.C." -> "mc", "N.W.A." ->
+    "nwa"), sem as VAZIAS."""
+    t = unicodedata.normalize("NFKD", (texto or "").lower())
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    t = re.sub(r"\b(?:[a-z0-9]\.){2,}", lambda m: m.group(0).replace(".", ""), t)
+    return [w for w in re.sub(r"[^a-z0-9 ]", " ", t).split() if w not in VAZIAS]
+
+
+def so_artista(pedido, artista):
+    """O pedido e so o nome do artista que o YouTube Music achou: cada palavra dele bate com uma do nome (a escrita
+    pode errar um pouco: "the weekend" e The Weeknd, "rei da cimbinha" e Rei da Cacimbinha). Sobrou palavra = o nome
+    da musica veio junto. O nome de um integrante ("Chorão Charlie Brown Jr") sobra e vai como musica."""
+    nomes, ped = palavras(artista), palavras(pedido)
+    return bool(ped) and bool(nomes) and all(
+        any(difflib.SequenceMatcher(None, w, x).ratio() >= 0.8 for x in nomes) for w in ped)
+
+
+def _item(x, artista=None):
+    """Um resultado do YouTube Music no formato do /api/search (o que o /api/queue recebe)."""
+    yid = x.get("videoId")
+    if not yid:
+        return None
+    nomes = ", ".join(a["name"] for a in x.get("artists") or [] if a.get("name")) or artista
+    it = {"youtube_id": yid, "title": x.get("title")}
+    if nomes:
+        it["channel"] = nomes
+    if x.get("duration_seconds"):
+        it["duration"] = x["duration_seconds"]
+    return it
+
+
+def musica(q, n, yt=None):
+    """A busca de musica do YouTube Music, como o app dele busca (09/11, o pedido falado da mina): a busca do YouTube
+    devolvia o que nao e musica ("Toca Raul" achou um video de financas; nos 90 pedidos falados das sessoes, ~7 assim),
+    e a do YouTube Music devolveu musica nos 90, em 0,74 s de mediana contra 1,41. O melhor resultado sendo um artista
+    e o pedido so o nome dele: as mais tocadas da pagina dele ("Raul" -> Metamorfose Ambulante, "Radiohead" -> Creep);
+    com o nome da musica junto, as musicas e videos da busca ("Luan Santana Chuva de Arroz" -> Chuva de Arroz). Volta
+    a lista no formato do /api/search, vazia se nada achou."""
+    if yt is None:
+        from ytmusicapi import YTMusic
+        yt = YTMusic()
+    res = yt.search(q, limit=10) or []
+    topo = res[0] if res else {}
+    if topo.get("resultType") == "artist":
+        dono = (topo.get("artists") or [{}])[0] or {}
+        bid = topo.get("browseId") or dono.get("id")
+        nome = dono.get("name") or topo.get("artist")
+        if bid and (nome is None or so_artista(q, nome)):
+            pag = yt.get_artist(bid) or {}
+            nome = pag.get("name") or nome
+            if so_artista(q, nome or ""):
+                itens = [i for i in (_item(x, nome) for x in ((pag.get("songs") or {}).get("results") or [])) if i]
+                if itens:
+                    print(f"busca: {q!r} é o artista {nome}: a mais tocada, {itens[0]['title']}", file=sys.stderr)
+                    return itens[:n]
+    itens = [i for i in (_item(x) for x in res if x.get("resultType") in ("song", "video")) if i]
+    if itens:
+        print(f"busca: {q!r} no YouTube Music: {itens[0]['title']} ({itens[0].get('channel') or '?'})", file=sys.stderr)
+    return itens[:n]
+
+
 def faz(p):
     op = p["op"]
     if "opts" in p:
@@ -69,6 +138,8 @@ def faz(p):
     if op == "radio":
         from ytmusicapi import YTMusic
         return YTMusic().get_watch_playlist(videoId=p["yid"], radio=True, limit=p["n"]).get("tracks") or []
+    if op == "musica":
+        return musica(p["q"], p.get("n", 3))
     if op == "musicas":
         from ytmusicapi import YTMusic
         return YTMusic().search(p["q"], filter="songs", limit=3)[:3]

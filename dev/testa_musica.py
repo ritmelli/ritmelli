@@ -1,0 +1,69 @@
+"""Testa a busca de musica do YouTube Music (yt_fora.musica, a rota /api/musica) sem a internet: um YouTube Music de
+mentira devolve a busca e a pagina do artista. Cobre o pedido que e so o nome do artista (a mais tocada dele, com a
+escrita errando um pouco e as iniciais com ponto), o pedido com o nome da musica junto (a musica, sem abrir a pagina do
+artista), o video entrando e o que nao e musica nem video ficando de fora. Sai 1 se algo falhar.
+
+    python dev/testa_musica.py
+"""
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import yt_fora  # noqa: E402
+
+
+class YtmFalso:
+    def __init__(self, busca, artistas=None):
+        self.busca, self.artistas, self.pediu = busca, artistas or {}, []
+
+    def search(self, q, limit=10):
+        self.pediu.append(("search", q))
+        return self.busca.get(q, [])
+
+    def get_artist(self, bid):
+        self.pediu.append(("artist", bid))
+        return self.artistas[bid]
+
+
+def artista(nome, bid):
+    return {"category": "Top result", "resultType": "artist", "artists": [{"name": nome, "id": bid}]}
+
+
+def musica(yid, titulo, nome=None, tipo="song"):
+    return {"resultType": tipo, "videoId": yid, "title": titulo, "artists": [{"name": nome}] if nome else []}
+
+
+class Musica(unittest.TestCase):
+    def test_so_artista(self):
+        for ped, art in (("Raul", "Raul Seixas"), ("the weekend", "The Weeknd"), ("rei da cimbinha", "Rei da Cacimbinha"),
+                         ("Pedro Joilson", "Pedro E Joilson"), ("M.C. Gorila", "Mc Gorila"), ("Kevin", "MC Kevin"),
+                         ("Racionais MC's", "Racionais MC's")):
+            self.assertTrue(yt_fora.so_artista(ped, art), (ped, art))
+        for ped, art in (("Luan Santana Chuva de Arroz", "Luan Santana"), ("Te dei o sol te dei o mar", "Luan Santana"),
+                         ("Gaiola funk", "MC Livinho"), ("uma música boa", "Emilly Vick")):
+            self.assertFalse(yt_fora.so_artista(ped, art), (ped, art))
+
+    def test_artista_toca_a_mais_tocada(self):
+        y = YtmFalso({"Raul": [artista("Raul Seixas", "UC1"), musica("p1", "As profecias")]},
+                     {"UC1": {"name": "Raul Seixas", "songs": {"results": [musica("m1", "Metamorfose Ambulante"),
+                                                                           musica("g1", "Gita")]}}})
+        achou = yt_fora.musica("Raul", 3, y)
+        self.assertEqual([x["youtube_id"] for x in achou], ["m1", "g1"])
+        self.assertEqual(achou[0]["channel"], "Raul Seixas", "sem o artista no resultado, vale o da página")
+
+    def test_artista_com_a_musica_toca_a_musica(self):
+        y = YtmFalso({"Luan Santana Chuva de Arroz": [artista("Luan Santana", "UC2"),
+                                                       musica("c1", "Chuva de Arroz (Ao Vivo)", "Luan Santana")]})
+        self.assertEqual(yt_fora.musica("Luan Santana Chuva de Arroz", 3, y)[0]["youtube_id"], "c1")
+        self.assertNotIn("artist", [k for k, _ in y.pediu], "com o nome da música junto, a página do artista não abre")
+
+    def test_video_entra_e_album_nao(self):
+        y = YtmFalso({"balaco balaco bico": [{"resultType": "album", "browseId": "MPRE1", "title": "Funk"},
+                                             musica("v1", "BALACO BALACO BICO", "mc lipzl", tipo="video")]})
+        self.assertEqual(yt_fora.musica("balaco balaco bico", 3, y)[0]["youtube_id"], "v1")
+        self.assertEqual(yt_fora.musica("nada", 3, YtmFalso({"nada": [{"resultType": "album"}]})), [])
+
+
+if __name__ == "__main__":
+    sys.exit(0 if unittest.main(verbosity=2, exit=False).result.wasSuccessful() else 1)
