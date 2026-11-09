@@ -69,6 +69,14 @@ class Adianta(unittest.TestCase):
         self.assertEqual(self.pedidos, [YID, YID])
         self.assertEqual(self.trocas[0]["path"], f"https://audio/{YID}")
 
+    def test_o_usado_nao_pede_de_novo(self):
+        self.app.adianta_endereco(YID)
+        self.abre()
+        self.app.adianta_endereco(YID)  # a busca da LLM chegando depois do disco ja tocar
+        time.sleep(0.1)
+        self.assertEqual(self.pedidos, [YID], "o endereco do disco que ja toca nao sai de novo")
+        self.assertIsNone(self.app.endereco_adiantado(YID), "a marca do usado nao e endereco")
+
     def test_vencido_nao_vale(self):
         with mock.patch.object(server, "ADIANTA_S", 0.0):
             self.app.adianta_endereco(YID)

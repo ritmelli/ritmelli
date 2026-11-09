@@ -90,6 +90,11 @@ VIVO_MAX_S = 3600.0
 # quantos vivos (cada um com o seu YoutubeDL quente): com um so, o endereco adiantado pelo palpite torto da mina
 # ocupava o vivo e o do pedido certo, logo atras, caia num processo de reserva (0,55 s no placar r08, contra 0,15)
 VIVOS = 2
+# o erro do proprio video (indisponivel, privado, com idade) nao e do processo: o vivo fica quente. Antes ele saia e o
+# pedido seguinte pagava o vivo frio (0,51 e 0,55 s no placar r12, com o endereco especulativo de um candidato); "not a
+# bot", 429 e o resto seguem trocando o vivo
+ERRO_DO_VIDEO = re.compile(r"video unavailable|this video is (?:not available|unavailable|private)|private video|"
+                           r"confirm your age|age[- ]restricted|has been removed|copyright", re.I)
 # os pedidos que vao de preferencia ao vivo: so o endereco (o mesmo YoutubeDL). A busca de musica no vivo nao ganhou
 # nada (09/11, placar: ~0,7 s igual, o tempo e do YouTube Music) e ocupava o vivo na hora do endereco
 VIVO_OPS = ("stream",)
@@ -277,7 +282,7 @@ class Fora:
         finally:
             if relogio:
                 relogio.cancel()
-        if r is None or "erro" in r or n >= VIVO_MAX:
+        if r is None or n >= VIVO_MAX or ("erro" in r and not ERRO_DO_VIDEO.search(str(r["erro"]))):
             self._solta_vivo(v)
         if r is None:
             raise RuntimeError("o YouTube não respondeu a tempo" if estourou.is_set() else
@@ -847,7 +852,10 @@ class App:
         """O Future do endereco adiantado de yid (uma vez so), ou None."""
         with self._adi_lock:
             x = self._adiantados.pop(yid, None) if yid else None
-        return x[0] if x and time.monotonic() - x[1] <= ADIANTA_S else None
+            if x is not None and x[0] is not None:  # a marca do usado: a busca que chega depois (a da LLM, a do
+                self._adiantados[yid] = (None, time.monotonic())  # lote) nao pede de novo o endereco do disco que ja
+                # toca (revisao da r12: um endereco e um ffmpeg orfao a cada uso da antecipada)
+        return x[0] if x and x[0] is not None and time.monotonic() - x[1] <= ADIANTA_S else None
 
     def _abre_stream(self, tr, target, tem_titulo):
         """O YouTube as vezes recusa o endereco do audio e na tentativa seguinte libera (um disco de 1h45 so tocou depois de baixar, calado). Tenta tres vezes, a ultima

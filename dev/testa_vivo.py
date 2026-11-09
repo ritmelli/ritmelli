@@ -24,6 +24,8 @@ import yt_fora
 def faz(p):
     if p.get("alvo") == "erro":
         raise RuntimeError("o YouTube recusou")
+    if p.get("alvo") == "indisponivel":
+        raise RuntimeError("ERROR: [youtube] xyz: Video unavailable. This video is not available")
     if p.get("alvo") == "dorme":
         time.sleep(float(p.get("s", 3)))
     yt_fora._N = getattr(yt_fora, "_N", 0) + 1
@@ -86,6 +88,14 @@ class Vivo(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "recusou"):
             self.stream("erro")
         self.assertNotEqual(self.stream()["pid"], a["pid"])
+
+    def test_erro_do_video_nao_troca_o_vivo(self):
+        a = self.stream()
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
+            self.stream("indisponivel")
+        b = self.stream()
+        self.assertEqual(b["pid"], a["pid"], "o video indisponivel nao e defeito do processo: o vivo fica quente")
+        self.assertEqual(b["n"], a["n"] + 1, "o mesmo processo (o falso so conta o que deu certo)")
 
     def test_limite_mata_e_o_seguinte_abre_outro(self):
         a = self.stream()
