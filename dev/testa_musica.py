@@ -10,6 +10,7 @@ se algo falhar.
 import json
 import subprocess
 import sys
+import threading
 import time
 import types
 import unittest
@@ -280,19 +281,27 @@ yt_fora.main()
         self.assertLess(time.monotonic() - t0, 3.5, "a busca de 5 s ficou para tras sem segurar o processo")
 
     def test_pre_conecta(self):
+        solta = threading.Event()
+
         class Conexao:
             def __init__(self, ligada):
                 self.is_connected = ligada
 
             def connect(self):
+                solta.wait(5)
                 self.is_connected = True
 
+            def close(self):
+                pass
+
         class Pool:
+            proxy = None
+
             def __init__(self):
                 self.fila = [Conexao(True)]  # a do visitor id
 
             def _get_conn(self):
-                return self.fila.pop() if self.fila else Conexao(False)
+                return (self.fila.pop() if self.fila else None) or Conexao(False)
 
             def _put_conn(self, c):
                 self.fila.append(c)
@@ -301,9 +310,48 @@ yt_fora.main()
         sessao = types.SimpleNamespace(verify=True, cert=None, get_adapter=lambda url: adaptador,
                                        merge_environment_settings=lambda url, p, s, v, c: {
                                            "verify": v, "proxies": p, "cert": c})
-        yt_fora.pre_conecta(types.SimpleNamespace(_session=sessao, proxies=None))
+        th = threading.Thread(target=yt_fora.pre_conecta, args=(types.SimpleNamespace(_session=sessao, proxies=None),))
+        th.start()
+        time.sleep(0.2)  # a nova no meio do aperto de mao
+        self.assertEqual([c.is_connected for c in pool.fila], [True], "a quente ja voltou ao pool (revisao da r13)")
+        solta.set()
+        th.join()
         self.assertEqual([c.is_connected for c in pool.fila], [True, True], "duas abertas, as duas de volta ao pool")
         yt_fora.pre_conecta(types.SimpleNamespace(_session=None, proxies=None))  # falhou: so o log, sem erro
+
+    def test_liga_que_falha_nao_estraga_o_pool(self):
+        """Pool de verdade do urllib3 contra um servidor local que fecha no meio do aperto de mao: o pedido seguinte
+        pega um lugar vazio e abre a dele, sem o "file descriptor cannot be a negative integer" (revisao da r13)."""
+        import socket
+        import urllib3
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(4)
+
+        def fecha():
+            for _ in range(2):
+                try:
+                    c, _ = srv.accept()
+                    c.close()
+                except OSError:
+                    return
+        threading.Thread(target=fecha, daemon=True).start()
+        pool = urllib3.HTTPSConnectionPool("127.0.0.1", srv.getsockname()[1], maxsize=2)
+        try:
+            with self.assertRaises(Exception):
+                yt_fora.liga(pool, 2)
+            for _ in range(2):
+                c = pool._get_conn()  # antes quebrava aqui
+                self.assertFalse(c.is_connected)
+        finally:
+            srv.close()
+
+    def test_liga_com_proxy_nao_conecta(self):
+        """Com proxy o connect cru pulava o CONNECT do tunel: nada se abre (revisao da r13)."""
+        import urllib3
+        pool = urllib3.ProxyManager("http://127.0.0.1:9").connection_from_url("https://music.youtube.com/")
+        yt_fora.liga(pool, 2)
+        self.assertEqual(pool.num_connections, 0)
 
 
 if __name__ == "__main__":

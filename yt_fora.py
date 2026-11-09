@@ -185,18 +185,34 @@ def pre_conecta(yt, n=2):
         cfg = s.merge_environment_settings(YTM_BASE_API, yt.proxies or {}, None, s.verify, s.cert)
         pool = s.get_adapter(YTM_BASE_API).get_connection_with_tls_context(
             requests.Request("POST", YTM_BASE_API).prepare(), cfg["verify"], cfg["proxies"], cfg["cert"])
-        tiradas = []
-        try:
-            for _ in range(n):
-                c = pool._get_conn()
-                tiradas.append(c)
-                if not c.is_connected:
-                    c.connect()
-        finally:
-            for c in tiradas:
-                pool._put_conn(c)
+        liga(pool, n)
     except Exception as ex:  # noqa: BLE001 - sem a segunda, a busca abre a dela
         print(f"YouTube Music: a segunda conexão não abriu ({str(ex)[:100]})", file=sys.stderr)
+
+
+def liga(pool, n, timeout=5.0):
+    """(do pre_conecta) Deixa n conexoes ligadas no pool do urllib3. As ja ligadas voltam na hora, e so a nova fica fora
+    durante o aperto de mao: um pedido que chega no meio pega a quente, nao uma nova sem ligar (revisao da r13). Com
+    proxy nao faz nada: o connect cru pula o CONNECT do tunel e mandava o TLS direto ao proxy. A que falha fecha e o
+    pool recebe o lugar vazio (None), nunca a conexao com o socket desligado, que quebrava o pedido seguinte com
+    "file descriptor cannot be a negative integer" (revisao da r13)."""
+    if getattr(pool, "proxy", None) is not None:
+        return
+    tiradas = [pool._get_conn() for _ in range(n)]
+    novas = [c for c in tiradas if not c.is_connected]
+    for c in tiradas:
+        if c.is_connected:
+            pool._put_conn(c)
+    for i, c in enumerate(novas):
+        try:
+            c.timeout = timeout  # sem ele, um connect mudo segurava a thread para sempre (o pedido regrava o dele)
+            c.connect()
+        except Exception:  # noqa: BLE001 - a conexao abre na hora do pedido, como antes
+            for x in novas[i:]:
+                x.close()
+                pool._put_conn(None)
+            raise
+        pool._put_conn(c)
 
 
 def ytm():
