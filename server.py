@@ -71,6 +71,10 @@ ABAIXO_DO_NORMAL = 0x00004000  # prioridade do processo da medida no Windows: ce
 pool = ThreadPoolExecutor(4)
 BUSCA_MUSICA_S = 4.0  # a busca do YouTube Music (/api/musica) que passa disso falha: quem pediu cai na do YouTube
 FORA_LIMITE_S = 120.0  # pedido ao YouTube (fora o download) que nao volta nisso morre: o disco nao fica esperando
+# o processo vivo dos enderecos (Fora._pede_vivo): quantos ele atende e por quanto tempo, antes de sair e o
+# seguinte abrir outro. VIVO_MAX = 0 desliga: todo endereco num processo novo, como antes de 09/11
+VIVO_MAX = 40
+VIVO_MAX_S = 3600.0
 REDE_VIGIA_S = 3.0  # a porta do celular se confere a cada isso, e se caiu (o PC dormiu) abre de novo
 
 
@@ -85,11 +89,16 @@ def auxiliar(modo):
 class Fora:
     """O YouTube pelo yt_fora.py (auxiliar --yt), num processo a parte (o audio estalava com o yt-dlp aqui dentro): um
     processo fica aberto de reserva, com as bibliotecas ja carregadas; cada pedido leva o de reserva e abre o
-    proximo, e pedidos ao mesmo tempo nao esperam um pelo outro."""
+    proximo, e pedidos ao mesmo tempo nao esperam um pelo outro. O endereco de stream vai de preferencia a um
+    processo que fica vivo (ver _pede_vivo)."""
 
     def __init__(self):
         self.lock = threading.Lock()
         self.reserva = None
+        self.vivo = None  # o processo vivo dos enderecos, sob vivo_lock
+        self.vivo_lock = threading.Lock()
+        self.vivo_n = 0
+        self.vivo_desde = 0.0
 
     @staticmethod
     def _abre():
@@ -117,14 +126,24 @@ class Fora:
             p.stdin.close()  # ja havia um: este sai sem pedido
             p.wait()
 
-    def pede(self, op, progresso=None, limite=FORA_LIMITE_S, **args):
-        """O resultado do pedido op (ver o yt_fora.py); progresso(f) recebe o andamento do download. Erro do
-        YouTube vira RuntimeError com o motivo."""
+    def _tira_reserva(self):
+        """O de reserva (ou um novo, se nao ha), ja abrindo o seguinte."""
         with self.lock:
             p, self.reserva = self.reserva, None
         if p is None or p.poll() is not None:
             p = self._abre()
         threading.Thread(target=self.aquece, daemon=True).start()
+        return p
+
+    def pede(self, op, progresso=None, limite=FORA_LIMITE_S, **args):
+        """O resultado do pedido op (ver o yt_fora.py); progresso(f) recebe o andamento do download. Erro do
+        YouTube vira RuntimeError com o motivo."""
+        if op == "stream" and VIVO_MAX and self.vivo_lock.acquire(blocking=False):
+            try:
+                return self._pede_vivo(op, limite, args)
+            finally:
+                self.vivo_lock.release()
+        p, t0 = self._tira_reserva(), time.monotonic()
         estourou = threading.Event()
         relogio = threading.Timer(limite, lambda: (estourou.set(), p.kill())) if limite else None
         if relogio:
@@ -154,7 +173,79 @@ class Fora:
                                "o processo do YouTube saiu sem resposta")
         if "erro" in r:
             raise RuntimeError(r["erro"])
+        if op == "stream":
+            print(f"stream: {time.monotonic() - t0:.2f} s num processo novo"
+                  f"{' (o vivo estava ocupado)' if VIVO_MAX else ''}", file=sys.stderr, flush=True)
         return r["r"]
+
+    def _pede_vivo(self, op, limite, args):
+        """(sob vivo_lock) O pedido pelo processo vivo: no yt_fora o YoutubeDL e o mesmo de um pedido ao outro e
+        guarda o player do YouTube ja lido, e o endereco sai em 0,80 s em vez de 1,48 (notebook, 09/11). Um pedido
+        por vez: quem chega com ele ocupado vai pelo de reserva, como antes. Ele sai depois de VIVO_MAX pedidos ou
+        VIVO_MAX_S, e no erro e no estouro do limite (o YouTube recusando pode ser estado velho dele); o seguinte
+        abre outro com o de reserva."""
+        p = self.vivo
+        if p is not None and (p.poll() is not None or time.monotonic() - self.vivo_desde > VIVO_MAX_S):
+            self._solta_vivo()
+            p = None
+        novo = p is None
+        if novo:
+            p = self.vivo = self._tira_reserva()
+            self.vivo_n, self.vivo_desde = 0, time.monotonic()
+        self.vivo_n += 1
+        n, t0 = self.vivo_n, time.monotonic()
+        estourou = threading.Event()
+        relogio = threading.Timer(limite, lambda: (estourou.set(), p.kill())) if limite else None
+        if relogio:
+            relogio.start()
+        r = None
+        try:
+            p.stdin.write(json.dumps({"op": op, "vivo": True, **args}) + "\n")
+            p.stdin.flush()
+            while r is None:
+                linha = p.stdout.readline()
+                if not linha:
+                    break  # o processo saiu (o relogio, ou caiu)
+                try:
+                    m = json.loads(linha)
+                except ValueError:
+                    continue
+                if isinstance(m, dict) and ("r" in m or "erro" in m):
+                    r = m
+        except OSError:
+            pass  # o cano fechou no meio: o processo morreu
+        finally:
+            if relogio:
+                relogio.cancel()
+        if r is None or "erro" in r or n >= VIVO_MAX:
+            self._solta_vivo()
+        if r is None:
+            raise RuntimeError("o YouTube não respondeu a tempo" if estourou.is_set() else
+                               "o processo do YouTube saiu sem resposta")
+        if "erro" in r:
+            raise RuntimeError(r["erro"])
+        print(f"{op}: {time.monotonic() - t0:.2f} s no processo vivo ({n}º pedido dele"
+              f"{', o primeiro paga o preço cheio' if novo else ''})", file=sys.stderr, flush=True)
+        return r["r"]
+
+    def _solta_vivo(self):
+        """(sob vivo_lock) O vivo sai: le o fim da entrada e termina; se nao terminar em 5 s, morre."""
+        p, self.vivo = self.vivo, None
+        if p is None:
+            return
+        try:
+            p.stdin.close()
+        except OSError:
+            pass
+
+        def espera():
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                p.wait()
+            p.stdout.close()
+        threading.Thread(target=espera, daemon=True).start()
 
 
 fora = Fora()

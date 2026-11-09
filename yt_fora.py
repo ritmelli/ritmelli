@@ -29,10 +29,29 @@ def enxuto(info):
     return out
 
 
+# O processo vivo dos enderecos (09/11): o servidor manda os pedidos de stream, um por linha, a um processo que fica
+# aberto, e aqui o YoutubeDL e o mesmo de um pedido ao outro. E ele que guarda o player do YouTube ja lido: no
+# notebook, com 9 musicas, o endereco saiu em 1,48 s com um YoutubeDL novo a cada pedido no mesmo processo e em
+# 0,80 s com o mesmo (o primeiro paga os 1,5 s de sempre)
+VIVO = False
+_YDLS = {}
+
+
+def _ydl(opts):
+    """O YoutubeDL das opts no processo vivo: o mesmo a cada pedido (as opts mudam so na tentativa com outro formato)."""
+    k = json.dumps(opts, sort_keys=True)
+    if k not in _YDLS:
+        _YDLS[k] = yt_dlp.YoutubeDL(opts)
+    return _YDLS[k]
+
+
 def stream_yt(alvo, opts):
     """O info do yt-dlp com o endereco direto do audio no YouTube e os cabecalhos HTTP dele, em texto para o ffmpeg."""
-    with yt_dlp.YoutubeDL(opts) as y:
-        info = y.extract_info(alvo, download=False)
+    if VIVO:
+        info = _ydl(opts).extract_info(alvo, download=False)
+    else:
+        with yt_dlp.YoutubeDL(opts) as y:
+            info = y.extract_info(alvo, download=False)
     if info.get("entries"):
         info = info["entries"][0]
     if not info.get("url"):
@@ -187,11 +206,25 @@ def main():
     else:
         _AQUECE = threading.Thread(target=aquece_ytm, daemon=True)
         _AQUECE.start()
-    pedido = sys.stdin.read()
-    if not pedido.strip():
+    # o pedido e uma linha JSON (o servidor de antes escrevia sem a quebra e fechava a entrada: o readline le igual);
+    # com "vivo", o processo segue atendendo um pedido por linha ate o servidor fechar a entrada
+    linha = sys.stdin.readline()
+    if not linha.strip():
         sys.exit(0)  # o servidor fechou sem pedir (saiu, ou este era o de reserva)
+    responde(linha)
+    while VIVO:
+        linha = sys.stdin.readline()
+        if not linha.strip():
+            break
+        responde(linha)
+
+
+def responde(linha):
+    global VIVO
     try:
-        print(json.dumps({"r": faz(json.loads(pedido))}), flush=True)
+        p = json.loads(linha)
+        VIVO = bool(p.pop("vivo", False)) or VIVO
+        print(json.dumps({"r": faz(p)}), flush=True)
     except Exception as ex:  # noqa: BLE001 - o servidor poe o motivo no log e na tela
         print(json.dumps({"erro": str(ex) or type(ex).__name__}), flush=True)
 
