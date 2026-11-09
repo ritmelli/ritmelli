@@ -246,8 +246,9 @@ vez, peça o `/api/state` para saber se é o 401.
 
 O app consulta o manifesto das versões uns 30 s depois de abrir e de 6 em 6 horas
 (`atualizacao.py`). Só vale o manifesto assinado pela chave da Vitrola, e só para uma versão
-mais nova que a que está rodando. Pelo código (`python server.py`), e enquanto o endereço do
-manifesto e a chave não estão no `atualizacao.py`, nada é consultado e `ativa` vem `false`.
+mais nova que a que está rodando. As versões ficam nas Releases do repo público
+`vitrola-app/vitrola-releases`. Pelo código (`python server.py`), nada é consultado e `ativa`
+vem `false`.
 
 - O `estado` anda assim: `parado` (com ou sem `nova`), `baixando`, `pronta` e, depois do
   `POST /api/atualizacao/instalar`, `instalando`. Um download que falha volta para `parado`, com
