@@ -75,6 +75,9 @@ FORA_LIMITE_S = 120.0  # pedido ao YouTube (fora o download) que nao volta nisso
 # seguinte abrir outro. VIVO_MAX = 0 desliga: todo endereco num processo novo, como antes de 09/11
 VIVO_MAX = 40
 VIVO_MAX_S = 3600.0
+# o endereco rapido (yt_fora.RAPIDO_ARGS, 09/11): so o cliente visionos, sem a pagina do video; falhou, o de sempre no
+# mesmo processo. False = sempre o de sempre
+ENDERECO_RAPIDO = True
 REDE_VIGIA_S = 3.0  # a porta do celular se confere a cada isso, e se caiu (o PC dormiu) abre de novo
 
 
@@ -580,7 +583,8 @@ class App:
         """Endereco direto do audio no YouTube, para o ffmpeg tocar sem baixar antes (sai em
         1 a 3 s; um download leva bem mais). Volta o info do yt-dlp (enxuto: o endereco em url, id, title,
         channel, uploader e duration) e os cabecalhos HTTP."""
-        r = fora.pede("stream", alvo=self.alvo_yt(target), opts=self.opts_stream(formato))
+        r = fora.pede("stream", alvo=self.alvo_yt(target), opts=self.opts_stream(formato),
+                      rapido=ENDERECO_RAPIDO and formato is None)
         return r["info"], r["hdr"]
 
     @staticmethod

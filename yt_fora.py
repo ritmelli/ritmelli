@@ -45,6 +45,25 @@ def _ydl(opts):
     return _YDLS[k]
 
 
+# O endereco rapido (09/11): com o YoutubeDL quente, 0,68 s dos 0,89 s do endereco eram a pagina do video; sem ela o
+# yt-dlp pede o initial data (0,5 a 0,7 s) e o cliente web com o JS do player. So o cliente visionos (o que da o
+# audio 251 sem o desafio de JS), sem a pagina, o initial data, os configs e o JS, com o visitor data do cliente do
+# YouTube Music (sem ele o YouTube pede "Sign in to confirm you're not a bot"): no PC, 6 videos em 0,14 a 0,21 s, todos
+# tocando no ffmpeg. Falhou, vai o de sempre no mesmo processo (faz)
+RAPIDO_ARGS = {"player_client": ["visionos"], "player_skip": ["webpage", "configs", "initial_data", "js"],
+               "skip": ["hls"]}
+
+
+def opts_rapido(opts):
+    """As opts do endereco rapido (ver RAPIDO_ARGS), com o visitor id do cliente do YouTube Music."""
+    vid = ytm().headers.get("X-Goog-Visitor-Id")
+    if not vid:
+        raise RuntimeError("sem o visitor id do YouTube Music")
+    ea = dict(opts.get("extractor_args") or {})
+    ea["youtube"] = {**(ea.get("youtube") or {}), **RAPIDO_ARGS, "visitor_data": [vid]}
+    return {**opts, "extractor_args": ea}
+
+
 def stream_yt(alvo, opts):
     """O info do yt-dlp com o endereco direto do audio no YouTube e os cabecalhos HTTP dele, em texto para o ffmpeg."""
     if VIVO:
@@ -180,7 +199,15 @@ def faz(p):
     if "opts" in p:
         p["opts"] = {**p["opts"], "logtostderr": True}  # a saida e so do JSON: o que o yt-dlp diz vai para o log
     if op == "stream":
-        info, hdr = stream_yt(p["alvo"], p["opts"])
+        info = None
+        if p.get("rapido"):
+            try:
+                info, hdr = stream_yt(p["alvo"], opts_rapido(p["opts"]))
+            except Exception as ex:  # noqa: BLE001 - o de sempre logo em seguida, no mesmo processo
+                print(f"stream: o rapido falhou em {p['alvo']} ({str(ex)[:120]}): vai pelo de sempre", file=sys.stderr,
+                      flush=True)
+        if info is None:
+            info, hdr = stream_yt(p["alvo"], p["opts"])
         return {"info": dict(enxuto(info), url=info["url"]), "hdr": hdr}
     if op == "info":
         with yt_dlp.YoutubeDL(p["opts"]) as y:
