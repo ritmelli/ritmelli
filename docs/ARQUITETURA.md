@@ -40,7 +40,11 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   de reserva, com as bibliotecas carregadas, e cada pedido (stream, busca, download com o
   progresso, rádio, Mix, versão só de áudio) leva o de reserva e abre o próximo; volta só o
   que o servidor lê, em JSON, e o que o yt-dlp diz vai para o log de erros. Abre como
-  `vitrola.py --yt`.
+  `vitrola.py --yt`. O endereço de stream vai de preferência a um processo que fica vivo e
+  atende um pedido por linha com o mesmo `YoutubeDL`, que guarda o player do YouTube já lido
+  (no notebook, 0,80 s por endereço em vez de 1,48 s); ocupado, vai pelo de reserva, e ele sai
+  no erro, no estouro do limite, depois de `VIVO_MAX` pedidos e de `VIVO_MAX_S` (o
+  `VIVO_MAX = 0` desliga).
 - `vitrola.py`: o ponto de entrada, o mesmo do executável. Sem modo, liga o servidor. Se
   outra Vitrola já está ligada na mesma porta (o atalho clicado de novo), só abre a página
   dela; se ela ainda está ligando, sai sem fazer nada, porque a página abre quando ela
