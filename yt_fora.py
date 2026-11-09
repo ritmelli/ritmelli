@@ -11,6 +11,7 @@ import difflib
 import json
 import re
 import sys
+import threading
 import unicodedata
 from pathlib import Path
 
@@ -93,6 +94,39 @@ def _item(x, artista=None):
     return it
 
 
+# O cliente do YouTube Music aquecido na espera (09/11): o primeiro pedido de um cliente novo busca antes o visitor id
+# (abre a pagina inicial do YouTube Music), 0,53 a 0,60 s medidos no PC com a ytmusicapi 1.12.3, e todo pedido e um
+# processo novo, entao toda busca pagava isso (1,3 s contra 0,7 com o cliente ja usado). O processo de reserva faz isso
+# numa thread enquanto espera; o pedido que nao e do YouTube Music (o endereco de stream, logo depois da busca) nao
+# espera por ela
+_YTM = None
+_AQUECE = None
+_AQUECE_ERRO = None
+
+
+def aquece_ytm():
+    global _YTM, _AQUECE_ERRO
+    try:
+        from ytmusicapi import YTMusic
+        yt = YTMusic()
+        yt.headers  # noqa: B018 - o visitor id vem no primeiro acesso aos cabecalhos
+        _YTM = yt
+    except Exception as ex:  # noqa: BLE001 - sem o aquecido, o pedido abre um cliente novo
+        _AQUECE_ERRO = str(ex)[:120] or type(ex).__name__
+
+
+def ytm():
+    """O cliente do YouTube Music: o aquecido (esperando o aquecimento terminar) ou, se ele falhou, um novo."""
+    from ytmusicapi import YTMusic
+    if _AQUECE is not None:
+        _AQUECE.join()
+    if _YTM is not None:
+        return _YTM
+    if _AQUECE_ERRO:
+        print(f"YouTube Music: o aquecimento falhou ({_AQUECE_ERRO}): cliente novo", file=sys.stderr)
+    return YTMusic()
+
+
 def musica(q, n, yt=None):
     """A busca de musica do YouTube Music, como o app dele busca (09/11, o pedido falado da mina): a busca do YouTube
     devolvia o que nao e musica ("Toca Raul" achou um video de financas; nos 90 pedidos falados das sessoes, ~7 assim),
@@ -101,8 +135,7 @@ def musica(q, n, yt=None):
     com o nome da musica junto, as musicas e videos da busca ("Luan Santana Chuva de Arroz" -> Chuva de Arroz). Volta
     a lista no formato do /api/search, vazia se nada achou."""
     if yt is None:
-        from ytmusicapi import YTMusic
-        yt = YTMusic()
+        yt = ytm()
     res = yt.search(q, limit=10) or []
     topo = res[0] if res else {}
     if topo.get("resultType") == "artist":
@@ -136,22 +169,24 @@ def faz(p):
     if op == "baixar":
         return baixar(p["alvo"], p["opts"])
     if op == "radio":
-        from ytmusicapi import YTMusic
-        return YTMusic().get_watch_playlist(videoId=p["yid"], radio=True, limit=p["n"]).get("tracks") or []
+        return ytm().get_watch_playlist(videoId=p["yid"], radio=True, limit=p["n"]).get("tracks") or []
     if op == "musica":
         return musica(p["q"], p.get("n", 3))
     if op == "musicas":
-        from ytmusicapi import YTMusic
-        return YTMusic().search(p["q"], filter="songs", limit=3)[:3]
+        return ytm().search(p["q"], filter="songs", limit=3)[:3]
     raise ValueError(f"pedido desconhecido: {op}")
 
 
 def main():
+    global _AQUECE
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # o servidor le o cano em utf-8
     try:
         import ytmusicapi  # noqa: F401 - carregada ja na espera, como o yt-dlp
     except ImportError:
         pass  # sem ela, o radio e a versao de audio voltam erro e o servidor segue com o Mix do YouTube
+    else:
+        _AQUECE = threading.Thread(target=aquece_ytm, daemon=True)
+        _AQUECE.start()
     pedido = sys.stdin.read()
     if not pedido.strip():
         sys.exit(0)  # o servidor fechou sem pedir (saiu, ou este era o de reserva)
