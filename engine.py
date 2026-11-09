@@ -45,6 +45,7 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 FFMPEG = pastas.ferramenta("ffmpeg") or "ffmpeg"  # o que vem com o app, ou o do PATH
 FFPROBE = pastas.ferramenta("ffprobe") or "ffprobe"
 CURTO_MAX_S = 15  # ate isso o pad toca por cima da musica em vez de trocar
+STREAM_CAIU_S = 5.0  # o stream que para mais que isso antes do fim (ou sem audio nenhum) caiu: o servidor religa
 RAPIDO_MAX_S = 120  # o posto nos Sons rapidos pela mao toca inteiro por cima ate isso (2 minutos)
 MINA_FOLGA_S = 0.1  # a voz da mina (mina.py) chega em pedacos de 100 ms, com folga de rede: a fila vazia recomeca com isso
 MINA_FILA_MAX_S = 1.0  # fila dela maior que isso (a rede segurou e despejou): o silencio do comeco sai
@@ -777,6 +778,9 @@ class Engine:
         self.virou = None        # (o que saiu, o que entrou, a tag) para o servidor tirar da fila
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
         self.pronto_falhou = None  # a tag da proxima que nao decodificou: o servidor nao prepara de novo
+        # o servidor religa a parecida do Automatico cujo stream caiu: religar_stream(disco, onde parou, desistir), na
+        # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue, como antes
+        self.religar_stream = None
         # o visor de DJ do tema: as ondas por id do disco (_onda_pede, onda) e a passagem que vem e a que acabou de
         # acontecer, no formato do visor (_mede, _vira; ver o snapshot)
         self._ondas = collections.OrderedDict()
@@ -1355,21 +1359,41 @@ class Engine:
             if n == 0 and deck is not self._deck:  # a proxima que nao decodifica so nao entra
                 deck.eof_gen = gen
                 return
+            # a parecida do Automatico (stream sem download) que o YouTube parou de mandar: sem audio nenhum, ou mais
+            # que STREAM_CAIU_S antes do fim; o servidor tira um endereco novo e toca de onde parou (08/11: a H.S.K.T.
+            # acabou na hora que entrou e a fila pulou calada para a seguinte, com a mina dizendo o nome dela)
+            fim, dur = t + n / SR, track.get("duration") or 0
+            caiu = fim < dur - STREAM_CAIU_S if dur else n == 0
+            religar = self.religar_stream
+            if stream and caiu and not track.get("job") and deck is self._deck and religar is not None:
+                religar(track, fim, lambda: self._stream_desistiu(deck, gen, track, fim))
+                return
             if n == 0:
-                nome = track.get("title") or "o arquivo"
-                quando = f"{int(t // 60)}:{int(t % 60):02d}"
-                if track.get("stream"):
-                    self.error = (f"O YouTube parou de mandar o áudio de \"{nome}\" em {quando}. "
-                                  "Toque de novo, ou espere ele chegar na prateleira.")
-                else:
-                    self.error = (f"Não consegui ler o áudio de \"{nome}\" a partir de {quando}. "
-                                  "O arquivo pode estar corrompido; apague e baixe de novo.")
+                self._erro_de_leitura(track, t)
                 deck.eof_gen = gen
                 return
             if not self.loop or deck is not self._deck:
                 deck.eof_gen = gen
                 return
             t = 0.0
+
+    def _erro_de_leitura(self, track, t):
+        nome = track.get("title") or "o arquivo"
+        quando = f"{int(t // 60)}:{int(t % 60):02d}"
+        if track.get("stream"):
+            self.error = (f"O YouTube parou de mandar o áudio de \"{nome}\" em {quando}. "
+                          "Toque de novo, ou espere ele chegar na prateleira.")
+        else:
+            self.error = (f"Não consegui ler o áudio de \"{nome}\" a partir de {quando}. "
+                          "O arquivo pode estar corrompido; apague e baixe de novo.")
+
+    def _stream_desistiu(self, deck, gen, track, t):
+        """O servidor nao religou o stream que caiu: o disco acaba ali e a fila segue, se ele ainda esta no prato."""
+        with self._qlock:
+            if deck is not self._deck or deck.gen != gen or self.track is not track:
+                return
+            self._erro_de_leitura(track, t)
+            deck.eof_gen = gen
 
     def _decodifica(self, path, limite):
         ff = subprocess.run([FFMPEG, "-v", "error", "-i", path, "-t", str(limite),

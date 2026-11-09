@@ -55,6 +55,7 @@ if ffmpeg := pastas.ferramenta("ffmpeg"):
     YDL["ffmpeg_location"] = ffmpeg
 ANTERIOR_REINICIA_S = 3.0  # depois disso o Anterior volta ao comeco do disco, como no Spotify
 HISTORICO_MAX = 50
+STREAM_RELIGA = 2  # enderecos novos que a parecida do Automatico ganha quando o stream cai, antes de passar adiante
 TOCADAS_MAX = 2000  # GET /api/tocadas: os youtube_id que tocaram desde que o servidor subiu (o historico e do Anterior)
 AUTO_FILA = 5  # o Automatico mantem tantas parecidas no fim do A seguir
 AUTO_LOTE = 50  # quantas parecidas cada busca traz (o radio do YouTube Music da 50 em ~1 s, 21/10)
@@ -395,6 +396,7 @@ class App:
         self.engine = cls(mic=self.cfg.get("mic", "default"), out=self.cfg.get("out", "CABLE Input"),
                           monitor=self.cfg.get("monitor", "default"))
         self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
+        self.engine.religar_stream = self.religar_stream
         self.cfg.pop("mic_vol", None)  # o nivel da voz e o do Windows, que guarda sozinho (18/10)
         for k in ("vol", "mon_vol", "monitor_on", "voice_mon_vol"):
             if k in self.cfg:
@@ -657,6 +659,30 @@ class App:
                     channel=tr["channel"] or info.get("channel") or info.get("uploader"),
                     thumb=tr["thumb"] or thumb(yid), duration=tr["duration"] or info.get("duration"))
         self.engine.trocar_fonte(tr, novo)
+
+    def religar_stream(self, tr, pos, desistir):
+        """O leitor do motor (na thread dele): o stream da parecida do Automatico caiu em pos, sem audio ou antes do
+        fim (o YouTube corta o endereco as vezes: 2 de ~15 em 27/10). Ate STREAM_RELIGA vezes por disco, um endereco
+        novo toca de onde parou; depois disso, ou sem endereco, desistir() acaba o disco e a fila segue. Toda queda
+        vai para o log."""
+        nome = tr.get("title") or tr.get("youtube_id")
+        quando = f"{int(pos // 60)}:{int(pos % 60):02d}"
+        k = tr.get("religou", 0) + 1
+        if k > STREAM_RELIGA:
+            print(f"stream: {nome!r} caiu de novo em {quando} depois de {STREAM_RELIGA} enderecos novos: "
+                  "passo para a proxima", file=sys.stderr, flush=True)
+            desistir()
+            return
+        print(f"stream: {nome!r} caiu em {quando}: pego um endereco novo ({k} de {STREAM_RELIGA})",
+              file=sys.stderr, flush=True)
+        try:
+            info, hdr = self.stream_info(tr.get("youtube_id") or tr.get("alvo"))
+        except Exception as ex:  # noqa: BLE001 - sem endereco, o disco acaba como antes
+            print(f"stream: o endereco novo de {nome!r} falhou ({yt_msg(ex)}): passo para a proxima",
+                  file=sys.stderr, flush=True)
+            desistir()
+            return
+        self.engine.trocar_fonte(tr, dict(tr, path=info["url"], headers=hdr, religou=k))
 
     # historico (Anterior) -------------------------------------------------
     def entrada_de(self, tr):
