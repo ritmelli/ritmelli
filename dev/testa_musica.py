@@ -7,6 +7,7 @@ artista), o video entrando e o que nao e musica nem video ficando de fora. Sai 1
 """
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -14,8 +15,19 @@ import yt_fora  # noqa: E402
 
 
 class YtmFalso:
-    def __init__(self, busca, artistas=None):
+    def __init__(self, busca, artistas=None, sugestoes=None):
         self.busca, self.artistas, self.pediu = busca, artistas or {}, []
+        self.sugestoes = sugestoes or {}
+
+    def _send_request(self, endpoint, corpo):
+        self.pediu.append(("sugestao", corpo["input"]))
+        itens = []
+        for yid, titulo, segunda in self.sugestoes.get(corpo["input"], []):
+            itens.append({"musicResponsiveListItemRenderer": {
+                "playlistItemData": {"videoId": yid},
+                "flexColumns": [{"musicResponsiveListItemFlexColumnRenderer": {"text": {"runs": [{"text": t}]}}}
+                                for t in (titulo, segunda)]}})
+        return {"contents": [{"searchSuggestionsSectionRenderer": {"contents": itens}}]}
 
     def search(self, q, limit=10):
         self.pediu.append(("search", q))
@@ -63,6 +75,43 @@ class Musica(unittest.TestCase):
                                              musica("v1", "BALACO BALACO BICO", "mc lipzl", tipo="video")]})
         self.assertEqual(yt_fora.musica("balaco balaco bico", 3, y)[0]["youtube_id"], "v1")
         self.assertEqual(yt_fora.musica("nada", 3, YtmFalso({"nada": [{"resultType": "album"}]})), [])
+
+
+class Sugestao(unittest.TestCase):
+    def busca(self):
+        return {"cheia de manias": [musica("v1", "Raça Negra - Cheia de Manias (Deezer Sessions)", "Raça Negra")],
+                "alors on danse": [musica("v2", "Alors on danse", "Stromae")],
+                "uma rapariga e bom demais": [musica("v3", "UMA RAPARIGA É BOM DEMAIS", "Filho do Piseiro")]}
+
+    def test_song_que_bate(self):
+        y = YtmFalso(self.busca(), sugestoes={"cheia de manias": [
+            ("s1", "Cheia de Manias", "Song • Raça Negra • 168M plays")]})
+        r = yt_fora.musica("cheia de manias", 3, y)
+        self.assertEqual((r[0]["youtube_id"], r[0]["channel"]), ("s1", "Raça Negra"))
+        self.assertNotIn("search", [k for k, _ in y.pediu], "pela sugestao, sem a busca")
+
+    def test_video_na_frente_vai_a_busca(self):
+        y = YtmFalso(self.busca(), sugestoes={"alors on danse": [
+            ("s2", "Stromae - Alors On Dance (Dubdogz Remix)", "Video • 3.8M views"),
+            ("s3", "Alors on danse", "Song • Stromae • 900M plays")]})
+        self.assertEqual(yt_fora.musica("alors on danse", 3, y)[0]["youtube_id"], "v2")
+
+    def test_song_que_nao_bate_vai_a_busca(self):
+        y = YtmFalso(self.busca(), sugestoes={"uma rapariga e bom demais": [
+            ("s4", "Raparigas", "Song • Filho do Piseiro • 19M plays")]})
+        self.assertEqual(yt_fora.musica("uma rapariga e bom demais", 3, y)[0]["youtube_id"], "v3")
+
+    def test_sem_sugestao_vai_a_busca(self):
+        y = YtmFalso(self.busca())
+        self.assertEqual(yt_fora.musica("cheia de manias", 3, y)[0]["youtube_id"], "v1")
+
+    def test_outra_e_desligado_nao_usam(self):
+        sug = {"cheia de manias": [("s1", "Cheia de Manias", "Song • Raça Negra • 168M plays")]}
+        y = YtmFalso(self.busca(), sugestoes=sug)
+        self.assertEqual(yt_fora.musica("cheia de manias", 8, y)[0]["youtube_id"], "v1", "o outra quer a lista")
+        with unittest.mock.patch.object(yt_fora, "SUGESTAO", False):
+            self.assertEqual(yt_fora.musica("cheia de manias", 3, YtmFalso(self.busca(), sugestoes=sug))[0]
+                             ["youtube_id"], "v1")
 
 
 if __name__ == "__main__":

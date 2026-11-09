@@ -190,6 +190,41 @@ def ytm():
     return yt
 
 
+# a sugestao da caixa de busca (09/11, a latencia do pedido falado): o YouTube Music sugere musicas enquanto se digita,
+# em 0,11 s de mediana contra 0,71 s da busca (14 pedidos, cliente quente), e a primeira costuma ser a faixa oficial
+# ("Murder In My Mind" do Kordhell em vez do Slowed + Reverb). Mas em metade dos pedidos falados de verdade (20 de 40,
+# os longos e os tortos) nao vem musica nenhuma, e as vezes vem outra ("Uma Rapariga e Bom Demais" -> "Raparigas").
+# Vale so a primeira do tipo Song (o audio oficial; o Video pode ser remix) com todas as palavras do pedido no titulo
+# ou no artista (a regra do so_artista); senao, a busca de sempre. False = so a busca
+SUGESTAO = True
+
+
+def sugestao(q, yt):
+    """A primeira musica (Song) das sugestoes do YouTube Music para q, no formato do /api/search, se ela bate com o
+    pedido (ver SUGESTAO); senao None."""
+    r = yt._send_request("music/get_search_suggestions", {"input": q})
+    for sec in r.get("contents") or []:
+        for it in (sec.get("searchSuggestionsSectionRenderer") or {}).get("contents") or []:
+            m = it.get("musicResponsiveListItemRenderer")
+            if not m:
+                continue
+            nav = m.get("navigationEndpoint") or {}
+            yid = (m.get("playlistItemData") or {}).get("videoId") or (nav.get("watchEndpoint") or {}).get("videoId")
+            if not yid:
+                continue
+            cols = ["".join(x.get("text", "") for x in ((c.get("musicResponsiveListItemFlexColumnRenderer") or {})
+                                                          .get("text") or {}).get("runs") or [])
+                    for c in m.get("flexColumns") or []]
+            partes = (cols[1] if len(cols) > 1 else "").split(" • ")
+            if not cols or partes[0] != "Song" or len(partes) < 2:
+                return None  # a primeira musica sugerida e video (remix, ao vivo) ou sem artista: vai a busca
+            titulo, artista = cols[0], partes[1]
+            if not so_artista(q, f"{titulo} {artista}"):
+                return None
+            return {"youtube_id": yid, "title": titulo, "channel": artista}
+    return None
+
+
 def musica(q, n, yt=None):
     """A busca de musica do YouTube Music, como o app dele busca (09/11, o pedido falado da mina): a busca do YouTube
     devolvia o que nao e musica ("Toca Raul" achou um video de financas; nos 90 pedidos falados das sessoes, ~7 assim),
@@ -199,6 +234,15 @@ def musica(q, n, yt=None):
     a lista no formato do /api/search, vazia se nada achou."""
     if yt is None:
         yt = ytm()
+    if SUGESTAO and n <= 3:
+        try:
+            s = sugestao(q, yt)
+        except Exception as ex:  # noqa: BLE001 - a busca de sempre
+            s = None
+            print(f"busca: a sugestao de {q!r} falhou ({str(ex)[:100]})", file=sys.stderr)
+        if s:
+            print(f"busca: {q!r} pela sugestao: {s['title']} ({s['channel']})", file=sys.stderr)
+            return [s]
     res = yt.search(q, limit=10) or []
     topo = res[0] if res else {}
     if topo.get("resultType") == "artist":

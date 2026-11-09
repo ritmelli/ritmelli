@@ -70,6 +70,9 @@ ABAIXO_DO_NORMAL = 0x00004000  # prioridade do processo da medida no Windows: ce
 
 pool = ThreadPoolExecutor(4)
 BUSCA_MUSICA_S = 4.0  # a busca do YouTube Music (/api/musica) que passa disso falha: quem pediu cai na do YouTube
+# processos do YouTube abertos de reserva, com as bibliotecas carregadas (09/11: com um so, a busca antecipada da mina
+# pegava a reserva e a busca do lote, logo atras, caia num processo frio, 1,3 a 1,55 s no placar)
+RESERVAS = 2
 FORA_LIMITE_S = 120.0  # pedido ao YouTube (fora o download) que nao volta nisso morre: o disco nao fica esperando
 # o processo vivo dos enderecos (Fora._pede_vivo): quantos ele atende e por quanto tempo, antes de sair e o
 # seguinte abrir outro. VIVO_MAX = 0 desliga: todo endereco num processo novo, como antes de 09/11
@@ -104,7 +107,7 @@ class Fora:
 
     def __init__(self):
         self.lock = threading.Lock()
-        self.reserva = None
+        self.reservas = []  # os abertos esperando pedido (ate RESERVAS), sob lock
         self.vivo = None  # o processo vivo dos enderecos, sob vivo_lock
         self.vivo_lock = threading.Lock()
         self.vivo_n = 0
@@ -127,20 +130,31 @@ class Fora:
                 print(linha, end="", file=sys.stderr, flush=True)
 
     def aquece(self):
-        """Abre o de reserva, se ainda nao ha um."""
-        p = self._abre()
-        with self.lock:
-            if self.reserva is None or self.reserva.poll() is not None:
-                self.reserva, p = p, None
-        if p is not None:
-            p.stdin.close()  # ja havia um: este sai sem pedido
-            p.wait()
+        """Abre os de reserva que faltam ate RESERVAS."""
+        while True:
+            with self.lock:
+                self.reservas = [p for p in self.reservas if p.poll() is None]
+                if len(self.reservas) >= RESERVAS:
+                    return
+            p = self._abre()
+            with self.lock:
+                if len(self.reservas) < RESERVAS:
+                    self.reservas.append(p)
+                    p = None
+            if p is not None:
+                p.stdin.close()  # outra thread ja completou: este sai sem pedido
+                p.wait()
+                return
 
     def _tira_reserva(self):
-        """O de reserva (ou um novo, se nao ha), ja abrindo o seguinte."""
+        """Um de reserva (ou um novo, se nao ha), ja abrindo o que falta."""
+        p = None
         with self.lock:
-            p, self.reserva = self.reserva, None
-        if p is None or p.poll() is not None:
+            while self.reservas and p is None:
+                q = self.reservas.pop(0)
+                if q.poll() is None:
+                    p = q
+        if p is None:
             p = self._abre()
         threading.Thread(target=self.aquece, daemon=True).start()
         return p

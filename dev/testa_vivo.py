@@ -44,8 +44,8 @@ class Vivo(unittest.TestCase):
         with self.f.vivo_lock:
             self.f._solta_vivo()
         with self.f.lock:
-            r, self.f.reserva = self.f.reserva, None
-        if r is not None:
+            rs, self.f.reservas = self.f.reservas, []
+        for r in rs:
             r.stdin.close()
         self.p.stop()
 
@@ -63,6 +63,22 @@ class Vivo(unittest.TestCase):
         self.assertNotEqual(i["pid"], a["pid"])
         self.assertFalse(i["vivo"])
         self.assertEqual(self.stream()["pid"], a["pid"], "o info nao mexe no vivo")
+
+    def test_duas_reservas(self):
+        self.f.aquece()
+        self.assertEqual(len(self.f.reservas), server.RESERVAS)
+        a, b = self.f._tira_reserva(), self.f._tira_reserva()
+        self.assertNotEqual(a.pid, b.pid, "dois pedidos juntos, dois processos ja abertos")
+        a.stdin.close()
+        b.stdin.close()
+        n = 0
+        for _ in range(100):
+            with self.f.lock:
+                n = len(self.f.reservas)
+            if n == server.RESERVAS:
+                break
+            time.sleep(0.1)
+        self.assertEqual(n, server.RESERVAS, "as reservas voltam a ser duas")
 
     def test_erro_troca_o_vivo(self):
         a = self.stream()
