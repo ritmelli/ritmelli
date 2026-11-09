@@ -60,7 +60,10 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   música, o adiantado e o canal correm num executor próprio (`pool_rapido`), fora do dos
   downloads. Ficam dois processos de reserva (`RESERVAS`), e a busca de até 3 resultados tenta
   antes a sugestão do YouTube Music (`SUGESTAO`, ~0,1 s), que só vale se for uma música com
-  todas as palavras do pedido.
+  todas as palavras do pedido. No pedido de 3 palavras ou mais (`PARALELO_PALAVRAS`), onde a
+  sugestão quase nunca acerta, a busca sai junto com ela, numa thread, pela segunda conexão
+  que a reserva já deixa aberta (`pre_conecta`); a sugestão que acerta segue valendo e a
+  busca é descartada.
 - `vitrola.py`: o ponto de entrada, o mesmo do executável. Sem modo, liga o servidor. Se
   outra Vitrola já está ligada na mesma porta (o atalho clicado de novo), só abre a página
   dela; se ela ainda está ligando, sai sem fazer nada, porque a página abre quando ela

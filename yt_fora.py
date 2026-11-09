@@ -168,6 +168,35 @@ def aquece_ytm():
         _YTM = yt
     except Exception as ex:  # noqa: BLE001 - sem o aquecido, o pedido abre um cliente novo
         _AQUECE_ERRO = str(ex)[:120] or type(ex).__name__
+        return
+    if PARALELO_PALAVRAS:
+        threading.Thread(target=pre_conecta, args=(yt,), daemon=True).start()
+
+
+def pre_conecta(yt, n=2):
+    """Deixa n conexoes com o YouTube Music abertas no pool da sessao do cliente (a do visitor id e mais uma, so o TCP e
+    o TLS, sem pedido): a busca que sai junto da sugestao (PARALELO_PALAVRAS) pega a segunda sem o aperto de mao, ~0,11
+    s no PC, o mesmo que ela ganha. Pelo _get_conn/_put_conn do urllib3; falhou, fica como antes (a conexao abre na
+    hora do pedido)."""
+    try:
+        import requests
+        from ytmusicapi.constants import YTM_BASE_API
+        s = yt._session
+        cfg = s.merge_environment_settings(YTM_BASE_API, yt.proxies or {}, None, s.verify, s.cert)
+        pool = s.get_adapter(YTM_BASE_API).get_connection_with_tls_context(
+            requests.Request("POST", YTM_BASE_API).prepare(), cfg["verify"], cfg["proxies"], cfg["cert"])
+        tiradas = []
+        try:
+            for _ in range(n):
+                c = pool._get_conn()
+                tiradas.append(c)
+                if not c.is_connected:
+                    c.connect()
+        finally:
+            for c in tiradas:
+                pool._put_conn(c)
+    except Exception as ex:  # noqa: BLE001 - sem a segunda, a busca abre a dela
+        print(f"YouTube Music: a segunda conexão não abriu ({str(ex)[:100]})", file=sys.stderr)
 
 
 def ytm():
@@ -206,6 +235,36 @@ SUGESTAO = True
 # onde a busca dava a de estudio): essa musica sugerida fica de fora (r08, nos 40 pedidos falados das sessoes)
 VERSAO = re.compile(r"\b(?:ao vivo|live|remix|slowed|sped up|speed up|acustic[oa]|acoustic|cover|karaoke|"
                     r"instrumental|reverb|8d|funk remix|versao)\b")
+# a busca junto da sugestao no pedido longo (r13): de 3 palavras para cima a sugestao nao traz a musica em ~4 de cada 5
+# pedidos falados (placares r08 a r12b, pedidos distintos: 3 palavras 19 de 24, 4 palavras 8 de 12, 5 ou mais 7 de
+# 7; com 2, 17 de 33), e a busca so saia depois dela voltar. Agora sai junto, numa thread; a sugestao que acerta
+# segue valendo e a busca e jogada fora. A segunda conexao ja fica aberta na reserva (pre_conecta). 0 = a busca so
+# depois da sugestao, como antes
+PARALELO_PALAVRAS = 3
+
+
+class _Ja:
+    """Uma chamada numa thread daemon, que comeca ja: o processo sai sem esperar por ela quando a resposta nao precisa
+    dela (o servidor le a saida ate o processo fechar)."""
+
+    def __init__(self, f):
+        self.r = self.ex = None
+        self.feito = threading.Event()
+
+        def roda():
+            try:
+                self.r = f()
+            except BaseException as ex:  # noqa: BLE001 - volta no espera, para quem precisar
+                self.ex = ex
+            finally:
+                self.feito.set()
+        threading.Thread(target=roda, daemon=True).start()
+
+    def espera(self):
+        self.feito.wait()
+        if self.ex is not None:
+            raise self.ex
+        return self.r
 
 
 def sugestoes(q, yt):
@@ -271,9 +330,12 @@ def musica(q, n, yt=None):
     pedido sem musica sugerida que e so o nome de um artista: as mais tocadas da pagina dele ("Raul" -> Metamorfose
     Ambulante, "Radiohead" -> Creep), pela sugestao ou pela busca; com o nome da musica junto, as musicas e videos da
     busca ("Luan Santana Chuva de Arroz" -> Chuva de Arroz). Volta a lista no formato do /api/search, vazia se nada
-    achou."""
+    achou. No pedido longo a busca sai junto da sugestao (PARALELO_PALAVRAS)."""
     if yt is None:
         yt = ytm()
+    busca = None
+    if SUGESTAO and PARALELO_PALAVRAS and len(palavras(q)) >= PARALELO_PALAVRAS:
+        busca = _Ja(lambda: yt.search(q, limit=10))
     if SUGESTAO:
         try:
             arts, mus = sugestoes(q, yt)
@@ -295,7 +357,7 @@ def musica(q, n, yt=None):
                 print(f"busca: {q!r} é o artista {nome} (pela sugestão): a mais tocada, {itens[0]['title']}",
                       file=sys.stderr)
                 return itens[:n]
-    res = yt.search(q, limit=10) or []
+    res = (busca.espera() if busca else yt.search(q, limit=10)) or []
     topo = res[0] if res else {}
     if topo.get("resultType") == "artist":
         dono = (topo.get("artists") or [{}])[0] or {}
