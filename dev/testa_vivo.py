@@ -223,6 +223,29 @@ class Prepara(unittest.TestCase):
         self.assertEqual((i["aq"], i["aq_opts"], i["vivo"]), (1, False, False),
                          "a reserva recebeu o aquece e atendeu o pedido de verdade depois")
 
+    def test_uma_reserva_quente_fica_para_a_busca(self):
+        """Os dois vivos vazios nao levam as duas reservas quentes: a busca chega antes do endereco e cairia num
+        processo aberto no aviso (revisao da r14)."""
+        self.f.aquece()
+        with self.f.lock:
+            quentes = {p.pid for p in self.f.reservas}
+        self.assertEqual(len(quentes), server.RESERVAS)
+        self.assertEqual(self.f.prepara(self.OPTS, True), server.VIVOS)
+        vivos = {v.p.pid for v in self.f.vivos}
+        self.assertEqual(len(vivos & quentes), 1, "um vivo leva uma reserva, o outro abre um processo novo")
+        with self.f.lock:
+            ficou = {p.pid for p in self.f.reservas} & quentes
+        self.assertEqual(len(ficou), 1, "uma reserva quente segue esperando a busca")
+        self.assertEqual(self.f.pede("info", alvo="x")["pid"], ficou.pop())
+
+    def test_o_quase_vencido_e_trocado(self):
+        a = self.stream()
+        self.f.vivos[0].desde -= server.VIVO_MAX_S - 30  # vence em 30 s: o pedido chegaria depois
+        self.f.prepara(self.OPTS, True)
+        b = self.stream()
+        self.assertNotEqual(b["pid"], a["pid"])
+        self.assertEqual((b["n"], b["aq"]), (1, 1), "o novo, ja aquecido")
+
     def test_desligado(self):
         with mock.patch.object(server, "AQUECE_OCIOSA_S", None):
             self.assertEqual(self.f.prepara(self.OPTS, True), 0)

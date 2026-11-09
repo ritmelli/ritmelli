@@ -153,8 +153,8 @@ class Fora:
         self.reservas = []  # os abertos esperando pedido (ate RESERVAS), sob lock
         # os processos vivos dos enderecos (ate VIVOS): cada um com p (o processo), n (pedidos atendidos), desde e
         # a trava dele, sob a qual o resto se mexe
-        # usado: o ultimo pedido ou aquecimento dele (Fora.prepara)
-        self.vivos = [types.SimpleNamespace(p=None, n=0, desde=0.0, usado=0.0, lock=threading.Lock())
+        # usado: o ultimo pedido ou aquecimento dele; aviso: aberto pelo aviso da fala (Fora.prepara)
+        self.vivos = [types.SimpleNamespace(p=None, n=0, desde=0.0, usado=0.0, aviso=False, lock=threading.Lock())
                       for _ in range(VIVOS)]
 
     @staticmethod
@@ -272,7 +272,7 @@ class Fora:
         novo = p is None
         if novo:
             p = v.p = self._tira_reserva()
-            v.n, v.desde = 0, time.monotonic()
+            v.n, v.desde, v.aviso = 0, time.monotonic(), False
         v.n += 1
         n, t0 = v.n, time.monotonic()
         estourou = threading.Event()
@@ -307,7 +307,8 @@ class Fora:
         if "erro" in r:
             raise RuntimeError(r["erro"])
         print(f"{op}: {time.monotonic() - t0:.2f} s no processo vivo ({n}º pedido dele"
-              f"{', o primeiro paga o preço cheio' if novo else ''})", file=sys.stderr, flush=True)
+              f"{', o primeiro paga o preço cheio' if novo else ', aberto no aviso da fala' if n == 1 and v.aviso else ''})",
+              file=sys.stderr, flush=True)
         return r["r"]
 
     def prepara(self, opts, rapido):
@@ -323,11 +324,16 @@ class Fora:
                 if not v.lock.acquire(blocking=False):
                     continue
                 try:
-                    if v.p is not None and not self._quente(v):
+                    # o quase vencido tambem: o pedido chega uns segundos depois e o acharia vencido (revisao da r14)
+                    if v.p is not None and (not self._quente(v) or agora - v.desde > VIVO_MAX_S - 60):
                         self._solta_vivo(v)
                     if v.p is None:
-                        v.p = self._tira_reserva()
-                        v.n, v.desde = 0, agora
+                        # so tira a reserva quente se sobrar outra: a busca chega antes do endereco e cairia num
+                        # processo aberto agora (~1 s para ficar pronto; revisao da r14). Senao, um novo
+                        with self.lock:
+                            sobra = sum(1 for p in self.reservas if p.poll() is None) >= 2
+                        v.p = self._tira_reserva() if sobra else self._abre()
+                        v.n, v.desde, v.aviso = 0, agora, True
                     elif agora - v.usado <= AQUECE_OCIOSA_S:
                         continue
                     v.p.stdin.write(json.dumps({"op": "aquece", "vivo": True, "opts": opts, "rapido": rapido}) + "\n")
