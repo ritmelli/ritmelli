@@ -827,6 +827,7 @@ class Engine:
         self._prato = None
         self._soou = None
         self._preabertos = {}  # url -> Preaberto (ver preabre), sob _pre_lock
+        self._pre_usados = {}  # url -> monotonic em que um leitor o pediu: o aberto antes que chega depois nao abre
         self._pre_lock = threading.Lock()
         self.levels = {"mic": 0.0, "track": 0.0, "out": 0.0}
         self._deck = Deck()    # o disco do prato: _q, _gen e _eof_gen sao os dele
@@ -1396,7 +1397,7 @@ class Engine:
             return False
         with self._pre_lock:
             self._pre_poda()
-            if url in self._preabertos:
+            if url in self._preabertos or url in self._pre_usados:  # o leitor ja abriu o dele: este ficaria orfao
                 return False
         p = Preaberto(url, self._entrada({"stream": True, "path": url, "headers": headers}))  # o Popen fora da trava
         fora = []
@@ -1416,11 +1417,15 @@ class Engine:
         with self._pre_lock:
             self._pre_poda()
             p = self._preabertos.pop(url, None)
+            self._pre_usados[url] = time.monotonic()
         return p.pega() if p is not None else None
 
     def _pre_poda(self):
         for u in [u for u, p in self._preabertos.items() if p.morto]:
             del self._preabertos[u]
+        agora = time.monotonic()
+        for u in [u for u, t in self._pre_usados.items() if agora - t > PRE_VALE_S]:
+            del self._pre_usados[u]
 
     def _reader(self, gen, track, start, deck):
         t = start
@@ -1493,6 +1498,9 @@ class Engine:
                 deck.eof_gen = gen
                 return
             t = 0.0
+        if pre is not None:  # o disco trocou entre pegar o aberto antes e comecar a ler: ninguem le esse ffmpeg
+            pre[1].kill()
+            pre[1].wait()
 
     def _erro_de_leitura(self, track, t):
         nome = track.get("title") or "o arquivo"

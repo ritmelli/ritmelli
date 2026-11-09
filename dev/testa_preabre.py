@@ -60,7 +60,7 @@ class Preabre(unittest.TestCase):
 
     def setUp(self):
         self.e = eng.Engine.__new__(eng.Engine)
-        self.e._preabertos, self.e._pre_lock = {}, threading.Lock()
+        self.e._preabertos, self.e._pre_usados, self.e._pre_lock = {}, {}, threading.Lock()
 
     def tearDown(self):
         for p in list(self.e._preabertos.values()):
@@ -126,6 +126,17 @@ class Preabre(unittest.TestCase):
         self.e.preabre(c)
         self.assertEqual(list(self.e._preabertos), [b, c])
         self.assertTrue(pa.morto)
+
+    def test_o_que_chega_depois_do_leitor_nao_abre(self):
+        """O leitor pediu o endereco antes de o aberto antes ficar pronto (abriu o ffmpeg dele): o aberto antes que
+        chega depois nao abre outro, que ficaria orfao ate PRE_VALE_S."""
+        url = self.base + "a.wav"
+        self.assertIsNone(self.e._pre_pega(url))
+        self.assertFalse(self.e.preabre(url))
+        self.assertEqual(self.e._preabertos, {})
+        with mock.patch.object(eng, "PRE_VALE_S", 0.0):
+            time.sleep(0.01)
+            self.assertTrue(self.e.preabre(url), "vencido, o endereco pode abrir de novo")
 
     def test_desligado_e_nao_http(self):
         with mock.patch.object(eng, "PREABRE", False):

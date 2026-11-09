@@ -114,6 +114,17 @@ class Adianta(unittest.TestCase):
         self.abre()
         self.assertEqual(self.canais, [YID], "entrou sem canal: pede depois")
 
+    def test_da_busca(self):
+        feitos = []
+        app = types.SimpleNamespace(tocadas=["t1"], engine=types.SimpleNamespace(track={"youtube_id": "t2"}),
+                                    fila=[{"youtube_id": "t3"}], adianta_endereco=feitos.append)
+        res = [{"youtube_id": y, "in_library": y == "t5"} for y in ("t1", "t2", "t3", "t4", "t5")]
+        server.App.adianta_da_busca(app, res, 3)
+        server.App.adianta_da_busca(app, res, 8)
+        server.App.adianta_da_busca(app, res[4:], 8)
+        server.App.adianta_da_busca(app, [], 3)
+        self.assertEqual(feitos, ["t1", "t4"], "ate 3 o primeiro; o outra o primeiro que nao tocou; prateleira nada")
+
     def test_so_id_de_video(self):
         self.app.adianta_endereco("Raul Seixas")
         self.app.adianta_endereco(None)

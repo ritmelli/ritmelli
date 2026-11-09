@@ -194,55 +194,105 @@ def ytm():
 # em 0,11 s de mediana contra 0,71 s da busca (14 pedidos, cliente quente), e a primeira costuma ser a faixa oficial
 # ("Murder In My Mind" do Kordhell em vez do Slowed + Reverb). Mas em metade dos pedidos falados de verdade (20 de 40,
 # os longos e os tortos) nao vem musica nenhuma, e as vezes vem outra ("Uma Rapariga e Bom Demais" -> "Raparigas").
-# Vale so a primeira do tipo Song (o audio oficial; o Video pode ser remix) com todas as palavras do pedido no titulo
-# ou no artista (a regra do so_artista); senao, a busca de sempre. False = so a busca
+# Vale a primeira do tipo Song (o audio oficial; o Video pode ser remix), mesmo depois de um video, com todas as
+# palavras do pedido no titulo ou no artista (a regra do so_artista). O pedido que e so o nome de um artista sugerido
+# (o item do artista, ou o artista de uma das musicas, com o id do canal) vai a pagina dele, como a busca faria, sem
+# ela: o "toca outra do X" levava ~1 s de busca + pagina, e vai em ~0,35 s (r08). Senao, a busca de sempre. False =
+# so a busca
 SUGESTAO = True
+# a versao que a sugestao traz e o pedido nao falou ("Chuva de Arroz (Ao Vivo)" para "Chuva de Arroz Luan Santana",
+# onde a busca dava a de estudio): essa musica sugerida fica de fora (r08, nos 40 pedidos falados das sessoes)
+VERSAO = re.compile(r"\b(?:ao vivo|live|remix|slowed|sped up|speed up|acustic[oa]|acoustic|cover|karaoke|"
+                    r"instrumental|reverb|8d|funk remix|versao)\b")
 
 
-def sugestao(q, yt):
-    """A primeira musica (Song) das sugestoes do YouTube Music para q, no formato do /api/search, se ela bate com o
-    pedido (ver SUGESTAO); senao None."""
+def sugestoes(q, yt):
+    """As sugestoes do YouTube Music para q (a caixa de busca do app, ~0,1 s contra ~0,7 s da busca): (artistas,
+    musicas). artistas = [(nome, id do canal)], do item de artista e do artista de cada musica, sem repetir; musicas =
+    so as Song (video fica de fora: remix, ao vivo), no formato do /api/search, na ordem dele."""
     r = yt._send_request("music/get_search_suggestions", {"input": q})
+    artistas, musicas, vistos = [], [], set()
+
+    def artista(nome, be):
+        bid = be.get("browseId") or ""
+        tipo = ((be.get("browseEndpointContextSupportedConfigs") or {}).get("browseEndpointContextMusicConfig")
+                or {}).get("pageType")
+        if nome and bid.startswith("UC") and tipo == "MUSIC_PAGE_TYPE_ARTIST" and bid not in vistos:
+            vistos.add(bid)
+            artistas.append((nome, bid))
     for sec in r.get("contents") or []:
         for it in (sec.get("searchSuggestionsSectionRenderer") or {}).get("contents") or []:
             m = it.get("musicResponsiveListItemRenderer")
             if not m:
                 continue
-            nav = m.get("navigationEndpoint") or {}
-            yid = (m.get("playlistItemData") or {}).get("videoId") or (nav.get("watchEndpoint") or {}).get("videoId")
-            if not yid:
-                continue
-            cols = ["".join(x.get("text", "") for x in ((c.get("musicResponsiveListItemFlexColumnRenderer") or {})
-                                                          .get("text") or {}).get("runs") or [])
+            runs = [((c.get("musicResponsiveListItemFlexColumnRenderer") or {}).get("text") or {}).get("runs") or []
                     for c in m.get("flexColumns") or []]
+            cols = ["".join(x.get("text", "") for x in rs) for rs in runs]
+            nav = m.get("navigationEndpoint") or {}
+            if cols:
+                artista(cols[0], nav.get("browseEndpoint") or {})  # o item que e o proprio artista
+            for x in runs[1] if len(runs) > 1 else []:
+                artista(x.get("text"), (x.get("navigationEndpoint") or {}).get("browseEndpoint") or {})
+            yid = (m.get("playlistItemData") or {}).get("videoId") or (nav.get("watchEndpoint") or {}).get("videoId")
             partes = (cols[1] if len(cols) > 1 else "").split(" • ")
-            if not cols or partes[0] != "Song" or len(partes) < 2:
-                return None  # a primeira musica sugerida e video (remix, ao vivo) ou sem artista: vai a busca
-            titulo, artista = cols[0], partes[1]
-            if not so_artista(q, f"{titulo} {artista}"):
-                return None
-            return {"youtube_id": yid, "title": titulo, "channel": artista}
-    return None
+            if yid and cols and partes[0] == "Song" and len(partes) >= 2:
+                musicas.append({"youtube_id": yid, "title": cols[0], "channel": partes[1]})
+    return artistas, musicas
+
+
+def versao_a_mais(q, titulo):
+    """O titulo e uma versao (ao vivo, remix, slowed...) que o pedido q nao pediu."""
+    def norm(t):  # sem acento e sem pontuacao, com as palavras curtas (o palavras() tira o "ao" do "ao vivo")
+        t = "".join(c for c in unicodedata.normalize("NFKD", (t or "").lower()) if not unicodedata.combining(c))
+        return " ".join(re.sub(r"[^a-z0-9 ]", " ", t).split())
+    v = VERSAO.search(norm(titulo))
+    return bool(v) and not re.search(rf"\b{v.group(0)}\b", norm(q))
+
+
+def do_artista(q, bid, nome, yt):
+    """(nome, as mais tocadas da pagina do artista bid) se o pedido q e so o nome dele (o da pagina vale); senao
+    (nome, [])."""
+    pag = yt.get_artist(bid) or {}
+    nome = pag.get("name") or nome
+    if not so_artista(q, nome or ""):
+        return nome, []
+    return nome, [i for i in (_item(x, nome) for x in ((pag.get("songs") or {}).get("results") or [])) if i]
 
 
 def musica(q, n, yt=None):
     """A busca de musica do YouTube Music, como o app dele busca (09/11, o pedido falado da mina): a busca do YouTube
     devolvia o que nao e musica ("Toca Raul" achou um video de financas; nos 90 pedidos falados das sessoes, ~7 assim),
-    e a do YouTube Music devolveu musica nos 90, em 0,74 s de mediana contra 1,41. O melhor resultado sendo um artista
-    e o pedido so o nome dele: as mais tocadas da pagina dele ("Raul" -> Metamorfose Ambulante, "Radiohead" -> Creep);
-    com o nome da musica junto, as musicas e videos da busca ("Luan Santana Chuva de Arroz" -> Chuva de Arroz). Volta
-    a lista no formato do /api/search, vazia se nada achou."""
+    e a do YouTube Music devolveu musica nos 90, em 0,74 s de mediana contra 1,41. Ate 3 resultados, vale antes a
+    primeira musica sugerida com todas as palavras do pedido (SUGESTAO): no pedido que e so o nome do artista, isso e
+    a primeira musica dele que o YouTube Music sugere, nao a mais tocada da pagina ("Raul" -> Tente Outra Vez, "The
+    Weeknd" -> Earned It; revisao da r07: escolha do dono, SUGESTAO = False volta a pagina). O "outra" (a lista) e o
+    pedido sem musica sugerida que e so o nome de um artista: as mais tocadas da pagina dele ("Raul" -> Metamorfose
+    Ambulante, "Radiohead" -> Creep), pela sugestao ou pela busca; com o nome da musica junto, as musicas e videos da
+    busca ("Luan Santana Chuva de Arroz" -> Chuva de Arroz). Volta a lista no formato do /api/search, vazia se nada
+    achou."""
     if yt is None:
         yt = ytm()
-    if SUGESTAO and n <= 3:
+    if SUGESTAO:
         try:
-            s = sugestao(q, yt)
+            arts, mus = sugestoes(q, yt)
         except Exception as ex:  # noqa: BLE001 - a busca de sempre
-            s = None
+            arts, mus = [], []
             print(f"busca: a sugestao de {q!r} falhou ({str(ex)[:100]})", file=sys.stderr)
+        # ate 3 (o "toca X"): a primeira musica sugerida com todas as palavras do pedido no titulo ou no artista
+        s = next((x for x in mus if so_artista(q, f"{x['title']} {x['channel']}") and not versao_a_mais(q, x["title"])),
+                 None) if n <= 3 else None
         if s:
             print(f"busca: {q!r} pela sugestao: {s['title']} ({s['channel']})", file=sys.stderr)
             return [s]
+        # o pedido e so o nome de um artista sugerido: as mais tocadas da pagina dele, como a busca faria quando o
+        # topo e o artista, sem os ~0,7 s dela (o "toca outra do X", que quer a lista, cai sempre aqui)
+        art = next(((nome, bid) for nome, bid in arts if so_artista(q, nome)), None)
+        if art:
+            nome, itens = do_artista(q, art[1], art[0], yt)
+            if itens:
+                print(f"busca: {q!r} é o artista {nome} (pela sugestão): a mais tocada, {itens[0]['title']}",
+                      file=sys.stderr)
+                return itens[:n]
     res = yt.search(q, limit=10) or []
     topo = res[0] if res else {}
     if topo.get("resultType") == "artist":
@@ -250,13 +300,10 @@ def musica(q, n, yt=None):
         bid = topo.get("browseId") or dono.get("id")
         nome = dono.get("name") or topo.get("artist")
         if bid and (nome is None or so_artista(q, nome)):
-            pag = yt.get_artist(bid) or {}
-            nome = pag.get("name") or nome
-            if so_artista(q, nome or ""):
-                itens = [i for i in (_item(x, nome) for x in ((pag.get("songs") or {}).get("results") or [])) if i]
-                if itens:
-                    print(f"busca: {q!r} é o artista {nome}: a mais tocada, {itens[0]['title']}", file=sys.stderr)
-                    return itens[:n]
+            nome, itens = do_artista(q, bid, nome, yt)
+            if itens:
+                print(f"busca: {q!r} é o artista {nome}: a mais tocada, {itens[0]['title']}", file=sys.stderr)
+                return itens[:n]
     itens = [i for i in (_item(x) for x in res if x.get("resultType") in ("song", "video")) if i]
     if itens:
         print(f"busca: {q!r} no YouTube Music: {itens[0]['title']} ({itens[0].get('channel') or '?'})", file=sys.stderr)

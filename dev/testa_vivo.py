@@ -1,8 +1,8 @@
 """Testa o processo vivo dos enderecos (server.Fora._pede_vivo e o laco do yt_fora.main) sem o YouTube: o auxiliar
 e o yt_fora de verdade com o faz trocado por um falso que devolve o pid e quantos pedidos aquele processo ja atendeu.
 Cobre: dois enderecos no mesmo processo; os outros pedidos por fora dele; o vivo saindo no erro, no estouro do limite,
-depois de VIVO_MAX pedidos e de VIVO_MAX_S; o vivo ocupado (o pedido vai por um processo novo); e desligado
-(VIVO_MAX = 0). Sai 1 se algo falhar.
+depois de VIVO_MAX pedidos e de VIVO_MAX_S; o vivo ocupado (o pedido vai ao segundo vivo; os VIVOS ocupados, por um
+processo novo); e desligado (VIVO_MAX = 0). Sai 1 se algo falhar.
 
     python dev/testa_vivo.py
 """
@@ -41,8 +41,9 @@ class Vivo(unittest.TestCase):
         self.f = server.Fora()
 
     def tearDown(self):
-        with self.f.vivo_lock:
-            self.f._solta_vivo()
+        for v in self.f.vivos:
+            with v.lock:
+                self.f._solta_vivo(v)
         with self.f.lock:
             rs, self.f.reservas = self.f.reservas, []
         for r in rs:
@@ -108,17 +109,40 @@ class Vivo(unittest.TestCase):
             a, b = self.stream(), self.stream()
         self.assertNotEqual(a["pid"], b["pid"])
 
-    def test_ocupado_vai_por_um_novo(self):
+    def test_ocupado_vai_ao_segundo_e_depois_por_um_novo(self):
         a = self.stream()
-        lento = {}
-        th = threading.Thread(target=lambda: lento.update(self.stream("dorme", s=2)))
-        th.start()
-        time.sleep(0.5)
-        b = self.stream()
-        th.join()
-        self.assertEqual(lento["pid"], a["pid"])
-        self.assertNotEqual(b["pid"], a["pid"])
-        self.assertFalse(b["vivo"])
+        lentos = {}
+        ths = [threading.Thread(target=lambda k=k: lentos.update({k: self.stream("dorme", s=3)})) for k in (1, 2)]
+        ths[0].start()
+        time.sleep(0.5)  # o primeiro vivo (o de a) ocupado
+        ths[1].start()
+        time.sleep(0.5)  # o segundo vivo ocupado
+        c = self.stream()  # os dois ocupados
+        for t in ths:
+            t.join()
+        self.assertEqual(lentos[1]["pid"], a["pid"])
+        self.assertTrue(lentos[2]["vivo"], "o segundo pedido ao mesmo tempo vai ao segundo vivo")
+        self.assertNotEqual(lentos[2]["pid"], a["pid"])
+        self.assertFalse(c["vivo"], "os dois vivos ocupados: processo novo")
+        self.assertEqual(self.stream()["pid"], a["pid"], "o primeiro vivo segue o mesmo")
+
+    def test_um_vivo_so(self):
+        with mock.patch.object(server, "VIVOS", 1):
+            f = server.Fora()
+        try:
+            a = f.pede("stream", alvo="a")
+            lento = {}
+            th = threading.Thread(target=lambda: lento.update(f.pede("stream", alvo="dorme", s=2)))
+            th.start()
+            time.sleep(0.5)
+            b = f.pede("stream", alvo="a")
+            th.join()
+            self.assertEqual(lento["pid"], a["pid"])
+            self.assertFalse(b["vivo"])
+        finally:
+            for v in f.vivos:
+                with v.lock:
+                    f._solta_vivo(v)
 
     def test_desligado(self):
         with mock.patch.object(server, "VIVO_MAX", 0):

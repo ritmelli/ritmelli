@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 import unicodedata
 import uuid
 import webbrowser
@@ -72,7 +73,11 @@ pool = ThreadPoolExecutor(4)
 # o caminho do pedido falado (09/11): a /api/musica, o endereco adiantado e o canal que o endereco rapido nao traz, fora
 # do pool dos downloads (o download segura a thread dele inteiro: com 3 ou 4 baixando, o adiantado esperava ate um
 # acabar e o disco ficava carregando; revisao da r04)
-pool_rapido = ThreadPoolExecutor(4, thread_name_prefix="vitrola-rapido")
+pool_rapido = ThreadPoolExecutor(8, thread_name_prefix="vitrola-rapido")
+# o canal que o endereco rapido nao traz sai so depois disso, com limite curto: ele so aparece na tela, e na hora em que
+# o disco comeca ele tomava um processo de reserva de um "nao, toca Y" logo atras (revisao da r07)
+CANAL_DEPOIS_S = 3.0
+CANAL_LIMITE_S = 10.0
 BUSCA_MUSICA_S = 4.0  # a busca do YouTube Music (/api/musica) que passa disso falha: quem pediu cai na do YouTube
 # processos do YouTube abertos de reserva, com as bibliotecas carregadas (09/11: com um so, a busca antecipada da mina
 # pegava a reserva e a busca do lote, logo atras, caia num processo frio, 1,3 a 1,55 s no placar)
@@ -82,6 +87,9 @@ FORA_LIMITE_S = 120.0  # pedido ao YouTube (fora o download) que nao volta nisso
 # seguinte abrir outro. VIVO_MAX = 0 desliga: todo endereco num processo novo, como antes de 09/11
 VIVO_MAX = 40
 VIVO_MAX_S = 3600.0
+# quantos vivos (cada um com o seu YoutubeDL quente): com um so, o endereco adiantado pelo palpite torto da mina
+# ocupava o vivo e o do pedido certo, logo atras, caia num processo de reserva (0,55 s no placar r08, contra 0,15)
+VIVOS = 2
 # os pedidos que vao de preferencia ao vivo: so o endereco (o mesmo YoutubeDL). A busca de musica no vivo nao ganhou
 # nada (09/11, placar: ~0,7 s igual, o tempo e do YouTube Music) e ocupava o vivo na hora do endereco
 VIVO_OPS = ("stream",)
@@ -112,10 +120,9 @@ class Fora:
     def __init__(self):
         self.lock = threading.Lock()
         self.reservas = []  # os abertos esperando pedido (ate RESERVAS), sob lock
-        self.vivo = None  # o processo vivo dos enderecos, sob vivo_lock
-        self.vivo_lock = threading.Lock()
-        self.vivo_n = 0
-        self.vivo_desde = 0.0
+        # os processos vivos dos enderecos (ate VIVOS): cada um com p (o processo), n (pedidos atendidos), desde e
+        # a trava dele, sob a qual o resto se mexe
+        self.vivos = [types.SimpleNamespace(p=None, n=0, desde=0.0, lock=threading.Lock()) for _ in range(VIVOS)]
 
     @staticmethod
     def _abre():
@@ -166,11 +173,13 @@ class Fora:
     def pede(self, op, progresso=None, limite=FORA_LIMITE_S, **args):
         """O resultado do pedido op (ver o yt_fora.py); progresso(f) recebe o andamento do download. Erro do
         YouTube vira RuntimeError com o motivo."""
-        if op in VIVO_OPS and VIVO_MAX and self.vivo_lock.acquire(blocking=False):
-            try:
-                return self._pede_vivo(op, limite, args)
-            finally:
-                self.vivo_lock.release()
+        if op in VIVO_OPS and VIVO_MAX:
+            for v in self.vivos:  # o primeiro livre; todos ocupados, vai pelo de reserva
+                if v.lock.acquire(blocking=False):
+                    try:
+                        return self._pede_vivo(v, op, limite, args)
+                    finally:
+                        v.lock.release()
         p, t0 = self._tira_reserva(), time.monotonic()
         estourou = threading.Event()
         relogio = threading.Timer(limite, lambda: (estourou.set(), p.kill())) if limite else None
@@ -206,22 +215,22 @@ class Fora:
                   f"{' (o vivo estava ocupado)' if VIVO_MAX else ''}", file=sys.stderr, flush=True)
         return r["r"]
 
-    def _pede_vivo(self, op, limite, args):
-        """(sob vivo_lock) O pedido pelo processo vivo: no yt_fora o YoutubeDL e o mesmo de um pedido ao outro e
+    def _pede_vivo(self, v, op, limite, args):
+        """(sob v.lock) O pedido pelo processo vivo v: no yt_fora o YoutubeDL e o mesmo de um pedido ao outro e
         guarda o player do YouTube ja lido, e o endereco sai em 0,80 s em vez de 1,48 (notebook, 09/11). Um pedido
         por vez: quem chega com ele ocupado vai pelo de reserva, como antes. Ele sai depois de VIVO_MAX pedidos ou
         VIVO_MAX_S, e no erro e no estouro do limite (o YouTube recusando pode ser estado velho dele); o seguinte
         abre outro com o de reserva."""
-        p = self.vivo
-        if p is not None and (p.poll() is not None or time.monotonic() - self.vivo_desde > VIVO_MAX_S):
-            self._solta_vivo()
+        p = v.p
+        if p is not None and (p.poll() is not None or time.monotonic() - v.desde > VIVO_MAX_S):
+            self._solta_vivo(v)
             p = None
         novo = p is None
         if novo:
-            p = self.vivo = self._tira_reserva()
-            self.vivo_n, self.vivo_desde = 0, time.monotonic()
-        self.vivo_n += 1
-        n, t0 = self.vivo_n, time.monotonic()
+            p = v.p = self._tira_reserva()
+            v.n, v.desde = 0, time.monotonic()
+        v.n += 1
+        n, t0 = v.n, time.monotonic()
         estourou = threading.Event()
         relogio = threading.Timer(limite, lambda: (estourou.set(), p.kill())) if limite else None
         if relogio:
@@ -246,7 +255,7 @@ class Fora:
             if relogio:
                 relogio.cancel()
         if r is None or "erro" in r or n >= VIVO_MAX:
-            self._solta_vivo()
+            self._solta_vivo(v)
         if r is None:
             raise RuntimeError("o YouTube não respondeu a tempo" if estourou.is_set() else
                                "o processo do YouTube saiu sem resposta")
@@ -256,9 +265,9 @@ class Fora:
               f"{', o primeiro paga o preço cheio' if novo else ''})", file=sys.stderr, flush=True)
         return r["r"]
 
-    def _solta_vivo(self):
-        """(sob vivo_lock) O vivo sai: le o fim da entrada e termina; se nao terminar em 5 s, morre."""
-        p, self.vivo = self.vivo, None
+    def _solta_vivo(self, v):
+        """(sob v.lock) O vivo v sai: le o fim da entrada e termina; se nao terminar em 5 s, morre."""
+        p, v.p = v.p, None
         if p is None:
             return
         try:
@@ -624,13 +633,15 @@ class App:
 
         def faz():
             try:
-                ch = fora.pede("canal", yid=yid).get("channel")
+                ch = fora.pede("canal", yid=yid, limite=CANAL_LIMITE_S).get("channel")
             except Exception as ex:  # noqa: BLE001 - fica sem o canal
                 print(f"stream: o canal de {yid} nao veio ({yt_msg(ex)})", file=sys.stderr, flush=True)
                 return
             if ch and not tr.get("channel"):
                 tr["channel"] = ch
-        pool_rapido.submit(faz)
+        t = threading.Timer(CANAL_DEPOIS_S, lambda: pool_rapido.submit(faz))
+        t.daemon = True
+        t.start()
 
     @staticmethod
     def search(q, n, start=0):
@@ -789,6 +800,20 @@ class App:
             self.engine.preabre(info.get("url"), hdr)
         except Exception as ex:  # noqa: BLE001 - sem o aberto antes, o leitor abre o dele como antes
             print(f"stream: o ffmpeg aberto antes falhou ({str(ex)[:120]})", file=sys.stderr, flush=True)
+
+    def adianta_da_busca(self, res, n):
+        """O endereco que a busca de musica falada (/api/musica) adianta: ate 3 resultados, o do primeiro; o "outra" (n
+        maior), o do primeiro que nao toca, nao esta na fila e nao tocou, como a mina escolhe (antes o outra nao
+        adiantava nada: 0,47 s ate o som no placar r08). O da prateleira toca do arquivo: nada."""
+        if not res:
+            return
+        x = res[0]
+        if n > 3:
+            fora = set(self.tocadas) | {(self.engine.track or {}).get("youtube_id")} | \
+                {f.get("youtube_id") for f in self.fila}
+            x = next((r for r in res if r.get("youtube_id") not in fora), None)
+        if x is not None and not x.get("in_library"):
+            self.adianta_endereco(x["youtube_id"])
 
     def endereco_adiantado(self, yid):
         """O Future do endereco adiantado de yid (uma vez so), ou None."""
@@ -1774,8 +1799,7 @@ def build(app_state):
             it = A.lib.by_youtube(x["youtube_id"])
             x["in_library"] = bool(it)
             x["id"] = it["id"] if it else None
-        if res and n <= 3 and not res[0]["in_library"]:  # o "outra" (n maior) escolhe outro: nao adianta
-            A.adianta_endereco(res[0]["youtube_id"])
+        A.adianta_da_busca(res, n)
         return web.json_response(res)
 
     @r.post("/api/library")

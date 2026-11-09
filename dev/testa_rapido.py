@@ -103,7 +103,8 @@ class Rapido(unittest.TestCase):
 
     def test_servidor_canal_depois(self):
         tr = {"youtube_id": "CmB4sfoZkwo", "channel": None}
-        with mock.patch.object(server.fora, "pede", lambda op, **kw: {"channel": "Raul Seixas"} if op == "canal" else None):
+        with mock.patch.object(server.fora, "pede", lambda op, **kw: {"channel": "Raul Seixas"} if op == "canal" else None), \
+                mock.patch.object(server, "CANAL_DEPOIS_S", 0.0):
             server.App.canal_depois(types.SimpleNamespace(), tr)
             for _ in range(50):
                 if tr["channel"]:
@@ -111,8 +112,12 @@ class Rapido(unittest.TestCase):
                 time.sleep(0.02)
         self.assertEqual(tr["channel"], "Raul Seixas")
         com = {"youtube_id": "CmB4sfoZkwo", "channel": "Outro"}
-        with mock.patch.object(server.fora, "pede", lambda op, **kw: self.fail("ja tinha canal")):
+        pedidos = []
+        with mock.patch.object(server.fora, "pede", lambda op, **kw: pedidos.append(op) or {}), \
+                mock.patch.object(server, "CANAL_DEPOIS_S", 0.0):
             server.App.canal_depois(types.SimpleNamespace(), com)
+            time.sleep(0.2)
+        self.assertEqual(pedidos, [], "ja tinha canal: nao pede")
 
     def test_ytm_guarda_o_cliente_novo(self):
         criados = []

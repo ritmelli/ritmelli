@@ -22,7 +22,11 @@ class YtmFalso:
     def _send_request(self, endpoint, corpo):
         self.pediu.append(("sugestao", corpo["input"]))
         itens = []
-        for yid, titulo, segunda in self.sugestoes.get(corpo["input"], []):
+        for x in self.sugestoes.get(corpo["input"], []):
+            if isinstance(x, dict):  # ja no formato da resposta (sug_musica, sug_artista)
+                itens.append(x)
+                continue
+            yid, titulo, segunda = x
             itens.append({"musicResponsiveListItemRenderer": {
                 "playlistItemData": {"videoId": yid},
                 "flexColumns": [{"musicResponsiveListItemFlexColumnRenderer": {"text": {"runs": [{"text": t}]}}}
@@ -36,6 +40,31 @@ class YtmFalso:
     def get_artist(self, bid):
         self.pediu.append(("artist", bid))
         return self.artistas[bid]
+
+
+def _canal(bid, tipo="MUSIC_PAGE_TYPE_ARTIST"):
+    return {"browseEndpoint": {"browseId": bid, "browseEndpointContextSupportedConfigs": {
+        "browseEndpointContextMusicConfig": {"pageType": tipo}}}}
+
+
+def _col(runs):
+    return {"musicResponsiveListItemFlexColumnRenderer": {"text": {"runs": runs}}}
+
+
+def sug_musica(yid, titulo, nome, bid, tipo="Song"):
+    """Uma musica sugerida como a resposta de verdade (09/11): o artista leva o id do canal; o album tambem e link."""
+    return {"musicResponsiveListItemRenderer": {
+        "playlistItemData": {"videoId": yid},
+        "flexColumns": [_col([{"text": titulo}]),
+                        _col([{"text": tipo}, {"text": " • "}, {"text": nome, "navigationEndpoint": _canal(bid)},
+                              {"text": " • "}, {"text": "12M plays"}]),
+                        _col([{"text": titulo, "navigationEndpoint": _canal("MPREb_1", "MUSIC_PAGE_TYPE_ALBUM")}])]}}
+
+
+def sug_artista(nome, bid):
+    return {"musicResponsiveListItemRenderer": {
+        "navigationEndpoint": _canal(bid),
+        "flexColumns": [_col([{"text": nome}]), _col([{"text": "4.74M monthly audience"}])]}}
 
 
 def artista(nome, bid):
@@ -90,11 +119,64 @@ class Sugestao(unittest.TestCase):
         self.assertEqual((r[0]["youtube_id"], r[0]["channel"]), ("s1", "Raça Negra"))
         self.assertNotIn("search", [k for k, _ in y.pediu], "pela sugestao, sem a busca")
 
-    def test_video_na_frente_vai_a_busca(self):
+    def test_song_depois_do_video(self):
         y = YtmFalso(self.busca(), sugestoes={"alors on danse": [
             ("s2", "Stromae - Alors On Dance (Dubdogz Remix)", "Video • 3.8M views"),
             ("s3", "Alors on danse", "Song • Stromae • 900M plays")]})
+        self.assertEqual(yt_fora.musica("alors on danse", 3, y)[0]["youtube_id"], "s3", "o remix (video) fica de fora")
+        self.assertNotIn("search", [k for k, _ in y.pediu])
+
+    def test_so_video_vai_a_busca(self):
+        y = YtmFalso(self.busca(), sugestoes={"alors on danse": [
+            ("s2", "Stromae - Alors On Dance (Dubdogz Remix)", "Video • 3.8M views")]})
         self.assertEqual(yt_fora.musica("alors on danse", 3, y)[0]["youtube_id"], "v2")
+
+    def test_outra_pelo_artista_da_musica_sugerida(self):
+        """ "toca outra do Rei da Cacimbinha" (n 8): as sugestoes so trazem musicas dele; o artista delas (com o id do
+        canal) e o pedido, e a lista sai da pagina dele, sem a busca."""
+        pagina = {"name": "O Rei da Cacimbinha", "songs": {"results": [musica("m1", "Meu Pai É Foda"),
+                                                                        musica("m2", "Bicicletinha")]}}
+        y = YtmFalso({}, {"UC9": pagina}, sugestoes={"Rei da Cacimbinha": [
+            sug_musica("p1", "Pop 100", "O Rei da Cacimbinha", "UC9"),
+            sug_musica("p2", "Muriçoca", "O Rei da Cacimbinha", "UC9")]})
+        r = yt_fora.musica("Rei da Cacimbinha", 8, y)
+        self.assertEqual([x["youtube_id"] for x in r], ["m1", "m2"])
+        self.assertEqual(y.pediu, [("sugestao", "Rei da Cacimbinha"), ("artist", "UC9")], "uma pagina, sem a busca")
+
+    def test_item_do_artista(self):
+        pagina = {"name": "Raul Seixas", "songs": {"results": [musica("m1", "Metamorfose Ambulante")]}}
+        y = YtmFalso({}, {"UC1": pagina}, sugestoes={"Raul": [
+            sug_artista("Raul Seixas", "UC1"), sug_musica("t1", "Tente Outra Vez", "Raul Seixas", "UC1")]})
+        self.assertEqual(yt_fora.musica("Raul", 3, y)[0]["youtube_id"], "t1", "ate 3: a musica sugerida, sem pagina")
+        self.assertEqual(yt_fora.musica("Raul", 8, y)[0]["youtube_id"], "m1", "o outra: a pagina")
+
+    def test_artista_que_nao_e_so_o_pedido_vai_a_busca(self):
+        busca = {"Luan Santana Chuva de Arroz": [musica("c1", "Chuva de Arroz (Ao Vivo)", "Luan Santana")]}
+        y = YtmFalso(busca, {}, sugestoes={"Luan Santana Chuva de Arroz": [sug_artista("Luan Santana", "UC2")]})
+        self.assertEqual(yt_fora.musica("Luan Santana Chuva de Arroz", 8, y)[0]["youtube_id"], "c1")
+        self.assertNotIn("artist", [k for k, _ in y.pediu])
+
+    def test_pagina_de_outro_nome_vai_a_busca(self):
+        """O nome na sugestao bate, mas a pagina e de outro (o da pagina vale, como na busca): a busca de sempre."""
+        busca = {"Kevin": [musica("k1", "Cavalo de Tróia", "Mc Kevin")]}
+        y = YtmFalso(busca, {"UC3": {"name": "Os Garotos de Liverpool", "songs": {"results": [musica("x", "x")]}}},
+                     sugestoes={"Kevin": [sug_artista("Kevin", "UC3")]})
+        self.assertEqual(yt_fora.musica("Kevin", 8, y)[0]["youtube_id"], "k1")
+
+    def test_versao_que_o_pedido_nao_falou(self):
+        y = YtmFalso({"Chuva de Arroz Luan Santana": [musica("e1", "Chuva de Arroz", "Luan Santana")]}, sugestoes={
+            "Chuva de Arroz Luan Santana": [("v1", "Chuva de Arroz (Ao Vivo)", "Song • Luan Santana • 90M plays")],
+            "Chuva de Arroz ao vivo": [("v1", "Chuva de Arroz (Ao Vivo)", "Song • Luan Santana • 90M plays")]})
+        self.assertEqual(yt_fora.musica("Chuva de Arroz Luan Santana", 3, y)[0]["youtube_id"], "e1", "a de estudio")
+        self.assertEqual(yt_fora.musica("Chuva de Arroz ao vivo", 3, y)[0]["youtube_id"], "v1", "pediu ao vivo")
+        self.assertTrue(yt_fora.versao_a_mais("x", "Dilatação Hipnótica 5.0 (Slowed)"))
+        self.assertFalse(yt_fora.versao_a_mais("x", "Living on a Prayer"), "palavra inteira: 'live' nao casa 'living'")
+
+    def test_album_nao_e_artista(self):
+        artistas, musicas = yt_fora.sugestoes("x", YtmFalso({}, sugestoes={"x": [
+            sug_musica("p1", "Pop 100", "O Rei da Cacimbinha", "UC9")]}))
+        self.assertEqual(artistas, [("O Rei da Cacimbinha", "UC9")], "o link do album (MPREb) fica de fora")
+        self.assertEqual(musicas, [{"youtube_id": "p1", "title": "Pop 100", "channel": "O Rei da Cacimbinha"}])
 
     def test_song_que_nao_bate_vai_a_busca(self):
         y = YtmFalso(self.busca(), sugestoes={"uma rapariga e bom demais": [
