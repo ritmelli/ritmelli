@@ -173,11 +173,11 @@ def aquece_ytm():
         threading.Thread(target=pre_conecta, args=(yt,), daemon=True).start()
 
 
-def pre_conecta(yt, n=2):
+def pre_conecta(yt, n=2, fresca=False):
     """Deixa n conexoes com o YouTube Music abertas no pool da sessao do cliente (a do visitor id e mais uma, so o TCP e
     o TLS, sem pedido): a busca que sai junto da sugestao (PARALELO_PALAVRAS) pega a segunda sem o aperto de mao, ~0,11
     s no PC, o mesmo que ela ganha. Pelo _get_conn/_put_conn do urllib3; falhou, fica como antes (a conexao abre na
-    hora do pedido)."""
+    hora do pedido). fresca: as que estao no pool fecham e abrem de novo (o aquece, r14)."""
     try:
         import requests
         from ytmusicapi.constants import YTM_BASE_API
@@ -185,20 +185,24 @@ def pre_conecta(yt, n=2):
         cfg = s.merge_environment_settings(YTM_BASE_API, yt.proxies or {}, None, s.verify, s.cert)
         pool = s.get_adapter(YTM_BASE_API).get_connection_with_tls_context(
             requests.Request("POST", YTM_BASE_API).prepare(), cfg["verify"], cfg["proxies"], cfg["cert"])
-        liga(pool, n)
+        liga(pool, n, fresca=fresca)
     except Exception as ex:  # noqa: BLE001 - sem a segunda, a busca abre a dela
         print(f"YouTube Music: a segunda conexão não abriu ({str(ex)[:100]})", file=sys.stderr)
 
 
-def liga(pool, n, timeout=5.0):
+def liga(pool, n, timeout=5.0, fresca=False):
     """(do pre_conecta) Deixa n conexoes ligadas no pool do urllib3. As ja ligadas voltam na hora, e so a nova fica fora
     durante o aperto de mao: um pedido que chega no meio pega a quente, nao uma nova sem ligar (revisao da r13). Com
     proxy nao faz nada: o connect cru pula o CONNECT do tunel e mandava o TLS direto ao proxy. A que falha fecha e o
     pool recebe o lugar vazio (None), nunca a conexao com o socket desligado, que quebrava o pedido seguinte com
-    "file descriptor cannot be a negative integer" (revisao da r13)."""
+    "file descriptor cannot be a negative integer" (revisao da r13). fresca: fecha as que tirou (paradas, podem estar
+    perto dos ~240 s em que o YouTube fecha) e liga todas de novo."""
     if getattr(pool, "proxy", None) is not None:
         return
     tiradas = [pool._get_conn() for _ in range(n)]
+    if fresca:
+        for c in tiradas:
+            c.close()
     novas = [c for c in tiradas if not c.is_connected]
     for c in tiradas:
         if c.is_connected:
@@ -445,26 +449,55 @@ def main():
         _AQUECE = threading.Thread(target=aquece_ytm, daemon=True)
         _AQUECE.start()
     # o pedido e uma linha JSON (o servidor de antes escrevia sem a quebra e fechava a entrada: o readline le igual);
-    # com "vivo", o processo segue atendendo um pedido por linha ate o servidor fechar a entrada
-    linha = sys.stdin.readline()
-    if not linha.strip():
-        sys.exit(0)  # o servidor fechou sem pedir (saiu, ou este era o de reserva)
-    responde(linha)
-    while VIVO:
+    # com "vivo", o processo segue atendendo um pedido por linha ate o servidor fechar a entrada; o "aquece" nao conta
+    # como pedido (a reserva segue esperando o dela)
+    while True:
         linha = sys.stdin.readline()
         if not linha.strip():
+            break  # o servidor fechou (saiu, ou este era o de reserva)
+        if responde(linha) and not VIVO:
             break
-        responde(linha)
 
 
 def responde(linha):
+    """Atende uma linha; False no "aquece", que nao responde nada (o servidor nao espera por ele)."""
     global VIVO
     try:
         p = json.loads(linha)
         VIVO = bool(p.pop("vivo", False)) or VIVO
+        if p.get("op") == "aquece":
+            try:
+                aquece(p)
+            except Exception as ex:  # noqa: BLE001 - o pedido de verdade abre a conexao dele, como antes
+                print(f"aquece: falhou ({str(ex)[:120]})", file=sys.stderr, flush=True)
+            return False
         print(json.dumps({"r": faz(p)}), flush=True)
     except Exception as ex:  # noqa: BLE001 - o servidor poe o motivo no log e na tela
         print(json.dumps({"erro": str(ex) or type(ex).__name__}), flush=True)
+    return True
+
+
+# o aviso da fala que abre (r14): o YouTube fecha a conexao parada aos ~240 s (pesq/conexao_ociosa2: aberta com 230 s,
+# fechada com 240, no music.youtube.com e no www.youtube.com), e com a vitrola parada o primeiro pedido pagava um TLS
+# na busca (reserva) e outro no endereco (vivo), em serie, ~0,11 s cada; o vivo vazio pagava ainda o YoutubeDL novo.
+# O servidor manda {"op": "aquece"} quando a mina avisa que alguem comecou a falar (Fora.prepara)
+def aquece(p):
+    """No vivo (com as opts do endereco): o YoutubeDL do endereco ja criado (a mesma chave do _ydl que o faz usa) e a
+    conexao dele com o www.youtube.com renovada por um HEAD no robots.txt (o cliente visionos pede o player la). Na
+    reserva: as conexoes do YouTube Music trocadas por novas (pre_conecta fresca)."""
+    if "opts" in p:
+        opts = {**p["opts"], "logtostderr": True}
+        if p.get("rapido") and _rapido_falhas < RAPIDO_FALHAS_MAX:
+            try:
+                opts = opts_rapido(opts)
+            except Exception:  # noqa: BLE001 - sem o visitor id o pedido vai pelo de sempre (faz)
+                pass
+        from yt_dlp.networking import Request
+        r = _ydl(opts).urlopen(Request("https://www.youtube.com/robots.txt", method="HEAD"))
+        r.read()  # lida, a conexao volta ao pool; o close direto a fechava, e o endereco pagava o TLS de novo
+        r.close()
+    else:
+        pre_conecta(ytm(), 2 if PARALELO_PALAVRAS else 1, fresca=True)
 
 
 if __name__ == "__main__":

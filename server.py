@@ -97,6 +97,11 @@ VIVOS = 2
 # os pedidos que vao de preferencia ao vivo: so o endereco (o mesmo YoutubeDL). A busca de musica no vivo nao ganhou
 # nada (09/11, placar: ~0,7 s igual, o tempo e do YouTube Music) e ocupava o vivo na hora do endereco
 VIVO_OPS = ("stream",)
+# o aviso de que alguem comecou a falar (POST /api/aquece, a mina na fala que abre; r14): o YouTube fecha a conexao
+# parada aos ~240 s, e com a vitrola parada o primeiro pedido pagava um TLS na busca e outro no endereco, em serie
+# (~0,11 s cada), e o vivo vazio ainda o YoutubeDL novo. Fora.prepara renova o que esta parado ha mais disso e ja
+# abre o vivo vazio. None desliga
+AQUECE_OCIOSA_S = 180.0
 # o endereco adiantado (09/11, a latencia do pedido falado): o do primeiro resultado da /api/musica sai logo atras da
 # busca, enquanto a mina ainda poe na fila, e o tocar usa o que ja esta pronto ou a caminho. False desliga
 ADIANTA = True
@@ -148,7 +153,9 @@ class Fora:
         self.reservas = []  # os abertos esperando pedido (ate RESERVAS), sob lock
         # os processos vivos dos enderecos (ate VIVOS): cada um com p (o processo), n (pedidos atendidos), desde e
         # a trava dele, sob a qual o resto se mexe
-        self.vivos = [types.SimpleNamespace(p=None, n=0, desde=0.0, lock=threading.Lock()) for _ in range(VIVOS)]
+        # usado: o ultimo pedido ou aquecimento dele (Fora.prepara)
+        self.vivos = [types.SimpleNamespace(p=None, n=0, desde=0.0, usado=0.0, lock=threading.Lock())
+                      for _ in range(VIVOS)]
 
     @staticmethod
     def _abre():
@@ -158,6 +165,7 @@ class Fora:
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
                              errors="replace", cwd=str(HERE), creationflags=eng.NO_WINDOW, startupinfo=eng.sem_cursor())
         threading.Thread(target=Fora._repassa, args=(p.stderr,), daemon=True).start()
+        p.aquecido = time.monotonic()  # as conexoes dele abrem agora (Fora.prepara)
         return p
 
     @staticmethod
@@ -290,6 +298,7 @@ class Fora:
         finally:
             if relogio:
                 relogio.cancel()
+        v.usado = time.monotonic()
         if r is None or n >= VIVO_MAX or ("erro" in r and not erro_do_video(r["erro"])):
             self._solta_vivo(v)
         if r is None:
@@ -300,6 +309,44 @@ class Fora:
         print(f"{op}: {time.monotonic() - t0:.2f} s no processo vivo ({n}º pedido dele"
               f"{', o primeiro paga o preço cheio' if novo else ''})", file=sys.stderr, flush=True)
         return r["r"]
+
+    def prepara(self, opts, rapido):
+        """Alguem comecou a falar (AQUECE_OCIOSA_S): o vivo livre parado ha mais disso (ou vazio, ou vencido) e a reserva
+        aberta ha mais disso recebem o {"op": "aquece"} (yt_fora.aquece), que nao responde nada; o vivo vazio ja
+        abre com o YoutubeDL do endereco. O pedido chega ~1 s depois (a fala, o detector, o Scribe). O vivo ocupado
+        esta em uso, quente. Volta quantos aqueceu."""
+        if AQUECE_OCIOSA_S is None:
+            return 0
+        feitos, agora = 0, time.monotonic()
+        if VIVO_MAX and "stream" in VIVO_OPS:
+            for v in self.vivos:
+                if not v.lock.acquire(blocking=False):
+                    continue
+                try:
+                    if v.p is not None and not self._quente(v):
+                        self._solta_vivo(v)
+                    if v.p is None:
+                        v.p = self._tira_reserva()
+                        v.n, v.desde = 0, agora
+                    elif agora - v.usado <= AQUECE_OCIOSA_S:
+                        continue
+                    v.p.stdin.write(json.dumps({"op": "aquece", "vivo": True, "opts": opts, "rapido": rapido}) + "\n")
+                    v.p.stdin.flush()
+                    v.usado, feitos = agora, feitos + 1
+                except OSError:
+                    self._solta_vivo(v)  # o cano fechou: o processo morreu, o pedido abre outro
+                finally:
+                    v.lock.release()
+        with self.lock:  # sob a trava: quem tira a reserva so escreve o pedido depois desta linha
+            for p in self.reservas:
+                if p.poll() is None and agora - getattr(p, "aquecido", agora) > AQUECE_OCIOSA_S:
+                    try:
+                        p.stdin.write(json.dumps({"op": "aquece"}) + "\n")
+                        p.stdin.flush()
+                        p.aquecido, feitos = agora, feitos + 1
+                    except OSError:
+                        pass  # morreu: o _tira_reserva pula a que saiu
+        return feitos
 
     def _solta_vivo(self, v):
         """(sob v.lock) O vivo v sai: le o fim da entrada e termina; se nao terminar em 5 s, morre."""
@@ -1847,6 +1894,14 @@ def build(app_state):
             x["id"] = it["id"] if it else None
         A.adianta_da_busca(res, n)
         return web.json_response(res)
+
+    @r.post("/api/aquece")
+    async def aquece_(_):
+        """Alguem comecou a falar e pode pedir musica (a mina chama na fala que abre): as conexoes paradas com o
+        YouTube e o vivo vazio ficam prontos antes do pedido (Fora.prepara). Responde na hora."""
+        n = await loop_().run_in_executor(
+            pool_rapido, lambda: fora.prepara(App.opts_stream(), ENDERECO_RAPIDO))
+        return j_ok(aquecidos=n)
 
     @r.post("/api/library")
     async def lib_add(request):

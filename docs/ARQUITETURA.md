@@ -48,7 +48,11 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   no erro, no estouro do limite, depois de `VIVO_MAX` pedidos e de `VIVO_MAX_S` (o
   `VIVO_MAX = 0` desliga); o erro do próprio vídeo (indisponível, privado, com idade:
   `yt_erros.py`, que o servidor e o `yt_fora.py` leem, sem o yt-dlp) não troca o vivo, não
-  conta no disjuntor do caminho rápido e não ganha as outras tentativas do stream. O endereço do primeiro resultado da busca de música (`/api/musica`) sai
+  conta no disjuntor do caminho rápido e não ganha as outras tentativas do stream. O YouTube
+  fecha a conexão parada aos ~240 s; o `POST /api/aquece` (quem vai pedir avisa antes: a mina,
+  quando alguém começa a falar) manda um `{"op": "aquece"}` ao vivo e à reserva parados há mais
+  de `AQUECE_OCIOSA_S`, que renovam as conexões sem responder nada, e já abre o vivo vazio com
+  o `YoutubeDL` do endereço (`Fora.prepara`). O endereço do primeiro resultado da busca de música (`/api/musica`) sai
   logo atrás dela (`ADIANTA`), antes de a mina pôr na fila: o tocar usa o que já está pronto ou a
   caminho (no "outra", o do primeiro que não toca, não está na fila, não tocou e não é outra versão
   da que toca, como a mina escolhe); o adiantado usado deixa a marca por `ADIANTA_S`, e a busca

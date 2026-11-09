@@ -354,5 +354,73 @@ yt_fora.main()
         self.assertEqual(pool.num_connections, 0)
 
 
+class Aquece(unittest.TestCase):
+    """O "aquece" do processo (yt_fora.aquece e responde, r14): no vivo, o YoutubeDL do endereco com a mesma chave do
+    faz e um HEAD no www.youtube.com; na reserva, as conexoes do YouTube Music trocadas por novas; nao responde nada."""
+
+    def test_no_vivo_o_youtubedl_do_endereco_e_o_head(self):
+        pedidos, chaves = [], []
+        ydl = types.SimpleNamespace(urlopen=lambda req: pedidos.append((req.method, req.url)) or
+                                    types.SimpleNamespace(read=lambda: pedidos.append("leu") or b"",
+                                                          close=lambda: pedidos.append("fechou")))
+        with unittest.mock.patch.object(yt_fora, "_ydl", lambda o: chaves.append(o) or ydl), \
+                unittest.mock.patch.object(yt_fora, "opts_rapido", lambda o: {**o, "rapido": 1}), \
+                unittest.mock.patch.object(yt_fora, "_rapido_falhas", 0):
+            yt_fora.aquece({"opts": {"format": "bestaudio"}, "rapido": True})
+        self.assertEqual(pedidos, [("HEAD", "https://www.youtube.com/robots.txt"), "leu", "fechou"],
+                         "lida antes de fechar: a conexao volta ao pool")
+        self.assertEqual(chaves, [{"format": "bestaudio", "logtostderr": True, "rapido": 1}],
+                         "as mesmas opts que o faz monta para o stream rapido")
+
+    def test_no_vivo_com_o_rapido_desligado(self):
+        chaves = []
+        ydl = types.SimpleNamespace(urlopen=lambda req: types.SimpleNamespace(read=lambda: b"", close=lambda: None))
+        with unittest.mock.patch.object(yt_fora, "_ydl", lambda o: chaves.append(o) or ydl), \
+                unittest.mock.patch.object(yt_fora, "_rapido_falhas", yt_fora.RAPIDO_FALHAS_MAX):
+            yt_fora.aquece({"opts": {"format": "bestaudio"}, "rapido": True})
+        self.assertEqual(chaves, [{"format": "bestaudio", "logtostderr": True}])
+
+    def test_na_reserva_as_conexoes_novas(self):
+        chamou = []
+        cli = object()
+        with unittest.mock.patch.object(yt_fora, "ytm", lambda: cli), \
+                unittest.mock.patch.object(yt_fora, "pre_conecta", lambda yt, n=2, fresca=False:
+                                           chamou.append((yt, n, fresca))):
+            yt_fora.aquece({})
+        self.assertEqual(chamou, [(cli, 2, True)])
+
+    def test_liga_fresca_troca_as_paradas(self):
+        class Conexao:
+            def __init__(self):
+                self.is_connected, self.ligou, self.fechou = True, 0, 0
+
+            def close(self):
+                self.is_connected, self.fechou = False, self.fechou + 1
+
+            def connect(self):
+                self.is_connected, self.ligou = True, self.ligou + 1
+        velhas = [Conexao(), Conexao()]
+        pool = types.SimpleNamespace(proxy=None, fila=list(velhas))
+        pool._get_conn = lambda: pool.fila.pop()
+        pool._put_conn = pool.fila.append
+        yt_fora.liga(pool, 2, fresca=True)
+        self.assertEqual([(c.fechou, c.ligou, c.is_connected) for c in velhas], [(1, 1, True)] * 2)
+
+    def test_responde_nao_escreve_nada(self):
+        saida = []
+        with unittest.mock.patch.object(yt_fora, "aquece", lambda p: saida.append("aqueceu")), \
+                unittest.mock.patch("builtins.print", lambda *a, **kw: saida.append(a)):
+            self.assertFalse(yt_fora.responde(json.dumps({"op": "aquece"})))
+        self.assertEqual(saida, ["aqueceu"])
+
+        def falha(p):
+            raise RuntimeError("sem rede")
+        saida.clear()
+        with unittest.mock.patch.object(yt_fora, "aquece", falha), \
+                unittest.mock.patch("builtins.print", lambda *a, **kw: saida.append(kw.get("file"))):
+            self.assertFalse(yt_fora.responde(json.dumps({"op": "aquece"})))
+        self.assertEqual(saida, [sys.stderr], "a falha vai so para o log, nada na saida que o servidor le")
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(verbosity=2, exit=False).result.wasSuccessful() else 1)
