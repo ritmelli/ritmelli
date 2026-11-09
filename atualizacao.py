@@ -8,9 +8,10 @@ O ponto de confianca e a chave: so vale o manifesto assinado por ela, e so para 
 rodando, entao um manifesto velho, mesmo assinado, nao volta a versao. O manifesto ja traz cada arquivo do app com o
 hash, no formato do caminho B (trocar so o que mudou), para o B entrar depois sem trocar o formato nem a chave.
 
-Enquanto MANIFESTO e CHAVES estiverem vazios, nada e consultado: o endereco das versoes e a chave de verdade ainda nao
-foram decididos. Rodando pelo codigo tambem nao, porque ai quem atualiza e o git. Os testes (dev/testa_atualizacao.py)
-trocam os tres."""
+As versoes ficam nas Releases do repo publico vitrola-app/vitrola-releases: o "latest" do GitHub e sempre a ultima
+publicada, com o manifesto, a assinatura e o setup. A chave 1 e a que a esteira do vitrola-server usa para assinar.
+Rodando pelo codigo, nada e consultado, porque ai quem atualiza e o git. Os testes (dev/testa_atualizacao.py) trocam
+os tres."""
 import base64
 import ctypes
 import hashlib
@@ -25,8 +26,10 @@ from pathlib import Path
 import pastas
 from versao import VERSAO
 
-MANIFESTO = ""   # o endereco https do manifest.json; a assinatura e o mesmo endereco com ".sig" no fim
-CHAVES = {}      # numero -> chave publica Ed25519 (os 32 bytes em base64); o .sig diz qual delas assinou
+# o endereco https do manifest.json; a assinatura e o mesmo endereco com ".sig" no fim
+MANIFESTO = "https://github.com/vitrola-app/vitrola-releases/releases/latest/download/manifest.json"
+# numero -> chave publica Ed25519 (os 32 bytes em base64); o .sig diz qual delas assinou
+CHAVES = {1: "Bnvi5qyGzrl2bPDgG9UUCDHjhcTCU3lr9SHMKbkjLts="}
 SO_HTTPS = True  # os testes servem por http, numa porta local
 FORMATO = 1
 PASTA = pastas.DADOS / "atualizacao"
