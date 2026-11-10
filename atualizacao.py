@@ -36,7 +36,10 @@ FORMATO = 1
 PASTA = pastas.DADOS / "atualizacao"
 CONSULTA_APOS_S = 30.0       # depois de abrir: a subida do app nao divide a rede com a consulta
 CONSULTA_CADA_S = 6 * 3600.0
-TEMPO_S = 20.0               # o manifesto e pequeno; o setup tem o mesmo prazo entre um pedaco e outro
+# depois de uma consulta que nao chegou ao manifesto (sem rede, tempo esgotado): de novo logo, e cada vez mais espacado,
+# ate voltar aos 6 h. Um manifesto recusado (assinatura, formato) nao conta: tentar de novo logo nao muda a resposta
+DE_NOVO_S = (2 * 60.0, 5 * 60.0, 15 * 60.0, 30 * 60.0, 60 * 60.0)
+TEMPO_S = 20.0              # o manifesto e pequeno; o setup tem o mesmo prazo entre um pedaco e outro
 MANIFESTO_MAX = 1 << 20
 SETUP_MAX = 1 << 30
 PEDACO = 1 << 20
@@ -140,6 +143,7 @@ class Atualizacao:
         self.progresso = 0.0
         self.erro = None        # o que deu errado na ultima acao, para a tela
         self.consultada = None  # quando a ultima consulta deu certo
+        self.falhas = 0         # consultas seguidas que nao chegaram ao manifesto
         self.setup = None       # o setup.exe baixado e conferido
 
     def resumo(self):
@@ -157,12 +161,22 @@ class Atualizacao:
                                    "tamanho": n["instalador"]["tamanho"]}}
 
     def vigia(self):
-        """A thread que consulta logo depois de abrir e de tempos em tempos. Sem rede, so tenta na proxima."""
+        """A thread que consulta logo depois de abrir e de tempos em tempos (o proxima)."""
         self._limpa()
         time.sleep(CONSULTA_APOS_S)
         while True:
             self.consultar()
-            time.sleep(CONSULTA_CADA_S)
+            time.sleep(self.proxima())
+
+    def proxima(self):
+        """Segundos ate a proxima consulta: 6 h, ou o DE_NOVO_S depois de consultas que nao chegaram ao manifesto. Num
+        PC lento ou numa rede que ainda subia, a primeira consulta, 30 s depois de abrir, estourava o prazo, e a versao
+        nova so aparecia 6 h depois."""
+        with self.lock:
+            f = self.falhas
+        if not f or f > len(DE_NOVO_S):  # sem falha, ou ja tentou todas: o PC deve estar sem rede
+            return CONSULTA_CADA_S
+        return min(DE_NOVO_S[f - 1], CONSULTA_CADA_S)
 
     def consultar(self):
         """Baixa e confere o manifesto. True se ha versao nova."""
@@ -177,11 +191,14 @@ class Atualizacao:
         except (OSError, ValueError) as e:
             with self.lock:
                 self.estado = "parado"
-                self.erro = str(e) if isinstance(e, Recusado) else "Não deu para consultar se há versão nova."
+                if isinstance(e, Recusado):
+                    self.erro, self.falhas = str(e), 0
+                else:
+                    self.erro, self.falhas = "Não deu para consultar se há versão nova.", self.falhas + 1
             print(f"atualizacao: {e}", flush=True)
             return self.nova is not None
         with self.lock:
-            self.estado, self.consultada = "parado", time.strftime("%Y-%m-%dT%H:%M:%S")
+            self.estado, self.consultada, self.falhas = "parado", time.strftime("%Y-%m-%dT%H:%M:%S"), 0
             if versao(m["versao"]) > versao(VERSAO):
                 if not self.nova or self.nova["versao"] != m["versao"]:
                     self.nova, self.setup = m, None

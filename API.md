@@ -245,7 +245,8 @@ vez, peça o `/api/state` para saber se é o 401.
 ## Versão nova
 
 O app consulta o manifesto das versões uns 30 s depois de abrir e de 6 em 6 horas
-(`atualizacao.py`). Só vale o manifesto assinado pela chave da Vitrola, e só para uma versão
+(`atualizacao.py`). Uma consulta que não chega ao manifesto (sem rede, tempo esgotado) se repete
+em 2, 5, 15, 30 e 60 minutos, antes de voltar às 6 horas. Só vale o manifesto assinado pela chave da Vitrola, e só para uma versão
 mais nova que a que está rodando. As versões ficam nas Releases do repo público
 `vitrola-app/vitrola-releases`. Pelo código (`python server.py`), nada é consultado e `ativa`
 vem `false`.
