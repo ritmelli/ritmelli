@@ -17,6 +17,7 @@ import ctypes
 import hashlib
 import json
 import re
+import ssl
 import sys
 import threading
 import time
@@ -95,9 +96,23 @@ def confere(manifesto, assinatura, chaves=None):
     return m
 
 
+def _tls():
+    """As raizes do Windows e as do certifi, que vai junto no app (o yt-dlp usa). Num Windows novo faltam raizes: ele
+    so baixa uma quando um programa dele precisa (o Edge, por exemplo), e o Python nao pede, entao num PC que nunca
+    abriu o GitHub a consulta falhava (CERTIFICATE_VERIFY_FAILED). So o certifi tambem nao serve: o antivirus que
+    inspeciona o https poe a raiz dele so na lista do Windows."""
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx.load_verify_locations(cafile=certifi.where())
+    except (ImportError, OSError):
+        pass
+    return ctx
+
+
 def _pega(url, maximo):
     req = urllib.request.Request(url, headers={"User-Agent": f"Vitrola/{VERSAO}"})
-    with urllib.request.urlopen(req, timeout=TEMPO_S) as r:
+    with urllib.request.urlopen(req, timeout=TEMPO_S, context=_tls()) as r:
         dados = r.read(maximo + 1)
     if len(dados) > maximo:
         raise Recusado(f"{url} passou de {maximo} bytes")
@@ -196,7 +211,7 @@ class Atualizacao:
         try:
             h, n = hashlib.sha256(), 0
             req = urllib.request.Request(inst["url"], headers={"User-Agent": f"Vitrola/{VERSAO}"})
-            with urllib.request.urlopen(req, timeout=TEMPO_S) as r, open(parcial, "wb") as f:
+            with urllib.request.urlopen(req, timeout=TEMPO_S, context=_tls()) as r, open(parcial, "wb") as f:
                 while b := r.read(PEDACO):
                     n += len(b)
                     if n > inst["tamanho"]:
