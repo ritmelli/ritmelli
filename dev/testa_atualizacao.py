@@ -1,6 +1,7 @@
 """Testa o atualizacao.py sem a internet nem o instalador de verdade: um servidor http local serve o manifesto, a
 assinatura e um setup de mentira, com uma chave de teste gerada na hora. Cobre a assinatura (certa, de outra chave,
-manifesto mexido), o formato, a versao (mais velha, igual, mais nova), o download (certo, hash errado, maior que o
+manifesto mexido), o formato, a versao (mais velha, igual, mais nova), a proxima consulta (logo depois de uma que
+nao chegou ao manifesto, cada vez mais espacada), o download (certo, hash errado, maior que o
 manifesto, servidor fora), o caminho que sai da pasta do app, o setup trocado depois de conferido e o pedido de
 permissao do Windows (aceito e recusado, sem abrir nada). Sai 1 se algo falhar.
 
@@ -114,6 +115,54 @@ for nome, v, espera in (("mais velha", "0.0.1", False), ("igual", VERSAO, False)
     a = atu.Atualizacao(ativa=True)
     caso(f"versao {nome} ({v})", a.consultar() is espera and (a.publico()["nova"] is not None) is espera)
 caso("sem endereco e chave, nao consulta", atu.Atualizacao().ativa is False and atu.Atualizacao().consultar() is False)
+
+print("--- a proxima consulta")
+publica(manifesto())
+r = atu.Atualizacao(ativa=True)
+caso("consulta certa: a proxima em 6 h", r.consultar() and r.proxima() == atu.CONSULTA_CADA_S)
+certo = atu.MANIFESTO
+atu.MANIFESTO = "http://127.0.0.1:1/manifest.json"  # porta fechada: a consulta nao chega ao manifesto
+seguidas = []
+for _ in range(len(atu.DE_NOVO_S) + 2):
+    r.consultar()
+    seguidas.append(r.proxima())
+caso("sem chegar ao manifesto: de novo logo, cada vez mais espacado, e depois 6 h",
+     seguidas == [*atu.DE_NOVO_S, atu.CONSULTA_CADA_S, atu.CONSULTA_CADA_S], seguidas)
+caso("a versao nova que ja tinha achado continua la", r.publico()["nova"] is not None and r.erro, r.erro)
+atu.MANIFESTO = certo
+caso("a rede voltou: a proxima de novo em 6 h", r.consultar() and r.proxima() == atu.CONSULTA_CADA_S and not r.erro)
+atu.MANIFESTO = "http://127.0.0.1:1/manifest.json"
+r.consultar()  # uma falha de rede antes, para o recusado ter o que zerar
+atu.MANIFESTO = certo
+publica(manifesto(app="outro"))
+caso("manifesto recusado nao conta como falha de rede: 6 h", r.consultar() is True and r.proxima() == atu.CONSULTA_CADA_S
+     and "não é de uma versão" in (r.erro or ""), r.erro)
+
+print("--- a vigia")
+dormiu, sleep = [], atu.time.sleep
+
+
+class Para(Exception):
+    pass
+
+
+def dorme(s):
+    dormiu.append(s)
+    if len(dormiu) >= 4:
+        raise Para
+
+
+atu.time.sleep = dorme
+atu.MANIFESTO = "http://127.0.0.1:1/manifest.json"
+try:
+    atu.Atualizacao(ativa=True).vigia()
+except Para:
+    pass
+finally:
+    atu.time.sleep = sleep
+    atu.MANIFESTO = certo
+caso("a vigia espera 30 s, consulta e, sem rede, tenta de novo em 2, 5 e 15 min",
+     dormiu == [atu.CONSULTA_APOS_S, *atu.DE_NOVO_S[:3]], dormiu)
 
 
 def espera(a, *estados):
