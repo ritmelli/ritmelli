@@ -2,7 +2,8 @@
 assinatura e um setup de mentira, com uma chave de teste gerada na hora. Cobre a assinatura (certa, de outra chave,
 manifesto mexido), o formato, a versao (mais velha, igual, mais nova), a proxima consulta (logo depois de uma que
 nao chegou ao manifesto, cada vez mais espacada), o download (certo, hash errado, maior que o
-manifesto, servidor fora), o download que para no meio (continua de onde parou, recomeca do zero se o servidor nao
+manifesto, servidor fora), a pagina do PC aberta de novo (consulta se faz tempo, uma vez so, nao no meio do download),
+o download que para no meio (continua de onde parou, recomeca do zero se o servidor nao
 continua, desiste como rede depois de cinco tentativas seguidas sem avancar), o caminho que sai da pasta do app, o
 setup trocado depois de conferido e o pedido de permissao do Windows (aceito e recusado, sem abrir nada). Sai 1 se algo
 falhar.
@@ -175,6 +176,35 @@ def espera(a, *estados):
         threading.Event().wait(0.05)
     return False
 
+
+def ate(cond):
+    for _ in range(200):
+        if cond():
+            return True
+        threading.Event().wait(0.05)
+    return False
+
+
+print("--- a pagina do PC aberta de novo")
+publica(manifesto(versao=VERSAO))  # ainda sem versao nova
+o = atu.Atualizacao(ativa=True)
+caso("antes da primeira consulta da vigia, abrir a pagina nao consulta", o.ao_abrir() is False and o.ultima is None)
+o.consultar()
+caso("logo depois de uma consulta, nao consulta de novo", o.ao_abrir() is False)
+publica(manifesto())  # a versao nova sai com a Vitrola ligada
+o.ultima -= atu.CONSULTA_AO_ABRIR_S + 1
+caso("passado o prazo, consulta numa thread e acha a versao nova",
+     o.ao_abrir() is True and ate(lambda: o.publico()["nova"] is not None and o.estado == "parado"), o.publico())
+o.ultima -= atu.CONSULTA_AO_ABRIR_S + 1
+caso("duas paginas abrindo juntas: so uma consulta", [o.ao_abrir(), o.ao_abrir()] == [True, False])
+ate(lambda: o.estado == "parado")
+o.ultima -= atu.CONSULTA_AO_ABRIR_S + 1
+o.estado = "baixando"
+caso("no meio do download, nao consulta", o.ao_abrir() is False)
+o.estado = "parado"
+desligada = atu.Atualizacao(ativa=False)
+desligada.ultima = -atu.CONSULTA_AO_ABRIR_S
+caso("pelo codigo (desligada), nao consulta", desligada.ao_abrir() is False)
 
 print("--- o download")
 publica(manifesto())

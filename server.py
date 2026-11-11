@@ -2198,6 +2198,8 @@ def build(app_state):
         await resp.prepare(request)
         last = {"state": None, "library": -1, "jobs": None}
         chave = None if do_pc(request) else request.cookies.get(par.COOKIE)
+        if do_pc(request):
+            A.atualizacao.ao_abrir()  # a pagina do PC abriu: consulta a versao nova, se faz tempo (atualizacao.py)
 
         async def send(ev, data):
             await resp.write(f"event: {ev}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"

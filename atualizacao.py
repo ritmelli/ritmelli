@@ -45,6 +45,8 @@ PASTA = pastas.DADOS / "atualizacao"
 PASTA_APP = Path(sys.executable).parent if getattr(sys, "frozen", False) else None
 CONSULTA_APOS_S = 30.0       # depois de abrir: a subida do app nao divide a rede com a consulta
 CONSULTA_CADA_S = 6 * 3600.0
+# a pagina do PC aberta de novo consulta, se a ultima consulta tem mais que isso (o ao_abrir)
+CONSULTA_AO_ABRIR_S = 5 * 60.0
 # depois de uma consulta que nao chegou ao manifesto (sem rede, tempo esgotado): de novo logo, e cada vez mais espacado,
 # ate voltar aos 6 h. Um manifesto recusado (assinatura, formato) nao conta: tentar de novo logo nao muda a resposta
 DE_NOVO_S = (2 * 60.0, 5 * 60.0, 15 * 60.0, 30 * 60.0, 60 * 60.0)
@@ -209,6 +211,7 @@ class Atualizacao:
         self.progresso = 0.0
         self.erro = None        # o que deu errado na ultima acao, para a tela
         self.consultada = None  # quando a ultima consulta deu certo
+        self.ultima = None      # o time.monotonic() da ultima consulta, certa ou nao
         self.falhas = 0         # consultas seguidas que nao chegaram ao manifesto
         self.parcial = False    # se a parcial da versao nova serve para o que esta instalado (pelo tamanho, ate baixar)
         self.setup = None       # o setup baixado e conferido (o completo ou a parcial)
@@ -250,6 +253,20 @@ class Atualizacao:
             return CONSULTA_CADA_S
         return min(DE_NOVO_S[f - 1], CONSULTA_CADA_S)
 
+    def ao_abrir(self):
+        """A pagina do PC abriu: o atalho clicado de novo com a Vitrola ligada, ou a aba recarregada. Fechar a janela
+        nao fecha a Vitrola, entao sem isto a versao nova so aparecia na consulta seguinte, ate 6 h depois. Consulta
+        numa thread se a ultima consulta tem mais de CONSULTA_AO_ABRIR_S; nao antes da primeira da vigia, que vem logo
+        depois de abrir, nem no meio de um download. True se foi consultar."""
+        if not self.ativa:
+            return False
+        with self.lock:
+            if self.estado != "parado" or self.ultima is None or time.monotonic() - self.ultima < CONSULTA_AO_ABRIR_S:
+                return False
+            self.ultima = time.monotonic()  # duas paginas abrindo juntas: so uma consulta
+        threading.Thread(target=self.consultar, daemon=True).start()
+        return True
+
     def consultar(self):
         """Baixa e confere o manifesto. True se ha versao nova."""
         if not self.ativa:
@@ -257,7 +274,7 @@ class Atualizacao:
         with self.lock:
             if self.estado != "parado":
                 return self.nova is not None
-            self.estado, self.erro = "consultando", None
+            self.estado, self.erro, self.ultima = "consultando", None, time.monotonic()
         try:
             m = confere(_pega(MANIFESTO, MANIFESTO_MAX), _pega(MANIFESTO + ".sig", 4096))
         except (OSError, ValueError) as e:
