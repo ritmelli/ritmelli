@@ -128,11 +128,14 @@ def palavras(texto):
 
 def so_artista(pedido, artista):
     """O pedido e so o nome do artista que o YouTube Music achou: cada palavra dele bate com uma do nome (a escrita
-    pode errar um pouco: "the weekend" e The Weeknd, "rei da cimbinha" e Rei da Cacimbinha). Sobrou palavra = o nome
-    da musica veio junto. O nome de um integrante ("Chorão Charlie Brown Jr") sobra e vai como musica."""
+    pode errar um pouco: "the weekend" e The Weeknd, "rei da cimbinha" e Rei da Cacimbinha, "re da cacimbinha"
+    tambem). Sobrou palavra = o nome da musica veio junto. O nome de um integrante ("Chorão Charlie Brown Jr") sobra e
+    vai como musica. O pedido que e uma palavra curta so (menos de 5 letras) bate so igual: "mana" e "manak" passavam
+    na grafia proxima, e o "Maná" tocava "Quebra Rebolando", do MANAK NA VOZ, a primeira sugerida (11/11)."""
     nomes, ped = palavras(artista), palavras(pedido)
+    exato = len(ped) == 1 and len(ped[0]) < 5
     return bool(ped) and bool(nomes) and all(
-        any(difflib.SequenceMatcher(None, w, x).ratio() >= 0.8 for x in nomes) for w in ped)
+        any(w == x or (not exato and difflib.SequenceMatcher(None, w, x).ratio() >= 0.8) for x in nomes) for w in ped)
 
 
 def _item(x, artista=None):

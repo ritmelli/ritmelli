@@ -86,11 +86,20 @@ class Musica(unittest.TestCase):
     def test_so_artista(self):
         for ped, art in (("Raul", "Raul Seixas"), ("the weekend", "The Weeknd"), ("rei da cimbinha", "Rei da Cacimbinha"),
                          ("Pedro Joilson", "Pedro E Joilson"), ("M.C. Gorila", "Mc Gorila"), ("Kevin", "MC Kevin"),
-                         ("Racionais MC's", "Racionais MC's")):
+                         ("Racionais MC's", "Racionais MC's"), ("rê da cacimbinha", "O Rei da Cacimbinha")):
             self.assertTrue(yt_fora.so_artista(ped, art), (ped, art))
         for ped, art in (("Luan Santana Chuva de Arroz", "Luan Santana"), ("Te dei o sol te dei o mar", "Luan Santana"),
-                         ("Gaiola funk", "MC Livinho"), ("uma música boa", "Emilly Vick")):
+                         ("Gaiola funk", "MC Livinho"), ("uma música boa", "Emilly Vick"), ("Maná", "MANAK NA VOZ")):
             self.assertFalse(yt_fora.so_artista(ped, art), (ped, art))
+
+    def test_nome_curto_so_igual(self):
+        """ "Maná" (11/11): a primeira sugerida com as palavras do pedido era "Quebra Rebolando", do MANAK NA VOZ ("mana"
+        e "manak" passavam na grafia proxima); o pedido que e uma palavra curta so vale igual, e entra a primeira do Maná."""
+        y = YtmFalso({}, sugestoes={"Maná": [
+            sug_musica("a1", "Manancial (Eu Tenho Sede de Ti)", "Aline Barros", "UC2"),
+            sug_musica("k1", "QUEBRA REBOLANDO", "MANAK NA VOZ", "UC3"),
+            sug_musica("m1", "Labios Compartidos", "Maná", "UC1")]})
+        self.assertEqual(yt_fora.musica("Maná", 3, y)[0]["youtube_id"], "m1")
 
     def test_artista_toca_a_mais_tocada(self):
         y = YtmFalso({"Raul": [artista("Raul Seixas", "UC1"), musica("p1", "As profecias")]},
