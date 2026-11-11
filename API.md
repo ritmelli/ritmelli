@@ -214,7 +214,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `GET /api/pareamento?caminho=/t/<slug>/` | - | só no PC: `{"url", "codigo", "vale_s", "queimado", "qr", "celulares"}` (ver "Celular: pareamento") |
 | `POST /api/pareamento/codigo` | - | só no PC: troca o código (e traz um de volta depois de queimado) |
 | `DELETE /api/pareamento/<id>` | - | só no PC: desconecta o celular, que volta a precisar do código |
-| `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho"} ou null}` (ver "Versão nova") |
+| `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho", "parcial"} ou null}` (ver "Versão nova") |
 | `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
 | `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
 | `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; recusado ou ainda não baixado, 409 com o motivo |
@@ -251,6 +251,10 @@ mais nova que a que está rodando. As versões ficam nas Releases do repo públi
 `vitrola-app/vitrola-releases`. Pelo código (`python server.py`), nada é consultado e `ativa`
 vem `false`.
 
+- `nova.tamanho` é o que vai ser baixado: a atualização parcial (`nova.parcial` = `true`), só
+  com os arquivos que mudaram (uns 15 MB), quando o resto do que está instalado bate com o
+  manifesto, ou o instalador completo (uns 160 MB). O app confere de novo, pelo hash, antes de
+  baixar a parcial; se algo não bater, baixa o completo, e o `tamanho` muda.
 - O `estado` anda assim: `parado` (com ou sem `nova`), `baixando`, `pronta` e, depois do
   `POST /api/atualizacao/instalar`, `instalando`. Um download que falha volta para `parado`, com
   o motivo em `erro`.

@@ -13,6 +13,7 @@ import hashlib
 import http.server
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -179,7 +180,7 @@ a = atu.Atualizacao(ativa=True)
 a.consultar()
 caso("baixar comeca", a.baixar())
 caso("download certo fica pronto", espera(a, "pronta") and a.setup.exists() and a.setup.read_bytes() == setup)
-caso("nada de .parcial sobrando", not list(atu.PASTA.glob("*.parcial")))
+caso("nada de .baixando sobrando", not list(atu.PASTA.glob("*.baixando")))
 
 print("--- instalar, sem abrir nada")
 chamadas = []
@@ -210,6 +211,118 @@ c.setup.write_bytes(b"trocado")
 ok, motivo = c.instalar()
 caso("setup trocado depois de conferido", not ok and c.estado == "parado", motivo)
 
+print("--- a parcial (o caminho B)")
+# o app "instalado": o manifesto novo muda so o vitrola.exe, e a parcial traz so ele
+app = tmp / "app"
+instalado = {"vitrola.exe": b"exe velho", "_internal/a.dll": b"dll igual", "_internal/b/c.zip": b"zip igual",
+             "bin/ffmpeg.exe": b"ffmpeg igual"}
+novos = {**instalado, "vitrola.exe": b"exe novo, de outro tamanho"}
+
+
+def instala(arquivos):
+    if app.exists():
+        shutil.rmtree(app)
+    for c, d in arquivos.items():
+        (app / c).parent.mkdir(parents=True, exist_ok=True)
+        (app / c).write_bytes(d)
+
+
+parc = os.urandom(1 << 20)
+(www / "parcial.exe").write_bytes(parc)
+
+
+def com_parcial(**muda):
+    p = {"url": f"{base}/parcial.exe", "sha256": hashlib.sha256(parc).hexdigest(), "tamanho": len(parc),
+         "de": VERSAO, "arquivos": ["vitrola.exe"], "apaga": ["_internal/velho.pyd"]}
+    p.update(muda)
+    return manifesto(arquivos=[{"caminho": c, "sha256": hashlib.sha256(d).hexdigest(), "tamanho": len(d)}
+                               for c, d in novos.items()], parcial=p)
+
+
+d = json.dumps(com_parcial()).encode()
+caso("manifesto com a parcial", atu.confere(d, assina(d))["parcial"]["de"] == VERSAO)
+for nome, m in (("traz um arquivo fora da lista", com_parcial(arquivos=["_internal/outro.dll"])),
+                ("apaga um arquivo da lista", com_parcial(apaga=["_internal/a.dll"])),
+                ("apaga fora da pasta", com_parcial(apaga=["../../x.dll"])),
+                ("vem sem hash", com_parcial(sha256="x")),
+                ("nao traz nada", com_parcial(arquivos=[])),
+                ("diz a versao anterior fora do formato", com_parcial(de="1.0"))):
+    dd = json.dumps(m).encode()
+    recusa(f"parcial que {nome}", dd, assina(dd))
+atu.SO_HTTPS = True  # o setup completo por https, e so a parcial por http
+m = com_parcial(url="http://x/parcial.exe")
+m["instalador"] = {"url": "https://x/setup.exe", "sha256": SHA, "tamanho": len(setup)}
+dd = json.dumps(m).encode()
+recusa("parcial por http, com o https exigido", dd, assina(dd))
+atu.SO_HTTPS = False
+
+
+def limpa_pasta():
+    for f in atu.PASTA.glob("*"):
+        f.unlink()
+
+
+def consulta(m):
+    limpa_pasta()
+    publica(m)
+    a = atu.Atualizacao(ativa=True)
+    a.consultar()
+    return a
+
+
+atu.PASTA_APP = app
+instala(instalado)
+a = consulta(com_parcial())
+caso("a parcial serve: a tela mostra o tamanho dela", a.publico()["nova"]["parcial"] is True
+     and a.publico()["nova"]["tamanho"] == len(parc), a.publico()["nova"])
+a.baixar()
+caso("baixa a parcial", espera(a, "pronta") and a.setup.name == f"Vitrola-{mais(VERSAO)}-parcial.exe"
+     and a.setup.read_bytes() == parc, a.setup)
+chamadas.clear()
+atu.abre_instalador = lambda s, p: chamadas.append((s, p)) or 42
+ok, motivo = a.instalar()
+caso("instala a parcial, em silencio e reabrindo",
+     ok and Path(chamadas[0][0]) == a.setup and "/reabrir=1" in chamadas[0][1])
+
+instala({**instalado, "_internal/velho.pyd": b"da versao anterior"})
+caso("um arquivo que a parcial apaga nao atrapalha", consulta(com_parcial()).parcial is True)
+
+instala({**instalado, "_internal/a.dll": b"dll IGUAL"})  # o mesmo tamanho: a consulta nao percebe
+a = consulta(com_parcial())
+caso("arquivo mexido, do mesmo tamanho: a consulta ainda aposta na parcial", a.parcial is True)
+a.baixar()
+caso("...e o hash, antes de baixar, troca para o completo", espera(a, "pronta") and a.parcial is False
+     and a.setup.name.endswith("-setup.exe") and a.setup.read_bytes() == setup, a.setup)
+caso("...e a tela passa a mostrar o tamanho do completo", a.publico()["nova"]["tamanho"] == len(setup))
+
+for nome, arquivos in (("faltando um arquivo", {c: d for c, d in instalado.items() if c != "_internal/b/c.zip"}),
+                       ("com um arquivo a mais na _internal", {**instalado, "_internal/sobrou.pyd": b"x"}),
+                       ("com um arquivo a mais na bin", {**instalado, "bin/ffplay.exe": b"x"}),
+                       ("com um arquivo de outro tamanho", {**instalado, "_internal/a.dll": b"dll de outro tamanho"})):
+    instala(arquivos)
+    a = consulta(com_parcial())
+    caso(f"app {nome}: vai o completo", a.parcial is False and a.publico()["nova"]["tamanho"] == len(setup))
+
+instala(instalado)
+atu.PASTA_APP = None
+caso("pelo codigo (sem a pasta do app): vai o completo", consulta(com_parcial()).parcial is False)
+atu.PASTA_APP = app
+
+a = consulta(com_parcial(sha256="0" * 64))
+a.baixar()
+caso("a parcial baixada nao confere: recusa", espera(a, "parado") and a.erro and a.parcial is False, a.erro)
+a.baixar()
+caso("...e na tentativa seguinte vai o completo", espera(a, "pronta") and a.setup.name.endswith("-setup.exe"))
+
+a = consulta(com_parcial())
+a.baixar()
+espera(a, "pronta")
+a.setup.write_bytes(b"trocado")
+ok, motivo = a.instalar()
+caso("a parcial trocada depois de conferida", not ok and a.estado == "parado" and a.setup is None, motivo)
+atu.PASTA_APP = None
+limpa_pasta()
+
 print("--- servidor fora e a limpeza")
 srv.shutdown()
 srv.server_close()
@@ -217,11 +330,14 @@ d2 = atu.Atualizacao(ativa=True)
 caso("servidor fora: sem versao nova e com o motivo", d2.consultar() is False and d2.estado == "parado" and d2.erro, d2.erro)
 for f in atu.PASTA.glob("*"):
     f.unlink()
-for nome in (f"Vitrola-{VERSAO}-setup.exe", "Vitrola-0.0.1-setup.exe", "x-setup.exe.parcial", f"Vitrola-{mais(VERSAO, 5)}-setup.exe"):
+for nome in (f"Vitrola-{VERSAO}-setup.exe", "Vitrola-0.0.1-setup.exe", "x-setup.exe.parcial", "y-setup.exe.baixando",
+             f"Vitrola-{VERSAO}-parcial.exe", f"Vitrola-{mais(VERSAO, 5)}-setup.exe",
+             f"Vitrola-{mais(VERSAO, 5)}-parcial.exe"):
     (atu.PASTA / nome).write_bytes(b"x")
 atu.Atualizacao(ativa=True)._limpa()
-sobra = sorted(f.name for f in atu.PASTA.iterdir() if "setup" in f.name)
-caso("a limpeza tira os setups velhos e os pela metade", sobra == [f"Vitrola-{mais(VERSAO, 5)}-setup.exe"], sobra)
+sobra = sorted(f.name for f in atu.PASTA.iterdir() if "Vitrola" in f.name or "setup" in f.name)
+caso("a limpeza tira os setups e as parciais velhos e os pela metade",
+     sobra == [f"Vitrola-{mais(VERSAO, 5)}-parcial.exe", f"Vitrola-{mais(VERSAO, 5)}-setup.exe"], sobra)
 
 print("tudo certo" if not falhas else f"FALHAS: {', '.join(falhas)}")
 sys.exit(1 if falhas else 0)

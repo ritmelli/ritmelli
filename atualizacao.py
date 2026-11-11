@@ -1,12 +1,18 @@
-"""A versao nova da Vitrola, pelo caminho A do PLANO.md do vitrola-server. O app baixa o manifesto das versoes e a
-assinatura dele, confere a assinatura com a chave publica que mora aqui e, se a versao for mais nova que a dele, a tela
-avisa. Quem aceita baixa o setup.exe que o manifesto aponta, com o tamanho e o hash conferidos, e o app roda o
-instalador em modo silencioso: o Windows pede a permissao, o instalador fecha a Vitrola, troca a pasta dela e abre de
-novo (o /reabrir=1 do vitrola.iss).
+"""A versao nova da Vitrola, pelos caminhos A e B do PLANO.md do vitrola-server. O app baixa o manifesto das versoes e
+a assinatura dele, confere a assinatura com a chave publica que mora aqui e, se a versao for mais nova que a dele, a
+tela avisa. Quem aceita baixa o setup que o manifesto aponta, com o tamanho e o hash conferidos, e o app roda o
+instalador em modo silencioso: o Windows pede a permissao, o instalador fecha a Vitrola, troca o que precisa na pasta
+dela e abre de novo (o /reabrir=1 do vitrola.iss).
+
+Sao dois setups. O completo (caminho A) troca a pasta inteira. A parcial (caminho B, uns 15 MB contra 160) traz so os
+arquivos que mudaram desde a versao anterior: o app so a usa quando todo o resto do que esta instalado bate com a lista
+de arquivos do manifesto (o tamanho ao consultar, o hash antes de baixar) e nao sobra arquivo de outra versao na
+_internal\\ nem na bin\\. Senao, vai o completo. Por isso ela serve tambem a quem esta algumas versoes atras, desde que
+as bibliotecas nao tenham mudado no meio. Um app que nao conhece a parcial nao olha para ela e segue no completo.
 
 O ponto de confianca e a chave: so vale o manifesto assinado por ela, e so para uma versao mais nova que a que esta
-rodando, entao um manifesto velho, mesmo assinado, nao volta a versao. O manifesto ja traz cada arquivo do app com o
-hash, no formato do caminho B (trocar so o que mudou), para o B entrar depois sem trocar o formato nem a chave.
+rodando, entao um manifesto velho, mesmo assinado, nao volta a versao. A lista de arquivos e a parcial vao dentro do
+manifesto, assinadas com ele.
 
 As versoes ficam nas Releases do repo publico vitrola-app/vitrola-releases: o "latest" do GitHub e sempre a ultima
 publicada, com o manifesto, a assinatura e o setup. A chave 1 e a que a esteira do vitrola-server usa para assinar.
@@ -34,6 +40,8 @@ CHAVES = {1: "Bnvi5qyGzrl2bPDgG9UUCDHjhcTCU3lr9SHMKbkjLts="}
 SO_HTTPS = True  # os testes servem por http, numa porta local
 FORMATO = 1
 PASTA = pastas.DADOS / "atualizacao"
+# a pasta do app instalado (a do vitrola.exe), que a parcial confere; pelo codigo nao ha, e vai sempre o completo
+PASTA_APP = Path(sys.executable).parent if getattr(sys, "frozen", False) else None
 CONSULTA_APOS_S = 30.0       # depois de abrir: a subida do app nao divide a rede com a consulta
 CONSULTA_CADA_S = 6 * 3600.0
 # depois de uma consulta que nao chegou ao manifesto (sem rede, tempo esgotado): de novo logo, e cada vez mais espacado,
@@ -92,11 +100,61 @@ def confere(manifesto, assinatura, chaves=None):
         if not (isinstance(a, dict) and isinstance(a.get("caminho"), str) and _sha(a.get("sha256"))
                 and isinstance(a.get("tamanho"), int) and a["tamanho"] >= 0):
             raise Recusado("a lista de arquivos do manifesto está fora do formato")
-        # o caminho B troca arquivo por arquivo: nada de sair da pasta do app
-        c = a["caminho"].replace("\\", "/")
-        if c.startswith("/") or ":" in c or ".." in c.split("/"):
-            raise Recusado(f"caminho de arquivo recusado no manifesto: {a['caminho']!r}")
+        _caminho(a["caminho"])
+    if "parcial" in m:
+        _confere_parcial(m["parcial"], {a["caminho"] for a in m.get("arquivos", [])})
     return m
+
+
+def _caminho(c):
+    """Um caminho de arquivo do manifesto: o caminho B confere arquivo por arquivo, e nada sai da pasta do app."""
+    p = c.replace("\\", "/")
+    if not p or p.startswith("/") or ":" in p or ".." in p.split("/"):
+        raise Recusado(f"caminho de arquivo recusado no manifesto: {c!r}")
+
+
+def _confere_parcial(p, caminhos):
+    """A parcial (o caminho B): o setup com o que mudou, o que ele traz (tudo da lista de arquivos) e o que apaga."""
+    if not (isinstance(p, dict) and isinstance(p.get("url"), str) and _sha(p.get("sha256"))
+            and isinstance(p.get("tamanho"), int) and 0 < p["tamanho"] <= SETUP_MAX
+            and isinstance(p.get("arquivos"), list) and p["arquivos"] and isinstance(p.get("apaga", []), list)):
+        raise Recusado("a atualização parcial do manifesto está fora do formato")
+    if not p["url"].startswith("https://" if SO_HTTPS else ("https://", "http://")):
+        raise Recusado("a atualização parcial do manifesto não vem por https")
+    versao(p.get("de"))
+    for c in p["arquivos"]:
+        if not isinstance(c, str) or c not in caminhos:
+            raise Recusado("a atualização parcial traz um arquivo fora da lista do manifesto")
+    for c in p.get("apaga", []):
+        if not isinstance(c, str) or c in caminhos:
+            raise Recusado("a atualização parcial apaga um arquivo da lista do manifesto")
+        _caminho(c)
+
+
+def cabe_parcial(m, pasta, hash_=False):
+    """Se a parcial do manifesto m serve para o app instalado em pasta: cada arquivo da lista que ela nao traz ja esta
+    la, igual (o tamanho; com hash_, tambem o sha256, uns segundos para os ~350 MB), e nao sobra na _internal\\ nem na
+    bin\\ arquivo que a versao nova nao tem (fora os que a parcial apaga). Sem pasta (pelo codigo), nunca."""
+    p = m.get("parcial")
+    if not p or not pasta:
+        return False
+    traz = set(p["arquivos"])
+    # o Windows nao diferencia maiuscula de minuscula no nome
+    conhecidos = {a["caminho"].lower() for a in m["arquivos"]} | {c.lower() for c in p.get("apaga", [])}
+    try:
+        for a in m["arquivos"]:
+            if a["caminho"] in traz:
+                continue
+            f = pasta / a["caminho"]
+            if f.stat().st_size != a["tamanho"] or (hash_ and _hash(f) != a["sha256"]):
+                return False
+        for raiz in ("_internal", "bin"):
+            for f in (pasta / raiz).rglob("*"):
+                if f.is_file() and f.relative_to(pasta).as_posix().lower() not in conhecidos:
+                    return False
+    except OSError:
+        return False
+    return True
 
 
 def _tls():
@@ -132,7 +190,7 @@ def _hash(arq):
 
 class Atualizacao:
     """O estado da versao nova para a tela: parado (nenhuma, ou ainda nao baixou), consultando, baixando, pronta
-    (o setup baixado e conferido) e instalando."""
+    (o setup baixado e conferido) e instalando. O setup e a parcial, quando ela serve, ou o completo."""
 
     def __init__(self, ativa=None):
         congelado = getattr(sys, "frozen", False)
@@ -144,7 +202,13 @@ class Atualizacao:
         self.erro = None        # o que deu errado na ultima acao, para a tela
         self.consultada = None  # quando a ultima consulta deu certo
         self.falhas = 0         # consultas seguidas que nao chegaram ao manifesto
-        self.setup = None       # o setup.exe baixado e conferido
+        self.parcial = False    # se a parcial da versao nova serve para o que esta instalado (pelo tamanho, ate baixar)
+        self.setup = None       # o setup baixado e conferido (o completo ou a parcial)
+        self.alvo = None        # o que o manifesto diz desse setup: o "instalador" ou a "parcial"
+
+    def _escolhido(self):
+        """O setup que vai ser baixado: a parcial, quando serve, ou o completo."""
+        return self.nova["parcial"] if self.parcial else self.nova["instalador"]
 
     def resumo(self):
         """O pedaco que vai no estado ao vivo (o SSE): o tema so precisa saber se tem e em que pe esta."""
@@ -158,7 +222,7 @@ class Atualizacao:
             return {"ativa": self.ativa, "versao": VERSAO, "estado": self.estado, "progresso": round(self.progresso, 3),
                     "erro": self.erro, "consultada": self.consultada,
                     "nova": n and {"versao": n["versao"], "data": n.get("data"), "notas": n.get("notas", []),
-                                   "tamanho": n["instalador"]["tamanho"]}}
+                                   "tamanho": self._escolhido()["tamanho"], "parcial": self.parcial}}
 
     def vigia(self):
         """A thread que consulta logo depois de abrir e de tempos em tempos (o proxima)."""
@@ -197,14 +261,18 @@ class Atualizacao:
                     self.erro, self.falhas = "Não deu para consultar se há versão nova.", self.falhas + 1
             print(f"atualizacao: {e}", flush=True)
             return self.nova is not None
+        nova = versao(m["versao"]) > versao(VERSAO)
+        serve = nova and cabe_parcial(m, PASTA_APP)  # so o tamanho de cada arquivo: rapido
         with self.lock:
             self.estado, self.consultada, self.falhas = "parado", time.strftime("%Y-%m-%dT%H:%M:%S"), 0
-            if versao(m["versao"]) > versao(VERSAO):
+            if nova:
                 if not self.nova or self.nova["versao"] != m["versao"]:
-                    self.nova, self.setup = m, None
-                    print(f"atualizacao: versao nova {m['versao']}", flush=True)
+                    self.nova, self.parcial, self.setup, self.alvo = m, serve, None, None
+                    serve_mb = f" (a parcial serve: {m['parcial']['tamanho'] / 2**20:.1f} MB)" if serve else ""
+                    print(f"atualizacao: versao nova {m['versao']}{serve_mb}", flush=True)
             else:
-                self.nova = self.setup = None
+                self.nova = self.setup = self.alvo = None
+                self.parcial = False
             return self.nova is not None
 
     def baixar(self):
@@ -221,14 +289,22 @@ class Atualizacao:
         return True
 
     def _baixa(self, m):
-        inst = m["instalador"]
+        with self.lock:
+            parcial = self.parcial
+        # a consulta so conferiu o tamanho: antes de baixar a parcial, o hash de tudo que ela nao traz
+        if parcial and not cabe_parcial(m, PASTA_APP, hash_=True):
+            print("atualizacao: o que esta instalado nao bate com o manifesto; vai o setup completo", flush=True)
+            parcial = False
+            with self.lock:
+                self.parcial = False
+        inst = m["parcial"] if parcial else m["instalador"]
         PASTA.mkdir(parents=True, exist_ok=True)
-        final = PASTA / f"Vitrola-{m['versao']}-setup.exe"
-        parcial = final.with_name(final.name + ".parcial")
+        final = PASTA / f"Vitrola-{m['versao']}-{'parcial' if parcial else 'setup'}.exe"
+        meio = final.with_name(final.name + ".baixando")
         try:
             h, n = hashlib.sha256(), 0
             req = urllib.request.Request(inst["url"], headers={"User-Agent": f"Vitrola/{VERSAO}"})
-            with urllib.request.urlopen(req, timeout=TEMPO_S, context=_tls()) as r, open(parcial, "wb") as f:
+            with urllib.request.urlopen(req, timeout=TEMPO_S, context=_tls()) as r, open(meio, "wb") as f:
                 while b := r.read(PEDACO):
                     n += len(b)
                     if n > inst["tamanho"]:
@@ -239,16 +315,18 @@ class Atualizacao:
                         self.progresso = n / inst["tamanho"]
             if n != inst["tamanho"] or h.hexdigest() != inst["sha256"]:
                 raise Recusado("o instalador baixado não confere com o manifesto")
-            parcial.replace(final)
+            meio.replace(final)
         except (OSError, ValueError) as e:
-            parcial.unlink(missing_ok=True)
+            meio.unlink(missing_ok=True)
             with self.lock:
                 self.estado = "parado"
                 self.erro = str(e) if isinstance(e, Recusado) else "O download da versão nova parou. Tente de novo."
+                if parcial and isinstance(e, Recusado):
+                    self.parcial = False  # a parcial veio errada: na proxima, o completo
             print(f"atualizacao: {e}", flush=True)
             return
         with self.lock:
-            self.setup, self.estado, self.progresso = final, "pronta", 1.0
+            self.setup, self.alvo, self.estado, self.progresso = final, inst, "pronta", 1.0
         print(f"atualizacao: {final.name} baixado e conferido", flush=True)
 
     def instalar(self):
@@ -257,10 +335,10 @@ class Atualizacao:
         with self.lock:
             if self.estado != "pronta" or not self.setup:
                 return False, "A versão nova ainda não foi baixada."
-            setup, m = self.setup, self.nova
-        if not setup.exists() or _hash(setup) != m["instalador"]["sha256"]:
+            setup, m, alvo = self.setup, self.nova, self.alvo
+        if not setup.exists() or _hash(setup) != alvo["sha256"]:
             with self.lock:
-                self.estado, self.setup = "parado", None
+                self.estado, self.setup, self.alvo = "parado", None, None
             return False, "O instalador baixado mudou depois da conferência. Baixe de novo."
         log = PASTA / f"instalador-{m['versao']}.log"
         r = abre_instalador(setup, f'{PARAMETROS} /LOG="{log}"')
@@ -277,9 +355,10 @@ class Atualizacao:
         if not PASTA.exists():
             return
         for f in PASTA.iterdir():
-            v = re.fullmatch(r"Vitrola-(.+)-setup\.exe", f.name)
+            v = re.fullmatch(r"Vitrola-(.+)-(?:setup|parcial)\.exe", f.name)
             try:
-                velho = f.name.endswith(".parcial") or (v and versao(v.group(1)) <= versao(VERSAO))
+                # .baixando: o download pela metade (o .parcial e o nome de antes da parcial existir)
+                velho = f.name.endswith((".baixando", ".parcial")) or (v and versao(v.group(1)) <= versao(VERSAO))
                 if velho:
                     f.unlink()
             except (OSError, ValueError):
