@@ -2,7 +2,7 @@
 a assinatura dele, confere a assinatura com a chave publica que mora aqui e, se a versao for mais nova que a dele, a
 tela avisa. Quem aceita baixa o setup que o manifesto aponta, com o tamanho e o hash conferidos, e o app roda o
 instalador em modo silencioso: o Windows pede a permissao, o instalador fecha a Vitrola, troca o que precisa na pasta
-dela e abre de novo (o /reabrir=1 do vitrola.iss).
+dela e abre de novo (o /reabrir=1 do vitrola.iss). Um download que para no meio continua de onde parou.
 
 Sao dois setups. O completo (caminho A) troca a pasta inteira. A parcial (caminho B, uns 15 MB contra 160) traz so os
 arquivos que mudaram desde a versao anterior: o app so a usa quando todo o resto do que esta instalado bate com a lista
@@ -21,6 +21,7 @@ os tres."""
 import base64
 import ctypes
 import hashlib
+import http.client
 import json
 import re
 import ssl
@@ -48,6 +49,9 @@ CONSULTA_CADA_S = 6 * 3600.0
 # ate voltar aos 6 h. Um manifesto recusado (assinatura, formato) nao conta: tentar de novo logo nao muda a resposta
 DE_NOVO_S = (2 * 60.0, 5 * 60.0, 15 * 60.0, 30 * 60.0, 60 * 60.0)
 TEMPO_S = 20.0              # o manifesto e pequeno; o setup tem o mesmo prazo entre um pedaco e outro
+# o download que parou no meio (a rede caiu, ou a conexao fechou antes do fim): de novo, de onde parou, depois de cada
+# espera. Uma tentativa que avancou zera a conta; sem avancar em nenhuma, desiste, e a tela pede para tentar de novo
+DE_NOVO_BAIXA_S = (2.0, 5.0, 15.0, 30.0)
 MANIFESTO_MAX = 1 << 20
 SETUP_MAX = 1 << 30
 PEDACO = 1 << 20
@@ -58,6 +62,10 @@ SE_ERR_ACCESSDENIED = 5      # o ShellExecute com o pedido de permissao recusado
 
 class Recusado(ValueError):
     """O manifesto ou o arquivo nao passa na conferencia."""
+
+
+class Parou(OSError):
+    """O download parou no meio: e a rede, e nao o arquivo."""
 
 
 def versao(v):
@@ -302,18 +310,10 @@ class Atualizacao:
         final = PASTA / f"Vitrola-{m['versao']}-{'parcial' if parcial else 'setup'}.exe"
         meio = final.with_name(final.name + ".baixando")
         try:
-            h, n = hashlib.sha256(), 0
-            req = urllib.request.Request(inst["url"], headers={"User-Agent": f"Vitrola/{VERSAO}"})
-            with urllib.request.urlopen(req, timeout=TEMPO_S, context=_tls()) as r, open(meio, "wb") as f:
-                while b := r.read(PEDACO):
-                    n += len(b)
-                    if n > inst["tamanho"]:
-                        raise Recusado("o instalador baixado é maior que o do manifesto")
-                    h.update(b)
-                    f.write(b)
-                    with self.lock:
-                        self.progresso = n / inst["tamanho"]
-            if n != inst["tamanho"] or h.hexdigest() != inst["sha256"]:
+            with open(meio, "wb") as f:
+                self._puxa(inst, f)
+            # o hash do que ficou no disco, que veio em pedacos quando o download parou no meio
+            if _hash(meio) != inst["sha256"]:
                 raise Recusado("o instalador baixado não confere com o manifesto")
             meio.replace(final)
         except (OSError, ValueError) as e:
@@ -328,6 +328,48 @@ class Atualizacao:
         with self.lock:
             self.setup, self.alvo, self.estado, self.progresso = final, inst, "pronta", 1.0
         print(f"atualizacao: {final.name} baixado e conferido", flush=True)
+
+    def _puxa(self, inst, f):
+        """Baixa o setup no f, ate o tamanho do manifesto. Se a rede cai ou a conexao fecha antes do fim (o http.client
+        nao acusa: so entrega menos bytes), pede de novo so o que falta (o Range), depois de uma espera do
+        DE_NOVO_BAIXA_S; se o servidor manda o arquivo inteiro outra vez, recomeca do zero. Parou quando nenhuma das
+        tentativas seguidas avancou."""
+        tam, seguidas = inst["tamanho"], 0
+        while True:
+            n = antes = f.tell()
+            cab = {"User-Agent": f"Vitrola/{VERSAO}"}
+            if n:
+                cab["Range"] = f"bytes={n}-"
+            try:
+                req = urllib.request.Request(inst["url"], headers=cab)
+                with urllib.request.urlopen(req, timeout=TEMPO_S, context=_tls()) as r:
+                    if n and not (r.status == 206 and r.headers.get("Content-Range", "").startswith(f"bytes {n}-")):
+                        # o servidor nao continuou de onde parou: o que vier e do comeco
+                        f.seek(0)
+                        f.truncate()
+                        n = 0
+                        if r.status != 200:
+                            raise Parou(f"o servidor respondeu {r.status} sem continuar de onde parou")
+                    while b := r.read(PEDACO):
+                        if n + len(b) > tam:
+                            raise Recusado("o instalador baixado é maior que o do manifesto")
+                        f.write(b)
+                        n += len(b)
+                        with self.lock:
+                            self.progresso = n / tam
+                motivo = "a conexão fechou antes do fim"
+            except (OSError, http.client.HTTPException) as e:
+                motivo = e
+            n = f.tell()
+            if n == tam:
+                return
+            seguidas = 0 if n > antes else seguidas + 1
+            if seguidas > len(DE_NOVO_BAIXA_S):
+                raise Parou(f"o download parou em {n / 2**20:.1f} de {tam / 2**20:.1f} MB ({motivo})")
+            espera = DE_NOVO_BAIXA_S[max(seguidas - 1, 0)]
+            print(f"atualizacao: o download parou em {n / 2**20:.1f} de {tam / 2**20:.1f} MB ({motivo}); "
+                  f"de novo em {espera:.0f} s", flush=True)
+            time.sleep(espera)
 
     def instalar(self):
         """Confere o setup de novo e roda ele com o pedido de permissao do Windows. (True, None) se o instalador

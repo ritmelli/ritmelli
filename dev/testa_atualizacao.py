@@ -2,8 +2,10 @@
 assinatura e um setup de mentira, com uma chave de teste gerada na hora. Cobre a assinatura (certa, de outra chave,
 manifesto mexido), o formato, a versao (mais velha, igual, mais nova), a proxima consulta (logo depois de uma que
 nao chegou ao manifesto, cada vez mais espacada), o download (certo, hash errado, maior que o
-manifesto, servidor fora), o caminho que sai da pasta do app, o setup trocado depois de conferido e o pedido de
-permissao do Windows (aceito e recusado, sem abrir nada). Sai 1 se algo falhar.
+manifesto, servidor fora), o download que para no meio (continua de onde parou, recomeca do zero se o servidor nao
+continua, desiste como rede depois de cinco tentativas seguidas sem avancar), o caminho que sai da pasta do app, o
+setup trocado depois de conferido e o pedido de permissao do Windows (aceito e recusado, sem abrir nada). Sai 1 se algo
+falhar.
 
     python dev/testa_atualizacao.py
 """
@@ -322,6 +324,97 @@ ok, motivo = a.instalar()
 caso("a parcial trocada depois de conferida", not ok and a.estado == "parado" and a.setup is None, motivo)
 atu.PASTA_APP = None
 limpa_pasta()
+
+print("--- o download que para no meio")
+
+
+class Corta(http.server.BaseHTTPRequestHandler):
+    """Serve os arquivos do www com o Range e, a cada pedido, o proximo passo do plano: ("corta", n) manda so n bytes
+    do pedido e fecha a conexao, como uma rede que caiu (o http.client so entrega menos bytes); ("trava", n) manda n
+    bytes e para de responder; "inteiro" manda tudo; "ignora" manda o arquivo inteiro sem olhar o Range; "outro"
+    responde 206 com outro pedaco. Sem plano, "inteiro"."""
+    plano, pedidos = [], []
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        dados = (www / self.path.lstrip("/")).read_bytes()
+        passo = Corta.plano.pop(0) if Corta.plano else "inteiro"
+        tipo, quanto = passo if isinstance(passo, tuple) else (passo, None)
+        pedido = self.headers.get("Range")
+        Corta.pedidos.append(pedido)
+        ini = int(pedido.split("=")[1].rstrip("-")) if pedido and tipo != "ignora" else 0
+        if tipo == "outro":
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes 0-{len(dados) - 1}/{len(dados)}")
+            corpo = dados
+        elif ini:
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {ini}-{len(dados) - 1}/{len(dados)}")
+            corpo = dados[ini:]
+        else:
+            self.send_response(200)
+            corpo = dados
+        self.send_header("Content-Length", str(len(corpo)))
+        self.end_headers()
+        self.wfile.write(corpo if quanto is None else corpo[:quanto])
+        self.wfile.flush()
+        if tipo == "trava":
+            threading.Event().wait(atu.TEMPO_S * 3)
+        self.close_connection = True
+
+
+srv2 = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Corta)
+threading.Thread(target=srv2.serve_forever, daemon=True).start()
+base2 = f"http://127.0.0.1:{srv2.server_address[1]}"
+atu.DE_NOVO_BAIXA_S = (0.01, 0.01, 0.01, 0.01)
+MB = 1 << 20
+
+
+def corta(*plano, m=None):
+    Corta.plano[:] = list(plano)
+    Corta.pedidos.clear()
+    a = consulta(m or manifesto(instalador={"url": f"{base2}/setup.exe", "sha256": SHA, "tamanho": len(setup)}))
+    a.baixar()
+    espera(a, "pronta", "parado")
+    return a
+
+
+def baixou(a, dados):
+    return a.estado == "pronta" and a.setup.read_bytes() == dados and not list(atu.PASTA.glob("*.baixando"))
+
+
+a = corta(("corta", MB))
+caso("cortado no meio: continua de onde parou", baixou(a, setup) and Corta.pedidos == [None, f"bytes={MB}-"],
+     Corta.pedidos)
+a = corta(*[("corta", 1000)] * 6)
+caso("cortado seis vezes, avancando em todas: chega ao fim", baixou(a, setup) and len(Corta.pedidos) == 7,
+     len(Corta.pedidos))
+tempo, atu.TEMPO_S = atu.TEMPO_S, 0.3
+a = corta(("trava", MB))
+atu.TEMPO_S = tempo
+caso("a rede para de responder no meio: espera o prazo e continua de onde parou",
+     baixou(a, setup) and Corta.pedidos == [None, f"bytes={MB}-"], Corta.pedidos)
+a = corta(("corta", MB), "ignora")
+caso("o servidor ignora o Range: recomeca do zero", baixou(a, setup), Corta.pedidos)
+a = corta(("corta", MB), "outro")
+caso("o servidor manda outro pedaco: recomeca do zero", baixou(a, setup)
+     and Corta.pedidos == [None, f"bytes={MB}-", None], Corta.pedidos)
+
+atu.PASTA_APP = app
+instala(instalado)
+a = corta(("corta", 1000), *[("corta", 0)] * 5, m=com_parcial(url=f"{base2}/parcial.exe"))
+caso("a parcial sem avancar em cinco tentativas seguidas: para como rede, e a parcial continua valendo",
+     a.estado == "parado" and a.erro == "O download da versão nova parou. Tente de novo." and a.parcial is True
+     and len(Corta.pedidos) == 6 and not list(atu.PASTA.glob("*.baixando")), (a.erro, len(Corta.pedidos)))
+a.baixar()
+espera(a, "pronta", "parado")
+caso("...e na tentativa seguinte baixa a parcial", baixou(a, parc) and a.setup.name.endswith("-parcial.exe"), a.setup)
+atu.PASTA_APP = None
+limpa_pasta()
+srv2.shutdown()
+srv2.server_close()
 
 print("--- servidor fora e a limpeza")
 srv.shutdown()
