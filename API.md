@@ -256,8 +256,9 @@ vem `false`.
   manifesto, ou o instalador completo (uns 160 MB). O app confere de novo, pelo hash, antes de
   baixar a parcial; se algo não bater, baixa o completo, e o `tamanho` muda.
 - O `estado` anda assim: `parado` (com ou sem `nova`), `baixando`, `pronta` e, depois do
-  `POST /api/atualizacao/instalar`, `instalando`. Um download que falha volta para `parado`, com
-  o motivo em `erro`.
+  `POST /api/atualizacao/instalar`, `instalando`. Um download que para no meio continua sozinho
+  de onde parou, ainda em `baixando`; ele só volta para `parado`, com o motivo em `erro`, depois
+  de algumas tentativas seguidas sem avançar, ou quando o arquivo não confere.
 - O instalador roda em silêncio: o Windows pede a permissão, o instalador fecha a Vitrola, troca
   a pasta dela e abre de novo, sem abrir outra aba. A página que estava aberta perde a conexão e
   deve recarregar quando ela voltar, porque o tema também pode ter mudado.
