@@ -13,9 +13,6 @@
 name: Monta o instalador
 
 on:
-  # TEMPORARIO, so para testar a branch antes do merge (o workflow_dispatch so aparece depois que a esteira esta na main)
-  push:
-    branches: [codigo-aberto]
   workflow_dispatch:
     inputs:
       notas:

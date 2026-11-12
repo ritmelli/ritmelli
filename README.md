@@ -108,11 +108,13 @@ As versões publicadas ficam nas Releases do
 instalado baixa a atualização. Cada uma tem aqui a tag com o número dela (`v0.3.6`, por exemplo):
 o código do app e o que monta o instalador daquela versão.
 
-## Code signing policy (política de assinatura de código)
+## Code signing policy
 
 Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
-[SignPath Foundation](https://signpath.org/). O pedido está em análise; até ele ser aprovado,
-as versões saem sem assinatura.
+[SignPath Foundation](https://signpath.org/).
+
+A política de assinatura de código da Vitrola. Até a SignPath Foundation aprovar o projeto, as
+versões saem sem assinatura.
 
 - **Quem escreve e revisa:** os [membros da organização](https://github.com/orgs/ritmelli/people).
   Mudança de quem não é da equipe só entra revisada por um membro.
