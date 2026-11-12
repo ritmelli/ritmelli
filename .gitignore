@@ -10,8 +10,12 @@ library/
 logs/
 
 # ffmpeg, ffprobe e deno que o app usa no lugar dos do PATH (pastas.py): no app, o instalador poe
-bin/
+/bin/
 
 # o que o PyInstaller gera (vitrola.spec)
 build/
 dist/
+
+# o que o instalador/monta.ps1 baixa e gera
+instalador/vendor/
+instalador/saida/

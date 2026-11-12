@@ -108,7 +108,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   avisar "não seguro"): numa Wi-Fi aberta, quem estiver na rede pode copiar o código ou o
   cookie no ar, então é para a rede de casa.
 - `atualizacao.py`: o aviso de versão nova e a atualização pelo instalador (o caminho A do
-  `PLANO.md` do vitrola-server). O app baixa o manifesto das versões e a assinatura dele, e só
+  atualizador). O app baixa o manifesto das versões e a assinatura dele, e só
   aceita o que a chave pública Ed25519 embutida no módulo assinou, e só para uma versão mais nova
   que a dele (um manifesto velho não volta a versão). O setup.exe novo vem com o tamanho e o hash
   conferidos e roda em modo silencioso, com o pedido de permissão do Windows: o instalador fecha
@@ -270,7 +270,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   em pixel em cada tamanho (o de 16 px a mão): o `vitrola.ico`, que é o do exe, o do setup e o da
   aba do navegador (pelo `/favicon.ico`), e o `toque.png`, o do atalho na tela inicial do celular
   (pelo `/apple-touch-icon.png`). Com `--instalador`, o script grava também as imagens do
-  assistente do Inno Setup na `instalador/` do vitrola-server.
+  assistente do Inno Setup na `instalador/`.
 - `pastas.py`: os dados de quem usa moram em `%LOCALAPPDATA%\Vitrola`, fora da pasta do
   código, porque instalado em Program Files ela não aceita escrita. Em `library/`, o áudio
   baixado, a lista da biblioteca, as escolhas de volume e dispositivo e os celulares pareados;

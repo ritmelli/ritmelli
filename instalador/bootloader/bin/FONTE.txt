@@ -1,0 +1,10 @@
+Bootloader do PyInstaller 6.22.3 (run.exe, runw.exe, run_d.exe, runw_d.exe), para a Vitrola.
+Licenca: GPL 2 ou posterior, com a excecao do bootloader (o programa gerado pode ter qualquer licenca). O texto e o
+COPYING.txt do PyInstaller, que vai no TERCEIROS.txt do app.
+Fonte: pyinstaller-6.22.3.tar.gz, sem mudancas, do PyPI (sha256 05eb2f5615503e72939a7224d68b4aff572c6b0438ee4a17d0a4b481f399362d).
+Compilado no MSYS2 UCRT64 com gcc.exe (Rev6, Built by MSYS2 project) 16.2.0, pelo compila.ps1: python ./waf configure all --gcc
+
+a8a75d1d10cd1ffe200ad10fc8a37878cfde7d83fde776fa8d29068353304ab2  run.exe
+62e25b0e23f21476a5e80414e18dd2a49ba9c9f005a8d12d3327637b2a043e94  runw.exe
+b6e181a3495bbfc4b55462071a777f3a14c0cd9c69e7acd16015d0b30bb9181a  run_d.exe
+814fabd87390f83035fa187aa2b7bd01d90e79f193300e9a69299a89ecde6cd5  runw_d.exe

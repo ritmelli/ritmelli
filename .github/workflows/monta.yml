@@ -1,0 +1,282 @@
+# Monta o instalador da Vitrola numa máquina Windows do GitHub, pelo mesmo instalador/monta.ps1 do build à mão, e testa
+# o setup e a atualização parcial numa máquina limpa. Só roda à mão: Actions > "Monta o instalador" > Run workflow, numa
+# branch ou tag deste repo. O setup, a parcial, o manifesto do atualizador (ainda sem a assinatura dele), o TERCEIROS e o
+# VERSOES saem como artefato da execução, por 7 dias.
+#
+# Quem publica é a esteira do repo privado ritmelli-server: ela pega o artefato de uma execução daqui, passa no
+# VirusTotal, assina o manifesto com a chave do atualizador e cria a release no ritmelli-releases. Aqui não entra
+# nenhuma chave.
+#
+# Assinatura de código (SignPath, ver o README): com o segredo SIGNPATH_API_TOKEN e as variáveis SIGNPATH_* do repo, o
+# vitrola.exe é assinado antes de entrar no setup, e o setup e a parcial antes do manifesto (o manifesto guarda o hash
+# deles). Cada assinatura espera a aprovação de um dono na SignPath. Sem o segredo, tudo sai sem assinatura.
+name: Monta o instalador
+
+on:
+  # TEMPORARIO, so para testar a branch antes do merge (o workflow_dispatch so aparece depois que a esteira esta na main)
+  push:
+    branches: [codigo-aberto]
+  workflow_dispatch:
+    inputs:
+      notas:
+        description: Notas da versão, separadas por | (opcional; aparecem na tela de versão nova)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  monta:
+    runs-on: windows-2025
+    timeout-minutes: 150
+    env:
+      ASSINA: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+    outputs:
+      versao: ${{ steps.congela.outputs.versao }}
+      parcial: ${{ steps.monta.outputs.parcial }}
+    steps:
+      # a credencial sai do disco logo depois de baixar (persist-credentials): o build instala dezenas de pacotes de
+      # terceiros
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # o Python do build à mão
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12.10'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            instalador/travas.txt
+      # o Inno Setup do build à mão, na pasta do usuário, que é a primeira onde o monta.ps1 procura (a máquina do
+      # GitHub pode trazer outra versão em Program Files)
+      - name: Inno Setup 6.7.3
+        shell: powershell
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $exe = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $exe -UseBasicParsing
+          $h = (Get-FileHash $exe -Algorithm SHA256).Hash
+          if ($h -ne '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732') { throw "o Inno Setup veio com hash $h" }
+          $p = Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/SP-' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "o instalador do Inno Setup saiu com $($p.ExitCode)" }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe")) { throw 'o ISCC.exe nao ficou na pasta do usuario' }
+      # o manifesto da última versão publicada, de onde a parcial compara (o parcial.py confere a assinatura). Sem
+      # nenhuma publicada, só o setup completo
+      - name: Manifesto anterior
+        id: anterior
+        shell: powershell
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $pasta = Join-Path $env:RUNNER_TEMP 'anterior'
+          New-Item -ItemType Directory -Force $pasta | Out-Null
+          $base = 'https://github.com/ritmelli/ritmelli-releases/releases/latest/download'
+          try {
+            foreach ($f in 'manifest.json', 'manifest.json.sig') {
+              Invoke-WebRequest "$base/$f" -OutFile (Join-Path $pasta $f) -UseBasicParsing
+            }
+          } catch {
+            "sem versão publicada para comparar ($($_.Exception.Message)): só o setup completo"
+            exit 0
+          }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "manifesto=$(Join-Path $pasta 'manifest.json')" -Encoding ascii
+      - name: Congela o app
+        id: congela
+        shell: powershell
+        run: |
+          instalador\monta.ps1 -SoCongela
+          $v = (Select-String -Path versao.py -Pattern '^VERSAO = "(.+)"').Matches[0].Groups[1].Value
+          # ascii: no PowerShell 5, o >> grava em UTF-16, e o utf8 dele poe BOM
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "versao=$v" -Encoding ascii
+
+      # assinatura do vitrola.exe, antes de ele entrar no setup e na parcial
+      - if: env.ASSINA == 'true'
+        id: app-sem-assinatura
+        uses: actions/upload-artifact@v7
+        with:
+          name: assinar-app-${{ steps.congela.outputs.versao }}
+          path: dist/vitrola/vitrola.exe
+          retention-days: 1
+          if-no-files-found: error
+      - if: env.ASSINA == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_APP }}
+          github-artifact-id: ${{ steps.app-sem-assinatura.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: assinado-app
+      - if: env.ASSINA == 'true'
+        name: Troca pelo vitrola.exe assinado
+        shell: powershell
+        run: |
+          $assinado = Get-ChildItem assinado-app -Recurse -Filter vitrola.exe | Select-Object -First 1
+          if (-not $assinado) { throw 'a SignPath nao devolveu o vitrola.exe' }
+          Copy-Item $assinado.FullName dist\vitrola\vitrola.exe -Force
+          $s = Get-AuthenticodeSignature dist\vitrola\vitrola.exe
+          if ($s.Status -ne 'Valid') { throw "o vitrola.exe voltou com a assinatura $($s.Status)" }
+          "vitrola.exe assinado por $($s.SignerCertificate.Subject)"
+
+      - name: Monta o setup
+        id: monta
+        shell: powershell
+        env:
+          ANTERIOR: ${{ steps.anterior.outputs.manifesto }}
+          VERSAO: ${{ steps.congela.outputs.versao }}
+        run: |
+          if ($env:ANTERIOR) { instalador\monta.ps1 -SemCongelar -Anterior $env:ANTERIOR } else { instalador\monta.ps1 -SemCongelar }
+          $parcial = Test-Path "instalador\saida\Vitrola-$env:VERSAO-parcial.exe"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=$($parcial.ToString().ToLower())" -Encoding ascii
+
+      # assinatura do setup e da parcial, antes do manifesto
+      - if: env.ASSINA == 'true'
+        id: setup-sem-assinatura
+        uses: actions/upload-artifact@v7
+        with:
+          name: assinar-setup-${{ steps.congela.outputs.versao }}
+          path: instalador/saida/Vitrola-*.exe
+          retention-days: 1
+          if-no-files-found: error
+      - if: env.ASSINA == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_SETUP }}
+          github-artifact-id: ${{ steps.setup-sem-assinatura.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: assinado-setup
+      - if: env.ASSINA == 'true'
+        name: Troca pelo setup e a parcial assinados
+        shell: powershell
+        run: |
+          foreach ($f in Get-ChildItem instalador\saida -Filter 'Vitrola-*.exe') {
+            $assinado = Get-ChildItem assinado-setup -Recurse -Filter $f.Name | Select-Object -First 1
+            if (-not $assinado) { throw "a SignPath nao devolveu o $($f.Name)" }
+            Copy-Item $assinado.FullName $f.FullName -Force
+            $s = Get-AuthenticodeSignature $f.FullName
+            if ($s.Status -ne 'Valid') { throw "o $($f.Name) voltou com a assinatura $($s.Status)" }
+            "$($f.Name) assinado por $($s.SignerCertificate.Subject)"
+          }
+
+      # o manifesto do atualizador, ainda sem a assinatura dele: a lista de arquivos precisa do dist\vitrola, que só
+      # existe aqui. Quem assina é a esteira do ritmelli-server, que tem a chave
+      - name: Manifesto
+        shell: powershell
+        env:
+          VERSAO: ${{ steps.congela.outputs.versao }}
+          NOTAS: ${{ inputs.notas }}
+        run: |
+          $saida = 'instalador\saida'
+          $deno = (Get-ChildItem instalador\vendor -Directory -Filter 'deno-*' | Select-Object -First 1).FullName
+          $url = "https://github.com/ritmelli/ritmelli-releases/releases/download/v$env:VERSAO/Vitrola-$env:VERSAO-setup.exe"
+          $args_ = @('--setup', "$saida\Vitrola-$env:VERSAO-setup.exe", '--url', $url, '--app', 'dist\vitrola',
+                     '--bin', 'instalador\ffmpeg\bin', '--bin', $deno, '--saida', $saida)
+          $notas = @($env:NOTAS -split '\|' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+          if ($notas.Count) {
+            $arq = Join-Path $env:RUNNER_TEMP 'notas.txt'
+            $notas | Set-Content -Path $arq -Encoding utf8
+            $args_ += @('--notas', $arq)
+          }
+          $parcial = "$saida\Vitrola-$env:VERSAO-parcial.exe"
+          if (Test-Path $parcial) { $args_ += @('--parcial', $parcial, '--parcial-info', "$saida\PARCIAL-$env:VERSAO.json") }
+          & "$env:LOCALAPPDATA\vitrola-build\Scripts\python.exe" instalador\atualizacao\publica.py @args_
+          if ($LASTEXITCODE -ne 0) { throw "o publica.py saiu com $LASTEXITCODE" }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Vitrola-${{ steps.congela.outputs.versao }}
+          path: instalador/saida/
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+      # o vitrola.exe solto, para o VirusTotal da esteira de publicação (no setup ele vai compactado)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vitrola-exe-${{ steps.congela.outputs.versao }}
+          path: dist/vitrola/vitrola.exe
+          retention-days: 7
+          if-no-files-found: error
+
+  # o setup numa máquina limpa (outra máquina do GitHub: sem Python e sem o VB-Cable). Instala em silêncio, como a
+  # atualização pelo app, abre a Vitrola, confere a versão que ela responde e desinstala
+  testa:
+    needs: monta
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: Vitrola-${{ needs.monta.outputs.versao }}
+      - name: Instala, abre e desinstala
+        shell: powershell
+        env:
+          VERSAO: ${{ needs.monta.outputs.versao }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Get-Item "Vitrola-$env:VERSAO-setup.exe").FullName
+          $log = Join-Path $env:RUNNER_TEMP 'instala.log'
+          # com prazo, e não com o -Wait: um setup parado numa pergunta (aqui ninguém vê a tela) falha em 10 min com o log
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -PassThru
+          if (-not $p.WaitForExit(600000)) { Stop-Process $p -Force; Get-Content $log -Tail 40; throw 'o setup não terminou em 10 min' }
+          if ($p.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "o setup saiu com $($p.ExitCode)" }
+          $app = "$env:ProgramFiles\Vitrola"
+          foreach ($f in 'vitrola.exe', 'bin\ffmpeg.exe', 'bin\ffprobe.exe', 'bin\deno.exe', 'LICENSE.txt', 'TERCEIROS.txt') {
+            if (-not (Test-Path "$app\$f")) { throw "o setup não instalou o $f" }
+          }
+          netsh advfirewall firewall show rule name=Vitrola | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'o setup não criou a regra do firewall' }
+          $vit = Start-Process "$app\vitrola.exe" -ArgumentList '--no-browser' -PassThru
+          $estado = $null
+          for ($i = 0; $i -lt 90 -and -not $vit.HasExited -and -not $estado; $i++) {
+            try { $estado = Invoke-RestMethod 'http://127.0.0.1:8799/api/state' -TimeoutSec 2 } catch { Start-Sleep 1 }
+          }
+          $logs = "$env:LOCALAPPDATA\Vitrola\logs"
+          if (-not $estado) {
+            Get-Content "$logs\server.log", "$logs\server.err" -ErrorAction SilentlyContinue
+            throw 'a Vitrola não respondeu em 90 s'
+          }
+          "Vitrola $($estado.versao) respondeu: status=$($estado.status) erro=$($estado.error)"
+          if ($estado.versao -ne $env:VERSAO) { throw "a Vitrola respondeu a versão $($estado.versao), e não a $env:VERSAO" }
+          # o desinstalador fecha a Vitrola (taskkill) e tira a regra do firewall. Ele se copia para a pasta temporária
+          # e roda de lá, então o fim se confere pelo que ele apaga
+          Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          for ($i = 0; $i -lt 120 -and (Test-Path "$app\vitrola.exe"); $i++) { Start-Sleep 1 }
+          if (Test-Path "$app\vitrola.exe") { throw 'o desinstalador não tirou o vitrola.exe em 2 min' }
+          netsh advfirewall firewall show rule name=Vitrola | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw 'o desinstalador deixou a regra do firewall' }
+          'instalou, abriu, respondeu e desinstalou'
+          # o GitHub sai com o $LASTEXITCODE do fim, e o do netsh sem a regra é 1
+          exit 0
+
+  # a atualização parcial, como no PC de quem tem a última versão publicada: sem a Vitrola, ela recusa; por cima do
+  # setup completo daquela versão, a pasta do app tem de ficar igual à do manifesto novo, arquivo por arquivo, a
+  # Vitrola tem de abrir na versão nova e o desinstalador tem de levar tudo (instalador/testa-parcial.ps1). Sem a
+  # parcial (nenhuma versão publicada, ou nada mudou), não roda
+  testa-parcial:
+    if: needs.monta.outputs.parcial == 'true'
+    needs: monta
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: /instalador/testa-parcial.ps1
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: Vitrola-${{ needs.monta.outputs.versao }}
+          path: saida
+      - name: Instala a anterior, aplica a parcial e confere
+        shell: powershell
+        env:
+          VERSAO: ${{ needs.monta.outputs.versao }}
+        run: instalador\testa-parcial.ps1 -Manifesto saida\manifest.json -Parcial "saida\Vitrola-$env:VERSAO-parcial.exe"
