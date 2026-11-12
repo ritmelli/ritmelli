@@ -1,0 +1,43 @@
+# As versoes das bibliotecas do build (monta.ps1), no PC e no GitHub: o setup sai com estas, e elas so mudam de
+# proposito. Ficam de fora o pip, o PyInstaller (versao fixa em bootloader\pyinstaller.psd1, instalado da fonte) e o
+# yt-dlp com o yt-dlp-ejs (sempre os mais novos: o YouTube quebra o velho).
+# Para atualizar: trocar a versao aqui, ou copiar o VERSOES-<versao>.txt de um build (sem as linhas de fora), testar e
+# fazer a PR. Biblioteca nova no requirements.txt do vitrola que ainda nao esta aqui vem na mais nova, e o VERSOES do
+# build mostra qual.
+# Gerada do VERSOES-0.2.0.txt do build do GitHub de 07/11/2026.
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.5
+aiosignal==1.4.0
+altgraph==0.17.5
+attrs==26.1.0
+brotli==1.2.1
+certifi==2026.10.23
+cffi==2.1.1
+charset-normalizer==3.5.2
+comtypes==1.4.17
+flatbuffers==25.12.19
+frozenlist==1.8.0
+idna==3.20
+multidict==7.2.1
+mutagen==1.48.1
+numpy==2.5.4
+onnxruntime==1.31.1
+packaging==26.3
+pedalboard==0.9.26
+pefile==2024.8.26
+propcache==0.5.4
+protobuf==7.36.2
+pycparser==3.12
+pycryptodomex==3.24.2
+pyinstaller-hooks-contrib==2026.9
+pywin32-ctypes==0.2.3
+requests==2.34.2
+scipy==1.18.1
+segno==1.6.6
+setuptools==84.2.1
+sounddevice==0.5.6
+typing_extensions==4.16.0
+urllib3==2.8.0
+websockets==17.4
+yarl==1.25.1
+ytmusicapi==1.12.3

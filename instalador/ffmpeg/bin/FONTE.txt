@@ -1,0 +1,6 @@
+ffmpeg 9.0.2, so de audio, para a Vitrola.
+Licenca: LGPL 2.1 ou posterior (LICENCA-ffmpeg.txt), sem nada GPL nem nonfree.
+Fonte: ffmpeg-9.0.2.tar.xz, sem mudancas, de https://ffmpeg.org/releases/ (sha256 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e).
+Compilado no MSYS2 UCRT64 com gcc.exe (Rev6, Built by MSYS2 project) 16.2.0.
+
+./configure --arch=x86_64 --target-os=mingw32 --enable-static --disable-shared --pkg-config-flags=--static --extra-ldflags=-static --disable-autodetect --enable-w32threads --enable-schannel --enable-zlib --disable-everything --disable-doc --disable-debug --disable-ffplay --disable-avdevice --disable-swscale --enable-protocol=file,pipe,http,https,httpproxy,tcp,tls,crypto --enable-demuxer=matroska,mov,mp3,ogg,wav,flac,aac,mpegts,hls --enable-decoder=opus,aac,aac_latm,mp3,mp3float,vorbis,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 --enable-parser=aac,aac_latm,opus,vorbis,mpegaudio,flac,h264,hevc,vp9,av1 --enable-encoder=pcm_f32le,pcm_s16le --enable-muxer=pcm_f32le,wav,mp4,ipod,mov,matroska,webm,ogg,opus,adts,null --enable-bsf=aac_adtstoasc,setts,vp9_superframe,extract_extradata,null --enable-filter=abuffer,abuffersink,buffer,buffersink,aresample,aformat,format,anull,null,atrim,trim,asetpts,setpts

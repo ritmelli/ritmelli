@@ -80,6 +80,64 @@ Sai em `dist\vitrola\` (o `vitrola.exe` e a `_internal\`). O ffmpeg, o ffprobe e
 vão junto: copie para `dist\vitrola\bin\` (cada build apaga a pasta). Sem console, os logs
 ficam em `%LOCALAPPDATA%\Vitrola\logs`, e o `soundboard.ps1 stop` desliga o exe também.
 
+## Como montar o instalador
+
+O setup que se baixa nas versões publicadas sai daqui, pelo `instalador\monta.ps1`: ele congela
+o app pelo `vitrola.spec`, junta o ffmpeg, o ffprobe e o Deno e compila o `instalador\vitrola.iss`
+pelo Inno Setup. Precisa de Windows, Python 3.12 e Inno Setup 6.
+
+```powershell
+instalador\monta.ps1                              # sai em instalador\saida\Vitrola-<versão>-setup.exe
+instalador\monta.ps1 -Anterior <manifest.json>    # e a atualização parcial desde aquela versão
+```
+
+- As versões das bibliotecas ficam travadas em `instalador\travas.txt` (o yt-dlp sempre vai o
+  mais novo, porque o YouTube quebra o velho).
+- O ffmpeg só de áudio (`instalador\ffmpeg\`) e o bootloader do PyInstaller
+  (`instalador\bootloader\`) são compilados por nós: os scripts estão ao lado dos executáveis, e
+  o `FONTE.txt` de cada um diz de onde veio a fonte e como foi compilado.
+- A atualização parcial (só o que mudou) sai do `instalador\atualizacao\parcial.py`, e o manifesto
+  que o app confere, do `publica.py` da mesma pasta.
+- A esteira `.github/workflows/monta.yml` faz o mesmo numa máquina Windows do GitHub e testa o
+  setup e a parcial numa máquina limpa.
+
+## Versões e código-fonte
+
+As versões publicadas ficam nas Releases do
+[ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases), de onde o app
+instalado baixa a atualização. Cada uma tem aqui a tag com o número dela (`v0.3.6`, por exemplo):
+o código do app e o que monta o instalador daquela versão.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
+A política de assinatura de código da Vitrola. Até a SignPath Foundation aprovar o projeto, as
+versões saem sem assinatura.
+
+- **Quem escreve e revisa:** os [membros da organização](https://github.com/orgs/ritmelli/people).
+  Mudança de quem não é da equipe só entra revisada por um membro.
+- **Quem aprova cada assinatura:** os [donos da organização](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
+- **O que é assinado:** o `vitrola.exe`, o setup e a atualização parcial, montados pela esteira
+  deste repositório (`.github/workflows/monta.yml`) numa máquina do GitHub, a partir deste código.
+  O ffmpeg, o ffprobe e o Deno vão dentro do setup como saem dos projetos deles, sem a nossa
+  assinatura.
+
+Committers and reviewers: [members](https://github.com/orgs/ritmelli/people). Approvers:
+[owners](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
+
+## Privacidade
+
+A Vitrola não manda nenhuma informação sua para outros sistemas, a não ser o que você pede: a
+busca, o stream e o download de música vão para o YouTube e o YouTube Music. Ao abrir, ela
+consulta no GitHub se existe versão nova (baixa o manifesto público das versões; nada seu vai
+junto). O celular pareado conversa direto com o PC, na sua rede.
+
+Privacy: this program will not transfer any information to other networked systems unless
+specifically requested by the user (searching, streaming and downloading music from YouTube and
+YouTube Music), apart from checking GitHub for a new version.
+
 ## Estrutura
 
 | Arquivo | O que é |
@@ -99,6 +157,8 @@ ficam em `%LOCALAPPDATA%\Vitrola\logs`, e o `soundboard.ps1 stop` desliga o exe 
 | `gallery.html` | a página inicial, que lista os temas |
 | `icone/` | o ícone do app (o exe, o instalador, a aba do navegador e o celular), desenhado pelo `dev/icone.py` |
 | `dev/` | ferramentas de desenvolvimento: prints, medição no celular, geração do pixel art |
+| `instalador/` | o setup: `monta.ps1`, `vitrola.iss`, ffmpeg, bootloader, a atualização parcial e os avisos de licença |
+| `.github/workflows/monta.yml` | a esteira que monta e testa o setup |
 
 O funcionamento de cada peça está em [docs/ARQUITETURA.md](docs/ARQUITETURA.md), e o contrato
 entre o servidor e a interface em [API.md](API.md).

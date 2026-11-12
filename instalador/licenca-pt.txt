@@ -1,0 +1,11 @@
+﻿A Vitrola é software livre: você pode usar, estudar, copiar, modificar e distribuir o programa nos termos da Licença Pública Geral GNU, versão 3 (GPLv3), da Free Software Foundation.
+
+O código-fonte está em https://github.com/ritmelli/ritmelli: o do app e o que monta este instalador. Cada versão tem a tag com o número dela, como v0.3.6.
+
+Não é preciso aceitar a licença para instalar ou usar a Vitrola. Ela vale para quem copia, modifica ou distribui o programa.
+
+A Vitrola vem SEM NENHUMA GARANTIA, nem mesmo a de servir para um uso específico, nos limites da lei (seções 15 e 16 da GPLv3).
+
+Ela leva junto programas e bibliotecas de outros projetos, cada um sob a própria licença: o Python, o ffmpeg, o Deno, o yt-dlp, o pedalboard, o onnxruntime e outros, o modelo de batidas beat_this e as fontes da interface.
+
+Depois de instalar, a pasta da Vitrola tem o texto completo da GPLv3 (LICENSE.txt) e cada componente de terceiros com a licença dele (TERCEIROS.txt).

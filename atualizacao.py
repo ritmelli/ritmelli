@@ -14,8 +14,8 @@ O ponto de confianca e a chave: so vale o manifesto assinado por ela, e so para 
 rodando, entao um manifesto velho, mesmo assinado, nao volta a versao. A lista de arquivos e a parcial vao dentro do
 manifesto, assinadas com ele.
 
-As versoes ficam nas Releases do repo publico vitrola-app/vitrola-releases: o "latest" do GitHub e sempre a ultima
-publicada, com o manifesto, a assinatura e o setup. A chave 1 e a que a esteira do vitrola-server usa para assinar.
+As versoes ficam nas Releases do repo publico ritmelli/ritmelli-releases: o "latest" do GitHub e sempre a ultima
+publicada, com o manifesto, a assinatura e o setup. A chave 1 e a que a esteira de publicacao (no repo privado ritmelli-server) usa para assinar.
 Rodando pelo codigo, nada e consultado, porque ai quem atualiza e o git. Os testes (dev/testa_atualizacao.py) trocam
 os tres."""
 import base64
@@ -35,7 +35,7 @@ import pastas
 from versao import VERSAO
 
 # o endereco https do manifest.json; a assinatura e o mesmo endereco com ".sig" no fim
-MANIFESTO = "https://github.com/vitrola-app/vitrola-releases/releases/latest/download/manifest.json"
+MANIFESTO = "https://github.com/ritmelli/ritmelli-releases/releases/latest/download/manifest.json"
 # numero -> chave publica Ed25519 (os 32 bytes em base64); o .sig diz qual delas assinou
 CHAVES = {1: "Bnvi5qyGzrl2bPDgG9UUCDHjhcTCU3lr9SHMKbkjLts="}
 SO_HTTPS = True  # os testes servem por http, numa porta local
