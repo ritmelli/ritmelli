@@ -17,7 +17,6 @@ const I18N = (() => {
   const lang = d.lingua.replace('_', '-');
   const tem = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   const existe = k => tem(d.textos, k) || tem(d.reserva, k);
-  const plural = new Intl.PluralRules(lang);
   const avisadas = new Set();
   function bruto(chave) {
     if (tem(d.textos, chave)) return d.textos[chave];
@@ -30,10 +29,14 @@ const I18N = (() => {
     const s = bruto(chave);
     return params ? s.replace(/\{(\w+)\}/g, (m, k) => (tem(params, k) ? String(params[k]) : m)) : s;
   }
+  // o singular so para 1, nas duas linguas que temos: o Intl.PluralRules poe o 0 no singular em portugues, e a Vitrola
+  // sempre escreveu "0 discos". Uma lingua com outras regras pede o plural.select aqui
   function tp(chave, n, params) {
-    const k = `${chave}.${plural.select(n)}`;
+    const k = `${chave}.${n === 1 ? 'one' : 'other'}`;
     return t(existe(k) ? k : `${chave}.other`, { n: n.toLocaleString(lang), ...params });
   }
+  // numero com as casas e a virgula (ou o ponto) da lingua
+  const num = (v, casas) => v.toLocaleString(lang, { minimumFractionDigits: casas, maximumFractionDigits: casas });
   const ATRIBUTOS = ['title', 'aria-label', 'placeholder'];
   function aplica(raiz = document) {
     for (const e of raiz.querySelectorAll('[data-i18n]')) e.textContent = t(e.dataset.i18n);
@@ -42,7 +45,7 @@ const I18N = (() => {
     }
   }
   document.documentElement.lang = lang;
-  return { lingua: d.lingua, lang, t, tp, aplica };
+  return { lingua: d.lingua, lang, t, tp, num, aplica };
 })();
 </script>
 <!-- a pagina aparece quando os textos ja estao no lugar (o I18N.aplica, no comeco do script principal) -->
@@ -2842,7 +2845,7 @@ body.mesa-dj .topo .marca .lampada.alerta { background-image: url("data:image/sv
 .fila.maleta:not(.aberta) .item-fila { grid-template-columns: minmax(0, 1fr); }
 .fila.maleta:not(.aberta) .item-fila::before { right: 11px; }
 .fila.maleta:not(.aberta) .tocar-fila { padding-right: 18px; }
-.fila.maleta:not(.aberta) .tocar-fila .txt::before { content: "Próximo:"; display: block; font-size: .625rem; font-weight: 700; font-stretch: 85%; line-height: 1.2; color: #3A2618; }
+.fila.maleta:not(.aberta) .tocar-fila .txt::before { content: attr(data-proximo); display: block; font-size: .625rem; font-weight: 700; font-stretch: 85%; line-height: 1.2; color: #3A2618; }
 /* pele: o salvar, o tempo, as barras e as teclas do transporte, nas duas telas */
 /* o salvar da parecida: o tocar em miniatura do
    dev/pecas.py, 32 px num toque de 44, no canto de baixo do visor, encostado na beira do texto. A sombra dura
@@ -4334,14 +4337,14 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     <div class="marca">
       <span class="lampada" id="lamp" aria-hidden="true"></span>
       <h1 class="nome-marca">vitrola</h1>
-      <span class="conexao" id="conexao" role="status">conectando</span>
+      <span class="conexao" id="conexao" role="status" data-i18n="app.connecting"></span>
     </div>
     <form class="busca" id="form-busca" role="search">
       <label class="sr" for="q" data-i18n="search.prompt"></label>
       <span class="campo-q">
         <!-- o placeholder vem do textoBusca: mais curto no celular -->
         <input id="q" type="search" autocomplete="off" spellcheck="false">
-        <button class="sair-busca" id="b-sair-busca" type="button" data-i18n-aria-label="search.backToShelf" data-i18n-title="search.backToShelf">
+        <button class="sair-busca" id="b-sair-busca" type="button" data-i18n-aria-label="nav.backToShelf" data-i18n-title="nav.backToShelf">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12h-15"/><path d="M11 5.5L4.5 12l6.5 6.5"/></svg>
         </button>
         <button class="limpar-q" id="b-limpar-q" type="button" data-i18n-aria-label="search.clear" data-i18n-title="search.clear">
@@ -4353,60 +4356,60 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     <div class="botoes-topo">
       <!-- so no computador: a troca entre a prateleira e o toca-discos (a pagina do disco nao tem a barra de baixo) e,
            na pagina do disco, o mutar da voz -->
-      <button class="btn-madeira so-pc" id="b-pagina" type="button" title="Abrir o toca-discos">
+      <button class="btn-madeira so-pc" id="b-pagina" type="button" data-i18n-title="nav.openDeck">
         <svg class="vai-disco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.4"/></svg>
         <svg class="vai-prat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="4.2" height="13.5" rx=".8"/><rect x="9.5" y="5" width="4.2" height="13.5" rx=".8"/><rect x="15.6" y="5.6" width="4.2" height="13" rx=".8" transform="rotate(14 17.7 12.1)"/><path d="M2.5 21h19"/></svg>
-        <span class="rot"><span class="vai-disco">Toca-discos</span><span class="vai-prat">Prateleira</span></span>
+        <span class="rot"><span class="vai-disco" data-i18n="nav.deck"></span><span class="vai-prat" data-i18n="nav.shelf"></span></span>
       </button>
-      <button class="btn-madeira so-pc" id="b-mudo-topo" type="button" aria-pressed="false" title="Mutar voz"><span class="ic-mic"></span><span class="rot">Mutar voz</span></button>
+      <button class="btn-madeira so-pc" id="b-mudo-topo" type="button" aria-pressed="false" data-i18n-title="voice.mute"><span class="ic-mic"></span><span class="rot" data-i18n="voice.mute"></span></button>
       <!-- so no PC, quando ha versao nova (atualizacao.py) -->
-      <button class="btn-madeira" id="b-atualizar" type="button" title="Versão nova" hidden>
+      <button class="btn-madeira" id="b-atualizar" type="button" data-i18n-title="top.newVersion" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5v11"/><path d="M7.5 10l4.5 4.5 4.5-4.5"/><path d="M4.5 16.5v3h15v-3"/></svg>
-        <span class="rot">Versão nova</span>
+        <span class="rot" data-i18n="top.newVersion"></span>
       </button>
       <!-- so no PC (127.0.0.1): o codigo e os celulares conectados nao vao para a rede -->
-      <button class="btn-madeira" id="b-cel" type="button" title="Conectar celular" hidden>
+      <button class="btn-madeira" id="b-cel" type="button" data-i18n-title="top.connectPhone" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10.5 18.5h3"/></svg>
-        <span class="rot">Celular</span>
+        <span class="rot" data-i18n="top.phone"></span>
       </button>
-      <button class="btn-madeira" id="b-disp" type="button" title="Microfone e fone">
+      <button class="btn-madeira" id="b-disp" type="button" data-i18n-title="top.devices">
         <!-- engrenagem: o microfone fica so no mutar, eram dois iguais na mesma tela -->
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(12 12) scale(.82) translate(-12 -12)"><circle cx="12" cy="12" r="3" vector-effect="non-scaling-stroke"/><path vector-effect="non-scaling-stroke" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></g></svg>
-        <span class="rot">Microfone e fone</span>
+        <span class="rot" data-i18n="top.devices"></span>
       </button>
-      <button class="btn-madeira" id="b-desligar" type="button" title="Desligar a Vitrola">
+      <button class="btn-madeira" id="b-desligar" type="button" data-i18n-title="top.shutdownTitle">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0"/></svg>
-        <span class="rot">Desligar</span>
+        <span class="rot" data-i18n="top.shutdown"></span>
       </button>
     </div>
   </header>
 
   <div class="palco" id="palco" tabindex="-1">
   <div class="mini" id="mini">
-    <button class="mini-abrir" id="mini-abrir" type="button" aria-controls="palco" aria-expanded="false" aria-label="Abrir o toca-discos"></button>
+    <button class="mini-abrir" id="mini-abrir" type="button" aria-controls="palco" aria-expanded="false" data-i18n-aria-label="nav.openDeck"></button>
     <span class="mini-disco" aria-hidden="true"><span class="mini-gira"><span class="mini-rotulo" id="mini-rotulo"></span></span></span>
-    <span class="mini-tit" id="mini-tit" aria-hidden="true">Nenhum disco no prato</span>
-    <span class="mini-sub" id="mini-sub" aria-hidden="true">Toque numa capa para tocar</span>
+    <span class="mini-tit" id="mini-tit" aria-hidden="true" data-i18n="deck.noDisc"></span>
+    <span class="mini-sub" id="mini-sub" aria-hidden="true" data-i18n="deck.hintMini"></span>
     <button class="mini-ef" id="mini-ef" type="button" hidden><span id="mini-ef-nome"></span><svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h2v1h-2zM6 0h2v1h-2zM0 1h3v1h-3zM5 1h3v1h-3zM1 2h6v1h-6zM2 3h4v2h-4zM1 5h6v1h-6zM0 6h3v1h-3zM5 6h3v1h-3zM0 7h2v1h-2zM6 7h2v1h-2z"/></svg></button>
-    <button class="mini-btn" id="mini-cortar" type="button" aria-pressed="false" aria-label="Mutar voz" title="Mutar voz"></button>
-    <button class="mini-btn mini-pc" id="mini-ant" type="button" aria-label="Anterior" title="Anterior" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5.5" width="2.4" height="13" rx="1" fill="currentColor"/><path d="M19 6.3v11.4a.9.9 0 0 1-1.4.73l-8-5.7a.9.9 0 0 1 0-1.46l8-5.7a.9.9 0 0 1 1.4.73z" fill="currentColor"/></svg></button>
-    <button class="mini-btn mini-tocar" id="mini-tocar" type="button" aria-label="Tocar" disabled>
+    <button class="mini-btn" id="mini-cortar" type="button" aria-pressed="false" data-i18n-aria-label="voice.mute" data-i18n-title="voice.mute"></button>
+    <button class="mini-btn mini-pc" id="mini-ant" type="button" data-i18n-aria-label="deck.previous" data-i18n-title="deck.previous" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5.5" width="2.4" height="13" rx="1" fill="currentColor"/><path d="M19 6.3v11.4a.9.9 0 0 1-1.4.73l-8-5.7a.9.9 0 0 1 0-1.46l8-5.7a.9.9 0 0 1 1.4.73z" fill="currentColor"/></svg></button>
+    <button class="mini-btn mini-tocar" id="mini-tocar" type="button" data-i18n-aria-label="deck.play" disabled>
       <svg id="ic-mini" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
     </button>
-    <button class="mini-btn mini-pc" id="mini-prox" type="button" aria-label="Próxima" title="Próxima: o primeiro do A seguir" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="16.6" y="5.5" width="2.4" height="13" rx="1" fill="currentColor"/><path d="M5 6.3v11.4a.9.9 0 0 0 1.4.73l8-5.7a.9.9 0 0 0 0-1.46l-8-5.7A.9.9 0 0 0 5 6.3z" fill="currentColor"/></svg></button>
+    <button class="mini-btn mini-pc" id="mini-prox" type="button" data-i18n-aria-label="deck.next" data-i18n-title="deck.nextHint" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="16.6" y="5.5" width="2.4" height="13" rx="1" fill="currentColor"/><path d="M5 6.3v11.4a.9.9 0 0 0 1.4.73l8-5.7a.9.9 0 0 0 0-1.46l-8-5.7A.9.9 0 0 0 5 6.3z" fill="currentColor"/></svg></button>
     <span class="mini-tempo mini-pc" id="mini-tempo" aria-hidden="true">0:00 / 0:00</span>
-    <button class="mini-btn mini-pc mini-seta" id="mini-seta" type="button" aria-expanded="false" aria-label="Abrir o toca-discos" title="Abrir o toca-discos"><svg viewBox="0 0 5 3" width="15" height="9" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M2 0h1v1h-1zM1 1h3v1h-3zM0 2h5v1h-5z"/></svg></button>
+    <button class="mini-btn mini-pc mini-seta" id="mini-seta" type="button" aria-expanded="false" data-i18n-aria-label="nav.openDeck" data-i18n-title="nav.openDeck"><svg viewBox="0 0 5 3" width="15" height="9" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M2 0h1v1h-1zM1 1h3v1h-3zM0 2h5v1h-5z"/></svg></button>
     <span class="mini-prog" aria-hidden="true"><span id="mini-prog"></span></span>
   </div>
   <div class="palco-topo">
-    <button class="btn-madeira palco-fechar" id="b-fechar-palco" type="button" aria-label="Fechar o toca-discos" title="Fechar">
+    <button class="btn-madeira palco-fechar" id="b-fechar-palco" type="button" data-i18n-aria-label="nav.closeDeck" data-i18n-title="nav.close">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 9l6.5 6.5L18.5 9"/></svg>
     </button>
-    <p class="palco-tit"><span class="sr">Toca-discos</span><span class="palco-chapa" aria-hidden="true"><span class="palco-luz"></span><span class="palco-marca">VITROLA</span></span></p>
-    <button class="mini-btn palco-cortar" id="palco-cortar" type="button" aria-pressed="false" aria-label="Mutar voz" title="Mutar voz"></button>
+    <p class="palco-tit"><span class="sr" data-i18n="nav.deck"></span><span class="palco-chapa" aria-hidden="true"><span class="palco-luz"></span><span class="palco-marca">VITROLA</span></span></p>
+    <button class="mini-btn palco-cortar" id="palco-cortar" type="button" aria-pressed="false" data-i18n-aria-label="voice.mute" data-i18n-title="voice.mute"></button>
   </div>
   <canvas class="cabo-calha" id="cabo-calha" aria-hidden="true"></canvas>
-  <section class="deck" aria-label="Toca-discos">
+  <section class="deck" data-i18n-aria-label="nav.deck">
     <div class="mesa"><div class="tampo">
       <div class="placa">
         <span class="selo-placa" aria-hidden="true"><b>VITROLA</b><span>33 / 45 RPM</span></span>
@@ -4431,49 +4434,49 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     </div>
 
     <div class="faixa">
-      <p class="situacao"><span class="lampada" id="lamp-faixa" aria-hidden="true"></span><span id="situacao">Parado</span></p>
-      <h2 class="titulo-faixa" id="titulo-faixa"><span class="letreiro"><span>Nenhum disco no prato</span></span></h2>
-      <p class="canal-faixa"><span id="canal-faixa">Toque numa capa da prateleira para tocar.</span><button class="acao-res salvar pixel livre" id="b-guardar" type="button" aria-label="Salvar na prateleira" hidden></button></p>
+      <p class="situacao"><span class="lampada" id="lamp-faixa" aria-hidden="true"></span><span id="situacao" data-i18n="deck.status.idle"></span></p>
+      <h2 class="titulo-faixa" id="titulo-faixa"><span class="letreiro"><span data-i18n="deck.noDisc"></span></span></h2>
+      <p class="canal-faixa"><span id="canal-faixa" data-i18n="deck.hint"></span><button class="acao-res salvar pixel livre" id="b-guardar" type="button" data-i18n-aria-label="shelf.save" hidden></button></p>
       <div class="visor-dj" id="visor-dj" aria-hidden="true"><canvas class="vdj-tela" id="vdj-tela"></canvas><span class="vdj-tempo" id="vdj-pos">0:00</span><span class="vdj-tempo vdj-resta" id="vdj-resta">0:00</span><span class="vdj-selo" id="vdj-selo" hidden></span></div>
       <div class="linha-tempo">
         <span class="tempo" id="t-pos">0:00</span>
-        <input type="range" id="seek" min="0" max="0" step="0.1" value="0" aria-label="Posição na faixa" disabled>
+        <input type="range" id="seek" min="0" max="0" step="0.1" value="0" data-i18n-aria-label="deck.position" disabled>
         <span class="tempo total" id="t-dur">0:00</span>
       </div>
       <div class="comandos">
-        <button class="transp" id="b-aleatorio" type="button" aria-pressed="false" aria-label="Aleatório" title="Aleatório: embaralha o A seguir">
+        <button class="transp" id="b-aleatorio" type="button" aria-pressed="false" data-i18n-aria-label="deck.shuffle" data-i18n-title="deck.shuffleHint">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17h2.6c1.7 0 2.8-.7 3.8-2.1l4.2-5.8C14.6 7.7 15.7 7 17.4 7H21"/><path d="M3 7h2.6c1.7 0 2.8.7 3.8 2.1l.5.7M14.1 14.2l.5.7c1 1.4 2.1 2.1 3.8 2.1H21"/><path d="M18.5 4.5L21 7l-2.5 2.5M18.5 14.5L21 17l-2.5 2.5"/></svg>
           <span class="lampada" aria-hidden="true"></span>
         </button>
-        <button class="transp pulo" id="b-anterior" type="button" aria-label="Anterior" title="Anterior: volta ao começo, ou ao disco de antes" disabled>
+        <button class="transp pulo" id="b-anterior" type="button" data-i18n-aria-label="deck.previous" data-i18n-title="deck.previousHint" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5.5" width="2.4" height="13" rx="1" fill="currentColor"/><path d="M19 6.3v11.4a.9.9 0 0 1-1.4.73l-8-5.7a.9.9 0 0 1 0-1.46l8-5.7a.9.9 0 0 1 1.4.73z" fill="currentColor"/></svg>
         </button>
-        <button class="tocar-grande" id="b-tocar" type="button" aria-label="Tocar" disabled>
+        <button class="tocar-grande" id="b-tocar" type="button" data-i18n-aria-label="deck.play" disabled>
           <svg id="ic-tocar" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
         </button>
-        <button class="transp pulo" id="b-proxima" type="button" aria-label="Próxima" title="Próxima: o primeiro do A seguir" disabled>
+        <button class="transp pulo" id="b-proxima" type="button" data-i18n-aria-label="deck.next" data-i18n-title="deck.nextHint" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="16.6" y="5.5" width="2.4" height="13" rx="1" fill="currentColor"/><path d="M5 6.3v11.4a.9.9 0 0 0 1.4.73l8-5.7a.9.9 0 0 0 0-1.46l-8-5.7A.9.9 0 0 0 5 6.3z" fill="currentColor"/></svg>
         </button>
-        <button class="transp" id="b-repetir" type="button" aria-pressed="false" aria-label="Repetir" title="Repetir este disco">
+        <button class="transp" id="b-repetir" type="button" aria-pressed="false" data-i18n-aria-label="deck.repeat" data-i18n-title="deck.repeatHint">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12V9.8A3.3 3.3 0 0 1 7.3 6.5H19.5"/><path d="M17 4l2.5 2.5L17 9"/><path d="M20 12v2.2a3.3 3.3 0 0 1-3.3 3.3H4.5"/><path d="M7 20l-2.5-2.5L7 15"/></svg>
           <span class="lampada" aria-hidden="true"></span>
         </button>
       </div>
-      <button class="fim-disco" id="b-parecidas" type="button" role="switch" aria-checked="false" aria-label="Tocar músicas parecidas quando este disco acabar" hidden><span class="op op-so">Só este disco</span><span class="ch" aria-hidden="true"></span><span class="op op-par">Tocar parecidas</span></button>
+      <button class="fim-disco" id="b-parecidas" type="button" role="switch" aria-checked="false" data-i18n-aria-label="deck.similarSwitch" hidden><span class="op op-so" data-i18n="deck.onlyThis"></span><span class="ch" aria-hidden="true"></span><span class="op op-par" data-i18n="deck.playSimilar"></span></button>
       <p class="erro-faixa" id="erro-faixa" role="alert" hidden><span class="lampada alerta" aria-hidden="true"></span><span id="erro-faixa-txt"></span></p>
       <!-- so na mesa de DJ: a luz do deck (NO AR) e o andamento medido -->
-      <p class="deck-cab" hidden><span class="deck-luz"><span class="lampada" id="luz-ar" aria-hidden="true"></span><span class="deck-luz-t" id="luz-ar-t">No ar</span></span><span class="deck-bpm" id="bpm-ar-caixa"><span class="bpm-r">BPM</span><b id="bpm-ar">--,-</b><span class="bpm-pitch" id="pitch-ar"></span></span></p>
+      <p class="deck-cab" hidden><span class="deck-luz"><span class="lampada" id="luz-ar" aria-hidden="true"></span><span class="deck-luz-t" id="luz-ar-t" data-i18n="deck.onAir"></span></span><span class="deck-bpm" id="bpm-ar-caixa"><span class="bpm-r">BPM</span><b id="bpm-ar">--,-</b><span class="bpm-pitch" id="pitch-ar"></span></span></p>
     </div>
-    <section class="fila maleta fila-palco" aria-label="A seguir" hidden>
-      <div class="cabeca-fila"><h2>A seguir</h2><p class="conta"></p><button class="abre-fila" type="button" aria-expanded="false" aria-label="Abrir o A seguir" title="Abrir o A seguir"><svg viewBox="0 0 5 3" width="10" height="6" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h5v1h-5zM1 1h3v1h-3zM2 2h1v1h-1z"/></svg></button></div>
+    <section class="fila maleta fila-palco" data-i18n-aria-label="queue.title" hidden>
+      <div class="cabeca-fila"><h2 data-i18n="queue.title"></h2><p class="conta"></p><button class="abre-fila" type="button" aria-expanded="false" data-i18n-aria-label="queue.open" data-i18n-title="queue.open"><svg viewBox="0 0 5 3" width="10" height="6" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h5v1h-5zM1 1h3v1h-3zM2 2h1v1h-1z"/></svg></button></div>
       <ol class="lista-fila" inert></ol>
       <span class="maleta-pe" aria-hidden="true"></span>
     </section>
-    <p class="atalhos"><span><kbd>espaço</kbd> tocar ou pausar</span><span><kbd>1</kbd> a <kbd>9</kbd> tocar um disco da prateleira</span><span><kbd>0</kbd> sem efeito de voz</span><span><kbd>Esc</kbd> parar</span></p>
+    <p class="atalhos"><span><kbd data-i18n="keys.space"></kbd> <span data-i18n="keys.playPause"></span></span><span><kbd>1</kbd> <span data-i18n="keys.to"></span> <kbd>9</kbd> <span data-i18n="keys.playShelf"></span></span><span><kbd>0</kbd> <span data-i18n="keys.noEffect"></span></span><span><kbd>Esc</kbd> <span data-i18n="keys.stop"></span></span></p>
     <span class="deck-letra" aria-hidden="true" hidden></span>
   </section>
 
-  <section class="receptor" aria-label="Volumes e medidores">
+  <section class="receptor" data-i18n-aria-label="mixer.label">
     <span class="chassi-rec" aria-hidden="true">
       <span class="marca-ap"><b>VITROLA</b><span>RECEIVER ESTÉREO R-77</span></span>
       <span class="parafusos-rec"></span>
@@ -4481,69 +4484,69 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     </span>
     <span class="cabo-rca cabo-rec" aria-hidden="true"></span>
     <div class="medidores">
-      <div class="janela" id="janela" role="img" aria-label="Medidores ao vivo: voz, disco e o que vai para o jogo">
+      <div class="janela" id="janela" role="img" data-i18n-aria-label="mixer.meters">
         <div class="mostrador" data-k="mic" data-nome="voz"></div>
         <div class="mostrador" data-k="track" data-nome="disco"></div>
         <div class="mostrador" data-k="out" data-nome="jogo"></div>
       </div>
-      <button class="btn seletor" id="b-efeito" type="button" aria-controls="gaveta" aria-expanded="false" title="Efeitos de voz (tecla 0 volta para Sem efeito)">
+      <button class="btn seletor" id="b-efeito" type="button" aria-controls="gaveta" aria-expanded="false" data-i18n-title="effects.selectorHint">
         <span class="dial" aria-hidden="true"><svg class="marcas" id="marcas" viewBox="0 0 40 40"></svg><span class="knob"><span class="ponteiro" id="ponteiro"></span></span></span>
-        <span class="visor-ef"><span class="sr">Efeito de voz: </span><span class="sr" id="nome-ef">Sem efeito</span><span class="sr" id="atraso-ef-sr"></span><span class="seg-ef" id="seg-ef" aria-hidden="true"></span><span class="atraso-ef" id="atraso-ef" aria-hidden="true"></span></span>
+        <span class="visor-ef"><span class="sr" data-i18n="effects.currentLabel"></span><span class="sr" id="nome-ef" data-i18n="effects.none"></span><span class="sr" id="atraso-ef-sr"></span><span class="seg-ef" id="seg-ef" aria-hidden="true"></span><span class="atraso-ef" id="atraso-ef" aria-hidden="true"></span></span>
         <svg class="seta-gav" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 9.5l5.5 5.5 5.5-5.5"/></svg>
       </button>
       <div class="chaves">
-        <button class="btn chave" id="b-cortar" type="button" aria-pressed="false"><span class="lampada" aria-hidden="true"></span>Mutar voz</button>
+        <button class="btn chave" id="b-cortar" type="button" aria-pressed="false"><span class="lampada" aria-hidden="true"></span><span data-i18n="voice.mute"></span></button>
       </div>
     </div>
     <div class="controles">
       <div class="fader">
-        <label for="f-vol">Disco no jogo</label>
+        <label for="f-vol" data-i18n="mixer.recordInGame"></label>
         <input type="range" id="f-vol" min="0" max="100" step="1" value="60" data-k="vol" data-escala="100">
         <output for="f-vol" id="o-vol">60%</output>
       </div>
       <div class="fader">
-        <label for="f-mon">Disco no fone<small></small></label>
+        <label for="f-mon"><span data-i18n="mixer.recordInHeadphones"></span><small></small></label>
         <input type="range" id="f-mon" min="0" max="100" step="1" value="60" data-k="mon_vol" data-escala="100">
         <output for="f-mon" id="o-mon">60%</output>
       </div>
       <div class="fader fader-voz">
-        <label for="f-mic">Voz<small>o mesmo do Windows</small></label>
+        <label for="f-mic"><span data-i18n="mixer.voice"></span><small data-i18n="mixer.voiceWindows"></small></label>
         <input type="range" id="f-mic" min="0" max="100" step="1" value="100" data-k="mic_vol" data-escala="100">
         <output for="f-mic" id="o-mic">100%</output>
       </div>
     </div>
     <!-- so na mesa de DJ: o que vale para o set inteiro saiu dos decks e mora aqui -->
-    <div class="mix-set" role="group" aria-label="O set" hidden>
-      <button class="tecla-set" id="m-aleatorio" type="button" aria-pressed="false" title="Aleatório: embaralha o A seguir"><span class="lampada" aria-hidden="true"></span><span class="rot-set">Aleatório</span></button>
-      <button class="tecla-set" id="m-repetir" type="button" aria-pressed="false" title="Repetir o disco no ar"><span class="lampada" aria-hidden="true"></span><span class="rot-set">Repetir</span></button>
-      <button class="tecla-set" id="m-parecidas" type="button" aria-pressed="false" title="Tocar parecidas: a fila nunca acaba"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8.5c-2 0-3.5 1.6-3.5 3.5S6 15.5 8 15.5c3 0 5-7 8-7 2 0 3.5 1.6 3.5 3.5S18 15.5 16 15.5c-3 0-5-7-8-7z"/></svg><span class="lampada" aria-hidden="true"></span><span class="rot-set">Parecidas</span></button>
+    <div class="mix-set" role="group" data-i18n-aria-label="mixer.set" hidden>
+      <button class="tecla-set" id="m-aleatorio" type="button" aria-pressed="false" data-i18n-title="deck.shuffleHint"><span class="lampada" aria-hidden="true"></span><span class="rot-set" data-i18n="deck.shuffle"></span></button>
+      <button class="tecla-set" id="m-repetir" type="button" aria-pressed="false" data-i18n-title="deck.repeatOnAirHint"><span class="lampada" aria-hidden="true"></span><span class="rot-set" data-i18n="deck.repeat"></span></button>
+      <button class="tecla-set" id="m-parecidas" type="button" aria-pressed="false" data-i18n-title="deck.similarHint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8.5c-2 0-3.5 1.6-3.5 3.5S6 15.5 8 15.5c3 0 5-7 8-7 2 0 3.5 1.6 3.5 3.5S18 15.5 16 15.5c-3 0-5-7-8-7z"/></svg><span class="lampada" aria-hidden="true"></span><span class="rot-set" data-i18n="deck.similar"></span></button>
     </div>
-    <div class="xfader" id="xfader" role="img" aria-label="Crossfader" hidden><span class="xf-l xf-a">A</span><span class="xf-trilho"><span class="xf-pino" id="xf-pino"></span></span><span class="xf-l xf-b">B</span></div>
-    <p class="auto-luz" id="auto-luz" hidden><span class="lampada" id="lamp-auto" aria-hidden="true"></span><span>Transição automática</span></p>
+    <div class="xfader" id="xfader" role="img" data-i18n-aria-label="mixer.crossfader" hidden><span class="xf-l xf-a">A</span><span class="xf-trilho"><span class="xf-pino" id="xf-pino"></span></span><span class="xf-l xf-b">B</span></div>
+    <p class="auto-luz" id="auto-luz" hidden><span class="lampada" id="lamp-auto" aria-hidden="true"></span><span data-i18n="mixer.autoTransition"></span></p>
   </section>
 
   <section class="gaveta" id="gaveta" aria-labelledby="gav-t">
     <span class="cabo-rca cabo-gav" aria-hidden="true"></span>
     <div class="cabeca-gav">
-      <h2 id="gav-t">Efeitos de voz</h2>
+      <h2 id="gav-t" data-i18n="effects.title"></h2>
     </div>
     <!-- a chave rotativa e o visor do efeito escolhido, no lugar da tecla Sem efeito -->
     <div class="seletor visor-gav" id="visor-gav">
       <span class="dial" aria-hidden="true"><svg class="marcas" id="marcas-gav" viewBox="0 0 40 40"></svg><span class="knob"><span class="ponteiro" id="ponteiro-gav"></span></span></span>
-      <span class="visor-ef"><span class="sr">Efeito de voz: </span><span class="sr" id="nome-ef-gav">Sem efeito</span><span class="seg-ef" id="seg-ef-gav" aria-hidden="true"></span>
-        <button class="desliga-ef" id="desliga-ef" type="button" aria-label="Desligar o efeito, voltar para a voz natural" title="Voltar para a voz natural" hidden><svg class="x-lcd" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.40 1.40L1.40 3.24L5.84 7.68L7.68 7.68L7.68 5.84L3.24 1.40zM14.60 1.40L12.76 1.40L8.32 5.84L8.32 7.68L10.16 7.68L14.60 3.24zM14.60 14.60L14.60 12.76L10.16 8.32L8.32 8.32L8.32 10.16L12.76 14.60zM1.40 14.60L3.24 14.60L7.68 10.16L7.68 8.32L5.84 8.32L1.40 12.76z" fill="currentColor"/></svg></button>
+      <span class="visor-ef"><span class="sr" data-i18n="effects.currentLabel"></span><span class="sr" id="nome-ef-gav" data-i18n="effects.none"></span><span class="seg-ef" id="seg-ef-gav" aria-hidden="true"></span>
+        <button class="desliga-ef" id="desliga-ef" type="button" data-i18n-aria-label="effects.offHint" data-i18n-title="effects.backToNatural" hidden><svg class="x-lcd" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.40 1.40L1.40 3.24L5.84 7.68L7.68 7.68L7.68 5.84L3.24 1.40zM14.60 1.40L12.76 1.40L8.32 5.84L8.32 7.68L10.16 7.68L14.60 3.24zM14.60 14.60L14.60 12.76L10.16 8.32L8.32 8.32L8.32 10.16L12.76 14.60zM1.40 14.60L3.24 14.60L7.68 10.16L7.68 8.32L5.84 8.32L1.40 12.76z" fill="currentColor"/></svg></button>
       </span>
     </div>
     <div class="mesa-gav">
-      <button class="btn chave ouvir" id="b-ouvir" type="button" aria-pressed="false" aria-describedby="dica-ouvir"><span class="lampada" aria-hidden="true"></span>Ouvir minha voz</button>
-      <button class="btn" id="b-fechar-gav" type="button">Fechar<span class="gav-longo"> os efeitos</span></button>
-      <p class="dica-ouvir" id="dica-ouvir">Vale mesmo com a voz mutada: teste o efeito sem ninguém no jogo ouvir.</p>
+      <button class="btn chave ouvir" id="b-ouvir" type="button" aria-pressed="false" aria-describedby="dica-ouvir"><span class="lampada" aria-hidden="true"></span><span data-i18n="effects.listen"></span></button>
+      <button class="btn" id="b-fechar-gav" type="button"><span data-i18n="nav.close"></span><span class="gav-longo" data-i18n="effects.closeWhat"></span></button>
+      <p class="dica-ouvir" id="dica-ouvir" data-i18n="effects.listenHint"></p>
     </div>
-    <div class="rolo" id="rolo-gav"><div class="banco" id="banco"><p class="aviso-gav">Lendo a lista de efeitos.</p></div></div>
+    <div class="rolo" id="rolo-gav"><div class="banco" id="banco"><p class="aviso-gav" data-i18n="effects.loading"></p></div></div>
   </section>
   <div class="dica-pedal" id="dica-pedal" aria-hidden="true" hidden></div>
   <!-- mesa de DJ (computador largo): o segundo toca-discos, com a proxima da fila; os decks se revezam no ar -->
-  <section class="deck deck-deixa" id="deck-deixa" aria-label="Toca-discos da deixa" hidden>
+  <section class="deck deck-deixa" id="deck-deixa" data-i18n-aria-label="cue.label" hidden>
     <div class="mesa"><div class="tampo">
       <div class="placa">
         <span class="selo-placa" aria-hidden="true"><b>VITROLA</b><span>33 / 45 RPM</span></span>
@@ -4564,7 +4567,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       </div>
     </div></div>
     <div class="faixa">
-      <h2 class="titulo-faixa" id="tit-d">Nada na deixa</h2>
+      <h2 class="titulo-faixa" id="tit-d" data-i18n="cue.empty"></h2>
       <p class="canal-faixa"><span id="canal-d"></span></p>
       <div class="linha-tempo">
         <span class="tempo" id="pos-d">0:00</span>
@@ -4572,18 +4575,18 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
         <span class="tempo total" id="dur-d">0:00</span>
       </div>
       <div class="comandos">
-        <button class="transp pulo" id="ant-d" type="button" aria-label="Anterior" title="O Anterior é do deck no ar" disabled></button>
-        <button class="tocar-grande" id="tocar-d" type="button" aria-label="Tocar agora" title="Tocar agora: entra no lugar do que está no ar" disabled></button>
-        <button class="transp pulo" id="prox-d" type="button" aria-label="Tirar da fila" title="Próxima: tira esta da fila" disabled></button>
+        <button class="transp pulo" id="ant-d" type="button" data-i18n-aria-label="deck.previous" data-i18n-title="cue.previousHint" disabled></button>
+        <button class="tocar-grande" id="tocar-d" type="button" data-i18n-aria-label="cue.playNow" data-i18n-title="cue.playNowHint" disabled></button>
+        <button class="transp pulo" id="prox-d" type="button" data-i18n-aria-label="cue.remove" data-i18n-title="cue.nextHint" disabled></button>
       </div>
-      <p class="deck-cab"><span class="deck-luz"><span class="lampada" id="luz-d" aria-hidden="true"></span><span class="deck-luz-t" id="luz-d-t">Na deixa</span></span><span class="deck-bpm"><span class="bpm-r">BPM</span><b id="bpm-d">--,-</b><span class="bpm-pitch" id="pitch-d"></span></span></p>
+      <p class="deck-cab"><span class="deck-luz"><span class="lampada" id="luz-d" aria-hidden="true"></span><span class="deck-luz-t" id="luz-d-t" data-i18n="cue.cued"></span></span><span class="deck-bpm"><span class="bpm-r">BPM</span><b id="bpm-d">--,-</b><span class="bpm-pitch" id="pitch-d"></span></span></p>
     </div>
     <span class="deck-letra" aria-hidden="true"></span>
   </section>
   <!-- a tela grande do meio: o visor de DJ (o JS muda ele de lugar), o que ele mostra no alto e as leituras -->
-  <section class="tv" id="tv" aria-label="Visor de DJ" hidden>
+  <section class="tv" id="tv" data-i18n-aria-label="tv.label" hidden>
     <div class="tv-vidro">
-      <p class="tv-cab"><span id="tv-titulo">Visor</span></p>
+      <p class="tv-cab"><span id="tv-titulo" data-i18n="tv.title"></span></p>
       <div class="tv-tela" id="tv-tela"></div>
       <p class="tv-leituras" id="tv-leituras"></p>
     </div>
@@ -4591,27 +4594,27 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
   </section>
   <!-- os Sons rapidos como pads, do lado do mixer -->
   <section class="pads" id="pads" aria-labelledby="pads-t" hidden>
-    <h2 id="pads-t">Sons rápidos</h2>
+    <h2 id="pads-t" data-i18n="pads.title"></h2>
     <div class="pads-grade" id="pads-grade"></div>
-    <p class="pads-vazio">No menu ⋯ de um disco da prateleira, Adicionar a Sons rápidos.</p>
+    <p class="pads-vazio" data-i18n="pads.empty"></p>
   </section>
   <!-- a segunda metade da pedaleira, do outro lado do mixer (o montarGaveta reparte os grupos) -->
-  <section class="gaveta gaveta-dir" id="gaveta-dir" aria-label="Efeitos de voz" hidden>
+  <section class="gaveta gaveta-dir" id="gaveta-dir" data-i18n-aria-label="effects.title" hidden>
     <div class="rolo" id="rolo-gav-dir"><div class="banco" id="banco-dir"></div></div>
   </section>
   </div>
 
-  <section class="parede rolo" aria-label="Discos">
-    <section class="fila maleta fila-parede" aria-label="A seguir" hidden>
-      <div class="cabeca-fila"><h2>A seguir</h2><p class="conta"></p><button class="abre-fila" type="button" aria-expanded="false" aria-label="Abrir o A seguir" title="Abrir o A seguir"><svg viewBox="0 0 5 3" width="10" height="6" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h5v1h-5zM1 1h3v1h-3zM2 2h1v1h-1z"/></svg></button></div>
+  <section class="parede rolo" data-i18n-aria-label="shelf.label">
+    <section class="fila maleta fila-parede" data-i18n-aria-label="queue.title" hidden>
+      <div class="cabeca-fila"><h2 data-i18n="queue.title"></h2><p class="conta"></p><button class="abre-fila" type="button" aria-expanded="false" data-i18n-aria-label="queue.open" data-i18n-title="queue.open"><svg viewBox="0 0 5 3" width="10" height="6" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h5v1h-5zM1 1h3v1h-3zM2 2h1v1h-1z"/></svg></button></div>
       <ol class="lista-fila" inert></ol>
       <span class="maleta-pe" aria-hidden="true"></span>
     </section>
-    <p class="fila-vazia" id="fila-vazia" hidden><b>Nada no A seguir.</b> Na prateleira, o menu ⋯ de um disco tem Tocar a seguir e Adicionar à fila.</p>
+    <p class="fila-vazia" id="fila-vazia" hidden><b data-i18n="queue.empty"></b> <span data-i18n="queue.emptyHint"></span></p>
     <div class="vista" id="vista-busca" hidden>
       <div class="cabeca-sec">
         <h2 id="titulo-busca" data-i18n="search.results"></h2>
-        <button class="btn-madeira" id="b-voltar" type="button" data-i18n="search.backToShelf"></button>
+        <button class="btn-madeira" id="b-voltar" type="button" data-i18n="nav.backToShelf"></button>
       </div>
       <div class="rolo" id="rolo-busca">
         <p class="aviso-busca" id="aviso-busca" role="status"></p>
@@ -4621,21 +4624,21 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     </div>
     <div class="vista" id="vista-prateleira">
       <section class="rapidos" id="rapidos" aria-labelledby="rap-t" hidden>
-        <div class="cabeca-sec"><h2 id="rap-t">Sons rápidos</h2><p class="conta" id="conta-rap"></p></div>
+        <div class="cabeca-sec"><h2 id="rap-t" data-i18n="pads.title"></h2><p class="conta" id="conta-rap"></p></div>
         <div class="chips" id="chips"></div>
       </section>
       <div class="cabeca-sec" id="cab-prat">
-        <h2>Prateleira</h2>
+        <h2 data-i18n="nav.shelf"></h2>
         <p class="conta" id="conta"></p>
       </div>
       <div id="rolo-prateleira">
         <ul class="estante" id="estante"></ul>
         <div class="pontos" id="pontos" aria-hidden="true" hidden></div>
-        <button class="prat-seta esq" id="prat-esq" type="button" aria-label="Discos de antes" title="Discos de antes" hidden><svg viewBox="0 0 5 7" width="10" height="14" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M3 0h2v1h-2zM2 1h2v1h-2zM1 2h2v1h-2zM0 3h2v1h-2zM1 4h2v1h-2zM2 5h2v1h-2zM3 6h2v1h-2z"/></svg></button>
-        <button class="prat-seta dir" id="prat-dir" type="button" aria-label="Mais discos" title="Mais discos" hidden><svg viewBox="0 0 5 7" width="10" height="14" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h2v1h-2zM1 1h2v1h-2zM2 2h2v1h-2zM3 3h2v1h-2zM2 4h2v1h-2zM1 5h2v1h-2zM0 6h2v1h-2z"/></svg></button>
+        <button class="prat-seta esq" id="prat-esq" type="button" data-i18n-aria-label="shelf.prev" data-i18n-title="shelf.prev" hidden><svg viewBox="0 0 5 7" width="10" height="14" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M3 0h2v1h-2zM2 1h2v1h-2zM1 2h2v1h-2zM0 3h2v1h-2zM1 4h2v1h-2zM2 5h2v1h-2zM3 6h2v1h-2z"/></svg></button>
+        <button class="prat-seta dir" id="prat-dir" type="button" data-i18n-aria-label="shelf.more" data-i18n-title="shelf.more" hidden><svg viewBox="0 0 5 7" width="10" height="14" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M0 0h2v1h-2zM1 1h2v1h-2zM2 2h2v1h-2zM3 3h2v1h-2zM2 4h2v1h-2zM1 5h2v1h-2zM0 6h2v1h-2z"/></svg></button>
       </div>
       <section class="continuar" id="continuar" aria-labelledby="cont-t" hidden>
-        <div class="cabeca-sec"><h2 id="cont-t">Continuar ouvindo</h2></div>
+        <div class="cabeca-sec"><h2 id="cont-t" data-i18n="shelf.continueListening"></h2></div>
         <ul class="cartoes" id="cartoes"></ul>
       </section>
     </div>
@@ -4856,7 +4859,8 @@ const SEM_EFEITO = 'nenhum';
    na passagem); bpm = o andamento medido de cada disco que passou pela fila */
 const MESA = { montada: null, lado: 'a', idAr: null, trAr: null, antes: null, deixa: null, bpm: new Map(), trocaT: 0 };
 
-const SITUACAO = { idle: 'Parado', buffering: 'Carregando', playing: 'Tocando', paused: 'Pausado', ended: 'Chegou ao fim' };
+const SITUACAO = { idle: I18N.t('deck.status.idle'), buffering: I18N.t('deck.status.buffering'), playing: I18N.t('deck.status.playing'),
+                   paused: I18N.t('deck.status.paused'), ended: I18N.t('deck.status.ended') };
 const ERROS = {
   'item nao existe na biblioteca': 'Esse disco não está mais na prateleira.',
   'item nao existe': 'Esse disco não está mais na prateleira.',
@@ -4941,7 +4945,7 @@ function capaGerada(it, curta) {
   const [bg, fg, dot] = PALETAS[h % PALETAS.length];
   const d = el('div', 'capa-gerada');
   d.style.setProperty('--bg', bg); d.style.setProperty('--fg', fg); d.style.setProperty('--dot', dot);
-  const titulo = (it.title || 'Sem título').trim();
+  const titulo = (it.title || I18N.t('shelf.untitled')).trim();
   if (!curta) {
     // bolas no alto da capa: uma cheia grande, um aro e uma pequena, em posicoes que variam por som
     const g = 28 + (h >> 4) % 10;
@@ -5028,10 +5032,10 @@ function desenharFaixa() {
     $('#rotulo').replaceChildren(tr ? arte(tr, true) : '');
     $('#mini-rotulo').replaceChildren(tr ? arte(tr, true) : '');
   }
-  porTitulo(tr ? tr.title : 'Nenhum disco no prato', !!tr);
-  $('#canal-faixa').textContent = tr ? (tr.channel || 'Sem canal') : dicaPrato();
+  porTitulo(tr ? tr.title : I18N.t('deck.noDisc'), !!tr);
+  $('#canal-faixa').textContent = tr ? (tr.channel || I18N.t('deck.noChannel')) : dicaPrato();
   // com error o leitor para e o servidor marca ended: nao e "chegou ao fim"
-  $('#situacao').textContent = s.error && st !== 'playing' ? 'Parou com erro' : (SITUACAO[st] || st);
+  $('#situacao').textContent = s.error && st !== 'playing' ? I18N.t('deck.status.error') : (SITUACAO[st] || st);
   const lf = $('#lamp-faixa');
   lf.className = 'lampada' + (s.error && st !== 'playing' ? ' alerta' : st === 'playing' ? ' acesa' : st === 'buffering' ? ' acesa piscando' : '');
 
@@ -5045,17 +5049,17 @@ function desenharFaixa() {
   // (sem disco no prato o pausar ficava apagado e nao dava para parar o som rapido)
   const sobre = !!(s.por_cima && s.por_cima.length);
   document.body.toggleAttribute('data-sobre', sobre);   // o pixel do pausar no celular sai do CSS
-  let rot = 'Tocar', ic = IC_TOCAR;
-  if (st === 'playing' || st === 'buffering' || sobre) { rot = 'Pausar'; ic = IC_PAUSAR; }
-  else if (st === 'paused') rot = 'Continuar';
-  else if (st === 'ended') rot = 'Tocar de novo';
+  let rot = I18N.t('deck.play'), ic = IC_TOCAR;
+  if (st === 'playing' || st === 'buffering' || sobre) { rot = I18N.t('deck.pause'); ic = IC_PAUSAR; }
+  else if (st === 'paused') rot = I18N.t('deck.resume');
+  else if (st === 'ended') rot = I18N.t('deck.playAgain');
   // o botao grande do transporte e o da barra de baixo do celular fazem o mesmo
   for (const [b, i] of [['#b-tocar', '#ic-tocar'], ['#mini-tocar', '#ic-mini']]) {
-    $(b).disabled = !tr && !sobre; $(b).setAttribute('aria-label', rot); $(b).title = b === '#b-tocar' ? rot + ' (espaço)' : rot; $(i).innerHTML = ic;
+    $(b).disabled = !tr && !sobre; $(b).setAttribute('aria-label', rot); $(b).title = b === '#b-tocar' ? I18N.t('deck.withSpaceKey', { action: rot }) : rot; $(i).innerHTML = ic;
   }
-  $('#mini-tit').textContent = tr ? tr.title : 'Nenhum disco no prato';
+  $('#mini-tit').textContent = tr ? tr.title : I18N.t('deck.noDisc');
   $('#mini-sub').textContent = !tr ? dicaMini()
-    : s.error && st !== 'playing' ? 'Parou com erro' : (tr.channel || 'Sem canal');
+    : s.error && st !== 'playing' ? I18N.t('deck.status.error') : (tr.channel || I18N.t('deck.noChannel'));
   rotularMini();
   desenharRapidos();
 
@@ -5114,12 +5118,12 @@ if (document.fonts) document.fonts.ready.then(medirTitulo);
 
 /* texto sob "Nenhum disco no prato": com a prateleira vazia, aponta a busca */
 function dicaPrato() {
-  return S.lib.length ? 'Toque numa capa da prateleira para tocar.' : 'A prateleira está vazia. Busque um som no campo lá em cima.';
+  return S.lib.length ? I18N.t('deck.hint') : I18N.t('deck.hintEmpty');
 }
 /* o mesmo na barra de baixo, curto: com a prateleira vazia nao ha capa para tocar */
-function dicaMini() { return S.lib.length ? 'Toque numa capa para tocar' : 'Busque um som lá em cima'; }
+function dicaMini() { return S.lib.length ? I18N.t('deck.hintMini') : I18N.t('deck.hintMiniEmpty'); }
 function rotularMini() {
-  const rot = S.disco ? 'Voltar para a prateleira' : 'Abrir o toca-discos';
+  const rot = S.disco ? I18N.t('nav.backToShelf') : I18N.t('nav.openDeck');
   $('#mini-abrir').setAttribute('aria-label', `${rot}: ${$('#mini-tit').textContent}, ${$('#mini-sub').textContent}`);
   $('#mini-abrir').setAttribute('aria-expanded', S.disco || S.palco ? 'true' : 'false');
 }
@@ -5135,7 +5139,7 @@ function desenharTempo() {
     mudar($('#t-pos'), 'textContent', fmt(p));
     mudar(sk, '--p', dur ? (p / dur * 100).toFixed(1) + '%' : '0%');
     mudar(sk, '--f', dur ? (p / dur).toFixed(4) : '0');   // a fracao: o ambar ate o centro do cursor de pixel
-    mudar(sk, 'aria-valuetext', `${fmt(p)} de ${fmt(dur)}`);
+    mudar(sk, 'aria-valuetext', I18N.t('deck.timeOf', { pos: fmt(p), total: fmt(dur) }));
     mudar($('#mini-prog'), '--prog', dur ? (p / dur).toFixed(3) : '0');
     mudar($('#mini-tempo'), 'textContent', `${fmt(p)} / ${fmt(dur)}`);
   }
@@ -5490,9 +5494,9 @@ function desenharVisor(agora) {
     const pct = (p.vb - 1) * 100;
     txt = 'NO TEMPO' + (Math.abs(pct) >= .05 ? ` ${pct > 0 ? '+' : '-'}${Math.abs(pct).toFixed(1).replace('.', ',')}%` : '');
     const bpm = g => g ? Math.round(g.bpm) : null, a = bpm(p.grade_de), b = bpm(p.grade_para);
-    dica = 'Passagem no tempo' + (a && b ? `: ${a} BPM saindo, ${b} BPM entrando` : '') +
-           (Math.abs(pct) >= .05 ? `, a próxima a ${pct > 0 ? '+' : '-'}${Math.abs(pct).toFixed(1).replace('.', ',')}% até casar a batida` : '');
-  } else if (naTela) { txt = 'FADE'; dica = 'Passagem só no volume: as batidas das duas não casam'; }
+    const k = Math.abs(pct) >= .05 ? (a && b ? 'tv.hint.inTimeBpmPitch' : 'tv.hint.inTimePitch') : a && b ? 'tv.hint.inTimeBpm' : 'tv.inTime';
+           dica = I18N.t(k, { bpmOut: a, bpmIn: b, pct: `${pct > 0 ? '+' : '-'}${I18N.num(Math.abs(pct), 1)}` });
+  } else if (naTela) { txt = 'FADE'; dica = I18N.t('tv.hint.volumeOnly'); }
   if (selo.hidden !== !txt) selo.hidden = !txt;
   mudar(selo, 'textContent', txt);
   selo.classList.toggle('fade', !!naTela && !p.no_tempo);
@@ -5557,15 +5561,15 @@ function desenharReceptor() {
   // fone "Nenhum" no dialogo: o volume do fone nao tem efeito, entao apaga e diz por que
   const semFone = !!s.active_devices && !s.active_devices.monitor;
   $('#f-mon').disabled = semFone;
-  $('#f-mon').closest('.fader').title = semFone ? 'Nenhum fone escolhido. Escolha um em Microfone e fone.' : '';
-  $('label[for="f-mon"] small').textContent = semFone ? 'nenhum fone escolhido' : '';
+  $('#f-mon').closest('.fader').title = semFone ? I18N.t('mixer.noHeadphones') : '';
+  $('label[for="f-mon"] small').textContent = semFone ? I18N.t('mixer.noHeadphonesShort') : '';
   ligarChave($('#b-cortar'), s.mic_mute);
   for (const mc of [$('#mini-cortar'), $('#palco-cortar')]) {   // o da barra e o do cabecalho do palco
     if (mc._cortada === !!s.mic_mute) continue;
     mc._cortada = !!s.mic_mute;
     mc.setAttribute('aria-pressed', s.mic_mute ? 'true' : 'false');
     mc.classList.toggle('cortada', !!s.mic_mute);
-    mc.title = s.mic_mute ? 'Voz mutada: toque para voltar' : 'Mutar voz';
+    mc.title = s.mic_mute ? I18N.t('voice.mutedTap') : I18N.t('voice.mute');
     mc.innerHTML = s.mic_mute ? IC_MIC_CORTADO : IC_MIC;
   }
   const mt = $('#b-mudo-topo');   // o do topo na pagina do disco (computador): o icone e o nome dizem o estado
@@ -5573,9 +5577,9 @@ function desenharReceptor() {
     mt._cortada = !!s.mic_mute;
     mt.setAttribute('aria-pressed', s.mic_mute ? 'true' : 'false');
     mt.classList.toggle('cortada', !!s.mic_mute);
-    mt.title = s.mic_mute ? 'Voz mutada: clique para voltar' : 'Mutar voz';
+    mt.title = s.mic_mute ? I18N.t('voice.mutedClick') : I18N.t('voice.mute');
     mt.querySelector('.ic-mic').innerHTML = s.mic_mute ? IC_MIC_CORTADO : IC_MIC;
-    mt.querySelector('.rot').textContent = s.mic_mute ? 'Voz mutada' : 'Mutar voz';
+    mt.querySelector('.rot').textContent = s.mic_mute ? I18N.t('voice.muted') : I18N.t('voice.mute');
   }
   const mic = document.querySelector('.mostrador[data-k="mic"]');
   mic.classList.toggle('apagado', !!s.mic_mute);
@@ -5698,7 +5702,7 @@ function tecla(ef) {
   b.append(n);
   if (ef.descricao) b.append(el('span', 't-desc', ef.descricao));
   // so os de mudanca de tom atrasam a voz: diz quanto, discreto
-  if (ef.latencia_ms > 0) b.append(el('span', 't-atraso', `atraso de ${Math.round(ef.latencia_ms)} ms`));
+  if (ef.latencia_ms > 0) b.append(el('span', 't-atraso', I18N.t('effects.delay', { ms: Math.round(ef.latencia_ms) })));
   vestirPedal(b, ef);
   return b;
 }
@@ -5710,8 +5714,8 @@ function montarGaveta() {
   $('#banco-dir').replaceChildren();
   if (!S.efeitos) {
     banco.append(el('p', 'aviso-gav', S.erroEfeitos
-      ? 'Não deu para ler a lista de efeitos. Ela aparece sozinha quando a Vitrola responder.'
-      : 'Lendo a lista de efeitos.'));
+      ? I18N.t('effects.loadFailed')
+      : I18N.t('effects.loading')));
     montarMarcas();
     return;
   }
@@ -5729,7 +5733,7 @@ function montarGaveta() {
     sec.append(h, t);
     banco.append(sec);
   }
-  if (!S.efeitos.length) banco.append(el('p', 'aviso-gav', 'A Vitrola não mandou nenhum efeito.'));
+  if (!S.efeitos.length) banco.append(el('p', 'aviso-gav', I18N.t('effects.noneSent')));
   repartirPedais();
   montarMarcas();
   caberNomes();
@@ -6620,10 +6624,10 @@ function desenharEfeito() {
   });
   const sel = $('#b-efeito');
   sel.classList.toggle('com-efeito', com);
-  $('#nome-ef').textContent = ef ? ef.nome : (com ? id : 'Sem efeito');
+  $('#nome-ef').textContent = ef ? ef.nome : (com ? id : I18N.t('effects.none'));
   const ms = ef && ef.latencia_ms > 0 ? Math.round(ef.latencia_ms) : 0;
   $('#atraso-ef').textContent = ms ? `${ms} MS` : '';
-  $('#atraso-ef-sr').textContent = ms ? `, atraso de ${ms} ms` : '';
+  $('#atraso-ef-sr').textContent = ms ? ', ' + I18N.t('effects.delay', { ms }) : '';
   // os dois visores dizem o modo do pedal que tem os botoes, o do computador tambem, porque o som muda
   const nomeGav = (VISOR_MODOS[id] && VISOR_MODOS[id][modo]) || $('#nome-ef').textContent;
   lcdEf.por(nomeGav); lcdEfGav.por(nomeGav);
@@ -6642,8 +6646,8 @@ function desenharEfeito() {
   $('#mini').classList.toggle('com-efeito', com);
   if (com) {
     $('#mini-ef-nome').textContent = $('#nome-ef').textContent;
-    pe.setAttribute('aria-label', `Efeito de voz ligado: ${$('#nome-ef').textContent}. Toque para voltar à voz natural`);
-    pe.title = 'Voltar para a voz natural';
+    pe.setAttribute('aria-label', I18N.t('effects.onAria', { name: $('#nome-ef').textContent }));
+    pe.title = I18N.t('effects.backToNatural');
   }
 
   // ouvir a propria voz: precisa de um fone; com a voz cortada, so ele ouve
@@ -6655,15 +6659,15 @@ function desenharEfeito() {
   if (semFone) {
     // so remonta quando muda: um estado novo no meio do toque engoliria o clique
     if (!dica.querySelector('.ir-disp')) {
-      const ir = el('button', 'ir-disp', 'Escolher um fone'); ir.type = 'button';
-      dica.replaceChildren(document.createTextNode('Nenhum fone escolhido, então não há onde ouvir. '), ir);
+      const ir = el('button', 'ir-disp', I18N.t('effects.chooseHeadphones')); ir.type = 'button';
+      dica.replaceChildren(document.createTextNode(I18N.t('effects.noHeadphones') + ' '), ir);
     }
   } else if (s.voice_monitor && s.mic_mute) {
-    dica.replaceChildren(el('b', null, 'Voz mutada: só você está ouvindo. '), document.createTextNode('Ninguém no jogo escuta o teste.'));
-  } else dica.textContent = 'Vale mesmo com a voz mutada: teste o efeito sem ninguém no jogo ouvir.';
+    dica.replaceChildren(el('b', null, I18N.t('effects.mutedListening') + ' '), document.createTextNode(I18N.t('effects.nobodyHears')));
+  } else dica.textContent = I18N.t('effects.listenHint');
   dica.classList.toggle('so-dica', !semFone && !(s.voice_monitor && s.mic_mute));   // no celular, so a que informa aparece
-  const atraso = ef && ef.latencia_ms > 0 ? `, atraso de ${Math.round(ef.latencia_ms)} ms` : '';
-  sel.title = `Efeitos de voz: ${$('#nome-ef').textContent}${atraso}. A tecla 0 volta para Sem efeito.`;
+  const atraso = ef && ef.latencia_ms > 0 ? ', ' + I18N.t('effects.delay', { ms: Math.round(ef.latencia_ms) }) : '';
+  sel.title = I18N.t('effects.selectorTitle', { name: $('#nome-ef').textContent, delay: atraso });
 }
 
 async function escolherEfeito(id) {
@@ -6766,7 +6770,7 @@ function abrirDisco(on) {
   document.body.classList.toggle('com-disco', on);
   if (on) { fecharMenu(false); abrirMaleta(true); }
   else if (S.gaveta) abrirGaveta(false);
-  const rot = on ? 'Voltar para a prateleira' : 'Abrir o toca-discos', seta = $('#mini-seta');
+  const rot = on ? I18N.t('nav.backToShelf') : I18N.t('nav.openDeck'), seta = $('#mini-seta');
   $('#b-pagina').title = rot;
   seta.setAttribute('aria-expanded', on ? 'true' : 'false'); seta.setAttribute('aria-label', rot); seta.title = rot;
   rotularMini();
@@ -6880,19 +6884,19 @@ function desenharDeixa() {
     d._chave = chave;
     $('#prato-d').classList.toggle('com-disco', !!mostra);
     $('#rotulo-d').replaceChildren(mostra ? arte({ thumb: mostra.thumb, id: mostra.id || mostra.youtube_id || mostra.qid, title: mostra.title }, true) : '');
-    $('#tit-d').textContent = mostra ? mostra.title : 'Nada na deixa';
+    $('#tit-d').textContent = mostra ? mostra.title : I18N.t('cue.empty');
     $('#tit-d').title = mostra ? mostra.title : '';
-    $('#canal-d').textContent = mostra ? (mostra.channel || 'Sem canal').replace(/ - Topic$/, '')
-      : 'Ponha um disco no A seguir.';
+    $('#canal-d').textContent = mostra ? (mostra.channel || I18N.t('deck.noChannel')).replace(/ - Topic$/, '')
+      : I18N.t('cue.emptyHint');
     $('#dur-d').textContent = fmt(mostra && mostra.duration);
     const sk = $('#seek-d');
     sk.max = (mostra && mostra.duration) || 1;
-    $('#tocar-d').setAttribute('aria-label', x ? `Tocar agora: ${x.title}` : 'Tocar agora');
-    $('#prox-d').setAttribute('aria-label', x ? `Tirar da fila: ${x.title}` : 'Tirar da fila');
+    $('#tocar-d').setAttribute('aria-label', x ? I18N.t('queue.playNowItem', { title: x.title }) : I18N.t('cue.playNow'));
+    $('#prox-d').setAttribute('aria-label', x ? I18N.t('queue.removeItem', { title: x.title }) : I18N.t('cue.remove'));
   }
   $('#tocar-d').disabled = !x || !!sai;
   $('#prox-d').disabled = !x || !!sai;
-  mudar($('#luz-d-t'), 'textContent', sai ? 'Saindo' : x ? 'Na deixa' : 'Vazio');
+  mudar($('#luz-d-t'), 'textContent', sai ? I18N.t('cue.leaving') : x ? I18N.t('cue.cued') : I18N.t('deck.empty'));
   mudar($('#luz-d'), 'class', 'lampada' + (sai ? ' acesa piscando' : x ? ' acesa' : ''));
 }
 /* o que anda com o tempo: o braco e o tempo do disco que sai, os andamentos, o crossfader, a luz da transicao e a
@@ -6919,7 +6923,7 @@ function tempoMesa() {
   // a luz do deck no ar: acesa tocando, piscando carregando, apagada pausado
   const st = s.status;
   mudar($('#luz-ar'), 'class', 'lampada' + (!tr ? '' : st === 'playing' ? ' acesa' : st === 'buffering' ? ' acesa piscando' : ''));
-  mudar($('#luz-ar-t'), 'textContent', !tr ? 'Vazio' : st === 'paused' ? 'Pausado' : st === 'ended' ? 'Acabou' : 'No ar');
+  mudar($('#luz-ar-t'), 'textContent', !tr ? I18N.t('deck.empty') : st === 'paused' ? I18N.t('deck.status.paused') : st === 'ended' ? I18N.t('deck.lampEnded') : I18N.t('deck.onAir'));
   // os andamentos: o medido na passagem (o fim do que sai e o comeco do que entra) vale mais que o de antes, e o
   // quanto a passagem estica cada um (o do no ar volta a 1 devagar depois da virada)
   let bAr = bpmDe(tr), pAr = 0;
@@ -6947,25 +6951,27 @@ function tempoMesa() {
     xf = MESA.lado === 'a' ? 1 - f : f;
   }
   mudar($('#xf-pino'), '--x', xf.toFixed(3));
-  $('#xfader').setAttribute('aria-label', `Crossfader: ${xf < .02 ? 'todo no A' : xf > .98 ? 'todo no B' : `${Math.round((1 - xf) * 100)}% A, ${Math.round(xf * 100)}% B`}`);
+  $('#xfader').setAttribute('aria-label', xf < .02 ? I18N.t('mixer.crossfaderAllA') : xf > .98 ? I18N.t('mixer.crossfaderAllB')
+    : I18N.t('mixer.crossfaderMix', { a: Math.round((1 - xf) * 100), b: Math.round(xf * 100) }));
   // a luz da transicao automatica: acesa com a proxima na fila (ela entra sozinha), piscando na passagem
   const armada = !!tr && fila.some(x => !mesmoDisco(x, tr)) && !s.loop;
   mudar($('#lamp-auto'), 'class', 'lampada' + (sai ? ' acesa piscando' : armada ? ' acesa' : ''));
   const falta = vem ? Math.max(0, vem.t0 - pos) : 0;
-  mudar($('#auto-luz'), 'title', sai ? 'A passagem está acontecendo.'
-    : vem ? `A próxima entra sozinha em ${fmt(falta)}, ${vem.no_tempo ? 'no tempo do disco no ar' : 'só no volume'}.`
-    : armada ? 'A próxima da fila entra sozinha no fim do disco no ar.'
-    : tr && s.loop ? 'Repetir ligado: o disco no ar não sai.' : 'Sem próxima na fila: o set para no fim do disco no ar.');
+  mudar($('#auto-luz'), 'title', sai ? I18N.t('mixer.auto.happening')
+    : vem ? I18N.t(vem.no_tempo ? 'mixer.auto.inTime' : 'mixer.auto.inVolume', { time: fmt(falta) })
+    : armada ? I18N.t('mixer.auto.armed')
+    : tr && s.loop ? I18N.t('mixer.auto.repeat') : I18N.t('mixer.auto.none'));
   // a tela grande: no alto o que ela mostra; embaixo os tempos dos dois lados, a passagem, os andamentos e o Automatico
   const p = sai ? sai.p : vem;
-  mudar($('#tv-titulo'), 'textContent', p ? (p.no_tempo ? 'Passagem no tempo' : 'Passagem no volume')
-    : s.error && st !== 'playing' ? 'Parou com erro' : (SITUACAO[st] || 'Visor'));
+  mudar($('#tv-titulo'), 'textContent', p ? I18N.t(p.no_tempo ? 'tv.inTime' : 'tv.inVolume')
+    : s.error && st !== 'playing' ? I18N.t('deck.status.error') : (SITUACAO[st] || I18N.t('tv.title')));
   mudar($('#tv-luz'), 'class', 'lampada' + (tr && st === 'playing' ? ' alerta' : ''));
   const ar = tr ? fmt(pos) : '-:--', dx = sai ? fmt(sai.t) : MESA.deixa ? '0:00' : '-:--';
   const [ta, tb] = MESA.lado === 'a' ? [ar, dx] : [dx, ar];
   const [ca, cb] = MESA.lado === 'a' ? ['ar', 'dx'] : ['dx', 'ar'];
-  const passagem = vem ? `Passagem em ${fmt(falta)}` : sai ? 'Cruzando' : armada ? `Fim em ${fmt(Math.max(0, dur - pos))}`
-    : tr && s.loop ? 'Repetindo' : tr ? 'Sem próxima' : '';
+  const passagem = vem ? I18N.t('tv.transitionIn', { time: fmt(falta) }) : sai ? I18N.t('tv.crossing')
+    : armada ? I18N.t('tv.endIn', { time: fmt(Math.max(0, dur - pos)) })
+    : tr && s.loop ? I18N.t('tv.repeating') : tr ? I18N.t('tv.noNext') : '';
   const [ba, bb] = MESA.lado === 'a' ? [bAr, bDx] : [bDx, bAr];
   const bpm = ba || bb ? `<span class="tl bpm">${fmtBpm(ba)}/${fmtBpm(bb)} BPM</span>` : '';
   const h = `<span class="tl ${ca}"><b>A</b>${ta}</span><span class="tl ${cb}"><b>B</b>${tb}</span><span class="tl-vao"></span>` +
@@ -6984,7 +6990,7 @@ function desenharPads(curtos) {
     const pads = curtos.map((it, i) => {
       const b = el('button', 'pad'); b.type = 'button'; b.dataset.id = it.id;
       b.style.setProperty('--pad', PAD_CORES[i % PAD_CORES.length]);
-      b.setAttribute('aria-label', `Tocar por cima da música: ${it.title}`);
+      b.setAttribute('aria-label', I18N.t('pads.playOver', { title: it.title }));
       b.title = `${it.title} (${fmt(Math.min(it.duration || 0, it.rapido ? RAPIDO_MAX_S : CURTO_S))})`;
       b.append(el('span', 'pad-face'), el('span', 'pad-nome', it.title));
       return b;
@@ -7190,18 +7196,18 @@ const IC_PX = {
 function liDisco(it, i) {
   const li = el('li', 'disco-item'); li.dataset.id = it.id;
   const capa = el('button', 'capa'); capa.type = 'button'; capa.dataset.role = 'capa';
-  capa.setAttribute('aria-label', `Tocar do começo: ${it.title}`);
+  capa.setAttribute('aria-label', I18N.t('shelf.playFromStart', { title: it.title }));
   capa.append(arte(it, false));
-  const tag = el('span', 'no-prato-tag'); tag.append(el('span', 'lampada acesa'), document.createTextNode('No prato'));
+  const tag = el('span', 'no-prato-tag'); tag.append(el('span', 'lampada acesa'), document.createTextNode(I18N.t('shelf.onPlatter')));
   capa.append(tag);
   const borda = el('div', 'borda'); borda.setAttribute('aria-hidden', 'true');
   const ficha = el('div', 'ficha');
   const nome = el('p', 'nome');
-  if (i < 9) { const k = el('kbd', null, String(i + 1)); k.title = `Tecla ${i + 1} toca este disco`; nome.append(k); }
+  if (i < 9) { const k = el('kbd', null, String(i + 1)); k.title = I18N.t('shelf.keyHint', { n: i + 1 }); nome.append(k); }
   nome.append(document.createTextNode(it.title));
   const acoes = el('div', 'acoes');
   const mais = el('button', 'mais'); mais.type = 'button'; mais.dataset.role = 'mais';
-  mais.setAttribute('aria-label', `Mais ações: ${it.title}`); mais.setAttribute('aria-haspopup', 'menu'); mais.setAttribute('aria-expanded', 'false');
+  mais.setAttribute('aria-label', I18N.t('shelf.moreActions', { title: it.title })); mais.setAttribute('aria-haspopup', 'menu'); mais.setAttribute('aria-expanded', 'false');
   mais.innerHTML = svgMais();
   acoes.append(mais);
   // (07/11, pedido do dono) na mesa o cartao da prateleira e o da maleta: a musica em negrito e o artista e a duracao embaixo
@@ -7244,7 +7250,7 @@ function atualizarJob(li, j) {
     if (j.error) { pe.append(el('small', null, detalheErro(j.error))); pe.title = detalheErro(j.error); }
     acoes.append(pe);
     if (S.jobCorpo[j.id]) {
-      const b = el('button', 'btn-texto', 'Tentar de novo'); b.type = 'button'; b.dataset.role = 'retentar'; b.dataset.job = j.id;
+      const b = el('button', 'btn-texto', I18N.t('shelf.retry')); b.type = 'button'; b.dataset.role = 'retentar'; b.dataset.job = j.id;
       acoes.append(b);
     }
   }
@@ -7279,7 +7285,7 @@ function desenharPrateleira() {
   if (queridos.length) { if (vazio) vazio.remove(); }
   else if (!vazio) {
     const v = el('li', 'vazio');
-    v.append(el('strong', null, 'A prateleira está vazia.'), document.createTextNode('Busque um som no YouTube ou cole um link no campo lá em cima. Ele vira um disco aqui.'));
+    v.append(el('strong', null, I18N.t('shelf.empty')), document.createTextNode(I18N.t('shelf.emptyHint')));
     ul.append(v);
   }
   queridos.forEach(([, li], i) => { if (ul.children[i] !== li) ul.insertBefore(li, ul.children[i] || null); });
@@ -7297,7 +7303,7 @@ function desenharPrateleira() {
     if (b) b.focus();
   }
   const n = S.lib.length;
-  $('#conta').textContent = n === 1 ? '1 disco' : `${n} discos`;
+  $('#conta').textContent = I18N.tp('shelf.count', n);
   if (S.state && !S.state.track) {
     $('#canal-faixa').textContent = dicaPrato();
     $('#mini-sub').textContent = dicaMini(); rotularMini();
@@ -7346,11 +7352,11 @@ function desenharContinuar() {
   ul.replaceChildren(...its.map(it => {
     const li = el('li', 'cartao'); li.dataset.id = it.id;
     const b = el('button', 'cartao-b'); b.type = 'button';
-    b.setAttribute('aria-label', `Continuar de ${fmt(it.last_pos)}: ${it.title}`);
+    b.setAttribute('aria-label', I18N.t('shelf.resumeFromItem', { time: fmt(it.last_pos), title: it.title }));
     const capa = el('span', 'cartao-capa'); capa.append(arte(it, false));
     const pr = el('span', 'cartao-prog'); pr.style.setProperty('--p', (it.last_pos / it.duration).toFixed(3));
     capa.append(pr);
-    b.append(capa, el('span', 'cartao-tit', it.title), el('span', 'cartao-sub', `Continuar de ${fmt(it.last_pos)}`));
+    b.append(capa, el('span', 'cartao-tit', it.title), el('span', 'cartao-sub', I18N.t('shelf.resumeFrom', { time: fmt(it.last_pos) })));
     li.append(b);
     return li;
   }));
@@ -7365,13 +7371,13 @@ function desenharRapidos() {
   const curtos = S.lib.filter(it => curto(it) || it.rapido);
   const chips = $('#chips');
   $('#rapidos').hidden = !curtos.length;
-  $('#conta-rap').textContent = curtos.length === 1 ? '1 som' : `${curtos.length} sons`;
+  $('#conta-rap').textContent = I18N.tp('pads.count', curtos.length);
   const chave = curtos.map(it => it.id + '|' + it.title).join('/');
   if (chips._chave !== chave) {
     chips._chave = chave;
     chips.replaceChildren(...curtos.map(it => {
       const b = el('button', 'compacto'); b.type = 'button'; b.dataset.id = it.id;
-      b.setAttribute('aria-label', `Tocar por cima da música: ${it.title}`);
+      b.setAttribute('aria-label', I18N.t('pads.playOver', { title: it.title }));
       // compacto de 7 polegadas: selo de papel na cor do som, como as capas geradas
       const [bg, fg] = PALETAS[hash(it.id || it.title) % PALETAS.length];
       const sete = el('span', 'sete'), gira = el('span', 'sete-gira'), rot = el('span', 'sete-rot');
@@ -7412,9 +7418,9 @@ function alternar() {
   const tocando = s && s.track && (s.status === 'playing' || s.status === 'buffering');
   if (s && s.por_cima && s.por_cima.length && !tocando) { cmd('/api/pause'); return; }
   if (!s || !s.track) {
-    avisar(!S.lib.length ? 'A prateleira está vazia. Busque um som lá em cima.'
-      : celular() ? 'Escolha um disco primeiro: toque numa capa da prateleira.'
-      : 'Escolha um disco primeiro. As teclas 1 a 9 tocam a prateleira.');
+    avisar(!S.lib.length ? I18N.t('shelf.emptyToast')
+      : celular() ? I18N.t('deck.pickFirstPhone')
+      : I18N.t('deck.pickFirstPc'));
     return;
   }
   if (s.status === 'ended') cmd('/api/resume');
@@ -7525,14 +7531,14 @@ function mostrarResultados() {
 }
 function motivoDownload(t) {
   t = String(t || '');
-  if (/unavailable|private|indispon/i.test(t)) return 'O vídeo está indisponível ou é privado.';
-  if (/429|too many/i.test(t)) return 'O YouTube recusou por excesso de pedidos. Espere alguns minutos e tente de novo.';
-  if (/getaddrinfo|network|timed out|connection|resolve/i.test(t)) return 'Sem internet, ou o YouTube não respondeu. Confira a conexão e tente de novo.';
+  if (/unavailable|private|indispon/i.test(t)) return I18N.t('download.reason.unavailable');
+  if (/429|too many/i.test(t)) return I18N.t('download.reason.rateLimit');
+  if (/getaddrinfo|network|timed out|connection|resolve/i.test(t)) return I18N.t('download.reason.network');
   // o "not a bot" tambem diz "sign in", mas e o YouTube desconfiando dos pedidos, nao o video: vem antes
-  if (/not a bot/i.test(t)) return 'O YouTube desconfiou dos pedidos daqui e bloqueou por um tempo. Espere alguns minutos e tente de novo.';
-  if (/confirm your age|age[- ]restricted|inappropriate/i.test(t)) return 'O vídeo tem restrição de idade, e o YouTube só libera para quem está logado. Ele não baixa por aqui.';
-  if (/sign in|members[- ]only|login/i.test(t)) return 'O YouTube pede login para este vídeo, então ele não baixa por aqui.';
-  return 'O download parou com erro. Confira o link, tente de novo ou busque outro vídeo.';
+  if (/not a bot/i.test(t)) return I18N.t('download.reason.bot');
+  if (/confirm your age|age[- ]restricted|inappropriate/i.test(t)) return I18N.t('download.reason.age');
+  if (/sign in|members[- ]only|login/i.test(t)) return I18N.t('download.reason.login');
+  return I18N.t('download.reason.generic');
 }
 function fecharBusca() {
   S.busca = null; S.buscaSeq++;
@@ -7597,7 +7603,7 @@ function desenharBusca() {
   atualizarResultados();
 }
 
-const tituloRes = r => r.link || r.title || 'Sem título';
+const tituloRes = r => r.link || r.title || I18N.t('shelf.untitled');
 function liResultado(r) {
   const li = el('li', 'resultado'); li._r = r;
   const yid = r.youtube_id;
@@ -7616,7 +7622,7 @@ function liResultado(r) {
   txt.append(el('span', 'tit', tituloRes(r)), el('span', 'sub'));
   linha.append(mini, txt);
   const mais = el('button', 'acao-res'); mais.type = 'button'; mais.dataset.role = 'mais';
-  mais.setAttribute('aria-label', `Mais opções: ${tituloRes(r)}`); mais.setAttribute('aria-haspopup', 'menu'); mais.setAttribute('aria-expanded', 'false');
+  mais.setAttribute('aria-label', I18N.t('search.result.moreOptions', { title: tituloRes(r) })); mais.setAttribute('aria-haspopup', 'menu'); mais.setAttribute('aria-expanded', 'false');
   mais.innerHTML = svgMais();
   const salvar = el('button', 'acao-res salvar'); salvar.type = 'button'; salvar.dataset.role = 'salvar';
   corpo.append(linha, mais, salvar);
@@ -7639,10 +7645,10 @@ function atualizarResultados() {
     // o progresso do download fica no anel do ⊕
     const sub = li.querySelector('.sub'); sub.replaceChildren();
     if (tocando) sub.append(el('span', 'lampada acesa' + (st === 'buffering' ? ' piscando' : '')));
-    sub.append(est === 'erro' ? el('span', 'canal erro-t', 'Não deu para baixar')
-      : el('span', 'canal', r.link ? 'Link colado' : (r.channel || 'Sem canal')));
+    sub.append(est === 'erro' ? el('span', 'canal erro-t', I18N.t('search.result.downloadFailed'))
+      : el('span', 'canal', r.link ? I18N.t('search.pastedLink') : (r.channel || I18N.t('deck.noChannel'))));
     if (r.duration) sub.append(el('span', 'dur-s', `· ${fmt(r.duration)}`));
-    li.querySelector('.linha').setAttribute('aria-label', `${tocando ? 'No prato. ' : ''}Tocar: ${t}`);
+    li.querySelector('.linha').setAttribute('aria-label', I18N.t(tocando ? 'search.result.playOnPlatter' : 'search.result.play', { title: t }));
     pintarSalvar(li.querySelector('.salvar'), est, pr, t);
   }
 }
@@ -7655,8 +7661,9 @@ function estadoSalvar(yid, link) {
 function pintarSalvar(s, est, pr, t) {
   const pixel = s.classList.contains('pixel');   // o da parecida no prato, desenhado pelo dev/pecas.py
   s.className = `acao-res salvar ${pixel ? 'pixel ' : ''}${est}`;
-  s.setAttribute('aria-label', est === 'salvo' ? `Na prateleira. Tirar da prateleira: ${t}`
-    : est === 'baixando' ? `Baixando para a prateleira, ${pr}%: ${t}` : `${est === 'erro' ? 'Tentar baixar de novo' : 'Salvar na prateleira'}: ${t}`);
+  s.setAttribute('aria-label', est === 'salvo' ? I18N.t('search.result.saved', { title: t })
+    : est === 'baixando' ? I18N.t('search.result.downloading', { pct: pr, title: t })
+    : I18N.t(est === 'erro' ? 'search.result.retry' : 'search.result.save', { title: t }));
   if (pixel) {   // baixando, o aro acende celula a celula no sentido do relogio (os rect ja vem nessa ordem)
     const aro = s.querySelectorAll('.sv-aro rect'), k = est === 'baixando' ? Math.round(aro.length * pr / 100) : 0;
     aro.forEach((r, i) => r.classList.toggle('on', i < k));
@@ -7677,7 +7684,7 @@ function salvarResultado(r) {
   const ja = naPrateleira(r.youtube_id);
   if (ja) { tirarDaPrateleira(ja, r); return; }
   const jb = jobDe(r.youtube_id) || jobDe(r.link);
-  if (jb && jb.status === 'running') { avisar('Já está baixando para a prateleira.'); return; }
+  if (jb && jb.status === 'running') { avisar(I18N.t('download.already')); return; }
   baixar({ ...corpoDe(r), play: false }, r.link || r.youtube_id);
 }
 
@@ -7687,7 +7694,7 @@ function salvarResultado(r) {
 async function tirarDaPrateleira(it, r) {
   try {
     await api('DELETE', `/api/library/${encodeURIComponent(it.id)}`);
-    avisar('Tirado da prateleira.', false, { rotulo: 'Desfazer', fn: () => baixar({ ...corpoDe(r), play: false }, r.link || r.youtube_id) });
+    avisar(I18N.t('download.removed'), false, { rotulo: I18N.t('app.undo'), fn: () => baixar({ ...corpoDe(r), play: false }, r.link || r.youtube_id) });
   } catch (e) { avisar(e.message, true); }
 }
 
@@ -7697,9 +7704,9 @@ async function baixar(corpo, alvo) {
     if (r.job) {
       S.jobAlvo[r.job.id] = alvo; S.jobCorpo[r.job.id] = corpo;
       if (!S.jobs.some(j => j.id === r.job.id)) S.jobs = S.jobs.concat(r.job);
-      if (!corpo.play) avisar('Baixando para a prateleira.');
-      else if (!r.streaming) avisar('Baixando. Toca assim que chegar.');
-    } else if (r.item && !corpo.play) avisar('Esse som já está na prateleira.');
+      if (!corpo.play) avisar(I18N.t('download.started'));
+      else if (!r.streaming) avisar(I18N.t('download.startedPlay'));
+    } else if (r.item && !corpo.play) avisar(I18N.t('download.alreadySaved'));
     if (S.busca) desenharBusca();
     desenharPrateleira();
   } catch (e) { avisar(e.message, true); }
@@ -7711,22 +7718,22 @@ async function baixar(corpo, alvo) {
 let menuCtx = null, menuBotao = null, folhaNaHistoria = false, larguraMenu = 0;
 function itensMenu(ctx) {
   const fila = temFila(), out = [];
-  if (fila) out.push(['seguir', 'Tocar a seguir', IC.aSeguir], ['fila', 'Adicionar à fila', IC.fila]);
+  if (fila) out.push(['seguir', I18N.t('menu.playNext'), IC.aSeguir], ['fila', I18N.t('menu.addToQueue'), IC.fila]);
   if (ctx.tipo === 'disco') {
     const it = ctx.it;
-    if ((it.last_pos || 0) > 5) out.unshift(['continuar', `Continuar de ${fmt(it.last_pos)}`, IC.continuar]);
+    if ((it.last_pos || 0) > 5) out.unshift(['continuar', I18N.t('shelf.resumeFrom', { time: fmt(it.last_pos) }), IC.continuar]);
     // os de ate 15 s ja estao nos Sons rapidos sozinhos
     if (!curto(it)) {
-      out.push(it.rapido ? ['semRapido', 'Tirar de Sons rápidos', IC.semRapido]
-        : ['rapido', 'Adicionar a Sons rápidos', IC.rapido]);
+      out.push(it.rapido ? ['semRapido', I18N.t('menu.removeQuick'), IC.semRapido]
+        : ['rapido', I18N.t('menu.addQuick'), IC.rapido]);
     }
-    out.push(['renomear', 'Renomear', IC.renomear]);
-    if (it.youtube_id) out.push(['youtube', 'Abrir no YouTube', IC.youtube]);
-    out.push(['apagar', 'Apagar', IC.apagar, 'perigo']);
+    out.push(['renomear', I18N.t('menu.rename'), IC.renomear]);
+    if (it.youtube_id) out.push(['youtube', I18N.t('menu.openYoutube'), IC.youtube]);
+    out.push(['apagar', I18N.t('menu.delete'), IC.apagar, 'perigo']);
   } else {
     const r = ctx.r, jb = jobDe(r.youtube_id) || jobDe(r.link);
-    if (!naPrateleira(r.youtube_id) && !(jb && jb.status === 'running')) out.push(['salvar', 'Salvar na prateleira', IC.salvar]);
-    out.push(['youtube', 'Abrir no YouTube', IC.youtube]);
+    if (!naPrateleira(r.youtube_id) && !(jb && jb.status === 'running')) out.push(['salvar', I18N.t('shelf.save'), IC.salvar]);
+    out.push(['youtube', I18N.t('menu.openYoutube'), IC.youtube]);
   }
   return out;
 }
@@ -7741,7 +7748,7 @@ function abrirMenu(botao, ctx) {
   const txt = el('span'); txt.append(el('span', 't', titulo), el('span', 's', [info.channel, info.duration ? fmt(info.duration) : null].filter(Boolean).join(' · ')));
   $('#menu-cab').replaceChildren(capa, txt);
   const lista = $('#menu-itens');
-  lista.setAttribute('aria-label', `Opções: ${titulo}`);
+  lista.setAttribute('aria-label', I18N.t('menu.options', { title: titulo }));
   // na folha do celular a contracapa do LP: o LADO A antes da primeira faixa e o Apagar sozinho no LADO B (os dois
   // letreiros so desenho: o leitor de tela le as acoes)
   const folha = celular();
@@ -7750,8 +7757,8 @@ function abrirMenu(botao, ctx) {
     const b = el('button', cls); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.dataset.acao = acao;
     b.innerHTML = IC_PX[acao] || ic; b.append(el('span', null, rot));
     if (!folha) return [b];
-    if (cls === 'perigo') return [lado('Lado B', 'lado lado-b'), b];
-    return i === 0 ? [lado('Lado A', 'lado'), b] : [b];
+    if (cls === 'perigo') return [lado(I18N.t('menu.sideB'), 'lado lado-b'), b];
+    return i === 0 ? [lado(I18N.t('menu.sideA'), 'lado'), b] : [b];
   }));
   m.hidden = false;
   larguraMenu = innerWidth;
@@ -7883,8 +7890,8 @@ async function enfileirar(corpo, seguir, titulo, alvo) {
       if (!S.jobs.some(j => j.id === r.job.id)) S.jobs = S.jobs.concat(r.job);
     }
     // com nada no prato o servidor ja toca o que entrou
-    if (r.playing) avisar(`Tocando: ${titulo}`);
-    else avisar(`${seguir ? 'Toca a seguir' : 'Na fila'}: ${titulo}`, false, { rotulo: 'Abrir', fn: abrirFila });
+    if (r.playing) avisar(I18N.t('queue.playing', { title: titulo }));
+    else avisar(I18N.t(seguir ? 'queue.playsNext' : 'queue.added', { title: titulo }), false, { rotulo: I18N.t('app.open'), fn: abrirFila });
     if (S.busca) atualizarResultados();
   } catch (e) { avisar(e.message, true); }
 }
@@ -7908,7 +7915,7 @@ function estadoEntrada(x) {
 /* a maleta do A seguir no celular comeca fechada, so com o proximo, e so a tecla abre e fecha; a
    lista fechada nao pega toque nem foco */
 function abrirMaleta(on) {
-  const sec = $(celular() ? '.fila-palco' : '.fila-parede'), b = sec.querySelector('.abre-fila'), rot = on ? 'Fechar o A seguir' : 'Abrir o A seguir';
+  const sec = $(celular() ? '.fila-palco' : '.fila-parede'), b = sec.querySelector('.abre-fila'), rot = on ? I18N.t('queue.close') : I18N.t('queue.open');
   sec.classList.toggle('aberta', on);
   b.setAttribute('aria-expanded', on ? 'true' : 'false');
   b.setAttribute('aria-label', rot); b.title = rot;
@@ -7991,7 +7998,7 @@ function partirTitulo(x) {
   const canal = (x.channel || '').replace(/ - Topic$/, '');
   // (07/11, pedido do dono) o disco que o servidor achou no YouTube Music traz o nome da musica e o artista de la
   if (x.ytm_titulo) return { musica: x.ytm_titulo, artista: x.ytm_artista || canal };
-  let musica = (x.title || 'Sem título').replace(TITULO_LIXO, '').trim(), artista = canal;
+  let musica = (x.title || I18N.t('shelf.untitled')).replace(TITULO_LIXO, '').trim(), artista = canal;
   const i = musica.indexOf(' - ');
   if (i > 0) {
     let a = musica.slice(0, i).trim(), m = musica.slice(i + 3).trim();
@@ -8004,21 +8011,21 @@ function liFila(x) {
   const li = el('li', 'item-fila'); li.dataset.qid = x.qid;
   if (x.auto) li.classList.add('auto');
   const b = el('button', 'tocar-fila'); b.type = 'button'; b.dataset.role = 'tocar-fila';
-  b.setAttribute('aria-label', `Tocar agora: ${x.title}`);
+  b.setAttribute('aria-label', I18N.t('queue.playNowItem', { title: x.title }));
   const capa = el('span', 'capinha');
   capa.append(arte({ thumb: x.thumb, id: x.id || x.youtube_id || x.qid, title: x.title }, true));
   const est = estadoEntrada(x);
   const p = partirTitulo(x);
-  const s = est.startsWith('baixando') ? `Baixando ${est.split(' ')[1]}%`
-    : est === 'erro' ? 'Não baixou: toca pelo YouTube'
-    : [x.auto ? 'Automático' : null, p.artista, x.bpm ? `${Math.round(x.bpm)} BPM` : null,
+  const s = est.startsWith('baixando') ? I18N.t('queue.downloading', { pct: est.split(' ')[1] })
+    : est === 'erro' ? I18N.t('queue.notDownloaded')
+    : [x.auto ? I18N.t('queue.auto') : null, p.artista, x.bpm ? `${Math.round(x.bpm)} BPM` : null,
        x.duration ? fmt(x.duration) : null].filter(Boolean).join(' · ');
-  const txt = el('span', 'txt'); txt.append(el('span', 't', p.musica), el('span', 's', s || ' '));
+  const txt = el('span', 'txt'); txt.dataset.proximo = I18N.t('queue.nextLabel'); txt.append(el('span', 't', p.musica), el('span', 's', s || ' '));
   b.append(capa, txt);
   const tirar = el('button', 'tirar'); tirar.type = 'button'; tirar.dataset.role = 'tirar';
-  tirar.setAttribute('aria-label', `Tirar da fila: ${x.title}`); tirar.innerHTML = IC.tirar;
+  tirar.setAttribute('aria-label', I18N.t('queue.removeItem', { title: x.title })); tirar.innerHTML = IC.tirar;
   const alca = el('button', 'alca'); alca.type = 'button'; alca.dataset.role = 'alca';
-  alca.setAttribute('aria-label', `Mudar ${x.title} de lugar na fila: arraste, ou use as setas para cima e para baixo`); alca.innerHTML = IC.alca;
+  alca.setAttribute('aria-label', I18N.t('queue.move', { title: x.title })); alca.innerHTML = IC.alca;
   li.append(b, tirar, alca);
   return li;
 }
@@ -8060,7 +8067,7 @@ function desenharFila() {
     // o A seguir so aparece com fila: a chave do Tocar parecidas mora embaixo dos botoes do toca-discos
     // na mesa a maleta fica aberta mesmo vazia, com o aviso dentro
     sec.hidden = !fila.length && !(MESA.montada && sec.classList.contains('fila-parede'));
-    sec.querySelector('.conta').textContent = !fila.length ? '' : fila.length === 1 ? '1 disco' : `${fila.length} discos`;
+    sec.querySelector('.conta').textContent = !fila.length ? '' : I18N.tp('queue.count', fila.length);
     const limpar = sec.querySelector('.limpar-fila');   // so a do computador tem
     if (limpar) limpar.hidden = !fila.length;
     sec.querySelector('.lista-fila').replaceChildren(...fila.map(liFila));
@@ -8100,7 +8107,7 @@ for (const sec of document.querySelectorAll('.fila')) {
     const b = e.target.closest('button'); if (!b) return;
     if (b.classList.contains('abre-fila')) { abrirMaleta(!sec.classList.contains('aberta')); return; }
     if (b.classList.contains('limpar-fila')) {
-      api('DELETE', '/api/queue').then(() => avisar('Fila limpa.')).catch(err => avisar(err.message, true));
+      api('DELETE', '/api/queue').then(() => avisar(I18N.t('queue.cleared'))).catch(err => avisar(err.message, true));
       return;
     }
     const li = b.closest('.item-fila'); if (!li) return;
@@ -8255,8 +8262,8 @@ async function marcarRapido(it, on) {
   try {
     const r = await api('PATCH', `/api/library/${encodeURIComponent(it.id)}`, { rapido: on });
     // servidor de antes desta mudanca responde ok sem guardar
-    if (!r.item || !!r.item.rapido !== on) { avisar('O servidor precisa ser reiniciado para guardar isso.', true); return; }
-    avisar(on ? 'Adicionado a Sons rápidos.' : 'Tirado de Sons rápidos.');
+    if (!r.item || !!r.item.rapido !== on) { avisar(I18N.t('pads.needsRestart'), true); return; }
+    avisar(on ? I18N.t('pads.added') : I18N.t('pads.removed'));
   } catch (e) { avisar(e.message, true); }
 }
 
@@ -8486,7 +8493,7 @@ function conectar() {
   es.addEventListener('jobs', e => {
     const antes = new Map(S.jobs.map(j => [j.id, j.status]));
     S.jobs = JSON.parse(e.data);
-    for (const j of S.jobs) if (j.status === 'error' && antes.get(j.id) === 'running') avisar(`Não deu para baixar “${j.label}”. ${motivoDownload(j.error)}`, true);
+    for (const j of S.jobs) if (j.status === 'error' && antes.get(j.id) === 'running') avisar(I18N.t('download.failed', { label: j.label, reason: motivoDownload(j.error) }), true);
     desenharPrateleira(); desenharFila(); if (S.busca) atualizarResultados();
   });
   es.addEventListener('tick', e => {
@@ -8530,9 +8537,9 @@ function online(on) {
     if (S.atualizando) { location.reload(); return; }   // a versao nova abriu: a pagina passa a ser a dela
     clearTimeout(foraT); $('#fora').hidden = true;
     if (!S.efeitos && S.erroEfeitos) carregarEfeitos();
-    lamp.className = 'lampada acesa'; cx.textContent = 'ligada';
+    lamp.className = 'lampada acesa'; cx.textContent = I18N.t('app.connected');
   } else {
-    lamp.className = 'lampada alerta piscando'; cx.textContent = 'reconectando';
+    lamp.className = 'lampada alerta piscando'; cx.textContent = I18N.t('app.reconnecting');
     armarFora();
   }
   cx.classList.toggle('sr', on);   // conectado, a lampada acesa ja diz: o "ligado" fica so para o leitor de tela
@@ -8548,7 +8555,7 @@ function mostrarFora() {
     $('#fora-tt').textContent = S.jaConectou ? 'A Vitrola parou de responder' : 'A Vitrola não está respondendo';
     $('#fora-p').innerHTML = 'O servidor caiu ou foi desligado, e a sua voz não está passando pelo cabo. Para ligar, abra a Vitrola no PC, pelo menu Iniciar. Se ela já estiver aberta, o motivo aparece no log em <code>%LOCALAPPDATA%\\Vitrola\\logs</code>.';
   }
-  $('#lamp').className = 'lampada'; $('#conexao').textContent = S.desligado ? 'desligada' : 'fora do ar';
+  $('#lamp').className = 'lampada'; $('#conexao').textContent = S.desligado ? I18N.t('app.off') : I18N.t('app.offline');
   $('#conexao').classList.remove('sr');
   f.hidden = false;
 }
@@ -8567,7 +8574,7 @@ function pedirPareamento(desconectado) {
   $('#fora').hidden = true;
   $('#pa-desc').hidden = !desconectado;
   $('#pa-msg').textContent = '';
-  $('#lamp').className = 'lampada'; $('#conexao').textContent = 'sem acesso'; $('#conexao').classList.remove('sr');
+  $('#lamp').className = 'lampada'; $('#conexao').textContent = I18N.t('app.noAccess'); $('#conexao').classList.remove('sr');
   $('#tela-parear').hidden = false;
 }
 async function parear(codigo) {
@@ -8694,7 +8701,7 @@ $('#b-tocar').addEventListener('click', alternar);
 $('#mini-tocar').addEventListener('click', alternar);
 function mutarComAviso() {
   alternarVoz();
-  avisar(S.state && S.state.mic_mute ? 'Voz mutada: ninguém no jogo ouve você.' : 'Voz de volta no jogo.');
+  avisar(S.state && S.state.mic_mute ? I18N.t('voice.mutedToast') : I18N.t('voice.backToast'));
 }
 $('#mini-cortar').addEventListener('click', mutarComAviso);
 $('#b-mudo-topo').addEventListener('click', mutarComAviso);
@@ -8870,7 +8877,7 @@ sk.addEventListener('input', () => {
   mudar($('#t-pos'), 'textContent', fmt(v));
   mudar(sk, '--p', dur ? (v / dur * 100).toFixed(1) + '%' : '0%');
   mudar(sk, '--f', dur ? (v / dur).toFixed(4) : '0');
-  mudar(sk, 'aria-valuetext', `${fmt(v)} de ${fmt(dur)}`);
+  mudar(sk, 'aria-valuetext', I18N.t('deck.timeOf', { pos: fmt(v), total: fmt(dur) }));
 });
 sk.addEventListener('change', async () => {
   const t = +sk.value;
@@ -10226,7 +10233,7 @@ carregar();
       p.classList.remove('px-ok'); if (cv0) cv0.remove(); return;
     }
     const b = p.querySelector('b'), tit = (b ? b.textContent : '').trim();
-    const dica = [...p.childNodes].filter(n => n !== b && n.nodeType === 3).map(n => n.textContent).join(' ').replace(/\s+/g, ' ').trim();
+    const dica = [...p.childNodes].filter(n => n !== b && (n.nodeType === 3 || n.nodeName === 'SPAN')).map(n => n.textContent).join(' ').replace(/\s+/g, ' ').trim();
     const linhas = [[tit, 'fb', BR], ...quebra(L, dica).map(t => [t, 'f', DICA])];
     const ws = linhas.map(([t, fk]) => L.larg(fk, t) - 1), W = Math.max(...ws) + 2;
     const base = linhas.map((_, i) => 7 + (i ? PASSO1 + (i - 1) * PASSO2 : 0)), H = base[base.length - 1] + 3;
@@ -10896,7 +10903,7 @@ carregar();
     const fs = m.faders.filter(vis).map(f => {
       const lab = f.querySelector('label'), inp = f.querySelector('input'), out = f.querySelector('output'), sm = lab.querySelector('small');
       const C = relM(f, D), I = relM(inp, D), Ou = relM(out, D);
-      const txt = [...lab.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim();
+      const txt = [...lab.childNodes].filter(n => n.nodeType === 3 || n.nodeName === 'SPAN').map(n => n.textContent).join('').trim();
       return { el: f, inp, out, C, cx: Math.round((I.x0 + I.x1) / 2), sy0: I.y0, sy1: I.y1, L: I.h, oy: Ou.y1 - 2, txt, apag: !f.classList.contains('fader-voz') && !!(sm && sm.textContent.trim()) };
     });
     const ts = m.teclas.filter(vis).map(t => ({ el: t, T: relM(t, D), rot: t.querySelector('.rot-set').textContent.trim() }));

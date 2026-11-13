@@ -3,7 +3,8 @@ guarda la um i18n_<lingua>.properties por lingua; o servidor le os da lingua de 
 reserva) e poe os dois na pagina, no lugar do MARCA, antes de qualquer script do tema. O tema le em I18N_DADOS.
 
 O formato do .properties: uma linha por texto, chave=valor (separados pelo primeiro =, sem o espaco em volta); # ou !
-no comeco da linha e comentario; UTF-8 com a acentuacao direto no arquivo; \\n e quebra de linha e \\\\ e a barra."""
+no comeco da linha e comentario; UTF-8 com a acentuacao direto no arquivo; \\n e quebra de linha, \\\\ e a barra e
+\\ (barra e espaco) e um espaco que conta, para o valor que comeca ou termina com espaco."""
 import json
 import re
 import sys
@@ -24,8 +25,8 @@ def ler(caminho):
     textos = {}
     # utf-8-sig: o BOM que um editor do Windows ponha no comeco nao vira parte da primeira chave
     for n, linha in enumerate(Path(caminho).read_text(encoding="utf-8-sig").splitlines(), 1):
-        s = linha.strip()
-        if not s or s[0] in "#!":
+        s = linha.lstrip()
+        if not s.strip() or s[0] in "#!":
             continue
         chave, sep, valor = s.partition("=")
         chave = chave.strip()
@@ -33,7 +34,9 @@ def ler(caminho):
             raise ValueError(f"{caminho}:{n}: expected key=value")
         if chave in textos:
             raise ValueError(f"{caminho}:{n}: duplicate key {chave!r}")
-        textos[chave] = re.sub(r"\\(.)", lambda m: "\n" if m[1] == "n" else m[1], valor.strip())
+        # o espaco de fora nao conta, menos o escapado (\ ), que o desescape vira espaco
+        valor = re.sub(r"(?<!\\)\s+$", "", valor.lstrip())
+        textos[chave] = re.sub(r"\\(.)", lambda m: "\n" if m[1] == "n" else m[1], valor)
     return textos
 
 
