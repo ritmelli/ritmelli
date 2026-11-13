@@ -373,7 +373,8 @@ private:
             }
         }
         MicFxLeitor& eu = a->leitor[m_vaga];
-        eu.batida = (int64_t)GetTickCount64();
+        const int64_t agora = (int64_t)GetTickCount64();
+        eu.batida = agora;
         if (eu.dono != m_dono) {
             m_vaga = -1;
             return false;
@@ -389,7 +390,8 @@ private:
         } else if (ganho > GANHO_MAX) {
             ganho = GANHO_MAX;
         }
-        const bool sem_voz = a->sem_voz != 0;
+        // a voz cortada so com o app escrevendo: o app que cai com ela cortada nao deixa o microfone mudo
+        const bool sem_voz = a->sem_voz != 0 && agora - a->batida_app < (int64_t)MICFX_APP_MS;
         const UINT32 canais = m_canais;
         const uint32_t gerados = m_rs.Gera(a->dados, MICFX_QUADROS - 1, escrito, quadros,
                                            [&](uint32_t i, float esq, float dir) {

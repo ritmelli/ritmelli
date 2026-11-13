@@ -3,7 +3,9 @@
 O `server.py` toca áudio no microfone do jogo: arquivo + voz do usuário vão para o
 CABLE Input (o VRChat usa o CABLE Output como microfone) e só o arquivo vai para o fone,
 para o usuário ouvir o som sem ouvir a própria voz. Enquanto o servidor roda, a voz passa
-sempre, com ou sem arquivo tocando. Toda interface é um tema em `themes/<slug>/` que fala
+sempre, com ou sem arquivo tocando. Sem cabo, a saída `"out": "@microfone"` manda só o arquivo
+(e a voz da mina) para o filtro da Vitrola, que soma no microfone de verdade; a voz fica nele e
+não passa pelo servidor. Toda interface é um tema em `themes/<slug>/` que fala
 só com esta API.
 
 ## Tema
@@ -203,8 +205,9 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `POST /api/queue/play` | `{"qid": "..."}` | tira da fila e toca agora |
 | `PATCH /api/library/<id>` | `{"title": "..."}` e/ou `{"rapido": bool}` | renomeia; `rapido` põe ou tira o disco dos Sons rápidos do celular (os de até 15 s já estão lá sem isso) |
 | `DELETE /api/library/<id>` | - | apaga da biblioteca (e o arquivo); o disco no prato segue tocando e o arquivo dele sai quando o motor largar |
-| `GET /api/devices` | - | `{"inputs": [...], "outputs": [...], "default_input", "default_output", "current", "active"}` |
-| `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou "", "out"?: nome}` | troca dispositivo (reabre o áudio) |
+| `GET /api/devices` | - | `{"inputs": [...], "outputs": [...], "default_input", "default_output", "current", "active", "microfone": "@microfone", "filtro"}`; `filtro` é `{"microfones": [{"nome", "filtro": bool}], "dll_app": bool, "desatualizado": bool ou null}` (null se não deu para ler) |
+| `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou "", "out"?: nome ou "@microfone"}` | troca dispositivo (reabre o áudio); `"@microfone"` = direto no microfone, sem cabo |
+| `POST /api/microfone` | `{"acao": "instala" ou "remove", "mic"?: nome}` | só no PC: põe (ou atualiza) e tira o filtro da Vitrola do microfone, como administrador (o UAC aparece na tela; o áudio do PC reinicia uns segundos e o servidor reabre o dele); responde `{"ok": true, "filtro"}` ou o erro (UAC recusado, por exemplo) |
 | `GET /api/boas-vindas` | - | `{"mostrar": bool}`: verdadeiro na primeira vez no PC (prateleira vazia e as boas-vindas nunca fechadas); pelo celular, sempre falso |
 | `POST /api/boas-vindas` | - | só no PC: as boas-vindas foram vistas e não voltam (fica no `config.json`) |
 | `GET /api/themes` | - | `[{"slug","url","name","direction","blurb"}]` |
@@ -335,8 +338,9 @@ encostar em outro ponto da canaleta, sem querer ao rolar a página, não muda na
 teclado seguem como sempre (clicar na canaleta pula para lá).
 
 Na primeira vez no PC (`GET /api/boas-vindas`), a vitrola abre as boas-vindas: o passo a
-passo do cabo (o VB-Cable, conferido pelo `GET /api/devices`, com a página oficial da VB-Audio
-quando falta), do microfone e do fone, do microfone no VRChat, da busca e do celular. Fechar de
+passo do caminho até o jogo (direto no microfone, com o botão que põe o filtro quando falta, ou
+o VB-Cable, conferido pelo `GET /api/devices`, com a página oficial da VB-Audio quando falta),
+do microfone e do fone, do microfone no VRChat, da busca e do celular. Fechar de
 qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.
 
 ## Teste sem som

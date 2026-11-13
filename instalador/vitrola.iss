@@ -132,6 +132,9 @@ Name: "{autodesktop}\Vitrola"; Filename: "{app}\vitrola.exe"; Tasks: desktopicon
 ; (pareamento.py, no repo vitrola)
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Vitrola"""; Flags: runhidden
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Vitrola"" dir=in action=allow program=""{app}\vitrola.exe"" enable=yes profile=private,public"; StatusMsg: "{cm:Firewall}"; Flags: runhidden
+; o filtro de microfone (a saida sem cabo): se algum microfone ja tem o filtro, troca a DLL pendurada pela desta versao
+; (o audio do PC reinicia so nesse caso); sem nenhum, nao faz nada
+Filename: "{app}\vitrola.exe"; Parameters: "--microfone atualiza"; Flags: runhidden
 ; como quem instalou, e nao como administrador: os dados vao para o %LOCALAPPDATA% dele
 Filename: "{app}\vitrola.exe"; Description: "{cm:Abrir}"; Flags: postinstall nowait skipifsilent runasoriginaluser
 ; a atualizacao pelo app (atualizacao.py, no repo vitrola) roda este setup em silencio com /reabrir=1: no fim a Vitrola
@@ -140,6 +143,8 @@ Filename: "{app}\vitrola.exe"; Parameters: "--no-browser"; Flags: nowait runasor
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM vitrola.exe"; Flags: runhidden; RunOnceId: "Fecha"
+; tira o filtro de todo microfone que o tem e devolve o efeito original de cada um (sem nenhum, nao mexe no audio)
+Filename: "{app}\vitrola.exe"; Parameters: "--microfone remove"; Flags: runhidden; RunOnceId: "Microfone"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Vitrola"""; Flags: runhidden; RunOnceId: "Firewall"
 
 [Code]

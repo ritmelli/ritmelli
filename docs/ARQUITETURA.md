@@ -14,6 +14,21 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   rápidos pela mão
   também, inteiro até 2 min: vários juntos, no volume da música,
   o repetido sai na hora (fica decodificado na memória), e o pausar e o parar calam todos.
+- `microfone/`: a saída sem cabo. O `apo/micfx.dll` é um efeito de áudio do Windows (APO) que o
+  `microfone.py` pendura nas vagas EFX e LFX de um microfone, guardando o original (e devolvendo no
+  remove); o Windows carrega a DLL dentro do `audiodg.exe`, e a cada bloco do microfone ela soma o
+  que o app deixou num anel de memória compartilhada (`anel.h`; o lado do app é o `injeta.py`),
+  bit a bit a 48 kHz e por um reamostrador sinc nas outras taxas. No motor, a saída
+  `"@microfone"` troca o stream do cabo pelo `Injetor`: uma thread chama o mesmo misturador
+  (`_mixa`) e escreve no anel ~50 ms à frente do microfone, no ritmo dele; sem nenhum app com o
+  microfone aberto, anda pelo relógio do PC e a música segue no fone. A voz não entra no anel (já
+  está no microfone); o cortar a voz vai pelo anel com o pulso do app, e o filtro só corta com o
+  pulso vivo, então a Vitrola que cai não deixa o microfone mudo. Pôr e tirar o filtro pede
+  administrador: o servidor roda o `vitrola.exe --microfone` pelo UAC, e o instalador atualiza a
+  DLL pendurada e, ao desinstalar, devolve o original de todo microfone. O nome do microfone é o
+  do Windows (Core Audio, casado pelo id do aparelho): o montado do registro perde o "2- " que o
+  Windows põe quando há dois aparelhos com o mesmo nome. `dev/testa_microfone.py` testa o motor
+  contra um anel falso, sem som.
 - `batida.py`: andamento e grade de batidas de um trecho de música para a passagem no tempo
   (força dos ataques, autocorrelação com dois juízes contra a confusão de 3/4 do tempo, a caixa
   como terceiro juiz, o bumbo escolhendo entre batida e contratempo, pente de batidas afinado),

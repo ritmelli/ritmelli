@@ -38,11 +38,13 @@ class Anel(ctypes.Structure):
     _fields_ = [("magia", ctypes.c_uint32), ("versao", ctypes.c_uint32), ("taxa", ctypes.c_uint32),
                 ("canais", ctypes.c_uint32), ("quadros", ctypes.c_uint32), ("leitores", ctypes.c_uint32),
                 ("escrito", ctypes.c_int64), ("ganho", ctypes.c_float), ("sem_voz", ctypes.c_uint32),
-                ("reservado", ctypes.c_uint32 * 6), ("leitor", Leitor * LEITORES),
+                ("batida_app", ctypes.c_int64), ("reservado", ctypes.c_uint32 * 4),
+                ("leitor", Leitor * LEITORES),
                 ("dados", ctypes.c_float * (QUADROS * CANAIS))]
 
 
-assert Anel.escrito.offset == 24 and Anel.leitor.offset == 64 and Anel.dados.offset == 256
+assert Anel.escrito.offset == 24 and Anel.batida_app.offset == 40 and Anel.leitor.offset == 64
+assert Anel.dados.offset == 256
 
 
 class SemFiltro(RuntimeError):
@@ -86,6 +88,12 @@ class Microfone:
         self.a.escrito += n  # depois dos dados: o filtro so le ate aqui
         return n
 
+    def pulso(self, sem_voz=False):
+        """O app esta vivo: o filtro so corta a voz (sem_voz) ate MICFX_APP_MS depois do ultimo pulso, entao o app
+        que cai com a voz cortada nao deixa o microfone mudo. Chamar a cada escrita (ou mais)."""
+        self.a.batida_app = k32.GetTickCount64()
+        self.a.sem_voz = 1 if sem_voz else 0
+
     def toca(self, x, folga_ms=30, parar=None, cauda_ms=10):
         """Toca o clipe x no ritmo do microfone, mantendo ~folga_ms escritos a frente do leitor mais atrasado.
         Fecha com cauda_ms de silencio: o filtro de um microfone que nao roda a 48 kHz so solta a ultima amostra
@@ -103,6 +111,7 @@ class Microfone:
             i = 0
             while i < len(x) and not (parar and parar.is_set()):
                 falta = folga - self.na_fila() if self.vivos() else 0
+                self.pulso(self.a.sem_voz)
                 if falta > 0:
                     i += self.escreve(x[i:i + falta])
                 time.sleep(0.002)

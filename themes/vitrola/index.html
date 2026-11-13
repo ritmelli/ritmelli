@@ -880,6 +880,7 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 .lembrete b { font-weight: 700; }
 .lembrete .lampada, .fora .lampada, .aviso .lampada { box-shadow: 0 0 0 2px var(--contorno); }
 .msg-dlg { font-size: .875rem; }
+.filtro-mic { display: grid; gap: 8px; justify-items: start; margin: 0 2px; }
 .msg-dlg:empty { display: none; }
 .msg-dlg.erro { color: #8E1E14; }
 
@@ -4639,9 +4640,16 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       <select id="dd-mon"></select>
       <span class="em-uso" id="dd-mon-uso"></span>
     </label>
-    <p class="em-uso" id="dd-saida"></p>
+    <label class="campo">Saída para o jogo (por onde a música chega nele)
+      <select id="dd-out"></select>
+      <span class="em-uso" id="dd-out-uso"></span>
+    </label>
+    <div class="filtro-mic" id="dd-filtro" hidden>
+      <p class="em-uso" id="dd-filtro-txt"></p>
+      <button class="btn" type="button" id="dd-filtro-ok"></button>
+    </div>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
-      <span>No VRChat, o microfone precisa ser <b>CABLE Output (VB-Audio Virtual Cable)</b>. É por ele que o jogo recebe a sua voz e o som.</span></div>
+      <span id="dd-lembrete">No VRChat, o microfone precisa ser <b>CABLE Output (VB-Audio Virtual Cable)</b>. É por ele que o jogo recebe a sua voz e o som.</span></div>
     <p class="msg-dlg" id="dd-msg" role="status"></p>
     <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
   </form>
@@ -4654,9 +4662,13 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     <p>A Vitrola toca música no microfone do VRChat, junto com a sua voz. Confira estes passos uma vez e pronto.</p>
     <ol class="boas-passos">
       <li>
-        <h3>O cabo de áudio</h3>
-        <p>O VB-Cable leva o som da Vitrola para o microfone do jogo. É gratuito, da VB-Audio.</p>
-        <p class="boas-status"><span class="lampada" id="db-cabo-l" aria-hidden="true"></span><span id="db-cabo">Conferindo se ele está instalado.</span></p>
+        <h3 id="db-cabo-t">O caminho até o jogo</h3>
+        <p id="db-cabo-p">A Vitrola soma a música no seu microfone, sem cabo nenhum. Ou, se preferir, pelo VB-Cable.</p>
+        <p class="boas-status"><span class="lampada" id="db-cabo-l" aria-hidden="true"></span><span id="db-cabo">Conferindo.</span></p>
+        <div class="boas-falta" id="db-filtro-falta" hidden>
+          <p>O Windows vai pedir permissão de administrador, e o som do PC some por alguns segundos.</p>
+          <button class="btn" type="button" id="db-filtro">Instalar no microfone</button>
+        </div>
         <div class="boas-falta" id="db-cabo-falta" hidden>
           <p>Na página do VB-Cable, baixe o pacote para Windows (.zip) e extraia. Clique com o botão direito em <b>VBCABLE_Setup_x64.exe</b>, escolha <b>Executar como administrador</b> e clique em <b>Install Driver</b>. Se ele não aparecer aqui depois, reinicie o PC.</p>
           <a class="btn" href="https://vb-audio.com/Cable/" target="_blank" rel="noopener">Abrir a página do VB-Cable</a>
@@ -4670,7 +4682,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       </li>
       <li>
         <h3>No VRChat</h3>
-        <p>Nas configurações de áudio do jogo, escolha <b>CABLE Output (VB-Audio Virtual Cable)</b> como microfone.</p>
+        <p id="db-jogo">Nas configurações de áudio do jogo, escolha <b>CABLE Output (VB-Audio Virtual Cable)</b> como microfone.</p>
       </li>
       <li>
         <h3>O primeiro disco</h3>
@@ -4786,6 +4798,7 @@ function rectP(e) {
 // a largura do palco (ou da janela, sem a mesa), para prender o que abre por cima dentro dele
 const larguraPalco = () => PALCO.k === 1 ? innerWidth : PALCO.w;
 
+const MIC_DIRETO = '@microfone';   // o "out" da saida direto no microfone (engine.MICROFONE)
 const S = {
   state: null, lib: [], jobs: [], pos: 0, levels: { mic: 0, track: 0, out: 0 },
   online: null, jaConectou: false, desligado: false,
@@ -6601,11 +6614,14 @@ function desenharEfeito() {
 
   // ouvir a propria voz: precisa de um fone; com a voz cortada, so ele ouve
   const semFone = !!s.active_devices && !s.active_devices.monitor;
+  const direto = !!s.active_devices && s.active_devices.out === MIC_DIRETO;
   const bo = $('#b-ouvir');
-  ligarChave(bo, !!s.voice_monitor && !semFone);
-  bo.disabled = semFone;
+  ligarChave(bo, !!s.voice_monitor && !semFone && !direto);
+  bo.disabled = semFone || direto;
   const dica = $('#dica-ouvir');
-  if (semFone) {
+  if (direto) {
+    dica.textContent = 'Direto no microfone, a sua voz vai crua para o jogo: ouvir a própria voz e os efeitos de voz ficam para o cabo.';
+  } else if (semFone) {
     // so remonta quando muda: um estado novo no meio do toque engoliria o clique
     if (!dica.querySelector('.ir-disp')) {
       const ir = el('button', 'ir-disp', 'Escolher um fone'); ir.type = 'button';
@@ -6614,7 +6630,7 @@ function desenharEfeito() {
   } else if (s.voice_monitor && s.mic_mute) {
     dica.replaceChildren(el('b', null, 'Voz mutada: só você está ouvindo. '), document.createTextNode('Ninguém no jogo escuta o teste.'));
   } else dica.textContent = 'Vale mesmo com a voz mutada: teste o efeito sem ninguém no jogo ouvir.';
-  dica.classList.toggle('so-dica', !semFone && !(s.voice_monitor && s.mic_mute));   // no celular, so a que informa aparece
+  dica.classList.toggle('so-dica', !semFone && !direto && !(s.voice_monitor && s.mic_mute));   // no celular, so a que informa aparece
   const atraso = ef && ef.latencia_ms > 0 ? `, atraso de ${Math.round(ef.latencia_ms)} ms` : '';
   sel.title = `Efeitos de voz: ${$('#nome-ef').textContent}${atraso}. A tecla 0 volta para Sem efeito.`;
 }
@@ -8236,22 +8252,72 @@ function opcoes(sel, lista, atual, emUso) {
 }
 function preencherDispositivos(r) {
   const cur = r.current || {}, act = r.active || {};
+  S.disp = r;
   const semCabo = n => !/cable/i.test(n);
   // o padrao que e o cabo cede ao primeiro microfone de verdade, como no motor
   const micPadrao = r.default_input && !semCabo(r.default_input) ? (r.inputs || []).find(semCabo) : r.default_input;
   opcoes($('#dd-mic'), [['default', `Padrão do Windows (${micPadrao || 'nenhum'})`], ...(r.inputs || []).filter(semCabo).map(n => [n, n])], cur.mic || 'default', act.mic);
   opcoes($('#dd-mon'), [['default', `Padrão do Windows (${r.default_output || 'nenhum'})`], ...(r.outputs || []).filter(semCabo).map(n => [n, n]), ['', 'Nenhum (o som não toca no seu fone)']], cur.monitor == null ? 'default' : cur.monitor, act.monitor);
-  $('#dd-mic').disabled = $('#dd-mon').disabled = false;
+  // a saida para o jogo: direto no microfone (o filtro da Vitrola) ou o cabo, se o VB-Cable esta instalado
+  const cabo = (r.outputs || []).find(n => /cable input/i.test(n));
+  opcoes($('#dd-out'), [[MIC_DIRETO, 'Direto no microfone (sem cabo)'], ...(cabo ? [[cabo, `${cabo}, pelo VB-Cable`]] : [])],
+         cur.out, act.out);
+  $('#dd-mic').disabled = $('#dd-mon').disabled = $('#dd-out').disabled = false;
   mostrarAtivos(act);
+  mostrarFiltro(r);
 }
 function mostrarAtivos(act) {
   $('#dd-mic-uso').textContent = `Em uso agora: ${act.mic || 'nenhum'}`;
   $('#dd-mon-uso').textContent = act.monitor ? `Em uso agora: ${act.monitor}` : 'Em uso agora: nenhum, o som não toca no seu fone';
-  $('#dd-saida').textContent = `Saída para o jogo: ${act.out || 'nenhuma'}`;
+  $('#dd-out-uso').textContent = act.out === MIC_DIRETO ? 'Em uso agora: direto no microfone, sem cabo'
+    : `Em uso agora: ${act.out || 'nenhuma'}`;
+  const l = $('#dd-lembrete');
+  if (act.out === MIC_DIRETO) {
+    l.replaceChildren(document.createTextNode('No VRChat e no Discord, o microfone continua sendo o seu de verdade' + (act.mic ? ' (' : '.')));
+    if (act.mic) l.append(el('b', null, act.mic), document.createTextNode(').'));
+    l.append(document.createTextNode(' No Discord, use o perfil '), el('b', null, 'Estúdio'),
+             document.createTextNode(' (ou desligue o Krisp e a sensibilidade automática): senão ele corta a música.'));
+  } else {
+    l.replaceChildren(document.createTextNode('No VRChat, o microfone precisa ser '), el('b', null, 'CABLE Output (VB-Audio Virtual Cable)'),
+                      document.createTextNode('. É por ele que o jogo recebe a sua voz e o som.'));
+  }
+}
+/* o filtro da Vitrola no microfone em uso (so na saida direto no microfone): {acao, texto do botao} ou null sem botao */
+function estadoFiltro(r) {
+  const act = r.active || {}, f = r.filtro;
+  if (!f) return { txt: 'Não deu para ler se o filtro está no microfone.', acao: null };
+  if (!act.mic) return { txt: 'Escolha um microfone para pôr o filtro.', acao: null };
+  const tem = (f.microfones || []).some(m => m.filtro && m.nome.toLowerCase() === act.mic.toLowerCase());
+  if (!f.dll_app && !tem) return { txt: 'O filtro de microfone não veio nesta versão da Vitrola.', acao: null };
+  if (tem && f.desatualizado) return { txt: `O filtro no microfone ${act.mic} é de uma versão anterior da Vitrola.`, acao: 'instala', botao: 'Atualizar o filtro', tem };
+  if (tem) return { txt: `O filtro da Vitrola está no microfone ${act.mic}.`, acao: 'remove', botao: 'Tirar o filtro do microfone', tem };
+  return { txt: `Para a música chegar no jogo, o filtro da Vitrola precisa estar no microfone ${act.mic}. O Windows vai pedir permissão de administrador, e o som do PC some por alguns segundos.`,
+           acao: 'instala', botao: 'Instalar no microfone', tem };
+}
+function mostrarFiltro(r) {
+  const act = r.active || {}, box = $('#dd-filtro');
+  box.hidden = act.out !== MIC_DIRETO;
+  if (box.hidden) return;
+  const e = estadoFiltro(r), b = $('#dd-filtro-ok');
+  $('#dd-filtro-txt').textContent = e.txt;
+  b.hidden = !e.acao; b.textContent = e.botao || ''; b.dataset.acao = e.acao || '';
+}
+async function filtroMicrofone(acao, msg) {
+  const act = (S.disp && S.disp.active) || {};
+  msg.className = 'msg-dlg';
+  msg.textContent = 'Esperando a permissão do Windows. O som do PC some por alguns segundos.';
+  const ctl = ['#dd-mic', '#dd-mon', '#dd-out', '#dd-filtro-ok', '#db-filtro'].map(q => $(q));
+  ctl.forEach(c => { c.disabled = true; });
+  try {
+    await api('POST', '/api/microfone', { acao, mic: act.mic });
+    preencherDispositivos(await api('GET', '/api/devices'));
+    msg.textContent = acao === 'remove' ? 'O filtro saiu do microfone.' : 'Pronto: a música vai direto no microfone.';
+  } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
+  ctl.forEach(c => { c.disabled = false; });
 }
 async function trocarDispositivo(k, v) {
   const msg = $('#dd-msg'); msg.className = 'msg-dlg'; msg.textContent = 'Trocando e reabrindo o áudio.';
-  $('#dd-mic').disabled = $('#dd-mon').disabled = true;
+  $('#dd-mic').disabled = $('#dd-mon').disabled = $('#dd-out').disabled = true;
   try {
     await api('POST', '/api/devices', { [k]: v });
     const r = await api('GET', '/api/devices');
@@ -8259,14 +8325,18 @@ async function trocarDispositivo(k, v) {
     msg.textContent = 'Trocado.';
   } catch (e) {
     msg.className = 'msg-dlg erro'; msg.textContent = `Não deu para trocar: ${e.message}`;
-    $('#dd-mic').disabled = $('#dd-mon').disabled = false;
+    $('#dd-mic').disabled = $('#dd-mon').disabled = $('#dd-out').disabled = false;
   }
 }
 $('#dd-mic').addEventListener('change', e => trocarDispositivo('mic', e.target.value));
 $('#dd-mon').addEventListener('change', e => trocarDispositivo('monitor', e.target.value));
+$('#dd-out').addEventListener('change', e => trocarDispositivo('out', e.target.value));
+$('#dd-filtro-ok').addEventListener('click', e => filtroMicrofone(e.currentTarget.dataset.acao, $('#dd-msg')));
 
 async function desligar() {
-  const ok = await confirmar('Desligar a Vitrola?', 'A sua voz para de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade.', 'Desligar');
+  const direto = S.state && S.state.active_devices && S.state.active_devices.out === MIC_DIRETO;
+  const ok = await confirmar('Desligar a Vitrola?', direto ? 'A música para de tocar no microfone. A sua voz segue normal no jogo.'
+    : 'A sua voz para de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade.', 'Desligar');
   if (!ok) return;
   try { await api('POST', '/api/shutdown'); S.desligado = true; mostrarFora(); }
   catch (e) { avisar(e.message, true); }
@@ -8560,10 +8630,27 @@ async function conferirBoasVindas() {
   if (!d.open) return;
   try {
     const r = await api('GET', '/api/devices'), act = r.active || {};
-    const cabo = (r.outputs || []).some(n => /cable input/i.test(n));
-    $('#db-cabo-l').className = `lampada ${cabo ? 'acesa' : 'alerta'}`;
-    $('#db-cabo').textContent = cabo ? 'Instalado.' : 'Ainda não está instalado.';
-    $('#db-cabo-falta').hidden = cabo;
+    S.disp = r;
+    const direto = act.out === MIC_DIRETO;
+    if (direto) {
+      const f = estadoFiltro(r), pronto = !!f.tem && f.acao !== 'instala';
+      $('#db-cabo-l').className = `lampada ${pronto ? 'acesa' : 'alerta'}`;
+      $('#db-cabo').textContent = pronto ? `Direto no microfone, sem cabo: o filtro está no ${act.mic}.`
+        : !f.acao ? f.txt : f.tem ? `O filtro no microfone ${act.mic} é de uma versão anterior.` : `Falta pôr o filtro da Vitrola no microfone ${act.mic}.`;
+      $('#db-filtro-falta').hidden = pronto || f.acao !== 'instala';
+      $('#db-filtro').textContent = f.botao || 'Instalar no microfone';
+      $('#db-cabo-falta').hidden = true;
+      $('#db-jogo').replaceChildren(document.createTextNode('Nas configurações de áudio do jogo, deixe o seu microfone de verdade. No Discord, use o perfil '),
+                                    el('b', null, 'Estúdio'), document.createTextNode(', senão ele corta a música.'));
+    } else {
+      const cabo = (r.outputs || []).some(n => /cable input/i.test(n));
+      $('#db-cabo-l').className = `lampada ${cabo ? 'acesa' : 'alerta'}`;
+      $('#db-cabo').textContent = cabo ? 'Pelo VB-Cable: instalado.' : 'Pelo VB-Cable: ainda não está instalado.';
+      $('#db-cabo-falta').hidden = cabo;
+      $('#db-filtro-falta').hidden = true;
+      $('#db-jogo').replaceChildren(document.createTextNode('Nas configurações de áudio do jogo, escolha '),
+                                    el('b', null, 'CABLE Output (VB-Audio Virtual Cable)'), document.createTextNode(' como microfone.'));
+    }
     $('#db-disp-l').className = `lampada ${act.mic ? 'acesa' : 'alerta'}`;
     if (act.mic) $('#db-disp').replaceChildren(el('span', null, `Microfone: ${act.mic}`),
                                                 el('span', null, `Fone: ${act.monitor || 'nenhum, a música não toca no seu fone'}`));
@@ -8578,6 +8665,7 @@ $('#dlg-boas').addEventListener('close', () => {
   if ($('#dlg-boas').returnValue === 'buscar') $('#q').focus();
 });
 $('#db-trocar').addEventListener('click', abrirDispositivos);
+$('#db-filtro').addEventListener('click', async () => { await filtroMicrofone('instala', $('#db-msg')); conferirBoasVindas(); });
 // a troca feita no dialogo de dispositivos aparece no passo na hora, sem esperar a proxima conferencia
 $('#dlg-disp').addEventListener('close', () => { if ($('#dlg-boas').open) conferirBoasVindas(); });
 $('#db-cel').addEventListener('click', abrirCelular);

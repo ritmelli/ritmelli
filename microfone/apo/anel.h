@@ -19,6 +19,7 @@
 #define MICFX_QUADROS 32768u     // potencia de 2: ~0,68 s
 #define MICFX_LEITORES 8u
 #define MICFX_BATIDA_MS 500u     // leitor sem batida ha mais que isso e dado como morto
+#define MICFX_APP_MS 1000u       // app sem escrever ha mais que isso: a voz volta (o app caiu com a voz cortada)
 
 typedef struct MicFxLeitor {
     volatile int64_t lido;      // quadros que este leitor ja consumiu
@@ -36,8 +37,9 @@ typedef struct MicFxAnel {
     uint32_t leitores;
     volatile int64_t escrito;   // quadros publicados pelo app
     volatile float ganho;       // ganho do som injetado (1.0 = como veio)
-    volatile uint32_t sem_voz;  // 1 = so o som injetado, a voz do microfone fica de fora
-    uint32_t reservado[6];
+    volatile uint32_t sem_voz;  // 1 = so o som injetado, a voz do microfone fica de fora (vale com o app vivo)
+    volatile int64_t batida_app;  // GetTickCount64 da ultima escrita do app: o sem_voz so vale ate MICFX_APP_MS depois
+    uint32_t reservado[4];
     MicFxLeitor leitor[MICFX_LEITORES];
     float dados[MICFX_QUADROS * MICFX_CANAIS];
 } MicFxAnel;
@@ -45,6 +47,7 @@ typedef struct MicFxAnel {
 #ifdef __cplusplus
 static_assert(sizeof(MicFxLeitor) == 24, "MicFxLeitor");
 static_assert(offsetof(MicFxAnel, escrito) == 24, "escrito");
+static_assert(offsetof(MicFxAnel, batida_app) == 40, "batida_app");
 static_assert(offsetof(MicFxAnel, leitor) == 64, "leitor");
 static_assert(offsetof(MicFxAnel, dados) == 256, "dados");
 #endif

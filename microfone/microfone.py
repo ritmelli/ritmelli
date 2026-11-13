@@ -3,6 +3,10 @@
     python microfone.py estado                          os microfones ativos e em quais o filtro esta
     python microfone.py instala --microfone "IN 2" --dll apo/saida/micfx.dll
     python microfone.py remove [--microfone "IN 2"]     devolve o efeito original (todos, sem --microfone)
+    python microfone.py atualiza                        troca a DLL ja pendurada pela do app, se mudou (instalador)
+
+No app: vitrola.exe --microfone <a mesma linha> (o servidor pede pelo UAC: pede_admin); --dll e, sem ele, a DLL que
+vem com o app (dll_padrao); --saida grava o resultado em JSON, que o processo elevado nao tem console.
 
 O instala copia a DLL pra uma pasta que o audiodg.exe (LocalService) consegue ler, registra o COM e o APO
 (regsvr32), pendura o nosso nas vagas de efeito do microfone e guarda o original em
@@ -20,6 +24,8 @@ O filtro vai em DUAS vagas e o Windows usa uma so (lido no audiosrv.dll do 26200
 O SFX do fabricante nao se mexe (a versao anterior trocava o SFX pelo nosso; instalar de novo devolve o original).
 """
 import argparse
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -31,6 +37,7 @@ CLSID = "{C17A1D48-D473-40D9-9ED3-D024AA46EBE2}"
 CAPTURA = r"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Capture"
 SALVO = r"SOFTWARE\Vitrola\Microfone"
 PASTA = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Vitrola", "microfone")
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # no executavel sem console, nada de janela piscando
 
 NOME = "{a45c254e-df1c-4efd-8020-67d146a850e0},2"
 APARELHO = "{b3f8fa53-0004-438e-9003-51a46e139bfc},6"
@@ -63,6 +70,15 @@ def nosso(fx):
     return CLSID in [c.upper() for c in (le(fx, EFX_LISTA) or ([],))[0]]
 
 
+def tem_filtro(ep):
+    """O microfone com essa chave do registro tem o filtro (False sem as propriedades de efeito)?"""
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{ep}\FxProperties") as fx:
+            return nosso(fx)
+    except OSError:
+        return False
+
+
 def le(chave, nome):
     try:
         return winreg.QueryValueEx(chave, nome)
@@ -73,7 +89,11 @@ def le(chave, nome):
 def microfones():
     """[(id, nome, aparelho, chave)] dos microfones ativos (DeviceState 1)."""
     saida = []
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, CAPTURA) as raiz:
+    try:
+        raiz = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, CAPTURA)
+    except OSError:  # Windows sem aparelho de audio nenhum (a maquina da esteira)
+        return saida
+    with raiz:
         i = 0
         while True:
             try:
@@ -93,17 +113,41 @@ def microfones():
     return saida
 
 
+def nomes_windows():
+    """{chave do microfone no registro: o nome que o Windows da a ele agora}, pelo Core Audio (winvol.py, do app). E o
+    nome do sounddevice e da tela: o montado do registro ("IN 2 (BEHRINGER ...)") perde o "2- " que o Windows poe
+    quando ha dois aparelhos com o mesmo nome ("IN 2 (2- BEHRINGER ...)", 13/11). Vazio sem o winvol (o microfone.py
+    rodando sozinho, fora do app): fica o do registro."""
+    try:
+        import ctypes  # noqa: PLC0415
+        ctypes.windll.ole32.CoInitializeEx(None, 0)  # MTA, como no motor; S_FALSE/RPC_E_CHANGED_MODE servem
+        import winvol  # noqa: PLC0415 - o modulo do app, ao lado do microfone/
+        return {d.GetId().rsplit(".", 1)[-1].lower(): n for n, d in winvol.microfones()}
+    except Exception:  # noqa: BLE001 - sem o Core Audio, o nome do registro
+        return {}
+
+
+def nome_de(m, nomes):
+    """O nome do microfone (ep, nome, aparelho) de microfones(): o do Windows, ou o montado do registro."""
+    return nomes.get(m[0].lower()) or f"{m[1]} ({m[2]})"
+
+
 def acha(filtro):
-    """O microfone ativo que casa com o filtro. Logo depois de reiniciar o AudioEndpointBuilder a lista some por uns
+    """O microfone ativo com esse nome (o do Windows, igual, sem caixa) ou, sem nenhum igual, o unico que contem o
+    texto (na linha de comando: "IN 2"). Logo depois de reiniciar o AudioEndpointBuilder a lista some por uns
     segundos (os aparelhos se enumeram de novo): espera ate 15 s antes de desistir."""
+    f = filtro.lower()
     for _ in range(30):
-        achados = [m for m in microfones() if filtro.lower() in f"{m[1]} ({m[2]})".lower()]
+        nomes = nomes_windows()
+        todos = [(m, nome_de(m, nomes)) for m in microfones()]
+        achados = [m for m, n in todos if n.lower() == f] or [
+            m for m, n in todos if f in n.lower() or f in f"{m[1]} ({m[2]})".lower()]
         if achados:
             break
         time.sleep(0.5)
     if len(achados) != 1:
-        nomes = "; ".join(f"{m[1]} ({m[2]})" for m in (achados or microfones()))
-        sys.exit(f"'{filtro}' precisa achar 1 microfone ativo, achou {len(achados)}: {nomes}")
+        lista = "; ".join(n for m, n in todos if not achados or m in achados)
+        sys.exit(f"'{filtro}' precisa achar 1 microfone ativo, achou {len(achados)}: {lista}")
     return achados[0]
 
 
@@ -125,9 +169,10 @@ def servico_audio(acao):
     nao tem -Force (com ele o comando falha calado e o PC fica sem som: 13/11). Confere o estado no fim."""
     forca = " -Force" if acao in ("Stop", "Restart") else ""
     subprocess.run(["powershell", "-NoProfile", "-Command", f"{acao}-Service audiosrv{forca}"], check=False,
-                   capture_output=True, text=True, encoding="oem", errors="replace")
+                   capture_output=True, text=True, encoding="oem", errors="replace", creationflags=NO_WINDOW)
     estado = subprocess.run(["powershell", "-NoProfile", "-Command", "(Get-Service audiosrv).Status"],
-                            capture_output=True, text=True, encoding="oem", errors="replace").stdout.strip()
+                            capture_output=True, text=True, encoding="oem", errors="replace",
+                            creationflags=NO_WINDOW).stdout.strip()
     esperado = "Stopped" if acao == "Stop" else "Running"
     if estado != esperado:
         sys.exit(f"o servico de audio ficou '{estado}' depois do {acao} (esperado {esperado})")
@@ -137,7 +182,8 @@ def reinicia_audio():
     """Depois de mexer nas chaves de efeito: o AudioEndpointBuilder guarda as propriedades dos aparelhos e so as
     rele quando reinicia (o audiosrv cai junto e volta pelo servico_audio)."""
     subprocess.run(["powershell", "-NoProfile", "-Command", "Restart-Service AudioEndpointBuilder -Force"],
-                   check=False, capture_output=True, text=True, encoding="oem", errors="replace")
+                   check=False, capture_output=True, text=True, encoding="oem", errors="replace",
+                   creationflags=NO_WINDOW)
     servico_audio("Start")
 
 
@@ -176,7 +222,7 @@ def instala(filtro, dll):
     ep, nome, apar = acha(filtro)
     os.makedirs(LOGS, exist_ok=True)
     r = subprocess.run(["icacls", LOGS, "/grant", "*S-1-5-19:(OI)(CI)M"], capture_output=True, text=True,
-                       encoding="oem", errors="replace")
+                       encoding="oem", errors="replace", creationflags=NO_WINDOW)
     if r.returncode:
         sys.exit(f"icacls na pasta do log falhou ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
     base = rf"{CAPTURA}\{ep}"
@@ -184,9 +230,10 @@ def instala(filtro, dll):
         sem_melhorias = (le(p, SEM_MELHORIAS) or (0,))[0]
     destino = os.path.join(PASTA, "micfx.dll")
     servico_audio("Stop")  # o audiodg.exe solta a DLL velha
-    shutil.copy2(dll, destino)
+    if os.path.normcase(os.path.abspath(dll)) != os.path.normcase(destino):  # instalar de novo a ja instalada
+        shutil.copy2(dll, destino)
     r = subprocess.run(["regsvr32", "/s", destino], capture_output=True, text=True, encoding="oem",
-                       errors="replace")
+                       errors="replace", creationflags=NO_WINDOW)
     if r.returncode:
         sys.exit(f"regsvr32 falhou ({r.returncode})")
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base + r"\FxProperties", 0,
@@ -242,7 +289,10 @@ def instala(filtro, dll):
 
 
 def remove(filtro=None):
+    """Devolve o original dos microfones (o do filtro, ou todos) e, sem nenhum com o filtro, tira a DLL. O audio do PC
+    so reinicia se algum microfone mudou (o desinstalador chama sempre)."""
     alvos = [acha(filtro)] if filtro else microfones()
+    mexeu = False
     for ep, nome, apar in alvos:
         try:
             salvo = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{SALVO}\{ep}")
@@ -266,27 +316,151 @@ def remove(filtro=None):
                                 winreg.KEY_SET_VALUE) as p:
                 winreg.SetValueEx(p, SEM_MELHORIAS, 0, winreg.REG_DWORD, 1)
         winreg.DeleteKey(winreg.HKEY_LOCAL_MACHINE, rf"{SALVO}\{ep}")
+        mexeu = True
         print(f"devolvido o original em {nome} ({apar}) {ep}")
-    sobrou = [m for m in microfones()
-              if nosso(winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{m[0]}\FxProperties"))]
-    if not sobrou:
-        destino = os.path.join(PASTA, "micfx.dll")
-        if os.path.exists(destino):
-            subprocess.run(["regsvr32", "/s", "/u", destino], capture_output=True)
-    reinicia_audio()
+    sobrou = [m for m in microfones() if tem_filtro(m[0])]
+    destino = os.path.join(PASTA, "micfx.dll")
+    if not sobrou and os.path.exists(destino):
+        subprocess.run(["regsvr32", "/s", "/u", destino], capture_output=True, creationflags=NO_WINDOW)
+    if mexeu:
+        reinicia_audio()
+    if not sobrou:  # o audiodg ja soltou a DLL: sai a pasta (a DLL e o log)
+        shutil.rmtree(PASTA, ignore_errors=True)
+
+
+def dll_padrao():
+    """A micfx.dll que vem com o app: no executavel, a da _internal\\microfone (vitrola.spec); no fonte, a que o
+    apo\\compila.bat gera."""
+    if getattr(sys, "frozen", False):
+        return os.path.join(sys._MEIPASS, "microfone", "micfx.dll")  # noqa: SLF001 - o PyInstaller poe aqui
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "apo", "saida", "micfx.dll")
+
+
+def _sha(caminho):
+    with open(caminho, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def estado_dados():
+    """O estado para a tela, sem administrador: {"microfones": [{"nome": "IN 2 (BEHRINGER ...)", "filtro": bool}],
+    "dll_app": a DLL que vem com o app existe, "desatualizado": a pendurada difere dela (None sem uma das duas)}. O nome
+    e o mesmo que o sounddevice da ao microfone no WASAPI."""
+    mics, nomes = [], nomes_windows()
+    for m in microfones():
+        mics.append({"nome": nome_de(m, nomes), "filtro": tem_filtro(m[0])})
+    fonte, instalada = dll_padrao(), os.path.join(PASTA, "micfx.dll")
+    desat = None
+    if os.path.exists(fonte) and os.path.exists(instalada):
+        try:
+            desat = _sha(fonte) != _sha(instalada)
+        except OSError:
+            pass
+    return {"microfones": mics, "dll_app": os.path.exists(fonte), "desatualizado": desat}
+
+
+def atualiza(dll):
+    """A versao nova do app trouxe outra micfx.dll: troca a pendurada (para o audio, copia, volta). Sem microfone com o
+    filtro, ou com a mesma DLL, nao faz nada (o instalador chama sempre)."""
+    destino = os.path.join(PASTA, "micfx.dll")
+    com_filtro = [m for m in estado_dados()["microfones"] if m["filtro"]]
+    if not com_filtro or not os.path.exists(dll) or (os.path.exists(destino) and _sha(dll) == _sha(destino)):
+        print("nada a atualizar")
+        return
+    servico_audio("Stop")
+    try:
+        shutil.copy2(dll, destino)
+    finally:
+        servico_audio("Start")
+    print(f"DLL trocada ({len(com_filtro)} microfone(s) com o filtro)")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="microfone")
+    ap.add_argument("acao", choices=("estado", "instala", "remove", "atualiza"))
+    ap.add_argument("--microfone")
+    ap.add_argument("--dll", help="a micfx.dll a pendurar (sem ele, a que vem com o app)")
+    ap.add_argument("--saida", help="grava o resultado em JSON ({ok, erro}): o processo elevado nao tem console")
+    a = ap.parse_args(argv)
+    dll = a.dll or dll_padrao()
+    res = {"ok": True}
+    try:
+        if a.acao == "estado":
+            estado()
+        elif a.acao == "instala":
+            if not a.microfone:
+                sys.exit("instala precisa de --microfone")
+            if not os.path.exists(dll):
+                sys.exit(f"a DLL do filtro nao esta em {dll}")
+            instala(a.microfone, dll)
+        elif a.acao == "remove":
+            remove(a.microfone)
+        else:
+            atualiza(dll)
+    except SystemExit as ex:
+        if ex.code not in (None, 0):
+            res = {"ok": False, "erro": str(ex.code)}
+    except Exception as ex:  # noqa: BLE001 - o app mostra o motivo em vez de ficar sem resposta
+        res = {"ok": False, "erro": f"{type(ex).__name__}: {ex}"}
+    if a.saida:
+        with open(a.saida, "w", encoding="utf-8") as f:
+            json.dump(res, f, ensure_ascii=False)
+    if not res["ok"]:
+        print(res["erro"], file=sys.stderr)
+        return 1
+    return 0
+
+
+def pede_admin(acao, microfone=None, espera_s=120):
+    """Roda instala/remove como administrador, com o pedido do UAC do Windows na tela, e devolve {ok, erro}. No
+    executavel e o proprio vitrola.exe --microfone; no fonte, o python com o vitrola.py. Recusado o UAC, ok e False
+    com o motivo. Bloqueia ate o fim (o instala reinicia o audio do PC: uns 5 a 15 s)."""
+    import ctypes  # noqa: PLC0415 - so o servidor chama
+    import tempfile  # noqa: PLC0415
+    from ctypes import wintypes  # noqa: PLC0415
+
+    class Sei(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("fMask", ctypes.c_ulong), ("hwnd", wintypes.HWND),
+                    ("lpVerb", wintypes.LPCWSTR), ("lpFile", wintypes.LPCWSTR), ("lpParameters", wintypes.LPCWSTR),
+                    ("lpDirectory", wintypes.LPCWSTR), ("nShow", ctypes.c_int), ("hInstApp", wintypes.HINSTANCE),
+                    ("lpIDList", ctypes.c_void_p), ("lpClass", wintypes.LPCWSTR), ("hkeyClass", wintypes.HKEY),
+                    ("dwHotKey", wintypes.DWORD), ("hIcon", wintypes.HANDLE), ("hProcess", wintypes.HANDLE)]
+
+    fd, saida = tempfile.mkstemp(prefix="vitrola-microfone-", suffix=".json")
+    os.close(fd)
+    os.remove(saida)  # o elevado cria: arquivo que sobra sem ele escrever nao vira resultado velho
+    args = ["--microfone", acao, "--saida", saida] + (["--microfone", microfone] if microfone else [])
+    if not getattr(sys, "frozen", False):
+        args = [os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vitrola.py")] + args
+    # SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI, e SW_HIDE: nenhuma janela alem da do UAC
+    sei = Sei(cbSize=ctypes.sizeof(Sei), fMask=0x40 | 0x400, lpVerb="runas", lpFile=sys.executable,
+              lpParameters=subprocess.list2cmdline(args), nShow=0)
+    sh = ctypes.WinDLL("shell32", use_last_error=True)
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    sh.ShellExecuteExW.argtypes = (ctypes.POINTER(Sei),)
+    k32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    k32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    if not sh.ShellExecuteExW(ctypes.byref(sei)):
+        erro = ctypes.get_last_error()
+        if erro == 1223:  # ERROR_CANCELLED: o UAC foi recusado
+            return {"ok": False, "erro": "O Windows não recebeu a permissão de administrador (o pedido foi recusado)."}
+        return {"ok": False, "erro": f"Não consegui pedir a permissão de administrador (erro {erro})."}
+    try:
+        if k32.WaitForSingleObject(sei.hProcess, int(espera_s * 1000)) != 0:
+            return {"ok": False, "erro": "O ajuste do microfone demorou demais e ficou sem resposta."}
+    finally:
+        k32.CloseHandle(sei.hProcess)
+    try:
+        with open(saida, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"ok": False, "erro": "O ajuste do microfone terminou sem dizer o resultado."}
+    finally:
+        try:
+            os.remove(saida)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("acao", choices=("estado", "instala", "remove"))
-    ap.add_argument("--microfone")
-    ap.add_argument("--dll")
-    a = ap.parse_args()
-    if a.acao == "estado":
-        estado()
-    elif a.acao == "instala":
-        if not a.microfone or not a.dll:
-            sys.exit("instala precisa de --microfone e --dll")
-        instala(a.microfone, a.dll)
-    else:
-        remove(a.microfone)
+    sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # o winvol.py do app
+    sys.exit(main())

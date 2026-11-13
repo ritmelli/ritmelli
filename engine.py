@@ -1,7 +1,11 @@
 """Motor de audio do soundboard: arquivo + microfone -> CABLE Input (o VRChat usa
 o CABLE Output como microfone, entao a voz segue passando) e so o arquivo -> fone
 de quem toca (sem ouvir a propria voz). Sucessor do mic_mix.py de 16/10:
-o controle e por metodo (o server.py expoe por HTTP), nao por arquivo PAUSA/VOL."""
+o controle e por metodo (o server.py expoe por HTTP), nao por arquivo PAUSA/VOL.
+
+Sem cabo, a saida pode ser direto no microfone (MICROFONE): o filtro da Vitrola (microfone/) soma o som no microfone
+de verdade, dentro do audio do Windows, e o jogo (ou o Discord) segue usando esse microfone; a voz nao passa por aqui
+(ver Injetor)."""
 import base64
 import collections
 import contextlib
@@ -64,6 +68,12 @@ PRE_MAX = 2        # abertos antes ao mesmo tempo (o palpite torto da mina pode 
 MINA_FOLGA_S = 0.1  # a voz da mina (mina.py) chega em pedacos de 100 ms, com folga de rede: a fila vazia recomeca com isso
 MINA_FILA_MAX_S = 1.0  # fila dela maior que isso (a rede segurou e despejou): o silencio do comeco sai
 VIGIA_S = 2.0  # de quanto em quanto o vigia le a lista de aparelhos do Windows
+# a saida "direto no microfone" (o "out" com esse nome): o anel do filtro de microfone (microfone/injeta.py) no lugar do
+# stream do cabo. INJ_FOLGA = blocos escritos a frente do microfone (~50 ms): a folga contra a thread do Python atrasar
+MICROFONE = "@microfone"
+INJ_FOLGA = 5
+# direto no microfone a voz vai crua para o jogo (o filtro so soma): efeito de voz precisa do cabo; a mina fala pelo anel
+EFEITOS_DIRETO = ("nenhum", "mina")
 VIGIA_TENTATIVAS = 3  # reaberturas por mudanca da lista (o PortAudio as vezes ainda nao ve o aparelho)
 # passagem de uma musica para a proxima da fila (a transicao de DJ)
 TRANS_PREP_S = 180         # o servidor prepara a proxima quando falta isso para o fim (o fim deste fica na
@@ -736,6 +746,20 @@ def _aviso_reserva(faltou):
     return f"Não achei o {sumiu}; usei {usou} até {volta}."
 
 
+def _sem_filtro(mic):
+    """O aviso da saida direto no microfone quando o microfone em uso nao tem o filtro da Vitrola (None se tem, ou se
+    nao deu para ler): sem ele, o som nao chega no jogo."""
+    try:
+        from microfone import microfone as filtro  # noqa: PLC0415 - le o registro do Windows
+        tem = any(m["filtro"] and m["nome"].lower() == (mic or "").lower() for m in filtro.estado_dados()["microfones"])
+    except Exception:  # noqa: BLE001 - sem ler, sem aviso: o anel mostra o resto
+        return None
+    if tem:
+        return None
+    return (f'O filtro da Vitrola não está no microfone "{mic}": a música não chega no jogo. Instale em Microfone e '
+            "fone.")
+
+
 class Preaberto:
     """O ffmpeg de um stream aberto antes de o disco entrar no prato (Engine.preabre): uma thread le ate PRE_S do
     comeco em blocos e para (o cano cheio segura o ffmpeg). pega() para essa thread (espera o bloco em curso) e entrega
@@ -793,6 +817,80 @@ class Preaberto:
             pass
 
 
+class Injetor:
+    """A saida direto no microfone (MICROFONE): no lugar do stream do cabo, esta thread chama o misturador do motor
+    (_mixa) e escreve no anel do filtro de microfone (microfone/injeta.py), que o micfx.dll soma no microfone de verdade
+    dentro do audio do Windows. Com leitor vivo (algum app com o microfone aberto: o jogo, o Discord), anda no ritmo
+    dele, INJ_FOLGA blocos a frente; sem o anel ou sem leitor, anda pelo relogio do PC, e o som segue no fone. O pulso
+    do anel leva o corte da voz (mic_mute): o filtro so corta com o pulso vivo, entao o app que cai nao deixa o
+    microfone mudo."""
+
+    def __init__(self, motor):
+        self.motor = motor
+        self.m = None
+        self.leitores = 0
+        self._vai = True
+        self._tentou = -1e9
+        self._th = threading.Thread(target=self._loop, daemon=True, name="vitrola-microfone")
+        self._th.start()
+
+    def estado(self):
+        return {"anel": self.m is not None, "leitores": self.leitores}
+
+    def para(self):
+        self._vai = False
+        self._th.join(timeout=1.0)
+        m, self.m = self.m, None
+        if m is not None:
+            try:
+                m.pulso(False)  # a voz volta na hora, sem esperar o pulso vencer
+                m.fecha()
+            except Exception:  # noqa: BLE001, S110 - fechando: o filtro devolve a voz sozinho em 1 s
+                pass
+
+    def _abre(self):
+        """O anel, tentando de novo a cada 1 s: ele so existe com algum app usando um microfone com o filtro."""
+        if self.m is not None or time.monotonic() - self._tentou < 1.0:
+            return self.m
+        self._tentou = time.monotonic()
+        from microfone import injeta  # noqa: PLC0415 - so no Windows, e so nesta saida
+        try:
+            self.m = injeta.Microfone()
+        except injeta.SemFiltro:
+            self.m = None
+        return self.m
+
+    def _loop(self):
+        winmm = ctypes.WinDLL("winmm")
+        winmm.timeBeginPeriod(1)  # o sleep de 2 ms dorme 2 ms, e nao 15
+        prox = time.perf_counter()
+        try:
+            while self._vai:
+                try:
+                    m = self._abre()
+                    vivos = len(m.vivos()) if m is not None else 0
+                    self.leitores = vivos
+                    if vivos:
+                        m.pulso(self.motor.mic_mute)
+                        while self._vai and m.na_fila() <= (INJ_FOLGA - 1) * BLOCK:
+                            m.escreve(self.motor._mixa(BLOCK))  # noqa: SLF001
+                        prox = time.perf_counter() + BLOCK / SR
+                    else:
+                        agora = time.perf_counter()
+                        if agora - prox > 0.2:  # voltou de um leitor, ou a thread atrasou: nao corre atras
+                            prox = agora
+                        while self._vai and agora >= prox:
+                            self.motor._mixa(BLOCK)  # noqa: SLF001 - o fone e o relogio da musica seguem
+                            prox += BLOCK / SR
+                except Exception as ex:  # noqa: BLE001 - a thread nao morre calada: o erro vai pra tela
+                    self.motor.error = f"A saída para o microfone falhou ({str(ex)[:160]})."
+                    self.m = None
+                    time.sleep(0.5)
+                time.sleep(0.002)
+        finally:
+            winmm.timeEndPeriod(1)
+
+
 class Engine:
     def __init__(self, mic, out, monitor):
         self.devices = {"mic": mic, "out": out, "monitor": monitor}  # nome, 'default' ou '' (sem fone)
@@ -803,6 +901,8 @@ class Engine:
         self._wv = None        # pedidos de nivel para essa thread
         self._wv_n = 0         # conta os pedidos: leitura velha nao pisa num pedido novo
         self.mic_mute = False
+        self._direto = False   # a saida e o anel do filtro de microfone (MICROFONE), e nao o cabo
+        self._injetor = None   # o Injetor dessa saida, com ela aberta
         self.monitor_on = True
         self.loop = False
         self.effect = "nenhum"  # efeito de voz (fx.py); sempre comeca sem efeito
@@ -957,8 +1057,9 @@ class Engine:
         faltou = []
         if reserva:
             act, faltou = self._reserva(act, fixos=fixos)
+        direto = act["out"] == MICROFONE
         mic_i, mic_d = find_dev(act["mic"], "in")
-        out_i, out_d = find_dev(act["out"], "out")
+        out_i, out_d = (None, {"name": MICROFONE}) if direto else find_dev(act["out"], "out")
         mon_i = find_dev(act["monitor"], "out")[0] if act["monitor"] else None
         self.active = {"mic": mic_d["name"], "out": out_d["name"],
                        "monitor": sd.query_devices(mon_i)["name"] if mon_i is not None else ""}
@@ -966,14 +1067,22 @@ class Engine:
             raise ValueError("O microfone não pode ser o próprio cabo: a voz voltaria em eco sem fim.")
         if mon_i is not None and "cable" in self.active["monitor"].lower():
             raise ValueError("O fone não pode ser o cabo: o som iria duas vezes para o jogo.")
+        self._direto = direto
+        if direto and self.effect not in EFEITOS_DIRETO:  # o efeito de voz fica no cabo
+            self._fx, self.effect = None, "nenhum"
         st = contextlib.ExitStack()
+        inj = None
         try:
             st.enter_context(sd.InputStream(device=mic_i, channels=mic_d["max_input_channels"],
                                             samplerate=SR, blocksize=BLOCK, dtype="float32",
                                             extra_settings=WASAPI, callback=self._mic_cb))
-            st.enter_context(sd.OutputStream(device=out_i, channels=2, samplerate=SR,
-                                             blocksize=BLOCK, dtype="float32",
-                                             extra_settings=WASAPI, callback=self._out_cb))
+            if direto:
+                inj = Injetor(self)
+                st.callback(inj.para)
+            else:
+                st.enter_context(sd.OutputStream(device=out_i, channels=2, samplerate=SR,
+                                                 blocksize=BLOCK, dtype="float32",
+                                                 extra_settings=WASAPI, callback=self._out_cb))
             if mon_i is not None:
                 st.enter_context(sd.OutputStream(device=mon_i, channels=2, samplerate=SR,
                                                  blocksize=BLOCK, dtype="float32",
@@ -982,10 +1091,21 @@ class Engine:
             st.close()
             raise
         self._stack = st
+        self._injetor = inj
         if faltou:
             self._aviso = self.error = _aviso_reserva(faltou)
         elif self._aviso is not None and self.error == self._aviso:
             self.error = None  # o aparelho escolhido voltou: sai so o aviso, nunca um erro de tocar
+        if direto and not faltou:  # numa thread: o comtypes nao se importa na thread principal (STA)
+            threading.Thread(target=self._confere_filtro, args=(self.active["mic"],), daemon=True).start()
+
+    def _confere_filtro(self, mic):
+        """Direto no microfone: o aviso na tela se o microfone em uso nao tem o filtro (a musica nao chegaria no
+        jogo)."""
+        _com_init()
+        aviso = _sem_filtro(mic)
+        if aviso and self.active.get("mic") == mic and self._injetor is not None and not self.error:
+            self._aviso = self.error = aviso
 
     def liga(self):
         """A partida do servidor. Se o audio nao abre (sem o CABLE Input, aparelho que recusa), o servidor sobe mesmo
@@ -1006,6 +1126,7 @@ class Engine:
             if self._stack:
                 self._stack.close()
                 self._stack = None
+                self._injetor = None
 
     def _vigia_loop(self):
         """Segue sozinho o aparelho escolhido quando ele conecta ou desconecta (o Quest pelo
@@ -1151,6 +1272,9 @@ class Engine:
             self._mic.popleft()
 
     def set_effect(self, effect_id):
+        if self._direto and effect_id not in EFEITOS_DIRETO:
+            raise ValueError("Os efeitos de voz precisam do cabo (VB-Cable): direto no microfone, a sua voz vai crua "
+                             "para o jogo.")
         self._fx = fx.criar(effect_id)  # instancia nova: estado zerado; ValueError se nao existe
         self.effect = effect_id
         if effect_id == "mina":
@@ -1245,6 +1369,11 @@ class Engine:
             self._mon.popleft()
 
     def _out_cb(self, outdata, frames, t, status):
+        outdata[:] = self._mixa(frames)
+
+    def _mixa(self, frames):
+        """O bloco que vai para o jogo, e o do fone na fila dele: o disco, os sons por cima, a voz (so pelo cabo) e a da
+        mina. Quem chama e o relogio da saida: o stream do cabo (_out_cb) ou o Injetor do microfone."""
         buf = np.zeros((frames, 2), np.float32)
         item = None
         if self._pronto is not None and self.track is not None and not self.paused:
@@ -1338,11 +1467,12 @@ class Engine:
             m = self._mic.popleft()  # o nivel da voz e o do Windows (winvol)
             self._meter("mic", m)
             n = min(len(m), frames)
-            if not self.mic_mute:
+            if not self.mic_mute and not self._direto:  # direto no microfone, a voz ja esta nele
                 buf[:n, 0] += m[:n]
                 buf[:n, 1] += m[:n]
-            # ouvir a propria voz vale mesmo com a voz cortada: testar o efeito sem ir pro jogo
-            if self.voice_monitor and self.active["monitor"]:
+            # ouvir a propria voz vale mesmo com a voz cortada: testar o efeito sem ir pro jogo. Direto no microfone
+            # nao: o que se le dele ja leva a musica, que tocaria duas vezes no fone
+            if self.voice_monitor and self.active["monitor"] and not self._direto:
                 if fone is None:
                     fone = np.zeros((frames, 2), np.float32)
                 v = m[:n] * self.voice_mon_vol
@@ -1366,7 +1496,7 @@ class Engine:
             self._mon.append(np.clip(fone, -1, 1))
         np.clip(buf, -1, 1, out=buf)
         self._meter("out", buf)
-        outdata[:] = buf
+        return buf
 
     @staticmethod
     def _tira(q, n):
@@ -2422,6 +2552,9 @@ class Engine:
             "por_cima": [sb[0] for sb in self._sobre],
             "voice_mon_vol": round(self.voice_mon_vol, 3),
             "devices": dict(self.devices), "active_devices": dict(self.active),
+            # direto no microfone: o anel do filtro aberto e quantos microfones o leem agora (0 = nenhum app com o
+            # microfone aberto, a musica nao chega em ninguem); null na saida pelo cabo
+            "direto": self._injetor.estado() if self._injetor is not None and self._stack is not None else None,
             "error": self.error,
             "mina": self._mina.estado if self._mina is not None else "desligada",
             "visor": {"ondas": self._ondas_versao,
@@ -2445,6 +2578,7 @@ class MockEngine(Engine):
 
     def start(self, reserva=False):
         self.active = self._real_names()
+        self._direto = self.active["out"] == MICROFONE
         self._run = True
         threading.Thread(target=self._clock, daemon=True).start()
 
@@ -2460,6 +2594,7 @@ class MockEngine(Engine):
             if v is not None:
                 self.devices[k] = v
         self.active = self._real_names()
+        self._direto = self.active["out"] == MICROFONE
 
     # o visor de DJ sem medir nada: a onda e a grade de mentira saem do id do disco (sempre as mesmas para ele), e a
     # passagem e montada no fim do disco no mesmo formato da do motor, para o tema ter o que desenhar e printar

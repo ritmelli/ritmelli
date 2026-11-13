@@ -18,8 +18,14 @@ programa que deixe escolher o microfone.
 
 - Windows 10 ou 11 (o áudio sai por WASAPI e o volume do microfone vem do Core Audio).
 - Python 3.12 ou mais novo.
-- [VB-Audio Virtual Cable](https://vb-audio.com/Cable/): o cabo que leva o som para o
-  microfone do jogo.
+- O som chega no jogo de um destes jeitos (a escolha fica em Microfone e fone, na interface):
+  - **Direto no microfone**, sem cabo: o filtro da Vitrola (`microfone/`) soma a música no
+    microfone de verdade, dentro do áudio do Windows. Pôr ou tirar o filtro de um microfone pede
+    permissão de administrador (o UAC aparece) e reinicia o áudio do PC por alguns segundos. É o
+    padrão de quem não tem o VB-Cable. No código-fonte, a DLL do filtro sai do
+    `microfone\apo\compila.bat` (Visual Studio 2022 com C++).
+  - Pelo [VB-Audio Virtual Cable](https://vb-audio.com/Cable/): o cabo leva a voz e o som para o
+    microfone do jogo. É o padrão de quem já tem o cabo instalado.
 - ffmpeg (com o ffprobe) no PATH, ou numa pasta `bin/` ao lado do código.
 - Node ou Deno: o yt-dlp precisa de um runtime de JavaScript para o YouTube entregar todos os
   formatos. O Deno também vale na `bin/`.
@@ -42,10 +48,14 @@ com o detector em numpy).
 .\soundboard.ps1 stop     # a voz para de passar pelo cabo
 ```
 
-- No jogo, o microfone precisa ser **CABLE Output (VB-Audio Virtual Cable)**. Desligou o
-  servidor, volte o microfone do jogo para o microfone de verdade.
-- "Escutar este dispositivo" no CABLE Output precisa ficar desligado, senão a própria voz
-  volta no fone.
+- Pelo cabo, o microfone do jogo precisa ser **CABLE Output (VB-Audio Virtual Cable)**.
+  Desligou o servidor, volte o microfone do jogo para o microfone de verdade. "Escutar este
+  dispositivo" no CABLE Output precisa ficar desligado, senão a própria voz volta no fone.
+- Direto no microfone, o jogo e o Discord seguem com o microfone de verdade, e a voz não passa
+  pela Vitrola: os efeitos de voz e o ouvir a própria voz ficam para o cabo, e o cortar a voz
+  vale (o filtro devolve a voz sozinho em 1 s se a Vitrola cair). No Discord, use o perfil
+  **Estúdio**, ou desligue o Krisp e a sensibilidade automática: com qualquer um dos dois ligado
+  a música chega picada ou não chega (medido de uma conta para outra em 13/11).
 - Microfone e fone seguem o padrão do Windows, inclusive quando ele muda com o servidor
   ligado. A escolha feita na interface fica gravada em
   `%LOCALAPPDATA%\Vitrola\library\config.json`.
@@ -153,6 +163,7 @@ YouTube Music), apart from checking GitHub for a new version.
 | `pareamento.py` | o código e o QR do celular, e os celulares conectados |
 | `yt_fora.py` | YouTube (yt-dlp e ytmusicapi) num processo à parte |
 | `winvol.py` | volume do microfone no Windows |
+| `microfone/` | o filtro de microfone (a saída sem cabo): a DLL que o Windows carrega (`apo/`), o anel que o app escreve (`injeta.py`) e quem pendura e tira o filtro (`microfone.py`) |
 | `themes/vitrola/` | a interface |
 | `gallery.html` | a página inicial, que lista os temas |
 | `icone/` | o ícone do app (o exe, o instalador, a aba do navegador e o celular), desenhado pelo `dev/icone.py` |
