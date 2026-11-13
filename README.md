@@ -38,7 +38,7 @@ com o detector em numpy).
 
 ```powershell
 .\soundboard.ps1 start    # liga e abre a galeria
-.\soundboard.ps1 status
+.\soundboard.ps1 status   # diz se está ligado, o que toca e o microfone/fone em uso
 .\soundboard.ps1 stop     # a voz para de passar pelo cabo
 ```
 
