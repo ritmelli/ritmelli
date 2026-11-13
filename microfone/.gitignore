@@ -1,0 +1,7 @@
+# build e caches: o fonte se compila pelos compila.bat de cada pasta
+saida/
+__pycache__/
+*.obj
+*.lib
+*.exp
+*.pyc
