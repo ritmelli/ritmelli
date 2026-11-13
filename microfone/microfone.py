@@ -7,7 +7,8 @@
 O instala copia a DLL pra uma pasta que o audiodg.exe (LocalService) consegue ler, registra o COM e o APO
 (regsvr32), pendura o nosso nas vagas de efeito do microfone e guarda o original em
 HKLM\\SOFTWARE\\Vitrola\\Microfone\\{id do microfone}. Depois reinicia o AudioEndpointBuilder e o servico de
-audio, que e quando o Windows relê os efeitos (o som de todo o PC some por um instante).
+audio, que e quando o Windows relê os efeitos (o som de todo o PC some por um instante). O log do filtro fica em
+log\\micfx.log, na pasta da DLL.
 
 O filtro vai em DUAS vagas e o Windows usa uma so (lido no audiosrv.dll do 26200, 13/11):
 - EFX composto ({d04e05a6...},15, lista): o efeito de endpoint, uma instancia por microfone, que roda pra TODO stream,
@@ -140,7 +141,10 @@ def reinicia_audio():
     servico_audio("Start")
 
 
-LOGS = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Vitrola")
+# O log do filtro (micfx.dll grava em log\ ao lado dela): dentro da pasta de programas, onde so administrador cria
+# pasta, e com escrita so pro LocalService (S-1-5-19), que roda o audiodg.exe; o usuario le pela heranca. Pasta de
+# log gravavel pelo usuario deixaria ele trocar o arquivo por um link e o audiodg escrever onde ele quisesse.
+LOGS = os.path.join(PASTA, "log")
 
 
 def atualiza_salvo_velho(fx, salvo):
@@ -170,10 +174,14 @@ def atualiza_salvo_velho(fx, salvo):
 
 def instala(filtro, dll):
     ep, nome, apar = acha(filtro)
-    os.makedirs(PASTA, exist_ok=True)
-    os.makedirs(LOGS, exist_ok=True)  # o log do filtro: LocalService (S-1-5-19) e Usuarios (S-1-5-32-545) escrevem
-    subprocess.run(["icacls", LOGS, "/grant", "*S-1-5-19:(OI)(CI)M", "*S-1-5-32-545:(OI)(CI)M"],
-                   capture_output=True)
+    os.makedirs(LOGS, exist_ok=True)
+    r = subprocess.run(["icacls", LOGS, "/grant", "*S-1-5-19:(OI)(CI)M"], capture_output=True, text=True,
+                       encoding="oem", errors="replace")
+    if r.returncode:
+        sys.exit(f"icacls na pasta do log falhou ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
+    base = rf"{CAPTURA}\{ep}"
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base + r"\Properties") as p:
+        sem_melhorias = (le(p, SEM_MELHORIAS) or (0,))[0]
     destino = os.path.join(PASTA, "micfx.dll")
     servico_audio("Stop")  # o audiodg.exe solta a DLL velha
     shutil.copy2(dll, destino)
@@ -181,7 +189,6 @@ def instala(filtro, dll):
                        errors="replace")
     if r.returncode:
         sys.exit(f"regsvr32 falhou ({r.returncode})")
-    base = rf"{CAPTURA}\{ep}"
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base + r"\FxProperties", 0,
                         winreg.KEY_READ | winreg.KEY_SET_VALUE) as fx, \
             winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, rf"{SALVO}\{ep}", 0, winreg.KEY_ALL_ACCESS) as salvo:
@@ -196,6 +203,8 @@ def instala(filtro, dll):
                     except OSError:
                         pass
             winreg.SetValueEx(salvo, "_tinha_sfx", 0, winreg.REG_DWORD, 1 if le(fx, SFX) else 0)
+            # "desativar melhorias" fica fora do FxProperties: guardado a parte pro remove desligar de novo
+            winreg.SetValueEx(salvo, "_sem_melhorias", 0, winreg.REG_DWORD, 1 if sem_melhorias else 0)
             winreg.SetValueEx(salvo, "_ausentes", 0, winreg.REG_MULTI_SZ, [k for k in CRIADOS if le(fx, k) is None])
         else:
             atualiza_salvo_velho(fx, salvo)
@@ -223,11 +232,11 @@ def instala(filtro, dll):
         winreg.SetValueEx(fx, MODOS_EFX, 0, winreg.REG_MULTI_SZ, modos)
         if le(fx, ASSOCIACAO) is None:
             winreg.SetValueEx(fx, ASSOCIACAO, 0, winreg.REG_SZ, KSNODETYPE_ANY)
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base + r"\Properties", 0,
-                        winreg.KEY_READ | winreg.KEY_SET_VALUE) as p:
-        if (le(p, SEM_MELHORIAS) or (0,))[0]:
+    if sem_melhorias:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base + r"\Properties", 0, winreg.KEY_SET_VALUE) as p:
             winreg.SetValueEx(p, SEM_MELHORIAS, 0, winreg.REG_DWORD, 0)
-            print("as melhorias de audio desse microfone estavam desativadas: ligadas (senao o filtro nao carrega)")
+        print("as melhorias de audio desse microfone estavam desativadas: ligadas (senao o filtro nao carrega; o "
+              "remove desativa de novo)")
     reinicia_audio()
     print(f"pendurado em {nome} ({apar}) {ep}")
 
@@ -251,6 +260,11 @@ def remove(filtro=None):
                         winreg.DeleteValue(fx, k)
                     except OSError:
                         pass
+            sem_melhorias = (le(salvo, "_sem_melhorias") or (0,))[0]  # instalado antes de guardar: nao mexe
+        if sem_melhorias:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{ep}\Properties", 0,
+                                winreg.KEY_SET_VALUE) as p:
+                winreg.SetValueEx(p, SEM_MELHORIAS, 0, winreg.REG_DWORD, 1)
         winreg.DeleteKey(winreg.HKEY_LOCAL_MACHINE, rf"{SALVO}\{ep}")
         print(f"devolvido o original em {nome} ({apar}) {ep}")
     sobrou = [m for m in microfones()

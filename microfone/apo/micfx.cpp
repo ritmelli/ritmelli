@@ -1,8 +1,8 @@
-// micfx.dll: o filtro de microfone da Vitrola (um APO de efeito de stream, SFX, do motor de audio do Windows).
+// micfx.dll: o filtro de microfone da Vitrola (um APO de efeito do motor de audio do Windows).
 //
 // O Windows carrega o filtro dentro do audiodg.exe, no caminho do microfone em que ele foi pendurado (o
-// microfone.py troca o SFX daquele microfone pelo nosso e guarda o original). A cada bloco de audio do microfone
-// (~10 ms), o APOProcess soma o que o app deixou no anel (anel.h): quem ouve aquele microfone (jogo, Discord)
+// microfone.py poe o nosso nas vagas EFX e LFX daquele microfone e guarda o original). A cada bloco de audio do
+// microfone (~10 ms), o APOProcess soma o que o app deixou no anel (anel.h): quem ouve aquele microfone (jogo, Discord)
 // recebe a voz e a musica juntas, sem cabo virtual.
 //
 // Escrito a partir da documentacao publica da Microsoft (Audio Processing Objects, CBaseAudioProcessingObject).
@@ -42,9 +42,42 @@ static const char* NomeDoModo(const GUID& g) {
     return "outro";
 }
 
-// Log fora do tempo real (carregar, negociar formato, Initialize, Lock): C:\ProgramData\Vitrola\micfx.log.
-// O microfone.py cria a pasta com permissao pro LocalService (quem roda o audiodg.exe) escrever.
+// Log fora do tempo real (carregar, negociar formato, Initialize, Lock): log\micfx.log, na pasta da DLL. O
+// microfone.py cria a pasta dentro da pasta de programas (so administrador cria ali) e da escrita so pro LocalService,
+// quem roda o audiodg.exe; o usuario so le. Passou de LOG_TETO, o log vira micfx.log.1 (um so) e recomeca.
+static const LONGLONG LOG_TETO = 1 << 20;
+static wchar_t g_log[MAX_PATH];
+static wchar_t g_log_velho[MAX_PATH];
+static SRWLOCK g_log_trava = SRWLOCK_INIT;
+
+static void PreparaLog(HMODULE modulo) {
+    wchar_t pasta[MAX_PATH];
+    DWORD n = GetModuleFileNameW(modulo, pasta, MAX_PATH);
+    if (!n || n >= MAX_PATH) {
+        return;
+    }
+    wchar_t* barra = wcsrchr(pasta, L'\\');
+    if (!barra) {
+        return;
+    }
+    barra[1] = L'\0';
+    if (_snwprintf_s(g_log, MAX_PATH, _TRUNCATE, L"%slog\\micfx.log", pasta) < 0 ||
+        _snwprintf_s(g_log_velho, MAX_PATH, _TRUNCATE, L"%slog\\micfx.log.1", pasta) < 0) {
+        g_log[0] = L'\0';
+    }
+}
+
+static HANDLE AbreLog() {
+    // sem seguir ponto de reparse no proprio arquivo; sem a pasta log, nao cria nada e nao loga
+    return CreateFileW(g_log, FILE_APPEND_DATA | FILE_READ_ATTRIBUTES,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+}
+
 static void Log(const char* fmt, ...) {
+    if (!g_log[0]) {
+        return;
+    }
     char msg[480];
     va_list va;
     va_start(va, fmt);
@@ -55,13 +88,20 @@ static void Log(const char* fmt, ...) {
     char linha[560];
     int n = _snprintf_s(linha, sizeof(linha), _TRUNCATE, "%02d:%02d:%02d.%03d pid %lu: %s\r\n", t.wHour, t.wMinute,
                         t.wSecond, t.wMilliseconds, GetCurrentProcessId(), msg);
-    HANDLE h = CreateFileW(L"C:\\ProgramData\\Vitrola\\micfx.log", FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    AcquireSRWLockExclusive(&g_log_trava);
+    HANDLE h = AbreLog();
+    LARGE_INTEGER tamanho;
+    if (h != INVALID_HANDLE_VALUE && GetFileSizeEx(h, &tamanho) && tamanho.QuadPart > LOG_TETO) {
+        CloseHandle(h);
+        MoveFileExW(g_log, g_log_velho, MOVEFILE_REPLACE_EXISTING);
+        h = AbreLog();
+    }
     if (h != INVALID_HANDLE_VALUE) {
         DWORD escrito;
         WriteFile(h, linha, (DWORD)(n > 0 ? n : 0), &escrito, nullptr);
         CloseHandle(h);
     }
+    ReleaseSRWLockExclusive(&g_log_trava);
 }
 
 static void LogFormato(const char* onde, IAudioMediaType* t, HRESULT hr) {
@@ -72,6 +112,29 @@ static void LogFormato(const char* onde, IAudioMediaType* t, HRESULT hr) {
     } else {
         Log("%s: hr=0x%08lx (sem formato)", onde, hr);
     }
+}
+
+// O que sai do filtro vai pro Discord, pro jogo e pros outros efeitos do microfone, e um NaN ali trava o estado de
+// filtro deles ate o microfone reabrir. Amostra do anel que nao e numero vira silencio; o ganho fica em
+// [0, GANHO_MAX]; e a soma de voz e musica que passa do joelho dobra suave ate 1,0 em vez de estourar (abaixo do
+// joelho nada muda: a 48 kHz a musica segue bit a bit).
+static const float GANHO_MAX = 4.0f;
+static const float JOELHO = 0.9f;
+
+static inline float Finito(float x) {
+    return std::isfinite(x) ? x : 0.0f;
+}
+
+static inline float Dobra(float x) {
+    if (!std::isfinite(x)) {
+        return 0.0f;
+    }
+    const float a = std::fabs(x);
+    if (a <= JOELHO) {
+        return x;
+    }
+    const float y = JOELHO + (1.0f - JOELHO) * std::tanh((a - JOELHO) / (1.0f - JOELHO));
+    return x < 0.0f ? -y : y;
 }
 
 // {C17A1D48-D473-40D9-9ED3-D024AA46EBE2}
@@ -159,8 +222,7 @@ public:
             *ppv = static_cast<IAudioProcessingObjectConfiguration*>(this);
         } else if (riid == __uuidof(IAudioSystemEffects) || riid == __uuidof(IAudioSystemEffects2)) {
             *ppv = static_cast<IAudioSystemEffects2*>(this);
-        } else {
-            Log("QueryInterface: iid %08lx-%04x-%04x nao suportado", riid.Data1, riid.Data2, riid.Data3);
+        } else {  // o motor pergunta ~25 interfaces a cada abertura do microfone: sem log, senao ele so cresce
             *ppv = nullptr;
             return E_NOINTERFACE;
         }
@@ -321,20 +383,25 @@ private:
         if (escrito - m_rs.MaisVelho() > (int64_t)MICFX_QUADROS) {  // ficou pra tras (nao devia): pula pro mais novo
             m_rs.Comeca(escrito - MICFX_QUADROS / 2);
         }
-        const float ganho = a->ganho;
+        float ganho = a->ganho;  // a memoria e escrita pelo app: NaN, negativo ou exagero nao passam
+        if (!(ganho >= 0.0f)) {
+            ganho = 0.0f;
+        } else if (ganho > GANHO_MAX) {
+            ganho = GANHO_MAX;
+        }
         const bool sem_voz = a->sem_voz != 0;
         const UINT32 canais = m_canais;
         const uint32_t gerados = m_rs.Gera(a->dados, MICFX_QUADROS - 1, escrito, quadros,
                                            [&](uint32_t i, float esq, float dir) {
             float* o = &destino[i * canais];
-            esq *= ganho;
-            dir *= ganho;
+            esq = Finito(esq) * ganho;
+            dir = Finito(dir) * ganho;
             if (canais == 1) {
                 const float m = 0.5f * (esq + dir);
-                o[0] = sem_voz ? m : o[0] + m;
+                o[0] = Dobra(sem_voz ? m : o[0] + m);
             } else {
-                o[0] = sem_voz ? esq : o[0] + esq;
-                o[1] = sem_voz ? dir : o[1] + dir;
+                o[0] = Dobra(sem_voz ? esq : o[0] + esq);
+                o[1] = Dobra(sem_voz ? dir : o[1] + dir);
                 for (UINT32 c = 2; sem_voz && c < canais; c++) {
                     o[c] = 0.0f;
                 }
@@ -444,6 +511,7 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE modulo, DWORD motivo, LPVOID) {
     if (motivo == DLL_PROCESS_ATTACH) {
         g_modulo = modulo;
         DisableThreadLibraryCalls(modulo);
+        PreparaLog(modulo);
         Log("carregada");
     } else if (motivo == DLL_PROCESS_DETACH) {
         Log("descarregada");
@@ -462,9 +530,7 @@ STDAPI DllGetClassObject(REFCLSID clsid, REFIID riid, void** ppv) {
 }
 
 STDAPI DllCanUnloadNow() {
-    HRESULT hr = (g_objetos == 0 && g_travas == 0) ? S_OK : S_FALSE;
-    Log("DllCanUnloadNow: %s (objetos %ld)", hr == S_OK ? "pode" : "nao", g_objetos);
-    return hr;
+    return (g_objetos == 0 && g_travas == 0) ? S_OK : S_FALSE;  // o COM pergunta a toda hora: sem log
 }
 
 static const wchar_t kChave[] = L"SOFTWARE\\Classes\\CLSID\\{C17A1D48-D473-40D9-9ED3-D024AA46EBE2}";
