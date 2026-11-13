@@ -79,10 +79,10 @@ def confere_tema(tema):
 def confere_modulo():
     with tempfile.TemporaryDirectory() as tmp:
         p = Path(tmp) / "x.properties"
-        p.write_text("﻿# comentario\n! outro\n\na.b = Olá {nome}  \nc.d=linha\\nnova = com igual\\\\\n",
-                     encoding="utf-8")
+        p.write_text("﻿# comentario\n! outro\n\na.b = Olá {nome}  \nc.d=linha\\nnova = com igual\\\\\n"
+                     "e.f = rótulo:\\ \ng.h=\\ resto\n", encoding="utf-8")
         got = i18n.ler(p)
-        if got != {"a.b": "Olá {nome}", "c.d": "linha\nnova = com igual\\"}:
+        if got != {"a.b": "Olá {nome}", "c.d": "linha\nnova = com igual\\", "e.f": "rótulo: ", "g.h": " resto"}:
             falha(f"ler: {got!r}")
         for ruim in ("a.b=1\na.b=2\n", "sem igual\n", "=sem chave\n"):
             p.write_text(ruim, encoding="utf-8")
