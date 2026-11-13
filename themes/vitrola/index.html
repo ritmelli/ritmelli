@@ -4,6 +4,49 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vitrola</title>
+<!-- i18n -->
+<script>
+/* I18N: os textos da interface na lingua de quem usa (o plano esta no I18N.md do ritmelli-server). Os textos moram em
+   i18n/i18n_<lingua>.properties, e o servidor (i18n.py) poe no lugar do comentario i18n acima os da lingua escolhida e
+   os do ingles, a reserva para chave que falte. Na marcacao: data-i18n="chave" (o texto) e data-i18n-title,
+   data-i18n-aria-label e data-i18n-placeholder (os atributos), aplicados no comeco do script principal. No JS:
+   I18N.t('chave', { param }) e, com plural, I18N.tp('chave', n) (as chaves chave.one e chave.other). O nome curto t
+   nao serve: ele ja e variavel local em mais de cem funcoes daqui */
+const I18N = (() => {
+  const d = window.I18N_DADOS || { lingua: 'pt_BR', textos: {}, reserva: {} };
+  const lang = d.lingua.replace('_', '-');
+  const tem = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const existe = k => tem(d.textos, k) || tem(d.reserva, k);
+  const plural = new Intl.PluralRules(lang);
+  const avisadas = new Set();
+  function bruto(chave) {
+    if (tem(d.textos, chave)) return d.textos[chave];
+    if (tem(d.reserva, chave)) return d.reserva[chave];
+    // a chave que falta nas duas linguas aparece na tela como a propria chave: o erro fica a vista
+    if (!avisadas.has(chave)) { avisadas.add(chave); console.warn(`i18n: missing key "${chave}"`); }
+    return chave;
+  }
+  function t(chave, params) {
+    const s = bruto(chave);
+    return params ? s.replace(/\{(\w+)\}/g, (m, k) => (tem(params, k) ? String(params[k]) : m)) : s;
+  }
+  function tp(chave, n, params) {
+    const k = `${chave}.${plural.select(n)}`;
+    return t(existe(k) ? k : `${chave}.other`, { n: n.toLocaleString(lang), ...params });
+  }
+  const ATRIBUTOS = ['title', 'aria-label', 'placeholder'];
+  function aplica(raiz = document) {
+    for (const e of raiz.querySelectorAll('[data-i18n]')) e.textContent = t(e.dataset.i18n);
+    for (const a of ATRIBUTOS) {
+      for (const e of raiz.querySelectorAll(`[data-i18n-${a}]`)) e.setAttribute(a, t(e.getAttribute(`data-i18n-${a}`)));
+    }
+  }
+  document.documentElement.lang = lang;
+  return { lingua: d.lingua, lang, t, tp, aplica };
+})();
+</script>
+<!-- a pagina aparece quando os textos ja estao no lugar (o I18N.aplica, no comeco do script principal) -->
+<style>html:not(.i18n-ok) body { visibility: hidden; }</style>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4294,17 +4337,18 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       <span class="conexao" id="conexao" role="status">conectando</span>
     </div>
     <form class="busca" id="form-busca" role="search">
-      <label class="sr" for="q">Buscar no YouTube ou colar um link</label>
+      <label class="sr" for="q" data-i18n="search.prompt"></label>
       <span class="campo-q">
-        <input id="q" type="search" placeholder="Buscar no YouTube ou colar um link" autocomplete="off" spellcheck="false">
-        <button class="sair-busca" id="b-sair-busca" type="button" aria-label="Voltar para a prateleira" title="Voltar para a prateleira">
+        <!-- o placeholder vem do textoBusca: mais curto no celular -->
+        <input id="q" type="search" autocomplete="off" spellcheck="false">
+        <button class="sair-busca" id="b-sair-busca" type="button" data-i18n-aria-label="search.backToShelf" data-i18n-title="search.backToShelf">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12h-15"/><path d="M11 5.5L4.5 12l6.5 6.5"/></svg>
         </button>
-        <button class="limpar-q" id="b-limpar-q" type="button" aria-label="Limpar a busca" title="Limpar a busca">
+        <button class="limpar-q" id="b-limpar-q" type="button" data-i18n-aria-label="search.clear" data-i18n-title="search.clear">
           <svg viewBox="0 0 24 24" aria-hidden="true"><mask id="x-vazado"><rect width="24" height="24" fill="#fff"/><path d="M8.6 8.6l6.8 6.8M15.4 8.6l-6.8 6.8" stroke="#000" stroke-width="2.2" stroke-linecap="round"/></mask><circle cx="12" cy="12" r="11" fill="currentColor" mask="url(#x-vazado)"/></svg>
         </button>
       </span>
-      <button class="btn" type="submit"><svg class="lupa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span class="rot-busca">Buscar</span></button>
+      <button class="btn" type="submit"><svg class="lupa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span class="rot-busca" data-i18n="search.submit"></span></button>
     </form>
     <div class="botoes-topo">
       <!-- so no computador: a troca entre a prateleira e o toca-discos (a pagina do disco nao tem a barra de baixo) e,
@@ -4566,8 +4610,8 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     <p class="fila-vazia" id="fila-vazia" hidden><b>Nada no A seguir.</b> Na prateleira, o menu ⋯ de um disco tem Tocar a seguir e Adicionar à fila.</p>
     <div class="vista" id="vista-busca" hidden>
       <div class="cabeca-sec">
-        <h2 id="titulo-busca">Resultados</h2>
-        <button class="btn-madeira" id="b-voltar" type="button">Voltar para a prateleira</button>
+        <h2 id="titulo-busca" data-i18n="search.results"></h2>
+        <button class="btn-madeira" id="b-voltar" type="button" data-i18n="search.backToShelf"></button>
       </div>
       <div class="rolo" id="rolo-busca">
         <p class="aviso-busca" id="aviso-busca" role="status"></p>
@@ -4746,6 +4790,9 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 
 <script>
 'use strict';
+// os textos da marcacao na lingua de quem usa (o I18N, no <head>), antes de qualquer coisa ler ou medir a tela; a
+// pagina so aparece depois, e aparece mesmo se der erro aqui
+try { I18N.aplica(); } finally { document.documentElement.classList.add('i18n-ok'); }
 const $ = (s, r = document) => r.querySelector(s);
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -7459,9 +7506,9 @@ function desenharMais() {
   const p = $('#mais-res'), b = S.busca;
   p.replaceChildren();
   if (!b || b.link || b.carregando || b.erro || !b.itens.length) return;
-  if (b.mais) p.append(el('span', 'lampada acesa piscando'), document.createTextNode('Carregando mais resultados.'));
-  else if (b.erroMais) p.textContent = 'Não deu para carregar mais. Role de novo para tentar.';
-  else if (b.fim) p.textContent = 'Fim dos resultados.';
+  if (b.mais) p.append(el('span', 'lampada acesa piscando'), document.createTextNode(I18N.t('search.loadingMore')));
+  else if (b.erroMais) p.textContent = I18N.t('search.moreFailed');
+  else if (b.fim) p.textContent = I18N.t('search.end');
 }
 new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) maisResultados(); }, { rootMargin: '0px 0px 600px 0px' })
   .observe($('#mais-res'));
@@ -7510,28 +7557,29 @@ function desenharBusca() {
   document.body.classList.toggle('com-busca', !!b);   // a seta de voltar dentro do campo, no celular
   if (!b) return;
   medirBusca();   // na mesa a busca cai debaixo do campo
-  $('#titulo-busca').textContent = b.link ? 'Link colado' : `Resultados para “${b.q}”`;
+  $('#titulo-busca').textContent = b.link ? I18N.t('search.pastedLink') : I18N.t('search.resultsFor', { query: b.q });
   $('#titulo-busca').title = $('#titulo-busca').textContent;
   const av = $('#aviso-busca'); av.className = 'aviso-busca'; av.replaceChildren();
-  if (b.carregando) av.append(el('span', 'lampada acesa piscando'), document.createTextNode('Buscando no YouTube. Leva alguns segundos.'));
+  if (b.carregando) av.append(el('span', 'lampada acesa piscando'), document.createTextNode(I18N.t('search.searching')));
   else if (b.erro) {
     av.classList.add('erro');
     const limite = /429|too many/i.test(b.erro);
     const fora = /não respondeu/.test(b.erro);
     const doYoutube = /busca (no YouTube )?falhou/i.test(b.erro);
+    // os testes acima leem o erro do servidor, ainda em frase pronta em portugues (o PR 4 do I18N.md troca por chave);
+    // o espaco depois do negrito fica dentro dele, como sempre foi
     if (fora) {
-      av.append(el('strong', null, 'A Vitrola não respondeu. '), document.createTextNode('Confira se ela está ligada e busque de novo.'));
+      av.append(el('strong', null, I18N.t('search.error.offline') + ' '), document.createTextNode(I18N.t('search.error.offlineHint')));
     } else if (doYoutube || limite) {
-      const dica = limite ? 'O YouTube recusou por excesso de buscas. Espere alguns minutos e tente de novo, ou cole o link do vídeo.'
-        : 'Confira a internet e tente de novo, ou cole o link do vídeo.';
-      av.append(el('strong', null, 'A busca no YouTube falhou. '), document.createTextNode(dica));
-      av.append(el('small', 'detalhe', `Detalhe técnico: ${detalheErro(b.erro)}`));
+      const dica = I18N.t(limite ? 'search.error.rateLimitHint' : 'search.error.youtubeHint');
+      av.append(el('strong', null, I18N.t('search.error.youtube') + ' '), document.createTextNode(dica));
+      av.append(el('small', 'detalhe', I18N.t('search.error.detail', { detail: detalheErro(b.erro) })));
     } else {
       // recusa do proprio servidor, ja em frase pronta (ex.: "Digite o que procurar ou cole um link do YouTube.")
       av.append(el('strong', null, b.erro));
     }
-  } else if (!b.link && !b.itens.length) av.textContent = 'Nada encontrado. Tente outras palavras ou cole o link do vídeo.';
-  else av.textContent = b.link ? 'Baixe o som deste link para a prateleira, ou baixe e toque assim que chegar.' : '';
+  } else if (!b.link && !b.itens.length) av.textContent = I18N.t('search.noResults');
+  else av.textContent = b.link ? I18N.t('search.linkHint') : '';
   av.hidden = !av.textContent;
 
   // a lista so se monta quando chegam resultados novos; o resto (anel, ✓, tocando) muda no lugar,
@@ -8637,7 +8685,7 @@ $('#b-efeito').addEventListener('click', () => {
 });
 $('#b-fechar-gav').addEventListener('click', () => { abrirGaveta(false); $('#b-efeito').focus(); });
 /* no celular o texto curto cabe no campo mesmo com a fonte do sistema maior (review) */
-function textoBusca() { $('#q').placeholder = celular() ? 'Buscar ou colar um link' : 'Buscar no YouTube ou colar um link'; }
+function textoBusca() { $('#q').placeholder = I18N.t(celular() ? 'search.promptShort' : 'search.prompt'); }
 textoBusca();
 matchMedia('(max-width: 899.98px)').addEventListener('change', () => {
   abrirGaveta(S.gaveta); if (!celular()) abrirPalco(false); else abrirDisco(false); inertPalco(); textoBusca();

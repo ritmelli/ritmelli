@@ -282,6 +282,17 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   `server.py`).
 - `versao.py`: a versão (semver), que o servidor mostra no Estado e no `--version`; a tag da
   release tem que bater com ela.
+- `i18n.py`: os textos da interface em cada língua. Os textos moram em
+  `themes/vitrola/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, e o tema só cita a chave
+  (`data-i18n="search.clear"` na marcação, `I18N.t('search.clear')` no JS). O servidor lê os
+  arquivos a cada abertura da página e põe os textos dentro dela, no lugar do `<!-- i18n -->`:
+  assim eles já estão lá antes do primeiro script, sem esperar um `fetch`, e o tema não muda de
+  ordem de subida. A página só aparece depois de o começo do script principal aplicar os textos
+  da marcação (a classe `i18n-ok`), para não piscar a língua errada. Vão os da língua escolhida
+  e os do inglês, a reserva para chave que falte; chave que falte nos dois aparece como a própria
+  chave, com um aviso no console. A língua sai do `?lang=` e, quando a detecção ligar, do
+  `Accept-Language` do navegador (cada aparelho na sua); até lá, sempre português. O ETag da
+  página junta o tema, os textos e a língua, então a página igual volta como 304.
 
 ## Filtro "Quest como SM58"
 
