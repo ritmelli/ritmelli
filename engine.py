@@ -46,6 +46,13 @@ FFMPEG = pastas.ferramenta("ffmpeg") or "ffmpeg"  # o que vem com o app, ou o do
 FFPROBE = pastas.ferramenta("ffprobe") or "ffprobe"
 CURTO_MAX_S = 15  # ate isso o pad toca por cima da musica em vez de trocar
 STREAM_CAIU_S = 5.0  # o stream que para mais que isso antes do fim (ou sem audio nenhum) caiu: o servidor religa
+# o stream que congela (13/11: a Toxic parou de chegar em 2:12 com a conexao aberta, e o ffmpeg esperou pra sempre com
+# a vitrola carregando): isso sem receber nada e o ffmpeg reconecta uma vez no mesmo endereco e, congelado de novo,
+# desiste, o que vira a queda acima (sem o limite de uma, ele tentava 4 vezes: ~4x isso no endereco morto); e do stream
+# o leitor guarda STREAM_AHEAD adiante (~30 s, ~11 MB), folga que cobre as duas esperas e o endereco novo (15 s naquele
+# dia): sem buraco (dev/testa_congela.py)
+STREAM_SEM_DADO_S = 5.0
+STREAM_AHEAD = 3000
 RAPIDO_MAX_S = 120  # o posto nos Sons rapidos pela mao toca inteiro por cima ate isso (2 minutos)
 # o stream aberto antes (09/11, a latencia do pedido falado): o servidor abre o ffmpeg do endereco adiantado logo que
 # ele sai, antes de o disco entrar no prato; o leitor que toca esse endereco do comeco continua desse ffmpeg (o
@@ -1380,11 +1387,13 @@ class Engine:
     # decodificacao --------------------------------------------------------
     @staticmethod
     def _entrada(track):
-        """Argumentos do ffmpeg antes do -i: o stream do YouTube reconecta sozinho se a rede
-        piscar e leva os cabecalhos que o yt-dlp mandou; arquivo local nao precisa de nada."""
+        """Argumentos do ffmpeg antes do -i: o stream do YouTube reconecta sozinho (uma vez) se a
+        rede piscar ou congelar por STREAM_SEM_DADO_S, e leva os cabecalhos que o yt-dlp mandou;
+        arquivo local nao precisa de nada."""
         if not track.get("stream") or not str(track.get("path") or "").startswith("http"):
             return []
-        a = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "4"]
+        a = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "4",
+             "-reconnect_max_retries", "1", "-rw_timeout", str(int(STREAM_SEM_DADO_S * 1e6))]
         if track.get("headers"):
             a += ["-headers", track["headers"]]
         return a
@@ -1451,7 +1460,7 @@ class Engine:
             acc = self._onda_acumulador(track) if stream else None
             try:
                 while gen == deck.gen:
-                    if len(deck.q) > deck.ahead:
+                    if len(deck.q) > (max(deck.ahead, STREAM_AHEAD) if stream else deck.ahead):
                         time.sleep(0.01)
                         continue
                     b = blocos.pop(0) if blocos else ff.stdout.read(BLOCK * 8)
