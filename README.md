@@ -149,6 +149,7 @@ YouTube Music), apart from checking GitHub for a new version.
 | `batida.py`, `compasso.py`, `andamento.py` | andamento, grade de batidas e o 1 do compasso |
 | `fx.py` | efeitos de voz |
 | `versao.py` | a versão do app |
+| `i18n.py` | os textos da interface em cada língua: lê os `.properties` do tema e põe na página |
 | `pastas.py` | onde moram os dados de quem usa, e onde o app acha o ffmpeg, o ffprobe e o Deno |
 | `pareamento.py` | o código e o QR do celular, e os celulares conectados |
 | `yt_fora.py` | YouTube (yt-dlp e ytmusicapi) num processo à parte |

@@ -31,6 +31,7 @@ import andamento as an
 import atualizacao as atu
 import engine as eng
 import fx
+import i18n
 import pareamento as par
 import pastas
 from pastas import save_json
@@ -2292,7 +2293,17 @@ def build(app_state):
         p = THEMES / request.match_info["slug"] / "index.html"
         if not p.exists() or THEMES not in p.resolve().parents:
             raise web.HTTPNotFound()
-        return web.FileResponse(p)
+        # os textos da lingua de quem abre (i18n.py) vao dentro da pagina. O ETag muda com o tema, com os textos e com a
+        # lingua: a pagina igual a que o navegador ja tem volta como 304, sem baixar o 1,2 MB de novo
+        textos = p.parent / "i18n"
+        lingua = i18n.escolher(request.query.get("lang"), request.headers.get("Accept-Language", ""))
+        etag = f'"{p.stat().st_mtime_ns}-{i18n.versao(textos)}-{lingua}"'
+        cab = {"ETag": etag, "Cache-Control": "no-cache", "Vary": "Accept-Language"}
+        if etag in (x.strip() for x in request.headers.get("If-None-Match", "").split(",")):
+            return web.Response(status=304, headers=cab)
+        html = await asyncio.get_running_loop().run_in_executor(
+            None, lambda: i18n.injeta(p.read_text(encoding="utf-8"), textos, lingua))
+        return web.Response(text=html, content_type="text/html", headers=cab)
 
     @r.get("/t/{slug}")
     async def theme_redirect(request):

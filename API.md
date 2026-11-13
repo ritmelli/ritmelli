@@ -19,6 +19,14 @@ só com esta API.
 - API sempre por caminho absoluto (`/api/...`), mesma origem. Escrita é `fetch` com
   `method` e, quando tem corpo, `Content-Type: application/json`.
 - Texto da interface em português do Brasil, com acentuação completa e sem travessão.
+- Textos traduzíveis (a interface está passando para pt-BR e inglês): o tema que tem a pasta
+  `themes/<slug>/i18n/` guarda nela um `i18n_<lingua>.properties` por língua (`en` e `pt_BR`),
+  com as mesmas chaves, e põe o comentário `<!-- i18n -->` no `<head>`, antes de qualquer
+  script. A página do tema (`/t/<slug>/`) chega com esse comentário trocado por
+  `window.I18N_DADOS = {"lingua": ..., "textos": {...}, "reserva": {...}}`: os textos da
+  língua de quem abre e os do inglês, para a chave que faltar. Por enquanto a língua é sempre
+  `pt_BR`; `?lang=en` no endereço força o inglês, para testar. O formato do arquivo está no
+  `i18n.py`, e o `python dev/testa_i18n.py` confere os arquivos contra o tema.
 - O tema abre também no celular, pela rede de casa (`http://<ip do PC>:8799/`): nada de
   endereço `127.0.0.1` escrito no tema e nada que dependa de mouse. Pela rede, a API só
   responde ao celular pareado (ver "Celular: pareamento").
