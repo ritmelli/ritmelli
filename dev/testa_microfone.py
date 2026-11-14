@@ -60,6 +60,7 @@ class AnelFalso:
         a.ganho, a.magia = 1.0, injeta.MAGIA
         self.dados = np.ctypeslib.as_array(a.dados).reshape(injeta.QUADROS, 2)
         self.voz = np.ctypeslib.as_array(a.voz)
+        self.voz_fx = np.ctypeslib.as_array(a.voz_fx)
         self.lido, self.faltou, self.voz_n, self._vai = [], 0, 0, False
 
     def liga(self, ep=ALVO, voz_taxa=0):
@@ -95,6 +96,10 @@ class AnelFalso:
                 self.voz_n += k
                 self.a.voz_taxa = self.voz_taxa
                 self.a.voz_escrito = fim + k  # depois das amostras, como o filtro
+                # a voz "com efeito" que o filtro devolve: a mesma, no anel dela
+                w = self.a.fx_escrito
+                self.voz_fx[np.arange(w, w + k) % injeta.VOZ_QUADROS] = self.voz[np.arange(fim, fim + k) % injeta.VOZ_QUADROS]
+                self.a.fx_escrito = w + k
             prox += 0.01
             time.sleep(max(0.0, prox - time.perf_counter()))
 
@@ -104,14 +109,18 @@ class MotorFalso:
     ordem; a voz crua que volta fica guardada."""
 
     def __init__(self, alvo=ALVO):
-        self.n, self.mic_mute, self.error, self._fx = 0, False, None, None
-        self._alvo, self._voz_anel_em, self.voz = alvo, -1e9, []
+        self.n, self.mic_mute, self.error, self._fx, self.effect = 0, False, None, None, "nenhum"
+        self._fx_filtro = self._fx_pendente = False
+        self._alvo, self._voz_anel_em, self.voz, self.voz_fx = alvo, -1e9, [], []
 
     def voz_pelo_app(self):
         return eng.Engine.voz_pelo_app(self)
 
     def _push_mic(self, x):
         self.voz.append(x.copy())
+
+    def _push_voz_fx(self, x):
+        self.voz_fx.append(x.copy())
 
     def _mixa(self, frames):
         x = (np.arange(self.n, self.n + frames) % 100000).astype(np.float32) / 100000
@@ -225,6 +234,42 @@ class TestaMicrofone(unittest.TestCase):
         e.mic_mute = False
         e.set_effect("nenhum")
         self.assertFalse(e.voz_pelo_app())
+
+    def test_efeito_no_filtro_ou_pelo_app(self):
+        """O efeito que o filtro roda vai como preset e a voz nao passa pelo app; enquanto o filtro nao responde, a voz
+        crua segue; sem resposta em PRESET_ESPERA_S, ou com o filtro recusando, a voz vai pelo app."""
+        anel = AnelFalso()
+        anel.liga(voz_taxa=48000)
+        motor = MotorFalso()
+        inj = eng.Injetor(motor)
+        a = anel.a
+        try:
+            time.sleep(0.2)
+            motor.effect, motor._fx = "eco", object()
+            time.sleep(0.05)
+            self.assertGreater(a.preset_n, 0, "o preset do eco nao foi pro anel")
+            self.assertEqual(a.preset_seq % 2, 0, "o seqlock ficou aberto")
+            self.assertEqual(a.sem_voz, 0, "esperando o filtro, a voz crua segue")
+            time.sleep(eng.PRESET_ESPERA_S + 0.1)
+            self.assertEqual(a.sem_voz, 1, "o filtro nao respondeu: a voz tinha que ir pelo app")
+            self.assertFalse(inj.estado()["efeito_no_filtro"])
+            a.preset_erro, a.preset_feito = 0, a.preset_seq  # o filtro montou
+            time.sleep(0.05)
+            self.assertTrue(inj.estado()["efeito_no_filtro"])
+            self.assertEqual(a.sem_voz, 0, "com o efeito no filtro a voz nao passa pelo app")
+            self.assertTrue(motor.voz_fx, "a voz com efeito que o filtro devolve nao chegou ao motor")
+            motor.effect = "robo"  # outro efeito: preset novo, e o filtro recusa
+            time.sleep(0.05)
+            a.preset_erro, a.preset_feito = 1, a.preset_seq
+            time.sleep(0.05)
+            self.assertEqual(a.sem_voz, 1, "o filtro recusou: a voz vai pelo app")
+            motor.effect, motor._fx = "nenhum", None
+            time.sleep(0.05)
+            self.assertEqual(a.preset_n, 0, "sem efeito o preset sai do anel")
+            self.assertEqual(a.sem_voz, 0)
+        finally:
+            inj.para()
+            anel.desliga()
 
     def test_microfone_do_motor_cede_a_voz_do_filtro(self):
         e = eng.Engine(mic="x", monitor="")

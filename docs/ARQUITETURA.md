@@ -26,16 +26,26 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   microfone, no ritmo dele; sem leitor do alvo, anda pelo relógio do PC e a música segue no
   fone. A voz crua que volta (reamostrada para 48 kHz) alimenta o medidor, o ouvir a própria voz,
   a mina e o efeito; o microfone que o motor abre só fica de reserva para quando ela não chega.
-  Sem efeito e sem corte, a voz crua segue no microfone; com efeito ou com a voz cortada, o app
-  manda o pulso "sem voz" e a voz dele vai no anel, e o filtro só tira a crua com o pulso vivo,
-  então a Vitrola que cai não deixa o microfone mudo nem com a voz de robô. Quem pendura é o
+  Sem efeito e sem corte, a voz crua segue no microfone. O efeito de voz roda no próprio filtro:
+  o `preset.py` lê o efeito do `fx.py` e monta o preset (as etapas, com os coeficientes
+  projetados pelo scipy na taxa do microfone), o `Injetor` escreve no anel e a DLL monta a
+  cadeia (`apo/voz.h`, numa memória separada no LockForProcess) e passa a voz por ela no mesmo
+  bloco, sem atraso além do do efeito (pelo app eram 50 a 60 ms, `dev/mede_voz.py`), devolvendo a
+  voz com efeito ao app para o fone e o medidor. Enquanto o filtro não responde ao preset (até
+  200 ms) a voz crua segue; efeito com etapa que o filtro não roda, ou preset recusado, vai pelo
+  caminho antigo: o app manda o pulso "sem voz" e a voz dele vai no anel. A voz cortada também
+  vai pelo pulso. O filtro só tira a crua e só aplica o efeito com o pulso vivo, então a Vitrola
+  que cai não deixa o microfone mudo nem com a voz de robô. Quem pendura é o
   instalador (administrador, `vitrola.exe --microfone instala-todos --tarefa`), que também cria a
   tarefa do Windows `\Vitrola\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
   pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
   prepara, sem UAC, um microfone que apareceu depois. Ao desinstalar, o original de todo
   microfone volta e a tarefa sai. O nome do microfone é o do Windows (Core Audio, casado pelo id
   do aparelho): o montado do registro perde o "2- " que o Windows põe quando há dois aparelhos com
-  o mesmo nome. `dev/testa_microfone.py` testa o motor contra um anel falso, sem som.
+  o mesmo nome. `dev/testa_microfone.py` testa o motor contra um anel falso, sem som;
+  `dev/testa_filtro.py` roda o `micfx.cpp` de verdade fora do audiodg (a `banca_filtro.dll` do
+  `apo\compila.bat teste`, com o anel num nome só do teste); `dev/testa_voz.py` confere cada
+  efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a amostra, e em outras taxas.
 - `batida.py`: andamento e grade de batidas de um trecho de música para a passagem no tempo
   (força dos ataques, autocorrelação com dois juízes contra a confusão de 3/4 do tempo, a caixa
   como terceiro juiz, o bumbo escolhendo entre batida e contratempo, pente de batidas afinado),
@@ -105,7 +115,11 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   alto-falante estourado, e o locutor caricato, um modo do Locutor que fica fora da lista e o tema
   liga pelo botão CARICATO do pedal), aplicados na voz antes da mistura, com o volume compensado
   para a troca não sumir nem estourar; o tom é mudado em casa porque o da pedalboard
-  atrasa 1 s. O efeito sempre começa desligado quando o servidor sobe. Banco de teste:
+  atrasa 1 s. O `fx.py` é a definição de cada efeito e a referência: no microfone do jogo quem
+  roda é o filtro (`microfone/preset.py` -> `apo/voz.h`), com a mesma conta, e as etapas da
+  pedalboard foram reescritas lá pela fórmula de cada uma e conferidas contra ela. Etapa nova
+  sem par no `voz.h` leva o efeito pelo caminho do app até ganhar o seu. O efeito sempre começa
+  desligado quando o servidor sobe. Banco de teste:
   `python dev/efeitos.py` (grava um .wav por efeito em `logs/efeitos/` para ouvir).
 - O pedal da mina: um módulo `mina` opcional, que não mora neste repo. Onde ele está ao lado do
   código, o `fx.py` põe o pedal "Mina DJ" no lugar do alto-falante estourado e o `engine.py` o

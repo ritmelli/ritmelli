@@ -197,6 +197,7 @@ class PassaAlta:
     """Passa-alta Butterworth com estado entre blocos: tira o ronco abaixo da voz."""
 
     def __init__(self, corte, ordem=4):
+        self.corte, self.ordem = corte, ordem  # o preset do filtro (microfone/preset.py) projeta de novo na taxa do microfone
         self.sos = signal.butter(ordem, corte, btype="high", fs=SR, output="sos")
         self.zi = np.zeros((self.sos.shape[0], 2))
 
@@ -210,6 +211,7 @@ class FiltroBanda:
     da faixa, o que o filtro de 6 dB/oitava da pedalboard nao faz."""
 
     def __init__(self, lo, hi, ordem=6):
+        self.lo, self.hi, self.ordem = lo, hi, ordem
         self.sos = signal.butter(ordem, [lo, hi], btype="band", fs=SR, output="sos")
         self.zi = np.zeros((self.sos.shape[0], 2))
 
@@ -312,7 +314,9 @@ class Efeito:
     def _etapa(f):
         if isinstance(f, (list, tuple)):
             placa = pb.Pedalboard(list(f))
-            return lambda x: placa(x.reshape(1, -1), SR, reset=False)[0]
+            etapa = lambda x: placa(x.reshape(1, -1), SR, reset=False)[0]  # noqa: E731
+            etapa.placa = placa  # o preset do filtro (microfone/preset.py) le os plugins daqui
+            return etapa
         return f
 
     def __call__(self, x):
@@ -354,6 +358,7 @@ class PassaBaixa(PassaAlta):
     """Passa-baixa Butterworth com estado entre blocos."""
 
     def __init__(self, corte, ordem=8):
+        self.corte, self.ordem = corte, ordem
         self.sos = signal.butter(ordem, corte, btype="low", fs=SR, output="sos")
         self.zi = np.zeros((self.sos.shape[0], 2))
 
@@ -405,6 +410,7 @@ class Multibanda:
     em baixo e alto), passa cada faixa pelo seu compressor e soma."""
 
     def __init__(self, cortes, comps):
+        self.cortes = tuple(cortes)
         bw = lambda f, t: signal.butter(2, f, btype=t, fs=SR, output="sos")
         self.pares = [(np.vstack([bw(c, "low")] * 2), np.vstack([bw(c, "high")] * 2)) for c in cortes]
         self.zi = [[np.zeros((lo.shape[0], 2)), np.zeros((hi.shape[0], 2))] for lo, hi in self.pares]

@@ -3,8 +3,10 @@
 O `server.py` toca áudio no microfone do jogo: o arquivo (e a voz da mina) vai para o filtro
 da Vitrola, que soma no microfone escolhido, dentro do áudio do Windows, e só o arquivo vai para
 o fone, para o usuário ouvir o som sem ouvir a própria voz. O jogo usa o mesmo microfone. A voz
-crua volta do filtro para o servidor (medidor, ouvir a própria voz, efeito): sem efeito ela
-segue no microfone; com efeito ou cortada (`mic_mute`), o servidor põe a dele no lugar. Toda
+crua volta do filtro para o servidor (medidor, ouvir a própria voz): sem efeito ela segue no
+microfone; o efeito de voz roda no próprio filtro, sem atraso, e a voz com efeito volta para o
+fone; cortada (`mic_mute`), ou com um efeito que o filtro não roda, o servidor põe a dele no
+lugar. Toda
 interface é um tema em `themes/<slug>/` que fala só com esta API.
 
 ## Tema
@@ -53,7 +55,7 @@ reconecta sozinho; mostre que está reconectando.
  "por_cima": [{"id": "...", "title": "..."}],
  "devices": {"mic": "default", "monitor": "default"},
  "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
- "microfone": {"anel": true, "leitores": 1, "preparando": null},
+ "microfone": {"anel": true, "leitores": 1, "preparando": null, "efeito_no_filtro": false},
  "error": null ou "texto",
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
  "versao": "0.1.0",
@@ -148,7 +150,8 @@ reconecta sozinho; mostre que está reconectando.
 - `microfone` = o filtro no microfone em uso: `anel` = a memória do filtro aberta, `leitores` =
   quantos filtros do microfone em uso estão lendo (0 = a música não chega nele), `preparando` =
   o microfone que o Windows está preparando para a Vitrola agora (a tarefa do instalador; o som
-  do PC some uns segundos), ou `null`.
+  do PC some uns segundos), ou `null`; `efeito_no_filtro` = o efeito de voz ativo roda no filtro
+  (sem atraso); `false` com efeito ligado = ele vai pelo servidor, com ~50 ms de atraso.
 
 **Item** (biblioteca):
 ```json
