@@ -4643,7 +4643,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       <span class="em-uso" id="dd-mon-uso"></span>
     </label>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
-      <span>Use este mesmo microfone no jogo e nas chamadas de voz. No Discord, em Configurações de usuário &gt; Voz e vídeo, escolha o perfil de entrada <b>Estúdio</b>: os outros perfis podem cortar a música.</span></div>
+      <span>Use este mesmo microfone no jogo e nas chamadas de voz. No Discord, em Configurações de usuário &gt; Voz e vídeo, o microfone é o Dispositivo de entrada. Ali, escolha também o perfil de entrada <b>Estúdio</b>: os outros perfis podem cortar a música.</span></div>
     <p class="msg-dlg" id="dd-msg" role="status"></p>
     <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
   </form>
@@ -4662,9 +4662,9 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
         <button class="btn" type="button" id="db-trocar">Trocar</button>
       </li>
       <li>
-        <h3>Use o mesmo microfone no jogo</h3>
-        <p>Nas configurações de áudio do jogo e do programa de chamada, confira se o microfone é o mesmo do passo 1. Se não for, troque.</p>
-        <p class="boas-dica">No Discord, em Configurações de usuário &gt; Voz e vídeo, escolha o perfil de entrada <b>Estúdio</b>: os outros perfis podem cortar a música.</p>
+        <h3>Use o mesmo microfone no jogo e na chamada</h3>
+        <p>Nas configurações de áudio do jogo e do programa de chamada, confira se o microfone é o mesmo do passo 1; se não for, troque. Para rever depois, use o botão Microfone e fone.</p>
+        <p class="boas-dica">No Discord, em Configurações de usuário &gt; Voz e vídeo, o microfone é o Dispositivo de entrada. Ali, escolha também o perfil de entrada <b>Estúdio</b>: os outros perfis podem cortar a música.</p>
       </li>
       <li>
         <h3>Toque a primeira música</h3>
@@ -4673,7 +4673,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       </li>
       <li>
         <h3>Conecte o celular (opcional)</h3>
-        <p>Controle a Vitrola pelo celular; ele precisa estar no mesmo Wi-Fi do PC. Se preferir, conecte depois pelo botão Celular.</p>
+        <p>Controle a Vitrola pelo celular; ele precisa estar na mesma rede de casa que o PC. Se preferir, conecte depois pelo botão Celular.</p>
         <button class="btn" type="button" id="db-cel">Conectar o celular</button>
       </li>
     </ol>
@@ -8563,7 +8563,7 @@ async function conferirBoasVindas() {
     const r = await api('GET', '/api/devices'), act = r.active || {}, cur = r.current || {};
     S.disp = r;
     // como no seletor de Microfone e fone: o jogo tambem mostra "Padrao", e e assim que a pessoa compara os dois
-    const nome = (escolha, ativo) => escolha === 'default' ? `Padrão do Windows (${ativo})` : ativo;
+    const nome = (escolha, ativo) => escolha === 'default' ? `${ativo}, o padrão do Windows` : ativo;
     $('#db-disp-l').className = `lampada ${act.mic ? 'acesa' : 'alerta'}`;
     if (act.mic) $('#db-disp').replaceChildren(
       el('span', null, `Microfone: ${nome(cur.mic || 'default', act.mic)}`),
