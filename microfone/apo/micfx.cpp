@@ -301,8 +301,14 @@ static MicFxAnel* AbreAnel(HANDLE* mapa) {
     return a;
 }
 
-// A vaga de leitor da musica no anel de uma instancia do filtro (o EFX/LFX e o hospedeiro do MFX): o anel aberto, a vaga,
-// o reamostrador na taxa do microfone e a soma do que o app escreveu
+// Um id por instancia do filtro (a vaga de leitor e as posses no anel); nunca 0
+static uint32_t NovoId() {
+    const uint32_t id = (uint32_t)InterlockedIncrement(&g_proximo_dono) ^ (GetCurrentProcessId() << 16);
+    return id ? id : 1;
+}
+
+// A parte de uma instancia do filtro (o EFX/LFX e o hospedeiro do MFX) no anel: o anel aberto, a vaga de leitor da
+// musica, o reamostrador na taxa do microfone e a soma do que o app escreveu, as posses da voz e o efeito de voz
 struct LeitorDoAnel {
     MicFxAnel* m_anel = nullptr;
     HANDLE m_mapa = nullptr;
@@ -311,6 +317,20 @@ struct LeitorDoAnel {
     uint32_t m_ep = 0;  // o hash do microfone desta instancia (Initialize); 0 = nao deu para saber
     float m_taxa = (float)MICFX_TAXA;
     Reamostra m_rs;
+    const uint32_t m_id = NovoId();  // quem e esta instancia nas posses (voz_dono, fx_dono)
+    // o efeito de voz (PreparaEfeito separa a memoria; LePreset monta a cadeia)
+    uint8_t* m_mem = nullptr;
+    size_t m_mem_bytes = 0;
+    uint8_t* m_preset = nullptr;
+    uint32_t m_preset_n = 0;
+    float* m_mono = nullptr;
+    uint8_t* m_arena = nullptr;
+    size_t m_arena_bytes = 0;
+    uint32_t m_seq = 1;
+    bool m_fx = false;
+    voz::Cadeia m_cadeia;
+
+    ~LeitorDoAnel() { delete[] m_mem; }
 
     // O microfone desta instancia e o alvo do app agora? (sem o hash, m_ep 0: age como o alvo)
     bool NoAlvo() const {
@@ -336,10 +356,7 @@ struct LeitorDoAnel {
         if (!m_anel || m_vaga >= 0) {
             return;
         }
-        m_dono = (uint32_t)InterlockedIncrement(&g_proximo_dono) ^ (GetCurrentProcessId() << 16);
-        if (!m_dono) {
-            m_dono = 1;
-        }
+        m_dono = NovoId();
         const int64_t agora = (int64_t)GetTickCount64();
         for (uint32_t v = 0; v < MICFX_LEITORES; v++) {
             MicFxLeitor& l = m_anel->leitor[v];
@@ -359,6 +376,7 @@ struct LeitorDoAnel {
 
     void SoltaAnel() {
         SoltaVaga();
+        SoltaPosses();
         if (m_anel) {
             UnmapViewOfFile(m_anel);
             m_anel = nullptr;
@@ -420,6 +438,141 @@ struct LeitorDoAnel {
         }
         return gerados > 0;
     }
+
+    // A posse de um papel no anel, a voz crua (voz_dono) ou a voz com efeito e a resposta ao preset (fx_dono): com o
+    // microfone aberto por dois programas o Windows monta duas cadeias, e so uma instancia escreve cada coisa pro app
+    // (#70). Fica com quem ja tem e bate; livre, ou com o dono parado ha mais de MICFX_BATIDA_MS (a cadeia dele travou
+    // ou sumiu sem soltar), a primeira instancia que chega pega
+    bool Pega(volatile uint32_t* dono, volatile int64_t* batida, int64_t agora) {
+        const uint32_t atual = *dono;
+        if (atual != m_id && atual != 0 && agora - *batida <= (int64_t)MICFX_BATIDA_MS) {
+            return false;
+        }
+        if (atual != m_id && InterlockedCompareExchange((volatile LONG*)dono, (LONG)m_id, (LONG)atual) != (LONG)atual) {
+            return false;
+        }
+        *batida = agora;
+        return true;
+    }
+
+    // Solta as posses desta instancia (a cadeia fechou, ou o microfone deixou de ser o alvo): outra assume no bloco
+    // seguinte
+    void SoltaPosses() {
+        if (m_anel) {
+            InterlockedCompareExchange((volatile LONG*)&m_anel->voz_dono, 0, (LONG)m_id);
+            InterlockedCompareExchange((volatile LONG*)&m_anel->fx_dono, 0, (LONG)m_id);
+        }
+    }
+
+    // O efeito que o app pediu esta montado no filtro: o dono do efeito respondeu o seq do preset, sem erro
+    static bool EfeitoMontado(const MicFxAnel* a) {
+        const uint32_t seq = a->preset_seq;
+        return a->preset_n != 0 && a->preset_feito == seq && a->preset_erro == voz::OK;
+    }
+
+    // A memoria do efeito de voz (fora do tempo real, no LockForProcess): a copia do preset, a voz mono do bloco e a
+    // Arena da cadeia na taxa desta instancia. Taxa nova = memoria nova e o preset se le de novo.
+    void PreparaEfeito() {
+        const size_t arena = voz::ArenaBytes(m_taxa);
+        const size_t bytes = MICFX_PRESET_BYTES + voz::MAX_BLOCO * sizeof(float) + arena;
+        if (!m_mem || m_mem_bytes != bytes) {
+            delete[] m_mem;
+            m_mem = new (std::nothrow) uint8_t[bytes];
+            m_mem_bytes = m_mem ? bytes : 0;
+        }
+        m_preset = m_mem;
+        m_mono = m_mem ? reinterpret_cast<float*>(m_mem + MICFX_PRESET_BYTES) : nullptr;
+        m_arena = m_mem ? m_mem + MICFX_PRESET_BYTES + voz::MAX_BLOCO * sizeof(float) : nullptr;
+        m_arena_bytes = m_mem ? arena : 0;
+        EsqueceEfeito();
+    }
+
+    // Sem efeito ate ler o preset de novo (seq impar nunca bate com um seq pronto)
+    void EsqueceEfeito() {
+        m_seq = 1;
+        m_fx = false;
+    }
+
+    // O preset que o app escreveu (seqlock): copia, confere que ninguem escreveu no meio e monta a cadeia. Responde no
+    // anel o seq lido e o resultado (so o dono do efeito responde: a voz_fx que o app le e a dele). Escrita no meio =
+    // tenta no proximo bloco.
+    void LePreset(MicFxAnel* a, bool responde) {
+        const uint32_t s1 = a->preset_seq;
+        if (s1 == m_seq || (s1 & 1)) {
+            return;
+        }
+        MemoryBarrier();
+        const uint32_t n = a->preset_n;
+        const bool cabe = n <= MICFX_PRESET_BYTES;
+        if (cabe && n && m_preset) {
+            memcpy(m_preset, const_cast<const uint8_t*>(a->preset), n);
+        }
+        MemoryBarrier();
+        if (a->preset_seq != s1) {
+            return;
+        }
+        m_seq = s1;
+        uint32_t erro = voz::OK;
+        m_fx = false;
+        if (!cabe) {
+            erro = voz::INVALIDO;
+        } else if (n && !m_mem) {
+            erro = voz::SEM_MEMORIA;
+        } else if (n) {
+            erro = m_cadeia.Carrega(m_preset, n, m_taxa, m_arena, m_arena_bytes);
+            m_fx = erro == voz::OK;
+            m_preset_n = n;
+        }
+        if (responde) {
+            a->preset_erro = erro;
+            MemoryBarrier();
+            a->preset_feito = s1;
+        }
+    }
+
+    // A voz com efeito no lugar da que entrou (todos os canais), devolvida ao app em voz_fx (so pelo dono do efeito,
+    // devolve); true se aplicou. Saiu algo nao finito: o bloco vira silencio e a cadeia se monta de novo do preset
+    // guardado (estado zerado).
+    bool Efeito(MicFxAnel* a, float* destino, UINT32 quadros, UINT32 canais, bool app_vivo, bool devolve) {
+        LePreset(a, devolve);
+        if (!m_fx || !app_vivo || !m_mono) {
+            return false;
+        }
+        const UINT32 c = canais ? canais : 1;
+        const float k = 1.0f / (float)c;
+        const unsigned int csr = _mm_getcsr();
+        _mm_setcsr(csr | 0x8040);  // denormal vira zero (FTZ e DAZ): cauda de reverb e filtro nao derrubam a CPU
+        int64_t w = a->fx_escrito;
+        for (UINT32 ini = 0; ini < quadros; ini += voz::MAX_BLOCO) {
+            const UINT32 n = quadros - ini < voz::MAX_BLOCO ? quadros - ini : voz::MAX_BLOCO;
+            float* d = &destino[(size_t)ini * c];
+            for (UINT32 i = 0; i < n; i++) {
+                float v = 0.0f;
+                for (UINT32 j = 0; j < c; j++) {
+                    v += d[i * c + j];
+                }
+                m_mono[i] = Finito(v * k);
+            }
+            if (!m_cadeia.Processa(m_mono, n)) {
+                m_fx = m_cadeia.Carrega(m_preset, m_preset_n, m_taxa, m_arena, m_arena_bytes) == voz::OK;
+            }
+            for (UINT32 i = 0; i < n; i++) {
+                if (devolve) {
+                    a->voz_fx[(w + i) & (MICFX_VOZ_QUADROS - 1)] = m_mono[i];
+                }
+                for (UINT32 j = 0; j < c; j++) {
+                    d[i * c + j] = m_mono[i];
+                }
+            }
+            w += n;
+        }
+        _mm_setcsr(csr);
+        if (devolve) {
+            MemoryBarrier();  // a voz antes do indice
+            a->fx_escrito = w;
+        }
+        return true;
+    }
 };
 
 // O motor de audio agrega o APO (cria com um IUnknown externo): as interfaces publicas delegam o IUnknown ao
@@ -429,18 +582,15 @@ class CMicFx : public CBaseAudioProcessingObject, public IAudioSystemEffects2, p
 public:
     explicit CMicFx(IUnknown* externo) : CBaseAudioProcessingObject(g_props), m_interno(this) {
         m_externo = externo ? externo : &m_interno;
-        m_id = (uint32_t)InterlockedIncrement(&g_proximo_dono) ^ (GetCurrentProcessId() << 16);
-        if (!m_id) {
-            m_id = 1;
-        }
         InterlockedIncrement(&g_objetos);
     }
     virtual ~CMicFx() {
-        SoltaVoz();
         SoltaAnel();
-        delete[] m_mem;
         InterlockedDecrement(&g_objetos);
     }
+
+    // A banca de teste: o microfone com o hospedeiro do MFX (no audiodg quem decide e o registro, no Initialize)
+    void BancaSoVoz(bool so_voz) { m_so_voz = so_voz; }
 
     // IUnknown das interfaces publicas: sempre pelo externo
     STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override { return m_externo->QueryInterface(riid, ppv); }
@@ -578,7 +728,6 @@ public:
     }
 
     STDMETHODIMP UnlockForProcess() override {
-        SoltaVoz();
         SoltaAnel();
         return CBaseAudioProcessingObject::UnlockForProcess();
     }
@@ -621,48 +770,28 @@ private:
         const uint32_t alvo = a->alvo;
         if (alvo == 0 || (m_ep != 0 && alvo != m_ep)) {  // microfone sem o hash (m_ep 0): age como o alvo
             SoltaVaga();
-            SoltaVoz();
+            SoltaPosses();
             EsqueceEfeito();
             return false;
         }
         const int64_t agora = (int64_t)GetTickCount64();
-        // com duas cadeias no mesmo microfone, so a dona da voz escreve a voz crua e a com efeito pro app (#70)
-        const bool dono = PegaVoz(a, agora);
-        if (dono) {
+        // o efeito e o corte so com o app vivo: a Vitrola que cai devolve a voz crua
+        const bool app_vivo = agora - a->batida_app < (int64_t)MICFX_APP_MS;
+        if (Pega(&a->voz_dono, &a->voz_batida, agora)) {  // duas cadeias no mesmo microfone: uma escreve (#70)
             EscreveVoz(a, destino, quadros);
         }
-        // o efeito so com o app vivo: a Vitrola que cai devolve a voz crua, como o sem_voz
-        const bool fx = Efeito(a, destino, quadros, agora - a->batida_app < (int64_t)MICFX_APP_MS, dono);
-        if (m_so_voz) {  // a musica entra pelo hospedeiro, depois do efeito do fabricante: aqui so a voz (cortada ou nao)
-            if (a->sem_voz != 0 && agora - a->batida_app < (int64_t)MICFX_APP_MS) {
+        if (m_so_voz) {
+            // o efeito e a musica entram no hospedeiro, depois do fabricante, que apagava partes do efeito como ruido
+            // (#78): aqui so a voz crua pro app. A voz cortada fica aqui, salvo com o efeito montado: ai a voz segue
+            // pro hospedeiro, que corta depois do efeito (ouvir a propria voz com efeito vale com ela cortada)
+            if (a->sem_voz != 0 && app_vivo && !EfeitoMontado(a)) {
                 ZeroMemory(destino, quadros * m_canais * sizeof(float));
             }
             SoltaVaga();
-            return fx;
+            return false;
         }
+        const bool fx = Efeito(a, destino, quadros, m_canais, app_vivo, Pega(&a->fx_dono, &a->fx_batida, agora));
         return SomaDoAnel(destino, quadros, m_canais, agora) || fx;
-    }
-
-    // A posse da voz (o dono escreve voz e voz_fx): fica com quem ja tem e bate; livre, ou com o dono parado ha mais
-    // de MICFX_BATIDA_MS (a cadeia dele travou ou sumiu sem soltar), a primeira instancia que chega pega
-    bool PegaVoz(MicFxAnel* a, int64_t agora) {
-        const uint32_t atual = a->voz_dono;
-        if (atual != m_id && atual != 0 && agora - a->voz_batida <= (int64_t)MICFX_BATIDA_MS) {
-            return false;
-        }
-        if (atual != m_id &&
-            InterlockedCompareExchange((volatile LONG*)&a->voz_dono, (LONG)m_id, (LONG)atual) != (LONG)atual) {
-            return false;
-        }
-        a->voz_batida = agora;
-        return true;
-    }
-
-    // Solta a posse da voz (a cadeia fechou, ou este microfone deixou de ser o alvo): outra assume no bloco seguinte
-    void SoltaVoz() {
-        if (m_anel) {
-            InterlockedCompareExchange((volatile LONG*)&m_anel->voz_dono, 0, (LONG)m_id);
-        }
     }
 
     // A voz crua do microfone para o app, mono e na taxa dele (o app reamostra): so o dono da voz escreve
@@ -682,126 +811,11 @@ private:
         a->voz_escrito = w + quadros;
     }
 
-    // A memoria do efeito de voz (fora do tempo real, no LockForProcess): a copia do preset, a voz mono do bloco e a
-    // Arena da cadeia na taxa deste microfone. Taxa nova = memoria nova e o preset se le de novo.
-    void PreparaEfeito() {
-        const size_t arena = voz::ArenaBytes(m_taxa);
-        const size_t bytes = MICFX_PRESET_BYTES + voz::MAX_BLOCO * sizeof(float) + arena;
-        if (!m_mem || m_mem_bytes != bytes) {
-            delete[] m_mem;
-            m_mem = new (std::nothrow) uint8_t[bytes];
-            m_mem_bytes = m_mem ? bytes : 0;
-        }
-        m_preset = m_mem;
-        m_mono = m_mem ? reinterpret_cast<float*>(m_mem + MICFX_PRESET_BYTES) : nullptr;
-        m_arena = m_mem ? m_mem + MICFX_PRESET_BYTES + voz::MAX_BLOCO * sizeof(float) : nullptr;
-        m_arena_bytes = m_mem ? arena : 0;
-        EsqueceEfeito();
-    }
-
-    // Sem efeito ate ler o preset de novo (seq impar nunca bate com um seq pronto)
-    void EsqueceEfeito() {
-        m_seq = 1;
-        m_fx = false;
-    }
-
-    // O preset que o app escreveu (seqlock): copia, confere que ninguem escreveu no meio e monta a cadeia. Responde no
-    // anel o seq lido e o resultado (so o dono da voz responde: a voz_fx que o app le e a dele). Escrita no meio =
-    // tenta no proximo bloco.
-    void LePreset(MicFxAnel* a, bool responde) {
-        const uint32_t s1 = a->preset_seq;
-        if (s1 == m_seq || (s1 & 1)) {
-            return;
-        }
-        MemoryBarrier();
-        const uint32_t n = a->preset_n;
-        const bool cabe = n <= MICFX_PRESET_BYTES;
-        if (cabe && n && m_preset) {
-            memcpy(m_preset, const_cast<const uint8_t*>(a->preset), n);
-        }
-        MemoryBarrier();
-        if (a->preset_seq != s1) {
-            return;
-        }
-        m_seq = s1;
-        uint32_t erro = voz::OK;
-        m_fx = false;
-        if (!cabe) {
-            erro = voz::INVALIDO;
-        } else if (n && !m_mem) {
-            erro = voz::SEM_MEMORIA;
-        } else if (n) {
-            erro = m_cadeia.Carrega(m_preset, n, m_taxa, m_arena, m_arena_bytes);
-            m_fx = erro == voz::OK;
-            m_preset_n = n;
-        }
-        if (responde) {
-            a->preset_erro = erro;
-            MemoryBarrier();
-            a->preset_feito = s1;
-        }
-    }
-
-    // A voz com efeito no lugar da crua (todos os canais), devolvida ao app em voz_fx (so pelo dono da voz, devolve);
-    // true se aplicou. Saiu algo nao finito: o bloco vira silencio e a cadeia se monta de novo do preset guardado
-    // (estado zerado).
-    bool Efeito(MicFxAnel* a, float* destino, UINT32 quadros, bool app_vivo, bool devolve) {
-        LePreset(a, devolve);
-        if (!m_fx || !app_vivo || !m_mono) {
-            return false;
-        }
-        const UINT32 c = m_canais ? m_canais : 1;
-        const float k = 1.0f / (float)c;
-        const unsigned int csr = _mm_getcsr();
-        _mm_setcsr(csr | 0x8040);  // denormal vira zero (FTZ e DAZ): cauda de reverb e filtro nao derrubam a CPU
-        int64_t w = a->fx_escrito;
-        for (UINT32 ini = 0; ini < quadros; ini += voz::MAX_BLOCO) {
-            const UINT32 n = quadros - ini < voz::MAX_BLOCO ? quadros - ini : voz::MAX_BLOCO;
-            float* d = &destino[(size_t)ini * c];
-            for (UINT32 i = 0; i < n; i++) {
-                float v = 0.0f;
-                for (UINT32 j = 0; j < c; j++) {
-                    v += d[i * c + j];
-                }
-                m_mono[i] = Finito(v * k);
-            }
-            if (!m_cadeia.Processa(m_mono, n)) {
-                m_fx = m_cadeia.Carrega(m_preset, m_preset_n, m_taxa, m_arena, m_arena_bytes) == voz::OK;
-            }
-            for (UINT32 i = 0; i < n; i++) {
-                if (devolve) {
-                    a->voz_fx[(w + i) & (MICFX_VOZ_QUADROS - 1)] = m_mono[i];
-                }
-                for (UINT32 j = 0; j < c; j++) {
-                    d[i * c + j] = m_mono[i];
-                }
-            }
-            w += n;
-        }
-        _mm_setcsr(csr);
-        if (devolve) {
-            MemoryBarrier();  // a voz antes do indice
-            a->fx_escrito = w;
-        }
-        return true;
-    }
-
     volatile LONG m_refs = 1;
     IUnknown* m_externo = nullptr;
-    uint32_t m_id = 0;  // quem e esta instancia na posse da voz (voz_dono); nunca 0
     UINT32 m_canais = 1;
-    bool m_so_voz = false;  // o microfone tem o hospedeiro do MFX: a musica vai por ele, aqui so a voz (Initialize)
-    // o efeito de voz (PreparaEfeito separa a memoria; LePreset monta a cadeia)
-    uint8_t* m_mem = nullptr;
-    size_t m_mem_bytes = 0;
-    uint8_t* m_preset = nullptr;
-    uint32_t m_preset_n = 0;
-    float* m_mono = nullptr;
-    uint8_t* m_arena = nullptr;
-    size_t m_arena_bytes = 0;
-    uint32_t m_seq = 1;
-    bool m_fx = false;
-    voz::Cadeia m_cadeia;
+    // o microfone tem o hospedeiro do MFX (Initialize): a musica e o efeito vao por ele, aqui so a voz crua
+    bool m_so_voz = false;
 };
 
 // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT: a musica so se soma em saida float32
@@ -809,8 +823,9 @@ static const GUID FORMATO_FLOAT = {0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00
 
 // O hospedeiro do MFX do fabricante (ver CLSID_Hospede). Cria o APO do fabricante na construcao (a vaga diz qual), e
 // so expoe as interfaces que ele expoe: o motor ve as mesmas respostas que veria dele (o APOInitSystemEffects3 se
-// ele tem o IAudioSystemEffects3, AEC, referencia do eco, notificacoes). Tudo passa direto; o APOProcess chama o dele e
-// soma a musica no que saiu, no formato de saida dele.
+// ele tem o IAudioSystemEffects3, AEC, referencia do eco, notificacoes). Tudo passa direto; o APOProcess chama o dele,
+// poe o efeito de voz no que saiu (o redutor de ruido do fabricante nao apaga mais o efeito, #78), corta a voz se o app
+// pediu e soma a musica, no formato de saida dele.
 class CMicFxHospede : public IAudioProcessingObject,
                       public IAudioProcessingObjectRT,
                       public IAudioProcessingObjectConfiguration,
@@ -994,13 +1009,15 @@ public:
             m_musica = f.guidFormatType == FORMATO_FLOAT && f.dwBytesPerSampleContainer == 4;
         }
         m_rs.Prepara((uint32_t)(m_taxa + 0.5f));
+        PreparaEfeito();
         PegaAnel();
         if (m_anel && !NoAlvo()) {
             SoltaVaga();
         }
         LogFormato("hospedeiro LockForProcess saida", nOut && ppOut && ppOut[0] ? ppOut[0]->pFormat : nullptr, hr);
-        Log("hospedeiro %d LockForProcess: musica %s, canais %u taxa %.0f, anel %s, vaga %d", m_vaga_hospede,
-            m_musica ? "sim" : "NAO (saida nao e float32)", m_canais, m_taxa, m_anel ? "ok" : "SEM", m_vaga);
+        Log("hospedeiro %d LockForProcess: musica e efeito %s, canais %u taxa %.0f, anel %s, vaga %d, "
+            "efeito %s (%u KB)", m_vaga_hospede, m_musica ? "sim" : "NAO (saida nao e float32)", m_canais, m_taxa, m_anel ? "ok" : "SEM",
+            m_vaga, m_mem ? "ok" : "SEM MEMORIA", (unsigned)(m_mem_bytes / 1024));
         return hr;
     }
     STDMETHODIMP UnlockForProcess() override {
@@ -1008,7 +1025,8 @@ public:
         return m_cfg->UnlockForProcess();
     }
 
-    // IAudioProcessingObjectRT. Tempo real: o fabricante processa, e a musica entra no que saiu dele
+    // IAudioProcessingObjectRT. Tempo real: o fabricante processa; no que saiu dele entram o efeito de voz, o corte da
+    // voz e a musica
     STDMETHODIMP_(void) APOProcess(UINT32 nIn, APO_CONNECTION_PROPERTY** ppIn, UINT32 nOut,
                                    APO_CONNECTION_PROPERTY** ppOut) override {
         m_rt->APOProcess(nIn, ppIn, nOut, ppOut);
@@ -1017,6 +1035,8 @@ public:
         }
         if (!NoAlvo()) {
             SoltaVaga();
+            SoltaPosses();
+            EsqueceEfeito();
             return;
         }
         APO_CONNECTION_PROPERTY* out = ppOut[0];
@@ -1026,10 +1046,19 @@ public:
             return;
         }
         const bool silencio = out->u32BufferFlags == BUFFER_SILENT;
+        const UINT32 amostras = quadros * m_canais;
         if (silencio) {  // marcado em silencio, o buffer pode ter qualquer coisa
-            ZeroMemory(destino, quadros * m_canais * sizeof(float));
+            ZeroMemory(destino, amostras * sizeof(float));
         }
-        if (SomaDoAnel(destino, quadros, m_canais, (int64_t)GetTickCount64())) {
+        MicFxAnel* a = m_anel;
+        const int64_t agora = (int64_t)GetTickCount64();
+        const bool app_vivo = agora - a->batida_app < (int64_t)MICFX_APP_MS;
+        bool som = Efeito(a, destino, quadros, m_canais, app_vivo, Pega(&a->fx_dono, &a->fx_batida, agora));
+        if (a->sem_voz != 0 && app_vivo) {  // a voz cortada: depois do efeito, que segue voltando ao app em voz_fx
+            ZeroMemory(destino, amostras * sizeof(float));
+        }
+        som = SomaDoAnel(destino, quadros, m_canais, agora) || som;
+        if (som) {
             out->u32BufferFlags = BUFFER_VALID;
         }
     }

@@ -41,14 +41,18 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   vai pelo pulso. O filtro só tira a crua e só aplica o efeito com o pulso vivo, então a Vitrola
   que cai não deixa o microfone mudo nem com a voz de robô. Com o microfone aberto por dois
   programas, o Windows pode montar duas cadeias, cada uma com a sua instância do filtro: as duas
-  põem o efeito e a música no próprio som, mas só uma, a dona da voz, escreve a voz crua e a com
-  efeito que voltam ao app; quando ela fecha, sai do alvo ou fica 500 ms sem bloco, a outra
+  põem o efeito e a música no próprio som, mas só uma escreve a voz crua e só uma escreve a com
+  efeito que voltam ao app; quando a dona fecha, sai do alvo ou fica 500 ms sem bloco, a outra
   assume (#70). Microfone de notebook com
   cancelamento de eco e redutor de ruído do fabricante no MFX (o da Fortemedia, #49) apagaria a
   música somada no EFX como ruído, e o Windows só aceita a peça de cancelamento de eco como a
   última da lista de MFX (nada nosso pode vir depois dela). Ali o `microfone.py` troca o último
   MFX do fabricante por um hospedeiro da mesma DLL, que carrega o APO do fabricante por dentro,
-  repassa tudo a ele e soma a música no que sai; o EFX desse microfone fica só com a voz. O
+  repassa tudo a ele e, no que sai, põe o efeito de voz, corta a voz quando o app pede e soma a
+  música; o EFX desse microfone fica só com a voz crua para o app. O efeito ia no EFX, antes do
+  fabricante, e o redutor apagava partes dele como ruído: o Rádio de polícia inteiro e a cauda da
+  Catedral (#78). Com o efeito montado, a voz cortada passa pelo fabricante e o hospedeiro corta
+  depois do efeito, então ouvir a própria voz com efeito segue valendo com ela cortada. O
   redutor segue ligado e a música chega igual no modo normal e no RAW. Quem pendura é o
   instalador (administrador, `vitrola.exe --microfone instala-todos --tarefa`), que também cria a
   tarefa do Windows `\Vitrola\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
@@ -59,7 +63,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   o mesmo nome. `dev/testa_microfone.py` testa o motor contra um anel falso, sem som;
   `dev/testa_filtro.py` roda o `micfx.cpp` de verdade fora do audiodg (a `banca_filtro.dll` do
   `apo\compila.bat teste`, com o anel num nome só do teste, duas cadeias no mesmo anel e o
-  hospedeiro do MFX com um fabricante falso por dentro); `dev/testa_mfx.py` confere as vagas de MFX num registro falso; `dev/testa_voz.py` confere cada
+  hospedeiro do MFX com um fabricante falso por dentro, sozinho e com o EFX na frente);
+  `dev/testa_mfx.py` confere as vagas de MFX num registro falso; `dev/testa_voz.py` confere cada
   efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a amostra, e em outras taxas.
 - `batida.py`: andamento e grade de batidas de um trecho de música para a passagem no tempo
   (força dos ataques, autocorrelação com dois juízes contra a confusão de 3/4 do tempo, a caixa

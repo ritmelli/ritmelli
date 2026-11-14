@@ -17,6 +17,11 @@ fabricante recebe o Initialize com o CLSID dele, o registro sai com o do hospede
 tem aparecem; a musica entra inteira DEPOIS do fabricante (e no lugar da voz cortada); fora do alvo so o fabricante
 age; a 44,1 kHz em estereo os dois canais passam; desmontado, o hospedeiro solta todas as referencias do fabricante.
 
+A cadeia inteira de um microfone com o hospedeiro (#78: o EFX so com a voz, o fabricante falso e o hospedeiro): o
+efeito entra depois do fabricante, que nao apaga mais o efeito; a voz crua do app e a de antes do fabricante e a com
+efeito e a do hospedeiro; com a voz cortada e o efeito montado, a voz passa pelo fabricante, o hospedeiro corta depois
+do efeito e a voz com efeito segue voltando ao app; sem efeito, o EFX corta.
+
     microfone\\apo\\compila.bat teste
     python dev/testa_filtro.py
 
@@ -43,6 +48,7 @@ _dll.banca_cria.argtypes = (ctypes.c_wchar_p, ctypes.c_float, ctypes.c_uint, cty
 _dll.banca_bloco.argtypes = (ctypes.c_void_p, _P, _P, ctypes.c_uint, ctypes.c_int)
 _dll.banca_bloco.restype = ctypes.c_int  # 1 = a saida marcada BUFFER_SILENT
 _dll.banca_destroi.argtypes = (ctypes.c_void_p,)
+_dll.banca_so_voz.argtypes = (ctypes.c_void_p, ctypes.c_int)
 
 
 class Banca:
@@ -331,6 +337,13 @@ class BancaHospede(Banca):
             _dll.banca_hospede_bloco(self.h, e.ctypes.data_as(_P), s.ctypes.data_as(_P), self.bloco, 0)
         return sai
 
+    def um_bloco(self, x, silencio=False):
+        """Um bloco so pelo hospedeiro (x mono); devolve (saida do canal 0, None: a marca da saida nao volta)."""
+        ent = np.ascontiguousarray(np.repeat(np.asarray(x, np.float32)[:, None], self.canais, axis=1))
+        sai = np.zeros_like(ent)
+        _dll.banca_hospede_bloco(self.h, ent.ctypes.data_as(_P), sai.ctypes.data_as(_P), len(x), 1 if silencio else 0)
+        return sai[:, 0], None
+
     def info(self):
         r = (ctypes.c_int * 6)()
         _dll.banca_hospede_info(self.h, r)
@@ -401,6 +414,84 @@ class TestaHospede(unittest.TestCase):
         sobra = self.b.fecha()
         self.b = None
         self.assertEqual(sobra, 1, "o hospedeiro nao soltou todas as referencias do fabricante")
+
+
+
+class TestaEfeitoNoHospedeiro(unittest.TestCase):
+    """O microfone com o hospedeiro do MFX inteiro: o EFX (so a voz crua), o fabricante falso (o "redutor", que passa a
+    metade) e o hospedeiro, no mesmo anel (#78)."""
+
+    def setUp(self):
+        self.h = BancaHospede()
+        self.h.m.pulso(False)
+        self.m = self.h.m
+        self.e = Banca(mapa=self.h.mapa)
+        _dll.banca_so_voz(self.e.h, 1)
+
+    def tearDown(self):
+        self.e.fecha()
+        self.h.fecha()
+
+    def cadeia(self, x):
+        """x pela cadeia, bloco a bloco: devolve (o que o EFX passou ao fabricante, o que saiu do hospedeiro)."""
+        meio, fim = [], []
+        for i in range(0, len(x) - len(x) % 480, 480):
+            y, mudo = self.e.um_bloco(x[i:i + 480])
+            meio.append(y)
+            fim.append(self.h.um_bloco(y, mudo)[0])
+        return np.concatenate(meio), np.concatenate(fim)
+
+    def test_efeito_depois_do_fabricante(self):
+        p = preset.compila(fx.criar("eco"), 48000)
+        seq = self.m.preset(p)
+        self.m.voz()
+        self.m.voz_fx()
+        x = fala(0.3)
+        meio, y = self.cadeia(x)
+        self.assertEqual(self.m.preset_estado(), (seq, 0), "o hospedeiro nao montou o preset")
+        np.testing.assert_array_equal(meio, x[:len(meio)], "o EFX pos o efeito antes do fabricante")
+        esperado = em_blocos(voz.Cadeia(p, 48000), 0.5 * x, 480)
+        np.testing.assert_array_equal(y, esperado, "o efeito nao entrou depois do fabricante")
+        np.testing.assert_array_equal(self.m.voz()[0], x[:len(y)], "a voz crua do app e a de antes do fabricante")
+        np.testing.assert_array_equal(self.m.voz_fx()[0], esperado, "a voz com efeito do app e a do hospedeiro")
+        self.assertNotIn(self.m.a.voz_dono, (0, self.m.a.fx_dono), "o EFX tem a voz e o hospedeiro o efeito")
+        self.assertNotEqual(self.m.a.fx_dono, 0)
+
+    def test_voz_cortada_com_efeito_corta_depois_dele(self):
+        p = preset.compila(fx.criar("eco"), 48000)
+        seq = self.m.preset(p)
+        x = fala(0.3)
+        self.cadeia(x[:480])
+        self.assertEqual(self.m.preset_estado(), (seq, 0))
+        self.m.pulso(True)
+        self.m.voz_fx()
+        meio, y = self.cadeia(x[480:])
+        np.testing.assert_array_equal(meio, x[480:480 + len(meio)], "com o efeito montado a voz segue pro hospedeiro")
+        self.assertEqual(float(np.max(np.abs(y))), 0.0, "a voz cortada vazou")
+        esperado = em_blocos(voz.Cadeia(p, 48000), 0.5 * x, 480)[480:]
+        np.testing.assert_array_equal(self.m.voz_fx()[0], esperado,
+                                      "com a voz cortada, a voz com efeito tem que seguir voltando ao app")
+
+    def test_voz_cortada_sem_efeito_o_efx_corta(self):
+        self.m.pulso(True)
+        self.m.voz()
+        x = fala(0.1)
+        meio, y = self.cadeia(x)
+        self.assertEqual(float(np.max(np.abs(meio))), 0.0, "sem efeito no filtro, a voz cortada sai ja no EFX")
+        self.assertEqual(float(np.max(np.abs(y))), 0.0)
+        np.testing.assert_array_equal(self.m.voz()[0], x[:len(meio)], "a voz crua segue indo ao app")
+
+    def test_musica_e_efeito_no_hospedeiro(self):
+        p = preset.compila(fx.criar("robo"), 48000)
+        self.m.preset(p)
+        x = fala(0.5)
+        self.cadeia(x[:480])  # o primeiro bloco pega a vaga de leitor e monta o preset
+        musica = (0.1 * np.sin(2 * np.pi * 440 * np.arange(9600) / 48000)).astype(np.float32)
+        self.m.escreve(np.repeat(musica[:, None], 2, axis=1))
+        _, y = self.cadeia(x[480:480 + 9600])
+        com_efeito = em_blocos(voz.Cadeia(p, 48000), 0.5 * x, 480)[480:480 + 9600]
+        np.testing.assert_allclose(y, np.clip(com_efeito + musica, -0.9, 0.9), atol=1e-6,
+                                   err_msg="a musica entra depois do efeito, sem passar por ele")
 
 
 if __name__ == "__main__":

@@ -50,7 +50,8 @@ class Anel(ctypes.Structure):
                 ("fx_escrito", ctypes.c_int64), ("preset_seq", ctypes.c_uint32), ("preset_n", ctypes.c_uint32),
                 ("preset_feito", ctypes.c_uint32), ("preset_erro", ctypes.c_uint32),
                 ("voz_fx", ctypes.c_float * VOZ_QUADROS), ("preset", ctypes.c_uint8 * PRESET_BYTES),
-                ("voz_dono", ctypes.c_uint32), ("reservado2", ctypes.c_uint32), ("voz_batida", ctypes.c_int64)]
+                ("voz_dono", ctypes.c_uint32), ("fx_dono", ctypes.c_uint32), ("voz_batida", ctypes.c_int64),
+                ("fx_batida", ctypes.c_int64)]
 
 
 assert ctypes.sizeof(Leitor) == 32 and Anel.escrito.offset == 24 and Anel.batida_app.offset == 40
@@ -58,7 +59,8 @@ assert Anel.alvo.offset == 48 and Anel.voz_escrito.offset == 56 and Anel.leitor.
 assert Anel.dados.offset == 320 and Anel.voz.offset == 320 + QUADROS * CANAIS * 4
 assert Anel.fx_escrito.offset == 328000 and Anel.preset_seq.offset == 328008 and Anel.voz_fx.offset == 328024
 assert Anel.preset.offset == 328024 + VOZ_QUADROS * 4
-assert Anel.voz_dono.offset == 459096 and Anel.voz_batida.offset == 459104
+assert Anel.voz_dono.offset == 459096 and Anel.fx_dono.offset == 459100
+assert Anel.voz_batida.offset == 459104 and Anel.fx_batida.offset == 459112
 
 
 def hash_microfone(guid):

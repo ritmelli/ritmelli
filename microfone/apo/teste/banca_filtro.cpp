@@ -67,6 +67,11 @@ extern "C" __declspec(dllexport) int banca_bloco(void* h, float* entrada, float*
     return sai.u32BufferFlags == BUFFER_SILENT ? 1 : 0;
 }
 
+// a instancia passa a agir como o EFX de um microfone com o hospedeiro do MFX (so a voz crua; o efeito e no hospedeiro)
+extern "C" __declspec(dllexport) void banca_so_voz(void* h, int so_voz) {
+    static_cast<Banca*>(h)->apo->BancaSoVoz(so_voz != 0);
+}
+
 extern "C" __declspec(dllexport) void banca_destroi(void* h) {
     auto* b = static_cast<Banca*>(h);
     b->apo->UnlockForProcess();
