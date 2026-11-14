@@ -65,7 +65,7 @@ PRE_MAX = 2        # abertos antes ao mesmo tempo (o palpite torto da mina pode 
 MINA_FOLGA_S = 0.1  # a voz da mina (mina.py) chega em pedacos de 100 ms, com folga de rede: a fila vazia recomeca com isso
 MINA_FILA_MAX_S = 1.0  # fila dela maior que isso (a rede segurou e despejou): o silencio do comeco sai
 VIGIA_S = 2.0  # de quanto em quanto o vigia le a lista de aparelhos do Windows
-# o anel do filtro de microfone (microfone/injeta.py): INJ_FOLGA = blocos escritos a frente do microfone (~40 ms), a
+# o anel do filtro de microfone (microfone/injeta.py): INJ_FOLGA = blocos escritos a frente do microfone (~30 ms), a
 # folga contra a thread do Python atrasar; a voz crua que o filtro devolve vale como viva ate VOZ_VIVA_S sem chegar.
 # A thread pede ao Windows a prioridade de audio (MMCSS "Pro Audio", a que o PortAudio pede para o callback dele) e o
 # processo roda acima do normal (PROCESSO_ACIMA). Medido em 14/11 (dev/mede_folga.py --ciclo, uma troca de musica de
@@ -73,10 +73,13 @@ VIGIA_S = 2.0  # de quanto em quanto o vigia le a lista de aparelhos do Windows
 # ~5 ms; o que a atrasa e a troca de musica, por tres coisas: o kill do ffmpeg segurava o interpretador (ver mata), a
 # thread que segura o interpretador perdia a CPU para o jogo e a thread de audio esperava junto (inversao de prioridade:
 # paradas de ~90 ms com o dobro dos nucleos ocupados), e sem a prioridade de audio a propria thread acordava tarde. Com
-# os tres consertos, a pior parada em 26 trocas foi de 24 ms (com 50 ms de folga, antes, secava: o jogo ouvia o buraco);
-# com 30 ms de folga o anel chegou vazio 1 vez em 10 trocas com a CPU cheia, com 40 ainda sobram ~6 ms no pior caso.
+# os tres consertos (e sem console, como o executavel e o pythonw), a pior parada em 22 trocas foi de 6 ms, com a CPU cheia
+# e com o dobro dela (com 50 ms de folga, antes, secava: o jogo ouvia o buraco). Preso a um console, o Python pergunta ao
+# conhost a cada io.open (o Popen faz um por PIPE) e a cada thread nova, e com a CPU cheia o interpretador fica preso
+# ~10 a 25 ms (rastro do xperf, 14/11): por isso o soundboard.ps1 sobe pelo pythonw. 30 ms cobre ainda uma coleta grande
+# do coletor de lixo (~11 ms medida); 20 passou nas medidas, mas sem essa margem.
 # VOLTA_MS = casas de 1 ms do histograma das voltas da thread (a ultima junta as maiores)
-INJ_FOLGA = 4
+INJ_FOLGA = 3
 VOZ_VIVA_S = 0.2
 INJ_MMCSS = True
 PROCESSO_ACIMA = True
