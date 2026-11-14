@@ -1,5 +1,5 @@
-"""Soundboard do VRChat: servidor local que toca audio no microfone do jogo (pelo VB-Cable, ou direto no microfone
-pelo filtro da Vitrola em microfone/) e serve as interfaces de themes/. Contrato da API: API.md. Atende a propria maquina e o celular
+"""Soundboard do VRChat: servidor local que toca audio no microfone do jogo (pelo filtro da Vitrola, em microfone/) e
+serve as interfaces de themes/. Contrato da API: API.md. Atende a propria maquina e o celular
 pareado na rede de casa (para mexer enquanto joga; ver o pareamento.py).
 
     python server.py [--port 8799] [--no-browser] [--so-local]
@@ -615,8 +615,8 @@ class App:
         self.closing = False
         self.atualizacao = atu.Atualizacao()  # a versao nova (atualizacao.py); sem endereco e chave, fica parada
         cls = eng.MockEngine if mock else eng.Engine
-        self.engine = cls(mic=self.cfg.get("mic", "default"), out=self.cfg.get("out") or self._saida_padrao(),
-                          monitor=self.cfg.get("monitor", "default"))
+        self.cfg.pop("out", None)  # a saida pelo cabo saiu: a musica vai sempre pelo filtro do microfone
+        self.engine = cls(mic=self.cfg.get("mic", "default"), monitor=self.cfg.get("monitor", "default"))
         self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
         self.engine.religar_stream = self.religar_stream
         self.cfg.pop("mic_vol", None)  # o nivel da voz e o do Windows, que guarda sozinho (18/10)
@@ -633,30 +633,6 @@ class App:
         threading.Thread(target=self._vigia_capas, daemon=True).start()
         if self.atualizacao.ativa:
             threading.Thread(target=self.atualizacao.vigia, daemon=True).start()
-
-    @staticmethod
-    def _saida_padrao():
-        """A saida para o jogo de quem nunca escolheu: o cabo, se o VB-Cable esta instalado (como sempre foi), senao
-        direto no microfone, pelo filtro da Vitrola."""
-        try:
-            tem_cabo = any("cable input" in n.lower() for n in eng.list_devices()["outputs"])
-        except Exception:  # noqa: BLE001 - sem ler a lista, o de sempre
-            tem_cabo = True
-        return "CABLE Input" if tem_cabo else eng.MICROFONE
-
-    def filtro_microfone(self, acao, mic):
-        """Pendura (instala) ou tira (remove) o filtro da Vitrola do microfone, como administrador: o Windows pede a
-        permissao pelo UAC, e o audio do PC reinicia (uns 5 a 15 s). Depois reabre o audio daqui, que caiu junto.
-        Devolve {ok, erro}. No --mock, finge."""
-        if self.mock:
-            time.sleep(1.0)
-            return {"ok": True}
-        r = filtro.pede_admin(acao, mic)
-        try:
-            self.engine.set_devices()  # o audio do Windows reiniciou: os streams daqui morreram
-        except Exception as ex:  # noqa: BLE001 - o vigia tenta de novo; o motivo vai pra tela
-            self.engine.error = f"Não consegui reabrir o áudio depois do ajuste ({str(ex)[:160]})."
-        return r
 
     def snapshot(self):
         """Estado do motor mais a fila (A seguir), o Aleatorio, o Automatico e quantos discos o
@@ -678,7 +654,7 @@ class App:
 
     def save_cfg(self):
         e = self.engine
-        self.cfg.update(mic=e.devices["mic"], out=e.devices["out"], monitor=e.devices["monitor"],
+        self.cfg.update(mic=e.devices["mic"], monitor=e.devices["monitor"],
                         vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
                         voice_mon_vol=e.voice_mon_vol, auto=self.auto)
         save_json(self.cfg_path, self.cfg)
@@ -2139,43 +2115,25 @@ def build(app_state):
             return j_err(f"Não consegui recarregar os efeitos ({str(ex)[:200]}).", 500)
         return j_ok(effects=len(efeitos), effect=E.effect)
 
-    def _filtro_estado():
+    def _filtro_do_mic():
+        """O filtro no microfone em uso: {"filtro", "melhorias"} (null se nao deu para ler)."""
         try:
-            return filtro.estado_dados()
+            m = filtro.do_microfone(E.active.get("mic"))
         except Exception:  # noqa: BLE001 - sem ler o registro, a tela segue sem o estado do filtro
             return None
+        return {"filtro": m["filtro"], "melhorias": m["melhorias"]} if m else None
 
     @r.get("/api/devices")
     async def devices(_):
         d = await loop_().run_in_executor(pool, eng.list_devices_live)
-        f = await loop_().run_in_executor(pool, _filtro_estado)
-        return web.json_response({**d, "current": dict(E.devices), "active": dict(E.active), "microfone": eng.MICROFONE,
-                                  "filtro": f})
-
-    # o filtro de microfone (a saida sem cabo): pendurar ou tirar de um microfone pede administrador (o UAC aparece
-    # na tela do PC), entao so o PC pede, nunca o celular
-    @r.post("/api/microfone")
-    async def microfone(request):
-        if not do_pc(request):
-            return j_err("O filtro de microfone só se instala no PC.", 403)
-        b = await body(request)
-        acao, mic = b.get("acao"), b.get("mic")
-        if acao not in ("instala", "remove"):
-            return j_err('Faltou a ação ("instala" ou "remove").')
-        if acao == "instala" and not mic:
-            return j_err("Faltou o microfone.")
-        res = await loop_().run_in_executor(pool, lambda: A.filtro_microfone(acao, mic))
-        if not res.get("ok"):
-            return j_err(res.get("erro") or "Não deu para ajustar o filtro.")
-        f = await loop_().run_in_executor(pool, _filtro_estado)
-        return j_ok(filtro=f)
+        f = await loop_().run_in_executor(pool, _filtro_do_mic)
+        return web.json_response({**d, "current": dict(E.devices), "active": dict(E.active), "filtro": f})
 
     @r.post("/api/devices")
     async def set_devices(request):
         b = await body(request)
         try:
-            await loop_().run_in_executor(pool, lambda: E.set_devices(
-                mic=b.get("mic"), out=b.get("out"), monitor=b.get("monitor")))
+            await loop_().run_in_executor(pool, lambda: E.set_devices(mic=b.get("mic"), monitor=b.get("monitor")))
         except ValueError as ex:  # mensagem nossa, ja em portugues
             return j_err(str(ex)[:300])
         except Exception as ex:  # noqa: BLE001 - PortAudio fala ingles
@@ -2184,7 +2142,7 @@ def build(app_state):
         A.save_cfg()
         return j_ok()
 
-    # as boas-vindas da primeira vez, so no PC: e nele que se instala o cabo e se escolhe o microfone
+    # as boas-vindas da primeira vez, so no PC: e nele que se escolhe o microfone e o fone
     @r.get("/api/boas-vindas")
     async def boas_vindas(request):
         return web.json_response({"mostrar": do_pc(request) and A.boas_vindas_pendentes()})
@@ -2425,7 +2383,7 @@ def main():
     A = App(a.port, Path(a.data_dir), mock=a.mock)
     threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
-    print(f"mic: {d['mic']} | cabo: {d['out']} | fone: {d['monitor'] or '-'}", flush=True)
+    print(f"mic: {d['mic']} | fone: {d['monitor'] or '-'}", flush=True)
     url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
     print(f"Vitrola {VERSAO} em {url}{' (MOCK, sem som)' if a.mock else ''} | dados em {pastas.DADOS}", flush=True)
     if not a.no_browser:

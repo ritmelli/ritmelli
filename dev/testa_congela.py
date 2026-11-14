@@ -2,7 +2,7 @@
 pra sempre e a vitrola ficou carregando): com o ffmpeg de verdade e o leitor do motor (Engine._reader), um servidor
 http local manda o comeco do disco e para de mandar sem fechar a conexao, e para sempre naquele endereco (o pior caso:
 o endereco morreu). O ffmpeg reconecta uma vez depois de STREAM_SEM_DADO_S sem nada, congela de novo e desiste; o
-religar (o do servidor, imitado aqui com a espera de um endereco novo) troca a fonte, e um consumidor no ritmo do cabo
+religar (o do servidor, imitado aqui com a espera de um endereco novo) troca a fonte, e um consumidor no ritmo do microfone
 (10 ms por bloco, o mesmo que o _out_cb tira da fila) conta cada bloco que faltou. O som tocado tem que ser o disco
 inteiro, amostra por amostra, sem buraco.
 
@@ -105,7 +105,7 @@ def _disco(dur_s, corte_s):
 def _toca(dur_s, corte_s, folga, sem_dado_s, atraso_s):
     """Toca um disco de dur_s que congela em corte_s; volta (som tocado, faltas depois do comeco, religares, ruido)."""
     with _disco(dur_s, corte_s) as (base, _, ruido):
-        e = eng.Engine("default", "default", "")
+        e = eng.Engine("default", "")
         e._onda_pede = lambda *a: None
         e._onda_acumulador = lambda tr: None
         religou = []
@@ -126,7 +126,7 @@ def _toca(dur_s, corte_s, folga, sem_dado_s, atraso_s):
             e.load(tr)
             prox = time.perf_counter()
             teto = prox + dur_s + 60
-            while time.perf_counter() < teto:  # o cabo: um bloco de 10 ms a cada 10 ms
+            while time.perf_counter() < teto:  # o microfone: um bloco de 10 ms a cada 10 ms
                 prox += eng.BLOCK / eng.SR
                 time.sleep(max(0.0, prox - time.perf_counter()))
                 with e._qlock:

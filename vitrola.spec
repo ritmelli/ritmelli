@@ -20,8 +20,8 @@ datas = [
     ("icone/toque.png", "icone"),
 ]
 datas += collect_data_files("ytmusicapi")  # os idiomas (locales\): sem hook pronto
-# o filtro de microfone (a saida sem cabo, microfone/): o monta.ps1 compila antes de congelar; o microfone.py acha em
-# _internal\microfone e pendura pelo UAC
+# o filtro de microfone (microfone/): o monta.ps1 compila antes de congelar; o microfone.py acha em _internal\microfone,
+# e o instalador pendura em todo microfone
 MICFX = os.path.join(SPECPATH, "microfone", "apo", "saida", "micfx.dll")
 if not os.path.exists(MICFX):
     raise SystemExit(f"falta {MICFX}: rode o microfone\\apo\\compila.bat (o monta.ps1 roda)")

@@ -110,8 +110,8 @@ def grade(ts, p):
 
 
 A, B = faixa(args[0]), faixa(args[1])
-e = eng.Engine("x", "y", "")
-e.active = {"mic": "x", "out": "y", "monitor": ""}
+e = eng.Engine("x", "")
+e.active = {"mic": "x", "monitor": ""}
 e.vol = 1.0
 e.load(A, start=max(0.0, A["duration"] - 55))
 buf = np.zeros((eng.BLOCK, 2), np.float32)

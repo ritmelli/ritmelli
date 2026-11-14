@@ -18,7 +18,7 @@ switch ($Cmd) {
     foreach ($i in 1..40) { Start-Sleep -Milliseconds 250; if ($s = Get-State) { break } }
     if (-not $s) { "nao subiu; veja $logs\server.err"; Get-Content "$logs\server.err" -Tail 15; exit 1 }
     "ligado em $base/ | mic: $($s.active_devices.mic) | fone: $($s.active_devices.monitor)"
-    "no VRChat o microfone precisa ser CABLE Output (VB-Audio Virtual Cable)"
+    "no VRChat e no Discord, use o mesmo microfone (no Discord, o perfil Estudio)"
     if ($c = Get-Celular) { "celular (mesmo Wi-Fi): $c (o botao Celular da interface mostra o QR e o codigo)" }
     if (-not $NoBrowser) { Start-Process "$base/" }
   }
@@ -34,7 +34,7 @@ switch ($Cmd) {
         Where-Object { $_.CommandLine -and ($_.CommandLine.Contains("$here\vitrola.py") -or $_.CommandLine.Contains("$here\server.py")) } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     }
-    if (Get-State) { 'continua de pe'; exit 1 } else { 'desligado (a voz parou de passar pelo cabo)' }
+    if (Get-State) { 'continua de pe'; exit 1 } else { 'desligado (a musica parou de tocar no microfone)' }
   }
   'status' {
     $s = Get-State

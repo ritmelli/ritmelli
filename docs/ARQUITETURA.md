@@ -8,34 +8,41 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
 - `engine.py`: mistura em WASAPI 48 kHz, blocos de 10 ms; ffmpeg decodifica; voz com no
   máximo ~80 ms de atraso; `MockEngine` sem áudio para teste. O Windows converte os 48 kHz
   para a taxa de cada aparelho (sem isso, um aparelho a 44,1 kHz recusava o stream). Se o
-  áudio não abre ao ligar (sem o CABLE Input, por exemplo), o servidor sobe mesmo assim com o
+  áudio não abre ao ligar (sem microfone nenhum, por exemplo), o servidor sobe mesmo assim com o
   erro na tela e tenta de novo logo depois e quando a lista de aparelhos muda. Áudio de
   até 15 s (buzina, bordão) toca por cima da música em vez de trocar, e o posto nos Sons
   rápidos pela mão
   também, inteiro até 2 min: vários juntos, no volume da música,
   o repetido sai na hora (fica decodificado na memória), e o pausar e o parar calam todos.
-- `microfone/`: a saída sem cabo. O `apo/micfx.dll` é um efeito de áudio do Windows (APO) que o
-  `microfone.py` pendura nas vagas EFX e LFX de um microfone, guardando o original (e devolvendo no
-  remove); o Windows carrega a DLL dentro do `audiodg.exe`, e a cada bloco do microfone ela soma o
-  que o app deixou num anel de memória compartilhada (`anel.h`; o lado do app é o `injeta.py`),
-  bit a bit a 48 kHz e por um reamostrador sinc nas outras taxas. No motor, a saída
-  `"@microfone"` troca o stream do cabo pelo `Injetor`: uma thread chama o mesmo misturador
-  (`_mixa`) e escreve no anel ~50 ms à frente do microfone, no ritmo dele; sem nenhum app com o
-  microfone aberto, anda pelo relógio do PC e a música segue no fone. A voz não entra no anel (já
-  está no microfone); o cortar a voz vai pelo anel com o pulso do app, e o filtro só corta com o
-  pulso vivo, então a Vitrola que cai não deixa o microfone mudo. Pôr e tirar o filtro pede
-  administrador: o servidor roda o `vitrola.exe --microfone` pelo UAC, e o instalador atualiza a
-  DLL pendurada e, ao desinstalar, devolve o original de todo microfone. O nome do microfone é o
-  do Windows (Core Audio, casado pelo id do aparelho): o montado do registro perde o "2- " que o
-  Windows põe quando há dois aparelhos com o mesmo nome. `dev/testa_microfone.py` testa o motor
-  contra um anel falso, sem som.
+- `microfone/`: a saída para o jogo. O `apo/micfx.dll` é um efeito de áudio do Windows (APO) que
+  o `microfone.py` pendura nas vagas EFX e LFX de todo microfone do PC, guardando o original (e
+  devolvendo no remove); o Windows carrega a DLL dentro do `audiodg.exe`, uma instância por
+  microfone, e cada uma lê o GUID do microfone dela (PKEY_AudioEndpoint_GUID). Um anel de memória
+  compartilhada (`anel.h`; o lado do app é o `injeta.py`) liga as duas pontas: o app marca o
+  alvo (o hash do GUID do microfone escolhido) e só a instância do alvo age. Nela, a cada bloco
+  do microfone, a DLL copia a voz crua (mono, na taxa do microfone) para o app e soma a música
+  que o app deixou, bit a bit a 48 kHz e por um reamostrador sinc nas outras taxas. No motor, o
+  `Injetor` (uma thread) chama o misturador (`_mixa`) e escreve no anel ~50 ms à frente do
+  microfone, no ritmo dele; sem leitor do alvo, anda pelo relógio do PC e a música segue no
+  fone. A voz crua que volta (reamostrada para 48 kHz) alimenta o medidor, o ouvir a própria voz,
+  a mina e o efeito; o microfone que o motor abre só fica de reserva para quando ela não chega.
+  Sem efeito e sem corte, a voz crua segue no microfone; com efeito ou com a voz cortada, o app
+  manda o pulso "sem voz" e a voz dele vai no anel, e o filtro só tira a crua com o pulso vivo,
+  então a Vitrola que cai não deixa o microfone mudo nem com a voz de robô. Quem pendura é o
+  instalador (administrador, `vitrola.exe --microfone instala-todos --tarefa`), que também cria a
+  tarefa do Windows `\Vitrola\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
+  pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
+  prepara, sem UAC, um microfone que apareceu depois. Ao desinstalar, o original de todo
+  microfone volta e a tarefa sai. O nome do microfone é o do Windows (Core Audio, casado pelo id
+  do aparelho): o montado do registro perde o "2- " que o Windows põe quando há dois aparelhos com
+  o mesmo nome. `dev/testa_microfone.py` testa o motor contra um anel falso, sem som.
 - `batida.py`: andamento e grade de batidas de um trecho de música para a passagem no tempo
   (força dos ataques, autocorrelação com dois juízes contra a confusão de 3/4 do tempo, a caixa
   como terceiro juiz, o bumbo escolhendo entre batida e contratempo, pente de batidas afinado),
   com o motivo quando a medição não é firme.
 - `compasso.py`: as batidas e o 1 de cada compasso de um trecho pelo beat_this (rede da JKU,
   2024) em ONNX, sem PyTorch: mel em numpy com o filtro de reamostragem igual ao do treino,
-  onnxruntime em 2 threads (a rede roda fora do interpretador; o áudio do cabo não espera; só
+  onnxruntime em 2 threads (a rede roda fora do interpretador; o áudio não espera; só
   ABRIR o modelo segura o interpretador ~0,6 s, e por isso o motor abre ao ligar e não fecha),
   ~1,3 s para 30 s. Precisa de `pip install onnxruntime` e do modelo em
   `modelos/compasso.onnx` (~83 MB, no git), que sai do `dev/exporta_compasso.py`
@@ -104,7 +111,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   código, o `fx.py` põe o pedal "Mina DJ" no lugar do alto-falante estourado e o `engine.py` o
   liga e desliga com o pedal; sem ele, o app é o mesmo de sempre. O contrato: o engine chama
   `mina.Mina(engine)`, `liga()`, `desliga()`, `microfone(x)` (a voz crua de quem toca, só com
-  a voz indo pro jogo) e `tocou(x)`; o módulo devolve a voz pelo `mina_voz` (a fila do cabo e
+  a voz indo pro jogo) e `tocou(x)`; o módulo devolve a voz pelo `mina_voz` (a fila do jogo e
   do fone, com 0,1 s de folga de rede), cala pelo `mina_cala` e acha a API pela `porta` do
   engine. No `--mock` o pedal não liga.
 - `winvol.py`: o volume do microfone no Windows (IAudioEndpointVolume pelo comtypes); a "Voz"

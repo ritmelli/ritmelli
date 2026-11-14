@@ -3,7 +3,7 @@
 // O Windows carrega o filtro dentro do audiodg.exe, no caminho do microfone em que ele foi pendurado (o
 // microfone.py poe o nosso nas vagas EFX e LFX daquele microfone e guarda o original). A cada bloco de audio do
 // microfone (~10 ms), o APOProcess soma o que o app deixou no anel (anel.h): quem ouve aquele microfone (jogo, Discord)
-// recebe a voz e a musica juntas, sem cabo virtual.
+// recebe a voz e a musica juntas.
 //
 // Escrito a partir da documentacao publica da Microsoft (Audio Processing Objects, CBaseAudioProcessingObject).
 #include <windows.h>
@@ -12,6 +12,8 @@
 #include <audioenginebaseapo.h>
 #include <baseaudioprocessingobject.h>
 #include <audioengineextensionapo.h>
+#include <mmdeviceapi.h>
+#include <propidl.h>
 #include <new>
 #include <cmath>
 #include <cstdarg>
@@ -137,6 +139,50 @@ static inline float Dobra(float x) {
     return x < 0.0f ? -y : y;
 }
 
+// PKEY_AudioEndpoint_GUID: o GUID do microfone ("{a1b2c3d4-...}"), o mesmo nome da chave dele no registro
+static const PROPERTYKEY PKEY_GuidDoMicrofone = {
+    {0x1da5d803, 0xd492, 0x4edd, {0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e}}, 4};
+
+// O hash do microfone em que esta instancia foi pendurada (MicFxHash), e o GUID em texto pro log; 0 se nao deu. Pelas
+// propriedades do endpoint (o primeiro ponteiro depois da base em todas as versoes do APOInitSystemEffects); sem
+// elas, pelo ultimo aparelho da lista (o endpoint, no APOInitSystemEffects e no 2).
+static uint32_t HashDoMicrofone(UINT32 cb, BYTE* dados, char* txt, size_t n) {
+    txt[0] = '\0';
+    if (cb < sizeof(APOInitSystemEffects)) {
+        return 0;
+    }
+    auto* s1 = reinterpret_cast<APOInitSystemEffects*>(dados);
+    uint32_t h = 0;
+    if (s1->pAPOEndpointProperties) {
+        PROPVARIANT pv;
+        PropVariantInit(&pv);
+        if (SUCCEEDED(s1->pAPOEndpointProperties->GetValue(PKEY_GuidDoMicrofone, &pv)) && pv.vt == VT_LPWSTR &&
+            pv.pwszVal) {
+            h = MicFxHash(pv.pwszVal);
+            WideCharToMultiByte(CP_ACP, 0, pv.pwszVal, -1, txt, (int)n, nullptr, nullptr);
+        }
+        PropVariantClear(&pv);
+    }
+    const bool lista = cb == sizeof(APOInitSystemEffects) || cb == sizeof(APOInitSystemEffects2);
+    if (!h && lista && s1->pDeviceCollection) {
+        UINT k = 0;
+        IMMDevice* d = nullptr;
+        if (SUCCEEDED(s1->pDeviceCollection->GetCount(&k)) && k &&
+            SUCCEEDED(s1->pDeviceCollection->Item(k - 1, &d)) && d) {
+            LPWSTR id = nullptr;
+            if (SUCCEEDED(d->GetId(&id)) && id) {  // "{0.0.1.00000000}.{guid}": o guid e o que vem depois do ultimo '.'
+                const wchar_t* g = wcsrchr(id, L'.');
+                g = g ? g + 1 : id;
+                h = MicFxHash(g);
+                WideCharToMultiByte(CP_ACP, 0, g, -1, txt, (int)n, nullptr, nullptr);
+                CoTaskMemFree(id);
+            }
+            d->Release();
+        }
+    }
+    return h;
+}
+
 // {C17A1D48-D473-40D9-9ED3-D024AA46EBE2}
 static const CLSID CLSID_MicFx = {0xc17a1d48, 0xd473, 0x40d9, {0x9e, 0xd3, 0xd0, 0x24, 0xaa, 0x46, 0xeb, 0xe2}};
 
@@ -181,6 +227,7 @@ static MicFxAnel* AbreAnel(HANDLE* mapa) {
         a->leitores = MICFX_LEITORES;
         a->ganho = 1.0f;
         a->sem_voz = 0;
+        a->alvo = 0;
         MemoryBarrier();
         a->magia = MICFX_MAGIA;
     }
@@ -278,8 +325,10 @@ public:
                 modo = "so descoberta";
             }
         }
-        Log("Initialize: %u bytes, clsid %s, modo %s", cbDataSize, base->clsid == CLSID_MicFx ? "nosso" : "OUTRO",
-            modo);
+        char guid[64];
+        m_ep = HashDoMicrofone(cbDataSize, pbyData, guid, sizeof(guid));
+        Log("Initialize: %u bytes, clsid %s, modo %s, microfone %s (%08x)", cbDataSize,
+            base->clsid == CLSID_MicFx ? "nosso" : "OUTRO", modo, guid[0] ? guid : "?", m_ep);
         EnterCriticalSection(&m_CritSec);
         m_bIsInitialized = true;
         LeaveCriticalSection(&m_CritSec);
@@ -321,6 +370,9 @@ public:
         }
         m_rs.Prepara((uint32_t)(m_taxa + 0.5f));
         PegaAnel();
+        if (m_anel && (m_anel->alvo == 0 || (m_ep != 0 && m_anel->alvo != m_ep))) {
+            SoltaVaga();  // nao e o alvo agora: o anel fica aberto, e a vaga so com ele virando o alvo
+        }
         Log("LockForProcess: canais %u taxa %.0f, anel %s, vaga %d, reamostra %s (L %u M %u taps %u)", m_canais, m_taxa,
             m_anel ? "ok" : "SEM", m_vaga,
             m_rs.modo == Reamostra::DIRETO ? "direto" : (m_rs.modo == Reamostra::SINC ? "sinc" : "linear"), m_rs.L,
@@ -360,12 +412,19 @@ public:
     }
 
 private:
-    // Soma o que tem no anel em destino (quadros no formato do microfone); true se somou algo
+    // So no microfone alvo do app: devolve a voz crua (destino ainda e a entrada) e soma o que tem no anel em destino
+    // (quadros no formato do microfone); true se somou algo. Em qualquer outro microfone, nada muda e a vaga fica livre
     bool Soma(float* destino, UINT32 quadros) {
         MicFxAnel* a = m_anel;
         if (!a || a->magia != MICFX_MAGIA) {
             return false;
         }
+        const uint32_t alvo = a->alvo;
+        if (alvo == 0 || (m_ep != 0 && alvo != m_ep)) {  // microfone sem o hash (m_ep 0): age como o alvo
+            SoltaVaga();
+            return false;
+        }
+        EscreveVoz(a, destino, quadros);
         if (m_vaga < 0) {  // a vaga foi tomada (a instancia ficou muda tempo demais): tenta outra, sem alocar
             PegaAnel();
             if (m_vaga < 0) {
@@ -416,6 +475,30 @@ private:
         return gerados > 0;
     }
 
+    // A voz crua do microfone para o app, mono e na taxa dele (o app reamostra): so o filtro do alvo escreve
+    void EscreveVoz(MicFxAnel* a, const float* x, UINT32 quadros) {
+        const UINT32 c = m_canais ? m_canais : 1;
+        const float k = 1.0f / (float)c;
+        const int64_t w = a->voz_escrito;
+        for (UINT32 i = 0; i < quadros; i++) {
+            float v = 0.0f;
+            for (UINT32 j = 0; j < c; j++) {
+                v += x[i * c + j];
+            }
+            a->voz[(w + i) & (MICFX_VOZ_QUADROS - 1)] = Finito(v * k);
+        }
+        a->voz_taxa = (uint32_t)m_taxa;
+        MemoryBarrier();  // a voz antes do indice: o app so le ate voz_escrito
+        a->voz_escrito = w + quadros;
+    }
+
+    void SoltaVaga() {
+        if (m_anel && m_vaga >= 0) {
+            InterlockedCompareExchange((volatile LONG*)&m_anel->leitor[m_vaga].dono, 0, (LONG)m_dono);
+        }
+        m_vaga = -1;
+    }
+
     void PegaAnel() {
         if (!m_anel) {
             m_anel = AbreAnel(&m_mapa);
@@ -437,6 +520,7 @@ private:
                 l.lido = m_rs.MaisVelho();
                 l.batida = agora;
                 l.taxa = (uint32_t)m_taxa;
+                l.ep = m_ep;
                 m_vaga = (int)v;
                 return;
             }
@@ -444,10 +528,7 @@ private:
     }
 
     void SoltaAnel() {
-        if (m_anel && m_vaga >= 0) {
-            InterlockedCompareExchange((volatile LONG*)&m_anel->leitor[m_vaga].dono, 0, (LONG)m_dono);
-        }
-        m_vaga = -1;
+        SoltaVaga();
         if (m_anel) {
             UnmapViewOfFile(m_anel);
             m_anel = nullptr;
@@ -464,6 +545,7 @@ private:
     HANDLE m_mapa = nullptr;
     int m_vaga = -1;
     uint32_t m_dono = 0;
+    uint32_t m_ep = 0;  // o hash do microfone desta instancia (Initialize); 0 = nao deu para saber
     UINT32 m_canais = 1;
     float m_taxa = (float)MICFX_TAXA;
     Reamostra m_rs;

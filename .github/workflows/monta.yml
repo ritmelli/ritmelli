@@ -202,7 +202,7 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # o setup numa máquina limpa (outra máquina do GitHub: sem Python e sem o VB-Cable). Instala em silêncio, como a
+  # o setup numa máquina limpa (outra máquina do GitHub: sem Python e sem microfone). Instala em silêncio, como a
   # atualização pelo app, abre a Vitrola, confere a versão que ela responde e desinstala
   testa:
     needs: monta

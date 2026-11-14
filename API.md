@@ -1,12 +1,11 @@
 # Soundboard do VRChat: contrato da API e do tema
 
-O `server.py` toca áudio no microfone do jogo: arquivo + voz do usuário vão para o
-CABLE Input (o VRChat usa o CABLE Output como microfone) e só o arquivo vai para o fone,
-para o usuário ouvir o som sem ouvir a própria voz. Enquanto o servidor roda, a voz passa
-sempre, com ou sem arquivo tocando. Sem cabo, a saída `"out": "@microfone"` manda só o arquivo
-(e a voz da mina) para o filtro da Vitrola, que soma no microfone de verdade; a voz fica nele e
-não passa pelo servidor. Toda interface é um tema em `themes/<slug>/` que fala
-só com esta API.
+O `server.py` toca áudio no microfone do jogo: o arquivo (e a voz da mina) vai para o filtro
+da Vitrola, que soma no microfone escolhido, dentro do áudio do Windows, e só o arquivo vai para
+o fone, para o usuário ouvir o som sem ouvir a própria voz. O jogo usa o mesmo microfone. A voz
+crua volta do filtro para o servidor (medidor, ouvir a própria voz, efeito): sem efeito ela
+segue no microfone; com efeito ou cortada (`mic_mute`), o servidor põe a dele no lugar. Toda
+interface é um tema em `themes/<slug>/` que fala só com esta API.
 
 ## Tema
 
@@ -52,8 +51,9 @@ reconecta sozinho; mostre que está reconectando.
  "monitor_on": true, "loop": false,
  "effect": "nenhum", "voice_monitor": false, "voice_mon_vol": 0.8,
  "por_cima": [{"id": "...", "title": "..."}],
- "devices": {"mic": "default", "out": "CABLE Input", "monitor": "default"},
- "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "out": "CABLE Input (VB-Audio Virtual Cable)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
+ "devices": {"mic": "default", "monitor": "default"},
+ "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
+ "microfone": {"anel": true, "leitores": 1, "preparando": null},
  "error": null ou "texto",
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
  "versao": "0.1.0",
@@ -145,6 +145,10 @@ reconecta sozinho; mostre que está reconectando.
   termina em `ended`, com o texto em `error`: mostre `error` sempre que vier preenchido.
 - `error` já vem como frase pronta em português, com o que fazer; mostre como veio.
 - Fone em "nenhum" (`active_devices.monitor` vazio) torna `monitor_on` sem efeito.
+- `microfone` = o filtro no microfone em uso: `anel` = a memória do filtro aberta, `leitores` =
+  quantos filtros do microfone em uso estão lendo (0 = a música não chega nele), `preparando` =
+  o microfone que o Windows está preparando para a Vitrola agora (a tarefa do instalador; o som
+  do PC some uns segundos), ou `null`.
 
 **Item** (biblioteca):
 ```json
@@ -205,13 +209,12 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `POST /api/queue/play` | `{"qid": "..."}` | tira da fila e toca agora |
 | `PATCH /api/library/<id>` | `{"title": "..."}` e/ou `{"rapido": bool}` | renomeia; `rapido` põe ou tira o disco dos Sons rápidos do celular (os de até 15 s já estão lá sem isso) |
 | `DELETE /api/library/<id>` | - | apaga da biblioteca (e o arquivo); o disco no prato segue tocando e o arquivo dele sai quando o motor largar |
-| `GET /api/devices` | - | `{"inputs": [...], "outputs": [...], "default_input", "default_output", "current", "active", "microfone": "@microfone", "filtro"}`; `filtro` é `{"microfones": [{"nome", "filtro": bool}], "dll_app": bool, "desatualizado": bool ou null}` (null se não deu para ler) |
-| `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou "", "out"?: nome ou "@microfone"}` | troca dispositivo (reabre o áudio); `"@microfone"` = direto no microfone, sem cabo |
-| `POST /api/microfone` | `{"acao": "instala" ou "remove", "mic"?: nome}` | só no PC: põe (ou atualiza) e tira o filtro da Vitrola do microfone, como administrador (o UAC aparece na tela; o áudio do PC reinicia uns segundos e o servidor reabre o dele); responde `{"ok": true, "filtro"}` ou o erro (UAC recusado, por exemplo) |
+| `GET /api/devices` | - | `{"inputs": [...], "outputs": [...], "default_input", "default_output", "current", "active", "filtro"}`; `filtro` é `{"filtro": bool, "melhorias": bool}` do microfone em uso (o filtro pendurado nele, e as melhorias de áudio do Windows ligadas, sem as quais ele não carrega), ou null se não deu para ler |
+| `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou ""}` | troca dispositivo (reabre o áudio); microfone sem o filtro (apareceu depois da instalação) é preparado pela tarefa do instalador, sem UAC (ver `microfone.preparando`) |
 | `GET /api/boas-vindas` | - | `{"mostrar": bool}`: verdadeiro na primeira vez no PC (prateleira vazia e as boas-vindas nunca fechadas); pelo celular, sempre falso |
 | `POST /api/boas-vindas` | - | só no PC: as boas-vindas foram vistas e não voltam (fica no `config.json`) |
 | `GET /api/themes` | - | `[{"slug","url","name","direction","blurb"}]` |
-| `POST /api/shutdown` | - | desliga o servidor (a voz para de passar pelo cabo) |
+| `POST /api/shutdown` | - | desliga o servidor (a música para de tocar no microfone; a voz segue normal, sem efeito) |
 | `GET /api/lan` | - | `{"url": endereço do PC na rede de casa, ou null}` |
 | `POST /api/parear` | `{"codigo": "482913"}` (espaço vale) | o celular manda o código que o PC mostra; certo, responde com o cookie da chave; errado, 403 com o motivo |
 | `GET /api/pareamento?caminho=/t/<slug>/` | - | só no PC: `{"url", "codigo", "vale_s", "queimado", "qr", "celulares"}` (ver "Celular: pareamento") |
@@ -291,8 +294,8 @@ vem `false`.
    temas.
 6. Downloads em andamento com progresso e erro legível.
 7. Dispositivos: microfone (ou "padrão do Windows"), fone (padrão, um nome ou nenhum),
-   mostrando os nomes ativos; lembrete de que no VRChat o microfone precisa ser
-   "CABLE Output (VB-Audio Virtual Cable)".
+   mostrando os nomes ativos e se a música chega no microfone (`filtro`, `microfone`);
+   lembrete de que o jogo e o Discord usam o mesmo microfone (no Discord, o perfil Estúdio).
 8. Atalhos: espaço = tocar/pausar, 1 a 9 = pads, 0 = sem efeito de voz, Esc = parar
    (fora de campo de texto).
 9. Servidor fora do ar, erro de busca, `error` no Estado: dizer o que houve e o que fazer.
@@ -338,9 +341,8 @@ encostar em outro ponto da canaleta, sem querer ao rolar a página, não muda na
 teclado seguem como sempre (clicar na canaleta pula para lá).
 
 Na primeira vez no PC (`GET /api/boas-vindas`), a vitrola abre as boas-vindas: o passo a
-passo do caminho até o jogo (direto no microfone, com o botão que põe o filtro quando falta, ou
-o VB-Cable, conferido pelo `GET /api/devices`, com a página oficial da VB-Audio quando falta),
-do microfone e do fone, do microfone no VRChat, da busca e do celular. Fechar de
+passo do microfone e do fone, do microfone no VRChat (o mesmo, e no Discord o perfil Estúdio),
+da busca e do celular. Fechar de
 qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.
 
 ## Teste sem som
