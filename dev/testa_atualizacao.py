@@ -140,7 +140,7 @@ r.consultar()  # uma falha de rede antes, para o recusado ter o que zerar
 atu.MANIFESTO = certo
 publica(manifesto(app="outro"))
 caso("manifesto recusado nao conta como falha de rede: 6 h", r.consultar() is True and r.proxima() == atu.CONSULTA_CADA_S
-     and r.erro["key"] == "server.update.rejected" and "não é de uma versão" in r.erro["params"]["reason"], r.erro)
+     and r.erro["key"] == "server.update.rejected" and "not for a Vitrola version" in r.erro["params"]["reason"], r.erro)
 
 print("--- a vigia")
 dormiu, sleep = [], atu.time.sleep
