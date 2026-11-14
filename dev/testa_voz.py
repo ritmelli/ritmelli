@@ -153,6 +153,22 @@ def main(argv=None):
                 f"memoria {c.usado / 1024:.0f} KB de {cap48 / 1024:.0f}")
         confere(c.usado < 0.75 * cap48, f"{eid}: a memoria cabe com folga")
 
+    # a etapa Fdn sozinha (sem o tom e a distorcao do demonio na frente, que limitam a paridade do efeito): as salas do
+    # catalogo e uma que passa por todo o caminho (pre-atraso, 6 passos, modulacao funda, cortes diferentes). A conta e
+    # a mesma dos dois lados, entao a paridade e quase exata; o custo e o do filtro, com o ctypes junto
+    salas = [(eid, f) for eid in efeitos() for f in fx.criar(eid).depois if isinstance(f, fx.Fdn)]
+    salas.append(("fdn-completa", fx.Fdn(30, (2.0, 1.5, 0.6), cortes=(400, 3000), difusao_ms=50, passos=6, pre_ms=7,
+                                         mod_ms=1.0, cedo=0.5, molhado=0.2)))
+    for eid, f in salas:
+        e = fx.Efeito(depois=[f])
+        c = voz.Cadeia(preset.compila(e, SR), SR)
+        t0 = time.perf_counter()
+        y = em_blocos(c, x)
+        ms = (time.perf_counter() - t0) / (len(y) / B) * 1000
+        s = snr(em_blocos(e, x), y)
+        confere(c.finito and s >= 120, f"{eid}: a Fdn sozinha, paridade {s:.1f} dB (minimo 120)")
+        confere(ms < 0.3, f"{eid}: a Fdn custa {ms:.3f} ms por bloco de 10 ms (maximo 0,3)")
+
     # o radio inteiro: o som do canal (chiado, squelch, bip) sai com o volume do fx.py
     e = fx.criar("radio-policia")
     c = voz.Cadeia(preset.compila(e, SR), SR)
@@ -233,6 +249,22 @@ def main(argv=None):
         confere(False, "filtro instavel: montou")
     except ValueError as ex:
         confere("invalido" in str(ex), f"filtro instavel: recusado ({ex})")
+    # a linha da Fdn que devolve mais do que recebe (polo dentro, ganho 1,2): a realimentacao cresceria sem parar
+    fdn = fx.Fdn(25, (1.0, 1.0, 1.0))
+    p = fdn.projeta(SR)
+    dados = preset._fdn(fdn, SR)
+    i = 2 + 16 * fdn.passos + 8  # o b0 do filtro da primeira linha (depois das 8 linhas)
+    confere(dados[i - 8:i] == p["linhas"], "preset da Fdn: as linhas no lugar que o teste espera")
+    for nome, b0 in (("ganho 1,2", 1.2), ("ganho 0,9", 0.9)):
+        d = list(dados)
+        d[i:i + 5] = [b0, 0.0, 0.0, 0.0, 0.0]
+        q = preset.CABECALHO.pack(preset.MAGIA, preset.VERSAO, float(SR), 1.0, 0, 1, 0, 0, *(1e-5, .99, .08, 10, .23))
+        q += struct.pack(f"<II{len(d)}d", preset.T_FDN, len(d), *map(float, d))
+        try:
+            voz.Cadeia(q, SR)
+            confere(b0 < 1, f"linha da Fdn com {nome}: montou")
+        except ValueError as ex:
+            confere(b0 > 1 and "invalido" in str(ex), f"linha da Fdn com {nome}: recusada ({ex})")
 
     print(f"{'FALHOU' if falhas else 'ok'}: {len(falhas)} falha(s)")
     return 1 if falhas else 0

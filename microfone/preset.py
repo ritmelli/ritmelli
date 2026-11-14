@@ -25,7 +25,8 @@ assert CABECALHO.size == 80
 
 (T_SOS, T_FIR, T_GANHO, T_PITCH, T_RINGMOD, T_PORTAO, T_DECIMA, T_AGC, T_MULTIBANDA, T_COMPRESSOR, T_LIMITER,
  T_DISTORCAO, T_BITCRUSH, T_DELAY, T_CHORUS, T_PHASER, T_FREEVERB, T_RADIO) = range(1, 19)
-T_TROCA = 21  # TrocaDeVoz (#77); o 19 e o 20 sao da FDN (#74) e da distorcao com oversampling (#75)
+T_FDN = 19
+T_TROCA = 21  # TrocaDeVoz (#77); o 20 e da distorcao com oversampling (#75)
 G_NENHUM, G_RADIO = 0, 1
 NYQ = 0.49  # filtro com corte acima disso da taxa nao cabe nela: a etapa sai (corte de agudo) ou o efeito fica no app
 
@@ -168,7 +169,23 @@ def _etapa(f, taxa):
     if isinstance(f, fx.QuestComoSM58):
         h = f.h if taxa == fx.SR else _sm58(len(f.h), taxa)
         return [(T_FIR, [float(len(h)), *h])]
+    if isinstance(f, fx.Fdn):
+        return [(T_FDN, _fdn(f, taxa))]
     raise NaoPortado(getattr(f, "__qualname__", type(f).__name__))
+
+
+def _fdn(f, taxa):
+    """A Fdn na taxa, na ordem que o voz.h le: pre-atraso, passos, por passo os 8 atrasos e os 8 sinais do difusor,
+    as 8 linhas, o filtro de cada uma (b0 b1 b2 a1 a2), a modulacao (amostras), o periodo de cada senoide, os pesos da
+    saida, cedo, molhado e seco."""
+    p = f.p if taxa == fx.SR else f.projeta(taxa)
+    dados = [p["pre"], f.passos]
+    for k in range(f.passos):
+        dados += [*p["difusor"][k], *f.SINAIS[k]]
+    dados += p["linhas"]
+    for c in p["filtros"]:
+        dados += c
+    return dados + [p["mod"], *p["periodos"], *f.SAIDA, f.cedo, f.molhado, f.seco]
 
 
 def _sm58(taps, taxa):

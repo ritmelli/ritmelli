@@ -595,6 +595,153 @@ class QuestComoSM58:
         return y.astype(np.float32)
 
 
+def _hadamard(x):
+    """Transformada de Walsh-Hadamard (ordem de Sylvester, sem escala) nas 8 linhas de x, na mesma ordem de somas do
+    voz.h (o resultado sai igual bit a bit)."""
+    m = x.shape[1]
+    for h in (1, 2, 4):
+        v = x.reshape(8 // (2 * h), 2, h, m)
+        x = np.stack([v[:, 0] + v[:, 1], v[:, 0] - v[:, 1]], axis=1).reshape(8, m)
+    return x
+
+
+def _primo_perto(n):
+    """O primo mais perto de n (o de baixo no empate): linhas de atraso sem divisor comum nao repetem os mesmos
+    modos."""
+    def primo(k):
+        return k >= 2 and all(k % d for d in range(2, int(k ** 0.5) + 1))
+    for d in range(n):
+        for k in (n - d, n + d):
+            if primo(k):
+                return k
+    return 2
+
+
+def _prateleira(g_lo, g_hi, fc, taxa):
+    """Prateleira de primeira ordem (bilinear): ganho g_lo no grave e g_hi no agudo, com a virada centrada em fc
+    (escala de log). Devolve (b0, b1, a1), a0 = 1."""
+    k = np.tan(np.pi * min(fc, 0.45 * taxa) / taxa) * np.sqrt(g_hi / g_lo)
+    return (g_hi + g_lo * k) / (1 + k), (g_lo * k - g_hi) / (1 + k), (k - 1) / (1 + k)
+
+
+class Fdn:
+    """Reverb de rede de atraso com realimentacao (FDN), no lugar do Reverb da pedalboard (o Freeverb, que soa
+    metalico em sala pequena: 8 filtros pente em paralelo e 4 passa-tudo em serie).
+
+    A voz (depois do pre-atraso) e copiada em 8 canais e passa por um difusor: `passos` vezes, cada canal atrasa um
+    tanto diferente (dentro de uma faixa que cai pela metade a cada passo, a primeira com metade de `difusao_ms`),
+    alguns trocam de sinal e os 8 se misturam pela matriz de Hadamard. Sai uma nuvem densa de reflexoes ja no
+    comeco, sem o eco esparso do Freeverb. Os 8 canais entram nas 8 linhas de realimentacao (de `tamanho_ms` a
+    2x, comprimentos primos), que se misturam pela Hadamard a cada volta. A matriz nao perde energia: quem tira
+    energia e o filtro de cada linha, duas prateleiras de primeira ordem que dao o tempo de reverberacao (s, 60 dB)
+    no grave (abaixo de cortes[0]), no meio e no agudo (acima de cortes[1]), na proporcao do comprimento da linha.
+
+    Com 8 linhas fixas os modos da cauda ficam espacados e tocam (a cauda longa "canta" numa nota): cada linha le
+    um pouco mais atras, ate `mod_ms` a mais, numa senoide lenta (0,3 a 1 Hz, uma por linha), e os modos se
+    espalham. Com 0,25 ms o tom da cauda varia ~1 cent. A fase vem de um contador de amostras inteiro (o resto pelo
+    periodo), a mesma conta nos dois lados.
+
+    Saida: seco * voz + molhado * (soma das 8 linhas com os sinais de SAIDA + cedo * a do difusor). Os numeros
+    projetados numa taxa (atrasos em amostras, coeficientes) saem de `projeta`, que o preset do filtro
+    (microfone/preset.py) tambem usa: o voz.h roda a mesma conta, amostra a amostra."""
+
+    N = 8
+    ESC = 1 / np.sqrt(8)  # a Hadamard normalizada: ortogonal, nao ganha nem perde energia
+    # pesos da saida: a cauda se repete, no atraso de cada linha c, na proporcao de SAIDA[c] * (Hadamard . SAIDA)[c];
+    # com estes o pior caso e 4; com outros +-1 chega a 6 ou 8 (8 = a soma pura: a cauda inteira repete no atraso
+    # de uma linha so e tremula nele)
+    SAIDA = (1, 1, 1, 1, 1, 1, -1, -1)
+    # os sinais de cada passo do difusor (ate 6 passos)
+    SINAIS = ((1, -1, 1, 1, -1, -1, 1, -1), (-1, 1, 1, -1, 1, 1, -1, -1), (1, 1, -1, -1, -1, 1, 1, -1),
+              (-1, -1, 1, -1, 1, -1, 1, 1), (1, -1, -1, 1, 1, -1, -1, 1), (-1, 1, -1, 1, -1, -1, 1, 1))
+    PASSOS_MAX = len(SINAIS)
+    LFO_HZ = (0.31, 0.43, 0.53, 0.61, 0.71, 0.79, 0.89, 0.97)  # uma por linha, sem razao simples entre elas
+
+    def __init__(self, tamanho_ms, rt, cortes=(250, 4000), difusao_ms=None, passos=4, pre_ms=0.0, mod_ms=0.25,
+                 cedo=1.0, molhado=0.3, seco=1.0):
+        self.tamanho_ms, self.rt, self.cortes = float(tamanho_ms), tuple(map(float, rt)), tuple(map(float, cortes))
+        self.difusao_ms = float(tamanho_ms if difusao_ms is None else difusao_ms)
+        self.passos, self.pre_ms, self.mod_ms = int(passos), float(pre_ms), float(mod_ms)
+        self.cedo, self.molhado, self.seco = float(cedo), float(molhado), float(seco)
+        if not 1 <= self.passos <= self.PASSOS_MAX or len(self.rt) != 3 or min(self.rt) <= 0:
+            raise ValueError("Fdn: passos de 1 a 6 e tres tempos de reverberacao positivos")
+        p = self.p = self.projeta(SR)
+        self.pre = np.zeros(p["pre"], np.float32)
+        self.dif = [[np.zeros(d, np.float32) for d in passo] for passo in p["difusor"]]
+        # cada linha guarda o comprimento + a modulacao + 2 (a leitura mais antiga e a interpolacao)
+        self.cap = [n + int(np.ceil(p["mod"])) + 2 for n in p["linhas"]]
+        self.linhas = [np.zeros(c, np.float32) for c in self.cap]
+        self.t = 0  # amostras desde o comeco: a fase das senoides e a posicao de escrita
+        self.sos = [np.array([[*c[:3], 1.0, *c[3:]]]) for c in p["filtros"]]
+        self.zi = [np.zeros((1, 2)) for _ in range(self.N)]
+
+    def projeta(self, taxa):
+        """Os numeros da FDN na taxa: pre-atraso, atrasos do difusor e das linhas (amostras), o filtro de cada linha
+        (b0 b1 b2 a1 a2), a modulacao (amostras) e o periodo de cada senoide (amostras, inteiro)."""
+        ms = taxa / 1000.0
+        difusor = []
+        faixa = self.difusao_ms / 2
+        for k in range(self.passos):
+            # cada canal num oitavo da faixa, numa posicao que nao se repete entre passos (razao aurea)
+            difusor.append([int(round(faixa * (c + (0.5 + 0.618034 * (c + 3 * k)) % 1.0) / self.N * ms))
+                            for c in range(self.N)])
+            faixa /= 2
+        linhas = [_primo_perto(max(2, int(round(self.tamanho_ms * 2 ** (c / self.N) * ms)))) for c in range(self.N)]
+        filtros = []
+        for n in linhas:
+            g_grave, g_meio, g_agudo = (10 ** (-3 * n / (t * taxa)) for t in self.rt)
+            b0, b1, a1 = _prateleira(g_grave / g_meio, 1.0, self.cortes[0], taxa)
+            c0, c1, e1 = _prateleira(1.0, g_agudo / g_meio, self.cortes[1], taxa)
+            filtros.append([g_meio * b0 * c0, g_meio * (b0 * c1 + b1 * c0), g_meio * b1 * c1, a1 + e1, a1 * e1])
+        periodos = [int(round(taxa / hz)) for hz in self.LFO_HZ]
+        return {"pre": int(round(self.pre_ms * ms)), "difusor": difusor, "linhas": linhas, "filtros": filtros,
+                "mod": self.mod_ms * ms, "periodos": periodos}
+
+    def __call__(self, blk):
+        x = blk.astype(np.float32, copy=False)
+        n = len(x)
+        p = self.p
+        if p["pre"]:
+            buf = np.concatenate([self.pre, x])
+            xp, self.pre = buf[:n], buf[n:]
+        else:
+            xp = x
+        v = np.tile(xp.astype(np.float64), (self.N, 1))
+        for k, atrasos in enumerate(p["difusor"]):
+            # o voz.h guarda os atrasos em float: o que passa pela linha sai arredondado a float32 dos dois lados
+            v32 = v.astype(np.float32)
+            o = np.empty((self.N, n))
+            for c, d in enumerate(atrasos):
+                buf = np.concatenate([self.dif[k][c], v32[c]])
+                o[c], self.dif[k][c] = buf[:n], buf[n:]
+            v = _hadamard(o * np.array(self.SINAIS[k], float)[:, None]) * self.ESC
+        out = np.empty(n)
+        meia = p["mod"] * 0.5
+        menor = min(p["linhas"]) - 1
+        for i in range(0, n, menor):  # trecho menor que a menor linha: tudo que se le foi escrito antes dele
+            m = min(menor, n - i)
+            t = self.t + np.arange(m)
+            f = np.empty((self.N, m))
+            for c, L in enumerate(p["linhas"]):
+                per = p["periodos"][c]
+                fase = ((t + per * c // self.N) % per).astype(np.float64) * (2 * np.pi / per)
+                a = L + meia * (1.0 + np.sin(fase))
+                ia = np.floor(a)
+                fr = a - ia
+                s0 = self.linhas[c][(t - ia.astype(np.int64)) % self.cap[c]].astype(np.float64)
+                s1 = self.linhas[c][(t - ia.astype(np.int64) - 1) % self.cap[c]].astype(np.float64)
+                f[c], self.zi[c] = signal.sosfilt(self.sos[c], s0 * (1.0 - fr) + s1 * fr, zi=self.zi[c])
+            acc = np.zeros(m)
+            for c in range(self.N):
+                acc = acc + self.SAIDA[c] * (f[c] + self.cedo * v[c, i:i + m])
+            w = (_hadamard(f) * self.ESC + v[:, i:i + m]).astype(np.float32)
+            for c in range(self.N):
+                self.linhas[c][t % self.cap[c]] = w[c]
+            self.t += m
+            out[i:i + m] = acc
+        return (x.astype(np.float64) * self.seco + out * self.molhado).astype(np.float32)
+
+
 def _locutor():
     # processador de radio FM (no molde dos de emissora): AGC lento -> EQ de locutor ->
     # 4 faixas com compressao de ataque lento no grave e ganho congelado nas pausas ->
@@ -659,10 +806,13 @@ CATALOGO = [
      "Voz densa e encorpada de rádio FM, ainda com a sua cara (calibrado no microfone do Quest).", _locutor),
     ("Ambiente", "eco", "Eco", "Repete o fim das suas frases.",
      lambda: Efeito(nivelar=True, placa=[pb.Delay(0.28, 0.45, 0.4)])),
+    # as salas (banheiro, catedral, demonio) com o tempo de reverberacao por oitava e o seco/molhado medidos no
+    # Reverb da pedalboard que a Fdn substituiu (14/11): a troca muda o timbre da sala, nao o tamanho nem o volume
     ("Ambiente", "banheiro", "Banheiro", "Sala pequena de azulejo.",
-     lambda: Efeito(nivelar=True, placa=[pb.Reverb(room_size=0.35, damping=0.3, wet_level=0.35, dry_level=0.8)])),
+     lambda: Efeito(nivelar=True, depois=[Fdn(25, (0.98, 1.0, 1.0), molhado=0.0887, seco=1.6)])),
     ("Ambiente", "catedral", "Catedral", "Sala enorme, a voz some devagar.",
-     lambda: Efeito(nivelar=True, placa=[pb.Reverb(room_size=0.97, damping=0.25, wet_level=0.5, dry_level=0.7)])),
+     lambda: Efeito(nivelar=True, depois=[Fdn(70, (7.75, 8.17, 4.43), difusao_ms=90, passos=5, pre_ms=20,
+                                              molhado=0.1855, seco=1.4)])),
     ("Personagem", "robo", "Robô", "Voz metálica de robô.",
      lambda: Efeito(nivelar=True, antes=[RingMod(48)], placa=[pb.Chorus(rate_hz=0.6, depth=0.15, mix=0.3), pb.Gain(3)])),
     ("Personagem", "voz-grossa", "Voz grossa", "Cinco semitons abaixo.",
@@ -671,8 +821,8 @@ CATALOGO = [
      lambda: Efeito(nivelar=True, antes=[PitchShifter(8, w=1024, x=512)])),
     ("Personagem", "demonio", "Demônio", "Dez semitons abaixo, com distorção e sala.",
      lambda: Efeito(nivelar=True, antes=[PitchShifter(-10, w=2048, x=1024)],
-                    placa=[pb.Distortion(8), pb.LowShelfFilter(150, 4),
-                           pb.Reverb(room_size=0.5, wet_level=0.25, dry_level=0.85), pb.Gain(-3)])),
+                    placa=[pb.Distortion(8), pb.LowShelfFilter(150, 4)],
+                    depois=[Fdn(35, (1.2, 1.37, 0.89), molhado=0.0678, seco=1.7), [pb.Gain(-3)]])),
     # a voz de outra pessoa: o tom muda e o formante vai junto so um pouco (o trato vocal), sem o desenho animado do
     # PitchShifter; fmin mais alto na masculina (quem usa costuma ter a voz mais aguda) segura o atraso em ~19 ms
     ("Personagem", "voz-feminina", "Voz feminina", "Sua voz mais aguda, com timbre de mulher.",

@@ -144,7 +144,11 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   pela `TrocaDeVoz` (PSOLA síncrono com o período da voz, #77), mudam o tom e só um pouco o
   formante, e a voz continua soando como gente, com ~20 ms de atraso. O `fx.py` é a definição de cada efeito e a referência: no microfone do jogo quem
   roda é o filtro (`microfone/preset.py` -> `apo/voz.h`), com a mesma conta, e as etapas da
-  pedalboard foram reescritas lá pela fórmula de cada uma e conferidas contra ela. Etapa nova
+  pedalboard foram reescritas lá pela fórmula de cada uma e conferidas contra ela. As salas
+  (banheiro, catedral e demônio) usam um reverb próprio, a `Fdn` do `fx.py` (8 linhas de atraso
+  com realimentação, mistura de Hadamard, tempo de reverberação no grave, no meio e no agudo,
+  difusor na entrada e leitura modulada bem de leve), no lugar do Reverb da pedalboard, que soava
+  metálico; o tempo por oitava e o seco/molhado de cada sala são os do Reverb que ela substituiu. Etapa nova
   sem par no `voz.h` leva o efeito pelo caminho do app até ganhar o seu. O efeito sempre começa
   desligado quando o servidor sobe. Banco de teste:
   `python dev/efeitos.py` (grava um .wav por efeito em `logs/efeitos/` para ouvir).
