@@ -9,9 +9,14 @@
 // passar como veio, sem pegar vaga. No alvo, dois sentidos:
 // - musica (app -> filtro): um produtor (o app) e ate MICFX_LEITORES leitores; o produtor so escreve onde o leitor
 //   mais atrasado ja leu, e cada leitor anda no proprio ritmo. O filtro soma em cima da voz, ou, com sem_voz (e o
-//   app vivo), poe so o que veio do app: a voz cortada, ou a voz com efeito que o app devolveu.
+//   app vivo), poe so o que veio do app: a voz cortada, ou a voz com efeito que o app devolveu (o efeito que o
+//   filtro nao roda).
 // - voz crua (filtro -> app): o filtro do alvo escreve a voz do microfone, mono e na taxa dele, antes de somar
 //   qualquer coisa; o app le dali (o que ele mesmo le do microfone pelo Windows ja leva a musica).
+// - efeito de voz (app -> filtro -> app): o app escreve o preset do efeito (voz.h) com um seqlock (preset_seq impar =
+//   escrevendo; par = pronto); o filtro do alvo copia, monta a cadeia e responde em preset_feito (o seq que leu) e
+//   preset_erro (voz::Erro). Com a cadeia montada e o app vivo, o filtro poe a voz com efeito no lugar da crua, no
+//   proprio bloco, e devolve ao app em voz_fx (ouvir a propria voz). preset_n 0 = sem efeito.
 //
 // O layout e fixo e o microfone/injeta.py tem o espelho dele em ctypes: mudou aqui, muda la (e sobe MICFX_VERSAO e o
 // nome do mapa, que a versao velha pode estar viva no audiodg durante a troca).
@@ -19,9 +24,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define MICFX_MAPA L"Global\\RitmelliMicFx2"
+#ifndef MICFX_MAPA  // a banca de teste (teste/banca_filtro.cpp) usa um nome so dela
+#define MICFX_MAPA L"Global\\RitmelliMicFx3"
+#endif
 #define MICFX_MAGIA 0x58464D52u  // "RMFX"
-#define MICFX_VERSAO 2u
+#define MICFX_VERSAO 3u
+#define MICFX_PRESET_BYTES 65536u  // o maior preset (o Locutor, com o FIR de 1023) tem ~10 KB
 #define MICFX_TAXA 48000u        // o app escreve sempre a 48 kHz
 #define MICFX_CANAIS 2u          // estereo intercalado, float32
 #define MICFX_QUADROS 32768u     // potencia de 2: ~0,68 s
@@ -56,6 +64,14 @@ typedef struct MicFxAnel {
     MicFxLeitor leitor[MICFX_LEITORES];
     float dados[MICFX_QUADROS * MICFX_CANAIS];
     float voz[MICFX_VOZ_QUADROS];
+    // o efeito de voz no filtro (v3)
+    volatile int64_t fx_escrito;     // quadros de voz com efeito publicados pelo filtro do alvo (taxa da voz crua)
+    volatile uint32_t preset_seq;    // seqlock do app: soma 1 antes de escrever e 1 depois (impar = escrevendo)
+    volatile uint32_t preset_n;      // bytes do preset (0 = sem efeito no filtro)
+    volatile uint32_t preset_feito;  // o preset_seq que o filtro do alvo leu por ultimo
+    volatile uint32_t preset_erro;   // o que deu ao montar (voz::Erro; 0 = a voz com efeito sai do filtro)
+    float voz_fx[MICFX_VOZ_QUADROS];
+    uint8_t preset[MICFX_PRESET_BYTES];
 } MicFxAnel;
 
 // O hash do id do microfone (o GUID do endpoint, "{a1b2c3d4-...}", que e tambem o nome da chave dele no registro):
@@ -82,4 +98,8 @@ static_assert(offsetof(MicFxAnel, voz_escrito) == 56, "voz_escrito");
 static_assert(offsetof(MicFxAnel, leitor) == 64, "leitor");
 static_assert(offsetof(MicFxAnel, dados) == 320, "dados");
 static_assert(offsetof(MicFxAnel, voz) == 320 + MICFX_QUADROS * MICFX_CANAIS * 4, "voz");
+static_assert(offsetof(MicFxAnel, fx_escrito) == 328000, "fx_escrito");
+static_assert(offsetof(MicFxAnel, preset_seq) == 328008, "preset_seq");
+static_assert(offsetof(MicFxAnel, voz_fx) == 328024, "voz_fx");
+static_assert(offsetof(MicFxAnel, preset) == 328024 + MICFX_VOZ_QUADROS * 4, "preset");
 #endif

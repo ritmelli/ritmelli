@@ -6,7 +6,9 @@
 O filtro fica em todos os microfones e so age no alvo: alvo(hash_microfone(guid)) com o GUID do microfone
 escolhido ("{a1b2c3d4-...}", o nome da chave dele no registro). Ali ele soma o que o app escreve (escreve, no ritmo
 de na_fila) e devolve a voz crua do microfone (voz). O anel so existe com algum microfone com o filtro em uso (o
-proprio app abrindo o microfone conta); sem ele, Microfone() levanta SemFiltro.
+proprio app abrindo o microfone conta); sem ele, Microfone() levanta SemFiltro. O efeito de voz que o filtro roda vai
+pelo preset (microfone/preset.py, escrito com seqlock); a resposta do filtro sai em preset_estado e a voz com efeito
+volta em voz_fx.
 """
 import ctypes
 import os
@@ -17,9 +19,10 @@ from ctypes import wintypes
 
 import numpy as np
 
-MAPA = os.environ.get("MICFX_MAPA", "Global\\RitmelliMicFx2")
-MAGIA, VERSAO, TAXA, CANAIS, QUADROS, LEITORES, BATIDA_MS = 0x58464D52, 2, 48000, 2, 32768, 8, 500
+MAPA = os.environ.get("MICFX_MAPA", "Global\\RitmelliMicFx3")
+MAGIA, VERSAO, TAXA, CANAIS, QUADROS, LEITORES, BATIDA_MS = 0x58464D52, 3, 48000, 2, 32768, 8, 500
 VOZ_QUADROS = 16384
+PRESET_BYTES = 65536
 
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 k32.OpenFileMappingW.restype = wintypes.HANDLE
@@ -43,12 +46,17 @@ class Anel(ctypes.Structure):
                 ("escrito", ctypes.c_int64), ("ganho", ctypes.c_float), ("sem_voz", ctypes.c_uint32),
                 ("batida_app", ctypes.c_int64), ("alvo", ctypes.c_uint32), ("voz_taxa", ctypes.c_uint32),
                 ("voz_escrito", ctypes.c_int64), ("leitor", Leitor * LEITORES),
-                ("dados", ctypes.c_float * (QUADROS * CANAIS)), ("voz", ctypes.c_float * VOZ_QUADROS)]
+                ("dados", ctypes.c_float * (QUADROS * CANAIS)), ("voz", ctypes.c_float * VOZ_QUADROS),
+                ("fx_escrito", ctypes.c_int64), ("preset_seq", ctypes.c_uint32), ("preset_n", ctypes.c_uint32),
+                ("preset_feito", ctypes.c_uint32), ("preset_erro", ctypes.c_uint32),
+                ("voz_fx", ctypes.c_float * VOZ_QUADROS), ("preset", ctypes.c_uint8 * PRESET_BYTES)]
 
 
 assert ctypes.sizeof(Leitor) == 32 and Anel.escrito.offset == 24 and Anel.batida_app.offset == 40
 assert Anel.alvo.offset == 48 and Anel.voz_escrito.offset == 56 and Anel.leitor.offset == 64
 assert Anel.dados.offset == 320 and Anel.voz.offset == 320 + QUADROS * CANAIS * 4
+assert Anel.fx_escrito.offset == 328000 and Anel.preset_seq.offset == 328008 and Anel.voz_fx.offset == 328024
+assert Anel.preset.offset == 328024 + VOZ_QUADROS * 4
 
 
 def hash_microfone(guid):
@@ -78,7 +86,9 @@ class Microfone:
             raise SemFiltro(f"anel com magia/versao inesperada ({self.a.magia:#x}/{self.a.versao})")
         self.dados = np.ctypeslib.as_array(self.a.dados).reshape(QUADROS, CANAIS)
         self._voz = np.ctypeslib.as_array(self.a.voz)
+        self._voz_fx = np.ctypeslib.as_array(self.a.voz_fx)
         self.voz_pos = None  # ate onde o app leu a voz crua (comeca no que chegar depois de abrir)
+        self.fx_pos = None   # e a voz com efeito
 
     def alvo(self, h):
         """O microfone em que o filtro age (hash_microfone do GUID dele; 0 = nenhum)."""
@@ -120,6 +130,40 @@ class Microfone:
         x = self._voz[idx].astype(np.float32)
         self.voz_pos = fim
         return x, self.a.voz_taxa
+
+    def voz_fx(self):
+        """A voz com efeito que o filtro devolveu desde a ultima leitura (amostras float32 mono, taxa do microfone), como
+        a voz()."""
+        fim = self.a.fx_escrito
+        if self.fx_pos is None or fim - self.fx_pos > VOZ_QUADROS or fim < self.fx_pos:
+            self.fx_pos = fim
+        n = fim - self.fx_pos
+        if n <= 0:
+            return np.zeros(0, np.float32), self.a.voz_taxa
+        x = self._voz_fx[np.arange(self.fx_pos, fim) % VOZ_QUADROS].astype(np.float32)
+        self.fx_pos = fim
+        return x, self.a.voz_taxa
+
+    def preset(self, dados):
+        """Escreve o preset do efeito (bytes; vazio = sem efeito no filtro) e devolve o seq dele, que o filtro do alvo
+        devolve em preset_feito quando ler. Seqlock: impar enquanto escreve, o filtro so le com o seq par e igual antes e
+        depois da copia."""
+        dados = bytes(dados or b"")
+        if len(dados) > PRESET_BYTES:
+            raise ValueError(f"preset de {len(dados)} bytes, o anel leva {PRESET_BYTES}")
+        a = self.a
+        seq = a.preset_seq
+        if seq & 1:  # um escritor que caiu no meio
+            seq += 1
+        a.preset_seq = (seq + 1) & 0xFFFFFFFF
+        ctypes.memmove(ctypes.addressof(a) + Anel.preset.offset, dados, len(dados))
+        a.preset_n = len(dados)
+        a.preset_seq = seq = (seq + 2) & 0xFFFFFFFE or 2  # nunca 0: o filtro comeca esperando 1
+        return seq
+
+    def preset_estado(self):
+        """(o seq que o filtro do alvo leu por ultimo, o erro dele: 0 = montou; ver voz.h)."""
+        return self.a.preset_feito, self.a.preset_erro
 
     def pulso(self, sem_voz=False):
         """O app esta vivo: o filtro so corta a voz (sem_voz) ate MICFX_APP_MS depois do ultimo pulso, entao o app

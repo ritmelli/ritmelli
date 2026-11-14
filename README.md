@@ -49,8 +49,9 @@ com o detector em numpy).
 
 - No jogo e no Discord, use o mesmo microfone escolhido na Vitrola: o filtro só age nele. A voz
   crua volta do filtro para a Vitrola (o medidor, o ouvir a própria voz, a mina): sem efeito,
-  ela segue direto no microfone; com um efeito de voz ou com a voz cortada, a Vitrola põe a voz
-  dela no lugar, e se a Vitrola cair o filtro devolve a voz original sozinho em 1 s. No Discord,
+  ela segue direto no microfone; o efeito de voz roda no próprio filtro, sem atraso; com a voz
+  cortada, a Vitrola põe a dela no lugar; e se a Vitrola cair o filtro devolve a voz original
+  sozinho em 1 s. No Discord,
   use o perfil **Estúdio**, ou desligue o Krisp e a sensibilidade automática: com qualquer um
   dos dois ligado a música chega picada ou não chega (medido de uma conta para outra em 13/11).
 - Microfone que apareceu depois da instalação (um fone USB novo): ao escolher ele, a Vitrola

@@ -20,6 +20,12 @@ if "%1"=="teste" goto teste
 cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /DUNICODE /D_UNICODE /LD micfx.cpp /Fosaida\ /Fesaida\micfx.dll /link /DEF:micfx.def audiobaseprocessingobject.lib audiomediatypecrt.lib legacy_stdio_definitions.lib ole32.lib advapi32.lib user32.lib
 exit /b %errorlevel%
 :teste
-rem compila.bat teste: a banca do reamostra.h (teste\teste_reamostra.py mede)
+rem compila.bat teste: a banca do reamostra.h (teste\teste_reamostra.py mede) e o voz.dll, o motor dos efeitos de voz
+rem (voz.h) fora do audiodg, para o microfone\voz.py e o dev\testa_voz.py
 cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD teste\teste_reamostra.cpp /Fosaida\ /Fesaida\teste_reamostra.dll
+if errorlevel 1 exit /b %errorlevel%
+cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD voz.cpp /Fosaida\ /Fesaida\voz.dll
+if errorlevel 1 exit /b %errorlevel%
+rem a banca do filtro inteiro (o micfx.cpp com o anel num nome so do teste; dev\testa_filtro.py)
+cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /DUNICODE /D_UNICODE /LD teste\banca_filtro.cpp /Fosaida\ /Fesaida\banca_filtro.dll /link audiobaseprocessingobject.lib audiomediatypecrt.lib legacy_stdio_definitions.lib ole32.lib advapi32.lib user32.lib
 exit /b %errorlevel%

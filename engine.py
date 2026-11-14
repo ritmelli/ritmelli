@@ -69,6 +69,8 @@ VIGIA_S = 2.0  # de quanto em quanto o vigia le a lista de aparelhos do Windows
 # folga contra a thread do Python atrasar; a voz crua que o filtro devolve vale como viva ate VOZ_VIVA_S sem chegar
 INJ_FOLGA = 5
 VOZ_VIVA_S = 0.2
+# o efeito de voz no filtro (issue #63): ate isso sem o filtro responder ao preset, a voz crua segue; depois, pelo app
+PRESET_ESPERA_S = 0.2
 VIGIA_TENTATIVAS = 3  # reaberturas por mudanca da lista (o PortAudio as vezes ainda nao ve o aparelho)
 # passagem de uma musica para a proxima da fila (a transicao de DJ)
 TRANS_PREP_S = 180         # o servidor prepara a proxima quando falta isso para o fim (o fim deste fica na
@@ -836,7 +838,12 @@ class Injetor:
     ou sem leitor (o microfone sem o filtro), anda pelo relogio do PC, e o som segue no fone. Da volta, tira a voz crua
     que o filtro devolve e entrega ao motor (_push_mic), na hora: o efeito, a mina e o medidor sao dela. O pulso do anel
     leva o "poe a voz do app no lugar" (voz cortada ou com efeito): o filtro so troca com o pulso vivo, entao o app que
-    cai nao deixa o microfone mudo."""
+    cai nao deixa o microfone mudo.
+
+    O efeito de voz que o filtro sabe rodar (microfone/preset.py monta do fx.py) vai pelo anel como preset: o filtro
+    passa a voz pela cadeia no proprio bloco, sem esta ida e volta (issue #63), e devolve a voz com efeito para o fone
+    e o medidor (_push_voz_fx). Enquanto o filtro nao responde (ate PRESET_ESPERA_S) a voz crua segue; recusou, ou o
+    efeito tem etapa que ele nao roda, a voz vai pelo app como antes."""
 
     def __init__(self, motor):
         self.motor = motor
@@ -846,11 +853,18 @@ class Injetor:
         self._tentou = -1e9
         self._para48k = _Para48k()
         self._resto = np.zeros(0, np.float32)
+        self._para48k_fx = _Para48k()  # a voz com efeito que o filtro devolve tem a sua
+        self._resto_fx = np.zeros(0, np.float32)
+        self._preset = None      # (efeito, taxa) do preset escrito no anel
+        self._preset_seq = 0     # o seq dele, que o filtro devolve quando le
+        self._preset_ok = False  # o efeito tem preset (o filtro roda)
+        self._preset_em = 0.0    # monotonic da escrita
+        self.efeito_no_filtro = False
         self._th = threading.Thread(target=self._loop, daemon=True, name="vitrola-microfone")
         self._th.start()
 
     def estado(self):
-        return {"anel": self.m is not None, "leitores": self.leitores}
+        return {"anel": self.m is not None, "leitores": self.leitores, "efeito_no_filtro": self.efeito_no_filtro}
 
     def para(self):
         self._vai = False
@@ -876,8 +890,39 @@ class Injetor:
             self.m = None
         return self.m
 
+    def _efeito(self, m):
+        """O preset do efeito escolhido no anel (na taxa do microfone alvo) e o estado do filtro com ele: roda
+        (efeito_no_filtro), ainda nao respondeu (_fx_pendente: a voz crua segue) ou recusou (a voz vai pelo app)."""
+        from microfone import preset  # noqa: PLC0415 - o projeto dos filtros (scipy) so quando ha anel
+        mo = self.motor
+        eid = mo.effect if mo._fx is not None else None  # noqa: SLF001
+        taxa = int(m.a.voz_taxa)
+        if (eid, taxa) != self._preset:
+            dados = preset.preset(eid, taxa) if eid and taxa else None
+            self._preset_seq = m.preset(dados or b"")
+            self._preset, self._preset_ok, self._preset_em = (eid, taxa), dados is not None, time.monotonic()
+        feito, erro = m.preset_estado()
+        respondeu = feito == self._preset_seq
+        self.efeito_no_filtro = self._preset_ok and respondeu and erro == 0
+        mo._fx_filtro = self.efeito_no_filtro  # noqa: SLF001
+        mo._fx_pendente = (self._preset_ok and not respondeu  # noqa: SLF001
+                           and time.monotonic() - self._preset_em < PRESET_ESPERA_S)
+
+    def _solta_efeito(self):
+        self.efeito_no_filtro = False
+        self.motor._fx_filtro = self.motor._fx_pendente = False  # noqa: SLF001
+        self._preset = None
+
     def _voz(self, m):
-        """A voz crua que chegou, a 48 kHz, em blocos de BLOCK para o motor (o que sobra fica para a proxima)."""
+        """A voz crua que chegou, a 48 kHz, em blocos de BLOCK para o motor (o que sobra fica para a proxima); com o
+        efeito no filtro, tambem a voz com efeito que ele devolveu (fone e medidor)."""
+        y, taxa_fx = m.voz_fx()  # sempre le: a posicao anda junto com o filtro
+        if self.efeito_no_filtro and len(y):
+            y = np.concatenate([self._resto_fx, self._para48k_fx(y, taxa_fx)])
+            n = len(y) // BLOCK * BLOCK
+            for k in range(0, n, BLOCK):
+                self.motor._push_voz_fx(y[k:k + BLOCK])  # noqa: SLF001
+            self._resto_fx = y[n:]
         x, taxa = m.voz()
         if not len(x):
             return
@@ -898,8 +943,11 @@ class Injetor:
                     m = self._abre()
                     if m is not None:
                         m.alvo(self.motor._alvo)  # noqa: SLF001
+                        self._efeito(m)
                         m.pulso(self.motor.voz_pelo_app())
                         self._voz(m)
+                    else:
+                        self._solta_efeito()
                     vivos = len(m.vivos()) if m is not None else 0
                     self.leitores = vivos
                     if vivos:
@@ -916,6 +964,7 @@ class Injetor:
                 except Exception as ex:  # noqa: BLE001 - a thread nao morre calada: o erro vai pra tela
                     self.motor.error = f"A saída para o microfone falhou ({str(ex)[:160]})."
                     self.m = None
+                    self._solta_efeito()
                     time.sleep(0.5)
                 time.sleep(0.002)
         finally:
@@ -941,6 +990,8 @@ class Engine:
         self.loop = False
         self.effect = "nenhum"  # efeito de voz (fx.py); sempre comeca sem efeito
         self._fx = None
+        self._fx_filtro = False    # o filtro do microfone roda o efeito (o Injetor marca): a voz nao passa pelo app
+        self._fx_pendente = False  # o preset foi pro filtro e ele ainda nao respondeu: a voz crua segue
         # a mina do pedal MINA (mina.py): a voz dela vai pro jogo e pro fone como a voz de quem toca
         self.mina_permitida = True
         self._mina = None
@@ -1178,8 +1229,9 @@ class Engine:
                 self._injetor = None
 
     def voz_pelo_app(self):
-        """A voz que vai para o jogo sai daqui (o filtro poe a do app no lugar da crua): cortada, ou com efeito."""
-        return self.mic_mute or self._fx is not None
+        """A voz que vai para o jogo sai daqui (o filtro poe a do app no lugar da crua): cortada, ou com o efeito que o
+        filtro nao roda."""
+        return self.mic_mute or (self._fx is not None and not self._fx_filtro and not self._fx_pendente)
 
     def _vigia_loop(self):
         """Segue sozinho o aparelho escolhido quando ele conecta ou desconecta (o Quest pelo
@@ -1314,6 +1366,8 @@ class Engine:
         # (o notebook do bot) o mic nao e a voz de ninguem no mapa, e ela ouvia quem estava do lado do notebook (03/11)
         if mi is not None and not self.mic_mute:
             mi.microfone(x)
+        if self._fx_filtro:
+            return  # o efeito roda no filtro: a voz com efeito chega pelo _push_voz_fx
         f = self._fx
         if f is not None:
             try:
@@ -1325,9 +1379,23 @@ class Engine:
         while len(self._mic) > MIC_MAX:
             self._mic.popleft()
 
+    def _push_voz_fx(self, x):
+        """A voz com efeito que o filtro do microfone devolveu: o fone (ouvir a propria voz) e o medidor."""
+        self._mic.append(x)
+        while len(self._mic) > MIC_MAX:
+            self._mic.popleft()
+
     def set_effect(self, effect_id):
-        self._fx = fx.criar(effect_id)  # instancia nova: estado zerado; ValueError se nao existe
-        self.effect = effect_id
+        nova = fx.criar(effect_id)  # instancia nova: estado zerado; ValueError se nao existe
+        inj = self._injetor
+        m = inj.m if inj is not None else None
+        if nova is not None and m is not None and m.a.voz_taxa:
+            # o preset do filtro fica pronto aqui, e nao na thread da saida para o jogo (o do Locutor projeta um FIR de
+            # 1023, ate ~35 ms): o Injetor so acha o efeito novo depois disso
+            from microfone import preset  # noqa: PLC0415
+            preset.preset(effect_id, int(m.a.voz_taxa))
+        self.effect = effect_id  # antes do _fx: o Injetor le os dois sem trava e nunca pega o id velho com o efeito novo
+        self._fx = nova
         if effect_id == "mina":
             self._mina_liga()
         elif self._mina is not None:
@@ -1515,8 +1583,9 @@ class Engine:
             m = self._mic.popleft()  # o nivel da voz e o do Windows (winvol)
             self._meter("mic", m)
             n = min(len(m), frames)
-            # a voz crua vai pelo proprio microfone; so a com efeito sai daqui (o filtro poe no lugar da crua)
-            if not self.mic_mute and self._fx is not None:
+            # a voz crua vai pelo proprio microfone, e a com o efeito que o filtro roda tambem; so a com o efeito que ele
+            # nao roda sai daqui (o filtro poe no lugar da crua)
+            if not self.mic_mute and self.voz_pelo_app():
                 buf[:n, 0] += m[:n]
                 buf[:n, 1] += m[:n]
             # ouvir a propria voz vale mesmo com a voz cortada: testar o efeito sem ir pro jogo
