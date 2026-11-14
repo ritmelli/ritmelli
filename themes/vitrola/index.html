@@ -4634,16 +4634,16 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 <dialog id="dlg-disp" aria-labelledby="dd-t">
   <form method="dialog" class="dlg">
     <h2 id="dd-t">Microfone e fone</h2>
-    <label class="campo">Microfone (onde a música toca, com a sua voz)
+    <label class="campo">Microfone (o que você usa para falar)
       <select id="dd-mic"></select>
       <span class="em-uso" id="dd-mic-uso"></span>
     </label>
-    <label class="campo">Fone (onde você ouve o som)
+    <label class="campo">Fone (onde você ouve a música)
       <select id="dd-mon"></select>
       <span class="em-uso" id="dd-mon-uso"></span>
     </label>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
-      <span>Use este mesmo microfone no jogo e nas chamadas de voz. No Discord, escolha o perfil de entrada <b>Estúdio</b> ou desligue a supressão de ruído e a sensibilidade automática, que cortam a música.</span></div>
+      <span>Use este mesmo microfone no jogo e nas chamadas de voz. No Discord, em Voz e vídeo, escolha o perfil de entrada <b>Estúdio</b>: os outros perfis podem cortar a música.</span></div>
     <p class="msg-dlg" id="dd-msg" role="status"></p>
     <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
   </form>
@@ -4656,24 +4656,24 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     <p>A Vitrola toca música no seu microfone, junto com a sua voz: quem está com você no jogo ou na chamada ouve as duas.</p>
     <ol class="boas-passos">
       <li>
-        <h3>Escolha o microfone e o fone</h3>
-        <p>A música toca no microfone, junto com a sua voz, e você a ouve no fone.</p>
+        <h3>Confira o microfone e o fone</h3>
+        <p>O microfone tem que ser o que você usa para falar. No fone, você ouve a música.</p>
         <p class="boas-status"><span class="lampada" id="db-disp-l" aria-hidden="true"></span><span id="db-disp">Lendo os dispositivos do Windows.</span></p>
         <button class="btn" type="button" id="db-trocar">Trocar</button>
       </li>
       <li>
         <h3>Use o mesmo microfone no jogo</h3>
-        <p>Nas configurações de áudio do jogo ou do programa de chamada, escolha este mesmo microfone.</p>
-        <p class="boas-dica">No Discord, use o perfil de entrada <b>Estúdio</b>, que não filtra a música.</p>
+        <p>Se o jogo ou o programa de chamada usa outro microfone, troque para este nas configurações de áudio.</p>
+        <p class="boas-dica">No Discord, em Voz e vídeo, escolha o perfil de entrada <b>Estúdio</b>: os outros perfis podem cortar a música.</p>
       </li>
       <li>
         <h3>Toque a primeira música</h3>
-        <p>Busque pelo nome ou cole um link do YouTube na busca, no alto da tela.</p>
+        <p>Na busca, no alto da tela, digite o nome da música ou cole um link do YouTube.</p>
         <button class="btn" value="buscar">Ir para a busca</button>
       </li>
       <li>
         <h3>Conecte o celular (opcional)</h3>
-        <p>Controle a Vitrola pelo celular, no mesmo Wi-Fi do PC. Se preferir, conecte depois pelo botão Celular.</p>
+        <p>Use o celular como controle; ele precisa estar no mesmo Wi-Fi do PC. Ou conecte depois, pelo botão Celular.</p>
         <button class="btn" type="button" id="db-cel">Conectar o celular</button>
       </li>
     </ol>
@@ -8564,7 +8564,7 @@ async function conferirBoasVindas() {
     S.disp = r;
     $('#db-disp-l').className = `lampada ${act.mic ? 'acesa' : 'alerta'}`;
     if (act.mic) $('#db-disp').replaceChildren(el('span', null, `Microfone: ${act.mic}`),
-                                                el('span', null, `Fone: ${act.monitor || 'nenhum (você não ouve a música)'}`));
+                                                el('span', null, `Fone: ${act.monitor || 'nenhum (só os outros ouvem a música)'}`));
     else $('#db-disp').textContent = 'Nenhum microfone encontrado. Conecte um e ele aparece aqui.';
     msg.textContent = '';
   } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
