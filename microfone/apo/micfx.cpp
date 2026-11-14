@@ -268,11 +268,19 @@ static MicFxAnel* AbreAnel(HANDLE* mapa) {
     DWORD erro = GetLastError();
     bool novo = h && erro != ERROR_ALREADY_EXISTS;
     LocalFree(sa.lpSecurityDescriptor);
+    if (!h && erro == ERROR_ACCESS_DENIED) {
+        // o anel ja existe e quem abre so tem ler e escrever nele (o usuario comum: a segunda instancia da banca de
+        // teste); o audiodg, como servico local, tem tudo e nao passa aqui
+        h = OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, FALSE, MICFX_MAPA);
+        erro = GetLastError();
+    }
     if (!h) {
         Log("CreateFileMapping falhou: %lu", erro);
         return nullptr;
     }
-    auto* a = static_cast<MicFxAnel*>(MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(MicFxAnel)));
+    // no MapViewOfFile, FILE_MAP_WRITE e o mesmo que FILE_MAP_ALL_ACCESS, e serve tambem ao anel aberto so pra ler e
+    // escrever
+    auto* a = static_cast<MicFxAnel*>(MapViewOfFile(h, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, sizeof(MicFxAnel)));
     if (!a) {
         CloseHandle(h);
         return nullptr;
@@ -421,9 +429,14 @@ class CMicFx : public CBaseAudioProcessingObject, public IAudioSystemEffects2, p
 public:
     explicit CMicFx(IUnknown* externo) : CBaseAudioProcessingObject(g_props), m_interno(this) {
         m_externo = externo ? externo : &m_interno;
+        m_id = (uint32_t)InterlockedIncrement(&g_proximo_dono) ^ (GetCurrentProcessId() << 16);
+        if (!m_id) {
+            m_id = 1;
+        }
         InterlockedIncrement(&g_objetos);
     }
     virtual ~CMicFx() {
+        SoltaVoz();
         SoltaAnel();
         delete[] m_mem;
         InterlockedDecrement(&g_objetos);
@@ -565,6 +578,7 @@ public:
     }
 
     STDMETHODIMP UnlockForProcess() override {
+        SoltaVoz();
         SoltaAnel();
         return CBaseAudioProcessingObject::UnlockForProcess();
     }
@@ -607,13 +621,18 @@ private:
         const uint32_t alvo = a->alvo;
         if (alvo == 0 || (m_ep != 0 && alvo != m_ep)) {  // microfone sem o hash (m_ep 0): age como o alvo
             SoltaVaga();
+            SoltaVoz();
             EsqueceEfeito();
             return false;
         }
         const int64_t agora = (int64_t)GetTickCount64();
-        EscreveVoz(a, destino, quadros);
+        // com duas cadeias no mesmo microfone, so a dona da voz escreve a voz crua e a com efeito pro app (#70)
+        const bool dono = PegaVoz(a, agora);
+        if (dono) {
+            EscreveVoz(a, destino, quadros);
+        }
         // o efeito so com o app vivo: a Vitrola que cai devolve a voz crua, como o sem_voz
-        const bool fx = Efeito(a, destino, quadros, agora - a->batida_app < (int64_t)MICFX_APP_MS);
+        const bool fx = Efeito(a, destino, quadros, agora - a->batida_app < (int64_t)MICFX_APP_MS, dono);
         if (m_so_voz) {  // a musica entra pelo hospedeiro, depois do efeito do fabricante: aqui so a voz (cortada ou nao)
             if (a->sem_voz != 0 && agora - a->batida_app < (int64_t)MICFX_APP_MS) {
                 ZeroMemory(destino, quadros * m_canais * sizeof(float));
@@ -624,7 +643,29 @@ private:
         return SomaDoAnel(destino, quadros, m_canais, agora) || fx;
     }
 
-    // A voz crua do microfone para o app, mono e na taxa dele (o app reamostra): so o filtro do alvo escreve
+    // A posse da voz (o dono escreve voz e voz_fx): fica com quem ja tem e bate; livre, ou com o dono parado ha mais
+    // de MICFX_BATIDA_MS (a cadeia dele travou ou sumiu sem soltar), a primeira instancia que chega pega
+    bool PegaVoz(MicFxAnel* a, int64_t agora) {
+        const uint32_t atual = a->voz_dono;
+        if (atual != m_id && atual != 0 && agora - a->voz_batida <= (int64_t)MICFX_BATIDA_MS) {
+            return false;
+        }
+        if (atual != m_id &&
+            InterlockedCompareExchange((volatile LONG*)&a->voz_dono, (LONG)m_id, (LONG)atual) != (LONG)atual) {
+            return false;
+        }
+        a->voz_batida = agora;
+        return true;
+    }
+
+    // Solta a posse da voz (a cadeia fechou, ou este microfone deixou de ser o alvo): outra assume no bloco seguinte
+    void SoltaVoz() {
+        if (m_anel) {
+            InterlockedCompareExchange((volatile LONG*)&m_anel->voz_dono, 0, (LONG)m_id);
+        }
+    }
+
+    // A voz crua do microfone para o app, mono e na taxa dele (o app reamostra): so o dono da voz escreve
     void EscreveVoz(MicFxAnel* a, const float* x, UINT32 quadros) {
         const UINT32 c = m_canais ? m_canais : 1;
         const float k = 1.0f / (float)c;
@@ -665,8 +706,9 @@ private:
     }
 
     // O preset que o app escreveu (seqlock): copia, confere que ninguem escreveu no meio e monta a cadeia. Responde no
-    // anel o seq lido e o resultado. Escrita no meio = tenta no proximo bloco.
-    void LePreset(MicFxAnel* a) {
+    // anel o seq lido e o resultado (so o dono da voz responde: a voz_fx que o app le e a dele). Escrita no meio =
+    // tenta no proximo bloco.
+    void LePreset(MicFxAnel* a, bool responde) {
         const uint32_t s1 = a->preset_seq;
         if (s1 == m_seq || (s1 & 1)) {
             return;
@@ -693,15 +735,18 @@ private:
             m_fx = erro == voz::OK;
             m_preset_n = n;
         }
-        a->preset_erro = erro;
-        MemoryBarrier();
-        a->preset_feito = s1;
+        if (responde) {
+            a->preset_erro = erro;
+            MemoryBarrier();
+            a->preset_feito = s1;
+        }
     }
 
-    // A voz com efeito no lugar da crua (todos os canais), devolvida ao app em voz_fx; true se aplicou. Saiu algo nao
-    // finito: o bloco vira silencio e a cadeia se monta de novo do preset guardado (estado zerado).
-    bool Efeito(MicFxAnel* a, float* destino, UINT32 quadros, bool app_vivo) {
-        LePreset(a);
+    // A voz com efeito no lugar da crua (todos os canais), devolvida ao app em voz_fx (so pelo dono da voz, devolve);
+    // true se aplicou. Saiu algo nao finito: o bloco vira silencio e a cadeia se monta de novo do preset guardado
+    // (estado zerado).
+    bool Efeito(MicFxAnel* a, float* destino, UINT32 quadros, bool app_vivo, bool devolve) {
+        LePreset(a, devolve);
         if (!m_fx || !app_vivo || !m_mono) {
             return false;
         }
@@ -724,7 +769,9 @@ private:
                 m_fx = m_cadeia.Carrega(m_preset, m_preset_n, m_taxa, m_arena, m_arena_bytes) == voz::OK;
             }
             for (UINT32 i = 0; i < n; i++) {
-                a->voz_fx[(w + i) & (MICFX_VOZ_QUADROS - 1)] = m_mono[i];
+                if (devolve) {
+                    a->voz_fx[(w + i) & (MICFX_VOZ_QUADROS - 1)] = m_mono[i];
+                }
                 for (UINT32 j = 0; j < c; j++) {
                     d[i * c + j] = m_mono[i];
                 }
@@ -732,13 +779,16 @@ private:
             w += n;
         }
         _mm_setcsr(csr);
-        MemoryBarrier();  // a voz antes do indice
-        a->fx_escrito = w;
+        if (devolve) {
+            MemoryBarrier();  // a voz antes do indice
+            a->fx_escrito = w;
+        }
         return true;
     }
 
     volatile LONG m_refs = 1;
     IUnknown* m_externo = nullptr;
+    uint32_t m_id = 0;  // quem e esta instancia na posse da voz (voz_dono); nunca 0
     UINT32 m_canais = 1;
     bool m_so_voz = false;  // o microfone tem o hospedeiro do MFX: a musica vai por ele, aqui so a voz (Initialize)
     // o efeito de voz (PreparaEfeito separa a memoria; LePreset monta a cadeia)

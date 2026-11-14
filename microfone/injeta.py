@@ -19,8 +19,8 @@ from ctypes import wintypes
 
 import numpy as np
 
-MAPA = os.environ.get("MICFX_MAPA", "Global\\RitmelliMicFx3")
-MAGIA, VERSAO, TAXA, CANAIS, QUADROS, LEITORES, BATIDA_MS = 0x58464D52, 3, 48000, 2, 32768, 8, 500
+MAPA = os.environ.get("MICFX_MAPA", "Global\\RitmelliMicFx4")
+MAGIA, VERSAO, TAXA, CANAIS, QUADROS, LEITORES, BATIDA_MS = 0x58464D52, 4, 48000, 2, 32768, 8, 500
 VOZ_QUADROS = 16384
 PRESET_BYTES = 65536
 
@@ -49,7 +49,8 @@ class Anel(ctypes.Structure):
                 ("dados", ctypes.c_float * (QUADROS * CANAIS)), ("voz", ctypes.c_float * VOZ_QUADROS),
                 ("fx_escrito", ctypes.c_int64), ("preset_seq", ctypes.c_uint32), ("preset_n", ctypes.c_uint32),
                 ("preset_feito", ctypes.c_uint32), ("preset_erro", ctypes.c_uint32),
-                ("voz_fx", ctypes.c_float * VOZ_QUADROS), ("preset", ctypes.c_uint8 * PRESET_BYTES)]
+                ("voz_fx", ctypes.c_float * VOZ_QUADROS), ("preset", ctypes.c_uint8 * PRESET_BYTES),
+                ("voz_dono", ctypes.c_uint32), ("reservado2", ctypes.c_uint32), ("voz_batida", ctypes.c_int64)]
 
 
 assert ctypes.sizeof(Leitor) == 32 and Anel.escrito.offset == 24 and Anel.batida_app.offset == 40
@@ -57,6 +58,7 @@ assert Anel.alvo.offset == 48 and Anel.voz_escrito.offset == 56 and Anel.leitor.
 assert Anel.dados.offset == 320 and Anel.voz.offset == 320 + QUADROS * CANAIS * 4
 assert Anel.fx_escrito.offset == 328000 and Anel.preset_seq.offset == 328008 and Anel.voz_fx.offset == 328024
 assert Anel.preset.offset == 328024 + VOZ_QUADROS * 4
+assert Anel.voz_dono.offset == 459096 and Anel.voz_batida.offset == 459104
 
 
 def hash_microfone(guid):

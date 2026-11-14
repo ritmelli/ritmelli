@@ -8,6 +8,10 @@ preset devolve a voz crua; preset estragado ou de outra taxa e recusado (preset_
 cortada com efeito leva so a musica, e o efeito continua em voz_fx (ouvir a propria voz); a musica soma em cima da voz
 com efeito; outro microfone (alvo de outro) fica intocado; a 44,1 kHz em estereo o preset da taxa monta e bate.
 
+Duas cadeias no mesmo microfone (#70, o microfone aberto por dois programas): so a dona da voz escreve a voz crua e a
+voz com efeito do app, e as duas poem o efeito no proprio som; a dona que fecha, sai do alvo ou para de bater passa a
+voz pra outra.
+
 O hospedeiro do MFX (#49), com um fabricante falso por dentro (cancelamento de eco, corta a voz pela metade): o
 fabricante recebe o Initialize com o CLSID dele, o registro sai com o do hospedeiro, so as interfaces que o fabricante
 tem aparecem; a musica entra inteira DEPOIS do fabricante (e no lugar da voz cortada); fora do alvo so o fabricante
@@ -46,15 +50,18 @@ class Banca:
 
     conta = 0
 
-    def __init__(self, taxa=48000, canais=1):
+    def __init__(self, taxa=48000, canais=1, mapa=None):
+        """mapa: o anel de outra banca (uma segunda cadeia no mesmo microfone, sem o lado do app: self.m None)."""
         Banca.conta += 1
-        self.mapa = f"{os.environ['MICFX_MAPA']}-{Banca.conta}"
-        injeta.MAPA = self.mapa
+        self.mapa = mapa or f"{os.environ['MICFX_MAPA']}-{Banca.conta}"
         self.taxa, self.canais, self.bloco = taxa, canais, taxa // 100
         self.h = _dll.banca_cria(self.mapa, float(taxa), canais, 4 * self.bloco)
         assert self.h, "a banca nao criou o filtro"
-        self.m = injeta.Microfone()
-        self.m.alvo(123)  # o filtro da banca nao sabe o microfone: age como o alvo de qualquer um
+        self.m = None
+        if mapa is None:
+            injeta.MAPA = self.mapa
+            self.m = injeta.Microfone()
+            self.m.alvo(123)  # o filtro da banca nao sabe o microfone: age como o alvo de qualquer um
 
     def passa(self, x):
         """x mono (repete em todos os canais) em blocos de 10 ms; devolve a saida (quadros x canais)."""
@@ -73,9 +80,16 @@ class Banca:
         mudo = _dll.banca_bloco(self.h, ent.ctypes.data_as(_P), sai.ctypes.data_as(_P), len(x), 1 if silencio else 0)
         return sai[:, 0], bool(mudo)
 
+    def fecha_filtro(self):
+        """Desmonta so o filtro (a cadeia fechou: UnlockForProcess e o fim da instancia); o lado do app segue aberto."""
+        if self.h:
+            _dll.banca_destroi(self.h)
+            self.h = None
+
     def fecha(self):
-        self.m.fecha()
-        _dll.banca_destroi(self.h)
+        if self.m:
+            self.m.fecha()
+        self.fecha_filtro()
 
 
 def fala(n_s=2.0, taxa=48000, semente=3):
@@ -204,6 +218,86 @@ class TestaFiltro(unittest.TestCase):
             np.testing.assert_array_equal(y[:, 1], esperado, "os dois canais levam a voz com efeito")
         finally:
             b.fecha()
+
+
+class TestaDuasCadeias(unittest.TestCase):
+    """O microfone aberto por dois programas: o Windows pode montar duas cadeias, cada uma com a sua instancia do filtro
+    no mesmo anel (#70)."""
+
+    def setUp(self):
+        self.a = Banca()
+        self.a.m.pulso(False)
+        self.b = Banca(mapa=self.a.mapa)
+        self.m = self.a.m
+
+    def tearDown(self):
+        self.b.fecha()
+        self.a.fecha()
+
+    def blocos(self, xa, xb):
+        """As duas cadeias bloco a bloco, a primeira na frente (a que abriu antes); devolve as duas saidas."""
+        ya, yb = [], []
+        for i in range(0, len(xa) - len(xa) % 480, 480):
+            ya.append(self.a.um_bloco(xa[i:i + 480])[0])
+            yb.append(self.b.um_bloco(xb[i:i + 480])[0])
+        return np.concatenate(ya), np.concatenate(yb)
+
+    def test_uma_voz_pro_app_e_o_efeito_nas_duas(self):
+        p = preset.compila(fx.criar("eco"), 48000)
+        seq = self.m.preset(p)
+        self.m.voz()
+        self.m.voz_fx()
+        xa, xb = fala(0.3), fala(0.3, semente=9)[::-1].copy()
+        ya, yb = self.blocos(xa, xb)
+        self.assertEqual(self.m.preset_estado(), (seq, 0), "o preset nao montou")
+        self.assertNotEqual(self.m.a.voz_dono, 0)
+        np.testing.assert_array_equal(self.m.voz()[0], xa[:len(ya)],
+                                      "a voz do app nao e so a da dona (ou andou em dobro)")
+        esperado_a = em_blocos(voz.Cadeia(p, 48000), xa, 480)
+        np.testing.assert_array_equal(self.m.voz_fx()[0], esperado_a, "a voz com efeito do app nao e so a da dona")
+        np.testing.assert_array_equal(ya, esperado_a)
+        np.testing.assert_array_equal(yb, em_blocos(voz.Cadeia(p, 48000), xb, 480), "a outra cadeia perdeu o efeito")
+
+    def test_a_dona_fecha_e_a_outra_assume_na_hora(self):
+        x1, x2 = fala(0.1), fala(0.1, semente=5)
+        self.blocos(x1, x2)
+        dona = self.m.a.voz_dono
+        self.assertNotEqual(dona, 0)
+        self.m.voz()
+        self.a.fecha_filtro()
+        self.assertEqual(self.m.a.voz_dono, 0, "a cadeia que fecha nao soltou a voz")
+        y = self.b.passa(x2)
+        self.assertNotIn(self.m.a.voz_dono, (0, dona))
+        np.testing.assert_array_equal(self.m.voz()[0], x2[:len(y)], "a outra cadeia nao assumiu a voz na hora")
+
+    def test_a_dona_parada_passa_a_voz_depois_da_batida(self):
+        x = fala(0.2)
+        self.a.um_bloco(x[:480])
+        dona = self.m.a.voz_dono
+        self.m.voz()
+        self.b.passa(x)
+        self.assertEqual(self.m.a.voz_dono, dona, "a outra tomou a voz com a dona batendo")
+        self.assertEqual(len(self.m.voz()[0]), 0, "a outra escreveu a voz com a dona viva")
+        self.m.a.voz_batida = injeta.k32.GetTickCount64() - 600  # a dona parou (cadeia travada, ou sumiu sem soltar)
+        y = self.b.passa(x)
+        self.assertNotIn(self.m.a.voz_dono, (0, dona))
+        np.testing.assert_array_equal(self.m.voz()[0], x[:len(y)], "a outra nao assumiu a voz da dona parada")
+        self.a.passa(x)
+        self.assertEqual(len(self.m.voz()[0]), 0, "a dona velha voltou a escrever por cima da nova")
+
+    def test_fora_do_alvo_solta_a_voz(self):
+        x = fala(0.01)
+        self.a.um_bloco(x)
+        dona = self.m.a.voz_dono
+        self.assertNotEqual(dona, 0)
+        self.m.alvo(0)
+        self.a.um_bloco(x)
+        self.assertEqual(self.m.a.voz_dono, 0, "o microfone que deixou de ser o alvo nao soltou a voz")
+        self.m.alvo(123)
+        self.m.voz()
+        self.b.um_bloco(x)
+        self.assertNotIn(self.m.a.voz_dono, (0, dona))
+        np.testing.assert_array_equal(self.m.voz()[0], x)
 
 
 _dll.banca_hospede_cria.restype = ctypes.c_void_p
