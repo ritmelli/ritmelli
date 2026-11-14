@@ -293,6 +293,10 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   chave, com um aviso no console. A língua sai do `?lang=` e, quando a detecção ligar, do
   `Accept-Language` do navegador (cada aparelho na sua); até lá, sempre português. O ETag da
   página junta o tema, os textos e a língua, então a página igual volta como 304.
+  O servidor, por sua vez, não escreve frase para a tela: o `i18n.msg` monta a Mensagem do API.md
+  (`{key, params, text}`), com a chave `server.*` que o tema traduz e o texto em inglês para o log.
+  O erro que já nasce pronto para a tela (o aparelho que sumiu, o cabo no lugar do microfone) é uma
+  `i18n.Recusa`, e quem pega manda a mensagem dela como veio, ou dentro de outra.
 
 ## Filtro "Quest como SM58"
 
