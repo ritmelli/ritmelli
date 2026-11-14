@@ -271,6 +271,37 @@ class TestaMicrofone(unittest.TestCase):
             inj.para()
             anel.desliga()
 
+    def test_projeto_do_preset_fora_da_thread(self):
+        """O projeto do preset (ate ~70 ms no scipy) nunca roda na thread da saida para o jogo: com um projeto de 300 ms,
+        a volta do Injetor segue curta, a voz crua segue enquanto ele projeta, e o preset chega quando fica pronto."""
+        from microfone import preset
+        anel = AnelFalso()
+        anel.liga(voz_taxa=48000)
+        motor = MotorFalso()
+        original = preset._projeta
+        preset._prontos.pop(("radio-policia", 48000), None)
+
+        def lento(*a):
+            time.sleep(0.3)
+            return original(*a)
+
+        preset._projeta = lento
+        inj = eng.Injetor(motor)
+        try:
+            time.sleep(0.3)
+            inj.volta_max = 0.0
+            motor.effect, motor._fx = "radio-policia", object()
+            time.sleep(0.1)
+            self.assertEqual(anel.a.preset_n, 0, "o preset nao podia estar pronto ainda")
+            self.assertEqual(anel.a.sem_voz, 0, "projetando, a voz crua segue")
+            time.sleep(0.4)
+            self.assertGreater(anel.a.preset_n, 0, "o preset projetado a parte nao chegou no anel")
+            self.assertLess(inj.estado()["volta_max_ms"], 100, "a thread da saida esperou o projeto do preset")
+        finally:
+            preset._projeta = original
+            inj.para()
+            anel.desliga()
+
     def test_microfone_do_motor_cede_a_voz_do_filtro(self):
         e = eng.Engine(mic="x", monitor="")
         bloco = np.full((eng.BLOCK, 1), 0.5, np.float32)

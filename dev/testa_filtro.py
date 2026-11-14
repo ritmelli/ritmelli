@@ -32,6 +32,7 @@ _dll = ctypes.CDLL(str(AQUI.parent / "microfone" / "apo" / "saida" / "banca_filt
 _dll.banca_cria.restype = ctypes.c_void_p
 _dll.banca_cria.argtypes = (ctypes.c_wchar_p, ctypes.c_float, ctypes.c_uint, ctypes.c_uint)
 _dll.banca_bloco.argtypes = (ctypes.c_void_p, _P, _P, ctypes.c_uint, ctypes.c_int)
+_dll.banca_bloco.restype = ctypes.c_int  # 1 = a saida marcada BUFFER_SILENT
 _dll.banca_destroi.argtypes = (ctypes.c_void_p,)
 
 
@@ -59,6 +60,13 @@ class Banca:
             e, s = ent[i:i + self.bloco], sai[i:i + self.bloco]
             _dll.banca_bloco(self.h, e.ctypes.data_as(_P), s.ctypes.data_as(_P), self.bloco, 0)
         return sai
+
+    def um_bloco(self, x, silencio=False):
+        """Um bloco so (x mono, do tamanho do bloco); devolve (saida do canal 0, a saida marcada como silencio)."""
+        ent = np.ascontiguousarray(np.repeat(np.asarray(x, np.float32)[:, None], self.canais, axis=1))
+        sai = np.zeros_like(ent)
+        mudo = _dll.banca_bloco(self.h, ent.ctypes.data_as(_P), sai.ctypes.data_as(_P), len(x), 1 if silencio else 0)
+        return sai[:, 0], bool(mudo)
 
     def fecha(self):
         self.m.fecha()
@@ -152,6 +160,19 @@ class TestaFiltro(unittest.TestCase):
         c(x[:480])
         esperado = em_blocos(c, x[480:], 480) + musica[:len(y)]
         np.testing.assert_allclose(y[:, 0], np.clip(esperado, -0.9, 0.9), atol=1e-6)
+
+    def test_cauda_do_efeito_com_a_entrada_em_silencio(self):
+        """Microfone que marca o bloco como silencio (BUFFER_SILENT) e o anel sem musica: sem efeito a saida segue
+        silencio; com efeito ela sai marcada como som, senao quem vem depois joga fora a cauda (o eco do Eco)."""
+        zero = np.zeros(480, np.float32)
+        self.assertTrue(self.b.um_bloco(zero, silencio=True)[1], "sem efeito, silencio continua silencio")
+        self.b.m.preset(preset.compila(fx.criar("eco"), 48000))
+        estalo = zero.copy()
+        estalo[0] = 0.5
+        self.b.um_bloco(estalo)
+        saidas = [self.b.um_bloco(zero, silencio=True) for _ in range(40)]  # 400 ms: o eco sai aos 280
+        self.assertFalse(any(mudo for _, mudo in saidas), "com o efeito, a saida veio marcada como silencio")
+        self.assertGreater(float(np.max(np.abs(np.concatenate([y for y, _ in saidas])))), 0.05, "a cauda do Eco sumiu")
 
     def test_outro_microfone_intocado(self):
         b2 = Banca()  # outro anel, outro filtro: alvo 0 = nenhum

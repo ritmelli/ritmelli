@@ -38,7 +38,7 @@ def main(argv=None):
     ap.add_argument("--efeito", default="eco")
     a = ap.parse_args(argv)
     if a.pelo_app:
-        preset.preset = lambda *_: None  # nenhum efeito tem preset: todos pelo app
+        preset.preset = preset.pede = lambda *_: None  # nenhum efeito tem preset: todos pelo app
     banca = Banca()
     motor = eng.MockEngine("", "")
     motor.monitor_on = False

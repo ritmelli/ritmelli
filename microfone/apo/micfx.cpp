@@ -418,7 +418,8 @@ public:
 
 private:
     // So no microfone alvo do app: devolve a voz crua (destino ainda e a entrada) e soma o que tem no anel em destino
-    // (quadros no formato do microfone); true se somou algo. Em qualquer outro microfone, nada muda e a vaga fica livre
+    // (quadros no formato do microfone); true se a saida leva som do filtro (musica somada ou a voz com efeito, que tem
+    // cauda mesmo com a entrada em silencio). Em qualquer outro microfone, nada muda e a vaga fica livre
     bool Soma(float* destino, UINT32 quadros) {
         MicFxAnel* a = m_anel;
         if (!a || a->magia != MICFX_MAGIA) {
@@ -433,18 +434,18 @@ private:
         const int64_t agora = (int64_t)GetTickCount64();
         EscreveVoz(a, destino, quadros);
         // o efeito so com o app vivo: a Vitrola que cai devolve a voz crua, como o sem_voz
-        Efeito(a, destino, quadros, agora - a->batida_app < (int64_t)MICFX_APP_MS);
+        const bool fx = Efeito(a, destino, quadros, agora - a->batida_app < (int64_t)MICFX_APP_MS);
         if (m_vaga < 0) {  // a vaga foi tomada (a instancia ficou muda tempo demais): tenta outra, sem alocar
             PegaAnel();
             if (m_vaga < 0) {
-                return false;
+                return fx;
             }
         }
         MicFxLeitor& eu = a->leitor[m_vaga];
         eu.batida = agora;
         if (eu.dono != m_dono) {
             m_vaga = -1;
-            return false;
+            return fx;
         }
         const int64_t escrito = a->escrito;
         MemoryBarrier();  // os dados ate 'escrito' ja estao na memoria
@@ -480,7 +481,7 @@ private:
         if (sem_voz && gerados < quadros) {  // acabou o que tem: sem voz, o resto do bloco e silencio
             ZeroMemory(&destino[gerados * canais], (quadros - gerados) * canais * sizeof(float));
         }
-        return gerados > 0;
+        return gerados > 0 || fx;
     }
 
     // A voz crua do microfone para o app, mono e na taxa dele (o app reamostra): so o filtro do alvo escreve
@@ -557,12 +558,12 @@ private:
         a->preset_feito = s1;
     }
 
-    // A voz com efeito no lugar da crua (todos os canais), devolvida ao app em voz_fx. Saiu algo nao finito: o bloco
-    // vira silencio e a cadeia se monta de novo do preset guardado (estado zerado).
-    void Efeito(MicFxAnel* a, float* destino, UINT32 quadros, bool app_vivo) {
+    // A voz com efeito no lugar da crua (todos os canais), devolvida ao app em voz_fx; true se aplicou. Saiu algo nao
+    // finito: o bloco vira silencio e a cadeia se monta de novo do preset guardado (estado zerado).
+    bool Efeito(MicFxAnel* a, float* destino, UINT32 quadros, bool app_vivo) {
         LePreset(a);
         if (!m_fx || !app_vivo || !m_mono) {
-            return;
+            return false;
         }
         const UINT32 c = m_canais ? m_canais : 1;
         const float k = 1.0f / (float)c;
@@ -593,6 +594,7 @@ private:
         _mm_setcsr(csr);
         MemoryBarrier();  // a voz antes do indice
         a->fx_escrito = w;
+        return true;
     }
 
     void SoltaVaga() {
