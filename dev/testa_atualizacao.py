@@ -140,7 +140,7 @@ r.consultar()  # uma falha de rede antes, para o recusado ter o que zerar
 atu.MANIFESTO = certo
 publica(manifesto(app="outro"))
 caso("manifesto recusado nao conta como falha de rede: 6 h", r.consultar() is True and r.proxima() == atu.CONSULTA_CADA_S
-     and "não é de uma versão" in (r.erro or ""), r.erro)
+     and r.erro["key"] == "server.update.rejected" and "não é de uma versão" in r.erro["params"]["reason"], r.erro)
 
 print("--- a vigia")
 dormiu, sleep = [], atu.time.sleep
@@ -238,7 +238,8 @@ c.baixar()
 espera(c, "pronta")
 atu.abre_instalador = lambda s, p: atu.SE_ERR_ACCESSDENIED
 ok, motivo = c.instalar()
-caso("permissao recusada no Windows", not ok and c.estado == "pronta" and "permissão" in motivo, motivo)
+caso("permissao recusada no Windows", not ok and c.estado == "pronta" and motivo["key"] == "server.update.permissionDenied",
+     motivo)
 c.setup.write_bytes(b"trocado")
 ok, motivo = c.instalar()
 caso("setup trocado depois de conferido", not ok and c.estado == "parado", motivo)
@@ -436,7 +437,7 @@ atu.PASTA_APP = app
 instala(instalado)
 a = corta(("corta", 1000), *[("corta", 0)] * 5, m=com_parcial(url=f"{base2}/parcial.exe"))
 caso("a parcial sem avancar em cinco tentativas seguidas: para como rede, e a parcial continua valendo",
-     a.estado == "parado" and a.erro == "O download da versão nova parou. Tente de novo." and a.parcial is True
+     a.estado == "parado" and a.erro["key"] == "server.update.downloadStopped" and a.parcial is True
      and len(Corta.pedidos) == 6 and not list(atu.PASTA.glob("*.baixando")), (a.erro, len(Corta.pedidos)))
 a.baixar()
 espera(a, "pronta", "parado")

@@ -25,6 +25,7 @@ from scipy import signal
 import batida
 import compasso
 import fx
+import i18n
 import pastas
 from microfone import preset  # o preset do efeito no filtro: importado aqui, nunca na thread da saida para o jogo
 from microfone import voz  # o mesmo motor de efeitos do filtro, para a voz com efeito que sai pelo app
@@ -776,7 +777,8 @@ def find_dev(name, kind):
     for i, d in enumerate(sd.query_devices()):
         if d["hostapi"] == w and name.lower() in d["name"].lower() and d[key] > 0:
             return i, d
-    raise ValueError(f"Não achei o dispositivo \"{name}\". Confira se ele está conectado.")
+    raise i18n.Recusa("server.devices.notFound", "Couldn't find the device \"{name}\". Check that it's connected.",
+                      name=name)
 
 
 def probe_duration(path):
@@ -790,11 +792,27 @@ def probe_duration(path):
 
 
 def _aviso_reserva(faltou):
-    """A frase da tela quando a partida usou a reserva: o que faltou e o que entrou no lugar."""
-    sumiu = " nem o ".join(f'{nome} "{escolhido}"' for nome, escolhido, _ in faltou)
-    usou = " e ".join(f'"{usado}"' if usado else "nenhum fone" for _, _, usado in faltou)
-    volta = "ele voltar" if len(faltou) == 1 else "eles voltarem"
-    return f"Não achei o {sumiu}; usei {usou} até {volta}."
+    """A mensagem da tela quando a partida usou a reserva: o que faltou e o que entrou no lugar. faltou vem do
+    _reserva: o microfone, o fone ou os dois; o fone pode ter ficado em nenhum."""
+    f = {nome: (escolhido, usado) for nome, escolhido, usado in faltou}
+    if "microfone" in f and "fone" in f:
+        (mic, mic_usado), (fone, fone_usado) = f["microfone"], f["fone"]
+        if fone_usado:
+            return i18n.msg("server.devices.fallback.both", "Couldn't find the microphone \"{mic}\" or the "
+                            "headphones \"{monitor}\"; using \"{micUsed}\" and \"{monitorUsed}\" until they come "
+                            "back.", mic=mic, micUsed=mic_usado, monitor=fone, monitorUsed=fone_usado)
+        return i18n.msg("server.devices.fallback.bothMonitorNone", "Couldn't find the microphone \"{mic}\" or the "
+                        "headphones \"{monitor}\"; using \"{micUsed}\" and no headphones until they come back.",
+                        mic=mic, micUsed=mic_usado, monitor=fone)
+    if "microfone" in f:
+        return i18n.msg("server.devices.fallback.mic", "Couldn't find the microphone \"{chosen}\"; using \"{used}\" "
+                        "until it comes back.", chosen=f["microfone"][0], used=f["microfone"][1])
+    fone, usado = f["fone"]
+    if usado:
+        return i18n.msg("server.devices.fallback.monitor", "Couldn't find the headphones \"{chosen}\"; using "
+                        "\"{used}\" until they come back.", chosen=fone, used=usado)
+    return i18n.msg("server.devices.fallback.monitorNone", "Couldn't find the headphones \"{chosen}\"; using no "
+                    "headphones until they come back.", chosen=fone)
 
 
 def _do_microfone(mic):
@@ -1409,7 +1427,8 @@ class Engine:
         """O audio nao abriu: o erro fica na tela e o vigia pode tentar de novo. A mesma frase na partida e na
         reabertura: a partida que falha tambem passa pelo vigia logo depois."""
         self._caiu_no_vigia = True
-        self._aviso = self.error = f"Não consegui abrir o áudio ({str(ex)[:160]})."
+        self._aviso = self.error = i18n.msg("server.audio.openFailed", "Couldn't open the audio ({reason}).",
+                                            reason=i18n.motivo(ex))
 
     # nivel do mic no Windows ----------------------------------------------
     def set_mic_vol(self, v):
@@ -1441,7 +1460,8 @@ class Engine:
                     ep = winvol.volume_do(nome)
                 if ep is None:
                     if v is not None:
-                        self.error = f"Não achei o volume do Windows do microfone \"{nome}\"."
+                        self.error = i18n.msg("server.devices.micVolumeMissing", "Couldn't find the Windows "
+                                              "volume of the microphone \"{name}\".", name=nome)
                     continue
                 if v is not None:
                     winvol.gravar(ep, v)
@@ -1498,11 +1518,13 @@ class Engine:
                 x = f(x)  # o motor do filtro (voz.h) pelo voz.dll, a 48 kHz
             except Exception as ex:  # noqa: BLE001 - efeito quebrado nao pode calar a voz
                 self._fx_id, self._fx, self.effect = None, None, "nenhum"
-                self.error = f"O efeito de voz falhou ({str(ex)[:120]}). Voltei para sem efeito."
+                self.error = i18n.msg("server.effect.failed", "The voice effect failed ({reason}). Switched back to "
+                                      "no effect.", reason=str(ex)[:120])
         elif self._fx_id is not None and not self._fx_pendente and not self._fx_falta_dito:
             # o efeito sairia daqui e o voz.dll nao carregou: a voz segue crua, e o aviso sai uma vez por efeito
             self._fx_falta_dito = True
-            self.error = "Falta o voz.dll da Vitrola: neste microfone a sua voz segue sem efeito. Reinstale a Vitrola."
+            self.error = i18n.msg("server.effect.noVozDll", "Vitrola's voz.dll is missing: on this microphone your "
+                                  "voice stays without the effect. Reinstall Vitrola.")
         self._mic.append(x)
         while len(self._mic) > MIC_MAX:
             self._mic.popleft()
@@ -1555,7 +1577,7 @@ class Engine:
         try:
             self._mina.liga()
         except ValueError as ex:  # sem a chave: o pedal fica aceso e o aviso sai na interface
-            self.error = str(ex)
+            self.error = i18n.so_texto(str(ex))
 
     def mina_voz(self, x):
         """A voz dela, float32 48 kHz mono, na fila do jogo. Volta em quantos segundos ela comeca a tocar (a gravacao
@@ -1906,14 +1928,15 @@ class Engine:
             pre[1].wait()
 
     def _erro_de_leitura(self, track, t):
-        nome = track.get("title") or "o arquivo"
+        nome = track.get("title") or "?"
         quando = f"{int(t // 60)}:{int(t % 60):02d}"
         if track.get("stream"):
-            self.error = (f"O YouTube parou de mandar o áudio de \"{nome}\" em {quando}. "
-                          "Toque de novo, ou espere ele chegar na prateleira.")
+            self.error = i18n.msg("server.player.streamStopped", "YouTube stopped sending the audio of \"{title}\" "
+                                  "at {time}. Play it again, or wait for it to reach the shelf.", title=nome, time=quando)
         else:
-            self.error = (f"Não consegui ler o áudio de \"{nome}\" a partir de {quando}. "
-                          "O arquivo pode estar corrompido; apague e baixe de novo.")
+            self.error = i18n.msg("server.player.readFailedAt", "Couldn't read the audio of \"{title}\" from {time}. "
+                                  "The file may be corrupted; delete it and download it again.", title=nome,
+                                  time=quando)
 
     def _stream_desistiu(self, deck, gen, track, t):
         """O servidor nao religou o stream que caiu: o disco acaba ali e a fila segue, se ele ainda esta no prato."""
@@ -1948,8 +1971,8 @@ class Engine:
             else:
                 self._sobre_cache.move_to_end(chave)
         except Exception:  # noqa: BLE001 - som por cima quebrado nao derruba o resto
-            self.error = (f"Não consegui ler o áudio de \"{track.get('title') or 'o arquivo'}\". "
-                          "O arquivo pode estar corrompido; apague e baixe de novo.")
+            self.error = i18n.msg("server.player.readFailed", "Couldn't read the audio of \"{title}\". The file "
+                                  "may be corrupted; delete it and download it again.", title=track.get("title") or "?")
             return
         with self._slock:
             self._sobre.append([{"id": track["id"], "title": track.get("title")}, a, 0])
