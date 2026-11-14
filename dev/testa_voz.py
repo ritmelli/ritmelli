@@ -6,6 +6,8 @@ glotal com tom variando, tres formantes, silabas e pausas, 1 s de silencio no fi
 
 - paridade a 48 kHz: cada efeito acima do limite dele (o chorus e o radio sem o chiado ficam mais baixos, ver LIMITE);
 - o radio com o chiado: o volume do canal (chiado, squelch, bip) a menos de 1,5 dB do fx.py;
+- a distorcao com oversampling (fx.Distorcao): o aliasing de um tom puro com drive alto, contra o tanh direto, e o
+  atraso que o fx.py anuncia;
 - outras taxas (44,1, 16 e 96 kHz): o preset monta, a saida e finita e o volume fica perto do de 48 kHz;
 - a memoria de cada cadeia cabe na que o filtro separa (voz.ArenaBytes), com folga;
 - preset estragado (truncado, taxa trocada, contagem absurda, NaN) e recusado, sem travar.
@@ -23,6 +25,7 @@ import wave
 from pathlib import Path
 
 import numpy as np
+import pedalboard as pb
 from scipy import signal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -75,6 +78,20 @@ def db_rms(x):
     return 10 * np.log10(float(np.mean(np.asarray(x, np.float64) ** 2)) + 1e-20)
 
 
+def aliasing_db(y, f0, sr):
+    """O que sai fora das harmonicas de um tom de f0 Hz (aliasing), em dB do total, de 20 Hz a 16 kHz: 1 s de saida
+    depois de 0,5 s, janela Blackman-Harris. Acima de 16 kHz cai a faixa de transicao do FIR meia-banda a 44,1 kHz
+    (passa ate ~18 kHz): o que dobra ali fica perto da metade da taxa, longe da voz."""
+    y = np.asarray(y[sr // 2:sr // 2 + sr], np.float64)
+    e = np.abs(np.fft.rfft(y * signal.windows.blackmanharris(len(y)))) ** 2
+    f = np.fft.rfftfreq(len(y), 1 / sr)
+    banda = (f >= 20) & (f <= 16000)
+    harm = np.zeros_like(banda)
+    for k in range(1, int(sr / 2 / f0) + 1):
+        harm |= np.abs(f - k * f0) <= 6
+    return 10 * np.log10(e[banda & ~harm].sum() / e[banda].sum() + 1e-30)
+
+
 def efeitos():
     return [c[1] for c in fx.CATALOGO + fx.MODOS if fx.criar(c[1]) is not None]
 
@@ -120,6 +137,31 @@ def main(argv=None):
     sem = em_blocos(e2, x)
     canal_nat, canal_ref = db_rms(y - sem), db_rms(ref - sem)
     confere(abs(canal_nat - canal_ref) < 1.5, f"radio-policia: canal {canal_nat:.1f} dB contra {canal_ref:.1f} do fx.py")
+
+    # a distorcao com oversampling: um tom de 2,7 kHz com o drive do estourado (32 dB) quase vira onda quadrada; o
+    # tanh direto (o Distortion da pedalboard) dobra as harmonicas acima da metade da taxa para dentro da faixa. O
+    # ganho de 0,5 tira o corte em 1 do fim da cadeia da conta: o FIR passa um pouco de 1 nas quinas da onda quadrada
+    def so_a_etapa(taxa, **kw):
+        e = fx.Efeito(**kw)
+        e.ganho = 0.5
+        return voz.Cadeia(preset.compila(e, taxa), taxa)
+
+    for taxa in (48000, 44100):
+        t = np.arange(2 * taxa) / taxa
+        tom = (0.25 * np.sin(2 * np.pi * 2700 * t)).astype(np.float32)
+        um = {nome: em_blocos(so_a_etapa(taxa, **kw), tom, taxa // 100)
+              for nome, kw in (("sem", {"placa": [pb.Distortion(32)]}), ("com", {"antes": [fx.Distorcao(32)]}))}
+        sem, com = aliasing_db(um["sem"], 2700, taxa), aliasing_db(um["com"], 2700, taxa)
+        confere(sem > -40 and com < -80, f"distorcao a {taxa} Hz: aliasing de um tom de 2,7 kHz com drive de 32 dB, "
+                f"{sem:.1f} dB sem oversampling e {com:.1f} dB com")
+    # o atraso: com drive baixo a etapa e linear, e o centro do impulso cai no latencia_ms do fx.py
+    d = fx.Distorcao(-40)
+    imp = np.zeros(SR // 10, np.float32)
+    imp[96] = 1.0
+    y = em_blocos(voz.Cadeia(preset.compila(fx.Efeito(antes=[d]), SR), SR), imp).astype(np.float64)
+    atraso = float(np.sum(np.arange(len(y)) * y) / np.sum(y)) - 96
+    confere(abs(atraso - d.latencia_ms * SR / 1000) < 0.5,
+            f"distorcao: atraso {atraso:.2f} amostras, o fx.py anuncia {d.latencia_ms * SR / 1000:.2f}")
 
     # outras taxas: monta, sai finito, e o volume fica perto do de 48 kHz
     for taxa in (44100, 16000, 96000):
