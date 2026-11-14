@@ -26,6 +26,7 @@ import batida
 import compasso
 import fx
 import pastas
+import sonoridade
 from microfone import preset  # o preset do efeito no filtro: importado aqui, nunca na thread da saida para o jogo
 from microfone import voz  # o mesmo motor de efeitos do filtro, para a voz com efeito que sai pelo app
 
@@ -58,6 +59,11 @@ STREAM_CAIU_S = 5.0  # o stream que para mais que isso antes do fim (ou sem audi
 STREAM_SEM_DADO_S = 5.0
 STREAM_AHEAD = 3000
 RAPIDO_MAX_S = 120  # o posto nos Sons rapidos pela mao toca inteiro por cima ate isso (2 minutos)
+# o volume automatico (sonoridade.py): o ganho de um disco anda ate isso por segundo quando a medida chega com ele
+# tocando (o stream medido no comeco, o arquivo que acabou de baixar, o liga e desliga), e o stream sem medida e
+# estimado quando o leitor passa destes pontos (s decodificados desde o comeco)
+GANHO_RAMPA_DB_S = 6.0
+STREAM_ESTIMA_S = (8.0, 30.0)
 # o stream aberto antes (09/11, a latencia do pedido falado): o servidor abre o ffmpeg do endereco adiantado logo que
 # ele sai, antes de o disco entrar no prato; o leitor que toca esse endereco do comeco continua desse ffmpeg (o
 # ffmpeg novo levava ~0,1 a 0,25 s ate o primeiro bloco: processo, TLS e o comeco do googlevideo). False desliga
@@ -209,6 +215,9 @@ class Deck:
         # o nivel de cada bloco decodificado (t0, quadros, rms), o ja tocado inclusive: a medicao do fim
         # precisa do trecho de antes da queda, que pode ja ter saido da fila
         self.niveis = collections.deque(maxlen=NIVEIS_MAX)
+        # o volume automatico do disco (linear): aonde ele vai e onde esta (o _mixa anda de um ao outro)
+        self.ganho_alvo = 1.0
+        self.ganho = 1.0
 
 
 def _niveis(niv):
@@ -1158,7 +1167,7 @@ class Engine:
         self._cheia = 0          # ... e em que quadro ela fica cheia (o fim da troca de grave)
         self._grave = None       # (de, ate) em quadros desde a virada: a troca de grave da passagem no tempo
         self._saindo = None      # [deck, quadros, feitos, grave, segura]: o disco que sai, abaixando por baixo
-        self._eco = None         # [audio, feitos]: o eco do corte no 1, por cima da que entra (feitos < 0: ainda nao)
+        self._eco = None         # [audio, feitos, deck que saiu]: o eco do corte no 1 (feitos < 0: ainda nao)
         self._eco_plano = None   # (audio, quadros depois da virada) do plano medido, ate a virada
         self._entrando = None    # [quadros, feitos, nivel, cheia]: a proxima subindo
         self.virou = None        # (o que saiu, o que entrou, a tag) para o servidor tirar da fila
@@ -1167,6 +1176,18 @@ class Engine:
         # o servidor religa a parecida do Automatico cujo stream caiu: religar_stream(disco, onde parou, desistir), na
         # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue, como antes
         self.religar_stream = None
+        # o volume automatico (sonoridade.py): as musicas mais baixas sobem ate o alvo, com o limitador na musica (a
+        # musica sai sonoridade.LIMITE_ANTES amostras atrasada, sempre). O servidor diz a medida que ja tem de um disco
+        # (sonoridade_de(disco) -> LUFS ou None) e guarda a que o motor mede (mediu(disco, LUFS)); sem os dois, a
+        # medida fica so nesta sessao
+        self.volume_auto = True
+        self.sonoridade_de = None
+        self.mediu = None
+        self._medidas = {}  # chave do disco -> (LUFS, inteira?): o que o motor ja mediu nesta sessao
+        self._medindo = set()  # as chaves com o arquivo sendo medido
+        self._med_lock = threading.Lock()
+        self._limitador = sonoridade.Limitador()
+        self._limitador_zera = False  # o prato trocou ou pulou: o _mixa joga fora os 2 ms que o limitador segura
         # o visor de DJ do tema: as ondas por id do disco (_onda_pede, onda) e a passagem que vem e a que acabou de
         # acontecer, no formato do visor (_mede, _vira; ver o snapshot)
         self._ondas = collections.OrderedDict()
@@ -1650,6 +1671,7 @@ class Engine:
                 self._prato = None
                 self._soou = (tr.get("title"), str(tr.get("path") or "").startswith("http"), p[1], time.time())
         som = None  # arquivo + sons por cima, antes do volume
+        cru = None  # o disco sem o volume automatico, quando algum ganho dele nao e 1 (o limitador compara)
         if item:
             som = np.zeros((frames, 2), np.float32)
             n = 0
@@ -1664,6 +1686,10 @@ class Engine:
                 ent[1] += n
                 if ent[1] >= max(ent[0], ent[3]):
                     self._entrando = None
+            ga = self._ganho(self._deck, n)
+            if not np.isscalar(ga) or ga != 1.0:
+                cru = som.copy()
+                som[:n] *= ga
         sai = self._saindo
         if sai is not None and not self.paused:  # o que sai: o fim dele, abaixando em cosseno
             with self._qlock:
@@ -1683,21 +1709,43 @@ class Engine:
                     s = agudo + fica[:, None] * (s - agudo)
                 if som is None:
                     som = np.zeros((frames, 2), np.float32)
-                som[:n] += s * g[:, None]
+                s = s * g[:, None]
+                ga = self._ganho(sai[0], n)
+                if cru is None and (not np.isscalar(ga) or ga != 1.0):
+                    cru = som.copy()
+                if cru is not None:
+                    cru[:n] += s
+                som[:n] += s * ga
                 sai[2] += n
         eco = self._eco
         if eco is not None and not self.paused:  # o eco do corte no 1, comecando no golpe
-            a, p = eco
+            a, p, dono = eco
             i0 = max(0, -p)
             if i0 < frames:
                 k = min(frames - i0, len(a) - max(0, p))
                 if k > 0:
                     if som is None:
                         som = np.zeros((frames, 2), np.float32)
-                    som[i0:i0 + k] += a[max(0, p):max(0, p) + k]
+                    e = a[max(0, p):max(0, p) + k]
+                    ga = dono.ganho if self.volume_auto else 1.0  # o do disco que saiu, parado onde ele parou
+                    if cru is None and ga != 1.0:
+                        cru = som.copy()
+                    if cru is not None:
+                        cru[i0:i0 + k] += e
+                    som[i0:i0 + k] += e * ga
             eco[1] = p + frames
             if eco[1] >= len(a):
                 self._eco = None
+        if self._limitador_zera:  # o prato trocou ou pulou: os 2 ms do disco de antes nao saem
+            self._limitador_zera = False
+            self._limitador = sonoridade.Limitador()
+        lim = self._limitador
+        if som is not None or np.any(lim.hist):
+            # o disco passa sempre pelo limitador (o mesmo atraso com ou sem ganho); ele so age no que o ganho
+            # acrescentou acima de 0 dBFS. Parado (pausa, fim do disco), ele solta o que ainda segura
+            if som is None:
+                som = np.zeros((frames, 2), np.float32)
+            som = lim(som, cru)
         if self._sobre:
             with self._slock:
                 vivos = []
@@ -1834,6 +1882,10 @@ class Engine:
         path = track["path"]
         stream = str(path).startswith("http")  # o YouTube direto, antes de o download chegar
         pre = self._pre_pega(path) if stream and start == 0 else None
+        # o volume automatico do stream sem medida inteira: mede o que decodifica (o arquivo, o _poe_ganho mede fora),
+        # estima nos STREAM_ESTIMA_S e, se tocou do comeco ao fim, guarda a medida inteira
+        med = sonoridade.Medidor() if stream and not self._lufs(track)[1] else None
+        estima = list(STREAM_ESTIMA_S)
         while gen == deck.gen:
             if pre is not None:
                 blocos, ff = pre
@@ -1861,6 +1913,11 @@ class Engine:
                     rms = float(np.sqrt(np.mean(arr * arr))) if len(arr) else 0.0  # fora do lock do callback
                     if acc is not None:
                         acc.bloco(t + n / SR, arr)
+                    if med is not None:
+                        med(arr)
+                        if estima and med.segundos >= estima[0]:
+                            estima.pop(0)
+                            self.sonoridade(track, med.lufs(), inteira=False)
                     with self._qlock:
                         if gen != deck.gen:
                             break
@@ -1874,6 +1931,13 @@ class Engine:
                     acc.escreve()
             if gen != deck.gen:
                 return
+            if med is not None:
+                dur = float(track.get("duration") or 0)
+                if t == 0 and n and (not dur or t + n / SR >= dur - STREAM_CAIU_S):
+                    self.sonoridade(track, med.lufs())
+                elif estima and n:  # o disco curto que acabou antes da estimativa
+                    self.sonoridade(track, med.lufs(), inteira=False)
+                med = None  # a volta do Repetir nao mede de novo
             if n == 0 and stream and track.get("job") and deck is self._deck:
                 # o download do mesmo disco esta a caminho (27/10: o YouTube deu 403 ao ffmpeg em 2 de ~15 streams, e
                 # o download chegava 2 s depois): sem erro e sem fim, o prato fica carregando e o trocar_fonte toca
@@ -1962,6 +2026,7 @@ class Engine:
             self._deck.niveis.clear()  # a posicao pulou: o nivel de antes nao e mais o caminho ate o fim
             self._eof_gen = -1
             gen = self._gen
+            self._limitador_zera = True
         self.pos = start
         self.ended = False
         self.error = None
@@ -1981,6 +2046,7 @@ class Engine:
                 self._cancela_passagem()
                 d = Deck(track)
                 d.gen, d.ahead = 1, PRONTO_AHEAD
+                self._poe_ganho(d, track, na_hora=True)
                 self._pronto, self.pronto_tag = d, tag
                 self._deck.ahead = 10 ** 9  # o fim deste inteiro na memoria para medir (45 s sao ~17 MB)
                 atual = self._deck
@@ -2520,7 +2586,9 @@ class Engine:
             ne = self._entrar if medida else 0
             self._entrando = [ne, 0, self._nivel_entra if medida else 1.0, self._cheia if medida else 0] if ne else None
             self._nivel_entra, self._cheia = 1.0, 0
-            self._eco = [self._eco_plano[0], -self._eco_plano[1]] if medida and self._eco_plano is not None else None
+            # o eco e do disco que sai: leva o ganho automatico dele
+            self._eco = ([self._eco_plano[0], -self._eco_plano[1], velho]
+                         if medida and self._eco_plano is not None else None)
             self._eco_plano = None
             self._deck = prox
             # o visor segue desenhando a passagem que acabou de virar (a sobreposicao vem toda depois da virada)
@@ -2656,6 +2724,83 @@ class Engine:
         return {"id": iid, "passo": VISOR_PASSO, "n": n, "completa": completa, "fonte": fonte, "versao": versao,
                 "onda": base64.b64encode(dados).decode("ascii")}
 
+    # o volume automatico ------------------------------------------------------
+    @staticmethod
+    def _chave(track):
+        """O mesmo disco no stream e no arquivo baixado: o id do YouTube, ou o id, ou o caminho."""
+        return track.get("youtube_id") or track.get("id") or track.get("path")
+
+    def _lufs(self, track):
+        """(LUFS, inteira?) do disco: o que ele traz, o que o servidor guardou, o que se mediu nesta sessao; ou
+        (None, False)."""
+        if track.get("lufs") is not None:
+            return float(track["lufs"]), True
+        if self.sonoridade_de is not None:
+            try:
+                v = self.sonoridade_de(track)
+            except Exception:  # noqa: BLE001 - sem a medida guardada, mede de novo
+                v = None
+            if v is not None:
+                return float(v), True
+        return self._medidas.get(self._chave(track), (None, False))
+
+    def _poe_ganho(self, deck, track, na_hora):
+        """O ganho do disco no deck pela medida que ja se tem (na_hora: sem rampa, o disco ainda nao tocou); sem a
+        medida inteira, o arquivo local se mede agora, fora daqui (o stream o leitor mede)."""
+        lufs, inteira = self._lufs(track)
+        deck.ganho_alvo = 10 ** (sonoridade.ganho_db(lufs) / 20)
+        if na_hora:
+            deck.ganho = deck.ganho_alvo
+        path = str(track.get("path") or "")
+        if not inteira and path and not path.startswith("http"):
+            threading.Thread(target=self._mede_arquivo, args=(track,), daemon=True).start()
+
+    def _mede_arquivo(self, track):
+        k = self._chave(track)
+        with self._med_lock:
+            if k in self._medindo:
+                return
+            self._medindo.add(k)
+        try:
+            lufs = sonoridade.mede_arquivo(track["path"], FFMPEG, NO_WINDOW | ABAIXO_DO_NORMAL, sem_cursor())
+        finally:
+            with self._med_lock:
+                self._medindo.discard(k)
+        if lufs is not None:
+            self.sonoridade(track, lufs)
+
+    def sonoridade(self, track, lufs, inteira=True):
+        """A medida do disco chegou (o arquivo inteiro, o stream inteiro, ou a estimativa do comeco dele): o ganho do
+        deck que toca ou vai tocar esse disco anda ate o novo, e a medida inteira vai pro servidor guardar."""
+        if lufs is None:
+            return
+        k = self._chave(track)
+        if not inteira and self._medidas.get(k, (None, False))[1]:
+            return  # a do disco inteiro vale mais que a do comeco
+        self._medidas[k] = (float(lufs), inteira)
+        alvo = 10 ** (sonoridade.ganho_db(lufs) / 20)
+        with self._qlock:
+            sai = self._saindo[0] if self._saindo is not None else None
+            for d in (self._deck, self._pronto, sai):
+                if d is not None and d.track is not None and self._chave(d.track) == k:
+                    d.ganho_alvo = alvo
+        if inteira and self.mediu is not None:
+            try:
+                self.mediu(track, float(lufs))
+            except Exception as ex:  # noqa: BLE001 - sem guardar, mede de novo na proxima vez
+                print(f"volume: nao guardei a medida de {track.get('title')!r}: {ex}", file=sys.stderr, flush=True)
+
+    def _ganho(self, deck, n):
+        """No _mixa: o ganho automatico do deck nas n amostras deste bloco (escalar, ou a rampa n x 1 ate o alvo)."""
+        alvo = deck.ganho_alvo if self.volume_auto else 1.0
+        g0 = deck.ganho
+        if g0 == alvo:
+            return g0
+        k = 10 ** (GANHO_RAMPA_DB_S * n / SR / 20)
+        g1 = min(alvo, g0 * k) if alvo > g0 else max(alvo, g0 / k)
+        deck.ganho = g1
+        return np.geomspace(g0, g1, n, dtype=np.float32)[:, None]
+
     # comandos -------------------------------------------------------------
     def espera(self, track):
         """Poe o disco no prato carregando, ainda sem audio: o endereco do stream do YouTube
@@ -2664,6 +2809,8 @@ class Engine:
             self.track = track
             self.paused = False
             self._prato = (track.get("id"), time.time())
+            self._deck.track = track
+            self._poe_ganho(self._deck, track, na_hora=True)
             self._restart(0.0)
 
     def tira_soou(self):
@@ -2680,6 +2827,8 @@ class Engine:
             if self.track is not atual:
                 return False
             self._onda_pede(novo)
+            self._deck.track = novo
+            self._poe_ganho(self._deck, novo, na_hora=not atual.get("path"))  # tocando: o ganho novo vem em rampa
             if not atual.get("path"):
                 self.track = novo
                 self._restart(self._clamp(self.pos))
@@ -2711,6 +2860,8 @@ class Engine:
             self.track = track
             self.paused = paused
             self._prato = (track.get("id"), time.time())
+            self._deck.track = track
+            self._poe_ganho(self._deck, track, na_hora=True)
             self._restart(self._clamp(start))
 
     def _clamp(self, t):
@@ -2741,6 +2892,7 @@ class Engine:
                 self._cancela_passagem(tudo=True)
                 self._gen += 1
                 self._q.clear()
+                self._limitador_zera = True
             self.track = None
             self.loop = False  # o Repetir vale para o disco do prato, e ele saiu
             self.paused = False
@@ -2807,6 +2959,8 @@ class Engine:
             "track": None if tr is None else {k: v for k, v in tr.items() if k not in ("path", "headers")},
             "duration": None if tr is None else tr.get("duration"),
             "vol": round(self.vol, 3), "mon_vol": round(self.mon_vol, 3),
+            # o volume automatico: ligado, e o ganho dele no disco do prato agora (dB; 0 = como veio)
+            "volume_auto": self.volume_auto, "ganho_db": round(20 * float(np.log10(self._deck.ganho)), 1),
             "mic_vol": round(self.mic_vol, 3), "mic_mute": self.mic_mute,
             "monitor_on": self.monitor_on, "loop": self.loop,
             "effect": self.effect, "voice_monitor": self.voice_monitor,

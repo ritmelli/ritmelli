@@ -36,6 +36,7 @@ import engine as eng
 import fx
 import pareamento as par
 import pastas
+import sonoridade
 from pastas import save_json
 from versao import VERSAO
 from yt_erros import erro_do_video
@@ -71,6 +72,7 @@ ANDAMENTO_APOS_S = 30.0  # o disco fica isso no prato antes de medir: pular de d
 ANDAMENTO_ESPERA_S = 600.0  # medida que falhou (stream fora do ar) so tenta de novo depois disso
 CAPA_TAM = 544             # a capa do album do YouTube Music, quadrada, em px (o endereco aceita qualquer tamanho)
 CAPA_PASSO_S = 2.0         # entre uma busca de capa e a proxima: a prateleira inteira sai devagar, sem rajada
+SONORIDADE_PASSO_S = 2.0   # entre um disco da prateleira medido (volume automatico) e o proximo
 ABAIXO_DO_NORMAL = 0x00004000  # prioridade do processo da medida no Windows: cede o processador ao audio
 
 pool = ThreadPoolExecutor(4)
@@ -610,6 +612,13 @@ class App:
         self.versoes_path = data_dir / "versoes_audio.json"
         self.versoes = (json.loads(self.versoes_path.read_text(encoding="utf-8"))
                         if self.versoes_path.exists() else {})
+        # o volume automatico: o LUFS de quem tocou sem estar na prateleira (o stream das parecidas), por youtube_id; o
+        # da prateleira mora no library.json, em cada disco ("lufs")
+        self.sonoridades_path = data_dir / "sonoridades.json"
+        self.sonoridades = (json.loads(self.sonoridades_path.read_text(encoding="utf-8"))
+                            if self.sonoridades_path.exists() else {})
+        self.sonoridade_falhou = set()  # os discos da prateleira que o ffmpeg nao mediu: nao tenta de novo
+        self._son_lock = threading.Lock()
         self.parado_sem_fila = None  # disco que acabou com a fila vazia: a parecida que chegar toca
         self.preparando = None  # (disco, qid) da passagem sendo preparada (o stream leva 1 a 3 s)
         self.passagem_falhou = None  # (disco, qid) que nao deu para preparar: toca no fim, como antes
@@ -620,6 +629,8 @@ class App:
         self.engine = cls(mic=self.cfg.get("mic", "default"), monitor=self.cfg.get("monitor", "default"))
         self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
         self.engine.religar_stream = self.religar_stream
+        self.engine.sonoridade_de, self.engine.mediu = self.sonoridade_de, self.mediu
+        self.engine.volume_auto = bool(self.cfg.get("volume_auto", True))
         self.cfg.pop("mic_vol", None)  # o nivel da voz e o do Windows, que guarda sozinho (18/10)
         for k in ("vol", "mon_vol", "monitor_on", "voice_mon_vol"):
             if k in self.cfg:
@@ -632,6 +643,7 @@ class App:
         threading.Thread(target=self._vigia_passagem, daemon=True).start()
         threading.Thread(target=self._vigia_andamento, daemon=True).start()
         threading.Thread(target=self._vigia_capas, daemon=True).start()
+        threading.Thread(target=self._vigia_sonoridade, daemon=True).start()
         if self.atualizacao.ativa:
             threading.Thread(target=self.atualizacao.vigia, daemon=True).start()
 
@@ -657,7 +669,7 @@ class App:
         e = self.engine
         self.cfg.update(mic=e.devices["mic"], monitor=e.devices["monitor"],
                         vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
-                        voice_mon_vol=e.voice_mon_vol, auto=self.auto)
+                        voice_mon_vol=e.voice_mon_vol, auto=self.auto, volume_auto=e.volume_auto)
         save_json(self.cfg_path, self.cfg)
 
     def boas_vindas_pendentes(self):
@@ -1728,6 +1740,49 @@ class App:
             print(f"andamento: {x.get('title')!r}: comeco {r['ini']}, fim {r['fim']} BPM em {time.time() - t0:.1f} s",
                   file=sys.stderr, flush=True)
 
+    # volume automatico ---------------------------------------------------------
+    def _disco_da_prateleira(self, tr):
+        if tr.get("id") and self.lib.get(tr["id"]):
+            return self.lib.get(tr["id"])
+        return self.lib.by_youtube(tr["youtube_id"]) if tr.get("youtube_id") else None
+
+    def sonoridade_de(self, tr):
+        """O LUFS ja medido do disco (o motor pergunta quando ele entra no prato), ou None."""
+        it = self._disco_da_prateleira(tr)
+        if it is not None and it.get("lufs") is not None:
+            return it["lufs"]
+        return self.sonoridades.get(tr.get("youtube_id") or "")
+
+    def mediu(self, tr, lufs):
+        """O motor mediu o disco inteiro: a medida fica com ele na prateleira, ou no sonoridades.json."""
+        it = self._disco_da_prateleira(tr)
+        if it is not None:
+            self.lib.update(it["id"], lufs=round(lufs, 1))
+        elif tr.get("youtube_id"):
+            with self._son_lock:
+                self.sonoridades[tr["youtube_id"]] = round(lufs, 1)
+                save_json(self.sonoridades_path, self.sonoridades)
+
+    def _vigia_sonoridade(self):
+        """Mede a prateleira, um disco por vez (o ebur128 do ffmpeg, abaixo do normal, ~1 s por disco), para o volume
+        automatico ja saber o ganho quando ele entrar no prato; o que acabou de baixar entra na proxima volta. Nao mede
+        com a passagem sendo planejada."""
+        while True:
+            time.sleep(SONORIDADE_PASSO_S)
+            if self.closing or self.engine.planejando:
+                continue
+            x = next((x for x in self.lib.items if x.get("lufs") is None and x.get("file")
+                      and x["id"] not in self.sonoridade_falhou and (LIB / x["file"]).is_file()), None)
+            if x is None:
+                continue
+            lufs = sonoridade.mede_arquivo(LIB / x["file"], eng.FFMPEG, eng.NO_WINDOW | ABAIXO_DO_NORMAL,
+                                           eng.sem_cursor())
+            if lufs is None:
+                self.sonoridade_falhou.add(x["id"])
+                print(f"volume: nao medi {x.get('title')!r}", file=sys.stderr, flush=True)
+                continue
+            self.lib.update(x["id"], lufs=round(lufs, 1))
+
     def _conta_escuta(self):
         """Prateleira das mais escutadas primeiro: o disco ganha uma escuta
         (`plays` na biblioteca) quando toca de fato ESCUTA_S desde que entrou no prato. Pausado
@@ -2082,7 +2137,7 @@ def build(app_state):
                 setattr(E, k, max(0.0, min(1.0, float(b[k]))))
         if "mic_vol" in b:
             E.set_mic_vol(b["mic_vol"])  # nivel do mic no Windows
-        for k in ("mic_mute", "monitor_on", "voice_monitor"):
+        for k in ("mic_mute", "monitor_on", "voice_monitor", "volume_auto"):
             if k in b:
                 setattr(E, k, bool(b[k]))
         if "effect" in b:

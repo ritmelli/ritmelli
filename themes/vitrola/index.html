@@ -424,6 +424,7 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 .fader input { grid-row: 2; grid-column: 1 / -1; margin-top: 0; }
 .receptor input[type=range]:focus-visible { outline-offset: 0; }
 .chaves { display: flex; gap: 10px; flex-wrap: wrap; }
+.nivelar { display: grid; justify-items: start; gap: 6px; }
 .chaves .btn { flex: 1 1 auto; }
 .chave { gap: 10px; padding: 8px 14px; }
 .chave .lampada { width: 9px; height: 9px; }
@@ -4642,6 +4643,10 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       <select id="dd-mon"></select>
       <span class="em-uso" id="dd-mon-uso"></span>
     </label>
+    <div class="nivelar">
+      <button class="btn chave" id="b-nivelar" type="button" aria-pressed="false" aria-describedby="dd-nivelar"><span class="lampada" aria-hidden="true"></span>Volume automático</button>
+      <span class="em-uso" id="dd-nivelar"></span>
+    </div>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
       <span>Na Vitrola, no jogo e nas chamadas de voz, escolha o mesmo microfone: o que você usa para falar. No Discord, em <b>Configurações de usuário &gt; Voz e vídeo</b>, confira o microfone em <b>Dispositivo&nbsp;de&nbsp;entrada</b> e escolha <b>Estúdio</b> em <b>Perfil&nbsp;de&nbsp;entrada</b>: os outros perfis podem cortar a música. Se você usa uma tecla para falar no jogo ou na chamada, a música só chega lá enquanto você segura a tecla.</span></div>
     <p class="msg-dlg" id="dd-msg" role="status"></p>
@@ -5508,6 +5513,12 @@ function desenharReceptor() {
   $('#f-mon').closest('.fader').title = semFone ? 'Nenhum fone escolhido. Escolha um em Microfone e fone.' : '';
   $('label[for="f-mon"] small').textContent = semFone ? 'nenhum fone escolhido' : '';
   ligarChave($('#b-cortar'), s.mic_mute);
+  // o volume automatico (no Microfone e fone): ligado, a musica mais baixa sobe ate perto das outras; diz quanto nesta
+  $('#b-nivelar').closest('.nivelar').hidden = !('volume_auto' in s);   // servidor antigo: sem a chave
+  ligarChave($('#b-nivelar'), !!s.volume_auto);
+  $('#dd-nivelar').textContent = !s.volume_auto ? 'Desligado: cada música toca no volume em que veio.'
+    : 'As músicas mais baixas sobem até perto das outras, sem estourar.' +
+      (s.ganho_db > 0 ? ` A que está tocando subiu ${String(s.ganho_db).replace('.', ',')} dB.` : '');
   for (const mc of [$('#mini-cortar'), $('#palco-cortar')]) {   // o da barra e o do cabecalho do palco
     if (mc._cortada === !!s.mic_mute) continue;
     mc._cortada = !!s.mic_mute;
@@ -8607,6 +8618,7 @@ $('#b-aleatorio').addEventListener('click', () => { const v = !(S.state && S.sta
 $('#b-repetir').addEventListener('click', () => { const v = !(S.state && S.state.loop); ligarChave($('#b-repetir'), v); ajustar('loop', v); });
 function alternarVoz() { const v = !(S.state && S.state.mic_mute); ligarChave($('#b-cortar'), v); ajustar('mic_mute', v); desenharReceptor(); }
 $('#b-cortar').addEventListener('click', alternarVoz);
+$('#b-nivelar').addEventListener('click', () => { const v = !(S.state && S.state.volume_auto); ligarChave($('#b-nivelar'), v); ajustar('volume_auto', v); });
 $('#b-ouvir').addEventListener('click', () => {
   const v = !(S.state && S.state.voice_monitor);
   ligarChave($('#b-ouvir'), v); ajustar('voice_monitor', v);
