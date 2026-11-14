@@ -221,7 +221,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
 | `POST /api/settings` | qualquer de `vol`, `mon_vol`, `mic_vol`, `mic_mute`, `monitor_on`, `loop`, `shuffle`, `auto`, `effect`, `voice_monitor`, `voice_mon_vol` | ajusta ao vivo; salva `vol`, `mon_vol`, `monitor_on`, `voice_mon_vol` e `auto` (`mic_vol` vai direto para o Windows); `mic_mute`, `loop`, `shuffle`, `voice_monitor` e o efeito voltam ao padrão quando o servidor sobe |
 | `GET /api/onda/<id>` | - | a onda do disco para o visor de DJ: `{"id", "passo": 0.04, "n", "completa", "fonte": "arquivo" ou "stream", "versao", "onda"}`, `onda` em base64 de `n` colunas de 3 bytes (grave até 200 Hz, médio até 2 kHz, agudo até 6 kHz), cada uma de `passo` s do disco, em dB de -60 (0) a 0 (255); ~24 KB para 4 min. O motor lê a do disco da prateleira inteira quando ele entra no prato ou na passagem; a do stream só chega até onde o áudio já foi decodificado (`completa: false`: peça de novo). 404 = ainda não tem |
-| `GET /api/effects` | - | `[{"id","nome","grupo","descricao","latencia_ms"}]`, na ordem de exibição; `grupo` vazio é o "Sem efeito"; os grupos hoje são "Rádio e alto-falante", "Ambiente" e "Personagem" |
+| `GET /api/effects` | - | `[{"id","grupo","latencia_ms"}]`, na ordem de exibição; `grupo` é o id do grupo, vazio no "Sem efeito"; os grupos hoje são `radio` (Rádio e alto-falante), `ambiente` e `personagem`. O nome e a descrição de cada efeito e o nome de cada grupo são textos do tema, nas línguas dele: `effect.<id>.name`, `effect.<id>.desc` e `effect.group.<grupo>` (o `python dev/testa_i18n.py` confere que todo tema com a pasta `i18n/` tem os de todos os efeitos do `fx.py`) |
 | `GET /api/search?q=<texto ou link>&n=8&start=0` | - | busca no YouTube (link ou id colado devolve o próprio vídeo): `[{"youtube_id","title","duration","channel","thumb","in_library","id"}]` (leva 2 a 6 s); `n` até 20 por vez, `start` pula os primeiros (o "carregar mais": o servidor pede `start+n` ao YouTube e devolve do `start` em diante, até 200; link com `start` devolve vazio) |
 | `GET /api/musica?q=<pedido>&n=3` | - | busca de música no YouTube Music, a do pedido falado: com o melhor resultado sendo um artista e o pedido só o nome dele, as mais tocadas dele ("Raul" -> Metamorfose Ambulante); senão, as músicas e vídeos da busca. Mesmo formato do `/api/search`; até 4 s, senão 502 (quem pede cai no `/api/search`) |
 | `POST /api/aquece` | - | alguém vai pedir (a mina chama quando uma fala começa): renova as conexões com o YouTube paradas há mais de 180 s no processo do endereço e nas reservas (o YouTube fecha a parada aos ~240 s) e abre o processo do endereço que está vazio; responde na hora `{"ok": true, "aquecidos": n}` |
@@ -324,7 +324,7 @@ vem `false`.
    (fora de campo de texto).
 9. Servidor fora do ar, erro de busca, `error` no Estado: dizer o que houve e o que fazer.
 10. Botão de desligar o soundboard, com confirmação.
-11. Efeitos de voz (no estilo do Voicemod): a lista de `/api/effects` agrupada, com o nome
+11. Efeitos de voz (no estilo do Voicemod): a lista de `/api/effects` agrupada, com o nome (o texto do tema pelo id)
     (e a descrição onde couber; no celular só o nome) e o ativo marcado;
     trocar é um toque, e voltar para "Sem efeito" também (atalho 0, fora de campo de texto;
     tocar de novo no efeito ligado desliga, como no Voicemod);

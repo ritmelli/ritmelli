@@ -495,52 +495,50 @@ def _radio():
                   depois=cor(), extra=(canal.som, cor()))
 
 
-# grupo, id, nome, o que faz, fabrica
+# grupo, id, fabrica. O nome e o que faz de cada um, e o nome do grupo, moram nos arquivos de texto do tema, nas duas
+# linguas (effect.<id>.name, effect.<id>.desc e effect.group.<grupo>, ver o API.md); o grupo vazio e o Sem efeito
 CATALOGO = [
-    ("", "nenhum", "Sem efeito", "Sua voz como ela é.", lambda: None),
-    ("Rádio e alto-falante", "radio-policia", "Rádio de polícia",
-     "Voz de rádio com chiado e o bip de câmbio quando você para de falar.", _radio),
-    ("Rádio e alto-falante", "megafone", "Megafone", "Voz estourada de megafone.",
+    ("", "nenhum", lambda: None),
+    ("radio", "radio-policia", _radio),
+    ("radio", "megafone",
      # sem compressor: megafone distorce o que e forte e deixa fraco o que e fraco; o
      # compressor + drive 26 levantava tudo que passava ao maximo (latido 6 dB abaixo da
      # fala saia +19,9 dB acima dos trechos fortes dela; agora +3,7)
      lambda: Efeito(nivelar=True, antes=[PortaoRuido()], placa=[pb.Distortion(18)],
                     depois=[FiltroBanda(550, 4200, 4), [pb.PeakFilter(1700, 8, 1.4), pb.Gain(-8)]])),
-    ("Rádio e alto-falante", "locutor", "Locutor de rádio FM",
-     "Voz densa e encorpada de rádio FM, ainda com a sua cara (calibrado no microfone do Quest).", _locutor),
-    ("Ambiente", "eco", "Eco", "Repete o fim das suas frases.",
+    ("radio", "locutor", _locutor),
+    ("ambiente", "eco",
      lambda: Efeito(nivelar=True, placa=[pb.Delay(0.28, 0.45, 0.4)])),
-    ("Ambiente", "banheiro", "Banheiro", "Sala pequena de azulejo.",
+    ("ambiente", "banheiro",
      lambda: Efeito(nivelar=True, placa=[pb.Reverb(room_size=0.35, damping=0.3, wet_level=0.35, dry_level=0.8)])),
-    ("Ambiente", "catedral", "Catedral", "Sala enorme, a voz some devagar.",
+    ("ambiente", "catedral",
      lambda: Efeito(nivelar=True, placa=[pb.Reverb(room_size=0.97, damping=0.25, wet_level=0.5, dry_level=0.7)])),
-    ("Personagem", "robo", "Robô", "Voz metálica de robô.",
+    ("personagem", "robo",
      lambda: Efeito(nivelar=True, antes=[RingMod(48)], placa=[pb.Chorus(rate_hz=0.6, depth=0.15, mix=0.3), pb.Gain(3)])),
-    ("Personagem", "voz-grossa", "Voz grossa", "Cinco semitons abaixo.",
+    ("personagem", "voz-grossa",
      lambda: Efeito(nivelar=True, antes=[PitchShifter(-5)], placa=[pb.LowShelfFilter(180, 3)])),
-    ("Personagem", "esquilo", "Esquilo", "Oito semitons acima.",
+    ("personagem", "esquilo",
      lambda: Efeito(nivelar=True, antes=[PitchShifter(8, w=1024, x=512)])),
-    ("Personagem", "demonio", "Demônio", "Dez semitons abaixo, com distorção e sala.",
+    ("personagem", "demonio",
      lambda: Efeito(nivelar=True, antes=[PitchShifter(-10, w=2048, x=1024)],
                     placa=[pb.Distortion(8), pb.LowShelfFilter(150, 4),
                            pb.Reverb(room_size=0.5, wet_level=0.25, dry_level=0.85), pb.Gain(-3)])),
-    ("Personagem", "alien", "Alienígena", "Um pouco mais agudo, ondulando.",
+    ("personagem", "alien",
      lambda: Efeito(nivelar=True, antes=[PitchShifter(4, w=1024, x=512)],
                     placa=[pb.Phaser(rate_hz=1.2, depth=0.8, mix=0.6), pb.Chorus(rate_hz=2, depth=0.3, mix=0.4)])),
-    ("Personagem", "estourado", "Alto-falante estourado", "Distorção pesada, como caixa no talo.",
+    ("personagem", "estourado",
      lambda: Efeito(nivelar=True, placa=[pb.Distortion(32), pb.LowpassFilter(5000), pb.Gain(-12)])),
 ]
 # o pedal da mina (mina.py, modulo de fora deste repo, ver o engine.py): onde o modulo esta ao lado do codigo, ele
 # entra no lugar do alto-falante estourado e liga a DJ que conversa com quem chega; a voz de quem toca passa sem efeito
 if importlib.util.find_spec("mina") is not None:
     CATALOGO = [c for c in CATALOGO if c[1] != "estourado"] + [
-        ("Personagem", "mina", "Mina DJ", "Liga a DJ que conversa com quem chega e toca o que pedirem.",
-         lambda: None)]
+        ("personagem", "mina", lambda: None)]
 # os modos de um pedal: efeito que liga pelo botao do modo (o CARICATO do Locutor) e nao vira
-# pedal na lista do /api/effects; o primeiro campo e o pedal dono, no lugar do grupo
+# pedal na lista do /api/effects; o primeiro campo e o pedal dono, no lugar do grupo. O nome do modo e do tema
+# (o Locutor de FM exagerado, com cara de outra pessoa falando)
 MODOS = [
-    ("locutor", "locutor-caricato", "Locutor de rádio FM caricato",
-     "Locutor de FM exagerado, com cara de outra pessoa falando.", _locutor_caricato),
+    ("locutor", "locutor-caricato", _locutor_caricato),
 ]
 _POR_ID = {c[1]: c for c in CATALOGO + MODOS}
 
@@ -559,8 +557,8 @@ COMPENSA_DB = {"radio-policia": -8.6, "megafone": -2.4, "locutor": -10.0, "locut
 def criar(efeito_id):
     """Instancia nova (estado zerado) do efeito; None para 'nenhum'."""
     if efeito_id not in _POR_ID:
-        raise ValueError(f"Não conheço o efeito \"{efeito_id}\".")
-    e = _POR_ID[efeito_id][4]()
+        raise ValueError(f"unknown effect {efeito_id!r}")
+    e = _POR_ID[efeito_id][2]()
     if e is not None:
         e.ganho = 10 ** (COMPENSA_DB.get(efeito_id, 0) / 20)
     return e
@@ -572,9 +570,9 @@ def existe(efeito_id):
 
 
 def lista():
+    """O /api/effects: os ids, na ordem de exibicao; o tema traduz o nome, o que faz e o grupo."""
     out = []
-    for grupo, eid, nome, desc, fab in CATALOGO:
+    for grupo, eid, fab in CATALOGO:
         e = fab()
-        out.append({"id": eid, "nome": nome, "grupo": grupo, "descricao": desc,
-                    "latencia_ms": e.latencia_ms if e else 0})
+        out.append({"id": eid, "grupo": grupo, "latencia_ms": e.latencia_ms if e else 0})
     return out
