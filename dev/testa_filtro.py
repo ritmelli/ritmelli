@@ -8,6 +8,11 @@ preset devolve a voz crua; preset estragado ou de outra taxa e recusado (preset_
 cortada com efeito leva so a musica, e o efeito continua em voz_fx (ouvir a propria voz); a musica soma em cima da voz
 com efeito; outro microfone (alvo de outro) fica intocado; a 44,1 kHz em estereo o preset da taxa monta e bate.
 
+O hospedeiro do MFX (#49), com um fabricante falso por dentro (cancelamento de eco, corta a voz pela metade): o
+fabricante recebe o Initialize com o CLSID dele, o registro sai com o do hospedeiro, so as interfaces que o fabricante
+tem aparecem; a musica entra inteira DEPOIS do fabricante (e no lugar da voz cortada); fora do alvo so o fabricante
+age; a 44,1 kHz em estereo os dois canais passam; desmontado, o hospedeiro solta todas as referencias do fabricante.
+
     microfone\\apo\\compila.bat teste
     python dev/testa_filtro.py
 
@@ -178,6 +183,109 @@ class TestaFiltro(unittest.TestCase):
             np.testing.assert_array_equal(y[:, 1], esperado, "os dois canais levam a voz com efeito")
         finally:
             b.fecha()
+
+
+_dll.banca_hospede_cria.restype = ctypes.c_void_p
+_dll.banca_hospede_cria.argtypes = (ctypes.c_wchar_p, ctypes.c_float, ctypes.c_uint, ctypes.c_uint)
+_dll.banca_hospede_bloco.argtypes = (ctypes.c_void_p, _P, _P, ctypes.c_uint, ctypes.c_int)
+_dll.banca_hospede_info.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_int))
+_dll.banca_hospede_destroi.restype = ctypes.c_int
+_dll.banca_hospede_destroi.argtypes = (ctypes.c_void_p,)
+
+
+class BancaHospede(Banca):
+    """O hospedeiro do MFX (#49) pela fabrica de verdade, com um fabricante falso por dentro: um APO com
+    cancelamento de eco que devolve a entrada pela metade (o "redutor")."""
+
+    def __init__(self, taxa=48000, canais=1):  # noqa: D107 - mesmo molde da Banca, com as funcoes do hospedeiro
+        Banca.conta += 1
+        self.mapa = f"{os.environ['MICFX_MAPA']}-h{Banca.conta}"
+        injeta.MAPA = self.mapa
+        self.taxa, self.canais, self.bloco = taxa, canais, taxa // 100
+        self.h = _dll.banca_hospede_cria(self.mapa, float(taxa), canais, 4 * self.bloco)
+        assert self.h, "a banca nao criou o hospedeiro"
+        self.m = injeta.Microfone()
+        self.m.alvo(123)
+
+    def passa(self, x):
+        n = len(x) - len(x) % self.bloco
+        ent = np.ascontiguousarray(np.repeat(x[:n, None], self.canais, axis=1), np.float32)
+        sai = np.zeros_like(ent)
+        for i in range(0, n, self.bloco):
+            e, s = ent[i:i + self.bloco], sai[i:i + self.bloco]
+            _dll.banca_hospede_bloco(self.h, e.ctypes.data_as(_P), s.ctypes.data_as(_P), self.bloco, 0)
+        return sai
+
+    def info(self):
+        r = (ctypes.c_int * 6)()
+        _dll.banca_hospede_info(self.h, r)
+        return list(r)
+
+    def fecha(self):
+        self.m.fecha()
+        return _dll.banca_hospede_destroi(self.h)
+
+
+class TestaHospede(unittest.TestCase):
+    def setUp(self):
+        self.b = BancaHospede()
+        self.b.m.pulso(False)
+
+    def tearDown(self):
+        if self.b:
+            self.b.fecha()
+
+    def test_repasse_ao_fabricante(self):
+        self.b.passa(fala(0.1))
+        init_dele, registro_nosso, aec, fx3, travado, blocos = self.b.info()
+        self.assertTrue(init_dele, "o Initialize do fabricante nao recebeu o CLSID dele")
+        self.assertTrue(registro_nosso, "o registro tem que sair com o CLSID do hospedeiro")
+        self.assertTrue(aec, "o fabricante tem cancelamento de eco e o hospedeiro escondeu")
+        self.assertFalse(fx3, "o hospedeiro mostrou uma interface que o fabricante nao tem")
+        self.assertEqual(travado, 1)
+        self.assertEqual(blocos, 10)
+
+    def test_musica_depois_do_redutor(self):
+        x = fala(1.0)
+        self.b.passa(x[:480])  # o primeiro bloco pega a vaga de leitor
+        musica = (0.1 * np.sin(2 * np.pi * 440 * np.arange(24000) / 48000)).astype(np.float32)
+        self.assertEqual(self.b.m.escreve(np.repeat(musica[:, None], 2, axis=1)), 24000)
+        x = x[:24480]
+        y = self.b.passa(x[480:])
+        esperado = 0.5 * x[480:] + musica[:len(y)]  # o fabricante corta a voz, a musica entra inteira depois
+        np.testing.assert_allclose(y[:, 0], np.clip(esperado, -0.9, 0.9), atol=1e-6)
+
+    def test_voz_cortada_so_a_musica(self):
+        self.b.m.pulso(True)
+        x = fala(0.6)
+        self.b.passa(x[:480])
+        musica = (0.1 * np.sin(2 * np.pi * 440 * np.arange(9600) / 48000)).astype(np.float32)
+        self.b.m.escreve(np.repeat(musica[:, None], 2, axis=1))
+        y = self.b.passa(x[480:24480])
+        np.testing.assert_allclose(y[:9600, 0], musica, atol=1e-6)
+        self.assertEqual(float(np.max(np.abs(y[9600:]))), 0.0, "sem musica, a voz cortada e silencio")
+
+    def test_outro_microfone_so_o_fabricante(self):
+        self.b.m.alvo(0)
+        x = fala(0.5)
+        self.b.m.escreve(np.full((4800, 2), 0.1, np.float32))
+        np.testing.assert_allclose(self.b.passa(x)[:, 0], 0.5 * x[:len(x) // 480 * 480], atol=1e-7)
+
+    def test_estereo_441(self):
+        b = BancaHospede(44100, 2)
+        try:
+            b.m.pulso(False)
+            x = fala(0.5, 44100)
+            y = b.passa(x)
+            np.testing.assert_allclose(y[:, 1], 0.5 * x[:len(y)], atol=1e-7)
+        finally:
+            b.fecha()
+
+    def test_solta_o_fabricante(self):
+        self.b.passa(fala(0.1))
+        sobra = self.b.fecha()
+        self.b = None
+        self.assertEqual(sobra, 1, "o hospedeiro nao soltou todas as referencias do fabricante")
 
 
 if __name__ == "__main__":
