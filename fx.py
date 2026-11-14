@@ -15,6 +15,7 @@ radio de 450 a 2800 Hz cortava so 5 a 13 dB fora dela e a voz passava quase inte
 (17/10). Faixa estreita de verdade = FiltroBanda (Butterworth do scipy).
 """
 import importlib.util
+import math
 
 import numpy as np
 import pedalboard as pb
@@ -58,6 +59,148 @@ class PitchShifter:
     @property
     def latencia_ms(self):
         return 0.75 * self.w / SR * 1000
+
+
+def troca_geometria(taxa, d, fmin, fmax, grao, formante, surdo_s, passo_s):
+    """As medidas da TrocaDeVoz numa taxa (o voz.h faz a mesma conta, na mesma ordem): a deteccao do tom roda na taxa
+    dizimada por d; o periodo vai de tmin a tmax amostras dela, numa janela de tmax; o grao mais longo (h, em amostras
+    de saida) e o atraso fixo L, que cobre meio periodo de encaixe, o meio grao lido e o meio grao escrito."""
+    td = taxa / d
+    tmin = max(2, math.floor(td / fmax))
+    tmax = math.ceil(td / fmin)
+    passo = d * max(1, math.floor(passo_s * taxa / d + 0.5))
+    tlim = max(float(tmax * d), surdo_s * taxa)
+    h = grao * tlim / formante
+    atraso = int(math.ceil(tlim * 0.5 + grao * tlim + h)) + 4
+    return {"tmin": tmin, "tmax": tmax, "passo": passo, "surdo": surdo_s * taxa, "h": h, "atraso": atraso}
+
+
+class TrocaDeVoz:
+    """Muda o tom e, a parte, o formante (o tamanho do trato vocal): a voz troca de tom e continua soando como gente,
+    sem o desenho animado do PitchShifter. PSOLA sincrono com o periodo da voz:
+
+    - o tom sai de um YIN a cada passo (5 ms), na voz filtrada (passa-baixa de 2 kHz) e dizimada para ~12 kHz;
+    - cada grao (janela de Hann de 2*grao periodos) sai da entrada no ponto que corresponde a saida com o atraso fixo,
+      encaixado num multiplo do periodo desde o grao anterior (os graos somam em fase), e entra na saida a cada
+      periodo/2^(semitons/12): o tom muda, a forma de cada periodo (o formante) fica;
+    - o grao e lido 'formante' vezes mais rapido (formante > 1 sobe o formante: trato vocal menor);
+    - trecho sem voz (sem tom no YIN, ou abaixo da porta) usa um periodo fixo curto e nao muda o tom;
+    - a saida e a soma dos graos dividida pela soma das janelas.
+
+    Atraso fixo (troca_geometria): ~21 ms com fmin 90 Hz e formante 1,18. O voz.h roda a mesma conta amostra a
+    amostra; aqui os eventos (o YIN e cada grao) caem na mesma amostra, e as somas seguem a mesma ordem, entao a
+    deteccao do tom da igual nos dois."""
+
+    CORTE = 2000.0  # o passa-baixa do detector de tom, antes de dizimar
+
+    def __init__(self, semitons, formante=1.0, fmin=85.0, fmax=600.0, grao=0.75, limiar=0.15, porta_db=-55.0,
+                 surdo_ms=4.0, passo_ms=5.0):
+        self.semitons, self.formante, self.fmin, self.fmax = semitons, formante, fmin, fmax
+        self.grao, self.limiar, self.porta = grao, limiar, 10 ** (porta_db / 10)
+        self.surdo_s, self.passo_s = surdo_ms / 1000, passo_ms / 1000
+        self.beta = 2 ** (semitons / 12)
+        self.d = max(1, int(SR // 12000))
+        self.sos = signal.butter(4, self.CORTE, "low", fs=SR, output="sos")
+        g = troca_geometria(SR, self.d, fmin, fmax, grao, formante, self.surdo_s, self.passo_s)
+        self.tmin, self.tmax, self.passo = g["tmin"], g["tmax"], g["passo"]
+        self.surdo, self.h, self.atraso = g["surdo"], g["h"], g["atraso"]
+        # aneis maiores que os do voz.h (aqui o bloco inteiro entra de uma vez); a leitura e por indice absoluto
+        self.mi = (1 << int(np.ceil(np.log2(2 * self.atraso + 64 + 16384)))) - 1
+        self.md = (1 << int(np.ceil(np.log2(2 * self.tmax + 8 + 16384)))) - 1
+        self.mo = (1 << int(np.ceil(np.log2(2 * self.h + 16 + 16384)))) - 1
+        self.ent = np.zeros(self.mi + 1, np.float32)
+        self.dz = np.zeros(self.md + 1)
+        self.acc = np.zeros(self.mo + 1)
+        self.ws = np.zeros(self.mo + 1)
+        self.zi = np.zeros((len(self.sos), 2))
+        self.t = self.nd = 0
+        self.periodo = 0.0  # 0 = sem voz
+        self.voz_ant, self.c_ant = False, 0.0
+        self.s = self.h + 2.0  # o centro do proximo grao (em amostras de saida)
+
+    def _yin(self, tau):
+        """O periodo (amostras da entrada) na janela que termina em tau, ou 0 sem voz."""
+        w, tmax = self.tmax, self.tmax
+        nd = (tau + 1) // self.d
+        if nd < w + tmax:
+            self.periodo = 0.0
+            return
+        x = self.dz[(nd - (w + tmax) + np.arange(w + tmax)) & self.md]
+        if np.cumsum(x[tmax:] * x[tmax:])[-1] / w < self.porta:
+            self.periodo = 0.0
+            return
+        taus = np.arange(1, tmax + 1)
+        dif = x[None, :w] - x[taus[:, None] + np.arange(w)[None, :]]
+        d = np.cumsum(dif * dif, axis=1)[:, -1]
+        cum = np.cumsum(d)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            cm = np.concatenate([[1.0], np.where(cum > 0.0, d * taus / cum, 1.0)])
+        k = self.tmin
+        while k < tmax and not cm[k] < self.limiar:
+            k += 1
+        if k >= tmax:
+            self.periodo = 0.0
+            return
+        while k + 1 < tmax and cm[k + 1] < cm[k]:
+            k += 1
+        a, b, c = cm[k - 1], cm[k], cm[k + 1]
+        den = a - 2.0 * b + c
+        off = 0.5 * (a - c) / den if den > 0.0 else 0.0
+        off = min(max(off, -0.5), 0.5)
+        self.periodo = (k + off) * self.d
+
+    def _grao(self):
+        s = self.s
+        voz = self.periodo > 0.0
+        t_in = self.periodo if voz else self.surdo
+        t_out = t_in / self.beta if voz else self.surdo
+        cs = s - self.atraso
+        c = self.c_ant + math.floor((cs - self.c_ant) / t_in + 0.5) * t_in if voz and self.voz_ant else cs
+        h = self.grao * t_in / self.formante
+        i = np.arange(math.floor(s - h) + 1, math.ceil(s + h))
+        u = i - s
+        w = 0.5 + 0.5 * np.cos(np.pi * u / h)
+        pos = c + self.formante * u
+        f0 = np.floor(pos)
+        f = pos - f0
+        k = f0.astype(np.int64)
+        p0, p1, p2, p3 = (self.ent[(k + j) & self.mi].astype(np.float64) for j in (-1, 0, 1, 2))
+        v = p1 + 0.5 * f * (p2 - p0 + f * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + f * (3.0 * (p1 - p2) + p3 - p0)))
+        o = i & self.mo
+        self.acc[o] += w * v
+        self.ws[o] += w
+        self.c_ant, self.voz_ant = c, voz
+        self.s = s + t_out
+
+    def __call__(self, blk):
+        n, t0 = len(blk), self.t
+        t1 = t0 + n
+        idx = np.arange(t0, t1)
+        self.ent[idx & self.mi] = blk
+        y, self.zi = signal.sosfilt(self.sos, blk.astype(np.float64), zi=self.zi)
+        dec = np.flatnonzero((idx + 1) % self.d == 0)  # a amostra dizimada nasce no fim de cada grupo de d
+        self.dz[(self.nd + np.arange(len(dec))) & self.md] = y[dec]
+        self.nd += len(dec)
+        ty = -(-(t0 + 1) // self.passo) * self.passo - 1  # o proximo YIN: (tau + 1) multiplo do passo
+        while True:  # os eventos em ordem; na mesma amostra, o YIN antes do grao (como no voz.h)
+            tg = math.floor(self.s - self.h)
+            if ty < t1 and ty <= tg:
+                self._yin(ty)
+                ty += self.passo
+            elif tg < t1:
+                self._grao()
+            else:
+                break
+        o = idx & self.mo
+        sai = self.acc[o] / np.maximum(self.ws[o], 0.5)
+        self.acc[o] = 0.0
+        self.ws[o] = 0.0
+        self.t = t1
+        return sai.astype(np.float32)
+
+    @property
+    def latencia_ms(self):
+        return self.atraso / SR * 1000
 
 
 class RingMod:
@@ -726,6 +869,12 @@ CATALOGO = [
      lambda: Efeito(nivelar=True, antes=[PitchShifter(-10, w=2048, x=1024)],
                     placa=[pb.Distortion(8), pb.LowShelfFilter(150, 4)],
                     depois=[Fdn(35, (1.2, 1.37, 0.89), molhado=0.0678, seco=1.7), [pb.Gain(-3)]])),
+    # a voz de outra pessoa: o tom muda e o formante vai junto so um pouco (o trato vocal), sem o desenho animado do
+    # PitchShifter; fmin mais alto na masculina (quem usa costuma ter a voz mais aguda) segura o atraso em ~19 ms
+    ("Personagem", "voz-feminina", "Voz feminina", "Sua voz mais aguda, com timbre de mulher.",
+     lambda: Efeito(nivelar=True, antes=[TrocaDeVoz(7, 1.18, fmin=90)])),
+    ("Personagem", "voz-masculina", "Voz masculina", "Sua voz mais grave, com timbre de homem.",
+     lambda: Efeito(nivelar=True, antes=[TrocaDeVoz(-7, 0.85, fmin=110)])),
     ("Personagem", "alien", "Alienígena", "Um pouco mais agudo, ondulando.",
      lambda: Efeito(nivelar=True, antes=[PitchShifter(4, w=1024, x=512)],
                     placa=[pb.Phaser(rate_hz=1.2, depth=0.8, mix=0.6), pb.Chorus(rate_hz=2, depth=0.3, mix=0.4)])),

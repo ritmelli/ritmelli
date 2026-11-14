@@ -57,6 +57,48 @@ def fala_sintetica(seg=8.0, sr=SR, semente=5):
     return x.astype(np.float32)
 
 
+def vogal(f0, seg=1.5, sr=SR):
+    """Uma vogal parada (tom fixo, os tres formantes da fala_sintetica) para medir tom e formante."""
+    t = np.arange(int(seg * sr)) / sr
+    pulso = signal.sawtooth(2 * np.pi * f0 * t)
+    x = np.zeros(len(t))
+    for f, q, g in ((700, 5, 1.0), (1200, 6, 0.6), (2600, 8, 0.35)):
+        b, a = signal.iirpeak(f, q, fs=sr)
+        x += g * signal.lfilter(b, a, pulso)
+    return (x / np.max(np.abs(x)) * 0.4).astype(np.float32)
+
+
+def f0_de(y, sr=SR):
+    """O tom (Hz) pela autocorrelacao de 100 ms no meio do trecho."""
+    seg = y[sr // 2:sr // 2 + sr // 10].astype(np.float64)
+    seg -= seg.mean()
+    ac = np.correlate(seg, seg, "full")[len(seg) - 1:]
+    lo, hi = sr // 800, sr // 60
+    return sr / (lo + int(np.argmax(ac[lo:hi])))
+
+
+def _envelope(y, sr=SR):
+    """O envelope (dB) por LPC de ordem 14 a 12 kHz, de 250 a 3800 Hz em escala log."""
+    z = signal.resample_poly(y[sr // 2:sr].astype(np.float64), 1, sr // 12000) * np.hamming(sr // 2 // (sr // 12000))
+    r = np.correlate(z, z, "full")[len(z) - 1:len(z) + 15]
+    a = np.r_[1.0, np.linalg.solve(np.array([[r[abs(i - j)] for j in range(14)] for i in range(14)]), -r[1:15])]
+    f = np.geomspace(250, 3800, 400)
+    return f, 20 * np.log10(np.abs(signal.freqz([1.0], a, worN=f, fs=12000)[1]))
+
+
+def esticada(x, y):
+    """Quanto o envelope de y esta esticado em relacao ao de x (1 = o formante no lugar)."""
+    f, ex = _envelope(x)
+    ey = _envelope(y)[1]
+    melhor, k_melhor = -2.0, 1.0
+    for k in np.geomspace(0.6, 1.7, 221):
+        sel = (f * k > 300) & (f * k < 3500) & (f > 300) & (f < 3500)
+        c = np.corrcoef(ex[sel], np.interp(np.log(f[sel] * k), np.log(f), ey))[0, 1]
+        if c > melhor:
+            melhor, k_melhor = c, k
+    return k_melhor
+
+
 def ler_wav(p):
     with wave.open(str(p)) as w:
         assert w.getframerate() == SR and w.getsampwidth() == 2, "precisa de wav 48 kHz 16 bits"
@@ -153,6 +195,25 @@ def main(argv=None):
     sem = em_blocos(e2, x)
     canal_nat, canal_ref = db_rms(y - sem), db_rms(ref - sem)
     confere(abs(canal_nat - canal_ref) < 1.5, f"radio-policia: canal {canal_nat:.1f} dB contra {canal_ref:.1f} do fx.py")
+
+    # a troca de voz (#77), pelo voz.dll: o tom vai para 2^(s/12) e o envelope (o formante) estica so o 'formante'
+    # pedido, sem o tom junto (o PitchShifter estica os dois)
+    for eid, f0, maximo_ms in (("voz-feminina", 120, 25.0), ("voz-masculina", 220, 25.0)):
+        e = fx.criar(eid)
+        t = e.antes[0]
+        xv = vogal(f0)
+        yv = em_blocos(voz.Cadeia(preset.compila(e, SR), SR), xv)
+        f_sai, esperado = f0_de(yv), f0_de(xv) * t.beta
+        confere(abs(f_sai / esperado - 1) < 0.015,
+                f"{eid}: tom {f0_de(xv):.1f} -> {f_sai:.1f} Hz (esperado {esperado:.1f})")
+        k = esticada(xv, yv)
+        confere(abs(k - t.formante) < 0.06, f"{eid}: envelope x{k:.3f} (formante {t.formante})")
+        confere(t.latencia_ms <= maximo_ms, f"{eid}: atraso {t.latencia_ms:.1f} ms (maximo {maximo_ms:.0f})")
+    for st, f0 in ((7, 120), (-7, 220)):
+        e = fx.Efeito(antes=[fx.TrocaDeVoz(st, 1.0, fmin=90)])
+        xv = vogal(f0)
+        k = esticada(xv, em_blocos(voz.Cadeia(preset.compila(e, SR), SR), xv))
+        confere(0.95 < k < 1.06, f"troca {st:+d} semitons com formante 1: envelope x{k:.3f} (fica no lugar)")
 
     # a distorcao com oversampling: um tom de 2,7 kHz com o drive do estourado (32 dB) quase vira onda quadrada; o
     # tanh direto (o Distortion da pedalboard) dobra as harmonicas acima da metade da taxa para dentro da faixa. O

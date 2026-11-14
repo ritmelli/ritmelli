@@ -28,6 +28,7 @@ assert CABECALHO.size == 80
  T_DISTORCAO, T_BITCRUSH, T_DELAY, T_CHORUS, T_PHASER, T_FREEVERB, T_RADIO) = range(1, 19)
 T_FDN = 19
 T_DISTORCAO_OS = 20
+T_TROCA = 21  # TrocaDeVoz (#77)
 G_NENHUM, G_RADIO = 0, 1
 NYQ = 0.49  # filtro com corte acima disso da taxa nao cabe nela: a etapa sai (corte de agudo) ou o efeito fica no app
 
@@ -126,6 +127,11 @@ def _etapa(f, taxa):
     k = taxa / fx.SR
     if isinstance(f, fx.PitchShifter):
         return [(T_PITCH, [f.i, f.w * k, f.x * k])]
+    if isinstance(f, fx.TrocaDeVoz):  # o voz.h refaz a troca_geometria na taxa; o passa-baixa do detector vem daqui
+        d = max(1, int(taxa // 12000))
+        sos = f.sos if taxa == fx.SR else _butter(4, min(fx.TrocaDeVoz.CORTE, 0.4 * taxa / d), "low", taxa)
+        return [(T_TROCA, [f.beta, f.formante, f.fmin, f.fmax, f.grao, f.limiar, f.porta, f.surdo_s, f.passo_s,
+                           float(d), *_sos_rows(sos)])]
     if isinstance(f, fx.RingMod):
         return [(T_RINGMOD, [f.hz, f.mix])]
     if isinstance(f, fx.PortaoRuido):

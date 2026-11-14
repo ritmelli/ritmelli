@@ -85,9 +85,10 @@ def main():
         y, ts = stream(e, fala)
         ok = len(y) == len(fala) - len(fala) % B and np.isfinite(y).all() and np.abs(y).max() <= 1
         nota = ""
-        ps = [f for f in (e.antes if e else []) if isinstance(f, fx.PitchShifter)]
+        ps = [f for f in (e.antes if e else []) if isinstance(f, (fx.PitchShifter, fx.TrocaDeVoz))]
         if ps:
-            esperado = 300 * (1 - ps[0].i)  # a leitura anda a 2^(s/12) = 1 - i
+            # o PitchShifter: a leitura anda a 2^(s/12) = 1 - i; a TrocaDeVoz: os graos a cada periodo/beta
+            esperado = 300 * (ps[0].beta if isinstance(ps[0], fx.TrocaDeVoz) else 1 - ps[0].i)
             ys, _ = stream(fx.criar(eid), seno)
             got = freq_pico(ys[SR // 4:])
             ok &= abs(got - esperado) / esperado < 0.03
