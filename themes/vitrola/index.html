@@ -946,7 +946,7 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 @media (max-width: 899.98px) { #tela-parear { align-items: start; padding-top: 48px; } }
 
 /* boas-vindas: cada passo numa etiqueta, como os celulares conectados, com o numero na letra de pixel. Em duas
-   colunas, para caber sem rolar numa tela de notebook; o primeiro disco e o celular, os que so tem um botao, ficam
+   colunas, para caber sem rolar numa tela de notebook; a primeira musica e o celular, os que so tem um botao, ficam
    cada um numa faixa larga embaixo */
 #dlg-boas { width: min(880px, calc(100vw - 32px)); }
 .boas-passos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; counter-reset: passo; }
@@ -968,6 +968,8 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
   font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; line-height: 36px; color: var(--tinta-2);
 }
 .dlg .boas-passos p { font-size: .875rem; }
+/* a dica do passo (o perfil do Discord): menor e mais clara que a instrucao */
+.dlg .boas-passos .boas-dica { font-size: .8125rem; color: var(--tinta-2); }
 .dlg .boas-status { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; }
 .boas-status .lampada { margin-top: 5px; box-shadow: 0 0 0 2px var(--contorno); }
 #db-disp span { display: block; }
@@ -4632,7 +4634,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 <dialog id="dlg-disp" aria-labelledby="dd-t">
   <form method="dialog" class="dlg">
     <h2 id="dd-t">Microfone e fone</h2>
-    <label class="campo">Microfone (a sua voz, e onde a música toca)
+    <label class="campo">Microfone (onde a música toca, com a sua voz)
       <select id="dd-mic"></select>
       <span class="em-uso" id="dd-mic-uso"></span>
     </label>
@@ -4641,7 +4643,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       <span class="em-uso" id="dd-mon-uso"></span>
     </label>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
-      <span>No VRChat e no Discord, use este mesmo microfone. No Discord, use o perfil <b>Estúdio</b> (ou desligue o Krisp e a sensibilidade automática): senão ele corta a música.</span></div>
+      <span>Use este mesmo microfone no jogo e nas chamadas de voz. No Discord, escolha o perfil de entrada <b>Estúdio</b> ou desligue a supressão de ruído e a sensibilidade automática, que cortam a música.</span></div>
     <p class="msg-dlg" id="dd-msg" role="status"></p>
     <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
   </form>
@@ -4651,26 +4653,27 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 <dialog id="dlg-boas" aria-labelledby="db-t">
   <form method="dialog" class="dlg">
     <h2 id="db-t" tabindex="-1" autofocus>Boas-vindas à Vitrola</h2>
-    <p>A Vitrola toca música no microfone do VRChat, junto com a sua voz. Confira estes passos uma vez e pronto.</p>
+    <p>A Vitrola toca música no seu microfone, junto com a sua voz: quem está com você no jogo ou na chamada ouve as duas.</p>
     <ol class="boas-passos">
       <li>
-        <h3>O seu microfone e o seu fone</h3>
-        <p>A sua voz sai do microfone, e você ouve a música no fone.</p>
+        <h3>Escolha o microfone e o fone</h3>
+        <p>A música toca no microfone, junto com a sua voz, e você a ouve no fone.</p>
         <p class="boas-status"><span class="lampada" id="db-disp-l" aria-hidden="true"></span><span id="db-disp">Lendo os dispositivos do Windows.</span></p>
         <button class="btn" type="button" id="db-trocar">Trocar</button>
       </li>
       <li>
-        <h3>No VRChat</h3>
-        <p>Nas configurações de áudio do jogo, use o mesmo microfone escolhido aqui: a Vitrola toca a música nele. No Discord, use o perfil <b>Estúdio</b>, senão ele corta a música.</p>
+        <h3>Use o mesmo microfone no jogo</h3>
+        <p>Nas configurações de áudio do jogo ou do programa de chamada, escolha este mesmo microfone.</p>
+        <p class="boas-dica">No Discord, use o perfil de entrada <b>Estúdio</b>, que não filtra a música.</p>
       </li>
       <li>
-        <h3>O primeiro disco</h3>
-        <p>Busque no YouTube ou cole um link na busca, no alto da tela.</p>
-        <button class="btn" value="buscar">Buscar agora</button>
+        <h3>Toque a primeira música</h3>
+        <p>Busque pelo nome ou cole um link do YouTube na busca, no alto da tela.</p>
+        <button class="btn" value="buscar">Ir para a busca</button>
       </li>
       <li>
-        <h3>O celular, se quiser</h3>
-        <p>No mesmo Wi-Fi do PC, o celular vira um controle da Vitrola. Dá para conectar depois, no botão Celular.</p>
+        <h3>Conecte o celular (opcional)</h3>
+        <p>Controle a Vitrola pelo celular, no mesmo Wi-Fi do PC. Se preferir, conecte depois pelo botão Celular.</p>
         <button class="btn" type="button" id="db-cel">Conectar o celular</button>
       </li>
     </ol>
@@ -8561,8 +8564,8 @@ async function conferirBoasVindas() {
     S.disp = r;
     $('#db-disp-l').className = `lampada ${act.mic ? 'acesa' : 'alerta'}`;
     if (act.mic) $('#db-disp').replaceChildren(el('span', null, `Microfone: ${act.mic}`),
-                                                el('span', null, `Fone: ${act.monitor || 'nenhum, a música não toca no seu fone'}`));
-    else $('#db-disp').textContent = 'Não achei nenhum microfone. Conecte um e ele aparece aqui.';
+                                                el('span', null, `Fone: ${act.monitor || 'nenhum (você não ouve a música)'}`));
+    else $('#db-disp').textContent = 'Nenhum microfone encontrado. Conecte um e ele aparece aqui.';
     msg.textContent = '';
   } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
   if (d.open) boasT = setTimeout(conferirBoasVindas, 3000);

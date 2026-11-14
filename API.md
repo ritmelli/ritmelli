@@ -1,4 +1,4 @@
-# Soundboard do VRChat: contrato da API e do tema
+# Vitrola: contrato da API e do tema
 
 O `server.py` toca áudio no microfone do jogo: o arquivo (e a voz da mina) vai para o filtro
 da Vitrola, que soma no microfone escolhido, dentro do áudio do Windows, e só o arquivo vai para
@@ -341,8 +341,8 @@ encostar em outro ponto da canaleta, sem querer ao rolar a página, não muda na
 teclado seguem como sempre (clicar na canaleta pula para lá).
 
 Na primeira vez no PC (`GET /api/boas-vindas`), a vitrola abre as boas-vindas: o passo a
-passo do microfone e do fone, do microfone no VRChat (o mesmo, e no Discord o perfil Estúdio),
-da busca e do celular. Fechar de
+passo do microfone e do fone, do mesmo microfone no jogo e nas chamadas (no Discord, o perfil
+Estúdio), da primeira música e do celular. Fechar de
 qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.
 
 ## Teste sem som
