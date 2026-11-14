@@ -17,6 +17,9 @@
 //   escrevendo; par = pronto); o filtro do alvo copia, monta a cadeia e responde em preset_feito (o seq que leu) e
 //   preset_erro (voz::Erro). Com a cadeia montada e o app vivo, o filtro poe a voz com efeito no lugar da crua, no
 //   proprio bloco, e devolve ao app em voz_fx (ouvir a propria voz). preset_n 0 = sem efeito.
+// - um dono da voz: com o microfone aberto por dois programas o Windows pode montar duas cadeias, cada uma com a sua
+//   instancia do filtro. Todas agem no proprio som, mas so uma escreve a voz crua e a voz com efeito pro app (voz_dono,
+//   com batida em voz_batida); a outra assume quando a dona solta (fechou) ou para de bater por MICFX_BATIDA_MS (#70).
 //
 // O layout e fixo e o microfone/injeta.py tem o espelho dele em ctypes: mudou aqui, muda la (e sobe MICFX_VERSAO e o
 // nome do mapa, que a versao velha pode estar viva no audiodg durante a troca).
@@ -25,10 +28,10 @@
 #include <stdint.h>
 
 #ifndef MICFX_MAPA  // a banca de teste (teste/banca_filtro.cpp) usa um nome so dela
-#define MICFX_MAPA L"Global\\RitmelliMicFx3"
+#define MICFX_MAPA L"Global\\RitmelliMicFx4"
 #endif
 #define MICFX_MAGIA 0x58464D52u  // "RMFX"
-#define MICFX_VERSAO 3u
+#define MICFX_VERSAO 4u
 #define MICFX_PRESET_BYTES 65536u  // o maior preset (o Locutor, com o FIR de 1023) tem ~10 KB
 #define MICFX_TAXA 48000u        // o app escreve sempre a 48 kHz
 #define MICFX_CANAIS 2u          // estereo intercalado, float32
@@ -72,6 +75,10 @@ typedef struct MicFxAnel {
     volatile uint32_t preset_erro;   // o que deu ao montar (voz::Erro; 0 = a voz com efeito sai do filtro)
     float voz_fx[MICFX_VOZ_QUADROS];
     uint8_t preset[MICFX_PRESET_BYTES];
+    // o dono da voz (v4): a instancia que escreve voz e voz_fx; 0 = ninguem
+    volatile uint32_t voz_dono;
+    uint32_t reservado2;
+    volatile int64_t voz_batida;  // GetTickCount64 da ultima escrita do dono
 } MicFxAnel;
 
 // O hash do id do microfone (o GUID do endpoint, "{a1b2c3d4-...}", que e tambem o nome da chave dele no registro):
@@ -102,4 +109,6 @@ static_assert(offsetof(MicFxAnel, fx_escrito) == 328000, "fx_escrito");
 static_assert(offsetof(MicFxAnel, preset_seq) == 328008, "preset_seq");
 static_assert(offsetof(MicFxAnel, voz_fx) == 328024, "voz_fx");
 static_assert(offsetof(MicFxAnel, preset) == 328024 + MICFX_VOZ_QUADROS * 4, "preset");
+static_assert(offsetof(MicFxAnel, voz_dono) == 459096, "voz_dono");
+static_assert(offsetof(MicFxAnel, voz_batida) == 459104, "voz_batida");
 #endif
