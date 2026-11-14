@@ -31,6 +31,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+import i18n
 import pastas
 from versao import VERSAO
 
@@ -68,6 +69,11 @@ class Recusado(ValueError):
 
 class Parou(OSError):
     """O download parou no meio: e a rede, e nao o arquivo."""
+
+
+def _recusado(e):
+    """A mensagem da tela para o manifesto ou o arquivo que nao passou na conferencia, com o motivo como veio."""
+    return i18n.msg("server.update.rejected", "The new version failed the check ({reason}).", reason=str(e))
 
 
 def versao(v):
@@ -209,7 +215,7 @@ class Atualizacao:
         self.nova = None        # o manifesto conferido de uma versao mais nova que a VERSAO
         self.estado = "parado"
         self.progresso = 0.0
-        self.erro = None        # o que deu errado na ultima acao, para a tela
+        self.erro = None        # o que deu errado na ultima acao, para a tela (a mensagem, i18n.msg)
         self.consultada = None  # quando a ultima consulta deu certo
         self.ultima = None      # o time.monotonic() da ultima consulta, certa ou nao
         self.falhas = 0         # consultas seguidas que nao chegaram ao manifesto
@@ -281,9 +287,10 @@ class Atualizacao:
             with self.lock:
                 self.estado = "parado"
                 if isinstance(e, Recusado):
-                    self.erro, self.falhas = str(e), 0
+                    self.erro, self.falhas = _recusado(e), 0
                 else:
-                    self.erro, self.falhas = "Não deu para consultar se há versão nova.", self.falhas + 1
+                    self.erro = i18n.msg("server.update.checkFailed", "Couldn't check for a new version.")
+                    self.falhas += 1
             print(f"atualizacao: {e}", flush=True)
             return self.nova is not None
         nova = versao(m["versao"]) > versao(VERSAO)
@@ -337,7 +344,8 @@ class Atualizacao:
             meio.unlink(missing_ok=True)
             with self.lock:
                 self.estado = "parado"
-                self.erro = str(e) if isinstance(e, Recusado) else "O download da versão nova parou. Tente de novo."
+                self.erro = _recusado(e) if isinstance(e, Recusado) else i18n.msg(
+                    "server.update.downloadStopped", "The new version download stopped. Try again.")
                 if parcial and isinstance(e, Recusado):
                     self.parcial = False  # a parcial veio errada: na proxima, o completo
             print(f"atualizacao: {e}", flush=True)
@@ -390,20 +398,23 @@ class Atualizacao:
 
     def instalar(self):
         """Confere o setup de novo e roda ele com o pedido de permissao do Windows. (True, None) se o instalador
-        abriu, e ai a Vitrola deve fechar; senao (False, o motivo)."""
+        abriu, e ai a Vitrola deve fechar; senao (False, a mensagem do motivo)."""
         with self.lock:
             if self.estado != "pronta" or not self.setup:
-                return False, "A versão nova ainda não foi baixada."
+                return False, i18n.msg("server.update.notDownloaded", "The new version hasn't been downloaded yet.")
             setup, m, alvo = self.setup, self.nova, self.alvo
         if not setup.exists() or _hash(setup) != alvo["sha256"]:
             with self.lock:
                 self.estado, self.setup, self.alvo = "parado", None, None
-            return False, "O instalador baixado mudou depois da conferência. Baixe de novo."
+            return False, i18n.msg("server.update.changed", "The downloaded installer changed after it was checked. "
+                                   "Download it again.")
         log = PASTA / f"instalador-{m['versao']}.log"
         r = abre_instalador(setup, f'{PARAMETROS} /LOG="{log}"')
         if r <= 32:
-            return False, ("O Windows não deu a permissão, e a atualização ficou para depois."
-                           if r == SE_ERR_ACCESSDENIED else f"O instalador não abriu (erro {r}).")
+            if r == SE_ERR_ACCESSDENIED:
+                return False, i18n.msg("server.update.permissionDenied", "Windows didn't give permission, so the "
+                                       "update was postponed.")
+            return False, i18n.msg("server.update.installerFailed", "The installer didn't open (error {code}).", code=r)
         with self.lock:
             self.estado = "instalando"
         print(f"atualizacao: instalador da {m['versao']} aberto; a Vitrola fecha", flush=True)

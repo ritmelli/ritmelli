@@ -62,7 +62,7 @@ const I18N = (() => {
     }
   }
   document.documentElement.lang = lang;
-  return { lingua: d.lingua, lang, t, tp, num, rico, aplica };
+  return { lingua: d.lingua, lang, tem: existe, t, tp, num, rico, aplica };
 })();
 </script>
 <!-- a pagina aparece quando os textos ja estao no lugar (o I18N.aplica, no comeco do script principal) -->
@@ -4878,26 +4878,22 @@ const MESA = { montada: null, lado: 'a', idAr: null, trAr: null, antes: null, de
 
 const SITUACAO = { idle: I18N.t('deck.status.idle'), buffering: I18N.t('deck.status.buffering'), playing: I18N.t('deck.status.playing'),
                    paused: I18N.t('deck.status.paused'), ended: I18N.t('deck.status.ended') };
-const ERROS = {
-  'item nao existe na biblioteca': 'Esse disco não está mais na prateleira.',
-  'item nao existe': 'Esse disco não está mais na prateleira.',
-  'busca vazia': 'Escreva o que buscar.',
-};
-
 function semCaminho(t) { return String(t || '').replace(/[A-Za-z]:\\(?:[^\\\s]+\\)+([^\\\s]+)/g, '$1'); }
-/* o servidor ja manda frase pronta ("Não consegui ler o áudio de ... apague e baixe de novo.");
-   o formato antigo (sem acento e com caminho) ainda se reescreve */
-function erroTocar(t) {
-  t = semCaminho(t).trim();
-  const m = t.match(/^nao consegui decodificar (.+) a partir de ([\d.]+) s$/i);
-  if (m) return `Não deu para tocar: o arquivo ${m[1]} não abriu a partir de ${fmt(+m[2])}. Toque o disco de novo do começo ou escolha outro na prateleira.`;
-  if (!/[.!?]$/.test(t)) t += '.';
-  return /^não /i.test(t) ? t : `Não deu para tocar: ${t}`;
+/* a mensagem do servidor ({key, params, text}, o formato no API.md) na lingua de quem usa: a chave pelos arquivos do
+   tema, com os params (o param que e outra mensagem tambem se traduz); sem a chave, ou com uma que o tema nao tem, o
+   texto em ingles dela. O caminho do Windows sai: o nome do arquivo basta */
+function textoMsg(m) {
+  if (!m) return '';
+  if (typeof m === 'string') return semCaminho(m);
+  if (!m.key || !I18N.tem(m.key)) return semCaminho(m.text);
+  const p = {};
+  for (const [k, v] of Object.entries(m.params || {})) p[k] = v && typeof v === 'object' ? textoMsg(v) : typeof v === 'string' ? semCaminho(v) : v;
+  return I18N.t(m.key, p);
 }
-/* "A busca no YouTube falhou (X). ..." e "O download falhou (X). ..." : o X vira o detalhe tecnico */
-function detalheErro(t) {
-  const m = String(t || '').match(/^(?:A busca no YouTube|O download) falhou \(([\s\S]*)\)\.?/);
-  return semCaminho(m ? m[1] : t);
+/* o detalhe tecnico de uma mensagem (o motivo do yt-dlp, na busca e no download), para a letra pequena */
+function detalheMsg(m) {
+  const r = m && m.params && m.params.reason;
+  return r ? textoMsg(r) : '';
 }
 function fmt(s) {
   if (s == null || !isFinite(s)) return '0:00';
@@ -4924,8 +4920,10 @@ async function api(method, path, data) {
   try { j = await r.json(); } catch (e) { /* corpo vazio */ }
   if (!r.ok || (j && j.ok === false)) {
     if (r.status === 401 && j && j.parear) pedirPareamento(j.desconectado);
-    const msg = (j && j.error) || I18N.t('error.generic', { status: r.status });
-    const e = new Error(ERROS[msg] || msg); e.status = r.status;
+    // a mensagem do servidor ja traduzida; ela mesma segue no erro, para quem decide pelo tipo (a busca)
+    const m = j && j.error;
+    const e = new Error(m ? textoMsg(m) : I18N.t('error.generic', { status: r.status }));
+    e.status = r.status; e.msg = m || null;
     throw e;
   }
   return j;
@@ -5095,7 +5093,7 @@ function desenharFaixa() {
 
   const ef = $('#erro-faixa');
   if (s.error) {
-    $('#erro-faixa-txt').textContent = erroTocar(s.error);
+    $('#erro-faixa-txt').textContent = textoMsg(s.error);
     ef.hidden = false;
   } else ef.hidden = true;
 
@@ -7260,13 +7258,13 @@ function atualizarJob(li, j) {
   li.classList.toggle('falhou', j.status === 'error');
   li.querySelector('.nome').textContent = j.label;
   const acoes = li.querySelector('.acoes');
-  const sig = j.status + '|' + (j.error || '');
+  const sig = j.status + '|' + JSON.stringify(j.error || null);
   if (li._sig === sig) return;
   li._sig = sig;
   acoes.replaceChildren();
   if (j.status === 'error') {
-    const pe = el('p', 'erro-job', motivoDownload(j.error));
-    if (j.error) { pe.append(el('small', null, detalheErro(j.error))); pe.title = detalheErro(j.error); }
+    const pe = el('p', 'erro-job', motivoDownload(detalheMsg(j.error)));
+    if (j.error) { pe.append(el('small', null, detalheMsg(j.error))); pe.title = detalheMsg(j.error); }
     acoes.append(pe);
     if (S.jobCorpo[j.id]) {
       const b = el('button', 'btn-texto', I18N.t('shelf.retry')); b.type = 'button'; b.dataset.role = 'retentar'; b.dataset.job = j.id;
@@ -7485,7 +7483,7 @@ async function buscar(q) {
     S.busca.pedidos = POR_LEVA; S.busca.fim = !S.busca.itens.length;
   } catch (e) {
     if (seq !== S.buscaSeq || !S.busca) return;
-    S.busca.erro = e.message; S.busca.semResposta = e.status === 0;
+    S.busca.erro = e.message; S.busca.semResposta = e.status === 0; S.busca.erroMsg = e.msg;
   }
   S.busca.carregando = false;
   desenharBusca();
@@ -7548,9 +7546,10 @@ function mostrarResultados() {
     if (!buscaNaHistoria) { history.pushState({ busca: true, vida: VIDA }, ''); buscaNaHistoria = true; }
   }
 }
+/* o motivo do download que falhou, pelo detalhe tecnico (o do yt-dlp, em ingles) */
 function motivoDownload(t) {
   t = String(t || '');
-  if (/unavailable|private|indispon/i.test(t)) return I18N.t('download.reason.unavailable');
+  if (/unavailable|private/i.test(t)) return I18N.t('download.reason.unavailable');
   if (/429|too many/i.test(t)) return I18N.t('download.reason.rateLimit');
   if (/getaddrinfo|network|timed out|connection|resolve/i.test(t)) return I18N.t('download.reason.network');
   // o "not a bot" tambem diz "sign in", mas e o YouTube desconfiando dos pedidos, nao o video: vem antes
@@ -7588,20 +7587,21 @@ function desenharBusca() {
   if (b.carregando) av.append(el('span', 'lampada acesa piscando'), document.createTextNode(I18N.t('search.searching')));
   else if (b.erro) {
     av.classList.add('erro');
-    const limite = /429|too many/i.test(b.erro);
+    // pelo tipo, e nao pelo texto: sem resposta e o status 0 do api(), a busca do YouTube e a chave da mensagem, e o
+    // limite e o motivo tecnico dela (o do yt-dlp, em ingles). O YouTube que demorou ("o YouTube não respondeu a
+    // tempo") e erro do YouTube, e nao da Vitrola fora do ar
     const fora = b.semResposta;
-    const doYoutube = /busca (no YouTube )?falhou/i.test(b.erro);
-    // o do YouTube e o do limite leem o erro do servidor, ainda em frase pronta em portugues (o PR 4 do I18N.md troca
-    // por chave); o "nao respondeu" do YouTube que demorou fica sendo erro do YouTube, e nao da Vitrola fora do ar.
+    const doYoutube = !!b.erroMsg && b.erroMsg.key === 'server.search.failed';
+    const limite = /429|too many/i.test(detalheMsg(b.erroMsg));
     // o espaco depois do negrito fica dentro dele, como sempre foi
     if (fora) {
       av.append(el('strong', null, I18N.t('search.error.offline') + ' '), document.createTextNode(I18N.t('search.error.offlineHint')));
     } else if (doYoutube || limite) {
       const dica = I18N.t(limite ? 'search.error.rateLimitHint' : 'search.error.youtubeHint');
       av.append(el('strong', null, I18N.t('search.error.youtube') + ' '), document.createTextNode(dica));
-      av.append(el('small', 'detalhe', I18N.t('search.error.detail', { detail: detalheErro(b.erro) })));
+      av.append(el('small', 'detalhe', I18N.t('search.error.detail', { detail: detalheMsg(b.erroMsg) })));
     } else {
-      // recusa do proprio servidor, ja em frase pronta (ex.: "Digite o que procurar ou cole um link do YouTube.")
+      // outra recusa do servidor, ja traduzida pelo api() (ex.: a server.search.empty)
       av.append(el('strong', null, b.erro));
     }
   } else if (!b.link && !b.itens.length) av.textContent = I18N.t('search.noResults');
@@ -8462,7 +8462,7 @@ function pintarAtualizacao(a) {
   ok.disabled = ['baixando', 'consultando', 'instalando'].includes(a.estado);
   ok.textContent = a.estado === 'pronta' ? I18N.t('update.install') : a.estado === 'baixando' ? I18N.t('update.downloading', { pct: Math.round((a.progresso || 0) * 100) }) : I18N.t('update.download');
   msg.className = 'msg-dlg' + (a.erro ? ' erro' : '');
-  msg.textContent = a.erro || (a.estado === 'pronta' ? I18N.t('update.windowsAsks') : '');
+  msg.textContent = a.erro ? textoMsg(a.erro) : a.estado === 'pronta' ? I18N.t('update.windowsAsks') : '';
 }
 async function abrirAtualizacao() {
   let a;
@@ -8516,7 +8516,7 @@ function conectar() {
   es.addEventListener('jobs', e => {
     const antes = new Map(S.jobs.map(j => [j.id, j.status]));
     S.jobs = JSON.parse(e.data);
-    for (const j of S.jobs) if (j.status === 'error' && antes.get(j.id) === 'running') avisar(I18N.t('download.failed', { label: j.label, reason: motivoDownload(j.error) }), true);
+    for (const j of S.jobs) if (j.status === 'error' && antes.get(j.id) === 'running') avisar(I18N.t('download.failed', { label: j.label, reason: motivoDownload(detalheMsg(j.error)) }), true);
     desenharPrateleira(); desenharFila(); if (S.busca) atualizarResultados();
   });
   es.addEventListener('tick', e => {

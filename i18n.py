@@ -1,6 +1,7 @@
 """Os textos da interface em cada lingua (o plano esta no I18N.md do ritmelli-server). Cada tema que tem a pasta i18n/
 guarda la um i18n_<lingua>.properties por lingua; o servidor le os da lingua de quem abre a pagina e os do ingles (a
-reserva) e poe os dois na pagina, no lugar do MARCA, antes de qualquer script do tema. O tema le em I18N_DADOS.
+reserva) e poe os dois na pagina, no lugar do MARCA, antes de qualquer script do tema. O tema le em I18N_DADOS. O
+servidor nao escreve frase para quem usa: manda a mensagem (msg), com a chave que o tema traduz.
 
 O formato do .properties: uma linha por texto, chave=valor (separados pelo primeiro =, sem o espaco em volta); # ou !
 no comeco da linha e comentario; UTF-8 com a acentuacao direto no arquivo; \\n e quebra de linha, \\\\ e a barra e
@@ -111,3 +112,33 @@ def versao(pasta):
         return "-".join(str(arquivo(pasta, x).stat().st_mtime_ns) for x in LINGUAS)
     except OSError:
         return "0"
+
+
+# --- as mensagens do servidor (o formato no API.md, "Mensagem")
+
+def msg(chave, texto, **params):
+    """Uma mensagem que a tela pode mostrar: a chave e os params, que o tema traduz pelos arquivos dele, e o texto em
+    ingles, para o log e para quem chama a API sem tema. O texto e um modelo com os {param} da chave. Um param pode ser
+    outra mensagem (o motivo que e uma Recusa): o tema traduz as duas. O dev/testa_i18n.py confere que todo tema com
+    i18n/ tem cada chave server.* daqui, com os mesmos params, e que cada chamada passa os params do texto."""
+    return {"key": chave, "params": params,
+            "text": texto.format(**{k: v["text"] if isinstance(v, dict) else v for k, v in params.items()})}
+
+
+def so_texto(texto):
+    """A mensagem que nenhuma tela mostra (o pedido feito errado, a rota que so outro programa chama): so o texto, em
+    ingles."""
+    return {"text": texto}
+
+
+class Recusa(ValueError):
+    """Um erro com a mensagem pronta para a tela (msg), para quem chama mostrar como veio. str() e o texto em ingles."""
+
+    def __init__(self, chave, texto, **params):
+        self.msg = msg(chave, texto, **params)
+        super().__init__(self.msg["text"])
+
+
+def motivo(ex, n=160):
+    """O motivo de um erro para ir num param: a mensagem dele, se e uma Recusa (o tema traduz), senao o texto dele."""
+    return ex.msg if isinstance(ex, Recusa) else str(ex)[:n]

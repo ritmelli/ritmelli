@@ -18,7 +18,8 @@ só com esta API.
 - Fonte externa só do Google Fonts; script externo nenhum.
 - API sempre por caminho absoluto (`/api/...`), mesma origem. Escrita é `fetch` com
   `method` e, quando tem corpo, `Content-Type: application/json`.
-- Texto da interface em português do Brasil, com acentuação completa e sem travessão.
+- Texto da interface com acentuação completa no português e sem travessão. O servidor não
+  escreve frase para a tela: manda a Mensagem (ver "Mensagens"), que o tema traduz.
 - Textos traduzíveis (a interface está passando para pt-BR e inglês): o tema que tem a pasta
   `themes/<slug>/i18n/` guarda nela um `i18n_<lingua>.properties` por língua (`en` e `pt_BR`),
   com as mesmas chaves, e põe o comentário `<!-- i18n -->` no `<head>`, antes de qualquer
@@ -60,11 +61,11 @@ reconecta sozinho; mostre que está reconectando.
  "por_cima": [{"id": "...", "title": "..."}],
  "devices": {"mic": "default", "out": "CABLE Input", "monitor": "default"},
  "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "out": "CABLE Input (VB-Audio Virtual Cable)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
- "error": null ou "texto",
+ "error": null ou Mensagem,
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
  "versao": "0.1.0",
  "visor": {"ondas": 3, "passagens": [Passagem]},
- "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou "texto"}}
+ "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou Mensagem}}
 ```
 - `versao` = a versão do servidor (`versao.py`), para mostrar na tela.
 - `atualizacao` = a versão nova (ver "Versão nova"): `nova` é o número dela, ou `null`;
@@ -148,8 +149,9 @@ reconecta sozinho; mostre que está reconectando.
   `mic_mute`, então serve para testar um efeito sem ninguém no jogo ouvir.
 - `voice_mon_vol` = volume da própria voz no fone, 0 a 1.
 - `ended` = o arquivo chegou ao fim; `resume` recomeça do zero. Falha de leitura também
-  termina em `ended`, com o texto em `error`: mostre `error` sempre que vier preenchido.
-- `error` já vem como frase pronta em português, com o que fazer; mostre como veio.
+  termina em `ended`, com a Mensagem em `error`: mostre `error` sempre que vier preenchido.
+- `error` é uma Mensagem (ver "Mensagens"): o que houve e o que fazer. Também traz avisos, como o
+  microfone escolhido que sumiu e o que entrou no lugar.
 - Fone em "nenhum" (`active_devices.monitor` vazio) torna `monitor_on` sem efeito.
 
 **Item** (biblioteca):
@@ -168,7 +170,7 @@ toca de fato 30 s (ou 80% dele, se for mais curto) desde que entrou no prato; au
 **Job** (download):
 ```json
 {"id": "ce14abe3", "kind": "download", "label": "texto ou título", "status": "running|done|error",
- "progress": 0.42, "error": null ou "texto", "item_id": null ou "id", "play": true,
+ "progress": 0.42, "error": null ou Mensagem, "item_id": null ou "id", "play": true,
  "alvo": "id do vídeo, ou o link ou texto quando não há id"}
 ```
 
@@ -184,9 +186,29 @@ toca de fato 30 s (ou 80% dele, se for mais curto) desde que entrou no prato; au
 Estado inicial sem SSE: `GET /api/state` (Estado + `pos` + `levels`), `GET /api/library`,
 `GET /api/jobs`.
 
+## Mensagens
+
+O servidor não escreve frase para a tela. Todo erro e aviso que a tela pode mostrar (o `error` do
+Estado, o do Job e o das respostas, e o `erro` da versão nova) vem como **Mensagem**:
+```json
+{"key": "server.download.failed", "params": {"reason": "HTTP Error 403: Forbidden"},
+ "text": "The download failed (HTTP Error 403: Forbidden). Check the link or try another video."}
+```
+- `key` e `params`: mostre o texto da chave nos arquivos do tema (`themes/<slug>/i18n/`), com os
+  `{param}` trocados. As chaves começam com `server.`; a lista, com o texto de cada uma, está nos
+  `.properties` do tema `vitrola`, e o `python dev/testa_i18n.py` confere que todo tema com a pasta
+  `i18n/` tem todas, com os mesmos params.
+- Um param pode ser outra Mensagem: o motivo que já é nosso, como o aparelho que sumiu dentro do
+  "não consegui abrir o áudio". Traduza ela também.
+- `text`: a mesma mensagem em inglês, para o log e para quem chama a API sem tema. A Mensagem sem
+  `key` é a que nenhuma tela deveria ver (o pedido feito errado, a rota que só outro programa
+  chama): mostre o `text`.
+- O detalhe técnico (o motivo do yt-dlp, o erro do Windows) vai como veio, num param, em geral o
+  `reason`. Ele pode trazer o caminho inteiro de um arquivo; a vitrola mostra só o nome.
+
 ## Comandos
 
-Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com status 4xx/5xx.
+Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com status 4xx/5xx.
 
 | comando | corpo | efeito |
 |---|---|---|
@@ -231,7 +253,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 
 O PC (quem fala pelo `127.0.0.1`) usa tudo. Pela rede de casa, as páginas dos temas, a
 galeria e o `GET /api/themes` abrem para qualquer um, mas o resto da API responde **401**
-`{"ok": false, "parear": true, "desconectado": bool, "error": "..."}` até o celular parear;
+`{"ok": false, "parear": true, "desconectado": bool, "error": Mensagem}` até o celular parear;
 `desconectado` diz que ele mandou uma chave que não vale mais (o PC desconectou). O
 `/api/events` também responde 401, e o `EventSource` não mostra o status: quando ele fecha de
 vez, peça o `/api/state` para saber se é o 401.
@@ -267,7 +289,7 @@ vem `false`.
   baixar a parcial; se algo não bater, baixa o completo, e o `tamanho` muda.
 - O `estado` anda assim: `parado` (com ou sem `nova`), `baixando`, `pronta` e, depois do
   `POST /api/atualizacao/instalar`, `instalando`. Um download que para no meio continua sozinho
-  de onde parou, ainda em `baixando`; ele só volta para `parado`, com o motivo em `erro`, depois
+  de onde parou, ainda em `baixando`; ele só volta para `parado`, com a Mensagem do motivo em `erro`, depois
   de algumas tentativas seguidas sem avançar, ou quando o arquivo não confere.
 - O instalador roda em silêncio: o Windows pede a permissão, o instalador fecha a Vitrola, troca
   a pasta dela e abre de novo, sem abrir outra aba. A página que estava aberta perde a conexão e
