@@ -4,8 +4,10 @@
 
 Nos arquivos de cada tema: as mesmas chaves nas duas linguas e na mesma ordem, nenhum valor vazio, os mesmos {param}
 nos dois lados, toda chave que o tema usa existindo e nenhuma chave sobrando. Uma chave conta como usada quando aparece
-no tema entre aspas ou num data-i18n*; as que o I18N.tp usa (chave.one, chave.other) contam pela chave de base. No
-i18n.py: o leitor do .properties, a escolha da lingua e o texto posto na pagina. Sai 1 se algo falha."""
+no tema entre aspas ou num data-i18n*; as que o I18N.tp usa (chave.one, chave.other) contam pela chave de base. O
+texto com marcacao so tem <b> e <code>, fechados e sem um dentro do outro, os mesmos nas duas linguas, e so entra pelo
+data-i18n ou pelo I18N.rico (o I18N.t e os atributos mostrariam a tag). No i18n.py: o leitor do .properties, a escolha
+da lingua e o texto posto na pagina. Sai 1 se algo falha."""
 import contextlib
 import io
 import re
@@ -30,6 +32,17 @@ def params(s):
     return set(re.findall(r"\{(\w+)\}", s))
 
 
+def tags(s):
+    """As tags de um valor, na ordem; None se ha tag que o I18N.rico nao conhece ou se ela nao fecha direito."""
+    achadas = re.findall(r"<[^>]*>", s)
+    if any(t not in ("<b>", "</b>", "<code>", "</code>") for t in achadas) or re.search(r"<(?![/a-z])", s):
+        return None
+    for abre, fecha in zip(achadas[::2], achadas[1::2] + [None]):
+        if fecha != abre.replace("<", "</"):
+            return None
+    return achadas
+
+
 def confere_tema(tema):
     pasta = tema / "i18n"
     try:
@@ -52,16 +65,28 @@ def confere_tema(tema):
             if k in base and params(v) != params(base[k]):
                 falha(f"{tema.name}: {k} has params {sorted(params(v))} in {lingua}, "
                       f"{sorted(params(base[k]))} in {i18n.RESERVA}")
+            if tags(v) is None:
+                falha(f"{tema.name}: {k} in {lingua} has markup other than closed <b> and <code>")
+            elif k in base and tags(base[k]) is not None and tags(v) != tags(base[k]):
+                falha(f"{tema.name}: {k} has the tags {tags(v)} in {lingua}, {tags(base[k])} in {i18n.RESERVA}")
 
     html = (tema / "index.html").read_text(encoding="utf-8")
-    # o que o tema pede: os data-i18n* e as chaves entre aspas nas linhas que chamam o I18N.t ou o I18N.tp (pega o
-    # I18N.t(cond ? 'a.b' : 'a.c'))
+    # o que o tema pede: os data-i18n* e as chaves entre aspas nas linhas que chamam o I18N.t, o I18N.tp ou o
+    # I18N.rico (pega o I18N.t(cond ? 'a.b' : 'a.c'))
     pedidas = set(re.findall(rf'data-i18n(?:-[a-z-]+)?="({CHAVE})"', html))
+    # onde a tag apareceria escrita: os atributos e as linhas do I18N.t sem o I18N.rico
+    sem_marcacao = set(re.findall(rf'data-i18n-[a-z-]+="({CHAVE})"', html))
     plurais = set()
     for linha in html.splitlines():
-        if "I18N.t(" in linha or "I18N.tp(" in linha:
-            pedidas |= set(re.findall(rf"['\"]({CHAVE})['\"]", linha))
+        if "I18N.t(" in linha or "I18N.tp(" in linha or "I18N.rico(" in linha:
+            nela = set(re.findall(rf"['\"]({CHAVE})['\"]", linha))
+            pedidas |= nela
             plurais |= set(re.findall(rf"I18N\.tp\(\s*['\"]({CHAVE})['\"]", linha))
+            if "I18N.rico(" not in linha:
+                sem_marcacao |= nela
+    for k in sorted(sem_marcacao):
+        if tags(base.get(k, "")):
+            falha(f"{tema.name}: {k} has markup, so it goes through data-i18n or I18N.rico, not I18N.t or an attribute")
     for k in sorted(pedidas - plurais):
         if k not in base:
             falha(f"{tema.name}: the theme uses {k}, which is not in the files")
