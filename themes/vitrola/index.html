@@ -4657,13 +4657,13 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     <ol class="boas-passos">
       <li>
         <h3>Confira o microfone e o fone</h3>
-        <p>O microfone tem que ser o que você usa para falar. Você ouve a música no fone.</p>
+        <p>O microfone precisa ser o que você usa para falar. Você ouve a música no fone.</p>
         <p class="boas-status"><span class="lampada" id="db-disp-l" aria-hidden="true"></span><span id="db-disp">Procurando o microfone e o fone.</span></p>
         <button class="btn" type="button" id="db-trocar">Trocar</button>
       </li>
       <li>
-        <h3>Use o mesmo microfone no jogo e na chamada</h3>
-        <p>Nas configurações de áudio do jogo e do programa de chamada, confira se o microfone é o mesmo do passo&nbsp;1; se não for, troque. Para rever depois, use o botão Microfone e fone.</p>
+        <h3>Use esse microfone no jogo e na chamada</h3>
+        <p>Nas configurações de áudio do jogo e do programa de chamada, confira se o microfone é o mesmo do passo&nbsp;1. Se não for, deixe a Vitrola, o jogo e a chamada no microfone que você usa para falar. Para rever depois, use o botão Microfone e fone.</p>
         <p class="boas-dica">No Discord, em Configurações de usuário &gt; Voz e vídeo, confira o microfone em <b>Dispositivo de entrada</b> e escolha <b>Estúdio</b> em <b>Perfil de entrada</b>: os outros perfis podem cortar a música.</p>
       </li>
       <li>
@@ -8244,11 +8244,11 @@ function preencherDispositivos(r) {
 function mostrarAtivos(act, f) {
   const prep = S.state && S.state.microfone && S.state.microfone.preparando;
   let txt = `Em uso agora: ${act.mic || 'nenhum'}`;
-  if (act.mic && prep) txt += '. Preparando ele para a Vitrola: o som do PC some por alguns segundos.';
+  if (act.mic && prep) txt += '. Preparando o microfone para a Vitrola: o som do PC some por alguns segundos.';
   else if (act.mic && f && !(f.filtro && f.melhorias)) txt += '. Ele ainda não está pronto: a música não chega nele.';
   else if (act.mic && f) txt += '. A música toca nele.';
   $('#dd-mic-uso').textContent = txt;
-  $('#dd-mon-uso').textContent = act.monitor ? `Em uso agora: ${act.monitor}` : 'Em uso agora: nenhum, o som não toca no seu fone';
+  $('#dd-mon-uso').textContent = act.monitor ? `Em uso agora: ${act.monitor}` : 'Em uso agora: nenhum (só os outros ouvem a música)';
 }
 async function trocarDispositivo(k, v) {
   const msg = $('#dd-msg'); msg.className = 'msg-dlg'; msg.textContent = 'Trocando e reabrindo o áudio.';
