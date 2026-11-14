@@ -935,7 +935,7 @@ class Injetor:
         self._seca_dita = -1e9
         self._para48k_fx = _Para48k()  # a voz com efeito que o filtro devolve tem a sua
         self._resto_fx = np.zeros(0, np.float32)
-        self._preset = None      # (efeito, taxa) do preset escrito no anel
+        self._preset = None      # (efeito, taxa, geracao) do preset escrito no anel: o reload (preset.esquece) reenvia
         self._preset_seq = 0     # o seq dele, que o filtro devolve quando le
         self._preset_ok = False  # o efeito tem preset (o filtro roda)
         self._preset_em = 0.0    # monotonic da escrita
@@ -995,14 +995,15 @@ class Injetor:
         mo = self.motor
         eid = mo._fx_id  # noqa: SLF001
         taxa = int(m.a.voz_taxa)
-        if (eid, taxa) != self._preset:
+        chave = (eid, taxa, preset.geracao())
+        if chave != self._preset:
             dados = preset.pede(eid, taxa) if eid and taxa else None
             if dados is preset.PENDENTE:  # o projeto roda a parte (ate ~70 ms): a voz crua segue ate ficar pronto
                 self.efeito_no_filtro = False
                 mo._fx_filtro, mo._fx_pendente = False, True  # noqa: SLF001
                 return
             self._preset_seq = m.preset(dados or b"")
-            self._preset, self._preset_ok, self._preset_em = (eid, taxa), dados is not None, time.monotonic()
+            self._preset, self._preset_ok, self._preset_em = chave, dados is not None, time.monotonic()
         feito, erro = m.preset_estado()
         respondeu = feito == self._preset_seq
         self.efeito_no_filtro = self._preset_ok and respondeu and erro == 0

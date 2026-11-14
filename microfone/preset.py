@@ -226,6 +226,7 @@ _prontos = {}
 _projetando = set()
 _trava = threading.Lock()
 PENDENTE = object()
+_geracao = 0  # sobe a cada esquece(): o Injetor reenvia o preset ao filtro, e projeto de antes dele nao entra aqui
 
 
 def _projeta(efeito_id, taxa):
@@ -243,17 +244,27 @@ def preset(efeito_id, taxa):
     with _trava:
         if chave in _prontos:
             return _prontos[chave]
+        g = _geracao
     dados = _projeta(*chave)
     with _trava:
-        _prontos[chave] = dados
+        if g == _geracao:  # projetado com o fx.py de antes do esquece: vale para quem pediu, mas nao fica guardado
+            _prontos[chave] = dados
         _projetando.discard(chave)
     return dados
 
 
 def esquece():
-    """Joga fora os presets projetados: o fx.py recarregado (/api/effects/reload) projeta de novo."""
+    """Joga fora os presets projetados: o fx.py recarregado (/api/effects/reload) projeta de novo, e a geracao nova
+    faz o Injetor reenviar ao filtro o preset do efeito ligado, mesmo sem trocar de efeito."""
+    global _geracao
     with _trava:
         _prontos.clear()
+        _geracao += 1
+
+
+def geracao():
+    """A geracao dos presets (sobe a cada esquece): entra na chave do preset que o Injetor escreveu no anel."""
+    return _geracao
 
 
 def pede(efeito_id, taxa):
