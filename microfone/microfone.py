@@ -26,6 +26,13 @@ O filtro vai em DUAS vagas e o Windows usa uma so (lido no audiosrv.dll do 26200
 - LFX ({d04e05a6...},1): driver velho, que nao declara modos de processamento (o VB-Cable 1.0.3.5 de 2014, os da
   Steam de 2017), fica com o conector "sem modos" e o audiosrv so monta o caminho legado LFX/GFX
   (CEndpointCharacteristics::DiscoverConnectorCapabilities, EffectPack::DeriveEffectiveConnectorAndEffectPackCapabilities).
+Microfone com efeito de modo (MFX) do fabricante que cobre o modo RAW (o do notebook da Fortemedia: cancelamento de eco
+e redutor de ruido, que apagava a musica como ruido) troca o ultimo MFX do fabricante pelo hospedeiro (HOSPEDES), na
+lista composta {d04e05a6...},14. O Windows so aceita a peca de cancelamento de eco como a ultima da lista de MFX, entao
+nada nosso pode vir depois dela: o hospedeiro carrega o APO do fabricante por dentro e soma a musica no que sai dele, e
+o EFX desse microfone fica so com a voz (o micfx.dll ve o hospedeiro na lista). Por isso so com o RAW no MFX: o raw
+pula o MFX onde o fabricante nao o declara, e ficaria sem musica. A vaga do hospedeiro que carrega cada fabricante vai
+em HKLM\\SOFTWARE\\Vitrola\\Microfone, valor _hospede<n>, e o registro de APO do fabricante e copiado para o dele.
 O SFX do fabricante nao se mexe (a versao anterior trocava o SFX pelo nosso; instalar de novo devolve o original).
 """
 import argparse
@@ -38,7 +45,12 @@ import sys
 import time
 import winreg
 
-CLSID = "{C17A1D48-D473-40D9-9ED3-D024AA46EBE2}"
+CLSID = "{C17A1D48-D473-40D9-9ED3-D024AA46EBE2}"  # EFX e LFX
+# o hospedeiro do MFX do fabricante, uma vaga por fabricante (os CLSID_Hospede do micfx.cpp)
+HOSPEDES = ("{D6EB08E6-2DDA-44F3-88C8-2D0EA00C6C8E}", "{9FEF5C33-9ED4-4CC6-8624-4F017BB71678}",
+            "{ED59B560-1ECA-4491-9179-EC121791159D}", "{1663A464-C189-435F-89BD-9C9E9BAF1C23}")
+NOSSOS = (CLSID,) + HOSPEDES
+APOS = r"SOFTWARE\Classes\AudioEngine\AudioProcessingObjects"  # o registro de APO (o RegisterAPO grava aqui)
 CAPTURA = r"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Capture"
 SALVO = r"SOFTWARE\Vitrola\Microfone"
 PASTA = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Vitrola", "microfone")
@@ -57,14 +69,22 @@ MODOS_SFX = "{d3993a3f-99c2-4402-b5ec-a92a0367664b},5"
 EFX = "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},7"  # EFX simples do fabricante: vira o primeiro da lista composta
 EFX_LISTA = "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},15"  # EFX composto (Windows 10 1803+): CLSIDs em ordem
 MODOS_EFX = "{d3993a3f-99c2-4402-b5ec-a92a0367664b},7"
+MFX = "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},6"  # MFX simples do fabricante: vira o primeiro da lista composta
+MFX_LISTA = "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},14"  # MFX composto: CLSIDs em ordem
+MODOS_MFX = "{d3993a3f-99c2-4402-b5ec-a92a0367664b},6"
 MODO_PADRAO = "{C18E2F7E-933D-4965-B7D1-1EEF228D2AF3}"  # AUDIO_SIGNALPROCESSINGMODE_DEFAULT
 MODO_RAW = "{9E90EA20-B493-4FD1-A1A8-7E1361A956CF}"  # AUDIO_SIGNALPROCESSINGMODE_RAW
-GUARDADOS = (ASSOCIACAO, LFX, "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},2", SFX,
-             "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},6", EFX, EFX_LISTA, MODOS_SFX,
-             "{d3993a3f-99c2-4402-b5ec-a92a0367664b},6", MODOS_EFX)
+GUARDADOS = (ASSOCIACAO, LFX, "{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},2", SFX, MFX, EFX, EFX_LISTA, MFX_LISTA,
+             MODOS_SFX, MODOS_MFX, MODOS_EFX)
 # Os que a gente pode criar: o remove apaga os que estao em _ausentes (o que nao existia antes)
-CRIADOS = (ASSOCIACAO, LFX, SFX, MODOS_SFX, EFX_LISTA, MODOS_EFX)
-VERSAO_SALVO = 2  # 2 = guarda tambem o EFX; salvo sem _versao veio da versao que trocava o SFX
+CRIADOS = (ASSOCIACAO, LFX, SFX, MODOS_SFX, EFX_LISTA, MODOS_EFX, MFX_LISTA)
+# 3 = guarda tambem a lista de MFX; 2 = o EFX; salvo sem _versao veio da versao que trocava o SFX
+VERSAO_SALVO = 3
+
+
+def _lista(fx, k):
+    """Os CLSIDs de uma lista composta (REG_MULTI_SZ), em maiusculo; vazia sem o valor."""
+    return [c.upper() for c in (le(fx, k) or ([],))[0]]
 
 
 def nosso(fx):
@@ -72,7 +92,12 @@ def nosso(fx):
     for k in (LFX, SFX, EFX):
         if (le(fx, k) or ("",))[0].upper() == CLSID:
             return True
-    return CLSID in [c.upper() for c in (le(fx, EFX_LISTA) or ([],))[0]]
+    return any(c in NOSSOS for c in _lista(fx, EFX_LISTA) + _lista(fx, MFX_LISTA))
+
+
+def no_mfx(fx):
+    """O hospedeiro esta na lista de MFX (a musica entra depois do efeito do fabricante)?"""
+    return any(c in HOSPEDES for c in _lista(fx, MFX_LISTA))
 
 
 def tem_filtro(ep):
@@ -170,10 +195,11 @@ def estado():
     for ep, nome, apar in microfones():
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{ep}\FxProperties") as fx:
             sfx = (le(fx, SFX) or ("",))[0]
-            e_nosso = nosso(fx)
+            e_nosso, mfx = nosso(fx), no_mfx(fx)
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{ep}\Properties") as p:
             sem = (le(p, SEM_MELHORIAS) or (0,))[0]
-        marca = "VITROLA" if e_nosso else ("outro: " + sfx if sfx else "sem SFX")
+        marca = ("VITROLA" + (" (+ MFX do fabricante)" if mfx else "")) if e_nosso else \
+            ("outro: " + sfx if sfx else "sem SFX")
         print(f"{nome} ({apar}) {ep}: {marca}{'  [melhorias desativadas]' if sem else ''}")
     print("dll:", os.path.join(PASTA, "micfx.dll"), "existe" if os.path.exists(os.path.join(PASTA, "micfx.dll"))
           else "nao existe")
@@ -210,7 +236,8 @@ LOGS = os.path.join(PASTA, "log")
 
 def atualiza_salvo_velho(fx, salvo):
     """Microfone pendurado por versao anterior: completa o salvo com o que aquela versao nao guardava. O que ela
-    nunca escrevia (ASSOCIACAO antes de existir, LFX antes de existir, a familia EFX) ainda esta no valor original."""
+    nunca escrevia (ASSOCIACAO antes de existir, LFX antes de existir, a familia EFX, a lista de MFX) ainda esta no
+    valor original."""
     if (le(salvo, "_versao") or (0,))[0] >= VERSAO_SALVO:
         return
     ausentes = list((le(salvo, "_ausentes") or ([],))[0])
@@ -219,7 +246,7 @@ def atualiza_salvo_velho(fx, salvo):
             ausentes.append(ASSOCIACAO)
         if not (le(salvo, "_tinha_sfx") or (0,))[0]:
             ausentes += [k for k in (SFX, MODOS_SFX) if le(salvo, k) is None]
-    nunca_escritos = [EFX, EFX_LISTA, MODOS_EFX]
+    nunca_escritos = [EFX, EFX_LISTA, MODOS_EFX, MFX_LISTA]
     if (le(fx, LFX) or ("",))[0].upper() != CLSID:
         nunca_escritos.append(LFX)
     for k in nunca_escritos:
@@ -310,12 +337,94 @@ def _pendura(ep):
         if faltam:
             winreg.SetValueEx(fx, MODOS_EFX, 0, winreg.REG_MULTI_SZ, modos + faltam)
             mudou = True
+        mudou |= _pendura_mfx(fx)
         if le(fx, ASSOCIACAO) is None:
             winreg.SetValueEx(fx, ASSOCIACAO, 0, winreg.REG_SZ, KSNODETYPE_ANY)
             mudou = True
     if sem_melhorias:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base + r"\Properties", 0, winreg.KEY_SET_VALUE) as p:
             winreg.SetValueEx(p, SEM_MELHORIAS, 0, winreg.REG_DWORD, 0)
+        mudou = True
+    return mudou
+
+
+def _hospedado(vaga):
+    """O CLSID do MFX do fabricante que a vaga do hospedeiro carrega, ou None."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, SALVO) as raiz:
+            return (le(raiz, f"_hospede{vaga}") or (None,))[0]
+    except OSError:
+        return None
+
+
+def _vaga_hospede(fabricante):
+    """A vaga do hospedeiro que carrega esse MFX do fabricante: a que ja o carrega, ou a primeira livre (gravada em
+    HKLM\\SOFTWARE\\Vitrola\\Microfone, _hospede<n>). O registro de APO do fabricante vai para o do hospedeiro (o
+    regsvr32 grava o padrao a cada instalacao). None sem vaga livre."""
+    with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, SALVO, 0, winreg.KEY_ALL_ACCESS) as raiz:
+        livre = None
+        for n in range(len(HOSPEDES)):
+            v = (le(raiz, f"_hospede{n}") or (None,))[0]
+            if v and v.upper() == fabricante.upper():
+                livre = n
+                break
+            if v is None and livre is None:
+                livre = n
+        else:
+            if livre is None:
+                return None
+            winreg.SetValueEx(raiz, f"_hospede{livre}", 0, winreg.REG_SZ, fabricante)
+    _copia_registro_apo(fabricante, HOSPEDES[livre])
+    return livre
+
+
+def _copia_registro_apo(de, para):
+    """Os valores do registro de APO do fabricante (flags, conexoes, interfaces) no do hospedeiro, com o nome nosso: o
+    motor ve no hospedeiro o mesmo que veria no fabricante."""
+    try:
+        origem = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{APOS}\{de}")
+    except OSError:  # fabricante sem registro de APO: fica o que o regsvr32 gravou
+        return
+    with origem, winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, rf"{APOS}\{para}", 0, winreg.KEY_ALL_ACCESS) as dest:
+        i = 0
+        while True:
+            try:
+                nome, valor, tipo = winreg.EnumValue(origem, i)
+            except OSError:
+                break
+            i += 1
+            if nome.lower() not in ("friendlyname", "copyright"):
+                winreg.SetValueEx(dest, nome, 0, tipo, valor)
+
+
+def _pendura_mfx(fx):
+    """Com MFX do fabricante que cobre DEFAULT e RAW, o ultimo dele sai da lista e o hospedeiro que o carrega entra no
+    lugar; sem MFX do fabricante (um driver novo tirou), sem RAW nele, ou sem vaga de hospedeiro, a lista fica a do
+    fabricante. Os modos do MFX nao se mexem. True se mudou algo."""
+    lista = list((le(fx, MFX_LISTA) or ([],))[0])
+    fabricante = []
+    for c in lista:  # o que um hospedeiro ja carrega volta a ser o do fabricante, para decidir de novo
+        if c.upper() in HOSPEDES:
+            c = _hospedado(HOSPEDES.index(c.upper()))
+        if c and c.upper() not in NOSSOS:
+            fabricante.append(c)
+    simples = (le(fx, MFX) or ("",))[0]
+    modos = [m.upper() for m in (le(fx, MODOS_MFX) or ([],))[0]]
+    cobre = MODO_PADRAO.upper() in modos and MODO_RAW.upper() in modos
+    usa = cobre and (fabricante or (simples and simples.upper() not in NOSSOS))
+    mudou = False
+    if usa and simples and simples.upper() not in NOSSOS:  # o MFX simples do fabricante entra na lista, na frente
+        if simples.upper() not in [c.upper() for c in fabricante]:
+            fabricante.insert(0, simples)
+        winreg.DeleteValue(fx, MFX)
+        mudou = True
+    vaga = _vaga_hospede(fabricante[-1]) if usa else None
+    nova = fabricante[:-1] + [HOSPEDES[vaga]] if vaga is not None else fabricante
+    if [c.upper() for c in nova] != [c.upper() for c in lista]:
+        if nova:
+            winreg.SetValueEx(fx, MFX_LISTA, 0, winreg.REG_MULTI_SZ, nova)
+        else:
+            winreg.DeleteValue(fx, MFX_LISTA)
         mudou = True
     return mudou
 
@@ -346,45 +455,66 @@ def instala_todos(dll):
           f"{'; DLL trocada' if parou else ''}")
 
 
+def _devolve(ep):
+    """Devolve o original guardado de um microfone (as vagas de efeito e as melhorias) e apaga o guardado; False se
+    nao havia nada guardado."""
+    try:
+        salvo = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{SALVO}\{ep}")
+    except OSError:
+        return False
+    with salvo, winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{ep}\FxProperties", 0,
+                               winreg.KEY_READ | winreg.KEY_SET_VALUE) as fx:
+        ausentes = (le(salvo, "_ausentes") or ([SFX],))[0]  # sem _ausentes (versao velha): so o SFX
+        for k in GUARDADOS:
+            v = le(salvo, k)
+            if v is not None:
+                winreg.SetValueEx(fx, k, 0, v[1], v[0])
+            elif k in ausentes:
+                try:
+                    winreg.DeleteValue(fx, k)
+                except OSError:
+                    pass
+        sem_melhorias = (le(salvo, "_sem_melhorias") or (0,))[0]  # instalado antes de guardar: nao mexe
+    if sem_melhorias:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{ep}\Properties", 0,
+                            winreg.KEY_SET_VALUE) as p:
+            winreg.SetValueEx(p, SEM_MELHORIAS, 0, winreg.REG_DWORD, 1)
+    winreg.DeleteKey(winreg.HKEY_LOCAL_MACHINE, rf"{SALVO}\{ep}")
+    return True
+
+
 def remove(filtro=None):
     """Devolve o original dos microfones (o do filtro, ou todos) e, sem nenhum com o filtro, tira a DLL. O audio do PC
     so reinicia se algum microfone mudou (o desinstalador chama sempre)."""
     alvos = [acha(filtro)] if filtro else microfones(todos=True)
     mexeu = False
     for ep, nome, apar in alvos:
-        try:
-            salvo = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{SALVO}\{ep}")
-        except OSError:
-            continue
-        with salvo, winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{ep}\FxProperties", 0,
-                                   winreg.KEY_READ | winreg.KEY_SET_VALUE) as fx:
-            ausentes = (le(salvo, "_ausentes") or ([SFX],))[0]  # sem _ausentes (versao velha): so o SFX
-            for k in GUARDADOS:
-                v = le(salvo, k)
-                if v is not None:
-                    winreg.SetValueEx(fx, k, 0, v[1], v[0])
-                elif k in ausentes:
-                    try:
-                        winreg.DeleteValue(fx, k)
-                    except OSError:
-                        pass
-            sem_melhorias = (le(salvo, "_sem_melhorias") or (0,))[0]  # instalado antes de guardar: nao mexe
-        if sem_melhorias:
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{ep}\Properties", 0,
-                                winreg.KEY_SET_VALUE) as p:
-                winreg.SetValueEx(p, SEM_MELHORIAS, 0, winreg.REG_DWORD, 1)
-        winreg.DeleteKey(winreg.HKEY_LOCAL_MACHINE, rf"{SALVO}\{ep}")
-        mexeu = True
-        print(f"devolvido o original em {nome} ({apar}) {ep}")
+        if _devolve(ep):
+            mexeu = True
+            print(f"devolvido o original em {nome} ({apar}) {ep}")
     sobrou = [m for m in microfones(todos=True) if tem_filtro(m[0])]
     destino = os.path.join(PASTA, "micfx.dll")
     if not sobrou and os.path.exists(destino):
         subprocess.run(["regsvr32", "/s", "/u", destino], capture_output=True, creationflags=NO_WINDOW)
     if mexeu:
         reinicia_audio()
-    if not sobrou:  # o audiodg ja soltou a DLL: sai a pasta (a DLL e o log) e a tarefa
+    if not sobrou:  # o audiodg ja soltou a DLL: sai a pasta (a DLL e o log), a tarefa e as vagas do hospedeiro
         shutil.rmtree(PASTA, ignore_errors=True)
         tarefa_apaga()
+        _esquece_hospedes()
+
+
+def _esquece_hospedes():
+    """Sem filtro em microfone nenhum, as vagas do hospedeiro (_hospede<n>) saem do registro."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, SALVO, 0, winreg.KEY_ALL_ACCESS) as raiz:
+            for n in range(len(HOSPEDES)):
+                try:
+                    winreg.DeleteValue(raiz, f"_hospede{n}")
+                except OSError:
+                    pass
+    except OSError:
+        pass
 
 
 def dll_padrao():

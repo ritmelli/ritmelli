@@ -189,6 +189,61 @@ static uint32_t HashDoMicrofone(UINT32 cb, BYTE* dados, char* txt, size_t n) {
 // {C17A1D48-D473-40D9-9ED3-D024AA46EBE2}
 static const CLSID CLSID_MicFx = {0xc17a1d48, 0xd473, 0x40d9, {0x9e, 0xd3, 0xd0, 0x24, 0xaa, 0x46, 0xeb, 0xe2}};
 
+// O hospedeiro do MFX do fabricante (ritmelli#49). Microfone de notebook com cancelamento de eco do fabricante (o
+// MFX da Fortemedia: IApoAcousticEchoCancellation) apaga a musica que o EFX somou, e nada nosso pode vir depois dele: o
+// audiosrv so aceita a peca de AEC como a ultima da lista de MFX (lambda da EffectPack::GetInitializedSystemEffectInterface,
+// 26300: AEC fora da posicao 0 contada do fim = 0x887C0037 e a lista inteira cai, levando o redutor junto). Entao o
+// microfone.py poe na lista, no lugar do MFX do fabricante, um hospedeiro nosso, que carrega o APO dele por dentro,
+// repassa tudo (formato, referencia do eco, efeitos, notificacoes) e soma a musica no que sai dele. Para o Windows a
+// ultima peca e o hospedeiro, que responde como AEC porque o hospedado responde. Uma classe por fabricante, quatro
+// vagas: o microfone.py grava em HKLM\SOFTWARE\Vitrola\Microfone, valor "_hospede<n>", o CLSID que a vaga n carrega.
+static const int HOSPEDES = 4;
+static const CLSID CLSID_Hospede[HOSPEDES] = {
+    {0xd6eb08e6, 0x2dda, 0x44f3, {0x88, 0xc8, 0x2d, 0x0e, 0xa0, 0x0c, 0x6c, 0x8e}},
+    {0x9fef5c33, 0x9ed4, 0x4cc6, {0x86, 0x24, 0x4f, 0x01, 0x7b, 0xb7, 0x16, 0x78}},
+    {0xed59b560, 0x1eca, 0x4491, {0x91, 0x79, 0xec, 0x12, 0x17, 0x91, 0x15, 0x9d}},
+    {0x1663a464, 0xc189, 0x435f, {0x89, 0xbd, 0x9c, 0x9e, 0x9b, 0xaf, 0x1c, 0x23}},
+};
+
+static const wchar_t kCaptura[] = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Capture\\";
+static const wchar_t kMfxLista[] = L"{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},14";
+static const wchar_t kSalvo[] = L"SOFTWARE\\Vitrola\\Microfone";
+
+// Fora do tempo real. O microfone (o GUID dele, "{...}") tem o hospedeiro na lista de MFX? Entao a musica entra pelo
+// hospedeiro, depois do efeito do fabricante, e o EFX desse microfone so cuida da voz
+static bool TemHospede(const wchar_t* guid) {
+    wchar_t sub[256];
+    _snwprintf_s(sub, 256, _TRUNCATE, L"%s%s\\FxProperties", kCaptura, guid);
+    static wchar_t lista[4096];  // so no Initialize, que o motor chama em serie
+    DWORD n = sizeof(lista);
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, sub, kMfxLista, RRF_RT_REG_MULTI_SZ, nullptr, lista, &n) != ERROR_SUCCESS) {
+        return false;
+    }
+    for (const wchar_t* p = lista; *p; p += wcslen(p) + 1) {
+        CLSID c;
+        if (SUCCEEDED(CLSIDFromString(p, &c))) {
+            for (int s = 0; s < HOSPEDES; s++) {
+                if (c == CLSID_Hospede[s]) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// Fora do tempo real: o CLSID do MFX do fabricante que a vaga s do hospedeiro carrega
+static bool HospedadoDe(int s, CLSID* clsid) {
+    wchar_t nome[16], texto[64];
+    _snwprintf_s(nome, 16, _TRUNCATE, L"_hospede%d", s);
+    DWORD n = sizeof(texto);
+    return RegGetValueW(HKEY_LOCAL_MACHINE, kSalvo, nome, RRF_RT_REG_SZ, nullptr, texto, &n) == ERROR_SUCCESS &&
+           SUCCEEDED(CLSIDFromString(texto, clsid));
+}
+
+// A banca de teste troca a criacao do hospedado (o fabricante falso, sem o registro); no filtro, nulo
+static HRESULT (*g_cria_hospedado)(int vaga, CLSID* clsid, IUnknown** obj) = nullptr;
+
 static HMODULE g_modulo = nullptr;
 static volatile LONG g_objetos = 0;
 static volatile LONG g_travas = 0;
@@ -238,10 +293,131 @@ static MicFxAnel* AbreAnel(HANDLE* mapa) {
     return a;
 }
 
+// A vaga de leitor da musica no anel de uma instancia do filtro (o EFX/LFX e o hospedeiro do MFX): o anel aberto, a vaga,
+// o reamostrador na taxa do microfone e a soma do que o app escreveu
+struct LeitorDoAnel {
+    MicFxAnel* m_anel = nullptr;
+    HANDLE m_mapa = nullptr;
+    int m_vaga = -1;
+    uint32_t m_dono = 0;
+    uint32_t m_ep = 0;  // o hash do microfone desta instancia (Initialize); 0 = nao deu para saber
+    float m_taxa = (float)MICFX_TAXA;
+    Reamostra m_rs;
+
+    // O microfone desta instancia e o alvo do app agora? (sem o hash, m_ep 0: age como o alvo)
+    bool NoAlvo() const {
+        const MicFxAnel* a = m_anel;
+        if (!a || a->magia != MICFX_MAGIA) {
+            return false;
+        }
+        const uint32_t alvo = a->alvo;
+        return alvo != 0 && (m_ep == 0 || alvo == m_ep);
+    }
+
+    void SoltaVaga() {
+        if (m_anel && m_vaga >= 0) {
+            InterlockedCompareExchange((volatile LONG*)&m_anel->leitor[m_vaga].dono, 0, (LONG)m_dono);
+        }
+        m_vaga = -1;
+    }
+
+    void PegaAnel() {
+        if (!m_anel) {
+            m_anel = AbreAnel(&m_mapa);
+        }
+        if (!m_anel || m_vaga >= 0) {
+            return;
+        }
+        m_dono = (uint32_t)InterlockedIncrement(&g_proximo_dono) ^ (GetCurrentProcessId() << 16);
+        if (!m_dono) {
+            m_dono = 1;
+        }
+        const int64_t agora = (int64_t)GetTickCount64();
+        for (uint32_t v = 0; v < MICFX_LEITORES; v++) {
+            MicFxLeitor& l = m_anel->leitor[v];
+            const uint32_t atual = l.dono;
+            const bool livre = atual == 0 || agora - l.batida > (int64_t)MICFX_BATIDA_MS;
+            if (livre && InterlockedCompareExchange((volatile LONG*)&l.dono, (LONG)m_dono, (LONG)atual) == (LONG)atual) {
+                m_rs.Comeca(m_anel->escrito);  // so o que chegar daqui pra frente
+                l.lido = m_rs.MaisVelho();
+                l.batida = agora;
+                l.taxa = (uint32_t)m_taxa;
+                l.ep = m_ep;
+                m_vaga = (int)v;
+                return;
+            }
+        }
+    }
+
+    void SoltaAnel() {
+        SoltaVaga();
+        if (m_anel) {
+            UnmapViewOfFile(m_anel);
+            m_anel = nullptr;
+        }
+        if (m_mapa) {
+            CloseHandle(m_mapa);
+            m_mapa = nullptr;
+        }
+    }
+
+    // Tempo real, so no alvo: soma em destino (quadros x canais, na taxa do reamostrador) a musica que o app deixou;
+    // com a voz cortada pelo app (sem_voz, com ele vivo), a musica vai no lugar do que havia. True se somou algo
+    bool SomaDoAnel(float* destino, UINT32 quadros, UINT32 canais, int64_t agora) {
+        MicFxAnel* a = m_anel;
+        if (m_vaga < 0) {  // a vaga foi tomada (a instancia ficou muda tempo demais): tenta outra, sem alocar
+            PegaAnel();
+            if (m_vaga < 0) {
+                return false;
+            }
+        }
+        MicFxLeitor& eu = a->leitor[m_vaga];
+        eu.batida = agora;
+        if (eu.dono != m_dono) {
+            m_vaga = -1;
+            return false;
+        }
+        const int64_t escrito = a->escrito;
+        MemoryBarrier();  // os dados ate 'escrito' ja estao na memoria
+        if (escrito - m_rs.MaisVelho() > (int64_t)MICFX_QUADROS) {  // ficou pra tras (nao devia): pula pro mais novo
+            m_rs.Comeca(escrito - MICFX_QUADROS / 2);
+        }
+        float ganho = a->ganho;  // a memoria e escrita pelo app: NaN, negativo ou exagero nao passam
+        if (!(ganho >= 0.0f)) {
+            ganho = 0.0f;
+        } else if (ganho > GANHO_MAX) {
+            ganho = GANHO_MAX;
+        }
+        // a voz cortada so com o app escrevendo: o app que cai com ela cortada nao deixa o microfone mudo
+        const bool sem_voz = a->sem_voz != 0 && agora - a->batida_app < (int64_t)MICFX_APP_MS;
+        const uint32_t gerados = m_rs.Gera(a->dados, MICFX_QUADROS - 1, escrito, quadros,
+                                           [&](uint32_t i, float esq, float dir) {
+            float* o = &destino[i * canais];
+            esq = Finito(esq) * ganho;
+            dir = Finito(dir) * ganho;
+            if (canais == 1) {
+                const float m = 0.5f * (esq + dir);
+                o[0] = Dobra(sem_voz ? m : o[0] + m);
+            } else {
+                o[0] = Dobra(sem_voz ? esq : o[0] + esq);
+                o[1] = Dobra(sem_voz ? dir : o[1] + dir);
+                for (UINT32 c = 2; sem_voz && c < canais; c++) {
+                    o[c] = 0.0f;
+                }
+            }
+        });
+        eu.lido = m_rs.MaisVelho();  // o escritor nao passa por cima do que o filtro ainda le
+        if (sem_voz && gerados < quadros) {  // acabou o que tem: sem voz, o resto do bloco e silencio
+            ZeroMemory(&destino[gerados * canais], (quadros - gerados) * canais * sizeof(float));
+        }
+        return gerados > 0;
+    }
+};
+
 // O motor de audio agrega o APO (cria com um IUnknown externo): as interfaces publicas delegam o IUnknown ao
 // externo, e o motor fala com o objeto pelo IUnknown interno (m_interno), que nao delega. Sem externo, o interno
 // faz as vezes dele (o COM de sempre).
-class CMicFx : public CBaseAudioProcessingObject, public IAudioSystemEffects2 {
+class CMicFx : public CBaseAudioProcessingObject, public IAudioSystemEffects2, private LeitorDoAnel {
 public:
     explicit CMicFx(IUnknown* externo) : CBaseAudioProcessingObject(g_props), m_interno(this) {
         m_externo = externo ? externo : &m_interno;
@@ -331,8 +507,11 @@ public:
         }
         char guid[64];
         m_ep = HashDoMicrofone(cbDataSize, pbyData, guid, sizeof(guid));
-        Log("Initialize: %u bytes, clsid %s, modo %s, microfone %s (%08x)", cbDataSize,
-            base->clsid == CLSID_MicFx ? "nosso" : "OUTRO", modo, guid[0] ? guid : "?", m_ep);
+        wchar_t wguid[64];
+        m_so_voz = guid[0] && MultiByteToWideChar(CP_ACP, 0, guid, -1, wguid, 64) > 0 && TemHospede(wguid);
+        Log("Initialize: %u bytes, clsid %s, modo %s, microfone %s (%08x)%s", cbDataSize,
+            base->clsid == CLSID_MicFx ? "nosso" : "OUTRO", modo, guid[0] ? guid : "?", m_ep,
+            m_so_voz ? ", so a voz (a musica vai pelo hospedeiro do MFX)" : "");
         EnterCriticalSection(&m_CritSec);
         m_bIsInitialized = true;
         LeaveCriticalSection(&m_CritSec);
@@ -375,8 +554,8 @@ public:
         m_rs.Prepara((uint32_t)(m_taxa + 0.5f));
         PreparaEfeito();
         PegaAnel();
-        if (m_anel && (m_anel->alvo == 0 || (m_ep != 0 && m_anel->alvo != m_ep))) {
-            SoltaVaga();  // nao e o alvo agora: o anel fica aberto, e a vaga so com ele virando o alvo
+        if (m_anel && (m_so_voz || !NoAlvo())) {
+            SoltaVaga();  // nao e o alvo agora (ou a musica vai pelo hospedeiro): o anel fica aberto, sem vaga
         }
         Log("LockForProcess: canais %u taxa %.0f, anel %s, vaga %d, reamostra %s (L %u M %u taps %u), efeito %s (%u KB)",
             m_canais, m_taxa, m_anel ? "ok" : "SEM", m_vaga,
@@ -435,53 +614,14 @@ private:
         EscreveVoz(a, destino, quadros);
         // o efeito so com o app vivo: a Vitrola que cai devolve a voz crua, como o sem_voz
         const bool fx = Efeito(a, destino, quadros, agora - a->batida_app < (int64_t)MICFX_APP_MS);
-        if (m_vaga < 0) {  // a vaga foi tomada (a instancia ficou muda tempo demais): tenta outra, sem alocar
-            PegaAnel();
-            if (m_vaga < 0) {
-                return fx;
+        if (m_so_voz) {  // a musica entra pelo hospedeiro, depois do efeito do fabricante: aqui so a voz (cortada ou nao)
+            if (a->sem_voz != 0 && agora - a->batida_app < (int64_t)MICFX_APP_MS) {
+                ZeroMemory(destino, quadros * m_canais * sizeof(float));
             }
-        }
-        MicFxLeitor& eu = a->leitor[m_vaga];
-        eu.batida = agora;
-        if (eu.dono != m_dono) {
-            m_vaga = -1;
+            SoltaVaga();
             return fx;
         }
-        const int64_t escrito = a->escrito;
-        MemoryBarrier();  // os dados ate 'escrito' ja estao na memoria
-        if (escrito - m_rs.MaisVelho() > (int64_t)MICFX_QUADROS) {  // ficou pra tras (nao devia): pula pro mais novo
-            m_rs.Comeca(escrito - MICFX_QUADROS / 2);
-        }
-        float ganho = a->ganho;  // a memoria e escrita pelo app: NaN, negativo ou exagero nao passam
-        if (!(ganho >= 0.0f)) {
-            ganho = 0.0f;
-        } else if (ganho > GANHO_MAX) {
-            ganho = GANHO_MAX;
-        }
-        // a voz cortada so com o app escrevendo: o app que cai com ela cortada nao deixa o microfone mudo
-        const bool sem_voz = a->sem_voz != 0 && agora - a->batida_app < (int64_t)MICFX_APP_MS;
-        const UINT32 canais = m_canais;
-        const uint32_t gerados = m_rs.Gera(a->dados, MICFX_QUADROS - 1, escrito, quadros,
-                                           [&](uint32_t i, float esq, float dir) {
-            float* o = &destino[i * canais];
-            esq = Finito(esq) * ganho;
-            dir = Finito(dir) * ganho;
-            if (canais == 1) {
-                const float m = 0.5f * (esq + dir);
-                o[0] = Dobra(sem_voz ? m : o[0] + m);
-            } else {
-                o[0] = Dobra(sem_voz ? esq : o[0] + esq);
-                o[1] = Dobra(sem_voz ? dir : o[1] + dir);
-                for (UINT32 c = 2; sem_voz && c < canais; c++) {
-                    o[c] = 0.0f;
-                }
-            }
-        });
-        eu.lido = m_rs.MaisVelho();  // o escritor nao passa por cima do que o filtro ainda le
-        if (sem_voz && gerados < quadros) {  // acabou o que tem: sem voz, o resto do bloco e silencio
-            ZeroMemory(&destino[gerados * canais], (quadros - gerados) * canais * sizeof(float));
-        }
-        return gerados > 0 || fx;
+        return SomaDoAnel(destino, quadros, m_canais, agora) || fx;
     }
 
     // A voz crua do microfone para o app, mono e na taxa dele (o app reamostra): so o filtro do alvo escreve
@@ -597,63 +737,10 @@ private:
         return true;
     }
 
-    void SoltaVaga() {
-        if (m_anel && m_vaga >= 0) {
-            InterlockedCompareExchange((volatile LONG*)&m_anel->leitor[m_vaga].dono, 0, (LONG)m_dono);
-        }
-        m_vaga = -1;
-    }
-
-    void PegaAnel() {
-        if (!m_anel) {
-            m_anel = AbreAnel(&m_mapa);
-        }
-        if (!m_anel || m_vaga >= 0) {
-            return;
-        }
-        m_dono = (uint32_t)InterlockedIncrement(&g_proximo_dono) ^ (GetCurrentProcessId() << 16);
-        if (!m_dono) {
-            m_dono = 1;
-        }
-        const int64_t agora = (int64_t)GetTickCount64();
-        for (uint32_t v = 0; v < MICFX_LEITORES; v++) {
-            MicFxLeitor& l = m_anel->leitor[v];
-            const uint32_t atual = l.dono;
-            const bool livre = atual == 0 || agora - l.batida > (int64_t)MICFX_BATIDA_MS;
-            if (livre && InterlockedCompareExchange((volatile LONG*)&l.dono, (LONG)m_dono, (LONG)atual) == (LONG)atual) {
-                m_rs.Comeca(m_anel->escrito);  // so o que chegar daqui pra frente
-                l.lido = m_rs.MaisVelho();
-                l.batida = agora;
-                l.taxa = (uint32_t)m_taxa;
-                l.ep = m_ep;
-                m_vaga = (int)v;
-                return;
-            }
-        }
-    }
-
-    void SoltaAnel() {
-        SoltaVaga();
-        if (m_anel) {
-            UnmapViewOfFile(m_anel);
-            m_anel = nullptr;
-        }
-        if (m_mapa) {
-            CloseHandle(m_mapa);
-            m_mapa = nullptr;
-        }
-    }
-
     volatile LONG m_refs = 1;
     IUnknown* m_externo = nullptr;
-    MicFxAnel* m_anel = nullptr;
-    HANDLE m_mapa = nullptr;
-    int m_vaga = -1;
-    uint32_t m_dono = 0;
-    uint32_t m_ep = 0;  // o hash do microfone desta instancia (Initialize); 0 = nao deu para saber
     UINT32 m_canais = 1;
-    float m_taxa = (float)MICFX_TAXA;
-    Reamostra m_rs;
+    bool m_so_voz = false;  // o microfone tem o hospedeiro do MFX: a musica vai por ele, aqui so a voz (Initialize)
     // o efeito de voz (PreparaEfeito separa a memoria; LePreset monta a cadeia)
     uint8_t* m_mem = nullptr;
     size_t m_mem_bytes = 0;
@@ -667,8 +754,306 @@ private:
     voz::Cadeia m_cadeia;
 };
 
+// KSDATAFORMAT_SUBTYPE_IEEE_FLOAT: a musica so se soma em saida float32
+static const GUID FORMATO_FLOAT = {0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+
+// O hospedeiro do MFX do fabricante (ver CLSID_Hospede). Cria o APO do fabricante na construcao (a vaga diz qual), e
+// so expoe as interfaces que ele expoe: o motor ve as mesmas respostas que veria dele (o APOInitSystemEffects3 se
+// ele tem o IAudioSystemEffects3, AEC, referencia do eco, notificacoes). Tudo passa direto; o APOProcess chama o dele e
+// soma a musica no que saiu, no formato de saida dele.
+class CMicFxHospede : public IAudioProcessingObject,
+                      public IAudioProcessingObjectRT,
+                      public IAudioProcessingObjectConfiguration,
+                      public IAudioSystemEffects3,
+                      public IApoAcousticEchoCancellation2,
+                      public IApoAuxiliaryInputConfiguration,
+                      public IApoAuxiliaryInputRT,
+                      public IAudioProcessingObjectNotifications,
+                      private LeitorDoAnel {
+public:
+    CMicFxHospede(IUnknown* externo, int vaga) : m_interno(this), m_vaga_hospede(vaga) {
+        m_externo = externo ? externo : &m_interno;
+        InterlockedIncrement(&g_objetos);
+    }
+    virtual ~CMicFxHospede() {
+        SoltaAnel();
+        IUnknown* ps[] = {m_apo, m_rt, m_cfg, m_fx2, m_fx3, m_aec2, m_aux, m_auxrt, m_notif, m_hospedado};
+        for (IUnknown* p : ps) {
+            if (p) {
+                p->Release();
+            }
+        }
+        InterlockedDecrement(&g_objetos);
+    }
+
+    // Fora do tempo real (CreateInstance): o APO do fabricante e as interfaces dele
+    HRESULT CriaHospedado() {
+        HRESULT hr;
+        if (g_cria_hospedado) {
+            hr = g_cria_hospedado(m_vaga_hospede, &m_clsid, &m_hospedado);
+        } else if (!HospedadoDe(m_vaga_hospede, &m_clsid)) {
+            Log("hospedeiro %d: sem o fabricante no registro (_hospede%d)", m_vaga_hospede, m_vaga_hospede);
+            return REGDB_E_CLASSNOTREG;
+        } else {
+            hr = CoCreateInstance(m_clsid, nullptr, CLSCTX_INPROC_SERVER, __uuidof(IUnknown),
+                                  reinterpret_cast<void**>(&m_hospedado));
+        }
+        if (FAILED(hr) || !m_hospedado) {
+            Log("hospedeiro %d: o fabricante %08lx nao foi criado: 0x%08lx", m_vaga_hospede, m_clsid.Data1, hr);
+            return FAILED(hr) ? hr : E_FAIL;
+        }
+        m_hospedado->QueryInterface(IID_PPV_ARGS(&m_apo));
+        m_hospedado->QueryInterface(IID_PPV_ARGS(&m_rt));
+        m_hospedado->QueryInterface(IID_PPV_ARGS(&m_cfg));
+        m_hospedado->QueryInterface(IID_PPV_ARGS(&m_fx2));
+        m_hospedado->QueryInterface(IID_PPV_ARGS(&m_fx3));
+        m_hospedado->QueryInterface(IID_PPV_ARGS(&m_aec2));
+        m_hospedado->QueryInterface(IID_PPV_ARGS(&m_aux));
+        m_hospedado->QueryInterface(IID_PPV_ARGS(&m_auxrt));
+        m_hospedado->QueryInterface(IID_PPV_ARGS(&m_notif));
+        IApoAcousticEchoCancellation* aec = nullptr;
+        if (SUCCEEDED(m_hospedado->QueryInterface(IID_PPV_ARGS(&aec))) && aec) {
+            m_aec = true;
+            aec->Release();
+        }
+        Log("hospedeiro %d: fabricante %08lx criado (apo %d rt %d cfg %d fx2 %d fx3 %d aec %d aec2 %d aux %d auxrt %d "
+            "notif %d)", m_vaga_hospede, m_clsid.Data1, !!m_apo, !!m_rt, !!m_cfg, !!m_fx2, !!m_fx3, m_aec, !!m_aec2,
+            !!m_aux, !!m_auxrt, !!m_notif);
+        return (m_apo && m_rt && m_cfg) ? S_OK : E_NOINTERFACE;
+    }
+
+    // IUnknown das interfaces publicas: sempre pelo externo
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override { return m_externo->QueryInterface(riid, ppv); }
+    STDMETHODIMP_(ULONG) AddRef() override { return m_externo->AddRef(); }
+    STDMETHODIMP_(ULONG) Release() override { return m_externo->Release(); }
+
+    HRESULT NdQueryInterface(REFIID riid, void** ppv) {
+        if (!ppv) {
+            return E_POINTER;
+        }
+        *ppv = nullptr;
+        if (riid == __uuidof(IUnknown)) {
+            *ppv = &m_interno;
+        } else if (riid == __uuidof(IAudioProcessingObject) && m_apo) {
+            *ppv = static_cast<IAudioProcessingObject*>(this);
+        } else if (riid == __uuidof(IAudioProcessingObjectRT) && m_rt) {
+            *ppv = static_cast<IAudioProcessingObjectRT*>(this);
+        } else if (riid == __uuidof(IAudioProcessingObjectConfiguration) && m_cfg) {
+            *ppv = static_cast<IAudioProcessingObjectConfiguration*>(this);
+        } else if ((riid == __uuidof(IAudioSystemEffects) || riid == __uuidof(IAudioSystemEffects2)) && m_fx2) {
+            *ppv = static_cast<IAudioSystemEffects2*>(static_cast<IAudioSystemEffects3*>(this));
+        } else if (riid == __uuidof(IAudioSystemEffects3) && m_fx3) {
+            *ppv = static_cast<IAudioSystemEffects3*>(this);
+        } else if (riid == __uuidof(IApoAcousticEchoCancellation) && m_aec) {
+            *ppv = static_cast<IApoAcousticEchoCancellation*>(static_cast<IApoAcousticEchoCancellation2*>(this));
+        } else if (riid == __uuidof(IApoAcousticEchoCancellation2) && m_aec2) {
+            *ppv = static_cast<IApoAcousticEchoCancellation2*>(this);
+        } else if (riid == __uuidof(IApoAuxiliaryInputConfiguration) && m_aux) {
+            *ppv = static_cast<IApoAuxiliaryInputConfiguration*>(this);
+        } else if (riid == __uuidof(IApoAuxiliaryInputRT) && m_auxrt) {
+            *ppv = static_cast<IApoAuxiliaryInputRT*>(this);
+        } else if (riid == __uuidof(IAudioProcessingObjectNotifications) && m_notif) {
+            *ppv = static_cast<IAudioProcessingObjectNotifications*>(this);
+        } else {
+            return E_NOINTERFACE;
+        }
+        reinterpret_cast<IUnknown*>(*ppv)->AddRef();
+        return S_OK;
+    }
+    ULONG NdAddRef() { return InterlockedIncrement(&m_refs); }
+    ULONG NdRelease() {
+        ULONG n = InterlockedDecrement(&m_refs);
+        if (n == 0) {
+            delete this;
+        }
+        return n;
+    }
+
+    class Interno : public IUnknown {
+    public:
+        explicit Interno(CMicFxHospede* dono) : m_dono(dono) {}
+        STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override { return m_dono->NdQueryInterface(riid, ppv); }
+        STDMETHODIMP_(ULONG) AddRef() override { return m_dono->NdAddRef(); }
+        STDMETHODIMP_(ULONG) Release() override { return m_dono->NdRelease(); }
+
+    private:
+        CMicFxHospede* m_dono;
+    };
+    Interno m_interno;
+
+    // IAudioProcessingObject
+    STDMETHODIMP Reset() override { return m_apo->Reset(); }
+    STDMETHODIMP GetLatency(HNSTIME* pTime) override { return m_apo->GetLatency(pTime); }
+    STDMETHODIMP GetRegistrationProperties(APO_REG_PROPERTIES** ppRegProps) override {
+        HRESULT hr = m_apo->GetRegistrationProperties(ppRegProps);
+        if (SUCCEEDED(hr) && ppRegProps && *ppRegProps) {
+            (*ppRegProps)->clsid = CLSID_Hospede[m_vaga_hospede];  // as do fabricante, com o nosso CLSID
+        }
+        return hr;
+    }
+    STDMETHODIMP Initialize(UINT32 cbDataSize, BYTE* pbyData) override {
+        if (cbDataSize && !pbyData) {
+            return E_POINTER;
+        }
+        if (cbDataSize < sizeof(APOInitBaseStruct) || cbDataSize > sizeof(m_init)) {
+            return E_INVALIDARG;
+        }
+        char guid[64];
+        m_ep = HashDoMicrofone(cbDataSize, pbyData, guid, sizeof(guid));
+        memcpy(m_init, pbyData, cbDataSize);  // o fabricante recebe o mesmo, com o CLSID dele
+        reinterpret_cast<APOInitBaseStruct*>(m_init)->clsid = m_clsid;
+        HRESULT hr = m_apo->Initialize(cbDataSize, m_init);
+        const char* modo = "legado (sem modo)";
+        if (cbDataSize == sizeof(APOInitSystemEffects3)) {  // o que o motor manda ao MFX no Windows 11 (80 bytes)
+            const auto* s3 = reinterpret_cast<APOInitSystemEffects3*>(pbyData);
+            modo = s3->InitializeForDiscoveryOnly ? "so descoberta" : NomeDoModo(s3->AudioProcessingMode);
+        } else if (cbDataSize >= sizeof(APOInitSystemEffects2)) {
+            const auto* s2 = reinterpret_cast<APOInitSystemEffects2*>(pbyData);
+            modo = s2->InitializeForDiscoveryOnly ? "so descoberta" : NomeDoModo(s2->AudioProcessingMode);
+        }
+        Log("hospedeiro %d Initialize: %u bytes, modo %s, microfone %s (%08x), fabricante hr=0x%08lx", m_vaga_hospede,
+            cbDataSize, modo, guid[0] ? guid : "?", m_ep, hr);
+        return hr;
+    }
+    STDMETHODIMP IsInputFormatSupported(IAudioMediaType* pOppositeFormat, IAudioMediaType* pRequestedInputFormat,
+                                        IAudioMediaType** ppSupportedInputFormat) override {
+        return m_apo->IsInputFormatSupported(pOppositeFormat, pRequestedInputFormat, ppSupportedInputFormat);
+    }
+    STDMETHODIMP IsOutputFormatSupported(IAudioMediaType* pOppositeFormat, IAudioMediaType* pRequestedOutputFormat,
+                                         IAudioMediaType** ppSupportedOutputFormat) override {
+        return m_apo->IsOutputFormatSupported(pOppositeFormat, pRequestedOutputFormat, ppSupportedOutputFormat);
+    }
+    STDMETHODIMP GetInputChannelCount(UINT32* pu32ChannelCount) override {
+        return m_apo->GetInputChannelCount(pu32ChannelCount);
+    }
+
+    // IAudioProcessingObjectConfiguration: trava o fabricante e prepara a musica no formato de saida dele
+    STDMETHODIMP LockForProcess(UINT32 nIn, APO_CONNECTION_DESCRIPTOR** ppIn, UINT32 nOut,
+                                APO_CONNECTION_DESCRIPTOR** ppOut) override {
+        HRESULT hr = m_cfg->LockForProcess(nIn, ppIn, nOut, ppOut);
+        LogFormato("hospedeiro LockForProcess entrada", nIn && ppIn && ppIn[0] ? ppIn[0]->pFormat : nullptr, hr);
+        m_musica = false;
+        if (FAILED(hr)) {
+            return hr;
+        }
+        UNCOMPRESSEDAUDIOFORMAT f = {};
+        if (nOut && ppOut && ppOut[0] && ppOut[0]->pFormat &&
+            SUCCEEDED(ppOut[0]->pFormat->GetUncompressedAudioFormat(&f)) && f.fFramesPerSecond > 0) {
+            m_canais = f.dwSamplesPerFrame ? f.dwSamplesPerFrame : 1;
+            m_taxa = f.fFramesPerSecond;
+            m_musica = f.guidFormatType == FORMATO_FLOAT && f.dwBytesPerSampleContainer == 4;
+        }
+        m_rs.Prepara((uint32_t)(m_taxa + 0.5f));
+        PegaAnel();
+        if (m_anel && !NoAlvo()) {
+            SoltaVaga();
+        }
+        LogFormato("hospedeiro LockForProcess saida", nOut && ppOut && ppOut[0] ? ppOut[0]->pFormat : nullptr, hr);
+        Log("hospedeiro %d LockForProcess: musica %s, canais %u taxa %.0f, anel %s, vaga %d", m_vaga_hospede,
+            m_musica ? "sim" : "NAO (saida nao e float32)", m_canais, m_taxa, m_anel ? "ok" : "SEM", m_vaga);
+        return hr;
+    }
+    STDMETHODIMP UnlockForProcess() override {
+        SoltaAnel();
+        return m_cfg->UnlockForProcess();
+    }
+
+    // IAudioProcessingObjectRT. Tempo real: o fabricante processa, e a musica entra no que saiu dele
+    STDMETHODIMP_(void) APOProcess(UINT32 nIn, APO_CONNECTION_PROPERTY** ppIn, UINT32 nOut,
+                                   APO_CONNECTION_PROPERTY** ppOut) override {
+        m_rt->APOProcess(nIn, ppIn, nOut, ppOut);
+        if (!m_musica || !nOut || !ppOut || !ppOut[0]) {
+            return;
+        }
+        if (!NoAlvo()) {
+            SoltaVaga();
+            return;
+        }
+        APO_CONNECTION_PROPERTY* out = ppOut[0];
+        float* destino = reinterpret_cast<float*>(out->pBuffer);
+        const UINT32 quadros = out->u32ValidFrameCount;
+        if (!destino || !quadros) {
+            return;
+        }
+        const bool silencio = out->u32BufferFlags == BUFFER_SILENT;
+        if (silencio) {  // marcado em silencio, o buffer pode ter qualquer coisa
+            ZeroMemory(destino, quadros * m_canais * sizeof(float));
+        }
+        if (SomaDoAnel(destino, quadros, m_canais, (int64_t)GetTickCount64())) {
+            out->u32BufferFlags = BUFFER_VALID;
+        }
+    }
+    STDMETHODIMP_(UINT32) CalcInputFrames(UINT32 u32OutputFrameCount) override {
+        return m_rt->CalcInputFrames(u32OutputFrameCount);
+    }
+    STDMETHODIMP_(UINT32) CalcOutputFrames(UINT32 u32InputFrameCount) override {
+        return m_rt->CalcOutputFrames(u32InputFrameCount);
+    }
+
+    // IAudioSystemEffects2/3: os efeitos do fabricante (a tela de som e a politica de AEC leem daqui)
+    STDMETHODIMP GetEffectsList(LPGUID* ppEffectsIds, UINT* pcEffects, HANDLE Event) override {
+        return m_fx2->GetEffectsList(ppEffectsIds, pcEffects, Event);
+    }
+    STDMETHODIMP GetControllableSystemEffectsList(AUDIO_SYSTEMEFFECT** effects, UINT* numEffects,
+                                                  HANDLE event) override {
+        return m_fx3->GetControllableSystemEffectsList(effects, numEffects, event);
+    }
+    STDMETHODIMP SetAudioSystemEffectState(GUID effectId, AUDIO_SYSTEMEFFECT_STATE state) override {
+        return m_fx3->SetAudioSystemEffectState(effectId, state);
+    }
+
+    // IApoAcousticEchoCancellation2: o fluxo de referencia que o eco do fabricante quer
+    STDMETHODIMP GetDesiredReferenceStreamProperties(APO_REFERENCE_STREAM_PROPERTIES* pProperties) override {
+        return m_aec2->GetDesiredReferenceStreamProperties(pProperties);
+    }
+
+    // IApoAuxiliaryInputConfiguration / RT: a referencia do eco (o que sai nos alto-falantes) vai direto ao fabricante
+    STDMETHODIMP AddAuxiliaryInput(DWORD dwInputId, UINT32 cbDataSize, BYTE* pbyData,
+                                   APO_CONNECTION_DESCRIPTOR* pInputConnection) override {
+        return m_aux->AddAuxiliaryInput(dwInputId, cbDataSize, pbyData, pInputConnection);
+    }
+    STDMETHODIMP RemoveAuxiliaryInput(DWORD dwInputId) override { return m_aux->RemoveAuxiliaryInput(dwInputId); }
+    STDMETHODIMP IsInputFormatSupported(IAudioMediaType* pRequestedInputFormat,
+                                        IAudioMediaType** ppSupportedInputFormat) override {
+        return m_aux->IsInputFormatSupported(pRequestedInputFormat, ppSupportedInputFormat);
+    }
+    STDMETHODIMP_(void) AcceptInput(DWORD dwInputId, const APO_CONNECTION_PROPERTY* pInputConnection) override {
+        m_auxrt->AcceptInput(dwInputId, pInputConnection);
+    }
+
+    // IAudioProcessingObjectNotifications
+    STDMETHODIMP GetApoNotificationRegistrationInfo(APO_NOTIFICATION_DESCRIPTOR** apoNotifications,
+                                                    DWORD* count) override {
+        return m_notif->GetApoNotificationRegistrationInfo(apoNotifications, count);
+    }
+    STDMETHODIMP_(void) HandleNotification(APO_NOTIFICATION* apoNotification) override {
+        m_notif->HandleNotification(apoNotification);
+    }
+
+private:
+    volatile LONG m_refs = 1;
+    IUnknown* m_externo = nullptr;
+    int m_vaga_hospede;
+    CLSID m_clsid = {};
+    IUnknown* m_hospedado = nullptr;
+    IAudioProcessingObject* m_apo = nullptr;
+    IAudioProcessingObjectRT* m_rt = nullptr;
+    IAudioProcessingObjectConfiguration* m_cfg = nullptr;
+    IAudioSystemEffects2* m_fx2 = nullptr;
+    IAudioSystemEffects3* m_fx3 = nullptr;
+    IApoAcousticEchoCancellation2* m_aec2 = nullptr;
+    bool m_aec = false;
+    IApoAuxiliaryInputConfiguration* m_aux = nullptr;
+    IApoAuxiliaryInputRT* m_auxrt = nullptr;
+    IAudioProcessingObjectNotifications* m_notif = nullptr;
+    BYTE m_init[512];        // a copia do Initialize, com o CLSID do fabricante
+    UINT32 m_canais = 1;     // da saida do fabricante
+    bool m_musica = false;   // a saida e float32: da para somar
+};
+
 class CFabrica : public IClassFactory {
 public:
+    explicit CFabrica(int hospedeiro = -1) : m_hospedeiro(hospedeiro) {}
     STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
         if (riid == __uuidof(IUnknown) || riid == __uuidof(IClassFactory)) {
             *ppv = static_cast<IClassFactory*>(this);
@@ -690,12 +1075,25 @@ public:
         if (externo && riid != __uuidof(IUnknown)) {  // regra do COM: agregado so entrega o IUnknown interno
             return CLASS_E_NOAGGREGATION;
         }
-        auto* o = new (std::nothrow) CMicFx(externo);
-        if (!o) {
-            return E_OUTOFMEMORY;
+        HRESULT hr;
+        if (m_hospedeiro >= 0) {
+            auto* o = new (std::nothrow) CMicFxHospede(externo, m_hospedeiro);
+            if (!o) {
+                return E_OUTOFMEMORY;
+            }
+            hr = o->CriaHospedado();
+            if (SUCCEEDED(hr)) {
+                hr = o->m_interno.QueryInterface(riid, ppv);
+            }
+            o->m_interno.Release();  // a referencia do construtor (sem o fabricante, a instancia morre aqui)
+        } else {
+            auto* o = new (std::nothrow) CMicFx(externo);
+            if (!o) {
+                return E_OUTOFMEMORY;
+            }
+            hr = o->m_interno.QueryInterface(riid, ppv);
+            o->m_interno.Release();  // a referencia do construtor
         }
-        HRESULT hr = o->m_interno.QueryInterface(riid, ppv);
-        o->m_interno.Release();  // a referencia do construtor
         Log("CreateInstance: hr=0x%08lx (iid %08lx)", hr, riid.Data1);
         return hr;
     }
@@ -703,9 +1101,25 @@ public:
         trava ? InterlockedIncrement(&g_travas) : InterlockedDecrement(&g_travas);
         return S_OK;
     }
+
+private:
+    int m_hospedeiro;  // -1 = o filtro do EFX/LFX; 0..HOSPEDES-1 = a vaga do hospedeiro do MFX
 };
 
 static CFabrica g_fabrica;
+static CFabrica g_fabricas_hospede[HOSPEDES] = {CFabrica(0), CFabrica(1), CFabrica(2), CFabrica(3)};
+
+// o CRegAPOProperties tem um vetor de tamanho zero por dentro: um objeto por vaga, nao um vetor deles
+static const CRegAPOProperties<1> g_props_hospede0(CLSID_Hospede[0], L"Vitrola Microfone (hospedeiro 0)",
+                                                   L"Vitrola (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
+static const CRegAPOProperties<1> g_props_hospede1(CLSID_Hospede[1], L"Vitrola Microfone (hospedeiro 1)",
+                                                   L"Vitrola (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
+static const CRegAPOProperties<1> g_props_hospede2(CLSID_Hospede[2], L"Vitrola Microfone (hospedeiro 2)",
+                                                   L"Vitrola (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
+static const CRegAPOProperties<1> g_props_hospede3(CLSID_Hospede[3], L"Vitrola Microfone (hospedeiro 3)",
+                                                   L"Vitrola (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
+static const APO_REG_PROPERTIES* const g_props_hospede[HOSPEDES] = {g_props_hospede0, g_props_hospede1,
+                                                                    g_props_hospede2, g_props_hospede3};
 
 extern "C" BOOL WINAPI DllMain(HINSTANCE modulo, DWORD motivo, LPVOID) {
     if (motivo == DLL_PROCESS_ATTACH) {
@@ -720,12 +1134,18 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE modulo, DWORD motivo, LPVOID) {
 }
 
 STDAPI DllGetClassObject(REFCLSID clsid, REFIID riid, void** ppv) {
-    if (clsid != CLSID_MicFx) {
+    CFabrica* f = clsid == CLSID_MicFx ? &g_fabrica : nullptr;
+    for (int s = 0; s < HOSPEDES && !f; s++) {
+        if (clsid == CLSID_Hospede[s]) {
+            f = &g_fabricas_hospede[s];
+        }
+    }
+    if (!f) {
         Log("DllGetClassObject: clsid %08lx nao e o nosso", clsid.Data1);
         return CLASS_E_CLASSNOTAVAILABLE;
     }
-    HRESULT hr = g_fabrica.QueryInterface(riid, ppv);
-    Log("DllGetClassObject: iid %08lx-%04x hr=0x%08lx", riid.Data1, riid.Data2, hr);
+    HRESULT hr = f->QueryInterface(riid, ppv);
+    Log("DllGetClassObject (%08lx): iid %08lx-%04x hr=0x%08lx", clsid.Data1, riid.Data1, riid.Data2, hr);
     return hr;
 }
 
@@ -733,16 +1153,18 @@ STDAPI DllCanUnloadNow() {
     return (g_objetos == 0 && g_travas == 0) ? S_OK : S_FALSE;  // o COM pergunta a toda hora: sem log
 }
 
-static const wchar_t kChave[] = L"SOFTWARE\\Classes\\CLSID\\{C17A1D48-D473-40D9-9ED3-D024AA46EBE2}";
+// HKLM\SOFTWARE\Classes\CLSID\{...} da classe
+static void ChaveDaClasse(const CLSID& clsid, wchar_t* chave, size_t n) {
+    wchar_t texto[40];
+    StringFromGUID2(clsid, texto, 40);
+    _snwprintf_s(chave, n, _TRUNCATE, L"SOFTWARE\\Classes\\CLSID\\%s", texto);
+}
 
-STDAPI DllRegisterServer() {
-    wchar_t caminho[MAX_PATH];
-    if (!GetModuleFileNameW(g_modulo, caminho, MAX_PATH)) {
-        return HRESULT_FROM_WIN32(GetLastError());
-    }
+static HRESULT RegistraClasse(const CLSID& clsid, const wchar_t* caminho) {
+    wchar_t chave[96], sub[128];
+    ChaveDaClasse(clsid, chave, 96);
+    _snwprintf_s(sub, 128, _TRUNCATE, L"%s\\InprocServer32", chave);
     HKEY k;
-    wchar_t sub[160];
-    wsprintfW(sub, L"%s\\InprocServer32", kChave);
     LONG r = RegCreateKeyExW(HKEY_LOCAL_MACHINE, sub, 0, nullptr, 0, KEY_WRITE, nullptr, &k, nullptr);
     if (r != ERROR_SUCCESS) {
         return HRESULT_FROM_WIN32(r);
@@ -751,11 +1173,37 @@ STDAPI DllRegisterServer() {
     const wchar_t modelo[] = L"Both";
     RegSetValueExW(k, L"ThreadingModel", 0, REG_SZ, (const BYTE*)modelo, sizeof(modelo));
     RegCloseKey(k);
-    return RegisterAPO(g_props);
+    return S_OK;
+}
+
+// O registro de APO do hospedeiro sai com o padrao; o microfone.py copia por cima o do fabricante que a vaga carrega
+STDAPI DllRegisterServer() {
+    wchar_t caminho[MAX_PATH];
+    if (!GetModuleFileNameW(g_modulo, caminho, MAX_PATH)) {
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+    HRESULT hr = RegistraClasse(CLSID_MicFx, caminho);
+    if (SUCCEEDED(hr)) {
+        hr = RegisterAPO(g_props);
+    }
+    for (int s = 0; s < HOSPEDES && SUCCEEDED(hr); s++) {
+        hr = RegistraClasse(CLSID_Hospede[s], caminho);
+        if (SUCCEEDED(hr)) {
+            hr = RegisterAPO(g_props_hospede[s]);
+        }
+    }
+    return hr;
 }
 
 STDAPI DllUnregisterServer() {
+    wchar_t chave[96];
     UnregisterAPO(CLSID_MicFx);
-    RegDeleteTreeW(HKEY_LOCAL_MACHINE, kChave);
+    ChaveDaClasse(CLSID_MicFx, chave, 96);
+    RegDeleteTreeW(HKEY_LOCAL_MACHINE, chave);
+    for (int s = 0; s < HOSPEDES; s++) {
+        UnregisterAPO(CLSID_Hospede[s]);
+        ChaveDaClasse(CLSID_Hospede[s], chave, 96);
+        RegDeleteTreeW(HKEY_LOCAL_MACHINE, chave);
+    }
     return S_OK;
 }
