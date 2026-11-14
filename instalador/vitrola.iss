@@ -64,8 +64,8 @@ Name: "pt"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"; InfoBefo
 Name: "en"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "licenca-en.txt"
 
 [Messages]
-pt.FinishedLabel=A Vitrola foi instalada e fica no menu Iniciar.%n%nNo jogo, use o seu microfone de sempre: a Vitrola toca a música nele. No Discord, use o perfil Estúdio, senão ele corta a música.
-en.FinishedLabel=Vitrola is installed. You'll find it in the Start menu.%n%nIn the game, keep your usual microphone: Vitrola plays the music into it. In Discord, use the Studio profile, or it cuts the music out.
+pt.FinishedLabel=A Vitrola foi instalada e fica no menu Iniciar.%n%nNo jogo e nas chamadas de voz, use o seu microfone de sempre: a Vitrola toca a música nele. No Discord, escolha Estúdio em Perfil de entrada: os outros perfis podem cortar a música.
+en.FinishedLabel=Vitrola is installed. You'll find it in the Start menu.%n%nIn games and voice calls, keep your usual microphone: Vitrola plays the music into it. In Discord, pick Studio under Input Profile: the other profiles can cut the music out.
 
 [CustomMessages]
 pt.Abrir=Abrir a Vitrola

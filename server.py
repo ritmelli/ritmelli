@@ -1,4 +1,4 @@
-"""Soundboard do VRChat: servidor local que toca audio no microfone do jogo (pelo filtro da Vitrola, em microfone/) e
+"""Vitrola: servidor local que toca audio no microfone do jogo (pelo filtro da Vitrola, em microfone/) e
 serve as interfaces de themes/. Contrato da API: API.md. Atende a propria maquina e o celular
 pareado na rede de casa (para mexer enquanto joga; ver o pareamento.py).
 

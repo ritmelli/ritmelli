@@ -2,8 +2,8 @@
 
 Um toca-discos em pixel art que toca música e efeitos no microfone do jogo ou da chamada de
 voz, misturados com a sua voz, enquanto só a música toca no seu fone. A interface abre no
-navegador do PC ou do celular no mesmo Wi-Fi. Nasceu para o VRChat e serve para qualquer
-programa que deixe escolher o microfone.
+navegador do PC ou do celular no mesmo Wi-Fi. Serve para qualquer jogo ou programa de chamada
+que deixe escolher o microfone.
 
 ## O que faz
 
