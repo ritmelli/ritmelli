@@ -12,7 +12,9 @@ switch ($Cmd) {
     if (Get-State) { "ja esta ligado em $base/"; if (-not $NoBrowser) { Start-Process "$base/" }; break }
     $logs = Join-Path $env:LOCALAPPDATA 'Vitrola\logs'  # o mesmo pastas.LOGS
     New-Item -ItemType Directory -Force $logs | Out-Null
-    Start-Process python -ArgumentList '-u', "`"$here\vitrola.py`"", '--port', $Port, '--no-browser' `
+    # pythonw, sem console como o executavel: preso a um console, o Python pergunta ao conhost a cada io.open e a cada
+    # thread nova, e com a CPU cheia isso prende o interpretador e a musica no jogo engasga (engine.INJ_FOLGA)
+    Start-Process pythonw -ArgumentList '-u', "`"$here\vitrola.py`"", '--port', $Port, '--no-browser' `
       -WorkingDirectory $here -WindowStyle Hidden `
       -RedirectStandardOutput "$logs\server.log" -RedirectStandardError "$logs\server.err"
     foreach ($i in 1..40) { Start-Sleep -Milliseconds 250; if ($s = Get-State) { break } }

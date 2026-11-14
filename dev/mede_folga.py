@@ -16,6 +16,12 @@ engasgo no jogo). Opcoes:
                              [--sem-mmcss]
                              [--folga N] [--onde [MS]]
 
+Mede como o app roda (o executavel e console=False; o pythonw tambem nao tem console): com a saida redirecionada, o
+script se solta do console antes de abrir o motor. Preso a um console, toda thread nova pergunta ao conhost o idioma
+dele ao nascer e todo io.open (o Popen faz um por PIPE) chama o GetConsoleMode segurando o interpretador; com a CPU
+cheia o conhost demora e o interpretador fica preso ~10 ms (14/11, rastro do xperf): paradas que o app nao tem.
+--console mantem o console (para ver essa diferenca).
+
 Toca de verdade nesse microfone: quem estiver ouvindo ele (uma call, um jogo) ouve. Para sem tocar nada num microfone
 sem o filtro pronto (o motor rodaria a tarefa do instalador, que reinicia o audio do Windows).
 """
@@ -102,7 +108,11 @@ def main():
     ap.add_argument("--sem-mmcss", action="store_true")
     ap.add_argument("--folga", type=int, default=eng.INJ_FOLGA)
     ap.add_argument("--onde", type=float, nargs="?", const=30.0)
+    ap.add_argument("--console", action="store_true")
     a = ap.parse_args()
+    if not a.console and not sys.stdout.isatty() and not sys.stderr.isatty():
+        import ctypes  # noqa: PLC0415
+        ctypes.windll.kernel32.FreeConsole()  # sem console, como o executavel: a saida ja vai para arquivo ou cano
     eng.INJ_FOLGA = a.folga
     eng.INJ_MMCSS = not a.sem_mmcss
 
