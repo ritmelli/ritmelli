@@ -99,9 +99,10 @@ if (-not $SemCongelar) {
   if ((Get-FileHash $doVenv -Algorithm SHA256).Hash -ne $hash) { throw 'o PyInstaller do venv ficou com outro bootloader' }
   Roda 'yt-dlp' { & "$venv\python.exe" -m pip install -q -U 'yt-dlp[default]' }
   "yt-dlp $(& "$venv\python.exe" -m yt_dlp --version)"
-  # o filtro de microfone (a musica no microfone do jogo): a DLL vai dentro do app (vitrola.spec). Precisa do Visual Studio 2022 com
-  # C++ (no GitHub, o do windows-latest)
-  'compilando o filtro de microfone...'
+  # o filtro de microfone (a musica no microfone do jogo) e o voz.dll (o motor de efeitos dele, para a voz com efeito que
+  # sai pelo app): as DLLs vao dentro do app (vitrola.spec). Precisa do Visual Studio 2022 com C++ (no GitHub, o do
+  # windows-latest)
+  'compilando o filtro de microfone e o voz.dll...'
   Roda 'micfx' { cmd /c (Join-Path $Vitrola 'microfone\apo\compila.bat') }
   'congelando o app...'
   Push-Location $Vitrola

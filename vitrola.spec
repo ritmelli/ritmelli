@@ -22,10 +22,12 @@ datas = [
 datas += collect_data_files("ytmusicapi")  # os idiomas (locales\): sem hook pronto
 # o filtro de microfone (microfone/): o monta.ps1 compila antes de congelar; o microfone.py acha em _internal\microfone,
 # e o instalador pendura em todo microfone
-MICFX = os.path.join(SPECPATH, "microfone", "apo", "saida", "micfx.dll")
-if not os.path.exists(MICFX):
-    raise SystemExit(f"falta {MICFX}: rode o microfone\\apo\\compila.bat (o monta.ps1 roda)")
-datas.append((MICFX, "microfone"))
+# e o voz.dll, o motor de efeitos do filtro para a voz com efeito que sai pelo app (microfone/voz.py)
+for dll in ("micfx.dll", "voz.dll"):
+    caminho = os.path.join(SPECPATH, "microfone", "apo", "saida", dll)
+    if not os.path.exists(caminho):
+        raise SystemExit(f"falta {caminho}: rode o microfone\\apo\\compila.bat (o monta.ps1 roda)")
+    datas.append((caminho, "microfone"))
 
 a = Analysis(
     ["vitrola.py"],

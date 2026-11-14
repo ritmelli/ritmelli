@@ -1,5 +1,8 @@
-"""Efeitos de voz do soundboard (estilo Voicemod), aplicados bloco a bloco na voz antes da
-mistura com o som. Regra: todo efeito devolve o mesmo numero de amostras que recebe e
+"""Efeitos de voz do soundboard (estilo Voicemod): a definicao de cada um e a referencia da
+conta. Quem passa a voz pelo efeito e o motor do filtro (microfone/apo/voz.h), no microfone
+pelo micfx.dll e no app pelo voz.dll, com o preset que o microfone/preset.py monta daqui; o
+Efeito.__call__ (numpy e pedalboard) so roda nos testes de paridade (dev/testa_voz.py) e nas
+ferramentas de dev/. Regra: todo efeito devolve o mesmo numero de amostras que recebe e
 nao passa de ~30 ms de atraso, senao a voz atrasa no jogo.
 
 Medido em 17/10 com blocos de 10 ms: o PitchShift da pedalboard so devolve som depois de

@@ -2,8 +2,9 @@
 
 O fx.py segue sendo a unica definicao de cada efeito. Daqui se le o Efeito montado (antes, a placa da pedalboard,
 depois, ganho, nivelador e o extra) e cada etapa vira um registro do voz.h com os parametros e os coeficientes ja
-projetados na taxa do microfone: o scipy projeta aqui, o filtro so roda. Etapa sem par no voz.h levanta NaoPortado,
-e o efeito segue pelo caminho do app (a voz vai ao app e volta pelo anel, com o atraso de antes).
+projetados na taxa do microfone: o scipy projeta aqui, o filtro so roda. Etapa sem par no voz.h, ou que nao cabe na
+taxa do microfone, levanta NaoPortado, e o efeito segue pelo caminho do app (a voz vai ao app e volta pelo anel, com o
+atraso da ida e volta): la ele roda no mesmo voz.h, pelo voz.dll, a 48 kHz (microfone/voz.py).
 
 O formato (little-endian) e o do voz.h: cabecalho de 80 bytes (magia, versao, taxa, ganho, nivelar, quantas etapas,
 quantas do extra, gerador e os 5 numeros do nivelador) e, por etapa, tipo, quantos doubles e os doubles.
@@ -37,7 +38,7 @@ RADIO_ESTALO = (0.03, 0.002)   # CambioRadio: chance de estalo por bloco e durac
 
 
 class NaoPortado(Exception):
-    """O efeito tem etapa que o filtro nao roda: ele segue pelo app."""
+    """O efeito tem etapa que o filtro nao roda nessa taxa: ele segue pelo app."""
 
 
 def _sos_rows(sos):
@@ -227,6 +228,12 @@ def preset(efeito_id, taxa):
         _prontos[chave] = dados
         _projetando.discard(chave)
     return dados
+
+
+def esquece():
+    """Joga fora os presets projetados: o fx.py recarregado (/api/effects/reload) projeta de novo."""
+    with _trava:
+        _prontos.clear()
 
 
 def pede(efeito_id, taxa):
