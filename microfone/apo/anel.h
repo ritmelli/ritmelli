@@ -16,10 +16,14 @@
 // - efeito de voz (app -> filtro -> app): o app escreve o preset do efeito (voz.h) com um seqlock (preset_seq impar =
 //   escrevendo; par = pronto); o filtro do alvo copia, monta a cadeia e responde em preset_feito (o seq que leu) e
 //   preset_erro (voz::Erro). Com a cadeia montada e o app vivo, o filtro poe a voz com efeito no lugar da crua, no
-//   proprio bloco, e devolve ao app em voz_fx (ouvir a propria voz). preset_n 0 = sem efeito.
-// - um dono da voz: com o microfone aberto por dois programas o Windows pode montar duas cadeias, cada uma com a sua
-//   instancia do filtro. Todas agem no proprio som, mas so uma escreve a voz crua e a voz com efeito pro app (voz_dono,
-//   com batida em voz_batida); a outra assume quando a dona solta (fechou) ou para de bater por MICFX_BATIDA_MS (#70).
+//   proprio bloco, e devolve ao app em voz_fx (ouvir a propria voz). preset_n 0 = sem efeito. No microfone com o
+//   hospedeiro do MFX, o efeito (e o corte da voz, quando ele esta montado) roda no hospedeiro, depois do processamento
+//   do fabricante: o redutor de ruido dele apagava partes do efeito (#78). O EFX ali so escreve a voz crua.
+// - um dono de cada papel: com o microfone aberto por dois programas o Windows pode montar duas cadeias, cada uma com
+//   as suas instancias do filtro. Todas agem no proprio som, mas so uma escreve a voz crua (voz_dono, com batida em
+//   voz_batida) e so uma escreve a voz com efeito e responde ao preset (fx_dono, fx_batida); sem o hospedeiro e a
+//   mesma instancia, com ele o EFX tem a voz e o hospedeiro o efeito. A outra assume quando a dona solta (fechou, ou
+//   o microfone saiu do alvo) ou para de bater por MICFX_BATIDA_MS (#70).
 //
 // O layout e fixo e o microfone/injeta.py tem o espelho dele em ctypes: mudou aqui, muda la (e sobe MICFX_VERSAO e o
 // nome do mapa, que a versao velha pode estar viva no audiodg durante a troca).
@@ -75,10 +79,11 @@ typedef struct MicFxAnel {
     volatile uint32_t preset_erro;   // o que deu ao montar (voz::Erro; 0 = a voz com efeito sai do filtro)
     float voz_fx[MICFX_VOZ_QUADROS];
     uint8_t preset[MICFX_PRESET_BYTES];
-    // o dono da voz (v4): a instancia que escreve voz e voz_fx; 0 = ninguem
+    // os donos (v4): a instancia que escreve a voz crua e a que escreve voz_fx e responde ao preset; 0 = ninguem
     volatile uint32_t voz_dono;
-    uint32_t reservado2;
-    volatile int64_t voz_batida;  // GetTickCount64 da ultima escrita do dono
+    volatile uint32_t fx_dono;
+    volatile int64_t voz_batida;  // GetTickCount64 da ultima escrita da dona da voz crua
+    volatile int64_t fx_batida;   // e da dona do efeito
 } MicFxAnel;
 
 // O hash do id do microfone (o GUID do endpoint, "{a1b2c3d4-...}", que e tambem o nome da chave dele no registro):
@@ -110,5 +115,7 @@ static_assert(offsetof(MicFxAnel, preset_seq) == 328008, "preset_seq");
 static_assert(offsetof(MicFxAnel, voz_fx) == 328024, "voz_fx");
 static_assert(offsetof(MicFxAnel, preset) == 328024 + MICFX_VOZ_QUADROS * 4, "preset");
 static_assert(offsetof(MicFxAnel, voz_dono) == 459096, "voz_dono");
+static_assert(offsetof(MicFxAnel, fx_dono) == 459100, "fx_dono");
 static_assert(offsetof(MicFxAnel, voz_batida) == 459104, "voz_batida");
+static_assert(offsetof(MicFxAnel, fx_batida) == 459112, "fx_batida");
 #endif
