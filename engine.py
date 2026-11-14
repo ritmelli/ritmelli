@@ -2806,7 +2806,8 @@ class Engine:
             "status": self.status(),
             "track": None if tr is None else {k: v for k, v in tr.items() if k not in ("path", "headers")},
             "duration": None if tr is None else tr.get("duration"),
-            "vol": round(self.vol, 3), "mon_vol": round(self.mon_vol, 3),
+            # 6 casas: a tela mostra o volume do disco ao cubo, e o baixo dele fica abaixo de 0,001
+            "vol": round(self.vol, 6), "mon_vol": round(self.mon_vol, 6),
             "mic_vol": round(self.mic_vol, 3), "mic_mute": self.mic_mute,
             "monitor_on": self.monitor_on, "loop": self.loop,
             "effect": self.effect, "voice_monitor": self.voice_monitor,

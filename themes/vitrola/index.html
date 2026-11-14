@@ -5492,15 +5492,26 @@ vdjBox.addEventListener('pointerup', vdjSolta);
 vdjBox.addEventListener('pointercancel', vdjSolta);
 
 /* ---------- receptor ---------- */
-const FADERS = [['#f-vol', '#o-vol', 'vol'], ['#f-mon', '#o-mon', 'mon_vol'], ['#f-mic', '#o-mic', 'mic_vol']];
+/* o volume do disco anda numa escala perceptiva: o ganho e a posicao ao cubo. Linear, 2% era -34 dB e 3% -30 dB, e
+   no volume de lobby cada passo pulava 2,5 a 3,5 dB; ao cubo, do silencio ate 10% do ganho cabem 46 dos 100 passos, e
+   perto de 2% cada passo muda ~1 dB. O motor, a API e o config.json seguem com o ganho linear de 0 a 1. A voz fica
+   linear: e o nivel do microfone no Windows, com o numero que ele mostra */
+const FADERS = [['#f-vol', '#o-vol', 'vol', true], ['#f-mon', '#o-mon', 'mon_vol', true], ['#f-mic', '#o-mic', 'mic_vol', false]];
+const ganhoDaPos = p => (p / 100) ** 3;
+const posDoGanho = g => Math.round(Math.cbrt(Math.max(0, Math.min(1, g))) * 100);
+function dbDoGanho(g) { return g > 0 ? (20 * Math.log10(g)).toFixed(1).replace('.', ',').replace('-', '−') + ' dB' : 'mudo'; }
+function rotularFader(f, o, curva, g) {   // g: o ganho que o motor tem (o leitor de tela diz em dB)
+  o.textContent = f.value + '%';
+  if (curva) f.setAttribute('aria-valuetext', `${f.value}%, ${dbDoGanho(g)}`);
+}
 function desenharReceptor() {
   const s = S.state; if (!s) return;
   const agora = Date.now();
-  for (const [fi, oi, k] of FADERS) {
+  for (const [fi, oi, k, curva] of FADERS) {
     if (agora - (S.segurando[k] || 0) < 900) continue;
     // sem a chave "Fone ligado", o fone desligado aparece como volume zero
-    const f = $(fi), v = k === 'mon_vol' && !s.monitor_on ? 0 : Math.round((s[k] || 0) * 100);
-    f.value = v; pintarFader(f); $(oi).textContent = v + '%';
+    const f = $(fi), g = k === 'mon_vol' && !s.monitor_on ? 0 : s[k] || 0;
+    f.value = curva ? posDoGanho(g) : Math.round(g * 100); pintarFader(f); rotularFader(f, $(oi), curva, g);
   }
   // fone "Nenhum" no dialogo: o volume do fone nao tem efeito, entao apaga e diz por que
   const semFone = !!s.active_devices && !s.active_devices.monitor;
@@ -8810,10 +8821,11 @@ document.querySelectorAll('input[type=range]').forEach(r => {
   r.addEventListener('input', barrar, true);
   r.addEventListener('change', barrar, true);
 });
-for (const [fi, oi, k] of FADERS) {
+for (const [fi, oi, k, curva] of FADERS) {
   const f = $(fi);
   f.addEventListener('input', () => {
-    pintarFader(f); $(oi).textContent = f.value + '%'; ajustar(k, f.value / 100);
+    const g = curva ? ganhoDaPos(+f.value) : f.value / 100;
+    pintarFader(f); rotularFader(f, $(oi), curva, g); ajustar(k, g);
     // fone desligado (de antes, quando havia a chave): subir o volume do fone religa
     if (k === 'mon_vol' && S.state && !S.state.monitor_on && +f.value > 0) ajustar('monitor_on', true);
   });
