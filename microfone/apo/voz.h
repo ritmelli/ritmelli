@@ -12,7 +12,7 @@
 //
 // As etapas que imitam a pedalboard (filtros RBJ, Compressor e Limiter, Distortion, Bitcrush, Delay, Chorus, Phaser,
 // Reverb) foram escritas a partir das formulas publicas de cada algoritmo e conferidas contra a saida dela (caixa
-// preta, dev/testa_voz.py). As etapas do fx.py (PitchShifter, PortaoRuido, AGC, Multibanda, CambioRadio...) sao a
+// preta, dev/testa_voz.py). As etapas do fx.py (PitchShifter, PortaoRuido, AGC, Multibanda, CambioRadio, Fdn...) sao a
 // mesma conta, em blocos: o que no fx.py conta blocos de 10 ms aqui conta tempo, e da o mesmo resultado com o bloco
 // de 10 ms do audiodg.
 #pragma once
@@ -53,6 +53,7 @@ enum Tipo : uint32_t {
     T_PHASER = 16,     // o Phaser da pedalboard
     T_FREEVERB = 17,   // o Reverb da pedalboard (Freeverb)
     T_RADIO = 18,      // CambioRadio.detecta do fx.py (o som do canal sai pelo gerador do extra)
+    T_FDN = 19,        // Fdn do fx.py (reverb de rede de atraso com realimentacao)
 };
 
 enum Gerador : uint32_t { G_NENHUM = 0, G_RADIO = 1 };
@@ -85,7 +86,8 @@ struct Arena {
 };
 
 // O tamanho da memoria de uma cadeia na taxa: sobra para todo efeito do fx.py (o maior, o Radio, usa ~350 KB a
-// 48 kHz e ~530 KB a 96 kHz; o dev/testa_voz.py confere que cada um cabe em 3/4). Uma por instancia do filtro.
+// 48 kHz e ~530 KB a 96 kHz; a Catedral, com as linhas da Fdn, ~450 KB a 48 kHz e ~740 KB a 96 kHz; o
+// dev/testa_voz.py confere que cada um cabe em 3/4). Uma por instancia do filtro.
 static inline size_t ArenaBytes(double taxa) {
     const double k = taxa > 48000.0 ? taxa / 48000.0 : 1.0;
     return (size_t)(768.0 * 1024.0 * k) + 256 * 1024;
@@ -742,6 +744,176 @@ struct Freeverb {
     }
 };
 
+// Walsh-Hadamard de 8 (ordem de Sylvester, sem escala), a mesma ordem de somas do _hadamard do fx.py
+static inline void Hadamard8(double* v) {
+    for (int h = 1; h < 8; h <<= 1) {
+        for (int i = 0; i < 8; i += 2 * h) {
+            for (int j = i; j < i + h; j++) {
+                const double a = v[j], b = v[j + h];
+                v[j] = a + b;
+                v[j + h] = a - b;
+            }
+        }
+    }
+}
+
+// a Fdn do fx.py: pre-atraso, difusor de 8 canais (atraso, sinal e Hadamard a cada passo), 8 linhas de
+// realimentacao com leitura modulada (interpolacao linear), o filtro de cada linha (duas prateleiras num biquad, a
+// conta do sosfilt) e a Hadamard na volta. As linhas guardam float, como o fx.py (que arredonda o que entra nelas).
+struct Fdn {
+    static const uint32_t N = 8, PASSOS = 6;
+    uint32_t pre, ipre, passos;
+    float* bpre;
+    uint32_t dd[PASSOS][N], di[PASSOS][N];
+    float* db[PASSOS][N];
+    double sinal[PASSOS][N];
+    uint32_t L[N], cap[N], w[N], per[N], off[N];
+    float* lb[N];
+    double c[N][5], z[N][2], wf[N], saida[N];
+    double meia, cedo, molhado, seco, esc;
+    uint64_t t;
+
+    // o ganho da linha |H| em toda a faixa: acima de 1 a realimentacao cresce sem parar
+    static bool Contido(const double* q) {
+        for (int k = 0; k <= 256; k++) {
+            const double om = PI * k / 256.0;
+            const double c1 = cos(om), s1 = sin(om), c2 = cos(2.0 * om), s2 = sin(2.0 * om);
+            const double nr = q[0] + q[1] * c1 + q[2] * c2, ni = -(q[1] * s1 + q[2] * s2);
+            const double dr = 1.0 + q[3] * c1 + q[4] * c2, di_ = -(q[3] * s1 + q[4] * s2);
+            if (nr * nr + ni * ni > dr * dr + di_ * di_) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool Prepara(Leitor& l, Arena& a, double taxa) {
+        pre = l.Conta((uint32_t)taxa);
+        passos = l.Conta(PASSOS);
+        if (!l.ok || !passos || (pre && !(bpre = a.Pega<float>(pre)))) {
+            return false;
+        }
+        for (uint32_t k = 0; k < passos; k++) {
+            for (uint32_t j = 0; j < N; j++) {
+                dd[k][j] = l.Conta((uint32_t)(taxa * 0.5));
+                di[k][j] = 0;
+                db[k][j] = nullptr;
+                if (l.ok && dd[k][j] && !(db[k][j] = a.Pega<float>(dd[k][j]))) {
+                    return false;
+                }
+            }
+            for (uint32_t j = 0; j < N; j++) {
+                sinal[k][j] = l.Le(-1.0, 1.0);
+            }
+        }
+        for (uint32_t j = 0; j < N; j++) {
+            L[j] = l.Conta((uint32_t)taxa);
+            if (!l.ok || L[j] < 2) {
+                return false;
+            }
+        }
+        for (uint32_t j = 0; j < N; j++) {
+            for (int k = 0; k < 5; k++) {
+                c[j][k] = l.Le(-1e6, 1e6);
+            }
+            const double a1 = c[j][3], a2 = c[j][4];
+            if (!l.ok || !(fabs(a2) < 1.0 && fabs(a1) < 1.0 + a2) || !Contido(c[j])) {  // polo fora ou ganho > 1
+                return false;
+            }
+            z[j][0] = z[j][1] = 0.0;
+        }
+        const double mod = l.Le(0.0, 0.05 * taxa);
+        for (uint32_t j = 0; j < N; j++) {
+            per[j] = l.Conta((uint32_t)(taxa * 100.0));
+            if (!l.ok || !per[j]) {
+                return false;
+            }
+            off[j] = (uint32_t)((uint64_t)per[j] * j / N);
+            wf[j] = 2.0 * PI / per[j];
+        }
+        for (uint32_t j = 0; j < N; j++) {
+            saida[j] = l.Le(-8.0, 8.0);
+        }
+        cedo = l.Le(0.0, 10.0);
+        molhado = l.Le(0.0, 10.0);
+        seco = l.Le(0.0, 10.0);
+        if (!l.ok) {
+            return false;
+        }
+        meia = mod * 0.5;
+        esc = 1.0 / sqrt(8.0);
+        for (uint32_t j = 0; j < N; j++) {
+            cap[j] = L[j] + (uint32_t)ceil(mod) + 2;  // a leitura mais antiga (L + mod + 1) e a escrita
+            w[j] = 0;
+            if (!(lb[j] = a.Pega<float>(cap[j]))) {
+                return false;
+            }
+        }
+        ipre = 0;
+        t = 0;
+        return true;
+    }
+
+    void Processa(float* x, uint32_t n) {
+        for (uint32_t i = 0; i < n; i++) {
+            const double xin = x[i];
+            double xp = xin;
+            if (pre) {
+                xp = bpre[ipre];
+                bpre[ipre] = x[i];
+                ipre = ipre + 1 < pre ? ipre + 1 : 0;
+            }
+            double v[N], f[N];
+            for (uint32_t j = 0; j < N; j++) {
+                v[j] = xp;
+            }
+            for (uint32_t k = 0; k < passos; k++) {
+                for (uint32_t j = 0; j < N; j++) {
+                    double o;
+                    if (dd[k][j]) {
+                        uint32_t& p = di[k][j];
+                        o = db[k][j][p];
+                        db[k][j][p] = (float)v[j];
+                        p = p + 1 < dd[k][j] ? p + 1 : 0;
+                    } else {
+                        o = (float)v[j];
+                    }
+                    v[j] = o * sinal[k][j];
+                }
+                Hadamard8(v);
+                for (uint32_t j = 0; j < N; j++) {
+                    v[j] = v[j] * esc;
+                }
+            }
+            for (uint32_t j = 0; j < N; j++) {
+                const double fase = (double)((t + off[j]) % per[j]) * wf[j];
+                const double at = (double)L[j] + meia * (1.0 + sin(fase));
+                const double ia = floor(at);
+                const double fr = at - ia;
+                const uint32_t i0 = (w[j] + cap[j] - (uint32_t)ia) % cap[j];
+                const uint32_t i1 = i0 ? i0 - 1 : cap[j] - 1;
+                const double r = (double)lb[j][i0] * (1.0 - fr) + (double)lb[j][i1] * fr;
+                const double* q = c[j];
+                const double y = q[0] * r + z[j][0];
+                z[j][0] = q[1] * r - q[3] * y + z[j][1];
+                z[j][1] = q[2] * r - q[4] * y;
+                f[j] = y;
+            }
+            double acc = 0.0;
+            for (uint32_t j = 0; j < N; j++) {
+                acc = acc + saida[j] * (f[j] + cedo * v[j]);
+            }
+            Hadamard8(f);
+            for (uint32_t j = 0; j < N; j++) {
+                lb[j][w[j]] = (float)(f[j] * esc + v[j]);
+                w[j] = w[j] + 1 < cap[j] ? w[j] + 1 : 0;
+            }
+            t++;
+            x[i] = (float)(xin * seco + acc * molhado);
+        }
+    }
+};
+
 // Sorteio sem estado global: xorshift64* com Box-Muller
 struct Sorteio {
     uint64_t s;
@@ -1011,6 +1183,7 @@ struct Cadeia {
         case T_CHORUS: { auto* p = Cria<Chorus>(a); et.e = p; return p && p->Prepara(l, a, taxa); }
         case T_PHASER: { auto* p = Cria<Phaser>(a); et.e = p; return p && p->Prepara(l, taxa); }
         case T_FREEVERB: { auto* p = Cria<Freeverb>(a); et.e = p; return p && p->Prepara(l, a, taxa); }
+        case T_FDN: { auto* p = Cria<Fdn>(a); et.e = p; return p && p->Prepara(l, a, taxa); }
         case T_RADIO: {
             if (radio) {
                 return false;  // um radio por cadeia
@@ -1043,6 +1216,7 @@ struct Cadeia {
         case T_CHORUS: static_cast<Chorus*>(et.e)->Processa(x, n); break;
         case T_PHASER: static_cast<Phaser*>(et.e)->Processa(x, n); break;
         case T_FREEVERB: static_cast<Freeverb*>(et.e)->Processa(x, n); break;
+        case T_FDN: static_cast<Fdn*>(et.e)->Processa(x, n); break;
         case T_RADIO: static_cast<Radio*>(et.e)->Detecta(x, n, c); break;
         default: break;
         }

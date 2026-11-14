@@ -147,10 +147,14 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   atrasa 1 s. O `fx.py` é a definição de cada efeito e a referência: quem passa a voz pelo efeito
   é o motor do filtro (`microfone/preset.py` -> `apo/voz.h`), no microfone pelo `micfx.dll` e no
   app pelo `voz.dll`, com a mesma conta, e as etapas da pedalboard foram reescritas lá pela
-  fórmula de cada uma e conferidas contra ela. O `Efeito` do `fx.py` (numpy e pedalboard) só
-  roda nos testes de paridade e nas ferramentas de `dev/`; etapa nova precisa do seu par no
-  `voz.h` (o `dev/testa_voz.py` falha sem ele). A pedalboard segue no app só pelo
-  `time_stretch` da passagem de DJ. O efeito sempre começa
+  fórmula de cada uma e conferidas contra ela. As salas
+  (banheiro, catedral e demônio) usam um reverb próprio, a `Fdn` do `fx.py` (8 linhas de atraso
+  com realimentação, mistura de Hadamard, tempo de reverberação no grave, no meio e no agudo,
+  difusor na entrada e leitura modulada bem de leve), no lugar do Reverb da pedalboard, que soava
+  metálico; o tempo por oitava e o seco/molhado de cada sala são os do Reverb que ela substituiu.
+  O `Efeito` do `fx.py` (numpy e pedalboard) só roda nos testes de paridade e nas ferramentas de
+  `dev/`; etapa nova precisa do seu par no `voz.h` (o `dev/testa_voz.py` falha sem ele). A
+  pedalboard segue no app só pelo `time_stretch` da passagem de DJ. O efeito sempre começa
   desligado quando o servidor sobe. Banco de teste:
   `python dev/efeitos.py` (grava um .wav por efeito em `logs/efeitos/` para ouvir).
 - O pedal da mina: um módulo `mina` opcional, que não mora neste repo. Onde ele está ao lado do
