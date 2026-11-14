@@ -237,6 +237,49 @@ class Decimador:
         return y
 
 
+def meia_banda(taps=63, atenuacao_db=90):
+    """FIR meia-banda de fase linear: corta na metade da taxa (janela de Kaiser) e um tap de cada dois e zero (os
+    pares a partir do centro), entao custa metade. Com 63 taps, a 2x de 48 kHz, passa ate ~19,6 kHz e corta 90 dB
+    a partir de ~28,4 kHz."""
+    h = signal.firwin(taps, 0.5, window=("kaiser", signal.kaiser_beta(atenuacao_db)))
+    d = np.arange(taps) - (taps - 1) // 2
+    h[(d % 2 == 0) & (d != 0)] = 0.0
+    return h
+
+
+class Distorcao:
+    """O Distortion da pedalboard (tanh do sinal vezes o drive) a 2^estagios vezes a taxa. Com drive alto o tanh
+    quase vira onda quadrada, e as harmonicas acima da metade da taxa dobram para dentro da faixa (aliasing) e soam
+    asperas: abaixo de 16 kHz, um tom de 2,7 kHz com drive de 32 dB saia com o aliasing a -25 dB dele; a 4x, -99 dB
+    (14/11, dev/testa_voz.py). Cada 2x sobe com um zero depois de cada amostra pelo FIR meia-banda (tira as imagens),
+    o tanh roda na taxa alta, e cada 2x desce pelo mesmo FIR (tira o que passa da metade da taxa) ficando 1 amostra de
+    cada 2. O FIR atrasa ~1 ms."""
+
+    def __init__(self, drive_db, estagios=2, taps=63):
+        self.drive_db, self.estagios = drive_db, estagios
+        self.g = 10 ** (drive_db / 20)
+        self.h = meia_banda(taps)
+        self.zi = [np.zeros(taps - 1) for _ in range(2 * estagios)]
+
+    def __call__(self, blk):
+        x = blk.astype(np.float64)
+        for s in range(self.estagios):
+            u = np.zeros(2 * len(x))
+            u[::2] = 2 * x
+            x, self.zi[s] = signal.lfilter(self.h, 1.0, u, zi=self.zi[s])
+        x = np.tanh(x * self.g)
+        for s in range(self.estagios):
+            k = self.estagios + s
+            x, self.zi[k] = signal.lfilter(self.h, 1.0, x, zi=self.zi[k])
+            x = x[::2]
+        return x.astype(np.float32)
+
+    @property
+    def latencia_ms(self):
+        # meio FIR na subida e meio na descida de cada 2x, contados na taxa daquele estagio
+        return (len(self.h) - 1) * (1 - 2.0 ** -self.estagios) / SR * 1000
+
+
 class KPeso:
     """Ponderacao K da BS.1770 (a do LUFS) a 48 kHz, com estado: o volume como o ouvido
     percebe, para comparar a voz crua com a voz com efeito."""
@@ -645,10 +688,10 @@ def _radio():
     # faixa estreita de 350 a 2700 Hz com o meio na cara; o chiado e o bip vem antes de tudo
     canal = CambioRadio()
     cor = lambda: [Decimador(6), FiltroBanda(350, 2700), [pb.PeakFilter(1800, 6, 1.2), pb.Gain(-4)]]
-    return Efeito(nivelar=True, antes=[canal.detecta],
-                  placa=[pb.Compressor(threshold_db=-32, ratio=12, attack_ms=2, release_ms=60),
-                         pb.Gain(14), pb.Distortion(18), pb.Bitcrush(8)],
-                  depois=cor(), extra=(canal.som, cor()))
+    return Efeito(nivelar=True, antes=[canal.detecta,
+                                       [pb.Compressor(threshold_db=-32, ratio=12, attack_ms=2, release_ms=60),
+                                        pb.Gain(14)], Distorcao(18)],
+                  placa=[pb.Bitcrush(8)], depois=cor(), extra=(canal.som, cor()))
 
 
 # grupo, id, nome, o que faz, fabrica
@@ -660,7 +703,7 @@ CATALOGO = [
      # sem compressor: megafone distorce o que e forte e deixa fraco o que e fraco; o
      # compressor + drive 26 levantava tudo que passava ao maximo (latido 6 dB abaixo da
      # fala saia +19,9 dB acima dos trechos fortes dela; agora +3,7)
-     lambda: Efeito(nivelar=True, antes=[PortaoRuido()], placa=[pb.Distortion(18)],
+     lambda: Efeito(nivelar=True, antes=[PortaoRuido(), Distorcao(18)],
                     depois=[FiltroBanda(550, 4200, 4), [pb.PeakFilter(1700, 8, 1.4), pb.Gain(-8)]])),
     ("Rádio e alto-falante", "locutor", "Locutor de rádio FM",
      "Voz densa e encorpada de rádio FM, ainda com a sua cara (calibrado no microfone do Quest).", _locutor),
@@ -687,7 +730,7 @@ CATALOGO = [
      lambda: Efeito(nivelar=True, antes=[PitchShifter(4, w=1024, x=512)],
                     placa=[pb.Phaser(rate_hz=1.2, depth=0.8, mix=0.6), pb.Chorus(rate_hz=2, depth=0.3, mix=0.4)])),
     ("Personagem", "estourado", "Alto-falante estourado", "Distorção pesada, como caixa no talo.",
-     lambda: Efeito(nivelar=True, placa=[pb.Distortion(32), pb.LowpassFilter(5000), pb.Gain(-12)])),
+     lambda: Efeito(nivelar=True, antes=[Distorcao(32)], placa=[pb.LowpassFilter(5000), pb.Gain(-12)])),
 ]
 # o pedal da mina (mina.py, modulo de fora deste repo, ver o engine.py): onde o modulo esta ao lado do codigo, ele
 # entra no lugar do alto-falante estourado e liga a DJ que conversa com quem chega; a voz de quem toca passa sem efeito

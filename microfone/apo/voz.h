@@ -12,9 +12,9 @@
 //
 // As etapas que imitam a pedalboard (filtros RBJ, Compressor e Limiter, Distortion, Bitcrush, Delay, Chorus, Phaser,
 // Reverb) foram escritas a partir das formulas publicas de cada algoritmo e conferidas contra a saida dela (caixa
-// preta, dev/testa_voz.py). As etapas do fx.py (PitchShifter, PortaoRuido, AGC, Multibanda, CambioRadio, Fdn...) sao a
-// mesma conta, em blocos: o que no fx.py conta blocos de 10 ms aqui conta tempo, e da o mesmo resultado com o bloco
-// de 10 ms do audiodg.
+// preta, dev/testa_voz.py). As etapas do fx.py (PitchShifter, PortaoRuido, AGC, Multibanda, CambioRadio, Fdn,
+// Distorcao...) sao a mesma conta, em blocos: o que no fx.py conta blocos de 10 ms aqui conta tempo, e da o mesmo
+// resultado com o bloco de 10 ms do audiodg.
 #pragma once
 #include <math.h>
 #include <cmath>
@@ -54,6 +54,7 @@ enum Tipo : uint32_t {
     T_FREEVERB = 17,   // o Reverb da pedalboard (Freeverb)
     T_RADIO = 18,      // CambioRadio.detecta do fx.py (o som do canal sai pelo gerador do extra)
     T_FDN = 19,        // Fdn do fx.py (reverb de rede de atraso com realimentacao)
+    T_DISTORCAO_OS = 20,  // a Distorcao do fx.py (o tanh com oversampling)
 };
 
 enum Gerador : uint32_t { G_NENHUM = 0, G_RADIO = 1 };
@@ -544,6 +545,120 @@ struct Distorcao {
     void Processa(float* x, uint32_t n) {
         for (uint32_t i = 0; i < n; i++) {
             x[i] = (float)tanh(x[i] * g);
+        }
+    }
+};
+
+// A Distorcao do fx.py: o mesmo tanh, mas a 2^est vezes a taxa. Cada 2x sobe com zeros no meio e o FIR meia-banda
+// (projetado no fx.py) tira as imagens; o tanh roda na taxa alta; cada 2x desce pelo mesmo FIR, que tira o que passa da
+// metade da taxa antes de ficar 1 amostra de cada 2. Sem isso as harmonicas acima da metade da taxa dobram para dentro
+// da faixa (aliasing). Roda em pedacos de PEDACO amostras, para a memoria da taxa alta ficar pequena.
+struct DistorcaoOS {
+    static const uint32_t PEDACO = 64u;
+    static const uint32_t MAX_EST = 3u;
+    static const uint32_t MAX_TAPS = 255u;
+    double g;
+    uint32_t est, nh, npar, nimpar;
+    double* h;
+    uint32_t *par, *impar;  // os taps nao nulos de indice par e de indice impar
+    double* sobe[MAX_EST];  // de cada estagio: o fim do sinal de antes (nh - 1) e o pedaco novo
+    double* desce[MAX_EST];
+    double *a, *b;  // o pedaco na taxa alta, ida e volta
+
+    bool Prepara(Leitor& l, Arena& ar) {
+        g = Pot(10.0, l.Le(-60.0, 100.0) / 20.0);
+        est = l.Conta(MAX_EST);
+        nh = l.Conta(MAX_TAPS);
+        if (!l.ok || est < 1 || nh < 1 || nh % 2 == 0) {
+            return false;
+        }
+        if (!(h = ar.Pega<double>(nh)) || !(par = ar.Pega<uint32_t>(nh)) || !(impar = ar.Pega<uint32_t>(nh))) {
+            return false;
+        }
+        npar = nimpar = 0;
+        for (uint32_t k = 0; k < nh; k++) {
+            h[k] = l.Le(-1.0, 1.0);
+            if (h[k] != 0.0) {
+                if (k & 1u) {
+                    impar[nimpar++] = k;
+                } else {
+                    par[npar++] = k;
+                }
+            }
+        }
+        for (uint32_t s = 0; s < est; s++) {
+            if (!(sobe[s] = ar.Pega<double>(nh - 1 + (PEDACO << (s + 1)))) ||
+                !(desce[s] = ar.Pega<double>(nh - 1 + (PEDACO << (est - s))))) {
+                return false;
+            }
+        }
+        return l.ok && (a = ar.Pega<double>(PEDACO << est)) && (b = ar.Pega<double>(PEDACO << est));
+    }
+
+    // m amostras viram 2m: o sinal com um zero depois de cada amostra (vezes 2, o ganho que o zero tira) pelo FIR. Com
+    // os zeros, a saida par so pega taps pares e a impar so os impares (o resto multiplica zero)
+    void Sobe(double* buf, const double* in, uint32_t m, double* out) const {
+        double* novo = buf + nh - 1;
+        for (uint32_t i = 0; i < m; i++) {
+            novo[2 * i] = 2.0 * in[i];
+            novo[2 * i + 1] = 0.0;
+        }
+        for (uint32_t j = 0; j < 2 * m; j++) {
+            const uint32_t* t = (j & 1u) ? impar : par;
+            const uint32_t q = (j & 1u) ? nimpar : npar;
+            double s = 0.0;
+            for (uint32_t k = 0; k < q; k++) {
+                s += h[t[k]] * novo[(ptrdiff_t)j - (ptrdiff_t)t[k]];
+            }
+            out[j] = s;
+        }
+        memmove(buf, buf + 2 * m, (nh - 1) * sizeof(double));
+    }
+
+    // m amostras (par) viram m/2: o FIR so nas que ficam
+    void Desce(double* buf, const double* in, uint32_t m, double* out) const {
+        double* novo = buf + nh - 1;
+        memcpy(novo, in, m * sizeof(double));
+        for (uint32_t i = 0; i < m / 2; i++) {
+            const ptrdiff_t j = (ptrdiff_t)(2 * i);
+            double s = 0.0;
+            for (uint32_t k = 0; k < npar; k++) {
+                s += h[par[k]] * novo[j - (ptrdiff_t)par[k]];
+            }
+            for (uint32_t k = 0; k < nimpar; k++) {
+                s += h[impar[k]] * novo[j - (ptrdiff_t)impar[k]];
+            }
+            out[i] = s;
+        }
+        memmove(buf, buf + m, (nh - 1) * sizeof(double));
+    }
+
+    void Processa(float* x, uint32_t n) {
+        while (n) {
+            const uint32_t m = n < PEDACO ? n : PEDACO;
+            double *p = a, *q = b, *t;
+            for (uint32_t i = 0; i < m; i++) {
+                p[i] = x[i];
+            }
+            uint32_t len = m;
+            for (uint32_t s = 0; s < est; s++) {
+                Sobe(sobe[s], p, len, q);
+                len *= 2;
+                t = p; p = q; q = t;
+            }
+            for (uint32_t i = 0; i < len; i++) {
+                p[i] = tanh(p[i] * g);
+            }
+            for (uint32_t s = 0; s < est; s++) {
+                Desce(desce[s], p, len, q);
+                len /= 2;
+                t = p; p = q; q = t;
+            }
+            for (uint32_t i = 0; i < m; i++) {
+                x[i] = (float)p[i];
+            }
+            x += m;
+            n -= m;
         }
     }
 };
@@ -1178,6 +1293,7 @@ struct Cadeia {
         case T_COMPRESSOR: { auto* p = Cria<Compressor>(a); et.e = p; return p && p->Prepara(l, taxa); }
         case T_LIMITER: { auto* p = Cria<Limiter>(a); et.e = p; return p && p->Prepara(l, taxa); }
         case T_DISTORCAO: { auto* p = Cria<Distorcao>(a); et.e = p; return p && p->Prepara(l); }
+        case T_DISTORCAO_OS: { auto* p = Cria<DistorcaoOS>(a); et.e = p; return p && p->Prepara(l, a); }
         case T_BITCRUSH: { auto* p = Cria<Bitcrush>(a); et.e = p; return p && p->Prepara(l); }
         case T_DELAY: { auto* p = Cria<Delay>(a); et.e = p; return p && p->Prepara(l, a, taxa); }
         case T_CHORUS: { auto* p = Cria<Chorus>(a); et.e = p; return p && p->Prepara(l, a, taxa); }
@@ -1211,6 +1327,7 @@ struct Cadeia {
         case T_COMPRESSOR: static_cast<Compressor*>(et.e)->Processa(x, n); break;
         case T_LIMITER: static_cast<Limiter*>(et.e)->Processa(x, n); break;
         case T_DISTORCAO: static_cast<Distorcao*>(et.e)->Processa(x, n); break;
+        case T_DISTORCAO_OS: static_cast<DistorcaoOS*>(et.e)->Processa(x, n); break;
         case T_BITCRUSH: static_cast<Bitcrush*>(et.e)->Processa(x, n); break;
         case T_DELAY: static_cast<Delay*>(et.e)->Processa(x, n); break;
         case T_CHORUS: static_cast<Chorus*>(et.e)->Processa(x, n); break;

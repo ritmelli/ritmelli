@@ -27,6 +27,7 @@ assert CABECALHO.size == 80
 (T_SOS, T_FIR, T_GANHO, T_PITCH, T_RINGMOD, T_PORTAO, T_DECIMA, T_AGC, T_MULTIBANDA, T_COMPRESSOR, T_LIMITER,
  T_DISTORCAO, T_BITCRUSH, T_DELAY, T_CHORUS, T_PHASER, T_FREEVERB, T_RADIO) = range(1, 19)
 T_FDN = 19
+T_DISTORCAO_OS = 20
 G_NENHUM, G_RADIO = 0, 1
 NYQ = 0.49  # filtro com corte acima disso da taxa nao cabe nela: a etapa sai (corte de agudo) ou o efeito fica no app
 
@@ -147,6 +148,8 @@ def _etapa(f, taxa):
         return [(T_SOS, _sos_rows(sos))]
     if isinstance(f, fx.Decimador):
         return [(T_DECIMA, [f.f * k])]
+    if isinstance(f, fx.Distorcao):  # o FIR meia-banda vale em qualquer taxa (corta na metade dela)
+        return [(T_DISTORCAO_OS, [f.drive_db, f.estagios, len(f.h), *f.h])]
     if isinstance(f, fx.AGC):
         return [(T_AGC, [f.alvo, f.porta, f.teto, *AGC_COEF])]
     if isinstance(f, fx.Multibanda):
