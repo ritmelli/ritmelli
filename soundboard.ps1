@@ -9,17 +9,17 @@ function Get-Celular { try { (Invoke-RestMethod "$base/api/lan" -TimeoutSec 2).u
 
 switch ($Cmd) {
   'start' {
-    if (Get-State) { "ja esta ligado em $base/"; if (-not $NoBrowser) { Start-Process "$base/" }; break }
+    if (Get-State) { "already running at $base/"; if (-not $NoBrowser) { Start-Process "$base/" }; break }
     $logs = Join-Path $env:LOCALAPPDATA 'Vitrola\logs'  # o mesmo pastas.LOGS
     New-Item -ItemType Directory -Force $logs | Out-Null
     Start-Process python -ArgumentList '-u', "`"$here\vitrola.py`"", '--port', $Port, '--no-browser' `
       -WorkingDirectory $here -WindowStyle Hidden `
       -RedirectStandardOutput "$logs\server.log" -RedirectStandardError "$logs\server.err"
     foreach ($i in 1..40) { Start-Sleep -Milliseconds 250; if ($s = Get-State) { break } }
-    if (-not $s) { "nao subiu; veja $logs\server.err"; Get-Content "$logs\server.err" -Tail 15; exit 1 }
-    "ligado em $base/ | mic: $($s.active_devices.mic) | fone: $($s.active_devices.monitor)"
-    "no VRChat o microfone precisa ser CABLE Output (VB-Audio Virtual Cable)"
-    if ($c = Get-Celular) { "celular (mesmo Wi-Fi): $c (o botao Celular da interface mostra o QR e o codigo)" }
+    if (-not $s) { "didn't start; see $logs\server.err"; Get-Content "$logs\server.err" -Tail 15; exit 1 }
+    "running at $base/ | mic: $($s.active_devices.mic) | headphones: $($s.active_devices.monitor)"
+    "in VRChat the microphone must be CABLE Output (VB-Audio Virtual Cable)"
+    if ($c = Get-Celular) { "phone (same Wi-Fi): $c (the Phone button in the interface shows the QR code and the code)" }
     if (-not $NoBrowser) { Start-Process "$base/" }
   }
   'stop' {
@@ -34,14 +34,14 @@ switch ($Cmd) {
         Where-Object { $_.CommandLine -and ($_.CommandLine.Contains("$here\vitrola.py") -or $_.CommandLine.Contains("$here\server.py")) } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     }
-    if (Get-State) { 'continua de pe'; exit 1 } else { 'desligado (a voz parou de passar pelo cabo)' }
+    if (Get-State) { 'still running'; exit 1 } else { 'off (your voice no longer goes through the cable)' }
   }
   'status' {
     $s = Get-State
-    if (-not $s) { 'desligado'; break }
+    if (-not $s) { 'off'; break }
     $t = if ($s.track) { $s.track.title } else { '-' }
-    "ligado em $base/ | $($s.status) | $t | mic: $($s.active_devices.mic) | fone: $($s.active_devices.monitor)"
-    if ($c = Get-Celular) { "celular (mesmo Wi-Fi): $c" }
+    "running at $base/ | $($s.status) | $t | mic: $($s.active_devices.mic) | headphones: $($s.active_devices.monitor)"
+    if ($c = Get-Celular) { "phone (same Wi-Fi): $c" }
   }
   'open' { Start-Process "$base/" }
 }

@@ -105,7 +105,7 @@ class Vivo(unittest.TestCase):
     def test_limite_mata_e_o_seguinte_abre_outro(self):
         a = self.stream()
         t = time.monotonic()
-        with self.assertRaisesRegex(RuntimeError, "não respondeu a tempo"):
+        with self.assertRaisesRegex(RuntimeError, "didn't answer in time"):
             self.stream("dorme", s=5, limite=1)
         self.assertLess(time.monotonic() - t, 3)
         b = self.stream()

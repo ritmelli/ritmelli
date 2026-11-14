@@ -174,7 +174,7 @@ def medir(x, sr):
     x = np.asarray(x, np.float32)
     fps = sr / HOP
     if len(x) < sr * TRECHO_MIN_S:
-        return Grade(None, None, None, False, "trecho curto")
+        return Grade(None, None, None, False, "excerpt too short")
     b1, b2, pico, o = _bpm(x, sr)
     h = len(x) // 2
     j1, j2 = _bpm(x[:h], sr)[:2], _bpm(x[h:], sr)[:2]  # os dois juizes de cada metade
@@ -187,7 +187,7 @@ def medir(x, sr):
     if not _concorda(outro, b2) and forca >= CAIXA_TROCA:
         lc = _lenta(60 * fps / outro, fps)
         if all(_concorda(_caixa(t, sr, lc)[0], outro) for t in (x[:h], x[h:])):
-            trocou = f", a caixa trocou {60 * fps / _lenta(60 * fps / b2, fps):.1f} por {outro:.1f} ({forca:.1f} vezes)"
+            trocou = f", the snare swapped {60 * fps / _lenta(60 * fps / b2, fps):.1f} for {outro:.1f} ({forca:.1f} times)"
             ac = _autocorr(o)
             pico = float(max(np.interp(lc, np.arange(len(ac)), ac), np.interp(lc / 2, np.arange(len(ac)), ac)))
             b1 = b2 = m1 = m2 = outro
@@ -195,7 +195,7 @@ def medir(x, sr):
           and all(any(_concorda(j, b1) for j in jm if j) for jm in (j1, j2))):
         # os juizes discordam e a caixa fica com o do pico: vale ele, se cada metade tiver um juiz com ele (o
         # comeco do Paper Planes: 5 s de intro sem caixa, e a caixa dos 20 s com o 86 a 1,7 vezes)
-        trocou = f", a caixa desempatou {b2:.1f} x {b1:.1f} ({forca:.1f} vezes)"
+        trocou = f", the snare broke the tie {b2:.1f} x {b1:.1f} ({forca:.1f} times)"
         b2 = m1 = m2 = b1
     lag, fase, nota, rival = _pente(o, _lenta(60 * fps / b2, fps))
     bpm = 60 * fps / lag
@@ -208,20 +208,20 @@ def medir(x, sr):
         bumbo = bool(ng.min() <= GRAVE_DECIDE * ng.max())
     if bumbo:
         fase = float(meios[int(np.argmax(ng))])
-    resumo = (f"{bpm:.1f} BPM (juizes {b1:.1f}/{b2:.1f}, metades {m1:.1f}/{m2:.1f}, pico {pico:.2f}, "
-              f"pente {nota:.1f}, fase rival {rival:.2f}, bumbo {ng.min() / (ng.max() + 1e-9):.2f}"
-              f"{', virou a fase' if bumbo and fase != meios[0] else ''}{trocou})")
+    resumo = (f"{bpm:.1f} BPM (judges {b1:.1f}/{b2:.1f}, halves {m1:.1f}/{m2:.1f}, peak {pico:.2f}, "
+              f"comb {nota:.1f}, rival phase {rival:.2f}, kick {ng.min() / (ng.max() + 1e-9):.2f}"
+              f"{', flipped the phase' if bumbo and fase != meios[0] else ''}{trocou})")
     if not _concorda(b1, b2):
-        return Grade(bpm, lag / fps, fase / fps, False, "juizes discordam: " + resumo)
+        return Grade(bpm, lag / fps, fase / fps, False, "judges disagree: " + resumo)
     if not (_concorda(m1, b2) and _concorda(m2, b2)):
-        return Grade(bpm, lag / fps, fase / fps, False, "metades discordam: " + resumo)
+        return Grade(bpm, lag / fps, fase / fps, False, "halves disagree: " + resumo)
     if pico < PICO_MIN:
-        return Grade(bpm, lag / fps, fase / fps, False, "batida fraca: " + resumo)
+        return Grade(bpm, lag / fps, fase / fps, False, "weak beat: " + resumo)
     if rival > FASE_MAX and not bumbo:
-        return Grade(bpm, lag / fps, fase / fps, False, "fase ambigua: " + resumo)
+        return Grade(bpm, lag / fps, fase / fps, False, "ambiguous phase: " + resumo)
     outro, forca = _caixa(x, sr, lag)
     if not trocou and not _concorda(outro, bpm) and forca > CAIXA_FOLGA:
-        return Grade(bpm, lag / fps, fase / fps, False, f"a caixa aponta {outro:.1f} BPM ({forca:.1f} vezes): " + resumo)
+        return Grade(bpm, lag / fps, fase / fps, False, f"the snare points to {outro:.1f} BPM ({forca:.1f} times): " + resumo)
     return Grade(bpm, lag / fps, fase / fps, True, resumo)
 
 

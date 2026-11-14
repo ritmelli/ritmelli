@@ -73,7 +73,7 @@ class Pareamento:
                 return lista
         except (OSError, ValueError):  # o ValueError cobre o JSON quebrado e o texto fora do UTF-8
             pass
-        print(f"celular: {self.path.name} ilegivel; os celulares pareiam de novo", file=sys.stderr, flush=True)
+        print(f"phone: {self.path.name} unreadable; the phones pair again", file=sys.stderr, flush=True)
         return []
 
     def _salva(self):

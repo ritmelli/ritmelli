@@ -142,7 +142,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     silêncio; fade-out recebe o próximo por baixo, em até 8 s com curva de potência constante,
     e o rabo dele 20 dB abaixo do normal fica para trás. Vale para toda passagem automática;
     o Repetir, a Próxima, o Anterior e o pulo na barra seguem cortando. O log mostra cada
-    medição (`passagem: ...`).
+    medição (`transition: ...`).
   - Passagem no tempo: o `batida.py` acha o andamento e a grade de batidas dos 20 s do fim do
     disco e dos 20 s do começo do próximo, e a fase de cada um no trecho em que os dois tocam
     juntos. Entre a batida e o contratempo quem decide é o bumbo, nos 20 s: o trecho curto só
@@ -191,7 +191,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     firme (intro sem bateria), é a primeira nota dele que cai ali. O que a passagem de volume toca, a no tempo não
     corta: o próximo entra no máximo 1 s antes do fim do som (o Bota Tudo Em Mim tem 18 s
     baixinhos depois de 2 s de silêncio, e o plano que mirava a queda de 20 dB cortava os 20 s). A grade de mais adiante não é estendida de volta até a intro: em 9 músicas ela
-    caía fora dos ataques da intro. O log diz o que fez (`passagem: no tempo: ...`) ou por que
+    caía fora dos ataques da intro. O log diz o que fez (`transition: on beat: ...`) ou por que
     não alinhou.
   - Automático (a chave "Só este disco / Tocar parecidas" embaixo dos botões do toca-discos,
     salva no `config.json`): com ele ligado, a fila nunca
@@ -296,7 +296,10 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   O servidor, por sua vez, não escreve frase para a tela: o `i18n.msg` monta a Mensagem do API.md
   (`{key, params, text}`), com a chave `server.*` que o tema traduz e o texto em inglês para o log.
   O erro que já nasce pronto para a tela (o aparelho que sumiu, o cabo no lugar do microfone) é uma
-  `i18n.Recusa`, e quem pega manda a mensagem dela como veio, ou dentro de outra.
+  `i18n.Recusa`, e quem pega manda a mensagem dela como veio, ou dentro de outra. O que nenhuma tela
+  mostra fica só em inglês: os logs (`stream:`, `transition:`, `update:`...), os erros de requisição,
+  as mensagens das exceções, que vão como detalhe técnico, e o que o `soundboard.ps1` escreve. Os
+  comentários e as docstrings seguem em português.
 
 ## Filtro "Quest como SM58"
 

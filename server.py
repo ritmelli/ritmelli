@@ -244,13 +244,13 @@ class Fora:
             if relogio:
                 relogio.cancel()
         if r is None:
-            raise RuntimeError("o YouTube não respondeu a tempo" if estourou.is_set() else
-                               "o processo do YouTube saiu sem resposta")
+            raise RuntimeError("YouTube didn't answer in time" if estourou.is_set() else
+                               "the YouTube process quit without an answer")
         if "erro" in r:
             raise RuntimeError(r["erro"])
         if op == "stream":
-            print(f"stream: {time.monotonic() - t0:.2f} s num processo novo"
-                  f"{' (o vivo estava ocupado)' if VIVO_MAX else ''}", file=sys.stderr, flush=True)
+            print(f"stream: {time.monotonic() - t0:.2f} s in a new process"
+                  f"{' (the live one was busy)' if VIVO_MAX else ''}", file=sys.stderr, flush=True)
         return r["r"]
 
     @staticmethod
@@ -303,12 +303,12 @@ class Fora:
         if r is None or n >= VIVO_MAX or ("erro" in r and not erro_do_video(r["erro"])):
             self._solta_vivo(v)
         if r is None:
-            raise RuntimeError("o YouTube não respondeu a tempo" if estourou.is_set() else
-                               "o processo do YouTube saiu sem resposta")
+            raise RuntimeError("YouTube didn't answer in time" if estourou.is_set() else
+                               "the YouTube process quit without an answer")
         if "erro" in r:
             raise RuntimeError(r["erro"])
-        print(f"{op}: {time.monotonic() - t0:.2f} s no processo vivo ({n}º pedido dele"
-              f"{', o primeiro paga o preço cheio' if novo else ', aberto no aviso da fala' if n == 1 and v.aviso else ''})",
+        print(f"{op}: {time.monotonic() - t0:.2f} s in the live process (its request #{n}"
+              f"{', the first one pays full price' if novo else ', opened on the speech heads-up' if n == 1 and v.aviso else ''})",
               file=sys.stderr, flush=True)
         return r["r"]
 
@@ -725,7 +725,7 @@ class App:
             try:
                 ch = fora.pede("canal", yid=yid, limite=CANAL_LIMITE_S).get("channel")
             except Exception as ex:  # noqa: BLE001 - fica sem o canal
-                print(f"stream: o canal de {yid} nao veio ({yt_msg(ex)})", file=sys.stderr, flush=True)
+                print(f"stream: the channel of {yid} didn't come ({yt_msg(ex)})", file=sys.stderr, flush=True)
                 return
             if ch and not tr.get("channel"):
                 tr["channel"] = ch
@@ -774,7 +774,7 @@ class App:
             self.job_update(j, progress=i / 10 * 0.99)
         bases = [x for x in self.lib.items if (LIB / x["file"]).exists()]
         if not bases:
-            raise RuntimeError(f"--mock precisa de pelo menos um áudio em {LIB}")
+            raise RuntimeError(f"--mock needs at least one audio file in {LIB}")
         base = min(bases, key=lambda x: x.get("duration") or 1e9)  # o mais curto
         yid = target if YT_ID.match(target) else None
         title, channel = j["label"], None
@@ -800,7 +800,7 @@ class App:
                       alvo=self.alvo_yt(target), opts=opts)
         info, path = r["info"], LIB / r["file"]
         if not path.exists():
-            raise RuntimeError("o download terminou sem arquivo de áudio")
+            raise RuntimeError("the download finished without an audio file")
         yid = info.get("id")
         item = {"id": yid, "title": info.get("title") or yid, "file": path.name,
                 "duration": info.get("duration") or eng.probe_duration(str(path)),
@@ -893,7 +893,7 @@ class App:
         try:
             self.engine.preabre(info.get("url"), hdr)
         except Exception as ex:  # noqa: BLE001 - sem o aberto antes, o leitor abre o dele como antes
-            print(f"stream: o ffmpeg aberto antes falhou ({str(ex)[:120]})", file=sys.stderr, flush=True)
+            print(f"stream: the ffmpeg opened earlier failed ({str(ex)[:120]})", file=sys.stderr, flush=True)
 
     def adianta_da_busca(self, res, n):
         """O endereco que a busca de musica falada (/api/musica) adianta: ate 3 resultados, o do primeiro; o "outra" (n
@@ -936,14 +936,14 @@ class App:
                 if i == 0 and adiantado is not None:
                     t0 = time.monotonic()
                     info, hdr = adiantado.result(timeout=FORA_LIMITE_S)
-                    print(f"stream: o adiantado de {tr.get('youtube_id')} esperou mais {time.monotonic() - t0:.2f} s",
+                    print(f"stream: the early request for {tr.get('youtube_id')} waited {time.monotonic() - t0:.2f} s more",
                           file=sys.stderr, flush=True)
                 else:
                     info, hdr = self.stream_info(target, formato)
                 break
             except Exception as ex:  # noqa: BLE001 - o motivo vai para o log e para a tela
                 motivo = yt_msg(ex)
-                print(f"stream: tentativa {i + 1} de 3 falhou para {target}: {motivo}", file=sys.stderr, flush=True)
+                print(f"stream: attempt {i + 1} of 3 failed for {target}: {motivo}", file=sys.stderr, flush=True)
                 if erro_do_video(ex):  # o video nao toca pra ninguem: tentar de novo so gasta ~2 s e o IP de casa
                     break
                 time.sleep(1.0)
@@ -978,16 +978,16 @@ class App:
         quando = f"{int(pos // 60)}:{int(pos % 60):02d}"
         k = tr.get("religou", 0) + 1
         if k > STREAM_RELIGA:
-            print(f"stream: {nome!r} caiu de novo em {quando} depois de {STREAM_RELIGA} enderecos novos: "
-                  "passo para a proxima", file=sys.stderr, flush=True)
+            print(f"stream: {nome!r} dropped again at {quando} after {STREAM_RELIGA} new addresses: "
+                  "moving on to the next one", file=sys.stderr, flush=True)
             desistir()
             return
-        print(f"stream: {nome!r} caiu em {quando}: pego um endereco novo ({k} de {STREAM_RELIGA})",
+        print(f"stream: {nome!r} dropped at {quando}: getting a new address ({k} of {STREAM_RELIGA})",
               file=sys.stderr, flush=True)
         try:
             info, hdr = self.stream_info(tr.get("youtube_id") or tr.get("alvo"))
         except Exception as ex:  # noqa: BLE001 - sem endereco, o disco acaba como antes
-            print(f"stream: o endereco novo de {nome!r} falhou ({yt_msg(ex)}): passo para a proxima",
+            print(f"stream: the new address of {nome!r} failed ({yt_msg(ex)}): moving on to the next one",
                   file=sys.stderr, flush=True)
             desistir()
             return
@@ -1209,7 +1209,7 @@ class App:
             return
         alvo = x.get("youtube_id") or x.get("url")
         if not alvo:
-            raise ValueError("a entrada não tem vídeo nem link")
+            raise ValueError("the queue entry has no video and no link")
         if x.get("auto") and x.get("youtube_id"):
             self.tocar_remoto(None, alvo, x, historico=historico)
             return
@@ -1231,8 +1231,8 @@ class App:
             soou = e.tira_soou()
             if soou:  # a hora do primeiro som de cada disco (relogio = a do Windows, pra alinhar com quem pediu)
                 titulo, stream, entrou, em = soou
-                print(f"som: {titulo!r} soou {em - entrou:.2f} s depois de entrar no prato "
-                      f"({'stream' if stream else 'arquivo'}; relogio={em:.3f})", file=sys.stderr, flush=True)
+                print(f"sound: {titulo!r} played {em - entrou:.2f} s after entering the platter "
+                      f"({'stream' if stream else 'file'}; clock={em:.3f})", file=sys.stderr, flush=True)
             tr = e.track
             if tr is None or e.status() != "ended":
                 visto = None
@@ -1289,7 +1289,7 @@ class App:
                 e.preparar(novo, x["qid"])
         except Exception as ex:  # noqa: BLE001 - sem a proxima pronta, ela toca no fim como antes
             self.passagem_falhou = chave
-            print(f"passagem: nao preparei {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
+            print(f"transition: couldn't prepare {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
         finally:
             self.preparando = None
 
@@ -1317,7 +1317,7 @@ class App:
                 try:
                     self._virou(*v)
                 except Exception as ex:  # noqa: BLE001
-                    print(f"passagem: a virada nao fechou a fila: {ex}", file=sys.stderr, flush=True)
+                    print(f"transition: the switch didn't close the queue: {ex}", file=sys.stderr, flush=True)
             tr = e.track
             with self.fila_lock:
                 x = self.fila[0] if self.fila else None
@@ -1348,7 +1348,7 @@ class App:
             motivo = "veio vazio"
         except Exception as ex:  # noqa: BLE001 - sem o radio, o Mix do YouTube segura o Automatico
             motivo = yt_msg(ex)
-        print(f"automatico: o radio do YouTube Music de {yid} falhou ({motivo}); vai o Mix do YouTube",
+        print(f"auto: the YouTube Music radio of {yid} failed ({motivo}); using the YouTube Mix",
               file=sys.stderr, flush=True)
         return self.mix_yt(yid)
 
@@ -1393,7 +1393,7 @@ class App:
         try:
             lista = self.mix_do(base)
         except Exception as ex:  # noqa: BLE001 - sem Mix, o Automatico espera e tenta de novo
-            print(f"automatico: o Mix de {base} falhou: {yt_msg(ex)}", file=sys.stderr, flush=True)
+            print(f"auto: the Mix of {base} failed: {yt_msg(ex)}", file=sys.stderr, flush=True)
             lista = None
         with self.fila_lock:
             self.mix_buscando = False
@@ -1641,7 +1641,7 @@ class App:
             try:
                 v = self.capa_musica(alvo)
             except Exception as ex:  # noqa: BLE001 - sem a busca, o disco fica com a miniatura e tenta de novo depois
-                print(f"capa: nao busquei {alvo.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
+                print(f"cover: couldn't look up {alvo.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
                 time.sleep(60)
                 continue
             kw = {"capa_procurada": True}
@@ -1650,8 +1650,8 @@ class App:
                 if v["thumb"]:
                     kw.update(thumb=v["thumb"], thumb_video=alvo.get("thumb_video") or alvo.get("thumb"))
             self.lib.update(alvo["id"], **kw)
-            print(f"capa: {alvo.get('title')!r}: " + (f"a do album ({v['ytm_artista']} - {v['ytm_titulo']})" if v
-                                                       else "fica a do video"), file=sys.stderr, flush=True)
+            print(f"cover: {alvo.get('title')!r}: " + (f"the album one ({v['ytm_artista']} - {v['ytm_titulo']})" if v
+                                                        else "keeping the video one"), file=sys.stderr, flush=True)
 
     def _mede_andamento(self, x):
         """{"ini", "fim"} do disco pelo andamento.py num processo a parte, com prioridade baixa: da prateleira, o
@@ -1701,7 +1701,7 @@ class App:
                 try:
                     v = self.versao_audio(x)
                 except Exception as ex:  # noqa: BLE001 - sem a busca, a parecida toca o video
-                    print(f"audio: nao busquei {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
+                    print(f"audio: couldn't look up {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
                     with self.fila_lock:
                         self.andamento_falhou[f"audio:{vid}"] = time.time()
                     continue
@@ -1710,8 +1710,8 @@ class App:
                     save_json(self.versoes_path, self.versoes)
                     self._troca_audio(vid, v)
                     self.andamentos_versao += 1
-                print(f"audio: {x.get('title')!r}: " + (f"a versao de audio {v['youtube_id']} ({v['duration']} s)"
-                                                         if v else "so o video"), file=sys.stderr, flush=True)
+                print(f"audio: {x.get('title')!r}: " + (f"the audio version {v['youtube_id']} ({v['duration']} s)"
+                                                         if v else "only the video"), file=sys.stderr, flush=True)
                 continue
             c = self.chave_andamento(x)
             t0 = time.time()
@@ -1719,7 +1719,7 @@ class App:
                 r = self._mede_andamento(x)
             except Exception as ex:  # noqa: BLE001 - sem medida, a parecida fica sem andamento (vai para o salto)
                 r = None
-                print(f"andamento: nao medi {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
+                print(f"tempo: couldn't measure {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
             with self.fila_lock:
                 if r is None:
                     self.andamento_falhou[c] = time.time()
@@ -1727,7 +1727,7 @@ class App:
                 self.andamentos[c] = r
                 save_json(self.andamentos_path, self.andamentos)
                 self.andamentos_versao += 1
-            print(f"andamento: {x.get('title')!r}: comeco {r['ini']}, fim {r['fim']} BPM em {time.time() - t0:.1f} s",
+            print(f"tempo: {x.get('title')!r}: start {r['ini']}, end {r['fim']} BPM in {time.time() - t0:.1f} s",
                   file=sys.stderr, flush=True)
 
     def _conta_escuta(self):
@@ -1789,10 +1789,10 @@ async def body(request):
     try:
         b = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
-        raise web.HTTPBadRequest(text="O corpo precisa ser JSON em UTF-8.")
+        raise web.HTTPBadRequest(text="The body must be JSON in UTF-8.")
     # toda rota le campos: uma lista ou um numero dava o erro 500, e o /api/parear e aberto a rede de casa
     if not isinstance(b, dict):
-        raise web.HTTPBadRequest(text="O corpo precisa ser um objeto JSON ({...}).")
+        raise web.HTTPBadRequest(text="The body must be a JSON object ({...}).")
     return b
 
 
@@ -1820,11 +1820,11 @@ def build(app_state):
         # celular digita o codigo
         allowed = locais | {f"{A.lan_ip}:{A.port}"} if A.lan_ip else locais
         if request.host not in allowed:
-            return web.Response(status=403, text="host não permitido")
+            return web.Response(status=403, text="host not allowed")
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             origin = request.headers.get("Origin")
             if origin and origin.split("://", 1)[-1] not in allowed:
-                return web.Response(status=403, text="origem não permitida")
+                return web.Response(status=403, text="origin not allowed")
         celular = request.path.startswith("/api/") and not do_pc(request)
         if celular and request.path.startswith("/api/pareamento"):
             return j_err(i18n.so_texto("The code and the connected devices can only be seen on the computer."), 403)
@@ -2259,7 +2259,7 @@ def build(app_state):
             return j_err(i18n.msg("server.pair.invalid", "Invalid or expired code. Each code is valid for {minutes} "
                                   "minutes and can be used only once. Check the code shown on the computer.",
                                   minutes=par.CODIGO_S // 60), 403)
-        print(f"celular: pareado ({nome})", flush=True)
+        print(f"phone: paired ({nome})", flush=True)
         return com_chave(j_ok(), chave)
 
     @r.get("/api/pareamento")
@@ -2356,8 +2356,8 @@ async def servir(A, app, porta, rede):
             ip = ip_da_rede() if rede else None
             caiu = site is not None and sock.fileno() == -1
             if caiu or (site and ip and ip != A.lan_ip):
-                print(f"celular: a porta em {A.lan_ip} caiu" if caiu
-                      else f"celular: o IP mudou de {A.lan_ip} para {ip}", flush=True)
+                print(f"phone: the port on {A.lan_ip} went down" if caiu
+                      else f"phone: the IP changed from {A.lan_ip} to {ip}", flush=True)
                 await site.stop()
                 sock.close()
                 sock = site = None
@@ -2368,7 +2368,7 @@ async def servir(A, app, porta, rede):
                     await site.start()
                 except OSError as e:
                     if not falhou:
-                        print(f"celular: sem a porta em {ip} ({e}); tento de novo a cada {REDE_VIGIA_S:.0f} s",
+                        print(f"phone: no port on {ip} ({e}); trying again every {REDE_VIGIA_S:.0f} s",
                               flush=True)
                     falhou = True
                     if sock:
@@ -2376,7 +2376,7 @@ async def servir(A, app, porta, rede):
                     sock = site = None
                 else:
                     A.lan_ip, falhou = ip, False
-                    print(f"celular: http://{ip}:{porta}/", flush=True)
+                    print(f"phone: http://{ip}:{porta}/", flush=True)
             await asyncio.sleep(REDE_VIGIA_S)
     finally:
         await runner.cleanup()
@@ -2391,17 +2391,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=pastas.PORTA)
     ap.add_argument("--no-browser", action="store_true")
-    ap.add_argument("--mock", action="store_true", help="sem audio: relogio falso, download fingido")
-    ap.add_argument("--data-dir", default=str(LIB), help="onde moram library.json e config.json")
-    ap.add_argument("--so-local", action="store_true", help="nao atende a rede de casa (celular)")
+    ap.add_argument("--mock", action="store_true", help="no audio: fake clock, pretend downloads")
+    ap.add_argument("--data-dir", default=str(LIB), help="where library.json and config.json live")
+    ap.add_argument("--so-local", action="store_true", help="don't serve the home network (phone)")
     ap.add_argument("--version", action="version", version=f"Vitrola {VERSAO}")
     a = ap.parse_args()
     A = App(a.port, Path(a.data_dir), mock=a.mock)
     threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
-    print(f"mic: {d['mic']} | cabo: {d['out']} | fone: {d['monitor'] or '-'}", flush=True)
+    print(f"mic: {d['mic']} | cable: {d['out']} | headphones: {d['monitor'] or '-'}", flush=True)
     url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
-    print(f"Vitrola {VERSAO} em {url}{' (MOCK, sem som)' if a.mock else ''} | dados em {pastas.DADOS}", flush=True)
+    print(f"Vitrola {VERSAO} at {url}{' (MOCK, no sound)' if a.mock else ''} | data in {pastas.DADOS}", flush=True)
     if not a.no_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
     try:

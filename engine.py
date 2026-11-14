@@ -373,8 +373,8 @@ def _esticar_comeco(blocos_b, ini, s, n_sob):
     n_rampa = int(min(max(abs(s - 1) / RAMPA_TAXA, RAMPA_MIN_S), RAMPA_MAX_S) * SR)
     cabe = int(((t_b_fim - ini) * SR - s * n_sob) / ((1 + s) / 2))
     if cabe < n_rampa:  # a proxima nao decodificou o bastante (stream lento): sem volta lenta, sem esticar
-        return None, (f"o comeco da proxima na fila ({t_b_fim - ini:.0f} s) nao cobre a volta lenta ao andamento "
-                      f"dela ({n_rampa / SR:.0f} s)")
+        return None, (f"the start of the next one in the queue ({t_b_fim - ini:.0f} s) doesn't cover the slow return to "
+                      f"its tempo ({n_rampa / SR:.0f} s)")
     alvo_t = ini + (s * n_sob + n_rampa * (1 + s) / 2) / SR
     ate = min((t for t, _ in blocos_b if ini < t <= t_b_fim), key=lambda t: abs(t - alvo_t))
     _, xs = _junta(blocos_b, ini, ate + BLOCK / SR)
@@ -423,7 +423,7 @@ def _grade_rede(x):
     virou = bool(ng[1] > ng[0] and ng[0] <= batida.GRAVE_DECIDE * ng[1])
     if virou:
         f = (f + P / 2) % P
-    return batida.Grade(60 / P, P, f, True, f"pela rede: {60 / float(p):.1f} BPM{', o bumbo virou o lado' if virou else ''}")
+    return batida.Grade(60 / P, P, f, True, f"by the network: {60 / float(p):.1f} BPM{', the kick flipped the side' if virou else ''}")
 
 
 def _fase_rede(x, periodo, perto):
@@ -1230,7 +1230,7 @@ class Engine:
         calar = bool(a and fone and (a == fone or a.startswith(fone) or fone.startswith(a)))
         if calar != self._fone_calado:
             self._fone_calado = calar
-            print(f"mina: {'calei o fone (' + self.active['monitor'] + '), que e o aparelho que ela ouve' if calar else 'fone de volta'}",
+            print(f"mina: {'muted the headphones (' + self.active['monitor'] + '), the device she listens to' if calar else 'headphones back'}",
                   file=sys.stderr, flush=True)
 
     def mina_falando(self):
@@ -1461,8 +1461,8 @@ class Engine:
             if pre is not None:
                 blocos, ff = pre
                 pre = None
-                print(f"stream: {track.get('title')!r} entrou pelo ffmpeg aberto antes "
-                      f"({sum(map(len, blocos)) / 8 / SR:.2f} s ja decodificados)", file=sys.stderr, flush=True)
+                print(f"stream: {track.get('title')!r} came in through the ffmpeg opened earlier "
+                      f"({sum(map(len, blocos)) / 8 / SR:.2f} s already decoded)", file=sys.stderr, flush=True)
             else:
                 blocos = []
                 ff = subprocess.Popen([FFMPEG, "-v", "error", *self._entrada(track), "-ss", str(t), "-i", path,
@@ -1562,7 +1562,7 @@ class Engine:
             if a is None:
                 a = self._decodifica(track["path"], limite)
                 if not len(a):
-                    raise ValueError("vazio")
+                    raise ValueError("empty")
                 self._sobre_cache[chave] = a
                 while len(self._sobre_cache) > 1 and (
                         len(self._sobre_cache) > SOBRE_CACHE
@@ -1677,16 +1677,16 @@ class Engine:
             sobrepor, virar = TRANS_SECO_S, fim - TRANS_SECO_S
         try:
             plano, motivo = (self._plano_batida(atual, prox, fade, fim, queda, baixo, ini, virar, sobrepor)
-                             if queda is not None else (None, "sem a queda do fim"))
+                             if queda is not None else (None, "no drop at the end"))
         except Exception as ex:  # noqa: BLE001 - a passagem no tempo e um extra: sem ela, a de volume
-            plano, motivo = None, f"erro: {ex!r}"
+            plano, motivo = None, f"error: {ex!r}"
         with self._qlock:
             if self._pronto is not prox or self._deck is not atual:
                 return
             if plano is not None and plano["virar"] - self.pos < FOLGA_S:
-                plano, motivo = None, "o plano ficou pronto depois da hora"
+                plano, motivo = None, "the plan was ready too late"
             if plano is not None and plano.get("sai_q") and (not atual.q or atual.q[0][0] > plano["sai_q"][0] + 1e-7):
-                plano, motivo = None, "o plano ficou pronto depois do comeco da rampa da que sai"
+                plano, motivo = None, "the plan was ready after the outgoing one's ramp started"
             if plano is not None:
                 if plano.get("sai_q"):  # a que sai, da rampa em diante, pelos blocos reamostrados
                     t_r, novos = plano["sai_q"]
@@ -1723,16 +1723,16 @@ class Engine:
                          "k": 0.0, "sai": sobrepor, "entra": sobrepor, "grave": None, "grade_de": None,
                          "grade_para": None, "motivo": motivo}
             self._visor_pas = _visor_publico(tr_atual, prox.track, visor)
-        jeito = f"fade-out de {caindo:.1f} s" if fade else "final seco"
-        print(f"passagem: {tr_atual.get('title')!r} -> {prox.track.get('title')!r}: som ate "
-              f"{fim:.2f} s, {jeito}, vira em {virar:.2f} s sobrepondo {sobrepor:.2f} s, a proxima comeca em {ini:.2f} s",
+        jeito = f"{caindo:.1f} s fade-out" if fade else "hard ending"
+        print(f"transition: {tr_atual.get('title')!r} -> {prox.track.get('title')!r}: sound until "
+              f"{fim:.2f} s, {jeito}, switches at {virar:.2f} s overlapping {sobrepor:.2f} s, the next one starts at {ini:.2f} s",
               file=sys.stderr, flush=True)
-        print(f"passagem: no tempo: {plano['log']}" if plano is not None else f"passagem: sem alinhar a batida: {motivo}",
+        print(f"transition: on beat: {plano['log']}" if plano is not None else f"transition: beats not aligned: {motivo}",
               file=sys.stderr, flush=True)
         # quanto a preparacao esperou (os dois decodificados) e quanto o plano levou, e a folga que sobrou ate a virada
-        print(f"passagem: preparada a {fim - pos_plano + (t_plano - t_prep):.0f} s do fim; esperou "
-              f"{t_plano - t_prep:.1f} s pelo audio, planejou em {time.perf_counter() - t_plano:.1f} s; a virada ficou "
-              f"{virar - self.pos:.1f} s adiante", file=sys.stderr, flush=True)
+        print(f"transition: prepared {fim - pos_plano + (t_plano - t_prep):.0f} s before the end; waited "
+              f"{t_plano - t_prep:.1f} s for the audio, planned in {time.perf_counter() - t_plano:.1f} s; the switch was "
+              f"{virar - self.pos:.1f} s ahead", file=sys.stderr, flush=True)
         self._registra_fim(cauda, tr_atual, prox.track, fim, queda, baixo, fade, caindo, virar, sobrepor,
                            plano, motivo)
 
@@ -1746,11 +1746,11 @@ class Engine:
                 return
             normal, t0, decimos, janelas = ret
             virou = plano["virar"] if plano is not None else virar
-            print(f"passagem: fim de {tr_atual.get('title')!r}: normal {normal:.1f} dBFS; de 5 em 5 s nos ultimos "
+            print(f"transition: end of {tr_atual.get('title')!r}: normal {normal:.1f} dBFS; every 5 s in the last "
                   f"{FIM_RETRATO_S:.0f} s: {' '.join('-' if j is None else f'{j:+.0f}' for j in janelas)} dB; "
-                  f"queda em {queda if queda is None else round(queda, 2)} s, baixo em "
-                  f"{baixo if baixo is None else round(baixo, 2)} s, vira em {virou:.2f} s ({fim - virou:.1f} s antes "
-                  f"do fim do som)", file=sys.stderr, flush=True)
+                  f"drop at {queda if queda is None else round(queda, 2)} s, low at "
+                  f"{baixo if baixo is None else round(baixo, 2)} s, switches at {virou:.2f} s ({fim - virou:.1f} s before "
+                  f"the end of the sound)", file=sys.stderr, flush=True)
             faixas = None
             with self._olock:
                 o = self._ondas.get(tr_atual.get("id"))
@@ -1771,7 +1771,7 @@ class Engine:
             with open(pasta / (time.strftime("%Y-%m-%d") + ".jsonl"), "a", encoding="utf-8") as f:
                 f.write(json.dumps(reg, ensure_ascii=False) + "\n")
         except Exception as ex:  # noqa: BLE001 - o registro e so estudo: falhando, a passagem segue igual
-            print(f"passagem: o registro do fim falhou: {ex!r}", file=sys.stderr, flush=True)
+            print(f"transition: the end record failed: {ex!r}", file=sys.stderr, flush=True)
 
     def _plano_batida(self, atual, prox, fade, fim, queda, baixo, ini, virar, sobrepor):
         """A passagem no tempo, pela grade de batidas do fim deste e do comeco da proxima. No fade-out com os
@@ -1784,14 +1784,14 @@ class Engine:
         with self._qlock:
             blocos_a, blocos_b = list(atual.q), list(prox.q)
         if not blocos_a or not blocos_b:
-            return None, "sem audio na fila"
+            return None, "no audio in the queue"
         fim_a = baixo if fade else fim
         t_a, xa = _junta(blocos_a, fim_a - BATIDA_S, fim_a)
         t_b, xb = _junta(blocos_b, ini, ini + BATIDA_S)
         if xa is None or len(xa) < BATIDA_MIN_S * SR:
-            return None, "pouco do fim deste na fila para medir"
+            return None, "too little of the end of this one in the queue to measure"
         if xb is None or len(xb) < BATIDA_MIN_S * SR:
-            return None, "pouco do comeco da proxima para medir"
+            return None, "too little of the start of the next one to measure"
         ga, gb = batida.medir(xa, SR), batida.medir(xb, SR)
         if not ga.firme:
             # a rede, so antes do fade: com ele junto as batidas que vao sumindo puxam o andamento (o fim do
@@ -1806,11 +1806,11 @@ class Engine:
             if g is not None:
                 gb = g
         if not ga.firme:
-            return None, f"o fim deste sem batida firme, {ga.motivo}"
+            return None, f"the end of this one has no steady beat, {ga.motivo}"
         # a grade da proxima e a do comeco dela, que e o que toca junto: a musica pode mudar de andamento depois
         # (o Lose Yourself vai de 65 BPM no piano a 86 quando entra a guitarra, aos 31 s)
         if not gb.firme and fade:
-            return None, f"o comeco da proxima sem batida firme, {gb.motivo}"
+            return None, f"the start of the next one has no steady beat, {gb.motivo}"
         pa, pb = ga.periodo, gb.periodo
         a_longa, b_longa = t_a + ga.fase, t_b + gb.fase  # uma batida de cada grade dos 20 s (o bumbo escolheu o lado)
         intro = False
@@ -1830,12 +1830,12 @@ class Engine:
             if x is None:
                 t, x = _junta(blocos, t1, t2)
             if x is None or len(x) < FASE_MIN_S * SR:
-                return None, f"pouco {quem} para a fase"
+                return None, f"too little of {quem} for the phase"
             f, nota = batida.fase(x, SR, periodo, (longa - t) % periodo)
             if nota < NOTA_MIN:  # sem ataque claro para o pente (violao, piano, fala): as batidas da rede
                 f = _fase_rede(x, periodo, (longa - t) % periodo)
                 if f is None:
-                    return None, f"{quem} sem batida clara onde as duas soam juntas (pente {nota:.1f}, nem pela rede)"
+                    return None, f"{quem} has no clear beat where both play together (comb {nota:.1f}, nor by the network)"
             return t + f, None
 
         inicios = np.array([t for t, _ in blocos_a])
@@ -1855,39 +1855,39 @@ class Engine:
             return v, 0, int(round((t0 - v) * SR))
 
         if not fade and not intro:
-            a0, motivo = fase_em(blocos_a, fim - 8.0, fim, pa, "do fim deste", a_longa)
+            a0, motivo = fase_em(blocos_a, fim - 8.0, fim, pa, "the end of this one", a_longa)
             if a0 is None:
                 return None, motivo
             # a proxima no andamento deste, esticada como no fade: SEGURA_BATIDAS dele depois da primeira dela, e de
             # volta devagar ao dela. Sem batida firme no comeco dela, com os andamentos longe ou sem o comeco dela
             # decodificado para a volta, ela entra no andamento dela
             s = min((pb / (pa * m) for m in (0.5, 1.0, 2.0)), key=lambda v: abs(np.log(v)))
-            esticada, sem = None, f"andamentos longe, {(s - 1) * 100:+.1f}%"
+            esticada, sem = None, f"tempos far apart, {(s - 1) * 100:+.1f}%"
             if gb.firme and abs(s - 1) <= TEMPO_MAX:
                 esticada, sem = _esticar_comeco(blocos_b, ini, s, int((pb / s + SEGURA_BATIDAS * pa) * SR))
             if esticada is not None:
                 z, phi, ate, n_rampa = esticada
                 # a primeira batida dela no que vai tocar, ja esticado: o desvio da Rubber Band fica de fora da conta
-                tau, sem = fase_em(None, 0.0, None, pb / s, "do comeco da proxima", (b_longa - ini) / s,
+                tau, sem = fase_em(None, 0.0, None, pb / s, "the start of the next one", (b_longa - ini) / s,
                                    x=z[:int(6.0 * SR)])
                 if tau is None:
                     esticada = None
                 else:
                     if tau - pb / s >= -0.06:  # a primeira batida e o proprio comeco do som (ver o b1 abaixo)
                         tau -= pb / s
-                    quem = (f"a primeira batida da proxima ({gb.bpm:.1f} BPM, a {(s - 1) * 100:+.2f}% por "
-                            f"{SEGURA_BATIDAS} batidas deste e de volta em {n_rampa / SR:.1f} s)")
+                    quem = (f"the first beat of the next one ({gb.bpm:.1f} BPM, at {(s - 1) * 100:+.2f}% for "
+                            f"{SEGURA_BATIDAS} beats of this one and back in {n_rampa / SR:.1f} s)")
             if esticada is None:
-                b1, motivo2 = (fase_em(blocos_b, ini, ini + 6.0, pb, "do comeco da proxima", b_longa)
+                b1, motivo2 = (fase_em(blocos_b, ini, ini + 6.0, pb, "the start of the next one", b_longa)
                                if gb.firme else (None, gb.motivo))
                 if b1 is None:  # comeco sem batida firme (intro sem bateria): a primeira nota dela cai na batida dele
-                    b1, quem = ini, f"a primeira nota da proxima (o comeco dela sem batida firme: {motivo2})"
+                    b1, quem = ini, f"the first note of the next one (its start has no steady beat: {motivo2})"
                 else:
                     if b1 - pb >= ini - 0.06:
                         # a primeira batida e o proprio comeco do som: a grade da rede vem REDE_ATRASO antes dele, fora
                         # do trecho, e a fase caia uma batida adiante (o Mirage entrava meia batida fora do DATEN, 21/10)
                         b1 -= pb
-                    quem = f"a primeira batida da proxima ({gb.bpm:.1f} BPM, no andamento dela: {sem})"
+                    quem = f"the first beat of the next one ({gb.bpm:.1f} BPM, at its own tempo: {sem})"
                 tau = b1 - ini
             # a batida dele logo depois do fim do som (onde a passagem de volume viraria), e a proxima nunca
             # entra mais de FIM_CORTE_S antes desse fim: o que a passagem de volume toca, a no tempo nao corta
@@ -1913,7 +1913,7 @@ class Engine:
             if golpe is None:
                 v, silencio, pad = virada(t0)
             if v is None:
-                return None, "a batida da virada ja passou"
+                return None, "the beat of the switch already passed"
             if esticada is None:
                 ate = ini
                 cabeca = [(max(0.0, ini - pad / SR), np.zeros((pad, 2), np.float32))] if pad else []
@@ -1934,8 +1934,8 @@ class Engine:
                 e = _eco_corte(blocos_a, golpe, d)
                 if e is not None:
                     eco = (e, int(round((golpe - v) * SR)))
-                corte = (f"; corte no 1 do golpe final ({fim - golpe:.2f} s antes do fim do som)"
-                         + (f", eco de {d:.3f} s" if e is not None else ", sem o eco"))
+                corte = (f"; cut on the 1 of the final hit ({fim - golpe:.2f} s before the end of the sound)"
+                         + (f", {d:.3f} s echo" if e is not None else ", no echo"))
             # o visor: a proxima esticada pelas SEGURA_BATIDAS deste e de volta devagar (ou no andamento dela); a grade
             # deste vai ate a batida em que a primeira dela cai, mesmo passado o fim do som dele
             vb, sob, rampa, kr = ((1.0, 0.0, 0.0, 0.0) if esticada is None else
@@ -1946,21 +1946,21 @@ class Engine:
                      "grade_para": _visor_grade(gb, ini + vb * tau, ini, ini + BATIDA_S) if gb.firme else None}
             return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": silencio, "sai": sai, "segura": segura,
                     "entra": pad + int(ENTRA_SECO_S * SR), "grave": None, "periodo_saida": pa, "visor": visor,
-                    "eco": eco, "log": (f"final seco, {quem} em {b1:.2f} s, na grade deste ({ga.bpm:.1f} BPM), "
-                                        f"ela comeca em {t0:.3f} s{corte}")}, None
+                    "eco": eco, "log": (f"hard ending, {quem} at {b1:.2f} s, on this one's grid ({ga.bpm:.1f} BPM), "
+                                        f"it starts at {t0:.3f} s{corte}")}, None
         s, m = min(((pb / (pa * m), m) for m in (0.5, 1.0, 2.0)), key=lambda v: abs(np.log(v[0])))
         if abs(s - 1) > TEMPO_MAX:
             # a proxima fica em TEMPO_MAX e a que sai anda o resto, se couber em SAI_MAX
             sa = (1 + TEMPO_MAX if s > 1 else 1 - TEMPO_MAX) / s
             if abs(sa - 1) > SAI_MAX:
-                return None, f"andamentos longe, {ga.bpm:.1f} e {gb.bpm:.1f} BPM ({(s - 1) * 100:+.1f}%)"
+                return None, f"tempos far apart, {ga.bpm:.1f} and {gb.bpm:.1f} BPM ({(s - 1) * 100:+.1f}%)"
             nb, ini = self._entrada_dj(prox, ini, pa, pb, s * sa, b_longa)
             return self._plano_dois(blocos_a, blocos_b, ga, gb, s, sa, a_longa, b_longa, queda - nb * pa,
                                     (nb + DJ_SAI_BATIDAS) * pa, queda, ini, fase_em)
         troca_t = queda
         nb, ini = self._entrada_dj(prox, ini, pa, pb, s, b_longa)
         virar = troca_t - nb * pa
-        a0, motivo = fase_em(blocos_a, virar - FASE_ANTES_S, troca_t, pa, "do fim deste", a_longa)
+        a0, motivo = fase_em(blocos_a, virar - FASE_ANTES_S, troca_t, pa, "the end of this one", a_longa)
         if a0 is None:
             return None, motivo
         n_fade = int(DJ_SAI_BATIDAS * pa * SR)
@@ -1971,16 +1971,16 @@ class Engine:
             return None, motivo
         z, phi, ate, n_rampa = esticada
         # a fase dela sai do que vai tocar, ja esticado: o pequeno desvio da Rubber Band fica de fora da conta
-        tau, motivo = fase_em(None, 0.0, None, pb / s, "do comeco da proxima", (b_longa - ini) / s,
+        tau, motivo = fase_em(None, 0.0, None, pb / s, "the start of the next one", (b_longa - ini) / s,
                               x=z[:int(max(FASE_MIN_S, sobrepor + 1.0) * SR)])
         if tau is None:
             return None, motivo
         t0 = a0 + round((virar + tau - a0) / pa) * pa - tau  # a primeira batida dela cai numa dele
         v, silencio, pad = virada(t0)
         if v is None:
-            return None, "a batida da virada ja passou"
+            return None, "the beat of the switch already passed"
         if silencio:
-            return None, "a virada no tempo caiu depois do fim do arquivo"
+            return None, "the on-beat switch fell after the end of the file"
         # os graves trocam na batida dele mais perto da troca (o fim do corpo), em meia batida: ate la a proxima vem
         # sem grave, dali em diante e o que sai que fica sem (no callback); a que sai segue cheia ate ali e some em
         # DJ_SAI_BATIDAS; a proxima chega cheia no meio da troca
@@ -2006,10 +2006,10 @@ class Engine:
                  "grade_para": _visor_grade(gb, ini + s * tau, ini, ini + BATIDA_S)}
         return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": 0, "sai": sai, "entra": entra, "segura": segura,
                 "nivel": DJ_NIVEL_ANTES, "cheia": w1, "grave": (w0, w1), "periodo_saida": pa, "visor": visor,
-                "log": (f"{ga.bpm:.1f} BPM saindo, {gb.bpm:.1f} BPM entrando, a proxima a {s * 100 - 100:+.2f}% "
-                        f"por {nb} batidas antes da troca e {DJ_SAI_BATIDAS} depois, e de volta em {n_rampa / SR:.1f} s; "
-                        f"a primeira batida dela em {t0 + tau:.3f} s, na grade deste; os graves trocam em {tm:.2f} s "
-                        f"(o corpo deste acaba em {troca_t:.2f} s)")}, None
+                "log": (f"{ga.bpm:.1f} BPM going out, {gb.bpm:.1f} BPM coming in, the next one at {s * 100 - 100:+.2f}% "
+                        f"for {nb} beats before the swap and {DJ_SAI_BATIDAS} after, and back in {n_rampa / SR:.1f} s; "
+                        f"its first beat at {t0 + tau:.3f} s, on this one's grid; the bass swaps at {tm:.2f} s "
+                        f"(the body of this one ends at {troca_t:.2f} s)")}, None
 
     def _entrada_dj(self, prox, ini, pa, pb, s, b_longa):
         """Quantas batidas deste (nb) a proxima entra antes da troca, e de onde dela (ini). So a que comeca quase sem som
@@ -2037,8 +2037,8 @@ class Engine:
         comeco = corpo - nb * pa * s
         if comeco < ini - 1e-6:   # introducao curta: ela entra do comeco (o drop chega antes da troca)
             return nb, ini
-        print(f"passagem: a introducao da proxima vai ate {corpo:.2f} s; ela entra de {comeco:.2f} s, {nb} batidas "
-              f"antes da troca", file=sys.stderr, flush=True)
+        print(f"transition: the intro of the next one lasts until {corpo:.2f} s; it comes in from {comeco:.2f} s, {nb} beats "
+              f"before the swap", file=sys.stderr, flush=True)
         return nb, comeco
 
     def _plano_dois(self, blocos_a, blocos_b, ga, gb, s, sa, a_longa, b_longa, virar, sobrepor, baixo, ini, fase_em):
@@ -2053,10 +2053,10 @@ class Engine:
         # a rampa acaba antes do trecho onde a fase deste e medida: ali a velocidade ja e constante
         t_r = virar - FASE_ANTES_S - 0.5 - n_ra * (1 + sa) / 2 / SR
         if t_r < self.pos + SAI_FOLGA_S:
-            return None, f"sem tempo para a que sai mudar {(sa - 1) * 100:+.1f}% antes da virada"
+            return None, f"no time for the outgoing one to change {(sa - 1) * 100:+.1f}% before the switch"
         t_r = next((t for t, _ in blocos_a if t >= t_r), None)
         if t_r is None:
-            return None, "a rampa da que sai caiu depois do fim do arquivo"
+            return None, "the outgoing one's ramp fell after the end of the file"
         fim_arq = blocos_a[-1][0] + len(blocos_a[-1][1]) / SR
         _, xs_a = _junta(blocos_a, t_r, fim_arq)
         z_a, phi_a = esticar_saida(xs_a, sa, n_ra)
@@ -2068,7 +2068,7 @@ class Engine:
         P = pa / sa * SR  # o periodo deste na saida, em amostras
         i1, i2 = saida_a(virar - FASE_ANTES_S), saida_a(baixo)   # baixo aqui e a troca (o fim do corpo)
         perto = (saida_a(a_longa + round((virar - a_longa) / pa) * pa) - i1) / SR
-        f, motivo = fase_em(None, 0.0, None, P / SR, "do fim deste (ja mudado)", perto, x=z_a[i1:i2])
+        f, motivo = fase_em(None, 0.0, None, P / SR, "the end of this one (already changed)", perto, x=z_a[i1:i2])
         if f is None:
             return None, motivo
         a0 = i1 + f * SR  # uma batida deste, em amostras da saida dele
@@ -2078,7 +2078,7 @@ class Engine:
         if esticada is None:
             return None, motivo
         z, phi, ate, n_rampa = esticada
-        tau, motivo = fase_em(None, 0.0, None, pb / sb, "do comeco da proxima", (b_longa - ini) / sb,
+        tau, motivo = fase_em(None, 0.0, None, pb / sb, "the start of the next one", (b_longa - ini) / sb,
                               x=z[:int(max(FASE_MIN_S, n_sob / SR + 1.0) * SR)])
         if tau is None:
             return None, motivo
@@ -2087,7 +2087,7 @@ class Engine:
         t0 = int(round(a0 + round((i_v + tau * SR - a0) / P) * P - tau * SR))
         j, pad = divmod(t0, BLOCK)
         if j * BLOCK >= len(z_a):
-            return None, "a virada no tempo caiu depois do fim do arquivo"
+            return None, "the on-beat switch fell after the end of the file"
         v = t_r + phi_a[j * BLOCK] / SR
         tm = a0 + round((saida_a(baixo) - a0) / P) * P  # a troca de grave na batida deste mais perto da troca
         w0 = max(pad, pad + int(tm - t0 - P / 4))
@@ -2117,12 +2117,12 @@ class Engine:
         return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": 0, "sai": sai, "entra": entra, "segura": segura,
                 "nivel": DJ_NIVEL_ANTES, "cheia": w1, "grave": (w0, w1), "sai_q": (t_r, novos), "periodo_saida": P / SR,
                 "visor": visor,
-                "log": (f"{ga.bpm:.1f} BPM saindo, {gb.bpm:.1f} BPM entrando, longe {(s - 1) * 100:+.1f}%: a que sai a "
-                        f"{(sa - 1) * 100:+.2f}% em {n_ra / SR:.0f} s desde {t_r:.2f} s, a proxima a "
-                        f"{(sb - 1) * 100:+.2f}% ate o fim da sobreposicao e de volta em {n_rampa / SR:.1f} s, a "
-                        f"primeira batida dela na de {t_r + phi_a[min(len(phi_a) - 1, int(t0 + tau * SR))] / SR:.3f} s "
-                        f"deste; os graves trocam "
-                        f"{(tm - t0) / SR:.2f} s depois da entrada")}, None
+                "log": (f"{ga.bpm:.1f} BPM going out, {gb.bpm:.1f} BPM coming in, {(s - 1) * 100:+.1f}% apart: the outgoing one at "
+                        f"{(sa - 1) * 100:+.2f}% in {n_ra / SR:.0f} s from {t_r:.2f} s, the next one at "
+                        f"{(sb - 1) * 100:+.2f}% until the end of the overlap and back in {n_rampa / SR:.1f} s, "
+                        f"its first beat on this one's beat at {t_r + phi_a[min(len(phi_a) - 1, int(t0 + tau * SR))] / SR:.3f} s; "
+                        f"the bass swaps "
+                        f"{(tm - t0) / SR:.2f} s after it comes in")}, None
 
     def _vira(self):
         """No callback de saida: a proxima vai para o prato; o que sai segue por baixo o tempo da
@@ -2203,7 +2203,7 @@ class Engine:
                 if self._onda_viva(iid):
                     self._onda_arquivo(iid, path, dur)
             except Exception as ex:  # noqa: BLE001 - sem a onda, o visor fica so com a linha do meio
-                print(f"visor: nao li a onda de {iid}: {ex!r}", file=sys.stderr, flush=True)
+                print(f"waveform: couldn't read the waveform of {iid}: {ex!r}", file=sys.stderr, flush=True)
             finally:
                 with self._olock:
                     self._onda_lendo.discard(iid)
@@ -2569,14 +2569,14 @@ class MockEngine(Engine):
                 sob, t0 = 6.0, max(self.pos + 1.0, dur - 8.0)
                 visor = {"no_tempo": False, "v": t0, "t0": t0, "ini": ini, "va": 1.0, "vb": 1.0, "sob": 0.0,
                          "rampa": 0.0, "k": 0.0, "sai": sob, "entra": sob, "grave": None, "grade_de": None,
-                         "grade_para": None, "motivo": (f"andamentos longe, {bpm_a:.1f} e {bpm_b:.1f} BPM"
-                                                        if abs(s - 1) > TEMPO_MAX else "a batida da virada ja passou")}
+                         "grade_para": None, "motivo": (f"tempos far apart, {bpm_a:.1f} and {bpm_b:.1f} BPM"
+                                                        if abs(s - 1) > TEMPO_MAX else "the beat of the switch already passed")}
             self._sobrepor = self._entrar = int(sob * SR)
             self._grave = None
             self._virar_em = t0 - BLOCK / (2 * SR)
             self._visor_pas = _visor_publico(tr_atual, prox.track, visor)
-        print(f"passagem (mock): {tr_atual.get('title')!r} -> {prox.track.get('title')!r}: "
-              f"{'no tempo' if visor['no_tempo'] else 'so o cruzamento'}, vira em {t0:.2f} s", file=sys.stderr, flush=True)
+        print(f"transition (mock): {tr_atual.get('title')!r} -> {prox.track.get('title')!r}: "
+              f"{'on beat' if visor['no_tempo'] else 'crossfade only'}, switches at {t0:.2f} s", file=sys.stderr, flush=True)
 
     def _clock(self):
         out = np.zeros((BLOCK, 2), np.float32)
