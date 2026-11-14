@@ -11,7 +11,9 @@
    os do ingles, a reserva para chave que falte. Na marcacao: data-i18n="chave" (o texto) e data-i18n-title,
    data-i18n-aria-label e data-i18n-placeholder (os atributos), aplicados no comeco do script principal. No JS:
    I18N.t('chave', { param }) e, com plural, I18N.tp('chave', n) (as chaves chave.one e chave.other). O nome curto t
-   nao serve: ele ja e variavel local em mais de cem funcoes daqui */
+   nao serve: ele ja e variavel local em mais de cem funcoes daqui. O texto com negrito ou codigo dentro da frase
+   (<b>...</b>, <code>...</code>) vai pelo data-i18n ou pelo I18N.rico(elemento, 'chave', { param }); na marcacao, o
+   filho com data-i18n-lugar="nome" entra no {nome} da frase (a URL do celular, que o JS preenche depois) */
 const I18N = (() => {
   const d = window.I18N_DADOS || { lingua: 'pt_BR', textos: {}, reserva: {} };
   const lang = d.lingua.replace('_', '-');
@@ -37,15 +39,30 @@ const I18N = (() => {
   }
   // numero com as casas e a virgula (ou o ponto) da lingua
   const num = (v, casas) => v.toLocaleString(lang, { minimumFractionDigits: casas, maximumFractionDigits: casas });
+  // so <b> e <code> viram elemento, e sempre com textContent: nada dos arquivos passa por innerHTML. Um param que e
+  // um elemento (Node) entra inteiro no lugar do {param}
+  function rico(e, chave, params = {}) {
+    const troca = s => s.replace(/\{(\w+)\}/g, (m, k) => (tem(params, k) && !(params[k] instanceof Node) ? String(params[k]) : m));
+    e.replaceChildren(...bruto(chave).split(/(<(?:b|code)>[\s\S]*?<\/(?:b|code)>|\{\w+\})/).filter(Boolean).map(p => {
+      const tag = p.match(/^<(b|code)>([\s\S]*)<\/\1>$/);
+      if (tag) { const x = document.createElement(tag[1]); x.textContent = troca(tag[2]); return x; }
+      const k = (p.match(/^\{(\w+)\}$/) || [])[1];
+      return k && tem(params, k) && params[k] instanceof Node ? params[k] : document.createTextNode(troca(p));
+    }));
+  }
   const ATRIBUTOS = ['title', 'aria-label', 'placeholder'];
   function aplica(raiz = document) {
-    for (const e of raiz.querySelectorAll('[data-i18n]')) e.textContent = t(e.dataset.i18n);
+    for (const e of raiz.querySelectorAll('[data-i18n]')) {
+      const lugares = {};
+      for (const f of e.querySelectorAll('[data-i18n-lugar]')) lugares[f.dataset.i18nLugar] = f;
+      rico(e, e.dataset.i18n, lugares);
+    }
     for (const a of ATRIBUTOS) {
       for (const e of raiz.querySelectorAll(`[data-i18n-${a}]`)) e.setAttribute(a, t(e.getAttribute(`data-i18n-${a}`)));
     }
   }
   document.documentElement.lang = lang;
-  return { lingua: d.lingua, lang, t, tp, num, aplica };
+  return { lingua: d.lingua, lang, t, tp, num, rico, aplica };
 })();
 </script>
 <!-- a pagina aparece quando os textos ja estao no lugar (o I18N.aplica, no comeco do script principal) -->
@@ -4658,114 +4675,114 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     <h2 id="dc-t"></h2>
     <p id="dc-p"></p>
     <div class="rodape">
-      <button class="btn" value="nao" id="dc-nao">Cancelar</button>
-      <button class="btn perigo" value="sim" id="dc-sim">Confirmar</button>
+      <button class="btn" value="nao" id="dc-nao" data-i18n="dialog.cancel"></button>
+      <button class="btn perigo" value="sim" id="dc-sim" data-i18n="dialog.confirm"></button>
     </div>
   </form>
 </dialog>
 
 <dialog id="dlg-nome" aria-labelledby="dn-t">
   <form method="dialog" class="dlg" id="form-nome">
-    <h2 id="dn-t">Renomear disco</h2>
-    <label class="campo">Nome na prateleira<input type="text" id="dn-in" maxlength="200" required></label>
+    <h2 id="dn-t" data-i18n="rename.title"></h2>
+    <label class="campo"><span data-i18n="rename.label"></span><input type="text" id="dn-in" maxlength="200" required></label>
     <div class="rodape">
-      <button class="btn" type="button" id="dn-nao">Cancelar</button>
-      <button class="btn" value="sim" id="dn-ok">Salvar nome</button>
+      <button class="btn" type="button" id="dn-nao" data-i18n="dialog.cancel"></button>
+      <button class="btn" value="sim" id="dn-ok" data-i18n="rename.save"></button>
     </div>
   </form>
 </dialog>
 
 <dialog id="dlg-disp" aria-labelledby="dd-t">
   <form method="dialog" class="dlg">
-    <h2 id="dd-t">Microfone e fone</h2>
-    <label class="campo">Microfone (a sua voz)
+    <h2 id="dd-t" data-i18n="top.devices"></h2>
+    <label class="campo"><span data-i18n="devices.micLabel"></span>
       <select id="dd-mic"></select>
       <span class="em-uso" id="dd-mic-uso"></span>
     </label>
-    <label class="campo">Fone (onde você ouve o som)
+    <label class="campo"><span data-i18n="devices.monitorLabel"></span>
       <select id="dd-mon"></select>
       <span class="em-uso" id="dd-mon-uso"></span>
     </label>
     <p class="em-uso" id="dd-saida"></p>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
-      <span>No VRChat, o microfone precisa ser <b>CABLE Output (VB-Audio Virtual Cable)</b>. É por ele que o jogo recebe a sua voz e o som.</span></div>
+      <span data-i18n="devices.vrchatHint"></span></div>
     <p class="msg-dlg" id="dd-msg" role="status"></p>
-    <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
+    <div class="rodape"><button class="btn" value="ok" data-i18n="nav.close"></button></div>
   </form>
 </dialog>
 
 <!-- boas-vindas: o passo a passo da primeira vez no PC (GET /api/boas-vindas); o cabo e os dispositivos saem do JS -->
 <dialog id="dlg-boas" aria-labelledby="db-t">
   <form method="dialog" class="dlg">
-    <h2 id="db-t" tabindex="-1" autofocus>Boas-vindas à Vitrola</h2>
-    <p>A Vitrola toca música no microfone do VRChat, junto com a sua voz. Confira estes passos uma vez e pronto.</p>
+    <h2 id="db-t" tabindex="-1" autofocus data-i18n="welcome.title"></h2>
+    <p data-i18n="welcome.intro"></p>
     <ol class="boas-passos">
       <li>
-        <h3>O cabo de áudio</h3>
-        <p>O VB-Cable leva o som da Vitrola para o microfone do jogo. É gratuito, da VB-Audio.</p>
-        <p class="boas-status"><span class="lampada" id="db-cabo-l" aria-hidden="true"></span><span id="db-cabo">Conferindo se ele está instalado.</span></p>
+        <h3 data-i18n="welcome.cable.title"></h3>
+        <p data-i18n="welcome.cable.text"></p>
+        <p class="boas-status"><span class="lampada" id="db-cabo-l" aria-hidden="true"></span><span id="db-cabo" data-i18n="welcome.cable.checking"></span></p>
         <div class="boas-falta" id="db-cabo-falta" hidden>
-          <p>Na página do VB-Cable, baixe o pacote para Windows (.zip) e extraia. Clique com o botão direito em <b>VBCABLE_Setup_x64.exe</b>, escolha <b>Executar como administrador</b> e clique em <b>Install Driver</b>. Se ele não aparecer aqui depois, reinicie o PC.</p>
-          <a class="btn" href="https://vb-audio.com/Cable/" target="_blank" rel="noopener">Abrir a página do VB-Cable</a>
+          <p data-i18n="welcome.cable.howTo"></p>
+          <a class="btn" href="https://vb-audio.com/Cable/" target="_blank" rel="noopener" data-i18n="welcome.cable.openPage"></a>
         </div>
       </li>
       <li>
-        <h3>O seu microfone e o seu fone</h3>
-        <p>A sua voz sai do microfone, e você ouve a música no fone.</p>
-        <p class="boas-status"><span class="lampada" id="db-disp-l" aria-hidden="true"></span><span id="db-disp">Lendo os dispositivos do Windows.</span></p>
-        <button class="btn" type="button" id="db-trocar">Trocar</button>
+        <h3 data-i18n="welcome.devices.title"></h3>
+        <p data-i18n="welcome.devices.text"></p>
+        <p class="boas-status"><span class="lampada" id="db-disp-l" aria-hidden="true"></span><span id="db-disp" data-i18n="devices.reading"></span></p>
+        <button class="btn" type="button" id="db-trocar" data-i18n="welcome.devices.change"></button>
       </li>
       <li>
-        <h3>No VRChat</h3>
-        <p>Nas configurações de áudio do jogo, escolha <b>CABLE Output (VB-Audio Virtual Cable)</b> como microfone.</p>
+        <h3 data-i18n="welcome.vrchat.title"></h3>
+        <p data-i18n="welcome.vrchat.text"></p>
       </li>
       <li>
-        <h3>O primeiro disco</h3>
-        <p>Busque no YouTube ou cole um link na busca, no alto da tela.</p>
-        <button class="btn" value="buscar">Buscar agora</button>
+        <h3 data-i18n="welcome.first.title"></h3>
+        <p data-i18n="welcome.first.text"></p>
+        <button class="btn" value="buscar" data-i18n="welcome.first.search"></button>
       </li>
       <li>
-        <h3>O celular, se quiser</h3>
-        <p>No mesmo Wi-Fi do PC, o celular vira um controle da Vitrola. Dá para conectar depois, no botão Celular.</p>
-        <button class="btn" type="button" id="db-cel">Conectar o celular</button>
+        <h3 data-i18n="welcome.phone.title"></h3>
+        <p data-i18n="welcome.phone.text"></p>
+        <button class="btn" type="button" id="db-cel" data-i18n="welcome.phone.connect"></button>
       </li>
     </ol>
     <p class="msg-dlg" id="db-msg" role="status"></p>
-    <div class="rodape"><button class="btn" value="ok">Começar</button></div>
+    <div class="rodape"><button class="btn" value="ok" data-i18n="welcome.start"></button></div>
   </form>
 </dialog>
 
 <dialog id="dlg-cel" aria-labelledby="dcel-t">
   <form method="dialog" class="dlg">
-    <h2 id="dcel-t">Conectar celular</h2>
-    <p id="dcel-semrede" hidden>Este computador não está conectado a uma rede. Conecte-o ao Wi-Fi ou a um cabo de rede para exibir o QR code.</p>
+    <h2 id="dcel-t" data-i18n="top.connectPhone"></h2>
+    <p id="dcel-semrede" hidden data-i18n="phone.noNetwork"></p>
     <div class="cel-par" id="dcel-par" hidden>
       <div class="cel-qr" id="dcel-qr"></div>
       <div class="cel-passos">
-        <p class="cel-passo">Escaneie o QR code com a câmera do celular. O celular deve estar na mesma rede Wi-Fi deste computador.</p>
-        <p class="cel-passo">Ou acesse <span class="cel-url" id="dcel-url"></span> no navegador do celular e informe o código:</p>
+        <p class="cel-passo" data-i18n="phone.scan"></p>
+        <p class="cel-passo" data-i18n="phone.orOpen"><span class="cel-url" id="dcel-url" data-i18n-lugar="url"></span></p>
         <p class="cel-codigo cel-passo" id="dcel-cod"></p>
         <p class="em-uso" id="dcel-vale"></p>
-        <button class="btn" type="button" id="dcel-outro">Gerar novo código</button>
+        <button class="btn" type="button" id="dcel-outro" data-i18n="phone.newCode"></button>
       </div>
     </div>
     <p class="msg-dlg" id="dcel-msg" role="status"></p>
-    <h3>Dispositivos conectados</h3>
+    <h3 data-i18n="phone.connectedDevices"></h3>
     <ul class="cel-lista" id="dcel-lista"></ul>
-    <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
+    <div class="rodape"><button class="btn" value="ok" data-i18n="nav.close"></button></div>
   </form>
 </dialog>
 
 <dialog id="dlg-atualizar" aria-labelledby="da-t">
   <form method="dialog" class="dlg">
-    <h2 id="da-t">Versão nova</h2>
+    <h2 id="da-t" data-i18n="top.newVersion"></h2>
     <p id="da-p"></p>
     <ul class="notas-versao" id="da-notas" hidden></ul>
-    <div class="barra-baixa" id="da-barra" role="progressbar" aria-label="Download da versão nova" hidden></div>
+    <div class="barra-baixa" id="da-barra" role="progressbar" data-i18n-aria-label="update.progressLabel" hidden></div>
     <p class="msg-dlg" id="da-msg" role="status"></p>
     <div class="rodape">
-      <button class="btn" value="nao" id="da-nao">Agora não</button>
-      <button class="btn" type="button" id="da-ok">Baixar e instalar</button>
+      <button class="btn" value="nao" id="da-nao" data-i18n="update.notNow"></button>
+      <button class="btn" type="button" id="da-ok" data-i18n="update.download"></button>
     </div>
   </form>
 </dialog>
@@ -4774,20 +4791,20 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 
 <div class="fora" id="fora" hidden>
   <div class="cartao" role="alertdialog" aria-modal="true" aria-labelledby="fora-t" aria-describedby="fora-p">
-    <h2 id="fora-t"><span class="lampada" aria-hidden="true"></span><span id="fora-tt">A Vitrola não está respondendo</span></h2>
+    <h2 id="fora-t"><span class="lampada" aria-hidden="true"></span><span id="fora-tt" data-i18n="offline.notResponding"></span></h2>
     <p id="fora-p"></p>
-    <p class="tentando" id="fora-tentando">Tentando conectar de novo a cada poucos segundos. Esta página volta sozinha quando ela responder.</p>
+    <p class="tentando" id="fora-tentando" data-i18n="offline.retrying"></p>
   </div>
 </div>
 
 <div class="fora" id="tela-parear" hidden>
   <form class="cartao dlg" id="form-parear" role="dialog" aria-modal="true" aria-labelledby="pa-t" aria-describedby="pa-p" novalidate>
-    <h2 id="pa-t"><span class="lampada" aria-hidden="true"></span>Conectar à Vitrola</h2>
-    <p id="pa-desc" hidden>Este celular foi desconectado pelo computador.</p>
-    <p id="pa-p">No computador, abra a Vitrola e clique em <b>Celular</b>, no topo da tela. Escaneie o QR code exibido ou informe abaixo o código de 6 dígitos.</p>
-    <label class="campo">Código de conexão<input type="text" id="pa-in" inputmode="numeric" autocomplete="one-time-code" maxlength="7" spellcheck="false"></label>
+    <h2 id="pa-t"><span class="lampada" aria-hidden="true"></span><span data-i18n="pair.title"></span></h2>
+    <p id="pa-desc" hidden data-i18n="pair.disconnected"></p>
+    <p id="pa-p" data-i18n="pair.howTo"></p>
+    <label class="campo"><span data-i18n="pair.codeLabel"></span><input type="text" id="pa-in" inputmode="numeric" autocomplete="one-time-code" maxlength="7" spellcheck="false"></label>
     <p class="msg-dlg" id="pa-msg" role="status"></p>
-    <div class="rodape"><button class="btn" type="submit" id="pa-ok">Conectar</button></div>
+    <div class="rodape"><button class="btn" type="submit" id="pa-ok" data-i18n="pair.connect"></button></div>
   </form>
 </div>
 
@@ -4899,13 +4916,15 @@ async function api(method, path, data) {
       body: data ? JSON.stringify(data) : undefined,
     });
   } catch (e) {
-    throw new Error('A Vitrola não respondeu. Confira se ela está ligada.');
+    // status 0: nenhuma resposta (a busca testa o status, e nao o texto)
+    const x = new Error(I18N.t('error.noResponse')); x.status = 0;
+    throw x;
   }
   let j = null;
   try { j = await r.json(); } catch (e) { /* corpo vazio */ }
   if (!r.ok || (j && j.ok === false)) {
     if (r.status === 401 && j && j.parear) pedirPareamento(j.desconectado);
-    const msg = (j && j.error) || `A Vitrola respondeu com erro ${r.status}.`;
+    const msg = (j && j.error) || I18N.t('error.generic', { status: r.status });
     const e = new Error(ERROS[msg] || msg); e.status = r.status;
     throw e;
   }
@@ -6722,7 +6741,7 @@ function abrirPalco(on) {
   animarPalco();
   document.body.classList.toggle('com-palco', on);
   const p = $('#palco');
-  if (on) { p.setAttribute('role', 'dialog'); p.setAttribute('aria-modal', 'true'); p.setAttribute('aria-label', 'Toca-discos'); }
+  if (on) { p.setAttribute('role', 'dialog'); p.setAttribute('aria-modal', 'true'); p.setAttribute('aria-label', I18N.t('nav.deck')); }
   else { p.removeAttribute('role'); p.removeAttribute('aria-modal'); p.removeAttribute('aria-label'); }
   p.classList.remove('puxando'); p.style.transform = ''; $('#mini').style.opacity = '';
   for (const x of [$('.topo'), $('#mini')]) x.inert = on;
@@ -7466,7 +7485,7 @@ async function buscar(q) {
     S.busca.pedidos = POR_LEVA; S.busca.fim = !S.busca.itens.length;
   } catch (e) {
     if (seq !== S.buscaSeq || !S.busca) return;
-    S.busca.erro = e.message;
+    S.busca.erro = e.message; S.busca.semResposta = e.status === 0;
   }
   S.busca.carregando = false;
   desenharBusca();
@@ -7570,9 +7589,10 @@ function desenharBusca() {
   else if (b.erro) {
     av.classList.add('erro');
     const limite = /429|too many/i.test(b.erro);
-    const fora = /não respondeu/.test(b.erro);
+    const fora = b.semResposta;
     const doYoutube = /busca (no YouTube )?falhou/i.test(b.erro);
-    // os testes acima leem o erro do servidor, ainda em frase pronta em portugues (o PR 4 do I18N.md troca por chave);
+    // o do YouTube e o do limite leem o erro do servidor, ainda em frase pronta em portugues (o PR 4 do I18N.md troca
+    // por chave); o "nao respondeu" do YouTube que demorou fica sendo erro do YouTube, e nao da Vitrola fora do ar.
     // o espaco depois do negrito fica dentro dele, como sempre foi
     if (fora) {
       av.append(el('strong', null, I18N.t('search.error.offline') + ' '), document.createTextNode(I18N.t('search.error.offlineHint')));
@@ -8237,10 +8257,10 @@ function confirmar(titulo, texto, sim) {
   });
 }
 async function apagar(it) {
-  const ok = await confirmar(`Apagar “${it.title}”?`, 'O disco sai da prateleira e o arquivo de áudio é apagado do computador. Para ter de novo, será preciso baixar outra vez.', 'Apagar');
+  const ok = await confirmar(I18N.t('delete.title', { title: it.title }), I18N.t('delete.text'), I18N.t('menu.delete'));
   if (!ok) { focarDisco(it.id); return; }
   const vizinho = vizinhoDe(it.id);
-  try { await api('DELETE', `/api/library/${encodeURIComponent(it.id)}`); avisar('Disco apagado.'); focarDisco(vizinho); }
+  try { await api('DELETE', `/api/library/${encodeURIComponent(it.id)}`); avisar(I18N.t('delete.done')); focarDisco(vizinho); }
   catch (e) { avisar(e.message, true); focarDisco(it.id); }
 }
 function renomear(it) {
@@ -8251,7 +8271,7 @@ function renomear(it) {
     focarDisco(it.id);
     const novo = inp.value.trim();
     if (d.returnValue !== 'sim' || !novo || novo === it.title) return;
-    try { await api('PATCH', `/api/library/${encodeURIComponent(it.id)}`, { title: novo }); avisar('Nome trocado.'); }
+    try { await api('PATCH', `/api/library/${encodeURIComponent(it.id)}`, { title: novo }); avisar(I18N.t('rename.done')); }
     catch (e) { avisar(e.message, true); }
   }, { once: true });
   d.showModal();
@@ -8272,7 +8292,7 @@ $('#dn-nao').addEventListener('click', () => $('#dlg-nome').close('nao'));
 
 async function abrirDispositivos() {
   const d = $('#dlg-disp');
-  const msg = $('#dd-msg'); msg.className = 'msg-dlg'; msg.textContent = 'Lendo os dispositivos do Windows.';
+  const msg = $('#dd-msg'); msg.className = 'msg-dlg'; msg.textContent = I18N.t('devices.reading');
   $('#dd-mic').disabled = $('#dd-mon').disabled = true;
   d.showModal();
   try {
@@ -8294,26 +8314,26 @@ function preencherDispositivos(r) {
   const semCabo = n => !/cable/i.test(n);
   // o padrao que e o cabo cede ao primeiro microfone de verdade, como no motor
   const micPadrao = r.default_input && !semCabo(r.default_input) ? (r.inputs || []).find(semCabo) : r.default_input;
-  opcoes($('#dd-mic'), [['default', `Padrão do Windows (${micPadrao || 'nenhum'})`], ...(r.inputs || []).filter(semCabo).map(n => [n, n])], cur.mic || 'default', act.mic);
-  opcoes($('#dd-mon'), [['default', `Padrão do Windows (${r.default_output || 'nenhum'})`], ...(r.outputs || []).filter(semCabo).map(n => [n, n]), ['', 'Nenhum (o som não toca no seu fone)']], cur.monitor == null ? 'default' : cur.monitor, act.monitor);
+  opcoes($('#dd-mic'), [['default', I18N.t('devices.windowsDefault', { name: micPadrao || I18N.t('devices.none') })], ...(r.inputs || []).filter(semCabo).map(n => [n, n])], cur.mic || 'default', act.mic);
+  opcoes($('#dd-mon'), [['default', I18N.t('devices.windowsDefault', { name: r.default_output || I18N.t('devices.none') })], ...(r.outputs || []).filter(semCabo).map(n => [n, n]), ['', I18N.t('devices.noMonitor')]], cur.monitor == null ? 'default' : cur.monitor, act.monitor);
   $('#dd-mic').disabled = $('#dd-mon').disabled = false;
   mostrarAtivos(act);
 }
 function mostrarAtivos(act) {
-  $('#dd-mic-uso').textContent = `Em uso agora: ${act.mic || 'nenhum'}`;
-  $('#dd-mon-uso').textContent = act.monitor ? `Em uso agora: ${act.monitor}` : 'Em uso agora: nenhum, o som não toca no seu fone';
-  $('#dd-saida').textContent = `Saída para o jogo: ${act.out || 'nenhuma'}`;
+  $('#dd-mic-uso').textContent = I18N.t('devices.inUse', { name: act.mic || I18N.t('devices.none') });
+  $('#dd-mon-uso').textContent = act.monitor ? I18N.t('devices.inUse', { name: act.monitor }) : I18N.t('devices.inUseNoMonitor');
+  $('#dd-saida').textContent = I18N.t('devices.gameOutput', { name: act.out || I18N.t('devices.noneOutput') });
 }
 async function trocarDispositivo(k, v) {
-  const msg = $('#dd-msg'); msg.className = 'msg-dlg'; msg.textContent = 'Trocando e reabrindo o áudio.';
+  const msg = $('#dd-msg'); msg.className = 'msg-dlg'; msg.textContent = I18N.t('devices.switching');
   $('#dd-mic').disabled = $('#dd-mon').disabled = true;
   try {
     await api('POST', '/api/devices', { [k]: v });
     const r = await api('GET', '/api/devices');
     preencherDispositivos(r);
-    msg.textContent = 'Trocado.';
+    msg.textContent = I18N.t('devices.switched');
   } catch (e) {
-    msg.className = 'msg-dlg erro'; msg.textContent = `Não deu para trocar: ${e.message}`;
+    msg.className = 'msg-dlg erro'; msg.textContent = I18N.t('devices.switchFailed', { reason: e.message });
     $('#dd-mic').disabled = $('#dd-mon').disabled = false;
   }
 }
@@ -8321,7 +8341,7 @@ $('#dd-mic').addEventListener('change', e => trocarDispositivo('mic', e.target.v
 $('#dd-mon').addEventListener('change', e => trocarDispositivo('monitor', e.target.value));
 
 async function desligar() {
-  const ok = await confirmar('Desligar a Vitrola?', 'A sua voz para de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade.', 'Desligar');
+  const ok = await confirmar(I18N.t('shutdown.title'), I18N.t('shutdown.text'), I18N.t('top.shutdown'));
   if (!ok) return;
   try { await api('POST', '/api/shutdown'); S.desligado = true; mostrarFora(); }
   catch (e) { avisar(e.message, true); }
@@ -8333,7 +8353,7 @@ let celT = 0, celQR = '', celIds = null, celLista = '';
 async function abrirCelular() {
   const msg = $('#dcel-msg');
   celIds = null;
-  msg.className = 'msg-dlg'; msg.textContent = 'Gerando código...';
+  msg.className = 'msg-dlg'; msg.textContent = I18N.t('phone.generating');
   $('#dlg-cel').showModal();
   if (await atualizarCelular()) msg.textContent = '';
   conferirCelular();
@@ -8358,10 +8378,13 @@ async function atualizarCelular() {
   const vale = $('#dcel-vale');
   vale.classList.toggle('erro', r.queimado);
   vale.textContent = r.queimado
-    ? 'Código bloqueado após várias tentativas incorretas. Gere um novo código.'
-    : `Válido por ${Math.max(1, Math.ceil(r.vale_s / 60))} min. Uso único.`;
+    ? I18N.t('phone.blocked')
+    : I18N.t('phone.valid', { n: Math.max(1, Math.ceil(r.vale_s / 60)) });
   const chaveQR = r.qr ? r.qr.join('') : '';
-  if (chaveQR !== celQR) { celQR = chaveQR; $('#dcel-qr').innerHTML = r.qr ? desenharQR(r.qr) : ''; }
+  if (chaveQR !== celQR) {
+    celQR = chaveQR; $('#dcel-qr').innerHTML = r.qr ? desenharQR(r.qr) : '';
+    const svg = $('#dcel-qr svg'); if (svg) svg.setAttribute('aria-label', I18N.t('phone.qrLabel'));   // texto fora do innerHTML
+  }
   desenharCelulares(r.celulares || []);
   return true;
 }
@@ -8378,29 +8401,29 @@ function desenharQR(linhas) {
       x = f;
     }
   });
-  return `<svg width="${lado * px}" height="${lado * px}" viewBox="0 0 ${lado} ${lado}" shape-rendering="crispEdges" role="img" aria-label="QR code para conectar o celular à Vitrola"><rect width="${lado}" height="${lado}" fill="#F4EFE6"/><path fill="#2A1812" d="${d}"/></svg>`;
+  return `<svg width="${lado * px}" height="${lado * px}" viewBox="0 0 ${lado} ${lado}" shape-rendering="crispEdges" role="img"><rect width="${lado}" height="${lado}" fill="#F4EFE6"/><path fill="#2A1812" d="${d}"/></svg>`;
 }
 function quando(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return '';
-  if (d.toDateString() === new Date().toDateString()) return `hoje às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-  return `em ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
+  if (d.toDateString() === new Date().toDateString()) return I18N.t('phone.today', { time: d.toLocaleTimeString(I18N.lang, { hour: '2-digit', minute: '2-digit' }) });
+  return I18N.t('phone.onDate', { date: d.toLocaleDateString(I18N.lang, { day: '2-digit', month: '2-digit' }) });
 }
 function desenharCelulares(lista) {
   const ids = lista.map(c => c.id);
   const novo = celIds && lista.find(c => !celIds.includes(c.id));
-  if (novo) { const m = $('#dcel-msg'); m.className = 'msg-dlg'; m.textContent = `${novo.nome} conectado com sucesso.`; }
+  if (novo) { const m = $('#dcel-msg'); m.className = 'msg-dlg'; m.textContent = I18N.t('phone.connectedOk', { name: novo.nome }); }
   celIds = ids;
   const ul = $('#dcel-lista'), v = JSON.stringify(lista);
   if (v === celLista) return;   // a cada 2 s: so redesenha quando muda (o foco num Desconectar nao pula)
   celLista = v;
   ul.replaceChildren();
-  if (!lista.length) { ul.append(el('li', 'cel-vazio', 'Nenhum dispositivo conectado.')); return; }
+  if (!lista.length) { ul.append(el('li', 'cel-vazio', I18N.t('phone.noDevices'))); return; }
   for (const c of lista) {
     const li = el('li'), quem = el('span', 'cel-quem');
-    quem.append(el('span', 'cel-nome', c.nome), el('span', 'cel-quando', `Conectado ${quando(c.desde)} · Último acesso ${quando(c.visto)}`));
-    const b = el('button', 'btn', 'Desconectar'); b.type = 'button'; b.dataset.id = c.id;
-    b.setAttribute('aria-label', `Desconectar ${c.nome}, conectado ${quando(c.desde)}`);
+    quem.append(el('span', 'cel-nome', c.nome), el('span', 'cel-quando', I18N.t('phone.since', { when: quando(c.desde), seen: quando(c.visto) })));
+    const b = el('button', 'btn', I18N.t('phone.disconnect')); b.type = 'button'; b.dataset.id = c.id;
+    b.setAttribute('aria-label', I18N.t('phone.disconnectLabel', { name: c.nome, when: quando(c.desde) }));
     li.append(quem, b);
     ul.append(li);
   }
@@ -8411,7 +8434,7 @@ $('#dcel-lista').addEventListener('click', async e => {
   b.disabled = true;
   try {
     await api('DELETE', `/api/pareamento/${encodeURIComponent(b.dataset.id)}`);
-    msg.className = 'msg-dlg'; msg.textContent = 'Dispositivo desconectado. Para usá-lo novamente, será necessário um novo código.';
+    msg.className = 'msg-dlg'; msg.textContent = I18N.t('phone.disconnected');
     await atualizarCelular();
   } catch (err) { msg.className = 'msg-dlg erro'; msg.textContent = err.message; b.disabled = false; }
 });
@@ -8428,7 +8451,7 @@ const NO_PC = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
 function desenharAtualizacao() {
   const a = S.state && S.state.atualizacao, b = $('#b-atualizar');
   b.hidden = !(NO_PC && a && a.nova);
-  if (a && a.nova) b.title = `Versão nova: ${a.nova}`;
+  if (a && a.nova) b.title = I18N.t('update.titleVersion', { version: a.nova });
   if ($('#dlg-atualizar').open && a) pintarAtualizacao(a);
 }
 function pintarAtualizacao(a) {
@@ -8437,16 +8460,16 @@ function pintarAtualizacao(a) {
   barra.style.setProperty('--p', a.progresso || 0);
   barra.setAttribute('aria-valuenow', Math.round((a.progresso || 0) * 100));
   ok.disabled = ['baixando', 'consultando', 'instalando'].includes(a.estado);
-  ok.textContent = a.estado === 'pronta' ? 'Instalar agora' : a.estado === 'baixando' ? `Baixando ${Math.round((a.progresso || 0) * 100)}%` : 'Baixar e instalar';
+  ok.textContent = a.estado === 'pronta' ? I18N.t('update.install') : a.estado === 'baixando' ? I18N.t('update.downloading', { pct: Math.round((a.progresso || 0) * 100) }) : I18N.t('update.download');
   msg.className = 'msg-dlg' + (a.erro ? ' erro' : '');
-  msg.textContent = a.erro || (a.estado === 'pronta' ? 'O Windows vai pedir permissão para instalar. A Vitrola fecha e abre de novo sozinha.' : '');
+  msg.textContent = a.erro || (a.estado === 'pronta' ? I18N.t('update.windowsAsks') : '');
 }
 async function abrirAtualizacao() {
   let a;
   try { a = await api('GET', '/api/atualizacao'); } catch (e) { avisar(e.message, true); return; }
-  if (!a.nova) { avisar('Não há versão nova agora.'); return; }
-  $('#da-t').textContent = `Versão nova: ${a.nova.versao}`;
-  $('#da-p').textContent = `Você está na ${a.versao}. O download tem ${Math.max(1, Math.round(a.nova.tamanho / 1048576))} MB, e a música para durante a instalação.`;
+  if (!a.nova) { avisar(I18N.t('update.none')); return; }
+  $('#da-t').textContent = I18N.t('update.titleVersion', { version: a.nova.versao });
+  $('#da-p').textContent = I18N.t('update.info', { current: a.versao, mb: Math.max(1, Math.round(a.nova.tamanho / 1048576)) });
   const ul = $('#da-notas');
   ul.replaceChildren(...a.nova.notas.map(n => el('li', null, n)));
   ul.hidden = !a.nova.notas.length;
@@ -8469,8 +8492,8 @@ $('#da-ok').addEventListener('click', async () => {
 });
 /* o instalador fecha a Vitrola: no lugar do fora do ar, a tela diz que ela volta sozinha */
 function mostrarAtualizando(f) {
-  $('#fora-tt').textContent = 'Atualizando a Vitrola';
-  $('#fora-p').textContent = `O instalador está pondo a versão ${S.atualizando}. A Vitrola fecha e abre de novo sozinha, em menos de um minuto, e esta página volta junto.`;
+  $('#fora-tt').textContent = I18N.t('update.updatingTitle');
+  $('#fora-p').textContent = I18N.t('update.updatingText', { version: S.atualizando });
   $('#lamp').className = 'lampada alerta piscando';
   f.hidden = false;
 }
@@ -8549,11 +8572,11 @@ function mostrarFora() {
   fecharMenu(false);
   if (S.atualizando) { mostrarAtualizando(f); return; }
   if (S.desligado) {
-    $('#fora-tt').textContent = 'Vitrola desligada';
-    $('#fora-p').innerHTML = 'A sua voz parou de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade. Para ligar de novo, abra a Vitrola no PC, pelo menu Iniciar.';
+    $('#fora-tt').textContent = I18N.t('offline.offTitle');
+    I18N.rico($('#fora-p'), 'offline.offText');
   } else {
-    $('#fora-tt').textContent = S.jaConectou ? 'A Vitrola parou de responder' : 'A Vitrola não está respondendo';
-    $('#fora-p').innerHTML = 'O servidor caiu ou foi desligado, e a sua voz não está passando pelo cabo. Para ligar, abra a Vitrola no PC, pelo menu Iniciar. Se ela já estiver aberta, o motivo aparece no log em <code>%LOCALAPPDATA%\\Vitrola\\logs</code>.';
+    $('#fora-tt').textContent = I18N.t(S.jaConectou ? 'offline.stopped' : 'offline.notResponding');
+    I18N.rico($('#fora-p'), 'offline.downText', { folder: '%LOCALAPPDATA%\\Vitrola\\logs' });
   }
   $('#lamp').className = 'lampada'; $('#conexao').textContent = S.desligado ? I18N.t('app.off') : I18N.t('app.offline');
   $('#conexao').classList.remove('sr');
@@ -8579,20 +8602,20 @@ function pedirPareamento(desconectado) {
 }
 async function parear(codigo) {
   const msg = $('#pa-msg');
-  msg.className = 'msg-dlg'; msg.textContent = 'Conectando...';
+  msg.className = 'msg-dlg'; msg.textContent = I18N.t('pair.connecting');
   $('#pa-ok').disabled = true;
   try { await api('POST', '/api/parear', { codigo }); }
   catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; $('#pa-ok').disabled = false; return; }
   $('#pa-ok').disabled = false;
   S.pareando = false;
   $('#tela-parear').hidden = true; $('#pa-in').value = '';
-  avisar('Celular conectado com sucesso.');
+  avisar(I18N.t('pair.done'));
   carregar();
 }
 $('#form-parear').addEventListener('submit', e => {
   e.preventDefault();
   const c = $('#pa-in').value.replace(/\D/g, '');
-  if (c.length !== 6) { const m = $('#pa-msg'); m.className = 'msg-dlg erro'; m.textContent = 'Informe o código de 6 dígitos.'; return; }
+  if (c.length !== 6) { const m = $('#pa-msg'); m.className = 'msg-dlg erro'; m.textContent = I18N.t('pair.needCode'); return; }
   $('#pa-in').blur();   // fecha o teclado: a resposta aparece embaixo do campo
   parear(c);
 });
@@ -8617,12 +8640,12 @@ async function conferirBoasVindas() {
     const r = await api('GET', '/api/devices'), act = r.active || {};
     const cabo = (r.outputs || []).some(n => /cable input/i.test(n));
     $('#db-cabo-l').className = `lampada ${cabo ? 'acesa' : 'alerta'}`;
-    $('#db-cabo').textContent = cabo ? 'Instalado.' : 'Ainda não está instalado.';
+    $('#db-cabo').textContent = I18N.t(cabo ? 'welcome.cable.installed' : 'welcome.cable.missing');
     $('#db-cabo-falta').hidden = cabo;
     $('#db-disp-l').className = `lampada ${act.mic ? 'acesa' : 'alerta'}`;
-    if (act.mic) $('#db-disp').replaceChildren(el('span', null, `Microfone: ${act.mic}`),
-                                                el('span', null, `Fone: ${act.monitor || 'nenhum, a música não toca no seu fone'}`));
-    else $('#db-disp').textContent = 'Não achei nenhum microfone. Conecte um e ele aparece aqui.';
+    if (act.mic) $('#db-disp').replaceChildren(el('span', null, I18N.t('welcome.devices.mic', { name: act.mic })),
+                                                el('span', null, I18N.t('welcome.devices.monitor', { name: act.monitor || I18N.t('welcome.devices.noMonitor') })));
+    else $('#db-disp').textContent = I18N.t('welcome.devices.noMic');
     msg.textContent = '';
   } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
   if (d.open) boasT = setTimeout(conferirBoasVindas, 3000);
