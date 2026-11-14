@@ -106,7 +106,9 @@ for nome, m in (("de outro app", manifesto(app="outro")), ("de outro formato", m
                 ("versao fora do formato", manifesto(versao="1.0")),
                 ("instalador sem hash", manifesto(instalador={"url": f"{base}/setup.exe", "tamanho": 1})),
                 ("caminho que sai da pasta", manifesto(arquivos=[{"caminho": "../../x.exe", "sha256": SHA, "tamanho": 1}])),
-                ("caminho absoluto", manifesto(arquivos=[{"caminho": "C:/Windows/x.exe", "sha256": SHA, "tamanho": 1}]))):
+                ("caminho absoluto", manifesto(arquivos=[{"caminho": "C:/Windows/x.exe", "sha256": SHA, "tamanho": 1}])),
+                ("com as notas em ingles fora de lista", manifesto(notas_en="A new thing.")),
+                ("com notas em ingles demais", manifesto(notas_en=["A new thing."] * 31))):
     dd = json.dumps(m).encode()
     recusa(f"manifesto {nome}", dd, assina(dd))
 atu.SO_HTTPS = True
@@ -119,6 +121,14 @@ for nome, v, espera in (("mais velha", "0.0.1", False), ("igual", VERSAO, False)
     a = atu.Atualizacao(ativa=True)
     caso(f"versao {nome} ({v})", a.consultar() is espera and (a.publico()["nova"] is not None) is espera)
 caso("sem endereco e chave, nao consulta", atu.Atualizacao().ativa is False and atu.Atualizacao().consultar() is False)
+
+print("--- as notas nas duas linguas")
+# as em portugues no "notas", que as versoes de antes leem, e as em ingles no "notas_en"; a tela escolhe pela lingua dela
+for nome, muda, espera in (("so em portugues", {}, {"pt_BR": ["Uma coisa nova."], "en": []}),
+                           ("nas duas", {"notas_en": ["A new thing."]}, {"pt_BR": ["Uma coisa nova."], "en": ["A new thing."]})):
+    publica(manifesto(**muda))
+    a = atu.Atualizacao(ativa=True)
+    caso(f"notas {nome}", a.consultar() and a.publico()["nova"]["notas"] == espera, a.publico()["nova"])
 
 print("--- a proxima consulta")
 publica(manifesto())

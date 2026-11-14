@@ -13,10 +13,6 @@ from pathlib import Path
 
 LINGUAS = ("en", "pt_BR")
 RESERVA = "en"
-# ate o PR 7 do I18N.md a lingua do navegador nao conta: todo mundo ve portugues, fora o ?lang= dos testes. Assim uma
-# versao publicada no meio da traducao nunca mostra metade da tela em ingles
-DETECTA = False
-PADRAO = "pt_BR"
 MARCA = "<!-- i18n -->"
 
 
@@ -68,16 +64,22 @@ def preferidas(accept_language):
 
 
 def escolher(pedida=None, accept_language=""):
-    """A lingua da pagina: a do ?lang=, se for uma que temos; senao (com o DETECTA) a primeira que temos na
-    preferencia do navegador, ou o ingles; sem o DETECTA, o PADRAO."""
+    """A lingua da pagina: a do ?lang=, se for uma que temos; senao a primeira que temos na preferencia do navegador
+    (cada aparelho na sua), ou o ingles."""
     if (lingua := lingua_de(pedida)):
         return lingua
-    if not DETECTA:
-        return PADRAO
     for codigo in preferidas(accept_language):
         if (lingua := lingua_de(codigo)):
             return lingua
     return RESERVA
+
+
+def na_lingua(valor, lingua):
+    """Um campo que pode vir por lingua ({"en": ..., "pt_BR": ...}, como no meta.json de um tema): o da lingua, o do
+    ingles, ou o primeiro que houver. O que nao e por lingua volta como veio."""
+    if not isinstance(valor, dict):
+        return valor
+    return valor.get(lingua) or valor.get(RESERVA) or next(iter(valor.values()), "")
 
 
 def arquivo(pasta, lingua):

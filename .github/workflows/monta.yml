@@ -16,7 +16,11 @@ on:
   workflow_dispatch:
     inputs:
       notas:
-        description: Notas da versão, separadas por | (opcional; aparecem na tela de versão nova)
+        description: Notas da versão em português, separadas por | (opcional; aparecem na tela de versão nova)
+        required: false
+        default: ''
+      notas_en:
+        description: As mesmas notas em inglês, separadas por | (opcional; a tela em inglês mostra as em português sem elas)
         required: false
         default: ''
 
@@ -171,17 +175,22 @@ jobs:
         env:
           VERSAO: ${{ steps.congela.outputs.versao }}
           NOTAS: ${{ inputs.notas }}
+          NOTAS_EN: ${{ inputs.notas_en }}
         run: |
           $saida = 'instalador\saida'
           $deno = (Get-ChildItem instalador\vendor -Directory -Filter 'deno-*' | Select-Object -First 1).FullName
           $url = "https://github.com/ritmelli/ritmelli-releases/releases/download/v$env:VERSAO/Vitrola-$env:VERSAO-setup.exe"
           $args_ = @('--setup', "$saida\Vitrola-$env:VERSAO-setup.exe", '--url', $url, '--app', 'dist\vitrola',
                      '--bin', 'instalador\ffmpeg\bin', '--bin', $deno, '--saida', $saida)
-          $notas = @($env:NOTAS -split '\|' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-          if ($notas.Count) {
-            $arq = Join-Path $env:RUNNER_TEMP 'notas.txt'
-            $notas | Set-Content -Path $arq -Encoding utf8
-            $args_ += @('--notas', $arq)
+          # as notas em português e as em inglês, cada uma num arquivo, uma por linha
+          foreach ($n in @(@('NOTAS', 'notas', '--notas'), @('NOTAS_EN', 'notas_en', '--notas-en'))) {
+            # o campo vazio nem vira variavel no Windows: o GetEnvironmentVariable da nulo, sem o erro que pararia o passo
+            $notas = @([Environment]::GetEnvironmentVariable($n[0]) -split '\|' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            if ($notas.Count) {
+              $arq = Join-Path $env:RUNNER_TEMP "$($n[1]).txt"
+              $notas | Set-Content -Path $arq -Encoding utf8
+              $args_ += @($n[2], $arq)
+            }
           }
           $parcial = "$saida\Vitrola-$env:VERSAO-parcial.exe"
           if (Test-Path $parcial) { $args_ += @('--parcial', $parcial, '--parcial-info', "$saida\PARCIAL-$env:VERSAO.json") }

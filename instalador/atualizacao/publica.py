@@ -1,7 +1,7 @@
 """O manifesto de uma versao nova e a assinatura dele, para o atualizador do app (atualizacao.py, no repo vitrola).
 
     python publica.py --setup <Vitrola-X.Y.Z-setup.exe> --url <endereco https do setup> --app <dist\\vitrola do build>
-                      --bin <pasta> [--bin <pasta> ...] [--notas notas.txt] --saida <pasta>
+                      --bin <pasta> [--bin <pasta> ...] [--notas notas.txt] [--notas-en notas_en.txt] --saida <pasta>
                       [--parcial <Vitrola-X.Y.Z-parcial.exe> --parcial-info <parcial.json>]
                       [--chave <arquivo.key> [--numero 1]]
     python publica.py --assina <manifest.json> --setup <Vitrola-X.Y.Z-setup.exe> [--parcial <Vitrola-X.Y.Z-parcial.exe>]
@@ -17,7 +17,9 @@ Os dois arquivos vao para o mesmo endereco, um ao lado do outro, e o setup para 
 instalador: o app baixa, confere o tamanho e o hash e roda. O caminho B e a parcial: um setup so com os arquivos que
 mudaram desde a versao anterior (o parcial.py separa, e o --parcial-info e o parcial.json dele), no mesmo endereco do
 setup. O app so usa a parcial se o que esta instalado bater com a lista de arquivos (o --app e as --bin, que o
-instalador poe em bin\\) em tudo que ela nao traz. A versao sai do nome do setup. As notas: uma por linha, no maximo 30.
+instalador poe em bin\\) em tudo que ela nao traz. A versao sai do nome do setup. As notas: uma por linha, no maximo 30;
+as do --notas em portugues, no campo que as versoes de antes leem, e as do --notas-en em ingles, que so as de agora
+mostram (na tela em ingles; sem elas, essa tela mostra as em portugues).
 O --numero e o da chave no CHAVES do app. No fim, a assinatura e conferida de novo com a chave publica.
 """
 import argparse
@@ -96,6 +98,7 @@ def main():
     ap.add_argument("--app", type=Path)
     ap.add_argument("--bin", type=Path, action="append", default=[])
     ap.add_argument("--notas", type=Path)
+    ap.add_argument("--notas-en", type=Path)
     ap.add_argument("--numero", type=int, default=1)
     ap.add_argument("--saida", type=Path)
     ap.add_argument("--assina", type=Path)
@@ -141,14 +144,20 @@ def main():
         if not b.is_dir():
             sys.exit(f"nao achei a pasta {b}")
     # utf-8-sig: o Bloco de Notas pode gravar o BOM, que viraria parte da primeira nota
-    notas = [n.strip() for n in a.notas.read_text(encoding="utf-8-sig").splitlines() if n.strip()] if a.notas else []
-    if len(notas) > 30 or any(len(n) > 500 for n in notas):
-        sys.exit("notas demais, ou uma passa de 500 letras")
+    def le_notas(arq):
+        notas = [n.strip() for n in arq.read_text(encoding="utf-8-sig").splitlines() if n.strip()] if arq else []
+        if len(notas) > 30 or any(len(n) > 500 for n in notas):
+            sys.exit(f"notas demais em {arq}, ou uma passa de 500 letras")
+        return notas
+    notas, notas_en = le_notas(a.notas), le_notas(a.notas_en)
     if bool(a.parcial) != bool(a.parcial_info):
         sys.exit("o --parcial e o --parcial-info vem juntos")
     m = {"formato": 1, "app": "vitrola", "versao": v.group(1), "data": time.strftime("%Y-%m-%d"), "notas": notas,
          "instalador": {"url": a.url, "sha256": sha(a.setup), "tamanho": a.setup.stat().st_size},
          "arquivos": arquivos(a.app, a.bin)}
+    if notas_en:
+        # um campo a mais no formato 1, como a parcial: o app de antes nao olha para ele
+        m["notas_en"] = notas_en
     if a.parcial:
         # um campo a mais no formato 1: o app que nao conhece a parcial nao olha para ela e baixa o setup completo
         m["parcial"] = parcial(a.parcial, a.url, a.parcial_info, {f["caminho"] for f in m["arquivos"]})
@@ -156,7 +165,7 @@ def main():
     a.saida.mkdir(parents=True, exist_ok=True)
     (a.saida / "manifest.json").write_bytes(dados)
     print(f"versao {m['versao']}: setup de {m['instalador']['tamanho'] / 2**20:.0f} MB, {len(m['arquivos'])} arquivos, "
-          f"{len(notas)} notas, em {a.saida}")
+          f"{len(notas)} notas, {len(notas_en)} em ingles, em {a.saida}")
     if a.parcial:
         print(f"parcial de {m['parcial']['tamanho'] / 2**20:.1f} MB, desde a {m['parcial']['de']}: "
               f"{len(m['parcial']['arquivos'])} arquivos trazidos e {len(m['parcial']['apaga'])} apagados")

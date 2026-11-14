@@ -2,7 +2,7 @@
 
     python dev/testa_i18n.py
 
-Nos arquivos de cada tema: as mesmas chaves nas duas linguas e na mesma ordem, nenhum valor vazio, os mesmos {param}
+Nos arquivos de cada tema e nos da galeria (gallery/, a pagina inicial): as mesmas chaves nas duas linguas e na mesma ordem, nenhum valor vazio, os mesmos {param}
 nos dois lados, toda chave que o tema usa existindo e nenhuma chave sobrando. Uma chave conta como usada quando aparece
 no tema entre aspas ou num data-i18n*; as que o I18N.tp usa (chave.one, chave.other) contam pela chave de base. O
 texto com marcacao so tem <b> e <code>, fechados e sem um dentro do outro, os mesmos nas duas linguas, e so entra pelo
@@ -12,7 +12,7 @@ ingles; cada chamada passa os params do texto; o texto em ingles (e o do i18n.so
 guarda chave server.* que o servidor nao manda. Os efeitos do fx.py: cada um com effect.<id>.name e .desc, e cada
 grupo com effect.group.<grupo>, e nenhuma chave effect.* sobrando. As palavras do pixel art: cada lingua so com as
 letras que a tabela de pixel delas tem (as placas, os mostradores do mixer, a fita da voz), e cada palavra dos botoes do
-Locutor com o desenho dela no ARCADE. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
+Locutor com o desenho dela no ARCADE. O meta.json de cada tema: o campo que vem por lingua tem as duas. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
 posto na pagina e a mensagem. Sai 1 se algo falha."""
 import ast
 import contextlib
@@ -179,6 +179,22 @@ def confere_tema(tema, servidor, efeitos):
     confere_pixel(tema, html, por_lingua)
 
 
+def confere_meta(tema):
+    """O meta.json de um tema traduzido: o campo que vem por lingua ({"en": ..., "pt_BR": ...}) tem todas, com texto.
+    O que vem como texto so vale igual nas duas (o nome, que e marca)."""
+    p = tema / "meta.json"
+    if not p.exists():
+        return
+    try:
+        meta = json.loads(p.read_text(encoding="utf-8"))
+    except ValueError as ex:
+        falha(f"{tema.name}/meta.json: {ex}")
+        return
+    for campo, valor in meta.items():
+        if isinstance(valor, dict) and (set(valor) != set(i18n.LINGUAS) or not all(isinstance(v, str) and v for v in valor.values())):
+            falha(f"{tema.name}/meta.json: {campo} has {sorted(valor)}, expected a text for each of {list(i18n.LINGUAS)}")
+
+
 def letras_da_tabela(html, inicio, fim, chave):
     """As letras de uma tabela de pixel do tema (o bloco de inicio ate fim, cada letra como chave), ou None sem ela."""
     m = re.search(re.escape(inicio) + r"(.*?)" + re.escape(fim), html, re.S)
@@ -198,6 +214,8 @@ def confere_pixel(tema, html, por_lingua):
         "LETRAS_FITA": (lambda s: s | {" "} if s else s)(letras_da_tabela(html, "const LETRAS_FITA = {", "\n};", r"\n  ([A-Z]): \[")),
         "ARCADE": letras_da_tabela(html, "const ARCADE = {", "\n};", r"\n  '([^']+)': '"),
     }
+    if all(t is None for t in tabelas.values()):
+        return
     # (chave, tabela, o texto como a tela desenha)
     PALAVRAS = [("nav.shelf", "negrita", str), ("queue.title", "negrita", str),
                 ("shelf.count.one", "regular", lambda s: s.replace("{n}", "")), ("shelf.count.other", "regular", lambda s: s.replace("{n}", "")),
@@ -252,21 +270,18 @@ def confere_modulo():
     if pref != ["pt-BR", "de", "en", "es"]:
         falha(f"preferidas: {pref!r}")
 
-    detecta = i18n.DETECTA
-    try:
-        i18n.DETECTA = False
-        for pedida, accept, esperado in [(None, "en-US", i18n.PADRAO), ("en", "", "en"), ("pt", "en", "pt_BR"),
-                                         ("xx", "en", i18n.PADRAO)]:
-            if (got := i18n.escolher(pedida, accept)) != esperado:
-                falha(f"escolher({pedida!r}, {accept!r}) without detection = {got!r}, expected {esperado!r}")
-        i18n.DETECTA = True
-        for pedida, accept, esperado in [(None, "pt-BR,pt;q=0.9,en;q=0.8", "pt_BR"), (None, "es,en;q=0.5", "en"),
-                                         (None, "es,pt;q=0.5,en;q=0.7", "en"), (None, "es", "en"), (None, "", "en"),
-                                         ("pt_BR", "en-US", "pt_BR")]:
-            if (got := i18n.escolher(pedida, accept)) != esperado:
-                falha(f"escolher({pedida!r}, {accept!r}) with detection = {got!r}, expected {esperado!r}")
-    finally:
-        i18n.DETECTA = detecta
+    # o navegador decide, o ?lang= passa na frente, e o que nao temos cai no ingles
+    for pedida, accept, esperado in [(None, "pt-BR,pt;q=0.9,en;q=0.8", "pt_BR"), (None, "en-US,en;q=0.9", "en"),
+                                     (None, "es,en;q=0.5", "en"), (None, "es,pt;q=0.5,en;q=0.7", "en"),
+                                     (None, "es,pt;q=0.5", "pt_BR"), (None, "es", "en"), (None, "", "en"),
+                                     ("pt_BR", "en-US", "pt_BR"), ("en", "pt-BR", "en"), ("xx", "pt-BR", "pt_BR")]:
+        if (got := i18n.escolher(pedida, accept)) != esperado:
+            falha(f"escolher({pedida!r}, {accept!r}) = {got!r}, expected {esperado!r}")
+    for valor, lingua, esperado in [("Vitrola", "pt_BR", "Vitrola"), ({"en": "a", "pt_BR": "b"}, "pt_BR", "b"),
+                                    ({"en": "a", "pt_BR": "b"}, "en", "a"), ({"en": "a"}, "pt_BR", "a"),
+                                    ({"pt_BR": "b"}, "en", "b"), ({}, "en", "")]:
+        if (got := i18n.na_lingua(valor, lingua)) != esperado:
+            falha(f"na_lingua({valor!r}, {lingua!r}) = {got!r}, expected {esperado!r}")
 
     with tempfile.TemporaryDirectory() as tmp:
         pasta = Path(tmp)
@@ -308,6 +323,9 @@ def main():
     print(f"server: {len(servidor)} message keys, {len(efeitos)} effect keys")
     for tema in temas:
         confere_tema(tema, servidor, efeitos)
+        confere_meta(tema)
+    # a galeria (a pagina inicial) tem a pasta i18n/ como um tema, mas nao mostra mensagem do servidor nem efeito
+    confere_tema(RAIZ / "gallery", {}, set())
     print(f"{len(falhas)} failure(s)" if falhas else "all good")
     return 1 if falhas else 0
 

@@ -8506,9 +8506,11 @@ async function abrirAtualizacao() {
   if (!a.nova) { avisar(I18N.t('update.none')); return; }
   $('#da-t').textContent = I18N.t('update.titleVersion', { version: a.nova.versao });
   $('#da-p').textContent = I18N.t('update.info', { current: a.versao, mb: Math.max(1, Math.round(a.nova.tamanho / 1048576)) });
+  // as notas na lingua da tela; sem elas, as da outra (a versao pode vir so com as em portugues)
+  const ns = a.nova.notas, notas = [ns[I18N.lingua], ns.en, ns.pt_BR].find(x => x && x.length) || [];
   const ul = $('#da-notas');
-  ul.replaceChildren(...a.nova.notas.map(n => el('li', null, n)));
-  ul.hidden = !a.nova.notas.length;
+  ul.replaceChildren(...notas.map(n => el('li', null, n)));
+  ul.hidden = !notas.length;
   pintarAtualizacao(a);
   $('#dlg-atualizar').showModal();
 }
