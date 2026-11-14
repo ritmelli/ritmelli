@@ -66,9 +66,17 @@ MINA_FOLGA_S = 0.1  # a voz da mina (mina.py) chega em pedacos de 100 ms, com fo
 MINA_FILA_MAX_S = 1.0  # fila dela maior que isso (a rede segurou e despejou): o silencio do comeco sai
 VIGIA_S = 2.0  # de quanto em quanto o vigia le a lista de aparelhos do Windows
 # o anel do filtro de microfone (microfone/injeta.py): INJ_FOLGA = blocos escritos a frente do microfone (~50 ms), a
-# folga contra a thread do Python atrasar; a voz crua que o filtro devolve vale como viva ate VOZ_VIVA_S sem chegar
+# folga contra a thread do Python atrasar; a voz crua que o filtro devolve vale como viva ate VOZ_VIVA_S sem chegar.
+# A thread pede ao Windows a prioridade de audio (MMCSS "Pro Audio", a que o PortAudio pede para o callback dele).
+# Medido em 14/11 (dev/mede_folga.py, 45 s por caso, 8 nucleos): so tocando, mesmo com o dobro dos nucleos em processos
+# ocupando a CPU, a pior volta e de ~5 ms; o que gasta a folga e o trabalho da troca de musica (preparar a passagem
+# segura o interpretador): com a CPU cheia ele gastou 20 a 30 ms dela, sem a prioridade de audio 40 ms e secou (o jogo
+# ouve o buraco); com o dobro dos nucleos ocupados secou mesmo com ela (paradas de ~80 ms). Menos de 50 ms nao cabe;
+# VOLTA_MS = casas de 1 ms do histograma das voltas da thread (a ultima junta as maiores)
 INJ_FOLGA = 5
 VOZ_VIVA_S = 0.2
+INJ_MMCSS = True
+VOLTA_MS = 200
 VIGIA_TENTATIVAS = 3  # reaberturas por mudanca da lista (o PortAudio as vezes ainda nao ve o aparelho)
 # passagem de uma musica para a proxima da fila (a transicao de DJ)
 TRANS_PREP_S = 180         # o servidor prepara a proxima quando falta isso para o fim (o fim deste fica na
@@ -829,6 +837,22 @@ class Preaberto:
             pass
 
 
+def _prioridade_audio():
+    """Poe a thread que chama na prioridade de audio do Windows (MMCSS, tarefa "Pro Audio"), como o PortAudio faz com o
+    callback dele: com o jogo ocupando a CPU, a thread comum acorda tarde. Devolve (avrt, handle) para o revert, ou None
+    sem o servico."""
+    try:
+        avrt = ctypes.WinDLL("avrt")
+    except OSError:
+        return None
+    avrt.AvSetMmThreadCharacteristicsW.restype = ctypes.c_void_p
+    avrt.AvSetMmThreadCharacteristicsW.argtypes = (ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_ulong))
+    avrt.AvRevertMmThreadCharacteristics.argtypes = (ctypes.c_void_p,)
+    tarefa = ctypes.c_ulong(0)
+    h = avrt.AvSetMmThreadCharacteristicsW("Pro Audio", ctypes.byref(tarefa))
+    return (avrt, h) if h else None
+
+
 class Injetor:
     """A saida para o jogo: uma thread chama o misturador do motor (_mixa) e escreve no anel do filtro de microfone
     (microfone/injeta.py), que o micfx.dll soma no microfone escolhido (o alvo do anel) dentro do audio do Windows. Com
@@ -846,11 +870,38 @@ class Injetor:
         self._tentou = -1e9
         self._para48k = _Para48k()
         self._resto = np.zeros(0, np.float32)
+        # a medida da folga: o menor tanto no anel (quadros) antes de completar, com o leitor ja servido; as vezes que
+        # ele estava vazio (o filtro pode ter soltado silencio no lugar da musica: um engasgo no jogo); a maior volta da
+        # thread (s) e quantas voltas de cada ms
+        self.mmcss = None
+        self.folga_min = None
+        self.secas = 0
+        self.volta_max = 0.0
+        self.voltas = np.zeros(VOLTA_MS, np.int64)
+        self._seca_dita = -1e9
         self._th = threading.Thread(target=self._loop, daemon=True, name="vitrola-microfone")
         self._th.start()
 
     def estado(self):
-        return {"anel": self.m is not None, "leitores": self.leitores}
+        return {"anel": self.m is not None, "leitores": self.leitores,
+                "folga_min_ms": None if self.folga_min is None else round(self.folga_min * 1000 / SR, 1),
+                "secas": self.secas, "volta_max_ms": round(self.volta_max * 1000, 1)}
+
+    def _volta(self, s):
+        self.volta_max = max(self.volta_max, s)
+        self.voltas[min(int(s * 1000), VOLTA_MS - 1)] += 1
+
+    def _confere_fila(self, fila, volta):
+        """O tanto no anel quando a thread chegou, antes de completar: guarda o menor e conta (e diz, no maximo a cada
+        10 s) quando secou."""
+        if self.folga_min is None or fila < self.folga_min:
+            self.folga_min = fila
+        if fila == 0:
+            self.secas += 1
+            if time.monotonic() - self._seca_dita > 10.0:
+                self._seca_dita = time.monotonic()
+                print(f"saida para o jogo: o anel do microfone secou (a thread voltou depois de {volta * 1000:.0f} ms; "
+                      f"{self.secas} ate agora)", file=sys.stderr, flush=True)
 
     def para(self):
         self._vai = False
@@ -891,23 +942,35 @@ class Injetor:
     def _loop(self):
         winmm = ctypes.WinDLL("winmm")
         winmm.timeBeginPeriod(1)  # o sleep de 2 ms dorme 2 ms, e nao 15
-        prox = time.perf_counter()
+        mm = _prioridade_audio() if INJ_MMCSS else None
+        self.mmcss = mm is not None
+        prox = antes = time.perf_counter()
+        servidos = ()  # os leitores que ja receberam o anel cheio: o vazio de quem acabou de chegar nao e seca
         try:
             while self._vai:
+                agora = time.perf_counter()
+                volta, antes = agora - antes, agora
+                self._volta(volta)
                 try:
                     m = self._abre()
                     if m is not None:
                         m.alvo(self.motor._alvo)  # noqa: SLF001
                         m.pulso(self.motor.voz_pelo_app())
                         self._voz(m)
-                    vivos = len(m.vivos()) if m is not None else 0
-                    self.leitores = vivos
+                    vivos = m.vivos() if m is not None else []
+                    self.leitores = len(vivos)
                     if vivos:
-                        while self._vai and m.na_fila() <= (INJ_FOLGA - 1) * BLOCK:
+                        donos = tuple(sorted(lt.dono for lt in vivos))
+                        fila = m.na_fila()
+                        if donos == servidos:
+                            self._confere_fila(fila, volta)
+                        while self._vai and fila <= (INJ_FOLGA - 1) * BLOCK:
                             m.escreve(self.motor._mixa(BLOCK))  # noqa: SLF001
+                            fila = m.na_fila()
+                        servidos = donos
                         prox = time.perf_counter() + BLOCK / SR
                     else:
-                        agora = time.perf_counter()
+                        servidos = ()
                         if agora - prox > 0.2:  # voltou de um leitor, ou a thread atrasou: nao corre atras
                             prox = agora
                         while self._vai and agora >= prox:
@@ -916,9 +979,12 @@ class Injetor:
                 except Exception as ex:  # noqa: BLE001 - a thread nao morre calada: o erro vai pra tela
                     self.motor.error = f"A saída para o microfone falhou ({str(ex)[:160]})."
                     self.m = None
+                    servidos = ()
                     time.sleep(0.5)
                 time.sleep(0.002)
         finally:
+            if mm is not None:
+                mm[0].AvRevertMmThreadCharacteristics(mm[1])
             winmm.timeEndPeriod(1)
 
 
