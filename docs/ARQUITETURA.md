@@ -141,7 +141,11 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   para a troca não sumir nem estourar; o tom é mudado em casa porque o da pedalboard
   atrasa 1 s. O `fx.py` é a definição de cada efeito e a referência: no microfone do jogo quem
   roda é o filtro (`microfone/preset.py` -> `apo/voz.h`), com a mesma conta, e as etapas da
-  pedalboard foram reescritas lá pela fórmula de cada uma e conferidas contra ela. Etapa nova
+  pedalboard foram reescritas lá pela fórmula de cada uma e conferidas contra ela. As salas
+  (banheiro, catedral e demônio) usam um reverb próprio, a `Fdn` do `fx.py` (8 linhas de atraso
+  com realimentação, mistura de Hadamard, tempo de reverberação no grave, no meio e no agudo,
+  difusor na entrada e leitura modulada bem de leve), no lugar do Reverb da pedalboard, que soava
+  metálico; o tempo por oitava e o seco/molhado de cada sala são os do Reverb que ela substituiu. Etapa nova
   sem par no `voz.h` leva o efeito pelo caminho do app até ganhar o seu. O efeito sempre começa
   desligado quando o servidor sobe. Banco de teste:
   `python dev/efeitos.py` (grava um .wav por efeito em `logs/efeitos/` para ouvir).
