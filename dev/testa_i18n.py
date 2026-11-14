@@ -9,7 +9,8 @@ texto com marcacao so tem <b> e <code>, fechados e sem um dentro do outro, os me
 data-i18n ou pelo I18N.rico (o I18N.t e os atributos mostrariam a tag). As mensagens do servidor (i18n.msg e
 i18n.Recusa no Python da raiz): cada chave server.* existe em todo tema com i18n/, com os mesmos {param} do texto em
 ingles; cada chamada passa os params do texto; o texto em ingles (e o do i18n.so_texto) nao tem acento; e o tema nao
-guarda chave server.* que o servidor nao manda. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
+guarda chave server.* que o servidor nao manda. Os efeitos do fx.py: cada um com effect.<id>.name e .desc, e cada
+grupo com effect.group.<grupo>, e nenhuma chave effect.* sobrando. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
 posto na pagina e a mensagem. Sai 1 se algo falha."""
 import ast
 import contextlib
@@ -23,7 +24,8 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 import i18n  # noqa: E402
 
-CHAVE = r"[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+"
+# o hifen so depois do primeiro ponto: e o id do efeito (effect.radio-policia.name)
+CHAVE = r"[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9-]+)+"
 falhas = []
 
 
@@ -85,7 +87,24 @@ def chaves_do_servidor():
     return achadas
 
 
-def confere_tema(tema, servidor):
+def efeitos_do_servidor():
+    """As chaves que os efeitos do fx.py pedem ao tema. O CATALOGO e lido pelo ast, porque o fx.py importa o audio:
+    cada tupla (grupo, id, fabrica) dele, a da mina tambem."""
+    chaves = set()
+    for no in ast.walk(ast.parse((RAIZ / "fx.py").read_text(encoding="utf-8"))):
+        if not (isinstance(no, ast.Assign) and any(getattr(t, "id", None) == "CATALOGO" for t in no.targets)):
+            continue
+        for t in ast.walk(no.value):
+            if isinstance(t, ast.Tuple) and len(t.elts) == 3 and all(
+                    isinstance(x, ast.Constant) and isinstance(x.value, str) for x in t.elts[:2]):
+                grupo, eid = t.elts[0].value, t.elts[1].value
+                chaves |= {f"effect.{eid}.name", f"effect.{eid}.desc"} | ({f"effect.group.{grupo}"} if grupo else set())
+    if not chaves:
+        falha("fx.py: no effect found in CATALOGO")
+    return chaves
+
+
+def confere_tema(tema, servidor, efeitos):
     pasta = tema / "i18n"
     try:
         por_lingua = {x: i18n.ler(i18n.arquivo(pasta, x)) for x in i18n.LINGUAS}
@@ -129,6 +148,8 @@ def confere_tema(tema, servidor):
     for k in sorted(sem_marcacao):
         if tags(base.get(k, "")):
             falha(f"{tema.name}: {k} has markup, so it goes through data-i18n or I18N.rico, not I18N.t or an attribute")
+    for k in sorted(efeitos - base.keys()):
+        falha(f"{tema.name}: the effects in fx.py need {k}, which is not in the files")
     for k, (texto, onde) in sorted(servidor.items()):
         if k not in base:
             falha(f"{tema.name}: the server sends {k} ({onde}), which is not in the files")
@@ -146,6 +167,9 @@ def confere_tema(tema, servidor):
         if k.startswith("server."):
             if k not in servidor:
                 falha(f"{tema.name}: {k} is in the files but the server never sends it")
+        elif k.startswith("effect."):
+            if k not in efeitos:
+                falha(f"{tema.name}: {k} is in the files but fx.py has no such effect or group")
         elif k not in citadas and not any(k.startswith(p + ".") for p in plurais):
             falha(f"{tema.name}: {k} is in the files but the theme never uses it")
     print(f"{tema.name}: {len(base)} keys in {len(por_lingua)} languages, {len(pedidas)} used by the theme")
@@ -234,10 +258,10 @@ def main():
     temas = [d for d in sorted((RAIZ / "themes").iterdir()) if (d / "i18n").is_dir()]
     if not temas:
         falha("no theme has an i18n/ folder")
-    servidor = chaves_do_servidor()
-    print(f"server: {len(servidor)} message keys")
+    servidor, efeitos = chaves_do_servidor(), efeitos_do_servidor()
+    print(f"server: {len(servidor)} message keys, {len(efeitos)} effect keys")
     for tema in temas:
-        confere_tema(tema, servidor)
+        confere_tema(tema, servidor, efeitos)
     print(f"{len(falhas)} failure(s)" if falhas else "all good")
     return 1 if falhas else 0
 

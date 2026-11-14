@@ -5642,7 +5642,7 @@ const PEDAIS = {
 /* knobs e footswitch de niquel em pixel art na grade de 1 px css, gerados pelo dev/pecas.py (em KNOBS, cada knob e o
    SVG com um dos seus 11 ponteiros no lugar de PONTEIRO; no chicken-head o ponteiro e o knob inteiro, que gira; e
    PE_SVG); so a pedaleira do celular mostra as pecas. O knob de cada familia pela silhueta, do mock E1: chicken-head no Radio e alto-falante, baquelite escuro no Ambiente, o creme no resto */
-const KNOB_DO_GRUPO = { 'Rádio e alto-falante': 'frango', 'Ambiente': 'baquelite' };
+const KNOB_DO_GRUPO = { radio: 'frango', ambiente: 'baquelite' };
 /* o Locutor tem o unico controle de verdade da pedaleira, porque os knobs sao enfeite: no
    celular, os botoes de fliperama dos dois modos (ARCADE, do dev/pecas.py) no lugar do knob e do footswitch. O
    toque na metade de cima e o NATURAL, na de baixo o CARICATO: liga naquele modo, troca para ele com o pedal ligado
@@ -5658,8 +5658,14 @@ function pedalDoEfeito(id) {
   return { pedal: id, modo: null };
 }
 const efeitoDaTecla = b => (EFEITO_DO_MODO[b.dataset.ef] || {})[b.dataset.modo] || b.dataset.ef;
-// o que o visor da gaveta diz com o pedal ligado em cada modo
-const VISOR_MODOS = { locutor: { natural: 'LOCUTOR DE RADIO FM VOZ NATURAL', caricato: 'LOCUTOR DE RADIO FM VOZ CARICATA' } };
+// o que o visor da gaveta diz com o pedal ligado em cada modo (o LCD poe em maiuscula e tira o acento)
+const VISOR_MODOS = { locutor: { natural: I18N.t('effects.mode.locutor.natural'), caricato: I18N.t('effects.mode.locutor.caricato') } };
+/* o nome, o que faz e o grupo de um efeito: o /api/effects so manda os ids, e os textos sao do tema (effect.<id>.name,
+   effect.<id>.desc, effect.group.<grupo>); efeito novo que o tema ainda nao conhece aparece pelo id */
+const textoEf = (chave, reserva) => (I18N.tem(chave) ? I18N.t(chave) : reserva);
+const nomeEf = ef => textoEf(`effect.${ef.id}.name`, ef.id);
+const descEf = ef => textoEf(`effect.${ef.id}.desc`, '');
+const nomeGrupo = g => textoEf(`effect.group.${g}`, g);
 const lerModo = id => { try { return localStorage.getItem('vitrola.modo.' + id); } catch { return null; } };
 const gravarModo = (id, m) => { try { localStorage.setItem('vitrola.modo.' + id, m); } catch { /* sem guardar, o modo vale ate recarregar */ } };
 // o modo do botao que o toque pegou num pedal com os botoes: a metade de cima e o primeiro modo, a de baixo o segundo;
@@ -5687,7 +5693,7 @@ const PE_SVG = '<svg viewBox="0 0 36 36" shape-rendering="crispEdges"><path fill
 const LED_SVG = '<svg viewBox="0 0 22 24" width="22" height="24" shape-rendering="crispEdges"><g class="led-apagado"><path fill="#1A0B04" d="M9 6h4v1h-4zM9 15h4v1h-4zM8 7h1v1h-1zM8 14h1v1h-1zM13 7h1v1h-1zM13 14h1v1h-1zM7 8h1v1h-1zM7 13h1v1h-1zM14 8h1v1h-1zM14 13h1v1h-1zM6 9h1v4h-1zM15 9h1v4h-1z"/><path fill="#5C1A15" d="M9 7h4v1h-4zM8 8h6v1h-6zM7 9h2v2h-2zM11 9h4v1h-4zM10 10h5v1h-5zM7 11h7v1h-7zM7 12h6v1h-6zM8 13h4v1h-4zM9 14h2v1h-2z"/><path fill="#42110E" d="M14 11h1v1h-1zM13 12h2v1h-2zM12 13h2v1h-2zM11 14h2v1h-2z"/><path fill="#FFECD6" fill-opacity="0.5" d="M9 9h2v1h-2zM9 10h1v1h-1z"/><path fill="#0C0603" fill-opacity="0.45" d="M6 13h1v1h-1zM15 13h1v1h-1zM6 14h2v1h-2zM14 14h2v1h-2zM7 15h2v1h-2zM13 15h2v1h-2zM8 16h6v1h-6zM9 17h4v1h-4z"/></g><g class="led-aceso"><path fill="#3D0C08" d="M9 6h4v1h-4zM9 15h4v1h-4zM8 7h1v1h-1zM8 14h1v1h-1zM13 7h1v1h-1zM13 14h1v1h-1zM7 8h1v1h-1zM7 13h1v1h-1zM14 8h1v1h-1zM14 13h1v1h-1zM6 9h1v4h-1zM15 9h1v4h-1z"/><path fill="#E42A1F" d="M9 7h4v1h-4zM8 8h2v1h-2zM11 8h3v1h-3zM7 9h2v1h-2zM7 11h2v1h-2zM12 9h3v1h-3zM7 10h1v1h-1zM13 10h2v1h-2zM12 11h2v1h-2zM7 12h3v1h-3zM11 12h2v1h-2zM8 13h4v1h-4zM9 14h2v1h-2z"/><path fill="#FF7056" d="M10 8h1v1h-1zM10 12h1v1h-1zM11 9h1v1h-1zM8 10h1v1h-1zM10 10h3v1h-3zM9 11h3v1h-3z"/><path fill="#B81A13" d="M14 11h1v1h-1zM13 12h2v1h-2zM12 13h2v1h-2zM11 14h2v1h-2z"/><path fill="#FFE4D6" d="M9 9h2v1h-2zM9 10h1v1h-1z"/><path fill="#FF3626" fill-opacity="0.5" d="M8 3h6v1h-6zM8 18h6v1h-6zM6 4h10v1h-10zM6 17h10v1h-10zM5 5h12v1h-12zM5 16h12v1h-12zM4 6h5v1h-5zM4 15h5v1h-5zM13 6h5v1h-5zM13 15h5v1h-5zM4 7h4v1h-4zM4 14h4v1h-4zM14 7h4v1h-4zM14 14h4v1h-4zM3 8h4v1h-4zM3 13h4v1h-4zM15 8h4v1h-4zM15 13h4v1h-4zM3 9h3v4h-3zM16 9h3v4h-3z"/><path fill="#FF3626" fill-opacity="0.2" d="M8 0h6v1h-6zM8 21h6v1h-6zM5 1h12v1h-12zM5 20h12v1h-12zM4 2h14v1h-14zM4 19h14v1h-14zM3 3h5v1h-5zM3 18h5v1h-5zM14 3h5v1h-5zM14 18h5v1h-5zM2 4h4v1h-4zM2 17h4v1h-4zM16 4h4v1h-4zM16 17h4v1h-4zM1 5h4v1h-4zM1 16h4v1h-4zM17 5h4v1h-4zM17 16h4v1h-4zM1 6h3v2h-3zM1 14h3v2h-3zM18 6h3v2h-3zM18 14h3v2h-3zM0 8h3v6h-3zM19 8h3v6h-3z"/></g></svg>';
 const hashTxt = t => { let h = 7; for (const c of String(t)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
 function vestirPedal(b, ef) {
-  const p = PEDAIS[ef.id] || { cor: ['#56677A', '#7A4B5C', '#4B7A5E'][hashTxt(ef.id) % 3], letra: '#F3EFE6', tipo: 'EFEITO', fonte: 'normal' };
+  const p = PEDAIS[ef.id] || { cor: ['#56677A', '#7A4B5C', '#4B7A5E'][hashTxt(ef.id) % 3], letra: '#F3EFE6', tipo: I18N.t('effects.pedalType'), fonte: 'normal' };
   b.style.setProperty('--cor', p.cor); b.style.setProperty('--letra', p.letra);
   b.dataset.fonte = p.fonte;
   if (p.acabamento) b.dataset.acabamento = p.acabamento;
@@ -5715,9 +5721,9 @@ function tecla(ef) {
   b.setAttribute('aria-pressed', 'false');
   b.append(el('span', 'lampada'));
   const n = el('span', 't-nome');
-  n.append(document.createTextNode(ef.nome || ef.id));
+  n.append(document.createTextNode(nomeEf(ef)));
   b.append(n);
-  if (ef.descricao) b.append(el('span', 't-desc', ef.descricao));
+  if (descEf(ef)) b.append(el('span', 't-desc', descEf(ef)));
   // so os de mudanca de tom atrasam a voz: diz quanto, discreto
   if (ef.latencia_ms > 0) b.append(el('span', 't-atraso', I18N.t('effects.delay', { ms: Math.round(ef.latencia_ms) })));
   vestirPedal(b, ef);
@@ -5744,8 +5750,8 @@ function montarGaveta() {
   }
   for (const [g, teclas] of grupos) {
     const sec = el('div', 'grupo-ef');
-    const h = el('h3', 'suporte', g);
-    const t = el('div', 'teclas'); t.setAttribute('role', 'group'); t.setAttribute('aria-label', g);
+    const h = el('h3', 'suporte', nomeGrupo(g));
+    const t = el('div', 'teclas'); t.setAttribute('role', 'group'); t.setAttribute('aria-label', nomeGrupo(g));
     t.append(...teclas);
     sec.append(h, t);
     banco.append(sec);
@@ -6641,7 +6647,7 @@ function desenharEfeito() {
   });
   const sel = $('#b-efeito');
   sel.classList.toggle('com-efeito', com);
-  $('#nome-ef').textContent = ef ? ef.nome : (com ? id : I18N.t('effects.none'));
+  $('#nome-ef').textContent = ef ? nomeEf(ef) : (com ? id : I18N.t('effects.none'));
   const ms = ef && ef.latencia_ms > 0 ? Math.round(ef.latencia_ms) : 0;
   $('#atraso-ef').textContent = ms ? `${ms} MS` : '';
   $('#atraso-ef-sr').textContent = ms ? ', ' + I18N.t('effects.delay', { ms }) : '';
