@@ -135,11 +135,14 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   arquivos de log, os mesmos que o `soundboard.ps1` grava, e os da vez anterior ficam ao
   lado (`server.anterior.log`), para o motivo de uma queda não sumir quando o app reabre.
 - `fx.py`: efeitos de voz no estilo Voicemod (rádio de polícia com bip de câmbio, megafone,
-  locutor de rádio FM, eco, banheiro, catedral, robô, voz grossa, esquilo, demônio, alienígena,
-  alto-falante estourado, e o locutor caricato, um modo do Locutor que fica fora da lista e o tema
-  liga pelo botão CARICATO do pedal), aplicados na voz antes da mistura, com o volume compensado
-  para a troca não sumir nem estourar; o tom é mudado em casa porque o da pedalboard
-  atrasa 1 s. O `fx.py` é a definição de cada efeito e a referência: no microfone do jogo quem
+  locutor de rádio FM, eco, banheiro, catedral, robô, voz grossa, esquilo, demônio, voz feminina,
+  voz masculina, alienígena, alto-falante estourado, e o locutor caricato, um modo do Locutor que
+  fica fora da lista e o tema liga pelo botão CARICATO do pedal), aplicados na voz antes da mistura,
+  com o volume compensado para a troca não sumir nem estourar; o tom é mudado em casa porque o da
+  pedalboard atrasa 1 s. Voz grossa, esquilo e demônio mudam o tom pelo `PitchShifter` (linha de
+  atraso, o timbre vai junto: o desenho animado é o que se quer ali); a voz feminina e a masculina,
+  pela `TrocaDeVoz` (PSOLA síncrono com o período da voz, #77), mudam o tom e só um pouco o
+  formante, e a voz continua soando como gente, com ~20 ms de atraso. O `fx.py` é a definição de cada efeito e a referência: no microfone do jogo quem
   roda é o filtro (`microfone/preset.py` -> `apo/voz.h`), com a mesma conta, e as etapas da
   pedalboard foram reescritas lá pela fórmula de cada uma e conferidas contra ela. Etapa nova
   sem par no `voz.h` leva o efeito pelo caminho do app até ganhar o seu. O efeito sempre começa

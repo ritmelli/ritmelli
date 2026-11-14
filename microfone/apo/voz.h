@@ -12,9 +12,9 @@
 //
 // As etapas que imitam a pedalboard (filtros RBJ, Compressor e Limiter, Distortion, Bitcrush, Delay, Chorus, Phaser,
 // Reverb) foram escritas a partir das formulas publicas de cada algoritmo e conferidas contra a saida dela (caixa
-// preta, dev/testa_voz.py). As etapas do fx.py (PitchShifter, PortaoRuido, AGC, Multibanda, CambioRadio...) sao a
-// mesma conta, em blocos: o que no fx.py conta blocos de 10 ms aqui conta tempo, e da o mesmo resultado com o bloco
-// de 10 ms do audiodg.
+// preta, dev/testa_voz.py). As etapas do fx.py (PitchShifter, TrocaDeVoz, PortaoRuido, AGC, Multibanda,
+// CambioRadio...) sao a mesma conta, em blocos: o que no fx.py conta blocos de 10 ms aqui conta tempo, e da o mesmo
+// resultado com o bloco de 10 ms do audiodg.
 #pragma once
 #include <math.h>
 #include <cmath>
@@ -53,6 +53,7 @@ enum Tipo : uint32_t {
     T_PHASER = 16,     // o Phaser da pedalboard
     T_FREEVERB = 17,   // o Reverb da pedalboard (Freeverb)
     T_RADIO = 18,      // CambioRadio.detecta do fx.py (o som do canal sai pelo gerador do extra)
+    T_TROCA = 21,      // TrocaDeVoz do fx.py (#77); o 19 e o 20 sao da FDN (#74) e da distorcao com oversampling (#75)
 };
 
 enum Gerador : uint32_t { G_NENHUM = 0, G_RADIO = 1 };
@@ -179,6 +180,18 @@ struct Sos {
             }
             x[i] = (float)v;
         }
+    }
+    // uma amostra, em double do comeco ao fim (o detector de tom da Troca)
+    double Um(double v) {
+        for (uint32_t s = 0; s < k; s++) {
+            const double* q = &c[s * 5];
+            double* zz = &z[s * 2];
+            const double y = q[0] * v + zz[0];
+            zz[0] = q[1] * v - q[3] * y + zz[1];
+            zz[1] = q[2] * v - q[4] * y;
+            v = y;
+        }
+        return v;
     }
 };
 
@@ -963,6 +976,179 @@ struct Audibilidade {
     }
 };
 
+// TrocaDeVoz do fx.py (#77): muda o tom e, a parte, o formante, com PSOLA sincrono com o periodo da voz. A mesma
+// conta do fx.py, amostra a amostra: o YIN na voz filtrada e dizimada a cada passo, um grao de Hann por periodo de
+// saida, encaixado num multiplo do periodo desde o anterior e lido 'formante' vezes mais rapido, e a saida como a
+// soma dos graos sobre a soma das janelas, com o atraso fixo da troca_geometria do fx.py.
+static inline uint64_t Pot2(uint64_t n) {
+    uint64_t t = 1;
+    while (t < n) {
+        t <<= 1;
+    }
+    return t;
+}
+
+struct Troca {
+    double beta, alfa, gama, limiar, porta, surdo, h_max, s_prox, c_ant, periodo;
+    uint32_t d, passo, tmin, tmax, atraso;
+    bool voz_ant;
+    Sos lp;
+    float* ent;
+    double *dz, *acc, *ws, *cm;
+    uint64_t mi, md, mo, t, nd;
+
+    bool Prepara(Leitor& l, Arena& a, double taxa) {
+        beta = l.Le(0.25, 4.0);
+        alfa = l.Le(0.5, 2.0);
+        const double fmin = l.Le(40.0, 400.0);
+        const double fmax = l.Le(50.0, 2000.0);
+        gama = l.Le(0.5, 2.0);
+        limiar = l.Le(0.01, 0.9);
+        porta = l.Le(0.0, 1.0);
+        const double surdo_s = l.Le(0.001, 0.02);
+        const double passo_s = l.Le(0.001, 0.05);
+        d = l.Conta(64);
+        if (!l.ok || d < 1 || !(fmax > fmin) || !lp.Prepara(l, a)) {
+            return false;
+        }
+        // troca_geometria do fx.py, na mesma ordem
+        const double td = taxa / d;
+        const double t0 = floor(td / fmax);
+        tmin = t0 > 2.0 ? (uint32_t)t0 : 2u;
+        const double t1 = ceil(td / fmin);
+        if (!(t1 > (double)tmin + 2.0 && t1 <= 4096.0)) {
+            return false;
+        }
+        tmax = (uint32_t)t1;
+        const double p = floor(passo_s * taxa / d + 0.5);
+        passo = d * (p > 1.0 ? (uint32_t)p : 1u);
+        surdo = surdo_s * taxa;
+        const double tlim = (double)tmax * d > surdo ? (double)tmax * d : surdo;
+        h_max = gama * tlim / alfa;
+        const double at = ceil(tlim * 0.5 + gama * tlim + h_max) + 4.0;
+        if (!(at < 0.2 * taxa)) {  // atraso absurdo: recusa
+            return false;
+        }
+        atraso = (uint32_t)at;
+        const uint64_t ni = Pot2(2ull * atraso + 64), nz = Pot2(2ull * tmax + 8);
+        const uint64_t no = Pot2((uint64_t)(2.0 * h_max) + 16);
+        if (!(ent = a.Pega<float>((size_t)ni)) || !(dz = a.Pega<double>((size_t)nz)) ||
+            !(acc = a.Pega<double>((size_t)no)) || !(ws = a.Pega<double>((size_t)no)) ||
+            !(cm = a.Pega<double>((size_t)tmax + 1))) {
+            return false;
+        }
+        mi = ni - 1;
+        md = nz - 1;
+        mo = no - 1;
+        t = nd = 0;
+        periodo = 0.0;
+        voz_ant = false;
+        c_ant = 0.0;
+        s_prox = h_max + 2.0;
+        return true;
+    }
+
+    // o periodo (amostras da entrada) na janela que termina agora, ou 0 sem voz
+    void Yin() {
+        const uint64_t w = tmax, total = 2ull * tmax;
+        if (nd < total) {
+            periodo = 0.0;
+            return;
+        }
+        const uint64_t base = nd - total;
+        double e = 0.0;
+        for (uint64_t j = tmax; j < total; j++) {
+            const double v = dz[(base + j) & md];
+            e += v * v;
+        }
+        if (e / (double)w < porta) {
+            periodo = 0.0;
+            return;
+        }
+        double cum = 0.0;
+        cm[0] = 1.0;
+        for (uint32_t tau = 1; tau <= tmax; tau++) {
+            double dd = 0.0;
+            for (uint64_t j = 0; j < w; j++) {
+                const double q = dz[(base + j) & md] - dz[(base + j + tau) & md];
+                dd += q * q;
+            }
+            cum += dd;
+            cm[tau] = cum > 0.0 ? dd * (double)tau / cum : 1.0;
+        }
+        uint32_t k = tmin;
+        while (k < tmax && !(cm[k] < limiar)) {
+            k++;
+        }
+        if (k >= tmax) {
+            periodo = 0.0;
+            return;
+        }
+        while (k + 1 < tmax && cm[k + 1] < cm[k]) {
+            k++;
+        }
+        const double a = cm[k - 1], b = cm[k], c = cm[k + 1];
+        const double den = a - 2.0 * b + c;
+        double off = den > 0.0 ? 0.5 * (a - c) / den : 0.0;
+        off = off < -0.5 ? -0.5 : (off > 0.5 ? 0.5 : off);
+        periodo = ((double)k + off) * d;
+    }
+
+    // a entrada na posicao (interpolacao cubica de Catmull-Rom)
+    double Amostra(double pos) const {
+        const double f0 = floor(pos);
+        const double f = pos - f0;
+        const int64_t k = (int64_t)f0;
+        const double p0 = ent[(uint64_t)(k - 1) & mi], p1 = ent[(uint64_t)k & mi];
+        const double p2 = ent[(uint64_t)(k + 1) & mi], p3 = ent[(uint64_t)(k + 2) & mi];
+        return p1 + 0.5 * f * (p2 - p0 + f * (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3 + f * (3.0 * (p1 - p2) + p3 - p0)));
+    }
+
+    void Grao() {
+        const double s = s_prox;
+        const bool voz = periodo > 0.0;
+        const double t_in = voz ? periodo : surdo;
+        const double t_out = voz ? t_in / beta : surdo;
+        const double cs = s - (double)atraso;
+        const double c = voz && voz_ant ? c_ant + floor((cs - c_ant) / t_in + 0.5) * t_in : cs;
+        const double h = gama * t_in / alfa;
+        const int64_t i0 = (int64_t)floor(s - h) + 1, i1 = (int64_t)ceil(s + h);
+        for (int64_t i = i0; i < i1; i++) {
+            const double u = (double)i - s;
+            const double w = 0.5 + 0.5 * cos(PI * u / h);
+            const double v = Amostra(c + alfa * u);
+            acc[(uint64_t)i & mo] += w * v;
+            ws[(uint64_t)i & mo] += w;
+        }
+        c_ant = c;
+        voz_ant = voz;
+        s_prox = s + t_out;
+    }
+
+    void Processa(float* x, uint32_t n) {
+        for (uint32_t i = 0; i < n; i++) {
+            ent[t & mi] = x[i];
+            const double y = lp.Um((double)x[i]);
+            if ((t + 1) % d == 0) {
+                dz[nd & md] = y;
+                nd++;
+            }
+            if ((t + 1) % passo == 0) {  // o passo e multiplo de d: a amostra dizimada desta vez ja entrou
+                Yin();
+            }
+            while (floor(s_prox - h_max) <= (double)t) {  // o grao entra antes da primeira amostra dele sair
+                Grao();
+            }
+            const uint64_t o = t & mo;
+            const double w = ws[o];
+            x[i] = (float)(acc[o] / (w > 0.5 ? w : 0.5));
+            acc[o] = 0.0;
+            ws[o] = 0.0;
+            t++;
+        }
+    }
+};
+
 // ---------------------------------------------------------------------------------------------------------------
 // A cadeia: o Efeito do fx.py (etapas, ganho, nivelador, extra, corte em 1)
 
@@ -1011,6 +1197,7 @@ struct Cadeia {
         case T_CHORUS: { auto* p = Cria<Chorus>(a); et.e = p; return p && p->Prepara(l, a, taxa); }
         case T_PHASER: { auto* p = Cria<Phaser>(a); et.e = p; return p && p->Prepara(l, taxa); }
         case T_FREEVERB: { auto* p = Cria<Freeverb>(a); et.e = p; return p && p->Prepara(l, a, taxa); }
+        case T_TROCA: { auto* p = Cria<Troca>(a); et.e = p; return p && p->Prepara(l, a, taxa); }
         case T_RADIO: {
             if (radio) {
                 return false;  // um radio por cadeia
@@ -1043,6 +1230,7 @@ struct Cadeia {
         case T_CHORUS: static_cast<Chorus*>(et.e)->Processa(x, n); break;
         case T_PHASER: static_cast<Phaser*>(et.e)->Processa(x, n); break;
         case T_FREEVERB: static_cast<Freeverb*>(et.e)->Processa(x, n); break;
+        case T_TROCA: static_cast<Troca*>(et.e)->Processa(x, n); break;
         case T_RADIO: static_cast<Radio*>(et.e)->Detecta(x, n, c); break;
         default: break;
         }
