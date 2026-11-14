@@ -23,9 +23,10 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   do microfone, a DLL copia a voz crua (mono, na taxa do microfone) para o app e soma a música
   que o app deixou, bit a bit a 48 kHz e por um reamostrador sinc nas outras taxas. No motor, o
   `Injetor` (uma thread com a prioridade de áudio do Windows, a MMCSS "Pro Audio") chama o misturador
-  (`_mixa`) e escreve no anel ~50 ms à frente do microfone, no ritmo dele (folga medida no `dev/mede_folga.py`: o
-  que a gasta é a troca de música, que segura o interpretador); sem leitor do alvo, anda pelo relógio do PC e a música segue no
-  fone. A voz crua que volta (reamostrada para 48 kHz) alimenta o medidor, o ouvir a própria voz,
+  (`_mixa`) e escreve no anel ~40 ms à frente do microfone, no ritmo dele; sem leitor do alvo, anda pelo relógio do PC e
+  a música segue no fone. A folga foi medida no `dev/mede_folga.py`: o que a gasta é a troca de música, e para caber em
+  40 ms o processo roda acima do normal (a thread que segura o interpretador não perde a CPU para o jogo) e o ffmpeg
+  morre pelo `mata` (o `kill` do `subprocess` prendia o interpretador enquanto o Windows matava o processo). A voz crua que volta (reamostrada para 48 kHz) alimenta o medidor, o ouvir a própria voz,
   a mina e o efeito; o microfone que o motor abre só fica de reserva para quando ela não chega.
   Sem efeito e sem corte, a voz crua segue no microfone. O efeito de voz roda no próprio filtro:
   o `preset.py` lê o efeito do `fx.py` e monta o preset (as etapas, com os coeficientes

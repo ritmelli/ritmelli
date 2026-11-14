@@ -6,12 +6,15 @@ engasgo no jogo). Opcoes:
     --carga N             N processos ocupam a CPU (o jogo); o dobro dos nucleos faz o papel de um PC mais fraco
     --passagem outra.webm o motor prepara sem parar a passagem para outra musica (decodifica o fim desta e o comeco da
                           outra e mede as batidas, o trabalho pesado do servidor; de verdade e uma vez por musica)
+    --ciclo outra.webm    o que o servidor faz numa troca de musica, em ciclos de ~40 s: esta comeca CICLO_S antes do
+                          fim, a outra e preparada, a passagem toca ate virar e a outra segue uns segundos
     --sem-mmcss           a thread sem a prioridade de audio do Windows, para comparar
     --folga N             troca o INJ_FOLGA (blocos de 10 ms)
-    --onde                guarda onde a thread estava nas paradas de mais de 30 ms
+    --onde [MS]           nas paradas da thread de mais de MS ms (30 sem numero), guarda onde as outras threads estavam
 
-    python dev/mede_folga.py "IN 2" musica.webm [--segundos 60] [--carga N] [--passagem outra.webm] [--sem-mmcss]
-                             [--folga N] [--onde]
+    python dev/mede_folga.py "IN 2" musica.webm [--segundos 60] [--carga N] [--passagem outra.webm | --ciclo outra.webm]
+                             [--sem-mmcss]
+                             [--folga N] [--onde [MS]]
 
 Toca de verdade nesse microfone: quem estiver ouvindo ele (uma call, um jogo) ouve. Para sem tocar nada num microfone
 sem o filtro pronto (o motor rodaria a tarefa do instalador, que reinicia o audio do Windows).
@@ -32,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import engine as eng  # noqa: E402
 
 AQUECE_S = 3.0  # o comeco (ffmpeg abrindo, o modelo da rede carregando) fica fora da medida
-PARADA_S = 0.03  # o --onde guarda as paradas maiores que isso
+CICLO_S = 40.0  # no --ciclo, esta musica comeca isso antes do fim
 
 
 def _percentil(hist, p):
@@ -52,19 +55,40 @@ def _passagens(e, a_path, b_path, para, feitas):
         feitas.append(time.monotonic())
 
 
-def _onde(inj, ultima, para, paradas):
-    """Vigia a thread do Injetor: parada mais que PARADA_S, conta onde ela esta (o topo da pilha dela)."""
-    vista = None
+def _ciclos(e, a_path, b_path, para, feitas):
+    """Uma troca de musica de verdade por ciclo: esta perto do fim, a outra preparada, a virada e a outra tocando."""
+    da, db = eng.probe_duration(a_path), eng.probe_duration(b_path)
+    while not para.is_set():
+        e.load({"id": "mede-a", "path": a_path, "duration": da}, start=max(0.0, da - CICLO_S))
+        time.sleep(1.0)
+        e.preparar({"id": "mede-b", "path": b_path, "duration": db}, "mede")
+        limite = time.monotonic() + CICLO_S + 15
+        while (e.track or {}).get("id") != "mede-b" and time.monotonic() < limite and not para.is_set():
+            time.sleep(0.05)
+        feitas.append(time.monotonic())
+        para.wait(3.0)
+
+
+def _onde(inj, ultima, para, paradas, parada_s):
+    """Vigia a thread do Injetor: parada mais que parada_s, conta onde estao as outras threads nesse instante. A que
+    segurou o interpretador acabou de soltar, entao ela aparece logo depois do trecho que segurou; somando as paradas, o
+    trecho que se repete e o culpado."""
+    vista, eu = None, threading.get_ident()
     while not para.is_set():
         time.sleep(0.005)
         t = ultima[0]
-        if time.perf_counter() - t < PARADA_S or vista == t:
+        parada = time.perf_counter() - t
+        if parada < parada_s or vista == t:
             continue
         vista = t
-        f = sys._current_frames().get(inj._th.ident)  # noqa: SLF001
-        if f is not None:
-            paradas[" <- ".join(f"{Path(q.filename).name}:{q.lineno} {q.name}"
-                                for q in reversed(traceback.extract_stack(f)[-3:]))] += 1
+        nomes = {th.ident: th.name for th in threading.enumerate()}
+        for ident, f in sys._current_frames().items():  # noqa: SLF001
+            if ident in (eu, inj._th.ident):  # noqa: SLF001
+                continue
+            pilha = traceback.extract_stack(f)[-3:]
+            paradas[f"{nomes.get(ident, ident)}: " + " <- ".join(
+                f"{Path(q.filename).name}:{q.lineno} {q.name}" for q in reversed(pilha))] += 1
+        paradas["(paradas)"] += 1
 
 
 def main():
@@ -74,9 +98,10 @@ def main():
     ap.add_argument("--segundos", type=float, default=60.0)
     ap.add_argument("--carga", type=int, default=0)
     ap.add_argument("--passagem")
+    ap.add_argument("--ciclo")
     ap.add_argument("--sem-mmcss", action="store_true")
     ap.add_argument("--folga", type=int, default=eng.INJ_FOLGA)
-    ap.add_argument("--onde", action="store_true")
+    ap.add_argument("--onde", type=float, nargs="?", const=30.0)
     a = ap.parse_args()
     eng.INJ_FOLGA = a.folga
     eng.INJ_MMCSS = not a.sem_mmcss
@@ -104,18 +129,18 @@ def main():
 
     para = threading.Event()
     paradas = collections.Counter()
-    if a.onde:
+    if a.onde is not None:
         ultima, volta = [time.perf_counter()], inj._volta  # noqa: SLF001
 
         def _marca(s):
             ultima[0] = time.perf_counter()
             volta(s)
         inj._volta = _marca  # noqa: SLF001
-        threading.Thread(target=_onde, args=(inj, ultima, para, paradas), daemon=True).start()
+        threading.Thread(target=_onde, args=(inj, ultima, para, paradas, a.onde / 1000), daemon=True).start()
     feitas = []
-    if a.passagem:
-        threading.Thread(target=_passagens, args=(e, arquivo, str(Path(a.passagem).resolve()), para, feitas),
-                         daemon=True).start()
+    if a.passagem or a.ciclo:
+        threading.Thread(target=_passagens if a.passagem else _ciclos,
+                         args=(e, arquivo, str(Path(a.passagem or a.ciclo).resolve()), para, feitas), daemon=True).start()
     carga = [subprocess.Popen([sys.executable, "-c", "while True: pass"]) for _ in range(a.carga)]
     try:
         fim = time.monotonic() + a.segundos
@@ -134,7 +159,7 @@ def main():
     menor = None if inj.folga_min is None else inj.folga_min * 1000 / eng.SR
     print(json.dumps({
         "microfone": nome, "segundos": a.segundos, "carga": a.carga, "mmcss": inj.mmcss,
-        "passagens": len(feitas) if a.passagem else None, "folga_ms": folga_ms, "voltas": int(h.sum()),
+        "passagens": len(feitas) if a.passagem or a.ciclo else None, "folga_ms": folga_ms, "voltas": int(h.sum()),
         "volta_ms": {"p50": _percentil(h, 0.5), "p99": _percentil(h, 0.99), "p99_9": _percentil(h, 0.999),
                      "max": round(inj.volta_max * 1000, 1)},
         # o anel completa ate folga_ms e a thread volta quando ele tem folga_ms - 10 ou menos: o menor tanto na chegada
@@ -143,7 +168,7 @@ def main():
         "gasto_ms": None if menor is None else round(folga_ms - bloco_ms - menor, 1),
         "secas": inj.secas,
     }, ensure_ascii=False))
-    for onde, n in paradas.most_common(8):
+    for onde, n in paradas.most_common(25):
         print(f"{n:4} {onde}", file=sys.stderr)
 
 

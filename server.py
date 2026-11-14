@@ -221,7 +221,7 @@ class Fora:
                         v.lock.release()
         p, t0 = self._tira_reserva(), time.monotonic()
         estourou = threading.Event()
-        relogio = threading.Timer(limite, lambda: (estourou.set(), p.kill())) if limite else None
+        relogio = threading.Timer(limite, lambda: (estourou.set(), eng.mata(p))) if limite else None
         if relogio:
             relogio.start()
         try:
@@ -278,7 +278,7 @@ class Fora:
         v.n += 1
         n, t0 = v.n, time.monotonic()
         estourou = threading.Event()
-        relogio = threading.Timer(limite, lambda: (estourou.set(), p.kill())) if limite else None
+        relogio = threading.Timer(limite, lambda: (estourou.set(), eng.mata(p))) if limite else None
         if relogio:
             relogio.start()
         r = None
@@ -370,7 +370,7 @@ class Fora:
             try:
                 p.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                p.kill()
+                eng.mata(p)
                 p.wait()
             p.stdout.close()
         threading.Thread(target=espera, daemon=True).start()

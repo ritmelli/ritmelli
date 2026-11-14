@@ -155,7 +155,7 @@ reconecta sozinho; mostre que está reconectando.
   da thread que escreve nele, `preparando` =
   o microfone que o Windows está preparando para a Vitrola agora (a tarefa do instalador; o som
   do PC some uns segundos), ou `null`; `efeito_no_filtro` = o efeito de voz ativo roda no filtro
-  (sem atraso); `false` com efeito ligado = ele vai pelo servidor, com ~50 ms de atraso.
+  (sem atraso); `false` com efeito ligado = ele vai pelo servidor, com ~40 ms de atraso.
 
 **Item** (biblioteca):
 ```json

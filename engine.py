@@ -65,17 +65,21 @@ PRE_MAX = 2        # abertos antes ao mesmo tempo (o palpite torto da mina pode 
 MINA_FOLGA_S = 0.1  # a voz da mina (mina.py) chega em pedacos de 100 ms, com folga de rede: a fila vazia recomeca com isso
 MINA_FILA_MAX_S = 1.0  # fila dela maior que isso (a rede segurou e despejou): o silencio do comeco sai
 VIGIA_S = 2.0  # de quanto em quanto o vigia le a lista de aparelhos do Windows
-# o anel do filtro de microfone (microfone/injeta.py): INJ_FOLGA = blocos escritos a frente do microfone (~50 ms), a
+# o anel do filtro de microfone (microfone/injeta.py): INJ_FOLGA = blocos escritos a frente do microfone (~40 ms), a
 # folga contra a thread do Python atrasar; a voz crua que o filtro devolve vale como viva ate VOZ_VIVA_S sem chegar.
-# A thread pede ao Windows a prioridade de audio (MMCSS "Pro Audio", a que o PortAudio pede para o callback dele).
-# Medido em 14/11 (dev/mede_folga.py, 45 s por caso, 8 nucleos): so tocando, mesmo com o dobro dos nucleos em processos
-# ocupando a CPU, a pior volta e de ~5 ms; o que gasta a folga e o trabalho da troca de musica (preparar a passagem
-# segura o interpretador): com a CPU cheia ele gastou 20 a 30 ms dela, sem a prioridade de audio 40 ms e secou (o jogo
-# ouve o buraco); com o dobro dos nucleos ocupados secou mesmo com ela (paradas de ~80 ms). Menos de 50 ms nao cabe;
+# A thread pede ao Windows a prioridade de audio (MMCSS "Pro Audio", a que o PortAudio pede para o callback dele) e o
+# processo roda acima do normal (PROCESSO_ACIMA). Medido em 14/11 (dev/mede_folga.py --ciclo, uma troca de musica de
+# verdade a cada ~40 s, 8 nucleos): so tocando, nem com o dobro dos nucleos em processos ocupando a CPU a thread passa de
+# ~5 ms; o que a atrasa e a troca de musica, por tres coisas: o kill do ffmpeg segurava o interpretador (ver mata), a
+# thread que segura o interpretador perdia a CPU para o jogo e a thread de audio esperava junto (inversao de prioridade:
+# paradas de ~90 ms com o dobro dos nucleos ocupados), e sem a prioridade de audio a propria thread acordava tarde. Com
+# os tres consertos, a pior parada em 26 trocas foi de 24 ms (com 50 ms de folga, antes, secava: o jogo ouvia o buraco);
+# com 30 ms de folga o anel chegou vazio 1 vez em 10 trocas com a CPU cheia, com 40 ainda sobram ~6 ms no pior caso.
 # VOLTA_MS = casas de 1 ms do histograma das voltas da thread (a ultima junta as maiores)
-INJ_FOLGA = 5
+INJ_FOLGA = 4
 VOZ_VIVA_S = 0.2
 INJ_MMCSS = True
+PROCESSO_ACIMA = True
 VOLTA_MS = 200
 # o efeito de voz no filtro (issue #63): ate isso sem o filtro responder ao preset, a voz crua segue; depois, pelo app
 PRESET_ESPERA_S = 0.2
@@ -655,6 +659,22 @@ def medir_inicio(niv):
     return float(t[som[0]]) if len(som) else 0.0
 
 
+def _processo_acima():
+    """O processo inteiro um degrau acima do normal (ABOVE_NORMAL), uma vez: a thread que segura o interpretador nao perde
+    a CPU para o jogo enquanto a thread de audio espera por ela. Os ffmpeg que ele abre nascem normais (o Windows so
+    passa a classe adiante quando ela e abaixo do normal), e o trabalho pesado daqui e curto (a analise da passagem,
+    uma vez por musica)."""
+    if sys.platform != "win32" or not PROCESSO_ACIMA:
+        return
+    k32 = ctypes.WinDLL("kernel32")
+    k32.GetCurrentProcess.restype = ctypes.c_void_p
+    k32.GetPriorityClass.argtypes = (ctypes.c_void_p,)
+    k32.SetPriorityClass.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
+    eu = k32.GetCurrentProcess()
+    if k32.GetPriorityClass(eu) == 0x20:  # NORMAL_PRIORITY_CLASS: quem rodou acima ou abaixo de proposito fica como esta
+        k32.SetPriorityClass(eu, 0x8000)  # ABOVE_NORMAL_PRIORITY_CLASS
+
+
 def _com_init():
     """WASAPI exige COM na thread que abre o stream; a troca de dispositivo roda numa
     thread do pool do servidor, e sem isto o start falha com PaErrorCode -9999."""
@@ -722,6 +742,26 @@ def _na_lista(nome, lista):
         return None
     n = nome.lower()
     return next((x for x in lista if n in x.lower()), None)
+
+
+if sys.platform == "win32":
+    _termina = ctypes.WinDLL("kernel32", use_last_error=True).TerminateProcess
+    _termina.argtypes = (ctypes.c_void_p, ctypes.c_uint)
+    _termina.restype = ctypes.c_int
+
+
+def mata(p):
+    """O Popen.kill sem prender o interpretador. No Windows o kill do subprocess chama o TerminateProcess segurando o
+    interpretador, e com a CPU cheia matar um ffmpeg pode levar dezenas de ms (14/11: paradas de 33 a 155 ms com outro
+    processo nascendo ao mesmo tempo), em que a thread da saida para o jogo espera e o microfone fica sem musica. Pelo
+    ctypes a chamada solta o interpretador. O processo que ja saiu so faz a chamada falhar; o wait de quem chamou recolhe."""
+    if p.returncode is not None:
+        return
+    h = getattr(p, "_handle", None)
+    if sys.platform != "win32" or h is None:
+        p.kill()
+        return
+    _termina(int(h), 1)
 
 
 def find_dev(name, kind):
@@ -832,7 +872,7 @@ class Preaberto:
             if self._pego:
                 return
             self._pego = self.morto = True
-        self.ff.kill()
+        mata(self.ff)
         try:
             self.ff.wait(timeout=2)
         except subprocess.TimeoutExpired:
@@ -1194,6 +1234,7 @@ class Engine:
 
     def start(self, reserva=False, fixos=()):
         _com_init()
+        _processo_acima()
         # o modelo da rede abre ja e fica aberto (~100 MB): abrir segura o interpretador ~0,6 s, e reabrindo a cada
         # plano o audio estalava (num notebook, aos ~30 s do Where's My Love, 22/10); aqui ainda nao toca nada
         threading.Thread(target=compasso.abre_ja, daemon=True).start()
@@ -1791,7 +1832,7 @@ class Engine:
                         deck.niveis.append((t + n / SR, len(arr), rms))
                     n += len(arr)
             finally:
-                ff.kill()
+                mata(ff)
                 ff.wait()
                 if acc is not None:
                     acc.escreve()
@@ -1824,7 +1865,7 @@ class Engine:
                 return
             t = 0.0
         if pre is not None:  # o disco trocou entre pegar o aberto antes e comecar a ler: ninguem le esse ffmpeg
-            pre[1].kill()
+            mata(pre[1])
             pre[1].wait()
 
     def _erro_de_leitura(self, track, t):
@@ -2542,7 +2583,7 @@ class Engine:
                     c += k
                 resto = x[k * m:]
         finally:
-            ff.kill()
+            mata(ff)
             ff.wait()
         with self._olock:
             o.completa = True
