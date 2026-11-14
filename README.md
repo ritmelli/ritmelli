@@ -22,9 +22,10 @@ que deixe escolher o microfone.
   verdade, dentro do áudio do Windows: o jogo e o Discord seguem com o microfone de sempre. O
   instalador põe o filtro em todos os microfones do PC (o som do PC some por alguns segundos) e
   cria a tarefa do Windows que prepara um microfone que aparecer depois, sem pedir permissão a
-  ninguém. No código-fonte, a DLL do filtro sai do `microfone\apo\compila.bat` (Visual Studio
-  2022 com C++) e entra nos microfones com `python microfone\microfone.py instala-todos`, num
-  terminal de administrador.
+  ninguém. No código-fonte, a DLL do filtro e a do motor de efeitos dele (`voz.dll`, para a voz
+  com efeito que sai pelo app) saem do `microfone\apo\compila.bat` (Visual Studio 2022 com C++);
+  o filtro entra nos microfones com `python microfone\microfone.py instala-todos`, num terminal
+  de administrador.
 - ffmpeg (com o ffprobe) no PATH, ou numa pasta `bin/` ao lado do código.
 - Node ou Deno: o yt-dlp precisa de um runtime de JavaScript para o YouTube entregar todos os
   formatos. O Deno também vale na `bin/`.

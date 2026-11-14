@@ -225,7 +225,8 @@ jobs:
           if (-not $p.WaitForExit(600000)) { Stop-Process $p -Force; Get-Content $log -Tail 40; throw 'o setup não terminou em 10 min' }
           if ($p.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "o setup saiu com $($p.ExitCode)" }
           $app = "$env:ProgramFiles\Vitrola"
-          foreach ($f in 'vitrola.exe', 'bin\ffmpeg.exe', 'bin\ffprobe.exe', 'bin\deno.exe', 'LICENSE.txt', 'TERCEIROS.txt') {
+          foreach ($f in 'vitrola.exe', 'bin\ffmpeg.exe', 'bin\ffprobe.exe', 'bin\deno.exe', 'LICENSE.txt', 'TERCEIROS.txt',
+                   '_internal\microfone\voz.dll') {
             if (-not (Test-Path "$app\$f")) { throw "o setup não instalou o $f" }
           }
           netsh advfirewall firewall show rule name=Vitrola | Out-Null
@@ -241,6 +242,10 @@ jobs:
             throw 'a Vitrola não respondeu em 90 s'
           }
           "Vitrola $($estado.versao) respondeu: status=$($estado.status) erro=$($estado.error)"
+          # o voz.dll (o efeito de voz que sai pelo app) carregou: sem ele o motor sobe e diz no log
+          if (Select-String -Path "$logs\server.err", "$logs\server.log" -Pattern 'sem o voz.dll' -Quiet -ErrorAction SilentlyContinue) {
+            throw 'a Vitrola instalada não carregou o voz.dll'
+          }
           if ($estado.versao -ne $env:VERSAO) { throw "a Vitrola respondeu a versão $($estado.versao), e não a $env:VERSAO" }
           # o desinstalador fecha a Vitrola (taskkill) e tira a regra do firewall. Ele se copia para a pasta temporária
           # e roda de lá, então o fim se confere pelo que ele apaga
