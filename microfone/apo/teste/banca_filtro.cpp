@@ -54,8 +54,9 @@ extern "C" __declspec(dllexport) void* banca_cria(const wchar_t* mapa, float tax
     return new Banca{apo, fmt, canais};
 }
 
-// um bloco do audiodg: entrada e saida intercaladas (quadros x canais); silencio = a entrada marcada BUFFER_SILENT
-extern "C" __declspec(dllexport) void banca_bloco(void* h, float* entrada, float* saida, unsigned quadros, int silencio) {
+// um bloco do audiodg: entrada e saida intercaladas (quadros x canais); silencio = a entrada marcada BUFFER_SILENT.
+// Devolve a marca da saida (1 = BUFFER_SILENT: quem vem depois trata o bloco como silencio)
+extern "C" __declspec(dllexport) int banca_bloco(void* h, float* entrada, float* saida, unsigned quadros, int silencio) {
     auto* b = static_cast<Banca*>(h);
     APO_CONNECTION_PROPERTY ent = {reinterpret_cast<UINT_PTR>(entrada), quadros,
                                    silencio ? BUFFER_SILENT : BUFFER_VALID, APO_CONNECTION_PROPERTY_SIGNATURE};
@@ -63,6 +64,7 @@ extern "C" __declspec(dllexport) void banca_bloco(void* h, float* entrada, float
     APO_CONNECTION_PROPERTY* pe = &ent;
     APO_CONNECTION_PROPERTY* ps = &sai;
     b->apo->APOProcess(1, &pe, 1, &ps);
+    return sai.u32BufferFlags == BUFFER_SILENT ? 1 : 0;
 }
 
 extern "C" __declspec(dllexport) void banca_destroi(void* h) {

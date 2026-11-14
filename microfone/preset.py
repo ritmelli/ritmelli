@@ -8,9 +8,9 @@ e o efeito segue pelo caminho do app (a voz vai ao app e volta pelo anel, com o 
 O formato (little-endian) e o do voz.h: cabecalho de 80 bytes (magia, versao, taxa, ganho, nivelar, quantas etapas,
 quantas do extra, gerador e os 5 numeros do nivelador) e, por etapa, tipo, quantos doubles e os doubles.
 """
-import functools
 import math
 import struct
+import threading
 
 import numpy as np
 import pedalboard as pb
@@ -199,13 +199,45 @@ def compila(e, taxa, extra=True):
     return cab + corpo
 
 
-@functools.lru_cache(maxsize=64)
-def preset(efeito_id, taxa):
-    """O preset do efeito do catalogo na taxa, ou None: sem efeito, ou efeito que segue pelo app (NaoPortado)."""
-    e = fx.criar(efeito_id)
-    if e is None:
-        return None
+# os presets ja projetados, por (efeito, taxa): o projeto leva ate ~70 ms (o FIR do Locutor fora dos 48 kHz), entao a
+# thread da saida para o jogo so le daqui (pede) e nunca projeta
+_prontos = {}
+_projetando = set()
+_trava = threading.Lock()
+PENDENTE = object()
+
+
+def _projeta(efeito_id, taxa):
     try:
-        return compila(e, taxa)
-    except NaoPortado:
+        e = fx.criar(efeito_id)
+        return None if e is None else compila(e, taxa)
+    except Exception:  # noqa: BLE001 - NaoPortado, efeito que sumiu do catalogo, scipy: o efeito segue pelo app
         return None
+
+
+def preset(efeito_id, taxa):
+    """O preset do efeito do catalogo na taxa, ou None: sem efeito, ou efeito que segue pelo app. Projeta na hora se
+    ainda nao tem (fora da thread de audio: o set_effect do motor, os testes)."""
+    chave = (efeito_id, int(taxa))
+    with _trava:
+        if chave in _prontos:
+            return _prontos[chave]
+    dados = _projeta(*chave)
+    with _trava:
+        _prontos[chave] = dados
+        _projetando.discard(chave)
+    return dados
+
+
+def pede(efeito_id, taxa):
+    """Sem esperar, para a thread de audio: o preset pronto (bytes ou None) ou PENDENTE, e ai o projeto comeca numa
+    thread a parte (uma por chave); a proxima volta acha pronto."""
+    chave = (efeito_id, int(taxa))
+    with _trava:
+        if chave in _prontos:
+            return _prontos[chave]
+        if chave in _projetando:
+            return PENDENTE
+        _projetando.add(chave)
+    threading.Thread(target=preset, args=chave, daemon=True, name="vitrola-preset").start()
+    return PENDENTE

@@ -25,6 +25,7 @@ import batida
 import compasso
 import fx
 import pastas
+from microfone import preset  # o preset do efeito no filtro: importado aqui, nunca na thread da saida para o jogo
 
 try:  # o pedal da mina: modulo de fora deste repo, posto ao lado do codigo so onde ela roda
     import mina
@@ -988,12 +989,15 @@ class Injetor:
     def _efeito(self, m):
         """O preset do efeito escolhido no anel (na taxa do microfone alvo) e o estado do filtro com ele: roda
         (efeito_no_filtro), ainda nao respondeu (_fx_pendente: a voz crua segue) ou recusou (a voz vai pelo app)."""
-        from microfone import preset  # noqa: PLC0415 - o projeto dos filtros (scipy) so quando ha anel
         mo = self.motor
         eid = mo.effect if mo._fx is not None else None  # noqa: SLF001
         taxa = int(m.a.voz_taxa)
         if (eid, taxa) != self._preset:
-            dados = preset.preset(eid, taxa) if eid and taxa else None
+            dados = preset.pede(eid, taxa) if eid and taxa else None
+            if dados is preset.PENDENTE:  # o projeto roda a parte (ate ~70 ms): a voz crua segue ate ficar pronto
+                self.efeito_no_filtro = False
+                mo._fx_filtro, mo._fx_pendente = False, True  # noqa: SLF001
+                return
             self._preset_seq = m.preset(dados or b"")
             self._preset, self._preset_ok, self._preset_em = (eid, taxa), dados is not None, time.monotonic()
         feito, erro = m.preset_estado()
@@ -1502,8 +1506,7 @@ class Engine:
         m = inj.m if inj is not None else None
         if nova is not None and m is not None and m.a.voz_taxa:
             # o preset do filtro fica pronto aqui, e nao na thread da saida para o jogo (o do Locutor projeta um FIR de
-            # 1023, ate ~35 ms): o Injetor so acha o efeito novo depois disso
-            from microfone import preset  # noqa: PLC0415
+            # 1023, ate ~70 ms): o Injetor so acha o efeito novo depois disso
             preset.preset(effect_id, int(m.a.voz_taxa))
         self.effect = effect_id  # antes do _fx: o Injetor le os dois sem trava e nunca pega o id velho com o efeito novo
         self._fx = nova
