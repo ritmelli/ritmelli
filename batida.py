@@ -55,7 +55,7 @@ def _grave_percussivo(x, sr):
     """A forca dos ataques do grave (ate GRAVE_HZ) so do que e pancada: no espectrograma, o que e largo na
     frequencia (bumbo) fica, o que sustenta no tempo (nota do baixo) sai (mascara de Fitzgerald, filtros de
     mediana). No reggaeton o baixo bate no contratempo e empatava o grave inteiro (o fim do Despacito). Em
-    pedacos de 100 quadros: a mediana inteira de uma vez prende o interpretador e o audio do cabo espera."""
+    pedacos de 100 quadros: a mediana inteira de uma vez prende o interpretador e o audio espera."""
     _, _, z = signal.stft(x, fs=sr, nperseg=NFFT, noverlap=NFFT - HOP, boundary=None, padded=False)
     m = np.abs(z[: int(1200.0 * NFFT / sr) + 1])  # ate 1,2 kHz: a mediana na frequencia precisa de vizinhos
     ate = int(GRAVE_HZ * NFFT / sr) + 1

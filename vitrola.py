@@ -5,7 +5,9 @@ server.py).
 
     python vitrola.py [--port 8799 ...]   o servidor
     python vitrola.py --yt                o YouTube num processo a parte (yt_fora.py)
-    python vitrola.py --andamento         a medida de andamento (andamento.py)"""
+    python vitrola.py --andamento         a medida de andamento (andamento.py)
+    python vitrola.py --microfone ...     o filtro de microfone (microfone/microfone.py): quem chama e o instalador e
+                                          a tarefa do Windows que ele cria, nunca o servidor pelo UAC"""
 import sys
 
 
@@ -76,6 +78,9 @@ def main():
     elif modo == "--andamento":
         import andamento
         andamento.main()
+    elif modo == "--microfone":
+        from microfone import microfone as filtro
+        sys.exit(filtro.main(sys.argv[2:]))
     elif not ja_ligado():
         sem_console()
         import server

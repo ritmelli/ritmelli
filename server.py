@@ -1,4 +1,4 @@
-"""Soundboard do VRChat: servidor local que toca audio no microfone do jogo pelo VB-Cable e
+"""Soundboard do VRChat: servidor local que toca audio no microfone do jogo (pelo filtro da Vitrola, em microfone/) e
 serve as interfaces de themes/. Contrato da API: API.md. Atende a propria maquina e o celular
 pareado na rede de casa (para mexer enquanto joga; ver o pareamento.py).
 
@@ -26,6 +26,8 @@ from pathlib import Path
 
 from aiohttp import web
 from aiohttp.web_runner import GracefulExit
+
+from microfone import microfone as filtro
 
 import andamento as an
 import atualizacao as atu
@@ -613,8 +615,8 @@ class App:
         self.closing = False
         self.atualizacao = atu.Atualizacao()  # a versao nova (atualizacao.py); sem endereco e chave, fica parada
         cls = eng.MockEngine if mock else eng.Engine
-        self.engine = cls(mic=self.cfg.get("mic", "default"), out=self.cfg.get("out", "CABLE Input"),
-                          monitor=self.cfg.get("monitor", "default"))
+        self.cfg.pop("out", None)  # a saida pelo cabo saiu: a musica vai sempre pelo filtro do microfone
+        self.engine = cls(mic=self.cfg.get("mic", "default"), monitor=self.cfg.get("monitor", "default"))
         self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
         self.engine.religar_stream = self.religar_stream
         self.cfg.pop("mic_vol", None)  # o nivel da voz e o do Windows, que guarda sozinho (18/10)
@@ -652,7 +654,7 @@ class App:
 
     def save_cfg(self):
         e = self.engine
-        self.cfg.update(mic=e.devices["mic"], out=e.devices["out"], monitor=e.devices["monitor"],
+        self.cfg.update(mic=e.devices["mic"], monitor=e.devices["monitor"],
                         vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
                         voice_mon_vol=e.voice_mon_vol, auto=self.auto)
         save_json(self.cfg_path, self.cfg)
@@ -2113,17 +2115,25 @@ def build(app_state):
             return j_err(f"Não consegui recarregar os efeitos ({str(ex)[:200]}).", 500)
         return j_ok(effects=len(efeitos), effect=E.effect)
 
+    def _filtro_do_mic():
+        """O filtro no microfone em uso: {"filtro", "melhorias"} (null se nao deu para ler)."""
+        try:
+            m = filtro.do_microfone(E.active.get("mic"))
+        except Exception:  # noqa: BLE001 - sem ler o registro, a tela segue sem o estado do filtro
+            return None
+        return {"filtro": m["filtro"], "melhorias": m["melhorias"]} if m else None
+
     @r.get("/api/devices")
     async def devices(_):
         d = await loop_().run_in_executor(pool, eng.list_devices_live)
-        return web.json_response({**d, "current": dict(E.devices), "active": dict(E.active)})
+        f = await loop_().run_in_executor(pool, _filtro_do_mic)
+        return web.json_response({**d, "current": dict(E.devices), "active": dict(E.active), "filtro": f})
 
     @r.post("/api/devices")
     async def set_devices(request):
         b = await body(request)
         try:
-            await loop_().run_in_executor(pool, lambda: E.set_devices(
-                mic=b.get("mic"), out=b.get("out"), monitor=b.get("monitor")))
+            await loop_().run_in_executor(pool, lambda: E.set_devices(mic=b.get("mic"), monitor=b.get("monitor")))
         except ValueError as ex:  # mensagem nossa, ja em portugues
             return j_err(str(ex)[:300])
         except Exception as ex:  # noqa: BLE001 - PortAudio fala ingles
@@ -2132,7 +2142,7 @@ def build(app_state):
         A.save_cfg()
         return j_ok()
 
-    # as boas-vindas da primeira vez, so no PC: e nele que se instala o cabo e se escolhe o microfone
+    # as boas-vindas da primeira vez, so no PC: e nele que se escolhe o microfone e o fone
     @r.get("/api/boas-vindas")
     async def boas_vindas(request):
         return web.json_response({"mostrar": do_pc(request) and A.boas_vindas_pendentes()})
@@ -2373,7 +2383,7 @@ def main():
     A = App(a.port, Path(a.data_dir), mock=a.mock)
     threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
-    print(f"mic: {d['mic']} | cabo: {d['out']} | fone: {d['monitor'] or '-'}", flush=True)
+    print(f"mic: {d['mic']} | fone: {d['monitor'] or '-'}", flush=True)
     url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
     print(f"Vitrola {VERSAO} em {url}{' (MOCK, sem som)' if a.mock else ''} | dados em {pastas.DADOS}", flush=True)
     if not a.no_browser:

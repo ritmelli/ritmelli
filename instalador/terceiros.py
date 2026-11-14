@@ -93,8 +93,10 @@ def main():
     for a in ("--app", "--vitrola", "--ffmpeg", "--deno", "--saida"):
         ap.add_argument(a, type=Path, required=True)
     a = ap.parse_args()
-    # do app: os modulos dele e as pastas que o vitrola.spec copia do repo
-    nosso = {p.stem for p in a.vitrola.glob("*.py")} | {"themes", "modelos", "icone"}
+    # do app: os modulos dele, os pacotes dele (pasta com __init__.py, como o microfone/) e as pastas que o
+    # vitrola.spec copia do repo
+    nosso = ({p.stem for p in a.vitrola.glob("*.py")} | {p.parent.name for p in a.vitrola.glob("*/__init__.py")}
+             | {"themes", "modelos", "icone"})
     donos = dono_de_cada_nome()
     pacotes, sem_dono = set(), []
     for n in sorted(modulos(a.app)):

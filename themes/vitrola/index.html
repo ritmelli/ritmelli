@@ -946,19 +946,20 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 @media (max-width: 899.98px) { #tela-parear { align-items: start; padding-top: 48px; } }
 
 /* boas-vindas: cada passo numa etiqueta, como os celulares conectados, com o numero na letra de pixel. Em duas
-   colunas, para caber sem rolar numa tela de notebook; o celular, que e opcional, fica na faixa de baixo */
+   colunas, para caber sem rolar numa tela de notebook; o primeiro disco e o celular, os que so tem um botao, ficam
+   cada um numa faixa larga embaixo */
 #dlg-boas { width: min(880px, calc(100vw - 32px)); }
 .boas-passos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; counter-reset: passo; }
 .boas-passos li {
   counter-increment: passo; position: relative; display: grid; gap: 6px; justify-items: start; align-content: start;
   margin: 2px; padding: 6px 12px 9px 44px; background: #E2D3B3; border-image: var(--mold-etiqueta);
 }
-/* a faixa de baixo, larga: o botao vai ao lado do texto */
-.boas-passos li:last-child { grid-column: 1 / -1; grid-template-columns: 1fr auto; column-gap: 16px; align-items: center; }
-.boas-passos li:last-child h3 { grid-column: 1 / -1; }
+/* as faixas de baixo, largas: o botao vai ao lado do texto */
+.boas-passos li:nth-child(n+3) { grid-column: 1 / -1; grid-template-columns: 1fr auto; column-gap: 16px; align-items: center; }
+.boas-passos li:nth-child(n+3) h3 { grid-column: 1 / -1; }
 @media (max-width: 759.98px) {
   .boas-passos { grid-template-columns: 1fr; }
-  .boas-passos li:last-child { grid-template-columns: 1fr; }
+  .boas-passos li:nth-child(n+3) { grid-template-columns: 1fr; }
 }
 /* o foco comeca no titulo, que nao e botao: o primeiro botao aceso parecia a acao principal */
 #db-t:focus { outline: none; }
@@ -4631,7 +4632,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 <dialog id="dlg-disp" aria-labelledby="dd-t">
   <form method="dialog" class="dlg">
     <h2 id="dd-t">Microfone e fone</h2>
-    <label class="campo">Microfone (a sua voz)
+    <label class="campo">Microfone (a sua voz, e onde a música toca)
       <select id="dd-mic"></select>
       <span class="em-uso" id="dd-mic-uso"></span>
     </label>
@@ -4639,29 +4640,19 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       <select id="dd-mon"></select>
       <span class="em-uso" id="dd-mon-uso"></span>
     </label>
-    <p class="em-uso" id="dd-saida"></p>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
-      <span>No VRChat, o microfone precisa ser <b>CABLE Output (VB-Audio Virtual Cable)</b>. É por ele que o jogo recebe a sua voz e o som.</span></div>
+      <span>No VRChat e no Discord, use este mesmo microfone. No Discord, use o perfil <b>Estúdio</b> (ou desligue o Krisp e a sensibilidade automática): senão ele corta a música.</span></div>
     <p class="msg-dlg" id="dd-msg" role="status"></p>
     <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
   </form>
 </dialog>
 
-<!-- boas-vindas: o passo a passo da primeira vez no PC (GET /api/boas-vindas); o cabo e os dispositivos saem do JS -->
+<!-- boas-vindas: o passo a passo da primeira vez no PC (GET /api/boas-vindas); os dispositivos saem do JS -->
 <dialog id="dlg-boas" aria-labelledby="db-t">
   <form method="dialog" class="dlg">
     <h2 id="db-t" tabindex="-1" autofocus>Boas-vindas à Vitrola</h2>
     <p>A Vitrola toca música no microfone do VRChat, junto com a sua voz. Confira estes passos uma vez e pronto.</p>
     <ol class="boas-passos">
-      <li>
-        <h3>O cabo de áudio</h3>
-        <p>O VB-Cable leva o som da Vitrola para o microfone do jogo. É gratuito, da VB-Audio.</p>
-        <p class="boas-status"><span class="lampada" id="db-cabo-l" aria-hidden="true"></span><span id="db-cabo">Conferindo se ele está instalado.</span></p>
-        <div class="boas-falta" id="db-cabo-falta" hidden>
-          <p>Na página do VB-Cable, baixe o pacote para Windows (.zip) e extraia. Clique com o botão direito em <b>VBCABLE_Setup_x64.exe</b>, escolha <b>Executar como administrador</b> e clique em <b>Install Driver</b>. Se ele não aparecer aqui depois, reinicie o PC.</p>
-          <a class="btn" href="https://vb-audio.com/Cable/" target="_blank" rel="noopener">Abrir a página do VB-Cable</a>
-        </div>
-      </li>
       <li>
         <h3>O seu microfone e o seu fone</h3>
         <p>A sua voz sai do microfone, e você ouve a música no fone.</p>
@@ -4670,7 +4661,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       </li>
       <li>
         <h3>No VRChat</h3>
-        <p>Nas configurações de áudio do jogo, escolha <b>CABLE Output (VB-Audio Virtual Cable)</b> como microfone.</p>
+        <p>Nas configurações de áudio do jogo, use o mesmo microfone escolhido aqui: a Vitrola toca a música nele. No Discord, use o perfil <b>Estúdio</b>, senão ele corta a música.</p>
       </li>
       <li>
         <h3>O primeiro disco</h3>
@@ -8236,18 +8227,25 @@ function opcoes(sel, lista, atual, emUso) {
 }
 function preencherDispositivos(r) {
   const cur = r.current || {}, act = r.active || {};
+  S.disp = r;
   const semCabo = n => !/cable/i.test(n);
   // o padrao que e o cabo cede ao primeiro microfone de verdade, como no motor
   const micPadrao = r.default_input && !semCabo(r.default_input) ? (r.inputs || []).find(semCabo) : r.default_input;
   opcoes($('#dd-mic'), [['default', `Padrão do Windows (${micPadrao || 'nenhum'})`], ...(r.inputs || []).filter(semCabo).map(n => [n, n])], cur.mic || 'default', act.mic);
   opcoes($('#dd-mon'), [['default', `Padrão do Windows (${r.default_output || 'nenhum'})`], ...(r.outputs || []).filter(semCabo).map(n => [n, n]), ['', 'Nenhum (o som não toca no seu fone)']], cur.monitor == null ? 'default' : cur.monitor, act.monitor);
   $('#dd-mic').disabled = $('#dd-mon').disabled = false;
-  mostrarAtivos(act);
+  mostrarAtivos(act, r.filtro);
 }
-function mostrarAtivos(act) {
-  $('#dd-mic-uso').textContent = `Em uso agora: ${act.mic || 'nenhum'}`;
+/* o microfone em uso e se a musica chega nele: o filtro da Vitrola (o instalador poe em todos; o que aparece depois o
+   app prepara sozinho, e o som do PC some uns segundos) */
+function mostrarAtivos(act, f) {
+  const prep = S.state && S.state.microfone && S.state.microfone.preparando;
+  let txt = `Em uso agora: ${act.mic || 'nenhum'}`;
+  if (act.mic && prep) txt += '. Preparando ele para a Vitrola: o som do PC some por alguns segundos.';
+  else if (act.mic && f && !(f.filtro && f.melhorias)) txt += '. Ele ainda não está pronto: a música não chega nele.';
+  else if (act.mic && f) txt += '. A música toca nele.';
+  $('#dd-mic-uso').textContent = txt;
   $('#dd-mon-uso').textContent = act.monitor ? `Em uso agora: ${act.monitor}` : 'Em uso agora: nenhum, o som não toca no seu fone';
-  $('#dd-saida').textContent = `Saída para o jogo: ${act.out || 'nenhuma'}`;
 }
 async function trocarDispositivo(k, v) {
   const msg = $('#dd-msg'); msg.className = 'msg-dlg'; msg.textContent = 'Trocando e reabrindo o áudio.';
@@ -8266,7 +8264,7 @@ $('#dd-mic').addEventListener('change', e => trocarDispositivo('mic', e.target.v
 $('#dd-mon').addEventListener('change', e => trocarDispositivo('monitor', e.target.value));
 
 async function desligar() {
-  const ok = await confirmar('Desligar a Vitrola?', 'A sua voz para de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade.', 'Desligar');
+  const ok = await confirmar('Desligar a Vitrola?', 'A música para de tocar no microfone, e a sua voz segue normal no jogo, sem efeito.', 'Desligar');
   if (!ok) return;
   try { await api('POST', '/api/shutdown'); S.desligado = true; mostrarFora(); }
   catch (e) { avisar(e.message, true); }
@@ -8495,10 +8493,10 @@ function mostrarFora() {
   if (S.atualizando) { mostrarAtualizando(f); return; }
   if (S.desligado) {
     $('#fora-tt').textContent = 'Vitrola desligada';
-    $('#fora-p').innerHTML = 'A sua voz parou de passar pelo cabo. No VRChat, volte o microfone para o microfone de verdade. Para ligar de novo, abra a Vitrola no PC, pelo menu Iniciar.';
+    $('#fora-p').innerHTML = 'A música parou de tocar no microfone, e a sua voz segue normal no jogo. Para ligar de novo, abra a Vitrola no PC, pelo menu Iniciar.';
   } else {
     $('#fora-tt').textContent = S.jaConectou ? 'A Vitrola parou de responder' : 'A Vitrola não está respondendo';
-    $('#fora-p').innerHTML = 'O servidor caiu ou foi desligado, e a sua voz não está passando pelo cabo. Para ligar, abra a Vitrola no PC, pelo menu Iniciar. Se ela já estiver aberta, o motivo aparece no log em <code>%LOCALAPPDATA%\\Vitrola\\logs</code>.';
+    $('#fora-p').innerHTML = 'O servidor caiu ou foi desligado, e a música não está tocando no microfone (a sua voz segue normal no jogo). Para ligar, abra a Vitrola no PC, pelo menu Iniciar. Se ela já estiver aberta, o motivo aparece no log em <code>%LOCALAPPDATA%\\Vitrola\\logs</code>.';
   }
   $('#lamp').className = 'lampada'; $('#conexao').textContent = S.desligado ? 'desligada' : 'fora do ar';
   $('#conexao').classList.remove('sr');
@@ -8543,8 +8541,8 @@ $('#form-parear').addEventListener('submit', e => {
 });
 
 /* ---------- boas-vindas (so no PC): o passo a passo da primeira vez, quando o GET /api/boas-vindas diz. Fechar de
-   qualquer jeito marca como vistas, e elas nao voltam. Abertas, conferem o cabo e os dispositivos a cada 3 s: o cabo
-   instalado com elas na tela acende sozinho ---------- */
+   qualquer jeito marca como vistas, e elas nao voltam. Abertas, conferem os dispositivos a cada 3 s: o microfone
+   conectado com elas na tela acende sozinho ---------- */
 let boasT = 0, boasPedidas = false;
 async function boasVindasSePrecisar() {
   // o mesmo teste do botao Celular; o servidor tambem so diz que sim para o PC
@@ -8560,10 +8558,7 @@ async function conferirBoasVindas() {
   if (!d.open) return;
   try {
     const r = await api('GET', '/api/devices'), act = r.active || {};
-    const cabo = (r.outputs || []).some(n => /cable input/i.test(n));
-    $('#db-cabo-l').className = `lampada ${cabo ? 'acesa' : 'alerta'}`;
-    $('#db-cabo').textContent = cabo ? 'Instalado.' : 'Ainda não está instalado.';
-    $('#db-cabo-falta').hidden = cabo;
+    S.disp = r;
     $('#db-disp-l').className = `lampada ${act.mic ? 'acesa' : 'alerta'}`;
     if (act.mic) $('#db-disp').replaceChildren(el('span', null, `Microfone: ${act.mic}`),
                                                 el('span', null, `Fone: ${act.monitor || 'nenhum, a música não toca no seu fone'}`));
