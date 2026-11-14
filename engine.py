@@ -65,10 +65,22 @@ PRE_MAX = 2        # abertos antes ao mesmo tempo (o palpite torto da mina pode 
 MINA_FOLGA_S = 0.1  # a voz da mina (mina.py) chega em pedacos de 100 ms, com folga de rede: a fila vazia recomeca com isso
 MINA_FILA_MAX_S = 1.0  # fila dela maior que isso (a rede segurou e despejou): o silencio do comeco sai
 VIGIA_S = 2.0  # de quanto em quanto o vigia le a lista de aparelhos do Windows
-# o anel do filtro de microfone (microfone/injeta.py): INJ_FOLGA = blocos escritos a frente do microfone (~50 ms), a
-# folga contra a thread do Python atrasar; a voz crua que o filtro devolve vale como viva ate VOZ_VIVA_S sem chegar
-INJ_FOLGA = 5
+# o anel do filtro de microfone (microfone/injeta.py): INJ_FOLGA = blocos escritos a frente do microfone (~40 ms), a
+# folga contra a thread do Python atrasar; a voz crua que o filtro devolve vale como viva ate VOZ_VIVA_S sem chegar.
+# A thread pede ao Windows a prioridade de audio (MMCSS "Pro Audio", a que o PortAudio pede para o callback dele) e o
+# processo roda acima do normal (PROCESSO_ACIMA). Medido em 14/11 (dev/mede_folga.py --ciclo, uma troca de musica de
+# verdade a cada ~40 s, 8 nucleos): so tocando, nem com o dobro dos nucleos em processos ocupando a CPU a thread passa de
+# ~5 ms; o que a atrasa e a troca de musica, por tres coisas: o kill do ffmpeg segurava o interpretador (ver mata), a
+# thread que segura o interpretador perdia a CPU para o jogo e a thread de audio esperava junto (inversao de prioridade:
+# paradas de ~90 ms com o dobro dos nucleos ocupados), e sem a prioridade de audio a propria thread acordava tarde. Com
+# os tres consertos, a pior parada em 26 trocas foi de 24 ms (com 50 ms de folga, antes, secava: o jogo ouvia o buraco);
+# com 30 ms de folga o anel chegou vazio 1 vez em 10 trocas com a CPU cheia, com 40 ainda sobram ~6 ms no pior caso.
+# VOLTA_MS = casas de 1 ms do histograma das voltas da thread (a ultima junta as maiores)
+INJ_FOLGA = 4
 VOZ_VIVA_S = 0.2
+INJ_MMCSS = True
+PROCESSO_ACIMA = True
+VOLTA_MS = 200
 # o efeito de voz no filtro (issue #63): ate isso sem o filtro responder ao preset, a voz crua segue; depois, pelo app
 PRESET_ESPERA_S = 0.2
 VIGIA_TENTATIVAS = 3  # reaberturas por mudanca da lista (o PortAudio as vezes ainda nao ve o aparelho)
@@ -647,6 +659,22 @@ def medir_inicio(niv):
     return float(t[som[0]]) if len(som) else 0.0
 
 
+def _processo_acima():
+    """O processo inteiro um degrau acima do normal (ABOVE_NORMAL), uma vez: a thread que segura o interpretador nao perde
+    a CPU para o jogo enquanto a thread de audio espera por ela. Os ffmpeg que ele abre nascem normais (o Windows so
+    passa a classe adiante quando ela e abaixo do normal), e o trabalho pesado daqui e curto (a analise da passagem,
+    uma vez por musica)."""
+    if sys.platform != "win32" or not PROCESSO_ACIMA:
+        return
+    k32 = ctypes.WinDLL("kernel32")
+    k32.GetCurrentProcess.restype = ctypes.c_void_p
+    k32.GetPriorityClass.argtypes = (ctypes.c_void_p,)
+    k32.SetPriorityClass.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
+    eu = k32.GetCurrentProcess()
+    if k32.GetPriorityClass(eu) == 0x20:  # NORMAL_PRIORITY_CLASS: quem rodou acima ou abaixo de proposito fica como esta
+        k32.SetPriorityClass(eu, 0x8000)  # ABOVE_NORMAL_PRIORITY_CLASS
+
+
 def _com_init():
     """WASAPI exige COM na thread que abre o stream; a troca de dispositivo roda numa
     thread do pool do servidor, e sem isto o start falha com PaErrorCode -9999."""
@@ -714,6 +742,26 @@ def _na_lista(nome, lista):
         return None
     n = nome.lower()
     return next((x for x in lista if n in x.lower()), None)
+
+
+if sys.platform == "win32":
+    _termina = ctypes.WinDLL("kernel32", use_last_error=True).TerminateProcess
+    _termina.argtypes = (ctypes.c_void_p, ctypes.c_uint)
+    _termina.restype = ctypes.c_int
+
+
+def mata(p):
+    """O Popen.kill sem prender o interpretador. No Windows o kill do subprocess chama o TerminateProcess segurando o
+    interpretador, e com a CPU cheia matar um ffmpeg pode levar dezenas de ms (14/11: paradas de 33 a 155 ms com outro
+    processo nascendo ao mesmo tempo), em que a thread da saida para o jogo espera e o microfone fica sem musica. Pelo
+    ctypes a chamada solta o interpretador. O processo que ja saiu so faz a chamada falhar; o wait de quem chamou recolhe."""
+    if p.returncode is not None:
+        return
+    h = getattr(p, "_handle", None)
+    if sys.platform != "win32" or h is None:
+        p.kill()
+        return
+    _termina(int(h), 1)
 
 
 def find_dev(name, kind):
@@ -824,11 +872,27 @@ class Preaberto:
             if self._pego:
                 return
             self._pego = self.morto = True
-        self.ff.kill()
+        mata(self.ff)
         try:
             self.ff.wait(timeout=2)
         except subprocess.TimeoutExpired:
             pass
+
+
+def _prioridade_audio():
+    """Poe a thread que chama na prioridade de audio do Windows (MMCSS, tarefa "Pro Audio"), como o PortAudio faz com o
+    callback dele: com o jogo ocupando a CPU, a thread comum acorda tarde. Devolve (avrt, handle) para o revert, ou None
+    sem o servico."""
+    try:
+        avrt = ctypes.WinDLL("avrt")
+    except OSError:
+        return None
+    avrt.AvSetMmThreadCharacteristicsW.restype = ctypes.c_void_p
+    avrt.AvSetMmThreadCharacteristicsW.argtypes = (ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_ulong))
+    avrt.AvRevertMmThreadCharacteristics.argtypes = (ctypes.c_void_p,)
+    tarefa = ctypes.c_ulong(0)
+    h = avrt.AvSetMmThreadCharacteristicsW("Pro Audio", ctypes.byref(tarefa))
+    return (avrt, h) if h else None
 
 
 class Injetor:
@@ -853,6 +917,15 @@ class Injetor:
         self._tentou = -1e9
         self._para48k = _Para48k()
         self._resto = np.zeros(0, np.float32)
+        # a medida da folga: o menor tanto no anel (quadros) antes de completar, com o leitor ja servido; as vezes que
+        # ele estava vazio (o filtro pode ter soltado silencio no lugar da musica: um engasgo no jogo); a maior volta da
+        # thread (s) e quantas voltas de cada ms
+        self.mmcss = None
+        self.folga_min = None
+        self.secas = 0
+        self.volta_max = 0.0
+        self.voltas = np.zeros(VOLTA_MS, np.int64)
+        self._seca_dita = -1e9
         self._para48k_fx = _Para48k()  # a voz com efeito que o filtro devolve tem a sua
         self._resto_fx = np.zeros(0, np.float32)
         self._preset = None      # (efeito, taxa) do preset escrito no anel
@@ -864,7 +937,26 @@ class Injetor:
         self._th.start()
 
     def estado(self):
-        return {"anel": self.m is not None, "leitores": self.leitores, "efeito_no_filtro": self.efeito_no_filtro}
+        return {"anel": self.m is not None, "leitores": self.leitores,
+                "folga_min_ms": None if self.folga_min is None else round(self.folga_min * 1000 / SR, 1),
+                "secas": self.secas, "volta_max_ms": round(self.volta_max * 1000, 1),
+                "efeito_no_filtro": self.efeito_no_filtro}
+
+    def _volta(self, s):
+        self.volta_max = max(self.volta_max, s)
+        self.voltas[min(int(s * 1000), VOLTA_MS - 1)] += 1
+
+    def _confere_fila(self, fila, volta):
+        """O tanto no anel quando a thread chegou, antes de completar: guarda o menor e conta (e diz, no maximo a cada
+        10 s) quando secou."""
+        if self.folga_min is None or fila < self.folga_min:
+            self.folga_min = fila
+        if fila == 0:
+            self.secas += 1
+            if time.monotonic() - self._seca_dita > 10.0:
+                self._seca_dita = time.monotonic()
+                print(f"saida para o jogo: o anel do microfone secou (a thread voltou depois de {volta * 1000:.0f} ms; "
+                      f"{self.secas} ate agora)", file=sys.stderr, flush=True)
 
     def para(self):
         self._vai = False
@@ -936,9 +1028,15 @@ class Injetor:
     def _loop(self):
         winmm = ctypes.WinDLL("winmm")
         winmm.timeBeginPeriod(1)  # o sleep de 2 ms dorme 2 ms, e nao 15
-        prox = time.perf_counter()
+        mm = _prioridade_audio() if INJ_MMCSS else None
+        self.mmcss = mm is not None
+        prox = antes = time.perf_counter()
+        servidos = ()  # os leitores que ja receberam o anel cheio: o vazio de quem acabou de chegar nao e seca
         try:
             while self._vai:
+                agora = time.perf_counter()
+                volta, antes = agora - antes, agora
+                self._volta(volta)
                 try:
                     m = self._abre()
                     if m is not None:
@@ -948,14 +1046,20 @@ class Injetor:
                         self._voz(m)
                     else:
                         self._solta_efeito()
-                    vivos = len(m.vivos()) if m is not None else 0
-                    self.leitores = vivos
+                    vivos = m.vivos() if m is not None else []
+                    self.leitores = len(vivos)
                     if vivos:
-                        while self._vai and m.na_fila() <= (INJ_FOLGA - 1) * BLOCK:
+                        donos = tuple(sorted(lt.dono for lt in vivos))
+                        fila = m.na_fila()
+                        if donos == servidos:
+                            self._confere_fila(fila, volta)
+                        while self._vai and fila <= (INJ_FOLGA - 1) * BLOCK:
                             m.escreve(self.motor._mixa(BLOCK))  # noqa: SLF001
+                            fila = m.na_fila()
+                        servidos = donos
                         prox = time.perf_counter() + BLOCK / SR
                     else:
-                        agora = time.perf_counter()
+                        servidos = ()
                         if agora - prox > 0.2:  # voltou de um leitor, ou a thread atrasou: nao corre atras
                             prox = agora
                         while self._vai and agora >= prox:
@@ -964,10 +1068,13 @@ class Injetor:
                 except Exception as ex:  # noqa: BLE001 - a thread nao morre calada: o erro vai pra tela
                     self.motor.error = f"A saída para o microfone falhou ({str(ex)[:160]})."
                     self.m = None
+                    servidos = ()
                     self._solta_efeito()
                     time.sleep(0.5)
                 time.sleep(0.002)
         finally:
+            if mm is not None:
+                mm[0].AvRevertMmThreadCharacteristics(mm[1])
             winmm.timeEndPeriod(1)
 
 
@@ -1127,6 +1234,7 @@ class Engine:
 
     def start(self, reserva=False, fixos=()):
         _com_init()
+        _processo_acima()
         # o modelo da rede abre ja e fica aberto (~100 MB): abrir segura o interpretador ~0,6 s, e reabrindo a cada
         # plano o audio estalava (num notebook, aos ~30 s do Where's My Love, 22/10); aqui ainda nao toca nada
         threading.Thread(target=compasso.abre_ja, daemon=True).start()
@@ -1724,7 +1832,7 @@ class Engine:
                         deck.niveis.append((t + n / SR, len(arr), rms))
                     n += len(arr)
             finally:
-                ff.kill()
+                mata(ff)
                 ff.wait()
                 if acc is not None:
                     acc.escreve()
@@ -1757,7 +1865,7 @@ class Engine:
                 return
             t = 0.0
         if pre is not None:  # o disco trocou entre pegar o aberto antes e comecar a ler: ninguem le esse ffmpeg
-            pre[1].kill()
+            mata(pre[1])
             pre[1].wait()
 
     def _erro_de_leitura(self, track, t):
@@ -2475,7 +2583,7 @@ class Engine:
                     c += k
                 resto = x[k * m:]
         finally:
-            ff.kill()
+            mata(ff)
             ff.wait()
         with self._olock:
             o.completa = True

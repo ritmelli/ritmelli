@@ -55,7 +55,8 @@ reconecta sozinho; mostre que está reconectando.
  "por_cima": [{"id": "...", "title": "..."}],
  "devices": {"mic": "default", "monitor": "default"},
  "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
- "microfone": {"anel": true, "leitores": 1, "preparando": null, "efeito_no_filtro": false},
+ "microfone": {"anel": true, "leitores": 1, "folga_min_ms": 40.0, "secas": 0, "volta_max_ms": 4.5,
+               "preparando": null, "efeito_no_filtro": false},
  "error": null ou "texto",
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
  "versao": "0.1.0",
@@ -148,10 +149,13 @@ reconecta sozinho; mostre que está reconectando.
 - `error` já vem como frase pronta em português, com o que fazer; mostre como veio.
 - Fone em "nenhum" (`active_devices.monitor` vazio) torna `monitor_on` sem efeito.
 - `microfone` = o filtro no microfone em uso: `anel` = a memória do filtro aberta, `leitores` =
-  quantos filtros do microfone em uso estão lendo (0 = a música não chega nele), `preparando` =
+  quantos filtros do microfone em uso estão lendo (0 = a música não chega nele), `folga_min_ms` =
+  o menor tanto de música que o anel teve desde que o áudio abriu (`null` antes do primeiro leitor),
+  `secas` = quantas vezes ele estava vazio (o jogo ouviu um buraco), `volta_max_ms` = a maior demora
+  da thread que escreve nele, `preparando` =
   o microfone que o Windows está preparando para a Vitrola agora (a tarefa do instalador; o som
   do PC some uns segundos), ou `null`; `efeito_no_filtro` = o efeito de voz ativo roda no filtro
-  (sem atraso); `false` com efeito ligado = ele vai pelo servidor, com ~50 ms de atraso.
+  (sem atraso); `false` com efeito ligado = ele vai pelo servidor, com ~40 ms de atraso.
 
 **Item** (biblioteca):
 ```json
