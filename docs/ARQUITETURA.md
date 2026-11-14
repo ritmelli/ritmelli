@@ -34,8 +34,10 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   o `preset.py` lê o efeito do `fx.py` e monta o preset (as etapas, com os coeficientes
   projetados pelo scipy na taxa do microfone), o `Injetor` escreve no anel e a DLL monta a
   cadeia (`apo/voz.h`, numa memória separada no LockForProcess) e passa a voz por ela no mesmo
-  bloco, sem atraso além do do efeito (pelo app eram 50 a 60 ms, `dev/mede_voz.py`), devolvendo a
-  voz com efeito ao app para o fone e o medidor. Enquanto o filtro não responde ao preset (até
+  bloco, sem atraso além do do efeito, e devolve a voz com efeito ao app para o fone e o medidor.
+  Medido ao vivo como o app roda (sem console, o motor num processo só dele, `dev/mede_voz_ao_vivo.py`
+  num cabo virtual, 14/11), a voz com o Eco chegou no microfone +0,5 ms depois da crua com o efeito
+  no filtro, e +66 ms pelo app (na banca, `dev/mede_voz.py`, o caminho pelo app dá 30 a 40 ms). Enquanto o filtro não responde ao preset (até
   200 ms) a voz crua segue; efeito com etapa que o filtro não roda, ou preset recusado, vai pelo
   caminho antigo: o app manda o pulso "sem voz" e a voz dele vai no anel. A voz cortada também
   vai pelo pulso. O filtro só tira a crua e só aplica o efeito com o pulso vivo, então a Vitrola
@@ -65,7 +67,9 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   `apo\compila.bat teste`, com o anel num nome só do teste, duas cadeias no mesmo anel e o
   hospedeiro do MFX com um fabricante falso por dentro, sozinho e com o EFX na frente);
   `dev/testa_mfx.py` confere as vagas de MFX num registro falso; `dev/testa_voz.py` confere cada
-  efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a amostra, e em outras taxas.
+  efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a amostra, e em outras taxas;
+  `dev/mede_voz_ao_vivo.py` mede ao vivo, num microfone virtual com o filtro, o atraso da voz com
+  efeito no filtro e pelo app (toca estalos de verdade nesse microfone).
 - `batida.py`: andamento e grade de batidas de um trecho de música para a passagem no tempo
   (força dos ataques, autocorrelação com dois juízes contra a confusão de 3/4 do tempo, a caixa
   como terceiro juiz, o bumbo escolhendo entre batida e contratempo, pente de batidas afinado),
