@@ -3,7 +3,8 @@
 // O Windows carrega o filtro dentro do audiodg.exe, no caminho do microfone em que ele foi pendurado (o
 // microfone.py poe o nosso nas vagas EFX e LFX daquele microfone e guarda o original). A cada bloco de audio do
 // microfone (~10 ms), o APOProcess soma o que o app deixou no anel (anel.h): quem ouve aquele microfone (jogo, Discord)
-// recebe a voz e a musica juntas.
+// recebe a voz e a musica juntas. Com um efeito de voz que o filtro roda (voz.h, preset escrito pelo app no anel), a
+// voz passa pela cadeia ali mesmo, no bloco, sem ir ao app e voltar.
 //
 // Escrito a partir da documentacao publica da Microsoft (Audio Processing Objects, CBaseAudioProcessingObject).
 #include <windows.h>
@@ -18,8 +19,10 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
+#include <xmmintrin.h>
 #include "anel.h"
 #include "reamostra.h"
+#include "voz.h"
 
 // Nome do modo de processamento de sinal (audiomediatype.h / ksmedia.h) pro log
 static const char* NomeDoModo(const GUID& g) {
@@ -246,6 +249,7 @@ public:
     }
     virtual ~CMicFx() {
         SoltaAnel();
+        delete[] m_mem;
         InterlockedDecrement(&g_objetos);
     }
 
@@ -369,14 +373,15 @@ public:
             m_taxa = f.fFramesPerSecond;
         }
         m_rs.Prepara((uint32_t)(m_taxa + 0.5f));
+        PreparaEfeito();
         PegaAnel();
         if (m_anel && (m_anel->alvo == 0 || (m_ep != 0 && m_anel->alvo != m_ep))) {
             SoltaVaga();  // nao e o alvo agora: o anel fica aberto, e a vaga so com ele virando o alvo
         }
-        Log("LockForProcess: canais %u taxa %.0f, anel %s, vaga %d, reamostra %s (L %u M %u taps %u)", m_canais, m_taxa,
-            m_anel ? "ok" : "SEM", m_vaga,
+        Log("LockForProcess: canais %u taxa %.0f, anel %s, vaga %d, reamostra %s (L %u M %u taps %u), efeito %s (%u KB)",
+            m_canais, m_taxa, m_anel ? "ok" : "SEM", m_vaga,
             m_rs.modo == Reamostra::DIRETO ? "direto" : (m_rs.modo == Reamostra::SINC ? "sinc" : "linear"), m_rs.L,
-            m_rs.M, m_rs.taps);
+            m_rs.M, m_rs.taps, m_mem ? "ok" : "SEM MEMORIA", (unsigned)(m_mem_bytes / 1024));
         return S_OK;
     }
 
@@ -422,9 +427,13 @@ private:
         const uint32_t alvo = a->alvo;
         if (alvo == 0 || (m_ep != 0 && alvo != m_ep)) {  // microfone sem o hash (m_ep 0): age como o alvo
             SoltaVaga();
+            EsqueceEfeito();
             return false;
         }
+        const int64_t agora = (int64_t)GetTickCount64();
         EscreveVoz(a, destino, quadros);
+        // o efeito so com o app vivo: a Vitrola que cai devolve a voz crua, como o sem_voz
+        Efeito(a, destino, quadros, agora - a->batida_app < (int64_t)MICFX_APP_MS);
         if (m_vaga < 0) {  // a vaga foi tomada (a instancia ficou muda tempo demais): tenta outra, sem alocar
             PegaAnel();
             if (m_vaga < 0) {
@@ -432,7 +441,6 @@ private:
             }
         }
         MicFxLeitor& eu = a->leitor[m_vaga];
-        const int64_t agora = (int64_t)GetTickCount64();
         eu.batida = agora;
         if (eu.dono != m_dono) {
             m_vaga = -1;
@@ -492,6 +500,101 @@ private:
         a->voz_escrito = w + quadros;
     }
 
+    // A memoria do efeito de voz (fora do tempo real, no LockForProcess): a copia do preset, a voz mono do bloco e a
+    // Arena da cadeia na taxa deste microfone. Taxa nova = memoria nova e o preset se le de novo.
+    void PreparaEfeito() {
+        const size_t arena = voz::ArenaBytes(m_taxa);
+        const size_t bytes = MICFX_PRESET_BYTES + voz::MAX_BLOCO * sizeof(float) + arena;
+        if (!m_mem || m_mem_bytes != bytes) {
+            delete[] m_mem;
+            m_mem = new (std::nothrow) uint8_t[bytes];
+            m_mem_bytes = m_mem ? bytes : 0;
+        }
+        m_preset = m_mem;
+        m_mono = m_mem ? reinterpret_cast<float*>(m_mem + MICFX_PRESET_BYTES) : nullptr;
+        m_arena = m_mem ? m_mem + MICFX_PRESET_BYTES + voz::MAX_BLOCO * sizeof(float) : nullptr;
+        m_arena_bytes = m_mem ? arena : 0;
+        EsqueceEfeito();
+    }
+
+    // Sem efeito ate ler o preset de novo (seq impar nunca bate com um seq pronto)
+    void EsqueceEfeito() {
+        m_seq = 1;
+        m_fx = false;
+    }
+
+    // O preset que o app escreveu (seqlock): copia, confere que ninguem escreveu no meio e monta a cadeia. Responde no
+    // anel o seq lido e o resultado. Escrita no meio = tenta no proximo bloco.
+    void LePreset(MicFxAnel* a) {
+        const uint32_t s1 = a->preset_seq;
+        if (s1 == m_seq || (s1 & 1)) {
+            return;
+        }
+        MemoryBarrier();
+        const uint32_t n = a->preset_n;
+        const bool cabe = n <= MICFX_PRESET_BYTES;
+        if (cabe && n && m_preset) {
+            memcpy(m_preset, const_cast<const uint8_t*>(a->preset), n);
+        }
+        MemoryBarrier();
+        if (a->preset_seq != s1) {
+            return;
+        }
+        m_seq = s1;
+        uint32_t erro = voz::OK;
+        m_fx = false;
+        if (!cabe) {
+            erro = voz::INVALIDO;
+        } else if (n && !m_mem) {
+            erro = voz::SEM_MEMORIA;
+        } else if (n) {
+            erro = m_cadeia.Carrega(m_preset, n, m_taxa, m_arena, m_arena_bytes);
+            m_fx = erro == voz::OK;
+            m_preset_n = n;
+        }
+        a->preset_erro = erro;
+        MemoryBarrier();
+        a->preset_feito = s1;
+    }
+
+    // A voz com efeito no lugar da crua (todos os canais), devolvida ao app em voz_fx. Saiu algo nao finito: o bloco
+    // vira silencio e a cadeia se monta de novo do preset guardado (estado zerado).
+    void Efeito(MicFxAnel* a, float* destino, UINT32 quadros, bool app_vivo) {
+        LePreset(a);
+        if (!m_fx || !app_vivo || !m_mono) {
+            return;
+        }
+        const UINT32 c = m_canais ? m_canais : 1;
+        const float k = 1.0f / (float)c;
+        const unsigned int csr = _mm_getcsr();
+        _mm_setcsr(csr | 0x8040);  // denormal vira zero (FTZ e DAZ): cauda de reverb e filtro nao derrubam a CPU
+        int64_t w = a->fx_escrito;
+        for (UINT32 ini = 0; ini < quadros; ini += voz::MAX_BLOCO) {
+            const UINT32 n = quadros - ini < voz::MAX_BLOCO ? quadros - ini : voz::MAX_BLOCO;
+            float* d = &destino[(size_t)ini * c];
+            for (UINT32 i = 0; i < n; i++) {
+                float v = 0.0f;
+                for (UINT32 j = 0; j < c; j++) {
+                    v += d[i * c + j];
+                }
+                m_mono[i] = Finito(v * k);
+            }
+            if (!m_cadeia.Processa(m_mono, n)) {
+                m_fx = m_cadeia.Carrega(m_preset, m_preset_n, m_taxa, m_arena, m_arena_bytes) == voz::OK;
+            }
+            for (UINT32 i = 0; i < n; i++) {
+                a->voz_fx[(w + i) & (MICFX_VOZ_QUADROS - 1)] = m_mono[i];
+                for (UINT32 j = 0; j < c; j++) {
+                    d[i * c + j] = m_mono[i];
+                }
+            }
+            w += n;
+        }
+        _mm_setcsr(csr);
+        MemoryBarrier();  // a voz antes do indice
+        a->fx_escrito = w;
+    }
+
     void SoltaVaga() {
         if (m_anel && m_vaga >= 0) {
             InterlockedCompareExchange((volatile LONG*)&m_anel->leitor[m_vaga].dono, 0, (LONG)m_dono);
@@ -549,6 +652,17 @@ private:
     UINT32 m_canais = 1;
     float m_taxa = (float)MICFX_TAXA;
     Reamostra m_rs;
+    // o efeito de voz (PreparaEfeito separa a memoria; LePreset monta a cadeia)
+    uint8_t* m_mem = nullptr;
+    size_t m_mem_bytes = 0;
+    uint8_t* m_preset = nullptr;
+    uint32_t m_preset_n = 0;
+    float* m_mono = nullptr;
+    uint8_t* m_arena = nullptr;
+    size_t m_arena_bytes = 0;
+    uint32_t m_seq = 1;
+    bool m_fx = false;
+    voz::Cadeia m_cadeia;
 };
 
 class CFabrica : public IClassFactory {

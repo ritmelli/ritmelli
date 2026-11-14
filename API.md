@@ -1,10 +1,12 @@
-# Soundboard do VRChat: contrato da API e do tema
+# Vitrola: contrato da API e do tema
 
 O `server.py` toca áudio no microfone do jogo: o arquivo (e a voz da mina) vai para o filtro
 da Vitrola, que soma no microfone escolhido, dentro do áudio do Windows, e só o arquivo vai para
 o fone, para o usuário ouvir o som sem ouvir a própria voz. O jogo usa o mesmo microfone. A voz
-crua volta do filtro para o servidor (medidor, ouvir a própria voz, efeito): sem efeito ela
-segue no microfone; com efeito ou cortada (`mic_mute`), o servidor põe a dele no lugar. Toda
+crua volta do filtro para o servidor (medidor, ouvir a própria voz): sem efeito ela segue no
+microfone; o efeito de voz roda no próprio filtro, sem atraso, e a voz com efeito volta para o
+fone; cortada (`mic_mute`), ou com um efeito que o filtro não roda, o servidor põe a dele no
+lugar. Toda
 interface é um tema em `themes/<slug>/` que fala só com esta API.
 
 ## Tema
@@ -54,7 +56,7 @@ reconecta sozinho; mostre que está reconectando.
  "devices": {"mic": "default", "monitor": "default"},
  "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
  "microfone": {"anel": true, "leitores": 1, "folga_min_ms": 40.0, "secas": 0, "volta_max_ms": 4.5,
-               "preparando": null},
+               "preparando": null, "efeito_no_filtro": false},
  "error": null ou "texto",
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
  "versao": "0.1.0",
@@ -152,7 +154,8 @@ reconecta sozinho; mostre que está reconectando.
   `secas` = quantas vezes ele estava vazio (o jogo ouviu um buraco), `volta_max_ms` = a maior demora
   da thread que escreve nele, `preparando` =
   o microfone que o Windows está preparando para a Vitrola agora (a tarefa do instalador; o som
-  do PC some uns segundos), ou `null`.
+  do PC some uns segundos), ou `null`; `efeito_no_filtro` = o efeito de voz ativo roda no filtro
+  (sem atraso); `false` com efeito ligado = ele vai pelo servidor, com ~50 ms de atraso.
 
 **Item** (biblioteca):
 ```json
@@ -345,8 +348,8 @@ encostar em outro ponto da canaleta, sem querer ao rolar a página, não muda na
 teclado seguem como sempre (clicar na canaleta pula para lá).
 
 Na primeira vez no PC (`GET /api/boas-vindas`), a vitrola abre as boas-vindas: o passo a
-passo do microfone e do fone, do microfone no VRChat (o mesmo, e no Discord o perfil Estúdio),
-da busca e do celular. Fechar de
+passo do microfone e do fone, do mesmo microfone no jogo e nas chamadas (no Discord, o perfil
+Estúdio), da primeira música e do celular. Fechar de
 qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.
 
 ## Teste sem som

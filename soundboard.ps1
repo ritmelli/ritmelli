@@ -1,4 +1,4 @@
-# Liga, desliga e mostra o soundboard do VRChat (vitrola.py, o mesmo ponto de entrada do executavel) fora do terminal:
+# Liga, desliga e mostra a Vitrola (vitrola.py, o mesmo ponto de entrada do executavel) fora do terminal:
 # processo destacado e escondido, log em %LOCALAPPDATA%\Vitrola\logs. Uso: soundboard.ps1 [start|stop|status|open] [-Port 8799] [-NoBrowser]
 param([ValidateSet('start', 'stop', 'status', 'open')][string]$Cmd = 'start', [int]$Port = 8799, [switch]$NoBrowser)
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -18,7 +18,7 @@ switch ($Cmd) {
     foreach ($i in 1..40) { Start-Sleep -Milliseconds 250; if ($s = Get-State) { break } }
     if (-not $s) { "nao subiu; veja $logs\server.err"; Get-Content "$logs\server.err" -Tail 15; exit 1 }
     "ligado em $base/ | mic: $($s.active_devices.mic) | fone: $($s.active_devices.monitor)"
-    "no VRChat e no Discord, use o mesmo microfone (no Discord, o perfil Estudio)"
+    "no jogo e nas chamadas, use o mesmo microfone (no Discord, o perfil de entrada Estudio)"
     if ($c = Get-Celular) { "celular (mesmo Wi-Fi): $c (o botao Celular da interface mostra o QR e o codigo)" }
     if (-not $NoBrowser) { Start-Process "$base/" }
   }

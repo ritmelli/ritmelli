@@ -946,7 +946,7 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 @media (max-width: 899.98px) { #tela-parear { align-items: start; padding-top: 48px; } }
 
 /* boas-vindas: cada passo numa etiqueta, como os celulares conectados, com o numero na letra de pixel. Em duas
-   colunas, para caber sem rolar numa tela de notebook; o primeiro disco e o celular, os que so tem um botao, ficam
+   colunas, para caber sem rolar numa tela de notebook; a primeira musica e o celular, os que so tem um botao, ficam
    cada um numa faixa larga embaixo */
 #dlg-boas { width: min(880px, calc(100vw - 32px)); }
 .boas-passos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; counter-reset: passo; }
@@ -968,6 +968,8 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
   font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; line-height: 36px; color: var(--tinta-2);
 }
 .dlg .boas-passos p { font-size: .875rem; }
+/* a dica do passo (o perfil do Discord): menor e mais clara que a instrucao */
+.dlg .boas-passos .boas-dica { font-size: .8125rem; color: var(--tinta-2); }
 .dlg .boas-status { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; }
 .boas-status .lampada { margin-top: 5px; box-shadow: 0 0 0 2px var(--contorno); }
 #db-disp span { display: block; }
@@ -4632,16 +4634,16 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 <dialog id="dlg-disp" aria-labelledby="dd-t">
   <form method="dialog" class="dlg">
     <h2 id="dd-t">Microfone e fone</h2>
-    <label class="campo">Microfone (a sua voz, e onde a música toca)
+    <label class="campo">Microfone (o que você usa para falar)
       <select id="dd-mic"></select>
       <span class="em-uso" id="dd-mic-uso"></span>
     </label>
-    <label class="campo">Fone (onde você ouve o som)
+    <label class="campo">Fone (onde você ouve a música)
       <select id="dd-mon"></select>
       <span class="em-uso" id="dd-mon-uso"></span>
     </label>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
-      <span>No VRChat e no Discord, use este mesmo microfone. No Discord, use o perfil <b>Estúdio</b> (ou desligue o Krisp e a sensibilidade automática): senão ele corta a música.</span></div>
+      <span>Na Vitrola, no jogo e nas chamadas de voz, escolha o mesmo microfone: o que você usa para falar. No Discord, em <b>Configurações de usuário &gt; Voz e vídeo</b>, confira o microfone em <b>Dispositivo&nbsp;de&nbsp;entrada</b> e escolha <b>Estúdio</b> em <b>Perfil&nbsp;de&nbsp;entrada</b>: os outros perfis podem cortar a música. Se você usa uma tecla para falar no jogo ou na chamada, a música só chega lá enquanto você segura a tecla.</span></div>
     <p class="msg-dlg" id="dd-msg" role="status"></p>
     <div class="rodape"><button class="btn" value="ok">Fechar</button></div>
   </form>
@@ -4651,26 +4653,28 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 <dialog id="dlg-boas" aria-labelledby="db-t">
   <form method="dialog" class="dlg">
     <h2 id="db-t" tabindex="-1" autofocus>Boas-vindas à Vitrola</h2>
-    <p>A Vitrola toca música no microfone do VRChat, junto com a sua voz. Confira estes passos uma vez e pronto.</p>
+    <p>A Vitrola toca música no seu microfone, junto com a sua voz: quem está com você no jogo ou na chamada ouve as duas.</p>
     <ol class="boas-passos">
       <li>
-        <h3>O seu microfone e o seu fone</h3>
-        <p>A sua voz sai do microfone, e você ouve a música no fone.</p>
-        <p class="boas-status"><span class="lampada" id="db-disp-l" aria-hidden="true"></span><span id="db-disp">Lendo os dispositivos do Windows.</span></p>
+        <h3>Confira o microfone e o fone</h3>
+        <p>O microfone precisa ser o que você usa para falar. Você ouve a música no fone.</p>
+        <p class="boas-status"><span class="lampada" id="db-disp-l" aria-hidden="true"></span><span id="db-disp">Procurando o microfone e o fone.</span></p>
         <button class="btn" type="button" id="db-trocar">Trocar</button>
       </li>
       <li>
-        <h3>No VRChat</h3>
-        <p>Nas configurações de áudio do jogo, use o mesmo microfone escolhido aqui: a Vitrola toca a música nele. No Discord, use o perfil <b>Estúdio</b>, senão ele corta a música.</p>
+        <h3>Use esse microfone no jogo e na chamada</h3>
+        <p>Nas configurações de áudio do jogo e do programa de chamada, confira se o microfone é o mesmo do passo&nbsp;1. Se não for, escolha o mesmo microfone na Vitrola, no jogo e na chamada: o que você usa para falar. Para rever depois, use o botão <b>Microfone e fone</b>.</p>
+        <p class="boas-dica">No Discord, em <b>Configurações de usuário &gt; Voz e vídeo</b>, confira o microfone em <b>Dispositivo&nbsp;de&nbsp;entrada</b> e escolha <b>Estúdio</b> em <b>Perfil&nbsp;de&nbsp;entrada</b>: os outros perfis podem cortar a música.</p>
+        <p class="boas-dica">Se você usa uma tecla para falar no jogo ou na chamada, a música só chega lá enquanto você segura a tecla.</p>
       </li>
       <li>
-        <h3>O primeiro disco</h3>
-        <p>Busque no YouTube ou cole um link na busca, no alto da tela.</p>
-        <button class="btn" value="buscar">Buscar agora</button>
+        <h3>Toque a primeira música</h3>
+        <p>Na busca, no alto da tela, digite o nome da música ou cole um link do YouTube.</p>
+        <button class="btn" value="buscar">Ir para a busca</button>
       </li>
       <li>
-        <h3>O celular, se quiser</h3>
-        <p>No mesmo Wi-Fi do PC, o celular vira um controle da Vitrola. Dá para conectar depois, no botão Celular.</p>
+        <h3>Conecte o celular (opcional)</h3>
+        <p>Controle a Vitrola pelo celular; ele precisa estar no Wi-Fi, na mesma rede que o PC. Se preferir, conecte depois pelo botão <b>Celular</b>.</p>
         <button class="btn" type="button" id="db-cel">Conectar o celular</button>
       </li>
     </ol>
@@ -8232,7 +8236,7 @@ function preencherDispositivos(r) {
   // o padrao que e o cabo cede ao primeiro microfone de verdade, como no motor
   const micPadrao = r.default_input && !semCabo(r.default_input) ? (r.inputs || []).find(semCabo) : r.default_input;
   opcoes($('#dd-mic'), [['default', `Padrão do Windows (${micPadrao || 'nenhum'})`], ...(r.inputs || []).filter(semCabo).map(n => [n, n])], cur.mic || 'default', act.mic);
-  opcoes($('#dd-mon'), [['default', `Padrão do Windows (${r.default_output || 'nenhum'})`], ...(r.outputs || []).filter(semCabo).map(n => [n, n]), ['', 'Nenhum (o som não toca no seu fone)']], cur.monitor == null ? 'default' : cur.monitor, act.monitor);
+  opcoes($('#dd-mon'), [['default', `Padrão do Windows (${r.default_output || 'nenhum'})`], ...(r.outputs || []).filter(semCabo).map(n => [n, n]), ['', 'Nenhum (só os outros ouvem a música)']], cur.monitor == null ? 'default' : cur.monitor, act.monitor);
   $('#dd-mic').disabled = $('#dd-mon').disabled = false;
   mostrarAtivos(act, r.filtro);
 }
@@ -8241,11 +8245,11 @@ function preencherDispositivos(r) {
 function mostrarAtivos(act, f) {
   const prep = S.state && S.state.microfone && S.state.microfone.preparando;
   let txt = `Em uso agora: ${act.mic || 'nenhum'}`;
-  if (act.mic && prep) txt += '. Preparando ele para a Vitrola: o som do PC some por alguns segundos.';
+  if (act.mic && prep) txt += '. Preparando o microfone para a Vitrola: o som do PC some por alguns segundos.';
   else if (act.mic && f && !(f.filtro && f.melhorias)) txt += '. Ele ainda não está pronto: a música não chega nele.';
   else if (act.mic && f) txt += '. A música toca nele.';
   $('#dd-mic-uso').textContent = txt;
-  $('#dd-mon-uso').textContent = act.monitor ? `Em uso agora: ${act.monitor}` : 'Em uso agora: nenhum, o som não toca no seu fone';
+  $('#dd-mon-uso').textContent = act.monitor ? `Em uso agora: ${act.monitor}` : 'Em uso agora: nenhum (só os outros ouvem a música)';
 }
 async function trocarDispositivo(k, v) {
   const msg = $('#dd-msg'); msg.className = 'msg-dlg'; msg.textContent = 'Trocando e reabrindo o áudio.';
@@ -8557,12 +8561,16 @@ async function conferirBoasVindas() {
   const d = $('#dlg-boas'), msg = $('#db-msg');
   if (!d.open) return;
   try {
-    const r = await api('GET', '/api/devices'), act = r.active || {};
+    const r = await api('GET', '/api/devices'), act = r.active || {}, cur = r.current || {};
     S.disp = r;
+    // como no seletor de Microfone e fone: o jogo tambem mostra "Padrao", e e assim que a pessoa compara os dois
+    const nome = (escolha, ativo) => escolha === 'default' ? `${ativo}, o\u00a0padrão\u00a0do\u00a0Windows` : ativo;
     $('#db-disp-l').className = `lampada ${act.mic ? 'acesa' : 'alerta'}`;
-    if (act.mic) $('#db-disp').replaceChildren(el('span', null, `Microfone: ${act.mic}`),
-                                                el('span', null, `Fone: ${act.monitor || 'nenhum, a música não toca no seu fone'}`));
-    else $('#db-disp').textContent = 'Não achei nenhum microfone. Conecte um e ele aparece aqui.';
+    if (act.mic) $('#db-disp').replaceChildren(
+      el('span', null, `Microfone: ${nome(cur.mic || 'default', act.mic)}`),
+      el('span', null, `Fone: ${act.monitor ? nome(cur.monitor == null ? 'default' : cur.monitor, act.monitor)
+                                            : 'nenhum (só os outros ouvem a música)'}`));
+    else $('#db-disp').textContent = 'Nenhum microfone encontrado. Conecte um e ele aparece aqui.';
     msg.textContent = '';
   } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
   if (d.open) boasT = setTimeout(conferirBoasVindas, 3000);
