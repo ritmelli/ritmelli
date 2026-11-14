@@ -37,7 +37,13 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   200 ms) a voz crua segue; efeito com etapa que o filtro não roda, ou preset recusado, vai pelo
   caminho antigo: o app manda o pulso "sem voz" e a voz dele vai no anel. A voz cortada também
   vai pelo pulso. O filtro só tira a crua e só aplica o efeito com o pulso vivo, então a Vitrola
-  que cai não deixa o microfone mudo nem com a voz de robô. Quem pendura é o
+  que cai não deixa o microfone mudo nem com a voz de robô. Microfone de notebook com
+  cancelamento de eco e redutor de ruído do fabricante no MFX (o da Fortemedia, #49) apagaria a
+  música somada no EFX como ruído, e o Windows só aceita a peça de cancelamento de eco como a
+  última da lista de MFX (nada nosso pode vir depois dela). Ali o `microfone.py` troca o último
+  MFX do fabricante por um hospedeiro da mesma DLL, que carrega o APO do fabricante por dentro,
+  repassa tudo a ele e soma a música no que sai; o EFX desse microfone fica só com a voz. O
+  redutor segue ligado e a música chega igual no modo normal e no RAW. Quem pendura é o
   instalador (administrador, `vitrola.exe --microfone instala-todos --tarefa`), que também cria a
   tarefa do Windows `\Vitrola\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
   pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
@@ -46,7 +52,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   do aparelho): o montado do registro perde o "2- " que o Windows põe quando há dois aparelhos com
   o mesmo nome. `dev/testa_microfone.py` testa o motor contra um anel falso, sem som;
   `dev/testa_filtro.py` roda o `micfx.cpp` de verdade fora do audiodg (a `banca_filtro.dll` do
-  `apo\compila.bat teste`, com o anel num nome só do teste); `dev/testa_voz.py` confere cada
+  `apo\compila.bat teste`, com o anel num nome só do teste, e o hospedeiro do MFX com um fabricante
+  falso por dentro); `dev/testa_mfx.py` confere as vagas de MFX num registro falso; `dev/testa_voz.py` confere cada
   efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a amostra, e em outras taxas.
 - `batida.py`: andamento e grade de batidas de um trecho de música para a passagem no tempo
   (força dos ataques, autocorrelação com dois juízes contra a confusão de 3/4 do tempo, a caixa

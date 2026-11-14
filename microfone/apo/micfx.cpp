@@ -241,8 +241,8 @@ static bool HospedadoDe(int s, CLSID* clsid) {
            SUCCEEDED(CLSIDFromString(texto, clsid));
 }
 
-// A banca de teste troca a criacao do hospedado (nao ha fabricante registrado fora do notebook); no filtro, nulo
-static HRESULT (*g_cria_hospedado)(const CLSID&, IUnknown**) = nullptr;
+// A banca de teste troca a criacao do hospedado (o fabricante falso, sem o registro); no filtro, nulo
+static HRESULT (*g_cria_hospedado)(int vaga, CLSID* clsid, IUnknown** obj) = nullptr;
 
 static HMODULE g_modulo = nullptr;
 static volatile LONG g_objetos = 0;
@@ -786,13 +786,16 @@ public:
 
     // Fora do tempo real (CreateInstance): o APO do fabricante e as interfaces dele
     HRESULT CriaHospedado() {
-        if (!HospedadoDe(m_vaga_hospede, &m_clsid)) {
+        HRESULT hr;
+        if (g_cria_hospedado) {
+            hr = g_cria_hospedado(m_vaga_hospede, &m_clsid, &m_hospedado);
+        } else if (!HospedadoDe(m_vaga_hospede, &m_clsid)) {
             Log("hospedeiro %d: sem o fabricante no registro (_hospede%d)", m_vaga_hospede, m_vaga_hospede);
             return REGDB_E_CLASSNOTREG;
+        } else {
+            hr = CoCreateInstance(m_clsid, nullptr, CLSCTX_INPROC_SERVER, __uuidof(IUnknown),
+                                  reinterpret_cast<void**>(&m_hospedado));
         }
-        HRESULT hr = g_cria_hospedado ? g_cria_hospedado(m_clsid, &m_hospedado)
-                                      : CoCreateInstance(m_clsid, nullptr, CLSCTX_INPROC_SERVER, __uuidof(IUnknown),
-                                                         reinterpret_cast<void**>(&m_hospedado));
         if (FAILED(hr) || !m_hospedado) {
             Log("hospedeiro %d: o fabricante %08lx nao foi criado: 0x%08lx", m_vaga_hospede, m_clsid.Data1, hr);
             return FAILED(hr) ? hr : E_FAIL;
@@ -899,7 +902,10 @@ public:
         reinterpret_cast<APOInitBaseStruct*>(m_init)->clsid = m_clsid;
         HRESULT hr = m_apo->Initialize(cbDataSize, m_init);
         const char* modo = "legado (sem modo)";
-        if (cbDataSize >= sizeof(APOInitSystemEffects2)) {
+        if (cbDataSize == sizeof(APOInitSystemEffects3)) {  // o que o motor manda ao MFX no Windows 11 (80 bytes)
+            const auto* s3 = reinterpret_cast<APOInitSystemEffects3*>(pbyData);
+            modo = s3->InitializeForDiscoveryOnly ? "so descoberta" : NomeDoModo(s3->AudioProcessingMode);
+        } else if (cbDataSize >= sizeof(APOInitSystemEffects2)) {
             const auto* s2 = reinterpret_cast<APOInitSystemEffects2*>(pbyData);
             modo = s2->InitializeForDiscoveryOnly ? "so descoberta" : NomeDoModo(s2->AudioProcessingMode);
         }
