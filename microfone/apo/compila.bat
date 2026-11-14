@@ -1,5 +1,7 @@
 @echo off
-rem Compila o micfx.dll (x64, CRT estatico: o audiodg.exe nao precisa do redistribuivel do Visual C++).
+rem Compila o micfx.dll, o filtro (x64, CRT estatico: o audiodg.exe nao precisa do redistribuivel do Visual C++), e o
+rem voz.dll, o motor de efeitos dele (voz.h) para a voz com efeito que sai pelo app (microfone\voz.py). Os dois vao no
+rem instalador (vitrola.spec).
 rem Precisa do Visual Studio 2022 (qualquer edicao, ou o Build Tools) com C++ e do Windows SDK (10.0.22621 ou mais
 rem novo). O vswhere acha a instalacao: na esteira do GitHub e o Enterprise, num PC costuma ser o Build Tools.
 setlocal
@@ -18,10 +20,12 @@ cd /d "%~dp0"
 if not exist saida mkdir saida
 if "%1"=="teste" goto teste
 cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /DUNICODE /D_UNICODE /LD micfx.cpp /Fosaida\ /Fesaida\micfx.dll /link /DEF:micfx.def audiobaseprocessingobject.lib audiomediatypecrt.lib legacy_stdio_definitions.lib ole32.lib advapi32.lib user32.lib
+if errorlevel 1 exit /b %errorlevel%
+cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD voz.cpp /Fosaida\ /Fesaida\voz.dll
 exit /b %errorlevel%
 :teste
 rem compila.bat teste: a banca do reamostra.h (teste\teste_reamostra.py mede) e o voz.dll, o motor dos efeitos de voz
-rem (voz.h) fora do audiodg, para o microfone\voz.py e o dev\testa_voz.py
+rem (voz.h) fora do audiodg, para o microfone\voz.py e o dev\testa_voz.py (o mesmo do alvo normal)
 cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD teste\teste_reamostra.cpp /Fosaida\ /Fesaida\teste_reamostra.dll
 if errorlevel 1 exit /b %errorlevel%
 cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD voz.cpp /Fosaida\ /Fesaida\voz.dll

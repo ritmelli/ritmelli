@@ -38,8 +38,12 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   Medido ao vivo como o app roda (sem console, o motor num processo só dele, `dev/mede_voz_ao_vivo.py`
   num cabo virtual, 14/11), a voz com o Eco chegou no microfone +0,5 ms depois da crua com o efeito
   no filtro, e +66 ms pelo app (na banca, `dev/mede_voz.py`, o caminho pelo app dá 30 a 40 ms). Enquanto o filtro não responde ao preset (até
-  200 ms) a voz crua segue; efeito com etapa que o filtro não roda, ou preset recusado, vai pelo
-  caminho antigo: o app manda o pulso "sem voz" e a voz dele vai no anel. A voz cortada também
+  200 ms) a voz crua segue; efeito com etapa que o filtro não roda na taxa do microfone, ou preset
+  recusado, vai pelo app: ele passa a voz crua pelo mesmo `voz.h`, no `voz.dll` a 48 kHz
+  (`microfone/voz.py`), manda o pulso "sem voz" e a voz dele vai no anel. No microfone sem o
+  filtro, a voz que o motor abre passa pelo `voz.dll` do mesmo jeito, para o ouvir a própria voz.
+  Sem o `voz.dll` o app sobe igual: o efeito segue no filtro, e a voz que sairia do app vai crua,
+  com um aviso na tela e no log. A voz cortada também
   vai pelo pulso. O filtro só tira a crua e só aplica o efeito com o pulso vivo, então a Vitrola
   que cai não deixa o microfone mudo nem com a voz de robô. Com o microfone aberto por dois
   programas, o Windows pode montar duas cadeias, cada uma com a sua instância do filtro: as duas
@@ -62,7 +66,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   prepara, sem UAC, um microfone que apareceu depois. Ao desinstalar, o original de todo
   microfone volta e a tarefa sai. O nome do microfone é o do Windows (Core Audio, casado pelo id
   do aparelho): o montado do registro perde o "2- " que o Windows põe quando há dois aparelhos com
-  o mesmo nome. `dev/testa_microfone.py` testa o motor contra um anel falso, sem som;
+  o mesmo nome. `dev/testa_microfone.py` testa o motor contra um anel falso, sem som, e a voz
+  com efeito que sai do app pelo `voz.dll` (e sem ele);
   `dev/testa_filtro.py` roda o `micfx.cpp` de verdade fora do audiodg (a `banca_filtro.dll` do
   `apo\compila.bat teste`, com o anel num nome só do teste, duas cadeias no mesmo anel e o
   hospedeiro do MFX com um fabricante falso por dentro, sozinho e com o EFX na frente);
@@ -142,14 +147,18 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   pedalboard atrasa 1 s. Voz grossa, esquilo e demônio mudam o tom pelo `PitchShifter` (linha de
   atraso, o timbre vai junto: o desenho animado é o que se quer ali); a voz feminina e a masculina,
   pela `TrocaDeVoz` (PSOLA síncrono com o período da voz, #77), mudam o tom e só um pouco o
-  formante, e a voz continua soando como gente, com ~20 ms de atraso. O `fx.py` é a definição de cada efeito e a referência: no microfone do jogo quem
-  roda é o filtro (`microfone/preset.py` -> `apo/voz.h`), com a mesma conta, e as etapas da
-  pedalboard foram reescritas lá pela fórmula de cada uma e conferidas contra ela. As salas
+  formante, e a voz continua soando como gente, com ~20 ms de atraso. O `fx.py` é a definição de
+  cada efeito e a referência: quem passa a voz pelo efeito é o motor do filtro
+  (`microfone/preset.py` -> `apo/voz.h`), no microfone pelo `micfx.dll` e no app pelo `voz.dll`,
+  com a mesma conta, e as etapas da pedalboard foram reescritas lá pela fórmula de cada uma e
+  conferidas contra ela. As salas
   (banheiro, catedral e demônio) usam um reverb próprio, a `Fdn` do `fx.py` (8 linhas de atraso
   com realimentação, mistura de Hadamard, tempo de reverberação no grave, no meio e no agudo,
   difusor na entrada e leitura modulada bem de leve), no lugar do Reverb da pedalboard, que soava
-  metálico; o tempo por oitava e o seco/molhado de cada sala são os do Reverb que ela substituiu. Etapa nova
-  sem par no `voz.h` leva o efeito pelo caminho do app até ganhar o seu. O efeito sempre começa
+  metálico; o tempo por oitava e o seco/molhado de cada sala são os do Reverb que ela substituiu.
+  O `Efeito` do `fx.py` (numpy e pedalboard) só roda nos testes de paridade e nas ferramentas de
+  `dev/`; etapa nova precisa do seu par no `voz.h` (o `dev/testa_voz.py` falha sem ele). A
+  pedalboard segue no app só pelo `time_stretch` da passagem de DJ. O efeito sempre começa
   desligado quando o servidor sobe. Banco de teste:
   `python dev/efeitos.py` (grava um .wav por efeito em `logs/efeitos/` para ouvir).
 - O pedal da mina: um módulo `mina` opcional, que não mora neste repo. Onde ele está ao lado do

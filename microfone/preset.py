@@ -2,8 +2,9 @@
 
 O fx.py segue sendo a unica definicao de cada efeito. Daqui se le o Efeito montado (antes, a placa da pedalboard,
 depois, ganho, nivelador e o extra) e cada etapa vira um registro do voz.h com os parametros e os coeficientes ja
-projetados na taxa do microfone: o scipy projeta aqui, o filtro so roda. Etapa sem par no voz.h levanta NaoPortado,
-e o efeito segue pelo caminho do app (a voz vai ao app e volta pelo anel, com o atraso de antes).
+projetados na taxa do microfone: o scipy projeta aqui, o filtro so roda. Etapa sem par no voz.h, ou que nao cabe na
+taxa do microfone, levanta NaoPortado, e o efeito segue pelo caminho do app (a voz vai ao app e volta pelo anel, com o
+atraso da ida e volta): la ele roda no mesmo voz.h, pelo voz.dll, a 48 kHz (microfone/voz.py).
 
 O formato (little-endian) e o do voz.h: cabecalho de 80 bytes (magia, versao, taxa, ganho, nivelar, quantas etapas,
 quantas do extra, gerador e os 5 numeros do nivelador) e, por etapa, tipo, quantos doubles e os doubles.
@@ -26,7 +27,8 @@ assert CABECALHO.size == 80
 (T_SOS, T_FIR, T_GANHO, T_PITCH, T_RINGMOD, T_PORTAO, T_DECIMA, T_AGC, T_MULTIBANDA, T_COMPRESSOR, T_LIMITER,
  T_DISTORCAO, T_BITCRUSH, T_DELAY, T_CHORUS, T_PHASER, T_FREEVERB, T_RADIO) = range(1, 19)
 T_FDN = 19
-T_TROCA = 21  # TrocaDeVoz (#77); o 20 e da distorcao com oversampling (#75)
+T_DISTORCAO_OS = 20
+T_TROCA = 21  # TrocaDeVoz (#77)
 G_NENHUM, G_RADIO = 0, 1
 NYQ = 0.49  # filtro com corte acima disso da taxa nao cabe nela: a etapa sai (corte de agudo) ou o efeito fica no app
 
@@ -39,7 +41,7 @@ RADIO_ESTALO = (0.03, 0.002)   # CambioRadio: chance de estalo por bloco e durac
 
 
 class NaoPortado(Exception):
-    """O efeito tem etapa que o filtro nao roda: ele segue pelo app."""
+    """O efeito tem etapa que o filtro nao roda nessa taxa: ele segue pelo app."""
 
 
 def _sos_rows(sos):
@@ -152,6 +154,8 @@ def _etapa(f, taxa):
         return [(T_SOS, _sos_rows(sos))]
     if isinstance(f, fx.Decimador):
         return [(T_DECIMA, [f.f * k])]
+    if isinstance(f, fx.Distorcao):  # o FIR meia-banda vale em qualquer taxa (corta na metade dela)
+        return [(T_DISTORCAO_OS, [f.drive_db, f.estagios, len(f.h), *f.h])]
     if isinstance(f, fx.AGC):
         return [(T_AGC, [f.alvo, f.porta, f.teto, *AGC_COEF])]
     if isinstance(f, fx.Multibanda):
@@ -250,6 +254,12 @@ def preset(efeito_id, taxa):
         _prontos[chave] = dados
         _projetando.discard(chave)
     return dados
+
+
+def esquece():
+    """Joga fora os presets projetados: o fx.py recarregado (/api/effects/reload) projeta de novo."""
+    with _trava:
+        _prontos.clear()
 
 
 def pede(efeito_id, taxa):

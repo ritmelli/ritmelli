@@ -28,6 +28,7 @@ from aiohttp import web
 from aiohttp.web_runner import GracefulExit
 
 from microfone import microfone as filtro
+from microfone import preset
 
 import andamento as an
 import atualizacao as atu
@@ -2109,6 +2110,7 @@ def build(app_state):
         # ajustar efeito sem reiniciar o servidor (e sem cortar a musica que toca)
         try:
             importlib.reload(fx)
+            preset.esquece()  # o filtro e o app montam o efeito do preset: o projetado com o fx.py velho sai
             efeitos[:] = fx.lista()
             E.set_effect(E.effect if fx.existe(E.effect) else "nenhum")  # o de um modo fica fora da lista
         except Exception as ex:  # noqa: BLE001

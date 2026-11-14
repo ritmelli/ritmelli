@@ -7,8 +7,11 @@ Confere: o alvo do anel e o do motor, e so o filtro do alvo conta como leitor; o
 o misturador deu, amostra por amostra, sem buraco nem repeticao; a voz pelo app (cortada ou com efeito) chega no anel
 com o pulso, e o fechamento devolve a voz e solta o alvo; sem leitor do alvo o motor anda pelo relogio (a musica segue
 no fone); a voz crua que o filtro devolve chega ao motor em blocos, inclusive de microfone a 44,1 kHz; e o misturador
-so leva a voz quando o app a poe no lugar da crua (com efeito, sem a voz cortada).
+so leva a voz quando o app a poe no lugar da crua (com efeito, sem a voz cortada). A voz com efeito que sai do app (o
+filtro recusou o efeito, ou o microfone sem o filtro e a voz so no fone) passa pelo voz.dll, o mesmo motor do filtro,
+e nunca pelo fx.py; sem o voz.dll o motor sobe igual, a voz segue crua e o aviso sai uma vez.
 
+    microfone\\apo\\compila.bat teste
     python dev/testa_microfone.py
 
 Sai 1 se algo falhar.
@@ -21,13 +24,19 @@ import time
 import unittest
 from ctypes import wintypes
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
 os.environ["MICFX_MAPA"] = f"Local\\VitrolaTesteMicFx-{os.getpid()}"  # nunca o anel do filtro de verdade
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import engine as eng  # noqa: E402
-from microfone import injeta  # noqa: E402
+import fx  # noqa: E402
+from microfone import injeta, preset, voz  # noqa: E402
+from testa_voz import fala_sintetica  # noqa: E402
+
+# a voz pelo fx.py (numpy e pedalboard) quebra o teste: no app ela so passa pelo voz.dll
+SEM_FX_PY = mock.patch.object(fx.Efeito, "__call__", side_effect=AssertionError("a voz passou pelo fx.py"))
 
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 k32.CreateFileMappingW.restype = wintypes.HANDLE
@@ -110,6 +119,7 @@ class MotorFalso:
 
     def __init__(self, alvo=ALVO):
         self.n, self.mic_mute, self.error, self._fx, self.effect = 0, False, None, None, "nenhum"
+        self._fx_id = None
         self._fx_filtro = self._fx_pendente = False
         self._alvo, self._voz_anel_em, self.voz, self.voz_fx = alvo, -1e9, [], []
 
@@ -245,7 +255,7 @@ class TestaMicrofone(unittest.TestCase):
         a = anel.a
         try:
             time.sleep(0.2)
-            motor.effect, motor._fx = "eco", object()
+            motor.effect, motor._fx, motor._fx_id = "eco", object(), "eco"
             time.sleep(0.05)
             self.assertGreater(a.preset_n, 0, "o preset do eco nao foi pro anel")
             self.assertEqual(a.preset_seq % 2, 0, "o seqlock ficou aberto")
@@ -258,12 +268,12 @@ class TestaMicrofone(unittest.TestCase):
             self.assertTrue(inj.estado()["efeito_no_filtro"])
             self.assertEqual(a.sem_voz, 0, "com o efeito no filtro a voz nao passa pelo app")
             self.assertTrue(motor.voz_fx, "a voz com efeito que o filtro devolve nao chegou ao motor")
-            motor.effect = "robo"  # outro efeito: preset novo, e o filtro recusa
+            motor.effect = motor._fx_id = "robo"  # outro efeito: preset novo, e o filtro recusa
             time.sleep(0.05)
             a.preset_erro, a.preset_feito = 1, a.preset_seq
             time.sleep(0.05)
             self.assertEqual(a.sem_voz, 1, "o filtro recusou: a voz vai pelo app")
-            motor.effect, motor._fx = "nenhum", None
+            motor.effect, motor._fx, motor._fx_id = "nenhum", None, None
             time.sleep(0.05)
             self.assertEqual(a.preset_n, 0, "sem efeito o preset sai do anel")
             self.assertEqual(a.sem_voz, 0)
@@ -290,7 +300,7 @@ class TestaMicrofone(unittest.TestCase):
         try:
             time.sleep(0.3)
             inj.volta_max = 0.0
-            motor.effect, motor._fx = "radio-policia", object()
+            motor.effect, motor._fx, motor._fx_id = "radio-policia", object(), "radio-policia"
             time.sleep(0.1)
             self.assertEqual(anel.a.preset_n, 0, "o preset nao podia estar pronto ainda")
             self.assertEqual(anel.a.sem_voz, 0, "projetando, a voz crua segue")
@@ -310,6 +320,75 @@ class TestaMicrofone(unittest.TestCase):
         e._voz_anel_em = time.monotonic()
         e._mic_cb(bloco, eng.BLOCK, None, None)
         self.assertEqual(len(e._mic), 1, "com a voz do filtro viva, a do microfone (que ja leva a musica) fica fora")
+
+    def test_reserva_pelo_voz_dll(self):
+        """O filtro recusou o efeito (ou ele nao cabe na taxa do microfone): a voz crua que volta passa no app pelo
+        voz.dll, com o preset de 48 kHz, e o misturador manda ela no lugar da crua, bloco a bloco igual a cadeia."""
+        x = fala_sintetica(2.0)
+        with SEM_FX_PY:
+            e = eng.Engine(mic="x", monitor="")
+            e.set_effect("eco")
+            self.assertIsInstance(e._fx, voz.Cadeia, "o efeito no app nao e o motor do filtro")
+            ref = voz.Cadeia(preset.compila(fx.criar("eco"), eng.SR), eng.SR)
+            saida, esperado = [], []
+            for k in range(0, len(x) - eng.BLOCK + 1, eng.BLOCK):
+                b = x[k:k + eng.BLOCK]
+                e._push_mic(b)  # a voz crua do filtro (o Injetor._voz), com o filtro sem o efeito
+                self.assertTrue(e.voz_pelo_app())
+                saida.append(e._mixa(eng.BLOCK)[:, 0])
+                esperado.append(ref(b))
+        y = np.concatenate(saida)
+        np.testing.assert_array_equal(y, np.concatenate(esperado), err_msg="a voz no jogo nao e a do voz.dll")
+        self.assertGreater(float(np.max(np.abs(y - x[:len(y)]))), 0.01, "o eco nao mudou a voz")
+
+    def test_ouvir_a_propria_voz_sem_filtro_pelo_voz_dll(self):
+        """Microfone sem o filtro: a voz que o motor abre passa pelo voz.dll e chega ao fone com o efeito."""
+        x = fala_sintetica(2.0)
+        with SEM_FX_PY:
+            e = eng.Engine(mic="x", monitor="fone")
+            e.active["monitor"] = "fone"
+            e.voice_monitor, e.voice_mon_vol = True, 1.0
+            e.set_effect("robo")
+            ref = voz.Cadeia(preset.compila(fx.criar("robo"), eng.SR), eng.SR)
+            fone, esperado = [], []
+            for k in range(0, len(x) - eng.BLOCK + 1, eng.BLOCK):
+                b = x[k:k + eng.BLOCK]
+                e._mic_cb(b[:, None], eng.BLOCK, None, None)  # sem a voz do filtro, vale a do microfone aberto
+                e._mixa(eng.BLOCK)
+                fone.append(e._mon.popleft()[:, 0])
+                esperado.append(np.clip(ref(b), -1, 1))
+        np.testing.assert_array_equal(np.concatenate(fone), np.concatenate(esperado),
+                                      err_msg="o fone nao ouve a voz do voz.dll")
+
+    def test_sem_voz_dll_sobe_e_a_voz_segue_crua(self):
+        """Sem o voz.dll o motor sobe e troca de efeito igual: o filtro ainda recebe o preset, a voz que sairia do app
+        segue crua no microfone e o aviso sai uma vez por efeito escolhido."""
+        with mock.patch.object(voz, "_dll", None), mock.patch.object(voz, "caminho", return_value="nao-existe/voz.dll"):
+            self.assertFalse(voz.disponivel())
+            e = eng.Engine(mic="x", monitor="")
+            e.set_effect("robo")
+            self.assertIsNone(e._fx)
+            self.assertEqual(e._fx_id, "robo", "sem o voz.dll o filtro ainda roda o efeito")
+            self.assertFalse(e.voz_pelo_app(), "sem a cadeia do app, a voz crua segue no microfone")
+            b = np.full(eng.BLOCK, 0.25, np.float32)
+            e._push_mic(b)
+            np.testing.assert_array_equal(e._mic[-1], b)
+            self.assertIn("voz.dll", e.error or "")
+            e.error = None
+            e._push_mic(b)
+            self.assertIsNone(e.error, "o aviso sai uma vez por efeito")
+            e.set_effect("eco")
+            e._push_mic(b)
+            self.assertIn("voz.dll", e.error or "", "outro efeito avisa de novo")
+            e.error = None
+            e._fx_filtro = True
+            e._push_mic(b)
+            self.assertIsNone(e.error)
+            e._fx_filtro = False
+            e.set_effect("nenhum")
+            self.assertIsNone(e._fx_id)
+            e._push_mic(b)
+            self.assertIsNone(e.error, "sem efeito nao ha o que avisar")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
-"""O motor de efeitos do filtro (microfone/apo/voz.h) fora do audiodg, pelo voz.dll (compila.bat teste): a mesma
-conta que o micfx.dll faz na voz, para conferir e medir no app (dev/testa_voz.py).
+"""O motor de efeitos do filtro (microfone/apo/voz.h) fora do audiodg, pelo voz.dll: a mesma conta que o micfx.dll faz
+na voz. O app usa quando a voz com efeito sai dele (o filtro recusou o efeito, ou o microfone nao tem o filtro e o
+efeito so vale no fone), e os testes conferem e medem por aqui (dev/testa_voz.py). O compila.bat gera a DLL e o
+instalador leva (vitrola.spec); sem ela o app sobe igual e so o filtro roda o efeito.
 
     c = Cadeia(preset.compila(fx.criar("eco"), 48000), 48000)
     y = c(x)  # x float32 mono, em blocos (como o filtro recebe)
@@ -22,6 +24,7 @@ def caminho():
 
 
 def dll():
+    """O voz.dll carregado; OSError se ele nao esta la (instalacao sem ele, ou o compila.bat nao rodou)."""
     global _dll
     if _dll is None:
         d = ctypes.CDLL(caminho())
@@ -35,6 +38,15 @@ def dll():
         d.voz_destroi.argtypes = (ctypes.c_void_p,)
         _dll = d
     return _dll
+
+
+def disponivel():
+    """O voz.dll carrega: sem ele, a voz com efeito pelo app segue crua."""
+    try:
+        dll()
+    except OSError:
+        return False
+    return True
 
 
 class Cadeia:
