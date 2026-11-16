@@ -50,6 +50,12 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             instalador/travas.txt
+      # os textos da interface nas duas línguas (as chaves, os parâmetros e as letras do pixel art), antes de montar:
+      # um arquivo quebrado abriria a tela em inglês, e uma chave a menos, um texto faltando. Só a biblioteca padrão
+      - name: Confere os textos
+        env:
+          PYTHONUTF8: '1'
+        run: python dev/testa_i18n.py
       # o Inno Setup do build à mão, na pasta do usuário, que é a primeira onde o monta.ps1 procura (a máquina do
       # GitHub pode trazer outra versão em Program Files)
       - name: Inno Setup 6.7.3

@@ -62,7 +62,9 @@ const I18N = (() => {
     }
   }
   document.documentElement.lang = lang;
-  return { lingua: d.lingua, lang, tem: existe, t, tp, num, rico, aplica };
+  // o texto da lingua de reserva (o ingles): a reserva do que tem um desenho por palavra (os botoes do Locutor)
+  const reserva = k => (tem(d.reserva, k) ? d.reserva[k] : undefined);
+  return { lingua: d.lingua, lang, tem: existe, t, tp, num, rico, aplica, reserva };
 })();
 </script>
 <!-- a pagina aparece quando os textos ja estao no lugar (o I18N.aplica, no comeco do script principal) -->
@@ -5718,7 +5720,9 @@ function vestirPedal(b, ef) {
   const parte = (cls, txt) => { const e = el('span', cls, txt); e.setAttribute('aria-hidden', 'true'); return e; };
   b.querySelector('.lampada').innerHTML = LED_SVG;
   const g = parte('p-grande');   // o ponteiro no risco mais perto do angulo de sempre do pedal (-120 a 120 graus, 27,3 entre riscos)
-  const modos = CHAVE_MODOS[ef.id], botao = m => ARCADE[PALAVRA_MODOS[ef.id][m]];
+  // sem o desenho da palavra da lingua (o texto mudou sem o dev/pecas.py), o da palavra em ingles; sem nenhum, vazio
+  const modos = CHAVE_MODOS[ef.id];
+  const botao = m => ARCADE[PALAVRA_MODOS[ef.id][m]] || ARCADE[I18N.reserva(`effects.button.${ef.id}.${m}`)] || '';
   if (modos) {   // os botoes dos modos, o do modo ligado aceso pelo CSS: o primeiro no lugar do knob
     g.innerHTML = botao(modos[0]);
     b.classList.add('com-chave');

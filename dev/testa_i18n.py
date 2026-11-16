@@ -208,9 +208,12 @@ def larguras_g8(html):
     if not m:
         return None
     larg = {ch.strip('"'): len(linha) for ch, linha in re.findall(r'\n    ([A-Z]|" "): \["([.#]+)"', m.group(1))}
+    if not larg:   # o formato mudou: o confere_pixel acusa a tabela que nao deu para ler
+        return {}
     a8 = re.search(r"const A8 = \{([^\n]*)\};", html)
     for acentuada, base in re.findall(r'"(.)": \["([A-Z])"', a8.group(1) if a8 else ""):
-        larg[acentuada] = larg[base]
+        if base in larg:
+            larg[acentuada] = larg[base]
     if "C" in larg:
         larg["Ç"] = larg["C"]
     return larg
@@ -227,7 +230,8 @@ def confere_pixel(tema, html, por_lingua):
     (a que falta some ou leva o texto para o HTML). Os titulos das placas na negrita da LETRA_PLACA e as contagens na
     regular dela, os nomes dos mostradores no NOMEV do mixer, os rotulos dos volumes e a placa dele no G8 (cada palavra
     dos rotulos cabendo na coluna), a fita da voz no LETRAS_FITA, cada palavra dos botoes do Locutor com o seu desenho
-    no ARCADE e o logo dele no LOGOS (os dois do dev/pecas.py). Em tema sem a tabela, nada a conferir."""
+    no ARCADE e o logo dele no LOGOS (os dois do dev/pecas.py). Em tema sem a tabela, nada a conferir; a tabela que o
+    tema tem e daqui nao deu para ler, ou a chave daqui que sumiu dos arquivos, falha (senao passaria sem conferir)."""
     placa = re.search(r"const LETRA_PLACA = \{\n  negrita: (\{.*?\}),\n  regular: (\{.*?\}),\n", html)
     g8 = larguras_g8(html)
     tabelas = {
@@ -239,6 +243,13 @@ def confere_pixel(tema, html, por_lingua):
         "ARCADE": letras_da_tabela(html, "const ARCADE = {", "\n};", r"\n  '([^']+)': '"),
         "LOGOS": letras_da_tabela(html, "const LOGOS = {", "\n};", r"\n  '([^']+)': '"),
     }
+    # a tabela que o tema tem e a leitura daqui nao achou (o formato dela mudou) falha: sem isso, as palavras dela
+    # passariam sem conferir nada
+    DECLARACAO = {"G8": "const G8 = {", "negrita": "const LETRA_PLACA", "regular": "const LETRA_PLACA",
+                  "NOMEV": "const NOMEV", "LETRAS_FITA": "const LETRAS_FITA", "ARCADE": "const ARCADE", "LOGOS": "const LOGOS"}
+    for nome, tabela in tabelas.items():
+        if DECLARACAO[nome] in html and not tabela:
+            falha(f"{tema.name}: couldn't read the pixel font {nome} in index.html (its format changed? update confere_pixel)")
     if all(t is None for t in tabelas.values()):
         return
     # (chave, tabela, o texto como a tela desenha)
@@ -248,6 +259,14 @@ def confere_pixel(tema, html, por_lingua):
                 ("mixer.meter.voice", "NOMEV", str.upper), ("mixer.meter.record", "NOMEV", str.upper),
                 ("mixer.meter.game", "NOMEV", str.upper), ("effects.tape.voice", "LETRAS_FITA", str),
                 ("mixer.autoTransition", "G8", str.upper)] + [(k, "G8", str.upper) for k in FADERS_MX]
+    # a chave daqui que sumiu dos arquivos (renomeada) falha, em vez de a palavra dela passar sem conferir
+    base = por_lingua.get(i18n.RESERVA, {})
+    for chave, tab, _ in PALAVRAS:
+        if tabelas[tab] and chave not in base:
+            falha(f"{tema.name}: confere_pixel checks {chave}, which is not in the files (renamed? update PALAVRAS)")
+    for prefixo, tab in (("effects.button.", "ARCADE"), ("effects.logo.", "LOGOS")):
+        if tabelas[tab] and not any(k.startswith(prefixo) for k in base):
+            falha(f"{tema.name}: the theme has {tab}, and no {prefixo}* key is in the files")
     vistas = 0
     for lingua, textos in por_lingua.items():
         for chave, tab, como in PALAVRAS:
@@ -332,11 +351,22 @@ def confere_modulo():
             falha("injeta changed a page without the marker")
         if i18n.injeta(i18n.MARCA, pasta / "nao-existe", "en") != i18n.MARCA:
             falha("injeta changed a page whose theme has no i18n folder")
+        # um arquivo quebrado nao leva o outro junto
+        (pasta / "i18n_pt_BR.properties").write_text("a.b=ação\na.b=de novo\n", encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()) as log:
+            html = i18n.injeta(i18n.MARCA, pasta, "pt_BR")
+        if '"lingua":"en"' not in html or '"textos":{"a.b":"\\u003c/script>' not in html or "i18n_pt_BR" not in log.getvalue():
+            falha(f"injeta with a broken pt_BR file should send the page in English and log it: {html!r}")
+        (pasta / "i18n_pt_BR.properties").write_text("a.b=ação\n", encoding="utf-8")
         (pasta / "i18n_en.properties").write_text("quebrado\n", encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()) as log:
+            html = i18n.injeta(i18n.MARCA, pasta, "pt_BR")
+        if '"lingua":"pt_BR"' not in html or '"textos":{"a.b":"ação"}' not in html or '"reserva":{}' not in html:
+            falha(f"injeta with a broken en file should still send the pt_BR texts: {html!r}")
         with contextlib.redirect_stderr(io.StringIO()) as log:
             html = i18n.injeta(i18n.MARCA, pasta, "en")
         if '"textos":{}' not in html or "could not read" not in log.getvalue():
-            falha("injeta with a broken file should send no texts and log the error")
+            falha("injeta with the page's only file broken should send no texts and log the error")
 
     m = i18n.msg("server.x.y", "Got {n} from {who}.", n=3, who="ana")
     if m != {"key": "server.x.y", "params": {"n": 3, "who": "ana"}, "text": "Got 3 from ana."}:

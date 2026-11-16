@@ -86,23 +86,32 @@ def arquivo(pasta, lingua):
     return Path(pasta) / f"i18n_{lingua}.properties"
 
 
+def _le_ou_nada(pasta, lingua):
+    """Os textos de uma lingua, ou None com o arquivo quebrado ou faltando (o erro sai no log)."""
+    try:
+        return ler(arquivo(pasta, lingua))
+    except (OSError, ValueError) as ex:
+        print(f"i18n: could not read the texts in {arquivo(pasta, lingua)} ({ex})", file=sys.stderr, flush=True)
+        return None
+
+
 def dados(pasta, lingua):
-    """O que vai para a pagina: a lingua, os textos dela e os do ingles, que o tema usa quando falta uma chave."""
-    reserva = ler(arquivo(pasta, RESERVA))
-    textos = reserva if lingua == RESERVA else ler(arquivo(pasta, lingua))
-    return {"lingua": lingua, "textos": textos, "reserva": reserva}
+    """O que vai para a pagina: a lingua, os textos dela e os do ingles, que o tema usa quando falta uma chave. Um
+    arquivo quebrado nao leva o outro junto: sem o da lingua, a pagina sai inteira em ingles; sem o ingles, sai na
+    lingua, sem a reserva. Sem os dois, vai sem textos (o tema mostra as chaves)."""
+    reserva = _le_ou_nada(pasta, RESERVA)
+    textos = reserva if lingua == RESERVA else _le_ou_nada(pasta, lingua)
+    if textos is None and reserva is not None:
+        lingua, textos = RESERVA, reserva
+    return {"lingua": lingua, "textos": textos or {}, "reserva": reserva or {}}
 
 
 def injeta(html, pasta, lingua):
     """O html do tema com os textos no lugar do MARCA. Tema sem o MARCA ou sem a pasta i18n/ sai como veio. Arquivo
-    quebrado nao derruba a pagina: vai sem textos (o tema mostra as chaves) e o erro sai no log."""
+    quebrado nao derruba a pagina (ver o dados)."""
     if MARCA not in html or not Path(pasta).is_dir():
         return html
-    try:
-        d = dados(pasta, lingua)
-    except (OSError, ValueError) as ex:
-        print(f"i18n: could not read the texts in {pasta} ({ex})", file=sys.stderr, flush=True)
-        d = {"lingua": lingua, "textos": {}, "reserva": {}}
+    d = dados(pasta, lingua)
     # o < escapado: um texto com </script> nao fecha o script da pagina
     js = json.dumps(d, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
     return html.replace(MARCA, f"<script>window.I18N_DADOS = {js};</script>", 1)
