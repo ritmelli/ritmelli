@@ -6,8 +6,12 @@ Nos arquivos de cada tema: as mesmas chaves nas duas linguas e na mesma ordem, n
 nos dois lados, toda chave que o tema usa existindo e nenhuma chave sobrando. Uma chave conta como usada quando aparece
 no tema entre aspas ou num data-i18n*; as que o I18N.tp usa (chave.one, chave.other) contam pela chave de base. O
 texto com marcacao so tem <b> e <code>, fechados e sem um dentro do outro, os mesmos nas duas linguas, e so entra pelo
-data-i18n ou pelo I18N.rico (o I18N.t e os atributos mostrariam a tag). No i18n.py: o leitor do .properties, a escolha
-da lingua e o texto posto na pagina. Sai 1 se algo falha."""
+data-i18n ou pelo I18N.rico (o I18N.t e os atributos mostrariam a tag). As mensagens do servidor (i18n.msg e
+i18n.Recusa no Python da raiz): cada chave server.* existe em todo tema com i18n/, com os mesmos {param} do texto em
+ingles; cada chamada passa os params do texto; o texto em ingles (e o do i18n.so_texto) nao tem acento; e o tema nao
+guarda chave server.* que o servidor nao manda. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
+posto na pagina e a mensagem. Sai 1 se algo falha."""
+import ast
 import contextlib
 import io
 import re
@@ -43,7 +47,45 @@ def tags(s):
     return achadas
 
 
-def confere_tema(tema):
+def chaves_do_servidor():
+    """As mensagens que o Python da raiz manda: {chave: (texto em ingles, arquivo:linha)}. A chave e o texto vao
+    literais no i18n.msg e no i18n.Recusa, para darem para conferir aqui."""
+    achadas = {}
+    for py in sorted(RAIZ.glob("*.py")):
+        for no in ast.walk(ast.parse(py.read_text(encoding="utf-8"), str(py))):
+            if not isinstance(no, ast.Call):
+                continue
+            nome = no.func.attr if isinstance(no.func, ast.Attribute) else getattr(no.func, "id", None)
+            onde = f"{py.name}:{no.lineno}"
+            if nome == "so_texto" and no.args:
+                partes = no.args[0].values if isinstance(no.args[0], ast.JoinedStr) else [no.args[0]]
+                texto = "".join(x.value for x in partes if isinstance(x, ast.Constant) and isinstance(x.value, str))
+                if re.search(r"[À-ÿ]", texto):
+                    falha(f"{onde}: so_texto is English only: {texto!r}")
+            if nome not in ("msg", "Recusa") or py.name == "i18n.py":  # o i18n.py so repassa
+                continue
+            if len(no.args) < 2 or not all(isinstance(a, ast.Constant) and isinstance(a.value, str) for a in no.args[:2]):
+                falha(f"{onde}: {nome}() takes the key and the English text as literal strings")
+                continue
+            chave, texto = no.args[0].value, no.args[1].value
+            if not re.fullmatch(rf"server\.{CHAVE}", chave):
+                falha(f"{onde}: the key {chave!r} must look like server.area.name")
+            if re.search(r"[À-ÿ]", texto):
+                falha(f"{onde}: the text of {chave} is English only: {texto!r}")
+            kw = {k.arg for k in no.keywords if k.arg}
+            if kw != params(texto):
+                falha(f"{onde}: {chave} gets {sorted(kw)}, and its text has {sorted(params(texto))}")
+            try:
+                texto.format(**{x: "" for x in params(texto)})
+            except (IndexError, KeyError, ValueError):
+                falha(f"{onde}: the text of {chave} is not a valid format string")
+            if chave in achadas and achadas[chave][0] != texto:
+                falha(f"{onde}: {chave} has another text in {achadas[chave][1]}")
+            achadas.setdefault(chave, (texto, onde))
+    return achadas
+
+
+def confere_tema(tema, servidor):
     pasta = tema / "i18n"
     try:
         por_lingua = {x: i18n.ler(i18n.arquivo(pasta, x)) for x in i18n.LINGUAS}
@@ -87,6 +129,11 @@ def confere_tema(tema):
     for k in sorted(sem_marcacao):
         if tags(base.get(k, "")):
             falha(f"{tema.name}: {k} has markup, so it goes through data-i18n or I18N.rico, not I18N.t or an attribute")
+    for k, (texto, onde) in sorted(servidor.items()):
+        if k not in base:
+            falha(f"{tema.name}: the server sends {k} ({onde}), which is not in the files")
+        elif params(base[k]) != params(texto):
+            falha(f"{tema.name}: {k} has params {sorted(params(base[k]))}, and the server sends {sorted(params(texto))}")
     for k in sorted(pedidas - plurais):
         if k not in base:
             falha(f"{tema.name}: the theme uses {k}, which is not in the files")
@@ -96,7 +143,10 @@ def confere_tema(tema):
     # o que sobra: a chave que nao aparece entre aspas nem num data-i18n do tema
     citadas = set(re.findall(rf"['\"]({CHAVE})['\"]", html))
     for k in base:
-        if k not in citadas and not any(k.startswith(p + ".") for p in plurais):
+        if k.startswith("server."):
+            if k not in servidor:
+                falha(f"{tema.name}: {k} is in the files but the server never sends it")
+        elif k not in citadas and not any(k.startswith(p + ".") for p in plurais):
             falha(f"{tema.name}: {k} is in the files but the theme never uses it")
     print(f"{tema.name}: {len(base)} keys in {len(por_lingua)} languages, {len(pedidas)} used by the theme")
 
@@ -164,7 +214,19 @@ def confere_modulo():
             html = i18n.injeta(i18n.MARCA, pasta, "en")
         if '"textos":{}' not in html or "could not read" not in log.getvalue():
             falha("injeta with a broken file should send no texts and log the error")
-    print("i18n.py: parser, language choice and page injection checked")
+
+    m = i18n.msg("server.x.y", "Got {n} from {who}.", n=3, who="ana")
+    if m != {"key": "server.x.y", "params": {"n": 3, "who": "ana"}, "text": "Got 3 from ana."}:
+        falha(f"msg: {m!r}")
+    try:
+        raise i18n.Recusa("server.x.z", "No {name}.", name="mic")
+    except ValueError as ex:  # a Recusa e um ValueError: quem ja pegava o ValueError segue pegando
+        dentro = i18n.msg("server.x.w", "Failed ({reason}).", reason=i18n.motivo(ex))
+        if str(ex) != "No mic." or dentro["params"]["reason"] != ex.msg or dentro["text"] != "Failed (No mic.).":
+            falha(f"Recusa inside msg: {dentro!r}")
+    if i18n.motivo(RuntimeError("x" * 300), 10) != "x" * 10 or i18n.so_texto("Hi.") != {"text": "Hi."}:
+        falha("motivo or so_texto")
+    print("i18n.py: parser, language choice, page injection and messages checked")
 
 
 def main():
@@ -172,8 +234,10 @@ def main():
     temas = [d for d in sorted((RAIZ / "themes").iterdir()) if (d / "i18n").is_dir()]
     if not temas:
         falha("no theme has an i18n/ folder")
+    servidor = chaves_do_servidor()
+    print(f"server: {len(servidor)} message keys")
     for tema in temas:
-        confere_tema(tema)
+        confere_tema(tema, servidor)
     print(f"{len(falhas)} failure(s)" if falhas else "all good")
     return 1 if falhas else 0
 
