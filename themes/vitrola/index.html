@@ -10916,6 +10916,8 @@ const LETRA_PLACA = {
     E: ["######", "##....", "##....", "#####.", "##....", "##....", "##....", "######"],
     V: ["##..##", "##..##", "##..##", "##..##", "##..##", ".####.", ".####.", "..##.."],
     Z: ["######", "....##", "...###", "..###.", ".###..", "###...", "##....", "######"],
+    H: ["##..##", "##..##", "##..##", "######", "##..##", "##..##", "##..##", "##..##"],
+    P: ["#####.", "##..##", "##..##", "#####.", "##....", "##....", "##....", "##...."],
     " ": ["...", "...", "...", "...", "...", "...", "...", "..."],
   };
   const A8 = { "Ã": ["A", [".##..#", "#..##."]], "Á": ["A", ["...##.", "..##.."]], "Ó": ["O", ["...##.", "..##.."]], "É": ["E", ["...##.", "..##.."]], "Õ": ["O", [".##..#", "#..##."]] };
@@ -10937,6 +10939,8 @@ const LETRA_PLACA = {
     R: ["#####.", "##..##", "##..##", "##..##", "#####.", "##.##.", "##..##", "##..##", "##..##", "##..##"],
     A: [".####.", "##..##", "##..##", "##..##", "##..##", "######", "##..##", "##..##", "##..##", "##..##"],
     U: ["##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", ".####."],
+    H: ["##..##", "##..##", "##..##", "##..##", "######", "##..##", "##..##", "##..##", "##..##", "##..##"],
+    P: ["#####.", "##..##", "##..##", "##..##", "#####.", "##....", "##....", "##....", "##....", "##...."],
     " ": ["...", "...", "...", "...", "...", "...", "...", "...", "...", "..."],
   };
   const F8 = { G: G8, A: A8, h: 8 }, F10 = { G: G10, A: A8, h: 10 };
@@ -10954,6 +10958,9 @@ const LETRA_PLACA = {
     }
   }
   const texto8 = (im, t, x, y, rgb) => textoB(im, t, x, y, rgb);
+  // o rotulo desenhado tem largura fixa (cada palavra numa linha cabe em 46 pixels da letra, com o pixel da letra em 2 do
+  // palco, o Windows a 125%): o do fone tem um texto curto so para ele, e o do label segue para o resto
+  const TEXTO_DESENHADO = { 'f-mon': I18N.t('mixer.recordInHeadphonesShort') };
   // como os rotulos dos volumes saem: a fonte (8 ou 10 de altura), o espaco entre letras, a cor e o filete claro embaixo
   // (gravado); window.MX_ROT troca na hora, para comparar
   const ROT0 = { alt: 8, esp: 2, cor: [46, 33, 26], grav: true };   // 4 + 2: mais espaco e gravado (escolha dele, 06/11)
@@ -10993,7 +11000,7 @@ const LETRA_PLACA = {
     const fs = m.faders.filter(vis).map(f => {
       const lab = f.querySelector('label'), inp = f.querySelector('input'), out = f.querySelector('output'), sm = lab.querySelector('small');
       const C = relM(f, D), I = relM(inp, D), Ou = relM(out, D);
-      const txt = [...lab.childNodes].filter(n => n.nodeType === 3 || n.nodeName === 'SPAN').map(n => n.textContent).join('').trim();
+      const txt = (TEXTO_DESENHADO[inp.id] || [...lab.childNodes].filter(n => n.nodeType === 3 || n.nodeName === 'SPAN').map(n => n.textContent).join('')).trim();
       return { el: f, inp, out, C, cx: Math.round((I.x0 + I.x1) / 2), sy0: I.y0, sy1: I.y1, L: I.h, oy: Ou.y1 - 2, txt, apag: !f.classList.contains('fader-voz') && !!(sm && sm.textContent.trim()) };
     });
     const ts = m.teclas.filter(vis).map(t => ({ el: t, T: relM(t, D), rot: t.querySelector('.rot-set').textContent.trim() }));

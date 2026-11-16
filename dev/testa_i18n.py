@@ -201,14 +201,37 @@ def letras_da_tabela(html, inicio, fim, chave):
     return set(re.findall(chave, m.group(1))) if m else None
 
 
+def larguras_g8(html):
+    """A largura de cada letra do G8, a dos rotulos dos volumes e da placa do mixer da mesa (o MIX-JS), com as acentuadas
+    do A8 e o cedilha na largura da letra de base, ou None sem ela."""
+    m = re.search(r"const G8 = \{(.*?)\n  \};", html, re.S)
+    if not m:
+        return None
+    larg = {ch.strip('"'): len(linha) for ch, linha in re.findall(r'\n    ([A-Z]|" "): \["([.#]+)"', m.group(1))}
+    a8 = re.search(r"const A8 = \{([^\n]*)\};", html)
+    for acentuada, base in re.findall(r'"(.)": \["([A-Z])"', a8.group(1) if a8 else ""):
+        larg[acentuada] = larg[base]
+    if "C" in larg:
+        larg["Ç"] = larg["C"]
+    return larg
+
+
+# a largura de uma palavra dos rotulos dos volumes da mesa, em pixels do G8 (com os 2 entre as letras): a coluna embaixo
+# de cada mostrador tem 92,7 do palco, e no Windows a 125% o pixel da letra vale 2 (o RECORD e o PHONES tem 46)
+ROTULO_MX = 46
+FADERS_MX = ("mixer.recordInGame", "mixer.recordInHeadphonesShort", "mixer.voice")
+
+
 def confere_pixel(tema, html, por_lingua):
     """As palavras que o pixel art desenha com letras proprias: cada lingua so pode usar as letras que a tabela tem
     (a que falta some ou leva o texto para o HTML). Os titulos das placas na negrita da LETRA_PLACA e as contagens na
-    regular dela, os nomes dos mostradores no NOMEV do mixer, a fita da voz no LETRAS_FITA, cada palavra dos botoes do
-    Locutor com o seu desenho no ARCADE e o logo dele no LOGOS (os dois do dev/pecas.py). Em tema sem a tabela, nada a
-    conferir."""
+    regular dela, os nomes dos mostradores no NOMEV do mixer, os rotulos dos volumes e a placa dele no G8 (cada palavra
+    dos rotulos cabendo na coluna), a fita da voz no LETRAS_FITA, cada palavra dos botoes do Locutor com o seu desenho
+    no ARCADE e o logo dele no LOGOS (os dois do dev/pecas.py). Em tema sem a tabela, nada a conferir."""
     placa = re.search(r"const LETRA_PLACA = \{\n  negrita: (\{.*?\}),\n  regular: (\{.*?\}),\n", html)
+    g8 = larguras_g8(html)
     tabelas = {
+        "G8": set(g8) if g8 else None,
         "negrita": set(json.loads(placa.group(1))) | {" "} if placa else None,
         "regular": set(json.loads(placa.group(2))) | set("0123456789") if placa else None,
         "NOMEV": letras_da_tabela(html, "const NOMEV = {", "\n  };", r"\b([A-Z]): \["),
@@ -223,7 +246,8 @@ def confere_pixel(tema, html, por_lingua):
                 ("shelf.count.one", "regular", lambda s: s.replace("{n}", "")), ("shelf.count.other", "regular", lambda s: s.replace("{n}", "")),
                 ("queue.count.one", "regular", lambda s: s.replace("{n}", "")), ("queue.count.other", "regular", lambda s: s.replace("{n}", "")),
                 ("mixer.meter.voice", "NOMEV", str.upper), ("mixer.meter.record", "NOMEV", str.upper),
-                ("mixer.meter.game", "NOMEV", str.upper), ("effects.tape.voice", "LETRAS_FITA", str)]
+                ("mixer.meter.game", "NOMEV", str.upper), ("effects.tape.voice", "LETRAS_FITA", str),
+                ("mixer.autoTransition", "G8", str.upper)] + [(k, "G8", str.upper) for k in FADERS_MX]
     vistas = 0
     for lingua, textos in por_lingua.items():
         for chave, tab, como in PALAVRAS:
@@ -233,6 +257,14 @@ def confere_pixel(tema, html, por_lingua):
             falta = sorted(set(como(textos[chave])) - tabelas[tab])
             if falta:
                 falha(f"{tema.name}: {chave} in {lingua} uses {''.join(falta)!r}, which the pixel font {tab} doesn't have")
+        for chave in FADERS_MX:
+            if g8 is None or chave not in textos:
+                continue
+            for p in textos[chave].upper().split():
+                larg = sum(g8.get(ch, g8.get(" ", 3)) for ch in p) + 2 * (len(p) - 1)
+                if larg > ROTULO_MX:
+                    falha(f"{tema.name}: {chave} in {lingua} has {p!r}, {larg} pixels wide in G8: the desk mixer fits "
+                          f"{ROTULO_MX} per word (use a shorter word)")
         for chave, palavra in textos.items():
             if chave.startswith("effects.button.") and tabelas["ARCADE"] is not None:
                 vistas += 1
