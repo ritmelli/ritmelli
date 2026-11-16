@@ -204,8 +204,9 @@ def letras_da_tabela(html, inicio, fim, chave):
 def confere_pixel(tema, html, por_lingua):
     """As palavras que o pixel art desenha com letras proprias: cada lingua so pode usar as letras que a tabela tem
     (a que falta some ou leva o texto para o HTML). Os titulos das placas na negrita da LETRA_PLACA e as contagens na
-    regular dela, os nomes dos mostradores no NOMEV do mixer, a fita da voz no LETRAS_FITA e cada palavra dos botoes do
-    Locutor com o seu desenho no ARCADE (o dev/pecas.py). Em tema sem a tabela, nada a conferir."""
+    regular dela, os nomes dos mostradores no NOMEV do mixer, a fita da voz no LETRAS_FITA, cada palavra dos botoes do
+    Locutor com o seu desenho no ARCADE e o logo dele no LOGOS (os dois do dev/pecas.py). Em tema sem a tabela, nada a
+    conferir."""
     placa = re.search(r"const LETRA_PLACA = \{\n  negrita: (\{.*?\}),\n  regular: (\{.*?\}),\n", html)
     tabelas = {
         "negrita": set(json.loads(placa.group(1))) | {" "} if placa else None,
@@ -213,6 +214,7 @@ def confere_pixel(tema, html, por_lingua):
         "NOMEV": letras_da_tabela(html, "const NOMEV = {", "\n  };", r"\b([A-Z]): \["),
         "LETRAS_FITA": (lambda s: s | {" "} if s else s)(letras_da_tabela(html, "const LETRAS_FITA = {", "\n};", r"\n  ([A-Z]): \[")),
         "ARCADE": letras_da_tabela(html, "const ARCADE = {", "\n};", r"\n  '([^']+)': '"),
+        "LOGOS": letras_da_tabela(html, "const LOGOS = {", "\n};", r"\n  '([^']+)': '"),
     }
     if all(t is None for t in tabelas.values()):
         return
@@ -236,6 +238,10 @@ def confere_pixel(tema, html, por_lingua):
                 vistas += 1
                 if palavra not in tabelas["ARCADE"]:
                     falha(f"{tema.name}: {chave} in {lingua} is {palavra!r}, which has no button in ARCADE (run dev/pecas.py)")
+            if chave.startswith("effects.logo.") and tabelas["LOGOS"] is not None:
+                vistas += 1
+                if palavra not in tabelas["LOGOS"]:
+                    falha(f"{tema.name}: {chave} in {lingua} is {palavra!r}, which has no drawing in LOGOS (run dev/pecas.py)")
     print(f"{tema.name}: {vistas} pixel art words checked against their fonts")
 
 
