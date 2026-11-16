@@ -2102,8 +2102,10 @@ def build(app_state):
         if "effect" in b:
             try:
                 E.set_effect(str(b["effect"]))
-            except ValueError:  # o fx.criar recusa o id que nao conhece
-                return j_err(i18n.msg("server.effect.unknown", "Unknown voice effect \"{id}\".", id=str(b["effect"])))
+            except i18n.Recusa as ex:  # o id que nao existe, o preset que o filtro recusou
+                return j_err(ex.msg)
+            except ValueError as ex:  # outro erro do efeito: o texto, em ingles
+                return j_err(i18n.so_texto(str(ex)[:300]))
         if "loop" in b:
             E.set_loop(b["loop"])
         if "shuffle" in b:
@@ -2171,14 +2173,16 @@ def build(app_state):
         return j_ok()
 
     @r.get("/api/themes")
-    async def themes(_):
+    async def themes(request):
+        # o nome, a direcao e a frase podem vir por lingua no meta.json: vao na de quem pede, como a pagina
+        lingua = i18n.escolher(request.query.get("lang"), request.headers.get("Accept-Language", ""))
         out = []
         for d in sorted(p for p in THEMES.iterdir() if (p / "index.html").exists()):
             meta = {}
             if (d / "meta.json").exists():
                 meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
-            out.append({"slug": d.name, "url": f"/t/{d.name}/", **meta})
-        return web.json_response(out)
+            out.append({"slug": d.name, "url": f"/t/{d.name}/", **{k: i18n.na_lingua(v, lingua) for k, v in meta.items()}})
+        return web.json_response(out, headers={"Vary": "Accept-Language"})
 
     def desliga():
         A.closing = True  # os SSE abertos terminam no proximo tick
@@ -2312,16 +2316,20 @@ def build(app_state):
         return web.FileResponse(HERE / "icone" / "toque.png")
 
     @r.get("/")
-    async def index(_):
-        return web.FileResponse(HERE / "gallery.html")
+    async def index(request):
+        return await pagina_com_textos(request, HERE / "gallery" / "index.html")
 
     @r.get("/t/{slug}/")
     async def theme_index(request):
         p = THEMES / request.match_info["slug"] / "index.html"
         if not p.exists() or THEMES not in p.resolve().parents:
             raise web.HTTPNotFound()
-        # os textos da lingua de quem abre (i18n.py) vao dentro da pagina. O ETag muda com o tema, com os textos e com a
-        # lingua: a pagina igual a que o navegador ja tem volta como 304, sem baixar o 1,2 MB de novo
+        return await pagina_com_textos(request, p)
+
+    async def pagina_com_textos(request, p):
+        """Uma pagina com a pasta i18n/ ao lado (um tema, a galeria): os textos da lingua de quem abre (i18n.py) vao
+        dentro dela. O ETag muda com a pagina, com os textos e com a lingua: a pagina igual a que o navegador ja tem
+        volta como 304, sem baixar o 1,2 MB do tema de novo"""
         textos = p.parent / "i18n"
         lingua = i18n.escolher(request.query.get("lang"), request.headers.get("Accept-Language", ""))
         etag = f'"{p.stat().st_mtime_ns}-{i18n.versao(textos)}-{lingua}"'

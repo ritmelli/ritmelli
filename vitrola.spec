@@ -12,7 +12,7 @@ from PyInstaller.utils.win32.versioninfo import (FixedFileInfo, StringFileInfo, 
 
 datas = [
     ("themes", "themes"),  # o server.py e o compasso.py acham pelo __file__, que no exe e a _internal\
-    ("gallery.html", "."),
+    ("gallery", "gallery"),  # a pagina inicial, com os textos dela na gallery\i18n\
     ("modelos/compasso.onnx", "modelos"),
     ("modelos/LICENSE-beat_this.txt", "modelos"),  # o modelo e MIT: a licenca vai junto com ele
     # o icone da aba do navegador e o do celular (server.py); o setup tambem pega o .ico daqui

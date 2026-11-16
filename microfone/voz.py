@@ -12,7 +12,7 @@ import sys
 
 import numpy as np
 
-ERROS = {1: "preset invalido", 2: "sem memoria", 3: "taxa diferente da do preset"}
+ERROS = {1: "invalid preset", 2: "out of memory", 3: "rate differs from the preset's"}
 _P = ctypes.POINTER(ctypes.c_float)
 _dll = None
 
@@ -56,7 +56,7 @@ class Cadeia:
         erro = ctypes.c_uint32(0)
         self.h = dll().voz_cria(preset, len(preset), float(taxa), ctypes.byref(erro))
         if not self.h:
-            raise ValueError(f"o filtro recusou o preset: {ERROS.get(erro.value, erro.value)}")
+            raise ValueError(f"the filter refused the preset: {ERROS.get(erro.value, erro.value)}")
         self.finito = True
 
     def __call__(self, x):

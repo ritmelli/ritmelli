@@ -4,7 +4,7 @@ bisel e cantos em degrau, desenhados pixel a pixel e usados como border-image de
     python dev/molduras.py
 
 Grava as variaveis --mold-* no bloco entre "molduras:inicio" e "molduras:fim" do themes/vitrola/index.html e
-do gallery.html (a pagina inicial, que fica fora do tema e leva so as que usa).
+do gallery/index.html (a pagina inicial, que fica fora do tema e leva so as que usa).
 Cada moldura e um SVG pequeno (1 unidade = 1 ponto, shape-rendering crispEdges) com a quina
 inteira desenhada e o meio de cada lado esticado; a variavel ja leva o corte, a largura e o quanto a
 moldura sai para fora da caixa, entao no tema basta border-image: var(--mold-objeto).
@@ -38,7 +38,7 @@ from urllib.parse import quote
 
 RAIZ = Path(__file__).resolve().parent.parent
 TEMA = RAIZ / "themes" / "vitrola" / "index.html"
-GALERIA = RAIZ / "gallery.html"
+GALERIA = RAIZ / "gallery" / "index.html"
 NA_GALERIA = ("objeto", "objeto-apertado", "caixa")
 CONTORNO = (26, 11, 4, 1)          # #1A0B04, o --contorno do tema
 LUZ = (255, 236, 214)              # marfim quente: sobre aluminio clareia, sobre madeira vira o filete aceso

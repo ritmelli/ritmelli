@@ -567,7 +567,7 @@ class Fdn:
         self.passos, self.pre_ms, self.mod_ms = int(passos), float(pre_ms), float(mod_ms)
         self.cedo, self.molhado, self.seco = float(cedo), float(molhado), float(seco)
         if not 1 <= self.passos <= self.PASSOS_MAX or len(self.rt) != 3 or min(self.rt) <= 0:
-            raise ValueError("Fdn: passos de 1 a 6 e tres tempos de reverberacao positivos")
+            raise ValueError("Fdn: 1 to 6 steps and three positive reverberation times")
         p = self.p = self.projeta(SR)
         self.pre = np.zeros(p["pre"], np.float32)
         self.dif = [[np.zeros(d, np.float32) for d in passo] for passo in p["difusor"]]

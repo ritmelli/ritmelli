@@ -310,8 +310,9 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     fila como o YouTube Music e, desligado, volta a ordem montada. Pausar cala também os
     sons por cima.
 - `API.md`: contrato da API e checklist de todo tema.
-- `themes/<slug>/`: as interfaces; `gallery.html` lista e compara lado a lado, com as letras e as texturas do tema
-  da vitrola. O app abre direto no tema da vitrola (`pastas.PAGINA`), e a galeria fica em `/`. Na primeira
+- `themes/<slug>/`: as interfaces; `gallery/index.html` lista e compara lado a lado, com as letras e as texturas do
+  tema da vitrola e os textos dela em `gallery/i18n/`, como num tema. O app abre direto no tema da vitrola
+  (`pastas.PAGINA`), e a galeria fica em `/`. Na primeira
   vez, o tema abre as boas-vindas por cima (ver o `API.md`).
 - `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
   de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
@@ -328,7 +329,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   (desenha as molduras de pixel da vitrola, contorno, linha clara, bisel e cantos em degrau, e
   grava as variáveis `--mold-*` de border-image no tema, fora do bloco do celular, porque valem
   nas duas telas, com o tamanho do ponto na variável `--px`, 1px quando o tema não a define, e no
-  `gallery.html` as que a galeria usa),
+  `gallery/index.html` as que a galeria usa),
   `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos, em duas
   camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema, fora
   do bloco do celular),
@@ -336,7 +337,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   base e o descanso dele, os botões de tocar do palco e do mini player e o pisador, os knobs e
   o LED dos pedais, os botões de fliperama e o logo do Locutor, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as
   variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo` no
-  tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria, com a prateleira de mentira do
+  tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, o `LOGOS` (o logo do Locutor em cada língua), a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera `preview.png` de cada tema para a galeria, com a prateleira de mentira do
   `dev/compara.py`; ele entra no git porque o instalador leva a pasta do tema como ela está).
 - `icone/`: o ícone da Vitrola, o toca-discos do tema visto de cima, que o `dev/icone.py` desenha
   em pixel em cada tamanho (o de 16 px a mão): o `vitrola.ico`, que é o do exe, o do setup e o da
@@ -362,9 +363,15 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   ordem de subida. A página só aparece depois de o começo do script principal aplicar os textos
   da marcação (a classe `i18n-ok`), para não piscar a língua errada. Vão os da língua escolhida
   e os do inglês, a reserva para chave que falte; chave que falte nos dois aparece como a própria
-  chave, com um aviso no console. A língua sai do `?lang=` e, quando a detecção ligar, do
-  `Accept-Language` do navegador (cada aparelho na sua); até lá, sempre português. O ETag da
-  página junta o tema, os textos e a língua, então a página igual volta como 304.
+  chave, com um aviso no console. A língua sai do `Accept-Language` do navegador (cada aparelho
+  na sua: a primeira que temos na preferência dele, ou o inglês), e o `?lang=` força uma. O ETag da
+  página junta o tema, os textos e a língua, então a página igual volta como 304. A galeria
+  (`/`) passa pelo mesmo caminho, com a pasta `gallery/i18n/`, e o `meta.json` de cada tema pode trazer o
+  nome, a direção e a frase por língua. O Chrome sem cabeça das ferramentas de `dev/` pede inglês: o
+  `compara.py` abre com o `?lang=` do `--lang` (o `pt_BR` das referências, se não disser outro), o
+  `previews.py` com o `pt_BR`, e quem passa o endereço ao `shot.py`, ao `fitcheck.py` ou ao
+  `perfcheck.py` põe o `?lang=` que quiser. As notas da versão nova vão nas duas línguas no
+  manifesto: as em português no `notas`, que as versões de antes leem, e as em inglês no `notas_en`.
   O servidor, por sua vez, não escreve frase para a tela: o `i18n.msg` monta a Mensagem do API.md
   (`{key, params, text}`), com a chave `server.*` que o tema traduz e o texto em inglês para o log.
   O erro que já nasce pronto para a tela (o aparelho que sumiu, o cabo no lugar do microfone) é uma

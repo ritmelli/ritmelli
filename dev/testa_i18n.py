@@ -2,7 +2,7 @@
 
     python dev/testa_i18n.py
 
-Nos arquivos de cada tema: as mesmas chaves nas duas linguas e na mesma ordem, nenhum valor vazio, os mesmos {param}
+Nos arquivos de cada tema e nos da galeria (gallery/, a pagina inicial): as mesmas chaves nas duas linguas e na mesma ordem, nenhum valor vazio, os mesmos {param}
 nos dois lados, toda chave que o tema usa existindo e nenhuma chave sobrando. Uma chave conta como usada quando aparece
 no tema entre aspas ou num data-i18n*; as que o I18N.tp usa (chave.one, chave.other) contam pela chave de base. O
 texto com marcacao so tem <b> e <code>, fechados e sem um dentro do outro, os mesmos nas duas linguas, e so entra pelo
@@ -12,7 +12,7 @@ ingles; cada chamada passa os params do texto; o texto em ingles (e o do i18n.so
 guarda chave server.* que o servidor nao manda. Os efeitos do fx.py: cada um com effect.<id>.name e .desc, e cada
 grupo com effect.group.<grupo>, e nenhuma chave effect.* sobrando. As palavras do pixel art: cada lingua so com as
 letras que a tabela de pixel delas tem (as placas, os mostradores do mixer, a fita da voz), e cada palavra dos botoes do
-Locutor com o desenho dela no ARCADE. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
+Locutor com o desenho dela no ARCADE. O meta.json de cada tema: o campo que vem por lingua tem as duas. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
 posto na pagina e a mensagem. Sai 1 se algo falha."""
 import ast
 import contextlib
@@ -179,31 +179,94 @@ def confere_tema(tema, servidor, efeitos):
     confere_pixel(tema, html, por_lingua)
 
 
+def confere_meta(tema):
+    """O meta.json de um tema traduzido: o campo que vem por lingua ({"en": ..., "pt_BR": ...}) tem todas, com texto.
+    O que vem como texto so vale igual nas duas (o nome, que e marca)."""
+    p = tema / "meta.json"
+    if not p.exists():
+        return
+    try:
+        meta = json.loads(p.read_text(encoding="utf-8"))
+    except ValueError as ex:
+        falha(f"{tema.name}/meta.json: {ex}")
+        return
+    for campo, valor in meta.items():
+        if isinstance(valor, dict) and (set(valor) != set(i18n.LINGUAS) or not all(isinstance(v, str) and v for v in valor.values())):
+            falha(f"{tema.name}/meta.json: {campo} has {sorted(valor)}, expected a text for each of {list(i18n.LINGUAS)}")
+
+
 def letras_da_tabela(html, inicio, fim, chave):
     """As letras de uma tabela de pixel do tema (o bloco de inicio ate fim, cada letra como chave), ou None sem ela."""
     m = re.search(re.escape(inicio) + r"(.*?)" + re.escape(fim), html, re.S)
     return set(re.findall(chave, m.group(1))) if m else None
 
 
+def larguras_g8(html):
+    """A largura de cada letra do G8, a dos rotulos dos volumes e da placa do mixer da mesa (o MIX-JS), com as acentuadas
+    do A8 e o cedilha na largura da letra de base, ou None sem ela."""
+    m = re.search(r"const G8 = \{(.*?)\n  \};", html, re.S)
+    if not m:
+        return None
+    larg = {ch.strip('"'): len(linha) for ch, linha in re.findall(r'\n    ([A-Z]|" "): \["([.#]+)"', m.group(1))}
+    if not larg:   # o formato mudou: o confere_pixel acusa a tabela que nao deu para ler
+        return {}
+    a8 = re.search(r"const A8 = \{([^\n]*)\};", html)
+    for acentuada, base in re.findall(r'"(.)": \["([A-Z])"', a8.group(1) if a8 else ""):
+        if base in larg:
+            larg[acentuada] = larg[base]
+    if "C" in larg:
+        larg["Ç"] = larg["C"]
+    return larg
+
+
+# a largura de uma palavra dos rotulos dos volumes da mesa, em pixels do G8 (com os 2 entre as letras): a coluna embaixo
+# de cada mostrador tem 92,7 do palco, e no Windows a 125% o pixel da letra vale 2 (o RECORD e o PHONES tem 46)
+ROTULO_MX = 46
+FADERS_MX = ("mixer.recordInGame", "mixer.recordInHeadphonesShort", "mixer.voice")
+
+
 def confere_pixel(tema, html, por_lingua):
     """As palavras que o pixel art desenha com letras proprias: cada lingua so pode usar as letras que a tabela tem
     (a que falta some ou leva o texto para o HTML). Os titulos das placas na negrita da LETRA_PLACA e as contagens na
-    regular dela, os nomes dos mostradores no NOMEV do mixer, a fita da voz no LETRAS_FITA e cada palavra dos botoes do
-    Locutor com o seu desenho no ARCADE (o dev/pecas.py). Em tema sem a tabela, nada a conferir."""
+    regular dela, os nomes dos mostradores no NOMEV do mixer, os rotulos dos volumes e a placa dele no G8 (cada palavra
+    dos rotulos cabendo na coluna), a fita da voz no LETRAS_FITA, cada palavra dos botoes do Locutor com o seu desenho
+    no ARCADE e o logo dele no LOGOS (os dois do dev/pecas.py). Em tema sem a tabela, nada a conferir; a tabela que o
+    tema tem e daqui nao deu para ler, ou a chave daqui que sumiu dos arquivos, falha (senao passaria sem conferir)."""
     placa = re.search(r"const LETRA_PLACA = \{\n  negrita: (\{.*?\}),\n  regular: (\{.*?\}),\n", html)
+    g8 = larguras_g8(html)
     tabelas = {
+        "G8": set(g8) if g8 else None,
         "negrita": set(json.loads(placa.group(1))) | {" "} if placa else None,
         "regular": set(json.loads(placa.group(2))) | set("0123456789") if placa else None,
         "NOMEV": letras_da_tabela(html, "const NOMEV = {", "\n  };", r"\b([A-Z]): \["),
         "LETRAS_FITA": (lambda s: s | {" "} if s else s)(letras_da_tabela(html, "const LETRAS_FITA = {", "\n};", r"\n  ([A-Z]): \[")),
         "ARCADE": letras_da_tabela(html, "const ARCADE = {", "\n};", r"\n  '([^']+)': '"),
+        "LOGOS": letras_da_tabela(html, "const LOGOS = {", "\n};", r"\n  '([^']+)': '"),
     }
+    # a tabela que o tema tem e a leitura daqui nao achou (o formato dela mudou) falha: sem isso, as palavras dela
+    # passariam sem conferir nada
+    DECLARACAO = {"G8": "const G8 = {", "negrita": "const LETRA_PLACA", "regular": "const LETRA_PLACA",
+                  "NOMEV": "const NOMEV", "LETRAS_FITA": "const LETRAS_FITA", "ARCADE": "const ARCADE", "LOGOS": "const LOGOS"}
+    for nome, tabela in tabelas.items():
+        if DECLARACAO[nome] in html and not tabela:
+            falha(f"{tema.name}: couldn't read the pixel font {nome} in index.html (its format changed? update confere_pixel)")
+    if all(t is None for t in tabelas.values()):
+        return
     # (chave, tabela, o texto como a tela desenha)
     PALAVRAS = [("nav.shelf", "negrita", str), ("queue.title", "negrita", str),
                 ("shelf.count.one", "regular", lambda s: s.replace("{n}", "")), ("shelf.count.other", "regular", lambda s: s.replace("{n}", "")),
                 ("queue.count.one", "regular", lambda s: s.replace("{n}", "")), ("queue.count.other", "regular", lambda s: s.replace("{n}", "")),
                 ("mixer.meter.voice", "NOMEV", str.upper), ("mixer.meter.record", "NOMEV", str.upper),
-                ("mixer.meter.game", "NOMEV", str.upper), ("effects.tape.voice", "LETRAS_FITA", str)]
+                ("mixer.meter.game", "NOMEV", str.upper), ("effects.tape.voice", "LETRAS_FITA", str),
+                ("mixer.autoTransition", "G8", str.upper)] + [(k, "G8", str.upper) for k in FADERS_MX]
+    # a chave daqui que sumiu dos arquivos (renomeada) falha, em vez de a palavra dela passar sem conferir
+    base = por_lingua.get(i18n.RESERVA, {})
+    for chave, tab, _ in PALAVRAS:
+        if tabelas[tab] and chave not in base:
+            falha(f"{tema.name}: confere_pixel checks {chave}, which is not in the files (renamed? update PALAVRAS)")
+    for prefixo, tab in (("effects.button.", "ARCADE"), ("effects.logo.", "LOGOS")):
+        if tabelas[tab] and not any(k.startswith(prefixo) for k in base):
+            falha(f"{tema.name}: the theme has {tab}, and no {prefixo}* key is in the files")
     vistas = 0
     for lingua, textos in por_lingua.items():
         for chave, tab, como in PALAVRAS:
@@ -213,11 +276,23 @@ def confere_pixel(tema, html, por_lingua):
             falta = sorted(set(como(textos[chave])) - tabelas[tab])
             if falta:
                 falha(f"{tema.name}: {chave} in {lingua} uses {''.join(falta)!r}, which the pixel font {tab} doesn't have")
+        for chave in FADERS_MX:
+            if g8 is None or chave not in textos:
+                continue
+            for p in textos[chave].upper().split():
+                larg = sum(g8.get(ch, g8.get(" ", 3)) for ch in p) + 2 * (len(p) - 1)
+                if larg > ROTULO_MX:
+                    falha(f"{tema.name}: {chave} in {lingua} has {p!r}, {larg} pixels wide in G8: the desk mixer fits "
+                          f"{ROTULO_MX} per word (use a shorter word)")
         for chave, palavra in textos.items():
             if chave.startswith("effects.button.") and tabelas["ARCADE"] is not None:
                 vistas += 1
                 if palavra not in tabelas["ARCADE"]:
                     falha(f"{tema.name}: {chave} in {lingua} is {palavra!r}, which has no button in ARCADE (run dev/pecas.py)")
+            if chave.startswith("effects.logo.") and tabelas["LOGOS"] is not None:
+                vistas += 1
+                if palavra not in tabelas["LOGOS"]:
+                    falha(f"{tema.name}: {chave} in {lingua} is {palavra!r}, which has no drawing in LOGOS (run dev/pecas.py)")
     print(f"{tema.name}: {vistas} pixel art words checked against their fonts")
 
 
@@ -252,21 +327,18 @@ def confere_modulo():
     if pref != ["pt-BR", "de", "en", "es"]:
         falha(f"preferidas: {pref!r}")
 
-    detecta = i18n.DETECTA
-    try:
-        i18n.DETECTA = False
-        for pedida, accept, esperado in [(None, "en-US", i18n.PADRAO), ("en", "", "en"), ("pt", "en", "pt_BR"),
-                                         ("xx", "en", i18n.PADRAO)]:
-            if (got := i18n.escolher(pedida, accept)) != esperado:
-                falha(f"escolher({pedida!r}, {accept!r}) without detection = {got!r}, expected {esperado!r}")
-        i18n.DETECTA = True
-        for pedida, accept, esperado in [(None, "pt-BR,pt;q=0.9,en;q=0.8", "pt_BR"), (None, "es,en;q=0.5", "en"),
-                                         (None, "es,pt;q=0.5,en;q=0.7", "en"), (None, "es", "en"), (None, "", "en"),
-                                         ("pt_BR", "en-US", "pt_BR")]:
-            if (got := i18n.escolher(pedida, accept)) != esperado:
-                falha(f"escolher({pedida!r}, {accept!r}) with detection = {got!r}, expected {esperado!r}")
-    finally:
-        i18n.DETECTA = detecta
+    # o navegador decide, o ?lang= passa na frente, e o que nao temos cai no ingles
+    for pedida, accept, esperado in [(None, "pt-BR,pt;q=0.9,en;q=0.8", "pt_BR"), (None, "en-US,en;q=0.9", "en"),
+                                     (None, "es,en;q=0.5", "en"), (None, "es,pt;q=0.5,en;q=0.7", "en"),
+                                     (None, "es,pt;q=0.5", "pt_BR"), (None, "es", "en"), (None, "", "en"),
+                                     ("pt_BR", "en-US", "pt_BR"), ("en", "pt-BR", "en"), ("xx", "pt-BR", "pt_BR")]:
+        if (got := i18n.escolher(pedida, accept)) != esperado:
+            falha(f"escolher({pedida!r}, {accept!r}) = {got!r}, expected {esperado!r}")
+    for valor, lingua, esperado in [("Vitrola", "pt_BR", "Vitrola"), ({"en": "a", "pt_BR": "b"}, "pt_BR", "b"),
+                                    ({"en": "a", "pt_BR": "b"}, "en", "a"), ({"en": "a"}, "pt_BR", "a"),
+                                    ({"pt_BR": "b"}, "en", "b"), ({}, "en", "")]:
+        if (got := i18n.na_lingua(valor, lingua)) != esperado:
+            falha(f"na_lingua({valor!r}, {lingua!r}) = {got!r}, expected {esperado!r}")
 
     with tempfile.TemporaryDirectory() as tmp:
         pasta = Path(tmp)
@@ -279,11 +351,22 @@ def confere_modulo():
             falha("injeta changed a page without the marker")
         if i18n.injeta(i18n.MARCA, pasta / "nao-existe", "en") != i18n.MARCA:
             falha("injeta changed a page whose theme has no i18n folder")
+        # um arquivo quebrado nao leva o outro junto
+        (pasta / "i18n_pt_BR.properties").write_text("a.b=ação\na.b=de novo\n", encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()) as log:
+            html = i18n.injeta(i18n.MARCA, pasta, "pt_BR")
+        if '"lingua":"en"' not in html or '"textos":{"a.b":"\\u003c/script>' not in html or "i18n_pt_BR" not in log.getvalue():
+            falha(f"injeta with a broken pt_BR file should send the page in English and log it: {html!r}")
+        (pasta / "i18n_pt_BR.properties").write_text("a.b=ação\n", encoding="utf-8")
         (pasta / "i18n_en.properties").write_text("quebrado\n", encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()) as log:
+            html = i18n.injeta(i18n.MARCA, pasta, "pt_BR")
+        if '"lingua":"pt_BR"' not in html or '"textos":{"a.b":"ação"}' not in html or '"reserva":{}' not in html:
+            falha(f"injeta with a broken en file should still send the pt_BR texts: {html!r}")
         with contextlib.redirect_stderr(io.StringIO()) as log:
             html = i18n.injeta(i18n.MARCA, pasta, "en")
         if '"textos":{}' not in html or "could not read" not in log.getvalue():
-            falha("injeta with a broken file should send no texts and log the error")
+            falha("injeta with the page's only file broken should send no texts and log the error")
 
     m = i18n.msg("server.x.y", "Got {n} from {who}.", n=3, who="ana")
     if m != {"key": "server.x.y", "params": {"n": 3, "who": "ana"}, "text": "Got 3 from ana."}:
@@ -308,6 +391,9 @@ def main():
     print(f"server: {len(servidor)} message keys, {len(efeitos)} effect keys")
     for tema in temas:
         confere_tema(tema, servidor, efeitos)
+        confere_meta(tema)
+    # a galeria (a pagina inicial) tem a pasta i18n/ como um tema, mas nao mostra mensagem do servidor nem efeito
+    confere_tema(RAIZ / "gallery", {}, set())
     print(f"{len(falhas)} failure(s)" if falhas else "all good")
     return 1 if falhas else 0
 

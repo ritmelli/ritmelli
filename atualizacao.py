@@ -103,9 +103,12 @@ def confere(manifesto, assinatura, chaves=None):
     if not isinstance(m, dict) or m.get("formato") != FORMATO or m.get("app") != "vitrola":
         raise Recusado("the manifest is not for a Vitrola version this app understands")
     versao(m.get("versao"))
-    notas = m.get("notas", [])
-    if not (isinstance(notas, list) and len(notas) <= 30 and all(isinstance(n, str) and len(n) <= 500 for n in notas)):
-        raise Recusado("the release notes are out of format")
+    # as notas em portugues no "notas" (o campo que as versoes de antes leem) e as em ingles no "notas_en", que elas nao
+    # olham
+    for campo in ("notas", "notas_en"):
+        notas = m.get(campo, [])
+        if not (isinstance(notas, list) and len(notas) <= 30 and all(isinstance(n, str) and len(n) <= 500 for n in notas)):
+            raise Recusado("the release notes are out of format")
     inst = m.get("instalador")
     if not (isinstance(inst, dict) and isinstance(inst.get("url"), str) and _sha(inst.get("sha256"))
             and isinstance(inst.get("tamanho"), int) and 0 < inst["tamanho"] <= SETUP_MAX):
@@ -238,7 +241,8 @@ class Atualizacao:
             n = self.nova
             return {"ativa": self.ativa, "versao": VERSAO, "estado": self.estado, "progresso": round(self.progresso, 3),
                     "erro": self.erro, "consultada": self.consultada,
-                    "nova": n and {"versao": n["versao"], "data": n.get("data"), "notas": n.get("notas", []),
+                    "nova": n and {"versao": n["versao"], "data": n.get("data"),
+                                   "notas": {"pt_BR": n.get("notas", []), "en": n.get("notas_en", [])},
                                    "tamanho": self._escolhido()["tamanho"], "parcial": self.parcial}}
 
     def vigia(self):

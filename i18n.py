@@ -13,10 +13,6 @@ from pathlib import Path
 
 LINGUAS = ("en", "pt_BR")
 RESERVA = "en"
-# ate o PR 7 do I18N.md a lingua do navegador nao conta: todo mundo ve portugues, fora o ?lang= dos testes. Assim uma
-# versao publicada no meio da traducao nunca mostra metade da tela em ingles
-DETECTA = False
-PADRAO = "pt_BR"
 MARCA = "<!-- i18n -->"
 
 
@@ -68,39 +64,54 @@ def preferidas(accept_language):
 
 
 def escolher(pedida=None, accept_language=""):
-    """A lingua da pagina: a do ?lang=, se for uma que temos; senao (com o DETECTA) a primeira que temos na
-    preferencia do navegador, ou o ingles; sem o DETECTA, o PADRAO."""
+    """A lingua da pagina: a do ?lang=, se for uma que temos; senao a primeira que temos na preferencia do navegador
+    (cada aparelho na sua), ou o ingles."""
     if (lingua := lingua_de(pedida)):
         return lingua
-    if not DETECTA:
-        return PADRAO
     for codigo in preferidas(accept_language):
         if (lingua := lingua_de(codigo)):
             return lingua
     return RESERVA
 
 
+def na_lingua(valor, lingua):
+    """Um campo que pode vir por lingua ({"en": ..., "pt_BR": ...}, como no meta.json de um tema): o da lingua, o do
+    ingles, ou o primeiro que houver. O que nao e por lingua volta como veio."""
+    if not isinstance(valor, dict):
+        return valor
+    return valor.get(lingua) or valor.get(RESERVA) or next(iter(valor.values()), "")
+
+
 def arquivo(pasta, lingua):
     return Path(pasta) / f"i18n_{lingua}.properties"
 
 
+def _le_ou_nada(pasta, lingua):
+    """Os textos de uma lingua, ou None com o arquivo quebrado ou faltando (o erro sai no log)."""
+    try:
+        return ler(arquivo(pasta, lingua))
+    except (OSError, ValueError) as ex:
+        print(f"i18n: could not read the texts in {arquivo(pasta, lingua)} ({ex})", file=sys.stderr, flush=True)
+        return None
+
+
 def dados(pasta, lingua):
-    """O que vai para a pagina: a lingua, os textos dela e os do ingles, que o tema usa quando falta uma chave."""
-    reserva = ler(arquivo(pasta, RESERVA))
-    textos = reserva if lingua == RESERVA else ler(arquivo(pasta, lingua))
-    return {"lingua": lingua, "textos": textos, "reserva": reserva}
+    """O que vai para a pagina: a lingua, os textos dela e os do ingles, que o tema usa quando falta uma chave. Um
+    arquivo quebrado nao leva o outro junto: sem o da lingua, a pagina sai inteira em ingles; sem o ingles, sai na
+    lingua, sem a reserva. Sem os dois, vai sem textos (o tema mostra as chaves)."""
+    reserva = _le_ou_nada(pasta, RESERVA)
+    textos = reserva if lingua == RESERVA else _le_ou_nada(pasta, lingua)
+    if textos is None and reserva is not None:
+        lingua, textos = RESERVA, reserva
+    return {"lingua": lingua, "textos": textos or {}, "reserva": reserva or {}}
 
 
 def injeta(html, pasta, lingua):
     """O html do tema com os textos no lugar do MARCA. Tema sem o MARCA ou sem a pasta i18n/ sai como veio. Arquivo
-    quebrado nao derruba a pagina: vai sem textos (o tema mostra as chaves) e o erro sai no log."""
+    quebrado nao derruba a pagina (ver o dados)."""
     if MARCA not in html or not Path(pasta).is_dir():
         return html
-    try:
-        d = dados(pasta, lingua)
-    except (OSError, ValueError) as ex:
-        print(f"i18n: could not read the texts in {pasta} ({ex})", file=sys.stderr, flush=True)
-        d = {"lingua": lingua, "textos": {}, "reserva": {}}
+    d = dados(pasta, lingua)
     # o < escapado: um texto com </script> nao fecha o script da pagina
     js = json.dumps(d, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
     return html.replace(MARCA, f"<script>window.I18N_DADOS = {js};</script>", 1)

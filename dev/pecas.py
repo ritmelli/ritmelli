@@ -11,7 +11,7 @@ maleta do A seguir (--maleta-canto-a a -d, --maleta-dobradica, --maleta-fecho, -
 --maleta-boca-*, o casco em perspectiva, --maleta-tampa-* e --maleta-base-*, e o recorte do disco entreaberto,
 --maleta-disco-*) no
 bloco entre "pecas:inicio" e "pecas:fim" do themes/vitrola/index.html, e no JS os SVGs do pisador (PE_SVG), do LED (LED_SVG), os knobs dos pedais com os ponteiros (KNOBS: o creme, o baquelite e o chicken-head), os
-botoes e o logo do Locutor (ARCADE), a chave do "So este disco / Tocar parecidas" (CHAVE_PARECIDAS) e o salvar da
+botoes do Locutor (ARCADE), o logo dele em cada lingua (LOGOS), a chave do "So este disco / Tocar parecidas" (CHAVE_PARECIDAS) e o salvar da
 parecida no prato (SALVAR_PIXEL, com as --salvar-aceso-* do aro).
 
 O braco: o tema gira o .braco em volta do pivo (o anguloPara() da o angulo do sulco; parado ele volta
@@ -607,8 +607,8 @@ ARC_LETRA = {
     "U": ["X..X", "X..X", "X..X", "X..X", "X..X", "X..X", "X..X", "X..X", "X..X", ".XX."],
 }
 # a letra do logo, 11 de altura e traco de 2, as minusculas da linha 3; inclinada 1 celula a cada 4 linhas. O o, o c
-# e o u com 6 de largura e o furo de 2 (com o furo de 1 ficavam dificeis de ler no celular): o logo
-# enche os 68 px do miolo do pedal
+# e o u com 6 de largura e o furo de 2 (com o furo de 1 ficavam dificeis de ler no celular): o "Locutor FM"
+# enche os 68 px do miolo do pedal. O V, o i e o e sao do "FM Voice" do ingles
 ARC_LOGO = {
     "L": ["XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XXXXX", "XXXXX"],
     "o": [None, None, None, ".XXXX.", "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", ".XXXX."],
@@ -619,8 +619,26 @@ ARC_LOGO = {
     "F": ["XXXXX", "XXXXX", "XX...", "XX...", "XXXX.", "XXXX.", "XX...", "XX...", "XX...", "XX...", "XX..."],
     "M": ["XX....XX", "XXX..XXX", "XXXXXXXX", "XX.XX.XX", "XX.XX.XX", "XX....XX", "XX....XX", "XX....XX", "XX....XX",
           "XX....XX", "XX....XX"],
+    "V": ["XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", ".XXXX.", ".XXXX.", "..XX..", "..XX.."],
+    "i": [None, "XX", None, "XX", "XX", "XX", "XX", "XX", "XX", "XX", "XX"],
+    "e": [None, None, None, ".XXXX.", "XX..XX", "XX..XX", "XXXXXX", "XX....", "XX....", "XX..XX", ".XXXX."],
     " ": [None] * 11,
 }
+# o logo da mesa em maiuscula (os nomes dos pedais da mesa sao em maiuscula, como no mock), na mesma altura e no mesmo
+# traco: as redondas com 5 de largura e o furo de 1, e o L, o F, o M e o V os do celular
+ARC_LOGO_MESA = {
+    "L": ARC_LOGO["L"], "F": ARC_LOGO["F"], "M": ARC_LOGO["M"], "V": ARC_LOGO["V"], " ": ARC_LOGO[" "],
+    "O": [".XXX.", "XX.XX", "XX.XX", "XX.XX", "XX.XX", "XX.XX", "XX.XX", "XX.XX", "XX.XX", "XX.XX", ".XXX."],
+    "C": [".XXXX", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", ".XXXX"],
+    "U": ["XX.XX"] * 10 + [".XXX."],
+    "T": ["XXXXXX", "XXXXXX"] + ["..XX.."] * 9,
+    "R": ["XXXXX.", "XX..XX", "XX..XX", "XX..XX", "XXXXX.", "XXXX..", "XX.XX.", "XX.XX.", "XX..XX", "XX..XX", "XX..XX"],
+    "I": ["XX"] * 11,
+    "E": ["XXXXX", "XXXXX", "XX...", "XX...", "XXXX.", "XXXX.", "XX...", "XX...", "XX...", "XXXXX", "XXXXX"],
+}
+# (a letra, a largura do desenho, o recuo das listras de cada lado e se a sombra tem o segundo degrau, o laranja):
+# no celular o miolo do pedal de 80 px da tela de 360; na mesa 76, com a sombra so no marrom
+ARC_LOGO_TELAS = {"celular": (ARC_LOGO, ARC_LARG, 4, True), "mesa": (ARC_LOGO_MESA, 76, 7, False)}
 ARC_ESPACO = 2
 # fliperama velho (o novo tinha cara de botao novo, nao de fliperama amarelado):
 # a capa de plastico amarelada, e mais nas laterais, que somam plastico; o miolo e a etiqueta de dentro, encapsulada,
@@ -752,30 +770,52 @@ def arcade_palavras():
     return palavras
 
 
-def arcade_logo():
-    """O SVG do logo "Locutor FM": a letra creme inclinada com o contorno escuro e a sombra em degrau (marrom e
-    laranja) para baixo e a direita, e as tres listras embaixo, na largura do miolo do pedal."""
-    letras, _ = texto_pixel(ARC_LOGO, "Locutor FM")
-    alt = len(ARC_LOGO["L"])
+def arcade_logo(texto, tela="celular"):
+    """O SVG do logo do Locutor ("Locutor FM" em portugues): a letra creme inclinada com o contorno escuro e a sombra
+    em degrau (marrom e, no celular, laranja) para baixo e a direita, e as tres listras embaixo, na largura do miolo
+    do pedal. Na mesa em maiuscula, com a class logo-mesa (o CSS mostra um ou outro). Sai com erro se falta letra ou
+    se o texto nao cabe."""
+    fonte, larg, recuo, laranja = ARC_LOGO_TELAS[tela]
+    texto = texto.upper() if tela == "mesa" else texto
+    if set(texto) - fonte.keys():
+        sys.exit(f"o logo do Locutor da {tela} nao tem {''.join(sorted(set(texto) - fonte.keys()))} (do {texto!r})")
+    letras, _ = texto_pixel(fonte, texto)
+    alt = len(fonte["L"])
     cheio = {(x + (alt - 1 - y) // 4, y) for x, y in letras}
     contorno = dilata(cheio) - cheio
     tudo = cheio | contorno
     sombra1 = {(x + 1, y + 1) for x, y in tudo} - tudo
-    sombra2 = {(x + 2, y + 2) for x, y in tudo} - tudo - sombra1
+    sombra2 = {(x + 2, y + 2) for x, y in tudo} - tudo - sombra1 if laranja else set()
     px = {cel: (224, 104, 42, 1) for cel in sombra2}
     px.update({cel: (58, 24, 12, 1) for cel in sombra1})
     px.update({cel: ARC_COR["contorno"] for cel in contorno})
     px.update({cel: (250, 238, 210, 1) for cel in cheio})
     x0, y0 = min(x for x, _ in px), min(y for _, y in px)
     lw, lh = max(x for x, _ in px) - x0 + 1, max(y for _, y in px) - y0 + 1
-    dx = (ARC_LARG - lw) // 2 - x0
+    if lw > larg:
+        sys.exit(f"o logo {texto!r} nao cabe no pedal da {tela} ({lw} de {larg})")
+    dx = (larg - lw) // 2 - x0
     px = {(x + dx, y - y0): v for (x, y), v in px.items()}
     for i, cor in enumerate(ARC_LISTRAS):
-        for x in range(4, ARC_LARG - 4):
+        for x in range(recuo, larg - recuo):
             px[(x, lh + 1 + 2 * i)] = cor
-    w, h = ARC_LARG, lh + 2 * len(ARC_LISTRAS)
-    return (f'<svg viewBox="0 0 {w} {h}" width="{w}" height="{h}" shape-rendering="crispEdges">'
+    w, h = larg, lh + 2 * len(ARC_LISTRAS)
+    classe = ' class="logo-mesa"' if tela == "mesa" else ""
+    return (f'<svg{classe} viewBox="0 0 {w} {h}" width="{w}" height="{h}" shape-rendering="crispEdges">'
             + "".join(caminhos(px, w, h, '"')) + "</svg>")
+
+
+def logos():
+    """Os textos do logo do Locutor, da chave effects.logo.locutor das linguas do tema (i18n/), na ordem das linguas
+    (o primeiro e o da lingua de reserva, que o tema usa se o da lingua dele faltar)."""
+    sys.path.insert(0, str(TEMA.parent.parent.parent))
+    import i18n
+    textos = []
+    for lingua in i18n.LINGUAS:
+        texto = i18n.ler(i18n.arquivo(TEMA.parent / "i18n", lingua)).get("effects.logo.locutor")
+        if texto and texto not in textos:
+            textos.append(texto)
+    return textos
 
 
 # o trilho e o pino da chave de correr que o fim do disco teve ate 22/10 (na lingua das teclas do lado: contorno de 2
@@ -1555,10 +1595,14 @@ def main():
     novo, n = re.subn(r"const KNOBS = \{\n(?:  [^\n]*\n)*\};", lambda _: f"const KNOBS = {{\n{js}\n}};", novo)
     if n != 1:
         sys.exit("const KNOBS nao encontrada no tema (ou repetida)")
-    js = ",\n".join([f"  logo: '{arcade_logo()}'"] + [f"  '{p}': '{arcade_botao(p)}'" for p in arcade_palavras()])
+    js = ",\n".join(f"  '{p}': '{arcade_botao(p)}'" for p in arcade_palavras())
     novo, n = re.subn(r"const ARCADE = \{\n(?:  [^\n]*\n)*\};", lambda _: f"const ARCADE = {{\n{js}\n}};", novo)
     if n != 1:
         sys.exit("const ARCADE nao encontrada no tema (ou repetida)")
+    js = ",\n".join(f"  '{t}': '{arcade_logo(t)}{arcade_logo(t, 'mesa')}'" for t in logos())
+    novo, n = re.subn(r"const LOGOS = \{\n(?:  [^\n]*\n)*\};", lambda _: f"const LOGOS = {{\n{js}\n}};", novo)
+    if n != 1:
+        sys.exit("const LOGOS nao encontrada no tema (ou repetida)")
     novo, n = re.subn(r"const CHAVE_PARECIDAS = '[^\n]*';", lambda _: f"const CHAVE_PARECIDAS = '{chave_parecidas()}';", novo)
     if n != 1:
         sys.exit("const CHAVE_PARECIDAS nao encontrada no tema (ou repetida)")

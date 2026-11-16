@@ -3,7 +3,7 @@ referencia. E o gate da passagem do PC para pixel art: o celular tem que sair id
 
     python dev/compara.py --ref     (antes de mexer no tema: grava os prints de referencia)
     python dev/compara.py           (depois: tira de novo e compara; sai 1 se algo mudou)
-        [--pasta logs/compara] [--sizes 390x844@3,360x780@2.625] [--wait 0.6]
+        [--pasta logs/compara] [--sizes 390x844@3,360x780@2.625] [--wait 0.6] [--lang pt_BR]
 
 Sobe o proprio servidor (server.py --mock numa porta livre) com uma prateleira de mentira, sempre a mesma,
 e os dados numa pasta temporaria (com a LOCALAPPDATA trocada: a Vitrola de verdade nem fica sabendo). Os
@@ -288,7 +288,7 @@ async def prints(a, porta, destino):
                     pre = f"{cenario}-{tam}"
                     await c.cmd("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=float(dpr),
                                 mobile=True)
-                    await c.cmd("Page.navigate", url=f"http://127.0.0.1:{porta}/t/vitrola/")
+                    await c.cmd("Page.navigate", url=f"http://127.0.0.1:{porta}/t/vitrola/?lang={a.lang}")
                     for _ in range(200):
                         await asyncio.sleep(0.1)
                         try:
@@ -359,6 +359,8 @@ def main():
     ap.add_argument("--pasta", default=str(RAIZ / "logs" / "compara"))
     ap.add_argument("--sizes", default=SIZES, help="largura x altura @ densidade, separados por virgula")
     ap.add_argument("--wait", type=float, default=0.6, help="segundos entre cada passo e o print")
+    # o Chrome sem cabeca pede ingles: sem o ?lang=, a tela sairia na lingua dele, e nao na das referencias
+    ap.add_argument("--lang", default="pt_BR", help="a lingua da tela (pt_BR ou en); a referencia e a comparacao na mesma")
     a = ap.parse_args()
     pasta = Path(a.pasta)
     if not a.ref and not (pasta / "ref").exists():

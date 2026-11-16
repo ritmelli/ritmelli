@@ -14,7 +14,8 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - `themes/<slug>/index.html`, autossuficiente: HTML + CSS + JS puro, sem build. Arquivo
   extra (fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
   relativo (`./x.svg`), servido em `/t/<slug>/x.svg`.
-- `themes/<slug>/meta.json`: `{"name": "...", "direction": "...", "blurb": "uma frase"}`.
+- `themes/<slug>/meta.json`: `{"name": "...", "direction": "...", "blurb": "uma frase"}`. Cada campo pode vir
+  por língua, `{"en": "...", "pt_BR": "..."}`; a galeria mostra o da língua de quem abre (ver `GET /api/themes`).
 - O ícone é do servidor, igual para todo tema: a aba do navegador pega o `/favicon.ico`
   sem nada no tema, e o atalho na tela inicial do celular pede
   `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` no `<head>`.
@@ -23,14 +24,15 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
   `method` e, quando tem corpo, `Content-Type: application/json`.
 - Texto da interface com acentuação completa no português e sem travessão. O servidor não
   escreve frase para a tela: manda a Mensagem (ver "Mensagens"), que o tema traduz.
-- Textos traduzíveis (a interface está passando para pt-BR e inglês): o tema que tem a pasta
+- Textos traduzíveis (a interface fala pt-BR e inglês): o tema que tem a pasta
   `themes/<slug>/i18n/` guarda nela um `i18n_<lingua>.properties` por língua (`en` e `pt_BR`),
   com as mesmas chaves, e põe o comentário `<!-- i18n -->` no `<head>`, antes de qualquer
   script. A página do tema (`/t/<slug>/`) chega com esse comentário trocado por
   `window.I18N_DADOS = {"lingua": ..., "textos": {...}, "reserva": {...}}`: os textos da
-  língua de quem abre e os do inglês, para a chave que faltar. Por enquanto a língua é sempre
-  `pt_BR`; `?lang=en` no endereço força o inglês, para testar. O formato do arquivo está no
-  `i18n.py`, e o `python dev/testa_i18n.py` confere os arquivos contra o tema.
+  língua de quem abre e os do inglês, para a chave que faltar. A língua sai do `Accept-Language`
+  do navegador: a primeira que temos na preferência dele, e o inglês quando ele não pede nenhuma
+  das duas. `?lang=en` ou `?lang=pt_BR` no endereço força uma, para testar. O formato do arquivo
+  está no `i18n.py`, e o `python dev/testa_i18n.py` confere os arquivos contra o tema.
 - O tema abre também no celular, pela rede de casa (`http://<ip do PC>:8799/`): nada de
   endereço `127.0.0.1` escrito no tema e nada que dependa de mouse. Pela rede, a API só
   responde ao celular pareado (ver "Celular: pareamento").
@@ -250,14 +252,14 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou ""}` | troca dispositivo (reabre o áudio); microfone sem o filtro (apareceu depois da instalação) é preparado pela tarefa do instalador, sem UAC (ver `microfone.preparando`) |
 | `GET /api/boas-vindas` | - | `{"mostrar": bool}`: verdadeiro na primeira vez no PC (prateleira vazia e as boas-vindas nunca fechadas); pelo celular, sempre falso |
 | `POST /api/boas-vindas` | - | só no PC: as boas-vindas foram vistas e não voltam (fica no `config.json`) |
-| `GET /api/themes` | - | `[{"slug","url","name","direction","blurb"}]` |
+| `GET /api/themes` | `?lang` (opcional) | `[{"slug","url","name","direction","blurb"}]`, cada texto na língua de quem pede (o `?lang=` ou o `Accept-Language`), quando o `meta.json` traz por língua |
 | `POST /api/shutdown` | - | desliga o servidor (a música para de tocar no microfone; a voz segue normal, sem efeito) |
 | `GET /api/lan` | - | `{"url": endereço do PC na rede de casa, ou null}` |
 | `POST /api/parear` | `{"codigo": "482913"}` (espaço vale) | o celular manda o código que o PC mostra; certo, responde com o cookie da chave; errado, 403 com o motivo |
 | `GET /api/pareamento?caminho=/t/<slug>/` | - | só no PC: `{"url", "codigo", "vale_s", "queimado", "qr", "celulares"}` (ver "Celular: pareamento") |
 | `POST /api/pareamento/codigo` | - | só no PC: troca o código (e traz um de volta depois de queimado) |
 | `DELETE /api/pareamento/<id>` | - | só no PC: desconecta o celular, que volta a precisar do código |
-| `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho", "parcial"} ou null}` (ver "Versão nova") |
+| `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho", "parcial"} ou null}` (ver "Versão nova"); `notas` é `{"pt_BR": [...], "en": [...]}`, as da versão em cada língua (a lista pode vir vazia: mostre a da outra) |
 | `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
 | `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
 | `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; recusado ou ainda não baixado, 409 com o motivo |
@@ -349,7 +351,7 @@ vem `false`.
 12. Celular: no PC, um botão mostra o QR, o endereço e o código, e a lista dos celulares
     conectados, cada um com o botão de desconectar; no celular sem pareamento (o 401), uma tela
     por cima de tudo pede o código e explica onde achar.
-13. Versão nova: no PC, com `atualizacao.nova`, um botão que mostra a versão, as notas e o
+13. Versão nova: no PC, com `atualizacao.nova`, um botão que mostra a versão, as notas (na língua da tela) e o
     tamanho, baixa com o progresso e instala; enquanto o instalador roda, a tela diz que a
     Vitrola volta sozinha, e a página recarrega quando ela volta.
 

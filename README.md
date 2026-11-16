@@ -167,7 +167,7 @@ YouTube Music), apart from checking GitHub for a new version.
 | `winvol.py` | volume do microfone no Windows |
 | `microfone/` | o filtro de microfone: a DLL que o Windows carrega (`apo/`), o anel com ela nos dois sentidos (`injeta.py`: a música vai, a voz crua volta) e quem pendura e tira o filtro (`microfone.py`, que o instalador roda) |
 | `themes/vitrola/` | a interface |
-| `gallery.html` | a página inicial, que lista os temas |
+| `gallery/` | a página inicial, que lista os temas (o `index.html`), com os textos dela nas duas línguas (o `i18n/`) |
 | `icone/` | o ícone do app (o exe, o instalador, a aba do navegador e o celular), desenhado pelo `dev/icone.py` |
 | `dev/` | ferramentas de desenvolvimento: prints, medição no celular, geração do pixel art |
 | `instalador/` | o setup: `monta.ps1`, `vitrola.iss`, ffmpeg, bootloader, a atualização parcial e os avisos de licença |

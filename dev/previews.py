@@ -1,6 +1,7 @@
 """Gera themes/<slug>/preview.png de todos os temas (ou dos passados) para a galeria, com o servidor --mock,
 a prateleira de mentira e o disco pausado do dev/compara.py: o print nao leva a biblioteca de ninguem. O preview
-entra no git, porque o instalador leva a pasta do tema como ela esta.
+entra no git, porque o instalador leva a pasta do tema como ela esta. E um so, em portugues, nas duas linguas da
+galeria: o ?lang= segura o portugues, que o Chrome sem cabeca pediria em ingles.
 
     python dev/previews.py [slug ...] [--port N]
 """
@@ -32,7 +33,7 @@ def main():
             rc = 0
             for s in slugs:
                 out = HERE / "themes" / s / "preview.png"
-                r = subprocess.run([sys.executable, str(HERE / "dev" / "shot.py"), f"http://127.0.0.1:{porta}/t/{s}/",
+                r = subprocess.run([sys.executable, str(HERE / "dev" / "shot.py"), f"http://127.0.0.1:{porta}/t/{s}/?lang=pt_BR",
                                     str(out), "--wait", "3"], capture_output=True, text=True,
                                    encoding="utf-8", errors="replace")
                 print(f"[{s}] {r.stdout.strip()}")

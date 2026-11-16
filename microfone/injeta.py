@@ -79,15 +79,15 @@ class Microfone:
     def __init__(self):
         h = k32.OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, False, MAPA)
         if not h:
-            raise SemFiltro(f"o anel {MAPA} nao existe (nenhum microfone com o filtro em uso; erro "
+            raise SemFiltro(f"the ring {MAPA} doesn't exist (no microphone with the filter in use; error "
                             f"{ctypes.get_last_error()})")
         self._h = h
         self._p = k32.MapViewOfFile(h, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, ctypes.sizeof(Anel))
         if not self._p:
-            raise SemFiltro(f"MapViewOfFile falhou ({ctypes.get_last_error()})")
+            raise SemFiltro(f"MapViewOfFile failed ({ctypes.get_last_error()})")
         self.a = Anel.from_address(self._p)
         if self.a.magia != MAGIA or self.a.versao != VERSAO:
-            raise SemFiltro(f"anel com magia/versao inesperada ({self.a.magia:#x}/{self.a.versao})")
+            raise SemFiltro(f"ring with unexpected magic/version ({self.a.magia:#x}/{self.a.versao})")
         self.dados = np.ctypeslib.as_array(self.a.dados).reshape(QUADROS, CANAIS)
         self._voz = np.ctypeslib.as_array(self.a.voz)
         self._voz_fx = np.ctypeslib.as_array(self.a.voz_fx)
@@ -154,7 +154,7 @@ class Microfone:
         depois da copia."""
         dados = bytes(dados or b"")
         if len(dados) > PRESET_BYTES:
-            raise ValueError(f"preset de {len(dados)} bytes, o anel leva {PRESET_BYTES}")
+            raise ValueError(f"preset of {len(dados)} bytes, the ring takes {PRESET_BYTES}")
         a = self.a
         seq = a.preset_seq
         if seq & 1:  # um escritor que caiu no meio
@@ -237,12 +237,12 @@ def le_wav(caminho):
 if __name__ == "__main__":
     if sys.argv[1] == "estado":
         m = Microfone()
-        print(f"anel ok: escrito {m.a.escrito}, alvo {m.a.alvo:#010x}, sem_voz {m.a.sem_voz}, voz {m.a.voz_escrito} "
-              f"a {m.a.voz_taxa} Hz")
+        print(f"ring ok: written {m.a.escrito}, target {m.a.alvo:#010x}, no_voice {m.a.sem_voz}, voice {m.a.voz_escrito} "
+              f"at {m.a.voz_taxa} Hz")
         for i, l in enumerate(m.a.leitor):
             if l.dono:
-                print(f"  vaga {i}: dono {l.dono:#x}, microfone {l.ep:#010x}, taxa {l.taxa}, lido {l.lido}, batida ha "
-                      f"{k32.GetTickCount64() - l.batida} ms")
+                print(f"  slot {i}: owner {l.dono:#x}, microphone {l.ep:#010x}, rate {l.taxa}, read {l.lido}, heartbeat "
+                      f"{k32.GetTickCount64() - l.batida} ms ago")
     elif sys.argv[1] == "toca":
         sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from microfone import microfone as filtro  # noqa: PLC0415

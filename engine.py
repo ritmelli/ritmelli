@@ -815,6 +815,21 @@ def _aviso_reserva(faltou):
                     "headphones until they come back.", chosen=fone)
 
 
+def _erro_da_tarefa(r, mic):
+    """A mensagem da tela quando a tarefa que prepara o microfone nao deu (o motivo do pede_tarefa, em
+    microfone/microfone.py)."""
+    motivo = r.get("motivo")
+    if motivo == "sem_tarefa":
+        return i18n.msg("server.mic.noTask", "The part of Vitrola that prepares microphones is missing: install "
+                        "Vitrola again.")
+    if motivo == "nao_pronto":
+        return i18n.msg("server.mic.notReady", "The microphone \"{name}\" didn't get ready for Vitrola.", name=mic)
+    if motivo == "audio":
+        return i18n.msg("server.mic.audioSlow", "Windows audio didn't come back in time.")
+    return i18n.msg("server.mic.taskFailed", "Couldn't prepare the microphone ({reason}).",
+                    reason=r.get("detalhe") or motivo or "?")
+
+
 def _do_microfone(mic):
     """O estado do filtro no microfone (o item do microfone.estado_dados: guid, filtro, melhorias), ou None se nao deu
     para ler ou o Windows nao conhece esse nome."""
@@ -980,8 +995,8 @@ class Injetor:
             self.secas += 1
             if time.monotonic() - self._seca_dita > 10.0:
                 self._seca_dita = time.monotonic()
-                print(f"saida para o jogo: o anel do microfone secou (a thread voltou depois de {volta * 1000:.0f} ms; "
-                      f"{self.secas} ate agora)", file=sys.stderr, flush=True)
+                print(f"game output: the microphone ring ran dry (the thread came back after {volta * 1000:.0f} ms; "
+                      f"{self.secas} so far)", file=sys.stderr, flush=True)
 
     def para(self):
         self._vai = False
@@ -1095,7 +1110,8 @@ class Injetor:
                             self.motor._mixa(BLOCK)  # noqa: SLF001 - o fone e o relogio da musica seguem
                             prox += BLOCK / SR
                 except Exception as ex:  # noqa: BLE001 - a thread nao morre calada: o erro vai pra tela
-                    self.motor.error = f"A saída para o microfone falhou ({str(ex)[:160]})."
+                    self.motor.error = i18n.msg("server.mic.outputFailed", "The output to the microphone failed ({reason}).",
+                                                reason=str(ex)[:160])
                     self.m = None
                     servidos = ()
                     self._solta_efeito()
@@ -1131,7 +1147,7 @@ class Engine:
         self._fx_filtro = False    # o filtro do microfone roda o efeito (o Injetor marca): a voz nao passa pelo app
         self._fx_pendente = False  # o preset foi pro filtro e ele ainda nao respondeu: a voz crua segue
         if not voz.disponivel():  # o app sobe igual: o efeito segue no filtro, e so a voz que sairia daqui vai crua
-            print(f"efeito de voz: sem o voz.dll ({voz.caminho()}); o efeito so roda no filtro do microfone",
+            print(f"voice effect: no voz.dll ({voz.caminho()}); the effect only runs in the microphone filter",
                   file=sys.stderr, flush=True)
         # a mina do pedal MINA (mina.py): a voz dela vai pro jogo e pro fone como a voz de quem toca
         self.mina_permitida = True
@@ -1328,20 +1344,22 @@ class Engine:
             return
         if mic in self._preparados:
             if self.active.get("mic") == mic:
-                self._aviso = self.error = (f'O microfone "{mic}" não ficou pronto para a Vitrola: a música não chega '
-                                            "nele. Tente reinstalar a Vitrola.")
+                self._aviso = self.error = i18n.msg("server.mic.notReadyReinstall", "The microphone \"{name}\" didn't "
+                                                    "get ready for Vitrola: the music doesn't reach it. Try "
+                                                    "reinstalling Vitrola.", name=mic)
             return
         self._preparados.add(mic)
         from microfone import microfone as filtro  # noqa: PLC0415
         self.preparando = mic
         # o som do PC some enquanto o Windows reinicia o audio: a tela diz por que
-        prep = self._aviso = self.error = f'Preparando o microfone "{mic}" para a Vitrola: o som do PC some por alguns segundos.'
+        prep = self._aviso = self.error = i18n.msg("server.mic.preparing", "Preparing the microphone \"{name}\" for "
+                                                   "Vitrola: the PC's sound goes silent for a few seconds.", name=mic)
         try:
             r = filtro.pede_tarefa(mic)
         finally:
             self.preparando = None
         if not r.get("ok"):
-            self._aviso = self.error = r.get("erro")
+            self._aviso = self.error = _erro_da_tarefa(r, mic)
             return
         if self.error == prep:
             self._aviso = self.error = None
@@ -1536,7 +1554,10 @@ class Engine:
             self._mic.popleft()
 
     def set_effect(self, effect_id):
-        nova = fx.criar(effect_id)  # a definicao do efeito: ValueError se nao existe; None sem efeito (e a mina)
+        try:
+            nova = fx.criar(effect_id)  # a definicao do efeito: None sem efeito (e a mina)
+        except ValueError:
+            raise i18n.Recusa("server.effect.unknown", "Unknown voice effect \"{id}\".", id=effect_id) from None
         cadeia = self._cadeia(effect_id) if nova is not None else None
         inj = self._injetor
         m = inj.m if inj is not None else None
@@ -1560,13 +1581,16 @@ class Engine:
         disse no log): o efeito segue no filtro, e a voz que sairia daqui vai crua, com o aviso do _push_mic."""
         dados = preset.preset(effect_id, SR)  # a 48 kHz todo efeito tem par no voz.h (o dev/testa_voz.py confere)
         if dados is None:
-            print(f"efeito de voz: {effect_id} sem preset a 48 kHz; pelo app a voz segue crua", file=sys.stderr,
+            print(f"voice effect: {effect_id} has no 48 kHz preset; through the app the voice stays raw", file=sys.stderr,
                   flush=True)
             return None
         try:
             return voz.Cadeia(dados, SR)
         except OSError:
             return None
+        except ValueError as ex:  # o filtro recusou o preset (o voz.ERROS): o efeito nao troca
+            raise i18n.Recusa("server.effect.refused", "Couldn't set up the voice effect ({reason}).",
+                              reason=str(ex)) from None
 
     # a mina (mina.py) -----------------------------------------------------
     def _mina_liga(self):
