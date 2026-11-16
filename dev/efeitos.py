@@ -80,7 +80,7 @@ def main():
     seno = (0.3 * np.sin(2 * np.pi * 300 * np.arange(SR) / SR)).astype(np.float32)
     real = ler_wav(OUT / "_microfone_real.wav") if (OUT / "_microfone_real.wav").exists() else None
     falhas = 0
-    for _, eid, nome, _, _ in fx.CATALOGO + fx.MODOS:
+    for _, eid, _ in fx.CATALOGO + fx.MODOS:
         e = fx.criar(eid)
         y, ts = stream(e, fala)
         ok = len(y) == len(fala) - len(fala) % B and np.isfinite(y).all() and np.abs(y).max() <= 1
@@ -142,7 +142,7 @@ def main():
             nota += " | voz real (+6/0/-12): " + "/".join(f"{v:+.1f}" for v in vr)
         falhas += not ok
         gravar_wav(OUT / f"{eid}.wav", y)
-        print(f"{'OK   ' if ok else 'FALHA'} {nome:24s} cpu {ts.mean():.3f}/{ts.max():.2f} ms"
+        print(f"{'OK   ' if ok else 'FALHA'} {eid:24s} cpu {ts.mean():.3f}/{ts.max():.2f} ms"
               f"  pico {np.abs(y).max():.2f}  atraso ~{e.latencia_ms if e else 0} ms{nota}")
     print(f"wavs em {OUT}")
     return 1 if falhas else 0
