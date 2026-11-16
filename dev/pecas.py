@@ -587,7 +587,9 @@ def knob_frango_camadas():
 # caixa escura, a capa em chanfro (a luz em cima e a esquerda) com os reflexos nos cantos e o miolo com a palavra;
 # apagado creme com a palavra escura e a sombra dura, aceso vermelho com a palavra clara e o brilho em degraus.
 # Desligado e o estado sem luz, sem "OFF". Quadrado como o do mock (mais quadrados,
-# com mais espaco em cima e a COMP mais para baixo): a caixa escura de 1 deixa o CARICATO caber no miolo ----------
+# com mais espaco em cima e a COMP mais para baixo): a caixa escura de 1 deixa o CARICATO caber no miolo. Um botao
+# por palavra das chaves effects.button.* do tema, nas duas linguas (o CARTOON do ingles), e o tema acha o dele pela
+# palavra da lingua ----------
 ARC_BOTAO = (52, 52)   # o botao com o contorno
 ARC_CAIXA = 1          # a caixa escura entre o contorno e a capa
 ARC_MARGEM = 5         # o quadro sai do botao o tanto do brilho (4) e da sombra (2)
@@ -728,6 +730,26 @@ def arcade_botao(palavra):
     w, h = bw + 2 * m, bh + 2 * m
     return (f'<svg class="arcade" viewBox="0 0 {w} {h}" width="{w}" height="{h}" shape-rendering="crispEdges">'
             f'<g class="arc-apagado">{camadas["apagado"]}</g><g class="arc-aceso">{camadas["aceso"]}</g></svg>')
+
+
+def arcade_palavras():
+    """As palavras dos botoes do Locutor, das chaves effects.button.* das linguas do tema (i18n/), na ordem em que
+    aparecem: o tema acha o botao pela palavra da lingua dele. Sai com erro se falta letra no ARC_LETRA ou se a palavra
+    nao cabe no miolo."""
+    sys.path.insert(0, str(TEMA.parent.parent.parent))
+    import i18n
+    palavras = []
+    for lingua in i18n.LINGUAS:
+        for chave, palavra in i18n.ler(i18n.arquivo(TEMA.parent / "i18n", lingua)).items():
+            if chave.startswith("effects.button.") and palavra not in palavras:
+                palavras.append(palavra)
+    for p in palavras:
+        if set(p) - ARC_LETRA.keys():
+            sys.exit(f"ARC_LETRA nao tem {''.join(sorted(set(p) - ARC_LETRA.keys()))} (da palavra {p!r} de um botao do Locutor)")
+        mi = 1 + ARC_CAIXA + 3
+        if texto_pixel(ARC_LETRA, p)[1] > ARC_BOTAO[0] - 2 * mi - 3:
+            sys.exit(f"a palavra {p!r} nao cabe no botao do Locutor")
+    return palavras
 
 
 def arcade_logo():
@@ -1533,7 +1555,7 @@ def main():
     novo, n = re.subn(r"const KNOBS = \{\n(?:  [^\n]*\n)*\};", lambda _: f"const KNOBS = {{\n{js}\n}};", novo)
     if n != 1:
         sys.exit("const KNOBS nao encontrada no tema (ou repetida)")
-    js = f"  natural: '{arcade_botao('NATURAL')}',\n  caricato: '{arcade_botao('CARICATO')}',\n  logo: '{arcade_logo()}'"
+    js = ",\n".join([f"  logo: '{arcade_logo()}'"] + [f"  '{p}': '{arcade_botao(p)}'" for p in arcade_palavras()])
     novo, n = re.subn(r"const ARCADE = \{\n(?:  [^\n]*\n)*\};", lambda _: f"const ARCADE = {{\n{js}\n}};", novo)
     if n != 1:
         sys.exit("const ARCADE nao encontrada no tema (ou repetida)")

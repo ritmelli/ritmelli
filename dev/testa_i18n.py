@@ -10,11 +10,14 @@ data-i18n ou pelo I18N.rico (o I18N.t e os atributos mostrariam a tag). As mensa
 i18n.Recusa no Python da raiz): cada chave server.* existe em todo tema com i18n/, com os mesmos {param} do texto em
 ingles; cada chamada passa os params do texto; o texto em ingles (e o do i18n.so_texto) nao tem acento; e o tema nao
 guarda chave server.* que o servidor nao manda. Os efeitos do fx.py: cada um com effect.<id>.name e .desc, e cada
-grupo com effect.group.<grupo>, e nenhuma chave effect.* sobrando. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
+grupo com effect.group.<grupo>, e nenhuma chave effect.* sobrando. As palavras do pixel art: cada lingua so com as
+letras que a tabela de pixel delas tem (as placas, os mostradores do mixer, a fita da voz), e cada palavra dos botoes do
+Locutor com o desenho dela no ARCADE. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
 posto na pagina e a mensagem. Sai 1 se algo falha."""
 import ast
 import contextlib
 import io
+import json
 import re
 import sys
 import tempfile
@@ -173,6 +176,49 @@ def confere_tema(tema, servidor, efeitos):
         elif k not in citadas and not any(k.startswith(p + ".") for p in plurais):
             falha(f"{tema.name}: {k} is in the files but the theme never uses it")
     print(f"{tema.name}: {len(base)} keys in {len(por_lingua)} languages, {len(pedidas)} used by the theme")
+    confere_pixel(tema, html, por_lingua)
+
+
+def letras_da_tabela(html, inicio, fim, chave):
+    """As letras de uma tabela de pixel do tema (o bloco de inicio ate fim, cada letra como chave), ou None sem ela."""
+    m = re.search(re.escape(inicio) + r"(.*?)" + re.escape(fim), html, re.S)
+    return set(re.findall(chave, m.group(1))) if m else None
+
+
+def confere_pixel(tema, html, por_lingua):
+    """As palavras que o pixel art desenha com letras proprias: cada lingua so pode usar as letras que a tabela tem
+    (a que falta some ou leva o texto para o HTML). Os titulos das placas na negrita da LETRA_PLACA e as contagens na
+    regular dela, os nomes dos mostradores no NOMEV do mixer, a fita da voz no LETRAS_FITA e cada palavra dos botoes do
+    Locutor com o seu desenho no ARCADE (o dev/pecas.py). Em tema sem a tabela, nada a conferir."""
+    placa = re.search(r"const LETRA_PLACA = \{\n  negrita: (\{.*?\}),\n  regular: (\{.*?\}),\n", html)
+    tabelas = {
+        "negrita": set(json.loads(placa.group(1))) | {" "} if placa else None,
+        "regular": set(json.loads(placa.group(2))) | set("0123456789") if placa else None,
+        "NOMEV": letras_da_tabela(html, "const NOMEV = {", "\n  };", r"\b([A-Z]): \["),
+        "LETRAS_FITA": (lambda s: s | {" "} if s else s)(letras_da_tabela(html, "const LETRAS_FITA = {", "\n};", r"\n  ([A-Z]): \[")),
+        "ARCADE": letras_da_tabela(html, "const ARCADE = {", "\n};", r"\n  '([^']+)': '"),
+    }
+    # (chave, tabela, o texto como a tela desenha)
+    PALAVRAS = [("nav.shelf", "negrita", str), ("queue.title", "negrita", str),
+                ("shelf.count.one", "regular", lambda s: s.replace("{n}", "")), ("shelf.count.other", "regular", lambda s: s.replace("{n}", "")),
+                ("queue.count.one", "regular", lambda s: s.replace("{n}", "")), ("queue.count.other", "regular", lambda s: s.replace("{n}", "")),
+                ("mixer.meter.voice", "NOMEV", str.upper), ("mixer.meter.record", "NOMEV", str.upper),
+                ("mixer.meter.game", "NOMEV", str.upper), ("effects.tape.voice", "LETRAS_FITA", str)]
+    vistas = 0
+    for lingua, textos in por_lingua.items():
+        for chave, tab, como in PALAVRAS:
+            if tabelas[tab] is None or chave not in textos:
+                continue
+            vistas += 1
+            falta = sorted(set(como(textos[chave])) - tabelas[tab])
+            if falta:
+                falha(f"{tema.name}: {chave} in {lingua} uses {''.join(falta)!r}, which the pixel font {tab} doesn't have")
+        for chave, palavra in textos.items():
+            if chave.startswith("effects.button.") and tabelas["ARCADE"] is not None:
+                vistas += 1
+                if palavra not in tabelas["ARCADE"]:
+                    falha(f"{tema.name}: {chave} in {lingua} is {palavra!r}, which has no button in ARCADE (run dev/pecas.py)")
+    print(f"{tema.name}: {vistas} pixel art words checked against their fonts")
 
 
 def confere_modulo():
