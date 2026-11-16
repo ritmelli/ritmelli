@@ -187,7 +187,7 @@ def acha(filtro):
         time.sleep(0.5)
     if len(achados) != 1:
         lista = "; ".join(n for m, n in todos if not achados or m in achados)
-        sys.exit(f"'{filtro}' precisa achar 1 microfone ativo, achou {len(achados)}: {lista}")
+        sys.exit(f"'{filtro}' must match 1 active microphone, matched {len(achados)}: {lista}")
     return achados[0]
 
 
@@ -198,11 +198,11 @@ def estado():
             e_nosso, mfx = nosso(fx), no_mfx(fx)
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{ep}\Properties") as p:
             sem = (le(p, SEM_MELHORIAS) or (0,))[0]
-        marca = ("VITROLA" + (" (+ MFX do fabricante)" if mfx else "")) if e_nosso else \
-            ("outro: " + sfx if sfx else "sem SFX")
-        print(f"{nome} ({apar}) {ep}: {marca}{'  [melhorias desativadas]' if sem else ''}")
-    print("dll:", os.path.join(PASTA, "micfx.dll"), "existe" if os.path.exists(os.path.join(PASTA, "micfx.dll"))
-          else "nao existe")
+        marca = ("VITROLA" + (" (+ maker's MFX)" if mfx else "")) if e_nosso else \
+            ("other: " + sfx if sfx else "no SFX")
+        print(f"{nome} ({apar}) {ep}: {marca}{'  [enhancements disabled]' if sem else ''}")
+    print("dll:", os.path.join(PASTA, "micfx.dll"), "exists" if os.path.exists(os.path.join(PASTA, "micfx.dll"))
+          else "missing")
 
 
 def servico_audio(acao):
@@ -216,7 +216,7 @@ def servico_audio(acao):
                             creationflags=NO_WINDOW).stdout.strip()
     esperado = "Stopped" if acao == "Stop" else "Running"
     if estado != esperado:
-        sys.exit(f"o servico de audio ficou '{estado}' depois do {acao} (esperado {esperado})")
+        sys.exit(f"the audio service was '{estado}' after the {acao} (expected {esperado})")
 
 
 def reinicia_audio():
@@ -266,7 +266,7 @@ def _prepara_dll(dll):
     r = subprocess.run(["icacls", LOGS, "/grant", "*S-1-5-19:(OI)(CI)M"], capture_output=True, text=True,
                        encoding="oem", errors="replace", creationflags=NO_WINDOW)
     if r.returncode:
-        sys.exit(f"icacls na pasta do log falhou ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
+        sys.exit(f"icacls on the log folder failed ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
     destino = os.path.join(PASTA, "micfx.dll")
     mesma = os.path.normcase(os.path.abspath(dll)) == os.path.normcase(destino)
     parou = False
@@ -278,7 +278,7 @@ def _prepara_dll(dll):
     r = subprocess.run(["regsvr32", "/s", destino], capture_output=True, text=True, encoding="oem",
                        errors="replace", creationflags=NO_WINDOW)
     if r.returncode:
-        sys.exit(f"regsvr32 falhou ({r.returncode})")
+        sys.exit(f"regsvr32 failed ({r.returncode})")
     return parou
 
 
@@ -435,7 +435,7 @@ def instala(filtro, dll):
     parou = _prepara_dll(dll)
     if _pendura(ep) or parou:
         reinicia_audio()
-    print(f"pendurado em {nome} ({apar}) {ep}")
+    print(f"installed on {nome} ({apar}) {ep}")
 
 
 def instala_todos(dll):
@@ -451,8 +451,8 @@ def instala_todos(dll):
             continue
     if novos or parou:
         reinicia_audio()
-    print(f"filtro em {len(microfones(todos=True))} microfones; agora: {len(novos)}"
-          f"{'; DLL trocada' if parou else ''}")
+    print(f"filter on {len(microfones(todos=True))} microphones; now: {len(novos)}"
+          f"{'; DLL replaced' if parou else ''}")
 
 
 def _devolve(ep):
@@ -491,7 +491,7 @@ def remove(filtro=None):
     for ep, nome, apar in alvos:
         if _devolve(ep):
             mexeu = True
-            print(f"devolvido o original em {nome} ({apar}) {ep}")
+            print(f"restored the original on {nome} ({apar}) {ep}")
     sobrou = [m for m in microfones(todos=True) if tem_filtro(m[0])]
     destino = os.path.join(PASTA, "micfx.dll")
     if not sobrou and os.path.exists(destino):
@@ -588,7 +588,7 @@ def tarefa_cria():
     """Cria (ou refaz) a tarefa, so no executavel instalado: no codigo-fonte, a tarefa rodaria como SYSTEM um .py que
     o usuario pode mudar."""
     if not getattr(sys, "frozen", False):
-        print("a tarefa so se cria no executavel instalado (no codigo-fonte, rode o instala-todos como administrador)")
+        print("the task is only created by the installed executable (from source, run instala-todos as administrator)")
         return
     import tempfile  # noqa: PLC0415
     from xml.sax.saxutils import escape  # noqa: PLC0415
@@ -602,8 +602,8 @@ def tarefa_cria():
     finally:
         os.remove(xml)
     if r.returncode:
-        sys.exit(f"nao deu para criar a tarefa ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
-    print(f"tarefa {TAREFA} criada")
+        sys.exit(f"couldn't create the task ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
+    print(f"task {TAREFA} created")
 
 
 def tarefa_apaga():
@@ -612,13 +612,14 @@ def tarefa_apaga():
 
 def pede_tarefa(nome, espera_s=60):
     """Do app, sem administrador: roda a tarefa do instalador e espera o microfone ter o filtro (e as melhorias) e o
-    audio do Windows voltar. {ok, erro}."""
+    audio do Windows voltar. {ok} ou {ok: False, motivo, detalhe}: o motivo e um codigo (sem_tarefa, tarefa_falhou,
+    nao_pronto, audio), e quem chama poe a frase na lingua da tela (o engine.py)."""
     if not tarefa_existe():
-        return {"ok": False, "erro": "Falta a parte da Vitrola que prepara os microfones: instale a Vitrola de novo."}
+        return {"ok": False, "motivo": "sem_tarefa"}
     r = subprocess.run(["schtasks", "/run", "/tn", TAREFA], capture_output=True, text=True, encoding="oem",
                        errors="replace", creationflags=NO_WINDOW)
     if r.returncode:
-        return {"ok": False, "erro": f"Não consegui preparar o microfone ({r.stdout.strip() or r.stderr.strip()})."}
+        return {"ok": False, "motivo": "tarefa_falhou", "detalhe": r.stdout.strip() or r.stderr.strip()}
     fim = time.monotonic() + espera_s
     while time.monotonic() < fim:
         time.sleep(1.0)
@@ -626,7 +627,7 @@ def pede_tarefa(nome, espera_s=60):
         if m and m["filtro"] and m["melhorias"]:
             break
     else:
-        return {"ok": False, "erro": f'O microfone "{nome}" não ficou pronto para a Vitrola.'}
+        return {"ok": False, "motivo": "nao_pronto"}
     while time.monotonic() < fim:  # o reinicio do audio: o servico volta depois do registro
         st = subprocess.run(["sc", "query", "audiosrv"], capture_output=True, text=True, encoding="oem",
                             errors="replace", creationflags=NO_WINDOW).stdout
@@ -634,16 +635,16 @@ def pede_tarefa(nome, espera_s=60):
             time.sleep(2.0)  # os aparelhos se enumeram de novo logo depois
             return {"ok": True}
         time.sleep(0.5)
-    return {"ok": False, "erro": "O áudio do Windows não voltou a tempo."}
+    return {"ok": False, "motivo": "audio"}
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="microfone")
     ap.add_argument("acao", choices=("estado", "instala", "instala-todos", "remove"))
     ap.add_argument("--microfone")
-    ap.add_argument("--dll", help="a micfx.dll a pendurar (sem ele, a que vem com o app)")
-    ap.add_argument("--tarefa", action="store_true", help="instala-todos: cria tambem a tarefa do Windows")
-    ap.add_argument("--saida", help="grava o resultado em JSON ({ok, erro})")
+    ap.add_argument("--dll", help="the micfx.dll to install (without it, the one that comes with the app)")
+    ap.add_argument("--tarefa", action="store_true", help="instala-todos: also creates the Windows task")
+    ap.add_argument("--saida", help="writes the result as JSON ({ok, erro})")
     a = ap.parse_args(argv)
     dll = a.dll or dll_padrao()
     res = {"ok": True}
@@ -652,10 +653,10 @@ def main(argv=None):
             estado()
         elif a.acao in ("instala", "instala-todos"):
             if not os.path.exists(dll):
-                sys.exit(f"a DLL do filtro nao esta em {dll}")
+                sys.exit(f"the filter DLL isn't at {dll}")
             if a.acao == "instala":
                 if not a.microfone:
-                    sys.exit("instala precisa de --microfone")
+                    sys.exit("instala needs --microfone")
                 instala(a.microfone, dll)
             else:
                 if a.tarefa:  # antes: um microfone que falhe nao deixa o PC sem a tarefa (o app nao teria como pedir)

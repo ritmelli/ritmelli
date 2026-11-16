@@ -216,12 +216,12 @@ def main(argv=None):
             voz.Cadeia(p, SR)
             confere(False, f"preset {nome}: montou")
         except ValueError as ex:
-            confere("invalido" in str(ex), f"preset {nome}: recusado ({ex})")
+            confere("invalid" in str(ex), f"preset {nome}: recusado ({ex})")
     try:
         voz.Cadeia(bom, 44100)
         confere(False, "preset de 48 kHz num microfone de 44,1 kHz: montou")
     except ValueError as ex:
-        confere("taxa" in str(ex), f"preset de 48 kHz num microfone de 44,1 kHz: recusado ({ex})")
+        confere("rate" in str(ex), f"preset de 48 kHz num microfone de 44,1 kHz: recusado ({ex})")
     # o filtro instavel (polo fora do circulo) e recusado
     instavel = preset.CABECALHO.pack(preset.MAGIA, preset.VERSAO, float(SR), 1.0, 0, 1, 0, 0, *(1e-5, .99, .08, 10, .23))
     instavel += struct.pack("<II6d", preset.T_SOS, 6, 1, 1, 0, 0, -2.5, 1.5)
@@ -229,7 +229,7 @@ def main(argv=None):
         voz.Cadeia(instavel, SR)
         confere(False, "filtro instavel: montou")
     except ValueError as ex:
-        confere("invalido" in str(ex), f"filtro instavel: recusado ({ex})")
+        confere("invalid" in str(ex), f"filtro instavel: recusado ({ex})")
     # a linha da Fdn que devolve mais do que recebe (polo dentro, ganho 1,2): a realimentacao cresceria sem parar
     fdn = fx.Fdn(25, (1.0, 1.0, 1.0))
     p = fdn.projeta(SR)
@@ -245,7 +245,7 @@ def main(argv=None):
             voz.Cadeia(q, SR)
             confere(b0 < 1, f"linha da Fdn com {nome}: montou")
         except ValueError as ex:
-            confere(b0 > 1 and "invalido" in str(ex), f"linha da Fdn com {nome}: recusada ({ex})")
+            confere(b0 > 1 and "invalid" in str(ex), f"linha da Fdn com {nome}: recusada ({ex})")
 
     print(f"{'FALHOU' if falhas else 'ok'}: {len(falhas)} falha(s)")
     return 1 if falhas else 0

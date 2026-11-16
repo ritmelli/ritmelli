@@ -2102,8 +2102,10 @@ def build(app_state):
         if "effect" in b:
             try:
                 E.set_effect(str(b["effect"]))
-            except ValueError:  # o fx.criar recusa o id que nao conhece
-                return j_err(i18n.msg("server.effect.unknown", "Unknown voice effect \"{id}\".", id=str(b["effect"])))
+            except i18n.Recusa as ex:  # o id que nao existe, o preset que o filtro recusou
+                return j_err(ex.msg)
+            except ValueError as ex:  # outro erro do efeito: o texto, em ingles
+                return j_err(i18n.so_texto(str(ex)[:300]))
         if "loop" in b:
             E.set_loop(b["loop"])
         if "shuffle" in b:

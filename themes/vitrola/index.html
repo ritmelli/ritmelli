@@ -5575,7 +5575,8 @@ vdjBox.addEventListener('pointercancel', vdjSolta);
 const FADERS = [['#f-vol', '#o-vol', 'vol', true], ['#f-mon', '#o-mon', 'mon_vol', true], ['#f-mic', '#o-mic', 'mic_vol', false]];
 const ganhoDaPos = p => (p / 100) ** 3;
 const posDoGanho = g => Math.round(Math.cbrt(Math.max(0, Math.min(1, g))) * 100);
-function dbDoGanho(g) { return g > 0 ? (20 * Math.log10(g)).toFixed(1).replace('.', ',').replace('-', '−') + ' dB' : 'mudo'; }
+// o ganho do fader para o leitor de tela, na lingua (a virgula ou o ponto do I18N.num, com o sinal de menos de verdade)
+function dbDoGanho(g) { return g > 0 ? I18N.t('mixer.gainDb', { db: I18N.num(20 * Math.log10(g), 1).replace('-', '−') }) : I18N.t('mixer.gainMuted'); }
 function rotularFader(f, o, curva, g) {   // g: o ganho que o motor tem (o leitor de tela diz em dB)
   o.textContent = f.value + '%';
   if (curva) f.setAttribute('aria-valuetext', `${f.value}%, ${dbDoGanho(g)}`);
