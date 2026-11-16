@@ -80,7 +80,7 @@ def versao(v):
     """"0.12.3" -> (0, 12, 3). Semver sem sufixo, como o versao.py."""
     m = re.fullmatch(r"(\d{1,4})\.(\d{1,4})\.(\d{1,6})", str(v))
     if not m:
-        raise Recusado(f"versão fora do formato: {v!r}")
+        raise Recusado(f"version out of format: {v!r}")
     return tuple(int(x) for x in m.groups())
 
 
@@ -98,24 +98,24 @@ def confere(manifesto, assinatura, chaves=None):
         pub = eddsa.import_public_key(base64.b64decode(chaves[s["chave"]], validate=True))
         eddsa.new(pub, "rfc8032").verify(manifesto, base64.b64decode(s["assinatura"], validate=True))
     except (KeyError, TypeError, ValueError) as e:
-        raise Recusado("a assinatura do manifesto não confere") from e
+        raise Recusado("the manifest signature doesn't match") from e
     m = json.loads(manifesto)
     if not isinstance(m, dict) or m.get("formato") != FORMATO or m.get("app") != "vitrola":
-        raise Recusado("o manifesto não é de uma versão da Vitrola que este app entende")
+        raise Recusado("the manifest is not for a Vitrola version this app understands")
     versao(m.get("versao"))
     notas = m.get("notas", [])
     if not (isinstance(notas, list) and len(notas) <= 30 and all(isinstance(n, str) and len(n) <= 500 for n in notas)):
-        raise Recusado("as notas da versão estão fora do formato")
+        raise Recusado("the release notes are out of format")
     inst = m.get("instalador")
     if not (isinstance(inst, dict) and isinstance(inst.get("url"), str) and _sha(inst.get("sha256"))
             and isinstance(inst.get("tamanho"), int) and 0 < inst["tamanho"] <= SETUP_MAX):
-        raise Recusado("o instalador do manifesto está fora do formato")
+        raise Recusado("the manifest installer is out of format")
     if not inst["url"].startswith("https://" if SO_HTTPS else ("https://", "http://")):
-        raise Recusado("o instalador do manifesto não vem por https")
+        raise Recusado("the manifest installer doesn't come over https")
     for a in m.get("arquivos", []):
         if not (isinstance(a, dict) and isinstance(a.get("caminho"), str) and _sha(a.get("sha256"))
                 and isinstance(a.get("tamanho"), int) and a["tamanho"] >= 0):
-            raise Recusado("a lista de arquivos do manifesto está fora do formato")
+            raise Recusado("the manifest file list is out of format")
         _caminho(a["caminho"])
     if "parcial" in m:
         _confere_parcial(m["parcial"], {a["caminho"] for a in m.get("arquivos", [])})
@@ -126,7 +126,7 @@ def _caminho(c):
     """Um caminho de arquivo do manifesto: o caminho B confere arquivo por arquivo, e nada sai da pasta do app."""
     p = c.replace("\\", "/")
     if not p or p.startswith("/") or ":" in p or ".." in p.split("/"):
-        raise Recusado(f"caminho de arquivo recusado no manifesto: {c!r}")
+        raise Recusado(f"file path refused in the manifest: {c!r}")
 
 
 def _confere_parcial(p, caminhos):
@@ -134,16 +134,16 @@ def _confere_parcial(p, caminhos):
     if not (isinstance(p, dict) and isinstance(p.get("url"), str) and _sha(p.get("sha256"))
             and isinstance(p.get("tamanho"), int) and 0 < p["tamanho"] <= SETUP_MAX
             and isinstance(p.get("arquivos"), list) and p["arquivos"] and isinstance(p.get("apaga", []), list)):
-        raise Recusado("a atualização parcial do manifesto está fora do formato")
+        raise Recusado("the manifest partial update is out of format")
     if not p["url"].startswith("https://" if SO_HTTPS else ("https://", "http://")):
-        raise Recusado("a atualização parcial do manifesto não vem por https")
+        raise Recusado("the manifest partial update doesn't come over https")
     versao(p.get("de"))
     for c in p["arquivos"]:
         if not isinstance(c, str) or c not in caminhos:
-            raise Recusado("a atualização parcial traz um arquivo fora da lista do manifesto")
+            raise Recusado("the partial update brings a file that is not in the manifest list")
     for c in p.get("apaga", []):
         if not isinstance(c, str) or c in caminhos:
-            raise Recusado("a atualização parcial apaga um arquivo da lista do manifesto")
+            raise Recusado("the partial update deletes a file that is in the manifest list")
         _caminho(c)
 
 
@@ -192,7 +192,7 @@ def _pega(url, maximo):
     with urllib.request.urlopen(req, timeout=TEMPO_S, context=_tls()) as r:
         dados = r.read(maximo + 1)
     if len(dados) > maximo:
-        raise Recusado(f"{url} passou de {maximo} bytes")
+        raise Recusado(f"{url} went over {maximo} bytes")
     return dados
 
 
@@ -291,7 +291,7 @@ class Atualizacao:
                 else:
                     self.erro = i18n.msg("server.update.checkFailed", "Couldn't check for a new version.")
                     self.falhas += 1
-            print(f"atualizacao: {e}", flush=True)
+            print(f"update: {e}", flush=True)
             return self.nova is not None
         nova = versao(m["versao"]) > versao(VERSAO)
         serve = nova and cabe_parcial(m, PASTA_APP)  # so o tamanho de cada arquivo: rapido
@@ -300,8 +300,8 @@ class Atualizacao:
             if nova:
                 if not self.nova or self.nova["versao"] != m["versao"]:
                     self.nova, self.parcial, self.setup, self.alvo = m, serve, None, None
-                    serve_mb = f" (a parcial serve: {m['parcial']['tamanho'] / 2**20:.1f} MB)" if serve else ""
-                    print(f"atualizacao: versao nova {m['versao']}{serve_mb}", flush=True)
+                    serve_mb = f" (the partial update fits: {m['parcial']['tamanho'] / 2**20:.1f} MB)" if serve else ""
+                    print(f"update: new version {m['versao']}{serve_mb}", flush=True)
             else:
                 self.nova = self.setup = self.alvo = None
                 self.parcial = False
@@ -325,7 +325,7 @@ class Atualizacao:
             parcial = self.parcial
         # a consulta so conferiu o tamanho: antes de baixar a parcial, o hash de tudo que ela nao traz
         if parcial and not cabe_parcial(m, PASTA_APP, hash_=True):
-            print("atualizacao: o que esta instalado nao bate com o manifesto; vai o setup completo", flush=True)
+            print("update: what is installed doesn't match the manifest; using the full setup", flush=True)
             parcial = False
             with self.lock:
                 self.parcial = False
@@ -338,7 +338,7 @@ class Atualizacao:
                 self._puxa(inst, f)
             # o hash do que ficou no disco, que veio em pedacos quando o download parou no meio
             if _hash(meio) != inst["sha256"]:
-                raise Recusado("o instalador baixado não confere com o manifesto")
+                raise Recusado("the downloaded installer doesn't match the manifest")
             meio.replace(final)
         except (OSError, ValueError) as e:
             meio.unlink(missing_ok=True)
@@ -348,11 +348,11 @@ class Atualizacao:
                     "server.update.downloadStopped", "The new version download stopped. Try again.")
                 if parcial and isinstance(e, Recusado):
                     self.parcial = False  # a parcial veio errada: na proxima, o completo
-            print(f"atualizacao: {e}", flush=True)
+            print(f"update: {e}", flush=True)
             return
         with self.lock:
             self.setup, self.alvo, self.estado, self.progresso = final, inst, "pronta", 1.0
-        print(f"atualizacao: {final.name} baixado e conferido", flush=True)
+        print(f"update: {final.name} downloaded and checked", flush=True)
 
     def _puxa(self, inst, f):
         """Baixa o setup no f, ate o tamanho do manifesto. Se a rede cai ou a conexao fecha antes do fim (o http.client
@@ -374,15 +374,15 @@ class Atualizacao:
                         f.truncate()
                         n = 0
                         if r.status != 200:
-                            raise Parou(f"o servidor respondeu {r.status} sem continuar de onde parou")
+                            raise Parou(f"the server answered {r.status} without resuming where it stopped")
                     while b := r.read(PEDACO):
                         if n + len(b) > tam:
-                            raise Recusado("o instalador baixado é maior que o do manifesto")
+                            raise Recusado("the downloaded installer is bigger than the manifest's")
                         f.write(b)
                         n += len(b)
                         with self.lock:
                             self.progresso = n / tam
-                motivo = "a conexão fechou antes do fim"
+                motivo = "the connection closed before the end"
             except (OSError, http.client.HTTPException) as e:
                 motivo = e
             n = f.tell()
@@ -390,10 +390,10 @@ class Atualizacao:
                 return
             seguidas = 0 if n > antes else seguidas + 1
             if seguidas > len(DE_NOVO_BAIXA_S):
-                raise Parou(f"o download parou em {n / 2**20:.1f} de {tam / 2**20:.1f} MB ({motivo})")
+                raise Parou(f"the download stopped at {n / 2**20:.1f} of {tam / 2**20:.1f} MB ({motivo})")
             espera = DE_NOVO_BAIXA_S[max(seguidas - 1, 0)]
-            print(f"atualizacao: o download parou em {n / 2**20:.1f} de {tam / 2**20:.1f} MB ({motivo}); "
-                  f"de novo em {espera:.0f} s", flush=True)
+            print(f"update: the download stopped at {n / 2**20:.1f} of {tam / 2**20:.1f} MB ({motivo}); "
+                  f"again in {espera:.0f} s", flush=True)
             time.sleep(espera)
 
     def instalar(self):
@@ -417,7 +417,7 @@ class Atualizacao:
             return False, i18n.msg("server.update.installerFailed", "The installer didn't open (error {code}).", code=r)
         with self.lock:
             self.estado = "instalando"
-        print(f"atualizacao: instalador da {m['versao']} aberto; a Vitrola fecha", flush=True)
+        print(f"update: installer for {m['versao']} opened; Vitrola is closing", flush=True)
         return True, None
 
     def _limpa(self):

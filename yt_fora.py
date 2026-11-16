@@ -64,7 +64,7 @@ def opts_rapido(opts):
     """As opts do endereco rapido (ver RAPIDO_ARGS), com o visitor id do cliente do YouTube Music."""
     vid = ytm().headers.get("X-Goog-Visitor-Id")
     if not vid:
-        raise RuntimeError("sem o visitor id do YouTube Music")
+        raise RuntimeError("no YouTube Music visitor id")
     ea = dict(opts.get("extractor_args") or {})
     ea["youtube"] = {**(ea.get("youtube") or {}), **RAPIDO_ARGS, "visitor_data": [vid]}
     return {**opts, "extractor_args": ea}
@@ -91,7 +91,7 @@ def stream_yt(alvo, opts):
     if info.get("entries"):
         info = info["entries"][0]
     if not info.get("url"):
-        raise RuntimeError("o YouTube não deu um endereço de áudio")
+        raise RuntimeError("YouTube didn't give an audio address")
     return info, "".join(f"{k}: {v}\r\n" for k, v in (info.get("http_headers") or {}).items())
 
 
@@ -190,7 +190,7 @@ def pre_conecta(yt, n=2, fresca=False):
             requests.Request("POST", YTM_BASE_API).prepare(), cfg["verify"], cfg["proxies"], cfg["cert"])
         liga(pool, n, fresca=fresca)
     except Exception as ex:  # noqa: BLE001 - sem a segunda, a busca abre a dela
-        print(f"YouTube Music: a segunda conexão não abriu ({str(ex)[:100]})", file=sys.stderr)
+        print(f"YouTube Music: the second connection didn't open ({str(ex)[:100]})", file=sys.stderr)
 
 
 def liga(pool, n, timeout=5.0, fresca=False):
@@ -233,7 +233,7 @@ def ytm():
     if _YTM is not None:
         return _YTM
     if _AQUECE_ERRO:
-        print(f"YouTube Music: o aquecimento falhou ({_AQUECE_ERRO}): cliente novo", file=sys.stderr)
+        print(f"YouTube Music: the warmup failed ({_AQUECE_ERRO}): new client", file=sys.stderr)
         _AQUECE_ERRO = None
     yt = YTMusic()
     try:
@@ -364,12 +364,12 @@ def musica(q, n, yt=None):
             arts, mus = sugestoes(q, yt)
         except Exception as ex:  # noqa: BLE001 - a busca de sempre
             arts, mus = [], []
-            print(f"busca: a sugestao de {q!r} falhou ({str(ex)[:100]})", file=sys.stderr)
+            print(f"search: the suggestion for {q!r} failed ({str(ex)[:100]})", file=sys.stderr)
         # ate 3 (o "toca X"): a primeira musica sugerida com todas as palavras do pedido no titulo ou no artista
         s = next((x for x in mus if so_artista(q, f"{x['title']} {x['channel']}") and not versao_a_mais(q, x["title"])),
                  None) if n <= 3 else None
         if s:
-            print(f"busca: {q!r} pela sugestao: {s['title']} ({s['channel']})", file=sys.stderr)
+            print(f"search: {q!r} by the suggestion: {s['title']} ({s['channel']})", file=sys.stderr)
             return [s]
         # o pedido e so o nome de um artista sugerido: as mais tocadas da pagina dele, como a busca faria quando o
         # topo e o artista, sem os ~0,7 s dela (o "toca outra do X", que quer a lista, cai sempre aqui)
@@ -377,7 +377,7 @@ def musica(q, n, yt=None):
         if art:
             nome, itens = do_artista(q, art[1], art[0], yt)
             if itens:
-                print(f"busca: {q!r} é o artista {nome} (pela sugestão): a mais tocada, {itens[0]['title']}",
+                print(f"search: {q!r} is the artist {nome} (by the suggestion): the most played, {itens[0]['title']}",
                       file=sys.stderr)
                 return itens[:n]
     res = (busca.espera() if busca else yt.search(q, limit=10)) or []
@@ -389,11 +389,11 @@ def musica(q, n, yt=None):
         if bid and (nome is None or so_artista(q, nome)):
             nome, itens = do_artista(q, bid, nome, yt)
             if itens:
-                print(f"busca: {q!r} é o artista {nome}: a mais tocada, {itens[0]['title']}", file=sys.stderr)
+                print(f"search: {q!r} is the artist {nome}: the most played, {itens[0]['title']}", file=sys.stderr)
                 return itens[:n]
     itens = [i for i in (_item(x) for x in res if x.get("resultType") in ("song", "video")) if i]
     if itens:
-        print(f"busca: {q!r} no YouTube Music: {itens[0]['title']} ({itens[0].get('channel') or '?'})", file=sys.stderr)
+        print(f"search: {q!r} on YouTube Music: {itens[0]['title']} ({itens[0].get('channel') or '?'})", file=sys.stderr)
     return itens[:n]
 
 
@@ -411,8 +411,8 @@ def faz(p):
             except Exception as ex:  # noqa: BLE001 - o de sempre logo em seguida, no mesmo processo
                 erro_rapido = str(ex)
                 _rapido_falhas = RAPIDO_FALHAS_MAX if "not a bot" in erro_rapido else _rapido_falhas + 1
-                fora = ": desligado neste processo" if _rapido_falhas >= RAPIDO_FALHAS_MAX else ""
-                print(f"stream: o rapido falhou em {p['alvo']} ({erro_rapido[:120]}): vai pelo de sempre{fora}",
+                fora = ": turned off in this process" if _rapido_falhas >= RAPIDO_FALHAS_MAX else ""
+                print(f"stream: the fast one failed on {p['alvo']} ({erro_rapido[:120]}): using the usual one{fora}",
                       file=sys.stderr, flush=True)
         if info is None:
             try:
@@ -438,7 +438,7 @@ def faz(p):
         return musica(p["q"], p.get("n", 3))
     if op == "musicas":
         return ytm().search(p["q"], filter="songs", limit=3)[:3]
-    raise ValueError(f"pedido desconhecido: {op}")
+    raise ValueError(f"unknown request: {op}")
 
 
 def main():
@@ -472,7 +472,7 @@ def responde(linha):
             try:
                 aquece(p)
             except Exception as ex:  # noqa: BLE001 - o pedido de verdade abre a conexao dele, como antes
-                print(f"aquece: falhou ({str(ex)[:120]})", file=sys.stderr, flush=True)
+                print(f"warmup: failed ({str(ex)[:120]})", file=sys.stderr, flush=True)
             return False
         print(json.dumps({"r": faz(p)}), flush=True)
     except Exception as ex:  # noqa: BLE001 - o servidor poe o motivo no log e na tela
