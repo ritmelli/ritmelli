@@ -96,7 +96,7 @@ def main():
     # do app: os modulos dele, os pacotes dele (pasta com __init__.py, como o microfone/) e as pastas que o
     # vitrola.spec copia do repo
     nosso = ({p.stem for p in a.vitrola.glob("*.py")} | {p.parent.name for p in a.vitrola.glob("*/__init__.py")}
-             | {"themes", "modelos", "icone"})
+             | {"themes", "gallery", "modelos", "icone"})
     donos = dono_de_cada_nome()
     pacotes, sem_dono = set(), []
     for n in sorted(modulos(a.app)):
