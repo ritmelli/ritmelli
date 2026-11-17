@@ -480,7 +480,9 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 .mostrador.apagado .nome-m { color: var(--sinal); }
 .controles { display: grid; gap: 4px; container-type: inline-size; }
 .fader { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; }
-.fader label { font-weight: 600; font-size: .875rem; line-height: 1.2; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* o nome que nao cabe quebra a linha, nunca corta com reticencias: em ingles "Record in headphones" nao cabe nos
+   faders de uma linha so da tela baixa, e com o fone "Nenhum" o aviso do lado tambem nao cabia */
+.fader label { font-weight: 600; font-size: .875rem; line-height: 1.2; min-width: 0; overflow-wrap: break-word; }
 .fader label small { font-weight: 400; font-size: .8125rem; color: var(--tinta-2); margin-left: 6px; }
 .fader label small:empty { display: none; }   /* so aparece para dizer que nao ha fone */
 .fader output { font-variant-numeric: tabular-nums; font-size: .875rem; text-align: right; }
