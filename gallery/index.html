@@ -129,10 +129,13 @@ function card(t) {
   const shot = el.querySelector('.shot'), img = el.querySelector('img'), abrir = el.querySelector('a.btn');
   shot.href = abrir.href = t.url;
   shot.setAttribute('aria-label', I18N.t('gallery.openTheme', { name: t.name || t.slug }));
+  // o preview na lingua da galeria (preview_en.png, o dev/previews.py); o tema que tem um so, o preview.png
+  const previews = [`${t.url}preview_${I18N.lingua}.png`, `${t.url}preview.png`];
   img.addEventListener('error', () => {
+    if (previews.length) { img.src = previews.shift(); return; }
     const d = document.createElement('div'); d.className = 'none'; d.textContent = I18N.t('gallery.noPreview'); img.replaceWith(d);
   });
-  img.src = `${t.url}preview.png`;
+  img.src = previews.shift();
   abrir.textContent = I18N.t('gallery.open');
   el.querySelector('h2').textContent = t.name || t.slug;
   el.querySelector('.dir').textContent = t.direction || '';
