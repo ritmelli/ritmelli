@@ -4129,6 +4129,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     padding: 24px 4px 4px 0; column-gap: 16px; row-gap: 0; grid-auto-columns: 130px; grid-template-rows: 142px;
   }
   body.mesa-dj .estante > li.disco-item { display: block; position: relative; width: 130px; height: 142px; filter: drop-shadow(4px 4px 0 rgba(12, 2, 0, .5)); }
+  /* a prateleira vazia: o aviso ocupa a prateleira inteira, fora das casas de 130 px dos discos (numa casa so, o
+     texto quebrava em seis linhas e as ultimas ficavam cortadas embaixo) */
+  body.mesa-dj .estante > .vazio { position: absolute; inset: 24px 12px 4px; display: flex; flex-direction: column; justify-content: center; padding: 0; }
   body.mesa-dj .estante .disco-item.no-prato { top: -8px; transform: none; filter: drop-shadow(4px 4px 0 rgba(12, 2, 0, .5)); }
   body.mesa-dj .estante .disco-item.no-prato :is(.capa, .ficha) { transform: none; }
   body.mesa-dj .estante .capa {
