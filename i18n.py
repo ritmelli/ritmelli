@@ -4,8 +4,9 @@ reserva) e poe os dois na pagina, no lugar do MARCA, antes de qualquer script do
 servidor nao escreve frase para quem usa: manda a mensagem (msg), com a chave que o tema traduz.
 
 O formato do .properties: uma linha por texto, chave=valor (separados pelo primeiro =, sem o espaco em volta); # ou !
-no comeco da linha e comentario; UTF-8 com a acentuacao direto no arquivo; \\n e quebra de linha, \\\\ e a barra e
-\\ (barra e espaco) e um espaco que conta, para o valor que comeca ou termina com espaco."""
+no comeco da linha e comentario; UTF-8 com a acentuacao direto no arquivo; \\n e quebra de linha, \\\\ e a barra,
+\\ (barra e espaco) e um espaco que conta, para o valor que comeca ou termina com espaco, e \\uXXXX e o caractere desse
+codigo, para o que nao se ve no arquivo (o \\u00AD, o hifen opcional: onde o nome comprido pode quebrar no pedal)."""
 import json
 import re
 import sys
@@ -33,8 +34,17 @@ def ler(caminho):
             raise ValueError(f"{caminho}:{n}: duplicate key {chave!r}")
         # o espaco de fora nao conta, menos o escapado (\ ), que o desescape vira espaco
         valor = re.sub(r"(?<!\\)\s+$", "", valor.lstrip())
-        textos[chave] = re.sub(r"\\(.)", lambda m: "\n" if m[1] == "n" else m[1], valor)
+        textos[chave] = re.sub(r"\\(u[0-9A-Fa-f]{4}|.)", _desescapa, valor)
     return textos
+
+
+def _desescapa(m):
+    """\\n e a quebra de linha, \\uXXXX o caractere desse codigo (o \\u00AD, o hifen opcional, que no arquivo nao se
+    ve) e \\ com outro caractere, o proprio caractere."""
+    s = m[1]
+    if s == "n":
+        return "\n"
+    return chr(int(s[1:], 16)) if len(s) == 5 else s
 
 
 def lingua_de(codigo):

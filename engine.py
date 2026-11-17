@@ -1601,7 +1601,20 @@ class Engine:
         try:
             self._mina.liga()
         except ValueError as ex:  # sem a chave: o pedal fica aceso e o aviso sai na interface
-            self.error = i18n.so_texto(str(ex))
+            self.error = self._mina_sem_chave(ex)
+
+    def _mina_sem_chave(self, ex):
+        """O aviso da mina que nao liga por falta da chave, na lingua de quem olha. O mina.py (do ritmelli-server) so
+        diz em portugues, num texto: aqui ele sai pela chave, com os mesmos arquivos que o mina.py procura no
+        pastas.DADOS. Outro erro (sem o estado "erro" dele, que vem junto com a falta da chave) sai como veio."""
+        if getattr(self._mina, "estado", None) != "erro":
+            return i18n.so_texto(str(ex))
+        if getattr(self._mina, "_motor", None) == "eleven":
+            return i18n.msg("server.mina.noElevenKey", "Mina DJ on ElevenAgents needs the key (ELEVENLABS_API_KEY or "
+                            "the file {keyFile}) and the agent ID in the file {agentFile}.",
+                            keyFile=str(pastas.DADOS / "eleven_key.txt"), agentFile=str(pastas.DADOS / "eleven_agente.txt"))
+        return i18n.msg("server.mina.noOpenAiKey", "Mina DJ needs the OpenAI key: put it in OPENAI_API_KEY or in the "
+                        "file {keyFile}.", keyFile=str(pastas.DADOS / "openai_key.txt"))
 
     def mina_voz(self, x):
         """A voz dela, float32 48 kHz mono, na fila do jogo. Volta em quantos segundos ela comeca a tocar (a gravacao

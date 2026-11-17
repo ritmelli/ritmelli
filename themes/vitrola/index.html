@@ -5686,7 +5686,9 @@ const TEXTO_LOGO = { locutor: I18N.t('effects.logo.locutor') };   // o logo do p
 /* o nome, o que faz e o grupo de um efeito: o /api/effects so manda os ids, e os textos sao do tema (effect.<id>.name,
    effect.<id>.desc, effect.group.<grupo>); efeito novo que o tema ainda nao conhece aparece pelo id */
 const textoEf = (chave, reserva) => (I18N.tem(chave) ? I18N.t(chave) : reserva);
-const nomeEf = ef => textoEf(`effect.${ef.id}.name`, ef.id);
+// o nome no pedal pode trazer o hifen opcional (­: onde a palavra comprida quebra, no caberNomes); fora dele, sai
+const nomePedal = ef => textoEf(`effect.${ef.id}.name`, ef.id);
+const nomeEf = ef => nomePedal(ef).replace(/­/g, '');
 const descEf = ef => textoEf(`effect.${ef.id}.desc`, '');
 const nomeGrupo = g => textoEf(`effect.group.${g}`, g);
 const lerModo = id => { try { return localStorage.getItem('vitrola.modo.' + id); } catch { return null; } };
@@ -5751,7 +5753,14 @@ function tecla(ef) {
   b.setAttribute('aria-pressed', 'false');
   b.append(el('span', 'lampada'));
   const n = el('span', 't-nome');
-  n.append(document.createTextNode(nomeEf(ef)));
+  // o nome inteiro, e o com o hifen opcional para o caberNomes() tentar antes da letra menor
+  n.dataset.nome = nomeEf(ef);
+  if (nomePedal(ef) !== n.dataset.nome) {
+    n.dataset.quebra = nomePedal(ef);
+    // o nome lido inteiro: quebrado, o leitor de tela dizia "MEGA PHONE" (as duas linhas da mesa) ou levava o ­
+    b.setAttribute('aria-label', n.dataset.nome);
+  }
+  n.append(document.createTextNode(n.dataset.nome));
   b.append(n);
   if (descEf(ef)) b.append(el('span', 't-desc', descEf(ef)));
   // so os de mudanca de tom atrasam a voz: diz quanto, discreto
@@ -5800,7 +5809,9 @@ function montarGaveta() {
 const linhasDoTexto = e => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].map(q => Math.round(q.top))).size; };
 function caberNomes() {
   for (const n of document.querySelectorAll('.banco .tecla .t-nome')) {
-    if (n.querySelector('.lin, .agudo')) n.textContent = n.textContent;   // (r08) desfaz as linhas em span da medida anterior (r15: e o agudo)
+    // (r08) desfaz as linhas em span da medida anterior (r15: e o agudo; r16: e o hifen da quebra)
+    if (n.dataset.nome) { if (n.textContent !== n.dataset.nome || n.children.length) n.textContent = n.dataset.nome; }
+    else if (n.querySelector('.lin, .agudo')) n.textContent = n.textContent;
     n.classList.remove('miuda', 'na-margem', 'duas');
     n.style.marginLeft = n.style.marginTop = n.style.overflow = '';
     if (!n.clientWidth) continue;   // gaveta fora da tela de verdade (sem caixa): mede quando aparecer
@@ -5813,6 +5824,15 @@ function caberNomes() {
     if (cabe()) continue;
     n.classList.add('na-margem');   // a grande ainda pode usar a margem do pedal (o MEGAFONE na tela de 360)
     if (cabe()) continue;
+    // (r16) a palavra que nao cabe grande quebra no hifen opcional do nome (MEGA-PHONE, CATHE-DRAL), em duas linhas
+    // como os nomes de duas palavras, antes de descer para a letra menor
+    if (n.dataset.quebra) {
+      n.classList.remove('na-margem'); n.textContent = n.dataset.quebra;
+      if (cabe()) continue;
+      n.classList.add('na-margem');
+      if (cabe()) continue;
+      n.textContent = n.dataset.nome;
+    }
     n.classList.replace('na-margem', 'miuda');
   }
   // (r07) na mesa o nome grande de 2 linhas com a entrelinha de 14 (era 16): a 2a linha colava no footswitch
@@ -5857,13 +5877,18 @@ function caberNomes() {
       let corte = -1, topo0 = null;
       for (let i = 0; i < txt.length; i++) {
         rg.setStart(tn, i); rg.setEnd(tn, i + 1);
-        const rr = rg.getClientRects()[0];
+        // (r16) o ultimo retangulo: na quebra do hifen opcional a letra seguinte traz um a mais, o do hifen, na linha de cima
+        const rs = rg.getClientRects(), rr = rs[rs.length - 1];
         if (!rr || !rr.width) continue;
         if (topo0 === null) topo0 = rr.top; else if (rr.top > topo0 + 2) { corte = i; break; }
       }
       if (corte > 0) {
         n.textContent = '';
-        for (const parte of [txt.slice(0, corte), txt.slice(corte)]) { const sp = document.createElement('span'); sp.className = 'lin'; sp.textContent = parte; n.append(sp); }
+        // a 1a linha que termina no hifen opcional leva um hifen desenhado: sozinha num span ela nao quebra, e o ­
+        // some. Fora do nome lido (aria-hidden), que segue "Megaphone", como o "Police radio" segue com o espaco
+        const a = txt.slice(0, corte), b = txt.slice(corte), hifen = a.endsWith('­');
+        for (const parte of [hifen ? a.slice(0, -1) : a, b]) { const sp = document.createElement('span'); sp.className = 'lin'; sp.textContent = parte; n.append(sp); }
+        if (hifen) { const h = document.createElement('span'); h.setAttribute('aria-hidden', 'true'); h.textContent = '-'; n.firstChild.append(h); }
         for (const sp of n.querySelectorAll('.lin')) {
           const r2 = document.createRange(); r2.selectNodeContents(sp);
           const q = r2.getClientRects()[0];
@@ -11046,14 +11071,26 @@ const LETRA_PLACA = {
       for (const e of Object.values(m.txt || {})) e.style.display = 'none';
       // as linhas de cada rotulo antes, para todos ficarem com o meio na mesma altura (o de uma linha no meio do de duas)
       const RT = Object.assign({}, ROT0, window.MX_ROT || {}), FR = RT.alt === 10 ? F10 : F8, lg = t => largB(t, FR, RT.esp);
+      const AL = FR.h;
+      let LSr = LS, LH = AL + 4;   // o pixel da letra e a distancia entre as linhas dos rotulos (a placa segue no LS)
       const quebra8 = t => {
         const ps = t.toUpperCase().split(/\s+/), out = [];
         let cur = '';
-        for (const p_ of ps) { const n_ = cur ? cur + ' ' + p_ : p_; if (cur && lg(n_) * LS > 2 * mw - 6) { out.push(cur); cur = p_; } else cur = n_; }
+        for (const p_ of ps) { const n_ = cur ? cur + ' ' + p_ : p_; if (cur && lg(n_) * LSr > 2 * mw - 6) { out.push(cur); cur = p_; } else cur = n_; }
         if (cur) out.push(cur);
         return out;
       };
-      fs.forEach(f => { f.l8 = quebra8(f.txt); });
+      // (r19) o rotulo cabe entre o mostrador e o trilho: com o Windows a 125% a letra vai a 2 px de tela, o DISCO NO JOGO
+      // quebrava em 3 linhas e subia por cima das placas (a 150%, o RECORD IN PHONES). Sem espaco, primeiro as linhas mais
+      // juntas, depois a letra 1 px de tela menor (abaixo de 1 px CSS, so ai), ate caber; com espaco, fica como era
+      const teto = 2 * J.y1 + 2, base0 = Math.min(...fs.map(f => 2 * f.C.y0 + 34));
+      cabe: for (let n = Math.round(LS * dT); n >= 1; n--) {
+        for (const lh of [AL + 4, AL + 3, AL + 2]) {
+          LSr = n / dT; LH = lh;
+          fs.forEach(f => { f.l8 = quebra8(f.txt); });
+          if (base0 - LSr * ((Math.max(1, ...fs.map(f => f.l8.length)) - 1) * LH + AL) >= teto) break cabe;
+        }
+      }
       const NL = Math.max(1, ...fs.map(f => f.l8.length));
       fs.forEach((f, i) => {
         m.txt = m.txt || {};
@@ -11064,17 +11101,17 @@ const LETRA_PLACA = {
         }
         cv.style.display = '';
         const linhas = f.l8;
-        const AL = FR.h, w = Math.max(...linhas.map(lg)), LH = AL + 4, h = 3 + (linhas.length - 1) * LH + AL + 3;
-        cv.width = w; cv.height = h; cv.style.width = w * LS + 'px'; cv.style.height = h * LS + 'px';
+        const w = Math.max(...linhas.map(lg)), h = 3 + (linhas.length - 1) * LH + AL + 3;
+        cv.width = w; cv.height = h; cv.style.width = w * LSr + 'px'; cv.style.height = h * LSr + 'px';
         const c = cv.getContext('2d'), im = c.createImageData(w, h);
         if (RT.grav) linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 4 + j * LH, [250, 248, 242], FR, RT.esp));
         linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 3 + j * LH, RT.cor, FR, RT.esp));
         c.putImageData(im, 0, 0);
         // (r05) a linha de base 1 celula acima: o rotulo colava no topo do trilho (e no cursor em 100%); o vao para o VU
         // e para o trilho fica igual
-        const base = 2 * f.C.y0 + 34, left = gx(2 * f.col + 1 - w * LS / 2), top = gy(base - LS * (3 + (NL - 1) * LH + AL) + LS * (NL - linhas.length) * LH);
+        const base = 2 * f.C.y0 + 34, left = gx(2 * f.col + 1 - w * LSr / 2), top = gy(base - LSr * (3 + (NL - 1) * LH + AL) + LSr * (NL - linhas.length) * LH);
         cv.style.left = left + 'px'; cv.style.top = top + 'px';
-        f.cal = [Math.floor(left / 2) - 2, Math.floor(top / 2), Math.ceil((left + w * LS) / 2) + 2, Math.ceil((top + h * LS) / 2)];
+        f.cal = [Math.floor(left / 2) - 2, Math.floor(top / 2), Math.ceil((left + w * LSr) / 2) + 2, Math.ceil((top + h * LSr) / 2)];
       });
       if (A) {
         // o nome da placa sem suavizar (ordem dele, 06/11): a mesma letra desenhada num canvas de 1 px, cada pixel cheio ou
