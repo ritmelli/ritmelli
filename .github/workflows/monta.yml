@@ -56,6 +56,12 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: python dev/testa_i18n.py
+      # os dados de uso e os erros (metricas.py): so sai o que a lista do PRIVACIDADE.md diz, e nada sem a escolha de
+      # quem usa. Sem rede e so a biblioteca padrao
+      - name: Confere os dados de uso
+        env:
+          PYTHONUTF8: '1'
+        run: python dev/testa_metricas.py
       # o Inno Setup do build à mão, na pasta do usuário, que é a primeira onde o monta.ps1 procura (a máquina do
       # GitHub pode trazer outra versão em Program Files)
       - name: Inno Setup 6.7.3
@@ -262,6 +268,14 @@ jobs:
             throw 'a Vitrola instalada não carregou o voz.dll'
           }
           if ($estado.versao -ne $env:VERSAO) { throw "a Vitrola respondeu a versão $($estado.versao), e não a $env:VERSAO" }
+          # os dados de uso (metricas.py): o setup em silêncio, sem /metricas, não escolhe por ninguém, e a Vitrola
+          # espera a pessoa decidir no aviso, sem enviar nada (é isso que deixa a esteira fora das métricas)
+          if (Get-ItemProperty 'HKLM:\SOFTWARE\Vitrola' -Name Metricas -ErrorAction SilentlyContinue) {
+            throw 'o setup em silêncio gravou a escolha dos dados de uso sem ninguém escolher'
+          }
+          $met = Invoke-RestMethod 'http://127.0.0.1:8799/api/metricas' -TimeoutSec 5
+          if ($met.situacao -ne 'decidir') { throw "os dados de uso sem escolha estão $($met.situacao), e não decidir" }
+          'os dados de uso esperam a escolha de quem usa'
           # a janela própria (janela.py): o --no-browser de cima não abre nenhuma; desligada pela API, a Vitrola abre de
           # novo como pelo atalho, tem de mostrar a janela "Vitrola", a segunda abertura só traz ela para a frente, e
           # fechar a janela (o X) desliga o servidor
@@ -291,6 +305,13 @@ jobs:
           try { Invoke-RestMethod 'http://127.0.0.1:8799/api/state' -TimeoutSec 2 | Out-Null; $fora = $false } catch { }
           if (-not $fora) { throw 'a janela fechou e o servidor seguiu respondendo' }
           'a janela abriu, a segunda abertura só trouxe ela para a frente e o X desligou tudo'
+          # o /metricas=0 do setup em silêncio grava a escolha (a mesma da caixa da página), e o desinstalador apaga
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/metricas=0', "/LOG=$log" -PassThru
+          if (-not $p.WaitForExit(600000)) { Stop-Process $p -Force; Get-Content $log -Tail 40; throw 'o setup com /metricas=0 não terminou em 10 min' }
+          if ($p.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "o setup com /metricas=0 saiu com $($p.ExitCode)" }
+          $v = (Get-ItemProperty 'HKLM:\SOFTWARE\Vitrola' -Name Metricas -ErrorAction SilentlyContinue).Metricas
+          if ($v -ne 0) { throw "o setup com /metricas=0 gravou '$v'" }
+          'o /metricas=0 gravou a escolha'
           # o desinstalador fecha a Vitrola (taskkill) e tira a regra do firewall. Ele se copia para a pasta temporária
           # e roda de lá, então o fim se confere pelo que ele apaga
           Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
@@ -298,6 +319,10 @@ jobs:
           if (Test-Path "$app\vitrola.exe") { throw 'o desinstalador não tirou o vitrola.exe em 2 min' }
           netsh advfirewall firewall show rule name=Vitrola | Out-Null
           if ($LASTEXITCODE -eq 0) { throw 'o desinstalador deixou a regra do firewall' }
+          for ($i = 0; $i -lt 30 -and (Get-ItemProperty 'HKLM:\SOFTWARE\Vitrola' -Name Metricas -ErrorAction SilentlyContinue); $i++) { Start-Sleep 1 }
+          if (Get-ItemProperty 'HKLM:\SOFTWARE\Vitrola' -Name Metricas -ErrorAction SilentlyContinue) {
+            throw 'o desinstalador deixou a escolha dos dados de uso'
+          }
           'instalou, abriu, respondeu e desinstalou'
           # o GitHub sai com o $LASTEXITCODE do fim, e o do netsh sem a regra é 1
           exit 0

@@ -143,14 +143,16 @@ Committers and reviewers: [members](https://github.com/orgs/ritmelli/people). Ap
 
 ## Privacidade
 
-A Vitrola não manda nenhuma informação sua para outros sistemas, a não ser o que você pede: a
-busca, o stream e o download de música vão para o YouTube e o YouTube Music. Ao abrir, ela
-consulta no GitHub se existe versão nova (baixa o manifesto público das versões; nada seu vai
-junto). O celular pareado conversa direto com o PC, na sua rede.
+A busca, o stream e o download de música vão para o YouTube e o YouTube Music, quando você pede.
+Ao abrir, a Vitrola consulta no GitHub se existe versão nova (baixa o manifesto público das
+versões; nada seu vai junto). O celular pareado conversa direto com o PC, na sua rede. Se você
+deixar, ela envia dados anônimos de uso e os erros (`metricas.py`), sem nome, música, busca nem
+voz: o que vai, para onde e como desligar está na [política de privacidade](PRIVACIDADE.md),
+que também aparece no instalador.
 
-Privacy: this program will not transfer any information to other networked systems unless
-specifically requested by the user (searching, streaming and downloading music from YouTube and
-YouTube Music), apart from checking GitHub for a new version.
+Privacy policy: [PRIVACIDADE.md](PRIVACIDADE.md#vitrola-privacy-policy). Usage data and errors
+are described there, shown during installation, and can be turned off in the installer and in
+the app.
 
 ## Estrutura
 
@@ -165,6 +167,7 @@ YouTube Music), apart from checking GitHub for a new version.
 | `fx.py` | efeitos de voz |
 | `versao.py` | a versão do app |
 | `atualizacao.py`, `atualizador.py` | a versão nova: o que a tela mostra, e a tarefa do Windows que baixa e instala sozinha |
+| `metricas.py` | os dados anônimos de uso (PostHog) e os erros (Sentry), só com a escolha de quem usa: a lista do que vai e a política no [PRIVACIDADE.md](PRIVACIDADE.md) |
 | `i18n.py` | os textos da interface em cada língua: lê os `.properties` do tema e põe na página; e a mensagem que o servidor manda para a tela traduzir |
 | `pastas.py` | onde moram os dados de quem usa, e onde o app acha o ffmpeg, o ffprobe e o Deno |
 | `pareamento.py` | o código e o QR do celular, e os celulares conectados |

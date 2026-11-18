@@ -937,6 +937,10 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 }
 .dlg select:disabled { color: var(--marfim-2); }
 .dlg label.campo { display: grid; gap: 6px; }
+/* os dados de uso e os erros, no Microfone e fone: o titulo como o dos campos, a situacao e o botao com o link */
+.dlg .dd-met { display: grid; gap: 6px; }
+.dlg .dd-met h3 { margin: 0; }
+.dlg .dd-met .acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .dlg .em-uso { font-family: "Archivo", system-ui, sans-serif; font-weight: 400; font-size: .8125rem; line-height: 1.45; color: var(--tinta-2); }
 /* as teclas sao as do FX-12: a moldura, o aluminio e o aperto moram na regra delas */
 .dlg .btn { min-height: 2.75rem; }
@@ -4722,6 +4726,12 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     </label>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
       <span><span data-i18n="devices.sameMic"></span> <span data-i18n="devices.discordHint"></span> <span data-i18n="devices.pushToTalk"></span></span></div>
+    <!-- os dados de uso e os erros (GET/POST /api/metricas), so no PC: o JS mostra quando o servidor diz a situacao -->
+    <div class="dd-met" id="dd-met" hidden>
+      <h3 data-i18n="metrics.label"></h3>
+      <span class="em-uso" id="dd-met-txt"></span>
+      <span class="acoes"><button class="btn" type="button" id="dd-met-btn"></button><a class="em-uso" id="dd-met-pol" target="_blank" rel="noopener" data-i18n="metrics.policy"></a></span>
+    </div>
     <p class="msg-dlg" id="dd-msg" role="status"></p>
     <div class="rodape"><button class="btn" value="ok" data-i18n="nav.close"></button></div>
   </form>
@@ -4758,6 +4768,20 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     </ol>
     <p class="msg-dlg" id="db-msg" role="status"></p>
     <div class="rodape"><button class="btn" value="ok" data-i18n="welcome.start"></button></div>
+  </form>
+</dialog>
+
+<!-- o aviso dos dados de uso e dos erros, uma vez, para quem ainda nao escolheu (a situacao "decidir": atualizou em
+     silencio de uma versao sem eles, sem passar pela pagina do instalador). Fechar sem escolher pergunta de novo depois -->
+<dialog id="dlg-metricas" aria-labelledby="dm-t">
+  <form method="dialog" class="dlg">
+    <h2 id="dm-t" data-i18n="metrics.label"></h2>
+    <p data-i18n="metrics.text"></p>
+    <p><a id="dm-pol" target="_blank" rel="noopener" data-i18n="metrics.policy"></a></p>
+    <div class="rodape">
+      <button class="btn" value="nao" data-i18n="metrics.dontSend"></button>
+      <button class="btn" value="sim" data-i18n="metrics.send"></button>
+    </div>
   </form>
 </dialog>
 
@@ -8362,10 +8386,44 @@ async function marcarRapido(it, on) {
 // Cancelar fora do submit: Enter no campo salva (o envio implicito usa o primeiro submit)
 $('#dn-nao').addEventListener('click', () => $('#dlg-nome').close('nao'));
 
+/* ---------- dados de uso e erros (metricas.py), so no PC: a linha no Microfone e fone e o aviso de quem ainda nao
+   escolheu. A escolha feita aqui vale sobre a da pagina do instalador ---------- */
+const noPC = () => ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
+function mostrarMetricas(m) {
+  const on = m.situacao === 'ligada';
+  $('#dd-met').hidden = !(m.situacao === 'ligada' || m.situacao === 'desligada');
+  $('#dd-met-txt').textContent = I18N.t(on ? 'metrics.on' : 'metrics.off');
+  $('#dd-met-btn').textContent = I18N.t(on ? 'metrics.turnOff' : 'metrics.turnOn');
+  $('#dd-met-btn').dataset.ligar = on ? '0' : '1';
+  $('#dd-met-pol').href = $('#dm-pol').href = m.politica;
+}
+async function lerMetricas() {
+  if (!noPC()) return null;
+  try { const m = await api('GET', '/api/metricas'); mostrarMetricas(m); return m; } catch (e) { return null; }
+}
+async function escolherMetricas(ligar) {
+  try { mostrarMetricas(await api('POST', '/api/metricas', { ligar })); }
+  catch (e) { avisar(I18N.t('metrics.saveFailed', { reason: e.message }), true); }
+}
+$('#dd-met-btn').addEventListener('click', e => escolherMetricas(e.currentTarget.dataset.ligar === '1'));
+let metricasPedidas = false;
+async function metricasSePrecisar() {
+  if (metricasPedidas || dialogoAberto()) return;
+  const m = await lerMetricas();
+  if (!m || m.situacao !== 'decidir' || dialogoAberto()) return;
+  metricasPedidas = true;
+  $('#dlg-metricas').showModal();
+}
+$('#dlg-metricas').addEventListener('close', () => {
+  const v = $('#dlg-metricas').returnValue;
+  if (v === 'sim' || v === 'nao') escolherMetricas(v === 'sim');   // o Esc nao escolhe: pergunta na proxima vez
+});
+
 async function abrirDispositivos() {
   const d = $('#dlg-disp');
   const msg = $('#dd-msg'); msg.className = 'msg-dlg'; msg.textContent = I18N.t('devices.reading');
   $('#dd-mic').disabled = $('#dd-mon').disabled = true;
+  lerMetricas();
   d.showModal();
   try {
     const r = await api('GET', '/api/devices');
@@ -8711,6 +8769,7 @@ async function boasVindasSePrecisar() {
   let r;
   try { r = await api('GET', '/api/boas-vindas'); } catch (e) { return; }
   if (r.mostrar && !dialogoAberto()) { $('#dlg-boas').showModal(); conferirBoasVindas(); }
+  else metricasSePrecisar();   // com as boas-vindas na tela, o aviso dos dados vem quando elas fecham
 }
 async function conferirBoasVindas() {
   clearTimeout(boasT);
@@ -8735,6 +8794,7 @@ $('#dlg-boas').addEventListener('close', () => {
   clearTimeout(boasT);
   api('POST', '/api/boas-vindas').catch(() => {});
   if ($('#dlg-boas').returnValue === 'buscar') $('#q').focus();
+  setTimeout(metricasSePrecisar, 0);   // depois de o dialogo sair da tela
 });
 $('#db-trocar').addEventListener('click', abrirDispositivos);
 // a troca feita no dialogo de dispositivos aparece no passo na hora, sem esperar a proxima conferencia

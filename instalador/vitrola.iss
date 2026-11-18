@@ -59,6 +59,8 @@ WizardImageFile=assistente-grande-164.png,assistente-grande-328.png
 ; no fim, avisa o Windows que os icones mudaram: o Explorer guarda o icone pelo caminho do exe, que e o mesmo de
 ; uma versao para a outra, e sem o aviso o atalho seguia com o icone velho depois de atualizar
 ChangesAssociations=yes
+; o {localappdata} do desinstalador (o codigo aleatorio dos dados de uso) e o de quem instalou, que e quem usa
+UsedUserAreasWarning=no
 
 [Languages]
 ; a licenca numa pagina de informacao, e nao de "aceito": a GPLv3 nao precisa ser aceita para usar (secao 9)
@@ -78,6 +80,18 @@ pt.Microfone=Preparando os microfones para a Vitrola (o som do PC some por algun
 en.Microfone=Getting your microphones ready for Vitrola (your PC's sound drops for a few seconds)...
 pt.ParcialSemApp=Esta é uma atualização da Vitrola, e só serve onde a Vitrola já está instalada. Para instalar, use o Vitrola-{#Versao}-setup.exe.
 en.ParcialSemApp=This is a Vitrola update, and it only works where Vitrola is already installed. To install Vitrola, use Vitrola-{#Versao}-setup.exe.
+; a pagina dos dados de uso e dos erros (metricas.py): a politica na instalacao e a opcao de desligar, como a SignPath
+; pede (o PRIVACIDADE.md tem o texto inteiro)
+pt.MetricasTitulo=Dados de uso e erros
+en.MetricasTitulo=Usage data and errors
+pt.MetricasDescricao=O que a Vitrola envia para melhorar, sem saber quem é você.
+en.MetricasDescricao=What Vitrola sends to get better, without knowing who you are.
+pt.MetricasSub=Leia o que vai e escolha embaixo. Dá para mudar depois, na Vitrola, em Microfone e fone.
+en.MetricasSub=Read what is sent and choose below. You can change it later in Vitrola, under Mic and headphones.
+pt.MetricasTexto=Para saber quantas pessoas usam a Vitrola, se as versões novas estão chegando, que erros acontecem e quais efeitos são usados, a Vitrola pode enviar dados anônimos de uso e os erros.%n%nO que vai: um código aleatório desta instalação, a versão da Vitrola, a do Windows e a língua; um aviso por dia de uso; quanto tempo a música toca e quanto tempo cada efeito de voz fica ligado; e os erros, com o lugar do código onde aconteceram.%n%nO que nunca vai: nome, conta, e-mail, música, busca, link, áudio, voz ou o nome dos seus aparelhos. O endereço IP não é guardado.%n%nPara onde vai: PostHog (uso) e Sentry (erros), com os dados na União Europeia. O uso fica guardado por até 1 ano, e os erros, por até 90 dias.%n%nA política inteira: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
+en.MetricasTexto=To know how many people use Vitrola, whether new versions are arriving, which errors happen and which effects get used, Vitrola can send anonymous usage data and errors.%n%nWhat is sent: a random code for this installation, the Vitrola version, the Windows version and the language; one notice per day of use; how long music plays and how long each voice effect stays on; and errors, with the place in the code where they happened.%n%nWhat is never sent: name, account, email, music, searches, links, audio, voice or the names of your devices. The IP address is not stored.%n%nWhere it goes: PostHog (usage) and Sentry (errors), with the data in the European Union. Usage is kept for up to 1 year, and errors for up to 90 days.%n%nThe full policy: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
+pt.MetricasCaixa=Enviar dados anônimos de uso e os erros
+en.MetricasCaixa=Send anonymous usage data and errors
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -108,6 +122,12 @@ Source: "{#Deno}\deno.exe"; DestDir: "{app}\bin"; Flags: ignoreversion
 ; quem recebe o programa recebe as licencas: a GPLv3 da Vitrola e o texto de cada componente de terceiros
 Source: "{#Licenca}"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "{#Terceiros}"; DestDir: "{app}"; DestName: "TERCEIROS.txt"; Flags: ignoreversion
+
+[Registry]
+; a escolha da pagina dos dados de uso e dos erros, que o metricas.py le (a feita na Vitrola vale sobre ela). So grava
+; quando a pessoa viu a pagina, ou com /metricas=0 ou 1: a atualizacao em silencio mantem a escolha de antes, e quem
+; nunca escolheu ve o aviso na Vitrola antes de qualquer envio
+Root: HKLM; Subkey: "SOFTWARE\Vitrola"; ValueType: dword; ValueName: "Metricas"; ValueData: "{code:MetricasValor}"; Flags: uninsdeletevalue uninsdeletekeyifempty; Check: GravaMetricas
 
 [Icons]
 Name: "{autoprograms}\Vitrola"; Filename: "{app}\vitrola.exe"
@@ -144,12 +164,57 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 [UninstallDelete]
 ; o que a atualizacao automatica baixou (os setups, o estado e o log dela)
 Type: filesandordirs; Name: "{app}\atualizacao"
+; o codigo aleatorio da instalacao que vai nos dados de uso (metricas.py): reinstalar comeca outro
+Type: files; Name: "{localappdata}\Vitrola\metricas.json"
 
 [Code]
 // setup.exe /VERYSILENT /reabrir=1, o da atualizacao pelo app: abre a Vitrola de novo no fim
 function Reabrir: Boolean;
 begin
   Result := WizardSilent and (ExpandConstant('{param:reabrir|0}') = '1');
+end;
+
+// a pagina dos dados de uso e dos erros, depois da licenca: a politica e a caixa de enviar, que vem marcada (ou como
+// a pessoa deixou da outra vez)
+var
+  MetricasPagina: TOutputMsgMemoWizardPage;
+  MetricasCaixa: TNewCheckBox;
+
+procedure InitializeWizard;
+var
+  Antes: Cardinal;
+begin
+  MetricasPagina := CreateOutputMsgMemoPage(wpInfoBefore, CustomMessage('MetricasTitulo'),
+    CustomMessage('MetricasDescricao'), CustomMessage('MetricasSub'), CustomMessage('MetricasTexto'));
+  MetricasPagina.RichEditViewer.Height := MetricasPagina.RichEditViewer.Height - ScaleY(30);
+  MetricasCaixa := TNewCheckBox.Create(MetricasPagina);
+  MetricasCaixa.Parent := MetricasPagina.Surface;
+  MetricasCaixa.Left := MetricasPagina.RichEditViewer.Left;
+  MetricasCaixa.Top := MetricasPagina.RichEditViewer.Top + MetricasPagina.RichEditViewer.Height + ScaleY(10);
+  MetricasCaixa.Width := MetricasPagina.SurfaceWidth;
+  MetricasCaixa.Height := ScaleY(20);
+  MetricasCaixa.Caption := CustomMessage('MetricasCaixa');
+  MetricasCaixa.Checked := not (RegQueryDWordValue(HKLM, 'SOFTWARE\Vitrola', 'Metricas', Antes) and (Antes = 0));
+end;
+
+// o /metricas=0 ou 1 do setup em silencio, ou '' sem ele
+function MetricasParam: String;
+begin
+  Result := ExpandConstant('{param:metricas|}');
+  if (Result <> '0') and (Result <> '1') then
+    Result := '';
+end;
+
+function GravaMetricas: Boolean;
+begin
+  Result := (MetricasParam <> '') or not WizardSilent;
+end;
+
+function MetricasValor(Param: String): String;
+begin
+  Result := MetricasParam;
+  if Result = '' then
+    if MetricasCaixa.Checked then Result := '1' else Result := '0';
 end;
 
 
