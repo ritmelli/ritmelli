@@ -376,8 +376,14 @@ def reabre():
           "if($s -and $s.estado -eq 'instalando'){while((Get-Process -Id $s.pid -ErrorAction SilentlyContinue) -and "
           "(Get-Date) -lt $fim){Start-Sleep 1}};"
           f"Start-Process -FilePath '{exe}'")
-    subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps],
-                     creationflags=0x00000008 | NO_WINDOW, close_fds=True)
+    args = ["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps]
+    # com um console escondido (o NO_WINDOW), e nao sem nenhum: o PowerShell aberto com DETACHED_PROCESS sai sem rodar
+    # o comando. Fora do job de quem abriu a Vitrola, quando der: ela fecha logo depois
+    cf = NO_WINDOW | 0x00000200  # CREATE_NEW_PROCESS_GROUP
+    try:
+        subprocess.Popen(args, creationflags=cf | 0x01000000, close_fds=True)  # CREATE_BREAKAWAY_FROM_JOB
+    except OSError:
+        subprocess.Popen(args, creationflags=cf, close_fds=True)
 
 
 def instalando_agora():

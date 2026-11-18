@@ -203,6 +203,39 @@ caso("Instalar agora sem a versao baixada: recusa", not ok and motivo and atu.RE
 atualizador._grava(estado="pronta", nova={"versao": "0.0.1", "tamanho": 1})
 caso("versao mais velha no estado: a tela nao mostra", a.publico()["nova"] is None and a.publico()["estado"] == "parado")
 
+if sys.platform == "win32":
+    print("--- o reabre, com o PowerShell de verdade (no lugar de abrir a Vitrola, ele grava uma marca)")
+    import subprocess
+    import time
+    popen = subprocess.Popen
+    capturado = []
+    subprocess.Popen = lambda args, **kw: capturado.append((args, kw))
+    try:
+        atualizador.reabre()
+    finally:
+        subprocess.Popen = popen
+    args, kw = capturado[0]
+    marca = tmp / "reabriu.txt"
+    exe = str(atualizador.pastas.APP / "vitrola.exe")
+    trocado = args[-1].replace(f"Start-Process -FilePath '{exe}'", f"Set-Content -LiteralPath '{marca}' -Value ok")
+    caso("no fim, abre a Vitrola da pasta do app", trocado != args[-1])
+    atualizador._grava(estado="pronta")
+    try:
+        popen([*args[:-1], trocado], **kw)
+    except OSError:  # fora de um job que deixa sair dele (o reabre faz o mesmo)
+        popen([*args[:-1], trocado], **dict(kw, creationflags=kw["creationflags"] & ~0x01000000))
+    time.sleep(2)
+    caso("antes de o instalador comecar, nao abre", not marca.exists())
+    dorme = popen([sys.executable, "-c", "import time; time.sleep(3)"])
+    atualizador._grava(estado="instalando", pid=dorme.pid)
+    time.sleep(1.5)
+    caso("com o instalador rodando, espera", not marca.exists())
+    dorme.wait()
+    fim = time.monotonic() + 15
+    while not marca.exists() and time.monotonic() < fim:
+        time.sleep(0.2)
+    caso("o instalador terminou: abre (com as flags do reabre, o PowerShell escondido roda)", marca.exists())
+
 print("--- o ao_sair")
 disparos, reaberturas = [], []
 atualizador.dispara = lambda: disparos.append(1) or True
