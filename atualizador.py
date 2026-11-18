@@ -91,11 +91,24 @@ def estado():
 
 
 def _grava(**kw):
+    """Grava o estado. A tela le o estado.json a cada mudanca (o progresso do download muda a cada pedaco), e o Windows
+    nao troca um arquivo que alguem esta lendo (Access is denied): tenta de novo por ate uns 5 s, em vez de a rodada
+    inteira desistir no meio do download, como aconteceu na esteira (18/11)."""
     e = {k: v for k, v in estado().items() if k not in ("erro",)}
     e.update(kw, quando=time.strftime("%Y-%m-%dT%H:%M:%S"))
     PASTA.mkdir(parents=True, exist_ok=True)
-    pastas.save_json(PASTA / "estado.json", e)
+    for i in range(GRAVA_TENTATIVAS):
+        try:
+            pastas.save_json(PASTA / "estado.json", e)
+            return e
+        except PermissionError:
+            if i == GRAVA_TENTATIVAS - 1:
+                raise
+            time.sleep(min(0.05 * (i + 1), 0.5))
     return e
+
+
+GRAVA_TENTATIVAS = 20
 
 
 # ---------- os processos ----------

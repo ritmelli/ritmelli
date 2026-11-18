@@ -264,6 +264,25 @@ caso("quem usa o PC so le e roda a tarefa (nao muda)",
 if sys.platform == "win32":
     caso("os processos da maquina, sem abrir nenhum", any(p == os.getpid() for p, _ in atualizador._processos()))
 
+if sys.platform == "win32":
+    # a tela lendo o estado.json no instante em que a tarefa grava: o Windows recusa trocar o arquivo aberto, e a
+    # rodada desistia no meio do download (esteira, 18/11). Agora espera a leitura acabar
+    print("--- o estado.json aberto pela tela")
+    atualizador._grava(estado="parado")
+    leitor = open(atualizador.PASTA / "estado.json", encoding="utf-8")
+    solta = threading.Timer(0.4, leitor.close)
+    solta.start()
+    try:
+        t0 = time.monotonic()
+        atualizador._grava(estado="baixando", progresso=0.5)
+        caso("grava depois que a tela solta o arquivo", atualizador.estado().get("progresso") == 0.5,
+             f"{time.monotonic() - t0:.2f} s")
+    except PermissionError as ex:
+        caso("grava depois que a tela solta o arquivo", False, str(ex))
+    finally:
+        solta.cancel()
+        leitor.close()
+
 srv.shutdown()
 print(f"\n{'tudo certo' if not falhas else f'{len(falhas)} falharam: ' + ', '.join(falhas)}")
 sys.exit(1 if falhas else 0)
