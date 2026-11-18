@@ -96,10 +96,12 @@ with tempfile.TemporaryDirectory() as tmp:
     m._fecha_uso()
     evs = [m.fila.get_nowait() for _ in range(m.fila.qsize())]
     nomes = [x["event"] for x in evs]
-    confere(nomes == ["efeito", "efeito", "uso"], f"um 'efeito' por efeito ligado e o 'uso' no fim ({nomes})")
-    uso = evs[-1]["properties"]
-    confere(uso["musica_s"] == 15 and uso["voz_s"] == 10 and uso["efeitos"] == {"eco": 5, "robo": 5},
-            f"o uso soma o que o motor fez ({uso['musica_s']}, {uso['voz_s']}, {uso['efeitos']})")
+    confere(nomes == ["efeito", "efeito", "uso", "efeito_tempo", "efeito_tempo"],
+            f"um 'efeito' por efeito ligado, e o 'uso' e o tempo de cada efeito no fim ({nomes})")
+    uso = evs[2]["properties"]
+    tempos = {x["properties"]["efeito"]: x["properties"]["segundos"] for x in evs[3:]}
+    confere(uso["musica_s"] == 15 and uso["voz_s"] == 10 and tempos == {"eco": 5, "robo": 5},
+            f"o uso soma o que o motor fez ({uso['musica_s']}, {uso['voz_s']}, {tempos})")
     permitidas = met.COMUNS | {"$process_person_profile", "$geoip_disable", "$lib"}
     fora = [(x["event"], k) for x in evs for k in x["properties"] if k not in met.EVENTOS[x["event"]] | permitidas]
     confere(not fora, f"so as propriedades da lista ({fora})")

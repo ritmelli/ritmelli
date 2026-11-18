@@ -10,8 +10,8 @@ metricas), nada sai ate a pessoa ver o aviso na tela e escolher. Pelo codigo e n
 
 O que vai, sempre com um ID aleatorio da instalacao (o metricas.json da pasta de dados; o desinstalador apaga), a
 versao, a do Windows e a lingua: um "ativo" por dia de uso, o "atualizou" na primeira vez de uma versao nova, o
-"efeito" quando um efeito de voz liga e o "uso" a cada meia hora e ao fechar, com os segundos de musica, de voz com
-efeito e de cada efeito. Os erros vao para o Sentry, com a pilha (arquivo, funcao e linha) e a mensagem sem o que
+"efeito" quando um efeito de voz liga e, a cada meia hora e ao fechar, o "uso" (os segundos de musica e de voz com
+efeito) e um "efeito_tempo" por efeito usado (os segundos dele). Os erros vao para o Sentry, com a pilha (arquivo, funcao e linha) e a mensagem sem o que
 esta entre aspas, sem endereco e sem caminho. Nunca vai nome, conta, musica, busca, link, audio, voz nem o nome de
 um aparelho: o EVENTOS abaixo e a lista inteira, e o dev/testa_metricas.py confere.
 
@@ -53,7 +53,8 @@ EVENTOS = {
     "ativo": {"primeira_vez"},
     "atualizou": {"de"},
     "efeito": {"efeito"},
-    "uso": {"musica_s", "voz_s", "efeitos"},
+    "uso": {"musica_s", "voz_s"},
+    "efeito_tempo": {"efeito", "segundos"},  # um por efeito usado, junto do "uso": o painel soma por efeito
 }
 COMUNS = {"versao", "windows", "lingua", "sessao"}
 SEM_EFEITO = "nenhum"
@@ -328,8 +329,10 @@ class Metricas:
         u, self._uso = self._uso, {"musica_s": 0.0, "voz_s": 0.0, "efeitos": {}}
         self._ultimo_uso = time.monotonic()
         if u["musica_s"] >= 1 or u["voz_s"] >= 1:
-            self.evento("uso", musica_s=round(u["musica_s"]), voz_s=round(u["voz_s"]),
-                        efeitos={k: round(v) for k, v in u["efeitos"].items() if v >= 1})
+            self.evento("uso", musica_s=round(u["musica_s"]), voz_s=round(u["voz_s"]))
+        for ef, s in u["efeitos"].items():
+            if s >= 1:
+                self.evento("efeito_tempo", efeito=ef, segundos=round(s))
 
     def _dia_novo(self):
         """O "ativo" do dia (e o "atualizou", na primeira vez desta versao), uma vez por dia por instalacao."""
