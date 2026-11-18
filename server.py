@@ -1857,7 +1857,7 @@ def build(app_state):
                 return web.Response(status=403, text="origin not allowed")
         celular = request.path.startswith("/api/") and not do_pc(request)
         if celular and request.path.startswith("/api/pareamento"):
-            return j_err(i18n.so_texto("The pairing code and connected devices can only be viewed on the computer."), 403)
+            return j_err(i18n.so_texto("The pairing code and connected phones can only be viewed on the computer."), 403)
         if celular and request.path.startswith("/api/atualizacao"):
             return j_err(i18n.so_texto("New versions can only be installed from the computer."), 403)
         if celular and request.path.startswith("/api/metricas"):

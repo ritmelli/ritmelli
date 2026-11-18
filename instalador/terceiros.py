@@ -172,10 +172,10 @@ def main():
 
     versao = re.search(r'^VERSAO = "(.+)"', (a.ritmelli / "versao.py").read_text(encoding="utf-8"), re.M).group(1)
     topo = (f"Ritmelli {versao}: avisos de terceiros / third-party notices\n\n"
-            "O Ritmelli é software livre, distribuído sob a GPL versão 3 (LICENSE.txt, nesta pasta). Ele inclui "
+            "O Ritmelli é software livre, distribuído sob a GPLv3 (LICENSE.txt, nesta pasta). Ele inclui "
             "programas e bibliotecas\nde outros projetos, cada um sob a sua própria licença. Este arquivo traz a "
             "lista desses componentes e, em seguida, o texto\nde cada licença.\n\n"
-            "Ritmelli is free software, distributed under the GNU GPL version 3 (LICENSE.txt, in this folder). It "
+            "Ritmelli is free software, distributed under the GPLv3 (LICENSE.txt, in this folder). It "
             "includes software\nand libraries from other projects, each under its own license. This file lists "
             "those components, followed by\nthe text of each license.\n\n")
     a.saida.parent.mkdir(parents=True, exist_ok=True)

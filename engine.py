@@ -824,10 +824,13 @@ def _erro_da_tarefa(r, mic):
         return i18n.msg("server.mic.noTask", "The Ritmelli component that prepares microphones is missing. "
                         "Reinstall Ritmelli.")
     if motivo == "nao_pronto":
-        return i18n.msg("server.mic.notReady", "Couldn't prepare the microphone \"{name}\" for Ritmelli.", name=mic)
+        return i18n.msg("server.mic.notReady", "Couldn't prepare the microphone \"{name}\" for Ritmelli, so the "
+                                               "music can't reach it. Close and reopen Ritmelli to try again.", name=mic)
     if motivo == "audio":
-        return i18n.msg("server.mic.audioSlow", "Windows audio didn't restart in time.")
-    return i18n.msg("server.mic.taskFailed", "Couldn't prepare the microphone ({reason}).",
+        return i18n.msg("server.mic.audioSlow", "Windows audio didn't restart in time. Close and reopen Ritmelli to "
+                                                "try again.")
+    return i18n.msg("server.mic.taskFailed", "Couldn't prepare the microphone ({reason}). Close and reopen Ritmelli "
+                                             "to try again.",
                     reason=r.get("detalhe") or motivo or "?")
 
 
@@ -1546,7 +1549,8 @@ class Engine:
             # o efeito sairia daqui e o voz.dll nao carregou: a voz segue crua, e o aviso sai uma vez por efeito
             self._fx_falta_dito = True
             self.error = i18n.msg("server.effect.noVozDll", "Ritmelli's voz.dll file is missing, so voice effects "
-                                                            "won't work on this microphone. Reinstall Ritmelli.")
+                                                            "won't work on this microphone, but your voice still "
+                                                            "reaches the game as usual. Reinstall Ritmelli.")
         self._mic.append(x)
         while len(self._mic) > MIC_MAX:
             self._mic.popleft()
@@ -1614,12 +1618,12 @@ class Engine:
         if getattr(self._mina, "estado", None) != "erro":
             return i18n.so_texto(str(ex))
         if getattr(self._mina, "_motor", None) == "eleven":
-            return i18n.msg("server.mina.noElevenKey", "Mina DJ on ElevenAgents needs an ElevenLabs API key (in "
-                                                       "ELEVENLABS_API_KEY or the {keyFile} file) and the agent ID "
-                                                       "(in the {agentFile} file).",
+            return i18n.msg("server.mina.noElevenKey", "Mina DJ on ElevenAgents needs an ElevenLabs API key (in the "
+                                                       "ELEVENLABS_API_KEY environment variable or the {keyFile} "
+                                                       "file) and the agent ID (in the {agentFile} file).",
                             keyFile=str(pastas.DADOS / "eleven_key.txt"), agentFile=str(pastas.DADOS / "eleven_agente.txt"))
-        return i18n.msg("server.mina.noOpenAiKey", "Mina DJ needs an OpenAI API key: set it in OPENAI_API_KEY or in "
-                                                   "the {keyFile} file.", keyFile=str(pastas.DADOS / "openai_key.txt"))
+        return i18n.msg("server.mina.noOpenAiKey", "Mina DJ needs an OpenAI API key: set it in the OPENAI_API_KEY "
+                                                   "environment variable or in the {keyFile} file.", keyFile=str(pastas.DADOS / "openai_key.txt"))
 
     def mina_voz(self, x):
         """A voz dela, float32 48 kHz mono, na fila do jogo. Volta em quantos segundos ela comeca a tocar (a gravacao

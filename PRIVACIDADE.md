@@ -3,8 +3,8 @@
 [English below](#ritmelli-privacy-policy)
 
 O Ritmelli é executado no seu computador. Ele acessa a internet em três situações: quando você busca, ouve ou
-baixa músicas do YouTube e do YouTube Music, a seu pedido; quando verifica no GitHub se há uma nova versão, ocasião em
-que apenas baixa o manifesto público das versões; e, se você permitir, quando envia **dados anônimos de uso e relatórios
+baixa músicas do YouTube e do YouTube Music, a seu pedido; quando ele verifica no GitHub se há uma nova versão, ocasião em
+que apenas baixa o manifesto público das versões; e, se você permitir, quando ele envia **dados anônimos de uso e relatórios
 de erro**, conforme descrito abaixo.
 
 ## Dados de uso e relatórios de erro
@@ -36,7 +36,7 @@ vendidos nem usados para publicidade.
 **Microfone e fone**. Com o envio desativado, nada é enviado, e o que ainda não havia sido enviado é descartado. Quem
 atualizar a partir de uma versão sem esses dados verá um aviso no Ritmelli, e nada será enviado antes da sua escolha.
 
-**Base legal:** o legítimo interesse em melhorar o Ritmelli e corrigir os seus erros (LGPD, art. 7º, IX), com os dados
+**Base legal:** o legítimo interesse em melhorar o Ritmelli e corrigir os erros do aplicativo (LGPD, art. 7º, IX), com os dados
 reduzidos ao mínimo necessário, sem identificação de ninguém e com a opção de desativar o envio a qualquer momento.
 
 **O código responsável pelo envio** é aberto: [`metricas.py`](metricas.py), com a lista completa do que pode ser
@@ -44,7 +44,7 @@ enviado, e o teste que verifica essa lista, [`dev/testa_metricas.py`](dev/testa_
 
 ## Controlador dos dados
 
-Behling Informática Ltda, que publica o Ritmelli. Para tratar dos seus dados ou solicitar a exclusão dos dados de uma
+Behling Informática Ltda, que publica o Ritmelli. Para tirar dúvidas sobre os seus dados ou solicitar a exclusão dos dados de uma
 instalação (informando o código dela, que está no arquivo `%LOCALAPPDATA%\Ritmelli\metricas.json`),
 [abra uma issue](https://github.com/ritmelli/ritmelli/issues) sem incluir dados pessoais; a resposta será dada na própria issue.
 

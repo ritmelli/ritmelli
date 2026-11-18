@@ -11,8 +11,8 @@ mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de chamada que permita 
   arquivos já baixados.
 - Fila com transições de DJ: as músicas se emendam no tempo certo, com as batidas alinhadas e o andamento ajustado de
   uma para a outra, sem alterar o tom.
-- Tocar parecidas (modo Automático): mantém a fila sempre cheia com músicas parecidas, ordenadas pelo andamento,
-  que aparecem na fila marcadas como Automático.
+- Tocar parecidas (modo Automático): mantém a fila sempre cheia com músicas parecidas, ordenadas pelo andamento e
+  marcadas como Automático.
 - Sons rápidos: efeitos sonoros curtos que tocam por cima da música.
 - Efeitos de voz: rádio de polícia, megafone, locutor de rádio FM, eco, robô, voz grave e outros.
 
