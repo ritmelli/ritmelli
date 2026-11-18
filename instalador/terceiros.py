@@ -65,7 +65,7 @@ def tipo(d):
     if lic and "\n" not in lic and len(lic) <= 80:
         return lic
     cl = [c.split("::")[-1].strip() for c in m.get_all("Classifier") or [] if c.startswith("License ::")]
-    return ", ".join(cl) or "consulte o texto"
+    return ", ".join(cl) or "consulte o texto / see the text"
 
 
 def textos(d):
@@ -143,7 +143,7 @@ def main():
         if not lic:
             sys.exit(f"{p.relative_to(interno)} tem modelo ou fonte sem licenca na mesma pasta")
         corpo = "\n\n".join(f"--- {f.relative_to(interno).as_posix()}\n\n{le(f)}" for f in lic)
-        secao(f"_internal\\{p.relative_to(interno)}", "consulte o texto", corpo)
+        secao(f"_internal\\{p.relative_to(interno)}", "consulte o texto / see the text", corpo)
 
     # as DLLs do SDK do WebView2 (a janela, janela.py) vem dentro do pywebview, sem a licenca da Microsoft: o texto e
     # o aviso do pacote NuGet da mesma versao moram em licencas\
@@ -158,23 +158,26 @@ def main():
     num = re.search(r"version n?(\d+(?:\.\d+)+)", ver[0])
     corpo = [ver[0], next((x for x in ver if x.startswith("configuration:")), ""), "", roda(ff, "-hide_banner", "-L")]
     if num:
-        corpo.append(f"\nCódigo-fonte: https://ffmpeg.org/releases/ffmpeg-{num.group(1)}.tar.xz")
+        corpo.append(f"\nCódigo-fonte / source code: https://ffmpeg.org/releases/ffmpeg-{num.group(1)}.tar.xz")
     for pasta in (a.ffmpeg, a.ffmpeg.parent):
         for f in sorted(pasta.iterdir()):
             if f.is_file() and (NOME_LICENCA.search(f.name) or f.name == "FONTE.txt"):
                 corpo.append(f"\n--- {f.name}\n\n{le(f)}")
-    secao("ffmpeg e ffprobe (bin\\)", "consulte o texto", "\n".join(corpo))
+    secao("ffmpeg e ffprobe (bin\\)", "consulte o texto / see the text", "\n".join(corpo))
 
     deno = roda(a.deno / "deno.exe", "--version").splitlines()[0]
     num = re.search(r"deno (\d+(?:\.\d+)+)", deno).group(1)
-    secao(f"Deno {num} (bin\\)", "MIT", f"Código-fonte: https://github.com/denoland/deno/tree/v{num}\n\n"
+    secao(f"Deno {num} (bin\\)", "MIT", f"Código-fonte / source code: https://github.com/denoland/deno/tree/v{num}\n\n"
                                       f"{le(LICENCAS / 'deno-LICENSE.md')}")
 
     versao = re.search(r'^VERSAO = "(.+)"', (a.ritmelli / "versao.py").read_text(encoding="utf-8"), re.M).group(1)
-    topo = (f"Ritmelli {versao}: avisos de terceiros\n\n"
+    topo = (f"Ritmelli {versao}: avisos de terceiros / third-party notices\n\n"
             "O Ritmelli é software livre, distribuído sob a GPL versão 3 (LICENSE.txt, nesta pasta). Ele inclui "
-            "programas e bibliotecas\nde outros projetos, cada um sob a sua própria licença: primeiro vem a lista e, "
-            "em seguida, o texto de cada licença.\n\n")
+            "programas e bibliotecas\nde outros projetos, cada um sob a sua própria licença. Este arquivo traz a "
+            "lista desses componentes e, em seguida, o texto\nde cada licença.\n\n"
+            "Ritmelli is free software, distributed under the GNU GPL version 3 (LICENSE.txt, in this folder). It "
+            "includes software\nand libraries from other projects, each under its own license. This file lists "
+            "those components, followed by\nthe text of each license.\n\n")
     a.saida.parent.mkdir(parents=True, exist_ok=True)
     # com o BOM: o Bloco de Notas antigo le sem ele como ANSI
     a.saida.write_text(topo + "\n".join(lista) + "\n\n\n" + "\n\n".join(secoes), encoding="utf-8-sig")

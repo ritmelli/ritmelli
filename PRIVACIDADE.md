@@ -2,7 +2,7 @@
 
 [English below](#ritmelli-privacy-policy)
 
-O Ritmelli é executado no seu computador. Ele se comunica com a internet em três situações: quando você busca, ouve ou
+O Ritmelli é executado no seu computador. Ele acessa a internet em três situações: quando você busca, ouve ou
 baixa músicas do YouTube e do YouTube Music, a seu pedido; quando verifica no GitHub se há uma nova versão, ocasião em
 que apenas baixa o manifesto público das versões; e, se você permitir, quando envia **dados anônimos de uso e relatórios
 de erro**, conforme descrito abaixo.
@@ -42,48 +42,48 @@ reduzidos ao mínimo necessário, sem identificação de ninguém e com a opçã
 **O código responsável pelo envio** é aberto: [`metricas.py`](metricas.py), com a lista completa do que pode ser
 enviado, e o teste que verifica essa lista, [`dev/testa_metricas.py`](dev/testa_metricas.py).
 
-## Responsável
+## Controlador dos dados
 
 Behling Informática Ltda, que publica o Ritmelli. Para tratar dos seus dados ou solicitar a exclusão dos dados de uma
 instalação (informando o código dela, que está no arquivo `%LOCALAPPDATA%\Ritmelli\metricas.json`),
-[abra uma issue](https://github.com/ritmelli/ritmelli/issues) sem incluir dados pessoais; a resposta será dada por lá.
+[abra uma issue](https://github.com/ritmelli/ritmelli/issues) sem incluir dados pessoais; a resposta será dada na própria issue.
 
 ---
 
 # Ritmelli privacy policy
 
-Ritmelli runs on your computer. It connects to the internet in three situations: when you search for, listen to or
+Ritmelli runs on your computer. It connects to the internet in three situations: when you search for, listen to, or
 download music from YouTube and YouTube Music, at your request; when it checks GitHub for a new version, in which case
 it only downloads the public release manifest; and, if you allow it, when it sends **anonymous usage data and error
 reports**, as described below.
 
 ## Usage data and error reports
 
-**Purpose:** to learn how many people use Ritmelli, whether new versions are reaching them, which errors occur and
-which features are actually used (each voice effect, music playback), so we can decide what to fix, improve or remove.
+**Purpose:** to learn how many people use Ritmelli, whether new versions are reaching them, which errors occur, and
+which features are actually used (each voice effect, music playback), so we can decide what to fix, improve, or remove.
 
-**What is sent**, always together with a random code for this installation (it is not tied to you and is replaced by a
-new one if you reinstall), the Ritmelli and Windows versions and the Windows language:
+**What is sent**, always together with a random ID for this installation (it is not tied to you and is replaced by a
+new one if you reinstall), the Ritmelli and Windows versions, and the Windows language:
 
 - one record for each day Ritmelli is used;
 - the previous version, the first time a new version is opened;
-- the voice effect turned on, whenever an effect is turned on;
-- every half hour of use and when the app closes: how many seconds music played, how many seconds the voice had an
-  effect on, and how many seconds each effect stayed on;
-- errors: the error type, the place in the code where it occurred (file, function and line) and the error message,
-  with anything in quotes, addresses and folder paths removed.
+- which voice effect was turned on, each time one is turned on;
+- every half hour of use and when the app closes: how many seconds music played, how many seconds a voice effect was
+  on, and how many seconds each effect stayed on;
+- errors: the error type, the place in the code where it occurred (file, function, and line), and the error message,
+  with anything in quotes, addresses, and folder paths removed.
 
 **What is never sent:** name, account, email, song names, searches, links, audio, your voice, the names of your devices
-(microphone and headphones) or your files. The IP address is not stored.
+(microphone and headphones), or your files. The IP address is not stored.
 
 **Where the data goes:** usage data to [PostHog](https://posthog.com/privacy) and error reports to
 [Sentry](https://sentry.io/privacy/), both stored in the European Union. Usage data is kept for up to 1 year, and error
 reports for up to 90 days. Only the Ritmelli team has access to them, and the data is never sold or used for
 advertising.
 
-**How to turn it on or off:** during installation, on the "Usage data and errors" page, and later, in Ritmelli, under
+**How to turn it on or off:** during installation, on the "Usage Data and Errors" page, and later, in Ritmelli, under
 **Mic and headphones**. When sending is off, nothing is sent, and anything not yet sent is discarded. Anyone updating
-from a version without this data will see a notice in Ritmelli, and nothing is sent before they make a choice.
+from a version that didn't collect this data will see a notice in Ritmelli, and nothing is sent until they make a choice.
 
 **Legal basis:** the legitimate interest in improving Ritmelli and fixing its errors (Brazil's LGPD, art. 7, IX), with
 the data kept to the minimum necessary, without identifying anyone, and with the option to turn sending off at any time.
@@ -94,5 +94,5 @@ and the test that checks that list, [`dev/testa_metricas.py`](dev/testa_metricas
 ## Data controller
 
 Behling Informática Ltda, the publisher of Ritmelli. To discuss your data or to request the deletion of an
-installation's data (please include its code, found in `%LOCALAPPDATA%\Ritmelli\metricas.json`),
+installation's data (please include its ID, found in `%LOCALAPPDATA%\Ritmelli\metricas.json`),
 [open an issue](https://github.com/ritmelli/ritmelli/issues) without including any personal data; we will reply there.

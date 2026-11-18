@@ -126,6 +126,9 @@ def confere_tema(tema, servidor, efeitos):
         for k, v in textos.items():
             if not v:
                 falha(f"{tema.name}: {k} is empty in {lingua}")
+            # a barra solta no fim (o "\ " cujo espaco um editor cortou) vira barra na tela: o espaco no fim se escreve \u0020
+            if v.endswith("\\"):
+                falha(f"{tema.name}: {k} in {lingua} ends with a lone backslash (write a trailing space as \\u0020)")
             if k in base and params(v) != params(base[k]):
                 falha(f"{tema.name}: {k} has params {sorted(params(v))} in {lingua}, "
                       f"{sorted(params(base[k]))} in {i18n.RESERVA}")

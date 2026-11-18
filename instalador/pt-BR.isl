@@ -29,7 +29,7 @@ LanguageCodePage=1252
 SetupAppTitle=Instalador
 SetupWindowTitle=%1 - Instalador
 UninstallAppTitle=Desinstalar
-UninstallAppFullTitle=Desinstalar %1
+UninstallAppFullTitle=Desinstalar o %1
 
 ; *** Misc. common
 InformationTitle=Informação
@@ -37,7 +37,7 @@ ConfirmTitle=Confirmar
 ErrorTitle=Erro
 
 ; *** SetupLdr messages
-SetupLdrStartupMessage=Você está prestes a instalar %1. Deseja continuar?
+SetupLdrStartupMessage=Você está prestes a instalar o %1. Deseja continuar?
 LdrCannotCreateTemp=Não foi possível criar um arquivo temporário. Instalação interrompida
 LdrCannotExecTemp=Não foi possível executar o arquivo na pasta temporária. Instalação interrompida
 HelpTextNote=
@@ -58,14 +58,14 @@ WinVersionTooLowError=Este programa requer o %1 versão %2 ou posterior.
 WinVersionTooHighError=Este programa não pode ser instalado no %1 versão %2 ou posterior.
 AdminPrivilegesRequired=Para instalar este programa, é necessário estar conectado como administrador.
 PowerUserPrivilegesRequired=Para instalar este programa, é necessário estar conectado como administrador ou como membro do grupo Usuários Avançados.
-SetupAppRunningError=O instalador detectou que %1 está em execução.%n%nFeche todas as instâncias do programa e clique em OK para continuar ou em Cancelar para sair.
-UninstallAppRunningError=O desinstalador detectou que %1 está em execução.%n%nFeche todas as instâncias do programa e clique em OK para continuar ou em Cancelar para sair.
+SetupAppRunningError=O instalador detectou que o %1 está em execução.%n%nFeche todas as instâncias do programa e clique em OK para continuar ou em Cancelar para sair.
+UninstallAppRunningError=O desinstalador detectou que o %1 está em execução.%n%nFeche todas as instâncias do programa e clique em OK para continuar ou em Cancelar para sair.
 
 ; *** Startup questions
 PrivilegesRequiredOverrideTitle=Selecionar o modo de instalação
 PrivilegesRequiredOverrideInstruction=Selecione o modo de instalação
-PrivilegesRequiredOverrideText1=É possível instalar %1 para todos os usuários (requer privilégios de administrador) ou somente para você.
-PrivilegesRequiredOverrideText2=É possível instalar %1 somente para você ou para todos os usuários (requer privilégios de administrador).
+PrivilegesRequiredOverrideText1=É possível instalar o %1 para todos os usuários (requer privilégios de administrador) ou somente para você.
+PrivilegesRequiredOverrideText2=É possível instalar o %1 somente para você ou para todos os usuários (requer privilégios de administrador).
 PrivilegesRequiredOverrideAllUsers=Instalar para &todos os usuários
 PrivilegesRequiredOverrideAllUsersRecommended=Instalar para &todos os usuários (recomendado)
 PrivilegesRequiredOverrideCurrentUser=Instalar somente para &mim
@@ -111,8 +111,8 @@ BrowseDialogLabel=Selecione uma pasta na lista abaixo e clique em OK.
 NewFolderName=Nova pasta
 
 ; *** "Welcome" wizard page
-WelcomeLabel1=Bem-vindo ao assistente de instalação de [name]
-WelcomeLabel2=Este assistente instalará [name/ver] no seu computador.%n%nÉ recomendável fechar todos os outros aplicativos antes de continuar.
+WelcomeLabel1=Boas-vindas ao assistente de instalação do [name]
+WelcomeLabel2=Este assistente instalará o [name/ver] no seu computador.%n%nÉ recomendável fechar todos os outros aplicativos antes de continuar.
 
 ; *** "Password" wizard page
 WizardPassword=Senha
@@ -146,8 +146,8 @@ UserInfoNameRequired=É necessário informar um nome.
 
 ; *** "Select Destination Location" wizard page
 WizardSelectDir=Selecionar o local de destino
-SelectDirDesc=Onde você deseja instalar [name]?
-SelectDirLabel3=O instalador instalará [name] na pasta a seguir.
+SelectDirDesc=Onde você deseja instalar o [name]?
+SelectDirLabel3=O [name] será instalado na pasta a seguir.
 SelectDirBrowseLabel=Para continuar, clique em Avançar. Para selecionar outra pasta, clique em Procurar.
 DiskSpaceGBLabel=São necessários pelo menos [gb] GB de espaço livre em disco.
 DiskSpaceMBLabel=São necessários pelo menos [mb] MB de espaço livre em disco.
@@ -183,7 +183,7 @@ ComponentsDiskSpaceMBLabel=A seleção atual requer pelo menos [mb] MB de espaç
 ; *** "Select Additional Tasks" wizard page
 WizardSelectTasks=Selecionar tarefas adicionais
 SelectTasksDesc=Quais tarefas adicionais devem ser executadas?
-SelectTasksLabel2=Selecione as tarefas adicionais que o instalador deve executar durante a instalação de [name] e clique em Avançar.
+SelectTasksLabel2=Selecione as tarefas adicionais que o instalador deve executar durante a instalação do [name] e clique em Avançar.
 
 ; *** "Select Start Menu Folder" wizard page
 WizardSelectProgramGroup=Selecionar a pasta do menu Iniciar
@@ -198,7 +198,7 @@ NoProgramGroupCheck2=&Não criar uma pasta no menu Iniciar
 
 ; *** "Ready to Install" wizard page
 WizardReady=Pronto para instalar
-ReadyLabel1=O instalador está pronto para começar a instalação de [name] no seu computador.
+ReadyLabel1=O instalador está pronto para começar a instalação do [name] no seu computador.
 ReadyLabel2a=Clique em Instalar para continuar a instalação ou em Voltar para revisar ou alterar alguma configuração.
 ReadyLabel2b=Clique em Instalar para continuar a instalação.
 ReadyMemoUserInfo=Informações do usuário:
@@ -232,27 +232,27 @@ ArchiveUnsupportedFormat=O formato do arquivo compactado não é compatível
 
 ; *** "Preparing to Install" wizard page
 WizardPreparing=Preparando a instalação
-PreparingDesc=O instalador está se preparando para instalar [name] no seu computador.
-PreviousInstallNotCompleted=A instalação ou remoção de um programa anterior não foi concluída. É necessário reiniciar o computador para concluir essa operação.%n%nDepois de reiniciar o computador, execute o instalador novamente para concluir a instalação de [name].
+PreparingDesc=O instalador está se preparando para instalar o [name] no seu computador.
+PreviousInstallNotCompleted=A instalação ou remoção de um programa anterior não foi concluída. É necessário reiniciar o computador para concluir essa operação.%n%nDepois de reiniciar o computador, execute o instalador novamente para concluir a instalação do [name].
 CannotContinue=O instalador não pode continuar. Clique em Cancelar para sair.
 ApplicationsFound=Os aplicativos a seguir estão usando arquivos que precisam ser atualizados pelo instalador. É recomendável permitir que o instalador feche esses aplicativos automaticamente.
 ApplicationsFound2=Os aplicativos a seguir estão usando arquivos que precisam ser atualizados pelo instalador. É recomendável permitir que o instalador feche esses aplicativos automaticamente. Após a conclusão da instalação, o instalador tentará reiniciar os aplicativos.
 CloseApplications=&Fechar os aplicativos automaticamente
 DontCloseApplications=&Não fechar os aplicativos
 ErrorCloseApplications=O instalador não conseguiu fechar todos os aplicativos automaticamente. Antes de continuar, é recomendável fechar todos os aplicativos que usam arquivos a serem atualizados pelo instalador.
-PrepareToInstallNeedsRestart=O instalador precisa reiniciar o computador. Depois de reiniciar, execute o instalador novamente para concluir a instalação de [name].%n%nDeseja reiniciar agora?
+PrepareToInstallNeedsRestart=O instalador precisa reiniciar o computador. Depois de reiniciar, execute o instalador novamente para concluir a instalação do [name].%n%nDeseja reiniciar agora?
 
 ; *** "Installing" wizard page
 WizardInstalling=Instalando
-InstallingLabel=Aguarde enquanto o instalador instala [name] no seu computador.
+InstallingLabel=Aguarde enquanto o [name] é instalado no seu computador.
 
 ; *** "Setup Completed" wizard page
-FinishedHeadingLabel=Concluindo o assistente de instalação de [name]
-FinishedLabelNoIcons=O instalador concluiu a instalação de [name] no seu computador.
-FinishedLabel=O instalador concluiu a instalação de [name] no seu computador. Para abrir o aplicativo, use os atalhos instalados.
+FinishedHeadingLabel=Concluindo o assistente de instalação do [name]
+FinishedLabelNoIcons=O instalador concluiu a instalação do [name] no seu computador.
+FinishedLabel=O instalador concluiu a instalação do [name] no seu computador. Para abrir o aplicativo, use os atalhos instalados.
 ClickFinish=Clique em Concluir para sair do instalador.
-FinishedRestartLabel=Para concluir a instalação de [name], o instalador precisa reiniciar o computador. Deseja reiniciar agora?
-FinishedRestartMessage=Para concluir a instalação de [name], o instalador precisa reiniciar o computador.%n%nDeseja reiniciar agora?
+FinishedRestartLabel=Para concluir a instalação do [name], o instalador precisa reiniciar o computador. Deseja reiniciar agora?
+FinishedRestartMessage=Para concluir a instalação do [name], o instalador precisa reiniciar o computador.%n%nDeseja reiniciar agora?
 ShowReadmeCheck=Sim, exibir o arquivo README
 YesRadio=&Sim, reiniciar o computador agora
 NoRadio=&Não, reiniciar o computador mais tarde
@@ -366,13 +366,13 @@ UninstallNotFound=O arquivo "%1" não existe. Não é possível desinstalar.
 UninstallOpenError=O arquivo "%1" não pôde ser aberto. Não é possível desinstalar
 UninstallUnsupportedVer=O arquivo de log de desinstalação "%1" está em um formato não reconhecido por esta versão do desinstalador. Não é possível desinstalar
 UninstallUnknownEntry=Uma entrada desconhecida (%1) foi encontrada no log de desinstalação
-ConfirmUninstall=Tem certeza de que deseja remover completamente %1 e todos os seus componentes?
+ConfirmUninstall=Tem certeza de que deseja remover completamente o %1 e todos os seus componentes?
 UninstallOnlyOnWin64=Esta instalação só pode ser desinstalada no Windows de 64 bits.
 OnlyAdminCanUninstall=Esta instalação só pode ser desinstalada por um usuário com privilégios de administrador.
-UninstallStatusLabel=Aguarde enquanto o desinstalador remove %1 do seu computador.
-UninstalledAll=A desinstalação de %1 foi concluída com sucesso.
-UninstalledMost=A desinstalação de %1 foi concluída.%n%nAlguns elementos não puderam ser removidos e podem ser excluídos manualmente.
-UninstalledAndNeedsRestart=Para concluir a desinstalação de %1, é necessário reiniciar o computador.%n%nDeseja reiniciar agora?
+UninstallStatusLabel=Aguarde enquanto o desinstalador remove o %1 do seu computador.
+UninstalledAll=A desinstalação do %1 foi concluída com sucesso.
+UninstalledMost=A desinstalação do %1 foi concluída.%n%nAlguns elementos não puderam ser removidos e podem ser excluídos manualmente.
+UninstalledAndNeedsRestart=Para concluir a desinstalação do %1, é necessário reiniciar o computador.%n%nDeseja reiniciar agora?
 UninstallDataCorrupted=O arquivo "%1" está corrompido. Não é possível desinstalar
 
 ; *** Uninstallation phase messages
@@ -381,11 +381,11 @@ ConfirmDeleteSharedFile2=O sistema indica que o arquivo compartilhado a seguir n
 SharedFileNameLabel=Nome do arquivo:
 SharedFileLocationLabel=Local:
 WizardUninstalling=Status da desinstalação
-StatusUninstalling=Desinstalando %1...
+StatusUninstalling=Desinstalando o %1...
 
 ; *** Shutdown block reasons
-ShutdownBlockReasonInstallingApp=Instalando %1.
-ShutdownBlockReasonUninstallingApp=Desinstalando %1.
+ShutdownBlockReasonInstallingApp=Instalando o %1.
+ShutdownBlockReasonUninstallingApp=Desinstalando o %1.
 
 ; The custom messages below aren't used by Setup itself, but if you make
 ; use of them in your scripts, you'll want to translate them.

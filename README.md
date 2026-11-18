@@ -1,9 +1,9 @@
 # Ritmelli
 
-O Ritmelli é um toca-discos em pixel art que toca músicas e efeitos sonoros no microfone usado no jogo ou na chamada
-de voz, junto com a sua voz, enquanto você ouve apenas a música no fone. No computador, a interface abre em uma janela
-própria (fechá-la encerra o aplicativo); no celular, ela abre no navegador, pela mesma rede Wi-Fi. Funciona com
-qualquer jogo ou programa de chamada que permita escolher o microfone.
+O Ritmelli é um aplicativo para Windows 10 e 11 que reproduz músicas e efeitos sonoros no microfone usado no jogo ou
+na chamada de voz, junto com a sua voz, enquanto você ouve apenas a música no fone. A interface, um toca-discos em
+pixel art, abre em uma janela própria no computador (fechá-la encerra o aplicativo) e, no celular, no navegador, pela
+mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de chamada que permita escolher o microfone.
 
 ## Recursos
 
@@ -11,9 +11,9 @@ qualquer jogo ou programa de chamada que permita escolher o microfone.
   arquivos já baixados.
 - Fila com transições de DJ: as músicas se emendam no tempo certo, com as batidas alinhadas e o andamento ajustado de
   uma para a outra, sem alterar o tom.
-- Modo Automático: mantém a fila sempre cheia com músicas semelhantes, ordenadas pelo andamento.
-- Efeitos sonoros curtos, que tocam por cima da música.
-- Efeitos de voz: rádio de polícia, megafone, locutor de FM, eco, robô, voz grave e outros.
+- Modo Automático: mantém a fila sempre cheia com músicas parecidas, ordenadas pelo andamento.
+- Sons rápidos: efeitos sonoros curtos que tocam por cima da música.
+- Efeitos de voz: rádio de polícia, megafone, locutor de rádio FM, eco, robô, voz grave e outros.
 
 ## Requisitos
 
@@ -50,7 +50,7 @@ com o detector em numpy).
 
 - No jogo e no Discord, use o mesmo microfone selecionado no Ritmelli, pois o filtro atua apenas nele. A voz original
   volta do filtro para o Ritmelli (para o medidor, para a opção de ouvir a própria voz e para a Mina DJ): sem efeito,
-  ela segue direto para o microfone; o efeito de voz é aplicado no próprio filtro, sem atraso; com a voz silenciada, o
+  ela segue diretamente para o microfone; o efeito de voz é aplicado no próprio filtro, sem atraso; com a voz silenciada, o
   Ritmelli envia a voz gerada por ele no lugar; e, se o Ritmelli parar de responder, o filtro restaura a voz original
   automaticamente em 1 segundo. No Discord, use o perfil de entrada **Estúdio** ou desative o Krisp e a
   sensibilidade automática: com qualquer um dos dois ativado, a música chega cortada ou não chega.
@@ -101,8 +101,8 @@ instalador\monta.ps1                              # gera instalador\saida\Ritmel
 instalador\monta.ps1 -Anterior <manifest.json>    # gera também a atualização parcial a partir daquela versão
 ```
 
-- As versões das bibliotecas ficam fixadas em `instalador\travas.txt` (exceto o yt-dlp, que sempre vai na versão mais
-  recente, porque as mudanças do YouTube costumam quebrar as versões antigas).
+- As versões das bibliotecas ficam fixadas em `instalador\travas.txt` (exceto o yt-dlp, que é sempre incluído na
+  versão mais recente, porque as mudanças do YouTube costumam quebrar as versões antigas).
 - O ffmpeg somente de áudio (`instalador\ffmpeg\`) e o bootloader do PyInstaller (`instalador\bootloader\`) são
   compilados pela equipe: os scripts ficam ao lado dos executáveis, e o `FONTE.txt` de cada um informa a origem do
   código-fonte e como ele foi compilado.
@@ -150,8 +150,8 @@ envia dados anônimos de uso e relatórios de erro (`metricas.py`), sem nome, m�
 para onde e como desativar o envio estão descritos na [política de privacidade](PRIVACIDADE.md), que também é exibida
 durante a instalação.
 
-Privacy policy: [PRIVACIDADE.md](PRIVACIDADE.md#ritmelli-privacy-policy). Usage data and error reports are described
-there, shown during installation, and can be turned off in the installer and in the app.
+Privacy policy: [PRIVACIDADE.md](PRIVACIDADE.md#ritmelli-privacy-policy). It is shown during installation and describes
+the anonymous usage data and error reports, which can be turned off in the installer and in the app.
 
 ## Estrutura
 

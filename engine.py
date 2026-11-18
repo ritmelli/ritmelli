@@ -799,20 +799,21 @@ def _aviso_reserva(faltou):
         (mic, mic_usado), (fone, fone_usado) = f["microfone"], f["fone"]
         if fone_usado:
             return i18n.msg("server.devices.fallback.both", "Couldn't find the microphone \"{mic}\" or the "
-                            "headphones \"{monitor}\"; using \"{micUsed}\" and \"{monitorUsed}\" until they come "
-                            "back.", mic=mic, micUsed=mic_usado, monitor=fone, monitorUsed=fone_usado)
+                                                            "headphones \"{monitor}\"; using \"{micUsed}\" and "
+                                                            "\"{monitorUsed}\" until they're reconnected.", mic=mic, micUsed=mic_usado, monitor=fone, monitorUsed=fone_usado)
         return i18n.msg("server.devices.fallback.bothMonitorNone", "Couldn't find the microphone \"{mic}\" or the "
-                        "headphones \"{monitor}\"; using \"{micUsed}\" and no headphones until they come back.",
+                                                                   "headphones \"{monitor}\"; using \"{micUsed}\" "
+                                                                   "and no headphones until they're reconnected.",
                         mic=mic, micUsed=mic_usado, monitor=fone)
     if "microfone" in f:
         return i18n.msg("server.devices.fallback.mic", "Couldn't find the microphone \"{chosen}\"; using \"{used}\" "
-                        "until it comes back.", chosen=f["microfone"][0], used=f["microfone"][1])
+                                                       "until it's reconnected.", chosen=f["microfone"][0], used=f["microfone"][1])
     fone, usado = f["fone"]
     if usado:
         return i18n.msg("server.devices.fallback.monitor", "Couldn't find the headphones \"{chosen}\"; using "
-                        "\"{used}\" until they come back.", chosen=fone, used=usado)
+                                                           "\"{used}\" until they're reconnected.", chosen=fone, used=usado)
     return i18n.msg("server.devices.fallback.monitorNone", "Couldn't find the headphones \"{chosen}\"; using no "
-                    "headphones until they come back.", chosen=fone)
+                                                           "headphones until they're reconnected.", chosen=fone)
 
 
 def _erro_da_tarefa(r, mic):
@@ -823,9 +824,9 @@ def _erro_da_tarefa(r, mic):
         return i18n.msg("server.mic.noTask", "The Ritmelli component that prepares microphones is missing. "
                         "Reinstall Ritmelli.")
     if motivo == "nao_pronto":
-        return i18n.msg("server.mic.notReady", "The microphone \"{name}\" didn't get ready for Ritmelli.", name=mic)
+        return i18n.msg("server.mic.notReady", "Couldn't prepare the microphone \"{name}\" for Ritmelli.", name=mic)
     if motivo == "audio":
-        return i18n.msg("server.mic.audioSlow", "Windows audio didn't come back in time.")
+        return i18n.msg("server.mic.audioSlow", "Windows audio didn't restart in time.")
     return i18n.msg("server.mic.taskFailed", "Couldn't prepare the microphone ({reason}).",
                     reason=r.get("detalhe") or motivo or "?")
 
@@ -1110,7 +1111,8 @@ class Injetor:
                             self.motor._mixa(BLOCK)  # noqa: SLF001 - o fone e o relogio da musica seguem
                             prox += BLOCK / SR
                 except Exception as ex:  # noqa: BLE001 - a thread nao morre calada: o erro vai pra tela
-                    self.motor.error = i18n.msg("server.mic.outputFailed", "The output to the microphone failed ({reason}).",
+                    self.motor.error = i18n.msg("server.mic.outputFailed", "Couldn't send audio to the microphone "
+                                                                           "({reason}).",
                                                 reason=str(ex)[:160])
                     self.m = None
                     servidos = ()
@@ -1344,9 +1346,10 @@ class Engine:
             return
         if mic in self._preparados:
             if self.active.get("mic") == mic:
-                self._aviso = self.error = i18n.msg("server.mic.notReadyReinstall", "The microphone \"{name}\" didn't "
-                                                    "get ready for Ritmelli, so the music doesn't reach it. Try "
-                                                    "reinstalling Ritmelli.", name=mic)
+                self._aviso = self.error = i18n.msg("server.mic.notReadyReinstall", "Couldn't prepare the microphone "
+                                                                                    "\"{name}\" for Ritmelli, so the "
+                                                                                    "music can't reach it. Try "
+                                                                                    "reinstalling Ritmelli.", name=mic)
             return
         self._preparados.add(mic)
         from microfone import microfone as filtro  # noqa: PLC0415
@@ -1478,8 +1481,9 @@ class Engine:
                     ep = winvol.volume_do(nome)
                 if ep is None:
                     if v is not None:
-                        self.error = i18n.msg("server.devices.micVolumeMissing", "Couldn't find the Windows "
-                                              "volume of the microphone \"{name}\".", name=nome)
+                        self.error = i18n.msg("server.devices.micVolumeMissing", "Couldn't find the Windows volume "
+                                                                                 "control for the microphone "
+                                                                                 "\"{name}\".", name=nome)
                     continue
                 if v is not None:
                     winvol.gravar(ep, v)
@@ -1536,13 +1540,13 @@ class Engine:
                 x = f(x)  # o motor do filtro (voz.h) pelo voz.dll, a 48 kHz
             except Exception as ex:  # noqa: BLE001 - efeito quebrado nao pode calar a voz
                 self._fx_id, self._fx, self.effect = None, None, "nenhum"
-                self.error = i18n.msg("server.effect.failed", "The voice effect failed ({reason}). Switched back to "
-                                      "no effect.", reason=str(ex)[:120])
+                self.error = i18n.msg("server.effect.failed", "The voice effect failed ({reason}). Your voice is "
+                                                              "back to normal.", reason=str(ex)[:120])
         elif self._fx_id is not None and not self._fx_pendente and not self._fx_falta_dito:
             # o efeito sairia daqui e o voz.dll nao carregou: a voz segue crua, e o aviso sai uma vez por efeito
             self._fx_falta_dito = True
-            self.error = i18n.msg("server.effect.noVozDll", "Ritmelli's voz.dll file is missing: on this microphone, "
-                                  "your voice has no effect. Reinstall Ritmelli.")
+            self.error = i18n.msg("server.effect.noVozDll", "Ritmelli's voz.dll file is missing, so voice effects "
+                                                            "won't work on this microphone. Reinstall Ritmelli.")
         self._mic.append(x)
         while len(self._mic) > MIC_MAX:
             self._mic.popleft()
@@ -1610,11 +1614,12 @@ class Engine:
         if getattr(self._mina, "estado", None) != "erro":
             return i18n.so_texto(str(ex))
         if getattr(self._mina, "_motor", None) == "eleven":
-            return i18n.msg("server.mina.noElevenKey", "Mina DJ on ElevenAgents needs the key (ELEVENLABS_API_KEY or "
-                            "the file {keyFile}) and the agent ID in the file {agentFile}.",
+            return i18n.msg("server.mina.noElevenKey", "Mina DJ on ElevenAgents needs an ElevenLabs API key (in "
+                                                       "ELEVENLABS_API_KEY or the {keyFile} file) and the agent ID "
+                                                       "(in the {agentFile} file).",
                             keyFile=str(pastas.DADOS / "eleven_key.txt"), agentFile=str(pastas.DADOS / "eleven_agente.txt"))
-        return i18n.msg("server.mina.noOpenAiKey", "Mina DJ needs the OpenAI key: put it in OPENAI_API_KEY or in the "
-                        "file {keyFile}.", keyFile=str(pastas.DADOS / "openai_key.txt"))
+        return i18n.msg("server.mina.noOpenAiKey", "Mina DJ needs an OpenAI API key: set it in OPENAI_API_KEY or in "
+                                                   "the {keyFile} file.", keyFile=str(pastas.DADOS / "openai_key.txt"))
 
     def mina_voz(self, x):
         """A voz dela, float32 48 kHz mono, na fila do jogo. Volta em quantos segundos ela comeca a tocar (a gravacao
@@ -1969,10 +1974,12 @@ class Engine:
         quando = f"{int(t // 60)}:{int(t % 60):02d}"
         if track.get("stream"):
             self.error = i18n.msg("server.player.streamStopped", "YouTube stopped sending the audio of \"{title}\" "
-                                  "at {time}. Play it again, or wait for it to reach the shelf.", title=nome, time=quando)
+                                                                 "at {time}. Play it again, or wait for the download "
+                                                                 "to the shelf to finish.", title=nome, time=quando)
         else:
-            self.error = i18n.msg("server.player.readFailedAt", "Couldn't read the audio of \"{title}\" from {time}. "
-                                  "The file may be corrupted; delete it and download it again.", title=nome,
+            self.error = i18n.msg("server.player.readFailedAt", "Couldn't read the audio of \"{title}\" from {time} "
+                                                                "on. The file may be corrupted: delete the record "
+                                                                "and download it again.", title=nome,
                                   time=quando)
 
     def _stream_desistiu(self, deck, gen, track, t):
@@ -2008,8 +2015,9 @@ class Engine:
             else:
                 self._sobre_cache.move_to_end(chave)
         except Exception:  # noqa: BLE001 - som por cima quebrado nao derruba o resto
-            self.error = i18n.msg("server.player.readFailed", "Couldn't read the audio of \"{title}\". The file "
-                                  "may be corrupted; delete it and download it again.", title=track.get("title") or "?")
+            self.error = i18n.msg("server.player.readFailed", "Couldn't read the audio of \"{title}\". The file may "
+                                                              "be corrupted: delete the record and download it "
+                                                              "again.", title=track.get("title") or "?")
             return
         with self._slock:
             self._sobre.append([{"id": track["id"], "title": track.get("title")}, a, 0])

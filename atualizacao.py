@@ -83,7 +83,7 @@ class Parou(OSError):
 
 def _recusado(e):
     """A mensagem da tela para o manifesto ou o arquivo que nao passou na conferencia, com o motivo como veio."""
-    return i18n.msg("server.update.rejected", "The new version failed the check ({reason}).", reason=str(e))
+    return i18n.msg("server.update.rejected", "The new version failed verification ({reason}).", reason=str(e))
 
 
 def versao(v):
@@ -267,7 +267,8 @@ class Atualizacao:
         except Recusado:
             n = None
         est = e.get("estado") if e.get("estado") in ("baixando", "pronta", "instalando") and n else "parado"
-        erro = i18n.msg("server.update.autoFailed", "The automatic update stopped ({reason}).",
+        erro = i18n.msg("server.update.autoFailed", "The automatic update was interrupted ({reason}). It will try "
+                                                    "again automatically.",
                         reason=str(e["erro"])) if e.get("erro") else None
         return {"ativa": True, "automatica": True, "versao": VERSAO, "estado": est,
                 "progresso": round(float(e.get("progresso") or 0.0), 3) if est == "baixando" else (1.0 if est == "pronta" else 0.0),
@@ -419,7 +420,7 @@ class Atualizacao:
             with self.lock:
                 self.estado = "parado"
                 self.erro = _recusado(e) if isinstance(e, Recusado) else i18n.msg(
-                    "server.update.downloadStopped", "The new version download stopped. Try again.")
+                    "server.update.downloadStopped", "The update download was interrupted. Try again.")
                 if parcial and isinstance(e, Recusado):
                     self.parcial = False  # a parcial veio errada: na proxima, o completo
             print(f"update: {e}", flush=True)
@@ -489,15 +490,15 @@ class Atualizacao:
         if not setup.exists() or _hash(setup) != alvo["sha256"]:
             with self.lock:
                 self.estado, self.setup, self.alvo = "parado", None, None
-            return False, i18n.msg("server.update.changed", "The downloaded installer changed after it was checked. "
-                                   "Download it again.")
+            return False, i18n.msg("server.update.changed", "The downloaded installer changed after it was verified. "
+                                                            "Download it again.")
         log = PASTA / f"instalador-{m['versao']}.log"
         r = abre_instalador(setup, f'{PARAMETROS} /LOG="{log}"')
         if r <= 32:
             if r == SE_ERR_ACCESSDENIED:
-                return False, i18n.msg("server.update.permissionDenied", "Windows didn't give permission, so the "
-                                       "update was postponed.")
-            return False, i18n.msg("server.update.installerFailed", "The installer didn't open (error {code}).", code=r)
+                return False, i18n.msg("server.update.permissionDenied", "Windows didn't grant permission, so the "
+                                                                         "update was postponed.")
+            return False, i18n.msg("server.update.installerFailed", "Couldn't open the installer (error {code}).", code=r)
         with self.lock:
             self.estado = "instalando"
         print(f"update: installer for {m['versao']} opened; Ritmelli is closing", flush=True)
