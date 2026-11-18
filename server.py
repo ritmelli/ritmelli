@@ -1861,7 +1861,7 @@ def build(app_state):
         if celular and request.path.startswith("/api/atualizacao"):
             return j_err(i18n.so_texto("New versions can only be installed from the computer."), 403)
         if celular and request.path.startswith("/api/metricas"):
-            return j_err(i18n.so_texto("Usage data and error settings can only be changed on the computer."), 403)
+            return j_err(i18n.so_texto("Usage data and error reporting settings can only be changed on the computer."), 403)
         if celular and (request.method, request.path) not in livres:
             chave = par.chave_do(request.cookies)
             if not A.celulares.confere(chave):

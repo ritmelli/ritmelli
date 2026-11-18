@@ -27,7 +27,7 @@ substituído por outro em caso de reinstalação), das versões do Ritmelli e do
 **O que nunca é enviado:** nome, conta, e-mail, nome de músicas, buscas, links, áudio, a sua voz, o nome dos seus
 dispositivos (microfone e fone) ou os seus arquivos. O endereço IP não é armazenado.
 
-**Para onde os dados vão:** os dados de uso, para o [PostHog](https://posthog.com/privacy), e os relatórios de erro,
+**Para onde vão os dados:** os dados de uso, para o [PostHog](https://posthog.com/privacy), e os relatórios de erro,
 para o [Sentry](https://sentry.io/privacy/), ambos com armazenamento na União Europeia. Os dados de uso são mantidos por
 até 1 ano, e os relatórios de erro, por até 90 dias. Somente a equipe do Ritmelli tem acesso a eles, e os dados não são
 vendidos nem usados para publicidade.
@@ -85,7 +85,7 @@ advertising.
 **Mic and headphones**. When sending is off, nothing is sent, and anything not yet sent is discarded. Anyone updating
 from a version that didn't collect this data will see a notice in Ritmelli, and nothing is sent until they make a choice.
 
-**Legal basis:** the legitimate interest in improving Ritmelli and fixing its errors (Brazil's LGPD, art. 7, IX), with
+**Legal basis:** our legitimate interest in improving Ritmelli and fixing its errors (Brazil's LGPD, art. 7, IX), with
 the data kept to the minimum necessary, without identifying anyone, and with the option to turn sending off at any time.
 
 **The code that sends the data** is open source: [`metricas.py`](metricas.py), with the full list of what can be sent,
@@ -93,6 +93,6 @@ and the test that checks that list, [`dev/testa_metricas.py`](dev/testa_metricas
 
 ## Data controller
 
-Behling Informática Ltda, the publisher of Ritmelli. To discuss your data or to request the deletion of an
-installation's data (please include its ID, found in `%LOCALAPPDATA%\Ritmelli\metricas.json`),
+Behling Informática Ltda, the publisher of Ritmelli. For questions about your data, or to request the deletion of
+an installation's data (please include its ID, found in `%LOCALAPPDATA%\Ritmelli\metricas.json`),
 [open an issue](https://github.com/ritmelli/ritmelli/issues) without including any personal data; we will reply there.

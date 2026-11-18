@@ -11,7 +11,8 @@ mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de chamada que permita 
   arquivos já baixados.
 - Fila com transições de DJ: as músicas se emendam no tempo certo, com as batidas alinhadas e o andamento ajustado de
   uma para a outra, sem alterar o tom.
-- Modo Automático: mantém a fila sempre cheia com músicas parecidas, ordenadas pelo andamento.
+- Tocar parecidas (modo Automático): mantém a fila sempre cheia com músicas parecidas, ordenadas pelo andamento,
+  que aparecem na fila marcadas como Automático.
 - Sons rápidos: efeitos sonoros curtos que tocam por cima da música.
 - Efeitos de voz: rádio de polícia, megafone, locutor de rádio FM, eco, robô, voz grave e outros.
 
@@ -62,9 +63,9 @@ com o detector em numpy).
 - Se o microfone ou o fone selecionado estiver desconectado, o Ritmelli usa o padrão do Windows até que ele volte. Se
   o dispositivo de gravação padrão for um cabo virtual, é usado o primeiro microfone físico.
 - Os dados do usuário (áudios baixados, biblioteca e preferências) ficam em `%LOCALAPPDATA%\Ritmelli\library`, e os
-  logs do servidor, em `%LOCALAPPDATA%\Ritmelli\logs`. Até a versão 0.4.1, o aplicativo se chamava Vitrola: a
-  atualização leva os dados de `%LOCALAPPDATA%\Vitrola`, as escolhas e o celular pareado para o nome novo, sem perda de
-  nada (`migra.py`).
+  logs do servidor, em `%LOCALAPPDATA%\Ritmelli\logs`. Até a versão 0.4.1, o aplicativo se chamava Vitrola: na
+  atualização, os dados de `%LOCALAPPDATA%\Vitrola`, as escolhas e o celular pareado são migrados automaticamente para o
+  Ritmelli, sem nenhuma perda (`migra.py`).
 - Sem o `soundboard.ps1`: `python ritmelli.py` (aceita os mesmos argumentos do `server.py`).
 - Para ver a versão: `python ritmelli.py --version`.
 - **No celular**, na mesma rede Wi-Fi: no computador, o botão Celular da interface exibe um QR code. Aponte a câmera

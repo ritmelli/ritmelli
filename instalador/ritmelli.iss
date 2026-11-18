@@ -82,8 +82,11 @@ pt.WizardInfoBefore=Licença
 en.WizardInfoBefore=License
 pt.InfoBeforeLabel=O Ritmelli é software livre. Não é necessário aceitar esta licença para instalá-lo ou usá-lo.
 en.InfoBeforeLabel=Ritmelli is free software. You do not need to accept this license to install or use it.
-pt.WelcomeLabel2=Este assistente instalará o [name/ver] no seu computador.%n%nDurante a instalação, o som do computador pode ser interrompido por alguns segundos. Se você estiver em uma partida ou em uma chamada de voz, conclua-a antes de continuar.%n%nÉ recomendável fechar todos os outros aplicativos antes de continuar.
-en.WelcomeLabel2=This will install [name/ver] on your computer.%n%nDuring installation, your computer's sound may cut out for a few seconds. If you are in a match or a voice call, finish it before continuing.%n%nIt is recommended that you close all other applications before continuing.
+pt.WelcomeLabel2=Este assistente instalará o [name/ver] no seu computador.%n%nDurante a instalação, o som do computador pode ser interrompido por alguns segundos. Se você estiver em uma partida ou em uma chamada de voz, conclua-a primeiro.%n%nÉ recomendável fechar todos os outros aplicativos antes de continuar.
+en.WelcomeLabel2=This will install [name/ver] on your computer.%n%nDuring installation, your computer's sound may cut out for a few seconds. If you are in a match or a voice call, finish it first.%n%nIt is recommended that you close all other applications before continuing.
+; desinstalar nao apaga a prateleira nem as escolhas (%LOCALAPPDATA%\Ritmelli fica)
+pt.ConfirmUninstall=Tem certeza de que deseja remover o %1 deste computador? As músicas da prateleira e as suas escolhas continuam guardadas e voltam a aparecer se você instalar o programa novamente.
+en.ConfirmUninstall=Are you sure you want to remove %1 from this computer? Your records on the shelf and your settings are kept, and they will come back if you install it again.
 pt.FinishedLabel=O Ritmelli foi instalado e está disponível no menu Iniciar.%n%nNo jogo e nas chamadas de voz, continue usando o seu microfone habitual: o Ritmelli toca a música nele. No Discord, selecione Estúdio em Perfil de entrada, pois os outros perfis podem cortar a música.
 en.FinishedLabel=Ritmelli has been installed and is available in the Start menu.%n%nIn games and voice calls, keep using your usual microphone: Ritmelli plays the music through it. In Discord, select Studio under Input Profile, as the other profiles can cut out the music.
 
@@ -92,8 +95,8 @@ pt.Abrir=Abrir o Ritmelli
 en.Abrir=Open Ritmelli
 pt.Firewall=Liberando o Ritmelli no firewall para que o celular possa se conectar ao computador...
 en.Firewall=Allowing Ritmelli through the firewall so your phone can connect to the computer...
-pt.Microfone=Preparando os microfones para o Ritmelli (o som do computador é interrompido por alguns segundos)...
-en.Microfone=Preparing your microphones for Ritmelli (the computer's sound will cut out for a few seconds)...
+pt.Microfone=Preparando os microfones (o som pode ser interrompido por alguns segundos)...
+en.Microfone=Preparing your microphones (the sound may cut out for a few seconds)...
 pt.ParcialSemApp=Esta é uma atualização do Ritmelli e só pode ser aplicada a uma instalação existente. Para instalar o Ritmelli, use o arquivo Ritmelli-{#Versao}-setup.exe.
 en.ParcialSemApp=This is a Ritmelli update and can only be applied to an existing installation. To install Ritmelli, use Ritmelli-{#Versao}-setup.exe.
 ; a pagina dos dados de uso e dos erros (metricas.py): a politica na instalacao e a opcao de desligar, como a SignPath
@@ -102,8 +105,8 @@ pt.MetricasTitulo=Dados de uso e erros
 en.MetricasTitulo=Usage Data and Errors
 pt.MetricasDescricao=O que o Ritmelli pode enviar para melhorar o aplicativo, sem identificar você.
 en.MetricasDescricao=What Ritmelli can send to help improve the app, without identifying you.
-pt.MetricasSub=Leia o que é enviado e faça a sua escolha abaixo. É possível alterá-la depois no Ritmelli, em Microfone e fone.
-en.MetricasSub=Read what is sent and make your choice below. You can change it later in Ritmelli, under Mic and headphones.
+pt.MetricasSub=Leia o que é enviado e faça a sua escolha abaixo. É possível alterá-la depois no Ritmelli, pelo botão Microfone e fone.
+en.MetricasSub=Read what is sent and make your choice below. You can change it later in Ritmelli with the Mic and headphones button.
 pt.MetricasTexto=Para saber quantas pessoas usam o Ritmelli, se as novas versões estão chegando, quais erros ocorrem e quais efeitos são usados, o Ritmelli pode enviar dados anônimos de uso e relatórios de erro.%n%nO que é enviado: um código aleatório desta instalação, as versões do Ritmelli e do Windows e o idioma; um registro por dia de uso; por quanto tempo a música toca e cada efeito de voz fica ativo; e os erros, com o ponto do código em que ocorreram.%n%nO que nunca é enviado: nome, conta, e-mail, músicas, buscas, links, áudio, voz ou o nome dos seus dispositivos. O endereço IP não é armazenado.%n%nPara onde vão os dados: serviços PostHog (uso) e Sentry (erros), com armazenamento na União Europeia. Os dados de uso são mantidos por até 1 ano, e os relatórios de erro, por até 90 dias.%n%nPolítica de privacidade completa: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
 en.MetricasTexto=To learn how many people use Ritmelli, whether new versions are reaching them, which errors occur, and which effects are used, Ritmelli can send anonymous usage data and error reports.%n%nWhat is sent: a random ID for this installation, the Ritmelli and Windows versions, and the language; one record per day of use; how long music plays and how long each voice effect stays on; and errors, with the place in the code where they occurred.%n%nWhat is never sent: name, account, email, music, searches, links, audio, voice, or the names of your devices. The IP address is not stored.%n%nWhere the data goes: the PostHog (usage) and Sentry (errors) services, stored in the European Union. Usage data is kept for up to 1 year, and error reports for up to 90 days.%n%nFull privacy policy: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
 pt.MetricasCaixa=Enviar dados anônimos de uso e relatórios de erro
