@@ -50,10 +50,10 @@ com o detector em numpy).
 ```
 
 - No jogo e no Discord, use o mesmo microfone selecionado no Ritmelli, pois o filtro atua apenas nele. A voz original
-  volta do filtro para o Ritmelli (para o medidor, para a opção Ouvir minha voz e para a Mina DJ): sem efeito, ela segue
-  diretamente para o microfone; o efeito de voz é aplicado no próprio filtro (alguns efeitos, como os que mudam o tom,
-  atrasam um pouco a voz, e a interface mostra quanto); com a voz silenciada, só o que o Ritmelli toca segue para o
-  microfone, sem a sua voz; e, se o Ritmelli parar de responder, o filtro restaura a voz original automaticamente em 1
+  volta do filtro para o Ritmelli (para o medidor, para a opção Ouvir minha voz e para a Mina DJ). Sem efeito de voz,
+  ela segue diretamente para o microfone. O efeito de voz é aplicado no próprio filtro, e alguns efeitos, como os que
+  mudam o tom, atrasam um pouco a voz (a interface mostra o atraso). Com a voz silenciada, só o que o Ritmelli toca
+  segue para o microfone. Se o Ritmelli parar de responder, o filtro restaura a voz original automaticamente em 1
   segundo. No Discord, use o perfil de entrada **Estúdio** ou desative o Krisp e a sensibilidade automática: com
   qualquer um dos dois ativado, a música chega cortada ou não chega.
 - Microfone conectado depois da instalação (por exemplo, um headset USB novo): ao selecioná-lo, o Ritmelli executa a
@@ -69,11 +69,11 @@ com o detector em numpy).
   o Ritmelli, sem nenhuma perda (`migra.py`).
 - Sem o `soundboard.ps1`: `python ritmelli.py` (aceita os mesmos argumentos do `server.py`).
 - Para ver a versão: `python ritmelli.py --version`.
-- **No celular**, na mesma rede Wi-Fi: no computador, o botão Celular da interface exibe um QR code. Aponte a câmera
-  do celular para ele ou abra o endereço exibido ao lado e digite o código. O celular permanece conectado até ser
-  desconectado na mesma tela do computador. Sem o código, outro aparelho da rede consegue abrir a página, mas
-  não consegue alterar nada. A comunicação entre o celular e o computador não é criptografada (HTTP): use-a na rede
-  de casa, e não em redes Wi-Fi públicas, como as de cafés ou hotéis. Com `server.py --so-local`, o servidor atende
+- **No celular**, na mesma rede Wi-Fi: no computador, o botão Celular da interface exibe um QR code. Aponte a câmera do
+  celular para ele ou abra o endereço exibido ao lado e digite o código. O celular permanece conectado até ser
+  desconectado na mesma tela do computador. Sem o código, outro aparelho da rede consegue abrir a página, mas não
+  consegue alterar nada. A comunicação entre o celular e o computador não é criptografada (HTTP): use esse recurso na
+  rede de casa, e não em redes Wi-Fi públicas, como as de cafés ou hotéis. Com `server.py --so-local`, o servidor atende
   apenas o próprio computador.
 - Para trabalhar na interface sem áudio: `python server.py --mock --port 8801 --data-dir <pasta>`.
 

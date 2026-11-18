@@ -1987,7 +1987,7 @@ class Engine:
                                                                  "to the shelf to finish.", title=nome, time=quando)
         else:
             self.error = i18n.msg("server.player.readFailedAt", "Couldn't read the audio of \"{title}\" from {time} "
-                                                                "on. The file may be corrupted: delete the record "
+                                                                "on. The file may be corrupted. Delete the record "
                                                                 "and download it again.", title=nome,
                                   time=quando)
 
@@ -2025,7 +2025,7 @@ class Engine:
                 self._sobre_cache.move_to_end(chave)
         except Exception:  # noqa: BLE001 - som por cima quebrado nao derruba o resto
             self.error = i18n.msg("server.player.readFailed", "Couldn't read the audio of \"{title}\". The file may "
-                                                              "be corrupted: delete the record and download it "
+                                                              "be corrupted. Delete the record and download it "
                                                               "again.", title=track.get("title") or "?")
             return
         with self._slock:

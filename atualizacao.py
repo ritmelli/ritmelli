@@ -502,7 +502,8 @@ class Atualizacao:
                                                                          "install it, click Install now again and "
                                                                          "choose Yes when Windows asks for "
                                                                          "permission.")
-            return False, i18n.msg("server.update.installerFailed", "Couldn't open the installer (error {code}).", code=r)
+            return False, i18n.msg("server.update.installerFailed", "Couldn't open the installer (error {code}). "
+                                                                    "Click Install now to try again.", code=r)
         with self.lock:
             self.estado = "instalando"
         print(f"update: installer for {m['versao']} opened; Ritmelli is closing", flush=True)

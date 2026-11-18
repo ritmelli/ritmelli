@@ -91,7 +91,7 @@ en.ReadyLabel2b=During installation, your computer's sound may cut out for a few
 pt.ConfirmUninstall=Tem certeza de que deseja remover o %1 deste computador? Os discos da prateleira e as suas escolhas continuam guardados e voltam a aparecer se você o instalar novamente. Durante a remoção, o som do computador pode ser interrompido por alguns segundos.
 en.ConfirmUninstall=Are you sure you want to remove %1 from this computer? Your records on the shelf and your settings will be kept and will reappear if you reinstall it. During removal, your computer's sound may cut out for a few seconds.
 pt.FinishedLabel=O Ritmelli foi instalado e está disponível no menu Iniciar.%n%nNo jogo e nas chamadas de voz, continue usando o seu microfone habitual: o Ritmelli toca a música nele. No Discord, selecione Estúdio em Perfil de entrada, pois os outros perfis podem cortar a música.
-en.FinishedLabel=Ritmelli has been installed and is available in the Start menu.%n%nIn games and voice calls, keep using your usual microphone: Ritmelli plays the music through it. In Discord, select Studio under Input Profile, as the other profiles can cut out the music.
+en.FinishedLabel=Ritmelli has been installed and is available in the Start menu.%n%nIn games and voice calls, keep using your usual microphone: Ritmelli plays the music through it. In Discord, select Studio under Input Profile. The other profiles can cut out the music.
 
 [CustomMessages]
 pt.Abrir=Abrir o Ritmelli

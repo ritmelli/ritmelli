@@ -1861,7 +1861,7 @@ def build(app_state):
         if celular and request.path.startswith("/api/atualizacao"):
             return j_err(i18n.so_texto("New versions can only be installed from the computer."), 403)
         if celular and request.path.startswith("/api/metricas"):
-            return j_err(i18n.so_texto("Usage data and error reporting settings can only be changed on the computer."), 403)
+            return j_err(i18n.so_texto("Sending usage data and error reports can only be turned on or off on the computer."), 403)
         if celular and (request.method, request.path) not in livres:
             chave = par.chave_do(request.cookies)
             if not A.celulares.confere(chave):
@@ -2257,7 +2257,7 @@ def build(app_state):
         if not isinstance(b.get("ligar"), bool):
             return j_err(i18n.so_texto("Missing the choice (ligar: true or false)."))
         if A.metricas.situacao() == "fora":
-            return j_err(i18n.so_texto("Usage data is off in this build."), 409)
+            return j_err(i18n.so_texto("Usage data and error reports are off in this build."), 409)
         await loop_().run_in_executor(pool, A.metricas.escolhe, b["ligar"])
         return web.json_response(A.metricas.publico())
 

@@ -1,8 +1,8 @@
-﻿O Ritmelli é software livre: você pode usá-lo, estudá-lo, copiá-lo, modificá-lo e distribuí-lo nos termos da Licença Pública Geral GNU, versão 3 (GPLv3), publicada pela Free Software Foundation.
+﻿Você pode usar, estudar, copiar, modificar e distribuir o Ritmelli nos termos da Licença Pública Geral GNU, versão 3 (GPLv3), publicada pela Free Software Foundation.
 
 O código-fonte do aplicativo e deste instalador está disponível em https://github.com/ritmelli/ritmelli. Cada versão tem uma tag com o seu número, como v0.4.1.
 
-Não é necessário aceitar a licença para instalar ou usar o Ritmelli; ela se aplica a quem o copia, modifica ou distribui.
+A licença se aplica a quem copia, modifica ou distribui o Ritmelli.
 
 O Ritmelli é fornecido SEM NENHUMA GARANTIA, nem mesmo a garantia implícita de adequação a uma finalidade específica, na medida permitida pela lei (seções 15 e 16 da GPLv3).
 

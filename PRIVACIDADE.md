@@ -83,7 +83,7 @@ advertising.
 
 **How to turn it on or off:** during installation, on the "Usage Data and Errors" page, and later, in Ritmelli, under
 **Mic and headphones**. When sending is off, nothing is sent, and anything not yet sent is discarded. Anyone updating
-from a version that didn't send this data will see a notice in Ritmelli, and nothing is sent until they make a choice.
+from a version that did not send this data will see a notice in Ritmelli, and nothing is sent until they make a choice.
 
 **Legal basis:** our legitimate interest in improving Ritmelli and fixing its errors (Brazil's LGPD, art. 7, IX), with
 the data kept to the minimum necessary, without identifying anyone, and with the option to turn sending off at any time.
