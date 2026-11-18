@@ -117,7 +117,7 @@ def main():
         secoes.append(f"{'=' * 100}\n{titulo} ({licenca})\n{'=' * 100}\n\n{corpo.strip()}\n")
 
     py = Path(sys.base_prefix) / "LICENSE.txt"
-    secao(f"Python {sys.version.split()[0]}", "PSF-2.0 e as licenças dos seus componentes", le(py))
+    secao(f"Python {sys.version.split()[0]}", "PSF-2.0 e as licenças dos seus componentes / PSF-2.0 and the licenses of its components", le(py))
 
     for nome in sorted(pacotes, key=str.lower):
         d = md.distribution(nome)
@@ -130,7 +130,9 @@ def main():
             faltando.append(nome)
             continue
         extra = ("O bootloader do PyInstaller forma o início do ritmelli.exe; a exceção prevista na licença dele permite "
-                 "distribuir o programa gerado sob outra licença.\n\n" if nome == "pyinstaller" else "")
+                 "distribuir o programa gerado sob outra licença.\n\n"
+                 "The PyInstaller bootloader forms the beginning of ritmelli.exe; the exception in its license allows "
+                 "the generated program to be distributed under another license.\n\n" if nome == "pyinstaller" else "")
         lic = "GPL-2.0-or-later WITH Bootloader-exception" if nome == "pyinstaller" else tipo(d)
         secao(f"{d.metadata['Name']} {d.version}", lic, extra + "\n\n".join(f"--- {c}\n\n{t}" for c, t in tx))
     if faltando:

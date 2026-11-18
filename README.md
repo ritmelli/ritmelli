@@ -1,9 +1,9 @@
 # Ritmelli
 
-O Ritmelli é um aplicativo para Windows 10 e 11 que reproduz músicas e efeitos sonoros no microfone usado no jogo ou
-na chamada de voz, junto com a sua voz, enquanto você ouve apenas a música no fone. A interface, um toca-discos em
-pixel art, abre em uma janela própria no computador (fechá-la encerra o aplicativo) e, no celular, no navegador, pela
-mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de chamada que permita escolher o microfone.
+O Ritmelli é um aplicativo para Windows 10 e 11 que reproduz músicas e efeitos sonoros no microfone usado no jogo ou na
+chamada de voz, junto com a sua voz, enquanto você ouve apenas a música no fone. A interface, um aparelho de som dos
+anos 70 em pixel art, abre em uma janela própria no computador (fechá-la encerra o aplicativo) e, no celular, no
+navegador, pela mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de chamada que permita escolher o microfone.
 
 ## Recursos
 
@@ -174,7 +174,7 @@ the anonymous usage data and error reports, which can be turned off in the insta
 | `yt_fora.py` | YouTube (yt-dlp e ytmusicapi) em um processo separado |
 | `winvol.py` | volume do microfone no Windows |
 | `microfone/` | o filtro de microfone: a DLL que o Windows carrega (`apo/`), o canal de comunicação com ela nos dois sentidos (`injeta.py`: a música vai, a voz original volta) e o programa que adiciona e remove o filtro (`microfone.py`, executado pelo instalador) |
-| `migra.py` | a troca de nome de Vitrola para Ritmelli no computador de quem já tinha o aplicativo: o registro, as tarefas do Windows e a pasta de instalação de antes |
+| `migra.py` | a troca de nome de Vitrola para Ritmelli no computador de quem já tinha o aplicativo: as entradas no Registro, as tarefas do Windows e a pasta de instalação de antes |
 | `themes/vitrola/` | a interface: o tema Vitrola, um aparelho de som dos anos 70 |
 | `gallery/` | a página inicial, que lista os temas (`index.html`), com os textos nos dois idiomas (`i18n/`) |
 | `icone/` | o ícone do aplicativo (executável, instalador, aba do navegador e celular), gerado pelo `dev/icone.py` |

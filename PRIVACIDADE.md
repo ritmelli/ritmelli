@@ -34,7 +34,7 @@ vendidos nem usados para publicidade.
 
 **Como ativar ou desativar:** durante a instalação, na página "Dados de uso e erros", e depois, no Ritmelli, em
 **Microfone e fone**. Com o envio desativado, nada é enviado, e o que ainda não havia sido enviado é descartado. Quem
-atualizar a partir de uma versão sem esses dados verá um aviso no Ritmelli, e nada será enviado antes da sua escolha.
+atualizar a partir de uma versão que não enviava esses dados verá um aviso no Ritmelli, e nada será enviado antes da sua escolha.
 
 **Base legal:** o legítimo interesse em melhorar o Ritmelli e corrigir os erros do aplicativo (LGPD, art. 7º, IX), com os dados
 reduzidos ao mínimo necessário, sem identificação de ninguém e com a opção de desativar o envio a qualquer momento.

@@ -1549,8 +1549,8 @@ class Engine:
             # o efeito sairia daqui e o voz.dll nao carregou: a voz segue crua, e o aviso sai uma vez por efeito
             self._fx_falta_dito = True
             self.error = i18n.msg("server.effect.noVozDll", "Ritmelli's voz.dll file is missing, so voice effects "
-                                                            "won't work on this microphone, but your voice still "
-                                                            "reaches the game as usual. Reinstall Ritmelli.")
+                                                            "won't work on this microphone. Your voice still reaches "
+                                                            "the game as usual. Reinstall Ritmelli.")
         self._mic.append(x)
         while len(self._mic) > MIC_MAX:
             self._mic.popleft()

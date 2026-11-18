@@ -1857,7 +1857,7 @@ def build(app_state):
                 return web.Response(status=403, text="origin not allowed")
         celular = request.path.startswith("/api/") and not do_pc(request)
         if celular and request.path.startswith("/api/pareamento"):
-            return j_err(i18n.so_texto("The pairing code and connected phones can only be viewed on the computer."), 403)
+            return j_err(i18n.so_texto("The connection code and connected phones can only be viewed on the computer."), 403)
         if celular and request.path.startswith("/api/atualizacao"):
             return j_err(i18n.so_texto("New versions can only be installed from the computer."), 403)
         if celular and request.path.startswith("/api/metricas"):
@@ -2192,9 +2192,9 @@ def build(app_state):
         except i18n.Recusa as ex:  # a nossa: o aparelho que sumiu
             return j_err(ex.msg)
         except Exception as ex:  # noqa: BLE001 - PortAudio fala ingles
-            return j_err(i18n.msg("server.devices.openFailed", "Couldn't open that device ({reason}). The previous "
-                                                               "one was restored; make sure the device is connected "
-                                                               "and not in use by another program.", reason=str(ex)[:160]))
+            return j_err(i18n.msg("server.devices.openFailed", "Couldn't open that device ({reason}), so Ritmelli "
+                                                               "went back to the previous one. Make sure the device "
+                                                               "is connected and not in use by another program.", reason=str(ex)[:160]))
         A.save_cfg()
         return j_ok()
 
