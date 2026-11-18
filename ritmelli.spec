@@ -48,7 +48,7 @@ versao = VSVersionInfo(
             StringStruct("FileDescription", "Ritmelli"),
             StringStruct("FileVersion", VERSAO),
             StringStruct("InternalName", "ritmelli"),
-            StringStruct("LegalCopyright", "Software livre sob a GPLv3"),
+            StringStruct("LegalCopyright", "Software livre sob a GPLv3 / Free software under the GPLv3"),
             StringStruct("OriginalFilename", "ritmelli.exe"),
             StringStruct("ProductName", "Ritmelli"),
             StringStruct("ProductVersion", VERSAO),

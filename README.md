@@ -5,6 +5,10 @@ chamada de voz, junto com a sua voz, enquanto você ouve apenas a música no fon
 anos 70 em pixel art, abre em uma janela própria no computador (fechá-la desliga o aplicativo) e, no celular, no
 navegador, pela mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de chamada que permita escolher o microfone.
 
+Para usar o Ritmelli, baixe o instalador da versão mais recente nas
+[Releases do ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases/releases/latest) (o arquivo
+terminado em `-setup.exe`): ele já inclui tudo de que o aplicativo precisa, sem Python.
+
 ## Recursos
 
 - Reprodução de músicas do YouTube (busca, reprodução imediata por streaming e download em segundo plano) ou de
@@ -16,7 +20,7 @@ navegador, pela mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de cham
 - Sons rápidos: efeitos sonoros curtos que tocam por cima da música.
 - Efeitos de voz: rádio de polícia, megafone, locutor de rádio FM, eco, robô, voz grave e outros.
 
-## Requisitos
+## Requisitos para executar a partir do código-fonte
 
 - Windows 10 ou 11 (o áudio é reproduzido por WASAPI, e o volume do microfone é controlado pelo Core Audio).
 - Python 3.12 ou superior.
@@ -31,7 +35,7 @@ navegador, pela mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de cham
 - Node ou Deno: o yt-dlp precisa de um runtime de JavaScript para que o YouTube disponibilize todos os formatos. O
   Deno também pode ficar na pasta `bin/`.
 
-## Instalação
+## Instalação a partir do código-fonte
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -163,8 +167,8 @@ the anonymous usage data and error reports, which can be turned off in the insta
 | `janela.py` | a janela própria do aplicativo no computador, pelo WebView2 (sem ele, o navegador) |
 | `ritmelli.spec` | a configuração do executável (PyInstaller) |
 | `server.py` | servidor aiohttp: API, eventos (SSE), fila, modo Automático, busca e download |
-| `engine.py` | motor de áudio: mixagem, os dois decks e as transições de DJ |
-| `batida.py`, `compasso.py`, `andamento.py` | andamento, grade de batidas e o primeiro tempo do compasso |
+| `engine.py` | o motor de áudio: a mixagem, os dois decks e as transições de DJ |
+| `batida.py`, `compasso.py`, `andamento.py` | o andamento, a grade de batidas e o primeiro tempo do compasso |
 | `fx.py` | efeitos de voz |
 | `versao.py` | a versão do aplicativo |
 | `atualizacao.py`, `atualizador.py` | as novas versões: o que a interface exibe e a tarefa do Windows que baixa e instala as atualizações |

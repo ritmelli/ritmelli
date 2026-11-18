@@ -32,7 +32,7 @@ AppName=Ritmelli
 AppVersion={#Versao}
 AppVerName=Ritmelli {#Versao}
 AppPublisher=Behling Informática Ltda.
-AppCopyright=Software livre sob a GPLv3
+AppCopyright=Software livre sob a GPLv3 / Free software under the GPLv3
 VersionInfoVersion={#Versao}
 ; a pasta da instalacao anterior, menos a padrao de antes da troca de nome (PastaPadrao, no [Code])
 DefaultDirName={code:PastaPadrao}

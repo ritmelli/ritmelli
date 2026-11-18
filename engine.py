@@ -1548,8 +1548,8 @@ class Engine:
                 x = f(x)  # o motor do filtro (voz.h) pelo voz.dll, a 48 kHz
             except Exception as ex:  # noqa: BLE001 - efeito quebrado nao pode calar a voz
                 self._fx_id, self._fx, self.effect = None, None, "nenhum"
-                self.error = i18n.msg("server.effect.failed", "The voice effect failed ({reason}). Your voice is "
-                                                              "back to normal.", reason=str(ex)[:120])
+                self.error = i18n.msg("server.effect.failed", "The voice effect failed ({reason}). You're back to "
+                                                              "your natural voice.", reason=str(ex)[:120])
         elif self._fx_id is not None and not self._fx_pendente and not self._fx_falta_dito:
             # o efeito sairia daqui e o voz.dll nao carregou: a voz segue crua, e o aviso sai uma vez por efeito
             self._fx_falta_dito = True

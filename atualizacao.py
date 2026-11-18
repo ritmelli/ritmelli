@@ -268,8 +268,8 @@ class Atualizacao:
         except Recusado:
             n = None
         est = e.get("estado") if e.get("estado") in ("baixando", "pronta", "instalando") and n else "parado"
-        erro = i18n.msg("server.update.autoFailed", "The automatic update was interrupted ({reason}). It will try "
-                                                    "again automatically.",
+        erro = i18n.msg("server.update.autoFailed", "The automatic update was interrupted ({reason}). Ritmelli will "
+                                                    "try again later.",
                         reason=str(e["erro"])) if e.get("erro") else None
         return {"ativa": True, "automatica": True, "versao": VERSAO, "estado": est,
                 "progresso": round(float(e.get("progresso") or 0.0), 3) if est == "baixando" else (1.0 if est == "pronta" else 0.0),

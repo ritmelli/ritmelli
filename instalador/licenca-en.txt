@@ -2,7 +2,7 @@
 
 The source code of the app and of this installer is available at https://github.com/ritmelli/ritmelli. Each version is tagged with its number, such as v0.4.1.
 
-The license applies to anyone who copies, modifies, or distributes Ritmelli.
+The license conditions apply to anyone who copies, modifies, or distributes Ritmelli.
 
 Ritmelli comes with ABSOLUTELY NO WARRANTY, not even the implied warranty of fitness for a particular purpose, to the extent permitted by law (sections 15 and 16 of the GPLv3).
 

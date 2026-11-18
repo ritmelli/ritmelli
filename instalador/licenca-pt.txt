@@ -2,7 +2,7 @@
 
 O código-fonte do aplicativo e deste instalador está disponível em https://github.com/ritmelli/ritmelli. Cada versão tem uma tag com o seu número, como v0.4.1.
 
-A licença se aplica a quem copia, modifica ou distribui o Ritmelli.
+As condições da licença se aplicam a quem copia, modifica ou distribui o Ritmelli.
 
 O Ritmelli é fornecido SEM NENHUMA GARANTIA, nem mesmo a garantia implícita de adequação a uma finalidade específica, na medida permitida pela lei (seções 15 e 16 da GPLv3).
 
