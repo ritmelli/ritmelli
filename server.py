@@ -1864,7 +1864,7 @@ def build(app_state):
             if not A.celulares.confere(chave):
                 return web.json_response({
                     "ok": False, "parear": True, "desconectado": bool(chave),
-                    "error": i18n.msg("server.pair.required", "This phone isn't connected to Vitrola. On the "
+                    "error": i18n.msg("server.pair.required", "This phone isn't connected to Ritmelli. On the "
                                       "computer, click Phone and scan the QR code.")}, status=401)
         try:
             resp = await handler(request)

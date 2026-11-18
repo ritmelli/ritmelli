@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vitrola</title>
+<title>Ritmelli</title>
 <!-- i18n -->
 <script>
 /* I18N: os textos da interface na lingua de quem usa (o plano esta no I18N.md do ritmelli-server). Os textos moram em
@@ -1345,7 +1345,7 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
 /* o "Efeitos de voz" generico sai da tela e fica so para o leitor de tela */
 .palco .cabeca-gav h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .palco .cabeca-gav::before {
-  content: "VITROLA" / ""; padding: 2px 5px 1px; border-radius: 2px;
+  content: "RITMELLI" / ""; padding: 2px 5px 1px; border-radius: 2px;
   background: #2A1E19; color: var(--marfim); box-shadow: 0 1px 0 rgba(255,255,255,.45);
   font-size: .625rem; font-weight: 850; font-stretch: 125%; letter-spacing: .16em; line-height: 1;
 }
@@ -4373,7 +4373,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
   <header class="topo">
     <div class="marca">
       <span class="lampada" id="lamp" aria-hidden="true"></span>
-      <h1 class="nome-marca">vitrola</h1>
+      <h1 class="nome-marca">ritmelli</h1>
       <span class="conexao" id="conexao" role="status" data-i18n="app.connecting"></span>
     </div>
     <form class="busca" id="form-busca" role="search">
@@ -4442,19 +4442,19 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
     <button class="btn-madeira palco-fechar" id="b-fechar-palco" type="button" data-i18n-aria-label="nav.closeDeck" data-i18n-title="nav.close">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 9l6.5 6.5L18.5 9"/></svg>
     </button>
-    <p class="palco-tit"><span class="sr" data-i18n="nav.deck"></span><span class="palco-chapa" aria-hidden="true"><span class="palco-luz"></span><span class="palco-marca">VITROLA</span></span></p>
+    <p class="palco-tit"><span class="sr" data-i18n="nav.deck"></span><span class="palco-chapa" aria-hidden="true"><span class="palco-luz"></span><span class="palco-marca">RITMELLI</span></span></p>
     <button class="mini-btn palco-cortar" id="palco-cortar" type="button" aria-pressed="false" data-i18n-aria-label="voice.mute" data-i18n-title="voice.mute"></button>
   </div>
   <canvas class="cabo-calha" id="cabo-calha" aria-hidden="true"></canvas>
   <section class="deck" data-i18n-aria-label="nav.deck">
     <div class="mesa"><div class="tampo">
       <div class="placa">
-        <span class="selo-placa" aria-hidden="true"><b>VITROLA</b><span>33 / 45 RPM</span></span>
+        <span class="selo-placa" aria-hidden="true"><b>RITMELLI</b><span>33 / 45 RPM</span></span>
       </div>
       <div class="prato" id="prato">
         <div class="giratorio">
           <div class="aro"></div>
-          <div class="feltro"><span>vitrola</span></div>
+          <div class="feltro"><span>ritmelli</span></div>
           <div class="disco"><div class="rotulo" id="rotulo"></div></div>
         </div>
         <div class="brilho"></div>
@@ -4515,7 +4515,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 
   <section class="receptor" data-i18n-aria-label="mixer.label">
     <span class="chassi-rec" aria-hidden="true">
-      <span class="marca-ap"><b>VITROLA</b><span data-i18n="mixer.plate"></span></span>
+      <span class="marca-ap"><b>RITMELLI</b><span data-i18n="mixer.plate"></span></span>
       <span class="parafusos-rec"></span>
       <span class="pes-ap"></span>
     </span>
@@ -4587,12 +4587,12 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
   <section class="deck deck-deixa" id="deck-deixa" data-i18n-aria-label="cue.label" hidden>
     <div class="mesa"><div class="tampo">
       <div class="placa">
-        <span class="selo-placa" aria-hidden="true"><b>VITROLA</b><span>33 / 45 RPM</span></span>
+        <span class="selo-placa" aria-hidden="true"><b>RITMELLI</b><span>33 / 45 RPM</span></span>
       </div>
       <div class="prato" id="prato-d">
         <div class="giratorio">
           <div class="aro"></div>
-          <div class="feltro"><span>vitrola</span></div>
+          <div class="feltro"><span>ritmelli</span></div>
           <div class="disco"><div class="rotulo" id="rotulo-d"></div></div>
         </div>
         <div class="brilho"></div>
@@ -4686,7 +4686,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
 <!-- opcoes de um disco ou resultado: os itens saem do JS (abrirMenu); no celular sobem de baixo -->
 <div class="menu-fundo" id="menu-fundo" hidden></div>
 <div class="menu" id="menu" hidden>
-  <span class="menu-selo" aria-hidden="true">Vitrola · LP</span>
+  <span class="menu-selo" aria-hidden="true">Ritmelli · LP</span>
   <div class="menu-cab" id="menu-cab" aria-hidden="true"></div>
   <div role="menu" id="menu-itens"></div>
 </div>
@@ -9668,7 +9668,8 @@ const LETRA_PLACA = {
   // ---------------- os glifos desenhados a mao (plaquinha e icones)
   const VITROLA = { V: ["##.##", "##.##", "##.##", ".###.", "..#.."], I: ["##", "##", "##", "##", "##"],
     T: ["######", "..##..", "..##..", "..##..", "..##.."], R: ["####.", "##.##", "####.", "##.#.", "##.##"],
-    O: [".###.", "##.##", "##.##", "##.##", ".###."], L: ["##...", "##...", "##...", "##...", "#####"], A: [".###.", "##.##", "#####", "##.##", "##.##"] };
+    O: [".###.", "##.##", "##.##", "##.##", ".###."], L: ["##...", "##...", "##...", "##...", "#####"], A: [".###.", "##.##", "#####", "##.##", "##.##"],
+    M: ["##...##", "###.###", "##.#.##", "##...##", "##...##"], E: ["#####", "##...", "####.", "##...", "#####"] };
   const MIUDA = { "3": ["###", "..#", ".##", "..#", "###"], "4": ["#.#", "#.#", "###", "..#", "..#"], "5": ["###", "#..", "###", "..#", "###"],
     "/": ["..#", "..#", ".#.", "#..", "#.."], R: ["##.", "#.#", "##.", "#.#", "#.#"], P: ["##.", "#.#", "##.", "#..", "#.."],
     M: ["#...#", "##.##", "#.#.#", "#...#", "#...#"], " ": [".."] };
@@ -9892,13 +9893,13 @@ const LETRA_PLACA = {
     }
     P.dim = 1;
     // a plaquinha VITROLA no meio da coluna da direita, embaixo do transporte
-    const w1 = lg('VITROLA', VITROLA), w2 = lg('33 / 45 RPM', MIUDA), sw = Math.max(w1, w2) + 10, sh = 22;   // (r09) 2 celulas mais alta embaixo: 2 de folga entre o filete e as letras
+    const w1 = lg('RITMELLI', VITROLA), w2 = lg('33 / 45 RPM', MIUDA), sw = Math.max(w1, w2) + 10, sh = 22;   // (r09) 2 celulas mais alta embaixo: 2 de folga entre o filete e as letras
     const fx = g.faixa, sx0 = Math.round((fx.x0 + fx.x1 - sw) / 2), sy0 = g.cmdY1 + 10;   // (r07) 3 celulas mais longe do play
     sombraCaixa(P, sx0, sy0, sx0 + sw, sy0 + sh, 1, 2);
     caixa(P, sx0, sy0, sx0 + sw, sy0 + sh, CREME, CREME_L, CREME_S);
     for (let x = sx0 + 2; x < sx0 + sw - 2; x++) { px(P, x, sy0 + 2, cor(198, 182, 156)); px(P, x, sy0 + sh - 3, cor(198, 182, 156)); }
     for (let y = sy0 + 2; y < sy0 + sh - 2; y++) { px(P, sx0 + 2, y, cor(198, 182, 156)); px(P, sx0 + sw - 3, y, cor(198, 182, 156)); }
-    mapa(P, 'VITROLA', VITROLA, sx0 + Math.floor((sw - w1) / 2), sy0 + 5, TINTA);
+    mapa(P, 'RITMELLI', VITROLA, sx0 + Math.floor((sw - w1) / 2), sy0 + 5, TINTA);
     mapa(P, '33 / 45 RPM', MIUDA, sx0 + Math.floor((sw - w2) / 2), sy0 + 12, cor(48, 34, 26));
     return P;
   }
@@ -10683,7 +10684,8 @@ const LETRA_PLACA = {
   // ---------------- os glifos desenhados a mao (plaquinha e icones)
   const VITROLA = { V: ["##.##", "##.##", "##.##", ".###.", "..#.."], I: ["##", "##", "##", "##", "##"],
     T: ["######", "..##..", "..##..", "..##..", "..##.."], R: ["####.", "##.##", "####.", "##.#.", "##.##"],
-    O: [".###.", "##.##", "##.##", "##.##", ".###."], L: ["##...", "##...", "##...", "##...", "#####"], A: [".###.", "##.##", "#####", "##.##", "##.##"] };
+    O: [".###.", "##.##", "##.##", "##.##", ".###."], L: ["##...", "##...", "##...", "##...", "#####"], A: [".###.", "##.##", "#####", "##.##", "##.##"],
+    M: ["##...##", "###.###", "##.#.##", "##...##", "##...##"], E: ["#####", "##...", "####.", "##...", "#####"] };
   const MIUDA = { "3": ["###", "..#", ".##", "..#", "###"], "4": ["#.#", "#.#", "###", "..#", "..#"], "5": ["###", "#..", "###", "..#", "###"],
     "/": ["..#", "..#", ".#.", "#..", "#.."], R: ["##.", "#.#", "##.", "#.#", "#.#"], P: ["##.", "#.#", "##.", "#..", "#.."],
     M: ["#...#", "##.##", "#.#.#", "#...#", "#...#"], " ": [".."] };

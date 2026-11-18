@@ -820,10 +820,10 @@ def _erro_da_tarefa(r, mic):
     microfone/microfone.py)."""
     motivo = r.get("motivo")
     if motivo == "sem_tarefa":
-        return i18n.msg("server.mic.noTask", "The part of Vitrola that prepares microphones is missing: install "
-                        "Vitrola again.")
+        return i18n.msg("server.mic.noTask", "The Ritmelli component that prepares microphones is missing. "
+                        "Reinstall Ritmelli.")
     if motivo == "nao_pronto":
-        return i18n.msg("server.mic.notReady", "The microphone \"{name}\" didn't get ready for Vitrola.", name=mic)
+        return i18n.msg("server.mic.notReady", "The microphone \"{name}\" didn't get ready for Ritmelli.", name=mic)
     if motivo == "audio":
         return i18n.msg("server.mic.audioSlow", "Windows audio didn't come back in time.")
     return i18n.msg("server.mic.taskFailed", "Couldn't prepare the microphone ({reason}).",
@@ -1345,15 +1345,15 @@ class Engine:
         if mic in self._preparados:
             if self.active.get("mic") == mic:
                 self._aviso = self.error = i18n.msg("server.mic.notReadyReinstall", "The microphone \"{name}\" didn't "
-                                                    "get ready for Vitrola: the music doesn't reach it. Try "
-                                                    "reinstalling Vitrola.", name=mic)
+                                                    "get ready for Ritmelli, so the music doesn't reach it. Try "
+                                                    "reinstalling Ritmelli.", name=mic)
             return
         self._preparados.add(mic)
         from microfone import microfone as filtro  # noqa: PLC0415
         self.preparando = mic
         # o som do PC some enquanto o Windows reinicia o audio: a tela diz por que
         prep = self._aviso = self.error = i18n.msg("server.mic.preparing", "Preparing the microphone \"{name}\" for "
-                                                   "Vitrola: the PC's sound goes silent for a few seconds.", name=mic)
+                                                   "Ritmelli: the computer's sound will cut out for a few seconds.", name=mic)
         try:
             r = filtro.pede_tarefa(mic)
         finally:
@@ -1541,8 +1541,8 @@ class Engine:
         elif self._fx_id is not None and not self._fx_pendente and not self._fx_falta_dito:
             # o efeito sairia daqui e o voz.dll nao carregou: a voz segue crua, e o aviso sai uma vez por efeito
             self._fx_falta_dito = True
-            self.error = i18n.msg("server.effect.noVozDll", "Vitrola's voz.dll is missing: on this microphone your "
-                                  "voice stays without the effect. Reinstall Vitrola.")
+            self.error = i18n.msg("server.effect.noVozDll", "Ritmelli's voz.dll file is missing: on this microphone, "
+                                  "your voice has no effect. Reinstall Ritmelli.")
         self._mic.append(x)
         while len(self._mic) > MIC_MAX:
             self._mic.popleft()

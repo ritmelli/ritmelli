@@ -559,7 +559,7 @@ TAREFA = r"\Vitrola\Microfone"
 TAREFA_XML = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Vitrola: poe o filtro de microfone nos microfones que ainda nao tem</Description>
+    <Description>Ritmelli: adiciona o filtro de microfone aos microfones que ainda não o têm.</Description>
     <SecurityDescriptor>D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;GRGX;;;AU)</SecurityDescriptor>
   </RegistrationInfo>
   <Principals>

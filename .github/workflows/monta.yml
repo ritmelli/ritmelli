@@ -250,7 +250,7 @@ jobs:
                    '_internal\microfone\voz.dll') {
             if (-not (Test-Path "$app\$f")) { throw "o setup não instalou o $f" }
           }
-          netsh advfirewall firewall show rule name=Vitrola | Out-Null
+          netsh advfirewall firewall show rule name=Ritmelli | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'o setup não criou a regra do firewall' }
           $vit = Start-Process "$app\vitrola.exe" -ArgumentList '--no-browser' -PassThru
           $estado = $null
@@ -277,7 +277,7 @@ jobs:
           if ($met.situacao -ne 'decidir') { throw "os dados de uso sem escolha estão $($met.situacao), e não decidir" }
           'os dados de uso esperam a escolha de quem usa'
           # a janela própria (janela.py): o --no-browser de cima não abre nenhuma; desligada pela API, a Vitrola abre de
-          # novo como pelo atalho, tem de mostrar a janela "Vitrola", a segunda abertura só traz ela para a frente, e
+          # novo como pelo atalho, tem de mostrar a janela "Ritmelli", a segunda abertura só traz ela para a frente, e
           # fechar a janela (o X) desliga o servidor
           Invoke-RestMethod 'http://127.0.0.1:8799/api/shutdown' -Method Post -ContentType 'application/json' -Body '{}' | Out-Null
           if (-not $vit.WaitForExit(30000)) { throw 'a Vitrola não saiu em 30 s depois do Desligar' }
@@ -286,7 +286,7 @@ jobs:
           for ($i = 0; $i -lt 90 -and -not $vit.HasExited -and -not $janela; $i++) {
             Start-Sleep 1
             $vit.Refresh()
-            $janela = $vit.MainWindowTitle -eq 'Vitrola'
+            $janela = $vit.MainWindowTitle -eq 'Ritmelli'
           }
           if (-not $janela) {
             Get-Content "$logs\server.log", "$logs\server.err" -ErrorAction SilentlyContinue
@@ -317,7 +317,7 @@ jobs:
           Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
           for ($i = 0; $i -lt 120 -and (Test-Path "$app\vitrola.exe"); $i++) { Start-Sleep 1 }
           if (Test-Path "$app\vitrola.exe") { throw 'o desinstalador não tirou o vitrola.exe em 2 min' }
-          netsh advfirewall firewall show rule name=Vitrola | Out-Null
+          netsh advfirewall firewall show rule name=Ritmelli | Out-Null
           if ($LASTEXITCODE -eq 0) { throw 'o desinstalador deixou a regra do firewall' }
           for ($i = 0; $i -lt 30 -and (Get-ItemProperty 'HKLM:\SOFTWARE\Vitrola' -Name Metricas -ErrorAction SilentlyContinue); $i++) { Start-Sleep 1 }
           if (Get-ItemProperty 'HKLM:\SOFTWARE\Vitrola' -Name Metricas -ErrorAction SilentlyContinue) {

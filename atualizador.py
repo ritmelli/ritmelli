@@ -47,7 +47,7 @@ TENTATIVAS = 2  # instalador da mesma versao que terminou sem trocar a versao: d
 TAREFA_XML = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Vitrola: baixa e instala a versao nova, com a Vitrola fechada</Description>
+    <Description>Ritmelli: baixa e instala as atualizações quando o Ritmelli está fechado.</Description>
     <SecurityDescriptor>D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;GRGX;;;AU)</SecurityDescriptor>
   </RegistrationInfo>
   <Triggers>

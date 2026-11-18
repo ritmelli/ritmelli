@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pastas
 
-TITULO = "Vitrola"
+TITULO = "Ritmelli"
 ESTADO = pastas.DADOS / "janela.json"
 GUARDA = pastas.DADOS / "janela"  # o que o WebView2 guarda da pagina (localStorage, cookies)
 LARGURA, ALTURA = 1280, 820

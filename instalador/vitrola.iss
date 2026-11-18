@@ -22,9 +22,9 @@
 [Setup]
 ; o AppId nunca muda: e por ele que o Windows reconhece a versao nova por cima da velha
 AppId={{320EB2BD-48BC-420D-8F52-C22F644E47D4}
-AppName=Vitrola
+AppName=Ritmelli
 AppVersion={#Versao}
-AppVerName=Vitrola {#Versao}
+AppVerName=Ritmelli {#Versao}
 AppPublisher=Behling Informática Ltda
 AppCopyright=Software livre sob a GPLv3
 VersionInfoVersion={#Versao}
@@ -49,7 +49,7 @@ CloseApplications=force
 CloseApplicationsFilter=*.exe,*.dll,*.pyd
 RestartApplications=no
 UninstallDisplayIcon={app}\vitrola.exe
-UninstallDisplayName=Vitrola
+UninstallDisplayName=Ritmelli
 SetupLogging=yes
 ; o icone do setup e o do exe, que o vitrola.spec poe na _internal\icone\. O desenho mora no dev/icone.py do
 ; repo vitrola, que tambem grava aqui as imagens do assistente (a 100% e a 200%; o Inno escolhe pela escala)
@@ -64,34 +64,35 @@ UsedUserAreasWarning=no
 
 [Languages]
 ; a licenca numa pagina de informacao, e nao de "aceito": a GPLv3 nao precisa ser aceita para usar (secao 9)
-Name: "pt"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"; InfoBeforeFile: "licenca-pt.txt"
+; a traducao pt-BR do Inno corrigida (a oficial usa "pra" e maiusculas no meio da frase): o pt-BR.isl, ao lado
+Name: "pt"; MessagesFile: "pt-BR.isl"; InfoBeforeFile: "licenca-pt.txt"
 Name: "en"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "licenca-en.txt"
 
 [Messages]
-pt.FinishedLabel=A Vitrola foi instalada e fica no menu Iniciar.%n%nNo jogo e nas chamadas de voz, use o seu microfone de sempre: a Vitrola toca a música nele. No Discord, escolha Estúdio em Perfil de entrada: os outros perfis podem cortar a música.
-en.FinishedLabel=Vitrola is installed. You'll find it in the Start menu.%n%nIn games and voice calls, keep your usual microphone: Vitrola plays the music into it. In Discord, pick Studio under Input Profile: the other profiles can cut the music out.
+pt.FinishedLabel=O Ritmelli foi instalado e está disponível no menu Iniciar.%n%nNo jogo e nas chamadas de voz, continue usando o seu microfone habitual: o Ritmelli toca a música nele. No Discord, selecione Estúdio em Perfil de entrada, pois os outros perfis podem cortar a música.
+en.FinishedLabel=Ritmelli has been installed and is available in the Start menu.%n%nIn games and voice calls, keep using your usual microphone: Ritmelli plays the music through it. In Discord, select Studio under Input Profile, as the other profiles can cut out the music.
 
 [CustomMessages]
-pt.Abrir=Abrir a Vitrola
-en.Abrir=Open Vitrola
-pt.Firewall=Liberando a Vitrola no firewall, para o celular alcançar o PC...
-en.Firewall=Allowing Vitrola through the firewall, so your phone can reach the PC...
-pt.Microfone=Preparando os microfones para a Vitrola (o som do PC some por alguns segundos)...
-en.Microfone=Getting your microphones ready for Vitrola (your PC's sound drops for a few seconds)...
-pt.ParcialSemApp=Esta é uma atualização da Vitrola, e só serve onde a Vitrola já está instalada. Para instalar, use o Vitrola-{#Versao}-setup.exe.
-en.ParcialSemApp=This is a Vitrola update, and it only works where Vitrola is already installed. To install Vitrola, use Vitrola-{#Versao}-setup.exe.
+pt.Abrir=Abrir o Ritmelli
+en.Abrir=Open Ritmelli
+pt.Firewall=Liberando o Ritmelli no firewall para que o celular possa se conectar ao computador...
+en.Firewall=Allowing Ritmelli through the firewall so your phone can connect to the computer...
+pt.Microfone=Preparando os microfones para o Ritmelli (o som do computador é interrompido por alguns segundos)...
+en.Microfone=Preparing your microphones for Ritmelli (the computer's sound will cut out for a few seconds)...
+pt.ParcialSemApp=Esta é uma atualização do Ritmelli e só pode ser aplicada a uma instalação existente. Para instalar o Ritmelli, use o arquivo Vitrola-{#Versao}-setup.exe.
+en.ParcialSemApp=This is a Ritmelli update and can only be applied to an existing installation. To install Ritmelli, use Vitrola-{#Versao}-setup.exe.
 ; a pagina dos dados de uso e dos erros (metricas.py): a politica na instalacao e a opcao de desligar, como a SignPath
 ; pede (o PRIVACIDADE.md tem o texto inteiro)
 pt.MetricasTitulo=Dados de uso e erros
 en.MetricasTitulo=Usage data and errors
-pt.MetricasDescricao=O que a Vitrola envia para melhorar, sem saber quem é você.
-en.MetricasDescricao=What Vitrola sends to get better, without knowing who you are.
-pt.MetricasSub=Leia o que vai e escolha embaixo. Dá para mudar depois, na Vitrola, em Microfone e fone.
-en.MetricasSub=Read what is sent and choose below. You can change it later in Vitrola, under Mic and headphones.
-pt.MetricasTexto=Para saber quantas pessoas usam a Vitrola, se as versões novas estão chegando, que erros acontecem e quais efeitos são usados, a Vitrola pode enviar dados anônimos de uso e os erros.%n%nO que vai: um código aleatório desta instalação, a versão da Vitrola, a do Windows e a língua; um aviso por dia de uso; quanto tempo a música toca e quanto tempo cada efeito de voz fica ligado; e os erros, com o lugar do código onde aconteceram.%n%nO que nunca vai: nome, conta, e-mail, música, busca, link, áudio, voz ou o nome dos seus aparelhos. O endereço IP não é guardado.%n%nPara onde vai: PostHog (uso) e Sentry (erros), com os dados na União Europeia. O uso fica guardado por até 1 ano, e os erros, por até 90 dias.%n%nA política inteira: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
-en.MetricasTexto=To know how many people use Vitrola, whether new versions are arriving, which errors happen and which effects get used, Vitrola can send anonymous usage data and errors.%n%nWhat is sent: a random code for this installation, the Vitrola version, the Windows version and the language; one notice per day of use; how long music plays and how long each voice effect stays on; and errors, with the place in the code where they happened.%n%nWhat is never sent: name, account, email, music, searches, links, audio, voice or the names of your devices. The IP address is not stored.%n%nWhere it goes: PostHog (usage) and Sentry (errors), with the data in the European Union. Usage is kept for up to 1 year, and errors for up to 90 days.%n%nThe full policy: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
-pt.MetricasCaixa=Enviar dados anônimos de uso e os erros
-en.MetricasCaixa=Send anonymous usage data and errors
+pt.MetricasDescricao=O que o Ritmelli envia para melhorar, sem identificar você.
+en.MetricasDescricao=What Ritmelli sends to improve, without identifying you.
+pt.MetricasSub=Leia o que é enviado e faça a sua escolha abaixo. É possível alterá-la depois no Ritmelli, em Microfone e fone.
+en.MetricasSub=Read what is sent and make your choice below. You can change it later in Ritmelli, under Mic and headphones.
+pt.MetricasTexto=Para saber quantas pessoas usam o Ritmelli, se as novas versões estão chegando, quais erros ocorrem e quais efeitos são usados, o Ritmelli pode enviar dados anônimos de uso e relatórios de erro.%n%nO que é enviado: um código aleatório desta instalação, as versões do Ritmelli e do Windows e o idioma; um registro por dia de uso; por quanto tempo a música toca e cada efeito de voz fica ativo; e os erros, com o ponto do código em que ocorreram.%n%nO que nunca é enviado: nome, conta, e-mail, músicas, buscas, links, áudio, voz ou o nome dos seus dispositivos. O endereço IP não é armazenado.%n%nPara onde vão os dados: PostHog (uso) e Sentry (erros), com armazenamento na União Europeia. Os dados de uso são mantidos por até 1 ano, e os relatórios de erro, por até 90 dias.%n%nPolítica de privacidade completa: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
+en.MetricasTexto=To learn how many people use Ritmelli, whether new versions are reaching them, which errors occur and which effects are used, Ritmelli can send anonymous usage data and error reports.%n%nWhat is sent: a random code for this installation, the Ritmelli and Windows versions and the language; one record per day of use; how long music plays and how long each voice effect stays on; and errors, with the place in the code where they occurred.%n%nWhat is never sent: name, account, email, music, searches, links, audio, voice or the names of your devices. The IP address is not stored.%n%nWhere the data goes: PostHog (usage) and Sentry (errors), stored in the European Union. Usage data is kept for up to 1 year, and error reports for up to 90 days.%n%nFull privacy policy: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
+pt.MetricasCaixa=Enviar dados anônimos de uso e relatórios de erro
+en.MetricasCaixa=Send anonymous usage data and error reports
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -130,15 +131,16 @@ Source: "{#Terceiros}"; DestDir: "{app}"; DestName: "TERCEIROS.txt"; Flags: igno
 Root: HKLM; Subkey: "SOFTWARE\Vitrola"; ValueType: dword; ValueName: "Metricas"; ValueData: "{code:MetricasValor}"; Flags: uninsdeletevalue uninsdeletekeyifempty; Check: GravaMetricas
 
 [Icons]
-Name: "{autoprograms}\Vitrola"; Filename: "{app}\vitrola.exe"
-Name: "{autodesktop}\Vitrola"; Filename: "{app}\vitrola.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Ritmelli"; Filename: "{app}\vitrola.exe"
+Name: "{autodesktop}\Ritmelli"; Filename: "{app}\vitrola.exe"; Tasks: desktopicon
 
 [Run]
 ; o servidor atende a rede de casa (o celular). Privadas e publicas: muito Wi-Fi de casa esta como publico no
 ; Windows (o do Chris estava), e so privadas deixava o celular de fora. Pela rede, so entra o celular pareado
 ; (pareamento.py, no repo vitrola)
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Vitrola"""; Flags: runhidden
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Vitrola"" dir=in action=allow program=""{app}\vitrola.exe"" enable=yes profile=private,public"; StatusMsg: "{cm:Firewall}"; Flags: runhidden
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Ritmelli"""; Flags: runhidden
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Ritmelli"" dir=in action=allow program=""{app}\vitrola.exe"" enable=yes profile=private,public"; StatusMsg: "{cm:Firewall}"; Flags: runhidden
 ; o filtro em todo microfone que ainda nao tem, a DLL desta versao no lugar da velha e a tarefa do Windows que faz o
 ; mesmo depois, chamada pelo app sem UAC (o audio do PC reinicia so se algo mudou: atualizar sem DLL nova nao mexe)
 Filename: "{app}\vitrola.exe"; Parameters: "--microfone instala-todos --tarefa"; StatusMsg: "{cm:Microfone}"; Flags: runhidden
@@ -160,6 +162,7 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM vitrola.exe"; Flags: runhidd
 ; no audio)
 Filename: "{app}\vitrola.exe"; Parameters: "--microfone remove"; Flags: runhidden; RunOnceId: "Microfone"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Vitrola"""; Flags: runhidden; RunOnceId: "Firewall"
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Ritmelli"""; Flags: runhidden; RunOnceId: "FirewallRitmelli"
 
 [UninstallDelete]
 ; o que a atualizacao automatica baixou (os setups, o estado e o log dela)

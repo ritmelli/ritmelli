@@ -44,7 +44,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   filtro, a voz que o motor abre passa pelo `voz.dll` do mesmo jeito, para o ouvir a própria voz.
   Sem o `voz.dll` o app sobe igual: o efeito segue no filtro, e a voz que sairia do app vai crua,
   com um aviso na tela e no log. A voz cortada também
-  vai pelo pulso. O filtro só tira a crua e só aplica o efeito com o pulso vivo, então a Vitrola
+  vai pelo pulso. O filtro só tira a crua e só aplica o efeito com o pulso vivo, então o Ritmelli
   que cai não deixa o microfone mudo nem com a voz de robô. Com o microfone aberto por dois
   programas, o Windows pode montar duas cadeias, cada uma com a sua instância do filtro: as duas
   põem o efeito e a música no próprio som, mas só uma escreve a voz crua e só uma escreve a com
@@ -130,8 +130,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   que a reserva já deixa aberta (`pre_conecta`); a sugestão que acerta segue valendo e a
   busca é descartada.
 - `vitrola.py`: o ponto de entrada, o mesmo do executável. Sem modo, liga o servidor. Se
-  outra Vitrola já está ligada na mesma porta (o atalho clicado de novo), só abre a página
-  dela; se ela ainda está ligando, sai sem fazer nada, porque a página abre quando ela
+  outro Ritmelli já está ligado na mesma porta (o atalho clicado de novo), só abre a página
+  dele; se ele ainda está ligando, sai sem fazer nada, porque a página abre quando ele
   termina (uma trava do Windows marca a porta desde o começo). Com `--yt` ou `--andamento`,
   vira o processo auxiliar. No app congelado não há `python` nem
   `.py` para abrir, só o próprio executável, e o servidor abre os auxiliares por ele
@@ -184,7 +184,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   aceita o que a chave pública Ed25519 embutida no módulo assinou, e só para uma versão mais nova
   que a dele (um manifesto velho não volta a versão). O setup.exe novo vem com o tamanho e o hash
   conferidos e roda em modo silencioso, com o pedido de permissão do Windows: o instalador fecha
-  a Vitrola, troca a pasta dela e abre de novo. Os downloads ficam em
+  o Ritmelli, troca a pasta dele e abre de novo. Os downloads ficam em
   `%LOCALAPPDATA%\Vitrola\atualizacao`. Enquanto o endereço do manifesto e a chave estão vazios, e
   sempre que roda pelo código, nada é consultado. Teste: `python dev/testa_atualizacao.py`.
 - `server.py`: aiohttp no 127.0.0.1 e no IP da rede de casa (Host fixo contra DNS
@@ -339,7 +339,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo` no
   tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, o `LOGOS` (o logo do Locutor em cada língua), a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera o preview de cada tema para a galeria, um `preview_<lingua>.png` por língua no tema com textos e um `preview.png` no que não tem, com a prateleira de mentira do
   `dev/compara.py`; ele entra no git porque o instalador leva a pasta do tema como ela está).
-- `icone/`: o ícone da Vitrola, o toca-discos do tema visto de cima, que o `dev/icone.py` desenha
+- `icone/`: o ícone do Ritmelli, o toca-discos do tema visto de cima, que o `dev/icone.py` desenha
   em pixel em cada tamanho (o de 16 px a mão): o `vitrola.ico`, que é o do exe, o do setup e o da
   aba do navegador (pelo `/favicon.ico`), e o `toque.png`, o do atalho na tela inicial do celular
   (pelo `/apple-touch-icon.png`). Com `--instalador`, o script grava também as imagens do

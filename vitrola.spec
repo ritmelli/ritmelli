@@ -45,12 +45,12 @@ versao = VSVersionInfo(
     kids=[
         StringFileInfo([StringTable("041604B0", [  # portugues do Brasil, Unicode
             StringStruct("CompanyName", "Behling Informática Ltda"),
-            StringStruct("FileDescription", "Vitrola"),
+            StringStruct("FileDescription", "Ritmelli"),
             StringStruct("FileVersion", VERSAO),
             StringStruct("InternalName", "vitrola"),
             StringStruct("LegalCopyright", "Software livre sob a GPLv3"),
             StringStruct("OriginalFilename", "vitrola.exe"),
-            StringStruct("ProductName", "Vitrola"),
+            StringStruct("ProductName", "Ritmelli"),
             StringStruct("ProductVersion", VERSAO),
         ])]),
         VarFileInfo([VarStruct("Translation", [0x0416, 1200])]),
