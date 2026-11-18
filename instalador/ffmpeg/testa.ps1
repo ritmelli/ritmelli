@@ -2,7 +2,7 @@
 # montou o instalador): ver o testa.py. Usa o python do venv do build, que o monta.ps1 cria.
 # Uso: testa.ps1
 $ErrorActionPreference = 'Stop'
-$py = Join-Path $env:LOCALAPPDATA 'vitrola-build\Scripts\python.exe'
+$py = Join-Path $env:LOCALAPPDATA 'ritmelli-build\Scripts\python.exe'
 $velho = Join-Path $PSScriptRoot '..\vendor\ffmpeg-8d31e162\ffmpeg-9.0.2-full_build-shared\bin'
 if (-not (Test-Path "$velho\ffmpeg.exe")) { throw "nao achei o ffmpeg de antes em $velho" }
 & $py -X utf8 (Join-Path $PSScriptRoot 'testa.py') (Join-Path $PSScriptRoot 'bin') (Resolve-Path $velho).Path

@@ -1,12 +1,12 @@
-"""Os avisos de terceiros do instalador (o TERCEIROS.txt da pasta do app): tudo o que vai junto com a Vitrola, cada um
+"""Os avisos de terceiros do instalador (o TERCEIROS.txt da pasta do app): tudo o que vai junto com o Ritmelli, cada um
 com o texto da licenca dele. O monta.ps1 roda depois de congelar, com o python do venv do build:
 
-    python terceiros.py --app <dist\\vitrola> --vitrola <repo vitrola> --ffmpeg <pasta> --deno <pasta> --saida <arquivo>
+    python terceiros.py --app <dist\\ritmelli> --ritmelli <repo ritmelli> --ffmpeg <pasta> --deno <pasta> --saida <arquivo>
 
 - as bibliotecas Python que o PyInstaller levou: os modulos do PYZ do exe e o que esta na _internal\\, ligados ao pacote
   do pip pelos arquivos que cada pacote instalou no venv. O texto sai dos arquivos de licenca do pacote;
 - o Python (o LICENSE.txt da instalacao, que ja traz o OpenSSL, o libffi, o zlib e os outros que vem com ele) e o
-  PyInstaller (o bootloader e o comeco do vitrola.exe);
+  PyInstaller (o bootloader e o comeco do ritmelli.exe);
 - os modelos e as fontes da _internal\\, com a licenca que esta na mesma pasta;
 - o ffmpeg e o Deno da bin\\. A licenca do Deno nao vem no .zip dele: esta em licencas\\.
 
@@ -33,7 +33,7 @@ def le(arq):
 
 def modulos(app):
     """Os nomes de cima de tudo o que o PyInstaller levou: os modulos do PYZ e as pastas e .pyd da _internal\\."""
-    pyz = CArchiveReader(str(app / "vitrola.exe")).open_embedded_archive("PYZ.pyz")
+    pyz = CArchiveReader(str(app / "ritmelli.exe")).open_embedded_archive("PYZ.pyz")
     nomes = {n.split(".")[0] for n in pyz.toc}
     for p in (app / "_internal").iterdir():
         if p.is_dir() and not p.name.endswith(".dist-info"):
@@ -90,12 +90,12 @@ def roda(exe, *args):
 
 def main():
     ap = argparse.ArgumentParser()
-    for a in ("--app", "--vitrola", "--ffmpeg", "--deno", "--saida"):
+    for a in ("--app", "--ritmelli", "--ffmpeg", "--deno", "--saida"):
         ap.add_argument(a, type=Path, required=True)
     a = ap.parse_args()
     # do app: os modulos dele, os pacotes dele (pasta com __init__.py, como o microfone/) e as pastas que o
-    # vitrola.spec copia do repo
-    nosso = ({p.stem for p in a.vitrola.glob("*.py")} | {p.parent.name for p in a.vitrola.glob("*/__init__.py")}
+    # ritmelli.spec copia do repo
+    nosso = ({p.stem for p in a.ritmelli.glob("*.py")} | {p.parent.name for p in a.ritmelli.glob("*/__init__.py")}
              | {"themes", "gallery", "modelos", "icone"})
     donos = dono_de_cada_nome()
     pacotes, sem_dono = set(), []
@@ -108,7 +108,7 @@ def main():
             sem_dono.append(n)
     if sem_dono:
         sys.exit(f"modulos que nao sao de nenhum pacote do venv (de onde vem a licenca?): {', '.join(sem_dono)}")
-    pacotes.add("pyinstaller")  # o bootloader vai no vitrola.exe; o PyInstaller em si nao entra no PYZ
+    pacotes.add("pyinstaller")  # o bootloader vai no ritmelli.exe; o PyInstaller em si nao entra no PYZ
 
     secoes, lista, faltando = [], [], []
 
@@ -129,7 +129,7 @@ def main():
         if not tx:
             faltando.append(nome)
             continue
-        extra = ("O bootloader do PyInstaller forma o início do vitrola.exe; a exceção prevista na licença dele permite "
+        extra = ("O bootloader do PyInstaller forma o início do ritmelli.exe; a exceção prevista na licença dele permite "
                  "distribuir o programa gerado sob outra licença.\n\n" if nome == "pyinstaller" else "")
         lic = "GPL-2.0-or-later WITH Bootloader-exception" if nome == "pyinstaller" else tipo(d)
         secao(f"{d.metadata['Name']} {d.version}", lic, extra + "\n\n".join(f"--- {c}\n\n{t}" for c, t in tx))
@@ -170,7 +170,7 @@ def main():
     secao(f"Deno {num} (bin\\)", "MIT", f"Código-fonte: https://github.com/denoland/deno/tree/v{num}\n\n"
                                       f"{le(LICENCAS / 'deno-LICENSE.md')}")
 
-    versao = re.search(r'^VERSAO = "(.+)"', (a.vitrola / "versao.py").read_text(encoding="utf-8"), re.M).group(1)
+    versao = re.search(r'^VERSAO = "(.+)"', (a.ritmelli / "versao.py").read_text(encoding="utf-8"), re.M).group(1)
     topo = (f"Ritmelli {versao}: avisos de terceiros\n\n"
             "O Ritmelli é software livre, distribuído sob a GPL versão 3 (LICENSE.txt, nesta pasta). Ele inclui "
             "programas e bibliotecas\nde outros projetos, cada um sob a sua própria licença: primeiro vem a lista e, "

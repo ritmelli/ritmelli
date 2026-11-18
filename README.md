@@ -58,14 +58,15 @@ com o detector em numpy).
   tarefa criada pelo instalador, e o som do computador é interrompido por alguns segundos enquanto o Windows o
   prepara.
 - O microfone e o fone seguem o padrão do Windows, inclusive quando ele muda com o servidor em execução. A escolha
-  feita na interface fica salva em `%LOCALAPPDATA%\Vitrola\library\config.json`.
+  feita na interface fica salva em `%LOCALAPPDATA%\Ritmelli\library\config.json`.
 - Se o microfone ou o fone selecionado estiver desconectado, o Ritmelli usa o padrão do Windows até que ele volte. Se
   o dispositivo de gravação padrão for um cabo virtual, é usado o primeiro microfone físico.
-- Os dados do usuário (áudios baixados, biblioteca e preferências) ficam em `%LOCALAPPDATA%\Vitrola\library`, e os
-  logs do servidor, em `%LOCALAPPDATA%\Vitrola\logs`. As pastas mantêm o nome antigo para que as instalações
-  existentes sejam atualizadas sem perda de dados.
-- Sem o `soundboard.ps1`: `python vitrola.py` (aceita os mesmos argumentos do `server.py`).
-- Para ver a versão: `python vitrola.py --version`.
+- Os dados do usuário (áudios baixados, biblioteca e preferências) ficam em `%LOCALAPPDATA%\Ritmelli\library`, e os
+  logs do servidor, em `%LOCALAPPDATA%\Ritmelli\logs`. Até a versão 0.4.1, o aplicativo se chamava Vitrola: a
+  atualização leva os dados de `%LOCALAPPDATA%\Vitrola`, as escolhas e o celular pareado para o nome novo, sem perda de
+  nada (`migra.py`).
+- Sem o `soundboard.ps1`: `python ritmelli.py` (aceita os mesmos argumentos do `server.py`).
+- Para ver a versão: `python ritmelli.py --version`.
 - **No celular**, na mesma rede Wi-Fi: no computador, o botão Celular da interface exibe um QR code. Aponte a câmera
   do celular para ele ou abra o endereço exibido ao lado e digite o código. O celular permanece conectado até ser
   desconectado na mesma tela do computador. Sem esse pareamento, outro aparelho da rede consegue abrir a página, mas
@@ -76,27 +77,27 @@ com o detector em numpy).
 
 ## Executável
 
-O `vitrola.spec` gera o `vitrola.exe` com o PyInstaller, em um ambiente que contém apenas as dependências do
+O `ritmelli.spec` gera o `ritmelli.exe` com o PyInstaller, em um ambiente que contém apenas as dependências do
 aplicativo:
 
 ```powershell
 python -m venv .venv-build
 .venv-build\Scripts\python -m pip install -r requirements.txt pyinstaller
-.venv-build\Scripts\pyinstaller --noconfirm vitrola.spec
+.venv-build\Scripts\pyinstaller --noconfirm ritmelli.spec
 ```
 
-O resultado fica em `dist\vitrola\` (o `vitrola.exe` e a pasta `_internal\`). O ffmpeg, o ffprobe e o Deno não são
-incluídos: copie-os para `dist\vitrola\bin\` (cada build apaga a pasta). Sem console, os logs ficam em
-`%LOCALAPPDATA%\Vitrola\logs`, e o `soundboard.ps1 stop` também encerra o executável.
+O resultado fica em `dist\ritmelli\` (o `ritmelli.exe` e a pasta `_internal\`). O ffmpeg, o ffprobe e o Deno não são
+incluídos: copie-os para `dist\ritmelli\bin\` (cada build apaga a pasta). Sem console, os logs ficam em
+`%LOCALAPPDATA%\Ritmelli\logs`, e o `soundboard.ps1 stop` também encerra o executável.
 
 ## Como montar o instalador
 
 O instalador disponibilizado nas versões publicadas é gerado pelo `instalador\monta.ps1`: o script empacota o
-aplicativo pelo `vitrola.spec`, adiciona o ffmpeg, o ffprobe e o Deno e compila o `instalador\vitrola.iss` com o Inno
+aplicativo pelo `ritmelli.spec`, adiciona o ffmpeg, o ffprobe e o Deno e compila o `instalador\ritmelli.iss` com o Inno
 Setup. São necessários Windows, Python 3.12 e Inno Setup 6.
 
 ```powershell
-instalador\monta.ps1                              # gera instalador\saida\Vitrola-<versão>-setup.exe
+instalador\monta.ps1                              # gera instalador\saida\Ritmelli-<versão>-setup.exe
 instalador\monta.ps1 -Anterior <manifest.json>    # gera também a atualização parcial a partir daquela versão
 ```
 
@@ -107,7 +108,7 @@ instalador\monta.ps1 -Anterior <manifest.json>    # gera também a atualização
   código-fonte e como ele foi compilado.
 - A atualização parcial (apenas o que mudou) é gerada pelo `instalador\atualizacao\parcial.py`, e o manifesto que o
   aplicativo consulta, pelo `publica.py` da mesma pasta.
-- O instalador cria a tarefa "Vitrola Atualiza" do Windows (`atualizador.py`), que é executada como SYSTEM no logon e
+- O instalador cria a tarefa "Ritmelli Atualiza" do Windows (`atualizador.py`), que é executada como SYSTEM no logon e
   a cada 4 horas e instala a nova versão em segundo plano, sem pedido de permissão, quando o Ritmelli está fechado. Se
   ele estiver aberto, a nova versão fica baixada e é instalada quando ele for fechado.
 - O pipeline `.github/workflows/monta.yml` faz o mesmo em uma máquina Windows do GitHub e testa o instalador, a
@@ -132,7 +133,7 @@ publicadas sem assinatura.
   de pessoas de fora da equipe só são incorporadas após a revisão de um membro.
 - **Aprovação de cada assinatura:** os
   [proprietários da organização](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
-- **O que é assinado:** o `vitrola.exe`, o instalador e a atualização parcial, gerados pelo pipeline deste
+- **O que é assinado:** o `ritmelli.exe`, o instalador e a atualização parcial, gerados pelo pipeline deste
   repositório (`.github/workflows/monta.yml`) em uma máquina do GitHub, a partir deste código. O ffmpeg, o ffprobe e
   o Deno são incluídos no instalador exatamente como são distribuídos pelos respectivos projetos, sem a nossa
   assinatura.
@@ -156,9 +157,9 @@ there, shown during installation, and can be turned off in the installer and in 
 
 | Arquivo | Descrição |
 | --- | --- |
-| `vitrola.py` | o ponto de entrada (o mesmo do executável): o servidor e os processos auxiliares |
+| `ritmelli.py` | o ponto de entrada (o mesmo do executável): o servidor e os processos auxiliares |
 | `janela.py` | a janela própria do aplicativo no computador, pelo WebView2 (sem ele, o navegador) |
-| `vitrola.spec` | a configuração do executável (PyInstaller) |
+| `ritmelli.spec` | a configuração do executável (PyInstaller) |
 | `server.py` | servidor aiohttp: API, eventos (SSE), fila, modo Automático, busca e download |
 | `engine.py` | motor de áudio: mixagem, os dois decks e as transições de DJ |
 | `batida.py`, `compasso.py`, `andamento.py` | andamento, grade de batidas e o primeiro tempo do compasso |
@@ -172,18 +173,16 @@ there, shown during installation, and can be turned off in the installer and in 
 | `yt_fora.py` | YouTube (yt-dlp e ytmusicapi) em um processo separado |
 | `winvol.py` | volume do microfone no Windows |
 | `microfone/` | o filtro de microfone: a DLL que o Windows carrega (`apo/`), o canal de comunicação com ela nos dois sentidos (`injeta.py`: a música vai, a voz original volta) e o programa que adiciona e remove o filtro (`microfone.py`, executado pelo instalador) |
-| `themes/vitrola/` | a interface |
+| `migra.py` | a troca de nome de Vitrola para Ritmelli no computador de quem já tinha o aplicativo: o registro, as tarefas do Windows e a pasta de instalação de antes |
+| `themes/vitrola/` | a interface: o tema Vitrola, um aparelho de som dos anos 70 |
 | `gallery/` | a página inicial, que lista os temas (`index.html`), com os textos nos dois idiomas (`i18n/`) |
 | `icone/` | o ícone do aplicativo (executável, instalador, aba do navegador e celular), gerado pelo `dev/icone.py` |
 | `dev/` | ferramentas de desenvolvimento: capturas de tela, medições no celular e geração do pixel art |
-| `instalador/` | o instalador: `monta.ps1`, `vitrola.iss`, ffmpeg, bootloader, a atualização parcial e os textos de licença |
+| `instalador/` | o instalador: `monta.ps1`, `ritmelli.iss`, ffmpeg, bootloader, a atualização parcial e os textos de licença |
 | `.github/workflows/monta.yml` | o pipeline que monta e testa o instalador |
 
 O funcionamento de cada componente está descrito em [docs/ARQUITETURA.md](docs/ARQUITETURA.md), e o contrato entre o
 servidor e a interface, em [API.md](API.md).
-
-Os nomes internos `vitrola` (arquivos, pastas de dados, tarefas do Windows) serão renomeados em uma etapa posterior,
-com migração automática dos dados das instalações existentes.
 
 ## Licença
 

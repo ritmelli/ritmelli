@@ -1,4 +1,4 @@
-# Monta o instalador da Vitrola numa máquina Windows do GitHub, pelo mesmo instalador/monta.ps1 do build à mão, e testa
+# Monta o instalador do Ritmelli numa máquina Windows do GitHub, pelo mesmo instalador/monta.ps1 do build à mão, e testa
 # o setup e a atualização parcial numa máquina limpa. Só roda à mão: Actions > "Monta o instalador" > Run workflow, numa
 # branch ou tag deste repo. O setup, a parcial, o manifesto do atualizador (ainda sem a assinatura dele), o TERCEIROS e o
 # VERSOES saem como artefato da execução, por 7 dias.
@@ -8,7 +8,7 @@
 # nenhuma chave.
 #
 # Assinatura de código (SignPath, ver o README): com o segredo SIGNPATH_API_TOKEN e as variáveis SIGNPATH_* do repo, o
-# vitrola.exe é assinado antes de entrar no setup, e o setup e a parcial antes do manifesto (o manifesto guarda o hash
+# ritmelli.exe é assinado antes de entrar no setup, e o setup e a parcial antes do manifesto (o manifesto guarda o hash
 # deles). Cada assinatura espera a aprovação de um dono na SignPath. Sem o segredo, tudo sai sem assinatura.
 name: Monta o instalador
 
@@ -36,6 +36,7 @@ jobs:
     outputs:
       versao: ${{ steps.congela.outputs.versao }}
       parcial: ${{ steps.monta.outputs.parcial }}
+      anterior: ${{ steps.anterior.outputs.manifesto != '' }}
     steps:
       # a credencial sai do disco logo depois de baixar (persist-credentials): o build instala dezenas de pacotes de
       # terceiros
@@ -62,6 +63,12 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: python dev/testa_metricas.py
+      # a troca de nome de Vitrola para Ritmelli (#58): a pasta de dados, o registro (o do usuário), a pasta do app de
+      # antes e o cookie do celular. Só a biblioteca padrão
+      - name: Confere a troca de nome
+        env:
+          PYTHONUTF8: '1'
+        run: python dev/testa_migra.py
       # o Inno Setup do build à mão, na pasta do usuário, que é a primeira onde o monta.ps1 procura (a máquina do
       # GitHub pode trazer outra versão em Program Files)
       - name: Inno Setup 6.7.3
@@ -103,13 +110,13 @@ jobs:
           # ascii: no PowerShell 5, o >> grava em UTF-16, e o utf8 dele poe BOM
           Add-Content -Path $env:GITHUB_OUTPUT -Value "versao=$v" -Encoding ascii
 
-      # assinatura do vitrola.exe, antes de ele entrar no setup e na parcial
+      # assinatura do ritmelli.exe, antes de ele entrar no setup e na parcial
       - if: env.ASSINA == 'true'
         id: app-sem-assinatura
         uses: actions/upload-artifact@v7
         with:
           name: assinar-app-${{ steps.congela.outputs.versao }}
-          path: dist/vitrola/vitrola.exe
+          path: dist/ritmelli/ritmelli.exe
           retention-days: 1
           if-no-files-found: error
       - if: env.ASSINA == 'true'
@@ -125,15 +132,15 @@ jobs:
           wait-for-completion-timeout-in-seconds: 3600
           output-artifact-directory: assinado-app
       - if: env.ASSINA == 'true'
-        name: Troca pelo vitrola.exe assinado
+        name: Troca pelo ritmelli.exe assinado
         shell: powershell
         run: |
-          $assinado = Get-ChildItem assinado-app -Recurse -Filter vitrola.exe | Select-Object -First 1
-          if (-not $assinado) { throw 'a SignPath nao devolveu o vitrola.exe' }
-          Copy-Item $assinado.FullName dist\vitrola\vitrola.exe -Force
-          $s = Get-AuthenticodeSignature dist\vitrola\vitrola.exe
-          if ($s.Status -ne 'Valid') { throw "o vitrola.exe voltou com a assinatura $($s.Status)" }
-          "vitrola.exe assinado por $($s.SignerCertificate.Subject)"
+          $assinado = Get-ChildItem assinado-app -Recurse -Filter ritmelli.exe | Select-Object -First 1
+          if (-not $assinado) { throw 'a SignPath nao devolveu o ritmelli.exe' }
+          Copy-Item $assinado.FullName dist\ritmelli\ritmelli.exe -Force
+          $s = Get-AuthenticodeSignature dist\ritmelli\ritmelli.exe
+          if ($s.Status -ne 'Valid') { throw "o ritmelli.exe voltou com a assinatura $($s.Status)" }
+          "ritmelli.exe assinado por $($s.SignerCertificate.Subject)"
 
       - name: Monta o setup
         id: monta
@@ -143,7 +150,7 @@ jobs:
           VERSAO: ${{ steps.congela.outputs.versao }}
         run: |
           if ($env:ANTERIOR) { instalador\monta.ps1 -SemCongelar -Anterior $env:ANTERIOR } else { instalador\monta.ps1 -SemCongelar }
-          $parcial = Test-Path "instalador\saida\Vitrola-$env:VERSAO-parcial.exe"
+          $parcial = Test-Path "instalador\saida\Ritmelli-$env:VERSAO-parcial.exe"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=$($parcial.ToString().ToLower())" -Encoding ascii
 
       # assinatura do setup e da parcial, antes do manifesto
@@ -152,7 +159,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: assinar-setup-${{ steps.congela.outputs.versao }}
-          path: instalador/saida/Vitrola-*.exe
+          path: instalador/saida/Ritmelli-*.exe
           retention-days: 1
           if-no-files-found: error
       - if: env.ASSINA == 'true'
@@ -171,7 +178,7 @@ jobs:
         name: Troca pelo setup e a parcial assinados
         shell: powershell
         run: |
-          foreach ($f in Get-ChildItem instalador\saida -Filter 'Vitrola-*.exe') {
+          foreach ($f in Get-ChildItem instalador\saida -Filter 'Ritmelli-*.exe') {
             $assinado = Get-ChildItem assinado-setup -Recurse -Filter $f.Name | Select-Object -First 1
             if (-not $assinado) { throw "a SignPath nao devolveu o $($f.Name)" }
             Copy-Item $assinado.FullName $f.FullName -Force
@@ -180,7 +187,7 @@ jobs:
             "$($f.Name) assinado por $($s.SignerCertificate.Subject)"
           }
 
-      # o manifesto do atualizador, ainda sem a assinatura dele: a lista de arquivos precisa do dist\vitrola, que só
+      # o manifesto do atualizador, ainda sem a assinatura dele: a lista de arquivos precisa do dist\ritmelli, que só
       # existe aqui. Quem assina é a esteira do ritmelli-server, que tem a chave
       - name: Manifesto
         shell: powershell
@@ -191,8 +198,8 @@ jobs:
         run: |
           $saida = 'instalador\saida'
           $deno = (Get-ChildItem instalador\vendor -Directory -Filter 'deno-*' | Select-Object -First 1).FullName
-          $url = "https://github.com/ritmelli/ritmelli-releases/releases/download/v$env:VERSAO/Vitrola-$env:VERSAO-setup.exe"
-          $args_ = @('--setup', "$saida\Vitrola-$env:VERSAO-setup.exe", '--url', $url, '--app', 'dist\vitrola',
+          $url = "https://github.com/ritmelli/ritmelli-releases/releases/download/v$env:VERSAO/Ritmelli-$env:VERSAO-setup.exe"
+          $args_ = @('--setup', "$saida\Ritmelli-$env:VERSAO-setup.exe", '--url', $url, '--app', 'dist\ritmelli',
                      '--bin', 'instalador\ffmpeg\bin', '--bin', $deno, '--saida', $saida)
           # as notas em português e as em inglês, cada uma num arquivo, uma por linha
           foreach ($n in @(@('NOTAS', 'notas', '--notas'), @('NOTAS_EN', 'notas_en', '--notas-en'))) {
@@ -204,27 +211,27 @@ jobs:
               $args_ += @($n[2], $arq)
             }
           }
-          $parcial = "$saida\Vitrola-$env:VERSAO-parcial.exe"
+          $parcial = "$saida\Ritmelli-$env:VERSAO-parcial.exe"
           if (Test-Path $parcial) { $args_ += @('--parcial', $parcial, '--parcial-info', "$saida\PARCIAL-$env:VERSAO.json") }
-          & "$env:LOCALAPPDATA\vitrola-build\Scripts\python.exe" instalador\atualizacao\publica.py @args_
+          & "$env:LOCALAPPDATA\ritmelli-build\Scripts\python.exe" instalador\atualizacao\publica.py @args_
           if ($LASTEXITCODE -ne 0) { throw "o publica.py saiu com $LASTEXITCODE" }
       - uses: actions/upload-artifact@v7
         with:
-          name: Vitrola-${{ steps.congela.outputs.versao }}
+          name: Ritmelli-${{ steps.congela.outputs.versao }}
           path: instalador/saida/
           retention-days: 7
           compression-level: 0
           if-no-files-found: error
-      # o vitrola.exe solto, para o VirusTotal da esteira de publicação (no setup ele vai compactado)
+      # o ritmelli.exe solto, para o VirusTotal da esteira de publicação (no setup ele vai compactado)
       - uses: actions/upload-artifact@v7
         with:
-          name: vitrola-exe-${{ steps.congela.outputs.versao }}
-          path: dist/vitrola/vitrola.exe
+          name: ritmelli-exe-${{ steps.congela.outputs.versao }}
+          path: dist/ritmelli/ritmelli.exe
           retention-days: 7
           if-no-files-found: error
 
   # o setup numa máquina limpa (outra máquina do GitHub: sem Python e sem microfone). Instala em silêncio, como a
-  # atualização pelo app, abre a Vitrola, confere a versão que ela responde e desinstala
+  # atualização pelo app, abre o Ritmelli, confere a versão que ele responde e desinstala
   testa:
     needs: monta
     runs-on: windows-2025
@@ -232,56 +239,56 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: Vitrola-${{ needs.monta.outputs.versao }}
+          name: Ritmelli-${{ needs.monta.outputs.versao }}
       - name: Instala, abre e desinstala
         shell: powershell
         env:
           VERSAO: ${{ needs.monta.outputs.versao }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $setup = (Get-Item "Vitrola-$env:VERSAO-setup.exe").FullName
+          $setup = (Get-Item "Ritmelli-$env:VERSAO-setup.exe").FullName
           $log = Join-Path $env:RUNNER_TEMP 'instala.log'
           # com prazo, e não com o -Wait: um setup parado numa pergunta (aqui ninguém vê a tela) falha em 10 min com o log
           $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -PassThru
           if (-not $p.WaitForExit(600000)) { Stop-Process $p -Force; Get-Content $log -Tail 40; throw 'o setup não terminou em 10 min' }
           if ($p.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "o setup saiu com $($p.ExitCode)" }
-          $app = "$env:ProgramFiles\Vitrola"
-          foreach ($f in 'vitrola.exe', 'bin\ffmpeg.exe', 'bin\ffprobe.exe', 'bin\deno.exe', 'LICENSE.txt', 'TERCEIROS.txt',
+          $app = "$env:ProgramFiles\Ritmelli"
+          foreach ($f in 'ritmelli.exe', 'bin\ffmpeg.exe', 'bin\ffprobe.exe', 'bin\deno.exe', 'LICENSE.txt', 'TERCEIROS.txt',
                    '_internal\microfone\voz.dll') {
             if (-not (Test-Path "$app\$f")) { throw "o setup não instalou o $f" }
           }
           netsh advfirewall firewall show rule name=Ritmelli | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'o setup não criou a regra do firewall' }
-          $vit = Start-Process "$app\vitrola.exe" -ArgumentList '--no-browser' -PassThru
+          $vit = Start-Process "$app\ritmelli.exe" -ArgumentList '--no-browser' -PassThru
           $estado = $null
           for ($i = 0; $i -lt 90 -and -not $vit.HasExited -and -not $estado; $i++) {
             try { $estado = Invoke-RestMethod 'http://127.0.0.1:8799/api/state' -TimeoutSec 2 } catch { Start-Sleep 1 }
           }
-          $logs = "$env:LOCALAPPDATA\Vitrola\logs"
+          $logs = "$env:LOCALAPPDATA\Ritmelli\logs"
           if (-not $estado) {
             Get-Content "$logs\server.log", "$logs\server.err" -ErrorAction SilentlyContinue
-            throw 'a Vitrola não respondeu em 90 s'
+            throw 'o Ritmelli não respondeu em 90 s'
           }
-          "Vitrola $($estado.versao) respondeu: status=$($estado.status) erro=$($estado.error)"
+          "Ritmelli $($estado.versao) respondeu: status=$($estado.status) erro=$($estado.error)"
           # o voz.dll (o efeito de voz que sai pelo app) carregou: sem ele o motor sobe e diz no log
           if (Select-String -Path "$logs\server.err", "$logs\server.log" -Pattern 'sem o voz.dll' -Quiet -ErrorAction SilentlyContinue) {
-            throw 'a Vitrola instalada não carregou o voz.dll'
+            throw 'o Ritmelli instalado não carregou o voz.dll'
           }
-          if ($estado.versao -ne $env:VERSAO) { throw "a Vitrola respondeu a versão $($estado.versao), e não a $env:VERSAO" }
-          # os dados de uso (metricas.py): o setup em silêncio, sem /metricas, não escolhe por ninguém, e a Vitrola
+          if ($estado.versao -ne $env:VERSAO) { throw "o Ritmelli respondeu a versão $($estado.versao), e não a $env:VERSAO" }
+          # os dados de uso (metricas.py): o setup em silêncio, sem /metricas, não escolhe por ninguém, e o Ritmelli
           # espera a pessoa decidir no aviso, sem enviar nada (é isso que deixa a esteira fora das métricas)
-          if (Get-ItemProperty 'HKLM:\SOFTWARE\Vitrola' -Name Metricas -ErrorAction SilentlyContinue) {
+          if (Get-ItemProperty 'HKLM:\SOFTWARE\Ritmelli' -Name Metricas -ErrorAction SilentlyContinue) {
             throw 'o setup em silêncio gravou a escolha dos dados de uso sem ninguém escolher'
           }
           $met = Invoke-RestMethod 'http://127.0.0.1:8799/api/metricas' -TimeoutSec 5
           if ($met.situacao -ne 'decidir') { throw "os dados de uso sem escolha estão $($met.situacao), e não decidir" }
           'os dados de uso esperam a escolha de quem usa'
-          # a janela própria (janela.py): o --no-browser de cima não abre nenhuma; desligada pela API, a Vitrola abre de
+          # a janela própria (janela.py): o --no-browser de cima não abre nenhuma; desligado pela API, o Ritmelli abre de
           # novo como pelo atalho, tem de mostrar a janela "Ritmelli", a segunda abertura só traz ela para a frente, e
           # fechar a janela (o X) desliga o servidor
           Invoke-RestMethod 'http://127.0.0.1:8799/api/shutdown' -Method Post -ContentType 'application/json' -Body '{}' | Out-Null
-          if (-not $vit.WaitForExit(30000)) { throw 'a Vitrola não saiu em 30 s depois do Desligar' }
-          $vit = Start-Process "$app\vitrola.exe" -PassThru
+          if (-not $vit.WaitForExit(30000)) { throw 'o Ritmelli não saiu em 30 s depois do Desligar' }
+          $vit = Start-Process "$app\ritmelli.exe" -PassThru
           $janela = $false
           for ($i = 0; $i -lt 90 -and -not $vit.HasExited -and -not $janela; $i++) {
             Start-Sleep 1
@@ -290,17 +297,17 @@ jobs:
           }
           if (-not $janela) {
             Get-Content "$logs\server.log", "$logs\server.err" -ErrorAction SilentlyContinue
-            throw 'a Vitrola não abriu a janela em 90 s'
+            throw 'o Ritmelli não abriu a janela em 90 s'
           }
           for ($i = 0; $i -lt 30 -and -not $estado2; $i++) {
             try { $estado2 = Invoke-RestMethod 'http://127.0.0.1:8799/api/state' -TimeoutSec 2 } catch { Start-Sleep 1 }
           }
-          if (-not $estado2) { throw 'a Vitrola com a janela não respondeu' }
-          $seg = Start-Process "$app\vitrola.exe" -PassThru
+          if (-not $estado2) { throw 'o Ritmelli com a janela não respondeu' }
+          $seg = Start-Process "$app\ritmelli.exe" -PassThru
           if (-not $seg.WaitForExit(20000)) { throw 'a segunda abertura não saiu em 20 s (devia só trazer a janela)' }
           if ($vit.HasExited) { throw 'a segunda abertura derrubou a primeira' }
           $vit.CloseMainWindow() | Out-Null
-          if (-not $vit.WaitForExit(30000)) { throw 'fechar a janela não desligou a Vitrola em 30 s' }
+          if (-not $vit.WaitForExit(30000)) { throw 'fechar a janela não desligou o Ritmelli em 30 s' }
           $fora = $true
           try { Invoke-RestMethod 'http://127.0.0.1:8799/api/state' -TimeoutSec 2 | Out-Null; $fora = $false } catch { }
           if (-not $fora) { throw 'a janela fechou e o servidor seguiu respondendo' }
@@ -309,26 +316,26 @@ jobs:
           $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/metricas=0', "/LOG=$log" -PassThru
           if (-not $p.WaitForExit(600000)) { Stop-Process $p -Force; Get-Content $log -Tail 40; throw 'o setup com /metricas=0 não terminou em 10 min' }
           if ($p.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "o setup com /metricas=0 saiu com $($p.ExitCode)" }
-          $v = (Get-ItemProperty 'HKLM:\SOFTWARE\Vitrola' -Name Metricas -ErrorAction SilentlyContinue).Metricas
+          $v = (Get-ItemProperty 'HKLM:\SOFTWARE\Ritmelli' -Name Metricas -ErrorAction SilentlyContinue).Metricas
           if ($v -ne 0) { throw "o setup com /metricas=0 gravou '$v'" }
           'o /metricas=0 gravou a escolha'
-          # o desinstalador fecha a Vitrola (taskkill) e tira a regra do firewall. Ele se copia para a pasta temporária
+          # o desinstalador fecha o Ritmelli (taskkill) e tira a regra do firewall. Ele se copia para a pasta temporária
           # e roda de lá, então o fim se confere pelo que ele apaga
           Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
-          for ($i = 0; $i -lt 120 -and (Test-Path "$app\vitrola.exe"); $i++) { Start-Sleep 1 }
-          if (Test-Path "$app\vitrola.exe") { throw 'o desinstalador não tirou o vitrola.exe em 2 min' }
+          for ($i = 0; $i -lt 120 -and (Test-Path "$app\ritmelli.exe"); $i++) { Start-Sleep 1 }
+          if (Test-Path "$app\ritmelli.exe") { throw 'o desinstalador não tirou o ritmelli.exe em 2 min' }
           netsh advfirewall firewall show rule name=Ritmelli | Out-Null
           if ($LASTEXITCODE -eq 0) { throw 'o desinstalador deixou a regra do firewall' }
-          for ($i = 0; $i -lt 30 -and (Get-ItemProperty 'HKLM:\SOFTWARE\Vitrola' -Name Metricas -ErrorAction SilentlyContinue); $i++) { Start-Sleep 1 }
-          if (Get-ItemProperty 'HKLM:\SOFTWARE\Vitrola' -Name Metricas -ErrorAction SilentlyContinue) {
+          for ($i = 0; $i -lt 30 -and (Get-ItemProperty 'HKLM:\SOFTWARE\Ritmelli' -Name Metricas -ErrorAction SilentlyContinue); $i++) { Start-Sleep 1 }
+          if (Get-ItemProperty 'HKLM:\SOFTWARE\Ritmelli' -Name Metricas -ErrorAction SilentlyContinue) {
             throw 'o desinstalador deixou a escolha dos dados de uso'
           }
           'instalou, abriu, respondeu e desinstalou'
           # o GitHub sai com o $LASTEXITCODE do fim, e o do netsh sem a regra é 1
           exit 0
 
-  # a atualização automática numa máquina limpa: a tarefa do Windows (SYSTEM) baixa uma versão a mais com a Vitrola
-  # aberta, instala quando ela fecha e a Vitrola abre de novo sozinha; o desinstalador leva a tarefa
+  # a atualização automática numa máquina limpa: a tarefa do Windows (SYSTEM) baixa uma versão a mais com o Ritmelli
+  # aberto, instala quando ele fecha e o Ritmelli abre de novo sozinho; o desinstalador leva a tarefa
   # (instalador/testa-atualizador.ps1). O Python só assina o manifesto de teste, com uma chave gerada na hora
   testa-atualizador:
     needs: monta
@@ -349,17 +356,17 @@ jobs:
         run: python -m pip install pycryptodomex==3.24.2
       - uses: actions/download-artifact@v8
         with:
-          name: Vitrola-${{ needs.monta.outputs.versao }}
+          name: Ritmelli-${{ needs.monta.outputs.versao }}
           path: saida
-      - name: Instala, a tarefa atualiza e a Vitrola abre de novo
+      - name: Instala, a tarefa atualiza e o Ritmelli abre de novo
         shell: powershell
         env:
           VERSAO: ${{ needs.monta.outputs.versao }}
-        run: instalador\testa-atualizador.ps1 -Setup "saida\Vitrola-$env:VERSAO-setup.exe" -Manifesto saida\manifest.json
+        run: instalador\testa-atualizador.ps1 -Setup "saida\Ritmelli-$env:VERSAO-setup.exe" -Manifesto saida\manifest.json
 
-  # a atualização parcial, como no PC de quem tem a última versão publicada: sem a Vitrola, ela recusa; por cima do
+  # a atualização parcial, como no PC de quem tem a última versão publicada: sem o Ritmelli instalado, ela recusa; por cima do
   # setup completo daquela versão, a pasta do app tem de ficar igual à do manifesto novo, arquivo por arquivo, a
-  # Vitrola tem de abrir na versão nova e o desinstalador tem de levar tudo (instalador/testa-parcial.ps1). Sem a
+  # Ritmelli tem de abrir na versão nova e o desinstalador tem de levar tudo (instalador/testa-parcial.ps1). Sem a
   # parcial (nenhuma versão publicada, ou nada mudou), não roda
   testa-parcial:
     if: needs.monta.outputs.parcial == 'true'
@@ -374,10 +381,35 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v8
         with:
-          name: Vitrola-${{ needs.monta.outputs.versao }}
+          name: Ritmelli-${{ needs.monta.outputs.versao }}
           path: saida
       - name: Instala a anterior, aplica a parcial e confere
         shell: powershell
         env:
           VERSAO: ${{ needs.monta.outputs.versao }}
-        run: instalador\testa-parcial.ps1 -Manifesto saida\manifest.json -Parcial "saida\Vitrola-$env:VERSAO-parcial.exe"
+        run: instalador\testa-parcial.ps1 -Manifesto saida\manifest.json -Parcial "saida\Ritmelli-$env:VERSAO-parcial.exe"
+
+  # o setup novo por cima da última versão publicada, como no PC de quem recebe a atualização: os dados de quem usa, a
+  # escolha dos dados de uso e o original de cada microfone têm de vir junto. Por cima de uma versão de antes da troca
+  # de nome (#58), confere também a pasta nova, as tarefas, o registro, os atalhos e o firewall
+  # (instalador/testa-migracao.ps1). Sem nenhuma versão publicada, não roda
+  testa-migracao:
+    if: needs.monta.outputs.anterior == 'true'
+    needs: monta
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: /instalador/testa-migracao.ps1
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: Ritmelli-${{ needs.monta.outputs.versao }}
+          path: saida
+      - name: Instala a publicada, o setup novo por cima e confere
+        shell: powershell
+        env:
+          VERSAO: ${{ needs.monta.outputs.versao }}
+        run: instalador\testa-migracao.ps1 -Setup "saida\Ritmelli-$env:VERSAO-setup.exe" -Versao $env:VERSAO

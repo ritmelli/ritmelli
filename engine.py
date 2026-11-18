@@ -1,4 +1,4 @@
-"""Motor de audio da Vitrola: o arquivo (e a voz da mina) -> o microfone escolhido, pelo filtro da Vitrola (microfone/),
+"""Motor de audio do Ritmelli: o arquivo (e a voz da mina) -> o microfone escolhido, pelo filtro do Ritmelli (microfone/),
 que soma dentro do audio do Windows, e o jogo (ou o Discord) segue usando esse microfone; so o arquivo -> fone de quem
 toca (sem ouvir a propria voz). A voz vai crua pelo proprio microfone, e o efeito de voz roda no filtro; com efeito
 que o filtro nao roda, ou cortada, ela volta por aqui: o filtro devolve a voz crua e poe no lugar dela a que o app
@@ -52,7 +52,7 @@ FFPROBE = pastas.ferramenta("ffprobe") or "ffprobe"
 CURTO_MAX_S = 15  # ate isso o pad toca por cima da musica em vez de trocar
 STREAM_CAIU_S = 5.0  # o stream que para mais que isso antes do fim (ou sem audio nenhum) caiu: o servidor religa
 # o stream que congela (13/11: a Toxic parou de chegar em 2:12 com a conexao aberta, e o ffmpeg esperou pra sempre com
-# a vitrola carregando): isso sem receber nada e o ffmpeg reconecta uma vez no mesmo endereco e, congelado de novo,
+# o Ritmelli carregando): isso sem receber nada e o ffmpeg reconecta uma vez no mesmo endereco e, congelado de novo,
 # desiste, o que vira a queda acima (sem o limite de uma, ele tentava 4 vezes: ~4x isso no endereco morto); e do stream
 # o leitor guarda STREAM_AHEAD adiante (~30 s, ~11 MB), folga que cobre as duas esperas e o endereco novo (15 s naquele
 # dia): sem buraco (dev/testa_congela.py)
@@ -875,7 +875,7 @@ class Preaberto:
         self.ff = subprocess.Popen([FFMPEG, "-v", "error", *entrada, "-ss", "0.0", "-i", url,
                                     "-f", "f32le", "-ac", "2", "-ar", str(SR), "-"],
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
-        self._th = threading.Thread(target=self._le, daemon=True, name="vitrola-preabre")
+        self._th = threading.Thread(target=self._le, daemon=True, name="ritmelli-preabre")
         self._th.start()
         self._vence = threading.Timer(PRE_VALE_S, self.fecha)
         self._vence.daemon = True
@@ -973,7 +973,7 @@ class Injetor:
         self._preset_ok = False  # o efeito tem preset (o filtro roda)
         self._preset_em = 0.0    # monotonic da escrita
         self.efeito_no_filtro = False
-        self._th = threading.Thread(target=self._loop, daemon=True, name="vitrola-microfone")
+        self._th = threading.Thread(target=self._loop, daemon=True, name="ritmelli-microfone")
         self._th.start()
 
     def estado(self):
@@ -1136,7 +1136,7 @@ class Engine:
         self._injetor = None   # o Injetor (a saida para o jogo), com o audio aberto
         self._alvo = 0         # o hash do microfone em uso no anel do filtro (0 = nenhum, ainda)
         self._voz_anel_em = -1e9  # monotonic da ultima voz crua que o filtro devolveu (a do microfone fica de reserva)
-        self.preparando = None  # o microfone que o Windows esta preparando para a Vitrola (a tarefa do instalador)
+        self.preparando = None  # o microfone que o Windows esta preparando para o Ritmelli (a tarefa do instalador)
         self._preparados = set()  # os microfones em que a preparacao ja rodou nesta sessao (nao repete)
         self.monitor_on = True
         self.loop = False

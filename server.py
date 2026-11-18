@@ -1,4 +1,4 @@
-"""Vitrola: servidor local que toca audio no microfone do jogo (pelo filtro da Vitrola, em microfone/) e
+"""Ritmelli: servidor local que toca audio no microfone do jogo (pelo filtro do Ritmelli, em microfone/) e
 serve as interfaces de themes/. Contrato da API: API.md. Atende a propria maquina e o celular
 pareado na rede de casa (para mexer enquanto joga; ver o pareamento.py). No PC, a interface abre numa janela
 propria (janela.py), ou no navegador sem o WebView2; --no-browser nao abre nenhuma das duas.
@@ -80,7 +80,7 @@ pool = ThreadPoolExecutor(4)
 # o caminho do pedido falado (09/11): a /api/musica, o endereco adiantado e o canal que o endereco rapido nao traz, fora
 # do pool dos downloads (o download segura a thread dele inteiro: com 3 ou 4 baixando, o adiantado esperava ate um
 # acabar e o disco ficava carregando; revisao da r04)
-pool_rapido = ThreadPoolExecutor(8, thread_name_prefix="vitrola-rapido")
+pool_rapido = ThreadPoolExecutor(8, thread_name_prefix="ritmelli-rapido")
 # o canal que o endereco rapido nao traz sai so depois disso, com limite curto: ele so aparece na tela, e na hora em que
 # o disco comeca ele tomava um processo de reserva de um "nao, toca Y" logo atras (revisao da r07)
 CANAL_DEPOIS_S = 3.0
@@ -104,7 +104,7 @@ VIVOS = 2
 # nada (09/11, placar: ~0,7 s igual, o tempo e do YouTube Music) e ocupava o vivo na hora do endereco
 VIVO_OPS = ("stream",)
 # o aviso de que alguem comecou a falar (POST /api/aquece, a mina na fala que abre; r14): o YouTube fecha a conexao
-# parada aos ~240 s, e com a vitrola parada o primeiro pedido pagava um TLS na busca e outro no endereco, em serie
+# parada aos ~240 s, e com o Ritmelli parado o primeiro pedido pagava um TLS na busca e outro no endereco, em serie
 # (~0,11 s cada), e o vivo vazio ainda o YoutubeDL novo. Fora.prepara renova o que esta parado ha mais disso e ja
 # abre o vivo vazio. None desliga
 AQUECE_OCIOSA_S = 180.0
@@ -141,11 +141,11 @@ def nome_da_musica(titulo, inteiro=False):
 
 
 def auxiliar(modo):
-    """O comando de um processo auxiliar (--yt, --andamento; ver o vitrola.py): no app congelado, o proprio
+    """O comando de um processo auxiliar (--yt, --andamento; ver o ritmelli.py): no app congelado, o proprio
     executavel; no codigo, o mesmo caminho pelo python."""
     if getattr(sys, "frozen", False):
         return [sys.executable, modo]
-    return [sys.executable, str(HERE / "vitrola.py"), modo]
+    return [sys.executable, str(HERE / "ritmelli.py"), modo]
 
 
 class Fora:
@@ -1834,8 +1834,10 @@ def build(app_state):
         # pelo endereco de quem conectou: o Host quem pede escreve o que quiser
         return request.remote in ("127.0.0.1", "::1")
 
-    def com_chave(resp, chave):
+    def com_chave(resp, chave, velho=False):
         resp.set_cookie(par.COOKIE, chave, max_age=par.COOKIE_S, path="/", httponly=True, samesite="Strict")
+        if velho:  # o celular pareado antes da troca de nome: fica so o cookie novo
+            resp.del_cookie(par.COOKIE_VELHO, path="/")
         return resp
 
     @web.middleware
@@ -1860,7 +1862,7 @@ def build(app_state):
         if celular and request.path.startswith("/api/metricas"):
             return j_err(i18n.so_texto("Usage data and errors are only set on the PC."), 403)
         if celular and (request.method, request.path) not in livres:
-            chave = request.cookies.get(par.COOKIE)
+            chave = par.chave_do(request.cookies)
             if not A.celulares.confere(chave):
                 return web.json_response({
                     "ok": False, "parear": True, "desconectado": bool(chave),
@@ -1875,7 +1877,8 @@ def build(app_state):
             A.metricas.erro(type(ex), ex, ex.__traceback__, f"api:{request.method} {rota}"[:80])
             raise
         if celular and request.path == "/api/state":
-            com_chave(resp, request.cookies[par.COOKIE])  # cada abertura do tema renova o prazo do cookie
+            # cada abertura do tema renova o prazo do cookie
+            com_chave(resp, par.chave_do(request.cookies), velho=par.COOKIE_VELHO in request.cookies)
         return resp
 
     r = web.RouteTableDef()
@@ -2231,7 +2234,7 @@ def build(app_state):
         desliga()
         return j_ok()
 
-    # a Vitrola aberta de novo (o atalho clicado com ela ligada, vitrola.py): a janela dela vem para a frente
+    # o Ritmelli aberto de novo (o atalho clicado com ele ligado, ritmelli.py): a janela dele vem para a frente
     @r.post("/api/janela/foco")
     async def janela_foco(request):
         if not do_pc(request) or A.janela is None:
@@ -2277,7 +2280,7 @@ def build(app_state):
         ok, motivo = await loop_().run_in_executor(pool, A.atualizacao.instalar)
         if not ok:
             return j_err(motivo, 409)
-        desliga()  # o instalador fecharia a Vitrola; saindo antes, nada fica no meio de uma gravacao
+        desliga()  # o instalador fecharia o Ritmelli; saindo antes, nada fica no meio de uma gravacao
         return j_ok()
 
     @r.get("/api/events")
@@ -2286,7 +2289,7 @@ def build(app_state):
                                            "Cache-Control": "no-cache"})
         await resp.prepare(request)
         last = {"state": None, "library": -1, "jobs": None}
-        chave = None if do_pc(request) else request.cookies.get(par.COOKIE)
+        chave = None if do_pc(request) else par.chave_do(request.cookies)
         if do_pc(request):
             A.atualizacao.ao_abrir()  # a pagina do PC abriu: consulta a versao nova, se faz tempo (atualizacao.py)
 
@@ -2368,7 +2371,7 @@ def build(app_state):
     # ao salvar na tela inicial (o Android so com o <link> no tema)
     @r.get("/favicon.ico")
     async def favicon(_):
-        return web.FileResponse(HERE / "icone" / "vitrola.ico")
+        return web.FileResponse(HERE / "icone" / "ritmelli.ico")
 
     @r.get("/apple-touch-icon.png")
     async def icone_celular(_):
@@ -2477,14 +2480,14 @@ def main():
     ap.add_argument("--mock", action="store_true", help="no audio: fake clock, pretend downloads")
     ap.add_argument("--data-dir", default=str(LIB), help="where library.json and config.json live")
     ap.add_argument("--so-local", action="store_true", help="don't serve the home network (phone)")
-    ap.add_argument("--version", action="version", version=f"Vitrola {VERSAO}")
+    ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
     A = App(a.port, Path(a.data_dir), mock=a.mock)
     threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
     print(f"mic: {d['mic']} | headphones: {d['monitor'] or '-'}", flush=True)
     url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
-    print(f"Vitrola {VERSAO} at {url}{' (MOCK, no sound)' if a.mock else ''} | data in {pastas.DADOS}", flush=True)
+    print(f"Ritmelli {VERSAO} at {url}{' (MOCK, no sound)' if a.mock else ''} | data in {pastas.DADOS}", flush=True)
     # a janela propria (janela.py, #99), quando o WebView2 esta no PC; senao, a pagina no navegador, como antes.
     # --no-browser (a atualizacao reabrindo, os testes) nao abre nenhuma das duas
     if not a.no_browser:

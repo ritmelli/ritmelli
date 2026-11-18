@@ -277,5 +277,5 @@ def pede(efeito_id, taxa):
         if chave in _projetando:
             return PENDENTE
         _projetando.add(chave)
-    threading.Thread(target=preset, args=chave, daemon=True, name="vitrola-preset").start()
+    threading.Thread(target=preset, args=chave, daemon=True, name="ritmelli-preset").start()
     return PENDENTE

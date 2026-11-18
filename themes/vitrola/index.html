@@ -31,7 +31,7 @@ const I18N = (() => {
     const s = bruto(chave);
     return params ? s.replace(/\{(\w+)\}/g, (m, k) => (tem(params, k) ? String(params[k]) : m)) : s;
   }
-  // o singular so para 1, nas duas linguas que temos: o Intl.PluralRules poe o 0 no singular em portugues, e a Vitrola
+  // o singular so para 1, nas duas linguas que temos: o Intl.PluralRules poe o 0 no singular em portugues, e o Ritmelli
   // sempre escreveu "0 discos". Uma lingua com outras regras pede o plural.select aqui
   function tp(chave, n, params) {
     const k = `${chave}.${n === 1 ? 'one' : 'other'}`;
@@ -1119,7 +1119,7 @@ dialog::backdrop { background: rgba(20,10,6,.62); }
   .palco-topo > * { transition: opacity .22s ease; }
   /* pelo nome, nunca "> *": com o universal, trocar a classe do body recalculava a pagina inteira */
   body:not(.com-palco) .palco-fechar, body:not(.com-palco) .palco-tit, body:not(.com-palco) .palco-cortar { opacity: 0; }
-  /* barra do palco como a travessa de jacaranda do movel, com a plaquinha VITROLA encaixada e a
+  /* barra do palco como a travessa de jacaranda do movel, com a plaquinha RITMELLI encaixada e a
      lampada piloto que acende com o disco tocando (do mock, 18/10: so a palavra
      TOCA-DISCOS parecia simples demais perto do resto) */
   .palco-topo {
@@ -2482,7 +2482,7 @@ body.mesa-dj .topo .marca .lampada.alerta { background-image: url("data:image/sv
   .palco .mini-ef:active, .palco .mini-ef.apertado { transform: translateY(1px); }
   .palco .mini-prog span { background: linear-gradient(180deg, #FFD08A 0 1px, var(--ambar) 1px); }
 
-  /* palco: a plaquinha VITROLA da barra; os pes dos aparelhos descem para ficar a vista por cima da
+  /* palco: a plaquinha RITMELLI da barra; os pes dos aparelhos descem para ficar a vista por cima da
      sombra dura (os do receiver 2 px a mais: o contorno dele vem por cima, ver a quarta rodada). O
      toca-discos, o receiver e o FX-12 estao na quarta rodada, no fim deste bloco */
   .palco .palco-topo {
@@ -3011,7 +3011,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
    descanso e cinco angulos no curso do disco, de 4 em 4 graus; o desenhoBraco() poe a faixa do angulo
    no data-desenho. O desenho mora no .tubo, girado de volta em volta do pivo: sobram no maximo 2 graus
    de giro (com 5, a alca fina da cabeca virava zigue-zague) */
-/* o braco passa por cima da plaquinha VITROLA (z-index 2): parado, a cabeca descia por baixo dela
+/* o braco passa por cima da plaquinha RITMELLI (z-index 2): parado, a cabeca descia por baixo dela
    (19/10) */
 .palco .braco { z-index: 3; }
 .palco .braco > .tubo, .palco .braco[data-desenho="a"] > .tubo {
@@ -3114,7 +3114,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 .palco .mostrador .vu-agulha { position: absolute; left: 0; top: 0; }
 .fader label, .fader output { text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
 /* FX-12: o corpo de aluminio liso na moldura de pixel, rente ao feltro (sem sombra, desde 18/10);
-   o VITROLA na moldura miuda; o painel do visor numa chapa fina por dentro; o LCD liso de contorno
+   o RITMELLI na moldura miuda; o painel do visor numa chapa fina por dentro; o LCD liso de contorno
    duro; o botao giratorio e o Ouvir minha voz com o contorno e a sombra dura, o Ouvir afundando no
    aperto e ficando afundado enquanto liga */
 .palco .gaveta::after { border-radius: 3px; box-shadow: none; border-image: var(--mold-embutido); background: var(--escovado), #D6CFC2; }
@@ -3163,7 +3163,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   .palco .mesa-gav .btn { min-height: 26px; padding-block: 0; font-size: .8125rem; }
   .palco .mesa-gav .btn::after { content: ""; position: absolute; inset: -3px -3px -7px; }
   .palco .visor-gav { display: none; }
-  @container (max-width: 34rem) { .palco .cabeca-gav .placa-gav { display: none; } }   /* so o VITROLA: o resto nao cabe ao lado das teclas */
+  @container (max-width: 34rem) { .palco .cabeca-gav .placa-gav { display: none; } }   /* so o RITMELLI: o resto nao cabe ao lado das teclas */
   #b-fechar-gav { grid-area: fechar; position: relative; z-index: 2; gap: .28em; }
   @container (max-width: 40rem) { .gav-longo { display: none; } }
   .palco .gaveta > .rolo { align-self: stretch; margin: 2px -14px 0; padding: 0; }
@@ -3184,7 +3184,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 
   /* opcoes do disco: a contracapa do LP subindo (o mock de 20/10, com os
      textos fora do pixel art). O papelao creme na moldura de pixel da barra, so com o degrau em cima
-     e sem a beirada de baixo (e a beira da tela), o anel gasto do disco impresso por baixo, o selo VITROLA LP, a
+     e sem a beirada de baixo (e a beira da tela), o anel gasto do disco impresso por baixo, o selo RITMELLI LP, a
      capinha num contorno de pixel e as acoes como a lista de faixas: o LADO A com o Continuar numa tecla ambar,
      filetes entre as faixas e o Apagar sozinho no LADO B, depois do pontilhado. Os icones em pixel; a letra e a
      de sempre */
@@ -4890,7 +4890,7 @@ const S = {
   state: null, lib: [], jobs: [], pos: 0, levels: { mic: 0, track: 0, out: 0 },
   online: null, jaConectou: false, desligado: false,
   pareando: false,        // celular sem pareamento: o #tela-parear pede o codigo do PC
-  atualizando: null,      // a versao que o instalador esta pondo: a pagina recarrega quando a Vitrola voltar
+  atualizando: null,      // a versao que o instalador esta pondo: a pagina recarrega quando o Ritmelli voltar
   busca: null,            // null = prateleira; {q, link, itens, carregando, erro}
   buscaSeq: 0,
   jobAlvo: {},            // id do job -> youtube_id
@@ -5716,8 +5716,9 @@ const nomePedal = ef => textoEf(`effect.${ef.id}.name`, ef.id);
 const nomeEf = ef => nomePedal(ef).replace(/­/g, '');
 const descEf = ef => textoEf(`effect.${ef.id}.desc`, '');
 const nomeGrupo = g => textoEf(`effect.group.${g}`, g);
-const lerModo = id => { try { return localStorage.getItem('vitrola.modo.' + id); } catch { return null; } };
-const gravarModo = (id, m) => { try { localStorage.setItem('vitrola.modo.' + id, m); } catch { /* sem guardar, o modo vale ate recarregar */ } };
+// o modo de cada pedal: a chave de antes da troca de nome (vitrola.modo.*, ate a 0.4.1) vale ate o modo ser gravado de novo
+const lerModo = id => { try { return localStorage.getItem('ritmelli.modo.' + id) ?? localStorage.getItem('vitrola.modo.' + id); } catch { return null; } };
+const gravarModo = (id, m) => { try { localStorage.setItem('ritmelli.modo.' + id, m); } catch { /* sem guardar, o modo vale ate recarregar */ } };
 // o modo do botao que o toque pegou num pedal com os botoes: a metade de cima e o primeiro modo, a de baixo o segundo;
 // fora disso, nenhum
 const modoDoToque = (b, e) => b.classList.contains('com-chave')
@@ -7685,7 +7686,7 @@ function desenharBusca() {
     av.classList.add('erro');
     // pelo tipo, e nao pelo texto: sem resposta e o status 0 do api(), a busca do YouTube e a chave da mensagem, e o
     // limite e o motivo tecnico dela (o do yt-dlp, em ingles). O YouTube que demorou ("o YouTube não respondeu a
-    // tempo") e erro do YouTube, e nao da Vitrola fora do ar
+    // tempo") e erro do YouTube, e nao do Ritmelli fora do ar
     const fora = b.semResposta;
     const doYoutube = !!b.erroMsg && b.erroMsg.key === 'server.search.failed';
     const limite = /429|too many/i.test(detalheMsg(b.erroMsg));
@@ -8450,7 +8451,7 @@ function preencherDispositivos(r) {
   $('#dd-mic').disabled = $('#dd-mon').disabled = false;
   mostrarAtivos(act, r.filtro);
 }
-/* o microfone em uso e se a musica chega nele: o filtro da Vitrola (o instalador poe em todos; o que aparece depois o
+/* o microfone em uso e se a musica chega nele: o filtro do Ritmelli (o instalador poe em todos; o que aparece depois o
    app prepara sozinho, e o som do PC some uns segundos). A frase inteira por chave, com o nome dentro */
 function mostrarAtivos(act, f) {
   const prep = S.state && S.state.microfone && S.state.microfone.preparando;
@@ -8580,7 +8581,7 @@ $('#dcel-outro').addEventListener('click', async () => {
 });
 
 /* ---------- versao nova (atualizacao.py): so no PC, que e onde o instalador roda. O aviso vem no estado ao vivo, e o
-   dialogo pede as notas; baixado e conferido o setup, o Instalar agora roda o instalador, que fecha a Vitrola e abre de
+   dialogo pede as notas; baixado e conferido o setup, o Instalar agora roda o instalador, que fecha o Ritmelli e abre de
    novo. Na atualizacao automatica (a.automatica, atualizador.py), quem baixa e a tarefa do Windows, e a versao entra
    sozinha ao fechar: o Instalar agora so adianta isso ---------- */
 const NO_PC = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
@@ -8628,7 +8629,7 @@ $('#da-ok').addEventListener('click', async () => {
     }
   } catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; }
 });
-/* o instalador fecha a Vitrola: no lugar do fora do ar, a tela diz que ela volta sozinha */
+/* o instalador fecha o Ritmelli: no lugar do fora do ar, a tela diz que ele volta sozinho */
 function mostrarAtualizando(f) {
   $('#fora-tt').textContent = I18N.t('update.updatingTitle');
   $('#fora-p').textContent = I18N.t('update.updatingText', { version: S.atualizando });
@@ -8714,7 +8715,7 @@ function mostrarFora() {
     I18N.rico($('#fora-p'), 'offline.offText');
   } else {
     $('#fora-tt').textContent = I18N.t(S.jaConectou ? 'offline.stopped' : 'offline.notResponding');
-    I18N.rico($('#fora-p'), 'offline.downText', { folder: '%LOCALAPPDATA%\\Vitrola\\logs' });
+    I18N.rico($('#fora-p'), 'offline.downText', { folder: '%LOCALAPPDATA%\\Ritmelli\\logs' });
   }
   $('#lamp').className = 'lampada'; $('#conexao').textContent = S.desligado ? I18N.t('app.off') : I18N.t('app.offline');
   $('#conexao').classList.remove('sr');
@@ -9443,7 +9444,7 @@ const LETRA_PLACA = {
    dele: a caixa de madeira e a chapa creme com os parafusos, a letra do lado, o prato (anel do estroboscopio em marcas
    fixas de 2x3, o vinil com os sulcos e o brilho, o rotulo com o aro), a base do pivo, o descanso em garfo, o braco
    (contrapeso, tubo de largura constante, bola, cabeca em 3 tons e o levantador), o botao redondo do canto, a etiqueta
-   de estado com a lampada, a tela do titulo, os tempos, a barra de tempo, os botoes e a plaquinha VITROLA, com os
+   de estado com a lampada, a tela do titulo, os tempos, a barra de tempo, os botoes e a plaquinha RITMELLI, com os
    textos numa fonte de bitmap (a Jersey 10 e a VT323 lidas na grade delas). Os elementos de verdade seguem ali,
    transparentes por cima: o clique, o estado, os textos e o lugar de cada coisa vem deles (o giro do prato e o angulo
    do braco tambem, do CSS de sempre). Cada deck vai para x e y pares. */
@@ -9666,7 +9667,7 @@ const LETRA_PLACA = {
   };
 
   // ---------------- os glifos desenhados a mao (plaquinha e icones)
-  const VITROLA = { V: ["##.##", "##.##", "##.##", ".###.", "..#.."], I: ["##", "##", "##", "##", "##"],
+  const RITMELLI = { V: ["##.##", "##.##", "##.##", ".###.", "..#.."], I: ["##", "##", "##", "##", "##"],
     T: ["######", "..##..", "..##..", "..##..", "..##.."], R: ["####.", "##.##", "####.", "##.#.", "##.##"],
     O: [".###.", "##.##", "##.##", "##.##", ".###."], L: ["##...", "##...", "##...", "##...", "#####"], A: [".###.", "##.##", "#####", "##.##", "##.##"],
     M: ["##...##", "###.###", "##.#.##", "##...##", "##...##"], E: ["#####", "##...", "####.", "##...", "#####"] };
@@ -9892,14 +9893,14 @@ const LETRA_PLACA = {
       }
     }
     P.dim = 1;
-    // a plaquinha VITROLA no meio da coluna da direita, embaixo do transporte
-    const w1 = lg('RITMELLI', VITROLA), w2 = lg('33 / 45 RPM', MIUDA), sw = Math.max(w1, w2) + 10, sh = 22;   // (r09) 2 celulas mais alta embaixo: 2 de folga entre o filete e as letras
+    // a plaquinha RITMELLI no meio da coluna da direita, embaixo do transporte
+    const w1 = lg('RITMELLI', RITMELLI), w2 = lg('33 / 45 RPM', MIUDA), sw = Math.max(w1, w2) + 10, sh = 22;   // (r09) 2 celulas mais alta embaixo: 2 de folga entre o filete e as letras
     const fx = g.faixa, sx0 = Math.round((fx.x0 + fx.x1 - sw) / 2), sy0 = g.cmdY1 + 10;   // (r07) 3 celulas mais longe do play
     sombraCaixa(P, sx0, sy0, sx0 + sw, sy0 + sh, 1, 2);
     caixa(P, sx0, sy0, sx0 + sw, sy0 + sh, CREME, CREME_L, CREME_S);
     for (let x = sx0 + 2; x < sx0 + sw - 2; x++) { px(P, x, sy0 + 2, cor(198, 182, 156)); px(P, x, sy0 + sh - 3, cor(198, 182, 156)); }
     for (let y = sy0 + 2; y < sy0 + sh - 2; y++) { px(P, sx0 + 2, y, cor(198, 182, 156)); px(P, sx0 + sw - 3, y, cor(198, 182, 156)); }
-    mapa(P, 'RITMELLI', VITROLA, sx0 + Math.floor((sw - w1) / 2), sy0 + 5, TINTA);
+    mapa(P, 'RITMELLI', RITMELLI, sx0 + Math.floor((sw - w1) / 2), sy0 + 5, TINTA);
     mapa(P, '33 / 45 RPM', MIUDA, sx0 + Math.floor((sw - w2) / 2), sy0 + 12, cor(48, 34, 26));
     return P;
   }
@@ -10682,7 +10683,7 @@ const LETRA_PLACA = {
   };
 
   // ---------------- os glifos desenhados a mao (plaquinha e icones)
-  const VITROLA = { V: ["##.##", "##.##", "##.##", ".###.", "..#.."], I: ["##", "##", "##", "##", "##"],
+  const RITMELLI = { V: ["##.##", "##.##", "##.##", ".###.", "..#.."], I: ["##", "##", "##", "##", "##"],
     T: ["######", "..##..", "..##..", "..##..", "..##.."], R: ["####.", "##.##", "####.", "##.#.", "##.##"],
     O: [".###.", "##.##", "##.##", "##.##", ".###."], L: ["##...", "##...", "##...", "##...", "#####"], A: [".###.", "##.##", "#####", "##.##", "##.##"],
     M: ["##...##", "###.###", "##.#.##", "##...##", "##...##"], E: ["#####", "##...", "####.", "##...", "#####"] };

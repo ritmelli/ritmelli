@@ -1,4 +1,4 @@
-"""O filtro de microfone da Vitrola nos microfones do Windows: pendura, tira e diz o estado.
+"""O filtro de microfone do Ritmelli nos microfones do Windows: pendura, tira e diz o estado.
 
     python microfone.py estado                          os microfones e em quais o filtro esta
     python microfone.py instala-todos [--tarefa]        (admin) pendura em todo microfone que nao tem, e com --tarefa
@@ -7,15 +7,15 @@
     python microfone.py remove [--microfone "IN 2"]     (admin) devolve o efeito original (todos, sem --microfone) e
                                                         apaga a tarefa
 
-No app: vitrola.exe --microfone <a mesma linha>. O instalador roda o instala-todos --tarefa (ele ja e administrador)
-e, ao desinstalar, o remove: a Vitrola nunca pede o UAC. O filtro fica em todos os microfones e so age no que o app
+No app: ritmelli.exe --microfone <a mesma linha>. O instalador roda o instala-todos --tarefa (ele ja e administrador)
+e, ao desinstalar, o remove: o Ritmelli nunca pede o UAC. O filtro fica em todos os microfones e so age no que o app
 escolheu (o alvo do anel, ver apo/anel.h). Microfone que aparece depois (um fone USB novo): o app roda a tarefa
 (pede_tarefa), que roda como SYSTEM o instala-todos; quem usa o PC so pode rodar a tarefa, nao mudar. --dll e, sem
 ele, a DLL que vem com o app (dll_padrao); --saida grava o resultado em JSON.
 
 O instala copia a DLL pra uma pasta que o audiodg.exe (LocalService) consegue ler, registra o COM e o APO
 (regsvr32), pendura o nosso nas vagas de efeito do microfone e guarda o original em
-HKLM\\SOFTWARE\\Vitrola\\Microfone\\{id do microfone}. Depois reinicia o AudioEndpointBuilder e o servico de
+HKLM\\SOFTWARE\\Ritmelli\\Microfone\\{id do microfone}. Depois reinicia o AudioEndpointBuilder e o servico de
 audio, que e quando o Windows rele os efeitos (o som de todo o PC some por um instante; so quando algo mudou). O log
 do filtro fica em log\\micfx.log, na pasta da DLL.
 
@@ -32,7 +32,7 @@ lista composta {d04e05a6...},14. O Windows so aceita a peca de cancelamento de e
 nada nosso pode vir depois dela: o hospedeiro carrega o APO do fabricante por dentro e soma a musica no que sai dele, e
 o EFX desse microfone fica so com a voz (o micfx.dll ve o hospedeiro na lista). Por isso so com o RAW no MFX: o raw
 pula o MFX onde o fabricante nao o declara, e ficaria sem musica. A vaga do hospedeiro que carrega cada fabricante vai
-em HKLM\\SOFTWARE\\Vitrola\\Microfone, valor _hospede<n>, e o registro de APO do fabricante e copiado para o dele.
+em HKLM\\SOFTWARE\\Ritmelli\\Microfone, valor _hospede<n>, e o registro de APO do fabricante e copiado para o dele.
 O SFX do fabricante nao se mexe (a versao anterior trocava o SFX pelo nosso; instalar de novo devolve o original).
 """
 import argparse
@@ -52,8 +52,10 @@ HOSPEDES = ("{D6EB08E6-2DDA-44F3-88C8-2D0EA00C6C8E}", "{9FEF5C33-9ED4-4CC6-8624-
 NOSSOS = (CLSID,) + HOSPEDES
 APOS = r"SOFTWARE\Classes\AudioEngine\AudioProcessingObjects"  # o registro de APO (o RegisterAPO grava aqui)
 CAPTURA = r"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Capture"
-SALVO = r"SOFTWARE\Vitrola\Microfone"
-PASTA = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Vitrola", "microfone")
+SALVO = r"SOFTWARE\Ritmelli\Microfone"
+PASTA = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Ritmelli", "microfone")
+# a DLL de antes da troca de nome (#58), que o audiodg.exe pode estar segurando: com ela, a troca tambem para o audio
+DLL_VELHA = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Vitrola", "microfone", "micfx.dll")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # no executavel sem console, nada de janela piscando
 
 NOME = "{a45c254e-df1c-4efd-8020-67d146a850e0},2"
@@ -198,11 +200,19 @@ def estado():
             e_nosso, mfx = nosso(fx), no_mfx(fx)
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"{CAPTURA}\{ep}\Properties") as p:
             sem = (le(p, SEM_MELHORIAS) or (0,))[0]
-        marca = ("VITROLA" + (" (+ maker's MFX)" if mfx else "")) if e_nosso else \
+        marca = ("RITMELLI" + (" (+ maker's MFX)" if mfx else "")) if e_nosso else \
             ("other: " + sfx if sfx else "no SFX")
         print(f"{nome} ({apar}) {ep}: {marca}{'  [enhancements disabled]' if sem else ''}")
     print("dll:", os.path.join(PASTA, "micfx.dll"), "exists" if os.path.exists(os.path.join(PASTA, "micfx.dll"))
           else "missing")
+
+
+def audio_rodando():
+    """O servico de audio do Windows esta rodando (num servidor sem som, como a maquina da esteira, fica parado)."""
+    estado = subprocess.run(["powershell", "-NoProfile", "-Command", "(Get-Service audiosrv).Status"],
+                            capture_output=True, text=True, encoding="oem", errors="replace",
+                            creationflags=NO_WINDOW).stdout.strip()
+    return estado == "Running"
 
 
 def servico_audio(acao):
@@ -271,8 +281,12 @@ def _prepara_dll(dll):
     mesma = os.path.normcase(os.path.abspath(dll)) == os.path.normcase(destino)
     parou = False
     if not mesma and not (os.path.exists(destino) and _sha(dll) == _sha(destino)):
-        if os.path.exists(destino):  # a primeira instalacao nao tem DLL velha presa: o som segue
+        if os.path.exists(destino):  # a primeira instalacao nao tem DLL presa: o som segue
             servico_audio("Stop")  # o audiodg.exe solta a DLL velha
+            parou = True
+        elif os.path.exists(DLL_VELHA) and audio_rodando():
+            # a DLL de antes da troca de nome mora em outra pasta e nao segura a copia, mas o audiodg.exe so carrega a
+            # nova quando o audio reinicia (o reinicia_audio de quem chamou)
             parou = True
         shutil.copy2(dll, destino)
     r = subprocess.run(["regsvr32", "/s", destino], capture_output=True, text=True, encoding="oem",
@@ -359,7 +373,7 @@ def _hospedado(vaga):
 
 def _vaga_hospede(fabricante):
     """A vaga do hospedeiro que carrega esse MFX do fabricante: a que ja o carrega, ou a primeira livre (gravada em
-    HKLM\\SOFTWARE\\Vitrola\\Microfone, _hospede<n>). O registro de APO do fabricante vai para o do hospedeiro (o
+    HKLM\\SOFTWARE\\Ritmelli\\Microfone, _hospede<n>). O registro de APO do fabricante vai para o do hospedeiro (o
     regsvr32 grava o padrao a cada instalacao). None sem vaga livre."""
     with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, SALVO, 0, winreg.KEY_ALL_ACCESS) as raiz:
         livre = None
@@ -518,7 +532,7 @@ def _esquece_hospedes():
 
 
 def dll_padrao():
-    """A micfx.dll que vem com o app: no executavel, a da _internal\\microfone (vitrola.spec); no fonte, a que o
+    """A micfx.dll que vem com o app: no executavel, a da _internal\\microfone (ritmelli.spec); no fonte, a que o
     apo\\compila.bat gera."""
     if getattr(sys, "frozen", False):
         return os.path.join(sys._MEIPASS, "microfone", "micfx.dll")  # noqa: SLF001 - o PyInstaller poe aqui
@@ -553,9 +567,9 @@ def do_microfone(nome, dados=None):
 
 
 # A tarefa do Windows que pendura o filtro como SYSTEM: o instalador cria (ele e administrador), quem usa o PC so pode
-# rodar (o descritor da tarefa da leitura e execucao aos usuarios), e o comando e fixo, no vitrola.exe da pasta de
+# rodar (o descritor da tarefa da leitura e execucao aos usuarios), e o comando e fixo, no ritmelli.exe da pasta de
 # programas (que so administrador muda). E por ela que o microfone que aparece depois ganha o filtro sem UAC.
-TAREFA = r"\Vitrola\Microfone"
+TAREFA = r"\Ritmelli\Microfone"
 TAREFA_XML = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -638,6 +652,17 @@ def pede_tarefa(nome, espera_s=60):
     return {"ok": False, "motivo": "audio"}
 
 
+def _migra_registro():
+    """O registro de antes da troca de nome (HKLM\\SOFTWARE\\Vitrola, migra.py) antes de mexer em qualquer microfone:
+    sem o original de cada um, o _pendura guardaria o nosso filtro como original. O instalador ja chamou; aqui e a
+    garantia para quem roda a ferramenta de outro jeito."""
+    try:
+        import migra
+    except ImportError:  # rodando este arquivo direto, sem a raiz do app no caminho: o instalador ja migrou
+        return
+    migra.registro()
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="microfone")
     ap.add_argument("acao", choices=("estado", "instala", "instala-todos", "remove"))
@@ -649,6 +674,8 @@ def main(argv=None):
     dll = a.dll or dll_padrao()
     res = {"ok": True}
     try:
+        if a.acao != "estado":
+            _migra_registro()
         if a.acao == "estado":
             estado()
         elif a.acao in ("instala", "instala-todos"):

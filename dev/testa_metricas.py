@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory() as tmp:
     m, _ = nova(instalador=True, tmp=tmp)
     confere(m.situacao() == "ligada", "o instalador marcou: ligada")
     m, _ = nova(cfg={"metricas": False}, instalador=True, tmp=tmp)
-    confere(m.situacao() == "desligada", "a escolha feita na Vitrola vale sobre a do instalador")
+    confere(m.situacao() == "desligada", "a escolha feita no Ritmelli vale sobre a do instalador")
     m2 = met.Metricas({}, lambda: None, mock=True, estado=Path(tmp) / "x.json")
     confere(m2.situacao() == "fora", "no --mock: fora, nunca envia")
 
@@ -188,7 +188,7 @@ with tempfile.TemporaryDirectory() as tmp:
     q = ev["exception"]["values"][0]["stacktrace"]["frames"][-1]
     confere(q["filename"] == "dev/testa_metricas.py" and q["function"] == "explode" and "vars" not in q,
             f"a linha da pilha relativa ao app, sem variaveis ({q})")
-    confere(met._arquivo("C:/Program Files/Vitrola/_internal/aiohttp/web_protocol.py")[0] == "aiohttp/web_protocol.py"
+    confere(met._arquivo("C:/Program Files/Ritmelli/_internal/aiohttp/web_protocol.py")[0] == "aiohttp/web_protocol.py"
             and met._arquivo("server.py") == ("server.py", True)
             and met._arquivo(r"C:\Python312\Lib\asyncio\events.py") == ("asyncio/events.py", False),
             "os caminhos da pilha: do app, de biblioteca e do Python")
@@ -199,7 +199,7 @@ if "--de-verdade" in sys.argv:
     from versao import VERSAO
     lote = {"api_key": met.POSTHOG_CHAVE, "batch": [{
         "event": "teste_de_envio", "distinct_id": "teste-" + uuid.uuid4().hex[:8],
-        "properties": {"versao": VERSAO, "$process_person_profile": False, "$geoip_disable": True, "$lib": "vitrola"}}]}
+        "properties": {"versao": VERSAO, "$process_person_profile": False, "$geoip_disable": True, "$lib": "ritmelli"}}]}
     st = met._posta(met.POSTHOG, json.dumps(lote).encode(), {"Content-Type": "application/json"})
     confere(st == 200, f"o PostHog recebeu o evento de teste ({st})")
     ev = met.evento_de_erro(RuntimeError, RuntimeError("teste de envio"), None, "teste",

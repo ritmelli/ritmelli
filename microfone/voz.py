@@ -1,7 +1,7 @@
 """O motor de efeitos do filtro (microfone/apo/voz.h) fora do audiodg, pelo voz.dll: a mesma conta que o micfx.dll faz
 na voz. O app usa quando a voz com efeito sai dele (o filtro recusou o efeito, ou o microfone nao tem o filtro e o
 efeito so vale no fone), e os testes conferem e medem por aqui (dev/testa_voz.py). O compila.bat gera a DLL e o
-instalador leva (vitrola.spec); sem ela o app sobe igual e so o filtro roda o efeito.
+instalador leva (ritmelli.spec); sem ela o app sobe igual e so o filtro roda o efeito.
 
     c = Cadeia(preset.compila(fx.criar("eco"), 48000), 48000)
     y = c(x)  # x float32 mono, em blocos (como o filtro recebe)

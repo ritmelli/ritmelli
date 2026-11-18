@@ -1,6 +1,6 @@
-# Compila o bootloader do PyInstaller (o comeco do vitrola.exe, que acha e abre o Python da _internal\) da fonte da
+# Compila o bootloader do PyInstaller (o comeco do ritmelli.exe, que acha e abre o Python da _internal\) da fonte da
 # versao de pyinstaller.psd1, com o gcc do MSYS2 (UCRT64). O bootloader pronto que vem no pip e o mesmo de milhares de
-# executaveis, e parte deles e malware: o antivirus que reconhece pelo comeco do arquivo marca a Vitrola junto.
+# executaveis, e parte deles e malware: o antivirus que reconhece pelo comeco do arquivo marca o Ritmelli junto.
 # Compilado aqui, o comeco e so nosso. Sai em bin\ (run.exe, runw.exe e os _d, de depuracao, com a FONTE.txt), que vai
 # no git; o monta.ps1 instala o PyInstaller com eles no lugar dos prontos. Rodar de novo so ao trocar a versao.
 # Uso: compila.ps1
@@ -40,7 +40,7 @@ foreach ($e in $EXES) { Copy-Item (Join-Path $feitos $e) $saida -Force }
 $gcc = (& (Join-Path $ucrt64 'gcc.exe') --version | Select-Object -First 1)
 $hashes = foreach ($e in $EXES) { '{0}  {1}' -f (Get-FileHash (Join-Path $saida $e) -Algorithm SHA256).Hash.ToLower(), $e }
 @(
-  "Bootloader do PyInstaller $($PYI.Versao) ($($EXES -join ', ')), para a Vitrola."
+  "Bootloader do PyInstaller $($PYI.Versao) ($($EXES -join ', ')), para o Ritmelli."
   'Licenca: GPL 2 ou posterior, com a excecao do bootloader (o programa gerado pode ter qualquer licenca). O texto e o'
   'COPYING.txt do PyInstaller, que vai no TERCEIROS.txt do app.'
   "Fonte: $(Split-Path $PYI.Url -Leaf), sem mudancas, do PyPI (sha256 $($PYI.Sha.ToLower()))."

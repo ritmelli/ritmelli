@@ -91,7 +91,7 @@ MOLDURAS = {
     "chapa": dict(sai=0, sombra=0, cor_sombra=None, cantos="ab", contorno_px=2, degrau=(4, 2), passo=2, faixas=[
         (2, 4, {"t": (255, 255, 255, .7), "l": (255, 255, 255, .7), "b": (255, 255, 255, .3), "r": (255, 255, 255, .3)}),
         (4, 5, {"b": (42, 24, 18, .16), "r": (42, 24, 18, .12)})]),
-    # etiquetas miudas (o selo 33/45 do toca-discos e o VITROLA do FX-12): contorno de 2 px por fora e
+    # etiquetas miudas (o selo 33/45 do toca-discos e o RITMELLI do FX-12): contorno de 2 px por fora e
     # a quina comida em 2 px
     "etiqueta": dict(sai=2, sombra=0, cor_sombra=None, cantos="ab", contorno_px=2, degrau=(2,), passo=2, faixas=[
         (2, 3, {"t": (255, 255, 255, .75), "l": (255, 255, 255, .75)}),

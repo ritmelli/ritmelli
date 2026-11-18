@@ -334,7 +334,7 @@ def confere_modulo():
                                      ("pt_BR", "en-US", "pt_BR"), ("en", "pt-BR", "en"), ("xx", "pt-BR", "pt_BR")]:
         if (got := i18n.escolher(pedida, accept)) != esperado:
             falha(f"escolher({pedida!r}, {accept!r}) = {got!r}, expected {esperado!r}")
-    for valor, lingua, esperado in [("Vitrola", "pt_BR", "Vitrola"), ({"en": "a", "pt_BR": "b"}, "pt_BR", "b"),
+    for valor, lingua, esperado in [("Ritmelli", "pt_BR", "Ritmelli"), ({"en": "a", "pt_BR": "b"}, "pt_BR", "b"),
                                     ({"en": "a", "pt_BR": "b"}, "en", "a"), ({"en": "a"}, "pt_BR", "a"),
                                     ({"pt_BR": "b"}, "en", "b"), ({}, "en", "")]:
         if (got := i18n.na_lingua(valor, lingua)) != esperado:

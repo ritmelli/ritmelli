@@ -1,4 +1,4 @@
-# Compila o ffmpeg so de audio que vai na bin\ do app, com so o que a Vitrola usa: tocar a biblioteca e o stream do
+# Compila o ffmpeg so de audio que vai na bin\ do app, com so o que o Ritmelli usa: tocar a biblioteca e o stream do
 # YouTube, ler a duracao pelo ffprobe e os consertos de container do yt-dlp. Sem os codificadores de video (x264 e x265,
 # com patente) e sem biblioteca de fora alem do zlib: o resultado e LGPL. Sai em bin\ (ffmpeg.exe, ffprobe.exe, a
 # licenca e a FONTE.txt), que vai no git; o monta.ps1 so copia. O testa.ps1 confere o resultado contra o ffmpeg de antes.
@@ -18,8 +18,8 @@ $PACOTES = 'make diffutils mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-nasm 
 $saida = Join-Path $PSScriptRoot 'bin'
 PreparaMsys2 $PACOTES
 
-$env:VITROLA_FONTE = Baixa $FONTE
-$env:VITROLA_SAIDA = $saida
+$env:RITMELLI_FONTE = Baixa $FONTE
+$env:RITMELLI_SAIDA = $saida
 'compilando o ffmpeg...'
 # o caminho ja no formato do MSYS2 (/c/...): o PowerShell 5 tira as aspas de dentro do que passa para outro programa, e o
 # bash recebia o $(cygpath ...) quebrado

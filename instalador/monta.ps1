@@ -1,15 +1,15 @@
-# Monta o instalador da Vitrola: congela o app (o vitrola.spec da raiz deste repo), baixa o Deno na versao fixa abaixo
+# Monta o instalador do Ritmelli: congela o app (o ritmelli.spec da raiz deste repo), baixa o Deno na versao fixa abaixo
 # (conferindo o hash), junta o ffmpeg so de audio de ffmpeg\bin (o ffmpeg\compila.ps1 gera, e ele vai no git) e compila
-# o vitrola.iss pelo Inno Setup. Sai em saida\.
-# Uso: monta.ps1 [-Vitrola <pasta do app>] [-SoCongela | -SemCongelar] [-Anterior <manifest.json>]
-#   -Vitrola e a raiz deste repo, onde mora o app: so muda para montar outra copia dele
-#   -SoCongela para depois de congelar o app (dist\vitrola), sem montar o setup: na esteira, o vitrola.exe e assinado
+# o ritmelli.iss pelo Inno Setup. Sai em saida\.
+# Uso: monta.ps1 [-Ritmelli <pasta do app>] [-SoCongela | -SemCongelar] [-Anterior <manifest.json>]
+#   -Ritmelli e a raiz deste repo, onde mora o app: so muda para montar outra copia dele
+#   -SoCongela para depois de congelar o app (dist\ritmelli), sem montar o setup: na esteira, o ritmelli.exe e assinado
 #   entre as duas chamadas
-#   -SemCongelar usa o dist\vitrola que ja existe: na esteira, e a segunda chamada, com o vitrola.exe ja assinado; no
+#   -SemCongelar usa o dist\ritmelli que ja existe: na esteira, e a segunda chamada, com o ritmelli.exe ja assinado; no
 #   PC, serve para testar o instalador sem congelar de novo
-#   -Anterior monta tambem a atualizacao parcial (Vitrola-<versao>-parcial.exe), so com o que mudou desde a versao
+#   -Anterior monta tambem a atualizacao parcial (Ritmelli-<versao>-parcial.exe), so com o que mudou desde a versao
 #   desse manifesto (o manifest.json.sig ao lado dele), e grava ao lado o PARCIAL-<versao>.json do parcial.py
-param([string]$Vitrola = (Join-Path $PSScriptRoot '..'), [switch]$SoCongela, [switch]$SemCongelar, [string]$Anterior)
+param([string]$Ritmelli = (Join-Path $PSScriptRoot '..'), [switch]$SoCongela, [switch]$SemCongelar, [string]$Anterior)
 $ErrorActionPreference = 'Stop'
 if ($SoCongela -and $SemCongelar) { throw 'o -SoCongela e o -SemCongelar nao vao juntos' }
 $ProgressPreference = 'SilentlyContinue'  # sem a barra, o Invoke-WebRequest do PowerShell 5 baixa muito mais rapido
@@ -20,7 +20,7 @@ $DENO = @{ Url = 'https://github.com/denoland/deno/releases/download/v2.9.8/deno
            Sha = 'cba84b26e0df5ae7f74fc66b86a95b866872a86292ebd84fa1e959927edd93bf'
            Bin = '' }
 
-$Vitrola = (Resolve-Path $Vitrola).Path
+$Ritmelli = (Resolve-Path $Ritmelli).Path
 $vendor = Join-Path $PSScriptRoot 'vendor'
 $saida = Join-Path $PSScriptRoot 'saida'
 
@@ -54,12 +54,12 @@ function Prepara($nome, $p) {
   return (Join-Path $pasta $p.Bin).TrimEnd('\')
 }
 
-$versao = (Select-String -Path (Join-Path $Vitrola 'versao.py') -Pattern '^VERSAO = "(.+)"').Matches[0].Groups[1].Value
-"Vitrola $versao"
+$versao = (Select-String -Path (Join-Path $Ritmelli 'versao.py') -Pattern '^VERSAO = "(.+)"').Matches[0].Groups[1].Value
+"Ritmelli $versao"
 
 # o venv fica numa pasta curta, fora do repo: num caminho longo, o pip passa dos 260 caracteres do Windows
 # (WinError 206 no numpy)
-$raiz = Join-Path $env:LOCALAPPDATA 'vitrola-build'
+$raiz = Join-Path $env:LOCALAPPDATA 'ritmelli-build'
 $venv = Join-Path $raiz 'Scripts'
 if (-not $SemCongelar) {
   if (-not (Test-Path "$venv\python.exe")) {
@@ -69,7 +69,7 @@ if (-not $SemCongelar) {
   # a cada build: as versoes de travas.txt (o PC e o GitHub montam com as mesmas, e elas so mudam de proposito), o que
   # entrou no requirements.txt e ainda nao esta na trava, e o yt-dlp sempre o mais novo (o YouTube quebra o velho, e o
   # update do app e o unico jeito de o novo chegar a quem usa)
-  Roda 'pip' { & "$venv\python.exe" -m pip install -q -r (Join-Path $Vitrola 'requirements.txt') -r (Join-Path $PSScriptRoot 'travas.txt') }
+  Roda 'pip' { & "$venv\python.exe" -m pip install -q -r (Join-Path $Ritmelli 'requirements.txt') -r (Join-Path $PSScriptRoot 'travas.txt') }
   # o PyInstaller da versao fixa, instalado da fonte com o bootloader compilado aqui (bootloader\compila.ps1) no lugar
   # do pronto. So reinstala quando o bootloader do venv nao e o nosso; a fonte se abre na pasta curta do venv
   $PYI = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'bootloader\pyinstaller.psd1')
@@ -100,16 +100,16 @@ if (-not $SemCongelar) {
   Roda 'yt-dlp' { & "$venv\python.exe" -m pip install -q -U 'yt-dlp[default]' }
   "yt-dlp $(& "$venv\python.exe" -m yt_dlp --version)"
   # o filtro de microfone (a musica no microfone do jogo) e o voz.dll (o motor de efeitos dele, para a voz com efeito que
-  # sai pelo app): as DLLs vao dentro do app (vitrola.spec). Precisa do Visual Studio 2022 com C++ (no GitHub, o do
+  # sai pelo app): as DLLs vao dentro do app (ritmelli.spec). Precisa do Visual Studio 2022 com C++ (no GitHub, o do
   # windows-latest)
   'compilando o filtro de microfone e o voz.dll...'
-  Roda 'micfx' { cmd /c (Join-Path $Vitrola 'microfone\apo\compila.bat') }
+  Roda 'micfx' { cmd /c (Join-Path $Ritmelli 'microfone\apo\compila.bat') }
   'congelando o app...'
-  Push-Location $Vitrola
-  try { Roda 'pyinstaller' { & "$venv\pyinstaller.exe" --noconfirm --log-level ERROR vitrola.spec } } finally { Pop-Location }
+  Push-Location $Ritmelli
+  try { Roda 'pyinstaller' { & "$venv\pyinstaller.exe" --noconfirm --log-level ERROR ritmelli.spec } } finally { Pop-Location }
 }
-$app = Join-Path $Vitrola 'dist\vitrola'
-if (-not (Test-Path "$app\vitrola.exe")) { throw "nao achei $app\vitrola.exe (rode sem -SemCongelar)" }
+$app = Join-Path $Ritmelli 'dist\ritmelli'
+if (-not (Test-Path "$app\ritmelli.exe")) { throw "nao achei $app\ritmelli.exe (rode sem -SemCongelar)" }
 if ($SoCongela) { "congelado: $app"; return }
 
 New-Item -ItemType Directory -Force $vendor | Out-Null
@@ -123,28 +123,28 @@ if (-not $iscc) { throw 'falta o Inno Setup 6: winget install -e --id JRSoftware
 # os avisos de terceiros, pelo venv que congelou o app: sai ao lado do setup, para conferir, e vai na pasta do app
 if (-not (Test-Path "$venv\python.exe")) { throw "nao achei o venv do build em $raiz (rode sem -SemCongelar)" }
 $terceiros = Join-Path $saida "TERCEIROS-$versao.txt"
-Roda 'terceiros.py' { & "$venv\python.exe" (Join-Path $PSScriptRoot 'terceiros.py') --app $app --vitrola $Vitrola --ffmpeg $ffmpeg --deno $deno --saida $terceiros }
+Roda 'terceiros.py' { & "$venv\python.exe" (Join-Path $PSScriptRoot 'terceiros.py') --app $app --ritmelli $Ritmelli --ffmpeg $ffmpeg --deno $deno --saida $terceiros }
 # a versao de cada biblioteca do venv que congelou o app, tambem ao lado do setup: de onde saiu cada build
 $versoes = Join-Path $saida "VERSOES-$versao.txt"
 Roda 'pip freeze' { & "$venv\python.exe" -m pip freeze --all | Set-Content -Path $versoes -Encoding ascii }
 "$versoes"
 'compilando o instalador...'
-Roda 'ISCC' { & $iscc /Q "/DVersao=$versao" "/DApp=$app" "/DFfmpeg=$ffmpeg" "/DDeno=$deno" "/DLicenca=$(Join-Path $Vitrola 'LICENSE')" "/DTerceiros=$terceiros" "/O$saida" (Join-Path $PSScriptRoot 'vitrola.iss') }
-$setup = Get-Item (Join-Path $saida "Vitrola-$versao-setup.exe")
+Roda 'ISCC' { & $iscc /Q "/DVersao=$versao" "/DApp=$app" "/DFfmpeg=$ffmpeg" "/DDeno=$deno" "/DLicenca=$(Join-Path $Ritmelli 'LICENSE')" "/DTerceiros=$terceiros" "/O$saida" (Join-Path $PSScriptRoot 'ritmelli.iss') }
+$setup = Get-Item (Join-Path $saida "Ritmelli-$versao-setup.exe")
 'pronto: {0} ({1:N0} MB)' -f $setup.FullName, ($setup.Length / 1MB)
 
 if ($Anterior) {
   # a parcial separa o que mudou numa pasta fora da saida\ (a saida\ inteira vira artefato na esteira) e monta o mesmo
-  # vitrola.iss so com isso. Sem nada mudado, o parcial.py nao grava o parcial.json, e fica so o setup completo
+  # ritmelli.iss so com isso. Sem nada mudado, o parcial.py nao grava o parcial.json, e fica so o setup completo
   $pasta = Join-Path $raiz 'parcial'
   $info = Join-Path $saida "PARCIAL-$versao.json"
-  Remove-Item $info, (Join-Path $saida "Vitrola-$versao-parcial.exe") -ErrorAction SilentlyContinue
-  Roda 'parcial.py' { & "$venv\python.exe" (Join-Path $PSScriptRoot 'atualizacao\parcial.py') --anterior $Anterior --app-py (Join-Path $Vitrola 'atualizacao.py') --app $app --bin $ffmpeg --bin $deno --saida $pasta }
+  Remove-Item $info, (Join-Path $saida "Ritmelli-$versao-parcial.exe") -ErrorAction SilentlyContinue
+  Roda 'parcial.py' { & "$venv\python.exe" (Join-Path $PSScriptRoot 'atualizacao\parcial.py') --anterior $Anterior --app-py (Join-Path $Ritmelli 'atualizacao.py') --app $app --bin $ffmpeg --bin $deno --saida $pasta }
   if (Test-Path "$pasta\parcial.json") {
     'compilando a atualizacao parcial...'
-    Roda 'ISCC parcial' { & $iscc /Q "/DVersao=$versao" "/DApp=$app" "/DFfmpeg=$ffmpeg" "/DDeno=$deno" "/DLicenca=$(Join-Path $Vitrola 'LICENSE')" "/DTerceiros=$terceiros" "/DParcial=$pasta\arquivos" "/DApaga=$pasta\apaga.iss" "/O$saida" (Join-Path $PSScriptRoot 'vitrola.iss') }
+    Roda 'ISCC parcial' { & $iscc /Q "/DVersao=$versao" "/DApp=$app" "/DFfmpeg=$ffmpeg" "/DDeno=$deno" "/DLicenca=$(Join-Path $Ritmelli 'LICENSE')" "/DTerceiros=$terceiros" "/DParcial=$pasta\arquivos" "/DApaga=$pasta\apaga.iss" "/O$saida" (Join-Path $PSScriptRoot 'ritmelli.iss') }
     Copy-Item "$pasta\parcial.json" $info
-    $p = Get-Item (Join-Path $saida "Vitrola-$versao-parcial.exe")
+    $p = Get-Item (Join-Path $saida "Ritmelli-$versao-parcial.exe")
     'pronto: {0} ({1:N1} MB)' -f $p.FullName, ($p.Length / 1MB)
   }
 }

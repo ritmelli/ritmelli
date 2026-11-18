@@ -315,7 +315,7 @@ vem `false`.
   deve recarregar quando ele voltar, porque o tema também pode ter mudado.
 - Do celular, os quatro respondem 403: a versão nova se instala no PC.
 
-**Automática** (`automatica: true`, o app instalado com a tarefa "Vitrola Atualiza" do Windows,
+**Automática** (`automatica: true`, o app instalado com a tarefa "Ritmelli Atualiza" do Windows,
 `atualizador.py`): quem consulta, baixa e instala é a tarefa, como SYSTEM, sem o pedido de
 permissão, no logon, de 4 em 4 horas e uns 30 s depois de o app abrir. Com o Ritmelli aberto, a
 versão nova fica `pronta` e entra quando ele fecha. O app só mostra o estado da tarefa:

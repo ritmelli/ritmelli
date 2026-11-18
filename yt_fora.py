@@ -3,7 +3,7 @@ estalava bastante): o yt-dlp segurava o interpretador do servidor em rajadas de 
 stream, e o callback do audio e de 10 ms. O servidor deixa um processo destes ja aberto, com as bibliotecas
 carregadas, esperando o pedido (Fora); cada pedido usa um e ja abre o proximo.
 
-    python vitrola.py --yt   (o pedido em JSON na entrada: {"op": ..., ...}; no app, vitrola.exe --yt)
+    python ritmelli.py --yt   (o pedido em JSON na entrada: {"op": ..., ...}; no app, ritmelli.exe --yt)
 
 A saida e uma linha JSON por evento: {"progresso": f} no download e, no fim, {"r": resultado} ou {"erro": motivo}.
 Do yt-dlp volta so o que o servidor le (enxuto): o info inteiro nao e JSON e e grande."""
@@ -481,7 +481,7 @@ def responde(linha):
 
 
 # o aviso da fala que abre (r14): o YouTube fecha a conexao parada aos ~240 s (pesq/conexao_ociosa2: aberta com 230 s,
-# fechada com 240, no music.youtube.com e no www.youtube.com), e com a vitrola parada o primeiro pedido pagava um TLS
+# fechada com 240, no music.youtube.com e no www.youtube.com), e com o Ritmelli parado o primeiro pedido pagava um TLS
 # na busca (reserva) e outro no endereco (vivo), em serie, ~0,11 s cada; o vivo vazio pagava ainda o YoutubeDL novo.
 # O servidor manda {"op": "aquece"} quando a mina avisa que alguem comecou a falar (Fora.prepara)
 def aquece(p):

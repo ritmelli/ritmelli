@@ -45,7 +45,7 @@ enviado, e o teste que verifica essa lista, [`dev/testa_metricas.py`](dev/testa_
 ## Responsável
 
 Behling Informática Ltda, que publica o Ritmelli. Para tratar dos seus dados ou solicitar a exclusão dos dados de uma
-instalação (informando o código dela, que está no arquivo `%LOCALAPPDATA%\Vitrola\metricas.json`),
+instalação (informando o código dela, que está no arquivo `%LOCALAPPDATA%\Ritmelli\metricas.json`),
 [abra uma issue](https://github.com/ritmelli/ritmelli/issues) sem incluir dados pessoais; a resposta será dada por lá.
 
 ---
@@ -94,5 +94,5 @@ and the test that checks that list, [`dev/testa_metricas.py`](dev/testa_metricas
 ## Data controller
 
 Behling Informática Ltda, the publisher of Ritmelli. To discuss your data or to request the deletion of an
-installation's data (please include its code, found in `%LOCALAPPDATA%\Vitrola\metricas.json`),
+installation's data (please include its code, found in `%LOCALAPPDATA%\Ritmelli\metricas.json`),
 [open an issue](https://github.com/ritmelli/ritmelli/issues) without including any personal data; we will reply there.

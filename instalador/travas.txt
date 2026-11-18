@@ -2,7 +2,7 @@
 # proposito. Ficam de fora o pip, o PyInstaller (versao fixa em bootloader\pyinstaller.psd1, instalado da fonte) e o
 # yt-dlp com o yt-dlp-ejs (sempre os mais novos: o YouTube quebra o velho).
 # Para atualizar: trocar a versao aqui, ou copiar o VERSOES-<versao>.txt de um build (sem as linhas de fora), testar e
-# fazer a PR. Biblioteca nova no requirements.txt do vitrola que ainda nao esta aqui vem na mais nova, e o VERSOES do
+# fazer a PR. Biblioteca nova no requirements.txt do ritmelli que ainda nao esta aqui vem na mais nova, e o VERSOES do
 # build mostra qual.
 # Gerada do VERSOES-0.2.0.txt do build do GitHub de 07/11/2026.
 aiohappyeyeballs==2.7.1

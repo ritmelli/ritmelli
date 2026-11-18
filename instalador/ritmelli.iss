@@ -1,19 +1,25 @@
-﻿; O instalador da Vitrola (Inno Setup 6). Nao compile direto: o monta.ps1 congela o app, baixa o ffmpeg e o
-; Deno e passa os caminhos e a versao (/DVersao, /DApp, /DFfmpeg, /DDeno, e /DLicenca e /DTerceiros, a GPLv3 da Vitrola
-; e os avisos de terceiros que o terceiros.py monta).
+﻿; O instalador do Ritmelli (Inno Setup 6). Nao compile direto: o monta.ps1 congela o app, baixa o ffmpeg e o
+; Deno e passa os caminhos e a versao (/DVersao, /DApp, /DFfmpeg, /DDeno, e /DLicenca e /DTerceiros, a GPLv3 do
+; Ritmelli e os avisos de terceiros que o terceiros.py monta).
 ;
-; Instala o vitrola.exe em Program Files, com o ffmpeg, o ffprobe e o Deno na bin\ (o app acha la, ver o
-; pastas.py), cria a regra do firewall para o celular alcancar o PC e pendura o filtro da Vitrola em todo microfone
+; Instala o ritmelli.exe em Program Files, com o ffmpeg, o ffprobe e o Deno na bin\ (o app acha la, ver o
+; pastas.py), cria a regra do firewall para o celular alcancar o PC e pendura o filtro do Ritmelli em todo microfone
 ; do PC (microfone\microfone.py): e por ele que a musica toca no microfone que o jogo ja usa. Tambem cria a tarefa
-; do Windows que pendura o filtro num microfone que aparecer depois, sem o app pedir administrador, e a que atualiza a
-; Vitrola sozinha (atualizador.py): ela roda este setup como SYSTEM, em silencio e sem /reabrir, com a Vitrola fechada.
+; do Windows que pendura o filtro num microfone que aparecer depois, sem o app pedir administrador, e a que atualiza o
+; Ritmelli sozinho (atualizador.py): ela roda este setup como SYSTEM, em silencio e sem /reabrir, com o Ritmelli fechado.
 ; Desinstalar tira o filtro, devolve o efeito original de cada microfone e apaga as duas tarefas. Os dados de quem usa
-; (%LOCALAPPDATA%\Vitrola) ficam.
+; (%LOCALAPPDATA%\Ritmelli) ficam.
+;
+; A troca de nome (#58): ate a 0.4.1 o app se chamava Vitrola (vitrola.exe em Program Files\Vitrola, as tarefas
+; "Vitrola Atualiza" e \Vitrola\Microfone, o HKLM\SOFTWARE\Vitrola). Por cima de uma instalacao dessas, o setup fecha o
+; app de antes, muda a pasta padrao para Program Files\Ritmelli (a escolhida a mao fica), copia o registro antes do
+; filtro, troca as tarefas e, no fim, apaga o que sobrou do app de antes (migra.py). Os dados de quem usa mudam de
+; pasta no proprio app, ao abrir (pastas.migra). O AppId e o mesmo: para o Windows e a mesma instalacao.
 ;
 ; Com /DParcial e /DApaga (o monta.ps1 -Anterior), sai a atualizacao parcial, o caminho B do atualizador: o mesmo setup,
 ; mas so com os arquivos que mudaram desde a versao anterior (a pasta /DParcial, que o atualizacao\parcial.py separa)
 ; e apagando so o que a versao nova nao tem mais (o /DApaga, o [InstallDelete] que ele gera). Ela so roda por cima de
-; uma Vitrola instalada, e o app so a usa quando o resto do que esta instalado bate com o manifesto novo.
+; um Ritmelli instalado, e o app so a usa quando o resto do que esta instalado bate com o manifesto novo.
 
 #ifndef Versao
   #error Rode pelo monta.ps1 (falta /DVersao)
@@ -28,7 +34,9 @@ AppVerName=Ritmelli {#Versao}
 AppPublisher=Behling Informática Ltda
 AppCopyright=Software livre sob a GPLv3
 VersionInfoVersion={#Versao}
-DefaultDirName={autopf}\Vitrola
+; a pasta da instalacao anterior, menos a padrao de antes da troca de nome (PastaPadrao, no [Code])
+DefaultDirName={code:PastaPadrao}
+UsePreviousAppDir=no
 DisableProgramGroupPage=yes
 ; administrador de qualquer jeito: o firewall e o filtro dos microfones pedem
 PrivilegesRequired=admin
@@ -36,9 +44,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 #ifdef Parcial
-OutputBaseFilename=Vitrola-{#Versao}-parcial
+OutputBaseFilename=Ritmelli-{#Versao}-parcial
 #else
-OutputBaseFilename=Vitrola-{#Versao}-setup
+OutputBaseFilename=Ritmelli-{#Versao}-setup
 #endif
 Compression=lzma2/max
 SolidCompression=yes
@@ -48,12 +56,12 @@ ShowLanguageDialog=auto
 CloseApplications=force
 CloseApplicationsFilter=*.exe,*.dll,*.pyd
 RestartApplications=no
-UninstallDisplayIcon={app}\vitrola.exe
+UninstallDisplayIcon={app}\ritmelli.exe
 UninstallDisplayName=Ritmelli
 SetupLogging=yes
-; o icone do setup e o do exe, que o vitrola.spec poe na _internal\icone\. O desenho mora no dev/icone.py do
-; repo vitrola, que tambem grava aqui as imagens do assistente (a 100% e a 200%; o Inno escolhe pela escala)
-SetupIconFile={#App}\_internal\icone\vitrola.ico
+; o icone do setup e o do exe, que o ritmelli.spec poe na _internal\icone\. O desenho mora no dev/icone.py do
+; repo ritmelli, que tambem grava aqui as imagens do assistente (a 100% e a 200%; o Inno escolhe pela escala)
+SetupIconFile={#App}\_internal\icone\ritmelli.ico
 WizardSmallImageFile=assistente-pequena-55.png,assistente-pequena-110.png
 WizardImageFile=assistente-grande-164.png,assistente-grande-328.png
 ; no fim, avisa o Windows que os icones mudaram: o Explorer guarda o icone pelo caminho do exe, que e o mesmo de
@@ -79,8 +87,8 @@ pt.Firewall=Liberando o Ritmelli no firewall para que o celular possa se conecta
 en.Firewall=Allowing Ritmelli through the firewall so your phone can connect to the computer...
 pt.Microfone=Preparando os microfones para o Ritmelli (o som do computador é interrompido por alguns segundos)...
 en.Microfone=Preparing your microphones for Ritmelli (the computer's sound will cut out for a few seconds)...
-pt.ParcialSemApp=Esta é uma atualização do Ritmelli e só pode ser aplicada a uma instalação existente. Para instalar o Ritmelli, use o arquivo Vitrola-{#Versao}-setup.exe.
-en.ParcialSemApp=This is a Ritmelli update and can only be applied to an existing installation. To install Ritmelli, use Vitrola-{#Versao}-setup.exe.
+pt.ParcialSemApp=Esta é uma atualização do Ritmelli e só pode ser aplicada a uma instalação existente. Para instalar o Ritmelli, use o arquivo Ritmelli-{#Versao}-setup.exe.
+en.ParcialSemApp=This is a Ritmelli update and can only be applied to an existing installation. To install Ritmelli, use Ritmelli-{#Versao}-setup.exe.
 ; a pagina dos dados de uso e dos erros (metricas.py): a politica na instalacao e a opcao de desligar, como a SignPath
 ; pede (o PRIVACIDADE.md tem o texto inteiro)
 pt.MetricasTitulo=Dados de uso e erros
@@ -106,6 +114,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; ffmpeg completo de antes eram 240 MB)
 Type: filesandordirs; Name: "{app}\_internal"
 Type: filesandordirs; Name: "{app}\bin"
+; o app de antes da troca de nome numa pasta escolhida a mao (que fica a mesma), e os atalhos com o nome de antes
+Type: files; Name: "{app}\vitrola.exe"
+Type: files; Name: "{autoprograms}\Vitrola.lnk"
+Type: files; Name: "{autodesktop}\Vitrola.lnk"
 #endif
 
 [Files]
@@ -120,65 +132,88 @@ Source: "{#Ffmpeg}\*"; DestDir: "{app}\bin"; Flags: ignoreversion
 Source: "{#Deno}\deno.exe"; DestDir: "{app}\bin"; Flags: ignoreversion
 #endif
 
-; quem recebe o programa recebe as licencas: a GPLv3 da Vitrola e o texto de cada componente de terceiros
+; quem recebe o programa recebe as licencas: a GPLv3 do Ritmelli e o texto de cada componente de terceiros
 Source: "{#Licenca}"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "{#Terceiros}"; DestDir: "{app}"; DestName: "TERCEIROS.txt"; Flags: ignoreversion
 
 [Registry]
-; a escolha da pagina dos dados de uso e dos erros, que o metricas.py le (a feita na Vitrola vale sobre ela). So grava
-; quando a pessoa viu a pagina, ou com /metricas=0 ou 1: a atualizacao em silencio mantem a escolha de antes, e quem
-; nunca escolheu ve o aviso na Vitrola antes de qualquer envio
-Root: HKLM; Subkey: "SOFTWARE\Vitrola"; ValueType: dword; ValueName: "Metricas"; ValueData: "{code:MetricasValor}"; Flags: uninsdeletevalue uninsdeletekeyifempty; Check: GravaMetricas
+; a escolha da pagina dos dados de uso e dos erros, que o metricas.py le (a feita no Ritmelli vale sobre ela). So grava
+; quando a pessoa viu a pagina, ou com /metricas=0 ou 1: a atualizacao em silencio mantem a escolha de antes (a de
+; antes da troca de nome vem pelo migra.py), e quem nunca escolheu ve o aviso no Ritmelli antes de qualquer envio
+Root: HKLM; Subkey: "SOFTWARE\Ritmelli"; ValueType: dword; ValueName: "Metricas"; ValueData: "{code:MetricasValor}"; Flags: uninsdeletevalue uninsdeletekeyifempty; Check: GravaMetricas
 
 [Icons]
-Name: "{autoprograms}\Ritmelli"; Filename: "{app}\vitrola.exe"
-Name: "{autodesktop}\Ritmelli"; Filename: "{app}\vitrola.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Ritmelli"; Filename: "{app}\ritmelli.exe"
+Name: "{autodesktop}\Ritmelli"; Filename: "{app}\ritmelli.exe"; Tasks: desktopicon
 
 [Run]
+; a troca de nome, antes de tudo (migra.py): o registro de antes vem para o novo antes de o filtro olhar os
+; microfones, e as tarefas de antes saem
+Filename: "{app}\ritmelli.exe"; Parameters: "--migra maquina"; Flags: runhidden
 ; o servidor atende a rede de casa (o celular). Privadas e publicas: muito Wi-Fi de casa esta como publico no
 ; Windows (o do Chris estava), e so privadas deixava o celular de fora. Pela rede, so entra o celular pareado
-; (pareamento.py, no repo vitrola)
+; (pareamento.py, no repo ritmelli). A regra de antes da troca de nome sai junto
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Vitrola"""; Flags: runhidden
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Ritmelli"""; Flags: runhidden
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Ritmelli"" dir=in action=allow program=""{app}\vitrola.exe"" enable=yes profile=private,public"; StatusMsg: "{cm:Firewall}"; Flags: runhidden
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Ritmelli"" dir=in action=allow program=""{app}\ritmelli.exe"" enable=yes profile=private,public"; StatusMsg: "{cm:Firewall}"; Flags: runhidden
 ; o filtro em todo microfone que ainda nao tem, a DLL desta versao no lugar da velha e a tarefa do Windows que faz o
 ; mesmo depois, chamada pelo app sem UAC (o audio do PC reinicia so se algo mudou: atualizar sem DLL nova nao mexe)
-Filename: "{app}\vitrola.exe"; Parameters: "--microfone instala-todos --tarefa"; StatusMsg: "{cm:Microfone}"; Flags: runhidden
+Filename: "{app}\ritmelli.exe"; Parameters: "--microfone instala-todos --tarefa"; StatusMsg: "{cm:Microfone}"; Flags: runhidden
 ; a tarefa da atualizacao automatica (atualizador.py): no logon e de 4 em 4 horas, como SYSTEM, sem UAC
-Filename: "{app}\vitrola.exe"; Parameters: "--atualizador tarefa"; Flags: runhidden
+Filename: "{app}\ritmelli.exe"; Parameters: "--atualizador tarefa"; Flags: runhidden
+; o que sobrou do app de antes da troca de nome, com o filtro novo ja no lugar (migra.py)
+Filename: "{app}\ritmelli.exe"; Parameters: "--migra limpa"; Flags: runhidden
 ; como quem instalou, e nao como administrador: os dados vao para o %LOCALAPPDATA% dele
-Filename: "{app}\vitrola.exe"; Description: "{cm:Abrir}"; Flags: postinstall nowait skipifsilent runasoriginaluser
-; a atualizacao pelo app (atualizacao.py, no repo vitrola) roda este setup em silencio com /reabrir=1: no fim a Vitrola
-; abre de novo, como quem instalou, com a janela dela (janela.py): a janela da versao velha fechou junto com ela. Vindo
-; de uma versao sem janela, a aba que estava aberta tambem reconecta sozinha
-Filename: "{app}\vitrola.exe"; Flags: nowait runasoriginaluser; Check: Reabrir
+Filename: "{app}\ritmelli.exe"; Description: "{cm:Abrir}"; Flags: postinstall nowait skipifsilent runasoriginaluser
+; a atualizacao pelo app (atualizacao.py, no repo ritmelli) roda este setup em silencio com /reabrir=1: no fim o
+; Ritmelli abre de novo, como quem instalou, com a janela dele (janela.py): a janela da versao velha fechou junto com
+; ela. Vindo de uma versao sem janela, a aba que estava aberta tambem reconecta sozinha
+Filename: "{app}\ritmelli.exe"; Flags: nowait runasoriginaluser; Check: Reabrir
 
 [UninstallRun]
-; a tarefa da atualizacao sai primeiro, e a rodada dela que esperava a Vitrola fechar para: depois do taskkill ela veria
-; a Vitrola fechada e rodaria o instalador no meio do desinstalador
-Filename: "{app}\vitrola.exe"; Parameters: "--atualizador remove"; Flags: runhidden; RunOnceId: "Atualizador"
-Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM vitrola.exe"; Flags: runhidden; RunOnceId: "Fecha"
+; a tarefa da atualizacao sai primeiro, e a rodada dela que esperava o Ritmelli fechar para: depois do taskkill ela
+; veria o Ritmelli fechado e rodaria o instalador no meio do desinstalador
+Filename: "{app}\ritmelli.exe"; Parameters: "--atualizador remove"; Flags: runhidden; RunOnceId: "Atualizador"
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM ritmelli.exe"; Flags: runhidden; RunOnceId: "Fecha"
 ; tira o filtro de todo microfone que o tem, devolve o efeito original de cada um e apaga a tarefa (sem nenhum, nao mexe
 ; no audio)
-Filename: "{app}\vitrola.exe"; Parameters: "--microfone remove"; Flags: runhidden; RunOnceId: "Microfone"
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Vitrola"""; Flags: runhidden; RunOnceId: "Firewall"
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Ritmelli"""; Flags: runhidden; RunOnceId: "FirewallRitmelli"
+Filename: "{app}\ritmelli.exe"; Parameters: "--microfone remove"; Flags: runhidden; RunOnceId: "Microfone"
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Ritmelli"""; Flags: runhidden; RunOnceId: "Firewall"
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Vitrola"""; Flags: runhidden; RunOnceId: "FirewallVitrola"
 
 [UninstallDelete]
 ; o que a atualizacao automatica baixou (os setups, o estado e o log dela)
 Type: filesandordirs; Name: "{app}\atualizacao"
-; o codigo aleatorio da instalacao que vai nos dados de uso (metricas.py): reinstalar comeca outro
+; o codigo aleatorio da instalacao que vai nos dados de uso (metricas.py): reinstalar comeca outro. O da pasta de antes
+; da troca de nome sai tambem, se o app nao chegou a abrir depois dela
+Type: files; Name: "{localappdata}\Ritmelli\metricas.json"
 Type: files; Name: "{localappdata}\Vitrola\metricas.json"
 
 [Code]
-// setup.exe /VERYSILENT /reabrir=1, o da atualizacao pelo app: abre a Vitrola de novo no fim
+const
+  // a chave de desinstalacao do Inno para o AppId: e nela que mora a pasta da instalacao anterior
+  ChaveDesinstalar = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{320EB2BD-48BC-420D-8F52-C22F644E47D4}_is1';
+
+// a pasta da instalacao anterior; a padrao de antes da troca de nome (Program Files\Vitrola) vira a nova
+// (Program Files\Ritmelli), e a escolhida a mao fica. Sem instalacao anterior, a nova
+function PastaPadrao(Param: String): String;
+var
+  Anterior: String;
+begin
+  Result := ExpandConstant('{autopf}\Ritmelli');
+  if RegQueryStringValue(HKLM64, ChaveDesinstalar, 'Inno Setup: App Path', Anterior) and (Anterior <> '') and
+     (CompareText(RemoveBackslashUnlessRoot(Anterior), ExpandConstant('{autopf}\Vitrola')) <> 0) then
+    Result := Anterior;
+end;
+
+// setup.exe /VERYSILENT /reabrir=1, o da atualizacao pelo app: abre o Ritmelli de novo no fim
 function Reabrir: Boolean;
 begin
   Result := WizardSilent and (ExpandConstant('{param:reabrir|0}') = '1');
 end;
 
 // a pagina dos dados de uso e dos erros, depois da licenca: a politica e a caixa de enviar, que vem marcada (ou como
-// a pessoa deixou da outra vez)
+// a pessoa deixou da outra vez, tambem antes da troca de nome)
 var
   MetricasPagina: TOutputMsgMemoWizardPage;
   MetricasCaixa: TNewCheckBox;
@@ -186,6 +221,7 @@ var
 procedure InitializeWizard;
 var
   Antes: Cardinal;
+  Achou: Boolean;
 begin
   MetricasPagina := CreateOutputMsgMemoPage(wpInfoBefore, CustomMessage('MetricasTitulo'),
     CustomMessage('MetricasDescricao'), CustomMessage('MetricasSub'), CustomMessage('MetricasTexto'));
@@ -197,7 +233,10 @@ begin
   MetricasCaixa.Width := MetricasPagina.SurfaceWidth;
   MetricasCaixa.Height := ScaleY(20);
   MetricasCaixa.Caption := CustomMessage('MetricasCaixa');
-  MetricasCaixa.Checked := not (RegQueryDWordValue(HKLM, 'SOFTWARE\Vitrola', 'Metricas', Antes) and (Antes = 0));
+  Achou := RegQueryDWordValue(HKLM, 'SOFTWARE\Ritmelli', 'Metricas', Antes);
+  if not Achou then
+    Achou := RegQueryDWordValue(HKLM, 'SOFTWARE\Vitrola', 'Metricas', Antes);
+  MetricasCaixa.Checked := not (Achou and (Antes = 0));
 end;
 
 // o /metricas=0 ou 1 do setup em silencio, ou '' sem ele
@@ -220,14 +259,17 @@ begin
     if MetricasCaixa.Checked then Result := '1' else Result := '0';
 end;
 
-
-#ifdef Parcial
-// a parcial so troca o que mudou: sem a Vitrola instalada, falta todo o resto. Em silencio, o setup sai com o codigo 7
+// antes de trocar os arquivos: o app de antes da troca de nome (vitrola.exe) segura os arquivos dele, e o Restart
+// Manager so fecha o que esta na pasta nova. A parcial, alem disso, so serve por cima de um Ritmelli instalado: sem
+// ele falta todo o resto, e em silencio o setup sai com o codigo 7
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Codigo: Integer;
 begin
   Result := '';
-  if not FileExists(ExpandConstant('{app}\vitrola.exe')) then
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM vitrola.exe', '', SW_HIDE, ewWaitUntilTerminated, Codigo);
+#ifdef Parcial
+  if not FileExists(ExpandConstant('{app}\ritmelli.exe')) then
     Result := CustomMessage('ParcialSemApp');
-end;
-
 #endif
+end;
