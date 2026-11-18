@@ -14,6 +14,11 @@ O ponto de confianca e a chave: so vale o manifesto assinado por ela, e so para 
 rodando, entao um manifesto velho, mesmo assinado, nao volta a versao. A lista de arquivos e a parcial vao dentro do
 manifesto, assinadas com ele.
 
+Com a tarefa do Windows que o instalador cria (atualizador.py), tudo isso vira automatico e sem o pedido
+de permissao: quem consulta, baixa e instala e a tarefa, como SYSTEM, com a Vitrola fechada. Aqui fica o caminho de
+antes, para quem ainda nao tem a tarefa, e a ponte da tela com ela (o estado.json dela, e o Instalar agora, que fecha
+a Vitrola para a tarefa instalar e abre de novo depois).
+
 As versoes ficam nas Releases do repo publico ritmelli/ritmelli-releases: o "latest" do GitHub e sempre a ultima
 publicada, com o manifesto, a assinatura e o setup. A chave 1 e a que a esteira de publicacao (no repo privado ritmelli-server) usa para assinar.
 Rodando pelo codigo, nada e consultado, porque ai quem atualiza e o git. Os testes (dev/testa_atualizacao.py) trocam
@@ -61,6 +66,8 @@ PEDACO = 1 << 20
 # o instalador sem janela; /reabrir=1 abre a Vitrola de novo no fim, como quem instalou (vitrola.iss)
 PARAMETROS = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /reabrir=1"
 SE_ERR_ACCESSDENIED = 5      # o ShellExecute com o pedido de permissao recusado
+# o Instalar agora da atualizacao automatica: ao sair, a Vitrola abre de novo quando a tarefa terminar (vitrola.py)
+REABRIR = False
 
 
 class Recusado(ValueError):
@@ -225,18 +232,60 @@ class Atualizacao:
         self.parcial = False    # se a parcial da versao nova serve para o que esta instalado (pelo tamanho, ate baixar)
         self.setup = None       # o setup baixado e conferido (o completo ou a parcial)
         self.alvo = None        # o que o manifesto diz desse setup: o "instalador" ou a "parcial"
+        # a atualizacao automatica (atualizador.py): com a tarefa do Windows, quem consulta, baixa e instala e ela, como
+        # SYSTEM, e a tela so mostra o estado.json dela. None ate a vigia olhar (no executavel instalado)
+        self.auto = None
+        self._auto_cache = (None, {})
 
     def _escolhido(self):
         """O setup que vai ser baixado: a parcial, quando serve, ou o completo."""
         return self.nova["parcial"] if self.parcial else self.nova["instalador"]
 
+    def _da_tarefa(self):
+        """O estado da tarefa (o estado.json do atualizador), relido so quando muda: o resumo vai em todo estado ao
+        vivo."""
+        import atualizador
+        arq = atualizador.PASTA / "estado.json"
+        try:
+            marca = arq.stat().st_mtime_ns
+        except OSError:
+            return {}
+        if self._auto_cache[0] != marca:
+            self._auto_cache = (marca, atualizador.estado())
+        return self._auto_cache[1]
+
+    def _auto_publico(self):
+        """O estado da tarefa no formato da tela: a versao nova so se for mais nova que esta."""
+        e = self._da_tarefa()
+        n = e.get("nova") if isinstance(e.get("nova"), dict) else None
+        try:
+            if n and versao(n.get("versao")) <= versao(VERSAO):
+                n = None
+        except Recusado:
+            n = None
+        est = e.get("estado") if e.get("estado") in ("baixando", "pronta", "instalando") and n else "parado"
+        erro = i18n.msg("server.update.autoFailed", "The automatic update stopped ({reason}).",
+                        reason=str(e["erro"])) if e.get("erro") else None
+        return {"ativa": True, "automatica": True, "versao": VERSAO, "estado": est,
+                "progresso": round(float(e.get("progresso") or 0.0), 3) if est == "baixando" else (1.0 if est == "pronta" else 0.0),
+                "erro": erro, "consultada": e.get("quando"),
+                "nova": n and {"versao": n["versao"], "data": n.get("data"),
+                               "notas": {"pt_BR": n.get("notas", []), "en": n.get("notas_en", [])},
+                               "tamanho": n.get("tamanho", 0), "parcial": bool(n.get("parcial"))}}
+
     def resumo(self):
         """O pedaco que vai no estado ao vivo (o SSE): o tema so precisa saber se tem e em que pe esta."""
+        if self.auto:
+            p = self._auto_publico()
+            return {"nova": p["nova"]["versao"] if p["nova"] else None, "estado": p["estado"],
+                    "progresso": p["progresso"], "erro": p["erro"], "automatica": True}
         with self.lock:
             return {"nova": self.nova["versao"] if self.nova else None, "estado": self.estado,
                     "progresso": round(self.progresso, 3), "erro": self.erro}
 
     def publico(self):
+        if self.auto:
+            return self._auto_publico()
         with self.lock:
             n = self.nova
             return {"ativa": self.ativa, "versao": VERSAO, "estado": self.estado, "progresso": round(self.progresso, 3),
@@ -246,7 +295,16 @@ class Atualizacao:
                                    "tamanho": self._escolhido()["tamanho"], "parcial": self.parcial}}
 
     def vigia(self):
-        """A thread que consulta logo depois de abrir e de tempos em tempos (o proxima)."""
+        """A thread que consulta logo depois de abrir e de tempos em tempos (o proxima). Com a tarefa do Windows
+        (atualizador.py), so pede a ela uma rodada logo depois de abrir, como o Chrome consulta ao abrir: o resto ela
+        faz sozinha, no logon e de 4 em 4 horas."""
+        import atualizador
+        self.auto = atualizador.automatica()
+        if self.auto:
+            print("update: automatic, by the Windows task", flush=True)
+            time.sleep(CONSULTA_APOS_S)
+            atualizador.dispara()
+            return
         self._limpa()
         time.sleep(CONSULTA_APOS_S)
         while True:
@@ -268,7 +326,7 @@ class Atualizacao:
         nao fecha a Vitrola, entao sem isto a versao nova so aparecia na consulta seguinte, ate 6 h depois. Consulta
         numa thread se a ultima consulta tem mais de CONSULTA_AO_ABRIR_S; nao antes da primeira da vigia, que vem logo
         depois de abrir, nem no meio de um download. True se foi consultar."""
-        if not self.ativa:
+        if not self.ativa or self.auto:  # automatica: a tarefa consulta sozinha
             return False
         with self.lock:
             if self.estado != "parado" or self.ultima is None or time.monotonic() - self.ultima < CONSULTA_AO_ABRIR_S:
@@ -278,9 +336,14 @@ class Atualizacao:
         return True
 
     def consultar(self):
-        """Baixa e confere o manifesto. True se ha versao nova."""
+        """Baixa e confere o manifesto. True se ha versao nova. Automatica: pede uma rodada a tarefa, que consulta e ja
+        baixa; a tela acompanha pelo estado."""
         if not self.ativa:
             return False
+        if self.auto:
+            import atualizador
+            atualizador.dispara()
+            return self._auto_publico()["nova"] is not None
         with self.lock:
             if self.estado != "parado":
                 return self.nova is not None
@@ -312,7 +375,11 @@ class Atualizacao:
             return self.nova is not None
 
     def baixar(self):
-        """Comeca o download do setup da versao nova, numa thread. False se nao ha o que baixar."""
+        """Comeca o download do setup da versao nova, numa thread. False se nao ha o que baixar. Automatica: a tarefa
+        baixa (uma rodada agora)."""
+        if self.auto:
+            import atualizador
+            return atualizador.dispara()
         with self.lock:
             if not self.nova or self.estado not in ("parado",):
                 return False
@@ -402,7 +469,16 @@ class Atualizacao:
 
     def instalar(self):
         """Confere o setup de novo e roda ele com o pedido de permissao do Windows. (True, None) se o instalador
-        abriu, e ai a Vitrola deve fechar; senao (False, a mensagem do motivo)."""
+        abriu, e ai a Vitrola deve fechar; senao (False, a mensagem do motivo). Automatica: com a versao ja baixada
+        pela tarefa, so marca que a Vitrola abre de novo depois (REABRIR): ao fechar, ela pede a tarefa para instalar
+        (atualizador.ao_sair), sem o pedido de permissao."""
+        global REABRIR
+        if self.auto:
+            if self._auto_publico()["estado"] != "pronta":
+                return False, i18n.msg("server.update.notDownloaded", "The new version hasn't been downloaded yet.")
+            REABRIR = True
+            print("update: closing so the Windows task installs the new version", flush=True)
+            return True, None
         with self.lock:
             if self.estado != "pronta" or not self.setup:
                 return False, i18n.msg("server.update.notDownloaded", "The new version hasn't been downloaded yet.")

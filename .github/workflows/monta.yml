@@ -273,6 +273,36 @@ jobs:
           # o GitHub sai com o $LASTEXITCODE do fim, e o do netsh sem a regra é 1
           exit 0
 
+  # a atualização automática numa máquina limpa: a tarefa do Windows (SYSTEM) baixa uma versão a mais com a Vitrola
+  # aberta, instala quando ela fecha e a Vitrola abre de novo sozinha; o desinstalador leva a tarefa
+  # (instalador/testa-atualizador.ps1). O Python só assina o manifesto de teste, com uma chave gerada na hora
+  testa-atualizador:
+    needs: monta
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            /instalador/testa-atualizador.ps1
+            /instalador/atualizacao/manifesto_de_teste.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12.10'
+      - name: pycryptodomex
+        run: python -m pip install pycryptodomex==3.24.2
+      - uses: actions/download-artifact@v8
+        with:
+          name: Vitrola-${{ needs.monta.outputs.versao }}
+          path: saida
+      - name: Instala, a tarefa atualiza e a Vitrola abre de novo
+        shell: powershell
+        env:
+          VERSAO: ${{ needs.monta.outputs.versao }}
+        run: instalador\testa-atualizador.ps1 -Setup "saida\Vitrola-$env:VERSAO-setup.exe" -Manifesto saida\manifest.json
+
   # a atualização parcial, como no PC de quem tem a última versão publicada: sem a Vitrola, ela recusa; por cima do
   # setup completo daquela versão, a pasta do app tem de ficar igual à do manifesto novo, arquivo por arquivo, a
   # Vitrola tem de abrir na versão nova e o desinstalador tem de levar tudo (instalador/testa-parcial.ps1). Sem a

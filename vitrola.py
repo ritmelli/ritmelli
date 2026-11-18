@@ -7,7 +7,9 @@ server.py).
     python vitrola.py --yt                o YouTube num processo a parte (yt_fora.py)
     python vitrola.py --andamento         a medida de andamento (andamento.py)
     python vitrola.py --microfone ...     o filtro de microfone (microfone/microfone.py): quem chama e o instalador e
-                                          a tarefa do Windows que ele cria, nunca o servidor pelo UAC"""
+                                          a tarefa do Windows que ele cria, nunca o servidor pelo UAC
+    python vitrola.py --atualizador ...   a atualizacao automatica (atualizador.py): a tarefa do Windows que o
+                                          instalador cria roda como SYSTEM; o instalador cria e o desinstalador apaga"""
 import sys
 
 
@@ -81,10 +83,40 @@ def main():
     elif modo == "--microfone":
         from microfone import microfone as filtro
         sys.exit(filtro.main(sys.argv[2:]))
-    elif not ja_ligado():
+    elif modo == "--atualizador":
+        import atualizador
+        sys.exit(atualizador.main(sys.argv[2:]))
+    elif not atualizando() and not ja_ligado():
         sem_console()
         import server
         server.main()
+        ao_sair()
+
+
+def atualizando():
+    """A Vitrola foi aberta no meio da atualizacao automatica (o instalador da tarefa trocando os arquivos): sai logo,
+    para nao segurar o que ele troca, e abre de novo quando ele terminar (atualizador.reabre)."""
+    if not getattr(sys, "frozen", False):
+        return False
+    import atualizador
+    if not atualizador.instalando_agora():
+        return False
+    atualizador.reabre()
+    return True
+
+
+def ao_sair():
+    """A Vitrola desligou (o X, o Desligar da pagina ou o Instalar agora): com a versao nova ja baixada pela tarefa do
+    Windows, e agora que ela entra (atualizador.ao_sair)."""
+    if not getattr(sys, "frozen", False):
+        return
+    import atualizacao
+    import atualizador
+    try:
+        if atualizador.automatica():
+            atualizador.ao_sair(reabrir=atualizacao.REABRIR)
+    except OSError as e:
+        print(f"update: {e}", flush=True)
 
 
 if __name__ == "__main__":
