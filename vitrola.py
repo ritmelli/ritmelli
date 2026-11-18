@@ -1,5 +1,5 @@
 """O ponto de entrada da Vitrola, o mesmo do executavel (o PyInstaller congela este arquivo). Sem modo, liga o
-servidor, com os argumentos do server.py (ja ligado, so abre a pagina). Os processos auxiliares que o servidor abre
+servidor, com os argumentos do server.py, e abre a janela (janela.py); ja ligado, so traz a janela para a frente. Os processos auxiliares que o servidor abre
 vem por aqui tambem: no app congelado nao ha python nem .py para abrir, so o proprio executavel (ver auxiliar no
 server.py).
 
@@ -32,10 +32,10 @@ def sem_console():
 
 
 def ja_ligado():
-    """Outra Vitrola ja esta ligada ou ligando nesta porta (o atalho clicado de novo). Se ja atende, so abre a pagina
-    dela; se ainda esta ligando, sai quieta, porque a pagina abre quando ela termina. Sem isto, a segunda abria o
-    audio e caia na porta ocupada com o erro do Python na tela (29/10). Vem antes do sem_console, que zeraria os
-    logs da que esta ligada."""
+    """Outra Vitrola ja esta ligada ou ligando nesta porta (o atalho clicado de novo). Se ja atende, traz a janela
+    dela para a frente (janela.py), ou abre a pagina dela no navegador, quando ela nao tem janela; se ainda esta
+    ligando, sai quieta, porque a janela abre quando ela termina. Sem isto, a segunda abria o audio e caia na porta
+    ocupada com o erro do Python na tela (29/10). Vem antes do sem_console, que zeraria os logs da que esta ligada."""
     if sys.platform != "win32":
         return False
     import argparse
@@ -65,10 +65,27 @@ def ja_ligado():
         atende = False
     finally:
         c.close()
-    if atende and not a.no_browser:
+    if atende and not a.no_browser and not traz_a_janela(a.port):
         import webbrowser
         webbrowser.open(f"http://127.0.0.1:{a.port}{pastas.PAGINA}")
     return True
+
+
+def traz_a_janela(porta):
+    """Pede a janela da Vitrola ligada para a frente (/api/janela/foco). Quem acabou de ser aberto pelo clique e quem
+    pode passar a frente: o AllowSetForegroundWindow passa esse direito a ela. False se ela nao tem janela (o
+    navegador, ou uma versao de antes da janela)."""
+    import ctypes
+    import http.client
+    ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY
+    c = http.client.HTTPConnection("127.0.0.1", porta, timeout=5)
+    try:
+        c.request("POST", "/api/janela/foco", body=b"{}", headers={"Content-Type": "application/json"})
+        return c.getresponse().status == 200
+    except (OSError, http.client.HTTPException):
+        return False
+    finally:
+        c.close()
 
 
 def main():

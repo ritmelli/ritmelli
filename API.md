@@ -254,7 +254,8 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `GET /api/boas-vindas` | - | `{"mostrar": bool}`: verdadeiro na primeira vez no PC (prateleira vazia e as boas-vindas nunca fechadas); pelo celular, sempre falso |
 | `POST /api/boas-vindas` | - | só no PC: as boas-vindas foram vistas e não voltam (fica no `config.json`) |
 | `GET /api/themes` | `?lang` (opcional) | `[{"slug","url","name","direction","blurb"}]`, cada texto na língua de quem pede (o `?lang=` ou o `Accept-Language`), quando o `meta.json` traz por língua |
-| `POST /api/shutdown` | - | desliga o servidor (a música para de tocar no microfone; a voz segue normal, sem efeito) |
+| `POST /api/shutdown` | - | desliga o servidor (a música para de tocar no microfone; a voz segue normal, sem efeito); a janela própria fecha junto |
+| `POST /api/janela/foco` | - | só no PC: traz a janela própria (`janela.py`) para a frente, restaurada se estava minimizada; 404 quando a Vitrola abriu no navegador (sem o WebView2, ou com `--no-browser`). É o que a Vitrola aberta de novo pede à que já está ligada |
 | `GET /api/lan` | - | `{"url": endereço do PC na rede de casa, ou null}` |
 | `POST /api/parear` | `{"codigo": "482913"}` (espaço vale) | o celular manda o código que o PC mostra; certo, responde com o cookie da chave; errado, 403 com o motivo |
 | `GET /api/pareamento?caminho=/t/<slug>/` | - | só no PC: `{"url", "codigo", "vale_s", "queimado", "qr", "celulares"}` (ver "Celular: pareamento") |
@@ -292,8 +293,8 @@ vez, peça o `/api/state` para saber se é o 401.
 
 O app consulta o manifesto das versões uns 30 s depois de abrir e de 6 em 6 horas
 (`atualizacao.py`). Uma consulta que não chega ao manifesto (sem rede, tempo esgotado) se repete
-em 2, 5, 15, 30 e 60 minutos, antes de voltar às 6 horas. Fechar a janela não fecha a Vitrola:
-por isso, a página do PC que abre de novo (o `GET /api/events` vindo do `127.0.0.1`) também
+em 2, 5, 15, 30 e 60 minutos, antes de voltar às 6 horas. Sem a janela própria (no navegador),
+fechar a aba não fecha a Vitrola: por isso, a página do PC que abre de novo (o `GET /api/events` vindo do `127.0.0.1`) também
 consulta, se a última consulta tem mais de 5 minutos e nada está baixando. Só vale o manifesto assinado pela chave da Vitrola, e só para uma versão
 mais nova que a que está rodando. As versões ficam nas Releases do repo público
 `ritmelli/ritmelli-releases`. Pelo código (`python server.py`), nada é consultado e `ativa`

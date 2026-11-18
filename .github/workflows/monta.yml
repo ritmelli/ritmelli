@@ -262,6 +262,35 @@ jobs:
             throw 'a Vitrola instalada não carregou o voz.dll'
           }
           if ($estado.versao -ne $env:VERSAO) { throw "a Vitrola respondeu a versão $($estado.versao), e não a $env:VERSAO" }
+          # a janela própria (janela.py): o --no-browser de cima não abre nenhuma; desligada pela API, a Vitrola abre de
+          # novo como pelo atalho, tem de mostrar a janela "Vitrola", a segunda abertura só traz ela para a frente, e
+          # fechar a janela (o X) desliga o servidor
+          Invoke-RestMethod 'http://127.0.0.1:8799/api/shutdown' -Method Post -ContentType 'application/json' -Body '{}' | Out-Null
+          if (-not $vit.WaitForExit(30000)) { throw 'a Vitrola não saiu em 30 s depois do Desligar' }
+          $vit = Start-Process "$app\vitrola.exe" -PassThru
+          $janela = $false
+          for ($i = 0; $i -lt 90 -and -not $vit.HasExited -and -not $janela; $i++) {
+            Start-Sleep 1
+            $vit.Refresh()
+            $janela = $vit.MainWindowTitle -eq 'Vitrola'
+          }
+          if (-not $janela) {
+            Get-Content "$logs\server.log", "$logs\server.err" -ErrorAction SilentlyContinue
+            throw 'a Vitrola não abriu a janela em 90 s'
+          }
+          for ($i = 0; $i -lt 30 -and -not $estado2; $i++) {
+            try { $estado2 = Invoke-RestMethod 'http://127.0.0.1:8799/api/state' -TimeoutSec 2 } catch { Start-Sleep 1 }
+          }
+          if (-not $estado2) { throw 'a Vitrola com a janela não respondeu' }
+          $seg = Start-Process "$app\vitrola.exe" -PassThru
+          if (-not $seg.WaitForExit(20000)) { throw 'a segunda abertura não saiu em 20 s (devia só trazer a janela)' }
+          if ($vit.HasExited) { throw 'a segunda abertura derrubou a primeira' }
+          $vit.CloseMainWindow() | Out-Null
+          if (-not $vit.WaitForExit(30000)) { throw 'fechar a janela não desligou a Vitrola em 30 s' }
+          $fora = $true
+          try { Invoke-RestMethod 'http://127.0.0.1:8799/api/state' -TimeoutSec 2 | Out-Null; $fora = $false } catch { }
+          if (-not $fora) { throw 'a janela fechou e o servidor seguiu respondendo' }
+          'a janela abriu, a segunda abertura só trouxe ela para a frente e o X desligou tudo'
           # o desinstalador fecha a Vitrola (taskkill) e tira a regra do firewall. Ele se copia para a pasta temporária
           # e roda de lá, então o fim se confere pelo que ele apaga
           Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'

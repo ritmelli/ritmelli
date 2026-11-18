@@ -127,8 +127,9 @@ Filename: "{app}\vitrola.exe"; Parameters: "--atualizador tarefa"; Flags: runhid
 ; como quem instalou, e nao como administrador: os dados vao para o %LOCALAPPDATA% dele
 Filename: "{app}\vitrola.exe"; Description: "{cm:Abrir}"; Flags: postinstall nowait skipifsilent runasoriginaluser
 ; a atualizacao pelo app (atualizacao.py, no repo vitrola) roda este setup em silencio com /reabrir=1: no fim a Vitrola
-; abre de novo, como quem instalou, sem abrir outra aba (a pagina que estava aberta reconecta e recarrega sozinha)
-Filename: "{app}\vitrola.exe"; Parameters: "--no-browser"; Flags: nowait runasoriginaluser; Check: Reabrir
+; abre de novo, como quem instalou, com a janela dela (janela.py): a janela da versao velha fechou junto com ela. Vindo
+; de uma versao sem janela, a aba que estava aberta tambem reconecta sozinha
+Filename: "{app}\vitrola.exe"; Flags: nowait runasoriginaluser; Check: Reabrir
 
 [UninstallRun]
 ; a tarefa da atualizacao sai primeiro, e a rodada dela que esperava a Vitrola fechar para: depois do taskkill ela veria

@@ -1,8 +1,8 @@
 # Vitrola
 
 Um toca-discos em pixel art que toca música e efeitos no microfone do jogo ou da chamada de
-voz, misturados com a sua voz, enquanto só a música toca no seu fone. A interface abre no
-navegador do PC ou do celular no mesmo Wi-Fi. Serve para qualquer jogo ou programa de chamada
+voz, misturados com a sua voz, enquanto só a música toca no seu fone. No PC, a interface abre
+numa janela própria (o X desliga tudo); no celular, no navegador, pelo mesmo Wi-Fi. Serve para qualquer jogo ou programa de chamada
 que deixe escolher o microfone.
 
 ## O que faz
@@ -157,6 +157,7 @@ YouTube Music), apart from checking GitHub for a new version.
 | Arquivo | O que é |
 | --- | --- |
 | `vitrola.py` | o ponto de entrada (o mesmo do executável): o servidor e os processos auxiliares |
+| `janela.py` | a janela própria do PC, pelo WebView2 (sem ele, o navegador) |
 | `vitrola.spec` | a receita do executável (PyInstaller) |
 | `server.py` | servidor aiohttp: API, eventos (SSE), fila, Automático, busca e download |
 | `engine.py` | motor de áudio: mistura, dois decks, passagem de DJ |
