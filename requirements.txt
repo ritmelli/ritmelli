@@ -10,3 +10,4 @@ pycryptodomex>=3.20  # a assinatura das versoes novas (atualizacao.py)
 ytmusicapi>=1.8
 onnxruntime>=1.18
 comtypes>=1.4; sys_platform == "win32"
+pywebview>=6.2; sys_platform == "win32"  # a janela propria, pelo WebView2 (janela.py)
