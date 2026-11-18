@@ -497,8 +497,11 @@ class Atualizacao:
         r = abre_instalador(setup, f'{PARAMETROS} /LOG="{log}"')
         if r <= 32:
             if r == SE_ERR_ACCESSDENIED:
-                return False, i18n.msg("server.update.permissionDenied", "Windows didn't grant permission, so the "
-                                                                         "update was postponed.")
+                return False, i18n.msg("server.update.permissionDenied", "The update was postponed because "
+                                                                         "permission wasn't granted in Windows. To "
+                                                                         "install it, click Install now again and "
+                                                                         "choose Yes when Windows asks for "
+                                                                         "permission.")
             return False, i18n.msg("server.update.installerFailed", "Couldn't open the installer (error {code}).", code=r)
         with self.lock:
             self.estado = "instalando"

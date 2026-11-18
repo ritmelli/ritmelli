@@ -6,6 +6,6 @@ You do not need to accept the license to install or use Ritmelli. The license ap
 
 Ritmelli comes with ABSOLUTELY NO WARRANTY, not even the implied warranty of fitness for a particular purpose, to the extent permitted by law (sections 15 and 16 of the GPLv3).
 
-Ritmelli includes software and libraries from other projects, each under its own license: Python, ffmpeg, Deno, yt-dlp, pedalboard, and onnxruntime, among others, as well as the beat_this beat detection model and the interface fonts.
+Ritmelli includes software and libraries from other projects, each under its own license: Python, FFmpeg, Deno, yt-dlp, Pedalboard, and ONNX Runtime, among others, as well as the beat_this beat detection model and the interface fonts.
 
 Ritmelli's installation folder contains the full text of the GPLv3 (LICENSE.txt) and the license of each third-party component (TERCEIROS.txt).

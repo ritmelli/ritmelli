@@ -1453,7 +1453,7 @@ class Engine:
         """O audio nao abriu: o erro fica na tela e o vigia pode tentar de novo. A mesma frase na partida e na
         reabertura: a partida que falha tambem passa pelo vigia logo depois."""
         self._caiu_no_vigia = True
-        self._aviso = self.error = i18n.msg("server.audio.openFailed", "Couldn't open the audio ({reason}). Make "
+        self._aviso = self.error = i18n.msg("server.audio.openFailed", "Couldn't start the audio ({reason}). Make "
                                                                        "sure the microphone and headphones are "
                                                                        "connected. If the problem continues, close "
                                                                        "and reopen Ritmelli.",

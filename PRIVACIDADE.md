@@ -74,7 +74,7 @@ new one if you reinstall), the Ritmelli and Windows versions, and the Windows la
   with anything in quotes, addresses, and folder paths removed.
 
 **What is never sent:** name, account, email, song names, searches, links, audio, your voice, the names of your devices
-(microphone and headphones), or your files. The IP address is not stored.
+(microphone and headphones), or your files. Your IP address is not stored.
 
 **Where the data goes:** usage data to [PostHog](https://posthog.com/privacy) and error reports to
 [Sentry](https://sentry.io/privacy/), both stored in the European Union. Usage data is kept for up to 1 year, and error

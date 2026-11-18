@@ -51,10 +51,11 @@ com o detector em numpy).
 
 - No jogo e no Discord, use o mesmo microfone selecionado no Ritmelli, pois o filtro atua apenas nele. A voz original
   volta do filtro para o Ritmelli (para o medidor, para a opção Ouvir minha voz e para a Mina DJ): sem efeito, ela segue
-  diretamente para o microfone; o efeito de voz é aplicado no próprio filtro, sem atraso; com a voz silenciada, o
-  Ritmelli envia a voz gerada por ele no lugar; e, se o Ritmelli parar de responder, o filtro restaura a voz original
-  automaticamente em 1 segundo. No Discord, use o perfil de entrada **Estúdio** ou desative o Krisp e a sensibilidade
-  automática: com qualquer um dos dois ativado, a música chega cortada ou não chega.
+  diretamente para o microfone; o efeito de voz é aplicado no próprio filtro (alguns efeitos, como os que mudam o tom,
+  atrasam um pouco a voz, e a interface mostra quanto); com a voz silenciada, só o que o Ritmelli toca segue para o
+  microfone, sem a sua voz; e, se o Ritmelli parar de responder, o filtro restaura a voz original automaticamente em 1
+  segundo. No Discord, use o perfil de entrada **Estúdio** ou desative o Krisp e a sensibilidade automática: com
+  qualquer um dos dois ativado, a música chega cortada ou não chega.
 - Microfone conectado depois da instalação (por exemplo, um headset USB novo): ao selecioná-lo, o Ritmelli executa a
   tarefa criada pelo instalador, e o som do computador é interrompido por alguns segundos enquanto o Windows o
   prepara.
@@ -137,7 +138,7 @@ publicadas sem assinatura.
 - **O que é assinado:** o `ritmelli.exe`, o instalador e a atualização parcial, gerados pelo pipeline deste repositório
   (`.github/workflows/monta.yml`) em uma máquina do GitHub, a partir deste código. O Deno é incluído no instalador
   exatamente como o projeto dele o distribui, e o ffmpeg e o ffprobe são compilados pela equipe somente com os recursos
-  de áudio (`instalador\ffmpeg\`); nenhum dos três leva a nossa assinatura.
+  de áudio (`instalador\ffmpeg\`); nenhum dos três leva a assinatura do Ritmelli.
 
 Committers and reviewers: [members](https://github.com/orgs/ritmelli/people). Approvers:
 [owners](https://github.com/orgs/ritmelli/people?query=role%3Aowner).

@@ -4,8 +4,8 @@ O código-fonte do aplicativo e deste instalador está disponível em https://gi
 
 Não é necessário aceitar a licença para instalar ou usar o Ritmelli; ela se aplica a quem o copia, modifica ou distribui.
 
-O Ritmelli é fornecido SEM NENHUMA GARANTIA, nem mesmo a de adequação a uma finalidade específica, na medida permitida pela lei (seções 15 e 16 da GPLv3).
+O Ritmelli é fornecido SEM NENHUMA GARANTIA, nem mesmo a garantia implícita de adequação a uma finalidade específica, na medida permitida pela lei (seções 15 e 16 da GPLv3).
 
-O Ritmelli inclui programas e bibliotecas de outros projetos, cada um sob a sua própria licença: Python, ffmpeg, Deno, yt-dlp, pedalboard e onnxruntime, entre outros, além do modelo de detecção de batidas beat_this e das fontes da interface.
+O Ritmelli inclui programas e bibliotecas de outros projetos, cada um sob a sua própria licença: Python, FFmpeg, Deno, yt-dlp, Pedalboard e ONNX Runtime, entre outros, além do modelo de detecção de batidas beat_this e das fontes da interface.
 
 Na pasta de instalação do Ritmelli ficam o texto completo da GPLv3 (LICENSE.txt) e a licença de cada componente de terceiros (TERCEIROS.txt).

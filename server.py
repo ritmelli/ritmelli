@@ -2192,10 +2192,10 @@ def build(app_state):
         except i18n.Recusa as ex:  # a nossa: o aparelho que sumiu
             return j_err(ex.msg)
         except Exception as ex:  # noqa: BLE001 - PortAudio fala ingles
-            return j_err(i18n.msg("server.devices.openFailed", "Couldn't open that device ({reason}), so Ritmelli "
+            return j_err(i18n.msg("server.devices.openFailed", "Ritmelli couldn't open that device ({reason}) and "
                                                                "went back to the previous one. Make sure the device "
-                                                               "is connected and not in exclusive use by another "
-                                                               "program.", reason=str(ex)[:160]))
+                                                               "is connected and that no other program has exclusive "
+                                                               "control of it.", reason=str(ex)[:160]))
         A.save_cfg()
         return j_ok()
 
