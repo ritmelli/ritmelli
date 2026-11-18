@@ -8523,7 +8523,8 @@ $('#dcel-outro').addEventListener('click', async () => {
 
 /* ---------- versao nova (atualizacao.py): so no PC, que e onde o instalador roda. O aviso vem no estado ao vivo, e o
    dialogo pede as notas; baixado e conferido o setup, o Instalar agora roda o instalador, que fecha a Vitrola e abre de
-   novo ---------- */
+   novo. Na atualizacao automatica (a.automatica, atualizador.py), quem baixa e a tarefa do Windows, e a versao entra
+   sozinha ao fechar: o Instalar agora so adianta isso ---------- */
 const NO_PC = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
 function desenharAtualizacao() {
   const a = S.state && S.state.atualizacao, b = $('#b-atualizar');
@@ -8539,7 +8540,7 @@ function pintarAtualizacao(a) {
   ok.disabled = ['baixando', 'consultando', 'instalando'].includes(a.estado);
   ok.textContent = a.estado === 'pronta' ? I18N.t('update.install') : a.estado === 'baixando' ? I18N.t('update.downloading', { pct: Math.round((a.progresso || 0) * 100) }) : I18N.t('update.download');
   msg.className = 'msg-dlg' + (a.erro ? ' erro' : '');
-  msg.textContent = a.erro ? textoMsg(a.erro) : a.estado === 'pronta' ? I18N.t('update.windowsAsks') : '';
+  msg.textContent = a.erro ? textoMsg(a.erro) : a.estado === 'pronta' ? I18N.t(a.automatica ? 'update.autoReady' : 'update.windowsAsks') : '';
 }
 async function abrirAtualizacao() {
   let a;

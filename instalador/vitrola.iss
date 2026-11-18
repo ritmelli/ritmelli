@@ -5,8 +5,10 @@
 ; Instala o vitrola.exe em Program Files, com o ffmpeg, o ffprobe e o Deno na bin\ (o app acha la, ver o
 ; pastas.py), cria a regra do firewall para o celular alcancar o PC e pendura o filtro da Vitrola em todo microfone
 ; do PC (microfone\microfone.py): e por ele que a musica toca no microfone que o jogo ja usa. Tambem cria a tarefa
-; do Windows que pendura o filtro num microfone que aparecer depois, sem o app pedir administrador. Desinstalar tira o
-; filtro e devolve o efeito original de cada microfone. Os dados de quem usa (%LOCALAPPDATA%\Vitrola) ficam.
+; do Windows que pendura o filtro num microfone que aparecer depois, sem o app pedir administrador, e a que atualiza a
+; Vitrola sozinha (atualizador.py): ela roda este setup como SYSTEM, em silencio e sem /reabrir, com a Vitrola fechada.
+; Desinstalar tira o filtro, devolve o efeito original de cada microfone e apaga as duas tarefas. Os dados de quem usa
+; (%LOCALAPPDATA%\Vitrola) ficam.
 ;
 ; Com /DParcial e /DApaga (o monta.ps1 -Anterior), sai a atualizacao parcial, o caminho B do atualizador: o mesmo setup,
 ; mas so com os arquivos que mudaram desde a versao anterior (a pasta /DParcial, que o atualizacao\parcial.py separa)
@@ -120,6 +122,8 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""V
 ; o filtro em todo microfone que ainda nao tem, a DLL desta versao no lugar da velha e a tarefa do Windows que faz o
 ; mesmo depois, chamada pelo app sem UAC (o audio do PC reinicia so se algo mudou: atualizar sem DLL nova nao mexe)
 Filename: "{app}\vitrola.exe"; Parameters: "--microfone instala-todos --tarefa"; StatusMsg: "{cm:Microfone}"; Flags: runhidden
+; a tarefa da atualizacao automatica (atualizador.py): no logon e de 4 em 4 horas, como SYSTEM, sem UAC
+Filename: "{app}\vitrola.exe"; Parameters: "--atualizador tarefa"; Flags: runhidden
 ; como quem instalou, e nao como administrador: os dados vao para o %LOCALAPPDATA% dele
 Filename: "{app}\vitrola.exe"; Description: "{cm:Abrir}"; Flags: postinstall nowait skipifsilent runasoriginaluser
 ; a atualizacao pelo app (atualizacao.py, no repo vitrola) roda este setup em silencio com /reabrir=1: no fim a Vitrola
@@ -128,11 +132,18 @@ Filename: "{app}\vitrola.exe"; Description: "{cm:Abrir}"; Flags: postinstall now
 Filename: "{app}\vitrola.exe"; Flags: nowait runasoriginaluser; Check: Reabrir
 
 [UninstallRun]
+; a tarefa da atualizacao sai primeiro, e a rodada dela que esperava a Vitrola fechar para: depois do taskkill ela veria
+; a Vitrola fechada e rodaria o instalador no meio do desinstalador
+Filename: "{app}\vitrola.exe"; Parameters: "--atualizador remove"; Flags: runhidden; RunOnceId: "Atualizador"
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM vitrola.exe"; Flags: runhidden; RunOnceId: "Fecha"
 ; tira o filtro de todo microfone que o tem, devolve o efeito original de cada um e apaga a tarefa (sem nenhum, nao mexe
 ; no audio)
 Filename: "{app}\vitrola.exe"; Parameters: "--microfone remove"; Flags: runhidden; RunOnceId: "Microfone"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Vitrola"""; Flags: runhidden; RunOnceId: "Firewall"
+
+[UninstallDelete]
+; o que a atualizacao automatica baixou (os setups, o estado e o log dela)
+Type: filesandordirs; Name: "{app}\atualizacao"
 
 [Code]
 // setup.exe /VERYSILENT /reabrir=1, o da atualizacao pelo app: abre a Vitrola de novo no fim

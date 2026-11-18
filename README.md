@@ -109,8 +109,11 @@ instalador\monta.ps1 -Anterior <manifest.json>    # e a atualização parcial de
   o `FONTE.txt` de cada um diz de onde veio a fonte e como foi compilado.
 - A atualização parcial (só o que mudou) sai do `instalador\atualizacao\parcial.py`, e o manifesto
   que o app confere, do `publica.py` da mesma pasta.
+- O instalador cria a tarefa "Vitrola Atualiza" do Windows (`atualizador.py`): ela roda como
+  SYSTEM, no logon e de 4 em 4 horas, e instala a versão nova em silêncio, sem o pedido de
+  permissão, com a Vitrola fechada. Com ela aberta, a versão fica baixada e entra quando ela fecha.
 - A esteira `.github/workflows/monta.yml` faz o mesmo numa máquina Windows do GitHub e testa o
-  setup e a parcial numa máquina limpa.
+  setup, a parcial e a atualização automática numa máquina limpa.
 
 ## Versões e código-fonte
 
@@ -161,6 +164,7 @@ YouTube Music), apart from checking GitHub for a new version.
 | `batida.py`, `compasso.py`, `andamento.py` | andamento, grade de batidas e o 1 do compasso |
 | `fx.py` | efeitos de voz |
 | `versao.py` | a versão do app |
+| `atualizacao.py`, `atualizador.py` | a versão nova: o que a tela mostra, e a tarefa do Windows que baixa e instala sozinha |
 | `i18n.py` | os textos da interface em cada língua: lê os `.properties` do tema e põe na página; e a mensagem que o servidor manda para a tela traduzir |
 | `pastas.py` | onde moram os dados de quem usa, e onde o app acha o ffmpeg, o ffprobe e o Deno |
 | `pareamento.py` | o código e o QR do celular, e os celulares conectados |
