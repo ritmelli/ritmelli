@@ -253,6 +253,8 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou ""}` | troca dispositivo (reabre o áudio); microfone sem o filtro (apareceu depois da instalação) é preparado pela tarefa do instalador, sem UAC (ver `microfone.preparando`) |
 | `GET /api/boas-vindas` | - | `{"mostrar": bool}`: verdadeiro na primeira vez no PC (prateleira vazia e as boas-vindas nunca fechadas); pelo celular, sempre falso |
 | `POST /api/boas-vindas` | - | só no PC: as boas-vindas foram vistas e não voltam (fica no `config.json`) |
+| `GET /api/metricas` | - | só no PC: `{"situacao", "politica"}`, os dados de uso e os erros (`metricas.py`, o [PRIVACIDADE.md](PRIVACIDADE.md)): `situacao` é `"ligada"`, `"desligada"`, `"decidir"` (ninguém escolheu: o tema mostra o aviso) ou `"fora"` (pelo código ou no `--mock`, nunca envia); `politica` é o endereço da política |
+| `POST /api/metricas` | `{"ligar": bool}` | só no PC: a escolha de quem usa, que vale sobre a da página do instalador (fica no `config.json`); responde como o `GET`; com `"fora"`, 409 |
 | `GET /api/themes` | `?lang` (opcional) | `[{"slug","url","name","direction","blurb"}]`, cada texto na língua de quem pede (o `?lang=` ou o `Accept-Language`), quando o `meta.json` traz por língua |
 | `POST /api/shutdown` | - | desliga o servidor (a música para de tocar no microfone; a voz segue normal, sem efeito); a janela própria fecha junto |
 | `POST /api/janela/foco` | - | só no PC: traz a janela própria (`janela.py`) para a frente, restaurada se estava minimizada; 404 quando a Vitrola abriu no navegador (sem o WebView2, ou com `--no-browser`). É o que a Vitrola aberta de novo pede à que já está ligada |
@@ -395,6 +397,12 @@ Na primeira vez no PC (`GET /api/boas-vindas`), a vitrola abre as boas-vindas: o
 passo do microfone e do fone, do mesmo microfone no jogo e nas chamadas (no Discord, o perfil
 Estúdio), da primeira música e do celular. Fechar de
 qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.
+
+Os dados de uso e os erros (`GET /api/metricas`), no PC: com `"decidir"`, todo tema mostra uma vez o
+que vai (o texto do `PRIVACIDADE.md`, ou um resumo com o link da `politica`) e os botões Enviar e
+Não enviar, que mandam o `POST /api/metricas`; fechar sem escolher pergunta de novo na próxima vez,
+e nada sai antes. Com `"ligada"` ou `"desligada"`, o tema mostra a situação e o botão de trocar
+junto da escolha de microfone e fone. A SignPath pede que a pessoa possa desligar.
 
 ## Teste sem som
 

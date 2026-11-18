@@ -36,6 +36,7 @@ import atualizacao as atu
 import engine as eng
 import fx
 import i18n
+import metricas as met
 import pareamento as par
 import pastas
 from pastas import save_json
@@ -634,6 +635,10 @@ class App:
                 v = self.cfg[k]
                 setattr(self.engine, k, v if isinstance(v, bool) else max(0.0, min(1.0, float(v))))
         self.engine.liga()
+        # os dados de uso e os erros (metricas.py, #102): so saem com a escolha de quem usa, e nunca no --mock
+        self.metricas = met.Metricas(self.cfg, lambda: save_json(self.cfg_path, self.cfg), mock=mock)
+        self.metricas.instala_ganchos()
+        threading.Thread(target=self.metricas.vigia, args=(self.engine,), daemon=True, name="metricas").start()
         threading.Thread(target=self._vigia_fila, daemon=True).start()
         threading.Thread(target=self._conta_escuta, daemon=True).start()
         threading.Thread(target=self._vigia_auto, daemon=True).start()
@@ -1852,6 +1857,8 @@ def build(app_state):
             return j_err(i18n.so_texto("The code and the connected devices can only be seen on the computer."), 403)
         if celular and request.path.startswith("/api/atualizacao"):
             return j_err(i18n.so_texto("The new version is installed on the PC."), 403)
+        if celular and request.path.startswith("/api/metricas"):
+            return j_err(i18n.so_texto("Usage data and errors are only set on the PC."), 403)
         if celular and (request.method, request.path) not in livres:
             chave = request.cookies.get(par.COOKIE)
             if not A.celulares.confere(chave):
@@ -1859,7 +1866,14 @@ def build(app_state):
                     "ok": False, "parear": True, "desconectado": bool(chave),
                     "error": i18n.msg("server.pair.required", "This phone isn't connected to Vitrola. On the "
                                       "computer, click Phone and scan the QR code.")}, status=401)
-        resp = await handler(request)
+        try:
+            resp = await handler(request)
+        except web.HTTPException:
+            raise
+        except Exception as ex:  # o erro que viraria um 500: vai para o Sentry (metricas.py) e segue igual
+            rota = getattr(request.match_info.route.resource, "canonical", None) or "?"  # /api/library/{iid}, sem o id
+            A.metricas.erro(type(ex), ex, ex.__traceback__, f"api:{request.method} {rota}"[:80])
+            raise
         if celular and request.path == "/api/state":
             com_chave(resp, request.cookies[par.COOKIE])  # cada abertura do tema renova o prazo do cookie
         return resp
@@ -2225,6 +2239,22 @@ def build(app_state):
         ok = await loop_().run_in_executor(pool, A.janela.foco)
         return j_ok() if ok else j_err("the window didn't come to the front", 409)
 
+    # os dados de uso e os erros (metricas.py), so no PC: a situacao ("ligada", "desligada", "decidir" ou "fora") e o
+    # endereco da politica; o POST e a escolha de quem usa (o aviso e o Microfone e fone), que vale sobre a do instalador
+    @r.get("/api/metricas")
+    async def metricas_get(_):
+        return web.json_response(A.metricas.publico())
+
+    @r.post("/api/metricas")
+    async def metricas_post(request):
+        b = await body(request)
+        if not isinstance(b.get("ligar"), bool):
+            return j_err(i18n.so_texto("Missing the choice (ligar: true or false)."))
+        if A.metricas.situacao() == "fora":
+            return j_err(i18n.so_texto("Usage data is off in this build."), 409)
+        await loop_().run_in_executor(pool, A.metricas.escolhe, b["ligar"])
+        return web.json_response(A.metricas.publico())
+
     # a versao nova (atualizacao.py), so no PC: e nele que o instalador roda
     @r.get("/api/atualizacao")
     async def atualizacao(_):
@@ -2398,6 +2428,7 @@ async def servir(A, app, porta, rede):
     runner = web.AppRunner(app, handle_signals=True, shutdown_timeout=1)
     await runner.setup()
     A.loop = asyncio.get_running_loop()
+    A.metricas.no_loop(A.loop)
     if A.pediu_desligar:  # a janela fechou antes de o servidor subir
         A.desliga()
     try:
@@ -2482,6 +2513,7 @@ def roda(A, a):
     except (GracefulExit, KeyboardInterrupt):
         pass
     finally:
+        A.metricas.fecha()  # o uso ate aqui e o que ficou na fila, antes de o audio fechar (no maximo 3 s sem rede)
         A.engine.close()
         if A.janela is not None:
             A.janela.fecha()
