@@ -56,8 +56,8 @@ OnlyOnThisPlatform=Este programa deve ser executado no %1.
 OnlyOnTheseArchitectures=Este programa só pode ser instalado em versões do Windows projetadas para as seguintes arquiteturas de processador:%n%n%1
 WinVersionTooLowError=Este programa requer o %1 versão %2 ou posterior.
 WinVersionTooHighError=Este programa não pode ser instalado no %1 versão %2 ou posterior.
-AdminPrivilegesRequired=Para instalar este programa, é necessário estar conectado como administrador.
-PowerUserPrivilegesRequired=Para instalar este programa, é necessário estar conectado como administrador ou como membro do grupo Usuários Avançados.
+AdminPrivilegesRequired=Para instalar este programa, são necessários privilégios de administrador.
+PowerUserPrivilegesRequired=Para instalar este programa, são necessários privilégios de administrador ou de membro do grupo Usuários Avançados.
 SetupAppRunningError=O instalador detectou que o %1 está em execução.%n%nFeche todas as instâncias do programa e clique em OK para continuar ou em Cancelar para sair.
 UninstallAppRunningError=O desinstalador detectou que o %1 está em execução.%n%nFeche todas as instâncias do programa e clique em OK para continuar ou em Cancelar para sair.
 
@@ -131,10 +131,10 @@ LicenseNotAccepted=Eu &não aceito os termos do contrato
 ; *** "Information" wizard pages
 WizardInfoBefore=Informações
 InfoBeforeLabel=Leia as informações importantes a seguir antes de continuar.
-InfoBeforeClickLabel=Quando estiver pronto para continuar a instalação, clique em Avançar.
+InfoBeforeClickLabel=Para continuar a instalação, clique em Avançar.
 WizardInfoAfter=Informações
 InfoAfterLabel=Leia as informações importantes a seguir antes de continuar.
-InfoAfterClickLabel=Quando estiver pronto para continuar a instalação, clique em Avançar.
+InfoAfterClickLabel=Para continuar a instalação, clique em Avançar.
 
 ; *** "User Information" wizard page
 WizardUserInfo=Informações do usuário
@@ -168,7 +168,7 @@ DirDoesntExist=A pasta:%n%n%1%n%nnão existe. Deseja criá-la?
 ; *** "Select Components" wizard page
 WizardSelectComponents=Selecionar componentes
 SelectComponentsDesc=Quais componentes devem ser instalados?
-SelectComponentsLabel2=Selecione os componentes que deseja instalar e desmarque os que não deseja instalar. Clique em Avançar quando estiver pronto para continuar.
+SelectComponentsLabel2=Selecione os componentes que deseja instalar e desmarque os que não deseja instalar. Para continuar, clique em Avançar.
 FullInstallation=Instalação completa
 ; if possible don't translate 'Compact' as 'Minimal' (I mean 'Minimal' in your language)
 CompactInstallation=Instalação compacta

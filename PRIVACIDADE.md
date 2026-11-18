@@ -2,10 +2,10 @@
 
 [English below](#ritmelli-privacy-policy)
 
-O Ritmelli é executado no seu computador. Ele acessa a internet em três situações: quando você busca, ouve ou
-baixa músicas do YouTube e do YouTube Music, a seu pedido; quando ele verifica no GitHub se há uma nova versão, ocasião em
-que apenas baixa o manifesto público das versões; e, se você permitir, quando ele envia **dados anônimos de uso e relatórios
-de erro**, conforme descrito abaixo.
+O Ritmelli é executado no seu computador. Ele acessa a internet em três situações: quando você busca, ouve ou baixa
+músicas do YouTube e do YouTube Music, a seu pedido; quando ele consulta no GitHub o manifesto público das versões e, se
+houver uma nova versão, baixa a atualização, sem enviar nenhum dado seu; e, se você permitir, quando ele envia **dados
+anônimos de uso e relatórios de erro**, conforme descrito abaixo.
 
 ## Dados de uso e relatórios de erro
 
@@ -24,7 +24,7 @@ substituído por outro em caso de reinstalação), das versões do Ritmelli e do
 - os erros: o tipo do erro, o ponto do código em que ocorreu (arquivo, função e linha) e a mensagem do erro, sem
   nenhum trecho entre aspas, sem endereços e sem caminhos de pastas.
 
-**O que nunca é enviado:** nome, conta, e-mail, nome de músicas, buscas, links, áudio, a sua voz, o nome dos seus
+**O que nunca é enviado:** nome, conta, e-mail, nomes de músicas, buscas, links, áudio, a sua voz, o nome dos seus
 dispositivos (microfone e fone) ou os seus arquivos. O endereço IP não é armazenado.
 
 **Para onde vão os dados:** os dados de uso, para o [PostHog](https://posthog.com/privacy), e os relatórios de erro,
@@ -53,9 +53,9 @@ instalação (informando o código dela, que está no arquivo `%LOCALAPPDATA%\Ri
 # Ritmelli privacy policy
 
 Ritmelli runs on your computer. It connects to the internet in three situations: when you search for, listen to, or
-download music from YouTube and YouTube Music, at your request; when it checks GitHub for a new version, in which case
-it only downloads the public release manifest; and, if you allow it, when it sends **anonymous usage data and error
-reports**, as described below.
+download music from YouTube and YouTube Music, at your request; when it checks the public release manifest on GitHub
+and, if there is a new version, downloads the update, without sending any of your data; and, if you allow it, when it
+sends **anonymous usage data and error reports**, as described below.
 
 ## Usage data and error reports
 
@@ -83,7 +83,7 @@ advertising.
 
 **How to turn it on or off:** during installation, on the "Usage Data and Errors" page, and later, in Ritmelli, under
 **Mic and headphones**. When sending is off, nothing is sent, and anything not yet sent is discarded. Anyone updating
-from a version that didn't collect this data will see a notice in Ritmelli, and nothing is sent until they make a choice.
+from a version that didn't send this data will see a notice in Ritmelli, and nothing is sent until they make a choice.
 
 **Legal basis:** our legitimate interest in improving Ritmelli and fixing its errors (Brazil's LGPD, art. 7, IX), with
 the data kept to the minimum necessary, without identifying anyone, and with the option to turn sending off at any time.

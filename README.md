@@ -64,13 +64,13 @@ com o detector em numpy).
   o dispositivo de gravação padrão for um cabo virtual, é usado o primeiro microfone físico.
 - Os dados do usuário (áudios baixados, biblioteca e preferências) ficam em `%LOCALAPPDATA%\Ritmelli\library`, e os
   logs do servidor, em `%LOCALAPPDATA%\Ritmelli\logs`. Até a versão 0.4.1, o aplicativo se chamava Vitrola: na
-  atualização, os dados de `%LOCALAPPDATA%\Vitrola`, as escolhas e o celular pareado são migrados automaticamente para o
+  atualização, os dados de `%LOCALAPPDATA%\Vitrola`, as escolhas e o celular conectado são migrados automaticamente para o
   Ritmelli, sem nenhuma perda (`migra.py`).
 - Sem o `soundboard.ps1`: `python ritmelli.py` (aceita os mesmos argumentos do `server.py`).
 - Para ver a versão: `python ritmelli.py --version`.
 - **No celular**, na mesma rede Wi-Fi: no computador, o botão Celular da interface exibe um QR code. Aponte a câmera
   do celular para ele ou abra o endereço exibido ao lado e digite o código. O celular permanece conectado até ser
-  desconectado na mesma tela do computador. Sem esse pareamento, outro aparelho da rede consegue abrir a página, mas
+  desconectado na mesma tela do computador. Sem o código, outro aparelho da rede consegue abrir a página, mas
   não consegue alterar nada. A comunicação entre o celular e o computador não é criptografada (HTTP): use-a na rede
   de casa, e não em redes Wi-Fi públicas, como as de cafés ou hotéis. Com `server.py --so-local`, o servidor atende
   apenas o próprio computador.
@@ -134,22 +134,22 @@ publicadas sem assinatura.
   de pessoas de fora da equipe só são incorporadas após a revisão de um membro.
 - **Aprovação de cada assinatura:** os
   [proprietários da organização](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
-- **O que é assinado:** o `ritmelli.exe`, o instalador e a atualização parcial, gerados pelo pipeline deste
-  repositório (`.github/workflows/monta.yml`) em uma máquina do GitHub, a partir deste código. O ffmpeg, o ffprobe e
-  o Deno são incluídos no instalador exatamente como são distribuídos pelos respectivos projetos, sem a nossa
-  assinatura.
+- **O que é assinado:** o `ritmelli.exe`, o instalador e a atualização parcial, gerados pelo pipeline deste repositório
+  (`.github/workflows/monta.yml`) em uma máquina do GitHub, a partir deste código. O Deno é incluído no instalador
+  exatamente como o projeto dele o distribui, e o ffmpeg e o ffprobe são compilados pela equipe somente com o áudio
+  (`instalador\ffmpeg\`); nenhum dos três leva a nossa assinatura.
 
 Committers and reviewers: [members](https://github.com/orgs/ritmelli/people). Approvers:
 [owners](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
 
 ## Privacidade
 
-A busca, a reprodução e o download de músicas acessam o YouTube e o YouTube Music, a seu pedido. Ao ser aberto, o
-Ritmelli verifica no GitHub se há uma nova versão (baixando apenas o manifesto público das versões, sem enviar nenhum
-dado seu). O celular pareado se comunica diretamente com o computador, na sua rede. Se você permitir, o Ritmelli
-envia dados anônimos de uso e relatórios de erro (`metricas.py`), sem nome, músicas, buscas ou voz. O que é enviado,
-para onde e como desativar o envio estão descritos na [política de privacidade](PRIVACIDADE.md), que também é exibida
-durante a instalação.
+A busca, a reprodução e o download de músicas acessam o YouTube e o YouTube Music, a seu pedido. O Ritmelli consulta no
+GitHub o manifesto público das versões e, se houver uma nova versão, baixa a atualização, sem enviar nenhum dado seu. O
+celular conectado se comunica diretamente com o computador, na sua rede. Se você permitir, o Ritmelli envia dados
+anônimos de uso e relatórios de erro (`metricas.py`), sem nome, músicas, buscas ou voz. O que é enviado, para onde e
+como desativar o envio estão descritos na [política de privacidade](PRIVACIDADE.md), que também é exibida durante a
+instalação.
 
 Privacy policy: [PRIVACIDADE.md](PRIVACIDADE.md#ritmelli-privacy-policy). It is shown during installation and describes
 the anonymous usage data and error reports, which can be turned off in the installer and in the app.
@@ -168,7 +168,7 @@ the anonymous usage data and error reports, which can be turned off in the insta
 | `versao.py` | a versão do aplicativo |
 | `atualizacao.py`, `atualizador.py` | as novas versões: o que a interface exibe e a tarefa do Windows que baixa e instala as atualizações |
 | `metricas.py` | os dados anônimos de uso (PostHog) e os relatórios de erro (Sentry), enviados somente com a permissão do usuário: a lista do que é enviado e a política estão no [PRIVACIDADE.md](PRIVACIDADE.md) |
-| `i18n.py` | os textos da interface em cada idioma: lê os `.properties` do tema e os aplica à página, além das mensagens que o servidor envia para a interface traduzir |
+| `i18n.py` | os textos da interface em cada idioma: lê os `.properties` do tema e os aplica à página, e monta as mensagens que o servidor envia para a interface traduzir |
 | `pastas.py` | onde ficam os dados do usuário e onde o aplicativo localiza o ffmpeg, o ffprobe e o Deno |
 | `pareamento.py` | o código e o QR code do celular e a lista de celulares conectados |
 | `yt_fora.py` | YouTube (yt-dlp e ytmusicapi) em um processo separado |
