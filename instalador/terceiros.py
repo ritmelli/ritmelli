@@ -122,6 +122,10 @@ def main():
     for nome in sorted(pacotes, key=str.lower):
         d = md.distribution(nome)
         tx = textos(d)
+        if not tx:  # o pacote declara a licenca sem trazer o texto: o texto que mora em licencas\ (proxy_tools)
+            base = d.metadata["Name"].replace("-", "_").lower()
+            tx = [(f"instalador/licencas/{f.name}", le(f)) for f in sorted(LICENCAS.glob("*-LICENSE*"))
+                  if f.name.split("-LICENSE")[0].replace("-", "_").lower() == base]
         if not tx:
             faltando.append(nome)
             continue
@@ -140,6 +144,14 @@ def main():
             sys.exit(f"{p.relative_to(interno)} tem modelo ou fonte sem licenca na mesma pasta")
         corpo = "\n\n".join(f"--- {f.relative_to(interno).as_posix()}\n\n{le(f)}" for f in lic)
         secao(f"_internal\\{p.relative_to(interno)}", "ver o texto", corpo)
+
+    # as DLLs do SDK do WebView2 (a janela, janela.py) vem dentro do pywebview, sem a licenca da Microsoft: o texto e
+    # o aviso do pacote NuGet da mesma versao moram em licencas\
+    wv2 = interno / "webview" / "lib" / "Microsoft.Web.WebView2.Core.dll"
+    if wv2.exists():
+        secao("Microsoft Edge WebView2 SDK (_internal\\webview\\lib)", "BSD-3-Clause",
+              f"--- LICENSE.txt\n\n{le(LICENCAS / 'webview2-LICENSE.txt')}\n\n"
+              f"--- NOTICE.txt\n\n{le(LICENCAS / 'webview2-NOTICE.txt')}")
 
     ff = a.ffmpeg / "ffmpeg.exe"
     ver = roda(ff, "-hide_banner", "-version").splitlines()

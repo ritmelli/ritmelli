@@ -3591,20 +3591,21 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   }
   /* o fundo da mesa: a madeira do mock (pedido dele, 07/11; o mock sem as pecas, pelo Codex), em celula de 2 px do palco
      dentro do palco escalado, para a celula cair no mesmo pixel de tela que a das pecas; o ladrilho vai de uma junta de
-     tabua a outra e repete sem costura. Fora do palco (a faixa da janela de outra proporcao) fica a cor media dela */
+     tabua a outra e repete sem costura de lado; em pe ela nao emenda (o pe da tabua nao e o topo dela), entao a imagem
+     traz embaixo a mesma madeira espelhada, e a repeticao em pe vira um espelho, sem costura. A madeira passa da beira
+     do palco um ladrilho inteiro para cada lado: a faixa da janela de outra proporcao (a janela do app, 18/11: 30 px
+     lisos em cima e embaixo) tambem e tabua, o espelho comecando na beira. A cor media dela fica so no body, enquanto
+     a textura carrega */
   body.mesa-dj { background: #80380D; }
   body.mesa-dj .app::before {
-    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-    background: url("texturas/mesa-fundo.png") 840px 0 / 1746px 1028px repeat; image-rendering: pixelated;
+    content: ""; position: absolute; inset: -1028px -1746px; z-index: -1; pointer-events: none;
+    background: url("texturas/mesa-fundo.png") 840px 1028px / 1746px 2056px repeat; image-rendering: pixelated;
     /* (r08) 840 (o meio do vale mais largo, 836 a 842, depois da plaqueta do logo mais larga): madr/fundo_juntas2.py, que mede tambem o topo (frestas curtas, 5 celulas) e a zona do bibelo (em +54 uma
        junta atravessava a cena). (r07) a madeira 27 celulas para a direita, escolhida pela pagina inteira (madr/fundo_juntas.py: a mascara das pecas
        contra o fundo, cada junta que aparece com peca a menos de 3 celulas por 10 linhas ou mais): em 0 as juntas
-       tangenciavam a maleta e o topo, em -16 o topo e os pads; 54 e 56 zeram, 58 cai no vao pads-deck B. O ::after
-       segue a mesma fase (a madeira continua em 1746) */
-  }
-  body.mesa-dj .app::after {
-    content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; left: 1746px; right: -8px; pointer-events: none;   /* (r16) passa 8 px da beira: o palco anda 1 celula para a esquerda */
-    background: url("texturas/mesa-fundo.png") 840px 0 / 1746px 1028px repeat; image-rendering: pixelated;
+       tangenciavam a maleta e o topo, em -16 o topo e os pads; 54 e 56 zeram, 58 cai no vao pads-deck B. A caixa
+       comeca um ladrilho antes (1746 de lado, 1028 em pe), e a fase continua a mesma: a madeira de cima da imagem no
+       topo do palco */
   }
   body.mesa-dj.com-disco .app {
     --vao: 12px;

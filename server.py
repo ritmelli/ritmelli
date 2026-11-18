@@ -1,6 +1,7 @@
 """Vitrola: servidor local que toca audio no microfone do jogo (pelo filtro da Vitrola, em microfone/) e
 serve as interfaces de themes/. Contrato da API: API.md. Atende a propria maquina e o celular
-pareado na rede de casa (para mexer enquanto joga; ver o pareamento.py).
+pareado na rede de casa (para mexer enquanto joga; ver o pareamento.py). No PC, a interface abre numa janela
+propria (janela.py), ou no navegador sem o WebView2; --no-browser nao abre nenhuma das duas.
 
     python server.py [--port 8799] [--no-browser] [--so-local]
     python server.py --mock --port 8801 --data-dir <pasta>   (sem som, pra testar tema)
@@ -615,6 +616,12 @@ class App:
         self.preparando = None  # (disco, qid) da passagem sendo preparada (o stream leva 1 a 3 s)
         self.passagem_falhou = None  # (disco, qid) que nao deu para preparar: toca no fim, como antes
         self.closing = False
+        # a janela propria (janela.py), quando ha: fechar ela desliga o servidor (pede_desligar), e o servidor que
+        # para sozinho fecha ela (main). O loop e o desliga sao do servir e do build
+        self.janela = None
+        self.loop = None
+        self.desliga = None
+        self.pediu_desligar = False
         self.atualizacao = atu.Atualizacao()  # a versao nova (atualizacao.py); sem endereco e chave, fica parada
         cls = eng.MockEngine if mock else eng.Engine
         self.cfg.pop("out", None)  # a saida pelo cabo saiu: a musica vai sempre pelo filtro do microfone
@@ -635,6 +642,18 @@ class App:
         threading.Thread(target=self._vigia_capas, daemon=True).start()
         if self.atualizacao.ativa:
             threading.Thread(target=self.atualizacao.vigia, daemon=True).start()
+
+    def pede_desligar(self):
+        """De qualquer thread (a janela fechou): o mesmo do botao Desligar, no loop do servidor. Antes de o loop
+        subir, fica pedido e o servir desliga assim que sobe."""
+        if self.pediu_desligar:
+            return
+        self.pediu_desligar = True
+        if self.loop is not None and self.desliga is not None:
+            try:
+                self.loop.call_soon_threadsafe(self.desliga)
+            except RuntimeError:
+                pass  # o loop ja fechou: o servidor parou antes (o Desligar da pagina)
 
     def snapshot(self):
         """Estado do motor mais a fila (A seguir), o Aleatorio, o Automatico e quantos discos o
@@ -2191,10 +2210,20 @@ def build(app_state):
             raise GracefulExit()  # SystemExit: sai do asyncio.run, o finally fecha o audio
         loop_().call_later(0.3, _exit)
 
+    A.desliga = desliga  # a janela fechando chama, pelo loop (App.pede_desligar)
+
     @r.post("/api/shutdown")
     async def shutdown(_):
         desliga()
         return j_ok()
+
+    # a Vitrola aberta de novo (o atalho clicado com ela ligada, vitrola.py): a janela dela vem para a frente
+    @r.post("/api/janela/foco")
+    async def janela_foco(request):
+        if not do_pc(request) or A.janela is None:
+            return j_err("no window", 404)
+        ok = await loop_().run_in_executor(pool, A.janela.foco)
+        return j_ok() if ok else j_err("the window didn't come to the front", 409)
 
     # a versao nova (atualizacao.py), so no PC: e nele que o instalador roda
     @r.get("/api/atualizacao")
@@ -2368,6 +2397,9 @@ async def servir(A, app, porta, rede):
     porta do celular fechou ou o IP mudou, ela abre de novo no IP de agora (sem rede, tenta na volta seguinte)."""
     runner = web.AppRunner(app, handle_signals=True, shutdown_timeout=1)
     await runner.setup()
+    A.loop = asyncio.get_running_loop()
+    if A.pediu_desligar:  # a janela fechou antes de o servidor subir
+        A.desliga()
     try:
         await web.TCPSite(runner, "127.0.0.1", porta).start()
         sock = site = None
@@ -2422,14 +2454,37 @@ def main():
     print(f"mic: {d['mic']} | headphones: {d['monitor'] or '-'}", flush=True)
     url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
     print(f"Vitrola {VERSAO} at {url}{' (MOCK, no sound)' if a.mock else ''} | data in {pastas.DADOS}", flush=True)
+    # a janela propria (janela.py, #99), quando o WebView2 esta no PC; senao, a pagina no navegador, como antes.
+    # --no-browser (a atualizacao reabrindo, os testes) nao abre nenhuma das duas
     if not a.no_browser:
-        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+        import janela
+        A.janela = janela.se_der(url)
+        if A.janela is None:
+            threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+    if A.janela is None:
+        roda(A, a)
+        return
+    # a janela tem de rodar na thread principal: o servidor vai para outra. Fechar a janela desliga o servidor; o
+    # servidor que para sozinho (o Desligar da pagina, a atualizacao) fecha a janela
+    t = threading.Thread(target=roda, args=(A, a), name="servidor")
+    t.start()
+    try:
+        A.janela.abre(ao_fechar=A.pede_desligar)
+    finally:
+        A.pede_desligar()
+        t.join(timeout=20)
+
+
+def roda(A, a):
+    """O servidor ate desligar, e o audio fechado no fim. Com a janela, ela fecha junto."""
     try:
         asyncio.run(servir(A, build(A), a.port, rede=not (a.so_local or a.mock)))
     except (GracefulExit, KeyboardInterrupt):
         pass
     finally:
         A.engine.close()
+        if A.janela is not None:
+            A.janela.fecha()
 
 
 if __name__ == "__main__":
