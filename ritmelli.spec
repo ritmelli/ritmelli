@@ -44,7 +44,7 @@ versao = VSVersionInfo(
     ffi=FixedFileInfo(filevers=numeros, prodvers=numeros),
     kids=[
         StringFileInfo([StringTable("041604B0", [  # portugues do Brasil, Unicode
-            StringStruct("CompanyName", "Behling Informática Ltda"),
+            StringStruct("CompanyName", "Behling Informática Ltda."),
             StringStruct("FileDescription", "Ritmelli"),
             StringStruct("FileVersion", VERSAO),
             StringStruct("InternalName", "ritmelli"),

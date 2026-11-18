@@ -31,7 +31,7 @@ AppId={{320EB2BD-48BC-420D-8F52-C22F644E47D4}
 AppName=Ritmelli
 AppVersion={#Versao}
 AppVerName=Ritmelli {#Versao}
-AppPublisher=Behling Informática Ltda
+AppPublisher=Behling Informática Ltda.
 AppCopyright=Software livre sob a GPLv3
 VersionInfoVersion={#Versao}
 ; a pasta da instalacao anterior, menos a padrao de antes da troca de nome (PastaPadrao, no [Code])
@@ -73,8 +73,8 @@ UsedUserAreasWarning=no
 [Languages]
 ; a licenca numa pagina de informacao, e nao de "aceito": a GPLv3 nao precisa ser aceita para usar (secao 9)
 ; a traducao pt-BR do Inno corrigida (a oficial usa "pra" e maiusculas no meio da frase): o pt-BR.isl, ao lado
-Name: "pt"; MessagesFile: "pt-BR.isl"; InfoBeforeFile: "licenca-pt.txt"
 Name: "en"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "licenca-en.txt"
+Name: "pt"; MessagesFile: "pt-BR.isl"; InfoBeforeFile: "licenca-pt.txt"
 
 [Messages]
 ; a pagina de licenca (InfoBefore) diz que e a licenca e que nao precisa aceitar; a Pronto para instalar avisa
@@ -108,10 +108,10 @@ pt.MetricasTitulo=Dados de uso e erros
 en.MetricasTitulo=Usage Data and Errors
 pt.MetricasDescricao=O que o Ritmelli pode enviar para melhorar o aplicativo, sem identificar você.
 en.MetricasDescricao=What Ritmelli can send to help improve the app, without identifying you.
-pt.MetricasSub=Leia o que é enviado e faça a sua escolha abaixo. É possível alterá-la depois no Ritmelli, pelo botão Microfone e fone.
-en.MetricasSub=Read what is sent and make your choice below. You can change it later in Ritmelli with the Mic and headphones button.
-pt.MetricasTexto=O Ritmelli pode enviar dados anônimos de uso e relatórios de erro para saber quantas pessoas o usam, se as novas versões chegam até elas, quais erros ocorrem e quais efeitos são usados.%n%nO que é enviado: um código aleatório desta instalação, as versões do Ritmelli e do Windows e o idioma do Windows; um registro por dia de uso; por quanto tempo a música toca e cada efeito de voz fica ativo; e os erros, com a parte do programa em que ocorreram.%n%nO que nunca é enviado: nome, conta, e-mail, músicas, buscas, links, áudio, voz ou o nome dos seus dispositivos. O endereço IP não é armazenado.%n%nPara onde vão os dados: os dados de uso, para o PostHog, e os relatórios de erro, para o Sentry, dois serviços de outras empresas, com armazenamento na União Europeia. Os dados de uso são mantidos por até 1 ano, e os relatórios de erro, por até 90 dias.%n%nPolítica de privacidade completa: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
-en.MetricasTexto=Ritmelli can send anonymous usage data and error reports so we can learn how many people use it, whether new versions are reaching them, which errors occur, and which effects are used.%n%nWhat is sent: a random ID for this installation, the Ritmelli and Windows versions, and the Windows language; one record per day of use; how long music plays and how long each voice effect stays on; and errors, with the part of the program where they occurred.%n%nWhat is never sent: name, account, email, music, searches, links, audio, voice, or the names of your devices. The IP address is not stored.%n%nWhere the data goes: usage data to PostHog and error reports to Sentry, two third-party services that store it in the European Union. Usage data is kept for up to 1 year, and error reports for up to 90 days.%n%nFull privacy policy: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md#ritmelli-privacy-policy
+pt.MetricasSub=Leia o que é enviado. Se não quiser enviar, desmarque a caixa abaixo. É possível alterar essa escolha depois no Ritmelli, pelo botão Microfone e fone.
+en.MetricasSub=Read what is sent. If you don't want to send it, uncheck the box below. You can change this choice later in Ritmelli with the Mic and headphones button.
+pt.MetricasTexto=O Ritmelli pode enviar dados anônimos de uso e relatórios de erro para saber quantas pessoas o usam, se as novas versões chegam até elas, quais erros ocorrem e quais efeitos são usados.%n%nO que é enviado: um código aleatório desta instalação, as versões do Ritmelli e do Windows e o idioma do Windows; um registro por dia de uso; por quanto tempo a música toca e cada efeito de voz fica ativo; e os erros, com a parte do programa em que ocorreram.%n%nO que nunca é enviado: nome, conta, e-mail, músicas, buscas, links, áudio, voz ou o nome dos seus dispositivos. O endereço IP não é armazenado.%n%nPara onde vão os dados: os dados de uso, para o PostHog, e os relatórios de erro, para o Sentry. São dois serviços de outras empresas, com armazenamento na União Europeia. Os dados de uso são mantidos por até 1 ano, e os relatórios de erro, por até 90 dias.%n%nPolítica de privacidade completa: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
+en.MetricasTexto=Ritmelli can send anonymous usage data and error reports so we can learn how many people use it, whether new versions are reaching them, which errors occur, and which effects are used.%n%nWhat is sent: a random ID for this installation, the Ritmelli and Windows versions, and the Windows language; one entry per day of use; how long music plays and how long each voice effect stays on; and errors, with the part of the program where they occurred.%n%nWhat is never sent: name, account, email, music, searches, links, audio, voice, or the names of your devices. The IP address is not stored.%n%nWhere the data goes: usage data to PostHog and error reports to Sentry, two third-party services that store it in the European Union. Usage data is kept for up to 1 year, and error reports for up to 90 days.%n%nFull privacy policy: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md#ritmelli-privacy-policy
 pt.MetricasCaixa=Enviar dados anônimos de uso e relatórios de erro
 en.MetricasCaixa=Send anonymous usage data and error reports
 

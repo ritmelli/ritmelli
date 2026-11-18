@@ -1115,7 +1115,9 @@ class Injetor:
                             prox += BLOCK / SR
                 except Exception as ex:  # noqa: BLE001 - a thread nao morre calada: o erro vai pra tela
                     self.motor.error = i18n.msg("server.mic.outputFailed", "Couldn't send audio to the microphone "
-                                                                           "({reason}).",
+                                                                           "({reason}). If the music doesn't come "
+                                                                           "back through the microphone, close and "
+                                                                           "reopen Ritmelli.",
                                                 reason=str(ex)[:160])
                     self.m = None
                     servidos = ()
@@ -1451,7 +1453,10 @@ class Engine:
         """O audio nao abriu: o erro fica na tela e o vigia pode tentar de novo. A mesma frase na partida e na
         reabertura: a partida que falha tambem passa pelo vigia logo depois."""
         self._caiu_no_vigia = True
-        self._aviso = self.error = i18n.msg("server.audio.openFailed", "Couldn't open the audio ({reason}).",
+        self._aviso = self.error = i18n.msg("server.audio.openFailed", "Couldn't open the audio ({reason}). Make "
+                                                                       "sure the microphone and headphones are "
+                                                                       "connected. If the problem continues, close "
+                                                                       "and reopen Ritmelli.",
                                             reason=i18n.motivo(ex))
 
     # nivel do mic no Windows ----------------------------------------------

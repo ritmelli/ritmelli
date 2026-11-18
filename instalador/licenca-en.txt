@@ -4,7 +4,7 @@ The source code of the app and of this installer is available at https://github.
 
 You do not need to accept the license to install or use Ritmelli. The license applies to anyone who copies, modifies, or distributes Ritmelli.
 
-Ritmelli comes WITH NO WARRANTY, not even a warranty of fitness for a particular purpose, to the extent permitted by law (sections 15 and 16 of the GPLv3).
+Ritmelli comes with ABSOLUTELY NO WARRANTY, not even the implied warranty of fitness for a particular purpose, to the extent permitted by law (sections 15 and 16 of the GPLv3).
 
 Ritmelli includes software and libraries from other projects, each under its own license: Python, ffmpeg, Deno, yt-dlp, pedalboard, and onnxruntime, among others, as well as the beat_this beat detection model and the interface fonts.
 

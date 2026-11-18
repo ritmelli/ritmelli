@@ -2,7 +2,7 @@
 
 O Ritmelli é um aplicativo para Windows 10 e 11 que reproduz músicas e efeitos sonoros no microfone usado no jogo ou na
 chamada de voz, junto com a sua voz, enquanto você ouve apenas a música no fone. A interface, um aparelho de som dos
-anos 70 em pixel art, abre em uma janela própria no computador (fechá-la encerra o aplicativo) e, no celular, no
+anos 70 em pixel art, abre em uma janela própria no computador (fechá-la desliga o aplicativo) e, no celular, no
 navegador, pela mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de chamada que permita escolher o microfone.
 
 ## Recursos
@@ -50,11 +50,11 @@ com o detector em numpy).
 ```
 
 - No jogo e no Discord, use o mesmo microfone selecionado no Ritmelli, pois o filtro atua apenas nele. A voz original
-  volta do filtro para o Ritmelli (para o medidor, para a opção de ouvir a própria voz e para a Mina DJ): sem efeito,
-  ela segue diretamente para o microfone; o efeito de voz é aplicado no próprio filtro, sem atraso; com a voz silenciada, o
+  volta do filtro para o Ritmelli (para o medidor, para a opção Ouvir minha voz e para a Mina DJ): sem efeito, ela segue
+  diretamente para o microfone; o efeito de voz é aplicado no próprio filtro, sem atraso; com a voz silenciada, o
   Ritmelli envia a voz gerada por ele no lugar; e, se o Ritmelli parar de responder, o filtro restaura a voz original
-  automaticamente em 1 segundo. No Discord, use o perfil de entrada **Estúdio** ou desative o Krisp e a
-  sensibilidade automática: com qualquer um dos dois ativado, a música chega cortada ou não chega.
+  automaticamente em 1 segundo. No Discord, use o perfil de entrada **Estúdio** ou desative o Krisp e a sensibilidade
+  automática: com qualquer um dos dois ativado, a música chega cortada ou não chega.
 - Microfone conectado depois da instalação (por exemplo, um headset USB novo): ao selecioná-lo, o Ritmelli executa a
   tarefa criada pelo instalador, e o som do computador é interrompido por alguns segundos enquanto o Windows o
   prepara.
@@ -62,10 +62,10 @@ com o detector em numpy).
   feita na interface fica salva em `%LOCALAPPDATA%\Ritmelli\library\config.json`.
 - Se o microfone ou o fone selecionado estiver desconectado, o Ritmelli usa o padrão do Windows até que ele volte. Se
   o dispositivo de gravação padrão for um cabo virtual, é usado o primeiro microfone físico.
-- Os dados do usuário (áudios baixados, biblioteca e preferências) ficam em `%LOCALAPPDATA%\Ritmelli\library`, e os
+- Os dados do usuário (os áudios baixados, a prateleira e as escolhas) ficam em `%LOCALAPPDATA%\Ritmelli\library`, e os
   logs do servidor, em `%LOCALAPPDATA%\Ritmelli\logs`. Até a versão 0.4.1, o aplicativo se chamava Vitrola: na
-  atualização, os dados de `%LOCALAPPDATA%\Vitrola`, as escolhas e o celular conectado são migrados automaticamente para o
-  Ritmelli, sem nenhuma perda (`migra.py`).
+  atualização, os dados de `%LOCALAPPDATA%\Vitrola`, as escolhas e o celular conectado são migrados automaticamente para
+  o Ritmelli, sem nenhuma perda (`migra.py`).
 - Sem o `soundboard.ps1`: `python ritmelli.py` (aceita os mesmos argumentos do `server.py`).
 - Para ver a versão: `python ritmelli.py --version`.
 - **No celular**, na mesma rede Wi-Fi: no computador, o botão Celular da interface exibe um QR code. Aponte a câmera
@@ -136,8 +136,8 @@ publicadas sem assinatura.
   [proprietários da organização](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
 - **O que é assinado:** o `ritmelli.exe`, o instalador e a atualização parcial, gerados pelo pipeline deste repositório
   (`.github/workflows/monta.yml`) em uma máquina do GitHub, a partir deste código. O Deno é incluído no instalador
-  exatamente como o projeto dele o distribui, e o ffmpeg e o ffprobe são compilados pela equipe somente com o áudio
-  (`instalador\ffmpeg\`); nenhum dos três leva a nossa assinatura.
+  exatamente como o projeto dele o distribui, e o ffmpeg e o ffprobe são compilados pela equipe somente com os recursos
+  de áudio (`instalador\ffmpeg\`); nenhum dos três leva a nossa assinatura.
 
 Committers and reviewers: [members](https://github.com/orgs/ritmelli/people). Approvers:
 [owners](https://github.com/orgs/ritmelli/people?query=role%3Aowner).

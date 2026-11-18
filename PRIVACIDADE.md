@@ -44,7 +44,7 @@ enviado, e o teste que verifica essa lista, [`dev/testa_metricas.py`](dev/testa_
 
 ## Controlador dos dados
 
-Behling Informática Ltda, que publica o Ritmelli. Para tirar dúvidas sobre os seus dados ou solicitar a exclusão dos dados de uma
+Behling Informática Ltda., que publica o Ritmelli. Para tirar dúvidas sobre os seus dados ou solicitar a exclusão dos dados de uma
 instalação (informando o código dela, que está no arquivo `%LOCALAPPDATA%\Ritmelli\metricas.json`),
 [abra uma issue](https://github.com/ritmelli/ritmelli/issues) sem incluir dados pessoais; a resposta será dada na própria issue.
 
@@ -65,7 +65,7 @@ which features are actually used (each voice effect, music playback), so we can 
 **What is sent**, always together with a random ID for this installation (it is not tied to you and is replaced by a
 new one if you reinstall), the Ritmelli and Windows versions, and the Windows language:
 
-- one record for each day Ritmelli is used;
+- one entry for each day Ritmelli is used;
 - the previous version, the first time a new version is opened;
 - which voice effect was turned on, each time one is turned on;
 - every half hour of use and when the app closes: how many seconds music played, how many seconds a voice effect was
@@ -93,6 +93,6 @@ and the test that checks that list, [`dev/testa_metricas.py`](dev/testa_metricas
 
 ## Data controller
 
-Behling Informática Ltda, the publisher of Ritmelli. For questions about your data, or to request the deletion of
+Behling Informática Ltda., the publisher of Ritmelli. For questions about your data, or to request the deletion of
 an installation's data (please include its ID, found in `%LOCALAPPDATA%\Ritmelli\metricas.json`),
 [open an issue](https://github.com/ritmelli/ritmelli/issues) without including any personal data; we will reply there.

@@ -2194,7 +2194,8 @@ def build(app_state):
         except Exception as ex:  # noqa: BLE001 - PortAudio fala ingles
             return j_err(i18n.msg("server.devices.openFailed", "Couldn't open that device ({reason}), so Ritmelli "
                                                                "went back to the previous one. Make sure the device "
-                                                               "is connected and not in use by another program.", reason=str(ex)[:160]))
+                                                               "is connected and not in exclusive use by another "
+                                                               "program.", reason=str(ex)[:160]))
         A.save_cfg()
         return j_ok()
 

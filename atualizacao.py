@@ -83,7 +83,8 @@ class Parou(OSError):
 
 def _recusado(e):
     """A mensagem da tela para o manifesto ou o arquivo que nao passou na conferencia, com o motivo como veio."""
-    return i18n.msg("server.update.rejected", "The new version failed verification and wasn't installed ({reason}).", reason=str(e))
+    return i18n.msg("server.update.rejected", "The new version failed verification and wasn't installed ({reason}). "
+                                              "Your current version keeps working as usual.", reason=str(e))
 
 
 def versao(v):
