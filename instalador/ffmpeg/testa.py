@@ -1,4 +1,4 @@
-"""Confere o ffmpeg so de audio (bin\\) contra o ffmpeg completo de antes: os mesmos comandos do motor da Vitrola nos
+"""Confere o ffmpeg so de audio (bin\\) contra o ffmpeg completo de antes: os mesmos comandos do motor do Ritmelli nos
 discos da biblioteca, a duracao pelo ffprobe, um stream https, os consertos de container do yt-dlp e o que o yt-dlp acha
 dele. Sai 1 se alguma coisa nao bate.
 
@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 
 NOVO, VELHO = Path(sys.argv[1]), Path(sys.argv[2])
-LIB = Path(sys.argv[3]) if len(sys.argv) > 3 else Path(os.environ["LOCALAPPDATA"]) / "Vitrola" / "library"
+LIB = Path(sys.argv[3]) if len(sys.argv) > 3 else Path(os.environ["LOCALAPPDATA"]) / "Ritmelli" / "library"
 SR = 48000   # o do engine.py
 DIF_MAX = 1e-4   # a mesma fonte com outro compilador: a conta em ponto flutuante pode mudar na ultima casa
 STREAM = "https://upload.wikimedia.org/wikipedia/commons/c/c8/Example.ogg"
@@ -73,7 +73,7 @@ for arq in discos:
     print(f"{arq.name}: duracao {dn} | comeco {inicio} | de {meio:.0f} s {pulo}")
 
 print("--- stream https")
-print(f"{STREAM}: {confere('stream https', ['-user_agent', 'Vitrola-teste-do-ffmpeg', '-i', STREAM, '-t', '3'])}")
+print(f"{STREAM}: {confere('stream https', ['-user_agent', 'Ritmelli-teste-do-ffmpeg', '-i', STREAM, '-t', '3'])}")
 
 print("--- consertos de container do yt-dlp (copiar para mp4 sem recodificar)")
 with tempfile.TemporaryDirectory() as tmp:

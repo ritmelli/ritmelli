@@ -44,7 +44,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   filtro, a voz que o motor abre passa pelo `voz.dll` do mesmo jeito, para o ouvir a própria voz.
   Sem o `voz.dll` o app sobe igual: o efeito segue no filtro, e a voz que sairia do app vai crua,
   com um aviso na tela e no log. A voz cortada também
-  vai pelo pulso. O filtro só tira a crua e só aplica o efeito com o pulso vivo, então a Vitrola
+  vai pelo pulso. O filtro só tira a crua e só aplica o efeito com o pulso vivo, então o Ritmelli
   que cai não deixa o microfone mudo nem com a voz de robô. Com o microfone aberto por dois
   programas, o Windows pode montar duas cadeias, cada uma com a sua instância do filtro: as duas
   põem o efeito e a música no próprio som, mas só uma escreve a voz crua e só uma escreve a com
@@ -60,8 +60,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   Catedral (#78). Com o efeito montado, a voz cortada passa pelo fabricante e o hospedeiro corta
   depois do efeito, então ouvir a própria voz com efeito segue valendo com ela cortada. O
   redutor segue ligado e a música chega igual no modo normal e no RAW. Quem pendura é o
-  instalador (administrador, `vitrola.exe --microfone instala-todos --tarefa`), que também cria a
-  tarefa do Windows `\Vitrola\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
+  instalador (administrador, `ritmelli.exe --microfone instala-todos --tarefa`), que também cria a
+  tarefa do Windows `\Ritmelli\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
   pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
   prepara, sem UAC, um microfone que apareceu depois. Ao desinstalar, o original de todo
   microfone volta e a tarefa sai. O nome do microfone é o do Windows (Core Audio, casado pelo id
@@ -93,7 +93,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   YouTube que toca (~1 MB por disco, sem baixar nada; no formato leve de ~50 kbps a intro da
   Riptide dava batida firme e no que toca não), e mede nos mesmos 20 s que a passagem mede (o
   `batida.py` e, sem batida firme, a rede). Roda num processo à parte com prioridade baixa
-  (`vitrola.py --andamento`, o pedido em JSON na entrada), ~3 a 5 s por disco, e o endereço do
+  (`ritmelli.py --andamento`, o pedido em JSON na entrada), ~3 a 5 s por disco, e o endereço do
   stream ele mesmo pede ao YouTube (o `stream_yt` do `yt_fora.py`).
 - `yt_fora.py`: o YouTube (yt-dlp e ytmusicapi) num processo à parte, nunca no do servidor:
   com o yt-dlp lá dentro, cada endereço de stream travava o processo do áudio em rajadas de
@@ -101,7 +101,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   de reserva, com as bibliotecas carregadas, e cada pedido (stream, busca, download com o
   progresso, rádio, Mix, versão só de áudio) leva o de reserva e abre o próximo; volta só o
   que o servidor lê, em JSON, e o que o yt-dlp diz vai para o log de erros. Abre como
-  `vitrola.py --yt`. O endereço de stream vai de preferência a um processo que fica vivo e
+  `ritmelli.py --yt`. O endereço de stream vai de preferência a um processo que fica vivo e
   atende um pedido por linha com o mesmo `YoutubeDL`, que guarda o player do YouTube já lido
   (no notebook, 0,80 s por endereço em vez de 1,48 s); são `VIVOS` deles (2: o endereço do
   palpite errado da mina não segura o do pedido certo): o pedido vai ao livre que já tem
@@ -129,13 +129,13 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   sugestão quase nunca acerta, a busca sai junto com ela, numa thread, pela segunda conexão
   que a reserva já deixa aberta (`pre_conecta`); a sugestão que acerta segue valendo e a
   busca é descartada.
-- `vitrola.py`: o ponto de entrada, o mesmo do executável. Sem modo, liga o servidor. Se
-  outra Vitrola já está ligada na mesma porta (o atalho clicado de novo), só abre a página
-  dela; se ela ainda está ligando, sai sem fazer nada, porque a página abre quando ela
+- `ritmelli.py`: o ponto de entrada, o mesmo do executável. Sem modo, liga o servidor. Se
+  outro Ritmelli já está ligado na mesma porta (o atalho clicado de novo), só abre a página
+  dele; se ele ainda está ligando, sai sem fazer nada, porque a página abre quando ele
   termina (uma trava do Windows marca a porta desde o começo). Com `--yt` ou `--andamento`,
   vira o processo auxiliar. No app congelado não há `python` nem
   `.py` para abrir, só o próprio executável, e o servidor abre os auxiliares por ele
-  (`auxiliar` no `server.py`); no código, pelo `python vitrola.py`, o mesmo caminho. Sem
+  (`auxiliar` no `server.py`); no código, pelo `python ritmelli.py`, o mesmo caminho. Sem
   console (o executável, ou o `pythonw`), a saída e os erros do servidor vão para os
   arquivos de log, os mesmos que o `soundboard.ps1` grava, e os da vez anterior ficam ao
   lado (`server.anterior.log`), para o motivo de uma queda não sumir quando o app reabre.
@@ -184,8 +184,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   aceita o que a chave pública Ed25519 embutida no módulo assinou, e só para uma versão mais nova
   que a dele (um manifesto velho não volta a versão). O setup.exe novo vem com o tamanho e o hash
   conferidos e roda em modo silencioso, com o pedido de permissão do Windows: o instalador fecha
-  a Vitrola, troca a pasta dela e abre de novo. Os downloads ficam em
-  `%LOCALAPPDATA%\Vitrola\atualizacao`. Enquanto o endereço do manifesto e a chave estão vazios, e
+  o Ritmelli, troca a pasta dele e abre de novo. Os downloads ficam em
+  `%LOCALAPPDATA%\Ritmelli\atualizacao`. Enquanto o endereço do manifesto e a chave estão vazios, e
   sempre que roda pelo código, nada é consultado. Teste: `python dev/testa_atualizacao.py`.
 - `server.py`: aiohttp no 127.0.0.1 e no IP da rede de casa (Host fixo contra DNS
   rebinding, Origin conhecida em toda escrita contra CSRF, a API da rede só para o celular
@@ -339,12 +339,12 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo` no
   tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, o `LOGOS` (o logo do Locutor em cada língua), a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera o preview de cada tema para a galeria, um `preview_<lingua>.png` por língua no tema com textos e um `preview.png` no que não tem, com a prateleira de mentira do
   `dev/compara.py`; ele entra no git porque o instalador leva a pasta do tema como ela está).
-- `icone/`: o ícone da Vitrola, o toca-discos do tema visto de cima, que o `dev/icone.py` desenha
-  em pixel em cada tamanho (o de 16 px a mão): o `vitrola.ico`, que é o do exe, o do setup e o da
+- `icone/`: o ícone do Ritmelli, o toca-discos do tema visto de cima, que o `dev/icone.py` desenha
+  em pixel em cada tamanho (o de 16 px a mão): o `ritmelli.ico`, que é o do exe, o do setup e o da
   aba do navegador (pelo `/favicon.ico`), e o `toque.png`, o do atalho na tela inicial do celular
   (pelo `/apple-touch-icon.png`). Com `--instalador`, o script grava também as imagens do
   assistente do Inno Setup na `instalador/`.
-- `pastas.py`: os dados de quem usa moram em `%LOCALAPPDATA%\Vitrola`, fora da pasta do
+- `pastas.py`: os dados de quem usa moram em `%LOCALAPPDATA%\Ritmelli`, fora da pasta do
   código, porque instalado em Program Files ela não aceita escrita. Em `library/`, o áudio
   baixado, a lista da biblioteca, as escolhas de volume e dispositivo e os celulares pareados;
   em `logs/`, a saída e os erros do servidor. Os `.json` de lá se gravam pelo `save_json` (num
@@ -352,7 +352,22 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   logs das ferramentas de `dev/` (`logs/efeitos/`) seguem na pasta do código.
   O ffmpeg, o ffprobe e o Deno vêm da `bin/` do app (a do executável, ou a do código), que o
   instalador vai encher; sem ela, do PATH. O yt-dlp recebe os dois que acharem (`YDL` no
-  `server.py`).
+  `server.py`). Até a 0.4.1 o app se chamava Vitrola e os dados moravam em
+  `%LOCALAPPDATA%\Vitrola`: o `migra()` renomeia essa pasta para a nova quando o servidor liga,
+  antes de qualquer módulo calcular os caminhos dele; se ela estiver presa, os dados seguem nela
+  naquela abertura e a troca tenta de novo na próxima.
+- `migra.py`: a troca de nome de Vitrola para Ritmelli (#58) no PC de quem já tinha o app, pelo
+  instalador, como administrador. O `--migra maquina` vem antes do filtro de microfone: fecha o
+  `vitrola.exe`, copia o `HKLM\SOFTWARE\Vitrola` para o `HKLM\SOFTWARE\Ritmelli` sem trocar o que o
+  novo já tem (a escolha dos dados de uso, o original de cada microfone e as vagas do hospedeiro:
+  sem eles o filtro guardaria a si mesmo como original) e apaga as tarefas de antes. O
+  `--migra limpa` vem no fim, com o áudio já reiniciado na DLL nova: apaga o registro de antes e
+  a pasta padrão de antes (`Program Files\Vitrola`), e o que estiver preso sai no reinício. O
+  `ritmelli.iss` muda a pasta padrão para `Program Files\Ritmelli` (a escolhida à mão fica), e a
+  parcial não serve por cima de uma versão de antes (o `parcial.py` não a gera). O nome do app no
+  manifesto continua `vitrola` (o `APP` do `atualizacao.py`): é o que as versões instaladas
+  conferem. O celular pareado antes segue pelo cookie de antes (`pareamento.chave_do`), e o
+  modo de cada pedal, pela chave de antes no `localStorage`.
 - `versao.py`: a versão (semver), que o servidor mostra no Estado e no `--version`; a tag da
   release tem que bater com ela.
 - `i18n.py`: os textos da interface em cada língua. Os textos moram em

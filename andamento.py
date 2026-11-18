@@ -6,7 +6,7 @@ baixar nada: baixar 1 h de musica a cada disco que troca e demais), acha o som e
 motor (medir_inicio, medir_fim) e mede a batida nos mesmos 20 s que a passagem mede: o batida.py e, sem batida
 firme, a rede. O stream e o mesmo que toca (~130 kbps): no formato leve (~50 kbps) a intro de ukulele da Riptide dava
 98,1 firme, e no que toca o motor nao firmava, e a fila tinha posto ela no lugar de uma passagem no tempo (22/10).
-Roda num processo a parte (python vitrola.py --andamento, o pedido em JSON na entrada): a rede pesa ~800 MB e uns
+Roda num processo a parte (python ritmelli.py --andamento, o pedido em JSON na entrada): a rede pesa ~800 MB e uns
 segundos de processador, e o audio do servidor nao divide nada com ela.
 
 A ordem anda no circulo das oitavas (60 e 120 BPM no mesmo lugar: a passagem casa em meia ou dobrada), sempre

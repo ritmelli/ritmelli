@@ -108,7 +108,7 @@ class TestaMfx(unittest.TestCase):
         r.SetValueEx(fm, "NumAPOInterfaces", 0, r.REG_DWORD, 1)
         for h in mf.HOSPEDES:
             k = r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.APOS}\\{h}")
-            r.SetValueEx(k, "FriendlyName", 0, r.REG_SZ, "Vitrola Microfone (hospedeiro)")
+            r.SetValueEx(k, "FriendlyName", 0, r.REG_SZ, "Ritmelli Microfone (hospedeiro)")
             r.SetValueEx(k, "Flags", 0, r.REG_DWORD, 0xE)
 
     def tearDown(self):
@@ -134,7 +134,7 @@ class TestaMfx(unittest.TestCase):
             return None
 
     def notebook(self, ep=EP, mfx=MFX_FM, modos=MODOS):
-        """O microfone do notebook antes da Vitrola: EFX e MFX da Fortemedia em lista, sem SFX."""
+        """O microfone do notebook antes do Ritmelli: EFX e MFX da Fortemedia em lista, sem SFX."""
         r = self.reg
         return self.microfone({mf.ASSOCIACAO: (mf.KSNODETYPE_ANY, r.REG_SZ),
                                mf.EFX_LISTA: ([EFX_FM], r.REG_MULTI_SZ), mf.MFX_LISTA: ([mfx], r.REG_MULTI_SZ),
@@ -152,7 +152,7 @@ class TestaMfx(unittest.TestCase):
         apo = self.reg.valores(f"HKLM\\{mf.APOS}\\{HOST0}")
         self.assertEqual(apo["flags"], (0xF, self.reg.REG_DWORD), "as flags do fabricante no hospedeiro")
         self.assertEqual(apo["apointerface0"][0], "{AF5B7468-391D-47FF-B88C-CF5E3B8D546A}")
-        self.assertEqual(apo["friendlyname"][0], "Vitrola Microfone (hospedeiro)", "o nome fica o nosso")
+        self.assertEqual(apo["friendlyname"][0], "Ritmelli Microfone (hospedeiro)", "o nome fica o nosso")
         k = self.reg.OpenKey("HKLM", f"{mf.CAPTURA}\\{EP}\\FxProperties")
         self.assertTrue(mf.nosso(k))
         self.assertTrue(mf.no_mfx(k))
@@ -250,7 +250,7 @@ class TestaMfx(unittest.TestCase):
 
     def test_versao_anterior(self):
         """Pendurado pela versao 2 (so EFX e LFX, sem guardar a lista de MFX): pendurar de novo guarda a lista do
-        fabricante como original, poe o hospedeiro no lugar, e o devolver volta ao de antes da Vitrola."""
+        fabricante como original, poe o hospedeiro no lugar, e o devolver volta ao de antes do Ritmelli."""
         antes = self.notebook()
         r = self.reg
         salvo = r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.SALVO}\\{EP}")

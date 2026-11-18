@@ -1,4 +1,4 @@
-// micfx.dll: o filtro de microfone da Vitrola (um APO de efeito do motor de audio do Windows).
+// micfx.dll: o filtro de microfone do Ritmelli (um APO de efeito do motor de audio do Windows).
 //
 // O Windows carrega o filtro dentro do audiodg.exe, no caminho do microfone em que ele foi pendurado (o
 // microfone.py poe o nosso nas vagas EFX e LFX daquele microfone e guarda o original). A cada bloco de audio do
@@ -196,7 +196,7 @@ static const CLSID CLSID_MicFx = {0xc17a1d48, 0xd473, 0x40d9, {0x9e, 0xd3, 0xd0,
 // microfone.py poe na lista, no lugar do MFX do fabricante, um hospedeiro nosso, que carrega o APO dele por dentro,
 // repassa tudo (formato, referencia do eco, efeitos, notificacoes) e soma a musica no que sai dele. Para o Windows a
 // ultima peca e o hospedeiro, que responde como AEC porque o hospedado responde. Uma classe por fabricante, quatro
-// vagas: o microfone.py grava em HKLM\SOFTWARE\Vitrola\Microfone, valor "_hospede<n>", o CLSID que a vaga n carrega.
+// vagas: o microfone.py grava em HKLM\SOFTWARE\Ritmelli\Microfone, valor "_hospede<n>", o CLSID que a vaga n carrega.
 static const int HOSPEDES = 4;
 static const CLSID CLSID_Hospede[HOSPEDES] = {
     {0xd6eb08e6, 0x2dda, 0x44f3, {0x88, 0xc8, 0x2d, 0x0e, 0xa0, 0x0c, 0x6c, 0x8e}},
@@ -207,7 +207,7 @@ static const CLSID CLSID_Hospede[HOSPEDES] = {
 
 static const wchar_t kCaptura[] = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Capture\\";
 static const wchar_t kMfxLista[] = L"{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},14";
-static const wchar_t kSalvo[] = L"SOFTWARE\\Vitrola\\Microfone";
+static const wchar_t kSalvo[] = L"SOFTWARE\\Ritmelli\\Microfone";
 
 // Fora do tempo real. O microfone (o GUID dele, "{...}") tem o hospedeiro na lista de MFX? Entao a musica entra pelo
 // hospedeiro, depois do efeito do fabricante, e o EFX desse microfone so cuida da voz
@@ -250,7 +250,7 @@ static volatile LONG g_travas = 0;
 static volatile LONG g_proximo_dono = 0;
 
 static const CRegAPOProperties<1> g_props(
-    CLSID_MicFx, L"Vitrola Microfone", L"Vitrola (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject),
+    CLSID_MicFx, L"Ritmelli Microfone", L"Ritmelli (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject),
     // sem APO_FLAG_INPLACE: entrada e saida em buffers separados, e a entrada nunca e escrita
     (APO_FLAG)(APO_FLAG_FRAMESPERSECOND_MUST_MATCH | APO_FLAG_BITSPERSAMPLE_MUST_MATCH |
                APO_FLAG_SAMPLESPERFRAME_MUST_MATCH));
@@ -775,7 +775,7 @@ private:
             return false;
         }
         const int64_t agora = (int64_t)GetTickCount64();
-        // o efeito e o corte so com o app vivo: a Vitrola que cai devolve a voz crua
+        // o efeito e o corte so com o app vivo: o Ritmelli que cai devolve a voz crua
         const bool app_vivo = agora - a->batida_app < (int64_t)MICFX_APP_MS;
         if (Pega(&a->voz_dono, &a->voz_batida, agora)) {  // duas cadeias no mesmo microfone: uma escreve (#70)
             EscreveVoz(a, destino, quadros);
@@ -1189,14 +1189,14 @@ static CFabrica g_fabrica;
 static CFabrica g_fabricas_hospede[HOSPEDES] = {CFabrica(0), CFabrica(1), CFabrica(2), CFabrica(3)};
 
 // o CRegAPOProperties tem um vetor de tamanho zero por dentro: um objeto por vaga, nao um vetor deles
-static const CRegAPOProperties<1> g_props_hospede0(CLSID_Hospede[0], L"Vitrola Microfone (hospedeiro 0)",
-                                                   L"Vitrola (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
-static const CRegAPOProperties<1> g_props_hospede1(CLSID_Hospede[1], L"Vitrola Microfone (hospedeiro 1)",
-                                                   L"Vitrola (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
-static const CRegAPOProperties<1> g_props_hospede2(CLSID_Hospede[2], L"Vitrola Microfone (hospedeiro 2)",
-                                                   L"Vitrola (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
-static const CRegAPOProperties<1> g_props_hospede3(CLSID_Hospede[3], L"Vitrola Microfone (hospedeiro 3)",
-                                                   L"Vitrola (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
+static const CRegAPOProperties<1> g_props_hospede0(CLSID_Hospede[0], L"Ritmelli Microfone (hospedeiro 0)",
+                                                   L"Ritmelli (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
+static const CRegAPOProperties<1> g_props_hospede1(CLSID_Hospede[1], L"Ritmelli Microfone (hospedeiro 1)",
+                                                   L"Ritmelli (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
+static const CRegAPOProperties<1> g_props_hospede2(CLSID_Hospede[2], L"Ritmelli Microfone (hospedeiro 2)",
+                                                   L"Ritmelli (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
+static const CRegAPOProperties<1> g_props_hospede3(CLSID_Hospede[3], L"Ritmelli Microfone (hospedeiro 3)",
+                                                   L"Ritmelli (GPLv3)", 1, 0, __uuidof(IAudioProcessingObject));
 static const APO_REG_PROPERTIES* const g_props_hospede[HOSPEDES] = {g_props_hospede0, g_props_hospede1,
                                                                     g_props_hospede2, g_props_hospede3};
 

@@ -1,4 +1,4 @@
-ffmpeg 9.0.2, so de audio, para a Vitrola.
+ffmpeg 9.0.2, so de audio, para o Ritmelli.
 Licenca: LGPL 2.1 ou posterior (LICENCA-ffmpeg.txt), sem nada GPL nem nonfree.
 Fonte: ffmpeg-9.0.2.tar.xz, sem mudancas, de https://ffmpeg.org/releases/ (sha256 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e).
 Compilado no MSYS2 UCRT64 com gcc.exe (Rev6, Built by MSYS2 project) 16.2.0.

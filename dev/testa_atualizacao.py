@@ -42,7 +42,7 @@ def mais(v, n=1):
     return f"{a}.{b}.{c + n}"
 
 
-tmp = Path(tempfile.mkdtemp(prefix="vitrola-atu-"))
+tmp = Path(tempfile.mkdtemp(prefix="ritmelli-atu-"))
 www = tmp / "www"
 www.mkdir()
 atu.PASTA = tmp / "dados"
@@ -70,7 +70,7 @@ SHA = hashlib.sha256(setup).hexdigest()
 def manifesto(**muda):
     m = {"formato": 1, "app": "vitrola", "versao": mais(VERSAO), "data": "2026-11-03", "notas": ["Uma coisa nova."],
          "instalador": {"url": f"{base}/setup.exe", "sha256": SHA, "tamanho": len(setup)},
-         "arquivos": [{"caminho": "vitrola.exe", "sha256": SHA, "tamanho": 1}]}
+         "arquivos": [{"caminho": "ritmelli.exe", "sha256": SHA, "tamanho": 1}]}
     m.update(muda)
     return m
 
@@ -150,7 +150,7 @@ r.consultar()  # uma falha de rede antes, para o recusado ter o que zerar
 atu.MANIFESTO = certo
 publica(manifesto(app="outro"))
 caso("manifesto recusado nao conta como falha de rede: 6 h", r.consultar() is True and r.proxima() == atu.CONSULTA_CADA_S
-     and r.erro["key"] == "server.update.rejected" and "not for a Vitrola version" in r.erro["params"]["reason"], r.erro)
+     and r.erro["key"] == "server.update.rejected" and "not for a Ritmelli version" in r.erro["params"]["reason"], r.erro)
 
 print("--- a vigia")
 dormiu, sleep = [], atu.time.sleep
@@ -201,7 +201,7 @@ o = atu.Atualizacao(ativa=True)
 caso("antes da primeira consulta da vigia, abrir a pagina nao consulta", o.ao_abrir() is False and o.ultima is None)
 o.consultar()
 caso("logo depois de uma consulta, nao consulta de novo", o.ao_abrir() is False)
-publica(manifesto())  # a versao nova sai com a Vitrola ligada
+publica(manifesto())  # a versao nova sai com o Ritmelli ligado
 o.ultima -= atu.CONSULTA_AO_ABRIR_S + 1
 caso("passado o prazo, consulta numa thread e acha a versao nova",
      o.ao_abrir() is True and ate(lambda: o.publico()["nova"] is not None and o.estado == "parado"), o.publico())
@@ -255,11 +255,11 @@ ok, motivo = c.instalar()
 caso("setup trocado depois de conferido", not ok and c.estado == "parado", motivo)
 
 print("--- a parcial (o caminho B)")
-# o app "instalado": o manifesto novo muda so o vitrola.exe, e a parcial traz so ele
+# o app "instalado": o manifesto novo muda so o ritmelli.exe, e a parcial traz so ele
 app = tmp / "app"
-instalado = {"vitrola.exe": b"exe velho", "_internal/a.dll": b"dll igual", "_internal/b/c.zip": b"zip igual",
+instalado = {"ritmelli.exe": b"exe velho", "_internal/a.dll": b"dll igual", "_internal/b/c.zip": b"zip igual",
              "bin/ffmpeg.exe": b"ffmpeg igual"}
-novos = {**instalado, "vitrola.exe": b"exe novo, de outro tamanho"}
+novos = {**instalado, "ritmelli.exe": b"exe novo, de outro tamanho"}
 
 
 def instala(arquivos):
@@ -276,7 +276,7 @@ parc = os.urandom(1 << 20)
 
 def com_parcial(**muda):
     p = {"url": f"{base}/parcial.exe", "sha256": hashlib.sha256(parc).hexdigest(), "tamanho": len(parc),
-         "de": VERSAO, "arquivos": ["vitrola.exe"], "apaga": ["_internal/velho.pyd"]}
+         "de": VERSAO, "arquivos": ["ritmelli.exe"], "apaga": ["_internal/velho.pyd"]}
     p.update(muda)
     return manifesto(arquivos=[{"caminho": c, "sha256": hashlib.sha256(d).hexdigest(), "tamanho": len(d)}
                                for c, d in novos.items()], parcial=p)
@@ -319,7 +319,7 @@ a = consulta(com_parcial())
 caso("a parcial serve: a tela mostra o tamanho dela", a.publico()["nova"]["parcial"] is True
      and a.publico()["nova"]["tamanho"] == len(parc), a.publico()["nova"])
 a.baixar()
-caso("baixa a parcial", espera(a, "pronta") and a.setup.name == f"Vitrola-{mais(VERSAO)}-parcial.exe"
+caso("baixa a parcial", espera(a, "pronta") and a.setup.name == f"Ritmelli-{mais(VERSAO)}-parcial.exe"
      and a.setup.read_bytes() == parc, a.setup)
 chamadas.clear()
 atu.abre_instalador = lambda s, p: chamadas.append((s, p)) or 42
@@ -464,14 +464,14 @@ d2 = atu.Atualizacao(ativa=True)
 caso("servidor fora: sem versao nova e com o motivo", d2.consultar() is False and d2.estado == "parado" and d2.erro, d2.erro)
 for f in atu.PASTA.glob("*"):
     f.unlink()
-for nome in (f"Vitrola-{VERSAO}-setup.exe", "Vitrola-0.0.1-setup.exe", "x-setup.exe.parcial", "y-setup.exe.baixando",
-             f"Vitrola-{VERSAO}-parcial.exe", f"Vitrola-{mais(VERSAO, 5)}-setup.exe",
-             f"Vitrola-{mais(VERSAO, 5)}-parcial.exe"):
+for nome in (f"Ritmelli-{VERSAO}-setup.exe", "Ritmelli-0.0.1-setup.exe", "x-setup.exe.parcial", "y-setup.exe.baixando",
+             f"Ritmelli-{VERSAO}-parcial.exe", f"Ritmelli-{mais(VERSAO, 5)}-setup.exe",
+             f"Ritmelli-{mais(VERSAO, 5)}-parcial.exe"):
     (atu.PASTA / nome).write_bytes(b"x")
 atu.Atualizacao(ativa=True)._limpa()
-sobra = sorted(f.name for f in atu.PASTA.iterdir() if "Vitrola" in f.name or "setup" in f.name)
+sobra = sorted(f.name for f in atu.PASTA.iterdir() if "Ritmelli" in f.name or "setup" in f.name)
 caso("a limpeza tira os setups e as parciais velhos e os pela metade",
-     sobra == [f"Vitrola-{mais(VERSAO, 5)}-parcial.exe", f"Vitrola-{mais(VERSAO, 5)}-setup.exe"], sobra)
+     sobra == [f"Ritmelli-{mais(VERSAO, 5)}-parcial.exe", f"Ritmelli-{mais(VERSAO, 5)}-setup.exe"], sobra)
 
 print("tudo certo" if not falhas else f"FALHAS: {', '.join(falhas)}")
 sys.exit(1 if falhas else 0)

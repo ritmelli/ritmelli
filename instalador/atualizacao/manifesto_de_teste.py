@@ -1,6 +1,6 @@
 """Um manifesto de teste para a atualizacao automatica (o testa-atualizador.ps1): o manifesto do build com outra versao
 e o setup num endereco local, assinado por uma chave de teste gerada na hora. Grava o manifest.json e o .sig na --saida e
-imprime a chave publica em base64, que o teste poe no HKLM\\SOFTWARE\\Vitrola\\Atualizador (o atualizador.py so le de
+imprime a chave publica em base64, que o teste poe no HKLM\\SOFTWARE\\Ritmelli\\Atualizador (o atualizador.py so le de
 la). Sem a parcial: o teste e o do setup completo.
 
     python manifesto_de_teste.py --manifesto <manifest.json do build> --versao <X.Y.Z> --url <http://...> --saida <pasta>

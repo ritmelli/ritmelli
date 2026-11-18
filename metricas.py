@@ -1,12 +1,12 @@
-"""Os dados de uso e os erros da Vitrola (#102), para saber quantas pessoas usam, se a versao nova esta chegando, que
+"""Os dados de uso e os erros do Ritmelli (#102), para saber quantas pessoas usam, se a versao nova esta chegando, que
 erro acontece agora e o que se usa de verdade (cada efeito de voz, a musica). O que vai, para onde e como desligar
 esta no PRIVACIDADE.md, na raiz do repo; a SignPath pede que a politica apareca na instalacao e que de para desligar
-la (o vitrola.iss), e o app tambem desliga, no Microfone e fone.
+la (o ritmelli.iss), e o app tambem desliga, no Microfone e fone.
 
-Quem decide se envia: a escolha feita na Vitrola (o "metricas" do config.json), senao a da pagina do instalador (o
-Metricas do HKLM\\SOFTWARE\\Vitrola, 1 ou 0). Sem nenhuma das duas (quem atualizou em silencio de uma versao sem
+Quem decide se envia: a escolha feita no Ritmelli (o "metricas" do config.json), senao a da pagina do instalador (o
+Metricas do HKLM\\SOFTWARE\\Ritmelli, 1 ou 0). Sem nenhuma das duas (quem atualizou em silencio de uma versao sem
 metricas), nada sai ate a pessoa ver o aviso na tela e escolher. Pelo codigo e no --mock, nunca envia
-(VITROLA_METRICAS=1 liga nos dois, para testar).
+(RITMELLI_METRICAS=1 liga nos dois, para testar).
 
 O que vai, sempre com um ID aleatorio da instalacao (o metricas.json da pasta de dados; o desinstalador apaga), a
 versao, a do Windows e a lingua: um "ativo" por dia de uso, o "atualizou" na primeira vez de uma versao nova, o
@@ -39,7 +39,7 @@ POSTHOG_CHAVE = "phc_yK9GS3bzj4qdDhYSGgPpfD7zpXcxA9GoRPJFw7xAkhoa"
 SENTRY_DSN = "https://44a4c1749ce862fbfeb8b3153468aeb9@o4512454104907776.ingest.de.sentry.io/4512454111395920"
 POLITICA = "https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md"
 ESTADO = pastas.DADOS / "metricas.json"
-REG, REG_VALOR = r"SOFTWARE\Vitrola", "Metricas"
+REG, REG_VALOR = r"SOFTWARE\Ritmelli", "Metricas"
 
 USO_S = 30 * 60  # de quanto em quanto tempo sai o "uso"
 AMOSTRA_S = 5.0  # de quanto em quanto tempo o motor e olhado
@@ -61,7 +61,7 @@ SEM_EFEITO = "nenhum"
 
 
 def _lingua():
-    """A lingua do Windows de quem usa (pt-BR, en-US): a da interface do sistema, que e a da tela da Vitrola."""
+    """A lingua do Windows de quem usa (pt-BR, en-US): a da interface do sistema, que e a da tela do Ritmelli."""
     if sys.platform != "win32":
         return ""
     buf = ctypes.create_unicode_buffer(85)
@@ -98,9 +98,9 @@ def limpa(txt):
     return txt[:300]
 
 
-# os modulos da Vitrola: a linha da pilha num deles e "do app" (o Sentry agrupa e destaca por ela)
+# os modulos do Ritmelli: a linha da pilha num deles e "do app" (o Sentry agrupa e destaca por ela)
 NOSSOS = {"andamento", "atualizacao", "atualizador", "batida", "compasso", "engine", "fx", "i18n", "janela",
-          "metricas", "microfone", "pareamento", "pastas", "server", "versao", "vitrola", "winvol", "yt_erros",
+          "metricas", "microfone", "pareamento", "pastas", "ritmelli", "server", "versao", "winvol", "yt_erros",
           "yt_fora"}
 
 
@@ -146,7 +146,7 @@ def evento_de_erro(tipo, valor, tb, onde, base):
                         "value": limpa(ex), "stacktrace": {"frames": quadros}})
     return {
         "event_id": uuid.uuid4().hex, "timestamp": time.time(), "platform": "python", "level": "error",
-        "logger": onde, "release": f"vitrola@{VERSAO}", "environment": "app",
+        "logger": onde, "release": f"ritmelli@{VERSAO}", "environment": "app",
         "user": {"id": base["id"]},
         "tags": {"onde": onde, "windows": base["windows"], "lingua": base["lingua"]},
         "contexts": {"os": {"name": "Windows", "version": base["windows"]},
@@ -160,18 +160,18 @@ def _posta(url, dados, cabecalhos):
     o evento fica para a proxima."""
     from atualizacao import _tls
     req = urllib.request.Request(url, data=dados, method="POST",
-                                 headers={"User-Agent": f"Vitrola/{VERSAO}", **cabecalhos})
+                                 headers={"User-Agent": f"Ritmelli/{VERSAO}", **cabecalhos})
     with urllib.request.urlopen(req, timeout=TEMPO_S, context=_tls()) as r:
         return r.status
 
 
 class Metricas:
-    """O envio, de uma thread so. cfg e o config.json do app (o metricas que a pessoa escolheu na Vitrola mora nele);
+    """O envio, de uma thread so. cfg e o config.json do app (o metricas que a pessoa escolheu no Ritmelli mora nele);
     gravar e quem grava o config (App.save_cfg). Sem ligar(), nada sai."""
 
     def __init__(self, cfg, gravar, mock=False, estado=ESTADO):
         self.cfg, self.gravar, self.estado_path = cfg, gravar, estado
-        liga = os.environ.get("VITROLA_METRICAS") == "1"  # pelo codigo ou no --mock, para testar
+        liga = os.environ.get("RITMELLI_METRICAS") == "1"  # pelo codigo ou no --mock, para testar
         self.fora = not liga and (mock or not getattr(sys, "frozen", False))
         self.sessao = uuid.uuid4().hex[:16]
         self.fila = queue.Queue()
@@ -204,7 +204,7 @@ class Metricas:
         return self.situacao() == "ligada"
 
     def escolhe(self, ligar):
-        """A escolha feita na Vitrola (o aviso ou o Microfone e fone). Desligar joga fora o que nao saiu."""
+        """A escolha feita no Ritmelli (o aviso ou o Microfone e fone). Desligar joga fora o que nao saiu."""
         self.cfg["metricas"] = bool(ligar)
         self.gravar()
         if not ligar:
@@ -248,7 +248,7 @@ class Metricas:
         if not self.ativa():
             return
         p = {**props, "versao": VERSAO, "windows": self.base["windows"], "lingua": self.base["lingua"],
-             "sessao": self.sessao, "$process_person_profile": False, "$geoip_disable": True, "$lib": "vitrola"}
+             "sessao": self.sessao, "$process_person_profile": False, "$geoip_disable": True, "$lib": "ritmelli"}
         with self._lock:
             if self.fila.qsize() >= FILA_MAX:
                 self.fila.get_nowait()
@@ -281,7 +281,7 @@ class Metricas:
         try:
             self.envia(f"https://{host}/api/{projeto}/envelope/", corpo, {
                 "Content-Type": "application/x-sentry-envelope",
-                "X-Sentry-Auth": f"Sentry sentry_version=7, sentry_key={chave}, sentry_client=vitrola/{VERSAO}"})
+                "X-Sentry-Auth": f"Sentry sentry_version=7, sentry_key={chave}, sentry_client=ritmelli/{VERSAO}"})
         except Exception:  # noqa: BLE001 - sem rede, o erro nao vai
             pass
 

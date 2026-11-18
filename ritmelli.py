@@ -1,15 +1,17 @@
-"""O ponto de entrada da Vitrola, o mesmo do executavel (o PyInstaller congela este arquivo). Sem modo, liga o
+"""O ponto de entrada do Ritmelli, o mesmo do executavel (o PyInstaller congela este arquivo). Sem modo, liga o
 servidor, com os argumentos do server.py, e abre a janela (janela.py); ja ligado, so traz a janela para a frente. Os processos auxiliares que o servidor abre
 vem por aqui tambem: no app congelado nao ha python nem .py para abrir, so o proprio executavel (ver auxiliar no
 server.py).
 
-    python vitrola.py [--port 8799 ...]   o servidor
-    python vitrola.py --yt                o YouTube num processo a parte (yt_fora.py)
-    python vitrola.py --andamento         a medida de andamento (andamento.py)
-    python vitrola.py --microfone ...     o filtro de microfone (microfone/microfone.py): quem chama e o instalador e
-                                          a tarefa do Windows que ele cria, nunca o servidor pelo UAC
-    python vitrola.py --atualizador ...   a atualizacao automatica (atualizador.py): a tarefa do Windows que o
-                                          instalador cria roda como SYSTEM; o instalador cria e o desinstalador apaga"""
+    python ritmelli.py [--port 8799 ...]   o servidor
+    python ritmelli.py --yt                o YouTube num processo a parte (yt_fora.py)
+    python ritmelli.py --andamento         a medida de andamento (andamento.py)
+    python ritmelli.py --microfone ...     o filtro de microfone (microfone/microfone.py): quem chama e o instalador e
+                                           a tarefa do Windows que ele cria, nunca o servidor pelo UAC
+    python ritmelli.py --atualizador ...   a atualizacao automatica (atualizador.py): a tarefa do Windows que o
+                                           instalador cria roda como SYSTEM; o instalador cria e o desinstalador apaga
+    python ritmelli.py --migra ...         a troca de nome de Vitrola para Ritmelli no PC (migra.py): o instalador
+                                           chama, como administrador"""
 import sys
 
 
@@ -32,10 +34,10 @@ def sem_console():
 
 
 def ja_ligado():
-    """Outra Vitrola ja esta ligada ou ligando nesta porta (o atalho clicado de novo). Se ja atende, traz a janela
-    dela para a frente (janela.py), ou abre a pagina dela no navegador, quando ela nao tem janela; se ainda esta
-    ligando, sai quieta, porque a janela abre quando ela termina. Sem isto, a segunda abria o audio e caia na porta
-    ocupada com o erro do Python na tela (29/10). Vem antes do sem_console, que zeraria os logs da que esta ligada."""
+    """Outro Ritmelli ja esta ligado ou ligando nesta porta (o atalho clicado de novo). Se ja atende, traz a janela
+    dele para a frente (janela.py), ou abre a pagina dele no navegador, quando ele nao tem janela; se ainda esta
+    ligando, sai quieto, porque a janela abre quando ele termina. Sem isto, o segundo abria o audio e caia na porta
+    ocupada com o erro do Python na tela (29/10). Vem antes do sem_console, que zeraria os logs do que esta ligado."""
     if sys.platform != "win32":
         return False
     import argparse
@@ -50,12 +52,12 @@ def ja_ligado():
     a, _ = ap.parse_known_args()
     if a.version:
         return False
-    # a trava do Windows vem primeiro: a que esta ligando so atende a porta uns 4 s depois (sem nada na tela, e quem
+    # a trava do Windows vem primeiro: o que esta ligando so atende a porta uns 4 s depois (sem nada na tela, e quem
     # nao ve nada clica de novo), e perguntar a porta sem ninguem nela leva 2 s. Fica com o processo ate ele sair, e o
     # Windows solta se ele cair
     k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    k32.CreateMutexW(None, False, f"Local\\Vitrola-{a.port}")
-    if ctypes.get_last_error() != 183:  # ERROR_ALREADY_EXISTS: e a unica
+    k32.CreateMutexW(None, False, f"Local\\Ritmelli-{a.port}")
+    if ctypes.get_last_error() != 183:  # ERROR_ALREADY_EXISTS: e o unico
         return False
     c = http.client.HTTPConnection("127.0.0.1", a.port, timeout=2)  # sem urllib: um proxy do Windows nao entra
     try:
@@ -72,8 +74,8 @@ def ja_ligado():
 
 
 def traz_a_janela(porta):
-    """Pede a janela da Vitrola ligada para a frente (/api/janela/foco). Quem acabou de ser aberto pelo clique e quem
-    pode passar a frente: o AllowSetForegroundWindow passa esse direito a ela. False se ela nao tem janela (o
+    """Pede a janela do Ritmelli ligada para a frente (/api/janela/foco). Quem acabou de ser aberto pelo clique e quem
+    pode passar a frente: o AllowSetForegroundWindow passa esse direito a ele. False se ele nao tem janela (o
     navegador, ou uma versao de antes da janela)."""
     import ctypes
     import http.client
@@ -103,15 +105,23 @@ def main():
     elif modo == "--atualizador":
         import atualizador
         sys.exit(atualizador.main(sys.argv[2:]))
-    elif not atualizando() and not ja_ligado():
-        sem_console()
-        import server
-        server.main()
-        ao_sair()
+    elif modo == "--migra":
+        import migra
+        sys.exit(migra.main(sys.argv[2:]))
+    else:
+        # os dados da pasta de antes da troca de nome (%LOCALAPPDATA%\Vitrola) vem para a nova antes de qualquer modulo
+        # do servidor calcular os caminhos dele (pastas.migra)
+        import pastas
+        pastas.migra()
+        if not atualizando() and not ja_ligado():
+            sem_console()
+            import server
+            server.main()
+            ao_sair()
 
 
 def atualizando():
-    """A Vitrola foi aberta no meio da atualizacao automatica (o instalador da tarefa trocando os arquivos): sai logo,
+    """O Ritmelli foi aberto no meio da atualizacao automatica (o instalador da tarefa trocando os arquivos): sai logo,
     para nao segurar o que ele troca, e abre de novo quando ele terminar (atualizador.reabre)."""
     if not getattr(sys, "frozen", False):
         return False
@@ -123,7 +133,7 @@ def atualizando():
 
 
 def ao_sair():
-    """A Vitrola desligou (o X, o Desligar da pagina ou o Instalar agora): com a versao nova ja baixada pela tarefa do
+    """O Ritmelli desligou (o X, o Desligar da pagina ou o Instalar agora): com a versao nova ja baixada pela tarefa do
     Windows, e agora que ela entra (atualizador.ao_sair)."""
     if not getattr(sys, "frozen", False):
         return

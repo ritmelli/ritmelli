@@ -1,11 +1,11 @@
 {
   "name": "Vitrola",
   "direction": {
-    "en": "A 1970s stereo in pixel art, in rosewood and aluminum: a spinning platter and a shelf of records on the wall.",
+    "en": "A pixel-art 1970s stereo in rosewood and aluminum, with a spinning platter and a shelf of records on the wall.",
     "pt_BR": "Aparelho de som dos anos 70 em pixel art, de jacarandá e alumínio: prato que gira e prateleira de discos na parede."
   },
   "blurb": {
-    "en": "Each sound is a record on the shelf; the one playing spins on the platter, and the tonearm moves as the track goes on.",
-    "pt_BR": "Cada som é um disco na prateleira; o que toca gira no prato, e o braço anda conforme a faixa avança."
+    "en": "Each sound is a record on the shelf; the one playing spins on the platter, and the tonearm moves as the track plays.",
+    "pt_BR": "Cada som é um disco na prateleira; o que toca gira no prato, e o braço se move conforme a faixa avança."
   }
 }

@@ -1,23 +1,23 @@
-"""A atualizacao automatica, sem UAC (#45 e #98), como a do Chrome: a tarefa do Windows "Vitrola Atualiza", que o
-instalador cria, roda como SYSTEM o proprio vitrola.exe instalado com --atualizador, no logon e de 4 em 4 horas. Ela
-consulta o manifesto assinado, baixa a versao nova (a parcial, quando serve, ou o completo) e, com a Vitrola fechada,
-roda o instalador em silencio. Com a Vitrola aberta, a versao fica baixada e conferida, e entra quando ela fechar: a
-Vitrola, ao sair, dispara a tarefa (ao_sair). Ninguem clica em nada e o Windows nao pergunta.
+"""A atualizacao automatica, sem UAC (#45 e #98), como a do Chrome: a tarefa do Windows "Ritmelli Atualiza", que o
+instalador cria, roda como SYSTEM o proprio ritmelli.exe instalado com --atualizador, no logon e de 4 em 4 horas. Ela
+consulta o manifesto assinado, baixa a versao nova (a parcial, quando serve, ou o completo) e, com o Ritmelli fechado,
+roda o instalador em silencio. Com o Ritmelli aberto, a versao fica baixada e conferida, e entra quando ele fechar: o
+Ritmelli, ao sair, dispara a tarefa (ao_sair). Ninguem clica em nada e o Windows nao pergunta.
 
 Seguranca: a tarefa roda como SYSTEM um arquivo baixado da internet, entao nada do que ela usa sai de onde quem usa o PC
-grava. O comando e fixo (o vitrola.exe da pasta do app, em Program Files) e quem usa o PC so pode disparar a tarefa,
+grava. O comando e fixo (o ritmelli.exe da pasta do app, em Program Files) e quem usa o PC so pode disparar a tarefa,
 nao muda-la. A versao instalada e a da propria tarefa (o versao.py do executavel). O manifesto so vale assinado pela
 chave que mora no executavel, e so para uma versao mais nova. O setup e baixado e conferido (o hash do manifesto) na
 pasta atualizacao\\ do app, que so administrador grava, e conferido de novo logo antes de rodar: conferir onde o usuario
 grava e rodar depois deixaria um programa dele trocar o arquivo no meio. O estado.json da mesma pasta e so leitura para
-quem usa o PC: e por ele que a tela da Vitrola mostra o andamento.
+quem usa o PC: e por ele que a tela do Ritmelli mostra o andamento.
 
-Para testar fora do GitHub (a esteira faz), o endereco do manifesto e a chave podem vir do HKLM\\SOFTWARE\\Vitrola\\
+Para testar fora do GitHub (a esteira faz), o endereco do manifesto e a chave podem vir do HKLM\\SOFTWARE\\Ritmelli\\
 Atualizador (Manifesto, Chave em base64 e SoHttps 0), que so administrador grava.
 
-    vitrola.exe --atualizador            a rodada da tarefa (como SYSTEM)
-    vitrola.exe --atualizador tarefa     cria (ou refaz) a tarefa: o instalador chama
-    vitrola.exe --atualizador remove     apaga a tarefa e a pasta: o desinstalador chama"""
+    ritmelli.exe --atualizador            a rodada da tarefa (como SYSTEM)
+    ritmelli.exe --atualizador tarefa     cria (ou refaz) a tarefa: o instalador chama
+    ritmelli.exe --atualizador remove     apaga a tarefa e a pasta: o desinstalador chama"""
 import ctypes
 import json
 import os
@@ -32,22 +32,22 @@ import atualizacao as atu
 import pastas
 from versao import VERSAO
 
-TAREFA = "Vitrola Atualiza"
+TAREFA = "Ritmelli Atualiza"
 PASTA = pastas.APP / "atualizacao"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-REG = r"SOFTWARE\Vitrola\Atualizador"
-# a Vitrola acabou de pedir (ao sair): ela ainda esta terminando de fechar, e os auxiliares dela (o --yt) vao junto
+REG = r"SOFTWARE\Ritmelli\Atualizador"
+# o Ritmelli acabou de pedir (ao sair): ele ainda esta terminando de fechar, e os auxiliares dele (o --yt) vao junto
 ESPERA_FECHAR_S = 20.0
-# o instalador em silencio, sem /reabrir: rodando como SYSTEM, a Vitrola abriria como SYSTEM. Quem reabre e o
+# o instalador em silencio, sem /reabrir: rodando como SYSTEM, o Ritmelli abriria como SYSTEM. Quem reabre e o
 # reabre(), como quem usa o PC
 PARAMETROS = ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"]
-ESPERA_INSTALAR_S = 300.0  # quanto o reabre() espera o instalador terminar, antes de abrir a Vitrola assim mesmo
+ESPERA_INSTALAR_S = 300.0  # quanto o reabre() espera o instalador terminar, antes de abrir o Ritmelli assim mesmo
 TENTATIVAS = 2  # instalador da mesma versao que terminou sem trocar a versao: depois disso, so a proxima versao
 
 TAREFA_XML = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Vitrola: baixa e instala a versao nova, com a Vitrola fechada</Description>
+    <Description>Ritmelli: baixa e instala as atualizações quando o Ritmelli está fechado.</Description>
     <SecurityDescriptor>D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;GRGX;;;AU)</SecurityDescriptor>
   </RegistrationInfo>
   <Triggers>
@@ -154,11 +154,11 @@ def _caminho(pid):
 
 
 def app_aberta():
-    """Algum vitrola.exe desta pasta rodando, fora este: a Vitrola, os auxiliares dela ou a tarefa do microfone. O que
+    """Algum ritmelli.exe desta pasta rodando, fora este: o Ritmelli, os auxiliares dele ou a tarefa do microfone. O que
     nao deu para olhar conta como aberto: na duvida, a versao espera."""
     meu = os.getpid()
     for pid, nome in _processos():
-        if pid == meu or nome.lower() != "vitrola.exe":
+        if pid == meu or nome.lower() != "ritmelli.exe":
             continue
         c = _caminho(pid)
         if c is None or Path(c).parent.resolve() == pastas.APP.resolve():
@@ -198,7 +198,7 @@ def _limpa():
     """Os setups de versoes que ja nao sao novas e os downloads pela metade."""
     if not PASTA.exists():
         return
-    for f in PASTA.glob("Vitrola-*"):
+    for f in PASTA.glob("Ritmelli-*"):
         nome = f.name
         try:
             v = nome.split("-")[1]
@@ -211,7 +211,7 @@ def _limpa():
 def _baixa(m, parcial):
     """Baixa o setup na PASTA e confere o hash. O caminho do arquivo conferido."""
     inst = m["parcial"] if parcial else m["instalador"]
-    final = PASTA / f"Vitrola-{m['versao']}-{'parcial' if parcial else 'setup'}.exe"
+    final = PASTA / f"Ritmelli-{m['versao']}-{'parcial' if parcial else 'setup'}.exe"
     if final.exists() and atu._hash(final) == inst["sha256"]:
         return final
     meio = final.with_name(final.name + ".baixando")
@@ -239,7 +239,7 @@ def _baixa(m, parcial):
 
 
 def _lanca(setup, log_setup):
-    """O instalador, solto: ele troca o vitrola.exe desta rodada, entao a rodada sai logo depois de abrir ele."""
+    """O instalador, solto: ele troca o ritmelli.exe desta rodada, entao a rodada sai logo depois de abrir ele."""
     cf = 0x00000008 | 0x00000200 | NO_WINDOW  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     args = [str(setup), *PARAMETROS, f"/LOG={log_setup}"]
     try:
@@ -249,7 +249,13 @@ def _lanca(setup, log_setup):
 
 
 def rodada(espera_fechar=ESPERA_FECHAR_S):
-    """Consulta, baixa e, com a Vitrola fechada, instala. Sai com o estado gravado; nunca levanta."""
+    """Consulta, baixa e, com o Ritmelli fechado, instala. Sai com o estado gravado; nunca levanta."""
+    if getattr(sys, "frozen", False):  # so no app instalado (os testes chamam a rodada pelo codigo)
+        try:  # o que o setup nao conseguiu apagar da pasta de antes da troca de nome (migra.py), se ainda sobrou algo
+            import migra
+            migra.pasta_velha()
+        except Exception as ex:  # noqa: BLE001 - a limpeza nunca segura a atualizacao
+            log(f"old folder: {type(ex).__name__}: {ex}")
     e = estado()
     if e.get("estado") == "instalando" and not vivo(e.get("pid") or -1):
         # o instalador da rodada anterior terminou: esta rodada ja e a versao nova (ou nao, e ai conta a falha)
@@ -295,7 +301,7 @@ def rodada(espera_fechar=ESPERA_FECHAR_S):
     fim = time.monotonic() + espera_fechar
     while app_aberta():
         if time.monotonic() >= fim:
-            log("Vitrola is open: the new version goes in when it closes")
+            log("Ritmelli is open: the new version goes in when it closes")
             return
         time.sleep(1.0)
     instala(setup, inst["sha256"], m["versao"])
@@ -348,7 +354,7 @@ def tarefa_cria():
 
 
 def tarefa_apaga():
-    """Para a rodada que estiver no meio (esperando a Vitrola fechar, ela instalaria por cima do desinstalador) e apaga
+    """Para a rodada que estiver no meio (esperando o Ritmelli fechar, ela instalaria por cima do desinstalador) e apaga
     a tarefa."""
     for args in (["/end"], ["/delete", "/f"]):
         subprocess.run(["schtasks", *args, "/tn", TAREFA], capture_output=True, creationflags=NO_WINDOW)
@@ -368,21 +374,21 @@ def automatica():
 
 
 def ao_sair(reabrir=False):
-    """A Vitrola fechou: com a versao nova baixada, a tarefa instala agora. reabrir (o Instalar agora da tela): a
-    Vitrola abre de novo quando o instalador terminar."""
+    """O Ritmelli fechou: com a versao nova baixada, a tarefa instala agora. reabrir (o Instalar agora da tela): o
+    Ritmelli abre de novo quando o instalador terminar."""
     if estado().get("estado") != "pronta" or not dispara():
         return
-    log("Vitrola closed with a new version ready: the update task runs now")
+    log("Ritmelli closed with a new version ready: the update task runs now")
     if reabrir:
         reabre()
 
 
 def reabre():
-    """Abre a Vitrola de novo quando o instalador terminar, como quem usa o PC. Quem espera e um PowerShell solto, fora
-    da pasta do app: um vitrola.exe esperando seguraria os arquivos que o instalador troca. Espera a tarefa comecar a
-    instalar e o instalador sair, ate ESPERA_INSTALAR_S, e abre a Vitrola assim mesmo."""
+    """Abre o Ritmelli de novo quando o instalador terminar, como quem usa o PC. Quem espera e um PowerShell solto, fora
+    da pasta do app: um ritmelli.exe esperando seguraria os arquivos que o instalador troca. Espera a tarefa comecar a
+    instalar e o instalador sair, ate ESPERA_INSTALAR_S, e abre o Ritmelli assim mesmo."""
     e = str(PASTA / "estado.json").replace("'", "''")
-    exe = str(pastas.APP / "vitrola.exe").replace("'", "''")
+    exe = str(pastas.APP / "ritmelli.exe").replace("'", "''")
     ps = (f"$e='{e}';$fim=(Get-Date).AddSeconds({ESPERA_INSTALAR_S:.0f});$s=$null;"
           "do{Start-Sleep 1;try{$s=Get-Content -LiteralPath $e -Raw|ConvertFrom-Json}catch{}}"
           "while(($s -eq $null -or $s.estado -ne 'instalando') -and (Get-Date) -lt $fim);"
@@ -391,7 +397,7 @@ def reabre():
           f"Start-Process -FilePath '{exe}'")
     args = ["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps]
     # com um console escondido (o NO_WINDOW), e nao sem nenhum: o PowerShell aberto com DETACHED_PROCESS sai sem rodar
-    # o comando. Fora do job de quem abriu a Vitrola, quando der: ela fecha logo depois
+    # o comando. Fora do job de quem abriu o Ritmelli, quando der: ele fecha logo depois
     cf = NO_WINDOW | 0x00000200  # CREATE_NEW_PROCESS_GROUP
     try:
         subprocess.Popen(args, creationflags=cf | 0x01000000, close_fds=True)  # CREATE_BREAKAWAY_FROM_JOB
@@ -400,7 +406,7 @@ def reabre():
 
 
 def instalando_agora():
-    """O instalador da tarefa esta rodando (a Vitrola foi aberta no meio da atualizacao)."""
+    """O instalador da tarefa esta rodando (o Ritmelli foi aberto no meio da atualizacao)."""
     e = estado()
     return e.get("estado") == "instalando" and isinstance(e.get("pid"), int) and vivo(e["pid"])
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Configura e compila o ffmpeg so de audio no UCRT64 do MSYS2. Quem chama e o compila.ps1, com a fonte em VITROLA_FONTE e
-# a pasta de saida em VITROLA_SAIDA (caminhos do Windows).
+# Configura e compila o ffmpeg so de audio no UCRT64 do MSYS2. Quem chama e o compila.ps1, com a fonte em RITMELLI_FONTE e
+# a pasta de saida em RITMELLI_SAIDA (caminhos do Windows).
 set -euo pipefail
-fonte=$(cygpath -u "$VITROLA_FONTE")
-saida=$(cygpath -u "$VITROLA_SAIDA")
-trab=/tmp/vitrola-ffmpeg
+fonte=$(cygpath -u "$RITMELLI_FONTE")
+saida=$(cygpath -u "$RITMELLI_SAIDA")
+trab=/tmp/ritmelli-ffmpeg
 rm -rf "$trab" && mkdir -p "$trab"
 tar -xf "$fonte" -C "$trab" --strip-components=1
 cd "$trab"
@@ -38,7 +38,7 @@ mkdir -p "$saida"
 cp ffmpeg.exe ffprobe.exe "$saida/"
 cp COPYING.LGPLv2.1 "$saida/LICENCA-ffmpeg.txt"
 {
-  echo "ffmpeg $(./ffmpeg -hide_banner -version | head -1 | cut -d' ' -f3), so de audio, para a Vitrola."
+  echo "ffmpeg $(./ffmpeg -hide_banner -version | head -1 | cut -d' ' -f3), so de audio, para o Ritmelli."
   echo "Licenca: LGPL 2.1 ou posterior (LICENCA-ffmpeg.txt), sem nada GPL nem nonfree."
   echo "Fonte: $(basename "$fonte"), sem mudancas, de https://ffmpeg.org/releases/ (sha256 $(sha256sum "$fonte" | cut -d' ' -f1))."
   echo "Compilado no MSYS2 UCRT64 com $(gcc --version | head -1)."

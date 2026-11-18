@@ -1,7 +1,7 @@
 """Testa o atualizador.py (a atualizacao automatica pela tarefa do Windows) sem a tarefa, sem SYSTEM e sem o instalador
 de verdade: um servidor http local serve o manifesto, a assinatura e um setup de mentira, com uma chave de teste
 gerada na hora, e quem roda o setup e quem olha os processos sao trocados por gravadores. Cobre a rodada sem versao
-nova, a assinatura de outra chave, o download com o hash errado, a versao nova com a Vitrola aberta (fica baixada e
+nova, a assinatura de outra chave, o download com o hash errado, a versao nova com o Ritmelli aberto (fica baixada e
 nao instala) e depois de fechar (instala sem baixar de novo, em silencio e sem /reabrir), o setup trocado depois de
 conferido (nao roda), a rodada seguinte ao instalador (instalada, ou erro se a versao nao mudou), o lado da tela (o
 estado da tarefa no formato do app, e o Instalar agora, que marca o reabrir) e o ao_sair (so dispara com a versao
@@ -42,7 +42,7 @@ def mais(v, n=1):
     return f"{a}.{b}.{c + n}"
 
 
-tmp = Path(tempfile.mkdtemp(prefix="vitrola-atualizador-"))
+tmp = Path(tempfile.mkdtemp(prefix="ritmelli-atualizador-"))
 www = tmp / "www"
 www.mkdir()
 atualizador.PASTA = tmp / "app" / "atualizacao"
@@ -75,7 +75,7 @@ NOVA = mais(VERSAO)
 def publica(versao=NOVA, k=chave, sha=SHA):
     m = {"formato": 1, "app": "vitrola", "versao": versao, "data": "2026-11-18", "notas": ["Uma coisa nova."],
          "notas_en": ["A new thing."], "instalador": {"url": f"{base}/setup.exe", "sha256": sha, "tamanho": len(setup)},
-         "arquivos": [{"caminho": "vitrola.exe", "sha256": SHA, "tamanho": 1}]}
+         "arquivos": [{"caminho": "ritmelli.exe", "sha256": SHA, "tamanho": 1}]}
     dados = json.dumps(m).encode()
     (www / "manifest.json").write_bytes(dados)
     sig = json.dumps({"chave": 1, "assinatura": base64.b64encode(eddsa.new(k, "rfc8032").sign(dados)).decode()})
@@ -124,15 +124,15 @@ publica(sha="0" * 64)
 atualizador.rodada(espera_fechar=0)
 e = atualizador.estado()
 caso("hash do setup errado: nao fica nada, nao instala", e.get("estado") == "parado" and e.get("erro") and not lancados
-     and not list(atualizador.PASTA.glob("Vitrola-*")), e.get("erro"))
+     and not list(atualizador.PASTA.glob("Ritmelli-*")), e.get("erro"))
 
 limpa()
 publica()
 aberta[0] = True
 atualizador.rodada(espera_fechar=0)
 e = atualizador.estado()
-baixado = atualizador.PASTA / f"Vitrola-{NOVA}-setup.exe"
-caso("versao nova com a Vitrola aberta: fica baixada e conferida, e nao instala",
+baixado = atualizador.PASTA / f"Ritmelli-{NOVA}-setup.exe"
+caso("versao nova com o Ritmelli aberto: fica baixada e conferida, e nao instala",
      e.get("estado") == "pronta" and baixado.exists() and atu._hash(baixado) == SHA and not lancados, e.get("estado"))
 caso("o estado leva o que a tela mostra (versao, notas, tamanho)",
      e.get("nova", {}).get("versao") == NOVA and e["nova"].get("notas_en") == ["A new thing."]
@@ -142,7 +142,7 @@ pedidos.clear()
 aberta[0] = False
 atualizador.rodada(espera_fechar=0)
 e = atualizador.estado()
-caso("a Vitrola fechou: instala sem baixar de novo", lancados and "/setup.exe" not in pedidos, pedidos)
+caso("o Ritmelli fechou: instala sem baixar de novo", lancados and "/setup.exe" not in pedidos, pedidos)
 if lancados:
     s, params, lg = lancados[0]
     caso("o instalador e o conferido, em silencio e sem /reabrir",
@@ -176,7 +176,7 @@ caso("o instalador terminou e esta e a versao dele: instalada", e.get("instalada
 
 print("--- o setup trocado depois de conferido")
 limpa()
-falso = atualizador.PASTA / f"Vitrola-{NOVA}-setup.exe"
+falso = atualizador.PASTA / f"Ritmelli-{NOVA}-setup.exe"
 falso.write_bytes(setup[:-1] + b"X")
 atualizador.instala(falso, SHA, NOVA)
 e = atualizador.estado()
@@ -204,7 +204,7 @@ atualizador._grava(estado="pronta", nova={"versao": "0.0.1", "tamanho": 1})
 caso("versao mais velha no estado: a tela nao mostra", a.publico()["nova"] is None and a.publico()["estado"] == "parado")
 
 if sys.platform == "win32":
-    print("--- o reabre, com o PowerShell de verdade (no lugar de abrir a Vitrola, ele grava uma marca)")
+    print("--- o reabre, com o PowerShell de verdade (no lugar de abrir o Ritmelli, ele grava uma marca)")
     import subprocess
     import time
     popen = subprocess.Popen
@@ -216,9 +216,9 @@ if sys.platform == "win32":
         subprocess.Popen = popen
     args, kw = capturado[0]
     marca = tmp / "reabriu.txt"
-    exe = str(atualizador.pastas.APP / "vitrola.exe")
+    exe = str(atualizador.pastas.APP / "ritmelli.exe")
     trocado = args[-1].replace(f"Start-Process -FilePath '{exe}'", f"Set-Content -LiteralPath '{marca}' -Value ok")
-    caso("no fim, abre a Vitrola da pasta do app", trocado != args[-1])
+    caso("no fim, abre o Ritmelli da pasta do app", trocado != args[-1])
     atualizador._grava(estado="pronta")
     try:
         popen([*args[:-1], trocado], **kw)
@@ -250,12 +250,12 @@ atualizador.ao_sair(reabrir=True)
 caso("Instalar agora: dispara e reabre", len(disparos) == 2 and reaberturas == [1])
 
 print("--- a tarefa e os processos")
-x = ET.fromstring(atualizador.TAREFA_XML.split("\n", 1)[1].replace("{exe}", r"C:\Program Files\Vitrola\vitrola.exe"))
+x = ET.fromstring(atualizador.TAREFA_XML.split("\n", 1)[1].replace("{exe}", r"C:\Program Files\Ritmelli\ritmelli.exe"))
 ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
-caso("a tarefa roda como SYSTEM o vitrola.exe com --atualizador",
+caso("a tarefa roda como SYSTEM o ritmelli.exe com --atualizador",
      x.find(".//t:Principal/t:UserId", ns).text == "S-1-5-18"
      and x.find(".//t:Exec/t:Arguments", ns).text == "--atualizador"
-     and x.find(".//t:Exec/t:Command", ns).text.endswith("vitrola.exe"))
+     and x.find(".//t:Exec/t:Command", ns).text.endswith("ritmelli.exe"))
 caso("no logon e de 4 em 4 horas, uma por vez", x.find(".//t:LogonTrigger", ns) is not None
      and x.find(".//t:Repetition/t:Interval", ns).text == "PT4H"
      and x.find(".//t:MultipleInstancesPolicy", ns).text == "IgnoreNew")

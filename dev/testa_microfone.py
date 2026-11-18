@@ -29,7 +29,7 @@ from unittest import mock
 
 import numpy as np
 
-os.environ["MICFX_MAPA"] = f"Local\\VitrolaTesteMicFx-{os.getpid()}"  # nunca o anel do filtro de verdade
+os.environ["MICFX_MAPA"] = f"Local\\RitmelliTesteMicFx-{os.getpid()}"  # nunca o anel do filtro de verdade
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import engine as eng  # noqa: E402
 import fx  # noqa: E402
@@ -59,7 +59,7 @@ class AnelFalso:
 
     def __init__(self):
         AnelFalso.conta += 1  # um nome por anel: o do teste anterior pode seguir aberto
-        injeta.MAPA = f"Local\\VitrolaTesteMicFx-{os.getpid()}-{AnelFalso.conta}"
+        injeta.MAPA = f"Local\\RitmelliTesteMicFx-{os.getpid()}-{AnelFalso.conta}"
         n = ctypes.sizeof(injeta.Anel)
         self.h = k32.CreateFileMappingW(wintypes.HANDLE(-1), None, 0x04, 0, n, injeta.MAPA)
         assert self.h, ctypes.get_last_error()

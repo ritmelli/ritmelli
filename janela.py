@@ -1,10 +1,10 @@
-"""A janela da Vitrola (#99): a interface numa janela propria do Windows, pelo WebView2 (o motor do Edge, que ja vem no
+"""A janela do Ritmelli (#99): a interface numa janela propria do Windows, pelo WebView2 (o motor do Edge, que ja vem no
 Windows 11 e no Windows 10 atualizado), no lugar da aba do navegador. A janela tem icone e nome na barra de tarefas,
 e fechar (o X) desliga tudo, como o botao Desligar da interface: o servidor, o motor de audio e a musica no microfone.
-Abrir a Vitrola de novo com ela ligada traz esta janela para a frente (o vitrola.py pede pelo /api/janela/foco).
+Abrir o Ritmelli de novo com ele ligado traz esta janela para a frente (o ritmelli.py pede pelo /api/janela/foco).
 
 Sem o WebView2 (ou sem o pywebview, rodando pelo codigo), nada muda: o servidor abre a pagina no navegador, como
-antes. O tamanho e a posicao da janela ficam em %LOCALAPPDATA%\\Vitrola\\janela.json, e o que a pagina guarda (o
+antes. O tamanho e a posicao da janela ficam em %LOCALAPPDATA%\\Ritmelli\\janela.json, e o que a pagina guarda (o
 localStorage) na pasta janela\\ ao lado, para nao se perder ao fechar."""
 import ctypes
 import json
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pastas
 
-TITULO = "Vitrola"
+TITULO = "Ritmelli"
 ESTADO = pastas.DADOS / "janela.json"
 GUARDA = pastas.DADOS / "janela"  # o que o WebView2 guarda da pagina (localStorage, cookies)
 LARGURA, ALTURA = 1280, 820
@@ -49,9 +49,9 @@ def tem_webview2():
 
 
 def _icone():
-    """O .ico do app: no executavel, o pywebview ja pega o icone do vitrola.exe; pelo codigo, sem isto, sairia o do
+    """O .ico do app: no executavel, o pywebview ja pega o icone do ritmelli.exe; pelo codigo, sem isto, sairia o do
     Python."""
-    for p in (pastas.APP / "_internal" / "icone" / "vitrola.ico", Path(__file__).resolve().parent / "icone" / "vitrola.ico"):
+    for p in (pastas.APP / "_internal" / "icone" / "ritmelli.ico", Path(__file__).resolve().parent / "icone" / "ritmelli.ico"):
         if p.is_file():
             return str(p)
     return None
@@ -179,8 +179,8 @@ class Janela:
                 print(f"window: {ex}", flush=True)
 
     def foco(self):
-        """A Vitrola foi aberta de novo: esta janela vem para a frente, restaurada se estava minimizada. Quem abriu
-        chamou o AllowSetForegroundWindow antes (vitrola.py): sem isso, o Windows so pisca o botao na barra."""
+        """O Ritmelli foi aberto de novo: esta janela vem para a frente, restaurada se estava minimizada. Quem abriu
+        chamou o AllowSetForegroundWindow antes (ritmelli.py): sem isso, o Windows so pisca o botao na barra."""
         if self.w is None:
             return False
         try:

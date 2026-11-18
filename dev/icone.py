@@ -1,11 +1,11 @@
-"""O icone da Vitrola em pixel art: o toca-discos do tema visto de cima (caixa de madeira, tampo claro,
+"""O icone do Ritmelli em pixel art: o toca-discos do tema visto de cima (caixa de madeira, tampo claro,
 disco com as marcas do prato e o braco), desenhado por codigo em cada tamanho.
 
     python dev/icone.py [--instalador <pasta>]
 
-Grava em icone/ o vitrola.ico (o do exe, do setup e da aba do navegador: 16, 20, 24, 32, 40, 48, 64 e
+Grava em icone/ o ritmelli.ico (o do exe, do setup e da aba do navegador: 16, 20, 24, 32, 40, 48, 64 e
 256 px) e o toque.png (180 px, de fundo cheio: o icone da tela inicial do celular). Com --instalador,
-grava tambem as imagens do assistente do Inno Setup nessa pasta (a instalador/ do vitrola-server).
+grava tambem as imagens do assistente do Inno Setup nessa pasta (a instalador/ do ritmelli-server).
 
 Pixel art reduzida pelo Windows fica borrada: por isso cada tamanho do .ico e desenhado no proprio
 tamanho, e o de 256 e o de 64 ampliado 4 vezes. O de 16 e a mao (MAPA_16): por formula, nele o braco e
@@ -297,7 +297,7 @@ def main():
     ap.add_argument("--instalador", type=Path, help="grava as imagens do assistente do Inno Setup nesta pasta")
     args = ap.parse_args()
     SAIDA.mkdir(exist_ok=True)
-    grava_ico(SAIDA / "vitrola.ico", [16, 20, 24, 32, 40, 48, 64, 256])
+    grava_ico(SAIDA / "ritmelli.ico", [16, 20, 24, 32, 40, 48, 64, 256])
     # o iOS corta os cantos e poe preto no transparente: fundo cheio, com folga em volta
     com_fundo(toca_discos(48), 180, 180, 3).convert("RGB").save(SAIDA / "toque.png", optimize=True)
     if args.instalador:

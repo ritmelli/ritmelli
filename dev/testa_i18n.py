@@ -126,6 +126,9 @@ def confere_tema(tema, servidor, efeitos):
         for k, v in textos.items():
             if not v:
                 falha(f"{tema.name}: {k} is empty in {lingua}")
+            # a barra solta no fim (o "\ " cujo espaco um editor cortou) vira barra na tela: o espaco no fim se escreve \u0020
+            if v.endswith("\\"):
+                falha(f"{tema.name}: {k} in {lingua} ends with a lone backslash (write a trailing space as \\u0020)")
             if k in base and params(v) != params(base[k]):
                 falha(f"{tema.name}: {k} has params {sorted(params(v))} in {lingua}, "
                       f"{sorted(params(base[k]))} in {i18n.RESERVA}")
@@ -334,7 +337,7 @@ def confere_modulo():
                                      ("pt_BR", "en-US", "pt_BR"), ("en", "pt-BR", "en"), ("xx", "pt-BR", "pt_BR")]:
         if (got := i18n.escolher(pedida, accept)) != esperado:
             falha(f"escolher({pedida!r}, {accept!r}) = {got!r}, expected {esperado!r}")
-    for valor, lingua, esperado in [("Vitrola", "pt_BR", "Vitrola"), ({"en": "a", "pt_BR": "b"}, "pt_BR", "b"),
+    for valor, lingua, esperado in [("Ritmelli", "pt_BR", "Ritmelli"), ({"en": "a", "pt_BR": "b"}, "pt_BR", "b"),
                                     ({"en": "a", "pt_BR": "b"}, "en", "a"), ({"en": "a"}, "pt_BR", "a"),
                                     ({"pt_BR": "b"}, "en", "b"), ({}, "en", "")]:
         if (got := i18n.na_lingua(valor, lingua)) != esperado:

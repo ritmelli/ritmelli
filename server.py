@@ -1,4 +1,4 @@
-"""Vitrola: servidor local que toca audio no microfone do jogo (pelo filtro da Vitrola, em microfone/) e
+"""Ritmelli: servidor local que toca audio no microfone do jogo (pelo filtro do Ritmelli, em microfone/) e
 serve as interfaces de themes/. Contrato da API: API.md. Atende a propria maquina e o celular
 pareado na rede de casa (para mexer enquanto joga; ver o pareamento.py). No PC, a interface abre numa janela
 propria (janela.py), ou no navegador sem o WebView2; --no-browser nao abre nenhuma das duas.
@@ -80,7 +80,7 @@ pool = ThreadPoolExecutor(4)
 # o caminho do pedido falado (09/11): a /api/musica, o endereco adiantado e o canal que o endereco rapido nao traz, fora
 # do pool dos downloads (o download segura a thread dele inteiro: com 3 ou 4 baixando, o adiantado esperava ate um
 # acabar e o disco ficava carregando; revisao da r04)
-pool_rapido = ThreadPoolExecutor(8, thread_name_prefix="vitrola-rapido")
+pool_rapido = ThreadPoolExecutor(8, thread_name_prefix="ritmelli-rapido")
 # o canal que o endereco rapido nao traz sai so depois disso, com limite curto: ele so aparece na tela, e na hora em que
 # o disco comeca ele tomava um processo de reserva de um "nao, toca Y" logo atras (revisao da r07)
 CANAL_DEPOIS_S = 3.0
@@ -104,7 +104,7 @@ VIVOS = 2
 # nada (09/11, placar: ~0,7 s igual, o tempo e do YouTube Music) e ocupava o vivo na hora do endereco
 VIVO_OPS = ("stream",)
 # o aviso de que alguem comecou a falar (POST /api/aquece, a mina na fala que abre; r14): o YouTube fecha a conexao
-# parada aos ~240 s, e com a vitrola parada o primeiro pedido pagava um TLS na busca e outro no endereco, em serie
+# parada aos ~240 s, e com o Ritmelli parado o primeiro pedido pagava um TLS na busca e outro no endereco, em serie
 # (~0,11 s cada), e o vivo vazio ainda o YoutubeDL novo. Fora.prepara renova o que esta parado ha mais disso e ja
 # abre o vivo vazio. None desliga
 AQUECE_OCIOSA_S = 180.0
@@ -141,11 +141,11 @@ def nome_da_musica(titulo, inteiro=False):
 
 
 def auxiliar(modo):
-    """O comando de um processo auxiliar (--yt, --andamento; ver o vitrola.py): no app congelado, o proprio
+    """O comando de um processo auxiliar (--yt, --andamento; ver o ritmelli.py): no app congelado, o proprio
     executavel; no codigo, o mesmo caminho pelo python."""
     if getattr(sys, "frozen", False):
         return [sys.executable, modo]
-    return [sys.executable, str(HERE / "vitrola.py"), modo]
+    return [sys.executable, str(HERE / "ritmelli.py"), modo]
 
 
 class Fora:
@@ -984,8 +984,9 @@ class App:
                 else:
                     self.engine.stop()
                 return
-            self.engine.error = i18n.msg("server.player.streamRefused", "YouTube didn't release the audio to play "
-                                         "right away ({reason}). It plays as soon as it finishes downloading.",
+            self.engine.error = i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play "
+                                                                        "right away ({reason}). It will play as soon "
+                                                                        "as the download finishes.",
                                          reason=motivo)
             return
         yid = tr["youtube_id"] or info.get("id")
@@ -1803,11 +1804,11 @@ def j_err(m, status=400):
 
 
 def sem_disco():
-    return i18n.msg("server.library.missing", "That record isn't on the shelf anymore.")
+    return i18n.msg("server.library.missing", "That record is no longer on the shelf.")
 
 
 def fora_da_fila():
-    return i18n.msg("server.queue.gone", "That record already left the queue.")
+    return i18n.msg("server.queue.gone", "That record has already left the queue.")
 
 
 async def body(request):
@@ -1834,8 +1835,10 @@ def build(app_state):
         # pelo endereco de quem conectou: o Host quem pede escreve o que quiser
         return request.remote in ("127.0.0.1", "::1")
 
-    def com_chave(resp, chave):
+    def com_chave(resp, chave, velho=False):
         resp.set_cookie(par.COOKIE, chave, max_age=par.COOKIE_S, path="/", httponly=True, samesite="Strict")
+        if velho:  # o celular pareado antes da troca de nome: fica so o cookie novo
+            resp.del_cookie(par.COOKIE_VELHO, path="/")
         return resp
 
     @web.middleware
@@ -1854,17 +1857,17 @@ def build(app_state):
                 return web.Response(status=403, text="origin not allowed")
         celular = request.path.startswith("/api/") and not do_pc(request)
         if celular and request.path.startswith("/api/pareamento"):
-            return j_err(i18n.so_texto("The code and the connected devices can only be seen on the computer."), 403)
+            return j_err(i18n.so_texto("The connection code and connected phones can only be viewed on the computer."), 403)
         if celular and request.path.startswith("/api/atualizacao"):
-            return j_err(i18n.so_texto("The new version is installed on the PC."), 403)
+            return j_err(i18n.so_texto("New versions can only be installed from the computer."), 403)
         if celular and request.path.startswith("/api/metricas"):
-            return j_err(i18n.so_texto("Usage data and errors are only set on the PC."), 403)
+            return j_err(i18n.so_texto("Sending usage data and error reports can only be turned on or off on the computer."), 403)
         if celular and (request.method, request.path) not in livres:
-            chave = request.cookies.get(par.COOKIE)
+            chave = par.chave_do(request.cookies)
             if not A.celulares.confere(chave):
                 return web.json_response({
                     "ok": False, "parear": True, "desconectado": bool(chave),
-                    "error": i18n.msg("server.pair.required", "This phone isn't connected to Vitrola. On the "
+                    "error": i18n.msg("server.pair.required", "This phone isn't connected to Ritmelli. On the "
                                       "computer, click Phone and scan the QR code.")}, status=401)
         try:
             resp = await handler(request)
@@ -1875,7 +1878,8 @@ def build(app_state):
             A.metricas.erro(type(ex), ex, ex.__traceback__, f"api:{request.method} {rota}"[:80])
             raise
         if celular and request.path == "/api/state":
-            com_chave(resp, request.cookies[par.COOKIE])  # cada abertura do tema renova o prazo do cookie
+            # cada abertura do tema renova o prazo do cookie
+            com_chave(resp, par.chave_do(request.cookies), velho=par.COOKIE_VELHO in request.cookies)
         return resp
 
     r = web.RouteTableDef()
@@ -1891,7 +1895,7 @@ def build(app_state):
         # passaram pelo prato ou pela proxima, e o estado avisa quando uma fica pronta (visor.ondas)
         o = E.onda(request.match_info["iid"])
         if o is None:
-            return j_err(i18n.so_texto("This record's waveform hasn't been read yet."), 404)
+            return j_err(i18n.so_texto("This record's waveform isn't ready yet."), 404)
         return web.json_response(o)
 
     @r.get("/api/library")
@@ -1916,7 +1920,7 @@ def build(app_state):
         except ValueError:
             return j_err(i18n.so_texto("The n and start parameters must be numbers (n from 1 to 20)."))
         if not q:
-            return j_err(i18n.msg("server.search.empty", "Type what to search for or paste a YouTube link."))
+            return j_err(i18n.msg("server.search.empty", "Type what you want to search for, or paste a YouTube link."))
         try:
             res = await loop_().run_in_executor(pool, A.search, q, n, start)
         except Exception as ex:  # noqa: BLE001
@@ -1938,7 +1942,7 @@ def build(app_state):
         except ValueError:
             return j_err(i18n.so_texto("The n parameter must be a number from 1 to 20."))
         if not q:
-            return j_err(i18n.so_texto("Missing what to search for (q)."))
+            return j_err(i18n.so_texto("Missing search text (q)."))
         try:
             res = await loop_().run_in_executor(
                 pool_rapido, lambda: fora.pede("musica", q=q, n=n, limite=BUSCA_MUSICA_S))
@@ -1964,7 +1968,7 @@ def build(app_state):
         b = await body(request)
         target = (b.get("youtube_id") or b.get("url") or b.get("query") or "").strip()
         if not target:
-            return j_err(i18n.so_texto("Send a YouTube link, a video id or a search text."))
+            return j_err(i18n.so_texto("Send a YouTube link, a video ID, or search text."))
         m = YT_URL.search(target)
         yid = m.group(1) if m else (target if YT_ID.match(target) else None)
         it = A.lib.by_youtube(yid) if yid else None
@@ -2037,7 +2041,7 @@ def build(app_state):
         try:
             to = int(b.get("to"))
         except (TypeError, ValueError):
-            return j_err(i18n.so_texto("Missing the new position (to, from 0)."))
+            return j_err(i18n.so_texto("Missing the new position (to, starting at 0)."))
         if not A.mover_na_fila(b.get("qid"), to):
             return j_err(fora_da_fila(), 404)
         return j_ok()
@@ -2065,7 +2069,7 @@ def build(app_state):
     async def prev(_):
         feito = A.anterior()
         if not feito:
-            return j_err(i18n.msg("server.queue.noPrevious", "Nothing played before this record."), 409)
+            return j_err(i18n.msg("server.queue.noPrevious", "No record played before this one."), 409)
         return j_ok(did=feito)
 
     @r.post("/api/play")
@@ -2117,7 +2121,7 @@ def build(app_state):
     async def seek(request):
         b = await body(request)
         if "t" not in b:
-            return j_err(i18n.so_texto("Missing the time to jump to (t, in seconds)."))
+            return j_err(i18n.so_texto("Missing the position to seek to (t, in seconds)."))
         E.seek(float(b["t"]))
         return j_ok()
 
@@ -2188,8 +2192,10 @@ def build(app_state):
         except i18n.Recusa as ex:  # a nossa: o aparelho que sumiu
             return j_err(ex.msg)
         except Exception as ex:  # noqa: BLE001 - PortAudio fala ingles
-            return j_err(i18n.msg("server.devices.openFailed", "Couldn't open that device ({reason}). Switched back "
-                                  "to the previous one; check that it's free and connected.", reason=str(ex)[:160]))
+            return j_err(i18n.msg("server.devices.openFailed", "Ritmelli couldn't open that device ({reason}) and "
+                                                               "went back to the previous one. Make sure that device "
+                                                               "is connected and that no recording or audio editing "
+                                                               "program has taken exclusive control of it.", reason=str(ex)[:160]))
         A.save_cfg()
         return j_ok()
 
@@ -2201,7 +2207,7 @@ def build(app_state):
     @r.post("/api/boas-vindas")
     async def boas_vindas_vistas(request):
         if not do_pc(request):
-            return j_err(i18n.so_texto("The welcome is only on the PC."), 403)
+            return j_err(i18n.so_texto("The welcome screen is only available on the computer."), 403)
         A.boas_vindas_vistas()
         return j_ok()
 
@@ -2231,7 +2237,7 @@ def build(app_state):
         desliga()
         return j_ok()
 
-    # a Vitrola aberta de novo (o atalho clicado com ela ligada, vitrola.py): a janela dela vem para a frente
+    # o Ritmelli aberto de novo (o atalho clicado com ele ligado, ritmelli.py): a janela dele vem para a frente
     @r.post("/api/janela/foco")
     async def janela_foco(request):
         if not do_pc(request) or A.janela is None:
@@ -2251,7 +2257,7 @@ def build(app_state):
         if not isinstance(b.get("ligar"), bool):
             return j_err(i18n.so_texto("Missing the choice (ligar: true or false)."))
         if A.metricas.situacao() == "fora":
-            return j_err(i18n.so_texto("Usage data is off in this build."), 409)
+            return j_err(i18n.so_texto("Usage data and error reports are off in this build."), 409)
         await loop_().run_in_executor(pool, A.metricas.escolhe, b["ligar"])
         return web.json_response(A.metricas.publico())
 
@@ -2277,7 +2283,7 @@ def build(app_state):
         ok, motivo = await loop_().run_in_executor(pool, A.atualizacao.instalar)
         if not ok:
             return j_err(motivo, 409)
-        desliga()  # o instalador fecharia a Vitrola; saindo antes, nada fica no meio de uma gravacao
+        desliga()  # o instalador fecharia o Ritmelli; saindo antes, nada fica no meio de uma gravacao
         return j_ok()
 
     @r.get("/api/events")
@@ -2286,7 +2292,7 @@ def build(app_state):
                                            "Cache-Control": "no-cache"})
         await resp.prepare(request)
         last = {"state": None, "library": -1, "jobs": None}
-        chave = None if do_pc(request) else request.cookies.get(par.COOKIE)
+        chave = None if do_pc(request) else par.chave_do(request.cookies)
         if do_pc(request):
             A.atualizacao.ao_abrir()  # a pagina do PC abriu: consulta a versao nova, se faz tempo (atualizacao.py)
 
@@ -2329,10 +2335,11 @@ def build(app_state):
         chave, motivo = A.celulares.parear(codigo, nome)
         if chave is None:
             if motivo == "queimado":
-                return j_err(i18n.msg("server.pair.blocked", "Code blocked after too many wrong attempts. On the "
-                                      "computer, generate a new code."), 403)
+                return j_err(i18n.msg("server.pair.blocked", "Code blocked after too many incorrect attempts. On the "
+                                                             "computer, generate a new code."), 403)
             return j_err(i18n.msg("server.pair.invalid", "Invalid or expired code. Each code is valid for {minutes} "
-                                  "minutes and can be used only once. Check the code shown on the computer.",
+                                                         "minutes and can only be used once. Check the code shown on "
+                                                         "the computer.",
                                   minutes=par.CODIGO_S // 60), 403)
         print(f"phone: paired ({nome})", flush=True)
         return com_chave(j_ok(), chave)
@@ -2368,7 +2375,7 @@ def build(app_state):
     # ao salvar na tela inicial (o Android so com o <link> no tema)
     @r.get("/favicon.ico")
     async def favicon(_):
-        return web.FileResponse(HERE / "icone" / "vitrola.ico")
+        return web.FileResponse(HERE / "icone" / "ritmelli.ico")
 
     @r.get("/apple-touch-icon.png")
     async def icone_celular(_):
@@ -2477,14 +2484,14 @@ def main():
     ap.add_argument("--mock", action="store_true", help="no audio: fake clock, pretend downloads")
     ap.add_argument("--data-dir", default=str(LIB), help="where library.json and config.json live")
     ap.add_argument("--so-local", action="store_true", help="don't serve the home network (phone)")
-    ap.add_argument("--version", action="version", version=f"Vitrola {VERSAO}")
+    ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
     A = App(a.port, Path(a.data_dir), mock=a.mock)
     threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
     print(f"mic: {d['mic']} | headphones: {d['monitor'] or '-'}", flush=True)
     url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
-    print(f"Vitrola {VERSAO} at {url}{' (MOCK, no sound)' if a.mock else ''} | data in {pastas.DADOS}", flush=True)
+    print(f"Ritmelli {VERSAO} at {url}{' (MOCK, no sound)' if a.mock else ''} | data in {pastas.DADOS}", flush=True)
     # a janela propria (janela.py, #99), quando o WebView2 esta no PC; senao, a pagina no navegador, como antes.
     # --no-browser (a atualizacao reabrindo, os testes) nao abre nenhuma das duas
     if not a.no_browser:

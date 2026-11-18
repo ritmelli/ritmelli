@@ -1,7 +1,7 @@
-# Vitrola: contrato da API e do tema
+# Ritmelli: contrato da API e do tema
 
 O `server.py` toca áudio no microfone do jogo: o arquivo (e a voz da mina) vai para o filtro
-da Vitrola, que soma no microfone escolhido, dentro do áudio do Windows, e só o arquivo vai para
+do Ritmelli, que soma no microfone escolhido, dentro do áudio do Windows, e só o arquivo vai para
 o fone, para o usuário ouvir o som sem ouvir a própria voz. O jogo usa o mesmo microfone. A voz
 crua volta do filtro para o servidor (medidor, ouvir a própria voz): sem efeito ela segue no
 microfone; o efeito de voz roda no próprio filtro, sem atraso, e a voz com efeito volta para o
@@ -166,7 +166,7 @@ reconecta sozinho; mostre que está reconectando.
   o menor tanto de música que o anel teve desde que o áudio abriu (`null` antes do primeiro leitor),
   `secas` = quantas vezes ele estava vazio (o jogo ouviu um buraco), `volta_max_ms` = a maior demora
   da thread que escreve nele, `preparando` =
-  o microfone que o Windows está preparando para a Vitrola agora (a tarefa do instalador; o som
+  o microfone que o Windows está preparando para o Ritmelli agora (a tarefa do instalador; o som
   do PC some uns segundos), ou `null`; `efeito_no_filtro` = o efeito de voz ativo roda no filtro
   (sem atraso); `false` com efeito ligado = ele vai pelo servidor, com ~30 ms de atraso.
 
@@ -257,7 +257,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/metricas` | `{"ligar": bool}` | só no PC: a escolha de quem usa, que vale sobre a da página do instalador (fica no `config.json`); responde como o `GET`; com `"fora"`, 409 |
 | `GET /api/themes` | `?lang` (opcional) | `[{"slug","url","name","direction","blurb"}]`, cada texto na língua de quem pede (o `?lang=` ou o `Accept-Language`), quando o `meta.json` traz por língua |
 | `POST /api/shutdown` | - | desliga o servidor (a música para de tocar no microfone; a voz segue normal, sem efeito); a janela própria fecha junto |
-| `POST /api/janela/foco` | - | só no PC: traz a janela própria (`janela.py`) para a frente, restaurada se estava minimizada; 404 quando a Vitrola abriu no navegador (sem o WebView2, ou com `--no-browser`). É o que a Vitrola aberta de novo pede à que já está ligada |
+| `POST /api/janela/foco` | - | só no PC: traz a janela própria (`janela.py`) para a frente, restaurada se estava minimizada; 404 quando o Ritmelli abriu no navegador (sem o WebView2, ou com `--no-browser`). É o que o Ritmelli aberto de novo pede ao que já está ligado |
 | `GET /api/lan` | - | `{"url": endereço do PC na rede de casa, ou null}` |
 | `POST /api/parear` | `{"codigo": "482913"}` (espaço vale) | o celular manda o código que o PC mostra; certo, responde com o cookie da chave; errado, 403 com o motivo |
 | `GET /api/pareamento?caminho=/t/<slug>/` | - | só no PC: `{"url", "codigo", "vale_s", "queimado", "qr", "celulares"}` (ver "Celular: pareamento") |
@@ -266,7 +266,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho", "parcial"} ou null}`, e `"automatica": true` com a tarefa do Windows (ver "Versão nova"); `notas` é `{"pt_BR": [...], "en": [...]}`, as da versão em cada língua (a lista pode vir vazia: mostre a da outra) |
 | `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
 | `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
-| `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; automática, o servidor desliga, a tarefa instala e a Vitrola abre de novo; recusado ou ainda não baixado, 409 com o motivo |
+| `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; automática, o servidor desliga, a tarefa instala e o Ritmelli abre de novo; recusado ou ainda não baixado, 409 com o motivo |
 
 ## Celular: pareamento
 
@@ -296,8 +296,8 @@ vez, peça o `/api/state` para saber se é o 401.
 O app consulta o manifesto das versões uns 30 s depois de abrir e de 6 em 6 horas
 (`atualizacao.py`). Uma consulta que não chega ao manifesto (sem rede, tempo esgotado) se repete
 em 2, 5, 15, 30 e 60 minutos, antes de voltar às 6 horas. Sem a janela própria (no navegador),
-fechar a aba não fecha a Vitrola: por isso, a página do PC que abre de novo (o `GET /api/events` vindo do `127.0.0.1`) também
-consulta, se a última consulta tem mais de 5 minutos e nada está baixando. Só vale o manifesto assinado pela chave da Vitrola, e só para uma versão
+fechar a aba não fecha o Ritmelli: por isso, a página do PC que abre de novo (o `GET /api/events` vindo do `127.0.0.1`) também
+consulta, se a última consulta tem mais de 5 minutos e nada está baixando. Só vale o manifesto assinado pela chave do Ritmelli, e só para uma versão
 mais nova que a que está rodando. As versões ficam nas Releases do repo público
 `ritmelli/ritmelli-releases`. Pelo código (`python server.py`), nada é consultado e `ativa`
 vem `false`.
@@ -310,18 +310,18 @@ vem `false`.
   `POST /api/atualizacao/instalar`, `instalando`. Um download que para no meio continua sozinho
   de onde parou, ainda em `baixando`; ele só volta para `parado`, com a Mensagem do motivo em `erro`, depois
   de algumas tentativas seguidas sem avançar, ou quando o arquivo não confere.
-- O instalador roda em silêncio: o Windows pede a permissão, o instalador fecha a Vitrola, troca
-  a pasta dela e abre de novo, sem abrir outra aba. A página que estava aberta perde a conexão e
-  deve recarregar quando ela voltar, porque o tema também pode ter mudado.
+- O instalador roda em silêncio: o Windows pede a permissão, o instalador fecha o Ritmelli, troca
+  a pasta dele e abre de novo, sem abrir outra aba. A página que estava aberta perde a conexão e
+  deve recarregar quando ele voltar, porque o tema também pode ter mudado.
 - Do celular, os quatro respondem 403: a versão nova se instala no PC.
 
-**Automática** (`automatica: true`, o app instalado com a tarefa "Vitrola Atualiza" do Windows,
+**Automática** (`automatica: true`, o app instalado com a tarefa "Ritmelli Atualiza" do Windows,
 `atualizador.py`): quem consulta, baixa e instala é a tarefa, como SYSTEM, sem o pedido de
-permissão, no logon, de 4 em 4 horas e uns 30 s depois de o app abrir. Com a Vitrola aberta, a
-versão nova fica `pronta` e entra quando ela fecha. O app só mostra o estado da tarefa:
+permissão, no logon, de 4 em 4 horas e uns 30 s depois de o app abrir. Com o Ritmelli aberto, a
+versão nova fica `pronta` e entra quando ele fecha. O app só mostra o estado da tarefa:
 `consultar` e `baixar` pedem uma rodada a ela, e o `instalar` desliga o servidor para a tarefa
-instalar, e a Vitrola abre de novo sozinha. Sem nada para instalar agora, a tela pode só dizer
-que a versão entra quando a Vitrola fechar; o `erro` vem quando a tarefa parou (o instalador de
+instalar, e o Ritmelli abre de novo sozinho. Sem nada para instalar agora, a tela pode só dizer
+que a versão entra quando o Ritmelli fechar; o `erro` vem quando a tarefa parou (o instalador de
 uma versão falhou duas vezes, por exemplo, e ela espera a próxima).
 
 ## O que todo tema cobre
@@ -365,9 +365,9 @@ uma versão falhou duas vezes, por exemplo, e ela espera a próxima).
     conectados, cada um com o botão de desconectar; no celular sem pareamento (o 401), uma tela
     por cima de tudo pede o código e explica onde achar.
 13. Versão nova: no PC, com `atualizacao.nova`, um botão que mostra a versão, as notas (na língua da tela) e o
-    tamanho, baixa com o progresso e instala; enquanto o instalador roda, a tela diz que a
-    Vitrola volta sozinha, e a página recarrega quando ela volta. Automática, a versão já chega
-    baixada, e a tela diz que ela entra quando a Vitrola fechar.
+    tamanho, baixa com o progresso e instala; enquanto o instalador roda, a tela diz que o
+    Ritmelli volta sozinho, e a página recarrega quando ele volta. Automática, a versão já chega
+    baixada, e a tela diz que ela entra quando o Ritmelli fechar.
 
 Cabe em qualquer tela: no computador (largura de 900 px ou mais) a
 página nunca rola, nem de lado; o que não cabe rola por dentro de um painel (lista,

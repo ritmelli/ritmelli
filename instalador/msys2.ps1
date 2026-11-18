@@ -1,5 +1,5 @@
 # O MSYS2 dos compiladores (o ffmpeg\compila.ps1 e o bootloader\compila.ps1), numa pasta propria
-# (%LOCALAPPDATA%\vitrola-msys2): nada se instala no Windows e nada pede administrador. Para tirar, e so apagar a pasta.
+# (%LOCALAPPDATA%\ritmelli-msys2): nada se instala no Windows e nada pede administrador. Para tirar, e so apagar a pasta.
 # Uso, no comeco de outro script: . (Join-Path $PSScriptRoot '..\msys2.ps1'); PreparaMsys2 '<pacotes do pacman>'
 # Deixa $raiz (a pasta, onde o Baixa grava), $bash e $ucrt64 (a bin\ do gcc que gera exe do Windows).
 
@@ -7,7 +7,7 @@
 $MSYS2 = @{ Url = 'https://github.com/msys2/msys2-installer/releases/download/2026-09-27/msys2-base-x86_64-20260927.sfx.exe'
             Sha = 'AD336CCCFDA47758B5E15CDA993FBBA421115CB0B126697DAEF1EE4DFE37209F' }
 
-$raiz = Join-Path $env:LOCALAPPDATA 'vitrola-msys2'
+$raiz = Join-Path $env:LOCALAPPDATA 'ritmelli-msys2'
 $bash = Join-Path $raiz 'msys64\usr\bin\bash.exe'
 $ucrt64 = Join-Path $raiz 'msys64\ucrt64\bin'
 

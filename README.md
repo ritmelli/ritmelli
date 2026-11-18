@@ -1,190 +1,198 @@
-# Vitrola
+# Ritmelli
 
-Um toca-discos em pixel art que toca música e efeitos no microfone do jogo ou da chamada de
-voz, misturados com a sua voz, enquanto só a música toca no seu fone. No PC, a interface abre
-numa janela própria (o X desliga tudo); no celular, no navegador, pelo mesmo Wi-Fi. Serve para qualquer jogo ou programa de chamada
-que deixe escolher o microfone.
+O Ritmelli é um aplicativo para Windows 10 e 11 que reproduz músicas e efeitos sonoros no microfone usado no jogo ou na
+chamada de voz, junto com a sua voz, enquanto você ouve apenas a música no fone. A interface, um aparelho de som dos
+anos 70 em pixel art, abre em uma janela própria no computador (fechá-la desliga o aplicativo) e, no celular, no
+navegador, pela mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de chamada que permita escolher o microfone.
 
-## O que faz
+Para usar o Ritmelli, baixe o instalador da versão mais recente nas [Releases do
+ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases/releases/latest) (o arquivo terminado em
+`-setup.exe`): ele já inclui tudo de que o aplicativo precisa, e não é preciso instalar o Python nem outro programa.
 
-- Toca do YouTube (busca, stream na hora e download por trás) ou de arquivos baixados.
-- Fila com passagem de DJ: emenda no tempo, alinha as batidas e acerta o andamento de uma
-  música para a outra sem mudar o tom.
-- Automático: mantém a fila cheia com músicas parecidas, ordenadas pelo andamento.
-- Sons rápidos que tocam por cima da música.
-- Efeitos de voz: rádio de polícia, megafone, locutor de FM, eco, robô, voz grossa e outros.
+## Recursos
 
-## Requisitos
+- Reprodução de músicas do YouTube (busca, reprodução imediata por streaming e download em segundo plano) ou de
+  arquivos já baixados.
+- Fila com transições de DJ: as músicas se emendam no tempo certo, com as batidas alinhadas e o andamento ajustado de
+  uma para a outra, sem alterar o tom.
+- Tocar parecidas (modo Automático): mantém a fila sempre cheia com músicas parecidas, ordenadas pelo andamento e
+  marcadas como Automático.
+- Sons rápidos: efeitos sonoros curtos que tocam por cima da música.
+- Efeitos de voz: rádio de polícia, megafone, locutor de rádio FM, eco, robô, voz grave e outros.
 
-- Windows 10 ou 11 (o áudio sai por WASAPI e o volume do microfone vem do Core Audio).
-- Python 3.12 ou mais novo.
-- O som chega no jogo pelo filtro da Vitrola (`microfone/`), que soma a música no microfone de
-  verdade, dentro do áudio do Windows: o jogo e o Discord seguem com o microfone de sempre. O
-  instalador põe o filtro em todos os microfones do PC (o som do PC some por alguns segundos) e
-  cria a tarefa do Windows que prepara um microfone que aparecer depois, sem pedir permissão a
-  ninguém. No código-fonte, a DLL do filtro e a do motor de efeitos dele (`voz.dll`, para a voz
-  com efeito que sai pelo app) saem do `microfone\apo\compila.bat` (Visual Studio 2022 com C++);
-  o filtro entra nos microfones com `python microfone\microfone.py instala-todos`, num terminal
-  de administrador.
-- ffmpeg (com o ffprobe) no PATH, ou numa pasta `bin/` ao lado do código.
-- Node ou Deno: o yt-dlp precisa de um runtime de JavaScript para o YouTube entregar todos os
-  formatos. O Deno também vale na `bin/`.
+## Requisitos para executar a partir do código-fonte
 
-## Instalação
+- Windows 10 ou 11 (o áudio é reproduzido por WASAPI, e o volume do microfone é controlado pelo Core Audio).
+- Python 3.12 ou superior.
+- O som chega ao jogo pelo filtro de microfone do Ritmelli (`microfone/`), que mistura a música ao microfone real,
+  dentro do próprio sistema de áudio do Windows: o jogo e o Discord continuam usando o microfone de sempre. O
+  instalador adiciona o filtro a todos os microfones do computador (o som do computador é interrompido por alguns
+  segundos) e cria a tarefa do Windows que prepara os microfones conectados depois, sem pedir permissão ao usuário. No
+  código-fonte, a DLL do filtro e a do seu motor de efeitos (`voz.dll`, usada para a voz com efeito que sai pelo
+  aplicativo) são geradas pelo `microfone\apo\compila.bat` (Visual Studio 2022 com C++), e o filtro é adicionado aos
+  microfones com `python microfone\microfone.py instala-todos`, em um terminal de administrador.
+- ffmpeg (com o ffprobe) no PATH ou em uma pasta `bin/` ao lado do código.
+- Node ou Deno: o yt-dlp precisa de um runtime de JavaScript para que o YouTube disponibilize todos os formatos. O
+  Deno também pode ficar na pasta `bin/`.
+
+## Instalação a partir do código-fonte
 
 ```powershell
 python -m pip install -r requirements.txt
 ```
 
-O modelo de batida (`modelos/compasso.onnx`, ~83 MB) já vem no repositório. Ele sai do
-`dev/exporta_compasso.py`; sem ele tudo funciona, mas a passagem no tempo acerta menos (só
+O modelo de detecção de batidas (`modelos/compasso.onnx`, cerca de 83 MB) já está incluído no repositório e é gerado
+pelo `dev/exporta_compasso.py`. Sem ele, tudo funciona, mas as transições acertam o tempo com menos precisão (apenas
 com o detector em numpy).
 
 ## Uso
 
 ```powershell
-.\soundboard.ps1 start    # liga e abre a galeria
-.\soundboard.ps1 status   # diz se está ligado, o que toca e o microfone/fone em uso
-.\soundboard.ps1 stop     # a música para de tocar no microfone
+.\soundboard.ps1 start    # inicia o servidor e abre a galeria
+.\soundboard.ps1 status   # informa se está em execução, o que está tocando e o microfone e o fone em uso
+.\soundboard.ps1 stop     # para a música no microfone
 ```
 
-- No jogo e no Discord, use o mesmo microfone escolhido na Vitrola: o filtro só age nele. A voz
-  crua volta do filtro para a Vitrola (o medidor, o ouvir a própria voz, a mina): sem efeito,
-  ela segue direto no microfone; o efeito de voz roda no próprio filtro, sem atraso; com a voz
-  cortada, a Vitrola põe a dela no lugar; e se a Vitrola cair o filtro devolve a voz original
-  sozinho em 1 s. No Discord,
-  use o perfil **Estúdio**, ou desligue o Krisp e a sensibilidade automática: com qualquer um
-  dos dois ligado a música chega picada ou não chega (medido de uma conta para outra em 13/11).
-- Microfone que apareceu depois da instalação (um fone USB novo): ao escolher ele, a Vitrola
-  roda a tarefa do instalador, e o som do PC some por alguns segundos enquanto o Windows o
+- No jogo e no Discord, use o mesmo microfone selecionado no Ritmelli, pois o filtro atua apenas nele. A voz original
+  volta do filtro para o Ritmelli (para o medidor, para a opção Ouvir minha voz e para a Mina DJ). Sem efeito de voz,
+  ela segue diretamente para o microfone. O efeito de voz é aplicado no próprio filtro, e alguns efeitos, como os que
+  mudam o tom, atrasam um pouco a voz (a interface mostra o atraso). Com a voz silenciada, só o que o Ritmelli toca
+  segue para o microfone. Se o Ritmelli parar de responder, o filtro restaura a voz original automaticamente em 1
+  segundo. No Discord, use o perfil de entrada **Estúdio** ou desative o Krisp e a sensibilidade automática: com
+  qualquer um dos dois ativado, a música chega cortada ou não chega.
+- Microfone conectado depois da instalação (por exemplo, um headset USB novo): ao selecioná-lo, o Ritmelli executa a
+  tarefa criada pelo instalador, e o som do computador é interrompido por alguns segundos enquanto o Windows o
   prepara.
-- Microfone e fone seguem o padrão do Windows, inclusive quando ele muda com o servidor
-  ligado. A escolha feita na interface fica gravada em
-  `%LOCALAPPDATA%\Vitrola\library\config.json`.
-- O microfone ou o fone escolhido que está desligado cai no padrão do Windows até voltar. Se
-  o padrão de gravação for um cabo virtual, entra o primeiro microfone de verdade.
-- Os dados de quem usa (áudio baixado, biblioteca, escolhas) moram em
-  `%LOCALAPPDATA%\Vitrola\library`, e os logs do servidor em
-  `%LOCALAPPDATA%\Vitrola\logs`.
-- Sem o `soundboard.ps1`: `python vitrola.py` (aceita os mesmos argumentos do `server.py`).
-- A versão: `python vitrola.py --version`.
-- **No celular**, no mesmo Wi-Fi: no PC, o botão Celular da interface mostra um QR. Aponte a
-  câmera do celular para ele, ou abra o endereço que aparece ao lado e digite o código. O
-  celular fica conectado até ser desconectado na mesma tela do PC. Sem esse pareamento, outro
-  aparelho do Wi-Fi abre a página, mas não mexe em nada. A conversa entre o celular e o PC
-  não é criptografada (HTTP): use na rede de casa, não em Wi-Fi aberta de café ou hotel.
-  `server.py --so-local` atende só o PC.
-- Para mexer na interface sem som: `python server.py --mock --port 8801 --data-dir <pasta>`.
+- O microfone e o fone seguem o padrão do Windows, inclusive quando ele muda com o servidor em execução. A escolha
+  feita na interface fica salva em `%LOCALAPPDATA%\Ritmelli\library\config.json`.
+- Se o microfone ou o fone selecionado estiver desconectado, o Ritmelli usa o padrão do Windows até que ele volte. Se
+  o dispositivo de gravação padrão for um cabo virtual, é usado o primeiro microfone físico.
+- Os dados do usuário (os áudios baixados, a prateleira e as escolhas) ficam em `%LOCALAPPDATA%\Ritmelli\library`, e os
+  logs do servidor, em `%LOCALAPPDATA%\Ritmelli\logs`. Até a versão 0.4.1, o aplicativo se chamava Vitrola: na
+  atualização, os dados de `%LOCALAPPDATA%\Vitrola`, as escolhas e o celular conectado são migrados automaticamente para
+  o Ritmelli, sem nenhuma perda (a pasta de dados pelo `pastas.py`, ao abrir o aplicativo, e o resto pelo `migra.py`, no
+  instalador).
+- Sem o `soundboard.ps1`: `python ritmelli.py` (aceita os mesmos argumentos do `server.py`).
+- Para ver a versão: `python ritmelli.py --version`.
+- **No celular**, na mesma rede Wi-Fi: no computador, o botão Celular da interface exibe um QR code. Aponte a câmera do
+  celular para ele ou abra o endereço exibido ao lado e digite o código. O celular permanece conectado até ser
+  desconectado na mesma tela do computador. Sem o código, outro aparelho da rede consegue abrir a página, mas não
+  consegue alterar nada. A comunicação entre o celular e o computador não é criptografada (HTTP): use esse recurso na
+  rede de casa, e não em redes Wi-Fi públicas, como as de cafés ou hotéis. Com `server.py --so-local`, o servidor atende
+  apenas o próprio computador.
+- Para trabalhar na interface sem áudio: `python server.py --mock --port 8801 --data-dir <pasta>`.
 
 ## Executável
 
-O `vitrola.spec` gera o `vitrola.exe` pelo PyInstaller, num ambiente só com as dependências
-do app:
+O `ritmelli.spec` gera o `ritmelli.exe` com o PyInstaller, em um ambiente que contém apenas as dependências do
+aplicativo:
 
 ```powershell
 python -m venv .venv-build
 .venv-build\Scripts\python -m pip install -r requirements.txt pyinstaller
-.venv-build\Scripts\pyinstaller --noconfirm vitrola.spec
+.venv-build\Scripts\pyinstaller --noconfirm ritmelli.spec
 ```
 
-Sai em `dist\vitrola\` (o `vitrola.exe` e a `_internal\`). O ffmpeg, o ffprobe e o Deno não
-vão junto: copie para `dist\vitrola\bin\` (cada build apaga a pasta). Sem console, os logs
-ficam em `%LOCALAPPDATA%\Vitrola\logs`, e o `soundboard.ps1 stop` desliga o exe também.
+O resultado fica em `dist\ritmelli\` (o `ritmelli.exe` e a pasta `_internal\`). O ffmpeg, o ffprobe e o Deno não são
+incluídos: copie-os para `dist\ritmelli\bin\` (cada build apaga a pasta). Sem console, os logs ficam em
+`%LOCALAPPDATA%\Ritmelli\logs`, e o `soundboard.ps1 stop` também encerra o executável.
 
 ## Como montar o instalador
 
-O setup que se baixa nas versões publicadas sai daqui, pelo `instalador\monta.ps1`: ele congela
-o app pelo `vitrola.spec`, junta o ffmpeg, o ffprobe e o Deno e compila o `instalador\vitrola.iss`
-pelo Inno Setup. Precisa de Windows, Python 3.12 e Inno Setup 6.
+O instalador disponibilizado nas versões publicadas é gerado pelo `instalador\monta.ps1`: o script empacota o
+aplicativo pelo `ritmelli.spec`, adiciona o ffmpeg, o ffprobe e o Deno e compila o `instalador\ritmelli.iss` com o Inno
+Setup. São necessários Windows, Python 3.12 e Inno Setup 6.
 
 ```powershell
-instalador\monta.ps1                              # sai em instalador\saida\Vitrola-<versão>-setup.exe
-instalador\monta.ps1 -Anterior <manifest.json>    # e a atualização parcial desde aquela versão
+instalador\monta.ps1                              # gera instalador\saida\Ritmelli-<versão>-setup.exe
+instalador\monta.ps1 -Anterior <manifest.json>    # gera também a atualização parcial a partir daquela versão
 ```
 
-- As versões das bibliotecas ficam travadas em `instalador\travas.txt` (o yt-dlp sempre vai o
-  mais novo, porque o YouTube quebra o velho).
-- O ffmpeg só de áudio (`instalador\ffmpeg\`) e o bootloader do PyInstaller
-  (`instalador\bootloader\`) são compilados por nós: os scripts estão ao lado dos executáveis, e
-  o `FONTE.txt` de cada um diz de onde veio a fonte e como foi compilado.
-- A atualização parcial (só o que mudou) sai do `instalador\atualizacao\parcial.py`, e o manifesto
-  que o app confere, do `publica.py` da mesma pasta.
-- O instalador cria a tarefa "Vitrola Atualiza" do Windows (`atualizador.py`): ela roda como
-  SYSTEM, no logon e de 4 em 4 horas, e instala a versão nova em silêncio, sem o pedido de
-  permissão, com a Vitrola fechada. Com ela aberta, a versão fica baixada e entra quando ela fecha.
-- A esteira `.github/workflows/monta.yml` faz o mesmo numa máquina Windows do GitHub e testa o
-  setup, a parcial e a atualização automática numa máquina limpa.
+- As versões das bibliotecas ficam fixadas em `instalador\travas.txt` (exceto o yt-dlp, que é sempre incluído na
+  versão mais recente, porque as mudanças do YouTube costumam quebrar as versões antigas).
+- O ffmpeg somente de áudio (`instalador\ffmpeg\`) e o bootloader do PyInstaller (`instalador\bootloader\`) são
+  compilados pela equipe: os scripts ficam ao lado dos executáveis, e o `FONTE.txt` de cada um informa a origem do
+  código-fonte e como ele foi compilado.
+- A atualização parcial (apenas o que mudou) é gerada pelo `instalador\atualizacao\parcial.py`, e o manifesto que o
+  aplicativo consulta, pelo `publica.py` da mesma pasta.
+- O instalador cria a tarefa "Ritmelli Atualiza" do Windows (`atualizador.py`), que é executada como SYSTEM no logon e
+  a cada 4 horas e instala a nova versão em segundo plano, sem pedido de permissão, quando o Ritmelli está fechado. Se
+  ele estiver aberto, a nova versão fica baixada e é instalada quando ele for fechado.
+- O pipeline `.github/workflows/monta.yml` faz o mesmo em uma máquina Windows do GitHub e testa o instalador, a
+  atualização parcial e a atualização automática em uma máquina limpa.
 
 ## Versões e código-fonte
 
 As versões publicadas ficam nas Releases do
-[ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases), de onde o app
-instalado baixa a atualização. Cada uma tem aqui a tag com o número dela (`v0.3.6`, por exemplo):
-o código do app e o que monta o instalador daquela versão.
+[ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases), de onde o aplicativo instalado baixa as
+atualizações. Cada versão tem neste repositório uma tag com o seu número (por exemplo, `v0.3.6`), com o código do
+aplicativo e do instalador daquela versão.
 
 ## Code signing policy
 
 Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
 [SignPath Foundation](https://signpath.org/).
 
-A política de assinatura de código da Vitrola. Até a SignPath Foundation aprovar o projeto, as
-versões saem sem assinatura.
+Política de assinatura de código do Ritmelli. Até que a SignPath Foundation aprove o projeto, as versões são
+publicadas sem assinatura.
 
-- **Quem escreve e revisa:** os [membros da organização](https://github.com/orgs/ritmelli/people).
-  Mudança de quem não é da equipe só entra revisada por um membro.
-- **Quem aprova cada assinatura:** os [donos da organização](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
-- **O que é assinado:** o `vitrola.exe`, o setup e a atualização parcial, montados pela esteira
-  deste repositório (`.github/workflows/monta.yml`) numa máquina do GitHub, a partir deste código.
-  O ffmpeg, o ffprobe e o Deno vão dentro do setup como saem dos projetos deles, sem a nossa
-  assinatura.
+- **Desenvolvimento e revisão:** os [membros da organização](https://github.com/orgs/ritmelli/people). Contribuições
+  de pessoas de fora da equipe só são incorporadas após a revisão de um membro.
+- **Aprovação de cada assinatura:** os
+  [proprietários da organização](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
+- **O que é assinado:** o `ritmelli.exe`, o instalador e a atualização parcial, gerados pelo pipeline deste repositório
+  (`.github/workflows/monta.yml`) em uma máquina do GitHub, a partir deste código. O Deno é incluído no instalador
+  exatamente como o projeto dele o distribui, e o ffmpeg e o ffprobe são compilados pela equipe somente com os recursos
+  de áudio (`instalador\ffmpeg\`); nenhum dos três leva a assinatura do Ritmelli.
 
 Committers and reviewers: [members](https://github.com/orgs/ritmelli/people). Approvers:
 [owners](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
 
 ## Privacidade
 
-A busca, o stream e o download de música vão para o YouTube e o YouTube Music, quando você pede.
-Ao abrir, a Vitrola consulta no GitHub se existe versão nova (baixa o manifesto público das
-versões; nada seu vai junto). O celular pareado conversa direto com o PC, na sua rede. Se você
-deixar, ela envia dados anônimos de uso e os erros (`metricas.py`), sem nome, música, busca nem
-voz: o que vai, para onde e como desligar está na [política de privacidade](PRIVACIDADE.md),
-que também aparece no instalador.
+A busca, a reprodução e o download de músicas acessam o YouTube e o YouTube Music, a seu pedido. O Ritmelli consulta no
+GitHub o manifesto público das versões e, se houver uma nova versão, baixa a atualização, sem enviar nenhum dado seu. O
+celular conectado se comunica diretamente com o computador, na sua rede. Se você permitir, o Ritmelli envia dados
+anônimos de uso e relatórios de erro (`metricas.py`), sem nome, músicas, buscas ou voz. O que é enviado, para onde e
+como desativar o envio estão descritos na [política de privacidade](PRIVACIDADE.md), que também é exibida durante a
+instalação.
 
-Privacy policy: [PRIVACIDADE.md](PRIVACIDADE.md#vitrola-privacy-policy). Usage data and errors
-are described there, shown during installation, and can be turned off in the installer and in
-the app.
+Privacy policy: [PRIVACIDADE.md](PRIVACIDADE.md#ritmelli-privacy-policy). It is shown during installation and describes
+the anonymous usage data and error reports, which can be turned off in the installer and in the app.
 
 ## Estrutura
 
-| Arquivo | O que é |
+| Arquivo | Descrição |
 | --- | --- |
-| `vitrola.py` | o ponto de entrada (o mesmo do executável): o servidor e os processos auxiliares |
-| `janela.py` | a janela própria do PC, pelo WebView2 (sem ele, o navegador) |
-| `vitrola.spec` | a receita do executável (PyInstaller) |
-| `server.py` | servidor aiohttp: API, eventos (SSE), fila, Automático, busca e download |
-| `engine.py` | motor de áudio: mistura, dois decks, passagem de DJ |
-| `batida.py`, `compasso.py`, `andamento.py` | andamento, grade de batidas e o 1 do compasso |
-| `fx.py` | efeitos de voz |
-| `versao.py` | a versão do app |
-| `atualizacao.py`, `atualizador.py` | a versão nova: o que a tela mostra, e a tarefa do Windows que baixa e instala sozinha |
-| `metricas.py` | os dados anônimos de uso (PostHog) e os erros (Sentry), só com a escolha de quem usa: a lista do que vai e a política no [PRIVACIDADE.md](PRIVACIDADE.md) |
-| `i18n.py` | os textos da interface em cada língua: lê os `.properties` do tema e põe na página; e a mensagem que o servidor manda para a tela traduzir |
-| `pastas.py` | onde moram os dados de quem usa, e onde o app acha o ffmpeg, o ffprobe e o Deno |
-| `pareamento.py` | o código e o QR do celular, e os celulares conectados |
-| `yt_fora.py` | YouTube (yt-dlp e ytmusicapi) num processo à parte |
-| `winvol.py` | volume do microfone no Windows |
-| `microfone/` | o filtro de microfone: a DLL que o Windows carrega (`apo/`), o anel com ela nos dois sentidos (`injeta.py`: a música vai, a voz crua volta) e quem pendura e tira o filtro (`microfone.py`, que o instalador roda) |
-| `themes/vitrola/` | a interface |
-| `gallery/` | a página inicial, que lista os temas (o `index.html`), com os textos dela nas duas línguas (o `i18n/`) |
-| `icone/` | o ícone do app (o exe, o instalador, a aba do navegador e o celular), desenhado pelo `dev/icone.py` |
-| `dev/` | ferramentas de desenvolvimento: prints, medição no celular, geração do pixel art |
-| `instalador/` | o setup: `monta.ps1`, `vitrola.iss`, ffmpeg, bootloader, a atualização parcial e os avisos de licença |
-| `.github/workflows/monta.yml` | a esteira que monta e testa o setup |
+| `ritmelli.py` | o ponto de entrada (o mesmo do executável): o servidor e os processos auxiliares |
+| `janela.py` | a janela própria do aplicativo no computador, pelo WebView2 (sem ele, o navegador) |
+| `ritmelli.spec` | a configuração do executável (PyInstaller) |
+| `server.py` | o servidor aiohttp: a API, os eventos (SSE), a fila, o modo Automático, a busca e o download |
+| `engine.py` | o motor de áudio: a mixagem, os dois decks e as transições de DJ |
+| `batida.py`, `compasso.py`, `andamento.py` | o andamento, a grade de batidas e o primeiro tempo do compasso |
+| `fx.py` | os efeitos de voz |
+| `versao.py` | a versão do aplicativo |
+| `atualizacao.py`, `atualizador.py` | as novas versões: o que a interface exibe e a tarefa do Windows que baixa e instala as atualizações |
+| `metricas.py` | os dados anônimos de uso (PostHog) e os relatórios de erro (Sentry), enviados somente com a permissão do usuário: a lista do que é enviado e a política estão no [PRIVACIDADE.md](PRIVACIDADE.md) |
+| `i18n.py` | os textos da interface em cada idioma: lê os `.properties` do tema e os aplica à página, e monta as mensagens que o servidor envia para a interface traduzir |
+| `pastas.py` | onde ficam os dados do usuário e onde o aplicativo localiza o ffmpeg, o ffprobe e o Deno |
+| `pareamento.py` | o código e o QR code do celular e a lista de celulares conectados |
+| `yt_fora.py` | o acesso ao YouTube (yt-dlp e ytmusicapi), em um processo separado |
+| `winvol.py` | o volume do microfone no Windows |
+| `microfone/` | o filtro de microfone: a DLL que o Windows carrega (`apo/`), o canal de comunicação com ela nos dois sentidos (`injeta.py`: a música vai, a voz original volta) e o programa que adiciona e remove o filtro (`microfone.py`, executado pelo instalador) |
+| `migra.py` | a troca de nome de Vitrola para Ritmelli no computador de quem já tinha o aplicativo: as entradas no Registro, as tarefas do Windows e a pasta de instalação de antes |
+| `themes/vitrola/` | a interface: o tema Vitrola, um aparelho de som dos anos 70 |
+| `gallery/` | a página inicial, que lista os temas (`index.html`), com os textos nos dois idiomas (`i18n/`) |
+| `icone/` | o ícone do aplicativo (executável, instalador, aba do navegador e celular), gerado pelo `dev/icone.py` |
+| `dev/` | as ferramentas de desenvolvimento: as capturas de tela, as medições no celular e a geração do pixel art |
+| `instalador/` | o instalador: `monta.ps1`, `ritmelli.iss`, ffmpeg, bootloader, a atualização parcial e os textos de licença |
+| `.github/workflows/monta.yml` | o pipeline que monta e testa o instalador |
 
-O funcionamento de cada peça está em [docs/ARQUITETURA.md](docs/ARQUITETURA.md), e o contrato
-entre o servidor e a interface em [API.md](API.md).
+O funcionamento de cada componente está descrito em [docs/ARQUITETURA.md](docs/ARQUITETURA.md), e o contrato entre o
+servidor e a interface, em [API.md](API.md).
 
 ## Licença
 
-[GPLv3](LICENSE). As fontes da interface são SIL OFL 1.1 (`themes/vitrola/fonts/`), e o modelo de
-batidas (`modelos/compasso.onnx`, exportado do beat_this) é MIT (`modelos/LICENSE-beat_this.txt`).
+[GPLv3](LICENSE). As fontes da interface estão sob a licença SIL OFL 1.1 (`themes/vitrola/fonts/`), e o modelo de
+detecção de batidas (`modelos/compasso.onnx`, exportado do beat_this) está sob a licença MIT
+(`modelos/LICENSE-beat_this.txt`).
