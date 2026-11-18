@@ -100,7 +100,9 @@ class Janela:
     def abre(self, ao_fechar):
         import webview
         e = _le_estado()
-        self.maximizada = e.get("maximizada", False)
+        # a primeira vez, maximizada: a mesa de DJ (as duas pickups numa tela so) so monta com a pagina a partir de
+        # 1400 px de largura (o mqUnica do tema); nos 1280 de antes ela caia no layout estreito, o de navegador pequeno
+        self.maximizada = e.get("maximizada", True)
         self.w = webview.create_window(TITULO, self.url, width=e.get("largura", LARGURA), height=e.get("altura", ALTURA),
                                        x=e.get("x"), y=e.get("y"), min_size=MINIMO, maximized=self.maximizada,
                                        background_color=FUNDO, text_select=True, zoomable=True)
