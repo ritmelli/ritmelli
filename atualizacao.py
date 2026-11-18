@@ -361,7 +361,8 @@ class Atualizacao:
                 if isinstance(e, Recusado):
                     self.erro, self.falhas = _recusado(e), 0
                 else:
-                    self.erro = i18n.msg("server.update.checkFailed", "Couldn't check for a new version.")
+                    self.erro = i18n.msg("server.update.checkFailed", "Couldn't check for a new version. Ritmelli "
+                                                                      "will try again later.")
                     self.falhas += 1
             print(f"update: {e}", flush=True)
             return self.nova is not None

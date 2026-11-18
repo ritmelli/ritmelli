@@ -5,9 +5,9 @@ chamada de voz, junto com a sua voz, enquanto você ouve apenas a música no fon
 anos 70 em pixel art, abre em uma janela própria no computador (fechá-la desliga o aplicativo) e, no celular, no
 navegador, pela mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de chamada que permita escolher o microfone.
 
-Para usar o Ritmelli, baixe o instalador da versão mais recente nas
-[Releases do ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases/releases/latest) (o arquivo
-terminado em `-setup.exe`): ele já inclui tudo de que o aplicativo precisa, sem Python.
+Para usar o Ritmelli, baixe o instalador da versão mais recente nas [Releases do
+ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases/releases/latest) (o arquivo terminado em
+`-setup.exe`): ele já inclui tudo de que o aplicativo precisa, e não é preciso instalar o Python nem outro programa.
 
 ## Recursos
 
@@ -70,7 +70,8 @@ com o detector em numpy).
 - Os dados do usuário (os áudios baixados, a prateleira e as escolhas) ficam em `%LOCALAPPDATA%\Ritmelli\library`, e os
   logs do servidor, em `%LOCALAPPDATA%\Ritmelli\logs`. Até a versão 0.4.1, o aplicativo se chamava Vitrola: na
   atualização, os dados de `%LOCALAPPDATA%\Vitrola`, as escolhas e o celular conectado são migrados automaticamente para
-  o Ritmelli, sem nenhuma perda (`migra.py`).
+  o Ritmelli, sem nenhuma perda (a pasta de dados pelo `pastas.py`, ao abrir o aplicativo, e o resto pelo `migra.py`, no
+  instalador).
 - Sem o `soundboard.ps1`: `python ritmelli.py` (aceita os mesmos argumentos do `server.py`).
 - Para ver a versão: `python ritmelli.py --version`.
 - **No celular**, na mesma rede Wi-Fi: no computador, o botão Celular da interface exibe um QR code. Aponte a câmera do
@@ -166,24 +167,24 @@ the anonymous usage data and error reports, which can be turned off in the insta
 | `ritmelli.py` | o ponto de entrada (o mesmo do executável): o servidor e os processos auxiliares |
 | `janela.py` | a janela própria do aplicativo no computador, pelo WebView2 (sem ele, o navegador) |
 | `ritmelli.spec` | a configuração do executável (PyInstaller) |
-| `server.py` | servidor aiohttp: API, eventos (SSE), fila, modo Automático, busca e download |
+| `server.py` | o servidor aiohttp: a API, os eventos (SSE), a fila, o modo Automático, a busca e o download |
 | `engine.py` | o motor de áudio: a mixagem, os dois decks e as transições de DJ |
 | `batida.py`, `compasso.py`, `andamento.py` | o andamento, a grade de batidas e o primeiro tempo do compasso |
-| `fx.py` | efeitos de voz |
+| `fx.py` | os efeitos de voz |
 | `versao.py` | a versão do aplicativo |
 | `atualizacao.py`, `atualizador.py` | as novas versões: o que a interface exibe e a tarefa do Windows que baixa e instala as atualizações |
 | `metricas.py` | os dados anônimos de uso (PostHog) e os relatórios de erro (Sentry), enviados somente com a permissão do usuário: a lista do que é enviado e a política estão no [PRIVACIDADE.md](PRIVACIDADE.md) |
 | `i18n.py` | os textos da interface em cada idioma: lê os `.properties` do tema e os aplica à página, e monta as mensagens que o servidor envia para a interface traduzir |
 | `pastas.py` | onde ficam os dados do usuário e onde o aplicativo localiza o ffmpeg, o ffprobe e o Deno |
 | `pareamento.py` | o código e o QR code do celular e a lista de celulares conectados |
-| `yt_fora.py` | YouTube (yt-dlp e ytmusicapi) em um processo separado |
-| `winvol.py` | volume do microfone no Windows |
+| `yt_fora.py` | o acesso ao YouTube (yt-dlp e ytmusicapi), em um processo separado |
+| `winvol.py` | o volume do microfone no Windows |
 | `microfone/` | o filtro de microfone: a DLL que o Windows carrega (`apo/`), o canal de comunicação com ela nos dois sentidos (`injeta.py`: a música vai, a voz original volta) e o programa que adiciona e remove o filtro (`microfone.py`, executado pelo instalador) |
 | `migra.py` | a troca de nome de Vitrola para Ritmelli no computador de quem já tinha o aplicativo: as entradas no Registro, as tarefas do Windows e a pasta de instalação de antes |
 | `themes/vitrola/` | a interface: o tema Vitrola, um aparelho de som dos anos 70 |
 | `gallery/` | a página inicial, que lista os temas (`index.html`), com os textos nos dois idiomas (`i18n/`) |
 | `icone/` | o ícone do aplicativo (executável, instalador, aba do navegador e celular), gerado pelo `dev/icone.py` |
-| `dev/` | ferramentas de desenvolvimento: capturas de tela, medições no celular e geração do pixel art |
+| `dev/` | as ferramentas de desenvolvimento: as capturas de tela, as medições no celular e a geração do pixel art |
 | `instalador/` | o instalador: `monta.ps1`, `ritmelli.iss`, ffmpeg, bootloader, a atualização parcial e os textos de licença |
 | `.github/workflows/monta.yml` | o pipeline que monta e testa o instalador |
 

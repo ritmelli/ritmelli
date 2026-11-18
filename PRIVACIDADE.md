@@ -3,9 +3,9 @@
 [English below](#ritmelli-privacy-policy)
 
 O Ritmelli é executado no seu computador. Ele acessa a internet em três situações: quando você busca, ouve ou baixa
-músicas do YouTube e do YouTube Music, a seu pedido; quando ele consulta no GitHub o manifesto público das versões e, se
-houver uma nova versão, baixa a atualização, sem enviar nenhum dado seu; e, se você permitir, quando ele envia **dados
-anônimos de uso e relatórios de erro**, conforme descrito abaixo.
+músicas do YouTube e do YouTube Music; quando ele consulta no GitHub o manifesto público das versões e, se houver uma
+nova versão, baixa a atualização, sem enviar nenhum dado seu; e, se você permitir, quando ele envia **dados anônimos de
+uso e relatórios de erro**, conforme descrito abaixo.
 
 ## Dados de uso e relatórios de erro
 
@@ -53,9 +53,9 @@ instalação (informando o código dela, que está no arquivo `%LOCALAPPDATA%\Ri
 # Ritmelli privacy policy
 
 Ritmelli runs on your computer. It connects to the internet in three situations: when you search for, listen to, or
-download music from YouTube and YouTube Music, at your request; when it checks the public release manifest on GitHub
-and, if there is a new version, downloads the update, without sending any of your data; and, if you allow it, when it
-sends **anonymous usage data and error reports**, as described below.
+download music from YouTube and YouTube Music; when it checks the public release manifest on GitHub and, if there is a
+new version, downloads the update, without sending any of your data; and, if you allow it, when it sends **anonymous
+usage data and error reports**, as described below.
 
 ## Usage data and error reports
 
