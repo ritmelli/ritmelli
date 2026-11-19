@@ -880,6 +880,7 @@ button.capa:active, button.capa.apertado { filter: brightness(.88); }
 .canal-faixa .salvar[hidden] { display: none; }
 .lista-fila { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .item-fila { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; align-items: center; border-radius: 8px; }
+.item-fila:has(> .salvar) { grid-template-columns: minmax(0, 1fr) 44px 44px 44px; }   /* (#53) o salvar antes do tirar */
 .item-fila.arrastando { position: relative; z-index: 2; }
 .tocar-fila {
   display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; min-width: 0;
@@ -2833,6 +2834,17 @@ body.mesa-dj .topo .marca .lampada.alerta { background-image: url("data:image/sv
    encosta no da alca */
 .fila.maleta .item-fila .tirar { transform: translateX(6px); }
 .fila.maleta .item-fila :is(.tirar, .alca) svg { filter: none; }
+/* (#53) o salvar na etiqueta creme, antes do x: a tinta da etiqueta, o visto e o anel num ambar escuro que aparece no
+   creme (o ambar e o creme da busca sumiam nele) */
+.fila.maleta.aberta .item-fila:has(> .salvar) { grid-template-columns: minmax(0, 1fr) 24px 20px 34px; }
+.fila.maleta .item-fila .salvar { z-index: 2; width: 100%; color: var(--tinta); }
+.fila.maleta .item-fila .salvar svg { width: 18px; height: 18px; }
+.fila.maleta .item-fila .salvar.salvo { color: #C77A23; }
+.fila.maleta .item-fila .salvar.erro { color: #B23A26; }
+.fila.maleta .item-fila .salvar .anel {
+  width: 18px; height: 18px; background: conic-gradient(#C77A23 var(--pr, 0%), rgba(42, 24, 18, .22) 0);
+  -webkit-mask: radial-gradient(circle, transparent 5.5px, #000 6px); mask: radial-gradient(circle, transparent 5.5px, #000 6px);
+}
 
 /* a frente (.maleta-pe): a beira grossa que abraca a boca da caixa, as cantoneiras da boca, os fechos e a alca */
 .fila.maleta .maleta-pe {
@@ -2873,7 +2885,7 @@ body.mesa-dj .topo .marca .lampada.alerta { background-image: url("data:image/sv
 }
 
 /* fechada: a tampa so com o proximo, encostada na frente */
-.fila.maleta:not(.aberta) :is(.item-fila:nth-child(n+2), .tirar, .alca, .tocar-fila .s) { display: none; }
+.fila.maleta:not(.aberta) :is(.item-fila:nth-child(n+2), .tirar, .alca, .salvar, .tocar-fila .s) { display: none; }
 .fila.maleta:not(.aberta) .item-fila { grid-template-columns: minmax(0, 1fr); }
 .fila.maleta:not(.aberta) .item-fila::before { right: 11px; }
 .fila.maleta:not(.aberta) .tocar-fila { padding-right: 18px; }
@@ -3977,6 +3989,15 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     position: absolute; z-index: 3; right: 6px; bottom: 9px; width: 20px; height: 24px; transform: none; border-radius: 0;
   }
   body.mesa-dj .fila-parede.maleta .item-fila .tirar svg { width: 15px; height: 15px; }
+  /* (#53) o salvar do lado do x, e o texto da etiqueta para antes dele */
+  body.mesa-dj .fila-parede.maleta .item-fila .salvar {
+    position: absolute; z-index: 3; right: 26px; bottom: 9px; width: 20px; height: 24px; border-radius: 0;
+  }
+  body.mesa-dj .fila-parede.maleta .item-fila .salvar svg { width: 16px; height: 16px; }
+  body.mesa-dj .fila-parede.maleta .item-fila .salvar .anel {
+    width: 15px; height: 15px; -webkit-mask: radial-gradient(circle, transparent 4.5px, #000 5px); mask: radial-gradient(circle, transparent 4.5px, #000 5px);
+  }
+  body.mesa-dj .fila-parede.maleta .item-fila:has(> .salvar) .tocar-fila .txt { right: 46px; }
   body.mesa-dj .fila-parede.maleta .item-fila .alca {
     position: absolute; z-index: 3; right: 4px; top: 4px; width: 22px; height: 18px; border-radius: 0; opacity: 0;
     color: #FBEFD9; background: #2B1B12; box-shadow: 0 0 0 2px var(--contorno);
@@ -4902,6 +4923,9 @@ const S = {
   buscaSeq: 0,
   jobAlvo: {},            // id do job -> youtube_id
   jobCorpo: {},           // id do job -> corpo do POST, para tentar de novo
+  vistoFora: new Set(),   // (#53) os discos (id do YouTube ou link) que o prato ou a fila mostrou fora da prateleira
+  libOk: false,           // (#53) a prateleira ja chegou do servidor
+  chegou: new Map(),      // (#53) o que cada download desta pagina trouxe: alvo -> id do item na prateleira
   segurando: {},          // slider sendo mexido: chave -> instante
   arrastandoSeek: false,
   rotuloId: undefined,
@@ -7706,6 +7730,44 @@ function jobDe(alvo) {
   // o servidor novo diz o alvo de cada download (inclusive os que a fila comecou); o antigo, so o mapa daqui
   return S.jobs.find(j => (S.jobAlvo[j.id] === alvo || j.alvo === alvo) && (j.status === 'running' || j.status === 'error'));
 }
+/* (#53) o salvar na prateleira do disco no prato e das linhas do A seguir: no que nao esta na prateleira (o do
+   Automatico, que so toca pelo stream, e o da busca ou da fila ainda baixando, ou que falhou) e, com o visto que tira de
+   novo, como na busca, no que chegou nela enquanto a pagina o mostrava. O que ja estava na prateleira fica sem: a fila
+   inteira com o visto so repetiria o que ela e.
+   O disco e o que o servidor baixa: o id do YouTube ou o link colado (de outro site, sem id do YouTube). O link que
+   chegou se acha pelo item que o download dele trouxe: o servidor tira o download terminado da lista em 20 s, e a pagina
+   guarda o que cada um trouxe (S.chegou) */
+const alvoDisco = x => (x && (x.youtube_id || x.url || x.alvo)) || null;
+function lembrarChegadas() {
+  for (const j of S.jobs) {   // na ordem do servidor: o download mais novo do mesmo disco (baixado de novo) vale
+    const a = S.jobAlvo[j.id] || j.alvo;
+    if (j.status !== 'done' || !j.item_id || !a) continue;
+    S.chegou.set(a, j.item_id);
+    // o disco do prato passa para o item da prateleira quando o arquivo chega (o id dele, do YouTube ou do site): o
+    // visto segue nele
+    if (S.vistoFora.has(a)) S.vistoFora.add(j.item_id);
+  }
+}
+function discoNaPrateleira(x) {
+  const a = alvoDisco(x), id = a && S.chegou.get(a);
+  return naPrateleira(x && x.youtube_id) || (id && S.lib.find(it => it.id === id)) || null;
+}
+function mostraSalvar(x) {
+  const a = alvoDisco(x);
+  if (!a) return false;
+  // so com a prateleira ja carregada: antes dela, todo disco parece fora (e ficaria com o visto ao chegar a lista)
+  if (!discoNaPrateleira(x)) { if (S.libOk) S.vistoFora.add(a); return true; }
+  return !!x.auto || S.vistoFora.has(a);
+}
+// o estado do salvar do disco (o do estadoSalvar, com o link colado e o que chegou pelo download dele)
+const estadoDisco = x => discoNaPrateleira(x) ? ['salvo', 0] : estadoSalvar(x.youtube_id, x.url || x.alvo);
+// o clique: como o da busca, e o que chegou sai da prateleira pelo item que o download trouxe
+function salvarDisco(x) {
+  const r = { youtube_id: x.youtube_id, link: x.youtube_id ? undefined : (x.url || x.alvo), title: x.title, channel: x.channel,
+              thumb: x.thumb, duration: x.duration };
+  const ja = discoNaPrateleira(x);
+  if (ja) tirarDaPrateleira(ja, r); else salvarResultado(r);
+}
 /* servidor com fila e stream (o 8799 antigo nao tem ate reiniciar): sem ele, nada de fila na tela */
 const temFila = () => !!(S.state && Array.isArray(S.state.queue));
 
@@ -8181,26 +8243,34 @@ function liFila(x) {
   tirar.setAttribute('aria-label', I18N.t('queue.removeItem', { title: x.title })); tirar.innerHTML = IC.tirar;
   const alca = el('button', 'alca'); alca.type = 'button'; alca.dataset.role = 'alca';
   alca.setAttribute('aria-label', I18N.t('queue.move', { title: x.title })); alca.innerHTML = IC.alca;
-  li.append(b, tirar, alca);
+  li.append(b);
+  if (mostraSalvar(x)) {   // (#53) o salvar da busca, antes do tirar
+    const sv = el('button', 'acao-res salvar'); sv.type = 'button'; sv.dataset.role = 'salvar';
+    const [estS, prS] = estadoDisco(x);
+    pintarSalvar(sv, estS, prS, x.title);
+    li.append(sv);
+  }
+  li.append(tirar, alca);
   return li;
 }
 /* servidor com o Automatico (o 8799 antigo nao tem ate reiniciar): sem ele, a chave some */
 const temAuto = () => !!(S.state && 'auto' in S.state);
-/* a parecida no prato: o ⊕ da busca para a prateleira (sem ele, ela toca so pelo stream e nao fica), na
-   linha do canal; o ✓ tira de novo, como na busca */
+/* o salvar do disco no prato, na linha do canal (o mostraSalvar: a parecida do Automatico, que sem ele toca so pelo
+   stream e nao fica, e o que ainda baixa ou acabou de chegar); o ✓ tira de novo, como na busca */
 function desenharAuto() {
   const tr = S.state && S.state.track, b = $('#b-guardar');
-  b.hidden = !(tr && tr.auto);
+  b.hidden = !mostraSalvar(tr);
   if (b.hidden) return;
-  const [est, pr] = estadoSalvar(tr.youtube_id);
+  const [est, pr] = estadoDisco(tr);
   const sig = [est, pr, tr.title].join('|');
   if (b._sig !== sig) { b._sig = sig; pintarSalvar(b, est, pr, tr.title); }
 }
 $('#b-guardar').addEventListener('click', () => {
   const tr = S.state && S.state.track;
-  if (tr && tr.youtube_id) salvarResultado({ youtube_id: tr.youtube_id, title: tr.title, channel: tr.channel, thumb: tr.thumb, duration: tr.duration });
+  if (tr && alvoDisco(tr)) salvarDisco(tr);
 });
 function desenharFila() {
+  lembrarChegadas();   // (#53) antes do salvar do prato e da fila: o que os downloads trouxeram
   desenharAuto();  // a linha do prato muda com o disco, os downloads e a prateleira, como a fila
   desenharMesa();  // a deixa e a primeira da fila
   const fila = temFila() ? S.state.queue : [];
@@ -8209,7 +8279,8 @@ function desenharFila() {
   fim.hidden = !auto;
   fim.setAttribute('aria-checked', ligado ? 'true' : 'false');
   // (07/11) a chegada do estado tambem conta: a fila vazia antes e depois dele tinha a mesma assinatura e o aviso nunca saia
-  const sig = (S.state ? '' : 'sem-estado|') + fila.map(x => [x.qid, x.title, estadoEntrada(x)].join('/')).join('|');
+  // (#53) e o salvar de cada uma: a parecida salva pelo ⊕ baixa num download que nao e o da entrada
+  const sig = (S.state ? '' : 'sem-estado|') + fila.map(x => [x.qid, x.title, estadoEntrada(x), mostraSalvar(x) && estadoDisco(x).join(':')].join('/')).join('|');
   if (sig === S.filaSig || S.arrastandoFila) return;
   S.filaSig = sig;
   // (07/11, pedido do dono) so com o estado na mao: no F5, antes dele chegar, a fila parecia vazia e o aviso aparecia no
@@ -8269,6 +8340,10 @@ for (const sec of document.querySelectorAll('.fila')) {
     const qid = li.dataset.qid;
     if (b.dataset.role === 'tocar-fila') api('POST', '/api/queue/play', { qid }).catch(err => avisar(err.message, true));
     else if (b.dataset.role === 'tirar' && (!e.detail || noDesenho(b))) api('DELETE', `/api/queue/${encodeURIComponent(qid)}`).catch(err => avisar(err.message, true));
+    else if (b.dataset.role === 'salvar') {   // (#53) como o da busca: baixa, ou tira da prateleira o que ja chegou
+      const x = (temFila() ? S.state.queue : []).find(q => q.qid === qid);
+      if (x) salvarDisco(x);
+    }
   });
   // teclado: as setas na alca sobem ou descem a entrada um lugar
   sec.addEventListener('keydown', e => {
@@ -8689,7 +8764,7 @@ function conectar() {
     desenharFaixa(); desenharReceptor(); desenharFila(); if (S.busca) atualizarResultados();
     desenharAtualizacao();
   });
-  es.addEventListener('library', e => { S.lib = ordenarLib(JSON.parse(e.data)); desenharPrateleira(); desenharFila(); if (S.busca) atualizarResultados(); });
+  es.addEventListener('library', e => { S.lib = ordenarLib(JSON.parse(e.data)); S.libOk = true; desenharPrateleira(); desenharFila(); if (S.busca) atualizarResultados(); });
   es.addEventListener('jobs', e => {
     const antes = new Map(S.jobs.map(j => [j.id, j.status]));
     S.jobs = JSON.parse(e.data);
@@ -9211,7 +9286,7 @@ if (location.hash === '#efeitos' && !celular()) abrirGaveta(true);
 function carregar() {
   Promise.all([api('GET', '/api/state'), api('GET', '/api/library'), api('GET', '/api/jobs')])
     .then(([st, lib, jobs]) => {
-      S.state = st; S.pos = st.pos || 0; S.levels = st.levels || S.levels; S.lib = ordenarLib(lib); S.jobs = jobs;
+      S.state = st; S.pos = st.pos || 0; S.levels = st.levels || S.levels; S.lib = ordenarLib(lib); S.libOk = true; S.jobs = jobs;
       online(true); desenharFaixa(); desenharReceptor(); desenharPrateleira(); desenharFila();
       boasVindasSePrecisar();
     })
@@ -9495,6 +9570,26 @@ const LETRA_PLACA = {
   const CH = { veio: cor(223, 216, 201), base: cor(227, 220, 205), risca: cor(220, 213, 197), risca2: cor(231, 225, 212), luz: cor(244, 239, 228), sombra: cor(196, 187, 170) };
   const TINTA = cor(42, 24, 18), CREME = cor(239, 230, 213), CREME_L = cor(252, 247, 236), CREME_S = cor(206, 192, 168);
   const AMBAR = [cor(255, 214, 110), cor(240, 170, 54), cor(178, 106, 28)];
+  // (#53) o salvar do disco no prato, na tela, no fim da linha do artista: o ⊕ da pagina em 9 celulas (o botao de verdade
+  // fica por baixo, apagado como o resto da tela, e e ele que pega o clique). O aro acende no sentido do relogio
+  // enquanto baixa; chegou, o disco ambar com o visto
+  const SV_TAM = 9, SV_ARO = ['...###...', '.##...##.', '.#.....#.', '#.......#', '#.......#', '#.......#', '.#.....#.', '.##...##.', '...###...'];
+  const svAng = ([x, y]) => (Math.atan2(x + .5 - 4.5, 4.5 - y - .5) + 2 * Math.PI) % (2 * Math.PI);
+  const SV_CELS = SV_ARO.flatMap((l, y) => [...l].map((c, x) => c === '#' ? [x, y] : null).filter(Boolean)).sort((a, b) => svAng(a) - svAng(b));
+  const SV_DENTRO = SV_ARO.flatMap((l, y) => { const a = l.indexOf('#'), b = l.lastIndexOf('#'); return [...l].map((c, x) => x > a && x < b ? [x, y] : null).filter(Boolean); })
+    .filter(([x, y]) => y > 0 && y < 8);
+  const SV_MAIS = [[4, 2], [4, 3], [2, 4], [3, 4], [4, 4], [5, 4], [6, 4], [4, 5], [4, 6]];
+  const SV_VISTO = [[2, 4], [3, 5], [4, 6], [5, 5], [6, 4], [7, 3]];
+  function salvarNaTela(P, b, x0, y0) {
+    const est = ['salvo', 'baixando', 'erro'].find(k => b.classList.contains(k)) || 'livre';
+    const n = est === 'baixando' ? Math.round(SV_CELS.length * (parseFloat(b.style.getPropertyValue('--pr')) || 0) / 100) : 0;
+    const APAGADO = cor(176, 160, 138), CLARO = cor(251, 239, 217);
+    const cels = SV_CELS.map(([x, y], i) => [x, y, est === 'salvo' ? AMBAR[2] : i < n ? AMBAR[1] : APAGADO]);
+    if (est === 'salvo') cels.push(...SV_DENTRO.map(([x, y]) => [x, y, AMBAR[1]]), ...SV_VISTO.map(([x, y]) => [x, y, cor(42, 24, 18)]));
+    else cels.push(...SV_MAIS.map(([x, y]) => [x, y, est === 'erro' ? cor(242, 115, 94) : est === 'baixando' ? cor(110, 98, 84) : CLARO]));
+    for (const [x, y] of cels) px(P, x0 + x, y0 + y + 1, O);   // a sombra de 1 celula, a das letras
+    for (const [x, y, c] of cels) px(P, x0 + x, y0 + y, c);
+  }
   // as dicas do prato vazio na forma curta que cabe na tela (a inteira segue no DOM, para o leitor de tela)
   const CURTAS = new Map([[I18N.t('deck.hint'), I18N.t('deck.screen.hint')], [I18N.t('deck.hintEmpty'), I18N.t('deck.screen.hintEmpty')],
                           [I18N.t('cue.emptyHint'), I18N.t('cue.screen.emptyHint')]]);
@@ -9765,7 +9860,7 @@ const LETRA_PLACA = {
     const q = s => deck.querySelector(s);
     d = { deck, cv, ctx: cv.getContext('2d'), tampo: q('.tampo'), prato: q('.prato'), gira: q('.giratorio'), braco: q('.braco'),
           rotulo: q('.rotulo'), faixa: q('.faixa'), letra: q('.deck-letra'), luz: q('.deck-luz'), luzT: q('.deck-luz-t'),
-          lamp: q('.deck-luz .lampada'), titulo: q('.titulo-faixa'), canal: q('.canal-faixa > span'), bpm: q('.deck-bpm'),
+          lamp: q('.deck-luz .lampada'), titulo: q('.titulo-faixa'), canal: q('.canal-faixa > span'), salvar: q('.canal-faixa .salvar'), bpm: q('.deck-bpm'),
           seek: q('.linha-tempo input[type=range]'), tempos: [...deck.querySelectorAll('.linha-tempo .tempo')],
           botoes: [...deck.querySelectorAll('.comandos button')],
           chaveE: '', chaveC: '', rot: NaN, th: NaN, lab: null, labChave: '' };
@@ -10012,7 +10107,9 @@ const LETRA_PLACA = {
       const art0 = (d.canal ? d.canal.textContent : '').trim();
       const art = CURTAS.has(art0) ? CURTAS.get(art0) : art0;
       let a2 = art;
-      const maxa = ix1 - 3 - (ix0 + 3);
+      // (#53) com o salvar no fim da linha, o artista para antes dele
+      const sv = !!d.salvar && !d.salvar.hidden;
+      const maxa = ix1 - 3 - (ix0 + 3) - (sv ? SV_TAM + 3 : 0);
       if (larg('f', a2) > maxa) {
         while (a2.length > 1 && larg('f', a2 + '...') > maxa) a2 = a2.slice(0, -1);
         const esp = a2.lastIndexOf(' ');
@@ -10020,6 +10117,7 @@ const LETRA_PLACA = {
         a2 = a2.trimEnd().replace(/[,.;:\-]+$/, '') + '...';
       }
       texto(P, 'f', a2, ix0 + 3, y1 + 10, cor(176, 160, 138), { sombra: O });
+      if (sv) salvarNaTela(P, d.salvar, ix1 - 3 - SV_TAM, y1 + 2);
       P.dim = 1;
       if (d.bpm && visivel(d.bpm)) {
         const v = (d.bpm.querySelector('b') || {}).textContent || '', pit = (d.bpm.querySelector('.bpm-pitch') || {}).textContent || '';
@@ -10400,6 +10498,7 @@ const LETRA_PLACA = {
       d.mqOff = t < 2 ? 0 : -Math.floor((t - 2) * vel) % mi.per;
     } else d.mqOff = 0;
     const sig = [d.titulo.textContent, d.mqOff, d.canal ? d.canal.textContent : '',
+                 d.salvar ? d.salvar.hidden + d.salvar.className + d.salvar.style.getPropertyValue('--pr') : '',
                  d.bpm ? d.bpm.textContent : '', d.luz ? d.luz.textContent + d.lamp.className + ((Date.now() / 450 | 0) % 2) : '',
                  d.tempos.map(t => t.textContent).join(), d.seek ? d.seek.value + '/' + d.seek.max + d.seek.disabled : '',
                  d.botoes.map(b => b.disabled + '' + b.matches(':active') + b.className + visivel(b)).join(), document.body.dataset.status,
