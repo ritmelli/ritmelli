@@ -18,10 +18,11 @@ O braco: o tema gira o .braco em volta do pivo (o anguloPara() da o angulo do su
 ao descanso). Desenhado reto e girado ele viraria um retangulo liso; por isso o desenho e o braco
 inteiro (contrapeso, tubo, cabeca com o levantador e a bola do pivo, cada um com o contorno, o bisel
 de luz e a sombra dura) ja inclinado, com o degrau na tela. Um degrau desenhado num angulo e girado
-muito longe dele vira serrote, entao sao seis desenhos (ANGULOS: o descanso e cinco no curso do
-disco no celular, 31 a 48 graus); o JS poe a faixa do angulo no data-desenho do #braco e o tema gira
+muito longe dele vira serrote, entao sao sete desenhos (ANGULOS: o descanso e seis no curso do
+disco, 27 a 48 graus); o JS poe a faixa do angulo no data-desenho do #braco e o tema gira
 o desenho de volta em volta do pivo, sobrando no maximo 2 graus. As medidas sao as do
-braco de sempre (em cqw do tampo), entao a conta do sulco nao muda.
+braco de sempre (em cqw do tampo). A conta do sulco (o anguloPara() do tema) poe na borda do disco a ponta da cabeca
+(8,8 cqw, dobrada 24 graus a 53,5 do pivo): mudando a cabeca aqui, mudar o G do tema junto.
 
 A base do braco e o descanso nao giram: degrau de verdade, cada um num pseudo que sai do elemento o
 tanto do contorno e da sombra.
@@ -47,9 +48,10 @@ from urllib.parse import quote
 
 from molduras import CONTORNO, TEMA
 
-# o descanso (reto no celular, o moverBraco()) e cinco no curso do disco, de 4 em 4 graus (o JS corta em
-# 15, 34, 38, 42 e 46): sobram no maximo 2 graus de giro; com 5, a alca fina da cabeca virava zigue-zague
-ANGULOS = {"repouso": 0, "a": 32, "b": 36, "c": 40, "d": 44, "e": 48}
+# o descanso (reto no celular, o moverBraco()) e seis no curso do disco, de 4 em 4 graus (o desenhoDoBraco() do tema
+# corta em 15, 30, 34, 38, 42 e 46): sobram no maximo 2 graus de giro; com 5, a alca fina da cabeca virava zigue-zague.
+# O "inicio" (#50): com a agulha na borda, a faixa comeca a 27 graus, longe demais do "a"
+ANGULOS = {"repouso": 0, "inicio": 28, "a": 32, "b": 36, "c": 40, "d": 44, "e": 48}
 CELULA_BRACO = .4           # cqw do tampo por celula
 SOMBRA_BRACO = (20, 8, 2, .24)
 VINIL = (22, 17, 15, 1)            # o contorno das pecas que ficam em cima do disco: some no preto, como no mock
