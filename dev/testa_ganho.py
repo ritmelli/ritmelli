@@ -217,8 +217,10 @@ class TestaMotor(unittest.TestCase):
             livre[max(0, i - D):i + int(0.2 * SR)] = False
         self.assertLess(float(np.max(np.abs(a[D:][livre] - ref[livre]))), 1e-5, "a baixa nao saiu com o ganho")
         self.assertLessEqual(float(np.max(np.abs(a))), 1.0 + 1e-6)
-        # em LUFS sobe quase o teto: o limitador segura os estalos (um forte a cada 0,7 s, o pior caso)
-        self.assertGreater(lufs(a[D:]) - lufs(y[:len(a) - D]), so.TETO - 1.0)
+        # em LUFS sobe quase o teto: o limitador segura os estalos (um forte a cada 0,7 s, o pior caso), e com o teto
+        # de +9 dB eles custam ~1,1 dB; musica de verdade perde bem menos (a Vanessa da Mata, a +8,2, limita mais de
+        # 1 dB em 1,8% do tempo)
+        self.assertGreater(lufs(a[D:]) - lufs(y[:len(a) - D]), so.TETO - 1.5)
         self.e.stop()
         tr, y = self.disco(musica(4, -8, picos=0.99), id="alta", lufs=-8.0)
         self.e.load(tr)
@@ -233,7 +235,7 @@ class TestaMotor(unittest.TestCase):
         self.e.load(tr)
         a = self.toca(100)
         self.e.volume_auto = False
-        b = self.toca(250)
+        b = self.toca(300)  # a rampa de 6 dB/s desce o teto todo em 1,5 s; o ultimo 1 s ja e o disco
         x = np.concatenate([a, b])
         k = (len(x) - D) // B * B
         rb = np.sqrt(np.mean(x[D:D + k].reshape(-1, B, 2) ** 2, axis=(1, 2)) /

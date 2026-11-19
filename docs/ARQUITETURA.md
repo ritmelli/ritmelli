@@ -15,7 +15,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   também, inteiro até 2 min: vários juntos, no volume da música,
   o repetido sai na hora (fica decodificado na memória), e o pausar e o parar calam todos.
   O volume automático (`sonoridade.py`) leva toda música a -11 LUFS, como o Spotify: a mais alta
-  desce até ele, e a mais baixa sobe, no máximo +6 dB, com um ganho por deck no misturador (rampa de 6 dB/s quando a medida chega com o
+  desce até ele, e a mais baixa sobe, no máximo +9 dB, com um ganho por deck no misturador (rampa de 6 dB/s quando a medida chega com o
   disco tocando, ou quando a chave muda) e um limitador com 2 ms de antecipação que só age no que
   o ganho acrescentou acima de 0 dBFS: a música que desce, mesmo a que decodifica acima de 0 dBFS (+3,6
   na The Real Slim Shady), nunca passa por ele, e todas saem 2 ms atrasadas, sempre. O arquivo se mede inteiro pelo

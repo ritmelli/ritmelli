@@ -30,7 +30,10 @@ PASSO = SR // 10  # 100 ms
 # limitador; na prateleira de 14/11 a mediana das musicas era -9,3 e o Sultans of Swing, a -14,1, limitava
 # acima de 3 dB 0,2% do tempo com -11 e 2,7% com -10)
 ALVO = -11.0
-TETO = 6.0  # dB: o mais que o ganho sobe (para descer, desce o quanto a musica estiver acima do ALVO)
+# dB: o mais que o ganho sobe, para descer desce o quanto a musica estiver acima do ALVO. Cobre ate -20 LUFS: a mais
+# baixa da prateleira de 18/11 (Vanessa da Mata, -19,2) sobe 8,2 dB, e o limitador corta mais de 1 dB em 1,8% do tempo
+# (menos que no Sultans of Swing); abaixo disso, a gravacao muito baixa (fala, chiado) para no teto
+TETO = 9.0
 LIMITE_ANTES = 96  # amostras (2 ms) que o limitador ve adiante
 LIMITE_VOLTA_S = 0.15  # o limitador volta de 6 dB de reducao a nenhuma em ~isso
 

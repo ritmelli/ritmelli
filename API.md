@@ -144,7 +144,7 @@ reconecta sozinho; mostre que está reconectando.
 - `mic_vol` = volume do microfone em uso nas configurações de som do Windows, 0 a 1 (o mesmo número de lá): o servidor grava no Windows e lê de volta, então mudar por lá também mexe na barra. O soundboard não tem ganho próprio de voz, e o valor não vai no `config.json` (quem guarda é o Windows).
 - `mic_mute` = voz cortada (o arquivo segue indo).
 - `volume_auto` = o volume automático, como no Spotify: a música mais alta que -11 LUFS desce até ele, e a mais
-  baixa sobe até ele, no máximo +6 dB, com um limitador que não deixa o que ela subiu passar de 0 dBFS. Ligado de
+  baixa sobe até ele, no máximo +9 dB, com um limitador que não deixa o que ela subiu passar de 0 dBFS. Ligado de
   fábrica; vai no `config.json`. `ganho_db` = quanto o disco do prato subiu (positivo) ou desceu (negativo) agora
   (0 = como veio; anda em rampa quando a medida
   chega com ele tocando, ou quando a chave muda). Servidor antigo não manda: sem eles, o tema esconde a chave.
