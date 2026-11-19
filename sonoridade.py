@@ -1,4 +1,4 @@
-"""A sonoridade de cada disco e o ganho automatico das musicas mais baixas.
+"""A sonoridade de cada disco e o ganho automatico que deixa as musicas num volume parecido.
 
 Medidor: o LUFS integrado (EBU R128, ITU-R BS.1770-4) do audio estereo a 48 kHz que o motor decodifica, aos pedacos:
 ponderacao K, blocos de 400 ms com passo de 100 ms, porta absoluta em -70 LUFS e relativa 10 LU abaixo da media. E a
@@ -6,9 +6,10 @@ medida do comeco do stream, que o leitor do motor vai passando bloco a bloco. O 
 ffmpeg (mede_arquivo), num processo a parte e abaixo do normal: o calculo no processo do servidor segura o interpretador
 que o audio usa (por isso o andamento tambem mede fora). Os dois batem em 0,05 LU (dev/testa_ganho.py).
 
-ganho_db: so sobe a musica mais baixa que o ALVO, ate o TETO.
+ganho_db: como no Spotify, nos dois sentidos: a musica mais alta que o ALVO desce ate ele, e a mais baixa sobe ate
+ele, no maximo o TETO.
 
-Limitador: o que o ganho acrescentou nao leva o pico acima de 0 dBFS. Antecipa LIMITE_ANTES amostras (a musica sai esse
+Limitador: o que o ganho acrescentou nao leva o pico acima de 0 dBFS (o ganho que desce nunca precisa dele). Antecipa LIMITE_ANTES amostras (a musica sai esse
 tanto atrasada, sempre, para o atraso nao mudar quando ele age): a reducao desce em rampa ate o pico e volta devagar.
 Disco sem ganho passa igual, mesmo o que ja decodifica acima de 0 dBFS (muita musica alta: +3,6 dBFS no The Real Slim
 Shady): o teto de cada amostra e o maior entre 0 dBFS e ela mesma sem o ganho.
@@ -25,11 +26,11 @@ SR = 48000
 K = np.array([[1.53512485958697, -2.69169618940638, 1.19839281085285, 1.0, -1.69065929318241, 0.73248077421585],
               [1.0, -2.0, 1.0, 1.0, -1.99004745483398, 0.99007225036621]])
 PASSO = SR // 10  # 100 ms
-# LUFS: a musica mais baixa sobe ate aqui (o alvo do modo "Alto" do Spotify, que tambem sobe a baixa com
+# LUFS: o volume de toda musica (o alvo do modo "Alto" do Spotify, que abaixa a alta e sobe a baixa com
 # limitador; na prateleira de 14/11 a mediana das musicas era -9,3 e o Sultans of Swing, a -14,1, limitava
 # acima de 3 dB 0,2% do tempo com -11 e 2,7% com -10)
 ALVO = -11.0
-TETO = 6.0  # dB: o mais que o ganho sobe
+TETO = 6.0  # dB: o mais que o ganho sobe (para descer, desce o quanto a musica estiver acima do ALVO)
 LIMITE_ANTES = 96  # amostras (2 ms) que o limitador ve adiante
 LIMITE_VOLTA_S = 0.15  # o limitador volta de 6 dB de reducao a nenhuma em ~isso
 
@@ -81,10 +82,10 @@ class Medidor:
 
 
 def ganho_db(lufs):
-    """O ganho do disco (dB): so a mais baixa que o ALVO sobe, ate o TETO; sem medida, nada."""
+    """O ganho do disco (dB): o que leva a musica ao ALVO, subindo no maximo o TETO; sem medida, nada."""
     if lufs is None:
         return 0.0
-    return float(min(TETO, max(0.0, ALVO - lufs)))
+    return float(min(TETO, ALVO - lufs))
 
 
 def mede_arquivo(path, ffmpeg="ffmpeg", criacao=0, startupinfo=None, limite_s=600):

@@ -4754,7 +4754,7 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       <span class="em-uso" id="dd-mon-uso"></span>
     </label>
     <div class="nivelar">
-      <button class="btn chave" id="b-nivelar" type="button" aria-pressed="false" aria-describedby="dd-nivelar"><span class="lampada" aria-hidden="true"></span>Volume automático</button>
+      <button class="btn chave" id="b-nivelar" type="button" aria-pressed="false" aria-describedby="dd-nivelar"><span class="lampada" aria-hidden="true"></span><span data-i18n="devices.autoVolume"></span></button>
       <span class="em-uso" id="dd-nivelar"></span>
     </div>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
@@ -5689,12 +5689,13 @@ function desenharReceptor() {
   $('#f-mon').closest('.fader').title = semFone ? I18N.t('mixer.noHeadphones') : '';
   $('label[for="f-mon"] small').textContent = semFone ? I18N.t('mixer.noHeadphonesShort') : '';
   ligarChave($('#b-cortar'), s.mic_mute);
-  // o volume automatico (no Microfone e fone): ligado, a musica mais baixa sobe ate perto das outras; diz quanto nesta
+  // o volume automatico (no Microfone e fone): ligado, a alta desce e a baixa sobe ate o mesmo volume; diz quanto nesta
   $('#b-nivelar').closest('.nivelar').hidden = !('volume_auto' in s);   // servidor antigo: sem a chave
   ligarChave($('#b-nivelar'), !!s.volume_auto);
-  $('#dd-nivelar').textContent = !s.volume_auto ? 'Desligado: cada música toca no volume em que veio.'
-    : 'As músicas mais baixas sobem até perto das outras, sem estourar.' +
-      (s.ganho_db > 0 ? ` A que está tocando subiu ${String(s.ganho_db).replace('.', ',')} dB.` : '');
+  const gdb = s.ganho_db || 0;
+  $('#dd-nivelar').textContent = !s.volume_auto ? I18N.t('devices.autoVolumeOff')
+    : I18N.t('devices.autoVolumeOn') + (Math.abs(gdb) < 0.05 ? ''
+      : ' ' + I18N.t(gdb > 0 ? 'devices.autoVolumeUp' : 'devices.autoVolumeDown', { db: I18N.num(Math.abs(gdb), 1) }));
   for (const mc of [$('#mini-cortar'), $('#palco-cortar')]) {   // o da barra e o do cabecalho do palco
     if (mc._cortada === !!s.mic_mute) continue;
     mc._cortada = !!s.mic_mute;

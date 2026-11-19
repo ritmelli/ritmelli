@@ -3,9 +3,9 @@ e o misturador do motor (Engine._mixa chamado na mao, como no dev/testa_microfon
 papel do stream do YouTube.
 
 Confere: a medida (LUFS integrado) bate com o caso de teste da EBU (seno de 1 kHz a -23 dBFS = -23 LUFS) e com o
-ebur128 do ffmpeg, igual em qualquer tamanho de pedaco; o ganho so sobe a mais baixa que o alvo, ate o teto; o
+ebur128 do ffmpeg, igual em qualquer tamanho de pedaco; o ganho leva ao alvo (a alta desce, a baixa sobe ate o teto); o
 limitador nunca deixa o que o ganho acrescentou passar de 0 dBFS, e o disco sem ganho sai igual, so atrasado (mesmo o
-que ja passa de 0 dBFS); no motor, a musica baixa sai com o ganho e o atraso do limitador, a alta sai igual, o desligar
+que ja passa de 0 dBFS); no motor, a musica baixa sai com o ganho e o atraso do limitador, a alta desce, o desligar
 desce em rampa, o arquivo sem medida e medido e guardado, o stream e estimado no comeco e medido inteiro no fim, e o eco
 da passagem leva o ganho do disco que saiu.
 
@@ -97,7 +97,8 @@ class TestaMedida(unittest.TestCase):
 
     def test_ganho(self):
         self.assertEqual(so.ganho_db(None), 0.0)
-        self.assertEqual(so.ganho_db(so.ALVO + 3), 0.0)  # a alta nao desce
+        self.assertAlmostEqual(so.ganho_db(so.ALVO + 3), -3.0)  # a alta desce ate o alvo, como no Spotify
+        self.assertAlmostEqual(so.ganho_db(so.ALVO + 9.5), -9.5)  # sem limite para descer
         self.assertAlmostEqual(so.ganho_db(so.ALVO - 2.5), 2.5)
         self.assertEqual(so.ganho_db(so.ALVO - 20), so.TETO)
 
@@ -204,7 +205,7 @@ class TestaMotor(unittest.TestCase):
         y = grava(p, x)
         return dict({"id": "d", "title": "disco", "path": str(p), "duration": len(x) / SR}, **kw), y
 
-    def test_baixa_sobe_alta_igual(self):
+    def test_baixa_sobe_alta_desce(self):
         tr, y = self.disco(musica(4, -24, picos=0.7), id="baixa", lufs=-24.0)
         self.e.load(tr)
         a = self.toca(300)
@@ -222,8 +223,10 @@ class TestaMotor(unittest.TestCase):
         tr, y = self.disco(musica(4, -8, picos=0.99), id="alta", lufs=-8.0)
         self.e.load(tr)
         a = self.toca(300)
-        self.assertEqual(self.e.snapshot()["ganho_db"], 0.0)
-        self.assertTrue(np.array_equal(a[D:], y[:len(a) - D]), "a alta mudou")
+        g = 10 ** (so.ganho_db(-8.0) / 20)
+        self.assertAlmostEqual(self.e.snapshot()["ganho_db"], so.ALVO + 8.0, places=1)
+        # a alta desce o ganho exato, sem o limitador mexer (nada passa de onde o disco ja ia)
+        self.assertLess(float(np.max(np.abs(a[D:] - y[:len(a) - D] * np.float32(g)))), 1e-6, "a alta nao desceu")
 
     def test_desligar_desce_em_rampa(self):
         tr, y = self.disco(musica(6, -24), id="baixa", lufs=-24.0)
