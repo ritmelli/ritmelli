@@ -8797,6 +8797,10 @@ function armarFora() {
   if (document.hidden || S.pareando) return;
   foraT = setTimeout(() => { if (!S.online && !document.hidden) mostrarFora(); }, S.desligado ? 0 : 2500);
 }
+// (#107) o celular que muda de rede com o cartao aberto (sai dos dados moveis, liga o Wi-Fi): o texto acompanha
+const redeMudou = () => { if (!$('#fora').hidden && !S.online && !S.desligado && !S.atualizando) mostrarFora(); };
+addEventListener('online', redeMudou); addEventListener('offline', redeMudou);
+if (navigator.connection) navigator.connection.addEventListener('change', redeMudou);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { clearTimeout(foraT); return; }
   if (S.desligado || S.pareando) return;
@@ -8826,6 +8830,14 @@ function mostrarFora() {
   if (S.desligado) {
     $('#fora-tt').textContent = I18N.t('offline.offTitle');
     I18N.rico($('#fora-p'), 'offline.offText');
+  } else if (!noPC()) {
+    // (#107) no celular, o que mais cai e o caminho ate o computador (o celular nos dados moveis, sem Wi-Fi, numa rede
+    // de convidados), e nao o Ritmelli: o cartao diz so o que se sabe, e o que o navegador conta da conexao (sem
+    // nenhuma; nos dados moveis, o Chrome do Android pela Network Information API)
+    const c = navigator.connection;
+    $('#fora-tt').textContent = I18N.t('offline.phone.title');
+    $('#fora-p').textContent = I18N.t(navigator.onLine === false ? 'offline.phone.noConnection'
+      : c && c.type === 'cellular' ? 'offline.phone.mobileData' : 'offline.phone.text');
   } else {
     $('#fora-tt').textContent = I18N.t(S.jaConectou ? 'offline.stopped' : 'offline.notResponding');
     I18N.rico($('#fora-p'), 'offline.downText', { folder: '%LOCALAPPDATA%\\Ritmelli\\logs' });
