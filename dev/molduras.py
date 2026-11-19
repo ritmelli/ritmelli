@@ -4,7 +4,7 @@ bisel e cantos em degrau, desenhados pixel a pixel e usados como border-image de
     python dev/molduras.py
 
 Grava as variaveis --mold-* no bloco entre "molduras:inicio" e "molduras:fim" do themes/vitrola/index.html e
-do gallery.html (a pagina inicial, que fica fora do tema e leva so as que usa).
+do gallery/index.html (a pagina inicial, que fica fora do tema e leva so as que usa).
 Cada moldura e um SVG pequeno (1 unidade = 1 ponto, shape-rendering crispEdges) com a quina
 inteira desenhada e o meio de cada lado esticado; a variavel ja leva o corte, a largura e o quanto a
 moldura sai para fora da caixa, entao no tema basta border-image: var(--mold-objeto).
@@ -38,7 +38,7 @@ from urllib.parse import quote
 
 RAIZ = Path(__file__).resolve().parent.parent
 TEMA = RAIZ / "themes" / "vitrola" / "index.html"
-GALERIA = RAIZ / "gallery.html"
+GALERIA = RAIZ / "gallery" / "index.html"
 NA_GALERIA = ("objeto", "objeto-apertado", "caixa")
 CONTORNO = (26, 11, 4, 1)          # #1A0B04, o --contorno do tema
 LUZ = (255, 236, 214)              # marfim quente: sobre aluminio clareia, sobre madeira vira o filete aceso
@@ -91,7 +91,7 @@ MOLDURAS = {
     "chapa": dict(sai=0, sombra=0, cor_sombra=None, cantos="ab", contorno_px=2, degrau=(4, 2), passo=2, faixas=[
         (2, 4, {"t": (255, 255, 255, .7), "l": (255, 255, 255, .7), "b": (255, 255, 255, .3), "r": (255, 255, 255, .3)}),
         (4, 5, {"b": (42, 24, 18, .16), "r": (42, 24, 18, .12)})]),
-    # etiquetas miudas (o selo 33/45 do toca-discos e o VITROLA do FX-12): contorno de 2 px por fora e
+    # etiquetas miudas (o selo 33/45 do toca-discos e o RITMELLI do FX-12): contorno de 2 px por fora e
     # a quina comida em 2 px
     "etiqueta": dict(sai=2, sombra=0, cor_sombra=None, cantos="ab", contorno_px=2, degrau=(2,), passo=2, faixas=[
         (2, 3, {"t": (255, 255, 255, .75), "l": (255, 255, 255, .75)}),

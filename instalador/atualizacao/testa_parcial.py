@@ -37,7 +37,7 @@ def sha(dados):
     return hashlib.sha256(dados).hexdigest()
 
 
-tmp = Path(tempfile.mkdtemp(prefix="vitrola-parcial-"))
+tmp = Path(tempfile.mkdtemp(prefix="ritmelli-parcial-"))
 chave = ECC.generate(curve="Ed25519")
 outra = ECC.generate(curve="Ed25519")
 pub = base64.b64encode(chave.public_key().export_key(format="raw")).decode()
@@ -47,10 +47,10 @@ arq_chave = tmp / "teste.key"
 arq_chave.write_text(base64.b64encode(chave.seed).decode() + "\n", encoding="ascii")
 
 # o build anterior, como o manifesto dele descreve, e o build novo
-antes = {"vitrola.exe": b"exe velho", "_internal/igual.dll": b"igual", "_internal/sai.pyd": b"so na anterior",
+antes = {"ritmelli.exe": b"exe velho", "_internal/igual.dll": b"igual", "_internal/sai.pyd": b"so na anterior",
          "_internal/{chave}/muda.txt": b"velho", "bin/ffmpeg.exe": b"ffmpeg"}
-dist, binf = tmp / "dist" / "vitrola", tmp / "bin"
-for c, d in {"vitrola.exe": b"exe novo", "_internal/igual.dll": b"igual", "_internal/{chave}/muda.txt": b"novo",
+dist, binf = tmp / "dist" / "ritmelli", tmp / "bin"
+for c, d in {"ritmelli.exe": b"exe novo", "_internal/igual.dll": b"igual", "_internal/{chave}/muda.txt": b"novo",
              "_internal/novo/entra.pyd": b"so na nova"}.items():
     (dist / c).parent.mkdir(parents=True, exist_ok=True)
     (dist / c).write_bytes(d)
@@ -77,12 +77,12 @@ cod, out = roda("parcial.py", "--anterior", ant, "--app-py", app_py, "--app", di
 caso("separa o que mudou", cod == 0, out)
 info = json.loads((saida / "parcial.json").read_text(encoding="utf-8")) if cod == 0 else {}
 caso("traz o que mudou e o que entrou, e nao o que ficou igual",
-     sorted(info.get("arquivos", [])) == ["_internal/novo/entra.pyd", "_internal/{chave}/muda.txt", "vitrola.exe"],
+     sorted(info.get("arquivos", [])) == ["_internal/novo/entra.pyd", "_internal/{chave}/muda.txt", "ritmelli.exe"],
      info)
 caso("apaga o que a nova nao tem", info.get("apaga") == ["_internal/sai.pyd"] and info.get("de") == "0.3.3", info)
 caso("os arquivos da parcial sao os do build novo, nos caminhos do app",
      (saida / "arquivos" / "_internal" / "{chave}" / "muda.txt").read_bytes() == b"novo"
-     and (saida / "arquivos" / "vitrola.exe").read_bytes() == b"exe novo"
+     and (saida / "arquivos" / "ritmelli.exe").read_bytes() == b"exe novo"
      and not (saida / "arquivos" / "_internal" / "igual.dll").exists() and not (saida / "arquivos" / "bin").exists())
 apaga = (saida / "apaga.iss").read_text(encoding="utf-8-sig")
 caso("o apaga.iss no formato do Inno", 'Type: files; Name: "{app}\\_internal\\sai.pyd"' in apaga, apaga)
@@ -94,10 +94,16 @@ caso("a { de um nome sai dobrada (no Inno, ela abre uma constante)",
      cod == 0 and 'Name: "{app}\\_internal\\{{chave}\\sai.txt"' in apaga, apaga)
 
 igual = manifesto_anterior(tmp / "ant-igual", {**{c: (dist / c).read_bytes() for c in
-                                                    ("vitrola.exe", "_internal/igual.dll", "_internal/{chave}/muda.txt",
+                                                    ("ritmelli.exe", "_internal/igual.dll", "_internal/{chave}/muda.txt",
                                                      "_internal/novo/entra.pyd")}, "bin/ffmpeg.exe": b"ffmpeg"})
 cod, out = roda("parcial.py", "--anterior", igual, "--app-py", app_py, "--app", dist, "--bin", binf, "--saida", saida)
 caso("nada mudou: sem o parcial.json", cod == 0 and not (saida / "parcial.json").exists() and "nada mudou" in out, out)
+
+# a anterior de antes da troca de nome (#58): o vitrola.exe no lugar do ritmelli.exe, e a parcial nao serve
+velha = manifesto_anterior(tmp / "ant-vitrola", {("vitrola.exe" if c == "ritmelli.exe" else c): d for c, d in antes.items()})
+cod, out = roda("parcial.py", "--anterior", velha, "--app-py", app_py, "--app", dist, "--bin", binf, "--saida", saida)
+caso("a anterior de antes da troca de nome: sem o parcial.json",
+     cod == 0 and not (saida / "parcial.json").exists() and "troca de nome" in out, out)
 
 for nome, pasta in (("o manifesto anterior mexido depois de assinado",
                      manifesto_anterior(tmp / "a1", antes, mexe=True)),
@@ -111,11 +117,11 @@ print("--- a parcial no publica.py")
 roda("parcial.py", "--anterior", ant, "--app-py", app_py, "--app", dist, "--bin", binf, "--saida", saida)
 saida_m = tmp / "saida"
 saida_m.mkdir()
-setup = saida_m / "Vitrola-0.3.4-setup.exe"
+setup = saida_m / "Ritmelli-0.3.4-setup.exe"
 setup.write_bytes(b"setup completo")
-parc = saida_m / "Vitrola-0.3.4-parcial.exe"
+parc = saida_m / "Ritmelli-0.3.4-parcial.exe"
 parc.write_bytes(b"setup parcial")
-url = "https://github.com/ritmelli/ritmelli-releases/releases/download/v0.3.4/Vitrola-0.3.4-setup.exe"
+url = "https://github.com/ritmelli/ritmelli-releases/releases/download/v0.3.4/Ritmelli-0.3.4-setup.exe"
 base = ["--setup", setup, "--url", url, "--app", dist, "--bin", binf, "--saida", saida_m]
 cod, out = roda("publica.py", *base, "--parcial", parc, "--parcial-info", saida / "parcial.json")
 m = json.loads((saida_m / "manifest.json").read_text(encoding="utf-8")) if cod == 0 else {}
@@ -130,7 +136,7 @@ caso("tudo que a parcial traz esta na lista de arquivos", set(p.get("arquivos", 
 cod, out = roda("publica.py", *base, "--parcial", parc)
 caso("o --parcial sem o --parcial-info e recusado", cod != 0 and "juntos" in out, out)
 cod, out = roda("publica.py", *base, "--parcial", saida_m / "outro-nome.exe", "--parcial-info", saida / "parcial.json")
-caso("a parcial com outro nome e recusada", cod != 0 and "Vitrola-0.3.4-parcial.exe" in out, out)
+caso("a parcial com outro nome e recusada", cod != 0 and "Ritmelli-0.3.4-parcial.exe" in out, out)
 errado = tmp / "parcial-errado.json"
 errado.write_text(json.dumps({"de": "0.3.3", "arquivos": ["_internal/nao-existe.dll"], "apaga": []}), encoding="utf-8")
 cod, out = roda("publica.py", *base, "--parcial", parc, "--parcial-info", errado)

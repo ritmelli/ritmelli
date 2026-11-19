@@ -117,7 +117,7 @@ e.load(A, start=max(0.0, A["duration"] - 55))
 buf = np.zeros((eng.BLOCK, 2), np.float32)
 saida, preparado, virou_em, guardado, a_depois, mapa = [], False, None, False, [], []
 while True:
-    for _ in range(30000):  # ate 60 s: o plano no tempo com a volta lenta leva uns 9 s, e a vitrola espera
+    for _ in range(30000):  # ate 60 s: o plano no tempo com a volta lenta leva uns 9 s, e o Ritmelli espera
         tem = e._q or e._eof_gen == e._gen
         medindo = e._pronto is not None and e._virar_em is None
         if tem and not medindo:

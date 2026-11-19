@@ -16,7 +16,10 @@ import segno
 
 from pastas import save_json
 
-COOKIE = "vitrola_celular"
+COOKIE = "ritmelli_celular"
+# o cookie de antes da troca de nome (#58): o celular pareado ate a 0.4.1 segue conectado, e a primeira abertura do
+# tema troca pelo novo (server.py, guard)
+COOKIE_VELHO = "vitrola_celular"
 COOKIE_S = 400 * 86400  # o Chrome nao guarda cookie por mais que isso: cada abertura do tema renova
 CODIGO_S = 300
 ERROS_MAX = 5
@@ -52,6 +55,11 @@ def _agora():
     return datetime.now().isoformat(timespec="seconds")
 
 
+def chave_do(cookies):
+    """A chave do celular nos cookies do pedido: a do cookie novo, ou a do de antes da troca de nome."""
+    return cookies.get(COOKIE) or cookies.get(COOKIE_VELHO)
+
+
 class Pareamento:
     def __init__(self, path):
         self.path = path
@@ -73,7 +81,7 @@ class Pareamento:
                 return lista
         except (OSError, ValueError):  # o ValueError cobre o JSON quebrado e o texto fora do UTF-8
             pass
-        print(f"celular: {self.path.name} ilegivel; os celulares pareiam de novo", file=sys.stderr, flush=True)
+        print(f"phone: {self.path.name} unreadable; the phones pair again", file=sys.stderr, flush=True)
         return []
 
     def _salva(self):

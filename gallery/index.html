@@ -1,9 +1,23 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vitrola: temas</title>
+<!-- i18n -->
+<script>
+/* os textos da galeria na lingua de quem abre: o servidor poe o I18N_DADOS no lugar do comentario acima (o i18n.py), com
+   os da pasta i18n/ ao lado, como num tema. So texto puro, sem marcacao; a chave que falte nas duas linguas aparece como
+   a propria chave */
+const I18N = (() => {
+  const d = window.I18N_DADOS || { lingua: 'en', textos: {}, reserva: {} };
+  const tem = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const t = (k, p) => (tem(d.textos, k) ? d.textos[k] : tem(d.reserva, k) ? d.reserva[k] : k)
+    .replace(/\{(\w+)\}/g, (m, x) => (p && tem(p, x) ? String(p[x]) : m));
+  document.documentElement.lang = d.lingua.replace('_', '-');
+  return { lingua: d.lingua, t };
+})();
+</script>
+<title></title>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -83,43 +97,57 @@
 </head>
 <body>
 <header>
-  <h1>Vitrola: temas</h1>
-  <p>As interfaces da Vitrola. Abra uma para usar, ou marque duas e compare lado a lado; todas
-     controlam o mesmo áudio.</p>
+  <h1 data-i18n="gallery.title"></h1>
+  <p data-i18n="gallery.intro"></p>
 </header>
 <main>
-  <div class="grid" id="grid"><p class="empty">Carregando os temas...</p></div>
+  <div class="grid" id="grid"><p class="empty" data-i18n="gallery.loading"></p></div>
 </main>
-<div id="cmp" role="dialog" aria-label="Comparação">
-  <div class="bar"><span id="cmpt"></span><button class="ghost" id="close">Fechar comparação</button></div>
-  <div class="panes"><iframe id="fa" title="Tema A"></iframe><iframe id="fb" title="Tema B"></iframe></div>
+<div id="cmp" role="dialog" data-i18n-aria-label="gallery.compare.label">
+  <div class="bar"><span id="cmpt"></span><button class="ghost" id="close" data-i18n="gallery.compare.close"></button></div>
+  <div class="panes"><iframe id="fa" data-i18n-title="gallery.compare.themeA"></iframe><iframe id="fb" data-i18n-title="gallery.compare.themeB"></iframe></div>
 </div>
 <script>
+document.title = I18N.t('gallery.title');
+for (const e of document.querySelectorAll('[data-i18n]')) e.textContent = I18N.t(e.dataset.i18n);
+for (const a of ['title', 'aria-label']) {
+  for (const e of document.querySelectorAll(`[data-i18n-${a}]`)) e.setAttribute(a, I18N.t(e.getAttribute(`data-i18n-${a}`)));
+}
 const sel = [];
 const grid = document.getElementById('grid');
+const aviso = texto => { const p = document.createElement('p'); p.className = 'empty'; p.textContent = texto; grid.replaceChildren(p); };
 function card(t) {
   const el = document.createElement('article');
   el.className = 't';
   el.innerHTML = `
-    <a class="shot" href="${t.url}" aria-label="Abrir ${t.name || t.slug}">
-      <img src="${t.url}preview.png" alt="" loading="lazy"
-           onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'none',textContent:'sem prévia ainda'}))">
-    </a>
+    <a class="shot"><img alt="" loading="lazy"></a>
     <div class="body">
       <h2></h2><div class="autor"></div><div class="dir"></div><div class="blurb"></div>
-      <div class="row"><a class="btn" href="${t.url}">Abrir</a>
-        <button class="ghost" type="button">Comparar</button></div>
+      <div class="row"><a class="btn"></a>
+        <button class="ghost" type="button"></button></div>
     </div>`;
+  const shot = el.querySelector('.shot'), img = el.querySelector('img'), abrir = el.querySelector('a.btn');
+  shot.href = abrir.href = t.url;
+  shot.setAttribute('aria-label', I18N.t('gallery.openTheme', { name: t.name || t.slug }));
+  // o preview na lingua da galeria (preview_en.png, o dev/previews.py); o tema que tem um so, o preview.png
+  const previews = [`${t.url}preview_${I18N.lingua}.png`, `${t.url}preview.png`];
+  img.addEventListener('error', () => {
+    if (previews.length) { img.src = previews.shift(); return; }
+    const d = document.createElement('div'); d.className = 'none'; d.textContent = I18N.t('gallery.noPreview'); img.replaceWith(d);
+  });
+  img.src = previews.shift();
+  abrir.textContent = I18N.t('gallery.open');
   el.querySelector('h2').textContent = t.name || t.slug;
   el.querySelector('.dir').textContent = t.direction || '';
   const au = el.querySelector('.autor');
-  if (t.autor) au.textContent = `feito pelo ${t.autor}`; else au.remove();
+  if (t.autor) au.textContent = I18N.t('gallery.madeBy', { author: t.autor }); else au.remove();
   el.querySelector('.blurb').textContent = t.blurb || '';
   const b = el.querySelector('button');
+  b.textContent = I18N.t('gallery.compare');
   b.onclick = () => {
     const i = sel.indexOf(t);
-    if (i >= 0) { sel.splice(i, 1); el.classList.remove('sel'); b.textContent = 'Comparar'; return; }
-    sel.push(t); el.classList.add('sel'); b.textContent = 'Marcado';
+    if (i >= 0) { sel.splice(i, 1); el.classList.remove('sel'); b.textContent = I18N.t('gallery.compare'); return; }
+    sel.push(t); el.classList.add('sel'); b.textContent = I18N.t('gallery.marked');
     if (sel.length === 2) openCmp();
   };
   t.el = el; t.btn = b;
@@ -129,22 +157,23 @@ function openCmp() {
   const [a, b] = sel;
   document.getElementById('fa').src = a.url;
   document.getElementById('fb').src = b.url;
-  document.getElementById('cmpt').textContent = `${a.name || a.slug} e ${b.name || b.slug}`;
+  document.getElementById('cmpt').textContent = I18N.t('gallery.compare.title', { a: a.name || a.slug, b: b.name || b.slug });
   document.getElementById('cmp').classList.add('on');
 }
 document.getElementById('close').onclick = () => {
   document.getElementById('cmp').classList.remove('on');
   document.getElementById('fa').src = 'about:blank';
   document.getElementById('fb').src = 'about:blank';
-  sel.splice(0).forEach(t => { t.el.classList.remove('sel'); t.btn.textContent = 'Comparar'; });
+  sel.splice(0).forEach(t => { t.el.classList.remove('sel'); t.btn.textContent = I18N.t('gallery.compare'); });
 };
-fetch('/api/themes').then(r => r.json()).then(ts => {
-  grid.innerHTML = '';
-  if (!ts.length) { grid.innerHTML = '<p class="empty">Nenhum tema em themes/ ainda.</p>'; return; }
+// o nome, a direcao e a frase de cada tema vem na lingua da pagina (o meta.json pode trazer as duas)
+fetch(`/api/themes?lang=${I18N.lingua}`).then(r => r.json()).then(ts => {
+  if (!ts.length) { aviso(I18N.t('gallery.empty')); return; }
+  grid.replaceChildren();
   // agrupado por autor: quem fez fica visível em cada cartão
   ts.sort((a, b) => (a.autor || '').localeCompare(b.autor || '') || a.slug.localeCompare(b.slug));
   ts.forEach(t => grid.appendChild(card(t)));
-}).catch(() => { grid.innerHTML = '<p class="empty">A Vitrola não respondeu. Abra o app no PC, pelo menu Iniciar, e recarregue esta página.</p>'; });
+}).catch(() => aviso(I18N.t('gallery.offline')));
 </script>
 </body>
 </html>

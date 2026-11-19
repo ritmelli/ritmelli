@@ -9,7 +9,8 @@ com o pulso, e o fechamento devolve a voz e solta o alvo; sem leitor do alvo o m
 no fone); a voz crua que o filtro devolve chega ao motor em blocos, inclusive de microfone a 44,1 kHz; e o misturador
 so leva a voz quando o app a poe no lugar da crua (com efeito, sem a voz cortada). A voz com efeito que sai do app (o
 filtro recusou o efeito, ou o microfone sem o filtro e a voz so no fone) passa pelo voz.dll, o mesmo motor do filtro,
-e nunca pelo fx.py; sem o voz.dll o motor sobe igual, a voz segue crua e o aviso sai uma vez.
+e nunca pelo fx.py; sem o voz.dll o motor sobe igual, a voz segue crua e o aviso sai uma vez. O fx.py recarregado
+com o mesmo efeito ligado reenvia o preset ao filtro.
 
     microfone\\apo\\compila.bat teste
     python dev/testa_microfone.py
@@ -28,7 +29,7 @@ from unittest import mock
 
 import numpy as np
 
-os.environ["MICFX_MAPA"] = f"Local\\VitrolaTesteMicFx-{os.getpid()}"  # nunca o anel do filtro de verdade
+os.environ["MICFX_MAPA"] = f"Local\\RitmelliTesteMicFx-{os.getpid()}"  # nunca o anel do filtro de verdade
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import engine as eng  # noqa: E402
 import fx  # noqa: E402
@@ -58,7 +59,7 @@ class AnelFalso:
 
     def __init__(self):
         AnelFalso.conta += 1  # um nome por anel: o do teste anterior pode seguir aberto
-        injeta.MAPA = f"Local\\VitrolaTesteMicFx-{os.getpid()}-{AnelFalso.conta}"
+        injeta.MAPA = f"Local\\RitmelliTesteMicFx-{os.getpid()}-{AnelFalso.conta}"
         n = ctypes.sizeof(injeta.Anel)
         self.h = k32.CreateFileMappingW(wintypes.HANDLE(-1), None, 0x04, 0, n, injeta.MAPA)
         assert self.h, ctypes.get_last_error()
@@ -311,6 +312,63 @@ class TestaMicrofone(unittest.TestCase):
             preset._projeta = original
             inj.para()
             anel.desliga()
+
+    def test_reload_reenvia_o_preset_ao_filtro(self):
+        """O fx.py recarregado (/api/effects/reload: preset.esquece) com o mesmo efeito ligado: o anel recebe o preset
+        novo sem ninguem trocar de efeito; sem reload, o preset nao se reescreve sozinho."""
+        anel = AnelFalso()
+        anel.liga(voz_taxa=48000)
+        motor = MotorFalso()
+        inj = eng.Injetor(motor)
+        a = anel.a
+        compensa = dict(fx.COMPENSA_DB)
+        try:
+            time.sleep(0.2)
+            motor.effect, motor._fx, motor._fx_id = "eco", object(), "eco"
+            time.sleep(0.1)
+            velho, seq = bytes(a.preset[:a.preset_n]), a.preset_seq
+            self.assertEqual(velho, preset.compila(fx.criar("eco"), 48000), "o preset do eco nao foi pro anel")
+            time.sleep(0.1)
+            self.assertEqual(a.preset_seq, seq, "sem reload o preset nao se reescreve")
+            fx.COMPENSA_DB["eco"] += 3.0  # o fx.py mudou (o ganho do eco), e o reload joga fora o projetado
+            preset.esquece()
+            time.sleep(0.2)
+            self.assertNotEqual(a.preset_seq, seq, "o reload nao reenviou o preset ao filtro")
+            novo = bytes(a.preset[:a.preset_n])
+            self.assertNotEqual(novo, velho, "o filtro recebeu de novo o preset velho")
+            self.assertEqual(novo, preset.compila(fx.criar("eco"), 48000), "o preset reenviado nao e o do fx.py novo")
+        finally:
+            fx.COMPENSA_DB.clear()
+            fx.COMPENSA_DB.update(compensa)
+            preset.esquece()
+            inj.para()
+            anel.desliga()
+
+    def test_projeto_de_antes_do_reload_nao_fica(self):
+        """Um projeto que comecou antes do reload e terminou depois vale para quem pediu, mas nao fica guardado: o
+        proximo pedido projeta com o fx.py novo."""
+        chave = ("robo", 48000)
+        original = preset._projeta
+        comecou, solta = threading.Event(), threading.Event()
+
+        def lento(*a):
+            comecou.set()
+            solta.wait(2.0)
+            return b"velho"
+
+        preset._prontos.pop(chave, None)
+        preset._projeta = lento
+        try:
+            th = threading.Thread(target=preset.preset, args=chave)
+            th.start()
+            self.assertTrue(comecou.wait(2.0))
+            preset.esquece()
+            solta.set()
+            th.join(2.0)
+            self.assertNotIn(chave, preset._prontos, "o projeto de antes do reload ficou guardado")
+        finally:
+            preset._projeta = original
+        self.assertEqual(preset.preset(*chave), preset.compila(fx.criar("robo"), 48000))
 
     def test_microfone_do_motor_cede_a_voz_do_filtro(self):
         e = eng.Engine(mic="x", monitor="")

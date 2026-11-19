@@ -1,8 +1,8 @@
-"""A versao nova da Vitrola, pelos caminhos A e B do PLANO.md do vitrola-server. O app baixa o manifesto das versoes e
+"""A versao nova do Ritmelli, pelos caminhos A e B do PLANO.md do ritmelli-server. O app baixa o manifesto das versoes e
 a assinatura dele, confere a assinatura com a chave publica que mora aqui e, se a versao for mais nova que a dele, a
 tela avisa. Quem aceita baixa o setup que o manifesto aponta, com o tamanho e o hash conferidos, e o app roda o
-instalador em modo silencioso: o Windows pede a permissao, o instalador fecha a Vitrola, troca o que precisa na pasta
-dela e abre de novo (o /reabrir=1 do vitrola.iss). Um download que para no meio continua de onde parou.
+instalador em modo silencioso: o Windows pede a permissao, o instalador fecha o Ritmelli, troca o que precisa na pasta
+dele e abre de novo (o /reabrir=1 do ritmelli.iss). Um download que para no meio continua de onde parou.
 
 Sao dois setups. O completo (caminho A) troca a pasta inteira. A parcial (caminho B, uns 15 MB contra 160) traz so os
 arquivos que mudaram desde a versao anterior: o app so a usa quando todo o resto do que esta instalado bate com a lista
@@ -13,6 +13,11 @@ as bibliotecas nao tenham mudado no meio. Um app que nao conhece a parcial nao o
 O ponto de confianca e a chave: so vale o manifesto assinado por ela, e so para uma versao mais nova que a que esta
 rodando, entao um manifesto velho, mesmo assinado, nao volta a versao. A lista de arquivos e a parcial vao dentro do
 manifesto, assinadas com ele.
+
+Com a tarefa do Windows que o instalador cria (atualizador.py), tudo isso vira automatico e sem o pedido
+de permissao: quem consulta, baixa e instala e a tarefa, como SYSTEM, com o Ritmelli fechado. Aqui fica o caminho de
+antes, para quem ainda nao tem a tarefa, e a ponte da tela com ela (o estado.json dela, e o Instalar agora, que fecha
+o Ritmelli para a tarefa instalar e abre de novo depois).
 
 As versoes ficam nas Releases do repo publico ritmelli/ritmelli-releases: o "latest" do GitHub e sempre a ultima
 publicada, com o manifesto, a assinatura e o setup. A chave 1 e a que a esteira de publicacao (no repo privado ritmelli-server) usa para assinar.
@@ -31,6 +36,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+import i18n
 import pastas
 from versao import VERSAO
 
@@ -40,8 +46,11 @@ MANIFESTO = "https://github.com/ritmelli/ritmelli-releases/releases/latest/downl
 CHAVES = {1: "Bnvi5qyGzrl2bPDgG9UUCDHjhcTCU3lr9SHMKbkjLts="}
 SO_HTTPS = True  # os testes servem por http, numa porta local
 FORMATO = 1
+# o nome do app no manifesto, de antes da troca de nome (#58): a 0.4.1 e as anteriores so aceitam o manifesto com ele,
+# entao fica igual, ou quem tem uma delas nunca mais atualiza
+APP = "vitrola"
 PASTA = pastas.DADOS / "atualizacao"
-# a pasta do app instalado (a do vitrola.exe), que a parcial confere; pelo codigo nao ha, e vai sempre o completo
+# a pasta do app instalado (a do ritmelli.exe), que a parcial confere; pelo codigo nao ha, e vai sempre o completo
 PASTA_APP = Path(sys.executable).parent if getattr(sys, "frozen", False) else None
 CONSULTA_APOS_S = 30.0       # depois de abrir: a subida do app nao divide a rede com a consulta
 CONSULTA_CADA_S = 6 * 3600.0
@@ -57,9 +66,11 @@ DE_NOVO_BAIXA_S = (2.0, 5.0, 15.0, 30.0)
 MANIFESTO_MAX = 1 << 20
 SETUP_MAX = 1 << 30
 PEDACO = 1 << 20
-# o instalador sem janela; /reabrir=1 abre a Vitrola de novo no fim, como quem instalou (vitrola.iss)
+# o instalador sem janela; /reabrir=1 abre o Ritmelli de novo no fim, como quem instalou (ritmelli.iss)
 PARAMETROS = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /reabrir=1"
 SE_ERR_ACCESSDENIED = 5      # o ShellExecute com o pedido de permissao recusado
+# o Instalar agora da atualizacao automatica: ao sair, o Ritmelli abre de novo quando a tarefa terminar (ritmelli.py)
+REABRIR = False
 
 
 class Recusado(ValueError):
@@ -70,11 +81,17 @@ class Parou(OSError):
     """O download parou no meio: e a rede, e nao o arquivo."""
 
 
+def _recusado(e):
+    """A mensagem da tela para o manifesto ou o arquivo que nao passou na conferencia, com o motivo como veio."""
+    return i18n.msg("server.update.rejected", "The new version failed verification and wasn't installed ({reason}). "
+                                              "Your current version keeps working as usual.", reason=str(e))
+
+
 def versao(v):
     """"0.12.3" -> (0, 12, 3). Semver sem sufixo, como o versao.py."""
     m = re.fullmatch(r"(\d{1,4})\.(\d{1,4})\.(\d{1,6})", str(v))
     if not m:
-        raise Recusado(f"versão fora do formato: {v!r}")
+        raise Recusado(f"version out of format: {v!r}")
     return tuple(int(x) for x in m.groups())
 
 
@@ -92,24 +109,27 @@ def confere(manifesto, assinatura, chaves=None):
         pub = eddsa.import_public_key(base64.b64decode(chaves[s["chave"]], validate=True))
         eddsa.new(pub, "rfc8032").verify(manifesto, base64.b64decode(s["assinatura"], validate=True))
     except (KeyError, TypeError, ValueError) as e:
-        raise Recusado("a assinatura do manifesto não confere") from e
+        raise Recusado("the manifest signature doesn't match") from e
     m = json.loads(manifesto)
-    if not isinstance(m, dict) or m.get("formato") != FORMATO or m.get("app") != "vitrola":
-        raise Recusado("o manifesto não é de uma versão da Vitrola que este app entende")
+    if not isinstance(m, dict) or m.get("formato") != FORMATO or m.get("app") != APP:
+        raise Recusado("the manifest is not for a Ritmelli version this app understands")
     versao(m.get("versao"))
-    notas = m.get("notas", [])
-    if not (isinstance(notas, list) and len(notas) <= 30 and all(isinstance(n, str) and len(n) <= 500 for n in notas)):
-        raise Recusado("as notas da versão estão fora do formato")
+    # as notas em portugues no "notas" (o campo que as versoes de antes leem) e as em ingles no "notas_en", que elas nao
+    # olham
+    for campo in ("notas", "notas_en"):
+        notas = m.get(campo, [])
+        if not (isinstance(notas, list) and len(notas) <= 30 and all(isinstance(n, str) and len(n) <= 500 for n in notas)):
+            raise Recusado("the release notes are out of format")
     inst = m.get("instalador")
     if not (isinstance(inst, dict) and isinstance(inst.get("url"), str) and _sha(inst.get("sha256"))
             and isinstance(inst.get("tamanho"), int) and 0 < inst["tamanho"] <= SETUP_MAX):
-        raise Recusado("o instalador do manifesto está fora do formato")
+        raise Recusado("the manifest installer is out of format")
     if not inst["url"].startswith("https://" if SO_HTTPS else ("https://", "http://")):
-        raise Recusado("o instalador do manifesto não vem por https")
+        raise Recusado("the manifest installer doesn't come over https")
     for a in m.get("arquivos", []):
         if not (isinstance(a, dict) and isinstance(a.get("caminho"), str) and _sha(a.get("sha256"))
                 and isinstance(a.get("tamanho"), int) and a["tamanho"] >= 0):
-            raise Recusado("a lista de arquivos do manifesto está fora do formato")
+            raise Recusado("the manifest file list is out of format")
         _caminho(a["caminho"])
     if "parcial" in m:
         _confere_parcial(m["parcial"], {a["caminho"] for a in m.get("arquivos", [])})
@@ -120,7 +140,7 @@ def _caminho(c):
     """Um caminho de arquivo do manifesto: o caminho B confere arquivo por arquivo, e nada sai da pasta do app."""
     p = c.replace("\\", "/")
     if not p or p.startswith("/") or ":" in p or ".." in p.split("/"):
-        raise Recusado(f"caminho de arquivo recusado no manifesto: {c!r}")
+        raise Recusado(f"file path refused in the manifest: {c!r}")
 
 
 def _confere_parcial(p, caminhos):
@@ -128,16 +148,16 @@ def _confere_parcial(p, caminhos):
     if not (isinstance(p, dict) and isinstance(p.get("url"), str) and _sha(p.get("sha256"))
             and isinstance(p.get("tamanho"), int) and 0 < p["tamanho"] <= SETUP_MAX
             and isinstance(p.get("arquivos"), list) and p["arquivos"] and isinstance(p.get("apaga", []), list)):
-        raise Recusado("a atualização parcial do manifesto está fora do formato")
+        raise Recusado("the manifest partial update is out of format")
     if not p["url"].startswith("https://" if SO_HTTPS else ("https://", "http://")):
-        raise Recusado("a atualização parcial do manifesto não vem por https")
+        raise Recusado("the manifest partial update doesn't come over https")
     versao(p.get("de"))
     for c in p["arquivos"]:
         if not isinstance(c, str) or c not in caminhos:
-            raise Recusado("a atualização parcial traz um arquivo fora da lista do manifesto")
+            raise Recusado("the partial update brings a file that is not in the manifest list")
     for c in p.get("apaga", []):
         if not isinstance(c, str) or c in caminhos:
-            raise Recusado("a atualização parcial apaga um arquivo da lista do manifesto")
+            raise Recusado("the partial update deletes a file that is in the manifest list")
         _caminho(c)
 
 
@@ -182,11 +202,11 @@ def _tls():
 
 
 def _pega(url, maximo):
-    req = urllib.request.Request(url, headers={"User-Agent": f"Vitrola/{VERSAO}"})
+    req = urllib.request.Request(url, headers={"User-Agent": f"Ritmelli/{VERSAO}"})
     with urllib.request.urlopen(req, timeout=TEMPO_S, context=_tls()) as r:
         dados = r.read(maximo + 1)
     if len(dados) > maximo:
-        raise Recusado(f"{url} passou de {maximo} bytes")
+        raise Recusado(f"{url} went over {maximo} bytes")
     return dados
 
 
@@ -209,34 +229,87 @@ class Atualizacao:
         self.nova = None        # o manifesto conferido de uma versao mais nova que a VERSAO
         self.estado = "parado"
         self.progresso = 0.0
-        self.erro = None        # o que deu errado na ultima acao, para a tela
+        self.erro = None        # o que deu errado na ultima acao, para a tela (a mensagem, i18n.msg)
         self.consultada = None  # quando a ultima consulta deu certo
         self.ultima = None      # o time.monotonic() da ultima consulta, certa ou nao
         self.falhas = 0         # consultas seguidas que nao chegaram ao manifesto
         self.parcial = False    # se a parcial da versao nova serve para o que esta instalado (pelo tamanho, ate baixar)
         self.setup = None       # o setup baixado e conferido (o completo ou a parcial)
         self.alvo = None        # o que o manifesto diz desse setup: o "instalador" ou a "parcial"
+        # a atualizacao automatica (atualizador.py): com a tarefa do Windows, quem consulta, baixa e instala e ela, como
+        # SYSTEM, e a tela so mostra o estado.json dela. None ate a vigia olhar (no executavel instalado)
+        self.auto = None
+        self._auto_cache = (None, {})
 
     def _escolhido(self):
         """O setup que vai ser baixado: a parcial, quando serve, ou o completo."""
         return self.nova["parcial"] if self.parcial else self.nova["instalador"]
 
+    def _da_tarefa(self):
+        """O estado da tarefa (o estado.json do atualizador), relido so quando muda: o resumo vai em todo estado ao
+        vivo."""
+        import atualizador
+        arq = atualizador.PASTA / "estado.json"
+        try:
+            marca = arq.stat().st_mtime_ns
+        except OSError:
+            return {}
+        if self._auto_cache[0] != marca:
+            self._auto_cache = (marca, atualizador.estado())
+        return self._auto_cache[1]
+
+    def _auto_publico(self):
+        """O estado da tarefa no formato da tela: a versao nova so se for mais nova que esta."""
+        e = self._da_tarefa()
+        n = e.get("nova") if isinstance(e.get("nova"), dict) else None
+        try:
+            if n and versao(n.get("versao")) <= versao(VERSAO):
+                n = None
+        except Recusado:
+            n = None
+        est = e.get("estado") if e.get("estado") in ("baixando", "pronta", "instalando") and n else "parado"
+        erro = i18n.msg("server.update.autoFailed", "The automatic update was interrupted ({reason}). Ritmelli will "
+                                                    "try again later.",
+                        reason=str(e["erro"])) if e.get("erro") else None
+        return {"ativa": True, "automatica": True, "versao": VERSAO, "estado": est,
+                "progresso": round(float(e.get("progresso") or 0.0), 3) if est == "baixando" else (1.0 if est == "pronta" else 0.0),
+                "erro": erro, "consultada": e.get("quando"),
+                "nova": n and {"versao": n["versao"], "data": n.get("data"),
+                               "notas": {"pt_BR": n.get("notas", []), "en": n.get("notas_en", [])},
+                               "tamanho": n.get("tamanho", 0), "parcial": bool(n.get("parcial"))}}
+
     def resumo(self):
         """O pedaco que vai no estado ao vivo (o SSE): o tema so precisa saber se tem e em que pe esta."""
+        if self.auto:
+            p = self._auto_publico()
+            return {"nova": p["nova"]["versao"] if p["nova"] else None, "estado": p["estado"],
+                    "progresso": p["progresso"], "erro": p["erro"], "automatica": True}
         with self.lock:
             return {"nova": self.nova["versao"] if self.nova else None, "estado": self.estado,
                     "progresso": round(self.progresso, 3), "erro": self.erro}
 
     def publico(self):
+        if self.auto:
+            return self._auto_publico()
         with self.lock:
             n = self.nova
             return {"ativa": self.ativa, "versao": VERSAO, "estado": self.estado, "progresso": round(self.progresso, 3),
                     "erro": self.erro, "consultada": self.consultada,
-                    "nova": n and {"versao": n["versao"], "data": n.get("data"), "notas": n.get("notas", []),
+                    "nova": n and {"versao": n["versao"], "data": n.get("data"),
+                                   "notas": {"pt_BR": n.get("notas", []), "en": n.get("notas_en", [])},
                                    "tamanho": self._escolhido()["tamanho"], "parcial": self.parcial}}
 
     def vigia(self):
-        """A thread que consulta logo depois de abrir e de tempos em tempos (o proxima)."""
+        """A thread que consulta logo depois de abrir e de tempos em tempos (o proxima). Com a tarefa do Windows
+        (atualizador.py), so pede a ela uma rodada logo depois de abrir, como o Chrome consulta ao abrir: o resto ela
+        faz sozinha, no logon e de 4 em 4 horas."""
+        import atualizador
+        self.auto = atualizador.automatica()
+        if self.auto:
+            print("update: automatic, by the Windows task", flush=True)
+            time.sleep(CONSULTA_APOS_S)
+            atualizador.dispara()
+            return
         self._limpa()
         time.sleep(CONSULTA_APOS_S)
         while True:
@@ -254,11 +327,11 @@ class Atualizacao:
         return min(DE_NOVO_S[f - 1], CONSULTA_CADA_S)
 
     def ao_abrir(self):
-        """A pagina do PC abriu: o atalho clicado de novo com a Vitrola ligada, ou a aba recarregada. Fechar a janela
-        nao fecha a Vitrola, entao sem isto a versao nova so aparecia na consulta seguinte, ate 6 h depois. Consulta
+        """A pagina do PC abriu: o atalho clicado de novo com o Ritmelli ligado, ou a aba recarregada. Fechar a janela
+        nao fecha o Ritmelli, entao sem isto a versao nova so aparecia na consulta seguinte, ate 6 h depois. Consulta
         numa thread se a ultima consulta tem mais de CONSULTA_AO_ABRIR_S; nao antes da primeira da vigia, que vem logo
         depois de abrir, nem no meio de um download. True se foi consultar."""
-        if not self.ativa:
+        if not self.ativa or self.auto:  # automatica: a tarefa consulta sozinha
             return False
         with self.lock:
             if self.estado != "parado" or self.ultima is None or time.monotonic() - self.ultima < CONSULTA_AO_ABRIR_S:
@@ -268,9 +341,14 @@ class Atualizacao:
         return True
 
     def consultar(self):
-        """Baixa e confere o manifesto. True se ha versao nova."""
+        """Baixa e confere o manifesto. True se ha versao nova. Automatica: pede uma rodada a tarefa, que consulta e ja
+        baixa; a tela acompanha pelo estado."""
         if not self.ativa:
             return False
+        if self.auto:
+            import atualizador
+            atualizador.dispara()
+            return self._auto_publico()["nova"] is not None
         with self.lock:
             if self.estado != "parado":
                 return self.nova is not None
@@ -281,10 +359,12 @@ class Atualizacao:
             with self.lock:
                 self.estado = "parado"
                 if isinstance(e, Recusado):
-                    self.erro, self.falhas = str(e), 0
+                    self.erro, self.falhas = _recusado(e), 0
                 else:
-                    self.erro, self.falhas = "Não deu para consultar se há versão nova.", self.falhas + 1
-            print(f"atualizacao: {e}", flush=True)
+                    self.erro = i18n.msg("server.update.checkFailed", "Couldn't check for a new version. Ritmelli "
+                                                                      "will try again later.")
+                    self.falhas += 1
+            print(f"update: {e}", flush=True)
             return self.nova is not None
         nova = versao(m["versao"]) > versao(VERSAO)
         serve = nova and cabe_parcial(m, PASTA_APP)  # so o tamanho de cada arquivo: rapido
@@ -293,15 +373,19 @@ class Atualizacao:
             if nova:
                 if not self.nova or self.nova["versao"] != m["versao"]:
                     self.nova, self.parcial, self.setup, self.alvo = m, serve, None, None
-                    serve_mb = f" (a parcial serve: {m['parcial']['tamanho'] / 2**20:.1f} MB)" if serve else ""
-                    print(f"atualizacao: versao nova {m['versao']}{serve_mb}", flush=True)
+                    serve_mb = f" (the partial update fits: {m['parcial']['tamanho'] / 2**20:.1f} MB)" if serve else ""
+                    print(f"update: new version {m['versao']}{serve_mb}", flush=True)
             else:
                 self.nova = self.setup = self.alvo = None
                 self.parcial = False
             return self.nova is not None
 
     def baixar(self):
-        """Comeca o download do setup da versao nova, numa thread. False se nao ha o que baixar."""
+        """Comeca o download do setup da versao nova, numa thread. False se nao ha o que baixar. Automatica: a tarefa
+        baixa (uma rodada agora)."""
+        if self.auto:
+            import atualizador
+            return atualizador.dispara()
         with self.lock:
             if not self.nova or self.estado not in ("parado",):
                 return False
@@ -318,33 +402,34 @@ class Atualizacao:
             parcial = self.parcial
         # a consulta so conferiu o tamanho: antes de baixar a parcial, o hash de tudo que ela nao traz
         if parcial and not cabe_parcial(m, PASTA_APP, hash_=True):
-            print("atualizacao: o que esta instalado nao bate com o manifesto; vai o setup completo", flush=True)
+            print("update: what is installed doesn't match the manifest; using the full setup", flush=True)
             parcial = False
             with self.lock:
                 self.parcial = False
         inst = m["parcial"] if parcial else m["instalador"]
         PASTA.mkdir(parents=True, exist_ok=True)
-        final = PASTA / f"Vitrola-{m['versao']}-{'parcial' if parcial else 'setup'}.exe"
+        final = PASTA / f"Ritmelli-{m['versao']}-{'parcial' if parcial else 'setup'}.exe"
         meio = final.with_name(final.name + ".baixando")
         try:
             with open(meio, "wb") as f:
                 self._puxa(inst, f)
             # o hash do que ficou no disco, que veio em pedacos quando o download parou no meio
             if _hash(meio) != inst["sha256"]:
-                raise Recusado("o instalador baixado não confere com o manifesto")
+                raise Recusado("the downloaded installer doesn't match the manifest")
             meio.replace(final)
         except (OSError, ValueError) as e:
             meio.unlink(missing_ok=True)
             with self.lock:
                 self.estado = "parado"
-                self.erro = str(e) if isinstance(e, Recusado) else "O download da versão nova parou. Tente de novo."
+                self.erro = _recusado(e) if isinstance(e, Recusado) else i18n.msg(
+                    "server.update.downloadStopped", "The update download was interrupted. Try again.")
                 if parcial and isinstance(e, Recusado):
                     self.parcial = False  # a parcial veio errada: na proxima, o completo
-            print(f"atualizacao: {e}", flush=True)
+            print(f"update: {e}", flush=True)
             return
         with self.lock:
             self.setup, self.alvo, self.estado, self.progresso = final, inst, "pronta", 1.0
-        print(f"atualizacao: {final.name} baixado e conferido", flush=True)
+        print(f"update: {final.name} downloaded and checked", flush=True)
 
     def _puxa(self, inst, f):
         """Baixa o setup no f, ate o tamanho do manifesto. Se a rede cai ou a conexao fecha antes do fim (o http.client
@@ -354,7 +439,7 @@ class Atualizacao:
         tam, seguidas = inst["tamanho"], 0
         while True:
             n = antes = f.tell()
-            cab = {"User-Agent": f"Vitrola/{VERSAO}"}
+            cab = {"User-Agent": f"Ritmelli/{VERSAO}"}
             if n:
                 cab["Range"] = f"bytes={n}-"
             try:
@@ -366,15 +451,15 @@ class Atualizacao:
                         f.truncate()
                         n = 0
                         if r.status != 200:
-                            raise Parou(f"o servidor respondeu {r.status} sem continuar de onde parou")
+                            raise Parou(f"the server answered {r.status} without resuming where it stopped")
                     while b := r.read(PEDACO):
                         if n + len(b) > tam:
-                            raise Recusado("o instalador baixado é maior que o do manifesto")
+                            raise Recusado("the downloaded installer is bigger than the manifest's")
                         f.write(b)
                         n += len(b)
                         with self.lock:
                             self.progresso = n / tam
-                motivo = "a conexão fechou antes do fim"
+                motivo = "the connection closed before the end"
             except (OSError, http.client.HTTPException) as e:
                 motivo = e
             n = f.tell()
@@ -382,31 +467,47 @@ class Atualizacao:
                 return
             seguidas = 0 if n > antes else seguidas + 1
             if seguidas > len(DE_NOVO_BAIXA_S):
-                raise Parou(f"o download parou em {n / 2**20:.1f} de {tam / 2**20:.1f} MB ({motivo})")
+                raise Parou(f"the download stopped at {n / 2**20:.1f} of {tam / 2**20:.1f} MB ({motivo})")
             espera = DE_NOVO_BAIXA_S[max(seguidas - 1, 0)]
-            print(f"atualizacao: o download parou em {n / 2**20:.1f} de {tam / 2**20:.1f} MB ({motivo}); "
-                  f"de novo em {espera:.0f} s", flush=True)
+            print(f"update: the download stopped at {n / 2**20:.1f} of {tam / 2**20:.1f} MB ({motivo}); "
+                  f"again in {espera:.0f} s", flush=True)
             time.sleep(espera)
 
     def instalar(self):
         """Confere o setup de novo e roda ele com o pedido de permissao do Windows. (True, None) se o instalador
-        abriu, e ai a Vitrola deve fechar; senao (False, o motivo)."""
+        abriu, e ai o Ritmelli deve fechar; senao (False, a mensagem do motivo). Automatica: com a versao ja baixada
+        pela tarefa, so marca que o Ritmelli abre de novo depois (REABRIR): ao fechar, ele pede a tarefa para instalar
+        (atualizador.ao_sair), sem o pedido de permissao."""
+        global REABRIR
+        if self.auto:
+            if self._auto_publico()["estado"] != "pronta":
+                return False, i18n.msg("server.update.notDownloaded", "The new version hasn't been downloaded yet.")
+            REABRIR = True
+            print("update: closing so the Windows task installs the new version", flush=True)
+            return True, None
         with self.lock:
             if self.estado != "pronta" or not self.setup:
-                return False, "A versão nova ainda não foi baixada."
+                return False, i18n.msg("server.update.notDownloaded", "The new version hasn't been downloaded yet.")
             setup, m, alvo = self.setup, self.nova, self.alvo
         if not setup.exists() or _hash(setup) != alvo["sha256"]:
             with self.lock:
                 self.estado, self.setup, self.alvo = "parado", None, None
-            return False, "O instalador baixado mudou depois da conferência. Baixe de novo."
+            return False, i18n.msg("server.update.changed", "The downloaded installer changed after it was verified. "
+                                                            "Download it again.")
         log = PASTA / f"instalador-{m['versao']}.log"
         r = abre_instalador(setup, f'{PARAMETROS} /LOG="{log}"')
         if r <= 32:
-            return False, ("O Windows não deu a permissão, e a atualização ficou para depois."
-                           if r == SE_ERR_ACCESSDENIED else f"O instalador não abriu (erro {r}).")
+            if r == SE_ERR_ACCESSDENIED:
+                return False, i18n.msg("server.update.permissionDenied", "The update was postponed because "
+                                                                         "permission wasn't granted in Windows. To "
+                                                                         "install it, click Install now again and "
+                                                                         "choose Yes when Windows asks for "
+                                                                         "permission.")
+            return False, i18n.msg("server.update.installerFailed", "Couldn't open the installer (error {code}). "
+                                                                    "Click Install now to try again.", code=r)
         with self.lock:
             self.estado = "instalando"
-        print(f"atualizacao: instalador da {m['versao']} aberto; a Vitrola fecha", flush=True)
+        print(f"update: installer for {m['versao']} opened; Ritmelli is closing", flush=True)
         return True, None
 
     def _limpa(self):
@@ -414,7 +515,7 @@ class Atualizacao:
         if not PASTA.exists():
             return
         for f in PASTA.iterdir():
-            v = re.fullmatch(r"Vitrola-(.+)-(?:setup|parcial)\.exe", f.name)
+            v = re.fullmatch(r"Ritmelli-(.+)-(?:setup|parcial)\.exe", f.name)
             try:
                 # .baixando: o download pela metade (o .parcial e o nome de antes da parcial existir)
                 velho = f.name.endswith((".baixando", ".parcial")) or (v and versao(v.group(1)) <= versao(VERSAO))

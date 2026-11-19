@@ -95,7 +95,7 @@ def _plugin(p, taxa):
         return [(T_PHASER, [p.rate_hz, p.depth, p.centre_frequency_hz, p.feedback, p.mix])]
     if isinstance(p, pb.Reverb):
         if p.freeze_mode:
-            raise NaoPortado("Reverb congelado")
+            raise NaoPortado("frozen Reverb")
         return [(T_FREEVERB, [p.room_size, p.damping, p.wet_level, p.dry_level, p.width])]
     for cls, tipo in ((pb.PeakFilter, "pico"), (pb.LowShelfFilter, "grave"), (pb.HighShelfFilter, "agudo")):
         if isinstance(p, cls):
@@ -138,12 +138,12 @@ def _etapa(f, taxa):
         return [(T_SOS, _sos_rows(f.sos if taxa == fx.SR else _butter(f.ordem, f.corte, "low", taxa)))]
     if isinstance(f, fx.PassaAlta):
         if f.corte >= NYQ * taxa:
-            raise NaoPortado("passa-alta acima da taxa")
+            raise NaoPortado("high-pass above the rate")
         return [(T_SOS, _sos_rows(f.sos if taxa == fx.SR else _butter(f.ordem, f.corte, "high", taxa)))]
     if isinstance(f, fx.FiltroBanda):
         hi = min(f.hi, NYQ * taxa)
         if f.lo >= hi:
-            raise NaoPortado("faixa acima da taxa")
+            raise NaoPortado("band above the rate")
         sos = f.sos if taxa == fx.SR else _butter(f.ordem, [f.lo, hi], "band", taxa)
         return [(T_SOS, _sos_rows(sos))]
     if isinstance(f, fx.Decimador):
@@ -156,7 +156,7 @@ def _etapa(f, taxa):
         dados = [float(len(f.cortes))]
         for c, (lo, hi) in zip(f.cortes, f.pares):
             if c >= NYQ * taxa:
-                raise NaoPortado("corte da multibanda acima da taxa")
+                raise NaoPortado("multiband crossover above the rate")
             if taxa != fx.SR:
                 lo = np.vstack([_butter(2, c, "low", taxa)] * 2)
                 hi = np.vstack([_butter(2, c, "high", taxa)] * 2)
@@ -209,11 +209,11 @@ def compila(e, taxa, extra=True):
         radio = getattr(ger, "__self__", None)
         if getattr(ger, "__func__", None) is not fx.CambioRadio.som or not any(
                 getattr(f, "__self__", None) is radio for f in e.antes):
-            raise NaoPortado("gerador do extra")
+            raise NaoPortado("extra generator")
         gerador = G_RADIO
         ext = [r for f in passos for r in _etapa(f, taxa)]
     if len(etapas) > 32 or len(ext) > 32:
-        raise NaoPortado("etapas demais")
+        raise NaoPortado("too many stages")
     corpo = b"".join(struct.pack(f"<II{len(d)}d", t, len(d), *map(float, d)) for t, d in etapas + ext)
     cab = CABECALHO.pack(MAGIA, VERSAO, taxa, float(e.ganho), 1 if e.nivelar else 0, len(etapas), len(ext), gerador,
                          fx.Efeito.FALA, fx.Efeito.MEMORIA, fx.Efeito.PASSO, fx.Efeito.TETO, fx.Audibilidade.EXPOENTE)
@@ -226,6 +226,7 @@ _prontos = {}
 _projetando = set()
 _trava = threading.Lock()
 PENDENTE = object()
+_geracao = 0  # sobe a cada esquece(): o Injetor reenvia o preset ao filtro, e projeto de antes dele nao entra aqui
 
 
 def _projeta(efeito_id, taxa):
@@ -243,17 +244,27 @@ def preset(efeito_id, taxa):
     with _trava:
         if chave in _prontos:
             return _prontos[chave]
+        g = _geracao
     dados = _projeta(*chave)
     with _trava:
-        _prontos[chave] = dados
+        if g == _geracao:  # projetado com o fx.py de antes do esquece: vale para quem pediu, mas nao fica guardado
+            _prontos[chave] = dados
         _projetando.discard(chave)
     return dados
 
 
 def esquece():
-    """Joga fora os presets projetados: o fx.py recarregado (/api/effects/reload) projeta de novo."""
+    """Joga fora os presets projetados: o fx.py recarregado (/api/effects/reload) projeta de novo, e a geracao nova
+    faz o Injetor reenviar ao filtro o preset do efeito ligado, mesmo sem trocar de efeito."""
+    global _geracao
     with _trava:
         _prontos.clear()
+        _geracao += 1
+
+
+def geracao():
+    """A geracao dos presets (sobe a cada esquece): entra na chave do preset que o Injetor escreveu no anel."""
+    return _geracao
 
 
 def pede(efeito_id, taxa):
@@ -266,5 +277,5 @@ def pede(efeito_id, taxa):
         if chave in _projetando:
             return PENDENTE
         _projetando.add(chave)
-    threading.Thread(target=preset, args=chave, daemon=True, name="vitrola-preset").start()
+    threading.Thread(target=preset, args=chave, daemon=True, name="ritmelli-preset").start()
     return PENDENTE

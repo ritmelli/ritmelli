@@ -1,4 +1,4 @@
-// voz.h: os efeitos de voz da Vitrola rodando dentro do filtro do microfone (micfx.dll), sem a ida e volta pelo app.
+// voz.h: os efeitos de voz do Ritmelli rodando dentro do filtro do microfone (micfx.dll), sem a ida e volta pelo app.
 //
 // O app (microfone/preset.py) le o efeito do fx.py e monta o PRESET: a lista de etapas com os parametros e os
 // coeficientes ja projetados na taxa do microfone (o scipy projeta, aqui so se roda). O filtro copia o preset do anel

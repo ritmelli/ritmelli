@@ -3,10 +3,10 @@ referencia. E o gate da passagem do PC para pixel art: o celular tem que sair id
 
     python dev/compara.py --ref     (antes de mexer no tema: grava os prints de referencia)
     python dev/compara.py           (depois: tira de novo e compara; sai 1 se algo mudou)
-        [--pasta logs/compara] [--sizes 390x844@3,360x780@2.625] [--wait 0.6]
+        [--pasta logs/compara] [--sizes 390x844@3,360x780@2.625] [--wait 0.6] [--lang pt_BR]
 
 Sobe o proprio servidor (server.py --mock numa porta livre) com uma prateleira de mentira, sempre a mesma,
-e os dados numa pasta temporaria (com a LOCALAPPDATA trocada: a Vitrola de verdade nem fica sabendo). Os
+e os dados numa pasta temporaria (com a LOCALAPPDATA trocada: o Ritmelli de verdade nem fica sabendo). Os
 prints saem pelo Chrome headless, como no dev/shot.py, na densidade de tela de cada celular (o @ do
 tamanho). Para o mesmo tema dar o mesmo print toda vez:
 - as capas sao desenhos em data: URI e o Google Fonts fica bloqueado (a Archivo cai na letra do
@@ -61,7 +61,7 @@ DISCOS = [
     ("disco-06", "Chuva na Janela - 1 hora de lo-fi para estudar", "Rádio Sossego", 3600,
      ("#22333B", "#5E7C8B", "#EAE0D5", "faixas"), 1325, 4),
     ("disco-07", "Samba de Roda do Recôncavo", "Grupo de Roda", 240, None, 0, 3),
-    ("disco-08", "Tema de Abertura", "Vitrola", 95, ("#6A040F", "#E85D04", "#FFBA08", "sol"), 0, 2),
+    ("disco-08", "Tema de Abertura", "Ritmelli", 95, ("#6A040F", "#E85D04", "#FFBA08", "sol"), 0, 2),
     ("disco-09", "Forró pé de serra", "Sanfona Velha", 187, ("#283618", "#606C38", "#FEFAE0", "serra"), 0, 1),
     ("disco-10", "Valsa para um toca-discos", "Quarteto de Cordas", 305, None, 0, 1),
     ("disco-11", "Boletim do trânsito", "Rádio Exemplo FM", 62, ("#023047", "#219EBC", "#FFB703", "vinil"), 0, 0),
@@ -121,7 +121,7 @@ def prateleira():
 
 
 def sobe_servidor(tmp, porta, log):
-    dados, lib = tmp / "dados", tmp / "local" / "Vitrola" / "library"
+    dados, lib = tmp / "dados", tmp / "local" / "Ritmelli" / "library"
     dados.mkdir(parents=True)
     lib.mkdir(parents=True)
     (dados / "library.json").write_text(json.dumps(prateleira(), ensure_ascii=False), encoding="utf-8")
@@ -288,7 +288,7 @@ async def prints(a, porta, destino):
                     pre = f"{cenario}-{tam}"
                     await c.cmd("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=float(dpr),
                                 mobile=True)
-                    await c.cmd("Page.navigate", url=f"http://127.0.0.1:{porta}/t/vitrola/")
+                    await c.cmd("Page.navigate", url=f"http://127.0.0.1:{porta}/t/vitrola/?lang={a.lang}")
                     for _ in range(200):
                         await asyncio.sleep(0.1)
                         try:
@@ -359,6 +359,8 @@ def main():
     ap.add_argument("--pasta", default=str(RAIZ / "logs" / "compara"))
     ap.add_argument("--sizes", default=SIZES, help="largura x altura @ densidade, separados por virgula")
     ap.add_argument("--wait", type=float, default=0.6, help="segundos entre cada passo e o print")
+    # o Chrome sem cabeca pede ingles: sem o ?lang=, a tela sairia na lingua dele, e nao na das referencias
+    ap.add_argument("--lang", default="pt_BR", help="a lingua da tela (pt_BR ou en); a referencia e a comparacao na mesma")
     a = ap.parse_args()
     pasta = Path(a.pasta)
     if not a.ref and not (pasta / "ref").exists():
@@ -368,7 +370,7 @@ def main():
     shutil.rmtree(destino, ignore_errors=True)
     shutil.rmtree(pasta / "instavel", ignore_errors=True)
     destino.mkdir(parents=True)
-    tmp = Path(tempfile.mkdtemp(prefix="vitrola-compara-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ritmelli-compara-"))
     porta = free_port()
     with open(pasta / "servidor.log", "w", encoding="utf-8") as log:
         srv = sobe_servidor(tmp, porta, log)

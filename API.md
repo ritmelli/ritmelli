@@ -1,7 +1,7 @@
-# Vitrola: contrato da API e do tema
+# Ritmelli: contrato da API e do tema
 
 O `server.py` toca áudio no microfone do jogo: o arquivo (e a voz da mina) vai para o filtro
-da Vitrola, que soma no microfone escolhido, dentro do áudio do Windows, e só o arquivo vai para
+do Ritmelli, que soma no microfone escolhido, dentro do áudio do Windows, e só o arquivo vai para
 o fone, para o usuário ouvir o som sem ouvir a própria voz. O jogo usa o mesmo microfone. A voz
 crua volta do filtro para o servidor (medidor, ouvir a própria voz): sem efeito ela segue no
 microfone; o efeito de voz roda no próprio filtro, sem atraso, e a voz com efeito volta para o
@@ -14,14 +14,25 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - `themes/<slug>/index.html`, autossuficiente: HTML + CSS + JS puro, sem build. Arquivo
   extra (fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
   relativo (`./x.svg`), servido em `/t/<slug>/x.svg`.
-- `themes/<slug>/meta.json`: `{"name": "...", "direction": "...", "blurb": "uma frase"}`.
+- `themes/<slug>/meta.json`: `{"name": "...", "direction": "...", "blurb": "uma frase"}`. Cada campo pode vir
+  por língua, `{"en": "...", "pt_BR": "..."}`; a galeria mostra o da língua de quem abre (ver `GET /api/themes`).
 - O ícone é do servidor, igual para todo tema: a aba do navegador pega o `/favicon.ico`
   sem nada no tema, e o atalho na tela inicial do celular pede
   `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` no `<head>`.
 - Fonte externa só do Google Fonts; script externo nenhum.
 - API sempre por caminho absoluto (`/api/...`), mesma origem. Escrita é `fetch` com
   `method` e, quando tem corpo, `Content-Type: application/json`.
-- Texto da interface em português do Brasil, com acentuação completa e sem travessão.
+- Texto da interface com acentuação completa no português e sem travessão. O servidor não
+  escreve frase para a tela: manda a Mensagem (ver "Mensagens"), que o tema traduz.
+- Textos traduzíveis (a interface fala pt-BR e inglês): o tema que tem a pasta
+  `themes/<slug>/i18n/` guarda nela um `i18n_<lingua>.properties` por língua (`en` e `pt_BR`),
+  com as mesmas chaves, e põe o comentário `<!-- i18n -->` no `<head>`, antes de qualquer
+  script. A página do tema (`/t/<slug>/`) chega com esse comentário trocado por
+  `window.I18N_DADOS = {"lingua": ..., "textos": {...}, "reserva": {...}}`: os textos da
+  língua de quem abre e os do inglês, para a chave que faltar. A língua sai do `Accept-Language`
+  do navegador: a primeira que temos na preferência dele, e o inglês quando ele não pede nenhuma
+  das duas. `?lang=en` ou `?lang=pt_BR` no endereço força uma, para testar. O formato do arquivo
+  está no `i18n.py`, e o `python dev/testa_i18n.py` confere os arquivos contra o tema.
 - O tema abre também no celular, pela rede de casa (`http://<ip do PC>:8799/`): nada de
   endereço `127.0.0.1` escrito no tema e nada que dependa de mouse. Pela rede, a API só
   responde ao celular pareado (ver "Celular: pareamento").
@@ -58,16 +69,17 @@ reconecta sozinho; mostre que está reconectando.
  "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
  "microfone": {"anel": true, "leitores": 1, "folga_min_ms": 40.0, "secas": 0, "volta_max_ms": 4.5,
                "preparando": null, "efeito_no_filtro": false},
- "error": null ou "texto",
+ "error": null ou Mensagem,
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
  "versao": "0.1.0",
  "visor": {"ondas": 3, "passagens": [Passagem]},
- "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou "texto"}}
+ "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou Mensagem}}
 ```
 - `versao` = a versão do servidor (`versao.py`), para mostrar na tela.
 - `atualizacao` = a versão nova (ver "Versão nova"): `nova` é o número dela, ou `null`;
   `estado` é `parado`, `consultando`, `baixando`, `pronta` (o instalador baixado e conferido) ou
-  `instalando`; `progresso` vai de 0 a 1 no download.
+  `instalando`; `progresso` vai de 0 a 1 no download; `automatica: true` quando quem atualiza é a
+  tarefa do Windows (ver "Versão nova").
 - `track.bpm` = o andamento do disco do prato quando já foi medido (o mesmo `bpm` da Entrada da fila: o
   do começo dele, ou o do fim); sem medida, não vem.
 - `visor` = o que o visor de DJ desenha (a onda correndo, a grade de batidas e a próxima entrando no
@@ -150,15 +162,16 @@ reconecta sozinho; mostre que está reconectando.
   `mic_mute`, então serve para testar um efeito sem ninguém no jogo ouvir.
 - `voice_mon_vol` = volume da própria voz no fone, 0 a 1.
 - `ended` = o arquivo chegou ao fim; `resume` recomeça do zero. Falha de leitura também
-  termina em `ended`, com o texto em `error`: mostre `error` sempre que vier preenchido.
-- `error` já vem como frase pronta em português, com o que fazer; mostre como veio.
+  termina em `ended`, com a Mensagem em `error`: mostre `error` sempre que vier preenchido.
+- `error` é uma Mensagem (ver "Mensagens"): o que houve e o que fazer. Também traz avisos, como o
+  microfone escolhido que sumiu e o que entrou no lugar.
 - Fone em "nenhum" (`active_devices.monitor` vazio) torna `monitor_on` sem efeito.
 - `microfone` = o filtro no microfone em uso: `anel` = a memória do filtro aberta, `leitores` =
   quantos filtros do microfone em uso estão lendo (0 = a música não chega nele), `folga_min_ms` =
   o menor tanto de música que o anel teve desde que o áudio abriu (`null` antes do primeiro leitor),
   `secas` = quantas vezes ele estava vazio (o jogo ouviu um buraco), `volta_max_ms` = a maior demora
   da thread que escreve nele, `preparando` =
-  o microfone que o Windows está preparando para a Vitrola agora (a tarefa do instalador; o som
+  o microfone que o Windows está preparando para o Ritmelli agora (a tarefa do instalador; o som
   do PC some uns segundos), ou `null`; `efeito_no_filtro` = o efeito de voz ativo roda no filtro
   (sem atraso); `false` com efeito ligado = ele vai pelo servidor, com ~30 ms de atraso.
 
@@ -181,7 +194,7 @@ prateleira aos poucos, então ausente = ainda não medido.
 **Job** (download):
 ```json
 {"id": "ce14abe3", "kind": "download", "label": "texto ou título", "status": "running|done|error",
- "progress": 0.42, "error": null ou "texto", "item_id": null ou "id", "play": true,
+ "progress": 0.42, "error": null ou Mensagem, "item_id": null ou "id", "play": true,
  "alvo": "id do vídeo, ou o link ou texto quando não há id"}
 ```
 
@@ -197,9 +210,29 @@ prateleira aos poucos, então ausente = ainda não medido.
 Estado inicial sem SSE: `GET /api/state` (Estado + `pos` + `levels`), `GET /api/library`,
 `GET /api/jobs`.
 
+## Mensagens
+
+O servidor não escreve frase para a tela. Todo erro e aviso que a tela pode mostrar (o `error` do
+Estado, o do Job e o das respostas, e o `erro` da versão nova) vem como **Mensagem**:
+```json
+{"key": "server.download.failed", "params": {"reason": "HTTP Error 403: Forbidden"},
+ "text": "The download failed (HTTP Error 403: Forbidden). Check the link or try another video."}
+```
+- `key` e `params`: mostre o texto da chave nos arquivos do tema (`themes/<slug>/i18n/`), com os
+  `{param}` trocados. As chaves começam com `server.`; a lista, com o texto de cada uma, está nos
+  `.properties` do tema `vitrola`, e o `python dev/testa_i18n.py` confere que todo tema com a pasta
+  `i18n/` tem todas, com os mesmos params.
+- Um param pode ser outra Mensagem: o motivo que já é nosso, como o aparelho que sumiu dentro do
+  "não consegui abrir o áudio". Traduza ela também.
+- `text`: a mesma mensagem em inglês, para o log e para quem chama a API sem tema. A Mensagem sem
+  `key` é a que nenhuma tela deveria ver (o pedido feito errado, a rota que só outro programa
+  chama): mostre o `text`.
+- O detalhe técnico (o motivo do yt-dlp, o erro do Windows) vai como veio, num param, em geral o
+  `reason`. Ele pode trazer o caminho inteiro de um arquivo; a vitrola mostra só o nome.
+
 ## Comandos
 
-Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com status 4xx/5xx.
+Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com status 4xx/5xx.
 
 | comando | corpo | efeito |
 |---|---|---|
@@ -212,7 +245,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
 | `POST /api/settings` | qualquer de `vol`, `mon_vol`, `mic_vol`, `mic_mute`, `monitor_on`, `loop`, `shuffle`, `auto`, `effect`, `voice_monitor`, `voice_mon_vol`, `volume_auto` | ajusta ao vivo; salva `vol`, `mon_vol`, `monitor_on`, `voice_mon_vol`, `auto` e `volume_auto` (`mic_vol` vai direto para o Windows); `mic_mute`, `loop`, `shuffle`, `voice_monitor` e o efeito voltam ao padrão quando o servidor sobe |
 | `GET /api/onda/<id>` | - | a onda do disco para o visor de DJ: `{"id", "passo": 0.04, "n", "completa", "fonte": "arquivo" ou "stream", "versao", "onda"}`, `onda` em base64 de `n` colunas de 3 bytes (grave até 200 Hz, médio até 2 kHz, agudo até 6 kHz), cada uma de `passo` s do disco, em dB de -60 (0) a 0 (255); ~24 KB para 4 min. O motor lê a do disco da prateleira inteira quando ele entra no prato ou na passagem; a do stream só chega até onde o áudio já foi decodificado (`completa: false`: peça de novo). 404 = ainda não tem |
-| `GET /api/effects` | - | `[{"id","nome","grupo","descricao","latencia_ms"}]`, na ordem de exibição; `grupo` vazio é o "Sem efeito"; os grupos hoje são "Rádio e alto-falante", "Ambiente" e "Personagem" |
+| `GET /api/effects` | - | `[{"id","grupo","latencia_ms"}]`, na ordem de exibição; `grupo` é o id do grupo, vazio no "Sem efeito"; os grupos hoje são `radio` (Rádio e alto-falante), `ambiente` e `personagem`. O nome e a descrição de cada efeito e o nome de cada grupo são textos do tema, nas línguas dele: `effect.<id>.name`, `effect.<id>.desc` e `effect.group.<grupo>` (o `python dev/testa_i18n.py` confere que todo tema com a pasta `i18n/` tem os de todos os efeitos do `fx.py`) |
 | `GET /api/search?q=<texto ou link>&n=8&start=0` | - | busca no YouTube (link ou id colado devolve o próprio vídeo): `[{"youtube_id","title","duration","channel","thumb","in_library","id"}]` (leva 2 a 6 s); `n` até 20 por vez, `start` pula os primeiros (o "carregar mais": o servidor pede `start+n` ao YouTube e devolve do `start` em diante, até 200; link com `start` devolve vazio) |
 | `GET /api/musica?q=<pedido>&n=3` | - | busca de música no YouTube Music, a do pedido falado: com o melhor resultado sendo um artista e o pedido só o nome dele, as mais tocadas dele ("Raul" -> Metamorfose Ambulante); senão, as músicas e vídeos da busca. Mesmo formato do `/api/search`; até 4 s, senão 502 (quem pede cai no `/api/search`) |
 | `POST /api/aquece` | - | alguém vai pedir (a mina chama quando uma fala começa): renova as conexões com o YouTube paradas há mais de 180 s no processo do endereço e nas reservas (o YouTube fecha a parada aos ~240 s) e abre o processo do endereço que está vazio; responde na hora `{"ok": true, "aquecidos": n}` |
@@ -228,23 +261,26 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": "texto"}` com sta
 | `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou ""}` | troca dispositivo (reabre o áudio); microfone sem o filtro (apareceu depois da instalação) é preparado pela tarefa do instalador, sem UAC (ver `microfone.preparando`) |
 | `GET /api/boas-vindas` | - | `{"mostrar": bool}`: verdadeiro na primeira vez no PC (prateleira vazia e as boas-vindas nunca fechadas); pelo celular, sempre falso |
 | `POST /api/boas-vindas` | - | só no PC: as boas-vindas foram vistas e não voltam (fica no `config.json`) |
-| `GET /api/themes` | - | `[{"slug","url","name","direction","blurb"}]` |
-| `POST /api/shutdown` | - | desliga o servidor (a música para de tocar no microfone; a voz segue normal, sem efeito) |
+| `GET /api/metricas` | - | só no PC: `{"situacao", "politica"}`, os dados de uso e os erros (`metricas.py`, o [PRIVACIDADE.md](PRIVACIDADE.md)): `situacao` é `"ligada"`, `"desligada"`, `"decidir"` (ninguém escolheu: o tema mostra o aviso) ou `"fora"` (pelo código ou no `--mock`, nunca envia); `politica` é o endereço da política |
+| `POST /api/metricas` | `{"ligar": bool}` | só no PC: a escolha de quem usa, que vale sobre a da página do instalador (fica no `config.json`); responde como o `GET`; com `"fora"`, 409 |
+| `GET /api/themes` | `?lang` (opcional) | `[{"slug","url","name","direction","blurb"}]`, cada texto na língua de quem pede (o `?lang=` ou o `Accept-Language`), quando o `meta.json` traz por língua |
+| `POST /api/shutdown` | - | desliga o servidor (a música para de tocar no microfone; a voz segue normal, sem efeito); a janela própria fecha junto |
+| `POST /api/janela/foco` | - | só no PC: traz a janela própria (`janela.py`) para a frente, restaurada se estava minimizada; 404 quando o Ritmelli abriu no navegador (sem o WebView2, ou com `--no-browser`). É o que o Ritmelli aberto de novo pede ao que já está ligado |
 | `GET /api/lan` | - | `{"url": endereço do PC na rede de casa, ou null}` |
 | `POST /api/parear` | `{"codigo": "482913"}` (espaço vale) | o celular manda o código que o PC mostra; certo, responde com o cookie da chave; errado, 403 com o motivo |
 | `GET /api/pareamento?caminho=/t/<slug>/` | - | só no PC: `{"url", "codigo", "vale_s", "queimado", "qr", "celulares"}` (ver "Celular: pareamento") |
 | `POST /api/pareamento/codigo` | - | só no PC: troca o código (e traz um de volta depois de queimado) |
 | `DELETE /api/pareamento/<id>` | - | só no PC: desconecta o celular, que volta a precisar do código |
-| `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho", "parcial"} ou null}` (ver "Versão nova") |
+| `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho", "parcial"} ou null}`, e `"automatica": true` com a tarefa do Windows (ver "Versão nova"); `notas` é `{"pt_BR": [...], "en": [...]}`, as da versão em cada língua (a lista pode vir vazia: mostre a da outra) |
 | `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
 | `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
-| `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; recusado ou ainda não baixado, 409 com o motivo |
+| `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; automática, o servidor desliga, a tarefa instala e o Ritmelli abre de novo; recusado ou ainda não baixado, 409 com o motivo |
 
 ## Celular: pareamento
 
 O PC (quem fala pelo `127.0.0.1`) usa tudo. Pela rede de casa, as páginas dos temas, a
 galeria e o `GET /api/themes` abrem para qualquer um, mas o resto da API responde **401**
-`{"ok": false, "parear": true, "desconectado": bool, "error": "..."}` até o celular parear;
+`{"ok": false, "parear": true, "desconectado": bool, "error": Mensagem}` até o celular parear;
 `desconectado` diz que ele mandou uma chave que não vale mais (o PC desconectou). O
 `/api/events` também responde 401, e o `EventSource` não mostra o status: quando ele fecha de
 vez, peça o `/api/state` para saber se é o 401.
@@ -267,9 +303,9 @@ vez, peça o `/api/state` para saber se é o 401.
 
 O app consulta o manifesto das versões uns 30 s depois de abrir e de 6 em 6 horas
 (`atualizacao.py`). Uma consulta que não chega ao manifesto (sem rede, tempo esgotado) se repete
-em 2, 5, 15, 30 e 60 minutos, antes de voltar às 6 horas. Fechar a janela não fecha a Vitrola:
-por isso, a página do PC que abre de novo (o `GET /api/events` vindo do `127.0.0.1`) também
-consulta, se a última consulta tem mais de 5 minutos e nada está baixando. Só vale o manifesto assinado pela chave da Vitrola, e só para uma versão
+em 2, 5, 15, 30 e 60 minutos, antes de voltar às 6 horas. Sem a janela própria (no navegador),
+fechar a aba não fecha o Ritmelli: por isso, a página do PC que abre de novo (o `GET /api/events` vindo do `127.0.0.1`) também
+consulta, se a última consulta tem mais de 5 minutos e nada está baixando. Só vale o manifesto assinado pela chave do Ritmelli, e só para uma versão
 mais nova que a que está rodando. As versões ficam nas Releases do repo público
 `ritmelli/ritmelli-releases`. Pelo código (`python server.py`), nada é consultado e `ativa`
 vem `false`.
@@ -280,12 +316,21 @@ vem `false`.
   baixar a parcial; se algo não bater, baixa o completo, e o `tamanho` muda.
 - O `estado` anda assim: `parado` (com ou sem `nova`), `baixando`, `pronta` e, depois do
   `POST /api/atualizacao/instalar`, `instalando`. Um download que para no meio continua sozinho
-  de onde parou, ainda em `baixando`; ele só volta para `parado`, com o motivo em `erro`, depois
+  de onde parou, ainda em `baixando`; ele só volta para `parado`, com a Mensagem do motivo em `erro`, depois
   de algumas tentativas seguidas sem avançar, ou quando o arquivo não confere.
-- O instalador roda em silêncio: o Windows pede a permissão, o instalador fecha a Vitrola, troca
-  a pasta dela e abre de novo, sem abrir outra aba. A página que estava aberta perde a conexão e
-  deve recarregar quando ela voltar, porque o tema também pode ter mudado.
+- O instalador roda em silêncio: o Windows pede a permissão, o instalador fecha o Ritmelli, troca
+  a pasta dele e abre de novo, sem abrir outra aba. A página que estava aberta perde a conexão e
+  deve recarregar quando ele voltar, porque o tema também pode ter mudado.
 - Do celular, os quatro respondem 403: a versão nova se instala no PC.
+
+**Automática** (`automatica: true`, o app instalado com a tarefa "Ritmelli Atualiza" do Windows,
+`atualizador.py`): quem consulta, baixa e instala é a tarefa, como SYSTEM, sem o pedido de
+permissão, no logon, de 4 em 4 horas e uns 30 s depois de o app abrir. Com o Ritmelli aberto, a
+versão nova fica `pronta` e entra quando ele fecha. O app só mostra o estado da tarefa:
+`consultar` e `baixar` pedem uma rodada a ela, e o `instalar` desliga o servidor para a tarefa
+instalar, e o Ritmelli abre de novo sozinho. Sem nada para instalar agora, a tela pode só dizer
+que a versão entra quando o Ritmelli fechar; o `erro` vem quando a tarefa parou (o instalador de
+uma versão falhou duas vezes, por exemplo, e ela espera a próxima).
 
 ## O que todo tema cobre
 
@@ -315,7 +360,7 @@ vem `false`.
    (fora de campo de texto).
 9. Servidor fora do ar, erro de busca, `error` no Estado: dizer o que houve e o que fazer.
 10. Botão de desligar o soundboard, com confirmação.
-11. Efeitos de voz (no estilo do Voicemod): a lista de `/api/effects` agrupada, com o nome
+11. Efeitos de voz (no estilo do Voicemod): a lista de `/api/effects` agrupada, com o nome (o texto do tema pelo id)
     (e a descrição onde couber; no celular só o nome) e o ativo marcado;
     trocar é um toque, e voltar para "Sem efeito" também (atalho 0, fora de campo de texto;
     tocar de novo no efeito ligado desliga, como no Voicemod);
@@ -327,9 +372,10 @@ vem `false`.
 12. Celular: no PC, um botão mostra o QR, o endereço e o código, e a lista dos celulares
     conectados, cada um com o botão de desconectar; no celular sem pareamento (o 401), uma tela
     por cima de tudo pede o código e explica onde achar.
-13. Versão nova: no PC, com `atualizacao.nova`, um botão que mostra a versão, as notas e o
-    tamanho, baixa com o progresso e instala; enquanto o instalador roda, a tela diz que a
-    Vitrola volta sozinha, e a página recarrega quando ela volta.
+13. Versão nova: no PC, com `atualizacao.nova`, um botão que mostra a versão, as notas (na língua da tela) e o
+    tamanho, baixa com o progresso e instala; enquanto o instalador roda, a tela diz que o
+    Ritmelli volta sozinho, e a página recarrega quando ele volta. Automática, a versão já chega
+    baixada, e a tela diz que ela entra quando o Ritmelli fechar.
 
 Cabe em qualquer tela: no computador (largura de 900 px ou mais) a
 página nunca rola, nem de lado; o que não cabe rola por dentro de um painel (lista,
@@ -359,6 +405,12 @@ Na primeira vez no PC (`GET /api/boas-vindas`), a vitrola abre as boas-vindas: o
 passo do microfone e do fone, do mesmo microfone no jogo e nas chamadas (no Discord, o perfil
 Estúdio), da primeira música e do celular. Fechar de
 qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.
+
+Os dados de uso e os erros (`GET /api/metricas`), no PC: com `"decidir"`, todo tema mostra uma vez o
+que vai (o texto do `PRIVACIDADE.md`, ou um resumo com o link da `politica`) e os botões Enviar e
+Não enviar, que mandam o `POST /api/metricas`; fechar sem escolher pergunta de novo na próxima vez,
+e nada sai antes. Com `"ligada"` ou `"desligada"`, o tema mostra a situação e o botão de trocar
+junto da escolha de microfone e fone. A SignPath pede que a pessoa possa desligar.
 
 ## Teste sem som
 

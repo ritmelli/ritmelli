@@ -1,7 +1,7 @@
 @echo off
 rem Compila o micfx.dll, o filtro (x64, CRT estatico: o audiodg.exe nao precisa do redistribuivel do Visual C++), e o
 rem voz.dll, o motor de efeitos dele (voz.h) para a voz com efeito que sai pelo app (microfone\voz.py). Os dois vao no
-rem instalador (vitrola.spec).
+rem instalador (ritmelli.spec).
 rem Precisa do Visual Studio 2022 (qualquer edicao, ou o Build Tools) com C++ e do Windows SDK (10.0.22621 ou mais
 rem novo). O vswhere acha a instalacao: na esteira do GitHub e o Enterprise, num PC costuma ser o Build Tools.
 setlocal

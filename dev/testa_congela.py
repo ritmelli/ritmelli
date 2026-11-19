@@ -1,5 +1,5 @@
 """Testa o stream que congela no meio (13/11: a Toxic parou de chegar em 2:12 com a conexao aberta, o ffmpeg esperou
-pra sempre e a vitrola ficou carregando): com o ffmpeg de verdade e o leitor do motor (Engine._reader), um servidor
+pra sempre e o Ritmelli ficou carregando): com o ffmpeg de verdade e o leitor do motor (Engine._reader), um servidor
 http local manda o comeco do disco e para de mandar sem fechar a conexao, e para sempre naquele endereco (o pior caso:
 o endereco morreu). O ffmpeg reconecta uma vez depois de STREAM_SEM_DADO_S sem nada, congela de novo e desiste; o
 religar (o do servidor, imitado aqui com a espera de um endereco novo) troca a fonte, e um consumidor no ritmo do microfone

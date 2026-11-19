@@ -1,19 +1,20 @@
-"""A atualizacao parcial de um build: so os arquivos que mudaram desde a versao anterior publicada, para o vitrola.iss
+"""A atualizacao parcial de um build: so os arquivos que mudaram desde a versao anterior publicada, para o ritmelli.iss
 montar um setup pequeno (o caminho B do atualizador, pelo proprio Inno).
 
     python parcial.py --anterior <manifest.json da versao anterior> --app-py <atualizacao.py do app>
-                      --app <dist\\vitrola do build> --bin <pasta> [--bin <pasta> ...] --saida <pasta>
+                      --app <dist\\ritmelli do build> --bin <pasta> [--bin <pasta> ...] --saida <pasta>
 
 Confere a assinatura do manifesto anterior (o manifest.json.sig ao lado dele) com o CHAVES do app e compara, arquivo por
 arquivo, o hash dele com o do build, pela mesma lista do manifesto (o fontes do publica.py). A --saida e refeita, com:
 
-- arquivos\\: cada arquivo novo ou mudado, no caminho dele na pasta do app (o vitrola.iss copia tudo para o {app});
+- arquivos\\: cada arquivo novo ou mudado, no caminho dele na pasta do app (o ritmelli.iss copia tudo para o {app});
 - apaga.iss: o [InstallDelete] dos arquivos que a versao anterior tinha e este build nao tem;
 - parcial.json: a versao anterior ("de"), os caminhos que a parcial traz ("arquivos") e os que ela apaga ("apaga"),
   para o publica.py por no manifesto.
 
-Sem nada mudado, nao grava o parcial.json, e o monta.ps1 so monta o setup completo. O app so usa a parcial se o que esta
-instalado bater com o manifesto novo em tudo que ela nao traz (o atualizacao.py, no repo vitrola): por isso ela serve
+Sem nada mudado, ou com a anterior de antes da troca de nome (sem o ritmelli.exe), nao grava o parcial.json, e o
+monta.ps1 so monta o setup completo. O app so usa a parcial se o que esta
+instalado bater com o manifesto novo em tudo que ela nao traz (o atualizacao.py, no repo ritmelli): por isso ela serve
 tambem a quem esta algumas versoes atras, desde que as bibliotecas nao tenham mudado no meio. Senao, vai o completo.
 """
 import argparse
@@ -26,6 +27,8 @@ from pathlib import Path
 from Cryptodome.Signature import eddsa
 
 from publica import chaves_do_app, fontes, sha
+
+EXE = "ritmelli.exe"
 
 
 def confere_anterior(manifesto, chaves):
@@ -64,6 +67,11 @@ def main():
     a.saida.mkdir(parents=True)
     if not traz:
         print(f"nada mudou desde a {anterior['versao']}: sem a parcial")
+        return
+    if EXE not in antes:
+        # a anterior e de antes da troca de nome (#58: vitrola.exe em Program Files\Vitrola): o setup completo muda a
+        # pasta do app, e a parcial, que so troca arquivos dentro dela, nao serve
+        print(f"a {anterior['versao']} nao tem o {EXE} (e de antes da troca de nome): sem a parcial")
         return
     for c in traz:
         destino = a.saida / "arquivos" / c
