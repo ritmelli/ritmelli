@@ -61,6 +61,7 @@ reconecta sozinho; mostre que está reconectando.
 {"status": "idle|buffering|playing|paused|ended",
  "track": Item ou null, "duration": 36.7 ou null,
  "vol": 0.6, "mon_vol": 0.6, "mic_vol": 1.0, "mic_mute": false,
+ "volume_auto": true, "ganho_db": 0.0,
  "monitor_on": true, "loop": false,
  "effect": "nenhum", "voice_monitor": false, "voice_mon_vol": 0.8,
  "por_cima": [{"id": "...", "title": "..."}],
@@ -142,6 +143,11 @@ reconecta sozinho; mostre que está reconectando.
 - `mon_vol` = volume do arquivo no fone do usuário, 0 a 1.
 - `mic_vol` = volume do microfone em uso nas configurações de som do Windows, 0 a 1 (o mesmo número de lá): o servidor grava no Windows e lê de volta, então mudar por lá também mexe na barra. O soundboard não tem ganho próprio de voz, e o valor não vai no `config.json` (quem guarda é o Windows).
 - `mic_mute` = voz cortada (o arquivo segue indo).
+- `volume_auto` = o volume automático, como no Spotify: a música mais alta que -11 LUFS desce até ele, e a mais
+  baixa sobe até ele, no máximo +9 dB, com um limitador que não deixa o que ela subiu passar de 0 dBFS. Ligado de
+  fábrica; vai no `config.json`. `ganho_db` = quanto o disco do prato subiu (positivo) ou desceu (negativo) agora
+  (0 = como veio; anda em rampa quando a medida
+  chega com ele tocando, ou quando a chave muda). Servidor antigo não manda: sem eles, o tema esconde a chave.
 - `monitor_on` = o arquivo toca também no fone do usuário.
 - `loop` = repete o disco do prato sem parar. Vale só para esse disco: outro entrando (prateleira,
   Próxima, Anterior, fila) ou o disco saindo do prato (`POST /api/stop`) desliga, e o `loop` do
@@ -174,7 +180,8 @@ reconecta sozinho; mostre que está reconectando.
 ```json
 {"id": "w6kKVs-h9Ns", "title": "...", "file": "w6kKVs-h9Ns.webm", "duration": 36.7,
  "youtube_id": "w6kKVs-h9Ns" ou null, "thumb": "https://i.ytimg.com/vi/<id>/mqdefault.jpg" ou null,
- "channel": "..." ou null, "added": "2026-10-17T13:34:56", "last_pos": 807, "plays": 3, "rapido": true}
+ "channel": "..." ou null, "added": "2026-10-17T13:34:56", "last_pos": 807, "plays": 3, "rapido": true,
+ "lufs": -14.1}
 ```
 `rapido` = posto nos Sons rápidos pela mão (ausente = não); no celular ele toca por cima
 da música com `por_cima`, como os de até 15 s, e o motor toca ele inteiro, até 2 min.
@@ -182,6 +189,8 @@ da música com `por_cima`, como os de até 15 s, e o motor toca ele inteiro, at�
 quando for maior que uns 5 s. `plays` = quantas vezes o disco foi escutado: conta quando
 toca de fato 30 s (ou 80% dele, se for mais curto) desde que entrou no prato; ausente = 0
 (item que nunca tocou, ou servidor antigo). A vitrola põe as mais escutadas primeiro.
+`lufs` = a sonoridade do disco inteiro (LUFS integrado, EBU R128), que o volume automático usa; o servidor mede a
+prateleira aos poucos, então ausente = ainda não medido.
 
 **Job** (download):
 ```json
@@ -235,7 +244,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca; fila vazia = 409 |
 | `POST /api/prev` | - | Anterior do Spotify: com mais de 3 s de disco (ou nada antes dele), volta ao começo (`{"did": "inicio"}`); senão toca o último do `history`, e o disco do prato vai para o topo da `queue` (`{"did": "anterior"}`); nada no prato nem antes = 409 |
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
-| `POST /api/settings` | qualquer de `vol`, `mon_vol`, `mic_vol`, `mic_mute`, `monitor_on`, `loop`, `shuffle`, `auto`, `effect`, `voice_monitor`, `voice_mon_vol` | ajusta ao vivo; salva `vol`, `mon_vol`, `monitor_on`, `voice_mon_vol` e `auto` (`mic_vol` vai direto para o Windows); `mic_mute`, `loop`, `shuffle`, `voice_monitor` e o efeito voltam ao padrão quando o servidor sobe |
+| `POST /api/settings` | qualquer de `vol`, `mon_vol`, `mic_vol`, `mic_mute`, `monitor_on`, `loop`, `shuffle`, `auto`, `effect`, `voice_monitor`, `voice_mon_vol`, `volume_auto` | ajusta ao vivo; salva `vol`, `mon_vol`, `monitor_on`, `voice_mon_vol`, `auto` e `volume_auto` (`mic_vol` vai direto para o Windows); `mic_mute`, `loop`, `shuffle`, `voice_monitor` e o efeito voltam ao padrão quando o servidor sobe |
 | `GET /api/onda/<id>` | - | a onda do disco para o visor de DJ: `{"id", "passo": 0.04, "n", "completa", "fonte": "arquivo" ou "stream", "versao", "onda"}`, `onda` em base64 de `n` colunas de 3 bytes (grave até 200 Hz, médio até 2 kHz, agudo até 6 kHz), cada uma de `passo` s do disco, em dB de -60 (0) a 0 (255); ~24 KB para 4 min. O motor lê a do disco da prateleira inteira quando ele entra no prato ou na passagem; a do stream só chega até onde o áudio já foi decodificado (`completa: false`: peça de novo). 404 = ainda não tem |
 | `GET /api/effects` | - | `[{"id","grupo","latencia_ms"}]`, na ordem de exibição; `grupo` é o id do grupo, vazio no "Sem efeito"; os grupos hoje são `radio` (Rádio e alto-falante), `ambiente` e `personagem`. O nome e a descrição de cada efeito e o nome de cada grupo são textos do tema, nas línguas dele: `effect.<id>.name`, `effect.<id>.desc` e `effect.group.<grupo>` (o `python dev/testa_i18n.py` confere que todo tema com a pasta `i18n/` tem os de todos os efeitos do `fx.py`) |
 | `GET /api/search?q=<texto ou link>&n=8&start=0` | - | busca no YouTube (link ou id colado devolve o próprio vídeo): `[{"youtube_id","title","duration","channel","thumb","in_library","id"}]` (leva 2 a 6 s); `n` até 20 por vez, `start` pula os primeiros (o "carregar mais": o servidor pede `start+n` ao YouTube e devolve do `start` em diante, até 200; link com `start` devolve vazio) |

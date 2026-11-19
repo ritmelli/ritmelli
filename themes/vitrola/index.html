@@ -491,6 +491,7 @@ input[type=range]:focus-visible { outline-offset: 2px; }
 .fader input { grid-row: 2; grid-column: 1 / -1; margin-top: 0; }
 .receptor input[type=range]:focus-visible { outline-offset: 0; }
 .chaves { display: flex; gap: 10px; flex-wrap: wrap; }
+.nivelar { display: grid; justify-items: start; gap: 6px; }
 .chaves .btn { flex: 1 1 auto; }
 .chave { gap: 10px; padding: 8px 14px; }
 .chave .lampada { width: 9px; height: 9px; }
@@ -4752,6 +4753,10 @@ body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: att
       <select id="dd-mon"></select>
       <span class="em-uso" id="dd-mon-uso"></span>
     </label>
+    <div class="nivelar">
+      <button class="btn chave" id="b-nivelar" type="button" aria-pressed="false" aria-describedby="dd-nivelar"><span class="lampada" aria-hidden="true"></span><span data-i18n="devices.autoVolume"></span></button>
+      <span class="em-uso" id="dd-nivelar"></span>
+    </div>
     <div class="lembrete"><span class="lampada acesa" aria-hidden="true"></span>
       <span><span data-i18n="devices.sameMic"></span> <span data-i18n="devices.discordHint"></span> <span data-i18n="devices.pushToTalk"></span></span></div>
     <!-- os dados de uso e os erros (GET/POST /api/metricas), so no PC: o JS mostra quando o servidor diz a situacao -->
@@ -5684,6 +5689,13 @@ function desenharReceptor() {
   $('#f-mon').closest('.fader').title = semFone ? I18N.t('mixer.noHeadphones') : '';
   $('label[for="f-mon"] small').textContent = semFone ? I18N.t('mixer.noHeadphonesShort') : '';
   ligarChave($('#b-cortar'), s.mic_mute);
+  // o volume automatico (no Microfone e fone): ligado, a alta desce e a baixa sobe ate o mesmo volume; diz quanto nesta
+  $('#b-nivelar').closest('.nivelar').hidden = !('volume_auto' in s);   // servidor antigo: sem a chave
+  ligarChave($('#b-nivelar'), !!s.volume_auto);
+  const gdb = s.ganho_db || 0;
+  $('#dd-nivelar').textContent = !s.volume_auto ? I18N.t('devices.autoVolumeOff')
+    : I18N.t('devices.autoVolumeOn') + (Math.abs(gdb) < 0.05 ? ''
+      : ' ' + I18N.t(gdb > 0 ? 'devices.autoVolumeUp' : 'devices.autoVolumeDown', { db: I18N.num(Math.abs(gdb), 1) }));
   for (const mc of [$('#mini-cortar'), $('#palco-cortar')]) {   // o da barra e o do cabecalho do palco
     if (mc._cortada === !!s.mic_mute) continue;
     mc._cortada = !!s.mic_mute;
@@ -8949,6 +8961,7 @@ $('#b-aleatorio').addEventListener('click', () => { const v = !(S.state && S.sta
 $('#b-repetir').addEventListener('click', () => { const v = !(S.state && S.state.loop); ligarChave($('#b-repetir'), v); ajustar('loop', v); });
 function alternarVoz() { const v = !(S.state && S.state.mic_mute); ligarChave($('#b-cortar'), v); ajustar('mic_mute', v); desenharReceptor(); }
 $('#b-cortar').addEventListener('click', alternarVoz);
+$('#b-nivelar').addEventListener('click', () => { const v = !(S.state && S.state.volume_auto); ligarChave($('#b-nivelar'), v); ajustar('volume_auto', v); });
 $('#b-ouvir').addEventListener('click', () => {
   const v = !(S.state && S.state.voice_monitor);
   ligarChave($('#b-ouvir'), v); ajustar('voice_monitor', v);
