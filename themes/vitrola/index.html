@@ -4281,7 +4281,29 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     border-radius: 6px; background: var(--veio-v) 0 0 / 420px 900px, linear-gradient(180deg, #5A2A12 0%, #44200D 50%, #331708 100%);
     box-shadow: inset 0 0 0 5px #7A3C1B, inset 0 0 0 6px rgba(0,0,0,.45), 0 0 0 1px #1A0B04, 0 22px 44px 6px rgba(0,0,0,.72);
   }
+  /* (#52) o disco arrastado da prateleira ate um toca-discos: a capa solta segue o ponteiro, inclinada e com a sombra
+     dura da mesa; na prateleira fica o lugar dela apagado; o toca-discos embaixo acende com o que soltar ali faz */
+  body.mesa-dj .estante .capa { -webkit-user-drag: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  body.mesa-dj .estante .capa img { -webkit-user-drag: none; }
+  body.mesa-dj .estante .disco-item.levantado { opacity: .35; }
+  body.mesa-dj.arrastando-disco, body.mesa-dj.arrastando-disco * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
+  body.mesa-dj > .disco-voando { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; will-change: transform; }
+  body.mesa-dj > .disco-voando.voltando { transition: transform .18s ease-in, opacity .18s ease-in; opacity: .4; }
+  body.mesa-dj > .disco-voando .dv-capa {
+    position: relative; width: 100%; height: 100%; overflow: hidden; border: 2px solid #0E0703; background: #2A1A12;
+    box-shadow: 6px 6px 0 rgba(12, 2, 0, .45); transform: rotate(-4deg) scale(1.06); animation: dv-levanta .12s ease-out;
+  }
+  body.mesa-dj > .disco-voando .dv-capa > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  body.mesa-dj .palco .deck.alvo-disco { outline: 4px solid var(--ambar); outline-offset: 2px; }
+  /* o que soltar faz, numa placa na beira de cima do toca-discos (como a do visor de DJ): no meio, a capa a cobria. Por
+     cima do canvas que desenha o toca-discos (o canvas.dk-px, z-index 6) */
+  body.mesa-dj .palco .deck.alvo-disco::after {
+    content: attr(data-alvo); position: absolute; left: 50%; top: 0; translate: -50% -50%; z-index: 7; pointer-events: none;
+    padding: 8px 14px 9px; white-space: nowrap; font-size: 1.25rem; font-weight: 700; line-height: 1; color: var(--tinta);
+    background: var(--ambar); border: 2px solid var(--contorno); box-shadow: 4px 4px 0 rgba(12, 2, 0, .5);
+  }
 }
+@keyframes dv-levanta { from { transform: none; box-shadow: 0 0 0 rgba(12, 2, 0, .45); } }
 /* tela muito baixa (o celular grande deitado): o receiver de uma coluna passava 10 px da tela; os vaos dele encolhem */
 @media (min-width: 900px) and (max-height: 499.98px) {
   :where(body:not(.mesa-dj)) {
@@ -4290,6 +4312,8 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .disco-voando .dv-capa { animation: none; }
+  .disco-voando.voltando { transition: none; }
   .giratorio { animation: none; }
   .lampada.piscando { animation: none; }
   .braco, .disco, .brilho, .capa, .mostrador::before, .rolo { transition: none; }
@@ -9143,6 +9167,143 @@ $('#chips').addEventListener('contextmenu', e => {
   e.preventDefault(); seguradaEm = Date.now();
   fecharMenu(false); abrirMenu(b, { tipo: 'disco', id: b.dataset.id });
 });
+/* (#52) arrastar um disco da prateleira ate um toca-discos, so na mesa, a unica tela com a prateleira e os dois
+   toca-discos juntos: soltar no deck no ar toca agora, como o clique; no da deixa toca a seguir, como o "Tocar a
+   seguir" do menu (o disco que ja esta na deixa fica como esta). No mouse, andar uns pixels com o botao apertado ja
+   arrasta: o clique segue tocando, e o botao direito e o "..." seguem abrindo o menu. No dedo, segurar meio segundo
+   levanta o disco (o celular vibra): andando, arrasta; soltando sem andar, abre o menu, que e o que o segurar fazia (o
+   segurar do proprio navegador fica de fora na mesa, para nao abrir o menu no meio do arrasto). Fora da mesa nada
+   muda. Soltar longe dos toca-discos, o Esc, o gesto cancelado ou a mesa desmontando devolvem o disco a prateleira */
+(() => {
+  const est = $('#estante'), SEGURAR_MS = 450, FOLGA_DEDO = 8, FOLGA_MOUSE = 6;
+  let g = null;          // o gesto em curso
+  let dedoEm = 0;        // o fim do ultimo gesto de dedo: o menu do segurar do navegador que chega depois fica de fora
+  let engolir = null;    // o ponteiro do arrasto cancelado pelo Esc: o soltar dele nao vira clique
+  // o toca-discos que aparece no ponto: o que estiver por cima dele (a gaveta da busca, um aviso) tapa o alvo. A capa
+  // solta e a placa do alvo nao pegam o ponteiro, entao nao contam
+  function alvoEm(x, y) {
+    const e = document.elementFromPoint(x, y), d = e && e.closest('.palco .deck');
+    return d ? { d, acao: d.classList.contains('deck-deixa') ? 'seguir' : 'agora' } : null;
+  }
+  function apagarAlvo(d) { d.classList.remove('alvo-disco'); delete d.dataset.alvo; }
+  function acender(alvo) {
+    const d = alvo ? alvo.d : null;
+    if (g.alvo && g.alvo !== d) apagarAlvo(g.alvo);
+    if (d) { d.dataset.alvo = I18N.t(alvo.acao === 'agora' ? 'cue.playNow' : 'menu.playNext'); d.classList.add('alvo-disco'); }
+    g.alvo = d;
+  }
+  const posicionar = () => { g.voa.style.transform = `translate(${g.x - g.dx}px, ${g.y - g.dy}px)`; };
+  // a capa sai da prateleira: uma copia solta, presa ao ponteiro no ponto onde ele pegou
+  function levantar() {
+    clearTimeout(g.timer);
+    if (!MESA.montada || !g.li.isConnected) { acabar(); return; }
+    const r = g.capa.getBoundingClientRect();
+    g.fase = 'levantado'; g.xl = g.x; g.yl = g.y; g.dx = g.x0 - r.left; g.dy = g.y0 - r.top;
+    const v = el('div', 'disco-voando'), c = el('div', 'dv-capa'), arteNo = g.capa.querySelector('img, .capa-gerada');
+    c.append(arteNo ? arteNo.cloneNode(true) : arte(g.it, false));
+    v.append(c); v.setAttribute('aria-hidden', 'true');
+    v.style.width = r.width + 'px'; v.style.height = r.height + 'px';
+    document.body.append(v);
+    g.voa = v; posicionar();
+    g.li.classList.add('levantado');
+    document.body.classList.add('arrastando-disco');
+    getSelection().removeAllRanges();
+    // preso a prateleira (que nunca e redesenhada): o soltar chega mesmo fora da janela ou com o disco redesenhado
+    try { est.setPointerCapture(g.id); } catch (e) { /* o ponteiro ja saiu */ }
+    if (g.dedo && navigator.vibrate) navigator.vibrate(12);
+  }
+  function acabar() {
+    if (!g) return;
+    clearTimeout(g.timer);
+    if (g.alvo) apagarAlvo(g.alvo);
+    if (g.voa) g.voa.remove();
+    g.li.classList.remove('levantado');
+    document.body.classList.remove('arrastando-disco');
+    if (g.dedo) dedoEm = Date.now();
+    g = null;
+  }
+  // a capa volta voando para o lugar do disco na prateleira (achado pelo id: ele pode ter sido redesenhado no caminho)
+  function devolver() {
+    const voa = g.voa, id = g.it.id;
+    g.voa = null;
+    acabar();
+    if (!voa) return;
+    const li = [...est.querySelectorAll('li[data-id]')].find(l => l.dataset.id === id), capa = li && li.querySelector('.capa');
+    if (!capa || !MESA.montada || reduz.matches) { voa.remove(); return; }
+    const r = capa.getBoundingClientRect();
+    voa.classList.add('voltando');
+    voa.style.transform = `translate(${r.left}px, ${r.top}px)`;
+    setTimeout(() => voa.remove(), 200);
+  }
+  est.addEventListener('pointerdown', e => {
+    if (g || !MESA.montada || e.button !== 0 || !e.isPrimary) return;
+    const capa = e.target.closest('.capa'), li = capa && capa.closest('li[data-id]');
+    const it = li && S.lib.find(x => x.id === li.dataset.id);
+    if (!it) return;
+    g = { id: e.pointerId, dedo: e.pointerType !== 'mouse', li, capa, it, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+          fase: 'espera', alvo: null, voa: null };
+    if (g.dedo) g.timer = setTimeout(levantar, SEGURAR_MS);
+  });
+  addEventListener('pointermove', e => {
+    if (!g || e.pointerId !== g.id) return;
+    g.x = e.clientX; g.y = e.clientY;
+    if (!g.dedo && !(e.buttons & 1)) { if (g.fase === 'espera') acabar(); else devolver(); return; }   // soltou fora da janela
+    if (g.fase === 'espera') {
+      const andou = Math.hypot(g.x - g.x0, g.y - g.y0);
+      if (g.dedo) { if (andou > FOLGA_DEDO) acabar(); return; }   // o dedo andou antes do tempo: e a rolagem da prateleira
+      if (andou < FOLGA_MOUSE) return;
+      levantar();
+      if (!g) return;
+      g.fase = 'arrastando';
+    } else if (g.fase === 'levantado') {
+      if (Math.hypot(g.x - g.xl, g.y - g.yl) < FOLGA_DEDO) return;
+      g.fase = 'arrastando';
+    }
+    if (!MESA.montada) { devolver(); return; }
+    posicionar();
+    acender(alvoEm(g.x, g.y));
+  });
+  addEventListener('pointerup', e => {
+    if (engolir === e.pointerId) { engolir = null; seguradaEm = Date.now(); return; }
+    if (!g || e.pointerId !== g.id) return;
+    if (g.fase === 'espera') { acabar(); return; }   // o clique, ou o toque curto, de sempre: o click toca o disco
+    seguradaEm = Date.now();   // o click que vem depois do soltar nao toca o disco
+    if (g.fase === 'levantado') {   // segurou e soltou sem andar: o menu, como o segurar abria
+      const { capa, it } = g;
+      acabar();
+      fecharMenu(false); abrirMenu(capa, { tipo: 'disco', id: it.id });
+      return;
+    }
+    const alvo = MESA.montada ? alvoEm(g.x, g.y) : null, it = g.it;
+    if (!alvo) { devolver(); return; }
+    acabar();
+    if (alvo.acao === 'agora') tocar(it.id);
+    else if (!mesmoDisco(MESA.deixa, it)) executar('seguir', { tipo: 'disco', it });
+  });
+  addEventListener('pointercancel', e => {
+    if (engolir === e.pointerId) engolir = null;
+    if (!g || e.pointerId !== g.id) return;
+    if (g.fase === 'espera') acabar(); else devolver();
+  });
+  document.addEventListener('keydown', e => {   // antes do Esc da pagina, que pararia a musica
+    if (!g || g.fase === 'espera' || e.key !== 'Escape') return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    engolir = g.id;
+    devolver();
+  }, true);
+  // o menu do segurar do proprio navegador: na mesa, o dedo ja abre o menu ao soltar
+  est.addEventListener('contextmenu', e => {
+    if (!MESA.montada || !e.target.closest('.capa')) return;
+    if ((g && g.dedo) || Date.now() - dedoEm < 800) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+  est.addEventListener('dragstart', e => { if (MESA.montada && e.target.closest && e.target.closest('.capa')) e.preventDefault(); });
+  // com o disco levantado, o dedo nao rola a prateleira: o touchmove que bloqueia so existe na mesa (fora dela a
+  // rolagem segue sem esperar por ele)
+  const prende = e => { if (g && g.dedo && g.fase !== 'espera' && e.cancelable) e.preventDefault(); };
+  const ligar = () => est[paginaUnica() ? 'addEventListener' : 'removeEventListener']('touchmove', prende, { passive: false });
+  ligar();
+  mqUnica.addEventListener('change', () => { ligar(); if (g && !paginaUnica()) acabar(); });
+})();
 $('#estante').addEventListener('scroll', () => requestAnimationFrame(marcarPonto), { passive: true });
 $('#cartoes').addEventListener('click', e => { const li = e.target.closest('li[data-id]'); if (li) tocar(li.dataset.id, { resume: true }); });
 /* no toque a barra so muda arrastando o cursor: encostar em outro ponto da canaleta (sem
