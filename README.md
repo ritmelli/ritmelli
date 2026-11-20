@@ -80,7 +80,8 @@ com o detector em numpy).
   consegue alterar nada. A comunicação entre o celular e o computador não é criptografada (HTTP): use esse recurso na
   rede de casa, e não em redes Wi-Fi públicas, como as de cafés ou hotéis. Com `server.py --so-local`, o servidor atende
   apenas o próprio computador.
-- Para trabalhar na interface sem áudio: `python server.py --mock --port 8801 --data-dir <pasta>`.
+- Para trabalhar na interface sem áudio: `python server.py --mock --port 8801`. A prateleira é uma cópia numa pasta
+  temporária; `--data-dir <pasta>` escolhe outra pasta, nunca a de quem usa.
 
 ## Executável
 

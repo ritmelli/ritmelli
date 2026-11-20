@@ -69,6 +69,11 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: python dev/testa_migra.py
+      # o servidor de teste (--mock) nunca grava na pasta de dados de quem usa (#117). Só a biblioteca padrão
+      - name: Confere a pasta do teste sem som
+        env:
+          PYTHONUTF8: '1'
+        run: python dev/testa_mock.py
       # o Inno Setup do build à mão, na pasta do usuário, que é a primeira onde o monta.ps1 procura (a máquina do
       # GitHub pode trazer outra versão em Program Files)
       - name: Inno Setup 6.7.3
