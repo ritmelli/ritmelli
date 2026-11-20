@@ -43,6 +43,25 @@ def migra():
     return True
 
 
+def dados_do_mock(pedida=None):
+    """A pasta de dados do servidor no --mock (#117). O download de mentira copia o disco mais curto da prateleira com
+    outro nome: na pasta de quem usa, cada musica adicionada no teste virava um disco falso, com a duracao do som curto
+    (e entrava nos Sons rapidos). Sem --data-dir, uma pasta temporaria nova, que sai quando o servidor fecha (o App
+    copia para ela a library.json de quem usa); a pasta de quem usa, nem pedida: None."""
+    if pedida is None:
+        import atexit
+        import shutil
+        import tempfile
+        p = Path(tempfile.mkdtemp(prefix="ritmelli-mock-"))
+        atexit.register(shutil.rmtree, p, True)
+        return p
+    p = Path(pedida)
+    def igual(d):
+        return os.path.normcase(os.path.realpath(d))   # a caixa, o ..\ e o nome curto do Windows (CHRIST~1)
+    reais = {igual(d) for d in (LIB, DADOS_NOVA / "library", DADOS_VELHA / "library")}
+    return None if igual(p) in reais else p
+
+
 def ferramenta(nome):
     """O caminho de nome.exe na BIN, ou None (ai vale o do PATH)."""
     p = BIN / f"{nome}.exe"

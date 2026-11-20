@@ -415,9 +415,11 @@ junto da escolha de microfone e fone. A SignPath pede que a pessoa possa desliga
 
 ## Teste sem som
 
-`python server.py --mock --port 88NN --data-dir <pasta> --no-browser` sobe tudo sem abrir
+`python server.py --mock --port 88NN --no-browser` sobe tudo sem abrir
 dispositivo de áudio (relógio falso, voz falsa no medidor, download fingido em 3 s), com
-uma cópia da biblioteca em `<pasta>`. Print: `python dev/shot.py <url> <png> [--size
+uma cópia da biblioteca numa pasta temporária, apagada quando o servidor fecha, ou em
+`--data-dir <pasta>`. A pasta de quem usa o `--mock` recusa: o download fingido copia o disco
+mais curto com outro nome, e lá viraria disco falso na prateleira. Print: `python dev/shot.py <url> <png> [--size
 390x844] [--js "..."] [--tab N] [--reduced-motion] [--offline-ok]`, que também lista os erros
 do console (`--tab` aperta Tab para o anel de foco aparecer; `--offline-ok` não conta a
 reconexão do SSE com o servidor fora).

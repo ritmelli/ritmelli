@@ -4,7 +4,8 @@ pareado na rede de casa (para mexer enquanto joga; ver o pareamento.py). No PC, 
 propria (janela.py), ou no navegador sem o WebView2; --no-browser nao abre nenhuma das duas.
 
     python server.py [--port 8799] [--no-browser] [--so-local]
-    python server.py --mock --port 8801 --data-dir <pasta>   (sem som, pra testar tema)
+    python server.py --mock --port 8801 [--data-dir <pasta>]   (sem som, pra testar tema; sem --data-dir, uma copia
+                                                               da prateleira numa pasta temporaria)
 """
 import argparse
 import asyncio
@@ -2537,16 +2538,24 @@ def main():
     ap.add_argument("--port", type=int, default=pastas.PORTA)
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--mock", action="store_true", help="no audio: fake clock, pretend downloads")
-    ap.add_argument("--data-dir", default=str(LIB), help="where library.json and config.json live")
+    ap.add_argument("--data-dir", help="where library.json and config.json live (default: the user's; with --mock, a "
+                                       "new temporary folder, never the user's)")
     ap.add_argument("--so-local", action="store_true", help="don't serve the home network (phone)")
     ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
-    A = App(a.port, Path(a.data_dir), mock=a.mock)
+    dados = Path(a.data_dir) if a.data_dir else LIB
+    if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
+        dados = pastas.dados_do_mock(a.data_dir)
+        if dados is None:
+            sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
+                     "temporary copy")
+    A = App(a.port, dados, mock=a.mock)
     threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
     print(f"mic: {d['mic']} | headphones: {d['monitor'] or '-'}", flush=True)
     url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
-    print(f"Ritmelli {VERSAO} at {url}{' (MOCK, no sound)' if a.mock else ''} | data in {pastas.DADOS}", flush=True)
+    print(f"Ritmelli {VERSAO} at {url}{' (MOCK, no sound)' if a.mock else ''} | data in {dados if a.mock else pastas.DADOS}",
+          flush=True)
     # a janela propria (janela.py, #99), quando o WebView2 esta no PC; senao, a pagina no navegador, como antes.
     # --no-browser (a atualizacao reabrindo, os testes) nao abre nenhuma das duas
     if not a.no_browser:
