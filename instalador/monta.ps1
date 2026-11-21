@@ -69,7 +69,16 @@ if (-not $SemCongelar) {
   # a cada build: as versoes de travas.txt (o PC e o GitHub montam com as mesmas, e elas so mudam de proposito), o que
   # entrou no requirements.txt e ainda nao esta na trava, e o yt-dlp sempre o mais novo (o YouTube quebra o velho, e o
   # update do app e o unico jeito de o novo chegar a quem usa)
+  # o onnxruntime (so o processador) de um venv de antes da troca de voz e o onnxruntime-directml trazem o mesmo modulo:
+  # um por cima do outro, o app sai sem a DirectML.dll. Sai o de processador, e o da DirectML se instala de novo
+  $cpu = & "$venv\python.exe" -c "import importlib.metadata as m; print(any((d.metadata['Name'] or '').lower() == 'onnxruntime' for d in m.distributions()))"
+  if ($cpu -eq 'True') {
+    'o venv tem o onnxruntime de processador: trocando pelo onnxruntime-directml...'
+    Roda 'pip' { & "$venv\python.exe" -m pip uninstall -q -y onnxruntime onnxruntime-directml }
+  }
   Roda 'pip' { & "$venv\python.exe" -m pip install -q -r (Join-Path $Ritmelli 'requirements.txt') -r (Join-Path $PSScriptRoot 'travas.txt') }
+  $provedores = & "$venv\python.exe" -c "import onnxruntime as o; print(' '.join(o.get_available_providers()))"
+  if ($provedores -notmatch 'DmlExecutionProvider') { throw "o onnxruntime do venv nao tem a DirectML: $provedores" }
   # o PyInstaller da versao fixa, instalado da fonte com o bootloader compilado aqui (bootloader\compila.ps1) no lugar
   # do pronto. So reinstala quando o bootloader do venv nao e o nosso; a fonte se abre na pasta curta do venv
   $PYI = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'bootloader\pyinstaller.psd1')
