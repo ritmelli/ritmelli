@@ -157,6 +157,12 @@ class Conversor:
             self.bloco((rng.standard_normal(N) * 0.05).astype(f32))
         self._zera()
 
+    def ajusta_tom(self, tom):
+        """O deslocamento novo (semitons), com a linha do tempo zerada: o que ja estava convertido com o tom de antes
+        nao emenda no de agora. Chamado da mesma thread do bloco()."""
+        self.fator = f32(2 ** (float(tom) / 12))
+        self._zera()
+
     @staticmethod
     def _sessao(caminho, so, prov, fixar=False):
         """Uma sessao do modelo. fixar: os tamanhos livres das entradas em 1 (o lote do decodificador saiu livre da
@@ -178,6 +184,7 @@ class Conversor:
         fica andado: o ruido so precisa ser o mesmo para o mesmo instante dentro da sessao)."""
         self.conv = np.zeros(self.conv_n, f32)
         self.pitchf = np.zeros(self.QUADROS + 1, f32)
+        self.tom_congelado = np.zeros(0, f32)
         self.guarda = np.zeros(MISTURA, f32)
         self.fase = 0.0
         self.nb = 0
@@ -258,6 +265,10 @@ class Conversor:
 
         # o tom: so da janela mais recente; so os quadros que ainda vao sair mudam
         f0, _ = self.tom(self.conv[-JAN_TOM:])
+        cru = f0[3:-1] if len(f0) > 4 else f0
+        # o tom de quem fala (Hz, 0 = sem tom) nos P quadros que congelam neste bloco: cada quadro passa por aqui uma vez,
+        # ja com os 200 ms de futuro (o ajuste do tom do pedal mede por ele)
+        self.tom_congelado = cru[-(CONGELA + self.P):-CONGELA].copy() if len(cru) >= CONGELA + self.P else cru[:0].copy()
         f0 = f0 * self.fator
         iff = f0[3:-1] if len(f0) > 4 else f0
         self.pitchf[:-self.P] = self.pitchf[self.P:].copy()

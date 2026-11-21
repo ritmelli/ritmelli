@@ -4,10 +4,16 @@ escreve na pista da voz; desligado, derruba o processo e a voz do microfone volt
 
 As vozes sao as do ritmelli-voices, nas releases que o vozes.json (ao lado deste arquivo) fixa, com o sha256 de cada
 arquivo: o instalador baixa os arquivos para a pasta vozes\\ do app (MODELOS), e quem roda pelo codigo baixa com o
-python dev/vozes.py baixa. Sem placa de video, ou sem os modelos, o pedal nao aparece (impedimento()). O que e de quem
-usa (a voz escolhida e o tom de cada voz, em semitons) fica no pedal_voz.json da pasta de dados que o servidor passa
-em dados() (no --mock, a temporaria dele)."""
+python dev/vozes.py baixa. Sem placa de video, ou sem os modelos, o pedal nao aparece (impedimento()).
+
+O tom: cada voz traz no voz.json o tom em que ela soa certa (tom_hz, aprovado de ouvido), e o deslocamento e o que
+leva o tom de quem fala (o percentil QUANTIL dos quadros com tom) ate ele (desloca()). O tom de quem fala se mede uma
+vez, no pedal: sem ele guardado, o processo sobe no ajuste (o visor pede FALE ALGO, mostra o OUVINDO com o tempo de
+fala medido e fecha com o PRONTO), e clicar de novo na voz que ja esta escolhida mede de novo. Uma medida serve para
+todas as vozes. O que e de quem usa (a voz escolhida e o tom dela) fica no pedal_voz.json da pasta de dados que o
+servidor passa em dados() (no --mock, a temporaria dele)."""
 import json
+import math
 import os
 import subprocess
 import sys
@@ -23,13 +29,35 @@ ENGINE = MANIFESTO["engine"]["tag"]
 RELEASES = {v["id"]: v["tag"] for v in MANIFESTO["vozes"]}
 MODELOS = pastas.APP / "vozes"  # a pasta do app: no instalado, a que o instalador encheu
 SAIR_S = 5  # o processo tem isso para sair sozinho com o "sair" antes de ser derrubado
+PRONTO_S = 1.5  # o PRONTO fica no visor isso, e o visor volta para a voz
+TOM_MAX = 24.0  # o deslocamento fica entre -TOM_MAX e +TOM_MAX semitons
+# o tom de quem fala e o percentil QUANTIL dos quadros com tom, e nao a mediana: o piso da fala quase nao muda quando a
+# pessoa se anima (risada, grito), e a mediana de 8 s de fala animada sai ate 10 semitons acima da de sempre. O tom_hz
+# de cada voz e medido na mesma regua
+QUANTIL = 20
+HZ_MIN, HZ_MAX = 50.0, 1000.0  # um tom (de quem fala, ou o de uma voz) fora disso nao vale
 
 _trava = threading.RLock()
 _arq = None          # o pedal_voz.json
-_cfg = None          # o que ele guarda: {"voz": id, "tom": {id: semitons}}
+_cfg = None          # o que ele guarda: {"voz": id, "falante_hz": o tom de quem fala (o QUANTIL), ou None}
 _estado = {"voz": VOZES[0], "visor": None, "progresso": None}
 _proc = None
 _ligado = False
+_refaz = False       # a voz escolhida clicada de novo: o proximo processo mede o tom de novo
+
+
+def desloca(alvo_hz, falante_hz):
+    """O deslocamento (semitons) que leva o tom de quem fala ao da voz."""
+    return max(-TOM_MAX, min(TOM_MAX, 12 * math.log2(alvo_hz / falante_hz)))
+
+
+def _hz(v):
+    """Um tom em Hz, ou None se nao for um."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    return v if HZ_MIN <= v <= HZ_MAX else None
 
 
 def placas():
@@ -109,10 +137,8 @@ def _carrega():
                 _cfg = json.load(f)
         except (OSError, ValueError):
             _cfg = {}
-        if not isinstance(_cfg, dict) or _cfg.get("voz") not in VOZES:
-            _cfg = {"voz": VOZES[0], "tom": (_cfg.get("tom") if isinstance(_cfg, dict) else None)}
-        if not isinstance(_cfg.get("tom"), dict):
-            _cfg["tom"] = {}
+        lido = _cfg if isinstance(_cfg, dict) else {}
+        _cfg = {"voz": lido.get("voz") if lido.get("voz") in VOZES else VOZES[0], "falante_hz": _hz(lido.get("falante_hz"))}
         _estado["voz"] = _cfg["voz"]
     return _cfg
 
@@ -129,15 +155,17 @@ def estado():
 
 
 def escolhe(voz):
-    """Troca a voz; com o pedal ligado, o processo sobe de novo com a voz nova."""
+    """Troca a voz; a que ja esta escolhida mede o tom de novo. Com o pedal ligado, o processo sobe de novo na hora."""
+    global _refaz
     if voz not in VOZES:
         raise ValueError(f"unknown voice {voz!r}")
     with _trava:
         cfg = _carrega()
         if cfg["voz"] == voz:
-            return
-        cfg["voz"] = _estado["voz"] = voz
-        _salva()
+            _refaz = True
+        else:
+            cfg["voz"] = _estado["voz"] = voz
+            _salva()
         if _ligado:
             _para()
             _sobe()
@@ -166,6 +194,19 @@ def _comando():
     return [sys.executable, str(Path(__file__).resolve().parent / "ritmelli.py"), "--pistavoz"]
 
 
+def alvo(voz):
+    """O tom em que a voz soa certa (Hz): o tom_hz do voz.json da release dela."""
+    with open(pastas_da_voz(voz)[1] / "voz.json", encoding="utf-8") as f:
+        hz = _hz(json.load(f).get("tom_hz"))
+    if hz is None:
+        raise ValueError("tom_hz missing or out of range")
+    return hz
+
+
+def _visor(passo, progresso=None):
+    _estado.update(visor=passo, progresso=progresso)
+
+
 def _sobe():
     global _proc
     voz = _cfg["voz"]
@@ -173,7 +214,15 @@ def _sobe():
     if not (engine.is_dir() and pasta.is_dir()):
         print(f"pedal_voz: the {voz} voice isn't downloaded ({pasta})", file=sys.stderr, flush=True)
         return
-    arg = json.dumps({"engine": str(engine), "voz": str(pasta), "tom": float(_cfg["tom"].get(voz, 0.0)),
+    try:
+        hz = alvo(voz)
+    except (OSError, ValueError, AttributeError) as ex:
+        print(f"pedal_voz: the {voz} voice has no valid voz.json ({type(ex).__name__}: {ex})", file=sys.stderr, flush=True)
+        return
+    falante = _cfg.get("falante_hz")
+    tom = None if (_refaz or not falante) else round(desloca(hz, falante), 2)
+    _visor("fale" if tom is None else None)  # sem a medida, o processo mede antes de converter
+    arg = json.dumps({"engine": str(engine), "voz": str(pasta), "tom": tom, "alvo_hz": hz,
                       "provedor": os.environ.get("RITMELLI_PISTAVOZ_PROVEDOR", "dml")})
     pastas.LOGS.mkdir(parents=True, exist_ok=True)
     log = open(pastas.LOGS / "pistavoz.log", "w", encoding="utf-8")
@@ -185,20 +234,49 @@ def _sobe():
 
 
 def _ouve(p):
-    """O que o processo diz: "pronto" e "erro: ..." vao para o log do app."""
-    global _proc
+    """O que o processo diz: o "ouvindo" e o "medido" do ajuste vao para o visor (a medida fica guardada), e o resto
+    ("pronto", "erro: ...") para o log do app."""
+    global _proc, _refaz
     for linha in p.stdout:
-        linha = linha.strip()
-        if linha:
-            print(f"pedal_voz: {linha}", file=sys.stderr, flush=True)
+        partes = linha.split()
+        if not partes:
+            continue
+        if partes[0] != "ouvindo":
+            print(f"pedal_voz: {linha.strip()}", file=sys.stderr, flush=True)
+        with _trava:
+            if _proc is not p:
+                continue
+            if partes[0] == "ouvindo" and len(partes) == 2:
+                try:
+                    _visor("ouvindo", max(0.0, min(1.0, float(partes[1]))))
+                except ValueError:
+                    pass
+            elif partes[0] == "medido" and len(partes) >= 2 and _hz(partes[1]) is not None:
+                _cfg["falante_hz"] = round(_hz(partes[1]), 1)
+                _refaz = False
+                _salva()
+                _visor("pronto")
+                t = threading.Timer(PRONTO_S, _apaga_pronto)
+                t.daemon = True
+                t.start()
+            elif partes[0].startswith("erro"):
+                _visor(None)
     with _trava:
         if _proc is p:
             _proc = None
+            _visor(None)
+
+
+def _apaga_pronto():
+    with _trava:
+        if _estado["visor"] == "pronto":
+            _visor(None)
 
 
 def _para():
     global _proc
     p, _proc = _proc, None
+    _visor(None)  # o ajuste que nao terminou sai do visor (e fica para a proxima vez)
     if p is None:
         return
     try:
