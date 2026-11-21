@@ -464,13 +464,15 @@ class TestaMicrofone(unittest.TestCase):
             b = np.full(eng.BLOCK, 0.25, np.float32)
             e._push_mic(b)
             np.testing.assert_array_equal(e._mic[-1], b)
-            self.assertIn("voz.dll", e.error or "")
+            # o aviso e uma mensagem traduzida (i18n.msg, desde o #106): a chave dela, com o texto em ingles junto
+            self.assertEqual((e.error or {}).get("key"), "server.effect.noVozDll")
+            self.assertIn("voz.dll", e.error["text"])
             e.error = None
             e._push_mic(b)
             self.assertIsNone(e.error, "o aviso sai uma vez por efeito")
             e.set_effect("eco")
             e._push_mic(b)
-            self.assertIn("voz.dll", e.error or "", "outro efeito avisa de novo")
+            self.assertEqual((e.error or {}).get("key"), "server.effect.noVozDll", "outro efeito avisa de novo")
             e.error = None
             e._fx_filtro = True
             e._push_mic(b)
