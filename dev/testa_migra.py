@@ -1,5 +1,6 @@
 r"""Confere a troca de nome de Vitrola para Ritmelli (#58) no PC de quem ja tinha o app: os dados de quem usa mudam de
-pasta (pastas.migra), inclusive com a pasta de antes presa; o registro de antes e copiado sem trocar o que o novo ja
+pasta (pastas.migra), inclusive com a pasta de antes presa, e so quando o servidor liga de verdade (a versao, a ajuda
+e o --mock nao mexem nela, #123); o registro de antes e copiado sem trocar o que o novo ja
 tem (migra.registro), com as subchaves, e depois sai; da pasta do app de antes sai so o que era dele
 (migra.pasta_velha); e o celular pareado antes segue conectado pelo cookie de antes (pareamento.chave_do). O registro
 e o do usuario (HKCU\Software\RitmelliTesteMigra), e as pastas, temporarias: nada de verdade e tocado. O caminho
@@ -39,6 +40,18 @@ def pastas_com(local, codigo):
     env = {**os.environ, "LOCALAPPDATA": str(local)}
     r = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); import pastas\n" + codigo,
                         str(RAIZ)], capture_output=True, text=True, env=env, encoding="utf-8")
+    return r.returncode, (r.stdout + r.stderr).strip()
+
+
+def ritmelli_com(local, args):
+    """Roda o ritmelli.main() num Python novo, com a LOCALAPPDATA trocada e um server.py de mentira (o de verdade
+    precisa das bibliotecas, que a esteira ainda nao instalou quando este teste roda)."""
+    env = {**os.environ, "LOCALAPPDATA": str(local)}
+    codigo = ("import sys, types; sys.path.insert(0, sys.argv[1]); sys.argv = ['ritmelli.py'] + sys.argv[2:]\n"
+              "sys.modules['server'] = types.SimpleNamespace(main=lambda: print('servidor'))\n"
+              "import ritmelli; ritmelli.main()")
+    r = subprocess.run([sys.executable, "-c", codigo, str(RAIZ), *args], capture_output=True, text=True, env=env,
+                       encoding="utf-8")
     return r.returncode, (r.stdout + r.stderr).strip()
 
 
@@ -110,6 +123,22 @@ if sys.platform == "win32":
             confere(True, "a chave de antes sai, com as subchaves")
     finally:
         migra.apaga_registro_velho(hk, base)
+
+print("--- a versao, a ajuda e o --mock nao mudam a pasta (#123)")
+# sempre numa porta sem ninguem: na 8799 o ja_ligado acharia o Ritmelli de quem roda o teste e traria a janela dele
+for args in (["--version"], ["--help"], ["-h"], ["--mock"]):
+    with tempfile.TemporaryDirectory() as tmp:
+        local = Path(tmp)
+        (local / "Vitrola" / "library").mkdir(parents=True)
+        cod, out = ritmelli_com(local, [*args, "--port", "8846", "--no-browser"])
+        confere(cod == 0 and (local / "Vitrola" / "library").is_dir() and not (local / "Ritmelli").exists(),
+                f"{' '.join(args)}: a pasta de antes fica como esta ({out})")
+with tempfile.TemporaryDirectory() as tmp:
+    local = Path(tmp)
+    (local / "Vitrola" / "library").mkdir(parents=True)
+    cod, out = ritmelli_com(local, ["--port", "8846", "--no-browser"])
+    confere(cod == 0 and not (local / "Vitrola").exists() and (local / "Ritmelli" / "library").is_dir(),
+            f"o servidor ligando de verdade: a pasta muda ({out})")
 
 print("--- a pasta do app de antes")
 with tempfile.TemporaryDirectory() as tmp:

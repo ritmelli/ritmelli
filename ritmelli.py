@@ -14,6 +14,15 @@ server.py).
                                            chama, como administrador"""
 import sys
 
+# os argumentos com que o servidor nao liga de verdade: a versao e a ajuda so imprimem, e o --mock trabalha numa copia
+# dos dados. Com eles a pasta de antes da troca de nome (%LOCALAPPDATA%\Vitrola) fica como esta (#123)
+SEM_MIGRAR = ("--version", "--help", "-h", "--mock")
+
+
+def migra_agora(argv):
+    """O servidor vai ligar de verdade com estes argumentos: e hora de passar os dados para a pasta nova."""
+    return not any(a in SEM_MIGRAR for a in argv)
+
 
 def sem_console():
     """Sem console (o executavel, ou o pythonw), a saida e os erros, ate os de carregar o servidor, vao para os
@@ -110,9 +119,10 @@ def main():
         sys.exit(migra.main(sys.argv[2:]))
     else:
         # os dados da pasta de antes da troca de nome (%LOCALAPPDATA%\Vitrola) vem para a nova antes de qualquer modulo
-        # do servidor calcular os caminhos dele (pastas.migra)
+        # do servidor calcular os caminhos dele (pastas.migra); a versao, a ajuda e o --mock nao mexem nela
         import pastas
-        pastas.migra()
+        if migra_agora(sys.argv[1:]):
+            pastas.migra()
         if not atualizando() and not ja_ligado():
             sem_console()
             import server
