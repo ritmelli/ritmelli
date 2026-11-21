@@ -14,6 +14,9 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import efeitos as ef  # noqa: E402
+# o modulo do pedal de troca de voz (de fora do repo) fica de fora daqui: com ele o fx.py troca o alienigena pelo
+# pedal dele, e estas contas sao as dos efeitos daqui
+sys.modules.setdefault("pistavoz", None)
 import fx  # noqa: E402
 
 SR, B, N = fx.SR, 480, 2048
@@ -48,7 +51,7 @@ def main():
         fala = np.sqrt(np.mean(x[:len(x) // B * B].reshape(-1, B) ** 2, axis=1)) > 10 ** (-40 / 20)
         fala[: SR // B] = False  # o nivelador assenta no primeiro segundo
         linha = []
-        for _, eid, *_ in fx.CATALOGO + fx.MODOS:
+        for _, eid, *_ in fx.CATALOGO:
             y, _ = ef.stream(fx.criar(eid), x)
             linha.append(f"{eid} {diferenca_db(x, y, fala):+.1f}")
         print(f"{nome}: " + " | ".join(linha))

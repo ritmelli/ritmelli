@@ -1168,6 +1168,8 @@ class Engine:
         # a mina do pedal MINA (mina.py): a voz dela vai pro jogo e pro fone como a voz de quem toca
         self.mina_permitida = True
         self._mina = None
+        self._pv_fila = None   # a fila do liga() do pedal de troca de voz, lida pela thread dele (so com o modulo dele)
+        self._pv_fechada = False
         self._mina_buf = np.zeros(0, np.float32)
         self._mina_lock = threading.Lock()
         self._mina_voz_em = -1e9  # monotonic do ultimo pedaco com voz dela que tocou
@@ -1407,6 +1409,7 @@ class Engine:
                 self._sem_audio(ex)
 
     def close(self):
+        self._pedal_voz_fecha()
         if self._mina is not None:
             self._mina.desliga()
         with self._lock:
@@ -1607,6 +1610,43 @@ class Engine:
             self._mina_liga()
         elif self._mina is not None:
             self._mina.desliga()
+        self._pedal_voz_liga(effect_id == "pistavoz")
+
+    def _pedal_voz_liga(self, ligado):
+        """Conta ao modulo do pedal de troca de voz (o de fora, ver o fx.py) cada troca de efeito: ligado so no pistavoz.
+        O liga() dele roda numa thread so dele (daemon), na ordem das trocas, e nunca no laco do servidor (a troca vem do
+        handler do /api/settings); o erro dele vai para o log e nao derruba nada."""
+        pv = fx.pistavoz
+        if pv is None or self._pv_fechada:
+            return
+        if self._pv_fila is None:
+            self._pv_fila = queue.SimpleQueue()
+            threading.Thread(target=self._pedal_voz_laco, args=(pv, self._pv_fila), name="pedal_voz", daemon=True).start()
+        self._pv_fila.put((ligado, None))
+
+    @staticmethod
+    def _pedal_voz_laco(pv, fila):
+        """A thread do liga(): um pedido por vez, na ordem; a sentinela (None, Event) do fechar acaba com ela."""
+        while True:
+            ligado, feito = fila.get()
+            if ligado is None:
+                feito.set()
+                return
+            try:
+                pv.liga(ligado)
+            except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o erro dele nao derruba a troca de efeito
+                print(f"pedal_voz: liga() failed ({str(ex)[:120]})", file=sys.stderr, flush=True)
+
+    def _pedal_voz_fecha(self):
+        """O app fechando: o modulo do pedal de voz ouve o liga(False) e a thread dele acaba. Espera ate 2 s; a thread e
+        daemon, entao um modulo travado nao segura o processo depois de fechar a janela."""
+        if fx.pistavoz is None or self._pv_fechada:
+            return
+        self._pedal_voz_liga(False)
+        self._pv_fechada = True
+        feito = threading.Event()
+        self._pv_fila.put((None, feito))
+        feito.wait(2)
 
     @staticmethod
     def _cadeia(effect_id):
@@ -3077,6 +3117,7 @@ class MockEngine(Engine):
         threading.Thread(target=self._clock, daemon=True).start()
 
     def close(self):
+        self._pedal_voz_fecha()
         self._gen += 1
         self._run = False
 

@@ -13,6 +13,9 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# o modulo do pedal de troca de voz (de fora do repo) fica de fora daqui: com ele o fx.py troca o alienigena pelo
+# pedal dele, e estas contas sao as dos efeitos daqui
+sys.modules.setdefault("pistavoz", None)
 import fx  # noqa: E402
 
 SR, B = fx.SR, 480
@@ -80,7 +83,7 @@ def main():
     seno = (0.3 * np.sin(2 * np.pi * 300 * np.arange(SR) / SR)).astype(np.float32)
     real = ler_wav(OUT / "_microfone_real.wav") if (OUT / "_microfone_real.wav").exists() else None
     falhas = 0
-    for _, eid, _ in fx.CATALOGO + fx.MODOS:
+    for _, eid, _ in fx.CATALOGO:
         e = fx.criar(eid)
         y, ts = stream(e, fala)
         ok = len(y) == len(fala) - len(fala) % B and np.isfinite(y).all() and np.abs(y).max() <= 1

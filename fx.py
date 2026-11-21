@@ -15,6 +15,7 @@ radio de 450 a 2800 Hz cortava so 5 a 13 dB fora dela e a voz passava quase inte
 (17/10). Faixa estreita de verdade = FiltroBanda (Butterworth do scipy).
 """
 import importlib.util
+import sys
 
 import numpy as np
 import pedalboard as pb
@@ -432,7 +433,7 @@ class CompBanda:
     congelamento: abaixo do portao o ganho fica parado em vez de soltar, e o fundo entre
     as palavras nao sobe com o makeup. O portao olha o bloco, nao o envelope: pelo
     envelope a reducao ja tinha soltado ate zero antes de congelar (17/10, a ventoinha
-    entre palavras subia 10 dB acima do caricato; com o portao no bloco, 3 dB)."""
+    entre palavras subia 10 dB acima da versao exagerada de referencia; com o portao no bloco, 3 dB)."""
 
     def __init__(self, limiar_db, razao, ataque_ms, solta_ms, ganho_db):
         self.lim, self.razao, self.ganho = limiar_db, razao, ganho_db
@@ -650,9 +651,9 @@ def _locutor():
     # 4 faixas com compressao de ataque lento no grave e ganho congelado nas pausas ->
     # compressor rapido (a densidade de radio no ar: o de 10 ms ou a compressao lenta das
     # faixas paravam em 7,3 a 9 dB de variacao entre silabas) -> limitador -> 15 kHz.
-    # Ajustado no ouvido em 17/10 contra o "caricato" (grave +9, embolado -5, presenca
+    # Ajustado no ouvido em 17/10 contra uma versao exagerada (grave +9, embolado -5, presenca
     # +6, compressor 6:1): mesma densidade e timbre, menos o cavado em 220-400 Hz que
-    # tirava a cara de quem fala (no caricato soava como outra pessoa, no FM a voz
+    # tirava a cara de quem fala (na exagerada soava como outra pessoa, no FM a voz
     # continua reconhecivel); o grave entra no makeup da faixa de baixo, porque um reforco
     # antes do compressor ele mesmo desfazia. Calibrado para o microfone do Quest (a voz do usuario
     # no VRChat): a curva QuestComoSM58 entra primeiro, sempre (o filtro
@@ -668,19 +669,6 @@ def _locutor():
                           [pb.Compressor(threshold_db=-24, ratio=6, attack_ms=3, release_ms=80),
                            pb.Gain(7), pb.Limiter(-1.0, 60), pb.PeakFilter(6000, -2.5, 1.4)],
                           PassaBaixa(15000)])
-
-
-def _locutor_caricato():
-    # o modo CARICATO do Locutor: a versao exagerada de 17/10 que serviu de referencia para o
-    # processador de FM (grave +9, embolado -5, presenca +6, brilho +4, compressor 6:1 e um
-    # pouco de saturacao, como o clipador das emissoras). Soa como outro locutor, nao como
-    # quem fala; a comparacao no ouvido foi com o microfone do Quest ja passado pela curva
-    # QuestComoSM58, e assim ela entra aqui
-    return Efeito(nivelar=True, antes=[QuestComoSM58(), PortaoRuido(piso_db=-24), PassaAlta(70)],
-                  placa=[pb.LowShelfFilter(180, 9, 0.7), pb.PeakFilter(350, -5, 1.0),
-                         pb.PeakFilter(3000, 6, 0.9), pb.HighShelfFilter(9000, 4, 0.7),
-                         pb.Compressor(threshold_db=-30, ratio=6, attack_ms=3, release_ms=80),
-                         pb.Distortion(6), pb.Limiter(-1.0, 50)])
 
 
 def _radio():
@@ -736,22 +724,44 @@ CATALOGO = [
 if importlib.util.find_spec("mina") is not None:
     CATALOGO = [c for c in CATALOGO if c[1] != "estourado"] + [
         ("personagem", "mina", lambda: None)]
-# os modos de um pedal: efeito que liga pelo botao do modo (o CARICATO do Locutor) e nao vira
-# pedal na lista do /api/effects; o primeiro campo e o pedal dono, no lugar do grupo. O nome do modo e do tema
-# (o Locutor de FM exagerado, com cara de outra pessoa falando)
-MODOS = [
-    ("locutor", "locutor-caricato", _locutor_caricato),
-]
-_POR_ID = {c[1]: c for c in CATALOGO + MODOS}
+# o pedal de troca de voz (pistavoz.py, modulo de fora deste repo): onde o modulo esta ao lado do codigo, ele entra no
+# lugar do alienigena. O efeito daqui nao mexe na voz (o modulo cuida dela, entre o liga(True) e o liga(False) que o
+# engine.py chama); o /api/effects leva as vozes dele, e o estado do pedal sai no /api/state (pedal_voz) e muda pelo
+# POST /api/pedal_voz, ver o API.md. Modulo que nao importa, que quebra ao importar ou que nao cumpre o contrato e o
+# mesmo que modulo ausente: o app sobe sem o pedal e diz por que no log
+
+
+def _carrega_pistavoz():
+    if importlib.util.find_spec("pistavoz") is None:
+        return None
+    try:
+        import pistavoz as mod
+    except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o erro dele (uma dependencia dele que falta, inclusive) nao derruba o servidor
+        print(f"pedal_voz: import failed ({type(ex).__name__}: {str(ex)[:160]})", file=sys.stderr, flush=True)
+        return None
+    vozes = getattr(mod, "VOZES", None)
+    if not (isinstance(vozes, (list, tuple)) and vozes and all(isinstance(v, str) and v for v in vozes)):
+        print("pedal_voz: VOZES must be a non-empty list of ids; pedal off", file=sys.stderr, flush=True)
+        return None
+    faltam = [n for n in ("estado", "escolhe", "liga") if not callable(getattr(mod, n, None))]
+    if faltam:
+        print(f"pedal_voz: missing {', '.join(faltam)}(); pedal off", file=sys.stderr, flush=True)
+        return None
+    return mod
+
+
+pistavoz = _carrega_pistavoz()
+if pistavoz is not None:
+    CATALOGO = [("personagem", "pistavoz", lambda: None) if c[1] == "alien" else c for c in CATALOGO]
+_POR_ID = {c[1]: c for c in CATALOGO}
 
 # compensa o volume de cada efeito para a troca nao sumir nem estourar a voz: o inverso do
 # nivel medido durante a fala pelo dev/efeitos.py (17/10, fala do TTS a ~-14 dBFS de pico;
 # radio e megafone remedidos depois do filtro de faixa estreita; o locutor entrou no lugar
 # do telefone em 17/10 e virou o processador de FM no mesmo dia: o AGC dele
 # sobe a voz fraca ate 30 dB e o nivelador so desce 20, entao com -4 a voz 24 dB mais baixa
-# saia +5,3 dB acima da crua; com -10, +2,5 no TTS e +0,4 no Quest; o caricato, medido em
-# 29/10 sem o nivelador, sai +3,0 dB no TTS e +2,0 no Quest)
-COMPENSA_DB = {"radio-policia": -8.6, "megafone": -2.4, "locutor": -10.0, "locutor-caricato": -3.0,
+# saia +5,3 dB acima da crua; com -10, +2,5 no TTS e +0,4 no Quest)
+COMPENSA_DB = {"radio-policia": -8.6, "megafone": -2.4, "locutor": -10.0,
                "eco": 2.7, "banheiro": -4.3, "catedral": -5.8, "robo": 2.2, "esquilo": 0.7,
                "demonio": -10.2, "alien": 5, "estourado": -7.4}
 
@@ -767,7 +777,7 @@ def criar(efeito_id):
 
 
 def existe(efeito_id):
-    """O efeito da lista ou o de um modo de pedal."""
+    """O efeito esta na lista (o de um fx.py recarregado pode ter saido)."""
     return efeito_id in _POR_ID
 
 
@@ -776,5 +786,8 @@ def lista():
     out = []
     for grupo, eid, fab in CATALOGO:
         e = fab()
-        out.append({"id": eid, "grupo": grupo, "latencia_ms": e.latencia_ms if e else 0})
+        item = {"id": eid, "grupo": grupo, "latencia_ms": e.latencia_ms if e else 0}
+        if eid == "pistavoz":
+            item["vozes"] = list(pistavoz.VOZES)
+        out.append(item)
     return out

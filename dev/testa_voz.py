@@ -29,6 +29,9 @@ import pedalboard as pb
 from scipy import signal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# o modulo do pedal de troca de voz (de fora do repo) fica de fora daqui: com ele o fx.py troca o alienigena pelo
+# pedal dele, e estas contas sao as dos efeitos daqui
+sys.modules.setdefault("pistavoz", None)
 import fx  # noqa: E402
 from microfone import preset, voz  # noqa: E402
 
@@ -93,7 +96,7 @@ def aliasing_db(y, f0, sr):
 
 
 def efeitos():
-    return [c[1] for c in fx.CATALOGO + fx.MODOS if fx.criar(c[1]) is not None]
+    return [c[1] for c in fx.CATALOGO if fx.criar(c[1]) is not None]
 
 
 def main(argv=None):

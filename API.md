@@ -155,9 +155,8 @@ reconecta sozinho; mostre que está reconectando.
   `POST /api/play` manda sobre isso. O mesmo disco tocado de novo, a troca do stream para o arquivo
   e o som por cima não desligam. Ligado com o prato vazio, vale para o disco que entrar.
 - `effect` = efeito de voz ativo (id de `/api/effects`); o servidor sempre sobe em `nenhum`.
-  Aceita também `locutor-caricato`, o modo caricato do "Locutor de rádio FM", que fica fora
-  de `/api/effects` para não virar outro efeito na lista: o tema que o oferece faz dele um
-  modo do Locutor, e com ele ligado (escolhido de outro aparelho) marca o Locutor.
+- `pedal_voz` = só onde há o pedal de troca de voz (ver "Pedal de troca de voz"): `{"voz": "mina", "visor": null,
+  "progresso": null}`. Sem o pedal, o campo não vem.
 - `por_cima` = sons curtos tocando agora junto da música (ver `POST /api/play`); não mexem
   em `track`, `status` nem na barra, e o pausar e o parar calam todos.
 - `voice_monitor` = a voz, já com o efeito, toca também no fone do usuário; vale mesmo com
@@ -247,7 +246,8 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
 | `POST /api/settings` | qualquer de `vol`, `mon_vol`, `mic_vol`, `mic_mute`, `monitor_on`, `loop`, `shuffle`, `auto`, `effect`, `voice_monitor`, `voice_mon_vol`, `volume_auto` | ajusta ao vivo; salva `vol`, `mon_vol`, `monitor_on`, `voice_mon_vol`, `auto` e `volume_auto` (`mic_vol` vai direto para o Windows); `mic_mute`, `loop`, `shuffle`, `voice_monitor` e o efeito voltam ao padrão quando o servidor sobe |
 | `GET /api/onda/<id>` | - | a onda do disco para o visor de DJ: `{"id", "passo": 0.04, "n", "completa", "fonte": "arquivo" ou "stream", "versao", "onda"}`, `onda` em base64 de `n` colunas de 3 bytes (grave até 200 Hz, médio até 2 kHz, agudo até 6 kHz), cada uma de `passo` s do disco, em dB de -60 (0) a 0 (255); ~24 KB para 4 min. O motor lê a do disco da prateleira inteira quando ele entra no prato ou na passagem; a do stream só chega até onde o áudio já foi decodificado (`completa: false`: peça de novo). 404 = ainda não tem |
-| `GET /api/effects` | - | `[{"id","grupo","latencia_ms"}]`, na ordem de exibição; `grupo` é o id do grupo, vazio no "Sem efeito"; os grupos hoje são `radio` (Rádio e alto-falante), `ambiente` e `personagem`. O nome e a descrição de cada efeito e o nome de cada grupo são textos do tema, nas línguas dele: `effect.<id>.name`, `effect.<id>.desc` e `effect.group.<grupo>` (o `python dev/testa_i18n.py` confere que todo tema com a pasta `i18n/` tem os de todos os efeitos do `fx.py`) |
+| `GET /api/effects` | - | `[{"id","grupo","latencia_ms"}]`, na ordem de exibição; `grupo` é o id do grupo, vazio no "Sem efeito"; os grupos hoje são `radio` (Rádio e alto-falante), `ambiente` e `personagem`. O nome e a descrição de cada efeito e o nome de cada grupo são textos do tema, nas línguas dele: `effect.<id>.name`, `effect.<id>.desc` e `effect.group.<grupo>` (o `python dev/testa_i18n.py` confere que todo tema com a pasta `i18n/` tem os de todos os efeitos do `fx.py`). O item `pistavoz` (o pedal de troca de voz, quando existe) traz também `"vozes": ["mina", "lira"]` |
+| `POST /api/pedal_voz` | `{"voz": "lira"}` | escolhe a voz do pedal de troca de voz (uma das `vozes` do item `pistavoz` de `/api/effects`); responde `{"ok": true, "pedal_voz": {...}}`. Sem o pedal, 404; voz que não é dele, 400; o módulo sem resposta em 15 s, 504; um erro do módulo, 500 com o motivo. Ligar e desligar o pedal é o `effect` de sempre |
 | `GET /api/search?q=<texto ou link>&n=8&start=0` | - | busca no YouTube (link ou id colado devolve o próprio vídeo): `[{"youtube_id","title","duration","channel","thumb","in_library","id"}]` (leva 2 a 6 s); `n` até 20 por vez, `start` pula os primeiros (o "carregar mais": o servidor pede `start+n` ao YouTube e devolve do `start` em diante, até 200; link com `start` devolve vazio) |
 | `GET /api/musica?q=<pedido>&n=3` | - | busca de música no YouTube Music, a do pedido falado: com o melhor resultado sendo um artista e o pedido só o nome dele, as mais tocadas dele ("Raul" -> Metamorfose Ambulante); senão, as músicas e vídeos da busca. Mesmo formato do `/api/search`; até 4 s, senão 502 (quem pede cai no `/api/search`) |
 | `POST /api/aquece` | - | alguém vai pedir (a mina chama quando uma fala começa): renova as conexões com o YouTube paradas há mais de 180 s no processo do endereço e nas reservas (o YouTube fecha a parada aos ~240 s) e abre o processo do endereço que está vazio; responde na hora `{"ok": true, "aquecidos": n}` |
@@ -277,6 +277,35 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
 | `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
 | `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; automática, o servidor desliga, a tarefa instala e o Ritmelli abre de novo; recusado ou ainda não baixado, 409 com o motivo |
+
+## Pedal de troca de voz
+
+Um pedal opcional, que entra no lugar do Alienígena (`alien`) só onde o módulo `pistavoz` está ao lado do código
+(ele não mora neste repo; o `fx.py` o acha pelo `importlib.util.find_spec("pistavoz")`). Módulo que não importa, que
+quebra ao importar ou que não cumpre o contrato abaixo conta como ausente, com o motivo no log. Sem ele, o app é o mesmo
+de sempre. O contrato com o módulo:
+
+- `pistavoz.VOZES`: a lista de ids das vozes, da mais grave para a mais aguda (ex. `["mina", "lira"]`); vai para o
+  `vozes` do item `pistavoz` de `/api/effects`. O pedal mostra as duas primeiras, e o leitor de tela diz qual é a mais
+  grave e qual a mais aguda por essa ordem.
+- `pistavoz.estado()`: `{"voz": <id>, "visor": None | "fale" | "ouvindo" | "pronto", "progresso": 0..1 | None}`; vai
+  para o `pedal_voz` do Estado (e do SSE). `visor` é o passo do ajuste que o pedal mostra no visor em vez da voz: `fale`
+  (pede para a pessoa falar), `ouvindo` (com o `progresso` de 0 a 1, que o servidor arredonda em passos de 1/12) e
+  `pronto`; `null` = o visor mostra a voz. O `estado()` roda no laço do servidor a cada tick do SSE, para cada página
+  aberta: tem de responder na hora, sem disco nem rede, e aguentar um `escolhe()` ou `liga()` chegando de outra thread.
+  Uma voz que não é das `VOZES` sai como a primeira; um erro sai como a primeira voz sem passo, e vai para o log uma vez.
+- `pistavoz.escolhe(voz)`: troca a voz; chamado pelo `POST /api/pedal_voz`, fora do laço, numa thread só dele e na
+  ordem dos pedidos; tem de voltar em até 15 s (depois disso o pedido responde 504, e o que ainda está na fila não
+  chega ao módulo); um erro dele volta para quem pediu como 500, com o motivo.
+- `pistavoz.liga(ligado)`: chamado a cada troca de efeito, `True` ao entrar no `pistavoz` e `False` ao sair dele (pode
+  repetir o mesmo valor), e `False` também quando o app fecha (o fechar espera por ele até 2 s). Roda numa thread só
+  dele, na ordem das trocas, nunca no laço do servidor; um erro dele vai para o log. O servidor sobe em `nenhum`,
+  então o módulo começa desligado.
+
+O efeito `pistavoz` em si não mexe na voz do lado do Ritmelli (como o `nenhum`): quem troca a voz é o módulo, entre o
+`liga(True)` e o `liga(False)`. O tema mostra o pedal com o visor e as vozes (o rótulo da escolhida aceso) e manda
+`POST /api/pedal_voz` no clique de cada uma. Textos do tema: `effect.pistavoz.name`, `effect.pistavoz.desc` e os do
+visor.
 
 ## Celular: pareamento
 

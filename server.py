@@ -11,6 +11,7 @@ import argparse
 import asyncio
 import importlib
 import json
+import queue
 import random
 import re
 import socket
@@ -22,7 +23,7 @@ import types
 import unicodedata
 import uuid
 import webbrowser
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -84,6 +85,51 @@ pool = ThreadPoolExecutor(4)
 # do pool dos downloads (o download segura a thread dele inteiro: com 3 ou 4 baixando, o adiantado esperava ate um
 # acabar e o disco ficava carregando; revisao da r04)
 pool_rapido = ThreadPoolExecutor(8, thread_name_prefix="ritmelli-rapido")
+# a escolha de voz do pedal de troca de voz (o modulo de fora, ver o fx.py): numa thread so dela, na ordem dos pedidos,
+# fora do pool dos downloads (com quatro baixando, a voz so trocava quando um acabasse; revisao da r03 da pedaleira). A
+# thread e daemon (um escolhe() travado nao segura o processo nem a trava de instancia unica ao fechar), e cada pedido
+# leva o Future que o handler espera
+fila_voz = queue.SimpleQueue()
+ESPERA_VOZ_S = 15   # o prazo do escolhe() do modulo (o contrato no API.md)
+
+
+def _laco_voz():
+    while True:
+        fut, fn, arg = fila_voz.get()
+        if not fut.set_running_or_notify_cancel():
+            continue
+        try:
+            fut.set_result(fn(arg))
+        except Exception as ex:  # noqa: BLE001 - o erro do modulo vai para quem pediu
+            fut.set_exception(ex)
+        except BaseException as ex:  # noqa: BLE001 - um SystemExit do modulo, relancado no handler, parava o laco do servidor
+            fut.set_exception(RuntimeError(f"{type(ex).__name__}: {ex}"))
+
+
+# com outro nome que a thread do liga() (o "pedal_voz" do engine.py): no log e no teste as duas se distinguem
+threading.Thread(target=_laco_voz, name="pedal_voz_escolhe", daemon=True).start()
+
+
+async def escolhe_voz(fn, voz, prazo=ESPERA_VOZ_S):
+    """Pede a voz ao modulo na thread do pedal e espera ate o prazo: True quando ele voltou, False quando o prazo
+    venceu (o pedido ainda na fila e cancelado e nao chega ao modulo; o que ja comecou acaba sozinho). O erro do modulo
+    sobe como veio (um SystemExit dele chega como RuntimeError), inclusive um TimeoutError dele, que assim nao se
+    confunde com o prazo (no Python 3.11 em diante o asyncio.TimeoutError do wait_for e o mesmo TimeoutError)."""
+    fut = Future()
+    fila_voz.put((fut, fn, voz))
+    espera = asyncio.wrap_future(fut)
+    try:
+        feito, _ = await asyncio.wait({espera}, timeout=prazo)
+    except asyncio.CancelledError:
+        espera.cancel()
+        raise
+    if not feito:
+        espera.cancel()
+        return False
+    espera.result()
+    return True
+
+
 # o canal que o endereco rapido nao traz sai so depois disso, com limite curto: ele so aparece na tela, e na hora em que
 # o disco comeca ele tomava um processo de reserva de um "nao, toca Y" logo atras (revisao da r07)
 CANAL_DEPOIS_S = 3.0
@@ -683,7 +729,39 @@ class App:
                      "atualizacao": self.atualizacao.resumo()}
             if snap.get("track"):
                 extra["track"] = self._com_bpm(snap["track"])  # o andamento ja medido do disco do prato, para o deck do tema
+        pv = self.pedal_voz()
+        if pv is not None:
+            extra["pedal_voz"] = pv
         return {**snap, **extra}
+
+    _pedal_voz_erro = None   # o ultimo erro do estado() do pedal de voz: o log diz cada erro uma vez, nao a cada tick
+
+    @classmethod
+    def pedal_voz(cls):
+        """O estado do pedal de troca de voz (o modulo de fora, ver o fx.py): a voz escolhida, o passo do visor e o
+        progresso dele; None sem o modulo. Roda a cada tick do SSE em cada pagina aberta: o progresso vai em passos de
+        1/12 (a barra do visor tem 6 blocos), para o Estado inteiro nao mudar a cada leitura. Um estado que nao deu para
+        ler sai como a primeira voz sem passo."""
+        mod = fx.pistavoz
+        if mod is None:
+            return None
+        try:
+            e = dict(mod.estado() or {})
+            cls._pedal_voz_erro = None
+        except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o estado dele nao derruba o do app
+            msg = f"{type(ex).__name__}: {str(ex)[:120]}"
+            if msg != cls._pedal_voz_erro:
+                cls._pedal_voz_erro = msg
+                print(f"pedal_voz: estado() failed ({msg})", file=sys.stderr, flush=True)
+            e = {}
+        visor = e.get("visor") if e.get("visor") in ("fale", "ouvindo", "pronto") else None
+        prog = e.get("progresso")
+        if visor == "ouvindo" and isinstance(prog, (int, float)) and not isinstance(prog, bool) and prog == prog:
+            prog = round(round(max(0.0, min(1.0, float(prog))) * 12) / 12, 3)
+        else:
+            prog = None
+        voz = e.get("voz")
+        return {"voz": voz if voz in mod.VOZES else mod.VOZES[0], "visor": visor, "progresso": prog}
 
     def _com_bpm(self, x):
         """A entrada da fila para a tela, com o andamento do comeco dela quando ja foi medido."""
@@ -2221,10 +2299,28 @@ def build(app_state):
             importlib.reload(fx)
             preset.esquece()  # o filtro e o app montam o efeito do preset: o projetado com o fx.py velho sai
             efeitos[:] = fx.lista()
-            E.set_effect(E.effect if fx.existe(E.effect) else "nenhum")  # o de um modo fica fora da lista
+            E.set_effect(E.effect if fx.existe(E.effect) else "nenhum")  # o efeito que saiu da lista desliga
         except Exception as ex:  # noqa: BLE001
             return j_err(i18n.so_texto(f"Couldn't reload the effects ({str(ex)[:200]})."), 500)
         return j_ok(effects=len(efeitos), effect=E.effect)
+
+    @r.post("/api/pedal_voz")
+    async def pedal_voz(request):
+        # a voz do pedal de troca de voz: so com o modulo dele (ver o fx.py); sem ele, o pedal nao existe
+        mod = fx.pistavoz
+        if mod is None:
+            return j_err(i18n.so_texto("There's no voice changer pedal here."), 404)
+        b = await body(request)
+        voz = str(b.get("voz") or "")
+        if voz not in mod.VOZES:
+            return j_err(i18n.so_texto(f"Unknown voice \"{voz[:40]}\"."))
+        try:
+            # o modulo travado nao prende a tela na voz clicada: no prazo, 504; o erro dele (qualquer um), 500
+            if not await escolhe_voz(mod.escolhe, voz):
+                return j_err(i18n.so_texto("The voice changer pedal didn't answer."), 504)
+        except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o erro dele vira a resposta
+            return j_err(i18n.so_texto(f"Couldn't change the voice ({str(ex)[:200]})."), 500)
+        return j_ok(pedal_voz=A.pedal_voz())
 
     def _filtro_do_mic():
         """O filtro no microfone em uso: {"filtro", "melhorias"} (null se nao deu para ler)."""

@@ -153,9 +153,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   arquivos de log, os mesmos que o `soundboard.ps1` grava, e os da vez anterior ficam ao
   lado (`server.anterior.log`), para o motivo de uma queda não sumir quando o app reabre.
 - `fx.py`: efeitos de voz no estilo Voicemod (rádio de polícia com bip de câmbio, megafone,
-  locutor de rádio FM, eco, banheiro, catedral, robô, voz grossa, esquilo, demônio, alienígena,
-  alto-falante estourado, e o locutor caricato, um modo do Locutor que fica fora da lista e o tema
-  liga pelo botão CARICATO do pedal), aplicados na voz antes da mistura, com o volume compensado
+  locutor FM, eco, banheiro, catedral, robô, voz grave, esquilo, demônio, alienígena,
+  alto-falante estourado), aplicados na voz antes da mistura, com o volume compensado
   para a troca não sumir nem estourar; o tom é mudado em casa porque o da pedalboard
   atrasa 1 s. O `fx.py` é a definição de cada efeito e a referência: quem passa a voz pelo efeito
   é o motor do filtro (`microfone/preset.py` -> `apo/voz.h`), no microfone pelo `micfx.dll` e no
@@ -177,6 +176,10 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   a voz indo pro jogo) e `tocou(x)`; o módulo devolve a voz pelo `mina_voz` (a fila do jogo e
   do fone, com 0,1 s de folga de rede), cala pelo `mina_cala` e acha a API pela `porta` do
   engine. No `--mock` o pedal não liga.
+- O pedal de troca de voz: um módulo `pistavoz` opcional, também de fora deste repo. Onde ele está, o `fx.py` põe o
+  pedal "Troca de voz" no lugar do alienígena, o `/api/effects` leva as vozes dele, o Estado leva o `pedal_voz` e o
+  `POST /api/pedal_voz` troca a voz (o contrato no API.md, "Pedal de troca de voz").
+  Teste, sem o módulo (um falso no lugar): `python dev/testa_pedal_voz.py`.
 - `winvol.py`: o volume do microfone no Windows (IAudioEndpointVolume pelo comtypes); a "Voz"
   da interface é esse número, gravado e lido de volta por uma thread do engine.
 - `pareamento.py`: o celular pareado. O instalador libera a entrada no firewall também em
@@ -348,9 +351,9 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   do bloco do celular),
   `dev/pecas.py` (desenha em pixel o braço do toca-discos, já inclinado em seis ângulos, a
   base e o descanso dele, os botões de tocar do palco e do mini player e o pisador, os knobs e
-  o LED dos pedais, os botões de fliperama e o logo do Locutor, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as
-  variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem`, `--led-recuo` e `--arcade-recuo` no
-  tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, o `ARCADE`, o `LOGOS` (o logo do Locutor em cada língua), a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera o preview de cada tema para a galeria, um `preview_<lingua>.png` por língua no tema com textos e um `preview.png` no que não tem, com a prateleira de mentira do
+  o LED dos pedais, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as
+  variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem` e `--led-recuo` no
+  tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera o preview de cada tema para a galeria, um `preview_<lingua>.png` por língua no tema com textos e um `preview.png` no que não tem, com a prateleira de mentira do
   `dev/compara.py`; ele entra no git porque o instalador leva a pasta do tema como ela está).
 - `icone/`: o ícone do Ritmelli, o toca-discos do tema visto de cima, que o `dev/icone.py` desenha
   em pixel em cada tamanho (o de 16 px a mão): o `ritmelli.ico`, que é o do exe, o do setup e o da
@@ -417,8 +420,7 @@ tira o som de caixa em 400 a 500 Hz e põe de volta a presença de 3 a 5 kHz. A 
 de uma leitura gravada nos dois microfones ao mesmo tempo (17/10) e, numa segunda leitura
 que ela não viu, deixou o Quest a 1,2 dB do SM58.
 
-- Hoje ele entra só nos dois modos do "Locutor de rádio FM": no natural, que foi ajustado em
-  cima dele, e no caricato, que foi comparado no ouvido com ele na frente.
+- Hoje ele entra só no "Locutor FM", que foi ajustado em cima dele.
 - Para usar em outro lugar: `f = fx.QuestComoSM58()` e `y = f(bloco)`, com bloco numpy
   float32 mono a 48 kHz de qualquer tamanho; a instância guarda o estado entre blocos.
   Dentro de um efeito, entra na lista `antes=[...]` do `fx.Efeito`.

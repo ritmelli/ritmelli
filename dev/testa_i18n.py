@@ -11,12 +11,13 @@ i18n.Recusa no Python da raiz): cada chave server.* existe em todo tema com i18n
 ingles; cada chamada passa os params do texto; o texto em ingles (e o do i18n.so_texto) nao tem acento; e o tema nao
 guarda chave server.* que o servidor nao manda. Os efeitos do fx.py: cada um com effect.<id>.name e .desc, e cada
 grupo com effect.group.<grupo>, e nenhuma chave effect.* sobrando. As palavras do pixel art: cada lingua so com as
-letras que a tabela de pixel delas tem (as placas, os mostradores do mixer, a fita da voz), e cada palavra dos botoes do
-Locutor com o desenho dela no ARCADE. O meta.json de cada tema: o campo que vem por lingua tem as duas. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
+letras que a tabela de pixel delas tem (as placas, os mostradores do mixer, a fita da voz, os nomes dos pedais da mesa
+e o visor do pedal de troca de voz). O meta.json de cada tema: o campo que vem por lingua tem as duas. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
 posto na pagina e a mensagem. Sai 1 se algo falha."""
 import ast
 import contextlib
 import io
+import itertools
 import json
 import re
 import sys
@@ -204,6 +205,67 @@ def letras_da_tabela(html, inicio, fim, chave):
     return set(re.findall(chave, m.group(1))) if m else None
 
 
+def larguras_pedal(html):
+    """A largura em celulas que cada letra da LETRA_PEDAL (a dos nomes dos pedais da mesa e do visor do Troca de voz)
+    ocupa na linha, ou None sem ela: como o avanco() do PEDAL-JS, so as 7 linhas da maiuscula contam (a ponta do agudo
+    do I fica no vao da direita)."""
+    m = re.search(r"const LETRA_PEDAL = \{(.*?)\n\};", html, re.S)
+    if not m:
+        return None
+    larg = {}
+    for ch, linhas in re.findall(r'\n  "(.)": (\[[^\]]*\])', m.group(1)):
+        g = json.loads(linhas)
+        cap = g[3:10] if len(g) - 7 == 3 else g[:7]
+        larg[ch] = max((r.rfind("#") + 1 for r in cap), default=0) or len(g[0])
+    return larg or None
+
+
+def linhas_do_pedal(nome, larg, maxw, maxlin):
+    """Como o arrumaNome do PEDAL-JS: o nome em ate maxlin linhas de ate maxw celulas, quebrando no espaco, no hifen ou no
+    hifen opcional (que vira o - da quebra), no menor numero de linhas e, entre as quebras com esse numero, na mais
+    equilibrada (a de linha mais larga mais estreita). None se nao cabe."""
+    n = nome.upper()
+    cortes = [i for i, ch in enumerate(n) if ch in " -­"]
+    largura = lambda t: sum(larg.get(ch, 1) for ch in t) + max(0, len(t) - 1)
+    for k in range(maxlin):
+        melhor = None
+        for cs in itertools.combinations(cortes, k):
+            linhas, ini = [], 0
+            for c in cs:
+                linhas.append((n[ini:c] + ("" if n[c] == " " else "-")).replace("­", "").strip())
+                ini = c + 1
+            linhas.append(n[ini:].replace("­", "").strip())
+            m = max(map(largura, linhas))
+            if all(linhas) and m <= maxw and (melhor is None or m < melhor[0]):
+                melhor = (m, linhas)
+        if melhor:
+            return melhor[1]
+    return None
+
+
+def topos_do_pedal(html):
+    """O topo das maiusculas de cada linha do nome no pedal da mesa, por numero de linhas (o TOPOS do PEDAL-JS), ou None."""
+    m = re.search(r"const TOPOS = \{ 1: \[(\d+)\], 2: \[(\d+), (\d+)\], 3: \[(\d+), (\d+), (\d+)\] \};", html)
+    if not m:
+        return None
+    v = [int(x) for x in m.groups()]
+    return {1: v[:1], 2: v[1:3], 3: v[3:]}
+
+
+def medidas_do_pedal(html):
+    """(a largura do nome no pedal da mesa, a do texto no vidro do visor do Troca de voz, a do nome do Troca de voz), em
+    celulas, lidas do PEDAL-JS e do PEDAL CSS: a faixa do nome do comum e a largura dele menos a faixa (em px), no comum
+    mais estreito (o de 88 do CSS; o de 98 tem mais); o vw do visor menos a moldura e 1 de margem de cada lado (o area
+    do visor()); a largura do Troca de voz no CSS menos 24 px, em celulas (o arrumaNome dele). None se nao ler."""
+    faixa = re.search(r"comum: \{[^}]*\bfaixa: (\d+)", html)
+    comum = re.search(r"\.palco \.tecla\.ped-ok \{\s*flex: none; width: (\d+)px", html)
+    vw = re.search(r"const vw = (\d+), vx =", html)
+    troca = re.search(r'\.tecla\.ped-ok\[data-ef="pistavoz"\] \{ width: (\d+)px', html)
+    if not faixa or not comum or not vw or not troca:
+        return None
+    return (int(comum.group(1)) - int(faixa.group(1))) // 2, int(vw.group(1)) - 6, (int(troca.group(1)) - 24) // 2
+
+
 def larguras_g8(html):
     """A largura de cada letra do G8, a dos rotulos dos volumes e da placa do mixer da mesa (o MIX-JS), com as acentuadas
     do A8 e o cedilha na largura da letra de base, ou None sem ela."""
@@ -228,28 +290,48 @@ ROTULO_MX = 46
 FADERS_MX = ("mixer.recordInGame", "mixer.recordInHeadphonesShort", "mixer.voice")
 
 
+CAP_PEDAL, ACENTO_PEDAL, CAUDA_PEDAL = 7, 3, 2   # a maiuscula da LETRA_PEDAL, o acento em cima dela e a cauda do Ç embaixo
+# o visor, como o PEDAL-JS: o OUVINDO na letra dos nomes, 3 de folga e os 6 blocos de 3 x 5 (2 de folga e blocos de 2 x 5
+# se nao couber); o PRONTO com o visto (7 de largura na letra dos nomes) 4 celulas depois; a letra de LCD so entra se
+# couber, entao a conta e a da letra dos nomes, a mais estreita. Os nomes dos pedais e o vidro vem do medidas_do_pedal
+VISOR_EXTRA = {"effects.voicePedal.say": 0, "effects.voicePedal.listening": 2 + 6 * 3 - 1,   # a folga e os blocos de 2 de largura
+               "effects.voicePedal.ready": 4 + 7}
+
+
+ACENTUADAS = set("ÁÀÂÃÉÊÍÓÔÕÚÜ")   # as que a LETRA_PEDAL desenha com o acento em cima (o Ç pendura embaixo)
+
+
 def confere_pixel(tema, html, por_lingua):
     """As palavras que o pixel art desenha com letras proprias: cada lingua so pode usar as letras que a tabela tem
     (a que falta some ou leva o texto para o HTML). Os titulos das placas na negrita da LETRA_PLACA e as contagens na
     regular dela, os nomes dos mostradores no NOMEV do mixer, os rotulos dos volumes e a placa dele no G8 (cada palavra
-    dos rotulos cabendo na coluna), a fita da voz no LETRAS_FITA, cada palavra dos botoes do Locutor com o seu desenho
-    no ARCADE e o logo dele no LOGOS (os dois do dev/pecas.py). Em tema sem a tabela, nada a conferir; a tabela que o
+    dos rotulos cabendo na coluna), a fita da voz no LETRAS_FITA, e os nomes dos pedais da mesa e o visor do pedal de
+    troca de voz na LETRA_PEDAL (cada nome cabendo no pedal em ate 3 linhas, o do Troca de voz numa, e cada passo do
+    visor cabendo no vidro, o OUVINDO com a barra). Em tema sem a tabela, nada a conferir; a tabela que o
     tema tem e daqui nao deu para ler, ou a chave daqui que sumiu dos arquivos, falha (senao passaria sem conferir)."""
     placa = re.search(r"const LETRA_PLACA = \{\n  negrita: (\{.*?\}),\n  regular: (\{.*?\}),\n", html)
     g8 = larguras_g8(html)
+    pedal = larguras_pedal(html)
+    topos = topos_do_pedal(html)
+    if pedal and topos is None:
+        falha(f"{tema.name}: couldn't read TOPOS (the name lines of the desk pedal) in index.html (update topos_do_pedal)")
+    medidas = medidas_do_pedal(html) if pedal else None
+    if pedal and medidas is None:
+        falha(f"{tema.name}: couldn't read the name width, the display width or the voice changer width (PEDAL CSS) of "
+              f"the desk pedal in index.html (update medidas_do_pedal)")
+    nome_pedal, visor_pedal, nome_troca = medidas or (0, 0, 0)
     tabelas = {
         "G8": set(g8) if g8 else None,
         "negrita": set(json.loads(placa.group(1))) | {" "} if placa else None,
         "regular": set(json.loads(placa.group(2))) | set("0123456789") if placa else None,
         "NOMEV": letras_da_tabela(html, "const NOMEV = {", "\n  };", r"\b([A-Z]): \["),
         "LETRAS_FITA": (lambda s: s | {" "} if s else s)(letras_da_tabela(html, "const LETRAS_FITA = {", "\n};", r"\n  ([A-Z]): \[")),
-        "ARCADE": letras_da_tabela(html, "const ARCADE = {", "\n};", r"\n  '([^']+)': '"),
-        "LOGOS": letras_da_tabela(html, "const LOGOS = {", "\n};", r"\n  '([^']+)': '"),
+        "PEDAL": set(pedal) | {"­"} if pedal else None,
     }
     # a tabela que o tema tem e a leitura daqui nao achou (o formato dela mudou) falha: sem isso, as palavras dela
     # passariam sem conferir nada
     DECLARACAO = {"G8": "const G8 = {", "negrita": "const LETRA_PLACA", "regular": "const LETRA_PLACA",
-                  "NOMEV": "const NOMEV", "LETRAS_FITA": "const LETRAS_FITA", "ARCADE": "const ARCADE", "LOGOS": "const LOGOS"}
+                  "NOMEV": "const NOMEV", "LETRAS_FITA": "const LETRAS_FITA", "PEDAL": "const LETRA_PEDAL"}
     for nome, tabela in tabelas.items():
         if DECLARACAO[nome] in html and not tabela:
             falha(f"{tema.name}: couldn't read the pixel font {nome} in index.html (its format changed? update confere_pixel)")
@@ -261,15 +343,16 @@ def confere_pixel(tema, html, por_lingua):
                 ("queue.count.one", "regular", lambda s: s.replace("{n}", "")), ("queue.count.other", "regular", lambda s: s.replace("{n}", "")),
                 ("mixer.meter.voice", "NOMEV", str.upper), ("mixer.meter.record", "NOMEV", str.upper),
                 ("mixer.meter.game", "NOMEV", str.upper), ("effects.tape.voice", "LETRAS_FITA", str),
-                ("mixer.autoTransition", "G8", str.upper)] + [(k, "G8", str.upper) for k in FADERS_MX]
+                ("mixer.autoTransition", "G8", str.upper)] + [(k, "G8", str.upper) for k in FADERS_MX] + [
+                (k, "PEDAL", str.upper) for k in ("effects.voicePedal.say", "effects.voicePedal.listening", "effects.voicePedal.ready")]
+    # os nomes dos efeitos no pedal da mesa, em maiuscula (o hifen opcional vira o - da quebra)
+    PALAVRAS += [(k, "PEDAL", lambda s: s.upper().replace("­", "-")) for k in sorted(por_lingua.get(i18n.RESERVA, {}))
+                 if re.fullmatch(r"effect\.[a-z-]+\.name", k)]
     # a chave daqui que sumiu dos arquivos (renomeada) falha, em vez de a palavra dela passar sem conferir
     base = por_lingua.get(i18n.RESERVA, {})
     for chave, tab, _ in PALAVRAS:
         if tabelas[tab] and chave not in base:
             falha(f"{tema.name}: confere_pixel checks {chave}, which is not in the files (renamed? update PALAVRAS)")
-    for prefixo, tab in (("effects.button.", "ARCADE"), ("effects.logo.", "LOGOS")):
-        if tabelas[tab] and not any(k.startswith(prefixo) for k in base):
-            falha(f"{tema.name}: the theme has {tab}, and no {prefixo}* key is in the files")
     vistas = 0
     for lingua, textos in por_lingua.items():
         for chave, tab, como in PALAVRAS:
@@ -287,15 +370,35 @@ def confere_pixel(tema, html, por_lingua):
                 if larg > ROTULO_MX:
                     falha(f"{tema.name}: {chave} in {lingua} has {p!r}, {larg} pixels wide in G8: the desk mixer fits "
                           f"{ROTULO_MX} per word (use a shorter word)")
-        for chave, palavra in textos.items():
-            if chave.startswith("effects.button.") and tabelas["ARCADE"] is not None:
-                vistas += 1
-                if palavra not in tabelas["ARCADE"]:
-                    falha(f"{tema.name}: {chave} in {lingua} is {palavra!r}, which has no button in ARCADE (run dev/pecas.py)")
-            if chave.startswith("effects.logo.") and tabelas["LOGOS"] is not None:
-                vistas += 1
-                if palavra not in tabelas["LOGOS"]:
-                    falha(f"{tema.name}: {chave} in {lingua} is {palavra!r}, which has no drawing in LOGOS (run dev/pecas.py)")
+        if pedal is None or medidas is None:
+            continue
+        # o nome no pedal da mesa: ate 3 linhas de nome_pedal celulas (o do Troca de voz, mais largo, numa so), na quebra
+        # que a tela escolhe; e a altura: cada linha tem o topo fixo (TOPOS), e o acento de uma linha de baixo (3 linhas
+        # acima da maiuscula) nao pode encostar, contorno com contorno, no pe da de cima (a maiuscula, ou a cauda do Ç)
+        for chave, texto in textos.items():
+            m = re.fullmatch(r"effect\.([a-z-]+)\.name", chave)
+            if not m:
+                continue
+            linhas = linhas_do_pedal(texto, pedal, *((nome_troca, 1) if m.group(1) == "pistavoz" else (nome_pedal, 3)))
+            if not linhas:
+                falha(f"{tema.name}: {chave} in {lingua} ({texto!r}) doesn't fit the desk pedal in the pixel font PEDAL "
+                      f"(use a shorter name or a soft hyphen)")
+                continue
+            if topos and len(linhas) > 1:
+                t = topos[len(linhas)]
+                for k in range(1, len(linhas)):
+                    topo = t[k] - (ACENTO_PEDAL if any(ch in ACENTUADAS for ch in linhas[k]) else 0)
+                    pe = t[k - 1] + CAP_PEDAL - 1 + (CAUDA_PEDAL if "Ç" in linhas[k - 1] else 0)
+                    if topo - pe <= 2:   # o contorno de baixo da de cima (pe + 1) encosta no de cima desta (topo - 1)
+                        falha(f"{tema.name}: {chave} in {lingua} ({texto!r}): line {k + 1} touches line {k} on the desk "
+                              f"pedal ({len(linhas)} lines {t[k] - t[k - 1]} cells apart, with the accent and the cedilla; "
+                              f"use a soft hyphen elsewhere or a shorter name)")
+        # o passo do visor do Troca de voz numa linha do vidro (VISOR_EXTRA: a barra do OUVINDO com os blocos de 2 de
+        # largura, a menor que a tela usa, e o visto do PRONTO)
+        for chave, extra in VISOR_EXTRA.items():
+            if chave in textos and linhas_do_pedal(textos[chave].replace("-", " "), pedal, visor_pedal - extra, 1) is None:
+                falha(f"{tema.name}: {chave} in {lingua} ({textos[chave]!r}) doesn't fit the voice pedal display in the "
+                      f"pixel font PEDAL (use a shorter word)")
     print(f"{tema.name}: {vistas} pixel art words checked against their fonts")
 
 

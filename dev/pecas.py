@@ -1,17 +1,16 @@
 """Pecas de pixel da vitrola (o toque de Habbo, mock p1): o braco do toca-discos
 com a base e o descanso e o botao de tocar redondo (o grande do palco e o pequeno da barra de baixo),
-e o pisador (footswitch), o knob e o LED dos pedais, os botoes de fliperama e o logo do Locutor, a chave 110/220
+e o pisador (footswitch), o knob e o LED dos pedais, a chave 110/220
 do fim do disco e as barras do palco, desenhados celula a celula.
 
     python dev/pecas.py
 
 Grava as variaveis --braco-*, --base-braco, --descanso, --tocar-*, --icone-*, --knob-margem, --led-recuo,
---arcade-recuo, as das barras do palco (--trilho-moldura, --trilho-fundo, --trilho-aceso e --cursor-pino) e os metais da
+as das barras do palco (--trilho-moldura, --trilho-fundo, --trilho-aceso e --cursor-pino) e os metais da
 maleta do A seguir (--maleta-canto-a a -d, --maleta-dobradica, --maleta-fecho, --maleta-alca, --maleta-meio-*,
 --maleta-boca-*, o casco em perspectiva, --maleta-tampa-* e --maleta-base-*, e o recorte do disco entreaberto,
 --maleta-disco-*) no
-bloco entre "pecas:inicio" e "pecas:fim" do themes/vitrola/index.html, e no JS os SVGs do pisador (PE_SVG), do LED (LED_SVG), os knobs dos pedais com os ponteiros (KNOBS: o creme, o baquelite e o chicken-head), os
-botoes do Locutor (ARCADE), o logo dele em cada lingua (LOGOS), a chave do "So este disco / Tocar parecidas" (CHAVE_PARECIDAS) e o salvar da
+bloco entre "pecas:inicio" e "pecas:fim" do themes/vitrola/index.html, e no JS os SVGs do pisador (PE_SVG), do LED (LED_SVG), os knobs dos pedais com os ponteiros (KNOBS: o creme, o baquelite e o chicken-head), a chave do "So este disco / Tocar parecidas" (CHAVE_PARECIDAS) e o salvar da
 parecida no prato (SALVAR_PIXEL, com as --salvar-aceso-* do aro).
 
 O braco: o tema gira o .braco em volta do pivo (o anguloPara() da o angulo do sulco; parado ele volta
@@ -581,243 +580,6 @@ def knob_frango_camadas():
     # a escala inteira, sem tirar o que os quadros cobrem: ela e uma so para os 11, e o quadro, desenhado depois dela,
     # ja tapa o pedaco embaixo do knob (e deixa a escala a vista, escurecida, embaixo da sombra)
     return {}, riscos, arco, quadros, (cx, cy)
-
-
-# ---------- botoes de fliperama do Locutor (o fliperama 3 do mock, levado para o tema):
-# o unico controle de verdade da pedaleira (os knobs sao enfeite), sem o footswitch e sem o LED: dois botoes de capa
-# transparente, NATURAL em cima e CARICATO embaixo, e o logo "Locutor FM" numa linha no meio. O botao: o contorno, a
-# caixa escura, a capa em chanfro (a luz em cima e a esquerda) com os reflexos nos cantos e o miolo com a palavra;
-# apagado creme com a palavra escura e a sombra dura, aceso vermelho com a palavra clara e o brilho em degraus.
-# Desligado e o estado sem luz, sem "OFF". Quadrado como o do mock (mais quadrados,
-# com mais espaco em cima e a COMP mais para baixo): a caixa escura de 1 deixa o CARICATO caber no miolo. Um botao
-# por palavra das chaves effects.button.* do tema, nas duas linguas (o CARTOON do ingles), e o tema acha o dele pela
-# palavra da lingua ----------
-ARC_BOTAO = (52, 52)   # o botao com o contorno
-ARC_CAIXA = 1          # a caixa escura entre o contorno e a capa
-ARC_MARGEM = 5         # o quadro sai do botao o tanto do brilho (4) e da sombra (2)
-ARC_LARG = 68          # a largura das listras embaixo do logo: o miolo do pedal de 80 px da tela de 360
-# a letra estreita das palavras, 10 de altura (a dos nomes grandes tem 11) e traco de 1: o CARICATO cabe no miolo
-ARC_LETRA = {
-    "A": [".XX.", "X..X", "X..X", "X..X", "X..X", "XXXX", "X..X", "X..X", "X..X", "X..X"],
-    "C": [".XX.", "X..X", "X...", "X...", "X...", "X...", "X...", "X...", "X..X", ".XX."],
-    "I": ["XXX", ".X.", ".X.", ".X.", ".X.", ".X.", ".X.", ".X.", ".X.", "XXX"],
-    "L": ["X...", "X...", "X...", "X...", "X...", "X...", "X...", "X...", "X...", "XXXX"],
-    "N": ["X..X", "XX.X", "XX.X", "XX.X", "X.XX", "X.XX", "X.XX", "X..X", "X..X", "X..X"],
-    "O": [".XX.", "X..X", "X..X", "X..X", "X..X", "X..X", "X..X", "X..X", "X..X", ".XX."],
-    "R": ["XXX.", "X..X", "X..X", "X..X", "XXX.", "X.X.", "X.X.", "X..X", "X..X", "X..X"],
-    "T": ["XXX", ".X.", ".X.", ".X.", ".X.", ".X.", ".X.", ".X.", ".X.", ".X."],
-    "U": ["X..X", "X..X", "X..X", "X..X", "X..X", "X..X", "X..X", "X..X", "X..X", ".XX."],
-}
-# a letra do logo, 11 de altura e traco de 2, as minusculas da linha 3; inclinada 1 celula a cada 4 linhas. O o, o c
-# e o u com 6 de largura e o furo de 2 (com o furo de 1 ficavam dificeis de ler no celular): o "Locutor FM"
-# enche os 68 px do miolo do pedal. O V, o i e o e sao do "FM Voice" do ingles
-ARC_LOGO = {
-    "L": ["XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XXXXX", "XXXXX"],
-    "o": [None, None, None, ".XXXX.", "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", ".XXXX."],
-    "c": [None, None, None, ".XXXX.", "XX..XX", "XX....", "XX....", "XX....", "XX....", "XX..XX", ".XXXX."],
-    "u": [None, None, None, "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", ".XXXXX"],
-    "t": [None, ".XX.", ".XX.", "XXXX", ".XX.", ".XX.", ".XX.", ".XX.", ".XX.", ".XX.", "..XX"],
-    "r": [None, None, None, "XX.XX", "XXXX.", "XXX..", "XX...", "XX...", "XX...", "XX...", "XX..."],
-    "F": ["XXXXX", "XXXXX", "XX...", "XX...", "XXXX.", "XXXX.", "XX...", "XX...", "XX...", "XX...", "XX..."],
-    "M": ["XX....XX", "XXX..XXX", "XXXXXXXX", "XX.XX.XX", "XX.XX.XX", "XX....XX", "XX....XX", "XX....XX", "XX....XX",
-          "XX....XX", "XX....XX"],
-    "V": ["XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", "XX..XX", ".XXXX.", ".XXXX.", "..XX..", "..XX.."],
-    "i": [None, "XX", None, "XX", "XX", "XX", "XX", "XX", "XX", "XX", "XX"],
-    "e": [None, None, None, ".XXXX.", "XX..XX", "XX..XX", "XXXXXX", "XX....", "XX....", "XX..XX", ".XXXX."],
-    " ": [None] * 11,
-}
-# o logo da mesa em maiuscula (os nomes dos pedais da mesa sao em maiuscula, como no mock), na mesma altura e no mesmo
-# traco: as redondas com 5 de largura e o furo de 1, e o L, o F, o M e o V os do celular
-ARC_LOGO_MESA = {
-    "L": ARC_LOGO["L"], "F": ARC_LOGO["F"], "M": ARC_LOGO["M"], "V": ARC_LOGO["V"], " ": ARC_LOGO[" "],
-    "O": [".XXX.", "XX.XX", "XX.XX", "XX.XX", "XX.XX", "XX.XX", "XX.XX", "XX.XX", "XX.XX", "XX.XX", ".XXX."],
-    "C": [".XXXX", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", "XX...", ".XXXX"],
-    "U": ["XX.XX"] * 10 + [".XXX."],
-    "T": ["XXXXXX", "XXXXXX"] + ["..XX.."] * 9,
-    "R": ["XXXXX.", "XX..XX", "XX..XX", "XX..XX", "XXXXX.", "XXXX..", "XX.XX.", "XX.XX.", "XX..XX", "XX..XX", "XX..XX"],
-    "I": ["XX"] * 11,
-    "E": ["XXXXX", "XXXXX", "XX...", "XX...", "XXXX.", "XXXX.", "XX...", "XX...", "XX...", "XXXXX", "XXXXX"],
-}
-# (a letra, a largura do desenho, o recuo das listras de cada lado e se a sombra tem o segundo degrau, o laranja):
-# no celular o miolo do pedal de 80 px da tela de 360; na mesa 76, com a sombra so no marrom
-ARC_LOGO_TELAS = {"celular": (ARC_LOGO, ARC_LARG, 4, True), "mesa": (ARC_LOGO_MESA, 76, 7, False)}
-ARC_ESPACO = 2
-# fliperama velho (o novo tinha cara de botao novo, nao de fliperama amarelado):
-# a capa de plastico amarelada, e mais nas laterais, que somam plastico; o miolo e a etiqueta de dentro, encapsulada,
-# que amarela menos, num fundo marcado pela linha da borda do plastico e a sombra
-# dela em cima e a esquerda (sem o fundo, desligado ele parecia uma tecla de computador gigante). Proporcao dele:
-# a capa no amarelado cheio e o miolo a 40% dele, sobre o creme escuro em que a letra de 1 px se le no celular
-ARC_FACETA = {   # a capa transparente: cima, esquerda, direita, baixo
-    "apagado": [(232, 220, 176, 1), (212, 198, 152, 1), (172, 156, 112, 1), (138, 124, 88, 1)],
-    "aceso": [(255, 196, 150, 1), (246, 148, 104, 1), (204, 78, 44, 1), (160, 46, 26, 1)],
-}
-ARC_COR = {"contorno": (26, 11, 4, 1), "caixa_luz": (88, 62, 48, 1), "caixa": (50, 32, 24, 1), "caixa_sombra": (30, 18, 12, 1),
-           "miolo": (214, 203, 176, 1), "letra": (38, 18, 10, 1),
-           "aceso": (214, 36, 23, 1), "aceso_meio": (243, 62, 40, 1), "letra_acesa": (255, 235, 190, 1),
-           "reflexo": (255, 255, 255, .95), "sombra": (12, 6, 3, .42), "brilho": (255, 70, 34)}
-ARC_FUNDO = {   # o miolo no fundo da capa: a linha da borda do plastico e as duas linhas da sombra dela
-    "apagado": ((150, 132, 90, 1), (188, 178, 156, 1), (202, 193, 172, 1)),
-    "aceso": ((176, 60, 30, 1), (196, 34, 24, 1), (214, 44, 30, 1)),
-}
-# o reflexo da luz na capa, no canto de cima a esquerda (o de baixo a direita e ele girado): um risco de 2 celulas na
-# diagonal (com o de 3 celulas soltas quase nao se via no celular)
-ARC_REFLEXO = ["...XX", "..XX.", ".XX..", "XX...", "X...."]
-ARC_BRILHO = (.4, .27, .15, .07)   # o brilho do aceso, da beira do botao para fora
-ARC_LISTRAS = ((58, 24, 12, 1), (224, 104, 42, 1), (240, 168, 48, 1))   # embaixo do logo, como no mock
-
-
-def texto_pixel(fonte, s, vao=1):
-    """As celulas do texto numa letra de ARC_LETRA ou ARC_LOGO, com o canto de cima a esquerda em (0, 0), e a largura."""
-    cels, x = set(), 0
-    for ch in s:
-        g = fonte[ch]
-        larg = max((len(r) for r in g if r), default=ARC_ESPACO)
-        cels |= {(x + i, y) for y, r in enumerate(g) if r for i, v in enumerate(r) if v == "X"}
-        x += larg + vao
-    return cels, x - vao
-
-
-def retangulo_degrau(x0, y0, x1, y1, corte):
-    """As celulas de [x0, x1) x [y0, y1) com os cantos cortados em degrau (corte[i] celulas na linha i do canto)."""
-    cels = set()
-    for y in range(y0, y1):
-        i = min(y - y0, y1 - 1 - y)
-        c = corte[i] if i < len(corte) else 0
-        cels |= {(x, y) for x in range(x0 + c, x1 - c)}
-    return cels
-
-
-def dilata(cels, n=1):
-    out = set(cels)
-    for _ in range(n):
-        out |= {(x + dx, y + dy) for x, y in out for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
-    return out
-
-
-def arcade_botao(palavra):
-    """O SVG de um botao (aspas duplas, para morar numa string de JS) com as duas camadas, o g.arc-apagado e o
-    g.arc-aceso, que o tema troca pelo modo ligado. O quadro sai do botao ARC_MARGEM celulas de cada lado."""
-    bw, bh = ARC_BOTAO
-    m, c = ARC_MARGEM, ARC_COR
-    k = 1 + ARC_CAIXA   # onde comeca a capa
-    mi = k + 3          # onde comeca o miolo (a capa tem 3)
-    fora = retangulo_degrau(0, 0, bw, bh, [2, 1])
-    caixa = retangulo_degrau(1, 1, bw - 1, bh - 1, [1])
-    capa = retangulo_degrau(k, k, bw - k, bh - k, [1])
-    miolo = {(x, y) for x in range(mi, bw - mi) for y in range(mi, bh - mi)}
-    letras, tw = texto_pixel(ARC_LETRA, palavra)
-    # (r16) centrado na area clara da etiqueta (sem a borda e a sombra de 1 na esquerda): o C do CARICATO encostava no chanfro
-    ox, oy = mi + 2 + (bw - 2 * mi - 3 - tw) // 2, mi + (bh - 2 * mi - 10) // 2
-    camadas = {}
-    for estado in ("apagado", "aceso"):
-        aceso = estado == "aceso"
-        px = {}
-        if aceso:   # o brilho em degraus em volta, mais fraco a cada celula
-            for d, a in enumerate(ARC_BRILHO, 1):
-                for cel in dilata(fora, d) - dilata(fora, d - 1):
-                    px[cel] = c["brilho"] + (a,)
-        else:
-            for x, y in fora:
-                for k in (1, 2):
-                    if (x, y + k) not in fora:
-                        px[(x, y + k)] = c["sombra"]
-        for cel in fora - caixa:
-            px[cel] = c["contorno"]
-        for x, y in caixa - capa:
-            px[(x, y)] = c["caixa_luz"] if y < k else c["caixa_sombra"] if y >= bh - k else c["caixa"]
-        for x, y in capa - miolo:   # cada celula do chanfro no tom do lado mais perto
-            lado = min(range(4), key=lambda i: (y - k, x - k, bw - 1 - k - x, bh - 1 - k - y)[i])
-            px[(x, y)] = ARC_FACETA[estado][lado]
-        borda, sombra1, sombra2 = ARC_FUNDO[estado]
-        for x, y in miolo:
-            if x in (mi, bw - mi - 1) or y in (mi, bh - mi - 1):   # a borda do plastico em volta da etiqueta
-                px[(x, y)] = borda
-            elif y == mi + 1 or x == mi + 1:   # a sombra da borda em cima e a esquerda
-                px[(x, y)] = sombra1
-            elif y == mi + 2:
-                px[(x, y)] = sombra2
-            elif aceso:
-                px[(x, y)] = c["aceso_meio"] if mi + 2 <= x < bw - mi - 2 and mi + 2 <= y < bh - mi - 2 else c["aceso"]
-            else:
-                px[(x, y)] = c["miolo"]
-        for x, y in letras:
-            px[(ox + x, oy + y)] = c["letra_acesa" if aceso else "letra"]
-        for dy, linha in enumerate(ARC_REFLEXO):   # a luz batendo no plastico: branca nos dois estados, nao amarela com a capa
-            for dx, v in enumerate(linha):
-                if v == "X":
-                    px[(mi + 1 + dx, mi + 1 + dy)] = px[(bw - mi - 2 - dx, bh - mi - 2 - dy)] = c["reflexo"]
-        camadas[estado] = "".join(caminhos({(x + m, y + m): v for (x, y), v in px.items()}, bw + 2 * m, bh + 2 * m, '"'))
-    w, h = bw + 2 * m, bh + 2 * m
-    return (f'<svg class="arcade" viewBox="0 0 {w} {h}" width="{w}" height="{h}" shape-rendering="crispEdges">'
-            f'<g class="arc-apagado">{camadas["apagado"]}</g><g class="arc-aceso">{camadas["aceso"]}</g></svg>')
-
-
-def arcade_palavras():
-    """As palavras dos botoes do Locutor, das chaves effects.button.* das linguas do tema (i18n/), na ordem em que
-    aparecem: o tema acha o botao pela palavra da lingua dele. Sai com erro se falta letra no ARC_LETRA ou se a palavra
-    nao cabe no miolo."""
-    sys.path.insert(0, str(TEMA.parent.parent.parent))
-    import i18n
-    palavras = []
-    for lingua in i18n.LINGUAS:
-        for chave, palavra in i18n.ler(i18n.arquivo(TEMA.parent / "i18n", lingua)).items():
-            if chave.startswith("effects.button.") and palavra not in palavras:
-                palavras.append(palavra)
-    for p in palavras:
-        if set(p) - ARC_LETRA.keys():
-            sys.exit(f"ARC_LETRA nao tem {''.join(sorted(set(p) - ARC_LETRA.keys()))} (da palavra {p!r} de um botao do Locutor)")
-        mi = 1 + ARC_CAIXA + 3
-        if texto_pixel(ARC_LETRA, p)[1] > ARC_BOTAO[0] - 2 * mi - 3:
-            sys.exit(f"a palavra {p!r} nao cabe no botao do Locutor")
-    return palavras
-
-
-def arcade_logo(texto, tela="celular"):
-    """O SVG do logo do Locutor ("Locutor FM" em portugues): a letra creme inclinada com o contorno escuro e a sombra
-    em degrau (marrom e, no celular, laranja) para baixo e a direita, e as tres listras embaixo, na largura do miolo
-    do pedal. Na mesa em maiuscula, com a class logo-mesa (o CSS mostra um ou outro). Sai com erro se falta letra ou
-    se o texto nao cabe."""
-    fonte, larg, recuo, laranja = ARC_LOGO_TELAS[tela]
-    texto = texto.upper() if tela == "mesa" else texto
-    if set(texto) - fonte.keys():
-        sys.exit(f"o logo do Locutor da {tela} nao tem {''.join(sorted(set(texto) - fonte.keys()))} (do {texto!r})")
-    letras, _ = texto_pixel(fonte, texto)
-    alt = len(fonte["L"])
-    cheio = {(x + (alt - 1 - y) // 4, y) for x, y in letras}
-    contorno = dilata(cheio) - cheio
-    tudo = cheio | contorno
-    sombra1 = {(x + 1, y + 1) for x, y in tudo} - tudo
-    sombra2 = {(x + 2, y + 2) for x, y in tudo} - tudo - sombra1 if laranja else set()
-    px = {cel: (224, 104, 42, 1) for cel in sombra2}
-    px.update({cel: (58, 24, 12, 1) for cel in sombra1})
-    px.update({cel: ARC_COR["contorno"] for cel in contorno})
-    px.update({cel: (250, 238, 210, 1) for cel in cheio})
-    x0, y0 = min(x for x, _ in px), min(y for _, y in px)
-    lw, lh = max(x for x, _ in px) - x0 + 1, max(y for _, y in px) - y0 + 1
-    if lw > larg:
-        sys.exit(f"o logo {texto!r} nao cabe no pedal da {tela} ({lw} de {larg})")
-    dx = (larg - lw) // 2 - x0
-    px = {(x + dx, y - y0): v for (x, y), v in px.items()}
-    for i, cor in enumerate(ARC_LISTRAS):
-        for x in range(recuo, larg - recuo):
-            px[(x, lh + 1 + 2 * i)] = cor
-    w, h = larg, lh + 2 * len(ARC_LISTRAS)
-    classe = ' class="logo-mesa"' if tela == "mesa" else ""
-    return (f'<svg{classe} viewBox="0 0 {w} {h}" width="{w}" height="{h}" shape-rendering="crispEdges">'
-            + "".join(caminhos(px, w, h, '"')) + "</svg>")
-
-
-def logos():
-    """Os textos do logo do Locutor, da chave effects.logo.locutor das linguas do tema (i18n/), na ordem das linguas
-    (o primeiro e o da lingua de reserva, que o tema usa se o da lingua dele faltar)."""
-    sys.path.insert(0, str(TEMA.parent.parent.parent))
-    import i18n
-    textos = []
-    for lingua in i18n.LINGUAS:
-        texto = i18n.ler(i18n.arquivo(TEMA.parent / "i18n", lingua)).get("effects.logo.locutor")
-        if texto and texto not in textos:
-            textos.append(texto)
-    return textos
 
 
 # o trilho e o pino da chave de correr que o fim do disco teve ate 22/10 (na lingua das teclas do lado: contorno de 2
@@ -1554,7 +1316,6 @@ def main():
     linhas.append(f"  --knob-margem: {margem};   /* poe o centro do tampo do knob em {KN_CENTRO} na caixa do .p-grande */")
     svg_led, recuo = led()
     linhas.append(f"  --led-recuo: -{recuo}px;   /* o desenho do LED sai da caixa de {LED_N} px o tanto do brilho */")
-    linhas.append(f"  --arcade-recuo: -{ARC_MARGEM}px;   /* o desenho dos botoes do Locutor sai do botao o tanto do brilho */")
     linhas.append(f"  --trilho-moldura: {trilho_moldura()};   /* 6 x 7 celulas: fatias 2 2 3 2 */")
     linhas.append(f"  --trilho-fundo: {faixas_css(CH_COR['trilho'])};")
     linhas.append(f"  --trilho-aceso: {faixas_css(CH_COR['aceso'])};")
@@ -1597,14 +1358,6 @@ def main():
     novo, n = re.subn(r"const KNOBS = \{\n(?:  [^\n]*\n)*\};", lambda _: f"const KNOBS = {{\n{js}\n}};", novo)
     if n != 1:
         sys.exit("const KNOBS nao encontrada no tema (ou repetida)")
-    js = ",\n".join(f"  '{p}': '{arcade_botao(p)}'" for p in arcade_palavras())
-    novo, n = re.subn(r"const ARCADE = \{\n(?:  [^\n]*\n)*\};", lambda _: f"const ARCADE = {{\n{js}\n}};", novo)
-    if n != 1:
-        sys.exit("const ARCADE nao encontrada no tema (ou repetida)")
-    js = ",\n".join(f"  '{t}': '{arcade_logo(t)}{arcade_logo(t, 'mesa')}'" for t in logos())
-    novo, n = re.subn(r"const LOGOS = \{\n(?:  [^\n]*\n)*\};", lambda _: f"const LOGOS = {{\n{js}\n}};", novo)
-    if n != 1:
-        sys.exit("const LOGOS nao encontrada no tema (ou repetida)")
     novo, n = re.subn(r"const CHAVE_PARECIDAS = '[^\n]*';", lambda _: f"const CHAVE_PARECIDAS = '{chave_parecidas()}';", novo)
     if n != 1:
         sys.exit("const CHAVE_PARECIDAS nao encontrada no tema (ou repetida)")
