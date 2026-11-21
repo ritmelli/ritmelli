@@ -645,8 +645,9 @@ class App:
         self.fila_lock = threading.Lock()
         # Automatico: a semente e o ultimo disco que o usuario escolheu; o mix, o Mix do YouTube ainda
         # nao usado de mix_base (a semente, ou a ultima parecida quando o da semente acaba);
-        # fora, o que nao entra (tocou nesta sessao, ou o usuario tirou da fila)
-        self.auto = bool(self.cfg.get("auto", False))
+        # fora, o que nao entra (tocou nesta sessao, ou o usuario tirou da fila). Vem ligado na instalacao nova; quem ja
+        # usava guardou o "auto" no config.json (o save_cfg grava a cada mudanca) e segue como estava
+        self.auto = bool(self.cfg.get("auto", True))
         self.semente = None
         self.mix, self.mix_base, self.ponte = None, None, None
         self.mix_buscando, self.mix_falhou = False, 0.0

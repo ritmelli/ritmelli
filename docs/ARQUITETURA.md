@@ -310,7 +310,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     caía fora dos ataques da intro. O log diz o que fez (`transition: on beat: ...`) ou por que
     não alinhou.
   - Automático (a chave "Só este disco / Tocar parecidas" embaixo dos botões do toca-discos,
-    salva no `config.json`): com ele ligado, a fila nunca
+    salva no `config.json`, ligada na instalação nova): com ele ligado, a fila nunca
     acaba. O último disco escolhido à mão é a semente, e o rádio do YouTube Music dela (o
     "Iniciar rádio", pela `ytmusicapi` sem login, 50 músicas do catálogo em ~1 s, com artista
     e título separados) mantém 5 parecidas no fim da fila. Sem a
