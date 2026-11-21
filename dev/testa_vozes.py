@@ -16,6 +16,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -149,10 +150,20 @@ class Impedimento(unittest.TestCase):
             self._poe("m", "d.onnx", 3)
             self.assertIsNone(pistavoz.impedimento())
 
+    def test_adaptador_de_verdade(self):
+        def a(fab, flags):
+            return SimpleNamespace(VendorId=fab, Flags=flags)
+        self.assertTrue(pistavoz.de_verdade(a(0x10DE, 0)))  # NVIDIA
+        self.assertTrue(pistavoz.de_verdade(a(0x1002, 0)))  # AMD
+        self.assertFalse(pistavoz.de_verdade(a(0x1414, 2)))  # o Basic Render Driver com a marca de software
+        self.assertFalse(pistavoz.de_verdade(a(0x1414, 0)))  # e sem ela, como na maquina do GitHub
+        self.assertFalse(pistavoz.de_verdade(a(0x8086, 2)))  # qualquer adaptador de software
+
     def test_placas_de_verdade(self):
-        p = pistavoz.placas()  # sem placa (a maquina do GitHub), lista vazia; nunca o adaptador de software
+        p = pistavoz.placas()  # sem placa (a maquina do GitHub), lista vazia; nunca um adaptador do Windows
+        print(f"placas: {p}")
         self.assertIsInstance(p, list)
-        self.assertFalse(any("Basic Render" in n for n in p))
+        self.assertFalse(any(n.startswith("Microsoft ") for n in p))
 
 
 if __name__ == "__main__":

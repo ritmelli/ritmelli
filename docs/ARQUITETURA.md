@@ -198,8 +198,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   releases que o `vozes.json` fixa (tamanho e sha256 de cada arquivo), na pasta `vozes\` do app: o instalador baixa no
   clique de Instalar, antes de mexer em qualquer coisa, e só o que ainda não está lá com o hash certo
   (`instalador/vozes_iss.py`, o `[Code]` do `ritmelli.iss`); pelo código, `python dev/vozes.py baixa`. Sem placa de vídeo
-  (pelo DXGI, sem o adaptador de software) ou sem os modelos, o `impedimento()` deixa o pedal de fora e o Alienígena
-  fica. O tom: o deslocamento leva o tom de quem fala (o percentil 20 dos quadros com tom) ao `tom_hz` do `voz.json`
+  (pelo DXGI, sem os adaptadores do próprio Windows: o de software e os do fabricante Microsoft, o `de_verdade()`) ou
+  sem os modelos, o `impedimento()` deixa o pedal de fora e o Alienígena fica. O tom: o deslocamento leva o tom de quem fala (o percentil 20 dos quadros com tom) ao `tom_hz` do `voz.json`
   da voz. Sem ele medido, o `pista.py` sobe no ajuste: escreve silêncio na pista enquanto junta 8 s de fala pelo tom
   dos quadros que o `conversor.py` congela a cada bloco (o `tom_congelado`, a conta que ele já faz), diz o `ouvindo` e
   o `medido` pela saída padrão e passa ao deslocamento medido (`ajusta_tom`, com a linha do tempo zerada). O

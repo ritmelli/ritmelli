@@ -60,9 +60,19 @@ def _hz(v):
     return v if HZ_MIN <= v <= HZ_MAX else None
 
 
+MICROSOFT = 0x1414  # o fabricante dos adaptadores do proprio Windows: Basic Render, Basic Display, Hyper-V, Remote Display
+
+
+def de_verdade(d):
+    """Se o adaptador do DXGI (um DXGI_ADAPTER_DESC1) e uma placa de video. O Microsoft Basic Render Driver roda no
+    processador e nem sempre vem com a marca de software (DXGI_ADAPTER_FLAG_SOFTWARE): na maquina do GitHub, sem
+    placa, ele vem sem ela, e por isso o fabricante da Microsoft tambem fica de fora."""
+    return not d.Flags & 2 and d.VendorId != MICROSOFT
+
+
 def placas():
-    """O nome de cada placa de video do PC, pelo DXGI (o que o DirectML enxerga), sem o adaptador de software do
-    Windows (o Microsoft Basic Render Driver, que roda no processador)."""
+    """O nome de cada placa de video do PC, pelo DXGI (o que o DirectML enxerga), sem os adaptadores do proprio
+    Windows (o `de_verdade()`)."""
     if os.name != "nt":
         return []
     import ctypes
@@ -98,7 +108,7 @@ def placas():
             d = Desc1()
             ok = metodo(ad, 10, ctypes.POINTER(Desc1))(ad, ctypes.byref(d)) == 0  # IDXGIAdapter1::GetDesc1
             metodo(ad, 2)(ad)  # Release
-            if ok and not d.Flags & 2:  # DXGI_ADAPTER_FLAG_SOFTWARE
+            if ok and de_verdade(d):
                 nomes.append(d.Description)
             i += 1
     finally:
