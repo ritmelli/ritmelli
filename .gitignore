@@ -19,3 +19,7 @@ dist/
 # o que o instalador/monta.ps1 baixa e gera
 instalador/vendor/
 instalador/saida/
+
+# os modelos do pedal de troca de voz (pistavoz.py), do ritmelli-voices: no app, o instalador baixa; pelo codigo, o
+# python dev/vozes.py baixa
+/vozes/

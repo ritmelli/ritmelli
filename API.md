@@ -286,8 +286,10 @@ O pedal que troca a voz de quem fala pela de uma das vozes do
 que não importa, que quebra ao importar ou que não cumpre o contrato abaixo conta como ausente, com o motivo no log, e
 o Alienígena volta. O contrato com o módulo:
 
+- `pistavoz.impedimento()` (opcional): o `fx.py` chama ao carregar o módulo; `None` com o pedal pronto para aparecer,
+  ou o motivo de ele ficar de fora (sem placa de vídeo, sem as vozes baixadas), que vai para o log, e o Alienígena volta.
 - `pistavoz.dados(pasta)` (opcional): o servidor chama ao subir, com a pasta de dados dele (a do `library.json`; no
-  `--mock`, a temporária). O módulo guarda ali dentro o que é dele (as vozes e a voz escolhida).
+  `--mock`, a temporária). O módulo guarda ali o que é de quem usa (a voz escolhida e o tom de cada voz).
 
 - `pistavoz.VOZES`: a lista de ids das vozes, da mais grave para a mais aguda (ex. `["mina", "lira"]`); vai para o
   `vozes` do item `pistavoz` de `/api/effects`. O pedal mostra as duas primeiras, e o leitor de tela diz qual é a mais
@@ -309,7 +311,9 @@ o Alienígena volta. O contrato com o módulo:
 O efeito `pistavoz` em si não mexe na voz do lado do Ritmelli (como o `nenhum`): quem troca a voz é o módulo, entre o
 `liga(True)` e o `liga(False)`. O `pistavoz.py` sobe o processo da troca de voz (`ritmelli.py --pistavoz`, o
 `pista.py`), que lê a voz crua pelo anel do filtro, converte pelo `conversor.py` (o RVC em ONNX, no DirectML) e
-escreve na pista da voz, que o filtro põe no lugar da voz do microfone. O tema mostra o pedal com o visor e as vozes (o rótulo da escolhida aceso) e manda
+escreve na pista da voz, que o filtro põe no lugar da voz do microfone. Os modelos são os das releases que o
+`vozes.json` fixa, com o tamanho e o sha256 de cada arquivo: o instalador baixa para a pasta `vozes\` do app, e quem roda
+pelo código baixa com `python dev/vozes.py baixa`. O tema mostra o pedal com o visor e as vozes (o rótulo da escolhida aceso) e manda
 `POST /api/pedal_voz` no clique de cada uma. Textos do tema: `effect.pistavoz.name`, `effect.pistavoz.desc` e os do
 visor.
 

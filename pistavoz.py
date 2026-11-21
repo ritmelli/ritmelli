@@ -2,9 +2,11 @@
 o processo da troca de voz (pista.py, pelo ritmelli.py --pistavoz), que le a voz crua do anel do filtro, converte e
 escreve na pista da voz; desligado, derruba o processo e a voz do microfone volta.
 
-As vozes sao as do ritmelli-voices (ENGINE e RELEASES: as tags que esta versao do app conhece), numa pasta vozes/
-dentro da pasta de dados que o servidor passa em dados() (no --mock, a pasta temporaria dele); o pedal.json ao lado
-guarda a voz escolhida e o tom de cada voz (semitons)."""
+As vozes sao as do ritmelli-voices, nas releases que o vozes.json (ao lado deste arquivo) fixa, com o sha256 de cada
+arquivo: o instalador baixa os arquivos para a pasta vozes\\ do app (MODELOS), e quem roda pelo codigo baixa com o
+python dev/vozes.py baixa. Sem placa de video, ou sem os modelos, o pedal nao aparece (impedimento()). O que e de quem
+usa (a voz escolhida e o tom de cada voz, em semitons) fica no pedal_voz.json da pasta de dados que o servidor passa
+em dados() (no --mock, a temporaria dele)."""
 import json
 import os
 import subprocess
@@ -14,51 +16,111 @@ from pathlib import Path
 
 import pastas
 
-VOZES = ["mina", "lira"]  # da mais grave para a mais aguda
-ENGINE = "engine-v0.1"
-RELEASES = {"mina": "mina-v0.2", "lira": "lira-v0.2"}
+with open(Path(__file__).resolve().parent / "vozes.json", encoding="utf-8") as _f:
+    MANIFESTO = json.load(_f)
+VOZES = [v["id"] for v in MANIFESTO["vozes"]]  # da mais grave para a mais aguda
+ENGINE = MANIFESTO["engine"]["tag"]
+RELEASES = {v["id"]: v["tag"] for v in MANIFESTO["vozes"]}
+MODELOS = pastas.APP / "vozes"  # a pasta do app: no instalado, a que o instalador encheu
 SAIR_S = 5  # o processo tem isso para sair sozinho com o "sair" antes de ser derrubado
 
 _trava = threading.RLock()
-_pasta = None
-_cfg = None          # o pedal.json: {"voz": id, "tom": {id: semitons}}
+_arq = None          # o pedal_voz.json
+_cfg = None          # o que ele guarda: {"voz": id, "tom": {id: semitons}}
 _estado = {"voz": VOZES[0], "visor": None, "progresso": None}
 _proc = None
 _ligado = False
 
 
+def placas():
+    """O nome de cada placa de video do PC, pelo DXGI (o que o DirectML enxerga), sem o adaptador de software do
+    Windows (o Microsoft Basic Render Driver, que roda no processador)."""
+    if os.name != "nt":
+        return []
+    import ctypes
+
+    class Guid(ctypes.Structure):
+        _fields_ = [("a", ctypes.c_ulong), ("b", ctypes.c_ushort), ("c", ctypes.c_ushort), ("d", ctypes.c_ubyte * 8)]
+
+    class Desc1(ctypes.Structure):  # DXGI_ADAPTER_DESC1
+        _fields_ = [("Description", ctypes.c_wchar * 128), ("VendorId", ctypes.c_uint), ("DeviceId", ctypes.c_uint),
+                    ("SubSysId", ctypes.c_uint), ("Revision", ctypes.c_uint), ("DedicatedVideoMemory", ctypes.c_size_t),
+                    ("DedicatedSystemMemory", ctypes.c_size_t), ("SharedSystemMemory", ctypes.c_size_t),
+                    ("LuidBaixo", ctypes.c_ulong), ("LuidAlto", ctypes.c_long), ("Flags", ctypes.c_uint)]
+
+    def metodo(obj, i, *args):  # o metodo i da tabela do objeto COM
+        tabela = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))[0]
+        return ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, *args)(tabela[i])
+
+    iid = Guid(0x770AAE78, 0xF26F, 0x4DBA, (ctypes.c_ubyte * 8)(0xA8, 0x29, 0x25, 0x3C, 0x83, 0xD1, 0xB3, 0x87))
+    fab = ctypes.c_void_p()
+    dxgi = ctypes.WinDLL("dxgi")
+    dxgi.CreateDXGIFactory1.argtypes = [ctypes.POINTER(Guid), ctypes.POINTER(ctypes.c_void_p)]
+    dxgi.CreateDXGIFactory1.restype = ctypes.c_long
+    if dxgi.CreateDXGIFactory1(ctypes.byref(iid), ctypes.byref(fab)) != 0:
+        return []
+    nomes = []
+    try:
+        enum = metodo(fab, 12, ctypes.c_uint, ctypes.POINTER(ctypes.c_void_p))  # IDXGIFactory1::EnumAdapters1
+        i = 0
+        while True:
+            ad = ctypes.c_void_p()
+            if enum(fab, i, ctypes.byref(ad)) != 0:  # DXGI_ERROR_NOT_FOUND: acabou
+                break
+            d = Desc1()
+            ok = metodo(ad, 10, ctypes.POINTER(Desc1))(ad, ctypes.byref(d)) == 0  # IDXGIAdapter1::GetDesc1
+            metodo(ad, 2)(ad)  # Release
+            if ok and not d.Flags & 2:  # DXGI_ADAPTER_FLAG_SOFTWARE
+                nomes.append(d.Description)
+            i += 1
+    finally:
+        metodo(fab, 2)(fab)
+    return nomes
+
+
+def impedimento():
+    """None com o pedal pronto para aparecer; senao o motivo, que o fx.py poe no log, e o pedal fica de fora (o
+    Alienigena volta): sem placa de video, ou sem os modelos baixados inteiros na MODELOS."""
+    if not placas():
+        return "no graphics card for DirectML (only the software adapter)"
+    faltam = [f"{r['tag']}/{a['nome']}" for r in [MANIFESTO["engine"], *MANIFESTO["vozes"]] for a in r["arquivos"]
+              if not ((MODELOS / r["tag"] / a["nome"]).is_file()
+                      and (MODELOS / r["tag"] / a["nome"]).stat().st_size == a["tamanho"])]
+    if faltam:
+        return (f"{len(faltam)} voice files missing or incomplete in {MODELOS} ({faltam[0]}...; the installer downloads "
+                f"them, and from the code: python dev/vozes.py baixa)")
+    return None
+
+
 def dados(pasta):
-    """A pasta de dados do app (a do library.json; no --mock, a temporaria): as vozes e o pedal.json ficam em vozes/
-    dentro dela. O servidor chama ao subir."""
-    global _pasta, _cfg
+    """A pasta de dados do app (a do library.json; no --mock, a temporaria): o pedal_voz.json fica nela. O servidor
+    chama ao subir."""
+    global _arq, _cfg
     with _trava:
-        _pasta, _cfg = Path(pasta) / "vozes", None
+        _arq, _cfg = Path(pasta) / "pedal_voz.json", None
         _carrega()  # o estado() ja sai com a voz escolhida, sem ler o disco
-
-
-def _vozes():
-    return _pasta if _pasta is not None else pastas.LIB / "vozes"
 
 
 def _carrega():
     global _cfg
     if _cfg is None:
         try:
-            with open(_vozes() / "pedal.json", encoding="utf-8") as f:
+            with open(_arq or pastas.LIB / "pedal_voz.json", encoding="utf-8") as f:
                 _cfg = json.load(f)
         except (OSError, ValueError):
             _cfg = {}
-        if _cfg.get("voz") not in VOZES:
-            _cfg["voz"] = VOZES[0]
-        _cfg.setdefault("tom", {})
+        if not isinstance(_cfg, dict) or _cfg.get("voz") not in VOZES:
+            _cfg = {"voz": VOZES[0], "tom": (_cfg.get("tom") if isinstance(_cfg, dict) else None)}
+        if not isinstance(_cfg.get("tom"), dict):
+            _cfg["tom"] = {}
         _estado["voz"] = _cfg["voz"]
     return _cfg
 
 
 def _salva():
-    p = _vozes()
-    p.mkdir(parents=True, exist_ok=True)
-    pastas.save_json(p / "pedal.json", _cfg)
+    arq = _arq or pastas.LIB / "pedal_voz.json"
+    arq.parent.mkdir(parents=True, exist_ok=True)
+    pastas.save_json(arq, _cfg)
 
 
 def estado():
@@ -95,8 +157,7 @@ def liga(ligado):
 
 def pastas_da_voz(voz):
     """(a pasta da engine, a pasta da voz) com os modelos baixados."""
-    v = _vozes()
-    return v / ENGINE, v / RELEASES[voz]
+    return MODELOS / ENGINE, MODELOS / RELEASES[voz]
 
 
 def _comando():

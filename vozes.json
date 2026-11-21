@@ -1,0 +1,102 @@
+{
+  "repo": "ritmelli/ritmelli-voices",
+  "engine": {
+    "tag": "engine-v0.1",
+    "arquivos": [
+      {
+        "nome": "LICENSE-contentvec.txt",
+        "tamanho": 1057,
+        "sha256": "feb87a2e0c305de3464cc44077da5393c52d8ca6362d37427157d04ec6f4510d"
+      },
+      {
+        "nome": "LICENSE-fcpe.txt",
+        "tamanho": 1065,
+        "sha256": "a7bc5dbde7b601271495b838ac903ad57657b791b14a9f9de70f35300ae8d4d8"
+      },
+      {
+        "nome": "contentvec_n22080_fp16.onnx",
+        "tamanho": 188939139,
+        "sha256": "6a5cc9a226c5b75e8a3fbb2f4a8e4ab53ab8c4e8159f7b099bb634255ddc5039"
+      },
+      {
+        "nome": "fcpe_fp16.onnx",
+        "tamanho": 21685142,
+        "sha256": "bc21229b261dbd77906426a2639ff179144606eaf35f279cfabc12484891ad51"
+      },
+      {
+        "nome": "meta.json",
+        "tamanho": 343,
+        "sha256": "fbf5c80e6a40fdcac233ea17dce788170c3469cd7dd4143ff312b123dfab7c7c"
+      },
+      {
+        "nome": "ref.npz",
+        "tamanho": 269832,
+        "sha256": "78218f8423bbf6d5f24f3c1e74455d01e600bc91d3c15e4d944449d579a35dd5"
+      }
+    ]
+  },
+  "vozes": [
+    {
+      "id": "mina",
+      "tag": "mina-v0.2",
+      "arquivos": [
+        {
+          "nome": "LICENSE-rvc.txt",
+          "tamanho": 1142,
+          "sha256": "bec61ed1eb9a3748644ddbc50303aa6978e14eeaba46822e59a006c722b52585"
+        },
+        {
+          "nome": "LICENSE.md",
+          "tamanho": 8588,
+          "sha256": "e4ed57376d325387a5405719e65d210948c7e9b53ebab7a5788c2b4ddf6a0e3d"
+        },
+        {
+          "nome": "m3_50e_dec_q32_fp16.onnx",
+          "tamanho": 40500859,
+          "sha256": "9fb0cc5db491fb08c4bd89e48391d0a68afaeeec2ca9d57a3350c2b624bf61f9"
+        },
+        {
+          "nome": "m3_50e_encp_q334_fp16.onnx",
+          "tamanho": 16490180,
+          "sha256": "14730afd0247d6b97d5bfaa5a93623148e68f92fc5ba90c013e956f5e56a0d0c"
+        },
+        {
+          "nome": "voz.json",
+          "tamanho": 16,
+          "sha256": "403219be227bab28bfd8f80cd9ed99eefa635f6e70ab448334b11ded4c548b96"
+        }
+      ]
+    },
+    {
+      "id": "lira",
+      "tag": "lira-v0.2",
+      "arquivos": [
+        {
+          "nome": "LICENSE-rvc.txt",
+          "tamanho": 1142,
+          "sha256": "bec61ed1eb9a3748644ddbc50303aa6978e14eeaba46822e59a006c722b52585"
+        },
+        {
+          "nome": "LICENSE.md",
+          "tamanho": 8588,
+          "sha256": "e4ed57376d325387a5405719e65d210948c7e9b53ebab7a5788c2b4ddf6a0e3d"
+        },
+        {
+          "nome": "l3_50e_dec_q32_fp16.onnx",
+          "tamanho": 40500859,
+          "sha256": "eca0d5880a00b2c43e03fce740dc4bc2c717b30b3415341d068a4d82e07be395"
+        },
+        {
+          "nome": "l3_50e_encp_q334_fp16.onnx",
+          "tamanho": 16490180,
+          "sha256": "8d698895aa596f0c74db386af9295074aac6af4e2698dded1c564fc38c9f68f1"
+        },
+        {
+          "nome": "voz.json",
+          "tamanho": 16,
+          "sha256": "403219be227bab28bfd8f80cd9ed99eefa635f6e70ab448334b11ded4c548b96"
+        }
+      ]
+    }
+  ]
+}

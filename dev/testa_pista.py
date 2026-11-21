@@ -5,11 +5,11 @@ e, com a pista ligada, le 480 quadros dela a partir de onde o escritor marcou.
 Confere o pista.py com um conversor de mentira (o bloco sai como entrou): a pista so liga com a primeira voz
 convertida, o colchao de silencio sai inteiro na frente dela, a voz chega em ordem e sem buraco, o microfone a 44,1 kHz
 vira 48 kHz, o erro do conversor desliga a pista, e sair desliga a pista na hora. Confere o pistavoz.py: a voz escolhida
-e o tom ficam no pedal.json da pasta que o servidor passa (no --mock, a temporaria), voz desconhecida e recusada, e sem
-as vozes baixadas o pedal nao sobe processo nenhum.
+e o tom ficam no pedal_voz.json da pasta que o servidor passa (no --mock, a temporaria), voz desconhecida e recusada, e
+sem as vozes baixadas o pedal nao sobe processo nenhum.
 
-Com RITMELLI_VOZES_TESTE apontando para uma pasta com engine-v0.1/ e mina-v0.2/ (os arquivos das releases do
-ritmelli-voices), tambem roda o processo inteiro (ritmelli.py --pistavoz) com os modelos de verdade, na placa de video.
+Com RITMELLI_VOZES_TESTE=1 (os modelos do python dev/vozes.py baixa) ou apontando para outra pasta com as releases do
+ritmelli-voices, tambem roda o processo inteiro (ritmelli.py --pistavoz) com os modelos de verdade, na placa de video.
 
     python dev/testa_pista.py
 
@@ -181,17 +181,20 @@ class TestaPista(unittest.TestCase):
 class TestaModulo(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        self.modelos = pistavoz.MODELOS
+        pistavoz.MODELOS = Path(self.tmp.name) / "modelos"  # nenhum modelo baixado
         pistavoz.dados(self.tmp.name)
 
     def tearDown(self):
         pistavoz.liga(False)
+        pistavoz.MODELOS = self.modelos
         self.tmp.cleanup()
 
     def test_escolhe_grava_na_pasta_do_servidor(self):
         self.assertEqual(pistavoz.estado()["voz"], "mina")
         pistavoz.escolhe("lira")
         self.assertEqual(pistavoz.estado(), {"voz": "lira", "visor": None, "progresso": None})
-        with open(Path(self.tmp.name) / "vozes" / "pedal.json", encoding="utf-8") as f:
+        with open(Path(self.tmp.name) / "pedal_voz.json", encoding="utf-8") as f:
             self.assertEqual(json.load(f)["voz"], "lira")
         pistavoz.dados(self.tmp.name)  # o servidor subindo de novo: a voz escolhida volta
         self.assertEqual(pistavoz.estado()["voz"], "lira")
@@ -209,6 +212,7 @@ class TestaProcesso(unittest.TestCase):
         """ritmelli.py --pistavoz com os modelos de verdade, contra o anel falso: diz "pronto", liga a pista, a voz
         convertida chega ao filtro sem secar depois da partida, e "sair" desliga a pista e sai com 0."""
         v = Path(os.environ["RITMELLI_VOZES_TESTE"])
+        v = v if v.is_dir() else pistavoz.MODELOS  # RITMELLI_VOZES_TESTE=1: os do python dev/vozes.py baixa
         f = FiltroFalso(taxa=48000)
         try:
             arg = json.dumps({"engine": str(v / pistavoz.ENGINE), "voz": str(v / pistavoz.RELEASES["mina"]), "tom": 9})

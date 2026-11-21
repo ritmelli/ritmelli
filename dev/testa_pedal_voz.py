@@ -67,6 +67,20 @@ class PedalVoz(unittest.TestCase):
             self.assertIn(motivo, log, "o motivo vai para o log")
             self.assertIn("alien", [e["id"] for e in fx.lista()], "sem o pedal, o alienigena fica")
 
+    def test_impedimento(self):
+        """Sem placa de video ou sem as vozes, o impedimento() diz o motivo: o pedal fica de fora, como modulo ausente."""
+        def quebra():
+            raise OSError("dxgi")
+        for imp, motivo in ((lambda: "no graphics card for DirectML", "no graphics card"), (quebra, "dxgi")):
+            self.mod.impedimento = imp
+            log = com(self.mod)
+            self.assertIsNone(fx.pistavoz, motivo)
+            self.assertIn(motivo, log, "o motivo vai para o log")
+            self.assertIn("alien", [e["id"] for e in fx.lista()], "sem o pedal, o alienigena fica")
+        self.mod.impedimento = lambda: None
+        com(self.mod)
+        self.assertIs(fx.pistavoz, self.mod, "sem motivo, o pedal entra")
+
     def test_no_lugar_do_alien(self):
         com(None)
         ids = [e["id"] for e in fx.lista()]

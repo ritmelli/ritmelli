@@ -15,6 +15,8 @@ datas = [
     ("gallery", "gallery"),  # a pagina inicial, com os textos dela na gallery\i18n\
     ("modelos/compasso.onnx", "modelos"),
     ("modelos/LICENSE-beat_this.txt", "modelos"),  # o modelo e MIT: a licenca vai junto com ele
+    # as releases das vozes do pedal de troca de voz (pistavoz.py); os modelos, o instalador baixa para a vozes\ do app
+    ("vozes.json", "."),
     # o icone da aba do navegador e o do celular (server.py); o setup tambem pega o .ico daqui
     ("icone/ritmelli.ico", "icone"),
     ("icone/toque.png", "icone"),

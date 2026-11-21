@@ -194,10 +194,15 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   ContentVec e FCPE numa janela curta, o conteúdo e o tom de cada quadro congelados a 200 ms do futuro, o enc_p
   sobre a frase atual e o decodificador numa janela local, com o ruído de cada instante fixo e a fase da fonte
   continuada, para dois blocos seguidos gerarem a mesma onda no trecho em comum; a saída segue o volume de quem fala.
-  O atraso do efeito é o bloco mais os 300 ms de futuro que o modelo vê. Os modelos são os do ritmelli-voices, numa
-  pasta `vozes/` da pasta de dados. No `--mock` o pedal não liga.
-  Testes: `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso) e `python dev/testa_pista.py` (o processo
-  contra um anel falso; com `RITMELLI_VOZES_TESTE`, também com os modelos de verdade).
+  O atraso do efeito é o bloco mais os 300 ms de futuro que o modelo vê. Os modelos são os do ritmelli-voices, nas
+  releases que o `vozes.json` fixa (tamanho e sha256 de cada arquivo), na pasta `vozes\` do app: o instalador baixa no
+  clique de Instalar, antes de mexer em qualquer coisa, e só o que ainda não está lá com o hash certo
+  (`instalador/vozes_iss.py`, o `[Code]` do `ritmelli.iss`); pelo código, `python dev/vozes.py baixa`. Sem placa de vídeo
+  (pelo DXGI, sem o adaptador de software) ou sem os modelos, o `impedimento()` deixa o pedal de fora e o Alienígena
+  fica. A voz escolhida e o tom de cada voz ficam no `pedal_voz.json` da pasta de dados. No `--mock` o pedal não liga.
+  Testes: `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso), `python dev/testa_vozes.py` (o
+  `vozes.json`, o que o instalador baixa e o `impedimento()`) e `python dev/testa_pista.py` (o processo contra um anel
+  falso; com `RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade).
 - `winvol.py`: o volume do microfone no Windows (IAudioEndpointVolume pelo comtypes); a "Voz"
   da interface é esse número, gravado e lido de volta por uma thread do engine.
 - `pareamento.py`: o celular pareado. O instalador libera a entrada no firewall também em

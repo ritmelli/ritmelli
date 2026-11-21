@@ -726,8 +726,9 @@ if importlib.util.find_spec("mina") is not None:
         ("personagem", "mina", lambda: None)]
 # o pedal de troca de voz (pistavoz.py, #129): entra no lugar do alienigena. O efeito daqui nao mexe na voz (o modulo cuida dela, entre o liga(True) e o liga(False) que o
 # engine.py chama); o /api/effects leva as vozes dele, e o estado do pedal sai no /api/state (pedal_voz) e muda pelo
-# POST /api/pedal_voz, ver o API.md. Modulo que nao importa, que quebra ao importar ou que nao cumpre o contrato e o
-# mesmo que modulo ausente: o app sobe sem o pedal e diz por que no log
+# POST /api/pedal_voz, ver o API.md. Modulo que nao importa, que quebra ao importar, que nao cumpre o contrato ou cujo
+# impedimento() diz um motivo (sem placa de video, sem as vozes) e o mesmo que modulo ausente: o app sobe sem o pedal e
+# diz por que no log
 
 
 def _carrega_pistavoz():
@@ -746,6 +747,14 @@ def _carrega_pistavoz():
     if faltam:
         print(f"pedal_voz: missing {', '.join(faltam)}(); pedal off", file=sys.stderr, flush=True)
         return None
+    if callable(getattr(mod, "impedimento", None)):  # sem placa de video, sem as vozes baixadas
+        try:
+            motivo = mod.impedimento()
+        except Exception as ex:  # noqa: BLE001 - idem
+            motivo = f"impedimento() failed ({type(ex).__name__}: {str(ex)[:160]})"
+        if motivo:
+            print(f"pedal_voz: {motivo}; pedal off", file=sys.stderr, flush=True)
+            return None
     return mod
 
 

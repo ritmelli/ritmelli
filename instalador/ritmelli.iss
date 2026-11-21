@@ -1,6 +1,6 @@
 ﻿; O instalador do Ritmelli (Inno Setup 6). Nao compile direto: o monta.ps1 congela o app, baixa o ffmpeg e o
-; Deno e passa os caminhos e a versao (/DVersao, /DApp, /DFfmpeg, /DDeno, e /DLicenca e /DTerceiros, a GPLv3 do
-; Ritmelli e os avisos de terceiros que o terceiros.py monta).
+; Deno e passa os caminhos e a versao (/DVersao, /DApp, /DFfmpeg, /DDeno, /DLicenca e /DTerceiros, a GPLv3 do
+; Ritmelli e os avisos de terceiros que o terceiros.py monta, e /DVozes e /DLicencaVozes, as vozes do vozes_iss.py).
 ;
 ; Instala o ritmelli.exe em Program Files, com o ffmpeg, o ffprobe e o Deno na bin\ (o app acha la, ver o
 ; pastas.py), cria a regra do firewall para o celular alcancar o PC e pendura o filtro do Ritmelli em todo microfone
@@ -20,10 +20,22 @@
 ; mas so com os arquivos que mudaram desde a versao anterior (a pasta /DParcial, que o atualizacao\parcial.py separa)
 ; e apagando so o que a versao nova nao tem mais (o /DApaga, o [InstallDelete] que ele gera). Ela so roda por cima de
 ; um Ritmelli instalado, e o app so a usa quando o resto do que esta instalado bate com o manifesto novo.
+;
+; As vozes do pedal de troca de voz (#129): o setup nao as leva dentro. A pagina de licenca e a das vozes (a GPLv3 do
+; Ritmelli vai na de informacao, que nao pede aceite), e no clique de Instalar o [Code] baixa do ritmelli-voices, para a
+; {tmp}, cada arquivo do vozes.json que ainda nao esta na {app}\vozes com o sha256 certo, antes de a instalacao mexer
+; em qualquer coisa: um download que falha volta para a pagina de Pronto, e em silencio o setup sai com 1 e o app de
+; antes fica inteiro (o [InstallDelete] ainda nao rodou). O /DVozes e o /DLicencaVozes sao o que o vozes_iss.py gera.
+; Uma atualizacao com as mesmas releases nao baixa nada, e a pasta de uma release que saiu do vozes.json e apagada.
 
 #ifndef Versao
   #error Rode pelo monta.ps1 (falta /DVersao)
 #endif
+#ifndef Vozes
+  #error Rode pelo monta.ps1 (falta /DVozes)
+#endif
+; o VozesRepo, o VozesTags, o VozesLista e o VozesMB, e o [Files] que copia da {tmp} o que o [Code] baixou
+#include Vozes
 
 [Setup]
 ; o AppId nunca muda: e por ele que o Windows reconhece a versao nova por cima da velha
@@ -74,10 +86,11 @@ ChangesAssociations=yes
 UsedUserAreasWarning=no
 
 [Languages]
-; a licenca numa pagina de informacao, e nao de "aceito": a GPLv3 nao precisa ser aceita para usar (secao 9)
-; a traducao pt-BR do Inno corrigida (a oficial usa "pra" e maiusculas no meio da frase): o pt-BR.isl, ao lado
-Name: "en"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "licenca-en.txt"
-Name: "pt"; MessagesFile: "pt-BR.isl"; InfoBeforeFile: "licenca-pt.txt"
+; a licenca numa pagina de informacao, e nao de "aceito": a GPLv3 nao precisa ser aceita para usar (secao 9). A das
+; vozes, sim (a secao 2 dela): vai na pagina de licenca, com o texto em portugues, que e o que vale, e a traducao em
+; ingles depois dele. A traducao pt-BR do Inno corrigida (a oficial usa "pra" e maiusculas no meio da frase): o pt-BR.isl, ao lado
+Name: "en"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "licenca-en.txt"; LicenseFile: "{#LicencaVozes}"
+Name: "pt"; MessagesFile: "pt-BR.isl"; InfoBeforeFile: "licenca-pt.txt"; LicenseFile: "{#LicencaVozes}"
 
 [Messages]
 ; a pagina de licenca (InfoBefore) diz que e a licenca e que nao precisa aceitar; a Pronto para instalar avisa
@@ -86,6 +99,10 @@ pt.WizardInfoBefore=Licença
 en.WizardInfoBefore=License
 pt.InfoBeforeLabel=O Ritmelli é software livre. Não é necessário aceitar esta licença para instalar ou usar o Ritmelli.
 en.InfoBeforeLabel=Ritmelli is free software. You do not need to accept this license to install or use Ritmelli.
+pt.WizardLicense=Licença das vozes
+en.WizardLicense=Voices License
+pt.LicenseLabel3=O pedal de troca de voz usa as vozes Mina e Lira, que o instalador baixa do GitHub (cerca de {#VozesMB} MB). Elas têm uma licença própria, separada da do Ritmelli. Aceite-a para continuar.
+en.LicenseLabel3=The voice changer pedal uses the Mina and Lira voices, which the installer downloads from GitHub (about {#VozesMB} MB). They have their own license, separate from Ritmelli's. The Portuguese text is the binding one, and the English translation follows it. Accept it to continue.
 pt.ReadyLabel2a=Durante a instalação, o som do computador pode ser interrompido por alguns segundos. Se você estiver em uma partida ou em uma chamada de voz, conclua-a primeiro.%n%nClique em Instalar para continuar a instalação ou em Voltar para revisar ou alterar alguma configuração.
 en.ReadyLabel2a=During installation, your computer's sound may cut out for a few seconds. If you are in a match or a voice call, finish it first.%n%nClick Install to continue with the installation, or click Back if you want to review or change any settings.
 pt.ReadyLabel2b=Durante a instalação, o som do computador pode ser interrompido por alguns segundos. Se você estiver em uma partida ou em uma chamada de voz, conclua-a primeiro.%n%nClique em Instalar para continuar a instalação.
@@ -107,6 +124,12 @@ pt.Firewall=Liberando o Ritmelli no firewall para que o celular possa se conecta
 en.Firewall=Allowing Ritmelli through the firewall so your phone can connect to the computer...
 pt.Microfone=Preparando os microfones (o som pode ser interrompido por alguns segundos)...
 en.Microfone=Preparing your microphones (the sound may cut out for a few seconds)...
+pt.VozesTitulo=Baixando as vozes
+en.VozesTitulo=Downloading the Voices
+pt.VozesDescricao=O instalador está baixando as vozes Mina e Lira do GitHub (cerca de {#VozesMB} MB).
+en.VozesDescricao=Setup is downloading the Mina and Lira voices from GitHub (about {#VozesMB} MB).
+pt.VozesErro=Não foi possível baixar as vozes do pedal de troca de voz (%1).%n%nConfira a conexão com a internet e clique em Instalar para tentar novamente.
+en.VozesErro=Setup couldn't download the voices for the voice changer pedal (%1).%n%nCheck your internet connection and click Install to try again.
 pt.ParcialSemApp=Esta é uma atualização do Ritmelli e só pode ser aplicada a uma instalação existente. Para instalar o Ritmelli, use o arquivo Ritmelli-{#Versao}-setup.exe.
 en.ParcialSemApp=This is a Ritmelli update and can only be applied to an existing installation. To install Ritmelli, use Ritmelli-{#Versao}-setup.exe.
 ; a pagina dos dados de uso e dos erros (metricas.py): a politica na instalacao e a opcao de desligar, como a SignPath
@@ -204,6 +227,8 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 [UninstallDelete]
 ; o que a atualizacao automatica baixou (os setups, o estado e o log dela)
 Type: filesandordirs; Name: "{app}\atualizacao"
+; as vozes: o que esta instalacao baixou sai pelo registro do desinstalador, e o de uma versao anterior, por aqui
+Type: filesandordirs; Name: "{app}\vozes"
 ; o codigo aleatorio da instalacao que vai nos dados de uso (metricas.py): reinstalar comeca outro. O da pasta de antes
 ; da troca de nome sai tambem, se o app nao chegou a abrir depois dela
 Type: files; Name: "{localappdata}\Ritmelli\metricas.json"
@@ -237,12 +262,16 @@ end;
 var
   MetricasPagina: TOutputMsgMemoWizardPage;
   MetricasCaixa: TNewCheckBox;
+  VozesPagina: TDownloadWizardPage;
+  VozesVistas: TStringList;
 
 procedure InitializeWizard;
 var
   Antes: Cardinal;
   Achou: Boolean;
 begin
+  VozesPagina := CreateDownloadPage(CustomMessage('VozesTitulo'), CustomMessage('VozesDescricao'), nil);
+  VozesPagina.ShowBaseNameInsteadOfUrl := True;
   MetricasPagina := CreateOutputMsgMemoPage(wpInfoBefore, CustomMessage('MetricasTitulo'),
     CustomMessage('MetricasDescricao'), CustomMessage('MetricasSub'), CustomMessage('MetricasTexto'));
   MetricasPagina.RichEditViewer.Height := MetricasPagina.RichEditViewer.Height - ScaleY(30);
@@ -277,6 +306,143 @@ begin
   Result := MetricasParam;
   if Result = '' then
     if MetricasCaixa.Checked then Result := '1' else Result := '0';
+end;
+
+// as vozes (#129). FaltaVoz: o arquivo (tag\nome) ainda nao esta na {app}\vozes com o sha256 certo. E o Check de cada
+// linha do vozes.iss, e o BaixaVozes pergunta o mesmo: a resposta de cada arquivo fica guardada (os ~325 MB se conferem
+// em ~1 s, uma vez so)
+function FaltaVoz(Arquivo, Sha: String): Boolean;
+var
+  Caminho: String;
+begin
+  if VozesVistas = nil then
+    VozesVistas := TStringList.Create;
+  if VozesVistas.IndexOf('1|' + Arquivo) >= 0 then begin
+    Result := True;
+    Exit;
+  end;
+  if VozesVistas.IndexOf('0|' + Arquivo) >= 0 then begin
+    Result := False;
+    Exit;
+  end;
+  Caminho := ExpandConstant('{app}\vozes\') + Arquivo;
+  Result := True;
+  if FileExists(Caminho) then
+    try
+      Result := CompareText(GetSHA256OfFile(Caminho), Sha) <> 0;
+    except
+      Result := True;
+    end;
+  if Result then begin
+    Log('vozes: falta ' + Arquivo);
+    VozesVistas.Add('1|' + Arquivo);
+  end else
+    VozesVistas.Add('0|' + Arquivo);
+end;
+
+// o campo N (do 0) de 'tag|nome|sha256'
+function VozCampo(S: String; N: Integer): String;
+var
+  I, P: Integer;
+begin
+  for I := 1 to N do
+    S := Copy(S, Pos('|', S) + 1, Length(S));
+  P := Pos('|', S);
+  if P > 0 then
+    S := Copy(S, 1, P - 1);
+  Result := S;
+end;
+
+// baixa para a {tmp} (vozes-<tag>-<nome>) cada arquivo da VozesLista que falta, conferindo o sha256: com a pagina de
+// download, ou direto em silencio. '' se deu certo; senao, o motivo
+function BaixaVozes: String;
+var
+  Lista: TStringList;
+  S, Tag, Nome, Sha, Url: String;
+  I, N: Integer;
+begin
+  Result := '';
+  Lista := TStringList.Create;
+  try
+    try
+      S := '{#VozesLista}';
+      StringChangeEx(S, ';', #13#10, True);
+      Lista.Text := S;
+      if not WizardSilent then
+        VozesPagina.Clear;
+      N := 0;
+      for I := 0 to Lista.Count - 1 do begin
+        Tag := VozCampo(Lista[I], 0);
+        Nome := VozCampo(Lista[I], 1);
+        Sha := VozCampo(Lista[I], 2);
+        if FaltaVoz(Tag + '\' + Nome, Sha) then begin
+          Url := 'https://github.com/{#VozesRepo}/releases/download/' + Tag + '/' + Nome;
+          if WizardSilent then
+            DownloadTemporaryFile(Url, 'vozes-' + Tag + '-' + Nome, Sha, nil)
+          else
+            VozesPagina.Add(Url, 'vozes-' + Tag + '-' + Nome, Sha);
+          N := N + 1;
+        end;
+      end;
+      if (N > 0) and not WizardSilent then begin
+        VozesPagina.Show;
+        try
+          VozesPagina.Download;
+        finally
+          VozesPagina.Hide;
+        end;
+      end;
+    except
+      Result := GetExceptionMessage;
+    end;
+  finally
+    Lista.Free;
+  end;
+end;
+
+// no clique de Instalar (e na mesma hora em silencio), antes de qualquer mudanca: as vozes que faltam. Se nao vierem,
+// o setup fica na pagina de Pronto (em silencio, sai com 1)
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Erro: String;
+begin
+  Result := True;
+  if CurPageID = wpReady then begin
+    Erro := BaixaVozes;
+    if Erro <> '' then begin
+      Log('vozes: ' + Erro);
+      if WizardSilent or not VozesPagina.AbortedByUser then
+        SuppressibleMsgBox(FmtMessage(CustomMessage('VozesErro'), [Erro]), mbCriticalError, MB_OK, IDOK);
+      Result := False;
+    end;
+  end;
+end;
+
+// depois de copiar: a pasta de uma release que saiu do vozes.json (a voz de antes de uma versao nova dela)
+procedure LimpaVozes;
+var
+  F: TFindRec;
+  Pasta: String;
+begin
+  Pasta := ExpandConstant('{app}\vozes\');
+  if FindFirst(Pasta + '*', F) then
+    try
+      repeat
+        if (F.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0) and (F.Name <> '.') and (F.Name <> '..') and
+           (Pos('|' + Lowercase(F.Name) + '|', Lowercase('{#VozesTags}')) = 0) then begin
+          Log('vozes: apaga ' + F.Name);
+          DelTree(Pasta + F.Name, True, True, True);
+        end;
+      until not FindNext(F);
+    finally
+      FindClose(F);
+    end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    LimpaVozes;
 end;
 
 // antes de trocar os arquivos: o app de antes da troca de nome (vitrola.exe) segura os arquivos dele, e o Restart
