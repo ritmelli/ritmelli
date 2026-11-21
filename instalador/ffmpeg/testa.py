@@ -53,7 +53,8 @@ def confere(nome, args):
 
 
 print("--- o que ele tem")
-for opcao, precisa in (("-protocols", ("https", "tls", "http")), ("-bsfs", ("setts", "aac_adtstoasc")), ("-muxers", ("mp4", "f32le"))):
+for opcao, precisa in (("-protocols", ("https", "tls", "http")), ("-bsfs", ("setts", "aac_adtstoasc")), ("-muxers", ("mp4", "f32le")),
+                       ("-filters", ("ebur128",))):
     saida = subprocess.run([str(NOVO / "ffmpeg.exe"), "-hide_banner", opcao], capture_output=True, text=True).stdout
     nomes = set(saida.split())
     falta = [p for p in precisa if p not in nomes]
@@ -71,6 +72,26 @@ for arq in discos:
     inicio = confere(f"{arq.name} do comeco", ["-i", str(arq), "-t", "20"])
     pulo = confere(f"{arq.name} de {meio:.0f} s", ["-ss", f"{meio:.3f}", "-i", str(arq), "-t", "10"])
     print(f"{arq.name}: duracao {dn} | comeco {inicio} | de {meio:.0f} s {pulo}")
+
+print("--- o volume do arquivo inteiro (o ebur128 do sonoridade.py, #120)")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+import sonoridade  # noqa: E402
+
+with tempfile.TemporaryDirectory() as tmp:
+    tom = Path(tmp) / "tom.wav"   # o de antes e o completo: so ele tem o lavfi que gera o tom
+    subprocess.run([str(VELHO / "ffmpeg.exe"), "-v", "error", "-nostdin", "-f", "lavfi", "-i", "sine=f=440:d=3", "-ac", "2",
+                    "-ar", str(SR), str(tom)], check=True, timeout=60)
+    ln, lv = (sonoridade.mede_arquivo(tom, str(p / "ffmpeg.exe")) for p in (NOVO, VELHO))
+    ok = ln is not None and lv is not None and abs(ln - lv) < 0.05
+    print(f"tom de 440 Hz: {ln} LUFS contra {lv} LUFS: {'ok' if ok else 'FALHOU'}")
+    if not ok:
+        falhas.append(f"ebur128: {ln} contra {lv} LUFS")
+for arq in discos[:3]:
+    ln, lv = (sonoridade.mede_arquivo(arq, str(p / "ffmpeg.exe")) for p in (NOVO, VELHO))
+    ok = ln is not None and lv is not None and abs(ln - lv) < 0.05
+    print(f"{arq.name}: {ln} LUFS contra {lv} LUFS: {'ok' if ok else 'FALHOU'}")
+    if not ok:
+        falhas.append(f"{arq.name} ebur128: {ln} contra {lv} LUFS")
 
 print("--- stream https")
 print(f"{STREAM}: {confere('stream https', ['-user_agent', 'Ritmelli-teste-do-ffmpeg', '-i', STREAM, '-t', '3'])}")

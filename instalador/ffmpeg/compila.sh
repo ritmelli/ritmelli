@@ -15,7 +15,9 @@ cd "$trab"
 # - os decodificadores de audio deles e a saida em PCM float (o -f f32le do motor), com o resample para 48 kHz;
 # - http e https para o stream do YouTube, com o TLS do proprio Windows (schannel);
 # - o mp4 sem recodificar e os filtros de stream que o yt-dlp usa nos consertos (aac_adtstoasc e setts);
-# - os filtros que o ffmpeg poe sozinho no caminho do audio: o resample, o formato e o corte do -ss e do -t
+# - os filtros que o ffmpeg poe sozinho no caminho do audio: o resample, o formato e o corte do -ss e do -t;
+# - o ebur128, com que o sonoridade.py mede o volume do arquivo inteiro (o volume automatico; sem ele a medida falhava
+#   no app instalado, #120)
 config=(
   --arch=x86_64 --target-os=mingw32
   --enable-static --disable-shared --pkg-config-flags=--static --extra-ldflags=-static
@@ -29,7 +31,7 @@ config=(
   --enable-encoder=pcm_f32le,pcm_s16le
   --enable-muxer=pcm_f32le,wav,mp4,ipod,mov,matroska,webm,ogg,opus,adts,null
   --enable-bsf=aac_adtstoasc,setts,vp9_superframe,extract_extradata,null
-  --enable-filter=abuffer,abuffersink,buffer,buffersink,aresample,aformat,format,anull,null,atrim,trim,asetpts,setpts
+  --enable-filter=abuffer,abuffersink,buffer,buffersink,aresample,aformat,format,anull,null,atrim,trim,asetpts,setpts,ebur128
 )
 ./configure "${config[@]}"
 make -j"$(nproc)"
