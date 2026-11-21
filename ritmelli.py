@@ -11,7 +11,8 @@ server.py).
     python ritmelli.py --atualizador ...   a atualizacao automatica (atualizador.py): a tarefa do Windows que o
                                            instalador cria roda como SYSTEM; o instalador cria e o desinstalador apaga
     python ritmelli.py --migra ...         a troca de nome de Vitrola para Ritmelli no PC (migra.py): o instalador
-                                           chama, como administrador"""
+                                           chama, como administrador
+    python ritmelli.py --pistavoz '<json>' a troca de voz do pedal (pista.py): quem sobe e o pistavoz.py"""
 import sys
 
 # os argumentos com que o servidor nao liga de verdade: a versao e a ajuda so imprimem, e o --mock trabalha numa copia
@@ -117,6 +118,9 @@ def main():
     elif modo == "--migra":
         import migra
         sys.exit(migra.main(sys.argv[2:]))
+    elif modo == "--pistavoz":
+        import pista
+        sys.exit(pista.main(sys.argv[2:]))
     else:
         # os dados da pasta de antes da troca de nome (%LOCALAPPDATA%\Vitrola) vem para a nova antes de qualquer modulo
         # do servidor calcular os caminhos dele (pastas.migra); a versao, a ajuda e o --mock nao mexem nela

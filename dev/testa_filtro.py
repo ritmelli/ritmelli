@@ -22,6 +22,12 @@ efeito entra depois do fabricante, que nao apaga mais o efeito; a voz crua do ap
 efeito e a do hospedeiro; com a voz cortada e o efeito montado, a voz passa pelo fabricante, o hospedeiro corta depois
 do efeito e a voz com efeito segue voltando ao app; sem efeito, o EFX corta.
 
+A pista da voz (a voz convertida fora do filtro, por um processo do app): desligada, nada muda; ligada, a voz da pista
+entra bit a bit no lugar da do microfone e a crua segue indo ao app; sem dado o bloco e silencio (a voz do microfone nao
+vaza); escritor parado ou pista desligada devolvem a voz; o que foi escrito antes de ligar nao toca; a musica soma por
+cima e a voz cortada corta as duas; a 44,1 kHz em estereo ela passa pelo reamostrador; duas cadeias poem a mesma voz; no
+microfone com o hospedeiro ela entra depois do fabricante.
+
     microfone\\apo\\compila.bat teste
     python dev/testa_filtro.py
 
@@ -492,6 +498,238 @@ class TestaEfeitoNoHospedeiro(unittest.TestCase):
         com_efeito = em_blocos(voz.Cadeia(p, 48000), 0.5 * x, 480)[480:480 + 9600]
         np.testing.assert_allclose(y, np.clip(com_efeito + musica, -0.9, 0.9), atol=1e-6,
                                    err_msg="a musica entra depois do efeito, sem passar por ele")
+
+
+def convertida(n, f=330.0, taxa=48000):
+    """A "voz convertida" que o processo do app escreveria na pista: um tom, facil de reconhecer na saida."""
+    return (0.2 * np.sin(2 * np.pi * f * np.arange(n) / taxa)).astype(np.float32)
+
+
+class TestaPistaDaVoz(unittest.TestCase):
+    """A pista da voz do anel: a voz convertida fora do filtro entra no lugar da voz do microfone."""
+
+    def setUp(self):
+        self.b = Banca()
+        self.m = self.b.m
+        self.m.pulso(False)
+
+    def tearDown(self):
+        self.b.fecha()
+
+    def test_desligada_a_voz_do_microfone_passa(self):
+        x = fala(0.5)
+        self.m.pista_escreve(convertida(4800))  # escrever sem ligar nao muda nada
+        np.testing.assert_array_equal(self.b.passa(x)[:, 0], x[:len(x) // 480 * 480])
+
+    def test_ligada_a_voz_da_pista_no_lugar(self):
+        x = fala(1.0)
+        self.m.pista_liga()
+        self.b.passa(x[:480])
+        v = convertida(14400)
+        self.assertEqual(self.m.pista_escreve(v), 14400)
+        self.m.voz()
+        y = self.b.passa(x[480:480 + 14400])
+        np.testing.assert_array_equal(y[:, 0], v, "a voz da pista nao entrou bit a bit no lugar da do microfone")
+        np.testing.assert_array_equal(self.m.voz()[0], x[480:480 + 14400],
+                                      "a voz crua tem que seguir indo ao app: e dela que a convertida sai")
+
+    def test_sem_dado_e_silencio_e_nao_a_voz(self):
+        self.m.pista_liga()
+        y = self.b.passa(fala(0.3))
+        self.assertEqual(float(np.max(np.abs(y))), 0.0, "a pista sem dado deixou a voz do microfone vazar")
+        v = convertida(240)
+        self.m.pista_escreve(v)  # meio bloco: sai o que tem, e o resto e silencio
+        y, _ = self.b.um_bloco(fala(0.01)[:480])
+        np.testing.assert_array_equal(y[:240], v)
+        self.assertEqual(float(np.max(np.abs(y[240:]))), 0.0)
+
+    def test_bloco_marcado_silencio_sai_com_a_voz_da_pista(self):
+        self.m.pista_liga()
+        self.b.um_bloco(np.zeros(480, np.float32), silencio=True)
+        v = convertida(480)
+        self.m.pista_escreve(v)
+        y, mudo = self.b.um_bloco(np.zeros(480, np.float32), silencio=True)
+        np.testing.assert_array_equal(y, v)
+        self.assertFalse(mudo, "com a pista no comando, a saida nao pode sair marcada como silencio")
+
+    def test_escritor_parado_a_voz_volta(self):
+        self.m.pista_liga()
+        x = fala(0.3)
+        self.assertEqual(float(np.max(np.abs(self.b.passa(x)))), 0.0)
+        self.m.a.pista_batida = injeta.k32.GetTickCount64() - injeta.PISTA_MS - 100
+        np.testing.assert_array_equal(self.b.passa(x)[:, 0], x[:len(x) // 480 * 480],
+                                      "o escritor da pista caiu e o microfone ficou mudo")
+
+    def test_desligar_devolve_a_voz_na_hora(self):
+        self.m.pista_liga()
+        x = fala(0.3)
+        self.assertEqual(float(np.max(np.abs(self.b.passa(x)))), 0.0)
+        self.m.pista_liga(False)
+        np.testing.assert_array_equal(self.b.passa(x)[:, 0], x[:len(x) // 480 * 480])
+
+    def test_o_escrito_antes_de_ligar_nao_toca(self):
+        self.m.pista_escreve(convertida(4800, 990.0))
+        self.m.pista_liga()
+        y, _ = self.b.um_bloco(fala(0.01)[:480])
+        self.assertEqual(float(np.max(np.abs(y))), 0.0, "a pista tocou voz velha ao ligar")
+        v = convertida(1440)
+        self.m.pista_escreve(v)
+        np.testing.assert_array_equal(self.b.passa(fala(0.03))[:, 0], v)
+
+    def test_a_folga_escrita_logo_depois_de_ligar_toca_inteira(self):
+        """O escritor liga e ja escreve (o silencio da folga e a voz), antes de o filtro rodar o bloco seguinte: nada
+        disso pode ser pulado, senao a pista fica sem folga e engasga a cada atraso do escritor."""
+        self.m.pista_liga()
+        v = convertida(1440)
+        self.m.pista_escreve(np.zeros(480, np.float32))
+        self.m.pista_escreve(v)
+        y = self.b.passa(fala(0.04))
+        self.assertEqual(float(np.max(np.abs(y[:480]))), 0.0)
+        np.testing.assert_array_equal(y[480:, 0], v, "o que foi escrito logo depois de ligar foi pulado")
+
+    def test_musica_soma_na_voz_da_pista(self):
+        x = fala(0.5)
+        self.m.pista_liga()
+        self.b.passa(x[:480])  # o primeiro bloco pega a vaga de leitor
+        v = convertida(9600)
+        musica = (0.1 * np.sin(2 * np.pi * 440 * np.arange(9600) / 48000)).astype(np.float32)
+        self.m.pista_escreve(v)
+        self.m.escreve(np.repeat(musica[:, None], 2, axis=1))
+        y = self.b.passa(x[480:480 + 9600])
+        np.testing.assert_allclose(y[:, 0], v + musica, atol=1e-6, err_msg="a musica nao somou por cima da voz da pista")
+
+    def test_voz_cortada_corta_a_pista_tambem(self):
+        x = fala(0.5)
+        self.m.pista_liga()
+        self.m.pulso(True)
+        self.b.passa(x[:480])
+        musica = (0.1 * np.sin(2 * np.pi * 440 * np.arange(4800) / 48000)).astype(np.float32)
+        self.m.pista_escreve(convertida(9600))
+        self.m.escreve(np.repeat(musica[:, None], 2, axis=1))
+        y = self.b.passa(x[480:480 + 9600])
+        np.testing.assert_allclose(y[:4800, 0], musica, atol=1e-6)
+        self.assertEqual(float(np.max(np.abs(y[4800:]))), 0.0, "com a voz cortada pelo app, a da pista tambem nao sai")
+
+    def test_folga_que_o_escritor_mede(self):
+        self.m.pista_liga()
+        self.b.passa(fala(0.02))  # dois blocos: a vaga de leitor e a posicao dele na pista
+        self.assertEqual(self.m.pista_na_fila(), 0)
+        self.m.pista_escreve(convertida(1440))
+        self.assertEqual(self.m.pista_na_fila(), 1440)
+        self.b.um_bloco(np.zeros(480, np.float32))
+        self.assertEqual(self.m.pista_na_fila(), 960)
+
+    def test_441_estereo(self):
+        b = Banca(44100, 2)
+        try:
+            b.m.pulso(False)
+            b.m.pista_liga()
+            v = convertida(48000)
+            x = fala(1.0, 44100)
+            partes = []
+            for k in range(100):  # 10 ms de cada lado por volta: o escritor a 48 kHz, o microfone a 44,1
+                b.m.pista_escreve(v[k * 480:(k + 1) * 480])
+                partes.append(b.passa(x[k * 441:(k + 1) * 441]))
+            y = np.concatenate(partes)[4410:-441]  # depois que o reamostrador encheu
+            for c in (0, 1):
+                esp = np.abs(np.fft.rfft(y[:, c] * np.hanning(len(y))))
+                self.assertAlmostEqual(float(np.argmax(esp)) * 44100 / len(y), 330.0, delta=2.0,
+                                       msg="o tom da pista nao saiu em 330 Hz na taxa do microfone")
+                self.assertAlmostEqual(float(np.sqrt(np.mean(y[:, c] ** 2))), 0.2 / np.sqrt(2), delta=0.003,
+                                       msg="o nivel da voz da pista mudou no reamostrador (ou a voz do microfone vazou)")
+        finally:
+            b.fecha()
+
+    def test_duas_cadeias_poem_a_mesma_voz(self):
+        outra = Banca(mapa=self.b.mapa)
+        try:
+            x = fala(0.5)
+            self.m.pista_liga()
+            self.b.um_bloco(x[:480])
+            outra.um_bloco(x[:480])
+            v = convertida(4800)
+            self.m.pista_escreve(v)
+            ya, yb = [], []
+            for i in range(480, 480 + 4800, 480):
+                ya.append(self.b.um_bloco(x[i:i + 480])[0])
+                yb.append(outra.um_bloco(x[i:i + 480])[0])
+            np.testing.assert_array_equal(np.concatenate(ya), v)
+            np.testing.assert_array_equal(np.concatenate(yb), v, "a segunda cadeia do microfone ficou sem a voz da pista")
+        finally:
+            outra.fecha()
+
+
+class TestaPistaCadeiaQueChegaDepois(unittest.TestCase):
+    """O microfone aberto por um segundo programa com a pista ja tocando (#70): a cadeia nova comeca junto da que ja
+    le, com a mesma folga, e nao do comeco da pista nem sem folga nenhuma."""
+
+    def test_comeca_junto_da_que_ja_le(self):
+        a = Banca()
+        b = None
+        try:
+            a.m.pulso(False)
+            x = fala(0.5)
+            a.m.pista_liga()
+            a.um_bloco(x[:480])
+            v = convertida(4800)
+            a.m.pista_escreve(v)
+            a.um_bloco(x[:480])
+            a.um_bloco(x[:480])  # a primeira ja leu 20 ms e tem 80 ms de folga
+            b = Banca(mapa=a.mapa)
+            ya = a.um_bloco(x[:480])[0]
+            yb = b.um_bloco(x[:480])[0]
+            np.testing.assert_array_equal(ya, v[960:1440])
+            np.testing.assert_array_equal(yb, v[1440:1920], "a cadeia nova nao comecou junto da que ja le a pista")
+        finally:
+            if b:
+                b.fecha()
+            a.fecha()
+
+
+class TestaPistaNoHospedeiro(unittest.TestCase):
+    """A pista da voz no microfone com o hospedeiro do MFX: o EFX nao mexe, e ela entra depois do fabricante."""
+
+    def setUp(self):
+        self.h = BancaHospede()
+        self.h.m.pulso(False)
+        self.m = self.h.m
+        self.e = Banca(mapa=self.h.mapa)
+        _dll.banca_so_voz(self.e.h, 1)
+
+    def tearDown(self):
+        self.e.fecha()
+        self.h.fecha()
+
+    def cadeia(self, x):
+        meio, fim = [], []
+        for i in range(0, len(x) - len(x) % 480, 480):
+            y, mudo = self.e.um_bloco(x[i:i + 480])
+            meio.append(y)
+            fim.append(self.h.um_bloco(y, mudo)[0])
+        return np.concatenate(meio), np.concatenate(fim)
+
+    def test_pista_depois_do_fabricante(self):
+        x = fala(0.5)
+        self.m.pista_liga()
+        self.cadeia(x[:480])
+        v = convertida(9600)
+        self.m.pista_escreve(v)
+        self.m.voz()
+        meio, y = self.cadeia(x[480:480 + 9600])
+        np.testing.assert_array_equal(meio, x[480:480 + 9600], "o EFX mexeu na voz: ela tem que seguir ao fabricante")
+        np.testing.assert_array_equal(y, v, "a voz da pista tem que entrar inteira, depois do fabricante")
+        np.testing.assert_array_equal(self.m.voz()[0], x[480:480 + 9600], "a voz crua do app e a de antes do fabricante")
+
+    def test_musica_e_pista_no_hospedeiro(self):
+        x = fala(0.5)
+        self.m.pista_liga()
+        self.cadeia(x[:480])
+        v = convertida(4800)
+        musica = (0.1 * np.sin(2 * np.pi * 440 * np.arange(4800) / 48000)).astype(np.float32)
+        self.m.pista_escreve(v)
+        self.m.escreve(np.repeat(musica[:, None], 2, axis=1))
+        _, y = self.cadeia(x[480:480 + 4800])
+        np.testing.assert_allclose(y, v + musica, atol=1e-6)
 
 
 if __name__ == "__main__":

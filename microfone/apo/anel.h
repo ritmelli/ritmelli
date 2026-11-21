@@ -24,6 +24,16 @@
 //   voz_batida) e so uma escreve a voz com efeito e responde ao preset (fx_dono, fx_batida); sem o hospedeiro e a
 //   mesma instancia, com ele o EFX tem a voz e o hospedeiro o efeito. A outra assume quando a dona solta (fechou, ou
 //   o microfone saiu do alvo) ou para de bater por MICFX_BATIDA_MS (#70).
+// - a pista da voz (app -> filtro): a voz convertida fora do filtro, por um processo do app que le a voz crua e devolve
+//   outra (o que o filtro nao tem como rodar no bloco dele). Tem escritor proprio e folga propria, separados da musica:
+//   a voz nao paga a folga que o misturador da musica precisa. Com pista_ligada e o escritor batendo (pista_batida, ate
+//   MICFX_PISTA_MS), o filtro tira a voz do microfone e poe a da pista, no mesmo ponto em que soma a musica (no microfone
+//   com o hospedeiro do MFX, depois do fabricante); o que faltar no bloco sai em silencio, e nao na voz do microfone.
+//   Escritor que para de bater = a voz do microfone volta. O leitor que ficar para tras pula para o mais novo: o
+//   escritor nunca espera (voz e ao vivo). Ao ligar, o escritor marca em pista_inicio de onde a leitura comeca: a
+//   folga que ele escreve logo em seguida (um pouco de silencio antes da voz) toca inteira, mesmo que o filtro so
+//   perceba a pista um bloco depois. pista_lido diz ate onde cada leitor leu (-1 = nao esta lendo a pista): o
+//   escritor mede a folga por ele, e a cadeia que chega depois (#70) comeca junto da que ja le.
 //
 // O layout e fixo e o microfone/injeta.py tem o espelho dele em ctypes: mudou aqui, muda la (e sobe MICFX_VERSAO e o
 // nome do mapa, que a versao velha pode estar viva no audiodg durante a troca).
@@ -32,10 +42,10 @@
 #include <stdint.h>
 
 #ifndef MICFX_MAPA  // a banca de teste (teste/banca_filtro.cpp) usa um nome so dela
-#define MICFX_MAPA L"Global\\RitmelliMicFx4"
+#define MICFX_MAPA L"Global\\RitmelliMicFx5"
 #endif
 #define MICFX_MAGIA 0x58464D52u  // "RMFX"
-#define MICFX_VERSAO 4u
+#define MICFX_VERSAO 5u
 #define MICFX_PRESET_BYTES 65536u  // o maior preset (o Locutor, com o FIR de 1023) tem ~10 KB
 #define MICFX_TAXA 48000u        // o app escreve sempre a 48 kHz
 #define MICFX_CANAIS 2u          // estereo intercalado, float32
@@ -44,6 +54,8 @@
 #define MICFX_LEITORES 8u
 #define MICFX_BATIDA_MS 500u     // leitor sem batida ha mais que isso e dado como morto
 #define MICFX_APP_MS 1000u       // app sem escrever ha mais que isso: a voz volta (o app caiu com a voz cortada)
+#define MICFX_PISTA_QUADROS 16384u // potencia de 2: ~0,34 s da pista da voz (48 kHz, estereo como os dados)
+#define MICFX_PISTA_MS 1000u     // escritor da pista sem bater ha mais que isso: a voz do microfone volta
 
 typedef struct MicFxLeitor {
     volatile int64_t lido;      // quadros que este leitor ja consumiu
@@ -84,6 +96,14 @@ typedef struct MicFxAnel {
     volatile uint32_t fx_dono;
     volatile int64_t voz_batida;  // GetTickCount64 da ultima escrita da dona da voz crua
     volatile int64_t fx_batida;   // e da dona do efeito
+    // a pista da voz (v5): a voz convertida fora do filtro entra no lugar da voz do microfone
+    volatile uint32_t pista_ligada;   // 1 = a voz do microfone sai e entra a da pista (vale com o escritor batendo)
+    uint32_t pista_reservado;
+    volatile int64_t pista_escrito;   // quadros publicados pelo escritor da pista
+    volatile int64_t pista_batida;    // GetTickCount64 da ultima escrita (ou pulso) dele
+    volatile int64_t pista_inicio;    // o pista_escrito de quando ele ligou: a leitura comeca dali
+    volatile int64_t pista_lido[MICFX_LEITORES];  // ate onde o leitor de cada vaga ja leu; -1 = nao le a pista
+    float pista[MICFX_PISTA_QUADROS * MICFX_CANAIS];
 } MicFxAnel;
 
 // O hash do id do microfone (o GUID do endpoint, "{a1b2c3d4-...}", que e tambem o nome da chave dele no registro):
@@ -118,4 +138,11 @@ static_assert(offsetof(MicFxAnel, voz_dono) == 459096, "voz_dono");
 static_assert(offsetof(MicFxAnel, fx_dono) == 459100, "fx_dono");
 static_assert(offsetof(MicFxAnel, voz_batida) == 459104, "voz_batida");
 static_assert(offsetof(MicFxAnel, fx_batida) == 459112, "fx_batida");
+static_assert(offsetof(MicFxAnel, pista_ligada) == 459120, "pista_ligada");
+static_assert(offsetof(MicFxAnel, pista_escrito) == 459128, "pista_escrito");
+static_assert(offsetof(MicFxAnel, pista_batida) == 459136, "pista_batida");
+static_assert(offsetof(MicFxAnel, pista_inicio) == 459144, "pista_inicio");
+static_assert(offsetof(MicFxAnel, pista_lido) == 459152, "pista_lido");
+static_assert(offsetof(MicFxAnel, pista) == 459216, "pista");
+static_assert(sizeof(MicFxAnel) == 459216 + MICFX_PISTA_QUADROS * MICFX_CANAIS * 4, "MicFxAnel");
 #endif

@@ -8,6 +8,8 @@ segno>=1.6
 yt-dlp[default]
 pycryptodomex>=3.20  # a assinatura das versoes novas (atualizacao.py)
 ytmusicapi>=1.8
-onnxruntime>=1.18
+# o ONNX Runtime com o DirectML: a troca de voz roda na placa de video (conversor.py) e o modelo do compasso, no
+# processador (compasso.py). Os dois pacotes (onnxruntime e onnxruntime-directml) trazem o mesmo modulo e nao convivem
+onnxruntime-directml>=1.24; sys_platform == "win32"
 comtypes>=1.4; sys_platform == "win32"
 pywebview>=6.2; sys_platform == "win32"  # a janela propria, pelo WebView2 (janela.py)

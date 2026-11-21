@@ -122,6 +122,7 @@ class MotorFalso:
         self.n, self.mic_mute, self.error, self._fx, self.effect = 0, False, None, None, "nenhum"
         self._fx_id = None
         self._fx_filtro = self._fx_pendente = False
+        self._pista_viva = False
         self._alvo, self._voz_anel_em, self.voz, self.voz_fx = alvo, -1e9, [], []
 
     def voz_pelo_app(self):
@@ -221,6 +222,38 @@ class TestaMicrofone(unittest.TestCase):
         # a rampa de 0,001 por amostra (volta a 0 a cada 1000), a 48 kHz passa sem reamostrar
         self.assertTrue(np.all(np.isclose(d, 0.001, atol=1e-6) | (d < -0.9)), "a voz crua a 48 kHz chegou mudada")
         self.assertGreater(len(x), eng.SR * 0.5)
+
+    def test_voz_da_pista_vai_pro_fone(self):
+        """Com a pista da voz no comando, o Injetor entrega ao motor a voz que o processo escreveu nela (o fone e o
+        medidor levam o que o jogo ouve) e marca o motor; pista desligada, o motor volta para a crua."""
+        anel = AnelFalso()
+        anel.liga(voz_taxa=48000)
+        motor = MotorFalso()
+        inj = eng.Injetor(motor)
+        escritor = None
+        try:
+            time.sleep(0.4)
+            self.assertFalse(motor._pista_viva)
+            escritor = injeta.Microfone()  # o processo da voz, no mesmo anel
+            escritor.pista_liga()
+            v = (np.arange(1920 * 5) % 777 / 777).astype(np.float32)
+            for k in range(5):
+                escritor.pista_escreve(v[k * 1920:(k + 1) * 1920])
+                time.sleep(0.04)
+            time.sleep(0.1)
+            self.assertTrue(motor._pista_viva, "o Injetor nao viu a pista no comando")
+            chegou = np.concatenate(motor.voz_fx)
+            np.testing.assert_allclose(chegou[-len(v):] if len(chegou) >= len(v) else chegou, v[-len(chegou):], atol=0,
+                                       err_msg="a voz da pista nao chegou ao motor como foi escrita")
+            self.assertGreaterEqual(len(chegou), 1920 * 4)
+            escritor.pista_liga(False)
+            time.sleep(0.1)
+            self.assertFalse(motor._pista_viva, "pista desligada e o motor seguiu nela")
+        finally:
+            if escritor:
+                escritor.fecha()
+            inj.para()
+            anel.desliga()
 
     def test_voz_crua_a_44k_vira_48k(self):
         x = self._voz_volta(44100)
@@ -431,13 +464,15 @@ class TestaMicrofone(unittest.TestCase):
             b = np.full(eng.BLOCK, 0.25, np.float32)
             e._push_mic(b)
             np.testing.assert_array_equal(e._mic[-1], b)
-            self.assertIn("voz.dll", e.error or "")
+            # o aviso e uma mensagem traduzida (i18n.msg, desde o #106): a chave dela, com o texto em ingles junto
+            self.assertEqual((e.error or {}).get("key"), "server.effect.noVozDll")
+            self.assertIn("voz.dll", e.error["text"])
             e.error = None
             e._push_mic(b)
             self.assertIsNone(e.error, "o aviso sai uma vez por efeito")
             e.set_effect("eco")
             e._push_mic(b)
-            self.assertIn("voz.dll", e.error or "", "outro efeito avisa de novo")
+            self.assertEqual((e.error or {}).get("key"), "server.effect.noVozDll", "outro efeito avisa de novo")
             e.error = None
             e._fx_filtro = True
             e._push_mic(b)

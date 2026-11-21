@@ -62,7 +62,16 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   programas, o Windows pode montar duas cadeias, cada uma com a sua instância do filtro: as duas
   põem o efeito e a música no próprio som, mas só uma escreve a voz crua e só uma escreve a com
   efeito que voltam ao app; quando a dona fecha, sai do alvo ou fica 500 ms sem bloco, a outra
-  assume (#70). Microfone de notebook com
+  assume (#70). A voz que o filtro não tem como converter no bloco dele (a de um modelo que roda
+  na placa de vídeo, num processo à parte) volta pela pista da voz do anel: esse processo lê a voz crua
+  como o app, converte e escreve na pista (`pista_liga`, `pista_escreve` e `pista_pulso` do `injeta.py`),
+  e o filtro põe ela no lugar da voz do microfone no mesmo ponto em que soma a música. A pista tem
+  escritor e folga só dela: a voz não paga os ~30 ms de folga que o misturador da música precisa, e o
+  app segue sendo o único que escreve a música. Sem dado, o bloco sai em silêncio (a voz do microfone
+  não vaza por um atraso do escritor); escritor que para de bater por 1 s, ou pista desligada, devolvem
+  a voz do microfone; a voz cortada no app corta a da pista também. O app lê a pista para o fone
+  (ouvir a própria voz) e o medidor, com uma fila própria (`PISTA_MAX` e `PISTA_ENCHE` no `engine.py`):
+  a voz convertida chega em rajadas do tamanho do bloco do conversor. Microfone de notebook com
   cancelamento de eco e redutor de ruído do fabricante no MFX (o da Fortemedia, #49) apagaria a
   música somada no EFX como ruído, e o Windows só aceita a peça de cancelamento de eco como a
   última da lista de MFX (nada nosso pode vir depois dela). Ali o `microfone.py` troca o último
@@ -176,10 +185,24 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   a voz indo pro jogo) e `tocou(x)`; o módulo devolve a voz pelo `mina_voz` (a fila do jogo e
   do fone, com 0,1 s de folga de rede), cala pelo `mina_cala` e acha a API pela `porta` do
   engine. No `--mock` o pedal não liga.
-- O pedal de troca de voz: um módulo `pistavoz` opcional, também de fora deste repo. Onde ele está, o `fx.py` põe o
-  pedal "Troca de voz" no lugar do alienígena, o `/api/effects` leva as vozes dele, o Estado leva o `pedal_voz` e o
-  `POST /api/pedal_voz` troca a voz (o contrato no API.md, "Pedal de troca de voz").
-  Teste, sem o módulo (um falso no lugar): `python dev/testa_pedal_voz.py`.
+- O pedal de troca de voz (#129): o `pistavoz.py` é o módulo dele. O `fx.py` põe o pedal "Troca de voz" no lugar do
+  alienígena, o `/api/effects` leva as vozes, o Estado leva o `pedal_voz` e o `POST /api/pedal_voz` troca a voz (o
+  contrato no API.md, "Pedal de troca de voz"). Com o pedal ligado, o módulo sobe o processo da troca de voz
+  (`ritmelli.py --pistavoz`, o `pista.py`): ele lê a voz crua pelo anel, junta blocos de 80 ms, converte pelo
+  `conversor.py` numa thread só da conta e escreve na pista da voz, com 120 ms de silêncio na frente da primeira voz
+  contra um bloco que demora. O `conversor.py` é o RVC refeito em numpy e ONNX Runtime (DirectML na placa de vídeo):
+  ContentVec e FCPE numa janela curta, o conteúdo e o tom de cada quadro congelados a 200 ms do futuro, o enc_p
+  sobre a frase atual e o decodificador numa janela local, com o ruído de cada instante fixo e a fase da fonte
+  continuada, para dois blocos seguidos gerarem a mesma onda no trecho em comum; a saída segue o volume de quem fala.
+  O atraso do efeito é o bloco mais os 300 ms de futuro que o modelo vê. Os modelos são os do ritmelli-voices, nas
+  releases que o `vozes.json` fixa (tamanho e sha256 de cada arquivo), na pasta `vozes\` do app: o instalador baixa no
+  clique de Instalar, antes de mexer em qualquer coisa, e só o que ainda não está lá com o hash certo
+  (`instalador/vozes_iss.py`, o `[Code]` do `ritmelli.iss`); pelo código, `python dev/vozes.py baixa`. Sem placa de vídeo
+  (pelo DXGI, sem o adaptador de software) ou sem os modelos, o `impedimento()` deixa o pedal de fora e o Alienígena
+  fica. A voz escolhida e o tom de cada voz ficam no `pedal_voz.json` da pasta de dados. No `--mock` o pedal não liga.
+  Testes: `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso), `python dev/testa_vozes.py` (o
+  `vozes.json`, o que o instalador baixa e o `impedimento()`) e `python dev/testa_pista.py` (o processo contra um anel
+  falso; com `RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade).
 - `winvol.py`: o volume do microfone no Windows (IAudioEndpointVolume pelo comtypes); a "Voz"
   da interface é esse número, gravado e lido de volta por uma thread do engine.
 - `pareamento.py`: o celular pareado. O instalador libera a entrada no firewall também em

@@ -74,6 +74,12 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: python dev/testa_mock.py
+      # as vozes do pedal de troca de voz: o vozes.json, o que o instalador baixa e o pedal que fica de fora sem placa de
+      # vídeo ou sem as vozes. Sem rede e só a biblioteca padrão
+      - name: Confere as vozes
+        env:
+          PYTHONUTF8: '1'
+        run: python dev/testa_vozes.py
       # o Inno Setup do build à mão, na pasta do usuário, que é a primeira onde o monta.ps1 procura (a máquina do
       # GitHub pode trazer outra versão em Program Files)
       - name: Inno Setup 6.7.3
@@ -262,6 +268,10 @@ jobs:
                    '_internal\microfone\voz.dll') {
             if (-not (Test-Path "$app\$f")) { throw "o setup não instalou o $f" }
           }
+          # as vozes do pedal de troca de voz (o vozes.json), que o setup baixa do ritmelli-voices antes de instalar
+          $vozes = @(Get-ChildItem "$app\vozes" -Recurse -File -Filter *.onnx -ErrorAction SilentlyContinue)
+          if ($vozes.Count -lt 3) { Select-String $log -Pattern 'vozes' | Out-String | Write-Host; throw "o setup baixou $($vozes.Count) modelos de voz" }
+          "o setup baixou $($vozes.Count) modelos de voz"
           netsh advfirewall firewall show rule name=Ritmelli | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'o setup não criou a regra do firewall' }
           # o filtro de microfone (microfone\microfone.py), pelo "--microfone instala-todos --tarefa" do setup: a micfx.dll
@@ -297,6 +307,12 @@ jobs:
             throw 'o Ritmelli instalado não carregou o voz.dll'
           }
           if ($estado.versao -ne $env:VERSAO) { throw "o Ritmelli respondeu a versão $($estado.versao), e não a $env:VERSAO" }
+          # a máquina do GitHub não tem placa de vídeo: o pedal de troca de voz fica de fora (o Alienígena fica) e o log diz por quê
+          if (-not (Select-String -Path "$logs\server.err", "$logs\server.log" -Pattern 'pedal_voz: no graphics card' -Quiet -ErrorAction SilentlyContinue)) {
+            Get-Content "$logs\server.err" -Tail 20 -ErrorAction SilentlyContinue
+            throw 'sem placa de vídeo, o Ritmelli não disse no log que deixou o pedal de troca de voz de fora'
+          }
+          'sem placa de vídeo, o pedal de troca de voz ficou de fora'
           # os dados de uso (metricas.py): o setup em silêncio, sem /metricas, não escolhe por ninguém, e o Ritmelli
           # espera a pessoa decidir no aviso, sem enviar nada (é isso que deixa a esteira fora das métricas)
           if (Get-ItemProperty 'HKLM:\SOFTWARE\Ritmelli' -Name Metricas -ErrorAction SilentlyContinue) {
@@ -346,6 +362,8 @@ jobs:
           Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
           for ($i = 0; $i -lt 120 -and (Test-Path "$app\ritmelli.exe"); $i++) { Start-Sleep 1 }
           if (Test-Path "$app\ritmelli.exe") { throw 'o desinstalador não tirou o ritmelli.exe em 2 min' }
+          for ($i = 0; $i -lt 30 -and (Test-Path "$app\vozes"); $i++) { Start-Sleep 1 }
+          if (Test-Path "$app\vozes") { throw 'o desinstalador deixou as vozes' }
           netsh advfirewall firewall show rule name=Ritmelli | Out-Null
           if ($LASTEXITCODE -eq 0) { throw 'o desinstalador deixou a regra do firewall' }
           for ($i = 0; $i -lt 30 -and (Get-ItemProperty 'HKLM:\SOFTWARE\Ritmelli' -Name Metricas -ErrorAction SilentlyContinue); $i++) { Start-Sleep 1 }

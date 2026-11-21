@@ -1,6 +1,6 @@
 # Monta o instalador do Ritmelli: congela o app (o ritmelli.spec da raiz deste repo), baixa o Deno na versao fixa abaixo
 # (conferindo o hash), junta o ffmpeg so de audio de ffmpeg\bin (o ffmpeg\compila.ps1 gera, e ele vai no git) e compila
-# o ritmelli.iss pelo Inno Setup. Sai em saida\.
+# o ritmelli.iss pelo Inno Setup, com a lista das vozes que o setup baixa na instalacao (vozes_iss.py). Sai em saida\.
 # Uso: monta.ps1 [-Ritmelli <pasta do app>] [-SoCongela | -SemCongelar] [-Anterior <manifest.json>]
 #   -Ritmelli e a raiz deste repo, onde mora o app: so muda para montar outra copia dele
 #   -SoCongela para depois de congelar o app (dist\ritmelli), sem montar o setup: na esteira, o ritmelli.exe e assinado
@@ -128,8 +128,13 @@ Roda 'terceiros.py' { & "$venv\python.exe" (Join-Path $PSScriptRoot 'terceiros.p
 $versoes = Join-Path $saida "VERSOES-$versao.txt"
 Roda 'pip freeze' { & "$venv\python.exe" -m pip freeze --all | Set-Content -Path $versoes -Encoding ascii }
 "$versoes"
+# as vozes do pedal de troca de voz (vozes.json): o setup as baixa do GitHub na instalacao; daqui saem a lista dos
+# arquivos e a licenca das vozes para a pagina de aceite (vozes_iss.py)
+$vozes = Join-Path $raiz 'vozes'
+Roda 'vozes_iss.py' { & "$venv\python.exe" (Join-Path $PSScriptRoot 'vozes_iss.py') --manifesto (Join-Path $Ritmelli 'vozes.json') --saida $vozes }
+$dVozes = @("/DVozes=$(Join-Path $vozes 'vozes.iss')", "/DLicencaVozes=$(Join-Path $vozes 'licenca-vozes.txt')")
 'compilando o instalador...'
-Roda 'ISCC' { & $iscc /Q "/DVersao=$versao" "/DApp=$app" "/DFfmpeg=$ffmpeg" "/DDeno=$deno" "/DLicenca=$(Join-Path $Ritmelli 'LICENSE')" "/DTerceiros=$terceiros" "/O$saida" (Join-Path $PSScriptRoot 'ritmelli.iss') }
+Roda 'ISCC' { & $iscc /Q "/DVersao=$versao" "/DApp=$app" "/DFfmpeg=$ffmpeg" "/DDeno=$deno" "/DLicenca=$(Join-Path $Ritmelli 'LICENSE')" "/DTerceiros=$terceiros" @dVozes "/O$saida" (Join-Path $PSScriptRoot 'ritmelli.iss') }
 $setup = Get-Item (Join-Path $saida "Ritmelli-$versao-setup.exe")
 'pronto: {0} ({1:N0} MB)' -f $setup.FullName, ($setup.Length / 1MB)
 
@@ -142,7 +147,7 @@ if ($Anterior) {
   Roda 'parcial.py' { & "$venv\python.exe" (Join-Path $PSScriptRoot 'atualizacao\parcial.py') --anterior $Anterior --app-py (Join-Path $Ritmelli 'atualizacao.py') --app $app --bin $ffmpeg --bin $deno --saida $pasta }
   if (Test-Path "$pasta\parcial.json") {
     'compilando a atualizacao parcial...'
-    Roda 'ISCC parcial' { & $iscc /Q "/DVersao=$versao" "/DApp=$app" "/DFfmpeg=$ffmpeg" "/DDeno=$deno" "/DLicenca=$(Join-Path $Ritmelli 'LICENSE')" "/DTerceiros=$terceiros" "/DParcial=$pasta\arquivos" "/DApaga=$pasta\apaga.iss" "/O$saida" (Join-Path $PSScriptRoot 'ritmelli.iss') }
+    Roda 'ISCC parcial' { & $iscc /Q "/DVersao=$versao" "/DApp=$app" "/DFfmpeg=$ffmpeg" "/DDeno=$deno" "/DLicenca=$(Join-Path $Ritmelli 'LICENSE')" "/DTerceiros=$terceiros" @dVozes "/DParcial=$pasta\arquivos" "/DApaga=$pasta\apaga.iss" "/O$saida" (Join-Path $PSScriptRoot 'ritmelli.iss') }
     Copy-Item "$pasta\parcial.json" $info
     $p = Get-Item (Join-Path $saida "Ritmelli-$versao-parcial.exe")
     'pronto: {0} ({1:N1} MB)' -f $p.FullName, ($p.Length / 1MB)

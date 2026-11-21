@@ -629,6 +629,8 @@ class App:
         self.cfg.pop("lan_token", None)  # a chave do link do celular de antes, que saiu (hoje e o pareamento.py)
         self.lan_ip = None
         self.celulares = par.Pareamento(data_dir / "celulares.json")
+        if fx.pistavoz is not None and callable(getattr(fx.pistavoz, "dados", None)):
+            fx.pistavoz.dados(data_dir)  # as vozes e o estado do pedal de voz (no --mock, na pasta temporaria)
         self._adiantados = {}  # youtube_id -> (Future do endereco, hora em que saiu): ver adianta_endereco
         self._adi_lock = threading.Lock()
         self.lib = Library(lib_json, keep_files=mock)
