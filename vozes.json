@@ -47,8 +47,8 @@
         },
         {
           "nome": "LICENSE.md",
-          "tamanho": 8588,
-          "sha256": "e4ed57376d325387a5405719e65d210948c7e9b53ebab7a5788c2b4ddf6a0e3d"
+          "tamanho": 8631,
+          "sha256": "48fff83b7a80b6028fa0b3b8c3735e84228dfce3a137ec539c0e53752b151454"
         },
         {
           "nome": "m3_50e_dec_q32_fp16.onnx",
@@ -78,8 +78,8 @@
         },
         {
           "nome": "LICENSE.md",
-          "tamanho": 8588,
-          "sha256": "e4ed57376d325387a5405719e65d210948c7e9b53ebab7a5788c2b4ddf6a0e3d"
+          "tamanho": 8631,
+          "sha256": "48fff83b7a80b6028fa0b3b8c3735e84228dfce3a137ec539c0e53752b151454"
         },
         {
           "nome": "l3_50e_dec_q32_fp16.onnx",
