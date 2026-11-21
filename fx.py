@@ -724,8 +724,7 @@ CATALOGO = [
 if importlib.util.find_spec("mina") is not None:
     CATALOGO = [c for c in CATALOGO if c[1] != "estourado"] + [
         ("personagem", "mina", lambda: None)]
-# o pedal de troca de voz (pistavoz.py, modulo de fora deste repo): onde o modulo esta ao lado do codigo, ele entra no
-# lugar do alienigena. O efeito daqui nao mexe na voz (o modulo cuida dela, entre o liga(True) e o liga(False) que o
+# o pedal de troca de voz (pistavoz.py, #129): entra no lugar do alienigena. O efeito daqui nao mexe na voz (o modulo cuida dela, entre o liga(True) e o liga(False) que o
 # engine.py chama); o /api/effects leva as vozes dele, e o estado do pedal sai no /api/state (pedal_voz) e muda pelo
 # POST /api/pedal_voz, ver o API.md. Modulo que nao importa, que quebra ao importar ou que nao cumpre o contrato e o
 # mesmo que modulo ausente: o app sobe sem o pedal e diz por que no log

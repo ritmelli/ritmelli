@@ -1637,7 +1637,7 @@ class Engine:
         self._pedal_voz_liga(effect_id == "pistavoz")
 
     def _pedal_voz_liga(self, ligado):
-        """Conta ao modulo do pedal de troca de voz (o de fora, ver o fx.py) cada troca de efeito: ligado so no pistavoz.
+        """Conta ao modulo do pedal de troca de voz (pistavoz.py, ver o fx.py) cada troca de efeito: ligado so no pistavoz.
         O liga() dele roda numa thread so dele (daemon), na ordem das trocas, e nunca no laco do servidor (a troca vem do
         handler do /api/settings); o erro dele vai para o log e nao derruba nada."""
         pv = fx.pistavoz
@@ -3153,6 +3153,12 @@ class MockEngine(Engine):
 
     def _mina_liga(self):
         pass  # sem som, sem a mina: a sessao custaria e nao tocaria em lugar nenhum
+
+    def _pedal_voz_liga(self, ligado):
+        pass  # sem som, sem a troca de voz: o processo dela leria e escreveria no anel do filtro de verdade
+
+    def _pedal_voz_fecha(self):
+        pass
 
     def set_devices(self, mic=None, monitor=None):
         for k, v in (("mic", mic), ("monitor", monitor)):

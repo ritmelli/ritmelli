@@ -280,10 +280,14 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 
 ## Pedal de troca de voz
 
-Um pedal opcional, que entra no lugar do Alienígena (`alien`) só onde o módulo `pistavoz` está ao lado do código
-(ele não mora neste repo; o `fx.py` o acha pelo `importlib.util.find_spec("pistavoz")`). Módulo que não importa, que
-quebra ao importar ou que não cumpre o contrato abaixo conta como ausente, com o motivo no log. Sem ele, o app é o mesmo
-de sempre. O contrato com o módulo:
+O pedal que troca a voz de quem fala pela de uma das vozes do
+[ritmelli-voices](https://github.com/ritmelli/ritmelli-voices), no lugar do Alienígena (`alien`). Quem faz é o módulo
+`pistavoz` (o `pistavoz.py`, ao lado do código; o `fx.py` o acha pelo `importlib.util.find_spec("pistavoz")`). Módulo
+que não importa, que quebra ao importar ou que não cumpre o contrato abaixo conta como ausente, com o motivo no log, e
+o Alienígena volta. O contrato com o módulo:
+
+- `pistavoz.dados(pasta)` (opcional): o servidor chama ao subir, com a pasta de dados dele (a do `library.json`; no
+  `--mock`, a temporária). O módulo guarda ali dentro o que é dele (as vozes e a voz escolhida).
 
 - `pistavoz.VOZES`: a lista de ids das vozes, da mais grave para a mais aguda (ex. `["mina", "lira"]`); vai para o
   `vozes` do item `pistavoz` de `/api/effects`. O pedal mostra as duas primeiras, e o leitor de tela diz qual é a mais
@@ -300,10 +304,12 @@ de sempre. O contrato com o módulo:
 - `pistavoz.liga(ligado)`: chamado a cada troca de efeito, `True` ao entrar no `pistavoz` e `False` ao sair dele (pode
   repetir o mesmo valor), e `False` também quando o app fecha (o fechar espera por ele até 2 s). Roda numa thread só
   dele, na ordem das trocas, nunca no laço do servidor; um erro dele vai para o log. O servidor sobe em `nenhum`,
-  então o módulo começa desligado.
+  então o módulo começa desligado. No `--mock` o engine não chama o `liga()`.
 
 O efeito `pistavoz` em si não mexe na voz do lado do Ritmelli (como o `nenhum`): quem troca a voz é o módulo, entre o
-`liga(True)` e o `liga(False)`. O tema mostra o pedal com o visor e as vozes (o rótulo da escolhida aceso) e manda
+`liga(True)` e o `liga(False)`. O `pistavoz.py` sobe o processo da troca de voz (`ritmelli.py --pistavoz`, o
+`pista.py`), que lê a voz crua pelo anel do filtro, converte pelo `conversor.py` (o RVC em ONNX, no DirectML) e
+escreve na pista da voz, que o filtro põe no lugar da voz do microfone. O tema mostra o pedal com o visor e as vozes (o rótulo da escolhida aceso) e manda
 `POST /api/pedal_voz` no clique de cada uma. Textos do tema: `effect.pistavoz.name`, `effect.pistavoz.desc` e os do
 visor.
 
