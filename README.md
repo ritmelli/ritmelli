@@ -1,92 +1,399 @@
-# Ritmelli
+<p align="center">
+  <img src="docs/icon.png" width="96" alt="Ritmelli icon: a pixel-art turntable">
+</p>
 
-O Ritmelli é um aplicativo para Windows 10 e 11 que reproduz músicas e efeitos sonoros no microfone usado no jogo ou na
-chamada de voz, junto com a sua voz, enquanto você ouve apenas a música no fone. A interface, um aparelho de som dos
-anos 70 em pixel art, abre em uma janela própria no computador (fechá-la desliga o aplicativo) e, no celular, no
-navegador, pela mesma rede Wi-Fi. Funciona com qualquer jogo ou programa de chamada que permita escolher o microfone.
+<h1 align="center">Ritmelli</h1>
 
-Para usar o Ritmelli, baixe o instalador da versão mais recente nas [Releases do
-ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases/releases/latest) (o arquivo terminado em
-`-setup.exe`): ele já inclui tudo de que o aplicativo precisa, e não é preciso instalar o Python nem outro programa.
+<p align="center">
+  Play music and sound effects through your microphone in any game or voice call,<br>
+  change your voice with live effects, and hear the music in your headphones without hearing yourself.
+</p>
 
-## Recursos
+<p align="center">
+  <a href="https://github.com/ritmelli/ritmelli-releases/releases/latest/download/Ritmelli-setup.exe"><img src="https://img.shields.io/badge/Download-for%20Windows%2010%20and%2011-2ea44f?style=for-the-badge" alt="Download Ritmelli for Windows 10 and 11"></a><br>
+  <sub>Ritmelli isn't code-signed yet, so your browser and Windows will warn you about it: the <a href="#install">Install</a> section below shows what to click.</sub>
+</p>
 
-- Reprodução de músicas do YouTube (busca, reprodução imediata por streaming e download em segundo plano) ou de
-  arquivos já baixados.
-- Fila com transições de DJ: as músicas se emendam no tempo certo, com as batidas alinhadas e o andamento ajustado de
-  uma para a outra, sem alterar o tom.
-- Tocar parecidas (modo Automático): mantém a fila sempre cheia com músicas parecidas, ordenadas pelo andamento e
-  marcadas como Automático.
-- Sons rápidos: efeitos sonoros curtos que tocam por cima da música.
-- Efeitos de voz: rádio de polícia, megafone, locutor de rádio FM, eco, robô, voz grave e outros.
+<p align="center">
+  <a href="https://github.com/ritmelli/ritmelli-releases/releases/latest"><img src="https://img.shields.io/github/v/release/ritmelli/ritmelli-releases?label=release" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue" alt="License: GPLv3"></a>
+</p>
 
-## Requisitos para executar a partir do código-fonte
+<p align="center">
+  <img src="docs/screenshot.png" alt="The Ritmelli window: two turntables, a mixer, the Quick sounds pads and two boards of voice effect pedals">
+</p>
 
-- Windows 10 ou 11 (o áudio é reproduzido por WASAPI, e o volume do microfone é controlado pelo Core Audio).
-- Python 3.12 ou superior.
-- O som chega ao jogo pelo filtro de microfone do Ritmelli (`microfone/`), que mistura a música ao microfone real,
-  dentro do próprio sistema de áudio do Windows: o jogo e o Discord continuam usando o microfone de sempre. O
-  instalador adiciona o filtro a todos os microfones do computador (o som do computador é interrompido por alguns
-  segundos) e cria a tarefa do Windows que prepara os microfones conectados depois, sem pedir permissão ao usuário. No
-  código-fonte, a DLL do filtro e a do seu motor de efeitos (`voz.dll`, usada para a voz com efeito que sai pelo
-  aplicativo) são geradas pelo `microfone\apo\compila.bat` (Visual Studio 2022 com C++), e o filtro é adicionado aos
-  microfones com `python microfone\microfone.py instala-todos`, em um terminal de administrador.
-- ffmpeg (com o ffprobe) no PATH ou em uma pasta `bin/` ao lado do código.
-- Node ou Deno: o yt-dlp precisa de um runtime de JavaScript para que o YouTube disponibilize todos os formatos. O
-  Deno também pode ficar na pasta `bin/`.
+Ritmelli is a free, open-source Windows app whose interface is a 1970s stereo rack drawn in pixel art. Everyone in
+your game or call hears the music mixed with your voice, through the microphone they already hear you on, so your
+friends don't need to install anything. It works with any game or call app that lets you choose a microphone, as long
+as it runs on the same computer as Ritmelli. A game running on another device, like a console, doesn't get the music.
 
-## Instalação a partir do código-fonte
+## Features
+
+- **Music from YouTube:** search or paste a link. A song starts streaming right away and downloads in the background,
+  so it stays on your shelf, Ritmelli's record collection.
+- **Automatic transition:** when a song ends, the next one in the queue blends in. When both have a steady beat and
+  close tempos, it comes in on the beat, with its tempo matched to the outgoing song and the key left untouched;
+  otherwise it's a volume crossfade.
+- **Play similar songs:** keeps the queue full with similar songs, ordered by tempo and marked **Auto**.
+- **Automatic volume:** plays every song at a similar loudness. It's on by default; turn it off in
+  **Mic and headphones**.
+- **Quick sounds:** pads that play short sounds over the music. They start empty. To add a sound, search for it and
+  click the **⊕** next to the result: that saves it to your shelf without playing it. If it's 15 seconds or shorter,
+  it goes to the pads by itself. For a longer one, choose **Add to Quick sounds** in its **⋯** menu on the shelf; its
+  pad plays only the first 2 minutes.
+- **Voice effects:** police radio, megaphone, FM voice, echo, bathroom, cathedral, robot, deep voice,
+  chipmunk, demon, alien and blown speaker, applied live to your voice.
+- **Mute voice:** silences your voice in the game or call while the music keeps playing. To try a voice effect
+  without anyone else hearing it, mute your voice and turn on **Hear my voice** on the phone remote; you hear yourself
+  in your headphones.
+- **Phone remote:** control Ritmelli from your phone's browser, on the same network as the computer, so you can
+  change songs and play Quick sounds without leaving your game.
+- **Two languages:** English and Brazilian Portuguese. The interface follows each device's list of preferred
+  languages (your computer, your phone): if Portuguese (from any country) appears in it before any English, the
+  device gets Brazilian Portuguese; otherwise, it gets English.
+
+## Install
+
+Ritmelli needs 64-bit Windows 10 or 11 on a PC with an Intel or AMD processor. On a PC with an ARM processor (such as
+Snapdragon), the microphone filter can't run, so the installer stops with a message that says so. To check your PC, open
+**Settings > System > About** in Windows: **System type** must say *64-bit operating system, x64-based processor*.
+
+Install Ritmelli when you aren't in a game or call. The installer adds Ritmelli's microphone filter to every
+microphone on the computer, and the computer's sound stops for a few seconds while Windows reloads them.
+
+1. Download [**Ritmelli-setup.exe**](https://github.com/ritmelli/ritmelli-releases/releases/latest/download/Ritmelli-setup.exe),
+   the installer for the latest version. The
+   [release page](https://github.com/ritmelli/ritmelli-releases/releases/latest) lists what's new in it. If you
+   download from there instead, either of the two files ending in `-setup.exe` works: they're the same installer. The
+   other files there are for automatic updates and for developers.
+   - Ritmelli isn't code-signed yet (see [Code signing policy](#code-signing-policy)), so your browser and Windows
+     show warnings along the way. If your browser says the file isn't commonly downloaded, choose to keep it (in Edge,
+     click **...** next to the download, then **Keep**, **Show more** and **Keep anyway**).
+2. Run it. It includes everything Ritmelli needs; you don't have to install Python or anything else.
+   - If Windows shows **Windows protected your PC**, click **More info**, then **Run anyway**.
+   - If **Smart App Control** blocks it, there's no **Run anyway**. Smart App Control blocks unsigned apps it doesn't
+     recognize, with no exceptions, so until Ritmelli is code-signed, it only installs and runs with Smart App Control
+     turned off (**Windows Security > App & browser control > Smart App Control settings**). That setting covers every
+     app, not just Ritmelli. On an up-to-date Windows 11 you can turn it back on there later, but Ritmelli won't run
+     while it's on.
+   - When Windows asks whether to allow an app from an unknown publisher to make changes to your device, choose
+     **Yes**. The installer needs this permission to prepare your microphones and to let Ritmelli through the
+     firewall so your phone can reach the computer.
+3. On the last page of the installer, leave **Open Ritmelli** checked. Next time, open it from the Start menu.
+
+Updates download automatically and install when Ritmelli is closed. If an update changes the microphone filter, the
+computer's sound stops for a few seconds while it installs.
+
+To remove Ritmelli, uninstall it from **Settings > Apps** in Windows. That removes the filter and puts your
+microphones back the way they were. Your shelf and settings stay on the computer in case you install it again.
+
+## Quick start
+
+The first time you open Ritmelli, a welcome screen covers steps 1 to 4 below and offers to connect your phone.
+
+1. **Check your microphone and headphones.** The microphone is the one you speak into; the headphones are where you
+   hear the music. Use headphones, not speakers: your microphone can pick the music up from speakers, and then
+   everyone hears it twice. Ritmelli follows the Windows defaults; to pick other devices, click **Mic and headphones**
+   at the top.
+2. **Use the same microphone in the game and the call.** In the audio settings of your game and your call app, choose
+   the microphone selected in Ritmelli. The music only goes out through that one. If they have a noise suppression
+   option (sometimes called noise reduction or noise cancellation), turn it off there too: it can treat the music as
+   noise and cut it out. Step 3 has the exact settings for Discord.
+3. **Set up Discord, if you use it.** In **User Settings > Voice & Video**, check that **Input Device** is the
+   microphone from step 2, and choose **Studio** under **Input Profile**. Avoid **Voice Isolation**, whose Krisp noise
+   suppression cuts the music out. If you'd rather use **Custom**, set **Noise Suppression** to **None** and turn off
+   automatic input sensitivity there.
+4. **Play your first song.** Type a song name or paste a YouTube link in the search field at the top, then click a
+   result to play it.
+5. **Set the volume.** On the mixer, **Music in game** sets how loud everyone else hears the music, and
+   **Music in phones** (**Music in headphones** in a narrower window and on the phone remote) sets how loud you hear
+   it in your headphones.
+   **Voice** is your microphone's volume in Windows.
+
+Keep the Ritmelli window open or minimized during your game or call. Closing it turns Ritmelli off, and your
+microphone keeps working as usual, without the music.
+
+The music only goes out while your microphone is open in the game or call. If you're muted there, or you use
+push-to-talk and aren't holding the key, nobody hears it.
+
+## Phone remote
+
+Your phone must be connected to Wi-Fi on the same network as the computer, not to mobile data; the computer itself can
+be connected to the router by cable. On the computer, click **Phone** at the top of the window to show a QR code. Point
+your phone's camera at it, or open the address shown next to it in your phone's browser and type in the 6-digit code.
+The phone stays paired until you disconnect it on the same screen. Other devices on the network can open the page, but
+can't change anything without the code.
+
+The connection between the phone and the computer is not encrypted (plain HTTP). Use it on your home network, not on
+public Wi-Fi.
+
+## How it works
+
+Ritmelli installs an audio filter (an Audio Processing Object, or APO) on your microphones, inside the Windows audio
+system. The filter mixes the music into your real microphone, so games and call apps keep using the microphone they
+already had, with no virtual audio cable in between. Voice effects are applied in the same filter. Some of them, like
+the ones that change the pitch, delay your voice a little, and the interface shows how much. If Ritmelli stops
+responding, the filter goes back to your plain voice within one second.
+
+## Troubleshooting
+
+- **My antivirus blocks or removes Ritmelli.** Some antivirus programs distrust unsigned apps, and Ritmelli isn't
+  code-signed yet. If yours blocks the installer or quarantines Ritmelli, restore the file from quarantine and add an
+  exception for it. Then [open an issue](https://github.com/ritmelli/ritmelli/issues) with the antivirus name and the
+  message it showed, so the team can report the false positive.
+- **Nobody hears the music.** Open **Mic and headphones**. The microphone there must be the one selected in your game
+  and your call app, and it should say *The music plays through this microphone*. Check that you aren't muted in the
+  game or call, that you're holding the key if you use push-to-talk, and that **Music in game** isn't all the way down.
+- **Nobody hears my voice.** If the button at the top of Ritmelli says **Voice muted**, click it to unmute. Also check
+  that the **Voice** fader on the mixer isn't all the way down. It sets your microphone's volume in Windows, so it
+  affects every app and stays where you leave it after you close Ritmelli.
+- **The music is choppy or missing in Discord.** Choose the **Studio** input profile. If you use **Custom**, set
+  **Noise Suppression** to **None** and turn off automatic input sensitivity there.
+- **The music is choppy or missing in a game or another call app.** In that app's voice settings, turn off noise
+  suppression (sometimes called noise reduction or noise cancellation), which can treat the music as noise. If it sends
+  your voice only when it detects speech (voice activation), switch to an always-on microphone or lower the activation
+  threshold.
+- **Everyone hears the music twice, or with an echo.** Your microphone is picking it up from your speakers. Wear
+  headphones and choose them in **Mic and headphones**. If you only have speakers, choose **None** under
+  **Headphones** there: everyone else still hears the music, but you don't.
+- **I don't hear the music.** In **Mic and headphones**, choose your headphones. Then turn up **Music in phones** on
+  the mixer (**Music in headphones** in a narrower window and on the phone remote).
+- **I plugged in a new microphone after installing.** Select it in **Mic and headphones**, and Ritmelli adds the filter
+  to it. The computer's sound stops for a few seconds while Windows reloads the microphone.
+- **The phone page doesn't open.** The phone must be connected to Wi-Fi on the same network as the computer, not to
+  mobile data or a guest network, and Ritmelli must be open on the computer. If it still doesn't open, check that no
+  antivirus is blocking Ritmelli on the computer.
+- **My microphone or headphones are unplugged.** Ritmelli uses the Windows default until they come back. If the
+  default recording device is a virtual cable, it uses the first physical microphone.
+- **Where are my files?** Downloaded audio, the shelf and your settings are in `%LOCALAPPDATA%\Ritmelli\library`, and
+  the logs are in `%LOCALAPPDATA%\Ritmelli\logs` (paste the path into the File Explorer address bar).
+- **I had Vitrola installed.** Ritmelli was called Vitrola up to version 0.4.1. The update moves your data, settings
+  and paired phone from `%LOCALAPPDATA%\Vitrola` to `%LOCALAPPDATA%\Ritmelli` automatically.
+- **Something else.** [Open an issue](https://github.com/ritmelli/ritmelli/issues) in English or Portuguese (you need a
+  free GitHub account). Everything there is public, so leave out personal data and remove your Windows user name from
+  any log you paste. To report a security problem, don't open an issue: follow the
+  [security policy](https://github.com/ritmelli/ritmelli/security/policy) instead.
+
+## Privacy
+
+Ritmelli runs on your computer, and your phone talks to it directly on your network. Ritmelli goes online to:
+
+- search, play and download from YouTube and YouTube Music;
+- find and show record covers: it searches YouTube Music for each record on your shelf by its title (with the
+  channel name in front when the title doesn't include it) and loads the covers from the image servers of YouTube and
+  YouTube Music;
+- check GitHub for new versions and download them, sending none of your data;
+- send anonymous usage data and error reports, with no name, songs, searches or voice. This is on by default: clear
+  the box on the installer's **Usage Data and Errors** page, or turn it off later in **Mic and headphones**.
+
+YouTube and YouTube Music are Google services, covered by
+[Google's privacy policy](https://policies.google.com/privacy).
+[Ritmelli's privacy policy](PRIVACIDADE.md#ritmelli-privacy-policy) lists what is sent and where; the installer shows
+a summary of it.
+
+## Build from source
+
+You only need this section to work on the code. To use Ritmelli, the [installer](#install) is all you need. The full
+setup builds the microphone filter, which takes Visual Studio and administrator rights; to work only on the interface
+you need neither, so start at [Work on the interface without audio](#work-on-the-interface-without-audio).
+
+### Requirements
+
+- Windows 10 or 11 (audio goes through WASAPI, and the microphone volume through Core Audio). The full setup also
+  needs an Intel or AMD processor: the microphone filter is built for x64 only and doesn't load on an ARM processor
+  (see [Install](#install)).
+- Git, to clone the repository.
+- Python 3.12, 3.13 or 3.14, 64-bit, with `python` on the `PATH`. Not 3.15 yet: onnxruntime, which runs the beat
+  detection model, has no build for it. On [python.org](https://www.python.org/downloads/windows/), pick the
+  **Windows installer (64-bit)** of a 3.14 release and check **Add python.exe to PATH**. If you'll also build
+  [Ritmelli's installer](#installer), pick 3.12.10 instead: it's the version the pipeline builds with and the last
+  3.12 release with a Windows installer. Avoid the Python app from the Microsoft Store: it keeps a private copy of
+  `%LOCALAPPDATA%`, so the shelf, settings and logs wouldn't be where this README says.
+- ffmpeg and ffprobe, on the `PATH` or in a `bin/` folder at the root of the repository (git ignores it).
+- Deno or Node: yt-dlp needs a JavaScript runtime to get every format from YouTube. Deno can also go in `bin/`.
+- Visual Studio 2022 (any edition, or the free Build Tools for Visual Studio 2022) with the **Desktop development with
+  C++** workload and the Windows SDK 10.0.22621 or later, to build the microphone filter.
+
+To install everything except Python with winget:
 
 ```powershell
-python -m pip install -r requirements.txt
+winget install -e --id Git.Git
+winget install -e --id Gyan.FFmpeg
+winget install -e --id DenoLand.Deno
+winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools;includeRecommended"
 ```
 
-O modelo de detecção de batidas (`modelos/compasso.onnx`, cerca de 83 MB) já está incluído no repositório e é gerado
-pelo `dev/exporta_compasso.py`. Sem ele, tudo funciona, mas as transições acertam o tempo com menos precisão (apenas
-com o detector em numpy).
+The last command installs the Build Tools with the C++ workload and its recommended SDK. It doesn't restart the
+computer on its own (`--norestart`), so restart it yourself if the installer asks. Then open a new terminal for the
+steps below: winget adds Git, ffmpeg and Deno to the `PATH`, and a terminal that was already open doesn't see the
+change.
 
-## Uso
+### Run
+
+Clone the repository and run everything from its root, in PowerShell:
 
 ```powershell
-.\soundboard.ps1 start    # inicia o servidor e abre a galeria
-.\soundboard.ps1 status   # informa se está em execução, o que está tocando e o microfone e o fone em uso
-.\soundboard.ps1 stop     # para a música no microfone
+git clone https://github.com/ritmelli/ritmelli
+cd ritmelli
 ```
 
-- No jogo e no Discord, use o mesmo microfone selecionado no Ritmelli, pois o filtro atua apenas nele. A voz original
-  volta do filtro para o Ritmelli (para o medidor, para a opção Ouvir minha voz e para a Mina DJ). Sem efeito de voz,
-  ela segue diretamente para o microfone. O efeito de voz é aplicado no próprio filtro, e alguns efeitos, como os que
-  mudam o tom, atrasam um pouco a voz (a interface mostra o atraso). Com a voz silenciada, só o que o Ritmelli toca
-  segue para o microfone. Se o Ritmelli parar de responder, o filtro restaura a voz original automaticamente em 1
-  segundo. No Discord, use o perfil de entrada **Estúdio** ou desative o Krisp e a sensibilidade automática: com
-  qualquer um dos dois ativado, a música chega cortada ou não chega.
-- Microfone conectado depois da instalação (por exemplo, um headset USB novo): ao selecioná-lo, o Ritmelli executa a
-  tarefa criada pelo instalador, e o som do computador é interrompido por alguns segundos enquanto o Windows o
-  prepara.
-- O microfone e o fone seguem o padrão do Windows, inclusive quando ele muda com o servidor em execução. A escolha
-  feita na interface fica salva em `%LOCALAPPDATA%\Ritmelli\library\config.json`.
-- Se o microfone ou o fone selecionado estiver desconectado, o Ritmelli usa o padrão do Windows até que ele volte. Se
-  o dispositivo de gravação padrão for um cabo virtual, é usado o primeiro microfone físico.
-- Os dados do usuário (os áudios baixados, a prateleira e as escolhas) ficam em `%LOCALAPPDATA%\Ritmelli\library`, e os
-  logs do servidor, em `%LOCALAPPDATA%\Ritmelli\logs`. Até a versão 0.4.1, o aplicativo se chamava Vitrola: na
-  atualização, os dados de `%LOCALAPPDATA%\Vitrola`, as escolhas e o celular conectado são migrados automaticamente para
-  o Ritmelli, sem nenhuma perda (a pasta de dados pelo `pastas.py`, ao abrir o aplicativo, e o resto pelo `migra.py`, no
-  instalador).
-- Sem o `soundboard.ps1`: `python ritmelli.py` (aceita os mesmos argumentos do `server.py`).
-- Para ver a versão: `python ritmelli.py --version`.
-- **No celular**, na mesma rede Wi-Fi: no computador, o botão Celular da interface exibe um QR code. Aponte a câmera do
-  celular para ele ou abra o endereço exibido ao lado e digite o código. O celular permanece conectado até ser
-  desconectado na mesma tela do computador. Sem o código, outro aparelho da rede consegue abrir a página, mas não
-  consegue alterar nada. A comunicação entre o celular e o computador não é criptografada (HTTP): use esse recurso na
-  rede de casa, e não em redes Wi-Fi públicas, como as de cafés ou hotéis. Com `server.py --so-local`, o servidor atende
-  apenas o próprio computador.
-- Para trabalhar na interface sem áudio: `python server.py --mock --port 8801`. A prateleira é uma cópia numa pasta
-  temporária; `--data-dir <pasta>` escolhe outra pasta, nunca a de quem usa.
+PowerShell blocks scripts by default. If a `.ps1` below fails with "running scripts is disabled on this system", allow
+local scripts for your user once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
-## Executável
+1. Create a virtual environment, `.venv`, and install the Python packages; the later steps and sections assume it.
+   `python --version` must print Python 3.12, 3.13 or 3.14. If it prints another version, such as 3.15, create the
+   environment with the Python launcher instead (for example, `py -3.14 -m venv .venv`) and run the last two commands
+   as they are.
 
-O `ritmelli.spec` gera o `ritmelli.exe` com o PyInstaller, em um ambiente que contém apenas as dependências do
-aplicativo:
+   ```powershell
+   python --version
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   python -m pip install -r requirements.txt
+   ```
+
+2. Build the microphone filter (`micfx.dll`) and its effects engine (`voz.dll`). Both DLLs go to
+   `microfone/apo/saida/`:
+
+   ```powershell
+   microfone\apo\compila.bat
+   ```
+
+3. In a terminal opened with **Run as administrator**, at the repository root, add the filter to every microphone.
+   The script uses only the standard library, so it doesn't need the virtual environment. The computer's sound stops
+   for a few seconds while Windows reloads the microphones.
+
+   ```powershell
+   python microfone\microfone.py instala-todos
+   ```
+
+   The filter DLL (`micfx.dll`) is copied to `%ProgramFiles%\Ritmelli\microfone`, the folder the installed app uses,
+   so it replaces the filter of an installed Ritmelli.
+
+   - After plugging in a new microphone, run step 3 again. The installed app does this by itself, without
+     administrator rights, through a Windows task that only the installer creates.
+   - After changing the C++ code in `microfone/apo/`, turn Ritmelli off and run steps 2 and 3 again. A running
+     Ritmelli, `--mock` included, keeps `voz.dll` open, so the build can't replace it.
+   - `python microfone\microfone.py estado` lists the microphones and which ones have the filter.
+   - `python microfone\microfone.py remove`, as administrator, puts every microphone back the way it was. If Ritmelli
+     is also installed, this removes its filter and its Windows task too, so reinstall it afterwards.
+
+4. Back in the first terminal, start Ritmelli. If Ritmelli is also installed on this computer, turn it off first:
+   both use the same port (8799), so `python ritmelli.py` would only bring the installed window to the front and exit.
+
+   ```powershell
+   python ritmelli.py
+   ```
+
+   It opens the app's window (or your browser, if WebView2 isn't available), and closing the window turns it off.
+   If Ritmelli is also installed, the two share the shelf and settings (`%LOCALAPPDATA%\Ritmelli\library`). Whenever
+   the installed one updates or adds the filter to a new microphone, it puts its own filter back, so run step 3 again
+   afterwards.
+
+   The first time, Windows Defender Firewall asks whether Python may accept connections on your network (the
+   installer's firewall rule covers only the installed `ritmelli.exe`). To test the phone remote, allow it on private
+   networks, and on public ones too if Windows lists your Wi-Fi as public, as it often does on home networks. Or start
+   with `--so-local` to keep everything on this computer.
+
+`ritmelli.py` takes the same arguments as `server.py`: `--port <number>` (8799 by default), `--no-browser` (no
+window) and `--so-local` (serves only this computer, with no phone access). `python ritmelli.py --version` prints the
+version.
+
+When you run Ritmelli from source, it sends no usage data or error reports by default, so the notice that asks
+whether to send them and the **Usage data and errors** setting in **Mic and headphones** stay hidden. To work on
+them, run `$env:RITMELLI_METRICAS = "1"` in the terminal before you start Ritmelli. A Ritmelli started from that
+terminal then follows the same rule as the installed app. It uses the choice made in Ritmelli. If there is none, it
+uses the choice made in the installer, as long as Ritmelli is also installed on this computer. If there is neither, it
+shows the notice that asks.
+
+To run it in the background without a console, use `.\soundboard.ps1 start` with the virtual environment active (it
+starts the `pythonw` on the `PATH`). It opens the theme gallery (`http://127.0.0.1:8799/`) in your browser instead of
+the app's window. `.\soundboard.ps1 status` shows whether Ritmelli is running, what is playing and which microphone and
+headphones are in use, and `.\soundboard.ps1 stop` turns it off.
+
+The beat detection model (`modelos/compasso.onnx`, about 83 MB) is in the repository, so you don't need to generate
+it. `dev/exporta_compasso.py` exports it from beat_this and needs PyTorch, beat_this and safetensors in a separate
+virtual environment, as the top of the file explains (in Portuguese); neither requirements file installs them.
+Without the model everything still works, but transitions hit the beat less precisely (numpy-only detector).
+
+### Work on the interface without audio
+
+The interface needs no Visual Studio, no administrator terminal and no microphone filter. Of the
+[Requirements](#requirements), you only need Python, Git, ffmpeg (for records to play) and Deno or Node (to download
+songs); the first three `winget` lines install Git, ffmpeg and Deno. The layout check below also needs Google Chrome.
+Clone the repository, install the Python packages (the start of [Run](#run) and its step 1) and start the server in
+no-audio mode from the repository root, with the virtual environment active:
+
+```powershell
+python server.py --mock --port 8801 --no-browser
+```
+
+`--mock` opens no audio device (records play silently, on a fake clock) and only pretends to download. Without the
+DLLs from step 2 of [Run](#run), it prints a `voice effect: no voz.dll` line when it starts; that's expected. It works
+on a copy of your shelf (empty if you never used Ritmelli) in a temporary folder that is deleted when the server
+stops. `--data-dir <folder>` keeps the data in that folder between runs instead (it can't be your real data folder);
+if that folder has no shelf yet, your shelf is copied into it. Like `--so-local`, it serves only this computer, so
+your phone can't open it: to see the phone layout, make the browser window narrower than 900 px or use the device
+toolbar of the developer tools.
+
+A song you add in `--mock` reuses the audio of the shortest song already in `%LOCALAPPDATA%\Ritmelli\library`, so
+download at least one song first, with the installed Ritmelli or with `python ritmelli.py` (downloading doesn't need
+the microphone filter). The `--mock` server copies your shelf only when it starts, so restart it after the download.
+
+Open `http://127.0.0.1:8801/t/vitrola/` in your browser and use its developer tools. That's why the command above
+uses `--no-browser`: without it, the page opens in the app's window, which has no developer tools. With an empty
+shelf, the page opens with the welcome screen; close it with **Get started**. While the shelf is empty, a `--mock`
+server started without `--data-dir` shows it again every time it starts (with `--data-dir`, closing it once is
+enough).
+
+All of the interface's code is in one file, `themes/vitrola/index.html` (HTML, CSS and JavaScript, no build step),
+with its fonts and images next to it in `fonts/` and `texturas/`. Edit the file, save it and reload the page. What a
+theme receives from the server is in [API.md](API.md#tema).
+
+To switch the language, add `?lang=pt_BR` or `?lang=en` to the end of the address. Interface texts live in
+`themes/vitrola/i18n/i18n_en.properties` and `i18n_pt_BR.properties`, with the same keys in both files, in the same
+order.
+
+Part of the pixel art isn't edited in `index.html` directly: scripts in `dev/` draw it and write it into the file or,
+for the textures, into `texturas/`. To change a generated part, edit the drawing in its script and run the script
+again (for example, `python dev\pecas.py`). A change made by hand in a generated part is lost the next time its
+script runs.
+
+- `dev/molduras.py`: the frames, between the `molduras:inicio` and `molduras:fim` comments (it writes the same block
+  in `gallery/index.html` too).
+- `dev/compactos.py`: the Quick sounds records, between `compactos:inicio` and `compactos:fim`.
+- `dev/pecas.py`: the tonearm, knobs, buttons and other pieces, between `pecas:inicio` and `pecas:fim`, and constants
+  such as `KNOBS`, `PE_SVG` and `LED_SVG`.
+- `dev/texturas.py`: the `.webp` textures in `texturas/`, except `sala-iso.webp`. It renders them in Google Chrome and,
+  like `dev/shot.py` below, needs the development packages.
+
+`sala-iso.webp` and the `.png` images in `texturas/` aren't generated; edit them as image files. The turntables, the
+mixer, the Quick sounds pads and the voice effect pedals of the wide layout in the screenshot (a window at least
+1400 px wide and a little wider than it is tall) aren't generated either: canvas code in `index.html` itself draws
+them, in the blocks that start at `DECK-JS-INICIO`, `MIX-JS-INICIO` and `PEDAL-JS-INICIO`, so you edit them there.
+
+`dev/fitcheck.py` checks the layout at several window and phone sizes, and `dev/shot.py` takes a screenshot. Both
+need the development packages (`requirements-dev.txt`) and drive Google Chrome from its default install folder,
+`C:\Program Files\Google\Chrome\Application\chrome.exe`. A Chrome installed only for your user, in `%LOCALAPPDATA%`,
+isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. If the welcome screen is
+open, close it first (see above): with it open, `fitcheck.py` fails at most sizes and `shot.py` captures it. Leave
+the `--mock` server running and, in a second terminal at the repository root, activate the virtual environment,
+install the development packages once and run them:
+
+```powershell
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+python dev\fitcheck.py http://127.0.0.1:8801/t/vitrola/
+python dev\shot.py http://127.0.0.1:8801/t/vitrola/ $env:TEMP\shot.png --size 1440x900
+```
+
+### Executable
+
+`ritmelli.spec` builds `ritmelli.exe` with PyInstaller, in an environment with only the app's dependencies. Run the
+commands below with `.venv` active, so the new environment gets the same Python version you checked in step 1 of
+[Run](#run). The spec packs the filter DLLs, so build them first (step 2 of [Run](#run)): it stops if
+`microfone/apo/saida/micfx.dll` or `voz.dll` is missing.
 
 ```powershell
 python -m venv .venv-build
@@ -94,106 +401,187 @@ python -m venv .venv-build
 .venv-build\Scripts\pyinstaller --noconfirm ritmelli.spec
 ```
 
-O resultado fica em `dist\ritmelli\` (o `ritmelli.exe` e a pasta `_internal\`). O ffmpeg, o ffprobe e o Deno não são
-incluídos: copie-os para `dist\ritmelli\bin\` (cada build apaga a pasta). Sem console, os logs ficam em
-`%LOCALAPPDATA%\Ritmelli\logs`, e o `soundboard.ps1 stop` também encerra o executável.
-
-## Como montar o instalador
-
-O instalador disponibilizado nas versões publicadas é gerado pelo `instalador\monta.ps1`: o script empacota o
-aplicativo pelo `ritmelli.spec`, adiciona o ffmpeg, o ffprobe e o Deno e compila o `instalador\ritmelli.iss` com o Inno
-Setup. São necessários Windows, Python 3.12 e Inno Setup 6.
+The result is in `dist/ritmelli/` (`ritmelli.exe` and the `_internal/` folder). It doesn't include ffmpeg, ffprobe or
+Deno, so copy them to `dist/ritmelli/bin/` after every build (each build deletes that folder). These commands copy the
+audio-only ffmpeg and ffprobe that the installer ships (`instalador/ffmpeg/bin/`) and the Deno on your `PATH`. If you
+use Node instead of Deno, skip the last line: the executable then uses the Node on your `PATH`.
 
 ```powershell
-instalador\monta.ps1                              # gera instalador\saida\Ritmelli-<versão>-setup.exe
-instalador\monta.ps1 -Anterior <manifest.json>    # gera também a atualização parcial a partir daquela versão
+New-Item -ItemType Directory -Force dist\ritmelli\bin | Out-Null
+Copy-Item instalador\ffmpeg\bin\ffmpeg.exe, instalador\ffmpeg\bin\ffprobe.exe dist\ritmelli\bin\
+Copy-Item (Get-Command deno).Source dist\ritmelli\bin\
 ```
 
-- As versões das bibliotecas ficam fixadas em `instalador\travas.txt` (exceto o yt-dlp, que é sempre incluído na
-  versão mais recente, porque as mudanças do YouTube costumam quebrar as versões antigas).
-- O ffmpeg somente de áudio (`instalador\ffmpeg\`) e o bootloader do PyInstaller (`instalador\bootloader\`) são
-  compilados pela equipe: os scripts ficam ao lado dos executáveis, e o `FONTE.txt` de cada um informa a origem do
-  código-fonte e como ele foi compilado.
-- A atualização parcial (apenas o que mudou) é gerada pelo `instalador\atualizacao\parcial.py`, e o manifesto que o
-  aplicativo consulta, pelo `publica.py` da mesma pasta.
-- O instalador cria a tarefa "Ritmelli Atualiza" do Windows (`atualizador.py`), que é executada como SYSTEM no logon e
-  a cada 4 horas e instala a nova versão em segundo plano, sem pedido de permissão, quando o Ritmelli está fechado. Se
-  ele estiver aberto, a nova versão fica baixada e é instalada quando ele for fechado.
-- O pipeline `.github/workflows/monta.yml` faz o mesmo em uma máquina Windows do GitHub e testa o instalador, a
-  atualização parcial e a atualização automática em uma máquina limpa.
+Run `dist\ritmelli\ritmelli.exe` with an installed Ritmelli turned off: both use port 8799, as in step 4 of
+[Run](#run). The executable has no console window, so its logs go to `%LOCALAPPDATA%\Ritmelli\logs`, and
+`soundboard.ps1 stop` also closes it. Unlike `python ritmelli.py`, it handles usage data and error reports like the
+installed app, with no need for the `RITMELLI_METRICAS` variable.
 
-## Versões e código-fonte
+### Installer
 
-As versões publicadas ficam nas Releases do
-[ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases), de onde o aplicativo instalado baixa as
-atualizações. Cada versão tem neste repositório uma tag com o seu número (por exemplo, `v0.3.6`), com o código do
-aplicativo e do instalador daquela versão.
+`instalador/monta.ps1` builds the installer that is published in the releases: it builds the microphone filter,
+packages the app with `ritmelli.spec`, adds ffmpeg, ffprobe and Deno, and compiles `instalador/ritmelli.iss` with Inno
+Setup. It needs:
+
+- Windows and Visual Studio 2022 with the **Desktop development with C++** workload (see
+  [Requirements](#requirements)).
+- Python 3.12.10, the version the pipeline builds with. The script creates its own virtual environment in
+  `%LOCALAPPDATA%\ritmelli-build` (not in `.venv`) with the `python` on the `PATH`; if that is another version, create
+  the environment first with `py -3.12 -m venv "$env:LOCALAPPDATA\ritmelli-build"`, and the script reuses it.
+- Inno Setup 6 (`winget install -e --id JRSoftware.InnoSetup`).
+- An internet connection: the script downloads Deno and the PyInstaller source, checking their hashes.
+
+```powershell
+instalador\monta.ps1                              # builds instalador\saida\Ritmelli-<version>-setup.exe
+instalador\monta.ps1 -Anterior <manifest.json>    # also builds the partial update from that version
+```
+
+- `-Anterior` also needs that version's `manifest.json.sig` next to the manifest. Both are among the assets of each
+  release in [ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases/releases).
+- Library versions are pinned in `instalador/travas.txt`, except yt-dlp, which always ships at its latest version
+  because YouTube changes tend to break older ones.
+- The audio-only ffmpeg (`instalador/ffmpeg/`) and the PyInstaller bootloader (`instalador/bootloader/`) are built by
+  the team. Their build scripts sit next to the binaries, and each `FONTE.txt` says where the source came from and how
+  it was built.
+- The partial update (only what changed) is built by `instalador/atualizacao/parcial.py`, and the manifest the app
+  checks, by `publica.py` in the same folder.
+- The installer creates the "Ritmelli Atualiza" Windows task (`atualizador.py`), which runs as SYSTEM at logon and
+  every 4 hours and installs a new version in the background, with no permission prompt, while Ritmelli is closed. If
+  Ritmelli is open, the new version is downloaded right away and installed when Ritmelli closes.
+- The `.github/workflows/monta.yml` pipeline does the same on a GitHub-hosted Windows machine and tests the installer,
+  the partial update and the automatic update on a clean machine.
+
+## Project structure
+
+The code, its comments and the internal docs are in Brazilian Portuguese.
+
+| Path | What it is |
+| --- | --- |
+| `ritmelli.py` | the entry point (the same as the executable's): the server and the helper processes |
+| `janela.py` | the app's own window on the computer, through WebView2 (or the browser, if WebView2 isn't available) |
+| `ritmelli.spec` | the executable's configuration (PyInstaller) |
+| `soundboard.ps1` | starts, stops and checks Ritmelli from a terminal |
+| `server.py` | the aiohttp server: the API, the events (SSE), the queue, Play similar songs, search and download |
+| `engine.py` | the audio engine: mixing, the two decks and the transitions |
+| `batida.py`, `compasso.py`, `andamento.py` | beat analysis: the tempo and beat grid of each transition (`batida.py`), the downbeat (`compasso.py`) and each record's tempo, which orders Play similar songs (`andamento.py`) |
+| `sonoridade.py` | each song's loudness (EBU R128) and the automatic volume that plays songs at a similar level |
+| `fx.py` | the voice effects: each effect's settings and reference math (what you hear is processed in C++, by `microfone/apo/voz.h`) |
+| `versao.py` | the app version |
+| `atualizacao.py`, `atualizador.py` | new versions: what the interface shows, and the Windows task that downloads and installs updates |
+| `metricas.py` | anonymous usage data (PostHog) and error reports (Sentry), sent only after the user's choice in the installer or in the app; what is sent is listed in [PRIVACIDADE.md](PRIVACIDADE.md#ritmelli-privacy-policy) |
+| `i18n.py` | the interface texts in each language: reads the theme's `.properties` files, applies them to the page and builds the messages the server sends for the interface to translate |
+| `pastas.py` | where user data lives, and where the app finds ffmpeg, ffprobe and Deno |
+| `pareamento.py` | the phone pairing code and QR code, and the list of paired phones |
+| `yt_fora.py` | YouTube access (yt-dlp and ytmusicapi), in a separate process |
+| `yt_erros.py` | tells a video's own errors (unavailable, private, age-restricted) apart from a YouTube failure |
+| `winvol.py` | the microphone volume in Windows |
+| `microfone/` | the microphone filter: the source of the DLL Windows loads (`apo/`, with the effects engine in `voz.h`), the two-way channel to it (`injeta.py`: music goes in, your plain voice comes back), the preset that turns an effect from `fx.py` into the engine's steps (`preset.py`), the same engine in the app through `voz.dll` (`voz.py`) and the program that adds and removes the filter (`microfone.py`, run by the installer) |
+| `migra.py` | the rename from Vitrola to Ritmelli on computers that already had the app: Registry entries, Windows tasks and the old install folder |
+| `modelos/` | the beat detection model (`compasso.onnx`) and its license |
+| `themes/vitrola/` | the interface: the Vitrola theme, a 1970s stereo rack |
+| `gallery/` | the home page that lists the themes (`index.html`), with its texts in both languages (`i18n/`) |
+| `icone/` | the app icon (executable, installer, browser tab and phone), generated by `dev/icone.py` |
+| `dev/` | development tools: screenshots, layout checks, pixel-art generation and the tests |
+| `docs/` | the architecture notes (`ARQUITETURA.md`) and the images in this README |
+| `instalador/` | the installer: `monta.ps1`, `ritmelli.iss`, ffmpeg, bootloader, the partial update and the license texts |
+| `.github/workflows/monta.yml` | the pipeline that builds and tests the installer |
+
+How each part works is described in [docs/ARQUITETURA.md](docs/ARQUITETURA.md), and the contract between the server
+and the interface in [API.md](API.md) (both in Portuguese).
+
+## Contributing
+
+Bug reports and ideas are welcome in [Issues](https://github.com/ritmelli/ritmelli/issues), and code changes as
+[pull requests](https://github.com/ritmelli/ritmelli/pulls), in English or Portuguese (the code, its comments and the
+commit messages are in Brazilian Portuguese). To send a change, fork the repository, clone your fork instead of this
+one in [Run](#run), and open the pull request from a branch of your fork against `main`. Pull requests from outside
+the team are merged after a review by an organization member. Security problems go through the
+[security policy](https://github.com/ritmelli/ritmelli/security/policy), not through issues.
+
+Pull requests don't trigger the pipeline (a maintainer runs it by hand), so run its four pre-build checks yourself
+before you open one. They need only the Python standard library:
+
+```powershell
+python dev\testa_i18n.py       # the interface texts in both languages
+python dev\testa_metricas.py   # the anonymous usage data
+python dev\testa_migra.py      # the rename from Vitrola
+python dev\testa_mock.py       # the no-audio mode never touches real user data
+```
+
+If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server, with the welcome screen closed
+(see [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it
+checks has to pass, as it does on `main`.
+
+If you changed the audio engine, the server, the filter or the updates, also run the tests that cover your change.
+The description at the top of each file (in Portuguese) says exactly what it checks.
+
+- The audio engine (`engine.py`, `sonoridade.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
+  `dev/testa_congela.py` and `dev/testa_microfone.py`.
+- The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
+  `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
+- The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
+  `dev/testa_microfone.py`, `dev/testa_voz.py` and `microfone/apo/teste/teste_reamostra.py` (the filter's
+  resampler, `reamostra.h`).
+- The hook for the optional voice changer pedal (`pistavoz` in `fx.py`, `engine.py` and `server.py`; the contract is
+  in [API.md](API.md#pedal-de-troca-de-voz)): `dev/testa_pedal_voz.py`.
+- The updates (`atualizacao.py`, `atualizador.py`, `instalador/atualizacao/`): `dev/testa_atualizacao.py`,
+  `dev/testa_atualizador.py` and `instalador/atualizacao/testa_parcial.py` (the partial update and its manifest).
+
+They all run with the virtual environment active, some need ffmpeg, and `testa_filtro.py`, `testa_microfone.py`,
+`testa_voz.py` and `teste_reamostra.py` need the DLLs built by `microfone\apo\compila.bat teste` (with Ritmelli off,
+`--mock` included, since a running Ritmelli keeps `voz.dll` open).
+
+The beat analysis (`batida.py`, `compasso.py`, `andamento.py`), the window (`janela.py`), the microphone volume
+(`winvol.py`) and the phone pairing (`pareamento.py`, apart from the old Vitrola cookie that `testa_migra.py` checks)
+have no test of their own yet: if you change them, say in the pull request how you checked the change.
+
+To change a voice effect, edit its settings in `fx.py`; `microfone/preset.py` turns them into the preset that the C++
+engine (`microfone/apo/voz.h`) runs. A new kind of processing step also needs code in `voz.h`, and
+`dev/testa_voz.py` checks that the two match.
+
+The installed app doesn't use the ffmpeg on your `PATH`: it ships an audio-only build (`instalador/ffmpeg/bin/`) with
+only the formats, codecs and filters enabled in the `config` list of `instalador/ffmpeg/compila.sh`. If your change
+makes Ritmelli call ffmpeg with anything outside that list (a new `-af` filter, for example), add it there and say
+so in the pull request, so the team rebuilds the binaries. To try your change with that build, copy its
+`ffmpeg.exe` and `ffprobe.exe` to a `bin/` folder at the repository root, which Ritmelli checks before the `PATH`
+(if your own ffmpeg is already in `bin/`, move it out first). While they're there, every run from the code uses them,
+the tests included, so delete them when you're done.
+
+## Releases
+
+Published versions are in the releases of
+[ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases), which is also where the installed app
+gets its updates. Every release after 0.4.1 has the installer under two names: `Ritmelli-<version>-setup.exe` and
+`Ritmelli-setup.exe`. The second name never changes, so the download links in this README always get the latest
+version. Each version is tagged in this repository with its number (for example, `v0.3.6`), so you can find the app
+and installer code of any release.
 
 ## Code signing policy
 
 Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
 [SignPath Foundation](https://signpath.org/).
 
-Política de assinatura de código do Ritmelli. Até que a SignPath Foundation aprove o projeto, as versões são
-publicadas sem assinatura.
+Until the SignPath Foundation approves the project, versions are published unsigned.
 
-- **Desenvolvimento e revisão:** os [membros da organização](https://github.com/orgs/ritmelli/people). Contribuições
-  de pessoas de fora da equipe só são incorporadas após a revisão de um membro.
-- **Aprovação de cada assinatura:** os
-  [proprietários da organização](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
-- **O que é assinado:** o `ritmelli.exe`, o instalador e a atualização parcial, gerados pelo pipeline deste repositório
-  (`.github/workflows/monta.yml`) em uma máquina do GitHub, a partir deste código. O Deno é incluído no instalador
-  exatamente como o projeto dele o distribui, e o ffmpeg e o ffprobe são compilados pela equipe somente com os recursos
-  de áudio (`instalador\ffmpeg\`); nenhum dos três leva a assinatura do Ritmelli.
+- **Committers and reviewers:** the [organization members](https://github.com/orgs/ritmelli/people). Contributions from
+  outside the team are merged only after a member's review.
+- **Approvers:** the [organization owners](https://github.com/orgs/ritmelli/people?query=role%3Aowner) approve each
+  signing.
+- **Privacy policy:** [PRIVACIDADE.md](PRIVACIDADE.md#ritmelli-privacy-policy), summarized in [Privacy](#privacy)
+  along with the link to Google's privacy policy for YouTube and YouTube Music. The installer shows the main points
+  and lets you turn off usage data and error reports.
+- **What is signed:** `ritmelli.exe`, the installer and the partial update, built from this code by this repository's
+  pipeline (`.github/workflows/monta.yml`) on a GitHub-hosted machine. Deno ships in the installer exactly as its
+  project distributes it, and ffmpeg and ffprobe are built by the team with audio features only
+  (`instalador/ffmpeg/`); none of the three carries Ritmelli's signature.
 
-Committers and reviewers: [members](https://github.com/orgs/ritmelli/people). Approvers:
-[owners](https://github.com/orgs/ritmelli/people?query=role%3Aowner).
+## License
 
-## Privacidade
+Ritmelli is licensed under the [GNU General Public License v3.0](LICENSE).
 
-A busca, a reprodução e o download de músicas acessam o YouTube e o YouTube Music, a seu pedido. O Ritmelli consulta no
-GitHub o manifesto público das versões e, se houver uma nova versão, baixa a atualização, sem enviar nenhum dado seu. O
-celular conectado se comunica diretamente com o computador, na sua rede. Se você permitir, o Ritmelli envia dados
-anônimos de uso e relatórios de erro (`metricas.py`), sem nome, músicas, buscas ou voz. O que é enviado, para onde e
-como desativar o envio estão descritos na [política de privacidade](PRIVACIDADE.md), que também é exibida durante a
-instalação.
-
-Privacy policy: [PRIVACIDADE.md](PRIVACIDADE.md#ritmelli-privacy-policy). It is shown during installation and describes
-the anonymous usage data and error reports, which can be turned off in the installer and in the app.
-
-## Estrutura
-
-| Arquivo | Descrição |
-| --- | --- |
-| `ritmelli.py` | o ponto de entrada (o mesmo do executável): o servidor e os processos auxiliares |
-| `janela.py` | a janela própria do aplicativo no computador, pelo WebView2 (sem ele, o navegador) |
-| `ritmelli.spec` | a configuração do executável (PyInstaller) |
-| `server.py` | o servidor aiohttp: a API, os eventos (SSE), a fila, o modo Automático, a busca e o download |
-| `engine.py` | o motor de áudio: a mixagem, os dois decks e as transições de DJ |
-| `batida.py`, `compasso.py`, `andamento.py` | o andamento, a grade de batidas e o primeiro tempo do compasso |
-| `fx.py` | os efeitos de voz |
-| `versao.py` | a versão do aplicativo |
-| `atualizacao.py`, `atualizador.py` | as novas versões: o que a interface exibe e a tarefa do Windows que baixa e instala as atualizações |
-| `metricas.py` | os dados anônimos de uso (PostHog) e os relatórios de erro (Sentry), enviados somente com a permissão do usuário: a lista do que é enviado e a política estão no [PRIVACIDADE.md](PRIVACIDADE.md) |
-| `i18n.py` | os textos da interface em cada idioma: lê os `.properties` do tema e os aplica à página, e monta as mensagens que o servidor envia para a interface traduzir |
-| `pastas.py` | onde ficam os dados do usuário e onde o aplicativo localiza o ffmpeg, o ffprobe e o Deno |
-| `pareamento.py` | o código e o QR code do celular e a lista de celulares conectados |
-| `yt_fora.py` | o acesso ao YouTube (yt-dlp e ytmusicapi), em um processo separado |
-| `winvol.py` | o volume do microfone no Windows |
-| `microfone/` | o filtro de microfone: a DLL que o Windows carrega (`apo/`), o canal de comunicação com ela nos dois sentidos (`injeta.py`: a música vai, a voz original volta) e o programa que adiciona e remove o filtro (`microfone.py`, executado pelo instalador) |
-| `migra.py` | a troca de nome de Vitrola para Ritmelli no computador de quem já tinha o aplicativo: as entradas no Registro, as tarefas do Windows e a pasta de instalação de antes |
-| `themes/vitrola/` | a interface: o tema Vitrola, um aparelho de som dos anos 70 |
-| `gallery/` | a página inicial, que lista os temas (`index.html`), com os textos nos dois idiomas (`i18n/`) |
-| `icone/` | o ícone do aplicativo (executável, instalador, aba do navegador e celular), gerado pelo `dev/icone.py` |
-| `dev/` | as ferramentas de desenvolvimento: as capturas de tela, as medições no celular e a geração do pixel art |
-| `instalador/` | o instalador: `monta.ps1`, `ritmelli.iss`, ffmpeg, bootloader, a atualização parcial e os textos de licença |
-| `.github/workflows/monta.yml` | o pipeline que monta e testa o instalador |
-
-O funcionamento de cada componente está descrito em [docs/ARQUITETURA.md](docs/ARQUITETURA.md), e o contrato entre o
-servidor e a interface, em [API.md](API.md).
-
-## Licença
-
-[GPLv3](LICENSE). As fontes da interface estão sob a licença SIL OFL 1.1 (`themes/vitrola/fonts/`), e o modelo de
-detecção de batidas (`modelos/compasso.onnx`, exportado do beat_this) está sob a licença MIT
-(`modelos/LICENSE-beat_this.txt`).
+- The interface fonts are under the SIL Open Font License 1.1 (`themes/vitrola/fonts/`).
+- The beat detection model (`modelos/compasso.onnx`, exported from beat_this) is under the MIT license
+  (`modelos/LICENSE-beat_this.txt`).
+- The installed app includes `TERCEIROS.txt` with the licenses of everything that ships with it (Python and its
+  libraries, the PyInstaller bootloader, the interface fonts, the beat detection model, ffmpeg, Deno and the WebView2
+  SDK), generated by `instalador/terceiros.py`.
