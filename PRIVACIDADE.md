@@ -4,11 +4,11 @@
 
 O Ritmelli é executado no seu computador. Ele acessa a internet em quatro situações: quando você busca, ouve ou baixa
 músicas do YouTube e do YouTube Music; quando ele procura e mostra as capas dos discos (para cada disco da prateleira,
-ele busca a mesma faixa no YouTube Music pelo título, e as capas vêm dos servidores de imagens do YouTube e do YouTube
-Music); quando ele consulta no GitHub o manifesto público das versões e, se houver uma nova versão, baixa a atualização,
-sem enviar nenhum dado seu; e, se você permitir, quando ele envia **dados anônimos de uso e relatórios de erro**,
-conforme descrito abaixo. O YouTube e o YouTube Music são serviços do Google, sujeitos à [política de privacidade do
-Google](https://policies.google.com/privacy?hl=pt-BR).
+ele busca a mesma faixa no YouTube Music pelo título, com o nome do canal na frente quando o título não o traz, e as
+capas vêm dos servidores de imagens do YouTube e do YouTube Music); quando ele consulta no GitHub o manifesto público
+das versões e, se houver uma nova versão, baixa a atualização, sem enviar nenhum dado seu; e, se você permitir, quando
+ele envia **dados anônimos de uso e relatórios de erro**, conforme descrito abaixo. O YouTube e o YouTube Music são
+serviços do Google, sujeitos à [política de privacidade do Google](https://policies.google.com/privacy?hl=pt-BR).
 
 ## Dados de uso e relatórios de erro
 
@@ -57,11 +57,11 @@ instalação (informando o código dela, que está no arquivo `%LOCALAPPDATA%\Ri
 
 Ritmelli runs on your computer. It connects to the internet in four situations: when you search for, listen to, or
 download music from YouTube and YouTube Music; when it finds and shows record covers (for each record on the shelf, it
-looks up the same track on YouTube Music by its title, and the covers come from the image servers of YouTube and YouTube
-Music); when it checks the public release manifest on GitHub and, if there is a new version, downloads the update,
-without sending any of your data; and, if you allow it, when it sends **anonymous usage data and error reports**, as
-described below. YouTube and YouTube Music are Google services, covered by [Google's privacy
-policy](https://policies.google.com/privacy).
+looks up the same track on YouTube Music by its title, with the channel name in front when the title doesn't include it,
+and the covers come from the image servers of YouTube and YouTube Music); when it checks the public release manifest on
+GitHub and, if there is a new version, downloads the update, without sending any of your data; and, if you allow it,
+when it sends **anonymous usage data and error reports**, as described below. YouTube and YouTube Music are Google
+services, covered by [Google's privacy policy](https://policies.google.com/privacy).
 
 ## Usage data and error reports
 
