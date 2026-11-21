@@ -4,7 +4,8 @@
 // microfone.py poe o nosso nas vagas EFX e LFX daquele microfone e guarda o original). A cada bloco de audio do
 // microfone (~10 ms), o APOProcess soma o que o app deixou no anel (anel.h): quem ouve aquele microfone (jogo, Discord)
 // recebe a voz e a musica juntas. Com um efeito de voz que o filtro roda (voz.h, preset escrito pelo app no anel), a
-// voz passa pela cadeia ali mesmo, no bloco, sem ir ao app e voltar.
+// voz passa pela cadeia ali mesmo, no bloco, sem ir ao app e voltar. A voz que so um processo do app sabe converter
+// volta pela pista da voz do anel e entra no lugar da voz do microfone, no ponto em que a musica e somada.
 //
 // Escrito a partir da documentacao publica da Microsoft (Audio Processing Objects, CBaseAudioProcessingObject).
 #include <windows.h>
@@ -317,6 +318,8 @@ struct LeitorDoAnel {
     uint32_t m_ep = 0;  // o hash do microfone desta instancia (Initialize); 0 = nao deu para saber
     float m_taxa = (float)MICFX_TAXA;
     Reamostra m_rs;
+    Reamostra m_rs_pista;  // a leitura da pista da voz, na taxa do microfone
+    bool m_pista = false;  // esta instancia esta lendo a pista (a posicao dela vale)
     const uint32_t m_id = NovoId();  // quem e esta instancia nas posses (voz_dono, fx_dono)
     // o efeito de voz (PreparaEfeito separa a memoria; LePreset monta a cadeia)
     uint8_t* m_mem = nullptr;
@@ -365,6 +368,7 @@ struct LeitorDoAnel {
             if (livre && InterlockedCompareExchange((volatile LONG*)&l.dono, (LONG)m_dono, (LONG)atual) == (LONG)atual) {
                 m_rs.Comeca(m_anel->escrito);  // so o que chegar daqui pra frente
                 l.lido = m_rs.MaisVelho();
+                m_anel->pista_lido[v] = -1;  // a vaga nova nao herda a leitura da antiga: ainda nao le a pista
                 l.batida = agora;
                 l.taxa = (uint32_t)m_taxa;
                 l.ep = m_ep;
@@ -437,6 +441,70 @@ struct LeitorDoAnel {
             ZeroMemory(&destino[gerados * canais], (quadros - gerados) * canais * sizeof(float));
         }
         return gerados > 0;
+    }
+
+    // Tempo real, so no alvo: a pista da voz (anel.h). Com ela ligada e o escritor batendo, o que havia em destino (a
+    // voz do microfone, com ou sem efeito) sai e entra a voz que o processo do app converteu; o que faltar no bloco e
+    // silencio: um atraso do escritor nao deixa a voz do microfone vazar. True se a pista mandou no bloco
+    bool PistaDaVoz(float* destino, UINT32 quadros, UINT32 canais, int64_t agora) {
+        MicFxAnel* a = m_anel;
+        if (a->pista_ligada == 0 || agora - a->pista_batida >= (int64_t)MICFX_PISTA_MS) {
+            if (m_pista && m_vaga >= 0) {
+                a->pista_lido[m_vaga] = -1;
+            }
+            m_pista = false;
+            return false;
+        }
+        const int64_t escrito = a->pista_escrito;
+        MemoryBarrier();  // os dados ate 'escrito' ja estao na memoria
+        if (!m_pista) {
+            // De onde comecar: de onde o escritor ligou (a folga que ele escreveu em seguida toca inteira); com outra
+            // cadeia do microfone ja lendo a pista, junto da mais atrasada delas (a mesma folga). Marca velha demais
+            // (ligada ha tempo e ninguem lendo): so o que chegar daqui pra frente
+            int64_t ini = a->pista_inicio;
+            int64_t outra = -1;
+            for (uint32_t v = 0; v < MICFX_LEITORES; v++) {
+                const MicFxLeitor& l = a->leitor[v];
+                const int64_t lido = a->pista_lido[v];
+                if ((int)v != m_vaga && l.dono != 0 && lido >= 0 && agora - l.batida <= (int64_t)MICFX_BATIDA_MS &&
+                    (outra < 0 || lido < outra)) {
+                    outra = lido;
+                }
+            }
+            if (outra >= 0) {
+                ini = outra;
+            }
+            if (ini > escrito || escrito - ini > (int64_t)(MICFX_PISTA_QUADROS / 2)) {
+                ini = escrito;
+            }
+            m_rs_pista.Comeca(ini);
+            m_pista = true;
+        } else {
+            const int64_t velho = m_rs_pista.MaisVelho();
+            if (escrito - velho > (int64_t)MICFX_PISTA_QUADROS || escrito < velho) {
+                m_rs_pista.Comeca(escrito);  // o filtro ficou pra tras (nao devia): pula pro mais novo
+            }
+        }
+        const uint32_t gerados = m_rs_pista.Gera(a->pista, MICFX_PISTA_QUADROS - 1, escrito, quadros,
+                                                 [&](uint32_t i, float esq, float dir) {
+            float* o = &destino[i * canais];
+            if (canais == 1) {
+                o[0] = Dobra(0.5f * (Finito(esq) + Finito(dir)));
+            } else {
+                o[0] = Dobra(esq);
+                o[1] = Dobra(dir);
+                for (UINT32 c = 2; c < canais; c++) {
+                    o[c] = 0.0f;
+                }
+            }
+        });
+        if (m_vaga >= 0) {
+            a->pista_lido[m_vaga] = m_rs_pista.MaisVelho();
+        }
+        if (gerados < quadros) {
+            ZeroMemory(&destino[gerados * canais], (quadros - gerados) * canais * sizeof(float));
+        }
+        return true;
     }
 
     // A posse de um papel no anel, a voz crua (voz_dono) ou a voz com efeito e a resposta ao preset (fx_dono): com o
@@ -715,6 +783,8 @@ public:
             m_taxa = f.fFramesPerSecond;
         }
         m_rs.Prepara((uint32_t)(m_taxa + 0.5f));
+        m_rs_pista.Prepara((uint32_t)(m_taxa + 0.5f));
+        m_pista = false;
         PreparaEfeito();
         PegaAnel();
         if (m_anel && (m_so_voz || !NoAlvo())) {
@@ -769,9 +839,13 @@ private:
         }
         const uint32_t alvo = a->alvo;
         if (alvo == 0 || (m_ep != 0 && alvo != m_ep)) {  // microfone sem o hash (m_ep 0): age como o alvo
+            if (m_pista && m_anel && m_vaga >= 0) {
+                m_anel->pista_lido[m_vaga] = -1;
+            }
             SoltaVaga();
             SoltaPosses();
             EsqueceEfeito();
+            m_pista = false;
             return false;
         }
         const int64_t agora = (int64_t)GetTickCount64();
@@ -791,7 +865,9 @@ private:
             return false;
         }
         const bool fx = Efeito(a, destino, quadros, m_canais, app_vivo, Pega(&a->fx_dono, &a->fx_batida, agora));
-        return SomaDoAnel(destino, quadros, m_canais, agora) || fx;
+        // a pista da voz no lugar da voz do microfone; a musica soma por cima (e a voz cortada pelo app corta as duas)
+        const bool pista = PistaDaVoz(destino, quadros, m_canais, agora);
+        return SomaDoAnel(destino, quadros, m_canais, agora) || fx || pista;
     }
 
     // A voz crua do microfone para o app, mono e na taxa dele (o app reamostra): so o dono da voz escreve
@@ -1009,6 +1085,8 @@ public:
             m_musica = f.guidFormatType == FORMATO_FLOAT && f.dwBytesPerSampleContainer == 4;
         }
         m_rs.Prepara((uint32_t)(m_taxa + 0.5f));
+        m_rs_pista.Prepara((uint32_t)(m_taxa + 0.5f));
+        m_pista = false;
         PreparaEfeito();
         PegaAnel();
         if (m_anel && !NoAlvo()) {
@@ -1034,9 +1112,13 @@ public:
             return;
         }
         if (!NoAlvo()) {
+            if (m_pista && m_anel && m_vaga >= 0) {
+                m_anel->pista_lido[m_vaga] = -1;
+            }
             SoltaVaga();
             SoltaPosses();
             EsqueceEfeito();
+            m_pista = false;
             return;
         }
         APO_CONNECTION_PROPERTY* out = ppOut[0];
@@ -1054,6 +1136,7 @@ public:
         const int64_t agora = (int64_t)GetTickCount64();
         const bool app_vivo = agora - a->batida_app < (int64_t)MICFX_APP_MS;
         bool som = Efeito(a, destino, quadros, m_canais, app_vivo, Pega(&a->fx_dono, &a->fx_batida, agora));
+        som = PistaDaVoz(destino, quadros, m_canais, agora) || som;  // no lugar do que saiu do fabricante
         if (a->sem_voz != 0 && app_vivo) {  // a voz cortada: depois do efeito, que segue voltando ao app em voz_fx
             ZeroMemory(destino, amostras * sizeof(float));
         }

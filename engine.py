@@ -43,6 +43,11 @@ WASAPI = sd.WasapiSettings(auto_convert=True)
 BLOCK = 480  # 10 ms
 AHEAD = 200  # blocos decodificados adiante (~2 s)
 MIC_MAX = 8  # nunca mais de ~80 ms de atraso na voz
+# a voz da pista chega em rajadas do tamanho do bloco do conversor (80 ms no modo de 380 ms), e a conta varia de bloco a
+# bloco: com o teto de 8 a fila do fone ou secava ou jogava pedaco fora em ~14% dos blocos de 10 ms (o estalo forte do
+# "ouvir a propria voz" no teste de 16/11). O fone dela guarda ate PISTA_MAX e, quando seca, so volta com PISTA_ENCHE
+PISTA_MAX = 32   # 320 ms
+PISTA_ENCHE = 12  # 120 ms
 DECAY = 0.85  # queda do medidor por bloco de 10 ms
 SOBRE_MAX = 8  # sons por cima tocando juntos (o mais antigo sai)
 SOBRE_CACHE = 24  # sons por cima decodificados guardados (buzina repetida sai na hora)
@@ -981,6 +986,7 @@ class Injetor:
         self._seca_dita = -1e9
         self._para48k_fx = _Para48k()  # a voz com efeito que o filtro devolve tem a sua
         self._resto_fx = np.zeros(0, np.float32)
+        self._resto_pista = np.zeros(0, np.float32)  # e a voz da pista (ja a 48 kHz)
         self._preset = None      # (efeito, taxa, geracao) do preset escrito no anel: o reload (preset.esquece) reenvia
         self._preset_seq = 0     # o seq dele, que o filtro devolve quando le
         self._preset_ok = False  # o efeito tem preset (o filtro roda)
@@ -1060,6 +1066,7 @@ class Injetor:
     def _solta_efeito(self):
         self.efeito_no_filtro = False
         self.motor._fx_filtro = self.motor._fx_pendente = False  # noqa: SLF001
+        self.motor._pista_viva = False  # noqa: SLF001
         self._preset = None
 
     def _voz(self, m):
@@ -1072,6 +1079,19 @@ class Injetor:
             for k in range(0, n, BLOCK):
                 self.motor._push_voz_fx(y[k:k + BLOCK])  # noqa: SLF001
             self._resto_fx = y[n:]
+        # a pista da voz no comando (um processo converte a voz e o filtro poe no lugar da do microfone): o fone e o
+        # medidor levam a voz dela, que e o que o jogo ouve, e nao a crua
+        p = m.pista_le()  # sempre le: a posicao anda junto com o escritor
+        viva = m.pista_viva()
+        self.motor._pista_viva = viva  # noqa: SLF001
+        if viva and len(p):
+            p = np.concatenate([self._resto_pista, p])
+            n = len(p) // BLOCK * BLOCK
+            for k in range(0, n, BLOCK):
+                self.motor._push_voz_fx(p[k:k + BLOCK])  # noqa: SLF001
+            self._resto_pista = p[n:]
+        elif not viva:
+            self._resto_pista = self._resto_pista[:0]
         x, taxa = m.voz()
         if not len(x):
             return
@@ -1162,6 +1182,8 @@ class Engine:
         self._fx_falta_dito = False  # o aviso de efeito sem o voz.dll ja saiu para o efeito escolhido
         self._fx_filtro = False    # o filtro do microfone roda o efeito (o Injetor marca): a voz nao passa pelo app
         self._fx_pendente = False  # o preset foi pro filtro e ele ainda nao respondeu: a voz crua segue
+        self._pista_viva = False   # a pista da voz do anel esta no comando (o Injetor marca): o fone leva a voz dela
+        self._pista_enche = True   # a fila do fone da pista secou: espera PISTA_ENCHE antes de voltar a tocar
         if not voz.disponivel():  # o app sobe igual: o efeito segue no filtro, e so a voz que sairia daqui vai crua
             print(f"voice effect: no voz.dll ({voz.caminho()}); the effect only runs in the microphone filter",
                   file=sys.stderr, flush=True)
@@ -1564,8 +1586,8 @@ class Engine:
         # (o notebook do bot) o mic nao e a voz de ninguem no mapa, e ela ouvia quem estava do lado do notebook (03/11)
         if mi is not None and not self.mic_mute:
             mi.microfone(x)
-        if self._fx_filtro:
-            return  # o efeito roda no filtro: a voz com efeito chega pelo _push_voz_fx
+        if self._fx_filtro or self._pista_viva:
+            return  # o efeito roda no filtro (ou a voz vem da pista): a que o jogo ouve chega pelo _push_voz_fx
         f = self._fx
         if f is not None:
             try:
@@ -1585,9 +1607,11 @@ class Engine:
             self._mic.popleft()
 
     def _push_voz_fx(self, x):
-        """A voz com efeito que o filtro do microfone devolveu: o fone (ouvir a propria voz) e o medidor."""
+        """A voz com efeito que o filtro do microfone devolveu, ou a da pista da voz: o fone (ouvir a propria voz) e o
+        medidor."""
         self._mic.append(x)
-        while len(self._mic) > MIC_MAX:
+        teto = PISTA_MAX if self._pista_viva else MIC_MAX
+        while len(self._mic) > teto:
             self._mic.popleft()
 
     def set_effect(self, effect_id):
@@ -1885,7 +1909,13 @@ class Engine:
         fone = None  # o que vai pro fone de quem toca: o som e, se pedido, a propria voz
         if som is not None and com_fone:
             fone = som * self.mon_vol
-        if self._mic:
+        if not self._pista_viva:
+            self._pista_enche = True
+        elif not self._mic:
+            self._pista_enche = True
+        elif self._pista_enche and len(self._mic) >= PISTA_ENCHE:
+            self._pista_enche = False
+        if self._mic and not (self._pista_viva and self._pista_enche):
             m = self._mic.popleft()  # o nivel da voz e o do Windows (winvol)
             self._meter("mic", m)
             n = min(len(m), frames)

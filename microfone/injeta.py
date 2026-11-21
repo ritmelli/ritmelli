@@ -8,7 +8,9 @@ escolhido ("{a1b2c3d4-...}", o nome da chave dele no registro). Ali ele soma o q
 de na_fila) e devolve a voz crua do microfone (voz). O anel so existe com algum microfone com o filtro em uso (o
 proprio app abrindo o microfone conta); sem ele, Microfone() levanta SemFiltro. O efeito de voz que o filtro roda vai
 pelo preset (microfone/preset.py, escrito com seqlock); a resposta do filtro sai em preset_estado e a voz com efeito
-volta em voz_fx.
+volta em voz_fx. A voz convertida fora do filtro (por um processo que le a voz crua e devolve outra) entra pela
+pista da voz: pista_liga, pista_escreve e pista_pulso; o filtro poe ela no lugar da voz do microfone enquanto o
+escritor bate.
 """
 import ctypes
 import os
@@ -19,10 +21,11 @@ from ctypes import wintypes
 
 import numpy as np
 
-MAPA = os.environ.get("MICFX_MAPA", "Global\\RitmelliMicFx4")
-MAGIA, VERSAO, TAXA, CANAIS, QUADROS, LEITORES, BATIDA_MS = 0x58464D52, 4, 48000, 2, 32768, 8, 500
+MAPA = os.environ.get("MICFX_MAPA", "Global\\RitmelliMicFx5")
+MAGIA, VERSAO, TAXA, CANAIS, QUADROS, LEITORES, BATIDA_MS = 0x58464D52, 5, 48000, 2, 32768, 8, 500
 VOZ_QUADROS = 16384
 PRESET_BYTES = 65536
+PISTA_QUADROS, PISTA_MS = 16384, 1000
 
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 k32.OpenFileMappingW.restype = wintypes.HANDLE
@@ -51,7 +54,10 @@ class Anel(ctypes.Structure):
                 ("preset_feito", ctypes.c_uint32), ("preset_erro", ctypes.c_uint32),
                 ("voz_fx", ctypes.c_float * VOZ_QUADROS), ("preset", ctypes.c_uint8 * PRESET_BYTES),
                 ("voz_dono", ctypes.c_uint32), ("fx_dono", ctypes.c_uint32), ("voz_batida", ctypes.c_int64),
-                ("fx_batida", ctypes.c_int64)]
+                ("fx_batida", ctypes.c_int64),
+                ("pista_ligada", ctypes.c_uint32), ("pista_reservado", ctypes.c_uint32),
+                ("pista_escrito", ctypes.c_int64), ("pista_batida", ctypes.c_int64), ("pista_inicio", ctypes.c_int64),
+                ("pista_lido", ctypes.c_int64 * LEITORES), ("pista", ctypes.c_float * (PISTA_QUADROS * CANAIS))]
 
 
 assert ctypes.sizeof(Leitor) == 32 and Anel.escrito.offset == 24 and Anel.batida_app.offset == 40
@@ -61,6 +67,9 @@ assert Anel.fx_escrito.offset == 328000 and Anel.preset_seq.offset == 328008 and
 assert Anel.preset.offset == 328024 + VOZ_QUADROS * 4
 assert Anel.voz_dono.offset == 459096 and Anel.fx_dono.offset == 459100
 assert Anel.voz_batida.offset == 459104 and Anel.fx_batida.offset == 459112
+assert Anel.pista_ligada.offset == 459120 and Anel.pista_escrito.offset == 459128 and Anel.pista_batida.offset == 459136
+assert Anel.pista_inicio.offset == 459144 and Anel.pista_lido.offset == 459152 and Anel.pista.offset == 459216
+assert ctypes.sizeof(Anel) == 459216 + PISTA_QUADROS * CANAIS * 4
 
 
 def hash_microfone(guid):
@@ -91,8 +100,10 @@ class Microfone:
         self.dados = np.ctypeslib.as_array(self.a.dados).reshape(QUADROS, CANAIS)
         self._voz = np.ctypeslib.as_array(self.a.voz)
         self._voz_fx = np.ctypeslib.as_array(self.a.voz_fx)
+        self._pista = np.ctypeslib.as_array(self.a.pista).reshape(PISTA_QUADROS, CANAIS)
         self.voz_pos = None  # ate onde o app leu a voz crua (comeca no que chegar depois de abrir)
         self.fx_pos = None   # e a voz com efeito
+        self.pista_pos = None  # e a voz da pista (o app le o que o processo da voz escreveu, para o fone)
 
     def alvo(self, h):
         """O microfone em que o filtro age (hash_microfone do GUID dele; 0 = nenhum)."""
@@ -175,6 +186,63 @@ class Microfone:
         self.a.batida_app = k32.GetTickCount64()
         self.a.sem_voz = 1 if sem_voz else 0
 
+    def pista_liga(self, ligada=True):
+        """A pista da voz: ligada, o filtro do alvo tira a voz do microfone e poe o que vier por pista_escreve (a voz
+        convertida fora do filtro), enquanto o escritor bate; sem bater por PISTA_MS, a voz do microfone volta.
+        Desligada, a voz do microfone volta na hora. A leitura comeca do que for escrito a partir daqui: quem quer
+        folga escreve um pouco de silencio logo depois de ligar, antes da voz."""
+        self.a.pista_batida = k32.GetTickCount64()
+        if ligada and not self.a.pista_ligada:
+            self.a.pista_inicio = self.a.pista_escrito  # antes de ligar: o filtro so le a marca com a pista ligada
+        self.a.pista_ligada = 1 if ligada else 0
+
+    def pista_pulso(self):
+        """O escritor da pista esta vivo (chamar a cada volta, mesmo sem ter o que escrever)."""
+        self.a.pista_batida = k32.GetTickCount64()
+
+    def pista_escreve(self, x):
+        """Escreve x inteiro (float32 mono, ou quadros x 2, a 48 kHz) na pista da voz e devolve quantos quadros foram.
+        Nao espera leitor: voz e ao vivo, e o filtro que ficar para tras pula para o mais novo."""
+        x = np.ascontiguousarray(x, dtype=np.float32)
+        if x.ndim == 1:
+            x = np.repeat(x[:, None], 2, axis=1)
+        x = x[-PISTA_QUADROS:]
+        n = len(x)
+        if n:
+            ini = self.a.pista_escrito % PISTA_QUADROS
+            a = min(n, PISTA_QUADROS - ini)
+            self._pista[ini:ini + a] = x[:a]
+            if n > a:
+                self._pista[:n - a] = x[a:]
+        self.a.pista_batida = k32.GetTickCount64()
+        self.a.pista_escrito += n  # depois dos dados: o filtro so le ate aqui
+        return n
+
+    def pista_viva(self):
+        """A pista da voz esta no comando: ligada e com o escritor batendo (o filtro poe a voz dela no lugar da do
+        microfone)."""
+        return bool(self.a.pista_ligada) and k32.GetTickCount64() - self.a.pista_batida < PISTA_MS
+
+    def pista_le(self):
+        """A voz da pista escrita desde a ultima leitura (float32 mono, 48 kHz): o que o jogo ouve no lugar da voz do
+        microfone, para o fone e o medidor do app. Ficou para tras mais que a pista: pula para o mais novo."""
+        fim = self.a.pista_escrito
+        if self.pista_pos is None or fim - self.pista_pos > PISTA_QUADROS or fim < self.pista_pos:
+            self.pista_pos = fim
+        n = fim - self.pista_pos
+        if n <= 0:
+            return np.zeros(0, np.float32)
+        x = self._pista[np.arange(self.pista_pos, fim) % PISTA_QUADROS].mean(axis=1).astype(np.float32)
+        self.pista_pos = fim
+        return x
+
+    def pista_na_fila(self):
+        """Quadros da pista que o filtro mais atrasado do alvo ainda nao leu (0 sem leitor vivo): a folga da voz."""
+        agora, alvo = k32.GetTickCount64(), self.a.alvo
+        lidos = [self.a.pista_lido[i] for i, l in enumerate(self.a.leitor)
+                 if l.dono and agora - l.batida <= BATIDA_MS and l.ep in (alvo, 0) and self.a.pista_lido[i] >= 0]
+        return max(0, self.a.pista_escrito - min(lidos)) if lidos else 0
+
     def toca(self, x, folga_ms=30, parar=None, cauda_ms=10):
         """Toca o clipe x no ritmo do microfone alvo, mantendo ~folga_ms escritos a frente do leitor mais atrasado.
         Fecha com cauda_ms de silencio: o filtro de um microfone que nao roda a 48 kHz so solta a ultima amostra
@@ -238,7 +306,8 @@ if __name__ == "__main__":
     if sys.argv[1] == "estado":
         m = Microfone()
         print(f"ring ok: written {m.a.escrito}, target {m.a.alvo:#010x}, no_voice {m.a.sem_voz}, voice {m.a.voz_escrito} "
-              f"at {m.a.voz_taxa} Hz")
+              f"at {m.a.voz_taxa} Hz, voice track {'on' if m.a.pista_ligada else 'off'} "
+              f"({m.a.pista_escrito} written, heartbeat {k32.GetTickCount64() - m.a.pista_batida} ms ago)")
         for i, l in enumerate(m.a.leitor):
             if l.dono:
                 print(f"  slot {i}: owner {l.dono:#x}, microphone {l.ep:#010x}, rate {l.taxa}, read {l.lido}, heartbeat "

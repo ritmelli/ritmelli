@@ -62,7 +62,16 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   programas, o Windows pode montar duas cadeias, cada uma com a sua instância do filtro: as duas
   põem o efeito e a música no próprio som, mas só uma escreve a voz crua e só uma escreve a com
   efeito que voltam ao app; quando a dona fecha, sai do alvo ou fica 500 ms sem bloco, a outra
-  assume (#70). Microfone de notebook com
+  assume (#70). A voz que o filtro não tem como converter no bloco dele (a de um modelo que roda
+  na placa de vídeo, num processo à parte) volta pela pista da voz do anel: esse processo lê a voz crua
+  como o app, converte e escreve na pista (`pista_liga`, `pista_escreve` e `pista_pulso` do `injeta.py`),
+  e o filtro põe ela no lugar da voz do microfone no mesmo ponto em que soma a música. A pista tem
+  escritor e folga só dela: a voz não paga os ~30 ms de folga que o misturador da música precisa, e o
+  app segue sendo o único que escreve a música. Sem dado, o bloco sai em silêncio (a voz do microfone
+  não vaza por um atraso do escritor); escritor que para de bater por 1 s, ou pista desligada, devolvem
+  a voz do microfone; a voz cortada no app corta a da pista também. O app lê a pista para o fone
+  (ouvir a própria voz) e o medidor, com uma fila própria (`PISTA_MAX` e `PISTA_ENCHE` no `engine.py`):
+  a voz convertida chega em rajadas do tamanho do bloco do conversor. Microfone de notebook com
   cancelamento de eco e redutor de ruído do fabricante no MFX (o da Fortemedia, #49) apagaria a
   música somada no EFX como ruído, e o Windows só aceita a peça de cancelamento de eco como a
   última da lista de MFX (nada nosso pode vir depois dela). Ali o `microfone.py` troca o último
