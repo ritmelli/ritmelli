@@ -27,6 +27,9 @@ from math import ceil, gcd
 import numpy as np
 import onnxruntime as ort
 
+# o ONNX Runtime oficial do Windows liga a telemetria da Microsoft (eventos do Windows): aqui, desligada (PRIVACIDADE.md)
+ort.disable_telemetry_events()
+
 f32 = np.float32
 SR = 48000             # a voz entra e sai a 48 kHz
 N = 3840               # o bloco: 80 ms

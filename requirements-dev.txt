@@ -3,5 +3,7 @@
 websockets>=12
 # dev/texturas.py, dev/compara.py e dev/icone.py
 pillow>=10
+# dev/testa_conversor.py monta os modelos de mentira do motor da troca de voz
+onnx>=1.20
 # O dev/exporta_compasso.py (gera o modelos/compasso.onnx) roda num venv separado, com
 # torch de CPU, beat_this e safetensors; quem so usa o app baixa o modelo pronto da release.
