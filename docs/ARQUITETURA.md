@@ -206,8 +206,11 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   `pistavoz.py` põe isso no visor e guarda o tom de quem fala no `pedal_voz.json` da pasta de dados, com a voz
   escolhida. No `--mock` o pedal não liga.
   Testes: `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso), `python dev/testa_vozes.py` (o
-  `vozes.json`, o que o instalador baixa e o `impedimento()`) e `python dev/testa_pista.py` (o processo contra um anel
-  falso; com `RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade).
+  `vozes.json`, o que o instalador baixa e o `impedimento()`), `python dev/testa_pista.py` (o processo contra um anel
+  falso; com `RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade) e `python dev/testa_conversor.py` (o motor com
+  modelos de mentira no processador: o tom deslocado, a onda sem degrau entre blocos, o `ajusta_tom` e o silêncio).
+  O motor e o `compasso.py` desligam a telemetria do ONNX Runtime (ver o PRIVACIDADE.md), e os termos da DirectML vão
+  no TERCEIROS pelo `instalador/terceiros.py`.
 - `winvol.py`: o volume do microfone no Windows (IAudioEndpointVolume pelo comtypes); a "Voz"
   da interface é esse número, gravado e lido de volta por uma thread do engine.
 - `pareamento.py`: o celular pareado. O instalador libera a entrada no firewall também em

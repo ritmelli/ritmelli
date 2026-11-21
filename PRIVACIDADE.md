@@ -8,7 +8,17 @@ ele busca a mesma faixa no YouTube Music pelo título, com o nome do canal na fr
 capas vêm dos servidores de imagens do YouTube e do YouTube Music); quando ele consulta no GitHub o manifesto público
 das versões e, se houver uma nova versão, baixa a atualização, sem enviar nenhum dado seu; e, se você permitir, quando
 ele envia **dados anônimos de uso e relatórios de erro**, conforme descrito abaixo. O YouTube e o YouTube Music são
-serviços do Google, sujeitos à [política de privacidade do Google](https://policies.google.com/privacy?hl=pt-BR).
+serviços do Google, sujeitos à [política de privacidade do Google](https://policies.google.com/privacy?hl=pt-BR). Além
+disso, o instalador baixa do GitHub as vozes do pedal de troca de voz (do
+[ritmelli-voices](https://github.com/ritmelli/ritmelli-voices)), também sem enviar nenhum dado seu. O GitHub é um serviço
+da Microsoft, sujeito à
+[declaração de privacidade do GitHub](https://docs.github.com/pt/site-policy/privacy-policies/github-general-privacy-statement).
+
+A troca de voz é feita no seu computador: a sua voz é convertida ali mesmo, pela placa de vídeo, e só vai para onde o
+seu microfone já vai (o jogo ou a chamada). O ONNX Runtime, a biblioteca da Microsoft que executa os modelos, vem com a
+telemetria da Microsoft ligada no Windows, e o Ritmelli a desliga. A DirectML, o componente da Microsoft que leva essa
+conta para a placa de vídeo, segue os termos de licença da Microsoft (no arquivo `TERCEIROS.txt`, na pasta do Ritmelli),
+que preveem a coleta de dados de uso pela Microsoft.
 
 ## Dados de uso e relatórios de erro
 
@@ -61,7 +71,17 @@ looks up the same track on YouTube Music by its title, with the channel name in 
 and the covers come from the image servers of YouTube and YouTube Music); when it checks the public release manifest on
 GitHub and, if there is a new version, downloads the update, without sending any of your data; and, if you allow it,
 when it sends **anonymous usage data and error reports**, as described below. YouTube and YouTube Music are Google
-services, covered by [Google's privacy policy](https://policies.google.com/privacy).
+services, covered by [Google's privacy policy](https://policies.google.com/privacy). In addition, the installer
+downloads the voices for the voice changer pedal from GitHub (from
+[ritmelli-voices](https://github.com/ritmelli/ritmelli-voices)), also without sending any of your data. GitHub is a
+Microsoft service, covered by the
+[GitHub General Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+
+The voice changer works on your computer: your voice is converted right there, on the graphics card, and only goes
+where your microphone already goes (the game or the call). ONNX Runtime, the Microsoft library that runs the models,
+comes with Microsoft telemetry turned on in Windows, and Ritmelli turns it off. DirectML, the Microsoft component that
+runs those calculations on the graphics card, follows Microsoft's license terms (in the `TERCEIROS.txt` file, in the
+Ritmelli folder), which provide for Microsoft collecting usage data.
 
 ## Usage data and error reports
 

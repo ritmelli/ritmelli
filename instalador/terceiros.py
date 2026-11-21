@@ -8,6 +8,8 @@ com o texto da licenca dele. O monta.ps1 roda depois de congelar, com o python d
 - o Python (o LICENSE.txt da instalacao, que ja traz o OpenSSL, o libffi, o zlib e os outros que vem com ele) e o
   PyInstaller (o bootloader e o comeco do ritmelli.exe);
 - os modelos e as fontes da _internal\\, com a licenca que esta na mesma pasta;
+- o SDK do WebView2 e a DirectML, que vem dentro de pacotes do pip sem os termos da Microsoft: os textos estao em
+  licencas\\ (a DirectML confere a versao da DLL);
 - o ffmpeg e o Deno da bin\\. A licenca do Deno nao vem no .zip dele: esta em licencas\\.
 
 Um modulo que nao e de nenhum pacote, um pacote sem arquivo de licenca ou um modelo sem licenca ao lado derruba o build:
@@ -25,6 +27,7 @@ from PyInstaller.archive.readers import CArchiveReader
 LICENCAS = Path(__file__).parent / "licencas"
 NOME_LICENCA = re.compile(r"(LICEN[CS]E|LICENCA|COPYING|NOTICE|COPYRIGHT|OFL)", re.I)
 DADOS_COM_LICENCA = {".onnx", ".woff", ".woff2", ".ttf", ".otf"}
+DIRECTML = "1.15.4"  # a versao dos termos da DirectML em licencas\ (directml-LICENSE.txt e directml-NOTICE.txt)
 
 
 def le(arq):
@@ -81,6 +84,20 @@ def textos(d):
     if not out and "\n" in lic:  # quem poe o texto inteiro no campo License
         out.append(("License (metadados)", lic))
     return out
+
+
+def versao_da_dll(arq):
+    """A versao de arquivo de uma DLL (as tres primeiras partes), pelo recurso de versao dela."""
+    import ctypes
+    v = ctypes.WinDLL("version")
+    n = v.GetFileVersionInfoSizeW(str(arq), None)
+    buf = ctypes.create_string_buffer(n)
+    if not n or not v.GetFileVersionInfoW(str(arq), 0, n, buf):
+        sys.exit(f"{arq}: sem informacao de versao")
+    p, tam = ctypes.c_void_p(), ctypes.c_uint()
+    v.VerQueryValueW(buf, "\\", ctypes.byref(p), ctypes.byref(tam))
+    ms, ls = ctypes.cast(p, ctypes.POINTER(ctypes.c_uint32 * 4)).contents[2:4]  # dwFileVersionMS, dwFileVersionLS
+    return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}"
 
 
 def roda(exe, *args):
@@ -154,6 +171,18 @@ def main():
         secao("Microsoft Edge WebView2 SDK (_internal\\webview\\lib)", "BSD-3-Clause",
               f"--- LICENSE.txt\n\n{le(LICENCAS / 'webview2-LICENSE.txt')}\n\n"
               f"--- NOTICE.txt\n\n{le(LICENCAS / 'webview2-NOTICE.txt')}")
+
+    # a DirectML.dll (a troca de voz na placa de video, conversor.py) vem dentro do onnxruntime-directml, sem os termos
+    # da Microsoft: o texto e os avisos do pacote NuGet Microsoft.AI.DirectML da mesma versao moram em licencas\. Uma
+    # DirectML de outra versao derruba o build, para os termos serem conferidos de novo
+    for dml in sorted(interno.rglob("DirectML.dll")):
+        ver = versao_da_dll(dml)
+        if ver != DIRECTML:
+            sys.exit(f"a DirectML.dll do app e a {ver}, e os termos em licencas\\ sao os da {DIRECTML}: troque o "
+                     f"directml-LICENSE.txt e o directml-NOTICE.txt pelos do pacote NuGet Microsoft.AI.DirectML {ver}")
+        secao(f"Microsoft DirectML {ver} (_internal\\{dml.parent.relative_to(interno)})", "Microsoft Software License Terms",
+              f"--- LICENSE.txt\n\n{le(LICENCAS / 'directml-LICENSE.txt')}\n\n"
+              f"--- ThirdPartyNotices.txt\n\n{le(LICENCAS / 'directml-NOTICE.txt')}")
 
     ff = a.ffmpeg / "ffmpeg.exe"
     ver = roda(ff, "-hide_banner", "-version").splitlines()

@@ -87,6 +87,7 @@ def _abre():
     with _trava:
         if _sessao is None:
             import onnxruntime as ort
+            ort.disable_telemetry_events()  # o ONNX Runtime oficial do Windows liga a telemetria da Microsoft (PRIVACIDADE.md)
             op = ort.SessionOptions()
             op.intra_op_num_threads = THREADS
             op.inter_op_num_threads = 1

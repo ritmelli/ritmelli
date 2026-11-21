@@ -525,7 +525,8 @@ The description at the top of each file (in Portuguese) says exactly what it che
   resampler, `reamostra.h`).
 - The voice changer pedal (`pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` and the `pistavoz` hook in
   `fx.py`, `engine.py` and `server.py`; the contract is in [API.md](API.md#pedal-de-troca-de-voz)):
-  `dev/testa_pedal_voz.py`, `dev/testa_vozes.py` and `dev/testa_pista.py`. The pedal needs the voice models, which
+  `dev/testa_pedal_voz.py`, `dev/testa_vozes.py`, `dev/testa_pista.py` and `dev/testa_conversor.py` (the voice
+  conversion engine with mock models on the CPU; it needs `onnx`, from `requirements-dev.txt`). The pedal needs the voice models, which
   `python dev\vozes.py baixa` downloads from the [ritmelli-voices](https://github.com/ritmelli/ritmelli-voices)
   releases into `vozes\` (about 325 MB, checked by SHA-256), and a graphics card; without them the Alien pedal stays.
   With the models downloaded, `set RITMELLI_VOZES_TESTE=1` also runs `testa_pista.py` against the real models.
