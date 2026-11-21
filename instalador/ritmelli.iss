@@ -40,8 +40,11 @@ UsePreviousAppDir=no
 DisableProgramGroupPage=yes
 ; administrador de qualquer jeito: o firewall e o filtro dos microfones pedem
 PrivilegesRequired=admin
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+; so Windows x64 de verdade: o filtro dos microfones (micfx.dll) e o voz.dll sao so x64, e no Windows ARM o audiodg.exe
+; e ARM64 e nao carrega DLL x64 (o x64compatible deixava instalar pela emulacao, e a musica nunca chegava ao microfone;
+; #125). A mensagem de recusa diz por que, no [Messages]
+ArchitecturesAllowed=x64os
+ArchitecturesInstallIn64BitMode=x64os
 MinVersion=10.0
 #ifdef Parcial
 OutputBaseFilename=Ritmelli-{#Versao}-parcial
@@ -92,6 +95,10 @@ pt.ConfirmUninstall=Tem certeza de que deseja remover o %1 deste computador? Os 
 en.ConfirmUninstall=Are you sure you want to remove %1 from this computer? Your records on the shelf and your settings will be kept and will reappear if you reinstall it. During removal, your computer's sound may cut out for a few seconds.
 pt.FinishedLabel=O Ritmelli foi instalado e está disponível no menu Iniciar.%n%nNo jogo e nas chamadas de voz, continue usando o seu microfone habitual: o Ritmelli toca a música nele. No Discord, selecione Estúdio em Perfil de entrada, pois os outros perfis podem cortar a música.
 en.FinishedLabel=Ritmelli has been installed and is available in the Start menu.%n%nIn games and voice calls, keep using your usual microphone: Ritmelli plays the music through it. In Discord, select Studio under Input Profile. The other profiles can cut out the music.
+
+; o Windows que nao e x64 (ARM ou 32 bits): a recusa logo no comeco, com o motivo (#125)
+pt.OnlyOnTheseArchitectures=O Ritmelli precisa do Windows de 64 bits em um PC com processador Intel ou AMD. Em um PC com processador ARM (como o Snapdragon), o filtro do microfone não funciona, e a música não chegaria ao seu microfone.
+en.OnlyOnTheseArchitectures=Ritmelli needs 64-bit Windows on a PC with an Intel or AMD processor. On a PC with an ARM processor (such as Snapdragon), the microphone filter can't run, so the music would never reach your microphone.
 
 [CustomMessages]
 pt.Abrir=Abrir o Ritmelli
