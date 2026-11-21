@@ -9,8 +9,8 @@ Sobe o proprio servidor (server.py --mock numa porta livre) com uma prateleira d
 e os dados numa pasta temporaria (com a LOCALAPPDATA trocada: o Ritmelli de verdade nem fica sabendo). Os
 prints saem pelo Chrome headless, como no dev/shot.py, na densidade de tela de cada celular (o @ do
 tamanho). Para o mesmo tema dar o mesmo print toda vez:
-- as capas sao desenhos em data: URI e o Google Fonts fica bloqueado (a Archivo cai na letra do
-  sistema): nada vem da internet;
+- as capas sao desenhos em data: URI e as fontes moram no tema (themes/vitrola/fonts/; o bloqueio do
+  Google Fonts fica de guarda, caso alguma volte a apontar para la): nada vem da internet;
 - os tick do SSE chegam com os niveis zerados (a voz falsa do --mock mexeria nos VUs);
 - animacoes reduzidas, e cada estado sai duas vezes: se os dois prints diferem, o estado e instavel e
   o script avisa em vez de comparar.

@@ -19,7 +19,8 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - O ícone é do servidor, igual para todo tema: a aba do navegador pega o `/favicon.ico`
   sem nada no tema, e o atalho na tela inicial do celular pede
   `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` no `<head>`.
-- Fonte externa só do Google Fonts; script externo nenhum.
+- Nada externo: as fontes moram no próprio tema (`themes/<slug>/fonts/`, com a licença ao lado), e script externo
+  nenhum.
 - API sempre por caminho absoluto (`/api/...`), mesma origem. Escrita é `fetch` com
   `method` e, quando tem corpo, `Content-Type: application/json`.
 - Texto da interface com acentuação completa no português e sem travessão. O servidor não
