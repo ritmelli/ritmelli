@@ -3,9 +3,16 @@
 voz do microfone, com a musica do app por cima. Quem sobe e o pistavoz.py (ritmelli.py --pistavoz '<json>'), num
 processo a parte: a conta na placa de video nao disputa o interpretador com o audio do app.
 
-json: engine e voz (as pastas dos modelos), tom (semitons), provedor ("dml" ou "cpu").
-Pela saida padrao: "pronto" quando a voz convertida comecou a sair, "erro: <motivo>" se nao deu. Pela entrada padrao:
-"sair"; entrada fechada (o app caiu) tambem. Ao sair, a pista desliga e a voz do microfone volta na hora."""
+json: engine e voz (as pastas dos modelos), tom (o deslocamento em semitons, ou null para medir), alvo_hz (o tom em
+que a voz soa certa, o tom_hz do voz.json dela) e provedor ("dml" ou "cpu").
+
+O ajuste do tom (tom null): o processo mede o tom de quem fala e so entao converte. Enquanto mede, a pista sai em
+silencio (a voz de verdade nao vaza para o jogo): junta o tom dos quadros com voz ate AJUSTE_S segundos de fala, e o
+deslocamento e o desloca() do pistavoz.py, do percentil QUANTIL deles ate o alvo_hz.
+
+Pela saida padrao: "pronto" quando a pista comecou a sair, "ouvindo <0 a 1>" com o tempo de fala medido (a cada
+1/12), "medido <Hz> <semitons>" no fim do ajuste, "erro: <motivo>" se nao deu. Pela entrada padrao: "sair"; entrada
+fechada (o app caiu) tambem. Ao sair, a pista desliga e a voz do microfone volta na hora."""
 import collections
 import ctypes
 import json
@@ -22,10 +29,38 @@ SR = 48000
 COLCHAO = SR * 120 // 1000   # 120 ms de silencio na frente da primeira voz: a folga contra um bloco que demora
 RETEM_S = 0.1                # a primeira voz espera ate isso um filtro pegar a pista (ver laco)
 ANEL_S = 10                  # o anel so existe com o microfone do app aberto: espera ate isso por ele
+AJUSTE_S = 8.0               # o tempo de fala (quadros com tom) que o ajuste mede: uns 12 s falando
+
+_diz = threading.Lock()
 
 
 def diz(texto):
-    print(texto, flush=True)
+    with _diz:  # a thread da conta e o laco falam pela mesma saida
+        print(texto, flush=True)
+
+
+class Ajuste:
+    """O tom de quem fala: junta os quadros com tom (10 ms cada) ate AJUSTE_S segundos e da o percentil QUANTIL do
+    pistavoz.py (a mesma regua do tom_hz das vozes)."""
+
+    def __init__(self, alvo_hz):
+        self.alvo = float(alvo_hz)
+        self.quadros = []
+        self.n = 0
+
+    def junta(self, f0):
+        v = np.asarray(f0, np.float32)
+        v = v[v > 0]
+        if len(v):
+            self.quadros.append(v)
+            self.n += len(v)
+        return min(1.0, self.n / (AJUSTE_S * 100))
+
+    def fim(self):
+        """(o tom de quem fala em Hz, o deslocamento em semitons)."""
+        from pistavoz import QUANTIL, desloca
+        hz = float(np.percentile(np.concatenate(self.quadros), QUANTIL))
+        return hz, desloca(self.alvo, hz)
 
 
 class Para48k:
@@ -52,13 +87,28 @@ class Pista:
     """A voz crua -> o conversor -> a pista. A conta roda numa thread so dela; o laco da pista nunca espera por ela
     (segue lendo a voz e batendo o pulso, senao o filtro devolve a voz do microfone)."""
 
-    def __init__(self, m, conv):
-        self.m, self.conv = m, conv
+    def __init__(self, m, conv, ajuste=None):
+        self.m, self.conv, self.ajuste = m, conv, ajuste
         self.entra = queue.SimpleQueue()
         self.sai, self.trava = collections.deque(), threading.Lock()
         self.vai = True
         self.est = {"blocos": 0, "secas": 0, "conta_ms_max": 0.0, "voz_taxa": 0}
         self.erro = None
+        self._passo = -1  # o ultimo passo do "ouvindo" dito (1/12)
+
+    def _mede(self, y):
+        """No ajuste do tom: o bloco sai em silencio, e o tom dos quadros que congelaram nele entra na conta. Com o
+        tempo de fala completo, o conversor passa ao deslocamento medido."""
+        p = self.ajuste.junta(self.conv.tom_congelado)
+        if self.ajuste.n and int(p * 12) != self._passo:
+            self._passo = int(p * 12)
+            diz(f"ouvindo {p:.3f}")
+        if p >= 1.0:
+            hz, tom = self.ajuste.fim()
+            self.conv.ajusta_tom(tom)
+            self.ajuste = None
+            diz(f"medido {hz:.1f} {tom:.2f}")
+        return np.zeros_like(y)
 
     def _conta(self):
         from conversor import mmcss
@@ -70,6 +120,8 @@ class Pista:
             t0 = time.perf_counter()
             try:
                 y = self.conv.bloco(x)
+                if self.ajuste is not None:
+                    y = self._mede(y)
             except Exception as ex:  # noqa: BLE001 - a voz volta para o microfone e o app fica sabendo
                 self.erro = f"{type(ex).__name__}: {ex}"
                 self.vai = False
@@ -141,16 +193,17 @@ def main(args):
                 return 3
             time.sleep(0.25)
     try:
+        tom = cfg.get("tom")
+        ajuste = Ajuste(float(cfg["alvo_hz"])) if tom is None else None
         import conversor
         if cfg.get("provedor", "dml") == "dml":
             conversor.tempo_real()
-        conv = conversor.Conversor(cfg["engine"], cfg["voz"], tom=float(cfg.get("tom", 0)),
-                                   provedor=cfg.get("provedor", "dml"))
+        conv = conversor.Conversor(cfg["engine"], cfg["voz"], tom=float(tom or 0), provedor=cfg.get("provedor", "dml"))
     except Exception as ex:  # noqa: BLE001 - sem o motor nao ha pedal: o app fica sabendo por que
         diz(f"erro: the voice engine didn't start ({type(ex).__name__}: {ex})")
         m.fecha()
         return 2
-    p = Pista(m, conv)
+    p = Pista(m, conv, ajuste)
     t = threading.Thread(target=p.laco, daemon=True, name="pista")
     t.start()
     sair = threading.Event()

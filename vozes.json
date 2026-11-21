@@ -63,7 +63,7 @@
         {
           "nome": "voz.json",
           "tamanho": 16,
-          "sha256": "403219be227bab28bfd8f80cd9ed99eefa635f6e70ab448334b11ded4c548b96"
+          "sha256": "a21c9ba8ea0bcd35dffb65525a9435704ac51488461fb195e1b0e845b155df99"
         }
       ]
     },
@@ -94,7 +94,7 @@
         {
           "nome": "voz.json",
           "tamanho": 16,
-          "sha256": "403219be227bab28bfd8f80cd9ed99eefa635f6e70ab448334b11ded4c548b96"
+          "sha256": "a21c9ba8ea0bcd35dffb65525a9435704ac51488461fb195e1b0e845b155df99"
         }
       ]
     }

@@ -289,7 +289,7 @@ o Alienígena volta. O contrato com o módulo:
 - `pistavoz.impedimento()` (opcional): o `fx.py` chama ao carregar o módulo; `None` com o pedal pronto para aparecer,
   ou o motivo de ele ficar de fora (sem placa de vídeo, sem as vozes baixadas), que vai para o log, e o Alienígena volta.
 - `pistavoz.dados(pasta)` (opcional): o servidor chama ao subir, com a pasta de dados dele (a do `library.json`; no
-  `--mock`, a temporária). O módulo guarda ali o que é de quem usa (a voz escolhida e o tom de cada voz).
+  `--mock`, a temporária). O módulo guarda ali o que é de quem usa (a voz escolhida e o tom medido de quem fala).
 
 - `pistavoz.VOZES`: a lista de ids das vozes, da mais grave para a mais aguda (ex. `["mina", "lira"]`); vai para o
   `vozes` do item `pistavoz` de `/api/effects`. O pedal mostra as duas primeiras, e o leitor de tela diz qual é a mais
@@ -300,7 +300,8 @@ o Alienígena volta. O contrato com o módulo:
   `pronto`; `null` = o visor mostra a voz. O `estado()` roda no laço do servidor a cada tick do SSE, para cada página
   aberta: tem de responder na hora, sem disco nem rede, e aguentar um `escolhe()` ou `liga()` chegando de outra thread.
   Uma voz que não é das `VOZES` sai como a primeira; um erro sai como a primeira voz sem passo, e vai para o log uma vez.
-- `pistavoz.escolhe(voz)`: troca a voz; chamado pelo `POST /api/pedal_voz`, fora do laço, numa thread só dele e na
+- `pistavoz.escolhe(voz)`: troca a voz, e a voz que já está escolhida refaz o ajuste do tom (o clique nela de novo);
+  chamado pelo `POST /api/pedal_voz`, fora do laço, numa thread só dele e na
   ordem dos pedidos; tem de voltar em até 15 s (depois disso o pedido responde 504, e o que ainda está na fila não
   chega ao módulo); um erro dele volta para quem pediu como 500, com o motivo.
 - `pistavoz.liga(ligado)`: chamado a cada troca de efeito, `True` ao entrar no `pistavoz` e `False` ao sair dele (pode
@@ -313,7 +314,16 @@ O efeito `pistavoz` em si não mexe na voz do lado do Ritmelli (como o `nenhum`)
 `pista.py`), que lê a voz crua pelo anel do filtro, converte pelo `conversor.py` (o RVC em ONNX, no DirectML) e
 escreve na pista da voz, que o filtro põe no lugar da voz do microfone. Os modelos são os das releases que o
 `vozes.json` fixa, com o tamanho e o sha256 de cada arquivo: o instalador baixa para a pasta `vozes\` do app, e quem roda
-pelo código baixa com `python dev/vozes.py baixa`. O tema mostra o pedal com o visor e as vozes (o rótulo da escolhida aceso) e manda
+pelo código baixa com `python dev/vozes.py baixa`.
+
+O tom: cada voz traz no `voz.json` da release dela o tom em que soa certa (`tom_hz`, aprovado de ouvido), e o
+deslocamento leva o tom de quem fala até ele. O tom de quem fala é o percentil 20 dos quadros com tom, que quase não
+muda quando a pessoa se anima, e se mede uma vez: sem ele guardado, ligar o pedal sobe o processo no ajuste, com o
+microfone mudo (a voz de verdade não vaza), e o visor passa por `fale`, `ouvindo` (o `progresso` é o tempo de fala
+medido, 8 s ao todo) e `pronto`, que fica 1,5 s antes de o visor voltar para a voz. Uma medida serve para todas as
+vozes; clicar na voz escolhida mede de novo, e sair do pedal no meio do ajuste não guarda nada.
+
+O tema mostra o pedal com o visor e as vozes (o rótulo da escolhida aceso) e manda
 `POST /api/pedal_voz` no clique de cada uma. Textos do tema: `effect.pistavoz.name`, `effect.pistavoz.desc` e os do
 visor.
 

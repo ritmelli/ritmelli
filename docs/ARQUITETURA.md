@@ -199,7 +199,12 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   clique de Instalar, antes de mexer em qualquer coisa, e só o que ainda não está lá com o hash certo
   (`instalador/vozes_iss.py`, o `[Code]` do `ritmelli.iss`); pelo código, `python dev/vozes.py baixa`. Sem placa de vídeo
   (pelo DXGI, sem o adaptador de software) ou sem os modelos, o `impedimento()` deixa o pedal de fora e o Alienígena
-  fica. A voz escolhida e o tom de cada voz ficam no `pedal_voz.json` da pasta de dados. No `--mock` o pedal não liga.
+  fica. O tom: o deslocamento leva o tom de quem fala (o percentil 20 dos quadros com tom) ao `tom_hz` do `voz.json`
+  da voz. Sem ele medido, o `pista.py` sobe no ajuste: escreve silêncio na pista enquanto junta 8 s de fala pelo tom
+  dos quadros que o `conversor.py` congela a cada bloco (o `tom_congelado`, a conta que ele já faz), diz o `ouvindo` e
+  o `medido` pela saída padrão e passa ao deslocamento medido (`ajusta_tom`, com a linha do tempo zerada). O
+  `pistavoz.py` põe isso no visor e guarda o tom de quem fala no `pedal_voz.json` da pasta de dados, com a voz
+  escolhida. No `--mock` o pedal não liga.
   Testes: `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso), `python dev/testa_vozes.py` (o
   `vozes.json`, o que o instalador baixa e o `impedimento()`) e `python dev/testa_pista.py` (o processo contra um anel
   falso; com `RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade).
