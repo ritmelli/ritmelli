@@ -174,8 +174,12 @@ def main():
 
     # a DirectML.dll (a troca de voz na placa de video, conversor.py) vem dentro do onnxruntime-directml, sem os termos
     # da Microsoft: o texto e os avisos do pacote NuGet Microsoft.AI.DirectML da mesma versao moram em licencas\. Uma
-    # DirectML de outra versao derruba o build, para os termos serem conferidos de novo
-    for dml in sorted(interno.rglob("DirectML.dll")):
+    # DirectML de outra versao derruba o build, para os termos serem conferidos de novo, e o app sem ela tambem (o
+    # onnxruntime de processador por cima do onnxruntime-directml: a troca de voz sem a placa)
+    dmls = sorted(interno.rglob("DirectML.dll"))
+    if not dmls:
+        sys.exit("a DirectML.dll nao esta no app: o onnxruntime do build e o de processador, e nao o onnxruntime-directml")
+    for dml in dmls:
         ver = versao_da_dll(dml)
         if ver != DIRECTML:
             sys.exit(f"a DirectML.dll do app e a {ver}, e os termos em licencas\\ sao os da {DIRECTML}: troque o "
