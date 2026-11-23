@@ -7,6 +7,7 @@ aqui tambem: o ritmelli.py precisa delas antes de carregar o servidor. E o jeito
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 _BASE = Path(os.environ.get("LOCALAPPDATA") or Path.home())
@@ -14,7 +15,25 @@ DADOS_NOVA = _BASE / "Ritmelli"
 # a pasta de antes da troca de nome (#58; ate a 0.4.1 o app se chamava Vitrola): enquanto o migra() nao a renomeia,
 # os dados seguem nela, e nenhum processo grava em duas pastas
 DADOS_VELHA = _BASE / "Vitrola"
-DADOS = DADOS_VELHA if DADOS_VELHA.is_dir() and not DADOS_NOVA.exists() else DADOS_NOVA
+
+
+def _tem_discos(pasta):
+    """A prateleira da pasta de dados tem algum disco: a library.json maior que o [] vazio. Pelo tamanho que a listagem
+    da pasta ja traz, sem abrir o arquivo: todo processo que carrega este modulo passa por aqui, e o Windows nao deixa o
+    save_json do servidor ligado trocar a library.json enquanto outro processo a tem aberta."""
+    try:
+        with os.scandir(pasta / "library") as itens:
+            return any(e.name == "library.json" and e.stat().st_size > 2 for e in itens)
+    except OSError:
+        return False
+
+
+# os dados seguem na de antes quando so ela existe, e tambem (#111) com as duas, a nova sem discos e a de antes com eles:
+# o soundboard.ps1 criava a nova (a dos logs) antes de o migra() rodar, que achava a troca feita, e o app abria a
+# prateleira vazia
+DADOS = (DADOS_VELHA if DADOS_VELHA.is_dir() and (not DADOS_NOVA.exists()
+                                                  or (not _tem_discos(DADOS_NOVA) and _tem_discos(DADOS_VELHA)))
+         else DADOS_NOVA)
 LIB = DADOS / "library"
 LOGS = DADOS / "logs"
 # a pasta do executavel no app congelado (PyInstaller), a do codigo fora dele
@@ -30,10 +49,20 @@ def migra():
     com a biblioteca, as escolhas, o codigo dos dados de uso e o que a janela guarda: so o servidor chama, ao ligar,
     antes de carregar os modulos que gravam nela. Renomear e instantaneo (mesmo disco); se a pasta velha estiver
     presa (o Explorer aberto nela, um arquivo em uso), os dados seguem nela nesta abertura e a troca tenta de novo na
-    proxima. True se os dados estao na pasta nova."""
+    proxima. Com as duas pastas, a nova sem discos e a de antes com eles (#111), a nova sai do caminho antes, para a
+    Ritmelli-no-records-<data e hora> ao lado: nada do que ela tem se perde. True se os dados estao na pasta nova."""
     global DADOS, LIB, LOGS
     if DADOS == DADOS_NOVA:
         return True
+    if DADOS_NOVA.exists():
+        lado = DADOS_NOVA.with_name(f"{DADOS_NOVA.name}-no-records-{time.strftime('%Y%m%d-%H%M%S')}")
+        try:
+            DADOS_NOVA.rename(lado)
+        except OSError as e:
+            print(f"data folder: {DADOS_NOVA} has no records and {DADOS_VELHA} has; couldn't move the empty one aside "
+                  f"({e}); using the old one for now", flush=True)
+            return False
+        print(f"data folder: {DADOS_NOVA} had no records and {DADOS_VELHA} has; moved the empty one to {lado}", flush=True)
     try:
         DADOS_VELHA.rename(DADOS_NOVA)
     except OSError as e:

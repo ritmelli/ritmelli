@@ -10,7 +10,13 @@ function Get-Celular { try { (Invoke-RestMethod "$base/api/lan" -TimeoutSec 2).u
 switch ($Cmd) {
   'start' {
     if (Get-State) { "already running at $base/"; if (-not $NoBrowser) { Start-Process "$base/" }; break }
-    $logs = Join-Path $env:LOCALAPPDATA 'Ritmelli\logs'  # o mesmo pastas.LOGS
+    # (#111) a pasta de antes da troca de nome (%LOCALAPPDATA%\Vitrola) passa para a nova antes de o log criar a nova:
+    # com ela ja criada, o pastas.migra() do app achava a troca feita e abria a prateleira vazia. O log vai para a pasta
+    # que o app usa (o pastas.LOGS): a de antes, se ela estiver presa e a troca ficar para a proxima vez
+    $saida = @(& python -c "import sys; sys.path.insert(0, sys.argv[1]); import pastas; pastas.migra(); print(pastas.DADOS.name)" $here)
+    $saida | Select-Object -SkipLast 1  # o que o migra() disse
+    $pasta = if ($saida.Count) { "$($saida[-1])".Trim() } else { 'Ritmelli' }
+    $logs = Join-Path $env:LOCALAPPDATA "$pasta\logs"  # o mesmo pastas.LOGS
     New-Item -ItemType Directory -Force $logs | Out-Null
     # pythonw, sem console como o executavel: preso a um console, o Python pergunta ao conhost a cada io.open e a cada
     # thread nova, e com a CPU cheia isso prende o interpretador e a musica no jogo engasga (engine.INJ_FOLGA)
