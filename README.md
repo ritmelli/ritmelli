@@ -337,6 +337,9 @@ if that folder has no shelf yet, your shelf is copied into it. Like `--so-local`
 your phone can't open it: to see the phone layout, make the browser window narrower than 900 px or use the device
 toolbar of the developer tools.
 
+It also never goes online on its own: no album covers for the shelf, no Autoplay suggestions and no update check.
+Searching, pasting a link or playing a search result still goes to YouTube.
+
 A song you add in `--mock` reuses the audio of the shortest song already in `%LOCALAPPDATA%\Ritmelli\library`, so
 download at least one song first, with the installed Ritmelli or with `python ritmelli.py` (downloading doesn't need
 the microphone filter). The `--mock` server copies your shelf only when it starts, so restart it after the download.

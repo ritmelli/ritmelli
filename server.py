@@ -682,7 +682,9 @@ class App:
         self.loop = None
         self.desliga = None
         self.pediu_desligar = False
-        self.atualizacao = atu.Atualizacao()  # a versao nova (atualizacao.py); sem endereco e chave, fica parada
+        # a versao nova (atualizacao.py); sem endereco e chave, fica parada, e no --mock tambem (#128: nada vai a rede
+        # sozinho, abaixo)
+        self.atualizacao = atu.Atualizacao(ativa=False if mock else None)
         cls = eng.MockEngine if mock else eng.Engine
         self.cfg.pop("out", None)  # a saida pelo cabo saiu: a musica vai sempre pelo filtro do microfone
         self.engine = cls(mic=self.cfg.get("mic", "default"), monitor=self.cfg.get("monitor", "default"))
@@ -705,7 +707,12 @@ class App:
         threading.Thread(target=self._vigia_auto, daemon=True).start()
         threading.Thread(target=self._vigia_passagem, daemon=True).start()
         threading.Thread(target=self._vigia_andamento, daemon=True).start()
-        threading.Thread(target=self._vigia_capas, daemon=True).start()
+        # (#128) no --mock nada vai a rede sozinho: as capas do YouTube Music, as parecidas do Automatico (mix_do, e com
+        # elas a versao de audio e o andamento pelo stream), o aquecimento do processo do YouTube (main, /api/aquece) e
+        # a versao nova ficam de fora. A prateleira de quem testa nao vira busca no YouTube Music, e o dev/compara.py
+        # tira os mesmos prints toda vez. O que a pessoa pede (buscar, colar um link, tocar um resultado) vai ao YouTube
+        if not mock:
+            threading.Thread(target=self._vigia_capas, daemon=True).start()
         threading.Thread(target=self._vigia_sonoridade, daemon=True).start()
         if self.atualizacao.ativa:
             threading.Thread(target=self.atualizacao.vigia, daemon=True).start()
@@ -1462,7 +1469,9 @@ class App:
     def mix_do(self, yid):
         """As parecidas do video, so o que cabe no Automatico (duracao entre AUTO_DUR, sem o proprio): o radio do
         YouTube Music (o catalogo de musicas, sem a versao com letra repetindo o clipe); sem a
-        ytmusicapi, ou com ela falhando ou vazia, o Mix do YouTube."""
+        ytmusicapi, ou com ela falhando ou vazia, o Mix do YouTube. No --mock, nenhuma (#128)."""
+        if self.mock:
+            return []
         try:
             out = self.radio_do(yid)
             if out:
@@ -1786,7 +1795,7 @@ class App:
             if not it.get("duration"):
                 return None
             pedido = {"fonte": str(LIB / it["file"]), "dur": it["duration"]}
-        elif x.get("youtube_id"):
+        elif x.get("youtube_id") and not self.mock:  # no --mock, so o arquivo: o stream iria a rede sozinho (#128)
             pedido = {"yt": self.alvo_yt(x["youtube_id"]), "opts": self.opts_stream(), "dur": x.get("duration")}
         else:
             return None
@@ -2095,7 +2104,10 @@ def build(app_state):
     @r.post("/api/aquece")
     async def aquece_(_):
         """Alguem comecou a falar e pode pedir musica (a mina chama na fala que abre): as conexoes paradas com o
-        YouTube e o vivo vazio ficam prontos antes do pedido (Fora.prepara). Responde na hora."""
+        YouTube e o vivo vazio ficam prontos antes do pedido (Fora.prepara). Responde na hora. No --mock, nada
+        (#128)."""
+        if A.mock:
+            return j_ok(aquecidos=0)
         n = await loop_().run_in_executor(
             pool_rapido, lambda: fora.prepara(App.opts_stream(), ENDERECO_RAPIDO))
         return j_ok(aquecidos=n)
@@ -2649,7 +2661,8 @@ def main():
             sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
                      "temporary copy")
     A = App(a.port, dados, mock=a.mock)
-    threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
+    if not a.mock:  # no --mock, o processo do YouTube so abre no primeiro pedido de quem testa (#128)
+        threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
     print(f"mic: {d['mic']} | headphones: {d['monitor'] or '-'}", flush=True)
     url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
