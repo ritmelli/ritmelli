@@ -9,6 +9,7 @@ inteiro, por cima da 0.4.1 publicada, e o job testa-migracao da esteira (instala
     python dev/testa_migra.py
 
 Sai 1 se algo falha."""
+import json
 import os
 import subprocess
 import sys
@@ -85,6 +86,114 @@ if sys.platform == "win32":
                     f"a pasta de antes presa: os dados seguem nela, sem erro, e a troca fica para a proxima abertura ({out})")
         finally:
             preso.close()
+
+
+def prateleira(pasta, n):
+    """Uma pasta de dados com n discos na library.json."""
+    (pasta / "library").mkdir(parents=True, exist_ok=True)
+    (pasta / "library" / "library.json").write_text(json.dumps([{"id": f"d{i}"} for i in range(n)]), encoding="utf-8")
+
+
+def de_lado(local):
+    return [p for p in local.iterdir() if p.name.startswith("Ritmelli-no-records-")]
+
+
+# depois do migra(), num Python novo (pastas_com): o que ele voltou, a pasta de dados e quantos discos ela tem
+MIGRA = ("import json\nprint(pastas.migra(), pastas.DADOS.name, "
+         "len(json.loads((pastas.LIB / 'library.json').read_text(encoding='utf-8'))))")
+
+
+print("--- as duas pastas, a nova sem discos e a de antes com eles (#111)")
+with tempfile.TemporaryDirectory() as tmp:
+    local = Path(tmp)
+    prateleira(local / "Vitrola", 2)
+    (local / "Ritmelli" / "logs").mkdir(parents=True)  # o que o soundboard.ps1 criava antes de o app ligar
+    (local / "Ritmelli" / "logs" / "server.log").write_text("da vez errada", encoding="utf-8")
+    cod, out = pastas_com(local, "print(pastas.DADOS.name)\n" + MIGRA)
+    linhas = out.splitlines()
+    confere(cod == 0 and linhas[0] == "Vitrola" and linhas[-1] == "True Ritmelli 2",
+            "so os logs na nova: antes de migrar, os dados seguem na de antes; depois, na nova, com os 2 discos "
+            f"({out})")
+    lado = de_lado(local)
+    confere(not (local / "Vitrola").exists() and len(lado) == 1
+            and (lado[0] / "logs" / "server.log").read_text(encoding="utf-8") == "da vez errada",
+            f"a nova sem discos foi para o lado, com o que tinha ({[p.name for p in lado]})")
+    cod, out = pastas_com(local, "print(pastas.DADOS.name, pastas.migra())")
+    confere(out == "Ritmelli True" and len(de_lado(local)) == 1, f"de novo: nada muda ({out})")
+
+with tempfile.TemporaryDirectory() as tmp:
+    local = Path(tmp)
+    prateleira(local / "Vitrola", 3)
+    prateleira(local / "Ritmelli", 0)  # o app ja ligou na nova vazia: a library.json sem discos, e as escolhas dela
+    (local / "Ritmelli" / "library" / "config.json").write_text('{"marca": 2}', encoding="utf-8")
+    cod, out = pastas_com(local, MIGRA)
+    lado = de_lado(local)
+    confere(cod == 0 and out.endswith("True Ritmelli 3") and len(lado) == 1
+            and (lado[0] / "library" / "config.json").read_text(encoding="utf-8") == '{"marca": 2}',
+            f"a nova com a prateleira vazia: os 3 discos de antes na nova, e a vazia ao lado com as escolhas ({out})")
+
+with tempfile.TemporaryDirectory() as tmp:
+    local = Path(tmp)
+    prateleira(local / "Vitrola", 3)
+    prateleira(local / "Ritmelli", 5)  # os discos copiados a mao para a nova (o PC de 20/11)
+    cod, out = pastas_com(local, MIGRA)
+    confere(out == "True Ritmelli 5" and (local / "Vitrola").exists() and not de_lado(local),
+            f"as duas com discos: vale a nova, e nada sai do lugar ({out})")
+
+if sys.platform == "win32":
+    import ctypes
+    with tempfile.TemporaryDirectory() as tmp:
+        local = Path(tmp)
+        prateleira(local / "Vitrola", 2)
+        (local / "Ritmelli" / "logs").mkdir(parents=True)
+        # a library.json aberta por outro processo sem compartilhar: quem a abrisse ao carregar o pastas nao contaria os
+        # discos (e, ao contrario, a leitura seguraria o save_json do servidor ligado)
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateFileW.restype = ctypes.c_void_p
+        GENERIC_READ, SEM_COMPARTILHAR, OPEN_EXISTING, INVALIDO = 0x80000000, 0, 3, ctypes.c_void_p(-1).value
+        h = k32.CreateFileW(str(local / "Vitrola" / "library" / "library.json"), GENERIC_READ, SEM_COMPARTILHAR, None,
+                            OPEN_EXISTING, 0, None)
+        try:
+            cod, out = pastas_com(local, "print(pastas.DADOS.name)")
+            confere(h not in (None, INVALIDO) and out == "Vitrola",
+                    f"os discos contados sem abrir a library.json, que outro processo tem aberta ({out})")
+        finally:
+            k32.CloseHandle(ctypes.c_void_p(h))
+    with tempfile.TemporaryDirectory() as tmp:
+        local = Path(tmp)
+        prateleira(local / "Vitrola", 2)
+        (local / "Ritmelli" / "logs").mkdir(parents=True)
+        preso = open(local / "Ritmelli" / "logs" / "server.log", "w", encoding="utf-8")  # o log do processo ligado
+        try:
+            cod, out = pastas_com(local, MIGRA)
+            confere(cod == 0 and out.endswith("False Vitrola 2") and (local / "Ritmelli").exists()
+                    and not de_lado(local),
+                    f"a nova presa: os dados seguem na de antes, com os discos, e a troca fica para a proxima ({out})")
+        finally:
+            preso.close()
+    with tempfile.TemporaryDirectory() as tmp:
+        local = Path(tmp)
+        prateleira(local / "Vitrola", 2)
+        (local / "Ritmelli" / "logs").mkdir(parents=True)
+        preso = open(local / "Vitrola" / "server.log", "w", encoding="utf-8")
+        try:
+            cod, out = pastas_com(local, MIGRA)
+            confere(cod == 0 and out.endswith("False Vitrola 2") and not (local / "Ritmelli").exists()
+                    and len(de_lado(local)) == 1,
+                    f"a de antes presa: a nova vazia saiu do caminho, e os dados seguem na de antes desta vez ({out})")
+        finally:
+            preso.close()
+        cod, out = pastas_com(local, MIGRA)
+        confere(out == "True Ritmelli 2", f"na proxima abertura, a troca de sempre ({out})")
+
+with tempfile.TemporaryDirectory() as tmp:
+    local = Path(tmp)
+    prateleira(local / "Vitrola", 2)
+    (local / "Ritmelli" / "logs").mkdir(parents=True)
+    cod, out = ritmelli_com(local, ["--port", "8846", "--no-browser"])
+    discos = json.loads((local / "Ritmelli" / "library" / "library.json").read_text(encoding="utf-8"))
+    confere(cod == 0 and not (local / "Vitrola").exists() and discos == [{"id": "d0"}, {"id": "d1"}],
+            f"o servidor ligando de verdade: os discos de antes na pasta nova ({out})")
 
 if sys.platform == "win32":
     import winreg
