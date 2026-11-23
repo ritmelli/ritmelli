@@ -98,10 +98,11 @@ def limpa(txt):
     return txt[:300]
 
 
-# os modulos do Ritmelli: a linha da pilha num deles e "do app" (o Sentry agrupa e destaca por ela)
-NOSSOS = {"andamento", "atualizacao", "atualizador", "batida", "compasso", "engine", "fx", "i18n", "janela",
-          "metricas", "microfone", "pareamento", "pastas", "ritmelli", "server", "versao", "winvol", "yt_erros",
-          "yt_fora"}
+# os modulos do Ritmelli: a linha da pilha num deles e "do app" (o Sentry agrupa e destaca por ela, e o filtro da
+# conexao fechada pelo outro lado, abaixo, deixa passar). O dev/testa_metricas.py confere que nenhum ficou de fora
+NOSSOS = {"andamento", "atualizacao", "atualizador", "batida", "compasso", "conversor", "engine", "fx", "i18n",
+          "janela", "metricas", "microfone", "migra", "pareamento", "pastas", "pista", "pistavoz", "ritmelli", "server",
+          "sonoridade", "versao", "winvol", "yt_erros", "yt_fora"}
 
 
 def _arquivo(caminho):
@@ -125,6 +126,20 @@ def _arquivo(caminho):
     if p.startswith("_internal/"):
         p = p[len("_internal/"):]
     return p, p.split("/", 1)[0].removesuffix(".py") in NOSSOS
+
+
+# o outro lado fechou a conexao de repente: a aba do Ritmelli fechada ou recarregada no meio de uma resposta, o celular
+# que saiu do Wi-Fi. No Windows, o loop Proactor do asyncio entrega isso ao tratador do loop (o shutdown do socket no
+# _call_connection_lost), com a pilha so do asyncio (#116)
+CONEXAO_FECHADA = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)
+
+
+def so_conexao_fechada(ex):
+    """O erro e so a conexao que o outro lado fechou: um dos CONEXAO_FECHADA sem nenhuma linha do app na pilha (o
+    in_app do evento_de_erro). Nao e falha do Ritmelli e nao vai para o Sentry; com linha do app, vai como sempre."""
+    if not isinstance(ex, CONEXAO_FECHADA):
+        return False
+    return not any(_arquivo(q.filename)[1] for q in traceback.extract_tb(ex.__traceback__))
 
 
 def evento_de_erro(tipo, valor, tb, onde, base):
@@ -397,12 +412,13 @@ class Metricas:
         sys.excepthook, threading.excepthook = no_sys, na_thread
 
     def no_loop(self, loop):
-        """O erro de uma tarefa do asyncio que ninguem esperou."""
+        """O erro de uma tarefa do asyncio que ninguem esperou. A conexao fechada pelo outro lado
+        (so_conexao_fechada) nao vai para o Sentry; o log registra tudo, como antes."""
         antes = loop.get_exception_handler()
 
         def trata(lp, ctx):
             ex = ctx.get("exception")
-            if ex is not None:
+            if ex is not None and not so_conexao_fechada(ex):
                 self.erro(type(ex), ex, ex.__traceback__, "asyncio")
             if antes is not None:
                 antes(lp, ctx)

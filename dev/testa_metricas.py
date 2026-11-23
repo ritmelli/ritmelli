@@ -193,6 +193,66 @@ with tempfile.TemporaryDirectory() as tmp:
             and met._arquivo(r"C:\Python312\Lib\asyncio\events.py") == ("asyncio/events.py", False),
             "os caminhos da pilha: do app, de biblioteca e do Python")
 
+    # todo modulo do app e "nosso": o filtro da conexao fechada (abaixo) deixaria passar o erro de um modulo esquecido
+    modulos = {p.stem for p in RAIZ.glob("*.py")} | {
+        p.name for p in RAIZ.iterdir() if p.is_dir() and p.name not in ("dev", "instalador") and any(p.glob("*.py"))}
+    confere(modulos <= met.NOSSOS, f"todo modulo do app esta no NOSSOS (faltam: {sorted(modulos - met.NOSSOS)})")
+
+    # a conexao fechada pelo outro lado (#116), pelo tratador de verdade de um loop do asyncio: o erro de conexao com a
+    # pilha so do asyncio (o _call_connection_lost do loop Proactor, como o que chegou ao Sentry) nao vai; com linha do
+    # app vai, e os outros erros tambem. O tratador de antes (o log) recebe todos
+    import asyncio
+    import gc
+    import time
+
+    def de(arquivo, codigo, nome):
+        """Uma funcao cujo codigo mora em arquivo: a linha dela na pilha e desse arquivo, como a de verdade."""
+        ns = {}
+        exec(compile(codigo, arquivo, "exec"), ns)
+        return ns[nome]
+
+    def envios(enviados, n):
+        """Quantos erros sairam: espera ate 3 s pelo n-esimo (o envio e numa thread), e um pouco mais por um a mais."""
+        for _ in range(60):
+            if len(enviados) >= n:
+                break
+            time.sleep(0.05)
+        time.sleep(0.1)
+        return len(enviados)
+
+    do_asyncio, do_app = str(Path(asyncio.__file__).parent / "proactor_events.py"), str(RAIZ / "server.py")
+    m, env = nova(instalador=True, tmp=tmp)
+    loop = asyncio.new_event_loop()
+    log = []
+    loop.set_exception_handler(lambda lp, ctx: log.append(type(ctx.get("exception")).__name__))
+    m.no_loop(loop)
+
+    def no_loop_roda(cb):
+        loop.call_soon(cb)
+        loop.run_until_complete(asyncio.sleep(0.01))
+
+    fechadas = ["ConnectionResetError", "ConnectionAbortedError", "BrokenPipeError"]
+    for tipo in fechadas:
+        no_loop_roda(de(do_asyncio, f"def _call_connection_lost():\n    raise {tipo}(10054, 'fechada')\n",
+                        "_call_connection_lost"))
+    confere(envios(env, 1) == 0 and not m.erros and log == fechadas,
+            f"a conexao fechada pelo outro lado, so com o asyncio na pilha: nada vai ao Sentry, o log registra ({log})")
+    no_loop_roda(de(do_app, "def responde():\n    raise ConnectionResetError(10054, 'no codigo do app')\n", "responde"))
+    confere(envios(env, 1) == 1 and log[-1] == "ConnectionResetError",
+            "o mesmo erro com linha do app na pilha: vai ao Sentry")
+    no_loop_roda(de(do_asyncio, "def _loop_reading():\n    raise ValueError('outro erro')\n", "_loop_reading"))
+    confere(envios(env, 2) == 2 and log[-1] == "ValueError",
+            "outro erro, mesmo so com o asyncio na pilha: vai ao Sentry")
+    tarefa = loop.create_task(de(do_app, "async def toca():\n    raise RuntimeError('falha de verdade')\n", "toca")())
+    loop.run_until_complete(asyncio.sleep(0.01))
+    del tarefa
+    gc.collect()  # a tarefa que ninguem esperou chega ao tratador ao sair da memoria
+    confere(envios(env, 3) == 3 and log[-1] == "RuntimeError",
+            "o erro de verdade numa tarefa do asyncio, com linha do app: vai ao Sentry, e o log registra")
+    confere(all(u.startswith("https://o4512454104907776.ingest.de.sentry.io/") for u, _, _ in env),
+            "os tres foram ao Sentry")
+    loop.close()
+
 if "--de-verdade" in sys.argv:
     import time
     import uuid
