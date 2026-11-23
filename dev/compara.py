@@ -309,6 +309,13 @@ async def prints(a, porta, destino):
                         await estado(f"{pre}-menu")
                         await c.js("fecharMenu(false)")
                         await c.js("document.querySelector('#b-disp').click()")
+                        # os aparelhos chegam depois de abrir: na primeira vez o servidor ainda le os do Windows (mais
+                        # que o --wait), e os dois prints do estado saiam um sem a lista e o outro com ela (#128)
+                        for _ in range(150):
+                            if await c.js("!document.querySelector('#dd-mic').disabled && "
+                                          "!document.querySelector('#dd-msg').textContent"):
+                                break
+                            await asyncio.sleep(0.1)
                         await estado(f"{pre}-dialogo")
                         await c.js("document.querySelector('#dlg-disp').close()")
                     await c.js("document.querySelector('#mini-abrir').click()")
