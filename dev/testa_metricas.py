@@ -203,6 +203,7 @@ with tempfile.TemporaryDirectory() as tmp:
     # app vai, e os outros erros tambem. O tratador de antes (o log) recebe todos
     import asyncio
     import gc
+    import time
 
     def de(arquivo, codigo, nome):
         """Uma funcao cujo codigo mora em arquivo: a linha dela na pilha e desse arquivo, como a de verdade."""
@@ -210,13 +211,14 @@ with tempfile.TemporaryDirectory() as tmp:
         exec(compile(codigo, arquivo, "exec"), ns)
         return ns[nome]
 
-    def envios(n):
+    def envios(enviados, n):
+        """Quantos erros sairam: espera ate 3 s pelo n-esimo (o envio e numa thread), e um pouco mais por um a mais."""
         for _ in range(60):
-            if len(env) >= n:
+            if len(enviados) >= n:
                 break
-            _t.sleep(0.05)
-        _t.sleep(0.1)
-        return len(env)
+            time.sleep(0.05)
+        time.sleep(0.1)
+        return len(enviados)
 
     do_asyncio, do_app = str(Path(asyncio.__file__).parent / "proactor_events.py"), str(RAIZ / "server.py")
     m, env = nova(instalador=True, tmp=tmp)
@@ -233,18 +235,19 @@ with tempfile.TemporaryDirectory() as tmp:
     for tipo in fechadas:
         no_loop_roda(de(do_asyncio, f"def _call_connection_lost():\n    raise {tipo}(10054, 'fechada')\n",
                         "_call_connection_lost"))
-    confere(envios(1) == 0 and not m.erros and log == fechadas,
+    confere(envios(env, 1) == 0 and not m.erros and log == fechadas,
             f"a conexao fechada pelo outro lado, so com o asyncio na pilha: nada vai ao Sentry, o log registra ({log})")
     no_loop_roda(de(do_app, "def responde():\n    raise ConnectionResetError(10054, 'no codigo do app')\n", "responde"))
-    confere(envios(1) == 1 and log[-1] == "ConnectionResetError",
+    confere(envios(env, 1) == 1 and log[-1] == "ConnectionResetError",
             "o mesmo erro com linha do app na pilha: vai ao Sentry")
     no_loop_roda(de(do_asyncio, "def _loop_reading():\n    raise ValueError('outro erro')\n", "_loop_reading"))
-    confere(envios(2) == 2 and log[-1] == "ValueError", "outro erro, mesmo so com o asyncio na pilha: vai ao Sentry")
+    confere(envios(env, 2) == 2 and log[-1] == "ValueError",
+            "outro erro, mesmo so com o asyncio na pilha: vai ao Sentry")
     tarefa = loop.create_task(de(do_app, "async def toca():\n    raise RuntimeError('falha de verdade')\n", "toca")())
     loop.run_until_complete(asyncio.sleep(0.01))
     del tarefa
     gc.collect()  # a tarefa que ninguem esperou chega ao tratador ao sair da memoria
-    confere(envios(3) == 3 and log[-1] == "RuntimeError",
+    confere(envios(env, 3) == 3 and log[-1] == "RuntimeError",
             "o erro de verdade numa tarefa do asyncio, com linha do app: vai ao Sentry, e o log registra")
     confere(all(u.startswith("https://o4512454104907776.ingest.de.sentry.io/") for u, _, _ in env),
             "os tres foram ao Sentry")
