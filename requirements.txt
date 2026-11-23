@@ -1,4 +1,5 @@
-# Python 3.12 ou mais novo, no Windows 10/11
+# Python 3.12 a 3.14, no Windows 10/11. O 3.15 ainda nao (#124): o onnxruntime-directml, que a troca de voz usa, nao
+# tem pacote para ele
 numpy>=2.0
 scipy>=1.13
 sounddevice>=0.5
