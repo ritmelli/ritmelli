@@ -136,14 +136,17 @@ def sem_rede():
                                     str(porta), "--data-dir", str(dados)], cwd=RAIZ, env=env, stdout=log,
                                    stderr=subprocess.STDOUT)
             try:
-                for _ in range(600):
+                subiu, limite = False, time.monotonic() + 60
+                while not subiu and srv.poll() is None and time.monotonic() < limite:
                     try:
                         api("GET", "/api/state", espera=2)
-                        break
+                        subiu = True
                     except OSError:
-                        if srv.poll() is not None:
-                            break
-                        time.sleep(0.1)
+                        time.sleep(0.2)
+                if not subiu:   # o servidor caiu ou nao respondeu: o fim do log diz por que
+                    print((t / "servidor.log").read_text(encoding="utf-8", errors="replace")[-1500:])
+                    confere(False, "o servidor --mock subiu para o teste sem rede (o log dele esta acima)")
+                    return
                 api("POST", "/api/play", {"id": "d1"})
                 api("POST", "/api/aquece", {})  # a mina avisando que alguem comecou a falar
                 time.sleep(8)  # as capas a cada 2 s, o Automatico em 0,5 s, o aquecimento logo ao subir
