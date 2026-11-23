@@ -4225,6 +4225,9 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
     border-radius: 6px; background: var(--veio-v) 0 0 / 420px 900px, linear-gradient(180deg, #5A2A12 0%, #44200D 50%, #331708 100%);
     box-shadow: inset 0 0 0 5px #7A3C1B, inset 0 0 0 6px rgba(0,0,0,.45), 0 0 0 1px #1A0B04, 0 22px 44px 6px rgba(0,0,0,.72);
   }
+  /* (#113) sem o Voltar para a prateleira: a prateleira segue na mesa ao lado da gaveta, e a gaveta fecha como um menu
+     suspenso, pelo clique fora ou pelo Esc. A pagina do PC fica com ele: la a busca toma o lugar da prateleira */
+  body.mesa-dj #vista-busca .cabeca-sec #b-voltar { display: none; }
   /* (#52) o disco arrastado da prateleira ate um toca-discos: a capa solta segue o ponteiro, inclinada e com a sombra
      dura da mesa; na prateleira fica o lugar dela apagado; o toca-discos embaixo acende com o que soltar ali faz */
   body.mesa-dj .estante .capa { -webkit-user-drag: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
@@ -7216,7 +7219,7 @@ function montarMesa() {
   if (on) $('#tv-tela').append(v); else $('.deck .canal-faixa').after(v);
   V.img = null; V.sujo = true;
   if (on) abrirMaleta(true);
-  rodinhas(on);
+  rodinhas(on); vigiarGavetaDaBusca();
   montarGaveta(); S.filaSig = null; desenharFila(); desenharRapidos(); desenharMesa(); setasPrateleira();
   $('#cabo-calha')._geo = ''; requestAnimationFrame(medirCabos);
   medirBusca();
@@ -8026,6 +8029,7 @@ function desenharBusca() {
   const b = S.busca;
   vb.hidden = !b; vp.hidden = !!b;
   document.body.classList.toggle('com-busca', !!b);   // a seta de voltar dentro do campo, no celular
+  vigiarGavetaDaBusca();   // (#113) o toque fora da gaveta, na mesa
   if (!b) return;
   medirBusca();   // na mesa a busca cai debaixo do campo
   $('#titulo-busca').textContent = b.link ? I18N.t('search.pastedLink') : I18N.t('search.resultsFor', { query: b.q });
@@ -9601,6 +9605,43 @@ document.addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch' && document.activeElement === q && !e.target.closest('.campo-q')) q.blur();
 }, true);
 $('#b-sair-busca').addEventListener('click', () => { fecharBusca(); $('#q').value = ''; });
+/* (#113) na mesa a busca cai como uma gaveta por cima da mesa: clicar fora dela e fora do campo fecha, como um menu
+   suspenso. O clique que fecha so fecha: o pointerdown para aqui (sem o mousedown, o foco, o arrastar de um volume ou de
+   um disco da prateleira), e o click, o menu de contexto e, no toque, os eventos de toque que vem dele sao engolidos. O
+   menu "..." de um resultado, o aviso (com o desfazer) e os dialogos nao contam como fora. A pagina do PC e o celular
+   ficam como estao: la a busca toma o lugar da prateleira, e no celular o voltar ja fecha */
+let foraDaBusca = null, foraDaBuscaAte = 0;   // o ponteiro do clique que fechou, e ate quando o que vem dele e engolido
+addEventListener('pointerdown', e => {
+  if (!e.isPrimary) return;
+  foraDaBusca = null; foraDaBuscaAte = 0;
+  if (e.button !== 0 || !MESA.montada || !S.busca || $('#vista-busca').hidden || dialogoAberto()
+      || e.target.closest('#vista-busca, #form-busca, #menu, #aviso')) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  foraDaBusca = e.pointerId; foraDaBuscaAte = Infinity;   // antes do fecharBusca: os ouvintes do toque ficam ate ele acabar
+  fecharMenu(false); $('#q').blur(); fecharBusca();
+}, true);
+for (const t of ['pointerup', 'pointercancel'])
+  addEventListener(t, e => {
+    if (e.pointerId !== foraDaBusca) return;
+    foraDaBuscaAte = performance.now() + 500;
+    setTimeout(vigiarGavetaDaBusca, 600);
+  }, true);
+const engolindoForaDaBusca = () => foraDaBusca !== null && performance.now() < foraDaBuscaAte;
+// so o que vem do ponteiro: o click do teclado (detail 0) e o do codigo (o .click() das chaves do menu) passam
+function engolirForaDaBusca(e) {
+  if (!engolindoForaDaBusca() || !e.cancelable || !e.isTrusted || (e.type === 'click' && !e.detail)) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+}
+addEventListener('click', engolirForaDaBusca, true);
+addEventListener('contextmenu', engolirForaDaBusca, true);
+/* no toque o pointerdown parado nao segura o resto: o volume (o input range) anda pelo touchstart e pelo touchmove, e o
+   toque ainda vira click. Estes so existem com a gaveta aberta na mesa (o desenharBusca e o montarMesa chamam), e ate o
+   fim do toque que a fechou: sem passive, a rolagem pelo toque espera por eles */
+function vigiarGavetaDaBusca() {
+  const on = !!(MESA.montada && S.busca) || engolindoForaDaBusca();
+  for (const t of ['touchstart', 'touchmove', 'touchend'])
+    window[on ? 'addEventListener' : 'removeEventListener'](t, engolirForaDaBusca, { capture: true, passive: false });
+}
 // limpar: no primeiro toque, com ou sem o cursor no campo; o campo fica pronto para a busca nova
 // (os resultados de antes ficam ate ela sair, como enquanto digita)
 $('#b-limpar-q').addEventListener('click', () => { clearTimeout(buscaT); const q = $('#q'); q.value = ''; q.focus(); });
