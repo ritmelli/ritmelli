@@ -9620,6 +9620,15 @@ document.addEventListener('keydown', e => {
   if (!$('#menu').hidden) { if (e.key === 'Escape') { e.preventDefault(); fecharMenu(true); } return; }
   if (S.palco && e.key === 'Escape' && !dialogoAberto()) { e.preventDefault(); fecharPalco(); return; }
   if (S.disco && !paginaUnica() && e.key === 'Escape' && !dialogoAberto() && !campoDeTexto(e.target)) { e.preventDefault(); abrirDisco(false); return; }
+  // (#114) a busca aberta tambem esta por cima: o Esc fecha ela, como no campo, e a musica segue (antes ele chegava ao
+  // fim e parava a musica). O foco que estava nos resultados, que somem, vai para o campo, como no voltar
+  if (S.busca && e.key === 'Escape' && !dialogoAberto() && !campoDeTexto(e.target)) {
+    e.preventDefault();
+    const nosResultados = $('#vista-busca').contains(document.activeElement);
+    fecharBusca();
+    if (nosResultados && !toque()) $('#q').focus();
+    return;
+  }
   if (dialogoAberto() || campoDeTexto(e.target)) return;
   if (e.code === 'Space' || e.key === ' ') { e.preventDefault(); if (!e.repeat) alternar(); }
   else if (/^[1-9]$/.test(e.key)) { const it = S.lib[+e.key - 1]; if (it) { e.preventDefault(); tocar(it.id); } }
