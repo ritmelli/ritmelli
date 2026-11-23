@@ -204,8 +204,8 @@ you need neither, so start at [Work on the interface without audio](#work-on-the
   needs an Intel or AMD processor: the microphone filter is built for x64 only and doesn't load on an ARM processor
   (see [Install](#install)).
 - Git, to clone the repository.
-- Python 3.12, 3.13 or 3.14, 64-bit, with `python` on the `PATH`. Not 3.15 yet: onnxruntime, which runs the beat
-  detection model, has no build for it. On [python.org](https://www.python.org/downloads/windows/), pick the
+- Python 3.12, 3.13 or 3.14, 64-bit, with `python` on the `PATH`. Not 3.15 yet: onnxruntime-directml, used by the
+  voice change, has no build for it. On [python.org](https://www.python.org/downloads/windows/), pick the
   **Windows installer (64-bit)** of a 3.14 release and check **Add python.exe to PATH**. If you'll also build
   [Ritmelli's installer](#installer), pick 3.12.10 instead: it's the version the pipeline builds with and the last
   3.12 release with a Windows installer. Avoid the Python app from the Microsoft Store: it keeps a private copy of
