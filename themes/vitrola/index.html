@@ -7563,7 +7563,11 @@ function desenharVUs() {
    (25/10: ao voltar depois de um tempo, os VUs apareciam sem a agulha): a face do VU e os
    fios so se pintavam quando a medida mudava, e a agulha so quando andava, entao o VU parado voltava sem escala e
    sem agulha e o do disco so com a agulha. Com o canvas devolvido (contextrestored, que nao sobe: pega na descida)
-   ou a pagina de volta na tela, todos se pintam de novo */
+   ou a pagina de volta na tela, todos se pintam de novo.
+   (#119) Cada desenho que guarda uma chave e so pinta quando ela muda ficava em branco. Os daqui zeram a chave abaixo;
+   os dos modulos de pixel art (os toca-discos, o mixer, o monitor, os Sons rapidos, os titulos das placas e o aviso de
+   vazio do A seguir) ouvem o repinta-canvas ao lado das chaves deles e zeram a chave, ou desenham de novo, ali mesmo.
+   Um desenho novo com chave propria ouve o repinta-canvas tambem */
 let repintando = 0;
 function repintarCanvas() {
   cancelAnimationFrame(repintando);
@@ -7572,8 +7576,11 @@ function repintarCanvas() {
     // o footswitch em canvas e o icone do Troca de voz (PEDAL-JS) guardam a chave no _f: zerada, o desenha() do pedal
     // (com o _geo do canvas dele zerado acima) os pinta de novo
     for (const cv of document.querySelectorAll('canvas.pe-px, canvas.ico-fino')) cv._f = '';
+    // o visor de DJ: o contextrestored dele so chega quando e o canvas dele que volta, e a aba de volta nao tem nenhum
+    V.sujo = true;
     pedacosFios(true);
     medirCabos(); medirCabosPedais(); desenharVUs();
+    document.dispatchEvent(new Event('repinta-canvas'));
   });
 }
 document.addEventListener('contextrestored', repintarCanvas, true);
@@ -9851,6 +9858,7 @@ const LETRA_PLACA = {
     const conta = document.getElementById('conta'), est = document.getElementById('estante');
     if (conta) new MutationObserver(desenhaConta).observe(conta, { childList: true, characterData: true, subtree: true });
     if (est) new MutationObserver(marcaTeclas).observe(est, { childList: true, subtree: true });
+    document.addEventListener('repinta-canvas', desenhaConta);   // (#119) o canvas devolvido em branco (repintarCanvas)
     desenhaConta(); marcaTeclas();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', liga); else liga();
@@ -9900,6 +9908,7 @@ const LETRA_PLACA = {
   const obs = new MutationObserver(desenhaTit);
   obs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
   for (const c of document.querySelectorAll('.fila-parede .cabeca-fila .conta')) obs.observe(c, { childList: true, characterData: true, subtree: true });
+  document.addEventListener('repinta-canvas', desenhaTit);   // (#119) e o canvas devolvido em branco (repintarCanvas)
   desenhaTit();
 })();
 /* MALETA-TIT-FIM */</script>
@@ -10940,6 +10949,11 @@ const LETRA_PLACA = {
     }
     requestAnimationFrame(quadro);
   }
+  // (#119) o canvas devolvido em branco (repintarCanvas): a chave do desenho parado (o chaveE, que tambem pinta a
+  // sombra e refaz a base e o braco fora da tela) e a do rotulo zeradas, o proximo quadro pinta o deck inteiro
+  document.addEventListener('repinta-canvas', () => {
+    for (const d of decks.values()) { d.chaveE = ''; d.labChave = ''; }
+  });
   Promise.all([document.fonts.load('300px "Jersey 10"'), document.fonts.load('300px "VT323"')]).then(() => { fontesOk = true; document.dispatchEvent(new Event('px-letra')); });
   const liga = () => requestAnimationFrame(quadro);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', liga); else liga();
@@ -11000,6 +11014,7 @@ const LETRA_PLACA = {
   }
   const p = document.getElementById('fila-vazia');
   const agenda = () => requestAnimationFrame(desenha);
+  document.addEventListener('repinta-canvas', agenda);   // (#119) o canvas devolvido em branco (repintarCanvas)
   if (p) {
     new MutationObserver(agenda).observe(p, { attributes: true, attributeFilter: ['hidden'] });
     new ResizeObserver(agenda).observe(p);
@@ -12601,6 +12616,14 @@ const LETRA_PLACA = {
     }
     requestAnimationFrame(quadroMx);
   }
+  // (#119) o canvas devolvido em branco (repintarCanvas): as chaves do mixer (o chaveE pinta tambem os rotulos e a
+  // placa), do monitor e dos Sons rapidos (e a dos nomes deles) zeradas, o proximo quadro pinta os tres de novo. As
+  // maletas dos pedais (desenhaGav) guardam a chave no _geo do canvas, que o repintarCanvas zera
+  document.addEventListener('repinta-canvas', () => {
+    if (mx) mx.chaveE = '';
+    if (tvp) tvp.chave = '';
+    if (pd) pd.chave = pd.geoNomes = '';
+  });
   Promise.all([document.fonts.load('300px "Jersey 10"'), document.fonts.load('300px "VT323"'), document.fonts.load('700 12px "Archivo"')]).then(() => { fontesMx = true; fontesOk = true; });
   const ligaMx = () => requestAnimationFrame(quadroMx);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ligaMx); else ligaMx();
