@@ -68,6 +68,7 @@ SHA = hashlib.sha256(setup).hexdigest()
 
 
 def manifesto(**muda):
+    # o "app" que o publica.py publica: o de antes da troca de nome (#58), o que as versoes instaladas conferem
     m = {"formato": 1, "app": "vitrola", "versao": mais(VERSAO), "data": "2026-11-03", "notas": ["Uma coisa nova."],
          "instalador": {"url": f"{base}/setup.exe", "sha256": SHA, "tamanho": len(setup)},
          "arquivos": [{"caminho": "ritmelli.exe", "sha256": SHA, "tamanho": 1}]}
@@ -102,7 +103,16 @@ recusa("manifesto mexido depois de assinado", d.replace(b"Uma coisa", b"Outra co
 recusa("assinado por outra chave", d, assina(d, outra))
 recusa("chave que o app nao conhece", d, assina(d, chave, 2))
 recusa("assinatura que nao e base64", d, b'{"chave": 1, "assinatura": "@@@"}')
-for nome, m in (("de outro app", manifesto(app="outro")), ("de outro formato", manifesto(formato=2)),
+# os dois nomes do app (#58): o de antes, que o publica.py segue publicando, e o de agora, para o manifesto poder
+# trocar quando nenhuma versao que ainda atualiza conferir so o de antes
+for app in ("vitrola", "ritmelli"):
+    dd = json.dumps(manifesto(app=app)).encode()
+    try:
+        caso(f"manifesto do app {app!r}", atu.confere(dd, assina(dd))["app"] == app)
+    except atu.Recusado as e:
+        caso(f"manifesto do app {app!r}", False, str(e))
+for nome, m in (("de outro app", manifesto(app="outro")), ("sem o app", manifesto(app=None)),
+                ("de outro formato", manifesto(formato=2)),
                 ("versao fora do formato", manifesto(versao="1.0")),
                 ("instalador sem hash", manifesto(instalador={"url": f"{base}/setup.exe", "tamanho": 1})),
                 ("caminho que sai da pasta", manifesto(arquivos=[{"caminho": "../../x.exe", "sha256": SHA, "tamanho": 1}])),

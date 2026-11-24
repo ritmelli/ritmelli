@@ -46,9 +46,10 @@ MANIFESTO = "https://github.com/ritmelli/ritmelli-releases/releases/latest/downl
 CHAVES = {1: "Bnvi5qyGzrl2bPDgG9UUCDHjhcTCU3lr9SHMKbkjLts="}
 SO_HTTPS = True  # os testes servem por http, numa porta local
 FORMATO = 1
-# o nome do app no manifesto, de antes da troca de nome (#58): a 0.4.1 e as anteriores so aceitam o manifesto com ele,
-# entao fica igual, ou quem tem uma delas nunca mais atualiza
-APP = "vitrola"
+# os nomes do app que o manifesto pode trazer (#58). O publica.py publica "vitrola", o de antes da troca de nome: a
+# 0.4.1 e as anteriores e o Ritmelli ate a 0.6.0 so aceitam o manifesto com ele, e com outro nunca mais atualizariam.
+# Daqui em diante o app aceita tambem o de agora, para o manifesto poder trocar um dia (ver o APP do publica.py)
+APPS = ("ritmelli", "vitrola")
 PASTA = pastas.DADOS / "atualizacao"
 # a pasta do app instalado (a do ritmelli.exe), que a parcial confere; pelo codigo nao ha, e vai sempre o completo
 PASTA_APP = Path(sys.executable).parent if getattr(sys, "frozen", False) else None
@@ -111,7 +112,7 @@ def confere(manifesto, assinatura, chaves=None):
     except (KeyError, TypeError, ValueError) as e:
         raise Recusado("the manifest signature doesn't match") from e
     m = json.loads(manifesto)
-    if not isinstance(m, dict) or m.get("formato") != FORMATO or m.get("app") != APP:
+    if not isinstance(m, dict) or m.get("formato") != FORMATO or m.get("app") not in APPS:
         raise Recusado("the manifest is not for a Ritmelli version this app understands")
     versao(m.get("versao"))
     # as notas em portugues no "notas" (o campo que as versoes de antes leem) e as em ingles no "notas_en", que elas nao

@@ -40,8 +40,9 @@ LOGS = DADOS / "logs"
 APP = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 BIN = APP / "bin"
 PORTA = 8799  # a do servidor: o PC abre em 127.0.0.1, o celular no IP da rede de casa
-# o tema, e nao a galeria de temas (que segue em /): quem acabou de instalar cai direto no toca-discos
-PAGINA = "/t/vitrola/"  # o tema se chama Vitrola (o aparelho de som que ele desenha); o app e o Ritmelli
+# o tema, e nao a galeria de temas (que segue em /): quem acabou de instalar cai direto no toca-discos. Ate a 0.6.0 o
+# tema era o /t/vitrola/, e o servidor leva o endereco de antes para este (TEMA_DE_ANTES, no server.py)
+PAGINA = "/t/ritmelli/"
 
 
 def migra():

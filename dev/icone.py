@@ -26,7 +26,7 @@ def cor(h):
     return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) + (255,)
 
 
-# as cores do tema (themes/vitrola/index.html e o prato dos previews)
+# as cores do tema (themes/ritmelli/index.html e o prato dos previews)
 CORES = {
     "k": cor("#1A0B04"),  # contorno
     "v": cor("#120D0C"),  # vinil

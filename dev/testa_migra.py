@@ -2,18 +2,25 @@ r"""Confere a troca de nome de Vitrola para Ritmelli (#58) no PC de quem ja tinh
 pasta (pastas.migra), inclusive com a pasta de antes presa, e so quando o servidor liga de verdade (a versao, a ajuda
 e o --mock nao mexem nela, #123); o registro de antes e copiado sem trocar o que o novo ja
 tem (migra.registro), com as subchaves, e depois sai; da pasta do app de antes sai so o que era dele
-(migra.pasta_velha); e o celular pareado antes segue conectado pelo cookie de antes (pareamento.chave_do). O registro
-e o do usuario (HKCU\Software\RitmelliTesteMigra), e as pastas, temporarias: nada de verdade e tocado. O caminho
-inteiro, por cima da 0.4.1 publicada, e o job testa-migracao da esteira (instalador/testa-migracao.ps1).
+(migra.pasta_velha); o celular pareado antes segue conectado pelo cookie de antes (pareamento.chave_do); e o
+endereco do tema ate a 0.6.0 (/t/vitrola/, com o caminho e a query) leva ao de agora, pelo servidor de verdade no
+--mock: so com as bibliotecas dele (a esteira roda este teste antes de instalar, e essa parte fica de fora). O
+registro e o do usuario (HKCU\Software\RitmelliTesteMigra), e as pastas, temporarias: nada de verdade e tocado.
+O caminho inteiro, por cima da 0.4.1 publicada, e o job testa-migracao da esteira (instalador/testa-migracao.ps1).
 
     python dev/testa_migra.py
 
 Sai 1 se algo falha."""
 import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -282,6 +289,94 @@ print("--- o celular pareado antes")
 confere(pareamento.chave_do({"vitrola_celular": "abc"}) == "abc", "o cookie de antes ainda vale")
 confere(pareamento.chave_do({"ritmelli_celular": "novo", "vitrola_celular": "velho"}) == "novo", "o novo vale sobre o de antes")
 confere(pareamento.chave_do({}) is None, "sem cookie: sem chave")
+
+
+def tema_de_antes():
+    """O tema se chamava vitrola ate a 0.6.0: o celular pareado, o atalho na tela inicial e o favorito abrem o
+    /t/vitrola/. O servidor de verdade, no --mock, numa porta livre, com a LOCALAPPDATA e a pasta de dados temporarias,
+    leva cada caminho dele para o mesmo no tema de agora, com a query, sem tirar o lugar do static do /t/."""
+    try:
+        import aiohttp  # noqa: F401
+        import numpy  # noqa: F401
+    except ImportError as ex:
+        print(f"--   o endereco do tema de antes ficou de fora: sem as bibliotecas do servidor ({ex.name})")
+        return
+
+    class SemSeguir(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *_a, **_k):
+            return None
+
+    abre = urllib.request.build_opener(SemSeguir, urllib.request.ProxyHandler({}))
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        porta = s.getsockname()[1]
+
+    def pede(rota, espera=10):
+        """(status, Location, corpo), sem seguir o redirecionamento."""
+        try:
+            with abre.open(f"http://127.0.0.1:{porta}{rota}", timeout=espera) as r:
+                return r.status, r.headers.get("Location"), r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers.get("Location"), b""
+
+    t = Path(tempfile.mkdtemp(prefix="testa_migra_tema_"))
+    try:
+        (t / "dados").mkdir()
+        (t / "local").mkdir()
+        env = {**os.environ, "LOCALAPPDATA": str(t / "local")}
+        with open(t / "servidor.log", "w", encoding="utf-8") as log:
+            srv = subprocess.Popen([sys.executable, str(RAIZ / "server.py"), "--mock", "--no-browser", "--port",
+                                    str(porta), "--data-dir", str(t / "dados")], cwd=RAIZ, env=env, stdout=log,
+                                   stderr=subprocess.STDOUT)
+            try:
+                subiu, limite = False, time.monotonic() + 60
+                while not subiu and srv.poll() is None and time.monotonic() < limite:
+                    try:
+                        subiu = pede("/api/state", espera=2)[0] == 200
+                    except OSError:
+                        time.sleep(0.2)
+                if not subiu:  # o servidor caiu ou nao respondeu: o fim do log diz por que
+                    print((t / "servidor.log").read_text(encoding="utf-8", errors="replace")[-1500:])
+                    confere(False, "o servidor --mock subiu para o teste do tema de antes (o log dele esta acima)")
+                    return
+                for rota, para in (("/t/vitrola/", "/t/ritmelli/"), ("/t/vitrola", "/t/ritmelli/"),
+                                   ("/t/vitrola/?parear=123456&lang=en", "/t/ritmelli/?parear=123456&lang=en"),
+                                   ("/t/vitrola/fonts/Jersey10.woff2", "/t/ritmelli/fonts/Jersey10.woff2")):
+                    cod, onde, _ = pede(rota)
+                    confere((cod, onde) == (302, para), f"{rota} vai para {para} ({cod} {onde})")
+                cod, _, corpo = pede("/t/ritmelli/fonts/Jersey10.woff2")
+                fonte = RAIZ / "themes" / "ritmelli" / "fonts" / "Jersey10.woff2"
+                confere(cod == 200 and corpo == fonte.read_bytes(), f"o static do tema de agora segue servindo ({cod})")
+                cod, _, corpo = pede("/t/ritmelli/")
+                confere(cod == 200 and b"I18N_DADOS" in corpo, f"o tema de agora abre, com os textos ({cod})")
+                cod, onde, _ = pede("/t/vitrolas/")
+                confere(cod == 404 and onde is None, f"outro tema que so comeca igual nao vai junto ({cod} {onde})")
+                cod, _, corpo = pede("/api/themes")
+                temas = [(x["slug"], x["url"]) for x in json.loads(corpo)] if cod == 200 else cod
+                confere(temas == [("ritmelli", "/t/ritmelli/")], f"a galeria lista so o tema de agora ({temas})")
+            finally:
+                try:
+                    abre.open(urllib.request.Request(f"http://127.0.0.1:{porta}/api/shutdown", data=b"{}",
+                                                     method="POST", headers={"Content-Type": "application/json"}),
+                              timeout=5).close()
+                    srv.wait(15)
+                except (OSError, subprocess.TimeoutExpired):
+                    srv.kill()
+                    srv.wait()
+    finally:
+        for _ in range(60):  # o Windows solta o log e a pasta de dados um pouco depois de o processo sair
+            shutil.rmtree(t, ignore_errors=True)
+            if not t.exists():
+                break
+            time.sleep(0.25)
+
+
+print("--- o endereco do tema de antes")
+import pastas  # noqa: E402
+
+confere(pastas.PAGINA == "/t/ritmelli/" and (RAIZ / "themes" / "ritmelli" / "index.html").is_file()
+        and not (RAIZ / "themes" / "vitrola").exists(), f"o app abre no tema de agora, que existe ({pastas.PAGINA})")
+tema_de_antes()
 
 print()
 if falhas:
