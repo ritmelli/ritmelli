@@ -13,8 +13,10 @@ No app: ritmelli.exe --microfone <a mesma linha>. O instalador roda o instala-to
 e, ao desinstalar, o remove: o Ritmelli nunca pede o UAC. O filtro fica em todos os microfones e so age no que o app
 escolheu (o alvo do anel, ver apo/anel.h). Microfone que aparece depois (um fone USB novo): o app roda a tarefa
 (pede_tarefa), que roda como SYSTEM o instala-todos; quem usa o PC so pode rodar a tarefa, nao mudar. --dll e, sem
-ele, a DLL que vem com o app (dll_padrao); --saida grava o resultado em JSON, com os aparelhos que ficaram mudos
-depois do reinicio do audio (confere_aparelhos), que o instalador mostra na ultima pagina (instalador/mudos.iss).
+ele, a DLL que vem com o app (dll_padrao); --saida grava o resultado em JSON, com o resumo da conferencia dos
+aparelhos depois do reinicio do audio (confere_aparelhos), que vai para o log do setup, e os que ficaram mudos, que o
+instalador mostra na ultima pagina (instalador/mudos.iss). O executavel nao tem console: o print daqui so aparece
+rodando pelo python.
 
 O instala copia a DLL pra uma pasta que o audiodg.exe (LocalService) consegue ler, registra o COM e o APO
 (regsvr32), pendura o nosso nas vagas de efeito do microfone e guarda o original em
@@ -256,13 +258,33 @@ MUDOS = "_mudos"
 RAIZ_MUDOS = winreg.HKEY_LOCAL_MACHINE  # o instalador e a tarefa gravam (administrador e SYSTEM); qualquer usuario le
 CONFERE_S = 2.0  # quanto cada aparelho tem para entregar o primeiro quadro
 CONFERE_MAX_S = 30.0  # a conferencia inteira, no instalador: um driver que trava nao segura a instalacao
+ASSENTA_S = 2.0  # do reinicio do audio ate a conferencia: os aparelhos se enumeram de novo
 
 
 def aparelho_de(nome):
-    """O aparelho de um nome do Windows, o que se tira do cabo: "IN 1-2 (BEHRINGER UMC 404HD 192k)" da "BEHRINGER UMC
-    404HD 192k". Sem o parentese, o proprio nome."""
-    i = nome.find(" (")
-    return nome[i + 2:-1] if i > 0 and nome.endswith(")") else nome
+    """O aparelho de um nome do Windows ("<entrada ou saida> (<aparelho>)"), o que se tira do cabo: o ultimo
+    parentese, com os de dentro dele. "IN 1-2 (BEHRINGER UMC 404HD 192k)" da "BEHRINGER UMC 404HD 192k", e "Digital
+    Audio (S/PDIF) (High Definition Audio Device)" da "High Definition Audio Device". Sem parentese no fim, o nome."""
+    if not nome.endswith(")"):
+        return nome
+    fundo = 0
+    for i in range(len(nome) - 1, 0, -1):  # do fim para o comeco, ate o "(" que fecha com o ")" do fim
+        fundo += {")": 1, "(": -1}.get(nome[i], 0)
+        if fundo == 0:
+            return nome[i + 1:-1]
+    return nome
+
+
+def aparelhos_de(nomes):
+    """Um nome por aparelho (aparelho_de), na ordem, sem repetir: a entrada e a saida da mesma interface sao uma so."""
+    return list(dict.fromkeys(aparelho_de(n) for n in nomes))
+
+
+def _fecha(s):
+    try:
+        s.close()
+    except Exception:  # noqa: BLE001, S110 - fechando
+        pass
 
 
 def _mede(sd, alvos, espera_s):
@@ -277,6 +299,7 @@ def _mede(sd, alvos, espera_s):
             if saida:
                 dados.fill(0)  # silencio: a saida conferida nao toca nada
             quadros[chave] += n
+        s = None
         try:
             s = (sd.InputStream if tipo == "in" else sd.OutputStream)(
                 device=i, channels=canais, samplerate=d["default_samplerate"], dtype="float32",
@@ -285,14 +308,13 @@ def _mede(sd, alvos, espera_s):
             abertos.append((chave, d["name"], s))
         except Exception:  # noqa: BLE001 - em uso exclusivo por outro programa, por exemplo: nao e mudo
             falhas.append(d["name"])
+            if s is not None:  # abriu e nao comecou: fecha ja, ou ficaria aberto ate o fim do processo
+                _fecha(s)
     fim = time.monotonic() + espera_s
     while time.monotonic() < fim and any(quadros[k] == 0 for k, _, _ in abertos):
         time.sleep(0.02)
     for _, _, s in abertos:
-        try:
-            s.close()
-        except Exception:  # noqa: BLE001, S110 - fechando
-            pass
+        _fecha(s)
     return sorted({nome for k, nome, _ in abertos if quadros[k] == 0}), falhas
 
 
@@ -348,32 +370,36 @@ def le_mudos():
         return []
 
 
-def _depois_do_reinicio(espera_s=2.0, grava=True):
-    """A conferencia depois de reiniciar o audio (o instalador, a tarefa e o desinstalador passam por aqui): o resultado
-    vai para a saida (o log), para o --saida (a ultima pagina do instalador) e, com grava, para o registro (o app, ao
-    abrir). Sem nenhum aparelho conferido (sem o sounddevice, ou nenhum abriu, como numa sessao sem audio), o registro
-    fica como estava: o resultado de antes nao se perde por uma conferencia que nao aconteceu. A conferencia que
-    quebra ou passa de CONFERE_MAX_S (um driver que trava ao abrir) conta como nao feita: a instalacao segue."""
-    time.sleep(espera_s)  # os aparelhos se enumeram de novo logo depois do reinicio
+def _depois_do_reinicio(assenta_s=ASSENTA_S):
+    """A conferencia depois de reiniciar o audio (o instalador, a tarefa e a remocao de um microfone so passam por
+    aqui): o resultado do confere_aparelhos, com o "resumo" (a linha do log, que tambem vai no --saida: o executavel
+    nao tem console, e e por ela que o log do setup diz o que houve), e os mudos no registro (o app, ao abrir). Sem
+    nenhum aparelho conferido (sem o sounddevice, ou nenhum abriu, como numa sessao sem audio), o registro fica como
+    estava: o resultado de antes nao se perde por uma conferencia que nao aconteceu. A conferencia que quebra ou passa
+    de CONFERE_MAX_S (um driver que trava ao abrir) conta como nao feita, e a instalacao segue; a que ainda roda vem
+    com "travou", e o main sai sem esperar por ela."""
+    time.sleep(assenta_s)
     caixa = []
 
     def roda():
         try:
             caixa.append(confere_aparelhos())
         except Exception as ex:  # noqa: BLE001 - qualquer erro de um driver: sem conferencia
-            caixa.append(ex)
+            caixa.append(f"{type(ex).__name__}: {ex}")
     th = threading.Thread(target=roda, daemon=True)
     th.start()
     th.join(CONFERE_MAX_S)
-    r = caixa[0] if caixa else TimeoutError(f"still running after {CONFERE_MAX_S:.0f} s")
-    if r is None or isinstance(r, Exception):
-        print(f"devices: not checked ({'no sounddevice' if r is None else r})")
-        return None
-    print(f"devices: {len(r['conferidos'])} checked"
-          + (f"; silent: {'; '.join(r['mudos'])}" if r["mudos"] else "")
-          + (f"; couldn't open: {'; '.join(r['falhas'])}" if r["falhas"] else ""))
-    if r["conferidos"] and grava:
-        grava_mudos(r["mudos"])
+    r = caixa[0] if caixa else f"still running after {CONFERE_MAX_S:.0f} s"
+    if isinstance(r, dict):
+        r = {**r, "travou": False, "resumo": f"devices: {len(r['conferidos'])} checked"
+             + (f"; silent: {'; '.join(r['mudos'])}" if r["mudos"] else "")
+             + (f"; couldn't open: {'; '.join(r['falhas'])}" if r["falhas"] else "")}
+        if r["conferidos"]:
+            grava_mudos(r["mudos"])
+    else:  # None (sem o sounddevice), o erro, ou o tempo que passou
+        r = {"conferidos": [], "mudos": [], "falhas": [], "travou": not caixa,
+             "resumo": f"devices: not checked ({'no sounddevice' if r is None else r})"}
+    print(r["resumo"])
     return r
 
 
@@ -645,7 +671,7 @@ def _devolve(ep):
 def remove(filtro=None):
     """Devolve o original dos microfones (o do filtro, ou todos) e, sem nenhum com o filtro, tira a DLL. O audio do PC
     so reinicia se algum microfone mudou (o desinstalador chama sempre). A conferencia dos aparelhos, se o audio
-    reiniciou (confere_aparelhos), ou None."""
+    reiniciou e algum microfone segue com o filtro (_depois_do_reinicio), ou None."""
     alvos = [acha(filtro)] if filtro else microfones(todos=True)
     mexeu = False
     for ep, nome, apar in alvos:
@@ -659,7 +685,8 @@ def remove(filtro=None):
     r = None
     if mexeu:
         reinicia_audio()
-        r = _depois_do_reinicio(grava=bool(sobrou))  # sem filtro nenhum, nao ha app para avisar: so o log
+        if sobrou:  # sem filtro nenhum (a desinstalacao), nao ha app para avisar nem --saida para ler: nao confere
+            r = _depois_do_reinicio()
     if not sobrou:  # o audiodg ja soltou a DLL: saem a pasta (a DLL e o log), a tarefa, os hospedeiros e os mudos
         shutil.rmtree(PASTA, ignore_errors=True)
         tarefa_apaga()
@@ -819,7 +846,7 @@ def main(argv=None):
     ap.add_argument("--microfone")
     ap.add_argument("--dll", help="the micfx.dll to install (without it, the one that comes with the app)")
     ap.add_argument("--tarefa", action="store_true", help="instala-todos: also creates the Windows task")
-    ap.add_argument("--saida", help="writes the result as JSON ({ok, erro, mudos, aparelhos}, in ASCII)")
+    ap.add_argument("--saida", help="writes the result as JSON ({ok, erro, conferencia, mudos, aparelhos}, in ASCII)")
     ap.add_argument("--aparelho", action="append", help="confere: only this device (repeatable)")
     a = ap.parse_args(argv)
     if a.acao == "confere":  # sem administrador e sem mexer em nada: o app, num processo a parte (engine._confere_fora)
@@ -851,17 +878,25 @@ def main(argv=None):
             res = {"ok": False, "erro": str(ex.code)}
     except Exception as ex:  # noqa: BLE001 - quem chamou ve o motivo em vez de ficar sem resposta
         res = {"ok": False, "erro": f"{type(ex).__name__}: {ex}"}
-    if r is not None:  # os aparelhos que pararam de entregar som depois do reinicio do audio (#136), e um nome por
-        # aparelho fisico, o do aviso (a ultima pagina do instalador, instalador/mudos.iss)
+    if r is not None:  # o audio reiniciou: a conferencia dos aparelhos (#136). O resumo vai para o log do setup, e os
+        # mudos, um nome por aparelho fisico, para o aviso da ultima pagina (instalador/mudos.iss)
+        res["conferencia"] = r["resumo"]
         res["mudos"] = r["mudos"]
-        res["aparelhos"] = list(dict.fromkeys(aparelho_de(n) for n in r["mudos"]))
+        res["aparelhos"] = aparelhos_de(r["mudos"])
     if a.saida:  # em ASCII (a letra com acento vai escapada): o Pascal do instalador le sem saber de UTF-8
         with open(a.saida, "w", encoding="ascii") as f:
             json.dump(res, f)
     if not res["ok"]:
         print(res["erro"], file=sys.stderr)
-        return 1
-    return 0
+    rc = 0 if res["ok"] else 1
+    if r is not None and r["travou"]:
+        # a thread da conferencia segue presa no driver, dentro do PortAudio: o atexit do sounddevice (Pa_Terminate)
+        # poderia travar a saida, e o instalador espera este processo sem prazo. Sai ja, com o --saida gravado
+        for cano in (sys.stdout, sys.stderr):
+            if cano is not None:
+                cano.flush()
+        os._exit(rc)
+    return rc
 
 
 if __name__ == "__main__":

@@ -856,11 +856,14 @@ def _confere_fora(nomes=None):
     if not getattr(sys, "frozen", False):  # no codigo, o mesmo caminho pelo python (o server.auxiliar)
         cmd.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ritmelli.py"))
     cmd += ["--microfone", "confere"] + [x for n in nomes or () for x in ("--aparelho", n)]
+    p = None
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
                            creationflags=NO_WINDOW, startupinfo=sem_cursor())
         return json.loads(p.stdout.strip().splitlines()[-1])
-    except Exception:  # noqa: BLE001 - sem a conferencia, nenhum aviso: nunca um aviso falso
+    except Exception as ex:  # noqa: BLE001 - sem a conferencia, nenhum aviso: nunca um aviso falso
+        motivo = p.stderr.strip()[-300:] if p is not None and p.stderr.strip() else f"{type(ex).__name__}: {ex}"
+        print(f"devices: not checked ({motivo})")
         return None
 
 
@@ -868,9 +871,9 @@ def _aviso_mudos(mudos):
     """A mensagem da tela com os aparelhos que abrem e nao entregam som (#136): um nome por aparelho, o que se tira do
     cabo ("BEHRINGER UMC 404HD 192k", e nao cada entrada e saida dele)."""
     from microfone import microfone as filtro  # noqa: PLC0415
-    nomes = list(dict.fromkeys(filtro.aparelho_de(n) for n in mudos))
     return i18n.msg("server.devices.silent", "Windows stopped receiving sound from the device \"{name}\". Unplug its "
-                                             "USB cable and plug it back in.", name="\", \"".join(nomes))
+                                             "USB cable and plug it back in.",
+                    name="\", \"".join(filtro.aparelhos_de(mudos)))
 
 
 def _do_microfone(mic):
@@ -1411,9 +1414,8 @@ class Engine:
         """O microfone em uso com o filtro: o alvo do anel e o hash dele. Sem o filtro (um microfone que apareceu depois
         da instalacao) ou com as melhorias de audio desligadas, roda a tarefa do instalador, que prepara como SYSTEM
         sem pedir nada a ninguem, e reabre o audio (o do Windows reinicia uns segundos). Uma vez por microfone. Depois
-        de reiniciar o audio, e na primeira vez que roda, confere se algum aparelho parou de entregar som (#136)."""
+        de reiniciar o audio, e uma vez com o filtro pronto, confere se algum aparelho parou de entregar som (#136)."""
         _com_init()
-        primeira, self._mudos_vistos = not self._mudos_vistos, True
         st = _do_microfone(mic)
         if st and st["filtro"] and st["melhorias"]:
             from microfone import injeta  # noqa: PLC0415
@@ -1421,7 +1423,8 @@ class Engine:
                 self._alvo = injeta.hash_microfone(st["guid"])
                 if self._aviso is not None and self.error == self._aviso:
                     self.error = None
-            if primeira:  # so os que o instalador ou a tarefa acharam mudos: abrir todos a cada partida incomodaria
+            if not self._mudos_vistos:  # uma vez, so os que o instalador ou a tarefa acharam mudos: abrir todos a cada
+                self._mudos_vistos = True  # partida incomodaria
                 from microfone import microfone as filtro  # noqa: PLC0415
                 mudos = filtro.le_mudos()
                 if mudos:
@@ -1452,13 +1455,14 @@ class Engine:
         with self._lock:  # o audio do Windows reiniciou: os streams daqui morreram
             if not self._fechado and self.active.get("mic") == mic:
                 self._reabre()
+        self._mudos_vistos = True  # os do registro entram nesta
         self._confere_mudos()  # todos: o reinicio do audio pode ter deixado qualquer aparelho mudo
 
     def _confere_mudos(self, nomes=None):
         """Confere (num processo a parte, _confere_fora) se os aparelhos, ou so esses nomes, entregam som, e avisa na
         tela os que abrem e nao entregam nada (#136: uma interface USB depois do reinicio do audio, ate tirar o cabo).
-        O aviso sai como os outros dos aparelhos: quando o audio reabre (o aparelho tirado e posto de volta muda a
-        lista, e o vigia reabre)."""
+        O aviso e dos aparelhos (_aviso), como o da reserva: sai quando o audio reabre (o vigia reabre quando o
+        aparelho em uso e tirado e posto de volta), e ao tocar, parar ou pular, como todo erro da tela."""
         r = _confere_fora(nomes)
         if not r or not r.get("mudos"):
             return
