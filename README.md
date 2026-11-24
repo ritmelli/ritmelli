@@ -503,14 +503,15 @@ one in [Run](#run), and open the pull request from a branch of your fork against
 the team are merged after a review by an organization member. Security problems go through the
 [security policy](https://github.com/ritmelli/ritmelli/security/policy), not through issues.
 
-Pull requests don't trigger the pipeline (a maintainer runs it by hand), so run its four pre-build checks yourself
-before you open one. They need only the Python standard library:
+Pull requests don't trigger the pipeline (a maintainer runs it by hand), so run its pre-build checks yourself before
+you open one. They need only the Python standard library:
 
 ```powershell
 python dev\testa_i18n.py       # the interface texts in both languages
 python dev\testa_metricas.py   # the anonymous usage data
 python dev\testa_migra.py      # the rename from Vitrola
 python dev\testa_mock.py       # the no-audio mode never touches real user data
+python dev\testa_pareamento.py # phone pairing: the code, wrong attempts, the key and disconnecting
 ```
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
