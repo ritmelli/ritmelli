@@ -9,7 +9,7 @@ Sobe o proprio servidor (server.py --mock numa porta livre) com uma prateleira d
 e os dados numa pasta temporaria (com a LOCALAPPDATA trocada: o Ritmelli de verdade nem fica sabendo). Os
 prints saem pelo Chrome headless, como no dev/shot.py, na densidade de tela de cada celular (o @ do
 tamanho). Para o mesmo tema dar o mesmo print toda vez:
-- as capas sao desenhos em data: URI e as fontes moram no tema (themes/vitrola/fonts/; o bloqueio do
+- as capas sao desenhos em data: URI e as fontes moram no tema (themes/ritmelli/fonts/; o bloqueio do
   Google Fonts fica de guarda, caso alguma volte a apontar para la): nada vem da internet;
 - os tick do SSE chegam com os niveis zerados (a voz falsa do --mock mexeria nos VUs);
 - animacoes reduzidas, e cada estado sai duas vezes: se os dois prints diferem, o estado e instavel e
@@ -288,7 +288,7 @@ async def prints(a, porta, destino):
                     pre = f"{cenario}-{tam}"
                     await c.cmd("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=float(dpr),
                                 mobile=True)
-                    await c.cmd("Page.navigate", url=f"http://127.0.0.1:{porta}/t/vitrola/?lang={a.lang}")
+                    await c.cmd("Page.navigate", url=f"http://127.0.0.1:{porta}/t/ritmelli/?lang={a.lang}")
                     for _ in range(200):
                         await asyncio.sleep(0.1)
                         try:

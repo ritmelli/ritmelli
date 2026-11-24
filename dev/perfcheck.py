@@ -1,7 +1,7 @@
 """Custo de um tema com musica tocando, como num celular (390x844, 3x, CPU 4x mais lenta).
 
-    python dev/perfcheck.py http://127.0.0.1:8806/t/vitrola/ --play <id da biblioteca>
-    python dev/perfcheck.py http://127.0.0.1:8806/t/vitrola/ --play <id> --size 1366x768@1 --cpu 1
+    python dev/perfcheck.py http://127.0.0.1:8806/t/ritmelli/ --play <id da biblioteca>
+    python dev/perfcheck.py http://127.0.0.1:8806/t/ritmelli/ --play <id> --size 1366x768@1 --cpu 1
 
 Grava 3 s de trace do Chrome com a faixa tocando e conta por segundo: quadros do thread
 principal, pinturas e rasterizacoes (o que trava a rolagem no celular), e de onde vem a
@@ -9,7 +9,7 @@ invalidacao (o elemento que muda a cada quadro). Contar quadros por requestAnima
 nao serve: no headless a rolagem e do compositor e sai lisa mesmo com a pagina sendo
 redesenhada a cada quadro.
 
-Referencia (18/10, mock, Vanessa da Mata): parada, a vitrola fica em ~30 pinturas e ~15
+Referencia (18/10, mock, Vanessa da Mata): parado, o tema fica em ~30 pinturas e ~15
 rasterizacoes por segundo; antes da correcao, tocando, ia a 66 e 208 (agulha do VU dentro
 do svg e quadrado do disco girando sem recorte). Use num servidor --mock, nunca no 8799.
 """

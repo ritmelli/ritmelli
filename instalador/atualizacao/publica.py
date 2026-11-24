@@ -34,6 +34,13 @@ from pathlib import Path
 
 from Cryptodome.Signature import eddsa
 
+# o "app" do manifesto: segue "vitrola", o nome de antes da troca de nome (#58). A 0.4.1 e as anteriores e o Ritmelli
+# ate a 0.6.0 so aceitam o manifesto com ele (o m["app"] == "vitrola" do atualizacao.py delas), e com outro nunca
+# mais atualizariam sozinhos. As versoes depois da 0.6.0 aceitam os dois (o APPS do atualizacao.py). So troque para
+# "ritmelli" quando nenhuma versao que ainda deve atualizar conferir so "vitrola": quando a mais velha que se quer
+# levar a versao nova ja for uma das que aceitam os dois. Antes disso, quem esta nelas fica para tras de vez
+APP = "vitrola"
+
 
 def sha(arq):
     h = hashlib.sha256()
@@ -152,8 +159,7 @@ def main():
     notas, notas_en = le_notas(a.notas), le_notas(a.notas_en)
     if bool(a.parcial) != bool(a.parcial_info):
         sys.exit("o --parcial e o --parcial-info vem juntos")
-    # o "app" de antes da troca de nome (#58): e o que as versoes instaladas conferem (o APP do atualizacao.py)
-    m = {"formato": 1, "app": "vitrola", "versao": v.group(1), "data": time.strftime("%Y-%m-%d"), "notas": notas,
+    m = {"formato": 1, "app": APP, "versao": v.group(1), "data": time.strftime("%Y-%m-%d"), "notas": notas,
          "instalador": {"url": a.url, "sha256": sha(a.setup), "tamanho": a.setup.stat().st_size},
          "arquivos": arquivos(a.app, a.bin)}
     if notas_en:

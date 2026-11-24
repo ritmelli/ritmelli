@@ -1,9 +1,9 @@
-"""Molduras de pixel da vitrola (o toque de Habbo): contorno escuro, linha clara por dentro,
+"""Molduras de pixel do tema (o toque de Habbo): contorno escuro, linha clara por dentro,
 bisel e cantos em degrau, desenhados pixel a pixel e usados como border-image de 9 partes.
 
     python dev/molduras.py
 
-Grava as variaveis --mold-* no bloco entre "molduras:inicio" e "molduras:fim" do themes/vitrola/index.html e
+Grava as variaveis --mold-* no bloco entre "molduras:inicio" e "molduras:fim" do themes/ritmelli/index.html e
 do gallery/index.html (a pagina inicial, que fica fora do tema e leva so as que usa).
 Cada moldura e um SVG pequeno (1 unidade = 1 ponto, shape-rendering crispEdges) com a quina
 inteira desenhada e o meio de cada lado esticado; a variavel ja leva o corte, a largura e o quanto a
@@ -37,7 +37,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 RAIZ = Path(__file__).resolve().parent.parent
-TEMA = RAIZ / "themes" / "vitrola" / "index.html"
+TEMA = RAIZ / "themes" / "ritmelli" / "index.html"
 GALERIA = RAIZ / "gallery" / "index.html"
 NA_GALERIA = ("objeto", "objeto-apertado", "caixa")
 CONTORNO = (26, 11, 4, 1)          # #1A0B04, o --contorno do tema
