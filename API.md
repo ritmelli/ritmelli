@@ -14,6 +14,8 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - `themes/<slug>/index.html`, autossuficiente: HTML + CSS + JS puro, sem build. Arquivo
   extra (fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
   relativo (`./x.svg`), servido em `/t/<slug>/x.svg`.
+- O slug `vitrola` é reservado: era o do tema `ritmelli` até a 0.6.0, e o servidor leva todo `/t/vitrola/...` para
+  o mesmo caminho em `/t/ritmelli/` (302, com a mesma query), antes de procurar a pasta.
 - `themes/<slug>/meta.json`: `{"name": "...", "direction": "...", "blurb": "uma frase"}`. Cada campo pode vir
   por língua, `{"en": "...", "pt_BR": "..."}`; a galeria mostra o da língua de quem abre (ver `GET /api/themes`).
 - O ícone é do servidor, igual para todo tema: a aba do navegador pega o `/favicon.ico`
@@ -188,7 +190,7 @@ da música com `por_cima`, como os de até 15 s, e o motor toca ele inteiro, at�
 `last_pos` = onde parou da última vez (segundos); vale oferecer "continuar de mm:ss"
 quando for maior que uns 5 s. `plays` = quantas vezes o disco foi escutado: conta quando
 toca de fato 30 s (ou 80% dele, se for mais curto) desde que entrou no prato; ausente = 0
-(item que nunca tocou, ou servidor antigo). A vitrola põe as mais escutadas primeiro.
+(item que nunca tocou, ou servidor antigo). O tema `ritmelli` põe as mais escutadas primeiro.
 `lufs` = a sonoridade do disco inteiro (LUFS integrado, EBU R128), que o volume automático usa; o servidor mede a
 prateleira aos poucos, então ausente = ainda não medido.
 
@@ -221,7 +223,7 @@ Estado, o do Job e o das respostas, e o `erro` da versão nova) vem como **Mensa
 ```
 - `key` e `params`: mostre o texto da chave nos arquivos do tema (`themes/<slug>/i18n/`), com os
   `{param}` trocados. As chaves começam com `server.`; a lista, com o texto de cada uma, está nos
-  `.properties` do tema `vitrola`, e o `python dev/testa_i18n.py` confere que todo tema com a pasta
+  `.properties` do tema `ritmelli`, e o `python dev/testa_i18n.py` confere que todo tema com a pasta
   `i18n/` tem todas, com os mesmos params.
 - Um param pode ser outra Mensagem: o motivo que já é nosso, como o aparelho que sumiu dentro do
   "não consegui abrir o áudio". Traduza ela também.
@@ -229,7 +231,7 @@ Estado, o do Job e o das respostas, e o `erro` da versão nova) vem como **Mensa
   `key` é a que nenhuma tela deveria ver (o pedido feito errado, a rota que só outro programa
   chama): mostre o `text`.
 - O detalhe técnico (o motivo do yt-dlp, o erro do Windows) vai como veio, num param, em geral o
-  `reason`. Ele pode trazer o caminho inteiro de um arquivo; a vitrola mostra só o nome.
+  `reason`. Ele pode trazer o caminho inteiro de um arquivo; o tema `ritmelli` mostra só o nome.
 
 ## Comandos
 
@@ -388,7 +390,7 @@ uma versão falhou duas vezes, por exemplo, e ela espera a próxima).
 1. Biblioteca como pads de disparo: um toque toca do zero; ação secundária para
    continuar de `last_pos`, renomear e apagar (apagar pede confirmação).
 2. Tocando agora: título, estado, barra de progresso com seek (clique e arraste),
-   tempo decorrido e total, tocar/pausar, parar, repetir. A vitrola usa o transporte do
+   tempo decorrido e total, tocar/pausar, parar, repetir. O tema `ritmelli` usa o transporte do
    Spotify: aleatório, anterior, tocar/pausar, próxima (apagada com a
    fila vazia) e repetir, sem botão de parar (o pausar cala tudo; o Esc ainda para); o
    título fica numa linha e desliza para o lado quando não cabe, como no YouTube Music.
@@ -398,7 +400,7 @@ uma versão falhou duas vezes, por exemplo, e ela espera a próxima).
    `monitor_on: true` junto.
 4. Medidores ao vivo pelos `tick`: voz, arquivo e saída para o jogo.
 5. Busca no YouTube (texto ou link colado): resultados com capa, título, canal e
-   duração; "tocar agora" e "salvar"; marca o que já está na biblioteca. A vitrola faz como
+   duração; "tocar agora" e "salvar"; marca o que já está na biblioteca. O tema `ritmelli` faz como
    o Spotify: tocar na linha toca, o ⊕ salva (anel enquanto baixa, ✓
    quando chega), o ... abre as opções (no celular sobem de baixo) e puxar a linha para a
    direita põe na fila; a fila (A seguir) aparece no toca-discos. Fila é opcional nos outros
@@ -443,7 +445,7 @@ a página inteira; o que gira leva recorte no pai (`contain: paint`); o laço de
 A medida é `python dev/perfcheck.py <url do tema> --play <id>`, que conta pinturas e
 rasterizações por segundo e aponta o elemento que muda a cada quadro.
 
-No celular, o que se usa com pressa no meio do jogo fica a um toque, sem rolar: tocar e pausar, cortar a voz e o volume no jogo. A vitrola faz como os apps de
+No celular, o que se usa com pressa no meio do jogo fica a um toque, sem rolar: tocar e pausar, cortar a voz e o volume no jogo. O tema `ritmelli` faz como os apps de
 música: barra fixa embaixo com o disco no prato, cortar voz e tocar; tocar nela abre o
 toca-discos por cima (o voltar do Android fecha), com os volumes logo abaixo do botão
 grande; e os sons curtos (até 15 s, tocam por cima) ficam em botões no alto da prateleira.
@@ -452,7 +454,7 @@ No toque, barra de volume e da faixa só muda arrastando o cursor:
 encostar em outro ponto da canaleta, sem querer ao rolar a página, não muda nada. Mouse e
 teclado seguem como sempre (clicar na canaleta pula para lá).
 
-Na primeira vez no PC (`GET /api/boas-vindas`), a vitrola abre as boas-vindas: o passo a
+Na primeira vez no PC (`GET /api/boas-vindas`), o tema `ritmelli` abre as boas-vindas: o passo a
 passo do microfone e do fone, do mesmo microfone no jogo e nas chamadas (no Discord, o perfil
 Estúdio), da primeira música e do celular. Fechar de
 qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.

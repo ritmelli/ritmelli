@@ -1,4 +1,4 @@
-"""Mede a vitrola no Chrome do celular de verdade (USB, depuracao ligada), so rolando e puxando:
+"""Mede o tema no Chrome do celular de verdade (USB, depuracao ligada), so rolando e puxando:
 nunca toca em botao (o som do 8799 sai no jogo).
 
     python dev/celular.py rolagem [--recarregar] [--css "<regra injetada>"] [--trace saida.json]
@@ -8,7 +8,7 @@ nunca toca em botao (o som do 8799 sai no jogo).
     python dev/celular.py dedo [--segundos 15] [--esperar]   # so grava, enquanto o usuario rola com o dedo
 
 Antes: adb no PATH (ou ADB=<caminho do adb.exe>) e o celular autorizado em `adb devices`; o
-script faz o forward da porta 9222 e so mexe na aba :8799/t/vitrola (as outras abas sao do usuario).
+script faz o forward da porta 9222 e so mexe na aba :8799/t/ritmelli (as outras abas sao do usuario).
 O celular de teste e um Galaxy S20 FE: tela de 120 Hz (um quadro a cada 8,3 ms), densidade 3. O
 emulado do Chrome no PC nao reproduz o que trava la (no 18/10, as agulhas e as texturas so
 travavam no aparelho). Leitura do resultado da rolagem:
@@ -100,9 +100,9 @@ class Aba:
 
 
 async def conectar():
-    abas = [t for t in json.load(urllib.request.urlopen(BASE + "/json")) if t["type"] == "page" and ":8799/t/vitrola" in t["url"]]
+    abas = [t for t in json.load(urllib.request.urlopen(BASE + "/json")) if t["type"] == "page" and ":8799/t/ritmelli" in t["url"]]
     if len(abas) != 1:
-        sys.exit(f"esperava uma aba da vitrola no celular, achei {len(abas)}")
+        sys.exit(f"esperava uma aba do tema no celular, achei {len(abas)}")
     a = Aba(await websockets.connect(abas[0]["webSocketDebuggerUrl"], max_size=1 << 30))
     asyncio.create_task(a.laco())
     await a.cmd("Runtime.enable")

@@ -72,8 +72,9 @@ SHA = hashlib.sha256(setup).hexdigest()
 NOVA = mais(VERSAO)
 
 
-def publica(versao=NOVA, k=chave, sha=SHA):
-    m = {"formato": 1, "app": "vitrola", "versao": versao, "data": "2026-11-18", "notas": ["Uma coisa nova."],
+def publica(versao=NOVA, k=chave, sha=SHA, app="vitrola"):
+    # o app de antes da troca de nome (#58) e o que o publica.py publica; o de agora, a tarefa aceita tambem
+    m = {"formato": 1, "app": app, "versao": versao, "data": "2026-11-18", "notas": ["Uma coisa nova."],
          "notas_en": ["A new thing."], "instalador": {"url": f"{base}/setup.exe", "sha256": sha, "tamanho": len(setup)},
          "arquivos": [{"caminho": "ritmelli.exe", "sha256": SHA, "tamanho": 1}]}
     dados = json.dumps(m).encode()
@@ -118,6 +119,20 @@ atualizador.rodada(espera_fechar=0)
 e = atualizador.estado()
 caso("assinado por outra chave: recusa e nao baixa", e.get("estado") == "parado" and e.get("erro")
      and "/setup.exe" not in pedidos and not lancados, e.get("erro"))
+
+for app, aceita in (("ritmelli", True), ("outro", False)):
+    limpa()
+    publica(app=app)
+    aberta[0] = True
+    atualizador.rodada(espera_fechar=0)
+    e = atualizador.estado()
+    if aceita:
+        caso(f"o manifesto do app {app!r} (o nome de agora): baixa e confere", e.get("estado") == "pronta"
+             and not e.get("erro") and not lancados, e.get("erro"))
+    else:
+        caso(f"o manifesto do app {app!r}: recusa e nao baixa", e.get("estado") == "parado" and e.get("erro")
+             and "/setup.exe" not in pedidos and not lancados, e.get("erro"))
+aberta[0] = False
 
 limpa()
 publica(sha="0" * 64)

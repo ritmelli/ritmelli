@@ -49,6 +49,9 @@ from yt_erros import erro_do_video
 HERE = Path(__file__).resolve().parent
 LIB = pastas.LIB  # audio baixado; library.json e config.json moram em --data-dir
 THEMES = HERE / "themes"
+# o endereco do tema ate a 0.6.0, quando ele se chamava vitrola (#58): o celular pareado, o atalho na tela inicial e o
+# favorito ainda abrem este, e o servidor leva cada caminho dele para o mesmo no tema de agora (o tema_de_antes)
+TEMA_DE_ANTES = "/t/vitrola"
 YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 YT_URL = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
 PAGINA_FOLGA = 8  # a busca pede tantos a mais na pagina de resultados: canal e playlist ocupam lugar e saem
@@ -2551,6 +2554,15 @@ def build(app_state):
     @r.get("/")
     async def index(request):
         return await pagina_com_textos(request, HERE / "gallery" / "index.html")
+
+    # antes do /t/{slug}/ e do static do /t/, que tambem casam com o /t/vitrola/... e dariam 404 (a pasta nao existe
+    # mais): o aiohttp tenta as rotas do mesmo prefixo na ordem em que entraram. O mesmo caminho e a mesma query (o
+    # ?parear= do QR, o ?lang=), e o 302, como o /t/{slug} logo abaixo: um 301 ficaria guardado no navegador e, de
+    # volta a uma versao de antes, o /t/vitrola/ dela nunca mais abriria
+    @r.get(TEMA_DE_ANTES + "{resto:(?:/.*)?}")
+    async def tema_de_antes(request):
+        destino = request.rel_url.with_path(pastas.PAGINA.rstrip("/") + (request.match_info["resto"] or "/"))
+        raise web.HTTPFound(destino.with_query(request.rel_url.query))
 
     @r.get("/t/{slug}/")
     async def theme_index(request):
