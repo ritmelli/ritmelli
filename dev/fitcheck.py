@@ -96,9 +96,9 @@ def free_port():
 
 
 def fecha_chrome(chrome, prof):
-    """Fecha o Chrome sem tela e apaga o perfil dele: cada rodada deixava a pasta no %TEMP% (195 pastas e 2,7 GB do
-    fitcheck e do shot.py em 24/11). Vai a arvore inteira (o taskkill /T): o kill so fecha o processo principal, e o
-    chrome_crashpad_handler, filho dele, seguia segurando um arquivo do perfil."""
+    """Fecha o Chrome sem tela e apaga o perfil dele, que antes ficava no %TEMP% a cada rodada. Vai a arvore inteira (o
+    taskkill /T): o kill so fecha o processo principal, e o chrome_crashpad_handler, filho dele, seguia segurando um
+    arquivo do perfil."""
     subprocess.run(["taskkill", "/PID", str(chrome.pid), "/T", "/F"], capture_output=True)
     chrome.kill()  # sem o taskkill, ou se ele nao pegou
     chrome.wait()
@@ -107,6 +107,11 @@ def fecha_chrome(chrome, prof):
         if not os.path.exists(prof):
             return
         time.sleep(0.25)
+
+
+# como conseguir a tela de boas-vindas: num PC com o Ritmelli, o --mock sem --data-dir copia a prateleira de quem usa
+SEM_BOAS_VINDAS = ("ela so aparece com a prateleira vazia e nunca fechada (um --mock novo num PC sem o Ritmelli, ou "
+                   "com um --data-dir novo e um library.json vazio: [])")
 
 
 def _rota_boas_vindas(url):
@@ -139,11 +144,25 @@ def fecha_boas_vindas(url):
         return False
 
 
+async def espera_boas_vindas(cmd):
+    """Espera ate 5 s a tela de boas-vindas abrir na pagina (ela abre depois da carga, quando chega a resposta do GET
+    dela). cmd: o comando do CDP de quem chama. True se abriu."""
+    for _ in range(50):
+        r = await cmd("Runtime.evaluate", expression="!!document.querySelector('#dlg-boas')?.open", returnByValue=True)
+        if r.get("result", {}).get("value"):
+            return True
+        await asyncio.sleep(0.1)
+    return False
+
+
 async def run(a):
     if a.boas_vindas:
-        if not boas_vindas_pendentes(a.url):
-            print("FALHA  a tela de boas-vindas nao abre neste servidor: ela so aparece com a prateleira vazia e "
-                  "nunca fechada (um --mock novo, sem --data-dir)")
+        pendente = boas_vindas_pendentes(a.url)
+        if pendente is None:
+            print(f"FALHA  o servidor nao respondeu em {_rota_boas_vindas(a.url)}")
+            return 1
+        if not pendente:
+            print(f"FALHA  a tela de boas-vindas nao abre neste servidor: {SEM_BOAS_VINDAS}")
             return 1
     elif fecha_boas_vindas(a.url):
         print("(a tela de boas-vindas estava pendente: fechada pelo servidor, como o botao do fim dela)")
@@ -185,13 +204,8 @@ async def run(a):
                 if a.js:
                     await cmd("Runtime.evaluate", expression=a.js)
                     await asyncio.sleep(a.wait)
-                if a.boas_vindas:  # ela abre depois da carga, quando chega a resposta do GET dela
-                    for _ in range(50):
-                        r = await cmd("Runtime.evaluate", expression="!!document.querySelector('#dlg-boas')?.open",
-                                      returnByValue=True)
-                        if r["result"]["value"]:
-                            break
-                        await asyncio.sleep(0.1)
+                if a.boas_vindas:  # se nao abrir, o PROBE diz "nenhuma janela aberta"
+                    await espera_boas_vindas(cmd)
                 r = await cmd("Runtime.evaluate", expression=f"{PROBE}({'true' if a.boas_vindas else 'false'})",
                               returnByValue=True)
                 v = r["result"]["value"]

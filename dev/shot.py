@@ -27,7 +27,7 @@ import urllib.request
 import websockets
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fitcheck import fecha_boas_vindas, fecha_chrome  # noqa: E402
+from fitcheck import SEM_BOAS_VINDAS, espera_boas_vindas, fecha_boas_vindas, fecha_chrome  # noqa: E402
 
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
@@ -115,16 +115,8 @@ async def run(a):
                           features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
             await cmd("Page.navigate", url=a.url)
             await asyncio.sleep(a.wait)
-            if a.boas_vindas:  # ela abre depois da carga, quando chega a resposta do GET dela
-                for _ in range(50):
-                    r = await cmd("Runtime.evaluate", expression="!!document.querySelector('#dlg-boas')?.open",
-                                  returnByValue=True)
-                    if r.get("result", {}).get("value"):
-                        break
-                    await asyncio.sleep(0.1)
-                else:
-                    errors.append("a tela de boas-vindas nao abriu: ela so aparece com a prateleira vazia e nunca "
-                                  "fechada (um --mock novo, sem --data-dir)")
+            if a.boas_vindas and not await espera_boas_vindas(cmd):
+                errors.append(f"a tela de boas-vindas nao abriu: {SEM_BOAS_VINDAS}")
             for js in a.js:
                 r = await cmd("Runtime.evaluate", expression=js, awaitPromise=True,
                               returnByValue=True)
