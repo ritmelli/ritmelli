@@ -349,7 +349,7 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     quem participa ("feat."), sem o canal do vídeo de alguém. No rádio do Family Affair, o MJB
     Da MVP e o I Can Love You, que caíam colados, ficaram com três entre elas.
   - Escutas: o disco ganha uma (`plays` na biblioteca) quando toca de fato 30 s, ou 80%
-    dele se for mais curto. Na vitrola a prateleira vem com as mais escutadas primeiro e as
+    dele se for mais curto. No tema `ritmelli` a prateleira vem com as mais escutadas primeiro e as
     novas por último.
   - Transporte do Spotify: a Próxima toca o primeiro da fila; o Anterior volta ao começo do
     disco depois de 3 s, e antes disso toca o disco de antes (o servidor guarda os últimos
@@ -358,9 +358,11 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
     sons por cima.
 - `API.md`: contrato da API e checklist de todo tema.
 - `themes/<slug>/`: as interfaces; `gallery/index.html` lista e compara lado a lado, com as letras e as texturas do
-  tema da vitrola e os textos dela em `gallery/i18n/`, como num tema. O app abre direto no tema da vitrola
+  tema `ritmelli` e os textos dela em `gallery/i18n/`, como num tema. O app abre direto no tema `ritmelli`
   (`pastas.PAGINA`), e a galeria fica em `/`. Na primeira
-  vez, o tema abre as boas-vindas por cima (ver o `API.md`).
+  vez, o tema abre as boas-vindas por cima (ver o `API.md`). Até a 0.6.0 o tema se chamava `vitrola`: o servidor
+  leva todo endereço em `/t/vitrola/` para o mesmo caminho em `/t/ritmelli/`, com a mesma query (o `tema_de_antes`
+  do `server.py`), porque o celular pareado, o atalho na tela inicial e os favoritos abrem o de antes.
 - `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
   de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
   deitado), `dev/compara.py` (gate de "o celular não mudou": prints do tema em estados fixos,
@@ -372,8 +374,8 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   no tempo de um par da prateleira pôs bumbo em cima de bumbo e não no contratempo, com um
   detector de bumbo próprio; no final seco para um começo sem bumbo, confere a primeira nota
   contra o bumbo do que sai: sai 0 no tempo, 1 contratempo ou fora, 3 sem plano ou sem bumbo), `dev/texturas.py` (gera as
-  texturas de ruído da vitrola em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
-  (desenha as molduras de pixel da vitrola, contorno, linha clara, bisel e cantos em degrau, e
+  texturas de ruído do tema em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
+  (desenha as molduras de pixel do tema, contorno, linha clara, bisel e cantos em degrau, e
   grava as variáveis `--mold-*` de border-image no tema, fora do bloco do celular, porque valem
   nas duas telas, com o tamanho do ponto na variável `--px`, 1px quando o tema não a define, e no
   `gallery/index.html` as que a galeria usa),
@@ -412,13 +414,15 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   a pasta padrão de antes (`Program Files\Vitrola`), e o que estiver preso sai no reinício. O
   `ritmelli.iss` muda a pasta padrão para `Program Files\Ritmelli` (a escolhida à mão fica), e a
   parcial não serve por cima de uma versão de antes (o `parcial.py` não a gera). O nome do app no
-  manifesto continua `vitrola` (o `APP` do `atualizacao.py`): é o que as versões instaladas
-  conferem. O celular pareado antes segue pelo cookie de antes (`pareamento.chave_do`), e o
-  modo de cada pedal, pela chave de antes no `localStorage`.
+  manifesto continua `vitrola` (o `APP` do `publica.py`): a 0.4.1 e o Ritmelli até a 0.6.0 só aceitam
+  esse. As versões depois delas aceitam também `ritmelli` (o `APPS` do `atualizacao.py`), e o manifesto
+  só pode trocar quando nenhuma versão que ainda deve atualizar conferir só o de antes. O celular
+  pareado antes segue pelo cookie de antes (`pareamento.chave_do`), e o modo de cada pedal, pela
+  chave de antes no `localStorage`.
 - `versao.py`: a versão (semver), que o servidor mostra no Estado e no `--version`; a tag da
   release tem que bater com ela.
 - `i18n.py`: os textos da interface em cada língua. Os textos moram em
-  `themes/vitrola/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, e o tema só cita a chave
+  `themes/ritmelli/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, e o tema só cita a chave
   (`data-i18n="search.clear"` na marcação, `I18N.t('search.clear')` no JS). O servidor lê os
   arquivos a cada abertura da página e põe os textos dentro dela, no lugar do `<!-- i18n -->`:
   assim eles já estão lá antes do primeiro script, sem esperar um `fetch`, e o tema não muda de

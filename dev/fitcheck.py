@@ -1,6 +1,6 @@
 """Confere se um tema cabe na tela em varios tamanhos (regra: se adequar a qualquer tela).
 
-    python dev/fitcheck.py http://127.0.0.1:8806/t/vitrola/ [--sizes 1366x657,1920x1080]
+    python dev/fitcheck.py http://127.0.0.1:8806/t/ritmelli/ [--sizes 1366x657,1920x1080]
         [--shots <pasta>] [--js "document.querySelector('#mini-seta').click()"]
 
 O --js roda depois da carga, antes da conferencia (abrir uma pagina ou um painel e conferir ela tambem).
