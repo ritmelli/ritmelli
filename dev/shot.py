@@ -3,11 +3,14 @@ os erros do console no fim. Pra quem desenha tema conferir o proprio trabalho.
 
     python dev/shot.py http://127.0.0.1:8811/t/meu-tema/ out.png
         [--size 1440x900] [--dpr 2] [--wait 2.5] [--js "document.querySelector('#x').click()"]...
-        [--full] [--tab N] [--reduced-motion] [--offline-ok]
+        [--full] [--tab N] [--reduced-motion] [--offline-ok] [--boas-vindas]
 
 Cada --js roda em ordem, com --wait segundos depois de cada um, todos no mesmo escopo
 global da pagina (const repetido entre passos da erro: use uma IIFE). Sai 1 se a pagina
 lancou excecao ou logou console.error.
+
+A tela de boas-vindas (a da primeira vez, com a prateleira vazia) cobre a pagina: antes do print ela e fechada pelo
+servidor, como o botao do fim dela (#126). Com o --boas-vindas ela fica, e o print e dela.
 """
 import argparse
 import asyncio
@@ -23,6 +26,9 @@ import urllib.request
 
 import websockets
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fitcheck import SEM_BOAS_VINDAS, espera_boas_vindas, fecha_boas_vindas, fecha_chrome  # noqa: E402
+
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 
@@ -35,6 +41,8 @@ def free_port():
 
 
 async def run(a):
+    if not a.boas_vindas and fecha_boas_vindas(a.url):
+        print("(a tela de boas-vindas estava pendente: fechada pelo servidor, como o botao do fim dela)")
     port = free_port()
     prof = tempfile.mkdtemp(prefix="sbshot_")
     w, h = map(int, a.size.lower().split("x"))
@@ -107,6 +115,8 @@ async def run(a):
                           features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
             await cmd("Page.navigate", url=a.url)
             await asyncio.sleep(a.wait)
+            if a.boas_vindas and not await espera_boas_vindas(cmd):
+                errors.append(f"a tela de boas-vindas nao abriu: {SEM_BOAS_VINDAS}")
             for js in a.js:
                 r = await cmd("Runtime.evaluate", expression=js, awaitPromise=True,
                               returnByValue=True)
@@ -135,8 +145,7 @@ async def run(a):
                 f.write(base64.b64decode(r["data"]))
             rt.cancel()
     finally:
-        chrome.kill()
-        chrome.wait()
+        fecha_chrome(chrome, prof)
     print(f"print: {os.path.abspath(a.out)} ({a.size})")
     for e in errors:
         print(e)
@@ -157,6 +166,8 @@ def main():
     ap.add_argument("--tab", type=int, default=0, help="aperta Tab N vezes antes do print (anel de foco)")
     ap.add_argument("--offline-ok", action="store_true",
                     help="nao conta como erro a reconexao do /api/events com o servidor fora")
+    ap.add_argument("--boas-vindas", action="store_true",
+                    help="deixa a tela de boas-vindas aberta e fotografa ela (com a prateleira vazia)")
     sys.exit(asyncio.run(run(ap.parse_args())))
 
 

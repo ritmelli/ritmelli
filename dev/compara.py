@@ -41,7 +41,7 @@ import websockets
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fitcheck import CHROME, free_port  # noqa: E402
+from fitcheck import CHROME, fecha_chrome, free_port  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
 # o celular pequeno, o de sempre, o grande e o tablet em pe (abaixo de 900 px tambem e o layout do celular)
@@ -326,9 +326,7 @@ async def prints(a, porta, destino):
             leitor.cancel()
             return c.erros, instaveis
     finally:
-        chrome.kill()
-        chrome.wait()
-        shutil.rmtree(prof, ignore_errors=True)
+        fecha_chrome(chrome, prof)   # com o chrome_crashpad_handler, que segurava o perfil (#126)
 
 
 def compara(pasta, tamanhos):

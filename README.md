@@ -379,10 +379,11 @@ them, in the blocks that start at `DECK-JS-INICIO`, `MIX-JS-INICIO` and `PEDAL-J
 `dev/fitcheck.py` checks the layout at several window and phone sizes, and `dev/shot.py` takes a screenshot. Both
 need the development packages (`requirements-dev.txt`) and drive Google Chrome from its default install folder,
 `C:\Program Files\Google\Chrome\Application\chrome.exe`. A Chrome installed only for your user, in `%LOCALAPPDATA%`,
-isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. If the welcome screen is
-open, close it first (see above): with it open, `fitcheck.py` fails at most sizes and `shot.py` captures it. Leave
-the `--mock` server running and, in a second terminal at the repository root, activate the virtual environment,
-install the development packages once and run them:
+isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. If the server would still show
+the welcome screen, both close it first, as **Get started** does (the server then remembers it as seen). With
+`--boas-vindas`, `fitcheck.py` checks the welcome screen itself at every size and `shot.py` captures it. Leave the
+`--mock` server running and, in a second terminal at the repository root, activate the virtual environment, install
+the development packages once and run them:
 
 ```powershell
 .venv\Scripts\Activate.ps1
@@ -512,9 +513,9 @@ python dev\testa_migra.py      # the rename from Vitrola
 python dev\testa_mock.py       # the no-audio mode never touches real user data
 ```
 
-If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server, with the welcome screen closed
-(see [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it
-checks has to pass, as it does on `main`.
+If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
+[Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks
+has to pass, as it does on `main`. If you changed the welcome screen, also run it with `--boas-vindas`.
 
 If you changed the audio engine, the server, the filter or the updates, also run the tests that cover your change.
 The description at the top of each file (in Portuguese) says exactly what it checks.
