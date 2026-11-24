@@ -213,7 +213,8 @@ you need neither, so start at [Work on the interface without audio](#work-on-the
 - ffmpeg and ffprobe, on the `PATH` or in a `bin/` folder at the root of the repository (git ignores it).
 - Deno or Node: yt-dlp needs a JavaScript runtime to get every format from YouTube. Deno can also go in `bin/`.
 - Visual Studio 2022 (any edition, or the free Build Tools for Visual Studio 2022) with the **Desktop development with
-  C++** workload and the Windows SDK 10.0.22621 or later, to build the microphone filter.
+  C++** workload, the C++ ATL and the Windows SDK 10.0.26100 or later, to build the microphone filter (it uses an
+  interface that older SDKs don't have, and links against ATL).
 
 To install everything except Python with winget:
 
@@ -221,11 +222,11 @@ To install everything except Python with winget:
 winget install -e --id Git.Git
 winget install -e --id Gyan.FFmpeg
 winget install -e --id DenoLand.Deno
-winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools;includeRecommended"
+winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools;includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.Windows11SDK.26100"
 ```
 
-The last command installs the Build Tools with the C++ workload and its recommended SDK. It doesn't restart the
-computer on its own (`--norestart`), so restart it yourself if the installer asks. Then open a new terminal for the
+The last command installs the Build Tools with the C++ workload, ATL and the Windows SDK 10.0.26100. It doesn't restart
+the computer on its own (`--norestart`), so restart it yourself if the installer asks. Then open a new terminal for the
 steps below: winget adds Git, ffmpeg and Deno to the `PATH`, and a terminal that was already open doesn't see the
 change.
 
