@@ -220,7 +220,8 @@ async def guard_do_servidor():
         biscoito = resp.cookies.get(par.COOKIE)
         confere(resp.status == 200 and biscoito is not None and biscoito["httponly"]
                 and biscoito["samesite"] == "Strict",
-                "o /api/parear com o codigo certo (\"482 913\" vale) poe a chave num cookie HttpOnly e SameSite=Strict")
+                f"o /api/parear com o codigo certo (com espaco no meio: {com_espaco['codigo']!r}) poe a chave num "
+                "cookie HttpOnly e SameSite=Strict")
         chave = biscoito.value if biscoito is not None else ""
         resp, chegou = await manda(pedido("POST", "/api/play", cookie=f"{par.COOKIE}={chave}"))
         confere(chegou, "com a chave, a mesma rota passa")
