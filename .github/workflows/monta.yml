@@ -80,6 +80,12 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: python dev/testa_vozes.py
+      # o pareamento do celular (#127), a única trava do controle pela rede de casa: o código, as tentativas erradas, a
+      # chave e a desconexão. Só a biblioteca padrão (o guard do servidor fica para quem tem as bibliotecas do app)
+      - name: Confere o pareamento do celular
+        env:
+          PYTHONUTF8: '1'
+        run: python dev/testa_pareamento.py
       # o Inno Setup do build à mão, na pasta do usuário, que é a primeira onde o monta.ps1 procura (a máquina do
       # GitHub pode trazer outra versão em Program Files)
       - name: Inno Setup 6.7.3
