@@ -6,18 +6,22 @@
     python microfone.py instala --microfone "IN 2"      (admin) so nesse microfone
     python microfone.py remove [--microfone "IN 2"]     (admin) devolve o efeito original (todos, sem --microfone) e
                                                         apaga a tarefa
+    python microfone.py confere [--aparelho "IN 1-2 (BEHRINGER UMC 404HD 192k)" ...]
+                                                        os aparelhos que abrem e nao entregam som, em JSON
 
 No app: ritmelli.exe --microfone <a mesma linha>. O instalador roda o instala-todos --tarefa (ele ja e administrador)
 e, ao desinstalar, o remove: o Ritmelli nunca pede o UAC. O filtro fica em todos os microfones e so age no que o app
 escolheu (o alvo do anel, ver apo/anel.h). Microfone que aparece depois (um fone USB novo): o app roda a tarefa
 (pede_tarefa), que roda como SYSTEM o instala-todos; quem usa o PC so pode rodar a tarefa, nao mudar. --dll e, sem
-ele, a DLL que vem com o app (dll_padrao); --saida grava o resultado em JSON.
+ele, a DLL que vem com o app (dll_padrao); --saida grava o resultado em JSON, com os aparelhos que ficaram mudos
+depois do reinicio do audio (confere_aparelhos), que o instalador mostra na ultima pagina (instalador/mudos.iss).
 
 O instala copia a DLL pra uma pasta que o audiodg.exe (LocalService) consegue ler, registra o COM e o APO
 (regsvr32), pendura o nosso nas vagas de efeito do microfone e guarda o original em
 HKLM\\SOFTWARE\\Ritmelli\\Microfone\\{id do microfone}. Depois reinicia o AudioEndpointBuilder e o servico de
-audio, que e quando o Windows rele os efeitos (o som de todo o PC some por um instante; so quando algo mudou). O log
-do filtro fica em log\\micfx.log, na pasta da DLL.
+audio, que e quando o Windows rele os efeitos (o som de todo o PC some por um instante; so quando algo mudou), e
+confere se todo aparelho voltou a entregar som (confere_aparelhos). O log do filtro fica em log\\micfx.log, na
+pasta da DLL.
 
 O filtro vai em DUAS vagas e o Windows usa uma so (lido no audiosrv.dll do 26200, 13/11):
 - EFX composto ({d04e05a6...},15, lista): o efeito de endpoint, uma instancia por microfone, que roda pra TODO stream,
@@ -42,6 +46,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import winreg
 
@@ -162,7 +167,6 @@ def nomes_windows():
         except Exception:  # noqa: BLE001, S110 - sem o Core Audio, fica o nome do registro
             pass
 
-    import threading  # noqa: PLC0415
     th = threading.Thread(target=le, daemon=True)
     th.start()
     th.join(10)
@@ -229,13 +233,148 @@ def servico_audio(acao):
         sys.exit(f"the audio service was '{estado}' after the {acao} (expected {esperado})")
 
 
-def reinicia_audio():
+def reinicia_audio(so_servico=False):
     """Depois de mexer nas chaves de efeito: o AudioEndpointBuilder guarda as propriedades dos aparelhos e so as
-    rele quando reinicia (o audiosrv cai junto e volta pelo servico_audio)."""
+    rele quando reinicia (o audiosrv cai junto e volta pelo servico_audio). Com so_servico (#136: so a DLL do filtro
+    mudou, e nenhum microfone ganhou o filtro), so o audiosrv: o audiodg.exe novo ja carrega a DLL nova, e o
+    AudioEndpointBuilder, que desmonta e monta todos os aparelhos, fica como esta."""
+    if so_servico:
+        servico_audio("Restart" if audio_rodando() else "Start")  # a troca da DLL ja parou o audio para solta-la
+        return
     subprocess.run(["powershell", "-NoProfile", "-Command", "Restart-Service AudioEndpointBuilder -Force"],
                    check=False, capture_output=True, text=True, encoding="oem", errors="replace",
                    creationflags=NO_WINDOW)
     servico_audio("Start")
+
+
+# O aparelho mudo (#136): depois de mexer no audio, uma interface USB (a UMC 404HD da Behringer, com o driver
+# TUSBAUDIO da Thesycon, o de muitas interfaces) abria sem erro e nao entregava quadro nenhum, em nenhuma entrada nem
+# saida, nem no modo exclusivo, ate tirar o cabo. A causa ficou em aberto: depois de todo reinicio do audio, cada
+# aparelho ativo e aberto e os quadros contados. O que nao entregou nada fica no registro (MUDOS, em SALVO), de onde o
+# app confere de novo ao abrir e avisa quem usa (engine.py), e vai no --saida, que o instalador mostra na ultima pagina
+MUDOS = "_mudos"
+RAIZ_MUDOS = winreg.HKEY_LOCAL_MACHINE  # o instalador e a tarefa gravam (administrador e SYSTEM); qualquer usuario le
+CONFERE_S = 2.0  # quanto cada aparelho tem para entregar o primeiro quadro
+CONFERE_MAX_S = 30.0  # a conferencia inteira, no instalador: um driver que trava nao segura a instalacao
+
+
+def aparelho_de(nome):
+    """O aparelho de um nome do Windows, o que se tira do cabo: "IN 1-2 (BEHRINGER UMC 404HD 192k)" da "BEHRINGER UMC
+    404HD 192k". Sem o parentese, o proprio nome."""
+    i = nome.find(" (")
+    return nome[i + 2:-1] if i > 0 and nome.endswith(")") else nome
+
+
+def _mede(sd, alvos, espera_s):
+    """Abre os alvos (indice, aparelho do PortAudio, "in" ou "out", canais) juntos e espera ate espera_s pelo primeiro
+    quadro de cada. (os nomes que abriram e nao entregaram nada, os que nem abriram)."""
+    quadros, abertos, falhas = {}, [], []
+    for i, d, tipo, canais in alvos:
+        chave = (i, tipo)
+        quadros[chave] = 0
+
+        def conta(dados, n, *_, chave=chave, saida=tipo == "out"):
+            if saida:
+                dados.fill(0)  # silencio: a saida conferida nao toca nada
+            quadros[chave] += n
+        try:
+            s = (sd.InputStream if tipo == "in" else sd.OutputStream)(
+                device=i, channels=canais, samplerate=d["default_samplerate"], dtype="float32",
+                extra_settings=sd.WasapiSettings(auto_convert=True), callback=conta)
+            s.start()
+            abertos.append((chave, d["name"], s))
+        except Exception:  # noqa: BLE001 - em uso exclusivo por outro programa, por exemplo: nao e mudo
+            falhas.append(d["name"])
+    fim = time.monotonic() + espera_s
+    while time.monotonic() < fim and any(quadros[k] == 0 for k, _, _ in abertos):
+        time.sleep(0.02)
+    for _, _, s in abertos:
+        try:
+            s.close()
+        except Exception:  # noqa: BLE001, S110 - fechando
+            pass
+    return sorted({nome for k, nome, _ in abertos if quadros[k] == 0}), falhas
+
+
+def confere_aparelhos(nomes=None, espera_s=CONFERE_S, sd=None):
+    """Abre cada microfone e cada saida ativos do Windows (pelo WASAPI, como o app) e espera o primeiro quadro de cada
+    por ate espera_s, todos ao mesmo tempo. O que ficou sem nada tem mais uma chance, com o dobro do tempo, um segundo
+    depois (logo depois do reinicio do audio, um aparelho pode demorar a acordar). Com nomes, so esses.
+    {"conferidos": [os nomes que abriram], "mudos": [os que abriram e nao entregaram nada], "falhas": [os que nem
+    abriram: nao contam como mudos]}, ou None sem o sounddevice (o microfone.py rodando sozinho, fora do app). Usa a
+    lista que o PortAudio leu ao subir: o app confere num processo a parte (engine._confere_fora), que le a de agora."""
+    if sd is None:
+        try:
+            import sounddevice as sd  # noqa: PLC0415
+        except Exception:  # noqa: BLE001 - sem as bibliotecas do app
+            return None
+    w = next((i for i, h in enumerate(sd.query_hostapis()) if "WASAPI" in h["name"]), None)
+    alvos = []
+    for i, d in enumerate(sd.query_devices()):
+        if d["hostapi"] != w or "[Loopback]" in d["name"] or (nomes is not None and d["name"] not in nomes):
+            continue
+        alvos += [(i, d, tipo, c) for tipo, c in (("in", d["max_input_channels"]), ("out", d["max_output_channels"]))
+                  if c > 0]
+    mudos, falhas = _mede(sd, alvos, espera_s)
+    if mudos:  # mais tempo na segunda: um fone Bluetooth demora a montar o canal de voz quando o microfone abre
+        time.sleep(1.0)
+        mudos, _ = _mede(sd, [a for a in alvos if a[1]["name"] in mudos], espera_s * 2)
+    conferidos = sorted({a[1]["name"] for a in alvos} - set(falhas))
+    return {"conferidos": conferidos, "mudos": mudos, "falhas": sorted(set(falhas))}
+
+
+def grava_mudos(nomes):
+    """Os aparelhos mudos da ultima conferencia no registro. Lista vazia apaga o valor, sem criar a chave (o
+    desinstalador passa por aqui e nao deixa nada para tras)."""
+    try:
+        if nomes:
+            with winreg.CreateKeyEx(RAIZ_MUDOS, SALVO, 0, winreg.KEY_ALL_ACCESS) as k:
+                winreg.SetValueEx(k, MUDOS, 0, winreg.REG_MULTI_SZ, list(nomes))
+        else:
+            with winreg.OpenKey(RAIZ_MUDOS, SALVO, 0, winreg.KEY_SET_VALUE) as k:
+                winreg.DeleteValue(k, MUDOS)
+    except FileNotFoundError:  # sem a chave ou sem o valor: nada a apagar
+        pass
+    except OSError as ex:
+        print(f"devices: couldn't record the silent ones ({ex})")
+
+
+def le_mudos():
+    """Os nomes que a ultima conferencia achou mudos, ou []."""
+    try:
+        with winreg.OpenKey(RAIZ_MUDOS, SALVO) as k:
+            return list((le(k, MUDOS) or ([],))[0])
+    except OSError:
+        return []
+
+
+def _depois_do_reinicio(espera_s=2.0, grava=True):
+    """A conferencia depois de reiniciar o audio (o instalador, a tarefa e o desinstalador passam por aqui): o resultado
+    vai para a saida (o log), para o --saida (a ultima pagina do instalador) e, com grava, para o registro (o app, ao
+    abrir). Sem nenhum aparelho conferido (sem o sounddevice, ou nenhum abriu, como numa sessao sem audio), o registro
+    fica como estava: o resultado de antes nao se perde por uma conferencia que nao aconteceu. A conferencia que
+    quebra ou passa de CONFERE_MAX_S (um driver que trava ao abrir) conta como nao feita: a instalacao segue."""
+    time.sleep(espera_s)  # os aparelhos se enumeram de novo logo depois do reinicio
+    caixa = []
+
+    def roda():
+        try:
+            caixa.append(confere_aparelhos())
+        except Exception as ex:  # noqa: BLE001 - qualquer erro de um driver: sem conferencia
+            caixa.append(ex)
+    th = threading.Thread(target=roda, daemon=True)
+    th.start()
+    th.join(CONFERE_MAX_S)
+    r = caixa[0] if caixa else TimeoutError(f"still running after {CONFERE_MAX_S:.0f} s")
+    if r is None or isinstance(r, Exception):
+        print(f"devices: not checked ({'no sounddevice' if r is None else r})")
+        return None
+    print(f"devices: {len(r['conferidos'])} checked"
+          + (f"; silent: {'; '.join(r['mudos'])}" if r["mudos"] else "")
+          + (f"; couldn't open: {'; '.join(r['falhas'])}" if r["falhas"] else ""))
+    if r["conferidos"] and grava:
+        grava_mudos(r["mudos"])
+    return r
 
 
 # O log do filtro (micfx.dll grava em log\ ao lado dela): dentro da pasta de programas, onde so administrador cria
@@ -444,17 +583,22 @@ def _pendura_mfx(fx):
 
 
 def instala(filtro, dll):
-    """So num microfone (desenvolvimento): o app usa o instala_todos."""
+    """So num microfone (desenvolvimento): o app usa o instala_todos. A conferencia dos aparelhos, se o audio
+    reiniciou (confere_aparelhos), ou None."""
     ep, nome, apar = acha(filtro)
     parou = _prepara_dll(dll)
-    if _pendura(ep) or parou:
-        reinicia_audio()
+    novo = _pendura(ep)
+    if novo or parou:
+        reinicia_audio(so_servico=not novo)
     print(f"installed on {nome} ({apar}) {ep}")
+    return _depois_do_reinicio() if novo or parou else None
 
 
 def instala_todos(dll):
     """Pendura em todo microfone do Windows (ativo, desligado ou desconectado) que nao tem o filtro, e troca a DLL se
-    a do app mudou. O audio do PC so reinicia se algo mudou: rodar de novo sem nada novo nao mexe no som."""
+    a do app mudou. O audio do PC so reinicia se algo mudou: rodar de novo sem nada novo nao mexe no som, e so a DLL
+    nova reinicia so o servico de audio. A conferencia dos aparelhos, se o audio reiniciou (confere_aparelhos), ou
+    None."""
     parou = _prepara_dll(dll)
     novos = []
     for m in microfones(todos=True):
@@ -464,9 +608,10 @@ def instala_todos(dll):
         except OSError:  # aparelho velho sem as propriedades no registro: fica sem, como estava
             continue
     if novos or parou:
-        reinicia_audio()
+        reinicia_audio(so_servico=not novos)
     print(f"filter on {len(microfones(todos=True))} microphones; now: {len(novos)}"
           f"{'; DLL replaced' if parou else ''}")
+    return _depois_do_reinicio() if novos or parou else None
 
 
 def _devolve(ep):
@@ -499,7 +644,8 @@ def _devolve(ep):
 
 def remove(filtro=None):
     """Devolve o original dos microfones (o do filtro, ou todos) e, sem nenhum com o filtro, tira a DLL. O audio do PC
-    so reinicia se algum microfone mudou (o desinstalador chama sempre)."""
+    so reinicia se algum microfone mudou (o desinstalador chama sempre). A conferencia dos aparelhos, se o audio
+    reiniciou (confere_aparelhos), ou None."""
     alvos = [acha(filtro)] if filtro else microfones(todos=True)
     mexeu = False
     for ep, nome, apar in alvos:
@@ -510,12 +656,16 @@ def remove(filtro=None):
     destino = os.path.join(PASTA, "micfx.dll")
     if not sobrou and os.path.exists(destino):
         subprocess.run(["regsvr32", "/s", "/u", destino], capture_output=True, creationflags=NO_WINDOW)
+    r = None
     if mexeu:
         reinicia_audio()
-    if not sobrou:  # o audiodg ja soltou a DLL: sai a pasta (a DLL e o log), a tarefa e as vagas do hospedeiro
+        r = _depois_do_reinicio(grava=bool(sobrou))  # sem filtro nenhum, nao ha app para avisar: so o log
+    if not sobrou:  # o audiodg ja soltou a DLL: saem a pasta (a DLL e o log), a tarefa, os hospedeiros e os mudos
         shutil.rmtree(PASTA, ignore_errors=True)
         tarefa_apaga()
         _esquece_hospedes()
+        grava_mudos([])
+    return r
 
 
 def _esquece_hospedes():
@@ -665,14 +815,19 @@ def _migra_registro():
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="microfone")
-    ap.add_argument("acao", choices=("estado", "instala", "instala-todos", "remove"))
+    ap.add_argument("acao", choices=("estado", "instala", "instala-todos", "remove", "confere"))
     ap.add_argument("--microfone")
     ap.add_argument("--dll", help="the micfx.dll to install (without it, the one that comes with the app)")
     ap.add_argument("--tarefa", action="store_true", help="instala-todos: also creates the Windows task")
-    ap.add_argument("--saida", help="writes the result as JSON ({ok, erro})")
+    ap.add_argument("--saida", help="writes the result as JSON ({ok, erro, mudos, aparelhos}, in ASCII)")
+    ap.add_argument("--aparelho", action="append", help="confere: only this device (repeatable)")
     a = ap.parse_args(argv)
+    if a.acao == "confere":  # sem administrador e sem mexer em nada: o app, num processo a parte (engine._confere_fora)
+        print(json.dumps(confere_aparelhos(a.aparelho)))
+        return 0
     dll = a.dll or dll_padrao()
     res = {"ok": True}
+    r = None
     try:
         if a.acao != "estado":
             _migra_registro()
@@ -684,21 +839,25 @@ def main(argv=None):
             if a.acao == "instala":
                 if not a.microfone:
                     sys.exit("instala needs --microfone")
-                instala(a.microfone, dll)
+                r = instala(a.microfone, dll)
             else:
                 if a.tarefa:  # antes: um microfone que falhe nao deixa o PC sem a tarefa (o app nao teria como pedir)
                     tarefa_cria()
-                instala_todos(dll)
+                r = instala_todos(dll)
         else:
-            remove(a.microfone)
+            r = remove(a.microfone)
     except SystemExit as ex:
         if ex.code not in (None, 0):
             res = {"ok": False, "erro": str(ex.code)}
     except Exception as ex:  # noqa: BLE001 - quem chamou ve o motivo em vez de ficar sem resposta
         res = {"ok": False, "erro": f"{type(ex).__name__}: {ex}"}
-    if a.saida:
-        with open(a.saida, "w", encoding="utf-8") as f:
-            json.dump(res, f, ensure_ascii=False)
+    if r is not None:  # os aparelhos que pararam de entregar som depois do reinicio do audio (#136), e um nome por
+        # aparelho fisico, o do aviso (a ultima pagina do instalador, instalador/mudos.iss)
+        res["mudos"] = r["mudos"]
+        res["aparelhos"] = list(dict.fromkeys(aparelho_de(n) for n in r["mudos"]))
+    if a.saida:  # em ASCII (a letra com acento vai escapada): o Pascal do instalador le sem saber de UTF-8
+        with open(a.saida, "w", encoding="ascii") as f:
+            json.dump(res, f)
     if not res["ok"]:
         print(res["erro"], file=sys.stderr)
         return 1

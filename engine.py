@@ -848,6 +848,31 @@ def _erro_da_tarefa(r, mic):
                     reason=r.get("detalhe") or motivo or "?")
 
 
+def _confere_fora(nomes=None):
+    """O confere_aparelhos (microfone/microfone.py) num processo a parte, com o PortAudio dele: o daqui e o dos streams
+    do motor, e abrir aparelhos nele de outra thread enquanto o vigia rele a lista (_rescan) derrubaria tudo. O
+    processo novo ainda le a lista do Windows de agora. {"conferidos", "mudos", "falhas"}, ou None se nao deu."""
+    cmd = [sys.executable]
+    if not getattr(sys, "frozen", False):  # no codigo, o mesmo caminho pelo python (o server.auxiliar)
+        cmd.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ritmelli.py"))
+    cmd += ["--microfone", "confere"] + [x for n in nomes or () for x in ("--aparelho", n)]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+                           creationflags=NO_WINDOW, startupinfo=sem_cursor())
+        return json.loads(p.stdout.strip().splitlines()[-1])
+    except Exception:  # noqa: BLE001 - sem a conferencia, nenhum aviso: nunca um aviso falso
+        return None
+
+
+def _aviso_mudos(mudos):
+    """A mensagem da tela com os aparelhos que abrem e nao entregam som (#136): um nome por aparelho, o que se tira do
+    cabo ("BEHRINGER UMC 404HD 192k", e nao cada entrada e saida dele)."""
+    from microfone import microfone as filtro  # noqa: PLC0415
+    nomes = list(dict.fromkeys(filtro.aparelho_de(n) for n in mudos))
+    return i18n.msg("server.devices.silent", "Windows stopped receiving sound from the device \"{name}\". Unplug its "
+                                             "USB cable and plug it back in.", name="\", \"".join(nomes))
+
+
 def _do_microfone(mic):
     """O estado do filtro no microfone (o item do microfone.estado_dados: guid, filtro, melhorias), ou None se nao deu
     para ler ou o Windows nao conhece esse nome."""
@@ -1174,6 +1199,7 @@ class Engine:
         self._voz_anel_em = -1e9  # monotonic da ultima voz crua que o filtro devolveu (a do microfone fica de reserva)
         self.preparando = None  # o microfone que o Windows esta preparando para o Ritmelli (a tarefa do instalador)
         self._preparados = set()  # os microfones em que a preparacao ja rodou nesta sessao (nao repete)
+        self._mudos_vistos = False  # os aparelhos mudos que o instalador ou a tarefa acharam ja foram conferidos
         self.monitor_on = True
         self.loop = False
         self.effect = "nenhum"  # efeito de voz (fx.py); sempre comeca sem efeito
@@ -1384,8 +1410,10 @@ class Engine:
     def _confere_filtro(self, mic):
         """O microfone em uso com o filtro: o alvo do anel e o hash dele. Sem o filtro (um microfone que apareceu depois
         da instalacao) ou com as melhorias de audio desligadas, roda a tarefa do instalador, que prepara como SYSTEM
-        sem pedir nada a ninguem, e reabre o audio (o do Windows reinicia uns segundos). Uma vez por microfone."""
+        sem pedir nada a ninguem, e reabre o audio (o do Windows reinicia uns segundos). Uma vez por microfone. Depois
+        de reiniciar o audio, e na primeira vez que roda, confere se algum aparelho parou de entregar som (#136)."""
         _com_init()
+        primeira, self._mudos_vistos = not self._mudos_vistos, True
         st = _do_microfone(mic)
         if st and st["filtro"] and st["melhorias"]:
             from microfone import injeta  # noqa: PLC0415
@@ -1393,6 +1421,11 @@ class Engine:
                 self._alvo = injeta.hash_microfone(st["guid"])
                 if self._aviso is not None and self.error == self._aviso:
                     self.error = None
+            if primeira:  # so os que o instalador ou a tarefa acharam mudos: abrir todos a cada partida incomodaria
+                from microfone import microfone as filtro  # noqa: PLC0415
+                mudos = filtro.le_mudos()
+                if mudos:
+                    self._confere_mudos(mudos)
             return
         if mic in self._preparados:
             if self.active.get("mic") == mic:
@@ -1419,6 +1452,18 @@ class Engine:
         with self._lock:  # o audio do Windows reiniciou: os streams daqui morreram
             if not self._fechado and self.active.get("mic") == mic:
                 self._reabre()
+        self._confere_mudos()  # todos: o reinicio do audio pode ter deixado qualquer aparelho mudo
+
+    def _confere_mudos(self, nomes=None):
+        """Confere (num processo a parte, _confere_fora) se os aparelhos, ou so esses nomes, entregam som, e avisa na
+        tela os que abrem e nao entregam nada (#136: uma interface USB depois do reinicio do audio, ate tirar o cabo).
+        O aviso sai como os outros dos aparelhos: quando o audio reabre (o aparelho tirado e posto de volta muda a
+        lista, e o vigia reabre)."""
+        r = _confere_fora(nomes)
+        if not r or not r.get("mudos"):
+            return
+        print(f"devices: silent: {'; '.join(r['mudos'])}")
+        self._aviso = self.error = _aviso_mudos(r["mudos"])
 
     def liga(self):
         """A partida do servidor. Se o audio nao abre (sem microfone, aparelho que recusa), o servidor sobe mesmo

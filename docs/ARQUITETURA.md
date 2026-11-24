@@ -86,15 +86,22 @@ Como cada peça funciona por dentro e por que é assim. Para instalar e usar, ve
   tarefa do Windows `\Ritmelli\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
   pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
   prepara, sem UAC, um microfone que apareceu depois. Ao desinstalar, o original de todo
-  microfone volta e a tarefa sai. O nome do microfone é o do Windows (Core Audio, casado pelo id
-  do aparelho): o montado do registro perde o "2- " que o Windows põe quando há dois aparelhos com
-  o mesmo nome. `dev/testa_microfone.py` testa o motor contra um anel falso, sem som, e a voz
-  com efeito que sai do app pelo `voz.dll` (e sem ele);
+  microfone volta e a tarefa sai. Depois de todo reinício do áudio (no instalador, na tarefa e no
+  desinstalador), o `confere_aparelhos` abre cada microfone e cada saída ativos por até 2 s e
+  conta os quadros: o aparelho que abre e não entrega nada (a UMC 404HD da Behringer, até tirar
+  o cabo, #136) vai para o registro e para o `--saida`, que o instalador mostra na página de
+  concluído (`instalador/mudos.iss`); o motor confere de novo, num processo à parte, e avisa quem
+  usa. Só a DLL nova reinicia só o Audiosrv, sem desmontar os aparelhos. O nome do microfone é o
+  do Windows (Core Audio, casado pelo id do aparelho): o montado do registro perde o "2- " que o
+  Windows põe quando há dois aparelhos com o mesmo nome. `dev/testa_microfone.py` testa o motor
+  contra um anel falso, sem som, e a voz com efeito que sai do app pelo `voz.dll` (e sem ele);
   `dev/testa_filtro.py` roda o `micfx.cpp` de verdade fora do audiodg (a `banca_filtro.dll` do
   `apo\compila.bat teste`, com o anel num nome só do teste, duas cadeias no mesmo anel e o
   hospedeiro do MFX com um fabricante falso por dentro, sozinho e com o EFX na frente);
-  `dev/testa_mfx.py` confere as vagas de MFX num registro falso; `dev/testa_voz.py` confere cada
-  efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a amostra, e em outras taxas;
+  `dev/testa_mfx.py` confere as vagas de MFX num registro falso; `dev/testa_aparelho_mudo.py`
+  confere a conferência, o aviso e a página do instalador com um aparelho mudo de mentira;
+  `dev/testa_voz.py` confere cada efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a
+  amostra, e em outras taxas;
   `dev/mede_voz_ao_vivo.py` mede ao vivo, num microfone virtual com o filtro, o atraso da voz com
   efeito no filtro e pelo app (toca estalos de verdade nesse microfone).
 - `batida.py`: andamento e grade de batidas de um trecho de música para a passagem no tempo

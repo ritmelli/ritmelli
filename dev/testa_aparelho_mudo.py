@@ -1,0 +1,556 @@
+"""Testa o aparelho mudo (#136) sem som e sem mexer no audio do PC: um sounddevice de mentira tem um aparelho que abre
+sem erro e nao entrega quadro nenhum (a UMC 404HD depois do reinicio do audio), um que so acorda na segunda abertura,
+um que recusa abrir (em uso exclusivo por outro programa) e os normais.
+
+Confere: a conferencia acha o mudo, da a segunda chance (e o que acorda nela nao e mudo), nao conta o que nem abriu
+como mudo, pula o [Loopback] e os aparelhos fora do WASAPI, fecha tudo que abriu, toca silencio nas saidas e, com
+nomes, so abre esses; sem o sounddevice, None. Depois de mexer no audio: so a DLL nova reinicia so o servico de audio
+(o AudioEndpointBuilder fica), microfone novo reinicia os dois, nada novo nao reinicia nada, e todo reinicio confere
+os aparelhos (no instalador, na tarefa e no desinstalador, que nao deixa os mudos no registro). Os mudos vao para o
+registro (numa chave so do teste, no HKCU) e para o --saida; uma conferencia que nao conferiu nada nao apaga os de
+antes. No app: o aviso tem um nome por aparelho, a primeira conferencia do filtro confere so os mudos do registro
+(nenhum: nenhum processo), a preparacao do microfone confere todos depois de reabrir, e o aviso sai quando o audio
+reabre. A conferencia do app roda num processo a parte, pela linha de comando de verdade (com um nome que nao existe,
+entao nenhum aparelho abre). O instalador: com o Inno Setup 6 no PC, monta um setup que nao instala nada, so com o
+instalador/mudos.iss e um [Run] que roda o main de verdade do microfone.py (com o instala_todos trocado), roda em
+silencio e confere no log os aparelhos que a ultima pagina mostraria (com acento, com aspas, nenhum e sem o arquivo).
+Com --tela, abre esse setup na tela, com dois aparelhos mudos, para ver a ultima pagina (em pt e em en).
+
+    python dev/testa_aparelho_mudo.py
+    python dev/testa_aparelho_mudo.py --tela
+
+Sai 1 se algo falhar.
+"""
+import io
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import types
+import unittest
+import winreg
+from contextlib import redirect_stdout
+from pathlib import Path
+from unittest import mock
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import engine as eng  # noqa: E402
+from microfone import injeta  # noqa: E402
+from microfone import microfone as filtro  # noqa: E402
+
+UMC_IN = "IN 1-2 (BEHRINGER UMC 404HD 192k)"
+UMC_OUT = "OUT 1-2 (BEHRINGER UMC 404HD 192k)"
+MIC = "Microfone (Realtek High Definition Audio)"
+FONE = "Alto-falantes (Realtek High Definition Audio)"
+ACORDA = "Headset (Fone Bluetooth)"
+EXCLUSIVO = "Linha (Placa Em Uso)"
+ESPERA = 0.2  # o tempo de cada aparelho no teste (no app, CONFERE_S)
+
+
+class Fluxo:
+    """Um stream do sounddevice de mentira: o normal chama o callback a cada 10 ms de uma thread, como o PortAudio; o
+    mudo abre e nunca chama."""
+
+    def __init__(self, sd, tipo, device, channels, samplerate, dtype, extra_settings, callback):
+        d = sd.devs[device]
+        self.sd, self.tipo, self.nome, self.canais, self.cb = sd, tipo, d["name"], channels, callback
+        if d["_jeito"] == "recusa":
+            raise RuntimeError("Error opening stream: Device unavailable [PaErrorCode -9985]")
+        sd.aberturas[self.nome] = sd.aberturas.get(self.nome, 0) + 1
+        self.mudo = d["_jeito"] == "mudo" or (d["_jeito"] == "acorda" and sd.aberturas[self.nome] == 1)
+        self.fim = threading.Event()
+        sd.abertos.add(self)
+
+    def start(self):
+        if not self.mudo:
+            threading.Thread(target=self._roda, daemon=True).start()
+
+    def _roda(self):
+        while not self.fim.wait(0.01):
+            dados = np.ones((480, self.canais), np.float32)
+            self.cb(dados, 480, None, None)
+            if self.tipo == "out":
+                self.sd.saidas.append(float(np.abs(dados).max()))
+
+    def close(self):
+        self.fim.set()
+        self.sd.abertos.discard(self)
+
+
+class SdFalso:
+    def __init__(self, extra=()):
+        # (nome, host api, entradas, saidas, jeito); a host api 0 e o MME, a 1 o WASAPI
+        lista = [(UMC_IN, 1, 2, 0, "mudo"), (UMC_OUT, 1, 0, 2, "mudo"), (MIC, 1, 2, 0, "normal"),
+                 (FONE, 1, 0, 2, "normal"), (FONE + " [Loopback]", 1, 2, 0, "nunca"), (UMC_IN, 0, 2, 0, "nunca"),
+                 (EXCLUSIVO, 1, 2, 0, "recusa"), *extra]
+        self.devs = [{"name": n, "hostapi": h, "max_input_channels": i, "max_output_channels": o,
+                      "default_samplerate": 48000.0, "_jeito": j} for n, h, i, o, j in lista]
+        self.aberturas, self.abertos, self.saidas = {}, set(), []
+
+    def query_hostapis(self):
+        return [{"name": "MME"}, {"name": "Windows WASAPI"}]
+
+    def query_devices(self):
+        return self.devs
+
+    def WasapiSettings(self, auto_convert=False):  # noqa: N802 - o nome do sounddevice
+        return object()
+
+    def InputStream(self, **kw):  # noqa: N802
+        d = self.devs[kw["device"]]
+        if d["_jeito"] == "nunca":
+            raise AssertionError(f"abriu {d['name']} (host api {d['hostapi']})")
+        return Fluxo(self, "in", **kw)
+
+    def OutputStream(self, **kw):  # noqa: N802
+        return Fluxo(self, "out", **kw)
+
+
+class Chamadas:
+    """Guarda as chamadas de quem trocou: o nome e os argumentos, na ordem."""
+
+    def __init__(self):
+        self.lista = []
+
+    def __call__(self, nome, volta=None):
+        def f(*a, **k):
+            self.lista.append((nome, a, k))
+            return volta(*a, **k) if callable(volta) else volta
+        return f
+
+    def nomes(self):
+        return [n for n, _, _ in self.lista]
+
+
+class TestaConferencia(unittest.TestCase):
+    def test_acha_o_mudo_e_nada_mais(self):
+        sd = SdFalso()
+        t0 = time.monotonic()
+        r = filtro.confere_aparelhos(espera_s=ESPERA, sd=sd)
+        dt = time.monotonic() - t0
+        self.assertEqual(r["mudos"], sorted([UMC_IN, UMC_OUT]))
+        self.assertEqual(r["falhas"], [EXCLUSIVO], "o que nem abriu nao e mudo")
+        self.assertEqual(r["conferidos"], sorted([UMC_IN, UMC_OUT, MIC, FONE]))
+        self.assertEqual(sd.aberturas[UMC_IN], 2, "o mudo tem a segunda chance")
+        self.assertEqual(sd.aberturas[MIC], 1, "o que entregou nao abre de novo")
+        self.assertFalse(sd.abertos, "tudo que abriu fecha")
+        self.assertTrue(sd.saidas and max(sd.saidas) == 0.0, "a saida conferida toca silencio")
+        self.assertLess(dt, ESPERA + 1.0 + 2 * ESPERA + 1.0)
+
+    def test_o_que_acorda_na_segunda_nao_e_mudo(self):
+        sd = SdFalso([(ACORDA, 1, 1, 0, "acorda")])
+        r = filtro.confere_aparelhos(espera_s=ESPERA, sd=sd)
+        self.assertNotIn(ACORDA, r["mudos"])
+        self.assertIn(ACORDA, r["conferidos"])
+        self.assertEqual(sd.aberturas[ACORDA], 2)
+
+    def test_sem_mudo_nao_espera(self):
+        sd = SdFalso()
+        sd.devs = [d for d in sd.devs if d["_jeito"] != "mudo"]
+        t0 = time.monotonic()
+        r = filtro.confere_aparelhos(espera_s=2.0, sd=sd)
+        self.assertEqual(r["mudos"], [])
+        self.assertLess(time.monotonic() - t0, 1.0, "sem mudo, sai no primeiro quadro de cada, sem a segunda chance")
+
+    def test_com_nomes_so_esses(self):
+        sd = SdFalso()
+        r = filtro.confere_aparelhos([UMC_OUT, MIC], espera_s=ESPERA, sd=sd)
+        self.assertEqual(set(sd.aberturas), {UMC_OUT, MIC})
+        self.assertEqual(r["mudos"], [UMC_OUT])
+        r = filtro.confere_aparelhos(["nenhum"], espera_s=ESPERA, sd=SdFalso())
+        self.assertEqual(r, {"conferidos": [], "mudos": [], "falhas": []})
+
+    def test_sem_sounddevice(self):
+        with mock.patch.dict(sys.modules, {"sounddevice": None}):
+            self.assertIsNone(filtro.confere_aparelhos(espera_s=ESPERA))
+
+    def test_aparelho_de(self):
+        self.assertEqual(filtro.aparelho_de(UMC_IN), "BEHRINGER UMC 404HD 192k")
+        self.assertEqual(filtro.aparelho_de("IN 2 (2- BEHRINGER UMC 404HD 192k)"), "2- BEHRINGER UMC 404HD 192k")
+        self.assertEqual(filtro.aparelho_de("Sem parentese"), "Sem parentese")
+
+
+class TestaReinicio(unittest.TestCase):
+    def setUp(self):
+        self.c = Chamadas()
+        # nada de verdade: nenhum servico, nenhum regsvr32, nenhuma pasta de programas
+        self.p = [mock.patch.object(filtro.subprocess, "run", self.c("run")),
+                  mock.patch.object(filtro, "servico_audio", self.c("servico_audio")),
+                  mock.patch.object(filtro, "_depois_do_reinicio", self.c("confere", {"mudos": [UMC_IN]})),
+                  mock.patch.object(filtro, "PASTA", tempfile.gettempdir() + r"\ritmelli-teste-nao-existe")]
+        for p in self.p:
+            p.start()
+
+    def tearDown(self):
+        for p in reversed(self.p):
+            p.stop()
+
+    def _construtor(self):
+        return [a[0] for n, a, _ in self.c.lista if n == "run" and "AudioEndpointBuilder" in " ".join(a[0])]
+
+    def test_so_o_servico(self):
+        for rodando, acao in ((True, "Restart"), (False, "Start")):
+            self.c.lista.clear()
+            with mock.patch.object(filtro, "audio_rodando", lambda r=rodando: r):
+                filtro.reinicia_audio(so_servico=True)
+            self.assertEqual(self._construtor(), [], "so a DLL: o AudioEndpointBuilder fica")
+            self.assertEqual([a for n, a, _ in self.c.lista if n == "servico_audio"], [(acao,)])
+        self.c.lista.clear()
+        filtro.reinicia_audio()
+        self.assertEqual(len(self._construtor()), 1, "microfone novo: o AudioEndpointBuilder reinicia")
+        self.assertEqual([a for n, a, _ in self.c.lista if n == "servico_audio"], [("Start",)])
+
+    def _instala_todos(self, parou, novos):
+        self.c.lista.clear()
+        mics = [("{a}", "IN 1", "X"), ("{b}", "IN 2", "Y")]
+        with mock.patch.object(filtro, "_prepara_dll", lambda dll: parou), \
+                mock.patch.object(filtro, "microfones", lambda todos=False: mics), \
+                mock.patch.object(filtro, "_pendura", lambda ep: ep in novos), \
+                mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), redirect_stdout(io.StringIO()):
+            return filtro.instala_todos("micfx.dll")
+
+    def test_instala_todos(self):
+        r = self._instala_todos(parou=True, novos=())
+        self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": True}), "so a DLL mudou")
+        self.assertEqual(self.c.nomes(), ["reinicia", "confere"])
+        self.assertEqual(r, {"mudos": [UMC_IN]})
+        self._instala_todos(parou=True, novos=("{b}",))
+        self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": False}), "microfone novo")
+        self._instala_todos(parou=False, novos=("{a}",))
+        self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": False}))
+        self.assertEqual(self.c.nomes(), ["reinicia", "confere"])
+        r = self._instala_todos(parou=False, novos=())
+        self.assertEqual(self.c.nomes(), [], "nada novo: nem reinicia nem confere")
+        self.assertIsNone(r)
+
+    def test_instala_um(self):
+        for parou, novo, quer in ((True, False, True), (False, True, False), (True, True, False), (False, False, None)):
+            self.c.lista.clear()
+            with mock.patch.object(filtro, "acha", lambda f: ("{a}", "IN 1", "X")), \
+                    mock.patch.object(filtro, "_prepara_dll", lambda dll, p=parou: p), \
+                    mock.patch.object(filtro, "_pendura", lambda ep, n=novo: n), \
+                    mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), redirect_stdout(io.StringIO()):
+                r = filtro.instala("IN 1", "micfx.dll")
+            if quer is None:
+                self.assertEqual(self.c.nomes(), [])
+                self.assertIsNone(r)
+            else:
+                self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": quer}), (parou, novo))
+                self.assertEqual(self.c.nomes(), ["reinicia", "confere"])
+
+    def _remove(self, sobra):
+        self.c.lista.clear()
+        with mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
+                mock.patch.object(filtro, "_devolve", lambda ep: True), \
+                mock.patch.object(filtro, "tem_filtro", lambda ep: sobra), \
+                mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), \
+                mock.patch.object(filtro, "tarefa_apaga", self.c("tarefa_apaga")), \
+                mock.patch.object(filtro, "_esquece_hospedes", self.c("esquece")), \
+                mock.patch.object(filtro, "grava_mudos", self.c("grava_mudos")), redirect_stdout(io.StringIO()):
+            return filtro.remove()
+
+    def test_remove(self):
+        r = self._remove(sobra=False)
+        self.assertEqual(self.c.nomes(), ["reinicia", "confere", "tarefa_apaga", "esquece", "grava_mudos"])
+        self.assertEqual(self.c.lista[1][2], {"grava": False}, "desinstalando: nao grava os mudos")
+        self.assertEqual(self.c.lista[-1][1], ([],), "e apaga os de antes")
+        self.assertEqual(r, {"mudos": [UMC_IN]})
+        self._remove(sobra=True)
+        self.assertEqual(self.c.nomes(), ["reinicia", "confere"])
+        self.assertEqual(self.c.lista[1][2], {"grava": True})
+
+
+class TestaRegistro(unittest.TestCase):
+    """Os mudos no registro, numa chave so do teste no HKCU (no app: HKLM\\SOFTWARE\\Ritmelli\\Microfone)."""
+
+    BASE = rf"SOFTWARE\RitmelliTesteMudo-{os.getpid()}"
+
+    def setUp(self):
+        self.p = [mock.patch.object(filtro, "RAIZ_MUDOS", winreg.HKEY_CURRENT_USER),
+                  mock.patch.object(filtro, "SALVO", self.BASE + r"\Microfone")]
+        for p in self.p:
+            p.start()
+
+    def tearDown(self):
+        for p in reversed(self.p):
+            p.stop()
+        for k in (self.BASE + r"\Microfone", self.BASE):
+            try:
+                winreg.DeleteKey(winreg.HKEY_CURRENT_USER, k)
+            except OSError:
+                pass
+
+    def _existe(self):
+        try:
+            winreg.OpenKey(winreg.HKEY_CURRENT_USER, filtro.SALVO).Close()
+            return True
+        except OSError:
+            return False
+
+    def test_grava_e_le(self):
+        self.assertEqual(filtro.le_mudos(), [])
+        filtro.grava_mudos([])
+        self.assertFalse(self._existe(), "apagar sem nada gravado nao cria a chave (o desinstalador)")
+        filtro.grava_mudos([UMC_IN, UMC_OUT])
+        self.assertEqual(filtro.le_mudos(), [UMC_IN, UMC_OUT])
+        filtro.grava_mudos([])
+        self.assertEqual(filtro.le_mudos(), [])
+        self.assertTrue(self._existe(), "so o valor sai")
+
+    def test_depois_do_reinicio(self):
+        quer = {"conferidos": [UMC_IN, MIC], "mudos": [UMC_IN], "falhas": []}
+        with mock.patch.object(filtro, "confere_aparelhos", lambda: quer), redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(filtro._depois_do_reinicio(espera_s=0), quer)
+        self.assertIn(UMC_IN, out.getvalue(), "o log tem o mudo")
+        self.assertEqual(filtro.le_mudos(), [UMC_IN])
+        vazio = {"conferidos": [], "mudos": [], "falhas": [MIC]}
+        with mock.patch.object(filtro, "confere_aparelhos", lambda: vazio), redirect_stdout(io.StringIO()):
+            filtro._depois_do_reinicio(espera_s=0)
+        self.assertEqual(filtro.le_mudos(), [UMC_IN], "nada conferido: o de antes fica")
+        with mock.patch.object(filtro, "confere_aparelhos", lambda: None), redirect_stdout(io.StringIO()):
+            self.assertIsNone(filtro._depois_do_reinicio(espera_s=0))
+        self.assertEqual(filtro.le_mudos(), [UMC_IN])
+        bom = {"conferidos": [UMC_IN, MIC], "mudos": [], "falhas": []}
+        with mock.patch.object(filtro, "confere_aparelhos", lambda: bom), redirect_stdout(io.StringIO()):
+            filtro._depois_do_reinicio(espera_s=0, grava=False)
+        self.assertEqual(filtro.le_mudos(), [UMC_IN], "sem grava (desinstalando): nao mexe")
+        with mock.patch.object(filtro, "confere_aparelhos", lambda: bom), redirect_stdout(io.StringIO()):
+            filtro._depois_do_reinicio(espera_s=0)
+        self.assertEqual(filtro.le_mudos(), [], "o aparelho voltou: sai do registro")
+
+    def test_conferencia_que_quebra_ou_trava(self):
+        """Um driver que quebra ou trava na conferencia nao segura a instalacao nem mexe no registro."""
+        filtro.grava_mudos([UMC_IN])
+        with mock.patch.object(filtro, "confere_aparelhos", side_effect=OSError("driver")), \
+                redirect_stdout(io.StringIO()) as out:
+            self.assertIsNone(filtro._depois_do_reinicio(espera_s=0))
+        self.assertIn("driver", out.getvalue())
+        solta = threading.Event()
+        with mock.patch.object(filtro, "confere_aparelhos", lambda: solta.wait(10)), \
+                mock.patch.object(filtro, "CONFERE_MAX_S", 0.3), redirect_stdout(io.StringIO()) as out:
+            t0 = time.monotonic()
+            self.assertIsNone(filtro._depois_do_reinicio(espera_s=0))
+            self.assertLess(time.monotonic() - t0, 2.0)
+        solta.set()
+        self.assertIn("still running", out.getvalue())
+        self.assertEqual(filtro.le_mudos(), [UMC_IN], "o de antes fica")
+
+
+class TestaLinhaDeComando(unittest.TestCase):
+    def test_saida_tem_os_mudos(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dll, saida = Path(tmp) / "micfx.dll", Path(tmp) / "saida.json"
+            dll.write_bytes(b"")
+            acento = "Microfone (Áudio Ação)"
+            with mock.patch.object(filtro, "_migra_registro", lambda: None), \
+                    mock.patch.object(filtro, "instala_todos", lambda d: {"mudos": [UMC_IN, UMC_OUT, acento]}):
+                self.assertEqual(filtro.main(["instala-todos", "--dll", str(dll), "--saida", str(saida)]), 0)
+            self.assertTrue(saida.read_bytes().isascii(), "o instalador le o --saida em ASCII")
+            self.assertEqual(json.loads(saida.read_text("ascii")),
+                             {"ok": True, "mudos": [UMC_IN, UMC_OUT, acento],
+                              "aparelhos": ["BEHRINGER UMC 404HD 192k", "Áudio Ação"]}, "um nome por aparelho")
+            with mock.patch.object(filtro, "_migra_registro", lambda: None), \
+                    mock.patch.object(filtro, "instala_todos", lambda d: None):
+                filtro.main(["instala-todos", "--dll", str(dll), "--saida", str(saida)])
+            self.assertEqual(json.loads(saida.read_text("utf-8")), {"ok": True}, "sem reinicio, sem conferencia")
+
+    def test_confere(self):
+        pedido = []
+        with mock.patch.object(filtro, "confere_aparelhos", lambda n: pedido.append(n) or {"mudos": n}), \
+                mock.patch.object(filtro, "_migra_registro", side_effect=AssertionError("o confere nao migra")), \
+                redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(filtro.main(["confere", "--aparelho", UMC_IN, "--aparelho", "Ação (Ç)"]), 0)
+        self.assertEqual(pedido, [[UMC_IN, "Ação (Ç)"]])
+        self.assertEqual(json.loads(out.getvalue().strip()), {"mudos": [UMC_IN, "Ação (Ç)"]})
+        self.assertTrue(out.getvalue().isascii(), "o JSON sai em ASCII: o cano do executavel nao e UTF-8")
+
+    def test_processo_de_verdade(self):
+        """O app roda o ritmelli.py --microfone confere de verdade; com um nome que nao existe, nada abre."""
+        r = eng._confere_fora(["nenhum aparelho com este nome (teste)"])
+        self.assertEqual(r, {"conferidos": [], "mudos": [], "falhas": []})
+
+
+class TestaApp(unittest.TestCase):
+    def test_aviso(self):
+        a = eng._aviso_mudos([UMC_IN, UMC_OUT])
+        self.assertEqual(a["key"], "server.devices.silent")
+        self.assertEqual(a["params"], {"name": "BEHRINGER UMC 404HD 192k"}, "um nome por aparelho")
+        self.assertIn('"BEHRINGER UMC 404HD 192k"', a["text"])
+        a = eng._aviso_mudos([UMC_IN, MIC])
+        self.assertEqual(a["params"]["name"], 'BEHRINGER UMC 404HD 192k", "Realtek High Definition Audio')
+
+    def test_confere_fora(self):
+        c = Chamadas()
+        saida = types.SimpleNamespace(stdout='lixo\n{"conferidos": ["x"], "mudos": ["x"], "falhas": []}\n')
+        with mock.patch.object(eng.subprocess, "run", c("run", saida)):
+            r = eng._confere_fora([UMC_IN])
+        cmd = c.lista[0][1][0]
+        self.assertEqual(cmd[-4:], ["--microfone", "confere", "--aparelho", UMC_IN])
+        self.assertEqual(r["mudos"], ["x"])
+        with mock.patch.object(eng.subprocess, "run", c("run", types.SimpleNamespace(stdout="Traceback..."))):
+            self.assertIsNone(eng._confere_fora(), "saida estranha: sem aviso")
+        with mock.patch.object(eng.subprocess, "run", side_effect=eng.subprocess.TimeoutExpired("x", 60)):
+            self.assertIsNone(eng._confere_fora())
+
+    def _motor(self, **kw):
+        m = types.SimpleNamespace(_aviso=None, error=None, _mudos_vistos=False, active={"mic": MIC},
+                                  _preparados=set(), preparando=None, _alvo=0, _fechado=False,
+                                  _lock=threading.RLock(), _reabre=mock.Mock(), _confere_mudos=mock.Mock())
+        m.__dict__.update(kw)
+        return m
+
+    def test_confere_mudos(self):
+        m = self._motor()
+        for r in (None, {"conferidos": [MIC], "mudos": [], "falhas": []}):
+            with mock.patch.object(eng, "_confere_fora", lambda n, r=r: r):
+                eng.Engine._confere_mudos(m)
+            self.assertIsNone(m.error)
+        with mock.patch.object(eng, "_confere_fora", lambda n: {"mudos": [UMC_IN]}), \
+                redirect_stdout(io.StringIO()):
+            eng.Engine._confere_mudos(m, [UMC_IN])
+        self.assertEqual(m.error["key"], "server.devices.silent")
+        self.assertIs(m._aviso, m.error, "e um aviso dos aparelhos: sai quando o audio reabre")
+
+    def test_ao_abrir_so_os_do_registro(self):
+        ok = {"filtro": True, "melhorias": True, "guid": "{a}"}
+        with mock.patch.object(eng, "_do_microfone", lambda mic: ok), \
+                mock.patch.object(injeta, "hash_microfone", lambda g: 7):
+            m = self._motor()
+            with mock.patch.object(filtro, "le_mudos", lambda: [UMC_IN]):
+                eng.Engine._confere_filtro(m, MIC)
+                m._confere_mudos.assert_called_once_with([UMC_IN])
+                eng.Engine._confere_filtro(m, MIC)
+                m._confere_mudos.assert_called_once()  # so na primeira
+            m = self._motor()
+            with mock.patch.object(filtro, "le_mudos", lambda: []):
+                eng.Engine._confere_filtro(m, MIC)
+            m._confere_mudos.assert_not_called()  # nenhum no registro: nenhum processo
+            # o aviso sai quando o audio reabre (a partida chama o _confere_filtro de novo)
+            m.error = m._aviso = eng._aviso_mudos([UMC_IN])
+            eng.Engine._confere_filtro(m, MIC)
+            self.assertIsNone(m.error)
+
+    def test_depois_de_preparar_confere_todos(self):
+        sem = {"filtro": False, "melhorias": True, "guid": "{a}"}
+        for r, quer in (({"ok": True}, True), ({"ok": False, "motivo": "audio"}, False)):
+            m = self._motor()
+            ordem = []
+            m._reabre.side_effect = lambda: ordem.append("reabre")
+            m._confere_mudos.side_effect = lambda *a: ordem.append(("confere", a))
+            with mock.patch.object(eng, "_do_microfone", lambda mic: sem), \
+                    mock.patch.object(filtro, "pede_tarefa", lambda mic, r=r: r), \
+                    mock.patch.object(filtro, "le_mudos", side_effect=AssertionError("ja confere todos")):
+                eng.Engine._confere_filtro(m, MIC)
+            self.assertEqual(ordem, ["reabre", ("confere", ())] if quer else [], r)
+
+
+RAIZ = Path(__file__).resolve().parent.parent
+_X86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+ISCC = next((p for p in (Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Inno Setup 6" / "ISCC.exe",
+                         Path(_X86) / "Inno Setup 6" / "ISCC.exe")
+             if p.exists()), None)  # os mesmos lugares do instalador/monta.ps1
+ACENTO = "Microfone (Áudio Ação)"
+SALA = 'Linha ("Sala" Mixer)'
+
+# o [Run] do setup de teste: o main de verdade do microfone.py, com o instala_todos devolvendo os mudos do MUDOS_TESTE
+# (JSON; "sem" nao grava o arquivo, como um microfone.py que quebrou antes)
+AJUDANTE = """import json, os, sys
+from unittest import mock
+sys.path.insert(0, RAIZ)
+from microfone import microfone as filtro
+mudos = os.environ["MUDOS_TESTE"]
+if mudos != "sem":
+    r = json.loads(mudos)
+    with mock.patch.object(filtro, "_migra_registro", lambda: None), \\
+            mock.patch.object(filtro, "instala_todos", lambda d: None if r is None else {"mudos": r}):
+        filtro.main(["instala-todos", "--dll", __file__, "--saida", sys.argv[1]])
+"""
+
+
+def monta_setup(pasta):
+    """Um setup que nao instala nada (sem pasta, sem desinstalador, sem administrador), com o instalador/mudos.iss, as
+    frases da ultima pagina do ritmelli.iss e o [Run] do AJUDANTE no lugar do ritmelli.exe --microfone."""
+    pasta = Path(pasta)
+    inst = RAIZ / "instalador"
+    ajudante = pasta / "ajudante.py"
+    ajudante.write_text(AJUDANTE.replace("RAIZ", repr(str(RAIZ))), "utf-8")
+    linhas = [x for x in (inst / "ritmelli.iss").read_text("utf-8-sig").splitlines()
+              if x.startswith(("pt.FinishedLabel=", "en.FinishedLabel=", "pt.Abrir=", "en.Abrir="))]
+    iss = "\n".join([
+        "[Setup]", "AppName=Ritmelli (teste do aparelho mudo)", "AppVersion=0", "CreateAppDir=no", "Uninstallable=no",
+        "PrivilegesRequired=lowest", "DisableWelcomePage=yes", "DisableReadyPage=yes", "WizardStyle=modern",
+        "ShowLanguageDialog=no", "Compression=none", f"OutputDir={pasta}", "OutputBaseFilename=mudos-teste",
+        "[Languages]", 'Name: "en"; MessagesFile: "compiler:Default.isl"',
+        f'Name: "pt"; MessagesFile: "{inst / "pt-BR.isl"}"',
+        # sem atalho, o Inno usa o FinishedLabelNoIcons: o texto do Ritmelli vai nos dois, como na pagina de verdade
+        "[Messages]", *[x for x in linhas if "FinishedLabel" in x],
+        *[x.replace("FinishedLabel=", "FinishedLabelNoIcons=") for x in linhas if "FinishedLabel" in x],
+        "[CustomMessages]", *[x for x in linhas if "Abrir" in x],
+        "[Run]",
+        f'Filename: "{sys.executable}"; Parameters: """{ajudante}"" ""{{tmp}}\\microfone.json"""; Flags: runhidden',
+        'Filename: "{sys}\\cmd.exe"; Parameters: "/c exit"; Description: "{cm:Abrir}"; '
+        "Flags: postinstall nowait skipifsilent runhidden",
+        # como no ritmelli.iss: o include antes do [Code], que tem o CurStepChanged sem marca
+        f'#include "{inst / "mudos.iss"}"',
+        "[Code]", "procedure CurStepChanged(CurStep: TSetupStep);", "begin", "end;", ""])
+    (pasta / "mudos-teste.iss").write_bytes(b"\xef\xbb\xbf" + iss.encode("utf-8"))
+    r = subprocess.run([str(ISCC), "/Q", str(pasta / "mudos-teste.iss")], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    if r.returncode:
+        raise AssertionError(f"o ISCC recusou o mudos.iss ({r.returncode}): {r.stdout}{r.stderr}")
+    return pasta / "mudos-teste.exe"
+
+
+@unittest.skipIf(ISCC is None, "sem o Inno Setup 6 (winget install -e --id JRSoftware.InnoSetup)")
+class TestaInstalador(unittest.TestCase):
+    """A ultima pagina do instalador (instalador/mudos.iss), pelo log do setup em silencio."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.setup = monta_setup(cls.tmp.name)
+        cls.n = 0
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def _log(self, mudos, lingua="en"):
+        TestaInstalador.n += 1
+        log = Path(self.tmp.name) / f"setup-{self.n}.log"
+        env = dict(os.environ, MUDOS_TESTE=mudos if isinstance(mudos, str) else json.dumps(mudos))
+        r = subprocess.run([str(self.setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LANG={lingua}",
+                            f"/LOG={log}"], env=env, timeout=120)
+        self.assertEqual(r.returncode, 0)
+        return log.read_bytes().decode("utf-8-sig", errors="replace")
+
+    def test_mudos_no_log(self):
+        log = self._log([UMC_IN, UMC_OUT, ACENTO, SALA], "pt")
+        self.assertIn('aparelhos mudos: "BEHRINGER UMC 404HD 192k", "Áudio Ação", ""Sala" Mixer"', log,
+                      "um nome por aparelho, com acento e com aspas")
+
+    def test_nenhum_mudo(self):
+        for mudos in (None, []):  # sem reinicio do audio (nao conferiu), e conferiu sem nenhum mudo
+            self.assertIn("aparelhos: nenhum mudo", self._log(mudos), mudos)
+
+    def test_sem_o_arquivo(self):
+        self.assertIn("aparelhos: sem o microfone.json", self._log("sem"))
+
+
+if __name__ == "__main__":
+    if "--tela" in sys.argv:
+        if ISCC is None:
+            sys.exit("sem o Inno Setup 6")
+        with tempfile.TemporaryDirectory() as tmp:
+            setup = monta_setup(tmp)
+            for lingua in ("pt", "en"):
+                print(f"o setup de teste ({lingua}): feche na ultima pagina")
+                subprocess.run([str(setup), f"/LANG={lingua}"], env=dict(os.environ, MUDOS_TESTE=json.dumps(
+                    [UMC_IN, UMC_OUT, ACENTO])))
+        sys.exit(0)
+    unittest.main(verbosity=2)

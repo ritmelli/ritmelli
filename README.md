@@ -524,8 +524,8 @@ The description at the top of each file (in Portuguese) says exactly what it che
 - The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
   `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
-  `dev/testa_microfone.py`, `dev/testa_voz.py` and `microfone/apo/teste/teste_reamostra.py` (the filter's
-  resampler, `reamostra.h`).
+  `dev/testa_microfone.py`, `dev/testa_aparelho_mudo.py`, `dev/testa_voz.py` and
+  `microfone/apo/teste/teste_reamostra.py` (the filter's resampler, `reamostra.h`).
 - The voice changer pedal (`pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` and the `pistavoz` hook in
   `fx.py`, `engine.py` and `server.py`; the contract is in [API.md](API.md#pedal-de-troca-de-voz)):
   `dev/testa_pedal_voz.py`, `dev/testa_vozes.py`, `dev/testa_pista.py` and `dev/testa_conversor.py` (the voice
