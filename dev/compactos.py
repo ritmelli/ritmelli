@@ -1,11 +1,11 @@
-"""Compactos dos Sons rapidos da vitrola em pixel art (o toque de Habbo, mock h1): a
+"""Compactos dos Sons rapidos do tema em pixel art (o toque de Habbo, mock h1): a
 silhueta em degrau com o contorno, os sulcos, a borda com bisel, o brilho pixelado na diagonal e a
 sombra dura, desenhados celula a celula.
 
     python dev/compactos.py
 
 Grava as variaveis --compacto-base e --compacto-tampa no bloco entre "compactos:inicio" e
-"compactos:fim" do themes/vitrola/index.html.
+"compactos:fim" do themes/ritmelli/index.html.
 
 O compacto gira enquanto o som toca, e um degrau girando balanca. Por isso o desenho fica parado em
 duas camadas e so o selo redondo gira entre elas (o .sete-gira com o .sete-rot, na cor do som):

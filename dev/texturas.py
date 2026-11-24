@@ -1,9 +1,9 @@
-"""Texturas de ruido da vitrola (madeira, feltro do prato e do painel, pintura martelada dos pedais) em WebP.
+"""Texturas de ruido do tema (madeira, feltro do prato e do painel, pintura martelada dos pedais) em WebP.
 
     python dev/texturas.py [nome...]     (sem nome grava todas)
 
 O desenho mora aqui, em SVG com feTurbulence; o tema usa so as imagens que este script grava em
-themes/vitrola/texturas/ (image-set com a densidade, para o tamanho na tela ser o do SVG). Com o SVG
+themes/ritmelli/texturas/ (image-set com a densidade, para o tamanho na tela ser o do SVG). Com o SVG
 direto no CSS a GPU do celular refazia o ruido a cada pedaco de tela que entrava na rolagem do
 toca-discos: no celular de teste, 10 a 16 quadros travados por rolagem com as texturas e 3 a 5 sem
 (medido por adb, 18/10). Mudou o grao: muda o SVG aqui, roda de novo e confere o tema.
@@ -25,7 +25,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fitcheck import CHROME, free_port  # noqa: E402
 
-SAIDA = Path(__file__).resolve().parent.parent / "themes" / "vitrola" / "texturas"
+SAIDA = Path(__file__).resolve().parent.parent / "themes" / "ritmelli" / "texturas"
 # nome: (SVG em data URI, largura e altura em px de CSS, densidade da imagem gravada)
 TEXTURAS = {
     "veio": ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='420'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0025 0.07' numOctaves='3' seed='11'/%3E%3CfeColorMatrix values='0 0 0 0 0.09 0 0 0 0 0.04 0 0 0 0 0.02 0 0 0 1.25 -0.5'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E",

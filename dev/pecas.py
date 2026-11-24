@@ -1,4 +1,4 @@
-"""Pecas de pixel da vitrola (o toque de Habbo, mock p1): o braco do toca-discos
+"""Pecas de pixel do tema (o toque de Habbo, mock p1): o braco do toca-discos
 com a base e o descanso e o botao de tocar redondo (o grande do palco e o pequeno da barra de baixo),
 e o pisador (footswitch), o knob e o LED dos pedais, a chave 110/220
 do fim do disco e as barras do palco, desenhados celula a celula.
@@ -10,7 +10,7 @@ as das barras do palco (--trilho-moldura, --trilho-fundo, --trilho-aceso e --cur
 maleta do A seguir (--maleta-canto-a a -d, --maleta-dobradica, --maleta-fecho, --maleta-alca, --maleta-meio-*,
 --maleta-boca-*, o casco em perspectiva, --maleta-tampa-* e --maleta-base-*, e o recorte do disco entreaberto,
 --maleta-disco-*) no
-bloco entre "pecas:inicio" e "pecas:fim" do themes/vitrola/index.html, e no JS os SVGs do pisador (PE_SVG), do LED (LED_SVG), os knobs dos pedais com os ponteiros (KNOBS: o creme, o baquelite e o chicken-head), a chave do "So este disco / Tocar parecidas" (CHAVE_PARECIDAS) e o salvar da
+bloco entre "pecas:inicio" e "pecas:fim" do themes/ritmelli/index.html, e no JS os SVGs do pisador (PE_SVG), do LED (LED_SVG), os knobs dos pedais com os ponteiros (KNOBS: o creme, o baquelite e o chicken-head), a chave do "So este disco / Tocar parecidas" (CHAVE_PARECIDAS) e o salvar da
 parecida no prato (SALVAR_PIXEL, com as --salvar-aceso-* do aro).
 
 O braco: o tema gira o .braco em volta do pivo (o anguloPara() da o angulo do sulco; parado ele volta

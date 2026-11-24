@@ -131,6 +131,10 @@ caso("o manifesto leva a parcial", cod == 0 and p.get("sha256") == sha(b"setup p
 caso("a parcial no mesmo endereco do setup",
      p.get("url") == url.replace("-setup.exe", "-parcial.exe"),
      p.get("url"))
+# o "app" de antes da troca de nome (#58): a 0.4.1 e o Ritmelli ate a 0.6.0 so aceitam o manifesto com ele (o APP do
+# publica.py diz quando ele pode trocar)
+caso("o manifesto sai com o app vitrola, o que as versoes instaladas conferem", m.get("app") == "vitrola",
+     m.get("app"))
 caminhos = {f["caminho"] for f in m.get("arquivos", [])}
 caso("tudo que a parcial traz esta na lista de arquivos", set(p.get("arquivos", [])) <= caminhos and caminhos)
 cod, out = roda("publica.py", *base, "--parcial", parc)

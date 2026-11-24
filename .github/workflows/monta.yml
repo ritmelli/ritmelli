@@ -64,7 +64,8 @@ jobs:
           PYTHONUTF8: '1'
         run: python dev/testa_metricas.py
       # a troca de nome de Vitrola para Ritmelli (#58): a pasta de dados, o registro (o do usuário), a pasta do app de
-      # antes e o cookie do celular. Só a biblioteca padrão
+      # antes, o cookie do celular e o tema no endereço de agora. Só a biblioteca padrão: o endereço de antes do tema,
+      # que pede o servidor de verdade, fica de fora aqui
       - name: Confere a troca de nome
         env:
           PYTHONUTF8: '1'
