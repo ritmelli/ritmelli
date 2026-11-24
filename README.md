@@ -213,7 +213,8 @@ you need neither, so start at [Work on the interface without audio](#work-on-the
 - ffmpeg and ffprobe, on the `PATH` or in a `bin/` folder at the root of the repository (git ignores it).
 - Deno or Node: yt-dlp needs a JavaScript runtime to get every format from YouTube. Deno can also go in `bin/`.
 - Visual Studio 2022 (any edition, or the free Build Tools for Visual Studio 2022) with the **Desktop development with
-  C++** workload and the Windows SDK 10.0.22621 or later, to build the microphone filter.
+  C++** workload, the C++ ATL and the Windows SDK 10.0.26100 or later, to build the microphone filter (it uses an
+  interface that older SDKs don't have, and links against ATL).
 
 To install everything except Python with winget:
 
@@ -221,11 +222,11 @@ To install everything except Python with winget:
 winget install -e --id Git.Git
 winget install -e --id Gyan.FFmpeg
 winget install -e --id DenoLand.Deno
-winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools;includeRecommended"
+winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools;includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.Windows11SDK.26100"
 ```
 
-The last command installs the Build Tools with the C++ workload and its recommended SDK. It doesn't restart the
-computer on its own (`--norestart`), so restart it yourself if the installer asks. Then open a new terminal for the
+The last command installs the Build Tools with the C++ workload, ATL and the Windows SDK 10.0.26100. It doesn't restart
+the computer on its own (`--norestart`), so restart it yourself if the installer asks. Then open a new terminal for the
 steps below: winget adds Git, ffmpeg and Deno to the `PATH`, and a terminal that was already open doesn't see the
 change.
 
@@ -379,10 +380,11 @@ them, in the blocks that start at `DECK-JS-INICIO`, `MIX-JS-INICIO` and `PEDAL-J
 `dev/fitcheck.py` checks the layout at several window and phone sizes, and `dev/shot.py` takes a screenshot. Both
 need the development packages (`requirements-dev.txt`) and drive Google Chrome from its default install folder,
 `C:\Program Files\Google\Chrome\Application\chrome.exe`. A Chrome installed only for your user, in `%LOCALAPPDATA%`,
-isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. If the welcome screen is
-open, close it first (see above): with it open, `fitcheck.py` fails at most sizes and `shot.py` captures it. Leave
-the `--mock` server running and, in a second terminal at the repository root, activate the virtual environment,
-install the development packages once and run them:
+isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. If the server would still show
+the welcome screen, both close it first, as **Get started** does (the server then remembers it as seen). With
+`--boas-vindas`, `fitcheck.py` checks the welcome screen itself at every size and `shot.py` captures it. Leave the
+`--mock` server running and, in a second terminal at the repository root, activate the virtual environment, install
+the development packages once and run them:
 
 ```powershell
 .venv\Scripts\Activate.ps1
@@ -502,19 +504,20 @@ one in [Run](#run), and open the pull request from a branch of your fork against
 the team are merged after a review by an organization member. Security problems go through the
 [security policy](https://github.com/ritmelli/ritmelli/security/policy), not through issues.
 
-Pull requests don't trigger the pipeline (a maintainer runs it by hand), so run its four pre-build checks yourself
-before you open one. They need only the Python standard library:
+Pull requests don't trigger the pipeline (a maintainer runs it by hand), so run its pre-build checks yourself before
+you open one. They need only the Python standard library:
 
 ```powershell
 python dev\testa_i18n.py       # the interface texts in both languages
 python dev\testa_metricas.py   # the anonymous usage data
 python dev\testa_migra.py      # the rename from Vitrola
 python dev\testa_mock.py       # the no-audio mode never touches real user data
+python dev\testa_pareamento.py # phone pairing: the code, wrong attempts, the key and disconnecting
 ```
 
-If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server, with the welcome screen closed
-(see [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it
-checks has to pass, as it does on `main`.
+If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
+[Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks
+has to pass, as it does on `main`. If you changed the welcome screen, also run it with `--boas-vindas`.
 
 If you changed the audio engine, the server, the filter or the updates, also run the tests that cover your change.
 The description at the top of each file (in Portuguese) says exactly what it checks.
