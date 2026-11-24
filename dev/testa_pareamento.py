@@ -203,8 +203,9 @@ async def guard_do_servidor():
                                 ("DELETE", "/api/pareamento/abc")):
             resp, chegou = await manda(pedido(metodo, caminho))
             confere(resp.status == 403 and not chegou, f"{metodo} {caminho}: so no PC ({resp.status})")
-        resp, chegou = await manda(pedido("GET", "/t/vitrola/"))
-        confere(chegou, "a pagina do tema abre sem a chave: e nela que o celular digita o codigo")
+        for caminho in ("/t/ritmelli/", server.TEMA_DE_ANTES + "/"):  # o de antes (#58) leva ao novo
+            resp, chegou = await manda(pedido("GET", caminho))
+            confere(chegou, f"{caminho}: a pagina do tema abre sem a chave, e nela que o celular digita o codigo")
         resp, chegou = await manda(pedido("POST", "/api/play", host="ritmelli.example:8799"))
         confere(resp.status == 403 and not chegou, "outro Host (DNS rebinding): recusado")
         resp, chegou = await manda(pedido("POST", "/api/parear", origem="http://outro.example", corpo={"codigo": "1"}))
