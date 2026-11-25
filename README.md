@@ -525,6 +525,11 @@ python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as th
 
 `python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library.
 
+A new `dev/testa_*.py` goes into one of the lists in `dev/testa_tudo.py` or into a step of its own in `testa.yml`. A
+test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
+`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` reads the `testa.yml` steps and fails on a test that
+runs nowhere and on a `manual:` file that runs there.
+
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
 [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks
 has to pass, as it does on `main`. If you changed the welcome screen, also run it with `--boas-vindas`.

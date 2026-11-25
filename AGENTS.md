@@ -81,4 +81,7 @@ $env:PYTHONUTF8 = '1'; python -m ruff check .; python dev\testa_tudo.py
 
 O `--microfone` roda os do filtro (depois do `microfone\apo\compila.bat teste`), o `--tela --base origin/main` a tela
 e o `--so-stdlib` só os da biblioteca padrão, que a `monta.yml` (só à mão) roda antes de montar. Teste novo de `dev/`
-entra numa lista do `testa_tudo.py`, sem som, aparelho nem rede externa, ou o `testa_tudo` falha.
+entra numa lista do `testa_tudo.py`, sem som, aparelho nem rede externa, ou num passo próprio do `testa.yml` (como o
+`--disco` do `testa_pasta_protegida`). O que só roda à mão diz no topo, num comentário antes da docstring:
+`# manual: <comando> precisa de <aparelho>`. O `testa_tudo` lê os passos do `testa.yml` e falha com teste sem destino e
+com o arquivo de `dev/` que tem a linha `manual:` e roda lá.
