@@ -33,15 +33,6 @@ function estadoEntrada(x) {
   if (j && j.status === 'running') return 'baixando ' + Math.round((j.progress || 0) * 100);
   return j && j.status === 'error' ? 'erro' : 'stream';
 }
-/* a maleta do A seguir no celular comeca fechada, so com o proximo, e so a tecla abre e fecha; a
-   lista fechada nao pega toque nem foco */
-function abrirMaleta(on) {
-  const sec = $(celular() ? '.fila-palco' : '.fila-parede'), b = sec.querySelector('.abre-fila'), rot = on ? I18N.t('queue.close') : I18N.t('queue.open');
-  sec.classList.toggle('aberta', on);
-  b.setAttribute('aria-expanded', on ? 'true' : 'false');
-  b.setAttribute('aria-label', rot); b.title = rot;
-  sec.querySelector('.lista-fila').inert = !on;
-}
 /* a capa do disco da maleta: o disco e a capa quadrada da largura dele (300 px de tela, 900 no celular de teste), entao a
    miniatura vem da maior que o YouTube tiver (a mqdefault da fila tem 320 px e a capa quadrada dela 180: borrava), e
    sem as faixas que o YouTube poe em volta (com elas a capa quadrada saia
@@ -347,11 +338,6 @@ $('#resultados').addEventListener('click', e => {
   ul.addEventListener('pointercancel', e => soltar(e, true));
 })();
 
-/* rolos da parede (so no computador): esmaecem a borda de cima quando ainda ha disco escondido la */
-function sombrear(r) {
-  const fim = r.scrollHeight - r.clientHeight;
-  r.classList.toggle('mais-cima', fim > 1 && r.scrollTop > 2);
-}
 document.querySelectorAll('.rolo').forEach(r => {
   r.addEventListener('scroll', () => { fecharMenu(false); sombrear(r); }, { passive: true });
   const ro = new ResizeObserver(() => sombrear(r));

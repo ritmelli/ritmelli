@@ -12,6 +12,7 @@ propria (janela.py), ou no navegador sem o WebView2; --no-browser nao abre nenhu
 import argparse
 import asyncio
 import contextlib
+import hashlib
 import importlib
 import json
 import math
@@ -59,6 +60,18 @@ THEMES = HERE / "themes"
 # o endereco do tema ate a 0.6.0, quando ele se chamava vitrola (#58): o celular pareado, o atalho na tela inicial e o
 # favorito ainda abrem este, e o servidor leva cada caminho dele para o mesmo no tema de agora (o tema_de_antes)
 TEMA_DE_ANTES = "/t/vitrola"
+INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
+
+
+def inline_scripts(html, folder):
+    return INLINE_SCRIPT.sub(lambda m: f"<script>\n{(folder / m.group(1)).read_text(encoding='utf-8')}</script>", html)
+
+
+def theme_page(page, texts, language):
+    html = inline_scripts(i18n.injeta(page.read_text(encoding="utf-8"), texts, language), page.parent)
+    return html, f'"{hashlib.sha256(html.encode("utf-8")).hexdigest()[:32]}"'
+
+
 YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 YT_URL = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
 PAGINA_FOLGA = 8  # a busca pede tantos a mais na pagina de resultados: canal e playlist ocupam lugar e saem
@@ -2603,12 +2616,10 @@ def build(app_state):
         volta como 304, sem baixar a pagina de novo"""
         textos = p.parent / "i18n"
         lingua = i18n.escolher(request.query.get("lang"), request.headers.get("Accept-Language", ""))
-        etag = f'"{p.stat().st_mtime_ns}-{i18n.versao(textos)}-{lingua}"'
+        html, etag = await asyncio.get_running_loop().run_in_executor(None, lambda: theme_page(p, textos, lingua))
         cab = {"ETag": etag, "Cache-Control": "no-cache", "Vary": "Accept-Language"}
         if etag in (x.strip() for x in request.headers.get("If-None-Match", "").split(",")):
             return web.Response(status=304, headers=cab)
-        html = await asyncio.get_running_loop().run_in_executor(
-            None, lambda: i18n.injeta(p.read_text(encoding="utf-8"), textos, lingua))
         return web.Response(text=html, content_type="text/html", headers=cab)
 
     @r.get("/t/{slug}")
