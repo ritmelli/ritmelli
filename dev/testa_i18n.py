@@ -15,7 +15,8 @@ letras que a tabela de pixel delas tem (as placas, os mostradores do mixer, a fi
 e o visor do pedal de troca de voz). O meta.json de cada tema: o campo que vem por lingua tem as duas. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
 posto na pagina e a mensagem. O tema e o index.html e todos os .js e .css da pasta dele (e das de dentro), e cada bloco
 marcado (o /* NOME-INICIO ... /* NOME-FIM */, e o /* nome:inicio ... /* nome:fim */ que um gerador de dev/ grava) mora
-num lugar so: o que sai do index.html para um arquivo nao fica nos dois. Sai 1 se algo falha."""
+num lugar so: o que sai do index.html para um arquivo nao fica nos dois. The inline CSS and JS of the index.html stay at or
+under a ceiling that only goes down (INLINE_CEILING), and the count goes to the PR summary. Sai 1 se algo falha."""
 import ast
 import contextlib
 import io
@@ -136,6 +137,36 @@ def confere_blocos(tema, arquivos):
     print(f"{tema.name}: {len(arquivos)} file(s), {len({b for b, _ in onde})} marked block(s)")
 
 
+# The most lines of inline CSS and JS each theme's index.html may have. The number only goes down: new theme code goes
+# into a file of the theme folder, and a PR that moves code out of the page lowers it to the new count.
+INLINE_CEILING = {"ritmelli": 7014}
+INLINE = re.compile(r"<(style|script)\b([^>]*)>(.*?)</\1>", re.S)
+
+
+def inline_lines(html):
+    """The lines of text inside the page's <style> and <script> elements (a <script src> brings none)."""
+    total = 0
+    for m in INLINE.finditer(html):
+        if re.search(r"\bsrc\s*=", m.group(2)):
+            continue
+        body = m.group(3).strip("\n")
+        total += body.count("\n") + 1 if body.strip() else 0
+    return total
+
+
+def check_inline_ceiling(tema, html):
+    """Fails when the index.html has more inline lines than its ceiling. The count goes to the PR summary (the
+    "-- summary:" line, which dev/testa_tudo.py copies)."""
+    if tema.name not in INLINE_CEILING:
+        return
+    count, ceiling = inline_lines(html), INLINE_CEILING[tema.name]
+    note = f"; it can go down to {count}" if count < ceiling else ""
+    print(f"-- summary: {tema.name}/index.html: {count} lines of inline CSS and JS (ceiling {ceiling}{note})")
+    if count > ceiling:
+        falha(f"{tema.name}: index.html has {count} lines of inline CSS and JS, over the ceiling of {ceiling}: new "
+              f"theme code goes into a file of the theme folder (INLINE_CEILING in dev/testa_i18n.py only goes down)")
+
+
 def confere_tema(tema, servidor, efeitos):
     pasta = tema / "i18n"
     try:
@@ -168,6 +199,7 @@ def confere_tema(tema, servidor, efeitos):
 
     arquivos = arquivos_do_tema(tema)
     confere_blocos(tema, arquivos)
+    check_inline_ceiling(tema, arquivos["index.html"])
     html = "\n".join(arquivos.values())
     # o que o tema pede: os data-i18n* e as chaves entre aspas nas linhas que chamam o I18N.t, o I18N.tp ou o
     # I18N.rico (pega o I18N.t(cond ? 'a.b' : 'a.c'))

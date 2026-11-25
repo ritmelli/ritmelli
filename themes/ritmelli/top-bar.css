@@ -1,0 +1,67 @@
+/* TOP-BAR-INICIO */
+/* ---------- topo ---------- */
+.topo { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.marca { display: flex; align-items: center; gap: 12px; margin-right: auto; }
+.nome-marca { font-size: 1.75rem; line-height: 1; font-weight: 300; font-stretch: 125%; letter-spacing: .02em; }
+.conexao { font-size: .8125rem; color: var(--marfim-2); font-stretch: 112%; }
+.busca { display: flex; gap: 8px; flex: 1 1 420px; max-width: 600px; }
+.busca input {
+  flex: 1; min-width: 0; height: calc(var(--alvo) + 2px); padding: 0 14px; color: var(--marfim);
+  font-size: .9375rem;
+}
+.busca input::placeholder { color: var(--marfim-2); opacity: 1; }
+/* x de limpar: botao nosso, como no Spotify (circulo claro com o x vazado no escuro do campo). O
+   do navegador o Chrome so mostra com o cursor no campo: sumia depois de tocar no ⊕, e o primeiro
+   toque so devolvia o cursor. Aparece sempre que ha texto e limpa no primeiro
+   toque; o alvo e 48 px ate a beirada direita, na altura toda do campo */
+.campo-q { position: relative; display: flex; flex: 1; min-width: 0; }
+.busca input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+.limpar-q {
+  display: none; position: absolute; right: 1px; top: 1px; bottom: 1px; width: 48px; place-items: center;
+  padding: 0; border: 0; border-radius: 0 8px 8px 0; background: none; color: var(--marfim);
+}
+.limpar-q svg { width: 22px; height: 22px; }
+.limpar-q:active, .limpar-q.apertado { background: rgba(255,240,220,.08); }
+@media (hover: hover) { .limpar-q:hover { color: #fff; } }
+#q:not(:placeholder-shown) ~ .limpar-q { display: grid; }
+#q:not(:placeholder-shown) { padding-right: 50px; }
+.busca input:focus-visible { outline-offset: 1px; }
+.botoes-topo { display: flex; gap: 8px; }
+.busca .lupa { display: none; }
+.sair-busca { display: none; }
+
+/* a lupa mora dentro do campo, na direita, nas duas telas: a busca ja sai sozinha enquanto digita,
+   e a lupa so busca na hora (no celular, e fecha o teclado); com texto, o x toma o lugar dela e o
+   Enter segue buscando */
+.busca { position: relative; }
+.busca input { padding-right: 46px; }
+#form-busca .btn {
+  position: absolute; right: 1px; top: 1px; bottom: 1px; width: 44px; min-height: 0; height: auto;
+  display: grid; place-items: center; padding: 0; border: 0; border-radius: 0 8px 8px 0;
+  background: none; box-shadow: none; color: var(--marfim-2); transform: none;
+}
+#form-busca .btn:active, #form-busca .btn.apertado { background: rgba(255,240,220,.08); }
+.busca:has(#q:not(:placeholder-shown)) .btn { display: none; }
+.busca .lupa { display: block; }
+.busca .rot-busca { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+@media (max-width: 899.98px) {
+  /* com a busca aberta, a seta de voltar fica dentro do campo, como no YouTube Music */
+  body.com-busca .busca input { padding-left: 46px; }
+  body.com-busca .sair-busca {
+    position: absolute; left: 1px; top: 1px; bottom: 1px; width: 44px; display: grid; place-items: center;
+    padding: 0; border: 0; border-radius: 8px 0 0 8px; background: none; color: var(--marfim);
+  }
+  .sair-busca svg { width: 1.375rem; height: 1.375rem; }
+  .sair-busca:active, .sair-busca.apertado { background: rgba(255,240,220,.08); }
+  .topo { gap: 12px; }
+  .busca { order: 3; flex-basis: 100%; max-width: none; }
+  .botoes-topo .rot { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .botoes-topo .btn-madeira { padding: 8px 11px; }
+  /* no room for Desligar in the narrow top bar (closing the window turns the app off too); at any width, only the PC
+     sees it (definirCaps) */
+  #b-desligar { display: none; }
+  .nome-marca { font-size: 1.5rem; }
+}
+
+/* TOP-BAR-FIM */
