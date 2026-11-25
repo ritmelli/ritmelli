@@ -320,6 +320,21 @@ with tempfile.TemporaryDirectory() as tmp:
         migra._apaga_no_reinicio = reinicio
 migra.PROTEGIDA = pastas.pasta_protegida
 
+print("--- the old Windows tasks")
+# subprocess.run swapped for a recorder: no real schtasks or powershell runs, and no task is touched
+commands = []
+run, subprocess.run = subprocess.run, lambda args, **kw: commands.append(list(args))
+try:
+    migra.tarefas()
+finally:
+    subprocess.run = run
+system32 = os.path.dirname(pastas.do_windows("schtasks.exe")).lower()
+confere(sorted({os.path.basename(c[0]).lower() for c in commands}) == ["powershell.exe", "schtasks.exe"]
+        and all(os.path.isabs(c[0]) and os.path.dirname(c[0]).lower().startswith(system32) for c in commands),
+        f"schtasks and powershell by their full System32 path, never by the bare name ({[c[0] for c in commands]})")
+confere([c[c.index("/tn") + 1] for c in commands if "/delete" in c] == list(migra.TAREFAS_VELHAS),
+        "every old task is deleted")
+
 print("--- o celular pareado antes")
 confere(pareamento.chave_do({"vitrola_celular": "abc"}) == "abc", "o cookie de antes ainda vale")
 confere(pareamento.chave_do({"ritmelli_celular": "novo", "vitrola_celular": "velho"}) == "novo", "o novo vale sobre o de antes")
