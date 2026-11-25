@@ -140,6 +140,7 @@ def comandos(A, E):
     confere(cmd.tirar_da_fila(A, x3["qid"]) is x3 and fila(A) == ["d2"], "tirar da fila")
     confere(cmd.tirar_da_fila(A, x3["qid"]) is None, "tirar o que ja saiu: None (404)")
 
+    A.lib.update("d1", last_pos=0.0)  # o retomar acima deixou 42: a posicao conferida tem de vir do pausar
     cmd.pausar(A)
     confere(E.status() == "paused" and A.lib.get("d1")["last_pos"] == round(E.pos, 1),
             "pausar pausa e grava a posicao do disco")
