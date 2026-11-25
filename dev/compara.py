@@ -46,12 +46,12 @@ from pathlib import Path
 from urllib.parse import quote
 
 import numpy as np
-import websockets
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import so_mock  # noqa: E402
-from fitcheck import CHROME, barra_outra_origem, erro_da_pagina, fecha_chrome  # noqa: E402
+from fitcheck import (CHROME, PRONTA, barra_outra_origem, conecta_cdp, erro_da_pagina,  # noqa: E402
+                      fecha_chrome, le_cdp)
 from so_mock import free_port  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -101,8 +101,8 @@ SEM_NIVEIS = """(() => {
 # na mesa, antes de qualquer script do tema: o performance.now parado no comeco da pagina. O letreiro das telas dos
 # toca-discos anda pelo relogio mesmo com o movimento reduzido, e dois prints seguidos saiam com o titulo em outro lugar
 RELOGIO_PARADO = "(() => { const t0 = performance.now(); performance.now = () => t0; })();"
-PRONTO = ("document.readyState === 'complete' && document.fonts.status === 'loaded' && !!S.state && "
-          "S.lib.length > 0 && [...document.images].every(i => i.complete)")
+# the fitcheck's ready signal, plus the fake shelf on screen
+PRONTO = f"{PRONTA} && S.lib.length > 0"
 PALCO = "document.querySelector('#palco')"
 
 
@@ -203,12 +203,11 @@ class Chrome:
         self.fetch = barra_outra_origem(ws, base, self.barrados)  # o documento de outra origem, barrado
 
     async def le(self):
-        async for raw in self.ws:
-            m = json.loads(raw)
-            if m.get("id") in self.pend:
-                self.pend.pop(m["id"]).set_result(m)
-            elif not self.fetch(m) and (e := erro_da_pagina(m)):
-                self.erros.append(e)
+        await le_cdp(self.ws, self.pend, self.evento)
+
+    def evento(self, m):
+        if not self.fetch(m) and (e := erro_da_pagina(m)):
+            self.erros.append(e)
 
     async def cmd(self, metodo, **params):
         self.seq += 1
@@ -267,7 +266,7 @@ async def prints(a, srv, destino):
                 time.sleep(0.1)
         if not ws_url:
             sys.exit("chrome headless nao subiu")
-        async with websockets.connect(ws_url, max_size=64 * 1024 * 1024) as ws:
+        async with conecta_cdp(ws_url) as ws:
             c = Chrome(ws, srv.base)
             leitor = asyncio.create_task(c.le())
             for d in ("Page", "Runtime", "Network"):
