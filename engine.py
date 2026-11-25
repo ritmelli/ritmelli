@@ -1148,9 +1148,17 @@ class Injetor:
                                                                            "back through the microphone, close and "
                                                                            "reopen Ritmelli.",
                                                 reason=str(ex)[:160])
-                    self.m = None
+                    # o anel que falhou fecha (o mapa e o handle nao ficam abertos ate o app sair) e o _abre tenta um
+                    # novo; o estado do efeito zera mesmo se o fechamento falhar
+                    falhou, self.m = self.m, None
                     servidos = ()
-                    self._solta_efeito()
+                    try:
+                        if falhou is not None:
+                            falhou.fecha()
+                    except Exception:  # noqa: BLE001, S110 - o erro que vale ja esta na tela
+                        pass
+                    finally:
+                        self._solta_efeito()
                     time.sleep(0.5)
                 time.sleep(0.002)
         finally:

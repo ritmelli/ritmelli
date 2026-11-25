@@ -523,12 +523,12 @@ If you changed the audio engine, the server, the filter or the updates, also run
 The description at the top of each file (in Portuguese) says exactly what it checks.
 
 - The audio engine (`engine.py`, `sonoridade.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
-  `dev/testa_congela.py` and `dev/testa_microfone.py`.
+  `dev/testa_congela.py`, `dev/testa_microfone.py` and `dev/testa_anel.py`.
 - The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
   `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
-  `dev/testa_microfone.py`, `dev/testa_voz.py` and `microfone/apo/teste/teste_reamostra.py` (the filter's
-  resampler, `reamostra.h`).
+  `dev/testa_microfone.py`, `dev/testa_anel.py` (the ring is released after every failure), `dev/testa_voz.py` and
+  `microfone/apo/teste/teste_reamostra.py` (the filter's resampler, `reamostra.h`).
 - The voice changer pedal (`pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` and the `pistavoz` hook in
   `fx.py`, `engine.py` and `server.py`; the contract is in [API.md](API.md#pedal-de-troca-de-voz)):
   `dev/testa_pedal_voz.py`, `dev/testa_vozes.py`, `dev/testa_pista.py` and `dev/testa_conversor.py` (the voice
