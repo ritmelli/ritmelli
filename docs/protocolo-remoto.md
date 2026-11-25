@@ -108,7 +108,8 @@ amostra dele, e o motor anda dentro do bloco a velocidade 1 (o `_tira`, que rotu
   contadas pelo `_mixa`: antes dele, o disco anda a 1; nele, os segmentos da curva, com a fase pelo que já foi
   consumido; depois, a cauda. Ela vale para o deck enquanto a fila dele não é limpa: o `_restart` (o seek, outro
   disco pelo `load`, a retomada depois do fim) e o `stop` limpam a fila e tiram as curvas junto; o `trocar_fonte`
-  (o stream que vira o arquivo baixado) sobe o `gen` sem limpar a fila, e a curva segue até os blocos dela acabarem.
+  do stream que vira o arquivo baixado sobe o `gen` sem limpar a fila, e a curva segue até os blocos dela acabarem (o
+  da espera, sem arquivo, chama o `_restart`, e a curva sai com a fila).
   Um deck pode ter mais de uma (a entrada dele e, depois, a rampa de saída da passagem seguinte): a nova corta a
   anterior no começo dela, como o `_mede` troca a cauda da fila dali em diante. A volta do Repetir depois da curva
   segue a 1, e uma segunda passagem pelo `t_r` não traz a curva de volta.
@@ -116,8 +117,8 @@ amostra dele, e o motor anda dentro do bloco a velocidade 1 (o `_tira`, que rotu
   amostras a partir do rótulo `t_r`, e segue em `sa` até o fim dos blocos esticados. O `_mede` troca a cauda da fila
   do prato por esses blocos (o `sai_q` do plano), então a âncora publicada ali leva 1 até `t_r`, o meio cosseno
   `{"de": 1, "ate": sa}`, `sa` e o último bloco (abaixo). O `va` do visor sozinho não reconstrói o meio da rampa: o
-  PC guarda do plano aplicado o `t_r`, o `n_ra`, o `sa` e o total de amostras esticadas (hoje o `n_ra` é uma conta
-  dentro do `_plano_dois`, que a implementação passa a devolver no plano); a curva começa na amostra consumida do
+  PC guarda do plano aplicado o `t_r`, o `n_ra`, o `sa` e o total de amostras esticadas (hoje o `n_ra` sai do
+  `transicao.rampa_saida`, dentro do `_plano_dois`, que a implementação passa a devolver no plano); a curva começa na amostra consumida do
   bloco de rótulo `t_r`. O último bloco esticado, o do fim do arquivo, vai num segmento a 1 desde o rótulo dele, como
   o `pos` do `_mixa`: a última âncora andando para onde o motor congela no fim.
 - A entrada esticada (o `esticar`; a mesma conta do `_visor_rampa` e do `vdjFi` do tema): `sb` por `n_sob` amostras,
@@ -150,10 +151,13 @@ blocos à frente do leitor), então a hora da chamada não é a hora em que a am
 amostras de saída (`u`) e as consumidas de cada deck no prato, e o Injetor anota o par da amostra que está tocando: o
 `u` dela (o escrito menos o que o leitor do anel ainda não leu) e o relógio monotônico daquele instante; sem leitor, o
 relógio da saída. O instante de qualquer `u` é o anotado mais a diferença de `u`, em ms, e é assim que sai todo `t`.
+O `u` de uma amostra do prato é o da saída menos o atraso do limitador da música (o `LIMITE_ANTES`, 96 amostras): o
+atraso é fixo, com ou sem ganho, e o limitador que o motor zera quando o prato troca ou pula começa com o histórico em
+zero, então segue o mesmo.
 
 O `_mixa` anota também as marcas desde o último tick: o bloco que não continua o anterior (estrutural: outro deck, a
-virada, mesmo com o mesmo disco dos dois lados, ou o primeiro depois de um bloco sem disco, a retomada; ou só o rótulo
-que salta) e o bloco em que o prato parou (a pausa, o buffering, o fim, o stop), com o `u`, o deck, o rótulo do
+virada, mesmo com o mesmo disco dos dois lados; outro disco no mesmo deck, o `load` que enche a fila antes do callback
+seguinte; ou o primeiro depois de um bloco sem disco, a retomada; ou só o rótulo que salta) e o bloco em que o prato parou (a pausa, o buffering, o fim, o stop), com o `u`, o deck, o rótulo do
 próximo bloco e as amostras consumidas. O tick do `server.py` (o `TICK`, de 1/15 s, fora da
 thread do som) lê, com o `_qlock`, o rótulo do próximo bloco e o `u` em que ele vai tocar, e publica um estado novo
 quando:
@@ -167,7 +171,8 @@ quando:
   saem com o `t` do bloco em que o prato parou e o rótulo do próximo bloco (a retomada não salta). A âncora que
   sairia igual à de antes adiantada não publica nada. Com curva que acabou entre a marca e agora, a âncora supõe que
   nada saltou desde o fim dela (o tick seguinte corrige o que tiver saltado);
-- o prato parou e voltou entre dois ticks: saem as duas transições, em ordem, cada uma no instante dela;
+- o prato parou e voltou entre dois ticks, uma vez ou mais: sai cada parada e cada retomada, em ordem, no instante
+  dela; o tick que já vê o prato parado, antes da marca do bloco em que ele parou, conta a parada no instante dele;
 - a projeção muda (faixa, status, fila, volume, abaixamento, capacidades): só com a fila ou o volume, a âncora
   publicada segue igual;
 - o prato cruza a fronteira de um segmento (começo e fim de cada rampa, fim do preenchimento, a volta já prevista):
@@ -237,7 +242,8 @@ cortado no limite.
   `protocolo`, `sessao`, `fora_do_vocabulario`, `argumentos`, `id_repetido`, `sem_pc` (o PC fora do relay), `tempo`
   (o PC sem resposta no prazo), e da API local `nao_permitido` (403), `nao_encontrado` (404), `conflito` (409: a fila
   vazia no `pular`, o microfone cortado no `sinal`) e `falha_local` (o resto); o 400 vira `argumentos` e o 401,
-  `sessao`.
+  `sessao`. O comando sem `id` ou `sessao` no formato não tem resultado: o relay o descarta (e pode fechar a
+  conexão).
 - **Repetição pelo id.** O mesmo `id` com o mesmo comando e os mesmos argumentos recebe o resultado guardado (ou
   acompanha a execução em curso) e não executa de novo; o mesmo `id` com outro comando ou outros argumentos recebe
   `id_repetido` e não mexe em nada. Onde isso se guarda é do conector.
@@ -283,18 +289,22 @@ As fixtures ficam em [`protocolo-remoto/v1/fixtures/`](protocolo-remoto/v1/fixtu
     acabando e toca antes do tick seguinte, com a âncora no instante dela;
   - `seek-na-rampa`: o seek no meio da rampa de saída, em que o `_restart` limpa a fila e tira a curva junto;
   - `mesmo-disco`: a passagem com o mesmo disco nos dois decks, com a âncora da virada no instante dela;
+  - `troca-no-load`: outro disco pelo `load` no mesmo deck, sem bloco vazio no meio, com a âncora da troca no primeiro
+    bloco dele;
   - `volta-e-virada`: a volta do Repetir e a virada para outro disco entre dois ticks, cada uma com a âncora e a
     projeção do disco dela;
   - `final-seco` e `final-seco-sem-limite`: o final seco sem estiramento com o `pad` maior que um bloco, a origem presa
     em zero e acima dele, e a reconexão entre a virada e o início efetivo (a posição antes, na fronteira e depois);
   - `final-seco-esticado`: o mesmo corte no golpe com a próxima esticada, o `pad` em blocos de 10 ms presos em zero;
   - `buffering`: o buffering que congela, a retomada depois dele, a pausa e a retomada, cada uma no instante em que o
-    prato parou ou voltou, e uma pausa de 30 ms entre dois ticks, com as duas transições;
+    prato parou ou voltou, uma pausa de 30 ms entre dois ticks, com as duas transições, e duas pausas de 10 ms
+    entre os mesmos dois ticks, com as quatro, e uma pausa curta seguida de outra bem no bloco do tick seguinte;
   - `repetir`: a volta no meio de um callback (o último bloco do arquivo é curto), prevista quando chega à fila e com a
     âncora nova no primeiro bloco dela;
   - `repetir-curto`: um som de 100 ms no Repetir, com mais voltas na janela do que cabem nos 8 segmentos;
   - `retomada-na-volta`: o mesmo som pausado perto do fim de uma volta, com a volta antes do tick da retomada, com ela
-    no próximo bloco e com a pausa bem no começo dela: a âncora de cada volta;
+    no próximo bloco e com a pausa bem no começo dela (uma delas no bloco do tick, que vê o prato parado antes da
+    marca): a âncora de cada volta;
   - `repetir-curtissimo`: um som de 10 ms no Repetir, com várias voltas entre dois ticks, cada uma com a âncora dela;
   - `fim-natural`: a posição que para no fim sem passar dele, congelada depois, com o `rev` estável entre os ticks e o
     pulso repetindo o `rev`.
