@@ -37,8 +37,8 @@ from aiohttp.web_runner import GracefulExit
 from microfone import microfone as filtro
 from microfone import preset
 
-import andamento as an
 import atualizacao as atu
+import automatico
 import comandos as cmd
 import engine as eng
 import fx
@@ -681,6 +681,8 @@ class App:
         self.versoes_path = data_dir / "versoes_audio.json"
         self.versoes = (json.loads(self.versoes_path.read_text(encoding="utf-8"))
                         if self.versoes_path.exists() else {})
+        # a logica do Automatico (automatico.py), que le e muda este estado; o mix_do sai do App a cada chamada
+        self.automatico = automatico.Automatico(self, lambda yid: self.mix_do(yid))
         # o volume automatico: o LUFS de quem tocou sem estar na prateleira (o stream das parecidas), por youtube_id; o
         # da prateleira mora no library.json, em cada disco ("lufs")
         self.sonoridades_path = data_dir / "sonoridades.json"
@@ -730,9 +732,9 @@ class App:
         threading.Thread(target=self.metricas.vigia, args=(self.engine,), daemon=True, name="metricas").start()
         threading.Thread(target=self._vigia_fila, daemon=True).start()
         threading.Thread(target=self._conta_escuta, daemon=True).start()
-        threading.Thread(target=self._vigia_auto, daemon=True).start()
+        threading.Thread(target=self.automatico._vigia_auto, daemon=True).start()
         threading.Thread(target=self._vigia_passagem, daemon=True).start()
-        threading.Thread(target=self._vigia_andamento, daemon=True).start()
+        threading.Thread(target=self.automatico._vigia_andamento, daemon=True).start()
         # (#128) no --mock nada vai a rede sozinho: as capas do YouTube Music, as parecidas do Automatico (mix_do, e com
         # elas a versao de audio e o andamento pelo stream), o aquecimento do processo do YouTube (main, /api/aquece) e
         # a versao nova ficam de fora. A prateleira de quem testa nao vira busca no YouTube Music, e o dev/compara.py
@@ -1755,30 +1757,13 @@ class App:
         return out
 
     def ligar_auto(self, on):
-        """Desligar tira as parecidas da fila; ligar enche na proxima volta do vigia."""
-        with self.fila_lock:
-            self.auto = bool(on)
-            if not self.auto:
-                for x in [x for x in self.fila if x.get("auto")]:
-                    self._tirar(x)
+        return self.automatico.ligar_auto(on)
 
     def _busca_mix(self, base):
-        try:
-            lista = self.mix_do(base)
-        except Exception as ex:  # noqa: BLE001 - sem Mix, o Automatico espera e tenta de novo
-            print(f"auto: the Mix of {base} failed: {yt_msg(ex)}", file=sys.stderr, flush=True)
-            lista = None
-        with self.fila_lock:
-            self.mix_buscando = False
-            if lista is None:
-                self.mix_falhou = time.time()
-            elif base == self.mix_base:  # a semente nao trocou no meio
-                for m in lista:
-                    self.mix_seq += 1
-                    m["ordem"] = self.mix_seq
-                    if m["youtube_id"] in self.versoes:  # a versao de audio ja procurada antes
-                        self._poe_versao(m, self.versoes[m["youtube_id"]])
-                self.mix = lista
+        return self.automatico._busca_mix(base)
+
+    def _volta_auto(self, visto=None, sinal=None):
+        return self.automatico._volta_auto(visto, sinal)
 
     @staticmethod
     def chave_andamento(x):
@@ -1791,208 +1776,6 @@ class App:
         """{"ini", "fim"} do disco, ou None ainda sem medida."""
         c = self.chave_andamento(x)
         return self.andamentos.get(c) if c else None
-
-    @staticmethod
-    def _janela(pool, n):
-        """As de pool (na ordem do Mix) que cabem na proxima AUTO_JANELA_S, e pelo menos n."""
-        out, soma = [], 0.0
-        for c in pool:
-            if len(out) >= n and soma >= AUTO_JANELA_S:
-                break
-            out.append(c)
-            soma += c.get("duration") or 0
-        return out
-
-    def _livres(self):
-        """Com fila_lock: as do Mix que podem entrar, na ordem do Mix: nem tocaram nesta sessao, nem o usuario tirou,
-        nem estao na fila, nem sao a mesma musica de uma dessas ou de uma anterior do Mix."""
-        vistas = set(self.fora_musica)
-        for x in self.fila:
-            vistas |= chaves_musica(x)
-        na_fila = {x.get("youtube_id") for x in self.fila}
-        out = []
-        for m in sorted(self.mix or [], key=lambda c: c.get("ordem", 0)):
-            ks = chaves_musica(m)
-            if m["youtube_id"] in self.fora or m["youtube_id"] in na_fila or ks & vistas:
-                continue
-            vistas |= ks
-            out.append(m)
-        return out
-
-    def _presa(self):
-        """Com fila_lock: a primeira da fila nao troca mais (a passagem para ela ja esta sendo preparada, ou falta
-        pouco para isso, ou um avanco reservado em curso vai toca-la)."""
-        if not self.fila:
-            return False
-        e, q = self.engine, self.fila[0]["qid"]
-        tr = e.track
-        dur = tr.get("duration") if tr else None
-        r = self.reserva
-        return bool((dur and dur - e.pos <= eng.TRANS_PREP_S + 15) or e.pronto_tag == q
-                    or (self.preparando is not None and self.preparando[1] == q)
-                    or (r is not None and not r.feita.is_set() and r.x is self.fila[0]))
-
-    def _ordena_auto(self):
-        """Com fila_lock: as parecidas do fim do A seguir em ordem de andamento (andamento.ordena: subindo no
-        circulo das oitavas a partir do fim do disco antes delas), escolhidas entre as que ja estao la e as do Mix
-        ainda nao usadas, so as da proxima AUTO_JANELA_S do Mix (as mais parecidas com a semente), ate AUTO_FILA. A
-        que o usuario arrastou fica onde ele pos, e a primeira da fila fica se a passagem para ela ja vai ser preparada.
-        A que sai da fila volta para o Mix. Sem medida ainda, fica a ordem do Mix; cada medida que chega ordena de
-        novo. Volta quantas entraram."""
-        k = len(self.fila)
-        while k and self.fila[k - 1].get("auto") and not self.fila[k - 1].get("fixa"):
-            k -= 1
-        if k == 0 and self._presa():
-            k = 1
-        bloco = self.fila[k:]
-        n = AUTO_FILA - sum(1 for x in self.fila[:k] if x.get("auto"))
-        mix = self._livres()
-        janela = self._janela(sorted(bloco + mix, key=lambda c: c.get("ordem", 0)), n)
-        # o andamento do fim do disco antes delas: o ultimo da fila que fica, ou o do prato
-        antes = list(reversed(self.fila[:k])) + ([self.engine.track] if self.engine.track else [])
-        t = self._tempo(antes[0]) if antes else None
-        cursor, salto = None, False
-        if t:
-            salto = t.get("fim") is None  # sem batida firme no fim dele: a passagem para a primeira vai ser de volume
-            cursor = t.get("fim") or t.get("ini")
-            for y in antes[1:]:  # nem o comeco dele: o circulo segue do ultimo andamento conhecido
-                if cursor is not None:
-                    break
-                ty = self._tempo(y)
-                cursor = ty and (ty.get("fim") or ty.get("ini"))
-        escolha = an.ordena(cursor, salto, janela, self._tempo, max(0, n), autores, autores(antes[0]) if antes else frozenset())
-        na_bloco = {x["qid"] for x in bloco}
-        nova, entrou = [], 0
-        for c in escolha:
-            if c.get("qid") in na_bloco:
-                nova.append(c)
-            else:
-                nova.append(dict(c, id=None, url=None, job=None, qid=uuid.uuid4().hex[:8],
-                                 auto=True, auto_de=self.semente["title"]))
-                entrou += 1
-        if [x["qid"] for x in nova] == [x["qid"] for x in bloco]:
-            return 0
-        usadas = {c["youtube_id"] for c in escolha}
-        if self.mix is not None:
-            self.mix = sorted([m for m in mix if m["youtube_id"] not in usadas]
-                              + [x for x in bloco if x["youtube_id"] not in usadas], key=lambda c: c.get("ordem", 0))
-        with self.engine._qlock:
-            self.fila[k:] = nova
-            if self.fila_ordem is not None:
-                self.fila_ordem = [x for x in self.fila_ordem if x["qid"] not in na_bloco] + nova
-            self._confere_preparo_sob()
-        return entrou
-
-    def _vigia_auto(self):
-        """Com o Automatico ligado, a fila nunca acaba (como no YouTube Music): o ultimo disco que
-        o usuario escolheu (qualquer um que o Automatico nao pos) e a semente, e o radio dela (mix_do)
-        mantem AUTO_FILA parecidas no fim do A seguir. Semente nova troca as parecidas; o que ja
-        tocou nesta sessao nao volta; quando o Mix da semente acaba, segue do Mix da ultima
-        parecida que tocou. As parecidas vao em ordem de andamento (_ordena_auto). Cada volta e o _volta_auto."""
-        visto, sinal = None, None
-        while True:
-            time.sleep(0.5)
-            visto, sinal = self._volta_auto(visto, sinal)
-
-    def _volta_auto(self, visto=None, sinal=None):
-        """Uma volta do _vigia_auto. visto: o youtube_id do prato na volta de antes; sinal: o que a ordem por
-        andamento viu da ultima vez que ordenou. Volta os dois da proxima volta."""
-        e = self.engine
-        tr = e.track
-        yid = tr.get("youtube_id") if tr else None
-        if yid and yid != visto:
-            visto = yid
-            with self.fila_lock:
-                self.fora.add(yid)
-                self.fora_musica |= chaves_musica(tr)
-                if tr.get("auto"):
-                    self.ponte = yid
-                else:
-                    self.semente = {"youtube_id": yid, "title": tr.get("title")}
-                    self.mix, self.mix_base = None, yid
-                    for x in [x for x in self.fila if x.get("auto")]:
-                        self._tirar(x)
-        base, entrou = None, 0
-        with self.fila_lock:
-            if not self.auto or not self.semente:
-                return visto, sinal
-            falta = AUTO_FILA - sum(1 for x in self.fila if x.get("auto"))
-            if falta > 0 and not self.mix_buscando:
-                if not self.mix and self.mix is not None and self.ponte and self.ponte != self.mix_base:
-                    self.mix, self.mix_base = None, self.ponte  # o Mix da semente acabou
-                if self.mix is None and time.time() - self.mix_falhou >= AUTO_ESPERA_S:
-                    self.mix_buscando, base = True, self.mix_base
-            # a ordem por andamento se refaz quando muda a fila, o prato, o Mix ou chega uma medida
-            agora = (id(tr), tuple(x["qid"] for x in self.fila), self.andamentos_versao, self.mix_seq,
-                     self._presa())
-            if agora != sinal and (self.mix or any(x.get("auto") for x in self.fila)):
-                entrou = self._ordena_auto()
-                sinal = (id(tr), tuple(x["qid"] for x in self.fila), self.andamentos_versao, self.mix_seq,
-                         self._presa())
-        if base:
-            threading.Thread(target=self._busca_mix, args=(base,), daemon=True).start()
-        # o disco acabou antes de chegar parecida (o Mix ainda vinha): a primeira toca agora; e tambem a que ja estava
-        # la quando a volta de antes cedeu a outro avanco que nao a tocou
-        if (entrou or self.fila) and tr is not None and tr is self.parado_sem_fila:
-            cap = e.captura()
-            if cap.track is tr and cap.status == "ended":
-                x = cmd.avanca(self, na_tela=True, visto=cap, cede=True)
-                if x is not None and x is not cmd.CEDEU:  # so o avanco que tocou tira a marca do prato parado
-                    self.parado_sem_fila = None
-        return visto, sinal
-
-
-    # andamento das parecidas -------------------------------------
-    @staticmethod
-    def _poe_versao(x, v):
-        """A parecida passa a tocar a versao so de audio v (sem versao, fica o video e so a marca de procurada)."""
-        x["audio"] = True
-        if v:
-            x.update(v, video=x.get("video") or x["youtube_id"], thumb=thumb(v["youtube_id"]), tipo="ATV")
-
-    @staticmethod
-    def versao_audio(x):
-        """A versao so de audio (a faixa do album no YouTube Music) da parecida que veio como video, pela busca de
-        musicas com nome e artista: {"youtube_id", "duration", "title", "channel"} da primeira das 3 que e a mesma
-        faixa (mesma_faixa), ou None (musica so do YouTube, ou a busca so traz outras)."""
-        for r in fora.pede("musicas", q=busca_de(x)):
-            if r.get("videoId") and YT_ID.match(r["videoId"]) and mesma_faixa(x, r):
-                artistas = ", ".join(a["name"] for a in r.get("artists") or [] if a.get("name"))
-                return {"youtube_id": r["videoId"],
-                        "duration": r.get("duration_seconds") or segundos(r.get("duration")),
-                        "title": r.get("title") or x.get("title"), "channel": artistas or x.get("channel")}
-        return None
-
-    def _troca_audio(self, vid, v):
-        """Com fila_lock: a parecida do video vid (no Mix e na fila; a primeira da fila fica se ja esta presa)
-        passa para a versao de audio v."""
-        presa = self.fila[0] if self.fila and self._presa() else None
-        for x in list(self.mix or []) + [y for y in self.fila if y.get("auto") and y is not presa]:
-            if x.get("youtube_id") == vid and not x.get("audio"):
-                self._poe_versao(x, v)
-
-    def _a_medir(self):
-        """Com fila_lock: o que falta fazer, pela ordem em que faz falta: ("medir", disco) sem andamento ou
-        ("audio", parecida) sem a versao de audio procurada; o do prato, o ultimo que o usuario pos antes das parecidas
-        e as parecidas da janela (as da fila e as do Mix), na ordem do Mix, cada uma com a versao antes da medida.
-        (None, None) sem nada."""
-        k = len(self.fila)
-        while k and self.fila[k - 1].get("auto"):
-            k -= 1
-        mix = self._livres()
-        pool = sorted([x for x in self.fila[k:]] + mix, key=lambda c: c.get("ordem", 0))
-        agora = time.time()
-        janela = self._janela(pool, AUTO_FILA)
-        parecidas = {id(c) for c in janela}
-        for x in [self.engine.track] + self.fila[k - 1:k] + janela:
-            vid = x.get("youtube_id") if id(x) in parecidas else None
-            if (vid and not x.get("audio") and vid not in self.versoes
-                    and agora - self.andamento_falhou.get(f"audio:{vid}", 0.0) >= ANDAMENTO_ESPERA_S):
-                return "audio", dict(x)
-            c = self.chave_andamento(x)
-            if c and c not in self.andamentos and agora - self.andamento_falhou.get(c, 0.0) >= ANDAMENTO_ESPERA_S:
-                return "medir", dict(x)
-        return None, None
 
     # capa do album dos discos da prateleira ---------------------------
     @staticmethod
@@ -2033,100 +1816,6 @@ class App:
             self.lib.update(alvo["id"], **kw)
             print(f"cover: {alvo.get('title')!r}: " + (f"the album one ({v['ytm_artista']} - {v['ytm_titulo']})" if v
                                                         else "keeping the video one"), file=sys.stderr, flush=True)
-
-    def _mede_andamento(self, x):
-        """{"ini", "fim"} do disco pelo andamento.py num processo a parte, com prioridade baixa: da prateleira, o
-        arquivo; senao o stream que toca (so os pedacos que a medida le, ~1 MB), com o endereco pedido ao YouTube la
-        dentro: o yt-dlp aqui segurava o interpretador do servidor em rajadas e o audio estalava (22/10: 15
-        parecidas medidas na primeira musica do radio). None sem como ler."""
-        it = (self.lib.get(x["id"]) if x.get("id") else None) or \
-             (self.lib.by_youtube(x["youtube_id"]) if x.get("youtube_id") else None)
-        if it and (LIB / it["file"]).exists():
-            if not it.get("duration"):
-                return None
-            pedido = {"fonte": str(LIB / it["file"]), "dur": it["duration"]}
-        elif x.get("youtube_id") and not self.mock:  # no --mock, so o arquivo: o stream iria a rede sozinho (#128)
-            pedido = {"yt": self.alvo_yt(x["youtube_id"]), "opts": self.opts_stream(), "dur": x.get("duration")}
-        else:
-            return None
-        p = subprocess.run(auxiliar("--andamento"),
-                           input=json.dumps(pedido), capture_output=True,
-                           text=True, encoding="utf-8", errors="replace", timeout=180, cwd=str(HERE),
-                           creationflags=eng.NO_WINDOW | ABAIXO_DO_NORMAL, startupinfo=eng.sem_cursor())
-        r = json.loads(p.stdout.strip().splitlines()[-1])
-        if r and r.get("erro"):
-            raise RuntimeError(r["erro"])
-        return {"ini": r.get("ini"), "fim": r.get("fim")} if r else None
-
-    def _vigia_andamento(self):
-        """Com o Automatico ligado, mede o andamento (_a_medir, _mede_andamento) um disco de cada vez, uma vez so
-        por disco (fica no andamentos.json). So depois de o disco do prato ficar ANDAMENTO_APOS_S tocando (pular
-        de disco em disco nao le nada; buscar nao mede nunca) e nunca com a passagem sendo planejada (a rede do
-        motor e a da medida juntas). Antes da medida, a parecida que veio como video troca pela versao so de
-        audio, quando ha (versao_audio). A medida que chega faz o _vigia_auto ordenar de novo."""
-        prato, desde = None, 0.0
-        while True:
-            time.sleep(1.0)
-            e = self.engine
-            tr = e.track
-            if (tr and tr.get("id")) != prato:
-                prato, desde = tr and tr.get("id"), time.time()
-            if not self.auto or not prato or time.time() - desde < ANDAMENTO_APOS_S or e.planejando:
-                continue
-            with self.fila_lock:
-                o_que, x = self._a_medir()
-            if x is None:
-                continue
-            if o_que == "audio":
-                vid = x["youtube_id"]
-                try:
-                    v = self.versao_audio(x)
-                except Exception as ex:  # noqa: BLE001 - sem a busca, a parecida toca o video
-                    print(f"audio: couldn't look up {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
-                    with self.fila_lock:
-                        self.andamento_falhou[f"audio:{vid}"] = time.time()
-                    continue
-                # grava fora da fila_lock (o disco lento nao segura a fila) e so depois aplica, na ordem de antes: a
-                # medida entra na memoria mesmo se a gravacao falha; a troca na fila e o andamentos_versao (a nova
-                # ordem do Automatico) so vem com a gravacao feita
-                with self.fila_lock:
-                    versoes = {**self.versoes, vid: v}
-                gravou = False
-                try:
-                    save_json(self.versoes_path, versoes)
-                    gravou = True
-                finally:
-                    with self.fila_lock:
-                        self.versoes[vid] = v
-                        if gravou:
-                            self._troca_audio(vid, v)
-                            self.andamentos_versao += 1
-                print(f"audio: {x.get('title')!r}: " + (f"the audio version {v['youtube_id']} ({v['duration']} s)"
-                                                         if v else "only the video"), file=sys.stderr, flush=True)
-                continue
-            c = self.chave_andamento(x)
-            t0 = time.time()
-            try:
-                r = self._mede_andamento(x)
-            except Exception as ex:  # noqa: BLE001 - sem medida, a parecida fica sem andamento (vai para o salto)
-                r = None
-                print(f"tempo: couldn't measure {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
-            with self.fila_lock:
-                if r is None:
-                    self.andamento_falhou[c] = time.time()
-                    continue
-                andamentos = {**self.andamentos, c: r}
-            gravou = False
-            try:  # fora da fila_lock e antes de valer, como a versao de audio
-                save_json(self.andamentos_path, andamentos)
-                gravou = True
-            finally:
-                with self.fila_lock:
-                    self.andamentos[c] = r
-                    if gravou:
-                        self.andamentos_versao += 1
-            print(f"tempo: {x.get('title')!r}: start {r['ini']}, end {r['fim']} BPM in {time.time() - t0:.1f} s",
-                  file=sys.stderr, flush=True)
 
     # volume automatico ---------------------------------------------------------
     def _disco_da_prateleira(self, tr):
