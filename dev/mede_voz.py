@@ -38,7 +38,9 @@ def main(argv=None):
     ap.add_argument("--efeito", default="eco")
     a = ap.parse_args(argv)
     if a.pelo_app:
-        preset.preset = preset.pede = lambda *_: None  # nenhum efeito tem preset: todos pelo app
+        # o filtro nao ganha o preset (o Injetor manda o anel vazio) e a voz vai pelo app. O preset.preset fica: a cadeia
+        # do app (o voz.dll do Engine._cadeia) sai dele, e sem ele a voz voltava crua, com 0 ms
+        preset.pede = lambda *_: None
     banca = Banca()
     motor = eng.MockEngine("", "")
     motor.monitor_on = False

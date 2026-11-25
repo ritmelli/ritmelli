@@ -50,7 +50,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 
 | Área | Arquivos | Teste (sem caminho, em `dev/`) |
 | --- | --- | --- |
-| Motor de áudio | `engine.py`, `sonoridade.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_anel`, `testa_ganchos` |
+| Motor de áudio | `engine.py`, `sonoridade.py`, `transicao.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_passagem`, `testa_transicao`, `testa_anel`, `testa_ganchos` |
 | Servidor e YouTube | `server.py`, `yt_fora.py`, `yt_erros.py` | `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py` | `testa_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`), o `grava_cfg` do `server.py` | `testa_grava` |
@@ -60,7 +60,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 | Troca de voz | `pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` | `testa_pedal_voz`, `testa_vozes`, `testa_pista`, `testa_conversor` |
 | Atualizações | `atualizacao.py`, `atualizador.py`, `instalador/atualizacao/` | `testa_atualizacao`, `testa_atualizador` e `instalador/atualizacao/testa_parcial.py` |
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
-| Dados de uso | `metricas.py` | `testa_metricas` |
+| Dados de uso | `metricas.py` e o aviso deles no tema | `testa_metricas`; o aviso, `fitcheck.py --metricas` (sobe os próprios `--mock --metricas-teste`, sem rede) |
 | Troca de nome | `migra.py` | `testa_migra` |
 | Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e um `library.json` com `[]` |
 | Sem teste | `batida.py`, `compasso.py`, `andamento.py`, `janela.py`, `winvol.py` | o PR diz como conferiu |
@@ -81,4 +81,7 @@ $env:PYTHONUTF8 = '1'; python -m ruff check .; python dev\testa_tudo.py
 
 O `--microfone` roda os do filtro (depois do `microfone\apo\compila.bat teste`), o `--tela --base origin/main` a tela
 e o `--so-stdlib` só os da biblioteca padrão, que a `monta.yml` (só à mão) roda antes de montar. Teste novo de `dev/`
-entra numa lista do `testa_tudo.py`, sem som, aparelho nem rede externa, ou o `testa_tudo` falha.
+entra numa lista do `testa_tudo.py`, sem som, aparelho nem rede externa, ou num passo próprio do `testa.yml` (como o
+`--disco` do `testa_pasta_protegida`). O que só roda à mão diz no topo, num comentário antes da docstring:
+`# manual: <comando> precisa de <aparelho>`. O `testa_tudo` lê os passos do `testa.yml` e falha com teste sem destino e
+com o arquivo de `dev/` que tem a linha `manual:` e roda lá.
