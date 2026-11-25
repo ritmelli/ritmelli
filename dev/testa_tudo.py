@@ -19,10 +19,10 @@ processo e um depois do outro, e sai 1 se algum falhar. E o que o .github/workfl
 No COMPLETO, biblioteca ou ffmpeg faltando e falha, e nao teste pulado: sem as bibliotecas do servidor, o testa_mock,
 o testa_migra e o testa_pareamento pulam a parte dele.
 
-Todo dev/testa_*.py tem destino, e todo modo confere antes de rodar: ou roda no testa.yml (numa lista daqui ou num passo
-proprio, como o --disco do testa_pasta_protegida), ou so roda a mao e diz no topo do arquivo, num comentario antes da
-docstring, como e com o que: "# manual: <comando> precisa de <aparelho>". A conferencia le os passos do testa.yml e
-reprova o teste sem destino e o arquivo de dev/ com a linha "manual:" que roda la.
+Todo dev/testa_*.py tem destino: ou roda no testa.yml (numa lista daqui ou num passo proprio, como o --disco do
+testa_pasta_protegida), ou so roda a mao e diz no topo do arquivo, num comentario antes da docstring, como e com o que:
+"# manual: <comando> precisa de <aparelho>". Antes de rodar, o COMPLETO, o --so-stdlib e o --microfone leem os passos do
+testa.yml e reprovam o teste sem destino e o arquivo de dev/ com a linha "manual:" que roda la.
 Sai 0 se tudo passou e 1 se algo falhou; no --tela, 2 se so os prints do compara mudaram (o testa.yml decide).
 """
 import argparse
@@ -85,7 +85,9 @@ def manual(arquivo):
     """A linha "# manual: <comando> precisa de <aparelho>" do comentario do topo do arquivo (as linhas com # antes do
     codigo e da docstring), ou None. A linha que comeca com "# manual:" fora desse formato volta tambem: a conferencia
     acusa."""
-    for linha in Path(arquivo).read_text(encoding="utf-8").splitlines():
+    for linha in Path(arquivo).read_text(encoding="utf-8-sig").splitlines():
+        if not linha.strip():
+            continue
         if not linha.startswith("#"):
             return None
         if re.match(r"#\s*manual:", linha):
@@ -94,8 +96,9 @@ def manual(arquivo):
 
 
 def roda_no_yml(texto):
-    """Os scripts que os passos do testa.yml rodam: os que o run: de cada passo chama pelo caminho e os das listas do
-    testa_tudo.py que ele chama (sem modo, o COMPLETO; com --microfone, o MICROFONE; com --so-stdlib, o STDLIB)."""
+    """Os scripts que os passos do testa.yml rodam: os que o run: de cada passo chama pelo python e os que o testa_tudo.py
+    chamado ali roda (sem modo, o COMPLETO; com --microfone, o MICROFONE; com --so-stdlib, o STDLIB; com --tela, o
+    fitcheck e, com --base, o compara). Caminho so citado (num echo, num comentario) nao conta."""
     linhas, runs, i = texto.splitlines(), [], 0
     while i < len(linhas):
         m = re.match(r"^(\s*)(?:-\s+)?run:\s*(.*)$", linhas[i])
@@ -109,16 +112,22 @@ def roda_no_yml(texto):
         while i < len(linhas) and (not linhas[i].strip() or len(linhas[i]) - len(linhas[i].lstrip()) > len(m.group(1))):
             bloco.append(linhas[i])
             i += 1
-        runs.append("\n".join(bloco))
+        # o > dobra as linhas num comando so
+        runs.append(" ".join(b.strip() for b in bloco) if m.group(2).startswith(">") else "\n".join(bloco))
     rodam = set()
     for run in runs:
         for linha in run.replace("\\", "/").splitlines():
             linha = linha.split("#")[0]
-            chamados = re.findall(r"[\w./-]+\.py", linha)
-            rodam.update(c.removeprefix("./") for c in chamados)
-            if "dev/testa_tudo.py" in chamados:
-                rodam.update(MICROFONE if "--microfone" in linha else STDLIB if "--so-stdlib" in linha else
-                             () if re.search(r"--(tela|areas)\b", linha) else COMPLETO)
+            for chamada in re.finditer(r"(?:^|[\s;&|(\"'])py(?:thon[\d.]*)?(?:\.exe)?[\"']?(?:\s+-\S+)*\s+[\"']?"
+                                       r"([\w./-]+\.py)\b", linha):
+                script, resto = chamada.group(1).removeprefix("./"), linha[chamada.end():]
+                rodam.add(script)
+                if script == "dev/testa_tudo.py":
+                    if "--tela" in resto:
+                        rodam.update(["dev/fitcheck.py"] + (["dev/compara.py"] if "--base" in resto else []))
+                    elif "--areas" not in resto:
+                        rodam.update(MICROFONE if "--microfone" in resto else STDLIB if "--so-stdlib" in resto else
+                                     COMPLETO)
     return rodam
 
 

@@ -13,8 +13,8 @@ vez, pelas listas dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o
 o `MICROFONE`. No `COMPLETO`, biblioteca ou ffmpeg faltando é falha. Todo `dev/testa_*.py`
 tem destino: uma lista, um passo próprio do `testa.yml` (o `--disco` do
 `testa_pasta_protegida`) ou, quando só roda à mão, o comentário `# manual: <comando> precisa
-de <aparelho>` no topo, antes da docstring (o `dev/bumbo.py` tem um). Antes de rodar, todo
-modo lê os passos do `testa.yml` e falha com o teste sem destino e com o arquivo de `dev/` que
+de <aparelho>` no topo, antes da docstring (o `dev/bumbo.py` tem um). Antes de rodar, o
+`COMPLETO`, o `--so-stdlib` e o `--microfone` leem os passos do `testa.yml` e falha com o teste sem destino e com o arquivo de `dev/` que
 tem o `manual:` e roda lá. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR, e o `--areas`
 é o filtro por caminho do `.github/workflows/testa.yml`, que roda tudo isso em todo PR.
 
