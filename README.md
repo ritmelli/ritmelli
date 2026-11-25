@@ -472,6 +472,7 @@ The code, its comments and the internal docs are in Brazilian Portuguese.
 | `soundboard.ps1` | starts, stops and checks Ritmelli from a terminal |
 | `server.py` | the aiohttp server: the API, the events (SSE), the queue, Play similar songs, search and download |
 | `engine.py` | the audio engine: mixing, the two decks and the transitions |
+| `transicao.py` | the transition math that reads no audio: where each record ends and starts by its block levels, fade or hard ending, how the next one comes in, and the timing from the measured beat grids |
 | `batida.py`, `compasso.py`, `andamento.py` | beat analysis: the tempo and beat grid of each transition (`batida.py`), the downbeat (`compasso.py`) and each record's tempo, which orders Play similar songs (`andamento.py`) |
 | `sonoridade.py` | each song's loudness (EBU R128) and the automatic volume that plays songs at a similar level |
 | `fx.py` | the voice effects: each effect's settings and reference math (what you hear is processed in C++, by `microfone/apo/voz.h`) |
@@ -525,6 +526,11 @@ python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as th
 
 `python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library.
 
+A new `dev/testa_*.py` goes into one of the lists in `dev/testa_tudo.py` or into a step of its own in `testa.yml`. A
+test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
+`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` reads the `testa.yml` steps and fails on a test that
+runs nowhere and on a `manual:` file that runs there.
+
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
 [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks
 has to pass, as it does on `main`. If you changed the welcome screen, also run it with `--boas-vindas`.
@@ -532,9 +538,12 @@ has to pass, as it does on `main`. If you changed the welcome screen, also run i
 If you changed the audio engine, the server, the filter or the updates, also run the tests that cover your change.
 The description at the top of each file (in Portuguese) says exactly what it checks.
 
-- The audio engine (`engine.py`, `sonoridade.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
+- The audio engine (`engine.py`, `sonoridade.py`, `transicao.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
   `dev/testa_congela.py`, `dev/testa_microfone.py`, `dev/testa_passagens.py` (the week of transition records in
-  `logs/passagens/`) and `dev/testa_anel.py`.
+  `logs/passagens/`), `dev/testa_passagem.py` (synthetic pairs through the real engine, one per kind of transition;
+  `--codigo <folder>` runs the same pairs against the engine of another checkout, such as the base of your PR),
+  `dev/testa_transicao.py` (the transition math, `transicao.py`, on the engine's calls recorded from those pairs;
+  `--grava` records them again) and `dev/testa_anel.py`.
 - The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
   `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
