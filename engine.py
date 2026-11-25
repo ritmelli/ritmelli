@@ -1070,6 +1070,7 @@ class Injetor:
         self.motor._fx_filtro = self.motor._fx_pendente = False  # noqa: SLF001
         self.motor._pista_viva = False  # noqa: SLF001
         self._preset = None
+        self.voz_taxa = 0  # o anel que vier depois diz a dele
 
     def _voz(self, m):
         """A voz crua que chegou, a 48 kHz, em blocos de BLOCK para o motor (o que sobra fica para a proxima); com o

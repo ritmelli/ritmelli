@@ -15,6 +15,7 @@ Sai 1 se algo falhar.
 import ctypes
 import os
 import sys
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -160,14 +161,20 @@ class TestaInjetor(unittest.TestCase):
         a.leitor[0].dono, a.leitor[0].batida, a.leitor[0].ep = 1, k.GetTickCount64(), ALVO
         a.preset_feito = 2  # o filtro ja leu o preset (o primeiro seq e 2) e montou: o efeito roda nele
         motor = MotorFalso()
-        viu_efeito = []
+        viu_efeito, na_pausa = [], []
+        dorme = time.sleep
 
         def escreve(self, x):
             viu_efeito.append(motor._fx_filtro)
             raise RuntimeError("escreve falso falhou")
 
+        def sleep(s):  # a pausa de 0,5 s depois da falha: o efeito ja zerou nela, e nao so na volta seguinte
+            if s == 0.5 and threading.current_thread().name == "ritmelli-microfone" and not na_pausa:
+                na_pausa.append((motor._fx_filtro, motor._fx_pendente, motor._pista_viva, len(k.closes)))
+            dorme(s)
+
         with mock.patch.object(injeta, "k32", k), mock.patch.object(injeta.Microfone, "escreve", escreve), \
-                mock.patch.object(eng.preset, "pede", return_value=b"\x01"):
+                mock.patch.object(eng.preset, "pede", return_value=b"\x01"), mock.patch.object(eng.time, "sleep", sleep):
             inj = eng.Injetor(motor)
             try:
                 self.assertTrue(espera(lambda: k.closes), "o anel que falhou nao fechou")
@@ -175,6 +182,7 @@ class TestaInjetor(unittest.TestCase):
             finally:
                 inj.para()
         self.assertEqual(viu_efeito[:1], [True], "o teste nao chegou ao escreve com o efeito no filtro")
+        self.assertEqual(na_pausa, [(False, False, False, 1)], "na pausa depois da falha o anel ja fechou e o efeito zerou")
         return k, motor, inj
 
     def _confere(self, k, motor, inj):
@@ -184,6 +192,7 @@ class TestaInjetor(unittest.TestCase):
         self.assertIsNone(inj.m)
         self.assertFalse(inj.efeito_no_filtro)
         self.assertIsNone(inj._preset)
+        self.assertEqual(inj.voz_taxa, 0, "a taxa do anel que falhou nao fica para o proximo")
         self.assertFalse(motor._fx_filtro or motor._fx_pendente or motor._pista_viva)
         self.assertEqual((motor.error or {}).get("key"), "server.mic.outputFailed")
 
