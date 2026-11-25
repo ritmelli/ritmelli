@@ -94,7 +94,8 @@ def shape(text):
           "the workflow runs on pull_request_target (opened, synchronize, reopened)")
     check(re.search(r"^\s*pull_request:", text, re.M) is None, "the workflow does not run on pull_request")
     check(re.search(r"^\s*merge_group:", text, re.M) is not None, "the workflow runs on merge_group")
-    check(re.search(r"^\s*name: Trusted author$", text, re.M) is not None, "the job is named \"Trusted author\"")
+    check(re.search(r"^  trusted-author:\n    name: Trusted author$", text, re.M) is not None,
+          "the job is named \"Trusted author\"")
     perms = re.findall(r"^\s+(\w[\w-]*): (read|write|none)$", text, re.M)
     check(sorted(perms) == [("contents", "read"), ("pull-requests", "read")],
           f"the only permissions are contents and pull-requests read ({perms})")
