@@ -425,7 +425,10 @@ def _depois_do_reinicio(assenta_s=ASSENTA_S):
     else:  # None (sem o sounddevice), o erro, ou o tempo que passou
         r = {"conferidos": [], "mudos": [], "falhas": [], "travou": not caixa,
              "resumo": f"devices: not checked ({'no sounddevice' if r is None else r})"}
-    print(r["resumo"])
+    try:
+        print(r["resumo"])
+    except Exception:  # noqa: BLE001, S110 - o resumo tambem vai no --saida: o cano quebrado nao perde a conferencia
+        pass
     return r
 
 
@@ -1060,8 +1063,8 @@ def main(argv=None):
                 try:
                     if cano is not None:
                         cano.flush()
-                except Exception:  # noqa: BLE001, S110 - saindo de qualquer jeito
-                    pass
+                except Exception:  # noqa: BLE001 - saindo de qualquer jeito, com erro
+                    rc = 1
             os._exit(rc)
     return rc
 

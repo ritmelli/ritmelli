@@ -377,6 +377,17 @@ class TestaRegistro(unittest.TestCase):
         self.assertEqual(filtro.le_mudos(), [UMC_IN], "o mudo que nem abriu segue sem medida: fica; o que abriu sai")
         self.assertEqual(r["mudos"], [], "o --saida e so de agora")
 
+    def test_resumo_num_cano_quebrado(self):
+        """O print do resumo num cano quebrado nao perde a conferencia: ela volta para o main (o --saida e o os._exit
+        da conferencia presa dependem dela)."""
+        class Quebrado(io.StringIO):
+            def write(self, s):
+                raise BrokenPipeError(32, "Broken pipe")
+        quer = {"conferidos": [MIC], "mudos": [], "falhas": []}
+        with mock.patch.object(filtro, "confere_aparelhos", lambda: quer), mock.patch.object(sys, "stdout", Quebrado()):
+            r = filtro._depois_do_reinicio(assenta_s=0)
+        self.assertEqual((r["conferidos"], r["resumo"]), ([MIC], "devices: 1 checked"))
+
     def test_conferencia_que_quebra_ou_trava(self):
         """Um driver que quebra ou trava na conferencia nao segura a instalacao nem mexe no registro."""
         filtro.grava_mudos([UMC_IN])
