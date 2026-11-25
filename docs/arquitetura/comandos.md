@@ -85,8 +85,8 @@ entre voltar ao começo e tocar o de antes com a faixa e a posição lidas no me
 virada, e a passagem preparada sai ali. Ele só lê o topo do histórico: a troca confere que o prato ainda é a linha que
 ele viu e o topo ainda é o que ele escolheu, e o topo sai só com a troca feita; o recomeço confere a linha no `pode` do
 `seek`. O que mudou no meio (um Próximo, um seek, o esquecer) faz o Anterior escolher de novo. A troca, o Parar e a
-publicação da preparação pegam a `fila_lock` e o `_lock` do motor pelo `App._com_motor`, que nunca espera o `_lock` com
-a `fila_lock` na mão: com o `_lock` ocupado (a reabertura do áudio, a troca de aparelho), solta a `fila_lock`, espera
+publicação da preparação pegam a `fila_lock` e o `_lock` do motor pelo `App.with_engine`, que nunca espera o `_lock`
+com a `fila_lock` na mão: com o `_lock` ocupado (a reabertura do áudio, a troca de aparelho), solta a `fila_lock`, espera
 fora e tenta de novo, e a leitura do estado segue respondendo enquanto um vigia ou uma rota no executor espera o `_lock`
 (as rotas que trocam no laço, como o `/api/play`, ainda esperam ali, como antes). O ganho do disco que entra é medido
 antes, e o leitor que começa, a onda e a medida rodam depois de soltar as duas (o `depois` do `load`, do `espera` e do
@@ -124,10 +124,18 @@ e do `Proximo`), e a `Engine.on_line(t)` confere, sob o `_qlock`, se o prato ain
 motor pelo `take_switch`, a passagem preparada pelo `drop_prepared` (o `cancelar_pronto` é o mesmo, pegando o
 `_qlock`), o ganho medido antes das travas pelo `gain_for`, o nome novo do disco no prato pelo `update_track`, a
 leitura do estado pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. Toda mudança da fila passa pelo
-`App._change_queue`, que pega o `_qlock`, muda e confere a preparada no mesmo trecho. O que ainda pega as travas do
+`App.change_queue`, que pega o `_qlock`, muda e confere a preparada no mesmo trecho. O que ainda pega as travas do
 motor por fora (o `_qlock` dos trechos do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
-`_solta_reserva` e do `_change_queue`, e o `_lock` do `_com_motor`) é contado pelo `dev/testa_ganchos.py`, que
-falha se o número muda: acima do teto entrou acesso novo; abaixo, o PR que tirou um baixa o teto junto.
+`release_reservation` e do `change_queue`, e o `_lock` do `with_engine`) é contado pelo `dev/testa_ganchos.py`, que
+falha se o número muda: acima do teto entrou acesso novo; abaixo, o PR que tirou um baixa o teto junto. Os nomes
+privados do motor saem da árvore de sintaxe do `engine.py` (os métodos e os `self._x` que a `Engine` e a `MockEngine`
+definem), e o `getattr` com o nome escrito também conta.
+
+Os comandos e o Automático mexem no `App` só pela interface pública dele. O que eles chamavam por privados virou
+público com estes nomes: `change_queue`, `remove_from_queue`, `remove_if_queued`, `save_history`,
+`release_reservation`, `close_switches`, `with_engine` e `tempo_of`; e o que o Automático lia do servidor pelo
+`sys.modules` chega por `search_songs`, `run_helper` e `yt_error`. O mesmo `dev/testa_ganchos.py` conta os acessos
+aos privados do `App` fora do `server.py`, pela mesma regra, contra o `APP_CEILING`, que hoje é zero.
 
 ## A leitura do estado
 

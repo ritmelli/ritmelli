@@ -17,7 +17,7 @@ the fila_lock.
 
 The platter's line is read and checked through the engine's interface (Engine.line, Engine.on_line, with the deck
 and line a Captura already carries), the switch the engine made on its own is reconciled in one loop (concilia), and
-every queue change goes through App._change_queue."""
+every queue change goes through App.change_queue."""
 import sys
 import threading
 
@@ -45,7 +45,7 @@ ADVANCE_TRIES = 3
 class Reserva:
     """A reserva de avanco da fila numa linha do prato: o deck e a linha do prato e a entrada (x) que vai tocar. Ha uma
     so em curso por deck e linha (App.reserva, que muda sob a fila_lock e o _qlock). A confirmacao, o erro e a
-    invalidacao a resolvem (App._solta_reserva) e liberam quem espera."""
+    invalidacao a resolvem (App.release_reservation) e liberam quem espera."""
 
     def __init__(self, deck, linha, x):
         self.deck, self.linha, self.x = deck, linha, x
@@ -53,7 +53,8 @@ class Reserva:
         self.feita = threading.Event()
         self.tocando = False  # a troca dela ja publicou o disco no prato (numa linha nova), e falta confirmar
         self.publicada = None  # o (deck, linha) que a troca dela publicou, anotado sob o _lock da troca
-        self.grupos = []  # os Proximos (comandos.Proximo) que esperam por ela; resolvem com ela (App._solta_reserva)
+        # os Proximos (comandos.Proximo) que esperam por ela; resolvem com ela (App.release_reservation)
+        self.grupos = []
 
     def vale(self, E):
         """Com o _qlock do motor E: o prato ainda e o deck e a linha da reserva."""
@@ -202,7 +203,7 @@ def tocar_da_fila(A, qid):
         return x if A.tocar_entrada(x, entrada=x) else None
     except Exception:
         with A.fila_lock:
-            A._tirar_se(x)  # a entrada quebrada sai da fila, como antes
+            A.remove_if_queued(x)  # a entrada quebrada sai da fila, como antes
         raise
 
 
@@ -252,8 +253,8 @@ def fecha_virada(A, virada):
     sai, entrou, tag = virada
     x = next((y for y in A.fila if y["qid"] == tag), None)
     if x:
-        A._tirar(x)
-    A._guardar_historico(entrou["id"], tr=sai)
+        A.remove_from_queue(x)
+    A.save_history(entrou["id"], tr=sai)
     A.parado_sem_fila = None
     return x
 
@@ -343,8 +344,8 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
         with A.fila_lock:
             outra = A.reserva
             if outra is None or outra is r or outra.x is not r.x:  # a entrada de outra reserva em curso fica
-                A._tirar_se(r.x)
-            A._solta_reserva(r, None)
+                A.remove_if_queued(r.x)
+            A.release_reservation(r, None)
         if not na_tela:
             raise
         E.error = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
@@ -352,7 +353,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
         return r.x
     if not tocou:  # a reserva foi invalidada no meio (o prato trocou, ou a entrada saiu da fila)
         with A.fila_lock:
-            A._solta_reserva(r, None)
+            A.release_reservation(r, None)
         return CEDEU if cede else None
     return r.x
 
@@ -440,14 +441,14 @@ def parar(A):
     """O disco sai do prato, e o Anterior toca ele de novo (a virada pendente fecha antes, sob a mesma fila_lock: o
     Anterior guarda primeiro o que saiu nela). A posicao gravada e a do instante em que ele saiu."""
     def para(depois):
-        A._fecha_viradas()
+        A.close_switches()
         cap = A.engine.stop()
         if A.reserva is not None:
-            A._solta_reserva(A.reserva, None)  # quem esperava o avanco desta linha nao espera mais
+            A.release_reservation(A.reserva, None)  # quem esperava o avanco desta linha nao espera mais
         if cap.track is not None:
-            A._guardar_historico(tr=cap.track)
+            A.save_history(tr=cap.track)
         return cap
-    A.remember_pos(A._com_motor(para))  # a fila_lock e o _lock do motor, sem prender a leitura do estado
+    A.remember_pos(A.with_engine(para))  # a fila_lock e o _lock do motor, sem prender a leitura do estado
 
 
 def ir_para(A, t):
