@@ -377,8 +377,9 @@ script runs.
 
 `sala-iso.webp` and the `.png` images in `texturas/` aren't generated; edit them as image files. The turntables, the
 mixer, the Quick sounds pads and the voice effect pedals of the wide layout in the screenshot (a window at least
-1400 px wide and a little wider than it is tall) aren't generated either: canvas code in `index.html` itself draws
-them, in the blocks that start at `DECK-JS-INICIO`, `MIX-JS-INICIO` and `PEDAL-JS-INICIO`, so you edit them there.
+1400 px wide and a little wider than it is tall) aren't generated either: canvas code in the theme itself draws
+them, in `deck.js` (the turntables) and, still in `index.html`, in the blocks that start at `MIX-JS-INICIO` and
+`PEDAL-JS-INICIO`, so you edit them there.
 
 `dev/fitcheck.py` checks the layout at several window and phone sizes, and `dev/shot.py` takes a screenshot. Both
 need the development packages (`requirements-dev.txt`) and drive Google Chrome from its default install folder,
