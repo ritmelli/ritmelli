@@ -192,7 +192,7 @@ def string_literals(value):
                 yield e.value
 
 
-SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
 def nodes_with_scope(node, scope):
@@ -414,6 +414,9 @@ CAUGHT = [
     ("the keys of a dict comprehension assigned once", OWNER,
      "def f(o):\n    values = {k: 0 for k in ('_x', 'public') if k}\n    for k, v in values.items():\n"
      "        setattr(o, k, v)\n"),
+    ("a dict comprehension with a local class assigning the same name", OWNER,
+     "def f(o):\n    values = {k: 0 for k in ('_x', 'public')}\n\n    class Local:\n        values = {}\n\n"
+     "    for k, v in values.items():\n        setattr(o, k, v)\n"),
     ("a module-level def f(self)", OWNER, "def f(self):\n    return self._x\n"),
     ("a subclass reading it", OWNER, "class Sub(Owner):\n    def m(self):\n        return self._x\n"),
     ("a subclass overriding it", OWNER, "class Sub(Owner):\n    def _x(self):\n        pass\n"),
@@ -445,6 +448,8 @@ NOT_REACHES = [
 ]
 KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/232"
 KNOWN_MISSES = [
+    ("a key stored into the dictionary after it is assigned",
+     "def f(o):\n    names = {'y': 1}\n    names['_x'] = 2\n    for k in names:\n        getattr(o, k)\n"),
     ("the name in a variable", "def f(o):\n    n = '_x'\n    return getattr(o, n)\n"),
     ("getattr under another name", "def f(o):\n    g = getattr\n    return g(o, '_x')\n"),
     ("operator.attrgetter", "import operator\n\n\ndef f(o):\n    return operator.attrgetter('_x')(o)\n"),
