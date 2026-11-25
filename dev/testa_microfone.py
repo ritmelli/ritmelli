@@ -253,11 +253,14 @@ class TestaMicrofone(unittest.TestCase):
             agora[0] += dt
             e._recupera_leitor()
 
-        e._stack, e._injetor = contextlib.ExitStack(), injetor(perdeu_em=100.0)
+        e._stack, e._injetor = contextlib.ExitStack(), mock.Mock(leitores=1, perdeu_em=50.0)
         with mock.patch.multiple(eng, create=True, LEITOR_PERDIDO_S=10.0, LEITOR_INTERVALO_S=30.0,
                                  LEITOR_TENTATIVAS=3), \
                 mock.patch.object(eng.time, "monotonic", side_effect=lambda: agora[0]), \
                 mock.patch.object(e, "_reabre", side_effect=reabre):
+            volta(0.0)  # o leitor vivo com um perdeu_em lido antes de ele voltar: nao reabre
+            self.assertEqual(reaberturas, [], "reabriu com o leitor vivo")
+            e._injetor = injetor(perdeu_em=100.0)
             volta(9.0)
             self.assertEqual(reaberturas, [], "reabriu antes do prazo")
             volta(1.0)
@@ -279,7 +282,6 @@ class TestaMicrofone(unittest.TestCase):
             self.assertEqual(reaberturas, [110.0, 123.0, 153.0, 183.0], "a reabertura que falhou parou a conta")
             self.assertIsNone(e._stack)
             e.close()
-            volta(30.0)
             self.assertIsNone(e._recupera, "o motor fechado nao zerou a conta")
 
     def test_vigia_nao_reabre_o_leitor_que_volta_sozinho(self):

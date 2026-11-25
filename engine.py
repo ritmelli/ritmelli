@@ -1492,6 +1492,7 @@ class Engine:
             self._mina.desliga()
         with self._lock:
             self._fechado = True
+            self._recupera = None
             self._gen += 1
             if self._stack:
                 self._stack.close()
@@ -1555,13 +1556,15 @@ class Engine:
                 return
             agora = time.monotonic()
             if not sem_audio:
+                if inj.leitores:  # leitor vivo: zera e sai, sem olhar o prazo de um perdeu_em lido antes
+                    self._recupera = None
+                    return
                 perda = (inj, inj.perdeu_em)  # muda quando o leitor volta: o Injetor zera e marca de novo
-                if inj.leitores or (r and r[3] != perda):
+                if r and r[3] != perda:
                     r = self._recupera = None
                 if r is None:
                     if perda[1] is None or agora - perda[1] < LEITOR_PERDIDO_S:
-                        return  # com leitor, nunca teve um (sem o filtro), ou ainda cedo: o que o Windows remonta
-                        #         volta antes
+                        return  # nunca teve leitor (sem o filtro), ou ainda cedo: o que o Windows remonta volta antes
                     r = (mic, 0, -1e9, perda)
             _, n, em, _ = self._recupera = r
             if n >= LEITOR_TENTATIVAS or agora - em < LEITOR_INTERVALO_S:
@@ -1574,7 +1577,8 @@ class Engine:
 
     def _reabre(self):
         """Fecha so os streams (o disco segue no prato), rele o PortAudio e abre com reserva.
-        Chamar com self._lock."""
+        Chamar com self._lock. A conta do leitor perdido zera (o _recupera_leitor guarda a dele depois)."""
+        self._recupera = None
         if self._stack:
             self._stack.close()
             self._stack = None
