@@ -59,12 +59,13 @@ def monta(tmp):
     """O App de verdade, sem vigias e sem relogio, com tres discos longos e um curto na prateleira."""
     (tmp / "library.json").write_text(json.dumps([disco("d1"), disco("d2"), disco("d3", yid="aaaaaaaaaaa"),
                                                   disco("buzina", dur=3.0)]), encoding="utf-8")
-    antes = set(threading.enumerate())
-    # o App nao abre porta (quem abre e o servir), e os aparelhos do Windows nao sao lidos: o motor liga sem eles
+    # o App nao abre porta (quem abre e o servir), e os aparelhos do Windows nao sao lidos: o motor liga sem eles.
+    # Cada Thread.start fica anotado, mesmo o da thread que acaba logo (o vigia das metricas, no --mock)
     with (contextlib.redirect_stderr(io.StringIO()),
-          mock.patch.object(eng.MockEngine, "_real_names", return_value={"mic": "", "monitor": ""})):
+          mock.patch.object(eng.MockEngine, "_real_names", return_value={"mic": "", "monitor": ""}),
+          mock.patch.object(threading.Thread, "start", autospec=True) as iniciar):
         A = server.App(0, tmp, mock=True, vigias=False, relogio=False)
-    novas = [t.name for t in set(threading.enumerate()) - antes]
+    novas = [getattr(c.args[0], "name", "?") for c in iniciar.call_args_list]
     confere(not novas, f"o App sem vigias e sem relogio nao sobe thread nenhuma ({novas})")
     E = A.engine
     confere(getattr(E, "_run", False) and E.error is None, f"o motor ligou, sem o relogio ({E.error})")
@@ -195,7 +196,10 @@ def voltas(A, E):
     tr = E.track
     confere(A._volta_fila(None) is tr and A.parado_sem_fila is tr and no_prato(E) == "d2",
             "o fim do disco com a fila vazia: o prato fica parado, marcado para a parecida que chegar")
-    confere(A._volta_fila(tr) is tr and no_prato(E) == "d2", "a volta seguinte, com o mesmo disco visto, nao repete")
+    x, _ = A.enfileirar({"id": "d1"})  # so na fila, sem tocar: a volta seguinte nao pode avancar para ela
+    confere(A._volta_fila(tr) is tr and no_prato(E) == "d2" and fila(A) == ["d1"],
+            "a volta seguinte, com o mesmo disco visto, nao avanca de novo")
+    A.tirar_da_fila(x["qid"])
 
     # a parecida que chega com o prato parado toca na hora (_volta_auto)
     A.auto, A.semente, A.mix_base = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, "bbbbbbbbbbb"
