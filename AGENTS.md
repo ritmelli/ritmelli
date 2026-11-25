@@ -66,7 +66,7 @@ galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
 | Dados de uso | `metricas.py` e o aviso deles no tema | `testa_metricas`; o aviso, `fitcheck.py --metricas` (sobe os próprios `--mock --metricas-teste`, sem rede) |
 | Troca de nome | `migra.py` | `testa_migra` |
-| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e uma library.json só com `[]` |
+| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` e `missing_script.py` (o `--tela` do `testa_tudo` roda os dois) contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e uma library.json só com `[]` |
 | Sem teste | `compasso.py`, `andamento.py`, `janela.py`, `winvol.py` | o PR diz como conferiu |
 
 ## Antes do PR
