@@ -263,8 +263,41 @@ def voltas(A, E):
     tr, E.ended = E.track, True  # o disco que entrou na virada ja acabou, antes de o vigia conciliar
     confere(A._volta_fila(None) is tr and A.parado_sem_fila is tr and E.virou is None,
             "o fim do disco com a virada pendente e a fila vazia: o prato fica marcado como parado")
+    confere(cmd.avanca(A, virada=v) is None and A.parado_sem_fila is tr and historico(A)[-1:] == ["d3"],
+            "o vigia que ja tinha lido a virada nao concilia de novo nem apaga a marca do prato parado")
     A._volta_passagem()
     confere(A.parado_sem_fila is tr, "e a volta do vigia depois nao apaga essa marca (a virada ja foi fechada)")
+    pendente()
+
+    # o vigia ganha a virada e fica suspenso no meio da conciliacao, logo antes de guardar no Anterior o que saiu; o
+    # Proxima que chega nesse meio espera, e o Anterior guarda o que saiu na virada antes do disco da virada
+    guardar, guardar_com_trava = A.guardar_historico, A._guardar_historico
+    dentro, solta, vistos = threading.Event(), threading.Event(), []
+
+    def devagar(guarda):
+        def f(novo_id=None, tr=None):
+            if tr is v[0]:
+                dentro.set()
+                solta.wait(5)
+            return guarda(novo_id, tr)
+        return f
+    A.guardar_historico, A._guardar_historico = devagar(guardar), devagar(guardar_com_trava)
+    try:
+        with mock.patch.object(A, "tocar_entrada", side_effect=lambda q, **_: vistos.append(historico(A)[-1:])):
+            vigia = threading.Thread(target=cmd.avanca, args=(A,), kwargs={"virada": v})
+            vigia.start()
+            confere(dentro.wait(5), "o vigia concilia a virada e para no meio, com a fila_lock na mao")
+            proxima = threading.Thread(target=cmd.pular, args=(A,))
+            proxima.start()
+            proxima.join(0.2)
+            confere(proxima.is_alive() and not vistos, "o Proxima que chega nesse meio espera a conciliacao")
+            solta.set()
+            vigia.join(5)
+            proxima.join(5)
+        confere(vistos == [["d3"]], f"e so toca depois de o Anterior guardar o que saiu na virada ({vistos})")
+    finally:
+        solta.set()
+        A.guardar_historico, A._guardar_historico = guardar, guardar_com_trava
     pendente()
 
     # a leitura pega o _qlock do motor: com ele na mao de outro (o _mixa no meio do bloco), ela espera

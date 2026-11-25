@@ -96,8 +96,10 @@ def avanca(A, virada=None, historico=True, na_tela=False):
             x = next((y for y in A.fila if y["qid"] == tag), None)
             if x:
                 A._tirar(x)
-        A.guardar_historico(entrou["id"], tr=sai)
-        A.parado_sem_fila = None
+            # o que saiu entra no Anterior, e a marca do prato parado sai, ainda sob a mesma fila_lock: o Proxima ou o
+            # fim do disco que chegar logo depois espera, guarda o disco da virada depois dele e marca o prato depois
+            A._guardar_historico(entrou["id"], tr=sai)
+            A.parado_sem_fila = None
         return x
     v = E.virou
     if v is not None:  # a virada que o vigia ainda nao conciliou fecha antes: o Anterior guarda o que saiu nela primeiro

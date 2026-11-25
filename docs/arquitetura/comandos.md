@@ -47,7 +47,8 @@ reprodução, a fila e a virada que o motor já confirmou saem juntos, sob a `fi
 exposta já não tem a entrada da virada que o `_volta_passagem` ainda vai conciliar. O `avanca` da virada tira a
 virada do motor e a entrada da fila sob a mesma `fila_lock`, então a leitura vê as duas ou nenhuma. O avanço sem virada
 (o Próxima, o fim do disco) fecha antes a virada pendente, então o Anterior guarda primeiro o disco que saiu nela,
-e só um dos dois concilia cada virada. O resto do motor e
+e só um dos dois concilia cada virada. Quem concilia guarda o histórico e limpa a marca do prato parado ainda sob
+a mesma `fila_lock`. O resto do motor e
 a formatação ficam fora das travas.
 
 O `/api/state` e o SSE usam essa captura. A cada volta, o SSE manda o `state` (só quando muda) e o `tick` com a

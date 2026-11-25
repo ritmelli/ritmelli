@@ -1161,6 +1161,12 @@ class App:
         """O disco que sai do prato (ou `tr`, o que a passagem tirou dele) entra no historico, que o
         Anterior percorre de tras para frente. Tocar de novo o disco que ja esta no prato nao conta,
         nem o mesmo duas vezes seguidas."""
+        with self.fila_lock:
+            self._guardar_historico(novo_id, tr)
+
+    def _guardar_historico(self, novo_id=None, tr=None):
+        """Com fila_lock: o guardar_historico (o entrada_de so le a prateleira, sem trava nem arquivo). A virada da
+        passagem (comandos.avanca) guarda o que saiu sem soltar a trava de quando tirou a entrada da fila."""
         tr = tr or self.engine.track
         if tr is None or tr["id"] == novo_id:
             return
@@ -1171,10 +1177,9 @@ class App:
         if x is None:
             return
         x["chave"] = tr["id"]
-        with self.fila_lock:
-            if not self.historico or self.historico[-1]["chave"] != x["chave"]:
-                self.historico.append(x)
-                del self.historico[:-HISTORICO_MAX]
+        if not self.historico or self.historico[-1]["chave"] != x["chave"]:
+            self.historico.append(x)
+            del self.historico[:-HISTORICO_MAX]
 
     def anterior(self):
         """Anterior do Spotify: com mais de 3 s de disco (ou nada antes dele), volta ao comeco;
