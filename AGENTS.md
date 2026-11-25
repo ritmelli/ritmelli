@@ -9,8 +9,8 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
 - Nunca no 8799, no Ritmelli instalado, com o microfone de verdade nem no Discord de quem usa: o som sai no jogo de quem
   está jogando. O servidor de teste é o `--mock` noutra porta, que por padrão trabalha numa pasta temporária, só com uma
   cópia da lista da prateleira: `python server.py --mock --port 8801 --no-browser`.
-- Só num Windows de teste: o Discord (num canal fechado de teste) e o `instala-todos` e o `remove` do
-  `microfone\microfone.py`, que mexem em todo microfone e no filtro do Ritmelli instalado.
+- Só num Windows de teste, dito no PR: a prova do filtro e do setup real, o Discord (canal fechado de teste), o
+  `instala-todos` e o `remove` do `microfone\microfone.py` (mexem em todo microfone e no filtro do Ritmelli instalado).
 
 ## Regras
 
@@ -76,5 +76,5 @@ onde entra teste novo: o [Contributing](README.md#contributing) do README). O ch
 mudado no `compara` só bloqueia com a etiqueta `extracao-tema` (sem ela, fica no artefato). A fila de merge da `main`
 exige ele e o "Trusted author": PR de quem não é um dos dois mantenedores só passa aprovado por um deles no head atual.
 Sem bypass nem `--admin`; `gh pr merge` cai no auto-merge, vedado: é o GraphQL `enqueuePullRequest`, `expectedHeadOid`.
-PR com prova fora da CI (o filtro do microfone num Windows real, o instalador real, um gatilho do `testa.yml`, o nome do
-check exigido) leva a etiqueta `needs-owner`, e a fila o recusa: o dono faz a prova, tira a etiqueta e põe na fila.
+PR cuja prova pede ação física (plugar ou desligar um aparelho) ou decisão do dono leva a etiqueta `needs-owner`: a fila
+o recusa, e o dono faz a prova, tira a etiqueta e o põe na fila.
