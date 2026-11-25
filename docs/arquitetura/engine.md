@@ -4,7 +4,10 @@
 máximo ~80 ms de atraso; `MockEngine` sem áudio para teste. O Windows converte os 48 kHz
 para a taxa de cada aparelho (sem isso, um aparelho a 44,1 kHz recusava o stream). Se o
 áudio não abre ao ligar (sem microfone nenhum, por exemplo), o servidor sobe mesmo assim com o
-erro na tela e tenta de novo logo depois e quando a lista de aparelhos muda. Áudio de
+erro na tela e tenta de novo logo depois e quando a lista de aparelhos muda. Com a lista parada, o vigia só reabre
+o áudio quando o filtro do microfone em uso para de ler com o motor ainda capturando o mesmo microfone: depois de 10 s
+sem leitor, a cada 30 s, no máximo 3 vezes, e o leitor que volta zera a conta; o microfone que nunca teve leitor (sem o
+filtro), o leitor que volta sozinho, o motor fechado e a troca manual não reabrem nada. Áudio de
 até 15 s (buzina, bordão) toca por cima da música em vez de trocar, e o posto nos Sons
 rápidos pela mão
 também, inteiro até 2 min: vários juntos, no volume da música,
