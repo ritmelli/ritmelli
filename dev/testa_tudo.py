@@ -1,15 +1,27 @@
 r"""Runs the tests that need no sound, no device and no outside network (the loopback and the fake server are fine),
 each in its own process, and exits 1 if any fails. It is what the .github/workflows/testa.yml runs on every PR.
 
-    python dev\testa_tudo.py               the COMPLETO: the STDLIB plus the ones that use the app libraries and ffmpeg
+    python dev\testa_tudo.py               the COMPLETO (the STDLIB plus the ones that use the app libraries and
+                                           ffmpeg) and the LONG_TESTS, after them
+    python dev\testa_tudo.py --without-long
+                                           only the COMPLETO (the Testes job: the testa.yml runs the LONG_TESTS in a
+                                           job of its own)
     python dev\testa_tudo.py --so-stdlib   the STDLIB, standard library only (the monta.yml runs it before installing)
     python dev\testa_tudo.py --microfone   the filter tests, with the DLLs of microfone\apo\compila.bat teste
+    python dev\testa_tudo.py --long [bench|capture]
+                                           only the LONG_TESTS (all, or the one named): the bench (the transition
+                                           bench, the real engine, one pair per kind of transition) and the capture
+                                           (the compara capture of the --capture). Each has a job of its own in the
+                                           testa.yml, the Banca and the Captura, next to the Testes
     python dev\testa_tudo.py --tela [--base origin/main] [--pasta logs\tela] [--ref-cache <dir>]
                                            the fitcheck in both languages against a --mock with temporary data and,
                                            with --base, the compara: the reference comes from the server and the theme
                                            of the base (in a temporary worktree), the comparison from the ones here
     python dev\testa_tudo.py --compara --base origin/main [--ref-cache <dir>] [--head-cache <dir>]
                                            only the compara of the --tela (the testa.yml runs it in a job of its own)
+    python dev\testa_tudo.py --capture <dir>
+                                           only the compara capture of the HEAD, into the folder with its key (the
+                                           push to main: the reference of the PRs that will have it as their base)
     python dev\testa_tudo.py --passo <name>
                                            a step of the testa.yml that runs one script (PASSOS): the "disco" is the
                                            testa_pasta_protegida.py --disco, the "metricas" the fitcheck.py --metricas
@@ -26,13 +38,14 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
         [--jobs N]                         how many tests run at a time (default 4); the ones in SERIAL always run
                                            one by one, alone, after the others
 
-In the COMPLETO, a missing library or ffmpeg is a failure, not a skipped test: without the server libraries, the
-testa_mock and the testa_migra skip their part.
+In the COMPLETO and the --long, a missing library or ffmpeg is a failure, not a skipped test: without the server
+libraries, the testa_mock and the testa_migra skip their part.
 
-Every dev/testa_*.py has a destination: a list here (STDLIB, COMPLETO, MICROFONE, PASSOS), or it only runs by hand and
-says so at the top of the file, in a comment before the docstring, how and with what: "# manual: <comando> precisa de
-<aparelho>". Before running, the COMPLETO, the --so-stdlib and the --microfone fail on a test without destination, on a
-dev/ file with the "manual:" line that runs in the check, and on a mode of this script the testa.yml no longer calls.
+Every dev/testa_*.py and dev/test_*.py (a new test, in English, is named test_*) has a destination: a list here (STDLIB,
+COMPLETO, LONG_TESTS, MICROFONE, PASSOS), or it only runs by hand and says so at the top of the file, in a comment before
+the docstring, how and with what: "# manual: <comando> precisa de <aparelho>". Before running, the COMPLETO, the
+--long, the --so-stdlib and the --microfone fail on a test without destination, on a dev/ file with the "manual:" line
+that runs in the check, and on a mode of this script the testa.yml no longer calls.
 They also fail an AGENTS.md over 80 lines or with a file in its map that doesn't exist (agents_md).
 
 The --ref-cache is a folder with a capture of the compara: when it holds the one of the base (the commit and the key of
@@ -62,12 +75,14 @@ RAIZ = Path(__file__).resolve().parent.parent
 # so a biblioteca padrao: a monta.yml roda estes antes de instalar as bibliotecas do app
 STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vozes", "pareamento", "grava", "mfx",
                                              "ganchos", "pasta_protegida", "so_mock")] + [
-    "dev/test_trusted_author.py", "dev/test_needs_owner.py"]
+    "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py"]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
-    "passagem", "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
-    "instalador/atualizacao/testa_parcial.py"]
+    "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
+    "instalador/atualizacao/testa_parcial.py", "dev/test_compara_not_ready.py",
+    "dev/test_compara_push_steps.py"]
+LONG_TESTS = {"bench": "dev/testa_passagem.py", "capture": "dev/test_capture.py"}
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
 # pulariam
@@ -94,25 +109,27 @@ JOBS = 4
 # machine is one; on a PC, only a test Windows) and the usage data notice of the theme
 PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas")}
 # what the --tela and the --compara run
-TELA = ("dev/fitcheck.py", "dev/compara.py")
+TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py")
 # the calls the testa.yml has to make, so every list and step above runs on the PR (sem_destino checks them)
-INVOCATIONS = ("dev/testa_tudo.py --resumo", "dev/testa_tudo.py --microfone", "dev/testa_tudo.py --tela",
-               "dev/testa_tudo.py --compara") + tuple(f"dev/testa_tudo.py --passo {n}" for n in PASSOS)
+INVOCATIONS = ("dev/testa_tudo.py --without-long", "dev/testa_tudo.py --microfone", "dev/testa_tudo.py --tela",
+               "dev/testa_tudo.py --compara", "dev/testa_tudo.py --capture") + tuple(
+    f"dev/testa_tudo.py --passo {n}" for n in PASSOS) + tuple(f"dev/testa_tudo.py --long {n}" for n in LONG_TESTS)
 # the big files whose line count goes in the summary, against the base (--linhas)
 LINHAS = ("engine.py", "server.py", "themes/ritmelli/index.html", "AGENTS.md")
 # what goes into the key of a compara capture besides the commit and the Chrome version: the scripts that take it and
 # the libraries of the server
-CAPTURA = ("dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py", "requirements.txt", "requirements-dev.txt")
-
+CAPTURA = ("dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py", "requirements.txt", "requirements-dev.txt",
+           "instalador/travas.txt")
+LONG_TITLES = {"bench": "Banca", "capture": "Captura"}
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva
 # codigo de renderizacao ou de traducao para outro modulo poe o modulo na "tela"
 AREAS = {
     "microfone": ("microfone/", "fx.py", "engine.py", "dev/testa_filtro.py", "dev/testa_voz.py",
                   "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
-    "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py"),
+    "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py",
+             "dev/missing_script.py"),
 }
-# these trigger every area: the testa.yml, its setup action, and the lists and the filter here
-TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py")
+TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt")
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
 # renderizacao ou de traducao do tema para outro modulo (posta por quem mantem o repo)
 ETIQUETAS = {"extracao-tema": "tela"}
@@ -140,22 +157,27 @@ def manual(arquivo):
     return None
 
 
-def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml"):
-    """What takes a test out of the PR check unnoticed: a dev/testa_*.py in no list here (STDLIB, COMPLETO, MICROFONE,
-    PASSOS) and without the "manual:" line; a file with the line (a test or a dev/ tool) that runs in the check anyway,
-    or with the line out of format; a call of INVOCATIONS that the testa.yml no longer makes, and a dev/ script it calls
-    directly instead of through PASSOS (in the lines that are not comments). Returns the failure lines."""
-    rodam = set(COMPLETO) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
+def is_test(rel):
+    return rel.startswith(("dev/testa_", "dev/test_")) and rel != "dev/testa_tudo.py"
+
+
+def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml", dev=RAIZ / "dev"):
+    """What takes a test out of the PR check unnoticed: a test of dev/ (is_test) in no list here (STDLIB, COMPLETO,
+    LONG_TESTS, MICROFONE, PASSOS) and without the "manual:" line; a file with the line (a test or a dev/ tool) that runs in
+    the check anyway, or with the line out of format; a call of INVOCATIONS that the testa.yml no longer makes, and a
+    dev/ script it calls directly instead of through PASSOS (in the lines that are not comments). Returns the failure
+    lines."""
+    rodam = set(COMPLETO) | set(LONG_TESTS.values()) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
     falhas = []
-    for p in sorted((RAIZ / "dev").glob("*.py")):
-        rel, linha = p.relative_to(RAIZ).as_posix(), manual(p)
+    for p in sorted(Path(dev).glob("*.py")):
+        rel, linha = f"dev/{p.name}", manual(p)
         if linha and not re.match(r"#\s*manual:\s*\S.*\s+precisa de\s+\S", linha):
             falhas.append(f"{rel}: the line \"{linha}\" does not follow \"# manual: <comando> precisa de <aparelho>\"")
         elif linha and rel in rodam:
             falhas.append(f"{rel} has the \"manual:\" line and runs in the testa.yml: drop the line or the test")
-        elif not linha and rel.startswith("dev/testa_") and rel != "dev/testa_tudo.py" and rel not in rodam:
-            falhas.append(f"{rel} runs nowhere (in no list of dev/testa_tudo.py: STDLIB, COMPLETO, MICROFONE or PASSOS) "
-                          "and has no \"# manual: <comando> precisa de <aparelho>\" line at the top")
+        elif not linha and is_test(rel) and rel not in rodam:
+            falhas.append(f"{rel} runs nowhere (in no list of dev/testa_tudo.py: STDLIB, COMPLETO, LONG_TESTS, MICROFONE or "
+                          "PASSOS) and has no \"# manual: <comando> precisa de <aparelho>\" line at the top")
     linhas = Path(yml).read_text(encoding="utf-8").splitlines()
     # the commands: a line that starts with python (in a run: block, or right after run:), the dev/ script with either
     # separator, with or without quotes, and the rest of the line
@@ -199,8 +221,8 @@ def executa(cmd, limite=LIMITE_S, **kw):
 
 
 def roda(titulo, lista, completo, jobs=1):
-    """Runs each test of the list, each in its own process: with jobs above 1, the ones outside SERIAL that many at a
-    time, then the SERIAL ones one by one, alone. Returns (the failures, the markdown lines), in the order of the
+    """Runs each test of the list, each in its own process: with jobs above 1, the ones outside SERIAL and LONG_TESTS that
+    many at a time, then the others one by one, alone, in the order of the list. Returns (the failures, the markdown lines), in the order of the
     list."""
     feitos, trava = {}, threading.Lock()
 
@@ -221,7 +243,7 @@ def roda(titulo, lista, completo, jobs=1):
         feitos[t] = (motivo, dt, saida)
 
     t0 = time.monotonic()
-    juntos = [t for t in lista if t not in SERIAL] if jobs > 1 else []
+    juntos = [t for t in lista if t not in SERIAL and t not in LONG_TESTS.values()] if jobs > 1 else []
     with ThreadPoolExecutor(max(1, jobs)) as ex:
         list(ex.map(um, juntos))
     for t in lista:
@@ -283,8 +305,11 @@ def agents_md(path=RAIZ / "AGENTS.md"):
 
 
 def testes(a):
+    names = list(LONG_TESTS) if a.long in (None, "all") else [a.long]
     titulo, lista = (("Testes so da biblioteca padrao", STDLIB) if a.so_stdlib else
-                     ("Testes do filtro", MICROFONE) if a.microfone else ("Testes", COMPLETO))
+                     ("Testes do filtro", MICROFONE) if a.microfone else
+                     (LONG_TITLES.get(a.long, "Testes longos"), [LONG_TESTS[n] for n in names]) if a.long else
+                     ("Testes", COMPLETO + ([] if a.without_long else list(LONG_TESTS.values()))))
     md = []
     for p in (agents := agents_md()):
         print(f"FALHA {p}")
@@ -311,7 +336,7 @@ def testes(a):
         return 1
     # the filter tests all measure a cost or a level of the filter: one by one
     falhas, linhas = roda(titulo, lista, completo=not a.so_stdlib and not a.microfone,
-                          jobs=1 if a.microfone else a.jobs)
+                          jobs=1 if a.microfone or a.long else a.jobs)
     escreve(a.resumo, md + linhas)
     return 1 if falhas or esquecidos or agents else 0
 
@@ -363,6 +388,33 @@ def so_compara(a):
     return 1 if bloqueia else 2 if mudou else 0
 
 
+def capture_head(a):
+    folder = Path(a.pasta).resolve()
+    folder.mkdir(parents=True, exist_ok=True)
+    if Path(a.capture).resolve().is_relative_to(folder / "compara"):
+        raise SystemExit(f"the cache folder {a.capture} is inside {folder / 'compara'}: give it a folder of its own")
+    head = executa(["git", "rev-parse", "HEAD"], limite=60)[1].strip()
+    tree = Path(tempfile.mkdtemp(prefix="ritmelli-head-")) / "head"
+    code, out = executa(["git", "worktree", "add", "--detach", str(tree), head], limite=300)
+    try:
+        if code == 0:
+            code, out = executa([sys.executable, "dev/compara.py", "--ref", "--raiz", str(tree),
+                                 "--pasta", str(folder / "compara")])
+    finally:
+        executa(["git", "worktree", "remove", "--force", str(tree)], limite=300)
+        shutil.rmtree(tree.parent, ignore_errors=True)
+    print(f"--- compara --ref of the HEAD {head[:12]}: exits {code}\n{out.rstrip()}", flush=True)
+    if code != 0:
+        md = [f"<details><summary>❌ compara: a captura do HEAD <code>{head[:12]}</code> não vale (sai {code})"
+              "</summary>", "", cerca(cauda(out)), "", "</details>"]
+    else:
+        guarda_captura(folder / "compara" / "ref", a.capture, chave_captura(head))
+        saida_do_job({"head_cache": "true"})
+        md = [f"- ✅ captura do HEAD `{head[:12]}` guardada para o cache"]
+    escreve(a.resumo, ["**Compara:**", ""] + md)
+    return 1 if code != 0 else 0
+
+
 def fitcheck(pasta):
     """The fitcheck in both languages against a --mock with the fake shelf of the compara, the data and the
     LOCALAPPDATA temporary. Returns (the markdown lines, whether it blocks)."""
@@ -403,6 +455,15 @@ def fitcheck(pasta):
                             md.append(f"- ✅ fitcheck em {lang}: {n} tamanhos cabem, sem erro no console")
                 finally:
                     srv.encerra()
+        cod, saida = executa([sys.executable, "dev/missing_script.py"])
+        print(f"--- missing_script: exits {cod}\n{saida.rstrip()}", flush=True)
+        if cod != 0:
+            bloqueia = True
+            md += ["<details><summary>❌ a theme file that does not load: dev/missing_script.py exits "
+                   f"{cod}</summary>", "", cerca(cauda(saida)), "", "</details>"]
+        else:
+            n = sum(linha.startswith("OK") for linha in saida.splitlines())
+            md.append(f"- ✅ a theme file that does not load: {n} scenarios of dev/missing_script.py pass")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return md, bloqueia
@@ -548,8 +609,12 @@ def main():
     modo = ap.add_mutually_exclusive_group()
     modo.add_argument("--so-stdlib", action="store_true", help="only the STDLIB, which runs without the app libraries")
     modo.add_argument("--microfone", action="store_true", help="the filter tests (MICROFONE)")
+    modo.add_argument("--long", nargs="?", const="all", choices=[*LONG_TESTS, "all"],
+                      help="only the LONG_TESTS, or the one named")
+    modo.add_argument("--without-long", action="store_true", help="the COMPLETO without the LONG_TESTS")
     modo.add_argument("--tela", action="store_true", help="the fitcheck and, with --base, the compara")
     modo.add_argument("--compara", action="store_true", help="only the compara of the --tela (needs --base)")
+    modo.add_argument("--capture", metavar="DIR", help="only the compara capture of the HEAD, into DIR")
     modo.add_argument("--passo", choices=sorted(PASSOS), help="a step of the testa.yml that runs one script")
     modo.add_argument("--areas", metavar="BASE", help="the areas that what changed since BASE triggers")
     modo.add_argument("--linhas", metavar="BASE", help="the line count of the big files against BASE")
@@ -572,6 +637,8 @@ def main():
         return tela(a)
     if a.compara:
         return so_compara(a)
+    if a.capture:
+        return capture_head(a)
     return testes(a)
 
 

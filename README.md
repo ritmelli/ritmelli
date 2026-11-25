@@ -355,8 +355,8 @@ server started without `--data-dir` shows it again every time it starts (with `-
 enough).
 
 The interface is the theme in `themes/ritmelli/` (HTML, CSS and JavaScript, no build step): `index.html` is the page,
-and the `.js` files it loads, its fonts (`fonts/`) and its images (`texturas/`) sit next to it. Edit a file, save it
-and reload the page. What a theme receives from the server is in [API.md](API.md#tema).
+and the `.css` and `.js` files it loads (`shared.js` first), its fonts (`fonts/`) and its images (`texturas/`) sit next
+to it. Edit a file, save it and reload the page. What a theme receives from the server is in [API.md](API.md#tema).
 
 To switch the language, add `?lang=pt_BR` or `?lang=en` to the end of the address. Interface texts live in
 `themes/ritmelli/i18n/i18n_en.properties` and `i18n_pt_BR.properties`, with the same keys in both files, in the same
@@ -530,14 +530,17 @@ python dev\testa_tudo.py --microfone               # the filter tests, after mic
 python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as the pull request check runs them
 ```
 
-`python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library. The
-tests run four at a time, except the ones that measure time, which run one by one after the others (`--jobs 1` runs
+`python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library, and
+`--without-long` everything but the two long tests (the transition bench, `dev/testa_passagem.py`, and the compara
+capture, `dev/test_capture.py`, about 2 minutes each), which `--long` runs alone; the pull request check runs each in a
+job of its own (Banca and Captura), next to the others. The tests run four at a time, except the ones that measure time, which run one by one after the others (`--jobs 1` runs
 everything one by one).
 
-A new `dev/testa_*.py` goes into one of the lists in `dev/testa_tudo.py` (`STDLIB`, `COMPLETO`, `MICROFONE`, or
-`PASSOS` for a step of its own in `testa.yml`). A test or tool that only runs by hand says so in a comment at the top
-of the file, before the docstring: `# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a test that
-runs nowhere, on a `manual:` file that runs in the check, and when `testa.yml` stops calling one of its modes.
+A new test is named `dev/test_*.py` (in English; the older ones are `dev/testa_*.py`). Either kind goes into one of
+the lists in `dev/testa_tudo.py` (`STDLIB`, `COMPLETO`, `LONG_TESTS`, `MICROFONE`, or `PASSOS` for a step of its own in
+`testa.yml`). A test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
+`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a `dev/test_*.py` or `dev/testa_*.py` that runs
+nowhere, on a `manual:` file that runs in the check, and when `testa.yml` stops calling one of its modes.
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
 [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks

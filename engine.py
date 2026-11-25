@@ -2546,7 +2546,7 @@ class Engine:
     @staticmethod
     def _segue(depois, f):
         """O resto de um comando, que roda fora das travas: agora, ou, com a lista depois de quem chama com travas na
-        mao (o servidor, App._com_motor), quando ele as soltar."""
+        mao (o servidor, App.with_engine), quando ele as soltar."""
         if depois is None:
             f()
         else:

@@ -47,11 +47,12 @@ from urllib.parse import quote
 
 import numpy as np
 from PIL import Image
+from websockets.exceptions import ConnectionClosed
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import so_mock  # noqa: E402
-from fitcheck import (CHROME, PRONTA, barra_outra_origem, conecta_cdp, erro_da_pagina,  # noqa: E402
-                      fecha_chrome, le_cdp)
+from fitcheck import (CHROME, PRONTA, READY_CONDITIONS, PRONTA_S, barra_outra_origem, conecta_cdp,  # noqa: E402
+                      erro_da_pagina, fecha_chrome, le_cdp)
 from so_mock import free_port  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -104,6 +105,56 @@ RELOGIO_PARADO = "(() => { const t0 = performance.now(); performance.now = () =>
 # the fitcheck's ready signal, plus the fake shelf on screen
 PRONTO = f"{PRONTA} && S.lib.length > 0"
 PALCO = "document.querySelector('#palco')"
+DESK_MOUNTED = "document.body.classList.contains('mesa-dj')"
+
+
+def diagnostic_js(desk):
+    parts = [*READY_CONDITIONS, ("shelf on screen", "S.lib.length > 0")] + ([("body.mesa-dj", DESK_MOUNTED)] if desk else [])
+    parts += [("document.readyState", "document.readyState"), ("document.fonts.status", "document.fonts.status"),
+               ("images not complete", "[...document.images].filter(i => !i.complete).map(i => i.src.slice(0, 120))"),
+               ("scripts not loaded", "[...document.scripts].filter(s => s.src && "
+                                      "!performance.getEntriesByName(s.src).length).map(s => s.src)")]
+    body = ", ".join(f"{json.dumps(name)}: c(() => {js})" for name, js in parts)
+    return ("(() => { const c = f => { try { return f(); } catch (e) { return 'error: ' + e.message; } }; "
+            f"return {{{body}}}; }})()")
+
+
+async def wait_ready(c, expr, label):
+    deadline = time.monotonic() + PRONTA_S
+    while time.monotonic() < deadline:
+        await asyncio.sleep(0.1)
+        if c.barrados:
+            sys.exit(f"{label}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
+        try:
+            if await asyncio.wait_for(c.js(expr), max(0.1, deadline - time.monotonic())):
+                return True
+        except (RuntimeError, TimeoutError):  # a pagina ainda nao tem o S
+            pass
+        except (ConnectionClosed, ConnectionError):
+            return False
+    return False
+
+
+async def report_not_ready(c, label, desk, folder):
+    print(f"{label}: the theme was not ready in {PRONTA_S:.0f} s; each condition:", flush=True)
+    try:
+        conditions = await c.js(diagnostic_js(desk))
+        for name, value in (conditions or {}).items():
+            print(f"  {name}: {json.dumps(value, ensure_ascii=False)}", flush=True)
+    except (RuntimeError, TimeoutError, ConnectionClosed, ConnectionError) as ex:
+        print(f"  (the conditions did not come: {type(ex).__name__} {ex})", flush=True)
+    for e in c.erros or ["(none)"]:
+        print(f"  console: {e}", flush=True)
+    for e in c.browser_errors or ["(none)"]:
+        print(f"  browser: {e}", flush=True)
+    try:
+        shot = folder / "nao-pronto" / f"{label}.png"
+        shot.parent.mkdir(parents=True, exist_ok=True)
+        shot.write_bytes(await c.png())
+        print(f"  print: {shot}", flush=True)
+    except (RuntimeError, TimeoutError, ConnectionClosed, OSError) as ex:
+        print(f"  (the print did not come: {type(ex).__name__} {ex})", flush=True)
+    sys.exit(f"{label}: o tema nao ficou pronto em {PRONTA_S:.0f} s" + (" (sem o body.mesa-dj)" if desk else ""))
 
 
 def na_mesa(w, h):
@@ -200,6 +251,7 @@ def _monta_tocando(api):
 class Chrome:
     def __init__(self, ws, base):
         self.ws, self.seq, self.pend, self.erros, self.barrados = ws, 0, {}, [], []
+        self.browser_errors = []
         self.fetch = barra_outra_origem(ws, base, self.barrados)  # o documento de outra origem, barrado
 
     async def le(self):
@@ -208,6 +260,9 @@ class Chrome:
     def evento(self, m):
         if not self.fetch(m) and (e := erro_da_pagina(m)):
             self.erros.append(e)
+        if m.get("method") == "Log.entryAdded" and m["params"]["entry"].get("level") == "error":
+            entry = m["params"]["entry"]
+            self.browser_errors.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
 
     async def cmd(self, metodo, **params):
         self.seq += 1
@@ -269,7 +324,7 @@ async def prints(a, srv, destino):
         async with conecta_cdp(ws_url) as ws:
             c = Chrome(ws, srv.base)
             leitor = asyncio.create_task(c.le())
-            for d in ("Page", "Runtime", "Network"):
+            for d in ("Page", "Runtime", "Network", "Log"):
                 await c.cmd(f"{d}.enable")
             await c.cmd("Network.setBlockedURLs", urls=["*fonts.googleapis.com*", "*fonts.gstatic.com*"])
             await c.cmd("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
@@ -319,18 +374,10 @@ async def prints(a, srv, destino):
                         srv.confere()  # a pagina so do filho vivo que responde como --mock
                     except so_mock.Recusa as ex:
                         sys.exit(f"{pre}: {ex}")
+                    c.browser_errors.clear()
                     await c.cmd("Page.navigate", url=f"{srv.base}/t/ritmelli/?lang={a.lang}")
-                    for _ in range(200):
-                        await asyncio.sleep(0.1)
-                        if c.barrados:
-                            sys.exit(f"{pre}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
-                        try:
-                            if await c.js(PRONTO + (" && document.body.classList.contains('mesa-dj')" if mesa else "")):
-                                break
-                        except RuntimeError:  # a pagina ainda nao tem o S
-                            pass
-                    else:
-                        sys.exit(f"{pre}: o tema nao ficou pronto em 20 s" + (" (sem o body.mesa-dj)" if mesa else ""))
+                    if not await wait_ready(c, PRONTO + (f" && {DESK_MOUNTED}" if mesa else ""), pre):
+                        await report_not_ready(c, pre, mesa, destino.parent)
                     await asyncio.sleep(1)
                     if mesa:
                         # o ponto de toque do visor (movimento reduzido) fica onde o primeiro desenho o ancorou, e o
@@ -423,6 +470,7 @@ def main():
     destino = pasta / ("ref.novo" if a.ref else "agora")
     shutil.rmtree(destino, ignore_errors=True)
     shutil.rmtree(pasta / "instavel", ignore_errors=True)
+    shutil.rmtree(pasta / "nao-pronto", ignore_errors=True)
     destino.mkdir(parents=True)
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-compara-"))
     porta = free_port()

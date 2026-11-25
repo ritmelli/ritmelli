@@ -958,9 +958,48 @@ def recusa_do(srv, metodo, rota, corpo):
         return getattr(ex, "code", None)
 
 
+def inline_scripts_in_the_page():
+    import server
+    print("--- the inline-script comment of a theme page")
+    with tempfile.TemporaryDirectory(prefix="testa_mock_inline_") as t:
+        folder = Path(t)
+        page, script = folder / "index.html", folder / "first.js"
+        source = "<head>\n<!-- inline-script: first.js -->\n<script src=\"x.js\"></script>"
+        page.write_text(source, encoding="utf-8")
+        script.write_text("const first = 1;\n", encoding="utf-8")
+        html = server.inline_scripts(source, folder)
+        confere(html == "<head>\n<script>\nconst first = 1;\n</script>\n<script src=\"x.js\"></script>",
+                f"the comment becomes a <script> with the text of the file ({html!r})")
+        sent, etag = server.theme_page(page, folder / "i18n", "en")
+        stamp = script.stat().st_mtime_ns
+        script.write_text("const first = 2;\n", encoding="utf-8")
+        os.utime(script, ns=(stamp, stamp))
+        sent_after, etag_after = server.theme_page(page, folder / "i18n", "en")
+        confere(sent == html and etag != etag_after and "const first = 2;" in sent_after,
+                "the ETag of the page follows the text it sends, even when the inlined file keeps its mtime")
+
+
 def ao_vivo(srv):
     """No --mock de verdade: o PC com tudo e a rede de casa recusada onde deve."""
     print("--- no --mock de verdade: o PC e a rede de casa (pelo 127.0.0.2)")
+    with so_mock.abre(srv.base + "/t/ritmelli/") as r:
+        page, page_cache, etag = r.read().decode("utf-8"), r.headers.get("Cache-Control"), r.headers.get("ETag")
+    confere("function scriptFailed(" in page and "<!-- inline-script:" not in page,
+            "the theme page comes with script-failed.js in place of its inline-script comment")
+    conn = http.client.HTTPConnection("127.0.0.1", srv.porta, timeout=10)
+    try:
+        conn.request("GET", "/t/ritmelli/", headers={"If-None-Match": etag or ""})
+        again = conn.getresponse()
+        again.read()
+        conn.request("GET", "/t/ritmelli/shared.js")
+        script = conn.getresponse()
+        script.read()
+    finally:
+        conn.close()
+    confere((page_cache, again.status, again.getheader("Cache-Control"), script.status,
+             script.getheader("Cache-Control")) == ("no-cache", 304, "no-cache", 200, "no-cache"),
+            f"/t/ answers with Cache-Control: no-cache: the page ({page_cache}), its 304 ({again.status}, "
+            f"{again.getheader('Cache-Control')}) and a .js ({script.status}, {script.getheader('Cache-Control')})")
     confere(srv.api("GET", "/api/state").get("caps") == perm.caps("pc"), "o PC: o /api/state traz o caps do PC")
     confere(srv.api("POST", "/api/volume", {"vol": 0.42}).get("vol") == 0.42
             and srv.api("GET", "/api/state").get("vol") == 0.42, "o PC: o /api/volume muda o volume da musica")
@@ -1155,6 +1194,7 @@ except ImportError as ex:
 else:
     asyncio.run(papeis_no_guard())
     asyncio.run(papel_local_celular())
+    inline_scripts_in_the_page()
 sem_rede()
 
 print("\nFALHOU: " + "; ".join(falhas) if falhas else "\ntudo ok")

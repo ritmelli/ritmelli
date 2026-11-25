@@ -104,8 +104,12 @@ PROBE = r"""(soDialogo => {
 
 # the page is ready to be checked: loaded, the fonts in, the first /api/state of the theme applied and every image
 # decoded. The compara waits for the same, plus its fake shelf. In a try: before the theme script runs, S does not exist
-PRONTA = ("(() => { try { return document.readyState === 'complete' && document.fonts.status === 'loaded' && "
-          "!!S.state && [...document.images].every(i => i.complete); } catch (e) { return false; } })()")
+READY_CONDITIONS = (("document complete", "document.readyState === 'complete'"),
+                    ("fonts loaded", "document.fonts.status === 'loaded'"),
+                    ("S.state", "!!S.state"),
+                    ("images complete", "[...document.images].every(i => i.complete)"))
+PRONTA = ("(() => { try { return " + " && ".join(js for _, js in READY_CONDITIONS) +
+          "; } catch (e) { return false; } })()")
 PRONTA_S = 20.0
 JS_WAIT_S = 1.5
 
