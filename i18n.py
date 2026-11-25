@@ -127,14 +127,6 @@ def injeta(html, pasta, lingua):
     return html.replace(MARCA, f"<script>window.I18N_DADOS = {js};</script>", 1)
 
 
-def versao(pasta):
-    """Um carimbo dos arquivos de texto de um tema, para o ETag da pagina mudar quando um deles muda."""
-    try:
-        return "-".join(str(arquivo(pasta, x).stat().st_mtime_ns) for x in LINGUAS)
-    except OSError:
-        return "0"
-
-
 # --- as mensagens do servidor (o formato no API.md, "Mensagem")
 
 def msg(chave, texto, **params):

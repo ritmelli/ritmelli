@@ -38,6 +38,10 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
   do navegador: a primeira que temos na preferência dele, e o inglês quando ele não pede nenhuma
   das duas. `?lang=en` ou `?lang=pt_BR` no endereço força uma, para testar. O formato do arquivo
   está no `i18n.py`, e o `python dev/testa_i18n.py` confere os arquivos contra o tema.
+- Script que tem de rodar antes de qualquer arquivo do tema (o que trata o arquivo que não carrega): o comentário
+  `<!-- inline-script: <arquivo>.js -->` no `index.html`. A página chega com ele trocado por um `<script>` com o texto
+  desse arquivo da pasta do tema, e o `ETag` dela muda quando o arquivo muda. O `dev/testa_i18n.py` confere que o
+  arquivo existe e não tem `</script>`, e o `dev/testa_mock.py` confere a troca e o `ETag`.
 - O tema abre também no celular, pela rede de casa (`http://<ip do PC>:8799/`): nada de
   endereço `127.0.0.1` escrito no tema e nada que dependa de mouse. Pela rede, a API só
   responde ao celular pareado (ver "Celular: pareamento"), e só no que a tabela de "Quem pode cada rota" abre para

@@ -1,7 +1,5 @@
 /* SHARED-JS-INICIO */
 'use strict';
-/* ---------- what every script of the theme shares: the page state (S), the DJ desk's (MESA) and the general helpers.
-   The index.html loads this file before all the others, so what it declares is in sight of each of them ---------- */
 const $ = (s, r = document) => r.querySelector(s);
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));

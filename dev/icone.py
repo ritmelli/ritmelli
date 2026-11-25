@@ -26,8 +26,6 @@ def cor(h):
     return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) + (255,)
 
 
-# the colors of the theme (the .css files of themes/ritmelli/, like skin-vars.css and turntable.css) and of the
-# platter of the previews
 CORES = {
     "k": cor("#1A0B04"),  # contorno
     "v": cor("#120D0C"),  # vinil

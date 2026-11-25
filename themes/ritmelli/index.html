@@ -66,30 +66,8 @@ const I18N = (() => {
   const reserva = k => (tem(d.reserva, k) ? d.reserva[k] : undefined);
   return { lingua: d.lingua, lang, tem: existe, t, tp, num, rico, aplica, reserva };
 })();
-/* a theme file that does not load (the server was off when the page opened, a cut connection): the onerror of every
-   <script src> calls scriptFailed. The start of the page needs functions from several files, so once the parser is
-   done the page does not start its calls to the server (the DOMContentLoaded at the end of the main script): it
-   closes what a click opened meanwhile, shows the off-air card and loads again when the file answers (a query of its
-   own each try: the browser does not fetch again a preload that failed), at the address it opened with (with the
-   ?parear= of the QR). The transporte.js alone keeps its own retry (carregarTransporte), without loading again */
-const scriptsFailed = [], firstAddress = location.href;
-function scriptFailed(s) { scriptsFailed.push(s.getAttribute('src')); }
-const scriptsMissing = () => scriptsFailed.filter(f => f !== 'transporte.js');
-document.addEventListener('DOMContentLoaded', () => {
-  const missing = scriptsMissing();
-  if (!missing.length) return;
-  document.querySelectorAll('dialog[open]').forEach(d => d.close()); document.getElementById('tela-parear').hidden = true;
-  try { mostrarFora(); } catch (e) { document.getElementById('fora').hidden = false; }
-  const probe = () => {
-    const l = document.createElement('link');
-    l.rel = 'preload'; l.as = 'script'; l.href = missing[0] + '?retry=' + Date.now();
-    l.onload = () => { if (location.href === firstAddress) location.reload(); else location.replace(firstAddress); };
-    l.onerror = () => { l.remove(); setTimeout(probe, 3000); };
-    document.head.append(l);
-  };
-  setTimeout(probe, 3000);
-});
 </script>
+<!-- inline-script: script-failed.js -->
 <!-- a pagina aparece quando os textos ja estao no lugar (o I18N.aplica, no comeco do script principal) -->
 <style>html:not(.i18n-ok) body { visibility: hidden; }</style>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -2045,7 +2023,7 @@ let codigoQR = new URLSearchParams(location.search).get('parear');
 if (codigoQR) history.replaceState(null, '', location.pathname + location.hash);  // o codigo usado nao fica no historico
 function pedirPareamento(desconectado, caps) {
   definirCaps(caps || null);
-  if (S.pareando) return;
+  if (S.pareando || scriptsMissing().length) return;
   S.pareando = true; S.online = false;
   clearTimeout(reconT); clearTimeout(foraT);
   if (es) { es.fechar(); es = null; }
@@ -2166,6 +2144,7 @@ inertPalco();
 FADERS.forEach(([fi]) => pintarFader($(fi)));
 if (location.hash === '#efeitos' && !celular()) abrirGaveta(true);
 function carregar() {
+  if (scriptsMissing().length) return;
   const geracao = geracaoPareamento;
   Promise.all([api('GET', '/api/state'), api('GET', '/api/library'), api('GET', '/api/jobs')])
     .then(([st, lib, jobs]) => {
@@ -2184,13 +2163,11 @@ function carregar() {
     })
     .finally(() => { if (!S.pareando && geracao === geracaoPareamento) conectar(); });
 }
-// the calls to the server wait for the last <script src> of the page: with a theme file missing they never start, and
-// the page shows the off-air card instead (scriptFailed, in the <head>), so no answer takes it down
 document.addEventListener('DOMContentLoaded', () => {
   if (scriptsMissing().length) return;
   carregarEfeitos();
   carregar();
-  // registered after carregar(): the browser can run events while it loads the scripts above, and a tab shown in
+  // registered after carregar(): the browser can run events while it loads the ui-events.js above, and a tab shown in
   // that gap would connect before the page starts
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { clearTimeout(foraT); return; }
