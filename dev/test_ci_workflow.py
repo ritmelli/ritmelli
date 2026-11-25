@@ -205,6 +205,12 @@ def test_shape(all_jobs, text):
     check(ids == {"etiquetas", "testes", "banca", "microfone", "tela", "compara"},
           f"the Testa o PR needs the five jobs and the Etiquetas ({needs.strip()})")
     check("--captura" in "".join(all_jobs["compara"]), "the compara job runs the --captura on the push")
+    banca = "\n".join(all_jobs["banca"])
+    after_areas = banca.split("id: areas", 1)[-1]
+    gated = [b for b in after_areas.split("      - ")[1:] if "name: Resumo" not in b]
+    check(len(gated) == 3 and all("if: steps.areas.outputs.banca == 'true'" in b for b in gated)
+          and "--banca --base $env:BASE" in banca,
+          f"the Banca installs and runs only the long tests whose area the PR touched ({len(gated)} gated steps)")
     saves = [line for line in all_jobs["compara"] if "steps.compara.outputs.head_cache == 'true'" in line]
     check(len(saves) == 2, f"the head capture is moved and saved to the cache when the step says head_cache ({len(saves)})")
     check(not any(re.search(r"\bsleep\b", line) for line in all_jobs["testa-o-pr"]), "the Testa o PR never sleeps")

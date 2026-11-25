@@ -112,19 +112,31 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12.10'
+      - name: O PR mexe no motor ou na tela?
+        id: areas
+        run: python dev/testa_tudo.py --areas $env:BASE
       - uses: ./.github/actions/python
+        if: steps.areas.outputs.banca == 'true'
         with:
           requirements: requirements-dev.txt
       - name: ffmpeg no PATH
+        if: steps.areas.outputs.banca == 'true'
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
       - name: Banca
-        run: python dev/testa_tudo.py --banca --resumo "$env:RUNNER_TEMP\resumo.md"
+        if: steps.areas.outputs.banca == 'true'
+        run: python dev/testa_tudo.py --banca --base $env:BASE --resumo "$env:RUNNER_TEMP\resumo.md"
       - name: Resumo
         id: resumo
         if: always()
+        env:
+          APLICA: ${{ steps.areas.outputs.banca }}
         run: |
-          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } else { '**Banca:** ❌ não chegou a rodar (ver a execução)' }
+          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } elseif ($env:APLICA -eq 'false') { '**Banca:** não se aplica (o PR não mexe no motor nem na tela)' } else { '**Banca:** ❌ não chegou a rodar (ver a execução)' }
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8

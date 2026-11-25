@@ -16,7 +16,8 @@ por vez (os do `SERIAL`, que medem tempo, um a um e sozinhos, depois dos outros)
 dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO`, a `BANCA` (os dois
 testes longos, a banca das passagens, o `testa_passagem`, e o `test_captura`: o comando sem opção a roda depois do
 `COMPLETO`; no `testa.yml`, o job de Testes roda o `--sem-banca` e um job próprio, ao lado, o
-`--banca`) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
+`--banca --base`, que roda cada um só quando o PR mexe na área dele, no `BANCA_AREA`: o `motor`, que
+sai dos imports locais do `testa_passagem`, e a `tela`) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
 Inno Setup, para o setup de teste do `testa_aparelho_mudo`). No `COMPLETO` e na `BANCA`, biblioteca
 ou ffmpeg faltando é falha. Todo teste de `dev/`, o `dev/testa_*.py` e o `dev/test_*.py` (todo teste
 novo, em inglês, nasce `test_*`), tem destino: uma lista, um passo próprio do `testa.yml` declarado

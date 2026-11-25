@@ -7,9 +7,12 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
                                            its own)
     python dev\testa_tudo.py --so-stdlib   the STDLIB, standard library only (the monta.yml runs it before installing)
     python dev\testa_tudo.py --microfone   the filter tests, with the DLLs of microfone\apo\compila.bat teste
-    python dev\testa_tudo.py --banca       only the BANCA, the long ones: the transition bench (the real engine,
+    python dev\testa_tudo.py --banca [--base origin/main]
+                                           only the BANCA, the long ones: the transition bench (the real engine,
                                            one pair per kind of transition) and the compara capture of the
-                                           --captura; the Banca job of the testa.yml
+                                           --captura; with --base, only those whose area (BANCA_AREA: the motor,
+                                           from the imports of the bench, and the tela) changed since the base.
+                                           The Banca job of the testa.yml
     python dev\testa_tudo.py --tela [--base origin/main] [--pasta logs\tela] [--ref-cache <dir>]
                                            the fitcheck in both languages against a --mock with temporary data and,
                                            with --base, the compara: the reference comes from the server and the theme
@@ -53,6 +56,7 @@ Exits 0 if everything passed and 1 if something failed; in the --tela and the --
 changed (the testa.yml decides).
 """
 import argparse
+import ast
 import hashlib
 import importlib.util
 import json
@@ -78,8 +82,10 @@ COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
     "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py", "dev/test_compara_not_ready.py",
-    "dev/test_compara_push_steps.py"]
+    "dev/test_compara_push_steps.py",
+    "dev/test_banca_areas.py"]
 BANCA = ["dev/testa_passagem.py", "dev/test_captura.py"]
+BANCA_AREA = {"dev/testa_passagem.py": "motor", "dev/test_captura.py": "tela"}
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
 # pulariam
@@ -129,6 +135,36 @@ TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py",
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
 # renderizacao ou de traducao do tema para outro modulo (posta por quem mantem o repo)
 ETIQUETAS = {"extracao-tema": "tela"}
+
+
+def imports_locais(*arquivos):
+    vistos, fila = set(), [RAIZ / a for a in arquivos]
+    while fila:
+        f = fila.pop()
+        rel = f.relative_to(RAIZ).as_posix()
+        if rel in vistos or not f.is_file():
+            continue
+        vistos.add(rel)
+        for no in ast.walk(ast.parse(f.read_text(encoding="utf-8-sig"))):
+            if isinstance(no, ast.Import):
+                nomes = [a.name for a in no.names]
+            elif isinstance(no, ast.ImportFrom) and no.module and not no.level:
+                nomes = [no.module] + [f"{no.module}.{a.name}" for a in no.names]
+            else:
+                continue
+            for partes in (nome.split(".") for nome in nomes):
+                for base in (RAIZ, f.parent):
+                    fila += [c for c in (base.joinpath(*partes).with_suffix(".py"), base.joinpath(*partes, "__init__.py"))
+                             if c.is_file()]
+    return vistos
+
+
+AREAS["motor"] = tuple(sorted(imports_locais(*(t for t, area in BANCA_AREA.items() if area == "motor")))) + (
+    "requirements.txt", "requirements-dev.txt")
+
+
+def banca_da_vez(disparadas):
+    return [t for t in BANCA if BANCA_AREA[t] in disparadas]
 
 
 def areas(arquivos, etiquetas=()):
@@ -301,9 +337,15 @@ def agents_md(path=RAIZ / "AGENTS.md"):
 
 
 def testes(a):
+    banca = BANCA
+    if a.banca and a.base:
+        disparadas = disparadas_desde(a.base)
+        if disparadas is None:
+            return 1
+        banca = banca_da_vez(disparadas)
     titulo, lista = (("Testes so da biblioteca padrao", STDLIB) if a.so_stdlib else
                      ("Testes do filtro", MICROFONE) if a.microfone else
-                     ("Banca", BANCA) if a.banca else
+                     ("Banca", banca) if a.banca else
                      ("Testes", COMPLETO + ([] if a.sem_banca else BANCA)))
     md = []
     for p in (agents := agents_md()):
@@ -342,18 +384,25 @@ def escreve(resumo, linhas):
             f.write("\n".join(linhas) + "\n\n")
 
 
-def diz_areas(a):
-    """O --areas: o git diff --name-only da base ate o HEAD. Sem rename: o arquivo que sai de uma area conta nela. Com o
+def disparadas_desde(base):
+    """O git diff --name-only da base ate o HEAD. Sem rename: o arquivo que sai de uma area conta nela. Com o
     -z, o caminho com acento vem inteiro, e nao entre aspas."""
-    cod, saida = executa(["git", "diff", "--name-only", "-z", "--no-renames", a.areas, "HEAD"], limite=60)
+    cod, saida = executa(["git", "diff", "--name-only", "-z", "--no-renames", base, "HEAD"], limite=60)
     if cod != 0:
-        print(f"o git diff contra {a.areas} falhou ({cod}):\n{saida}")
-        return 1
+        print(f"o git diff contra {base} falhou ({cod}):\n{saida}")
+        return None
     arquivos = [arq for arq in saida.split(chr(0)) if arq.strip()]
     etiquetas = json.loads(os.environ.get("ETIQUETAS") or "[]") or []  # null outside a PR (the push)
-    disparadas = areas(arquivos, etiquetas)
-    print(f"{len(arquivos)} arquivo(s) mudaram desde {a.areas}; etiquetas: {etiquetas or 'nenhuma'}")
+    print(f"{len(arquivos)} arquivo(s) mudaram desde {base}; etiquetas: {etiquetas or 'nenhuma'}")
+    return areas(arquivos, etiquetas)
+
+
+def diz_areas(a):
+    disparadas = disparadas_desde(a.areas)
+    if disparadas is None:
+        return 1
     linhas = [f"{area}={'true' if area in disparadas else 'false'}" for area in AREAS]
+    linhas.append(f"banca={'true' if banca_da_vez(disparadas) else 'false'}")
     print("\n".join(linhas))
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
