@@ -520,9 +520,9 @@ def voltas(A, E):
 
 
 def andamento(A, E):
-    """O _vigia_andamento de verdade, uma volta por caso: a versao de audio e o andamento medidos sao gravados fora da
-    fila_lock; a medida entra na memoria mesmo se a gravacao falha, e a troca na fila e o andamentos_versao so vem
-    com a gravacao feita. Enquanto grava, nada da medida aparece ainda."""
+    """O _vigia_andamento de verdade (o do App.automatico), uma volta por caso: a versao de audio e o andamento medidos
+    sao gravados fora da fila_lock; a medida entra na memoria mesmo se a gravacao falha, e a troca na fila e o
+    andamentos_versao so vem com a gravacao feita. Enquanto grava, nada da medida aparece ainda."""
     print("--- o _vigia_andamento: a gravacao fora da fila_lock")
 
     class Fim(Exception):
@@ -554,13 +554,13 @@ def andamento(A, E):
         antes = dict(ativo())
         medida = v if o_que == "audio" else {"ini": 100.0, "fim": 101.0}
         with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(server, "ANDAMENTO_APOS_S", -1),
-              mock.patch.object(server, "save_json", grava), mock.patch.object(A, "_a_medir", a_medir),
-              mock.patch.object(A, "versao_audio", return_value=v),
-              mock.patch.object(A, "_mede_andamento", return_value={"ini": 100.0, "fim": 101.0}),
-              mock.patch.object(A, "_troca_audio", side_effect=lambda *a: trocas.append(a)),
+              mock.patch.object(server, "save_json", grava), mock.patch.object(A.automatico, "_a_medir", a_medir),
+              mock.patch.object(A.automatico, "versao_audio", return_value=v),
+              mock.patch.object(A.automatico, "_mede_andamento", return_value={"ini": 100.0, "fim": 101.0}),
+              mock.patch.object(A.automatico, "_troca_audio", side_effect=lambda *a: trocas.append(a)),
               mock.patch.object(threading, "excepthook", lambda a: saiu.append(a.exc_value))):
             A.auto = True
-            t = threading.Thread(target=A._vigia_andamento, daemon=True)
+            t = threading.Thread(target=A.automatico._vigia_andamento, daemon=True)
             t.start()
             t.join(10)
             A.auto = False
@@ -1499,12 +1499,12 @@ def avanco(A, E):
     x, _, _ = cmd.enfileirar(A, {"id": "d2"})
     with mock.patch.object(eng, "TRANS_PREP_S", 10):
         with A.fila_lock:
-            antes = A._presa()
+            antes = A.automatico._presa()
             with E._qlock:
                 r = A.reserva = cmd.Reserva(E._deck, E._deck.linha, x)
-            reservada = A._presa()
+            reservada = A.automatico._presa()
             A._solta_reserva(r, None)
-            depois = A._presa()
+            depois = A.automatico._presa()
     confere(not antes and reservada and not depois,
             f"a primeira da fila com um avanco reservado nao troca no Automatico ({antes}, {reservada}, {depois})")
 

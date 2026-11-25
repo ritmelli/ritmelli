@@ -101,7 +101,11 @@ A regra dos comandos de música (tocar, enfileirar, pular, pausar, parar, a fila
   10 min, nem a mesma música em outro vídeo (o título sem o que vem entre parênteses e sem o
   participante, sozinho e junto do artista). As parecidas tocam só pelo
   stream, sem encher a prateleira; o ⊕ da busca, na ponta da linha do canal do disco no prato, baixa a que agradar (o ✓ tira de novo).
-  Contrato no `API.md`.
+  Contrato no `API.md`. A lógica mora no `automatico.py` (a classe `Automatico`, em `App.automatico`): o vigia das
+  parecidas, a ordem por andamento, a versão só de áudio e o vigia da medida. O estado (a semente, o Mix, o que fica
+  de fora, os andamentos e as versões) e a busca de rede (o `mix_do`) seguem no `App`, e o `App` repassa o
+  `ligar_auto`, o `_busca_mix` e a `_volta_auto()` a ele. O `dev/testa_automatico.py` confere a fila montada no `App`
+  de verdade, com um `mix_do` falso e andamentos conhecidos.
 - Versão só de áudio: o rádio traz de tudo, inclusive o que só existe no
   YouTube, mas a parecida que veio como vídeo (clipe com intro, vídeo com letra) toca a faixa
   do álbum quando o YouTube Music tem: uma busca de músicas com nome e artista (~0,5 s, antes
