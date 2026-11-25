@@ -1022,8 +1022,7 @@ def bloco(A, E):
     with mock.patch.object(E, "stop", side_effect=stop_called):
         with E._lock:  # the swap in the middle (espera takes the same RLock again)
             td, _ = em_thread(failing_download)
-            ate(lambda: calling.is_set() or not td.is_alive())
-            td.join(0.2)
+            confere(calling.wait(5), "the failed download never called stop before the swap published")
             E.espera(job_track)
         td.join(5)
     confere(not td.is_alive() and E.track is None and j["status"] == "error",
