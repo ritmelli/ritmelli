@@ -255,9 +255,21 @@ def voltas(A, E):
         confere(fila(A) == [], "o pular com a entrada quebrada levanta o erro (a rota responde 500, como antes)")
     try:
         cmd.enfileirar(A, {})
-        confere(False, "o enfileirar sem disco nem video e a Recusa (400)")
-    except cmd.Recusa:
-        confere(True, "o enfileirar sem disco nem video e a Recusa (400)")
+        confere(False, "o enfileirar sem disco nem video e a recusa do corpo (400)")
+    except cmd.CorpoRecusado:
+        confere(True, "o enfileirar sem disco nem video e a recusa do corpo (400)")
+
+    # o erro de tocar a entrada na hora nao e a recusa do corpo: segue para o guard (500), como antes
+    cmd.parar(A)
+    erro = "o erro de tocar na hora nao e a recusa do corpo (a rota responde 500, como antes)"
+    with mock.patch.object(A, "tocar_entrada", side_effect=ValueError("quebrou")):
+        try:
+            cmd.enfileirar(A, {"id": "d1"})
+            confere(False, erro)
+        except cmd.CorpoRecusado:
+            confere(False, erro)
+        except ValueError:
+            confere(fila(A) == [], erro)
 
 
 def main():

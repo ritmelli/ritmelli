@@ -18,7 +18,7 @@ import pastas
 CURTO = object()
 
 
-class Recusa(ValueError):
+class CorpoRecusado(ValueError):
     """O corpo que o enfileirar recusa (a rota responde 400 com o texto). O erro de tocar a entrada na hora nao e uma
     recusa: segue para quem chamou, como antes."""
 
@@ -43,11 +43,11 @@ def tocar(A, iid, start=None, retomar=False, loop=None, por_cima=CURTO):
 def enfileirar(A, b, remoto=False):
     """A entrada do corpo b no A seguir (o POST /api/queue; a regra de cada campo e o App.enfileirar). Com nada no
     prato (parado, ou o disco ja acabou), o que acabou de entrar toca na hora, sem esperar a vez; pausado ainda e
-    disco no prato, e a fila so guarda. Volta (entrada, job, tocou); Recusa e a recusa do corpo."""
+    disco no prato, e a fila so guarda. Volta (entrada, job, tocou); CorpoRecusado e a recusa do corpo."""
     try:
         x, j = A.enfileirar(b, remoto=remoto)
     except ValueError as ex:
-        raise Recusa(str(ex)) from ex
+        raise CorpoRecusado(str(ex)) from ex
     if A.engine.status() in ("idle", "ended") and A.tirar_da_fila(x["qid"]):
         A.tocar_entrada(x)
         return x, j, True

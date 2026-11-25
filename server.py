@@ -2242,7 +2242,7 @@ def build(app_state):
         b = await body(request)
         try:
             x, j, tocou = cmd.enfileirar(A, b, remoto=request["papel"] == "remoto")
-        except cmd.Recusa as ex:
+        except cmd.CorpoRecusado as ex:
             return j_err(i18n.so_texto(str(ex)))
         return j_ok(entry=x, job=j, playing=tocou)
 
