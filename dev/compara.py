@@ -329,11 +329,14 @@ async def prints(a, srv, destino):
                             pass
                     else:
                         sys.exit(f"{pre}: o tema nao ficou pronto em 20 s" + (" (sem o body.mesa-dj)" if mesa else ""))
+                    await asyncio.sleep(1)
                     if mesa:
                         # o ponto de toque do visor (movimento reduzido) fica onde o primeiro desenho o ancorou, e o
-                        # visor pode ter desenhado antes da mesa montar, noutra largura: ancora de novo, na da mesa
-                        await c.js("V.ancora = null; V.sujo = true")
-                    await asyncio.sleep(1)
+                        # visor pode ter desenhado antes da mesa montar (noutra largura), antes das fontes ou antes da
+                        # posicao do disco chegar. Ancora de novo depois da espera, com as fontes prontas, e desenha na
+                        # hora: o temporizador do visor so redesenha com disco no prato, e no vazio a ancora velha ficava
+                        await c.js("document.fonts.ready.then(() => { V.ancora = null; V.sujo = true; "
+                                   "desenharVisor(performance.now()); })")
                     for i in range(await c.js("Math.ceil(document.documentElement.scrollHeight / innerHeight)")):
                         await c.js(f"scrollTo(0, {i} * innerHeight)")
                         await estado(f"{pre}-inicio-{i}")
