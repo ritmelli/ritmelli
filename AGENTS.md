@@ -2,12 +2,14 @@
 
 O que vale para quem muda o código do Ritmelli e que o código não diz sozinho. Como cada peça funciona:
 [docs/ARQUITETURA.md](docs/ARQUITETURA.md). O contrato entre o servidor e a interface: [API.md](API.md). Instalar,
-rodar e contribuir: [README.md](README.md). Código, comentários, commits e PRs em português do Brasil.
+rodar e contribuir: [README.md](README.md). Código, comentários e commits em português do Brasil; issues e PRs em
+português ou inglês.
 
 ## Onde testar
 
 - Nunca no 8799, no Ritmelli instalado nem com o microfone de verdade: o som sai no jogo de quem está jogando. O
-  servidor de teste é o `--mock` noutra porta, que por padrão trabalha numa cópia dos dados numa pasta temporária:
+  servidor de teste é o `--mock` noutra porta, que por padrão trabalha numa pasta temporária, só com uma cópia da
+  lista da prateleira:
   `python server.py --mock --port 8801 --no-browser`.
 - Nunca no Discord de quem usa; só num canal fechado de teste e num Windows de teste.
 - O `microfone\microfone.py instala-todos` e o `remove` mexem em todo microfone do PC e no filtro do Ritmelli
@@ -27,8 +29,9 @@ rodar e contribuir: [README.md](README.md). Código, comentários, commits e PRs
   com as mesmas chaves na mesma ordem, e os da galeria em `gallery/i18n/`. O servidor não escreve frase para a tela:
   manda a Mensagem do `i18n.msg`, com uma chave `server.*`. Log e erro técnico ficam em inglês.
 - Rota nova do `server.py`: da rede de casa, toda `/api/` responde ao celular pareado, menos as que o `guard` fecha
-  (`/api/pareamento`, `/api/atualizacao` e `/api/metricas`). Rota nova nasce só para o PC, fechada no `guard` como
-  essas, e abrir para o celular é decisão escrita no PR. Rota ou campo novo entra no `API.md`.
+  (`/api/pareamento`, `/api/atualizacao` e `/api/metricas`) e as que o próprio handler recusa pelo `do_pc` (o
+  `POST /api/boas-vindas` e o `POST /api/janela/foco`). Rota nova nasce só para o PC, fechada de um desses jeitos, e
+  abrir para o celular é decisão escrita no PR. Rota ou campo novo entra no `API.md`.
 - Mudou uma peça, muda o arquivo dela em `docs/arquitetura/`.
 
 ## As superfícies de uma mudança
