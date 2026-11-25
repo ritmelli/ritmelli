@@ -9387,11 +9387,12 @@ function carregar() {
       boasVindasSePrecisar();
     })
     .catch(e => {
+      if (geracao !== geracaoPareamento) return;   // a carga de antes do pareamento de agora: o erro dela nao vale mais
       if (e.status !== 401) { online(false); return; }
       // o codigo do QR so se usa sem pareamento: ja pareado (ou no proprio PC), ele segue valendo para outro celular
       if (codigoQR) { const c = codigoQR; codigoQR = null; parear(c); }
     })
-    .finally(() => { if (!S.pareando) conectar(); });
+    .finally(() => { if (!S.pareando && geracao === geracaoPareamento) conectar(); });
 }
 carregar();
 </script>

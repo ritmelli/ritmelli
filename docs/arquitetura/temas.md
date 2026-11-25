@@ -27,10 +27,10 @@ chama, e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e
 PC (o botão Celular, a versão nova, os dados de uso, as boas-vindas) só aparecem depois de o `caps` dizer que a rota
 deles abre. O 401 do pareamento põe o `caps` de antes de parear; pareado, o `/api/state` traz o do celular; o
 celular desconectado no PC volta ao de antes. O endereço só fica com o texto do aviso de fora do ar da página que
-nunca recebeu um `caps` (a guardada, que o navegador reabre com o Ritmelli fechado). Ele é o único script do tema de
-que a conexão depende: se a carga dele falha ao abrir a página (o servidor fora), o `conectar()` o carrega de novo a
-cada 3 s, uma carga por vez, e com ele de volta a página segue a carga normal, sem recarregar. Para ver o papel do celular sem
-outro aparelho, o `--mock --papel-local celular` (ver o `API.md`).
+nunca recebeu um `caps` (a guardada, que o navegador reabre com o Ritmelli fechado). O `transporte.js` é o único
+script do tema de que a conexão depende: se a carga dele falha ao abrir a página (o servidor fora), o `conectar()` o
+carrega de novo a cada 3 s, uma carga por vez, e com ele de volta a página segue a carga normal, sem recarregar. Para
+ver o papel do celular sem outro aparelho, o `--mock --papel-local celular` (ver o `API.md`).
 
 Parte do CSS do tema mora em arquivos ao lado do `index.html` (o `deck.css`, por exemplo), cada um com um bloco
 marcado inteiro e carregado por um `<link rel="stylesheet">` sem `media`, no mesmo lugar em que o bloco estava: a
