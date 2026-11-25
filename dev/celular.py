@@ -7,14 +7,15 @@
     python dev/celular.py custo --url URL               # ms de estilo das classes que o palco troca
     python dev/celular.py dedo --url URL [--segundos 15] [--esperar]   # so grava, enquanto o usuario rola com o dedo
 
-URL e a aba de teste, a do --mock (python server.py --mock --port 8801 --no-browser) como o PC a abre:
-http://127.0.0.1:8801/t/ritmelli/. Antes: adb no PATH (ou ADB=<caminho do adb.exe>) e o celular autorizado em
-`adb devices`. O script so fala com um --mock (dev/so_mock.py): recusa a porta 8799 e a origem cujo /api/state nao traz
-o "mock": true (sem seguir redirecionamento). Faz o forward da porta 9222 e o `adb reverse` da porta do --mock (ele so
-escuta em 127.0.0.1), abre a aba de teste se ela nao estiver aberta e so mexe nela (as outras abas sao do usuario).
-Nela, barra o documento de outra origem; antes de abrir a aba e antes de cada gesto, confere de novo o marcador e a
-origem da aba. Pelo adb reverse, o --mock e o tema veem 127.0.0.1: a medida sai com o papel do PC, e a do papel do
-celular (pareado pela rede de casa) segue manual.
+URL e a aba de teste, a do --mock (python server.py --mock --port 8801 --no-browser) como o PC a abre, sempre em
+127.0.0.1: http://127.0.0.1:8801/t/ritmelli/. Antes: adb no PATH (ou ADB=<caminho do adb.exe>) e o celular autorizado
+em `adb devices`. O script so fala com um --mock (dev/so_mock.py): recusa a porta 8799 e a origem cujo /api/state nao
+traz o "mock": true (sem seguir redirecionamento). Faz o forward da porta 9222 e o `adb reverse` da porta do --mock (ele
+so escuta em 127.0.0.1; um mapeamento que ja existia no celular nao e trocado), abre a aba de teste se ela nao estiver
+aberta e so mexe nela (as outras abas sao do usuario). Nela, barra o documento de outra origem; antes de abrir a aba,
+antes de cada gesto e antes de publicar a medida, confere de novo o marcador e a pagina da aba. Pelo adb reverse, o
+--mock e o tema veem 127.0.0.1: a medida sai com o papel do PC, e a do papel do celular (pareado pela rede de casa)
+segue manual.
 O celular de teste e um Galaxy S20 FE: tela de 120 Hz (um quadro a cada 8,3 ms), densidade 3. O
 emulado do Chrome no PC nao reproduz o que trava la (no 18/10, as agulhas e as texturas so
 travavam no aparelho). Leitura do resultado da rolagem:
@@ -64,8 +65,12 @@ def adb_forward(porta, esperar=False):
         sys.exit(f"nenhum celular autorizado no adb:\n{lista}")
     subprocess.run([adb, "forward", "tcp:9222", "localabstract:chrome_devtools_remote"], check=True,
                    capture_output=True, text=True, encoding="utf-8", errors="replace")
-    subprocess.run([adb, "reverse", f"tcp:{porta}", f"tcp:{porta}"], check=True,
-                   capture_output=True, text=True, encoding="utf-8", errors="replace")
+    # --no-rebind: um mapeamento que ja existia no celular nao e trocado (nem removido no fim)
+    r = subprocess.run([adb, "reverse", "--no-rebind", f"tcp:{porta}", f"tcp:{porta}"],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r.returncode:
+        sys.exit(f"o adb reverse da porta {porta} nao foi criado ({(r.stderr or r.stdout).strip()}); se ja existe "
+                 f"(adb reverse --list), use outra porta no --mock ou tire o de antes (adb reverse --remove tcp:{porta})")
     return adb
 
 
@@ -265,6 +270,7 @@ async def dedo(a, args):
             break
         topo = y if y is not None else None
         await asyncio.sleep(0.5)
+    await a.confere()  # a espera pode ter levado ate 5 min
     print(f"gravando {args.segundos:g} s: pode rolar", file=sys.stderr, flush=True)
     return await a.gravar(lambda: asyncio.sleep(args.segundos))
 
@@ -291,6 +297,8 @@ async def main():
     ap.add_argument("--esperar", action="store_true", help="espera o celular aparecer no adb (ate 10 min)")
     args = ap.parse_args()
     try:
+        if urllib.parse.urlsplit(args.url).hostname != "127.0.0.1":  # o PC e o celular (adb reverse) no mesmo lugar
+            raise so_mock.Recusa(f"{args.url}: a aba de teste e a do --mock em http://127.0.0.1:<porta>/...")
         base = so_mock.confere(args.url)  # antes do adb e da aba
     except so_mock.Recusa as ex:
         sys.exit(f"recusado: {ex}")
@@ -301,7 +309,7 @@ async def main():
     try:
         await medir(args, base)
     except so_mock.Recusa as ex:
-        sys.exit(f"recusado: {ex}; o gesto nao foi feito")
+        sys.exit(f"recusado: {ex}; nenhum gesto a mais, e a medida nao sai")
     finally:
         subprocess.run([adb, "reverse", "--remove", f"tcp:{porta}"], capture_output=True)
 
@@ -310,6 +318,7 @@ async def medir(args, base):
     a = await conectar(args.url, base)
     try:
         r = await {"rolagem": rolagem, "puxao": puxao, "abrir": abrir, "custo": custo, "dedo": dedo}[args.medida](a, args)
+        await a.confere()  # a medida so vale se a aba seguiu no --mock ate o fim
         if isinstance(r, list):
             if args.trace:
                 with open(args.trace, "w", encoding="utf-8") as f:
