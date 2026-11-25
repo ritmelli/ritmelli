@@ -66,6 +66,17 @@ if (-not $SemCongelar) {
     "criando o venv em $raiz..."
     Roda 'venv' { python -m venv $raiz }
   }
+  # mina is an optional local module that is not part of the app: the spec excludes it, and a build where it imports
+  # (next to the code, in the venv or on the PYTHONPATH, as PyInstaller sees it) is refused before anything else runs.
+  # Where it was found comes back as ASCII JSON: PowerShell would garble an accented path, and a namespace package has
+  # no origin
+  $findMina = "import importlib.util, json; s = importlib.util.find_spec('mina'); " +
+    "print(json.dumps('' if s is None else s.origin or '; '.join(s.submodule_search_locations or ['?'])))"
+  Push-Location $Ritmelli
+  try { $mina = & "$venv\python.exe" -c $findMina } finally { Pop-Location }
+  if ($LASTEXITCODE -ne 0) { throw "the mina check exited with $LASTEXITCODE" }
+  $mina = $mina | ConvertFrom-Json
+  if ($mina) { throw "mina is importable ($mina) and is not part of the app: move it off the path to build" }
   # a cada build: as versoes de travas.txt (o PC e o GitHub montam com as mesmas, e elas so mudam de proposito), o que
   # entrou no requirements.txt e ainda nao esta na trava, e o yt-dlp sempre o mais novo (o YouTube quebra o velho, e o
   # update do app e o unico jeito de o novo chegar a quem usa)
