@@ -5,6 +5,10 @@
 
 O --js roda depois da carga, antes da conferencia (abrir uma pagina ou um painel e conferir ela tambem).
 
+So fala com um servidor --mock (dev/so_mock.py): antes de abrir a pagina, recusa a porta 8799 e a origem cujo
+/api/state nao traz o "mock": true (sem seguir redirecionamento); no Chrome, barra o documento de outra origem; antes de
+agir, confere de novo a origem da pagina e o marcador.
+
 A tela de boas-vindas (a da primeira vez, com a prateleira vazia) cobre a pagina: antes de conferir, o fitcheck a fecha
 pelo servidor, como o botao do fim dela (#126). Com o --boas-vindas ela fica aberta, e a conferida e ela: a janela
 dentro da tela e cada controle dela alcancavel, em todos os tamanhos.
@@ -22,10 +26,10 @@ Sai 1 se algum tamanho reprovar.
 import argparse
 import asyncio
 import base64
+import itertools
 import json
 import os
 import shutil
-import socket
 import subprocess
 import sys
 import tempfile
@@ -34,6 +38,10 @@ import urllib.parse
 import urllib.request
 
 import websockets
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import so_mock  # noqa: E402
+from so_mock import free_port  # noqa: E402,F401 - o compara, o perfcheck e o texturas pegam daqui
 
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 SIZES = ("1024x600,1280x650,1280x720,1366x657,1366x768,1436x765,1440x900,1536x730,"
@@ -87,14 +95,6 @@ PROBE = r"""(soDialogo => {
 })"""
 
 
-def free_port():
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    p = s.getsockname()[1]
-    s.close()
-    return p
-
-
 def fecha_chrome(chrome, prof):
     """Fecha o Chrome sem tela e apaga o perfil dele, que antes ficava no %TEMP% a cada rodada. Vai a arvore inteira (o
     taskkill /T): o kill so fecha o processo principal, e o chrome_crashpad_handler, filho dele, seguia segurando um
@@ -123,7 +123,7 @@ def boas_vindas_pendentes(url):
     """O servidor do url ainda mostraria a tela de boas-vindas (a prateleira vazia e ela nunca fechada)? None quando
     ele nao tem a rota ou esta fora do ar."""
     try:
-        with urllib.request.urlopen(_rota_boas_vindas(url), timeout=5) as r:
+        with so_mock.abre(_rota_boas_vindas(url), 5) as r:
             return bool(json.load(r).get("mostrar"))
     except (OSError, ValueError):
         return None
@@ -135,10 +135,11 @@ def fecha_boas_vindas(url):
     --data-dir, numa pasta temporaria). True se fechou; sem nada a fechar, ou sem a rota, False, e tudo segue."""
     if not boas_vindas_pendentes(url):
         return False
+    so_mock.confere(url)  # o POST so a um --mock
     req = urllib.request.Request(_rota_boas_vindas(url), data=b"{}", method="POST",
                                  headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=5):
+        with so_mock.abre(req, 5):
             return True
     except OSError:
         return False
@@ -155,7 +156,42 @@ async def espera_boas_vindas(cmd):
     return False
 
 
+def barra_outra_origem(ws, base, barrados):
+    """O tratador do Fetch.requestPaused (so_mock.DOCUMENTOS): o documento de outra origem e barrado e anotado. Volta a
+    funcao que recebe cada mensagem do CDP e diz se a tratou. As respostas vao com ids de outra faixa, que nenhum
+    comando de quem chama usa."""
+    ids, vivas = itertools.count(1 << 30), set()
+
+    async def responde(params):
+        metodo, p = so_mock.libera_ou_barra(params, base)
+        if metodo == "Fetch.failRequest":
+            barrados.append(params["request"]["url"])
+        await ws.send(json.dumps({"id": next(ids), "method": metodo, "params": p}))
+
+    def trata(m):
+        if m.get("method") != "Fetch.requestPaused":
+            return False
+        t = asyncio.create_task(responde(m["params"]))
+        vivas.add(t)  # o loop so guarda referencia fraca da tarefa
+        t.add_done_callback(vivas.discard)
+        return True
+    return trata
+
+
+async def confere_pagina(cmd, url, barrados):
+    """Antes de agir: a pagina na origem do url, nenhum documento barrado e o servidor ainda um --mock."""
+    if barrados:
+        raise so_mock.Recusa(f"a pagina tentou ir para outra origem ({barrados[0]}): barrada")
+    r = await cmd("Runtime.evaluate", expression="location.origin", returnByValue=True)
+    so_mock.confere_pagina(url, r.get("result", {}).get("value"))
+
+
 async def run(a):
+    try:
+        base = so_mock.confere(a.url)  # antes de tudo: o POST das boas-vindas e a pagina so num --mock
+    except so_mock.Recusa as ex:
+        print(f"FALHA  {ex}")
+        return 1
     if a.boas_vindas:
         pendente = boas_vindas_pendentes(a.url)
         if pendente is None:
@@ -183,29 +219,47 @@ async def run(a):
             except Exception:  # noqa: BLE001 - subindo
                 time.sleep(0.1)
         async with websockets.connect(ws_url, max_size=64 * 1024 * 1024) as ws:
-            seq = [0]
+            seq, pend, barrados = [0], {}, []
+            fetch = barra_outra_origem(ws, base, barrados)
+
+            async def leitor():
+                async for raw in ws:
+                    m = json.loads(raw)
+                    if m.get("id") in pend:
+                        pend.pop(m["id"]).set_result(m)
+                    else:
+                        fetch(m)
+
+            tarefa = asyncio.create_task(leitor())
 
             async def cmd(method, **params):
                 seq[0] += 1
-                my = seq[0]
-                await ws.send(json.dumps({"id": my, "method": method, "params": params}))
-                while True:
-                    m = json.loads(await asyncio.wait_for(ws.recv(), 30))
-                    if m.get("id") == my:
-                        return m.get("result", {})
+                f = asyncio.get_running_loop().create_future()
+                pend[seq[0]] = f
+                await ws.send(json.dumps({"id": seq[0], "method": method, "params": params}))
+                return (await asyncio.wait_for(f, 30)).get("result", {})
 
             await cmd("Page.enable")
+            await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
             for sz in a.sizes.split(","):
                 w, h = map(int, sz.split("x"))
                 await cmd("Emulation.setDeviceMetricsOverride", width=w, height=h,
                           deviceScaleFactor=1, mobile=w < 600)
-                await cmd("Page.navigate", url=a.url)
-                await asyncio.sleep(a.wait)
-                if a.js:
-                    await cmd("Runtime.evaluate", expression=a.js)
+                try:
+                    so_mock.confere(a.url)  # antes de cada navegacao: a porta pode ter mudado de dono
+                    await cmd("Page.navigate", url=a.url)
                     await asyncio.sleep(a.wait)
-                if a.boas_vindas:  # se nao abrir, o PROBE diz "nenhuma janela aberta"
-                    await espera_boas_vindas(cmd)
+                    await confere_pagina(cmd, a.url, barrados)
+                    if a.js:
+                        await cmd("Runtime.evaluate", expression=a.js)
+                        await asyncio.sleep(a.wait)
+                    if a.boas_vindas:  # se nao abrir, o PROBE diz "nenhuma janela aberta"
+                        await espera_boas_vindas(cmd)
+                    await confere_pagina(cmd, a.url, barrados)  # o --js e a espera podem ter levado a pagina embora
+                except so_mock.Recusa as ex:
+                    print(f"FALHA  {sz:>10}  {ex}; nada mais conferido")
+                    falhas += 1
+                    break
                 r = await cmd("Runtime.evaluate", expression=f"{PROBE}({'true' if a.boas_vindas else 'false'})",
                               returnByValue=True)
                 v = r["result"]["value"]
@@ -230,6 +284,7 @@ async def run(a):
                     s = await cmd("Page.captureScreenshot", format="png")
                     with open(os.path.join(a.shots, f"fit_{sz}.png"), "wb") as f:
                         f.write(base64.b64decode(s["data"]))
+            tarefa.cancel()
     finally:
         fecha_chrome(chrome, prof)
     return 1 if falhas else 0

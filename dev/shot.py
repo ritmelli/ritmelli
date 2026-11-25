@@ -9,6 +9,10 @@ Cada --js roda em ordem, com --wait segundos depois de cada um, todos no mesmo e
 global da pagina (const repetido entre passos da erro: use uma IIFE). Sai 1 se a pagina
 lancou excecao ou logou console.error.
 
+So fala com um servidor --mock (dev/so_mock.py): antes de abrir a pagina, recusa a porta 8799 e a origem cujo
+/api/state nao traz o "mock": true (sem seguir redirecionamento); no Chrome, barra o documento de outra origem; antes de
+cada --js, do Tab e do print, confere de novo a origem da pagina e o marcador. Recusado, sai 1 sem print.
+
 A tela de boas-vindas (a da primeira vez, com a prateleira vazia) cobre a pagina: antes do print ela e fechada pelo
 servidor, como o botao do fim dela (#126). Com o --boas-vindas ela fica, e o print e dela.
 """
@@ -17,7 +21,6 @@ import asyncio
 import base64
 import json
 import os
-import socket
 import subprocess
 import sys
 import tempfile
@@ -27,20 +30,20 @@ import urllib.request
 import websockets
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fitcheck import SEM_BOAS_VINDAS, espera_boas_vindas, fecha_boas_vindas, fecha_chrome  # noqa: E402
+import so_mock  # noqa: E402
+from fitcheck import (SEM_BOAS_VINDAS, barra_outra_origem, confere_pagina, espera_boas_vindas,  # noqa: E402
+                      fecha_boas_vindas, fecha_chrome)
+from so_mock import free_port  # noqa: E402
 
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 
-def free_port():
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    p = s.getsockname()[1]
-    s.close()
-    return p
-
-
 async def run(a):
+    try:
+        base = so_mock.confere(a.url)  # antes de tudo: o POST das boas-vindas e a pagina so num --mock
+    except so_mock.Recusa as ex:
+        print(f"recusado: {ex}")
+        return 1
     if not a.boas_vindas and fecha_boas_vindas(a.url):
         print("(a tela de boas-vindas estava pendente: fechada pelo servidor, como o botao do fim dela)")
     port = free_port()
@@ -67,10 +70,14 @@ async def run(a):
         async with websockets.connect(ws_url, max_size=64 * 1024 * 1024) as ws:
             seq = [0]
             pending = {}
+            barrados = []
+            fetch = barra_outra_origem(ws, base, barrados)
 
             async def reader():
                 async for raw in ws:
                     m = json.loads(raw)
+                    if fetch(m):
+                        continue
                     if "id" in m and m["id"] in pending:
                         pending.pop(m["id"]).set_result(m)
                     elif m.get("method") == "Runtime.exceptionThrown":
@@ -106,6 +113,16 @@ async def run(a):
             await cmd("Page.enable")
             await cmd("Runtime.enable")
             await cmd("Log.enable")
+            await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
+
+            async def pode_agir():
+                try:
+                    await confere_pagina(cmd, a.url, barrados)
+                    return True
+                except so_mock.Recusa as ex:
+                    print(f"recusado: {ex}; nada mais feito, sem print")
+                    return False
+
             await cmd("Emulation.setDeviceMetricsOverride", width=w, height=h,
                       deviceScaleFactor=a.dpr, mobile=w < 600)
             # sem isso a aba headless nunca tem foco e :focus-visible nao aparece no print
@@ -113,11 +130,20 @@ async def run(a):
             if a.reduced_motion:
                 await cmd("Emulation.setEmulatedMedia",
                           features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
+            try:
+                so_mock.confere(a.url)  # de novo logo antes de navegar: o Chrome levou segundos para subir
+            except so_mock.Recusa as ex:
+                print(f"recusado: {ex}")
+                return 1
             await cmd("Page.navigate", url=a.url)
             await asyncio.sleep(a.wait)
+            if not await pode_agir():
+                return 1
             if a.boas_vindas and not await espera_boas_vindas(cmd):
                 errors.append(f"a tela de boas-vindas nao abriu: {SEM_BOAS_VINDAS}")
             for js in a.js:
+                if not await pode_agir():
+                    return 1
                 r = await cmd("Runtime.evaluate", expression=js, awaitPromise=True,
                               returnByValue=True)
                 if r.get("exceptionDetails"):
@@ -126,6 +152,8 @@ async def run(a):
                 elif r.get("result", {}).get("value") is not None:
                     print(f"js> {json.dumps(r['result']['value'], ensure_ascii=False)[:4000]}")
                 await asyncio.sleep(a.wait)
+            if not await pode_agir():  # o ultimo --js pode ter levado a pagina embora: sem print
+                return 1
             for _ in range(a.tab):
                 for typ in ("rawKeyDown", "keyUp"):
                     await cmd("Input.dispatchKeyEvent", type=typ, key="Tab", code="Tab",
@@ -133,6 +161,8 @@ async def run(a):
                 await asyncio.sleep(0.05)
             if a.tab:
                 await asyncio.sleep(0.4)
+                if not await pode_agir():  # e logo antes do print, depois do Tab
+                    return 1
             shot = {"format": "png"}
             if a.full:
                 m = await cmd("Page.getLayoutMetrics")

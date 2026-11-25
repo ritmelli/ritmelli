@@ -26,7 +26,9 @@ comparar. A conta so roda depois de fechar a gravacao (conta pesada no meio faz 
 fica num .npz ao lado do .json, e --analisa refaz a conta dele.
 
 Toca de verdade no microfone escolhido: quem estiver ouvindo ele (uma call, um jogo) ouve os estalos. Para sem tocar
-nada num microfone sem o filtro pronto.
+nada num microfone sem o filtro pronto. E manual, para um Windows de teste: com o Ritmelli ligado (a porta 8799
+aceitando conexao), sai com erro antes de abrir o anel (dev/so_mock.py); o --analisa, que so refaz a conta de uma
+captura guardada, fica livre.
 """
 import argparse
 import ctypes
@@ -46,6 +48,8 @@ import numpy as np
 AQUI = Path(__file__).resolve().parent
 RAIZ = AQUI.parent
 sys.path.insert(0, str(RAIZ))
+sys.path.insert(0, str(AQUI))
+import so_mock  # noqa: E402
 
 SR = 48000
 ESTALOS = 10           # por fase
@@ -349,10 +353,11 @@ def main(argv=None):
     ap.add_argument("--papel", choices=("motor",), help=argparse.SUPPRESS)
     ap.add_argument("--guid", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
-    if a.papel == "motor":
-        return motor(a)
     if a.analisa:
         return conta(a.analisa, Path(a.analisa).with_suffix(".json"))
+    so_mock.sai_se_o_app_ligado("o mede_voz_ao_vivo")  # antes de abrir o anel, o microfone e a saida
+    if a.papel == "motor":
+        return motor(a)
     if not a.mic or not a.toca:
         ap.error("diga o microfone com o filtro e a saida que cai nele")
     return mede(a)
