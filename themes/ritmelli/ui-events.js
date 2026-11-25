@@ -30,6 +30,8 @@ $('#b-ouvir').addEventListener('click', () => {
   if (v && S.state && S.state.voice_mon_vol !== 1) ajustar('voice_mon_vol', 1);
   desenharEfeito();
 });
+bindEffectsDrawer();
+textoBusca();
 matchMedia('(max-width: 899.98px)').addEventListener('change', () => {
   abrirGaveta(S.gaveta); if (!celular()) abrirPalco(false); else abrirDisco(false); inertPalco(); textoBusca();
 });
@@ -374,6 +376,7 @@ sk.addEventListener('keydown', e => {
   S.pos = t; desenharTempo();
   api('POST', '/api/seek', { t }).catch(err => avisar(err.message, true));
 });
+bindSearch();
 $('#b-cel').addEventListener('click', abrirCelular);
 $('#b-disp').addEventListener('click', abrirDispositivos);
 $('#dica-ouvir').addEventListener('click', e => { if (e.target.closest('.ir-disp')) abrirDispositivos(); });

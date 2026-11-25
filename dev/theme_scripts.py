@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import importlib
 import json
-import re
 import sys
 import tempfile
 from pathlib import Path
@@ -13,34 +12,33 @@ so_mock = importlib.import_module("so_mock")
 missing_script = importlib.import_module("missing_script")
 
 RAIZ = Path(__file__).resolve().parent.parent
-PROLOGUE = re.compile(r"(?:\s+|/\*[\s\S]*?\*/|//[^\n]*)*(?:(['\"])use strict\1\s*;?)?")
-SNAPSHOT = ("(() => { const m = new Map(); for (const n of Object.getOwnPropertyNames(globalThis)) {"
-            " const d = Object.getOwnPropertyDescriptor(globalThis, n); m.set(n, 'value' in d ? d.value : d.get); }"
-            " globalThis[Symbol.for('names before')] = m; })()")
-CHANGED = ("(() => { const m = globalThis[Symbol.for('names before')];"
-           " return Object.getOwnPropertyNames(globalThis).filter(n => {"
-           " const d = Object.getOwnPropertyDescriptor(globalThis, n);"
-           " return !m.has(n) || !Object.is(m.get(n), 'value' in d ? d.value : d.get); }); })()")
+SUSPENDED = "(function* () {%s\n;eval('');\n})()"
 SAMPLES = (
     ("a function in two scripts", ("'use strict';\nfunction a() {}", "'use strict';\nfunction a() {}"), {"a"}),
     ("a let in two scripts", ("'use strict';\nlet b = 1;", "'use strict';\nlet b = 2;"), {"b"}),
     ("a const and a class", ("'use strict';\nconst c = 1;", "'use strict';\nclass c {}"), {"c"}),
     ("a var in two scripts", ("var d;", "var d = 1;"), {"d"}),
     ("a function and a let", ("function e() {}", "let e;"), {"e"}),
-    ("a name the window already has", ("function open() {}", "function open() {}"), {"open"}),
+    ("a var the window already has", ("var name;", "var name = 'other';"), {"name"}),
+    ("a var and a function the window already has", ("var open;", "function open() {}"), {"open"}),
     ("names inside functions and blocks", ("'use strict';\nfunction f() { var x; let y; }\n{ let z; }",
                                            "'use strict';\nfunction g() { var x; let y; }\n{ let z; }"), set()),
-    ("a block function after the strict mode", ("/* A-INICIO */\n'use strict';\n{ function h() {} }",
-                                               "// B\n'use strict';\n{ function h() {} }"), set()),
+    ("a block function in strict mode", ("/* A-INICIO */\n'use strict';\n{ function h() {} }",
+                                         "'custom';\n'use strict';\n{ function h() {} }"), set()),
 )
 BROKEN_SAMPLE = "'use strict';\nlet i = ;"
 FEATURE_HANDLERS = (
-    ("search.js", "#q", "input"), ("search.js", "#q", "keydown"), ("search.js", "#form-busca", "submit"),
-    ("search.js", "#b-voltar", "click"), ("search.js", "#b-sair-busca", "click"), ("search.js", "#b-limpar-q", "click"),
-    ("voice-effects.js", "#gaveta", "click"), ("voice-effects.js", "#gaveta-dir", "click"),
-    ("voice-effects.js", "#desliga-ef", "click"), ("voice-effects.js", "#b-efeito", "click"),
-    ("voice-effects.js", "#b-fechar-gav", "click"),
+    ("search.js", "ui-events.js", "#q", "input"), ("search.js", "ui-events.js", "#q", "keydown"),
+    ("search.js", "ui-events.js", "#form-busca", "submit"), ("search.js", "ui-events.js", "#b-voltar", "click"),
+    ("search.js", "ui-events.js", "#b-sair-busca", "click"), ("search.js", "ui-events.js", "#b-limpar-q", "click"),
+    ("search.js", "queue.js", "#resultados", "click"), ("search.js", "queue.js", "#resultados", "pointerdown"),
+    ("search.js", "queue.js", "#resultados", "pointermove"), ("search.js", "queue.js", "#resultados", "pointerup"),
+    ("search.js", "queue.js", "#resultados", "pointercancel"),
+    ("voice-effects.js", "ui-events.js", "#gaveta", "click"), ("voice-effects.js", "ui-events.js", "#gaveta-dir", "click"),
+    ("voice-effects.js", "ui-events.js", "#desliga-ef", "click"), ("voice-effects.js", "ui-events.js", "#b-efeito", "click"),
+    ("voice-effects.js", "ui-events.js", "#b-fechar-gav", "click"),
 )
+RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc';"
                " document.getElementById('form-busca').requestSubmit(); })()")
 OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true,"
@@ -49,37 +47,29 @@ OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEv
 PAGE_READY_S = 15.0
 
 
-def guarded(source):
-    end = PROLOGUE.match(source).end()
-    return source[:end] + "\n;throw 0;" + source[end:]
-
-
 async def until(tab, state, condition, seconds):
     r = await tab.cmd("Runtime.evaluate", awaitPromise=True, returnByValue=True,
                       expression=missing_script.WAIT_IN_PAGE % (state, condition, int(seconds * 1000)))
     return r.get("result", {}).get("value") or {}
 
 
-async def names_of(tab, frame, label, source):
-    ctx = (await tab.cmd("Page.createIsolatedWorld", frameId=frame, worldName=f"names of {label}"))["executionContextId"]
-    await tab.cmd("Runtime.evaluate", expression=SNAPSHOT, contextId=ctx)
-    compiled = await tab.cmd("Runtime.compileScript", expression=guarded(source), sourceURL=label, persistScript=True,
-                             executionContextId=ctx)
-    if "exceptionDetails" in compiled:
-        return None, compiled["exceptionDetails"]["exception"].get("description", "does not compile")
-    ran = await tab.cmd("Runtime.runScript", scriptId=compiled["scriptId"], executionContextId=ctx, returnByValue=True)
-    thrown = ran.get("exceptionDetails", {}).get("exception", {})
-    if thrown.get("value") != 0:
-        return None, f"does not stop before its first statement ({thrown.get('description') or ran.get('result')})"
-    lexical = (await tab.cmd("Runtime.globalLexicalScopeNames", executionContextId=ctx))["names"]
-    changed = await tab.cmd("Runtime.evaluate", expression=CHANGED, contextId=ctx, returnByValue=True)
-    return set(lexical) | set(changed["result"]["value"]), None
+async def names_of(tab, source):
+    made = await tab.cmd("Runtime.evaluate", expression=SUSPENDED % source)
+    if "exceptionDetails" in made:
+        return None, made["exceptionDetails"]["exception"].get("description", "does not compile")
+    internal = (await tab.cmd("Runtime.getProperties", objectId=made["result"]["objectId"],
+                              ownProperties=True)).get("internalProperties", [])
+    scopes = next(p["value"]["objectId"] for p in internal if p["name"] == "[[Scopes]]")
+    chain = (await tab.cmd("Runtime.getProperties", objectId=scopes, ownProperties=True))["result"]
+    local = next(s["value"]["objectId"] for s in chain if s.get("value", {}).get("description") == "Local")
+    names = (await tab.cmd("Runtime.getProperties", objectId=local, ownProperties=True))["result"]
+    return {p["name"] for p in names} - {"arguments"}, None
 
 
-async def top_level_names(tab, frame, scripts):
+async def top_level_names(tab, scripts):
     owners, errors = {}, []
     for label, source in scripts:
-        names, error = await names_of(tab, frame, label, source)
+        names, error = await names_of(tab, source)
         if error:
             errors.append(f"{label}: {error}")
             continue
@@ -117,25 +107,24 @@ async def checks(tab):
     await tab.tab_reaches(lambda: tab.loads >= 1, PAGE_READY_S)
     ready = await until(tab, "({mesa: typeof MESA !== 'undefined' && MESA.montada, online: typeof S !== 'undefined'"
                              " && S.online, scripts: document.scripts.length})", "s.mesa && s.online", PAGE_READY_S)
-    frame = (await tab.cmd("Page.getFrameTree"))["frameTree"]["frame"]["id"]
     results = []
 
     for title, sources, expected in SAMPLES:
-        twice, errors = await top_level_names(tab, frame, [(f"{title} {n}", s) for n, s in enumerate(sources, 1)])
+        twice, errors = await top_level_names(tab, [(f"{title} {n}", s) for n, s in enumerate(sources, 1)])
         results.append((not errors and set(twice) == expected,
                         f"the name reader on {title}: {sorted(twice) or 'no name'} in more than one script"
                         f"{', ' + '; '.join(errors) if errors else ''}"))
-    _, errors = await top_level_names(tab, frame, [("a broken script", BROKEN_SAMPLE)])
+    _, errors = await top_level_names(tab, [("a broken script", BROKEN_SAMPLE)])
     results.append((bool(errors), f"the name reader on a script that does not compile reports it ({errors})"))
 
     scripts = await page_scripts(tab)
-    twice, errors = await top_level_names(tab, frame, scripts)
+    twice, errors = await top_level_names(tab, scripts)
     results.append((ready.get("mesa") and len(scripts) == ready.get("scripts") and not twice and not errors,
                     f"every top-level name of the theme page is declared by one script ({len(scripts)} scripts read, "
                     f"{ready.get('scripts')} in the page; {twice or 'no name twice'}"
                     f"{'; ' + '; '.join(errors) if errors else ''})"))
 
-    for file, selector, kind in FEATURE_HANDLERS:
+    for file, _, selector, kind in FEATURE_HANDLERS:
         files = await handler_files(tab, selector, kind)
         results.append((files == [file], f"the {kind} handler of {selector} is in {file} ({files})"))
 
@@ -148,21 +137,45 @@ async def checks(tab):
     return results
 
 
+def held_until(activation):
+    async def run(tab):
+        await tab.cmd("Debugger.enable")
+        tab.holding.add(activation)
+        await missing_script.open_page(tab)
+        state = await until(tab, f"({{ran: typeof {RAN_BEFORE[activation]} === 'function',"
+                                 " inert: document.getElementById('form-busca')?.inert})", "s.ran", PAGE_READY_S)
+        early = {}
+        for _, at, selector, kind in FEATURE_HANDLERS:
+            if at == activation:
+                early[f"{kind} {selector}"] = await handler_files(tab, selector, kind)
+        await tab.release(activation, fail=False)
+        results = [(state.get("ran") and not any(early.values()),
+                    f"with {activation} still loading, the handlers it turns on are not on yet ({early})")]
+        if activation == "ui-events.js":
+            results.append((state.get("ran") and state.get("inert") is True,
+                            f"with ui-events.js still loading, the search form is inert ({state})"))
+        return results
+    return run
+
+
 def main(argv=None):
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="The theme's scripts in a headless Chrome against a --mock server of its "
                                              "own: every top-level name declared by one script only (read by V8), the "
-                                             "search and effects drawer handlers in their own files, and the search's "
-                                             "outside touch on the mesa. Exit 1 if a check fails.")
+                                             "search and effects drawer handlers in their own files and turned on where "
+                                             "they were, and the search's outside touch on the mesa. Exit 1 if a check "
+                                             "fails.")
     ap.add_argument("--raiz", type=Path, default=RAIZ, help="the checkout whose server.py and theme are served")
     args = ap.parse_args(argv)
+    results = []
     with tempfile.TemporaryDirectory(prefix="ritmelli-scripts-") as folder:
         tmp = Path(folder)
         with open(tmp / "server.log", "w", encoding="utf-8") as log:
             srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, raiz=args.raiz.resolve(),
                                         config={"boas_vindas": True})
             try:
-                results = asyncio.run(missing_script.with_tab(srv, checks))
+                for run in (checks, *(held_until(a) for a in RAN_BEFORE)):
+                    results += asyncio.run(missing_script.with_tab(srv, run))
             finally:
                 compara.para_servidor(srv)
     for ok, message in results:

@@ -28,16 +28,21 @@ fila, o A seguir) e o `ui-events.js` (os ouvintes de clique, de tecla e de ponte
 `index.html`: o palco, a prateleira, os toca-discos, o teclado) saíram do script principal da página, que é estrito: o
 arquivo tirado dele começa com `'use strict'`, como o script inline que segue depois do `<script src>` dele.
 
-Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela e o toque fora
-da gaveta da busca na mesa) no `search.js`, os da gaveta de efeitos no `voice-effects.js`. Um ouvinte que vai para um
-arquivo carregado antes passa a ser registrado antes dos outros no mesmo alvo: o toque fora da busca na mesa, que agora
-vem antes do ouvinte do `queue.js` na `window`, para o evento com `stopPropagation`, e não com
-`stopImmediatePropagation`, e o do `queue.js` segue vendo o toque. Todo nome do alto de um script é declarado por um
-script só: o `dev/theme_scripts.py`, que o `--tela` do `dev/testa_tudo.py` roda, abre a página num Chrome sem tela
-contra um `--mock`, pega cada script como o V8 o leu, roda cada um num mundo isolado com um `throw 0` logo depois do
-`'use strict'` (as declarações nascem e nada roda) e falha com um nome declarado em dois scripts (função, `var`, `let`,
-`const` ou `class`). Ele confere também que os ouvintes da busca e da gaveta de efeitos são dos arquivos delas e que o
-`queue.js` vê o toque que fecha a busca na mesa.
+Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
+da gaveta da busca na mesa e os resultados) no `search.js`, os da gaveta de efeitos no `voice-effects.js`. O arquivo
+da parte guarda os ouvintes numa função (o `bindSearch()`, o `bindSearchResults()` e o `bindEffectsDrawer()`), e quem
+liga é o lugar em que eles eram registrados antes: o `ui-events.js` chama o `bindEffectsDrawer()` e o `bindSearch()`, e
+o `queue.js` chama o `bindSearchResults()`. Assim os controles só respondem quando os arquivos de que eles dependem já
+carregaram (o formulário da busca segue `inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos
+outros no mesmo alvo (o toque fora da busca para o evento depois de o ouvinte do `queue.js` na `window` ver o toque).
+
+Todo nome do alto de um script é declarado por um script só. O `dev/theme_scripts.py`, que o `--tela` do
+`dev/testa_tudo.py` roda, abre a página num Chrome sem tela contra um `--mock` e pega cada script como o V8 o leu. Cada
+um vira o corpo de um gerador que é criado e não anda (as declarações nascem e nada roda), e os nomes saem do escopo
+local dele. Um nome declarado em dois scripts (função, `var`, `let`, `const` ou `class`) faz a guarda falhar. Ele
+confere também que os ouvintes da busca e da gaveta são dos arquivos delas e só existem depois do arquivo que os liga,
+e que o `queue.js` vê o toque que fecha a busca na mesa. O `dev/theme_rebuild.py` mostra à parte os blocos que mudaram
+de lugar com outra indentação (os que entraram numa dessas funções).
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a
 página de novo nos dois commits (cada `<script src>`, `<link>` e `<!-- inline-script: -->` trocado pelo texto do

@@ -1363,13 +1363,15 @@ const pisarPedal = e => {
   if (b.dataset.ef !== SEM_EFEITO && ligado) desligarEfeito();
   else escolherEfeito(b.dataset.ef);
 };
-$('#gaveta').addEventListener('click', pisarPedal);
-$('#gaveta-dir').addEventListener('click', pisarPedal);
-$('#desliga-ef').addEventListener('click', desligarEfeito);
-$('#b-efeito').addEventListener('click', () => {
-  // no celular a gaveta ja esta aberta logo abaixo: o seletor so leva ate ela
-  if (celular()) { $('#gaveta').scrollIntoView({ block: 'start', behavior: reduz.matches ? 'auto' : 'smooth' }); return; }
-  abrirGaveta(!S.gaveta);
-});
-$('#b-fechar-gav').addEventListener('click', () => { abrirGaveta(false); $('#b-efeito').focus(); });
+function bindEffectsDrawer() {
+  $('#gaveta').addEventListener('click', pisarPedal);
+  $('#gaveta-dir').addEventListener('click', pisarPedal);
+  $('#desliga-ef').addEventListener('click', desligarEfeito);
+  $('#b-efeito').addEventListener('click', () => {
+    // no celular a gaveta ja esta aberta logo abaixo: o seletor so leva ate ela
+    if (celular()) { $('#gaveta').scrollIntoView({ block: 'start', behavior: reduz.matches ? 'auto' : 'smooth' }); return; }
+    abrirGaveta(!S.gaveta);
+  });
+  $('#b-fechar-gav').addEventListener('click', () => { abrirGaveta(false); $('#b-efeito').focus(); });
+}
 /* VOICE-EFFECTS-FIM */

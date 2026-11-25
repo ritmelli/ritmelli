@@ -284,59 +284,7 @@ for (const sec of document.querySelectorAll('.fila')) {
   });
 }
 
-/* busca: tocar na linha toca, o ⊕ salva, o ... abre as opcoes */
-$('#resultados').addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
-  const li = b.closest('.resultado'); if (!li || !li._r || li._semClique) return;
-  if (b.dataset.role === 'tocar') tocarResultado(li._r);
-  else if (b.dataset.role === 'salvar') salvarResultado(li._r);
-  else if (b.dataset.role === 'mais') { if (menuBotao === b) fecharMenu(true); else { fecharMenu(false); abrirMenu(b, { tipo: 'resultado', r: li._r }); } }
-});
-/* puxar a linha para a direita poe na fila, como no Spotify: a faixa ambar
-   aparece por baixo, o celular vibra quando passa do ponto e a linha volta sozinha ao soltar. So
-   no dedo e so com o servidor novo; o pan-y deixa a pagina rolar na vertical */
-(() => {
-  const ul = $('#resultados'), PONTO = 88;
-  let g = null;
-  ul.addEventListener('pointerdown', e => {
-    if (e.pointerType !== 'touch' || !temFila()) return;
-    const li = e.target.closest('.resultado');
-    if (!li || !li._r || e.target.closest('[data-role="mais"], [data-role="salvar"]')) return;
-    g = { li, id: e.pointerId, x0: e.clientX, y0: e.clientY, ativo: false, passou: false };
-  });
-  ul.addEventListener('pointermove', e => {
-    if (!g || e.pointerId !== g.id) return;
-    const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
-    if (!g.ativo) {
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-      if (dx <= 0 || Math.abs(dy) >= Math.abs(dx)) { g = null; return; }   // rolagem, ou para a esquerda
-      g.ativo = true; S.puxandoRes = true;
-      g.li.classList.remove('voltando'); g.li.classList.add('puxando');
-    }
-    const x = dx <= PONTO ? Math.max(0, dx) : PONTO + (dx - PONTO) * .3;
-    g.li.querySelector('.corpo').style.transform = `translateX(${x}px)`;
-    const passou = dx >= PONTO;
-    if (passou !== g.passou) {
-      g.passou = passou; g.li.classList.toggle('vai', passou);
-      if (passou && navigator.vibrate) navigator.vibrate(12);
-    }
-  });
-  function soltar(e, cancelou) {
-    if (!g || e.pointerId !== g.id) return;
-    const { li, ativo, passou } = g;
-    g = null;
-    if (!ativo) return;
-    S.puxandoRes = false;
-    li._semClique = true; setTimeout(() => { li._semClique = false; }, 400);   // o toque que puxou nao toca a linha
-    li.classList.remove('puxando'); li.classList.add('voltando');
-    li.querySelector('.corpo').style.transform = '';
-    setTimeout(() => li.classList.remove('voltando', 'vai'), 260);
-    if (passou && !cancelou) executar('fila', { tipo: 'resultado', r: li._r });
-    if (S.buscaPendente) { S.buscaPendente = false; desenharBusca(); }
-  }
-  ul.addEventListener('pointerup', e => soltar(e, false));
-  ul.addEventListener('pointercancel', e => soltar(e, true));
-})();
+bindSearchResults();
 
 document.querySelectorAll('.rolo').forEach(r => {
   r.addEventListener('scroll', () => { fecharMenu(false); sombrear(r); }, { passive: true });

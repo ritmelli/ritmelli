@@ -17,7 +17,8 @@ and the bare <script>, <style>, </script> and </style> tags (one with attributes
 line as [strict], so moving code into a new strict file shows one [strict] line more. <base> and <head> are git commits (the head defaults to the working tree). Exit 0 only
 when the two pages are the same, line by line and in order. When they are not, the lines that differ are split into
 the runs that only moved, whole or in pieces of MIN_PIECE lines or more (two blocks next to each other that went to two
-files), and the lines that are new or gone, which are printed, and the exit is 1."""
+files), the runs that moved with a new indentation (into a function), and the lines that are new or gone, which are
+printed, and the exit is 1."""
 
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
@@ -130,6 +131,16 @@ def split_moves(a, b):
     return moved, removed, added
 
 
+def split_reindented(removed, added):
+    a, b = [line.strip() for _, line in removed], [line.strip() for _, line in added]
+    moved, gone, new = split_moves(a, b)
+    moved += [(a[i1:i2], i1, j1) for tag, i1, i2, j1, _ in difflib.SequenceMatcher(None, a, b, autojunk=False)
+              .get_opcodes() if tag == "equal"]
+    still_gone, still_new = {i for i, _ in gone}, {j for j, _ in new}
+    return ([(run, removed[i][0], added[j][0]) for run, i, j in moved],
+            [x for k, x in enumerate(removed) if k in still_gone], [x for k, x in enumerate(added) if k in still_new])
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=USAGE, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("base")
@@ -145,12 +156,15 @@ def main(argv=None):
         print("the pages are equal")
         return 0
     moved, removed, added = split_moves(a, b)
-    print(f"{len(moved)} block(s) moved ({sum(len(r) for r, _, _ in moved)} lines), "
-          f"{len(removed)} line(s) gone, {len(added)} line(s) new")
+    reindented, removed, added = split_reindented(removed, added)
+    print(f"{len(moved)} block(s) moved ({sum(len(r) for r, _, _ in moved)} lines), {len(reindented)} block(s) moved "
+          f"with a new indentation ({sum(len(r) for r, _, _ in reindented)} lines), {len(removed)} line(s) gone, "
+          f"{len(added)} line(s) new")
     if args.show:
-        for run, i, j in sorted(moved, key=lambda x: x[1]):
-            print(f"\nmoved, {len(run)} line(s), base line {i + 1} -> head line {j + 1}:")
-            print("\n".join("  " + x for x in run))
+        for title, runs in (("moved", moved), ("moved with a new indentation", reindented)):
+            for run, i, j in sorted(runs, key=lambda x: x[1]):
+                print(f"\n{title}, {len(run)} line(s), base line {i + 1} -> head line {j + 1}:")
+                print("\n".join("  " + x for x in run))
     for title, rows, sign in (("gone", removed, "-"), ("new", added, "+")):
         if rows:
             print(f"\n{title}:")

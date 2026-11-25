@@ -302,6 +302,12 @@ def check_theme_rebuild():
     if removed or added != [(4, "new")] or sorted(len(r) for r, _, _ in moved) != [1, 2]:
         falha(f"split_moves: moved {moved}, removed {removed}, added {added}; expected B1 B2 and y moved apart and "
               f"only 'new' added")
+    _, removed, added = theme_rebuild.split_moves(["x", "f();", "g();", "y"],
+                                                  ["x", "y", "function bind() {", "  f();", "  g();", "}"])
+    reindented, removed, added = theme_rebuild.split_reindented(removed, added)
+    if [len(r) for r, _, _ in reindented] != [2] or removed or added != [(2, "function bind() {"), (5, "}")]:
+        falha(f"split_reindented: {reindented}, removed {removed}, added {added}; expected f() and g() moved into "
+              f"bind()")
     files = {"index.html": '<script src="a.js" title="x > y" defer></script>\n<link rel="stylesheet" href="b.css">\n',
              "a.js": "/* A-JS-INICIO */\n'use strict';\nconst a = 1;\n/* A-JS-FIM */\n", "b.css": "b { }\n"}
     lines = theme_rebuild.rebuild(files.__getitem__)
