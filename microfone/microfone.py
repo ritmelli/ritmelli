@@ -53,9 +53,11 @@ NOSSOS = (CLSID,) + HOSPEDES
 APOS = r"SOFTWARE\Classes\AudioEngine\AudioProcessingObjects"  # o registro de APO (o RegisterAPO grava aqui)
 CAPTURA = r"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Capture"
 SALVO = r"SOFTWARE\Ritmelli\Microfone"
-PASTA = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Ritmelli", "microfone")
-# a DLL de antes da troca de nome (#58), que o audiodg.exe pode estar segurando: com ela, a troca tambem para o audio
-DLL_VELHA = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Vitrola", "microfone", "micfx.dll")
+# a pasta da DLL e do log: no executavel, a microfone\ da pasta dele (a instalacao de fato); pelo codigo, a da pasta
+# padrao do instalador. As duas ficam dentro da raiz da pasta protegida (pastas.pasta_protegida)
+PASTA = (os.path.join(os.path.dirname(sys.executable), "microfone") if getattr(sys, "frozen", False) else
+         os.path.join(os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles", r"C:\Program Files"),
+                      "Ritmelli", "microfone"))
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # no executavel sem console, nada de janela piscando
 
 NOME = "{a45c254e-df1c-4efd-8020-67d146a850e0},2"
@@ -270,8 +272,29 @@ def atualiza_salvo_velho(fx, salvo):
     winreg.SetValueEx(salvo, "_ausentes", 0, winreg.REG_MULTI_SZ, ausentes)
 
 
+def _protegida():
+    """A pasta do app (a de cima da PASTA) na regra da pasta protegida (pastas.pasta_protegida): no executavel, a pasta
+    dele; pelo codigo, a %ProgramW6432%\\Ritmelli, e nao a do Python. True, ou a Reprovada com o motivo."""
+    import pastas  # noqa: PLC0415 - o modulo do app, ao lado do microfone/ (o main poe a raiz no caminho)
+    return pastas.pasta_protegida(os.path.dirname(PASTA))
+
+
+def _registrada():
+    """A DLL para onde o CLSID do filtro aponta hoje (o InprocServer32), ou None sem registro."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\Classes\CLSID\{CLSID}\InprocServer32") as k:
+            return (le(k, "") or (None,))[0]
+    except OSError:
+        return None
+
+
 def _prepara_dll(dll):
-    """A DLL no lugar e registrada; True se parou o audio para trocar (o reinicia_audio volta)."""
+    """A DLL no lugar e registrada; True se parou o audio para trocar (o reinicia_audio volta). Com a pasta do app fora
+    da regra da pasta protegida, recusa antes de criar, copiar ou registrar qualquer coisa: o audiodg.exe carregaria
+    uma DLL que outro programa pode trocar."""
+    protegida = _protegida()
+    if not protegida:
+        sys.exit(f"the app folder isn't protected, the filter wasn't installed: {protegida}")
     os.makedirs(LOGS, exist_ok=True)
     r = subprocess.run(["icacls", LOGS, "/grant", "*S-1-5-19:(OI)(CI)M"], capture_output=True, text=True,
                        encoding="oem", errors="replace", creationflags=NO_WINDOW)
@@ -279,16 +302,19 @@ def _prepara_dll(dll):
         sys.exit(f"icacls on the log folder failed ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
     destino = os.path.join(PASTA, "micfx.dll")
     mesma = os.path.normcase(os.path.abspath(dll)) == os.path.normcase(destino)
+    antes = _registrada()
+    outra = bool(antes) and os.path.normcase(os.path.abspath(antes)) != os.path.normcase(os.path.abspath(destino))
     parou = False
     if not mesma and not (os.path.exists(destino) and _sha(dll) == _sha(destino)):
         if os.path.exists(destino):  # a primeira instalacao nao tem DLL presa: o som segue
             servico_audio("Stop")  # o audiodg.exe solta a DLL velha
             parou = True
-        elif os.path.exists(DLL_VELHA) and audio_rodando():
-            # a DLL de antes da troca de nome mora em outra pasta e nao segura a copia, mas o audiodg.exe so carrega a
-            # nova quando o audio reinicia (o reinicia_audio de quem chamou)
-            parou = True
         shutil.copy2(dll, destino)
+    if outra and not parou and audio_rodando():
+        # o filtro registrado e o de outra pasta (a de antes da troca de nome, ou a instalacao anterior que mudou de
+        # pasta): a DLL de la fica onde esta e nao segura a copia, mas o audiodg.exe so carrega a desta pasta quando o
+        # audio reinicia (o reinicia_audio de quem chamou). Os originais dos microfones ja guardados ficam
+        parou = True
     r = subprocess.run(["regsvr32", "/s", destino], capture_output=True, text=True, encoding="oem",
                        errors="replace", creationflags=NO_WINDOW)
     if r.returncode:
@@ -499,7 +525,9 @@ def _devolve(ep):
 
 def remove(filtro=None):
     """Devolve o original dos microfones (o do filtro, ou todos) e, sem nenhum com o filtro, tira a DLL. O audio do PC
-    so reinicia se algum microfone mudou (o desinstalador chama sempre)."""
+    so reinicia se algum microfone mudou (o desinstalador chama sempre). Com a pasta do app fora da regra da pasta
+    protegida, os microfones voltam do mesmo jeito (e so registro), mas a DLL de la nao e carregada nem apagada: o
+    registro dela sai pelo winreg, e o comando sai com erro."""
     alvos = [acha(filtro)] if filtro else microfones(todos=True)
     mexeu = False
     for ep, nome, apar in alvos:
@@ -507,15 +535,51 @@ def remove(filtro=None):
             mexeu = True
             print(f"restored the original on {nome} ({apar}) {ep}")
     sobrou = [m for m in microfones(todos=True) if tem_filtro(m[0])]
+    protegida = _protegida()
     destino = os.path.join(PASTA, "micfx.dll")
-    if not sobrou and os.path.exists(destino):
+    if not sobrou and not protegida:
+        _apaga_registro_com()
+    elif not sobrou and os.path.exists(destino):
         subprocess.run(["regsvr32", "/s", "/u", destino], capture_output=True, creationflags=NO_WINDOW)
     if mexeu:
         reinicia_audio()
     if not sobrou:  # o audiodg ja soltou a DLL: sai a pasta (a DLL e o log), a tarefa e as vagas do hospedeiro
-        shutil.rmtree(PASTA, ignore_errors=True)
+        if protegida:
+            shutil.rmtree(PASTA, ignore_errors=True)
         tarefa_apaga()
         _esquece_hospedes()
+    if not protegida:
+        sys.exit(f"the app folder isn't protected ({protegida}): the microphones were restored, and {PASTA} was "
+                 "left as it is")
+
+
+def _apaga_chave(caminho):
+    """Apaga a chave do HKLM com as subchaves (o DeleteKey so apaga chave vazia); sem ela, nada."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, caminho, 0, winreg.KEY_ALL_ACCESS) as k:
+            subs, i = [], 0
+            while True:
+                try:
+                    subs.append(winreg.EnumKey(k, i))
+                except OSError:
+                    break
+                i += 1
+    except OSError:
+        return
+    for s in subs:
+        _apaga_chave(rf"{caminho}\{s}")
+    try:
+        winreg.DeleteKey(winreg.HKEY_LOCAL_MACHINE, caminho)
+    except OSError:
+        pass
+
+
+def _apaga_registro_com():
+    """Sem carregar a DLL (a pasta dela reprovou): as mesmas chaves que o DllUnregisterServer do micfx.dll apaga, o
+    CLSID e o registro de APO de cada um dos nossos."""
+    for c in NOSSOS:
+        _apaga_chave(rf"SOFTWARE\Classes\CLSID\{c}")
+        _apaga_chave(rf"{APOS}\{c}")
 
 
 def _esquece_hospedes():
@@ -568,7 +632,9 @@ def do_microfone(nome, dados=None):
 
 # A tarefa do Windows que pendura o filtro como SYSTEM: o instalador cria (ele e administrador), quem usa o PC so pode
 # rodar (o descritor da tarefa da leitura e execucao aos usuarios), e o comando e fixo, no ritmelli.exe da pasta de
-# programas (que so administrador muda). E por ela que o microfone que aparece depois ganha o filtro sem UAC.
+# programas (que so administrador muda). E por ela que o microfone que aparece depois ganha o filtro sem UAC. Tudo isso
+# vale so com a pasta do app protegida (pastas.pasta_protegida): o instala-todos da tarefa confere antes de tudo e,
+# reprovada, apaga as duas tarefas que rodam como SYSTEM (_desarma); so o setup completo as cria de novo.
 TAREFA = r"\Ritmelli\Microfone"
 TAREFA_XML = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -600,9 +666,14 @@ def tarefa_existe():
 
 def tarefa_cria():
     """Cria (ou refaz) a tarefa, so no executavel instalado: no codigo-fonte, a tarefa rodaria como SYSTEM um .py que
-    o usuario pode mudar."""
+    o usuario pode mudar. Com a pasta do app fora da regra da pasta protegida, apaga a que existir e volta."""
     if not getattr(sys, "frozen", False):
         print("the task is only created by the installed executable (from source, run instala-todos as administrator)")
+        return
+    protegida = _protegida()
+    if not protegida:
+        tarefa_apaga()
+        print(f"the task {TAREFA} wasn't created, the app folder isn't protected: {protegida}")
         return
     import tempfile  # noqa: PLC0415
     from xml.sax.saxutils import escape  # noqa: PLC0415
@@ -622,6 +693,32 @@ def tarefa_cria():
 
 def tarefa_apaga():
     subprocess.run(["schtasks", "/delete", "/tn", TAREFA, "/f"], capture_output=True, creationflags=NO_WINDOW)
+
+
+def _desarma(motivo):
+    """O instala-todos do executavel (o da tarefa, que roda como SYSTEM) achou a pasta do app fora da regra da pasta
+    protegida: as duas tarefas saem, a da atualizacao primeiro (com o /end, que encerra uma rodada no meio) e esta por
+    ultimo, uma mesmo se a outra falhar, e sai com erro sem gravar nada na pasta. So o setup completo cria de novo."""
+    erros, tarefas = [], []
+    try:
+        import atualizador  # noqa: PLC0415 - o modulo do app (no executavel, sempre junto)
+        tarefas.append((atualizador.TAREFA, atualizador.tarefa_apaga, atualizador.tarefa_existe))
+    except Exception as ex:  # noqa: BLE001 - a desta tarefa sai do mesmo jeito
+        erros.append(f"update task: {type(ex).__name__}: {ex}")
+    tarefas.append((TAREFA, tarefa_apaga, tarefa_existe))
+    for nome, apaga, _ in tarefas:
+        try:
+            apaga()
+        except Exception as ex:  # noqa: BLE001 - a outra sai do mesmo jeito
+            erros.append(f"{nome}: {type(ex).__name__}: {ex}")
+    for nome, _, existe in tarefas:
+        try:
+            if existe():
+                erros.append(f"the task {nome} is still there")
+        except Exception as ex:  # noqa: BLE001
+            erros.append(f"{nome}: {type(ex).__name__}: {ex}")
+    sys.exit(f"the app folder isn't protected ({motivo}): "
+             + (f"couldn't remove the SYSTEM tasks ({'; '.join(erros)})" if erros else "the SYSTEM tasks were removed"))
 
 
 def pede_tarefa(nome, espera_s=60):
@@ -674,6 +771,11 @@ def main(argv=None):
     dll = a.dll or dll_padrao()
     res = {"ok": True}
     try:
+        if a.acao == "instala-todos" and getattr(sys, "frozen", False):
+            # a tarefa do filtro roda isto como SYSTEM sem passar pelo tarefa_cria: a pasta e conferida antes de tudo
+            protegida = _protegida()
+            if not protegida:
+                _desarma(protegida)
         if a.acao != "estado":
             _migra_registro()
         if a.acao == "estado":

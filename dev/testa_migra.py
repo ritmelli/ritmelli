@@ -257,6 +257,10 @@ with tempfile.TemporaryDirectory() as tmp:
             f"o servidor ligando de verdade: a pasta muda ({out})")
 
 print("--- a pasta do app de antes")
+# as pastas de mentira moram no %TEMP%, que aceita escrita de quem roda o teste: a regra da pasta protegida as
+# reprovaria. Aqui elas passam, e o ultimo caso reprova
+vistas = []
+migra.PROTEGIDA = lambda pasta: vistas.append(Path(pasta)) or True
 with tempfile.TemporaryDirectory() as tmp:
     velha = Path(tmp) / "Vitrola"
     for c in ("vitrola.exe", "_internal/python312.dll", "_internal/x/y.pyd", "bin/ffmpeg.exe", "microfone/micfx.dll",
@@ -284,6 +288,22 @@ with tempfile.TemporaryDirectory() as tmp:
                 "a pasta do app que esta rodando nunca e apagada")
     finally:
         pastas.APP = app
+    confere(vistas and vistas[0] == velha, f"a regra da pasta protegida confere a pasta de antes ({vistas[:1]})")
+    reprovada = Path(tmp) / "Reprovada"
+    for c in ("vitrola.exe", "_internal/a.dll", "microfone/micfx.dll", "unins000.exe"):
+        (reprovada / c).parent.mkdir(parents=True, exist_ok=True)
+        (reprovada / c).write_bytes(b"x")
+    antes = sorted(p.relative_to(reprovada).as_posix() for p in reprovada.rglob("*"))
+    migra.PROTEGIDA = lambda pasta: pastas.Reprovada("a folder of the test")
+    reinicio, migra._apaga_no_reinicio = migra._apaga_no_reinicio, lambda c: agendados.append(c)
+    agendados = []
+    try:
+        confere(migra.pasta_velha(reprovada) == 0 and not agendados
+                and sorted(p.relative_to(reprovada).as_posix() for p in reprovada.rglob("*")) == antes,
+                "a pasta de antes fora da regra da pasta protegida: nada sai dela, nem fica para o reinicio")
+    finally:
+        migra._apaga_no_reinicio = reinicio
+migra.PROTEGIDA = pastas.pasta_protegida
 
 print("--- o celular pareado antes")
 confere(pareamento.chave_do({"vitrola_celular": "abc"}) == "abc", "o cookie de antes ainda vale")

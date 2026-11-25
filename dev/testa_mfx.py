@@ -10,11 +10,16 @@ muda nada, e o devolver deixa as vagas de efeito exatamente como eram.
 
 Sai 1 se algo falhar.
 """
+import importlib
+import os
 import sys
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import pastas  # noqa: E402
 from microfone import microfone as mf  # noqa: E402
 
 
@@ -51,7 +56,9 @@ class RegistroFalso:
 
     def CreateKeyEx(self, raiz, sub, reservado=0, acesso=0):  # noqa: N802
         c = self._caminho(raiz, sub)
-        self.chaves.setdefault(c, {})
+        partes = c.split("\\")
+        for i in range(2, len(partes) + 1):  # como no registro de verdade, os pais nascem junto
+            self.chaves.setdefault("\\".join(partes[:i]), {})
         return self.Chave(self, c)
 
     def QueryValueEx(self, chave, nome):  # noqa: N802
@@ -76,6 +83,13 @@ class RegistroFalso:
             raise OSError("sem mais valores")
         return vs[i]
 
+    def EnumKey(self, chave, i):  # noqa: N802
+        base = chave.caminho + "\\"
+        subs = sorted({c[len(base):].split("\\")[0] for c in self.chaves if c.startswith(base)})
+        if i >= len(subs):
+            raise OSError("sem mais subchaves")
+        return subs[i]
+
     def valores(self, caminho):
         """{nome em minusculo: (valor, tipo)} da chave: o que se compara antes e depois."""
         return {k: (v[1], v[2]) for k, v in self.chaves[caminho.lower()].items()}
@@ -95,7 +109,7 @@ def fx_de(ep):
     return f"HKLM\\{mf.CAPTURA}\\{ep}\\FxProperties"
 
 
-class TestaMfx(unittest.TestCase):
+class Base(unittest.TestCase):
     def setUp(self):
         self.reg = RegistroFalso()
         self._winreg, mf.winreg = mf.winreg, self.reg
@@ -141,6 +155,7 @@ class TestaMfx(unittest.TestCase):
                                mf.MODOS_EFX: (list(MODOS), r.REG_MULTI_SZ),
                                mf.MODOS_MFX: (list(modos), r.REG_MULTI_SZ)}, ep)
 
+class TestaMfx(Base):
     def test_notebook(self):
         antes = self.notebook()
         self.assertTrue(mf._pendura(EP))  # noqa: SLF001
@@ -275,6 +290,259 @@ class TestaMfx(unittest.TestCase):
         mf._pendura(EP)  # noqa: SLF001
         mf._esquece_hospedes()  # noqa: SLF001
         self.assertIsNone(self.vaga(0))
+
+
+class Gravador:
+    """O subprocess.run de mentira: guarda cada comando e responde como o Windows (o schtasks /query nao acha a
+    tarefa). Com reg e inproc, o regsvr32 grava o InprocServer32 do filtro como o de verdade."""
+
+    def __init__(self, reg=None):
+        self.comandos, self.reg = [], reg
+
+    def __call__(self, args, **kw):
+        args = list(args)
+        self.comandos.append(args)
+        if self.reg is not None and args[0] == "regsvr32" and "/u" not in args:
+            k = self.reg.CreateKeyEx("HKLM", rf"SOFTWARE\Classes\CLSID\{mf.CLSID}\InprocServer32")
+            self.reg.SetValueEx(k, "", 0, self.reg.REG_SZ, args[-1])
+        return types.SimpleNamespace(returncode=1 if "/query" in args else 0, stdout="", stderr="")
+
+    def de(self, programa):
+        return [c for c in self.comandos if c[0] == programa]
+
+
+def carrega(congelado, exe=None):
+    """O microfone.py de novo, como no executavel (a PASTA na pasta dele) ou pelo codigo."""
+    if congelado:
+        sys.frozen = True
+        with mock.patch.object(sys, "executable", exe):
+            importlib.reload(mf)
+    else:
+        if hasattr(sys, "frozen"):
+            del sys.frozen
+        importlib.reload(mf)
+
+
+class TestaPastaProtegida(Base):
+    """A regra da pasta protegida no filtro (pastas.pasta_protegida), com o registro falso, os comandos gravados e a
+    regra trocada por uma que anota a pasta: nada de verdade e copiado, registrado nem agendado."""
+
+    def setUp(self):
+        self.vistas, self.aprova = [], True
+        self.cmd = None
+        self._regra = pastas.pasta_protegida
+        pastas.pasta_protegida = self.regra
+        super().setUp()
+
+    def tearDown(self):
+        super().tearDown()
+        pastas.pasta_protegida = self._regra
+        carrega(False)
+
+    def regra(self, pasta=None, raiz=None):
+        self.vistas.append(pasta)
+        return True if self.aprova else pastas.Reprovada("test folder")
+
+    def falsos(self, existe=()):
+        """O que mexe no disco e nos servicos, trocado por gravadores; existe: os caminhos que existem."""
+        self.cmd = Gravador(self.reg)
+        self.copias, self.pastas_criadas, self.apagadas = [], [], []
+        existe = {os.path.normcase(c) for c in existe}
+        pilha = [mock.patch.object(mf.subprocess, "run", self.cmd),
+                 mock.patch.object(mf.shutil, "copy2", lambda de, para: self.copias.append(para)),
+                 mock.patch.object(mf.shutil, "rmtree", lambda p, **kw: self.apagadas.append(p)),
+                 mock.patch.object(mf.os, "makedirs", lambda p, **kw: self.pastas_criadas.append(p)),
+                 mock.patch.object(mf.os.path, "exists", lambda p: os.path.normcase(p) in existe),
+                 mock.patch.object(mf, "_sha", lambda p: "igual"),
+                 mock.patch.object(mf, "audio_rodando", lambda: True),
+                 mock.patch.object(mf, "servico_audio", lambda acao: self.cmd.comandos.append(["servico", acao])),
+                 mock.patch.object(mf, "reinicia_audio", lambda: self.cmd.comandos.append(["reinicia"]))]
+        for p in pilha:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def nada_mexido(self):
+        self.assertEqual(self.cmd.comandos, [], "rodou um comando com a pasta reprovada")
+        self.assertEqual(self.copias + self.pastas_criadas + self.apagadas, [], "mexeu no disco com a pasta reprovada")
+
+    def test_pasta_pelo_codigo(self):
+        """Pelo codigo, a pasta conferida e a do instalador (%ProgramW6432%\\Ritmelli), e nao a do Python."""
+        carrega(False)
+        self.tearDown_winreg()
+        raiz = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles")
+        self.assertEqual(mf.PASTA, os.path.join(raiz, "Ritmelli", "microfone"))
+        self.aprova = False
+        self.falsos()
+        with self.assertRaises(SystemExit):
+            mf._prepara_dll(r"C:\x\micfx.dll")  # noqa: SLF001
+        self.assertEqual(self.vistas, [os.path.join(raiz, "Ritmelli")])
+        self.nada_mexido()
+
+    def test_pasta_no_executavel(self):
+        """No executavel, a pasta conferida e a dele, onde quer que o setup a tenha posto."""
+        carrega(True, r"C:\Program Files\Ritmelli-2\ritmelli.exe")
+        self.tearDown_winreg()
+        self.assertEqual(mf.PASTA, r"C:\Program Files\Ritmelli-2\microfone")
+        self.aprova = False
+        self.falsos()
+        with self.assertRaises(SystemExit):
+            mf._prepara_dll(r"C:\x\micfx.dll")  # noqa: SLF001
+        self.assertEqual(self.vistas, [r"C:\Program Files\Ritmelli-2"])
+        self.nada_mexido()
+
+    def tearDown_winreg(self):
+        """O reload trouxe o winreg de verdade de volta: o falso de novo."""
+        mf.winreg = self.reg
+
+    def test_instala_todos_desarma(self):
+        """A tarefa do filtro (o instala-todos do executavel) com a pasta reprovada: antes de migrar o registro e de
+        procurar a DLL, apaga as duas tarefas (a da atualizacao com o /end, a propria por ultimo) e sai com erro."""
+        carrega(True, r"C:\Program Files\Ritmelli\ritmelli.exe")
+        self.tearDown_winreg()
+        self.notebook()
+        antes = {k: dict(v) for k, v in self.reg.chaves.items()}
+        self.aprova = False
+        self.falsos()
+        import atualizador
+        migrou = []
+        with mock.patch.object(mf, "_migra_registro", lambda: migrou.append(1)), \
+                mock.patch.object(atualizador.subprocess, "run", self.cmd):
+            self.assertEqual(mf.main(["instala-todos", "--dll", r"C:\nao\existe.dll"]), 1)
+        self.assertEqual(migrou, [], "migrou o registro antes de conferir a pasta")
+        tarefas = [(c[1], c[c.index("/tn") + 1]) for c in self.cmd.de("schtasks") if c[1] != "/query"]
+        self.assertEqual(tarefas, [("/end", atualizador.TAREFA), ("/delete", atualizador.TAREFA),
+                                   ("/delete", mf.TAREFA)])
+        self.assertEqual(sorted(c[-1] for c in self.cmd.de("schtasks") if c[1] == "/query"),
+                         sorted([atualizador.TAREFA, mf.TAREFA]), "nao conferiu as duas")
+        self.assertEqual(self.reg.chaves, antes, "mexeu no registro com a pasta reprovada")
+        self.assertEqual(self.copias + self.pastas_criadas + self.apagadas, [])
+
+    def test_instala_todos_pelo_codigo_nao_desarma(self):
+        """Pelo codigo (o passo do README, como administrador), o instala-todos nao apaga tarefa nenhuma: a recusa vem
+        do _prepara_dll, sem mexer em nada."""
+        carrega(False)
+        self.tearDown_winreg()
+        self.aprova = False
+        self.falsos(existe=[r"C:\x\micfx.dll"])
+        with mock.patch.object(mf, "_migra_registro", lambda: None):
+            self.assertEqual(mf.main(["instala-todos", "--dll", r"C:\x\micfx.dll"]), 1)
+        self.nada_mexido()
+
+    def test_dll_registrada_em_outra_pasta(self):
+        """O filtro registrado aponta para outra pasta (a instalacao anterior): a DLL desta pasta e registrada, o audio
+        reinicia uma vez e a anterior fica; os originais ja guardados dos microfones ficam."""
+        carrega(True, r"C:\Program Files\Ritmelli-2\ritmelli.exe")
+        self.tearDown_winreg()
+        r = self.reg
+        k = r.CreateKeyEx("HKLM", rf"SOFTWARE\Classes\CLSID\{mf.CLSID}\InprocServer32")
+        r.SetValueEx(k, "", 0, r.REG_SZ, r"C:\Program Files\Ritmelli\microfone\micfx.dll")
+        antes = self.notebook()
+        mf._pendura(EP)  # noqa: SLF001
+        guardado = r.valores(f"HKLM\\{mf.SALVO}\\{EP}")
+        self.falsos(existe=[r"C:\x\micfx.dll"])
+        mf.instala_todos(r"C:\x\micfx.dll")
+        destino = r"C:\Program Files\Ritmelli-2\microfone\micfx.dll"
+        self.assertEqual(self.copias, [destino])
+        self.assertEqual([c[-1] for c in self.cmd.de("regsvr32")], [destino])
+        self.assertEqual(self.cmd.de("reinicia"), [["reinicia"]], "o audio nao reiniciou uma vez")
+        self.assertEqual(self.apagadas, [], "a DLL anterior saiu")
+        self.assertEqual(r.valores(f"HKLM\\{mf.SALVO}\\{EP}"), guardado, "o original guardado mudou")
+        self.falsos(existe=[r"C:\x\micfx.dll", destino])
+        mf.instala_todos(r"C:\x\micfx.dll")
+        self.assertEqual(self.cmd.de("reinicia"), [], "de novo, com a DLL ja registrada aqui: o audio reiniciou")
+        mf._devolve(EP)  # noqa: SLF001
+        self.assertEqual(r.valores(fx_de(EP)), antes)
+
+    def com_dois(self):
+        """Dois microfones com o filtro, o registro do COM e do APO de cada CLSID nosso e a vaga do hospedeiro."""
+        r = self.reg
+        self.notebook(EP)
+        self.notebook(EP2)
+        mf._pendura(EP)  # noqa: SLF001
+        mf._pendura(EP2)  # noqa: SLF001
+        for c in mf.NOSSOS:
+            r.CreateKeyEx("HKLM", rf"SOFTWARE\Classes\CLSID\{c}")
+            k = r.CreateKeyEx("HKLM", rf"SOFTWARE\Classes\CLSID\{c}\InprocServer32")
+            r.SetValueEx(k, "", 0, r.REG_SZ, mf.PASTA + r"\micfx.dll")
+            r.CreateKeyEx("HKLM", rf"{mf.APOS}\{c}")
+        mics = [(EP, "Microfone", "Notebook"), (EP2, "Outro", "USB")]
+        p = mock.patch.object(mf, "microfones", lambda todos=False: mics)
+        p.start()
+        self.addCleanup(p.stop)
+        return mics
+
+    def tem_chave(self, caminho):
+        return f"HKLM\\{caminho}".lower() in self.reg.chaves
+
+    def remove_um_de_dois(self, aprova):
+        """Tirar o filtro de um de dois microfones deixa o outro com ele, a tarefa e as vagas do hospedeiro."""
+        carrega(True, r"C:\Program Files\Ritmelli\ritmelli.exe")
+        self.tearDown_winreg()
+        mics = self.com_dois()
+        self.aprova = aprova
+        self.falsos(existe=[mf.PASTA + r"\micfx.dll"])
+        with mock.patch.object(mf, "acha", lambda filtro: mics[0]):
+            if aprova:
+                mf.remove("Microfone")
+            else:
+                with self.assertRaises(SystemExit):
+                    mf.remove("Microfone")
+        self.assertFalse(mf.tem_filtro(EP))
+        self.assertTrue(mf.tem_filtro(EP2), "o outro microfone perdeu o filtro")
+        self.assertEqual(self.vaga(0), MFX_FM, "a vaga do hospedeiro saiu")
+        self.assertEqual(self.cmd.de("schtasks"), [], "mexeu na tarefa")
+        self.assertEqual(self.cmd.de("regsvr32") + self.apagadas, [], "tirou a DLL com um microfone usando")
+        self.assertTrue(self.tem_chave(rf"SOFTWARE\Classes\CLSID\{mf.CLSID}"), "o COM do filtro saiu")
+
+    def test_remove_um_de_dois_protegida(self):
+        self.remove_um_de_dois(True)
+
+    def test_remove_um_de_dois_reprovada(self):
+        """Com a pasta reprovada, tambem: e o comando sai com erro."""
+        self.remove_um_de_dois(False)
+
+    def test_remove_reprovada(self):
+        """O desinstalador com a pasta reprovada: os microfones voltam ao original, o registro do COM e do APO sai pelo
+        winreg (sem carregar a DLL: nada de regsvr32 /u), a pasta fica como esta, a tarefa e as vagas saem, e o comando
+        sai com erro depois de devolver tudo."""
+        carrega(True, r"C:\Program Files\Ritmelli\ritmelli.exe")
+        self.tearDown_winreg()
+        self.com_dois()
+        self.aprova = False
+        self.falsos(existe=[mf.PASTA + r"\micfx.dll"])
+        with self.assertRaises(SystemExit) as fim:
+            mf.remove()
+        self.assertTrue(fim.exception.code)
+        self.assertFalse(mf.tem_filtro(EP) or mf.tem_filtro(EP2), "um microfone ficou com o filtro")
+        self.assertEqual(self.cmd.de("regsvr32"), [], "carregou a DLL da pasta reprovada")
+        self.assertEqual(self.apagadas, [], "apagou a pasta reprovada")
+        for c in mf.NOSSOS:
+            self.assertFalse(self.tem_chave(rf"SOFTWARE\Classes\CLSID\{c}"), f"o CLSID {c} ficou")
+            self.assertFalse(self.tem_chave(rf"SOFTWARE\Classes\CLSID\{c}\InprocServer32"), f"o servidor de {c} ficou")
+            self.assertFalse(self.tem_chave(rf"{mf.APOS}\{c}"), f"o APO {c} ficou")
+        self.assertIsNone(self.vaga(0), "a vaga do hospedeiro ficou")
+        self.assertEqual([c[1] for c in self.cmd.de("schtasks")], ["/delete"], "a tarefa do filtro nao saiu")
+        self.assertEqual(self.cmd.de("reinicia"), [["reinicia"]])
+
+    def test_remove_protegida(self):
+        """O desinstalador com a pasta protegida: como antes, o regsvr32 /u e a pasta saem."""
+        carrega(True, r"C:\Program Files\Ritmelli\ritmelli.exe")
+        self.tearDown_winreg()
+        self.com_dois()
+        self.falsos(existe=[mf.PASTA + r"\micfx.dll"])
+        mf.remove()
+        self.assertEqual(self.cmd.de("regsvr32"), [["regsvr32", "/s", "/u", mf.PASTA + r"\micfx.dll"]])
+        self.assertEqual(self.apagadas, [mf.PASTA])
+        self.assertEqual(self.vistas, [os.path.dirname(mf.PASTA)])
+
+    def test_tarefa_cria_reprovada(self):
+        """O tarefa_cria do executavel com a pasta reprovada apaga a tarefa que existir e volta, sem sys.exit."""
+        carrega(True, r"C:\Program Files\Ritmelli\ritmelli.exe")
+        self.tearDown_winreg()
+        self.aprova = False
+        self.falsos()
+        mf.tarefa_cria()
+        self.assertEqual(self.cmd.comandos, [["schtasks", "/delete", "/tn", mf.TAREFA, "/f"]])
 
 
 if __name__ == "__main__":

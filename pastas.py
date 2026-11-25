@@ -3,8 +3,10 @@ ela nao aceita escrita: audio baixado, biblioteca e escolhas em library/; os log
 das ferramentas de dev/ (logs/efeitos/) seguem na pasta do codigo. O ffmpeg, o ffprobe e o deno vem na bin/ do
 app (o instalador poe); sem ela, saem do PATH, como no codigo. A porta do servidor e a pagina que o app abre moram
 aqui tambem: o ritmelli.py precisa delas antes de carregar o servidor. E o jeito de gravar os .json dos dados
-(save_json), o mesmo para o servidor e para o pareamento."""
+(save_json), o mesmo para o servidor e para o pareamento, e a regra da pasta protegida (pasta_protegida), que as
+duas tarefas que rodam como SYSTEM conferem antes de usar a pasta do app."""
 import json
+import ntpath
 import os
 import sys
 import time
@@ -103,3 +105,217 @@ def save_json(path, data):
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     tmp.replace(path)
+
+
+# ---------- a pasta protegida ----------
+# As duas tarefas do Windows (a do filtro de microfone e a da atualizacao) rodam como SYSTEM o ritmelli.exe da pasta do
+# app, e a da atualizacao ainda roda dali o setup baixado. Isso so e seguro se ninguem alem do sistema e dos
+# administradores consegue trocar o que esta na pasta. A regra (a mesma do instalador, o instalador\protegida.ps1):
+# - o caminho, normalizado (sem ..), fica dentro da raiz (Program Files), e nem ele, nem nenhum ancestral, nem nada
+#   dentro dele e ponto de reanalise (juncao, link simbolico);
+# - o dono da pasta e de tudo que existe dentro dela e SYSTEM, Administradores ou TrustedInstaller;
+# - nenhuma ACE de permissao que vale para o proprio objeto (as so de heranca ficam de fora, como o CREATOR OWNER que
+#   toda subpasta de Program Files herda) da a outro principal escrita, acrescimo ou criacao, exclusao (inclusive a de
+#   filhos), WRITE_DAC ou WRITE_OWNER. A mesma regra de dono e de ACE vale para cada pasta entre a raiz (inclusive) e o
+#   destino: um pai que deixe outro apagar ou trocar a pasta do app reprova. DACL nula ou ilegivel reprova;
+# - a excecao: na microfone\log, onde nada se executa, o LocalService (o audiodg.exe grava o log do filtro) pode
+#   escrever, criar e apagar, nunca WRITE_DAC nem WRITE_OWNER, e ser dono dos arquivos de log, nunca da pasta.
+# Destino que ainda nao existe e conferido pelos ancestrais que existem.
+SID_SYSTEM = "S-1-5-18"
+SID_ADMINS = "S-1-5-32-544"
+SID_TRUSTED_INSTALLER = "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
+SID_LOCAL_SERVICE = "S-1-5-19"
+DONOS = frozenset((SID_SYSTEM, SID_ADMINS, SID_TRUSTED_INSTALLER))
+LOG_DO_FILTRO = ("microfone", "log")
+# FILE_WRITE_DATA, FILE_APPEND_DATA (criar arquivo e subpasta), FILE_DELETE_CHILD, DELETE, WRITE_DAC, WRITE_OWNER, e os
+# genericos que valem por eles (GENERIC_WRITE, GENERIC_ALL)
+_ESCRITA = 0x2 | 0x4 | 0x40 | 0x10000 | 0x40000 | 0x80000 | 0x40000000 | 0x10000000
+_TROCA_ACL = 0x40000 | 0x80000 | 0x10000000  # WRITE_DAC, WRITE_OWNER, GENERIC_ALL
+_SO_HERANCA = 0x08  # INHERIT_ONLY_ACE: a ACE nao vale para o proprio objeto
+_PERMITE = (0, 9)  # ACCESS_ALLOWED e ACCESS_ALLOWED_CALLBACK
+_NEGA = (1, 6, 10, 12)  # as de negacao (simples, de objeto e callback) so tiram acesso
+
+
+class Reprovada:
+    """A pasta nao passou na regra: falso num if, e o motivo no str."""
+
+    def __init__(self, motivo):
+        self.motivo = motivo
+
+    def __bool__(self):
+        return False
+
+    def __str__(self):
+        return self.motivo
+
+    def __repr__(self):
+        return f"Reprovada({self.motivo!r})"
+
+
+def raiz_protegida():
+    """A Program Files de 64 bits (a do %ProgramW6432%), onde so administrador cria pasta."""
+    return os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
+
+
+def _le_disco(caminho):
+    """O objeto do disco como a regra le: None se nao existe; senao {dir, reparse, dono, dacl, filhos}, com a dacl como
+    [(tipo, flags, mascara, sid)] ou None (nula). Abre o proprio objeto, sem seguir ponto de reanalise. OSError se nao
+    da para ler."""
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    adv = ctypes.WinDLL("advapi32", use_last_error=True)
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                                wintypes.DWORD, wintypes.HANDLE]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    k32.LocalFree.argtypes = [ctypes.c_void_p]
+    k32.GetFileInformationByHandle.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+    adv.GetSecurityInfo.restype = wintypes.DWORD
+    adv.GetSecurityInfo.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p),
+                                    ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
+                                    ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p)]
+    adv.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_wchar_p)]
+    adv.GetAce.argtypes = [ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)]
+
+    class Info(ctypes.Structure):  # BY_HANDLE_FILE_INFORMATION
+        _fields_ = [("atributos", wintypes.DWORD), ("t", wintypes.DWORD * 6), ("serie", wintypes.DWORD),
+                    ("tam", wintypes.DWORD * 2), ("links", wintypes.DWORD), ("indice", wintypes.DWORD * 2)]
+
+    def sid_texto(p):
+        s = ctypes.c_wchar_p()
+        if not adv.ConvertSidToStringSidW(p, ctypes.byref(s)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return s.value
+        finally:
+            k32.LocalFree(s)
+
+    # READ_CONTROL | FILE_READ_ATTRIBUTES; FILE_FLAG_BACKUP_SEMANTICS (abre pasta) | FILE_FLAG_OPEN_REPARSE_POINT
+    h = k32.CreateFileW(str(caminho), 0x20000 | 0x80, 7, None, 3, 0x02000000 | 0x00200000, None)
+    if h in (None, wintypes.HANDLE(-1).value):
+        erro = ctypes.get_last_error()
+        if erro in (2, 3):  # ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND
+            return None
+        raise ctypes.WinError(erro)
+    try:
+        info = Info()
+        if not k32.GetFileInformationByHandle(h, ctypes.byref(info)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        dono, dacl, sd = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_void_p()
+        # SE_FILE_OBJECT; OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION
+        r = adv.GetSecurityInfo(h, 1, 0x1 | 0x4, ctypes.byref(dono), None, ctypes.byref(dacl), None, ctypes.byref(sd))
+        if r:
+            raise ctypes.WinError(r)
+        try:
+            aces = None
+            if dacl.value:
+                aces = []
+                n = ctypes.cast(dacl.value + 4, ctypes.POINTER(ctypes.c_uint16))[0]  # ACL.AceCount
+                for i in range(n):
+                    p = ctypes.c_void_p()
+                    if not adv.GetAce(dacl, i, ctypes.byref(p)):
+                        raise ctypes.WinError(ctypes.get_last_error())
+                    tipo, flags = ctypes.cast(p.value, ctypes.POINTER(ctypes.c_uint8))[0:2]
+                    if tipo in (0, 1, 9, 10):  # a mascara em +4 e o SID em +8
+                        mascara = ctypes.cast(p.value + 4, ctypes.POINTER(ctypes.c_uint32))[0]
+                        aces.append((tipo, flags, mascara, sid_texto(p.value + 8)))
+                    else:
+                        aces.append((tipo, flags, 0, None))
+            d = {"dir": bool(info.atributos & 0x10), "reparse": bool(info.atributos & 0x400),
+                 "dono": sid_texto(dono.value) if dono.value else None, "dacl": aces}
+        finally:
+            k32.LocalFree(sd)
+    finally:
+        k32.CloseHandle(h)
+    if d["dir"] and not d["reparse"]:
+        d["filhos"] = os.listdir(caminho)
+    return d
+
+
+def _confere_objeto(caminho, d, no_log):
+    """O motivo pelo qual o dono ou a DACL do objeto reprovam, ou None."""
+    dono = d.get("dono")
+    if dono not in DONOS and not (no_log and not d["dir"] and dono == SID_LOCAL_SERVICE):
+        return f"{caminho} is owned by {dono}"
+    aces = d.get("dacl")
+    if aces is None:
+        return f"{caminho} has a null DACL"
+    for tipo, flags, mascara, sid in aces:
+        if tipo in _NEGA:
+            continue
+        if tipo not in _PERMITE:
+            return f"{caminho} has an ACE of type {tipo}"
+        if flags & _SO_HERANCA or sid in DONOS or not mascara & _ESCRITA:
+            continue
+        if no_log and sid == SID_LOCAL_SERVICE and not mascara & _TROCA_ACL:
+            continue
+        return f"{caminho} lets {sid} write or change it (access 0x{mascara:08x})"
+    return None
+
+
+def _confere_arvore(caminho, d, le):
+    """O motivo pelo qual o objeto ou algo dentro dele reprova, ou None. Nao entra em ponto de reanalise: ele reprova."""
+    pilha = [(caminho, d, ())]
+    while pilha:
+        caminho, d, rel = pilha.pop()
+        if d["reparse"]:
+            return f"{caminho} is a reparse point"
+        no_log = tuple(p.lower() for p in rel[:2]) == LOG_DO_FILTRO
+        motivo = _confere_objeto(caminho, d, no_log)
+        if motivo:
+            return motivo
+        for nome in (d.get("filhos") or ()) if d["dir"] else ():
+            filho = ntpath.join(caminho, nome)
+            try:
+                df = le(filho)
+            except OSError as e:
+                return f"couldn't read {filho}: {e}"
+            if df is not None:  # o que sumiu no meio da conferencia ja nao esta la
+                pilha.append((filho, df, (*rel, nome)))
+    return None
+
+
+def motivo_desprotegida(pasta, raiz, le=_le_disco):
+    """Por que a pasta nao passa na regra da pasta protegida, ou None se passa. le(caminho) e quem le cada objeto (o
+    _le_disco, ou uma descricao em memoria nos testes)."""
+    pasta, raiz = ntpath.normpath(str(pasta)), ntpath.normpath(str(raiz))
+    unidade, resto = ntpath.splitdrive(pasta)
+    if not unidade or not ntpath.isabs(pasta) or not ntpath.isabs(raiz):
+        return f"{pasta} is not an absolute path"
+    if not ntpath.normcase(pasta).startswith(ntpath.normcase(raiz).rstrip("\\") + "\\"):
+        return f"{pasta} is outside {raiz}"
+    partes = [p for p in resto.split("\\") if p]
+    na_raiz = len([p for p in ntpath.splitdrive(raiz)[1].split("\\") if p])
+    caminho = unidade + "\\"
+    for i in range(len(partes) + 1):
+        if i:
+            caminho = ntpath.join(caminho, partes[i - 1])
+        try:
+            d = le(caminho)
+        except OSError as e:
+            return f"couldn't read {caminho}: {e}"
+        if d is None:
+            # o destino (ou um pai dele) ainda nao existe: valem os ancestrais que existem, a raiz inclusive
+            return f"{raiz} doesn't exist" if i <= na_raiz else None
+        if d["reparse"]:
+            return f"{caminho} is a reparse point"
+        if i == len(partes):
+            return _confere_arvore(caminho, d, le)
+        if not d["dir"]:
+            return f"{caminho} is not a folder"
+        if i >= na_raiz:  # da raiz ao pai do destino: dono e ACEs, sem olhar o que mais tem dentro
+            motivo = _confere_objeto(caminho, d, False)
+            if motivo:
+                return motivo
+    return None
+
+
+def pasta_protegida(pasta=None, raiz=None, le=None):
+    """True se a pasta (sem ela, a do sys.executable) passa na regra da pasta protegida dentro da raiz (sem ela, a
+    Program Files de 64 bits); senao uma Reprovada, falsa, com o motivo. le e a leitura de cada objeto (os testes passam
+    uma em memoria)."""
+    pasta = Path(sys.executable).parent if pasta is None else pasta
+    raiz = raiz_protegida() if raiz is None else raiz
+    motivo = motivo_desprotegida(pasta, raiz, le or _le_disco)
+    return True if motivo is None else Reprovada(motivo)

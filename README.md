@@ -269,8 +269,10 @@ local scripts for your user once: `Set-ExecutionPolicy -Scope CurrentUser Remote
    python microfone\microfone.py instala-todos
    ```
 
-   The filter DLL (`micfx.dll`) is copied to `%ProgramFiles%\Ritmelli\microfone`, the folder the installed app uses,
-   so it replaces the filter of an installed Ritmelli.
+   The filter DLL (`micfx.dll`) is copied to `%ProgramW6432%\Ritmelli\microfone` (on 64-bit Windows, the same
+   `C:\Program Files`), the folder the installed app uses, so it replaces the filter of an installed Ritmelli. Step 3
+   refuses, without changing anything, if that folder can be changed by someone other than the system and the
+   administrators (`pastas.pasta_protegida`).
 
    - After plugging in a new microphone, run step 3 again. The installed app does this by itself, without
      administrator rights, through a Windows task that only the installer creates.

@@ -2,9 +2,10 @@ r"""A troca de nome de Vitrola para Ritmelli (#58) no PC de quem ja tinha o app 
 administrador. Os dados de quem usa (%LOCALAPPDATA%) mudam de pasta no proprio app, ao ligar (pastas.migra).
 
     ritmelli.exe --migra maquina
-        antes do filtro de microfone: fecha o app de antes, se ainda estiver aberto, copia o HKLM\SOFTWARE\Vitrola
-        para o HKLM\SOFTWARE\Ritmelli (a escolha dos dados de uso, o original de cada microfone e as vagas do
-        hospedeiro, sem trocar o que ja esta no novo) e apaga as tarefas do Windows de antes
+        antes do filtro de microfone: copia o HKLM\SOFTWARE\Vitrola para o HKLM\SOFTWARE\Ritmelli (a escolha dos
+        dados de uso, o original de cada microfone e as vagas do hospedeiro, sem trocar o que ja esta no novo) e apaga
+        as tarefas do Windows de antes. O app de antes aberto, o setup ja fechou, pelo caminho do executavel (o
+        PrepareToInstall do ritmelli.iss)
     ritmelli.exe --migra limpa
         no fim, com o filtro novo no lugar (o audio reinicia e o audiodg.exe solta a DLL de antes): apaga o
         HKLM\SOFTWARE\Vitrola e a pasta padrao de antes (Program Files\Vitrola); o que estiver preso sai no proximo
@@ -13,20 +14,25 @@ administrador. Os dados de quem usa (%LOCALAPPDATA%) mudam de pasta no proprio a
 A copia do registro vem antes de tudo porque o microfone.py guarda o efeito original de cada microfone so quando nao
 acha o de antes: sem ela, ele guardaria o nosso filtro como original, e desinstalar nao devolveria o do fabricante. O
 app que estava na pasta padrao (Program Files\Vitrola) passa para a Program Files\Ritmelli; o que estava numa pasta
-escolhida a mao fica nela (o ritmelli.iss decide), e dela o setup so apaga o vitrola.exe."""
+escolhida a mao fica nela (o ritmelli.iss decide), e dela o setup so apaga o vitrola.exe. A limpeza da pasta de
+antes so mexe numa pasta protegida (pastas.pasta_protegida): ela roda como administrador, e tambem em toda rodada da
+tarefa de atualizacao, como SYSTEM."""
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import pastas
+
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 REG_VELHO = r"SOFTWARE\Vitrola"
 REG_NOVO = r"SOFTWARE\Ritmelli"
 TAREFAS_VELHAS = ("Vitrola Atualiza", r"\Vitrola\Microfone")
 PASTA_TAREFAS_VELHA = "Vitrola"
-EXE_VELHO = "vitrola.exe"
 PASTA_VELHA = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Vitrola"
+# so se apaga numa pasta protegida (os testes trocam por uma que aceita a pasta temporaria)
+PROTEGIDA = pastas.pasta_protegida
 # o que o instalador de antes punha na pasta do app, e o que o app criava nela
 DO_APP_VELHO = ("vitrola.exe", "_internal", "bin", "microfone", "atualizacao", "LICENSE.txt", "TERCEIROS.txt")
 
@@ -123,11 +129,6 @@ def tarefas():
                    creationflags=NO_WINDOW)
 
 
-def fecha_app_velho():
-    """O app de antes aberto seguraria os arquivos dele (e o microfone): sai antes de o novo assumir."""
-    subprocess.run(["taskkill", "/F", "/IM", EXE_VELHO], capture_output=True, creationflags=NO_WINDOW)
-
-
 # ---------- a pasta do app de antes ----------
 
 def _apaga_no_reinicio(caminho):
@@ -138,10 +139,15 @@ def _apaga_no_reinicio(caminho):
 
 def pasta_velha(pasta=PASTA_VELHA):
     """Apaga da pasta padrao do app de antes o que era dele, e a pasta, se ficar vazia (outra coisa que alguem tenha
-    posto nela fica). Nunca a pasta do app que esta rodando. Quantos itens ficaram para o reinicio."""
-    from pastas import APP
+    posto nela fica). Nunca a pasta do app que esta rodando, e nada numa pasta fora da regra da pasta protegida (uma
+    juncao no caminho ou dentro dela levaria o rmtree, como administrador ou SYSTEM, para onde ela aponta): ali so o
+    motivo vai para o log. Quantos itens ficaram para o reinicio."""
     pasta = Path(pasta)
-    if not pasta.is_dir() or pasta.resolve() == APP.resolve():
+    if not pasta.is_dir() or pasta.resolve() == pastas.APP.resolve():
+        return 0
+    protegida = PROTEGIDA(pasta)
+    if not protegida:
+        log(f"{pasta} was left as it is, the folder isn't protected: {protegida}")
         return 0
     presos = []
 
@@ -179,7 +185,6 @@ def pasta_velha(pasta=PASTA_VELHA):
 def main(args):
     modo = args[0] if args else ""
     if modo == "maquina":
-        fecha_app_velho()
         registro()
         tarefas()
         return 0

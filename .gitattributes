@@ -5,3 +5,5 @@
 *.sh text eol=lf
 *.exe binary
 *.png binary
+# a sentinela da pasta protegida (instalador/atualizacao/parcial.py) nunca muda de bytes: sem conversao de fim de linha
+instalador/pasta-protegida.txt -text
