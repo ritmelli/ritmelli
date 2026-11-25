@@ -258,8 +258,8 @@ def voltas(A, E):
             (q, E.virou, historico(A)[-1:], fila(A)))):
         confere(cmd.pular(A) is x and vistos == [] and E.virou is None and fila(A) == ["d2"]
                 and historico(A)[-1:] == ["d3"] and no_prato(E) == "d1",
-                f"o Proxima logo depois da virada: fecha a virada (o Anterior guarda a d3) e volta a entrada que acabou "
-                f"de entrar, sem tocar a seguinte ({[q['id'] for q, *_ in vistos]}, {fila(A)})")
+                f"o Proxima logo depois da virada: fecha a virada (o Anterior guarda a d3) e volta a entrada que "
+                f"acabou de entrar, sem tocar a seguinte ({[q['id'] for q, *_ in vistos]}, {fila(A)})")
     pendente([x])
     confere(cmd.pular(A) is x and E.virou is None and fila(A) == [] and historico(A)[-1:] == ["d3"],
             "so com a da virada na fila, o mesmo: o Proxima e a virada")
@@ -1590,18 +1590,22 @@ def avanco(A, E):
     with contextlib.redirect_stderr(io.StringIO()):
         E.preparar(arquivo(A, "d2"), x["qid"])
         ate(lambda: E._virar_em is not None)
+    seek, antes_do_seek = E.seek, []
 
-    def fecha_e_vira(*a, **kw):  # sem virada pendente; o bloco que vira chega logo depois de ver isso
+    def seek_depois_do_bloco(t):  # o bloco que viraria chega entre a escolha do Anterior e o seek
+        antes_do_seek.append(E._pronto is not None)
         with E._qlock:
             E._virar_em = E.pos
         E._mixa(eng.BLOCK)
-    A._fecha_viradas = fecha_e_vira  # o Anterior de antes via a virada fechada aqui e lia o prato depois
+        return seek(t)
+    E.seek = seek_depois_do_bloco
     try:
         with contextlib.redirect_stderr(io.StringIO()):
             feito = cmd.voltar(A)
     finally:
-        del A._fecha_viradas
-    confere(feito == "inicio" and no_prato(E) == "d1" and E.virou is None and fila(A) == ["d2"],
+        del E.seek
+    confere(antes_do_seek == [False] and feito == "inicio" and no_prato(E) == "d1" and E.virou is None
+            and fila(A) == ["d2"],
             f"o Anterior com a passagem preparada decide com o prato que viu: volta ao comeco dele ({feito}, "
             f"{no_prato(E)}, {fila(A)})")
 
@@ -1662,6 +1666,70 @@ def avanco(A, E):
             f"o enfileirar com o Parar no meio da reserva do vigia nao toca por cima do Parar ({rq and rq[0][2]}, "
             f"{no_prato(E)}, {fila(A)})")
 
+    # o Proximo que chega com o load do vigia ja publicado e a troca ainda por confirmar: espera por ela, sem pular a
+    # entrada que o vigia acabou de pôr no prato
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    toca_ate_o_fim(E)
+    carrega, publicou, libera = E.load, threading.Event(), threading.Event()
+
+    def load_publicado(*a, **kw):
+        cap = carrega(*a, **kw)
+        publicou.set()
+        libera.wait(5)
+        return cap
+    E.load = load_publicado
+    try:
+        tv, _ = em_thread(A._volta_fila, None)
+        publicou.wait(5)
+        tp, rp = em_thread(cmd.pular, A)
+        tp.join(0.3)
+        libera.set()
+        tv.join(5)
+        tp.join(5)
+    finally:
+        libera.set()
+        del E.load
+    confere(rp and rp[0] is x and no_prato(E) == "d2" and fila(A) == ["d3"],
+            f"o Proximo com a troca do vigia publicada e por confirmar: devolve a entrada dele ({no_prato(E)}, "
+            f"{fila(A)})")
+
+    # o Proximo depois de um Parar nao herda o avanco de um Proximo de antes dele, que ja nao vale
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    s = Segura(A)
+    try:
+        t1, r1 = em_thread(cmd.pular, A)
+        s.dentro.wait(5)
+        cmd.parar(A)
+        t2, r2 = em_thread(cmd.pular, A)
+        t2.join(5)
+        s.solta()
+        t1.join(5)
+    finally:
+        s.fim()
+    confere(r2 and r2[0] is x and r1 and r1[0] is None and no_prato(E) == "d2" and fila(A) == [],
+            f"o Proximo depois de um Parar toca a primeira, sem esperar o Proximo de antes ({no_prato(E)}, {fila(A)})")
+
+    # o enfileirar decide com o prato visto logo depois de a entrada entrar: o Parar que chega antes da thread nao vira
+    # um tocar (e a rota passa a captura do laco)
+    limpa()
+    toca("d1")
+    x, _ = cmd.poe_na_fila(A, {"id": "d2"})
+    cap = E.captura()
+    cmd.parar(A)
+    tocou = cmd.toca_se_parado(A, x, cap)
+    confere(not tocou and E.track is None and fila(A) == ["d2"],
+            f"o enfileirar com o prato tocando e o Parar logo depois so guarda a entrada ({tocou}, {fila(A)})")
+    visto = []
+    with mock.patch.object(server.cmd, "toca_se_parado", side_effect=lambda A_, x_, c: visto.append(c) or False):
+        st, _ = asyncio.run(asyncio.wait_for(pede_corpo(app, A, "POST", "/api/queue", {"id": "d3"}), 5))
+    confere(st == 200 and len(visto) == 1 and isinstance(visto[0], eng.Captura),
+            f"o POST /api/queue passa ao executor o prato visto no laco ({st}, {visto})")
+
     # o Anterior, o Parar e o tocar da prateleira com a virada pendente: ela fecha antes de mexer no historico
     def vira_pendente():
         limpa()
@@ -1678,7 +1746,8 @@ def avanco(A, E):
     pend = vira_pendente()
     cmd.parar(A)
     confere(pend and E.virou is None and historico(A)[-2:] == ["d1", "d2"] and fila(A) == ["d3"],
-            f"o Parar com a virada pendente: o Anterior guarda o que saiu nela e depois o que parou ({historico(A)[-2:]})")
+            f"o Parar com a virada pendente: o Anterior guarda o que saiu nela e depois o que parou "
+            f"({historico(A)[-2:]})")
     pend = vira_pendente()
     cmd.tocar(A, "d3")
     confere(pend and E.virou is None and historico(A)[-2:] == ["d1", "d2"] and no_prato(E) == "d3"

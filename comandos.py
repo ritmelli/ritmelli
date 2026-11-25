@@ -37,15 +37,42 @@ class Reserva:
         self.deck, self.linha, self.x = deck, linha, x
         self.entrada = None
         self.feita = threading.Event()
+        self.tocando = False  # a troca dela ja publicou o disco no prato (numa linha nova), e falta confirmar
 
     def vale(self, E):
         """Com o _qlock do motor E: o prato ainda e o deck e a linha da reserva."""
         return E._deck is self.deck and E._deck.linha == self.linha
 
+    def toca(self, E):
+        """Com o _qlock do motor E: o pode da troca dela. Ainda vale, e o prato passa a ser o dela ali mesmo
+        (tocando): quem chega ate ela resolver espera por ela, mesmo com a linha nova."""
+        if not self.vale(E):
+            return False
+        self.tocando = True
+        return True
+
+    def viva(self, E):
+        """Com o _qlock do motor E: em curso, e ainda desta linha ou ja trocando o prato."""
+        return not self.feita.is_set() and (self.tocando or self.vale(E))
+
     def espera(self, prazo=None):
         """O resultado, sem trava nenhuma: a entrada que tocou, ou None (erro, invalidacao, prazo estourado)."""
         self.feita.wait(AVANCO_ESPERA_S if prazo is None else prazo)
         return self.entrada
+
+
+class Proximo(Reserva):
+    """Os Proximos sobrepostos de uma linha do prato (App.proximo): o primeiro avanca, e os outros esperam o resultado
+    dele. r: a reserva que ele fez ou espera."""
+
+    def __init__(self, deck, linha):
+        super().__init__(deck, linha, None)
+        self.r = None
+
+    def junta(self, E):
+        """Com o _qlock do motor E: quem chega agora divide este avanco (o prato ainda na linha dele, ou na linha que a
+        reserva dele publicou); depois de um Parar ou de outro disco, nao."""
+        return not self.feita.is_set() and (self.vale(E) or (self.r is not None and self.r.tocando))
 
 
 class CorpoRecusado(ValueError):
@@ -74,7 +101,7 @@ def enfileirar(A, b, remoto=False):
     """A entrada do corpo b no A seguir (o POST /api/queue): o poe_na_fila e depois o toca_se_parado. Volta (entrada,
     job, tocou); CorpoRecusado e a recusa do corpo."""
     x, j = poe_na_fila(A, b, remoto=remoto)
-    return x, j, toca_se_parado(A, x)
+    return x, j, toca_se_parado(A, x, A.engine.captura())
 
 
 def poe_na_fila(A, b, remoto=False):
@@ -87,13 +114,13 @@ def poe_na_fila(A, b, remoto=False):
         raise CorpoRecusado(str(ex)) from ex
 
 
-def toca_se_parado(A, x):
+def toca_se_parado(A, x, cap):
     """Com nada no prato (parado, ou o disco ja acabou), a entrada x que acabou de entrar toca na hora, sem esperar a
     vez; pausado ainda e disco no prato, e a fila so guarda. Tocar na hora e um avanco reservado na linha do prato: se
     o fim do disco (o vigia) ja reservou o avanco dela, este espera o resultado, e tocou so se foi esta entrada; se
-    ela nao tocou nada (a entrada quebrada) e o prato segue na mesma linha, a vez e desta. O prato que mudou de linha
-    no meio (o Parar, outro disco) fica como esta. Volta se tocou."""
-    cap = A.engine.captura()
+    ela nao tocou nada (a entrada quebrada) e o prato segue na mesma linha, a vez e desta. cap: o prato logo depois de x
+    entrar na fila (a rota captura no laco, antes do executor); o que mudou de linha depois (o Parar, outro disco) fica
+    como esta. Volta se tocou."""
     if cap.status not in ("idle", "ended"):
         return False
     for _ in range(3):  # a reserva de outro que nao tocou nesta linha devolve None: de novo, na mesma linha
@@ -147,7 +174,8 @@ def fecha_virada(A, virada):
     return x
 
 
-def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=None, pular=False, cede=False):
+def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=None, pular=False, cede=False,
+           grupo=None):
     """O avanco da fila. Com virada, o (o que saiu, o que entrou, a tag) do motor, que ja virou sozinho para a entrada
     da tag na passagem: ela so sai da fila, e o que saiu entra no historico. Volta a entrada (None se ela ja tinha
     saido).
@@ -162,7 +190,8 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
     prato que pediu o avanco (o fim do disco, o enfileirar com o prato parado); com o prato ja em outro deck ou linha,
     volta CEDEU. Volta a entrada que tocou, None (fila vazia, ou a reserva invalidada no meio) ou CEDEU. na_tela: o
     erro de tocar vai para a tela (o engine.error), e nao para quem chamou (os vigias: entrada quebrada nao trava a
-    fila); nos dois casos ela sai da fila."""
+    fila); nos dois casos ela sai da fila. grupo: o Proximo (comandos.Proximo) que anota a reserva que fez ou espera.
+    Uma reserva continua em curso ate resolver, mesmo depois de a troca dela publicar a linha nova (Reserva.viva)."""
     E = A.engine
     if virada is not None:
         with A.fila_lock:
@@ -179,7 +208,10 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
         # espera o resultado dela, sem disputar a fila_lock e reservar a seguinte depois
         with E._qlock:
             r0 = A.reserva
-            vivo = r0 is not None and not r0.feita.is_set() and r0.vale(E)
+            vivo = (r0 is not None and r0.viva(E)
+                    and (visto is None or (visto.deck is r0.deck and visto.linha == r0.linha)))
+            if vivo and grupo is not None:
+                grupo.r = r0
         if vivo:
             return r0.espera()
     with A.fila_lock:
@@ -191,7 +223,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                     if visto is not None and (visto.deck is not d or visto.linha != d.linha):
                         return CEDEU
                     em_curso = A.reserva
-                    if em_curso is not None and (em_curso.feita.is_set() or not em_curso.vale(E)):
+                    if em_curso is not None and not em_curso.viva(E):
                         em_curso = None
                     if em_curso is None:
                         x = entrada if entrada is not None else (A.fila[0] if A.fila else None)
@@ -199,6 +231,8 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                             return None
                         r = A.reserva = Reserva(d, d.linha, x)
                         E._cancela_passagem()  # a preparada sai: o motor nao vira para ela no meio do avanco
+                    if grupo is not None:
+                        grupo.r = em_curso or r
                     break
             x = fecha_virada(A, v)  # o Anterior guarda primeiro o que saiu nela
             if pular and x is not None:
@@ -231,23 +265,26 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
 def pular(A):
     """O Proxima: a primeira da fila toca agora; logo depois de uma virada da passagem ainda nao conciliada, a
     virada e o avanco, e volta a entrada que acabou de entrar. Os Proximos sobrepostos (o segundo chega antes de o
-    primeiro voltar, mesmo preso na fila_lock enquanto o primeiro troca o disco) dividem o mesmo avanco: um so toca, e
-    os outros esperam o resultado dele, sem trava nenhuma. Volta a entrada, ou None com a fila vazia (ou o avanco que
+    primeiro voltar, mesmo preso na fila_lock enquanto o primeiro troca o disco) dividem o mesmo avanco, se o prato
+    ainda e a linha dele (ou a que a reserva dele publicou): um so toca, e os outros esperam o resultado dele, sem trava
+    nenhuma. Volta a entrada, ou None com a fila vazia (ou o avanco que
     nao tocou)."""
-    with A.proximo_lock:
+    E = A.engine
+    with A.proximo_lock, E._qlock:
         p = A.proximo
-        dono = p is None
-        if dono:
-            p = A.proximo = Reserva(None, None, None)
-    if not dono:
+        junta = p is not None and p.junta(E)
+        if not junta:  # o primeiro desta linha (o de outra linha, de antes de um Parar, segue sozinho)
+            p = A.proximo = Proximo(E._deck, E._deck.linha)
+    if junta:
         return p.espera()
     x = None
     try:
-        x = avanca(A, pular=True)
+        x = avanca(A, pular=True, grupo=p)
         return x
     finally:
         with A.proximo_lock:
-            A.proximo = None
+            if A.proximo is p:
+                A.proximo = None
         p.entrada = x
         p.feita.set()
 

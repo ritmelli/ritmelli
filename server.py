@@ -652,7 +652,7 @@ class App:
         self.reserva = None
         # os Proximos sobrepostos dividem um avanco so (comandos.pular): o em curso, ou None; muda sob a proximo_lock
         self.proximo = None
-        self.proximo_lock = threading.Lock()
+        self.proximo_lock = threading.Lock()  # antes do _qlock, e nunca com a fila_lock
         # Automatico: a semente e o ultimo disco que o usuario escolheu; o mix, o Mix do YouTube ainda
         # nao usado de mix_base (a semente, ou a ultima parecida quando o da semente acaba);
         # fora, o que nao entra (tocou nesta sessao, ou o usuario tirou da fila). Vem ligado na instalacao nova; quem ja
@@ -1029,12 +1029,13 @@ class App:
                anterior=False):
         """O disco tr entra no prato (o load; com stream, (alvo, tem_titulo), o espera e depois o _abre_stream), sob a
         fila_lock e o _lock do motor (_com_motor). A virada pendente fecha antes e a passagem preparada sai
-        (_fecha_viradas: o Anterior guarda primeiro o que saiu nela, e o motor nao vira no meio). Com a reserva (o avanco da fila), ela ainda tem de ser a do App, e o motor confere sob o _qlock que o
-        prato ainda e o deck e a linha dela; com a entrada (da fila), ela ainda tem de estar na fila, e sai dela na
-        mesma troca. O que saiu do prato (a Captura que o motor devolve) entra no Anterior (historico=False: nao entra)
-        ou, no Anterior (anterior=True), volta ao topo da fila. O Repetir vale para o disco do prato: loop decide, e
-        sem ele o motor o desliga se o disco que sai e outro (na mesma publicacao da faixa). A posicao do que saiu e
-        gravada fora das travas. Volta se trocou."""
+        (_fecha_viradas: o Anterior guarda primeiro o que saiu nela, e o motor nao vira no meio). Com a reserva (o
+        avanco da fila), ela ainda tem de ser a do App, e o motor confere sob o _qlock que o prato ainda e o deck e a
+        linha dela; com a entrada (da fila), ela ainda tem de estar na fila, e sai dela na mesma troca. O que saiu do
+        prato (a Captura que o motor devolve) entra no Anterior (historico=False: nao entra) ou, no Anterior
+        (anterior=True), volta ao topo da fila. O Repetir vale para o disco do prato: loop decide, e sem ele o motor o
+        desliga se o disco que sai e outro (na mesma publicacao da faixa). A posicao do que saiu e gravada fora das
+        travas. Volta se trocou."""
         e = self.engine
         ganho = e._ganho_de(tr)  # fora das travas: o motor pergunta ao servidor
 
@@ -1052,7 +1053,7 @@ class App:
             self._fecha_viradas()
             if not na_fila():  # a virada que fechou agora era a dela
                 return None
-            pode = (lambda: reserva.vale(e)) if reserva is not None else None
+            pode = (lambda: reserva.toca(e)) if reserva is not None else None
             cap = (e.espera(tr, pode=pode, ganho=ganho, depois=depois) if stream
                    else e.load(tr, start=start, pode=pode, loop=loop, ganho=ganho, depois=depois))
             if cap is None:
@@ -1082,11 +1083,11 @@ class App:
         return True
 
     def _com_motor(self, f):
-        """f(depois) com a fila_lock e o _lock do motor na mao, nessa ordem, sem esperar o _lock com a fila_lock
-        segura: a leitura do estado (o /api/state, no laco do servidor) pega a fila_lock, e o _lock pode ficar segundos
-        com outro (a troca de aparelho). Ocupado, solta a fila_lock, espera o _lock sozinho e tenta de novo; f roda uma vez so e
-        confere de novo o que precisa. O que o motor deixa em depois (o leitor que comeca, a onda, a medida) roda com
-        as duas travas soltas. Volta o que f volta."""
+        """f(depois) com a fila_lock e o _lock do motor na mao, nessa ordem, sem esperar o _lock com a fila_lock segura:
+        a leitura do estado (o /api/state, no laco do servidor) pega a fila_lock, e o _lock pode ficar segundos com
+        outro (a troca de aparelho). Ocupado, solta a fila_lock, espera o _lock sozinho e tenta de novo; f roda uma vez
+        so e confere de novo o que precisa. O que o motor deixa em depois (o leitor que comeca, a onda, a medida) roda
+        com as duas travas soltas. Volta o que f volta."""
         e = self.engine
         depois = []
         try:
@@ -1204,7 +1205,7 @@ class App:
                 def para_se():  # sob o _qlock (a fila muda sob ele): o mesmo prato, a fila vazia e nenhum avanco de
                     r = self.reserva  # outro em curso nesta linha
                     return (e._deck is cap.deck and e._deck.linha == cap.linha and not self.fila
-                            and (r is None or r.feita.is_set() or not r.vale(e)))
+                            and (r is None or not r.viva(e)))
                 for _ in range(3):  # a reserva de outro que falhou devolve None: com fila, tenta de novo
                     if cmd.avanca(self, historico=False, visto=cap) is not None:
                         return  # tocou (este ou outro avanco), ou o prato ja mudou (CEDEU)
@@ -1625,7 +1626,7 @@ class App:
 
             def pode():  # sob o _qlock do motor: so le campos em memoria
                 r = self.reserva
-                return (e.virou is None and (r is None or r.feita.is_set() or not r.vale(e)) and e._deck is cap.deck
+                return (e.virou is None and (r is None or not r.viva(e)) and e._deck is cap.deck
                         and e._deck.linha == cap.linha and e.track is tr and not e.loop and not e.ended
                         and e.pronto_tag is None)
 
@@ -2535,8 +2536,9 @@ def build(app_state):
             x, j = cmd.poe_na_fila(A, b, remoto=request["papel"] == "remoto")
         except cmd.CorpoRecusado as ex:
             return j_err(i18n.so_texto(str(ex)))
-        # com o prato parado, tocar na hora pode esperar a reserva de avanco da linha: fora do laco
-        tocou = await loop_().run_in_executor(None, cmd.toca_se_parado, A, x)
+        # com o prato parado, tocar na hora pode esperar a reserva de avanco da linha: fora do laco, com o prato visto
+        # aqui, logo depois de a entrada entrar (um Parar que chega antes da thread nao vira um tocar)
+        tocou = await loop_().run_in_executor(None, cmd.toca_se_parado, A, x, A.engine.captura())
         return j_ok(entry=x, job=j, playing=tocou)
 
     @r.delete("/api/queue")
