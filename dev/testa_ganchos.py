@@ -72,9 +72,12 @@ def ganchos(arvore, modulo):
                 elif dono(no.value):
                     achados.add(f"{dono(no.value)}.{no.attr}")
             elif (isinstance(no, ast.Call) and nome_de(no.func) in ("getattr", "hasattr", "setattr")
-                  and len(no.args) >= 2 and isinstance(no.args[1], ast.Constant) and isinstance(no.args[1].value, str)
-                  and dono(no.args[0]) and not tem(no.args[1].value)):
-                achados.add(f"{dono(no.args[0])}.{no.args[1].value}")
+                  and len(no.args) >= 2 and isinstance(no.args[1], ast.Constant) and isinstance(no.args[1].value, str)):
+                attr = no.args[1].value  # a mesma regra do acesso direto
+                if tem(attr):
+                    achados.add(attr)
+                elif dono(no.args[0]):
+                    achados.add(f"{dono(no.args[0])}.{attr}")
     return achados
 
 
