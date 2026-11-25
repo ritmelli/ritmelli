@@ -107,6 +107,7 @@ PROBE = r"""(soDialogo => {
 PRONTA = ("(() => { try { return document.readyState === 'complete' && document.fonts.status === 'loaded' && "
           "!!S.state && [...document.images].every(i => i.complete); } catch (e) { return false; } })()")
 PRONTA_S = 20.0
+JS_WAIT_S = 1.5
 
 
 async def espera_pronta(cmd, barrados):
@@ -322,7 +323,7 @@ async def run(a):
                     await confere_pagina(cmd, a.url, barrados)
                     if a.js:
                         await cmd("Runtime.evaluate", expression=a.js)
-                        await asyncio.sleep(a.wait)
+                        await asyncio.sleep(max(a.wait, JS_WAIT_S))  # what the --js opens has no ready signal
                     if a.boas_vindas:  # se nao abrir, o PROBE diz "nenhuma janela aberta"
                         await espera_boas_vindas(cmd)
                     await confere_pagina(cmd, a.url, barrados)  # o --js e a espera podem ter levado a pagina embora
@@ -633,7 +634,8 @@ def main():
     ap.add_argument("--metricas", action="store_true",
                     help="o aviso dos dados de uso: sobe os proprios --mock --metricas-teste, um por situacao e botao")
     ap.add_argument("--sizes", default=SIZES)
-    ap.add_argument("--wait", type=float, default=1.5)
+    ap.add_argument("--wait", type=float, default=0.5,
+                    help="seconds after the page is ready (and at least 1.5 after the --js)")
     ap.add_argument("--shots", help="pasta para salvar um print por tamanho")
     ap.add_argument("--js", help="JS que roda depois da carga, antes da conferencia")
     ap.add_argument("--boas-vindas", action="store_true",

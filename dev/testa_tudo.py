@@ -80,8 +80,8 @@ PULOU = re.compile(r"^--\s.*ficou de fora.*$", re.M)
 LIMITE_S = 600
 # the tests that measure time (a deadline, a cost per block, the wait between two events): with --jobs above 1 they run
 # one by one, alone, after the others, so a neighbour's load does not push them past a limit
-SERIAL = {f"dev/testa_{n}.py" for n in ("mock", "grava", "comandos", "congela", "ganho", "musica", "passagem", "pista",
-                                         "vivo")}
+SERIAL = {f"dev/testa_{n}.py" for n in ("mock", "grava", "comandos", "congela", "ganho", "musica", "passagem",
+                                         "pedal_voz", "pista", "vivo")}
 JOBS = 4
 # the steps of the testa.yml that run one script of their own, by name (--passo): the protected folder on the real disk
 # (it creates a folder in Program Files and changes its ACL with icacls, so it needs an administrator: the GitHub
@@ -137,8 +137,8 @@ def manual(arquivo):
 def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml"):
     """What takes a test out of the PR check unnoticed: a dev/testa_*.py in no list here (STDLIB, COMPLETO, MICROFONE,
     PASSOS) and without the "manual:" line; a file with the line (a test or a dev/ tool) that runs in the check anyway,
-    or with the line out of format; and a call of INVOCATIONS that the testa.yml no longer makes (in the lines that are
-    not comments). Returns the failure lines."""
+    or with the line out of format; a call of INVOCATIONS that the testa.yml no longer makes, and a dev/ script it calls
+    directly instead of through PASSOS (in the lines that are not comments). Returns the failure lines."""
     rodam = set(COMPLETO) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
     falhas = []
     for p in sorted((RAIZ / "dev").glob("*.py")):
@@ -153,6 +153,10 @@ def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml"):
     codigo = "\n".join(linha for linha in Path(yml).read_text(encoding="utf-8").splitlines()
                        if not linha.lstrip().startswith("#"))
     falhas += [f"the testa.yml no longer runs \"python {c}\"" for c in INVOCATIONS if f"python {c}" not in codigo]
+    # a dev/ script the workflow called directly would skip the check above: it goes through PASSOS
+    falhas += [f"the testa.yml runs \"python {s}\" directly: declare it in the PASSOS of dev/testa_tudo.py and call "
+               "\"python dev/testa_tudo.py --passo <name>\""
+               for s in sorted(set(re.findall(r"python\s+(dev/\w+\.py)", codigo))) if s != "dev/testa_tudo.py"]
     return falhas
 
 

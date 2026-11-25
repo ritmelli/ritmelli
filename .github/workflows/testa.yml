@@ -280,10 +280,16 @@ jobs:
         with:
           path: ${{ runner.temp }}\compara-ref
           key: ${{ steps.ref.outputs.cache-primary-key }}
+      # the path is part of the cache version: the PRs restore into compara-ref, so the HEAD capture is saved from there
+      - name: HEAD capture as a reference
+        if: always() && steps.compara.outputs.head_cache == 'true'
+        run: |
+          Remove-Item -Recurse -Force "$env:RUNNER_TEMP\compara-ref" -ErrorAction SilentlyContinue
+          Move-Item "$env:RUNNER_TEMP\compara-head" "$env:RUNNER_TEMP\compara-ref"
       - uses: actions/cache/save@v6
         if: always() && steps.compara.outputs.head_cache == 'true'
         with:
-          path: ${{ runner.temp }}\compara-head
+          path: ${{ runner.temp }}\compara-ref
           key: compara-${{ github.sha }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt') }}
       - name: Prints
         if: always() && (steps.compara.outcome == 'failure' || steps.compara.outputs.mudou == 'true')
