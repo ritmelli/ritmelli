@@ -58,6 +58,7 @@ YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 YT_URL = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
 PAGINA_FOLGA = 8  # a busca pede tantos a mais na pagina de resultados: canal e playlist ocupam lugar e saem
 TICK = 1 / 15
+REMOTO_DURACAO_MAX_S = 24 * 3600  # a duracao que o remoto manda na fila: o visor (engine.Onda) aloca por ela
 ESCUTA_S = 30.0  # tocando de fato esse tempo (ou 80% do disco, se for mais curto), conta uma escuta
 BUSCA_MAX = 200  # o carregar mais da busca vai ate aqui
 # o YouTube so libera todos os formatos com um runtime de JavaScript (pacote yt-dlp-ejs); o
@@ -1242,9 +1243,16 @@ class App:
             if remoto and not (all(b.get(k) is None or isinstance(b[k], str) for k in ("title", "channel"))
                                and (b.get("duration") is None or (isinstance(b["duration"], (int, float))
                                                                   and not isinstance(b["duration"], bool)
-                                                                  and 0 <= b["duration"] < float("inf")))):
-                # o tema e as passagens leem estes campos: texto (ou null) e a duracao em segundos (ou null)
-                raise ValueError("A remote session sends title and channel as text and duration as seconds.")
+                                                                  and 0 <= b["duration"] <= REMOTO_DURACAO_MAX_S))):
+                # o tema e as passagens leem estes campos: texto (ou null) e a duracao em segundos (ou null, ate um dia)
+                raise ValueError("A remote session sends title and channel as text and duration as seconds (up to a "
+                                 "day).")
+            if remoto:
+                try:  # o texto vai a todo SSE: um substituto solto do JSON (\ud800) derrubaria o evento de todos
+                    for v in (target, b.get("title"), b.get("channel")):
+                        (v or "").encode("utf-8")
+                except UnicodeEncodeError:
+                    raise ValueError("A remote session sends text in valid Unicode.") from None
             it = self.lib.by_youtube(yid) if yid else None
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],

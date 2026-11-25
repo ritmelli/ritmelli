@@ -349,11 +349,16 @@ async def papeis_no_guard():
                       {"youtube_id": "dQw4w9WgXcQ", "title": ["x"]}, {"youtube_id": "dQw4w9WgXcQ", "channel": 3},
                       {"youtube_id": "dQw4w9WgXcQ", "duration": "longa"},
                       {"youtube_id": "dQw4w9WgXcQ", "duration": True},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": -1}):
+                      {"youtube_id": "dQw4w9WgXcQ", "duration": -1},
+                      {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7},
+                      {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 400},
+                      {"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"},
+                      {"youtube_id": "dQw4w9WgXcQ", "channel": "\udfff"},
+                      {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&x=\ud800"}):
             resp, _, _ = await manda("POST", "/api/queue", de=pc, token=token, corpo=corpo,
                                      handler=rota[("POST", "/api/queue")])
-            confere(resp.status == 400, f"o remoto so enfileira disco da prateleira ou video do YouTube: {corpo} -> "
-                    f"{resp.status}")
+            confere(resp.status == 400, f"o remoto so enfileira disco da prateleira ou video do YouTube: "
+                    f"{str(corpo)[:90]} -> {resp.status}")
         # o que passa: o video do YouTube, com a capa dele e nao a do corpo; o disco da prateleira pelo id
         fila = types.SimpleNamespace(
             lib=types.SimpleNamespace(get=lambda i: {"id": i, "title": "t"} if i == "d1" else None,

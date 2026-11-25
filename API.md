@@ -356,8 +356,8 @@ valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
   sessão remota aceita (`secrets.token_urlsafe(32)`, gerado a cada sessão e revogado quando ela acaba). O cabeçalho
   com token errado, vencido ou vindo de fora do `127.0.0.1` responde 401, mesmo do `127.0.0.1`: quem manda o
   cabeçalho nunca cai no papel do PC. Comando fora da lista dele, 403; no `POST /api/queue`, ele só põe o `id` de um
-  disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, e o resto
-  é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma sessão abre um
+  disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, título e canal
+  como texto e a duração em segundos (até 24 h) ou `null`, e o resto é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma sessão abre um
   token.
 
 | rota | `pc` | `celular` | `remoto` | `publico` |
