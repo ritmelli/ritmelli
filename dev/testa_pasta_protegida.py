@@ -14,18 +14,23 @@ dentro de um pai gravavel.
 
 No disco, cria %ProgramW6432%\RitmelliTeste-<aleatorio>, que herda a ACL de Program Files e nasce com dono
 Administradores, como a pasta que o setup cria, e confere os mesmos casos com icacls e juncoes de verdade; o finally
-apaga a pasta. Sai 1 se algo falha."""
+apaga a pasta. Each on-disk case also runs the installer's copy of the rule (instalador/protegida.ps1), the same way
+the setup's RodaPs runs it, and requires the same verdict as pastas.pasta_protegida. Sai 1 se algo falha."""
 import ctypes
 import ntpath
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+RAIZ_REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ_REPO))
 import pastas  # noqa: E402
+
+PROTEGIDA_PS1 = RAIZ_REPO / "instalador" / "protegida.ps1"
 
 SY, BA, TI, LS = pastas.SID_SYSTEM, pastas.SID_ADMINS, pastas.SID_TRUSTED_INSTALLER, pastas.SID_LOCAL_SERVICE
 US = "S-1-5-32-545"  # Usuarios
@@ -307,6 +312,42 @@ def em_memoria():
 
 # ---------- no disco ----------
 
+def ps_quote(text):
+    """A PowerShell single-quoted string, as the setup's Aspas builds it (the typographic single quotes count too)."""
+    for q in ("'", "‘", "’", "‚", "‛"):
+        text = text.replace(q, q + q)
+    return "'" + text + "'"
+
+
+def protected_ps1(folder, root):
+    """The verdict of instalador/protegida.ps1, run as text by the system PowerShell like the setup's RodaPs does:
+    True, or the reason it gives. RuntimeError when it gives no answer: that is no verdict, not a refusal."""
+    fd, out = tempfile.mkstemp(prefix="protegida-", suffix=".txt")
+    os.close(fd)
+    os.unlink(out)
+    windows = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    powershell = windows / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    command = (f"& ([scriptblock]::Create([IO.File]::ReadAllText({ps_quote(str(PROTEGIDA_PS1))}))) "
+               f"-Pasta {ps_quote(str(folder))} -Raiz {ps_quote(str(root))} -Saida {ps_quote(out)}")
+    try:
+        r = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-Command", command], capture_output=True,
+                           text=True, encoding="oem", errors="replace", timeout=120)
+        if r.returncode:
+            raise RuntimeError(f"powershell exited with {r.returncode}: {r.stdout.strip()} {r.stderr.strip()}")
+        try:
+            answer = Path(out).read_text(encoding="ascii").strip()
+        except OSError as e:
+            raise RuntimeError(f"protegida.ps1 gave no answer ({e}): {r.stderr.strip()}") from e
+        if not answer:
+            raise RuntimeError(f"protegida.ps1 gave an empty answer: {r.stderr.strip()}")
+        return True if answer == "OK" else answer
+    finally:
+        try:
+            os.unlink(out)
+        except OSError:
+            pass
+
+
 def icacls(*args):
     r = subprocess.run(["icacls", *map(str, args)], capture_output=True, text=True, encoding="oem", errors="replace")
     if r.returncode:
@@ -329,13 +370,24 @@ def no_disco():
     base = raiz / f"RitmelliTeste-{uuid.uuid4().hex[:8]}"
     juncoes = []
 
+    def same_in_ps1(nome, pasta, r):
+        # the installer's copy of the rule has to reach the same verdict on the same disk
+        try:
+            ps = protected_ps1(pasta, raiz)
+        except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
+            confere(f"protegida.ps1 agrees: {nome}", False, f"no verdict from protegida.ps1: {e}")
+            return
+        confere(f"protegida.ps1 agrees: {nome}", (ps is True) == (r is True), f"pastas: {r!r}, protegida.ps1: {ps!r}")
+
     def passa(nome, pasta=base):
         r = pastas.pasta_protegida(pasta)
         confere(f"passa: {nome}", r is True, repr(r))
+        same_in_ps1(nome, pasta, r)
 
     def reprova_disco(nome, pasta=base):
         r = pastas.pasta_protegida(pasta)
         confere(f"reprova: {nome}", not r and r is not True, repr(r))
+        same_in_ps1(nome, pasta, r)
 
     try:
         base.mkdir()

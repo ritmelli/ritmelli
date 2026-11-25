@@ -75,7 +75,9 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "o instalador do Inno Setup saiu com $($p.ExitCode)" }
           if (-not (Test-Path "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe")) { throw 'o ISCC.exe nao ficou na pasta do usuario' }
       # o manifesto da última versão publicada, de onde a parcial compara (o parcial.py confere a assinatura). Sem
-      # nenhuma publicada, só o setup completo
+      # nenhuma publicada, só o setup completo.
+      # A failed download only means "nothing published" when the releases repo really has no release: otherwise the
+      # build would go green without the partial update and without the migration test
       - name: Manifesto anterior
         id: anterior
         shell: powershell
@@ -89,7 +91,13 @@ jobs:
               Invoke-WebRequest "$base/$f" -OutFile (Join-Path $pasta $f) -UseBasicParsing
             }
           } catch {
-            "sem versão publicada para comparar ($($_.Exception.Message)): só o setup completo"
+            $erro = $_.Exception.Message
+            # if this listing fails too, the step fails: there is no telling whether a version was published
+            $lista = Invoke-RestMethod 'https://api.github.com/repos/ritmelli/ritmelli-releases/releases?per_page=1' -Headers @{ 'User-Agent' = 'ritmelli-build' }
+            # enumerated: in PowerShell 5 the JSON array comes as one object
+            $releases = @($lista | ForEach-Object { $_ })
+            if ($releases.Count) { throw "couldn't download the manifest of the published version $($releases[0].tag_name) ($erro)" }
+            "sem versão publicada para comparar ($erro): só o setup completo"
             exit 0
           }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "manifesto=$(Join-Path $pasta 'manifest.json')" -Encoding ascii
@@ -429,12 +437,20 @@ jobs:
   # o setup novo por cima da última versão publicada, como no PC de quem recebe a atualização: os dados de quem usa, a
   # escolha dos dados de uso e o original de cada microfone têm de vir junto. Por cima de uma versão de antes da troca
   # de nome (#58), confere também a pasta nova, as tarefas, o registro, os atalhos e o firewall
-  # (instalador/testa-migracao.ps1). Sem nenhuma versão publicada, não roda
+  # (instalador/testa-migracao.ps1). Sem nenhuma versão publicada, não roda.
+  # The other scenarios (each on its own clean machine) start from the 0.6.0 and prove where the setup puts the app when
+  # the previous folder isn't protected: outside Program Files, a /DIR= outside it, and a Program Files\Ritmelli that
+  # Users can write to
   testa-migracao:
     if: needs.monta.outputs.anterior == 'true'
     needs: monta
     runs-on: windows-2025
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [update, outside-program-files, dir-refused, writable-folder]
+    name: testa-migracao (${{ matrix.scenario }})
     steps:
       - uses: actions/checkout@v7
         with:
@@ -445,8 +461,9 @@ jobs:
         with:
           name: Ritmelli-${{ needs.monta.outputs.versao }}
           path: saida
-      - name: Instala a publicada, o setup novo por cima e confere
+      - name: Instala a publicada, o setup novo por cima e confere (${{ matrix.scenario }})
         shell: powershell
         env:
           VERSAO: ${{ needs.monta.outputs.versao }}
-        run: instalador\testa-migracao.ps1 -Setup "saida\Ritmelli-$env:VERSAO-setup.exe" -Versao $env:VERSAO
+          SCENARIO: ${{ matrix.scenario }}
+        run: instalador\testa-migracao.ps1 -Setup "saida\Ritmelli-$env:VERSAO-setup.exe" -Versao $env:VERSAO -Scenario $env:SCENARIO
