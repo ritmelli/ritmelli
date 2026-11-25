@@ -68,11 +68,11 @@ const I18N = (() => {
 })();
 /* a theme file that does not load (the server was off when the page opened, a cut connection): the onerror of every
    <script src> of the page calls scriptFailed. The start of the page calls functions from several files, so without
-   one of them it never connects. Once the parser is done, the page shows the off-air card (which a connection or a
-   pairing request made in the meantime does not take down: see online and pedirPareamento) and loads again as soon
-   as the file answers, at the address it opened with (the ?parear= of the QR, which the page takes out of the
-   address, comes back). The transporte.js alone is left to its own retry (carregarTransporte), which reconnects
-   without loading the page again */
+   one of them it never connects. Once the parser is done, the page shows the off-air card instead of starting its
+   calls to the server (the DOMContentLoaded at the end of the main script) and loads again as soon as the file
+   answers, at the address it opened with (the ?parear= of the QR, which the page takes out of the address, comes
+   back). The transporte.js alone is left to its own retry (carregarTransporte), which reconnects without loading the
+   page again */
 const scriptsFailed = [], firstAddress = location.href;
 function scriptFailed(s) { scriptsFailed.push(s.getAttribute('src')); }
 const scriptsMissing = () => scriptsFailed.filter(f => f !== 'transporte.js');
@@ -2001,7 +2001,7 @@ const redeMudou = () => { if (!$('#fora').hidden && !S.online && !S.desligado &&
 addEventListener('online', redeMudou); addEventListener('offline', redeMudou);
 if (navigator.connection) navigator.connection.addEventListener('change', redeMudou);
 function online(on) {
-  if (on === S.online || (on && scriptsMissing().length)) return;   // a file of the theme is missing: the card stays
+  if (on === S.online) return;
   S.online = on; agulhasPixel();
   const lamp = $('#lamp'), cx = $('#conexao');
   if (on) {
@@ -2046,7 +2046,7 @@ let codigoQR = new URLSearchParams(location.search).get('parear');
 if (codigoQR) history.replaceState(null, '', location.pathname + location.hash);  // o codigo usado nao fica no historico
 function pedirPareamento(desconectado, caps) {
   definirCaps(caps || null);
-  if (S.pareando || scriptsMissing().length) return;   // a file of the theme is missing: the off-air card stays
+  if (S.pareando) return;
   S.pareando = true; S.online = false;
   clearTimeout(reconT); clearTimeout(foraT);
   if (es) { es.fechar(); es = null; }
@@ -2165,7 +2165,6 @@ new ResizeObserver(desenharVUs).observe($('.janela'));
 $('#mini-cortar').innerHTML = $('#palco-cortar').innerHTML = IC_MIC;
 inertPalco();
 FADERS.forEach(([fi]) => pintarFader($(fi)));
-carregarEfeitos();
 if (location.hash === '#efeitos' && !celular()) abrirGaveta(true);
 function carregar() {
   const geracao = geracaoPareamento;
@@ -2186,14 +2185,20 @@ function carregar() {
     })
     .finally(() => { if (!S.pareando && geracao === geracaoPareamento) conectar(); });
 }
-carregar();
-// registered after carregar(): the browser can run events while it loads the ui-events.js above, and a tab shown in
-// that gap would connect before the page starts
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { clearTimeout(foraT); return; }
-  if (S.desligado || S.pareando) return;
-  conectar();
-  if (!S.online) armarFora();
+// the calls to the server wait for the last <script src> of the page: with a theme file missing they never start, and
+// the page shows the off-air card instead (scriptFailed, in the <head>), so no answer takes it down
+document.addEventListener('DOMContentLoaded', () => {
+  if (scriptsMissing().length) return;
+  carregarEfeitos();
+  carregar();
+  // registered after carregar(): the browser can run events while it loads the scripts above, and a tab shown in
+  // that gap would connect before the page starts
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { clearTimeout(foraT); return; }
+    if (S.desligado || S.pareando) return;
+    conectar();
+    if (!S.online) armarFora();
+  });
 });
 </script>
 <script src="letra-placa.js" onerror="scriptFailed(this)"></script>

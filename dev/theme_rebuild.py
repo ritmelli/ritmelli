@@ -3,8 +3,9 @@
     python dev/theme_rebuild.py <base> [<head>] [--theme ritmelli] [--show]
 
 The page is the index.html of the theme with every <script src> and <link rel="stylesheet"> replaced by the text of its
-file, without the block marks (/* NAME-INICIO */, /* NAME-FIM */, /* name:inicio */, /* name:fim */), the
-'use strict'; lines, the blank lines and the <script> and <style> tags themselves. <base> and <head> are git commits
+file (after a line with the tag's other attributes, when it has any), without the block marks (/* NAME-INICIO */,
+/* NAME-FIM */, /* name:inicio */, /* name:fim */), the 'use strict'; lines, the blank lines and the <script> and
+<style> tags themselves. <base> and <head> are git commits
 (the head defaults to the working tree). The lines that differ between the two pages are split into the blocks that
 only moved (a run of removed lines found whole among the added ones) and the lines that are new or gone, which are
 printed. Exit 0 when nothing is new or gone (the pages are equal, or only blocks moved), 1 otherwise; --show prints
@@ -20,8 +21,8 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
-SCRIPT_SRC = re.compile(r'<script src="([^"]+)"[^>]*></script>')
-LINK_CSS = re.compile(r'<link rel="stylesheet" href="([^"]+)"[^>]*>')
+SCRIPT_SRC = re.compile(r'<script src="([^"]+)"([^>]*)></script>')
+LINK_CSS = re.compile(r'<link rel="stylesheet" href="([^"]+)"([^>]*)>')
 TAG = re.compile(r"^\s*</?(?:script|style)\b[^>]*>\s*$")
 MIN_PIECE = 2   # the shortest piece of a split run that counts as moved: a lone "}" would match anywhere
 
@@ -43,8 +44,13 @@ def reader(rev, theme):
 def rebuild(read):
     """The lines of the page put back together (see the module docstring)."""
     page = read("index.html").replace("\r\n", "\n")
-    page = SCRIPT_SRC.sub(lambda m: "\n" + read(m.group(1)) + "\n", page)
-    page = LINK_CSS.sub(lambda m: "\n" + read(m.group(1)) + "\n", page)
+    def put(kind):
+        # the file in place of its tag, after a line with the other attributes of the tag, when it has any (a defer or
+        # a media changes when the file applies)
+        return lambda m: (f"\n[{kind} {m.group(1)}:{m.group(2).rstrip()}]" if m.group(2).strip() else "") + \
+            "\n" + read(m.group(1)) + "\n"
+    page = SCRIPT_SRC.sub(put("script"), page)
+    page = LINK_CSS.sub(put("link"), page)
     lines = []
     for line in page.split("\n"):
         line = MARK.sub("", line).rstrip()
@@ -97,6 +103,13 @@ def split_moves(a, b):
                 p += 1
     removed = [(i, a[i]) for i in sorted(left)]
     added = [(j + p, line) for k, (j, block) in enumerate(new) for p, line in enumerate(block) if (k, p) not in used]
+    # last, a line left over on both sides (the "}" that closed a block the matcher split) moved alone
+    for i, line in list(removed):
+        twin = next((x for x in added if x[1] == line), None)
+        if twin:
+            removed.remove((i, line))
+            added.remove(twin)
+            moved.append(([line], i, twin[0]))
     return moved, removed, added
 
 

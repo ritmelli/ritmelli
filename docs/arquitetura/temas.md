@@ -41,8 +41,9 @@ nunca recebeu um `caps` (a guardada, que o navegador reabre com o Ritmelli fecha
 do `transporte.js`: o começo da página chama funções de outros arquivos antes do `carregar()` (o `montarMesa()` e o
 `montarMostradores()` do `dj-desk.js`, o `carregarEfeitos()` do `voice-effects.js`), e sem um deles ela não conecta.
 Por isso o `onerror` de cada `<script src>` chama o `scriptFailed`, declarado no `<head>` antes do primeiro arquivo:
-terminada a leitura da página, se faltou um arquivo, ela mostra o aviso de fora do ar e carrega de novo assim que o
-arquivo responde (conferido a cada 3 s). Só o `transporte.js`, quando é o único que falta, fica com a volta dele: o
+os pedidos da carga ao servidor só começam terminada a leitura da página (no `DOMContentLoaded`), e se faltou um
+arquivo eles não começam: a página mostra o aviso de fora do ar e carrega de novo, no endereço com que abriu, assim
+que o arquivo responde (conferido a cada 3 s). Só o `transporte.js`, quando é o único que falta, fica com a volta dele: o
 `conectar()` o carrega de novo a cada 3 s, uma carga por vez, e com ele de volta a página segue a carga normal, sem
 recarregar. Para ver o papel do celular sem outro aparelho, o `--mock --papel-local celular` (ver o `API.md`).
 
