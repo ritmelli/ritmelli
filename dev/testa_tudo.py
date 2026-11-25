@@ -176,12 +176,13 @@ def escreve(resumo, linhas):
 
 
 def diz_areas(a):
-    """O --areas: o git diff --name-only da base ate o HEAD. Sem rename: o arquivo que sai de uma area conta nela."""
-    cod, saida = executa(["git", "diff", "--name-only", "--no-renames", a.areas, "HEAD"], limite=60)
+    """O --areas: o git diff --name-only da base ate o HEAD. Sem rename: o arquivo que sai de uma area conta nela. Com o
+    -z, o caminho com acento vem inteiro, e nao entre aspas."""
+    cod, saida = executa(["git", "diff", "--name-only", "-z", "--no-renames", a.areas, "HEAD"], limite=60)
     if cod != 0:
         print(f"o git diff contra {a.areas} falhou ({cod}):\n{saida}")
         return 1
-    arquivos = [linha.strip() for linha in saida.splitlines() if linha.strip()]
+    arquivos = [arq for arq in saida.split(chr(0)) if arq.strip()]
     etiquetas = json.loads(a.etiquetas or os.environ.get("ETIQUETAS") or "[]")
     disparadas = areas(arquivos, etiquetas)
     print(f"{len(arquivos)} arquivo(s) mudaram desde {a.areas}; etiquetas: {etiquetas or 'nenhuma'}")
@@ -200,8 +201,7 @@ def tela(a):
     import compara  # numpy, pillow e websockets: so aqui, para o --so-stdlib seguir so da biblioteca padrao
 
     pasta = Path(a.pasta).resolve()
-    shutil.rmtree(pasta, ignore_errors=True)
-    pasta.mkdir(parents=True)
+    pasta.mkdir(parents=True, exist_ok=True)  # sem apagar: o --pasta pode ser uma pasta que ja existe
     md, bloqueia, mudou = ["**Tela:**", ""], False, False
 
     # o fitcheck contra um --mock com a prateleira de mentira do compara, os dados e a LOCALAPPDATA temporarios

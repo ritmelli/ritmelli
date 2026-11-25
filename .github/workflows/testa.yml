@@ -196,7 +196,8 @@ jobs:
   # o check exigido: sempre roda, junta os resumos e só passa com os outros três (o que não se aplica passa sem rodar)
   testa-o-pr:
     name: Testa o PR
-    if: ${{ !cancelled() }}
+    # always(), e nao !cancelled(): o job pulado conta como verde no check exigido, e a execucao cancelada passaria
+    if: ${{ always() }}
     needs: [testes, microfone, tela]
     runs-on: ubuntu-24.04
     timeout-minutes: 5

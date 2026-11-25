@@ -384,8 +384,10 @@ def main():
     raiz = Path(a.raiz).resolve()
     if not (raiz / "server.py").exists():
         sys.exit(f"sem o server.py em {raiz}: o --raiz e a pasta de um checkout do Ritmelli")
-    if not a.ref and not (pasta / "ref").exists():
-        sys.exit(f"sem referencia em {pasta / 'ref'}: rode antes com --ref, no tema de antes da mudanca")
+    sem_ref = [t for t in (s.split("@")[0] for s in a.sizes.split(",")) if not any((pasta / "ref").glob(f"*-{t}-*.png"))]
+    if not a.ref and sem_ref:
+        sys.exit(f"sem referencia em {pasta / 'ref'} para {', '.join(sem_ref)}: rode antes com --ref, no tema de antes da "
+                 "mudanca")
     # a referencia nova nasce ao lado da antiga: refazer a antiga pede o tema de antes da mudanca
     destino = pasta / ("ref.novo" if a.ref else "agora")
     shutil.rmtree(destino, ignore_errors=True)
