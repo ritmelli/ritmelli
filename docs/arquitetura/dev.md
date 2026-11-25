@@ -29,7 +29,8 @@ referência gravados antes da mudança, também de outro checkout pelo `--raiz`;
 print mudou e 1 se a captura não vale), `dev/perfcheck.py`
 (quanto o tema redesenha por segundo com música tocando, no celular emulado),
 `dev/celular.py` (mede rolagem, puxão e abrir do palco no Chrome do celular de verdade,
-por USB com adb; o emulado não reproduz o que trava lá), `dev/bumbo.py` (confere se a passagem
+por USB com adb; o emulado não reproduz o que trava lá; num `--mock --papel-local celular`, a aba pareia como o
+celular, com o código lido pelo lado do PC, e é desconectada no fim), `dev/bumbo.py` (confere se a passagem
 no tempo de um par da prateleira pôs bumbo em cima de bumbo e não no contratempo, com um
 detector de bumbo próprio, o `dev/bumbo_mede.py`, que o `dev/testa_passagem.py` também usa; no final seco para um começo sem bumbo, confere a primeira nota
 contra o bumbo do que sai: sai 0 no tempo, 1 contratempo ou fora, 3 sem plano ou sem bumbo), `dev/texturas.py` (gera as

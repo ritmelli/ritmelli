@@ -20,6 +20,16 @@ seguir), o `letra-placa.js` (a letra de pixel das placas da mesa), o `prateleira
 da prateleira), o `maleta-tit.js` (o título da placa da maleta) e o `mesa-topo.js` (a plaqueta e as teclas do topo da
 mesa em largura par).
 
+Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `index.html`
+chama, e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o
+`location.hostname` só aparecem nele. O que o tema mostra a cada um vem do `caps` que o servidor manda (no
+`/api/state`, no 401 do pareamento e no começo do SSE; ver o `API.md`), e não do endereço da página: os controles do
+PC (o botão Celular, a versão nova, os dados de uso, as boas-vindas) só aparecem depois de o `caps` dizer que a rota
+deles abre. O 401 do pareamento põe o `caps` de antes de parear; pareado, o `/api/state` traz o do celular; o
+celular desconectado no PC volta ao de antes. O endereço só fica com o texto do aviso de fora do ar da página que
+nunca recebeu um `caps` (a guardada, que o navegador reabre com o Ritmelli fechado). Para ver o papel do celular sem
+outro aparelho, o `--mock --papel-local celular` (ver o `API.md`).
+
 Parte do CSS do tema mora em arquivos ao lado do `index.html` (o `deck.css`, por exemplo), cada um com um bloco
 marcado inteiro e carregado por um `<link rel="stylesheet">` sem `media`, no mesmo lugar em que o bloco estava: a
 ordem das folhas e a cascata são as de antes, e os endereços relativos dentro do arquivo (`url(fonts/...)`) continuam

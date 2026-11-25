@@ -404,7 +404,7 @@ vez, peça o `/api/state` para saber se é o 401.
 - `GET /api/pareamento`: `url` = o endereço do tema (`caminho`) na rede de casa, ou `null`
   sem rede (aí `codigo` e `qr` também vêm `null`); `codigo` = o de agora, ou `null` quando
   `queimado`; `vale_s` = quantos segundos ele ainda vale; `qr` = as linhas do QR do link
-  `<url>?parear=<codigo>`, de cima para baixo, com `"1"` no módulo escuro e sem a margem
+  `<url>?parear=<codigo>` (no `--mock --papel-local celular`, o `url` é o do `127.0.0.1`), de cima para baixo, com `"1"` no módulo escuro e sem a margem
   (desenhe 4 módulos claros em volta); `celulares` = `[{"id", "nome", "desde", "visto"}]`,
   com o nome tirado do navegador ("Android · Chrome") e as datas em ISO local.
 - O tema que abre com `?parear=<codigo>` no endereço manda o código sozinho se ainda não
@@ -534,7 +534,11 @@ uma cópia da biblioteca numa pasta temporária, apagada quando o servidor fecha
 `--data-dir <pasta>`. A pasta de quem usa o `--mock` recusa: o download fingido copia o disco
 mais curto com outro nome, e lá viraria disco falso na prateleira. No `--mock`, os dados de uso ficam em `"fora"`;
 com `--metricas-teste` (só junto do `--mock`), o aviso e a escolha funcionam, sem ler a escolha do instalador, e o que
-sairia fica só na memória do servidor, sem rede nenhuma. Print: `python dev/shot.py <url> <png> [--size
+sairia fica só na memória do servidor, sem rede nenhuma. Com `--papel-local celular` (só junto do `--mock`), o
+`http://127.0.0.1:<porta>` faz o papel do celular da rede de casa: o 401 do pareamento com o `caps` do pré-pareamento,
+o cookie do `POST /api/parear`, o `caps` do celular e a revogação fechando o SSE, como de outro aparelho; o
+`http://localhost:<porta>`, com os cookies separados no navegador, segue o PC, e nele o `GET /api/pareamento` gera o
+código com o `url` em `http://127.0.0.1:<porta>`. Print: `python dev/shot.py <url> <png> [--size
 390x844] [--js "..."] [--tab N] [--reduced-motion] [--offline-ok]`, que também lista os erros
 do console (`--tab` aperta Tab para o anel de foco aparecer; `--offline-ok` não conta a
 reconexão do SSE com o servidor fora).
