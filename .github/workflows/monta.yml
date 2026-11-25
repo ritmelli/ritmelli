@@ -218,7 +218,6 @@ jobs:
       - name: Manifesto
         shell: powershell
         env:
-          VERSAO: ${{ steps.congela.outputs.versao }}
           NOTAS: ${{ inputs.notas }}
           NOTAS_EN: ${{ inputs.notas_en }}
         run: |

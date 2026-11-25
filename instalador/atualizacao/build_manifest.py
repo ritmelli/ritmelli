@@ -1,3 +1,4 @@
+import ast
 import os
 import subprocess
 import sys
@@ -9,6 +10,14 @@ OUTPUT = Path("instalador", "saida")
 APP = Path("dist", "ritmelli")
 FFMPEG = Path("instalador", "ffmpeg", "bin")
 VENDOR = Path("instalador", "vendor")
+
+
+def frozen_version():
+    tree = ast.parse(Path("versao.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and [getattr(t, "id", None) for t in node.targets] == ["VERSAO"]:
+            return ast.literal_eval(node.value)
+    sys.exit("no VERSAO in versao.py")
 
 
 def notes_options(folder):
@@ -38,7 +47,7 @@ def publica_arguments(version, notes_folder):
 def main():
     publica = Path(__file__).resolve().with_name("publica.py")
     with tempfile.TemporaryDirectory() as notes_folder:
-        result = subprocess.run([sys.executable, str(publica), *publica_arguments(os.environ["VERSAO"], notes_folder)])
+        result = subprocess.run([sys.executable, str(publica), *publica_arguments(frozen_version(), notes_folder)])
     sys.exit(result.returncode)
 
 
