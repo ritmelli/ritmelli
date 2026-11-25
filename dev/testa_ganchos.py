@@ -152,28 +152,35 @@ def bound_names(target):
         yield from bound_names(target.value)
 
 
-def walk_outside_classes(node):
-    """ast.walk of node without going into the classes nested in it (their self is another object)."""
-    todo = [node]
-    while todo:
-        n = todo.pop()
-        yield n
-        todo.extend(c for c in ast.iter_child_nodes(n) if not isinstance(c, ast.ClassDef))
+def instance_stores(node, receivers=frozenset(("self", "cls"))):
+    """The attributes assigned on the method's own self or cls inside node: a function nested in it that takes a self
+    or cls of its own (a method of a nested class) assigns on another object, and one that does not still assigns on
+    the outer one, which it captured."""
+    for child in ast.iter_child_nodes(node):
+        inner = receivers
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            a = child.args
+            inner = receivers - {p.arg for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if p}
+        elif (isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Store) and isinstance(child.value, ast.Name)
+              and child.value.id in receivers):
+            yield child.attr
+        yield from instance_stores(child, inner)
 
 
 def privates(tree, classes):
-    """The private names the top-level classes named in classes define: their methods and the names assigned at the
-    class's own level (also under an if or a try there, and in a tuple unpacking), and every self._x or cls._x their
-    methods assign (a helper def nested inside a method is not the class's, nor what a nested class assigns)."""
+    """The private names the top-level classes named in classes define: their methods, nested classes and the names
+    assigned at the class's own level (also under an if or a try there, and in a tuple unpacking), and every self._x
+    or cls._x their methods assign (instance_stores). A helper def nested inside a method is not the class's."""
     out = set()
     for c in tree.body:
         if not (isinstance(c, ast.ClassDef) and c.name in classes):
             continue
-        for s in class_level(c.body):  # the class's own level: its methods and _X = ...
-            if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        for s in class_level(c.body):  # the class's own level: its methods, nested classes and _X = ...
+            if isinstance(s, ast.ClassDef):
                 out.add(s.name)
-                out |= {no.attr for no in walk_outside_classes(s)
-                        if isinstance(no, ast.Attribute) and isinstance(no.ctx, ast.Store) and own(no.value)}
+            elif isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out.add(s.name)
+                out |= set(instance_stores(s))
             for target in (s.targets if isinstance(s, ast.Assign) else [s.target] if isinstance(s, ast.AnnAssign)
                            else []):
                 out |= set(bound_names(target))
