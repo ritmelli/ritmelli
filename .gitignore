@@ -23,3 +23,8 @@ instalador/saida/
 # os modelos do pedal de troca de voz (pistavoz.py), do ritmelli-voices: no app, o instalador baixa; pelo codigo, o
 # python dev/vozes.py baixa
 /vozes/
+
+# optional local modules that are not part of the app (ritmelli.spec excludes them from the build)
+/mina.py
+/fim.py
+/lucy_voz.py
