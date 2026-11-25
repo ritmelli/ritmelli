@@ -369,7 +369,7 @@ script runs.
 
 - `dev/molduras.py`: the frames, in `gerado/molduras.css` (and between the `molduras:inicio` and `molduras:fim`
   comments of `gallery/index.html`, which uses some of them).
-- `dev/compactos.py`: the Quick sounds records, between `compactos:inicio` and `compactos:fim`.
+- `dev/compactos.py`: the Quick sounds records, in `gerado/compactos.css`.
 - `dev/pecas.py`: the tonearm, knobs, buttons and other pieces, between `pecas:inicio` and `pecas:fim`, and constants
   such as `KNOBS`, `PE_SVG` and `LED_SVG`.
 - `dev/texturas.py`: the `.webp` textures in `texturas/`, except `sala-iso.webp`. It renders them in Google Chrome and,

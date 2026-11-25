@@ -33,8 +33,8 @@ grava as variáveis `--mold-*` de border-image no `themes/ritmelli/gerado/moldur
 tema carrega fora do bloco do celular, porque valem nas duas telas, com o tamanho do ponto na variável `--px`, 1px
 quando o tema não a define, e no bloco `molduras:inicio` do `gallery/index.html` as que a galeria usa),
 `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos, em duas
-camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema, fora
-do bloco do celular),
+camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no
+`themes/ritmelli/gerado/compactos.css`, o arquivo inteiro, que o tema carrega fora do bloco do celular),
 `dev/pecas.py` (desenha em pixel o braço do toca-discos, já inclinado em seis ângulos, a
 base e o descanso dele, os botões de tocar do palco e do mini player e o pisador, os knobs e
 o LED dos pedais, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as
