@@ -206,6 +206,16 @@ jobs:
           if (Test-Path $parcial) { $args_ += @('--parcial', $parcial, '--parcial-info', "$saida\PARCIAL-$env:VERSAO.json") }
           & "$env:LOCALAPPDATA\ritmelli-build\Scripts\python.exe" instalador\atualizacao\publica.py @args_
           if ($LASTEXITCODE -ne 0) { throw "o publica.py saiu com $LASTEXITCODE" }
+      # a sentinela da pasta protegida (instalador/atualizacao/parcial.py): no manifesto novo e fora da parcial, quando
+      # houver uma. Se a parcial a trouxesse, o atualizador de uma versao de antes, que nao confere a pasta, a aplicaria
+      - name: Confere a sentinela da pasta protegida
+        shell: powershell
+        run: |
+          $m = Get-Content instalador\saida\manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $s = '_internal/pasta-protegida.txt'
+          if (-not ($m.arquivos | Where-Object { $_.caminho -eq $s })) { throw "o manifesto nao tem a $s" }
+          if ($m.parcial -and (@($m.parcial.arquivos) -contains $s)) { throw "a parcial traz a $s" }
+          if ($m.parcial) { "a $s esta no manifesto e fora da parcial" } else { "a $s esta no manifesto (sem parcial)" }
       - uses: actions/upload-artifact@v7
         with:
           name: Ritmelli-${{ steps.congela.outputs.versao }}

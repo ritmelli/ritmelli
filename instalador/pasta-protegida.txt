@@ -1,0 +1,2 @@
+O Ritmelli instala este arquivo a partir da versao que confere a pasta protegida, antes de usar a pasta do app
+nas tarefas do Windows. Ele nunca muda: a atualizacao parcial so sai de uma versao que ja o tem.

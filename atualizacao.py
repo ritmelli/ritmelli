@@ -53,6 +53,9 @@ APPS = ("ritmelli", "vitrola")
 PASTA = pastas.DADOS / "atualizacao"
 # a pasta do app instalado (a do ritmelli.exe), que a parcial confere; pelo codigo nao ha, e vai sempre o completo
 PASTA_APP = Path(sys.executable).parent if getattr(sys, "frozen", False) else None
+# a parcial so troca arquivos dentro da pasta do app e confia no resto que ja esta la: so numa pasta protegida (fora
+# dela, vai o setup completo, que confere o destino)
+PROTEGIDA = pastas.pasta_protegida
 CONSULTA_APOS_S = 30.0       # depois de abrir: a subida do app nao divide a rede com a consulta
 CONSULTA_CADA_S = 6 * 3600.0
 # a pagina do PC aberta de novo consulta, se a ultima consulta tem mais que isso (o ao_abrir)
@@ -165,9 +168,10 @@ def _confere_parcial(p, caminhos):
 def cabe_parcial(m, pasta, hash_=False):
     """Se a parcial do manifesto m serve para o app instalado em pasta: cada arquivo da lista que ela nao traz ja esta
     la, igual (o tamanho; com hash_, tambem o sha256, uns segundos para os ~350 MB), e nao sobra na _internal\\ nem na
-    bin\\ arquivo que a versao nova nao tem (fora os que a parcial apaga). Sem pasta (pelo codigo), nunca."""
+    bin\\ arquivo que a versao nova nao tem (fora os que a parcial apaga). Sem pasta (pelo codigo), nunca; fora da
+    pasta protegida (PROTEGIDA), tambem nunca."""
     p = m.get("parcial")
-    if not p or not pasta:
+    if not p or not pasta or not PROTEGIDA(pasta):
         return False
     traz = set(p["arquivos"])
     # o Windows nao diferencia maiuscula de minuscula no nome

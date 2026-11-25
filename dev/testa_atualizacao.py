@@ -324,6 +324,9 @@ def consulta(m):
 
 
 atu.PASTA_APP = app
+# a pasta do app de mentira mora no %TEMP%, que aceita escrita de quem roda o teste: a regra da pasta protegida a
+# reprovaria. Aqui ela passa, e um caso abaixo reprova
+atu.PROTEGIDA = lambda pasta: True
 instala(instalado)
 a = consulta(com_parcial())
 caso("a parcial serve: a tela mostra o tamanho dela", a.publico()["nova"]["parcial"] is True
@@ -360,6 +363,15 @@ instala(instalado)
 atu.PASTA_APP = None
 caso("pelo codigo (sem a pasta do app): vai o completo", consulta(com_parcial()).parcial is False)
 atu.PASTA_APP = app
+
+vistas = []
+atu.PROTEGIDA = lambda pasta: vistas.append(pasta) and False
+a = consulta(com_parcial())
+caso("a pasta do app fora da regra da pasta protegida: vai o completo, mesmo com tudo igual",
+     a.parcial is False and a.publico()["nova"]["tamanho"] == len(setup) and vistas == [app], vistas)
+a.baixar()
+caso("...e baixa o completo", espera(a, "pronta") and a.setup.name.endswith("-setup.exe"), a.setup)
+atu.PROTEGIDA = lambda pasta: True
 
 a = consulta(com_parcial(sha256="0" * 64))
 a.baixar()
