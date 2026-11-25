@@ -144,15 +144,20 @@ def do_pc(base, metodo, rota):
         return json.load(r)
 
 
-PAREADA = "!!(typeof S !== 'undefined' && S.caps && S.caps.papel === 'celular') && !S.pareando"
+def no_papel(papel):
+    """A aba com o caps do papel e fora da tela do codigo (o JS)."""
+    return f"!!(typeof S !== 'undefined' && S.caps && S.caps.papel === '{papel}') && !S.pareando"
 
 
-async def espera_pareada(a, falha):
-    """Ate 10 s pela aba com o caps do celular e fora da tela do codigo; Recusa com a falha se nao."""
+PAREADA = no_papel("celular")
+
+
+async def espera_pareada(a, falha, quer=PAREADA):
+    """Ate 10 s pela aba no papel (quer, o JS do no_papel) e fora da tela do codigo; Recusa com a falha se nao."""
     for _ in range(50):
         await asyncio.sleep(0.2)
         try:
-            if await a.js(PAREADA):
+            if await a.js(quer):
                 return
         except RuntimeError:
             pass  # a pagina recarregando
@@ -395,6 +400,10 @@ async def medir(args, base):
         else:
             print("este --mock nao tem o --papel-local celular: pelo adb reverse, o tema ve 127.0.0.1 e a medida sai "
                   "com o papel do PC", file=sys.stderr, flush=True)
+            # a aba de uma medida de antes pode ter ficado na tela do codigo (o fim dela desconecta o celular)
+            if not await a.js(no_papel("pc")):
+                await a.cmd("Page.reload", ignoreCache=True)
+                await espera_pareada(a, "a aba nao chegou ao papel do PC ao recarregar", no_papel("pc"))
         r = await {"rolagem": rolagem, "puxao": puxao, "abrir": abrir, "custo": custo, "dedo": dedo}[args.medida](a, args)
         await a.confere()  # a medida so vale se a aba seguiu no --mock ate o fim
         if isinstance(r, list):
