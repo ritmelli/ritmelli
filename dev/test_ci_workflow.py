@@ -206,13 +206,8 @@ def test_shape(all_jobs, text):
           f"the Testa o PR needs the six jobs and the Etiquetas ({needs.strip()})")
     check("--capture" in "".join(all_jobs["compara"]), "the compara job runs the --capture on the push")
     for name in testa_tudo.LONG_TESTS:
-        long_job = "\n".join(all_jobs.get(name, []))
-        after_areas = long_job.split("id: areas", 1)[-1]
-        gated = [b for b in after_areas.split("      - ")[1:] if "name: Resumo" not in b]
-        check(len(gated) == 3 and all(f"if: steps.areas.outputs.{name} == 'true'" in b for b in gated)
-              and f"--long {name} --base $env:BASE" in long_job,
-              f"the {name} job installs and runs its long test only when the PR touched its inputs "
-              f"({len(gated)} gated steps)")
+        check(f"dev/testa_tudo.py --long {name} " in "\n".join(all_jobs.get(name, [])),
+              f"the {name} job runs its long test (--long {name})")
     saves = [line for line in all_jobs["compara"] if "steps.compara.outputs.head_cache == 'true'" in line]
     check(len(saves) == 2, f"the head capture is moved and saved to the cache when the step says head_cache ({len(saves)})")
     check(not any(re.search(r"\bsleep\b", line) for line in all_jobs["testa-o-pr"]), "the Testa o PR never sleeps")

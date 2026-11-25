@@ -8,14 +8,11 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
                                            job of its own)
     python dev\testa_tudo.py --so-stdlib   the STDLIB, standard library only (the monta.yml runs it before installing)
     python dev\testa_tudo.py --microfone   the filter tests, with the DLLs of microfone\apo\compila.bat teste
-    python dev\testa_tudo.py --long [bench|capture] [--base origin/main]
+    python dev\testa_tudo.py --long [bench|capture]
                                            only the LONG_TESTS (all, or the one named): the bench (the transition
                                            bench, the real engine, one pair per kind of transition) and the capture
-                                           (the compara capture of the --capture); with --base, it is left out only
-                                           when every file changed since the base is a doc (*.md, docs/) or Python
-                                           outside the local imports of its entry points (LONG_TEST_ENTRIES), at the
-                                           base or here. Each has a job of its own in the testa.yml, the Banca and
-                                           the Captura
+                                           (the compara capture of the --capture). Each has a job of its own in the
+                                           testa.yml, the Banca and the Captura, next to the Testes
     python dev\testa_tudo.py --tela [--base origin/main] [--pasta logs\tela] [--ref-cache <dir>]
                                            the fitcheck in both languages against a --mock with temporary data and,
                                            with --base, the compara: the reference comes from the server and the theme
@@ -59,7 +56,6 @@ Exits 0 if everything passed and 1 if something failed; in the --tela and the --
 changed (the testa.yml decides).
 """
 import argparse
-import ast
 import hashlib
 import importlib.util
 import json
@@ -85,8 +81,7 @@ COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
     "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py", "dev/test_compara_not_ready.py",
-    "dev/test_compara_push_steps.py",
-    "dev/test_long_areas.py"]
+    "dev/test_compara_push_steps.py"]
 LONG_TESTS = {"bench": "dev/testa_passagem.py", "capture": "dev/test_capture.py"}
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
@@ -126,11 +121,6 @@ LINHAS = ("engine.py", "server.py", "themes/ritmelli/index.html", "AGENTS.md")
 CAPTURA = ("dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py", "requirements.txt", "requirements-dev.txt",
            "instalador/travas.txt")
 LONG_TITLES = {"bench": "Banca", "capture": "Captura"}
-LONG_TEST_ENTRIES = {
-    "bench": ("dev/testa_passagem.py",),
-    "capture": ("dev/test_capture.py", "dev/testa_tudo.py", "dev/compara.py", "server.py", "ritmelli.py"),
-}
-
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva
 # codigo de renderizacao ou de traducao para outro modulo poe o modulo na "tela"
 AREAS = {
@@ -142,74 +132,6 @@ TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py",
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
 # renderizacao ou de traducao do tema para outro modulo (posta por quem mantem o repo)
 ETIQUETAS = {"extracao-tema": "tela"}
-
-
-def matches(path, patterns):
-    return any(path.startswith(p) if p.endswith("/") else path == p for p in patterns)
-
-
-def local_imports(entries, read):
-    seen, queue = set(), list(entries)
-    while queue:
-        rel = queue.pop()
-        if rel in seen or (text := read(rel)) is None:
-            continue
-        seen.add(rel)
-        try:
-            tree = ast.parse(text)
-        except SyntaxError:
-            continue
-        folder = rel.rpartition("/")[0]
-        prefixes = {"", "dev/", f"{folder}/" if folder else ""}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                found = [(prefixes, n.name.split(".")) for n in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.level:
-                package = folder.split("/")[:len(folder.split("/")) - node.level + 1] if folder else []
-                base = "/".join(package + (node.module.split(".") if node.module else []))
-                found = [({""}, base.split("/"))] + [({""}, base.split("/") + [n.name]) for n in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                parts = node.module.split(".")
-                found = [(prefixes, parts)] + [(prefixes, parts + [n.name]) for n in node.names]
-            else:
-                continue
-            for where, parts in found:
-                path = "/".join(p for p in parts if p)
-                for prefix in where:
-                    queue += [f"{prefix}{path}.py", f"{prefix}{path}/__init__.py"]
-    return seen
-
-
-def read_disk(rel):
-    f = RAIZ / rel
-    return f.read_text(encoding="utf-8-sig") if f.is_file() else None
-
-
-def read_at(commit):
-    code, listing = executa(["git", "ls-tree", "-r", "--name-only", commit], limite=60)
-    files = set(listing.splitlines()) if code == 0 else set()
-
-    def read(rel):
-        if rel not in files:
-            return None
-        code, text = executa(["git", "show", f"{commit}:{rel}"], limite=60)
-        return text if code == 0 else None
-    return read
-
-
-def leaves_long_test_alone(path, imported):
-    is_doc = path.endswith(".md") or path.startswith("docs/")
-    return is_doc or (path.endswith(".py") and path not in imported and not matches(path, TODAS))
-
-
-def long_tests_for(changed, base=None, read=read_disk):
-    readers = [read] + ([read_at(base)] if base else [])
-    chosen = []
-    for name in LONG_TESTS:
-        imported = set().union(*(local_imports(LONG_TEST_ENTRIES[name], r) for r in readers))
-        if not all(leaves_long_test_alone(f, imported) for f in changed):
-            chosen.append(name)
-    return chosen
 
 
 def areas(arquivos, etiquetas=()):
@@ -383,11 +305,6 @@ def agents_md(path=RAIZ / "AGENTS.md"):
 
 def testes(a):
     names = list(LONG_TESTS) if a.long in (None, "all") else [a.long]
-    if a.long and a.base:
-        changed = changed_since(a.base)
-        if changed is None:
-            return 1
-        names = [n for n in long_tests_for(changed, a.base) if n in names]
     titulo, lista = (("Testes so da biblioteca padrao", STDLIB) if a.so_stdlib else
                      ("Testes do filtro", MICROFONE) if a.microfone else
                      (LONG_TITLES.get(a.long, "Testes longos"), [LONG_TESTS[n] for n in names]) if a.long else
@@ -429,26 +346,18 @@ def escreve(resumo, linhas):
             f.write("\n".join(linhas) + "\n\n")
 
 
-def changed_since(base):
-    """O git diff --name-only da base ate o HEAD. Sem rename: o arquivo que sai de uma area conta nela. Com o
-    -z, o caminho com acento vem inteiro, e nao entre aspas."""
-    cod, saida = executa(["git", "diff", "--name-only", "-z", "--no-renames", base, "HEAD"], limite=60)
-    if cod != 0:
-        print(f"o git diff contra {base} falhou ({cod}):\n{saida}")
-        return None
-    return [arq for arq in saida.split(chr(0)) if arq.strip()]
-
-
 def diz_areas(a):
-    arquivos = changed_since(a.areas)
-    if arquivos is None:
+    """O --areas: o git diff --name-only da base ate o HEAD. Sem rename: o arquivo que sai de uma area conta nela. Com o
+    -z, o caminho com acento vem inteiro, e nao entre aspas."""
+    cod, saida = executa(["git", "diff", "--name-only", "-z", "--no-renames", a.areas, "HEAD"], limite=60)
+    if cod != 0:
+        print(f"o git diff contra {a.areas} falhou ({cod}):\n{saida}")
         return 1
+    arquivos = [arq for arq in saida.split(chr(0)) if arq.strip()]
     etiquetas = json.loads(os.environ.get("ETIQUETAS") or "[]") or []  # null outside a PR (the push)
     disparadas = areas(arquivos, etiquetas)
     print(f"{len(arquivos)} arquivo(s) mudaram desde {a.areas}; etiquetas: {etiquetas or 'nenhuma'}")
     linhas = [f"{area}={'true' if area in disparadas else 'false'}" for area in AREAS]
-    longos = long_tests_for(arquivos, a.areas)
-    linhas += [f"{name}={'true' if name in longos else 'false'}" for name in LONG_TESTS]
     print("\n".join(linhas))
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:

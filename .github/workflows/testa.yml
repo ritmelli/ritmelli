@@ -112,31 +112,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12.10'
-      - name: O PR mexe no que a Banca usa?
-        id: areas
-        run: python dev/testa_tudo.py --areas $env:BASE
       - uses: ./.github/actions/python
-        if: steps.areas.outputs.bench == 'true'
         with:
           requirements: requirements-dev.txt
       - name: ffmpeg no PATH
-        if: steps.areas.outputs.bench == 'true'
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
       - name: Banca
-        if: steps.areas.outputs.bench == 'true'
-        run: python dev/testa_tudo.py --long bench --base $env:BASE --resumo "$env:RUNNER_TEMP\resumo.md"
+        run: python dev/testa_tudo.py --long bench --resumo "$env:RUNNER_TEMP\resumo.md"
       - name: Resumo
         id: resumo
         if: always()
-        env:
-          APLICA: ${{ steps.areas.outputs.bench }}
         run: |
-          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } elseif ($env:APLICA -eq 'false') { '**Banca:** não se aplica (o PR não mexe no que a banca das passagens usa)' } else { '**Banca:** ❌ não chegou a rodar (ver a execução)' }
+          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } else { '**Banca:** ❌ não chegou a rodar (ver a execução)' }
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
@@ -151,31 +139,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12.10'
-      - name: O PR mexe no que a Captura usa?
-        id: areas
-        run: python dev/testa_tudo.py --areas $env:BASE
       - uses: ./.github/actions/python
-        if: steps.areas.outputs.capture == 'true'
         with:
           requirements: requirements-dev.txt
       - name: ffmpeg no PATH
-        if: steps.areas.outputs.capture == 'true'
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
       - name: Captura
-        if: steps.areas.outputs.capture == 'true'
-        run: python dev/testa_tudo.py --long capture --base $env:BASE --resumo "$env:RUNNER_TEMP\resumo.md"
+        run: python dev/testa_tudo.py --long capture --resumo "$env:RUNNER_TEMP\resumo.md"
       - name: Resumo
         id: resumo
         if: always()
-        env:
-          APLICA: ${{ steps.areas.outputs.capture }}
         run: |
-          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } elseif ($env:APLICA -eq 'false') { '**Captura:** não se aplica (o PR não mexe no que o teste da captura usa)' } else { '**Captura:** ❌ não chegou a rodar (ver a execução)' }
+          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } else { '**Captura:** ❌ não chegou a rodar (ver a execução)' }
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
