@@ -1,0 +1,322 @@
+/* PHONE-INICIO */
+/* ---------- celular: a pagina e a biblioteca (busca, sons rapidos, prateleira); o toca-discos,
+   os volumes e os efeitos abrem por cima pela barra de baixo, como o "tocando agora" dos apps de
+   musica. No computador o palco some (display: contents) e nada muda. ---------- */
+.palco-topo, .rapidos, .mini, .visor-gav { display: none; }
+.cabo-calha { display: none; }
+/* paginas da prateleira e Continuar ouvindo: so a primeira pagina do celular tem */
+.pontos, .continuar { display: none; }
+@media (min-width: 900px) { .palco { display: contents; } }
+@media (max-width: 899.98px) {
+  :root { --mini-h: 74px; }
+  .app { padding-bottom: calc(var(--mini-h) + 24px + env(safe-area-inset-bottom)); }
+  body.com-palco { overflow: hidden; }
+  /* com o palco aberto o puxar para atualizar do Chrome desliga: puxar para baixo fecha o palco */
+  :root:has(body.com-palco) { overscroll-behavior-y: none; }
+  /* o palco e uma peca so com a barra: recolhido, so a beirada de cima aparece no fundo da tela,
+     e essa beirada e a barra (a aba que se puxa sobe, troca de cor e vira o palco).
+     Ele passa 16 px do topo da tela, para os cantos arredondados sumirem quando aberto, e fica
+     sempre montado numa camada propria: abrir so o desliza */
+  .palco {
+    --peek: calc(var(--mini-h) + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: var(--fresta);
+    /* presa so embaixo, com a altura da tela visivel: presa em cima e embaixo, o Chrome nao a segurava
+       junto da beirada de baixo enquanto a barra de endereco entrava e saia, e a aba andava com ela
+       no topo e na base da pagina */
+    position: fixed; left: 0; right: 0; top: auto; bottom: 0; z-index: 25; overflow-y: auto; overscroll-behavior: none;
+    /* de lado nunca rola (o dedo de lado no receiver levava o palco uns 60 px e
+       mostrava o fundo liso). Com o disco tocando, o braco gira duas vezes (o .braco e o .tubo que
+       desfaz o giro) e o Chrome soma a caixa de cada giro, 55 a 66 px alem da tela que ninguem ve;
+       os plugues RCA da calha passam 3 px. O palco ja e o rolador: o hidden nao cria camada nova */
+    overflow-x: hidden;
+    height: calc(100vh + 16px); height: calc(100dvh + 16px);
+    padding: 0 16px calc(30px + env(safe-area-inset-bottom)); border-radius: 16px 16px 0 0;
+    background-color: var(--jacaranda);
+    transform: translateY(calc(100% - var(--peek))); will-change: transform;
+    box-shadow: 0 -10px 26px rgba(0,0,0,.55);
+  }
+  body.com-palco .palco { transform: none; }
+  /* aberto e parado, o canto arredondado fica acima da tela (o palco tem 16 px a mais em cima) e sai:
+     com o recorte redondo o Chrome nao achava sozinho o que rolar e perguntava ao processador
+     principal no comeco de cada rolagem (medido no celular de teste, 18/10); no arrasto e na animacao
+     de abrir e fechar, quando a beirada aparece, ele volta */
+  body.com-palco .palco:not(.puxando):not(.anima) { border-radius: 0; }
+  /* a textura de madeira numa camada propria (o arrasto travava): como fundo do
+     palco que se move, cada quadro do arrasto repintava a pagina inteira; medido no celular
+     emulado com a CPU 4x mais lenta, de ~600 para ~75 tarefas de pintura por arrasto. A altura e a
+     do conteudo (--alto-palco, do JS), para a textura rolar junto com ele */
+  .palco::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: var(--alto-palco, 100%); z-index: -1; pointer-events: none;
+    /* sem border-radius aqui: com ele o Chrome repintava a camada a cada quadro do arrasto (os cantos
+       ja saem arredondados pelo recorte do proprio palco) */
+    background-image: linear-gradient(90deg, rgba(0,0,0,.32) 0 1px, rgba(255,214,170,.045) 1px 2px, rgba(0,0,0,0) 2px), var(--veio-v);
+    background-size: 148px 100%, 420px 900px; will-change: transform;
+  }
+  .palco .mini, .palco .palco-topo > * { will-change: opacity; }
+  /* a transicao so no abrir e fechar: a barra do Chrome entrando e saindo na rolagem muda a
+     altura da tela, e com ela a aba deslizava atrasada atras da beirada */
+  .palco.anima { transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+  /* no topo o navegador so rola com o dedo subindo: o dedo descendo e do gesto de fechar, sem
+     brigar com a rolagem (era o que travava o arrasto). So nos aparelhos que aparecem no topo, nunca
+     no palco inteiro: o touch-action passa para todos os descendentes, e trocar o do palco
+     recalculava os quase 2000 elementos (a gaveta de pedais tem 1600) bem quando a rolagem saia do
+     topo ou chegava nele, 12 a 30 ms de estilo no celular de teste (medido, 18/10) */
+  .palco.no-topo .palco-topo, .palco.no-topo .deck, .palco.no-topo .receptor { touch-action: pan-down; }
+  /* arrastando: o palco segue o dedo; ao soltar, a transicao leva de onde o dedo deixou. Os filhos
+     do cabecalho vao pelo nome: com o "> *" o Chrome recalculava o palco inteiro (26 ms no celular
+     de teste) ao pegar e ao soltar o palco (medido, 18/10) */
+  body .palco.puxando, body .palco.puxando .mini, body .palco.puxando .palco-fechar,
+  body .palco.puxando .palco-tit, body .palco.puxando .palco-cortar { transition: none; }
+  /* o cabecalho entra enquanto a barra sai: um nunca aparece atraves do outro */
+  .palco-topo > * { transition: opacity .22s ease; }
+  /* pelo nome, nunca "> *": com o universal, trocar a classe do body recalculava a pagina inteira */
+  body:not(.com-palco) .palco-fechar, body:not(.com-palco) .palco-tit, body:not(.com-palco) .palco-cortar { opacity: 0; }
+  /* barra do palco como a travessa de jacaranda do movel, com a plaquinha RITMELLI encaixada e a
+     lampada piloto que acende com o disco tocando (do mock, 18/10: so a palavra
+     TOCA-DISCOS parecia simples demais perto do resto) */
+  .palco-topo {
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    margin: 0 -16px;
+    padding: 24px 16px 8px;
+    background-color: var(--jacaranda);
+    background-image:
+      var(--veio),
+      linear-gradient(180deg, var(--jacaranda-2) 0%, var(--jacaranda) 80%, #20110C 100%);
+    box-shadow:
+      inset 0 -1px 0 #140B08,
+      inset 0 -2px 0 rgba(238, 227, 207, .08),
+      0 1px 0 rgba(238, 227, 207, .05),
+      0 6px 12px -6px rgba(0, 0, 0, .65);
+  }
+  .palco:focus { outline: none; }
+  .palco-fechar {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    border-color: transparent;
+    background: none;
+    color: var(--marfim);
+  }
+  .palco-fechar svg { width: 1.5rem; height: 1.5rem; }
+  /* o mutar da barra mora tambem no cabecalho: com o palco aberto a barra some e o Mutar voz
+     do painel fica para baixo; aqui ele e o estado da voz fica a um toque em qualquer rolagem */
+  .palco-topo .palco-cortar { justify-self: end; color: var(--marfim); }   /* .palco-topo na frente: ganha do .mini-btn, que vem depois */
+  .palco-topo .palco-cortar.cortada {
+    color: var(--sinal);
+    background: rgba(242, 115, 94, .16);
+    border-color: rgba(242, 115, 94, .32);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .45);
+  }
+  .palco-tit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: 0;
+  }
+
+  .palco-tit::before,
+  .palco-tit::after {
+    content: "";
+    flex: 1;
+    max-width: 28px;
+    height: 2px;
+    border-radius: 1px;
+    background: #160C08;
+    box-shadow: 0 1px 0 rgba(238, 227, 207, .08);
+  }
+
+  .palco-chapa {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 26px;
+    padding: 0 11px 0 9px;
+    border-radius: 3px;
+    background-color: var(--aluminio);
+    background-image:
+      var(--escovado),
+      linear-gradient(180deg, var(--aluminio-claro) 0%, var(--aluminio) 62%, var(--aluminio-escuro) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, .55),
+      inset 0 -1px 0 rgba(42, 24, 18, .35),
+      0 0 0 1px #140B08,
+      0 1px 0 rgba(238, 227, 207, .12);
+  }
+
+  .palco-luz {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #6E4219 0%, #2E1808 75%);
+    box-shadow:
+      inset 0 1px 1px rgba(0, 0, 0, .55),
+      0 0 0 1.5px var(--tinta),
+      0 1px 0 rgba(255, 255, 255, .45);
+  }
+
+  body[data-status="playing"] .palco-luz {
+    background: radial-gradient(circle at 38% 35%, #FFF4D6 0%, var(--ambar-claro) 38%, var(--ambar) 75%, #A85810 100%);
+    box-shadow:
+      0 0 0 1.5px var(--tinta),
+      0 0 6px 1px rgba(243, 167, 60, .6);
+  }
+
+  .palco-marca {
+    font-size: .6875rem;
+    font-weight: 850;
+    font-stretch: 125%;
+    letter-spacing: .18em;
+    margin-right: -.18em;
+    line-height: 1;
+    text-transform: uppercase;
+    color: var(--tinta);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, .45);
+  }
+  .palco .mesa { width: min(100%, 340px); margin: 0 auto; }
+  .palco .titulo-faixa { font-size: 1.375rem; }
+  /* o par RCA desce na calha da direita: titulo, tempo, botoes e a fila recuam 12 px dos dois lados
+     para nao encostar nele (o tempo total encostava no cabo) */
+  .palco .faixa, .palco .fila-palco { padding-inline: 12px; }
+  /* "Tocando/Pausado" sai: o botao grande e o disco girando ja dizem (como no Spotify) */
+  .palco .situacao { display: none; }
+  /* como no app do Spotify: aleatorio e repetir colados nas beiradas, o tocar grande no meio */
+  .comandos { justify-content: space-between; gap: 0; margin-top: 4px; }
+  .transp { width: 48px; height: 48px; }
+  .transp svg { width: 26px; height: 26px; }
+  .transp.pulo svg { width: 32px; height: 32px; }
+  .tocar-grande { width: 68px; height: 68px; }
+  .tocar-grande svg { width: 30px; height: 30px; }
+  /* ordem no palco: prato e botoes, depois o receptor num painel so (medidores no alto e volumes
+     logo embaixo), e a gaveta de efeitos por ultimo. Medidor acima do
+     volume: a mao que arrasta cobre o que fica abaixo do dedo, nunca a agulha, e quem mexe no
+     volume ve o resultado na mesma tela. O seletor sai: a gaveta tem o dela */
+  /* o receiver e o FX-12 param de crescer na largura que tem no iPhone 14 (390 px de tela): nos celulares maiores
+     o salto da maleta (312) para eles ficava grande; o fio da calha acha o plugue pela beira do receiver (medirCabos) */
+  .palco .receptor {
+    order: 2; grid-template-columns: minmax(0, 1fr); gap: 14px;
+    width: 100%; max-width: 358px; margin-inline: auto;
+  }
+  .palco .medidores { display: contents; }
+  .palco .janela { order: 1; }
+  .palco .controles { order: 2; }
+  /* o Mutar voz do painel sai: o microfone do cabecalho faz o mesmo e fica sempre a vista */
+  .palco .chaves { display: none; }
+  .palco .deck { order: 1; }
+  .palco .gaveta { order: 3; }
+  /* a Voz e o volume do mic no Windows: no celular so tomava lugar */
+  .palco .fader-voz { display: none; }
+}
+/* pele: a gaveta de efeitos e a pedaleira, nas duas telas */
+/* gaveta no celular: visor no alto, logo embaixo o Ouvir minha voz largo (liga e testa o efeito sem rolar ate o fim
+   da lista) e entao os pedais. A dica embaixo do botao so aparece quando informa (sem fone, ou voz mutada com o teste
+   ligado); a dica fixa de uso sai e a lista sobe */
+@media (max-width: 899.98px) {
+  .palco .gaveta {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "cabeca cabeca" "visor visor" "ouvir ouvir" "dica dica" "lista lista";
+    width: 100%; max-width: 358px; margin: 0 auto;   /* a largura do receiver */
+  }
+  .palco .gaveta:has(.dica-ouvir.so-dica) { grid-template-areas: "cabeca cabeca" "visor visor" "ouvir ouvir" "lista lista"; }
+}
+.palco .gaveta {
+  display: grid; align-items: center; gap: 10px 12px; padding: 22px 18px 18px;
+  /* painel forrado de feltro pendurado na parede, com os pedais presos por velcro, como se monta
+     na vida real (o movel todo de madeira e a pedaleira no piso sairam). Grafite puxado pro
+     marrom, quente como o resto do app sem sumir contra a parede de jacaranda, fosco: penugem
+     fina e manchas largas de feltro prensado no lugar do granulado de lixa (19/10, a variante
+     "liso"). Borda macia do tecido esticado, a luz quente de cima a esquerda
+     caindo ate o pe e a sombra na parede */
+  color: var(--marfim); border-radius: 12px;
+  background:
+    radial-gradient(120% 50% at 12% 0%, rgba(255,214,160,.13), rgba(255,214,160,0) 64%),
+    linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,.26) 100%),
+    var(--feltro-penugem), var(--feltro-mancha),
+    linear-gradient(180deg, #3B322B 0%, #2F2722 55%, #241D19 100%);
+  background-size: auto, auto, 180px 180px, 520px 520px, auto;
+  /* so o contorno de fora e a sombra dura fraca, com a linha clara bem fraca por dentro; a borda macia do tecido fica */
+  box-shadow: inset 0 0 0 2px rgba(255,236,214,.1), inset 0 2px 2px rgba(255,248,235,.10), inset 2px 0 2px rgba(255,248,235,.05), inset -2px 0 3px rgba(0,0,0,.35), inset 0 -3px 4px rgba(0,0,0,.45), var(--caixa);
+}
+.palco .dica-ouvir, .palco .aviso-gav { color: var(--marfim-2); }
+/* o FX-12 e um aparelho de aluminio embutido num recorte do feltro: a serigrafia, o visor e a
+   tecla Ouvir minha voz moram nele (a tecla nao fica solta
+   num feltro); a dica, quando aparece, fica no feltro embaixo. O corpo e o ::after da gaveta,
+   item da grade nas tres primeiras linhas, com a margem negativa como folga em volta */
+.palco .gaveta::after {
+  content: ""; grid-column: 1 / -1; grid-row: 1 / span 3; align-self: stretch; margin: -11px -8px -12px;
+  position: relative; z-index: 1; pointer-events: none; border-radius: 3px;
+  background: var(--escovado), linear-gradient(180deg, var(--aluminio-claro) 0%, var(--aluminio) 55%, #B9B0A0 100%);
+  /* enfiado no feltro, rente a face: sem sombra e sem borda grossa, so a
+     fresta fina do corte e as fibras do feltro amassadas em volta */
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.5),
+    inset 0 -1px 0 rgba(42,24,18,.22),
+    0 0 0 1px rgba(10,8,6,.8),
+    0 0 0 2.5px rgba(0,0,0,.22);
+}
+.palco .cabeca-gav, .palco .visor-gav, .palco .mesa-gav .ouvir { position: relative; z-index: 2; }
+.palco .dica-ouvir.so-dica { display: none; }
+/* no celular a gaveta e um painel como os outros, com a mesma folga: saindo de baixo dos
+   volumes, como no computador, parecia presa neles */
+/* o seletor com seta tinha cara de menu e so rolava ate a lista logo acima:
+   sai do receptor no celular. A chave rotativa e o visor voltam no alto da gaveta, no lugar
+   da tecla Sem efeito, mostrando o efeito escolhido (a lista embaixo e o menu dele); com
+   efeito ligado, um x no visor desliga */
+@media (max-width: 899.98px) { .palco .medidores .seletor { display: none; } }
+.palco .visor-gav {
+  grid-area: visor; display: flex; align-items: center; gap: 10px; min-width: 0; width: auto;
+  padding: 4px 5px; border-radius: 7px; border: 1px solid #7E7466;
+  background: var(--escovado), linear-gradient(180deg, var(--aluminio-claro), var(--aluminio) 55%, #BDB4A4);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.65), inset 0 -1px 0 rgba(42,24,18,.3), 0 1px 0 rgba(255,255,255,.55), 0 -1px 0 rgba(42,24,18,.18);
+}
+.palco .visor-gav .dial { width: 42px; }
+.palco .visor-gav .visor-ef { height: 40px; padding-right: 4px; font-size: .9375rem; }
+/* o toque pega o canto inteiro do visor; o quadrado que aparece e menor, com folga das bordas
+   (da altura do visor, parecia grudado nas laterais) */
+.desliga-ef {
+  position: relative; margin: 0 -4px 0 auto; flex: none; width: 44px; height: 40px; display: grid; place-items: center;
+  padding: 0; border: 0; color: inherit; background: none;
+}
+.desliga-ef::before {
+  content: ""; position: absolute; top: 5px; right: 6px; width: 30px; height: 30px; border-radius: 5px;
+  background: rgba(42,24,18,.14);
+}
+/* o X e desenhado com segmentos de LCD, no formato, na cor e na sombra dos caracteres, como os
+   icones dos visores de aparelho: o X da fonte de 14 segmentos tem as
+   diagonais curtas e quase em pe, e lia como ")(". No centro os quatro se encaixam com a
+   fresta fina dos visores (0,64 de 16; mais fina some no celular) */
+.desliga-ef .x-lcd { position: relative; width: 14px; height: 14px; margin-left: 2px; filter: drop-shadow(1px 1px 0 var(--sombra-seg)); }
+.desliga-ef:active, .desliga-ef.apertado { transform: scale(.94); }
+.palco .cabeca-gav { grid-area: cabeca; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+/* o "Efeitos de voz" generico sai da tela e fica so para o leitor de tela */
+.palco .cabeca-gav h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.palco .cabeca-gav::before {
+  content: "RITMELLI" / ""; padding: 2px 5px 1px; border-radius: 2px;
+  background: #2A1E19; color: var(--marfim); box-shadow: 0 1px 0 rgba(255,255,255,.45);
+  font-size: .625rem; font-weight: 850; font-stretch: 125%; letter-spacing: .16em; line-height: 1;
+}
+/* a serigrafia do aparelho: um span para leitor de tela nenhum (o h2 ja diz), com o texto da lingua */
+.palco .cabeca-gav .placa-gav {
+  white-space: nowrap; color: var(--tinta-2);
+  font-size: .625rem; font-weight: 600; font-stretch: 88%; letter-spacing: .12em; line-height: 1;
+}
+.palco .mesa-gav { display: contents; }
+.palco .gaveta > .rolo { grid-area: lista; }
+.palco .mesa-gav .ouvir { justify-self: stretch; }
+/* com o .mesa-gav em display: contents, a dica perdia o z-index do .mesa-gav e a moldura do
+   FX-12 (posicionada) era pintada por cima; o Ouvir minha voz tem o z-index do aparelho, acima */
+.palco .dica-ouvir { position: relative; z-index: 1; margin-top: 8px; }   /* abaixo da borda do aparelho */
+.palco .t-nome { font-size: .875rem; line-height: 1.2; min-width: 0; overflow-wrap: anywhere;
+                 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.palco .tecla .lampada { align-self: start; margin-top: 4px; }
+/* so o nome: com a fonte do celular a descricao virava meia frase cortada */
+.palco .t-desc { display: none; }
+.palco .t-atraso { display: none; }
+
+/* PHONE-FIM */

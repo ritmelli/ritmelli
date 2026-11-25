@@ -59,6 +59,8 @@ MODULOS = ("numpy", "scipy", "sounddevice", "pedalboard", "aiohttp", "segno", "y
 PROGRAMAS = ("ffmpeg", "ffprobe")
 # a linha de quem pulou uma parte por falta de biblioteca ("--   o guard do servidor ficou de fora: ...")
 PULOU = re.compile(r"^--\s.*ficou de fora.*$", re.M)
+# a line a test wants in the PR summary ("-- summary: <text>"), copied under the title of its run
+SUMMARY = re.compile(r"^-- summary: (.+?)\s*$", re.M)
 LIMITE_S = 600
 
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva
@@ -234,7 +236,7 @@ def executa(cmd, limite=LIMITE_S, **kw):
 
 def roda(titulo, lista, completo):
     """Roda cada teste da lista. Volta (as falhas, as linhas do markdown)."""
-    falhas, tabela, md = [], [], []
+    falhas, tabela, md, notes = [], [], [], []
     t0 = time.monotonic()
     for t in lista:
         ini = time.monotonic()
@@ -247,6 +249,7 @@ def roda(titulo, lista, completo):
             motivo = "pulou uma parte por falta de biblioteca: " + PULOU.search(saida).group(0).strip()
         print(f"{'ok   ' if not motivo else 'FALHA'} {t} ({dt:.1f} s){'' if not motivo else ': ' + motivo}", flush=True)
         tabela.append(f"| {'✅' if not motivo else '❌'} | `{t}` | {dt:.0f} s |")
+        notes += [f"- `{t}`: {n}" for n in SUMMARY.findall(saida)]
         if motivo:
             print(saida.rstrip(), flush=True)
             falhas.append(t)
@@ -256,6 +259,7 @@ def roda(titulo, lista, completo):
     passou = len(lista) - len(falhas)
     print(f"{passou} de {len(lista)} passaram em {total:.0f} s", flush=True)
     md = [f"**{titulo}:** {'✅' if not falhas else '❌'} {passou} de {len(lista)} passaram, em {total:.0f} s", ""] + md
+    md += [""] + notes if notes else []
     md += ["", "<details><summary>Cada teste</summary>", "", "| | Teste | Tempo |", "| --- | --- | --- |"] + tabela
     md += ["", "</details>"]
     return falhas, md

@@ -1,0 +1,161 @@
+/* TURNTABLE-INICIO */
+/* ---------- deck (prato visto de cima) ---------- */
+.deck { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.tampo {
+  container-type: inline-size;
+  position: relative; z-index: 2; width: 100%; aspect-ratio: 100 / 80;
+}
+.placa {
+  position: absolute; inset: 2.2cqw;
+}
+.prato {
+  position: absolute; left: 4cqw; top: 4cqw; width: 72cqw; height: 72cqw; border-radius: 50%;
+  /* recorte: sem ele, o quadrado do disco girando faz o celular rasterizar a pagina inteira a cada quadro */
+  contain: paint;
+}
+.giratorio {
+  position: absolute; inset: 0; border-radius: 50%;
+  animation: girar 1.8s linear infinite; animation-play-state: paused;
+}
+body[data-status="playing"] .giratorio, body[data-status="buffering"] .giratorio { animation-play-state: running; }
+@keyframes girar { to { transform: rotate(360deg); } }
+.aro {
+  position: absolute; inset: 0; border-radius: 50%;
+}
+.feltro {
+  position: absolute; inset: 2.3cqw; border-radius: 50%;
+  background: var(--pelo), radial-gradient(circle, #2b4438, var(--feltro) 70%, #1b2c24);
+  background-size: 160px 160px, auto;
+  display: grid; place-items: center;
+}
+.feltro span {
+  font-stretch: 125%; font-weight: 300; font-size: 4.4cqw; letter-spacing: .04em;
+  color: rgba(238,227,207,.20); transform: translateY(-11cqw);
+}
+.disco {
+  position: absolute; inset: 2.6cqw; border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(0,0,0,0) 0 54%, rgba(255,255,255,.07) 54.4%, rgba(0,0,0,0) 55.4%, rgba(0,0,0,0) 73%, rgba(255,255,255,.06) 73.4%, rgba(0,0,0,0) 74.4%, rgba(0,0,0,0) 97%, #2c2421 98%, #0e0a09 100%),
+    repeating-radial-gradient(circle, #1d1715 0 1px, #120d0c 1px 2.6px);
+  opacity: 0; transform: scale(.94);
+  transition: opacity .35s ease, transform .5s cubic-bezier(.2,.8,.2,1);
+}
+.prato.com-disco .disco { opacity: 1; transform: none; }
+.rotulo {
+  position: absolute; left: 50%; top: 50%; width: 35%; height: 35%; transform: translate(-50%, -50%);
+  border-radius: 50%; overflow: hidden; background: var(--vinho);
+  box-shadow: 0 0 0 .5cqw rgba(0,0,0,.35);
+}
+.rotulo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rotulo .capa-gerada { border-radius: 50%; }
+.brilho {
+  position: absolute; inset: 2.6cqw; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from -28deg, rgba(255,240,220,0) 0deg, rgba(255,240,220,.2) 20deg, rgba(255,240,220,0) 44deg,
+                             rgba(255,240,220,0) 180deg, rgba(255,240,220,.13) 202deg, rgba(255,240,220,0) 226deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 18%, #000 18.5%);
+          mask: radial-gradient(circle, transparent 0 18%, #000 18.5%);
+  opacity: 0; transition: opacity .35s ease;
+}
+.prato.com-disco .brilho { opacity: 1; }
+.eixo {
+  position: absolute; left: 50%; top: 50%; width: 2.2cqw; height: 2.2cqw; transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+
+/* braco */
+.base-braco {
+  position: absolute; left: 88cqw; top: 12cqw; width: 11cqw; height: 11cqw; transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+.descanso {
+  position: absolute; left: 90.6cqw; top: 58cqw; width: 4.4cqw; height: 4.4cqw; transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+.braco {
+  position: absolute; left: 88cqw; top: 12cqw; width: 0; height: 0;
+  transform: rotate(var(--ang, -3deg));
+  transition: transform 1s cubic-bezier(.35,.7,.25,1);
+}
+.braco > div { position: absolute; }
+
+/* faixa abaixo do prato */
+.faixa { display: grid; gap: 10px; }
+.situacao { display: flex; align-items: center; gap: 10px; font-size: .875rem; color: var(--marfim-2); font-stretch: 112%; }
+/* titulo numa linha so: o que nao cabe desliza para o lado, como no YouTube Music (quebrar em
+   duas linhas empurrava os botoes para baixo). Sem animacao, reticencias */
+.titulo-faixa {
+  font-size: clamp(1.2rem, min(1.7vw, 3.1vh), 1.75rem); line-height: 1.18; font-weight: 600; font-stretch: 92%;
+  letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.titulo-faixa.rolando { text-overflow: clip; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.titulo-faixa.rolando .letreiro { display: inline-flex; gap: 48px; will-change: transform; }
+.canal-faixa { color: var(--marfim-2); font-size: .9375rem; margin-top: -4px; }
+.linha-tempo { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; font-variant-numeric: tabular-nums; }
+.tempo { font-size: .9375rem; min-width: 5ch; }
+.tempo.total { text-align: right; color: var(--marfim-2); }
+/* transporte do Spotify: aleatorio e repetir nas pontas, anterior, tocar e
+   proxima no meio. O Parar saiu: o Pausar cala tudo, e no PC o Esc ainda para. Ligado = icone
+   ambar com a lampada acesa embaixo, no lugar do ponto verde do Spotify; um botao so de tocar
+   (a partida do canto do prato saiu, como ja era no celular) */
+.comandos { display: flex; align-items: center; justify-content: center; gap: 18px; }
+.transp {
+  position: relative; display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0;
+  border: 0; border-radius: 50%; background: none; color: var(--marfim);
+}
+.transp svg { width: 24px; height: 24px; }
+.transp.pulo svg { width: 28px; height: 28px; }
+.transp:disabled { opacity: .3; cursor: default; }
+.transp:active:not(:disabled), .transp.apertado:not(:disabled) { transform: scale(.9); }
+.transp[aria-pressed="true"] { color: var(--ambar-claro); }
+.transp .lampada { position: absolute; left: calc(50% - 2.5px); bottom: 0; width: 5px; height: 5px; }
+.transp .lampada.acesa { box-shadow: 0 0 6px 1px rgba(243,167,60,.6); }
+.transp .lampada:not(.acesa) { display: none; }
+/* servidor sem Anterior, Proxima e Aleatorio: o lugar fica, o botao some */
+.transp.ausente { visibility: hidden; }
+@media (hover: hover) { .transp:hover:not(:disabled) { background: rgba(255,240,220,.08); } }
+.tocar-grande {
+  display: grid; place-items: center; flex: none; width: 52px; height: 52px; padding: 0; border: 0; border-radius: 50%; color: var(--tinta);
+}
+.tocar-grande svg { width: 24px; height: 24px; }
+.tocar-grande:active:not(:disabled), .tocar-grande.apertado:not(:disabled) { transform: translateY(1px); }
+.tocar-grande:disabled { color: rgba(42,24,18,.35); }
+.deck:has(.erro-faixa:not([hidden])) .atalhos { display: none; }
+.atalhos { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: .8125rem; color: var(--marfim-2); text-shadow: 0 1.5px 0 var(--contorno); }
+.atalhos kbd, .nome kbd {
+  display: inline-block; min-width: 1.6em; padding: 0 4px 1px; vertical-align: 1px; text-align: center;
+  font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; line-height: 1.25;
+  color: var(--tinta); background: #EFE4CF; border-image: var(--mold-etiqueta);
+}
+.atalhos kbd { margin: 0 2px; }
+@media (max-width: 899.98px) { .atalhos { display: none; } }
+.erro-faixa {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 8px;
+  background: rgba(242,115,94,.12); border: 1px solid rgba(242,115,94,.45); font-size: .875rem;
+}
+.erro-faixa .lampada { margin-top: 5px; }
+
+/* sliders: canaleta com preenchimento ambar e cursor de aluminio */
+input[type=range] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 2rem; margin: 0; background: transparent; cursor: pointer;
+  --p: 0%;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--ambar) 0 var(--p), rgba(0,0,0,.45) var(--p) 100%);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.6), 0 1px 0 rgba(255,230,200,.12);
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 16px; height: 26px; margin-top: -9px; border-radius: 4px;
+  background: linear-gradient(90deg, #bdb4a4, #f2ede4 45%, #c7beaf 55%, #a49b8c);
+  border: 1px solid #6f665a; box-shadow: 0 2px 4px rgba(0,0,0,.5);
+}
+input[type=range]::-moz-range-track { height: 8px; border-radius: 4px; background: rgba(0,0,0,.45); }
+input[type=range]::-moz-range-progress { height: 8px; border-radius: 4px; background: var(--ambar); }
+input[type=range]::-moz-range-thumb { width: 16px; height: 26px; border-radius: 4px; background: #e2dbcf; border: 1px solid #6f665a; }
+input[type=range]:disabled { cursor: default; opacity: .5; }
+/* nada no prato: a barra de tempo fica sem cursor, que parecia um disco parado no comeco (review) */
+#seek:disabled::-webkit-slider-thumb { opacity: 0; }
+#seek:disabled::-moz-range-thumb { opacity: 0; }
+input[type=range]:focus-visible { outline-offset: 2px; }
+
+/* TURNTABLE-FIM */
