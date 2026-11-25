@@ -69,9 +69,10 @@ class Teto(unittest.TestCase):
 
     def test_borda_e_o_que_nao_e_registro(self):
         sete, outro, quinze = self._arquivo(7), self._arquivo(0, "anotacoes.jsonl"), self._arquivo(15)
-        texto = self._arquivo(0, f"{self.hoje - datetime.timedelta(days=30)}.txt")
+        velho = self.hoje - datetime.timedelta(days=30)
+        texto, compacto = self._arquivo(0, f"{velho}.txt"), self._arquivo(0, f"{velho:%Y%m%d}.jsonl")
         self.assertEqual(eng.poda_passagens(self.pasta, self.hoje), [quinze.name])
-        for p in (sete, outro, texto):
+        for p in (sete, outro, texto, compacto):
             self.assertTrue(p.exists(), f"{p.name} saiu")
 
     def test_so_a_primeira_do_dia_poda(self):

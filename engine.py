@@ -270,7 +270,7 @@ def poda_passagens(pasta, hoje, dias=PASSAGENS_DIAS):
             dia = datetime.date.fromisoformat(p.stem)
         except ValueError:
             continue
-        if (hoje - dia).days > dias:
+        if p.stem == dia.isoformat() and (hoje - dia).days > dias:  # o fromisoformat aceita tambem 20260101
             try:
                 p.unlink()
                 apagados.append(p.name)
