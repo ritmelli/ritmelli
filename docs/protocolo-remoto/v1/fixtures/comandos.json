@@ -1,0 +1,780 @@
+{
+ "validos": [
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c1",
+    "comando": "tocar",
+    "args": {
+     "id": "w6kKVs-h9Ns"
+    }
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/play",
+    "corpo": {
+     "id": "w6kKVs-h9Ns"
+    }
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c2",
+    "comando": "tocar",
+    "args": {
+     "qid": "4f1c2a9b"
+    }
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/queue/play",
+    "corpo": {
+     "qid": "4f1c2a9b"
+    }
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c3",
+    "comando": "enfileirar",
+    "args": {
+     "id": "w6kKVs-h9Ns",
+     "next": true
+    }
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/queue",
+    "corpo": {
+     "id": "w6kKVs-h9Ns",
+     "next": true
+    }
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c4",
+    "comando": "enfileirar",
+    "args": {
+     "youtube_id": "dQw4w9WgXcQ",
+     "title": "Outro",
+     "channel": null,
+     "duration": 213
+    }
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/queue",
+    "corpo": {
+     "youtube_id": "dQw4w9WgXcQ",
+     "title": "Outro",
+     "channel": null,
+     "duration": 213
+    }
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c5",
+    "comando": "pular",
+    "args": {}
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/next",
+    "corpo": {}
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c6",
+    "comando": "pausar",
+    "args": {}
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/pause",
+    "corpo": {}
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c7",
+    "comando": "retomar",
+    "args": {}
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/resume",
+    "corpo": {}
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c8",
+    "comando": "tirar_da_fila",
+    "args": {
+     "qid": "4f1c2a9b"
+    }
+   },
+   "pedido": {
+    "metodo": "DELETE",
+    "caminho": "/api/queue/4f1c2a9b",
+    "corpo": {}
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c9",
+    "comando": "mover_na_fila",
+    "args": {
+     "qid": "4f1c2a9b",
+     "to": 0
+    }
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/queue/move",
+    "corpo": {
+     "qid": "4f1c2a9b",
+     "to": 0
+    }
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c10",
+    "comando": "volume",
+    "args": {
+     "vol": 0.35
+    }
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/volume",
+    "corpo": {
+     "vol": 0.35
+    }
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c11",
+    "comando": "abaixar",
+    "args": {
+     "db": 12,
+     "ms": 3000
+    }
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/abaixa",
+    "corpo": {
+     "db": 12,
+     "ms": 3000
+    }
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c12",
+    "comando": "abaixar",
+    "args": {
+     "db": 0,
+     "ms": 0
+    }
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/abaixa",
+    "corpo": {
+     "db": 0,
+     "ms": 0
+    }
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "c13",
+    "comando": "sinal",
+    "args": {}
+   },
+   "pedido": {
+    "metodo": "POST",
+    "caminho": "/api/sinal",
+    "corpo": {}
+   }
+  }
+ ],
+ "invalidos": [
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x1",
+    "comando": "parar",
+    "args": {}
+   },
+   "por_que": "fora do vocabulario"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x2",
+    "comando": "tocar",
+    "args": {
+     "id": "a",
+     "start": 30
+    }
+   },
+   "por_que": "argumento a mais (o remoto nao escolhe de onde toca)"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x3",
+    "comando": "tocar",
+    "args": {
+     "id": "a",
+     "qid": "4f1c2a9b"
+    }
+   },
+   "por_que": "o disco e a entrada juntos"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x4",
+    "comando": "tocar",
+    "args": {}
+   },
+   "por_que": "sem o que tocar"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x5",
+    "comando": "enfileirar",
+    "args": {
+     "url": "https://example.com/a.mp3"
+    }
+   },
+   "por_que": "link de fora do YouTube"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x6",
+    "comando": "enfileirar",
+    "args": {
+     "youtube_id": "curto"
+    }
+   },
+   "por_que": "id de video invalido"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x7",
+    "comando": "enfileirar",
+    "args": {
+     "youtube_id": "dQw4w9WgXcQ",
+     "duration": 90000
+    }
+   },
+   "por_que": "duracao de mais de um dia"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x8",
+    "comando": "enfileirar",
+    "args": {
+     "youtube_id": "dQw4w9WgXcQ",
+     "thumb": "https://example.com/x.jpg"
+    }
+   },
+   "por_que": "capa de outro endereco"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x9",
+    "comando": "enfileirar",
+    "args": {
+     "youtube_id": "dQw4w9WgXcQ",
+     "title": 5
+    }
+   },
+   "por_que": "titulo que nao e texto"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x10",
+    "comando": "pular",
+    "args": {
+     "qid": "4f1c2a9b"
+    }
+   },
+   "por_que": "argumento num comando sem argumentos"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x11",
+    "comando": "volume",
+    "args": {
+     "vol": 1.5
+    }
+   },
+   "por_que": "volume fora de 0 a 1"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x12",
+    "comando": "volume",
+    "args": {
+     "vol": true
+    }
+   },
+   "por_que": "volume que nao e numero"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x13",
+    "comando": "abaixar",
+    "args": {
+     "db": 41,
+     "ms": 1000
+    }
+   },
+   "por_que": "abaixar mais que 40 dB"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x14",
+    "comando": "abaixar",
+    "args": {
+     "db": 6,
+     "ms": 1.5
+    }
+   },
+   "por_que": "prazo que nao e inteiro"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x15",
+    "comando": "mover_na_fila",
+    "args": {
+     "qid": "4F1C2A9B",
+     "to": 0
+    }
+   },
+   "por_que": "qid fora do formato"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x16",
+    "comando": "mover_na_fila",
+    "args": {
+     "qid": "4f1c2a9b",
+     "to": -1
+    }
+   },
+   "por_que": "lugar negativo"
+  },
+  {
+   "msg": {
+    "protocolo": 2,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x17",
+    "comando": "pular",
+    "args": {}
+   },
+   "por_que": "outra versao do protocolo"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "curta",
+    "id": "x18",
+    "comando": "pular",
+    "args": {}
+   },
+   "por_que": "id de sessao fora do formato"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x19",
+    "comando": "pular",
+    "args": {},
+    "token": "abc"
+   },
+   "por_que": "campo a mais (o token nunca entra no protocolo)"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "id com espaco",
+    "comando": "pular",
+    "args": {}
+   },
+   "por_que": "id do comando fora do formato"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x19\n",
+    "comando": "pular",
+    "args": {}
+   },
+   "por_que": "id do comando com a quebra de linha no fim"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "s3ss40-d0-pc\n",
+    "id": "x20",
+    "comando": "pular",
+    "args": {}
+   },
+   "por_que": "id de sessao com a quebra de linha no fim"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x21",
+    "comando": "tirar_da_fila",
+    "args": {
+     "qid": "4f1c2a9b\n"
+    }
+   },
+   "por_que": "entrada da fila com a quebra de linha no fim"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x22",
+    "comando": "enfileirar",
+    "args": {
+     "youtube_id": "dQw4w9WgXcQ\n"
+    }
+   },
+   "por_que": "id de video com a quebra de linha no fim"
+  }
+ ],
+ "resultados": [
+  {
+   "protocolo": 1,
+   "tipo": "resultado",
+   "sessao": "sessao-de-teste-01",
+   "ok": true,
+   "id": "c3",
+   "rev": 12,
+   "dados": {
+    "qid": "9a8b7c6d",
+    "tocando": false
+   }
+  },
+  {
+   "protocolo": 1,
+   "tipo": "resultado",
+   "sessao": "sessao-de-teste-01",
+   "ok": true,
+   "id": "c10",
+   "rev": 13,
+   "dados": {
+    "vol": 0.35
+   }
+  },
+  {
+   "protocolo": 1,
+   "tipo": "resultado",
+   "sessao": "sessao-de-teste-01",
+   "ok": true,
+   "id": "c11",
+   "rev": 14,
+   "dados": {
+    "abaixa": {
+     "db": 12,
+     "ms": 3000
+    }
+   }
+  },
+  {
+   "protocolo": 1,
+   "tipo": "resultado",
+   "sessao": "sessao-de-teste-01",
+   "ok": true,
+   "id": "c12",
+   "rev": 15,
+   "dados": {
+    "abaixa": null
+   }
+  },
+  {
+   "protocolo": 1,
+   "tipo": "resultado",
+   "sessao": "sessao-de-teste-01",
+   "ok": true,
+   "id": "c5",
+   "rev": 16,
+   "dados": {}
+  },
+  {
+   "protocolo": 1,
+   "tipo": "resultado",
+   "sessao": "sessao-de-teste-01",
+   "ok": false,
+   "id": "c5",
+   "erro": "conflito"
+  },
+  {
+   "protocolo": 1,
+   "tipo": "resultado",
+   "sessao": "sessao-de-teste-01",
+   "ok": false,
+   "id": "x1",
+   "erro": "fora_do_vocabulario"
+  },
+  {
+   "protocolo": 1,
+   "tipo": "resultado",
+   "sessao": "sessao-de-teste-01",
+   "ok": false,
+   "id": "c6",
+   "erro": "sem_pc",
+   "retido_ms": 0
+  }
+ ],
+ "resultados_invalidos": [
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": false,
+    "id": "c5",
+    "erro": "conflito",
+    "mensagem": "The queue is empty"
+   },
+   "por_que": "a mensagem local nao sai do PC"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": false,
+    "id": "c5",
+    "erro": "api_409"
+   },
+   "por_que": "codigo fora da lista"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": true,
+    "id": "c5",
+    "dados": {}
+   },
+   "por_que": "ok sem o rev"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": true,
+    "id": "c10",
+    "rev": 13,
+    "dados": {
+     "vol": 0.35,
+     "config": "x"
+    }
+   },
+   "por_que": "dado fora da lista"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": true,
+    "id": "c3",
+    "rev": 12,
+    "dados": {
+     "qid": "9a8b7c6d"
+    }
+   },
+   "por_que": "o enfileirar sem o tocando"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": true,
+    "id": "c10",
+    "rev": 13,
+    "dados": {
+     "vol": 0.35,
+     "abaixa": null
+    }
+   },
+   "por_que": "dados de dois comandos juntos"
+  }
+ ],
+ "repeticao": [
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "r1",
+    "comando": "pular",
+    "args": {}
+   },
+   "espera": "executa",
+   "resultado": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": true,
+    "id": "r1",
+    "rev": 20,
+    "dados": {}
+   }
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "r1",
+    "comando": "pular",
+    "args": {}
+   },
+   "espera": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": true,
+    "id": "r1",
+    "rev": 20,
+    "dados": {}
+   },
+   "nota": "o mesmo id, comando e argumentos: o resultado guardado, sem pular de novo"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "r1",
+    "comando": "pausar",
+    "args": {}
+   },
+   "espera": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": false,
+    "id": "r1",
+    "erro": "id_repetido"
+   },
+   "nota": "o mesmo id com outro comando: recusado sem mexer na reproducao"
+  }
+ ]
+}

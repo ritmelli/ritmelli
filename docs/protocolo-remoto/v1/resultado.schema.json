@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ritmelli:remoto:v1:resultado",
+  "title": "O resultado de um comando da sessão remota, v1",
+  "description": "Do PC (ou do relay, quando ele mesmo recusa) para quem mandou o comando. O erro é só um código: a mensagem local nunca sai do PC. Ver docs/protocolo-remoto.md.",
+  "oneOf": [{"$ref": "#/$defs/ok"}, {"$ref": "#/$defs/erro"}],
+  "$defs": {
+    "ok": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolo", "tipo", "sessao", "id", "ok", "rev", "dados"],
+      "properties": {
+        "protocolo": {"const": 1},
+        "tipo": {"const": "resultado"},
+        "sessao": {"$ref": "urn:ritmelli:remoto:v1:estado#/$defs/sessao"},
+        "id": {"$ref": "urn:ritmelli:remoto:v1:comando#/properties/id"},
+        "ok": {"const": true},
+        "rev": {
+          "description": "O rev da projeção que o PC observou depois de a API local confirmar o comando: o do estado que ele publicou por causa do comando, ou o do último publicado, quando nada que se vê mudou.",
+          "$ref": "urn:ritmelli:remoto:v1:estado#/$defs/rev"
+        },
+        "dados": {"$ref": "#/$defs/dados"},
+        "retido_ms": {"$ref": "urn:ritmelli:remoto:v1:estado#/$defs/retido_ms"}
+      }
+    },
+    "erro": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolo", "tipo", "sessao", "id", "ok", "erro"],
+      "properties": {
+        "protocolo": {"const": 1},
+        "tipo": {"const": "resultado"},
+        "sessao": {"$ref": "urn:ritmelli:remoto:v1:estado#/$defs/sessao"},
+        "id": {"$ref": "urn:ritmelli:remoto:v1:comando#/properties/id"},
+        "ok": {"const": false},
+        "erro": {"$ref": "#/$defs/codigo"},
+        "retido_ms": {"$ref": "urn:ritmelli:remoto:v1:estado#/$defs/retido_ms"}
+      }
+    },
+    "codigo": {
+      "description": "protocolo: versão que o outro lado não fala; sessao: sessão errada, encerrada ou sem acesso; fora_do_vocabulario; argumentos; id_repetido: o mesmo id com outro comando ou outros argumentos; sem_pc: o PC não está ligado ao relay; tempo: o PC não respondeu no prazo; nao_permitido, nao_encontrado, conflito e falha_local: a resposta da API local (403, 404, 409 e o resto).",
+      "enum": ["protocolo", "sessao", "fora_do_vocabulario", "argumentos", "id_repetido", "sem_pc", "tempo",
+               "nao_permitido", "nao_encontrado", "conflito", "falha_local"]
+    },
+    "dados": {
+      "description": "O que o comando devolve, numa forma só: vazio, o qid e se já tocou (enfileirar), o volume (volume) ou o abaixamento (abaixar). A forma é a do comando do mesmo id.",
+      "oneOf": [
+        {"type": "object", "maxProperties": 0},
+        {"type": "object", "additionalProperties": false, "required": ["qid", "tocando"],
+         "properties": {"qid": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/qid"}, "tocando": {"type": "boolean"}}},
+        {"type": "object", "additionalProperties": false, "required": ["vol"],
+         "properties": {"vol": {"type": "number", "minimum": 0, "maximum": 1}}},
+        {"type": "object", "additionalProperties": false, "required": ["abaixa"],
+         "properties": {"abaixa": {"oneOf": [{"type": "null"}, {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/abaixar"}]}}}
+      ]
+    }
+  }
+}

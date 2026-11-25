@@ -4474,6 +4474,7 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
   </form>
 </div>
 
+<script src="transporte.js"></script>
 <script>
 'use strict';
 // os textos da marcacao na lingua de quem usa (o I18N, no <head>), antes de qualquer coisa ler ou medir a tela; a
@@ -4528,6 +4529,7 @@ const S = {
   state: null, lib: [], jobs: [], pos: 0, levels: { mic: 0, track: 0, out: 0 },
   online: null, jaConectou: false, desligado: false,
   pareando: false,        // celular sem pareamento: o #tela-parear pede o codigo do PC
+  caps: null,             // o que esta pagina pode, pelo servidor ({papel, rotas}); null ate ele dizer
   atualizando: null,      // a versao que o instalador esta pondo: a pagina recarrega quando o Ritmelli voltar
   busca: null,            // null = prateleira; {q, link, itens, carregando, erro}
   buscaSeq: 0,
@@ -4577,23 +4579,22 @@ function fmt(s) {
   return h ? `${h}:${p(m)}:${p(x)}` : `${m}:${p(x)}`;
 }
 
+// sobe a cada pareamento aceito: o 401 de um pedido feito antes dele (que chega atrasado) nao volta a tela do codigo
+let geracaoPareamento = 0;
 async function api(method, path, data) {
+  const geracao = geracaoPareamento;
   let r;
   try {
-    r = await fetch(path, {
-      method,
-      headers: data ? { 'Content-Type': 'application/json' } : undefined,
-      body: data ? JSON.stringify(data) : undefined,
-    });
+    r = await TRANSPORTE.pedir(method, path, data);
   } catch (e) {
     // status 0: nenhuma resposta (a busca testa o status, e nao o texto)
     const x = new Error(I18N.t('error.noResponse')); x.status = 0;
     throw x;
   }
-  let j = null;
-  try { j = await r.json(); } catch (e) { /* corpo vazio */ }
+  const j = r.json;
   if (!r.ok || (j && j.ok === false)) {
-    if (r.status === 401 && j && j.parear) pedirPareamento(j.desconectado);
+    // o 401 do pareamento traz o caps de antes de parear: a tela do codigo, sem os controles do PC
+    if (r.status === 401 && j && j.parear && geracao === geracaoPareamento) pedirPareamento(j.desconectado, j.caps);
     // a mensagem do servidor ja traduzida; ela mesma segue no erro, para quem decide pelo tipo (a busca)
     const m = j && j.error;
     const e = new Error(m ? textoMsg(m) : I18N.t('error.generic', { status: r.status }));
@@ -4956,9 +4957,9 @@ function vdjOnda(id) {
 async function vdjBusca(w, versao) {
   w.buscando = true; w.versao = versao;
   try {
-    const r = await fetch('/api/onda/' + encodeURIComponent(w.id));
+    const r = await TRANSPORTE.pedir('GET', '/api/onda/' + encodeURIComponent(w.id));
     if (r.ok) {
-      const j = await r.json(), bin = atob(j.onda), cols = new Uint8Array(bin.length);
+      const j = r.json, bin = atob(j.onda), cols = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) cols[i] = bin.charCodeAt(i);
       // a altura de cada byte: a amplitude pelo nivel forte do disco (o maior das tres faixas em 95% das colunas),
       // um pouco comprimida, para o disco baixo e o alto encherem o visor igual
@@ -8355,7 +8356,6 @@ $('#dn-nao').addEventListener('click', () => $('#dlg-nome').close('nao'));
 
 /* ---------- dados de uso e erros (metricas.py), so no PC: a linha no Microfone e fone e o aviso de quem ainda nao
    escolheu. A escolha feita aqui vale sobre a da pagina do instalador ---------- */
-const noPC = () => ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
 let metricasVistas = null;   // a ultima resposta do GET/POST /api/metricas
 function mostrarMetricas(m) {
   metricasVistas = m;
@@ -8367,7 +8367,7 @@ function mostrarMetricas(m) {
   $('#dd-met-pol').href = $('#dm-pol').href = m.politica;
 }
 async function lerMetricas() {
-  if (!noPC()) return null;
+  if (!pode('GET /api/metricas')) return null;
   try { const m = await api('GET', '/api/metricas'); mostrarMetricas(m); return m; } catch (e) { return null; }
 }
 async function escolherMetricas(ligar) {
@@ -8565,10 +8565,9 @@ $('#dcel-outro').addEventListener('click', async () => {
    dialogo pede as notas; baixado e conferido o setup, o Instalar agora roda o instalador, que fecha o Ritmelli e abre de
    novo. Na atualizacao automatica (a.automatica, atualizador.py), quem baixa e a tarefa do Windows, e a versao entra
    sozinha ao fechar: o Instalar agora so adianta isso ---------- */
-const NO_PC = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
 function desenharAtualizacao() {
   const a = S.state && S.state.atualizacao, b = $('#b-atualizar');
-  b.hidden = !(NO_PC && a && a.nova);
+  b.hidden = !(pode('POST /api/atualizacao/baixar') && a && a.nova);
   if (a && a.nova) b.title = I18N.t('update.titleVersion', { version: a.nova });
   if ($('#dlg-atualizar').open && a) pintarAtualizacao(a);
 }
@@ -8618,43 +8617,79 @@ function mostrarAtualizando(f) {
   f.hidden = false;
 }
 
+/* ---------- o que esta pagina pode: o caps que o servidor manda (no /api/state, no 401 do pareamento e no comeco do
+   SSE), e nao o endereco dela. Ate ele chegar, nenhum controle do PC aparece ---------- */
+const pode = rota => !!(S.caps && S.caps.rotas && S.caps.rotas.includes(rota));
+function definirCaps(c) {
+  const metricasAntes = pode('GET /api/metricas');
+  S.caps = c && Array.isArray(c.rotas) ? c : null;
+  $('#b-cel').hidden = !pode('GET /api/pareamento');
+  desenharAtualizacao();
+  if (!pode('GET /api/metricas')) $('#dd-met').hidden = true;
+  else if (!metricasAntes && $('#dlg-disp').open) lerMetricas();   // o Microfone e fone aberto antes do caps chegar
+}
+
 /* ---------- conexao ---------- */
 let es = null, foraT = null, reconT = null;
+// o transporte.js que nao carregou (o servidor fora quando a pagina abriu): a conexao tenta carregar de novo, uma
+// carga por vez e a cada 3 s, e com ele de volta a pagina segue a carga normal
+let buscandoTransporte = false;
+function carregarTransporte() {
+  if (buscandoTransporte) return;
+  buscandoTransporte = true;
+  const s = document.createElement('script');
+  s.src = 'transporte.js';
+  s.onload = () => {
+    buscandoTransporte = false;
+    // carregou sem definir o TRANSPORTE (o portal do Wi-Fi respondendo com uma pagina, o script cortado): o mesmo
+    // prazo do erro, sem laco
+    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }
+    carregar();
+  };
+  s.onerror = () => { buscandoTransporte = false; s.remove(); reconT = setTimeout(conectar, 3000); };
+  document.head.append(s);
+}
 function conectar() {
   clearTimeout(reconT);
-  if (es) es.close();
-  try { es = new EventSource('/api/events'); } catch (e) { reconT = setTimeout(conectar, 3000); return; }
+  if (typeof TRANSPORTE === 'undefined') { carregarTransporte(); return; }
+  if (es) es.fechar();
+  try { es = TRANSPORTE.eventos('/api/events'); } catch (e) { reconT = setTimeout(conectar, 3000); return; }
   const fonte = es;
-  es.addEventListener('open', () => online(true));
-  es.addEventListener('desconectado', () => pedirPareamento(true));
-  es.addEventListener('state', e => {
-    online(true); S.state = JSON.parse(e.data);
+  es.ao('open', () => online(true));
+  // o primeiro evento: o que esta conexao pode (o papel nao muda nela; a revogacao a encerra)
+  es.ao('caps', c => definirCaps(c));
+  es.ao('desconectado', () => {
+    // o PC desconectou este celular: a tela do codigo, e o caps de antes de parear vem no 401 do /api/state
+    pedirPareamento(true);
+    api('GET', '/api/state').catch(() => {});
+  });
+  es.ao('state', st => {
+    online(true); S.state = st;
     desenharFaixa(); desenharReceptor(); desenharFila(); if (S.busca) atualizarResultados();
     desenharAtualizacao();
   });
-  es.addEventListener('library', e => { S.lib = ordenarLib(JSON.parse(e.data)); S.libOk = true; desenharPrateleira(); desenharFila(); if (S.busca) atualizarResultados(); });
-  es.addEventListener('jobs', e => {
+  es.ao('library', lib => { S.lib = ordenarLib(lib); S.libOk = true; desenharPrateleira(); desenharFila(); if (S.busca) atualizarResultados(); });
+  es.ao('jobs', jobs => {
     const antes = new Map(S.jobs.map(j => [j.id, j.status]));
-    S.jobs = JSON.parse(e.data);
+    S.jobs = jobs;
     for (const j of S.jobs) if (j.status === 'error' && antes.get(j.id) === 'running') avisar(I18N.t('download.failed', { label: j.label, reason: motivoDownload(detalheMsg(j.error)) }), true);
     desenharPrateleira(); desenharFila(); if (S.busca) atualizarResultados();
   });
-  es.addEventListener('tick', e => {
-    const t = JSON.parse(e.data);
+  es.ao('tick', t => {
     S.pos = t.pos; S.levels = t.levels || S.levels;
     S.posEm = performance.now(); S.posEmDe = t.pos;   // quando a posicao chegou: o relogio do visor mede o erro ali
     desenharTempo(); agulhasPixel();
   });
-  es.onerror = () => {
+  es.aoFalhar(() => {
     if (S.pareando) return;
     online(false);
-    if (fonte.readyState !== EventSource.CLOSED) return;
-    fonte.close();
-    // recusada de cara: o servidor fora, ou o 401 do celular desconectado no PC (o EventSource nao diz o status;
+    if (!fonte.fechada()) return;
+    fonte.fechar();
+    // recusada de cara: o servidor fora, ou o 401 do celular desconectado no PC (o fluxo de eventos nao diz o status;
     // o /api/state diz, e o api() ja abre o pedido do codigo)
     api('GET', '/api/state').then(() => true, e => e.status !== 401)
       .then(volta => { if (volta && !S.pareando) reconT = setTimeout(conectar, 3000); });
-  };
+  });
 }
 /* o aviso de fora do ar so conta o tempo com a pagina na tela (ao desbloquear o celular o aviso
    aparecia por uns 0,8 s): com o celular bloqueado a conexao cai e o prazo vencia escondido. Escondida, a pagina
@@ -8698,7 +8733,7 @@ function mostrarFora() {
   if (S.desligado) {
     $('#fora-tt').textContent = I18N.t('offline.offTitle');
     I18N.rico($('#fora-p'), 'offline.offText');
-  } else if (!noPC()) {
+  } else if (!(S.caps ? S.caps.papel === 'pc' : typeof TRANSPORTE === 'undefined' || TRANSPORTE.local)) {
     // (#107) no celular, o que mais cai e o caminho ate o computador (o celular nos dados moveis, sem Wi-Fi, numa rede
     // de convidados), e nao o Ritmelli: o cartao diz so o que se sabe, e o que o navegador conta da conexao (sem
     // nenhuma; nos dados moveis, o Chrome do Android pela Network Information API)
@@ -8719,11 +8754,12 @@ function mostrarFora() {
    traz o codigo no link (?parear=), e ai nada se digita ---------- */
 let codigoQR = new URLSearchParams(location.search).get('parear');
 if (codigoQR) history.replaceState(null, '', location.pathname + location.hash);  // o codigo usado nao fica no historico
-function pedirPareamento(desconectado) {
+function pedirPareamento(desconectado, caps) {
+  definirCaps(caps || null);
   if (S.pareando) return;
   S.pareando = true; S.online = false;
   clearTimeout(reconT); clearTimeout(foraT);
-  if (es) { es.close(); es = null; }
+  if (es) { es.fechar(); es = null; }
   fecharMenu(false);
   document.querySelectorAll('dialog[open]').forEach(d => d.close());
   $('#fora').hidden = true;
@@ -8739,6 +8775,7 @@ async function parear(codigo) {
   try { await api('POST', '/api/parear', { codigo }); }
   catch (e) { msg.className = 'msg-dlg erro'; msg.textContent = e.message; $('#pa-ok').disabled = false; return; }
   $('#pa-ok').disabled = false;
+  geracaoPareamento++;
   S.pareando = false;
   $('#tela-parear').hidden = true; $('#pa-in').value = '';
   avisar(I18N.t('pair.done'));
@@ -8757,8 +8794,8 @@ $('#form-parear').addEventListener('submit', e => {
    conectado com elas na tela acende sozinho ---------- */
 let boasT = 0, boasPedidas = false;
 async function boasVindasSePrecisar() {
-  // o mesmo teste do botao Celular; o servidor tambem so diz que sim para o PC
-  if (boasPedidas || !['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname)) return;
+  // pelo caps, como o botao Celular; o servidor tambem so diz que sim para o PC
+  if (boasPedidas || !pode('POST /api/boas-vindas')) return;
   boasPedidas = true;
   let r;
   try { r = await api('GET', '/api/boas-vindas'); } catch (e) { return; }
@@ -9259,7 +9296,6 @@ function vigiarGavetaDaBusca() {
 // limpar: no primeiro toque, com ou sem o cursor no campo; o campo fica pronto para a busca nova
 // (os resultados de antes ficam ate ela sair, como enquanto digita)
 $('#b-limpar-q').addEventListener('click', () => { clearTimeout(buscaT); const q = $('#q'); q.value = ''; q.focus(); });
-$('#b-cel').hidden = !['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
 $('#b-cel').addEventListener('click', abrirCelular);
 $('#b-disp').addEventListener('click', abrirDispositivos);
 $('#dica-ouvir').addEventListener('click', e => { if (e.target.closest('.ir-disp')) abrirDispositivos(); });
@@ -9340,18 +9376,23 @@ FADERS.forEach(([fi]) => pintarFader($(fi)));
 carregarEfeitos();
 if (location.hash === '#efeitos' && !celular()) abrirGaveta(true);
 function carregar() {
+  const geracao = geracaoPareamento;
   Promise.all([api('GET', '/api/state'), api('GET', '/api/library'), api('GET', '/api/jobs')])
     .then(([st, lib, jobs]) => {
+      // o celular desconectado (ou pareado de novo) enquanto esta carga corria: ela nao vale mais
+      if (S.pareando || geracao !== geracaoPareamento) return;
       S.state = st; S.pos = st.pos || 0; S.levels = st.levels || S.levels; S.lib = ordenarLib(lib); S.libOk = true; S.jobs = jobs;
+      definirCaps(st.caps);
       online(true); desenharFaixa(); desenharReceptor(); desenharPrateleira(); desenharFila();
       boasVindasSePrecisar();
     })
     .catch(e => {
+      if (geracao !== geracaoPareamento) return;   // a carga de antes do pareamento de agora: o erro dela nao vale mais
       if (e.status !== 401) { online(false); return; }
       // o codigo do QR so se usa sem pareamento: ja pareado (ou no proprio PC), ele segue valendo para outro celular
       if (codigoQR) { const c = codigoQR; codigoQR = null; parear(c); }
     })
-    .finally(() => { if (!S.pareando) conectar(); });
+    .finally(() => { if (!S.pareando && geracao === geracaoPareamento) conectar(); });
 }
 carregar();
 </script>

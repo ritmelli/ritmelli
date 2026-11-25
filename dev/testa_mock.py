@@ -199,7 +199,7 @@ async def papeis_no_guard():
     print("--- o guard, papel por papel")
     with tempfile.TemporaryDirectory() as tmp:
         E = types.SimpleNamespace(pos=0.0, levels={}, vol=0.5)
-        A = types.SimpleNamespace(engine=E, port=porta, lan_ip=lan, mock=True, closing=False,
+        A = types.SimpleNamespace(engine=E, port=porta, lan_ip=lan, mock=True, closing=False, papel_local="pc",
                                   celulares=par.Pareamento(Path(tmp) / "celulares.json"), remotos=perm.Remotos(),
                                   metricas=types.SimpleNamespace(erro=lambda *a, **k: None),
                                   atualizacao=types.SimpleNamespace(ao_abrir=lambda: None),
@@ -538,6 +538,119 @@ async def papeis_no_guard():
                 f"depois do erro, a conexao seguinte recebe a volta de novo ({[e for e, _ in ev][:3]})")
 
 
+async def papel_local_celular():
+    """O --papel-local celular (so no --mock), pelo guard e pelas rotas de verdade: do 127.0.0.1, o Host
+    127.0.0.1:<porta> passa pelo pareamento como o celular da rede de casa (o 401 com o "mock" e o caps do
+    pre-pareamento, o caps do celular depois do POST /api/parear, a revogacao fechando o SSE) e o Host
+    localhost:<porta> segue o PC, que le o codigo (com o endereco do 127.0.0.1) e desconecta o aparelho."""
+    from unittest import mock
+
+    from aiohttp import streams
+    from aiohttp.test_utils import make_mocked_request
+
+    with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, que nao sao deste teste
+        import pareamento as par
+        import server
+    porta = 8801
+    cel, pc = f"127.0.0.1:{porta}", f"localhost:{porta}"
+    print("--- o --papel-local celular: o 127.0.0.1 como o celular, o localhost como o PC")
+    with tempfile.TemporaryDirectory() as tmp:
+        E = types.SimpleNamespace(pos=0.0, levels={}, vol=0.5)
+        A = types.SimpleNamespace(engine=E, port=porta, lan_ip=None, mock=True, closing=False, papel_local="celular",
+                                  celulares=par.Pareamento(Path(tmp) / "celulares.json"), remotos=perm.Remotos(),
+                                  metricas=types.SimpleNamespace(erro=lambda *a, **k: None),
+                                  atualizacao=types.SimpleNamespace(ao_abrir=lambda: None),
+                                  leitura=lambda: ({"status": "idle"}, 0.0), public_jobs=lambda: [],
+                                  lib=types.SimpleNamespace(version=1, public=lambda: []),
+                                  boas_vindas_pendentes=lambda: True, grava_cfg=lambda **k: None)
+        app = guard = rota = None
+
+        def monta():
+            nonlocal app, guard, rota
+            app = server.build(A)
+            guard = app.middlewares[0]
+            rota = {(r.method, r.resource.canonical): r.handler for r in app.router.routes() if r.resource is not None}
+        monta()
+
+        async def manda(metodo, caminho, host=cel, cookie=None, corpo=None):
+            """O pedido do 127.0.0.1 (o adb reverse e o navegador do PC chegam dele) com o Host dito, pela rota de
+            verdade."""
+            t = mock.Mock()
+            t.get_extra_info.side_effect = lambda nome, d=None: ("127.0.0.1", 50000) if nome == "peername" else d
+            cab = {"Host": host}
+            if cookie:
+                cab["Cookie"] = f"{par.COOKIE}={cookie}"
+            carga = streams.EMPTY_PAYLOAD
+            if corpo is not None:
+                cab["Content-Type"] = "application/json"
+                carga = streams.StreamReader(mock.Mock(_reading_paused=False), 2 ** 16, loop=asyncio.get_running_loop())
+                carga.feed_data(json.dumps(corpo).encode("utf-8"))
+                carga.feed_eof()
+            req = make_mocked_request(metodo, caminho, headers=cab, transport=t, payload=carga, app=app)
+            req._match_info = await app.router.resolve(req)
+            resp = await guard(req, rota[(metodo, req._match_info.route.resource.canonical)])
+            return resp, (json.loads(resp.body) if getattr(resp, "body", None) else {}), req
+
+        resp, j, _ = await manda("GET", "/api/state")
+        confere(resp.status == 401 and j.get("parear") and j.get("mock") is True and not j.get("desconectado")
+                and j.get("caps") == perm.caps("publico"),
+                f"o 127.0.0.1 sem cookie: o 401 do pareamento, com o \"mock\" e o caps do pre-pareamento ({resp.status})")
+        for m, c in (("GET", "/api/pareamento"), ("POST", "/api/boas-vindas"), ("POST", "/api/effects/reload")):
+            resp, _, _ = await manda(m, c)
+            confere(resp.status == 403, f"o 127.0.0.1 sem cookie: {m} {c} e do PC (403, {resp.status})")
+        resp, j, _ = await manda("GET", "/api/state", host=pc)
+        confere(resp.status == 200 and j.get("caps") == perm.caps("pc"), "o localhost segue o PC: o caps do PC")
+        resp, j, _ = await manda("GET", "/api/pareamento?caminho=/t/ritmelli/", host=pc)
+        confere(resp.status == 200 and j.get("url") == f"http://127.0.0.1:{porta}/t/ritmelli/" and j.get("codigo")
+                and j.get("qr"), f"o PC le o codigo, com o endereco do 127.0.0.1 ({j.get('url')})")
+        resp, _, _ = await manda("POST", "/api/parear", corpo={"codigo": j.get("codigo") or ""})
+        chave = resp.cookies.get(par.COOKIE)
+        confere(resp.status == 200 and chave is not None, f"o 127.0.0.1 pareia com o codigo do PC ({resp.status})")
+        chave = chave.value if chave is not None else ""
+        resp, j, _ = await manda("GET", "/api/state", cookie=chave)
+        confere(resp.status == 200 and j.get("caps") == perm.caps("celular") and par.COOKIE in resp.cookies,
+                "pareado, o 127.0.0.1 le o estado com o caps do celular e renova o cookie")
+        resp, j, _ = await manda("GET", "/api/boas-vindas", cookie=chave)
+        confere(resp.status == 200 and j.get("mostrar") is False, "as boas-vindas nao abrem no papel do celular")
+        resp, j, _ = await manda("GET", "/api/boas-vindas", host=pc)
+        confere(j.get("mostrar") is True, "e abrem no localhost, o PC")
+        resp, _, _ = await manda("GET", "/api/pareamento", cookie=chave)
+        confere(resp.status == 403, f"pareado, o 127.0.0.1 segue sem o codigo e a lista dos celulares ({resp.status})")
+
+        tarefa = asyncio.ensure_future(manda("GET", "/api/events", cookie=chave))
+        await asyncio.sleep(0.3)
+        resp, j, _ = await manda("GET", "/api/pareamento", host=pc)
+        aid = (j.get("celulares") or [{}])[0].get("id", "")
+        resp, _, _ = await manda("DELETE", f"/api/pareamento/{aid}", host=pc)
+        confere(resp.status == 200, f"o PC desconecta o aparelho do 127.0.0.1 ({resp.status})")
+        try:
+            _, _, req = await asyncio.wait_for(tarefa, 3)
+            escrito = b"".join(c.args[0] for c in req._payload_writer.write.call_args_list).decode("utf-8")
+            nomes = re.findall(r"^event: (\w+)$", escrito, re.M)
+        except asyncio.TimeoutError:
+            nomes = None
+        confere(nomes is not None and nomes[:1] == ["caps"] and nomes[-1:] == ["desconectado"],
+                f"o SSE do 127.0.0.1: o caps primeiro, e desconectado no PC, avisa e fecha ({nomes})")
+        resp, j, _ = await manda("GET", "/api/state", cookie=chave)
+        confere(resp.status == 401 and j.get("desconectado") and j.get("caps") == perm.caps("publico"),
+                "revogado, o 127.0.0.1 volta ao pareamento: o 401 diz que o PC desconectou, com o caps de antes")
+
+        A.papel_local = "pc"
+        monta()
+        resp, j, _ = await manda("GET", "/api/state")
+        confere(resp.status == 200 and j.get("caps") == perm.caps("pc"), "sem o --papel-local celular, o 127.0.0.1 e o PC")
+        resp, j, _ = await manda("GET", "/api/pareamento", host=pc)
+        confere(j.get("url") is None and j.get("codigo") is None,
+                "e o --mock, sem o IP da rede de casa, nao gera codigo (como antes)")
+
+        A.mock, A.papel_local = False, "celular"  # o modo e so do --mock: fora dele, o build o ignora
+        monta()
+        resp, j, _ = await manda("GET", "/api/state")
+        confere(resp.status == 200 and j.get("caps") == perm.caps("pc"), "fora do --mock, o 127.0.0.1 segue o PC")
+        resp, j, _ = await manda("GET", "/api/pareamento", host=pc)
+        confere(j.get("url") is None and j.get("codigo") is None, "e o codigo nao sai no 127.0.0.1")
+
+
 def de_casa(srv, metodo, caminho, corpo=None, origem="127.0.0.2", cab=None):
     """Um pedido ao --mock saindo do endereco origem (o 127.0.0.2 faz as vezes de um aparelho da rede de casa: o
     servidor olha o endereco de quem conecta), so com o filho vivo e respondendo como --mock, como no Filho.api.
@@ -739,6 +852,7 @@ except ImportError as ex:
     print(f"--   o guard papel por papel ficou de fora: sem as bibliotecas do app ({ex.name})")
 else:
     asyncio.run(papeis_no_guard())
+    asyncio.run(papel_local_celular())
 sem_rede()
 
 print("\nFALHOU: " + "; ".join(falhas) if falhas else "\ntudo ok")

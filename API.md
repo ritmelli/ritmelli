@@ -370,7 +370,8 @@ valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
   disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, `title` e
   `channel` como texto ou `null`, `duration` em segundos (de 0 a 86400) ou `null`, e o alvo e os textos em Unicode
   válido (UTF-8); o resto é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma
-  sessão abre um token.
+  sessão abre um token. O que a sessão remota manda e recebe pela internet está no
+  [protocolo da sessão remota](docs/protocolo-remoto.md).
 
 | rota | `pc` | `celular` | `remoto` | `publico` |
 |---|---|---|---|---|
@@ -401,8 +402,9 @@ vez, peça o `/api/state` para saber se é o 401.
   lugar a outro sozinhos no próximo `GET /api/pareamento`.
 - Pareado, o celular ganha a chave num cookie (`HttpOnly`, `SameSite=Strict`), que vale até o
   PC desconectar. Cada `GET /api/state` renova o prazo do cookie no navegador.
-- `GET /api/pareamento`: `url` = o endereço do tema (`caminho`) na rede de casa, ou `null`
-  sem rede (aí `codigo` e `qr` também vêm `null`); `codigo` = o de agora, ou `null` quando
+- `GET /api/pareamento`: `url` = o endereço do tema (`caminho`) na rede de casa (no
+  `--mock --papel-local celular`, o do `127.0.0.1`), ou `null` sem rede (aí `codigo` e `qr`
+  também vêm `null`); `codigo` = o de agora, ou `null` quando
   `queimado`; `vale_s` = quantos segundos ele ainda vale; `qr` = as linhas do QR do link
   `<url>?parear=<codigo>`, de cima para baixo, com `"1"` no módulo escuro e sem a margem
   (desenhe 4 módulos claros em volta); `celulares` = `[{"id", "nome", "desde", "visto"}]`,
@@ -534,7 +536,11 @@ uma cópia da biblioteca numa pasta temporária, apagada quando o servidor fecha
 `--data-dir <pasta>`. A pasta de quem usa o `--mock` recusa: o download fingido copia o disco
 mais curto com outro nome, e lá viraria disco falso na prateleira. No `--mock`, os dados de uso ficam em `"fora"`;
 com `--metricas-teste` (só junto do `--mock`), o aviso e a escolha funcionam, sem ler a escolha do instalador, e o que
-sairia fica só na memória do servidor, sem rede nenhuma. Print: `python dev/shot.py <url> <png> [--size
+sairia fica só na memória do servidor, sem rede nenhuma. Com `--papel-local celular` (só junto do `--mock`), o
+`http://127.0.0.1:<porta>` faz o papel do celular da rede de casa: o 401 do pareamento com o `caps` do pré-pareamento,
+o cookie do `POST /api/parear`, o `caps` do celular e a revogação fechando o SSE, como de outro aparelho; o
+`http://localhost:<porta>`, com os cookies separados no navegador, segue o PC, e nele o `GET /api/pareamento` gera o
+código com o `url` em `http://127.0.0.1:<porta>`. Print: `python dev/shot.py <url> <png> [--size
 390x844] [--js "..."] [--tab N] [--reduced-motion] [--offline-ok]`, que também lista os erros
 do console (`--tab` aperta Tab para o anel de foco aparecer; `--offline-ok` não conta a
 reconexão do SSE com o servidor fora).
