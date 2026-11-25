@@ -139,7 +139,7 @@ def confere_blocos(tema, arquivos):
 
 # The most lines of inline CSS and JS each theme's index.html may have. The number only goes down: new theme code goes
 # into a file of the theme folder, and a PR that moves code out of the page lowers it to the new count.
-INLINE_CEILING = {"ritmelli": 2818}
+INLINE_CEILING = {"ritmelli": 1644}
 INLINE = re.compile(r"<(style|script)\b([^>]*)>(.*?)</\1>", re.S)
 
 
