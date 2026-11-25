@@ -14,7 +14,12 @@ a música segue no fone. A folga foi medida no `dev/mede_folga.py`: o que a gast
 30 ms o processo roda acima do normal (a thread que segura o interpretador não perde a CPU para o jogo) e o ffmpeg
 morre pelo `mata` (o `kill` do `subprocess` prendia o interpretador enquanto o Windows matava o processo). Preso a
 um console, o Python pergunta ao `conhost` a cada `io.open` e a cada thread nova, e com a CPU cheia isso prende o
-interpretador de 10 a 25 ms: o executável e o `pythonw` (o `soundboard.ps1` sobe por ele) não têm console. A voz crua que volta (reamostrada para 48 kHz) alimenta o medidor, o ouvir a própria voz,
+interpretador de 10 a 25 ms: o executável e o `pythonw` (o `soundboard.ps1` sobe por ele) não têm console. O `Injetor`
+mede a folga (o menor tanto no anel, as vezes que ele estava vazio e a maior volta da thread) desde que abriu, para o
+`/api/state`, e a mesma medida por janela no `metricas.SaudeAudio` dele, que o evento `audio` dos dados de uso leva a
+cada meia hora (com as secas no meio de uma passagem ou de uma chamada à Rubber Band, os leitores perdidos, o tempo do
+efeito no filtro e da voz pelo microfone de reserva); trocar de `Injetor` começa outra janela, salvo na reabertura
+do leitor perdido (`_recupera_leitor`), em que o novo continua a do de antes. A voz crua que volta (reamostrada para 48 kHz) alimenta o medidor, o ouvir a própria voz,
 a mina e o efeito; o microfone que o motor abre só fica de reserva para quando ela não chega.
 Sem efeito e sem corte, a voz crua segue no microfone. O efeito de voz roda no próprio filtro:
 o `preset.py` lê o efeito do `fx.py` e monta o preset (as etapas, com os coeficientes
