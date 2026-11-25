@@ -30,9 +30,10 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
   da tabela é só do PC, e o `dev/testa_mock.py` falha enquanto ela não entra; abrir para o celular ou para o remoto é
   decisão escrita no PR. Rota ou campo novo entra no `API.md`, e a linha da tabela também.
 - As travas do servidor se pegam numa ordem só: a de [comandos.md](docs/arquitetura/comandos.md#as-travas).
-- O `engine.py` não ganha gancho novo para o módulo opcional de fora do repo: o que ele precisa passa pelo que já
-  existe ([fx.md](docs/arquitetura/fx.md)), e o `dev/testa_ganchos.py` falha com um a mais. O mesmo vale para as rotas
-  só dele: o grupo `OUT_OF_REPO` do `permissao.py`, que o `testa_ganchos` também conta.
+- O `engine.py` não ganha gancho novo para o módulo opcional de fora do repo ([fx.md](docs/arquitetura/fx.md)), nem rota
+  só dele (o grupo `OUT_OF_REPO` do `permissao.py`), e os outros módulos da raiz mexem na `Engine` e no `App` só pela
+  interface pública ([comandos.md](docs/arquitetura/comandos.md)): o `dev/testa_ganchos.py` conta os três e falha quando
+  uma conta foge do teto dela (`TETO`, `ROUTES_CEILING`, `ENGINE_CEILING`, `APP_CEILING`).
 - Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 - Mexeu em `instalador/`, nos `atualiza*.py`, no `migra.py`, no `pastas.py`, no `microfone/microfone.py` ou no
   `ritmelli.spec`: rode o "Monta o instalador" (`monta.yml`) na branch. Na CI, só ele compila o `.iss` e roda a parcial,
@@ -43,10 +44,9 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
 
 ## As superfícies de uma mudança
 
-Toda mudança tem de cobrir as que toca, e o PR diz quais: o servidor (`server.py`) e o contrato no `API.md`; o tema no
-PC e no celular (a pasta `themes/ritmelli/`, com o layout do celular abaixo de 900 px); i18n, nas duas línguas; o
-filtro (`microfone/`); o instalador (`instalador/ritmelli.iss`) e a migração de quem já tem o app (`migra.py`); a
-galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
+Toda mudança cobre as que toca, e o PR diz quais: o servidor (`server.py`) e o contrato no `API.md`; o tema no PC e no
+celular (`themes/ritmelli/`, o celular abaixo de 900 px); i18n, nas duas línguas; o filtro (`microfone/`); o instalador
+(`instalador/ritmelli.iss`) e a migração (`migra.py`); a galeria (`gallery/index.html`, `dev/previews.py`).
 
 ## O mapa: área, arquivos e teste
 
