@@ -229,19 +229,77 @@ class TestaMicrofone(unittest.TestCase):
             if anel._vai:
                 anel.desliga()
 
+    def test_recupera_leitor_conta(self):
+        """A conta do _recupera_leitor num relogio controlado, sem threads: o leitor que volta e some de novo entre
+        duas voltas do vigia recomeca a conta (e o prazo) da perda nova; a reabertura que falha (sem stream nenhum)
+        segue na conta, no intervalo e ate o limite."""
+        e = eng.Engine(mic="Mic", monitor="")
+        e.active = {"mic": "Mic", "monitor": ""}
+        agora = [100.0]
+        reaberturas = []
+
+        def injetor(perdeu_em=None):
+            return mock.Mock(leitores=0, perdeu_em=perdeu_em)
+
+        def reabre(falha=False):
+            reaberturas.append(agora[0])
+            e._stack = None if falha else contextlib.ExitStack()
+            if falha:
+                e._caiu_no_vigia = True
+            else:
+                e._injetor, e._caiu_no_vigia = injetor(), False
+
+        def volta(dt):
+            agora[0] += dt
+            e._recupera_leitor()
+
+        e._stack, e._injetor = contextlib.ExitStack(), injetor(perdeu_em=100.0)
+        with mock.patch.multiple(eng, create=True, LEITOR_PERDIDO_S=10.0, LEITOR_INTERVALO_S=30.0,
+                                 LEITOR_TENTATIVAS=3), \
+                mock.patch.object(eng.time, "monotonic", side_effect=lambda: agora[0]), \
+                mock.patch.object(e, "_reabre", side_effect=reabre):
+            volta(9.0)
+            self.assertEqual(reaberturas, [], "reabriu antes do prazo")
+            volta(1.0)
+            self.assertEqual(reaberturas, [110.0])
+            # o Injetor novo viu o leitor voltar e sumir de novo entre duas voltas do vigia
+            volta(2.0)
+            e._injetor.perdeu_em = 113.0
+            volta(2.0)
+            self.assertIsNone(e._recupera, "o leitor que voltou nao zerou a conta")
+            volta(7.0)
+            self.assertEqual(reaberturas, [110.0], "reabriu antes do prazo da perda nova")
+            volta(2.0)  # 123: 10 s da perda nova
+            self.assertEqual(reaberturas, [110.0, 123.0])
+            self.assertEqual(e._recupera[1], 1, "a perda nova nao comecou a conta do zero")
+            # as duas proximas falham (sem stream nenhum): seguem no intervalo, ate o limite
+            e._reabre.side_effect = lambda: reabre(falha=True)
+            for _ in range(5):
+                volta(30.0)
+            self.assertEqual(reaberturas, [110.0, 123.0, 153.0, 183.0], "a reabertura que falhou parou a conta")
+            self.assertIsNone(e._stack)
+            e.close()
+            volta(30.0)
+            self.assertIsNone(e._recupera, "o motor fechado nao zerou a conta")
+
     def test_vigia_nao_reabre_o_leitor_que_volta_sozinho(self):
-        """O leitor que some e volta antes de LEITOR_PERDIDO_S (o filtro que o Windows remonta sozinho) nao reabre."""
+        """O leitor que some e volta antes de LEITOR_PERDIDO_S (o filtro que o Windows remonta sozinho) nao reabre: o
+        Injetor viu a perda, e o leitor volta logo depois, bem antes do prazo (1 s neste teste)."""
         anel = AnelFalso()
         anel.liga()
         v = VigiaNoAnel()
         try:
-            self._espera_leitor(v)
-            anel.desliga()
-            time.sleep(0.1)
-            anel.liga()
-            self._espera_leitor(v)
-            time.sleep(1.0)
-            self.assertEqual(v.reaberturas(), 0, "o leitor voltou sozinho e o vigia reabriu")
+            with mock.patch.object(eng, "LEITOR_PERDIDO_S", 1.0):
+                self._espera_leitor(v)
+                anel.desliga()
+                prazo = time.monotonic() + 2.0
+                while v.e._injetor.leitores and time.monotonic() < prazo:
+                    time.sleep(0.005)
+                self.assertEqual(v.e._injetor.leitores, 0, "o Injetor nao viu a perda")
+                anel.liga()
+                self._espera_leitor(v)
+                time.sleep(1.5)
+                self.assertEqual(v.reaberturas(), 0, "o leitor voltou sozinho e o vigia reabriu")
         finally:
             v.fecha()
             anel.desliga()
@@ -305,6 +363,29 @@ class TestaMicrofone(unittest.TestCase):
         esperado = (np.arange(len(lido)) + round(lido[0] * 100000)) % 100000 / 100000
         np.testing.assert_allclose(lido, esperado.astype(np.float32), atol=0,
                                    err_msg="o que o filtro leu nao e a sequencia do misturador")
+
+    def test_leitor_que_some_no_meio_do_preenchimento(self):
+        """O leitor some entre o vivos() e o enchimento do anel (o na_fila ja nao o ve e da 0): o Injetor escreve no
+        maximo INJ_FOLGA blocos nessa volta e, na seguinte, ve que ficou sem leitor (o vigia depende disso)."""
+        anel = AnelFalso()
+        anel.liga()
+        motor = MotorFalso()
+        inj = eng.Injetor(motor)
+        try:
+            prazo = time.monotonic() + 2.0
+            while not inj.leitores and time.monotonic() < prazo:
+                time.sleep(0.01)
+            self.assertTrue(inj.leitores)
+            with mock.patch.object(injeta.Microfone, "na_fila", return_value=0):
+                time.sleep(0.05)
+                anel.desliga()
+                time.sleep(0.3)
+                self.assertEqual(inj.leitores, 0, "o Injetor ficou preso enchendo o anel sem leitor")
+                self.assertIsNotNone(inj.perdeu_em, "o Injetor nao marcou a perda do leitor")
+        finally:
+            inj.para()
+            if anel._vai:
+                anel.desliga()
 
     def test_leitor_de_outro_microfone_nao_conta(self):
         anel = AnelFalso()

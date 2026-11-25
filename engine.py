@@ -1166,7 +1166,11 @@ class Injetor:
                         fila = m.na_fila()
                         if donos == servidos:
                             self._confere_fila(fila, volta)
-                        while self._vai and fila <= (INJ_FOLGA - 1) * BLOCK:
+                        # no maximo INJ_FOLGA blocos (o que enche o anel vazio): o leitor que some no meio deixa o
+                        # na_fila em 0, e sem o limite a thread nao saia daqui nem via a perda
+                        for _ in range(INJ_FOLGA):
+                            if not self._vai or fila > (INJ_FOLGA - 1) * BLOCK:
+                                break
                             m.escreve(self.motor._mixa(BLOCK))  # noqa: SLF001
                             fila = m.na_fila()
                         servidos = donos
@@ -1539,25 +1543,34 @@ class Engine:
         """O filtro do microfone em uso parou de ler e nao voltou, com o motor ainda capturando o mesmo microfone e a
         lista de aparelhos parada (o vigia so reabria quando ela mudava): reabre depois de LEITOR_PERDIDO_S sem leitor,
         a cada LEITOR_INTERVALO_S, no maximo LEITOR_TENTATIVAS vezes. O microfone que nunca teve leitor (sem o filtro)
-        nao conta; o leitor que volta, o motor fechado, a reabertura que falhou e a troca manual zeram a conta."""
+        nao conta; o leitor que volta (mesmo que some de novo entre duas voltas do vigia), o motor fechado e a troca
+        manual zeram a conta. A reabertura daqui que falha (sem stream nenhum) segue na conta, no mesmo ritmo."""
         with self._lock:
             inj, r = self._injetor, self._recupera
             mic = self.active.get("mic")
-            if self._fechado or self._stack is None or inj is None or inj.leitores or (r and r[0] != mic):
+            sem_audio = self._stack is None
+            if (self._fechado or inj is None or (r and r[0] != mic)
+                    or (sem_audio and not (r and self._caiu_no_vigia))):
                 self._recupera = None
                 return
             agora = time.monotonic()
-            if r is None:
-                if inj.perdeu_em is None or agora - inj.perdeu_em < LEITOR_PERDIDO_S:
-                    return  # nunca teve leitor (sem o filtro), ou ainda cedo: o que o Windows remonta volta antes
-                r = (mic, 0, -1e9)
-            _, n, em = self._recupera = r
+            if not sem_audio:
+                perda = (inj, inj.perdeu_em)  # muda quando o leitor volta: o Injetor zera e marca de novo
+                if inj.leitores or (r and r[3] != perda):
+                    r = self._recupera = None
+                if r is None:
+                    if perda[1] is None or agora - perda[1] < LEITOR_PERDIDO_S:
+                        return  # com leitor, nunca teve um (sem o filtro), ou ainda cedo: o que o Windows remonta
+                        #         volta antes
+                    r = (mic, 0, -1e9, perda)
+            _, n, em, _ = self._recupera = r
             if n >= LEITOR_TENTATIVAS or agora - em < LEITOR_INTERVALO_S:
                 return
-            self._recupera = (mic, n + 1, agora)
             print(f"game output: the microphone filter stopped reading \"{mic}\"; reopening the audio "
                   f"(attempt {n + 1} of {LEITOR_TENTATIVAS})", file=sys.stderr, flush=True)
             self._reabre()
+            # o Injetor novo (ou o de antes, se a reabertura falhou) ainda sem perda marcada
+            self._recupera = (mic, n + 1, agora, (self._injetor, None))
 
     def _reabre(self):
         """Fecha so os streams (o disco segue no prato), rele o PortAudio e abre com reserva.
