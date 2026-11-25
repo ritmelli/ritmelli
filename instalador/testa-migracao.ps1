@@ -90,27 +90,29 @@ if ($Scenario -eq 'outside-program-files' -or $Scenario -eq 'writable-folder') {
     if ($LASTEXITCODE -ne 0) { throw "icacls couldn't make $velha writable by Users" }
   }
   "the 0.6.0 is installed in $velha"
-  # the voices (vozes.json) come from the old folder, checked by their sha256. In writable-folder, one of them is
-  # changed there first, as anyone could in a folder Users can write to: the setup has to refuse it and download it
+  # the voices (vozes.json) come from the old folder, checked by their sha256: what the 0.6.0 put there with the hash
+  # of the current vozes.json is copied, and the rest (a voice that changed since) is downloaded. In writable-folder,
+  # one of the copiable files is changed there first, as anyone could in a folder Users can write to: the setup has to
+  # refuse it and download it
   $listaVozes = Get-Content $Vozes -Raw -Encoding UTF8 | ConvertFrom-Json
   $esperadas = @(foreach ($r in @($listaVozes.engine) + @($listaVozes.vozes)) { foreach ($a in $r.arquivos) { [pscustomobject]@{ Caminho = "$($r.tag)\$($a.nome)"; Sha = $a.sha256 } } })
-  if (-not (Test-Path "$velha\vozes\$($esperadas[0].Caminho)")) { throw "the 0.6.0 has no voices in $velha\vozes" }
+  $copiaveis = @($esperadas | Where-Object { (Test-Path "$velha\vozes\$($_.Caminho)") -and (Get-FileHash "$velha\vozes\$($_.Caminho)" -Algorithm SHA256).Hash -eq $_.Sha } | ForEach-Object { $_.Caminho })
+  if (-not $copiaveis.Count) { throw "none of the voice files of the current vozes.json is in $velha\vozes: there is nothing to copy" }
   $mexida = $null
   if ($Scenario -eq 'writable-folder') {
-    $mexida = ($esperadas | Where-Object { $_.Caminho -like '*\voz.json' } | Select-Object -First 1).Caminho
+    $mexida = $copiaveis | Sort-Object { $_ -notlike '*\voz.json' } | Select-Object -First 1
     Add-Content "$velha\vozes\$mexida" ' ' -Encoding ascii
   }
+  $copiar = @($copiaveis | Where-Object { $_ -ne $mexida })
+  $baixar = @($esperadas | ForEach-Object { $_.Caminho } | Where-Object { $copiar -notcontains $_ })
   Roda $Setup "setup-$Versao"
   $log = Get-Content (Join-Path $temp "setup-$Versao.log")
   $copiadas = @($log | Select-String -Pattern 'vozes: copied (\S+) from' | ForEach-Object { $_.Matches[0].Groups[1].Value })
   $baixadas = @($log | Select-String -Pattern 'vozes: downloading (\S+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value })
-  $outras = @($esperadas | Where-Object { $_.Caminho -ne $mexida } | ForEach-Object { $_.Caminho })
-  Confere ((($outras | Sort-Object) -join '|') -eq (($copiadas | Sort-Object) -join '|')) "the setup copied the $($outras.Count) voice files from $velha with their sha256 checked ($($copiadas.Count) copied)"
+  Confere ((($copiar | Sort-Object) -join '|') -eq (($copiadas | Sort-Object) -join '|')) "the setup copied the $($copiar.Count) matching voice files from $velha with their sha256 checked ($($copiadas.Count) copied)"
+  Confere ((($baixar | Sort-Object) -join '|') -eq (($baixadas | Sort-Object) -join '|')) "the setup downloaded only the $($baixar.Count) voice files it couldn't copy ($($baixadas -join ', '))"
   if ($mexida) {
     Confere ($log | Select-String -Pattern "$([regex]::Escape("$velha\vozes\$mexida")) does not match its sha256" -Quiet) "the changed $mexida was refused"
-    Confere (($baixadas.Count -eq 1) -and ($baixadas[0] -eq $mexida)) "only the changed $mexida was downloaded ($($baixadas -join ', '))"
-  } else {
-    Confere ($baixadas.Count -eq 0) "no voice file was downloaded ($($baixadas -join ', '))"
   }
   $erradas = @($esperadas | Where-Object { -not (Test-Path "$nova\vozes\$($_.Caminho)") -or (Get-FileHash "$nova\vozes\$($_.Caminho)" -Algorithm SHA256).Hash -ne $_.Sha })
   Confere ($erradas.Count -eq 0) "every voice file in $nova\vozes has its sha256 ($($erradas.Caminho -join ', '))"
