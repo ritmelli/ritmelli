@@ -38,6 +38,7 @@ class Reserva:
         self.entrada = None
         self.feita = threading.Event()
         self.tocando = False  # a troca dela ja publicou o disco no prato (numa linha nova), e falta confirmar
+        self.publicada = None  # o (deck, linha) que a troca dela publicou, anotado sob o _lock da troca
 
     def vale(self, E):
         """Com o _qlock do motor E: o prato ainda e o deck e a linha da reserva."""
@@ -71,8 +72,12 @@ class Proximo(Reserva):
 
     def junta(self, E):
         """Com o _qlock do motor E: quem chega agora divide este avanco (o prato ainda na linha dele, ou na linha que a
-        reserva dele publicou); depois de um Parar ou de outro disco, nao."""
-        return not self.feita.is_set() and (self.vale(E) or (self.r is not None and self.r.tocando))
+        reserva dele publicou, ou com ela publicando agora); depois de um Parar ou de outro disco, nao."""
+        if self.feita.is_set():
+            return False
+        r = self.r
+        return self.vale(E) or (r is not None and ((r.tocando and not r.feita.is_set())
+                                                   or r.publicada == (E._deck, E._deck.linha)))
 
 
 class CorpoRecusado(ValueError):
@@ -267,19 +272,34 @@ def pular(A):
     virada e o avanco, e volta a entrada que acabou de entrar. Os Proximos sobrepostos (o segundo chega antes de o
     primeiro voltar, mesmo preso na fila_lock enquanto o primeiro troca o disco) dividem o mesmo avanco, se o prato
     ainda e a linha dele (ou a que a reserva dele publicou): um so toca, e os outros esperam o resultado dele, sem trava
-    nenhuma. Volta a entrada, ou None com a fila vazia (ou o avanco que
-    nao tocou)."""
+    nenhuma. O avanco ja em curso que o Proximo encontra (o do fim do disco) e a virada pendente que ele ve sao o avanco
+    dele; o prato que muda de linha antes de ele reservar (o Parar) fica como esta. Volta a entrada, ou None com a fila
+    vazia (ou o avanco que nao tocou)."""
     E = A.engine
+    v = vx = None
     with A.proximo_lock, E._qlock:
         p = A.proximo
         junta = p is not None and p.junta(E)
         if not junta:  # o primeiro desta linha (o de outra linha, de antes de um Parar, segue sozinho)
             p = A.proximo = Proximo(E._deck, E._deck.linha)
+            r0 = A.reserva
+            if r0 is not None and r0.viva(E):
+                p.r = r0  # o avanco de outro ja em curso nesta linha (o fim do disco): este Proximo e o dele
+            elif E.virou is not None:  # a virada que este Proximo viu e o avanco dele, mesmo se o vigia conciliar antes
+                v = E.virou
+                vx = next((y for y in A.fila if y["qid"] == v[2]), None)
     if junta:
         return p.espera()
     x = None
     try:
-        x = avanca(A, pular=True, grupo=p)
+        if p.r is not None:
+            x = p.r.espera()
+        elif vx is not None:
+            x = avanca(A, virada=v) or vx
+        else:
+            x = avanca(A, pular=True, grupo=p, visto=p)  # o prato que mudou de linha no meio (o Parar) fica
+            if x is CEDEU:
+                x = None
         return x
     finally:
         with A.proximo_lock:

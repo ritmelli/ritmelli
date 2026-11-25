@@ -1058,6 +1058,9 @@ class App:
                    else e.load(tr, start=start, pode=pode, loop=loop, ganho=ganho, depois=depois))
             if cap is None:
                 return None
+            if reserva is not None:
+                with e._qlock:  # com o _lock na mao, a linha do prato nao muda desde o load
+                    reserva.publicada = (e._deck, e._deck.linha)
             if entrada is not None:
                 self._tirar(entrada)
             sai = cap.track

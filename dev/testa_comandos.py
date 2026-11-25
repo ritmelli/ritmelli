@@ -1730,6 +1730,113 @@ def avanco(A, E):
     confere(st == 200 and len(visto) == 1 and isinstance(visto[0], eng.Captura),
             f"o POST /api/queue passa ao executor o prato visto no laco ({st}, {visto})")
 
+    # o Proximo que ainda termina (gravando a posicao) depois de um Parar: o Proximo novo nao se junta a ele
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    grava, gravando, libera = A.remember_pos, threading.Event(), threading.Event()
+
+    def grava_presa(*a, **kw):
+        gravando.set()
+        libera.wait(5)
+        return grava(*a, **kw)
+    A.remember_pos = grava_presa
+    try:
+        t1, r1 = em_thread(cmd.pular, A)
+        gravando.wait(5)
+        del A.remember_pos
+        cmd.parar(A)
+        t2, r2 = em_thread(cmd.pular, A)
+        t2.join(5)
+        libera.set()
+        t1.join(5)
+    finally:
+        libera.set()
+        if "remember_pos" in vars(A):
+            del A.remember_pos
+    confere(r1 and r1[0] is x and r2 and r2[0] is y and no_prato(E) == "d3" and fila(A) == [],
+            f"o Proximo depois de um Parar, com o de antes ainda gravando: toca a seguinte ({no_prato(E)}, {fila(A)})")
+
+    # o Proximo e o Parar no meio, entre o Proximo ver o prato e reservar: o prato fica parado
+    avanca, no_avanco, libera, so_se = cmd.avanca, threading.Event(), threading.Event(), [lambda kw: True]
+
+    def avanca_preso(*a, **kw):  # o primeiro cmd.avanca que so_se aceita para ali
+        if not no_avanco.is_set() and so_se[0](kw):
+            no_avanco.set()
+            libera.wait(5)
+        return avanca(*a, **kw)
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    with mock.patch.object(cmd, "avanca", side_effect=avanca_preso):
+        t, res = em_thread(cmd.pular, A)
+        no_avanco.wait(5)
+        cmd.parar(A)
+        libera.set()
+        t.join(5)
+    confere(res and res[0] is None and E.track is None and fila(A) == ["d2"],
+            f"o Proximo com o Parar entre ver o prato e reservar: o prato fica parado ({no_prato(E)}, {fila(A)})")
+
+    # o Proximo que encontra o fim do disco (o vigia) no meio da troca e o vigia terminando antes de ele reservar: o
+    # avanco do vigia e o dele
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    toca_ate_o_fim(E)
+    carrega, no_load, solta_load = E.load, threading.Event(), threading.Event()
+    no_avanco.clear()
+    libera.clear()
+    so_se[0] = lambda kw: kw.get("pular")  # so o do Proximo para
+
+    def load_preso(*a, **kw):
+        no_load.set()
+        solta_load.wait(5)
+        return carrega(*a, **kw)
+    E.load = load_preso
+    try:
+        with mock.patch.object(cmd, "avanca", side_effect=avanca_preso):
+            tv, _ = em_thread(A._volta_fila, None)
+            no_load.wait(5)
+            tp, rp = em_thread(cmd.pular, A)
+            tp.join(0.2)
+            solta_load.set()  # o vigia termina a troca antes de o Proximo reservar
+            tv.join(5)
+            libera.set()
+            tp.join(5)
+    finally:
+        solta_load.set()
+        del E.load
+    confere(rp and rp[0] is x and no_prato(E) == "d2" and fila(A) == ["d3"],
+            f"o Proximo com o fim do disco no meio da troca e terminando antes dele: devolve a entrada do fim do "
+            f"disco ({no_prato(E)}, {fila(A)})")
+
+    # o Proximo que viu a virada pendente, com o vigia conciliando antes dele: devolve a entrada que entrou nela
+    no_avanco.clear()
+    libera.clear()
+    so_se[0] = lambda kw: True
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    with contextlib.redirect_stderr(io.StringIO()):
+        E.preparar(arquivo(A, "d2"), x["qid"])
+        ate(lambda: E._virar_em is not None)
+        with E._qlock:
+            E._virar_em = E.pos
+        E._mixa(eng.BLOCK)
+    pend = E.virou is not None
+    with mock.patch.object(cmd, "avanca", side_effect=avanca_preso):
+        t, res = em_thread(cmd.pular, A)
+        no_avanco.wait(5)
+        avanca(A, virada=E.virou)  # o vigia concilia a virada primeiro
+        libera.set()
+        t.join(5)
+    confere(pend and res and res[0] is x and no_prato(E) == "d2" and fila(A) == ["d3"],
+            f"o Proximo que viu a virada pendente, com o vigia conciliando antes: devolve a entrada dela "
+            f"({no_prato(E)}, {fila(A)})")
+
     # o Anterior, o Parar e o tocar da prateleira com a virada pendente: ela fecha antes de mexer no historico
     def vira_pendente():
         limpa()
