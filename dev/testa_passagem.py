@@ -19,7 +19,7 @@ Os pares:
   - dois-106: the same, with B 6% faster than A (A speeds up, where "dois" slows it down);
   - tone: "dois" with a single strong tone under A, instead of three tones and noise;
   - intro: the fade, with B at -30 dB for its first 13 beats (7.7 s): it comes in under A 12 of A's beats before the
-    swap, its drop on A's beat at the swap;
+    swap (heard under A from the switch on), its drop on A's beat at the swap;
   - meio: A a 70 BPM e B a 140, com um estalo forte e um fraco (12 dB abaixo): o forte cai na batida de A, o fraco no
     meio dela;
   - recusada: A a 90 e B a 110 BPM, longe demais para alinhar: a passagem e so de volume, no comeco da queda.
@@ -36,6 +36,7 @@ first of them is on A's beat at the swap.
 
 Known failures: a pair with an issue shows a known engine defect (dois-106, #196; tone, #197). It runs and its result
 is shown, but its failure does not count; passing does, so the PR that fixes the defect takes the pair off the list.
+A pair that could not be judged (a timeout, too few attacks to measure) fails all the same.
 
     python dev/testa_passagem.py [--codigo <pasta>] [--par seco ...] [-v]
 
@@ -101,6 +102,7 @@ PRAZO_PLANO_S = 90.0
 INTRO_BEATS = 13   # intro pair: B at INTRO_DB until the attack of its beat INTRO_BEATS, its drop (7.7 s in); the
 INTRO_DB = -30.0   # engine brings it in whole bars before the swap, with the drop on the swap: INTRO_IN of A's
 INTRO_IN = 12      # beats before it
+INTRO_OUVE_DB = 6.0   # and from the switch on, B's band at least this above what leaks into it from A
 
 # o par: os andamentos, o fim de A ("seco": corta; "fade": cai 6 dB e some), o ramo esperado e o acento de B (o
 # estalo fraco no meio de cada batida, no par meio). Then the tones under A and whether noise goes with them, whether
@@ -440,6 +442,15 @@ def confere(par, pasta, verboso):
         msgs.append(f"regua de A {60 / p:.2f} BPM; B: " + " ".join(f"{t * 1000:+.0f}" for t in d) + " ms"
                     + f" (vies do detector: A {fx['vies'][0] * 1000:+.0f}, B {fx['vies'][1] * 1000:+.0f} ms)")
         if par.intro:
+            # B under A before the swap: the band of B's attacks, in both halves from half a second after the switch
+            # to a beat before the drop (B comes up with the fader), above where it was before the switch (only what
+            # leaks from A)
+            v0, antes = vo / SR, _rms_db(yb, vo / SR - 3.0, vo / SR)
+            meio_s = (v0 + 0.5 + t_q - p) / 2
+            ouve = [_rms_db(yb, v0 + 0.5, meio_s) - antes, _rms_db(yb, meio_s, t_q - p) - antes]
+            msgs.append("B's intro " + " and ".join(f"{o:+.0f}" for o in ouve) + " dB in its band after the switch")
+            if min(ouve) < INTRO_OUVE_DB:
+                falhas.append(f"B's band rose only {min(ouve):.0f} dB in half of its intro: not heard under A there")
             drop = fortes[0] - t_q
             msgs.append(f"B's drop {drop * 1000:+.0f} ms from A's beat at the swap")
             if abs(drop) > ALINHA:
@@ -479,12 +490,16 @@ def main():
     try:
         for par in pares:
             t0 = time.monotonic()
+            erro = False
             try:
                 falhas, msgs, decisao, log = confere(par, tmp / par.nome, ARGS.v)
             except Falha as ex:
                 falhas, msgs, decisao, log = [str(ex)], [], None, getattr(ex, "log", None)
+                erro = True
             dt = time.monotonic() - t0
-            if par.issue is not None:
+            # a pair that could not be judged (a timeout, too few attacks to measure) fails, known or not: only a
+            # verdict the checks gave counts as the known defect
+            if par.issue is not None and not erro:
                 if falhas:  # the known defect, still there: shown, and not counted
                     print(f"known {par.nome} ({dt:.1f} s), #{par.issue}: " + "; ".join(msgs + falhas), flush=True)
                     conhecidas.append(f"{par.nome} (#{par.issue})")
