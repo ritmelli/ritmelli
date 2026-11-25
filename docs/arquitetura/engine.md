@@ -1,7 +1,8 @@
 # O motor de áudio (`engine.py`)
 
 `engine.py`: mistura em WASAPI 48 kHz, blocos de 10 ms; ffmpeg decodifica; voz com no
-máximo ~80 ms de atraso; `MockEngine` sem áudio para teste. O Windows converte os 48 kHz
+máximo ~80 ms de atraso; `MockEngine` sem áudio para teste (o relógio de 10 ms dele chama o `_mixa`; com o
+`relogio = False`, que o `server.App(..., relogio=False)` passa antes de ligar, quem chama é o teste). O Windows converte os 48 kHz
 para a taxa de cada aparelho (sem isso, um aparelho a 44,1 kHz recusava o stream). Se o
 áudio não abre ao ligar (sem microfone nenhum, por exemplo), o servidor sobe mesmo assim com o
 erro na tela e tenta de novo logo depois e quando a lista de aparelhos muda. Áudio de

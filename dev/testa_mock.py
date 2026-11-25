@@ -396,6 +396,21 @@ async def papeis_no_guard():
         confere(x["thumb"] == capa, "o PC e o celular seguem mandando a capa (o tema manda a da busca)")
         x, _ = server.App.enfileirar(fila, {"id": "d1"}, True)
         confere(x["id"] == "d1", "o remoto enfileira o disco da prateleira pelo id")
+        # o erro de tocar na hora a entrada que acabou de entrar nao e a recusa do corpo: o guard relanca, e o aiohttp
+        # responde 500, como antes da camada de comandos
+        def quebra(x, historico=True):
+            raise ValueError("quebrou")
+        enfileirar, A.enfileirar = A.enfileirar, (lambda b, remoto=False: ({"qid": "q1"}, None))
+        A.tirar_da_fila, A.tocar_entrada, E.status = (lambda qid: True), quebra, (lambda: "idle")
+        msg = "o POST /api/queue com o erro de tocar na hora: o erro sobe pelo guard (500), e nao vira 400"
+        try:
+            resp, _, _ = await manda("POST", "/api/queue", de=pc, corpo={"id": "d1"}, handler=rota[("POST", "/api/queue")])
+            confere(False, f"{msg} ({resp.status})")
+        except ValueError:
+            confere(True, msg)
+        finally:
+            A.enfileirar = enfileirar
+            del A.tirar_da_fila, A.tocar_entrada, E.status
         confere(await status("POST", "/api/play", de=pc, token=token[:-2] + "xx") == 401,
                 "o token errado, do 127.0.0.1: 401 (nao cai no papel do PC)")
         confere(await status("POST", "/api/play", de=pc, token="") == 401, "o cabecalho vazio, do 127.0.0.1: 401")
