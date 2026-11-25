@@ -13,10 +13,14 @@
 # - dir-refused: the new setup with /DIR=C:\Ritmelli on a clean machine exits with 7 and installs nothing;
 # - writable-folder: the 0.6.0 in Program Files\Ritmelli, made writable by Users, then the new setup: the app ends up in
 #   Program Files\Ritmelli-2, and the old ritmelli.exe is renamed as above.
+# In both scenarios that change folders, the voice files (vozes.json) the old folder has with the right sha256 are
+# copied from it, and only the missing or mismatching ones are downloaded; in writable-folder one of the copiable files
+# is changed in the old folder first, and the setup has to refuse it and download it.
 # Precisa de administrador e de uma maquina sem o app. Roda no job testa-migracao da esteira e numa maquina de teste.
-# Uso: testa-migracao.ps1 -Setup <Ritmelli-X.Y.Z-setup.exe> -Versao <X.Y.Z> [-Scenario <name>]
+# Uso: testa-migracao.ps1 -Setup <Ritmelli-X.Y.Z-setup.exe> -Versao <X.Y.Z> [-Scenario <name>] [-Vozes <vozes.json>]
 param([Parameter(Mandatory = $true)][string]$Setup, [Parameter(Mandatory = $true)][string]$Versao,
-      [ValidateSet('update', 'outside-program-files', 'dir-refused', 'writable-folder')][string]$Scenario = 'update')
+      [ValidateSet('update', 'outside-program-files', 'dir-refused', 'writable-folder')][string]$Scenario = 'update',
+      [string]$Vozes = (Join-Path $PSScriptRoot '..\vozes.json'))
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -86,7 +90,32 @@ if ($Scenario -eq 'outside-program-files' -or $Scenario -eq 'writable-folder') {
     if ($LASTEXITCODE -ne 0) { throw "icacls couldn't make $velha writable by Users" }
   }
   "the 0.6.0 is installed in $velha"
+  # the voices (vozes.json) come from the old folder, checked by their sha256: what the 0.6.0 put there with the hash
+  # of the current vozes.json is copied, and the rest (a voice that changed since) is downloaded. In writable-folder,
+  # one of the copiable files is changed there first, as anyone could in a folder Users can write to: the setup has to
+  # refuse it and download it
+  $listaVozes = Get-Content $Vozes -Raw -Encoding UTF8 | ConvertFrom-Json
+  $esperadas = @(foreach ($r in @($listaVozes.engine) + @($listaVozes.vozes)) { foreach ($a in $r.arquivos) { [pscustomobject]@{ Caminho = "$($r.tag)\$($a.nome)"; Sha = $a.sha256 } } })
+  $copiaveis = @($esperadas | Where-Object { (Test-Path "$velha\vozes\$($_.Caminho)") -and (Get-FileHash "$velha\vozes\$($_.Caminho)" -Algorithm SHA256).Hash -eq $_.Sha } | ForEach-Object { $_.Caminho })
+  if (-not $copiaveis.Count) { throw "none of the voice files of the current vozes.json is in $velha\vozes: there is nothing to copy" }
+  $mexida = $null
+  if ($Scenario -eq 'writable-folder') {
+    $mexida = $copiaveis | Sort-Object { $_ -notlike '*\voz.json' } | Select-Object -First 1
+    Add-Content "$velha\vozes\$mexida" ' ' -Encoding ascii
+  }
+  $copiar = @($copiaveis | Where-Object { $_ -ne $mexida })
+  $baixar = @($esperadas | ForEach-Object { $_.Caminho } | Where-Object { $copiar -notcontains $_ })
   Roda $Setup "setup-$Versao"
+  $log = Get-Content (Join-Path $temp "setup-$Versao.log")
+  $copiadas = @($log | Select-String -Pattern 'vozes: copied (\S+) from' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+  $baixadas = @($log | Select-String -Pattern 'vozes: downloading (\S+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+  Confere ((($copiar | Sort-Object) -join '|') -eq (($copiadas | Sort-Object) -join '|')) "the setup copied the $($copiar.Count) matching voice files from $velha with their sha256 checked ($($copiadas.Count) copied)"
+  Confere ((($baixar | Sort-Object) -join '|') -eq (($baixadas | Sort-Object) -join '|')) "the setup downloaded only the $($baixar.Count) voice files it couldn't copy ($($baixadas -join ', '))"
+  if ($mexida) {
+    Confere ($log | Select-String -Pattern "$([regex]::Escape("$velha\vozes\$mexida")) does not match its sha256" -Quiet) "the changed $mexida was refused"
+  }
+  $erradas = @($esperadas | Where-Object { -not (Test-Path "$nova\vozes\$($_.Caminho)") -or (Get-FileHash "$nova\vozes\$($_.Caminho)" -Algorithm SHA256).Hash -ne $_.Sha })
+  Confere ($erradas.Count -eq 0) "every voice file in $nova\vozes has its sha256 ($($erradas.Caminho -join ', '))"
   $exe = "$nova\ritmelli.exe"
   Confere ((Test-Path $exe) -and (Get-Item $exe).VersionInfo.ProductVersion -eq $Versao) "the ritmelli.exe in $nova is the $Versao"
   $u = Uninstall

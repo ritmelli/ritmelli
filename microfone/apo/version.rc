@@ -1,0 +1,47 @@
+// The version resource of micfx.dll and voz.dll: the same names as the ritmelli.exe (ritmelli.spec), with the version
+// from versao.py. Code signing needs it (the product name and version a signing policy checks), and without it the
+// DLL's Properties > Details tab is blank. compila.bat writes saida\version.h from versao.py and compiles this file
+// once per DLL, with /d RITMELLI_MICFX or /d RITMELLI_VOZ.
+#pragma code_page(65001)
+#include <winver.h>
+#include "version.h"
+
+#if defined(RITMELLI_MICFX)
+#define RITMELLI_FILE "micfx"
+#define RITMELLI_DESCRIPTION "Ritmelli microphone filter"
+#elif defined(RITMELLI_VOZ)
+#define RITMELLI_FILE "voz"
+#define RITMELLI_DESCRIPTION "Ritmelli voice effects engine"
+#else
+#error compile with /d RITMELLI_MICFX or /d RITMELLI_VOZ
+#endif
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION RITMELLI_VERSION
+PRODUCTVERSION RITMELLI_VERSION
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_DLL
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    // Brazilian Portuguese, Unicode: the same table as the ritmelli.exe
+    BLOCK "041604B0"
+    BEGIN
+      VALUE "CompanyName", "Behling Informática Ltda."
+      VALUE "FileDescription", RITMELLI_DESCRIPTION
+      VALUE "FileVersion", RITMELLI_VERSION_STR
+      VALUE "InternalName", RITMELLI_FILE
+      VALUE "LegalCopyright", "Software livre sob a GPLv3 / Free software under the GPLv3"
+      VALUE "OriginalFilename", RITMELLI_FILE ".dll"
+      VALUE "ProductName", "Ritmelli"
+      VALUE "ProductVersion", RITMELLI_VERSION_STR
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0416, 1200
+  END
+END
