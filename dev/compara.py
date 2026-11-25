@@ -392,6 +392,7 @@ def main():
     destino = pasta / ("ref.novo" if a.ref else "agora")
     shutil.rmtree(destino, ignore_errors=True)
     shutil.rmtree(pasta / "instavel", ignore_errors=True)
+    shutil.rmtree(pasta / "diff", ignore_errors=True)  # a captura que nao vale sai antes de comparar: sem o diff de antes
     destino.mkdir(parents=True)
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-compara-"))
     porta = free_port()

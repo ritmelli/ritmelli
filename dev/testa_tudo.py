@@ -8,8 +8,10 @@ processo e um depois do outro, e sai 1 se algum falhar. E o que o .github/workfl
                                            o fitcheck nas duas linguas contra um --mock com dados temporarios e, com
                                            --base, o compara: a referencia sai do servidor e do tema da base (num
                                            worktree temporario), e a comparacao, dos daqui
-    python dev\testa_tudo.py --areas <base> [--etiquetas '["extracao-tema"]']
-                                           (sem o --etiquetas, a lista vem da variavel ETIQUETAS)
+    python dev\testa_tudo.py --areas <base>
+                                           (as etiquetas do PR vem da variavel ETIQUETAS, uma lista em JSON:
+                                           $env:ETIQUETAS = '["extracao-tema"]'; no argumento, o PowerShell 5.1
+                                           tiraria as aspas)
                                            o filtro por caminho do testa.yml: diz (e grava no GITHUB_OUTPUT) se o que
                                            mudou desde a base, ou uma etiqueta do PR, dispara o job do filtro e o da tela
         [--resumo arquivo.md]              acrescenta o resultado em markdown (o resumo do PR)
@@ -183,7 +185,7 @@ def diz_areas(a):
         print(f"o git diff contra {a.areas} falhou ({cod}):\n{saida}")
         return 1
     arquivos = [arq for arq in saida.split(chr(0)) if arq.strip()]
-    etiquetas = json.loads(a.etiquetas or os.environ.get("ETIQUETAS") or "[]")
+    etiquetas = json.loads(os.environ.get("ETIQUETAS") or "[]")
     disparadas = areas(arquivos, etiquetas)
     print(f"{len(arquivos)} arquivo(s) mudaram desde {a.areas}; etiquetas: {etiquetas or 'nenhuma'}")
     linhas = [f"{area}={'true' if area in disparadas else 'false'}" for area in AREAS]
@@ -288,7 +290,6 @@ def main():
     modo.add_argument("--microfone", action="store_true", help="os testes do filtro (MICROFONE)")
     modo.add_argument("--tela", action="store_true", help="o fitcheck e, com --base, o compara")
     modo.add_argument("--areas", metavar="BASE", help="as areas que o que mudou desde BASE dispara")
-    ap.add_argument("--etiquetas", help="no --areas: as etiquetas do PR, numa lista em JSON (sem ele, a da variavel ETIQUETAS)")
     ap.add_argument("--base", help="no --tela: a base do compara (um commit, um branch)")
     ap.add_argument("--pasta", default=str(RAIZ / "logs" / "tela"), help="no --tela: onde ficam os prints e os logs")
     ap.add_argument("--resumo", help="acrescenta o resultado em markdown a este arquivo")
