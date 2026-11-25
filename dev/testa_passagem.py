@@ -59,6 +59,7 @@ junto, no mesmo PR.
 import argparse
 import contextlib
 import io
+import re
 import shutil
 import sys
 import tempfile
@@ -103,7 +104,8 @@ PRAZO_PLANO_S = 90.0
 INTRO_BEATS = 13   # intro pair: B at INTRO_DB until the attack of its beat INTRO_BEATS, its drop (7.7 s in); the
 INTRO_DB = -30.0   # engine brings it in whole bars before the swap, with the drop on the swap: INTRO_IN of A's
 INTRO_IN = 12      # beats before it
-INTRO_OUVE_DB = 6.0   # and from the switch on, B's band at least this above what leaks into it from A
+INTRO_OUVE_DB = 6.0   # and from the switch on, B's band at least this above what leaks into it from A,
+INTRO_A_DB = 3.0      # with A at most this below where it was
 
 # o par: os andamentos, o fim de A ("seco": corta; "fade": cai 6 dB e some), o ramo esperado e o acento de B (o
 # estalo fraco no meio de cada batida, no par meio). Then the tones under A and whether noise goes with them, whether
@@ -121,9 +123,14 @@ PARES = [
     Par("meio", 70.0, 140.0, "fade", "fade", True),
     Par("recusada", 90.0, 110.0, "fade", "recusada", False),
 ]
-# the failures each known defect gives (how they start): any other failure in its pair is a regression, and counts
-SINTOMAS = {196: ("o ramo foi ", "a virada caiu "),  # the plan refused, and the switch where the volume one does it
-            197: ("a virada caiu ",)}                 # the switch ~50 ms early
+# the failures each known defect gives (regular expressions, from the start): any other failure in its pair is a
+# regression, and counts
+SINTOMAS = {
+    # the plan refused for too short a phase excerpt, and the switch late, where the volume one does it
+    196: (r"o ramo foi .*\(transition: beats not aligned: too little of the end of this one \(already changed\) for "
+          r"the phase\)$", r"a virada caiu \+\d+ ms fora da janela$"),
+    197: (r"a virada caiu -[3-7]\d ms fora da janela$",),  # the switch 30 to 79 ms early
+}
 RECUSA = "transition: beats not aligned: tempos far apart,"  # a recusa por andamento no log do motor (par recusada)
 RAMOS = {"seco": "final seco no tempo", "fade": "fade-out no tempo, B esticada",
          "dois": "fade-out no tempo, os dois esticados", "recusada": "so de volume (o plano no tempo recusou)"}
@@ -455,6 +462,13 @@ def confere(par, pasta, verboso):
             msgs.append("B's intro " + " and ".join(f"{o:+.0f}" for o in ouve) + " dB in its band after the switch")
             if min(ouve) < INTRO_OUVE_DB:
                 falhas.append(f"B's band rose only {min(ouve):.0f} dB in half of its intro: not heard under A there")
+            # and A goes on as it was over it, until the swap (its tone, against the same 3 s before the switch)
+            ta = signal.sosfiltfilt(SOS_TOM_A, x)
+            a_antes = _rms_db(ta, v0 - 3.0, v0)
+            fica = [_rms_db(ta, v0 + 0.5, meio_s) - a_antes, _rms_db(ta, meio_s, t_q - p) - a_antes]
+            msgs.append("A " + " and ".join(f"{o:+.1f}" for o in fica) + " dB under B's intro")
+            if min(fica) < -INTRO_A_DB:
+                falhas.append(f"A fell {-min(fica):.0f} dB in half of B's intro: it has to go on over it until the swap")
             drop = fortes[0] - t_q
             msgs.append(f"B's drop {drop * 1000:+.0f} ms from A's beat at the swap")
             if abs(drop) > ALINHA:
@@ -504,7 +518,7 @@ def main():
             # a pair that could not be judged (a timeout, too few attacks to measure) fails, known or not: only a
             # verdict the checks gave counts as the known defect
             if par.issue is not None and not erro:
-                outras = [f for f in falhas if not f.startswith(SINTOMAS[par.issue])]
+                outras = [f for f in falhas if not any(re.match(x, f) for x in SINTOMAS[par.issue])]
                 if falhas and not outras:  # the known defect, still there: shown, and not counted
                     print(f"known {par.nome} ({dt:.1f} s), #{par.issue}: " + "; ".join(msgs + falhas), flush=True)
                     conhecidas.append(f"{par.nome} (#{par.issue})")
