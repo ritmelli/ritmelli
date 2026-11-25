@@ -10,13 +10,19 @@ antes de abrir o anel quando a 8799 aceita conexão.
 
 O `dev/testa_tudo.py` roda os testes que não usam som, aparelho nem rede externa, um por
 vez, pelas listas dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO` e
-o `MICROFONE`. No `COMPLETO`, biblioteca ou ffmpeg faltando é falha, e teste de `dev/` fora
-das listas também. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR, e o `--areas`
+o `MICROFONE`. No `COMPLETO`, biblioteca ou ffmpeg faltando é falha. Todo `dev/testa_*.py`
+tem destino: uma lista, um passo próprio do `testa.yml` (o `--disco` do
+`testa_pasta_protegida`) ou, quando só roda à mão, o comentário `# manual: <comando> precisa
+de <aparelho>` no topo, antes da docstring (o `dev/bumbo.py` tem um). Antes de rodar, o
+`COMPLETO`, o `--so-stdlib` e o `--microfone` leem os passos do `testa.yml` e falha com o teste sem destino e com o arquivo de `dev/` que
+tem o `manual:` e roda lá. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR, e o `--areas`
 é o filtro por caminho do `.github/workflows/testa.yml`, que roda tudo isso em todo PR.
 
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
-deitado; uma exceção ou um `console.error` da página também reprova), `dev/compara.py` (gate
+deitado; uma exceção ou um `console.error` da página também reprova; com `--metricas`, sem url, confere o aviso dos
+dados de uso: sobe um `--mock --metricas-teste` por situação e por botão pelo `sobe_servidor` do `compara`, que
+aceita o `config.json`, argumentos e variáveis a mais, com a rede presa num proxy de armadilha), `dev/compara.py` (gate
 de "a tela não mudou", no celular e na mesa do PC, a 1920x1080: prints do tema em estados fixos,
 com uma prateleira de mentira e o servidor em `--mock`, comparados pixel a pixel com os de
 referência gravados antes da mudança, também de outro checkout pelo `--raiz`; sai 2 se um
@@ -25,7 +31,7 @@ print mudou e 1 se a captura não vale), `dev/perfcheck.py`
 `dev/celular.py` (mede rolagem, puxão e abrir do palco no Chrome do celular de verdade,
 por USB com adb; o emulado não reproduz o que trava lá), `dev/bumbo.py` (confere se a passagem
 no tempo de um par da prateleira pôs bumbo em cima de bumbo e não no contratempo, com um
-detector de bumbo próprio; no final seco para um começo sem bumbo, confere a primeira nota
+detector de bumbo próprio, o `dev/bumbo_mede.py`, que o `dev/testa_passagem.py` também usa; no final seco para um começo sem bumbo, confere a primeira nota
 contra o bumbo do que sai: sai 0 no tempo, 1 contratempo ou fora, 3 sem plano ou sem bumbo), `dev/texturas.py` (gera as
 texturas de ruído do tema em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
 (desenha as molduras de pixel do tema, contorno, linha clara, bisel e cantos em degrau, e

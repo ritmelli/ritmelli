@@ -81,6 +81,12 @@ class MotorFalso:
     def voz_pelo_app(self):
         return False
 
+    def totais_saude(self):  # a janela do evento "audio" (metricas.SaudeAudio)
+        return 0, 0.0
+
+    def em_passagem(self):
+        return False
+
     def _push_mic(self, x):
         pass
 
