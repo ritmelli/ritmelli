@@ -110,6 +110,11 @@ function Motivo {
       return "$Pasta has a short (8.3) name"
     }
   }
+  # antes do GetFullPath: o Windows corta o ponto ou o espaco do fim do ultimo componente, e a leitura de um pai (o
+  # prefixo do caminho) acharia outro objeto, ou nenhum, e a conta pararia ali sem ver o pai de verdade
+  foreach ($comp in @($Pasta -split '[\\/]' | Select-Object -Skip 1) + @($Raiz -split '[\\/]' | Select-Object -Skip 1)) {
+    if ($comp -ne '.' -and $comp -ne '..' -and $comp -match '[. ]$') { return "$Pasta has a name Windows can't open" }
+  }
   $p = [IO.Path]::GetFullPath($Pasta).TrimEnd('\')
   $r = [IO.Path]::GetFullPath($Raiz).TrimEnd('\')
   if (-not $p.StartsWith("$r\", [StringComparison]::OrdinalIgnoreCase)) { return "$p is outside $r" }

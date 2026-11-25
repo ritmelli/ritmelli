@@ -256,13 +256,19 @@ def em_memoria():
     d.muda(DESTINO + r"\microfone\log", dir=False, dono=LS, dacl=acl_arquivo() + [(0, 0, F, LS)])
     reprova("um arquivo do LocalService no lugar da microfone\\log (a excecao e so da pasta)", d, "owned by")
     d = disco_base()
-    d.poe(DESTINO + "\\microfone\\log‍", dacl=acl_pasta() + [(0, OICI, M, LS)])
+    d.poe(DESTINO + "\\microfone\\log\u200d", dacl=acl_pasta() + [(0, OICI, M, LS)])
     reprova("o LocalService numa pasta irma com um caractere invisivel no nome (log + U+200D)", d, "lets " + LS)
     d = Disco()
     for chave, (caminho, desc) in disco_base().obj.items():
         caminho = caminho.replace(r"\microfone\log", r"\MICROFONE\LOG")
         d.obj[caminho.lower()] = (caminho, desc)
     confere("a microfone\\log em maiusculas (MICROFONE\\LOG) segue com a excecao", avalia(d) is True, repr(avalia(d)))
+    for nome in ("Foo ", "Foo.", "Foo. "):
+        # sem o espaco ou o ponto, o pai que a leitura acha nao existe, e a conta pararia antes do destino
+        reprova(f"um pai do destino terminado em ponto ou espaco ({nome!r})", disco_base(), "can't open",
+                RAIZ + "\\" + nome + "\\Ritmelli")
+    reprova("a raiz com um componente terminado em espaco", disco_base(), "can't open", DESTINO, RAIZ + " ")
+    confere("um . no meio do caminho segue valendo", avalia(disco_base(), RAIZ + "\\.\\Ritmelli") is True)
     d = disco_base()
     d.muda(DESTINO, reparse=True)
     reprova("a propria pasta do app como juncao", d, "reparse point")

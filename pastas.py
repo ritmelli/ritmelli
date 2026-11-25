@@ -365,12 +365,18 @@ def _nome_curto(nome):
 def motivo_desprotegida(pasta, raiz, le=_le_disco):
     """Por que a pasta nao passa na regra da pasta protegida, ou None se passa. le(caminho) e quem le cada objeto (o
     _le_disco, ou uma descricao em memoria nos testes)."""
+    # antes de normalizar: o Windows corta o ponto ou o espaco do fim do ultimo componente, e a leitura de um pai (o
+    # prefixo do caminho) acharia outro objeto, ou nenhum, e a conta pararia ali sem ver o pai de verdade
+    cortado = any(nome not in (".", "..") and nome[-1:] in (".", " ")
+                  for nome in re.split(r"[\\/]", str(pasta))[1:] + re.split(r"[\\/]", str(raiz))[1:])
     pasta, raiz = ntpath.normpath(str(pasta)), ntpath.normpath(str(raiz))
     unidade, resto = ntpath.splitdrive(pasta)
     if any(_nome_curto(p) for p in resto.split("\\")):
         # um nome curto (8.3, como PROGRA~1): o instalador (o GetFullPath do .NET Framework) o expandiria, e a regra tem
         # de dar o mesmo veredito nos dois
         return f"{pasta} has a short (8.3) name"
+    if cortado:
+        return f"{pasta} has a name Windows can't open"
     if not unidade or not ntpath.isabs(pasta) or not ntpath.isabs(raiz):
         return f"{pasta} is not an absolute path"
     if not ntpath.normcase(pasta).startswith(ntpath.normcase(raiz).rstrip("\\") + "\\"):
