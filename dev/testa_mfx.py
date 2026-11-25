@@ -546,7 +546,11 @@ class TestaPastaProtegida(Base):
         self.tearDown_winreg()
         self.com_dois()
         self.falsos(existe=[mf.PASTA + r"\micfx.dll"])
+        r = self.reg
+        r.SetValueEx(r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, mf.SALVO), mf.MUDOS, 0, r.REG_MULTI_SZ, ["IN 1 (X)"])
         mf.remove()
+        self.assertNotIn(mf.MUDOS.lower(), r.valores(f"HKLM\\{mf.SALVO}"),
+                         "os mudos da conferencia dos aparelhos (#136) ficaram no registro")
         self.assertEqual(self.cmd.de("regsvr32"), [[mf.REGSVR32, "/s", "/u", mf.PASTA + r"\micfx.dll"]])
         self.assertEqual(self.apagadas, [mf.PASTA])
         self.assertEqual(self.vistas, [os.path.dirname(mf.PASTA)])

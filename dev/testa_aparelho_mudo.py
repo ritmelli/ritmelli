@@ -179,6 +179,20 @@ class TestaConferencia(unittest.TestCase):
         r = filtro.confere_aparelhos(["nenhum"], espera_s=ESPERA, sd=SdFalso())
         self.assertEqual(r, {"conferidos": [], "mudos": [], "falhas": []})
 
+    def test_mudo_que_recusa_a_segunda_abertura(self):
+        """Abriu mudo e recusou a segunda abertura: sem medida, vai para as falhas, e nao para os conferidos (com ele
+        so, nada conferido: o registro de antes fica)."""
+        sd = SdFalso()
+        abre = sd.InputStream
+
+        def so_uma(**kw):
+            if sd.aberturas.get(UMC_IN):
+                raise RuntimeError("Error opening stream: Device unavailable [PaErrorCode -9985]")
+            return abre(**kw)
+        sd.InputStream = so_uma
+        r = filtro.confere_aparelhos([UMC_IN], espera_s=ESPERA, sd=sd)
+        self.assertEqual(r, {"conferidos": [], "mudos": [], "falhas": [UMC_IN]})
+
     def test_sem_sounddevice(self):
         with mock.patch.dict(sys.modules, {"sounddevice": None}):
             self.assertIsNone(filtro.confere_aparelhos(espera_s=ESPERA))
@@ -464,7 +478,7 @@ class TestaApp(unittest.TestCase):
             self.assertIn(motivo, out.getvalue(), "o log diz por que")
 
     def _motor(self, **kw):
-        m = types.SimpleNamespace(_aviso=None, error=None, _mudos_vistos=False, active={"mic": MIC},
+        m = types.SimpleNamespace(_aviso=None, error=None, _mudos_vistos=False, active={"mic": MIC}, _stack=object(),
                                   _preparados=set(), preparando=None, _alvo=0, _fechado=False,
                                   _lock=threading.RLock(), _reabre=mock.Mock(), _confere_mudos=mock.Mock())
         m.__dict__.update(kw)
@@ -481,6 +495,21 @@ class TestaApp(unittest.TestCase):
             eng.Engine._confere_mudos(m, [UMC_IN])
         self.assertEqual(m.error["key"], "server.devices.silent")
         self.assertIs(m._aviso, m.error, "e um aviso dos aparelhos: sai quando o audio reabre")
+        # o audio que reabriu, caiu ou fechou durante a conferencia: o resultado e de antes, e fica de fora
+        for muda in ({"_stack": object()}, {"_stack": None}, {"_fechado": True}):
+            m = self._motor()
+            m.error = m._aviso = "o de antes"
+
+            def confere(n, m=m, muda=muda):
+                m.__dict__.update(muda)
+                return {"mudos": [UMC_IN]}
+            with mock.patch.object(eng, "_confere_fora", confere), redirect_stdout(io.StringIO()):
+                eng.Engine._confere_mudos(m, [UMC_IN])
+            self.assertEqual(m.error, "o de antes", muda)
+        m = self._motor(_stack=None)  # o audio ja estava fechado (a reabertura que falhou tem o aviso dela)
+        with mock.patch.object(eng, "_confere_fora", lambda n: {"mudos": [UMC_IN]}), redirect_stdout(io.StringIO()):
+            eng.Engine._confere_mudos(m)
+        self.assertIsNone(m.error)
 
     def test_ao_abrir_so_os_do_registro(self):
         ok = {"filtro": True, "melhorias": True, "guid": "{a}"}
@@ -506,14 +535,20 @@ class TestaApp(unittest.TestCase):
         for r, quer in (({"ok": True}, True), ({"ok": False, "motivo": "audio"}, False)):
             m = self._motor()
             ordem = []
-            m._reabre.side_effect = lambda: ordem.append("reabre")
+            m._reabre.side_effect = lambda m=m: ordem.append(("reabre", m._mudos_vistos))
             m._confere_mudos.side_effect = lambda *a: ordem.append(("confere", a))
             with mock.patch.object(eng, "_do_microfone", lambda mic: sem), \
                     mock.patch.object(filtro, "pede_tarefa", lambda mic, r=r: r), \
                     mock.patch.object(filtro, "le_mudos", side_effect=AssertionError("ja confere todos")):
                 eng.Engine._confere_filtro(m, MIC)
-            self.assertEqual(ordem, ["reabre", ("confere", ())] if quer else [], r)
+            self.assertEqual(ordem, [("reabre", True), ("confere", ())] if quer else [], r)
             self.assertEqual(m._mudos_vistos, quer, "os do registro entram na de todos; sem ela, ficam para depois")
+        m = self._motor(_fechado=True)  # o motor fechou enquanto a tarefa rodava: nem reabre nem confere
+        with mock.patch.object(eng, "_do_microfone", lambda mic: sem), \
+                mock.patch.object(filtro, "pede_tarefa", lambda mic: {"ok": True}):
+            eng.Engine._confere_filtro(m, MIC)
+        m._reabre.assert_not_called()
+        m._confere_mudos.assert_not_called()
 
     def test_registro_depois_de_preparar_que_falhou(self):
         """A preparacao que falhou nao gasta a conferencia dos mudos do registro: ela vem na proxima vez com filtro."""
@@ -529,6 +564,39 @@ class TestaApp(unittest.TestCase):
                 mock.patch.object(filtro, "le_mudos", lambda: [UMC_IN]):
             eng.Engine._confere_filtro(m, FONE)  # outro microfone, ja com o filtro
         m._confere_mudos.assert_called_once_with([UMC_IN])
+
+
+class TestaPedeTarefa(unittest.TestCase):
+    """O app pede a tarefa do filtro: o filtro aparece no registro antes de a tarefa reiniciar o audio e conferir os
+    aparelhos, entao o audiosrv RUNNING so vale depois de ela acabar (o reabre e a conferencia do app vem depois)."""
+
+    def test_espera_a_tarefa_acabar(self):
+        ordem, rodando = [], iter([True, True, False])
+
+        def run(cmd, **kw):
+            ordem.append(" ".join([os.path.basename(cmd[0]).lower(), *cmd[1:3]]))
+            return types.SimpleNamespace(returncode=0, stdout="STATE : 4 RUNNING", stderr="")
+
+        def roda():
+            v = next(rodando)
+            ordem.append(f"tarefa {v}")
+            return v
+        with mock.patch.object(filtro, "tarefa_existe", lambda: True), \
+                mock.patch.object(filtro.subprocess, "run", run), \
+                mock.patch.object(filtro, "do_microfone", lambda n: {"filtro": True, "melhorias": True}), \
+                mock.patch.object(filtro, "tarefa_rodando", roda), mock.patch.object(filtro.time, "sleep"):
+            self.assertEqual(filtro.pede_tarefa("IN 1"), {"ok": True})
+        self.assertEqual(ordem, ["schtasks.exe /run /tn", "tarefa True", "tarefa True", "tarefa False",
+                                 "sc.exe query audiosrv"])
+
+    def test_tarefa_rodando(self):
+        for saida, quer in (("Running\r\n", True), ("Ready\r\n", False), ("", False)):
+            c = Chamadas()
+            with mock.patch.object(filtro.subprocess, "run", c("run", types.SimpleNamespace(stdout=saida))):
+                self.assertIs(filtro.tarefa_rodando(), quer, saida)
+            cmd = c.lista[0][1][0]
+            self.assertEqual(cmd[0], filtro.POWERSHELL, "pelo caminho da System32")
+            self.assertIn(r"Get-ScheduledTask -TaskPath '\Ritmelli\' -TaskName 'Microfone'", cmd[-1])
 
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -657,6 +725,10 @@ class TestaInstalador(unittest.TestCase):
              "resumo": "devices: not checked (OSError:\tdriver\b\f)"}
         self.assertIn("aparelhos: devices: not checked (OSError: driver  )", self._log(r),
                       "o motivo, com os escapes de controle virando espaco")
+
+    def test_aparelho_com_o_nome_da_chave(self):
+        self.assertIn('aparelhos mudos: "aparelhos"', self._log(["aparelhos"]),
+                      "um aparelho chamado como a chave do JSON nao esconde a lista")
 
     def test_sem_o_arquivo(self):
         self.assertIn("aparelhos: sem o microfone.json", self._log("sem"))

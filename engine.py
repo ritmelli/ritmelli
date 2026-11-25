@@ -1454,8 +1454,10 @@ class Engine:
                 self._alvo = injeta.hash_microfone(st["guid"])
                 if self._aviso is not None and self.error == self._aviso:
                     self.error = None
-            if not self._mudos_vistos:  # uma vez, so os que o instalador ou a tarefa acharam mudos: abrir todos a cada
-                self._mudos_vistos = True  # partida incomodaria
+            with self._lock:  # uma vez, so os que o instalador ou a tarefa acharam mudos: abrir todos a cada partida
+                ver = not self._mudos_vistos  # incomodaria
+                self._mudos_vistos = True
+            if ver:
                 from microfone import microfone as filtro  # noqa: PLC0415
                 mudos = filtro.le_mudos()
                 if mudos:
@@ -1484,21 +1486,29 @@ class Engine:
         if self.error == prep:
             self._aviso = self.error = None
         with self._lock:  # o audio do Windows reiniciou: os streams daqui morreram
-            if not self._fechado and self.active.get("mic") == mic:
+            if self._fechado:
+                return
+            # os do registro entram nesta, e antes do _reabre: o _confere_filtro que ele abre nao confere junto
+            self._mudos_vistos = True
+            if self.active.get("mic") == mic:
                 self._reabre()
-        self._mudos_vistos = True  # os do registro entram nesta
         self._confere_mudos()  # todos: o reinicio do audio pode ter deixado qualquer aparelho mudo
 
     def _confere_mudos(self, nomes=None):
         """Confere (num processo a parte, _confere_fora) se os aparelhos, ou so esses nomes, entregam som, e avisa na
         tela os que abrem e nao entregam nada (#136: uma interface USB depois do reinicio do audio, ate tirar o cabo).
         O aviso e dos aparelhos (_aviso), como o da reserva: sai quando o audio reabre (o vigia reabre quando o
-        aparelho em uso e tirado e posto de volta), e ao tocar, parar ou pular, como todo erro da tela."""
+        aparelho em uso e tirado e posto de volta), e ao tocar, parar ou pular, como todo erro da tela. O audio que
+        reabriu (ou caiu) enquanto a conferencia rodava deixa o resultado de fora: ele e de antes, e a reabertura que
+        falhou tem o aviso dela."""
+        pilha = self._stack
         r = _confere_fora(nomes)
         if not r or not r.get("mudos"):
             return
         print(f"devices: silent: {'; '.join(r['mudos'])}")
-        self._aviso = self.error = _aviso_mudos(r["mudos"])
+        with self._lock:
+            if not self._fechado and pilha is not None and self._stack is pilha:
+                self._aviso = self.error = _aviso_mudos(r["mudos"])
 
     def liga(self):
         """A partida do servidor. Se o audio nao abre (sem microfone, aparelho que recusa), o servidor sobe mesmo

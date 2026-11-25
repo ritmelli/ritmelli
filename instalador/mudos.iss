@@ -50,11 +50,12 @@ end;
 // onde comeca o valor da Chave do JSON (depois dos dois pontos e dos espacos), ou 0 sem a chave
 function MudosValor(Json, Chave: String): Integer;
 begin
-  Result := Pos('"' + Chave + '"', Json);
+  // com os dois pontos: dentro de um texto do JSON, a aspa vem escapada, e o nome de um aparelho nao casa
+  Result := Pos('"' + Chave + '":', Json);
   if Result = 0 then
     Exit;
-  Result := Result + Length(Chave) + 2;
-  while (Result <= Length(Json)) and ((Json[Result] = ':') or (Json[Result] = ' ')) do
+  Result := Result + Length(Chave) + 3;
+  while (Result <= Length(Json)) and (Json[Result] = ' ') do
     Result := Result + 1;
 end;
 

@@ -63,7 +63,8 @@ redutor segue ligado e a música chega igual no modo normal e no RAW. Quem pendu
 instalador (administrador, `ritmelli.exe --microfone instala-todos --tarefa`), que também cria a
 tarefa do Windows `\Ritmelli\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
 pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
-prepara, sem UAC, um microfone que apareceu depois. Ao desinstalar, o original de todo
+prepara, sem UAC, um microfone que apareceu depois, e só reabre o áudio quando a tarefa acaba: o filtro
+aparece no registro antes de ela reiniciar o áudio e conferir os aparelhos. Ao desinstalar, o original de todo
 microfone volta e a tarefa sai. A DLL e o log moram na `microfone\` da pasta do executável (pelo
 código, na `%ProgramW6432%\Ritmelli`), e tudo isso só vale com essa pasta protegida
 (`pastas.pasta_protegida`): o `instala` e o `instala-todos` conferem antes de tudo e recusam, e o

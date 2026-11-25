@@ -274,7 +274,7 @@ def reinicia_audio(so_servico=False):
 # aparelho ativo e aberto e os quadros contados. O que nao entregou nada fica no registro (MUDOS, em SALVO), de onde o
 # app confere de novo ao abrir e avisa quem usa (engine.py), e vai no --saida, que o instalador mostra na ultima pagina
 MUDOS = "_mudos"
-RAIZ_MUDOS = winreg.HKEY_LOCAL_MACHINE  # o instalador e a tarefa gravam (administrador e SYSTEM); qualquer usuario le
+RAIZ_MUDOS = None  # o HKLM, lido na hora (_raiz_mudos): o instalador e a tarefa gravam; qualquer usuario le
 CONFERE_S = 2.0  # quanto cada aparelho tem para entregar o primeiro quadro
 CONFERE_MAX_S = 30.0  # a conferencia inteira, no instalador: um driver que trava nao segura a instalacao
 ASSENTA_S = 2.0  # do reinicio do audio ate a conferencia: os aparelhos se enumeram de novo
@@ -359,9 +359,16 @@ def confere_aparelhos(nomes=None, espera_s=CONFERE_S, sd=None):
     mudos, falhas = _mede(sd, alvos, espera_s)
     if mudos:  # mais tempo na segunda: um fone Bluetooth demora a montar o canal de voz quando o microfone abre
         time.sleep(1.0)
-        mudos, _ = _mede(sd, [a for a in alvos if a[1]["name"] in mudos], espera_s * 2)
+        mudos, de_novo = _mede(sd, [a for a in alvos if a[1]["name"] in mudos], espera_s * 2)
+        falhas += de_novo  # abriu mudo e recusou a segunda: sem medida, nao conta como conferido
     conferidos = sorted({a[1]["name"] for a in alvos} - set(falhas))
     return {"conferidos": conferidos, "mudos": mudos, "falhas": sorted(set(falhas))}
+
+
+def _raiz_mudos():
+    """A raiz dos mudos: o HKLM do winreg de agora (o testa_mfx troca o winreg por um registro falso), ou a do
+    teste."""
+    return winreg.HKEY_LOCAL_MACHINE if RAIZ_MUDOS is None else RAIZ_MUDOS
 
 
 def grava_mudos(nomes):
@@ -369,10 +376,10 @@ def grava_mudos(nomes):
     desinstalador passa por aqui e nao deixa nada para tras)."""
     try:
         if nomes:
-            with winreg.CreateKeyEx(RAIZ_MUDOS, SALVO, 0, winreg.KEY_ALL_ACCESS) as k:
+            with winreg.CreateKeyEx(_raiz_mudos(), SALVO, 0, winreg.KEY_ALL_ACCESS) as k:
                 winreg.SetValueEx(k, MUDOS, 0, winreg.REG_MULTI_SZ, list(nomes))
         else:
-            with winreg.OpenKey(RAIZ_MUDOS, SALVO, 0, winreg.KEY_SET_VALUE) as k:
+            with winreg.OpenKey(_raiz_mudos(), SALVO, 0, winreg.KEY_SET_VALUE) as k:
                 winreg.DeleteValue(k, MUDOS)
     except FileNotFoundError:  # sem a chave ou sem o valor: nada a apagar
         pass
@@ -383,7 +390,7 @@ def grava_mudos(nomes):
 def le_mudos():
     """Os nomes que a ultima conferencia achou mudos, ou []."""
     try:
-        with winreg.OpenKey(RAIZ_MUDOS, SALVO) as k:
+        with winreg.OpenKey(_raiz_mudos(), SALVO) as k:
             return list((le(k, MUDOS) or ([],))[0])
     except OSError:
         return []
@@ -918,6 +925,16 @@ def _desarma(motivo):
              + (f"couldn't remove the SYSTEM tasks ({'; '.join(erros)})" if erros else "the SYSTEM tasks were removed"))
 
 
+def tarefa_rodando():
+    """A tarefa do filtro roda agora. Pelo Get-ScheduledTask, que da o estado sem traduzir (o schtasks /query sai na
+    lingua do Windows); sem resposta, False."""
+    caminho, nome = TAREFA.rsplit("\\", 1)
+    r = subprocess.run([POWERSHELL, "-NoProfile", "-Command",
+                        f"(Get-ScheduledTask -TaskPath '{caminho}\\' -TaskName '{nome}').State"],
+                       capture_output=True, text=True, encoding="oem", errors="replace", creationflags=NO_WINDOW)
+    return r.stdout.strip() == "Running"
+
+
 def pede_tarefa(nome, espera_s=60):
     """Do app, sem administrador: roda a tarefa do instalador e espera o microfone ter o filtro (e as melhorias) e o
     audio do Windows voltar. {ok} ou {ok: False, motivo, detalhe}: o motivo e um codigo (sem_tarefa, tarefa_falhou,
@@ -936,6 +953,11 @@ def pede_tarefa(nome, espera_s=60):
             break
     else:
         return {"ok": False, "motivo": "nao_pronto"}
+    # o filtro aparece no registro antes de a tarefa reiniciar o audio e conferir os aparelhos (#136): ate ela acabar,
+    # o audiosrv RUNNING ainda pode ser o de antes do reinicio. Com o prazo da conferencia dela a mais
+    fim += ASSENTA_S + CONFERE_MAX_S
+    while time.monotonic() < fim and tarefa_rodando():
+        time.sleep(0.5)
     while time.monotonic() < fim:  # o reinicio do audio: o servico volta depois do registro
         st = subprocess.run([SC, "query", "audiosrv"], capture_output=True, text=True, encoding="oem",
                             errors="replace", creationflags=NO_WINDOW).stdout
