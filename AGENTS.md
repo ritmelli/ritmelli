@@ -72,9 +72,9 @@ galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
 
 Rode na raiz, com o venv: `$env:PYTHONUTF8 = '1'; python -m ruff check .; python dev\testa_tudo.py` (os outros modos e
 onde entra teste novo: o [Contributing](README.md#contributing) do README). O check "Testa o PR" roda o mesmo; print
-mudado no `compara` só bloqueia com a etiqueta `extracao-tema`: sem ela o check passa, e as diferenças ficam no artefato.
-O PR entra pela fila de merge da `main` (exige o "Testa o PR"; ninguém tem bypass): nada de `--admin`, e o `gh pr merge`
-cai no auto-merge, que o repo não permite. O caminho é a mutação GraphQL `enqueuePullRequest`, com `expectedHeadOid`.
+mudado no `compara` só bloqueia com a etiqueta `extracao-tema` (sem ela, fica no artefato). A fila de merge da `main`
+exige ele e o "Trusted author": PR de quem não é um dos dois mantenedores só passa aprovado por um deles no head atual.
+Sem bypass nem `--admin`; `gh pr merge` cai no auto-merge, vedado: é o GraphQL `enqueuePullRequest`, `expectedHeadOid`.
 PR com prova fora da CI (o filtro do microfone num Windows real, o instalador real, um gatilho do `testa.yml`, o nome do
 check exigido) leva a etiqueta `needs-owner`, e a fila o recusa: o dono faz a prova, tira a etiqueta e põe na fila. Os
 dois últimos se provam no PR: o "Testa o PR" fica no head ao editar a descrição, pôr e tirar uma etiqueta e na fila.
