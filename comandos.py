@@ -11,6 +11,7 @@ parado (_volta_auto) e o enfileirar com o prato parado passam por ela, com uma r
 As travas, sempre nesta ordem e nunca ao contrario: a fila_lock do App, depois o _lock do motor (um RLock), depois o
 _qlock do motor. Com o _qlock na mao nao se chama metodo do motor que pegue o _lock, e a thread do audio (o _mixa)
 nunca pega a fila_lock nem o _lock. Sob a fila_lock nao se grava arquivo."""
+import sys
 import threading
 
 import engine as eng
@@ -70,19 +71,35 @@ def tocar(A, iid, start=None, retomar=False, loop=None, por_cima=CURTO):
 
 
 def enfileirar(A, b, remoto=False):
-    """A entrada do corpo b no A seguir (o POST /api/queue; a regra de cada campo e o App.enfileirar). Com nada no
-    prato (parado, ou o disco ja acabou), o que acabou de entrar toca na hora, sem esperar a vez; pausado ainda e
-    disco no prato, e a fila so guarda. Tocar na hora e um avanco reservado na linha do prato: se o fim do disco (o
-    vigia) ja reservou o avanco dela, este espera o resultado, e tocou so se foi esta entrada. Volta (entrada, job,
-    tocou); CorpoRecusado e a recusa do corpo."""
+    """A entrada do corpo b no A seguir (o POST /api/queue): o poe_na_fila e depois o toca_se_parado. Volta (entrada,
+    job, tocou); CorpoRecusado e a recusa do corpo."""
+    x, j = poe_na_fila(A, b, remoto=remoto)
+    return x, j, toca_se_parado(A, x)
+
+
+def poe_na_fila(A, b, remoto=False):
+    """A entrada do corpo b no A seguir, sem tocar (a regra de cada campo e o App.enfileirar). A rota chama no laco do
+    servidor, como o tocar e a prateleira: a procura do download do mesmo video e a criacao de um novo nao correm com
+    outro pedido. Volta (entrada, job); CorpoRecusado e a recusa do corpo."""
     try:
-        x, j = A.enfileirar(b, remoto=remoto)
+        return A.enfileirar(b, remoto=remoto)
     except ValueError as ex:
         raise CorpoRecusado(str(ex)) from ex
-    cap = A.engine.captura()
-    if cap.status in ("idle", "ended"):
-        return x, j, avanca(A, visto=cap, entrada=x) is x
-    return x, j, False
+
+
+def toca_se_parado(A, x):
+    """Com nada no prato (parado, ou o disco ja acabou), a entrada x que acabou de entrar toca na hora, sem esperar a
+    vez; pausado ainda e disco no prato, e a fila so guarda. Tocar na hora e um avanco reservado na linha do prato: se
+    o fim do disco (o vigia) ja reservou o avanco dela, este espera o resultado, e tocou so se foi esta entrada; se
+    ela nao tocou nada e o prato segue parado, a vez e desta. Volta se tocou."""
+    for _ in range(3):  # a reserva de outro que nao tocou (a entrada quebrada, invalidada): de novo, se ainda parado
+        cap = A.engine.captura()
+        if cap.status not in ("idle", "ended"):
+            return False
+        y = avanca(A, visto=cap, entrada=x)
+        if y is not None and y is not CEDEU:
+            return y is x
+    return False
 
 
 def tocar_da_fila(A, qid):
@@ -175,15 +192,20 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                         E._cancela_passagem()  # a preparada sai: o motor nao vira para ela no meio do avanco
                     break
             x = fecha_virada(A, v)  # o Anterior guarda primeiro o que saiu nela
-            if pular:
-                return x
+            if pular and x is not None:
+                return x  # sem a entrada (ja saiu da fila), o Proximo segue para a primeira
     if em_curso is not None:
         return CEDEU if cede else em_curso.espera()
     try:
         tocou = A.tocar_entrada(r.x, historico=historico, entrada=r.x, reserva=r)
     except Exception as ex:  # noqa: BLE001 - nos vigias, entrada quebrada nao trava a fila
+        if r.feita.is_set() and r.entrada is r.x:  # tocou: o que falhou veio depois (a gravacao da posicao)
+            print(f"queue: {r.x.get('title')!r} played, but then: {ex}", file=sys.stderr, flush=True)
+            return r.x
         with A.fila_lock:
-            A._tirar_se(r.x)
+            outra = A.reserva
+            if outra is None or outra is r or outra.x is not r.x:  # a entrada de outra reserva em curso fica
+                A._tirar_se(r.x)
             A._solta_reserva(r, None)
         if not na_tela:
             raise
@@ -199,8 +221,26 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
 
 def pular(A):
     """O Proxima: a primeira da fila toca agora; logo depois de uma virada da passagem ainda nao conciliada, a
-    virada e o avanco, e volta a entrada que acabou de entrar. Volta a entrada, ou None com a fila vazia."""
-    return avanca(A, pular=True)
+    virada e o avanco, e volta a entrada que acabou de entrar. Os Proximos sobrepostos (o segundo chega antes de o
+    primeiro voltar, mesmo preso na fila_lock enquanto o primeiro troca o disco) dividem o mesmo avanco: um so toca, e
+    os outros esperam o resultado dele, sem trava nenhuma. Volta a entrada, ou None com a fila vazia (ou o avanco que
+    nao tocou)."""
+    with A.proximo_lock:
+        p = A.proximo
+        dono = p is None
+        if dono:
+            p = A.proximo = Reserva(None, None, None)
+    if not dono:
+        return p.espera()
+    x = None
+    try:
+        x = avanca(A, pular=True)
+        return x
+    finally:
+        with A.proximo_lock:
+            A.proximo = None
+        p.entrada = x
+        p.feita.set()
 
 
 def voltar(A):
@@ -235,12 +275,15 @@ def alternar(A):
 def parar(A):
     """O disco sai do prato, e o Anterior toca ele de novo (a virada pendente fecha antes, sob a mesma fila_lock: o
     Anterior guarda primeiro o que saiu nela). A posicao gravada e a do instante em que ele saiu."""
-    with A.fila_lock:
+    def para(depois):
         A._fecha_viradas()
         cap = A.engine.stop()
+        if A.reserva is not None:
+            A._solta_reserva(A.reserva, None)  # quem esperava o avanco desta linha nao espera mais
         if cap.track is not None:
             A._guardar_historico(tr=cap.track)
-    A.remember_pos(cap)
+        return cap
+    A.remember_pos(A._com_motor(para))  # a fila_lock e o _lock do motor, sem prender a leitura do estado
 
 
 def ir_para(A, t):

@@ -650,10 +650,9 @@ class App:
         self.fila_lock = threading.Lock()
         # o avanco da fila reservado na linha do prato (comandos.Reserva), ou None; muda sob a fila_lock e o _qlock
         self.reserva = None
-        # sobe quando a primeira da fila (sem a entrada da virada ainda nao conciliada) muda, sob a fila_lock: a
-        # preparacao da passagem que levou tempo fora das travas so publica se ela nao mudou (_prepara)
-        self.cabeca_versao = 0
-        self._cabeca = None
+        # os Proximos sobrepostos dividem um avanco so (comandos.pular): o em curso, ou None; muda sob a proximo_lock
+        self.proximo = None
+        self.proximo_lock = threading.Lock()
         # Automatico: a semente e o ultimo disco que o usuario escolheu; o mix, o Mix do YouTube ainda
         # nao usado de mix_base (a semente, ou a ultima parecida quando o da semente acaba);
         # fora, o que nao entra (tocou nesta sessao, ou o usuario tirou da fila). Vem ligado na instalacao nova; quem ja
@@ -1038,16 +1037,19 @@ class App:
         sem ele o motor o desliga se o disco que sai e outro (na mesma publicacao da faixa). A posicao do que saiu e
         gravada fora das travas. Volta se trocou."""
         e = self.engine
-        with self.fila_lock:
+        ganho = e._ganho_de(tr)  # fora das travas: o motor pergunta ao servidor
+
+        def troca(depois):
             self._fecha_viradas()
             if reserva is not None and self.reserva is not reserva:
-                return False
+                return None
             if entrada is not None and not any(y is entrada for y in self.fila):
-                return False
+                return None
             pode = (lambda: reserva.vale(e)) if reserva is not None else None
-            cap = e.espera(tr, pode=pode) if stream else e.load(tr, start=start, pode=pode, loop=loop)
+            cap = (e.espera(tr, pode=pode, ganho=ganho, depois=depois) if stream
+                   else e.load(tr, start=start, pode=pode, loop=loop, ganho=ganho, depois=depois))
             if cap is None:
-                return False
+                return None
             if entrada is not None:
                 self._tirar(entrada)
             sai = cap.track
@@ -1057,17 +1059,43 @@ class App:
                     self._por_na_fila(y, seguir=True)
             elif historico and sai is not None:
                 self._guardar_historico(tr["id"], tr=sai)
-            if stream and loop is not None:
-                e.set_loop(loop)  # o stream ainda nao tem leitor: nada decide o fim antes disto
             if reserva is not None:
                 self._solta_reserva(reserva, entrada)
+            elif self.reserva is not None:
+                self._solta_reserva(self.reserva, None)  # a linha que ela reservou acabou: quem espera nao espera mais
             self._confere_preparo()
+            return cap
+        cap = self._com_motor(troca)
+        if cap is None:
+            return False
         if stream:
             # o stream abre antes de gravar a posicao: o disco ja esta no prato, e uma gravacao que falha nao o deixa
             # carregando para sempre
             threading.Thread(target=self._abre_stream, args=(tr, *stream), daemon=True).start()
         self.remember_pos(cap)  # a posicao do que saiu, no instante da troca
         return True
+
+    def _com_motor(self, f):
+        """f(depois) com a fila_lock e o _lock do motor na mao, nessa ordem, sem esperar o _lock com a fila_lock segura: a
+        leitura do estado (o /api/state, no laco do servidor) pega a fila_lock, e o _lock pode ficar segundos com outro
+        (a troca de aparelho). Ocupado, solta a fila_lock, espera o _lock sozinho e tenta de novo; f roda uma vez so e
+        confere de novo o que precisa. O que o motor deixa em depois (o leitor que comeca, a onda, a medida) roda com
+        as duas travas soltas. Volta o que f volta."""
+        e = self.engine
+        depois = []
+        try:
+            while True:
+                with self.fila_lock:
+                    if e._lock.acquire(blocking=False):
+                        try:
+                            return f(depois)
+                        finally:
+                            e._lock.release()
+                with e._lock:
+                    pass
+        finally:
+            for g in depois:
+                g()
 
     def tocar_remoto(self, j, target, meta, historico=True, entrada=None, reserva=None, anterior=False):
         """Toca na hora pelo stream do YouTube enquanto o download do job segue por tras;
@@ -1167,8 +1195,13 @@ class App:
                 cap = e.captura()
                 if cap.track is not tr:
                     return
-                if cmd.avanca(self, historico=False, visto=cap, cede=True) is None:
-                    e.stop(pode=lambda: e._deck is cap.deck and e._deck.linha == cap.linha)
+                for _ in range(3):  # a reserva de outro que falhou devolve None: com fila, tenta de novo
+                    if cmd.avanca(self, historico=False, visto=cap) is not None:
+                        return  # tocou (este ou outro avanco), ou o prato ja mudou (CEDEU)
+                    with self.fila_lock:
+                        if not self.fila:
+                            break
+                e.stop(pode=lambda: e._deck is cap.deck and e._deck.linha == cap.linha)
                 return
             self.engine.error = i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play "
                                                                         "right away ({reason}). It will play as soon "
@@ -1274,7 +1307,10 @@ class App:
             cmd.fecha_virada(self, v)
 
     def _solta_reserva(self, r, entrada):
-        """Com fila_lock: a reserva de avanco r resolvida (a entrada que tocou, ou None), liberando quem espera."""
+        """Com fila_lock: a reserva de avanco r resolvida (a entrada que tocou, ou None), liberando quem espera. Uma vez
+        so: a resolvida fica como esta."""
+        if r.feita.is_set():
+            return
         with self.engine._qlock:
             if self.reserva is r:
                 self.reserva = None
@@ -1282,41 +1318,46 @@ class App:
         r.feita.set()
 
     def _confere_preparo(self):
-        """Com fila_lock, depois de mexer na fila: se a primeira (sem a entrada da virada ainda nao conciliada) mudou, a
-        cabeca_versao sobe, e a passagem preparada para quem nao e mais a primeira sai antes de soltar o _qlock: o
-        motor nao vira para ela."""
+        """Com fila_lock: o _confere_preparo_sob, pegando o _qlock."""
+        with self.engine._qlock:
+            self._confere_preparo_sob()
+
+    def _confere_preparo_sob(self):
+        """Com fila_lock e o _qlock, no mesmo trecho em que a fila mudou: a passagem preparada para quem nao e mais a
+        primeira (sem a entrada da virada ainda nao conciliada) sai antes de soltar o _qlock, e o motor nao vira para
+        ela."""
         e = self.engine
-        with e._qlock:
-            fora = e.virou[2] if e.virou is not None else None
-            cab = next((x["qid"] for x in self.fila if x["qid"] != fora), None)
-            if cab != self._cabeca:
-                self._cabeca = cab
-                self.cabeca_versao += 1
-            if e.pronto_tag is not None and e.pronto_tag != cab:
-                e._cancela_passagem()
+        fora = e.virou[2] if e.virou is not None else None
+        cab = next((x["qid"] for x in self.fila if x["qid"] != fora), None)
+        if e.pronto_tag is not None and e.pronto_tag != cab:
+            e._cancela_passagem()
 
     # fila (A seguir) --------------------------------------------------------
     def _por_na_fila(self, x, seguir=False):
         """Com fila_lock. Tocar a seguir vai logo depois do disco do prato; com o Aleatorio
         ligado, o Adicionar a fila cai num lugar sorteado, como no YouTube Music, e na ordem
-        montada vai para o fim. As parecidas do Automatico ficam sempre depois do que o usuario pos."""
-        if seguir:
-            self.fila.insert(0, x)
-            if self.fila_ordem is not None:
-                self.fila_ordem.insert(0, x)
-        elif self.fila_ordem is not None:
-            self.fila.insert(random.randint(0, antes_das_parecidas(self.fila)), x)
-            self.fila_ordem.insert(antes_das_parecidas(self.fila_ordem), x)
-        else:
-            self.fila.insert(antes_das_parecidas(self.fila), x)
-        self._confere_preparo()
+        montada vai para o fim. As parecidas do Automatico ficam sempre depois do que o usuario pos. A fila muda no
+        mesmo trecho do _qlock em que a passagem preparada e conferida (_confere_preparo_sob), como em toda mudanca
+        da fila."""
+        with self.engine._qlock:
+            if seguir:
+                self.fila.insert(0, x)
+                if self.fila_ordem is not None:
+                    self.fila_ordem.insert(0, x)
+            elif self.fila_ordem is not None:
+                self.fila.insert(random.randint(0, antes_das_parecidas(self.fila)), x)
+                self.fila_ordem.insert(antes_das_parecidas(self.fila_ordem), x)
+            else:
+                self.fila.insert(antes_das_parecidas(self.fila), x)
+            self._confere_preparo_sob()
 
     def _tirar(self, x):
         """Com fila_lock: sai da fila e da ordem montada."""
-        self.fila.remove(x)
-        if self.fila_ordem is not None and x in self.fila_ordem:
-            self.fila_ordem.remove(x)
-        self._confere_preparo()
+        with self.engine._qlock:
+            self.fila.remove(x)
+            if self.fila_ordem is not None and x in self.fila_ordem:
+                self.fila_ordem.remove(x)
+            self._confere_preparo_sob()
 
     def _tirar_se(self, x):
         """Com fila_lock: o _tirar, se x ainda esta na fila."""
@@ -1333,7 +1374,7 @@ class App:
         """Aleatorio do YouTube Music: ligar embaralha o A seguir (a ordem nova aparece na
         lista); desligar volta a ordem que o usuario montou, sem os que ja sairam. As parecidas do
         Automatico seguem no fim, na ordem delas (a do andamento)."""
-        with self.fila_lock:
+        with self.fila_lock, self.engine._qlock:
             if on and self.fila_ordem is None:
                 self.fila_ordem = list(self.fila)
                 meus = [x for x in self.fila if not x.get("auto")]
@@ -1345,7 +1386,7 @@ class App:
                 na_ordem = {x["qid"] for x in ordem}
                 self.fila = ordem + [x for x in self.fila if x["qid"] not in na_ordem]
                 self.fila_ordem = None
-            self._confere_preparo()
+            self._confere_preparo_sob()
 
     def enfileirar(self, b, remoto=False):
         """Entrada da fila pelo corpo do POST /api/queue. Disco que nao esta na prateleira ja
@@ -1413,12 +1454,12 @@ class App:
         vez dele, ou no Anterior)."""
         def fica(x):
             return x.get("id") != iid and not (yid and x.get("youtube_id") == yid)
-        with self.fila_lock:
+        with self.fila_lock, self.engine._qlock:
             self.fila = [x for x in self.fila if fica(x)]
             if self.fila_ordem is not None:
                 self.fila_ordem = [x for x in self.fila_ordem if fica(x)]
             self.historico = [x for x in self.historico if fica(x)]
-            self._confere_preparo()
+            self._confere_preparo_sob()
 
     def apagar_audio(self, nome):
         """O arquivo do disco que saiu da prateleira: na hora, ou, com o motor tocando dele (no prato, preparado
@@ -1448,21 +1489,20 @@ class App:
         threading.Thread(target=apaga, daemon=True).start()
 
     def limpar_fila(self):
-        with self.fila_lock:
+        with self.fila_lock, self.engine._qlock:
             for x in self.fila:
                 self._recusar(x)
             self.fila = []
             if self.fila_ordem is not None:
                 self.fila_ordem = []
-            self._confere_preparo()
+            self._confere_preparo_sob()
 
     def mover_na_fila(self, qid, to):
         """Arrastar muda a ordem de tocar; com o Aleatorio ligado, a ordem montada fica como
         estava. O to e o lugar na fila que a tela ve (leitura): sem a entrada da virada que o motor ja confirmou e o
         _volta_passagem ainda vai conciliar, que tambem nao se move."""
-        with self.fila_lock:
-            with self.engine._qlock:
-                virou = self.engine.virou
+        with self.fila_lock, self.engine._qlock:
+            virou = self.engine.virou
             fora = virou[2] if virou is not None else None
             x = next((e for e in self.fila if e["qid"] == qid and qid != fora), None)
             if not x:
@@ -1473,7 +1513,7 @@ class App:
             self.fila.insert(self.fila.index(vistas[to]) if to < len(vistas) else len(self.fila), x)
             if x.get("auto"):
                 x["fixa"] = True  # a parecida que o usuario arrastou fica onde ele pos: a ordem por andamento nao mexe nela
-            self._confere_preparo()
+            self._confere_preparo_sob()
             return True
 
     def tocar_entrada(self, x, historico=True, entrada=None, reserva=None, anterior=False):
@@ -1559,26 +1599,29 @@ class App:
         return d
 
     def _prepara(self, tr, x, chave, cap):
-        """A fonte da entrada x sai fora das travas (o endereco do stream leva 1 a 3 s). A publicacao confere de novo,
-        sob as travas: x ainda e a primeira da fila, e a cabeca nao mudou desde entao (cabeca_versao); nenhum avanco
-        reservado em curso; e, sob o _qlock, o prato ainda e o deck e a linha que a volta viu (cap), com tr e sem nada
-        preparado."""
+        """A fonte da entrada x e o ganho dela saem fora das travas (o endereco do stream leva 1 a 3 s). A publicacao e
+        sob a fila_lock, e confere de novo: x ainda e a primeira da fila; e, sob o _qlock, nenhuma virada pendente nem
+        avanco reservado em curso nesta linha, e o prato ainda e o deck e a linha que a volta viu (cap), com tr, sem o
+        Repetir, sem ter acabado e sem nada preparado. Quem fecha a virada e troca o disco do prato sob a fila_lock (o Parar, a troca) nao ve uma
+        preparacao nova entrar no meio."""
         try:
             novo = self.fonte_de(x)
             if novo is None:
                 self.passagem_falhou = chave
                 return
             e = self.engine
-            with self.fila_lock:
-                ainda = bool(self.fila) and self.fila[0] is x
-                versao = self.cabeca_versao
+            ganho = e._ganho_de(novo)
 
             def pode():  # sob o _qlock do motor: so le campos em memoria
                 r = self.reserva
-                return (self.cabeca_versao == versao and (r is None or r.feita.is_set()) and e._deck is cap.deck
-                        and e._deck.linha == cap.linha and e.track is tr and e.pronto_tag is None)
-            if ainda:
-                e.preparar(novo, x["qid"], pode=pode)
+                return (e.virou is None and (r is None or r.feita.is_set() or not r.vale(e)) and e._deck is cap.deck
+                        and e._deck.linha == cap.linha and e.track is tr and not e.loop and not e.ended
+                        and e.pronto_tag is None)
+
+            def publica(depois):
+                if self.fila and self.fila[0] is x:
+                    e.preparar(novo, x["qid"], pode=pode, ganho=ganho, depois=depois)
+            self._com_motor(publica)
         except Exception as ex:  # noqa: BLE001 - sem a proxima pronta, ela toca no fim como antes
             self.passagem_falhou = chave
             print(f"transition: couldn't prepare {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
@@ -1737,14 +1780,16 @@ class App:
 
     def _presa(self):
         """Com fila_lock: a primeira da fila nao troca mais (a passagem para ela ja esta sendo preparada, ou falta
-        pouco para isso)."""
+        pouco para isso, ou um avanco reservado em curso vai toca-la)."""
         if not self.fila:
             return False
         e, q = self.engine, self.fila[0]["qid"]
         tr = e.track
         dur = tr.get("duration") if tr else None
+        r = self.reserva
         return bool((dur and dur - e.pos <= eng.TRANS_PREP_S + 15) or e.pronto_tag == q
-                    or (self.preparando is not None and self.preparando[1] == q))
+                    or (self.preparando is not None and self.preparando[1] == q)
+                    or (r is not None and not r.feita.is_set() and r.x is self.fila[0]))
 
     def _ordena_auto(self):
         """Com fila_lock: as parecidas do fim do A seguir em ordem de andamento (andamento.ordena: subindo no
@@ -1790,10 +1835,11 @@ class App:
         if self.mix is not None:
             self.mix = sorted([m for m in mix if m["youtube_id"] not in usadas]
                               + [x for x in bloco if x["youtube_id"] not in usadas], key=lambda c: c.get("ordem", 0))
-        self.fila[k:] = nova
-        if self.fila_ordem is not None:
-            self.fila_ordem = [x for x in self.fila_ordem if x["qid"] not in na_bloco] + nova
-        self._confere_preparo()
+        with self.engine._qlock:
+            self.fila[k:] = nova
+            if self.fila_ordem is not None:
+                self.fila_ordem = [x for x in self.fila_ordem if x["qid"] not in na_bloco] + nova
+            self._confere_preparo_sob()
         return entrou
 
     def _vigia_auto(self):
@@ -2473,11 +2519,12 @@ def build(app_state):
     @r.post("/api/queue")
     async def queue_add(request):
         b = await body(request)
-        try:  # com o prato parado, o enfileirar pode esperar a reserva de avanco da linha: fora do laco
-            x, j, tocou = await loop_().run_in_executor(
-                None, lambda: cmd.enfileirar(A, b, remoto=request["papel"] == "remoto"))
+        try:  # no laco, como o tocar e a prateleira: dois pedidos do mesmo video nao abrem dois downloads
+            x, j = cmd.poe_na_fila(A, b, remoto=request["papel"] == "remoto")
         except cmd.CorpoRecusado as ex:
             return j_err(i18n.so_texto(str(ex)))
+        # com o prato parado, tocar na hora pode esperar a reserva de avanco da linha: fora do laco
+        tocou = await loop_().run_in_executor(None, cmd.toca_se_parado, A, x)
         return j_ok(entry=x, job=j, playing=tocou)
 
     @r.delete("/api/queue")

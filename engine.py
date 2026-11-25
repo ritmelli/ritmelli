@@ -2447,14 +2447,25 @@ class Engine:
             leitor()
 
     # passagem para a proxima ------------------------------------------------
-    def preparar(self, track, tag, pode=None):
+    @staticmethod
+    def _segue(depois, f):
+        """O resto de um comando, que roda fora das travas: agora, ou, com a lista depois de quem chama com travas na
+        mao (o servidor, App._com_motor), quando ele as soltar."""
+        if depois is None:
+            f()
+        else:
+            depois.append(f)
+
+    def preparar(self, track, tag, pode=None, ganho=None, depois=None):
         """A proxima da fila no segundo deck (o servidor chama a TRANS_PREP_S do fim): o leitor dela
         decodifica o comeco, o deste vai ate o fim, e o _mede marca onde virar. O deck novo so aparece para o _mixa
         sob o _qlock, ja com o ganho dele. pode(): conferido sob o _qlock antes de publicar (o servidor confere ali a
-        reserva de avanco, a cabeca da fila, o deck e a linha que viu); falso, nada e publicado e volta False."""
+        reserva de avanco, a primeira da fila, o deck e a linha que viu); falso, nada e publicado e volta False.
+        ganho: o (alvo, mede) do _ganho_de, ja medido por quem chama (o servidor mede antes de pegar as travas).
+        depois: o leitor dela e a medida comecam quando quem chama soltar as travas dele (_segue)."""
         if not track.get("path"):
             return False
-        alvo, mede = self._ganho_de(track)  # fora das travas: pergunta ao servidor
+        alvo, mede = self._ganho_de(track) if ganho is None else ganho  # fora das travas: pergunta ao servidor
         d = Deck(track)
         d.gen, d.ahead = 1, PRONTO_AHEAD
         d.ganho = d.ganho_alvo = alvo  # o deck ainda e so daqui
@@ -2467,10 +2478,13 @@ class Engine:
                 self._deck.ahead = 10 ** 9  # o fim deste inteiro na memoria para medir (45 s sao ~17 MB)
                 atual, tr_atual = self._deck, self.track
                 self.preparos += 1
-        self._onda_pede(track)
-        self._mede_se(track, mede)
-        threading.Thread(target=self._reader, args=(1, track, 0.0, d), daemon=True).start()
-        threading.Thread(target=self._mede, args=(atual, d, tr_atual), daemon=True).start()
+
+        def segue():
+            self._onda_pede(track)
+            self._mede_se(track, mede)
+            threading.Thread(target=self._reader, args=(1, track, 0.0, d), daemon=True).start()
+            threading.Thread(target=self._mede, args=(atual, d, tr_atual), daemon=True).start()
+        self._segue(depois, segue)
         return True
 
     def em_passagem(self):
@@ -3182,16 +3196,16 @@ class Engine:
                 print(f"volume: nao guardei a medida de {track.get('title')!r}: {ex}", file=sys.stderr, flush=True)
 
     # comandos -------------------------------------------------------------
-    def espera(self, track, pode=None):
+    def espera(self, track, pode=None, ganho=None, depois=None):
         """Poe o disco no prato carregando, ainda sem audio: o endereco do stream do YouTube
         leva 1 a 3 s para sair, e a tela ja mostra o que vai tocar. Outro disco entrando desliga o Repetir. Volta a
-        Captura do que estava no prato antes, ou None se o pode() (conferido sob o _qlock) recusou."""
-        alvo, mede = self._ganho_de(track)
+        Captura do que estava no prato antes, ou None se o pode() (conferido sob o _qlock) recusou. ganho: o do
+        _ganho_de, ja medido por quem chama; depois: o leitor comeca quando quem chama soltar as travas (_segue)."""
+        alvo, mede = self._ganho_de(track) if ganho is None else ganho
         with self._lock:
             antes, leitor = self._restart(0.0, track=track, alvo=alvo, paused=False, prato=True, pode=pode)
         if antes is not None:
-            self._comeca(leitor)
-            self._mede_se(track, mede)
+            self._segue(depois, lambda: (self._comeca(leitor), self._mede_se(track, mede)))
         return antes
 
     def tira_soou(self):
@@ -3279,17 +3293,17 @@ class Engine:
         repetido sai do cache)."""
         threading.Thread(target=self._toca_sobre, args=(track,), daemon=True).start()
 
-    def load(self, track, start=0.0, paused=False, loop=None, pode=None):
+    def load(self, track, start=0.0, paused=False, loop=None, pode=None, ganho=None, depois=None):
         """O disco no prato a partir de start, numa linha nova; loop: o Repetir, na mesma publicacao (None: fica como
         esta no mesmo disco, e outro disco entrando o desliga). Volta a Captura do que estava no prato antes, ou None se
-        o pode() (conferido sob o _qlock: o servidor confere ali a reserva de avanco) recusou."""
-        alvo, mede = self._ganho_de(track)
+        o pode() (conferido sob o _qlock: o servidor confere ali a reserva de avanco) recusou. ganho: o do _ganho_de,
+        ja medido por quem chama; depois: o leitor comeca quando quem chama soltar as travas (_segue)."""
+        alvo, mede = self._ganho_de(track) if ganho is None else ganho
         with self._lock:
             antes, leitor = self._restart(self._clamp(start, track), track=track, alvo=alvo, paused=paused,
                                           prato=True, loop=loop, pode=pode)
         if antes is not None:
-            self._comeca(leitor)
-            self._mede_se(track, mede)
+            self._segue(depois, lambda: (self._comeca(leitor), self._mede_se(track, mede)))
         return antes
 
     def _clamp(self, t, track=None):

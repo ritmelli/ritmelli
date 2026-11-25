@@ -38,20 +38,37 @@ a linha: só aí a entrada sai da fila e o que saiu do prato entra no Anterior. 
 disco, a entrada saiu da fila) não toca nem grava histórico. Com outra reserva em curso na mesma linha, os vigias cedem
 a vez (e conferem de novo na volta seguinte), e o Próxima e o enfileirar esperam o resultado dela, sem trava nenhuma,
 numa thread do executor (as rotas não prendem o laço do servidor). A confirmação, o erro e a invalidação resolvem a
-reserva e liberam todos. No `_volta_fila` e no `_volta_auto`, se tocar falhar, o erro vai para a tela
-(`engine.error`); em todos, a entrada quebrada sai da fila.
+reserva uma vez só e liberam todos; a troca sem reserva (o tocar da prateleira, o Anterior) e o Parar soltam a reserva
+em curso. O enfileirar e a parecida sem stream que esperaram uma reserva que não tocou tentam de novo, se o prato
+segue parado (ou carregando a parecida) e a fila tem o que tocar. Os Próximos sobrepostos (o segundo chega antes de o
+primeiro voltar, mesmo com o primeiro já trocando o disco) dividem o mesmo avanço (`App.proximo`): um só toca, e
+todos respondem a entrada dele. O Próxima com a virada pendente devolve a entrada dela; se ela já saiu da fila, segue
+para a primeira. No `_volta_fila` e no `_volta_auto`, se tocar falhar, o erro vai para a tela (`engine.error`); em
+todos, a entrada quebrada sai da fila, menos quando outra reserva em curso vai tocá-la. A gravação da posição que falha
+depois da troca não desfaz o avanço.
+
+O `POST /api/queue` põe na fila no laço do servidor, como o tocar e a prateleira (a procura do download do mesmo vídeo
+e a criação de um novo não correm com outro pedido), e só o tocar na hora vai ao executor.
 
 Toda troca de disco passa pelo `App._troca`, sob a `fila_lock`: o Anterior, o Parar (que não troca, mas guarda) e o
-tocar da prateleira fecham antes a virada pendente, e o Anterior guarda primeiro o que saiu nela.
+tocar da prateleira fecham antes a virada pendente, e o Anterior guarda primeiro o que saiu nela. A troca, o Parar e a
+publicação da preparação pegam a `fila_lock` e o `_lock` do motor pelo `App._com_motor`, que nunca espera o `_lock`
+com a `fila_lock` na mão: com o `_lock` ocupado (a reabertura do áudio, a troca de aparelho), solta a `fila_lock`,
+espera fora e tenta de novo, e a leitura do estado segue respondendo. O ganho do disco que entra é medido antes, e o
+leitor que começa, a onda e a medida rodam depois de soltar as duas (o `depois` do `load`, do `espera` e do
+`preparar`).
 
 ## A passagem e a cabeça da fila
 
-A volta do `_volta_passagem` guarda o deck e a linha do prato que viu. A fonte da primeira da fila sai fora das travas
-(o endereço do stream leva 1 a 3 s), e a publicação (`preparar`, com o `pode` sob o `_qlock`) confere que ela ainda é a
-primeira e a cabeça da fila não mudou (`cabeca_versao`), que não há avanço reservado em curso e que o prato ainda é o
-mesmo deck, a mesma linha e o mesmo disco, sem nada preparado. Tirar, mover e limpar a fila, a ordem do Automático, o
-Aleatório e o esquecer conferem a cabeça da fila (`_confere_preparo`): a passagem preparada para quem não é mais a
-primeira sai antes de soltar o `_qlock`.
+A volta do `_volta_passagem` guarda o deck e a linha do prato que viu. A fonte da primeira da fila e o ganho dela saem
+fora das travas (o endereço do stream leva 1 a 3 s), e a publicação (`preparar`) é sob a `fila_lock`: ela confere que
+a entrada ainda é a primeira e, no `pode` sob o `_qlock`, que não há virada pendente nem avanço reservado em curso
+nesta linha e que o prato ainda é o mesmo deck, a mesma linha e o mesmo disco, sem o Repetir, sem ter acabado e sem
+nada preparado. Quem fecha a virada e troca o disco sob a `fila_lock` não vê uma preparação entrar no meio. Toda
+mudança da fila (pôr, tirar, mover, limpar, a ordem do Automático, o Aleatório e o esquecer) acontece no mesmo trecho
+do `_qlock` em que a passagem preparada é conferida (`_confere_preparo_sob`): a preparada para quem não é mais a
+primeira sai ali, e o motor não vira para ela no meio. O Automático não reordena a primeira que um avanço reservado
+vai tocar.
 
 ## As travas
 
@@ -102,6 +119,9 @@ pausa pelo `/api/pause` e pelo `/api/toggle` esperando a publicação dele.
 
 A reserva de avanço também (a função `avanco`): o fim do disco e o enfileirar com o prato parado, cada um reservando
 primeiro; a entrada removida entre a preparação e a virada; a preparação que publica tarde, com a fila ou o prato
-mudando enquanto a fonte sai e já dentro do `preparar`; dois Próximos juntos, com o `/api/state` respondendo enquanto o
-segundo espera, e a reserva que falha ou é invalidada liberando quem esperava; e o Anterior, o Parar e o tocar da
-prateleira com a virada pendente.
+mudando enquanto a fonte sai e já dentro do `preparar`, e com o Parar no meio; o motor que ia virar bem quando a
+entrada sai da fila; dois Próximos juntos, com o `/api/state` respondendo enquanto o segundo espera, o segundo chegando
+com o primeiro já no `load`, e a reserva que falha ou é invalidada liberando quem esperava; o Próximo esperando o
+`_lock` do motor com o `/api/state` respondendo; a reserva velha que falha com uma nova na mesma entrada; a gravação
+da posição que falha; o enfileirar e a parecida sem stream que esperaram uma reserva que não tocou; e o Anterior, o
+Parar, o tocar da prateleira e o Próximo com a virada pendente.
