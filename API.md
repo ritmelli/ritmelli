@@ -56,6 +56,11 @@ Use `new EventSource('/api/events')`. Eventos:
 | `tick` | 15 vezes por segundo | `{"pos": s, "levels": {"mic": r, "track": r, "out": r}}` |
 | `desconectado` | o PC desconectou este celular, ou a sessão remota acabou (logo depois a conexão fecha) | `{}` |
 
+O servidor monta o `state`, a lista do `library`, a do `jobs` e o `tick` uma vez por volta (15 por segundo) e
+entrega a mesma volta a todas as conexões abertas; só o `caps` e a autorização são de cada uma. O `state` e o `tick` de
+uma volta saem da mesma captura: o `pos` é sempre da faixa do último `state` entregue. Uma conexão que fica para trás
+(a aba em segundo plano, a rede lenta) pula para a volta mais nova, sem atrasar as outras.
+
 `levels` é RMS linear de 0 a 1, com queda suave (dBFS = 20·log10(r); -60 dB já é
 silêncio). `mic` = voz (mesmo mutada, para mostrar que o microfone vive), `track` = arquivo
 no mais alto dos volumes que estão soando (`vol` no jogo, ou `mon_vol` no fone quando
@@ -78,7 +83,7 @@ reconecta sozinho; mostre que está reconectando.
                "preparando": null, "efeito_no_filtro": false},
  "error": null ou Mensagem,
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
- "versao": "0.1.0",
+ "versao": "0.1.0", "api": 1,
  "visor": {"ondas": 3, "passagens": [Passagem]},
  "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou Mensagem},
  "caps": {"papel": "pc", "rotas": ["DELETE /api/library/{iid}", "..."]}}
@@ -88,8 +93,11 @@ reconecta sozinho; mostre que está reconectando.
 - `abaixa` = a música abaixada no jogo pelo `POST /api/abaixa`, `{"db", "ms"}` (o pedido), enquanto vale; `null`
   quando não há, e de novo `null` sozinho no fim do prazo.
 - `versao` = a versão do servidor (`versao.py`), para mostrar na tela.
-- `mock` = `true` só no servidor `--mock` (as ferramentas de `dev/` só falam com ele, `dev/so_mock.py`); o de
-  verdade não manda o campo.
+- `api` = a versão deste contrato do Estado e do SSE (`API` do `server.py`, hoje 1). Sobe só quando muda algo que um
+  cliente de hoje já lê: um campo ou um evento sai, muda de nome ou de sentido. Campo, evento ou rota nova não sobe:
+  quem lê ignora o que não conhece. Vem no `GET /api/state` e no `state` do SSE.
+- `mock` = `true` só no servidor `--mock` (as ferramentas de `dev/` só falam com ele, `dev/so_mock.py`), no
+  `GET /api/state` e no `state` do SSE; o de verdade não manda o campo.
 - `atualizacao` = a versão nova (ver "Versão nova"): `nova` é o número dela, ou `null`;
   `estado` é `parado`, `consultando`, `baixando`, `pronta` (o instalador baixado e conferido) ou
   `instalando`; `progresso` vai de 0 a 1 no download; `automatica: true` quando quem atualiza é a
@@ -314,8 +322,9 @@ o Alienígena volta. O contrato com o módulo:
 - `pistavoz.estado()`: `{"voz": <id>, "visor": None | "fale" | "ouvindo" | "pronto", "progresso": 0..1 | None}`; vai
   para o `pedal_voz` do Estado (e do SSE). `visor` é o passo do ajuste que o pedal mostra no visor em vez da voz: `fale`
   (pede para a pessoa falar), `ouvindo` (com o `progresso` de 0 a 1, que o servidor arredonda em passos de 1/12) e
-  `pronto`; `null` = o visor mostra a voz. O `estado()` roda no laço do servidor a cada tick do SSE, para cada página
-  aberta: tem de responder na hora, sem disco nem rede, e aguentar um `escolhe()` ou `liga()` chegando de outra thread.
+  `pronto`; `null` = o visor mostra a voz. O `estado()` roda no laço do servidor uma vez a cada volta do SSE (a mesma
+  para todas as páginas abertas) e a cada `GET /api/state`: tem de responder na hora, sem disco nem rede, e aguentar um
+  `escolhe()` ou `liga()` chegando de outra thread.
   Uma voz que não é das `VOZES` sai como a primeira; um erro sai como a primeira voz sem passo, e vai para o log uma vez.
 - `pistavoz.escolhe(voz)`: troca a voz, e a voz que já está escolhida refaz o ajuste do tom (o clique nela de novo);
   chamado pelo `POST /api/pedal_voz`, fora do laço, numa thread só dele e na

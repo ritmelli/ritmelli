@@ -19,3 +19,11 @@ mesa), o `mix.js` (o mixer da mesa), o `pedal.js` (os pedais da mesa), o `maleta
 seguir), o `letra-placa.js` (a letra de pixel das placas da mesa), o `prateleira.js` (o título e a contagem da plaqueta
 da prateleira), o `maleta-tit.js` (o título da placa da maleta) e o `mesa-topo.js` (a plaqueta e as teclas do topo da
 mesa em largura par).
+
+Parte do CSS do tema mora em arquivos ao lado do `index.html` (o `deck.css`, por exemplo), cada um com um bloco
+marcado inteiro e carregado por um `<link rel="stylesheet">` sem `media`, no mesmo lugar em que o bloco estava: a
+ordem das folhas e a cascata são as de antes, e os endereços relativos dentro do arquivo (`url(fonts/...)`) continuam
+saindo da pasta do tema. O bloco que estava dentro de um `@media` do `<style>` leva o mesmo `@media` em volta no
+arquivo, e o `<style>` fecha o `@media` antes do `<link>` e abre de novo depois. O que um gerador de `dev/` desenha
+mora em `gerado/` (o `gerado/molduras.css`, por exemplo): o gerador grava o arquivo inteiro e não mexe no
+`index.html`, e o que se muda à mão ali some na próxima vez que ele roda.

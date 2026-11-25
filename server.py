@@ -9,6 +9,7 @@ propria (janela.py), ou no navegador sem o WebView2; --no-browser nao abre nenhu
 """
 import argparse
 import asyncio
+import contextlib
 import importlib
 import json
 import math
@@ -59,6 +60,9 @@ YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 YT_URL = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
 PAGINA_FOLGA = 8  # a busca pede tantos a mais na pagina de resultados: canal e playlist ocupam lugar e saem
 TICK = 1 / 15
+# a versao do contrato do Estado e do SSE (o "api" do snapshot, ver o API.md): sobe so quando muda o que um
+# cliente de hoje ja le (um campo ou um evento sai, muda de nome ou de sentido); campo, evento ou rota nova nao sobe
+API = 1
 REMOTO_DURACAO_MAX_S = 24 * 3600  # a duracao que o remoto manda na fila: o visor (engine.Onda) aloca por ela
 ESCUTA_S = 30.0  # tocando de fato esse tempo (ou 80% do disco, se for mais curto), conta uma escuta
 BUSCA_MAX = 200  # o carregar mais da busca vai ate aqui
@@ -771,9 +775,9 @@ class App:
     @classmethod
     def pedal_voz(cls):
         """O estado do pedal de troca de voz (o modulo de fora, ver o fx.py): a voz escolhida, o passo do visor e o
-        progresso dele; None sem o modulo. Roda a cada tick do SSE em cada pagina aberta: o progresso vai em passos de
-        1/12 (a barra do visor tem 6 blocos), para o Estado inteiro nao mudar a cada leitura. Um estado que nao deu para
-        ler sai como a primeira voz sem passo."""
+        progresso dele; None sem o modulo. Roda uma vez a cada volta do SSE, a mesma para as paginas abertas: o
+        progresso vai em passos de 1/12 (a barra do visor tem 6 blocos), para o Estado inteiro nao mudar a cada leitura.
+        Um estado que nao deu para ler sai como a primeira voz sem passo."""
         mod = fx.pistavoz
         if mod is None:
             return None
@@ -2025,6 +2029,59 @@ def yt_msg(ex):
     return m[:160] or type(ex).__name__
 
 
+class Voltas:
+    """A publicacao do SSE: uma volta a cada intervalo, montada uma vez para todas as conexoes abertas. A volta e a
+    captura (o state e o tick saem do mesmo App.leitura) com cada evento ja em bytes; a conexao manda dela o que mudou
+    desde a ultima que entregou, e o caps e a autorizacao ficam com a conexao. A que esta com o envio suspenso segura a
+    sua volta inteira e, ao voltar, pula para a mais nova: as outras nao esperam por ela. Sem conexao aberta, nada e
+    montado.
+
+    monta(volta de antes ou None) -> dict da volta; o n (o numero dela) e daqui."""
+
+    def __init__(self, monta, intervalo):
+        self.monta, self.intervalo = monta, intervalo
+        self.volta = None  # a ultima montada; None sem ninguem ligado (a proxima conexao nao recebe uma velha)
+        self.n = 0  # quantas ja montou: so cresce, e a conexao que ficou de uma rodada antiga nao espera para sempre
+        self.ouvintes = 0
+        self._tarefa = self._nova = None  # o laco que monta e o futuro da proxima volta
+
+    @contextlib.contextmanager
+    def ouvinte(self):
+        self.ouvintes += 1
+        try:
+            yield
+        finally:
+            self.ouvintes -= 1
+            if not self.ouvintes:
+                self.volta = None
+
+    async def proxima(self, n):
+        """A volta mais nova depois da de numero n (0: a de agora, se houver); sem ela ainda, espera a seguinte. O erro
+        de montar a volta sobe para quem a espera, como quando cada conexao lia a sua."""
+        while self.volta is None or self.volta["n"] <= n:
+            if self._nova is None:
+                self._nova = asyncio.get_running_loop().create_future()
+            if self._tarefa is None or self._tarefa.done():
+                self._tarefa = asyncio.ensure_future(self._gira())
+            await asyncio.shield(self._nova)  # a conexao que fecha no meio nao cancela a espera das outras
+        return self.volta
+
+    async def _gira(self):
+        while self.ouvintes:
+            pronta, self._nova = self._nova, asyncio.get_running_loop().create_future()
+            try:
+                v = self.monta(self.volta)
+            except Exception as ex:  # noqa: BLE001 - vai para quem espera esta volta; a proxima conexao recomeca
+                self.volta = None
+                pronta.set_exception(ex)
+                pronta.exception()  # ninguem esperando: o asyncio nao reclama do erro sem leitor
+                return
+            self.n += 1
+            v["n"], self.volta = self.n, v
+            pronta.set_result(None)
+            await asyncio.sleep(self.intervalo)
+
+
 def j_ok(**kw):
     return web.json_response({"ok": True, **kw})
 
@@ -2164,12 +2221,34 @@ def build(app_state):
 
     r = web.RouteTableDef()
 
+    def leitura():
+        """O snapshot base, o mesmo para toda conexao: o App.leitura (o estado e a posicao da mesma captura) com o
+        "api" e o "mock". O que e de cada conexao (o caps) entra depois."""
+        s, pos = A.leitura()
+        return {**s, "api": API, **marca()}, pos
+
+    def evento(nome, dados):
+        return f"event: {nome}\ndata: {json.dumps(dados, ensure_ascii=False)}\n\n".encode("utf-8")
+
+    def monta_volta(antes):
+        """A volta do SSE (Voltas): o state, a prateleira e os jobs com a chave de cada um e o evento em bytes, e o tick
+        da mesma captura. O que nao mudou desde a volta de antes e o mesmo objeto: a conexao compara por identidade."""
+        s, pos = leitura()
+        jb = [dict(x) for x in A.public_jobs()]  # a mesma copia na chave e no evento: o download muda os de la
+        v = {"tick": evento("tick", {"pos": round(pos, 2), "levels": {k: round(x, 4) for k, x in E.levels.items()}})}
+        for nome, chave, dados in (("state", s, lambda: s), ("library", A.lib.version, A.lib.public),
+                                   ("jobs", jb, lambda: jb)):
+            v[nome] = antes[nome] if antes is not None and antes[nome][0] == chave else (chave, evento(nome, dados()))
+        return v
+
+    voltas = Voltas(monta_volta, TICK)
+
     @r.get("/api/state")
     async def state(request):
         # o caps: o que quem pede pode fazer (o papel do guard, permissao.caps)
-        s, pos = A.leitura()  # o estado e a posicao da mesma captura
+        s, pos = leitura()  # o estado e a posicao da mesma captura
         return web.json_response({**s, "pos": round(pos, 2),
-                                  "levels": dict(E.levels), "caps": perm.caps(request["papel"]), **marca()})
+                                  "levels": dict(E.levels), "caps": perm.caps(request["papel"])})
 
     @r.get("/api/onda/{iid}")
     async def onda(request):
@@ -2623,36 +2702,31 @@ def build(app_state):
         resp = web.StreamResponse(headers={"Content-Type": "text/event-stream",
                                            "Cache-Control": "no-cache"})
         await resp.prepare(request)
-        last = {"state": None, "library": -1, "jobs": None}
         if request["papel"] == "pc":
             A.atualizacao.ao_abrir()  # a pagina do PC abriu: consulta a versao nova, se faz tempo (atualizacao.py)
-
-        async def send(ev, data):
-            await resp.write(f"event: {ev}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-                             .encode("utf-8"))
         try:
-            await send("caps", perm.caps(request["papel"]))  # o papel nao muda na conexao: a revogacao a encerra
-            while not A.closing:
-                if not ainda_vale(request):
-                    # desconectado no PC, ou a sessao remota acabou: o tema pede o codigo sem esperar a reconexao
-                    await send("desconectado", {})
-                    break
-                # o state e o tick desta volta saem da mesma captura, valendo ate o fim do envio dela, mesmo se o
-                # motor virar no meio: cada posicao e da faixa que esta volta entregou
-                s, pos = A.leitura()
-                if s != last["state"]:
-                    last["state"] = s
-                    await send("state", s)
-                if A.lib.version != last["library"]:
-                    last["library"] = A.lib.version
-                    await send("library", A.lib.public())
-                jb = A.public_jobs()
-                if jb != last["jobs"]:
-                    last["jobs"] = [dict(x) for x in jb]
-                    await send("jobs", jb)
-                await send("tick", {"pos": round(pos, 2),
-                                    "levels": {k: round(v, 4) for k, v in E.levels.items()}})
-                await asyncio.sleep(TICK)
+            # o papel nao muda na conexao: a revogacao a encerra
+            await resp.write(evento("caps", perm.caps(request["papel"])))
+            with voltas.ouvinte():
+                n, entregue = 0, {}
+                while not A.closing:
+                    v = await voltas.proxima(n)  # a mesma volta de todas as conexoes (Voltas)
+                    if A.closing:
+                        break
+                    if not ainda_vale(request):
+                        # desconectado no PC, ou a sessao remota acabou: o tema pede o codigo sem esperar a reconexao
+                        await resp.write(evento("desconectado", {}))
+                        break
+                    # o state e o tick desta volta saem da mesma captura, valendo ate o fim do envio dela, mesmo se o
+                    # motor virar no meio: cada posicao e da faixa que esta volta entregou
+                    for nome in ("state", "library", "jobs"):
+                        antes = entregue.get(nome)
+                        if v[nome] is not antes:
+                            entregue[nome] = v[nome]
+                            if antes is None or v[nome][0] != antes[0]:  # o que voltou ao que ela ja mandou nao vai
+                                await resp.write(v[nome][1])
+                    await resp.write(v["tick"])
+                    n = v["n"]
         except (ConnectionResetError, asyncio.CancelledError):
             pass
         return resp

@@ -10,8 +10,10 @@ as das barras do palco (--trilho-moldura, --trilho-fundo, --trilho-aceso e --cur
 maleta do A seguir (--maleta-canto-a a -d, --maleta-dobradica, --maleta-fecho, --maleta-alca, --maleta-meio-*,
 --maleta-boca-*, o casco em perspectiva, --maleta-tampa-* e --maleta-base-*, e o recorte do disco entreaberto,
 --maleta-disco-*) no
-bloco entre "pecas:inicio" e "pecas:fim" do themes/ritmelli/index.html, e no JS os SVGs do pisador (PE_SVG), do LED (LED_SVG), os knobs dos pedais com os ponteiros (KNOBS: o creme, o baquelite e o chicken-head), a chave do "So este disco / Tocar parecidas" (CHAVE_PARECIDAS) e o salvar da
-parecida no prato (SALVAR_PIXEL, com as --salvar-aceso-* do aro).
+themes/ritmelli/gerado/pecas.css, e no themes/ritmelli/gerado/pecas.js os SVGs do pisador (PE_SVG), do LED (LED_SVG), os knobs dos pedais com os ponteiros (KNOBS: o creme, o baquelite e o chicken-head), a chave do "So este disco / Tocar parecidas" (CHAVE_PARECIDAS) e o salvar da
+parecida no prato (SALVAR_PIXEL, com as --salvar-aceso-* do aro). Grava os dois arquivos inteiros, que o index.html
+do tema carrega (o .css por um <link>, o .js por um <script src> antes do script principal, que usa as constantes), e
+nao abre o index.html. Rodado de novo com o mesmo desenho, nao muda nenhum dos dois.
 
 O braco: o tema gira o .braco em volta do pivo (o anguloPara() da o angulo do sulco; parado ele volta
 ao descanso). Desenhado reto e girado ele viraria um retangulo liso; por isso o desenho e o braco
@@ -41,11 +43,9 @@ pequeno 4/3 px (4 px de tela: no icone pequeno voltou dois passos); contorno
 de 2 celulas.
 """
 import math
-import re
-import sys
 from urllib.parse import quote
 
-from molduras import CONTORNO, TEMA
+from molduras import CONTORNO, GERADO, grava_arquivo
 
 # o descanso (reto no celular, o moverBraco()) e seis no curso do disco, de 4 em 4 graus (o desenhoDoBraco() do tema
 # corta em 15, 30, 34, 38, 42 e 46): sobram no maximo 2 graus de giro; com 5, a alca fina da cabeca virava zigue-zague.
@@ -1346,27 +1346,21 @@ def main():
     # fora do bloco do celular: as pecas valem nas duas telas
     bloco = ("/* pecas:inicio (gravado pelo dev/pecas.py: o desenho mora la, nao editar aqui) */\n"
              ".app {\n" + "\n".join(linhas) + "\n}\n/* pecas:fim */")
-    txt = TEMA.read_text(encoding="utf-8")
-    novo, n = re.subn(r"^/\* pecas:inicio.*?/\* pecas:fim \*/", lambda _: bloco, txt, flags=re.S | re.M)
-    if n != 1:
-        sys.exit("bloco pecas:inicio/fim nao encontrado no tema (ou repetido)")
-    novo, n = re.subn(r"const PE_SVG = '[^\n]*';(\nconst LED_SVG = '[^\n]*';)?",
-                      lambda _: f"const PE_SVG = '{pisador()}';\nconst LED_SVG = '{svg_led}';", novo)
-    if n != 1:
-        sys.exit("const PE_SVG nao encontrada no tema (ou repetida)")
+    mudou = grava_arquivo(GERADO / "pecas.css", bloco + "\n")
+    # as constantes do JS, na ordem em que o script principal do tema as tinha
     js = ",\n".join(f"  {nome}: ['{corpo}', [{', '.join(repr(p) for p in ponteiros)}]]" for nome, (corpo, ponteiros) in knobs.items())
-    novo, n = re.subn(r"const KNOBS = \{\n(?:  [^\n]*\n)*\};", lambda _: f"const KNOBS = {{\n{js}\n}};", novo)
-    if n != 1:
-        sys.exit("const KNOBS nao encontrada no tema (ou repetida)")
-    novo, n = re.subn(r"const CHAVE_PARECIDAS = '[^\n]*';", lambda _: f"const CHAVE_PARECIDAS = '{chave_parecidas()}';", novo)
-    if n != 1:
-        sys.exit("const CHAVE_PARECIDAS nao encontrada no tema (ou repetida)")
-    novo, n = re.subn(r"const SALVAR_PIXEL = '[^\n]*';", lambda _: f"const SALVAR_PIXEL = '{salvar}';", novo)
-    if n != 1:
-        sys.exit("const SALVAR_PIXEL nao encontrada no tema (ou repetida)")
-    if novo != txt:
-        TEMA.write_text(novo, encoding="utf-8", newline="\n")
-    print(f"braco a {list(ANGULOS.values())} graus, {sum(len(x) for x in linhas)} caracteres" + ("" if novo != txt else " (sem mudanca)"))
+    mudou |= grava_arquivo(GERADO / "pecas.js", (
+        "/* gravado pelo dev/pecas.py (o desenho mora la, nao editar aqui): os knobs dos pedais com os ponteiros (KNOBS),\n"
+        "   a chave do \"So este disco / Tocar parecidas\" (CHAVE_PARECIDAS), o salvar da parecida no prato (SALVAR_PIXEL),\n"
+        "   o pisador (PE_SVG) e o LED (LED_SVG) dos pedais. O index.html do tema carrega este arquivo antes do script\n"
+        "   principal, que usa as constantes */\n"
+        "'use strict';\n"
+        f"const KNOBS = {{\n{js}\n}};\n"
+        f"const CHAVE_PARECIDAS = '{chave_parecidas()}';\n"
+        f"const SALVAR_PIXEL = '{salvar}';\n"
+        f"const PE_SVG = '{pisador()}';\n"
+        f"const LED_SVG = '{svg_led}';\n"))
+    print(f"braco a {list(ANGULOS.values())} graus, {sum(len(x) for x in linhas)} caracteres" + ("" if mudou else " (sem mudanca)"))
 
 
 if __name__ == "__main__":
