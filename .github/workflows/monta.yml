@@ -54,7 +54,8 @@ jobs:
       # as conferências só da biblioteca padrão (o STDLIB do dev/testa_tudo.py), antes de montar: os textos nas duas
       # línguas (um arquivo quebrado abriria a tela em inglês), os dados de uso, a troca de nome de Vitrola para
       # Ritmelli, a pasta do teste sem som, as vozes do pedal, o pareamento do celular, a gravação dos dados, o filtro
-      # nas vagas de efeito de um microfone (num registro falso) e os ganchos do motor para o módulo de fora. Sem rede.
+      # nas vagas de efeito de um microfone (num registro falso), os ganchos do motor para o módulo de fora e a regra da
+      # pasta protegida (em memória). Sem rede.
       # A parte que pede as bibliotecas do app fica para o testa.yml, que roda em todo PR
       - name: Conferências só da biblioteca padrão
         env:

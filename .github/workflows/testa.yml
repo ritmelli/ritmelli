@@ -57,13 +57,21 @@ jobs:
         id: testes
         if: ${{ !cancelled() && steps.ruff.outcome != 'skipped' }}
         run: python dev/testa_tudo.py --resumo "$env:RUNNER_TEMP\resumo.md"
+      # a pasta protegida no disco de verdade: cria uma pasta em Program Files e mexe na ACL dela com o icacls, por isso
+      # precisa de administrador (a máquina do GitHub é; num PC, só num Windows de teste). O modo em memória está no STDLIB
+      - name: Pasta protegida no disco
+        id: disco
+        if: ${{ !cancelled() && steps.ruff.outcome != 'skipped' }}
+        run: python dev/testa_pasta_protegida.py --disco
       - name: Resumo
         id: resumo
         if: always()
         env:
           RUFF: ${{ steps.ruff.outcome }}
+          DISCO: ${{ steps.disco.outcome }}
         run: |
           $l = @("**ruff:** $(if ($env:RUFF -eq 'success') { '✅ limpo' } elseif ($env:RUFF -eq 'failure') { '❌ achou erro (marcado nas linhas do diff)' } else { "não rodou ($env:RUFF)" })", '')
+          $l += @("**Pasta protegida no disco** (``testa_pasta_protegida.py --disco``): $(if ($env:DISCO -eq 'success') { '✅' } elseif ($env:DISCO -eq 'failure') { '❌ (ver o passo na execução)' } else { "não rodou ($env:DISCO)" })", '')
           if (Test-Path "$env:RUNNER_TEMP\resumo.md") { $l += Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" }
           $texto = $l -join "`n"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
