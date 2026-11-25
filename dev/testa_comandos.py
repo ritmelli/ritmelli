@@ -303,7 +303,7 @@ def voltas(A, E):
 
     # o vigia ganha a virada e fica suspenso no meio da conciliacao, logo antes de guardar no Anterior o que saiu; o
     # Proxima que chega nesse meio espera, e o Anterior guarda o que saiu na virada antes do disco da virada
-    guardar = A._guardar_historico
+    guardar = A.save_history
     dentro, solta, vistos = threading.Event(), threading.Event(), []
 
     def devagar(guarda):
@@ -313,7 +313,7 @@ def voltas(A, E):
                 solta.wait(5)
             return guarda(novo_id, tr)
         return f
-    A._guardar_historico = devagar(guardar)
+    A.save_history = devagar(guardar)
     try:
         with mock.patch.object(A, "tocar_entrada", side_effect=lambda q, **_: vistos.append(historico(A)[-1:])):
             vigia = threading.Thread(target=cmd.avanca, args=(A,), kwargs={"virada": v})
@@ -329,7 +329,7 @@ def voltas(A, E):
         confere(vistos == [["d3"]], f"e so toca depois de o Anterior guardar o que saiu na virada ({vistos})")
     finally:
         solta.set()
-        del A._guardar_historico  # volta o do App
+        del A.save_history  # volta o do App
     pendente()
 
     # a leitura pega o _qlock do motor: com ele na mao de outro (o _mixa no meio do bloco), ela espera
@@ -364,13 +364,13 @@ def voltas(A, E):
             "solto o _qlock, a leitura volta com a faixa, a posicao e a fila da virada")
 
     # o vigia suspenso no meio da conciliacao, com a fila_lock na mao: a leitura espera e nunca ve a virada sem a fila
-    tirar, dentro, solta = A._tirar, threading.Event(), threading.Event()
+    tirar, dentro, solta = A.remove_from_queue, threading.Event(), threading.Event()
 
     def tirar_devagar(q):
         dentro.set()
         solta.wait(5)
         tirar(q)
-    A._tirar = tirar_devagar
+    A.remove_from_queue = tirar_devagar
     vigia = threading.Thread(target=A._volta_passagem)
     vigia.start()
     dentro.wait(5)
@@ -383,7 +383,7 @@ def voltas(A, E):
     vigia.join(5)
     leitor.join(5)
     ate(lambda: A.preparando is None)  # a volta ja prepara a seguinte (a d2): o teste so segue com ela pronta
-    A._tirar = tirar
+    A.remove_from_queue = tirar
     confere(lidas and lidas[0][0]["track"]["id"] == "d1" and [q["qid"] for q in lidas[0][0]["queue"]] == [y["qid"]],
             "e depois le a virada conciliada: a mesma faixa e a mesma fila")
     confere(E.virou is None and fila(A) == ["d2"] and historico(A)[-1:] == ["d3"] and no_prato(E) == "d1",
@@ -556,7 +556,7 @@ def andamento(A, E):
         antes = dict(ativo())
         medida = v if o_que == "audio" else {"ini": 100.0, "fim": 101.0}
         with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(automatico, "ANDAMENTO_APOS_S", -1),
-              mock.patch.object(server, "save_json", grava), mock.patch.object(A.automatico, "_a_medir", a_medir),
+              mock.patch.object(automatico, "save_json", grava), mock.patch.object(A.automatico, "_a_medir", a_medir),
               mock.patch.object(A.automatico, "versao_audio", return_value=v),
               mock.patch.object(A.automatico, "_mede_andamento", return_value={"ini": 100.0, "fim": 101.0}),
               mock.patch.object(A.automatico, "_troca_audio", side_effect=lambda *a: trocas.append(a)),
@@ -1547,7 +1547,7 @@ def avanco(A, E):
         t.join(0.3)
         esperou = t.is_alive() and E.track is tr
         with A.fila_lock:
-            A._solta_reserva(r, None)
+            A.release_reservation(r, None)
         t.join(5)
     confere(esperou and no_prato(E) == "d2" and fila(A) == [],
             f"a parecida sem stream espera o avanco de outro, e com ele falhando toca a seguinte ({esperou}, "
@@ -1602,7 +1602,7 @@ def avanco(A, E):
             with E._qlock:
                 r = A.reserva = cmd.Reserva(E._deck, E._deck.linha, x)
             reservada = A.automatico._presa()
-            A._solta_reserva(r, None)
+            A.release_reservation(r, None)
             depois = A.automatico._presa()
     confere(not antes and reservada and not depois,
             f"a primeira da fila com um avanco reservado nao troca no Automatico ({antes}, {reservada}, {depois})")
@@ -1660,7 +1660,7 @@ def avanco(A, E):
         A._abre_stream(tr, "ccccccccccc", True)
     ficou = E.track is tr
     with A.fila_lock:
-        A._solta_reserva(r, None)
+        A.release_reservation(r, None)
     confere(ficou, "a parecida sem stream que esperou o avanco de outro ate o prazo nao para o prato com ele em curso")
 
     # nem com uma entrada que chegou na fila depois do avanco vazio: o stop confere a fila no trecho do _qlock dele
@@ -2174,7 +2174,7 @@ def avanco(A, E):
             E._virar_em = E.pos
         E._mixa(eng.BLOCK)
     with A.fila_lock:
-        A._tirar(x)  # a entrada da virada saiu da fila antes de conciliar
+        A.remove_from_queue(x)  # a entrada da virada saiu da fila antes de conciliar
     no_avanco.clear()
     libera.clear()
     so_se[0] = lambda kw: kw.get("pular")
