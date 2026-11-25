@@ -216,8 +216,8 @@ def executa(cmd, limite=LIMITE_S, **kw):
 
 
 def roda(titulo, lista, completo, jobs=1):
-    """Runs each test of the list, each in its own process: with jobs above 1, the ones outside SERIAL that many at a
-    time, then the SERIAL ones one by one, alone. Returns (the failures, the markdown lines), in the order of the
+    """Runs each test of the list, each in its own process: with jobs above 1, the ones outside SERIAL and BANCA that
+    many at a time, then the others one by one, alone, in the order of the list. Returns (the failures, the markdown lines), in the order of the
     list."""
     feitos, trava = {}, threading.Lock()
 
@@ -238,7 +238,7 @@ def roda(titulo, lista, completo, jobs=1):
         feitos[t] = (motivo, dt, saida)
 
     t0 = time.monotonic()
-    juntos = [t for t in lista if t not in SERIAL] if jobs > 1 else []
+    juntos = [t for t in lista if t not in SERIAL and t not in BANCA] if jobs > 1 else []
     with ThreadPoolExecutor(max(1, jobs)) as ex:
         list(ex.map(um, juntos))
     for t in lista:
@@ -388,7 +388,15 @@ def captura(a):
     if Path(a.captura).resolve().is_relative_to(pasta / "compara"):
         raise SystemExit(f"the cache folder {a.captura} is inside {pasta / 'compara'}: give it a folder of its own")
     head = executa(["git", "rev-parse", "HEAD"], limite=60)[1].strip()
-    cod, saida = executa([sys.executable, "dev/compara.py", "--ref", "--pasta", str(pasta / "compara")])
+    wt = Path(tempfile.mkdtemp(prefix="ritmelli-head-")) / "head"
+    cod, saida = executa(["git", "worktree", "add", "--detach", str(wt), head], limite=300)
+    try:
+        if cod == 0:
+            cod, saida = executa([sys.executable, "dev/compara.py", "--ref", "--raiz", str(wt),
+                                  "--pasta", str(pasta / "compara")])
+    finally:
+        executa(["git", "worktree", "remove", "--force", str(wt)], limite=300)
+        shutil.rmtree(wt.parent, ignore_errors=True)
     print(f"--- compara --ref of the HEAD {head[:12]}: exits {cod}\n{saida.rstrip()}", flush=True)
     if cod != 0:
         md = [f"<details><summary>❌ compara: a captura do HEAD <code>{head[:12]}</code> não vale (sai {cod})"
