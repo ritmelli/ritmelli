@@ -50,7 +50,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 
 | Área | Arquivos | Teste (sem caminho, em `dev/`) |
 | --- | --- | --- |
-| Motor de áudio | `engine.py`, `sonoridade.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_passagem`, `testa_anel`, `testa_ganchos` |
+| Motor de áudio | `engine.py`, `sonoridade.py`, `transicao.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_passagem`, `testa_transicao`, `testa_anel`, `testa_ganchos` |
 | Servidor e YouTube | `server.py`, `yt_fora.py`, `yt_erros.py` | `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py` | `testa_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`), o `grava_cfg` do `server.py` | `testa_grava` |
