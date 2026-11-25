@@ -47,7 +47,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 
 ## O mapa: área, arquivos e teste
 
-| Área | Arquivos | Teste em `dev/` |
+| Área | Arquivos | Teste (sem caminho, em `dev/`) |
 | --- | --- | --- |
 | Motor de áudio | `engine.py`, `sonoridade.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone` |
 | Servidor e YouTube | `server.py`, `yt_fora.py`, `yt_erros.py` | `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
@@ -59,7 +59,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
 | Dados de uso | `metricas.py` | `testa_metricas` |
 | Troca de nome | `migra.py` | `testa_migra` |
-| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` contra o `--mock` (com `--boas-vindas` se mudou as boas-vindas) |
+| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e um `library.json` com `[]` |
 | Sem teste | `batida.py`, `compasso.py`, `andamento.py`, `janela.py`, `winvol.py` | o PR diz como conferiu |
 
 O `testa_filtro`, o `testa_microfone`, o `testa_voz` e o `teste_reamostra.py` precisam das DLLs do
