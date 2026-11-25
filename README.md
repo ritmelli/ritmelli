@@ -471,6 +471,7 @@ The code, its comments and the internal docs are in Brazilian Portuguese.
 | `ritmelli.spec` | the executable's configuration (PyInstaller) |
 | `soundboard.ps1` | starts, stops and checks Ritmelli from a terminal |
 | `server.py` | the aiohttp server: the API, the events (SSE), the queue, Play similar songs, search and download |
+| `comandos.py` | the server's music commands (play, queue, transport, music volume) and the queue advance they share |
 | `engine.py` | the audio engine: mixing, the two decks and the transitions |
 | `transicao.py` | the transition math that reads no audio: where each record ends and starts by its block levels, fade or hard ending, how the next one comes in, and the timing from the measured beat grids |
 | `batida.py`, `compasso.py`, `andamento.py` | beat analysis: the tempo and beat grid of each transition (`batida.py`), the downbeat (`compasso.py`) and each record's tempo, which orders Play similar songs (`andamento.py`) |
@@ -544,8 +545,8 @@ The description at the top of each file (in Portuguese) says exactly what it che
   `--codigo <folder>` runs the same pairs against the engine of another checkout, such as the base of your PR),
   `dev/testa_transicao.py` (the transition math, `transicao.py`, on the engine's calls recorded from those pairs;
   `--grava` records them again) and `dev/testa_anel.py`.
-- The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
-  `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
+- The server and YouTube access (`server.py`, `comandos.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_comandos.py`,
+  `dev/testa_adianta.py`, `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
   `dev/testa_microfone.py`, `dev/testa_anel.py` (the ring is released after every failure), `dev/testa_voz.py` and
   `microfone/apo/teste/teste_reamostra.py` (the filter's resampler, `reamostra.h`).

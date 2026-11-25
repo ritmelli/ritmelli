@@ -7,6 +7,9 @@ download pelo yt_dlp (no `yt_fora.py`). Instalar com `pip install -U "yt-dlp[def
 ter um runtime de JavaScript (Node ou Deno): sem ele o YouTube esconde formatos e o stream
 falha de vez em quando. O servidor habilita o Node e o Deno nas opções do yt-dlp.
 
+A regra dos comandos de música (tocar, enfileirar, pular, pausar, parar, a fila e o volume) mora no
+[`comandos.py`](comandos.md), e o avanço da fila é uma operação só, dele; as rotas só leem o corpo e respondem.
+
 - Tocar um vídeo que não está na prateleira começa na hora pelo stream do YouTube (o
   yt-dlp dá o endereço do áudio em 1 a 3 s e o ffmpeg toca dele), com o download seguindo
   por trás. Quando o arquivo chega, o motor passa para ele sem cortar, do ponto onde o

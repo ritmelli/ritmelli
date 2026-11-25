@@ -21,6 +21,7 @@ Cada peça tem o seu arquivo em `arquitetura/`: quem muda uma peça muda só o a
   posição e o mapa de cada comando para a rota local (os esquemas e as fixtures em `protocolo-remoto/v1/`).
 - [`atualizacao.py`](arquitetura/atualizacao.md): o aviso de versão nova e a atualização pelo instalador.
 - [`server.py`](arquitetura/server.md): o servidor, a fila, as passagens, o Automático e o limite de abas.
+- [`comandos.py`](arquitetura/comandos.md): os comandos de música do servidor e o avanço da fila.
 - [`API.md`](../API.md): contrato da API e checklist de todo tema.
 - [`themes/` e `gallery/`](arquitetura/temas.md): as interfaces e a galeria.
 - [`dev/`](arquitetura/dev.md): as ferramentas de print, de tela e de pixel art.
