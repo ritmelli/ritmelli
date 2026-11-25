@@ -222,25 +222,8 @@ jobs:
           NOTAS: ${{ inputs.notas }}
           NOTAS_EN: ${{ inputs.notas_en }}
         run: |
-          $saida = 'instalador\saida'
-          $deno = (Get-ChildItem instalador\vendor -Directory -Filter 'deno-*' | Select-Object -First 1).FullName
-          $url = "https://github.com/ritmelli/ritmelli-releases/releases/download/v$env:VERSAO/Ritmelli-$env:VERSAO-setup.exe"
-          $args_ = @('--setup', "$saida\Ritmelli-$env:VERSAO-setup.exe", '--url', $url, '--app', 'dist\ritmelli',
-                     '--bin', 'instalador\ffmpeg\bin', '--bin', $deno, '--saida', $saida)
-          # as notas em português e as em inglês, cada uma num arquivo, uma por linha
-          foreach ($n in @(@('NOTAS', 'notas', '--notas'), @('NOTAS_EN', 'notas_en', '--notas-en'))) {
-            # o campo vazio nem vira variavel no Windows: o GetEnvironmentVariable da nulo, sem o erro que pararia o passo
-            $notas = @([Environment]::GetEnvironmentVariable($n[0]) -split '\|' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-            if ($notas.Count) {
-              $arq = Join-Path $env:RUNNER_TEMP "$($n[1]).txt"
-              $notas | Set-Content -Path $arq -Encoding utf8
-              $args_ += @($n[2], $arq)
-            }
-          }
-          $parcial = "$saida\Ritmelli-$env:VERSAO-parcial.exe"
-          if (Test-Path $parcial) { $args_ += @('--parcial', $parcial, '--parcial-info', "$saida\PARCIAL-$env:VERSAO.json") }
-          & "$env:LOCALAPPDATA\ritmelli-build\Scripts\python.exe" instalador\atualizacao\publica.py @args_
-          if ($LASTEXITCODE -ne 0) { throw "o publica.py saiu com $LASTEXITCODE" }
+          & "$env:LOCALAPPDATA\ritmelli-build\Scripts\python.exe" instalador\atualizacao\build_manifest.py
+          if ($LASTEXITCODE -ne 0) { throw "build_manifest.py exited with $LASTEXITCODE" }
       # a sentinela da pasta protegida (instalador/atualizacao/parcial.py): no manifesto novo e fora da parcial, quando
       # houver uma. Se a parcial a trouxesse, o atualizador de uma versao de antes, que nao confere a pasta, a aplicaria
       - name: Confere a sentinela da pasta protegida
