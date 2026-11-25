@@ -185,7 +185,8 @@ class VigiaNoAnel:
         e.active = {"mic": mic, "monitor": ""}
         e._alvo = ALVOS[mic]
         st = contextlib.ExitStack()
-        inj = eng.Injetor(e, e._saude_segue)  # como o start: a reabertura do leitor perdido continua a janela
+        segue = e._saude_segue  # como o start: a reabertura do leitor perdido continua a janela, no mesmo microfone
+        inj = eng.Injetor(e, segue[1] if segue and segue[0] == mic else None)
         st.callback(inj.para)
         e._stack, e._injetor = st, inj
         self.aberturas.append((mic, time.monotonic()))

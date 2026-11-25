@@ -245,7 +245,8 @@ class EmCurso:
 class SaudeAudio:
     """A saude da saida para o jogo numa janela, para o evento "audio". Quem conta e a thread da saida (o Injetor do
     engine.py), a cada volta; quem fecha e o vigia daqui, a cada USO_S e ao desligar (fecha: o que ela contou, e a
-    proxima comeca). Cada Injetor tem a sua: trocar de Injetor (o audio reaberto) comeca outra. Os acumulados do
+    proxima comeca). Cada Injetor tem a sua: trocar de Injetor (o audio reaberto) comeca outra, salvo na reabertura do
+    leitor perdido (Engine._recupera_leitor), em que o novo continua a do de antes. Os acumulados do
     Injetor que o /api/state mostra seguem a parte, como estavam.
 
     O que o motor conta desde que abriu (os preparos de passagem, a voz pelo microfone de reserva e a Rubber Band, pelo
@@ -300,6 +301,13 @@ class SaudeAudio:
                 self.leitor_perdido_s += s * self._perdido
                 self.fx_no_filtro_s += s * self._fx
             self._leitores, self._perdido, self._fx = 0, False, False
+
+    def parado(self, s):
+        """O audio fechado s segundos na reabertura do leitor perdido: conta no estado da ultima volta (a perda segue)."""
+        with self._lock:
+            if self._totais is not None:
+                self._andou = True
+                self.leitor_perdido_s += s * self._perdido
 
     def fila(self, quadros, *, passagem=False, esticando=False):
         """O tanto no anel quando a thread chegou, com o leitor ja servido: o menor e as secas (vazio), contando a
@@ -554,9 +562,10 @@ class Metricas:
 
     def _fecha_audio(self, manda):
         """Fecha a janela do "audio" do Injetor de agora (sem ele, o audio fechado ou o --mock, nada) e, com manda,
-        poe o evento na fila. Sem manda, o que ela contou some: a janela que vale comeca ali."""
+        poe o evento na fila. Sem manda, o que ela contou some: a janela que vale comeca ali, e o descarte alcanca
+        tambem a do Injetor parado, que a reabertura do leitor perdido continuaria."""
         f = getattr(self.engine, "saude_audio", None)
-        j = f() if callable(f) else None
+        j = f(aberto=manda) if callable(f) else None
         p = j.fecha() if j is not None else None
         if manda and p is not None:
             self.evento("audio", **p)

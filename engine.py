@@ -1354,7 +1354,8 @@ class Engine:
         self._fechado = False     # close() de proposito: o vigia nao reabre
         self._caiu_no_vigia = False  # a reabertura do vigia falhou: ele pode tentar de novo
         self._recupera = None     # (microfone, reaberturas, monotonic da ultima) do leitor perdido (_recupera_leitor)
-        self._saude_segue = None  # a janela do "audio" que o Injetor da reabertura do leitor perdido continua
+        # (o microfone, a janela do "audio") que o Injetor da reabertura do leitor perdido continua, no mesmo microfone
+        self._saude_segue = None
         self._aviso = None        # aviso dos aparelhos (reserva, reabertura que falhou): so ele sai quando voltam
 
     # o deck do prato (o resto do motor fala com ele por estes nomes)
@@ -1449,7 +1450,8 @@ class Engine:
             st.enter_context(sd.InputStream(device=mic_i, channels=mic_d["max_input_channels"],
                                             samplerate=SR, blocksize=BLOCK, dtype="float32",
                                             extra_settings=WASAPI, callback=self._mic_cb))
-            inj = Injetor(self, self._saude_segue)
+            segue = self._saude_segue
+            inj = Injetor(self, segue[1] if segue and segue[0] == self.active["mic"] else None)
             st.callback(inj.para)
             if mon_i is not None:
                 st.enter_context(sd.OutputStream(device=mon_i, channels=2, samplerate=SR,
@@ -1600,11 +1602,13 @@ class Engine:
                 return
             print(f"game output: the microphone filter stopped reading \"{mic}\"; reopening the audio "
                   f"(attempt {n + 1} of {LEITOR_TENTATIVAS})", file=sys.stderr, flush=True)
-            self._saude_segue = inj.saude  # a perda que pede a reabertura fica na janela do evento "audio"
+            # a perda que pede a reabertura fica na janela do evento "audio", e o tempo da reabertura conta nela
+            self._saude_segue, t0 = (mic, inj.saude), time.monotonic()
             try:
                 self._reabre()
             finally:
                 self._saude_segue = None
+                inj.saude.parado(time.monotonic() - t0)
             # o Injetor novo (ou o de antes, se a reabertura falhou) ainda sem perda marcada
             self._recupera = (mic, n + 1, agora, (self._injetor, None))
 
@@ -2356,10 +2360,11 @@ class Engine:
         preparadas, os segundos de voz pelo microfone de reserva)."""
         return self.preparos, self.reserva_quadros / SR
 
-    def saude_audio(self):
+    def saude_audio(self, aberto=True):
         """A janela do evento "audio" do Injetor de agora (metricas.SaudeAudio), ou None sem audio aberto (o Injetor
-        de uma reabertura que falhou fica parado: nao conta)."""
-        inj = self._injetor if self._stack is not None else None
+        de uma reabertura que falhou fica parado: nao conta). aberto=False devolve tambem a do Injetor parado, que a
+        reabertura do leitor perdido ainda continua: o descarte da janela a alcanca."""
+        inj = self._injetor if self._stack is not None or not aberto else None
         return inj.saude if inj is not None else None
 
     def cancelar_pronto(self):

@@ -210,11 +210,11 @@ with tempfile.TemporaryDirectory() as tmp:
     class MotorComAudio(Motor):
         def __init__(self):
             super().__init__()
-            self.preparos, self.reserva_s = 0, 0.0
+            self.preparos, self.reserva_s, self.aberto = 0, 0.0, True
             self.janela = met.SaudeAudio(48000)
 
-        def saude_audio(self):
-            return self.janela
+        def saude_audio(self, aberto=True):  # como a do Engine: o Injetor parado so no descarte
+            return self.janela if self.aberto or not aberto else None
 
     def volta(e, s=0.01, **kw):
         """Uma volta do Injetor: s segundos no relogio, com o estado dado (o resto, o de um microfone normal)."""
@@ -380,6 +380,30 @@ with tempfile.TemporaryDirectory() as tmp:
             and re.fullmatch(r"[0-9a-f]{32}", a6[0]["distinct_id"] or "") is not None,
             f"aberto com a escolha no texto 2 e fechado logo: a janela conta desde a abertura do audio, sai com o id, "
             f"e o vigia para ({a6})")
+
+    # o aceite no meio de uma reabertura do leitor perdido que falhou (o Injetor parado): o que veio antes some
+    m, env = nova(cfg={"metricas": True}, tmp=tmp)
+    e = MotorComAudio()
+    m.engine = e
+    volta(e, 0.01, leitores=0)
+    e.janela.fila(0)  # antes do aceite
+    e.aberto = False  # a reabertura falhou: o audio fechado, o Injetor parado com a janela que a proxima continua
+    m.escolhe(True)  # o Enviar do aviso, no texto 2
+    e.aberto = True  # a reabertura seguinte deu certo, com a mesma janela
+    volta(e)
+    fecha_janela(m)
+    a11, _ = audios(m)
+    confere(len(a11) == 1 and a11[0]["secas"] == 0,
+            f"o aceite com o Injetor parado: a janela que a reabertura continua comeca no aceite ({a11})")
+    # o tempo da reabertura do leitor perdido conta na perda
+    volta(e, 0.01, leitores=1)
+    volta(e, 0.01, leitores=0)  # o leitor sumiu
+    e.janela.parado(1.5)  # a reabertura levou 1,5 s
+    volta(e, 0.01, leitores=0)
+    fecha_janela(m)
+    a12, _ = audios(m)
+    confere(len(a12) == 1 and a12[0]["leitor_perdido"] == 1 and a12[0]["leitor_perdido_s"] == 2,
+            f"o tempo da reabertura do leitor perdido entra no leitor_perdido_s ({a12})")
 
     # o desligar com a gravacao do config.json falhando: o cfg ja diz desligada, e nada do que veio antes fica
     m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
