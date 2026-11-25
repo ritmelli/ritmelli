@@ -1,0 +1,196 @@
+/* PEDALBOARD-INICIO */
+/* ---------- pedaleira: cada efeito e um pedal mini, no leiaute dos micro pedais (Mooer, TC mini, MXR mini): knob, LED
+   vermelho, nome, footswitch e as tomadas nas laterais. Sem os knobs pequenos dos cantos (pareciam tripofobia). O knob e
+   pintura: o pedal inteiro e o botao. Pisar liga, pisar no ligado desliga. Tres por fileira no celular; no computador
+   os grupos ficam lado a lado, ate seis ---------- */
+/* os cabos em pixel (medirCabosPedais) por cima dos pedais: os plugues encostam no contorno deles */
+.cabos-pedais { position: absolute; z-index: 0; pointer-events: none; user-select: none; display: block; image-rendering: pixelated; }
+/* (madrugada) a contagem e os nomes em pixel da prateleira sao so da mesa: a regra que os esconde fora dela mora no bloco
+   da mesa, dentro do @media de tela grande, e no celular o canvas da contagem aparecia ao lado da do DOM (54 discos . 54 discos).
+   (#112) O titulo em pixel do A seguir tambem: o desenhaTit() so o poe na mesa e nao o tira ao sair dela, e no PC ele
+   ficava ao lado do titulo do DOM (A seguir [botao] A seguir . 5). Na volta para a mesa ele e redesenhado com a contagem certa */
+body:not(.mesa-dj) :is(canvas.conta-px, canvas.nome-px, canvas.tit-px) { display: none; }
+/* (07/11) a musica e o artista da etiqueta da prateleira sao so da mesa: no celular e no PC sem mesa fica o nome inteiro */
+body:not(.mesa-dj) .estante .ficha :is(.prat-t, .prat-s) { display: none; }
+/* a fita escrita a mao no cabo SHOW SEXTA, na letra e na moldura do selo do atraso (a VOZ, torta, e pintada no canvas) */
+.palco .fita-escrita {
+  position: absolute; z-index: 3; pointer-events: none; user-select: none;
+  padding: .5px 5px 2px; font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; line-height: 1.25;
+  color: var(--tinta); background: #EFE4CF; white-space: nowrap;
+  border-image: var(--mold-etiqueta);
+}
+/* os pedais direto no feltro do painel, presos por velcro: sem tabua e sem cavidade */
+.palco #banco { position: relative; background: none; box-shadow: none; }
+/* a largura da pedaleira no celular de teste (360 px): 3 pedais de 80, os vaos de 12, as margens de 4
+   e de 10. Em tela mais larga ela fica no meio do feltro, nesse tamanho, em vez de esticar os pedais */
+@media (max-width: 899.98px) { .palco #banco { max-width: 292px; margin-inline: auto; padding: 14px 10px 16px; } }
+.palco .grupo-ef + .grupo-ef { margin-top: 16px; }
+/* a fita crepe com o nome do grupo em pixel: reta na moldura de fita (o contorno, os
+   filetes, a sombra dura e as pontas rasgadas em degrau, dev/molduras.py) e o nome na Jersey 10 dos
+   titulos, 1 px por pixel da letra, com 1 pixel entre as letras; a esquerda soma os 2 pixels que a
+   ultima letra deixa a direita, para o nome ficar no meio */
+.palco .suporte {
+  display: inline-block; margin: 0 0 11px 4px; padding: 2px 9px 2px 11px;
+  font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; line-height: .85714;
+  letter-spacing: .05357em; text-transform: uppercase; color: var(--tinta);
+  background: #E2D3B3; border-image: var(--mold-fita);
+}
+/* tamanhos das pecas do mock (knob e footswitch em SVG) */
+.palco .p-grande { width: 34px; height: 38px; margin-bottom: -4px; }
+.palco .p-grande > svg { display: block; overflow: visible; margin: var(--knob-margem); }   /* o tamanho e a margem vem do dev/pecas.py */
+.palco .p-pe { width: 36px; height: 36px; }
+.palco .p-pe svg { display: block; width: 100%; height: 100%; }
+.palco .p-pe .tampa-pisada { display: none; }
+/* corpo do pedal do mock (18/10): caixa fundida tipo 1590A com a borda arredondada e o
+   rebaixo da tampa, paredes sem costura e base de borracha, escala serigrafada no knob, LED de 3 mm
+   com aro, tomada de fonte no topo, porcas das tomadas e acoplador cilindrico entre os pedais */
+.palco .teclas { gap: 24px 12px; padding: 2px 4px 17px; }   /* a parede do pedal desce 8 px e a sombra tem 5 */
+@media (max-width: 899.98px) { .palco .teclas { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.palco .tecla {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "grande" "led" "nome" "pe" "tipo"; grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  justify-items: center; align-content: stretch; row-gap: 4px;
+  /* a face tem os 160 px da fileira e nao muda (o pedal nao aumenta; quem cede e o
+     nome, que cabe no que sobra, .t-nome); embaixo dela a parede da caixa, a profundidade dos pedais
+     de antes do pixel, desce 8 px por fora da fileira: a caixa tem 168 e a margem
+     de baixo devolve 8. A plaquinha do tipo pousa 7 px acima do pe da face, com o footswitch logo acima,
+     9 px abaixo de antes (na linha da COMP do Locutor e com mais altura para os nomes) */
+  height: 168px; min-height: 0; margin-bottom: -8px; padding: 20px 6px 15px; border: 0; border-radius: 6px;
+  text-align: center; color: var(--letra);
+  /* na lingua do Habbo (quinta rodada, 19/10): o esmalte numa cor
+     lisa, e a caixa na moldura de pixel (--mold-pedal, desenho do mock em dev/pedal.svg):
+     contorno com a quina em degrau, a linha clara colada por dentro, a parede da caixa embaixo da face
+     e a sombra dura no feltro (no lugar das seis paredes e das duas sombras esfumadas). A cor da parede
+     vem do --cor, por cima da textura martelada e por baixo da moldura: a frente em 5 px e o pe
+     escuro em 3 (a borracha, sem a linha marrom fixa que saia igual em todos) */
+  background: var(--cor);
+  box-shadow: inset 0 -3px 0 0 color-mix(in srgb, var(--cor) 48%, #1E0E06), inset 0 -8px 0 0 color-mix(in srgb, var(--cor) 66%, #382012);
+  border-image: var(--mold-pedal);
+}
+/* tracos serigrafados de IN/OUT na altura dos jacks (o rebaixo esfumado da tampa saiu) */
+.palco .tecla::before {
+  content: ""; position: absolute; inset: 3.5px 3.5px 8.5px; pointer-events: none;
+  --traco: color-mix(in srgb, var(--letra) 48%, transparent);
+  background: linear-gradient(90deg, var(--traco) 0 3.5px, transparent 3.5px calc(100% - 3.5px), var(--traco) calc(100% - 3.5px) 100%) no-repeat 0 47px / 100% 1.5px;
+}
+/* pintura martelada (hammertone) de equipamento dos anos 60/70: a textura fica, sem o brilho por cima */
+.palco .tecla[data-acabamento="martelado"] {
+  background-image: image-set(url("texturas/martelado.webp") 3x);
+  background-size: 48px 48px;
+  background-color: var(--cor);
+}
+
+/* pisar: o botao entra na porca; o pedal e a porca ficam. Afunda no instante do toque e volta
+   logo, como um pe rapido: o :active do Chrome no celular so chegava depois
+   de ele decidir que o toque nao era rolagem, e o pedal parecia demorar para ligar */
+.palco .tecla.pisando .p-pe .tampa { display: none; }   /* troca de quadro: o pisado desce 1 px (PE_DESCE do dev/pecas.py) */
+.palco .tecla.pisando .p-pe .tampa-pisada { display: inline; }
+
+/* knob de pixel com a escala serigrafada de 11 riscos e o arco no proprio SVG (dev/pecas.py), na cor da letra */
+.palco .p-grande {
+  grid-area: grande; position: relative; z-index: 1;
+  display: grid; place-items: center; line-height: 0;
+}
+.palco .p-grande .escala { fill: var(--letra); opacity: .9; }
+
+/* LED vermelho de pixel, como o dos pedais de verdade,
+   desenhado no dev/pecas.py (LED_SVG): o vidro de 8 px com o contorno, apagado com o ponto de luz e a
+   sombra dura, aceso com o miolo claro e o brilho em dois aneis de degrau; a classe acesa troca o
+   quadro, sem animacao. A caixa segue com os 8 px do vidro, o desenho sai dela o tanto do brilho */
+.palco .tecla .lampada {
+  grid-area: led; position: relative; z-index: 1;
+  width: 8px; height: 8px; border-radius: 0; background: none; box-shadow: none;
+}
+.palco .tecla .lampada > svg { display: block; position: absolute; left: var(--led-recuo); top: var(--led-recuo); }
+.palco .tecla .lampada .led-aceso, .palco .tecla .lampada.acesa .led-apagado { display: none; }
+.palco .tecla .lampada.acesa .led-aceso { display: inline; }
+
+/* nome serigrafado + tomada 9V DC no topo */
+/* o nome em pixel na Jersey 10 dos titulos: 18,667 px da 1 px de CSS por pixel da
+   letra e 12,444 px da 2/3 (2 px de tela no celular de teste), os dois tamanhos sem pixel borrado; o
+   caberNomes() fica no maior que cabe. A linha de 16 pixels da letra poe a base num pixel inteiro e
+   cabe o acento da maiuscula; a sombra dura desce 1 pixel da letra. Todos no negrito de pixel (a letra
+   repetida 1 pixel a direita, para engrossar os nomes), e os estilos: larga e estreita em
+   maiuscula, italica e normal como o nome e escrito (a letra de pixel inclinada borra) */
+.palco .tecla .t-nome {
+  grid-area: nome; align-self: center; max-width: 100%; padding: 0;
+  font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; line-height: .85714;
+  /* preso a altura que sobra entre a luz e o pisador, para o caberNomes() descer para a letra menor em
+     vez de o nome bater na luz; a margem de cima menor desce o nome 1 px, para a
+     letra ficar no meio entre a luz e a porca do pisador */
+  margin: -1px 0 -3px; max-height: calc(100% + 4px);
+  color: var(--letra); text-wrap: balance; overflow-wrap: normal;
+  /* o negrito come o pixel entre as letras: 1 pixel a mais entre
+     elas, e o mesmo na esquerda para o nome seguir no meio */
+  letter-spacing: .05357em; padding-left: .05357em;
+  text-shadow: .05357em 0 0 var(--letra), 0 .05357em 0 rgba(0,0,0,.20);
+}
+.palco .tecla[data-fonte="larga"] .t-nome, .palco .tecla[data-fonte="estreita"] .t-nome { text-transform: uppercase; }
+/* a letra menor (o caberNomes() poe a classe): linha de 15 pixels da letra (10 px, a base ainda num pixel
+   inteiro de tela), para as duas linhas ficarem longe da luz */
+.palco .tecla .t-nome.miuda { font-size: 12.444px; line-height: 10px; }
+/* o nome grande que passa do miolo usa a margem do pedal, 3 px de cada lado, antes de descer para a letra menor
+   (o MEGAFONE grande, em negrito e com as letras mais afastadas, 73 px no pedal de 80) */
+.palco .tecla .t-nome.na-margem { margin-left: -3px; margin-right: -3px; max-width: calc(100% + 6px); }
+/* a tomada de fonte sai por cima do contorno, lisa e contornada; as tomadas das laterais ficam por
+   baixo dos plugues que o medirCabosPedais desenha */
+.palco .tecla .t-nome::after {
+  content: ""; position: absolute; top: -6px; left: calc(50% - 7px); width: 14px; height: 6px;
+  pointer-events: none;
+  background: linear-gradient(90deg, #2E2724 0 3px, #5A4E45 3px 5px, #1E1916 5px 9px, #5A4E45 9px 11px, #2E2724 11px);
+  box-shadow: 0 0 0 1.5px var(--contorno), inset 0 1.5px 0 rgba(255,236,214,.25);
+}
+
+/* footswitch ancorado na chapa + tipo do efeito numa plaquinha */
+.palco .p-pe {
+  grid-area: pe; position: relative; z-index: 1;
+  display: grid; place-items: center; line-height: 0;
+}
+/* o tipo numa plaquinha invertida (a cor da letra de fundo, a do pedal na letra) na moldura miuda,
+   logo acima da frente da caixa; meio px mais alta que a fileira de antes, o nome guarda o espaco.
+   A moldura entra 3 px na plaquinha: 7 px de cada lado deixam 4 px entre ela e a letra (o texto encostava), e a direita desconta o espacamento que sobra depois da ultima letra. A
+   letra na largura normal: na estendida o RING MOD enchia o pedal de 80 px numa tela de 360 px */
+.palco .p-tipo {
+  grid-area: tipo; position: relative; z-index: 1;
+  display: block; margin: 0; padding: 0 6px 1.5px;   /* a base da Silkscreen fica mais baixa que a da Archivo: 1 px acima centra */
+  font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; font-stretch: 100%; letter-spacing: 0; line-height: 1;
+  color: var(--cor); background: var(--letra); white-space: nowrap;
+  border-image: var(--mold-etiqueta-escura);
+}
+
+/* etiqueta de fita crepe colada na borda superior para os efeitos com atraso */
+.palco .p-adesivo {
+  display: block; position: absolute; z-index: 3; top: 3px; left: 50%; transform: translateX(-50%);
+  padding: .5px 5px 2px; font-family: "Silkscreen", "Archivo", sans-serif; font-size: 8px; font-weight: 400; line-height: 1.25;
+  color: var(--tinta); background: #EFE4CF; white-space: nowrap;
+  border-image: var(--mold-etiqueta);   /* o selo do atraso na moldura miuda, reto (o degrau inclinado borrava) */
+}
+
+/* sons rapidos: os de ate 15 s, que tocam por cima da musica */
+.rapidos { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 26px; }
+/* titulo igual ao da Prateleira: o cinza pequeno com explicacao parecia rotulo provisorio */
+.rapidos .cabeca-sec { margin-bottom: 4px; }
+@media (max-width: 899.98px) {
+
+  /* resultados no celular como no YouTube Music: a seta de voltar mora dentro
+     do campo, e a linha de titulo e do Voltar para a prateleira, que repetia a busca, fica so
+     para o leitor de tela */
+  #vista-busca .cabeca-sec { margin: 0; }
+  #vista-busca .cabeca-sec #b-voltar { display: none; }
+  #titulo-busca { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* prateleira no celular: sem os numeros 1 a 9, que sao atalho de teclado */
+  .nome kbd { display: none; }
+
+  /* alvos de toque de 44 px no celular (review de frontend): o desenho fica,
+     cresce so a area invisivel que pega o dedo (o cursor das barras chegou a crescer e voltou ao
+     tamanho de antes; a faixa de 44 px de altura ficou) */
+  .mais, .ficha .btn-texto { position: relative; }
+  .mais::after { content: ""; position: absolute; inset: -7px; }
+  .ficha .btn-texto::after { content: ""; position: absolute; inset: -6px -4px; }
+  .dica-ouvir .ir-disp::after { content: ""; position: absolute; inset: -14px -6px; }
+  input[type=range] { height: 44px; }
+  .botoes-topo .btn-madeira { min-width: 44px; min-height: 44px; justify-content: center; }
+}
+
+/* PEDALBOARD-FIM */
