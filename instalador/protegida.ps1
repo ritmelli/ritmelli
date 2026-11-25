@@ -79,7 +79,8 @@ function ConfereArvore($o) {
     $o, $rel = $pilha.Pop()
     if ($o.Reparse) { return "$($o.Caminho) is a reparse point" }
     $partes = @($rel -split '\\' | Where-Object { $_ })
-    $noLog = $partes.Count -ge 2 -and $partes[0] -eq 'microfone' -and $partes[1] -eq 'log'
+    # a propria microfone\log so como pasta: um arquivo com esse nome nao e o log do filtro
+    $noLog = $partes.Count -ge 2 -and $partes[0] -eq 'microfone' -and $partes[1] -eq 'log' -and ($partes.Count -gt 2 -or $o.Pasta)
     $m = ConfereObjeto $o $noLog
     if ($m) { return $m }
     if ($o.Pasta) {
@@ -109,12 +110,13 @@ function Motivo {
   $p = [IO.Path]::GetFullPath($Pasta).TrimEnd('\')
   $r = [IO.Path]::GetFullPath($Raiz).TrimEnd('\')
   if (-not $p.StartsWith("$r\", [StringComparison]::OrdinalIgnoreCase)) { return "$p is outside $r" }
+  # antes de andar: um pai que ainda nao existe pararia a conta antes do fim
+  if ($p.Length -ge 260) { return "$p is too long to check" }
   $raizPartes = @($r.Substring(3) -split '\\' | Where-Object { $_ }).Count
   $partes = @($p.Substring(3) -split '\\' | Where-Object { $_ })
   $c = $p.Substring(0, 3)
   for ($i = 0; $i -le $partes.Count; $i++) {
     if ($i) { $c = Join-Path $c $partes[$i - 1] }
-    if ($c.Length -ge 260) { return "$c is too long to check" }
     $o = Le $c
     if (-not $o) {
       # o destino (ou um pai dele) ainda nao existe: valem os ancestrais que existem, a raiz inclusive

@@ -249,6 +249,12 @@ def em_memoria():
     reprova("um caminho de 260 ou mais em UTF-16 na arvore, com caracteres fora do BMP", d, "too long")
     reprova("um destino de 260 ou mais em UTF-16, com caracteres fora do BMP (contam dois, como no Windows)", disco_base(),
             "too long", RAIZ + "\\" + "\U0001F3B5" * 125)
+    reprova("um destino de 260 ou mais com um pai que ainda nao existe", disco_base(), "too long",
+            RAIZ + "\\novo\\" + "x" * 245)
+    d = disco_base()
+    del d.obj[(DESTINO + r"\microfone\log\micfx.log").lower()]
+    d.muda(DESTINO + r"\microfone\log", dir=False, dono=LS, dacl=acl_arquivo() + [(0, 0, F, LS)])
+    reprova("um arquivo do LocalService no lugar da microfone\\log (a excecao e so da pasta)", d, "owned by")
     d = disco_base()
     d.muda(DESTINO, reparse=True)
     reprova("a propria pasta do app como juncao", d, "reparse point")

@@ -322,7 +322,8 @@ def _confere_arvore(caminho, d, le):
         caminho, d, rel = pilha.pop()
         if d["reparse"]:
             return f"{caminho} is a reparse point"
-        no_log = tuple(p.lower() for p in rel[:2]) == LOG_DO_FILTRO
+        # a propria microfone\log so como pasta: um arquivo com esse nome nao e o log do filtro
+        no_log = tuple(p.lower() for p in rel[:2]) == LOG_DO_FILTRO and (len(rel) > 2 or d["dir"])
         motivo = _confere_objeto(caminho, d, no_log)
         if motivo:
             return motivo
@@ -374,14 +375,14 @@ def motivo_desprotegida(pasta, raiz, le=_le_disco):
         return f"{pasta} is not an absolute path"
     if not ntpath.normcase(pasta).startswith(ntpath.normcase(raiz).rstrip("\\") + "\\"):
         return f"{pasta} is outside {raiz}"
+    if _utf16(pasta) >= _MAX_PATH:  # antes de andar: um pai que ainda nao existe pararia a conta antes do fim
+        return f"{pasta} is too long to check"
     partes = [p for p in resto.split("\\") if p]
     na_raiz = len([p for p in ntpath.splitdrive(raiz)[1].split("\\") if p])
     caminho = unidade + "\\"
     for i in range(len(partes) + 1):
         if i:
             caminho = ntpath.join(caminho, partes[i - 1])
-        if _utf16(caminho) >= _MAX_PATH:
-            return f"{caminho} is too long to check"
         try:
             d = le(caminho)
         except OSError as e:
