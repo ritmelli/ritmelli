@@ -5,7 +5,7 @@ Automatico (automatico.py) both use them: whether two videos are the same song (
 import re
 import unicodedata
 
-YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")  # a YouTube video id
+YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
 def thumb(yid):

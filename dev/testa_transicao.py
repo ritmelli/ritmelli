@@ -3,12 +3,6 @@ que o motor fez ao transicao.py nos pares da banca das passagens (dev/testa_pass
 voltou, e este teste chama de novo cada uma e confere que volta o mesmo. Sem som, sem ffmpeg e sem o motor: so o
 transicao.py e o numpy. Toda funcao publica do transicao.py tem de ter ao menos um caso gravado.
 
-It also checks the bound the outgoing track's phase excerpt relies on (#208): sped up by at most SAI_MAX, FASE_MIN_S of
-its output reaches FASE_MIN_S * (1 + SAI_MAX) s of disc back from the switch (the engine counts it back from the cut,
-nb beats later: this is the stricter bound), and that has to stay inside the stretch where its speed is already
-constant, which starts where transicao.rampa_saida ends the ramp. FASE_MIN_S is read from the text of engine.py, so the
-engine is still not imported.
-
     python dev/testa_transicao.py            confere os casos gravados
     python dev/testa_transicao.py --grava    roda a banca das passagens neste checkout (precisa do ffmpeg, como ela) e
                                              regrava o JSON com as chamadas que o motor fez
@@ -181,8 +175,7 @@ def _igual(a, b):
     return a == b
 
 
-def engine_constant(name):
-    """A constant assigned at the top of engine.py, read from its text (the engine is not imported here)."""
+def engine_constant_from_its_text(name):
     tree = ast.parse((RAIZ / "engine.py").read_text(encoding="utf-8"))
     for node in tree.body:
         if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
@@ -194,31 +187,28 @@ def engine_constant(name):
     raise LookupError(f"engine.py has no top-level {name} written as a literal")
 
 
-def phase_excerpt_bound():
-    """The failures of the bound #208 relies on: the phase excerpt of the outgoing track, FASE_MIN_S of its output at
-    the fastest speed it can take (1 + SAI_MAX), stays where that speed is already constant."""
+def phase_excerpt_stays_after_the_outgoing_ramp():
     try:
-        fase_min_s = engine_constant("FASE_MIN_S")
+        fase_min_s = engine_constant_from_its_text("FASE_MIN_S")
     except LookupError as ex:
         return [str(ex)]
     virar = 100.0
     falhas = []
     for sa in (1 + transicao.SAI_MAX, 1 - transicao.SAI_MAX):
-        n_ra, start = transicao.rampa_saida(sa, virar)
-        ramp_end = start + n_ra * (1 + sa) / 2 / transicao.SR  # the ramp covers its samples at the mean speed
-        # the margin between the end of the ramp and FASE_ANTES_S of disc before the switch (0.5 s in rampa_saida)
-        margin = virar - transicao.FASE_ANTES_S - ramp_end
-        # the excerpt starts at whichever comes first: FASE_ANTES_S of disc before the switch, or FASE_MIN_S of output
-        # before it (the engine counts that one back from the cut, nb beats later, so this bound is the stricter one)
-        excerpt = max(transicao.FASE_ANTES_S, fase_min_s * sa)
-        bound = transicao.FASE_ANTES_S + margin
-        exceeds = excerpt > bound + 1e-9
-        print(f"sa {sa:.2f}: max(FASE_ANTES_S, FASE_MIN_S * sa) = {excerpt:.2f} s {'>' if exceeds else '<='} "
-              f"FASE_ANTES_S + the ramp margin ({margin:.2f} s) = {bound:.2f} s")
+        n_ra, ramp_start = transicao.rampa_saida(sa, virar)
+        disc_seconds_in_ramp = n_ra * (1 + sa) / 2 / transicao.SR
+        ramp_margin = virar - transicao.FASE_ANTES_S - (ramp_start + disc_seconds_in_ramp)
+        excerpt_from_switch = max(transicao.FASE_ANTES_S, fase_min_s * sa)
+        constant_speed_from_switch = transicao.FASE_ANTES_S + ramp_margin
+        exceeds = excerpt_from_switch > constant_speed_from_switch + 1e-9
+        print(f"sa {sa:.2f}: max(FASE_ANTES_S, FASE_MIN_S * sa) = {excerpt_from_switch:.2f} s "
+              f"{'>' if exceeds else '<='} FASE_ANTES_S + the ramp margin ({ramp_margin:.2f} s) = "
+              f"{constant_speed_from_switch:.2f} s")
         if exceeds:
             falhas.append(f"with the outgoing track at {sa:.2f}, FASE_MIN_S ({fase_min_s} s) of its output goes back "
-                          f"{excerpt:.2f} s of disc from the switch, into its speed ramp, which ends {bound:.2f} s "
-                          f"before it (FASE_MIN_S * (1 + SAI_MAX) <= FASE_ANTES_S + {margin:.2f})")
+                          f"{excerpt_from_switch:.2f} s of disc from the switch, into its speed ramp, which ends "
+                          f"{constant_speed_from_switch:.2f} s before it "
+                          f"(FASE_MIN_S * (1 + SAI_MAX) <= FASE_ANTES_S + {ramp_margin:.2f})")
     return falhas
 
 
@@ -246,7 +236,7 @@ def confere():
     sem = [n for n in _publicas() if n not in por_fn]
     if sem:
         falhas.append(f"funcao publica do transicao.py sem caso gravado: {', '.join(sem)}")
-    falhas += phase_excerpt_bound()
+    falhas += phase_excerpt_stays_after_the_outgoing_ramp()
     for f in falhas:
         print(f"FALHA {f}")
     print("ok" if not falhas else f"{len(falhas)} falha(s)")

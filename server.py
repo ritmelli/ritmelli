@@ -1675,20 +1675,16 @@ class App:
 
     @staticmethod
     def search_songs(q):
-        """The YouTube Music song search for q, in the YouTube process (yt_fora.musicas): a list of tracks."""
         return fora.pede("musicas", q=q)
 
     @staticmethod
     def run_helper(mode, request, timeout):
-        """Runs a helper process (auxiliar: --andamento) below normal priority, with request (text) on its stdin, and
-        returns the finished subprocess.CompletedProcess, with its stdout as text."""
         return subprocess.run(auxiliar(mode), input=request, capture_output=True, text=True, encoding="utf-8",
                               errors="replace", timeout=timeout, cwd=str(HERE),
                               creationflags=eng.NO_WINDOW | ABAIXO_DO_NORMAL, startupinfo=eng.sem_cursor())
 
     @staticmethod
     def yt_error(ex):
-        """The text of a yt_dlp error for the log (yt_msg)."""
         return yt_msg(ex)
 
     # capa do album dos discos da prateleira ---------------------------

@@ -43,7 +43,6 @@ TETO = 26
 ROUTES_CEILING = 3
 # the reaches into the engine's insides from the modules at the root, other than engine.py; it only goes down
 ENGINE_CEILING = 14
-# the reaches into the App's insides from the modules at the root, other than server.py; it only goes down
 APP_CEILING = 0
 
 
@@ -127,8 +126,6 @@ def is_private(name):
 
 
 def class_level(body):
-    """The statements at a class's own level: its body and what the control blocks there hold (an if, a try), without
-    going into a def or a nested class."""
     for s in body:
         yield s
         if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -142,7 +139,6 @@ def class_level(body):
 
 
 def bound_names(target):
-    """The names an assignment target binds: a name, or the names inside a tuple or list unpacking (also *rest)."""
     if isinstance(target, ast.Name):
         yield target.id
     elif isinstance(target, (ast.Tuple, ast.List)):
@@ -152,11 +148,16 @@ def bound_names(target):
         yield from bound_names(target.value)
 
 
+def assigned_targets(statement):
+    if isinstance(statement, ast.Assign):
+        return statement.targets
+    return [statement.target] if isinstance(statement, ast.AnnAssign) else []
+
+
 ATTR_FUNCTIONS = ("getattr", "setattr", "hasattr", "delattr")
 
 
 def attr_function(func, names=ATTR_FUNCTIONS):
-    """Whether a call's func is getattr and its kin (or one of names), by name or through the builtins module."""
     return ((isinstance(func, ast.Name) and func.id in names)
             or (isinstance(func, ast.Attribute) and func.attr in names and isinstance(func.value, ast.Name)
                 and func.value.id == "builtins"))
@@ -166,41 +167,23 @@ RECEIVERS = frozenset(("self", "cls"))
 
 
 def method_receivers(method):
-    """The name that means a method's own object: its first positional parameter, when it is called self or cls (a
-    staticmethod has none, and a second parameter called cls is just a parameter)."""
     if any(attr_function(d, ("staticmethod",)) for d in method.decorator_list):
         return frozenset()
-    first = (method.args.posonlyargs + method.args.args)[:1]
-    return frozenset(p.arg for p in first) & RECEIVERS
+    first_parameter = (method.args.posonlyargs + method.args.args)[:1]
+    return frozenset(p.arg for p in first_parameter) & RECEIVERS
 
 
-def scoped(node, receivers):
-    """(n, receivers) for every node under node (a method), with the names among self and cls that still mean the
-    method's own object there: a function nested in it that takes a self or cls of its own (a method of a nested class)
-    means another object by it, and one that does not still means the outer one, which it captured."""
+def nodes_with_own_receivers(node, receivers):
     for child in ast.iter_child_nodes(node):
         inner = receivers
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             a = child.args
             inner = receivers - {p.arg for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if p}
         yield child, receivers
-        yield from scoped(child, inner)
+        yield from nodes_with_own_receivers(child, inner)
 
 
-def instance_stores(method):
-    """The attributes assigned on the method's own self or cls (self._x = ..., or setattr(self, "_x", ...))."""
-    for n, receivers in scoped(method, method_receivers(method)):
-        if (isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Store) and isinstance(n.value, ast.Name)
-                and n.value.id in receivers):
-            yield n.attr
-        elif (isinstance(n, ast.Call) and attr_function(n.func, ("setattr",)) and len(n.args) >= 2
-              and isinstance(n.args[0], ast.Name) and n.args[0].id in receivers
-              and isinstance(n.args[1], ast.Constant) and isinstance(n.args[1].value, str)):
-            yield n.args[1].value
-
-
-def slot_names(value):
-    """The names a __slots__ declares: one string, or a tuple or list of them."""
+def string_literals(value):
     if isinstance(value, ast.Constant) and isinstance(value.value, str):
         yield value.value
     elif isinstance(value, (ast.Tuple, ast.List)):
@@ -209,86 +192,28 @@ def slot_names(value):
                 yield e.value
 
 
-def class_privates(c):
-    """The private names the class c defines: its methods, nested classes, the names assigned at its own level (also
-    under an if or a try there, and in a tuple unpacking) and those its __slots__ declares, and every self._x or cls._x
-    its methods assign (instance_stores). A helper def nested inside a method is not the class's."""
-    out = set()
-    for s in class_level(c.body):  # the class's own level: its methods, nested classes and _X = ...
-        if isinstance(s, ast.ClassDef):
-            out.add(s.name)
-        elif isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            out.add(s.name)
-            out |= set(instance_stores(s))
-        for target in (s.targets if isinstance(s, ast.Assign) else [s.target] if isinstance(s, ast.AnnAssign)
-                       else []):
-            out |= set(bound_names(target))
-            if isinstance(target, ast.Name) and target.id == "__slots__" and s.value is not None:
-                out |= set(slot_names(s.value))
-    return {n for n in out if is_private(n)}
-
-
-def privates(tree, classes):
-    """The private names the top-level classes named in classes define (class_privates)."""
-    return set().union(*(class_privates(c) for c in tree.body if isinstance(c, ast.ClassDef) and c.name in classes))
-
-
-def reaches(owner, names):
-    """[(module, line, name)] of the reaches into names from the modules at the root other than owner: an attribute,
-    or a getattr/setattr/hasattr/delattr (also builtins.getattr and the rest) with the name as a literal, on any object
-    but the self or cls of a method of a class without a base, reaching a name that class defines itself (its own _lock
-    is its own; a subclass reading, assigning or overriding an inherited _x counts, and so does a module-level
-    def f(self))."""
-    out = []
-    for f in sorted(RAIZ.glob("*.py")):
-        if f.name == owner:
-            continue
-        tree = ast.parse(f.read_text(encoding="utf-8"))
-        # id of each node in a class's method -> (the names that class defines, the names that mean its own object
-        # there); ast.walk reaches the outer class first, so a nested class's methods overwrite with their own
-        own_names = {}
-        for c in ast.walk(tree):
-            if isinstance(c, ast.ClassDef):
-                # a class with a base may have inherited the owner's privates: assigning or overriding one there still
-                # reaches the owner's insides, so only a class without a base keeps its _x as its own, and a class with
-                # a base that defines one of the names at its level (def _x, _x = ...) reaches it
-                mine = set() if c.bases else class_privates(c)
-                for s in class_level(c.body):
-                    if c.bases:
-                        defined = ({s.name} if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                                   else set()).union(*(bound_names(t) for t in (
-                                       s.targets if isinstance(s, ast.Assign)
-                                       else [s.target] if isinstance(s, ast.AnnAssign) else [])))
-                        out += [(f.name, s.lineno, n) for n in sorted(defined & names)]
-                    if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        own_names.update((id(n), (mine, receivers)) for n, receivers in scoped(s, method_receivers(s)))
-
-        def passes(node, receiver, name):
-            mine, receivers = own_names.get(id(node), ((), ()))
-            return isinstance(receiver, ast.Name) and receiver.id in receivers and name in mine
-        looped = loop_values(tree)
-        for no in ast.walk(tree):
-            if isinstance(no, ast.Attribute) and no.attr in names and not passes(no, no.value, no.attr):
-                out.append((f.name, no.lineno, no.attr))
-            elif isinstance(no, ast.Call) and attr_function(no.func) and len(no.args) >= 2:
-                arg = no.args[1]
-                literal = [arg.value] if isinstance(arg, ast.Constant) else looped.get(id(arg), [])
-                out += [(f.name, no.lineno, n) for n in literal if n in names and not passes(no, no.args[0], n)]
-    return sorted(out)
-
-
-def loop_values(tree):
-    """{id of a Name: its strings} for every name a for or a comprehension binds to a literal tuple or list of strings
-    (for k in ("a", "b"): getattr(x, k)), at each place it is read in that loop."""
+def loop_variable_names(tree):
     out = {}
 
+    def pairs(target, item):
+        if isinstance(target, ast.Name):
+            yield target.id, item
+        elif (isinstance(target, (ast.Tuple, ast.List)) and isinstance(item, (ast.Tuple, ast.List))
+              and len(target.elts) == len(item.elts)):
+            for t, v in zip(target.elts, item.elts):
+                yield from pairs(t, v)
+
     def bind(target, iterable, scope):
-        values = list(slot_names(iterable)) if isinstance(iterable, (ast.Tuple, ast.List)) else []
-        if isinstance(target, ast.Name) and values:
-            for part in scope:
-                for n in ast.walk(part):
-                    if isinstance(n, ast.Name) and n.id == target.id and isinstance(n.ctx, ast.Load):
-                        out[id(n)] = values
+        if not isinstance(iterable, (ast.Tuple, ast.List)):
+            return
+        values = {}
+        for item in iterable.elts:
+            for name, v in pairs(target, item):
+                values.setdefault(name, []).extend(string_literals(v) if isinstance(v, ast.Constant) else [])
+        for part in scope:
+            for n in ast.walk(part):
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and values.get(n.id):
+                    out[id(n)] = values[n.id]
     for no in ast.walk(tree):
         if isinstance(no, (ast.For, ast.AsyncFor)):
             bind(no.target, no.iter, no.body + no.orelse)
@@ -299,9 +224,78 @@ def loop_values(tree):
     return out
 
 
+def attr_call_names(call, loop_names):
+    if not (isinstance(call, ast.Call) and attr_function(call.func) and len(call.args) >= 2):
+        return []
+    name = call.args[1]
+    return list(string_literals(name)) if isinstance(name, ast.Constant) else loop_names.get(id(name), [])
+
+
+def instance_stores(method):
+    loop_names = loop_variable_names(method)
+    for n, receivers in nodes_with_own_receivers(method, method_receivers(method)):
+        if (isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Store) and isinstance(n.value, ast.Name)
+                and n.value.id in receivers):
+            yield n.attr
+        elif (isinstance(n, ast.Call) and attr_function(n.func, ("setattr",)) and n.args
+              and isinstance(n.args[0], ast.Name) and n.args[0].id in receivers):
+            yield from attr_call_names(n, loop_names)
+
+
+def class_privates(c):
+    out = set()
+    for s in class_level(c.body):
+        if isinstance(s, ast.ClassDef):
+            out.add(s.name)
+        elif isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            out.add(s.name)
+            out |= set(instance_stores(s))
+        for target in assigned_targets(s):
+            out |= set(bound_names(target))
+            if isinstance(target, ast.Name) and target.id == "__slots__" and s.value is not None:
+                out |= set(string_literals(s.value))
+    return {n for n in out if is_private(n)}
+
+
+def privates(tree, classes):
+    return set().union(*(class_privates(c) for c in tree.body if isinstance(c, ast.ClassDef) and c.name in classes))
+
+
+def module_reaches(module, tree, names):
+    out = []
+    own_names_by_node = {}
+    for c in ast.walk(tree):
+        if isinstance(c, ast.ClassDef):
+            own_names = set() if c.bases else class_privates(c)
+            for s in class_level(c.body):
+                if c.bases:
+                    defined = set().union(*(bound_names(t) for t in assigned_targets(s)))
+                    if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                        defined.add(s.name)
+                    out += [(module, s.lineno, n) for n in sorted(defined & names)]
+                if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    own_names_by_node.update((id(n), (own_names, receivers))
+                                             for n, receivers in nodes_with_own_receivers(s, method_receivers(s)))
+
+    def passes(node, receiver, name):
+        own_names, receivers = own_names_by_node.get(id(node), ((), ()))
+        return isinstance(receiver, ast.Name) and receiver.id in receivers and name in own_names
+    loop_names = loop_variable_names(tree)
+    for no in ast.walk(tree):
+        if isinstance(no, ast.Attribute) and no.attr in names and not passes(no, no.value, no.attr):
+            out.append((module, no.lineno, no.attr))
+        else:
+            out += [(module, no.lineno, n) for n in attr_call_names(no, loop_names)
+                    if n in names and not passes(no, no.args[0], n)]
+    return out
+
+
+def reaches(owner, names):
+    return sorted(r for f in sorted(RAIZ.glob("*.py")) if f.name != owner
+                  for r in module_reaches(f.name, ast.parse(f.read_text(encoding="utf-8")), names))
+
+
 def ratchet(what, owner, classes, ceiling, ceiling_name):
-    """Checks the reaches into the insides of classes (top-level in the module owner) against the ceiling; True if it
-    fails."""
     names = privates(ast.parse((RAIZ / owner).read_text(encoding="utf-8")), classes)
     if not names:
         print(f"FAIL  {owner} defines no private name in {', '.join(sorted(classes))}: the classes moved or were "
@@ -363,6 +357,80 @@ else:
     else:
         print("ok    the routes for the module from outside the repo didn't grow")
 
+OWNER = "class Owner:\n    def _x(self):\n        pass\n"
+CAUGHT = [
+    ("an attribute", OWNER, "def f(o):\n    return o._x\n"),
+    ("getattr with the name", OWNER, "def f(o):\n    return getattr(o, '_x')\n"),
+    ("builtins.getattr", OWNER, "import builtins\n\n\ndef f(o):\n    return builtins.getattr(o, '_x')\n"),
+    ("a loop over a literal tuple", OWNER, "def f(o):\n    for k in ('_x', 'y'):\n        getattr(o, k)\n"),
+    ("a loop that unpacks", OWNER, "def f(o):\n    for _, k in (('a', '_x'),):\n        setattr(o, k, 0)\n"),
+    ("a comprehension", OWNER, "def f(o):\n    return [getattr(o, k) for k in ('_x',)]\n"),
+    ("a module-level def f(self)", OWNER, "def f(self):\n    return self._x\n"),
+    ("a subclass reading it", OWNER, "class Sub(Owner):\n    def m(self):\n        return self._x\n"),
+    ("a subclass overriding it", OWNER, "class Sub(Owner):\n    def _x(self):\n        pass\n"),
+    ("a nested def with its own self", OWNER,
+     "class Other:\n    _x = 0\n\n    def m(self, o):\n        def read(self):\n            return self._x\n"
+     "        return read(o)\n"),
+    ("a second parameter called cls", OWNER,
+     "class Other:\n    _x = 0\n\n    def m(self, cls):\n        return getattr(cls, '_x')\n"),
+    ("a staticmethod's self", OWNER,
+     "class Other:\n    _x = 0\n\n    @staticmethod\n    def m(self):\n        return self._x\n"),
+    ("defined under an if", "class Owner:\n    if True:\n        def _x(self):\n            pass\n", "o._x\n"),
+    ("defined by unpacking", "class Owner:\n    _w, (_x, *_y) = 1, (2, 3)\n", "o._x\n"),
+    ("declared in __slots__", "class Owner:\n    __slots__ = ('_x',)\n", "o._x\n"),
+    ("set by setattr", "class Owner:\n    def __init__(self):\n        setattr(self, '_x', 0)\n", "o._x\n"),
+    ("set by setattr in a loop",
+     "class Owner:\n    def __init__(self):\n        for k in ('_x',):\n            setattr(self, k, 0)\n", "o._x\n"),
+    ("set through a captured self",
+     "class Owner:\n    def __init__(self):\n        def init():\n            self._x = 0\n        init()\n", "o._x\n"),
+    ("a nested class", "class Owner:\n    class _x:\n        pass\n", "o._x\n"),
+]
+NOT_REACHES = [
+    ("its own name", OWNER, "class Other:\n    _x = 0\n\n    def m(self):\n        return self._x\n"),
+    ("its own name, captured", OWNER,
+     "class Other:\n    _x = 0\n\n    def m(self):\n        return (lambda: self._x)()\n"),
+    ("a nested class's own self",
+     "class Owner:\n    def m(self):\n        class Local:\n"
+     "            def __init__(self):\n                self._x = 0\n",
+     "o._x\n"),
+]
+KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/232"
+KNOWN_MISSES = [
+    ("the name in a variable", "def f(o):\n    n = '_x'\n    return getattr(o, n)\n"),
+    ("getattr under another name", "def f(o):\n    g = getattr\n    return g(o, '_x')\n"),
+    ("operator.attrgetter", "import operator\n\n\ndef f(o):\n    return operator.attrgetter('_x')(o)\n"),
+    ("vars()", "def f(o):\n    return vars(o)['_x']\n"),
+    ("__dict__", "def f(o):\n    return o.__dict__['_x']\n"),
+    ("the names from a dictionary", "def f(o):\n    for k, v in {'_x': 1}.items():\n        setattr(o, k, v)\n"),
+    ("self rebound in a method",
+     "class Other:\n    _x = 0\n\n    def m(self, o):\n        self = o\n        return self._x\n"),
+    ("self rebound in a comprehension",
+     "class Other:\n    _x = 0\n\n    def m(self, others):\n        return [self._x for self in others]\n"),
+]
+
+
+def case_reaches(owner, other):
+    return len(module_reaches("case.py", ast.parse(other), privates(ast.parse(owner), {"Owner"})))
+
+
+cases_failed = False
+for label, owner, other in CAUGHT:
+    if case_reaches(owner, other) != 1:
+        print(f"FAIL  the ratchet no longer counts this reach: {label}")
+        cases_failed = True
+for label, owner, other in NOT_REACHES:
+    if case_reaches(owner, other):
+        print(f"FAIL  the ratchet counts this as a reach: {label}")
+        cases_failed = True
+for label, other in KNOWN_MISSES:
+    if case_reaches(OWNER, other):
+        print(f"FAIL  the ratchet now counts this reach: {label}; move it from KNOWN_MISSES to CAUGHT and update "
+              f"{KNOWN_MISSES_ISSUE}")
+        cases_failed = True
+falhou |= cases_failed
+if not cases_failed:
+    print(f"ok    the ratchet's own cases: {len(CAUGHT)} counted, {len(NOT_REACHES)} not counted, "
+          f"{len(KNOWN_MISSES)} known misses ({KNOWN_MISSES_ISSUE})")
 falhou |= ratchet("engine", "engine.py", {"Engine", "MockEngine"}, ENGINE_CEILING, "ENGINE_CEILING")
 falhou |= ratchet("App", "server.py", {"App"}, APP_CEILING, "APP_CEILING")
 sys.exit(1 if falhou else 0)
