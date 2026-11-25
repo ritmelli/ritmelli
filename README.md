@@ -482,6 +482,7 @@ The code, its comments and the internal docs are in Brazilian Portuguese.
 | `i18n.py` | the interface texts in each language: reads the theme's `.properties` files, applies them to the page and builds the messages the server sends for the interface to translate |
 | `pastas.py` | where user data lives, and where the app finds ffmpeg, ffprobe and Deno |
 | `pareamento.py` | the phone pairing code and QR code, and the list of paired phones |
+| `permissao.py` | who may call each server route: the computer, a paired phone, a remote session or anyone on the home network |
 | `yt_fora.py` | YouTube access (yt-dlp and ytmusicapi), in a separate process |
 | `yt_erros.py` | tells a video's own errors (unavailable, private, age-restricted) apart from a YouTube failure |
 | `winvol.py` | the microphone volume in Windows |
@@ -515,7 +516,7 @@ you open one. They need only the Python standard library:
 python dev\testa_i18n.py       # the interface texts in both languages
 python dev\testa_metricas.py   # the anonymous usage data
 python dev\testa_migra.py      # the rename from Vitrola
-python dev\testa_mock.py       # the no-audio mode never touches real user data
+python dev\testa_mock.py       # the no-audio mode never touches real user data, and who may call each route
 python dev\testa_pareamento.py # phone pairing: the code, wrong attempts, the key and disconnecting
 python dev\testa_grava.py      # saving the data files: two writers at once and a file another program has open
 ```

@@ -9,6 +9,9 @@ até 15 s (buzina, bordão) toca por cima da música em vez de trocar, e o posto
 rápidos pela mão
 também, inteiro até 2 min: vários juntos, no volume da música,
 o repetido sai na hora (fica decodificado na memória), e o pausar e o parar calam todos.
+O `abaixa` abaixa a música no jogo por um prazo, sem gravar nada (o fone segue igual), com uma rampa de um bloco
+na ida e na volta para não estalar; no fim do prazo, ela volta sozinha. O `sinal` toca um bipe curto de teste no
+jogo, fora do volume da música, e nunca com a voz cortada.
 O volume automático (`sonoridade.py`) leva toda música a -11 LUFS, como o Spotify: a mais alta
 desce até ele, e a mais baixa sobe, no máximo +9 dB, com um ganho por deck no misturador (rampa de 6 dB/s quando a medida chega com o
 disco tocando, ou quando a chave muda) e um limitador com 2 ms de antecipação que só age no que

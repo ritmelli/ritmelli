@@ -57,6 +57,9 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 FFMPEG = pastas.ferramenta("ffmpeg") or "ffmpeg"  # o que vem com o app, ou o do PATH
 FFPROBE = pastas.ferramenta("ffprobe") or "ffprobe"
 CURTO_MAX_S = 15  # ate isso o pad toca por cima da musica em vez de trocar
+ABAIXA_MAX_DB = 40.0   # o POST /api/abaixa: ate quanto a musica abaixa no jogo
+ABAIXA_MAX_MS = 30000  # e por quanto tempo no maximo; no prazo, volta sozinha
+SINAL_S, SINAL_HZ, SINAL_DB = 0.4, 880.0, -18.0  # o POST /api/sinal: o bipe curto de teste no microfone
 STREAM_CAIU_S = 5.0  # o stream que para mais que isso antes do fim (ou sem audio nenhum) caiu: o servidor religa
 # o stream que congela (13/11: a Toxic parou de chegar em 2:12 com a conexao aberta, e o ffmpeg esperou pra sempre com
 # o Ritmelli carregando): isso sem receber nada e o ffmpeg reconecta uma vez no mesmo endereco e, congelado de novo,
@@ -1235,6 +1238,10 @@ class Engine:
         self._sobre = []
         self._slock = threading.Lock()
         self._sobre_cache = collections.OrderedDict()
+        self._abaixa = None    # (ganho, monotonic do fim, db, ms): a musica abaixada no jogo ate o fim (abaixa)
+        self._abaixa_g = 1.0   # o ganho do abaixamento no ultimo bloco: o proximo sai dele em rampa, sem estalo
+        self._sinal = None     # [bipe (n), posicao, prazo]: o sinal de teste no microfone (sinal); so ele escreve
+        #                        aqui, e o bipe que nao comecou ate o prazo (monotonic) nao toca mais
         self.track = None      # item da biblioteca carregado
         self.paused = False
         self.ended = False
@@ -1930,12 +1937,17 @@ class Engine:
                         vivos.append(sb)
                 self._sobre = vivos
         com_fone = self.monitor_on and self.active["monitor"]
+        ab = self._abaixa
+        alvo = ab[0] if ab is not None and time.monotonic() < ab[1] else 1.0
+        g0, self._abaixa_g = self._abaixa_g, alvo
         if som is not None:
-            buf += som * self.vol
+            # o abaixamento so no jogo (o fone segue igual), em rampa no bloco quando muda
+            g = alvo if g0 == alvo else np.linspace(g0, alvo, frames, dtype=np.float32)[:, None]
+            buf += som * (self.vol * g)
             # o DISCO mostra o disco no mais alto dos volumes que estao soando, o do jogo ou o do
             # fone: com o jogo em zero e o fone em 15% ele parava, com o disco tocando no fone.
             # O JOGO segue sendo so o que o jogo recebe
-            self._meter("track", som * max(self.vol, self.mon_vol if com_fone else 0.0))
+            self._meter("track", som * max(self.vol * alvo, self.mon_vol if com_fone else 0.0))
         else:
             self.levels["track"] *= DECAY
         fone = None  # o que vai pro fone de quem toca: o som e, se pedido, a propria voz
@@ -1977,6 +1989,15 @@ class Engine:
                     fone = np.zeros((frames, 2), np.float32)
                 fone[:n, 0] += mv * self.voice_mon_vol
                 fone[:n, 1] += mv * self.voice_mon_vol
+        si = self._sinal
+        if si is not None and si[1] < len(si[0]):  # o bipe de teste: no jogo, nunca com a voz cortada
+            a, p = si[0], si[1]
+            k = min(frames, len(a) - p)
+            if self.mic_mute or (p == 0 and time.monotonic() > si[2]):
+                k = len(a) - p  # a voz cortada, ou a saida parada passou do prazo: o resto dele nao toca mais
+            else:
+                buf[:k] += a[p:p + k, None]
+            si[1] = p + k  # so a posicao: um bipe novo do sinal() troca a lista inteira, e este nao o apaga
         if fone is not None and not self._fone_calado:
             self._mon.append(np.clip(fone, -1, 1))
         np.clip(buf, -1, 1, out=buf)
@@ -3036,6 +3057,30 @@ class Engine:
         """O stream do disco no prato falhou e ele espera o download para tocar (ver o _reader)."""
         return self._espera_arquivo is not None and self._espera_arquivo == self._gen
 
+    def abaixa(self, db, ms):
+        """Abaixa a musica no jogo db decibeis por ms milissegundos, sem gravar nada: no prazo, ela volta sozinha. Um
+        novo pedido troca o de antes; db ou ms em zero tira o abaixamento."""
+        db = max(0.0, min(ABAIXA_MAX_DB, float(db)))
+        ms = max(0, min(ABAIXA_MAX_MS, int(ms)))
+        self._abaixa = (10 ** (-db / 20), time.monotonic() + ms / 1000, db, ms) if db > 0 and ms > 0 else None
+
+    def abaixamento(self):
+        """O abaixamento valendo agora, {"db", "ms"} (o pedido), ou None."""
+        ab = self._abaixa
+        return {"db": ab[2], "ms": ab[3]} if ab is not None and time.monotonic() < ab[1] else None
+
+    def sinal(self):
+        """O bipe curto de teste no microfone (o que o jogo ouve), com as pontas suaves. Com a voz cortada, nada."""
+        if self.mic_mute:
+            self._sinal = None  # o de antes tambem nao toca quando a voz voltar
+            return False
+        n = int(SINAL_S * SR)
+        t = np.arange(n, dtype=np.float32) / SR
+        borda = np.minimum(1.0, np.minimum(t, SINAL_S - t) / 0.02).astype(np.float32)  # 20 ms de rampa em cada ponta
+        self._sinal = [(10 ** (SINAL_DB / 20) * np.sin(2 * np.pi * SINAL_HZ * t) * borda).astype(np.float32), 0,
+                       time.monotonic() + SINAL_S]
+        return True
+
     def por_cima(self, track):
         """Toca o item junto do que estiver tocando, sem trocar a musica nem mexer na barra
         (decodifica inteiro, ate CURTO_MAX_S, ou RAPIDO_MAX_S no posto pela mao, numa thread;
@@ -3153,6 +3198,7 @@ class Engine:
             "monitor_on": self.monitor_on, "loop": self.loop,
             "effect": self.effect, "voice_monitor": self.voice_monitor,
             "por_cima": [sb[0] for sb in self._sobre],
+            "abaixa": self.abaixamento(),
             "voice_mon_vol": round(self.voice_mon_vol, 3),
             "devices": dict(self.devices), "active_devices": dict(self.active),
             # o filtro do microfone: o anel aberto, os leitores do microfone em uso (0 = a musica nao chega nele) e
