@@ -101,9 +101,9 @@ PREPARO_S = 1.0    # e o preparar entra depois disso tocado
 DEPOIS_S = 8.0     # depois da virada, a banca segue isso
 PRAZO_LEITOR_S = 10.0
 PRAZO_PLANO_S = 90.0
-INTRO_BEATS = 13   # intro pair: B at INTRO_DB until the attack of its beat INTRO_BEATS, its drop (7.7 s in); the
-INTRO_DB = -30.0   # engine brings it in whole bars before the swap, with the drop on the swap: INTRO_IN of A's
-INTRO_IN = 12      # beats before it
+INTRO_BEATS = 13   # intro pair: B at INTRO_DB for its first INTRO_BEATS beats, its drop on the next (7.7 s in);
+INTRO_DB = -30.0   # the engine brings it in whole bars before the swap, with the drop on the swap: INTRO_IN of
+INTRO_IN = 12      # A's beats before it
 INTRO_OUVE_DB = 6.0   # and from the switch on, B's band at least this above what leaks into it from A,
 INTRO_A_DB = 3.0      # with A at most this below where it was
 
@@ -227,7 +227,7 @@ def monta(par, pasta):
     ts_b = TAU_B + np.arange(int((dur_b - TAU_B - 0.2) / pb)) * pb
     for i, t in enumerate(ts_b):
         _poe(xb, _estalo(rng, FAIXA_B) * (10 ** (-12 / 20) if par.meio and i % 2 else 1.0), t)
-    if par.intro:  # everything of B before its drop (the attack of beat INTRO_BEATS) INTRO_DB down
+    if par.intro:  # everything of B before its drop (ts_b[INTRO_BEATS], after INTRO_BEATS beats) INTRO_DB down
         xb[:int(round(ts_b[INTRO_BEATS] * SR)) - int(0.002 * SR)] *= 10 ** (INTRO_DB / 20)
     pasta.mkdir(parents=True, exist_ok=True)
     _grava(pasta / "a.wav", xa)
