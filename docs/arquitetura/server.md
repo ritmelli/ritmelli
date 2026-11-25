@@ -7,6 +7,11 @@ download pelo yt_dlp (no `yt_fora.py`). Instalar com `pip install -U "yt-dlp[def
 ter um runtime de JavaScript (Node ou Deno): sem ele o YouTube esconde formatos e o stream
 falha de vez em quando. O servidor habilita o Node e o Deno nas opções do yt-dlp.
 
+O `--mock` sobe só no `127.0.0.1`, sem a porta da rede de casa. Para o tema ver o papel do celular sem outro
+aparelho, o `--papel-local celular` (só junto do `--mock`) faz o `do_pc` do `build` tirar o papel do PC de quem pede
+pelo Host `127.0.0.1:<porta>`: ele passa pelo cookie do pareamento como o celular da rede de casa, e o
+`localhost:<porta>` segue o PC. Nesse modo, o `GET /api/pareamento` gera o código com o endereço do `127.0.0.1`.
+
 A regra dos comandos de música (tocar, enfileirar, pular, pausar, parar, a fila e o volume) mora no
 [`comandos.py`](comandos.md), e o avanço da fila é uma operação só, dele; as rotas só leem o corpo e respondem.
 

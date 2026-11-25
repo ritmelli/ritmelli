@@ -8709,7 +8709,7 @@ function mostrarFora() {
   if (S.desligado) {
     $('#fora-tt').textContent = I18N.t('offline.offTitle');
     I18N.rico($('#fora-p'), 'offline.offText');
-  } else if (!(S.caps ? S.caps.papel === 'pc' : TRANSPORTE.local)) {
+  } else if (!(S.caps ? S.caps.papel === 'pc' : typeof TRANSPORTE === 'undefined' || TRANSPORTE.local)) {
     // (#107) no celular, o que mais cai e o caminho ate o computador (o celular nos dados moveis, sem Wi-Fi, numa rede
     // de convidados), e nao o Ritmelli: o cartao diz so o que se sabe, e o que o navegador conta da conexao (sem
     // nenhuma; nos dados moveis, o Chrome do Android pela Network Information API)
@@ -9353,8 +9353,8 @@ if (location.hash === '#efeitos' && !celular()) abrirGaveta(true);
 function carregar() {
   Promise.all([api('GET', '/api/state'), api('GET', '/api/library'), api('GET', '/api/jobs')])
     .then(([st, lib, jobs]) => {
-      definirCaps(st.caps);
       S.state = st; S.pos = st.pos || 0; S.levels = st.levels || S.levels; S.lib = ordenarLib(lib); S.libOk = true; S.jobs = jobs;
+      definirCaps(st.caps);
       online(true); desenharFaixa(); desenharReceptor(); desenharPrateleira(); desenharFila();
       boasVindasSePrecisar();
     })

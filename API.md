@@ -401,10 +401,10 @@ vez, peça o `/api/state` para saber se é o 401.
   lugar a outro sozinhos no próximo `GET /api/pareamento`.
 - Pareado, o celular ganha a chave num cookie (`HttpOnly`, `SameSite=Strict`), que vale até o
   PC desconectar. Cada `GET /api/state` renova o prazo do cookie no navegador.
-- `GET /api/pareamento`: `url` = o endereço do tema (`caminho`) na rede de casa, ou `null`
-  sem rede (aí `codigo` e `qr` também vêm `null`); `codigo` = o de agora, ou `null` quando
+- `GET /api/pareamento`: `url` = o endereço do tema (`caminho`) na rede de casa (no
+  `--mock --papel-local celular`, o do `127.0.0.1`), ou `null` sem rede (aí `codigo` e `qr` também vêm `null`); `codigo` = o de agora, ou `null` quando
   `queimado`; `vale_s` = quantos segundos ele ainda vale; `qr` = as linhas do QR do link
-  `<url>?parear=<codigo>` (no `--mock --papel-local celular`, o `url` é o do `127.0.0.1`), de cima para baixo, com `"1"` no módulo escuro e sem a margem
+  `<url>?parear=<codigo>`, de cima para baixo, com `"1"` no módulo escuro e sem a margem
   (desenhe 4 módulos claros em volta); `celulares` = `[{"id", "nome", "desde", "visto"}]`,
   com o nome tirado do navegador ("Android · Chrome") e as datas em ISO local.
 - O tema que abre com `?parear=<codigo>` no endereço manda o código sozinho se ainda não

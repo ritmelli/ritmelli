@@ -645,6 +645,13 @@ async def papel_local_celular():
         confere(j.get("url") is None and j.get("codigo") is None,
                 "e o --mock, sem o IP da rede de casa, nao gera codigo (como antes)")
 
+        A.mock, A.papel_local = False, "celular"  # o modo e so do --mock: fora dele, o build o ignora
+        monta()
+        resp, j, _ = await manda("GET", "/api/state")
+        confere(resp.status == 200 and j.get("caps") == perm.caps("pc"), "fora do --mock, o 127.0.0.1 segue o PC")
+        resp, j, _ = await manda("GET", "/api/pareamento", host=pc)
+        confere(j.get("url") is None and j.get("codigo") is None, "e o codigo nao sai no 127.0.0.1")
+
 
 def de_casa(srv, metodo, caminho, corpo=None, origem="127.0.0.2", cab=None):
     """Um pedido ao --mock saindo do endereco origem (o 127.0.0.2 faz as vezes de um aparelho da rede de casa: o

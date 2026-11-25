@@ -163,7 +163,9 @@ async def parear_aba(a, base):
         raise so_mock.Recusa("a aba nao pareou com o codigo do PC")
     de_antes = {c["id"] for c in antes.get("celulares", [])}
     novos = [c["id"] for c in do_pc(base, "GET", "/api/pareamento").get("celulares", []) if c["id"] not in de_antes]
-    print(f"aba pareada como celular ({len(novos)} aparelho novo no PC)", file=sys.stderr, flush=True)
+    if len(novos) != 1:  # outro aparelho pareou no meio: nenhum sai, para nao desconectar o que nao e deste script
+        raise so_mock.Recusa(f"esperava um aparelho novo no PC depois de parear a aba, achei {len(novos)}")
+    print("aba pareada como celular", file=sys.stderr, flush=True)
     return novos
 
 
@@ -360,18 +362,19 @@ async def main():
         print("este --mock nao tem o --papel-local celular: pelo adb reverse, o tema ve 127.0.0.1 e a medida sai com o "
               "papel do PC", file=sys.stderr, flush=True)
     try:
-        await medir(args, base)
+        await medir(args, base, como_celular)
     except so_mock.Recusa as ex:
         sys.exit(f"recusado: {ex}; nenhum gesto a mais, e a medida nao sai")
     finally:
         subprocess.run([adb, "reverse", "--remove", f"tcp:{porta}"], capture_output=True)
 
 
-async def medir(args, base):
+async def medir(args, base, como_celular):
     a = await conectar(args.url, base)
     pareados = []
     try:
-        pareados = await parear_aba(a, base)
+        if como_celular:
+            pareados = await parear_aba(a, base)
         r = await {"rolagem": rolagem, "puxao": puxao, "abrir": abrir, "custo": custo, "dedo": dedo}[args.medida](a, args)
         await a.confere()  # a medida so vale se a aba seguiu no --mock ate o fim
         if isinstance(r, list):
@@ -382,13 +385,15 @@ async def medir(args, base):
         print(json.dumps(r, ensure_ascii=False, indent=1))
     finally:
         try:
-            await a.confere()
-            await a.css("")
-            await a.js("document.querySelector('#palco').scrollTop = 0")
-        except so_mock.Recusa:
-            pass  # a aba saiu do --mock: nada mais nela
-        await a.ws.close()
-        desconectar(base, pareados)
+            try:
+                await a.confere()
+                await a.css("")
+                await a.js("document.querySelector('#palco').scrollTop = 0")
+            except so_mock.Recusa:
+                pass  # a aba saiu do --mock: nada mais nela
+            await a.ws.close()
+        finally:
+            desconectar(base, pareados)  # mesmo se a limpeza da aba falhou
 
 
 if __name__ == "__main__":
