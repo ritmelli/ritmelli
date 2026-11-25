@@ -1,0 +1,41 @@
+/* DJ-DESK-SEARCH-DRAG-INICIO */
+@media (min-width: 1400px) and (min-aspect-ratio: 20/19) {
+  /* (r05) a placa da Prateleira 2 celulas abaixo: a linha de base do titulo na mesma da placa do A seguir (fora do
+     bloco gerado pelo integra_prat.py) */
+  body.mesa-dj #vista-prateleira #cab-prat { top: 0; }   /* (r09) a placa com 20 linhas: o topo 1 celula acima; (r13) a placa toda 1 celula acima, 3 celulas ate as capas */
+  /* a busca cai do campo como uma gaveta, por cima da mesa (no painel de jacaranda da prateleira), e a mesa fica
+     inteira embaixo: a prateleira e a maleta seguem no lugar (o montarMesa mede o campo) */
+  body.mesa-dj .parede > #vista-prateleira[hidden] { display: contents !important; }
+  body.mesa-dj .parede > #vista-busca:not([hidden]) {
+    display: flex; position: fixed; z-index: 30; left: var(--busca-x, 200px); top: var(--busca-y, 70px); bottom: 22px;
+    width: max(var(--busca-w, 540px), 660px); min-height: 0; padding: 14px 16px 10px;
+    border-radius: 6px; background: var(--veio-v) 0 0 / 420px 900px, linear-gradient(180deg, #5A2A12 0%, #44200D 50%, #331708 100%);
+    box-shadow: inset 0 0 0 5px #7A3C1B, inset 0 0 0 6px rgba(0,0,0,.45), 0 0 0 1px #1A0B04, 0 22px 44px 6px rgba(0,0,0,.72);
+  }
+  /* (#113) sem o Voltar para a prateleira: a prateleira segue na mesa ao lado da gaveta, e a gaveta fecha como um menu
+     suspenso, pelo clique fora ou pelo Esc. A pagina do PC fica com ele: la a busca toma o lugar da prateleira */
+  body.mesa-dj #vista-busca .cabeca-sec #b-voltar { display: none; }
+  /* (#52) o disco arrastado da prateleira ate um toca-discos: a capa solta segue o ponteiro, inclinada e com a sombra
+     dura da mesa; na prateleira fica o lugar dela apagado; o toca-discos embaixo acende com o que soltar ali faz */
+  body.mesa-dj .estante .capa { -webkit-user-drag: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  body.mesa-dj .estante .capa img { -webkit-user-drag: none; }
+  body.mesa-dj .estante .disco-item.levantado { opacity: .35; }
+  body.mesa-dj.arrastando-disco, body.mesa-dj.arrastando-disco * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
+  body.mesa-dj > .disco-voando { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; will-change: transform; }
+  body.mesa-dj > .disco-voando.voltando { transition: transform .18s ease-in, opacity .18s ease-in; opacity: .4; }
+  body.mesa-dj > .disco-voando .dv-capa {
+    position: relative; width: 100%; height: 100%; overflow: hidden; border: 2px solid #0E0703; background: #2A1A12;
+    box-shadow: 6px 6px 0 rgba(12, 2, 0, .45); transform: rotate(-4deg) scale(1.06); animation: dv-levanta .12s ease-out;
+  }
+  body.mesa-dj > .disco-voando .dv-capa > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  body.mesa-dj .palco .deck.alvo-disco { outline: 4px solid var(--ambar); outline-offset: 2px; }
+  /* o que soltar faz, numa placa na beira de cima do toca-discos (como a do visor de DJ): no meio, a capa a cobria. Por
+     cima do canvas que desenha o toca-discos (o canvas.dk-px, z-index 6) */
+  body.mesa-dj .palco .deck.alvo-disco::after {
+    content: attr(data-alvo); position: absolute; left: 50%; top: 0; translate: -50% -50%; z-index: 7; pointer-events: none;
+    padding: 8px 14px 9px; white-space: nowrap; font-size: 1.25rem; font-weight: 700; line-height: 1; color: var(--tinta);
+    background: var(--ambar); border: 2px solid var(--contorno); box-shadow: 4px 4px 0 rgba(12, 2, 0, .5);
+  }
+}
+@keyframes dv-levanta { from { transform: none; box-shadow: 0 0 0 rgba(12, 2, 0, .45); } }
+/* DJ-DESK-SEARCH-DRAG-FIM */

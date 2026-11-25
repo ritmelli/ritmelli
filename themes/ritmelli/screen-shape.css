@@ -1,0 +1,58 @@
+/* SCREEN-SHAPE-INICIO */
+/* ---------- formato da tela: em pe e baixa (vem por ultimo para ganhar das regras de cada parte) ---------- */
+/* monitor em pe (mais alto que largo): deck e receptor lado a lado em cima, parede inteira embaixo */
+@media (min-width: 900px) and (max-aspect-ratio: 19/20) {
+  .app {
+    --deck-w: clamp(300px, min(50vw, (100dvh - 20rem) * .55), 900px);
+    grid-template-areas: "topo topo" "deck receptor" "parede parede";
+  }
+  .receptor { grid-template-columns: minmax(0, 1fr); align-self: start; }
+}
+/* tela baixa: a prateleira primeiro */
+@media (min-width: 900px) and (max-height: 819.98px) {
+  :where(body:not(.mesa-dj)) {
+  .parede { grid-template-areas: "cab cab" "prat prat" "rapidos fila" "cont cont"; }
+  .rapidos, .fila-parede { margin-top: 20px; }
+  }
+}
+/* tela baixa: a legenda de atalhos sai (as teclas seguem nos discos e no titulo do botao) */
+@media (min-width: 900px) and (max-height: 899.98px) {
+  :where(body:not(.mesa-dj)) {
+  .app { --resto: 360px; --pad-y: 16px; --fresta: 18px; }
+  .atalhos { display: none; }
+  /* o topo mais baixo: plaqueta, teclas e caixilho da busca encolhem, e sobra para o toca-discos (no celular grande
+     deitado a fileira quebra em duas, e cada uma pesa) */
+  .topo { gap: 12px; }
+  .marca { min-height: calc(36px + 8 * var(--px, 1px)); }
+  .botoes-topo .btn-madeira, .cabeca-sec .btn-madeira { height: calc(36px + 8 * var(--px, 1px)); }
+  .busca { --caixilho: calc(2px + 3 * var(--px, 1px)); }
+  .busca input { height: calc(32px + 6 * var(--px, 1px)); }
+  }
+}
+/* tela bem baixa: tudo mais justo, o prato continua sendo o maior da tela */
+@media (min-width: 900px) and (max-height: 699.98px) {
+  :where(body:not(.mesa-dj)) {
+  .app { --alvo: 2.25rem; --resto: 316px; --pad-y: 12px; --fresta: 14px; }
+  .nome-marca { font-size: 1.5rem; }
+  .palco .faixa > .titulo-faixa { margin-top: 11px; }
+  .palco .faixa > .canal-faixa { margin-bottom: 12px; }
+  .deck { gap: 12px; }
+  .faixa { gap: 6px; }
+  .palco .receptor { padding: 25px 18px 14px; column-gap: 20px; }   /* 25 em cima: a faixa da plaqueta R-77; 18 dos lados: a madeira e a chapa */
+  .medidores { gap: 10px; }
+  .chave { padding: 6px 10px; gap: 8px; font-size: .875rem; }
+  .estante { grid-template-columns: repeat(auto-fill, minmax(min(100%, 8.5rem), 1fr)); }
+  /* com largura sobrando, cada fader vira uma linha so: nome, canaleta, valor (a legenda fica para o leitor de tela) */
+  @container (min-width: 300px) {
+    .fader { grid-template-columns: 6.25rem minmax(0, 1fr) 3rem; align-items: center; column-gap: 10px; }
+    .fader + .fader { margin-top: 4px; }
+    .fader label, .fader input, .fader output { grid-row: 1; }
+    .fader label { grid-column: 1; }
+    .fader input { grid-column: 2; }
+    .fader output { grid-column: 3; }
+    .fader label small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  }
+  }
+}
+
+/* SCREEN-SHAPE-FIM */

@@ -1,0 +1,45 @@
+/* DJ-DESK-EMPTY-SHELF-INICIO */
+@media (min-width: 1400px) and (min-aspect-ratio: 20/19) {
+  /* vazia: a maleta aberta com o aviso dentro */
+  body.mesa-dj .fila-vazia:not([hidden]) {
+    display: block; grid-area: fila; align-self: start; justify-self: center; position: relative; z-index: 3; max-width: 30rem;
+    margin: 130px 0 0; padding: 0 12px; text-align: center; text-wrap: balance; font-size: .875rem; line-height: 1.45; color: var(--marfim-2);
+  }
+  /* (r08) o aviso na letra de pixel da tela dos toca-discos (VT323 a 25 px, 1 pixel da letra = 1 celula), com a sombra dura
+     de 1 celula: era a unica letra lisa dentro da mesa */
+  body.mesa-dj .fila-vazia:not([hidden]) { font-family: "VT323", monospace; font-size: 25px; line-height: 20px; letter-spacing: 0;
+    color: #B0A08A; text-shadow: 0 2px 0 #1A0B04; max-width: 640px; margin-top: 118px; -webkit-font-smoothing: none; }
+  body.mesa-dj .fila-vazia b { font-size: 25px; font-weight: 400; color: #FBEFD9; margin-bottom: 4px; }
+  /* (r09) com a letra das telas desenhada no canvas (MALETA-VAZIA), o texto do DOM fica so para leitura e selecao */
+  body.mesa-dj .fila-vazia.px-ok, body.mesa-dj .fila-vazia.px-ok b { color: transparent; text-shadow: none; }
+  body.mesa-dj .fila-vazia canvas.vazia-px { position: absolute; image-rendering: pixelated; pointer-events: none; }
+
+  /* ---- a prateleira: o painel de jacaranda com a plaqueta no alto, as capas numa fileira so que corre de lado (a
+     rodinha e as setas) ---- */
+  body.mesa-dj #vista-prateleira #cab-prat {
+    grid-area: prat; align-self: start; justify-self: center; position: relative; z-index: 2; height: auto; margin: 10px 0 0; padding: 3px 12px 2px;
+    background: #E2D3B3; border-image: var(--mold-etiqueta); box-shadow: 0 2px 0 rgba(0,0,0,.45);
+  }
+  body.mesa-dj #vista-prateleira #cab-prat { display: flex; align-items: baseline; gap: 8px; margin-bottom: 0; }
+  body.mesa-dj #cab-prat h2 { font-size: 1.125rem; color: var(--tinta); text-shadow: none; }
+  body.mesa-dj #cab-prat .conta { color: var(--tinta-2); text-shadow: none; }
+  body.mesa-dj #rolo-prateleira { grid-area: prat; position: relative; min-height: 0; margin: 0; padding: 42px 40px 12px; container-type: size; }
+  body.mesa-dj #rolo-prateleira::before { top: 0; }
+  body.mesa-dj .estante {
+    --gap: 14px; height: 100%; padding: 6px 7px 0; row-gap: 0;
+    grid-template-columns: none; grid-auto-flow: column; grid-template-rows: auto; grid-auto-columns: calc(100cqh - 26px); align-content: start;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none;
+  }
+  body.mesa-dj .estante > li { scroll-snap-align: start; }
+  body.mesa-dj .estante .ficha .nome { -webkit-line-clamp: 2; font-size: .75rem; }
+  body.mesa-dj .estante .disco-item:last-child .borda { margin-right: calc(var(--gap) / -2); }
+  body.mesa-dj .prat-seta {
+    position: absolute; z-index: 3; top: calc(42px + (100% - 54px - 18px) / 2 - 22px); width: 26px; height: 44px; display: grid; place-items: center;
+    padding: 0; color: #F7EBD6; border-radius: 4px; background: var(--veio), #66301A; border-image: var(--mold-objeto);
+  }
+  body.mesa-dj .prat-seta.esq { left: 9px; }
+  body.mesa-dj .prat-seta.dir { right: 9px; }
+  body.mesa-dj .prat-seta:disabled svg { opacity: .3; }
+  body.mesa-dj .prat-seta:active:not(:disabled) { transform: translateY(2px); border-image: var(--mold-objeto-apertado); }
+}
+/* DJ-DESK-EMPTY-SHELF-FIM */

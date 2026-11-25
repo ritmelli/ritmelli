@@ -1,0 +1,37 @@
+/* DJ-VISOR-INICIO */
+/* ---------- visor de DJ (computador): a onda do disco correndo com o ponto de toque fixo no meio, como a faixa de onda
+   da Pioneer e do Rekordbox, no lugar da barra de tempo e dentro da tela do titulo. As batidas que o motor mediu ficam
+   marcadas, e na passagem a proxima entra na metade de baixo em ciano, com as batidas dela caindo em cima das do disco que
+   sai (ou so o cruzamento de volume, quando ela nao vai no tempo). O desenho e um canvas de celulas de 2 px que o CSS
+   amplia sem suavizar (desenharVisor); a barra de tempo fica escondida, para o teclado e o leitor de tela. No celular
+   nada muda ---------- */
+.visor-dj { display: none; }
+@media (min-width: 900px) {
+  .palco .faixa::before, .palco .faixa::after { grid-row: 1 / 4; }   /* a tela do titulo desce ate o visor */
+  .palco .faixa:has(> .visor-dj) > .canal-faixa { margin-bottom: 0; }
+  .palco .faixa > .visor-dj {
+    grid-area: 3 / 1; position: relative; z-index: 1; display: block; height: 50px; margin: -2px 16px 15px;
+    background: #0B0807; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .palco .faixa > .visor-dj.arrastando { cursor: grabbing; }
+  .vdj-tela { position: absolute; left: 50%; top: 0; transform: translateX(-50%); display: block; image-rendering: pixelated; }
+  /* o tempo nas duas pontas de cima, na letra de pixel, numa tarja escura para a onda nao comer o numero */
+  .vdj-tempo {
+    position: absolute; z-index: 1; top: 0; left: 0; padding: 1px 4px 0 3px; pointer-events: none;
+    font: 1rem/13px "Jersey 10", monospace; letter-spacing: .05em; color: #F7E9D2; background: rgba(11, 8, 7, .82);
+  }
+  .vdj-resta { left: auto; right: 0; padding: 1px 3px 0 4px; color: #CDB99B; }
+  /* a etiqueta da passagem que esta na tela: no tempo (ciano, a cor da que entra) ou so o cruzamento */
+  .vdj-selo {
+    position: absolute; z-index: 1; left: 0; bottom: 10px; padding: 1px 4px 0 3px; pointer-events: none;
+    font: 1rem/13px "Jersey 10", monospace; letter-spacing: .05em; color: #7FE3F5; background: rgba(11, 8, 7, .82);
+  }
+  .vdj-selo.fade { color: #CDB99B; }
+  .vdj-selo[hidden] { display: none; }
+  /* a barra escondida: segue no teclado (setas, PageUp, Home) e no leitor de tela, e o anel de foco dela vai para o visor */
+  .palco .faixa:has(> .visor-dj) > .linha-tempo {
+    position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+  .palco .faixa:has(#seek:focus-visible) > .visor-dj { outline: 2px solid var(--ambar); outline-offset: 3px; }
+}
+/* DJ-VISOR-FIM */
