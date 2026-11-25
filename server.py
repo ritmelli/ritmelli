@@ -1051,12 +1051,16 @@ class App:
                         return None
             if not na_fila():
                 return None
+            if anterior:
+                d0, linha0, x0 = anterior
+                with e._qlock:
+                    if not (self.historico and self.historico[-1] is x0 and e._deck is d0 and e._deck.linha == linha0):
+                        return None  # o prato ou o historico mudou depois da escolha do Anterior
             self._fecha_viradas()
             if not na_fila():  # a virada que fechou agora era a dela
                 return None
             pode = (lambda: reserva.toca(e)) if reserva is not None else None
             if anterior:
-                d0, linha0, x0 = anterior
                 if not (self.historico and self.historico[-1] is x0):
                     return None  # outro avanco mexeu no historico depois da escolha do Anterior
                 pode = (lambda: e._deck is d0 and e._deck.linha == linha0)  # o prato que ele viu
@@ -1209,16 +1213,20 @@ class App:
                 return
             if tr["job"] is None:  # parecida do Automatico: nao vem download, pula para a seguinte
                 e = self.engine
-                cap = e.captura()
-                if cap.track is not tr:
-                    return
+
                 def para_se():  # sob o _qlock (a fila muda sob ele): o mesmo prato, a fila vazia e nenhum avanco de
                     r = self.reserva  # outro em curso nesta linha
                     return (e._deck is cap.deck and e._deck.linha == cap.linha and not self.fila
                             and (r is None or not r.viva(e)))
                 for _ in range(3):  # a reserva de outro que falhou devolve None: com fila, tenta de novo
-                    if cmd.avanca(self, historico=False, visto=cap) is not None:
-                        return  # tocou (este ou outro avanco), ou o prato ja mudou (CEDEU)
+                    cap = e.captura()
+                    if cap.track is not tr:
+                        return  # trocou de disco no meio
+                    x = cmd.avanca(self, historico=False, visto=cap)
+                    if x is cmd.CEDEU:
+                        continue  # a mesma parecida numa linha nova (um seek): de novo, com o prato de agora
+                    if x is not None:
+                        return  # tocou (este ou outro avanco)
                     if e.stop(pode=para_se) is not None:
                         return
                 return

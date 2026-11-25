@@ -42,19 +42,21 @@ reserva uma vez só e liberam todos; a troca sem reserva (o tocar da prateleira,
 em curso, e quem espera (não cede) vê a reserva de outro já em curso nesta linha antes de disputar a `fila_lock`. A
 reserva segue em curso até resolver, mesmo depois de a troca dela publicar o disco numa linha nova (`Reserva.viva`). O
 enfileirar e a parecida sem stream que esperaram uma reserva que não tocou tentam de novo na mesma linha do prato (a que
-mudou no meio, como no Parar, fica como está); a parecida só para o prato com a fila vazia e sem avanço de outro em
-curso, conferidos no `pode` do `stop`. A troca confere a reserva e a entrada antes de fechar a virada e tirar a passagem
-preparada: a que já não vale não tira a preparada de quem vale. Os Próximos sobrepostos (o segundo chega antes de o
-primeiro voltar, mesmo com o primeiro já trocando o disco) dividem o mesmo avanço (`App.proximo`), se o prato ainda é a
-linha dele ou a que a reserva dele publicou: um só toca, e todos respondem a entrada dele. O Próximo depois de um Parar
-segue sozinho. O avanço já em curso que o Próximo encontra ao chegar (o do fim do disco) e a virada pendente que ele vê
-são o avanço dele, mesmo se terminarem antes de ele reservar, e também o que outro começa na linha dele antes de ele
-reservar; o prato que muda de linha antes disso fica como está se trocou de disco (o Parar), e com o mesmo disco (um
-seek) o Próximo segue, com o grupo passando para a linha do seek. O grupo já resolvido, com o primeiro Próximo ainda
-gravando a posição, aceita quem chega se tocou e o prato segue na linha que ele publicou. O Próxima com a virada
-pendente devolve a entrada dela; se ela já saiu da fila, segue para a primeira. No `_volta_fila` e no `_volta_auto`, se
-tocar falhar, o erro vai para a tela (`engine.error`); em todos, a entrada quebrada sai da fila, menos quando outra
-reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz o avanço.
+mudou no meio, como no Parar, fica como está); a parecida captura o prato a cada tentativa (um seek no meio não a deixa
+carregando) e só para o prato com a fila vazia e sem avanço de outro em curso, conferidos no `pode` do `stop`. A troca
+confere a reserva e a entrada antes de fechar a virada e tirar a passagem preparada: a que já não vale não tira a
+preparada de quem vale. Os Próximos sobrepostos (o segundo chega antes de o primeiro voltar, mesmo com o primeiro já
+trocando o disco) dividem o mesmo avanço (`App.proximo`), se o prato ainda é a linha dele ou a que a reserva dele
+publicou: um só toca, e todos respondem a entrada dele. O Próximo depois de um Parar segue sozinho. O avanço já em curso
+que o Próximo encontra ao chegar (o do fim do disco) e a virada pendente que ele vê são o avanço dele, mesmo se
+terminarem antes de ele reservar, e também o que outro começa na linha dele antes de ele reservar; o prato que muda de
+linha antes disso fica como está se trocou de disco (o Parar), e com o mesmo disco (um seek) o Próximo segue, com o
+grupo passando para a linha do seek. O grupo já resolvido, com o primeiro Próximo ainda gravando a posição, aceita quem
+chega se tocou e o prato segue na linha que ele publicou. O Próxima com a virada pendente devolve a entrada dela; se ela
+já saiu da fila, segue para a primeira. O Próximo que concilia a virada passa o grupo para a linha dela, e quem chega
+nesse meio se junta a ele; o grupo só fica com a virada se a entrada dela ainda está na fila. No `_volta_fila` e no
+`_volta_auto`, se tocar falhar, o erro vai para a tela (`engine.error`); em todos, a entrada quebrada sai da fila, menos
+quando outra reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz o avanço.
 
 O `POST /api/queue` põe na fila no laço do servidor, como o tocar e a prateleira (a procura do download do mesmo vídeo
 e a criação de um novo não correm com outro pedido), e só o tocar na hora vai ao executor, com o prato visto no laço

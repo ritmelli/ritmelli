@@ -243,12 +243,14 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
     with A.fila_lock:
         while True:
             with E._qlock:
+                if grupo is not None and grupo.r is not None:
+                    em_curso = grupo.r  # o avanco que outro fez para este Proximo enquanto ele chegava (antes da virada)
+                    break
                 v, E.virou = E.virou, None
+                if v is not None and pular and grupo is not None:
+                    grupo.deck, grupo.linha = E._deck, E._deck.linha  # quem chega agora junta neste, que concilia
                 if v is None:
                     d = E._deck
-                    if grupo is not None and grupo.r is not None:
-                        em_curso = grupo.r  # o avanco que outro fez para este Proximo enquanto ele chegava
-                        break
                     if visto is not None and (visto.deck is not d or visto.linha != d.linha):
                         return CEDEU
                     em_curso = A.reserva
@@ -315,8 +317,9 @@ def pular(A):
             if r0 is not None and r0.viva(E):
                 p.liga(r0)  # o avanco de outro ja em curso nesta linha (o fim do disco): este Proximo e o dele
             elif E.virou is not None:  # a virada que este Proximo viu e o avanco dele, mesmo se o vigia conciliar antes
-                v = p.virada = E.virou
-                vx = next((y for y in A.fila if y["qid"] == v[2]), None)
+                vx = next((y for y in A.fila if y["qid"] == E.virou[2]), None)
+                if vx is not None:  # sem a entrada dela na fila, o avanco dele e o da primeira, como sem virada
+                    v = p.virada = E.virou
     if junta:
         return p.espera()
     x = None

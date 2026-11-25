@@ -2003,6 +2003,111 @@ def avanco(A, E):
             f"o grupo da virada pendente responde a entrada dela para todos ({r1 and (r1[0] or {}).get('id')}, "
             f"{r2 and (r2[0] or {}).get('id')})")
 
+    # dois Proximos com a virada no meio: o primeiro (que viu o prato antes dela) concilia a virada, e o segundo, que
+    # chega enquanto ele concilia, se junta a ele (os dois devolvem a entrada da virada)
+    no_avanco.clear()
+    libera.clear()
+    so_se[0] = lambda kw: kw.get("pular")
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    fecha, fechando, solta_fecha = cmd.fecha_virada, threading.Event(), threading.Event()
+
+    def fecha_presa(*a, **kw):
+        fechando.set()
+        solta_fecha.wait(5)
+        return fecha(*a, **kw)
+    with contextlib.redirect_stderr(io.StringIO()):
+        E.preparar(arquivo(A, "d2"), x["qid"])
+        ate(lambda: E._virar_em is not None)
+    with mock.patch.object(cmd, "avanca", side_effect=avanca_preso):
+        t1, r1 = em_thread(cmd.pular, A)
+        no_avanco.wait(5)
+        with E._qlock:
+            E._virar_em = E.pos
+        with contextlib.redirect_stderr(io.StringIO()):
+            E._mixa(eng.BLOCK)  # a virada chega depois de o primeiro ver o prato
+        with mock.patch.object(cmd, "fecha_virada", side_effect=fecha_presa):
+            libera.set()
+            fechando.wait(5)
+            t2, r2 = em_thread(cmd.pular, A)
+            t2.join(0.3)
+            solta_fecha.set()
+            t1.join(5)
+            t2.join(5)
+    confere(r1 and r1[0] is x and r2 and r2[0] is x and no_prato(E) == "d2" and fila(A) == ["d3"],
+            f"dois Proximos com a virada no meio: os dois devolvem a entrada dela ({r2 and (r2[0] or {}).get('id')}, "
+            f"{no_prato(E)}, {fila(A)})")
+
+    # o grupo ja ligado ao avanco do fim do disco nao troca por uma virada que aparece depois
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    toca_ate_o_fim(E)
+    no_avanco.clear()
+    libera.clear()
+    so_se[0] = lambda kw: kw.get("pular")
+    with mock.patch.object(cmd, "avanca", side_effect=avanca_preso):
+        tp, rp = em_thread(cmd.pular, A)
+        no_avanco.wait(5)
+        A._volta_fila(None)  # o fim do disco toca a d2 e liga o grupo do Proximo
+        with E._qlock:
+            E.virou = (dict(E.track), dict(arquivo(A, "d3")), y["qid"])  # e uma virada aparece antes de ele seguir
+        libera.set()
+        tp.join(5)
+    E.virou = None
+    confere(rp and rp[0] is x and fila(A) == ["d3"],
+            f"o grupo ligado ao fim do disco devolve a entrada dele, sem trocar por uma virada que veio depois "
+            f"({rp and (rp[0] or {}).get('id')}, {fila(A)})")
+
+    # o Proximo que viu a virada sem a entrada dela na fila e o fim do disco tocando a primeira antes dele: o avanco do
+    # fim do disco e o dele (nem 409)
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    with contextlib.redirect_stderr(io.StringIO()):
+        E.preparar(arquivo(A, "d2"), x["qid"])
+        ate(lambda: E._virar_em is not None)
+        with E._qlock:
+            E._virar_em = E.pos
+        E._mixa(eng.BLOCK)
+    with A.fila_lock:
+        A._tirar(x)  # a entrada da virada saiu da fila antes de conciliar
+    no_avanco.clear()
+    libera.clear()
+    so_se[0] = lambda kw: kw.get("pular")
+    with mock.patch.object(cmd, "avanca", side_effect=avanca_preso):
+        tp, rp = em_thread(cmd.pular, A)
+        no_avanco.wait(5)
+        avanca(A, na_tela=True, cede=True)  # o fim do disco: concilia a virada e toca a primeira
+        libera.set()
+        tp.join(5)
+    confere(rp and rp[0] is y and no_prato(E) == "d3" and fila(A) == [],
+            f"o Proximo com a virada sem entrada e o fim do disco tocando antes: devolve a entrada dele "
+            f"({rp and (rp[0] or {}).get('id')}, {no_prato(E)}, {fila(A)})")
+
+    # a parecida sem stream com um seek entre a captura e a reserva: tenta de novo, e a seguinte toca
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    tr = {"id": "ccccccccccc", "title": "parecida", "channel": None, "thumb": None, "duration": 120.0,
+          "youtube_id": "ccccccccccc", "alvo": None, "path": None, "stream": True, "job": None, "auto": True}
+    E.espera(tr)
+    no_avanco.clear()
+    libera.clear()
+    so_se[0] = lambda kw: True
+    with mock.patch.object(cmd, "avanca", side_effect=avanca_preso), contextlib.redirect_stderr(io.StringIO()):
+        t, _ = em_thread(A._abre_stream, tr, "ccccccccccc", True)
+        no_avanco.wait(5)
+        E.seek(5.0)
+        libera.set()
+        t.join(5)
+    confere(no_prato(E) == "d2" and fila(A) == [],
+            f"a parecida sem stream com um seek no meio: a seguinte toca ({no_prato(E)}, {fila(A)})")
+
     # o Anterior e um Proximo no meio, entre a escolha do Anterior e a troca: o Anterior escolhe de novo, com o prato
     # e o historico de agora
     limpa()
@@ -2045,6 +2150,30 @@ def avanco(A, E):
             del A.tocar_entrada
         confere(vez and (feito, no_prato(E)) == espera,
                 f"o Anterior com {nome} entre a escolha e a troca: escolhe de novo ({feito}, {no_prato(E)})")
+    # a troca recusada do Anterior (o prato mudou depois da escolha) nao tira a passagem preparada da linha nova
+    limpa()
+    toca("d3")
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    real, vez, depois_da_recusa = A.tocar_entrada, [], []
+
+    def tocar_recusado(xx, **kw):
+        if not vez and kw.get("anterior"):
+            vez.append(1)
+            cmd.tocar(A, "d3", start=100.0)  # outro disco no meio, e a passagem dele ja preparada
+            with contextlib.redirect_stderr(io.StringIO()):
+                E.preparar(arquivo(A, "d2"), x["qid"])
+            ok = real(xx, **kw)
+            depois_da_recusa.append((ok, E.pronto_tag))
+            return ok
+        return real(xx, **kw)
+    A.tocar_entrada = tocar_recusado
+    try:
+        cmd.voltar(A)
+    finally:
+        del A.tocar_entrada
+    confere(depois_da_recusa == [(False, x["qid"])],
+            f"a troca recusada do Anterior deixa a passagem preparada da linha nova ({depois_da_recusa})")
     toca("d1", start=50.0)
     sk, vez = E.seek, []
 
