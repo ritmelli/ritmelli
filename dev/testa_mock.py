@@ -285,14 +285,14 @@ def track_field_routes(fontes=None):
         rotas = [(d.func.attr.upper(), d.args[0].value) for d in fn.decorator_list
                  if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and isinstance(d.func.value, ast.Name)
                  and d.func.value.id == "r" and d.args and isinstance(d.args[0], ast.Constant)]
-        corpos = [n.targets[0].id for n in ast.walk(fn) if isinstance(n, ast.Assign) and len(n.targets) == 1
-                  and isinstance(n.targets[0], ast.Name) and isinstance(n.value, ast.Await)
-                  and isinstance(n.value.value, ast.Call) and isinstance(n.value.value.func, ast.Name)
-                  and n.value.value.func.id == "body"]
+        guardados = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and len(n.targets) == 1
+                     and isinstance(n.targets[0], ast.Name) and isinstance(n.value, ast.Await)
+                     and isinstance(n.value.value, ast.Call) and isinstance(n.value.value.func, ast.Name)
+                     and n.value.value.func.id == "body"]  # b = await body(request), and nothing else
+        corpos = [n.targets[0].id for n in guardados]
         perdido_aqui = [f"{fn.name}:{n.lineno} {ast.unparse(n)[:70]}" for n in ast.walk(fn)
                         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "body"
-                        and not any(n is a.value.value for a in ast.walk(fn) if isinstance(a, ast.Assign)
-                                    and isinstance(a.value, ast.Await))]  # the body not kept in one name
+                        and not any(n is a.value.value for a in guardados)]  # the body not kept in one name
         for rota in rotas:
             lido, perdido = [], list(perdido_aqui)
             for var in corpos:
@@ -320,6 +320,8 @@ def campos_da_faixa():
     for corpo_da_rota, deve in (('b = await body(request)\n    return b.get("title")', "achada"),
                                 ('b = await body(request)\n    p = dict(b)\n    return p.get("title")', "perdida"),
                                 ('b = await body(request)\n    p = b\n    return p.get("title")', "perdida"),
+                                ('b = p = await body(request)\n    return b.get("title")', "perdida"),
+                                ('p, = [await body(request)]\n    return p.get("title")', "perdida"),
                                 ('b = await body(request)\n    return cmd.x(A, b)', "achada"),
                                 ('b = await body(request)\n    return cmd.y(A, b)', "perdida"),
                                 ('b = await body(request)\n    return [b[k] for k in ("vol", "title")]', "achada"),
@@ -329,7 +331,7 @@ def campos_da_faixa():
         com = "def x(A, b):\n    return b['duration']\ndef y(A, b):\n    return list(b.items())\n"
         achadas, perdidas = track_field_routes({"server": fonte, "comandos": com})
         veio = "achada" if achadas else "perdida" if perdidas else "nada"
-        confere(veio == deve, f"the search on a route with {corpo_da_rota.splitlines()[1:]!r}: {deve} ({veio})")
+        confere(veio == deve, f"the search on the route {corpo_da_rota.replace(chr(10) + '    ', '; ')}: {deve} ({veio})")
 
 
 def tabela():
@@ -525,13 +527,16 @@ async def papeis_no_guard():
                         st = f"accepted, then {type(ex).__name__}"
                     confere(st == 400, f"{who}: {m} {c} refuses {str(corpo)[:80]} ({st})")
             corpo = {"youtube_id": "dQw4w9WgXcQ", "title": "Live", "duration": 90000}  # a long search result, saved
+            labels = []
+            A.job_rodando, A.run_download = (lambda _: None), (lambda *a: None)
+            A.new_job = lambda label, play, alvo: labels.append(label) or {"id": "j1"}
             try:
-                resp, _, _ = await manda("POST", "/api/library", corpo=corpo, handler=rota[("POST", "/api/library")],
+                resp, j, _ = await manda("POST", "/api/library", corpo=corpo, handler=rota[("POST", "/api/library")],
                                          **kw)
-                st = resp.status
-            except Exception as ex:
-                st = f"accepted, then {type(ex).__name__}"
-            confere(st != 400, f"{who} can still save a search result longer than a day, without play ({st})")
+            finally:
+                del A.job_rodando, A.run_download, A.new_job
+            confere(resp.status == 200 and j.get("job") == {"id": "j1"} and labels == ["Live"],
+                    f"{who} can still save a search result longer than a day, without play ({resp.status}, {j})")
             resp, j, _ = await manda("PATCH", "/api/library/d1", corpo={"title": "a\ud800b"},
                                      handler=rota[("PATCH", "/api/library/{iid}")], **kw)
             confere(resp.status == 400 and not renamed and j["error"].get("key") == "server.library.badTitle",
