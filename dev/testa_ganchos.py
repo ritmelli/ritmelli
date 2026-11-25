@@ -19,11 +19,13 @@ It also ratchets the reaches into the insides of two classes from the other modu
     (change_queue, remove_from_queue, release_reservation, with_engine, search_songs, run_helper and the others). The
     count must equal APP_CEILING.
 The private names come from the class's own syntax tree: every method and nested class, every name assigned at the
-class's level (also under an if or a try there) and every self._x or cls._x its methods assign (also by setattr) whose
-name starts with one underscore (not two). A reach is a read, write or call of one of those names, and also a getattr,
-setattr, hasattr or delattr (or builtins.getattr and the rest) with the name as a literal, on any object but the self
-or cls of a method of a class without a base, reaching a name that class defines itself (a class's own _lock is its
-own); a class with a base gets no pass, so a subclass reading, assigning or overriding an inherited _x is a reach.
+class's level (also under an if or a try there) or declared in its __slots__, and every self._x or cls._x its methods
+assign (also by setattr) whose name starts with one underscore (not two). A reach is a read, write or call of one of
+those names, and also a getattr, setattr, hasattr or delattr (or builtins.getattr and the rest) with the name as a
+literal or as a loop variable over a literal tuple of names, on any object but a method's own self or cls (its first
+parameter; a staticmethod has none), in a class without a base, reaching a name that class defines itself (a class's
+own _lock is its own); a class with a base gets no pass, so a subclass reading, assigning or overriding an inherited _x
+is a reach.
 What counts is the seam between modules: the class's own module stays out, since an underscore name is private to its
 module. Above the ceiling, a new reach went in: go through the interface. Below it, the PR lowers the ceiling with it.
 Both numbers go to the PR summary (the "-- summary:" lines that dev/testa_tudo.py collects).
@@ -210,8 +212,7 @@ def slot_names(value):
 def class_privates(c):
     """The private names the class c defines: its methods, nested classes, the names assigned at its own level (also
     under an if or a try there, and in a tuple unpacking) and those its __slots__ declares, and every self._x or cls._x
-    its methods assign
-    (instance_stores). A helper def nested inside a method is not the class's."""
+    its methods assign (instance_stores). A helper def nested inside a method is not the class's."""
     out = set()
     for s in class_level(c.body):  # the class's own level: its methods, nested classes and _X = ...
         if isinstance(s, ast.ClassDef):
@@ -265,14 +266,37 @@ def reaches(owner, names):
         def passes(node, receiver, name):
             mine, receivers = own_names.get(id(node), ((), ()))
             return isinstance(receiver, ast.Name) and receiver.id in receivers and name in mine
+        looped = loop_values(tree)
         for no in ast.walk(tree):
             if isinstance(no, ast.Attribute) and no.attr in names and not passes(no, no.value, no.attr):
                 out.append((f.name, no.lineno, no.attr))
-            elif (isinstance(no, ast.Call) and attr_function(no.func) and len(no.args) >= 2
-                  and isinstance(no.args[1], ast.Constant) and no.args[1].value in names
-                  and not passes(no, no.args[0], no.args[1].value)):
-                out.append((f.name, no.lineno, no.args[1].value))
+            elif isinstance(no, ast.Call) and attr_function(no.func) and len(no.args) >= 2:
+                arg = no.args[1]
+                literal = [arg.value] if isinstance(arg, ast.Constant) else looped.get(id(arg), [])
+                out += [(f.name, no.lineno, n) for n in literal if n in names and not passes(no, no.args[0], n)]
     return sorted(out)
+
+
+def loop_values(tree):
+    """{id of a Name: its strings} for every name a for or a comprehension binds to a literal tuple or list of strings
+    (for k in ("a", "b"): getattr(x, k)), at each place it is read in that loop."""
+    out = {}
+
+    def bind(target, iterable, scope):
+        values = list(slot_names(iterable)) if isinstance(iterable, (ast.Tuple, ast.List)) else []
+        if isinstance(target, ast.Name) and values:
+            for part in scope:
+                for n in ast.walk(part):
+                    if isinstance(n, ast.Name) and n.id == target.id and isinstance(n.ctx, ast.Load):
+                        out[id(n)] = values
+    for no in ast.walk(tree):
+        if isinstance(no, (ast.For, ast.AsyncFor)):
+            bind(no.target, no.iter, no.body + no.orelse)
+        elif isinstance(no, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+            elts = [no.key, no.value] if isinstance(no, ast.DictComp) else [no.elt]
+            for i, g in enumerate(no.generators):
+                bind(g.target, g.iter, elts + g.ifs + no.generators[i + 1:])
+    return out
 
 
 def ratchet(what, owner, classes, ceiling, ceiling_name):
