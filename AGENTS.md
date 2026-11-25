@@ -50,7 +50,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 
 | Área | Arquivos | Teste (sem caminho, em `dev/`) |
 | --- | --- | --- |
-| Motor de áudio | `engine.py`, `sonoridade.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_anel`, `testa_ganchos` |
+| Motor de áudio | `engine.py`, `sonoridade.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_passagem`, `testa_anel`, `testa_ganchos` |
 | Servidor e YouTube | `server.py`, `yt_fora.py`, `yt_erros.py` | `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py` | `testa_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`), o `grava_cfg` do `server.py` | `testa_grava` |
@@ -81,4 +81,7 @@ $env:PYTHONUTF8 = '1'; python -m ruff check .; python dev\testa_tudo.py
 
 O `--microfone` roda os do filtro (depois do `microfone\apo\compila.bat teste`), o `--tela --base origin/main` a tela
 e o `--so-stdlib` só os da biblioteca padrão, que a `monta.yml` (só à mão) roda antes de montar. Teste novo de `dev/`
-entra numa lista do `testa_tudo.py`, sem som, aparelho nem rede externa, ou o `testa_tudo` falha.
+entra numa lista do `testa_tudo.py`, sem som, aparelho nem rede externa, ou num passo próprio do `testa.yml` (como o
+`--disco` do `testa_pasta_protegida`). O que só roda à mão diz no topo, num comentário antes da docstring:
+`# manual: <comando> precisa de <aparelho>`. O `testa_tudo` lê os passos do `testa.yml` e falha com teste sem destino e
+com o arquivo de `dev/` que tem a linha `manual:` e roda lá.
