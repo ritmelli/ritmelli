@@ -21,10 +21,11 @@ Os pares:
 Cada par registra as posicoes dos ataques, do corte ou da queda, o ramo esperado e a janela da virada calculada delas
 (onde B tem de comecar para a primeira batida dela cair no ataque de A esperado), sem tomar o _virar_em do motor como
 resposta. A virada medida e a posicao de A no comeco do bloco em que o _mixa virou, e tem de cair a ate FOLGA_VIRADA da
-janela. Nos pares planejados, os ataques fortes de B nas primeiras 4 batidas tem de ficar no tempo da regua de A (a
-grade dos ataques de A na saida, nos REGUA_S antes da virada), cada um a ate ALINHA dela; e o controle negativo: o mesmo
-detector, com a mesma regua e a mesma amostra da virada, no sinal da faixa de B deslocado meio periodo da regua, tem de
-dar contratempo.
+janela. No par recusado, o motivo tem de ser o andamento, e no audio B so entra depois da virada e A cai. Nos pares
+planejados, as primeiras 4 batidas de B tem de ter um ataque forte cada (nem um a mais, nem um a menos), no tempo da
+regua de A (a grade dos ataques de A na saida, nos REGUA_S antes da virada), cada um a ate ALINHA dela; e o controle
+negativo: o mesmo detector, com a mesma regua e a mesma amostra da virada, no sinal da faixa de B deslocado meio
+periodo da regua, tem de dar contratempo.
 
     python dev/testa_passagem.py [--codigo <pasta>] [--par seco ...] [-v]
 
@@ -54,7 +55,6 @@ import time
 import wave
 from collections import namedtuple
 from pathlib import Path
-from unittest import mock
 
 import numpy as np
 
@@ -96,6 +96,7 @@ PARES = [
     Par("meio", 70.0, 140.0, "fade", "fade", True),
     Par("recusada", 90.0, 110.0, "fade", "recusada", False),
 ]
+RECUSA = "tempos far apart"  # o motivo da recusa no log do motor, no par recusada
 RAMOS = {"seco": "final seco no tempo", "fade": "fade-out no tempo, B esticada",
          "dois": "fade-out no tempo, os dois esticados", "recusada": "so de volume (o plano no tempo recusou)"}
 
@@ -178,7 +179,7 @@ def monta(par, pasta):
         _poe(xa, _estalo(rng, FAIXA_A), t)
     xa *= nivel
     # B: o tom desde o comeco, os estalos desde TAU_B (no par meio, o fraco no meio de cada batida, 12 dB abaixo)
-    dur_b = 75.0  # a volta lenta de B ao andamento dela leva ate RAMPA_MAX_S (60 s), e o planejador quer tudo decodificado
+    dur_b = 75.0  # a volta lenta de B ao andamento dela leva ate o RAMPA_MAX_S do motor (60 s), e tem de caber em B
     nb = int(dur_b * SR)
     xb = _fundo(nb, 0.085, (1800.0,))
     ts_b = TAU_B + np.arange(int((dur_b - TAU_B - 0.2) / pb)) * pb
@@ -321,12 +322,20 @@ def ataques_b(yb, vo, ate, vies):
 
 
 def julga(yb, vo, f, p, lead, vies):
-    """O veredito dos ataques fortes de B nas primeiras batidas contra a regua de A: (veredito, desvios, fracos)."""
-    fortes, fracos = ataques_b(yb, vo, vo / SR + lead + 3.5 * p, vies)
-    if len(fortes) < 3:
-        raise Falha(f"so {len(fortes)} ataques fortes de B nas primeiras 4 batidas depois da virada")
+    """O veredito dos ataques fortes de B nas primeiras 4 batidas contra a regua de A: (veredito, desvios, fracos). A
+    janela vai ate 3,75 periodos depois da primeira batida de B: pega a quarta dela, e tambem a quarta deslocada meio
+    periodo do controle negativo, mas nao a quinta."""
+    fortes, fracos = ataques_b(yb, vo, vo / SR + lead + 3.75 * p, vies)
+    if len(fortes) != 4:
+        raise Falha(f"{len(fortes)} ataques fortes de B nas primeiras 4 batidas depois da virada, e nao 4")
     d = desvio(fortes, f, p)
     return veredito(d, p), d, desvio(fracos, f, p)
+
+
+def _rms_db(y, de, ate):
+    """O nivel (dB) de y entre de e ate (s da saida)."""
+    z = y[int(de * SR):int(ate * SR)]
+    return 10 * np.log10(np.mean(z * z) + 1e-20)
 
 
 def confere(par, pasta, verboso):
@@ -334,7 +343,7 @@ def confere(par, pasta, verboso):
     fx = monta(par, pasta)
     log = Log(verboso)
     try:
-        with mock.patch.object(eng.pastas, "LOGS", pasta / "logs"), contextlib.redirect_stderr(log):
+        with contextlib.redirect_stderr(log):
             x, vo, virada_a, decisao = toca(fx, log)
     except Falha as ex:
         ex.log = log
@@ -344,13 +353,31 @@ def confere(par, pasta, verboso):
     falhas = []
     if ramo != par.ramo:
         falhas.append(f"o ramo foi {RAMOS[ramo]!r}, e o esperado {RAMOS[par.ramo]!r} ({decisao})")
+    elif ramo == "recusada" and RECUSA not in decisao:
+        falhas.append(f"a recusa nao foi por andamento ({decisao})")
     lo, hi = fx["janela"]
     if not lo - FOLGA_VIRADA <= virada_a <= hi + FOLGA_VIRADA:
         fora = virada_a - hi if virada_a > hi else virada_a - lo
         falhas.append(f"a virada caiu {fora * 1000:+.0f} ms fora da janela")
-    if par.ramo != "recusada" and ramo != "recusada":
+    yb = signal.sosfiltfilt(SOS_B, x)
+    if ramo == "recusada":
+        # a passagem de volume no audio: B nao soa antes da virada (a faixa dela fica 30 dB abaixo do que soa depois),
+        # entra depois dela, e A some
+        v = vo / SR
+        sobe = _rms_db(yb, v + 1.0, v + 3.0) - _rms_db(yb, v - 3.0, v)
+        depois = ataques_b(yb, vo, v + 3.0, fx["vies"][1])
+        ya = signal.sosfiltfilt(SOS_A, x)
+        cai = _rms_db(ya, v - 1.0, v) - _rms_db(ya, v + 2.5, v + 3.5)
+        msgs.append(f"B sobe {sobe:.0f} dB e tem {len(depois[0]) + len(depois[1])} ataques nos 3 s depois da virada; "
+                    f"A cai {cai:.0f} dB")
+        if sobe < 30:
+            falhas.append(f"a faixa de B subiu so {sobe:.0f} dB na virada")
+        if len(depois[0]) + len(depois[1]) < 4:
+            falhas.append("B nao entrou depois da virada")
+        if cai < 20:
+            falhas.append(f"A caiu so {cai:.0f} dB em 3 s depois da virada")
+    elif par.ramo != "recusada":
         f, p = regua(x, vo, fx["vies"][0])
-        yb = signal.sosfiltfilt(SOS_B, x)
         v, d, fracos = julga(yb, vo, f, p, fx["lead"], fx["vies"][1])
         msgs.append(f"regua de A {60 / p:.2f} BPM; B: " + " ".join(f"{t * 1000:+.0f}" for t in d) + " ms"
                     + f" (vies do detector: A {fx['vies'][0] * 1000:+.0f}, B {fx['vies'][1] * 1000:+.0f} ms)")
@@ -374,9 +401,17 @@ def confere(par, pasta, verboso):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    nomes = [p.nome for p in PARES]
+    sem = sorted(set(ARGS.par or ()) - set(nomes))
+    if sem:
+        print(f"par desconhecido: {', '.join(sem)} (os pares: {', '.join(nomes)})")
+        return 1
     pares = [p for p in PARES if not ARGS.par or p.nome in ARGS.par]
     print(f"o motor: {Path(eng.__file__).resolve()}")
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-banca-"))
+    # os logs do motor (o registro do fim de cada passagem e a poda dele) vao para a pasta temporaria ate o processo
+    # acabar: a thread do planejador grava depois de publicar a decisao, e nunca pode gravar no logs/ de verdade
+    eng.pastas.LOGS = tmp / "logs"
     ruins = []
     try:
         for par in pares:
@@ -399,7 +434,8 @@ def main():
     finally:
         time.sleep(0.2)  # os leitores e a onda fecham o ffmpeg dos WAV
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"{len(pares) - len(ruins)} de {len(pares)} pares passaram" + (f"; falharam: {', '.join(ruins)}" if ruins else ""))
+    print(f"{len(pares) - len(ruins)} de {len(pares)} pares passaram"
+          + (f"; falharam: {', '.join(ruins)}" if ruins else ""))
     return 1 if ruins else 0
 
 
