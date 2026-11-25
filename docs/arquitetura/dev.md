@@ -7,6 +7,9 @@ As ferramentas de `dev/` que abrem o tema ou mandam comandos (o `shot`, o `fitch
 marcador e o redirecionamento para outra origem. Os medidores que abrem o anel de verdade
 (`dev/mede_folga.py`, `dev/mede_voz_ao_vivo.py`) são manuais, num Windows de teste, e saem
 antes de abrir o anel quando a 8799 aceita conexão.
+O `dev/mede_esticamento.py` mede, com o `AnelFalso` num processo à parte e sem aparelho, se o
+esticamento da passagem seca o anel do jogo, no processo do motor e num auxiliar abaixo do normal
+(manual; o resultado de 25/11 está no `engine.md`).
 
 O `dev/testa_tudo.py` roda os testes que não usam som, aparelho nem rede externa, um por
 vez, pelas listas dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO` e

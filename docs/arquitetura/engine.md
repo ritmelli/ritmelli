@@ -35,3 +35,44 @@ a prateleira aos poucos. Na prateleira de 14/11, as músicas iam de -19,2 a -5,3
 -9,3); o alvo de -11 (o do modo "Alto" do Spotify, que também sobe com limitador) deixa o Sultans
 of Swing (+3,1 dB) com 0,2% do tempo acima de 3 dB de limitação, e em -10 seriam 2,7%.
 `dev/testa_ganho.py` testa a medida, o limitador e o motor sem som.
+
+O esticamento da passagem no tempo (o `esticar` e o `esticar_saida`, a velocidade como no vinil e o tom de volta pela
+Rubber Band do pedalboard) fica no processo do motor, na thread do planejador. Ele leva de 2 a 8 s por passagem, e a
+saída para o jogo segue no tempo nesse meio: a Rubber Band solta o interpretador quase o tempo todo enquanto estica
+(a pior volta da thread do anel, com ela no processo, foi de 8 ms, com 30 ms de folga). Medido em 25/11 com o
+`dev/mede_esticamento.py`, contra o mesmo esticamento num processo auxiliar abaixo do normal (como o `--andamento`),
+com o mesmo áudio (os pares da banca que esticam: seco, fade e dois), a mesma carga e a mesma janela de contagem nos
+dois modos: do `preparar` até A chegar a 0,2 s da virada que a banca calcula para o par (~32 s, pela posição de A),
+depois do corte do auxiliar e antes da virada.
+As secas são as do `Injetor` (o anel vazio quando a thread voltou) e as faltas, as do `AnelFalso` num processo à
+parte (os 10 ms que o leitor não achou). O prazo do auxiliar é o do motor: a espera por ele só corta quando A chega a
+0,3 s da virada, onde o motor já recusaria a resposta, e a passagem fica só de volume.
+
+| carga (8 núcleos) | modo | passagens | secas | faltas | pior volta | plano (mediana, maior) | no tempo |
+|---|---|---|---|---|---|---|---|
+| nenhuma | local | 6 | 0 | 0 | 8,1 ms | 6,8 s, 9,2 s | 6 |
+| nenhuma | auxiliar | 6 | 0 | 0 | 18,3 ms | 6,6 s, 10,2 s | 6 |
+| 8 processos | local | 6 | 0 | 0 | 8,0 ms | 7,2 s, 9,7 s | 6 |
+| 8 processos | auxiliar | 6 | 0 | 0 | 4,6 ms | sem resposta até o prazo (~31 s) | 0 |
+| 8 processos | auxiliar na prioridade normal | 6 | 0 | 0 | 11,6 ms | 8,9 s, 13,8 s | 6 |
+| 16 processos | local | 3 | 0 | 0 | 6,4 ms | 7,4 s e 3,4 s nos dois que esticaram | 2 |
+| 16 processos | auxiliar | 3 | 0 | 0 | 4,0 ms | sem resposta até o prazo (~27 s) nos dois | 0 |
+
+Nenhum modo secou o anel nem deixou o leitor sem som, então o auxiliar não tem seca a tirar, e perde o prazo do plano:
+abaixo do normal, com a CPU ocupada (o jogo), ele não respondeu até a virada em nenhuma passagem, e toda passagem ficou
+só de volume. Na prioridade normal, ele responde, mais devagar (divide a CPU com o jogo de igual para igual, e o motor
+roda acima do normal): o plano do par dois levou 13,1 e 13,8 s, contra 9,7 s no local, e numa rodada anterior ele ficou
+pronto depois do começo da rampa da que sai nas duas vezes (só de volume). Sem carga, os dois modos empatam; numa
+rodada anterior, o auxiliar perdeu a rampa do par dois uma vez em 9. Por isso o esticamento fica no processo. No dobro
+da carga, o par dois ficou só de volume nos dois modos por outro motivo, antes de esticar (o áudio decodificou devagar
+e não deu tempo de a que sai mudar de andamento). Fora da conta, a primeira passagem de cada processo, a do par seco,
+parou o interpretador ~30 ms e secou uma vez; nas rodadas anteriores, isso aconteceu também com o auxiliar na frente,
+então provavelmente é o resto do planejador na primeira vez, e não a Rubber Band.
+
+Os limites da medida: foi neste PC, com o `AnelFalso` (um leitor simulado de 480 quadros a cada 10 ms) e o `Injetor`,
+sem aparelho, sem o anel `Global\` e sem o filtro registrado; a ferramenta usa o `AnelFalso` também num PC com o
+filtro, então o `audiodg` e um jogo de verdade ficam de fora. E nos pares da banca a virada fica ~33 s depois do
+`preparar`, e o app prepara 3 min antes do fim: lá o auxiliar abaixo do normal teria mais tempo, e isso não foi
+medido (a decisão não depende disso, porque não houve seca a tirar). Nos PCs de quem usa, quem diz se isso muda é o
+evento "audio" da telemetria (o `secas_esticamento`, as secas com a Rubber Band em curso): com secas ali, a medida
+se repete, com a mesma ferramenta, num Windows de teste com um jogo.
