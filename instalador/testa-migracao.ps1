@@ -93,6 +93,8 @@ Confere (Test-Path "$env:LOCALAPPDATA\Ritmelli\library\marca-migracao.txt") 'a b
 if ($antesDoNome) { Confere (-not (Test-Path "$env:LOCALAPPDATA\Vitrola")) 'a pasta de dados de antes saiu' }
 $met = Invoke-RestMethod 'http://127.0.0.1:8799/api/metricas' -TimeoutSec 5
 Confere ($met.situacao -eq 'desligada') "os dados de uso seguem desligados, como a pessoa escolheu antes ($($met.situacao))"
+# desligada nao ve o aviso de novo, com qualquer versao do texto: a escolha que vale segue a do instalador de antes
+Confere ($met.texto -ge 1 -and $met.texto_atual -ge $met.texto) "a versao do texto vem da escolha do instalador de antes ($($met.texto) de $($met.texto_atual))"
 Invoke-RestMethod 'http://127.0.0.1:8799/api/shutdown' -Method Post -ContentType 'application/json' -Body '{}' | Out-Null
 if (-not $vit.WaitForExit(30000)) { throw 'o Ritmelli nao saiu em 30 s depois do Desligar' }
 
