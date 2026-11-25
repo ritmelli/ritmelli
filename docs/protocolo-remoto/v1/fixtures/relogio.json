@@ -3,9 +3,9 @@
  "desvio_real_ms": 5000.0,
  "entregas": [
   {
-   "chega_ms": 1009030.0,
-   "transito_ms": 30.0,
-   "nota": "a foto guardada no relay, entregue 4 s depois a quem conectou",
+   "chega_ms": 1009400.0,
+   "transito_ms": 400.0,
+   "nota": "a foto guardada no relay, entregue 4 s depois a quem conectou, e atrasada 400 ms na rede",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",
@@ -59,7 +59,7 @@
   {
    "chega_ms": 1009525.0,
    "transito_ms": 25.0,
-   "nota": "o pulso, mais rapido: o relogio melhora",
+   "nota": "o pulso, mais rapido: o erro cai de 400 para 25 ms",
    "msg": {
     "protocolo": 1,
     "tipo": "pulso",
@@ -71,7 +71,7 @@
   {
    "chega_ms": 1011400.0,
    "transito_ms": 400.0,
-   "nota": "a foto atrasada na rede: o relogio fica com o atraso do pulso",
+   "nota": "a foto atrasada na rede: o relogio nao piora",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",

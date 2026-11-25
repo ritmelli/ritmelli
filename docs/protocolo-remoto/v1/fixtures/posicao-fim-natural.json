@@ -1,6 +1,6 @@
 {
  "cenario": "fim-natural",
- "descricao": "O fim natural: a ancora congela na posicao final; os ticks seguem e o rev fica, com o pulso repetindo o rev de 1 em 1 s.",
+ "descricao": "O fim natural: com o fim do disco na janela, a ancora para na posicao final; depois ela congela ali, os ticks seguem e o rev fica, com o pulso repetindo o rev de 1 em 1 s.",
  "relogio": {
   "t0_ms": 1000000.0,
   "taxa": 48000
@@ -68,12 +68,63 @@
    }
   },
   {
+   "evento": "mapa",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 2,
+    "origem": "mudanca",
+    "agora": 1001050.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 10.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 9.05,
+      "t": 1001050.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 45600,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
    "evento": "pulso",
    "msg": {
     "protocolo": 1,
     "tipo": "pulso",
     "sessao": "sessao-de-teste-01",
-    "rev": 1,
+    "rev": 2,
     "agora": 1002000.0
    }
   },
@@ -83,9 +134,9 @@
     "protocolo": 1,
     "tipo": "estado",
     "sessao": "sessao-de-teste-01",
-    "rev": 2,
+    "rev": 3,
     "origem": "mudanca",
-    "agora": 1002010.0,
+    "agora": 1002030.0,
     "estado": {
      "status": "ended",
      "faixa": {
@@ -115,7 +166,7 @@
      "ancora": {
       "faixa": "A",
       "pos": 10.0,
-      "t": 1002010.0,
+      "t": 1002030.0,
       "taxa": 48000,
       "anda": false,
       "segmentos": []
@@ -129,7 +180,7 @@
     "protocolo": 1,
     "tipo": "pulso",
     "sessao": "sessao-de-teste-01",
-    "rev": 2,
+    "rev": 3,
     "agora": 1003000.0
    }
   },
@@ -139,7 +190,7 @@
     "protocolo": 1,
     "tipo": "pulso",
     "sessao": "sessao-de-teste-01",
-    "rev": 2,
+    "rev": 3,
     "agora": 1004000.0
    }
   }

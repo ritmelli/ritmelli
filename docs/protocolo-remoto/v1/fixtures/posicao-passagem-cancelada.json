@@ -76,7 +76,7 @@
     "sessao": "sessao-de-teste-01",
     "rev": 2,
     "origem": "mudanca",
-    "agora": 1001000.0,
+    "agora": 1001050.0,
     "estado": {
      "status": "playing",
      "faixa": {
@@ -116,13 +116,13 @@
      ],
      "ancora": {
       "faixa": "A",
-      "pos": 1.0,
-      "t": 1001000.0,
+      "pos": 1.05,
+      "t": 1001050.0,
       "taxa": 48000,
       "anda": true,
       "segmentos": [
        {
-        "n": 596640,
+        "n": 594240,
         "v": 1.0
        },
        {
@@ -151,7 +151,7 @@
     "sessao": "sessao-de-teste-01",
     "rev": 3,
     "origem": "mudanca",
-    "agora": 1013430.0,
+    "agora": 1013440.0,
     "estado": {
      "status": "playing",
      "faixa": {
@@ -191,7 +191,7 @@
      ],
      "ancora": {
       "faixa": "A",
-      "pos": 13.43,
+      "pos": 13.430000000000001,
       "t": 1013430.0,
       "taxa": 48000,
       "anda": true,
@@ -342,7 +342,7 @@
     "sessao": "sessao-de-teste-01",
     "rev": 6,
     "origem": "mudanca",
-    "agora": 1025430.0,
+    "agora": 1025480.0,
     "estado": {
      "status": "playing",
      "faixa": {
@@ -371,7 +371,7 @@
      ],
      "ancora": {
       "faixa": "A",
-      "pos": 25.50199987500038,
+      "pos": 25.501999874999893,
       "t": 1025430.0,
       "taxa": 48000,
       "anda": true,
@@ -473,11 +473,16 @@
      ],
      "ancora": {
       "faixa": "A",
-      "pos": 39.99988154203647,
-      "t": 1039760.0,
+      "pos": 39.94323987536458,
+      "t": 1039700.0,
       "taxa": 48000,
       "anda": true,
-      "segmentos": []
+      "segmentos": [
+       {
+        "n": 2690,
+        "v": 1.012
+       }
+      ]
      }
     }
    }
@@ -490,7 +495,7 @@
     "sessao": "sessao-de-teste-01",
     "rev": 9,
     "origem": "mudanca",
-    "agora": 1039770.0,
+    "agora": 1039830.0,
     "estado": {
      "status": "ended",
      "faixa": {
@@ -520,7 +525,7 @@
      "ancora": {
       "faixa": "A",
       "pos": 39.99988154203647,
-      "t": 1039770.0,
+      "t": 1039830.0,
       "taxa": 48000,
       "anda": false,
       "segmentos": []

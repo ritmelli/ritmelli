@@ -3,7 +3,7 @@
  "pad": 1138,
  "ini": 0.0,
  "origem": 0.0,
- "descricao": "O final seco no tempo sem estiramento, com o corte no golpe: a proxima entra depois de um pad maior que um bloco, com a origem dele (ini - pad) presa em zero; reconexao entre a virada e o inicio efetivo.",
+ "descricao": "O final seco no tempo sem estiramento, com o corte no golpe: a proxima entra depois de um pad maior que um bloco, num bloco so, com a origem dele (ini - pad) presa em zero; reconexao entre a virada e o inicio efetivo.",
  "relogio": {
   "t0_ms": 1000000.0,
   "taxa": 48000
@@ -35,7 +35,7 @@
        "id": "B",
        "title": "Disco B",
        "channel": null,
-       "duration": 20.0,
+       "duration": 30.0,
        "youtube_id": null,
        "thumb": null,
        "auto": false
@@ -72,12 +72,74 @@
    }
   },
   {
-   "evento": "troca",
+   "evento": "mapa",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",
     "sessao": "sessao-de-teste-01",
     "rev": 2,
+    "origem": "mudanca",
+    "agora": 1013020.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 32.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [
+      {
+       "qid": "00000001",
+       "id": "B",
+       "title": "Disco B",
+       "channel": null,
+       "duration": 30.0,
+       "youtube_id": null,
+       "thumb": null,
+       "auto": false
+      }
+     ],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 31.02,
+      "t": 1013020.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 47040,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "troca",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 3,
     "origem": "mudanca",
     "agora": 1013580.0,
     "estado": {
@@ -86,7 +148,7 @@
       "id": "B",
       "title": "Disco B",
       "channel": null,
-      "duration": 20.0,
+      "duration": 30.0,
       "youtube_id": null,
       "thumb": null,
       "stream": false
@@ -134,7 +196,7 @@
     "protocolo": 1,
     "tipo": "estado",
     "sessao": "sessao-de-teste-01",
-    "rev": 3,
+    "rev": 4,
     "origem": "reconexao",
     "agora": 1013600.0,
     "estado": {
@@ -143,7 +205,7 @@
       "id": "B",
       "title": "Disco B",
       "channel": null,
-      "duration": 20.0,
+      "duration": 30.0,
       "youtube_id": null,
       "thumb": null,
       "stream": false
@@ -191,16 +253,16 @@
     "protocolo": 1,
     "tipo": "estado",
     "sessao": "sessao-de-teste-01",
-    "rev": 4,
+    "rev": 5,
     "origem": "mudanca",
-    "agora": 1013610.0,
+    "agora": 1013650.0,
     "estado": {
      "status": "playing",
      "faixa": {
       "id": "B",
       "title": "Disco B",
       "channel": null,
-      "duration": 20.0,
+      "duration": 30.0,
       "youtube_id": null,
       "thumb": null,
       "stream": false
@@ -222,8 +284,8 @@
      ],
      "ancora": {
       "faixa": "B",
-      "pos": 0.006291666666666667,
-      "t": 1013610.0,
+      "pos": 0.0,
+      "t": 1013603.7083333334,
       "taxa": 48000,
       "anda": true,
       "segmentos": [

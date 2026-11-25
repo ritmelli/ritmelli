@@ -1,6 +1,6 @@
 {
  "cenario": "buffering",
- "descricao": "O stream que para (buffering congela a posicao), a retomada depois do buffering, a pausa e a retomada.",
+ "descricao": "O stream que para (buffering congela a posicao), a retomada depois do buffering, a pausa e a retomada, cada retomada no instante em que o prato voltou a andar.",
  "relogio": {
   "t0_ms": 1000000.0,
   "taxa": 48000
@@ -65,7 +65,7 @@
     "sessao": "sessao-de-teste-01",
     "rev": 2,
     "origem": "mudanca",
-    "agora": 1001000.0,
+    "agora": 1001050.0,
     "estado": {
      "status": "buffering",
      "faixa": {
@@ -95,7 +95,7 @@
      "ancora": {
       "faixa": "A",
       "pos": 11.0,
-      "t": 1001000.0,
+      "t": 1001050.0,
       "taxa": 48000,
       "anda": false,
       "segmentos": []
@@ -111,7 +111,7 @@
     "sessao": "sessao-de-teste-01",
     "rev": 3,
     "origem": "mudanca",
-    "agora": 1002000.0,
+    "agora": 1002030.0,
     "estado": {
      "status": "playing",
      "faixa": {
@@ -162,7 +162,7 @@
     "sessao": "sessao-de-teste-01",
     "rev": 4,
     "origem": "mudanca",
-    "agora": 1003000.0,
+    "agora": 1003010.0,
     "estado": {
      "status": "paused",
      "faixa": {
@@ -192,7 +192,7 @@
      "ancora": {
       "faixa": "A",
       "pos": 12.0,
-      "t": 1003000.0,
+      "t": 1003010.0,
       "taxa": 48000,
       "anda": false,
       "segmentos": []

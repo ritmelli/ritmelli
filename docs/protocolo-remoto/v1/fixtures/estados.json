@@ -81,6 +81,17 @@
     "job": null,
     "auto": true,
     "auto_de": "Um disco"
+   },
+   {
+    "qid": "0b1c2d3e",
+    "id": "x2",
+    "youtube_id": null,
+    "url": null,
+    "title": "ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt",
+    "channel": null,
+    "thumb": "https://i.ytimg.com/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "duration": 90000,
+    "job": null
    }
   ],
   "shuffle": false,
@@ -100,7 +111,19 @@
   "caps": {
    "papel": "remoto",
    "rotas": [
-    "POST /api/play"
+    "DELETE /api/queue/{qid}",
+    "GET /api/events",
+    "GET /api/state",
+    "POST /api/abaixa",
+    "POST /api/next",
+    "POST /api/pause",
+    "POST /api/play",
+    "POST /api/queue",
+    "POST /api/queue/move",
+    "POST /api/queue/play",
+    "POST /api/resume",
+    "POST /api/sinal",
+    "POST /api/volume"
    ]
   },
   "mock": true
@@ -136,6 +159,16 @@
     "youtube_id": null,
     "thumb": null,
     "auto": true
+   },
+   {
+    "qid": "0b1c2d3e",
+    "id": "x2",
+    "title": "tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt",
+    "channel": null,
+    "duration": null,
+    "youtube_id": null,
+    "thumb": null,
+    "auto": false
    }
   ],
   "vol": 0.6,
@@ -196,6 +229,16 @@
       "youtube_id": null,
       "thumb": null,
       "auto": true
+     },
+     {
+      "qid": "0b1c2d3e",
+      "id": "x2",
+      "title": "tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt",
+      "channel": null,
+      "duration": null,
+      "youtube_id": null,
+      "thumb": null,
+      "auto": false
      }
     ],
     "vol": 0.6,
@@ -339,6 +382,16 @@
       "youtube_id": null,
       "thumb": null,
       "auto": true
+     },
+     {
+      "qid": "0b1c2d3e",
+      "id": "x2",
+      "title": "tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt",
+      "channel": null,
+      "duration": null,
+      "youtube_id": null,
+      "thumb": null,
+      "auto": false
      }
     ],
     "vol": 0.6,
@@ -371,6 +424,73 @@
    "sessao": "sessao-de-teste-01",
    "rev": 4,
    "agora": 1001000.0
+  },
+  {
+   "protocolo": 1,
+   "tipo": "estado",
+   "sessao": "sessao-de-teste-01",
+   "rev": 5,
+   "origem": "mudanca",
+   "agora": 1000004.0,
+   "estado": {
+    "status": "playing",
+    "faixa": {
+     "id": "w6kKVs-h9Ns",
+     "title": "Um disco",
+     "channel": "Um canal",
+     "duration": 236.0,
+     "youtube_id": "w6kKVs-h9Ns",
+     "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+     "stream": false
+    },
+    "fila": [],
+    "vol": 0.6,
+    "abaixa": null,
+    "capacidades": [
+     "tocar",
+     "enfileirar",
+     "pular",
+     "pausar",
+     "retomar",
+     "tirar_da_fila",
+     "mover_na_fila",
+     "volume",
+     "abaixar",
+     "sinal"
+    ],
+    "ancora": {
+     "faixa": "w6kKVs-h9Ns",
+     "pos": 0.0,
+     "t": 1000004.0,
+     "taxa": 48000,
+     "anda": true,
+     "segmentos": [
+      {
+       "n": 1138,
+       "v": 0.0,
+       "preenchimento": true
+      },
+      {
+       "n": 284000,
+       "v": 1.02,
+       "pos": 0.0
+      },
+      {
+       "n": 960000,
+       "v": {
+        "de": 1.0204,
+        "ate": 1.0,
+        "total": 960000,
+        "fase": 0
+       }
+      },
+      {
+       "n": null,
+       "v": 1.0
+      }
+     ]
+    }
+   }
   }
  ],
  "invalidos": [
@@ -1131,6 +1251,171 @@
     }
    },
    "por_que": "segmento de zero amostras"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 9,
+    "origem": "mudanca",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "w6kKVs-h9Ns",
+      "title": "Um disco",
+      "channel": "Um canal",
+      "duration": 236.0,
+      "youtube_id": "w6kKVs-h9Ns",
+      "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "w6kKVs-h9Ns",
+      "pos": 1.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": {
+         "de": 1.0,
+         "ate": 1.01,
+         "total": 10,
+         "fase": 0
+        }
+       }
+      ]
+     }
+    }
+   },
+   "por_que": "cosseno aberto"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 9,
+    "origem": "mudanca",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "w6kKVs-h9Ns",
+      "title": "Um disco",
+      "channel": "Um canal",
+      "duration": 236.0,
+      "youtube_id": "w6kKVs-h9Ns",
+      "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "w6kKVs-h9Ns",
+      "pos": 1.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0,
+        "preenchimento": true
+       }
+      ]
+     }
+    }
+   },
+   "por_que": "preenchimento aberto"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 9,
+    "origem": "mudanca",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "w6kKVs-h9Ns",
+      "title": "Um disco",
+      "channel": "Um canal",
+      "duration": 236.0,
+      "youtube_id": "w6kKVs-h9Ns",
+      "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "w6kKVs-h9Ns",
+      "pos": 1.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 10,
+        "v": {
+         "de": 1.0,
+         "ate": 1.01,
+         "total": 10,
+         "fase": 0
+        },
+        "preenchimento": true
+       }
+      ]
+     }
+    }
+   },
+   "por_que": "preenchimento em cosseno"
   },
   {
    "msg": {

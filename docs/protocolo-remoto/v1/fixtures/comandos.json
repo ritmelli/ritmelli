@@ -637,6 +637,35 @@
     }
    },
    "por_que": "dado fora da lista"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": true,
+    "id": "c3",
+    "rev": 12,
+    "dados": {
+     "qid": "9a8b7c6d"
+    }
+   },
+   "por_que": "o enfileirar sem o tocando"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "resultado",
+    "sessao": "sessao-de-teste-01",
+    "ok": true,
+    "id": "c10",
+    "rev": 13,
+    "dados": {
+     "vol": 0.35,
+     "abaixa": null
+    }
+   },
+   "por_que": "dados de dois comandos juntos"
   }
  ],
  "repeticao": [

@@ -142,13 +142,24 @@
       }
     },
     "segmento": {
-      "description": "Um trecho de n amostras de saída em que o disco anda na velocidade v; só o último pode ser aberto (n null).",
+      "description": "Um trecho de n amostras de saída em que o disco anda na velocidade v; só o último, em velocidade constante, pode ser aberto (n null). A velocidade 0 só vale no preenchimento (o bloco que o motor prendeu em zero).",
       "type": "object",
       "additionalProperties": false,
       "required": ["n", "v"],
+      "allOf": [
+        {
+          "if": {"required": ["preenchimento"]},
+          "then": {"properties": {"n": {"type": "integer"}, "v": {"type": "number", "minimum": 0}}},
+          "else": {"properties": {"v": {"not": {"const": 0}}}}
+        },
+        {
+          "if": {"properties": {"v": {"type": "object"}}},
+          "then": {"properties": {"n": {"type": "integer"}}}
+        }
+      ],
       "properties": {
         "n": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
-        "v": {"oneOf": [{"type": "number", "exclusiveMinimum": 0, "maximum": 2}, {"$ref": "#/$defs/cosseno"}]},
+        "v": {"oneOf": [{"type": "number", "minimum": 0, "maximum": 2}, {"$ref": "#/$defs/cosseno"}]},
         "pos": {
           "description": "A posição no começo do segmento, quando ela não continua a do anterior (a faixa que entra, depois do preenchimento).",
           "type": "number", "minimum": 0

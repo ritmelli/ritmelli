@@ -66,9 +66,9 @@ def esquemas():
 MAPA = json.loads((V1 / "comandos.json").read_text("utf-8"))
 
 
-def capacidades():
-    """Os comandos que o papel remoto alcanca: os que tem todas as rotas dele no caps do permissao.py."""
-    rotas = set(perm.caps("remoto")["rotas"])
+def capacidades(rotas=None):
+    """Os comandos que o papel remoto alcanca: os que tem todas as rotas dele no caps (o do permissao.py, sem rotas)."""
+    rotas = set(perm.caps("remoto")["rotas"] if rotas is None else rotas)
     return [c for c, rs in MAPA["comandos"].items() if all(f"{r['metodo']} {r['rota']}" in rotas for r in rs)]
 
 
@@ -245,97 +245,194 @@ CAMPOS_FAIXA = ("id", "title", "channel", "duration", "youtube_id", "thumb")
 CAMPOS_FILA = ("qid", "id", "title", "channel", "duration", "youtube_id", "thumb")
 EVENTO_DO_STATUS = {"playing": "retomada", "paused": "pausa", "buffering": "buffering", "ended": "fim",
                     "idle": "parada"}
+TEXTO_MAX, CAPA_MAX, FILA_MAX, DURACAO_MAX = 400, 500, 500, 86400
+TICK_BLOCOS = 7   # o tick do servidor (o TICK de 1/15 s do server.py) em blocos de 10 ms
+JANELA = SR       # quanto da fila o PC olha adiante: 1 s
 
 
 def _https(v):
-    return v if isinstance(v, str) and v.startswith("https://") else None
+    return v if isinstance(v, str) and v.startswith("https://") and len(v) <= CAPA_MAX else None
+
+
+def _texto(v):
+    return v[:TEXTO_MAX] if isinstance(v, str) else None
+
+
+def _duracao(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= DURACAO_MAX else None
+
+
+def _item(x, campos):
+    d = {k: x.get(k) for k in campos}
+    d.update(title=_texto(x.get("title")), channel=_texto(x.get("channel")), duration=_duracao(x.get("duration")),
+             thumb=_https(x.get("thumb")))
+    return d
 
 
 def projeta(local):
-    """A projecao do estado local (o do GET /api/state) para fora do PC, sem a ancora: so os campos da lista."""
+    """A projecao do estado local (o mesmo do GET /api/state) para fora do PC, sem a ancora: so os campos da lista, e
+    sempre dentro do esquema (texto cortado, duracao e capa fora da faixa em null, a fila nas primeiras FILA_MAX)."""
     tr = local.get("track")
     faixa = None
     if tr is not None and local["status"] != "idle":
-        faixa = {**{k: tr.get(k) for k in CAMPOS_FAIXA}, "thumb": _https(tr.get("thumb")), "stream": bool(tr.get("stream"))}
+        faixa = {**_item(tr, CAMPOS_FAIXA), "stream": bool(tr.get("stream"))}
     return {"status": local["status"], "faixa": faixa,
-            "fila": [{**{k: x.get(k) for k in CAMPOS_FILA}, "thumb": _https(x.get("thumb")), "auto": bool(x.get("auto"))}
-                     for x in local.get("queue") or []],
-            "vol": local["vol"], "abaixa": local.get("abaixa"), "capacidades": capacidades()}
+            "fila": [{**_item(x, CAMPOS_FILA), "auto": bool(x.get("auto"))} for x in (local.get("queue") or [])[:FILA_MAX]],
+            "vol": local["vol"], "abaixa": local.get("abaixa"),
+            "capacidades": capacidades((local.get("caps") or {}).get("rotas", []))}
 
 
-def segmentos(q, curva, desde_virada):
-    """Os segmentos de velocidade do prato a partir do proximo bloco da fila q: v = 1 sem curva; na rampa de saida,
-    pela fila (o que falta dos blocos esticados, a partir do rotulo t_r); na faixa que entrou, pelas amostras do prato
-    desde a virada."""
+def _continua(t_ant, n_ant, t):
+    return abs(t_ant + n_ant / SR - t) <= 1e-7
+
+
+def cauda(q, pula, eof):
+    """Os segmentos em 1 da fila q depois de pula amostras (blocos inteiros): um por trecho de rotulos continuos, com
+    o pos dele, olhando JANELA amostras adiante. O ultimo fica aberto, salvo quando a fila acaba dentro da janela com
+    o fim do disco ja lido (eof): ai a posicao para no fim."""
+    segs, visto, ant = [], 0, None
+    for t, a in q:
+        n = len(a)
+        if pula > 0:
+            assert pula >= n, "a curva acaba no meio de um bloco"
+            pula -= n
+            continue
+        if ant is not None and _continua(ant[0], ant[1], t):
+            segs[-1]["n"] += n
+        else:
+            segs.append({"n": n, "v": 1.0, "pos": float(t)})
+        ant = (t, n)
+        visto += n
+        if visto >= JANELA:
+            segs[-1]["n"] = None
+            return segs
+    if segs and not eof:
+        segs[-1]["n"] = None
+    return segs
+
+
+def _sem_pos_no_primeiro(segs):
+    if segs:
+        segs[0] = {k: v for k, v in segs[0].items() if k != "pos"}
+    return segs
+
+
+def segmentos(q, curva, desde, eof, recua=0):
+    """Os segmentos de velocidade do prato a partir do proximo bloco da fila q, recuados recua amostras consumidas
+    (a ancora de uma descontinuidade que ja tocou). Sem curva, a cauda da fila; na rampa de saida, o que falta dos
+    blocos esticados (contados na fila a partir do rotulo t_r, ate a volta do Repetir), e a cauda depois; na faixa que
+    entrou, a curva desde as amostras consumidas do prato desde a virada, e a cauda depois."""
     if curva is None:
-        return [{"n": None, "v": 1.0}]
+        segs = cauda(q, 0, eof)
+        if recua and segs:
+            if segs[0]["n"] is not None:
+                segs[0]["n"] += recua
+        elif recua:
+            segs = [{"n": recua, "v": 1.0}]
+        return _sem_pos_no_primeiro(segs)
     if curva["tipo"] == "saida":
-        t_r = curva["t_r"]
-        resta = sum(len(a) for t, a in q if t >= t_r - 1e-7)
+        t_r, ant, antes, resta = curva["t_r"], None, 0, 0
+        for t, a in q:
+            if ant is not None and t < ant - 1e-7:
+                break  # a volta do Repetir na mesma fila, depois dos blocos esticados
+            ant = t
+            if t < t_r - 1e-7:
+                antes += len(a)
+            else:
+                resta += len(a)
         c = curva["n"] - resta
-        if c == 0:
-            antes = sum(len(a) for t, a in q if t < t_r - 1e-7)
-            return ([{"n": antes, "v": 1.0}] if antes else []) + corta(curva["segmentos"], 0)
-        return corta(curva["segmentos"], c)
-    return corta(curva["segmentos"], desde_virada)
+        pre = (antes if c == 0 else 0) + max(0, recua - c)
+        segs = ([{"n": pre, "v": 1.0}] if pre else []) + corta(curva["segmentos"], max(0, c - recua))
+        return _sem_pos_no_primeiro(segs + cauda(q, antes + resta, eof))
+    resto = sum(s["n"] for s in curva["segmentos"]) - desde  # o que da curva ainda esta na fila
+    return _sem_pos_no_primeiro(corta(curva["segmentos"], desde - recua) + cauda(q, max(0, resto), eof))
 
 
 class Produtor:
-    """O que o PC publica: a cada bloco olha o prato; publica um estado novo (rev + 1) quando a projecao muda, quando
-    a ancora de antes deixa de prever a posicao (o mapa mudou) e em cada fronteira de segmento, e a foto completa
-    quando o conector religa. O pulso so repete o rev."""
+    """O que o PC publica. O tick (TICK_BLOCOS) olha o prato entre dois blocos: o rotulo do proximo bloco e a amostra
+    de saida em que ele toca. Publica um estado novo (rev + 1) quando a projecao muda, quando a ancora de antes,
+    adiantada em amostras, deixa de bater com a de agora (o mapa mudou), e quando o prato cruza a fronteira de um
+    segmento; a descontinuidade que ja tocou (a marca do callback: a virada, a volta, a retomada) sai com o instante e
+    o rotulo dela, e a fronteira com o instante dela. A reconexao manda a foto completa na hora. O pulso so repete o
+    rev."""
 
     def __init__(self, e, sim, curvas, fila):
         self.e, self.sim, self.curvas, self.fila = e, sim, curvas, fila
-        self.rev, self.pub, self.msgs, self.olhadas = 0, None, [], 0
+        self.rev, self.pub, self.msgs, self.olhou = 0, None, [], -1
+
+    def ancora(self, u, pos=None, recua=0):
+        e = self.e
+        tr, q, st = e.track, e._q, e.status()
+        if tr is None:
+            return None
+        if pos is None:
+            pos = q[0][0] if q and not e.ended else e.pos
+        anda = st == "playing"
+        segs = segmentos(q, self.curvas.get(id(e._deck)), self.sim.desde, e._eof_gen == e._gen, recua) if anda else []
+        return {"faixa": tr["id"], "pos": float(pos), "t": ms(u), "taxa": SR, "anda": anda, "segmentos": segs}
 
     def projecao(self, u):
         e = self.e
-        p = projeta({"status": e.status(), "track": e.track, "queue": self.fila(e), "vol": VOL, "abaixa": None})
-        tr = e.track
-        if tr is None:
-            p["ancora"] = None
-            return p
-        q, st = e._q, e.status()
-        pos = q[0][0] if q and not e.ended else e.pos
-        segs = segmentos(q, self.curvas.get(id(e._deck)), self.sim.desde) if st == "playing" else []
-        p["ancora"] = {"faixa": tr["id"], "pos": float(pos), "t": ms(u), "taxa": SR, "anda": st == "playing",
-                       "segmentos": segs}
+        p = projeta({"status": e.status(), "track": e.track, "queue": self.fila(e), "vol": VOL, "abaixa": None,
+                     "caps": perm.caps("remoto")})
+        p["ancora"] = self.ancora(u)
         return p
 
     def olha(self, u, reconexao=False):
-        self.olhadas += 1
         p = self.projecao(u)
-        ev = "inicio" if self.pub is None else "reconexao" if reconexao else self.diferenca(p, u)
+        if self.pub is None:
+            ev = "inicio"
+        elif reconexao:
+            ev = "reconexao"
+        else:
+            ev = self.diferenca(p, u)
+            if ev == "fronteira":
+                p["ancora"] = self.na_fronteira(u)
+            elif ev not in (None, "projecao") and p["ancora"] is not None and p["ancora"]["anda"]:
+                marcas = [m for m in self.sim.marcas if self.olhou < m["u"] <= u and m["faixa"] == p["ancora"]["faixa"]]
+                if marcas:  # a descontinuidade ja tocou: a ancora dela, no instante dela. Com a curva, a primeira (a
+                    # curva preve as outras); sem ela, a ultima (a fila ja nao tem o que tocou entre elas)
+                    marca = marcas[0] if self.curvas.get(id(self.e._deck)) else marcas[-1]
+                    p["ancora"] = self.ancora(marca["u"], marca["rotulo"], self.sim.desde - marca["desde"])
+        self.olhou = u
         if ev is None:
             return
         self.rev += 1
-        origem = ev if ev in ("inicio", "reconexao") else "mudanca"
-        self.pub = (p, u)
+        self.pub = p
         self.msgs.append({"evento": ev, "msg": {"protocolo": 1, "tipo": "estado", "sessao": SESSAO, "rev": self.rev,
-                                                "origem": origem, "agora": ms(u), "estado": p}})
+                                                "origem": ev if ev in ("inicio", "reconexao") else "mudanca",
+                                                "agora": ms(u), "estado": p}})
 
     def pulso(self, u):
         self.msgs.append({"evento": "pulso", "msg": {"protocolo": 1, "tipo": "pulso", "sessao": SESSAO,
                                                      "rev": self.rev, "agora": ms(u)}})
 
+    @staticmethod
+    def _u(anc):
+        return round((anc["t"] - T0_MS) * POR_MS)
+
     def diferenca(self, p, u):
-        velho, u0 = self.pub
+        velho = self.pub
         if (velho["faixa"] or {}).get("id") != (p["faixa"] or {}).get("id"):
             return "troca"
         if velho["status"] != p["status"]:
             return EVENTO_DO_STATUS[p["status"]]
+        a = velho["ancora"]
+        if a is not None:
+            adiante = avanca(a, u - self._u(a))
+            if not equivalentes(adiante, p["ancora"]):
+                return "mapa"
         if {k: v for k, v in velho.items() if k != "ancora"} != {k: v for k, v in p.items() if k != "ancora"}:
             return "projecao"
-        a = velho["ancora"]
-        if a is None:
-            return None
-        adiante = avanca(a, u - u0)
-        if not equivalentes(adiante, p["ancora"]):
-            return "mapa"
-        if len(adiante["segmentos"]) < len(a["segmentos"]):
+        if a is not None and len(avanca(a, u - self._u(a))["segmentos"]) < len(a["segmentos"]):
             return "fronteira"
         return None
+
+    def na_fronteira(self, u):
+        """A ancora de antes na fronteira mais recente que o prato cruzou, no instante dela."""
+        a = self.pub["ancora"]
+        cruzou = len(a["segmentos"]) - len(avanca(a, u - self._u(a))["segmentos"])
+        return avanca(a, sum(s["n"] for s in a["segmentos"][:cruzou]))
 
 
 def ms(u):
@@ -375,10 +472,12 @@ def _motor(atual, pronto=None, pos=0.0):
 
 class Sim:
     """O callback de saida sem som: as linhas do _mixa que viram o prato e consomem a fila (o _tira de verdade), de
-    BLOCO em BLOCO. Guarda o mapa de amostras: (amostra de saida, faixa, rotulo) de cada pedaco consumido."""
+    BLOCO em BLOCO. Conta as amostras de saida (u) e as consumidas do prato desde a virada (desde), e anota a marca de
+    cada pedaco que nao continua o anterior (outro rotulo, outro disco, ou depois de um bloco sem disco: a pausa e o
+    buffering). O mapa de amostras: (amostra de saida, faixa, rotulo) de cada pedaco consumido."""
 
     def __init__(self, e):
-        self.e, self.u, self.mapa, self.desde, self.virada = e, 0, [], 0, None
+        self.e, self.u, self.mapa, self.desde, self.marcas, self.ant = e, 0, [], 0, [], None
 
     def vira(self):
         e = self.e
@@ -386,7 +485,7 @@ class Sim:
             fim_deste = not e._q and e._eof_gen == e._gen
             if (e._virar_em is not None and e.pos >= e._virar_em) or (fim_deste and e._pronto.q):
                 e._vira()
-                self.desde, self.virada = 0, self.u
+                self.desde = 0
 
     def consome(self):
         e, item = self.e, None
@@ -396,8 +495,14 @@ class Sim:
             if not item and e._eof_gen == e._gen:
                 e.ended = True
         u = self.u
+        if not item:
+            self.ant = None
         for t0, s in item or ():
-            self.mapa.append((u, e.track["id"], float(t0)))
+            tid = e.track["id"]
+            if self.ant is None or self.ant[2] != tid or not _continua(self.ant[0], self.ant[1], t0):
+                self.marcas.append({"u": u, "rotulo": float(t0), "faixa": tid, "desde": self.desde})
+            self.mapa.append((u, tid, float(t0)))
+            self.ant = (t0, len(s), tid)
             u += len(s)
             self.desde += len(s)
         if item:
@@ -407,17 +512,22 @@ class Sim:
 
 def _roda(e, sim, prod, ate_s, eventos=(), reconexoes=(), pulsos=False):
     """Roda o cenario ate ate_s de saida: em cada bloco, os eventos (fn(u) que devolvem True quando agiram), a virada
-    do callback, o produtor olha o prato (e a reconexao, quando o gatilho manda) e o callback consome."""
+    do callback, o tick do produtor (de TICK_BLOCOS em TICK_BLOCOS), a reconexao quando o gatilho manda (o produtor
+    publica antes o que mudou) e o callback consome."""
     eventos, reconexoes = list(eventos), list(reconexoes)
     while sim.u < ate_s * SR:
         for ev in list(eventos):
             if ev(sim.u):
                 eventos.remove(ev)
         sim.vira()
-        prod.olha(sim.u)
+        tick = (sim.u // BLOCO) % TICK_BLOCOS == 0
+        if tick:
+            prod.olha(sim.u)
         for r in list(reconexoes):
             if r(sim.u):
                 reconexoes.remove(r)
+                if not tick:
+                    prod.olha(sim.u)
                 prod.olha(sim.u, reconexao=True)
         if pulsos and sim.u % SR == 0 and sim.u:
             prod.pulso(sim.u)
@@ -438,22 +548,47 @@ def _cos(de, ate, total):
     return {"de": float(de), "ate": float(ate), "total": int(total), "fase": 0}
 
 
-def _curvas_dois(a, b, plano):
-    """As curvas do plano aplicado: a rampa de saida (do t_r, n_ra amostras de 1 a sa, e sa ate o fim dos blocos
-    esticados) e a entrada (o preenchimento, sb por n_sob, a volta a 1 em n_rampa, e 1)."""
-    t_r, novos = plano["sai_q"]
-    vis = plano["visor"]
-    sa = float(vis["va"])
-    n_ra = int(min(max(abs(sa - 1) / eng.RAMPA_TAXA, eng.RAMPA_MIN_S), eng.RAMPA_MAX_S) * SR)  # o do _plano_dois
-    n_za = sum(len(x) for _, x in novos)
+def _preenchimento(cabeca, pad, ini):
+    """Os segmentos do pad pelos rotulos do cabeca do plano: o bloco unico do final seco sem esticar anda a 1 (o _tira
+    rotula o resto partido com t0 + n / SR), e o bloco de 10 ms do esticado que o motor prendeu em zero fica em 0."""
+    segs, u = [], 0
+    for t, a in cabeca:
+        if u >= pad:
+            break
+        n = min(len(a), pad - u)
+        v = 0.0 if len(a) <= BLOCO and t == 0.0 and ini + (u - pad) / SR < 0 else 1.0
+        ult = segs[-1] if segs else None
+        if ult is not None and ult["v"] == v and abs(ult["pos"] + v * ult["n"] / SR - t) <= 1e-9:
+            ult["n"] += n
+        else:
+            segs.append({"n": n, "v": v, "pos": float(t), "preenchimento": True})
+        u += len(a)
+    return segs
+
+
+def curva_entrada(plano):
+    """A curva da faixa que entra, do plano aplicado: o preenchimento, sb por n_sob e a volta a 1 em meio cosseno (sem
+    esticar, so o preenchimento). Os numeros do visor do plano, sem o arredondamento do _visor_publico."""
+    vis, cabeca = plano["visor"], plano["cabeca"]
+    ini, total = float(vis["ini"]), sum(len(a) for _, a in cabeca)
     n_sob, n_rampa = int(round(vis["sob"] * SR)), int(round(vis["rampa"] * SR))
-    pad = sum(len(x) for _, x in plano["cabeca"]) - n_sob - n_rampa
-    sb, k, ini = float(vis["vb"]), float(vis["k"]), float(vis["ini"])
-    entrada = ([{"n": pad, "v": 1.0, "preenchimento": True}] if pad else []) + [
-        {"n": n_sob, "v": sb, "pos": ini}, {"n": n_rampa, "v": _cos(1 + k, 1, n_rampa)}, {"n": None, "v": 1.0}]
-    return {id(a): {"tipo": "saida", "t_r": float(t_r), "n": n_za,
-                    "segmentos": [{"n": n_ra, "v": _cos(1, sa, n_ra)}, {"n": n_za - n_ra, "v": sa}]},
-            id(b): {"tipo": "entrada", "segmentos": entrada}}, pad
+    pad = total - n_sob - n_rampa
+    segs = _preenchimento(cabeca, pad, ini)
+    if n_sob or n_rampa:
+        segs += [{"n": n_sob, "v": float(vis["vb"]), "pos": ini},
+                 {"n": n_rampa, "v": _cos(1 + float(vis["k"]), 1, n_rampa)}]
+    return {"tipo": "entrada", "segmentos": segs}, pad, ini
+
+
+def curva_saida(plano):
+    """A rampa de saida do plano aplicado: do rotulo t_r, n_ra amostras de 1 a sa e sa ate o fim dos blocos esticados.
+    O n_ra e a conta do _plano_dois (o plano ainda nao o devolve)."""
+    t_r, novos = plano["sai_q"]
+    sa = float(plano["visor"]["va"])
+    n_ra = int(min(max(abs(sa - 1) / eng.RAMPA_TAXA, eng.RAMPA_MIN_S), eng.RAMPA_MAX_S) * SR)
+    n_za = sum(len(x) for _, x in novos)
+    return {"tipo": "saida", "t_r": float(t_r), "n": n_za,
+            "segmentos": [{"n": n_ra, "v": _cos(1, sa, n_ra)}, {"n": n_za - n_ra, "v": sa}]}
 
 
 _PLANO = {}
@@ -474,32 +609,39 @@ def _plano_dois():
     return _PLANO["dois"]
 
 
-def _aplica(e, a, b, em_s, plano_batida=None, patches=(), depois=None):
-    """O evento que aplica a passagem pelo _mede de verdade em em_s: com plano_batida, o plano ja feito; depois, o que
-    o PC guarda do plano aplicado (as curvas)."""
+def _aplica(e, a, b, em_s, plano_pronto=None, patches=(), depois=None):
+    """O evento que aplica a passagem pelo _mede de verdade em em_s: com plano_pronto, o _plano_batida devolve esse;
+    sem ele, o _plano_batida de verdade (com os patches). depois(plano) recebe o plano aplicado."""
     def ev(u):
         if u < em_s * SR:
             return False
-        if plano_batida is not None:
-            e._plano_batida = lambda *x, **k: (plano_batida, None)
+        feito = {}
+        real = e._plano_batida
+
+        def plano_batida(*x, **k):
+            r = (plano_pronto, None) if plano_pronto is not None else real(*x, **k)
+            feito["plano"] = r[0]
+            return r
+        e._plano_batida = plano_batida
         with contextlib.ExitStack() as pilha:
             for p in patches:
                 pilha.enter_context(p)
             pilha.enter_context(contextlib.redirect_stderr(io.StringIO()))
             e._mede(a, b, a.track)
-        assert e._virar_em is not None, "o _mede nao aplicou o plano"
+        assert e._virar_em is not None and feito.get("plano") is not None, "o _mede nao aplicou o plano"
         if depois is not None:
-            depois()
+            depois(feito["plano"])
         return True
     return ev
 
 
-def _na_curva(sim, e, deck, curva, fracao):
-    """O gatilho de reconexao: o prato e o deck e ja consumiu a fracao do meio cosseno da curva."""
+def _na_curva(sim, e, deck, curvas, fracao):
+    """O gatilho de reconexao: o prato e o deck e ja consumiu a fracao do meio cosseno da curva dele."""
     def ev(u):
-        if e._deck is not deck:
+        curva = curvas.get(id(deck))
+        if e._deck is not deck or curva is None:
             return False
-        segs = segmentos(e._q, curva, sim.desde)
+        segs = segmentos(e._q, curva, sim.desde, deck.eof_gen == deck.gen)
         return bool(segs) and isinstance(segs[0]["v"], dict) and segs[0]["v"]["fase"] >= fracao * segs[0]["v"]["total"]
     return ev
 
@@ -508,26 +650,24 @@ def cenario_passagem_dois():
     a, b = _deck("A", 0.0, 40.0), _deck("B", 0.0, 45.0)
     e = _motor(a, b)
     sim = Sim(e)
-    plano = _plano_dois()
-    novas, pad = _curvas_dois(a, b, plano)
-    curvas = {}
+    curvas, info = {}, {}
+
+    def depois(plano):
+        curvas[id(a)] = curva_saida(plano)
+        curvas[id(b)], info["pad"], info["ini"] = curva_entrada(plano)
     prod = Produtor(e, sim, curvas, _fila_de(b))
-    msgs = _roda(e, sim, prod, 74.0, eventos=[_aplica(e, a, b, 1.0, plano_batida=plano,
-                                                      depois=lambda: curvas.update(novas))],
-                 reconexoes=[_na_curva(sim, e, a, novas[id(a)], 0.5), _na_curva(sim, e, b, novas[id(b)], 0.5)])
+    msgs = _roda(e, sim, prod, 74.0, eventos=[_aplica(e, a, b, 1.0, plano_pronto=_plano_dois(), depois=depois)],
+                 reconexoes=[_na_curva(sim, e, a, curvas, 0.5), _na_curva(sim, e, b, curvas, 0.5)])
     return {"descricao": "A passagem com a rampa de saida (a que sai vai a sa antes da sobreposicao) e a entrada "
                          "esticada (sb, a volta a 1 em meio cosseno), com pad > 0 na virada e a origem dele presa em "
-                         "zero; reconexao no meio das duas rampas.", "pad": pad}, msgs, sim.mapa
+                         "zero; reconexao no meio das duas rampas.", **info}, msgs, sim.mapa
 
 
 def cenario_passagem_cancelada():
     a, b = _deck("A", 0.0, 40.0), _deck("B", 0.0, 45.0)
     e = _motor(a, b)
     sim = Sim(e)
-    plano = _plano_dois()
-    novas, _ = _curvas_dois(a, b, plano)
-    curvas = {}
-    fila = {"ok": True}
+    curvas, fila = {}, {"ok": True}
 
     def lista(e_):
         return _fila_de(b)(e_) if fila["ok"] else []
@@ -535,7 +675,7 @@ def cenario_passagem_cancelada():
     def cancela(u):
         if id(a) not in curvas:
             return False
-        segs = segmentos(e._q, curvas[id(a)], sim.desde)
+        segs = segmentos(e._q, curvas[id(a)], sim.desde, True)
         if not (segs and isinstance(segs[0]["v"], dict) and segs[0]["v"]["fase"] >= segs[0]["v"]["total"] // 3):
             return False
         with e._qlock:  # a fila mudou: o servidor cancela a proxima, e os blocos esticados ficam na fila do prato
@@ -544,22 +684,23 @@ def cenario_passagem_cancelada():
         return True
 
     def no_fim_esticado(u):  # reconexao no trecho em sa, antes de acabarem os blocos esticados
-        segs = segmentos(e._q, curvas[id(a)], sim.desde) if id(a) in curvas and e._q else []
+        segs = segmentos(e._q, curvas[id(a)], sim.desde, True) if id(a) in curvas and e._q else []
         return len(segs) == 1 and not isinstance(segs[0]["v"], dict) and segs[0]["n"] < 2 * SR
 
     prod = Produtor(e, sim, curvas, lista)
-    msgs = _roda(e, sim, prod, 42.0, eventos=[_aplica(e, a, b, 1.0, plano_batida=plano,
-                                                      depois=lambda: curvas.update(novas)), cancela],
-                 reconexoes=[_na_curva(sim, e, a, novas[id(a)], 0.6), no_fim_esticado])
+    msgs = _roda(e, sim, prod, 42.0, eventos=[_aplica(e, a, b, 1.0, plano_pronto=_plano_dois(),
+                                                      depois=lambda p: curvas.update({id(a): curva_saida(p)})), cancela],
+                 reconexoes=[_na_curva(sim, e, a, curvas, 0.6), no_fim_esticado])
     return {"descricao": "A passagem cancelada durante a rampa de saida, com a faixa no mesmo deck: os blocos "
                          "esticados ficam na fila e a ancora segue valendo; reconexao no meio da rampa e antes do fim "
                          "dos blocos esticados, e o fim natural congela a posicao."}, msgs, sim.mapa
 
 
-def _patches_seco(golpe):
-    """O _plano_batida de verdade no final seco com o corte no golpe e sem esticar (a proxima sem batida firme)."""
+def _patches_seco(golpe, esticar):
+    """O _plano_batida de verdade no final seco com o corte no golpe: a proxima sem batida firme (sem esticar) ou com
+    ela, a 2% (esticada no andamento deste). So a medida das batidas fica fixa."""
     g = [types.SimpleNamespace(periodo=0.5, fase=0.1, bpm=120.0, firme=True, motivo=""),
-         types.SimpleNamespace(periodo=0.52, fase=0.1, bpm=115.4, firme=False, motivo="fixo no teste")]
+         types.SimpleNamespace(periodo=0.51, fase=0.1, bpm=117.6, firme=esticar, motivo="fixo no teste")]
     return [mock.patch.object(eng.batida, "medir", side_effect=g), mock.patch.object(eng, "_grade_rede", return_value=None),
             mock.patch.object(eng.batida, "fase", return_value=(0.0, 10.0)),
             mock.patch.object(eng, "_golpe_final", return_value=golpe),
@@ -567,37 +708,31 @@ def _patches_seco(golpe):
             mock.patch.object(eng, "_eco_corte", return_value=None)]
 
 
-def _cenario_seco(mudo):
-    a, b = _deck("A", 18.0, 32.0), _deck("B", 0.0, 20.0, mudo=mudo)
+def _cenario_seco(mudo, esticar=False):
+    a, b = _deck("A", 18.0, 32.0), _deck("B", 0.0, 30.0, mudo=mudo)
     e = _motor(a, b, pos=18.0)
     sim = Sim(e)
-    curvas = {}
-    info = {}
+    curvas, info = {}, {}
 
-    def aplica(u):
-        if u < 0.5 * SR or not _aplica(e, a, b, 0.5, patches=_patches_seco(31.6037))(u):
-            return False
-        cab = b.q[0]  # o preenchimento: um bloco so, com o rotulo preso em zero
-        pad = len(cab[1])
-        ini = b.q[1][0]
-        curvas[id(b)] = {"tipo": "entrada", "segmentos": [{"n": pad, "v": 1.0, "preenchimento": True},
-                                                          {"n": None, "v": 1.0, "pos": float(ini)}]}
-        info.update(pad=pad, ini=float(ini), origem=float(cab[0]))
-        return True
+    def depois(plano):
+        curvas[id(b)], info["pad"], info["ini"] = curva_entrada(plano)
+        info["origem"] = float(plano["cabeca"][0][0])
 
     def no_preenchimento(u):  # reconexao entre a virada e o inicio efetivo da faixa de entrada
         return e._deck is b and BLOCO < sim.desde < info["pad"]
 
     prod = Produtor(e, sim, curvas, _fila_de(b))
-    msgs = _roda(e, sim, prod, 16.0, eventos=[aplica], reconexoes=[no_preenchimento])
+    msgs = _roda(e, sim, prod, 16.0, eventos=[_aplica(e, a, b, 0.5, patches=_patches_seco(31.6037, esticar),
+                                                      depois=depois)],
+                 reconexoes=[no_preenchimento])
     return info, msgs, sim.mapa
 
 
 def cenario_final_seco():
     info, msgs, mapa = _cenario_seco(0.0)
     info["descricao"] = ("O final seco no tempo sem estiramento, com o corte no golpe: a proxima entra depois de um pad "
-                         "maior que um bloco, com a origem dele (ini - pad) presa em zero; reconexao entre a virada e o "
-                         "inicio efetivo.")
+                         "maior que um bloco, num bloco so, com a origem dele (ini - pad) presa em zero; reconexao entre "
+                         "a virada e o inicio efetivo.")
     return info, msgs, mapa
 
 
@@ -605,6 +740,14 @@ def cenario_final_seco_sem_limite():
     info, msgs, mapa = _cenario_seco(1.0)
     info["descricao"] = ("O mesmo final seco, com a proxima comecando em 1 s (o silencio do comeco dela): a origem do "
                          "pad fica acima de zero.")
+    return info, msgs, mapa
+
+
+def cenario_final_seco_esticado():
+    info, msgs, mapa = _cenario_seco(0.0, esticar=True)
+    info["descricao"] = ("O final seco no tempo com o corte no golpe e a proxima esticada no andamento deste: o pad "
+                         "maior que um bloco vem em blocos de 10 ms, cada um com o rotulo preso em zero; reconexao "
+                         "dentro do preenchimento.")
     return info, msgs, mapa
 
 
@@ -635,20 +778,23 @@ def cenario_buffering():
     prod = Produtor(e, sim, {}, lambda e_: [])
     msgs = _roda(e, sim, prod, 5.0, eventos=[chega, pausa, retoma])
     return {"descricao": "O stream que para (buffering congela a posicao), a retomada depois do buffering, a pausa e a "
-                         "retomada."}, msgs, sim.mapa
+                         "retomada, cada retomada no instante em que o prato voltou a andar."}, msgs, sim.mapa
 
 
 def cenario_repetir():
-    a = _deck("A", 7.0, 10.0)
+    a = _deck("A", 7.0, 9.99)
+    a.q.append((9.99, np.zeros((BLOCO // 2, 2), np.float32)))  # o ultimo bloco do arquivo, curto
     a.q.extend(_deck("A", 0.0, 3.0).q)  # o leitor com o Repetir: depois do fim, a volta do comeco no mesmo deck
-    a.track["duration"] = 10.0
+    a.track["duration"] = 9.995
+    a.eof_gen = -1  # com o Repetir, o leitor nao chega ao fim
     e = _motor(a, pos=7.0)
     e.loop = True
     sim = Sim(e)
     prod = Produtor(e, sim, {}, lambda e_: [])
     msgs = _roda(e, sim, prod, 5.0)
-    return {"descricao": "A volta do Repetir: a ancora nova no primeiro bloco da volta, com a faixa e o deck iguais."}, \
-        msgs, sim.mapa
+    return {"descricao": "A volta do Repetir, no meio de um callback (o ultimo bloco do arquivo e curto): a volta entra "
+                         "na ancora quando chega a fila, e a ancora nova sai no instante do primeiro bloco dela, com a "
+                         "faixa e o deck iguais."}, msgs, sim.mapa
 
 
 def cenario_fim_natural():
@@ -657,13 +803,15 @@ def cenario_fim_natural():
     sim = Sim(e)
     prod = Produtor(e, sim, {}, lambda e_: [])
     msgs = _roda(e, sim, prod, 5.0, pulsos=True)
-    return {"descricao": "O fim natural: a ancora congela na posicao final; os ticks seguem e o rev fica, com o pulso "
-                         "repetindo o rev de 1 em 1 s."}, msgs, sim.mapa
+    return {"descricao": "O fim natural: com o fim do disco na janela, a ancora para na posicao final; depois ela "
+                         "congela ali, os ticks seguem e o rev fica, com o pulso repetindo o rev de 1 em 1 s."}, \
+        msgs, sim.mapa
 
 
 CENARIOS = {"passagem-dois": cenario_passagem_dois, "passagem-cancelada": cenario_passagem_cancelada,
             "final-seco": cenario_final_seco, "final-seco-sem-limite": cenario_final_seco_sem_limite,
-            "buffering": cenario_buffering, "repetir": cenario_repetir, "fim-natural": cenario_fim_natural}
+            "final-seco-esticado": cenario_final_seco_esticado, "buffering": cenario_buffering,
+            "repetir": cenario_repetir, "fim-natural": cenario_fim_natural}
 
 
 def _limpa(x):
@@ -717,11 +865,11 @@ def fixture_relogio():
     anc = _anc(10.0, T0_MS)
     passos = []
     for msg, retido, transito, nota in (
-            (_estado(3, T0_MS, _proj(anc=anc)), 4000.0, 30.0, "a foto guardada no relay, entregue 4 s depois a quem "
-                                                               "conectou"),
-            (_pulso(3, T0_MS + 4500.0), 0.0, 25.0, "o pulso, mais rapido: o relogio melhora"),
+            (_estado(3, T0_MS, _proj(anc=anc)), 4000.0, 400.0, "a foto guardada no relay, entregue 4 s depois a quem "
+                                                                "conectou, e atrasada 400 ms na rede"),
+            (_pulso(3, T0_MS + 4500.0), 0.0, 25.0, "o pulso, mais rapido: o erro cai de 400 para 25 ms"),
             (_estado(4, T0_MS + 6000.0, _proj(anc=_anc(16.0, T0_MS + 6000.0))), 0.0, 400.0, "a foto atrasada na rede: o "
-                                                                                           "relogio fica com o atraso do pulso"),
+                                                                                           "relogio nao piora"),
             (_pulso(4, T0_MS + 7000.0), 0.0, 20.0, "o pulso seguinte corrige")):
         if retido:
             msg = dict(msg, retido_ms=retido)
@@ -816,6 +964,8 @@ def fixture_comandos():
         (dict(erro, id="c5", erro="api_409"), "codigo fora da lista"),
         (dict(ok, id="c5", dados={}), "ok sem o rev"),
         (dict(ok, id="c10", rev=13, dados={"vol": 0.35, "config": "x"}), "dado fora da lista"),
+        (dict(ok, id="c3", rev=12, dados={"qid": "9a8b7c6d"}), "o enfileirar sem o tocando"),
+        (dict(ok, id="c10", rev=13, dados={"vol": 0.35, "abaixa": None}), "dados de dois comandos juntos"),
     ]
     pular = _cmd("r1", "pular", {})
     feito = dict(ok, id="r1", rev=20, dados={})
@@ -851,7 +1001,9 @@ LOCAL = {  # o GET /api/state de verdade traz tudo isto; para fora do PC vai so 
     "shuffle": False, "auto": True, "history": 3, "versao": "0.9.0",
     "visor": {"ondas": 3, "passagens": []},
     "atualizacao": {"nova": "1.0.0", "estado": "pronta", "progresso": 1.0, "erro": None},
-    "caps": {"papel": "remoto", "rotas": ["POST /api/play"]}, "mock": True}
+    "caps": perm.caps("remoto"), "mock": True}
+LOCAL["queue"].append({"qid": "0b1c2d3e", "id": "x2", "youtube_id": None, "url": None, "title": "t" * 401,
+                       "channel": None, "thumb": "https://i.ytimg.com/" + "x" * 500, "duration": 90000, "job": None})
 
 
 def fixture_estados():
@@ -864,6 +1016,9 @@ def fixture_estados():
         _estado(3, T0_MS + 2, _proj("paused", _anc(40.0, T0_MS + 2, anda=False))),
         _estado(4, T0_MS + 3, _proj("buffering", _anc(41.0, T0_MS + 3, anda=False), fila=remota["fila"])),
         _pulso(4, T0_MS + 1000),
+        _estado(5, T0_MS + 4, _proj(anc=_anc(0.0, T0_MS + 4, segs=[
+            {"n": 1138, "v": 0.0, "preenchimento": True}, {"n": 284000, "v": 1.02, "pos": 0.0},
+            {"n": 960000, "v": {"de": 1.0204, "ate": 1.0, "total": 960000, "fase": 0}}, {"n": None, "v": 1.0}]))),
     ]
     base = _estado(9, T0_MS, _proj(anc=_anc(1.0, T0_MS)))
     invalidos = []
@@ -886,6 +1041,12 @@ def fixture_estados():
             ("outra taxa", lambda m: m["estado"]["ancora"].update(taxa=44100)),
             ("velocidade zero", lambda m: m["estado"]["ancora"].update(segmentos=[{"n": None, "v": 0}])),
             ("segmento de zero amostras", lambda m: m["estado"]["ancora"].update(segmentos=[{"n": 0, "v": 1.0}])),
+            ("cosseno aberto", lambda m: m["estado"]["ancora"].update(
+                segmentos=[{"n": None, "v": {"de": 1.0, "ate": 1.01, "total": 10, "fase": 0}}])),
+            ("preenchimento aberto", lambda m: m["estado"]["ancora"].update(
+                segmentos=[{"n": None, "v": 1.0, "preenchimento": True}])),
+            ("preenchimento em cosseno", lambda m: m["estado"]["ancora"].update(
+                segmentos=[{"n": 10, "v": {"de": 1.0, "ate": 1.01, "total": 10, "fase": 0}, "preenchimento": True}])),
             ("cosseno sem a fase", lambda m: m["estado"]["ancora"].update(
                 segmentos=[{"n": 10, "v": {"de": 1.0, "ate": 1.01, "total": 10}}])),
             ("posicao negativa", lambda m: m["estado"]["ancora"].update(pos=-0.01)),
@@ -1014,9 +1175,9 @@ class Mapa(unittest.TestCase):
         codigos = set(docs["resultado"]["$defs"]["codigo"]["enum"])
         self.assertTrue(set(MAPA["erros"].values()) <= codigos)
         self.assertTrue(set(MAPA["dados"]) <= set(MAPA["comandos"]))
-        campos = set(docs["resultado"]["$defs"]["dados"]["properties"])
-        for d in MAPA["dados"].values():
-            self.assertTrue(set(d) <= campos)
+        formas = [set(f.get("required", [])) for f in docs["resultado"]["$defs"]["dados"]["oneOf"]]
+        for d in MAPA["dados"].values():  # cada comando com dados devolve uma das formas do esquema
+            self.assertIn(set(d), formas)
 
     def test_repeticao_pelo_id(self):
         guardados = {}
@@ -1034,6 +1195,10 @@ class Projecao(unittest.TestCase):
     def test_so_os_campos_da_lista(self):
         f = _le("estados.json")
         self.assertEqual(projeta(f["local"]), {k: v for k, v in f["remota"].items() if k != "ancora"})
+        cortada = f["remota"]["fila"][-1]
+        self.assertEqual((len(cortada["title"]), cortada["thumb"], cortada["duration"]), (TEXTO_MAX, None, None))
+        self.assertEqual(f["remota"]["capacidades"], list(MAPA["comandos"]))
+        self.assertTrue(esquemas()[1]["estado"].is_valid(_estado(1, T0_MS, dict(f["remota"], ancora=_anc(1.0, T0_MS)))))
         texto = json.dumps(f["remota"])
         for fora in ('"microfone"', '"devices"', '"active_devices"', '"atualizacao"', '"mic_mute"', '"error"', '"caps"',
                      '"file"', '"job"', '"url"', '"last_pos"', "Aparelho", "sem-tls"):
@@ -1080,6 +1245,28 @@ class RelayECliente(unittest.TestCase):
                 self.assertAlmostEqual(posicao(anc, real) - posicao(anc, r.pc(p["chega_ms"])), menor / 1000, places=6)
 
 
+def _iguais(a, b, caminho=""):
+    """As mensagens de agora e as da fixture iguais, com os numeros a menos de 1e-9 (o ultimo bit do numpy pode mudar
+    de uma maquina para outra). Devolve onde diferem, ou None."""
+    if isinstance(a, bool) or isinstance(b, bool) or a is None or b is None or isinstance(a, str):
+        return None if a == b else caminho
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return None if math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-9) else caminho
+    if isinstance(a, dict) and isinstance(b, dict):
+        if set(a) != set(b):
+            return caminho + "{chaves}"
+        return next((d for k in a if (d := _iguais(a[k], b[k], f"{caminho}.{k}"))), None)
+    if isinstance(a, list) and isinstance(b, list):
+        if len(a) != len(b):
+            return caminho + "[tamanho]"
+        return next((d for i, (x, y) in enumerate(zip(a, b)) if (d := _iguais(x, y, f"{caminho}[{i}]"))), None)
+    return caminho
+
+
+def _u(t_ms):
+    return round((t_ms - T0_MS) * POR_MS)
+
+
 class Posicao(unittest.TestCase):
     """Cada cenario: o motor de verdade sem som, e cada foto da fixture contra o mapa de amostras dele."""
 
@@ -1094,10 +1281,10 @@ class Posicao(unittest.TestCase):
     def confere(self, nome):
         info, msgs_agora, mapa = self.corre(nome)
         fixture = _le(f"posicao-{nome}.json")
-        # o produtor de agora publica os mesmos estados, pelos mesmos motivos, que a fixture (rode --gera se mudou)
-        self.assertEqual([(m["evento"], m["msg"]["tipo"], m["msg"]["rev"]) for m in msgs_agora],
-                         [(m["evento"], m["msg"]["tipo"], m["msg"]["rev"]) for m in fixture["mensagens"]],
-                         f"{nome}: os estados mudaram; rode python dev/testa_protocolo.py --gera")
+        # o produtor de agora publica o mesmo que a fixture (rode --gera se mudou o motor ou o produtor)
+        self.assertEqual(len(msgs_agora), len(fixture["mensagens"]), f"{nome}: rode python dev/testa_protocolo.py --gera")
+        for x, y in zip(_limpa(msgs_agora), fixture["mensagens"]):
+            self.assertIsNone(_iguais(x, y), f"{nome}: rev {y['msg']['rev']} mudou; rode python dev/testa_protocolo.py --gera")
         msgs = [m for m in fixture["mensagens"] if m["msg"]["tipo"] == "estado"]
         us = [u for u, _, _ in mapa]
         conferidos = 0
@@ -1107,14 +1294,17 @@ class Posicao(unittest.TestCase):
             if anc is None:
                 continue
             self.assertEqual(anc["faixa"], est["faixa"]["id"])
-            fim = next((x["msg"]["agora"] for x in msgs[i + 1:] if x["evento"] not in CONTINUA), math.inf)
-            u_ini = round((m["msg"]["agora"] - T0_MS) * POR_MS)
-            u_fim = math.inf if fim == math.inf else round((fim - T0_MS) * POR_MS)
-            for u, faixa, rotulo in mapa[bisect.bisect_left(us, u_ini):]:
+            self.assertLessEqual(anc["t"], m["msg"]["agora"])  # a ancora pode estar no passado (a marca), nunca adiante
+            for s in anc["segmentos"]:
+                if isinstance(s["v"], dict):
+                    self.assertLessEqual(s["v"]["fase"] + s["n"], s["v"]["total"])
+            # vale do instante dela ate a proxima foto que muda o mapa (a fronteira e a reconexao continuam o mesmo)
+            prox = next((x["msg"] for x in msgs[i + 1:] if x["evento"] not in CONTINUA), None)
+            u_fim = math.inf if prox is None else _u((prox["estado"]["ancora"] or {}).get("t", prox["agora"]))
+            for u, faixa, rotulo in mapa[bisect.bisect_left(us, _u(anc["t"])):]:
                 if u >= u_fim:
                     break
-                if faixa != anc["faixa"]:
-                    continue
+                self.assertEqual(faixa, anc["faixa"], f"{nome}: rev {m['msg']['rev']} na amostra {u}")
                 p = posicao(anc, ms(u))
                 self.assertLessEqual(abs(p - rotulo), TOL_S,
                                      f"{nome}: rev {m['msg']['rev']} ({m['evento']}) na amostra {u}: {p} e o motor "
@@ -1125,23 +1315,22 @@ class Posicao(unittest.TestCase):
 
     @staticmethod
     def primeiro(m):
-        segs = m["msg"]["estado"]["ancora"]["segmentos"] if m["msg"]["tipo"] == "estado" and \
-            m["msg"]["estado"]["ancora"] else []
-        return segs[0] if segs else None
+        anc = m["msg"]["estado"]["ancora"] if m["msg"]["tipo"] == "estado" else None
+        return anc["segmentos"][0] if anc and anc["segmentos"] else None
 
     def test_passagem_dois(self):
         info, msgs, _ = self.confere("passagem-dois")
         self.assertTrue(0 < info["pad"] < BLOCO)
         cos = [(m["evento"], m["msg"]["estado"]["ancora"]["faixa"], s["v"]["fase"], s["v"]["total"])
                for m in msgs if (s := self.primeiro(m)) and isinstance(s["v"], dict)]
-        for faixa in ("A", "B"):  # o comeco (a fronteira no primeiro bloco dele), o meio (a reconexao) e o fim
-            self.assertIn(("fronteira", faixa), [(e, f) for e, f, fase, _ in cos if fase < BLOCO], faixa)
+        for faixa in ("A", "B"):  # o comeco (a fronteira, no instante dele), o meio (a reconexao) e o fim
+            self.assertIn(("fronteira", faixa, 0), [(e, f, fase) for e, f, fase, _ in cos], faixa)
             self.assertTrue(any(e == "reconexao" and f == faixa and 0.4 < fase / n < 0.9 for e, f, fase, n in cos), faixa)
         fins = [m for m in msgs if m["evento"] == "fronteira" and (s := self.primeiro(m)) and not isinstance(s["v"], dict)]
         self.assertTrue(any(m["msg"]["estado"]["ancora"]["faixa"] == "A" and self.primeiro(m)["v"] > 1 for m in fins))
-        self.assertTrue(any(m["msg"]["estado"]["ancora"]["faixa"] == "B" and self.primeiro(m)["v"] == 1.0
-                            and self.primeiro(m)["n"] is None for m in fins))
-        self.assertIn("troca", [m["evento"] for m in msgs])
+        self.assertTrue(any(m["msg"]["estado"]["ancora"]["faixa"] == "B" and self.primeiro(m)["v"] == 1.0 for m in fins))
+        troca = next(m for m in msgs if m["evento"] == "troca")
+        self.assertTrue(self.primeiro(troca).get("preenchimento"))  # a ancora da virada, no instante dela
 
     def test_passagem_cancelada(self):
         _, msgs, _ = self.confere("passagem-cancelada")
@@ -1158,55 +1347,71 @@ class Posicao(unittest.TestCase):
         self.assertGreater(info["pad"], BLOCO)
         rec = [m for m in msgs if m["evento"] == "reconexao"]
         self.assertEqual(len(rec), 1)
-        s = self.primeiro(rec[0])
-        self.assertTrue(s.get("preenchimento"))
-        # o mapa do motor na fronteira do inicio efetivo: o rotulo do primeiro bloco depois do preenchimento e o ini
+        self.assertTrue(self.primeiro(rec[0]).get("preenchimento"))  # entre a virada e o inicio efetivo
         virada = next(u for u, f, _ in mapa if f == "B")
-        na_fronteira = [r for u, f, r in mapa if f == "B" and u == virada + info["pad"]]
-        self.assertEqual(na_fronteira, [info["ini"]])
-        return info
+        return info, msgs, mapa, virada
 
     def test_final_seco(self):
-        info = self._seco("final-seco")
+        info, _, mapa, virada = self._seco("final-seco")
         self.assertEqual(info["origem"], 0.0)  # ini - pad abaixo de zero: preso em zero, como o rotulo do motor
+        # o mapa do motor: o bloco unico partido pelo _tira anda a 1 desde o zero, e na fronteira volta ao ini
+        self.assertEqual([r for u, f, r in mapa if f == "B" and u == virada + info["pad"]], [info["ini"]])
+        self.assertGreater(next(r for u, f, r in mapa if f == "B" and u > virada), 0.0)
 
     def test_final_seco_sem_limite(self):
-        info = self._seco("final-seco-sem-limite")
+        info, _, mapa, virada = self._seco("final-seco-sem-limite")
         self.assertAlmostEqual(info["origem"], info["ini"] - info["pad"] / SR, places=9)
+        self.assertEqual([r for u, f, r in mapa if f == "B" and u == virada + info["pad"]], [info["ini"]])
+
+    def test_final_seco_esticado(self):
+        info, msgs, mapa, virada = self._seco("final-seco-esticado")
+        self.assertEqual(info["origem"], 0.0)
+        # o mapa do motor: os blocos de 10 ms do preenchimento ficam todos em zero
+        presos = [r for u, f, r in mapa if f == "B" and virada <= u < virada + info["pad"]]
+        self.assertGreater(len(presos), 1)
+        self.assertEqual(set(presos), {0.0})
+        troca = next(m for m in msgs if m["evento"] == "troca")
+        s = self.primeiro(troca)
+        self.assertEqual((s["v"], s.get("preenchimento")), (0.0, True))
 
     def test_buffering(self):
-        _, msgs, _ = self.confere("buffering")
+        _, msgs, mapa = self.confere("buffering")
         self.assertEqual([m["evento"] for m in msgs], ["inicio", "buffering", "retomada", "pausa", "retomada"])
         b = msgs[1]["msg"]["estado"]["ancora"]
         self.assertEqual((b["anda"], b["pos"]), (False, 11.0))
-        self.assertEqual(msgs[2]["msg"]["estado"]["ancora"]["pos"], 11.0)
+        r = msgs[2]["msg"]["estado"]["ancora"]
+        self.assertEqual(r["pos"], 11.0)
+        self.assertEqual(_u(r["t"]), next(u for u, _, rot in mapa if rot == 11.0))  # no instante em que voltou
 
     def test_repetir(self):
         _, msgs, mapa = self.confere("repetir")
-        self.assertEqual([m["evento"] for m in msgs], ["inicio", "mapa"])
-        volta = msgs[1]["msg"]
+        self.assertEqual([m["evento"] for m in msgs], ["inicio", "mapa", "fronteira"])
         u_volta = next(u for u, _, r in mapa if r == 0.0)
-        self.assertEqual(round((volta["agora"] - T0_MS) * POR_MS), u_volta)  # no primeiro bloco da volta
-        self.assertEqual((volta["estado"]["ancora"]["pos"], volta["estado"]["faixa"]["id"]), (0.0, "A"))
+        self.assertNotEqual(u_volta % BLOCO, 0)  # a volta comeca no meio de um callback
+        chegou, volta = msgs[1]["msg"]["estado"]["ancora"], msgs[2]["msg"]["estado"]["ancora"]
+        self.assertEqual(chegou["segmentos"][1].get("pos"), 0.0)  # a volta na ancora antes de tocar
+        self.assertEqual((_u(volta["t"]), volta["pos"], volta["faixa"]), (u_volta, 0.0, "A"))  # e no primeiro bloco
 
     def test_fim_natural_e_rev_estavel(self):
         _, msgs, _ = self.confere("fim-natural")
         estados = [m for m in msgs if m["msg"]["tipo"] == "estado"]
-        self.assertEqual([m["evento"] for m in estados], ["inicio", "fim"])
-        fim = estados[1]["msg"]["estado"]
+        self.assertEqual([m["evento"] for m in estados], ["inicio", "mapa", "fim"])
+        perto = estados[1]["msg"]["estado"]["ancora"]  # o fim do disco na janela: a ancora para em 10 s
+        self.assertIsNotNone(perto["segmentos"][-1]["n"])
+        self.assertAlmostEqual(posicao(perto, perto["t"] + 60_000), 10.0, places=9)
+        fim = estados[2]["msg"]["estado"]
         self.assertEqual(fim["ancora"]["anda"], False)
         self.assertAlmostEqual(fim["ancora"]["pos"], 10.0, places=9)
         pulsos = [m["msg"] for m in msgs if m["msg"]["tipo"] == "pulso"]
         self.assertGreaterEqual(len(pulsos), 4)
-        self.assertEqual({p["rev"] for p in pulsos if p["agora"] > estados[1]["msg"]["agora"]}, {2})
+        self.assertEqual({p["rev"] for p in pulsos if p["agora"] > estados[2]["msg"]["agora"]}, {3})
 
     def test_rev_estavel_entre_ticks(self):
         for nome in CENARIOS:
-            info, msgs, mapa = self.corre(nome)
+            _, msgs, _ = self.corre(nome)
             estados = [m for m in msgs if m["msg"]["tipo"] == "estado"]
             self.assertEqual([m["msg"]["rev"] for m in estados], list(range(1, len(estados) + 1)))
-            # o produtor olhou o prato a cada bloco e so publicou nas mudancas
-            self.assertLess(len(estados), 30, nome)
+            self.assertLess(len(estados), 30, nome)  # o produtor olhou o prato a cada tick e so publicou nas mudancas
 
 
 def main():

@@ -16,7 +16,7 @@
         "id": {"$ref": "urn:ritmelli:remoto:v1:comando#/properties/id"},
         "ok": {"const": true},
         "rev": {
-          "description": "O rev do estado que já mostra o comando aplicado (o estado com esse rev chega antes ou logo depois).",
+          "description": "O rev da projeção que o PC observou depois de a API local confirmar o comando: o do estado que ele publicou por causa do comando, ou o do último publicado, quando nada que se vê mudou.",
           "$ref": "urn:ritmelli:remoto:v1:estado#/$defs/rev"
         },
         "dados": {"$ref": "#/$defs/dados"},
@@ -43,15 +43,16 @@
                "nao_permitido", "nao_encontrado", "conflito", "falha_local"]
     },
     "dados": {
-      "description": "O que o comando devolve: o qid e se já tocou (enfileirar), o volume (volume), o abaixamento (abaixar); vazio nos outros.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "qid": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/qid"},
-        "tocando": {"type": "boolean"},
-        "vol": {"type": "number", "minimum": 0, "maximum": 1},
-        "abaixa": {"oneOf": [{"type": "null"}, {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/abaixar"}]}
-      }
+      "description": "O que o comando devolve, numa forma só: vazio, o qid e se já tocou (enfileirar), o volume (volume) ou o abaixamento (abaixar). A forma é a do comando do mesmo id.",
+      "oneOf": [
+        {"type": "object", "maxProperties": 0},
+        {"type": "object", "additionalProperties": false, "required": ["qid", "tocando"],
+         "properties": {"qid": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/qid"}, "tocando": {"type": "boolean"}}},
+        {"type": "object", "additionalProperties": false, "required": ["vol"],
+         "properties": {"vol": {"type": "number", "minimum": 0, "maximum": 1}}},
+        {"type": "object", "additionalProperties": false, "required": ["abaixa"],
+         "properties": {"abaixa": {"oneOf": [{"type": "null"}, {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/abaixar"}]}}}
+      ]
     }
   }
 }
