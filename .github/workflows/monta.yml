@@ -51,48 +51,15 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             instalador/travas.txt
-      # os textos da interface nas duas línguas (as chaves, os parâmetros e as letras do pixel art), antes de montar:
-      # um arquivo quebrado abriria a tela em inglês, e uma chave a menos, um texto faltando. Só a biblioteca padrão
-      - name: Confere os textos
+      # as conferências só da biblioteca padrão (o STDLIB do dev/testa_tudo.py), antes de montar: os textos nas duas
+      # línguas (um arquivo quebrado abriria a tela em inglês), os dados de uso, a troca de nome de Vitrola para
+      # Ritmelli, a pasta do teste sem som, as vozes do pedal, o pareamento do celular, a gravação dos dados, o filtro
+      # nas vagas de efeito de um microfone (num registro falso) e os ganchos do motor para o módulo de fora. Sem rede.
+      # A parte que pede as bibliotecas do app fica para o testa.yml, que roda em todo PR
+      - name: Conferências só da biblioteca padrão
         env:
           PYTHONUTF8: '1'
-        run: python dev/testa_i18n.py
-      # os dados de uso e os erros (metricas.py): so sai o que a lista do PRIVACIDADE.md diz, e nada sem a escolha de
-      # quem usa. Sem rede e so a biblioteca padrao
-      - name: Confere os dados de uso
-        env:
-          PYTHONUTF8: '1'
-        run: python dev/testa_metricas.py
-      # a troca de nome de Vitrola para Ritmelli (#58): a pasta de dados, o registro (o do usuário), a pasta do app de
-      # antes, o cookie do celular e o tema no endereço de agora. Só a biblioteca padrão: o endereço de antes do tema,
-      # que pede o servidor de verdade, fica de fora aqui
-      - name: Confere a troca de nome
-        env:
-          PYTHONUTF8: '1'
-        run: python dev/testa_migra.py
-      # o servidor de teste (--mock) nunca grava na pasta de dados de quem usa (#117). Só a biblioteca padrão
-      - name: Confere a pasta do teste sem som
-        env:
-          PYTHONUTF8: '1'
-        run: python dev/testa_mock.py
-      # as vozes do pedal de troca de voz: o vozes.json, o que o instalador baixa e o pedal que fica de fora sem placa de
-      # vídeo ou sem as vozes. Sem rede e só a biblioteca padrão
-      - name: Confere as vozes
-        env:
-          PYTHONUTF8: '1'
-        run: python dev/testa_vozes.py
-      # o pareamento do celular (#127), a única trava do controle pela rede de casa: o código, as tentativas erradas, a
-      # chave e a desconexão. Só a biblioteca padrão (o guard do servidor fica para quem tem as bibliotecas do app)
-      - name: Confere o pareamento do celular
-        env:
-          PYTHONUTF8: '1'
-        run: python dev/testa_pareamento.py
-      # a gravação dos .json dos dados (pastas.save_json): duas gravações ao mesmo tempo no mesmo arquivo e o arquivo
-      # aberto por outro programa (o Windows recusa a troca). Só a biblioteca padrão, numa pasta temporária
-      - name: Confere a gravação dos dados
-        env:
-          PYTHONUTF8: '1'
-        run: python dev/testa_grava.py
+        run: python dev/testa_tudo.py --so-stdlib
       # o Inno Setup do build à mão, na pasta do usuário, que é a primeira onde o monta.ps1 procura (a máquina do
       # GitHub pode trazer outra versão em Program Files)
       - name: Inno Setup 6.7.3

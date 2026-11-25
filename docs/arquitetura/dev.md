@@ -8,11 +8,19 @@ marcador e o redirecionamento para outra origem. Os medidores que abrem o anel d
 (`dev/mede_folga.py`, `dev/mede_voz_ao_vivo.py`) são manuais, num Windows de teste, e saem
 antes de abrir o anel quando a 8799 aceita conexão.
 
+O `dev/testa_tudo.py` roda os testes que não usam som, aparelho nem rede externa, um por
+vez, pelas listas dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO` e
+o `MICROFONE`. No `COMPLETO`, biblioteca ou ffmpeg faltando é falha, e teste de `dev/` fora
+das listas também. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR, e o `--areas`
+é o filtro por caminho do `.github/workflows/testa.yml`, que roda tudo isso em todo PR.
+
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
-deitado), `dev/compara.py` (gate de "o celular não mudou": prints do tema em estados fixos,
+deitado; uma exceção ou um `console.error` da página também reprova), `dev/compara.py` (gate
+de "o celular não mudou": prints do tema em estados fixos,
 com uma prateleira de mentira e o servidor em `--mock`, comparados pixel a pixel com os de
-referência gravados antes da mudança), `dev/perfcheck.py`
+referência gravados antes da mudança, também de outro checkout pelo `--raiz`; sai 2 se um
+print mudou e 1 se a captura não vale), `dev/perfcheck.py`
 (quanto o tema redesenha por segundo com música tocando, no celular emulado),
 `dev/celular.py` (mede rolagem, puxão e abrir do palco no Chrome do celular de verdade,
 por USB com adb; o emulado não reproduz o que trava lá), `dev/bumbo.py` (confere se a passagem

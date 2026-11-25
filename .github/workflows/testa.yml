@@ -1,0 +1,240 @@
+# Testa cada PR numa máquina Windows do GitHub: o ruff (o pyproject.toml), os testes do dev/testa_tudo.py e, quando o
+# PR mexe na área deles, os testes do filtro de microfone e a tela (o fitcheck e o compara). O job "Testa o PR" sempre
+# roda e só passa com os outros: é ele o check exigido na trava da main.
+#
+# Sem paths: no gatilho, porque um check exigido que não roda deixa o PR travado. O filtro por caminho fica dentro de
+# cada job, pelo git diff contra o base.sha (o AREAS do dev/testa_tudo.py), e o job que não se aplica passa sem rodar.
+#
+# PR de fora continua pedindo a aprovação de quem mantém o repo para rodar (o padrão do GitHub), e nele o token é só de
+# leitura: o resumo fica só na execução, sem o comentário no PR.
+name: Testa
+
+on:
+  pull_request:
+    # labeled e unlabeled: a etiqueta extracao-tema muda o que o compara bloqueia
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testa-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  # o ruff e o COMPLETO do dev/testa_tudo.py, com as bibliotecas do requirements-dev.txt e o ffmpeg do app
+  testes:
+    name: Testes
+    runs-on: windows-2025
+    timeout-minutes: 25
+    outputs:
+      resumo: ${{ steps.resumo.outputs.resumo }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12.10'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Bibliotecas
+        run: python -m pip install -r requirements-dev.txt
+      # o ffmpeg só de áudio que vai no app (o PATH vale para os passos seguintes)
+      - name: ffmpeg no PATH
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
+      # o --output-format github marca cada erro na linha dele, no diff do PR
+      - name: ruff
+        id: ruff
+        run: python -m ruff check --output-format github .
+      - name: Testes
+        id: testes
+        if: ${{ !cancelled() && steps.ruff.outcome != 'skipped' }}
+        run: python dev/testa_tudo.py --resumo "$env:RUNNER_TEMP\resumo.md"
+      - name: Resumo
+        id: resumo
+        if: always()
+        env:
+          RUFF: ${{ steps.ruff.outcome }}
+        run: |
+          $l = @("**ruff:** $(if ($env:RUFF -eq 'success') { '✅ limpo' } elseif ($env:RUFF -eq 'failure') { '❌ achou erro (marcado nas linhas do diff)' } else { "não rodou ($env:RUFF)" })", '')
+          if (Test-Path "$env:RUNNER_TEMP\resumo.md") { $l += Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" }
+          $texto = $l -join "`n"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
+          $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
+
+  # os testes do filtro (o MICROFONE do dev/testa_tudo.py), com as DLLs do microfone\apo\compila.bat teste: só quando o
+  # PR mexe no filtro, no motor, nos efeitos ou nos testes deles
+  microfone:
+    name: Filtro do microfone
+    runs-on: windows-2025
+    timeout-minutes: 25
+    outputs:
+      resumo: ${{ steps.resumo.outputs.resumo }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12.10'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: O PR mexe no filtro?
+        id: areas
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: python dev/testa_tudo.py --areas $env:BASE
+      - name: Bibliotecas
+        if: steps.areas.outputs.microfone == 'true'
+        run: python -m pip install -r requirements.txt
+      - name: Compila as DLLs de teste
+        if: steps.areas.outputs.microfone == 'true'
+        shell: cmd
+        run: microfone\apo\compila.bat teste
+      - name: Testes do filtro
+        if: steps.areas.outputs.microfone == 'true'
+        run: python dev/testa_tudo.py --microfone --resumo "$env:RUNNER_TEMP\resumo.md"
+      - name: Resumo
+        id: resumo
+        if: always()
+        env:
+          APLICA: ${{ steps.areas.outputs.microfone }}
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP\resumo.md") { $texto = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" }
+          elseif ($env:APLICA -eq 'false') { $texto = '**Testes do filtro:** não se aplicam (o PR não mexe no filtro)' }
+          else { $texto = '**Testes do filtro:** ❌ não chegaram a rodar (ver a execução)' }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
+          $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
+
+  # a tela (o --tela do dev/testa_tudo.py): o fitcheck nas duas línguas contra o --mock com dados temporários e o
+  # compara, com a referência do base.sha (num worktree) e a comparação do PR, no mesmo Chrome. Só quando o PR mexe no
+  # tema, no que o servidor injeta nele ou nas duas ferramentas, e em todo PR com a etiqueta extracao-tema. Print que
+  # mudou bloqueia só com a etiqueta; sem ela, as diferenças vão no artefato, para revisão
+  tela:
+    name: Tela
+    runs-on: windows-2025
+    timeout-minutes: 25
+    outputs:
+      resumo: ${{ steps.resumo.outputs.resumo }}
+    env:
+      EXTRACAO: ${{ contains(github.event.pull_request.labels.*.name, 'extracao-tema') }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12.10'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: O PR mexe na tela?
+        id: areas
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          ETIQUETAS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        # o testa_tudo le a lista da variavel: no argumento, o PowerShell mexeria nas aspas do JSON
+        run: python dev/testa_tudo.py --areas $env:BASE
+      - name: Bibliotecas
+        if: steps.areas.outputs.tela == 'true'
+        run: python -m pip install -r requirements-dev.txt
+      - name: ffmpeg no PATH
+        if: steps.areas.outputs.tela == 'true'
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
+      - name: fitcheck e compara
+        id: tela
+        if: steps.areas.outputs.tela == 'true'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python dev/testa_tudo.py --tela --base $env:BASE --pasta "$env:RUNNER_TEMP\tela" --resumo "$env:RUNNER_TEMP\resumo.md"
+          $cod = $LASTEXITCODE
+          if ($cod -eq 2) {
+            Add-Content -Path $env:GITHUB_OUTPUT -Value 'mudou=true' -Encoding utf8
+            if ($env:EXTRACAO -eq 'true') { '::error::os prints do compara mudaram, e o PR tem a etiqueta extracao-tema'; exit 1 }
+            '::warning::os prints do compara mudaram: as diferenças estão no artefato tela, para revisão'
+            exit 0
+          }
+          exit $cod
+      - name: Prints
+        if: always() && (steps.tela.outcome == 'failure' || steps.tela.outputs.mudou == 'true')
+        uses: actions/upload-artifact@v7
+        with:
+          name: tela
+          path: ${{ runner.temp }}/tela/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Resumo
+        id: resumo
+        if: always()
+        env:
+          APLICA: ${{ steps.areas.outputs.tela }}
+          MUDOU: ${{ steps.tela.outputs.mudou }}
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP\resumo.md") {
+            $texto = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md"
+            if ($env:MUDOU -eq 'true') { $texto += "`n" + $(if ($env:EXTRACAO -eq 'true') { '❌ com a etiqueta extracao-tema, print que mudou bloqueia' } else { '⚠️ sem a etiqueta extracao-tema, print que mudou não bloqueia: as diferenças estão no artefato `tela`' }) }
+          }
+          elseif ($env:APLICA -ne 'true' -and $env:APLICA) { $texto = '**Tela:** não se aplica (o PR não mexe na tela e não tem a etiqueta extracao-tema)' }
+          else { $texto = '**Tela:** ❌ não chegou a rodar (ver a execução)' }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
+          $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
+
+  # o check exigido: sempre roda, junta os resumos e só passa com os outros três (o que não se aplica passa sem rodar)
+  testa-o-pr:
+    name: Testa o PR
+    if: ${{ !cancelled() }}
+    needs: [testes, microfone, tela]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Resumo e resultado
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          EXECUCAO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DO_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          S_TESTES: ${{ needs.testes.result }}
+          S_MICROFONE: ${{ needs.microfone.result }}
+          S_TELA: ${{ needs.tela.result }}
+          R_TESTES: ${{ needs.testes.outputs.resumo }}
+          R_MICROFONE: ${{ needs.microfone.outputs.resumo }}
+          R_TELA: ${{ needs.tela.outputs.resumo }}
+        run: |
+          marca() { if [ "$1" = success ]; then echo "✅"; else echo "❌ ($1)"; fi; }
+          ok=true
+          for s in "$S_TESTES" "$S_MICROFONE" "$S_TELA"; do [ "$s" = success ] || ok=false; done
+          {
+            if $ok; then echo "## ✅ Testa: tudo passou"; else echo "## ❌ Testa: algo falhou"; fi
+            echo
+            echo "| Testes | Filtro do microfone | Tela |"
+            echo "| --- | --- | --- |"
+            echo "| $(marca "$S_TESTES") | $(marca "$S_MICROFONE") | $(marca "$S_TELA") |"
+            echo
+            printf '%s\n\n' "$R_TESTES" "$R_MICROFONE" "$R_TELA"
+            echo "[A execução]($EXECUCAO), no commit \`${HEAD:0:12}\`."
+          } > resumo.md
+          cat resumo.md >> "$GITHUB_STEP_SUMMARY"
+          # um comentário só por PR, atualizado a cada execução. No PR de fork, o token é só de leitura
+          if [ "$DO_REPO" = true ]; then
+            gh pr comment "$PR" -R "$REPO" --body-file resumo.md --edit-last --create-if-none \
+              || echo "::warning::o comentário do resumo no PR não saiu"
+          fi
+          $ok

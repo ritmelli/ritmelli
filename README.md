@@ -492,6 +492,7 @@ The code, its comments and the internal docs are in Brazilian Portuguese.
 | `docs/` | the architecture notes (`ARQUITETURA.md`, an index to one file per part in `arquitetura/`) and the images in this README |
 | `instalador/` | the installer: `monta.ps1`, `ritmelli.iss`, ffmpeg, bootloader, the partial update, the voice download (`vozes_iss.py`) and the license texts |
 | `.github/workflows/monta.yml` | the pipeline that builds and tests the installer |
+| `.github/workflows/testa.yml` | the tests every pull request runs |
 
 How each part works is described in [docs/ARQUITETURA.md](docs/ARQUITETURA.md), and the contract between the server
 and the interface in [API.md](API.md) (both in Portuguese).
@@ -505,17 +506,20 @@ one in [Run](#run), and open the pull request from a branch of your fork against
 the team are merged after a review by an organization member. Security problems go through the
 [security policy](https://github.com/ritmelli/ritmelli/security/policy), not through issues.
 
-Pull requests don't trigger the pipeline (a maintainer runs it by hand), so run its pre-build checks yourself before
-you open one. They need only the Python standard library:
+Every pull request runs `.github/workflows/testa.yml` on a GitHub-hosted Windows machine (from a fork, once a
+maintainer approves the run): `ruff` with the error-only rules in `pyproject.toml`, the tests in `dev/testa_tudo.py`
+and, when the change touches their area, the microphone filter tests and the interface checks (`dev/fitcheck.py` in
+both languages and `dev/compara.py` against `main`). Run the same before you open one, with the virtual environment
+active:
 
 ```powershell
-python dev\testa_i18n.py       # the interface texts in both languages
-python dev\testa_metricas.py   # the anonymous usage data
-python dev\testa_migra.py      # the rename from Vitrola
-python dev\testa_mock.py       # the no-audio mode never touches real user data
-python dev\testa_pareamento.py # phone pairing: the code, wrong attempts, the key and disconnecting
-python dev\testa_grava.py      # saving the data files: two writers at once and a file another program has open
+python -m ruff check .
+python dev\testa_tudo.py                           # every test that needs no audio device and no internet
+python dev\testa_tudo.py --microfone               # the filter tests, after microfone\apo\compila.bat teste
+python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as the pull request check runs them
 ```
+
+`python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library.
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
 [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks
