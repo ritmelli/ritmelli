@@ -19,6 +19,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 from pathlib import Path
 from unittest import mock
 
@@ -2260,7 +2261,76 @@ def avanco(A, E):
     limpa()
 
 
+def mixa():
+    """The MockEngine's own _mixa, block by block with the clock in hand: the music ducked by POST /api/abaixa leaves
+    for the game about 12 dB lower while the headphones stay the same, and comes back by the deadline; the test beep
+    of POST /api/sinal goes only to the game, outside the music volume, and only with the voice on."""
+    print("--- the _mixa: the ducking and the test beep")
+    agora = [1000.0]
+    with contextlib.redirect_stderr(io.StringIO()):
+        E = eng.MockEngine("", "")
+    E.vol, E.mon_vol = 0.5, 0.5
+    E.monitor_on, E.active = True, {"mic": "", "monitor": "headphones"}
+    t = np.arange(eng.BLOCK * 400, dtype=np.float32) / eng.SR
+    tom = 0.2 * np.sin(2 * np.pi * 400 * t)  # whole cycles in each block: every block has the same RMS
+    E._sobre = [[{"id": "tone"}, np.stack([tom, tom], axis=1).astype(np.float32), 0]]  # music the whole test long
+
+    def db(x):
+        return 20 * np.log10(max(float(np.sqrt(np.mean(x * x))), 1e-9))
+
+    def bloco():
+        """(game dB, headphones dB, game peak) of the next block."""
+        jogo = E._mixa(eng.BLOCK).copy()
+        fone = E._mon.pop() if E._mon else np.zeros((eng.BLOCK, 2), np.float32)
+        E._mon.clear()
+        return db(jogo), db(fone), float(np.abs(jogo).max())
+
+    with mock.patch.object(eng, "time", types.SimpleNamespace(monotonic=lambda: agora[0])):
+        jogo0, fone0, _ = bloco()
+        tom_db = 20 * np.log10(0.2 / np.sqrt(2) * 0.5)  # the tone's RMS at the 0.5 volumes
+        confere(abs(jogo0 - tom_db) < 0.1 and abs(fone0 - tom_db) < 0.1,
+                f"before the ducking, the tone reaches the game and the headphones ({jogo0:.1f}, {fone0:.1f} dB)")
+        E.abaixa(12, 500)
+        bloco()  # the ramp from the gain before, with no click
+        jogo, fone, _ = bloco()
+        confere(abs(jogo - jogo0 + 12) < 0.2 and abs(fone - fone0) < 0.01
+                and E.abaixamento() == {"db": 12.0, "ms": 500},
+                f"ducked by 12 dB: the game {jogo - jogo0:+.2f} dB, the headphones {fone - fone0:+.2f} dB")
+        agora[0] += 0.45
+        jogo, _, _ = bloco()
+        confere(abs(jogo - jogo0 + 12) < 0.2, f"before the deadline it stays ducked ({jogo - jogo0:+.2f} dB)")
+        agora[0] += 0.1
+        confere(E.abaixamento() is None, "past the deadline, the state has no ducking")
+        bloco()  # the ramp back
+        jogo, fone, _ = bloco()
+        confere(abs(jogo - jogo0) < 0.01 and abs(fone - fone0) < 0.01,
+                f"past the deadline the music is back by itself (the game {jogo - jogo0:+.2f} dB)")
+
+        E._sobre, E.vol = [], 0.0  # no music, and its volume at zero: the beep doesn't go through it
+        bloco()
+        E.mic_mute = True
+        confere(E.sinal() is False and bloco()[2] == 0.0, "with the voice cut, the beep doesn't play")
+        E.mic_mute = False
+        confere(E.sinal() is True, "with the voice on, the beep is accepted")
+        blocos = [bloco() for _ in range(int(eng.SINAL_S * eng.SR / eng.BLOCK) + 2)]
+        pico = max(b[2] for b in blocos)
+        confere(abs(20 * np.log10(pico) - eng.SINAL_DB) < 0.5 and blocos[-1][2] == 0.0,
+                f"the beep plays at {20 * np.log10(pico):.1f} dBFS (expected {eng.SINAL_DB:g}) and ends by itself")
+        confere(all(b[1] < -150 for b in blocos), "the beep goes only to the game, not to the headphones")
+        E.sinal()
+        primeiro = bloco()[2]
+        E.mic_mute = True
+        cortado = bloco()[2]
+        E.mic_mute = False
+        confere(primeiro > 0 and cortado == 0.0 and bloco()[2] == 0.0,
+                "the voice cut in the middle of the beep: the rest doesn't play, not even with the voice back")
+        E.sinal()
+        agora[0] += eng.SINAL_S + 0.1
+        confere(bloco()[2] == 0.0, "a beep that didn't start by its deadline doesn't play")
+
+
 def main():
+    mixa()
     with tempfile.TemporaryDirectory() as tmp:
         audio = Path(tmp) / "audio"  # a pasta dos arquivos de audio tambem e a temporaria: o Library cria a dele
         with mock.patch.object(server, "LIB", audio), mock.patch.object(pastas, "LIB", audio):
