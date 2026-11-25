@@ -28,6 +28,13 @@ a voz indo pro jogo) e `tocou(x)`; o módulo devolve a voz pelo `mina_voz` (a fi
 do fone, com 0,1 s de folga de rede), cala pelo `mina_cala` e acha a API pela `porta` do
 engine. No `--mock` o pedal não liga.
 
+Os ganchos do `engine.py` para o módulo opcional de fora do repo não crescem: nada de função,
+atributo ou chamada nova para ele, e o que ele precisar daqui em diante passa pelo contrato
+acima. Os que já existem ficam como estão. O `dev/testa_ganchos.py` conta esses ganchos (os
+nomes do `engine.py` com o nome do módulo, o que o engine lê dele e o que chama nele) contra
+um teto e falha quando a conta passa dele; quando um gancho sai, o teto desce no mesmo PR.
+Gancho com um nome que não lembra o módulo escapa da conta, e a regra vale igual.
+
 ## Filtro "Quest como SM58"
 
 `fx.QuestComoSM58` faz o microfone do Quest (pelo Virtual Desktop) soar como o SM58 com a

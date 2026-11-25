@@ -32,6 +32,8 @@ português ou inglês.
   (`/api/pareamento`, `/api/atualizacao` e `/api/metricas`) e as que o próprio handler recusa pelo `do_pc` (o
   `POST /api/boas-vindas` e o `POST /api/janela/foco`). Rota nova nasce só para o PC, fechada de um desses jeitos, e
   abrir para o celular é decisão escrita no PR. Rota ou campo novo entra no `API.md`.
+- O `engine.py` não ganha gancho novo para o módulo opcional de fora do repo: o que ele precisa passa pelo que já
+  existe ([fx.md](docs/arquitetura/fx.md)), e o `dev/testa_ganchos.py` falha com um a mais.
 - Mudou uma peça, muda o arquivo dela em `docs/arquitetura/`.
 
 ## As superfícies de uma mudança
@@ -49,7 +51,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 
 | Área | Arquivos | Teste (sem caminho, em `dev/`) |
 | --- | --- | --- |
-| Motor de áudio | `engine.py`, `sonoridade.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_anel` |
+| Motor de áudio | `engine.py`, `sonoridade.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_anel`, `testa_ganchos` |
 | Servidor e YouTube | `server.py`, `yt_fora.py`, `yt_erros.py` | `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py` | `testa_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`), o `grava_cfg` do `server.py` | `testa_grava` |
