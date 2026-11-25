@@ -1,6 +1,6 @@
 {
  "cenario": "seek-na-rampa",
- "descricao": "O seek no meio da rampa de saida: o gen sobe e a fila e refeita sem os blocos esticados; a curva fica com o gen de antes e vale a cauda.",
+ "descricao": "O seek no meio da rampa de saida: o _restart limpa a fila, os blocos esticados saem e a curva sai junto; vale a cauda.",
  "relogio": {
   "t0_ms": 1000000.0,
   "taxa": 48000
@@ -198,6 +198,189 @@
     "tipo": "estado",
     "sessao": "sessao-de-teste-01",
     "rev": 4,
+    "origem": "mudanca",
+    "agora": 1018270.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 40.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 18.2068796422409,
+      "t": 1018200.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 480,
+        "v": 1.0
+       },
+       {
+        "n": 480,
+        "v": 1.0,
+        "pos": 18.216920727992118
+       },
+       {
+        "n": 480,
+        "v": 1.0,
+        "pos": 18.22696196287852
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 30.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 5,
+    "origem": "mudanca",
+    "agora": 1018270.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 40.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 18.216920727992118,
+      "t": 1018210.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 480,
+        "v": 1.0
+       },
+       {
+        "n": 480,
+        "v": 1.0,
+        "pos": 18.22696196287852
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 30.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 6,
+    "origem": "mudanca",
+    "agora": 1018270.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 40.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 18.22696196287852,
+      "t": 1018220.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 480,
+        "v": 1.0
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 30.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 7,
     "origem": "mudanca",
     "agora": 1018270.0,
     "estado": {

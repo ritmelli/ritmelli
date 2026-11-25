@@ -80,10 +80,16 @@ soma de i = a até b - 1 de cos(pi * i / N) = (sin(pi * (b - 1/2) / N) - sin(pi 
 ```
 
 Só o último segmento, em velocidade constante, pode ser aberto (`n` null); o meio cosseno e o preenchimento têm `n`
-finito, e no meio cosseno `fase + n <= total`. A velocidade 0 só aparece no preenchimento. Cada segmento vale de
-`[começo, começo + n)`: na fronteira já vale o seguinte, e o `pos` de um segmento (a posição de começo dele, quando não
-continua a do anterior) entra exatamente ali. Depois do último segmento finito, a posição fica parada. Com
-`anda: false` (pausa, buffering, fim), a posição é `pos` e os segmentos vêm vazios.
+finito, e no meio cosseno `fase + n <= total`. A velocidade 0 só aparece no preenchimento. O primeiro segmento começa
+no `pos` da âncora e não leva `pos`. Cada segmento vale de `[começo, começo + n)`: na fronteira já vale o seguinte, e o
+`pos` de um segmento (a posição de começo dele, quando não continua a do anterior) entra exatamente ali. Depois do
+último segmento finito, a posição fica parada. Com `anda: false` (pausa, buffering, fim), a posição é `pos` e os
+segmentos vêm vazios. Uma âncora com os 8 segmentos cheios só promete a posição até o começo do último (a seguinte
+sai antes, na fronteira).
+
+Além do esquema, o estado só vale com a `ancora.faixa` igual à `faixa.id`, com só o último segmento aberto e com
+`fase + n <= total` em todo meio cosseno: quem recebe confere as três coisas depois do esquema, e recusa o estado que
+falha numa delas como recusa o que falha no esquema.
 
 ### O que o PC põe na âncora
 
@@ -97,19 +103,22 @@ amostra dele, e o motor anda dentro do bloco a velocidade 1 (o `_tira`, que rotu
   segmento em 1, com o `pos` dele quando o rótulo salta (a volta do Repetir que o leitor já pôs na fila), até caberem
   os 8 segmentos da âncora. O último fica aberto, salvo quando a fila acaba dentro dessa janela (ou bem no fim dela)
   com o fim do disco já lido: aí ele é finito e a posição para no fim, sem passar dele. Sem lugar para o trecho
-  seguinte, o último fica aberto, e a âncora nova sai quando o prato chega a ele.
+  seguinte, o último fica aberto.
 - A curva de um plano aplicado (a rampa de saída e a entrada) ocupa um trecho das amostras consumidas do prato,
   contadas pelo `_mixa`: antes dele, o disco anda a 1; nele, os segmentos da curva, com a fase pelo que já foi
-  consumido; depois, a cauda. Ela vale para o deck e o `gen` dele em que o `_mede` a aplicou: o `_restart` (o seek,
-  outro disco pelo `load`, a retomada depois do fim) e o `stop` sobem o `gen` e limpam a fila, e a curva sai junto. A
-  volta do Repetir depois da curva, assim, segue a 1, e uma segunda passagem pelo `t_r` não traz a curva de volta.
+  consumido; depois, a cauda. Ela vale para o deck enquanto a fila dele não é limpa: o `_restart` (o seek, outro
+  disco pelo `load`, a retomada depois do fim) e o `stop` limpam a fila e tiram as curvas junto; o `trocar_fonte`
+  (o stream que vira o arquivo baixado) sobe o `gen` sem limpar a fila, e a curva segue até os blocos dela acabarem.
+  Um deck pode ter mais de uma (a entrada dele e, depois, a rampa de saída da passagem seguinte): a nova corta a
+  anterior no começo dela, como o `_mede` troca a cauda da fila dali em diante. A volta do Repetir depois da curva
+  segue a 1, e uma segunda passagem pelo `t_r` não traz a curva de volta.
 - A rampa de saída do `_plano_dois`: a que sai vai de 1 a `sa` em meio cosseno (o `esticar_saida`) por `n_ra`
   amostras a partir do rótulo `t_r`, e segue em `sa` até o fim dos blocos esticados. O `_mede` troca a cauda da fila
   do prato por esses blocos (o `sai_q` do plano), então a âncora publicada ali leva 1 até `t_r`, o meio cosseno
-  `{"de": 1, "ate": sa}`, `sa` e o último bloco (abaixo). O `va` do visor sozinho não reconstrói o meio da rampa: o PC guarda do plano
-  aplicado o `t_r`, o `n_ra`, o `sa` e o total de amostras esticadas (hoje o `n_ra` é uma conta dentro do
-  `_plano_dois`, que a implementação passa a devolver no plano); a curva começa na amostra consumida do bloco de
-  rótulo `t_r`. O último bloco esticado, o do fim do arquivo, vai num segmento a 1 desde o rótulo dele, como o `pos`
+  `{"de": 1, "ate": sa}`, `sa` e o último bloco (abaixo). O `va` do visor sozinho não reconstrói o meio da rampa: o
+  PC guarda do plano aplicado o `t_r`, o `n_ra`, o `sa` e o total de amostras esticadas (hoje o `n_ra` é uma conta
+  dentro do `_plano_dois`, que a implementação passa a devolver no plano); a curva começa na amostra consumida do
+  bloco de rótulo `t_r`. O último bloco esticado, o do fim do arquivo, vai num segmento a 1 desde o rótulo dele, como o `pos`
   do `_mixa`: a última âncora andando para onde o motor congela no fim.
 - A entrada esticada (o `esticar`; a mesma conta do `_visor_rampa` e do `vdjFi` do tema): `sb` por `n_sob` amostras,
   depois o meio cosseno de `1 + k` até 1 em `n_rampa`, depois a cauda. Os números saem do plano sem o arredondamento
@@ -122,8 +131,9 @@ amostra dele, e o motor anda dentro do bloco a velocidade 1 (o `_tira`, que rotu
   - sem esticar, o `cabeca` é um bloco só, que o `_tira` parte: a posição anda a 1 desde a origem rotulada. Com a
     origem presa em zero, o motor mostra a posição indo de 0 até `pad / 48000` e voltando ao `ini` na fronteira, e a
     âncora reproduz isso;
-  - esticado, o `cabeca` vem em blocos de 10 ms, cada um com o rótulo próprio: o bloco que o motor prendeu em zero vai
-    num segmento com `"v": 0`, e o resto do `pad` a 1 desde o rótulo dele.
+  - esticado (o plano tem o `sob` ou a `rampa`), o `cabeca` vem em blocos de 10 ms, cada um com o rótulo próprio: o
+    bloco que o motor prendeu em zero vai num segmento com `"v": 0`, e o resto do `pad` a 1 desde o rótulo dele. Sem
+    esticar, mesmo com o `pad` menor que um bloco, a velocidade é 1.
 
   Depois do preenchimento, o segmento seguinte leva `"pos": ini`. O `preenchimento` também deixa quem desenha a barra
   segurar o zero, se quiser.
@@ -149,17 +159,21 @@ quando:
 
 - a âncora de antes, adiantada em amostras até agora, deixa de bater com a que sairia agora, a menos de meia amostra:
   o mapa mudou (passagem aplicada ou trocada, seek, a volta ou o fim do disco entrando na janela, buffering, pausa,
-  retomada, virada, parada). A descontinuidade que já tocou sai com o `t`, o rótulo e a fase da marca: com curva, a
-  primeira marca estrutural (a curva prevê os saltos de rótulo dela); sem curva, o último salto (a fila já não tem o
-  que tocou antes dele). A pausa, o buffering e o fim saem com o `t` do bloco em que o prato parou. A âncora que
-  sairia igual à de antes adiantada não publica nada;
+  retomada, virada, parada). A descontinuidade que já tocou sai com o `t`, o rótulo e a fase da marca: na troca e na
+  retomada, e no mapa com curva, a última marca estrutural (a curva prevê os saltos de rótulo dela); no mapa sem curva,
+  a primeira marca, e os saltos que tocaram depois dela vão junto, cada um num trecho a 1 com o `pos` dele. A pausa,
+  o buffering e o fim saem com o `t` do bloco em que o prato parou. A âncora que sairia igual à de antes adiantada não
+  publica nada. Com curva que acabou entre a marca e agora, a âncora supõe que nada saltou desde o fim dela (o tick
+  seguinte corrige o que tiver saltado);
 - o prato parou e voltou entre dois ticks: saem as duas transições, em ordem, cada uma no instante dela;
 - a projeção muda (faixa, status, fila, volume, abaixamento, capacidades): só com a fila ou o volume, a âncora
   publicada segue igual;
-- o prato cruza a fronteira de um segmento (começo e fim de cada rampa, fim do preenchimento, a volta já prevista): a
-  âncora nova é a de antes adiantada até a fronteira, com o `t` da fronteira pelo relógio do som. A âncora de antes
-  ainda prevê a posição, mas a nova limita a deriva entre o relógio do som e o do PC (alguns ms por minuto, no pior
-  caso). No fim do último segmento finito não sai nada: o fim do disco vem logo depois.
+- o prato cruza a fronteira de um segmento (começo e fim de cada rampa, fim do preenchimento, a volta já prevista):
+  sai uma âncora por fronteira, em ordem, cada uma montada no instante dela (a posição que a de antes previa ali, o
+  `t` da fronteira pelo relógio do som e a janela da fila refeita dali), também quando várias cabem entre dois ticks.
+  A âncora de antes ainda prevê a posição, mas a nova limita a deriva entre o relógio do som e o do PC (alguns ms por
+  minuto, no pior caso) e refaz a janela. No fim do último segmento finito não sai nada: o fim do disco vem logo
+  depois. Antes de qualquer outra mudança, saem as fronteiras que o prato cruzou antes dela.
 
 Fora disso, nada: entre ticks sem mudança, o `rev` fica.
 
@@ -182,7 +196,9 @@ tempo que ela passou guardada não conta.
   fase da curva.
 - O relay guarda a última foto da sessão ativa e a entrega, com o `retido_ms`, a quem conecta. Ao aceitar uma sessão
   nova, descarta a foto da anterior; descarta também o estado de outra sessão e o `rev` igual ou menor que o guardado.
-- Quem recebe aplica só o estado da sessão dele com `rev` maior que o último.
+- Quem recebe aplica só o estado da sessão dele com `rev` maior que o último. A posição sai da âncora mais nova cujo
+  `t` já chegou: a foto adiantada (a virada com o `t` depois do `agora`) entra com o `rev` dela, mas a âncora de antes
+  vale até o `t` da nova; sem nenhuma que valha ainda, a posição é o `pos` da primeira.
 
 ## Os comandos
 
@@ -237,19 +253,22 @@ As fixtures ficam em [`protocolo-remoto/v1/fixtures/`](protocolo-remoto/v1/fixtu
   inválidos (a mensagem local, código fora da lista); a repetição pelo id.
 - `estados.json`: um estado local completo e a projeção que sai dele, e estados que o esquema recusa (microfone,
   aparelhos, atualização e erro local na projeção, campo da faixa ou da fila fora da lista, âncora andando com o
-  prato parado e o contrário, outra taxa, velocidade zero fora do preenchimento, cosseno e preenchimento abertos); a
+  prato parado e o contrário, outra taxa, velocidade zero fora do preenchimento, cosseno e preenchimento abertos, e as
+  três conferências além do esquema e o `pos` no primeiro segmento); a
   projeção corta o texto, a capa, a duração e o id de vídeo fora dos limites, e tira o link do título.
 - `relay.json`: a foto guardada, o `rev` antigo descartado, a reconexão, a sessão nova que troca a foto da anterior e
   o estado atrasado da sessão que acabou.
-- `relogio.json`: a primeira foto guardada no relay e atrasada na rede, o erro do relógio caindo com o pulso, e uma
-  foto atrasada depois que não piora.
+- `relogio.json`: a primeira foto guardada no relay e atrasada na rede, o erro do relógio caindo com o pulso, uma
+  foto atrasada depois que não piora, e a foto adiantada, que espera o `t` dela.
 - `posicao-*.json`: os estados que o PC publica em cada cenário, rodado no motor de verdade, sem som e sem aparelho
   (o `Engine` sem o `__init__`): o `_plano_dois` e o `_plano_batida` montam a passagem (só a medida das batidas troca
   por números fixos), o `_mede` aplica, o `_vira` vira o prato, o `_cancela_passagem` cancela e o `_tira` consome a
   fila de 10 em 10 ms; o produtor olha o prato de 7 em 7 blocos, como o tick. Cada foto reconstrói a posição só com
-  ela e bate com o rótulo de cada bloco consumido, a menos de uma amostra, do `t` dela até o da foto seguinte:
+  ela e bate com o rótulo de cada bloco consumido, a menos de uma amostra, do `t` dela até o da próxima foto que muda
+  o mapa (a fronteira, a reconexão e a projeção seguem com a mesma âncora; a cheia, até o começo do último segmento):
   - `passagem-dois`: a rampa de saída e a entrada esticada, com o começo, o meio (reconexão) e o fim de cada meio
-    cosseno, e o `pad` da virada com a origem presa em zero;
+    cosseno, o `pad` da virada com a origem presa em zero, e o `trocar_fonte` no meio da rampa de entrada (a reconexão
+    depois dele ainda leva a curva);
   - `passagem-cancelada`: cancelada no meio da rampa de saída, com a faixa no mesmo deck; reconexão no meio da rampa e
     antes de acabarem os blocos esticados, e o fim natural onde a última âncora parou;
   - `cancelada-repetir`: a mesma, com o Repetir: a volta depois dos blocos esticados segue a 1, com reconexão logo
@@ -263,6 +282,9 @@ As fixtures ficam em [`protocolo-remoto/v1/fixtures/`](protocolo-remoto/v1/fixtu
   - `repetir`: a volta no meio de um callback (o último bloco do arquivo é curto), prevista quando chega à fila e com a
     âncora nova no primeiro bloco dela;
   - `repetir-curto`: um som de 100 ms no Repetir, com mais voltas na janela do que cabem nos 8 segmentos;
+  - `retomada-na-volta`: o mesmo som pausado perto do fim de uma volta, com a volta antes do tick da retomada e com ela
+    no próximo bloco: a âncora de cada volta;
+  - `repetir-curtissimo`: um som de 10 ms no Repetir, com várias voltas entre dois ticks, cada uma com a âncora dela;
   - `fim-natural`: a posição que para no fim sem passar dele, congelada depois, com o `rev` estável entre os ticks e o
     pulso repetindo o `rev`.
 

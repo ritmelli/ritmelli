@@ -1,6 +1,6 @@
 {
  "cenario": "passagem-dois",
- "descricao": "A passagem com a rampa de saida (a que sai vai a sa antes da sobreposicao) e a entrada esticada (sb, a volta a 1 em meio cosseno), com pad > 0 na virada e a origem dele presa em zero; reconexao no meio das duas rampas.",
+ "descricao": "A passagem com a rampa de saida (a que sai vai a sa antes da sobreposicao) e a entrada esticada (sb, a volta a 1 em meio cosseno), com pad > 0 na virada e a origem dele presa em zero; reconexao no meio das duas rampas, a de entrada depois de o download trocar a fonte (o gen sobe e a fila fica).",
  "pad": 224,
  "ini": 0.0,
  "relogio": {
@@ -448,7 +448,7 @@
     "sessao": "sessao-de-teste-01",
     "rev": 7,
     "origem": "mudanca",
-    "agora": 1029960.0,
+    "agora": 1029890.0,
     "estado": {
      "status": "playing",
      "faixa": {
@@ -671,57 +671,6 @@
       "segmentos": [
        {
         "n": null,
-        "v": 1.0
-       }
-      ]
-     }
-    }
-   }
-  },
-  {
-   "evento": "mapa",
-   "msg": {
-    "protocolo": 1,
-    "tipo": "estado",
-    "sessao": "sessao-de-teste-01",
-    "rev": 11,
-    "origem": "mudanca",
-    "agora": 1073220.0,
-    "estado": {
-     "status": "playing",
-     "faixa": {
-      "id": "B",
-      "title": "Disco B",
-      "channel": null,
-      "duration": 45.0,
-      "youtube_id": null,
-      "thumb": null,
-      "stream": false
-     },
-     "fila": [],
-     "vol": 0.6,
-     "abaixa": null,
-     "capacidades": [
-      "tocar",
-      "enfileirar",
-      "pular",
-      "pausar",
-      "retomar",
-      "tirar_da_fila",
-      "mover_na_fila",
-      "volume",
-      "abaixar",
-      "sinal"
-     ],
-     "ancora": {
-      "faixa": "B",
-      "pos": 44.0561875,
-      "t": 1073220.0,
-      "taxa": 48000,
-      "anda": true,
-      "segmentos": [
-       {
-        "n": 45303,
         "v": 1.0
        }
       ]

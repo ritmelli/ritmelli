@@ -523,6 +523,62 @@
      ],
      "ancora": {
       "faixa": "A",
+      "pos": 39.9938398753698,
+      "t": 1039750.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 290,
+        "v": 1.0
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 9,
+    "origem": "mudanca",
+    "agora": 1039760.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 40.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
       "pos": 0.0,
       "t": 1039756.0416666666,
       "taxa": 48000,
@@ -543,7 +599,7 @@
     "protocolo": 1,
     "tipo": "estado",
     "sessao": "sessao-de-teste-01",
-    "rev": 9,
+    "rev": 10,
     "origem": "reconexao",
     "agora": 1039760.0,
     "estado": {
@@ -594,7 +650,7 @@
     "protocolo": 1,
     "tipo": "estado",
     "sessao": "sessao-de-teste-01",
-    "rev": 10,
+    "rev": 11,
     "origem": "mudanca",
     "agora": 1042770.0,
     "estado": {

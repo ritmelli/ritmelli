@@ -93,7 +93,7 @@
    }
   },
   {
-   "evento": "mapa",
+   "evento": "fronteira",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",
@@ -179,7 +179,7 @@
    }
   },
   {
-   "evento": "mapa",
+   "evento": "fronteira",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",
@@ -265,7 +265,7 @@
    }
   },
   {
-   "evento": "mapa",
+   "evento": "fronteira",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",
@@ -351,7 +351,7 @@
    }
   },
   {
-   "evento": "mapa",
+   "evento": "fronteira",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",
@@ -437,7 +437,7 @@
    }
   },
   {
-   "evento": "mapa",
+   "evento": "fronteira",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",
@@ -523,7 +523,7 @@
    }
   },
   {
-   "evento": "mapa",
+   "evento": "fronteira",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",
@@ -609,7 +609,7 @@
    }
   },
   {
-   "evento": "mapa",
+   "evento": "fronteira",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",

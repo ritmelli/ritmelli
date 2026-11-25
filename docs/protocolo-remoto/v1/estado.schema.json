@@ -138,7 +138,11 @@
         "t": {"description": "O instante da âncora no relógio do PC (o mesmo do agora), em ms.", "type": "number", "minimum": 0},
         "taxa": {"description": "As amostras de saída por segundo em que os segmentos se contam.", "const": 48000},
         "anda": {"description": "false: a posição fica parada em pos (pausa, buffering, fim).", "type": "boolean"},
-        "segmentos": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/segmento"}}
+        "segmentos": {
+          "description": "O primeiro começa no pos da âncora e não leva pos; só o último pode ser aberto; no meio cosseno, fase + n <= total (essas duas o esquema não diz: ver a validação no documento).",
+          "type": "array", "maxItems": 8, "prefixItems": [{"allOf": [{"$ref": "#/$defs/segmento"}, {"not": {"required": ["pos"]}}]}],
+          "items": {"$ref": "#/$defs/segmento"}
+        }
       }
     },
     "segmento": {

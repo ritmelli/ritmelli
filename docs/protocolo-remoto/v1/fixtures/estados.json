@@ -1809,6 +1809,221 @@
     }
    },
    "por_que": "capa sem https"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 9,
+    "origem": "mudanca",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "w6kKVs-h9Ns",
+      "title": "Um disco",
+      "channel": "Um canal",
+      "duration": 236.0,
+      "youtube_id": "w6kKVs-h9Ns",
+      "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "w6kKVs-h9Ns",
+      "pos": 1.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 3.0
+       }
+      ]
+     }
+    }
+   },
+   "por_que": "pos no primeiro segmento"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 9,
+    "origem": "mudanca",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "w6kKVs-h9Ns",
+      "title": "Um disco",
+      "channel": "Um canal",
+      "duration": 236.0,
+      "youtube_id": "w6kKVs-h9Ns",
+      "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "w6kKVs-h9Ns",
+      "pos": 1.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       },
+       {
+        "n": 10,
+        "v": 1.0,
+        "pos": 5.0
+       }
+      ]
+     }
+    }
+   },
+   "por_que": "segmento aberto antes do ultimo"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 9,
+    "origem": "mudanca",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "w6kKVs-h9Ns",
+      "title": "Um disco",
+      "channel": "Um canal",
+      "duration": 236.0,
+      "youtube_id": "w6kKVs-h9Ns",
+      "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "w6kKVs-h9Ns",
+      "pos": 1.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 20,
+        "v": {
+         "de": 1.0,
+         "ate": 1.01,
+         "total": 10,
+         "fase": 0
+        }
+       }
+      ]
+     }
+    }
+   },
+   "por_que": "cosseno alem do total"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 9,
+    "origem": "mudanca",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "w6kKVs-h9Ns",
+      "title": "Um disco",
+      "channel": "Um canal",
+      "duration": 236.0,
+      "youtube_id": "w6kKVs-h9Ns",
+      "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "outra",
+      "pos": 1.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   },
+   "por_que": "a ancora de outra faixa"
   }
  ]
 }
