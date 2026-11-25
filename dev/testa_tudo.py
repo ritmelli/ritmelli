@@ -49,7 +49,9 @@ COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "passagem", "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py"]
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
-MICROFONE = ["dev/testa_filtro.py", "dev/testa_voz.py", "dev/testa_microfone.py",
+# o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
+# pulariam
+MICROFONE = ["dev/testa_filtro.py", "dev/testa_voz.py", "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py",
              "microfone/apo/teste/teste_reamostra.py"]
 DLLS = ("teste_reamostra.dll", "voz.dll", "banca_filtro.dll")
 
@@ -65,7 +67,7 @@ LIMITE_S = 600
 # codigo de renderizacao ou de traducao para outro modulo poe o modulo na "tela"
 AREAS = {
     "microfone": ("microfone/", "fx.py", "engine.py", "dev/testa_filtro.py", "dev/testa_voz.py",
-                  "dev/testa_microfone.py"),
+                  "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
     "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py"),
 }
 # os dois disparam todas as areas: o testa.yml e as listas e o filtro daqui

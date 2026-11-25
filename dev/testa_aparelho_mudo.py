@@ -198,10 +198,13 @@ class TestaConferencia(unittest.TestCase):
 class TestaReinicio(unittest.TestCase):
     def setUp(self):
         self.c = Chamadas()
+        self.protegida = True
         # nada de verdade: nenhum servico, nenhum regsvr32, nenhuma pasta de programas
         self.p = [mock.patch.object(filtro.subprocess, "run", self.c("run")),
                   mock.patch.object(filtro, "servico_audio", self.c("servico_audio")),
                   mock.patch.object(filtro, "_depois_do_reinicio", self.c("confere", {"mudos": [UMC_IN]})),
+                  mock.patch.object(filtro, "_protegida", lambda: self.protegida),
+                  mock.patch.object(filtro, "_apaga_registro_com", self.c("apaga_com")),
                   mock.patch.object(filtro, "PASTA", tempfile.gettempdir() + r"\ritmelli-teste-nao-existe")]
         for p in self.p:
             p.start()
@@ -284,6 +287,18 @@ class TestaReinicio(unittest.TestCase):
         self.assertEqual(self.c.nomes(), ["reinicia", "confere"], "sobrou filtro: confere e grava, como ao instalar")
         self.assertEqual(r, {"mudos": [UMC_IN]})
 
+    def test_remove_reprovada(self):
+        """Com a pasta do app reprovada (pastas.pasta_protegida), o remove devolve os microfones e sai com erro, sem
+        conferir: o sounddevice de la nao e carregado. Desinstalando, os mudos saem do registro do mesmo jeito."""
+        import pastas  # noqa: PLC0415
+        self.protegida = pastas.Reprovada("test folder")
+        for sobra, quer in ((True, ["reinicia"]),
+                            (False, ["apaga_com", "reinicia", "tarefa_apaga", "esquece", "grava_mudos"])):
+            with self.assertRaises(SystemExit) as fim:
+                self._remove(sobra=sobra)
+            self.assertTrue(fim.exception.code)
+            self.assertEqual(self.c.nomes(), quer, f"sobrou filtro: {sobra}")
+
 
 class TestaRegistro(unittest.TestCase):
     """Os mudos no registro, numa chave so do teste no HKCU (no app: HKLM\\SOFTWARE\\Ritmelli\\Microfone)."""
@@ -361,6 +376,12 @@ class TestaRegistro(unittest.TestCase):
 
 
 class TestaLinhaDeComando(unittest.TestCase):
+    def setUp(self):
+        # o main confere a pasta do app antes do instala-todos (pastas.pasta_protegida): a do teste passa
+        p = mock.patch.object(filtro, "_protegida", lambda: True)
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_saida_tem_os_mudos(self):
         with tempfile.TemporaryDirectory() as tmp:
             dll, saida = Path(tmp) / "micfx.dll", Path(tmp) / "saida.json"
@@ -527,6 +548,7 @@ sys.path.insert(0, RAIZ)
 from microfone import microfone as filtro
 mudos = os.environ["MUDOS_TESTE"]
 if mudos != "sem":
+    filtro._protegida = lambda: True  # o main confere a pasta do app: a do teste passa
     r = json.loads(mudos)
     if isinstance(r, list):
         r = {"conferidos": ["a"] * 5, "mudos": r, "falhas": [], "travou": False,
@@ -544,6 +566,7 @@ from microfone import microfone as filtro
 atexit.register(time.sleep, 3600)
 preso = threading.Event()
 with mock.patch.object(filtro, "_migra_registro", lambda: None), \\
+        mock.patch.object(filtro, "_protegida", lambda: True), \\
         mock.patch.object(filtro, "confere_aparelhos", lambda: preso.wait(3600)), \\
         mock.patch.object(filtro, "CONFERE_MAX_S", 1.0), \\
         mock.patch.object(filtro, "instala_todos", lambda d: filtro._depois_do_reinicio(assenta_s=0)):
@@ -585,12 +608,16 @@ def monta_setup(pasta):
     return pasta / "mudos-teste.exe"
 
 
-@unittest.skipIf(ISCC is None, "sem o Inno Setup 6 (winget install -e --id JRSoftware.InnoSetup)")
+# no GitHub (o job do filtro do testa.yml instala o Inno Setup), sem o ISCC reprova: pular calado tiraria a prova
+@unittest.skipIf(ISCC is None and not os.environ.get("GITHUB_ACTIONS"),
+                 "sem o Inno Setup 6 (winget install -e --id JRSoftware.InnoSetup)")
 class TestaInstalador(unittest.TestCase):
     """A ultima pagina do instalador (instalador/mudos.iss), pelo log do setup em silencio."""
 
     @classmethod
     def setUpClass(cls):
+        if ISCC is None:
+            raise AssertionError("sem o Inno Setup 6 no GitHub: o job do filtro do testa.yml instala antes")
         cls.tmp = tempfile.TemporaryDirectory()
         cls.setup = monta_setup(cls.tmp.name)
         cls.n = 0
