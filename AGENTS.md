@@ -6,11 +6,10 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
 
 ## Onde testar
 
-- Nunca no 8799, no Ritmelli instalado nem com o microfone de verdade: o som sai no jogo de quem está jogando. O
-  servidor de teste é o `--mock` noutra porta, que por padrão trabalha numa pasta temporária, só com uma cópia da
-  lista da prateleira: `python server.py --mock --port 8801 --no-browser`.
-- Nunca no Discord de quem usa: só num canal fechado de teste e num Windows de teste. Também só num Windows de teste o
-  `instala-todos` e o `remove` do `microfone\microfone.py`, que mexem em todo microfone e no filtro instalado.
+- Nunca no 8799, no Ritmelli instalado, com o microfone de verdade nem no Discord de quem usa (só num canal fechado de
+  teste): o som sai no jogo de quem está jogando. O servidor de teste é o `--mock` noutra porta, que por padrão trabalha
+  numa pasta temporária, só com uma cópia da lista da prateleira: `python server.py --mock --port 8801 --no-browser`.
+- Só num Windows de teste: o Discord e o `microfone\microfone.py instala-todos` e `remove` (mexem em todo microfone).
 
 ## Regras
 
@@ -35,9 +34,10 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
   só dele: o grupo `OUT_OF_REPO` do `permissao.py`, que o `testa_ganchos` também conta.
 - Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 - Mexeu em `instalador/`, nos `atualiza*.py`, no `migra.py`, no `pastas.py`, no `microfone/microfone.py` ou no
-  `ritmelli.spec`: rode o "Monta o instalador" (`monta.yml`) na branch. Na CI, só ele compila o `.iss` e roda a
-  parcial, a migração e o atualizador. Os nomes de artefato e de job dele são contrato com o `ritmelli-server`, cuja
-  esteira de publicação baixa o artefato por eles: quem muda um muda lá junto.
+  `ritmelli.spec`: rode o "Monta o instalador" (`monta.yml`) na branch. Na CI, só ele compila o `.iss` e roda a parcial,
+  a migração e o atualizador. Os nomes dos artefatos dele (`Ritmelli-<versão>` e `ritmelli-exe-<versão>`) e dos jobs
+  `testa`, `testa-atualizador`, `testa-migracao` e `testa-parcial` são contrato com a esteira de publicação do
+  `ritmelli-server`, que acha a execução por eles: renomear um quebra a publicação; muda junto com o server.
 - Mudou uma peça, muda o arquivo dela em `docs/arquitetura/`.
 
 ## As superfícies de uma mudança
