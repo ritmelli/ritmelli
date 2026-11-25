@@ -173,8 +173,8 @@ def instance_stores(node, receivers=frozenset(("self", "cls"))):
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             a = child.args
             inner = receivers - {p.arg for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if p}
-        elif (isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Store) and isinstance(child.value, ast.Name)
-              and child.value.id in receivers):
+        elif (isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Store)
+              and isinstance(child.value, ast.Name) and child.value.id in receivers):
             yield child.attr
         elif (isinstance(child, ast.Call) and attr_function(child.func, ("setattr",)) and len(child.args) >= 2
               and isinstance(child.args[0], ast.Name) and child.args[0].id in receivers
@@ -215,7 +215,8 @@ def reaches(owner, names):
         if f.name == owner:
             continue
         tree = ast.parse(f.read_text(encoding="utf-8"))
-        own_names = {}  # id of each node in a class's method -> the names that class defines (ast.walk goes outer first)
+        # id of each node in a class's method -> the names that class defines (ast.walk reaches the outer class first)
+        own_names = {}
         for c in ast.walk(tree):
             if isinstance(c, ast.ClassDef):
                 mine = class_privates(c)
