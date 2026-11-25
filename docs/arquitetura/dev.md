@@ -35,11 +35,10 @@ A etiqueta `needs-owner` (prova que pede ação física, como plugar ou desligar
 decisão do dono) também vale na fila: o passo "Needs owner" do "Testa o PR" lê a lista do job das
 etiquetas e reprova a entrada da fila cujo PR a tem, ou cujas etiquetas não vieram; no PR ele só
 avisa no resumo. O dono faz a prova, tira a etiqueta e põe o PR na fila. A etiqueta posta com o PR
-já na fila pode chegar tarde para a entrada dele: tirar o PR da fila antes. A prova do filtro, do
-instalador ou do reinício do áudio num Windows real se faz num Windows de teste e se descreve no PR;
-a de um gatilho do `testa.yml` ou do nome do check exigido, no próprio PR (editar a descrição, pôr e
-tirar uma etiqueta e passar pela fila, com o "Testa o PR" no head). O `dev/test_needs_owner.py` roda
-esse passo, fora do GitHub, em cada caso, e confere os gatilhos e o nome do check exigido.
+já na fila pode chegar tarde para a entrada dele: tirar o PR da fila antes. A prova de um gatilho do
+`testa.yml` ou do nome do check exigido se faz no próprio PR (editar a descrição, pôr e tirar uma
+etiqueta e passar pela fila, com o "Testa o PR" no head). O `dev/test_needs_owner.py` roda esse
+passo, fora do GitHub, em cada caso, e confere os gatilhos e o nome do check exigido.
 
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
