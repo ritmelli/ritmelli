@@ -124,10 +124,6 @@ def is_private(name):
     return name.startswith("_") and not name.startswith("__")
 
 
-def own(node):
-    return isinstance(node, ast.Name) and node.id in ("self", "cls")
-
-
 def class_level(body):
     """The statements at a class's own level: its body and what the control blocks there hold (an if, a try), without
     going into a def or a nested class."""
@@ -164,23 +160,32 @@ def attr_function(func, names=ATTR_FUNCTIONS):
                 and func.value.id == "builtins"))
 
 
-def instance_stores(node, receivers=frozenset(("self", "cls"))):
-    """The attributes assigned on the method's own self or cls inside node (self._x = ..., or setattr(self, "_x", ...)):
-    a function nested in it that takes a self or cls of its own (a method of a nested class) assigns on another object,
-    and one that does not still assigns on the outer one, which it captured."""
+RECEIVERS = frozenset(("self", "cls"))
+
+
+def scoped(node, receivers=RECEIVERS):
+    """(n, receivers) for every node under node (a method), with the names among self and cls that still mean the
+    method's own object there: a function nested in it that takes a self or cls of its own (a method of a nested class)
+    means another object by it, and one that does not still means the outer one, which it captured."""
     for child in ast.iter_child_nodes(node):
         inner = receivers
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             a = child.args
             inner = receivers - {p.arg for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if p}
-        elif (isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Store)
-              and isinstance(child.value, ast.Name) and child.value.id in receivers):
-            yield child.attr
-        elif (isinstance(child, ast.Call) and attr_function(child.func, ("setattr",)) and len(child.args) >= 2
-              and isinstance(child.args[0], ast.Name) and child.args[0].id in receivers
-              and isinstance(child.args[1], ast.Constant) and isinstance(child.args[1].value, str)):
-            yield child.args[1].value
-        yield from instance_stores(child, inner)
+        yield child, receivers
+        yield from scoped(child, inner)
+
+
+def instance_stores(method):
+    """The attributes assigned on the method's own self or cls (self._x = ..., or setattr(self, "_x", ...))."""
+    for n, receivers in scoped(method):
+        if (isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Store) and isinstance(n.value, ast.Name)
+                and n.value.id in receivers):
+            yield n.attr
+        elif (isinstance(n, ast.Call) and attr_function(n.func, ("setattr",)) and len(n.args) >= 2
+              and isinstance(n.args[0], ast.Name) and n.args[0].id in receivers
+              and isinstance(n.args[1], ast.Constant) and isinstance(n.args[1].value, str)):
+            yield n.args[1].value
 
 
 def class_privates(c):
@@ -216,19 +221,28 @@ def reaches(owner, names):
         if f.name == owner:
             continue
         tree = ast.parse(f.read_text(encoding="utf-8"))
-        # id of each node in a class's method -> the names that class defines (ast.walk reaches the outer class first)
+        # id of each node in a class's method -> (the names that class defines, the names that mean its own object
+        # there); ast.walk reaches the outer class first, so a nested class's methods overwrite with their own
         own_names = {}
         for c in ast.walk(tree):
             if isinstance(c, ast.ClassDef):
                 # a class with a base may have inherited the owner's privates: assigning or overriding one there still
-                # reaches the owner's insides, so only a class without a base keeps its _x as its own
+                # reaches the owner's insides, so only a class without a base keeps its _x as its own, and a class with
+                # a base that defines one of the names at its level (def _x, _x = ...) reaches it
                 mine = set() if c.bases else class_privates(c)
                 for s in class_level(c.body):
+                    if c.bases:
+                        defined = ({s.name} if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                                   else set()).union(*(bound_names(t) for t in (
+                                       s.targets if isinstance(s, ast.Assign)
+                                       else [s.target] if isinstance(s, ast.AnnAssign) else [])))
+                        out += [(f.name, s.lineno, n) for n in sorted(defined & names)]
                     if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        own_names.update((id(n), mine) for n in ast.walk(s))
+                        own_names.update((id(n), (mine, receivers)) for n, receivers in scoped(s))
 
         def passes(node, receiver, name):
-            return own(receiver) and name in own_names.get(id(node), ())
+            mine, receivers = own_names.get(id(node), ((), ()))
+            return isinstance(receiver, ast.Name) and receiver.id in receivers and name in mine
         for no in ast.walk(tree):
             if isinstance(no, ast.Attribute) and no.attr in names and not passes(no, no.value, no.attr):
                 out.append((f.name, no.lineno, no.attr))

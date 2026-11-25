@@ -7,10 +7,10 @@ O estado do Automatico mora no App (auto, semente, mix, mix_base, ponte, mix_bus
 fora_musica, andamentos, andamentos_versao, versoes), porque a leitura do estado, o save_cfg e o _recusar o leem: o
 Automatico o le e o muda pelo app, sob a app.fila_lock, na ordem das travas do comandos.py, e a fila muda pelo
 App.change_queue. O mix_do chega resolvido a cada chamada (o teste troca o do App). Its constants live here and the
-music functions (chaves_musica, autores, mesma_faixa, busca_de, YT_ID) in music.py; the shelf's folder (pastas.LIB,
-read when it is used) and save_json come from pastas.py. What is still the server's (the YouTube process, the helper
-process, the error text) comes through the App's public interface (search_songs, run_helper, yt_error), like the queue
-changes."""
+music functions (chaves_musica, autores, mesma_faixa, busca_de) and the YT_ID regex in music.py; the shelf's folder
+(pastas.LIB, read when it is used) and save_json come from pastas.py. What is still the server's (the YouTube
+process, the helper process, the error text) comes through the App's public interface (search_songs, run_helper,
+yt_error), like the queue changes."""
 import json
 import sys
 import threading
