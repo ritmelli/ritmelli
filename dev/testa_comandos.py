@@ -118,6 +118,9 @@ def comandos(A, E):
             "o som curto toca por cima, sem trocar o disco do prato")
     confere(cmd.tocar(A, "buzina", por_cima=False) == "prato" and no_prato(E) == "buzina",
             "o som curto com por_cima false vai para o prato")
+    cmd.tocar(A, "d1")
+    confere(cmd.tocar(A, "buzina", por_cima=None) == "prato" and no_prato(E) == "buzina",
+            "o som curto com o por_cima null no corpo vai para o prato, como o false")
     confere(cmd.tocar(A, "d1", por_cima=True) == "por_cima" and no_prato(E) == "buzina",
             "o disco longo com por_cima true toca por cima")
     A.lib.update("d1", last_pos=42.0)
@@ -136,6 +139,9 @@ def comandos(A, E):
     cmd.pausar(A)
     confere(E.status() == "paused" and A.lib.get("d1")["last_pos"] == round(E.pos, 1),
             "pausar pausa e grava a posicao do disco")
+    xq, _, tocou = cmd.enfileirar(A, {"id": "d3"})
+    confere(not tocou and E.status() == "paused" and fila(A) == ["d2", "d3"],
+            "com o disco pausado, enfileirar so guarda (pausado ainda e disco no prato)")
     cmd.alternar(A)
     confere(E.status() == "playing", f"o alternar com o disco pausado retoma ({E.status()})")
     cmd.alternar(A)
@@ -144,9 +150,13 @@ def comandos(A, E):
     confere(E.status() == "playing", "retomar")
     cmd.ir_para(A, 10.0)
     confere(ate(lambda: E.status() == "playing") and abs(E.pos - 10.0) < 0.01, f"ir para um ponto ({E.pos})")
+    confere(cmd.tocar_da_fila(A, None) is None and cmd.tocar_da_fila(A, "sumiu") is None and no_prato(E) == "d1",
+            "tocar da fila o que nao esta nela: None (404), e nada muda")
+    confere(cmd.tocar_da_fila(A, xq["qid"]) is xq and no_prato(E) == "d3" and fila(A) == ["d2"]
+            and historico(A)[-1:] == ["d1"], "tocar da fila: a entrada sai da fila e toca agora")
 
     x = cmd.pular(A)
-    confere(x is x2 and no_prato(E) == "d2" and fila(A) == [] and historico(A)[-1:] == ["d1"],
+    confere(x is x2 and no_prato(E) == "d2" and fila(A) == [] and historico(A)[-1:] == ["d3"],
             f"pular: a primeira da fila toca, e o que saiu vai para o Anterior ({historico(A)})")
     confere(cmd.pular(A) is None and no_prato(E) == "d2", "pular com a fila vazia: None (409), e nada muda")
 
@@ -162,6 +172,8 @@ def comandos(A, E):
     confere(cmd.volume(A, 0.3) == 0.3 and E.vol == 0.3
             and json.loads(A.cfg_path.read_text(encoding="utf-8")).get("vol") == 0.3,
             "o volume da musica muda no motor e e gravado")
+    confere(cmd.volume(A, 1.5) == 1.0 and cmd.volume(A, -1) == 0.0, "o volume fora de 0 a 1 fica no limite")
+    cmd.volume(A, 0.3)
 
 
 def voltas(A, E):
@@ -207,6 +219,7 @@ def voltas(A, E):
                 break
     confere(E.virou is not None and no_prato(E) == "d1", "o _mixa vira para a preparada no fim do disco")
     A._volta_passagem()
+    ate(lambda: A.preparando is None)  # a volta ja prepara a seguinte (a d2): o teste so segue com ela pronta
     confere(E.virou is None and fila(A) == ["d2"] and historico(A)[-1:] == ["d3"] and no_prato(E) == "d1",
             f"o _volta_passagem tira da fila a que entrou e guarda a que saiu ({fila(A)}, {historico(A)[-1:]})")
 

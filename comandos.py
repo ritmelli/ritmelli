@@ -145,7 +145,9 @@ def ir_para(A, t):
 
 
 def volume(A, v):
-    """O volume da musica (de 0 a 1), gravado sozinho: o resto do som fica como esta gravado. Volta o do motor."""
+    """O volume da musica (de 0 a 1; fora disso, o limite), gravado sozinho: o resto do som fica como esta gravado.
+    Volta o do motor."""
+    v = max(0.0, min(1.0, float(v)))
     A.engine.vol = v
     A.grava_cfg(vol=v)
     return A.engine.vol
