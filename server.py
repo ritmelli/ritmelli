@@ -1462,11 +1462,12 @@ class App:
                 raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
             # every role, the PC included: the theme and the handoffs read these fields as text (or null), and the
             # duration in seconds (or null, up to a day) wins over the one yt-dlp finds and sizes the visualizer
+            dur = b.get("duration")
             if not (all(b.get(k) is None or isinstance(b[k], str) for k in ("title", "channel"))
-                    and (b.get("duration") is None or (isinstance(b["duration"], (int, float))
-                                                       and not isinstance(b["duration"], bool)
-                                                       and 0 <= b["duration"] <= QUEUE_DURATION_MAX_S))):
+                    and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool) and dur >= 0))):
                 raise ValueError("Send title and channel as text and duration as seconds (up to a day).")
+            if dur is not None and dur > QUEUE_DURATION_MAX_S:  # a search result can be this long: the theme shows it
+                raise i18n.Recusa("server.queue.tooLong", "Ritmelli can't queue a video longer than a day.")
             if not is_valid_unicode(target, b.get("title"), b.get("channel")):
                 raise ValueError("Send text in valid Unicode.")
             it = self.lib.by_youtube(yid) if yid else None
@@ -2238,7 +2239,8 @@ def build(app_state):
         b = await body(request)
         kw = {k: b[k] for k in ("title",) if isinstance(b.get(k), str) and b[k].strip()}
         if not is_valid_unicode(*kw.values()):  # the shelf keeps the new title in memory before it saves
-            return j_err(i18n.so_texto("Send the title in valid Unicode."))
+            return j_err(i18n.msg("server.library.badTitle", "The new name has a character Ritmelli can't save. "
+                                                             "Type it again."))
         if isinstance(b.get("rapido"), bool):
             kw["rapido"] = b["rapido"]  # nos Sons rapidos do celular pela mao, mesmo com mais de 15 s
         it = A.lib.update(request.match_info["iid"], **kw)
@@ -2269,8 +2271,8 @@ def build(app_state):
         b = await body(request)
         try:  # no laco, como o tocar e a prateleira: dois pedidos do mesmo video nao abrem dois downloads
             x, j = cmd.poe_na_fila(A, b, remoto=request["papel"] == "remoto")
-        except cmd.CorpoRecusado as ex:
-            return j_err(i18n.so_texto(str(ex)))
+        except cmd.CorpoRecusado as ex:  # the refusal the theme can show keeps its key
+            return j_err(getattr(ex.__cause__, "msg", None) or i18n.so_texto(str(ex)))
         # com o prato parado, tocar na hora pode esperar a reserva de avanco da linha: fora do laco, com o prato visto
         # aqui, logo depois de a entrada entrar (um Parar que chega antes da thread nao vira um tocar)
         tocou = await loop_().run_in_executor(None, cmd.toca_se_parado, A, x, A.engine.captura())

@@ -320,17 +320,21 @@ async def papeis_no_guard():
                 except Exception as ex:
                     st = f"accepted, then {type(ex).__name__}"
                 confere(st == 400, f"{who} cannot queue {str(corpo)[:70]} ({st})")
-            resp, _, _ = await manda("PATCH", "/api/library/d1", corpo={"title": "a\ud800b"},
+            resp, j, _ = await manda("PATCH", "/api/library/d1", corpo={"title": "a\ud800b"},
                                      handler=rota[("PATCH", "/api/library/{iid}")], **kw)
-            confere(resp.status == 400 and not renamed,
-                    f"{who} cannot rename a record with a lone surrogate ({resp.status}, {renamed})")
+            confere(resp.status == 400 and not renamed and j["error"].get("key") == "server.library.badTitle",
+                    f"{who} cannot rename a record with a lone surrogate, and the theme can say so ({resp.status}, "
+                    f"{renamed}, {j.get('error')})")
+            resp, j, _ = await manda("POST", "/api/queue", corpo={"youtube_id": "dQw4w9WgXcQ", "duration": 90000},
+                                     handler=rota[("POST", "/api/queue")], **kw)
+            confere(resp.status == 400 and j["error"].get("key") == "server.queue.tooLong",
+                    f"{who} cannot queue a search result longer than a day, and the theme can say so ({j.get('error')})")
         del A.lib.update
 
         # the SSE round is built once for every connection: a state that carries such a text anyway still goes out
         # (as ASCII-only JSON), and the next state arrives whole
         states = [{"status": "idle", "track": {"title": "a\ud800b"}}, {"status": "idle", "track": {"title": "Ação"}}]
-        leitura, A.leitura = A.leitura, lambda: (states[0], 0.0)
-        asyncio.get_running_loop().call_later(0.15, states.pop, 0)
+        leitura, A.leitura = A.leitura, lambda: (states.pop(0) if len(states) > 1 else states[0], 0.0)  # one per round
         try:
             ev, terminou = await eventos_ate_revogar(lambda: setattr(A, "closing", True), de=pc)
         except Exception as ex:  # the round that fails to build raises in every connection waiting for it
