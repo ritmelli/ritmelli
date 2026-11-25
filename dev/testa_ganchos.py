@@ -192,8 +192,52 @@ def string_literals(value):
                 yield e.value
 
 
+SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+
+
+def nodes_with_scope(node, scope):
+    for child in ast.iter_child_nodes(node):
+        yield child, scope
+        yield from nodes_with_scope(child, child if isinstance(child, SCOPES) else scope)
+
+
+def single_assignments(tree):
+    seen = {}
+    for n, scope in nodes_with_scope(tree, tree):
+        for target in assigned_targets(n):
+            if isinstance(target, ast.Name):
+                seen.setdefault((id(scope), target.id), []).append(n.value)
+    return {key: values[0] for key, values in seen.items() if len(values) == 1 and values[0] is not None}
+
+
+def dict_keys(value):
+    if isinstance(value, ast.Dict):
+        return [k for k in value.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+    if (isinstance(value, ast.DictComp) and len(value.generators) == 1 and isinstance(value.key, ast.Name)
+            and isinstance(value.generators[0].target, ast.Name) and value.key.id == value.generators[0].target.id
+            and isinstance(value.generators[0].iter, (ast.Tuple, ast.List))):
+        return [e for e in value.generators[0].iter.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+    return None
+
+
+def literal_items(iterable, scope, assignments):
+    if isinstance(iterable, (ast.Tuple, ast.List)):
+        return iterable.elts
+    method = None
+    if (isinstance(iterable, ast.Call) and isinstance(iterable.func, ast.Attribute) and not iterable.args
+            and iterable.func.attr in ("items", "keys")):
+        method, iterable = iterable.func.attr, iterable.func.value
+    if isinstance(iterable, ast.Name):
+        iterable = assignments.get((id(scope), iterable.id))
+    keys = dict_keys(iterable) if iterable is not None else None
+    if keys is None:
+        return None
+    return [ast.Tuple(elts=[k, ast.Constant(None)]) for k in keys] if method == "items" else keys
+
+
 def loop_variable_names(tree):
     out = {}
+    assignments = single_assignments(tree)
 
     def pairs(target, item):
         if isinstance(target, ast.Name):
@@ -203,24 +247,25 @@ def loop_variable_names(tree):
             for t, v in zip(target.elts, item.elts):
                 yield from pairs(t, v)
 
-    def bind(target, iterable, scope):
-        if not isinstance(iterable, (ast.Tuple, ast.List)):
+    def bind(target, iterable, body, scope):
+        items = literal_items(iterable, scope, assignments)
+        if items is None:
             return
         values = {}
-        for item in iterable.elts:
+        for item in items:
             for name, v in pairs(target, item):
                 values.setdefault(name, []).extend(string_literals(v) if isinstance(v, ast.Constant) else [])
-        for part in scope:
+        for part in body:
             for n in ast.walk(part):
                 if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and values.get(n.id):
                     out[id(n)] = values[n.id]
-    for no in ast.walk(tree):
+    for no, scope in nodes_with_scope(tree, tree):
         if isinstance(no, (ast.For, ast.AsyncFor)):
-            bind(no.target, no.iter, no.body + no.orelse)
+            bind(no.target, no.iter, no.body + no.orelse, scope)
         elif isinstance(no, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
             elts = [no.key, no.value] if isinstance(no, ast.DictComp) else [no.elt]
             for i, g in enumerate(no.generators):
-                bind(g.target, g.iter, elts + g.ifs + no.generators[i + 1:])
+                bind(g.target, g.iter, elts + g.ifs + no.generators[i + 1:], scope)
     return out
 
 
@@ -365,6 +410,10 @@ CAUGHT = [
     ("a loop over a literal tuple", OWNER, "def f(o):\n    for k in ('_x', 'y'):\n        getattr(o, k)\n"),
     ("a loop that unpacks", OWNER, "def f(o):\n    for _, k in (('a', '_x'),):\n        setattr(o, k, 0)\n"),
     ("a comprehension", OWNER, "def f(o):\n    return [getattr(o, k) for k in ('_x',)]\n"),
+    ("the names from a dictionary", OWNER, "def f(o):\n    for k, v in {'_x': 1}.items():\n        setattr(o, k, v)\n"),
+    ("the keys of a dict comprehension assigned once", OWNER,
+     "def f(o):\n    values = {k: 0 for k in ('_x', 'public') if k}\n    for k, v in values.items():\n"
+     "        setattr(o, k, v)\n"),
     ("a module-level def f(self)", OWNER, "def f(self):\n    return self._x\n"),
     ("a subclass reading it", OWNER, "class Sub(Owner):\n    def m(self):\n        return self._x\n"),
     ("a subclass overriding it", OWNER, "class Sub(Owner):\n    def _x(self):\n        pass\n"),
@@ -401,7 +450,6 @@ KNOWN_MISSES = [
     ("operator.attrgetter", "import operator\n\n\ndef f(o):\n    return operator.attrgetter('_x')(o)\n"),
     ("vars()", "def f(o):\n    return vars(o)['_x']\n"),
     ("__dict__", "def f(o):\n    return o.__dict__['_x']\n"),
-    ("the names from a dictionary", "def f(o):\n    for k, v in {'_x': 1}.items():\n        setattr(o, k, v)\n"),
     ("self rebound in a method",
      "class Other:\n    _x = 0\n\n    def m(self, o):\n        self = o\n        return self._x\n"),
     ("self rebound in a comprehension",
