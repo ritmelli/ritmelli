@@ -34,8 +34,8 @@ negativo: o mesmo detector, com a mesma regua e a mesma amostra da virada, no si
 periodo da regua, tem de dar contratempo. In the intro pair, the beats judged are the first 4 of B's drop, and the
 first of them is on A's beat at the swap.
 
-Known failures: a pair with an issue shows a known engine defect (dois-106, #196; tone, #197). It runs and its result
-is shown, but its failure does not count; passing does, so the PR that fixes the defect takes the pair off the list.
+Known failures: a pair with an issue shows a known engine defect (tone, #197). It runs and its result is shown, but
+its failure does not count; passing does, so the PR that fixes the defect takes the pair off the list.
 A pair that could not be judged (a timeout, too few attacks to measure), or that fails in a way other than its defect
 (SINTOMAS), fails all the same.
 
@@ -117,7 +117,7 @@ PARES = [
     Par("seco", 100.0, 103.0, "seco", "seco", False),
     Par("fade", 100.0, 102.5, "fade", "fade", False),
     Par("dois", 100.0, 94.0, "fade", "dois", False, ruido_a=True),
-    Par("dois-106", 100.0, 106.0, "fade", "dois", False, ruido_a=True, issue=196),
+    Par("dois-106", 100.0, 106.0, "fade", "dois", False, ruido_a=True),
     Par("tone", 100.0, 94.0, "fade", "dois", False, (1201.0,), issue=197),
     Par("intro", 100.0, 102.5, "fade", "fade", False, intro=True),
     Par("meio", 70.0, 140.0, "fade", "fade", True),
@@ -126,9 +126,6 @@ PARES = [
 # the failures each known defect gives (regular expressions, from the start), the first of them always there: any
 # other failure in its pair, or the others without the first, is a regression, and counts
 SINTOMAS = {
-    # the plan refused for too short a phase excerpt, and the switch late, where the volume one does it
-    196: (r"o ramo foi .*\(transition: beats not aligned: too little of the end of this one \(already changed\) for "
-          r"the phase\)$", r"a virada caiu \+\d+ ms fora da janela$"),
     197: (r"a virada caiu -[3-7]\d ms fora da janela$",),  # the switch 30 to 79 ms early
 }
 RECUSA = "transition: beats not aligned: tempos far apart,"  # a recusa por andamento no log do motor (par recusada)
