@@ -1511,12 +1511,14 @@ class Engine:
                 self._mudos_vistos = False
                 return
         r = _confere_fora(nomes)
-        if not r or not r.get("mudos"):
-            return
-        print(f"devices: silent: {'; '.join(r['mudos'])}")
+        mudos = (r or {}).get("mudos")
+        if mudos:
+            print(f"devices: silent: {'; '.join(mudos)}")
         with self._lock:
-            if not self._fechado and self._stack is pilha:
-                self._aviso = self.error = _aviso_mudos(r["mudos"])
+            if self._stack is None:  # o audio caiu durante a conferencia: os do registro, para quando ele voltar
+                self._mudos_vistos = False
+            elif mudos and not self._fechado and self._stack is pilha:
+                self._aviso = self.error = _aviso_mudos(mudos)
 
     def liga(self):
         """A partida do servidor. Se o audio nao abre (sem microfone, aparelho que recusa), o servidor sobe mesmo

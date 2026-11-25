@@ -506,7 +506,7 @@ class TestaApp(unittest.TestCase):
         self.assertIs(m._aviso, m.error, "e um aviso dos aparelhos: sai quando o audio reabre")
         # o audio que reabriu, caiu ou fechou durante a conferencia: o resultado e de antes, e fica de fora
         for muda in ({"_stack": object()}, {"_stack": None}, {"_fechado": True}):
-            m = self._motor()
+            m = self._motor(_mudos_vistos=True)
             m.error = m._aviso = "o de antes"
 
             def confere(n, m=m, muda=muda):
@@ -515,6 +515,8 @@ class TestaApp(unittest.TestCase):
             with mock.patch.object(eng, "_confere_fora", confere), redirect_stdout(io.StringIO()):
                 eng.Engine._confere_mudos(m, [UMC_IN])
             self.assertEqual(m.error, "o de antes", muda)
+            # o audio que caiu durante a conferencia: os do registro ficam para quando ele voltar
+            self.assertEqual(m._mudos_vistos, muda.get("_stack", 0) is not None, muda)
         m = self._motor(_stack=None, _mudos_vistos=True)  # o audio fechado (a reabertura que falhou tem o aviso dela)
         with mock.patch.object(eng, "_confere_fora", side_effect=AssertionError("abriu os aparelhos sem audio")):
             eng.Engine._confere_mudos(m)
