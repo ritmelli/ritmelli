@@ -25,5 +25,6 @@ TrustedInstaller; e nenhuma ACE dá a outro principal escrita, criação, exclus
 LocalService (o `audiodg.exe`) grava o log do filtro. A leitura abre cada objeto sem seguir ponto
 de reanálise (`_le_disco`), e a avaliação é separada dela, para o teste em memória
 (`dev/testa_pasta_protegida.py`; o `--disco` confere o mesmo no disco, como administrador). O
-instalador tem a mesma regra em PowerShell (`instalador\protegida.ps1`). O `do_windows` dá o
-caminho completo de um programa da System32.
+instalador tem a mesma regra em PowerShell (`instalador\protegida.ps1`), e o `--disco` exige o
+mesmo veredito das duas em cada caso. O `do_windows` dá o caminho completo de um programa da
+System32.
