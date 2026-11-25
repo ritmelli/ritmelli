@@ -1,7 +1,8 @@
 # A atualizacao parcial como no PC de quem ja tem a versao anterior. Numa maquina sem o Ritmelli, confere que a parcial
 # recusa sozinha; depois instala o setup completo da versao de onde ela compara (o do ritmelli-releases, conferido pelo
 # hash do manifesto daquela versao), roda a parcial em silencio, como o app roda, e confere que a pasta do app ficou
-# igual a lista de arquivos do manifesto novo: cada arquivo pelo hash, e nada sobrando na _internal\ nem na bin\. No
+# igual a lista de arquivos do manifesto novo: cada arquivo pelo hash, e nada sobrando na _internal\ nem na bin\. As duas
+# tarefas que rodam como SYSTEM ficam, e, depois de apagadas (o desarme do app), a parcial nao as recria. No
 # fim, o Ritmelli tem de abrir na versao nova, e o desinstalador tem de levar tudo, inclusive o que a parcial trouxe.
 # Precisa de administrador e de uma maquina sem o Ritmelli. Roda no job testa-parcial da esteira e numa maquina de teste.
 # Uso: testa-parcial.ps1 -Manifesto <manifest.json> -Parcial <Ritmelli-X.Y.Z-parcial.exe>
@@ -41,8 +42,16 @@ if ((Get-FileHash $setup -Algorithm SHA256).Hash.ToLower() -ne $ma.instalador.sh
 Roda $setup "setup-$de"
 if ((Versao) -ne $de) { throw "o setup da $de instalou a $(Versao)" }
 "a $de instalada"
+# as duas tarefas que rodam como SYSTEM: so o setup completo cria
+function Tarefas {
+  @((Get-ScheduledTask -TaskPath '\' -TaskName 'Ritmelli Atualiza' -ErrorAction SilentlyContinue),
+    (Get-ScheduledTask -TaskPath '\Ritmelli\' -TaskName 'Microfone' -ErrorAction SilentlyContinue)) | Where-Object { $_ }
+}
+if (@(Tarefas).Count -ne 2) { throw "o setup da $de nao criou as duas tarefas" }
 
 Roda $Parcial 'parcial'
+if (@(Tarefas).Count -ne 2) { throw 'a parcial nao conservou as duas tarefas' }
+'a parcial conservou as duas tarefas'
 $erros = New-Object System.Collections.Generic.List[string]
 $lista = @{}
 foreach ($f in $m.arquivos) {
@@ -60,6 +69,15 @@ foreach ($raiz in '_internal', 'bin') {
 if ($erros.Count) { $erros | Select-Object -First 30; throw "a pasta do app nao ficou igual a do manifesto da $($m.versao): $($erros.Count) diferencas" }
 if ((Versao) -ne $m.versao) { throw "depois da parcial, o ritmelli.exe diz $(Versao), e nao $($m.versao)" }
 "depois da parcial: os $(@($m.arquivos).Count) arquivos iguais aos do manifesto da $($m.versao), e nada sobrando"
+
+# o desarme: o app apaga as duas tarefas quando acha a pasta desprotegida, e so o setup completo as cria de novo. A
+# parcial aplicada depois disso (com a pasta protegida de novo) nao as recria
+schtasks /delete /tn 'Ritmelli Atualiza' /f | Out-Null
+schtasks /delete /tn '\Ritmelli\Microfone' /f | Out-Null
+if (@(Tarefas).Count) { throw 'as tarefas nao sairam para o teste do desarme' }
+Roda $Parcial 'parcial-desarmada'
+if (@(Tarefas).Count) { throw 'a parcial recriou uma tarefa depois do desarme' }
+'depois do desarme, a parcial manteve as tarefas ausentes'
 
 $vit = Start-Process "$app\ritmelli.exe" -ArgumentList '--no-browser' -PassThru
 $estado = $null

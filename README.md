@@ -269,8 +269,11 @@ local scripts for your user once: `Set-ExecutionPolicy -Scope CurrentUser Remote
    python microfone\microfone.py instala-todos
    ```
 
-   The filter DLL (`micfx.dll`) is copied to `%ProgramFiles%\Ritmelli\microfone`, the folder the installed app uses,
-   so it replaces the filter of an installed Ritmelli.
+   The filter DLL (`micfx.dll`) is copied to `%ProgramW6432%\Ritmelli\microfone` (on 64-bit Windows, the same
+   `C:\Program Files`), so it replaces the filter of a Ritmelli installed there. The installed executable uses the
+   `microfone` folder of its own installation. Step 3 first checks `%ProgramW6432%\Ritmelli`, the app folder, and
+   refuses, without copying the filter or changing the registry, if it can be changed by someone other than the system
+   and the administrators (`pastas.pasta_protegida`).
 
    - After plugging in a new microphone, run step 3 again. The installed app does this by itself, without
      administrator rights, through a Windows task that only the installer creates.
@@ -540,6 +543,9 @@ The description at the top of each file (in Portuguese) says exactly what it che
   `python dev\vozes.py baixa` downloads from the [ritmelli-voices](https://github.com/ritmelli/ritmelli-voices)
   releases into `vozes\` (about 325 MB, checked by SHA-256), and a graphics card; without them the Alien pedal stays.
   With the models downloaded, `set RITMELLI_VOZES_TESTE=1` also runs `testa_pista.py` against the real models.
+- The protected app folder rule (`pastas.pasta_protegida`, and `instalador/protegida.ps1`, the same rule in the
+  installer): `dev/testa_pasta_protegida.py` (in memory; `--disco` checks real folders in Program Files and needs an
+  elevated administrator, so only on a test Windows).
 - The updates (`atualizacao.py`, `atualizador.py`, `instalador/atualizacao/`): `dev/testa_atualizacao.py`,
   `dev/testa_atualizador.py` and `instalador/atualizacao/testa_parcial.py` (the partial update and its manifest).
 

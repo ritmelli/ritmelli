@@ -46,12 +46,15 @@ app_py.write_text(f'MANIFESTO = "x"\nCHAVES = {{1: "{pub}"}}\n', encoding="utf-8
 arq_chave = tmp / "teste.key"
 arq_chave.write_text(base64.b64encode(chave.seed).decode() + "\n", encoding="ascii")
 
-# o build anterior, como o manifesto dele descreve, e o build novo
+# o build anterior, como o manifesto dele descreve, e o build novo. Os dois com a sentinela da pasta protegida (o
+# parcial.py so tira parcial de uma anterior que ja a tem, igual)
+SENTINELA = "_internal/pasta-protegida.txt"
+SENT = (AQUI.parent / "pasta-protegida.txt").read_bytes()
 antes = {"ritmelli.exe": b"exe velho", "_internal/igual.dll": b"igual", "_internal/sai.pyd": b"so na anterior",
-         "_internal/{chave}/muda.txt": b"velho", "bin/ffmpeg.exe": b"ffmpeg"}
+         "_internal/{chave}/muda.txt": b"velho", "bin/ffmpeg.exe": b"ffmpeg", SENTINELA: SENT}
 dist, binf = tmp / "dist" / "ritmelli", tmp / "bin"
 for c, d in {"ritmelli.exe": b"exe novo", "_internal/igual.dll": b"igual", "_internal/{chave}/muda.txt": b"novo",
-             "_internal/novo/entra.pyd": b"so na nova"}.items():
+             "_internal/novo/entra.pyd": b"so na nova", SENTINELA: SENT}.items():
     (dist / c).parent.mkdir(parents=True, exist_ok=True)
     (dist / c).write_bytes(d)
 binf.mkdir()
@@ -95,9 +98,28 @@ caso("a { de um nome sai dobrada (no Inno, ela abre uma constante)",
 
 igual = manifesto_anterior(tmp / "ant-igual", {**{c: (dist / c).read_bytes() for c in
                                                     ("ritmelli.exe", "_internal/igual.dll", "_internal/{chave}/muda.txt",
-                                                     "_internal/novo/entra.pyd")}, "bin/ffmpeg.exe": b"ffmpeg"})
+                                                     "_internal/novo/entra.pyd", SENTINELA)}, "bin/ffmpeg.exe": b"ffmpeg"})
 cod, out = roda("parcial.py", "--anterior", igual, "--app-py", app_py, "--app", dist, "--bin", binf, "--saida", saida)
 caso("nada mudou: sem o parcial.json", cod == 0 and not (saida / "parcial.json").exists() and "nada mudou" in out, out)
+
+# a sentinela da pasta protegida: as versoes de antes dela nao conferem a pasta, e so caem no setup completo enquanto a
+# parcial nao traz a sentinela
+cod, out = roda("parcial.py", "--anterior", ant, "--app-py", app_py, "--app", dist, "--bin", binf, "--saida", saida)
+info = json.loads((saida / "parcial.json").read_text(encoding="utf-8")) if cod == 0 else {}
+caso("a anterior com a sentinela igual: a parcial sai, e sem a sentinela",
+     cod == 0 and info.get("arquivos") and SENTINELA not in info["arquivos"]
+     and not (saida / "arquivos" / "_internal" / "pasta-protegida.txt").exists(), info)
+sem = manifesto_anterior(tmp / "ant-sem-sentinela", {c: d for c, d in antes.items() if c != SENTINELA})
+cod, out = roda("parcial.py", "--anterior", sem, "--app-py", app_py, "--app", dist, "--bin", binf, "--saida", saida)
+caso("a anterior sem a sentinela: sem o parcial.json (a versao vai so com o setup completo)",
+     cod == 0 and not (saida / "parcial.json").exists() and "pasta-protegida" in out, out)
+outra_s = manifesto_anterior(tmp / "ant-outra-sentinela", {**antes, SENTINELA: SENT + b" "})
+cod, out = roda("parcial.py", "--anterior", outra_s, "--app-py", app_py, "--app", dist, "--bin", binf, "--saida", saida)
+caso("a anterior com outra sentinela: sem o parcial.json", cod == 0 and not (saida / "parcial.json").exists(), out)
+(dist / SENTINELA).unlink()
+cod, out = roda("parcial.py", "--anterior", ant, "--app-py", app_py, "--app", dist, "--bin", binf, "--saida", saida)
+caso("o build sem a sentinela: recusa", cod != 0 and "pasta-protegida" in out, out)
+(dist / SENTINELA).write_bytes(SENT)
 
 # a anterior de antes da troca de nome (#58): o vitrola.exe no lugar do ritmelli.exe, e a parcial nao serve
 velha = manifesto_anterior(tmp / "ant-vitrola", {("vitrola.exe" if c == "ritmelli.exe" else c): d for c, d in antes.items()})

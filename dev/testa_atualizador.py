@@ -264,6 +264,66 @@ caso("com a versao pronta: dispara, e so reabre se pediram", disparos == [1] and
 atualizador.ao_sair(reabrir=True)
 caso("Instalar agora: dispara e reabre", len(disparos) == 2 and reaberturas == [1])
 
+print("--- a rodada da tarefa com a pasta do app fora da regra da pasta protegida")
+# o executavel instalado de mentira (sys.frozen) com a pasta reprovada; o subprocess.run trocado por um gravador, para
+# nenhum schtasks de verdade rodar: as duas tarefas saem, a propria por ultimo e sem o /end, e nada se grava na pasta
+import subprocess  # noqa: E402
+import types  # noqa: E402
+
+from microfone import microfone as mf  # noqa: E402 - antes do sys.frozen: a PASTA dele sai do codigo
+
+schtasks = []
+
+
+def run_falso(args, **kw):
+    schtasks.append(list(args))
+    return types.SimpleNamespace(returncode=1 if "/query" in args else 0, stdout="", stderr="")
+
+
+def rodada_reprovada(apaga_filtro=None):
+    schtasks.clear()
+    lancados.clear()
+    vistas = []
+    guardado = (subprocess.run, atualizador.pastas.pasta_protegida, atualizador.PASTA, mf.tarefa_apaga)
+    subprocess.run = run_falso
+    atualizador.pastas.pasta_protegida = lambda pasta=None, raiz=None: (vistas.append(pasta)
+                                                                         or atualizador.pastas.Reprovada("test folder"))
+    atualizador.PASTA = tmp / "reprovada" / "atualizacao"
+    if apaga_filtro:
+        mf.tarefa_apaga = apaga_filtro
+    sys.frozen = True
+    try:
+        return atualizador.main([]), vistas
+    finally:
+        del sys.frozen
+        subprocess.run, atualizador.pastas.pasta_protegida, atualizador.PASTA, mf.tarefa_apaga = guardado
+
+
+def tarefas_de(args):
+    return [c[c.index("/tn") + 1] for c in schtasks if args in c]
+
+
+cod, vistas = rodada_reprovada()
+caso("sai com erro, e a regra viu a pasta do executavel", cod == 1 and vistas == [None], (cod, vistas))
+caso("apaga as duas tarefas, a do filtro primeiro e a propria por ultimo",
+     tarefas_de("/delete") == [mf.TAREFA, atualizador.TAREFA], schtasks)
+caso("nenhum /end da propria (ele encerraria a rodada antes de apagar)", not tarefas_de("/end"), schtasks)
+caso("confere as duas depois", sorted(tarefas_de("/query")) == sorted([mf.TAREFA, atualizador.TAREFA]), schtasks)
+caso("o schtasks vai pelo caminho completo da System32 (pelo nome solto, o Windows procuraria antes na pasta do app)",
+     schtasks and all(os.path.isabs(c[0]) and os.path.basename(c[0]).lower() == "schtasks.exe"
+                      and os.path.dirname(c[0]).lower() == mf.SYSTEM32.lower() for c in schtasks), schtasks)
+caso("nada na pasta reprovada: nem a atualizacao\\, nem o log, nem setup",
+     not (tmp / "reprovada").exists() and not lancados)
+
+
+def falha():
+    raise OSError("schtasks falhou")
+
+
+cod, _ = rodada_reprovada(apaga_filtro=falha)
+caso("a do filtro falha ao sair: a propria sai do mesmo jeito, e a rodada sai com erro",
+     cod == 1 and tarefas_de("/delete") == [atualizador.TAREFA], schtasks)
+
 print("--- a tarefa e os processos")
 x = ET.fromstring(atualizador.TAREFA_XML.split("\n", 1)[1].replace("{exe}", r"C:\Program Files\Ritmelli\ritmelli.exe"))
 ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}

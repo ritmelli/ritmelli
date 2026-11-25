@@ -59,14 +59,24 @@ instalador (administrador, `ritmelli.exe --microfone instala-todos --tarefa`), q
 tarefa do Windows `\Ritmelli\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
 pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
 prepara, sem UAC, um microfone que apareceu depois. Ao desinstalar, o original de todo
-microfone volta e a tarefa sai. O nome do microfone é o do Windows (Core Audio, casado pelo id
+microfone volta e a tarefa sai. A DLL e o log moram na `microfone\` da pasta do executável (pelo
+código, na `%ProgramW6432%\Ritmelli`), e tudo isso só vale com essa pasta protegida
+(`pastas.pasta_protegida`): o `instala` e o `instala-todos` conferem antes de tudo e recusam, e o
+`instala-todos` do executável, o da tarefa, ainda apaga as duas tarefas que rodam como SYSTEM (a da
+atualização e a dele), que só o setup completo cria de novo. Com a pasta reprovada, o `remove`
+devolve os microfones do mesmo jeito, apaga o registro do COM e do APO pelo `winreg`, sem carregar
+a DLL, e deixa a pasta como está. Os programas do Windows (`schtasks`, `regsvr32`, `icacls`,
+`powershell`, `sc`) vão pelo caminho completo da System32: pelo nome solto, o Windows procuraria
+antes na pasta do executável. O nome do microfone é o do Windows (Core Audio, casado pelo id
 do aparelho): o montado do registro perde o "2- " que o Windows põe quando há dois aparelhos com
 o mesmo nome. `dev/testa_microfone.py` testa o motor contra um anel falso, sem som, e a voz
 com efeito que sai do app pelo `voz.dll` (e sem ele);
 `dev/testa_filtro.py` roda o `micfx.cpp` de verdade fora do audiodg (a `banca_filtro.dll` do
 `apo\compila.bat teste`, com o anel num nome só do teste, duas cadeias no mesmo anel e o
 hospedeiro do MFX com um fabricante falso por dentro, sozinho e com o EFX na frente);
-`dev/testa_mfx.py` confere as vagas de MFX num registro falso; `dev/testa_voz.py` confere cada
+`dev/testa_mfx.py` confere as vagas de MFX num registro falso, e a pasta protegida no filtro (qual
+pasta é conferida, a recusa sem mexer em nada, o desarme das tarefas e o `remove` com a pasta
+reprovada) com os comandos gravados; `dev/testa_voz.py` confere cada
 efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a amostra, e em outras taxas;
 `dev/mede_voz_ao_vivo.py` mede ao vivo, num microfone virtual com o filtro, o atraso da voz com
 efeito no filtro e pelo app (toca estalos de verdade nesse microfone).
