@@ -1,11 +1,14 @@
 r"""Runs the tests that need no sound, no device and no outside network (the loopback and the fake server are fine),
 each in its own process, and exits 1 if any fails. It is what the .github/workflows/testa.yml runs on every PR.
 
-    python dev\testa_tudo.py               the COMPLETO: the STDLIB plus the ones that use the app libraries and ffmpeg
+    python dev\testa_tudo.py               the COMPLETO (the STDLIB plus the ones that use the app libraries and
+                                           ffmpeg) and the BANCA, after them
+    python dev\testa_tudo.py --sem-banca   only the COMPLETO (the Testes job: the testa.yml runs the BANCA in a job of
+                                           its own)
     python dev\testa_tudo.py --so-stdlib   the STDLIB, standard library only (the monta.yml runs it before installing)
     python dev\testa_tudo.py --microfone   the filter tests, with the DLLs of microfone\apo\compila.bat teste
-    python dev\testa_tudo.py --banca       the transition bench (BANCA: the real engine, one pair per kind of
-                                           transition), in a job of its own in the testa.yml
+    python dev\testa_tudo.py --banca       only the transition bench (BANCA: the real engine, one pair per kind of
+                                           transition), the Banca job of the testa.yml
     python dev\testa_tudo.py --tela [--base origin/main] [--pasta logs\tela] [--ref-cache <dir>]
                                            the fitcheck in both languages against a --mock with temporary data and,
                                            with --base, the compara: the reference comes from the server and the theme
@@ -74,8 +77,9 @@ COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
     "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py"]
-# the transition bench, the longest test (the real engine through every kind of transition, almost 2 minutes): in a
-# job of its own in the testa.yml, next to the COMPLETO, so it does not add to the longest job
+# the transition bench, the longest test (the real engine through every kind of transition, almost 2 minutes): the
+# plain run takes it after the COMPLETO; the testa.yml runs it in a job of its own (--banca), next to the COMPLETO
+# (--sem-banca), so it does not add to the longest job
 BANCA = ["dev/testa_passagem.py"]
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
@@ -95,8 +99,8 @@ SUMMARY = re.compile(r"^-- summary: (.+?)\s*$", re.M)
 LIMITE_S = 600
 # the tests that measure time (a deadline, a cost per block, the wait between two events): with --jobs above 1 they run
 # one by one, alone, after the others, so a neighbour's load does not push them past a limit
-SERIAL = {f"dev/testa_{n}.py" for n in ("adianta", "mock", "grava", "comandos", "congela", "ganho", "musica", "pedal_voz",
-                                         "pista", "vivo")}
+SERIAL = {f"dev/testa_{n}.py" for n in ("adianta", "mock", "grava", "comandos", "congela", "ganho", "musica", "passagem",
+                                         "pedal_voz", "pista", "vivo")}
 JOBS = 4
 # the steps of the testa.yml that run one script of their own, by name (--passo): the protected folder on the real disk
 # (it creates a folder in Program Files and changes its ACL with icacls, so it needs an administrator: the GitHub
@@ -105,7 +109,7 @@ PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("de
 # what the --tela and the --compara run
 TELA = ("dev/fitcheck.py", "dev/compara.py")
 # the calls the testa.yml has to make, so every list and step above runs on the PR (sem_destino checks them)
-INVOCATIONS = ("dev/testa_tudo.py --resumo", "dev/testa_tudo.py --banca", "dev/testa_tudo.py --microfone",
+INVOCATIONS = ("dev/testa_tudo.py --sem-banca", "dev/testa_tudo.py --banca", "dev/testa_tudo.py --microfone",
                "dev/testa_tudo.py --tela", "dev/testa_tudo.py --compara", "dev/testa_tudo.py --captura") + tuple(
     f"dev/testa_tudo.py --passo {n}" for n in PASSOS)
 # the big files whose line count goes in the summary, against the base (--linhas)
@@ -122,8 +126,9 @@ AREAS = {
                   "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
     "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py"),
 }
-# these trigger every area: the testa.yml, its setup action, and the lists and the filter here
-TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py")
+# these trigger every area: the testa.yml, its setup action, the lists and the filter here, and the versions the
+# libraries install with
+TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt")
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
 # renderizacao ou de traducao do tema para outro modulo (posta por quem mantem o repo)
 ETIQUETAS = {"extracao-tema": "tela"}
@@ -303,7 +308,8 @@ def agents_md(path=RAIZ / "AGENTS.md"):
 def testes(a):
     titulo, lista = (("Testes so da biblioteca padrao", STDLIB) if a.so_stdlib else
                      ("Testes do filtro", MICROFONE) if a.microfone else
-                     ("Banca das passagens", BANCA) if a.banca else ("Testes", COMPLETO))
+                     ("Banca das passagens", BANCA) if a.banca else
+                     ("Testes", COMPLETO + ([] if a.sem_banca else BANCA)))
     md = []
     for p in (agents := agents_md()):
         print(f"FALHA {p}")
@@ -589,7 +595,8 @@ def main():
     modo = ap.add_mutually_exclusive_group()
     modo.add_argument("--so-stdlib", action="store_true", help="only the STDLIB, which runs without the app libraries")
     modo.add_argument("--microfone", action="store_true", help="the filter tests (MICROFONE)")
-    modo.add_argument("--banca", action="store_true", help="the transition bench (BANCA)")
+    modo.add_argument("--banca", action="store_true", help="only the transition bench (BANCA)")
+    modo.add_argument("--sem-banca", action="store_true", help="the COMPLETO without the BANCA")
     modo.add_argument("--tela", action="store_true", help="the fitcheck and, with --base, the compara")
     modo.add_argument("--compara", action="store_true", help="only the compara of the --tela (needs --base)")
     modo.add_argument("--captura", metavar="DIR", help="only the compara capture of the HEAD, into DIR")

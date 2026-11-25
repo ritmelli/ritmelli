@@ -70,14 +70,18 @@ def step_run(lines, name):
 
 
 def find_bash():
-    """The bash of Git for Windows (never the one of System32, which is WSL), or the bash of the PATH elsewhere."""
+    """The bash of Git for Windows (never the one of System32, which is WSL), or the bash of the PATH elsewhere. The
+    git.exe of the PATH can be in Git/cmd, Git/bin or Git/mingw64/bin: the bash is looked for above it."""
     if os.name != "nt":
         return shutil.which("bash")
     git = shutil.which("git")
     if not git:
         return None
-    base = Path(git).resolve().parent.parent
-    return next((str(p) for p in (base / "bin" / "bash.exe", base / "usr" / "bin" / "bash.exe") if p.is_file()), None)
+    for base in Path(git).resolve().parents:
+        for p in (base / "bin" / "bash.exe", base / "usr" / "bin" / "bash.exe"):
+            if p.is_file():
+                return str(p)
+    return None
 
 
 FAKE_GH = r"""#!/bin/bash
@@ -163,13 +167,13 @@ def test_summary_block(all_jobs):
 
     code, out, summary, calls = run_summary(bash, block, "push", on_push, queue_url="")
     queries = [c for c in calls if "event=merge_group" in c]
-    check(code != 0 and "nenhuma execução da fila passou" in summary and len(queries) == 4,
+    check(code != 0 and "nenhuma execução aprovada da fila apareceu" in summary and len(queries) == 4,
           f"on the push, with no queue run passed on the commit, the check fails after asking 4 times "
           f"(exit {code}, {len(queries)} queries)")
 
     code, out, summary, calls = run_summary(bash, block, "push", on_push, queue_url="", queue_fails=True)
     check(code != 0 and "a consulta das execuções da fila neste commit falhou" in summary
-          and "sem a fila" not in summary,
+          and "nenhuma execução aprovada" not in summary,
           f"on the push, a query that fails says so, and does not say the commit came without the queue (exit {code})")
 
     code, out, summary, calls = run_summary(bash, block, "push", ["skipped"] * 5, queue_url="https://example.invalid/q")
@@ -221,7 +225,7 @@ def test_without_destination():
               f"the lock flags the dev/test_* and dev/testa_* tests without destination, and only them ({flagged})")
     check(testa_tudo.sem_destino() == [], "every test of dev/ has a destination, and the testa.yml calls every mode")
     check(not set(testa_tudo.BANCA) & set(testa_tudo.COMPLETO), "the bench is not in the COMPLETO (it would run twice)")
-    check(testa_tudo.SERIAL <= set(testa_tudo.COMPLETO), "every SERIAL test is in the COMPLETO")
+    check(testa_tudo.SERIAL <= set(testa_tudo.COMPLETO + testa_tudo.BANCA), "every SERIAL test is in a list")
 
 
 def main():

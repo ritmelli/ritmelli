@@ -44,7 +44,7 @@ env:
   BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
 
 jobs:
-  # the ruff, the COMPLETO of the dev/testa_tudo.py (the libraries of the requirements-dev.txt and the ffmpeg of the
+  # the ruff, the COMPLETO of the dev/testa_tudo.py (--sem-banca: the Banca job runs the bench) (the libraries of the requirements-dev.txt and the ffmpeg of the
   # app), the protected folder on the real disk and the line count of the big files against the base
   testes:
     name: Testes
@@ -72,7 +72,7 @@ jobs:
       - name: Testes
         id: testes
         if: ${{ !cancelled() && steps.ruff.outcome != 'skipped' }}
-        run: python dev/testa_tudo.py --resumo "$env:RUNNER_TEMP\resumo.md"
+        run: python dev/testa_tudo.py --sem-banca --resumo "$env:RUNNER_TEMP\resumo.md"
       # the protected folder on the real disk (the PASSOS of the dev/testa_tudo.py); the in-memory mode is in the STDLIB
       - name: Pasta protegida no disco
         id: disco
@@ -511,7 +511,7 @@ jobs:
               if [ "$consulta" = erro ]; then
                 echo "❌ a consulta das execuções da fila neste commit falhou: rode este job de novo"
               else
-                echo "❌ nenhuma execução da fila passou neste commit: ele chegou à \`main\` sem a fila, e os testes não rodaram"
+                echo "❌ em 4 consultas, nenhuma execução aprovada da fila apareceu para este commit: os testes dele não rodaram aqui (ele chegou à \`main\` sem a fila, ou a da fila não passou)"
               fi
               echo
             fi

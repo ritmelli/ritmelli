@@ -13,9 +13,10 @@ esticamento da passagem seca o anel do jogo, no processo do motor e num auxiliar
 
 O `dev/testa_tudo.py` roda os testes que não usam som, aparelho nem rede externa, quatro
 por vez (os do `SERIAL`, que medem tempo, um a um e sozinhos, depois dos outros), pelas listas
-dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO`, a `BANCA` (o
-`--banca`: a banca das passagens, o `testa_passagem`, o teste mais longo, num job próprio do
-`testa.yml`, ao lado do de Testes) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
+dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO`, a `BANCA` (a banca
+das passagens, o `testa_passagem`, o teste mais longo: o comando sem opção a roda depois do
+`COMPLETO`; no `testa.yml`, o job de Testes roda o `--sem-banca` e um job próprio, ao lado, o
+`--banca`) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
 Inno Setup, para o setup de teste do `testa_aparelho_mudo`). No `COMPLETO` e na `BANCA`, biblioteca
 ou ffmpeg faltando é falha. Todo teste de `dev/`, o `dev/testa_*.py` e o `dev/test_*.py` (todo teste
 novo, em inglês, nasce `test_*`), tem destino: uma lista, um passo próprio do `testa.yml` declarado
@@ -34,7 +35,7 @@ roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo comm
 então o push na `main` roda só a captura do `compara` desse commit para o cache (o `--captura`), e o
 "Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI se
 instalam com as versões do `instalador/travas.txt` (`-c`), que entra na chave do cache delas e na
-da captura do `compara`. No PR, só abrir, reabrir e
+da captura do `compara`, e o PR que muda esse arquivo dispara todas as áreas. No PR, só abrir, reabrir e
 um commit novo rodam o check: editar a descrição ou mexer numa etiqueta não roda, porque uma
 execução no mesmo commit vira a suite mais nova do workflow e o check exigido sai só dela
 (encobriria o "Testa o PR" de quem testou). A etiqueta `extracao-tema` e a base nova de um PR
