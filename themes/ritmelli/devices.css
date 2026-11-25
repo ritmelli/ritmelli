@@ -1,0 +1,114 @@
+/* DEVICES-INICIO */
+/* ---------- aparelhos separados ligados por cabos RCA (do mock escolhido): selo e
+   pes no toca-discos, chassi do receiver R-77 com laterais de jacaranda, chassi proprio do FX-12
+   de efeitos e os pares RCA entre eles ---------- */
+/* NOVO: posicionamento da mesa para ancorar pés e cabos RCA por trás do tampo */
+.mesa { position: relative; }
+
+
+
+/* NOVO: pés amortecedores sob o tampo de jacarandá do toca-discos */
+.pes-mesa {
+  position: absolute; left: 22px; right: 22px; bottom: -5px; height: 6px;
+  z-index: 1; pointer-events: none;
+}
+
+/* NOVO: serigrafia e parafusos de canto na placa de alumínio do toca-discos */
+.selo-placa {
+  /* canto de baixo a direita, abaixo da chave de velocidade, em duas linhas: e o canto que o prato
+     nunca alcanca. O tamanho segue o aparelho (cqi), nao a fonte do sistema: no celular de teste, com a
+     fonte maior, a plaquinha crescia e invadia o prato */
+  position: absolute; right: 3cqi; bottom: 2.4cqi; z-index: 2; pointer-events: none;
+  display: inline-flex; flex-direction: column; align-items: flex-end; gap: .3em;
+  padding: .4em .6em .35em; text-align: right;
+  border: 1px solid rgba(42,24,18,.32);
+  color: var(--tinta); font-size: min(2.4cqi, 10px); line-height: 1;
+}
+.selo-placa b {
+  font-weight: 800; font-stretch: 125%; letter-spacing: .16em;
+}
+.selo-placa span {
+  font-weight: 600; font-stretch: 85%; letter-spacing: .09em; color: var(--tinta-2); font-size: .86em;
+}
+
+
+.receptor > .medidores,
+.receptor > .controles,
+.receptor > .janela { position: relative; z-index: 1; }
+
+/* chassi do Receiver R-77 (a madeira, a chapa e os pes) */
+.chassi-rec { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+
+/* parafusos escareados nos 4 cantos do painel do receiver */
+.parafusos-rec::before,
+.parafusos-rec::after {
+  content: ""; position: absolute; left: 16px; right: 16px; height: 7px; z-index: 2;
+  background:
+    radial-gradient(circle at 3.5px 3.5px, #4A4138 0 1.2px, #B9B0A0 1.3px 2.8px, #594F44 2.9px 3.5px, transparent 3.6px),
+    radial-gradient(circle at calc(100% - 3.5px) 3.5px, #4A4138 0 1.2px, #B9B0A0 1.3px 2.8px, #594F44 2.9px 3.5px, transparent 3.6px);
+}
+.parafusos-rec::before { top: 6px; }
+.parafusos-rec::after { bottom: 6px; }
+
+/* pés de borracha com anel de latão sob o receiver */
+.pes-ap {
+  position: absolute; left: 18px; right: 18px; bottom: -5px; height: 5px; z-index: -1;
+}
+
+/* serigrafia de marca e modelo nos aparelhos */
+.marca-ap {
+  position: absolute; top: 3px; left: 28px; right: 28px; height: 14px; z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  color: var(--tinta); font-size: .625rem; line-height: 1; white-space: nowrap;
+}
+.marca-ap b {
+  font-weight: 850; font-stretch: 125%; letter-spacing: .18em; color: var(--tinta);
+}
+.marca-ap span {
+  font-weight: 600; font-stretch: 88%; letter-spacing: .12em; color: var(--tinta-2); font-size: .92em;
+}
+.marca-ap::after {
+  content: ""; flex: 1; height: 1px; margin-left: 4px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.5);
+}
+
+
+.gaveta > .cabeca-gav,
+.gaveta > .visor-gav,
+.gaveta > .mesa-gav,
+.gaveta > .rolo { position: relative; z-index: 1; }
+
+/* NOVO: regras base dos cabos RCA */
+.cabo-rca { position: absolute; pointer-events: none; user-select: none; }
+
+/* a tecla do Sem efeito sai: o x do visor desliga. So os pedais rolam */
+.mesa-gav .ouvir { grid-area: ouvir; }
+.dica-ouvir { grid-area: dica; }
+.dica-ouvir { font-size: .8125rem; line-height: 1.35; color: var(--tinta-2); max-width: 62ch; }
+.dica-ouvir b { font-weight: 600; color: var(--tinta); }
+/* sem fone: a dica abre o Microfone e fone direto (no celular esse nome nem aparece, o botao e so a engrenagem) */
+.dica-ouvir .ir-disp {
+  position: relative; padding: 0; border: 0; background: none; font-weight: 600; color: var(--tinta);
+  text-decoration: underline; text-decoration-color: rgba(42,24,18,.45); text-underline-offset: 3px;
+}
+@media (hover: hover) { .dica-ouvir .ir-disp:hover { text-decoration-color: #8F4A0C; } }
+
+.teclas { display: grid; }
+.tecla { scroll-margin: 10px; }
+.gaveta .tecla:focus-visible { outline: 3px solid var(--ambar); outline-offset: 3px; }
+.aviso-gav { font-size: .875rem; color: var(--tinta-2); padding: 6px 0; }
+
+/* no celular a gaveta fica sempre aberta, logo abaixo do receptor (a pagina rola) */
+@media (max-width: 899.98px) {
+  #b-fechar-gav { display: none; }
+}
+/* no computador ela toma o lugar da parede enquanto esta aberta, e as teclas rolam por dentro */
+@media (min-width: 900px) {
+  .gaveta { grid-area: parede; min-height: 0; }
+  body:not(.com-gaveta) .gaveta { display: none; }
+  body.com-gaveta .parede { visibility: hidden; }
+  body.com-gaveta .gaveta { animation: puxar .32s cubic-bezier(.2,.8,.25,1); }
+}
+@keyframes puxar { from { transform: translateY(-48px); } }
+
+/* DEVICES-FIM */
