@@ -22,7 +22,8 @@ que preveem a coleta de dados de uso pela Microsoft.
 
 ## Dados de uso e relatórios de erro
 
-**Finalidade:** saber quantas pessoas usam o Ritmelli, se as novas versões estão chegando a elas, quais erros ocorrem e
+**Finalidade:** saber quantas pessoas usam o Ritmelli, se as novas versões estão chegando a elas, se o som chega ao
+jogo sem falhas, quais erros ocorrem e
 quais recursos são de fato utilizados (cada efeito de voz, a reprodução de músicas), para decidir o que corrigir,
 melhorar ou remover.
 
@@ -97,7 +98,8 @@ Ritmelli folder), which provide for Microsoft collecting usage data.
 
 ## Usage data and error reports
 
-**Purpose:** to learn how many people use Ritmelli, whether new versions are reaching them, which errors occur, and
+**Purpose:** to learn how many people use Ritmelli, whether new versions are reaching them, whether the sound
+reaches the game without dropouts, which errors occur, and
 which features are actually used (each voice effect, music playback), so we can decide what to fix, improve, or remove.
 
 **What is sent**, always together with a random ID for this installation (it is not tied to you and is replaced by a

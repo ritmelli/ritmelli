@@ -247,46 +247,52 @@ class SaudeAudio:
     proxima comeca). Cada Injetor tem a sua: trocar de Injetor (o audio reaberto) comeca outra. Os acumulados do
     Injetor que o /api/state mostra seguem a parte, como estavam.
 
-    O que o motor conta desde que abriu (os preparos de passagem e a Rubber Band, pelo EmCurso) chega em totais a cada
-    volta, e a janela guarda a diferenca desde o comeco dela: a chamada a Rubber Band que atravessa o fim de uma janela
-    entra no esticamento_ms das duas, cada uma com o tempo dela."""
+    O que o motor conta desde que abriu (os preparos de passagem, a voz pelo microfone de reserva e a Rubber Band, pelo
+    EmCurso) chega em totais a cada volta, e a janela guarda a diferenca desde o comeco dela: a chamada a Rubber Band
+    que atravessa o fim de uma janela entra no esticamento_ms das duas, cada uma com o tempo dela."""
 
     def __init__(self, sr):
         self.sr = sr
         self._lock = threading.Lock()
-        self._totais = None  # (preparos, esticamentos, s com a Rubber Band em curso), os da ultima volta
+        # (preparos, s de voz pelo microfone de reserva, esticamentos, s com a Rubber Band em curso), os da ultima volta
+        self._totais = None
         self._leitores = 0  # os da ultima volta, com o anel aberto
-        self._perdido = self._fx = self._reserva = False  # o estado da ultima volta: o tempo ate a proxima conta nele
+        self._perdido = self._fx = False  # o estado da ultima volta: o tempo ate a proxima conta nele
         self._zera()
 
     def _zera(self):
-        self._base = self._totais
+        self._base, self._andou = self._totais, False
         self.secas = self.secas_passagem = self.secas_esticamento = self.leitor_perdido = 0
         self.folga_min = None
-        self.volta_max = self.leitor_perdido_s = self.fx_no_filtro_s = self.mic_reserva_s = 0.0
+        self.volta_max = self.leitor_perdido_s = self.fx_no_filtro_s = 0.0
         self.voz_taxa = 0
 
-    def volta(self, s, *, anel, leitores, fx_no_filtro, reserva, voz_taxa, totais):
+    def volta(self, s, *, anel, leitores, fx_no_filtro, voz_taxa, totais):
         """Uma volta da thread da saida, de s segundos, que passaram no estado da volta de antes. leitores: os do anel
-        (aberto ou nao); fx_no_filtro: o efeito de voz rodando no filtro; reserva: a voz vindo do microfone que o
-        Ritmelli abre, e nao a crua que o filtro devolve; voz_taxa: a taxa do microfone alvo do anel (0 sem ele)."""
+        (aberto ou nao); fx_no_filtro: o efeito de voz rodando no filtro; voz_taxa: a taxa do microfone alvo do anel (0
+        sem ele)."""
         with self._lock:
+            self._andou = True
             self.volta_max = max(self.volta_max, s)
             self.leitor_perdido_s += s * self._perdido
             self.fx_no_filtro_s += s * self._fx
-            self.mic_reserva_s += s * self._reserva
             leitores = leitores if anel else 0
             if anel and self._leitores and not leitores:
                 self.leitor_perdido += 1
                 self._perdido = True
             elif leitores or not anel:
                 self._perdido = False
-            self._leitores, self._fx, self._reserva = leitores, bool(fx_no_filtro), bool(reserva)
+            self._leitores, self._fx = leitores, bool(fx_no_filtro)
             if voz_taxa:
                 self.voz_taxa = int(voz_taxa)
             if self._base is None:
                 self._base = totais
             self._totais = totais
+
+    def anel_caiu(self):
+        """O anel fechou por erro: a perda e o efeito dele param de contar ja (a pausa ate o proximo nao entra)."""
+        with self._lock:
+            self._leitores, self._perdido, self._fx = 0, False, False
 
     def fila(self, quadros, *, passagem=False, esticando=False):
         """O tanto no anel quando a thread chegou, com o leitor ja servido: o menor e as secas (vazio), contando a
@@ -300,19 +306,20 @@ class SaudeAudio:
                 self.secas_esticamento += bool(esticando)
 
     def fecha(self):
-        """O que a janela contou, nas propriedades do "audio" (None se a thread da saida nem andou), e a proxima
+        """O que a janela contou, nas propriedades do "audio" (None se a thread da saida nao andou nela), e a proxima
         comeca."""
         with self._lock:
-            if self._totais is None:
+            if not self._andou:
+                self._zera()
                 return None
-            (p0, e0, s0), (p, e, s) = self._base, self._totais
+            (p0, r0, e0, s0), (p, r, e, s) = self._base, self._totais
             props = {"secas": self.secas,
                      "folga_min_ms": None if self.folga_min is None else round(self.folga_min * 1000 / self.sr, 1),
                      "volta_max_ms": round(self.volta_max * 1000, 1),
                      "passagens": p - p0, "esticamentos": e - e0, "esticamento_ms": round((s - s0) * 1000),
                      "secas_passagem": self.secas_passagem, "secas_esticamento": self.secas_esticamento,
                      "leitor_perdido": self.leitor_perdido, "leitor_perdido_s": round(self.leitor_perdido_s),
-                     "fx_no_filtro_s": round(self.fx_no_filtro_s), "mic_reserva_s": round(self.mic_reserva_s),
+                     "fx_no_filtro_s": round(self.fx_no_filtro_s), "mic_reserva_s": round(r - r0),
                      "voz_taxa": self.voz_taxa}
             self._zera()
             return props
@@ -330,6 +337,7 @@ class Metricas:
         self.fora = not teste and not liga and (mock or not getattr(sys, "frozen", False))
         self.guardados = []  # o que o --metricas-teste "enviou"
         self._audio_vale = False  # a janela do "audio" comecou com a escolha no texto de agora
+        self._audio_lock = threading.RLock()  # o vigia, a escolha e o fecha mexem nela
         self.sessao = uuid.uuid4().hex[:16]
         self.fila = queue.Queue()
         self.engine = None
@@ -367,11 +375,14 @@ class Metricas:
 
     def texto(self):
         """A versao do texto da escolha que vale: a do app (o metricas_texto do cfg) quando a escolha e dele, senao a do
-        instalador (o MetricasVersao); 1 quando essa escolha veio sem versao (de antes dela), 0 sem escolha."""
+        instalador (o MetricasVersao); 1 quando essa escolha veio sem versao (de antes dela), 0 sem escolha ou
+        fora."""
+        if self.fora:
+            return 0
         if isinstance(self.cfg.get("metricas"), bool):
             return _versao(self.cfg.get("metricas_texto")) or 1
         if self._instalador() is not None:
-            return (None if self.teste else texto_do_instalador()) or 1
+            return texto_do_instalador() or 1
         return 0
 
     def ativa(self):
@@ -385,16 +396,14 @@ class Metricas:
             with self._lock:
                 while not self.fila.empty():
                     self.fila.get_nowait()
-            self._fecha_audio(manda=False)
-            self._audio_vale = False
-        else:
+        self._confere_audio()  # a janela do "audio" comeca (ou some) na hora da escolha
+        if ligar:
             self._acorda.set()
 
     def publico(self):
         """O GET /api/metricas: a situacao, a politica e a versao do texto da escolha (texto) e a de agora
         (texto_atual). O tema mostra o aviso de novo a quem ligou num texto de antes."""
-        s = self.situacao()
-        return {"situacao": s, "politica": POLITICA, "texto": 0 if s == "fora" else self.texto(), "texto_atual": TEXTO}
+        return {"situacao": self.situacao(), "politica": POLITICA, "texto": self.texto(), "texto_atual": TEXTO}
 
     # o estado da instalacao -------------------------------------------------------------------------------------------
     def _le_estado(self):
@@ -477,6 +486,8 @@ class Metricas:
             self.envia(POSTHOG, json.dumps({"api_key": POSTHOG_CHAVE, "batch": lote}).encode("utf-8"),
                        {"Content-Type": "application/json"})
         except Exception:  # noqa: BLE001 - sem rede: volta para a fila, e o FILA_MAX segura o tamanho
+            if not self.ativa():
+                return  # desligou durante o envio: o que nao saiu fica fora, como o resto da fila
             with self._lock:
                 for x in lote:
                     if self.fila.qsize() < FILA_MAX:
@@ -512,7 +523,8 @@ class Metricas:
         for ef, s in u["efeitos"].items():
             if s >= 1:
                 self.evento("efeito_tempo", efeito=ef, segundos=round(s))
-        self._fecha_audio(manda=self._audio_vale and self.texto() >= TEXTO)
+        with self._audio_lock:
+            self._fecha_audio(manda=self._audio_vale and self.texto() >= TEXTO)
 
     def _fecha_audio(self, manda):
         """Fecha a janela do "audio" do Injetor de agora (sem ele, o audio fechado ou o --mock, nada) e, com manda,
@@ -525,10 +537,11 @@ class Metricas:
 
     def _confere_audio(self):
         """A janela do "audio" comeca quando a escolha no texto de agora passa a valer, e o que veio antes some."""
-        pode = self.ativa() and self.texto() >= TEXTO
-        if pode != self._audio_vale:
-            self._fecha_audio(manda=False)
-            self._audio_vale = pode
+        with self._audio_lock:
+            pode = self.ativa() and self.texto() >= TEXTO
+            if pode != self._audio_vale:
+                self._fecha_audio(manda=False)
+                self._audio_vale = pode
 
     def _dia_novo(self):
         """O "ativo" do dia (e o "atualizou", na primeira vez desta versao), uma vez por dia por instalacao."""
@@ -550,10 +563,15 @@ class Metricas:
         self.engine = engine
         if self.fora:
             return
+        # a escolha no texto de agora que ja valia ao abrir: a janela do Injetor conta desde a abertura do audio
+        with self._audio_lock:
+            self._audio_vale = self.ativa() and self.texto() >= TEXTO
         ultimo_envio = ultimo = time.monotonic()
         while not self._parar:
             self._acorda.wait(AMOSTRA_S)
             self._acorda.clear()
+            if self._parar:
+                break  # o fecha fecha o uso e manda a fila
             agora = time.monotonic()
             self._confere_audio()
             if self.ativa():

@@ -385,9 +385,10 @@ PASSAGEM_DEPOIS_S = 5.0  # a seca ate isso depois da virada ainda conta como da 
 
 def _rubber_band(y, vel):
     """O tom de y (n x 2) de volta ao original pela Rubber Band, com a velocidade vel de cada amostra."""
-    with RUBBER_BAND.roda():
-        return time_stretch(np.ascontiguousarray(y.T), SR, stretch_factor=1.0,
-                            pitch_shift_in_semitones=-12 * np.log2(vel)).T
+    x, tom = np.ascontiguousarray(y.T), -12 * np.log2(vel)
+    with RUBBER_BAND.roda():  # so a chamada: o tempo dela e o que o evento conta
+        z = time_stretch(x, SR, stretch_factor=1.0, pitch_shift_in_semitones=tom)
+    return z.T
 
 
 def esticar(x, s, n_sob, n_rampa, alvo):
@@ -1171,8 +1172,7 @@ class Injetor:
                     mo = self.motor
                     self.saude.volta(volta, anel=m is not None, leitores=self.leitores,
                                      fx_no_filtro=self.efeito_no_filtro, voz_taxa=self.voz_taxa,
-                                     reserva=time.monotonic() - mo._voz_anel_em >= VOZ_VIVA_S,  # noqa: SLF001
-                                     totais=(mo.preparos, *RUBBER_BAND.total()))
+                                     totais=(*mo.totais_saude(), *RUBBER_BAND.total()))
                     if vivos:
                         donos = tuple(sorted(lt.dono for lt in vivos))
                         fila = m.na_fila()
@@ -1200,6 +1200,7 @@ class Injetor:
                     # novo; o estado do efeito zera mesmo se o fechamento falhar
                     falhou, self.m = self.m, None
                     servidos = ()
+                    self.saude.anel_caiu()  # a pausa abaixo nao conta no estado do anel que caiu
                     try:
                         if falhou is not None:
                             falhou.fecha()
@@ -1298,6 +1299,7 @@ class Engine:
         self._entrando = None    # [quadros, feitos, nivel, cheia]: a proxima subindo
         self.virou = None        # (o que saiu, o que entrou, a tag) para o servidor tirar da fila
         self.preparos = 0        # as passagens preparadas desde que o motor abriu (o evento "audio" conta por janela)
+        self.reserva_quadros = 0  # os quadros da voz que vieram do microfone de reserva (o _mic_cb), idem
         self._virou_em = -1e9    # monotonic da ultima virada (a seca logo depois dela e da passagem)
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
         self.pronto_falhou = None  # a tag da proxima que nao decodificou: o servidor nao prepara de novo
@@ -1641,6 +1643,7 @@ class Engine:
     def _mic_cb(self, indata, frames, t, status):
         if time.monotonic() - self._voz_anel_em < VOZ_VIVA_S:
             return  # a voz vem crua do filtro; a daqui ja leva a musica
+        self.reserva_quadros += frames
         self._push_mic(indata.mean(axis=1) if indata.shape[1] > 1 else indata[:, 0].copy())
 
     def _push_mic(self, x):
@@ -2285,9 +2288,15 @@ class Engine:
         """Do comeco do preparo da proxima ate PASSAGEM_DEPOIS_S depois da virada."""
         return self._pronto is not None or time.monotonic() - self._virou_em < PASSAGEM_DEPOIS_S
 
+    def totais_saude(self):
+        """O que o Injetor passa a janela do evento "audio" a cada volta, desde que o motor abriu: (as passagens
+        preparadas, os segundos de voz pelo microfone de reserva)."""
+        return self.preparos, self.reserva_quadros / SR
+
     def saude_audio(self):
-        """A janela do evento "audio" do Injetor de agora (metricas.SaudeAudio), ou None sem audio aberto."""
-        inj = self._injetor
+        """A janela do evento "audio" do Injetor de agora (metricas.SaudeAudio), ou None sem audio aberto (o Injetor
+        de uma reabertura que falhou fica parado: nao conta)."""
+        inj = self._injetor if self._stack is not None else None
         return inj.saude if inj is not None else None
 
     def cancelar_pronto(self):

@@ -125,6 +125,12 @@ class MotorFalso:
         self._pista_viva = False
         self._alvo, self._voz_anel_em, self.voz, self.voz_fx = alvo, -1e9, [], []
 
+    def totais_saude(self):  # a janela do evento "audio" (metricas.SaudeAudio)
+        return 0, 0.0
+
+    def em_passagem(self):
+        return False
+
     def voz_pelo_app(self):
         return eng.Engine.voz_pelo_app(self)
 

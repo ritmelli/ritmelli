@@ -176,7 +176,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 f"app {cfg}, instalador {inst} com a versao {vers}: {sit}, texto {txt}, "
                 f"{'com' if av else 'sem'} aviso ({pub})")
     m2 = met.Metricas({}, lambda **mud: None, mock=True, estado=Path(tmp) / "x.json")
-    confere(m2.publico()["texto"] == 0, "fora (o --mock): texto 0")
+    confere(m2.publico()["texto"] == 0 and m2.texto() == 0, "fora (o --mock): texto 0, sem ler o instalador")
     for ligar in (True, False):
         m, _ = nova(cfg={"metricas": True}, instalador=True, texto_inst=None, tmp=tmp)
         m.escolhe(ligar)
@@ -210,7 +210,7 @@ with tempfile.TemporaryDirectory() as tmp:
     class MotorComAudio(Motor):
         def __init__(self):
             super().__init__()
-            self.preparos = 0
+            self.preparos, self.reserva_s = 0, 0.0
             self.janela = met.SaudeAudio(48000)
 
         def saude_audio(self):
@@ -219,9 +219,9 @@ with tempfile.TemporaryDirectory() as tmp:
     def volta(e, s=0.01, **kw):
         """Uma volta do Injetor: s segundos no relogio, com o estado dado (o resto, o de um microfone normal)."""
         rel.t += s
-        est = {"anel": True, "leitores": 1, "fx_no_filtro": False, "reserva": False, "voz_taxa": 48000}
+        est = {"anel": True, "leitores": 1, "fx_no_filtro": False, "voz_taxa": 48000}
         est.update(kw)
-        e.janela.volta(s, totais=(e.preparos, *rb.total()), **est)
+        e.janela.volta(s, totais=(e.preparos, e.reserva_s, *rb.total()), **est)
 
     def audios(m):
         evs = [m.fila.get_nowait() for _ in range(m.fila.qsize())]
@@ -258,7 +258,8 @@ with tempfile.TemporaryDirectory() as tmp:
             and a1.get("leitor_perdido_s") == 3 and a1.get("voz_taxa") == 48000,
             f"a primeira janela conta o que passou nela, e so depois do comeco ({a1})")
     confere(a1.get("esticamento_ms") == 5060, f"a Rubber Band em curso no fim da janela: o tempo ate ali ({a1})")
-    volta(e, 1.0, fx_no_filtro=True, reserva=True)
+    volta(e, 1.0, fx_no_filtro=True)
+    e.reserva_s += 2.0  # 2 s de voz pelo microfone de reserva (os quadros do _mic_cb)
     e.janela.fila(0, esticando=True)  # seca na janela seguinte, com a mesma chamada em curso
     volta(e, 2.0)
     rel.t += 0.5
@@ -273,18 +274,28 @@ with tempfile.TemporaryDirectory() as tmp:
     confere(a2.get("fx_no_filtro_s") == 2 and a2.get("mic_reserva_s") == 2,
             f"o tempo com o efeito no filtro e com a voz pelo microfone de reserva ({a2})")
 
-    # o desligar no meio da janela: o que ela contou some, e a de depois comeca ao ligar de novo
+    # a janela em que a thread da saida nao andou (o audio fechado, o Injetor parado): nenhum "audio"
+    m._fecha_uso()
+    confere(not audios(m)[0], "sem nenhuma volta do Injetor na janela: o 'audio' nao sai (nem zerado)")
+    e.janela.fila(0)
+    volta(e, 0.01, fx_no_filtro=True)  # o efeito rodando no filtro...
+    e.janela.anel_caiu()  # ...e o anel fecha por erro: a pausa de 3 s ate a volta seguinte nao conta nele
+    volta(e, 3.0, anel=False, leitores=0)
+    m._fecha_uso()
+    a5, _ = audios(m)
+    confere(len(a5) == 1 and a5[0]["fx_no_filtro_s"] == 0 and a5[0]["leitor_perdido"] == 0,
+            f"o anel que caiu: a pausa ate o proximo nao conta como efeito nem como leitor perdido ({a5})")
+
+    # o desligar no meio da janela: o que ela contou some, e a de depois comeca na hora de ligar de novo
     volta(e)
     e.janela.fila(0)
     m.escolhe(False)
-    m._confere_audio()
     m._fecha_uso()
     confere(not audios(m)[0], "desligada no meio da janela: o 'audio' nao sai")
     volta(e)
     e.janela.fila(0)
     e.janela.fila(0)
-    m.escolhe(True)
-    m._confere_audio()
+    m.escolhe(True)  # sem esperar o vigia
     volta(e)
     e.janela.fila(0)
     m._fecha_uso()
@@ -302,8 +313,7 @@ with tempfile.TemporaryDirectory() as tmp:
     m._fecha_uso()
     a4, evs = audios(m)
     confere(not a4 and [x["event"] for x in evs] == ["uso"], f"ligada no texto 1: o 'uso' sai, o 'audio' nao ({evs})")
-    m.escolhe(True)
-    m._confere_audio()
+    m.escolhe(True)  # o Enviar do aviso de novo
     volta(e)
     m._fecha_uso()
     confere(len(audios(m)[0]) == 1, "o Enviar do aviso, no texto 2: o 'audio' passa a sair")
@@ -312,6 +322,39 @@ with tempfile.TemporaryDirectory() as tmp:
     m._confere_audio()
     m._fecha_uso()
     confere(not audios(m)[0], "sem Injetor (o --mock, o audio fechado): nenhum 'audio'")
+
+    # a escolha no texto de agora que ja valia ao abrir: o vigia nao joga fora o comeco da janela do Injetor
+    import threading
+    import time as _t
+    m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
+    e = MotorComAudio()
+    volta(e)
+    e.janela.fila(0)  # a seca logo na abertura do audio
+    th = threading.Thread(target=m.vigia, args=(e,), daemon=True)
+    th.start()
+    for _ in range(100):
+        if m._audio_vale:
+            break
+        _t.sleep(0.01)
+    m._parar = True
+    m._acorda.set()
+    th.join(5)
+    volta(e)
+    m._fecha_uso()
+    a6, _ = audios(m)
+    confere(not th.is_alive() and len(a6) == 1 and a6[0]["secas"] == 1,
+            f"aberto com a escolha no texto 2: a janela conta desde a abertura do audio, e o vigia para ({a6})")
+
+    # o lote que falha enquanto a pessoa desliga nao volta para a fila
+    m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
+    m.evento("ativo", primeira_vez=False)
+
+    def falha_desligando(url, dados, cab):
+        m.cfg["metricas"] = False  # desligou durante o envio
+        raise OSError("sem rede")
+    m.envia = falha_desligando
+    m._manda_fila()
+    confere(m.fila.empty(), "desligada durante o envio que falhou: o lote nao volta para a fila")
 
     # o instalador grava a versao do texto de agora, e a politica lista cada campo do "audio"
     iss = (RAIZ / "instalador" / "ritmelli.iss").read_text(encoding="utf-8-sig")

@@ -77,10 +77,12 @@ class MotorFalso:
         self._fx_filtro = self._fx_pendente = False
         self._pista_viva = False
         self._alvo, self._voz_anel_em = ALVO, -1e9
-        self.preparos = 0  # as passagens preparadas: a janela do evento "audio" (metricas.SaudeAudio) conta
 
     def voz_pelo_app(self):
         return False
+
+    def totais_saude(self):  # a janela do evento "audio" (metricas.SaudeAudio)
+        return 0, 0.0
 
     def em_passagem(self):
         return False

@@ -312,15 +312,17 @@ async def run(a):
     return 1 if falhas else 0
 
 
-# o --metricas: (o nome, o config.json do mock, se o aviso abre). Todo config leva boas_vindas: true, senao as
-# boas-vindas abririam antes e o aviso so viria quando elas fechassem
+# o --metricas: (o nome, o config.json do mock, se o aviso abre ao carregar, os botoes). Todo config leva
+# boas_vindas: true, senao as boas-vindas abririam antes e o aviso so viria quando elas fechassem. O "ligar" e o
+# Comecar a enviar do Microfone e fone, de quem esta desligado
 SITUACOES = [
-    ("decidir (ninguem escolheu)", {}, True),
-    ("ligada no texto 1 (sem metricas_texto)", {"metricas": True}, True),
-    ("ligada no texto 2", {"metricas": True, "metricas_texto": 2}, False),
-    ("desligada", {"metricas": False}, False),
+    ("decidir (ninguem escolheu)", {}, True, ("esc", "nao", "sim")),
+    ("ligada no texto 1 (sem metricas_texto)", {"metricas": True}, True, ("esc", "nao", "sim")),
+    ("ligada no texto 2", {"metricas": True, "metricas_texto": 2}, False, (None,)),
+    ("desligada no texto 1", {"metricas": False}, False, ("ligar",)),
+    ("desligada no texto 2", {"metricas": False, "metricas_texto": 2}, False, ("ligar",)),
 ]
-BOTOES = {"esc": "o Esc", "nao": "o Nao enviar", "sim": "o Enviar"}
+BOTOES = {"esc": "o Esc", "nao": "o Nao enviar", "sim": "o Enviar", "ligar": "o Comecar a enviar do Microfone e fone"}
 AVISO_ESPERA_S = 6.0
 
 
@@ -353,14 +355,15 @@ def armadilha():
 
 async def aviso_no_chrome(base, botao):
     """Abre o tema do mock em base num Chrome sem tela e espera o #dlg-metricas. Aberto, aperta o botao (esc, nao ou
-    sim). Volta {"abriu", "foco" (o value ou id do que tinha o foco ao abrir), "fechou", "reabriu" (so no esc: a pagina
-    de novo abre o aviso de novo), "erros"}."""
+    sim); no "ligar", aperta o Comecar a enviar do Microfone e fone e, se o aviso abre, o Enviar dele. Volta {"abriu",
+    "ao_ligar" (o aviso abriu pelo Comecar a enviar), "foco" (o value ou id do que tinha o foco no aviso), "fechou",
+    "reabriu" (so no esc: a pagina de novo abre o aviso de novo), "erros"}."""
     url = f"{base}/t/ritmelli/?lang=pt_BR"
     port, prof = free_port(), tempfile.mkdtemp(prefix="sbfit_")
     chrome = subprocess.Popen([CHROME, "--headless=new", f"--remote-debugging-port={port}", f"--user-data-dir={prof}",
                                "--no-first-run", "--no-default-browser-check", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    r = {"abriu": False, "foco": None, "fechou": None, "reabriu": None, "erros": []}
+    r = {"abriu": False, "ao_ligar": None, "foco": None, "fechou": None, "reabriu": None, "erros": []}
     try:
         ws_url = None
         for _ in range(100):
@@ -393,14 +396,15 @@ async def aviso_no_chrome(base, botao):
             async def js(expr):
                 return (await cmd("Runtime.evaluate", expression=expr, returnByValue=True)).get("result", {}).get("value")
 
-            async def espera_aviso():
-                fim = time.monotonic() + AVISO_ESPERA_S
+            async def espera_aviso(espera=AVISO_ESPERA_S):
+                fim = time.monotonic() + espera
                 while time.monotonic() < fim:
                     if await js("!!document.querySelector('#dlg-metricas')?.open"):
                         return True
                     await asyncio.sleep(0.1)
                 return False
 
+            foco = "(e => e && (e.value || e.id || e.tagName))(document.activeElement)"
             await cmd("Page.enable")
             await cmd("Runtime.enable")
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
@@ -408,8 +412,16 @@ async def aviso_no_chrome(base, botao):
             await cmd("Page.navigate", url=url)
             r["abriu"] = await espera_aviso()
             await confere_pagina(cmd, url, barrados)
-            if r["abriu"] and botao:
-                r["foco"] = await js("(e => e && (e.value || e.id || e.tagName))(document.activeElement)")
+            if botao == "ligar" and not r["abriu"]:
+                # o botao do Microfone e fone, como o clique nele (o GET /api/metricas da carga ja mostrou a linha)
+                await js("document.querySelector('#dd-met-btn').click()")
+                r["ao_ligar"] = await espera_aviso(3.0)
+                if r["ao_ligar"]:
+                    r["foco"] = await js(foco)
+                    await js("document.querySelector('#dlg-metricas button[value=sim]').click()")
+                await asyncio.sleep(1.0)
+            elif r["abriu"] and botao:
+                r["foco"] = await js(foco)
                 if botao == "esc":
                     for tipo in ("keyDown", "keyUp"):
                         await cmd("Input.dispatchKeyEvent", type=tipo, key="Escape", code="Escape",
@@ -428,77 +440,109 @@ async def aviso_no_chrome(base, botao):
     return r
 
 
+def _sobe_e(tmp, config, env, faz):
+    """Sobe um --mock --metricas-teste com o config.json dado (pelo sobe_servidor do compara), roda faz(srv), encerra
+    pelo para_servidor e volta (o que faz voltou, o config.json gravado, o log do servidor)."""
+    import compara  # numpy, pillow: so no --metricas
+    with open(tmp / "servidor.log", "w", encoding="utf-8") as log:
+        srv = compara.sobe_servidor(tmp, free_port(), log, config=config, extras=["--metricas-teste"], env=env)
+        try:
+            r = faz(srv)
+            gravado = json.loads((tmp / "dados" / "config.json").read_text(encoding="utf-8"))
+        finally:
+            compara.para_servidor(srv)
+    return r, gravado, (tmp / "servidor.log").read_text(encoding="utf-8", errors="replace")
+
+
 def cenario_metricas():
     """O --metricas: o aviso dos dados de uso no tema, contra um --mock --metricas-teste por situacao e por botao (pelo
     sobe_servidor do dev/compara.py, com as recusas do dev/so_mock.py), com a rede presa numa armadilha. Abre com
     decidir e com ligada no texto 1 (com o foco no Enviar), nao abre com ligada no texto 2 nem com desligada; o Esc
     nao grava nada e o aviso volta na proxima abertura, o Nao enviar grava metricas: false e o Enviar metricas: true,
-    os dois com o metricas_texto 2; nenhum pedido sai pela rede, e o servidor diz no log que guardou na memoria. No
-    fim, uma busca (o que a pessoa pede vai ao YouTube) tem de cair na armadilha: e ela que mostra que a armadilha pega."""
-    import compara  # numpy, pillow: so no --metricas
+    os dois com o metricas_texto 2; o Comecar a enviar de quem desligou no texto 1 abre o aviso antes de ligar, e no
+    texto 2 liga direto. Nenhum pedido sai pela rede, e o servidor diz no log quantos eventos guardou na memoria (pelo
+    menos um quando a pessoa liga). Num mock a parte, no fim, uma busca (o que a pessoa pede vai ao YouTube) tem de
+    cair na armadilha: e ela que mostra que a armadilha pega."""
+    import re
     from pathlib import Path
     arm, tentativas, env = armadilha()
-    falhas, pegou = 0, []
+    falhas = 0
 
     def diz(ok, msg):
         nonlocal falhas
         falhas += not ok
         print(f"{'OK   ' if ok else 'FALHA'} {msg}", flush=True)
 
+    def le_config(tmp):
+        """O POST da escolha, gravado sob a trava do cfg: espera ate 5 s pelo metricas_texto."""
+        for _ in range(50):
+            g = json.loads((tmp / "dados" / "config.json").read_text(encoding="utf-8"))
+            if "metricas_texto" in g:
+                break
+            time.sleep(0.1)
+
     try:
-        for nome, cfg, abre in SITUACOES:
-            for botao in (BOTOES if abre else [None]):
+        for nome, cfg, abre, botoes in SITUACOES:
+            for botao in botoes:
                 inicial = {"boas_vindas": True, **cfg}
                 tmp = Path(tempfile.mkdtemp(prefix="ritmelli-metricas-"))
+
+                def faz(srv, botao=botao, tmp=tmp):
+                    r = asyncio.run(aviso_no_chrome(srv.base, botao))
+                    if botao in ("nao", "sim", "ligar"):
+                        le_config(tmp)
+                    return r
                 try:
-                    with open(tmp / "servidor.log", "w", encoding="utf-8") as log:
-                        srv = compara.sobe_servidor(tmp, free_port(), log, config=inicial, extras=["--metricas-teste"],
-                                                    env=env)
-                        try:
-                            r = asyncio.run(aviso_no_chrome(srv.base, botao))
-                            gravado = json.loads((tmp / "dados" / "config.json").read_text(encoding="utf-8"))
-                            if botao in ("nao", "sim"):  # o POST da escolha, gravado sob a trava do cfg
-                                for _ in range(50):
-                                    if "metricas_texto" in gravado:
-                                        break
-                                    time.sleep(0.1)
-                                    gravado = json.loads((tmp / "dados" / "config.json").read_text(encoding="utf-8"))
-                            if (nome, botao) == (SITUACOES[-1][0], None):  # no ultimo: a armadilha pega mesmo
-                                antes = len(tentativas)
-                                try:
-                                    srv.api("GET", "/api/search?q=teste&n=1", espera=20)
-                                except OSError:
-                                    pass  # a armadilha fecha a conexao: o que conta e ter tentado
-                                for _ in range(100):
-                                    if len(tentativas) > antes:
-                                        break
-                                    time.sleep(0.1)
-                                pegou = tentativas[antes:]
-                                del tentativas[antes:]
-                        finally:
-                            compara.para_servidor(srv)
-                    saida = (tmp / "servidor.log").read_text(encoding="utf-8", errors="replace")
+                    r, gravado, saida = _sobe_e(tmp, inicial, env, faz)
                 finally:
                     shutil.rmtree(tmp, ignore_errors=True)
                 o_que = f"{nome}{', ' + BOTOES[botao] if botao else ''}"
-                diz(r["abriu"] == abre, f"{o_que}: o aviso {'abre' if r['abriu'] else 'nao abre'}")
+                diz(r["abriu"] == abre, f"{o_que}: o aviso {'abre' if r['abriu'] else 'nao abre'} ao carregar")
                 diz(not r["erros"], f"{o_que}: sem erro na pagina ({r['erros'][:2]})")
-                if botao and r["abriu"]:
+                liga = botao in ("sim", "ligar")
+                if botao == "ligar":
+                    texto2 = cfg.get("metricas_texto") == 2
+                    diz(r["ao_ligar"] is (not texto2),
+                        f"{o_que}: {'liga direto' if texto2 else 'o aviso abre antes de ligar, com o foco no Enviar'}"
+                        f" ({r['ao_ligar']}, foco {r['foco']})")
+                    if not texto2:
+                        diz(r["foco"] == "sim", f"{o_que}: o foco no Enviar do aviso ({r['foco']})")
+                elif botao and r["abriu"]:
                     if cfg.get("metricas") is True:
                         diz(r["foco"] == "sim", f"{o_que}: para quem ja enviava, o foco no Enviar ({r['foco']})")
                     diz(r["fechou"], f"{o_que}: o aviso fecha")
                     if botao == "esc":
                         diz(gravado == inicial and r["reabriu"],
                             f"{o_que}: nada gravado ({gravado}), e o aviso volta na proxima abertura ({r['reabriu']})")
-                    else:
-                        quer = {**inicial, "metricas": botao == "sim", "metricas_texto": 2}
-                        diz({k: gravado.get(k) for k in quer} == quer,
-                            f"{o_que}: grava metricas {botao == 'sim'} e o metricas_texto 2 ({gravado})")
+                if botao in ("nao", "sim", "ligar"):
+                    quer = {**inicial, "metricas": liga, "metricas_texto": 2}
+                    diz({k: gravado.get(k) for k in quer} == quer,
+                        f"{o_que}: grava metricas {liga} e o metricas_texto 2 ({gravado})")
                 guardou = [linha for linha in saida.splitlines() if linha.startswith("metrics test:")]
-                diz(len(guardou) == 1 and "nothing sent" in guardou[0],
-                    f"{o_que}: o servidor guardou na memoria ({guardou[:1] or 'sem a linha no log'})")
-        diz(bool(pegou), f"a busca que a pessoa pede cai na armadilha: ela pega ({pegou[:1]})")
-        diz(not tentativas, f"fora essa busca, nenhum pedido saiu pela rede, de nenhum dos servidores ({tentativas[:3]})")
+                n = int(re.search(r"(\d+) event", guardou[0]).group(1)) if len(guardou) == 1 else -1
+                diz(n >= (1 if liga else 0) and "nothing sent" in (guardou or [""])[0],
+                    f"{o_que}: o servidor guardou na memoria{' (ao ligar, ao menos um evento)' if liga else ''} "
+                    f"({guardou[:1] or 'sem a linha no log'})")
+        sozinho = list(tentativas)
+        diz(not sozinho, f"nenhum pedido saiu pela rede, de nenhum dos servidores ({sozinho[:3]})")
+        # o controle, num mock a parte: a busca que a pessoa pede vai ao YouTube, e tem de cair na armadilha
+        tmp = Path(tempfile.mkdtemp(prefix="ritmelli-metricas-"))
+
+        def busca(srv):
+            try:
+                srv.api("GET", "/api/search?q=teste&n=1", espera=20)
+            except OSError:
+                pass  # a armadilha fecha a conexao: o que conta e ter tentado
+            for _ in range(100):
+                if len(tentativas) > len(sozinho):
+                    break
+                time.sleep(0.1)
+        try:
+            _sobe_e(tmp, {"boas_vindas": True}, env, busca)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        diz(len(tentativas) > len(sozinho),
+            f"a busca que a pessoa pede cai na armadilha: ela pega ({tentativas[len(sozinho):][:1]})")
     except so_mock.Recusa as ex:
         diz(False, f"o cenario parou: {ex}")
     finally:
