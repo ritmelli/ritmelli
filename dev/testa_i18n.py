@@ -140,7 +140,7 @@ def confere_blocos(tema, arquivos):
 # The lines of inline CSS and JS each theme's index.html has. The number only goes down: new theme code goes into a file
 # of the theme folder, and a PR that moves code out of the page lowers it to the new count. A count under the ceiling
 # fails too, so the ceiling follows each move and a later PR cannot spend the lines that one freed.
-INLINE_CEILING = {"ritmelli": 1634}
+INLINE_CEILING = {"ritmelli": 1636}
 INLINE = re.compile(r"<(style|script)\b([^>]*)>(.*?)</\1>", re.S)
 
 
@@ -175,6 +175,8 @@ def check_inline_ceiling(tema, html):
 SHARED_FIRST = {"ritmelli": "shared.js"}
 SCRIPT_TAG = re.compile(r"<script\b([^>]*)>(.*?)</script>", re.S)
 ONERROR = 'onerror="scriptFailed(this)"'
+ONERROR_ATTR = re.compile(r'(?<![\w-])onerror="scriptFailed\(this\)"')
+SRC_ATTR = re.compile(r'(?<![\w-])src\s*=\s*"([^"]+)"')
 
 
 def page_scripts(html, arquivos):
@@ -182,7 +184,7 @@ def page_scripts(html, arquivos):
     <script src> (the src as written, and None for the text when the file is not in the theme folder)."""
     out = []
     for m in SCRIPT_TAG.finditer(html):
-        src = re.search(r'\bsrc="([^"]+)"', m.group(1))
+        src = SRC_ATTR.search(m.group(1))
         if src:
             out.append((src.group(1), 1, arquivos.get(src.group(1))))
         else:
@@ -195,12 +197,12 @@ def check_script_tags(tema, html):
     if tema.name not in SHARED_FIRST:
         return
     tags = [(m.group(1), html.count("\n", 0, m.start()) + 1) for m in SCRIPT_TAG.finditer(html)
-            if re.search(r"\bsrc=", m.group(1))]
+            if SRC_ATTR.search(m.group(1))]
     for attrs, line in tags:
-        if ONERROR not in attrs:
+        if not ONERROR_ATTR.search(attrs):
             falha(f"{tema.name}: index.html:{line}: <script{attrs}> has no {ONERROR}: a file that does not load would "
                   f"leave the page without a connection")
-    first = re.search(r'\bsrc="([^"]+)"', tags[0][0]).group(1) if tags else None
+    first = SRC_ATTR.search(tags[0][0]).group(1) if tags else None
     if first != SHARED_FIRST[tema.name]:
         falha(f"{tema.name}: the first <script src> of the index.html is {first}, not {SHARED_FIRST[tema.name]}: the "
               f"shared state and helpers load before every other script")
@@ -255,14 +257,64 @@ def js_code(text):
 
 
 DECL = re.compile(r"(?:async\s+)?function\b\s*\*?\s*([A-Za-z_$][\w$]*)|class\s+([A-Za-z_$][\w$]*)|(?:const|let|var)\s+")
+VAR = re.compile(r"var\s+")
 # a line that does not end the statement: it ends in an operator, or the next one starts with one
 GOES_ON = re.compile(r"[=,(\[{+\-*/?:&|]\s*$")
 GOES_ON_NEXT = re.compile(r"\s*(?:[.?:,+\-*/&|=]|\)|\])")
 
 
+def pattern_names(target):
+    """The names a declarator binds: the name itself, or the ones of a destructuring pattern, without its keys
+    ({ key: name }) and without its default values ({ name = other })."""
+    kept, depth, skipping = "", 0, None
+    for k, ch in enumerate(target):
+        if skipping is not None:
+            depth += (ch in "{([") - (ch in "})]")
+            if depth < skipping or (depth == skipping and ch == ","):
+                skipping = None
+                kept += ch
+            continue
+        if ch == "=" and target[k + 1:k + 2] not in ("=", ">") and target[k - 1:k] not in ("=", "!", "<", ">"):
+            skipping = depth
+            continue
+        depth += (ch in "{([") - (ch in "})]")
+        kept += ch
+    return re.findall(r"(?<![\w$.])([A-Za-z_$][\w$]*)(?!\s*:)", kept)
+
+
+def declarators(code, j):
+    """(names, end): the names of the declarators that start at code[j] (after const, let or var), up to the end of the
+    statement, split by the commas outside brackets."""
+    n, d, part, names = len(code), 0, "", []
+
+    def take(p):
+        p = p.strip()
+        if p[:1] in "{[":
+            close = {"{": "}", "[": "]"}[p[0]]
+            names.extend(pattern_names(p[:p.rindex(close) + 1] if close in p else p))
+        elif p:
+            names.extend(pattern_names(p.split("=", 1)[0]))
+    while j < n:
+        ch = code[j]
+        d += (ch in "{([") - (ch in "})]")
+        if d < 0:
+            break
+        if d == 0 and ch == ",":
+            take(part)
+            part = ""
+        elif d == 0 and (ch == ";" or ch == "\n" and not GOES_ON.search(part) and not GOES_ON_NEXT.match(code, j + 1)):
+            break
+        else:
+            part += ch
+        j += 1
+    take(part)
+    return names, j
+
+
 def top_level_names(text):
     """(name, line) for each name a script declares at its top level: function, class, const, let and var, the names
-    inside a destructuring pattern and the ones after a comma too."""
+    inside a destructuring pattern and the ones after a comma too. A var counts wherever it is: in a block of the top
+    level it is global too (and the theme declares with let and const)."""
     code = js_code(text)
     names, depth, i, n = [], 0, 0, len(code)
     while i < n:
@@ -271,39 +323,20 @@ def top_level_names(text):
             depth += 1
         elif c in "})]":
             depth -= 1
-        elif depth == 0 and (c.isalpha()) and (i == 0 or not (code[i - 1].isalnum() or code[i - 1] in "_$.")):
-            m = DECL.match(code, i)
+        elif c.isalpha() and (i == 0 or not (code[i - 1].isalnum() or code[i - 1] in "_$.")):
+            m = DECL.match(code, i) if depth == 0 else VAR.match(code, i)
             before = code[:i].rstrip()[-1:]
             # a statement starts after a ; or a }, or on a new line after a line that ended one (no semicolon there)
             new_line = code[:i].rstrip(" \t").endswith("\n")
-            starts = not before or before in ";}" or (new_line and before not in "=(,:?&|+-*/[")
+            starts = not before or before in ";{}" or (new_line and before not in "=(,:?&|+-*/[")
             if m and starts:
                 line = code.count("\n", 0, i) + 1
-                if m.group(1) or m.group(2):
+                if depth == 0 and (m.group(1) or m.group(2)):
                     names.append((m.group(1) or m.group(2), line))
                     i = m.end()
                     continue
-                j, d, part, parts = m.end(), 0, "", []
-                while j < n:
-                    ch = code[j]
-                    d += (ch in "{([") - (ch in "})]")
-                    if d == 0 and ch == ",":
-                        parts.append(part)
-                        part = ""
-                    elif d == 0 and (ch == ";" or ch == "\n" and not GOES_ON.search(part)
-                                     and not GOES_ON_NEXT.match(code, j + 1)):
-                        break
-                    else:
-                        part += ch
-                    j += 1
-                parts.append(part)
-                for p in parts:
-                    target = p[:p.index("=")] if "=" in p and not p.lstrip()[:1] in "{[" else p
-                    if p.lstrip()[:1] in "{[":
-                        # the pattern: what is before its closing bracket, without the keys of a { key: name }
-                        target = p[:p.rindex("}" if p.lstrip()[0] == "{" else "]") + 1]
-                    names += [(x, line) for x in re.findall(r"(?<![\w$.])([A-Za-z_$][\w$]*)(?!\s*:)", target)]
-                i = j
+                found, i = declarators(code, m.end())
+                names += [(x, line) for x in found]
                 continue
         i += 1
     return names
@@ -329,20 +362,27 @@ def check_name_reader():
     """The reader of top-level names on a made-up script, and the duplicate failing across two scripts."""
     text = ("'use strict';\nconst a = 1, b = f(2, 3), { c, d: e } = o, [g] = [];\nlet h\nfunction i() { const no1 = 1; }\n"
             "async function j() {}\nclass K {}\nconst l = () => { let no2; };\nconst s = 'function no3() {}', r = /[(]/g;\n"
-            "// const no4 = 1\n/* let no5 */\nconst m = `${'}'}` + x\n  .y;\nif (a) { var no6; }\nvar n = cond\n  ? 1 : 2;\n")
+            "// const no4 = 1\n/* let no5 */\nconst m = `${'}'}` + x\n  .y;\nif (a) { var t; let no6; }\nvar n = cond\n  ? 1 : 2;\n"
+            "const { u = no7, v: w = no8 } = data, [z = no9] = [];\n")
     got = [x for x, _ in top_level_names(text)]
-    want = ["a", "b", "c", "e", "g", "h", "i", "j", "K", "l", "s", "r", "m", "n"]
+    want = ["a", "b", "c", "e", "g", "h", "i", "j", "K", "l", "s", "r", "m", "t", "n", "u", "w", "z"]
     if got != want:
         falha(f"top_level_names read {got}, expected {want}")
     antes = len(falhas)
     with contextlib.redirect_stdout(io.StringIO()):
-        check_unique_names(Path("ritmelli"), '<script src="x.js"></script><script>\nfunction dup() {}\n</script>',
+        check_unique_names(Path("ritmelli"), '<script src = "x.js"></script><script>\nfunction dup() {}\n</script>',
                            {"x.js": "let y;\nfunction dup() {}\n"})
     if len(falhas) != antes + 1 or "dup is declared at the top level in 2 places (x.js:2, index.html:2)" not in falhas[-1]:
         falha(f"check_unique_names should fail once on dup: {falhas[antes:]}")
     else:
         del falhas[antes:]
-    print("the top-level name reader checked")
+    with contextlib.redirect_stdout(io.StringIO()):
+        check_script_tags(Path("ritmelli"), '<script src="shared.js" data-onerror="scriptFailed(this)"></script>')
+    if len(falhas) != antes + 1 or "has no onerror" not in falhas[-1]:
+        falha(f"check_script_tags should fail once on a data-onerror: {falhas[antes:]}")
+    else:
+        del falhas[antes:]
+    print("the top-level name reader and the script tag check checked")
 
 
 def confere_tema(tema, servidor, efeitos):

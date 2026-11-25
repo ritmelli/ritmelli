@@ -23,6 +23,7 @@ MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+
 SCRIPT_SRC = re.compile(r'<script src="([^"]+)"[^>]*></script>')
 LINK_CSS = re.compile(r'<link rel="stylesheet" href="([^"]+)"[^>]*>')
 TAG = re.compile(r"^\s*</?(?:script|style)\b[^>]*>\s*$")
+MIN_PIECE = 2   # the shortest piece of a split run that counts as moved: a lone "}" would match anywhere
 
 
 def reader(rev, theme):
@@ -54,23 +55,47 @@ def rebuild(read):
 
 
 def split_moves(a, b):
-    """(moved, removed, added): the runs of a removed whole and added back elsewhere, as (lines, where in a, where in
-    b), and the lines left over on each side."""
+    """(moved, removed, added): the runs of a removed and added back elsewhere, as (lines, where in a, where in b), and
+    the lines left over on each side. A removed run that is not added back whole is split into the longest pieces
+    (MIN_PIECE lines or more) that are, as when two blocks next to each other go to two files."""
     ops = difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes()
     gone = [(i1, a[i1:i2]) for tag, i1, i2, _, _ in ops if tag in ("delete", "replace")]
     new = [(j1, b[j1:j2]) for tag, _, _, j1, j2 in ops if tag in ("insert", "replace")]
-    moved, used = [], set()
-    # the longest runs first, so a short run does not take the place of a longer one inside the same added lines
+    moved, used, left = [], set(), set()
+
+    def find(run):
+        """(k, pos) of the free place in the added lines that holds run, or None."""
+        for k, (_, block) in enumerate(new):
+            for pos in range(len(block) - len(run) + 1):
+                if block[pos:pos + len(run)] == run and not any((k, pos + q) in used for q in range(len(run))):
+                    return k, pos
+        return None
+
+    def take(run, i, k, pos):
+        used.update((k, pos + q) for q in range(len(run)))
+        moved.append((run, i, new[k][0] + pos))
+
+    # whole runs first, the longest first, so a short run does not take the place of a longer one
+    pending = []
     for i, run in sorted(gone, key=lambda x: -len(x[1])):
-        for k, (j, block) in enumerate(new):
-            pos = next((p for p in range(len(block) - len(run) + 1)
-                        if block[p:p + len(run)] == run and not any((k, p + q) in used for q in range(len(run)))), None)
-            if pos is not None:
-                used.update((k, pos + q) for q in range(len(run)))
-                moved.append((run, i, j + pos))
-                break
-    moved_from = {i for _, i, _ in moved}
-    removed = [(i, line) for i, run in gone if i not in moved_from for line in run]
+        place = find(run)
+        if place:
+            take(run, i, *place)
+        else:
+            pending.append((i, run))
+    for i, run in pending:
+        p = 0
+        while p < len(run):
+            for size in range(len(run) - p, MIN_PIECE - 1, -1):
+                place = find(run[p:p + size])
+                if place:
+                    take(run[p:p + size], i + p, *place)
+                    p += size
+                    break
+            else:
+                left.add(i + p)
+                p += 1
+    removed = [(i, a[i]) for i in sorted(left)]
     added = [(j + p, line) for k, (j, block) in enumerate(new) for p, line in enumerate(block) if (k, p) not in used]
     return moved, removed, added
 

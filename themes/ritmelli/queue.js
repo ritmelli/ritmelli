@@ -338,7 +338,6 @@ $('#resultados').addEventListener('click', e => {
   ul.addEventListener('pointercancel', e => soltar(e, true));
 })();
 
-/* each roller of the wall shades its top edge when it scrolls or changes size (sombrear, in shared.js) */
 document.querySelectorAll('.rolo').forEach(r => {
   r.addEventListener('scroll', () => { fecharMenu(false); sombrear(r); }, { passive: true });
   const ro = new ResizeObserver(() => sombrear(r));

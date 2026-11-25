@@ -68,20 +68,22 @@ const I18N = (() => {
 })();
 /* a theme file that does not load (the server was off when the page opened, a cut connection): the onerror of every
    <script src> of the page calls scriptFailed. The start of the page calls functions from several files, so without
-   one of them it never connects. Once the parser is done, the page shows the off-air card and loads again as soon as
-   the file answers. The transporte.js alone is left to its own retry (carregarTransporte), which reconnects without
-   loading the page again */
-const scriptsFailed = [];
+   one of them it never connects. Once the parser is done, the page shows the off-air card (which a connection made in
+   the meantime does not take down: see online) and loads again as soon as the file answers, at the address it opened
+   with (the ?parear= of the QR, which the page takes out of the address, comes back). The transporte.js alone is
+   left to its own retry (carregarTransporte), which reconnects without loading the page again */
+const scriptsFailed = [], firstAddress = location.href;
 function scriptFailed(s) { scriptsFailed.push(s.getAttribute('src')); }
+const scriptsMissing = () => scriptsFailed.filter(f => f !== 'transporte.js');
 document.addEventListener('DOMContentLoaded', () => {
-  const missing = scriptsFailed.filter(f => f !== 'transporte.js');
+  const missing = scriptsMissing();
   if (!missing.length) return;
   try { mostrarFora(); } catch (e) { document.getElementById('fora').hidden = false; }
   const probe = () => {
     const l = document.createElement('link');
     // a query of its own each time: the browser does not fetch again a preload that failed on the same address
     l.rel = 'preload'; l.as = 'script'; l.href = missing[0] + '?retry=' + Date.now();
-    l.onload = () => location.reload();
+    l.onload = () => { if (location.href === firstAddress) location.reload(); else location.replace(firstAddress); };
     l.onerror = () => { l.remove(); setTimeout(probe, 3000); };
     document.head.append(l);
   };
@@ -1998,7 +2000,7 @@ const redeMudou = () => { if (!$('#fora').hidden && !S.online && !S.desligado &&
 addEventListener('online', redeMudou); addEventListener('offline', redeMudou);
 if (navigator.connection) navigator.connection.addEventListener('change', redeMudou);
 function online(on) {
-  if (on === S.online) return;
+  if (on === S.online || (on && scriptsMissing().length)) return;   // a file of the theme is missing: the card stays
   S.online = on; agulhasPixel();
   const lamp = $('#lamp'), cx = $('#conexao');
   if (on) {
