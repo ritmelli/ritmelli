@@ -306,13 +306,13 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 ### Dois Próximos juntos
 
 O `POST /api/next` que roda enquanto outro ainda corre divide o avanço dele: os dois tocam uma entrada só e respondem a
-mesma. O que conta é quando cada comando roda (no executor do servidor), não quando o pedido chegou: a janela abre
-quando o primeiro registra o grupo dos Próximos (logo no começo do comando) e fecha quando ele o retira, ao terminar,
-depois de gravar a posição do disco que saiu. A resposta dele sai logo depois, e o comando que só roda depois disso já é
-um Próximo novo. Ela vale enquanto o prato segue na linha do primeiro: o mesmo disco, sem pulo na barra, ou a linha que
-o avanço dele acabou de publicar. Fora dela, o segundo avança sozinho, como um Próximo novo ("depois de o comando do
-primeiro terminar", abaixo). O segundo que divide o avanço espera o resultado dele até 5 s; se ainda não saiu, responde
-409:
+mesma. O que conta é quando cada comando roda (no executor do servidor), não quando o pedido chegou: o primeiro registra
+o grupo dos Próximos logo no começo do comando e o retira ao terminar, depois de gravar a posição do disco que saiu, e a
+resposta dele sai logo depois. Enquanto o grupo ainda espera o avanço, inclusive com a troca do disco publicando, o
+segundo se junta a ele se o prato segue na linha do primeiro (o mesmo disco, sem pulo na barra) ou na linha que o avanço
+dele está publicando. Depois que o grupo tem o resultado, só se junta quem chega se ele tocou uma entrada e o prato
+segue na linha que ele publicou. Fora disso, o segundo avança sozinho, como um Próximo novo. O segundo que se junta
+espera o resultado até 5 s; se ainda não saiu, responde 409:
 
 | o segundo roda | o prato entre os dois | o primeiro responde | o segundo responde |
 |---|---|---|---|
@@ -322,6 +322,7 @@ primeiro terminar", abaixo). O segundo que divide o avanço espera o resultado d
 | com o primeiro gravando a posição | nada mudou | a primeira da fila | a mesma, na hora |
 | com o primeiro gravando a posição | parou, pulou na barra ou trocou de disco | a primeira da fila | a seguinte, que ele toca |
 | depois de o comando do primeiro terminar | | a primeira da fila | a seguinte |
+| depois de o primeiro achar a fila vazia, antes de ele terminar | uma entrada entrou na fila | 409 | a entrada que entrou, que ele toca |
 
 O `dev/testa_comandos.py` confere cada linha desta tabela.
 

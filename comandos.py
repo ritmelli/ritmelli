@@ -36,7 +36,7 @@ CEDEU = object()
 # concilia: take the pending switch out of the engine, close it and go round again
 FECHA = object()
 # the advance that carries on past the reconcile loop (avanca)
-_SEGUE = object()
+_CONTINUE_ADVANCE = object()
 # how many times an advance is tried on the same platter when another reservation resolved without playing (the
 # enqueue on a stopped platter, the similar track whose stream did not open)
 ADVANCE_TRIES = 3
@@ -293,7 +293,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
         nonlocal em_curso, r
         if grupo is not None and grupo.r is not None:
             em_curso = grupo.r  # o avanco que outro fez para este Proximo enquanto ele chegava (antes da virada)
-            return _SEGUE
+            return _CONTINUE_ADVANCE
         if v is not None:
             if pular and grupo is not None:
                 grupo.deck, grupo.linha = E.line()  # quem chega agora junta neste, que concilia
@@ -319,11 +319,11 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                 p.liga(r)
         if grupo is not None:
             grupo.liga(em_curso or r)
-        return _SEGUE
+        return _CONTINUE_ADVANCE
     with A.fila_lock:
         # sem a entrada (ja saiu da fila), o Proximo segue para a primeira
         res = concilia(A, reserve, closed=lambda x: x if pular and x is not None else FECHA)
-        if res is not _SEGUE:
+        if res is not _CONTINUE_ADVANCE:
             return res
     if em_curso is not None:
         return CEDEU if cede else em_curso.espera()

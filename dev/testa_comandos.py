@@ -987,7 +987,7 @@ def bloco(A, E):
         A.run_download(j, "ccccccccccc")
     confere(no_prato(E) == "d1" and E.status() == "playing",
             f"with another record on the platter, the failed download leaves it playing ({no_prato(E)}, {E.status()})")
-    # the platter swaps after the first check and before stop takes the engine's lock: stop's pode sees the new record
+    # the platter swaps before stop takes the engine's lock: stop's pode sees the new record
     j = A.new_job("failing", True, "ddddddddddd")
     E.espera({"id": "job-falha2", "title": "loading", "job": j["id"], "path": None, "stream": True,
               "youtube_id": None, "duration": None, "lufs": -14.0})
@@ -2461,6 +2461,41 @@ def two_nexts_table(A, E):
          "d3", []),
         ("after the first returns", after_returning, "nothing", nothing, "x", "y", "d3", []),
     ]
+    # a group that already resolved with nothing to play takes no one: the first found the queue empty and is still
+    # finishing its command; an entry comes in, and the second plays it on its own (the last row of the table)
+    E.cancelar_pronto()
+    E.set_loop(False)
+    E.virou = None
+    cmd.limpar_fila(A)
+    A.parado_sem_fila = None
+    cmd.tocar(A, "d1")
+    ate(lambda: E.status() == "playing")
+    real_avanca, held, release = cmd.avanca, threading.Event(), threading.Event()
+
+    def advance_then_hold(*a, **kw):
+        r = real_avanca(*a, **kw)
+        if not held.is_set():  # only the first Proximo's advance holds
+            held.set()
+            release.wait(30)  # only the test releases it (the finally too)
+        return r
+    try:
+        with mock.patch.object(cmd, "avanca", side_effect=advance_then_hold):
+            t1, r1 = em_thread(cmd.pular, A)
+            if not held.wait(5):
+                confere(False, "the first Proximo never got past its advance")
+            x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+            t2, r2 = em_thread(cmd.pular, A)
+            t2.join(5)
+            early = list(r2)
+            release.set()
+            t1.join(5)
+    finally:
+        release.set()
+    confere(r1 == [None] and early and early[0] is x and no_prato(E) == "d2" and fila(A) == [],
+            f"second Proximo after the first found the queue empty, before it finishes: first None (409), second the "
+            f"entry that came in, on its own (got {r1}, {early and (early[0] or {}).get('id')}, {no_prato(E)}, "
+            f"{fila(A)})")
+
     for when, moment, between, change, first, second, platter, queue in table:
         x, y = fresh()
         with contextlib.redirect_stderr(io.StringIO()):

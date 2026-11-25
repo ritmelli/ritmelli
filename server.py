@@ -1270,7 +1270,7 @@ class App:
         montada vai para o fim. As parecidas do Automatico ficam sempre depois do que o usuario pos. A fila muda no
         mesmo trecho do _qlock em que a passagem preparada e conferida (_confere_preparo_sob), como em toda mudanca
         da fila (_change_queue)."""
-        def poe():
+        def insert_entry():
             if seguir:
                 self.fila.insert(0, x)
                 if self.fila_ordem is not None:
@@ -1280,15 +1280,15 @@ class App:
                 self.fila_ordem.insert(antes_das_parecidas(self.fila_ordem), x)
             else:
                 self.fila.insert(antes_das_parecidas(self.fila), x)
-        self._change_queue(poe)
+        self._change_queue(insert_entry)
 
     def _tirar(self, x):
         """Com fila_lock: sai da fila e da ordem montada."""
-        def tira():
+        def remove_entry():
             self.fila.remove(x)
             if self.fila_ordem is not None and x in self.fila_ordem:
                 self.fila_ordem.remove(x)
-        self._change_queue(tira)
+        self._change_queue(remove_entry)
 
     def _tirar_se(self, x):
         """Com fila_lock: o _tirar, se x ainda esta na fila."""
@@ -1373,9 +1373,9 @@ class App:
 
     def _replace_queue(self, fila, ordem):
         """With fila_lock: the queue and the order the user built become fila and ordem (_change_queue)."""
-        def troca():
+        def replace_queue():
             self.fila, self.fila_ordem = fila, ordem
-        self._change_queue(troca)
+        self._change_queue(replace_queue)
 
     def tirar_da_fila(self, qid, recusar=False):
         with self.fila_lock:

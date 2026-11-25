@@ -153,11 +153,11 @@ class Automatico:
             A.mix = sorted([m for m in mix if m["youtube_id"] not in usadas]
                            + [x for x in bloco if x["youtube_id"] not in usadas], key=lambda c: c.get("ordem", 0))
 
-        def troca():
+        def replace_auto_tail():
             A.fila[k:] = nova
             if A.fila_ordem is not None:
                 A.fila_ordem = [x for x in A.fila_ordem if x["qid"] not in na_bloco] + nova
-        A._change_queue(troca)
+        A._change_queue(replace_auto_tail)
         return entrou
 
     def _vigia_auto(self):
