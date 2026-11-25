@@ -39,3 +39,10 @@ saindo da pasta do tema. O bloco que estava dentro de um `@media` do `<style>` l
 arquivo, e o `<style>` fecha o `@media` antes do `<link>` e abre de novo depois. O que um gerador de `dev/` desenha
 mora em `gerado/` (o `gerado/molduras.css`, por exemplo): o gerador grava o arquivo inteiro e não mexe no
 `index.html`, e o que se muda à mão ali some na próxima vez que ele roda.
+
+The base CSS of the theme is out of the page too, one marked block per file, in the order the page loads them:
+`base.css` (the fonts, the colors and the reset), `buttons.css`, `grid.css`, `top-bar.css`, `turntable.css`,
+`receiver.css`, `devices.css`, `wall.css`, `dialogs.css`, `phone.css`, `pedalboard.css`, `home.css` and
+`skin-vars.css`. The CSS still inline has its blocks marked already, ready to move. The `dev/testa_i18n.py` keeps a
+ceiling on the lines of inline CSS and JS left in the `index.html` (`INLINE_CEILING`): it only goes down, new theme
+code goes into a file of the folder, and the count goes to the PR summary.

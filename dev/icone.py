@@ -5,7 +5,7 @@ disco com as marcas do prato e o braco), desenhado por codigo em cada tamanho.
 
 Grava em icone/ o ritmelli.ico (o do exe, do setup e da aba do navegador: 16, 20, 24, 32, 40, 48, 64 e
 256 px) e o toque.png (180 px, de fundo cheio: o icone da tela inicial do celular). Com --instalador,
-grava tambem as imagens do assistente do Inno Setup nessa pasta (a instalador/ do ritmelli-server).
+grava tambem as imagens do assistente do Inno Setup nessa pasta (a instalador/ deste repo).
 
 Pixel art reduzida pelo Windows fica borrada: por isso cada tamanho do .ico e desenhado no proprio
 tamanho, e o de 256 e o de 64 ampliado 4 vezes. O de 16 e a mao (MAPA_16): por formula, nele o braco e

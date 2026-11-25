@@ -565,6 +565,33 @@ class TestaPastaProtegida(Base):
         self.assertEqual(self.cmd.comandos, [[mf.SCHTASKS, "/delete", "/tn", mf.TAREFA, "/f"]])
         self.assertEqual(os.path.dirname(mf.SCHTASKS).lower(), mf.SYSTEM32.lower())
 
+    def test_task_create_protected(self):
+        """The executable's tarefa_cria with the folder protected: schtasks /create (System32 path) from a UTF-16
+        XML that runs the executable, escaped, and the temporary XML is gone afterwards."""
+        exe = r"C:\Program Files\R&D\ritmelli.exe"
+        carrega(True, exe)
+        self.tearDown_winreg()
+        self.falsos()
+        seen = []
+        record = self.cmd
+
+        def run(args, **kw):
+            args = list(args)
+            if "/create" in args:
+                xml = args[args.index("/xml") + 1]
+                with open(xml, encoding="utf-16") as f:
+                    seen.append((xml, f.read()))
+            return record(args, **kw)
+
+        with mock.patch.object(mf.subprocess, "run", run), mock.patch.object(sys, "executable", exe):
+            mf.tarefa_cria()
+        created = [c for c in self.cmd.de("schtasks") if c[1] == "/create"]
+        self.assertEqual([c[:4] for c in created], [[mf.SCHTASKS, "/create", "/tn", mf.TAREFA]])
+        self.assertEqual(len(seen), 1)
+        xml, text = seen[0]
+        self.assertIn(r"<Command>C:\Program Files\R&amp;D\ritmelli.exe</Command>", text)
+        self.assertFalse(os.path.exists(xml), "the temporary XML was left behind")
+
 
 if __name__ == "__main__":
     unittest.main()
