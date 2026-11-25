@@ -77,4 +77,4 @@ Rode na raiz, com o venv: `$env:PYTHONUTF8 = '1'; python -m ruff check .; python
 onde entra teste novo: o [Contributing](README.md#contributing) do README). O check "Testa o PR" roda o mesmo; print
 mudado no `compara` só bloqueia com a etiqueta `extracao-tema` (sem ela, fica no artefato). A fila de merge da `main`
 exige ele e o "Trusted author": PR de quem não é um dos dois mantenedores só passa aprovado por um deles no head atual.
-Sem bypass nem `--admin`; o `gh pr merge` cai no auto-merge, vedado: use a `enqueuePullRequest`, com `expectedHeadOid`.
+Sem bypass nem `--admin`; `gh pr merge` cai no auto-merge, vedado: é o GraphQL `enqueuePullRequest`, `expectedHeadOid`.
