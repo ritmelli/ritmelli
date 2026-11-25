@@ -429,6 +429,12 @@ async def aviso_no_chrome(base, botao):
                                                       expression="fetch('/api/metricas').then(r => r.json())")
                                             ).get("result", {}).get("value")
                     await js("document.querySelector('#dlg-metricas button[value=sim]').click()")
+                # o POST sai do close do aviso: o Chrome fica ate a linha do Microfone e fone mostrar a escolha nova
+                for _ in range(50):
+                    if await js("!document.querySelector('#dlg-metricas').open && "
+                                "document.querySelector('#dd-met-btn').dataset.ligar === '0'"):
+                        break
+                    await asyncio.sleep(0.1)
             elif r["abriu"] and botao:
                 r["foco"] = await js(foco)
                 if botao == "esc":
@@ -483,11 +489,16 @@ def cenario_metricas():
         print(f"{'OK   ' if ok else 'FALHA'} {msg}", flush=True)
 
     def le_config(tmp, liga):
-        """O POST da escolha, gravado sob a trava do cfg: espera ate 5 s pela escolha (liga) no texto 2."""
+        """O POST da escolha, gravado sob a trava do cfg: espera ate 5 s pela escolha (liga) no texto 2 e, ao ligar,
+        pelo "dia" no metricas.json, que o vigia grava depois de por o "ativo" na fila (o evento que o log conta)."""
         for _ in range(50):
-            g = json.loads((tmp / "dados" / "config.json").read_text(encoding="utf-8"))
-            if g.get("metricas") is liga and g.get("metricas_texto") == 2:
-                break
+            try:
+                g = json.loads((tmp / "dados" / "config.json").read_text(encoding="utf-8"))
+                if g.get("metricas") is liga and g.get("metricas_texto") == 2:
+                    if not liga or json.loads((tmp / "dados" / "metricas.json").read_text(encoding="utf-8")).get("dia"):
+                        break
+            except (OSError, ValueError):
+                pass  # o arquivo no meio da troca (save_json), ou o metricas.json ainda por gravar
             time.sleep(0.1)
 
     try:

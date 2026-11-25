@@ -35,7 +35,8 @@ substituído por outro em caso de reinstalação), das versões do Ritmelli e do
 - o efeito de voz ativado, sempre que um efeito é ativado;
 - a cada meia hora de uso e ao fechar o aplicativo: por quantos segundos a música tocou, por quantos a voz ficou com
   efeito e por quantos cada efeito ficou ativo;
-- no mesmo momento, a saúde do som que vai para o jogo naquela meia hora (o evento `audio`): quantas vezes o som
+- também a cada meia hora e ao fechar o aplicativo, a saúde do som que vai para o jogo nessa meia hora (o evento
+  `audio`): quantas vezes o som
   falhou porque o microfone ficou sem música para ler (`secas`), quantas dessas foram numa passagem entre músicas
   (`secas_passagem`) e quantas durante um ajuste de andamento (`secas_esticamento`), a menor folga de som à frente do
   microfone (`folga_min_ms`) e a maior demora entre dois envios (`volta_max_ms`), quantas passagens foram preparadas
@@ -110,7 +111,8 @@ new one if you reinstall), the Ritmelli and Windows versions, and the Windows la
 - which voice effect was turned on, each time one is turned on;
 - every half hour of use and when the app closes: how many seconds music played, how many seconds a voice effect was
   on, and how many seconds each effect stayed on;
-- at the same time, the health of the sound sent to the game during that half hour (the `audio` event): how many times
+- also every half hour and when the app closes, the health of the sound sent to the game during that half hour
+  (the `audio` event): how many times
   the sound dropped out because the microphone had no music to read (`secas`), how many of those happened during a
   transition between songs (`secas_passagem`) and how many during a tempo adjustment (`secas_esticamento`), the
   smallest buffer of sound ahead of the microphone (`folga_min_ms`) and the longest delay between two sends

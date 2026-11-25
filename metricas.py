@@ -64,7 +64,8 @@ EVENTOS = {
     "efeito": {"efeito"},
     "uso": {"musica_s", "voz_s"},
     "efeito_tempo": {"efeito", "segundos"},  # um por efeito usado, junto do "uso": o painel soma por efeito
-    # a saude da saida para o jogo na janela (SaudeAudio.fecha), junto do "uso", so com o texto de agora aceito
+    # a saude da saida para o jogo na janela (SaudeAudio.fecha), a cada USO_S dela (o _audio_desde) e ao fechar, so
+    # com o texto de agora aceito
     "audio": {"secas", "folga_min_ms", "volta_max_ms", "passagens", "esticamentos", "esticamento_ms",
               "secas_passagem", "secas_esticamento", "leitor_perdido", "leitor_perdido_s", "fx_no_filtro_s",
               "mic_reserva_s", "voz_taxa"},
@@ -482,9 +483,9 @@ class Metricas:
             pass
 
     def _manda_fila(self):
-        if not self.ativa():
-            return
-        with self._lock:
+        with self._lock:  # sob a trava da fila: o desligar que limpa a fila nao deixa um lote escapar
+            if not self.ativa():
+                return
             lote, geracao = [], self._geracao
             while not self.fila.empty() and len(lote) < 100:
                 lote.append(self.fila.get_nowait())
@@ -532,9 +533,12 @@ class Metricas:
             if s >= 1:
                 self.evento("efeito_tempo", efeito=ef, segundos=round(s))
 
-    def _manda_audio(self):
-        """O "audio" da janela que vale (a cada USO_S dela e ao desligar), e a proxima comeca."""
+    def _manda_audio(self, prazo=False):
+        """O "audio" da janela que vale (a cada USO_S dela, com prazo, e ao desligar), e a proxima comeca. O prazo se
+        confere sob a trava: a janela que comecou agora (uma escolha no meio) nao fecha pelo prazo da de antes."""
         with self._audio_lock:
+            if prazo and time.monotonic() - self._audio_desde < USO_S:
+                return
             self._fecha_audio(manda=self._audio_vale and self.texto() >= TEXTO)
             self._audio_desde = time.monotonic()
 
@@ -593,8 +597,7 @@ class Metricas:
                 self._olha(min(agora - ultimo, AMOSTRA_S * 3))
                 if agora - self._ultimo_uso >= USO_S:
                     self._fecha_uso()
-                if agora - self._audio_desde >= USO_S:
-                    self._manda_audio()
+                self._manda_audio(prazo=True)
                 if agora - ultimo_envio >= ENVIO_S:
                     self._manda_fila()
                     ultimo_envio = agora
