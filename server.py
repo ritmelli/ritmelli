@@ -618,6 +618,7 @@ class App:
             lib_json.write_text((LIB / "library.json").read_text(encoding="utf-8"), encoding="utf-8")
         self.cfg = (json.loads(self.cfg_path.read_text(encoding="utf-8"))
                     if self.cfg_path.exists() else {})
+        self.cfg_lock = threading.Lock()  # quem muda o cfg depois de ligar muda e grava com ela (grava_cfg)
         self.cfg.pop("lan_token", None)  # a chave do link do celular de antes, que saiu (hoje e o pareamento.py)
         self.lan_ip = None
         self.celulares = par.Pareamento(data_dir / "celulares.json")
@@ -691,7 +692,7 @@ class App:
                 setattr(self.engine, k, v if isinstance(v, bool) else max(0.0, min(1.0, float(v))))
         self.engine.liga()
         # os dados de uso e os erros (metricas.py, #102): so saem com a escolha de quem usa, e nunca no --mock
-        self.metricas = met.Metricas(self.cfg, lambda: save_json(self.cfg_path, self.cfg), mock=mock)
+        self.metricas = met.Metricas(self.cfg, lambda ligar: self.grava_cfg(metricas=ligar), mock=mock)
         self.metricas.instala_ganchos()
         threading.Thread(target=self.metricas.vigia, args=(self.engine,), daemon=True, name="metricas").start()
         threading.Thread(target=self._vigia_fila, daemon=True).start()
@@ -771,12 +772,19 @@ class App:
         b = t and (t.get("ini") or t.get("fim"))
         return dict(x, bpm=round(b, 1)) if b else dict(x)
 
+    def grava_cfg(self, **mudancas):
+        """Muda e grava o config.json sob uma trava so: as escolhas do som, as boas-vindas e as metricas vem de threads
+        diferentes, e o json.dumps de uma nao pode ver o cfg mudando no meio (dictionary changed size during
+        iteration), nem uma gravacao velha trocar o arquivo depois da nova."""
+        with self.cfg_lock:
+            self.cfg.update(mudancas)
+            save_json(self.cfg_path, self.cfg)
+
     def save_cfg(self):
         e = self.engine
-        self.cfg.update(mic=e.devices["mic"], monitor=e.devices["monitor"],
-                        vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
-                        voice_mon_vol=e.voice_mon_vol, auto=self.auto, volume_auto=e.volume_auto)
-        save_json(self.cfg_path, self.cfg)
+        self.grava_cfg(mic=e.devices["mic"], monitor=e.devices["monitor"],
+                       vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
+                       voice_mon_vol=e.voice_mon_vol, auto=self.auto, volume_auto=e.volume_auto)
 
     def boas_vindas_pendentes(self):
         """As boas-vindas aparecem na primeira vez: prateleira vazia e nunca fechadas. Quem ja usava o app antes delas
@@ -784,8 +792,7 @@ class App:
         return not self.cfg.get("boas_vindas") and not self.lib.items
 
     def boas_vindas_vistas(self):
-        self.cfg["boas_vindas"] = True
-        save_json(self.cfg_path, self.cfg)
+        self.grava_cfg(boas_vindas=True)
 
     # jobs -----------------------------------------------------------------
     def new_job(self, label, play, alvo=None):

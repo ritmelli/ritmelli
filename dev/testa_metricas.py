@@ -40,7 +40,9 @@ class Motor:
 
 def nova(cfg=None, instalador=None, tmp=None):
     met.escolha_do_instalador = lambda: instalador
-    m = met.Metricas(cfg if cfg is not None else {}, lambda: None, estado=Path(tmp) / "metricas.json")
+    cfg = cfg if cfg is not None else {}
+    # o gravar e o da App: muda o metricas do cfg (e la grava o config.json, sob a trava do cfg)
+    m = met.Metricas(cfg, lambda ligar: cfg.update(metricas=ligar), estado=Path(tmp) / "metricas.json")
     m.fora = False  # pelo codigo ficaria "fora": o teste liga
     enviados = []
     m.envia = lambda url, dados, cab: enviados.append((url, dados, cab)) or 200
@@ -55,7 +57,7 @@ with tempfile.TemporaryDirectory() as tmp:
     confere(m.situacao() == "ligada", "o instalador marcou: ligada")
     m, _ = nova(cfg={"metricas": False}, instalador=True, tmp=tmp)
     confere(m.situacao() == "desligada", "a escolha feita no Ritmelli vale sobre a do instalador")
-    m2 = met.Metricas({}, lambda: None, mock=True, estado=Path(tmp) / "x.json")
+    m2 = met.Metricas({}, lambda ligar: None, mock=True, estado=Path(tmp) / "x.json")
     confere(m2.situacao() == "fora", "no --mock: fora, nunca envia")
 
     # desligada ou sem escolha: nada sai

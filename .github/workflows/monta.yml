@@ -87,6 +87,12 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: python dev/testa_pareamento.py
+      # a gravação dos .json dos dados (pastas.save_json): duas gravações ao mesmo tempo no mesmo arquivo e o arquivo
+      # aberto por outro programa (o Windows recusa a troca). Só a biblioteca padrão, numa pasta temporária
+      - name: Confere a gravação dos dados
+        env:
+          PYTHONUTF8: '1'
+        run: python dev/testa_grava.py
       # o Inno Setup do build à mão, na pasta do usuário, que é a primeira onde o monta.ps1 procura (a máquina do
       # GitHub pode trazer outra versão em Program Files)
       - name: Inno Setup 6.7.3
