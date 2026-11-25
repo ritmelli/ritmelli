@@ -511,7 +511,7 @@ jobs:
               if [ "$consulta" = erro ]; then
                 echo "❌ a consulta das execuções da fila neste commit falhou: rode este job de novo"
               else
-                echo "❌ em 4 consultas, nenhuma execução aprovada da fila apareceu para este commit: os testes dele não rodaram aqui (ele chegou à \`main\` sem a fila, ou a da fila não passou)"
+                echo "❌ em 4 consultas, nenhuma execução aprovada da fila apareceu para este commit: os testes dele não rodaram aqui"
               fi
               echo
             fi
@@ -526,9 +526,9 @@ jobs:
           } > resumo.md
           cat resumo.md >> "$GITHUB_STEP_SUMMARY"
           # one comment per PR, updated on every run. On a fork PR the token is read only; outside a PR there is none.
-          # A comment that does not go out (a 502 from GitHub) is tried again; after the last try the check fails with
-          # that reason, since the comment on the PR is still the one of another run (it read "algo falhou" on a PR
-          # whose run passed)
+          # A comment that GitHub does not confirm (a 502) is tried again; after the last try the check fails with that
+          # reason, since the comment on the PR may be missing or another run's (one read "algo falhou" on a PR whose run
+          # passed)
           if [ "$DO_REPO" = true ]; then
             comentou=false
             for espera in 5 20 0; do
@@ -536,8 +536,8 @@ jobs:
               [ "$espera" -gt 0 ] && sleep "$espera"
             done
             if ! $comentou; then
-              echo "::error::the summary comment on the PR did not go out in 3 tries, so the comment there is from another run: re-run this job"
-              echo "**❌ o comentário do resumo no PR não saiu em 3 tentativas: o que está lá é de outra execução. Rode este job de novo.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::GitHub did not confirm the summary comment on the PR in 3 tries: the comment there may be missing or out of date. Re-run this job"
+              echo "**❌ o GitHub não confirmou o comentário do resumo no PR em 3 tentativas: o de lá pode faltar ou estar desatualizado. Rode este job de novo.**" >> "$GITHUB_STEP_SUMMARY"
               exit 1
             fi
           fi

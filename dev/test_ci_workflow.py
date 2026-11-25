@@ -10,7 +10,9 @@ r"""Checks the parts of the .github/workflows/testa.yml that no PR run exercises
 - the "test without destination" lock of the dev/testa_tudo.py, on a folder of its own: it sees the dev/testa_* and the
   dev/test_* tests, and only those.
 
-Standard library only, plus the bash of Git for Windows (or the bash of the PATH outside Windows).
+Standard library only, plus the bash of Git for Windows (or the bash of the PATH outside Windows) for the run block.
+Without that bash, on a PC, the run block is skipped with a "ficou de fora" line (which the COMPLETO of the
+dev/testa_tudo.py counts as a failure); on GitHub Actions it fails.
 
     python dev/test_ci_workflow.py
 
@@ -138,6 +140,10 @@ def run_summary(bash, block, event, states, comment_fails=0, queue_url="", queue
 
 def test_summary_block(all_jobs):
     bash = find_bash()
+    if not bash and not os.environ.get("GITHUB_ACTIONS"):
+        # the marker line of dev/testa_tudo.py (PULOU): fine in the --so-stdlib, a failure in the COMPLETO
+        print("--   o bloco do Testa o PR ficou de fora: no bash of Git for Windows here", flush=True)
+        return
     check(bool(bash), "a bash to run the block (Git for Windows, or bash on the PATH)")
     if not bash:
         return
@@ -156,8 +162,8 @@ def test_summary_block(all_jobs):
 
     code, out, summary, calls = run_summary(bash, block, "pull_request", ok5, comment_fails=9)
     comments = [c for c in calls if c.startswith("gh pr comment")]
-    check(code != 0 and len(comments) == 3 and "the summary comment on the PR did not go out" in out
-          and "não saiu em 3 tentativas" in summary,
+    check(code != 0 and len(comments) == 3 and "GitHub did not confirm the summary comment" in out
+          and "não confirmou o comentário do resumo no PR em 3 tentativas" in summary,
           f"a comment that never goes out fails the check after 3 tries, saying so (exit {code}, {len(comments)} tries)")
 
     code, out, summary, calls = run_summary(bash, block, "push", on_push, queue_url="https://example.invalid/queue")
@@ -167,7 +173,8 @@ def test_summary_block(all_jobs):
 
     code, out, summary, calls = run_summary(bash, block, "push", on_push, queue_url="")
     queries = [c for c in calls if "event=merge_group" in c]
-    check(code != 0 and "nenhuma execução aprovada da fila apareceu" in summary and len(queries) == 4,
+    check(code != 0 and "nenhuma execução aprovada da fila apareceu" in summary and "sem a fila" not in summary
+          and len(queries) == 4,
           f"on the push, with no queue run passed on the commit, the check fails after asking 4 times "
           f"(exit {code}, {len(queries)} queries)")
 
