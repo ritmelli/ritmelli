@@ -15,8 +15,7 @@ letras que a tabela de pixel delas tem (as placas, os mostradores do mixer, a fi
 e o visor do pedal de troca de voz). O meta.json de cada tema: o campo que vem por lingua tem as duas. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
 posto na pagina e a mensagem. O tema e o index.html e todos os .js e .css da pasta dele (e das de dentro), e cada bloco
 marcado (o /* NOME-INICIO ... /* NOME-FIM */, e o /* nome:inicio ... /* nome:fim */ que um gerador de dev/ grava) mora
-num lugar so: o que sai do index.html para um arquivo nao fica nos dois. The inline CSS and JS of the index.html stay at or
-under a ceiling that only goes down (INLINE_CEILING), and the count goes to the PR summary. Sai 1 se algo falha."""
+num lugar so: o que sai do index.html para um arquivo nao fica nos dois. Sai 1 se algo falha."""
 import ast
 import contextlib
 import io
@@ -25,6 +24,7 @@ import json
 import re
 import sys
 import tempfile
+from html.parser import HTMLParser
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -137,34 +137,207 @@ def confere_blocos(tema, arquivos):
     print(f"{tema.name}: {len(arquivos)} file(s), {len({b for b, _ in onde})} marked block(s)")
 
 
-# The most lines of inline CSS and JS each theme's index.html may have. The number only goes down: new theme code goes
-# into a file of the theme folder, and a PR that moves code out of the page lowers it to the new count.
-INLINE_CEILING = {"ritmelli": 1644}
-INLINE = re.compile(r"<(style|script)\b([^>]*)>(.*?)</\1>", re.S)
+def check_block_pairs(tema, arquivos):
+    marks = {}
+    for nome, texto in arquivos.items():
+        for m in MARCA_BLOCO.finditer(texto):
+            bloco, ponta = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4).upper())
+            marks.setdefault(bloco, []).append((nome, texto.count("\n", 0, m.start()) + 1, ponta))
+    for bloco, found in sorted(marks.items()):
+        if [ponta for _, _, ponta in found] != ["INICIO", "FIM"] or found[0][0] != found[1][0]:
+            places = ", ".join(f"{ponta} at {nome}:{linha}" for nome, linha, ponta in found)
+            falha(f"{tema.name}: the block {bloco} has {places}: a block opens with INICIO and closes with FIM, in "
+                  f"that order, in the same file")
+
+
+INLINE_CEILING = {"ritmelli": 1617}
 
 
 def inline_lines(html):
-    """The lines of text inside the page's <style> and <script> elements (a <script src> brings none)."""
     total = 0
-    for m in INLINE.finditer(html):
-        if re.search(r"\bsrc\s*=", m.group(2)):
+    for attrs, _, _, body in script_elements(html, ("script", "style")):
+        if "src" in attrs or "inline" in attrs:
             continue
-        body = m.group(3).strip("\n")
-        total += body.count("\n") + 1 if body.strip() else 0
+        body = body.strip(chr(10))
+        total += body.count(chr(10)) + 1 if body.strip() else 0
     return total
 
 
 def check_inline_ceiling(tema, html):
-    """Fails when the index.html has more inline lines than its ceiling. The count goes to the PR summary (the
-    "-- summary:" line, which dev/testa_tudo.py copies)."""
     if tema.name not in INLINE_CEILING:
         return
     count, ceiling = inline_lines(html), INLINE_CEILING[tema.name]
-    note = f"; it can go down to {count}" if count < ceiling else ""
-    print(f"-- summary: {tema.name}/index.html: {count} lines of inline CSS and JS (ceiling {ceiling}{note})")
+    print(f"-- summary: {tema.name}/index.html: {count} lines of inline CSS and JS (ceiling {ceiling})")
     if count > ceiling:
         falha(f"{tema.name}: index.html has {count} lines of inline CSS and JS, over the ceiling of {ceiling}: new "
               f"theme code goes into a file of the theme folder (INLINE_CEILING in dev/testa_i18n.py only goes down)")
+    elif count < ceiling:
+        falha(f"{tema.name}: index.html has {count} lines of inline CSS and JS, under the ceiling of {ceiling}: lower "
+              f"INLINE_CEILING in dev/testa_i18n.py to {count}")
+
+
+SHARED_FIRST = {"ritmelli": "shared.js"}
+FAILURE_HANDLER = {"ritmelli": "script-failed.js"}
+ONERROR = "scriptFailed(this)"
+INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
+
+
+class _Scripts(HTMLParser):
+
+    def __init__(self, tags):
+        super().__init__(convert_charrefs=False)
+        self.tags, self.found, self.open = tags, [], None
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.tags:
+            first = {}
+            for name, value in attrs:
+                first.setdefault(name, value)
+            self.open = [first, self.getpos()[0], None, ""]
+            self.found.append(self.open)
+
+    def handle_data(self, data):
+        if self.open is not None:
+            if self.open[2] is None:
+                self.open[2] = self.getpos()[0]
+            self.open[3] += data
+
+    def handle_endtag(self, tag):
+        if tag in self.tags:
+            self.open = None
+
+    def handle_comment(self, data):
+        inlined = INLINE_SCRIPT.fullmatch(f"<!--{data}-->")
+        if inlined:
+            self.found.append([{"inline": inlined.group(1)}, self.getpos()[0], None, ""])
+
+
+def script_elements(html, tags=("script",)):
+    parser = _Scripts(tags)
+    parser.feed(html)
+    parser.close()
+    return parser.found
+
+
+def check_script_tags(tema, html, arquivos):
+    if tema.name not in SHARED_FIRST:
+        return
+    elements = script_elements(html)
+    for attrs, line, _, _ in elements:
+        name = attrs.get("inline")
+        if name and name not in arquivos:
+            falha(f"{tema.name}: index.html:{line}: the inline-script {name} is not a file of the theme")
+        elif name and "</script" in arquivos[name].lower():
+            falha(f"{tema.name}: {name} has </script, which would close the <script> the server puts it in")
+    order = [attrs.get("inline") or attrs.get("src") for attrs, _, _, _ in elements
+             if attrs.get("inline") or attrs.get("src")]
+    if not order or order[0] != FAILURE_HANDLER[tema.name]:
+        falha(f"{tema.name}: the first script of the index.html with a file is {order[:1]}, not the inline-script "
+              f"{FAILURE_HANDLER[tema.name]}: the onerror of every <script src> calls it")
+    tags = [(attrs, line) for attrs, line, _, _ in elements if attrs.get("src")]
+    for attrs, line in tags:
+        if attrs.get("onerror") != ONERROR:
+            falha(f"{tema.name}: index.html:{line}: the <script src=\"{attrs['src']}\"> has no onerror=\"{ONERROR}\": "
+                  f"a file that does not load would leave the page without a connection")
+        for extra in sorted({"defer", "async", "type", "nomodule"} & attrs.keys()):
+            falha(f"{tema.name}: index.html:{line}: the <script src=\"{attrs['src']}\"> has {extra}: the scripts of "
+                  f"the page run in order, each one before the parser goes on")
+    first = tags[0][0]["src"] if tags else None
+    if first != SHARED_FIRST[tema.name]:
+        falha(f"{tema.name}: the first <script src> of the index.html is {first}, not {SHARED_FIRST[tema.name]}: the "
+              f"shared state and helpers load before every other script")
+
+
+def check_tag_and_block_guards():
+    antes = len(falhas)
+    with contextlib.redirect_stdout(io.StringIO()):
+        check_script_tags(Path("ritmelli"), '<!-- inline-script: script-failed.js -->'
+                          '<script src="shared.js" data-onerror="scriptFailed(this)"></script>'
+                          "<script src='queue.js' title='onerror=\"scriptFailed(this)\"'></script>"
+                          '<script src="x.js" onerror="scriptFailed(this)" defer></script>'
+                          '<SCRIPT title="a > b" SRC="deck.js"></SCRIPT>'
+                          '<script src="y.js" onerror="other()" onerror="scriptFailed(this)"></script>'
+                          '<script src="z.js" onerror="scriptFailed(this)" nomodule></script>',
+                          {"script-failed.js": "const ok = 1;\n"})
+    if (len(falhas) != antes + 6 or "has no onerror" not in falhas[-6] or "has defer" not in falhas[-4]
+            or "deck.js" not in falhas[-3] or "y.js" not in falhas[-2] or "has nomodule" not in falhas[-1]):
+        falha(f"check_script_tags should fail on a data-onerror, an onerror in another attribute, a defer, a tag in "
+              f"capitals with a > in an attribute, a repeated onerror and a nomodule: {falhas[antes:]}")
+    else:
+        del falhas[antes:]
+    with contextlib.redirect_stdout(io.StringIO()):
+        check_script_tags(Path("ritmelli"), '<script src="shared.js" onerror="scriptFailed(this)"></script>'
+                          '<!-- inline-script: script-failed.js -->', {"script-failed.js": "x('</script>');\n"})
+        check_script_tags(Path("ritmelli"), '<!-- inline-script: script-failed.js -->'
+                          '<script src="shared.js" onerror="scriptFailed(this)"></script>', {})
+    if (len(falhas) != antes + 3 or "</script" not in falhas[-3] or "not the inline-script" not in falhas[-2]
+            or "not a file of the theme" not in falhas[-1]):
+        falha(f"check_script_tags should fail on a </script in the inlined file, the inline-script after a file and "
+              f"an inline-script that is not a file: {falhas[antes:]}")
+    else:
+        del falhas[antes:]
+    with contextlib.redirect_stdout(io.StringIO()):
+        check_block_pairs(Path("ritmelli"), {"a.css": "/* X-FIM */\n", "b.css": "/* Y-INICIO */\n",
+                                             "c.css": "/* Y-FIM */\n", "d.css": "/* Z-FIM */\n/* Z-INICIO */\n",
+                                             "e.css": "/* W-INICIO */\n/* W-FIM */\n"})
+    if len(falhas) != antes + 3 or not all(f"block {b} " in f for b, f in zip("XYZ", falhas[antes:])):
+        falha(f"check_block_pairs should fail on a lone FIM, a pair in two files and a FIM before its INICIO: "
+              f"{falhas[antes:]}")
+    else:
+        del falhas[antes:]
+    counted = inline_lines('<SCRIPT>\na\nb\n</SCRIPT>\n<script data-src="a.js">\nc\n</script>\n'
+                           '<script src="x.js"></script>\n<!-- inline-script: y.js -->\n<style>\nd\n</style>\n')
+    if counted != 4:
+        falha(f"inline_lines counted {counted} lines, expected 4 (a <SCRIPT> in capitals and a data-src count)")
+    print("the script tag check, the block pair check and the inline count checked")
+
+
+def check_theme_rebuild():
+    sys.path.insert(0, str(RAIZ / "dev"))
+    import theme_rebuild
+
+    base = ["x", "A1", "A2", "B1", "B2", "y"]
+    head = ["B1", "B2", "x", "y", "new", "A1", "A2"]
+    moved, removed, added = theme_rebuild.split_moves(base, head)
+    if removed or added != [(4, "new")] or sorted(len(r) for r, _, _ in moved) != [1, 2]:
+        falha(f"split_moves: moved {moved}, removed {removed}, added {added}; expected B1 B2 and y moved apart and "
+              f"only 'new' added")
+    files = {"index.html": '<script src="a.js" title="x > y" defer></script>\n<link rel="stylesheet" href="b.css">\n',
+             "a.js": "/* A-JS-INICIO */\n'use strict';\nconst a = 1;\n/* A-JS-FIM */\n", "b.css": "b { }\n"}
+    lines = theme_rebuild.rebuild(files.__getitem__)
+    if lines != ["[script a.js: [('title', 'x > y'), ('defer', None)]]", "[strict]", "const a = 1;", "b { }"]:
+        falha(f"theme_rebuild.rebuild: {lines}")
+    files["a.js"] = "/* A-JS-INICIO */\nconst a = 1;\n/* A-JS-FIM */\n"
+    if theme_rebuild.rebuild(files.__getitem__) == lines:
+        falha("theme_rebuild.rebuild: a file that loses its 'use strict' rebuilds the same")
+    quoted = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x&quot; type=&quot;j"></script>',
+                                    "a.js": "const a = 1;\n"}.__getitem__)
+    split = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x" type="j"></script>',
+                                   "a.js": "const a = 1;\n"}.__getitem__)
+    if quoted == split:
+        falha(f"theme_rebuild.rebuild: one attribute with &quot; inside rebuilds like two attributes ({quoted})")
+    files = {"index.html": "<!-- inline-script: c.js -->\n<script onerror='f(this)' src='a.js'></script>\n",
+             "a.js": "const a = 1;\n", "c.js": "const c = 3;\n"}
+    lines = theme_rebuild.rebuild(files.__getitem__)
+    files["a.js"] = "const a = 2;\n"
+    changed = theme_rebuild.rebuild(files.__getitem__)
+    if lines != ["const c = 3;", "[script a.js: [('onerror', 'f(this)')]]", "const a = 1;"] or changed == lines:
+        falha(f"theme_rebuild.rebuild with src after onerror, in single quotes, and an inline-script: {lines}, "
+              f"then {changed}")
+    plain = theme_rebuild.rebuild({"index.html": "<script>\nconst d = 4;\n</script>\n"}.__getitem__)
+    typed = theme_rebuild.rebuild({"index.html": '<script type="application/json">\nconst d = 4;\n</script>\n'}.__getitem__)
+    if plain != ["const d = 4;"] or typed == plain:
+        falha(f"theme_rebuild.rebuild keeps an inline <script> with attributes apart from a bare one: {plain}, {typed}")
+    one = theme_rebuild.rebuild({"index.html": "<script>\nwindow.events.push(1)\n(() => window.events.push(2))()\n"
+                                               "</script>\n"}.__getitem__)
+    two = theme_rebuild.rebuild({"index.html": "<script>\nwindow.events.push(1)\n</script>\n<script>\n"
+                                               "(() => window.events.push(2))()\n</script>\n"}.__getitem__)
+    if one != two:
+        falha("known failure #235 passes now: theme_rebuild keeps the script boundaries; make this a regular check and "
+              "close the issue")
+    else:
+        print("known failure #235: theme_rebuild rebuilds two scripts and one script with the same lines the same")
+    print("the theme rebuild checked")
 
 
 def confere_tema(tema, servidor, efeitos):
@@ -199,7 +372,9 @@ def confere_tema(tema, servidor, efeitos):
 
     arquivos = arquivos_do_tema(tema)
     confere_blocos(tema, arquivos)
+    check_block_pairs(tema, arquivos)
     check_inline_ceiling(tema, arquivos["index.html"])
+    check_script_tags(tema, arquivos["index.html"], arquivos)
     html = "\n".join(arquivos.values())
     # o que o tema pede: os data-i18n* e as chaves entre aspas nas linhas que chamam o I18N.t, o I18N.tp ou o
     # I18N.rico (pega o I18N.t(cond ? 'a.b' : 'a.c'))
@@ -554,6 +729,8 @@ def confere_modulo():
 
 def main():
     confere_modulo()
+    check_tag_and_block_guards()
+    check_theme_rebuild()
     temas = [d for d in sorted((RAIZ / "themes").iterdir()) if (d / "i18n").is_dir()]
     if not temas:
         falha("no theme has an i18n/ folder")

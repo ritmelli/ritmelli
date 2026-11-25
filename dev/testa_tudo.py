@@ -109,7 +109,7 @@ JOBS = 4
 # machine is one; on a PC, only a test Windows) and the usage data notice of the theme
 PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas")}
 # what the --tela and the --compara run
-TELA = ("dev/fitcheck.py", "dev/compara.py")
+TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py")
 # the calls the testa.yml has to make, so every list and step above runs on the PR (sem_destino checks them)
 INVOCATIONS = ("dev/testa_tudo.py --without-long", "dev/testa_tudo.py --microfone", "dev/testa_tudo.py --tela",
                "dev/testa_tudo.py --compara", "dev/testa_tudo.py --capture") + tuple(
@@ -126,7 +126,8 @@ LONG_TITLES = {"bench": "Banca", "capture": "Captura"}
 AREAS = {
     "microfone": ("microfone/", "fx.py", "engine.py", "dev/testa_filtro.py", "dev/testa_voz.py",
                   "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
-    "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py"),
+    "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py",
+             "dev/missing_script.py"),
 }
 TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt")
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
@@ -454,6 +455,15 @@ def fitcheck(pasta):
                             md.append(f"- ✅ fitcheck em {lang}: {n} tamanhos cabem, sem erro no console")
                 finally:
                     srv.encerra()
+        cod, saida = executa([sys.executable, "dev/missing_script.py"])
+        print(f"--- missing_script: exits {cod}\n{saida.rstrip()}", flush=True)
+        if cod != 0:
+            bloqueia = True
+            md += ["<details><summary>❌ a theme file that does not load: dev/missing_script.py exits "
+                   f"{cod}</summary>", "", cerca(cauda(saida)), "", "</details>"]
+        else:
+            n = sum(linha.startswith("OK") for linha in saida.splitlines())
+            md.append(f"- ✅ a theme file that does not load: {n} scenarios of dev/missing_script.py pass")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return md, bloqueia
