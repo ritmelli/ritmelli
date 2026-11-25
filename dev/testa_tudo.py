@@ -11,10 +11,11 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
     python dev\testa_tudo.py --long [bench|capture] [--base origin/main]
                                            only the LONG_TESTS (all, or the one named): the bench (the transition
                                            bench, the real engine, one pair per kind of transition) and the capture
-                                           (the compara capture of the --capture); with --base, only if an input
-                                           (LONG_TEST_INPUTS: the local imports of its entry points, at the base or
-                                           here, and the data it reads) changed since the base. Each has a job of
-                                           its own in the testa.yml, the Banca and the Captura
+                                           (the compara capture of the --capture); with --base, it is left out only
+                                           when every file changed since the base is a doc (*.md, docs/) or Python
+                                           outside the local imports of its entry points (LONG_TEST_ENTRIES), at the
+                                           base or here. Each has a job of its own in the testa.yml, the Banca and
+                                           the Captura
     python dev\testa_tudo.py --tela [--base origin/main] [--pasta logs\tela] [--ref-cache <dir>]
                                            the fitcheck in both languages against a --mock with temporary data and,
                                            with --base, the compara: the reference comes from the server and the theme
@@ -125,11 +126,9 @@ LINHAS = ("engine.py", "server.py", "themes/ritmelli/index.html", "AGENTS.md")
 CAPTURA = ("dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py", "requirements.txt", "requirements-dev.txt",
            "instalador/travas.txt")
 LONG_TITLES = {"bench": "Banca", "capture": "Captura"}
-LONG_TEST_INPUTS = {
-    "bench": (("dev/testa_passagem.py",),
-              ("instalador/ffmpeg/", "modelos/", "vozes.json", "requirements.txt", "requirements-dev.txt")),
-    "capture": (("dev/test_capture.py", "dev/testa_tudo.py", "dev/compara.py", "server.py", "ritmelli.py"),
-                ("themes/", "instalador/ffmpeg/", "modelos/", "vozes.json", *CAPTURA)),
+LONG_TEST_ENTRIES = {
+    "bench": ("dev/testa_passagem.py",),
+    "capture": ("dev/test_capture.py", "dev/testa_tudo.py", "dev/compara.py", "server.py", "ritmelli.py"),
 }
 
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva
@@ -191,13 +190,17 @@ def read_at(commit):
     return read
 
 
+def leaves_long_test_alone(path, imported):
+    is_doc = path.endswith(".md") or path.startswith("docs/")
+    return is_doc or (path.endswith(".py") and path not in imported and not matches(path, TODAS))
+
+
 def long_tests_for(changed, base=None, read=read_disk):
     readers = [read] + ([read_at(base)] if base else [])
     chosen = []
     for name in LONG_TESTS:
-        entries, data = LONG_TEST_INPUTS[name]
-        inputs = set().union(*(local_imports(entries, r) for r in readers))
-        if any(f in inputs or matches(f, data + TODAS) for f in changed):
+        imported = set().union(*(local_imports(LONG_TEST_ENTRIES[name], r) for r in readers))
+        if not all(leaves_long_test_alone(f, imported) for f in changed):
             chosen.append(name)
     return chosen
 

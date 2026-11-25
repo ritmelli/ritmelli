@@ -26,18 +26,20 @@ def without(*gone):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    check(set(testa_tudo.LONG_TEST_INPUTS) == set(testa_tudo.LONG_TESTS), "every long test has its inputs")
-    bench = testa_tudo.local_imports(testa_tudo.LONG_TEST_INPUTS[BENCH][0], testa_tudo.read_disk)
+    check(set(testa_tudo.LONG_TEST_ENTRIES) == set(testa_tudo.LONG_TESTS), "every long test has its entry points")
+    bench = testa_tudo.local_imports(testa_tudo.LONG_TEST_ENTRIES[BENCH], testa_tudo.read_disk)
     needed = {"dev/testa_passagem.py", "dev/bumbo_mede.py", "engine.py", "batida.py", "transicao.py", "sonoridade.py",
               "fx.py", "microfone/preset.py", "microfone/voz.py"}
     check(needed <= bench, f"the inputs of the bench hold what it imports ({sorted(needed - bench)} missing)")
-    cases = {"engine.py": [BENCH, CAPTURE], "batida.py": [BENCH, CAPTURE], "microfone/preset.py": [BENCH, CAPTURE],
-             "instalador/ffmpeg/bin/ffmpeg.exe": [BENCH, CAPTURE], "modelos/compasso.onnx": [BENCH, CAPTURE], "ritmelli.py": [CAPTURE], "andamento.py": [CAPTURE],
-             "vozes.json": [BENCH, CAPTURE], "themes/ritmelli/deck.js": [CAPTURE], "dev/compara.py": [CAPTURE],
-             "dev/test_capture.py": [CAPTURE], "comandos.py": [CAPTURE], "dev/testa_passagem.py": [BENCH],
-             "requirements-dev.txt": [BENCH, CAPTURE],
-             "README.md": [], "docs/arquitetura/dev.md": [], ".github/workflows/testa.yml": [BENCH, CAPTURE],
-             "instalador/travas.txt": [BENCH, CAPTURE]}
+    both, nothing = [BENCH, CAPTURE], []
+    cases = {"engine.py": both, "batida.py": both, "microfone/preset.py": both, "dev/testa_passagem.py": [BENCH],
+             "dev/bumbo_mede.py": [BENCH], "comandos.py": [CAPTURE], "ritmelli.py": [CAPTURE],
+             "andamento.py": [CAPTURE], "dev/compara.py": [CAPTURE], "dev/test_capture.py": [CAPTURE],
+             "dev/testa_tudo.py": both, "instalador/ffmpeg/bin/ffmpeg.exe": both, "modelos/compasso.onnx": both,
+             "vozes.json": both, "icone/ritmelli.ico": both, "themes/ritmelli/deck.js": both,
+             "requirements-dev.txt": both, "instalador/travas.txt": both, ".github/workflows/testa.yml": both,
+             "README.md": nothing, "docs/arquitetura/dev.md": nothing, "dev/celular.py": nothing,
+             "dev/test_long_areas.py": nothing}
     for changed, expected in cases.items():
         got = testa_tudo.long_tests_for([changed])
         check(got == expected, f"a PR that changes {changed} runs {expected or 'no long test'} ({got})")
