@@ -992,6 +992,8 @@ class Injetor:
         self._preset_ok = False  # o efeito tem preset (o filtro roda)
         self._preset_em = 0.0    # monotonic da escrita
         self.efeito_no_filtro = False
+        self.voz_taxa = 0  # a taxa do microfone alvo, copiada do anel pela thread: quem esta fora dela le daqui, e nao
+        # da vista, que a thread fecha quando o anel falha
         self._th = threading.Thread(target=self._loop, daemon=True, name="ritmelli-microfone")
         self._th.start()
 
@@ -1046,7 +1048,7 @@ class Injetor:
         (efeito_no_filtro), ainda nao respondeu (_fx_pendente: a voz crua segue) ou recusou (a voz vai pelo app)."""
         mo = self.motor
         eid = mo._fx_id  # noqa: SLF001
-        taxa = int(m.a.voz_taxa)
+        taxa = self.voz_taxa = int(m.a.voz_taxa)
         chave = (eid, taxa, preset.geracao())
         if chave != self._preset:
             dados = preset.pede(eid, taxa) if eid and taxa else None
@@ -1629,11 +1631,11 @@ class Engine:
             raise i18n.Recusa("server.effect.unknown", "Unknown voice effect \"{id}\".", id=effect_id) from None
         cadeia = self._cadeia(effect_id) if nova is not None else None
         inj = self._injetor
-        m = inj.m if inj is not None else None
-        if nova is not None and m is not None and m.a.voz_taxa:
+        taxa = inj.voz_taxa if inj is not None and inj.m is not None else 0
+        if nova is not None and taxa:
             # o preset do filtro fica pronto aqui, e nao na thread da saida para o jogo (o do Locutor projeta um FIR de
             # 1023, ate ~70 ms): o Injetor so acha o efeito novo depois disso
-            preset.preset(effect_id, int(m.a.voz_taxa))
+            preset.preset(effect_id, taxa)
         self.effect = effect_id
         self._fx_falta_dito = False
         self._fx = cadeia  # antes do _fx_id: quando o Injetor acha o efeito novo, a cadeia do app ja e a dele

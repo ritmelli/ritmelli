@@ -12,6 +12,7 @@ volta em voz_fx. A voz convertida fora do filtro (por um processo que le a voz c
 pista da voz: pista_liga, pista_escreve e pista_pulso; o filtro poe ela no lugar da voz do microfone enquanto o
 escritor bate.
 """
+import contextlib
 import ctypes
 import os
 import struct
@@ -104,7 +105,8 @@ class Microfone:
             self._voz_fx = np.ctypeslib.as_array(self.a.voz_fx)
             self._pista = np.ctypeslib.as_array(self.a.pista).reshape(PISTA_QUADROS, CANAIS)
         except BaseException:
-            self.fecha()  # o handle e a vista abertos aqui nao ficam para tras com o erro
+            with contextlib.suppress(Exception):  # o erro que sobe e o de abrir, e nao o de fechar
+                self.fecha()  # o handle e a vista abertos aqui nao ficam para tras com o erro
             raise
         self.voz_pos = None  # ate onde o app leu a voz crua (comeca no que chegar depois de abrir)
         self.fx_pos = None   # e a voz com efeito

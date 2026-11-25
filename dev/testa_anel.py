@@ -4,8 +4,9 @@ memoria do proprio teste e conta cada UnmapViewOfFile e CloseHandle.
 
 Confere: o Microfone() que falha no MapViewOfFile fecha o handle; o de magia ou versao que nao bate solta a vista e
 fecha o handle antes de levantar o SemFiltro; o fecha solta cada um uma vez (chamar de novo nao faz nada) e fecha o
-handle mesmo se soltar a vista falhar. Na saida para o jogo (engine.Injetor): o escreve que levanta faz o anel
-fechar uma vez e o efeito no filtro zerar, e o fecha que falha tambem zera o efeito e solta o anel.
+handle mesmo se soltar a vista falhar, e a limpeza que falha nao troca o erro de abrir. Na saida para o jogo
+(engine.Injetor): o escreve que levanta faz o anel fechar uma vez e o efeito no filtro zerar, o fecha que falha
+tambem zera o efeito e solta o anel, e a troca de efeito (outra thread) nunca le a vista, que a thread pode fechar.
 
     python dev/testa_anel.py
 
@@ -113,6 +114,14 @@ class TestaConstrutor(unittest.TestCase):
                 self.assertEqual(k.unmaps, [k.p])
                 self.assertEqual(k.closes, [HANDLE])
 
+    def test_limpeza_que_falha_nao_troca_o_erro(self):
+        """Soltar a vista falhou na limpeza: sobe o SemFiltro de antes (o Injetor tenta de novo) e o handle fecha."""
+        k = K32Falso(versao=injeta.VERSAO - 1, falha_unmap=True)
+        with mock.patch.object(injeta, "k32", k), self.assertRaises(injeta.SemFiltro):
+            injeta.Microfone()
+        self.assertEqual(k.unmaps, [k.p])
+        self.assertEqual(k.closes, [HANDLE])
+
     def test_erro_inesperado_no_construtor_solta_tudo(self):
         k = K32Falso()
         with mock.patch.object(injeta, "k32", k), \
@@ -183,6 +192,22 @@ class TestaInjetor(unittest.TestCase):
 
     def test_fecha_que_falha_ainda_zera_o_efeito(self):
         self._confere(*self._falha_no_escreve(falha_unmap=True))
+
+    def test_troca_de_efeito_nao_le_a_vista(self):
+        """A troca de efeito (outra thread) pega a taxa que o Injetor copiou, e nunca a vista do anel, que a thread
+        dele pode fechar no meio."""
+
+        class AnelFechado:
+            @property
+            def a(self):
+                raise AssertionError("a troca de efeito leu a vista do anel")
+
+        e = eng.Engine(mic="x", monitor="")
+        e._injetor = mock.Mock(m=AnelFechado(), voz_taxa=44100)
+        pedidos = []
+        with mock.patch.object(e, "_cadeia", return_value=None),                 mock.patch.object(eng.preset, "preset", lambda eid, taxa: pedidos.append((eid, taxa))):
+            e.set_effect("robo")
+        self.assertEqual(pedidos, [("robo", 44100)], "o preset do filtro nao ficou pronto na taxa do Injetor")
 
 
 if __name__ == "__main__":
