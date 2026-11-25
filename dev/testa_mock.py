@@ -306,6 +306,10 @@ async def papeis_no_guard():
                 f"e fecha ({nomes[:2]}...{nomes[-1:]})")
         resp, j, _ = await manda("POST", "/api/play", cookie=chave)
         confere(resp.status == 401 and j.get("desconectado"), "desconectado, a chave e recusada (401, desconectado)")
+        torto = "ç" * 43  # fora do ASCII (o byte cru, que vira substituto, vai no --mock de verdade)
+        confere(await status("GET", "/t/ritmelli/", cookie=torto) == 200, "o cookie que nao e ASCII: o tema abre")
+        resp, j, _ = await manda("GET", "/api/state", cookie=torto)
+        confere(resp.status == 401 and j.get("parear"), f"o cookie que nao e ASCII: a API pede o codigo ({resp.status})")
 
         # o remoto: o token da sessao, so do 127.0.0.1, so o vocabulario
         token = A.remotos.abre()
@@ -316,6 +320,22 @@ async def papeis_no_guard():
                      ("POST", "/api/shutdown"), ("GET", "/api/pareamento"), ("POST", "/api/parear"),
                      ("GET", "/api/themes"), ("POST", "/api/nao-existe"), ("GET", "/t/ritmelli/")):
             confere(await status(m, c, de=pc, token=token) == 403, f"o remoto: {m} {c} fora da lista (403)")
+        # o inteiro com digitos demais no JSON: 400, nao 500
+        t = mock.Mock()
+        t.get_extra_info.side_effect = lambda nome, d=None: (pc, 50000) if nome == "peername" else d
+        carga = streams.StreamReader(mock.Mock(_reading_paused=False), 2 ** 16, loop=asyncio.get_running_loop())
+        carga.feed_data(b'{"vol": 1' + b"0" * 5000 + b"}")
+        carga.feed_eof()
+        req = make_mocked_request("POST", "/api/volume", headers={"Host": f"{pc}:{porta}",
+                                                                  "Content-Type": "application/json"},
+                                  transport=t, payload=carga, app=app)
+        req._match_info = await app.router.resolve(req)
+        try:
+            st = (await guard(req, rota[("POST", "/api/volume")])).status
+        except web.HTTPException as ex:
+            st = ex.status
+        confere(st == 400 and E.vol == 0.5, f"o inteiro com 5000 digitos no corpo: {st}")
+
         # a sessao acaba enquanto o corpo chega: o comando nao vale mais, nem com o corpo invalido (401, nao 400)
         for dados in (b'{"vol": 0.9}', b'[1, 2]', b'{quebrado'):
             t = mock.Mock()
@@ -464,6 +484,12 @@ def ao_vivo(srv):
                            ("DELETE", "/api/pareamento/abc", 403), ("POST", "/api/shutdown", 401)):
         s, _ = de_casa(srv, m, c, corpo={} if m == "POST" else None)
         confere(s == esperado, f"a rede de casa sem parear: {m} {c} -> {s} (esperado {esperado})")
+    # o cookie com bytes que nao sao UTF-8 (o aiohttp os passa como substitutos): o tema abre, a API pede o codigo
+    biscoito = {"Cookie": 'ritmelli_celular="' + "\xff\xfe" * 20 + '"'}  # entre aspas, o valor passa inteiro
+    s, _ = de_casa(srv, "GET", "/t/ritmelli/", cab=biscoito)
+    confere(s == 200, f"a rede de casa com o cookie de bytes tortos: o tema abre ({s})")
+    s, j = de_casa(srv, "GET", "/api/state", cab=biscoito)
+    confere(s == 401 and isinstance(j, dict) and j.get("parear"), f"e o /api/state pede o codigo ({s})")
     s, _ = de_casa(srv, "POST", "/api/play", {}, origem="127.0.0.1", cab={"Host": "ritmelli.example"})
     confere(s == 403, f"outro Host (DNS rebinding), mesmo do 127.0.0.1: 403 ({s})")
     s, _ = de_casa(srv, "POST", "/api/play", {}, origem="127.0.0.1", cab={"Origin": "http://outro.example"})

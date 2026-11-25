@@ -1992,7 +1992,7 @@ async def body(request):
             "The remote session token is invalid or has expired.")}), content_type="application/json")
     try:
         b = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError):  # o JSONDecodeError, e o inteiro com digitos demais
         raise web.HTTPBadRequest(text="The body must be JSON in UTF-8.")
     # toda rota le campos: uma lista ou um numero dava o erro 500, e o /api/parear e aberto a rede de casa
     if not isinstance(b, dict):
@@ -2067,6 +2067,7 @@ def build(app_state):
             papel = "pc"
         else:
             chave = par.chave_do(request.cookies)
+            chave = chave if chave and chave.isascii() else None  # a chave e ASCII: outra coisa no cookie nao vale
             # so a rota que o celular usa (e que nao e livre) marca o aparelho como visto; a livre (o tema, cada
             # arquivo dele) e a que nao e dele so olham a chave
             usa = "celular" in pode and "publico" not in pode
@@ -2400,7 +2401,7 @@ def build(app_state):
         if v is None:
             return j_err(i18n.so_texto("Missing the music volume (vol, a number from 0 to 1)."))
         E.vol = v
-        A.save_cfg()
+        A.grava_cfg(vol=v)  # so o volume da musica: o resto do som fica como esta gravado
         return j_ok(vol=round(E.vol, 6))
 
     @r.post("/api/abaixa")

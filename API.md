@@ -255,7 +255,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca; fila vazia = 409 |
 | `POST /api/prev` | - | Anterior do Spotify: com mais de 3 s de disco (ou nada antes dele), volta ao começo (`{"did": "inicio"}`); senão toca o último do `history`, e o disco do prato vai para o topo da `queue` (`{"did": "anterior"}`); nada no prato nem antes = 409 |
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
-| `POST /api/volume` | `{"vol": 0.5}` | só o volume da música no jogo, de 0 a 1 (fora disso, o limite), com a mesma validação e gravação do `vol` do `/api/settings`; responde `{"ok": true, "vol": 0.5}`; sem número, 400. É o volume que o remoto pode mudar |
+| `POST /api/volume` | `{"vol": 0.5}` | só o volume da música no jogo, de 0 a 1 (fora disso, o limite), com a mesma validação do `vol` do `/api/settings`, e grava só ele no `config.json`; responde `{"ok": true, "vol": 0.5}`; sem número, 400. É o volume que o remoto pode mudar |
 | `POST /api/abaixa` | `{"db": 12, "ms": 3000}` | abaixa a música no jogo `db` decibéis (até 40) por `ms` milissegundos (um inteiro, até 30000), sem gravar nada, e ela volta sozinha no prazo (o fone de quem toca segue igual); um pedido novo troca o de antes, e zero em qualquer um tira o abaixamento na hora; responde `{"ok": true, "abaixa": {"db", "ms"} ou null}`; fora da faixa, 400 |
 | `POST /api/sinal` | - | um bipe curto de teste (0,4 s, 880 Hz, -18 dBFS) no microfone, no que o jogo ouve, sem passar pelo volume da música; responde `{"ok": true}`; com a voz cortada (`mic_mute`), não toca (e o que tocava para) e responde 409 |
 | `POST /api/effects/reload` | - | só no PC: lê o `fx.py` de novo sem reiniciar o servidor nem cortar a música; responde `{"ok": true, "effects": n, "effect": "<id>"}` |
@@ -356,9 +356,10 @@ valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
   sessão remota aceita (`secrets.token_urlsafe(32)`, gerado a cada sessão e revogado quando ela acaba). O cabeçalho
   com token errado, vencido ou vindo de fora do `127.0.0.1` responde 401, mesmo do `127.0.0.1`: quem manda o
   cabeçalho nunca cai no papel do PC. Comando fora da lista dele, 403; no `POST /api/queue`, ele só põe o `id` de um
-  disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, título e canal
-  como texto e a duração em segundos (até 24 h) ou `null`, e o resto é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma sessão abre um
-  token.
+  disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, `title` e
+  `channel` como texto ou `null`, `duration` em segundos (de 0 a 86400) ou `null`, e o alvo e os textos em Unicode
+  válido (UTF-8); o resto é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma
+  sessão abre um token.
 
 | rota | `pc` | `celular` | `remoto` | `publico` |
 |---|---|---|---|---|
