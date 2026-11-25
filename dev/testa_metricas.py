@@ -395,15 +395,6 @@ with tempfile.TemporaryDirectory() as tmp:
     a11, _ = audios(m)
     confere(len(a11) == 1 and a11[0]["secas"] == 0,
             f"o aceite com o Injetor parado: a janela que a reabertura continua comeca no aceite ({a11})")
-    # o tempo da reabertura do leitor perdido conta na perda
-    volta(e, 0.01, leitores=1)
-    volta(e, 0.01, leitores=0)  # o leitor sumiu
-    e.janela.parado(1.5)  # a reabertura levou 1,5 s
-    volta(e, 0.01, leitores=0)
-    fecha_janela(m)
-    a12, _ = audios(m)
-    confere(len(a12) == 1 and a12[0]["leitor_perdido"] == 1 and a12[0]["leitor_perdido_s"] == 2,
-            f"o tempo da reabertura do leitor perdido entra no leitor_perdido_s ({a12})")
 
     # o desligar com a gravacao do config.json falhando: o cfg ja diz desligada, e nada do que veio antes fica
     m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)

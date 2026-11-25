@@ -1602,13 +1602,11 @@ class Engine:
                 return
             print(f"game output: the microphone filter stopped reading \"{mic}\"; reopening the audio "
                   f"(attempt {n + 1} of {LEITOR_TENTATIVAS})", file=sys.stderr, flush=True)
-            # a perda que pede a reabertura fica na janela do evento "audio", e o tempo da reabertura conta nela
-            self._saude_segue, t0 = (mic, inj.saude), time.monotonic()
+            self._saude_segue = (mic, inj.saude)  # a perda que pede a reabertura fica na janela do evento "audio"
             try:
                 self._reabre()
             finally:
                 self._saude_segue = None
-                inj.saude.parado(time.monotonic() - t0)
             # o Injetor novo (ou o de antes, se a reabertura falhou) ainda sem perda marcada
             self._recupera = (mic, n + 1, agora, (self._injetor, None))
 
