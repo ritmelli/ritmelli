@@ -2905,7 +2905,7 @@ def main():
     ap.add_argument("--data-dir", help="where library.json and config.json live (default: the user's; with --mock, a "
                                        "new temporary folder, never the user's)")
     ap.add_argument("--so-local", action="store_true", help="don't serve the home network (phone)")
-    ap.add_argument("--papel-local", choices=("pc", "celular"), default="pc",
+    ap.add_argument("--papel-local", choices=("celular",),
                     help="with --mock: 'celular' makes http://127.0.0.1:<port> act as a phone on the home network "
                          "(pairing, cookie, revoking); http://localhost:<port> stays the computer")
     ap.add_argument("--metricas-teste", action="store_true",
@@ -2915,7 +2915,7 @@ def main():
     a = ap.parse_args()
     if a.metricas_teste and not a.mock:
         sys.exit("--metricas-teste only works with --mock")
-    if a.papel_local != "pc" and not a.mock:
+    if a.papel_local is not None and not a.mock:
         sys.exit("--papel-local only works with --mock")
     dados = Path(a.data_dir) if a.data_dir else LIB
     if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
@@ -2923,7 +2923,7 @@ def main():
         if dados is None:
             sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
                      "temporary copy")
-    A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste, papel_local=a.papel_local)
+    A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste, papel_local=a.papel_local or "pc")
     if not a.mock:  # no --mock, o processo do YouTube so abre no primeiro pedido de quem testa (#128)
         threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
