@@ -309,6 +309,9 @@ caso("apaga as duas tarefas, a do filtro primeiro e a propria por ultimo",
      tarefas_de("/delete") == [mf.TAREFA, atualizador.TAREFA], schtasks)
 caso("nenhum /end da propria (ele encerraria a rodada antes de apagar)", not tarefas_de("/end"), schtasks)
 caso("confere as duas depois", sorted(tarefas_de("/query")) == sorted([mf.TAREFA, atualizador.TAREFA]), schtasks)
+caso("o schtasks vai pelo caminho completo da System32 (pelo nome solto, o Windows procuraria antes na pasta do app)",
+     schtasks and all(os.path.isabs(c[0]) and os.path.basename(c[0]).lower() == "schtasks.exe"
+                      and os.path.dirname(c[0]).lower() == mf.SYSTEM32.lower() for c in schtasks), schtasks)
 caso("nada na pasta reprovada: nem a atualizacao\\, nem o log, nem setup",
      not (tmp / "reprovada").exists() and not lancados)
 

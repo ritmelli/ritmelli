@@ -60,6 +60,23 @@ PASTA = (os.path.join(os.path.dirname(sys.executable), "microfone") if getattr(s
                       "Ritmelli", "microfone"))
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # no executavel sem console, nada de janela piscando
 
+
+def _system32():
+    """A System32: os programas do Windows vao pelo caminho completo. Pelo nome solto, o CreateProcess procura antes na
+    pasta do executavel, que e justamente a que a regra da pasta protegida confere (o mesmo do pastas.do_windows, que
+    este arquivo nao importa ao carregar: rodando sozinho, a raiz do app ainda nao esta no caminho)."""
+    import ctypes  # noqa: PLC0415
+    b = ctypes.create_unicode_buffer(260)
+    n = ctypes.windll.kernel32.GetSystemDirectoryW(b, 260)
+    if not 0 < n < 260:
+        raise OSError("GetSystemDirectoryW failed")
+    return b.value
+
+
+SYSTEM32 = _system32()
+SCHTASKS, ICACLS, REGSVR32, SC = (os.path.join(SYSTEM32, f"{n}.exe") for n in ("schtasks", "icacls", "regsvr32", "sc"))
+POWERSHELL = os.path.join(SYSTEM32, "WindowsPowerShell", "v1.0", "powershell.exe")
+
 NOME = "{a45c254e-df1c-4efd-8020-67d146a850e0},2"
 APARELHO = "{b3f8fa53-0004-438e-9003-51a46e139bfc},6"
 SEM_MELHORIAS = "{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5"  # 1 = "desativar melhorias": nenhum efeito carrega
@@ -211,7 +228,7 @@ def estado():
 
 def audio_rodando():
     """O servico de audio do Windows esta rodando (num servidor sem som, como a maquina da esteira, fica parado)."""
-    estado = subprocess.run(["powershell", "-NoProfile", "-Command", "(Get-Service audiosrv).Status"],
+    estado = subprocess.run([POWERSHELL, "-NoProfile", "-Command", "(Get-Service audiosrv).Status"],
                             capture_output=True, text=True, encoding="oem", errors="replace",
                             creationflags=NO_WINDOW).stdout.strip()
     return estado == "Running"
@@ -221,9 +238,9 @@ def servico_audio(acao):
     """Stop, Start ou Restart do servico de audio (o audiodg.exe segura a DLL enquanto ele roda). O Start-Service
     nao tem -Force (com ele o comando falha calado e o PC fica sem som: 13/11). Confere o estado no fim."""
     forca = " -Force" if acao in ("Stop", "Restart") else ""
-    subprocess.run(["powershell", "-NoProfile", "-Command", f"{acao}-Service audiosrv{forca}"], check=False,
+    subprocess.run([POWERSHELL, "-NoProfile", "-Command", f"{acao}-Service audiosrv{forca}"], check=False,
                    capture_output=True, text=True, encoding="oem", errors="replace", creationflags=NO_WINDOW)
-    estado = subprocess.run(["powershell", "-NoProfile", "-Command", "(Get-Service audiosrv).Status"],
+    estado = subprocess.run([POWERSHELL, "-NoProfile", "-Command", "(Get-Service audiosrv).Status"],
                             capture_output=True, text=True, encoding="oem", errors="replace",
                             creationflags=NO_WINDOW).stdout.strip()
     esperado = "Stopped" if acao == "Stop" else "Running"
@@ -234,7 +251,7 @@ def servico_audio(acao):
 def reinicia_audio():
     """Depois de mexer nas chaves de efeito: o AudioEndpointBuilder guarda as propriedades dos aparelhos e so as
     rele quando reinicia (o audiosrv cai junto e volta pelo servico_audio)."""
-    subprocess.run(["powershell", "-NoProfile", "-Command", "Restart-Service AudioEndpointBuilder -Force"],
+    subprocess.run([POWERSHELL, "-NoProfile", "-Command", "Restart-Service AudioEndpointBuilder -Force"],
                    check=False, capture_output=True, text=True, encoding="oem", errors="replace",
                    creationflags=NO_WINDOW)
     servico_audio("Start")
@@ -296,7 +313,7 @@ def _prepara_dll(dll):
     if not protegida:
         sys.exit(f"the app folder isn't protected, the filter wasn't installed: {protegida}")
     os.makedirs(LOGS, exist_ok=True)
-    r = subprocess.run(["icacls", LOGS, "/grant", "*S-1-5-19:(OI)(CI)M"], capture_output=True, text=True,
+    r = subprocess.run([ICACLS, LOGS, "/grant", "*S-1-5-19:(OI)(CI)M"], capture_output=True, text=True,
                        encoding="oem", errors="replace", creationflags=NO_WINDOW)
     if r.returncode:
         sys.exit(f"icacls on the log folder failed ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
@@ -315,7 +332,7 @@ def _prepara_dll(dll):
         # pasta): a DLL de la fica onde esta e nao segura a copia, mas o audiodg.exe so carrega a desta pasta quando o
         # audio reinicia (o reinicia_audio de quem chamou). Os originais dos microfones ja guardados ficam
         parou = True
-    r = subprocess.run(["regsvr32", "/s", destino], capture_output=True, text=True, encoding="oem",
+    r = subprocess.run([REGSVR32, "/s", destino], capture_output=True, text=True, encoding="oem",
                        errors="replace", creationflags=NO_WINDOW)
     if r.returncode:
         sys.exit(f"regsvr32 failed ({r.returncode})")
@@ -540,7 +557,7 @@ def remove(filtro=None):
     if not sobrou and not protegida:
         _apaga_registro_com()
     elif not sobrou and os.path.exists(destino):
-        subprocess.run(["regsvr32", "/s", "/u", destino], capture_output=True, creationflags=NO_WINDOW)
+        subprocess.run([REGSVR32, "/s", "/u", destino], capture_output=True, creationflags=NO_WINDOW)
     if mexeu:
         reinicia_audio()
     if not sobrou:  # o audiodg ja soltou a DLL: sai a pasta (a DLL e o log), a tarefa e as vagas do hospedeiro
@@ -660,7 +677,7 @@ TAREFA_XML = """<?xml version="1.0" encoding="UTF-16"?>
 
 
 def tarefa_existe():
-    r = subprocess.run(["schtasks", "/query", "/tn", TAREFA], capture_output=True, creationflags=NO_WINDOW)
+    r = subprocess.run([SCHTASKS, "/query", "/tn", TAREFA], capture_output=True, creationflags=NO_WINDOW)
     return r.returncode == 0
 
 
@@ -682,7 +699,7 @@ def tarefa_cria():
     try:
         with open(xml, "w", encoding="utf-16") as f:
             f.write(TAREFA_XML.replace("{exe}", escape(sys.executable)))
-        r = subprocess.run(["schtasks", "/create", "/tn", TAREFA, "/xml", xml, "/f"], capture_output=True, text=True,
+        r = subprocess.run([SCHTASKS, "/create", "/tn", TAREFA, "/xml", xml, "/f"], capture_output=True, text=True,
                            encoding="oem", errors="replace", creationflags=NO_WINDOW)
     finally:
         os.remove(xml)
@@ -692,7 +709,7 @@ def tarefa_cria():
 
 
 def tarefa_apaga():
-    subprocess.run(["schtasks", "/delete", "/tn", TAREFA, "/f"], capture_output=True, creationflags=NO_WINDOW)
+    subprocess.run([SCHTASKS, "/delete", "/tn", TAREFA, "/f"], capture_output=True, creationflags=NO_WINDOW)
 
 
 def _desarma(motivo):
@@ -727,7 +744,7 @@ def pede_tarefa(nome, espera_s=60):
     nao_pronto, audio), e quem chama poe a frase na lingua da tela (o engine.py)."""
     if not tarefa_existe():
         return {"ok": False, "motivo": "sem_tarefa"}
-    r = subprocess.run(["schtasks", "/run", "/tn", TAREFA], capture_output=True, text=True, encoding="oem",
+    r = subprocess.run([SCHTASKS, "/run", "/tn", TAREFA], capture_output=True, text=True, encoding="oem",
                        errors="replace", creationflags=NO_WINDOW)
     if r.returncode:
         return {"ok": False, "motivo": "tarefa_falhou", "detalhe": r.stdout.strip() or r.stderr.strip()}
@@ -740,7 +757,7 @@ def pede_tarefa(nome, espera_s=60):
     else:
         return {"ok": False, "motivo": "nao_pronto"}
     while time.monotonic() < fim:  # o reinicio do audio: o servico volta depois do registro
-        st = subprocess.run(["sc", "query", "audiosrv"], capture_output=True, text=True, encoding="oem",
+        st = subprocess.run([SC, "query", "audiosrv"], capture_output=True, text=True, encoding="oem",
                             errors="replace", creationflags=NO_WINDOW).stdout
         if "RUNNING" in st:
             time.sleep(2.0)  # os aparelhos se enumeram de novo logo depois

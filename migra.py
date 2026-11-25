@@ -143,11 +143,11 @@ def pasta_velha(pasta=PASTA_VELHA):
     juncao no caminho ou dentro dela levaria o rmtree, como administrador ou SYSTEM, para onde ela aponta): ali so o
     motivo vai para o log. Quantos itens ficaram para o reinicio."""
     pasta = Path(pasta)
-    if not pasta.is_dir() or pasta.resolve() == pastas.APP.resolve():
-        return 0
-    protegida = PROTEGIDA(pasta)
+    protegida = PROTEGIDA(pasta)  # antes de seguir o caminho (o is_dir e o resolve seguem uma juncao)
     if not protegida:
         log(f"{pasta} was left as it is, the folder isn't protected: {protegida}")
+        return 0
+    if not pasta.is_dir() or pasta.resolve() == pastas.APP.resolve():
         return 0
     presos = []
 

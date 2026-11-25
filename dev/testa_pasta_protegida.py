@@ -247,6 +247,8 @@ def em_memoria():
     reprova("a propria raiz", disco_base(), "outside", RAIZ)
     reprova("uma raiz que nao existe", disco_base(), "doesn't exist", r"C:\Outra\Ritmelli", r"C:\Outra")
     reprova("um caminho relativo", disco_base(), "absolute", r"Ritmelli")
+    reprova("um nome curto 8.3 no caminho (o instalador o expandiria)", disco_base(), "short", r"C:\PROGRA~1\Ritmelli")
+    reprova("um nome curto 8.3 dentro da raiz", disco_base(), "short", RAIZ + r"\RITMEL~1")
     r = avalia(disco_base(), r"C:\Ritmelli")
     confere("a recusa e falsa e diz o motivo", not r and "outside" in str(r) and isinstance(r, pastas.Reprovada))
 

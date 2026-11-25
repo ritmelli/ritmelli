@@ -302,13 +302,19 @@ class Gravador:
     def __call__(self, args, **kw):
         args = list(args)
         self.comandos.append(args)
-        if self.reg is not None and args[0] == "regsvr32" and "/u" not in args:
+        if self.reg is not None and args[0] == mf.REGSVR32 and "/u" not in args:
             k = self.reg.CreateKeyEx("HKLM", rf"SOFTWARE\Classes\CLSID\{mf.CLSID}\InprocServer32")
             self.reg.SetValueEx(k, "", 0, self.reg.REG_SZ, args[-1])
         return types.SimpleNamespace(returncode=1 if "/query" in args else 0, stdout="", stderr="")
 
     def de(self, programa):
-        return [c for c in self.comandos if c[0] == programa]
+        """Os comandos desse programa. Os do Windows tem de ir pelo caminho completo da System32: pelo nome solto, o
+        Windows procuraria antes na pasta do executavel."""
+        feitos = [c for c in self.comandos if os.path.basename(c[0]).lower() in (programa, programa + ".exe")]
+        for c in feitos:
+            if c[0] not in ("servico", "reinicia"):
+                assert os.path.dirname(c[0]).lower() == mf.SYSTEM32.lower(), f"{c[0]} sem o caminho da System32"
+        return feitos
 
 
 def carrega(congelado, exe=None):
@@ -535,7 +541,7 @@ class TestaPastaProtegida(Base):
         self.com_dois()
         self.falsos(existe=[mf.PASTA + r"\micfx.dll"])
         mf.remove()
-        self.assertEqual(self.cmd.de("regsvr32"), [["regsvr32", "/s", "/u", mf.PASTA + r"\micfx.dll"]])
+        self.assertEqual(self.cmd.de("regsvr32"), [[mf.REGSVR32, "/s", "/u", mf.PASTA + r"\micfx.dll"]])
         self.assertEqual(self.apagadas, [mf.PASTA])
         self.assertEqual(self.vistas, [os.path.dirname(mf.PASTA)])
 
@@ -546,7 +552,8 @@ class TestaPastaProtegida(Base):
         self.aprova = False
         self.falsos()
         mf.tarefa_cria()
-        self.assertEqual(self.cmd.comandos, [["schtasks", "/delete", "/tn", mf.TAREFA, "/f"]])
+        self.assertEqual(self.cmd.comandos, [[mf.SCHTASKS, "/delete", "/tn", mf.TAREFA, "/f"]])
+        self.assertEqual(os.path.dirname(mf.SCHTASKS).lower(), mf.SYSTEM32.lower())
 
 
 if __name__ == "__main__":

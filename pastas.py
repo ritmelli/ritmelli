@@ -161,6 +161,20 @@ class Reprovada:
         return f"Reprovada({self.motivo!r})"
 
 
+def do_windows(nome):
+    """O caminho completo de um programa do Windows (na System32). Pelo nome solto, o CreateProcess procura antes na
+    pasta do executavel, que e justamente a que a regra da pasta protegida confere: com ela reprovada, o desarme das
+    tarefas rodaria como SYSTEM um schtasks.exe posto la. Fora do Windows, o nome."""
+    if sys.platform != "win32":
+        return nome
+    import ctypes
+    b = ctypes.create_unicode_buffer(260)
+    n = ctypes.windll.kernel32.GetSystemDirectoryW(b, 260)
+    if not 0 < n < 260:
+        raise OSError("GetSystemDirectoryW failed")
+    return os.path.join(b.value, nome)
+
+
 def raiz_protegida():
     """A Program Files de 64 bits (a do %ProgramW6432%), onde so administrador cria pasta."""
     return os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or r"C:\Program Files"
@@ -296,6 +310,10 @@ def motivo_desprotegida(pasta, raiz, le=_le_disco):
     """Por que a pasta nao passa na regra da pasta protegida, ou None se passa. le(caminho) e quem le cada objeto (o
     _le_disco, ou uma descricao em memoria nos testes)."""
     pasta, raiz = ntpath.normpath(str(pasta)), ntpath.normpath(str(raiz))
+    if "~" in pasta:
+        # um nome curto (8.3): o instalador (o GetFullPath do .NET Framework) o expandiria, e a regra tem de dar o mesmo
+        # veredito nos dois
+        return f"{pasta} has a short (8.3) name"
     unidade, resto = ntpath.splitdrive(pasta)
     if not unidade or not ntpath.isabs(pasta) or not ntpath.isabs(raiz):
         return f"{pasta} is not an absolute path"
