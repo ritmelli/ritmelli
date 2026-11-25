@@ -976,18 +976,23 @@ def bloco(A, E):
     for caminho in ("/api/pause", "/api/toggle"):
         toca("d1", start=20.045)
         s = Suspenso(E)
-        res = []
-        t = threading.Thread(target=rota, args=(caminho, res))
-        t.start()
-        t.join(0.3)
-        esperou = t.is_alive() and not E.paused  # pendente: o prato so pausa na confirmacao
-        out = s.solta()
-        t.join(5)
+
+        async def corre(caminho=caminho, s=s):
+            """O POST esperando a confirmacao e um GET /api/state no mesmo laco: ele responde com o POST pendente."""
+            pausa = asyncio.ensure_future(pede(app, A, "POST", caminho))
+            fim = time.monotonic() + 2
+            while not (E._pausa is not None and not E._pausa.feita.is_set()) and time.monotonic() < fim:
+                await asyncio.sleep(0.01)
+            st, _ = await asyncio.wait_for(pede(app, A, "GET", "/api/state"), 2)
+            livre = st == 200 and not pausa.done() and not E.paused  # pendente: o prato so pausa na confirmacao
+            out = s.solta()
+            return livre, out, await asyncio.wait_for(pausa, 5)
+        esperou, out, res = asyncio.run(corre())
         pos = E.pos
-        confere(s.parou and esperou and res and res[0][0] == 200 and abs(pos - 20.055) < 1e-9
+        confere(s.parou and esperou and res[0] == 200 and abs(pos - 20.055) < 1e-9
                 and A.lib.get("d1")["last_pos"] == round(pos, 1) == 20.1 and np.any(out),
-                f"o {caminho} com o bloco retirado espera a publicacao dele, e a posicao gravada e a publicada "
-                f"({pos}, {A.lib.get('d1')['last_pos']})")
+                f"o {caminho} com o bloco retirado espera a publicacao dele sem prender o laco (o /api/state responde), "
+                f"e a posicao gravada e a publicada ({pos}, {A.lib.get('d1')['last_pos']})")
         for _ in range(3):
             E._mixa(eng.BLOCK)
         confere(E.pos == pos and A.lib.get("d1")["last_pos"] == 20.1, "e as duas ficam paradas na pausa")
