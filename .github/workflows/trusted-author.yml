@@ -1,0 +1,129 @@
+# Keeps a pull request from outside the team out of the main until a maintainer approves it. The "Trusted author" check
+# passes when the PR author is one of the two maintainers below. For any other author it passes only when one of the
+# two has an APPROVED review on the current head of the PR (its commit_id): a push after the approval fails the check
+# again, and a later change request by the same maintainer takes the approval back. To let such a PR in, a maintainer
+# approves its current head and re-runs this job (an approval alone starts no run).
+#
+# pull_request_target, not pull_request: the run takes this file from the main, not from the PR, so a PR cannot change
+# the rule to make its own check pass. That is also why the job checks out nothing and runs no code of the PR: it only
+# reads the PR and its reviews through the API, with a read-only token, and every value of the event reaches the script
+# through env:, never interpolated inside the run block. A PR that changes this file is tested by the main version
+# until it reaches the merge queue.
+#
+# merge_group: the queue entry carries no PR, so the number comes from its ref
+# (refs/heads/gh-readonly-queue/<base>/pr-<number>-<sha>) and the same rule runs on that PR, read again from the API. A
+# ref the script cannot read fails the check. In the queue the run takes this file from the entry, which holds the PR;
+# what got the PR there is the pull_request_target check of the main version, which already passed on its head.
+#
+# The script is tested by dev/test_trusted_author.py, which runs this run block against a fake API.
+name: Trusted author
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  trusted-author:
+    name: Trusted author
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Author or maintainer approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          API_URL: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+        shell: python3 {0}
+        run: |
+          import json
+          import os
+          import re
+          import sys
+          import urllib.request
+
+          # the maintainers: the repository collaborators with write access
+          TRUSTED = ("christianbehlingaraujo", "williambehlingaraujo")
+          QUEUE_REF = re.compile(r"refs/heads/gh-readonly-queue/.+/pr-(\d+)-[0-9a-f]+")
+          PAGE = 100
+
+
+          def api(path):
+              """One GET of the REST API, as JSON."""
+              req = urllib.request.Request(os.environ["API_URL"] + path, headers={
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "trusted-author-check"})
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  return json.load(resp)
+
+
+          def reviews(get, repo, number):
+              """Every review of the PR, oldest first (the order the API lists them in)."""
+              found, page = [], 1
+              while True:
+                  batch = get(f"/repos/{repo}/pulls/{number}/reviews?per_page={PAGE}&page={page}")
+                  found += batch
+                  if len(batch) < PAGE:
+                      return found
+                  page += 1
+
+
+          def approvers(found, head):
+              """The maintainers whose latest approval or change request is an approval of the head."""
+              latest = {}
+              for r in found:
+                  login = ((r.get("user") or {}).get("login") or "").lower()
+                  if login in TRUSTED and r.get("state") in ("APPROVED", "CHANGES_REQUESTED"):
+                      latest[login] = r
+              return sorted(login for login, r in latest.items()
+                            if r["state"] == "APPROVED" and r.get("commit_id") == head)
+
+
+          def decide(env, get):
+              """(passes, message) for the PR of the event."""
+              repo = env["REPO"]
+              if env.get("GITHUB_EVENT_NAME") == "merge_group":
+                  ref = env.get("QUEUE_REF", "")
+                  m = QUEUE_REF.fullmatch(ref)
+                  if not m:
+                      return False, f"could not read the pull request number from the merge queue ref {ref!r}"
+                  number = m.group(1)
+                  pr = get(f"/repos/{repo}/pulls/{number}")
+                  author, head = pr["user"]["login"], pr["head"]["sha"]
+              else:
+                  number, author, head = env.get("PR_NUMBER", ""), env.get("PR_AUTHOR", ""), env.get("PR_HEAD_SHA", "")
+              if not (number and author and head):
+                  return False, "the event carries no pull request number, author or head"
+              if author.lower() in TRUSTED:
+                  return True, f"#{number} is by {author}, a maintainer"
+              ok = approvers(reviews(get, repo, number), head)
+              if ok:
+                  return True, f"#{number} is by {author}, and {', '.join(ok)} approved its head {head[:12]}"
+              return False, (f"#{number} is by {author}, who is not a maintainer, and no maintainer approved its current "
+                             f"head {head[:12]}. One of the maintainers ({', '.join(TRUSTED)}) approves the pull request "
+                             "at this commit and then re-runs this job; a new push needs a new approval.")
+
+
+          def main():
+              try:
+                  passes, message = decide(os.environ, api)
+              except Exception as e:  # an API error proves nothing: the check fails and says why
+                  passes, message = False, f"could not read the pull request from the API: {e}"
+              print(message if passes else f"::error::{message}")
+              summary = os.environ.get("GITHUB_STEP_SUMMARY")
+              if summary:
+                  with open(summary, "a", encoding="utf-8") as f:
+                      f.write(f"{'✅' if passes else '❌'} {message}\n")
+              return 0 if passes else 1
+
+
+          if __name__ == "__main__":
+              sys.exit(main())
