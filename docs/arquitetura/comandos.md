@@ -45,7 +45,9 @@ pega a `fila_lock` nem o `_lock`. Sob a `fila_lock` não se grava arquivo: o `an
 O `App.leitura()` devolve o estado da tela e a posição do disco da mesma captura. A faixa, a posição, o estado de
 reprodução, a fila e a virada que o motor já confirmou saem juntos, sob a `fila_lock` e depois o `_qlock`. A fila
 exposta já não tem a entrada da virada que o `_volta_passagem` ainda vai conciliar. O `avanca` da virada tira a
-virada do motor e a entrada da fila sob a mesma `fila_lock`, então a leitura vê as duas ou nenhuma. O resto do motor e
+virada do motor e a entrada da fila sob a mesma `fila_lock`, então a leitura vê as duas ou nenhuma. O avanço sem virada
+(o Próxima, o fim do disco) fecha antes a virada pendente, então o Anterior guarda primeiro o disco que saiu nela,
+e só um dos dois concilia cada virada. O resto do motor e
 a formatação ficam fora das travas.
 
 O `/api/state` e o SSE usam essa captura. A cada volta, o SSE manda o `state` (só quando muda) e o `tick` com a

@@ -241,14 +241,31 @@ def voltas(A, E):
             f"mover na fila conta o lugar na fila que a tela ve, sem a entrada da virada ({fila(A)})")
     cmd.tirar_da_fila(A, z["qid"])
 
-    # o Proxima com a virada pendente: a primeira que a tela mostra, e nao a da virada, que ja toca
-    with mock.patch.object(A, "tocar_entrada") as tocou:
-        confere(cmd.pular(A) is y and tocou.call_args[0][0] is y and fila(A) == ["d1"],
-                "o Proxima com a virada pendente toca a que a tela mostra; a da virada fica para o vigia")
-        confere(cmd.pular(A) is None and fila(A) == ["d1"],
-                "so com a da virada na fila, o Proxima nao tem o que tocar (409)")
-    with A.fila_lock:
-        A.fila.append(y)
+    # o avanco com a virada pendente fecha ela antes (o Anterior guarda o que saiu nela primeiro) e toca a primeira que a
+    # tela mostra. Depois de cada caso, a virada volta a ficar pendente para os testes de baixo
+    v, f0, h0 = E.virou, list(A.fila), list(A.historico)
+
+    def pendente(f=f0):
+        with A.fila_lock:
+            A.fila[:], A.historico[:] = list(f), list(h0)
+        E.virou, E.ended, A.parado_sem_fila = v, False, None
+
+    vistos = []
+    with mock.patch.object(A, "tocar_entrada", side_effect=lambda q, **_: vistos.append(
+            (q, E.virou, historico(A)[-1:], fila(A)))):
+        confere(cmd.pular(A) is y and vistos == [(y, None, ["d3"], [])],
+                f"o Proxima com a virada pendente: fecha a virada (o Anterior guarda a d3) e toca a que a tela mostra "
+                f"({[(q['id'], w, h, f) for q, w, h, f in vistos]})")
+    pendente([x])
+    confere(cmd.pular(A) is None and E.virou is None and fila(A) == [] and historico(A)[-1:] == ["d3"],
+            "so com a da virada na fila, o Proxima fecha a virada e nao tem o que tocar (409)")
+    pendente([x])
+    tr, E.ended = E.track, True  # o disco que entrou na virada ja acabou, antes de o vigia conciliar
+    confere(A._volta_fila(None) is tr and A.parado_sem_fila is tr and E.virou is None,
+            "o fim do disco com a virada pendente e a fila vazia: o prato fica marcado como parado")
+    A._volta_passagem()
+    confere(A.parado_sem_fila is tr, "e a volta do vigia depois nao apaga essa marca (a virada ja foi fechada)")
+    pendente()
 
     # a leitura pega o _qlock do motor: com ele na mao de outro (o _mixa no meio do bloco), ela espera
     class Avisa:

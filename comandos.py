@@ -83,21 +83,25 @@ def avanca(A, virada=None, historico=True, na_tela=False):
     para a entrada da tag na passagem: ela so sai da fila, e o que saiu entra no historico. Volta a entrada (None
     com a fila vazia, ou, na virada, se ela ja tinha saido). na_tela: o erro de tocar vai para a tela (o
     engine.error), e nao para quem chamou (os vigias: entrada quebrada nao trava a fila)."""
+    E = A.engine
     if virada is not None:
         sai, entrou, tag = virada
-        E = A.engine
         with A.fila_lock:
             # a virada sai do motor e a entrada dela sai da fila sob a mesma fila_lock: a leitura do estado (App.leitura)
-            # ve as duas, ou nenhuma
+            # ve as duas, ou nenhuma. Quem chega depois (o vigia, ou o avanco abaixo) nao concilia de novo
             with E._qlock:
-                if E.virou is virada:
-                    E.virou = None
+                if E.virou is not virada:
+                    return None
+                E.virou = None
             x = next((y for y in A.fila if y["qid"] == tag), None)
             if x:
                 A._tirar(x)
         A.guardar_historico(entrou["id"], tr=sai)
         A.parado_sem_fila = None
         return x
+    v = E.virou
+    if v is not None:  # a virada que o vigia ainda nao conciliou fecha antes: o Anterior guarda o que saiu nela primeiro
+        avanca(A, virada=v)
     x = A.proxima()
     if x is None:
         return None
