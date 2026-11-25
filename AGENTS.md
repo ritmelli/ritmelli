@@ -51,7 +51,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 | Área | Arquivos | Teste (sem caminho, em `dev/`) |
 | --- | --- | --- |
 | Motor de áudio | `engine.py`, `sonoridade.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_anel`, `testa_ganchos` |
-| Servidor e YouTube | `server.py`, `yt_fora.py`, `yt_erros.py` | `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
+| Servidor e YouTube | `server.py`, `comandos.py`, `yt_fora.py`, `yt_erros.py` | `testa_comandos`, `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py` | `testa_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`), o `grava_cfg` do `server.py` | `testa_grava` |
 | Pasta protegida | `pastas.py` (`pasta_protegida`), `instalador/protegida.ps1` e quem os chama (`microfone/microfone.py`, `atualizador.py`, `atualizacao.py`, `migra.py`, `instalador/ritmelli.iss`) | `testa_pasta_protegida` (em memória; o `--disco` precisa de administrador e cria pasta em Program Files: só num Windows de teste), `testa_mfx`, `testa_atualizador`, `testa_atualizacao`, `testa_migra` |

@@ -535,8 +535,8 @@ The description at the top of each file (in Portuguese) says exactly what it che
 - The audio engine (`engine.py`, `sonoridade.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
   `dev/testa_congela.py`, `dev/testa_microfone.py`, `dev/testa_passagens.py` (the week of transition records in
   `logs/passagens/`) and `dev/testa_anel.py`.
-- The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
-  `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
+- The server and YouTube access (`server.py`, `comandos.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_comandos.py`,
+  `dev/testa_adianta.py`, `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
   `dev/testa_microfone.py`, `dev/testa_anel.py` (the ring is released after every failure), `dev/testa_voz.py` and
   `microfone/apo/teste/teste_reamostra.py` (the filter's resampler, `reamostra.h`).

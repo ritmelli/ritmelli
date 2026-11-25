@@ -36,6 +36,7 @@ from microfone import preset
 
 import andamento as an
 import atualizacao as atu
+import comandos as cmd
 import engine as eng
 import fx
 import i18n
@@ -611,7 +612,10 @@ class Library:
 
 
 class App:
-    def __init__(self, port, data_dir, mock=False):
+    def __init__(self, port, data_dir, mock=False, vigias=True, relogio=True):
+        """vigias=False e relogio=False sao dos testes (dev/testa_comandos.py): sem as threads dos vigias (quem testa
+        chama cada volta, _volta_fila, _volta_passagem e _volta_auto, a mao) e, no --mock, sem o relogio de 10 ms do
+        MockEngine (quem testa chama o engine._mixa)."""
         self.port = port
         self.mock = mock
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -685,6 +689,8 @@ class App:
         cls = eng.MockEngine if mock else eng.Engine
         self.cfg.pop("out", None)  # a saida pelo cabo saiu: a musica vai sempre pelo filtro do microfone
         self.engine = cls(mic=self.cfg.get("mic", "default"), monitor=self.cfg.get("monitor", "default"))
+        if mock:
+            self.engine.relogio = relogio
         self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
         self.engine.religar_stream = self.religar_stream
         self.engine.sonoridade_de, self.engine.mediu = self.sonoridade_de, self.mediu
@@ -698,6 +704,11 @@ class App:
         # os dados de uso e os erros (metricas.py, #102): so saem com a escolha de quem usa, e nunca no --mock
         self.metricas = met.Metricas(self.cfg, lambda ligar: self.grava_cfg(metricas=ligar), mock=mock)
         self.metricas.instala_ganchos()
+        if vigias:
+            self._liga_vigias()
+
+    def _liga_vigias(self):
+        """As threads que acompanham o motor e a fila, cada uma no seu laco."""
         threading.Thread(target=self.metricas.vigia, args=(self.engine,), daemon=True, name="metricas").start()
         threading.Thread(target=self._vigia_fila, daemon=True).start()
         threading.Thread(target=self._conta_escuta, daemon=True).start()
@@ -708,7 +719,7 @@ class App:
         # elas a versao de audio e o andamento pelo stream), o aquecimento do processo do YouTube (main, /api/aquece) e
         # a versao nova ficam de fora. A prateleira de quem testa nao vira busca no YouTube Music, e o dev/compara.py
         # tira os mesmos prints toda vez. O que a pessoa pede (buscar, colar um link, tocar um resultado) vai ao YouTube
-        if not mock:
+        if not self.mock:
             threading.Thread(target=self._vigia_capas, daemon=True).start()
         threading.Thread(target=self._vigia_sonoridade, daemon=True).start()
         if self.atualizacao.ativa:
@@ -1082,10 +1093,7 @@ class App:
             if self.engine.track is not tr:
                 return
             if tr["job"] is None:  # parecida do Automatico: nao vem download, pula para a seguinte
-                x = self.proxima()
-                if x:
-                    self.tocar_entrada(x, historico=False)
-                else:
+                if cmd.avanca(self, historico=False) is None:
                     self.engine.stop()
                 return
             self.engine.error = i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play "
@@ -1375,34 +1383,30 @@ class App:
         self.tocar_remoto(j, alvo, x, historico=historico)
 
     def _vigia_fila(self):
-        """Quando o disco do prato acaba, o primeiro da fila entra. O Repetir manda: ligado, o
-        disco nao acaba. So a passagem para o fim conta aqui; com o prato ja parado, quem toca
-        e o POST /api/queue (o que entra na fila toca na hora)."""
+        """Quando o disco do prato acaba, o primeiro da fila entra (_volta_fila, a cada 0,1 s)."""
         visto = None
         while True:
             time.sleep(0.1)
-            e = self.engine
-            soou = e.tira_soou()
-            if soou:  # a hora do primeiro som de cada disco (relogio = a do Windows, pra alinhar com quem pediu)
-                titulo, stream, entrou, em = soou
-                print(f"sound: {titulo!r} played {em - entrou:.2f} s after entering the platter "
-                      f"({'stream' if stream else 'file'}; clock={em:.3f})", file=sys.stderr, flush=True)
-            tr = e.track
-            if tr is None or e.status() != "ended":
-                visto = None
-                continue
-            if visto is tr:
-                continue
-            visto = tr
-            x = self.proxima()
-            if x:
-                try:
-                    self.tocar_entrada(x)
-                except Exception as ex:  # noqa: BLE001 - entrada quebrada nao trava a fila
-                    e.error = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue "
-                                       "({reason}).", title=x.get("title") or "?", reason=i18n.motivo(ex, 120))
-            else:
-                self.parado_sem_fila = tr
+            visto = self._volta_fila(visto)
+
+    def _volta_fila(self, visto=None):
+        """Uma volta do _vigia_fila: o disco do prato que acabou (e que nao e o visto, o da volta de antes) faz a fila
+        avancar. O Repetir manda: ligado, o disco nao acaba. So a passagem para o fim conta aqui; com o prato ja
+        parado, quem toca e o POST /api/queue (o que entra na fila toca na hora). Volta o visto da proxima volta."""
+        e = self.engine
+        soou = e.tira_soou()
+        if soou:  # a hora do primeiro som de cada disco (relogio = a do Windows, pra alinhar com quem pediu)
+            titulo, stream, entrou, em = soou
+            print(f"sound: {titulo!r} played {em - entrou:.2f} s after entering the platter "
+                  f"({'stream' if stream else 'file'}; clock={em:.3f})", file=sys.stderr, flush=True)
+        tr = e.track
+        if tr is None or e.status() != "ended":
+            return None
+        if visto is tr:
+            return visto
+        if cmd.avanca(self, na_tela=True) is None:
+            self.parado_sem_fila = tr
+        return tr
 
     # passagem para a proxima (a transicao de DJ) --------------------------
     def fonte_de(self, x):
@@ -1447,48 +1451,43 @@ class App:
         finally:
             self.preparando = None
 
-    def _virou(self, sai, entrou, tag):
-        """O motor passou para a proxima: o que o tocar_entrada faria, sem tocar (ja esta tocando)."""
-        with self.fila_lock:
-            x = next((y for y in self.fila if y["qid"] == tag), None)
-            if x:
-                self._tirar(x)
-        self.guardar_historico(entrou["id"], tr=sai)
-        self.parado_sem_fila = None
-
     def _vigia_passagem(self):
-        """A eng.TRANS_PREP_S do fim, prepara a primeira da fila no segundo deck do motor, que mede o
-        fim deste disco e o comeco dela e vira sozinho no ponto certo; aqui so a fila e o historico
-        acompanham a virada. Repetir ligado, disco sem duracao ou fila vazia: fica como antes (o
-        _vigia_fila toca no fim). A fila que muda antes da virada troca a preparada; a que nao deu para
-        preparar (sem stream, ou o comeco dela nao decodificou) toca no fim, sem nova tentativa."""
+        """A passagem para a proxima (_volta_passagem, a cada 0,2 s)."""
         while True:
             time.sleep(0.2)
-            e = self.engine
-            v = e.virou
-            if v is not None:
-                e.virou = None
-                try:
-                    self._virou(*v)
-                except Exception as ex:  # noqa: BLE001
-                    print(f"transition: the switch didn't close the queue: {ex}", file=sys.stderr, flush=True)
-            tr = e.track
-            with self.fila_lock:
-                x = self.fila[0] if self.fila else None
-            if e.pronto_falhou is not None:
-                self.passagem_falhou, e.pronto_falhou = (id(tr), e.pronto_falhou), None
-            dur = tr.get("duration") if tr else None
-            pode = (x is not None and dur and tr.get("path") and not e.loop
-                    and e.status() in ("playing", "paused", "buffering"))
-            if e.pronto_tag is not None and (not pode or x["qid"] != e.pronto_tag):
-                e.cancelar_pronto()
-            if not pode or e.pronto_tag is not None or dur - e.pos > eng.TRANS_PREP_S:
-                continue
-            chave = (id(tr), x["qid"])
-            if self.preparando is not None or chave == self.passagem_falhou:
-                continue
-            self.preparando = chave
-            threading.Thread(target=self._prepara, args=(tr, x, chave), daemon=True).start()
+            self._volta_passagem()
+
+    def _volta_passagem(self):
+        """Uma volta do _vigia_passagem. A eng.TRANS_PREP_S do fim, prepara a primeira da fila no segundo deck do
+        motor, que mede o fim deste disco e o comeco dela e vira sozinho no ponto certo; aqui so a fila e o historico
+        acompanham a virada (o avanco da fila, sem tocar). Repetir ligado, disco sem duracao ou fila vazia: fica como
+        antes (o _vigia_fila toca no fim). A fila que muda antes da virada troca a preparada; a que nao deu para
+        preparar (sem stream, ou o comeco dela nao decodificou) toca no fim, sem nova tentativa."""
+        e = self.engine
+        v = e.virou
+        if v is not None:
+            e.virou = None
+            try:
+                cmd.avanca(self, virada=v)
+            except Exception as ex:  # noqa: BLE001
+                print(f"transition: the switch didn't close the queue: {ex}", file=sys.stderr, flush=True)
+        tr = e.track
+        with self.fila_lock:
+            x = self.fila[0] if self.fila else None
+        if e.pronto_falhou is not None:
+            self.passagem_falhou, e.pronto_falhou = (id(tr), e.pronto_falhou), None
+        dur = tr.get("duration") if tr else None
+        pode = (x is not None and dur and tr.get("path") and not e.loop
+                and e.status() in ("playing", "paused", "buffering"))
+        if e.pronto_tag is not None and (not pode or x["qid"] != e.pronto_tag):
+            e.cancelar_pronto()
+        if not pode or e.pronto_tag is not None or dur - e.pos > eng.TRANS_PREP_S:
+            return
+        chave = (id(tr), x["qid"])
+        if self.preparando is not None or chave == self.passagem_falhou:
+            return
+        self.preparando = chave
+        threading.Thread(target=self._prepara, args=(tr, x, chave), daemon=True).start()
 
     # Automatico -------------------------------------------
     def mix_do(self, yid):
@@ -1667,54 +1666,54 @@ class App:
         o usuario escolheu (qualquer um que o Automatico nao pos) e a semente, e o radio dela (mix_do)
         mantem AUTO_FILA parecidas no fim do A seguir. Semente nova troca as parecidas; o que ja
         tocou nesta sessao nao volta; quando o Mix da semente acaba, segue do Mix da ultima
-        parecida que tocou. As parecidas vao em ordem de andamento (_ordena_auto)."""
+        parecida que tocou. As parecidas vao em ordem de andamento (_ordena_auto). Cada volta e o _volta_auto."""
         visto, sinal = None, None
         while True:
             time.sleep(0.5)
-            e = self.engine
-            tr = e.track
-            yid = tr.get("youtube_id") if tr else None
-            if yid and yid != visto:
-                visto = yid
-                with self.fila_lock:
-                    self.fora.add(yid)
-                    self.fora_musica |= chaves_musica(tr)
-                    if tr.get("auto"):
-                        self.ponte = yid
-                    else:
-                        self.semente = {"youtube_id": yid, "title": tr.get("title")}
-                        self.mix, self.mix_base = None, yid
-                        for x in [x for x in self.fila if x.get("auto")]:
-                            self._tirar(x)
-            base, entrou = None, 0
+            visto, sinal = self._volta_auto(visto, sinal)
+
+    def _volta_auto(self, visto=None, sinal=None):
+        """Uma volta do _vigia_auto. visto: o youtube_id do prato na volta de antes; sinal: o que a ordem por
+        andamento viu da ultima vez que ordenou. Volta os dois da proxima volta."""
+        e = self.engine
+        tr = e.track
+        yid = tr.get("youtube_id") if tr else None
+        if yid and yid != visto:
+            visto = yid
             with self.fila_lock:
-                if not self.auto or not self.semente:
-                    continue
-                falta = AUTO_FILA - sum(1 for x in self.fila if x.get("auto"))
-                if falta > 0 and not self.mix_buscando:
-                    if not self.mix and self.mix is not None and self.ponte and self.ponte != self.mix_base:
-                        self.mix, self.mix_base = None, self.ponte  # o Mix da semente acabou
-                    if self.mix is None and time.time() - self.mix_falhou >= AUTO_ESPERA_S:
-                        self.mix_buscando, base = True, self.mix_base
-                # a ordem por andamento se refaz quando muda a fila, o prato, o Mix ou chega uma medida
-                agora = (id(tr), tuple(x["qid"] for x in self.fila), self.andamentos_versao, self.mix_seq,
+                self.fora.add(yid)
+                self.fora_musica |= chaves_musica(tr)
+                if tr.get("auto"):
+                    self.ponte = yid
+                else:
+                    self.semente = {"youtube_id": yid, "title": tr.get("title")}
+                    self.mix, self.mix_base = None, yid
+                    for x in [x for x in self.fila if x.get("auto")]:
+                        self._tirar(x)
+        base, entrou = None, 0
+        with self.fila_lock:
+            if not self.auto or not self.semente:
+                return visto, sinal
+            falta = AUTO_FILA - sum(1 for x in self.fila if x.get("auto"))
+            if falta > 0 and not self.mix_buscando:
+                if not self.mix and self.mix is not None and self.ponte and self.ponte != self.mix_base:
+                    self.mix, self.mix_base = None, self.ponte  # o Mix da semente acabou
+                if self.mix is None and time.time() - self.mix_falhou >= AUTO_ESPERA_S:
+                    self.mix_buscando, base = True, self.mix_base
+            # a ordem por andamento se refaz quando muda a fila, o prato, o Mix ou chega uma medida
+            agora = (id(tr), tuple(x["qid"] for x in self.fila), self.andamentos_versao, self.mix_seq,
+                     self._presa())
+            if agora != sinal and (self.mix or any(x.get("auto") for x in self.fila)):
+                entrou = self._ordena_auto()
+                sinal = (id(tr), tuple(x["qid"] for x in self.fila), self.andamentos_versao, self.mix_seq,
                          self._presa())
-                if agora != sinal and (self.mix or any(x.get("auto") for x in self.fila)):
-                    entrou = self._ordena_auto()
-                    sinal = (id(tr), tuple(x["qid"] for x in self.fila), self.andamentos_versao, self.mix_seq,
-                             self._presa())
-            if base:
-                threading.Thread(target=self._busca_mix, args=(base,), daemon=True).start()
-            # o disco acabou antes de chegar parecida (o Mix ainda vinha): a primeira toca agora
-            if entrou and tr is not None and tr is self.parado_sem_fila and e.track is tr and e.status() == "ended":
-                self.parado_sem_fila = None
-                x = self.proxima()
-                if x:
-                    try:
-                        self.tocar_entrada(x)
-                    except Exception as ex:  # noqa: BLE001
-                        e.error = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue "
-                                           "({reason}).", title=x.get("title") or "?", reason=i18n.motivo(ex, 120))
+        if base:
+            threading.Thread(target=self._busca_mix, args=(base,), daemon=True).start()
+        # o disco acabou antes de chegar parecida (o Mix ainda vinha): a primeira toca agora
+        if entrou and tr is not None and tr is self.parado_sem_fila and e.track is tr and e.status() == "ended":
+            self.parado_sem_fila = None
+            cmd.avanca(self, na_tela=True)
+        return visto, sinal
 
 
     # andamento das parecidas -------------------------------------
@@ -1863,9 +1862,10 @@ class App:
                     continue
                 with self.fila_lock:
                     self.versoes[vid] = v
-                    save_json(self.versoes_path, self.versoes)
+                    versoes = dict(self.versoes)
                     self._troca_audio(vid, v)
                     self.andamentos_versao += 1
+                save_json(self.versoes_path, versoes)  # fora da fila_lock: o disco lento nao segura a fila
                 print(f"audio: {x.get('title')!r}: " + (f"the audio version {v['youtube_id']} ({v['duration']} s)"
                                                          if v else "only the video"), file=sys.stderr, flush=True)
                 continue
@@ -1881,8 +1881,9 @@ class App:
                     self.andamento_falhou[c] = time.time()
                     continue
                 self.andamentos[c] = r
-                save_json(self.andamentos_path, self.andamentos)
+                andamentos = dict(self.andamentos)
                 self.andamentos_versao += 1
+            save_json(self.andamentos_path, andamentos)  # fora da fila_lock, como a versao de audio acima
             print(f"tempo: {x.get('title')!r}: start {r['ini']}, end {r['fim']} BPM in {time.time() - t0:.1f} s",
                   file=sys.stderr, flush=True)
 
@@ -2234,29 +2235,25 @@ def build(app_state):
         A.esquecer(iid, it and it.get("youtube_id"))
         return j_ok() if it else j_err(sem_disco(), 404)
 
-    # fila (A seguir): o primeiro toca quando o disco do prato acaba
+    # fila (A seguir): o primeiro toca quando o disco do prato acaba. A regra de cada comando de musica mora no
+    # comandos.py: a rota le o corpo, chama o comando e responde
     @r.post("/api/queue")
     async def queue_add(request):
         b = await body(request)
         try:
-            x, j = A.enfileirar(b, remoto=request["papel"] == "remoto")
+            x, j, tocou = cmd.enfileirar(A, b, remoto=request["papel"] == "remoto")
         except ValueError as ex:
             return j_err(i18n.so_texto(str(ex)))
-        # nada no prato (parado, ou o disco ja acabou): o que acabou de entrar toca na hora, sem
-        # esperar a vez; pausado ainda e disco no prato, e a fila so guarda
-        if E.status() in ("idle", "ended") and A.tirar_da_fila(x["qid"]):
-            A.tocar_entrada(x)
-            return j_ok(entry=x, job=j, playing=True)
-        return j_ok(entry=x, job=j, playing=False)
+        return j_ok(entry=x, job=j, playing=tocou)
 
     @r.delete("/api/queue")
     async def queue_clear(_):
-        A.limpar_fila()
+        cmd.limpar_fila(A)
         return j_ok()
 
     @r.delete("/api/queue/{qid}")
     async def queue_del(request):
-        x = A.tirar_da_fila(request.match_info["qid"], recusar=True)
+        x = cmd.tirar_da_fila(A, request.match_info["qid"])
         return j_ok() if x else j_err(fora_da_fila(), 404)
 
     @r.post("/api/queue/move")
@@ -2266,32 +2263,29 @@ def build(app_state):
             to = int(b.get("to"))
         except (TypeError, ValueError):
             return j_err(i18n.so_texto("Missing the new position (to, starting at 0)."))
-        if not A.mover_na_fila(b.get("qid"), to):
+        if not cmd.mover_na_fila(A, b.get("qid"), to):
             return j_err(fora_da_fila(), 404)
         return j_ok()
 
     @r.post("/api/queue/play")
     async def queue_play(request):
         b = await body(request)
-        x = A.tirar_da_fila(b.get("qid") or "")
-        if not x:
+        if not cmd.tocar_da_fila(A, b.get("qid")):
             return j_err(fora_da_fila(), 404)
-        A.tocar_entrada(x)
         return j_ok()
 
     # transporte do Spotify: Proxima toca o primeiro do A seguir; Anterior volta ao comeco do
     # disco ou toca o de antes
     @r.post("/api/next")
     async def next_(_):
-        x = A.proxima()
+        x = cmd.pular(A)
         if not x:
             return j_err(i18n.msg("server.queue.empty", "The queue is empty: there's no next record."), 409)
-        A.tocar_entrada(x)
         return j_ok(entry=x)
 
     @r.post("/api/prev")
     async def prev(_):
-        feito = A.anterior()
+        feito = cmd.voltar(A)
         if not feito:
             return j_err(i18n.msg("server.queue.noPrevious", "No record played before this one."), 409)
         return j_ok(did=feito)
@@ -2299,46 +2293,30 @@ def build(app_state):
     @r.post("/api/play")
     async def play(request):
         b = await body(request)
-        it = A.lib.get(b.get("id", ""))
-        if not it:
+        feito = cmd.tocar(A, b.get("id", ""), start=b.get("start"), retomar=bool(b.get("resume")),
+                          loop=b.get("loop"), por_cima=b.get("por_cima", cmd.CURTO))
+        if feito is None:
             return j_err(sem_disco(), 404)
-        start = b.get("start")
-        # som curto (buzina, bordao) toca por cima da musica em vez de trocar; "por_cima" no
-        # corpo forca um ou outro; continuar de onde parou e sempre a faixa principal
-        curto = (it.get("duration") or 1e9) <= eng.CURTO_MAX_S and start is None and not b.get("resume")
-        if b.get("por_cima", curto):
-            E.por_cima(dict(it, path=str(LIB / it["file"])))
-            return j_ok(por_cima=True)
-        if start is None:
-            start = it.get("last_pos", 0) if b.get("resume") else 0
-        A.play_item(it, float(start), b.get("loop"))
-        return j_ok()
+        return j_ok(por_cima=True) if feito == "por_cima" else j_ok()
 
     @r.post("/api/pause")
     async def pause(_):
-        E.pause()
-        A.remember_pos()
+        cmd.pausar(A)
         return j_ok()
 
     @r.post("/api/resume")
     async def resume(_):
-        E.resume()
+        cmd.retomar(A)
         return j_ok()
 
     @r.post("/api/toggle")
     async def toggle(_):
-        if E.status() in ("playing", "buffering"):
-            E.pause()
-            A.remember_pos()
-        else:
-            E.resume()
+        cmd.alternar(A)
         return j_ok()
 
     @r.post("/api/stop")
     async def stop(_):
-        A.remember_pos()
-        A.guardar_historico()  # o Anterior toca de novo o disco parado
-        E.stop()
+        cmd.parar(A)
         return j_ok()
 
     @r.post("/api/seek")
@@ -2346,7 +2324,7 @@ def build(app_state):
         b = await body(request)
         if "t" not in b:
             return j_err(i18n.so_texto("Missing the position to seek to (t, in seconds)."))
-        E.seek(float(b["t"]))
+        cmd.ir_para(A, float(b["t"]))
         return j_ok()
 
     def volume(v):
@@ -2402,9 +2380,7 @@ def build(app_state):
         v = volume(b.get("vol"))
         if v is None:
             return j_err(i18n.so_texto("Missing the music volume (vol, a number from 0 to 1)."))
-        E.vol = v
-        A.grava_cfg(vol=v)  # so o volume da musica: o resto do som fica como esta gravado
-        return j_ok(vol=round(E.vol, 6))
+        return j_ok(vol=round(cmd.volume(A, v), 6))
 
     @r.post("/api/abaixa")
     async def abaixa(request):
