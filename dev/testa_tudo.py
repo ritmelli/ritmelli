@@ -153,14 +153,19 @@ def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml"):
         elif not linha and rel.startswith("dev/testa_") and rel != "dev/testa_tudo.py" and rel not in rodam:
             falhas.append(f"{rel} runs nowhere (in no list of dev/testa_tudo.py: STDLIB, COMPLETO, MICROFONE or PASSOS) "
                           "and has no \"# manual: <comando> precisa de <aparelho>\" line at the top")
-    codigo = "\n".join(linha for linha in Path(yml).read_text(encoding="utf-8").splitlines()
-                       if not linha.lstrip().startswith("#"))
-    falhas += [f"the testa.yml no longer runs \"python {c}\"" for c in INVOCATIONS if f"python {c}" not in codigo]
-    # a dev/ script the workflow called directly would skip the check above: it goes through PASSOS
+    linhas = Path(yml).read_text(encoding="utf-8").splitlines()
+    # the commands: a line that starts with python (in a run: block, or right after run:), the dev/ script with either
+    # separator, with or without quotes, and the rest of the line
+    comandos = [(m.group(2).replace("\\", "/"), m.group(3).strip()) for m in (
+        re.match(r"\s*(?:-\s+)?(?:run:\s*)?python(?:\.exe)?\s+(['\"]?)(dev[/\\]\w+\.py)\1(.*)$", linha)
+        for linha in linhas) if m]
+    falhas += [f"the testa.yml no longer runs \"python {c}\"" for c in INVOCATIONS
+               if not any(s == c.split()[0] and resto.startswith(c.split(maxsplit=1)[1]) for s, resto in comandos)]
+    # a dev/ script the workflow calls anywhere but through testa_tudo would skip the check above: it goes in PASSOS
+    citados = {m.replace("\\", "/") for linha in linhas if not linha.lstrip().startswith("#")
+               for m in re.findall(r"python(?:\.exe)?\s+['\"]?(dev[/\\]\w+\.py)", linha)}
     falhas += [f"the testa.yml runs \"python {s}\" directly: declare it in the PASSOS of dev/testa_tudo.py and call "
-               "\"python dev/testa_tudo.py --passo <name>\""
-               for s in sorted({m.replace("\\", "/") for m in re.findall(r"python\s+(dev[/\\]\w+\.py)", codigo)})
-               if s != "dev/testa_tudo.py"]
+               "\"python dev/testa_tudo.py --passo <name>\"" for s in sorted(citados - {"dev/testa_tudo.py"})]
     return falhas
 
 
@@ -425,8 +430,6 @@ def guarda_captura(origem, cache, chave):
     """Puts the prints of the origem folder in the cache folder, with the key. Only the prints and the key of an older
     capture leave the cache folder: anything else in it stays."""
     cache = Path(cache)
-    if cache.resolve() == Path(origem).resolve():
-        raise SystemExit(f"the cache folder {cache} is the folder of the capture itself")
     cache.mkdir(parents=True, exist_ok=True)
     for velho in [*cache.glob("*.png"), cache / "captura.txt"]:
         velho.unlink(missing_ok=True)
@@ -441,9 +444,13 @@ def compara(a, pasta):
     lines, whether it blocks, whether only prints changed). Writes to GITHUB_OUTPUT how many prints changed and which
     caches it filled."""
     md, bloqueia, mudou, saidas = [], False, False, {"prints_mudaram": 0}
+    ref = pasta / "compara" / "ref"
+    # a cache folder inside the compara folder would be emptied by the capture it is meant to hold
+    for c in (a.ref_cache, a.head_cache):
+        if c and Path(c).resolve().is_relative_to(pasta / "compara"):
+            raise SystemExit(f"the cache folder {c} is inside {pasta / 'compara'}: give it a folder of its own")
     cod, saida = executa(["git", "rev-parse", "--verify", f"{a.base}^{{commit}}"], limite=60)
     base = saida.strip()
-    ref = pasta / "compara" / "ref"
     de_onde = ""
     cache = le_captura(a.ref_cache, chave_captura(base)) if a.ref_cache and cod == 0 else []
     if cache:
