@@ -2224,10 +2224,10 @@ def build(app_state):
         """A volta do SSE (Voltas): o state, a prateleira e os jobs com a chave de cada um e o evento em bytes, e o tick
         da mesma captura. O que nao mudou desde a volta de antes e o mesmo objeto: a conexao compara por identidade."""
         s, pos = leitura()
-        jb = A.public_jobs()
+        jb = [dict(x) for x in A.public_jobs()]  # a mesma copia na chave e no evento: o download muda os de la
         v = {"tick": evento("tick", {"pos": round(pos, 2), "levels": {k: round(x, 4) for k, x in E.levels.items()}})}
         for nome, chave, dados in (("state", s, lambda: s), ("library", A.lib.version, A.lib.public),
-                                   ("jobs", [dict(x) for x in jb], lambda: jb)):
+                                   ("jobs", jb, lambda: jb)):
             v[nome] = antes[nome] if antes is not None and antes[nome][0] == chave else (chave, evento(nome, dados()))
         return v
 
@@ -2704,9 +2704,11 @@ def build(app_state):
                     # o state e o tick desta volta saem da mesma captura, valendo ate o fim do envio dela, mesmo se o
                     # motor virar no meio: cada posicao e da faixa que esta volta entregou
                     for nome in ("state", "library", "jobs"):
-                        if v[nome] is not entregue.get(nome):
+                        antes = entregue.get(nome)
+                        if v[nome] is not antes:
                             entregue[nome] = v[nome]
-                            await resp.write(v[nome][1])
+                            if antes is None or v[nome][0] != antes[0]:  # o que voltou ao que ela ja mandou nao vai
+                                await resp.write(v[nome][1])
                     await resp.write(v["tick"])
                     n = v["n"]
         except (ConnectionResetError, asyncio.CancelledError):

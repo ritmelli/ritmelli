@@ -497,7 +497,7 @@ async def papeis_no_guard():
             A.closing = True
             for tarefa in tarefas:
                 await asyncio.wait_for(tarefa, 3)
-            A.closing, A.leitura, E.pos = False, (lambda: ({"status": "idle"}, 0.0)), 0.0
+            A.closing, E.pos = False, 0.0
         for nome, escrito in (("suspenso", escrito1), ("livre", escrito2)):
             p = pares(escrito)
             confere(p[:1] == [("t1", 100.0)] and ("t2", 0.5) in p and set(p) <= {("t1", 100.0), ("t2", 0.5)},
@@ -515,6 +515,7 @@ async def papeis_no_guard():
         antes = len(lidas)
         await asyncio.sleep(5 * server.TICK)
         confere(len(lidas) == antes, f"sem conexao aberta, nada e montado ({len(lidas) - antes} leituras a mais)")
+        A.leitura = lambda: ({"status": "idle"}, 0.0)
         resp, j, _ = await manda("GET", "/api/state", de=pc, handler=rota[("GET", "/api/state")])
         confere(j.get("api") == server.API and j.get("mock") is True,
                 f"o /api/state leva o \"api\" e o \"mock\" ({ {k: j.get(k) for k in ('api', 'mock')} })")
