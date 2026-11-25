@@ -75,6 +75,6 @@ O `testa_filtro`, o `testa_microfone`, o `testa_voz` e o `teste_reamostra.py` pr
 
 Rode na raiz, com o venv: `$env:PYTHONUTF8 = '1'; python -m ruff check .; python dev\testa_tudo.py` (os outros modos e
 onde entra teste novo: o [Contributing](README.md#contributing) do README). O check "Testa o PR" roda o mesmo; print
-mudado no `compara` só bloqueia com a etiqueta `extracao-tema`: sem ela o check passa, e as diferenças ficam no artefato.
-O PR entra pela fila de merge da `main` (exige o "Testa o PR"; ninguém tem bypass): nada de `--admin`, e o `gh pr merge`
-cai no auto-merge, que o repo não permite. O caminho é a mutação GraphQL `enqueuePullRequest`, com `expectedHeadOid`.
+mudado no `compara` só bloqueia com a etiqueta `extracao-tema` (sem ela, fica no artefato). A fila de merge da `main`
+exige ele e o "Trusted author": PR de quem não é um dos dois mantenedores só passa aprovado por um deles no head atual.
+Sem bypass nem `--admin`; `gh pr merge` cai no auto-merge, vedado: é o GraphQL `enqueuePullRequest`, `expectedHeadOid`.
