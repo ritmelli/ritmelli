@@ -2377,7 +2377,7 @@ def build(app_state):
     @r.post("/api/volume")
     async def volume_(request):
         b = await body(request)
-        v = volume(b.get("vol"))
+        v = numero(b.get("vol"))  # o limite de 0 a 1 e do comando
         if v is None:
             return j_err(i18n.so_texto("Missing the music volume (vol, a number from 0 to 1)."))
         return j_ok(vol=round(cmd.volume(A, v), 6))

@@ -30,7 +30,8 @@ histórico. Passam por ele:
 - o stream da parecida que não abriu (`_abre_stream`), sem guardar no histórico;
 - a parecida que chegou com o prato parado (`_volta_auto`).
 
-Nos vigias, o erro de tocar vai para a tela (`engine.error`), e a fila segue.
+No `_volta_fila` e no `_volta_auto`, a entrada sai da fila e, se tocar falhar, o erro vai para a tela
+(`engine.error`).
 
 ## As travas
 
