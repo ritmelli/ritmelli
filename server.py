@@ -428,7 +428,7 @@ class Fora:
 fora = Fora()
 
 
-def cabe_no_auto(dur):
+def fits_auto(dur):
     """The similar track's duration fits the Automatico (automatico.AUTO_DUR)."""
     lo, hi = automatico.AUTO_DUR
     return lo <= dur <= hi
@@ -882,12 +882,12 @@ class App:
                                            "link or try another video.", reason=yt_msg(ex)))
             e = self.engine
 
-            def sem_fonte():  # under the _qlock: the platter is still this job's record, with no stream and no file
+            def no_source():  # under the _qlock: the platter is still this job's record, with no stream and no file
                 tr = e.track
                 return (tr is not None and tr.get("job") == j["id"]
                         and (not tr.get("path") or e.esperando_arquivo()))
-            if sem_fonte():
-                e.stop(pode=sem_fonte)  # sem stream e sem arquivo: o prato nao fica carregando para sempre
+            if no_source():
+                e.stop(pode=no_source)  # sem stream e sem arquivo: o prato nao fica carregando para sempre
 
     # tocar ----------------------------------------------------------------
     def remember_pos(self, cap=None, pausa=None):
@@ -1316,7 +1316,7 @@ class App:
                 montada = [x for x in ordem if x["qid"] in vivos]
                 na_ordem = {x["qid"] for x in montada}
                 fila, ordem = montada + [x for x in fila if x["qid"] not in na_ordem], None
-            self._troca_fila(fila, ordem)  # so a troca da fila: a thread do audio pega o _qlock a cada bloco
+            self._replace_queue(fila, ordem)  # so a troca da fila: a thread do audio pega o _qlock a cada bloco
 
     def enfileirar(self, b, remoto=False):
         """Entrada da fila pelo corpo do POST /api/queue. Disco que nao esta na prateleira ja
@@ -1370,7 +1370,7 @@ class App:
             self._por_na_fila(x, seguir=bool(b.get("next")))
         return x, j
 
-    def _troca_fila(self, fila, ordem):
+    def _replace_queue(self, fila, ordem):
         """With fila_lock: the queue and the order the user built become fila and ordem (_change_queue)."""
         def troca():
             self.fila, self.fila_ordem = fila, ordem
@@ -1394,7 +1394,7 @@ class App:
             self.historico = [x for x in self.historico if fica(x)]
             fila = [x for x in self.fila if fica(x)]
             ordem = None if self.fila_ordem is None else [x for x in self.fila_ordem if fica(x)]
-            self._troca_fila(fila, ordem)
+            self._replace_queue(fila, ordem)
 
     def apagar_audio(self, nome):
         """O arquivo do disco que saiu da prateleira: na hora, ou, com o motor tocando dele (no prato, preparado
@@ -1424,7 +1424,7 @@ class App:
         with self.fila_lock:
             for x in self.fila:
                 self._recusar(x)
-            self._troca_fila([], None if self.fila_ordem is None else [])
+            self._replace_queue([], None if self.fila_ordem is None else [])
 
     def mover_na_fila(self, qid, to):
         """Arrastar muda a ordem de tocar; com o Aleatorio ligado, a ordem montada fica como
@@ -1620,7 +1620,7 @@ class App:
         out = []
         for t in fora.pede("radio", yid=yid, n=automatico.AUTO_LOTE):
             eid, dur = t.get("videoId"), segundos(t.get("length"))
-            if not eid or not YT_ID.match(eid) or eid == yid or not dur or not cabe_no_auto(dur):
+            if not eid or not YT_ID.match(eid) or eid == yid or not dur or not fits_auto(dur):
                 continue
             artistas = ", ".join(a["name"] for a in t.get("artists") or [] if a.get("name"))
             tipo = (t.get("videoType") or "")[-3:]  # ATV: a faixa so de audio; OMV: o clipe; UGC: video de alguem
@@ -1636,7 +1636,7 @@ class App:
         out = []
         for e in info.get("entries") or []:
             eid, dur = e.get("id"), e.get("duration")
-            if not eid or not YT_ID.match(eid) or eid == yid or not dur or not cabe_no_auto(dur):
+            if not eid or not YT_ID.match(eid) or eid == yid or not dur or not fits_auto(dur):
                 continue
             out.append({"youtube_id": eid, "title": e.get("title") or eid, "duration": dur,
                         "channel": e.get("channel") or e.get("uploader"), "thumb": thumb(eid)})
@@ -2104,8 +2104,8 @@ def build(app_state):
             loop_().run_in_executor(pool, A.run_download, j, alvo)
         if not b.get("play"):
             return j_ok(job=j)
-        cmd.tocar_baixando(A, j, alvo, {"youtube_id": yid, "title": b.get("title"), "channel": b.get("channel"),
-                                        "thumb": b.get("thumb"), "duration": b.get("duration")})
+        cmd.play_downloading(A, j, alvo, {"youtube_id": yid, "title": b.get("title"), "channel": b.get("channel"),
+                                          "thumb": b.get("thumb"), "duration": b.get("duration")})
         return j_ok(job=j, streaming=True)
 
     @r.patch("/api/library/{iid}")
@@ -2114,9 +2114,7 @@ def build(app_state):
         kw = {k: b[k] for k in ("title",) if isinstance(b.get(k), str) and b[k].strip()}
         if isinstance(b.get("rapido"), bool):
             kw["rapido"] = b["rapido"]  # nos Sons rapidos do celular pela mao, mesmo com mais de 15 s
-        it = A.lib.update(request.match_info["iid"], **kw)
-        if it:
-            E.update_track(it["id"], **kw)  # o Estado mostra o nome novo na hora
+        it = cmd.update_record(A, request.match_info["iid"], **kw)
         return j_ok(item=it) if it else j_err(sem_disco(), 404)
 
     @r.delete("/api/library/{iid}")

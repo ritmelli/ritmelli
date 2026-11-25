@@ -2152,15 +2152,14 @@ class Engine:
         and linha); None never is."""
         return token is not None and self._deck is token.deck and self._deck.linha == token.linha
 
-    def take_switch(self, switch=None):
+    def take_switch(self, switch):
         """With _qlock: the switch the engine already made on its own (virou, the DJ transition) leaves the engine and
-        comes back, or None without one; with switch, only if the pending one is still that one. Whoever takes it
-        reconciles it with the queue (comandos.concilia)."""
-        v = self.virou
-        if v is None or (switch is not None and v is not switch):
+        comes back, only if the pending one is still switch; None otherwise. Whoever takes it reconciles it with the
+        queue (comandos.concilia)."""
+        if switch is None or self.virou is not switch:
             return None
         self.virou = None
-        return v
+        return switch
 
     def platter_state(self):
         """The platter's track, position, status() and pending switch, read in one stretch of the _qlock. The caller

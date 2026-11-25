@@ -7,7 +7,7 @@ do `App`, chama o mesmo comando. Cada função recebe o `App`; a fila, o histór
 | Comando | Rota | A regra que mora no comando |
 | --- | --- | --- |
 | `tocar` | `POST /api/play`, e o `POST /api/library` com `play` de um disco que já está na prateleira | sem o `por_cima` no corpo, o som curto (até `CURTO_MAX_S`) toca por cima da música, só sem `start` e sem `resume`; com ele, o `por_cima` decide (a prateleira manda `start` 0: vai sempre para o prato) |
-| `tocar_baixando` | `POST /api/library` com `play` de um vídeo fora da prateleira | toca na hora pelo stream enquanto o download segue; o arquivo substitui o stream sem cortar |
+| `play_downloading` | `POST /api/library` com `play` de um vídeo fora da prateleira | toca na hora pelo stream enquanto o download segue; o arquivo substitui o stream sem cortar |
 | `enfileirar` | `POST /api/queue` | com nada no prato (parado, ou o disco já acabou), o que entra toca na hora, num avanço reservado (se o fim do disco reservou antes, só guarda); pausado ainda é disco no prato |
 | `tocar_da_fila` | `POST /api/queue/play` | a entrada sai da fila e toca |
 | `tirar_da_fila` | `DELETE /api/queue/{qid}` | a parecida tirada pelo usuário não volta nesta sessão |
@@ -17,6 +17,7 @@ do `App`, chama o mesmo comando. Cada função recebe o `App`; a fila, o histór
 | `pausar`, `retomar`, `alternar` | `POST /api/pause`, `/api/resume`, `/api/toggle` | pausar espera o motor confirmar a pausa no limite entre blocos (sem trava e sem prender o laço do servidor) e grava a posição confirmada; o alternar pausa o que toca ou carrega e retoma o resto |
 | `parar` | `POST /api/stop` | o disco parado entra no histórico, e o Anterior toca ele de novo; a posição gravada é a do instante em que ele saiu |
 | `ir_para` | `POST /api/seek` | |
+| `update_record` | `PATCH /api/library/{id}` | o disco da prateleira muda (o nome, o `rapido`), e a faixa do prato também, se é ele: a tela mostra o nome novo na hora |
 | `volume` | `POST /api/volume`, e o `vol` do `POST /api/settings` | o limite de 0 a 1; o `/api/volume` grava só o volume da música, e o `/api/settings` grava a configuração do som inteira depois |
 
 ## O avanço da fila

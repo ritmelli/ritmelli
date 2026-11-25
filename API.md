@@ -298,13 +298,18 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `GET /api/pareamento?caminho=/t/<slug>/` | - | só no PC: `{"url", "codigo", "vale_s", "queimado", "qr", "celulares"}` (ver "Celular: pareamento") |
 | `POST /api/pareamento/codigo` | - | só no PC: troca o código (e traz um de volta depois de queimado) |
 | `DELETE /api/pareamento/<id>` | - | só no PC: desconecta o celular, que volta a precisar do código |
+| `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho", "parcial"} ou null}`, e `"automatica": true` com a tarefa do Windows (ver "Versão nova"); `notas` é `{"pt_BR": [...], "en": [...]}`, as da versão em cada língua (a lista pode vir vazia: mostre a da outra) |
+| `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
+| `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
+| `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; automática, o servidor desliga, a tarefa instala e o Ritmelli abre de novo; recusado ou ainda não baixado, 409 com o motivo |
 
 ### Dois Próximos juntos
 
-O `POST /api/next` que chega antes de outro responder divide o avanço dele: os dois tocam uma entrada só e respondem a
-mesma. A janela vai da chegada do primeiro até ele responder, e ele só responde depois de gravar a posição do disco
-que saiu. Ela vale enquanto o prato segue na linha do primeiro: o mesmo disco, sem pulo na barra, ou a linha que o
-avanço dele acabou de publicar. Fora dela, o segundo avança sozinho, como um Próximo novo:
+O `POST /api/next` que chega enquanto outro ainda corre divide o avanço dele: os dois tocam uma entrada só e respondem
+a mesma. A janela vai da chegada do primeiro até o comando dele terminar, depois de gravar a posição do disco que
+saiu; a resposta dele sai logo depois, e o pedido que chega nesse intervalo já é um Próximo novo. Ela vale enquanto o
+prato segue na linha do primeiro: o mesmo disco, sem pulo na barra, ou a linha que o avanço dele acabou de publicar.
+Fora dela, o segundo avança sozinho, como um Próximo novo ("depois de o primeiro responder", abaixo):
 
 | o segundo chega | o prato entre os dois | o primeiro responde | o segundo responde |
 |---|---|---|---|
@@ -316,10 +321,6 @@ avanço dele acabou de publicar. Fora dela, o segundo avança sozinho, como um P
 | depois de o primeiro responder | | a primeira da fila | a seguinte |
 
 O `dev/testa_comandos.py` confere cada linha desta tabela.
-| `GET /api/atualizacao` | - | só no PC: `{"ativa", "versao", "estado", "progresso", "erro", "consultada", "nova": {"versao", "data", "notas", "tamanho", "parcial"} ou null}`, e `"automatica": true` com a tarefa do Windows (ver "Versão nova"); `notas` é `{"pt_BR": [...], "en": [...]}`, as da versão em cada língua (a lista pode vir vazia: mostre a da outra) |
-| `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
-| `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
-| `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; automática, o servidor desliga, a tarefa instala e o Ritmelli abre de novo; recusado ou ainda não baixado, 409 com o motivo |
 
 ## Pedal de troca de voz
 

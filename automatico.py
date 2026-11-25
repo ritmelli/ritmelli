@@ -67,7 +67,6 @@ class Automatico:
 
     def _janela(self, pool, n):
         """As de pool (na ordem do Mix) que cabem na proxima AUTO_JANELA_S, e pelo menos n."""
-        S = self.srv
         out, soma = [], 0.0
         for c in pool:
             if len(out) >= n and soma >= AUTO_JANELA_S:
@@ -79,7 +78,7 @@ class Automatico:
     def _livres(self):
         """Com fila_lock: as do Mix que podem entrar, na ordem do Mix: nem tocaram nesta sessao, nem o usuario tirou,
         nem estao na fila, nem sao a mesma musica de uma dessas ou de uma anterior do Mix."""
-        A, S = self.app, self.srv
+        A = self.app
         vistas = set(A.fora_musica)
         for x in A.fila:
             vistas |= music.chaves_musica(x)
@@ -114,7 +113,7 @@ class Automatico:
         que o usuario arrastou fica onde ele pos, e a primeira da fila fica se a passagem para ela ja vai ser preparada.
         A que sai da fila volta para o Mix. Sem medida ainda, fica a ordem do Mix; cada medida que chega ordena de
         novo. Volta quantas entraram."""
-        A, S = self.app, self.srv
+        A = self.app
         k = len(A.fila)
         while k and A.fila[k - 1].get("auto") and not A.fila[k - 1].get("fixa"):
             k -= 1
@@ -175,7 +174,7 @@ class Automatico:
     def _volta_auto(self, visto=None, sinal=None):
         """Uma volta do _vigia_auto. visto: o youtube_id do prato na volta de antes; sinal: o que a ordem por
         andamento viu da ultima vez que ordenou. Volta os dois da proxima volta."""
-        A, S = self.app, self.srv
+        A = self.app
         e = A.engine
         tr = e.track
         yid = tr.get("youtube_id") if tr else None
@@ -222,7 +221,6 @@ class Automatico:
 
     def _poe_versao(self, x, v):
         """A parecida passa a tocar a versao so de audio v (sem versao, fica o video e so a marca de procurada)."""
-        S = self.srv
         x["audio"] = True
         if v:
             x.update(v, video=x.get("video") or x["youtube_id"], thumb=music.thumb(v["youtube_id"]), tipo="ATV")
@@ -254,7 +252,7 @@ class Automatico:
         ("audio", parecida) sem a versao de audio procurada; o do prato, o ultimo que o usuario pos antes das parecidas
         e as parecidas da janela (as da fila e as do Mix), na ordem do Mix, cada uma com a versao antes da medida.
         (None, None) sem nada."""
-        A, S = self.app, self.srv
+        A = self.app
         k = len(A.fila)
         while k and A.fila[k - 1].get("auto"):
             k -= 1

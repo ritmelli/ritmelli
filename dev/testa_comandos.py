@@ -970,16 +970,34 @@ def bloco(A, E):
     j = A.new_job("failing", True, "bbbbbbbbbbb")
     E.espera({"id": "job-falha", "title": "loading", "job": j["id"], "path": None, "stream": True,
               "youtube_id": None, "duration": None, "lufs": -14.0})
-    with mock.patch.object(A, "download", side_effect=RuntimeError("boom")),             contextlib.redirect_stderr(io.StringIO()):
+    with (mock.patch.object(A, "download", side_effect=RuntimeError("boom")),
+          contextlib.redirect_stderr(io.StringIO())):
         A.run_download(j, "bbbbbbbbbbb")
     confere(E.track is None and j["status"] == "error",
             f"the failed download stops the platter that waited for it ({no_prato(E)}, {j['status']})")
     toca("d1")
     j = A.new_job("failing", True, "ccccccccccc")
-    with mock.patch.object(A, "download", side_effect=RuntimeError("boom")),             contextlib.redirect_stderr(io.StringIO()):
+    with (mock.patch.object(A, "download", side_effect=RuntimeError("boom")),
+          contextlib.redirect_stderr(io.StringIO())):
         A.run_download(j, "ccccccccccc")
     confere(no_prato(E) == "d1" and E.status() == "playing",
             f"with another record on the platter, the failed download leaves it playing ({no_prato(E)}, {E.status()})")
+    # the platter swaps after the first check and before stop takes the engine's lock: stop's pode sees the new record
+    j = A.new_job("failing", True, "ddddddddddd")
+    E.espera({"id": "job-falha2", "title": "loading", "job": j["id"], "path": None, "stream": True,
+              "youtube_id": None, "duration": None, "lufs": -14.0})
+    real_stop = E.stop
+
+    def stop_after_swap(*a, **kw):
+        toca("d1")
+        return real_stop(*a, **kw)
+    with (mock.patch.object(A, "download", side_effect=RuntimeError("boom")),
+          mock.patch.object(E, "stop", side_effect=stop_after_swap),
+          contextlib.redirect_stderr(io.StringIO())):
+        A.run_download(j, "ddddddddddd")
+    confere(no_prato(E) == "d1" and E.status() == "playing" and j["status"] == "error",
+            f"the platter swapped right before the stop: the failed download leaves the new record playing "
+            f"({no_prato(E)}, {E.status()}, {j['status']})")
 
     # o leitor de uma linha que ja acabou nao marca o fim nem o erro da linha nova
     toca("d1")
@@ -2308,15 +2326,33 @@ def two_nexts_table(A, E):
         y, _, _ = cmd.enfileirar(A, {"id": "d3"})
         return x, y
 
+    junta, judged = cmd.Proximo.junta, threading.Event()
+
+    def judging(p, E_):
+        """Proximo.junta, telling the test the second Proximo already decided whether it shares the first's advance."""
+        try:
+            return junta(p, E_)
+        finally:
+            judged.set()
+
+    def arrive_second():
+        """The second Proximo, back once it decided (or once it returned); fails the row if it never does."""
+        judged.clear()
+        with mock.patch.object(cmd.Proximo, "junta", judging):
+            t2, r2 = em_thread(cmd.pular, A)
+            if not judged.wait(5):
+                confere(False, "the second Proximo never decided whether to share the first's advance")
+        return t2, r2
+
     def before_reserving(change):
         """The first holds its Proximo and waits for the fila_lock the test holds: it has not reserved yet."""
         with A.fila_lock:
             t1, r1 = em_thread(cmd.pular, A)
-            ate(lambda: A.proximo is not None)
-            t1.join(0.2)
+            if not ate(lambda: A.proximo is not None):
+                confere(False, "the first Proximo never started")
+            t1.join(0.2)  # on its way to the fila_lock; whether it got there or not, it has not reserved
             change()
-            t2, r2 = em_thread(cmd.pular, A)
-            t2.join(0.2)
+            t2, r2 = arrive_second()
         t1.join(5)
         t2.join(5)
         return r1, r2, None
@@ -2334,8 +2370,7 @@ def two_nexts_table(A, E):
             t1, r1 = em_thread(cmd.pular, A)
             inside.wait(5)
             change()
-            t2, r2 = em_thread(cmd.pular, A)
-            t2.join(0.3)
+            t2, r2 = arrive_second()
             release.set()
             t1.join(5)
             t2.join(5)
@@ -2359,7 +2394,7 @@ def two_nexts_table(A, E):
             saving.wait(5)
             change()
             t2, r2 = em_thread(cmd.pular, A)
-            t2.join(0.5)
+            t2.join(5)  # in every row the second no longer depends on the first, which is still saving
             early = list(r2)  # before the first returns
             release.set()
             t1.join(5)

@@ -133,12 +133,22 @@ def tocar(A, iid, start=None, retomar=False, loop=None, por_cima=CURTO):
     return "prato"
 
 
-def tocar_baixando(A, j, alvo, meta):
+def play_downloading(A, j, alvo, meta):
     """The video alvo, not on the shelf yet, on the platter right away over the stream while job j downloads it (the
     POST /api/library with play): when the file arrives, the engine moves to it without cutting. meta: the youtube_id,
     title, channel, thumb and duration the body brought. Returns whether it swapped."""
     A.job_update(j, play=True)
     return A.tocar_remoto(j, alvo, meta)
+
+
+def update_record(A, iid, **fields):
+    """The shelf record iid gets fields (the PATCH /api/library/{iid}: the title, the "rapido"), and the platter's
+    track too when it is that record, so the state shows the new name right away (Engine.update_track, under the
+    engine's lock). Returns the record, or None if it is not on the shelf."""
+    it = A.lib.update(iid, **fields)
+    if it:
+        A.engine.update_track(it["id"], **fields)
+    return it
 
 
 def enfileirar(A, b, remoto=False):
