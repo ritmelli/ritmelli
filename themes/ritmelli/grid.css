@@ -1,0 +1,64 @@
+/* GRID-INICIO */
+/* ---------- grade ---------- */
+.app {
+  --alvo: 2.5rem;           /* altura dos botoes; encolhe em tela baixa, nunca abaixo de 32 px */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "topo" "deck" "parede" "receptor" "efeitos";
+  --fresta: 22px;           /* folga entre as fileiras; a gaveta sobe por baixo do receptor nessa medida */
+  gap: var(--fresta);
+  padding: 14px 16px 40px;
+  max-width: 3000px; margin: 0 auto;
+}
+.topo { grid-area: topo; }
+.deck { grid-area: deck; }
+.receptor {
+  position: relative; z-index: 2;
+  display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 16px 26px; align-items: center;
+  color: var(--tinta);
+  /* o chassi cobre tudo; este fundo so aparece na beira, misturado, quando a rolagem cai entre dois pixels da tela */
+  background: var(--escovado), linear-gradient(180deg, #DCD4C7, var(--aluminio) 50%, #BCB3A3);
+}
+.parede { grid-area: parede; }
+
+/* computador: a pagina nunca rola. A altura da tela manda no tamanho do toca-discos;
+   o que sobra vai para a parede, e a prateleira rola por dentro. */
+@media (min-width: 900px) {
+  .app {
+    /* altura de tudo na coluna do deck que nao e o tampo (topo, faixa, folgas), medida: a coluna sai da largura que o
+       tampo consegue ter, e o visor e a barra de tempo, que enchem a coluna, ficam da largura do toca-discos. Cresce
+       com a tela porque a letra do visor cresce. O piso cabe as teclas */
+    --resto: calc(360px + 6.75dvh);
+    --deck-w: clamp(344px, min(42vw, (100dvh - var(--resto)) * 1.25), 1100px);
+    --pad-y: 18px;
+    height: 100vh; height: 100dvh;
+    grid-template-columns: var(--deck-w) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "topo topo" "deck receptor" "deck parede";
+    --fresta: 20px;
+    column-gap: clamp(60px, 5.5vw, 76px); row-gap: var(--fresta);   /* o vao do par de cabos: com menos, os plugues somem */
+    padding: var(--pad-y) clamp(20px, 2.4vw, 44px);
+  }
+  .deck { min-height: 0; }
+  /* o tampo ocupa o que a faixa deixa: largura da coluna ou altura livre, o menor */
+  .mesa { flex: 0 1 calc(var(--deck-w) * .8); min-height: 0; container-type: size; }
+  .mesa .tampo { width: min(100cqw, 125cqh); }
+  .faixa { flex: none; }
+  .parede { min-height: 0; margin-inline: -10px; }
+  #vista-busca .cabeca-sec { margin-bottom: 2px; }
+  .rolo {
+    flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+    padding: 18px 4px 12px 0;   /* folga para a capa levantada e o anel de foco */
+    scrollbar-width: thin; scrollbar-color: #8a5a40 rgba(0,0,0,.18);
+    /* esmaece a borda de cima quando ainda ha disco escondido la; embaixo nao (ordem dele, 05/11: o esmaecido no pe
+       da tela parecia defeito), e a parede desce ate a barra, que cobre o que passa */
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 var(--fc));
+            mask-image: linear-gradient(180deg, transparent, #000 var(--fc));
+    transition: --fc .25s ease;
+  }
+  .parede.rolo { padding: 8px 10px 12px; }
+  .rolo.mais-cima { --fc: 30px; }
+}
+@property --fc { syntax: '<length>'; inherits: false; initial-value: 0px; }
+
+/* GRID-FIM */
