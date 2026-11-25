@@ -1028,9 +1028,8 @@ class App:
     def _troca(self, tr, start=0.0, stream=False, loop=None, historico=True, entrada=None, reserva=None,
                anterior=False):
         """O disco tr entra no prato (o load; com stream, (alvo, tem_titulo), o espera e depois o _abre_stream), sob a
-        fila_lock. A virada pendente fecha antes e
-        a passagem preparada sai (_fecha_viradas: o Anterior guarda primeiro o que saiu nela, e o motor nao vira no
-        meio). Com a reserva (o avanco da fila), ela ainda tem de ser a do App, e o motor confere sob o _qlock que o
+        fila_lock e o _lock do motor (_com_motor). A virada pendente fecha antes e a passagem preparada sai
+        (_fecha_viradas: o Anterior guarda primeiro o que saiu nela, e o motor nao vira no meio). Com a reserva (o avanco da fila), ela ainda tem de ser a do App, e o motor confere sob o _qlock que o
         prato ainda e o deck e a linha dela; com a entrada (da fila), ela ainda tem de estar na fila, e sai dela na
         mesma troca. O que saiu do prato (a Captura que o motor devolve) entra no Anterior (historico=False: nao entra)
         ou, no Anterior (anterior=True), volta ao topo da fila. O Repetir vale para o disco do prato: loop decide, e
@@ -1039,11 +1038,19 @@ class App:
         e = self.engine
         ganho = e._ganho_de(tr)  # fora das travas: o motor pergunta ao servidor
 
+        def na_fila():
+            return entrada is None or any(y is entrada for y in self.fila)
+
         def troca(depois):
-            self._fecha_viradas()
-            if reserva is not None and self.reserva is not reserva:
+            # a reserva e a entrada que ja nao valem nao chegam a tirar a passagem preparada de quem vale
+            if reserva is not None:
+                with e._qlock:
+                    if self.reserva is not reserva or not reserva.vale(e):
+                        return None
+            if not na_fila():
                 return None
-            if entrada is not None and not any(y is entrada for y in self.fila):
+            self._fecha_viradas()
+            if not na_fila():  # a virada que fechou agora era a dela
                 return None
             pode = (lambda: reserva.vale(e)) if reserva is not None else None
             cap = (e.espera(tr, pode=pode, ganho=ganho, depois=depois) if stream
@@ -1063,7 +1070,6 @@ class App:
                 self._solta_reserva(reserva, entrada)
             elif self.reserva is not None:
                 self._solta_reserva(self.reserva, None)  # a linha que ela reservou acabou: quem espera nao espera mais
-            self._confere_preparo()
             return cap
         cap = self._com_motor(troca)
         if cap is None:
@@ -1076,9 +1082,9 @@ class App:
         return True
 
     def _com_motor(self, f):
-        """f(depois) com a fila_lock e o _lock do motor na mao, nessa ordem, sem esperar o _lock com a fila_lock segura: a
-        leitura do estado (o /api/state, no laco do servidor) pega a fila_lock, e o _lock pode ficar segundos com outro
-        (a troca de aparelho). Ocupado, solta a fila_lock, espera o _lock sozinho e tenta de novo; f roda uma vez so e
+        """f(depois) com a fila_lock e o _lock do motor na mao, nessa ordem, sem esperar o _lock com a fila_lock
+        segura: a leitura do estado (o /api/state, no laco do servidor) pega a fila_lock, e o _lock pode ficar segundos
+        com outro (a troca de aparelho). Ocupado, solta a fila_lock, espera o _lock sozinho e tenta de novo; f roda uma vez so e
         confere de novo o que precisa. O que o motor deixa em depois (o leitor que comeca, a onda, a medida) roda com
         as duas travas soltas. Volta o que f volta."""
         e = self.engine
@@ -1195,13 +1201,15 @@ class App:
                 cap = e.captura()
                 if cap.track is not tr:
                     return
+                def para_se():  # sob o _qlock (a fila muda sob ele): o mesmo prato, a fila vazia e nenhum avanco de
+                    r = self.reserva  # outro em curso nesta linha
+                    return (e._deck is cap.deck and e._deck.linha == cap.linha and not self.fila
+                            and (r is None or r.feita.is_set() or not r.vale(e)))
                 for _ in range(3):  # a reserva de outro que falhou devolve None: com fila, tenta de novo
                     if cmd.avanca(self, historico=False, visto=cap) is not None:
                         return  # tocou (este ou outro avanco), ou o prato ja mudou (CEDEU)
-                    with self.fila_lock:
-                        if not self.fila:
-                            break
-                e.stop(pode=lambda: e._deck is cap.deck and e._deck.linha == cap.linha)
+                    if e.stop(pode=para_se) is not None:
+                        return
                 return
             self.engine.error = i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play "
                                                                         "right away ({reason}). It will play as soon "
@@ -1278,9 +1286,14 @@ class App:
         pendente fecha antes de escolher: o Anterior ja tem o disco que saiu nela. Volta o que fez."""
         e = self.engine
         with self.fila_lock:
-            self._fecha_viradas(cancela=False)
-            with e._qlock:
-                tr, pos = e.track, e.pos
+            while True:  # a faixa e a posicao saem do mesmo trecho do _qlock em que a virada pendente ja fechou
+                with e._qlock:
+                    v, e.virou = e.virou, None
+                    if v is None:
+                        e._cancela_passagem()  # e o motor nao vira entre a escolha e a troca
+                        tr, pos = e.track, e.pos
+                        break
+                cmd.fecha_virada(self, v)
             volta = tr is not None and (pos > ANTERIOR_REINICIA_S or not self.historico)
             x = None if volta or not self.historico else self.historico.pop()
         if volta:
@@ -1291,18 +1304,17 @@ class App:
         self.tocar_entrada(x, historico=False, anterior=True)
         return "anterior"
 
-    def _fecha_viradas(self, cancela=True):
+    def _fecha_viradas(self):
         """Com fila_lock: a virada que o motor ja confirmou e o vigia ainda nao conciliou fecha agora
-        (comandos.fecha_virada), antes de mexer no historico. cancela: e, no mesmo trecho do _qlock em que nao ha mais
-        virada, a passagem preparada sai; ate soltar a fila_lock, o motor nao vira de novo (a preparacao nova so
-        publica conferindo a reserva e a cabeca da fila, _prepara)."""
+        (comandos.fecha_virada), antes de mexer no historico, e, no mesmo trecho do _qlock em que nao ha mais virada, a
+        passagem preparada sai; ate soltar a fila_lock, o motor nao vira de novo (a preparacao nova publica sob a
+        fila_lock, _prepara)."""
         e = self.engine
         while True:
             with e._qlock:
                 v, e.virou = e.virou, None
                 if v is None:
-                    if cancela:
-                        e._cancela_passagem()
+                    e._cancela_passagem()
                     return
             cmd.fecha_virada(self, v)
 
@@ -1316,11 +1328,6 @@ class App:
                 self.reserva = None
         r.entrada = entrada
         r.feita.set()
-
-    def _confere_preparo(self):
-        """Com fila_lock: o _confere_preparo_sob, pegando o _qlock."""
-        with self.engine._qlock:
-            self._confere_preparo_sob()
 
     def _confere_preparo_sob(self):
         """Com fila_lock e o _qlock, no mesmo trecho em que a fila mudou: a passagem preparada para quem nao e mais a
@@ -1374,19 +1381,21 @@ class App:
         """Aleatorio do YouTube Music: ligar embaralha o A seguir (a ordem nova aparece na
         lista); desligar volta a ordem que o usuario montou, sem os que ja sairam. As parecidas do
         Automatico seguem no fim, na ordem delas (a do andamento)."""
-        with self.fila_lock, self.engine._qlock:
-            if on and self.fila_ordem is None:
-                self.fila_ordem = list(self.fila)
-                meus = [x for x in self.fila if not x.get("auto")]
+        with self.fila_lock:
+            fila, ordem = self.fila, self.fila_ordem
+            if on and ordem is None:
+                ordem = list(fila)
+                meus = [x for x in fila if not x.get("auto")]
                 random.shuffle(meus)
-                self.fila = meus + [x for x in self.fila if x.get("auto")]
-            elif not on and self.fila_ordem is not None:
-                vivos = {x["qid"] for x in self.fila}
-                ordem = [x for x in self.fila_ordem if x["qid"] in vivos]
-                na_ordem = {x["qid"] for x in ordem}
-                self.fila = ordem + [x for x in self.fila if x["qid"] not in na_ordem]
-                self.fila_ordem = None
-            self._confere_preparo_sob()
+                fila = meus + [x for x in fila if x.get("auto")]
+            elif not on and ordem is not None:
+                vivos = {x["qid"] for x in fila}
+                montada = [x for x in ordem if x["qid"] in vivos]
+                na_ordem = {x["qid"] for x in montada}
+                fila, ordem = montada + [x for x in fila if x["qid"] not in na_ordem], None
+            with self.engine._qlock:  # so a troca da fila: a thread do audio pega o _qlock a cada bloco
+                self.fila, self.fila_ordem = fila, ordem
+                self._confere_preparo_sob()
 
     def enfileirar(self, b, remoto=False):
         """Entrada da fila pelo corpo do POST /api/queue. Disco que nao esta na prateleira ja
@@ -1454,12 +1463,13 @@ class App:
         vez dele, ou no Anterior)."""
         def fica(x):
             return x.get("id") != iid and not (yid and x.get("youtube_id") == yid)
-        with self.fila_lock, self.engine._qlock:
-            self.fila = [x for x in self.fila if fica(x)]
-            if self.fila_ordem is not None:
-                self.fila_ordem = [x for x in self.fila_ordem if fica(x)]
+        with self.fila_lock:
             self.historico = [x for x in self.historico if fica(x)]
-            self._confere_preparo_sob()
+            fila = [x for x in self.fila if fica(x)]
+            ordem = None if self.fila_ordem is None else [x for x in self.fila_ordem if fica(x)]
+            with self.engine._qlock:
+                self.fila, self.fila_ordem = fila, ordem
+                self._confere_preparo_sob()
 
     def apagar_audio(self, nome):
         """O arquivo do disco que saiu da prateleira: na hora, ou, com o motor tocando dele (no prato, preparado
@@ -1489,13 +1499,14 @@ class App:
         threading.Thread(target=apaga, daemon=True).start()
 
     def limpar_fila(self):
-        with self.fila_lock, self.engine._qlock:
+        with self.fila_lock:
             for x in self.fila:
                 self._recusar(x)
-            self.fila = []
-            if self.fila_ordem is not None:
-                self.fila_ordem = []
-            self._confere_preparo_sob()
+            with self.engine._qlock:
+                self.fila = []
+                if self.fila_ordem is not None:
+                    self.fila_ordem = []
+                self._confere_preparo_sob()
 
     def mover_na_fila(self, qid, to):
         """Arrastar muda a ordem de tocar; com o Aleatorio ligado, a ordem montada fica como
@@ -1520,8 +1531,8 @@ class App:
         """Toca uma entrada da fila (ou do historico): do arquivo se ja esta na prateleira;
         senao pelo stream, com o download (o da fila, ou um novo) trocando para o arquivo
         quando chegar. Parecida do Automatico fora da prateleira toca so pelo stream, sem
-        baixar: a prateleira fica com o que o usuario escolheu. entrada, reserva e anterior vao para a troca (App._troca):
-        a entrada da fila sai dela so se a troca vale. Volta se trocou."""
+        baixar: a prateleira fica com o que o usuario escolheu. entrada, reserva e anterior vao para a troca
+        (App._troca): a entrada da fila sai dela so se a troca vale. Volta se trocou."""
         j = self.jobs.get(x.get("job") or "")
         it = (self.lib.get(x["id"]) if x.get("id") else None) or \
              (self.lib.by_youtube(x["youtube_id"]) if x.get("youtube_id") else None) or \
@@ -1602,8 +1613,8 @@ class App:
         """A fonte da entrada x e o ganho dela saem fora das travas (o endereco do stream leva 1 a 3 s). A publicacao e
         sob a fila_lock, e confere de novo: x ainda e a primeira da fila; e, sob o _qlock, nenhuma virada pendente nem
         avanco reservado em curso nesta linha, e o prato ainda e o deck e a linha que a volta viu (cap), com tr, sem o
-        Repetir, sem ter acabado e sem nada preparado. Quem fecha a virada e troca o disco do prato sob a fila_lock (o Parar, a troca) nao ve uma
-        preparacao nova entrar no meio."""
+        Repetir, sem ter acabado e sem nada preparado. Quem fecha a virada e troca o disco do prato sob a fila_lock (o
+        Parar, a troca) nao ve uma preparacao nova entrar no meio."""
         try:
             novo = self.fonte_de(x)
             if novo is None:
@@ -1890,8 +1901,9 @@ class App:
                          self._presa())
         if base:
             threading.Thread(target=self._busca_mix, args=(base,), daemon=True).start()
-        # o disco acabou antes de chegar parecida (o Mix ainda vinha): a primeira toca agora
-        if entrou and tr is not None and tr is self.parado_sem_fila:
+        # o disco acabou antes de chegar parecida (o Mix ainda vinha): a primeira toca agora; e tambem a que ja estava
+        # la quando a volta de antes cedeu a outro avanco que nao a tocou
+        if (entrou or self.fila) and tr is not None and tr is self.parado_sem_fila:
             cap = e.captura()
             if cap.track is tr and cap.status == "ended" and \
                     cmd.avanca(self, na_tela=True, visto=cap, cede=True) is not cmd.CEDEU:

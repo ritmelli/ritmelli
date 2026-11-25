@@ -91,14 +91,15 @@ def toca_se_parado(A, x):
     """Com nada no prato (parado, ou o disco ja acabou), a entrada x que acabou de entrar toca na hora, sem esperar a
     vez; pausado ainda e disco no prato, e a fila so guarda. Tocar na hora e um avanco reservado na linha do prato: se
     o fim do disco (o vigia) ja reservou o avanco dela, este espera o resultado, e tocou so se foi esta entrada; se
-    ela nao tocou nada e o prato segue parado, a vez e desta. Volta se tocou."""
-    for _ in range(3):  # a reserva de outro que nao tocou (a entrada quebrada, invalidada): de novo, se ainda parado
-        cap = A.engine.captura()
-        if cap.status not in ("idle", "ended"):
-            return False
+    ela nao tocou nada (a entrada quebrada) e o prato segue na mesma linha, a vez e desta. O prato que mudou de linha
+    no meio (o Parar, outro disco) fica como esta. Volta se tocou."""
+    cap = A.engine.captura()
+    if cap.status not in ("idle", "ended"):
+        return False
+    for _ in range(3):  # a reserva de outro que nao tocou nesta linha devolve None: de novo, na mesma linha
         y = avanca(A, visto=cap, entrada=x)
-        if y is not None and y is not CEDEU:
-            return y is x
+        if y is not None:
+            return y is x  # a entrada que tocou, ou CEDEU (o prato ja e outra linha)
     return False
 
 
@@ -173,6 +174,14 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                 E.virou = None
             return fecha_virada(A, virada)
     em_curso = r = None
+    if not cede:
+        # a reserva de outro ja em curso nesta linha (o vigia trocando o disco, com a fila_lock na mao): quem chega
+        # espera o resultado dela, sem disputar a fila_lock e reservar a seguinte depois
+        with E._qlock:
+            r0 = A.reserva
+            vivo = r0 is not None and not r0.feita.is_set() and r0.vale(E)
+        if vivo:
+            return r0.espera()
     with A.fila_lock:
         while True:
             with E._qlock:

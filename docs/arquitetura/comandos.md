@@ -39,8 +39,11 @@ disco, a entrada saiu da fila) não toca nem grava histórico. Com outra reserva
 a vez (e conferem de novo na volta seguinte), e o Próxima e o enfileirar esperam o resultado dela, sem trava nenhuma,
 numa thread do executor (as rotas não prendem o laço do servidor). A confirmação, o erro e a invalidação resolvem a
 reserva uma vez só e liberam todos; a troca sem reserva (o tocar da prateleira, o Anterior) e o Parar soltam a reserva
-em curso. O enfileirar e a parecida sem stream que esperaram uma reserva que não tocou tentam de novo, se o prato
-segue parado (ou carregando a parecida) e a fila tem o que tocar. Os Próximos sobrepostos (o segundo chega antes de o
+em curso, e quem espera (não cede) vê a reserva de outro já em curso nesta linha antes de disputar a `fila_lock`. O
+enfileirar e a parecida sem stream que esperaram uma reserva que não tocou tentam de novo na mesma linha do prato (a
+que mudou no meio, como no Parar, fica como está); a parecida só para o prato com a fila vazia e sem avanço de outro
+em curso, conferidos no `pode` do `stop`. A troca confere a reserva e a entrada antes de fechar a virada e tirar a
+passagem preparada: a que já não vale não tira a preparada de quem vale. Os Próximos sobrepostos (o segundo chega antes de o
 primeiro voltar, mesmo com o primeiro já trocando o disco) dividem o mesmo avanço (`App.proximo`): um só toca, e
 todos respondem a entrada dele. O Próxima com a virada pendente devolve a entrada dela; se ela já saiu da fila, segue
 para a primeira. No `_volta_fila` e no `_volta_auto`, se tocar falhar, o erro vai para a tela (`engine.error`); em
@@ -51,10 +54,13 @@ O `POST /api/queue` põe na fila no laço do servidor, como o tocar e a pratelei
 e a criação de um novo não correm com outro pedido), e só o tocar na hora vai ao executor.
 
 Toda troca de disco passa pelo `App._troca`, sob a `fila_lock`: o Anterior, o Parar (que não troca, mas guarda) e o
-tocar da prateleira fecham antes a virada pendente, e o Anterior guarda primeiro o que saiu nela. A troca, o Parar e a
+tocar da prateleira fecham antes a virada pendente, e o Anterior guarda primeiro o que saiu nela; o Anterior escolhe
+entre voltar ao começo e tocar o de antes com a faixa e a posição lidas no mesmo trecho do `_qlock` em que não há
+virada, e a passagem preparada sai ali. A troca, o Parar e a
 publicação da preparação pegam a `fila_lock` e o `_lock` do motor pelo `App._com_motor`, que nunca espera o `_lock`
 com a `fila_lock` na mão: com o `_lock` ocupado (a reabertura do áudio, a troca de aparelho), solta a `fila_lock`,
-espera fora e tenta de novo, e a leitura do estado segue respondendo. O ganho do disco que entra é medido antes, e o
+espera fora e tenta de novo, e a leitura do estado segue respondendo enquanto um vigia ou uma rota no executor espera
+o `_lock` (as rotas que trocam no laço, como o `/api/play`, ainda esperam ali, como antes). O ganho do disco que entra é medido antes, e o
 leitor que começa, a onda e a medida rodam depois de soltar as duas (o `depois` do `load`, do `espera` e do
 `preparar`).
 

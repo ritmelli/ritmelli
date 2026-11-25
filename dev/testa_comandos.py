@@ -1166,7 +1166,7 @@ def avanco(A, E):
     fonte = A.fonte_de
 
     def tardia(nome, mexe, publica=False, no_motor=False):
-        """no_motor: a fila muda ja dentro do E.preparar, depois da conferencia da primeira da fila e antes do _qlock."""
+        """no_motor: a fila muda ja dentro do E.preparar, depois de conferir a primeira da fila e antes do _qlock."""
         limpa()
         toca("d1", start=100.0)
         x, _, _ = cmd.enfileirar(A, {"id": "d2"})
@@ -1518,6 +1518,149 @@ def avanco(A, E):
         faz()
         confere(r.feita.is_set() and r.entrada is None and A.reserva is None,
                 f"{nome} solta a reserva de avanco em curso ({r.feita.is_set()})")
+
+    # o Proximo que chega com o fim do disco (o vigia) ja trocando o disco: espera o resultado dele, sem pular a
+    # seguinte
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    toca_ate_o_fim(E)
+    carrega, no_load, libera = E.load, threading.Event(), threading.Event()
+
+    def load_preso(*a, **kw):
+        no_load.set()
+        libera.wait(5)
+        return carrega(*a, **kw)
+    E.load = load_preso
+    try:
+        tv, _ = em_thread(A._volta_fila, None)
+        no_load.wait(5)
+        tp, rp = em_thread(cmd.pular, A)
+        tp.join(0.3)
+        libera.set()
+        tv.join(5)
+        tp.join(5)
+    finally:
+        libera.set()
+        del E.load
+    confere(rp and rp[0] is x and no_prato(E) == "d2" and fila(A) == ["d3"],
+            f"o Proximo com o fim do disco no meio da troca: devolve a entrada dele, sem pular a seguinte "
+            f"({no_prato(E)}, {fila(A)})")
+
+    # a parecida sem stream nao para o prato com um avanco de outro ainda em curso nesta linha (a fila ja vazia)
+    limpa()
+    toca("d1")
+    x = {"id": "d2", "qid": "zz"}
+    tr = {"id": "ccccccccccc", "title": "parecida", "channel": None, "thumb": None, "duration": 120.0,
+          "youtube_id": "ccccccccccc", "alvo": None, "path": None, "stream": True, "job": None, "auto": True}
+    E.espera(tr)
+    with A.fila_lock, E._qlock:
+        r = A.reserva = cmd.Reserva(E._deck, E._deck.linha, x)
+    with mock.patch.object(cmd, "AVANCO_ESPERA_S", 0.05), contextlib.redirect_stderr(io.StringIO()):
+        A._abre_stream(tr, "ccccccccccc", True)
+    ficou = E.track is tr
+    with A.fila_lock:
+        A._solta_reserva(r, None)
+    confere(ficou, "a parecida sem stream que esperou o avanco de outro ate o prazo nao para o prato com ele em curso")
+
+    # nem com uma entrada que chegou na fila depois do avanco vazio: o stop confere a fila no trecho do _qlock dele
+    limpa()
+    toca("d1")
+    E.espera(tr)
+    para, vez = E.stop, []
+
+    def stop_com_entrada(*a, **kw):
+        if not vez:
+            vez.append(cmd.poe_na_fila(A, {"id": "d2"}))  # o POST /api/queue bem antes do stop
+        return para(*a, **kw)
+    E.stop = stop_com_entrada
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            A._abre_stream(tr, "ccccccccccc", True)
+    finally:
+        del E.stop
+    confere(vez and no_prato(E) == "d2" and fila(A) == [],
+            f"a parecida sem stream com uma entrada chegando antes do stop: ela toca ({no_prato(E)}, {fila(A)})")
+
+    # o Anterior decide com o prato que viu sem virada: a passagem sai ali, e o motor nao vira entre a escolha e a troca
+    limpa()
+    toca("d1", start=50.0)
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    with contextlib.redirect_stderr(io.StringIO()):
+        E.preparar(arquivo(A, "d2"), x["qid"])
+        ate(lambda: E._virar_em is not None)
+
+    def fecha_e_vira(*a, **kw):  # sem virada pendente; o bloco que vira chega logo depois de ver isso
+        with E._qlock:
+            E._virar_em = E.pos
+        E._mixa(eng.BLOCK)
+    A._fecha_viradas = fecha_e_vira  # o Anterior de antes via a virada fechada aqui e lia o prato depois
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            feito = cmd.voltar(A)
+    finally:
+        del A._fecha_viradas
+    confere(feito == "inicio" and no_prato(E) == "d1" and E.virou is None and fila(A) == ["d2"],
+            f"o Anterior com a passagem preparada decide com o prato que viu: volta ao comeco dele ({feito}, "
+            f"{no_prato(E)}, {fila(A)})")
+
+    # o Automatico com o prato parado e a fila ja com uma parecida, sem parecida nova nesta volta: ela toca
+    limpa()
+    toca("d1")
+    toca_ate_o_fim(E)
+    A._volta_fila(None)
+    marcado = A.parado_sem_fila is E.track
+    with A.fila_lock:
+        A.fila.append({"id": "d3", "youtube_id": None, "url": None, "title": "Disco d3", "duration": 120.0,
+                       "job": None, "qid": "pz", "auto": True, "fixa": True, "auto_de": "semente"})
+    A.auto, A.semente, A.mix, A.ponte = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, [], None
+    try:
+        A._volta_auto((E.track or {}).get("youtube_id"), None)
+    finally:
+        A.auto = False
+    confere(marcado and no_prato(E) == "d3" and fila(A) == [] and A.parado_sem_fila is None,
+            f"o Automatico com o prato parado e a parecida ja na fila: ela toca ({no_prato(E)}, {fila(A)})")
+
+    # a reserva que ja nao vale (o prato mudou de linha) nao tira a passagem preparada da linha nova ao ser recusada
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    s = Segura(A)
+    try:
+        t, res = em_thread(cmd.pular, A)
+        s.dentro.wait(5)
+        E.seek(10.0)
+        with contextlib.redirect_stderr(io.StringIO()):
+            E.preparar(arquivo(A, "d2"), x["qid"])
+        s.solta()
+        t.join(5)
+    finally:
+        s.fim()
+    confere(res and res[0] is None and E.pronto_tag == x["qid"] and no_prato(E) == "d1" and fila(A) == ["d2", "d3"],
+            f"a reserva recusada por outra linha deixa a passagem preparada nela ({E.pronto_tag}, {no_prato(E)})")
+
+    # o enfileirar que esperava o vigia, com o Parar no meio: o prato fica parado, e a entrada so entra na fila
+    limpa()
+    toca("d1")
+    A.enfileirar({"id": "d2"})
+    toca_ate_o_fim(E)
+    s = Segura(A)
+    try:
+        tv, _ = em_thread(A._volta_fila, None)
+        s.dentro.wait(5)
+        tq, rq = em_thread(cmd.enfileirar, A, {"id": "d3"})
+        tq.join(0.3)
+        cmd.parar(A)
+        tq.join(5)
+        s.solta()
+        tv.join(5)
+    finally:
+        s.fim()
+    confere(rq and rq[0][2] is False and E.track is None and fila(A) == ["d2", "d3"],
+            f"o enfileirar com o Parar no meio da reserva do vigia nao toca por cima do Parar ({rq and rq[0][2]}, "
+            f"{no_prato(E)}, {fila(A)})")
 
     # o Anterior, o Parar e o tocar da prateleira com a virada pendente: ela fecha antes de mexer no historico
     def vira_pendente():
