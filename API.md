@@ -370,7 +370,8 @@ valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
   disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, `title` e
   `channel` como texto ou `null`, `duration` em segundos (de 0 a 86400) ou `null`, e o alvo e os textos em Unicode
   válido (UTF-8); o resto é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma
-  sessão abre um token.
+  sessão abre um token. O que a sessão remota manda e recebe pela internet está no
+  [protocolo da sessão remota](docs/protocolo-remoto.md).
 
 | rota | `pc` | `celular` | `remoto` | `publico` |
 |---|---|---|---|---|

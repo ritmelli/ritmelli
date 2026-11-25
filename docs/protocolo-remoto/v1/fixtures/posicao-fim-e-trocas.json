@@ -1,0 +1,1087 @@
+{
+ "cenario": "fim-e-trocas",
+ "descricao": "O fim natural no meio de um bloco, a reconexao antes de o motor dizer ended (a fila vazia com o fim lido ja e o fim), outro disco que entra e sai entre dois ticks (a troca para B com a projecao dele e a troca para C), e o fim de C, o comeco de D e as voltas de D entre os mesmos dois ticks, antes do tick que ve a pausa, cada um no instante dele.",
+ "relogio": {
+  "t0_ms": 1000000.0,
+  "taxa": 48000
+ },
+ "mensagens": [
+  {
+   "evento": "inicio",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 1,
+    "origem": "inicio",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 0.105,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 0.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 5040,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fim",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 2,
+    "origem": "mudanca",
+    "agora": 1000110.0,
+    "estado": {
+     "status": "ended",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 0.105,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 0.10500000000000001,
+      "t": 1000105.0,
+      "taxa": 48000,
+      "anda": false,
+      "segmentos": []
+     }
+    }
+   }
+  },
+  {
+   "evento": "reconexao",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 3,
+    "origem": "reconexao",
+    "agora": 1000110.0,
+    "estado": {
+     "status": "ended",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 0.105,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 0.10500000000000001,
+      "t": 1000110.0,
+      "taxa": 48000,
+      "anda": false,
+      "segmentos": []
+     }
+    }
+   }
+  },
+  {
+   "evento": "troca",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 4,
+    "origem": "mudanca",
+    "agora": 1000210.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "B",
+      "title": "Disco B",
+      "channel": null,
+      "duration": 3.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "B",
+      "pos": 0.0,
+      "t": 1000150.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "troca",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 5,
+    "origem": "mudanca",
+    "agora": 1000210.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "C",
+      "title": "Disco C",
+      "channel": null,
+      "duration": 0.105,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "C",
+      "pos": 0.0,
+      "t": 1000190.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 5040,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fim",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 6,
+    "origem": "mudanca",
+    "agora": 1000350.0,
+    "estado": {
+     "status": "ended",
+     "faixa": {
+      "id": "C",
+      "title": "Disco C",
+      "channel": null,
+      "duration": 0.105,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "C",
+      "pos": 0.10500000000000001,
+      "t": 1000295.0,
+      "taxa": 48000,
+      "anda": false,
+      "segmentos": []
+     }
+    }
+   }
+  },
+  {
+   "evento": "troca",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 7,
+    "origem": "mudanca",
+    "agora": 1000350.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.0,
+      "t": 1000300.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 960,
+        "v": 1.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 8,
+    "origem": "mudanca",
+    "agora": 1000350.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.0,
+      "t": 1000320.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 960,
+        "v": 1.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 9,
+    "origem": "mudanca",
+    "agora": 1000350.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.0,
+      "t": 1000340.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 960,
+        "v": 1.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "pausa",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 10,
+    "origem": "mudanca",
+    "agora": 1000350.0,
+    "estado": {
+     "status": "paused",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.01,
+      "t": 1000350.0,
+      "taxa": 48000,
+      "anda": false,
+      "segmentos": []
+     }
+    }
+   }
+  },
+  {
+   "evento": "retomada",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 11,
+    "origem": "mudanca",
+    "agora": 1000420.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.01,
+      "t": 1000370.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 480,
+        "v": 1.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 12,
+    "origem": "mudanca",
+    "agora": 1000420.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.0,
+      "t": 1000380.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 960,
+        "v": 1.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 13,
+    "origem": "mudanca",
+    "agora": 1000420.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.0,
+      "t": 1000400.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 960,
+        "v": 1.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 14,
+    "origem": "mudanca",
+    "agora": 1000420.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.0,
+      "t": 1000420.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 960,
+        "v": 1.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 15,
+    "origem": "mudanca",
+    "agora": 1000490.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.0,
+      "t": 1000440.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 960,
+        "v": 1.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 16,
+    "origem": "mudanca",
+    "agora": 1000490.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.0,
+      "t": 1000460.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 960,
+        "v": 1.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 17,
+    "origem": "mudanca",
+    "agora": 1000490.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "D",
+      "title": "Disco D",
+      "channel": null,
+      "duration": 0.02,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "D",
+      "pos": 0.0,
+      "t": 1000480.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 960,
+        "v": 1.0
+       },
+       {
+        "n": 960,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  }
+ ]
+}
