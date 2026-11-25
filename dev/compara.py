@@ -1,9 +1,9 @@
-"""Confere se a tela do celular mudou: prints do tema em estados fixos, comparados pixel a pixel com os de
-referencia. E o gate da passagem do PC para pixel art: o celular tem que sair identico.
+"""Confere se a tela mudou, no celular e na mesa do PC: prints do tema em estados fixos, comparados pixel a pixel com
+os de referencia.
 
     python dev/compara.py --ref     (antes de mexer no tema: grava os prints de referencia)
     python dev/compara.py           (depois: tira de novo e compara)
-        [--pasta logs/compara] [--sizes 390x844@3,360x780@2.625] [--wait 0.6] [--lang pt_BR] [--raiz <pasta>]
+        [--pasta logs/compara] [--sizes 390x844@3,1920x1080@1] [--wait 0.6] [--lang pt_BR] [--raiz <pasta>]
 
 Sai 0 com todos os prints iguais e 2 se algum mudou. Sai 1 se a captura nao vale: o servidor ou o tema que nao sobe,
 um erro no console da pagina, um print instavel ou a referencia que falta; ai nada foi comparado.
@@ -24,8 +24,10 @@ tamanho). Para o mesmo tema dar o mesmo print toda vez:
 
 Dois cenarios: vazio (nada no prato) e tocando (um disco pausado no meio, um efeito ligado e dois discos na
 fila). Em cada um, a pagina inicial e o palco aberto, rolando de tela em tela; no vazio tambem o menu de
-um disco e o dialogo Microfone e fone. Os prints ficam em <pasta>/ref e <pasta>/agora; o que mudou vai
-para <pasta>/diff, em vermelho por cima do print novo apagado.
+um disco e o dialogo Microfone e fone. O tamanho de PC (o 1920x1080, ou outro em que a mesa liga) sai como o PC: sem o
+toque, sem o celular emulado, com o performance.now parado (o letreiro dos toca-discos fica no comeco), so depois de a
+mesa (o body.mesa-dj) montar e sem o palco, que na mesa nao abre. Os prints ficam em <pasta>/ref e <pasta>/agora; o
+que mudou vai para <pasta>/diff, em vermelho por cima do print novo apagado.
 """
 import argparse
 import asyncio
@@ -53,8 +55,8 @@ from fitcheck import CHROME, barra_outra_origem, erro_da_pagina, fecha_chrome  #
 from so_mock import free_port  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
-# o celular pequeno, o de sempre, o grande e o tablet em pe (abaixo de 900 px tambem e o layout do celular)
-SIZES = "360x780@2.625,390x844@3,430x932@3,768x1024@2"
+# o celular pequeno, o de sempre, o grande e o tablet em pe (abaixo de 900 px tambem e o layout do celular), e o PC
+SIZES = "360x780@2.625,390x844@3,430x932@3,768x1024@2,1920x1080@1"
 
 # id, titulo, canal, duracao (s), capa (de, ate, cor, forma; None = a capa que o tema gera), onde parou (s), vezes
 DISCOS = [
@@ -96,9 +98,17 @@ SEM_NIVEIS = """(() => {
     }, ...resto);
   };
 })();"""
+# na mesa, antes de qualquer script do tema: o performance.now parado no comeco da pagina. O letreiro das telas dos
+# toca-discos anda pelo relogio mesmo com o movimento reduzido, e dois prints seguidos saiam com o titulo em outro lugar
+RELOGIO_PARADO = "(() => { const t0 = performance.now(); performance.now = () => t0; })();"
 PRONTO = ("document.readyState === 'complete' && document.fonts.status === 'loaded' && !!S.state && "
           "S.lib.length > 0 && [...document.images].every(i => i.complete)")
 PALCO = "document.querySelector('#palco')"
+
+
+def na_mesa(w, h):
+    """O tamanho liga a mesa do PC: o mqUnica do tema, 1400 px de largura e a proporcao de 20/19 para cima."""
+    return w >= 1400 and w * 19 >= h * 20
 
 
 def capa(de, ate, cor, forma):
@@ -261,7 +271,6 @@ async def prints(a, srv, destino):
                 await c.cmd(f"{d}.enable")
             await c.cmd("Network.setBlockedURLs", urls=["*fonts.googleapis.com*", "*fonts.gstatic.com*"])
             await c.cmd("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
-            await c.cmd("Emulation.setTouchEmulationEnabled", enabled=True, maxTouchPoints=5)
             await c.cmd("Page.addScriptToEvaluateOnNewDocument", source=SEM_NIVEIS)
             await c.cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
 
@@ -285,6 +294,7 @@ async def prints(a, srv, destino):
                         instaveis.append(f"{nome}: {int(m.sum())} pixels, ate {delta} de 255")
                 print(f"  {nome}", flush=True)
 
+            relogio = None
             for cenario in ("vazio", "tocando"):
                 if cenario == "tocando":
                     monta_tocando(srv)
@@ -292,8 +302,17 @@ async def prints(a, srv, destino):
                     tam, dpr = sz.split("@")
                     w, h = map(int, tam.split("x"))
                     pre = f"{cenario}-{tam}"
+                    # o celular com o toque; o PC (a mesa) sem ele, com o mouse
+                    mesa = na_mesa(w, h)
+                    await c.cmd("Emulation.setTouchEmulationEnabled", enabled=not mesa, maxTouchPoints=1 if mesa else 5)
                     await c.cmd("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=float(dpr),
-                                mobile=True)
+                                mobile=not mesa)
+                    if relogio:
+                        await c.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=relogio)
+                    relogio = None
+                    if mesa:
+                        r = await c.cmd("Page.addScriptToEvaluateOnNewDocument", source=RELOGIO_PARADO)
+                        relogio = r["identifier"]
                     try:
                         srv.confere()  # a pagina so do filho vivo que responde como --mock
                     except so_mock.Recusa as ex:
@@ -304,12 +323,16 @@ async def prints(a, srv, destino):
                         if c.barrados:
                             sys.exit(f"{pre}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
                         try:
-                            if await c.js(PRONTO):
+                            if await c.js(PRONTO + (" && document.body.classList.contains('mesa-dj')" if mesa else "")):
                                 break
                         except RuntimeError:  # a pagina ainda nao tem o S
                             pass
                     else:
-                        sys.exit(f"{pre}: o tema nao ficou pronto em 20 s")
+                        sys.exit(f"{pre}: o tema nao ficou pronto em 20 s" + (" (sem o body.mesa-dj)" if mesa else ""))
+                    if mesa:
+                        # o ponto de toque do visor (movimento reduzido) fica onde o primeiro desenho o ancorou, e o
+                        # visor pode ter desenhado antes da mesa montar, noutra largura: ancora de novo, na da mesa
+                        await c.js("V.ancora = null; V.sujo = true")
                     await asyncio.sleep(1)
                     for i in range(await c.js("Math.ceil(document.documentElement.scrollHeight / innerHeight)")):
                         await c.js(f"scrollTo(0, {i} * innerHeight)")
@@ -330,6 +353,8 @@ async def prints(a, srv, destino):
                             await asyncio.sleep(0.1)
                         await estado(f"{pre}-dialogo")
                         await c.js("document.querySelector('#dlg-disp').close()")
+                    if mesa:  # a mesa ja e o palco inteiro, numa tela so
+                        continue
                     await c.js("document.querySelector('#mini-abrir').click()")
                     await asyncio.sleep(0.5)
                     for i in range(await c.js(f"(p => Math.ceil(p.scrollHeight / p.clientHeight))({PALCO})")):
