@@ -163,7 +163,16 @@ def attr_function(func, names=ATTR_FUNCTIONS):
 RECEIVERS = frozenset(("self", "cls"))
 
 
-def scoped(node, receivers=RECEIVERS):
+def method_receivers(method):
+    """The name that means a method's own object: its first positional parameter, when it is called self or cls (a
+    staticmethod has none, and a second parameter called cls is just a parameter)."""
+    if any(isinstance(d, ast.Name) and d.id == "staticmethod" for d in method.decorator_list):
+        return frozenset()
+    first = (method.args.posonlyargs + method.args.args)[:1]
+    return frozenset(p.arg for p in first) & RECEIVERS
+
+
+def scoped(node, receivers):
     """(n, receivers) for every node under node (a method), with the names among self and cls that still mean the
     method's own object there: a function nested in it that takes a self or cls of its own (a method of a nested class)
     means another object by it, and one that does not still means the outer one, which it captured."""
@@ -178,7 +187,7 @@ def scoped(node, receivers=RECEIVERS):
 
 def instance_stores(method):
     """The attributes assigned on the method's own self or cls (self._x = ..., or setattr(self, "_x", ...))."""
-    for n, receivers in scoped(method):
+    for n, receivers in scoped(method, method_receivers(method)):
         if (isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Store) and isinstance(n.value, ast.Name)
                 and n.value.id in receivers):
             yield n.attr
@@ -238,7 +247,7 @@ def reaches(owner, names):
                                        else [s.target] if isinstance(s, ast.AnnAssign) else [])))
                         out += [(f.name, s.lineno, n) for n in sorted(defined & names)]
                     if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        own_names.update((id(n), (mine, receivers)) for n, receivers in scoped(s))
+                        own_names.update((id(n), (mine, receivers)) for n, receivers in scoped(s, method_receivers(s)))
 
         def passes(node, receiver, name):
             mine, receivers = own_names.get(id(node), ((), ()))

@@ -5,9 +5,9 @@ transicao.py e o numpy. Toda funcao publica do transicao.py tem de ter ao menos 
 
 It also checks the bound the outgoing track's phase excerpt relies on (#208): sped up by at most SAI_MAX, FASE_MIN_S of
 its output reaches FASE_MIN_S * (1 + SAI_MAX) s of disc back from the switch (the engine counts it back from the cut,
-nb beats later: this is the stricter bound), and that has to stay inside the stretch
-where its speed is already constant, which starts where transicao.rampa_saida ends the ramp. FASE_MIN_S is read from the
-text of engine.py, so the engine is still not imported.
+nb beats later: this is the stricter bound), and that has to stay inside the stretch where its speed is already
+constant, which starts where transicao.rampa_saida ends the ramp. FASE_MIN_S is read from the text of engine.py, so the
+engine is still not imported.
 
     python dev/testa_transicao.py            confere os casos gravados
     python dev/testa_transicao.py --grava    roda a banca das passagens neste checkout (precisa do ffmpeg, como ela) e
