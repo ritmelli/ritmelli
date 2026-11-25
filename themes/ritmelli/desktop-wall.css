@@ -1,0 +1,53 @@
+/* DESKTOP-WALL-INICIO */
+/* a parede no computador: rola inteira, como a pagina do celular, numa grade. A maleta fica ao lado dos compactos (uma
+   em cima da outra, as duas tomavam a parede e a prateleira saia da tela), e em tela baixa as duas vao para baixo da
+   prateleira, que e o que se procura primeiro. Os resultados da busca rolam por dentro, com o titulo e o Voltar a vista.
+   Os compactos e as fitas quebram de linha (correr de lado, com o mouse, ninguem alcanca); o nome fica sobre a capa, em
+   ate duas linhas, e o ... da capa aparece com o mouse em cima ou com o foco. A maleta tem o Limpar na plaqueta */
+@media (min-width: 900px) {
+  .app { --beira: 0px; }
+  .parede {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; align-content: start;
+    grid-template-areas: "rapidos fila" "cab cab" "prat prat" "cont cont";
+  }
+  #vista-prateleira { display: contents; }
+  .rapidos { grid-area: rapidos; }
+  /* com fila, a maleta fica com a metade da fileira, no meio dela; sem fila, os Sons rapidos ficam com a fileira inteira,
+     e sem Sons rapidos ela fica no meio da fileira inteira */
+  .parede:has(> .fila-parede:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(316px, 1fr); }
+  /* (07/11, pedido do dono) so fora da mesa: na mesa os Sons rapidos ficam escondidos ate a prateleira carregar, e no F5 a
+     maleta esticava na fileira inteira, por tras da prateleira */
+  body:not(.mesa-dj) .parede:has(#rapidos[hidden]) .fila-parede { grid-column: 1 / -1; }
+  .fila-parede { grid-area: fila; align-self: start; justify-self: center; width: 100%; max-width: 520px; margin: 0 0 14px; }
+  #cab-prat { grid-area: cab; }
+  #rolo-prateleira { grid-area: prat; }
+  .continuar { grid-area: cont; }
+  /* com a busca aberta a maleta so aparece aberta (o Abrir do aviso), por cima dos resultados, que ficam */
+  .parede:has(> #vista-busca:not([hidden])) { grid-template: "fila" auto "busca" minmax(0, 1fr) / minmax(0, 1fr); align-content: stretch; }
+  .parede:has(> #vista-busca:not([hidden])):has(> .fila-parede.aberta) { grid-template-rows: auto minmax(220px, 1fr); }
+  .parede:has(> #vista-busca:not([hidden])) .fila-parede:not(.aberta) { display: none; }
+  #vista-busca { grid-area: busca; min-height: 0; display: flex; flex-direction: column; }
+  .fila.maleta .cabeca-fila .limpar-fila { flex: none; min-height: 0; margin-right: 8px; font-size: .8125rem; color: var(--tinta); text-shadow: none; text-decoration-color: rgba(42,24,18,.45); }
+  .chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 6px 0 4px; }
+  .compacto, .chips:has(> .compacto:nth-child(5)) > .compacto { width: 96px; max-width: none; }
+  .cartoes { flex-wrap: wrap; overflow: visible; margin: 0; padding: 4px 0 12px; }
+  .estante { --gap: 14px; padding: 12px 7px 4px; row-gap: 18px; }
+  .estante .ficha .nome { -webkit-line-clamp: 2; }
+  .estante .disco-item[data-id] .acoes { display: contents; }
+  /* o disco que nao baixou: o nome, o motivo e o Tentar de novo cabem na capa; o detalhe tecnico fica no title */
+  .estante .falhou .ficha { background: rgba(18,10,6,.92); }
+  .estante .falhou .btn-texto { min-height: 0; font-size: .75rem; }
+  .estante .erro-job { font-size: .75rem; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .estante .erro-job small { display: none; }
+  .estante .ficha .mais {
+    position: absolute; right: 5px; top: 5px; width: 26px; height: 26px; margin: 0; border: 0; border-radius: 2px; opacity: 0;
+    color: #FBEFD9; background: #2B1B12; box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.55);
+  }
+  .disco-item:hover .mais, .disco-item:focus-within .mais, .estante .ficha .mais[aria-expanded="true"] { opacity: 1; }
+  /* as opcoes do disco: o menu flutuante na moldura de pixel, com os mesmos icones da contracapa do celular */
+  .menu { padding: 4px; border-radius: 4px; border-image: var(--mold-objeto); background: #EFE4CB; }
+  .menu button { border-radius: 0; }
+  .menu button svg { width: 24px; height: 24px; }
+}
+
+/* DESKTOP-WALL-FIM */
