@@ -925,15 +925,15 @@ def _desarma(motivo):
              + (f"couldn't remove the SYSTEM tasks ({'; '.join(erros)})" if erros else "the SYSTEM tasks were removed"))
 
 
-def tarefa_rodando():
+def tarefa_rodando(prazo_s=10.0):
     """A tarefa do filtro roda ou esta na fila (Running, Queued). Pelo Get-ScheduledTask, que da o estado sem
-    traduzir (o schtasks /query sai na lingua do Windows). A consulta que falha ou passa de 10 s da False: sem ela, o
-    pede_tarefa segue como antes, pelo servico de audio."""
+    traduzir (o schtasks /query sai na lingua do Windows). A consulta que falha ou passa do prazo da False: sem ela,
+    o pede_tarefa segue como antes, pelo servico de audio."""
     caminho, nome = TAREFA.rsplit("\\", 1)
     try:
         r = subprocess.run([POWERSHELL, "-NoProfile", "-Command",
                             f"(Get-ScheduledTask -TaskPath '{caminho}\\' -TaskName '{nome}').State"],
-                           capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
+                           capture_output=True, text=True, encoding="oem", errors="replace", timeout=prazo_s,
                            creationflags=NO_WINDOW)
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -961,7 +961,7 @@ def pede_tarefa(nome, espera_s=60):
     # o filtro aparece no registro antes de a tarefa reiniciar o audio e conferir os aparelhos (#136): ate ela acabar,
     # o audiosrv RUNNING ainda pode ser o de antes do reinicio. Com o prazo da conferencia dela a mais
     fim += ASSENTA_S + CONFERE_MAX_S
-    while tarefa_rodando():
+    while tarefa_rodando(min(10.0, max(0.5, fim - time.monotonic()))):  # a consulta nao passa do prazo
         if time.monotonic() >= fim:  # presa: o audio pode nem ter reiniciado
             return {"ok": False, "motivo": "tarefa_falhou", "detalhe": "the task is still running"}
         time.sleep(0.5)

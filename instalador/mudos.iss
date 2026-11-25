@@ -117,19 +117,19 @@ begin
 end;
 
 // a pagina de concluido: o aviso entra depois do texto do Ritmelli e antes do "Clique em Concluir", e a caixa de abrir
-// o Ritmelli desce junto
+// o Ritmelli desce junto (ou, quando o Windows pede para reiniciar, as duas opcoes de reiniciar agora ou depois)
 <event('CurPageChanged')>
 procedure MudosNaPagina(CurPageID: Integer);
 var
   Aparelhos, Aviso, Texto: String;
-  Folga, P: Integer;
+  Antes, Desce, P: Integer;
 begin
   if CurPageID <> wpFinished then
     Exit;
   Aparelhos := MudosLe;
   if Aparelhos = '' then
     Exit;
-  Folga := WizardForm.RunList.Top - (WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height);
+  Antes := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height;
   Aviso := FmtMessage(CustomMessage('Mudos'), [Aparelhos]);
   Texto := WizardForm.FinishedLabel.Caption;
   P := Pos(SetupMessage(msgClickFinish), Texto);
@@ -139,7 +139,10 @@ begin
     Texto := TrimRight(Texto) + #13#10#13#10 + Aviso;
   WizardForm.FinishedLabel.Caption := Texto;
   WizardForm.AdjustLabelHeight(WizardForm.FinishedLabel);
-  WizardForm.RunList.Top := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + Folga;
+  Desce := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height - Antes;
+  WizardForm.RunList.Top := WizardForm.RunList.Top + Desce;
+  WizardForm.YesRadio.Top := WizardForm.YesRadio.Top + Desce;
+  WizardForm.NoRadio.Top := WizardForm.NoRadio.Top + Desce;
 end;
 
 // em silencio a pagina nao aparece: o aviso fica no log

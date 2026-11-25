@@ -510,10 +510,11 @@ class TestaApp(unittest.TestCase):
             with mock.patch.object(eng, "_confere_fora", confere), redirect_stdout(io.StringIO()):
                 eng.Engine._confere_mudos(m, [UMC_IN])
             self.assertEqual(m.error, "o de antes", muda)
-        m = self._motor(_stack=None)  # o audio ja estava fechado (a reabertura que falhou tem o aviso dela)
+        m = self._motor(_stack=None, _mudos_vistos=True)  # o audio fechado (a reabertura que falhou tem o aviso dela)
         with mock.patch.object(eng, "_confere_fora", side_effect=AssertionError("abriu os aparelhos sem audio")):
             eng.Engine._confere_mudos(m)
         self.assertIsNone(m.error)
+        self.assertFalse(m._mudos_vistos, "os do registro ficam para quando o audio abrir")
 
     def test_ao_abrir_so_os_do_registro(self):
         ok = {"filtro": True, "melhorias": True, "guid": "{a}"}
@@ -585,7 +586,8 @@ class TestaPedeTarefa(unittest.TestCase):
             ordem.append(" ".join([os.path.basename(cmd[0]).lower(), *cmd[1:3]]))
             return types.SimpleNamespace(returncode=0, stdout="STATE : 4 RUNNING", stderr="")
 
-        def roda():
+        def roda(prazo_s):
+            self.assertTrue(0.5 <= prazo_s <= 10, prazo_s)
             v = next(rodando)
             ordem.append(f"tarefa {v}")
             return v
@@ -613,17 +615,17 @@ class TestaPedeTarefa(unittest.TestCase):
     def test_tarefa_presa(self):
         """A tarefa que passa do prazo rodando: falhou, sem olhar o servico (o audio pode nem ter reiniciado)."""
         t = iter(range(0, 10000, 10))
-        r, ordem = self._pede(lambda: True, relogio=lambda: next(t))
+        r, ordem = self._pede(lambda p: True, relogio=lambda: next(t))
         self.assertEqual(r, {"ok": False, "motivo": "tarefa_falhou", "detalhe": "the task is still running"})
         self.assertNotIn("sc.exe", ordem)
 
     def test_servico_olhado_no_fim_do_prazo(self):
         """A tarefa acabou no fim do prazo: o servico ainda e olhado uma vez."""
         t = iter([0, 1, 1000, 1000, 1000, 1000])
-        r, ordem = self._pede(lambda: False, relogio=lambda: next(t))
+        r, ordem = self._pede(lambda p: False, relogio=lambda: next(t))
         self.assertEqual((r, ordem), ({"ok": True}, ["schtasks.exe", "sc.exe"]))
         t = iter([0, 1, 1000, 1000, 1000, 1000])
-        r, _ = self._pede(lambda: False, sc="STATE : 1 STOPPED", relogio=lambda: next(t))
+        r, _ = self._pede(lambda p: False, sc="STATE : 1 STOPPED", relogio=lambda: next(t))
         self.assertEqual(r, {"ok": False, "motivo": "audio"})
 
     def test_tarefa_rodando(self):

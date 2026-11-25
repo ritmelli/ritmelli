@@ -1502,16 +1502,19 @@ class Engine:
         O aviso e dos aparelhos (_aviso), como o da reserva: sai quando o audio reabre (o vigia reabre quando o
         aparelho em uso e tirado e posto de volta), e ao tocar, parar ou pular, como todo erro da tela. O audio que
         reabriu (ou caiu) enquanto a conferencia rodava deixa o resultado de fora: ele e de antes, e a reabertura que
-        falhou tem o aviso dela."""
-        pilha = self._stack
-        if pilha is None:  # sem audio aberto, o resultado ficaria de fora: nem abre os aparelhos
-            return
+        falhou tem o aviso dela. Sem audio aberto (a reabertura depois da tarefa que falhou), nem abre os aparelhos:
+        os mudos do registro (a conferencia da propria tarefa) ficam para quando o audio abrir (_confere_filtro)."""
+        with self._lock:  # o _reabre fecha e abre sob o _lock: aqui, nunca a pilha do meio dele
+            pilha = self._stack
+            if pilha is None:
+                self._mudos_vistos = False
+                return
         r = _confere_fora(nomes)
         if not r or not r.get("mudos"):
             return
         print(f"devices: silent: {'; '.join(r['mudos'])}")
         with self._lock:
-            if not self._fechado and pilha is not None and self._stack is pilha:
+            if not self._fechado and self._stack is pilha:
                 self._aviso = self.error = _aviso_mudos(r["mudos"])
 
     def liga(self):
