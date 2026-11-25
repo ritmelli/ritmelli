@@ -511,7 +511,9 @@ menor que o `texto_atual` (quem ligou num texto que não falava do que vai agora
 que vai (o texto do `PRIVACIDADE.md`, ou um resumo com o link da `politica`) e os botões Enviar e
 Não enviar, que mandam o `POST /api/metricas`; fechar sem escolher pergunta de novo na próxima vez,
 e nada sai antes (com `"ligada"` e o texto de antes, só o que esse texto dizia). Com `"ligada"` ou `"desligada"`, o tema mostra a situação e o botão de trocar
-junto da escolha de microfone e fone. A SignPath pede que a pessoa possa desligar.
+junto da escolha de microfone e fone. Ligar por esse botão com o `texto` menor que o `texto_atual` mostra antes o
+aviso (o texto de agora), e o `POST` sai do Enviar dele; com o texto de agora, liga direto. A SignPath pede que a
+pessoa possa desligar.
 
 ## Teste sem som
 

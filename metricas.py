@@ -298,6 +298,7 @@ class SaudeAudio:
         """O tanto no anel quando a thread chegou, com o leitor ja servido: o menor e as secas (vazio), contando a
         parte as do meio de uma passagem e as de uma chamada a Rubber Band em curso."""
         with self._lock:
+            self._andou = self._andou or self._totais is not None
             if self.folga_min is None or quadros < self.folga_min:
                 self.folga_min = quadros
             if quadros == 0:
@@ -338,6 +339,8 @@ class Metricas:
         self.guardados = []  # o que o --metricas-teste "enviou"
         self._audio_vale = False  # a janela do "audio" comecou com a escolha no texto de agora
         self._audio_lock = threading.RLock()  # o vigia, a escolha e o fecha mexem nela
+        self._audio_desde = time.monotonic()  # o comeco da janela do "audio" que vale (o prazo dela e o USO_S)
+        self._geracao = 0  # sobe a cada desligar: o lote que estava saindo antes nao volta para a fila
         self.sessao = uuid.uuid4().hex[:16]
         self.fila = queue.Queue()
         self.engine = None
@@ -391,12 +394,17 @@ class Metricas:
     def escolhe(self, ligar):
         """A escolha feita no Ritmelli (o aviso ou o Microfone e fone), sempre no texto de agora. Desligar joga fora o
         que nao saiu e a janela do "audio"."""
-        self.gravar(metricas=bool(ligar), metricas_texto=TEXTO)
-        if not ligar:
-            with self._lock:
-                while not self.fila.empty():
-                    self.fila.get_nowait()
-        self._confere_audio()  # a janela do "audio" comeca (ou some) na hora da escolha
+        with self._audio_lock:  # a escolha e a janela do "audio" juntas: duas escolhas seguidas nao se cruzam
+            self.gravar(metricas=bool(ligar), metricas_texto=TEXTO)
+            if not ligar:
+                with self._lock:
+                    while not self.fila.empty():
+                        self.fila.get_nowait()
+                    self._geracao += 1
+                self._fecha_audio(manda=False)
+                self._audio_vale = False
+            else:
+                self._confere_audio()  # a janela comeca na hora da escolha
         if ligar:
             self._acorda.set()
 
@@ -477,7 +485,7 @@ class Metricas:
         if not self.ativa():
             return
         with self._lock:
-            lote = []
+            lote, geracao = [], self._geracao
             while not self.fila.empty() and len(lote) < 100:
                 lote.append(self.fila.get_nowait())
         if not lote:
@@ -486,9 +494,9 @@ class Metricas:
             self.envia(POSTHOG, json.dumps({"api_key": POSTHOG_CHAVE, "batch": lote}).encode("utf-8"),
                        {"Content-Type": "application/json"})
         except Exception:  # noqa: BLE001 - sem rede: volta para a fila, e o FILA_MAX segura o tamanho
-            if not self.ativa():
-                return  # desligou durante o envio: o que nao saiu fica fora, como o resto da fila
             with self._lock:
+                if geracao != self._geracao:
+                    return  # desligou durante o envio: o que nao saiu fica fora, como o resto da fila
                 for x in lote:
                     if self.fila.qsize() < FILA_MAX:
                         self.fila.put(x)
@@ -523,8 +531,12 @@ class Metricas:
         for ef, s in u["efeitos"].items():
             if s >= 1:
                 self.evento("efeito_tempo", efeito=ef, segundos=round(s))
+
+    def _manda_audio(self):
+        """O "audio" da janela que vale (a cada USO_S dela e ao desligar), e a proxima comeca."""
         with self._audio_lock:
             self._fecha_audio(manda=self._audio_vale and self.texto() >= TEXTO)
+            self._audio_desde = time.monotonic()
 
     def _fecha_audio(self, manda):
         """Fecha a janela do "audio" do Injetor de agora (sem ele, o audio fechado ou o --mock, nada) e, com manda,
@@ -541,7 +553,7 @@ class Metricas:
             pode = self.ativa() and self.texto() >= TEXTO
             if pode != self._audio_vale:
                 self._fecha_audio(manda=False)
-                self._audio_vale = pode
+                self._audio_vale, self._audio_desde = pode, time.monotonic()
 
     def _dia_novo(self):
         """O "ativo" do dia (e o "atualizou", na primeira vez desta versao), uma vez por dia por instalacao."""
@@ -565,7 +577,7 @@ class Metricas:
             return
         # a escolha no texto de agora que ja valia ao abrir: a janela do Injetor conta desde a abertura do audio
         with self._audio_lock:
-            self._audio_vale = self.ativa() and self.texto() >= TEXTO
+            self._audio_vale, self._audio_desde = self.ativa() and self.texto() >= TEXTO, time.monotonic()
         ultimo_envio = ultimo = time.monotonic()
         while not self._parar:
             self._acorda.wait(AMOSTRA_S)
@@ -581,6 +593,8 @@ class Metricas:
                 self._olha(min(agora - ultimo, AMOSTRA_S * 3))
                 if agora - self._ultimo_uso >= USO_S:
                     self._fecha_uso()
+                if agora - self._audio_desde >= USO_S:
+                    self._manda_audio()
                 if agora - ultimo_envio >= ENVIO_S:
                     self._manda_fila()
                     ultimo_envio = agora
@@ -591,7 +605,10 @@ class Metricas:
         self._parar = True
         self._acorda.set()
         if self.ativa():
+            if not self.base["id"]:  # fechado antes da primeira volta do vigia
+                self.base["id"] = self._id()["id"]
             self._fecha_uso()
+            self._manda_audio()
             t = threading.Thread(target=self._manda_fila, daemon=True, name="metricas-fim")
             t.start()
             t.join(3.0)  # sem rede, o desligar nao espera os 10 s do envio

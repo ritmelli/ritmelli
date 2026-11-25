@@ -227,6 +227,11 @@ with tempfile.TemporaryDirectory() as tmp:
         evs = [m.fila.get_nowait() for _ in range(m.fila.qsize())]
         return [x["properties"] for x in evs if x["event"] == "audio"], evs
 
+    def fecha_janela(m):
+        """O fim de uma janela, como no vigia: o "uso" e o "audio"."""
+        m._fecha_uso()
+        m._manda_audio()
+
     m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
     e = MotorComAudio()
     m.engine = e
@@ -244,7 +249,7 @@ with tempfile.TemporaryDirectory() as tmp:
     volta(e, 0.05, leitores=0)  # o leitor sumiu com o anel aberto
     volta(e, 3.0, leitores=0)
     volta(e, 0.01, leitores=2)
-    m._fecha_uso()  # ...e a janela fecha com ela em curso
+    fecha_janela(m)  # ...e a janela fecha com ela em curso
     a1, evs = audios(m)
     confere(len(a1) == 1 and set(a1[0]) - permitidas == met.EVENTOS["audio"],
             f"o 'audio' sai com exatamente as propriedades do EVENTOS, alem das comuns "
@@ -265,7 +270,7 @@ with tempfile.TemporaryDirectory() as tmp:
     rel.t += 0.5
     rb_ctx.__exit__(None, None, None)  # a chamada acaba na seguinte
     volta(e, 1.0)
-    m._fecha_uso()
+    fecha_janela(m)
     a2, _ = audios(m)
     a2 = a2[0] if a2 else {}
     confere(a2.get("esticamento_ms") == 3500 and a2.get("esticamentos") == 0 and a2.get("secas_esticamento") == 1
@@ -275,22 +280,29 @@ with tempfile.TemporaryDirectory() as tmp:
             f"o tempo com o efeito no filtro e com a voz pelo microfone de reserva ({a2})")
 
     # a janela em que a thread da saida nao andou (o audio fechado, o Injetor parado): nenhum "audio"
-    m._fecha_uso()
+    fecha_janela(m)
     confere(not audios(m)[0], "sem nenhuma volta do Injetor na janela: o 'audio' nao sai (nem zerado)")
     e.janela.fila(0)
     volta(e, 0.01, fx_no_filtro=True)  # o efeito rodando no filtro...
     e.janela.anel_caiu()  # ...e o anel fecha por erro: a pausa de 3 s ate a volta seguinte nao conta nele
     volta(e, 3.0, anel=False, leitores=0)
-    m._fecha_uso()
+    fecha_janela(m)
     a5, _ = audios(m)
     confere(len(a5) == 1 and a5[0]["fx_no_filtro_s"] == 0 and a5[0]["leitor_perdido"] == 0,
             f"o anel que caiu: a pausa ate o proximo nao conta como efeito nem como leitor perdido ({a5})")
+    volta(e)
+    fecha_janela(m)
+    audios(m)
+    e.janela.fila(0)  # a seca logo depois do fim da janela, antes da volta seguinte do Injetor
+    fecha_janela(m)
+    a7, _ = audios(m)
+    confere(len(a7) == 1 and a7[0]["secas"] == 1, f"a seca entre o fim da janela e a volta seguinte conta ({a7})")
 
     # o desligar no meio da janela: o que ela contou some, e a de depois comeca na hora de ligar de novo
     volta(e)
     e.janela.fila(0)
     m.escolhe(False)
-    m._fecha_uso()
+    fecha_janela(m)
     confere(not audios(m)[0], "desligada no meio da janela: o 'audio' nao sai")
     volta(e)
     e.janela.fila(0)
@@ -298,7 +310,7 @@ with tempfile.TemporaryDirectory() as tmp:
     m.escolhe(True)  # sem esperar o vigia
     volta(e)
     e.janela.fila(0)
-    m._fecha_uso()
+    fecha_janela(m)
     a3, _ = audios(m)
     confere(len(a3) == 1 and a3[0]["secas"] == 1, f"ligada de novo: a janela comeca ali, sem o que veio antes ({a3})")
 
@@ -310,17 +322,17 @@ with tempfile.TemporaryDirectory() as tmp:
     volta(e)
     e._st = "playing"
     m._olha(5)
-    m._fecha_uso()
+    fecha_janela(m)
     a4, evs = audios(m)
     confere(not a4 and [x["event"] for x in evs] == ["uso"], f"ligada no texto 1: o 'uso' sai, o 'audio' nao ({evs})")
     m.escolhe(True)  # o Enviar do aviso de novo
     volta(e)
-    m._fecha_uso()
+    fecha_janela(m)
     confere(len(audios(m)[0]) == 1, "o Enviar do aviso, no texto 2: o 'audio' passa a sair")
     m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
     m.engine = Motor()  # o --mock, ou o audio fechado: sem a janela
     m._confere_audio()
-    m._fecha_uso()
+    fecha_janela(m)
     confere(not audios(m)[0], "sem Injetor (o --mock, o audio fechado): nenhum 'audio'")
 
     # a escolha no texto de agora que ja valia ao abrir: o vigia nao joga fora o comeco da janela do Injetor
@@ -336,25 +348,30 @@ with tempfile.TemporaryDirectory() as tmp:
         if m._audio_vale:
             break
         _t.sleep(0.01)
-    m._parar = True
-    m._acorda.set()
-    th.join(5)
     volta(e)
-    m._fecha_uso()
-    a6, _ = audios(m)
-    confere(not th.is_alive() and len(a6) == 1 and a6[0]["secas"] == 1,
-            f"aberto com a escolha no texto 2: a janela conta desde a abertura do audio, e o vigia para ({a6})")
+    m.fecha()  # fechado antes da primeira volta do vigia
+    th.join(5)
+    a6 = [x for _, corpo, _ in env for x in json.loads(corpo).get("batch", []) if x["event"] == "audio"]
+    confere(not th.is_alive() and len(a6) == 1 and a6[0]["properties"]["secas"] == 1
+            and re.fullmatch(r"[0-9a-f]{32}", a6[0]["distinct_id"] or "") is not None,
+            f"aberto com a escolha no texto 2 e fechado logo: a janela conta desde a abertura do audio, sai com o id, "
+            f"e o vigia para ({a6})")
 
-    # o lote que falha enquanto a pessoa desliga nao volta para a fila
+    # o lote que falha enquanto a pessoa desliga (e liga de novo) nao volta para a fila
     m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
     m.evento("ativo", primeira_vez=False)
 
     def falha_desligando(url, dados, cab):
-        m.cfg["metricas"] = False  # desligou durante o envio
+        m.escolhe(False)  # desligou durante o envio...
+        m.escolhe(True)  # ...e ligou de novo
         raise OSError("sem rede")
     m.envia = falha_desligando
     m._manda_fila()
-    confere(m.fila.empty(), "desligada durante o envio que falhou: o lote nao volta para a fila")
+    confere(m.fila.empty(), "desligada durante o envio que falhou: o lote nao volta para a fila, nem ligando de novo")
+    m.evento("ativo", primeira_vez=False)
+    m.envia = lambda url, dados, cab: (_ for _ in ()).throw(OSError("sem rede"))
+    m._manda_fila()
+    confere(m.fila.qsize() == 1, "sem rede, com o envio ligado: o lote volta para a fila")
 
     # o instalador grava a versao do texto de agora, e a politica lista cada campo do "audio"
     iss = (RAIZ / "instalador" / "ritmelli.iss").read_text(encoding="utf-8-sig")

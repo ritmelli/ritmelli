@@ -363,7 +363,8 @@ async def aviso_no_chrome(base, botao):
     chrome = subprocess.Popen([CHROME, "--headless=new", f"--remote-debugging-port={port}", f"--user-data-dir={prof}",
                                "--no-first-run", "--no-default-browser-check", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    r = {"abriu": False, "ao_ligar": None, "foco": None, "fechou": None, "reabriu": None, "erros": []}
+    r = {"abriu": False, "ao_ligar": None, "antes_do_enviar": None, "foco": None, "fechou": None, "reabriu": None,
+         "erros": []}
     try:
         ws_url = None
         for _ in range(100):
@@ -413,13 +414,21 @@ async def aviso_no_chrome(base, botao):
             r["abriu"] = await espera_aviso()
             await confere_pagina(cmd, url, barrados)
             if botao == "ligar" and not r["abriu"]:
-                # o botao do Microfone e fone, como o clique nele (o GET /api/metricas da carga ja mostrou a linha)
+                # o Microfone e fone aberto pelo botao dele, e o Comecar a enviar da linha dos dados de uso
+                await js("document.querySelector('#b-disp').click()")
+                for _ in range(50):
+                    if await js("document.querySelector('#dlg-disp').open && !document.querySelector('#dd-met').hidden"):
+                        break
+                    await asyncio.sleep(0.1)
                 await js("document.querySelector('#dd-met-btn').click()")
                 r["ao_ligar"] = await espera_aviso(3.0)
                 if r["ao_ligar"]:
                     r["foco"] = await js(foco)
+                    # com o aviso na tela, nada foi gravado ainda: a escolha sai do Enviar dele
+                    r["antes_do_enviar"] = (await cmd("Runtime.evaluate", awaitPromise=True, returnByValue=True,
+                                                      expression="fetch('/api/metricas').then(r => r.json())")
+                                            ).get("result", {}).get("value")
                     await js("document.querySelector('#dlg-metricas button[value=sim]').click()")
-                await asyncio.sleep(1.0)
             elif r["abriu"] and botao:
                 r["foco"] = await js(foco)
                 if botao == "esc":
@@ -473,11 +482,11 @@ def cenario_metricas():
         falhas += not ok
         print(f"{'OK   ' if ok else 'FALHA'} {msg}", flush=True)
 
-    def le_config(tmp):
-        """O POST da escolha, gravado sob a trava do cfg: espera ate 5 s pelo metricas_texto."""
+    def le_config(tmp, liga):
+        """O POST da escolha, gravado sob a trava do cfg: espera ate 5 s pela escolha (liga) no texto 2."""
         for _ in range(50):
             g = json.loads((tmp / "dados" / "config.json").read_text(encoding="utf-8"))
-            if "metricas_texto" in g:
+            if g.get("metricas") is liga and g.get("metricas_texto") == 2:
                 break
             time.sleep(0.1)
 
@@ -486,11 +495,12 @@ def cenario_metricas():
             for botao in botoes:
                 inicial = {"boas_vindas": True, **cfg}
                 tmp = Path(tempfile.mkdtemp(prefix="ritmelli-metricas-"))
+                liga = botao in ("sim", "ligar")
 
-                def faz(srv, botao=botao, tmp=tmp):
+                def faz(srv, botao=botao, tmp=tmp, liga=liga):
                     r = asyncio.run(aviso_no_chrome(srv.base, botao))
                     if botao in ("nao", "sim", "ligar"):
-                        le_config(tmp)
+                        le_config(tmp, liga)
                     return r
                 try:
                     r, gravado, saida = _sobe_e(tmp, inicial, env, faz)
@@ -499,7 +509,6 @@ def cenario_metricas():
                 o_que = f"{nome}{', ' + BOTOES[botao] if botao else ''}"
                 diz(r["abriu"] == abre, f"{o_que}: o aviso {'abre' if r['abriu'] else 'nao abre'} ao carregar")
                 diz(not r["erros"], f"{o_que}: sem erro na pagina ({r['erros'][:2]})")
-                liga = botao in ("sim", "ligar")
                 if botao == "ligar":
                     texto2 = cfg.get("metricas_texto") == 2
                     diz(r["ao_ligar"] is (not texto2),
@@ -507,6 +516,10 @@ def cenario_metricas():
                         f" ({r['ao_ligar']}, foco {r['foco']})")
                     if not texto2:
                         diz(r["foco"] == "sim", f"{o_que}: o foco no Enviar do aviso ({r['foco']})")
+                        a = r["antes_do_enviar"] or {}
+                        diz((a.get("situacao"), a.get("texto")) == ("desligada", 1),
+                            f"{o_que}: com o aviso na tela, nada gravado ainda ({a.get('situacao')}, texto "
+                            f"{a.get('texto')})")
                 elif botao and r["abriu"]:
                     if cfg.get("metricas") is True:
                         diz(r["foco"] == "sim", f"{o_que}: para quem ja enviava, o foco no Enviar ({r['foco']})")
