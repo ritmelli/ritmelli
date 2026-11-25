@@ -121,7 +121,7 @@ const I18N = (() => {
       <h1 class="nome-marca">ritmelli</h1>
       <span class="conexao" id="conexao" role="status" data-i18n="app.connecting"></span>
     </div>
-    <form class="busca" id="form-busca" role="search">
+    <form class="busca" id="form-busca" role="search" inert>
       <label class="sr" for="q" data-i18n="search.prompt"></label>
       <span class="campo-q">
         <!-- o placeholder vem do textoBusca: mais curto no celular -->
@@ -4011,6 +4011,8 @@ $('#form-busca').addEventListener('submit', e => {
   const q = $('#q').value.trim();
   if (!q || !jaBuscando(q)) buscar(q);
 });
+// the search form starts inert: while the theme's scripts load, Enter would submit it natively and reload the page
+$('#form-busca').inert = false;
 $('#q').addEventListener('keydown', e => { if (e.key === 'Escape' && S.busca) { e.preventDefault(); fecharBusca(); } });
 $('#b-voltar').addEventListener('click', () => { fecharBusca(); if (!toque()) $('#q').focus(); });
 /* celular: tocar em qualquer lugar fora do campo fecha o teclado, como nos
