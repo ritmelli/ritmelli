@@ -40,9 +40,11 @@ arquivo, e o `<style>` fecha o `@media` antes do `<link>` e abre de novo depois.
 mora em `gerado/` (o `gerado/molduras.css`, por exemplo): o gerador grava o arquivo inteiro e não mexe no
 `index.html`, e o que se muda à mão ali some na próxima vez que ele roda.
 
-The base CSS of the theme is out of the page too, one marked block per file, in the order the page loads them:
-`base.css` (the fonts, the colors and the reset), `buttons.css`, `grid.css`, `top-bar.css`, `turntable.css`,
-`receiver.css`, `devices.css`, `wall.css`, `dialogs.css`, `phone.css`, `pedalboard.css`, `home.css` and
-`skin-vars.css`. The CSS still inline has its blocks marked already, ready to move. The `dev/testa_i18n.py` keeps a
+All the CSS of the theme is in files now, one marked block per file, and the `<link>` list at the top of the
+`index.html` is the order of the cascade: `base.css` (the fonts, the colors and the reset) first, the sections of the
+page (`buttons.css`, `top-bar.css`, `phone.css`, ...), the skin over them (`skin-vars.css`, the generated sheets,
+`skin-top.css`, `skin-case.css`, ...), the desktop and DJ desk layouts (`desktop-library.css`, `dj-desk.css`, ...) and
+`reduced-motion.css` near the end, before the `deck.css`, `mix.css` and `pedal.css` of the desk. Only the one line
+that hides the page until its texts are in place stays inline. The `dev/testa_i18n.py` keeps a
 ceiling on the lines of inline CSS and JS left in the `index.html` (`INLINE_CEILING`): it only goes down, new theme
 code goes into a file of the folder, and the count goes to the PR summary.

@@ -1,0 +1,34 @@
+/* SKIN-CABLES-INICIO */
+/* aparelhos e cabos RCA: celular e computador */
+@media (max-width: 899.98px) {
+  /* cabo RCA saindo por trás do canto inferior direito do toca-discos para a calha de 16px */
+  .cabo-mesa {
+    /* alinhado pela beirada da tela, como o do receiver: o toca-discos e mais estreito (340 px) e
+       fica no meio, e os dois pedacos do par desencontravam */
+    right: calc((100% - (100vw - 32px)) / 2 - 15px); bottom: -26px; width: 68px; height: 48px; z-index: 1;
+  }
+  /* cabo RCA chegando da calha direita para o topo traseiro do receiver + par vertical na calha */
+  .cabo-rec {
+    right: -15px; top: -32px; width: 68px; height: 50px; z-index: -1;
+  }
+  /* o par do toca-discos ao receiver: um traco so por cor, desenhado pelo JS (medirCabos) */
+  .cabo-calha { display: block; position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none; }
+}
+@media (min-width: 900px) {
+  /* o par do toca-discos ao receiver: um canvas so, atras dos dois aparelhos (medirCabos); os pedacos sao do celular */
+  .cabo-calha { display: block; position: absolute; z-index: -1; pointer-events: none; }
+  .cabo-mesa, .cabo-rec { display: none; }
+}
+/* os fios e plugues em pixel como no mock p1: o JS (fiosPixel) desenha cada
+   pedaco num canvas de celulas de 4/3 px que o CSS amplia sem suavizar */
+.cabo-calha, .fios-pixel { image-rendering: pixelated; }
+.fios-pixel { position: absolute; left: -4px; top: -4px; }
+/* alça de cabos RCA cruzando a fresta entre o receiver e o módulo de efeitos */
+.cabo-gav {
+  right: 18px; top: -31px; width: 116px; height: 48px; z-index: -1;
+  /* os cabos passam por tras do painel de feltro: o desenho acaba na borda de
+     cima da gaveta, que forma contexto de empilhamento e por isso nao cobriria o z-index -1 */
+  clip-path: inset(0 0 calc(100% - 31px) 0);
+}
+
+/* SKIN-CABLES-FIM */
