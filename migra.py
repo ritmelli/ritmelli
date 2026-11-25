@@ -123,11 +123,12 @@ def tarefas():
     """Apaga as tarefas do Windows de antes (as novas o instalador cria) e a pasta delas no Agendador de Tarefas."""
     for t in TAREFAS_VELHAS:
         for args in (["/end"], ["/delete", "/f"]):
-            subprocess.run(["schtasks", *args, "/tn", t], capture_output=True, creationflags=NO_WINDOW)
+            subprocess.run([pastas.do_windows("schtasks.exe"), *args, "/tn", t], capture_output=True,
+                           creationflags=NO_WINDOW)
     ps = ("$s=New-Object -ComObject Schedule.Service;$s.Connect();"
           f"try{{$s.GetFolder('\\').DeleteFolder('{PASTA_TAREFAS_VELHA}',0)}}catch{{}}")
-    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True,
-                   creationflags=NO_WINDOW)
+    subprocess.run([pastas.do_windows(os.path.join("WindowsPowerShell", "v1.0", "powershell.exe")), "-NoProfile",
+                    "-NonInteractive", "-Command", ps], capture_output=True, creationflags=NO_WINDOW)
 
 
 # ---------- a pasta do app de antes ----------

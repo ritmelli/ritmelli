@@ -324,6 +324,35 @@ cod, _ = rodada_reprovada(apaga_filtro=falha)
 caso("a do filtro falha ao sair: a propria sai do mesmo jeito, e a rodada sai com erro",
      cod == 1 and tarefas_de("/delete") == [atualizador.TAREFA], schtasks)
 
+print("--- creating the update task in the installed executable")
+# the folder protected, subprocess.run recording (and reading the XML before it goes): no real task is created
+created = []
+
+
+def run_create(args, **kw):
+    args = list(args)
+    if "/create" in args:
+        created.append((args, Path(args[args.index("/xml") + 1]).read_text(encoding="utf-16")))
+    return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+
+guardado = (subprocess.run, atualizador.pastas.pasta_protegida, sys.executable)
+subprocess.run = run_create
+atualizador.pastas.pasta_protegida = lambda pasta=None, raiz=None: True
+sys.executable, sys.frozen = r"C:\Program Files\Ritmelli\ritmelli.exe", True
+try:
+    cod = atualizador.tarefa_cria()
+finally:
+    del sys.frozen
+    subprocess.run, atualizador.pastas.pasta_protegida, sys.executable = guardado
+args = created[0][0] if created else []
+caso("schtasks /create by its full System32 path, once",
+     cod == 0 and len(created) == 1 and args[0] == atualizador.SCHTASKS and args[1:4] == ["/create", "/tn", atualizador.TAREFA]
+     and os.path.dirname(args[0]).lower() == mf.SYSTEM32.lower(), created)
+caso("the XML runs the installed executable, and the temporary file is gone",
+     bool(created) and r"<Command>C:\Program Files\Ritmelli\ritmelli.exe</Command>" in created[0][1]
+     and not Path(args[args.index("/xml") + 1]).exists(), created)
+
 print("--- a tarefa e os processos")
 x = ET.fromstring(atualizador.TAREFA_XML.split("\n", 1)[1].replace("{exe}", r"C:\Program Files\Ritmelli\ritmelli.exe"))
 ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
