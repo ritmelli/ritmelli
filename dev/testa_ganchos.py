@@ -201,13 +201,26 @@ def nodes_with_scope(node, scope):
         yield from nodes_with_scope(child, child if isinstance(child, SCOPES) else scope)
 
 
-def single_assignments(tree):
-    seen = {}
-    for n, scope in nodes_with_scope(tree, tree):
-        for target in assigned_targets(n):
-            if isinstance(target, ast.Name):
-                seen.setdefault((id(scope), target.id), []).append(n.value)
-    return {key: values[0] for key, values in seen.items() if len(values) == 1 and values[0] is not None}
+class Assignments:
+    def __init__(self, tree):
+        self.values = {}
+        self.enclosing = {}
+        for n, scope in nodes_with_scope(tree, tree):
+            if isinstance(n, SCOPES):
+                self.enclosing[id(n)] = scope
+            for target in assigned_targets(n):
+                if isinstance(target, ast.Name):
+                    self.values.setdefault((id(scope), target.id), []).append(n.value)
+
+    def single_value(self, scope, name):
+        while scope is not None:
+            values = self.values.get((id(scope), name))
+            if values is not None:
+                return values[0] if len(values) == 1 else None
+            scope = self.enclosing.get(id(scope))
+            while isinstance(scope, ast.ClassDef):
+                scope = self.enclosing.get(id(scope))
+        return None
 
 
 def dict_keys(value):
@@ -228,7 +241,9 @@ def literal_items(iterable, scope, assignments):
             and iterable.func.attr in ("items", "keys")):
         method, iterable = iterable.func.attr, iterable.func.value
     if isinstance(iterable, ast.Name):
-        iterable = assignments.get((id(scope), iterable.id))
+        iterable = assignments.single_value(scope, iterable.id)
+        if method is None and isinstance(iterable, (ast.Tuple, ast.List)):
+            return iterable.elts
     keys = dict_keys(iterable) if iterable is not None else None
     if keys is None:
         return None
@@ -237,7 +252,7 @@ def literal_items(iterable, scope, assignments):
 
 def loop_variable_names(tree):
     out = {}
-    assignments = single_assignments(tree)
+    assignments = Assignments(tree)
 
     def pairs(target, item):
         if isinstance(target, ast.Name):
@@ -417,6 +432,11 @@ CAUGHT = [
     ("a dict comprehension with a local class assigning the same name", OWNER,
      "def f(o):\n    values = {k: 0 for k in ('_x', 'public')}\n\n    class Local:\n        values = {}\n\n"
      "    for k, v in values.items():\n        setattr(o, k, v)\n"),
+    ("a loop in a class body over a dictionary of the enclosing function", OWNER,
+     "def f(o):\n    values = {k: 0 for k in ('_x', 'public')}\n\n    class Local:\n"
+     "        for k, v in values.items():\n            setattr(o, k, v)\n"),
+    ("a loop over a tuple assigned once", OWNER,
+     "def f(o):\n    names = ('_x', 'y')\n    for k in names:\n        getattr(o, k)\n"),
     ("a module-level def f(self)", OWNER, "def f(self):\n    return self._x\n"),
     ("a subclass reading it", OWNER, "class Sub(Owner):\n    def m(self):\n        return self._x\n"),
     ("a subclass overriding it", OWNER, "class Sub(Owner):\n    def _x(self):\n        pass\n"),
@@ -441,6 +461,11 @@ NOT_REACHES = [
     ("its own name", OWNER, "class Other:\n    _x = 0\n\n    def m(self):\n        return self._x\n"),
     ("its own name, captured", OWNER,
      "class Other:\n    _x = 0\n\n    def m(self):\n        return (lambda: self._x)()\n"),
+    ("a class body's names, which its methods do not see", OWNER,
+     "def f(o):\n    names = ('y',)\n\n    class Other:\n        names = ('_x',)\n\n        def m(self):\n"
+     "            for k in names:\n                getattr(o, k)\n"),
+    ("a name assigned twice", OWNER,
+     "def f(o, other):\n    names = ('_x',)\n    names = other\n    for k in names:\n        getattr(o, k)\n"),
     ("a nested class's own self",
      "class Owner:\n    def m(self):\n        class Local:\n"
      "            def __init__(self):\n                self._x = 0\n",
