@@ -503,23 +503,32 @@ def andamento(A, E):
                 raise Fim from None  # a segunda volta: o vigia sai
 
         def grava(caminho, dados):
-            travado.append(A.fila_lock.locked())
+            gravados.append((caminho, dict(dados), A.fila_lock.locked()))
             if falha:
-                raise OSError("disco cheio")
-        travado, trocas, versao = [], [], A.andamentos_versao
+                raise disco_cheio
+        gravados, trocas, saiu, versao = [], [], [], A.andamentos_versao
+        disco_cheio = OSError("disco cheio")
         v = {"youtube_id": "fffffffffff", "duration": 200, "title": "parecida", "channel": "c"}
+        caminho, antes = (A.versoes_path, dict(A.versoes)) if o_que == "audio" else (A.andamentos_path,
+                                                                                    dict(A.andamentos))
+        medida = v if o_que == "audio" else {"ini": 100.0, "fim": 101.0}
         with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(server, "ANDAMENTO_APOS_S", -1),
               mock.patch.object(server, "save_json", grava), mock.patch.object(A, "_a_medir", a_medir),
               mock.patch.object(A, "versao_audio", return_value=v),
               mock.patch.object(A, "_mede_andamento", return_value={"ini": 100.0, "fim": 101.0}),
               mock.patch.object(A, "_troca_audio", side_effect=lambda *a: trocas.append(a)),
-              mock.patch.object(threading, "excepthook", lambda a: None)):
+              mock.patch.object(threading, "excepthook", lambda a: saiu.append(a.exc_value))):
             A.auto = True
-            t = threading.Thread(target=A._vigia_andamento)
+            t = threading.Thread(target=A._vigia_andamento, daemon=True)
             t.start()
             t.join(10)
             A.auto = False
-        return travado, trocas, A.andamentos_versao - versao, v
+        confere(not t.is_alive() and len(saiu) == 1 and (saiu[0] is disco_cheio if falha else isinstance(saiu[0], Fim)),
+                f"o _vigia_andamento saiu sozinho, pela {'gravacao que falhou' if falha else 'volta seguinte'} "
+                f"({o_que}, {saiu})")
+        confere(gravados == [(caminho, {**antes, yid: medida}, False)],
+                f"uma gravacao so, no arquivo certo, com o que havia mais a medida, e sem a fila_lock ({o_que})")
+        return [g[2] for g in gravados], trocas, A.andamentos_versao - versao, v
 
     travado, trocas, subiu, v = roda("audio", "aaaaaaaaaa1", falha=False)
     confere(travado == [False] and trocas == [("aaaaaaaaaa1", v)] and subiu == 1 and A.versoes["aaaaaaaaaa1"] == v,

@@ -612,7 +612,7 @@ class Library:
 
 
 class App:
-    def __init__(self, port, data_dir, mock=False, vigias=True, relogio=True):
+    def __init__(self, port, data_dir, mock=False, metricas_teste=False, vigias=True, relogio=True):
         """vigias=False e relogio=False sao dos testes (dev/testa_comandos.py): sem as threads dos vigias (quem testa
         chama cada volta, _volta_fila, _volta_passagem e _volta_auto, a mao) e, no --mock, sem o relogio de 10 ms do
         MockEngine (quem testa chama o engine._mixa)."""
@@ -701,8 +701,11 @@ class App:
                 v = self.cfg[k]
                 setattr(self.engine, k, v if isinstance(v, bool) else max(0.0, min(1.0, float(v))))
         self.engine.liga()
-        # os dados de uso e os erros (metricas.py, #102): so saem com a escolha de quem usa, e nunca no --mock
-        self.metricas = met.Metricas(self.cfg, lambda ligar: self.grava_cfg(metricas=ligar), mock=mock)
+        # os dados de uso e os erros (metricas.py, #102): so saem com a escolha de quem usa, e nunca no --mock. No
+        # --mock, o metricas.json (o id e o dia) fica na pasta de dados dele; o --metricas-teste liga o aviso e a escolha
+        # sem ler o instalador, e o envio so guarda na memoria
+        self.metricas = met.Metricas(self.cfg, self.grava_cfg, mock=mock, teste=metricas_teste,
+                                     **({"estado": data_dir / "metricas.json"} if mock else {}))
         self.metricas.instala_ganchos()
         if vigias:
             self._liga_vigias()
@@ -1892,7 +1895,8 @@ class App:
                         self.andamento_falhou[f"audio:{vid}"] = time.time()
                     continue
                 # grava fora da fila_lock (o disco lento nao segura a fila) e so depois aplica, na ordem de antes: a
-                # medida fica na memoria mesmo se a gravacao falha, mas so vale na fila depois de gravada
+                # medida entra na memoria mesmo se a gravacao falha; a troca na fila e o andamentos_versao (a nova
+                # ordem do Automatico) so vem com a gravacao feita
                 with self.fila_lock:
                     versoes = {**self.versoes, vid: v}
                 gravou = False
@@ -2816,15 +2820,20 @@ def main():
     ap.add_argument("--data-dir", help="where library.json and config.json live (default: the user's; with --mock, a "
                                        "new temporary folder, never the user's)")
     ap.add_argument("--so-local", action="store_true", help="don't serve the home network (phone)")
+    ap.add_argument("--metricas-teste", action="store_true",
+                    help="with --mock: the usage data notice and choice work, but nothing is read from the installer "
+                         "and nothing is sent (the events stay in memory)")
     ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
+    if a.metricas_teste and not a.mock:
+        sys.exit("--metricas-teste only works with --mock")
     dados = Path(a.data_dir) if a.data_dir else LIB
     if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
         dados = pastas.dados_do_mock(a.data_dir)
         if dados is None:
             sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
                      "temporary copy")
-    A = App(a.port, dados, mock=a.mock)
+    A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste)
     if not a.mock:  # no --mock, o processo do YouTube so abre no primeiro pedido de quem testa (#128)
         threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active

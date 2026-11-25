@@ -1,5 +1,11 @@
 # O motor de áudio (`engine.py`)
 
+As contas da passagem que não leem áudio moram no `transicao.py`: o fim, o começo e o corpo de cada disco pelo
+nível dos blocos, a escolha entre fade e final seco, a entrada do próximo na passagem de DJ e os tempos a partir das
+grades e fases já medidas (a velocidade de cada lado, a batida em que o próximo cai, a virada e a troca de grave). O
+motor lê o áudio, mede a fase antes e depois de esticar, estica, põe o eco, filtra o grave e monta os blocos. O
+`dev/testa_transicao.py` roda o `transicao.py` sobre as chamadas que o motor gravou nos pares da banca das passagens.
+
 `engine.py`: mistura em WASAPI 48 kHz, blocos de 10 ms; ffmpeg decodifica; voz com no
 máximo ~80 ms de atraso; `MockEngine` sem áudio para teste (o relógio de 10 ms dele chama o `_mixa`; com o
 `relogio = False`, que o `server.App(..., relogio=False)` passa antes de ligar, quem chama é o teste). O Windows converte os 48 kHz
