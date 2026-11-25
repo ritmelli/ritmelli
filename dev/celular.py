@@ -147,7 +147,11 @@ def do_pc(base, metodo, rota):
 async def parear_aba(a, base):
     """No --papel-local celular, a aba sem pareamento: o codigo do PC, digitado pelo tema (o parear dele, o mesmo do
     formulario), e a aba com o caps do celular. Volta os ids dos celulares que este script pareou, para desconectar."""
-    if await a.js("!!(S.caps && S.caps.papel === 'celular')"):
+    # o papel de agora, pelo servidor (o api() do tema, na propria aba): o S.caps pode ser o de um --mock de antes na
+    # mesma porta, e o 401 ja poe a aba na tela do codigo
+    papel = await a.js("api('GET', '/api/state').then(s => s.caps && s.caps.papel,"
+                       " e => { if (e.status === 401) return null; throw e; })")
+    if papel == "celular":
         return []
     caminho = urllib.parse.urlsplit(a.url).path
     antes = do_pc(base, "GET", f"/api/pareamento?caminho={urllib.parse.quote(caminho)}")

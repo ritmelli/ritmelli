@@ -8621,10 +8621,12 @@ function mostrarAtualizando(f) {
    SSE), e nao o endereco dela. Ate ele chegar, nenhum controle do PC aparece ---------- */
 const pode = rota => !!(S.caps && S.caps.rotas && S.caps.rotas.includes(rota));
 function definirCaps(c) {
+  const metricasAntes = pode('GET /api/metricas');
   S.caps = c && Array.isArray(c.rotas) ? c : null;
   $('#b-cel').hidden = !pode('GET /api/pareamento');
   desenharAtualizacao();
   if (!pode('GET /api/metricas')) $('#dd-met').hidden = true;
+  else if (!metricasAntes && $('#dlg-disp').open) lerMetricas();   // o Microfone e fone aberto antes do caps chegar
 }
 
 /* ---------- conexao ---------- */
