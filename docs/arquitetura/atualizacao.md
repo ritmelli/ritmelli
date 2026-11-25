@@ -5,9 +5,10 @@ atualizador). O app baixa o manifesto das versões e a assinatura dele, e só
 aceita o que a chave pública Ed25519 embutida no módulo assinou, e só para uma versão mais nova
 que a dele (um manifesto velho não volta a versão). O setup.exe novo vem com o tamanho e o hash
 conferidos e roda em modo silencioso, com o pedido de permissão do Windows: o instalador fecha
-o Ritmelli, troca a pasta dele e abre de novo. Os downloads ficam em
-`%LOCALAPPDATA%\Ritmelli\atualizacao`. Enquanto o endereço do manifesto e a chave estão vazios, e
-sempre que roda pelo código, nada é consultado. A parcial só serve numa pasta do app protegida
+o Ritmelli, troca a pasta dele e abre de novo. Esse caminho, o de quem ainda não tem a tarefa,
+baixa em `%LOCALAPPDATA%\Ritmelli\atualizacao`; a tarefa baixa na `atualizacao\` da pasta do app
+(`atualizador.PASTA`), que só administrador grava. Pelo código, nada é consultado: quem atualiza
+é o git. A parcial só serve numa pasta do app protegida
 (`atualizacao.PROTEGIDA`, a regra do `pastas.pasta_protegida`); fora dela vai o setup completo, que
 confere o destino. A tarefa de atualização (`atualizador.py`, a que roda como SYSTEM) confere a
 mesma regra antes de gravar na pasta do app e, reprovada, apaga as duas tarefas que rodam como SYSTEM
