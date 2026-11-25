@@ -95,7 +95,7 @@ def shape(text):
     check("        shell: python3 {0}" in gate, "the gate runs in python3")
     summary = step(required, "Resumo e resultado")
     check(any("S_DONO: ${{ steps.dono.outcome }}" in line for line in summary)
-          and any('"${estados[@]}" "$S_DONO"' in line for line in summary)
+          and any('"$S_DONO"' in line and 'ok=false' in line for line in summary)
           and any("DONO: ${{ steps.dono.outputs.linha }}" in line for line in summary)
           and any('echo "$DONO"' in line for line in summary),
           "the summary step counts the outcome of the gate in its result and writes its line")
