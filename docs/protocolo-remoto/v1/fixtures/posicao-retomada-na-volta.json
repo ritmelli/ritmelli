@@ -1,6 +1,6 @@
 {
  "cenario": "retomada-na-volta",
- "descricao": "Um som de 100 ms no Repetir pausado perto do fim de uma volta: na primeira pausa, a volta toca antes do tick que ve a retomada; na segunda, a volta e o proximo bloco no tick. A ancora da retomada leva a volta.",
+ "descricao": "Um som de 100 ms no Repetir pausado perto do fim de uma volta: na primeira pausa, a volta toca antes do tick que ve a retomada; na segunda, a volta e o proximo bloco no tick; na terceira, a pausa cai bem no comeco da volta, que so toca depois da retomada. A ancora da retomada leva a volta.",
  "relogio": {
   "t0_ms": 1000000.0,
   "taxa": 48000
@@ -1451,12 +1451,58 @@
    }
   },
   {
-   "evento": "fronteira",
+   "evento": "pausa",
    "msg": {
     "protocolo": 1,
     "tipo": "estado",
     "sessao": "sessao-de-teste-01",
     "rev": 20,
+    "origem": "mudanca",
+    "agora": 1001610.0,
+    "estado": {
+     "status": "paused",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 0.1,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 0.0,
+      "t": 1001570.0,
+      "taxa": 48000,
+      "anda": false,
+      "segmentos": []
+     }
+    }
+   }
+  },
+  {
+   "evento": "retomada",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 21,
     "origem": "mudanca",
     "agora": 1001610.0,
     "estado": {
@@ -1488,7 +1534,7 @@
      "ancora": {
       "faixa": "A",
       "pos": 0.0,
-      "t": 1001570.0,
+      "t": 1001600.0,
       "taxa": 48000,
       "anda": true,
       "segmentos": [
