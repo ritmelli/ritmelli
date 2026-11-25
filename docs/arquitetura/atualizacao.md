@@ -2,7 +2,8 @@
 
 `atualizacao.py`: o aviso de versão nova e a atualização pelo instalador (o caminho A do
 atualizador). O app baixa o manifesto das versões e a assinatura dele, e só
-aceita o que a chave pública Ed25519 embutida no módulo assinou, e só para uma versão mais nova
+aceita o que uma das duas chaves públicas Ed25519 embutidas no módulo assinou (o `CHAVES`, por
+número: o `.sig` diz qual assinou, e a 2 é a reserva, para o caso de a 1 se perder), e só para uma versão mais nova
 que a dele (um manifesto velho não volta a versão). O setup.exe novo vem com o tamanho e o hash
 conferidos e roda em modo silencioso, com o pedido de permissão do Windows: o instalador fecha
 o Ritmelli, troca a pasta dele e abre de novo. Esse caminho, o de quem ainda não tem a tarefa,
