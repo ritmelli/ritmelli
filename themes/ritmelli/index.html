@@ -4488,7 +4488,8 @@ body[data-sobre] .palco .tocar-grande::after { background-image: var(--icone-gra
 </dialog>
 
 <!-- o aviso dos dados de uso e dos erros, uma vez, para quem ainda nao escolheu (a situacao "decidir": atualizou em
-     silencio de uma versao sem eles, sem passar pela pagina do instalador). Fechar sem escolher pergunta de novo depois -->
+     silencio de uma versao sem eles, sem passar pela pagina do instalador) e para quem ligou num texto de antes do de
+     agora (o texto do GET /api/metricas). Fechar sem escolher pergunta de novo depois -->
 <dialog id="dlg-metricas" aria-labelledby="dm-t">
   <form method="dialog" class="dlg">
     <h2 id="dm-t" data-i18n="metrics.label"></h2>
@@ -8449,7 +8450,9 @@ $('#dn-nao').addEventListener('click', () => $('#dlg-nome').close('nao'));
 /* ---------- dados de uso e erros (metricas.py), so no PC: a linha no Microfone e fone e o aviso de quem ainda nao
    escolheu. A escolha feita aqui vale sobre a da pagina do instalador ---------- */
 const noPC = () => ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
+let metricasVistas = null;   // a ultima resposta do GET/POST /api/metricas
 function mostrarMetricas(m) {
+  metricasVistas = m;
   const on = m.situacao === 'ligada';
   $('#dd-met').hidden = !(m.situacao === 'ligada' || m.situacao === 'desligada');
   $('#dd-met-txt').textContent = I18N.t(on ? 'metrics.on' : 'metrics.off');
@@ -8465,14 +8468,27 @@ async function escolherMetricas(ligar) {
   try { mostrarMetricas(await api('POST', '/api/metricas', { ligar })); }
   catch (e) { avisar(I18N.t('metrics.saveFailed', { reason: e.message }), true); }
 }
-$('#dd-met-btn').addEventListener('click', e => escolherMetricas(e.currentTarget.dataset.ligar === '1'));
+function abrirAvisoMetricas(focoNoEnviar) {
+  const d = $('#dlg-metricas');
+  d.returnValue = '';
+  d.showModal();
+  if (focoNoEnviar) d.querySelector('button[value=sim]').focus();
+}
+$('#dd-met-btn').addEventListener('click', e => {
+  const ligar = e.currentTarget.dataset.ligar === '1', m = metricasVistas;
+  // ligar com a escolha feita num texto de antes do de agora: primeiro o aviso, com o texto de agora, e o Enviar dele liga
+  if (ligar && m && m.texto < m.texto_atual) abrirAvisoMetricas(true);
+  else escolherMetricas(ligar);
+});
 let metricasPedidas = false;
+// o aviso: para quem nao escolheu, e para quem ligou num texto de antes do de agora (o Esc nao grava, e ele volta)
+const metricasPrecisa = m => m.situacao === 'decidir' || (m.situacao === 'ligada' && m.texto < m.texto_atual);
 async function metricasSePrecisar() {
   if (metricasPedidas || dialogoAberto()) return;
   const m = await lerMetricas();
-  if (!m || m.situacao !== 'decidir' || dialogoAberto()) return;
+  if (!m || !metricasPrecisa(m) || dialogoAberto()) return;
   metricasPedidas = true;
-  $('#dlg-metricas').showModal();
+  abrirAvisoMetricas(m.situacao === 'ligada');   // quem ja enviava segue com um Enter
 }
 $('#dlg-metricas').addEventListener('close', () => {
   const v = $('#dlg-metricas').returnValue;
