@@ -6,7 +6,7 @@ Os papeis de quem pede:
 - "pc": quem conecta pelo 127.0.0.1 (ou ::1) sem o cabecalho do remoto. Pode tudo, inclusive rota fora da tabela;
 - "celular": da rede de casa, com a chave do pareamento (pareamento.py) no cookie;
 - "publico": da rede de casa, sem chave que valha. So o tema, os arquivos dele e o pareamento;
-- "remoto": quem conecta pelo 127.0.0.1 com o cabecalho REMOTO e um token de sessao que vale (Remotos). So os
+- "remoto": quem conecta pelo 127.0.0.1 (so o IPv4) com o cabecalho REMOTO e um token de sessao que vale (Remotos). So os
   comandos da lista REMOTO. Cabecalho com token que nao vale (errado, vencido, ou vindo de fora do 127.0.0.1) e 401,
   mesmo do 127.0.0.1: quem manda o cabecalho nunca cai no papel do PC.
 
@@ -21,7 +21,8 @@ REMOTO = "X-Ritmelli-Remoto"  # o cabecalho do token da sessao remota
 PC = frozenset({"pc"})
 CELULAR = frozenset({"pc", "celular"})
 LIVRE = frozenset({"pc", "celular", "publico"})        # o tema e o pareamento: antes de parear
-TAMBEM_REMOTO = frozenset({"pc", "celular", "remoto"})  # os comandos do vocabulario remoto
+TAMBEM_REMOTO = frozenset({"pc", "celular", "remoto"})  # os comandos do vocabulario remoto que o tema ja usa
+SO_REMOTO = frozenset({"pc", "remoto"})  # os do remoto que o tema nao usa: fechados para o celular
 
 TABELA = {
     # o tema, os arquivos dele, a galeria e o pareamento
@@ -49,9 +50,9 @@ TABELA = {
     ("POST", "/api/resume"): TAMBEM_REMOTO,
     ("DELETE", "/api/queue/{qid}"): TAMBEM_REMOTO,
     ("POST", "/api/queue/move"): TAMBEM_REMOTO,
-    ("POST", "/api/volume"): TAMBEM_REMOTO,
-    ("POST", "/api/abaixa"): TAMBEM_REMOTO,
-    ("POST", "/api/sinal"): TAMBEM_REMOTO,
+    ("POST", "/api/volume"): SO_REMOTO,
+    ("POST", "/api/abaixa"): SO_REMOTO,
+    ("POST", "/api/sinal"): SO_REMOTO,
 
     # o celular pareado: o que o tema usa nele
     ("GET", "/api/onda/{iid}"): CELULAR,

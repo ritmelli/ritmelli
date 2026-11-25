@@ -99,24 +99,62 @@ VOCABULARIO = {("GET", "/api/state"), ("GET", "/api/events"), ("POST", "/api/pla
 
 
 def rotas_do_fonte():
-    """As rotas do server.py pelo fonte (sem o aiohttp): (metodo, rota canonica). O {nome:regex} vira {nome}, como no
-    canonical do aiohttp, e o static do /t/ vira o "/t" dele."""
-    fonte = (RAIZ / "server.py").read_text(encoding="utf-8")
-    consts = dict(re.findall(r'^([A-Z_]+) = "([^"]*)"', fonte, re.M))
-    out = set()
-    for metodo, arg in re.findall(r'@r\.(get|post|put|patch|delete)\((.*)\)\n', fonte):
-        partes = re.findall(r'([A-Z_]+)|"([^"]*)"', arg)
-        caminho = "".join(consts[c] if c else lit for c, lit in partes)
-        out.add((metodo.upper(), re.sub(r"\{(\w+):[^}]*\}", r"{\1}", caminho)))
-    for pre in re.findall(r'add_static\("([^"]+)"', fonte):
-        out.add(("GET", pre.rstrip("/")))
-    return out
+    """As rotas do server.py pelo fonte (sem o aiohttp), pela arvore do ast: (metodo, rota canonica), e os registros que
+    nao deu para ler. O {nome:regex} vira {nome}, como no canonical do aiohttp, e o static do /t/ vira o "/t" dele. Todo
+    registro de rota conta: o @r.<metodo>(...), o @r.route(...), o router.add_<algo>(...) e o web.<metodo>(...) de uma
+    lista de rotas; o que nao for um caminho literal (ou uma constante do modulo mais um literal) volta como ilegivel."""
+    import ast
+    arvore = ast.parse((RAIZ / "server.py").read_text(encoding="utf-8"))
+    consts = {n.targets[0].id: n.value.value for n in arvore.body if isinstance(n, ast.Assign) and len(n.targets) == 1
+              and isinstance(n.targets[0], ast.Name) and isinstance(n.value, ast.Constant)
+              and isinstance(n.value.value, str)}
+    metodos = {"get", "post", "put", "patch", "delete", "head", "options", "view"}
+
+    def caminho(no):
+        if isinstance(no, ast.Constant) and isinstance(no.value, str):
+            return no.value
+        if isinstance(no, ast.Name) and no.id in consts:
+            return consts[no.id]
+        if isinstance(no, ast.BinOp) and isinstance(no.op, ast.Add):
+            a, b = caminho(no.left), caminho(no.right)
+            return None if a is None or b is None else a + b
+        return None
+
+    # o r.<metodo>(...) so como decorador: fora dele, r e o nome de muito dicionario (r.get("title"))
+    decoradores = {id(d) for f in ast.walk(arvore) if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
+                   for d in f.decorator_list}
+    out, ilegiveis = set(), []
+    for no in ast.walk(arvore):
+        if not (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)):
+            continue
+        nome, dono = no.func.attr, no.func.value
+        dono_nome = dono.id if isinstance(dono, ast.Name) else getattr(dono, "attr", None)
+        if nome == "add_static" or (dono_nome == "router" and nome.startswith("add_") and nome != "add_routes"):
+            c = caminho(no.args[0]) if no.args else None
+            if nome == "add_static" and c is not None:
+                out.add(("GET", c.rstrip("/")))
+            else:
+                ilegiveis.append(f"linha {no.lineno}: {ast.unparse(no)[:80]}")
+        elif ((dono_nome == "r" and id(no) in decoradores and (nome in metodos or nome == "route"))
+              or (dono_nome == "web" and nome in metodos)):
+            args = list(no.args)
+            metodo = nome.upper()
+            if nome == "route":
+                m = caminho(args.pop(0)) if args else None
+                metodo = m.upper() if m else None
+            c = caminho(args[0]) if args else None
+            if metodo is None or c is None or metodo == "VIEW":
+                ilegiveis.append(f"linha {no.lineno}: {ast.unparse(no)[:80]}")
+            else:
+                out.add((metodo, re.sub(r"\{(\w+):[^}]*\}", r"{\1}", c)))
+    return out, ilegiveis
 
 
 def tabela():
     print("--- a tabela de quem pode cada rota (permissao.py)")
-    rotas = rotas_do_fonte()
+    rotas, ilegiveis = rotas_do_fonte()
     confere(len(rotas) > 50, f"o fonte do server.py tem as rotas ({len(rotas)})")
+    confere(not ilegiveis, f"todo registro de rota do server.py tem metodo e caminho legiveis ({ilegiveis})")
     fora = sorted(rotas - set(perm.TABELA))
     confere(not fora, f"toda rota do server.py esta na tabela (fora: {fora})")
     sobra = sorted(set(perm.TABELA) - rotas)
@@ -163,7 +201,7 @@ async def papeis_no_guard():
                                   metricas=types.SimpleNamespace(erro=lambda *a, **k: None),
                                   atualizacao=types.SimpleNamespace(ao_abrir=lambda: None),
                                   snapshot=lambda: {"status": "idle"}, public_jobs=lambda: [],
-                                  lib=types.SimpleNamespace(version=1, public=lambda: []))
+                                  lib=types.SimpleNamespace(version=1, public=lambda: [], get=lambda _: None))
         app = server.build(A)
         guard = app.middlewares[0]
         reais = {(r.method, r.resource.canonical) for r in app.router.routes() if r.resource is not None}
@@ -228,12 +266,13 @@ async def papeis_no_guard():
         # o celular pareado: o que o tema usa nele, com e sem parametro; o que e do PC, 403
         for m, c in (("POST", "/api/play"), ("DELETE", "/api/queue/q1"), ("DELETE", "/api/library/d1"),
                      ("GET", "/api/onda/d1"), ("PATCH", "/api/library/d1"), ("POST", "/api/settings"),
-                     ("HEAD", "/api/state"), ("POST", "/api/volume")):
+                     ("HEAD", "/api/state")):
             confere(await status(m, c, cookie=chave) == 200, f"o celular pareado: {m} {c} passa")
         for m, c in (("POST", "/api/effects/reload"), ("DELETE", "/api/pareamento/abc"), ("GET", "/api/pareamento"),
                      ("HEAD", "/api/pareamento"), ("GET", "/api/atualizacao"), ("POST", "/api/metricas"),
-                     ("POST", "/api/boas-vindas"), ("POST", "/api/janela/foco")):
-            confere(await status(m, c, cookie=chave) == 403, f"o celular pareado: {m} {c} e so do PC (403)")
+                     ("POST", "/api/boas-vindas"), ("POST", "/api/janela/foco"), ("POST", "/api/volume"),
+                     ("POST", "/api/abaixa"), ("POST", "/api/sinal")):
+            confere(await status(m, c, cookie=chave) == 403, f"o celular pareado: {m} {c} nao e dele (403)")
         resp, j, _ = await manda("GET", "/api/state", cookie=chave, handler=rota[("GET", "/api/state")])
         confere(resp.status == 200 and j.get("caps") == perm.caps("celular") and par.COOKIE in resp.cookies,
                 "o /api/state do celular traz o caps dele e renova o cookie")
@@ -279,6 +318,13 @@ async def papeis_no_guard():
                 and {tuple(x.split(" ", 1)) for x in j["caps"]["rotas"]} == VOCABULARIO,
                 "o /api/state do remoto traz o caps dele: o vocabulario e nada mais")
         confere(await status("POST", "/api/play", token=token) == 401, "o token vindo da rede de casa: 401")
+        confere(await status("POST", "/api/play", de="::1", token=token) == 401, "o token vindo do ::1: 401")
+        for corpo in ({"url": "http://192.168.0.1/admin"}, {"url": "file:///C:/x"}, {"youtube_id": "curto"},
+                      {"query": "queen"}):
+            resp, _, _ = await manda("POST", "/api/queue", de=pc, token=token, corpo=corpo,
+                                     handler=rota[("POST", "/api/queue")])
+            confere(resp.status == 400, f"o remoto so enfileira disco da prateleira ou video do YouTube: {corpo} -> "
+                    f"{resp.status}")
         confere(await status("POST", "/api/play", de=pc, token=token[:-2] + "xx") == 401,
                 "o token errado, do 127.0.0.1: 401 (nao cai no papel do PC)")
         confere(await status("POST", "/api/play", de=pc, token="") == 401, "o cabecalho vazio, do 127.0.0.1: 401")
@@ -327,23 +373,31 @@ def ao_vivo(srv):
             and srv.api("GET", "/api/state").get("vol") == 0.42, "o PC: o /api/volume muda o volume da musica")
     for corpo in ({"vol": "alto"}, {"vol": True}, {}):
         confere(recusa_do(srv, "POST", "/api/volume", corpo) == 400, f"o /api/volume recusa {corpo}")
+    confere(recusa_do(srv, "POST", "/api/volume", {"vol": 10 ** 400}) == 400, "o /api/volume recusa o inteiro enorme")
     confere(recusa_do(srv, "POST", "/api/settings", {"vol": "alto"}) == 400, "o /api/settings recusa o vol \"alto\"")
+    confere(recusa_do(srv, "POST", "/api/settings", {"vol": 0.1, "mon_vol": "x"}) == 400
+            and srv.api("GET", "/api/state").get("vol") == 0.42, "o /api/settings recusado nao muda nada (nem o vol)")
     confere(srv.api("POST", "/api/effects/reload").get("ok") is True, "o PC: a recarga dos efeitos passa")
     confere(srv.api("POST", "/api/sinal").get("ok") is True, "o PC: o sinal de teste toca")
-    ab = srv.api("POST", "/api/abaixa", {"db": 12, "ms": 800})
+    srv.api("POST", "/api/settings", {"mic_mute": True})
+    confere(recusa_do(srv, "POST", "/api/sinal", {}) == 409, "com a voz cortada, o sinal de teste nao toca (409)")
+    srv.api("POST", "/api/settings", {"mic_mute": False})
+    srv.confere()
     t0 = time.monotonic()
+    ab = srv.api("POST", "/api/abaixa", {"db": 12, "ms": 800})
     confere(ab.get("abaixa") == {"db": 12.0, "ms": 800} and srv.api("GET", "/api/state").get("abaixa")
             == {"db": 12.0, "ms": 800}, f"o PC: o /api/abaixa abaixa a musica e o estado mostra ({ab})")
     while srv.api("GET", "/api/state").get("abaixa") is not None and time.monotonic() - t0 < 5:
         time.sleep(0.05)
     dt = time.monotonic() - t0
-    confere(srv.api("GET", "/api/state").get("abaixa") is None and 0.6 < dt < 1.5,
+    confere(srv.api("GET", "/api/state").get("abaixa") is None and 0.7 < dt < 2.5,
             f"o /api/abaixa volta sozinho no prazo (800 ms; voltou em {dt * 1000:.0f} ms)")
     srv.api("POST", "/api/abaixa", {"db": 12, "ms": 20000})
     srv.api("POST", "/api/abaixa", {"db": 0, "ms": 0})
     confere(srv.api("GET", "/api/state").get("abaixa") is None, "o /api/abaixa com zero tira o abaixamento na hora")
     for corpo in ({"db": 12}, {"db": 99, "ms": 100}, {"db": 6, "ms": -1}, {"db": "x", "ms": 100},
-                  {"db": 6, "ms": 10 ** 9}):
+                  {"db": 6, "ms": 10 ** 9}, {"db": True, "ms": 100}, {"db": 12, "ms": 0.5},
+                  {"db": 6, "ms": 10 ** 400}):
         confere(recusa_do(srv, "POST", "/api/abaixa", corpo) == 400, f"o /api/abaixa recusa {corpo}")
 
     try:
@@ -356,7 +410,7 @@ def ao_vivo(srv):
     confere(s == 401 and isinstance(j, dict) and j.get("parear") and j.get("caps") == perm.caps("publico"),
             f"a rede de casa sem parear: o /api/state pede o codigo, com o caps do pre-pareamento ({s})")
     for m, c, esperado in (("GET", "/api/themes", 200), ("GET", "/t/ritmelli/", 200), ("POST", "/api/play", 401),
-                           ("POST", "/api/volume", 401), ("POST", "/api/abaixa", 401), ("POST", "/api/sinal", 401),
+                           ("POST", "/api/volume", 403), ("POST", "/api/abaixa", 403), ("POST", "/api/sinal", 403),
                            ("POST", "/api/effects/reload", 403), ("GET", "/api/pareamento", 403),
                            ("POST", "/api/atualizacao/instalar", 403), ("HEAD", "/api/state", 401),
                            ("DELETE", "/api/pareamento/abc", 403), ("POST", "/api/shutdown", 401)):

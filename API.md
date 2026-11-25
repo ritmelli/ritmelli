@@ -256,10 +256,10 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/prev` | - | Anterior do Spotify: com mais de 3 s de disco (ou nada antes dele), volta ao começo (`{"did": "inicio"}`); senão toca o último do `history`, e o disco do prato vai para o topo da `queue` (`{"did": "anterior"}`); nada no prato nem antes = 409 |
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
 | `POST /api/volume` | `{"vol": 0.5}` | só o volume da música no jogo, de 0 a 1 (fora disso, o limite), com a mesma validação e gravação do `vol` do `/api/settings`; responde `{"ok": true, "vol": 0.5}`; sem número, 400. É o volume que o remoto pode mudar |
-| `POST /api/abaixa` | `{"db": 12, "ms": 3000}` | abaixa a música no jogo `db` decibéis (até 40) por `ms` milissegundos (até 30000), sem gravar nada, e ela volta sozinha no prazo (o fone de quem toca segue igual); um pedido novo troca o de antes, e zero em qualquer um tira o abaixamento na hora; responde `{"ok": true, "abaixa": {"db", "ms"} ou null}`; fora da faixa, 400 |
-| `POST /api/sinal` | - | um bipe curto de teste (0,4 s, 880 Hz, -18 dBFS) no microfone, no que o jogo ouve, sem passar pelo volume da música; com a voz cortada (`mic_mute`), não toca e responde 409 |
+| `POST /api/abaixa` | `{"db": 12, "ms": 3000}` | abaixa a música no jogo `db` decibéis (até 40) por `ms` milissegundos (um inteiro, até 30000), sem gravar nada, e ela volta sozinha no prazo (o fone de quem toca segue igual); um pedido novo troca o de antes, e zero em qualquer um tira o abaixamento na hora; responde `{"ok": true, "abaixa": {"db", "ms"} ou null}`; fora da faixa, 400 |
+| `POST /api/sinal` | - | um bipe curto de teste (0,4 s, 880 Hz, -18 dBFS) no microfone, no que o jogo ouve, sem passar pelo volume da música; responde `{"ok": true}`; com a voz cortada (`mic_mute`), não toca (e o que tocava para) e responde 409 |
 | `POST /api/effects/reload` | - | só no PC: lê o `fx.py` de novo sem reiniciar o servidor nem cortar a música; responde `{"ok": true, "effects": n, "effect": "<id>"}` |
-| `POST /api/settings` | qualquer de `vol`, `mon_vol`, `mic_vol`, `mic_mute`, `monitor_on`, `loop`, `shuffle`, `auto`, `effect`, `voice_monitor`, `voice_mon_vol`, `volume_auto` | ajusta ao vivo; salva `vol`, `mon_vol`, `monitor_on`, `voice_mon_vol`, `auto` e `volume_auto` (`mic_vol` vai direto para o Windows); `mic_mute`, `loop`, `shuffle`, `voice_monitor` e o efeito voltam ao padrão quando o servidor sobe |
+| `POST /api/settings` | qualquer de `vol`, `mon_vol`, `mic_vol`, `mic_mute`, `monitor_on`, `loop`, `shuffle`, `auto`, `effect`, `voice_monitor`, `voice_mon_vol`, `volume_auto` | ajusta ao vivo (`vol`, `mon_vol` e `voice_mon_vol` de 0 a 1, e fora disso o limite; o que não é número responde 400 e nada muda); salva `vol`, `mon_vol`, `monitor_on`, `voice_mon_vol`, `auto` e `volume_auto` (`mic_vol` vai direto para o Windows); `mic_mute`, `loop`, `shuffle`, `voice_monitor` e o efeito voltam ao padrão quando o servidor sobe |
 | `GET /api/onda/<id>` | - | a onda do disco para o visor de DJ: `{"id", "passo": 0.04, "n", "completa", "fonte": "arquivo" ou "stream", "versao", "onda"}`, `onda` em base64 de `n` colunas de 3 bytes (grave até 200 Hz, médio até 2 kHz, agudo até 6 kHz), cada uma de `passo` s do disco, em dB de -60 (0) a 0 (255); ~24 KB para 4 min. O motor lê a do disco da prateleira inteira quando ele entra no prato ou na passagem; a do stream só chega até onde o áudio já foi decodificado (`completa: false`: peça de novo). 404 = ainda não tem |
 | `GET /api/effects` | - | `[{"id","grupo","latencia_ms"}]`, na ordem de exibição; `grupo` é o id do grupo, vazio no "Sem efeito"; os grupos hoje são `radio` (Rádio e alto-falante), `ambiente` e `personagem`. O nome e a descrição de cada efeito e o nome de cada grupo são textos do tema, nas línguas dele: `effect.<id>.name`, `effect.<id>.desc` e `effect.group.<grupo>` (o `python dev/testa_i18n.py` confere que todo tema com a pasta `i18n/` tem os de todos os efeitos do `fx.py`). O item `pistavoz` (o pedal de troca de voz, quando existe) traz também `"vozes": ["mina", "lira"]` |
 | `POST /api/pedal_voz` | `{"voz": "lira"}` | escolhe a voz do pedal de troca de voz (uma das `vozes` do item `pistavoz` de `/api/effects`); responde `{"ok": true, "pedal_voz": {...}}`. Sem o pedal, 404; voz que não é dele, 400; o módulo sem resposta em 15 s, 504; um erro do módulo, 500 com o motivo. Ligar e desligar o pedal é o `effect` de sempre |
@@ -352,16 +352,19 @@ valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
 - `celular`: da rede de casa, com a chave do pareamento no cookie (ver "Celular: pareamento").
 - `publico`: da rede de casa, sem chave que valha: só o tema, os arquivos dele, a galeria, o `GET /api/themes` e o
   `POST /api/parear`. O resto que o celular pode responde 401 (o do pareamento); o que é só do PC, 403.
-- `remoto`: quem conecta pelo `127.0.0.1` com o cabeçalho `X-Ritmelli-Remoto: <token>`, o token de uma sessão
-  remota aceita (`secrets.token_urlsafe(32)`, gerado a cada sessão e revogado quando ela acaba). O cabeçalho com
-  token errado, vencido ou vindo de fora do `127.0.0.1` responde 401, mesmo do `127.0.0.1`: quem manda o cabeçalho
-  nunca cai no papel do PC. Comando fora da lista dele, 403. Por ora nenhuma sessão abre um token.
+- `remoto`: quem conecta pelo `127.0.0.1` (só o IPv4) com o cabeçalho `X-Ritmelli-Remoto: <token>`, o token de uma
+  sessão remota aceita (`secrets.token_urlsafe(32)`, gerado a cada sessão e revogado quando ela acaba). O cabeçalho
+  com token errado, vencido ou vindo de fora do `127.0.0.1` responde 401, mesmo do `127.0.0.1`: quem manda o
+  cabeçalho nunca cai no papel do PC. Comando fora da lista dele, 403; no `POST /api/queue`, ele só põe o `id` de um
+  disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), e o resto é 400. Por ora nenhuma sessão abre um
+  token.
 
 | rota | `pc` | `celular` | `remoto` | `publico` |
 |---|---|---|---|---|
-| as páginas e os arquivos dos temas (`/t/...`), a galeria (`/`), os ícones, `GET /api/themes`, `POST /api/parear` | sim | sim | não | sim |
+| as páginas e os arquivos dos temas (`/t/...`), a galeria (`/`), os ícones, `GET /api/themes`, `POST /api/parear` | sim | sim | 403 | sim |
 | `GET /api/state`, `GET /api/events` | sim | sim | sim | 401 |
-| `POST /api/play`, `POST /api/queue`, `POST /api/queue/play`, `POST /api/next`, `POST /api/pause`, `POST /api/resume`, `DELETE /api/queue/<qid>`, `POST /api/queue/move`, `POST /api/volume`, `POST /api/abaixa`, `POST /api/sinal` | sim | sim | sim | 401 |
+| `POST /api/play`, `POST /api/queue` (o remoto, só disco da prateleira ou vídeo do YouTube), `POST /api/queue/play`, `POST /api/next`, `POST /api/pause`, `POST /api/resume`, `DELETE /api/queue/<qid>`, `POST /api/queue/move` | sim | sim | sim | 401 |
+| `POST /api/volume`, `POST /api/abaixa`, `POST /api/sinal` | sim | 403 | sim | 403 |
 | `GET /api/onda/<id>`, `GET /api/library`, `GET /api/tocadas`, `GET /api/jobs`, `GET /api/search`, `GET /api/musica`, `POST /api/aquece`, `POST /api/library`, `PATCH` e `DELETE /api/library/<id>`, `DELETE /api/queue`, `POST /api/prev`, `POST /api/toggle`, `POST /api/stop`, `POST /api/seek`, `POST /api/settings`, `GET /api/effects`, `POST /api/pedal_voz`, `GET` e `POST /api/devices`, `GET /api/boas-vindas`, `POST /api/shutdown`, `GET /api/lan` | sim | sim | 403 | 401 |
 | `POST /api/effects/reload`, `POST /api/boas-vindas`, `POST /api/janela/foco`, `/api/metricas`, `/api/atualizacao/...`, `/api/pareamento/...`, e toda rota fora da tabela | sim | 403 | 403 | 403 |
 

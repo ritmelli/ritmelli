@@ -11,10 +11,12 @@ Os papéis saem de quem conectou, nunca do Host (que quem pede escreve como quis
 - `pc`: o `127.0.0.1` sem o cabeçalho do remoto, que pode tudo;
 - `celular`: da rede de casa, com a chave do pareamento (`pareamento.py`) no cookie;
 - `publico`: da rede de casa, sem chave que valha: só o tema, os arquivos dele, a galeria e o pareamento;
-- `remoto`: o `127.0.0.1` com o cabeçalho `X-Ritmelli-Remoto` e o token de uma sessão aceita (`Remotos`, um
+- `remoto`: o `127.0.0.1` (só o IPv4) com o cabeçalho `X-Ritmelli-Remoto` e o token de uma sessão aceita (`Remotos`, um
   `secrets.token_urlsafe(32)` por sessão, só na memória, revogado quando ela acaba). Só o vocabulário fechado:
   tocar, enfileirar, pular, pausar, retomar, tirar e mover na fila, o volume da música, abaixar a música e o sinal
-  de teste, e ler o estado. Token que não vale dá 401, mesmo do `127.0.0.1`: o cabeçalho nunca cai no papel do PC.
+  de teste, e ler o estado; na fila, só disco da prateleira ou vídeo do YouTube, para a sessão remota não fazer o PC
+  baixar de outro endereço. As três rotas que o tema não usa (`/api/volume`, `/api/abaixa` e `/api/sinal`) ficam
+  fechadas para o celular. Token que não vale dá 401, mesmo do `127.0.0.1`: o cabeçalho nunca cai no papel do PC.
   Por ora nenhuma sessão abre um token.
 
 O `caps` (`{"papel", "rotas"}`) diz a cada conexão o que ela pode: vem no `/api/state`, no 401 do pareamento e como o

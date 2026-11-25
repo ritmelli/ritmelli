@@ -2031,7 +2031,7 @@ def build(app_state):
         token = request.headers.get(perm.REMOTO)
         if token is not None:
             # o cabecalho do remoto nunca cai no papel do PC: token que nao vale, ou de fora do 127.0.0.1, e 401
-            if not (do_pc(request) and A.remotos.vale(token)):
+            if not (request.remote == "127.0.0.1" and A.remotos.vale(token)):
                 return web.json_response({"ok": False, "error": i18n.so_texto(
                     "The remote session token is invalid or has expired."), **marca()}, status=401)
             papel = "remoto"
@@ -2039,8 +2039,10 @@ def build(app_state):
             papel = "pc"
         else:
             chave = par.chave_do(request.cookies)
-            # a rota livre (o tema, cada arquivo dele) so olha a chave; a que o celular usa marca o aparelho como visto
-            pareado = A.celulares.vale(chave) if "publico" in pode else A.celulares.confere(chave)
+            # so a rota que o celular usa (e que nao e livre) marca o aparelho como visto; a livre (o tema, cada
+            # arquivo dele) e a que nao e dele so olham a chave
+            usa = "celular" in pode and "publico" not in pode
+            pareado = A.celulares.confere(chave) if usa else A.celulares.vale(chave)
             papel = "celular" if pareado else "publico"
         if papel not in pode:
             return recusa(request, papel, pode)
@@ -2203,6 +2205,11 @@ def build(app_state):
     @r.post("/api/queue")
     async def queue_add(request):
         b = await body(request)
+        if request["papel"] == "remoto" and not A.lib.get(str(b.get("id") or "")):
+            # o remoto so enfileira o disco da prateleira ou um video do YouTube: nada de link de outro lugar nem busca
+            alvo = str(b.get("youtube_id") or b.get("url") or "").strip()
+            if not (YT_URL.search(alvo) or YT_ID.match(alvo)):
+                return j_err(i18n.so_texto("A remote session can only queue a record on the shelf or a YouTube video."))
         try:
             x, j = A.enfileirar(b)
         except ValueError as ex:
@@ -2316,23 +2323,28 @@ def build(app_state):
 
     def volume(v):
         """Um volume do corpo, de 0 a 1 (fora disso, o limite); None se nao e um numero."""
+        v = numero(v)
+        return None if v is None else max(0.0, min(1.0, v))
+
+    def numero(v):
+        """O numero finito do corpo (o JSON true nao conta); None se nao e um."""
         if isinstance(v, bool):
             return None
         try:
             v = float(v)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return None
-        return max(0.0, min(1.0, v)) if math.isfinite(v) else None
+        return v if math.isfinite(v) else None
 
     @r.post("/api/settings")
     async def settings(request):
         b = await body(request)
-        for k in ("vol", "mon_vol", "voice_mon_vol"):
-            if k in b:
-                v = volume(b[k])
-                if v is None:
-                    return j_err(i18n.so_texto(f"The {k} must be a number from 0 to 1."))
-                setattr(E, k, v)
+        vols = {k: volume(b[k]) for k in ("vol", "mon_vol", "voice_mon_vol") if k in b}
+        ruim = next((k for k, v in vols.items() if v is None), None)
+        if ruim:  # antes de mudar qualquer coisa
+            return j_err(i18n.so_texto(f"The {ruim} must be a number from 0 to 1."))
+        for k, v in vols.items():
+            setattr(E, k, v)
         if "mic_vol" in b:
             E.set_mic_vol(b["mic_vol"])  # nivel do mic no Windows
         for k in ("mic_mute", "monitor_on", "voice_monitor", "volume_auto"):
@@ -2370,13 +2382,11 @@ def build(app_state):
     async def abaixa(request):
         """Abaixa a musica no jogo por um tempo (quem fala por cima dela), sem gravar nada: volta sozinha no prazo."""
         b = await body(request)
-        try:
-            db, ms = float(b["db"]), float(b["ms"])
-        except (KeyError, TypeError, ValueError):
-            db = ms = math.nan
-        if not (0 <= db <= eng.ABAIXA_MAX_DB and 0 <= ms <= eng.ABAIXA_MAX_MS):
-            return j_err(i18n.so_texto(f"Send db (0 to {eng.ABAIXA_MAX_DB:g}) and ms (0 to {eng.ABAIXA_MAX_MS}); "
-                                       "zero in either one ends the ducking."))
+        db, ms = numero(b.get("db")), numero(b.get("ms"))
+        if db is None or ms is None or not (0 <= db <= eng.ABAIXA_MAX_DB and 0 <= ms <= eng.ABAIXA_MAX_MS
+                                            and ms == int(ms)):
+            return j_err(i18n.so_texto(f"Send db (0 to {eng.ABAIXA_MAX_DB:g}) and ms (a whole number from 0 to "
+                                       f"{eng.ABAIXA_MAX_MS}); zero in either one ends the ducking."))
         E.abaixa(db, ms)
         return j_ok(abaixa=E.abaixamento())
 
@@ -2384,7 +2394,7 @@ def build(app_state):
     async def sinal(_):
         if not E.sinal():
             return j_err(i18n.so_texto("The microphone is muted: the test signal didn't play."), 409)
-        return j_ok(ms=round(eng.SINAL_S * 1000))
+        return j_ok()
 
     efeitos = fx.lista()
 

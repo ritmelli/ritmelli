@@ -1240,7 +1240,7 @@ class Engine:
         self._sobre_cache = collections.OrderedDict()
         self._abaixa = None    # (ganho, monotonic do fim, db, ms): a musica abaixada no jogo ate o fim (abaixa)
         self._abaixa_g = 1.0   # o ganho do abaixamento no ultimo bloco: o proximo sai dele em rampa, sem estalo
-        self._sinal = None     # [bipe (n), posicao]: o sinal de teste no microfone (sinal)
+        self._sinal = None     # [bipe (n), posicao]: o sinal de teste no microfone (sinal); so ele escreve aqui
         self.track = None      # item da biblioteca carregado
         self.paused = False
         self.ended = False
@@ -1946,7 +1946,7 @@ class Engine:
             # o DISCO mostra o disco no mais alto dos volumes que estao soando, o do jogo ou o do
             # fone: com o jogo em zero e o fone em 15% ele parava, com o disco tocando no fone.
             # O JOGO segue sendo so o que o jogo recebe
-            self._meter("track", som * max(self.vol, self.mon_vol if com_fone else 0.0))
+            self._meter("track", som * max(self.vol * alvo, self.mon_vol if com_fone else 0.0))
         else:
             self.levels["track"] *= DECAY
         fone = None  # o que vai pro fone de quem toca: o som e, se pedido, a propria voz
@@ -1989,14 +1989,14 @@ class Engine:
                 fone[:n, 0] += mv * self.voice_mon_vol
                 fone[:n, 1] += mv * self.voice_mon_vol
         si = self._sinal
-        if si is not None:  # o bipe de teste: no jogo, nunca com a voz cortada
+        if si is not None and si[1] < len(si[0]):  # o bipe de teste: no jogo, nunca com a voz cortada
             a, p = si
             k = min(frames, len(a) - p)
-            if not self.mic_mute:
+            if self.mic_mute:
+                k = len(a) - p  # cortada no meio, o resto dele nao toca mais
+            else:
                 buf[:k] += a[p:p + k, None]
-            si[1] = p + k
-            if self.mic_mute or si[1] >= len(a):
-                self._sinal = None
+            si[1] = p + k  # so a posicao: um bipe novo do sinal() troca a lista inteira, e este nao o apaga
         if fone is not None and not self._fone_calado:
             self._mon.append(np.clip(fone, -1, 1))
         np.clip(buf, -1, 1, out=buf)
