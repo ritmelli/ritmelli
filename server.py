@@ -1864,7 +1864,8 @@ class App:
                         self.andamento_falhou[f"audio:{vid}"] = time.time()
                     continue
                 # grava fora da fila_lock (o disco lento nao segura a fila) e so depois aplica, na ordem de antes: a
-                # medida fica na memoria mesmo se a gravacao falha, mas so vale na fila depois de gravada
+                # medida entra na memoria mesmo se a gravacao falha; a troca na fila e o andamentos_versao (a nova
+                # ordem do Automatico) so vem com a gravacao feita
                 with self.fila_lock:
                     versoes = {**self.versoes, vid: v}
                 gravou = False
