@@ -472,7 +472,7 @@ The internal docs and the older code are in Brazilian Portuguese; new code is in
 | `soundboard.ps1` | starts, stops and checks Ritmelli from a terminal |
 | `server.py` | the aiohttp server: the API, the events (SSE), the queue, search and download |
 | `comandos.py` | the server's music commands (play, queue, transport, music volume) and the queue advance they share |
-| `automatico.py` | Play similar songs: the similar songs at the end of the queue, ordered by tempo |
+| `automatico.py`, `music.py` | Play similar songs: the similar songs at the end of the queue, ordered by tempo (`automatico.py`), and the pure functions about song titles and artists it shares with the server (`music.py`) |
 | `engine.py` | the audio engine: mixing, the two decks and the transitions |
 | `transicao.py` | the transition math that reads no audio: where each record ends and starts by its block levels, fade or hard ending, how the next one comes in, and the timing from the measured beat grids |
 | `batida.py`, `compasso.py`, `andamento.py` | beat analysis: the tempo and beat grid of each transition (`batida.py`), the downbeat (`compasso.py`) and each record's tempo, which orders Play similar songs (`andamento.py`) |

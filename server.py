@@ -49,6 +49,7 @@ import permissao as perm
 import pastas
 import sonoridade
 from pastas import save_json
+from music import busca_de, chaves_musica, mesma_faixa, segundos, thumb
 from versao import VERSAO
 from yt_erros import erro_do_video
 
@@ -81,13 +82,6 @@ ANTERIOR_REINICIA_S = 3.0  # depois disso o Anterior volta ao comeco do disco, c
 HISTORICO_MAX = 50
 STREAM_RELIGA = 2  # enderecos novos que a parecida do Automatico ganha quando o stream cai, antes de passar adiante
 TOCADAS_MAX = 2000  # GET /api/tocadas: os youtube_id que tocaram desde que o servidor subiu (o historico e do Anterior)
-AUTO_FILA = 5  # o Automatico mantem tantas parecidas no fim do A seguir
-AUTO_LOTE = 50  # quantas parecidas cada busca traz (o radio do YouTube Music da 50 em ~1 s, 21/10)
-AUTO_DUR = (60, 600)  # fora disso nao entra: vinheta, compilado de 1 h, live sem fim
-AUTO_ESPERA_S = 60.0  # busca de parecidas que falhou so tenta de novo depois disso
-AUTO_JANELA_S = 3600  # a ordem por andamento escolhe entre as parecidas da proxima 1 h da lista
-ANDAMENTO_APOS_S = 30.0  # o disco fica isso no prato antes de medir: pular de disco em disco nao le nada
-ANDAMENTO_ESPERA_S = 600.0  # medida que falhou (stream fora do ar) so tenta de novo depois disso
 CAPA_TAM = 544             # a capa do album do YouTube Music, quadrada, em px (o endereco aceita qualquer tamanho)
 CAPA_PASSO_S = 2.0         # entre uma busca de capa e a proxima: a prateleira inteira sai devagar, sem rajada
 SONORIDADE_PASSO_S = 2.0   # entre um disco da prateleira medido (volume automatico) e o proximo
@@ -434,8 +428,10 @@ class Fora:
 fora = Fora()
 
 
-def thumb(yid):
-    return f"https://i.ytimg.com/vi/{yid}/mqdefault.jpg" if yid else None
+def fits_auto(dur):
+    """The similar track's duration fits the Automatico (automatico.AUTO_DUR)."""
+    lo, hi = automatico.AUTO_DUR
+    return lo <= dur <= hi
 
 
 def is_valid_unicode(*texts):
@@ -455,96 +451,6 @@ def antes_das_parecidas(fila):
     return next((i for i, x in enumerate(fila) if x.get("auto")), len(fila))
 
 
-# o que nao conta para saber se dois videos sao a mesma musica: o que vem entre parenteses e colchetes, o
-# participante (do "ft" em diante) e as palavras de video ("Shape of You (Lyrics)" e "(Official Music Video)")
-MESMA_CORTA = {"ft", "feat", "featuring", "prod"}
-MESMA_FORA = {"official", "oficial", "video", "videoclipe", "music", "musica", "audio", "lyrics", "lyric", "letra",
-              "clipe", "clip", "hd", "4k", "visualizer", "mv", "x", "e", "y", "and"}
-
-
-def musica(titulo):
-    """A mesma musica em outro video vira a mesma chave (o Mix traz o clipe e a versao com letra, e na ordem por
-    andamento as duas cairiam em seguida)."""
-    t = re.sub(r"[(\[【][^)\]】]*[)\]】]", " ", sem_acento(titulo))
-    out = []
-    for parte in re.split(r"\s[-‒–—|]\s|\|", t):  # o "ft" corta so ate o separador (artista - titulo)
-        for w in re.findall(r"\w+", parte):
-            if w in MESMA_CORTA:
-                break
-            if w not in MESMA_FORA:
-                out.append(w)
-    out = set(out)
-    return " ".join(sorted(out)) if len(out) >= 2 else ""  # chave de uma palavra so juntaria musicas diferentes
-
-
-def chaves_musica(x):
-    """As chaves de musica de um disco ou parecida: pelo titulo e, com o artista em separado (o radio do YouTube
-    Music da "S91" e "KAROL G"; o video da "KAROL G - S91 (Official Video)"), pelo artista e titulo juntos."""
-    ks = {musica(x.get("title")), x.get("musica") or ""}
-    if x.get("channel"):
-        ks.add(musica(f"{x['channel']} - {x.get('title') or ''}"))
-    return ks - {""}
-
-
-# o que separa os artistas de um nome ("Snoop Dogg, Wiz Khalifa", "Shakira & Bizarrap", "MC X e MC Y", "A x B", o ft)
-AUTORES_SEP = r",|&|\+|/|\s(?:x|e|y|and|feat\.?|ft\.?|featuring|with|part\.?)\s"
-
-
-def autores(x):
-    """Os artistas do disco, cada um so com letras e numeros ("Mary J. Blige" e o canal "MaryJBligeVEVO" dao
-    "maryjblige"), para a ordem por andamento nao por duas do mesmo em seguida: o channel (os artistas no radio do
-    YouTube Music, o canal no Mix do YouTube e na prateleira), o que vem antes do " - " no titulo e quem participa
-    (o "feat. Mary J. Blige" do The Message: a mesma voz). No video de alguem (UGC) o canal e de quem subiu (o
-    7clouds de letra), entao so o titulo."""
-    nomes = [] if x.get("tipo") == "UGC" else [x.get("channel") or ""]
-    titulo = sem_acento(x.get("title"))
-    partes = re.split(r"\s[-‒–—]\s", titulo, maxsplit=1)
-    if len(partes) == 2:
-        nomes.append(partes[0])
-    nomes += re.findall(r"[(\[](?:feat\.?|ft\.?|featuring|with)\s+([^)\]]+)", titulo)
-    nomes += re.findall(r"\s(?:feat\.|ft\.|featuring)\s+([^(\[]+)", titulo)
-    out = set()
-    for nome in nomes:
-        nome = re.sub(r"\s-\stopic$", "", sem_acento(nome).strip())
-        for a in re.split(AUTORES_SEP, re.sub(r"[(\[].*?[)\]]", " ", nome)):
-            a = re.sub(r"vevo$", "", re.sub(r"[^a-z0-9]", "", a))
-            if len(a) >= 2:
-                out.add(a)
-    return frozenset(out)
-
-
-def sem_acento(t):
-    """O texto em minusculas e sem acento ("Échame" e "Echame" sao o mesmo titulo)."""
-    t = unicodedata.normalize("NFKD", (t or "").lower())
-    return "".join(ch for ch in t if not unicodedata.combining(ch))
-
-
-def palavras(t):
-    """As palavras que contam de um titulo ou nome, para achar a mesma faixa: o que vem entre parenteses vira uma
-    parte (o "Remix" de "Calma (Remix)" fica; "(Official Video)" sai pelas palavras de video), o "ft" corta so a
-    parte dele."""
-    t = re.sub(r"[(\[【)\]】]", " | ", sem_acento(t))
-    out = set()
-    for parte in re.split(r"\s[-‒–—|]\s|\|", t):
-        for w in re.findall(r"\w+", parte):
-            if w in MESMA_CORTA:
-                break
-            if w not in MESMA_FORA:
-                out.add(w)
-    return out
-
-
-def mesma_faixa(c, r):
-    """A faixa r da busca de musicas do YouTube Music e a parecida c (que veio como video)? O titulo da faixa esta
-    inteiro no da parecida, o que sobra la e nome de artista (o video com letra traz "Ed Sheeran - Shape Of You"),
-    um artista bate e a duracao cabe (o clipe tem intro e final a mais; a faixa nunca e bem mais longa). A primeira
-    da busca as vezes e outra (o Bota Tudo Em Mim trazia outra musica, de outros MCs) ou o remix."""
-    ra = palavras(", ".join(a["name"] for a in r.get("artists") or []))
-    rt, ct, cc = palavras(r.get("title")), palavras(c.get("title")), palavras(c.get("channel"))
-    d, dc = r.get("duration_seconds") or segundos(r.get("duration")), c.get("duration") or 0
-    return bool(rt and rt <= ct and (ct - rt) <= (ra | cc) and (ra & (ct | cc)) and d and dc - 150 <= d <= dc + 20)
-
-
 def capa_da_musica(r):
     """A capa quadrada (a do album) da faixa r da busca de musicas do YouTube Music em CAPA_TAM px, ou None: o endereco
     do googleusercontent traz o tamanho no fim (=w120-h120) e serve qualquer um."""
@@ -553,28 +459,6 @@ def capa_da_musica(r):
         return None
     url = max(ts, key=lambda t: t.get("width") or 0)["url"]
     return re.sub(r"=w\d+-h\d+", f"=w{CAPA_TAM}-h{CAPA_TAM}", url)
-
-
-def busca_de(x):
-    """O texto da busca da versao de audio da parecida: o titulo sem os parenteses so de video ("[Official Video]";
-    o "(Remix)" fica) e, no clipe oficial, os artistas na frente quando o titulo nao os traz (no video com letra o
-    canal e de quem subiu, nao do artista)."""
-    t = re.sub(r"[(\[【]([^)\]】]*)[)\]】]", lambda m: m.group(0) if palavras(m.group(1)) else " ",
-               x.get("title") or "")
-    if x.get("tipo") != "UGC" and x.get("channel") and not palavras(x["channel"]) <= palavras(t):
-        t = f"{x['channel']} {t}"
-    return " ".join(t.split())
-
-
-def segundos(txt):
-    """'3:06' ou '1:02:03' em segundos (None se nao der)."""
-    try:
-        s = 0
-        for p in str(txt).split(":"):
-            s = s * 60 + int(p)
-        return s
-    except ValueError:
-        return None
 
 
 def marca_auto(x):
@@ -778,9 +662,8 @@ class App:
         ele muda (a posicao vai no tick da mesma volta)."""
         e = self.engine
         with self.fila_lock:
-            with e._qlock:
-                tr, pos, status, virou = e.track, e.pos, e.status(), e.virou
-                tr = None if tr is None else dict(tr)
+            tr, pos, status, virou = e.platter_state()
+            tr = None if tr is None else dict(tr)
             fora = virou[2] if virou is not None else None
             fila = [dict(x) for x in self.fila if x["qid"] != fora]
             shuffle, auto, historico = self.fila_ordem is not None, self.auto, len(self.historico)
@@ -1009,9 +892,15 @@ class App:
             self.job_update(j, status="error", finished=time.time(),
                             error=i18n.msg("server.download.failed", "The download failed ({reason}). Check the "
                                            "link or try another video.", reason=yt_msg(ex)))
-            tr = self.engine.track
-            if tr is not None and tr.get("job") == j["id"] and (not tr.get("path") or self.engine.esperando_arquivo()):
-                self.engine.stop()  # sem stream e sem arquivo: o prato nao fica carregando para sempre
+            e = self.engine
+
+            def no_source():  # under the _qlock: the platter is still this job's record, with no stream and no file
+                tr = e.track
+                return (tr is not None and tr.get("job") == j["id"]
+                        and (not tr.get("path") or e.esperando_arquivo()))
+            # the only decision is under the engine's lock: a swap that holds it and is about to put this job's record
+            # on the platter is seen once it publishes (a look before the lock would see the record of before)
+            e.stop(pode=no_source)  # sem stream e sem arquivo: o prato nao fica carregando para sempre
 
     # tocar ----------------------------------------------------------------
     def remember_pos(self, cap=None, pausa=None):
@@ -1053,12 +942,12 @@ class App:
         avanco da fila), ela ainda tem de ser a do App, e o motor confere sob o _qlock que o prato ainda e o deck e a
         linha dela; com a entrada (da fila), ela ainda tem de estar na fila, e sai dela na mesma troca. O que saiu do
         prato (a Captura que o motor devolve) entra no Anterior (historico=False: nao entra) ou, no Anterior
-        (anterior=(deck, linha, x): o prato e o topo do historico que ele viu, conferidos aqui, e o topo sai so com a
-        troca feita), volta ao topo da fila. O Repetir vale para o disco do prato: loop decide, e sem ele o motor o
-        desliga se o disco que sai e outro (na mesma publicacao da faixa). A posicao do que saiu e gravada fora das
-        travas. Volta se trocou."""
+        (anterior=(line, x): o prato, a Line do motor, e o topo do historico que ele viu, conferidos aqui, e o topo sai
+        so com a troca feita), volta ao topo da fila. O Repetir vale para o disco do prato: loop decide, e sem ele o
+        motor o desliga se o disco que sai e outro (na mesma publicacao da faixa). A posicao do que saiu e gravada fora
+        das travas. Volta se trocou."""
         e = self.engine
-        ganho = e._ganho_de(tr)  # fora das travas: o motor pergunta ao servidor
+        ganho = e.gain_for(tr)  # fora das travas: o motor pergunta ao servidor
 
         def na_fila():
             return entrada is None or any(y is entrada for y in self.fila)
@@ -1072,9 +961,9 @@ class App:
             if not na_fila():
                 return None
             if anterior:
-                d0, linha0, x0 = anterior
+                linha0, x0 = anterior
                 with e._qlock:
-                    if not (self.historico and self.historico[-1] is x0 and e._deck is d0 and e._deck.linha == linha0):
+                    if not (self.historico and self.historico[-1] is x0 and e.on_line(linha0)):
                         return None  # o prato ou o historico mudou depois da escolha do Anterior
             self._fecha_viradas()
             if not na_fila():  # a virada que fechou agora era a dela
@@ -1083,14 +972,14 @@ class App:
             if anterior:
                 if not (self.historico and self.historico[-1] is x0):
                     return None  # outro avanco mexeu no historico depois da escolha do Anterior
-                pode = (lambda: e._deck is d0 and e._deck.linha == linha0)  # o prato que ele viu
+                pode = (lambda: e.on_line(linha0))  # o prato que ele viu
             cap = (e.espera(tr, pode=pode, ganho=ganho, depois=depois) if stream
                    else e.load(tr, start=start, pode=pode, loop=loop, ganho=ganho, depois=depois))
             if cap is None:
                 return None
             if reserva is not None:
                 with e._qlock:  # com o _lock na mao, a linha do prato nao muda desde o load
-                    reserva.publicada = (e._deck, e._deck.linha)
+                    reserva.publicada = e.line()
             if entrada is not None:
                 self._tirar(entrada)
             sai = cap.track
@@ -1236,9 +1125,8 @@ class App:
 
                 def para_se():  # sob o _qlock (a fila muda sob ele): o mesmo prato, a fila vazia e nenhum avanco de
                     r = self.reserva  # outro em curso nesta linha
-                    return (e._deck is cap.deck and e._deck.linha == cap.linha and not self.fila
-                            and (r is None or not r.viva(e)))
-                for _ in range(3):  # a reserva de outro que falhou devolve None: com fila, tenta de novo
+                    return e.on_line(cap) and not self.fila and (r is None or not r.viva(e))
+                for _ in range(cmd.ADVANCE_TRIES):  # a reserva de outro que falhou devolve None: com fila, de novo
                     cap = e.captura()
                     if cap.track is not tr:
                         return  # trocou de disco no meio
@@ -1326,39 +1214,34 @@ class App:
         e = self.engine
         for _ in range(3):  # o prato ou o historico que mudou entre a escolha e a troca: escolhe de novo
             with self.fila_lock:
-                while True:  # a faixa, a posicao e a linha saem do mesmo trecho do _qlock em que a virada ja fechou
-                    with e._qlock:
-                        v, e.virou = e.virou, None
-                        if v is None:
-                            e._cancela_passagem()  # e o motor nao vira entre a escolha e a troca
-                            tr, pos, d, linha = e.track, e.pos, e._deck, e._deck.linha
-                            break
-                    cmd.fecha_virada(self, v)
+                # a faixa, a posicao e a linha saem do mesmo trecho do _qlock em que a virada ja fechou e a passagem
+                # preparada saiu (o motor nao vira entre a escolha e a troca)
+                tr, pos, linha = self._fecha_viradas(lambda: (e.track, e.pos, e.line()))
                 volta = tr is not None and (pos > ANTERIOR_REINICIA_S or not self.historico)
                 x = None if volta or not self.historico else self.historico[-1]  # sai na troca (App._troca)
             if volta:
-                if e.seek(0.0, pode=lambda: e._deck is d and e._deck.linha == linha):
+                if e.seek(0.0, pode=lambda: e.on_line(linha)):
                     return "inicio"
                 continue
             if x is None:
                 return None
-            if self.tocar_entrada(x, historico=False, anterior=(d, linha, x)):
+            if self.tocar_entrada(x, historico=False, anterior=(linha, x)):
                 return "anterior"
         return None
 
-    def _fecha_viradas(self):
+    def _fecha_viradas(self, read=None):
         """Com fila_lock: a virada que o motor ja confirmou e o vigia ainda nao conciliou fecha agora
-        (comandos.fecha_virada), antes de mexer no historico, e, no mesmo trecho do _qlock em que nao ha mais virada, a
+        (comandos.concilia), antes de mexer no historico, e, no mesmo trecho do _qlock em que nao ha mais virada, a
         passagem preparada sai; ate soltar a fila_lock, o motor nao vira de novo (a preparacao nova publica sob a
-        fila_lock, _prepara)."""
+        fila_lock, _prepara). read(): what to read in that same stretch of the _qlock (the Anterior); returns it."""
         e = self.engine
-        while True:
-            with e._qlock:
-                v, e.virou = e.virou, None
-                if v is None:
-                    e._cancela_passagem()
-                    return
-            cmd.fecha_virada(self, v)
+
+        def no_switch(v):
+            if v is not None:
+                return cmd.FECHA
+            e.drop_prepared()
+            return read() if read is not None else None
+        return cmd.concilia(self, no_switch)
 
     def _solta_reserva(self, r, entrada):
         """Com fila_lock: a reserva de avanco r resolvida (a entrada que tocou, ou None), liberando quem espera, e os
@@ -1381,7 +1264,16 @@ class App:
         fora = e.virou[2] if e.virou is not None else None
         cab = next((x["qid"] for x in self.fila if x["qid"] != fora), None)
         if e.pronto_tag is not None and e.pronto_tag != cab:
-            e._cancela_passagem()
+            e.drop_prepared()
+
+    def _change_queue(self, change):
+        """With fila_lock: change() changes the queue (and the order the user built) under the engine's _qlock, and the
+        prepared passage is checked in that same stretch (_confere_preparo_sob), so the engine never switches to an
+        entry that is no longer first. Every queue change goes through here. Returns what change returns."""
+        with self.engine._qlock:
+            r = change()
+            self._confere_preparo_sob()
+            return r
 
     # fila (A seguir) --------------------------------------------------------
     def _por_na_fila(self, x, seguir=False):
@@ -1389,8 +1281,8 @@ class App:
         ligado, o Adicionar a fila cai num lugar sorteado, como no YouTube Music, e na ordem
         montada vai para o fim. As parecidas do Automatico ficam sempre depois do que o usuario pos. A fila muda no
         mesmo trecho do _qlock em que a passagem preparada e conferida (_confere_preparo_sob), como em toda mudanca
-        da fila."""
-        with self.engine._qlock:
+        da fila (_change_queue)."""
+        def insert_entry():
             if seguir:
                 self.fila.insert(0, x)
                 if self.fila_ordem is not None:
@@ -1400,15 +1292,15 @@ class App:
                 self.fila_ordem.insert(antes_das_parecidas(self.fila_ordem), x)
             else:
                 self.fila.insert(antes_das_parecidas(self.fila), x)
-            self._confere_preparo_sob()
+        self._change_queue(insert_entry)
 
     def _tirar(self, x):
         """Com fila_lock: sai da fila e da ordem montada."""
-        with self.engine._qlock:
+        def remove_entry():
             self.fila.remove(x)
             if self.fila_ordem is not None and x in self.fila_ordem:
                 self.fila_ordem.remove(x)
-            self._confere_preparo_sob()
+        self._change_queue(remove_entry)
 
     def _tirar_se(self, x):
         """Com fila_lock: o _tirar, se x ainda esta na fila."""
@@ -1437,9 +1329,7 @@ class App:
                 montada = [x for x in ordem if x["qid"] in vivos]
                 na_ordem = {x["qid"] for x in montada}
                 fila, ordem = montada + [x for x in fila if x["qid"] not in na_ordem], None
-            with self.engine._qlock:  # so a troca da fila: a thread do audio pega o _qlock a cada bloco
-                self.fila, self.fila_ordem = fila, ordem
-                self._confere_preparo_sob()
+            self._replace_queue(fila, ordem)  # so a troca da fila: a thread do audio pega o _qlock a cada bloco
 
     def enfileirar(self, b, remoto=False):
         """Entrada da fila pelo corpo do POST /api/queue. Disco que nao esta na prateleira ja
@@ -1490,6 +1380,12 @@ class App:
             self._por_na_fila(x, seguir=bool(b.get("next")))
         return x, j
 
+    def _replace_queue(self, fila, ordem):
+        """With fila_lock: the queue and the order the user built become fila and ordem (_change_queue)."""
+        def replace_queue():
+            self.fila, self.fila_ordem = fila, ordem
+        self._change_queue(replace_queue)
+
     def tirar_da_fila(self, qid, recusar=False):
         with self.fila_lock:
             x = next((e for e in self.fila if e["qid"] == qid), None)
@@ -1508,9 +1404,7 @@ class App:
             self.historico = [x for x in self.historico if fica(x)]
             fila = [x for x in self.fila if fica(x)]
             ordem = None if self.fila_ordem is None else [x for x in self.fila_ordem if fica(x)]
-            with self.engine._qlock:
-                self.fila, self.fila_ordem = fila, ordem
-                self._confere_preparo_sob()
+            self._replace_queue(fila, ordem)
 
     def apagar_audio(self, nome):
         """O arquivo do disco que saiu da prateleira: na hora, ou, com o motor tocando dele (no prato, preparado
@@ -1521,10 +1415,7 @@ class App:
         f = str(LIB / nome)
 
         def em_uso():
-            e = self.engine
-            pronto, saindo = e._pronto, e._saindo   # o motor troca os dois de outra thread: um retrato so
-            decks = (pronto, saindo[0] if saindo else None)
-            return any(t is not None and t.get("path") == f for t in (e.track, *(d.track for d in decks if d)))
+            return any(t.get("path") == f for t in self.engine.tracks_in_use())
 
         def apaga():
             while em_uso():
@@ -1543,17 +1434,13 @@ class App:
         with self.fila_lock:
             for x in self.fila:
                 self._recusar(x)
-            with self.engine._qlock:
-                self.fila = []
-                if self.fila_ordem is not None:
-                    self.fila_ordem = []
-                self._confere_preparo_sob()
+            self._replace_queue([], None if self.fila_ordem is None else [])
 
     def mover_na_fila(self, qid, to):
         """Arrastar muda a ordem de tocar; com o Aleatorio ligado, a ordem montada fica como
         estava. O to e o lugar na fila que a tela ve (leitura): sem a entrada da virada que o motor ja confirmou e o
         _volta_passagem ainda vai conciliar, que tambem nao se move."""
-        with self.fila_lock, self.engine._qlock:
+        def move():
             virou = self.engine.virou
             fora = virou[2] if virou is not None else None
             x = next((e for e in self.fila if e["qid"] == qid and qid != fora), None)
@@ -1561,12 +1448,13 @@ class App:
                 return False
             self.fila.remove(x)
             vistas = [e for e in self.fila if e["qid"] != fora]
-            to = max(0, min(to, len(vistas)))
-            self.fila.insert(self.fila.index(vistas[to]) if to < len(vistas) else len(self.fila), x)
+            to_ = max(0, min(to, len(vistas)))
+            self.fila.insert(self.fila.index(vistas[to_]) if to_ < len(vistas) else len(self.fila), x)
             if x.get("auto"):
                 x["fixa"] = True  # a parecida que o usuario arrastou fica onde ele pos: a ordem por andamento nao mexe nela
-            self._confere_preparo_sob()
             return True
+        with self.fila_lock:
+            return self._change_queue(move)
 
     def tocar_entrada(self, x, historico=True, entrada=None, reserva=None, anterior=False):
         """Toca uma entrada da fila (ou do historico): do arquivo se ja esta na prateleira;
@@ -1662,13 +1550,12 @@ class App:
                 self.passagem_falhou = chave
                 return
             e = self.engine
-            ganho = e._ganho_de(novo)
+            ganho = e.gain_for(novo)
 
             def pode():  # sob o _qlock do motor: so le campos em memoria
                 r = self.reserva
-                return (e.virou is None and (r is None or not r.viva(e)) and e._deck is cap.deck
-                        and e._deck.linha == cap.linha and e.track is tr and not e.loop and not e.ended
-                        and e.pronto_tag is None)
+                return (e.virou is None and (r is None or not r.viva(e)) and e.on_line(cap) and e.track is tr
+                        and not e.loop and not e.ended and e.pronto_tag is None)
 
             def publica(depois):
                 if self.fila and self.fila[0] is x:
@@ -1720,8 +1607,8 @@ class App:
 
     # Automatico -------------------------------------------
     def mix_do(self, yid):
-        """As parecidas do video, so o que cabe no Automatico (duracao entre AUTO_DUR, sem o proprio): o radio do
-        YouTube Music (o catalogo de musicas, sem a versao com letra repetindo o clipe); sem a
+        """As parecidas do video, so o que cabe no Automatico (duracao entre automatico.AUTO_DUR, sem o
+        proprio): o radio do YouTube Music (o catalogo de musicas, sem a versao com letra repetindo o clipe); sem a
         ytmusicapi, ou com ela falhando ou vazia, o Mix do YouTube. No --mock, nenhuma (#128)."""
         if self.mock:
             return []
@@ -1741,9 +1628,9 @@ class App:
         """O "Iniciar radio" do YouTube Music pela ytmusicapi, sem login (50 em ~1 s): artista e titulo separados
         (o artista vai no channel)."""
         out = []
-        for t in fora.pede("radio", yid=yid, n=AUTO_LOTE):
+        for t in fora.pede("radio", yid=yid, n=automatico.AUTO_LOTE):
             eid, dur = t.get("videoId"), segundos(t.get("length"))
-            if not eid or not YT_ID.match(eid) or eid == yid or not dur or not AUTO_DUR[0] <= dur <= AUTO_DUR[1]:
+            if not eid or not YT_ID.match(eid) or eid == yid or not dur or not fits_auto(dur):
                 continue
             artistas = ", ".join(a["name"] for a in t.get("artists") or [] if a.get("name"))
             tipo = (t.get("videoType") or "")[-3:]  # ATV: a faixa so de audio; OMV: o clipe; UGC: video de alguem
@@ -1754,12 +1641,12 @@ class App:
     @staticmethod
     def mix_yt(yid):
         """O Mix do YouTube do video (a radio que o YouTube toca depois dele), pelo yt-dlp."""
-        opts = {**YDL, "skip_download": True, "extract_flat": "in_playlist", "playlistend": AUTO_LOTE}
+        opts = {**YDL, "skip_download": True, "extract_flat": "in_playlist", "playlistend": automatico.AUTO_LOTE}
         info = fora.pede("info", alvo=f"https://www.youtube.com/watch?v={yid}&list=RD{yid}", opts=opts)
         out = []
         for e in info.get("entries") or []:
             eid, dur = e.get("id"), e.get("duration")
-            if not eid or not YT_ID.match(eid) or eid == yid or not dur or not AUTO_DUR[0] <= dur <= AUTO_DUR[1]:
+            if not eid or not YT_ID.match(eid) or eid == yid or not dur or not fits_auto(dur):
                 continue
             out.append({"youtube_id": eid, "title": e.get("title") or eid, "duration": dur,
                         "channel": e.get("channel") or e.get("uploader"), "thumb": thumb(eid)})
@@ -2220,7 +2107,7 @@ def build(app_state):
         it = A.lib.by_youtube(yid) if yid else None
         if it:
             if b.get("play"):
-                A.play_item(it, 0.0)
+                cmd.play_shelf_record(A, it)
             return j_ok(item=it)
         alvo = yid or target
         j = A.job_rodando(alvo)  # ja baixando (da fila, ou um toque repetido): nao baixa de novo
@@ -2229,9 +2116,8 @@ def build(app_state):
             loop_().run_in_executor(pool, A.run_download, j, alvo)
         if not b.get("play"):
             return j_ok(job=j)
-        A.job_update(j, play=True)
-        A.tocar_remoto(j, alvo, {"youtube_id": yid, "title": b.get("title"), "channel": b.get("channel"),
-                                 "thumb": b.get("thumb"), "duration": b.get("duration")})
+        cmd.play_downloading(A, j, alvo, {"youtube_id": yid, "title": b.get("title"), "channel": b.get("channel"),
+                                          "thumb": b.get("thumb"), "duration": b.get("duration")})
         return j_ok(job=j, streaming=True)
 
     @r.patch("/api/library/{iid}")
@@ -2243,14 +2129,7 @@ def build(app_state):
                                                              "Type it again."))
         if isinstance(b.get("rapido"), bool):
             kw["rapido"] = b["rapido"]  # nos Sons rapidos do celular pela mao, mesmo com mais de 15 s
-        it = A.lib.update(request.match_info["iid"], **kw)
-        if it:
-            with E._qlock:  # o Estado mostra o nome novo na hora, sem trocar a faixa do prato fora da trava
-                tr = E.track
-                if tr is not None and tr["id"] == it["id"]:
-                    E.track = dict(tr, **kw)
-                    if E._deck.track is tr:
-                        E._deck.track = E.track
+        it = cmd.update_record(A, request.match_info["iid"], **kw)
         return j_ok(item=it) if it else j_err(sem_disco(), 404)
 
     @r.delete("/api/library/{iid}")
@@ -2378,10 +2257,13 @@ def build(app_state):
     @r.post("/api/settings")
     async def settings(request):
         b = await body(request)
-        vols = {k: volume(b[k]) for k in ("vol", "mon_vol", "voice_mon_vol") if k in b}
+        # the music volume's limit is the command's (cmd.volume); the others are clamped here
+        vols = {k: numero(b[k]) if k == "vol" else volume(b[k]) for k in ("vol", "mon_vol", "voice_mon_vol") if k in b}
         ruim = next((k for k, v in vols.items() if v is None), None)
         if ruim:  # antes de mudar qualquer coisa
             return j_err(i18n.so_texto(f"The {ruim} must be a number from 0 to 1."))
+        if "vol" in vols:
+            cmd.volume(A, vols.pop("vol"), save=False)  # the music volume's rule; save_cfg writes it below
         for k, v in vols.items():
             setattr(E, k, v)
         if "mic_vol" in b:

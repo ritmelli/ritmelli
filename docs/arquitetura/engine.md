@@ -111,6 +111,14 @@ servidor confere ali a reserva de avanço, a primeira da fila, o deck e a linha 
 Quem chama com as travas dele na mão passa também o `ganho` já medido e uma lista `depois`, onde fica o resto do comando
 (o leitor que começa, a onda, a medida), que ele roda ao soltá-las.
 
+O servidor confere a linha pela interface do motor, e não pelos campos de dentro: o `line()` dá a `Line` (o deck e a
+linha do prato, os mesmos dois campos da `Captura`), e o `on_line(t)` diz, sob o `_qlock`, se o prato ainda é a linha
+de `t`. A virada que o motor fez sozinho sai pelo `take_switch` (sob o `_qlock`, só a que ainda é a pendente), a
+passagem preparada pelo `drop_prepared` (sob o `_qlock`; o `cancelar_pronto` pega a trava), o ganho medido antes das
+travas pelo `gain_for`, o nome novo do disco no prato pelo `update_track`, a faixa, a posição, o estado e a virada de
+uma leitura só pelo `platter_state` e os arquivos que o motor lê pelo `tracks_in_use`. O `snapshot` não traz o estado,
+a faixa nem a duração: o servidor lê os três com a posição e a fila numa captura só (`App.leitura`).
+
 A pausa vale no limite entre blocos. O `pause` devolve uma `Pausa`: com um bloco do prato retirado e ainda não
 publicado (o do disco, o do fim ou só o da passagem soando), ela fica pendente (o prato só pausa na confirmação) e se
 confirma na publicação dele; sem bloco, na hora. O `alterna` (o botão principal) decide e age no mesmo trecho do

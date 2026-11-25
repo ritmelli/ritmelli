@@ -263,7 +263,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/toggle` | - | pausa ou continua; pausar cala também os sons por cima |
 | `POST /api/pause` / `POST /api/resume` | - | idem, explícito |
 | `POST /api/stop` | - | descarrega o arquivo, desliga o `loop` e cala os sons por cima (a voz segue); o disco entra no `history` |
-| `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca, e responde `{"entry": ...}` com a entrada que tocou; logo depois de uma passagem automática, a entrada que acabou de entrar nela; dois juntos tocam uma só, e os dois respondem a mesma; fila vazia, ou o prato que trocou de disco no meio, = 409 |
+| `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca, e responde `{"entry": ...}` com a entrada que tocou; logo depois de uma passagem automática, a entrada que acabou de entrar nela; dois sobrepostos podem dividir o avanço, e aí tocam uma só e respondem a mesma quando a espera do segundo devolve a entrada (a regra em [Dois Próximos juntos](#dois-próximos-juntos)); fila vazia, ou o prato que trocou de disco no meio, = 409 |
 | `POST /api/prev` | - | Anterior do Spotify: com mais de 3 s de disco (ou nada antes dele), volta ao começo (`{"did": "inicio"}`); senão toca o último do `history`, e o disco do prato vai para o topo da `queue` (`{"did": "anterior"}`); nada no prato nem antes = 409 |
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
 | `POST /api/volume` | `{"vol": 0.5}` | só o volume da música no jogo, de 0 a 1 (fora disso, o limite), com a mesma validação do `vol` do `/api/settings`, e grava só ele no `config.json`; responde `{"ok": true, "vol": 0.5}`; sem número, 400. É o volume que o remoto pode mudar |
@@ -303,6 +303,37 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
 | `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
 | `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; automática, o servidor desliga, a tarefa instala e o Ritmelli abre de novo; recusado ou ainda não baixado, 409 com o motivo |
+
+### Dois Próximos juntos
+
+Dois `POST /api/next` podem dividir um avanço enquanto o grupo do primeiro está aberto; quando dividem, tocam uma
+entrada só e respondem a mesma quando a espera do segundo devolve a entrada (abaixo). O que conta é quando cada comando
+roda (no executor do servidor), não quando o pedido chegou: o primeiro registra o grupo dos Próximos logo no começo do
+comando e o retira ao terminar, depois de gravar a posição do disco que saiu, e a resposta dele sai logo depois.
+Enquanto o grupo ainda espera o avanço, inclusive com a troca do disco publicando, o segundo se junta a ele se o prato
+segue na linha do primeiro (o mesmo disco, sem pulo na barra) ou na linha que o avanço dele está publicando. Se o
+primeiro está conciliando uma passagem automática, o grupo passa para a linha da virada, e o segundo que se junta recebe
+a entrada da passagem, se ela ainda estava na fila, ou a primeira da fila, que o primeiro toca, se já tinha saído.
+Depois que o grupo tem o resultado, só se junta quem chega se ele tocou uma entrada e o prato segue na linha que ele
+publicou. Fora disso, o segundo abre o próprio grupo, como um Próximo novo; se outro avanço reservar primeiro na linha
+dele (o do primeiro, depois de um pulo na barra, ou o do fim do disco), o segundo espera o resultado dessa reserva e
+responde a entrada que ela tocar, e quando a reserva é a do primeiro os dois respondem a mesma entrada, mesmo em grupos
+distintos, quando a espera do segundo devolve a entrada (o [comandos.md](docs/arquitetura/comandos.md) descreve cada
+caso). O segundo que espera o avanço de outro (o que se junta ao grupo, ou o que recebe a reserva de outro) espera até 5
+s e responde 409 se a espera terminar sem uma entrada: passado o prazo (o primeiro, que fez o avanço, ainda responde a
+entrada que tocou), ou com o avanço sem tocar nada:
+
+| o segundo roda | o prato entre os dois | o primeiro responde | o segundo responde |
+|---|---|---|---|
+| depois de o primeiro abrir o grupo, antes de ele reservar o avanço | nada mudou | a primeira da fila | a mesma |
+| depois de o primeiro abrir o grupo, antes de ele reservar o avanço | parou | 409 | a primeira da fila, que toca no prato parado |
+| com o primeiro trocando o disco | não muda: a troca segura o motor | a primeira da fila | a mesma |
+| com o primeiro gravando a posição | nada mudou | a primeira da fila | a mesma, na hora |
+| com o primeiro gravando a posição | parou, pulou na barra ou trocou de disco | a primeira da fila | a seguinte, que ele toca |
+| depois de o comando do primeiro terminar | | a primeira da fila | a seguinte |
+| depois de o primeiro achar a fila vazia, antes de ele terminar | uma entrada entrou na fila | 409 | a entrada que entrou, que ele toca |
+
+O `dev/testa_comandos.py` confere cada linha desta tabela.
 
 ## Pedal de troca de voz
 

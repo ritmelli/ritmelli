@@ -13,7 +13,11 @@ pelo Host `127.0.0.1:<porta>`: ele passa pelo cookie do pareamento como o celula
 `localhost:<porta>` segue o PC. Nesse modo, o `GET /api/pareamento` gera o código com o endereço do `127.0.0.1`.
 
 A regra dos comandos de música (tocar, enfileirar, pular, pausar, parar, a fila e o volume) mora no
-[`comandos.py`](comandos.md), e o avanço da fila é uma operação só, dele; as rotas só leem o corpo e respondem.
+[`comandos.py`](comandos.md), e o avanço da fila é uma operação só, dele: a rota do comando lê o corpo, chama o
+comando e monta a resposta. O tocar da prateleira (`POST /api/library` com `play`), o nome novo do disco
+(`PATCH /api/library/{id}`) e o volume da música do `POST /api/settings` também passam pelos comandos; o resto
+dessas rotas (a prateleira, os downloads, as outras configurações do som) chama os métodos do `App` e do motor. A
+ordem das travas está no [`comandos.md`](comandos.md#as-travas).
 O `App.enfileirar` confere os campos do corpo da fila (`title`, `channel`, `duration` e o alvo) do mesmo jeito para
 todo papel, e o `PATCH /api/library` recusa o nome em Unicode inválido. O SSE manda o JSON só em ASCII: um texto que
 o UTF-8 não codifica não quebra a volta, que é montada uma vez para todas as conexões.
@@ -107,8 +111,10 @@ o UTF-8 não codifica não quebra a volta, que é montada uma vez para todas as 
   Contrato no `API.md`. A lógica mora no `automatico.py` (a classe `Automatico`, em `App.automatico`): o vigia das
   parecidas, a ordem por andamento, a versão só de áudio e o vigia da medida. O estado (a semente, o Mix, o que fica
   de fora, os andamentos e as versões) e a busca de rede (o `mix_do`) seguem no `App`, e o `App` repassa o
-  `ligar_auto`, o `_busca_mix` e a `_volta_auto()` a ele. O `dev/testa_automatico.py` confere a fila montada no `App`
-  de verdade, com um `mix_do` falso e andamentos conhecidos.
+  `ligar_auto`, o `_busca_mix` e a `_volta_auto()` a ele. As constantes do Automático (`AUTO_FILA`, `AUTO_JANELA_S`,
+  `ANDAMENTO_APOS_S` e as outras) moram no `automatico.py`, e as funções puras de música que ele e o servidor usam
+  (`chaves_musica`, `autores`, `mesma_faixa`, `busca_de`, `segundos`, `thumb`) no `music.py`. O
+  `dev/testa_automatico.py` confere a fila montada no `App` de verdade, com um `mix_do` falso e andamentos conhecidos.
 - Versão só de áudio: o rádio traz de tudo, inclusive o que só existe no
   YouTube, mas a parecida que veio como vídeo (clipe com intro, vídeo com letra) toca a faixa
   do álbum quando o YouTube Music tem: uma busca de músicas com nome e artista (~0,5 s, antes

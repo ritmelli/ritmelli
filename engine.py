@@ -207,6 +207,9 @@ class Deck:
 
 # o que estava no prato num instante, lido sob o _qlock: a faixa, a posicao, o estado (o status()), o deck e a linha
 Captura = collections.namedtuple("Captura", "track pos status deck linha")
+# the platter's line as a token (Engine.line): the deck and the line on it. A Captura, a comandos.Reserva and a
+# comandos.Proximo carry the same two fields, and Engine.on_line checks any of them
+Line = collections.namedtuple("Line", "deck linha")
 
 
 class Pausa:
@@ -2209,6 +2212,30 @@ class Engine:
         return (self._pausa is p and p.ok and self.paused and not self.ended and self._deck is p.deck
                 and p.deck.linha == p.linha)
 
+    def line(self):
+        """With _qlock: the platter's line now (a Line), the token that on_line checks later."""
+        return Line(self._deck, self._deck.linha)
+
+    def on_line(self, token):
+        """With _qlock: the platter is still the deck and the line of token (a Line, a Captura, or anything with deck
+        and linha); None never is."""
+        return token is not None and self._deck is token.deck and self._deck.linha == token.linha
+
+    def take_switch(self, switch):
+        """With _qlock: the switch the engine already made on its own (virou, the DJ transition) leaves the engine and
+        comes back, only if the pending one is still switch; None otherwise. Whoever takes it reconciles it with the
+        queue (comandos.concilia)."""
+        if switch is None or self.virou is not switch:
+            return None
+        self.virou = None
+        return switch
+
+    def platter_state(self):
+        """The platter's track, position, status() and pending switch, read in one stretch of the _qlock. The caller
+        holds no engine lock (the server holds its fila_lock, which comes before)."""
+        with self._qlock:
+            return self.track, self.pos, self.status(), self.virou
+
     def captura(self):
         """O que esta no prato agora, sob o _qlock (Captura)."""
         with self._qlock:
@@ -2573,8 +2600,21 @@ class Engine:
         return inj.saude if inj is not None else None
 
     def cancelar_pronto(self):
+        """drop_prepared, taking the _qlock itself."""
         with self._qlock:
-            self._cancela_passagem()
+            self.drop_prepared()
+
+    def drop_prepared(self):
+        """With _qlock: the prepared next record leaves (its reader stops), and the engine does not switch to it. The
+        passage already sounding stays (stop, seek and load cut that one)."""
+        self._cancela_passagem()
+
+    def tracks_in_use(self):
+        """The tracks the engine reads from now: the platter's, the prepared next one's and the one still leaving in a
+        transition. No lock: the mixer thread swaps the prepared and the leaving deck, so each is read once."""
+        pronto, saindo = self._pronto, self._saindo
+        decks = (pronto, saindo[0] if saindo else None)
+        return [t for t in (self.track, *(d.track for d in decks if d)) if t is not None]
 
     def _cancela_passagem(self, tudo=False):
         """Com _qlock: a proxima preparada sai (o leitor dela para) e o disco do prato volta a
@@ -3221,6 +3261,23 @@ class Engine:
                 return float(v), True
         return self._medidas.get(self._chave(track), (None, False))
 
+    def gain_for(self, track):
+        """Outside every lock (it asks the server): what load, espera and preparar take as ganho, measured ahead by
+        whoever calls them (_ganho_de)."""
+        return self._ganho_de(track)
+
+    def update_track(self, iid, **fields):
+        """The platter's record iid gets fields (the shelf renamed it): the state shows them right away, and the
+        platter's track is swapped under the _qlock, never outside it. Returns whether the platter held it."""
+        with self._qlock:
+            tr = self.track
+            if tr is None or tr["id"] != iid:
+                return False
+            self.track = dict(tr, **fields)
+            if self._deck.track is tr:
+                self._deck.track = self.track
+            return True
+
     def _ganho_de(self, track):
         """Fora das travas (pergunta ao servidor): o ganho do disco pela medida que ja se tem, e se o arquivo local
         ainda precisa ser medido (sem a medida inteira; o stream o leitor mede)."""
@@ -3541,12 +3598,10 @@ class Engine:
          "grade_de", "grade_para": a grade de cada um no tempo do proprio disco, {"bpm", "periodo", "fase" (uma batida),
            "de", "ate" (o trecho onde ela foi medida e vale)}, ou null;
          "motivo": por que nao foi no tempo (texto do log), so quando no_tempo e false}.
-        Tempo de saida = o do relogio do som; no tempo de um disco que anda na velocidade v, 1 s de saida e v s dele."""
-        tr = self.track
+        Tempo de saida = o do relogio do som; no tempo de um disco que anda na velocidade v, 1 s de saida e v s dele.
+        The status, the track and its duration are not here: the server reads them with the position and the queue in
+        one capture (platter_state, under its fila_lock) and adds them (App.leitura)."""
         return {
-            "status": self.status(),
-            "track": None if tr is None else {k: v for k, v in tr.items() if k not in ("path", "headers")},
-            "duration": None if tr is None else tr.get("duration"),
             # 6 casas: a tela mostra o volume do disco ao cubo, e o baixo dele fica abaixo de 0,001
             "vol": round(self.vol, 6), "mon_vol": round(self.mon_vol, 6),
             # o volume automatico: ligado, e o ganho dele no disco do prato agora (dB; 0 = como veio)
