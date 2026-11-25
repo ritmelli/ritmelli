@@ -2912,7 +2912,10 @@ class Engine:
             return int(np.searchsorted(phi_a, (t - t_r) * SR))
 
         P = pa / sa * SR  # o periodo deste na saida, em amostras
-        i1, i2 = saida_a(virar - FASE_ANTES_S), saida_a(baixo)   # baixo aqui e a troca (o fim do corpo)
+        # the phase excerpt lasts at least FASE_ANTES_S of this one's output (#196): sped up (sa > 1), that is more of
+        # the disc, and still after its speed ramp, which ends 0.5 s before FASE_ANTES_S of the disc
+        # (transicao.rampa_saida), with sa at most SAI_MAX from 1
+        i1, i2 = saida_a(virar - FASE_ANTES_S * max(1.0, sa)), saida_a(baixo)  # baixo aqui e a troca (o fim do corpo)
         perto = (saida_a(a_longa + round((virar - a_longa) / pa) * pa) - i1) / SR
         f, motivo = fase_em(None, 0.0, None, P / SR, "the end of this one (already changed)", perto, x=z_a[i1:i2])
         if f is None:
