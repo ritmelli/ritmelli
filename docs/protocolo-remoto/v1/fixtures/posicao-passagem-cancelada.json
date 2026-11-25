@@ -1,6 +1,6 @@
 {
  "cenario": "passagem-cancelada",
- "descricao": "A passagem cancelada durante a rampa de saida, com a faixa no mesmo deck: os blocos esticados ficam na fila e a ancora segue valendo; reconexao no meio da rampa e antes do fim dos blocos esticados, e o fim natural congela a posicao.",
+ "descricao": "A passagem cancelada durante a rampa de saida, com a faixa no mesmo deck: os blocos esticados ficam na fila e a ancora segue valendo; reconexao no meio da rampa e antes do fim dos blocos esticados, e o fim natural congela a posicao onde a ancora parou.",
  "relogio": {
   "t0_ms": 1000000.0,
   "taxa": 48000
@@ -135,8 +135,13 @@
         }
        },
        {
-        "n": 687650,
+        "n": 687360,
         "v": 1.012
+       },
+       {
+        "n": 290,
+        "v": 1.0,
+        "pos": 39.9938398753698
        }
       ]
      }
@@ -206,8 +211,13 @@
         }
        },
        {
-        "n": 687650,
+        "n": 687360,
         "v": 1.012
+       },
+       {
+        "n": 290,
+        "v": 1.0,
+        "pos": 39.9938398753698
        }
       ]
      }
@@ -251,23 +261,28 @@
      ],
      "ancora": {
       "faixa": "A",
-      "pos": 17.43415212851485,
-      "t": 1017430.0,
+      "pos": 13.430000000000001,
+      "t": 1013430.0,
       "taxa": 48000,
       "anda": true,
       "segmentos": [
        {
-        "n": 384000,
+        "n": 576000,
         "v": {
          "de": 1.0,
          "ate": 1.012,
          "total": 576000,
-         "fase": 192000
+         "fase": 0
         }
        },
        {
-        "n": 687650,
+        "n": 687360,
         "v": 1.012
+       },
+       {
+        "n": 290,
+        "v": 1.0,
+        "pos": 39.9938398753698
        }
       ]
      }
@@ -326,8 +341,13 @@
         }
        },
        {
-        "n": 687650,
+        "n": 687360,
         "v": 1.012
+       },
+       {
+        "n": 290,
+        "v": 1.0,
+        "pos": 39.9938398753698
        }
       ]
      }
@@ -377,8 +397,13 @@
       "anda": true,
       "segmentos": [
        {
-        "n": 687650,
+        "n": 687360,
         "v": 1.012
+       },
+       {
+        "n": 290,
+        "v": 1.0,
+        "pos": 39.9938398753698
        }
       ]
      }
@@ -428,59 +453,13 @@
       "anda": true,
       "segmentos": [
        {
-        "n": 95810,
+        "n": 95520,
         "v": 1.012
-       }
-      ]
-     }
-    }
-   }
-  },
-  {
-   "evento": "mapa",
-   "msg": {
-    "protocolo": 1,
-    "tipo": "estado",
-    "sessao": "sessao-de-teste-01",
-    "rev": 8,
-    "origem": "mudanca",
-    "agora": 1039760.0,
-    "estado": {
-     "status": "playing",
-     "faixa": {
-      "id": "A",
-      "title": "Disco A",
-      "channel": null,
-      "duration": 40.0,
-      "youtube_id": null,
-      "thumb": null,
-      "stream": false
-     },
-     "fila": [],
-     "vol": 0.6,
-     "abaixa": null,
-     "capacidades": [
-      "tocar",
-      "enfileirar",
-      "pular",
-      "pausar",
-      "retomar",
-      "tirar_da_fila",
-      "mover_na_fila",
-      "volume",
-      "abaixar",
-      "sinal"
-     ],
-     "ancora": {
-      "faixa": "A",
-      "pos": 39.94323987536458,
-      "t": 1039700.0,
-      "taxa": 48000,
-      "anda": true,
-      "segmentos": [
+       },
        {
-        "n": 2690,
-        "v": 1.012
+        "n": 290,
+        "v": 1.0,
+        "pos": 39.9938398753698
        }
       ]
      }
@@ -493,7 +472,7 @@
     "protocolo": 1,
     "tipo": "estado",
     "sessao": "sessao-de-teste-01",
-    "rev": 9,
+    "rev": 8,
     "origem": "mudanca",
     "agora": 1039830.0,
     "estado": {

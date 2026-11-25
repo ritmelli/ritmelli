@@ -92,6 +92,17 @@
     "thumb": "https://i.ytimg.com/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "duration": 90000,
     "job": null
+   },
+   {
+    "qid": "1c2d3e4f",
+    "id": null,
+    "youtube_id": "audio-file",
+    "title": "https://x.example/a.mp3?k=1",
+    "url": "https://x.example/a.mp3?k=1",
+    "channel": null,
+    "thumb": null,
+    "duration": 60,
+    "job": "j1"
    }
   ],
   "shuffle": false,
@@ -169,6 +180,16 @@
     "youtube_id": null,
     "thumb": null,
     "auto": false
+   },
+   {
+    "qid": "1c2d3e4f",
+    "id": null,
+    "title": null,
+    "channel": null,
+    "duration": 60,
+    "youtube_id": null,
+    "thumb": null,
+    "auto": false
    }
   ],
   "vol": 0.6,
@@ -236,6 +257,16 @@
       "title": "tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt",
       "channel": null,
       "duration": null,
+      "youtube_id": null,
+      "thumb": null,
+      "auto": false
+     },
+     {
+      "qid": "1c2d3e4f",
+      "id": null,
+      "title": null,
+      "channel": null,
+      "duration": 60,
       "youtube_id": null,
       "thumb": null,
       "auto": false
@@ -389,6 +420,16 @@
       "title": "tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt",
       "channel": null,
       "duration": null,
+      "youtube_id": null,
+      "thumb": null,
+      "auto": false
+     },
+     {
+      "qid": "1c2d3e4f",
+      "id": null,
+      "title": null,
+      "channel": null,
+      "duration": 60,
       "youtube_id": null,
       "thumb": null,
       "auto": false
