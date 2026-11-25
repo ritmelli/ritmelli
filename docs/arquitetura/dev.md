@@ -24,7 +24,13 @@ arquivo de `dev/` que tem o `manual:` e roda no check, e com o modo do `testa_tu
 `testa.yml` deixou de chamar. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
 cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
-roda tudo isso em todo PR, no push na `main` e na fila de merge.
+roda tudo isso em todo PR, no push na `main` e na fila de merge. No PR, só abrir, reabrir e
+um commit novo rodam o check: editar a descrição ou mexer numa etiqueta não roda, porque uma
+execução no mesmo commit vira a suite mais nova do workflow e o check exigido sai só dela
+(encobriria o "Testa o PR" de quem testou). A etiqueta `extracao-tema` e a base nova de um PR
+empilhado valem na fila de merge, que lê as etiquetas na hora e testa o merge de verdade; no
+PR, a etiqueta vale no próximo commit, ao reabrir ou num re-run completo, e a base nova só no
+próximo commit ou ao reabrir (o re-run repete a base do evento antigo).
 
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
