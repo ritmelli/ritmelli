@@ -274,6 +274,7 @@ def resultado_repetido(guardados, cmd):
 
 CAMPOS_FAIXA = ("id", "title", "channel", "duration", "youtube_id", "thumb")
 CAMPOS_FILA = ("qid", "id", "title", "channel", "duration", "youtube_id", "thumb")
+PARADAS = ("paused", "buffering", "ended")  # as paradas que saem em ordem entre dois ticks (o stop, so no tick)
 EVENTO_DO_STATUS = {"playing": "retomada", "paused": "pausa", "buffering": "buffering", "ended": "fim",
                     "idle": "parada"}
 TEXTO_MAX, CAPA_MAX, FILA_MAX, DURACAO_MAX = 400, 500, 500, 86400
@@ -440,9 +441,16 @@ class Produtor:
     def curvas_do_prato(self):
         return self.curvas.get(id(self.e._deck), [])
 
+    def status(self):
+        """O do motor, com a fila vazia e o fim do disco lido ja como o fim: o motor so diz ended no callback
+        seguinte, mas o prato parou ali."""
+        e = self.e
+        st = e.status()
+        return "ended" if st == "playing" and not e._q and e._eof_gen == e._gen else st
+
     def ancora(self, u, pos=None, recua=0, anda=None):
         e = self.e
-        tr, q, st = e.track, e._q, e.status()
+        tr, q, st = e.track, e._q, self.status()
         if tr is None:
             return None
         if pos is None:
@@ -481,7 +489,7 @@ class Produtor:
 
     def projecao(self, u):
         e = self.e
-        p = projeta({"status": e.status(), "track": e.track, "queue": self.fila(e), "vol": VOL, "abaixa": None,
+        p = projeta({"status": self.status(), "track": e.track, "queue": self.fila(e), "vol": VOL, "abaixa": None,
                      "caps": perm.caps("remoto")})
         p["ancora"] = self.ancora(u)
         return p
@@ -503,7 +511,7 @@ class Produtor:
         ancora no instante dela. Com o prato seguindo igual, a janela da fila e refeita dali; antes de uma quebra (outro
         deck, parada, salto que ela nao previa), so a de antes adiantada ate la, porque a fila ja e a de depois."""
         ate = u if ate is None else ate
-        refaz = (ate == u and self.e.track is not None and self.e.status() == "playing"
+        refaz = (ate == u and self.e.track is not None and self.status() == "playing"
                  and id(self.e._deck) == self.pub_deck and self.e.track["id"] == (self.pub["faixa"] or {}).get("id"))
         while self.cruzou(ate):
             a = self.pub["ancora"]
@@ -515,18 +523,18 @@ class Produtor:
 
     def olha(self, u, reconexao=False):
         p = self.projecao(u)
-        if self.pub is None or reconexao:
-            self.lidas = len(self.sim.marcas)
+        if self.pub is None or reconexao:  # a ancora de agora: a parada de antes ja esta nela
+            self.lidas, self.parou = len(self.sim.marcas), None
             return self._publica("reconexao" if reconexao else "inicio", p, u)
         paradas_todas = self._marcas(u, "para")
         anda = self._marcas(u, "anda")
-        for m in self.sim.marcas[self.lidas:]:
-            self.parou = m if m["tipo"] == "para" else None
-        self._transicoes(u, p, sorted([m for m in paradas_todas if m["status"] in ("paused", "buffering")] + anda,
+        self._le_paradas()
+        self._transicoes(u, p, sorted([m for m in paradas_todas if m["status"] in PARADAS] + anda,
                                       key=lambda m: m["u"]))
-        # depois delas, as fronteiras ate a parada que segue (o fim, o stop) ou ate a quebra que o tick ja ve
-        quebras = [m["u"] for m in paradas_todas if m["status"] not in ("paused", "buffering")]
+        # depois delas, as fronteiras ate a parada que segue (o stop) ou ate a quebra que o tick ja ve
         velha = self.pub["ancora"]
+        quebras = [m["u"] for m in paradas_todas if m["status"] not in PARADAS
+                   and (velha is None or m["u"] >= self._u(velha))]
         if velha is not None and velha["anda"] and (
                 p["status"] != "playing" or id(self.e._deck) != self.pub_deck
                 or (p["faixa"] or {}).get("id") != velha["faixa"]
@@ -543,31 +551,23 @@ class Produtor:
         elif ev == "projecao":  # so a projecao mudou: as fronteiras cruzadas antes, e a ancora publicada segue
             self._fronteiras(u, self.pub)
             p["ancora"], c_ancora = self.pub["ancora"], self.pub_c
-        elif ev in ("pausa", "buffering", "fim") and a is not None and self.parou is not None:
-            # parado desde a hora em que o prato parou (o fim: o motor so diz ended no callback seguinte); sem marca
-            # depois da ultima retomada, o tick viu a parada antes dela, e a ancora e a de agora
+        elif (ev in ("pausa", "buffering", "fim") and a is not None and self.parou is not None
+              and self.pub["status"] == "playing" and self.parou["faixa"] == a["faixa"]
+              and self.parou["deck"] == id(self.e._deck)
+              and (self.pub["ancora"] is None or self.parou["u"] >= self._u(self.pub["ancora"]))):
+            # parado desde a hora em que o prato parou (o stop que deixa o disco; a parada que o tick so ve depois);
+            # sem marca depois da ultima retomada, o tick viu a parada antes dela, e a ancora e a de agora
             p["ancora"] = dict(a, t=ms(self.parou["u"]))
-        elif ev in ("troca", "retomada", "mapa") and a is not None and a["anda"]:
-            # as marcas do deck do prato que a ancora publicada nao previa: na troca e na retomada, a ultima estrutural
-            # (outro deck, a volta depois de parar); no mapa, a primeira (os saltos de depois vao juntos)
-            marcas = [m for m in self._marcas(u, "anda") if m["deck"] == id(self.e._deck) and self._nova(m)]
-            if ev != "mapa":
-                marcas = [m for m in marcas if m["estrutural"]][-1:]
-            if marcas:
-                m = marcas[0]
-                p["ancora"], c_ancora = self.ancora(m["u"], m["rotulo"], self.sim.c() - m["c"]), m["c"]
-            velha = self.pub["ancora"]
-            if ev == "mapa" and velha is not None and equivalentes(
-                    avanca(velha, self._u(p["ancora"]) - self._u(velha)), p["ancora"]):
-                # a ancora que sairia e a de antes adiantada: so o que mais mudou
-                self._fronteiras(u, self.pub)
-                mudou = {k: v for k, v in self.pub.items() if k != "ancora"} != {k: v for k, v in p.items()
-                                                                                 if k != "ancora"}
-                ev, p["ancora"], c_ancora = ("projecao" if mudou else None), self.pub["ancora"], self.pub_c
+            self.parou = None
         self.lidas = len(self.sim.marcas)
         if ev is not None:
             self._publica(ev, p, u, c_ancora)
             self._fronteiras(u, p)  # a ancora no instante da marca: as fronteiras dela que ja tocaram, em ordem
+
+    def _le_paradas(self):
+        """A ultima parada das marcas novas, ate o prato andar de novo."""
+        for m in self.sim.marcas[self.lidas:]:
+            self.parou = m if m["tipo"] == "para" else None
 
     def _transicoes(self, u, p, marcas):
         """O que mudou desde o tick de antes, em ordem, cada coisa no instante dela: as fronteiras que o prato cruzou
@@ -578,16 +578,17 @@ class Produtor:
             if m["tipo"] == "para":
                 if self.pub["status"] != "playing":  # ja parado (a parada que o tick viu antes da marca dela)
                     continue
-                base = self._base(p, m["faixa"])
+                base = self._base(p, m)
                 if base is None:
                     continue
                 self._fronteiras(u, self.pub, ate=m["u"] - 1)
-                self._publica(EVENTO_DO_STATUS[m["status"]],
+                self._publica("troca" if (self.pub["faixa"] or {}).get("id") != m["faixa"]
+                              else EVENTO_DO_STATUS[m["status"]],
                               dict(base, status=m["status"], ancora={"faixa": m["faixa"], "pos": m["pos"],
                                                                      "t": ms(m["u"]), "taxa": SR, "anda": False,
                                                                      "segmentos": []}), u, deck=m["deck"])
                 continue
-            base = self._base(p, m["faixa"])
+            base = self._base(p, m)
             if base is None or not self._nova(m):
                 continue
             self._fronteiras(u, self.pub, ate=m["u"] - 1)
@@ -604,14 +605,17 @@ class Produtor:
         """Os segmentos da marca de um disco que ja saiu do deck: a curva do deck dela, se ainda vale ali (a virada na
         rampa de saida), e depois a velocidade 1, aberta (a marca seguinte corta)."""
         segs = segmentos([], self.curvas.get(m["deck"], []), m["c"], False)
-        if not segs or segs[-1]["n"] is not None:
-            segs = (segs + [{"n": None, "v": 1.0}])[:SEGMENTOS_MAX]
-        segs[-1]["n"] = None
+        if len(segs) < SEGMENTOS_MAX:  # cheia, so promete ate o comeco do ultimo, e a curva fica fechada
+            segs.append({"n": None, "v": 1.0})
         return segs
 
-    def _base(self, p, faixa):
-        """A projecao da faixa: a de agora ou a publicada (o disco que saiu entre dois ticks)."""
-        return next((x for x in (p, self.pub) if (x["faixa"] or {}).get("id") == faixa), None)
+    def _base(self, p, m):
+        """A projecao da faixa da marca: a de agora, a publicada (o disco que saiu entre dois ticks) ou, para a que
+        entrou e saiu entre os dois, a de agora com a faixa da marca, pela mesma lista de campos."""
+        base = next((x for x in (p, self.pub) if (x["faixa"] or {}).get("id") == m["faixa"]), None)
+        if base is None and m.get("track") is not None:
+            base = dict(p, faixa=projeta({"status": "playing", "track": m["track"], "vol": VOL})["faixa"])
+        return base
 
     def _nova(self, m):
         """A marca que a ancora publicada nao previa: estrutural, ou o rotulo fora do que ela dizia ali. A de antes do
@@ -727,9 +731,12 @@ class Sim:
         u = self.u
         if not item:
             if self.andando and self.ant is not None:  # o prato parou: a pausa, o buffering, o fim ou o stop
-                self.marcas.append({"u": u, "tipo": "para", "faixa": self.ant[2], "deck": id(self.ant[3]),
+                # a faixa e o deck do prato agora: o load (ou a virada) que ainda nao encheu a fila e o disco novo
+                novo = e.track is not None
+                self.marcas.append({"u": u, "tipo": "para", "faixa": e.track["id"] if novo else self.ant[2],
+                                    "deck": id(e._deck) if novo else id(self.ant[3]),
                                     "pos": float(e._q[0][0]) if e._q and not e.ended else float(e.pos),
-                                    "status": e.status()})
+                                    "status": e.status(), "track": e.track if novo else self.ant[4]})
             self.andando, self.ant = False, None
         for t0, s in item or ():
             tid = e.track["id"]
@@ -738,9 +745,9 @@ class Sim:
             estrutural = self.ant is None or self.ant[3] is not deck or self.ant[2] != tid
             if estrutural or not _continua(self.ant[0], self.ant[1], t0):
                 self.marcas.append({"u": u, "tipo": "anda", "rotulo": float(t0), "faixa": tid, "deck": id(deck),
-                                    "c": self.c(), "estrutural": estrutural})
+                                    "c": self.c(), "estrutural": estrutural, "track": e.track})
             self.mapa.append((u, tid, float(t0)))
-            self.ant = (t0, len(s), tid, deck)
+            self.ant = (t0, len(s), tid, deck, e.track)
             u += len(s)
             self.consumido[id(deck)] = self.consumido.get(id(deck), 0) + len(s)
         if item:
@@ -749,7 +756,7 @@ class Sim:
             if u - self.u < BLOCO:  # a fila secou no meio do bloco: o prato parou ali, nao no bloco seguinte
                 fim = e._eof_gen == e._gen
                 self.marcas.append({"u": u, "tipo": "para", "faixa": e.track["id"], "deck": id(deck),
-                                    "pos": float(e.pos), "status": "ended" if fim else e.status()})
+                                    "pos": float(e.pos), "status": "ended" if fim else e.status(), "track": e.track})
                 self.andando, self.ant = False, None
         self.u += BLOCO
 
@@ -1170,13 +1177,74 @@ def cenario_paradas_e_load():
             a.eof_gen = a.gen
         return True
 
+    c = _deck("C", 0.0, 3.0)
+
+    def load_c(u):  # o load de C com o leitor ainda sem bloco: o callback seguinte acha a fila vazia
+        if u < 40 * BLOCO:
+            return False
+        e.track = a.track = c.track
+        e._restart(0.0)
+        return True
+
+    def chega_c(u):  # 30 ms depois, o leitor de C enche a fila
+        if u < 43 * BLOCO:
+            return False
+        with e._qlock:
+            a.q.extend(c.q)
+            a.eof_gen = a.gen
+        return True
+
     prod = Produtor(e, sim, {}, lambda e_: [])
-    msgs = _roda(e, sim, prod, 0.5, eventos=_pausa_nos_blocos(e, 5, 8) + _pausa_nos_blocos(e, 9, 16)
-                 + _pausa_nos_blocos(e, 29, 30) + [load_b] + _pausa_nos_blocos(e, 35, 37))
+    msgs = _roda(e, sim, prod, 0.6, eventos=_pausa_nos_blocos(e, 5, 8) + _pausa_nos_blocos(e, 9, 16)
+                 + _pausa_nos_blocos(e, 29, 30) + [load_b] + _pausa_nos_blocos(e, 35, 37) + [load_c, chega_c])
     return {"descricao": "Paradas entre dois ticks com o prato ja parado na foto de antes (a retomada de um bloco so e a "
                          "pausa de novo), e a pausa curta, a retomada e o load de outro disco no mesmo deck antes do "
-                         "tick que ve a pausa seguinte: cada transicao no instante dela, com a faixa dela."}, \
+                         "tick que ve a pausa seguinte, e o load de outro disco com o leitor ainda sem bloco (o disco novo em "
+                         "buffering desde o instante em que o prato calou): cada transicao no instante dela, com a faixa "
+                         "dela."}, \
         msgs, sim.mapa
+
+
+def _curto(tid):
+    """Um disco de 105 ms, com o fim do arquivo no meio de um bloco."""
+    d = _deck(tid, 0.0, 0.1)
+    d.q.append((0.1, np.zeros((BLOCO // 2, 2), np.float32)))
+    d.track["duration"] = 0.105
+    return d
+
+
+def cenario_fim_e_trocas():
+    a = _curto("A")
+    e = _motor(a)
+    sim = Sim(e)
+
+    def load(tid, bloco, curto=False):  # o load de outro disco no mesmo deck, com a fila cheia antes do callback
+        def ev(u):
+            if u < bloco * BLOCO:
+                return False
+            d = _curto(tid) if curto is True else curto() if curto else _deck(tid, 0.0, 3.0)
+            e.track = a.track = d.track
+            e._restart(0.0)
+            with e._qlock:
+                a.q.extend(d.q)
+                a.eof_gen = a.gen
+            return True
+        return ev
+
+    def voltas():  # D: um som de 20 ms com o Repetir, uma volta a cada 2 blocos
+        d = _deck("D", 0.0, 0.02)
+        um = list(d.q)
+        for _ in range(9):
+            d.q.extend(um)
+        return d
+
+    prod = Produtor(e, sim, {}, lambda e_: [])
+    msgs = _roda(e, sim, prod, 0.5, eventos=[load("B", 15), load("C", 19, curto=True), load("D", 30, curto=voltas)]
+                 + _pausa_nos_blocos(e, 35, 37), reconexoes=[lambda u: u == 11 * BLOCO])
+    return {"descricao": "O fim natural no meio de um bloco, a reconexao antes de o motor dizer ended (a fila vazia com "
+                         "o fim lido ja e o fim), outro disco que entra e sai entre dois ticks (a troca para B com a "
+                         "projecao dele e a troca para C), e o fim de C, o comeco de D e as voltas de D entre os mesmos "
+                         "dois ticks, antes do tick que ve a pausa, cada um no instante dele."}, msgs, sim.mapa
 
 
 def cenario_repetir():
@@ -1302,7 +1370,8 @@ CENARIOS = {"passagem-dois": cenario_passagem_dois, "passagem-cancelada": cenari
             "final-seco-esticado": cenario_final_seco_esticado, "buffering": cenario_buffering,
             "repetir": cenario_repetir, "repetir-curto": cenario_repetir_curto,
             "retomada-na-volta": cenario_retomada_na_volta, "repetir-curtissimo": cenario_repetir_curtissimo,
-            "fim-natural": cenario_fim_natural, "paradas-e-load": cenario_paradas_e_load}
+            "fim-natural": cenario_fim_natural, "paradas-e-load": cenario_paradas_e_load,
+            "fim-e-trocas": cenario_fim_e_trocas}
 
 
 def _limpa(x):
@@ -2032,10 +2101,54 @@ class Posicao(unittest.TestCase):
                   for m in msgs if m["evento"] not in ("inicio", "fronteira")]
         self.assertEqual(vistos, [("pausa", "A", 5), ("retomada", "A", 8), ("pausa", "A", 9), ("retomada", "A", 16),
                                   ("pausa", "A", 29), ("retomada", "A", 30), ("troca", "B", 32), ("pausa", "B", 35),
-                                  ("retomada", "B", 37)])
+                                  ("retomada", "B", 37), ("troca", "C", 40), ("retomada", "C", 43)])
         val = esquemas()[1]["estado"]
         for m in msgs:
             self.assertEqual(valida_estado(val, m["msg"]), [], m["evento"])
+
+    def test_fim_e_trocas(self):
+        _, msgs, mapa = self.confere("fim-e-trocas")
+        vistos = [(m["evento"], m["msg"]["estado"]["status"], m["msg"]["estado"]["faixa"]["id"],
+                   _u(m["msg"]["estado"]["ancora"]["t"])) for m in msgs if m["evento"] not in ("inicio", "mapa")]
+        primeiro = {f: next(u for u, x, _ in mapa if x == f) for f in "BCD"}
+        self.assertEqual(vistos[:7], [("fim", "ended", "A", 10 * BLOCO + BLOCO // 2),
+                                      ("reconexao", "ended", "A", 11 * BLOCO),
+                                      ("troca", "playing", "B", primeiro["B"]), ("troca", "playing", "C", primeiro["C"]),
+                                      ("fim", "ended", "C", primeiro["C"] + 10 * BLOCO + BLOCO // 2),
+                                      ("troca", "playing", "D", primeiro["D"]),
+                                      ("fronteira", "playing", "D", primeiro["D"] + 2 * BLOCO)])
+        # as voltas de D antes da pausa no tick: a parada de C, antes da ancora de D, nao segura as fronteiras dela
+        self.assertEqual(vistos[7:9], [("fronteira", "playing", "D", primeiro["D"] + 4 * BLOCO),
+                                       ("pausa", "paused", "D", 35 * BLOCO)])
+        val = esquemas()[1]["estado"]
+        for m in msgs:
+            self.assertEqual(valida_estado(val, m["msg"]), [], m["evento"])
+
+    def test_seek_pausado(self):
+        """O seek com o prato pausado e a retomada sem audio (buffering): a parada de antes do seek nao volta o t."""
+        a = _deck("A", 0.0, 3.0)
+        e = _motor(a)
+        sim = Sim(e)
+
+        def seek(u):
+            if u < 8 * BLOCO:
+                return False
+            e._restart(1.0)  # o leitor ainda nao pos nada
+            return True
+
+        def chega(u):
+            if u < 25 * BLOCO:
+                return False
+            with e._qlock:
+                a.q.extend(_deck("A", 1.0, 3.0).q)
+                a.eof_gen = a.gen
+            return True
+
+        msgs = _roda(e, sim, Produtor(e, sim, {}, lambda e_: []), 0.4,
+                     eventos=_pausa_nos_blocos(e, 5, 16) + [seek, chega])
+        vistos = [(m["evento"], _u(m["msg"]["estado"]["ancora"]["t"]) // BLOCO) for m in msgs
+                  if m["msg"]["tipo"] == "estado"]
+        self.assertEqual(vistos, [("inicio", 0), ("pausa", 5), ("mapa", 14), ("buffering", 21), ("retomada", 25)])
 
     def test_repetir(self):
         _, msgs, mapa = self.confere("repetir")

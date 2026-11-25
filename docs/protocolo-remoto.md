@@ -100,6 +100,9 @@ amostra dele, e o motor anda dentro do bloco a velocidade 1 (o `_tira`, que rotu
 
 - `pos` é o rótulo do próximo bloco da fila do prato, não o `pos` do motor (que soma o bloco a velocidade 1 e, numa
   rampa, fica até `|v - 1| * 10 ms` longe do rótulo seguinte). Com a fila vazia (buffering, fim), é o `pos` do motor.
+  Pelo mesmo motivo, quando o callback parte um bloco esticado, o `_tira` rotula a sobra a velocidade 1, e a âncora
+  (pela curva) fica até `|v - 1| * 10 ms` desse rótulo (0,12 ms em `sa` 1,012); a âncora montada nessa sobra parte
+  do rótulo dela e leva essa diferença até a foto seguinte.
 - Sem passagem marcada: a cauda da fila. O PC olha 1 s da fila adiante; cada trecho de rótulos contínuos vira um
   segmento em 1, com o `pos` dele quando o rótulo salta (a volta do Repetir que o leitor já pôs na fila), até caberem
   os 8 segmentos da âncora. O último fica aberto, salvo quando a fila acaba dentro dessa janela (ou bem no fim dela)
@@ -143,7 +146,9 @@ amostra dele, e o motor anda dentro do bloco a velocidade 1 (o `_tira`, que rotu
   prato: os segmentos deles seguem na âncora até serem consumidos ou trocados.
 - A volta do Repetir (o `_reader`): o leitor põe a volta na mesma fila, com o rótulo voltando a 0. Ela entra na âncora
   quando chega à janela, e a âncora nova sai no primeiro bloco da volta, com a faixa e o deck iguais.
-- No fim natural, a âncora congela na posição final até a próxima ação ou faixa.
+- No fim natural, a âncora congela na posição final até a próxima ação ou faixa. A fila vazia com o fim do disco já
+  lido já é o fim (`ended`), na foto do tick e na de reconexão: o motor só diz `ended` no callback seguinte, mas o
+  prato parou ali.
 
 ### Quando a âncora muda
 
@@ -160,25 +165,26 @@ O `_mixa` anota também as marcas, numa lista que o tick lê na ordem em que for
 tick vem depois dele): o bloco que não continua o anterior (estrutural: outro deck, a virada, mesmo com o mesmo disco
 dos dois lados; outro disco no mesmo deck, o `load` que enche a fila antes do callback seguinte; ou o primeiro depois
 de um bloco sem disco, a retomada; ou só o rótulo que salta) e a amostra em que o prato parou (a pausa, o buffering, o
-fim, o stop; no meio do bloco, quando a fila seca antes do fim dele), com o `u`, o deck, a faixa, o rótulo do próximo
-bloco e as amostras consumidas. O tick do `server.py` (o `TICK`, de 1/15 s, fora da thread do som) lê, com o
+fim, o stop; no meio do bloco, quando a fila seca antes do fim dele), com o `u`, a faixa e o deck do prato naquela
+hora (o `load` ou a virada que ainda não encheu a fila: o disco novo, em buffering), o rótulo do próximo bloco (com a
+fila vazia, o `pos` do motor) e as amostras consumidas. O tick do `server.py` (o `TICK`, de 1/15 s, fora da thread do som) lê, com o
 `_qlock`, o rótulo do próximo bloco e o `u` em que ele vai tocar, e publica um estado novo quando:
 
-- a âncora de antes, adiantada em amostras até agora, deixa de bater com a que sairia agora, a menos de meia amostra:
-  o mapa mudou (passagem aplicada ou trocada, seek, a volta ou o fim do disco entrando na janela, buffering, pausa,
-  retomada, virada, parada). A descontinuidade que já tocou sai com o `t`, o rótulo e a fase da marca do deck do
-  prato que a âncora de antes não previa (a estrutural, ou o rótulo fora do que ela dizia ali; o salto que ela previa,
-  como o de cada bloco de uma curva, não conta): na troca e na retomada, a última estrutural; no mapa, a primeira, e
-  os saltos que tocaram depois dela vão junto, cada um num trecho a 1 com o `pos` dele. A pausa, o buffering e o fim
-  saem com o `t` da amostra em que o prato parou e o rótulo do próximo bloco (a retomada não salta); o fim, também
-  quando o motor só diz `ended` no callback seguinte, depois de um tick que ainda viu o disco tocando. A âncora que
-  sairia igual à de antes adiantada não publica nada. Com curva que acabou entre a marca e agora, a âncora supõe que
-  nada saltou desde o fim dela (o tick seguinte corrige o que tiver saltado);
-- o prato parou, voltou ou trocou de disco entre dois ticks, uma vez ou mais, também a partir de uma foto parada:
-  sai cada parada e cada marca que a âncora publicada não previa, em ordem, no instante dela, com a projeção da faixa
-  dela. A âncora de uma marca do disco e do deck de agora sai da fila de agora, como a do tick; a do disco que já
-  saiu do deck (a pausa curta, a retomada e o `load` de outro disco antes do tick), só do que a marca diz: o rótulo e
-  a velocidade 1 até a marca seguinte. O tick que já vê o prato parado ou trocado, antes da marca do bloco dele,
+- a âncora de antes, adiantada em amostras até agora, deixa de bater com a que sairia agora, a menos de meia amostra: o
+  mapa mudou (passagem aplicada ou trocada, seek, a volta ou o fim do disco entrando na janela, buffering, pausa,
+  retomada, virada, parada). A descontinuidade que já tocou sai com o `t`, o rótulo e a fase de cada marca que a âncora
+  de antes não previa (a estrutural, ou o rótulo fora do que ela dizia ali; o salto que ela previa, como o de cada bloco
+  de uma curva, não conta), e, sem curva, os saltos que tocaram depois dela no mesmo deck vão junto, cada um num trecho
+  a 1 com o `pos` dele. A pausa, o buffering e o fim saem com o `t` da amostra em que o prato parou e o rótulo do
+  próximo bloco (a retomada não salta). A âncora que sairia igual à de antes adiantada não publica nada. Com curva que
+  acabou entre a marca e agora, a âncora supõe que nada saltou desde o fim dela (o tick seguinte corrige o que tiver
+  saltado);
+- o prato parou (a pausa, o buffering, o fim), voltou ou trocou de disco entre dois ticks, uma vez ou mais, também a
+  partir de uma foto parada: sai cada parada e cada marca que a âncora publicada não previa, em ordem, no instante
+  dela, com a projeção da faixa dela (a de agora com a faixa da marca, pela mesma lista de campos, para o disco que
+  entrou e saiu entre os dois ticks). A âncora de uma marca do disco e do deck de agora sai da fila de agora, como a
+  do tick; a do disco que já saiu do deck (a pausa curta, a retomada e o `load` de outro disco antes do tick), só do
+  que a marca diz: o rótulo, a curva do deck dela se ainda vale ali, e a velocidade 1 até a marca seguinte. O tick que já vê o prato parado ou trocado, antes da marca do bloco dele,
   conta a quebra no instante dele;
 - a projeção muda (faixa, status, fila, volume, abaixamento, capacidades): só com a fila ou o volume, a âncora
   publicada segue igual;
@@ -309,8 +315,12 @@ As fixtures ficam em [`protocolo-remoto/v1/fixtures/`](protocolo-remoto/v1/fixtu
     stream seca no meio de um bloco, e o buffering começa ali; o stream solta 20 ms e trava de novo com o buffering
     publicado, e a retomada e a pausa logo depois de uma pausa publicada;
   - `paradas-e-load`: a retomada de um bloco só e a pausa de novo a partir de uma foto parada, e a pausa curta, a
-    retomada e o `load` de outro disco no mesmo deck antes do tick que vê a pausa seguinte, cada transição com a
-    faixa dela;
+    retomada e o `load` de outro disco no mesmo deck antes do tick que vê a pausa seguinte, e o `load` de outro disco
+    com o leitor ainda sem bloco (o disco novo em buffering desde o instante em que o prato calou), cada transição com
+    a faixa dela;
+  - `fim-e-trocas`: o fim natural no meio de um bloco, a reconexão antes de o motor dizer `ended`, outro disco que entra
+    e sai entre dois ticks (com a projeção dele), e o fim de um disco, o começo do seguinte e as voltas dele entre os
+    mesmos dois ticks, antes do tick que vê a pausa;
   - `repetir`: a volta no meio de um callback (o último bloco do arquivo é curto), prevista quando chega à fila e com a
     âncora nova no primeiro bloco dela;
   - `repetir-curto`: um som de 100 ms no Repetir, com mais voltas na janela do que cabem nos 8 segmentos;

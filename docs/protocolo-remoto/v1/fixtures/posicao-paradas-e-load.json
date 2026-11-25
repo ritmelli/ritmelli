@@ -1,6 +1,6 @@
 {
  "cenario": "paradas-e-load",
- "descricao": "Paradas entre dois ticks com o prato ja parado na foto de antes (a retomada de um bloco so e a pausa de novo), e a pausa curta, a retomada e o load de outro disco no mesmo deck antes do tick que ve a pausa seguinte: cada transicao no instante dela, com a faixa dela.",
+ "descricao": "Paradas entre dois ticks com o prato ja parado na foto de antes (a retomada de um bloco so e a pausa de novo), e a pausa curta, a retomada e o load de outro disco no mesmo deck antes do tick que ve a pausa seguinte, e o load de outro disco com o leitor ainda sem bloco (o disco novo em buffering desde o instante em que o prato calou): cada transicao no instante dela, com a faixa dela.",
  "relogio": {
   "t0_ms": 1000000.0,
   "taxa": 48000
@@ -484,6 +484,103 @@
       "faixa": "B",
       "pos": 0.03,
       "t": 1000370.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "troca",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 11,
+    "origem": "mudanca",
+    "agora": 1000420.0,
+    "estado": {
+     "status": "buffering",
+     "faixa": {
+      "id": "C",
+      "title": "Disco C",
+      "channel": null,
+      "duration": 3.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "C",
+      "pos": 0.0,
+      "t": 1000400.0,
+      "taxa": 48000,
+      "anda": false,
+      "segmentos": []
+     }
+    }
+   }
+  },
+  {
+   "evento": "retomada",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 12,
+    "origem": "mudanca",
+    "agora": 1000490.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "C",
+      "title": "Disco C",
+      "channel": null,
+      "duration": 3.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "C",
+      "pos": 0.0,
+      "t": 1000430.0,
       "taxa": 48000,
       "anda": true,
       "segmentos": [
