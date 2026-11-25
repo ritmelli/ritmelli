@@ -79,8 +79,11 @@ function ConfereArvore($o) {
     $o, $rel = $pilha.Pop()
     if ($o.Reparse) { return "$($o.Caminho) is a reparse point" }
     $partes = @($rel -split '\\' | Where-Object { $_ })
-    # a propria microfone\log so como pasta: um arquivo com esse nome nao e o log do filtro
-    $noLog = $partes.Count -ge 2 -and $partes[0] -eq 'microfone' -and $partes[1] -eq 'log' -and ($partes.Count -gt 2 -or $o.Pasta)
+    # a propria microfone\log so como pasta: um arquivo com esse nome nao e o log do filtro. Ordinal, como o lower() do
+    # app: o -eq compara pela cultura e acharia 'log' igual a 'log' com um caractere invisivel no fim
+    $ord = [StringComparison]::OrdinalIgnoreCase
+    $noLog = $partes.Count -ge 2 -and [string]::Equals($partes[0], 'microfone', $ord) -and
+             [string]::Equals($partes[1], 'log', $ord) -and ($partes.Count -gt 2 -or $o.Pasta)
     $m = ConfereObjeto $o $noLog
     if ($m) { return $m }
     if ($o.Pasta) {
