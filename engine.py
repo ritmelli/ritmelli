@@ -27,6 +27,7 @@ import batida
 import compasso
 import fx
 import i18n
+import metricas
 import pastas
 import sonoridade
 from microfone import preset  # o preset do efeito no filtro: importado aqui, nunca na thread da saida para o jogo
@@ -376,6 +377,19 @@ def _catmull(x, phi):
     return y
 
 
+# as chamadas a Rubber Band (o esticar e o esticar_saida), de qualquer thread: a janela do evento "audio" conta quantas
+# comecaram, o tempo com alguma em curso e as secas do anel no meio delas (o metricas.SaudeAudio)
+RUBBER_BAND = metricas.EmCurso()
+PASSAGEM_DEPOIS_S = 5.0  # a seca ate isso depois da virada ainda conta como da passagem (secas_passagem)
+
+
+def _rubber_band(y, vel):
+    """O tom de y (n x 2) de volta ao original pela Rubber Band, com a velocidade vel de cada amostra."""
+    with RUBBER_BAND.roda():
+        return time_stretch(np.ascontiguousarray(y.T), SR, stretch_factor=1.0,
+                            pitch_shift_in_semitones=-12 * np.log2(vel)).T
+
+
 def esticar(x, s, n_sob, n_rampa, alvo):
     """A proxima no andamento da que sai: x (n x 2) tocado na velocidade s por n_sob amostras de saida, voltando
     a 1 em n_rampa (meio cosseno) e consumindo exatamente alvo amostras de x, para o resto do disco seguir sem
@@ -387,8 +401,7 @@ def esticar(x, s, n_sob, n_rampa, alvo):
     vel = np.concatenate([np.full(n_sob, s), 1 + k * c])
     phi = np.concatenate([[0.0], np.cumsum(vel)[:-1]])
     y = _catmull(x, phi)
-    z = time_stretch(np.ascontiguousarray(y.T), SR, stretch_factor=1.0,
-                     pitch_shift_in_semitones=-12 * np.log2(vel)).T
+    z = _rubber_band(y, vel)
     # a Rubber Band atrasa uns ms: o atraso no fim (velocidade 1, tom intacto) sai pela correlacao com y
     m, janela = len(y), SR // 2
     busca = min(SR // 10, len(z) - m)
@@ -416,8 +429,7 @@ def esticar_saida(x, s, n_rampa):
     vel = np.concatenate([1 + (s - 1) * c, np.full(max(0, int(resto / s)), s)])
     phi = np.concatenate([[0.0], np.cumsum(vel)[:-1]])
     y = _catmull(x, phi)
-    z = time_stretch(np.ascontiguousarray(y.T), SR, stretch_factor=1.0,
-                     pitch_shift_in_semitones=-12 * np.log2(vel)).T
+    z = _rubber_band(y, vel)
     m, janela = len(y), SR // 2
     busca = min(SR // 10, len(z) - janela)
     d = 0
@@ -1007,6 +1019,9 @@ class Injetor:
         self.volta_max = 0.0
         self.voltas = np.zeros(VOLTA_MS, np.int64)
         self._seca_dita = -1e9
+        # a mesma medida e mais um pouco por janela, para o evento "audio" (metricas.py): a de cima segue a do
+        # /api/state, desde que o Injetor abriu
+        self.saude = metricas.SaudeAudio(SR)
         self._para48k_fx = _Para48k()  # a voz com efeito que o filtro devolve tem a sua
         self._resto_fx = np.zeros(0, np.float32)
         self._resto_pista = np.zeros(0, np.float32)  # e a voz da pista (ja a 48 kHz)
@@ -1035,7 +1050,9 @@ class Injetor:
         10 s) quando secou."""
         if self.folga_min is None or fila < self.folga_min:
             self.folga_min = fila
-        if fila == 0:
+        seca = fila == 0
+        self.saude.fila(fila, passagem=seca and self.motor.em_passagem(), esticando=seca and RUBBER_BAND.em_curso())
+        if seca:
             self.secas += 1
             if time.monotonic() - self._seca_dita > 10.0:
                 self._seca_dita = time.monotonic()
@@ -1151,6 +1168,11 @@ class Injetor:
                         self._solta_efeito()
                     vivos = m.vivos() if m is not None else []
                     self.leitores = len(vivos)
+                    mo = self.motor
+                    self.saude.volta(volta, anel=m is not None, leitores=self.leitores,
+                                     fx_no_filtro=self.efeito_no_filtro, voz_taxa=self.voz_taxa,
+                                     reserva=time.monotonic() - mo._voz_anel_em >= VOZ_VIVA_S,  # noqa: SLF001
+                                     totais=(mo.preparos, *RUBBER_BAND.total()))
                     if vivos:
                         donos = tuple(sorted(lt.dono for lt in vivos))
                         fila = m.na_fila()
@@ -1275,6 +1297,8 @@ class Engine:
         self._eco_plano = None   # (audio, quadros depois da virada) do plano medido, ate a virada
         self._entrando = None    # [quadros, feitos, nivel, cheia]: a proxima subindo
         self.virou = None        # (o que saiu, o que entrou, a tag) para o servidor tirar da fila
+        self.preparos = 0        # as passagens preparadas desde que o motor abriu (o evento "audio" conta por janela)
+        self._virou_em = -1e9    # monotonic da ultima virada (a seca logo depois dela e da passagem)
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
         self.pronto_falhou = None  # a tag da proxima que nao decodificou: o servidor nao prepara de novo
         # o servidor religa a parecida do Automatico cujo stream caiu: religar_stream(disco, onde parou, desistir), na
@@ -2252,9 +2276,19 @@ class Engine:
                 self._deck.ahead = 10 ** 9  # o fim deste inteiro na memoria para medir (45 s sao ~17 MB)
                 atual = self._deck
             self._onda_pede(track)
+            self.preparos += 1
             threading.Thread(target=self._reader, args=(1, track, 0.0, d), daemon=True).start()
             threading.Thread(target=self._mede, args=(atual, d, self.track), daemon=True).start()
             return True
+
+    def em_passagem(self):
+        """Do comeco do preparo da proxima ate PASSAGEM_DEPOIS_S depois da virada."""
+        return self._pronto is not None or time.monotonic() - self._virou_em < PASSAGEM_DEPOIS_S
+
+    def saude_audio(self):
+        """A janela do evento "audio" do Injetor de agora (metricas.SaudeAudio), ou None sem audio aberto."""
+        inj = self._injetor
+        return inj.saude if inj is not None else None
 
     def cancelar_pronto(self):
         with self._qlock:
@@ -2807,6 +2841,7 @@ class Engine:
             self.pos = prox.q[0][0] if prox.q else 0.0
             self.ended = False
             self.virou = (sai, prox.track, tag)
+            self._virou_em = time.monotonic()
 
     # visor de DJ do tema ----------------------------------------------------
     def _onda_pede(self, track):

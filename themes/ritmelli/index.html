@@ -4830,7 +4830,8 @@ body.mesa-dj .palco .tecla.pisando > .pe-mesa .tampa-pisada { display: inline; }
 </dialog>
 
 <!-- o aviso dos dados de uso e dos erros, uma vez, para quem ainda nao escolheu (a situacao "decidir": atualizou em
-     silencio de uma versao sem eles, sem passar pela pagina do instalador). Fechar sem escolher pergunta de novo depois -->
+     silencio de uma versao sem eles, sem passar pela pagina do instalador) e para quem ligou num texto de antes do de
+     agora (o texto do GET /api/metricas). Fechar sem escolher pergunta de novo depois -->
 <dialog id="dlg-metricas" aria-labelledby="dm-t">
   <form method="dialog" class="dlg">
     <h2 id="dm-t" data-i18n="metrics.label"></h2>
@@ -8809,12 +8810,15 @@ async function escolherMetricas(ligar) {
 }
 $('#dd-met-btn').addEventListener('click', e => escolherMetricas(e.currentTarget.dataset.ligar === '1'));
 let metricasPedidas = false;
+// o aviso: para quem nao escolheu, e para quem ligou num texto de antes do de agora (o Esc nao grava, e ele volta)
+const metricasPrecisa = m => m.situacao === 'decidir' || (m.situacao === 'ligada' && m.texto < m.texto_atual);
 async function metricasSePrecisar() {
   if (metricasPedidas || dialogoAberto()) return;
   const m = await lerMetricas();
-  if (!m || m.situacao !== 'decidir' || dialogoAberto()) return;
+  if (!m || !metricasPrecisa(m) || dialogoAberto()) return;
   metricasPedidas = true;
   $('#dlg-metricas').showModal();
+  if (m.situacao === 'ligada') $('#dlg-metricas button[value=sim]').focus();   // quem ja enviava segue com um Enter
 }
 $('#dlg-metricas').addEventListener('close', () => {
   const v = $('#dlg-metricas').returnValue;

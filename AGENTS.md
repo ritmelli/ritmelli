@@ -60,7 +60,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 | Troca de voz | `pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` | `testa_pedal_voz`, `testa_vozes`, `testa_pista`, `testa_conversor` |
 | Atualizações | `atualizacao.py`, `atualizador.py`, `instalador/atualizacao/` | `testa_atualizacao`, `testa_atualizador` e `instalador/atualizacao/testa_parcial.py` |
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
-| Dados de uso | `metricas.py` | `testa_metricas` |
+| Dados de uso | `metricas.py` e o aviso deles no tema | `testa_metricas`; o aviso, `fitcheck.py --metricas` (sobe os próprios `--mock --metricas-teste`, sem rede) |
 | Troca de nome | `migra.py` | `testa_migra` |
 | Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e um `library.json` com `[]` |
 | Sem teste | `batida.py`, `compasso.py`, `andamento.py`, `janela.py`, `winvol.py` | o PR diz como conferiu |

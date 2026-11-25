@@ -176,6 +176,12 @@ jobs:
             exit 0
           }
           exit $cod
+      # o aviso dos dados de uso no tema (o fitcheck --metricas): um --mock --metricas-teste por situação e por botão,
+      # com a rede presa numa armadilha; confere quando o aviso abre, o que cada botão grava e que nada sai pela rede
+      - name: Aviso dos dados de uso
+        id: metricas
+        if: ${{ !cancelled() && steps.areas.outputs.tela == 'true' }}
+        run: python dev/fitcheck.py --metricas
       - name: Prints
         if: always() && (steps.tela.outcome == 'failure' || steps.tela.outputs.mudou == 'true')
         uses: actions/upload-artifact@v7
@@ -190,10 +196,12 @@ jobs:
         env:
           APLICA: ${{ steps.areas.outputs.tela }}
           MUDOU: ${{ steps.tela.outputs.mudou }}
+          METRICAS: ${{ steps.metricas.outcome }}
         run: |
           if (Test-Path "$env:RUNNER_TEMP\resumo.md") {
             $texto = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md"
             if ($env:MUDOU -eq 'true') { $texto += "`n" + $(if ($env:EXTRACAO -eq 'true') { '❌ com a etiqueta extracao-tema, print que mudou bloqueia' } else { '⚠️ sem a etiqueta extracao-tema, print que mudou não bloqueia: as diferenças estão no artefato `tela`' }) }
+            $texto += "`n- $(if ($env:METRICAS -eq 'success') { '✅' } elseif ($env:METRICAS -eq 'failure') { '❌' } else { "não rodou ($env:METRICAS):" }) o aviso dos dados de uso (``fitcheck.py --metricas``)"
           }
           elseif ($env:APLICA -ne 'true' -and $env:APLICA) { $texto = '**Tela:** não se aplica (o PR não mexe na tela e não tem a etiqueta extracao-tema)' }
           else { $texto = '**Tela:** ❌ não chegou a rodar (ver a execução)' }

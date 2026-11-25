@@ -129,14 +129,17 @@ def prateleira():
     return itens
 
 
-def sobe_servidor(tmp, porta, log, raiz=RAIZ):
+def sobe_servidor(tmp, porta, log, raiz=RAIZ, config=None, extras=(), env=None):
     """O servidor --mock do checkout raiz na porta, com a prateleira de mentira: o so_mock.Filho dele. Sai antes de
     qualquer pedido se a porta e a 8799, se alguem ja responde nela ou se quem responde nao e o filho vivo com o
-    "mock": true."""
+    "mock": true. config: o config.json dos dados dele, gravado antes de subir; extras: mais argumentos do server.py
+    (o --metricas-teste do fitcheck --metricas); env: mais variaveis para ele (a rede presa numa armadilha)."""
     dados, lib = tmp / "dados", tmp / "local" / "Ritmelli" / "library"
     dados.mkdir(parents=True)
     lib.mkdir(parents=True)
     (dados / "library.json").write_text(json.dumps(prateleira(), ensure_ascii=False), encoding="utf-8")
+    if config is not None:
+        (dados / "config.json").write_text(json.dumps(config), encoding="utf-8")
     dur = next(d[3] for d in DISCOS if d[0] == NO_PRATO)
     with wave.open(str(lib / f"{NO_PRATO}.wav"), "wb") as w:
         w.setnchannels(1)
@@ -146,8 +149,8 @@ def sobe_servidor(tmp, porta, log, raiz=RAIZ):
     # sys.executable e o python de verdade: o "python" do PATH, com a LOCALAPPDATA trocada, instalaria outro
     try:
         return so_mock.sobe([sys.executable, str(raiz / "server.py"), "--mock", "--no-browser", "--port", str(porta),
-                             "--data-dir", str(dados)], porta, cwd=raiz, stdout=log, stderr=subprocess.STDOUT,
-                            env=dict(os.environ, LOCALAPPDATA=str(tmp / "local")))
+                             "--data-dir", str(dados), *extras], porta, cwd=raiz, stdout=log, stderr=subprocess.STDOUT,
+                            env=dict(os.environ, **(env or {}), LOCALAPPDATA=str(tmp / "local")))
     except so_mock.Recusa as ex:
         sys.exit(f"{ex} (ver {log.name})")
 

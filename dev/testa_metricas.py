@@ -1,7 +1,9 @@
 """Confere os dados de uso e os erros (metricas.py, o PRIVACIDADE.md): so sai o que esta no EVENTOS, nada sai sem a
 escolha de quem usa, desligar joga fora o que nao saiu, o uso soma o que o motor faz, o "ativo" sai uma vez por dia, e
-o erro vai sem caminho de pasta, sem o que esta entre aspas e sem variavel. Nao usa a rede: o envio e trocado por uma
-lista.
+o erro vai sem caminho de pasta, sem o que esta entre aspas e sem variavel. E o "audio": a janela da saude da saida
+para o jogo (a Rubber Band que atravessa duas janelas, o desligar no meio de uma), so com a escolha no texto de agora,
+a versao do texto pela escolha do app ou do instalador (texto 1 ou 2, e o aviso de novo) e o --metricas-teste. Nao usa
+a rede: o envio e trocado por uma lista.
 
     python dev/testa_metricas.py                 os testes
     python dev/testa_metricas.py --de-verdade    tambem manda um evento "teste_de_envio" ao PostHog e um erro de
@@ -38,11 +40,13 @@ class Motor:
         return self._st
 
 
-def nova(cfg=None, instalador=None, tmp=None):
+def nova(cfg=None, instalador=None, tmp=None, texto_inst=None):
+    # a escolha do instalador (o Metricas do HKLM) e a versao do texto dele (o MetricasVersao), trocadas por falsas
     met.escolha_do_instalador = lambda: instalador
+    met.texto_do_instalador = lambda: texto_inst
     cfg = cfg if cfg is not None else {}
-    # o gravar e o da App: muda o metricas do cfg (e la grava o config.json, sob a trava do cfg)
-    m = met.Metricas(cfg, lambda ligar: cfg.update(metricas=ligar), estado=Path(tmp) / "metricas.json")
+    # o gravar e o da App (grava_cfg): muda o cfg (e la grava o config.json, sob a trava do cfg)
+    m = met.Metricas(cfg, lambda **mud: cfg.update(mud), estado=Path(tmp) / "metricas.json")
     m.fora = False  # pelo codigo ficaria "fora": o teste liga
     enviados = []
     m.envia = lambda url, dados, cab: enviados.append((url, dados, cab)) or 200
@@ -57,7 +61,7 @@ with tempfile.TemporaryDirectory() as tmp:
     confere(m.situacao() == "ligada", "o instalador marcou: ligada")
     m, _ = nova(cfg={"metricas": False}, instalador=True, tmp=tmp)
     confere(m.situacao() == "desligada", "a escolha feita no Ritmelli vale sobre a do instalador")
-    m2 = met.Metricas({}, lambda ligar: None, mock=True, estado=Path(tmp) / "x.json")
+    m2 = met.Metricas({}, lambda **mud: None, mock=True, estado=Path(tmp) / "x.json")
     confere(m2.situacao() == "fora", "no --mock: fora, nunca envia")
 
     # desligada ou sem escolha: nada sai
@@ -143,6 +147,181 @@ with tempfile.TemporaryDirectory() as tmp:
     m.escolhe(False)
     m._manda_fila()
     confere(m.fila.empty() and not env and m.cfg["metricas"] is False, "desligar descarta a fila e nada sai")
+
+    # a versao do texto: a escolha do app ou a do instalador, com texto 1 (sem versao) ou 2, e o aviso de novo
+    def aviso(pub):
+        """A mesma regra do metricasSePrecisar do tema."""
+        return pub["situacao"] == "decidir" or (pub["situacao"] == "ligada" and pub["texto"] < pub["texto_atual"])
+
+    casos = [
+        # (cfg, instalador, MetricasVersao, situacao, texto, aviso)
+        ({}, None, None, "decidir", 0, True),
+        ({}, True, None, "ligada", 1, True),
+        ({}, True, 2, "ligada", 2, False),
+        ({}, False, None, "desligada", 1, False),
+        ({}, False, 2, "desligada", 2, False),
+        ({"metricas": True}, None, None, "ligada", 1, True),
+        ({"metricas": True, "metricas_texto": 2}, None, None, "ligada", 2, False),
+        ({"metricas": False}, True, 2, "desligada", 1, False),
+        ({"metricas": False, "metricas_texto": 2}, None, None, "desligada", 2, False),
+        ({"metricas": True}, False, 2, "ligada", 1, True),  # a escolha e do app: a versao e a dele, nao a do HKLM
+        ({"metricas": True, "metricas_texto": 2}, False, None, "ligada", 2, False),
+        ({"metricas": True, "metricas_texto": "2"}, None, None, "ligada", 1, True),  # versao torta: a de antes
+    ]
+    for cfg, inst, vers, sit, txt, av in casos:
+        m, _ = nova(cfg=dict(cfg), instalador=inst, texto_inst=vers, tmp=tmp)
+        pub = m.publico()
+        confere(pub["situacao"] == sit and pub["texto"] == txt and pub["texto_atual"] == met.TEXTO == 2
+                and aviso(pub) == av and m.texto() == txt,
+                f"app {cfg}, instalador {inst} com a versao {vers}: {sit}, texto {txt}, "
+                f"{'com' if av else 'sem'} aviso ({pub})")
+    m2 = met.Metricas({}, lambda **mud: None, mock=True, estado=Path(tmp) / "x.json")
+    confere(m2.publico()["texto"] == 0, "fora (o --mock): texto 0")
+    for ligar in (True, False):
+        m, _ = nova(cfg={"metricas": True}, instalador=True, texto_inst=None, tmp=tmp)
+        m.escolhe(ligar)
+        pub = m.publico()
+        confere(m.cfg == {"metricas": ligar, "metricas_texto": 2} and pub["texto"] == 2 and not aviso(pub),
+                f"escolher {'Enviar' if ligar else 'Nao enviar'} grava o metricas e o metricas_texto 2 juntos, e o "
+                f"aviso nao volta ({m.cfg})")
+
+    # o --metricas-teste: liga sem ler o instalador, guarda na memoria e o erro nem sai
+    met.escolha_do_instalador, met.texto_do_instalador = (lambda: True), (lambda: 2)
+    mt = met.Metricas({}, lambda **mud: None, mock=True, estado=Path(tmp) / "t.json", teste=True)
+    confere(mt.situacao() == "decidir" and mt.texto() == 0,
+            f"--metricas-teste: sem ler o instalador (que diria ligada), decidir ({mt.situacao()})")
+    mt.cfg["metricas"] = True
+    mt.evento("ativo", primeira_vez=True)
+    mt._manda_fila()
+    mt.erro(ValueError, ValueError("x"), None, "teste")
+    confere([e["event"] for e in mt.guardados] == ["ativo"] and not mt.erros,
+            "--metricas-teste: o lote fica na memoria, e o erro nao vai")
+
+    # o "audio": a janela da saude da saida para o jogo, com um relogio de mentira
+    class Relogio:
+        t = 100.0
+
+        def __call__(self):
+            return self.t
+
+    rel = Relogio()
+    rb = met.EmCurso(rel)
+
+    class MotorComAudio(Motor):
+        def __init__(self):
+            super().__init__()
+            self.preparos = 0
+            self.janela = met.SaudeAudio(48000)
+
+        def saude_audio(self):
+            return self.janela
+
+    def volta(e, s=0.01, **kw):
+        """Uma volta do Injetor: s segundos no relogio, com o estado dado (o resto, o de um microfone normal)."""
+        rel.t += s
+        est = {"anel": True, "leitores": 1, "fx_no_filtro": False, "reserva": False, "voz_taxa": 48000}
+        est.update(kw)
+        e.janela.volta(s, totais=(e.preparos, *rb.total()), **est)
+
+    def audios(m):
+        evs = [m.fila.get_nowait() for _ in range(m.fila.qsize())]
+        return [x["properties"] for x in evs if x["event"] == "audio"], evs
+
+    m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
+    e = MotorComAudio()
+    m.engine = e
+    volta(e)
+    e.janela.fila(4800)
+    m._confere_audio()  # a escolha no texto de agora passa a valer: a janela comeca aqui, o de antes some
+    volta(e)
+    e.janela.fila(960)  # 20 ms
+    e.preparos += 1  # uma passagem preparada
+    volta(e)
+    e.janela.fila(0, passagem=True)  # seca no meio dela
+    rb_ctx = rb.roda()
+    rb_ctx.__enter__()  # a Rubber Band comeca nesta janela...
+    volta(e, 2.0)
+    volta(e, 0.05, leitores=0)  # o leitor sumiu com o anel aberto
+    volta(e, 3.0, leitores=0)
+    volta(e, 0.01, leitores=2)
+    m._fecha_uso()  # ...e a janela fecha com ela em curso
+    a1, evs = audios(m)
+    confere(len(a1) == 1 and set(a1[0]) - permitidas == met.EVENTOS["audio"],
+            f"o 'audio' sai com exatamente as propriedades do EVENTOS, alem das comuns "
+            f"({sorted(set(a1[0]) - permitidas) if a1 else a1})")
+    fora = [(x["event"], k) for x in evs for k in x["properties"] if k not in met.EVENTOS[x["event"]] | permitidas]
+    confere(not fora, f"o 'audio' so com as propriedades da lista, alem das comuns ({fora})")
+    a1 = a1[0] if a1 else {}
+    confere(a1.get("secas") == 1 and a1.get("secas_passagem") == 1 and a1.get("secas_esticamento") == 0
+            and a1.get("folga_min_ms") == 0.0 and a1.get("passagens") == 1 and a1.get("esticamentos") == 1
+            and a1.get("volta_max_ms") == 3000.0 and a1.get("leitor_perdido") == 1
+            and a1.get("leitor_perdido_s") == 3 and a1.get("voz_taxa") == 48000,
+            f"a primeira janela conta o que passou nela, e so depois do comeco ({a1})")
+    confere(a1.get("esticamento_ms") == 5060, f"a Rubber Band em curso no fim da janela: o tempo ate ali ({a1})")
+    volta(e, 1.0, fx_no_filtro=True, reserva=True)
+    e.janela.fila(0, esticando=True)  # seca na janela seguinte, com a mesma chamada em curso
+    volta(e, 2.0)
+    rel.t += 0.5
+    rb_ctx.__exit__(None, None, None)  # a chamada acaba na seguinte
+    volta(e, 1.0)
+    m._fecha_uso()
+    a2, _ = audios(m)
+    a2 = a2[0] if a2 else {}
+    confere(a2.get("esticamento_ms") == 3500 and a2.get("esticamentos") == 0 and a2.get("secas_esticamento") == 1
+            and a2.get("secas") == 1 and a2.get("passagens") == 0 and a2.get("leitor_perdido") == 0,
+            f"a Rubber Band que comecou na janela de antes entra no esticamento_ms das duas, e a seca dela e desta ({a2})")
+    confere(a2.get("fx_no_filtro_s") == 2 and a2.get("mic_reserva_s") == 2,
+            f"o tempo com o efeito no filtro e com a voz pelo microfone de reserva ({a2})")
+
+    # o desligar no meio da janela: o que ela contou some, e a de depois comeca ao ligar de novo
+    volta(e)
+    e.janela.fila(0)
+    m.escolhe(False)
+    m._confere_audio()
+    m._fecha_uso()
+    confere(not audios(m)[0], "desligada no meio da janela: o 'audio' nao sai")
+    volta(e)
+    e.janela.fila(0)
+    e.janela.fila(0)
+    m.escolhe(True)
+    m._confere_audio()
+    volta(e)
+    e.janela.fila(0)
+    m._fecha_uso()
+    a3, _ = audios(m)
+    confere(len(a3) == 1 and a3[0]["secas"] == 1, f"ligada de novo: a janela comeca ali, sem o que veio antes ({a3})")
+
+    # ligada num texto de antes: os outros eventos saem, o "audio" nao, ate o Enviar do aviso de novo
+    m, env = nova(cfg={"metricas": True}, tmp=tmp)
+    e = MotorComAudio()
+    m.engine = e
+    m._confere_audio()
+    volta(e)
+    e._st = "playing"
+    m._olha(5)
+    m._fecha_uso()
+    a4, evs = audios(m)
+    confere(not a4 and [x["event"] for x in evs] == ["uso"], f"ligada no texto 1: o 'uso' sai, o 'audio' nao ({evs})")
+    m.escolhe(True)
+    m._confere_audio()
+    volta(e)
+    m._fecha_uso()
+    confere(len(audios(m)[0]) == 1, "o Enviar do aviso, no texto 2: o 'audio' passa a sair")
+    m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
+    m.engine = Motor()  # o --mock, ou o audio fechado: sem a janela
+    m._confere_audio()
+    m._fecha_uso()
+    confere(not audios(m)[0], "sem Injetor (o --mock, o audio fechado): nenhum 'audio'")
+
+    # o instalador grava a versao do texto de agora, e a politica lista cada campo do "audio"
+    iss = (RAIZ / "instalador" / "ritmelli.iss").read_text(encoding="utf-8-sig")
+    reg = re.search(r'ValueName: "MetricasVersao"; ValueData: "(\d+)"; Flags: ([^;]+); Check: (\w+)', iss)
+    confere(reg is not None and int(reg.group(1)) == met.TEXTO and reg.group(2).split() ==
+            ["uninsdeletevalue", "uninsdeletekeyifempty"] and reg.group(3) == "GravaMetricas",
+            f"o instalador grava o MetricasVersao {met.TEXTO}, sob o GravaMetricas ({reg and reg.groups()})")
+    pol = (RAIZ / "PRIVACIDADE.md").read_text(encoding="utf-8")
+    sem = sorted(c for c in met.EVENTOS["audio"] if pol.count(f"`{c}`") < 2)
+    confere(not sem, f"o PRIVACIDADE.md lista cada campo do 'audio', nas duas linguas (faltam: {sem})")
 
     # a mensagem do erro, limpa
     casos = {
