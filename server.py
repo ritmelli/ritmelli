@@ -181,17 +181,6 @@ def nome_da_musica(titulo, inteiro=False):
     return " ".join(re.sub(r"[^a-z ]", " ", t).split())
 
 
-def nome_da_musica(titulo, inteiro=False):
-    """O nome da musica no titulo, minusculo, sem acento e sem pontuacao: o que vem depois do " - ", sem parenteses nem
-    colchetes ("O REI DA CACIMBINHA - MURIÇOCA (Ao Vivo)" -> "muricoca"), como o _musica da mina; inteiro = o titulo
-    todo, so normalizado (onde a mina procura a que toca)."""
-    t = titulo or ""
-    if not inteiro:
-        t = re.sub(r"[(\[].*?[)\]]", " ", t.split(" - ")[-1])
-    t = "".join(c for c in unicodedata.normalize("NFKD", t.lower()) if not unicodedata.combining(c))
-    return " ".join(re.sub(r"[^a-z ]", " ", t).split())
-
-
 def auxiliar(modo):
     """O comando de um processo auxiliar (--yt, --andamento; ver o ritmelli.py): no app congelado, o proprio
     executavel; no codigo, o mesmo caminho pelo python."""
@@ -629,6 +618,7 @@ class App:
             lib_json.write_text((LIB / "library.json").read_text(encoding="utf-8"), encoding="utf-8")
         self.cfg = (json.loads(self.cfg_path.read_text(encoding="utf-8"))
                     if self.cfg_path.exists() else {})
+        self.cfg_lock = threading.Lock()  # quem muda o cfg depois de ligar muda e grava com ela (grava_cfg)
         self.cfg.pop("lan_token", None)  # a chave do link do celular de antes, que saiu (hoje e o pareamento.py)
         self.lan_ip = None
         self.celulares = par.Pareamento(data_dir / "celulares.json")
@@ -702,7 +692,7 @@ class App:
                 setattr(self.engine, k, v if isinstance(v, bool) else max(0.0, min(1.0, float(v))))
         self.engine.liga()
         # os dados de uso e os erros (metricas.py, #102): so saem com a escolha de quem usa, e nunca no --mock
-        self.metricas = met.Metricas(self.cfg, lambda: save_json(self.cfg_path, self.cfg), mock=mock)
+        self.metricas = met.Metricas(self.cfg, lambda ligar: self.grava_cfg(metricas=ligar), mock=mock)
         self.metricas.instala_ganchos()
         threading.Thread(target=self.metricas.vigia, args=(self.engine,), daemon=True, name="metricas").start()
         threading.Thread(target=self._vigia_fila, daemon=True).start()
@@ -782,12 +772,19 @@ class App:
         b = t and (t.get("ini") or t.get("fim"))
         return dict(x, bpm=round(b, 1)) if b else dict(x)
 
+    def grava_cfg(self, **mudancas):
+        """Muda e grava o config.json sob uma trava so: as escolhas do som, as boas-vindas e as metricas vem de threads
+        diferentes, e o json.dumps de uma nao pode ver o cfg mudando no meio (dictionary changed size during
+        iteration), nem uma gravacao velha trocar o arquivo depois da nova."""
+        with self.cfg_lock:
+            self.cfg.update(mudancas)
+            save_json(self.cfg_path, self.cfg)
+
     def save_cfg(self):
         e = self.engine
-        self.cfg.update(mic=e.devices["mic"], monitor=e.devices["monitor"],
-                        vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
-                        voice_mon_vol=e.voice_mon_vol, auto=self.auto, volume_auto=e.volume_auto)
-        save_json(self.cfg_path, self.cfg)
+        self.grava_cfg(mic=e.devices["mic"], monitor=e.devices["monitor"],
+                       vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
+                       voice_mon_vol=e.voice_mon_vol, auto=self.auto, volume_auto=e.volume_auto)
 
     def boas_vindas_pendentes(self):
         """As boas-vindas aparecem na primeira vez: prateleira vazia e nunca fechadas. Quem ja usava o app antes delas
@@ -795,8 +792,7 @@ class App:
         return not self.cfg.get("boas_vindas") and not self.lib.items
 
     def boas_vindas_vistas(self):
-        self.cfg["boas_vindas"] = True
-        save_json(self.cfg_path, self.cfg)
+        self.grava_cfg(boas_vindas=True)
 
     # jobs -----------------------------------------------------------------
     def new_job(self, label, play, alvo=None):
@@ -1990,6 +1986,10 @@ def build(app_state):
             resp.del_cookie(par.COOKIE_VELHO, path="/")
         return resp
 
+    def marca():
+        # o "mock": true do /api/state, tambem no 401: as ferramentas de dev/ (dev/so_mock.py) so falam com o --mock
+        return {"mock": True} if A.mock else {}
+
     @web.middleware
     async def guard(request, handler):
         # Host fixo (DNS rebinding) e Origin conhecida em escrita (CSRF). Da rede de casa, a API so
@@ -2017,7 +2017,7 @@ def build(app_state):
                 return web.json_response({
                     "ok": False, "parear": True, "desconectado": bool(chave),
                     "error": i18n.msg("server.pair.required", "This phone isn't connected to Ritmelli. On the "
-                                      "computer, click Phone and scan the QR code.")}, status=401)
+                                      "computer, click Phone and scan the QR code."), **marca()}, status=401)
         try:
             resp = await handler(request)
         except web.HTTPException:
@@ -2036,7 +2036,7 @@ def build(app_state):
     @r.get("/api/state")
     async def state(_):
         return web.json_response({**A.snapshot(), "pos": round(E.pos, 2),
-                                  "levels": dict(E.levels)})
+                                  "levels": dict(E.levels), **marca()})
 
     @r.get("/api/onda/{iid}")
     async def onda(request):

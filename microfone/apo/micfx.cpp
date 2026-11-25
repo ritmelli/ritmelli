@@ -215,7 +215,7 @@ static const wchar_t kSalvo[] = L"SOFTWARE\\Ritmelli\\Microfone";
 static bool TemHospede(const wchar_t* guid) {
     wchar_t sub[256];
     _snwprintf_s(sub, 256, _TRUNCATE, L"%s%s\\FxProperties", kCaptura, guid);
-    static wchar_t lista[4096];  // so no Initialize, que o motor chama em serie
+    wchar_t lista[4096];
     DWORD n = sizeof(lista);
     if (RegGetValueW(HKEY_LOCAL_MACHINE, sub, kMfxLista, RRF_RT_REG_MULTI_SZ, nullptr, lista, &n) != ERROR_SUCCESS) {
         return false;
@@ -1283,19 +1283,26 @@ static const CRegAPOProperties<1> g_props_hospede3(CLSID_Hospede[3], L"Ritmelli 
 static const APO_REG_PROPERTIES* const g_props_hospede[HOSPEDES] = {g_props_hospede0, g_props_hospede1,
                                                                     g_props_hospede2, g_props_hospede3};
 
+// Sem E/S no DllMain: ele roda com a trava do carregador do Windows, e abrir o log ali pode travar o audiodg. O
+// PreparaLog so monta o caminho; o "carregada" sai uma vez, no primeiro DllGetClassObject
 extern "C" BOOL WINAPI DllMain(HINSTANCE modulo, DWORD motivo, LPVOID) {
     if (motivo == DLL_PROCESS_ATTACH) {
         g_modulo = modulo;
         DisableThreadLibraryCalls(modulo);
         PreparaLog(modulo);
-        Log("carregada");
-    } else if (motivo == DLL_PROCESS_DETACH) {
-        Log("descarregada");
     }
     return TRUE;
 }
 
+static INIT_ONCE g_carregada = INIT_ONCE_STATIC_INIT;
+
+static BOOL CALLBACK LogaCarregada(PINIT_ONCE, PVOID, PVOID*) {
+    Log("carregada");
+    return TRUE;
+}
+
 STDAPI DllGetClassObject(REFCLSID clsid, REFIID riid, void** ppv) {
+    InitOnceExecuteOnce(&g_carregada, LogaCarregada, nullptr, nullptr);
     CFabrica* f = clsid == CLSID_MicFx ? &g_fabrica : nullptr;
     for (int s = 0; s < HOSPEDES && !f; s++) {
         if (clsid == CLSID_Hospede[s]) {

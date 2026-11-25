@@ -23,7 +23,8 @@ cheia o conhost demora e o interpretador fica preso ~10 ms (14/11, rastro do xpe
 --console mantem o console (para ver essa diferenca).
 
 Toca de verdade nesse microfone: quem estiver ouvindo ele (uma call, um jogo) ouve. Para sem tocar nada num microfone
-sem o filtro pronto (o motor rodaria a tarefa do instalador, que reinicia o audio do Windows).
+sem o filtro pronto (o motor rodaria a tarefa do instalador, que reinicia o audio do Windows). E manual, para um Windows
+de teste: com o Ritmelli ligado (a porta 8799 aceitando conexao), sai com erro antes de abrir o anel (dev/so_mock.py).
 """
 import argparse
 import collections
@@ -39,6 +40,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import engine as eng  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import so_mock  # noqa: E402
 
 AQUECE_S = 3.0  # o comeco (ffmpeg abrindo, o modelo da rede carregando) fica fora da medida
 CICLO_S = 40.0  # no --ciclo, esta musica comeca isso antes do fim
@@ -110,6 +114,7 @@ def main():
     ap.add_argument("--onde", type=float, nargs="?", const=30.0)
     ap.add_argument("--console", action="store_true")
     a = ap.parse_args()
+    so_mock.sai_se_o_app_ligado("o mede_folga")  # antes de abrir o anel e o microfone
     if not a.console and not sys.stdout.isatty() and not sys.stderr.isatty():
         import ctypes  # noqa: PLC0415
         ctypes.windll.kernel32.FreeConsole()  # sem console, como o executavel: a saida ja vai para arquivo ou cano

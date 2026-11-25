@@ -101,11 +101,37 @@ def ferramenta(nome):
     return str(p) if p.exists() else None
 
 
+TROCA_ESPERA_S = 1.0  # quanto o save_json tenta de novo a troca que o Windows recusa
+
+
 def save_json(path, data):
-    """Grava num .tmp e troca de uma vez: o app caindo no meio nunca deixa o arquivo pela metade."""
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(path)
+    """Grava num temporario e troca de uma vez: o app caindo no meio nunca deixa o arquivo pela metade. O temporario
+    tem nome unico e fica na pasta do destino (a troca so e de uma vez no mesmo disco): duas gravacoes ao mesmo tempo
+    no mesmo arquivo nao escrevem no mesmo temporario. O Windows recusa trocar o arquivo enquanto alguem o tem aberto,
+    inclusive a outra gravacao trocando o dela (PermissionError): tenta de novo por ate TROCA_ESPERA_S. Se falha, o
+    temporario sai."""
+    import tempfile
+    path = Path(path)
+    texto = json.dumps(data, ensure_ascii=False, indent=1)
+    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(texto)
+        fim = time.monotonic() + TROCA_ESPERA_S
+        while True:
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if time.monotonic() >= fim:
+                    raise
+                time.sleep(0.01)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 # ---------- a pasta protegida ----------
