@@ -301,6 +301,50 @@ async def papeis_no_guard():
             escrito = b"".join(c.args[0] for c in req._payload_writer.write.call_args_list).decode("utf-8")
             return re.findall(r"^event: (\w+)\ndata: (.*)$", escrito, re.M), True
 
+        # a text UTF-8 cannot encode (a lone surrogate in the JSON body), or a field of the wrong type, is refused from
+        # the paired phone and from the PC alike, in the queue and in the rename: the queue and the shelf never keep it
+        renamed = []
+        A.lib.update = lambda iid, **kw: renamed.append((iid, kw))
+        for who, kw in (("the paired phone", {"cookie": chave}), ("the PC", {"de": pc})):
+            for corpo in ({"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"},
+                          {"youtube_id": "dQw4w9WgXcQ", "channel": "\udfff"},
+                          {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&x=\ud800"},
+                          {"youtube_id": "dQw4w9WgXcQ", "title": ["x"]},
+                          {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7},
+                          {"youtube_id": "dQw4w9WgXcQ", "duration": True},
+                          {"url": ["v=dQw4w9WgXcQ"]}):
+                try:  # the body that gets through goes on to the rest of the app, which this one does not have
+                    resp, _, _ = await manda("POST", "/api/queue", corpo=corpo, handler=rota[("POST", "/api/queue")],
+                                             **kw)
+                    st = resp.status
+                except Exception as ex:
+                    st = f"accepted, then {type(ex).__name__}"
+                confere(st == 400, f"{who} cannot queue {str(corpo)[:70]} ({st})")
+            resp, j, _ = await manda("PATCH", "/api/library/d1", corpo={"title": "a\ud800b"},
+                                     handler=rota[("PATCH", "/api/library/{iid}")], **kw)
+            confere(resp.status == 400 and not renamed and j["error"].get("key") == "server.library.badTitle",
+                    f"{who} cannot rename a record with a lone surrogate, and the theme can say so ({resp.status}, "
+                    f"{renamed}, {j.get('error')})")
+            resp, j, _ = await manda("POST", "/api/queue", corpo={"youtube_id": "dQw4w9WgXcQ", "duration": 90000},
+                                     handler=rota[("POST", "/api/queue")], **kw)
+            confere(resp.status == 400 and j["error"].get("key") == "server.queue.tooLong",
+                    f"{who} cannot queue a search result longer than a day, and the theme can say so ({j.get('error')})")
+        del A.lib.update
+
+        # the SSE round is built once for every connection: a state that carries such a text anyway still goes out
+        # (as ASCII-only JSON), and the next state arrives whole
+        states = [{"status": "idle", "track": {"title": "a\ud800b"}}, {"status": "idle", "track": {"title": "Ação"}}]
+        leitura, A.leitura = A.leitura, lambda: (states.pop(0) if len(states) > 1 else states[0], 0.0)  # one per round
+        try:
+            ev, terminou = await eventos_ate_revogar(lambda: setattr(A, "closing", True), de=pc)
+        except Exception as ex:  # the round that fails to build raises in every connection waiting for it
+            ev, terminou = [("error", repr(ex))], False
+        finally:
+            A.leitura, A.closing = leitura, False
+        titles = [json.loads(d)["track"]["title"] for e, d in ev if e == "state"]
+        confere(terminou and titles == ["a\ud800b", "Ação"] and all(d.isascii() for _, d in ev),
+                f"the SSE sends the state with a lone surrogate, and the next one arrives whole ({titles or ev[:1]})")
+
         ev, terminou = await eventos_ate_revogar(lambda: A.celulares.desconecta(A.celulares.publico()[0]["id"]),
                                                  cookie=chave)
         nomes = [e for e, _ in ev]
@@ -670,6 +714,30 @@ def de_casa(srv, metodo, caminho, corpo=None, origem="127.0.0.2", cab=None):
         c.close()
 
 
+def first_events(srv, names, timeout=10):
+    """The first event of each name in names from the PC's real /api/events, parsed, and whether every data line was
+    ASCII."""
+    srv.confere()
+    c = http.client.HTTPConnection("127.0.0.1", srv.porta, timeout=timeout)
+    out, ascii_only, name = {}, True, None
+    try:
+        c.request("GET", "/api/events")
+        r = c.getresponse()
+        while set(names) - set(out):
+            line = r.readline()
+            if not line:
+                break
+            ascii_only = ascii_only and line.isascii()
+            line = line.decode("utf-8", "replace").rstrip("\r\n")
+            if line.startswith("event: "):
+                name = line[len("event: "):]
+            elif line.startswith("data: ") and name in names and name not in out:
+                out[name] = json.loads(line[len("data: "):])
+    finally:
+        c.close()
+    return out, ascii_only
+
+
 def recusa_do(srv, metodo, rota, corpo):
     """O status do pedido do PC (o so_mock levanta o HTTPError na recusa); 200 se passou."""
     try:
@@ -717,6 +785,21 @@ def ao_vivo(srv):
                   {"db": 6, "ms": 10 ** 9}, {"db": True, "ms": 100}, {"db": 12, "ms": 0.5},
                   {"db": 6, "ms": 10 ** 400}):
         confere(recusa_do(srv, "POST", "/api/abaixa", corpo) == 400, f"o /api/abaixa recusa {corpo}")
+
+    # the PC is held to the same queue rules as the remote session, and a rename with a lone surrogate is refused: the
+    # SSE stays up and carries the next change whole
+    for corpo in ({"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"}, {"youtube_id": "dQw4w9WgXcQ", "duration": -1},
+                  {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7}, {"youtube_id": "dQw4w9WgXcQ", "channel": 3}):
+        confere(recusa_do(srv, "POST", "/api/queue", corpo) == 400, f"the PC cannot queue {corpo}")
+    confere(recusa_do(srv, "PATCH", "/api/library/d2", {"title": "a\ud800b"}) == 400,
+            "the PC cannot rename a record with a lone surrogate")
+    title = "a-ha – Take On Me (versão)"
+    srv.api("PATCH", "/api/library/d2", {"title": title})
+    ev, ascii_only = first_events(srv, ("state", "library"))
+    shelf = {x.get("id"): x.get("title") for x in ev.get("library") or []}
+    confere("state" in ev and shelf.get("d2") == title and ascii_only and not srv.api("GET", "/api/state")["queue"],
+            f"the SSE stays up: the state and the renamed shelf arrive whole, as ASCII, and the queue is empty "
+            f"({shelf.get('d2')!r}, ascii {ascii_only})")
 
     try:
         de_casa(srv, "GET", "/api/themes")

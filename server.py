@@ -65,7 +65,7 @@ TICK = 1 / 15
 # a versao do contrato do Estado e do SSE (o "api" do snapshot, ver o API.md): sobe so quando muda o que um
 # cliente de hoje ja le (um campo ou um evento sai, muda de nome ou de sentido); campo, evento ou rota nova nao sobe
 API = 1
-REMOTO_DURACAO_MAX_S = 24 * 3600  # a duracao que o remoto manda na fila: o visor (engine.Onda) aloca por ela
+QUEUE_DURATION_MAX_S = 24 * 3600  # the duration a queue request may send: the visualizer (engine.Onda) allocates by it
 ESCUTA_S = 30.0  # tocando de fato esse tempo (ou 80% do disco, se for mais curto), conta uma escuta
 BUSCA_MAX = 200  # o carregar mais da busca vai ate aqui
 # o YouTube so libera todos os formatos com um runtime de JavaScript (pacote yt-dlp-ejs); o
@@ -436,6 +436,18 @@ fora = Fora()
 
 def thumb(yid):
     return f"https://i.ytimg.com/vi/{yid}/mqdefault.jpg" if yid else None
+
+
+def is_valid_unicode(*texts):
+    """Whether every text (None counts as empty) encodes as UTF-8. A JSON body can carry a lone surrogate (\\ud800),
+    which Python decodes into a str that cannot be encoded: kept on the shelf or in the queue, it breaks every save
+    of them."""
+    try:
+        for t in texts:
+            (t or "").encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def antes_das_parecidas(fila):
@@ -1439,7 +1451,7 @@ class App:
         j = None
         if not it:
             target = b.get("youtube_id") or b.get("url") or ""
-            if remoto and not isinstance(target, str):
+            if not isinstance(target, str):
                 target = ""
             target = target.strip()
             if not target:
@@ -1448,19 +1460,16 @@ class App:
             yid = m.group(1) if m else (target if YT_ID.match(target) else None)
             if remoto and not yid:
                 raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
-            if remoto and not (all(b.get(k) is None or isinstance(b[k], str) for k in ("title", "channel"))
-                               and (b.get("duration") is None or (isinstance(b["duration"], (int, float))
-                                                                  and not isinstance(b["duration"], bool)
-                                                                  and 0 <= b["duration"] <= REMOTO_DURACAO_MAX_S))):
-                # o tema e as passagens leem estes campos: texto (ou null) e a duracao em segundos (ou null, ate um dia)
-                raise ValueError("A remote session sends title and channel as text and duration as seconds (up to a "
-                                 "day).")
-            if remoto:
-                try:  # o texto vai a todo SSE: um substituto solto do JSON (\ud800) derrubaria o evento de todos
-                    for v in (target, b.get("title"), b.get("channel")):
-                        (v or "").encode("utf-8")
-                except UnicodeEncodeError:
-                    raise ValueError("A remote session sends text in valid Unicode.") from None
+            # every role, the PC included: the theme and the handoffs read these fields as text (or null), and the
+            # duration in seconds (or null, up to a day) wins over the one yt-dlp finds and sizes the visualizer
+            dur = b.get("duration")
+            if not (all(b.get(k) is None or isinstance(b[k], str) for k in ("title", "channel"))
+                    and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool) and dur >= 0))):
+                raise ValueError("Send title and channel as text and duration as seconds (up to a day).")
+            if dur is not None and dur > QUEUE_DURATION_MAX_S:  # a search result can be this long: the theme shows it
+                raise i18n.Recusa("server.queue.tooLong", "Ritmelli can't queue a video longer than a day.")
+            if not is_valid_unicode(target, b.get("title"), b.get("channel")):
+                raise ValueError("Send text in valid Unicode.")
             it = self.lib.by_youtube(yid) if yid else None
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],
@@ -2099,7 +2108,9 @@ def build(app_state):
         return {**s, "api": API, **marca()}, pos
 
     def evento(nome, dados):
-        return f"event: {nome}\ndata: {json.dumps(dados, ensure_ascii=False)}\n\n".encode("utf-8")
+        # ASCII-only JSON: a text that UTF-8 cannot encode (a lone surrogate) still makes an event, and the round that
+        # is built once for every connection never fails over it
+        return f"event: {nome}\ndata: {json.dumps(dados)}\n\n".encode("ascii")
 
     def monta_volta(antes):
         """A volta do SSE (Voltas): o state, a prateleira e os jobs com a chave de cada um e o evento em bytes, e o tick
@@ -2227,6 +2238,9 @@ def build(app_state):
     async def lib_patch(request):
         b = await body(request)
         kw = {k: b[k] for k in ("title",) if isinstance(b.get(k), str) and b[k].strip()}
+        if not is_valid_unicode(*kw.values()):  # the shelf keeps the new title in memory before it saves
+            return j_err(i18n.msg("server.library.badTitle", "The new name has a character Ritmelli can't save. "
+                                                             "Type it again."))
         if isinstance(b.get("rapido"), bool):
             kw["rapido"] = b["rapido"]  # nos Sons rapidos do celular pela mao, mesmo com mais de 15 s
         it = A.lib.update(request.match_info["iid"], **kw)
@@ -2257,8 +2271,8 @@ def build(app_state):
         b = await body(request)
         try:  # no laco, como o tocar e a prateleira: dois pedidos do mesmo video nao abrem dois downloads
             x, j = cmd.poe_na_fila(A, b, remoto=request["papel"] == "remoto")
-        except cmd.CorpoRecusado as ex:
-            return j_err(i18n.so_texto(str(ex)))
+        except cmd.CorpoRecusado as ex:  # the refusal the theme can show keeps its key
+            return j_err(getattr(ex.__cause__, "msg", None) or i18n.so_texto(str(ex)))
         # com o prato parado, tocar na hora pode esperar a reserva de avanco da linha: fora do laco, com o prato visto
         # aqui, logo depois de a entrada entrar (um Parar que chega antes da thread nao vira um tocar)
         tocou = await loop_().run_in_executor(None, cmd.toca_se_parado, A, x, A.engine.captura())
