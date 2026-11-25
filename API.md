@@ -59,7 +59,8 @@ Use `new EventSource('/api/events')`. Eventos:
 O servidor monta o `state`, a lista do `library`, a do `jobs` e o `tick` uma vez por volta (15 por segundo) e
 entrega a mesma volta a todas as conexões abertas; só o `caps` e a autorização são de cada uma. O `state` e o `tick` de
 uma volta saem da mesma captura: o `pos` é sempre da faixa do último `state` entregue. Uma conexão que fica para trás
-(a aba em segundo plano, a rede lenta) pula para a volta mais nova, sem atrasar as outras.
+(a aba em segundo plano, a rede lenta) pula para a volta mais nova, sem atrasar as outras. O `data` é JSON só em
+ASCII (o que não é ASCII vai como `\uXXXX`): um texto que o UTF-8 não codifica não derruba o evento.
 
 `levels` é RMS linear de 0 a 1, com queda suave (dBFS = 20·log10(r); -60 dB já é
 silêncio). `mic` = voz (mesmo mutada, para mostrar que o microfone vive), `track` = arquivo
@@ -262,7 +263,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/toggle` | - | pausa ou continua; pausar cala também os sons por cima |
 | `POST /api/pause` / `POST /api/resume` | - | idem, explícito |
 | `POST /api/stop` | - | descarrega o arquivo, desliga o `loop` e cala os sons por cima (a voz segue); o disco entra no `history` |
-| `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca, e responde `{"entry": ...}` com a entrada que tocou; logo depois de uma passagem automática, a entrada que acabou de entrar nela; dois juntos tocam uma só, e os dois respondem a mesma; fila vazia, ou o prato que trocou de disco no meio, = 409 |
+| `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca, e responde `{"entry": ...}` com a entrada que tocou; logo depois de uma passagem automática, a entrada que acabou de entrar nela; dois sobrepostos podem dividir o avanço, e aí tocam uma só e respondem a mesma quando a espera do segundo devolve a entrada (a regra em [Dois Próximos juntos](#dois-próximos-juntos)); fila vazia, ou o prato que trocou de disco no meio, = 409 |
 | `POST /api/prev` | - | Anterior do Spotify: com mais de 3 s de disco (ou nada antes dele), volta ao começo (`{"did": "inicio"}`); senão toca o último do `history`, e o disco do prato vai para o topo da `queue` (`{"did": "anterior"}`); nada no prato nem antes = 409 |
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
 | `POST /api/volume` | `{"vol": 0.5}` | só o volume da música no jogo, de 0 a 1 (fora disso, o limite), com a mesma validação do `vol` do `/api/settings`, e grava só ele no `config.json`; responde `{"ok": true, "vol": 0.5}`; sem número, 400. É o volume que o remoto pode mudar |
@@ -277,12 +278,12 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `GET /api/musica?q=<pedido>&n=3` | - | busca de música no YouTube Music, a do pedido falado: com o melhor resultado sendo um artista e o pedido só o nome dele, as mais tocadas dele ("Raul" -> Metamorfose Ambulante); senão, as músicas e vídeos da busca. Mesmo formato do `/api/search`; até 4 s, senão 502 (quem pede cai no `/api/search`) |
 | `POST /api/aquece` | - | alguém vai pedir (a mina chama quando uma fala começa): renova as conexões com o YouTube paradas há mais de 180 s no processo do endereço e nas reservas (o YouTube fecha a parada aos ~240 s) e abre o processo do endereço que está vazio; responde na hora `{"ok": true, "aquecidos": n}` |
 | `POST /api/library` | `{"youtube_id": "..."}` ou `{"url": "..."}` ou `{"query": "..."}`, mais `"play": bool`, `"title"?`, `"channel"?`, `"thumb"?`, `"duration"?` | baixa para a biblioteca (Job); com `play`, toca na hora pelo stream do YouTube enquanto baixa e responde `{"job": ..., "streaming": true}` (título, canal, capa e duração do corpo aparecem no prato desde o primeiro instante); se já existe, responde `{"item": ...}` e toca na hora; o mesmo vídeo já baixando não baixa de novo |
-| `POST /api/queue` | `{"id": "<disco>"}` ou `{"youtube_id": "...", "title"?, "channel"?, "thumb"?, "duration"?}` ou `{"url": "..."}`, mais `"next": bool?` | põe na fila (no fim, ou logo a seguir com `next`); vídeo fora da prateleira já começa a baixar; com nada no prato, toca na hora em vez de entrar na fila (se o fim do disco já estava avançando para outra, só entra na fila, com `playing: false`); responde `{"entry": Entrada, "job": Job ou null, "playing": bool}` |
+| `POST /api/queue` | `{"id": "<disco>"}` ou `{"youtube_id": "...", "title"?, "channel"?, "thumb"?, "duration"?}` ou `{"url": "..."}`, mais `"next": bool?` | põe na fila (no fim, ou logo a seguir com `next`); vídeo fora da prateleira já começa a baixar; com nada no prato, toca na hora em vez de entrar na fila (se o fim do disco já estava avançando para outra, só entra na fila, com `playing: false`); de qualquer papel, `title` e `channel` vão como texto ou `null`, `duration` em segundos (de 0 a 86400) ou `null`, e o alvo e os textos em Unicode válido (UTF-8), senão 400 (a `duration` de mais de um dia, com a mensagem `server.queue.tooLong`); responde `{"entry": Entrada, "job": Job ou null, "playing": bool}` |
 | `DELETE /api/queue/<qid>` | - | tira da fila (parecida do Automático tirada não volta nesta sessão) |
 | `DELETE /api/queue` | - | esvazia a fila (as parecidas que estavam nela não voltam; com o Automático ligado, entram outras) |
 | `POST /api/queue/move` | `{"qid": "...", "to": 0}` | muda a entrada de lugar (`to` a partir de 0) |
 | `POST /api/queue/play` | `{"qid": "..."}` | tira da fila e toca agora |
-| `PATCH /api/library/<id>` | `{"title": "..."}` e/ou `{"rapido": bool}` | renomeia; `rapido` põe ou tira o disco dos Sons rápidos do celular (os de até 15 s já estão lá sem isso) |
+| `PATCH /api/library/<id>` | `{"title": "..."}` e/ou `{"rapido": bool}` | renomeia (o `title` em Unicode inválido é 400); `rapido` põe ou tira o disco dos Sons rápidos do celular (os de até 15 s já estão lá sem isso) |
 | `DELETE /api/library/<id>` | - | apaga da biblioteca (e o arquivo); o disco no prato segue tocando e o arquivo dele sai quando o motor largar |
 | `GET /api/devices` | - | `{"inputs": [...], "outputs": [...], "default_input", "default_output", "current", "active", "filtro"}`; `filtro` é `{"filtro": bool, "melhorias": bool}` do microfone em uso (o filtro pendurado nele, e as melhorias de áudio do Windows ligadas, sem as quais ele não carrega), ou null se não deu para ler |
 | `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou ""}` | troca dispositivo (reabre o áudio); microfone sem o filtro (apareceu depois da instalação) é preparado pela tarefa do instalador, sem UAC (ver `microfone.preparando`) |
@@ -302,6 +303,37 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/atualizacao/consultar` | - | só no PC: consulta agora e responde como o `GET` |
 | `POST /api/atualizacao/baixar` | - | só no PC: começa o download do instalador da versão nova; sem versão nova, 409 |
 | `POST /api/atualizacao/instalar` | - | só no PC: abre o instalador baixado, com o pedido de permissão do Windows, e o servidor desliga; automática, o servidor desliga, a tarefa instala e o Ritmelli abre de novo; recusado ou ainda não baixado, 409 com o motivo |
+
+### Dois Próximos juntos
+
+Dois `POST /api/next` podem dividir um avanço enquanto o grupo do primeiro está aberto; quando dividem, tocam uma
+entrada só e respondem a mesma quando a espera do segundo devolve a entrada (abaixo). O que conta é quando cada comando
+roda (no executor do servidor), não quando o pedido chegou: o primeiro registra o grupo dos Próximos logo no começo do
+comando e o retira ao terminar, depois de gravar a posição do disco que saiu, e a resposta dele sai logo depois.
+Enquanto o grupo ainda espera o avanço, inclusive com a troca do disco publicando, o segundo se junta a ele se o prato
+segue na linha do primeiro (o mesmo disco, sem pulo na barra) ou na linha que o avanço dele está publicando. Se o
+primeiro está conciliando uma passagem automática, o grupo passa para a linha da virada, e o segundo que se junta recebe
+a entrada da passagem, se ela ainda estava na fila, ou a primeira da fila, que o primeiro toca, se já tinha saído.
+Depois que o grupo tem o resultado, só se junta quem chega se ele tocou uma entrada e o prato segue na linha que ele
+publicou. Fora disso, o segundo abre o próprio grupo, como um Próximo novo; se outro avanço reservar primeiro na linha
+dele (o do primeiro, depois de um pulo na barra, ou o do fim do disco), o segundo espera o resultado dessa reserva e
+responde a entrada que ela tocar, e quando a reserva é a do primeiro os dois respondem a mesma entrada, mesmo em grupos
+distintos, quando a espera do segundo devolve a entrada (o [comandos.md](docs/arquitetura/comandos.md) descreve cada
+caso). O segundo que espera o avanço de outro (o que se junta ao grupo, ou o que recebe a reserva de outro) espera até 5
+s e responde 409 se a espera terminar sem uma entrada: passado o prazo (o primeiro, que fez o avanço, ainda responde a
+entrada que tocou), ou com o avanço sem tocar nada:
+
+| o segundo roda | o prato entre os dois | o primeiro responde | o segundo responde |
+|---|---|---|---|
+| depois de o primeiro abrir o grupo, antes de ele reservar o avanço | nada mudou | a primeira da fila | a mesma |
+| depois de o primeiro abrir o grupo, antes de ele reservar o avanço | parou | 409 | a primeira da fila, que toca no prato parado |
+| com o primeiro trocando o disco | não muda: a troca segura o motor | a primeira da fila | a mesma |
+| com o primeiro gravando a posição | nada mudou | a primeira da fila | a mesma, na hora |
+| com o primeiro gravando a posição | parou, pulou na barra ou trocou de disco | a primeira da fila | a seguinte, que ele toca |
+| depois de o comando do primeiro terminar | | a primeira da fila | a seguinte |
+| depois de o primeiro achar a fila vazia, antes de ele terminar | uma entrada entrou na fila | 409 | a entrada que entrou, que ele toca |
+
+O `dev/testa_comandos.py` confere cada linha desta tabela.
 
 ## Pedal de troca de voz
 
@@ -367,9 +399,8 @@ valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
   sessão remota aceita (`secrets.token_urlsafe(32)`, gerado a cada sessão e revogado quando ela acaba). O cabeçalho
   com token errado, vencido ou vindo de fora do `127.0.0.1` responde 401, mesmo do `127.0.0.1`: quem manda o
   cabeçalho nunca cai no papel do PC. Comando fora da lista dele, 403; no `POST /api/queue`, ele só põe o `id` de um
-  disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, `title` e
-  `channel` como texto ou `null`, `duration` em segundos (de 0 a 86400) ou `null`, e o alvo e os textos em Unicode
-  válido (UTF-8); o resto é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma
+  disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, e
+  `title`, `channel` e `duration` seguem a regra de todo papel (ver o `POST /api/queue`); o resto é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma
   sessão abre um token. O que a sessão remota manda e recebe pela internet está no
   [protocolo da sessão remota](docs/protocolo-remoto.md).
 
@@ -379,8 +410,9 @@ valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
 | `GET /api/state`, `GET /api/events` | sim | sim | sim | 401 |
 | `POST /api/play`, `POST /api/queue` (o remoto, só disco da prateleira ou vídeo do YouTube), `POST /api/queue/play`, `POST /api/next`, `POST /api/pause`, `POST /api/resume`, `DELETE /api/queue/<qid>`, `POST /api/queue/move` | sim | sim | sim | 401 |
 | `POST /api/volume`, `POST /api/abaixa`, `POST /api/sinal` | sim | 403 | sim | 403 |
-| `GET /api/onda/<id>`, `GET /api/library`, `GET /api/tocadas`, `GET /api/jobs`, `GET /api/search`, `GET /api/musica`, `POST /api/aquece`, `POST /api/library`, `PATCH` e `DELETE /api/library/<id>`, `DELETE /api/queue`, `POST /api/prev`, `POST /api/toggle`, `POST /api/stop`, `POST /api/seek`, `POST /api/settings`, `GET /api/effects`, `POST /api/pedal_voz`, `GET` e `POST /api/devices`, `GET /api/boas-vindas`, `POST /api/shutdown`, `GET /api/lan` | sim | sim | 403 | 401 |
-| `POST /api/effects/reload`, `POST /api/boas-vindas`, `POST /api/janela/foco`, `/api/metricas`, `/api/atualizacao/...`, `/api/pareamento/...`, e toda rota fora da tabela | sim | 403 | 403 | 403 |
+| `GET /api/onda/<id>`, `GET /api/library`, `GET /api/jobs`, `GET /api/search`, `POST /api/library`, `PATCH` e `DELETE /api/library/<id>`, `DELETE /api/queue`, `POST /api/prev`, `POST /api/toggle`, `POST /api/stop`, `POST /api/seek`, `POST /api/settings`, `GET /api/effects`, `POST /api/pedal_voz`, `GET` e `POST /api/devices`, `GET /api/boas-vindas` | sim | sim | 403 | 401 |
+| `GET /api/tocadas`, `GET /api/musica`, `POST /api/aquece` (o grupo `OUT_OF_REPO`: só o módulo de fora do repo chama, do PC) | sim | 403 | 403 | 403 |
+| `POST /api/shutdown`, `GET /api/lan`, `POST /api/effects/reload`, `POST /api/boas-vindas`, `POST /api/janela/foco`, `/api/metricas`, `/api/atualizacao/...`, `/api/pareamento/...`, e toda rota fora da tabela | sim | 403 | 403 | 403 |
 
 `caps` = `{"papel": "pc" | "celular" | "remoto" | "publico", "rotas": ["POST /api/play", ...]}`: as rotas da API que
 esse papel alcança, em ordem, no formato `"<MÉTODO> <rota>"`. Vem no `GET /api/state`, no 401 do pareamento (o do

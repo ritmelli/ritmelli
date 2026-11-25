@@ -27,7 +27,7 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
                                            one by one, alone, after the others
 
 In the COMPLETO, a missing library or ffmpeg is a failure, not a skipped test: without the server libraries, the
-testa_mock, the testa_migra and the testa_pareamento skip their part.
+testa_mock and the testa_migra skip their part.
 
 Every dev/testa_*.py has a destination: a list here (STDLIB, COMPLETO, MICROFONE, PASSOS), or it only runs by hand and
 says so at the top of the file, in a comment before the docstring, how and with what: "# manual: <comando> precisa de
@@ -61,14 +61,16 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 # so a biblioteca padrao: a monta.yml roda estes antes de instalar as bibliotecas do app
 STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vozes", "pareamento", "grava", "mfx",
-                                             "ganchos", "pasta_protegida")] + ["dev/test_trusted_author.py"]
+                                             "ganchos", "pasta_protegida", "so_mock")] + ["dev/test_trusted_author.py"]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
     "passagem", "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py"]
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
-MICROFONE = ["dev/testa_filtro.py", "dev/testa_voz.py", "dev/testa_microfone.py",
+# o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
+# pulariam
+MICROFONE = ["dev/testa_filtro.py", "dev/testa_voz.py", "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py",
              "microfone/apo/teste/teste_reamostra.py"]
 DLLS = ("teste_reamostra.dll", "voz.dll", "banca_filtro.dll")
 
@@ -105,7 +107,7 @@ CAPTURA = ("dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py", "requirements.
 # codigo de renderizacao ou de traducao para outro modulo poe o modulo na "tela"
 AREAS = {
     "microfone": ("microfone/", "fx.py", "engine.py", "dev/testa_filtro.py", "dev/testa_voz.py",
-                  "dev/testa_microfone.py"),
+                  "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
     "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py"),
 }
 # these trigger every area: the testa.yml, its setup action, and the lists and the filter here

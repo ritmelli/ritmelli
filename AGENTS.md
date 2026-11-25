@@ -58,7 +58,7 @@ galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
 | A regra no setup | `instalador/protegida.ps1`, `instalador/ritmelli.iss` | nenhum em `dev/`: na CI, só a instalação do `.github/workflows/monta.yml` |
 | Pareamento e permissões | `pareamento.py`, `permissao.py`, o `guard` do `server.py` | `testa_pareamento`, `testa_mock`, `testa_protocolo` |
 | Protocolo da sessão remota | `docs/protocolo-remoto.md`, `docs/protocolo-remoto/v1/` | `testa_protocolo` (`--gera` escreve as fixtures de novo) |
-| Filtro e efeitos | `microfone/`, `fx.py` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_voz` e `microfone/apo/teste/teste_reamostra.py` |
+| Filtro e efeitos | `microfone/`, `fx.py`, `instalador/mudos.iss` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_aparelho_mudo` (os casos do setup de teste precisam do Inno Setup 6: sem ele, pulam no PC e reprovam no GitHub), `testa_voz` e `microfone/apo/teste/teste_reamostra.py` |
 | Troca de voz | `pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` | `testa_pedal_voz`, `testa_vozes`, `testa_pista`, `testa_conversor` |
 | Atualizações | `atualizacao.py`, `atualizador.py`, `instalador/atualizacao/` | `testa_atualizacao`, `testa_atualizador` e `instalador/atualizacao/testa_parcial.py` |
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |

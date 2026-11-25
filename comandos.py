@@ -8,9 +8,16 @@ passagem (_volta_passagem), o stream da parecida que nao abriu (_abre_stream), a
 parado (_volta_auto) e o enfileirar com o prato parado passam por ela, com uma reserva so por deck e linha do prato
 (Reserva).
 
-As travas, sempre nesta ordem e nunca ao contrario: a fila_lock do App, depois o _lock do motor (um RLock), depois o
-_qlock do motor. Com o _qlock na mao nao se chama metodo do motor que pegue o _lock, e a thread do audio (o _mixa)
-nunca pega a fila_lock nem o _lock. Sob a fila_lock nao se grava arquivo."""
+Lock order, always this way and never the other: the App's fila_lock, then the engine's _lock (an RLock), then the
+engine's _qlock. Two more come right before the _qlock and are never held with the fila_lock nor the _lock: the
+App's proximo_lock (the overlapping Proximos, pular) and the shelf's lock (Library.lock: App.remember_pos takes it,
+then the _qlock, and writes the file with the _qlock released). With the _qlock held, no engine method that takes the
+_lock is called, and the audio thread (the _mixa) never takes the fila_lock nor the _lock. No file is written under
+the fila_lock.
+
+The platter's line is read and checked through the engine's interface (Engine.line, Engine.on_line, with the deck
+and line a Captura already carries), the switch the engine made on its own is reconciled in one loop (concilia), and
+every queue change goes through App._change_queue."""
 import sys
 import threading
 
@@ -26,6 +33,13 @@ PAUSA_ESPERA_S = 1.0
 AVANCO_ESPERA_S = 5.0
 # o avanco que cedeu a vez: outra reserva de avanco ja corre na mesma linha do prato, ou o prato ja mudou
 CEDEU = object()
+# concilia: take the pending switch out of the engine, close it and go round again
+FECHA = object()
+# the advance that carries on past the reconcile loop (avanca)
+_CONTINUE_ADVANCE = object()
+# how many times an advance is tried on the same platter when another reservation resolved without playing (the
+# enqueue on a stopped platter, the similar track whose stream did not open)
+ADVANCE_TRIES = 3
 
 
 class Reserva:
@@ -43,7 +57,7 @@ class Reserva:
 
     def vale(self, E):
         """Com o _qlock do motor E: o prato ainda e o deck e a linha da reserva."""
-        return E._deck is self.deck and E._deck.linha == self.linha
+        return E.on_line(self)
 
     def toca(self, E):
         """Com o _qlock do motor E: o pode da troca dela. Ainda vale, e o prato passa a ser o dela ali mesmo
@@ -93,9 +107,8 @@ class Proximo(Reserva):
         segue na linha que ele publicou: o resultado volta na hora."""
         r = self.r
         if self.feita.is_set():
-            return self.entrada is not None and r is not None and r.publicada == (E._deck, E._deck.linha)
-        return self.vale(E) or (r is not None and ((r.tocando and not r.feita.is_set())
-                                                   or r.publicada == (E._deck, E._deck.linha)))
+            return self.entrada is not None and r is not None and E.on_line(r.publicada)
+        return self.vale(E) or (r is not None and ((r.tocando and not r.feita.is_set()) or E.on_line(r.publicada)))
 
 
 class CorpoRecusado(ValueError):
@@ -118,6 +131,31 @@ def tocar(A, iid, start=None, retomar=False, loop=None, por_cima=CURTO):
         start = it.get("last_pos", 0) if retomar else 0
     A.play_item(it, float(start), loop)
     return "prato"
+
+
+def play_shelf_record(A, it):
+    """The shelf record it, the one the route already picked, on the platter from the start (the POST /api/library with
+    play of a record already on the shelf): a short sound too, never on top, and never from its last_pos. Returns
+    whether it swapped."""
+    return A.play_item(it, 0.0)
+
+
+def play_downloading(A, j, alvo, meta):
+    """The video alvo, not on the shelf yet, on the platter right away over the stream while job j downloads it (the
+    POST /api/library with play): when the file arrives, the engine moves to it without cutting. meta: the youtube_id,
+    title, channel, thumb and duration the body brought. Returns whether it swapped."""
+    A.job_update(j, play=True)
+    return A.tocar_remoto(j, alvo, meta)
+
+
+def update_record(A, iid, **fields):
+    """The shelf record iid gets fields (the PATCH /api/library/{iid}: the title, the "rapido"), and the platter's
+    track too when it is that record, so the state shows the new name right away (Engine.update_track, under the
+    engine's _qlock). Returns the record, or None if it is not on the shelf."""
+    it = A.lib.update(iid, **fields)
+    if it:
+        A.engine.update_track(it["id"], **fields)
+    return it
 
 
 def enfileirar(A, b, remoto=False):
@@ -146,7 +184,7 @@ def toca_se_parado(A, x, cap):
     como esta. Volta se tocou."""
     if cap.status not in ("idle", "ended"):
         return False
-    for _ in range(3):  # a reserva de outro que nao tocou nesta linha devolve None: de novo, na mesma linha
+    for _ in range(ADVANCE_TRIES):  # a reserva de outro que nao tocou nesta linha devolve None: de novo, na mesma linha
         y = avanca(A, visto=cap, entrada=x)
         if y is not None:
             return y is x  # a entrada que tocou, ou CEDEU (o prato ja e outra linha)
@@ -183,6 +221,29 @@ def limpar_fila(A):
     A.limpar_fila()
 
 
+def concilia(A, under, closed=None):
+    """With the fila_lock: the one loop that reconciles the switch the engine already made on its own (the DJ
+    transition) with the queue. Each round runs under(v) under the engine's _qlock, with v the pending switch (None
+    without one): under returns FECHA (only with a v) to take v out of the engine in that same stretch and close it
+    (fecha_virada, with the _qlock released and the fila_lock still held), or anything else, which concilia returns.
+    closed(x), with the entry of the switch just closed (None if it had already left the queue), returns FECHA to go
+    round again, or the result. Since the switch leaves the engine under the fila_lock, only one caller reconciles each
+    one, and the state read (App.leitura) sees the switch and its entry together, or neither."""
+    E = A.engine
+    while True:
+        with E._qlock:
+            v = E.virou
+            r = under(v)
+            if r is not FECHA or v is None:
+                return r
+            E.take_switch(v)
+        x = fecha_virada(A, v)
+        if closed is not None:
+            r = closed(x)
+            if r is not FECHA:
+                return r
+
+
 def fecha_virada(A, virada):
     """Com a fila_lock, e com a virada ja tirada do motor (o E.virou limpo sob o _qlock): a entrada dela sai da fila, o
     que saiu entra no Anterior e a marca do prato parado sai, sem soltar a trava. O Proxima ou o fim do disco que
@@ -217,14 +278,8 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
     Uma reserva continua em curso ate resolver, mesmo depois de a troca dela publicar a linha nova (Reserva.viva)."""
     E = A.engine
     if virada is not None:
-        with A.fila_lock:
-            # a virada sai do motor e a entrada dela sai da fila sob a mesma fila_lock: a leitura do estado
-            # (App.leitura) ve as duas, ou nenhuma. Quem chega depois (o vigia, ou outro avanco) nao concilia de novo
-            with E._qlock:
-                if E.virou is not virada:
-                    return None
-                E.virou = None
-            return fecha_virada(A, virada)
+        with A.fila_lock:  # only this switch: whoever comes after (the watcher, another advance) won't close it again
+            return concilia(A, lambda v: FECHA if v is virada else None, closed=lambda x: x)
     em_curso = r = None
     if not cede:
         # a reserva de outro ja em curso nesta linha (o vigia trocando o disco, com a fila_lock na mao): quem chega
@@ -240,42 +295,43 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                     grupo.liga(r0)
         if vivo:
             return r0.espera()
+
+    def reserve(v):  # under the _qlock, with the pending switch v (concilia)
+        nonlocal em_curso, r
+        if grupo is not None and grupo.r is not None:
+            em_curso = grupo.r  # o avanco que outro fez para este Proximo enquanto ele chegava (antes da virada)
+            return _CONTINUE_ADVANCE
+        if v is not None:
+            if pular and grupo is not None:
+                grupo.deck, grupo.linha = E.line()  # quem chega agora junta neste, que concilia
+                if any(y["qid"] == v[2] for y in A.fila):
+                    grupo.virada = v  # e o avanco dele e a virada: outra reserva nesta linha nao o liga
+            return FECHA  # o Anterior guarda primeiro o que saiu nela
+        if visto is not None and not E.on_line(visto):
+            return CEDEU
+        em_curso = A.reserva
+        if em_curso is not None and not em_curso.viva(E):
+            em_curso = None
+        if em_curso is None:
+            x = entrada if entrada is not None else (A.fila[0] if A.fila else None)
+            if x is None or not any(y is x for y in A.fila):
+                if grupo is not None:
+                    grupo.resolve(None)  # o Proximo que nao tem o que tocar ja decidiu: ninguem o liga
+                return None
+            r = A.reserva = Reserva(*E.line(), x)
+            E.drop_prepared()  # a preparada sai: o motor nao vira para ela no meio do avanco
+            p = A.proximo  # o Proximo que chegou nesta linha e ainda nao reservou: este avanco e o dele
+            if (p is not None and p is not grupo and p.r is None and p.virada is None
+                    and not p.feita.is_set() and E.on_line(p)):
+                p.liga(r)
+        if grupo is not None:
+            grupo.liga(em_curso or r)
+        return _CONTINUE_ADVANCE
     with A.fila_lock:
-        while True:
-            with E._qlock:
-                if grupo is not None and grupo.r is not None:
-                    em_curso = grupo.r  # o avanco que outro fez para este Proximo enquanto ele chegava (antes da virada)
-                    break
-                v, E.virou = E.virou, None
-                if v is not None and pular and grupo is not None:
-                    grupo.deck, grupo.linha = E._deck, E._deck.linha  # quem chega agora junta neste, que concilia
-                    if any(y["qid"] == v[2] for y in A.fila):
-                        grupo.virada = v  # e o avanco dele e a virada: outra reserva nesta linha nao o liga
-                if v is None:
-                    d = E._deck
-                    if visto is not None and (visto.deck is not d or visto.linha != d.linha):
-                        return CEDEU
-                    em_curso = A.reserva
-                    if em_curso is not None and not em_curso.viva(E):
-                        em_curso = None
-                    if em_curso is None:
-                        x = entrada if entrada is not None else (A.fila[0] if A.fila else None)
-                        if x is None or not any(y is x for y in A.fila):
-                            if grupo is not None:
-                                grupo.resolve(None)  # o Proximo que nao tem o que tocar ja decidiu: ninguem o liga
-                            return None
-                        r = A.reserva = Reserva(d, d.linha, x)
-                        E._cancela_passagem()  # a preparada sai: o motor nao vira para ela no meio do avanco
-                        p = A.proximo  # o Proximo que chegou nesta linha e ainda nao reservou: este avanco e o dele
-                        if (p is not None and p is not grupo and p.r is None and p.virada is None
-                                and not p.feita.is_set() and p.deck is d and p.linha == d.linha):
-                            p.liga(r)
-                    if grupo is not None:
-                        grupo.liga(em_curso or r)
-                    break
-            x = fecha_virada(A, v)  # o Anterior guarda primeiro o que saiu nela
-            if pular and x is not None:
-                return x  # sem a entrada (ja saiu da fila), o Proximo segue para a primeira
+        # sem a entrada (ja saiu da fila), o Proximo segue para a primeira
+        res = concilia(A, reserve, closed=lambda x: x if pular and x is not None else FECHA)
+        if res is not _CONTINUE_ADVANCE:
+            return res
     if em_curso is not None:
         return CEDEU if cede else em_curso.espera()
     try:
@@ -315,7 +371,7 @@ def pular(A):
         p = A.proximo
         junta = p is not None and p.junta(E)
         if not junta:  # o primeiro desta linha (o de outra linha, de antes de um Parar, segue sozinho)
-            p = A.proximo = Proximo(E._deck, E._deck.linha)
+            p = A.proximo = Proximo(*E.line())
             faixa = E.track
             r0 = A.reserva
             if r0 is not None and r0.viva(E):
@@ -336,9 +392,10 @@ def pular(A):
             x = avanca(A, pular=True, grupo=p, visto=p)  # o prato que mudou de linha no meio (o Parar) fica
             if x is CEDEU:
                 with A.proximo_lock, E._qlock:  # o mesmo disco no mesmo deck numa linha nova (um seek): o Proximo
-                    de_novo = faixa is not None and E.track is faixa and E._deck is p.deck  # ainda vale
+                    agora = E.line()
+                    de_novo = faixa is not None and E.track is faixa and agora.deck is p.deck  # ainda vale
                     if de_novo:
-                        p.linha = E._deck.linha  # e o grupo passa para a linha do seek (quem chega agora junta)
+                        p.linha = agora.linha  # e o grupo passa para a linha do seek (quem chega agora junta)
                 x = avanca(A, pular=True, visto=p, grupo=p) if de_novo else None
                 if x is CEDEU:
                     x = None
@@ -398,10 +455,12 @@ def ir_para(A, t):
     A.engine.seek(t)
 
 
-def volume(A, v):
+def volume(A, v, save=True):
     """O volume da musica (de 0 a 1; fora disso, o limite), gravado sozinho: o resto do som fica como esta gravado.
-    Volta o do motor."""
+    save=False: whoever calls writes it (the /api/settings saves the whole sound config right after). Volta o do
+    motor."""
     v = max(0.0, min(1.0, float(v)))
     A.engine.vol = v
-    A.grava_cfg(vol=v)
+    if save:
+        A.grava_cfg(vol=v)
     return A.engine.vol

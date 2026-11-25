@@ -207,6 +207,9 @@ class Deck:
 
 # o que estava no prato num instante, lido sob o _qlock: a faixa, a posicao, o estado (o status()), o deck e a linha
 Captura = collections.namedtuple("Captura", "track pos status deck linha")
+# the platter's line as a token (Engine.line): the deck and the line on it. A Captura, a comandos.Reserva and a
+# comandos.Proximo carry the same two fields, and Engine.on_line checks any of them
+Line = collections.namedtuple("Line", "deck linha")
 
 
 class Pausa:
@@ -831,6 +834,35 @@ def _erro_da_tarefa(r, mic):
                     reason=r.get("detalhe") or motivo or "?")
 
 
+def _confere_fora(nomes=None):
+    """O confere_aparelhos (microfone/microfone.py) num processo a parte, com o PortAudio dele: o daqui e o dos streams
+    do motor, e abrir aparelhos nele de outra thread enquanto o vigia rele a lista (_rescan) derrubaria tudo. O
+    processo novo ainda le a lista do Windows de agora. {"conferidos", "mudos", "falhas"}, ou None se nao deu."""
+    cmd = [sys.executable]
+    if not getattr(sys, "frozen", False):  # no codigo, o mesmo caminho pelo python (o server.auxiliar)
+        cmd.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ritmelli.py"))
+    # o nome junto do --aparelho=: um nome que comeca com "-" nao vira outra opcao do argparse
+    cmd += ["--microfone", "confere"] + [f"--aparelho={n}" for n in nomes or ()]
+    p = None
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+                           creationflags=NO_WINDOW, startupinfo=sem_cursor())
+        return json.loads(p.stdout.strip().splitlines()[-1])
+    except Exception as ex:  # noqa: BLE001 - sem a conferencia, nenhum aviso: nunca um aviso falso
+        motivo = p.stderr.strip()[-300:] if p is not None and p.stderr.strip() else f"{type(ex).__name__}: {ex}"
+        print(f"devices: not checked ({motivo})")
+        return None
+
+
+def _aviso_mudos(mudos):
+    """A mensagem da tela com os aparelhos que abrem e nao entregam som (#136): um nome por aparelho, o que se tira do
+    cabo ("BEHRINGER UMC 404HD 192k", e nao cada entrada e saida dele)."""
+    from microfone import microfone as filtro  # noqa: PLC0415
+    return i18n.msg("server.devices.silent", "Windows stopped receiving sound from the device \"{name}\". Unplug its "
+                                             "USB cable and plug it back in.",
+                    name="\", \"".join(filtro.aparelhos_de(mudos)))
+
+
 def _do_microfone(mic):
     """O estado do filtro no microfone (o item do microfone.estado_dados: guid, filtro, melhorias), ou None se nao deu
     para ler ou o Windows nao conhece esse nome."""
@@ -1189,6 +1221,7 @@ class Engine:
         self._voz_anel_em = -1e9  # monotonic da ultima voz crua que o filtro devolveu (a do microfone fica de reserva)
         self.preparando = None  # o microfone que o Windows esta preparando para o Ritmelli (a tarefa do instalador)
         self._preparados = set()  # os microfones em que a preparacao ja rodou nesta sessao (nao repete)
+        self._mudos_vistos = False  # os aparelhos mudos que o instalador ou a tarefa acharam ja foram conferidos
         self.monitor_on = True
         self.loop = False
         self.effect = "nenhum"  # efeito de voz (fx.py); sempre comeca sem efeito
@@ -1415,15 +1448,26 @@ class Engine:
     def _confere_filtro(self, mic):
         """O microfone em uso com o filtro: o alvo do anel e o hash dele. Sem o filtro (um microfone que apareceu depois
         da instalacao) ou com as melhorias de audio desligadas, roda a tarefa do instalador, que prepara como SYSTEM
-        sem pedir nada a ninguem, e reabre o audio (o do Windows reinicia uns segundos). Uma vez por microfone."""
+        sem pedir nada a ninguem, e reabre o audio (o do Windows reinicia uns segundos). Uma vez por microfone. Depois
+        de reiniciar o audio, e uma vez com o filtro pronto, confere se algum aparelho parou de entregar som (#136)."""
         _com_init()
         st = _do_microfone(mic)
         if st and st["filtro"] and st["melhorias"]:
             from microfone import injeta  # noqa: PLC0415
             if self.active.get("mic") == mic:
                 self._alvo = injeta.hash_microfone(st["guid"])
-                if self._aviso is not None and self.error == self._aviso:
-                    self.error = None
+                with self._lock:  # o dos mudos fica: ele acabou de sair desta pilha e sai quando o audio reabre
+                    if (self._aviso is not None and self.error == self._aviso
+                            and self._aviso.get("key") != "server.devices.silent"):
+                        self.error = None
+            with self._lock:  # uma vez, so os que o instalador ou a tarefa acharam mudos: abrir todos a cada partida
+                ver = not self._mudos_vistos  # incomodaria
+                self._mudos_vistos = True
+            if ver:
+                from microfone import microfone as filtro  # noqa: PLC0415
+                mudos = filtro.le_mudos()
+                if mudos:
+                    self._confere_mudos(mudos)
             return
         if mic in self._preparados:
             if self.active.get("mic") == mic:
@@ -1448,8 +1492,36 @@ class Engine:
         if self.error == prep:
             self._aviso = self.error = None
         with self._lock:  # o audio do Windows reiniciou: os streams daqui morreram
-            if not self._fechado and self.active.get("mic") == mic:
+            if self._fechado:
+                return
+            # os do registro entram nesta, e antes do _reabre: o _confere_filtro que ele abre nao confere junto
+            self._mudos_vistos = True
+            if self.active.get("mic") == mic:
                 self._reabre()
+        self._confere_mudos()  # todos: o reinicio do audio pode ter deixado qualquer aparelho mudo
+
+    def _confere_mudos(self, nomes=None):
+        """Confere (num processo a parte, _confere_fora) se os aparelhos, ou so esses nomes, entregam som, e avisa na
+        tela os que abrem e nao entregam nada (#136: uma interface USB depois do reinicio do audio, ate tirar o cabo).
+        O aviso e dos aparelhos (_aviso), como o da reserva: sai quando o audio reabre (o vigia reabre quando o
+        aparelho em uso e tirado e posto de volta), e ao tocar, parar ou pular, como todo erro da tela. O audio que
+        reabriu (ou caiu) enquanto a conferencia rodava deixa o resultado de fora: ele e de antes, e a reabertura que
+        falhou tem o aviso dela. Sem audio aberto (a reabertura depois da tarefa que falhou), nem abre os aparelhos:
+        os mudos do registro (a conferencia da propria tarefa) ficam para quando o audio abrir (_confere_filtro)."""
+        with self._lock:  # o _reabre fecha e abre sob o _lock: aqui, nunca a pilha do meio dele
+            pilha = self._stack
+            if pilha is None:
+                self._mudos_vistos = False
+                return
+        r = _confere_fora(nomes)
+        mudos = (r or {}).get("mudos")
+        if mudos:
+            print(f"devices: silent: {'; '.join(mudos)}")
+        with self._lock:
+            if self._stack is None:  # o audio caiu durante a conferencia: os do registro, para quando ele voltar
+                self._mudos_vistos = False
+            elif mudos and not self._fechado and self._stack is pilha:
+                self._aviso = self.error = _aviso_mudos(mudos)
 
     def liga(self):
         """A partida do servidor. Se o audio nao abre (sem microfone, aparelho que recusa), o servidor sobe mesmo
@@ -2140,6 +2212,30 @@ class Engine:
         return (self._pausa is p and p.ok and self.paused and not self.ended and self._deck is p.deck
                 and p.deck.linha == p.linha)
 
+    def line(self):
+        """With _qlock: the platter's line now (a Line), the token that on_line checks later."""
+        return Line(self._deck, self._deck.linha)
+
+    def on_line(self, token):
+        """With _qlock: the platter is still the deck and the line of token (a Line, a Captura, or anything with deck
+        and linha); None never is."""
+        return token is not None and self._deck is token.deck and self._deck.linha == token.linha
+
+    def take_switch(self, switch):
+        """With _qlock: the switch the engine already made on its own (virou, the DJ transition) leaves the engine and
+        comes back, only if the pending one is still switch; None otherwise. Whoever takes it reconciles it with the
+        queue (comandos.concilia)."""
+        if switch is None or self.virou is not switch:
+            return None
+        self.virou = None
+        return switch
+
+    def platter_state(self):
+        """The platter's track, position, status() and pending switch, read in one stretch of the _qlock. The caller
+        holds no engine lock (the server holds its fila_lock, which comes before)."""
+        with self._qlock:
+            return self.track, self.pos, self.status(), self.virou
+
     def captura(self):
         """O que esta no prato agora, sob o _qlock (Captura)."""
         with self._qlock:
@@ -2504,8 +2600,21 @@ class Engine:
         return inj.saude if inj is not None else None
 
     def cancelar_pronto(self):
+        """drop_prepared, taking the _qlock itself."""
         with self._qlock:
-            self._cancela_passagem()
+            self.drop_prepared()
+
+    def drop_prepared(self):
+        """With _qlock: the prepared next record leaves (its reader stops), and the engine does not switch to it. The
+        passage already sounding stays (stop, seek and load cut that one)."""
+        self._cancela_passagem()
+
+    def tracks_in_use(self):
+        """The tracks the engine reads from now: the platter's, the prepared next one's and the one still leaving in a
+        transition. No lock: the mixer thread swaps the prepared and the leaving deck, so each is read once."""
+        pronto, saindo = self._pronto, self._saindo
+        decks = (pronto, saindo[0] if saindo else None)
+        return [t for t in (self.track, *(d.track for d in decks if d)) if t is not None]
 
     def _cancela_passagem(self, tudo=False):
         """Com _qlock: a proxima preparada sai (o leitor dela para) e o disco do prato volta a
@@ -3152,6 +3261,23 @@ class Engine:
                 return float(v), True
         return self._medidas.get(self._chave(track), (None, False))
 
+    def gain_for(self, track):
+        """Outside every lock (it asks the server): what load, espera and preparar take as ganho, measured ahead by
+        whoever calls them (_ganho_de)."""
+        return self._ganho_de(track)
+
+    def update_track(self, iid, **fields):
+        """The platter's record iid gets fields (the shelf renamed it): the state shows them right away, and the
+        platter's track is swapped under the _qlock, never outside it. Returns whether the platter held it."""
+        with self._qlock:
+            tr = self.track
+            if tr is None or tr["id"] != iid:
+                return False
+            self.track = dict(tr, **fields)
+            if self._deck.track is tr:
+                self._deck.track = self.track
+            return True
+
     def _ganho_de(self, track):
         """Fora das travas (pergunta ao servidor): o ganho do disco pela medida que ja se tem, e se o arquivo local
         ainda precisa ser medido (sem a medida inteira; o stream o leitor mede)."""
@@ -3472,12 +3598,10 @@ class Engine:
          "grade_de", "grade_para": a grade de cada um no tempo do proprio disco, {"bpm", "periodo", "fase" (uma batida),
            "de", "ate" (o trecho onde ela foi medida e vale)}, ou null;
          "motivo": por que nao foi no tempo (texto do log), so quando no_tempo e false}.
-        Tempo de saida = o do relogio do som; no tempo de um disco que anda na velocidade v, 1 s de saida e v s dele."""
-        tr = self.track
+        Tempo de saida = o do relogio do som; no tempo de um disco que anda na velocidade v, 1 s de saida e v s dele.
+        The status, the track and its duration are not here: the server reads them with the position and the queue in
+        one capture (platter_state, under its fila_lock) and adds them (App.leitura)."""
         return {
-            "status": self.status(),
-            "track": None if tr is None else {k: v for k, v in tr.items() if k not in ("path", "headers")},
-            "duration": None if tr is None else tr.get("duration"),
             # 6 casas: a tela mostra o volume do disco ao cubo, e o baixo dele fica abaixo de 0,001
             "vol": round(self.vol, 6), "mon_vol": round(self.mon_vol, 6),
             # o volume automatico: ligado, e o ganho dele no disco do prato agora (dB; 0 = como veio)

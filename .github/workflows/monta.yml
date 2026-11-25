@@ -10,6 +10,8 @@
 # Assinatura de código (SignPath, ver o README): com o segredo SIGNPATH_API_TOKEN e as variáveis SIGNPATH_* do repo, o
 # ritmelli.exe é assinado antes de entrar no setup, e o setup e a parcial antes do manifesto (o manifesto guarda o hash
 # deles). Cada assinatura espera a aprovação de um dono na SignPath. Sem o segredo, tudo sai sem assinatura.
+# Our two DLLs go with the ritmelli.exe: micfx.dll, the microphone filter that audiodg.exe loads, and voz.dll, its
+# effects engine.
 name: Monta o instalador
 
 on:
@@ -110,13 +112,18 @@ jobs:
           # ascii: no PowerShell 5, o >> grava em UTF-16, e o utf8 dele poe BOM
           Add-Content -Path $env:GITHUB_OUTPUT -Value "versao=$v" -Encoding ascii
 
-      # assinatura do ritmelli.exe, antes de ele entrar no setup e na parcial
+      # assinatura do ritmelli.exe, antes de ele entrar no setup e na parcial. The zip keeps the layout of dist\ritmelli
+      # (ritmelli.exe at the root, the DLLs in _internal\microfone); the SIGNPATH_ARTIFACT_APP configuration signs the
+      # three
       - if: env.ASSINA == 'true'
         id: app-sem-assinatura
         uses: actions/upload-artifact@v7
         with:
           name: assinar-app-${{ steps.congela.outputs.versao }}
-          path: dist/ritmelli/ritmelli.exe
+          path: |
+            dist/ritmelli/ritmelli.exe
+            dist/ritmelli/_internal/microfone/micfx.dll
+            dist/ritmelli/_internal/microfone/voz.dll
           retention-days: 1
           if-no-files-found: error
       - if: env.ASSINA == 'true'
@@ -132,15 +139,18 @@ jobs:
           wait-for-completion-timeout-in-seconds: 3600
           output-artifact-directory: assinado-app
       - if: env.ASSINA == 'true'
-        name: Troca pelo ritmelli.exe assinado
+        name: Troca pelo ritmelli.exe e as DLLs assinados
         shell: powershell
         run: |
-          $assinado = Get-ChildItem assinado-app -Recurse -Filter ritmelli.exe | Select-Object -First 1
-          if (-not $assinado) { throw 'a SignPath nao devolveu o ritmelli.exe' }
-          Copy-Item $assinado.FullName dist\ritmelli\ritmelli.exe -Force
-          $s = Get-AuthenticodeSignature dist\ritmelli\ritmelli.exe
-          if ($s.Status -ne 'Valid') { throw "o ritmelli.exe voltou com a assinatura $($s.Status)" }
-          "ritmelli.exe assinado por $($s.SignerCertificate.Subject)"
+          foreach ($f in 'ritmelli.exe', '_internal\microfone\micfx.dll', '_internal\microfone\voz.dll') {
+            $assinado = Get-ChildItem assinado-app -Recurse -Filter (Split-Path $f -Leaf) | Select-Object -First 1
+            if (-not $assinado) { throw "SignPath did not return $f" }
+            $destino = Join-Path dist\ritmelli $f
+            Copy-Item $assinado.FullName $destino -Force
+            $s = Get-AuthenticodeSignature $destino
+            if ($s.Status -ne 'Valid') { throw "$f came back with signature $($s.Status)" }
+            "$f signed by $($s.SignerCertificate.Subject)"
+          }
 
       - name: Monta o setup
         id: monta
@@ -262,6 +272,13 @@ jobs:
           $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -PassThru
           if (-not $p.WaitForExit(600000)) { Stop-Process $p -Force; Get-Content $log -Tail 40; throw 'o setup não terminou em 10 min' }
           if ($p.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "o setup saiu com $($p.ExitCode)" }
+          # a conferência dos aparelhos depois do reinício do áudio (#136, instalador/mudos.iss): o resumo vai no log do
+          # setup. Sem microfone aqui, o áudio não reinicia e o resumo diz isso; sem a linha, o mudos.iss não rodou, e com o
+          # "sem o microfone.json", o ritmelli.exe congelado não entregou o --saida do [Run] ao mudos.iss
+          $conf = Select-String $log -Pattern 'aparelhos( mudos)?: '
+          if (-not $conf) { Get-Content $log -Tail 40; throw 'o setup não pôs o resumo da conferência dos aparelhos no log' }
+          if ($conf | Where-Object Line -Match 'aparelhos: sem o microfone\.json') { Get-Content $log -Tail 40; throw 'o ritmelli.exe não gravou o --saida do --microfone instala-todos' }
+          $conf | ForEach-Object { $_.Line } | Write-Host
           $app = "$env:ProgramFiles\Ritmelli"
           foreach ($f in 'ritmelli.exe', 'bin\ffmpeg.exe', 'bin\ffprobe.exe', 'bin\deno.exe', 'LICENSE.txt', 'TERCEIROS.txt',
                    '_internal\microfone\voz.dll') {

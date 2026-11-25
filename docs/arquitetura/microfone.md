@@ -63,14 +63,23 @@ redutor segue ligado e a música chega igual no modo normal e no RAW. Quem pendu
 instalador (administrador, `ritmelli.exe --microfone instala-todos --tarefa`), que também cria a
 tarefa do Windows `\Ritmelli\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
 pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
-prepara, sem UAC, um microfone que apareceu depois. Ao desinstalar, o original de todo
+prepara, sem UAC, um microfone que apareceu depois, e só reabre o áudio quando a tarefa acaba: o filtro
+aparece no registro antes de ela reiniciar o áudio e conferir os aparelhos. Ao desinstalar, o original de todo
 microfone volta e a tarefa sai. A DLL e o log moram na `microfone\` da pasta do executável (pelo
 código, na `%ProgramW6432%\Ritmelli`), e tudo isso só vale com essa pasta protegida
 (`pastas.pasta_protegida`): o `instala` e o `instala-todos` conferem antes de tudo e recusam, e o
 `instala-todos` do executável, o da tarefa, ainda apaga as duas tarefas que rodam como SYSTEM (a da
 atualização e a dele), que só o setup completo cria de novo. Com a pasta reprovada, o `remove`
 devolve os microfones do mesmo jeito, apaga o registro do COM e do APO pelo `winreg`, sem carregar
-a DLL, e deixa a pasta como está. Os programas do Windows (`schtasks`, `regsvr32`, `icacls`,
+a DLL, e deixa a pasta como está. Depois do reinício do áudio no instalador e na tarefa, sempre
+depois de a pasta passar, o `confere_aparelhos` abre ao mesmo tempo cada microfone e cada saída
+ativos e conta os quadros por 2 s (o que não entregou nada tem mais 4 s, numa segunda abertura; a
+conferência inteira tem 30 s): o aparelho que abre e não entrega nada (a UMC 404HD da Behringer,
+até tirar o cabo, #136) vai para o registro e para o `--saida`, que o instalador mostra na página
+de concluído (`instalador/mudos.iss`), com o resumo da conferência no log do setup; o motor
+confere de novo, num processo à parte, e avisa quem usa. Na desinstalação não há conferência: não
+sobra app para avisar. O `remove` com a pasta reprovada também não confere. Só a DLL nova
+reinicia só o Audiosrv, sem desmontar os aparelhos. Os programas do Windows (`schtasks`, `regsvr32`, `icacls`,
 `powershell`, `sc`) vão pelo caminho completo da System32: pelo nome solto, o Windows procuraria
 antes na pasta do executável. O nome do microfone é o do Windows (Core Audio, casado pelo id
 do aparelho): o montado do registro perde o "2- " que o Windows põe quando há dois aparelhos com
@@ -81,7 +90,8 @@ com efeito que sai do app pelo `voz.dll` (e sem ele);
 hospedeiro do MFX com um fabricante falso por dentro, sozinho e com o EFX na frente);
 `dev/testa_mfx.py` confere as vagas de MFX num registro falso, e a pasta protegida no filtro (qual
 pasta é conferida, a recusa sem mexer em nada, o desarme das tarefas e o `remove` com a pasta
-reprovada) com os comandos gravados; `dev/testa_voz.py` confere cada
+reprovada) com os comandos gravados; `dev/testa_aparelho_mudo.py` confere a conferência, o aviso e
+a página do instalador com um aparelho mudo de mentira; `dev/testa_voz.py` confere cada
 efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a amostra, e em outras taxas;
 `dev/mede_voz_ao_vivo.py` mede ao vivo, num microfone virtual com o filtro, o atraso da voz com
 efeito no filtro e pelo app (toca estalos de verdade nesse microfone).

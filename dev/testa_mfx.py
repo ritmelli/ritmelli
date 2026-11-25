@@ -312,7 +312,7 @@ class Gravador:
         Windows procuraria antes na pasta do executavel."""
         feitos = [c for c in self.comandos if os.path.basename(c[0]).lower() in (programa, programa + ".exe")]
         for c in feitos:
-            if c[0] not in ("servico", "reinicia"):
+            if c[0] not in ("servico", "reinicia", "confere"):
                 assert os.path.dirname(c[0]).lower() == mf.SYSTEM32.lower(), f"{c[0]} sem o caminho da System32"
         return feitos
 
@@ -362,7 +362,9 @@ class TestaPastaProtegida(Base):
                  mock.patch.object(mf, "_sha", lambda p: "igual"),
                  mock.patch.object(mf, "audio_rodando", lambda: True),
                  mock.patch.object(mf, "servico_audio", lambda acao: self.cmd.comandos.append(["servico", acao])),
-                 mock.patch.object(mf, "reinicia_audio", lambda: self.cmd.comandos.append(["reinicia"]))]
+                 mock.patch.object(mf, "reinicia_audio", lambda so_servico=False: self.cmd.comandos.append(["reinicia"])),
+                 # a conferencia dos aparelhos depois do reinicio (#136) abriria os de verdade: so anota
+                 mock.patch.object(mf, "_depois_do_reinicio", lambda: self.cmd.comandos.append(["confere"]))]
         for p in pilha:
             p.start()
             self.addCleanup(p.stop)
@@ -503,6 +505,8 @@ class TestaPastaProtegida(Base):
         self.assertTrue(mf.tem_filtro(EP2), "o outro microfone perdeu o filtro")
         self.assertEqual(self.vaga(0), MFX_FM, "a vaga do hospedeiro saiu")
         self.assertEqual(self.cmd.de("schtasks"), [], "mexeu na tarefa")
+        self.assertEqual(self.cmd.de("confere"), [["confere"]] if aprova else [],
+                         "a conferencia dos aparelhos (#136) so com a pasta protegida")
         self.assertEqual(self.cmd.de("regsvr32") + self.apagadas, [], "tirou a DLL com um microfone usando")
         self.assertTrue(self.tem_chave(rf"SOFTWARE\Classes\CLSID\{mf.CLSID}"), "o COM do filtro saiu")
 
@@ -542,7 +546,11 @@ class TestaPastaProtegida(Base):
         self.tearDown_winreg()
         self.com_dois()
         self.falsos(existe=[mf.PASTA + r"\micfx.dll"])
+        r = self.reg
+        r.SetValueEx(r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, mf.SALVO), mf.MUDOS, 0, r.REG_MULTI_SZ, ["IN 1 (X)"])
         mf.remove()
+        self.assertNotIn(mf.MUDOS.lower(), r.valores(f"HKLM\\{mf.SALVO}"),
+                         "os mudos da conferencia dos aparelhos (#136) ficaram no registro")
         self.assertEqual(self.cmd.de("regsvr32"), [[mf.REGSVR32, "/s", "/u", mf.PASTA + r"\micfx.dll"]])
         self.assertEqual(self.apagadas, [mf.PASTA])
         self.assertEqual(self.vistas, [os.path.dirname(mf.PASTA)])

@@ -24,6 +24,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, que nao sao deste teste
+    import automatico as auto_mod  # noqa: E402
     import engine as eng  # noqa: E402
     import pastas  # noqa: E402
     import server  # noqa: E402
@@ -98,7 +99,7 @@ def automatico(A, E):
     # a segunda volta monta a fila na ordem por andamento
     visto, sinal = A._volta_auto(visto, sinal)
     esperado = ["aaaaaaaaaa3", "aaaaaaaaaa6", "aaaaaaaaaa2", "aaaaaaaaaa4", "aaaaaaaaaa1"]
-    confere(auto() == esperado and len(A.fila) == server.AUTO_FILA,
+    confere(auto() == esperado and len(A.fila) == auto_mod.AUTO_FILA,
             f"a segunda volta: cinco parecidas na fila, na ordem por andamento ({auto()})")
     confere(all(x.get("auto_de") == "Semente Primeira" and x.get("qid") and x.get("id") is None for x in A.fila),
             "cada parecida da fila diz de que semente veio e ganhou o seu qid")

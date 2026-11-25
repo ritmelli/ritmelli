@@ -472,7 +472,7 @@ The internal docs and the older code are in Brazilian Portuguese; new code is in
 | `soundboard.ps1` | starts, stops and checks Ritmelli from a terminal |
 | `server.py` | the aiohttp server: the API, the events (SSE), the queue, search and download |
 | `comandos.py` | the server's music commands (play, queue, transport, music volume) and the queue advance they share |
-| `automatico.py` | Play similar songs: the similar songs at the end of the queue, ordered by tempo |
+| `automatico.py`, `music.py` | Play similar songs: the similar songs at the end of the queue, ordered by tempo (`automatico.py`), and the pure functions about song titles and artists it shares with the server (`music.py`) |
 | `engine.py` | the audio engine: mixing, the two decks and the transitions |
 | `transicao.py` | the transition math that reads no audio: where each record ends and starts by its block levels, fade or hard ending, how the next one comes in, and the timing from the measured beat grids |
 | `batida.py`, `compasso.py`, `andamento.py` | beat analysis: the tempo and beat grid of each transition (`batida.py`), the downbeat (`compasso.py`) and each record's tempo, which orders Play similar songs (`andamento.py`) |
@@ -556,7 +556,8 @@ The description at the top of each file (in Portuguese) says exactly what it che
   `dev/testa_comandos.py`, `dev/testa_automatico.py`, `dev/testa_adianta.py`, `dev/testa_rapido.py`,
   `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
-  `dev/testa_microfone.py`, `dev/testa_anel.py` (the ring is released after every failure), `dev/testa_voz.py` and
+  `dev/testa_microfone.py`, `dev/testa_anel.py` (the ring is released after every failure),
+  `dev/testa_aparelho_mudo.py`, `dev/testa_voz.py` and
   `microfone/apo/teste/teste_reamostra.py` (the filter's resampler, `reamostra.h`).
 - The voice changer pedal (`pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` and the `pistavoz` hook in
   `fx.py`, `engine.py` and `server.py`; the contract is in [API.md](API.md#pedal-de-troca-de-voz)):
@@ -616,10 +617,11 @@ Until the SignPath Foundation approves the project, versions are published unsig
 - **Privacy policy:** [PRIVACIDADE.md](PRIVACIDADE.md#ritmelli-privacy-policy), summarized in [Privacy](#privacy)
   along with the link to Google's privacy policy for YouTube and YouTube Music. The installer shows the main points
   and lets you turn off usage data and error reports.
-- **What is signed:** `ritmelli.exe`, the installer and the partial update, built from this code by this repository's
-  pipeline (`.github/workflows/monta.yml`) on a GitHub-hosted machine. Deno ships in the installer exactly as its
-  project distributes it, and ffmpeg and ffprobe are built by the team with audio features only
-  (`instalador/ffmpeg/`); none of the three carries Ritmelli's signature.
+- **What is signed:** `ritmelli.exe`, the microphone filter and its effects engine (`micfx.dll` and `voz.dll`), the
+  installer and the partial update, built from this code by this repository's pipeline (`.github/workflows/monta.yml`)
+  on a GitHub-hosted machine. Deno ships in the installer exactly as its project distributes it, and ffmpeg and ffprobe
+  are built by the team with audio features only (`instalador/ffmpeg/`); none of the three carries Ritmelli's
+  signature.
 
 ## License
 

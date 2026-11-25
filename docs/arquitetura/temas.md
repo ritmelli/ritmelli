@@ -18,7 +18,13 @@ ordem, e o que um deles declara no alto continua à vista dos de depois. Já sa�
 mesa), o `mix.js` (o mixer da mesa), o `pedal.js` (os pedais da mesa), o `maleta-vazia.js` (o aviso de vazio do A
 seguir), o `letra-placa.js` (a letra de pixel das placas da mesa), o `prateleira.js` (o título e a contagem da plaqueta
 da prateleira), o `maleta-tit.js` (o título da placa da maleta) e o `mesa-topo.js` (a plaqueta e as teclas do topo da
-mesa em largura par).
+mesa em largura par). The
+`dj-visor.js` (the DJ visor: the waveform of the record running under the fixed play point), the `voice-effects.js` (the
+voice effects: the selector on the receiver and the key drawer), the `dj-desk.js` (the two decks of the DJ
+desk taking turns like in a set, on the wide desktop), the `search.js` (the search and its results), the `queue.js`
+(the queue, A seguir) and the `ui-events.js` (the click, key and pointer handlers of the page) came out of the main
+script of the page, which is strict: a file taken from it starts with `'use strict'`, and so does the inline script
+that resumes after its `<script src>`.
 
 Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `index.html`
 chama, e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o

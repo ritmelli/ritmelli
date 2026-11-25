@@ -16,7 +16,12 @@ para a taxa de cada aparelho (sem isso, um aparelho a 44,1 kHz recusava o stream
 erro na tela e tenta de novo logo depois e quando a lista de aparelhos muda. Com a lista parada, o vigia só reabre
 o áudio quando o filtro do microfone em uso para de ler com o motor ainda capturando o mesmo microfone: depois de 10 s
 sem leitor, a cada 30 s, no máximo 3 vezes, e o leitor que volta zera a conta; o microfone que nunca teve leitor (sem o
-filtro), o leitor que volta sozinho, o motor fechado e a troca manual não reabrem nada. Áudio de
+filtro), o leitor que volta sozinho, o motor fechado e a troca manual não reabrem nada. Na
+primeira vez com o filtro pronto, o motor confere de novo os aparelhos que o instalador ou a tarefa
+acharam mudos (#136, em `microfone.md`) e, depois de preparar um microfone novo pela tarefa,
+todos: a conferência roda num processo à parte (`--microfone confere`), para não abrir aparelhos
+no PortAudio dos streams do motor, e o aparelho que abre e não entrega som vira um aviso dos
+aparelhos, que sai quando o áudio reabre. Áudio de
 até 15 s (buzina, bordão) toca por cima da música em vez de trocar, e o posto nos Sons
 rápidos pela mão
 também, inteiro até 2 min: vários juntos, no volume da música,
@@ -105,6 +110,14 @@ prato logo antes: a posição que o servidor grava (`remember_pos`) é a desse i
 servidor confere ali a reserva de avanço, a primeira da fila, o deck e a linha que viu; ver [comandos.md](comandos.md)).
 Quem chama com as travas dele na mão passa também o `ganho` já medido e uma lista `depois`, onde fica o resto do comando
 (o leitor que começa, a onda, a medida), que ele roda ao soltá-las.
+
+O servidor confere a linha pela interface do motor, e não pelos campos de dentro: o `line()` dá a `Line` (o deck e a
+linha do prato, os mesmos dois campos da `Captura`), e o `on_line(t)` diz, sob o `_qlock`, se o prato ainda é a linha
+de `t`. A virada que o motor fez sozinho sai pelo `take_switch` (sob o `_qlock`, só a que ainda é a pendente), a
+passagem preparada pelo `drop_prepared` (sob o `_qlock`; o `cancelar_pronto` pega a trava), o ganho medido antes das
+travas pelo `gain_for`, o nome novo do disco no prato pelo `update_track`, a faixa, a posição, o estado e a virada de
+uma leitura só pelo `platter_state` e os arquivos que o motor lê pelo `tracks_in_use`. O `snapshot` não traz o estado,
+a faixa nem a duração: o servidor lê os três com a posição e a fila numa captura só (`App.leitura`).
 
 A pausa vale no limite entre blocos. O `pause` devolve uma `Pausa`: com um bloco do prato retirado e ainda não
 publicado (o do disco, o do fim ou só o da passagem soando), ela fica pendente (o prato só pausa na confirmação) e se
