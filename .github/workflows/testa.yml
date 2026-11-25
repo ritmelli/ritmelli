@@ -154,6 +154,37 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
+  # the labels of the PR, read once for the run, so the tela and the compara decide on the same list: as they are when
+  # the run starts, not as the event saw them (a re-run after a label changed gets the new ones). A merge_group entry
+  # carries no PR: it is the one in its ref (pr-<number>-<sha>). Outside a PR and a queue entry (the push), none
+  etiquetas:
+    name: Etiquetas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      lista: ${{ steps.le.outputs.lista }}
+    steps:
+      - name: Etiquetas do PR
+        id: le
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          n="$PR"
+          if [ "$GITHUB_EVENT_NAME" = merge_group ]; then
+            n=$(sed -nE 's#.*/pr-([0-9]+)-.*#\1#p' <<< "$GITHUB_REF")
+            [ -n "$n" ] || { echo "::error::no PR number in $GITHUB_REF"; exit 1; }
+          fi
+          lista='[]'
+          if [ -n "$n" ]; then
+            lista=$(gh pr view "$n" -R "$REPO" --json labels --jq '[.labels[].name]') \
+              || { echo "::error::the labels of PR $n did not come"; exit 1; }
+          fi
+          echo "lista=$lista" >> "$GITHUB_OUTPUT"
+
   # the screen, part 1 (the --tela of the dev/testa_tudo.py, without --base): the fitcheck in both languages against a
   # --mock with temporary data, and the usage data notice of the theme (the fitcheck --metricas: one --mock
   # --metricas-teste per situation and per button, with the network caught in a trap; it checks when the notice opens,
@@ -161,10 +192,8 @@ jobs:
   # server injects in it or the tools, and on every PR with the extracao-tema label
   tela:
     name: Tela
+    needs: etiquetas
     runs-on: windows-2025
-    permissions:
-      contents: read
-      pull-requests: read
     timeout-minutes: 25
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
@@ -176,20 +205,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12.10'
-      # the labels as they are now, not as the event saw them (a re-run, after a label changed, gets the new ones); a
-      # merge_group entry carries no PR: it is the one in its ref (pr-<number>-<sha>)
+      # the labels of the etiquetas job, the same in the tela and the compara
       - name: O PR mexe na tela?
         id: areas
         env:
-          PR: ${{ github.event.pull_request.number }}
-          GH_TOKEN: ${{ github.token }}
+          ETIQUETAS: ${{ needs.etiquetas.outputs.lista }}
         # the testa_tudo reads the list from the variable: in an argument, PowerShell would mangle the JSON quotes
         run: |
-          $n = if ($env:GITHUB_EVENT_NAME -eq 'merge_group') { [regex]::Match($env:GITHUB_REF, '/pr-(\d+)-').Groups[1].Value } else { $env:PR }
-          if ($n -or $env:GITHUB_EVENT_NAME -eq 'merge_group') {
-            $env:ETIQUETAS = gh pr view $n -R $env:GITHUB_REPOSITORY --json labels --jq '[.labels[].name]'
-            if ($LASTEXITCODE -ne 0 -or -not $n) { "::error::the labels of the PR of $env:GITHUB_REF did not come"; exit 1 }
-          }
           python dev/testa_tudo.py --areas $env:BASE
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }
@@ -242,14 +264,12 @@ jobs:
   # push to main it always runs: the capture of the new commit goes to the cache
   compara:
     name: Compara
+    needs: etiquetas
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
       mudaram: ${{ steps.compara.outputs.prints_mudaram }}
-    permissions:
-      contents: read
-      pull-requests: read
     env:
       # what the prints are compared to: in a merge_group entry, the tree just before its PR (the first parent of the
       # entry), so the extracao-tema label of that PR blocks only what that PR changed, not what a PR ahead of it in the
@@ -264,19 +284,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12.10'
-      # (the labels: see the same step of the tela)
+      # (the labels of the etiquetas job, as in the tela)
       - name: O PR mexe na tela?
         id: areas
         env:
-          PR: ${{ github.event.pull_request.number }}
-          GH_TOKEN: ${{ github.token }}
+          ETIQUETAS: ${{ needs.etiquetas.outputs.lista }}
         # the testa_tudo reads the list from the variable: in an argument, PowerShell would mangle the JSON quotes
         run: |
-          $n = if ($env:GITHUB_EVENT_NAME -eq 'merge_group') { [regex]::Match($env:GITHUB_REF, '/pr-(\d+)-').Groups[1].Value } else { $env:PR }
-          if ($n -or $env:GITHUB_EVENT_NAME -eq 'merge_group') {
-            $env:ETIQUETAS = gh pr view $n -R $env:GITHUB_REPOSITORY --json labels --jq '[.labels[].name]'
-            if ($LASTEXITCODE -ne 0 -or -not $n) { "::error::the labels of the PR of $env:GITHUB_REF did not come"; exit 1 }
-          }
           python dev/testa_tudo.py --areas $env:BASE
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }
