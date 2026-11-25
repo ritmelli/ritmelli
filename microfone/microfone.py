@@ -1038,24 +1038,31 @@ def main(argv=None):
             res = {"ok": False, "erro": str(ex.code)}
     except Exception as ex:  # noqa: BLE001 - quem chamou ve o motivo em vez de ficar sem resposta
         res = {"ok": False, "erro": f"{type(ex).__name__}: {ex}"}
-    if r is not None:  # o audio reiniciou: a conferencia dos aparelhos (#136). O resumo vai para o log do setup, e os
-        # mudos, um nome por aparelho fisico, para o aviso da ultima pagina (instalador/mudos.iss)
-        res["conferencia"] = r["resumo"]
-        res["mudos"] = r["mudos"]
-        res["aparelhos"] = aparelhos_de(r["mudos"])
-    if a.saida:  # em ASCII (a letra com acento vai escapada): o Pascal do instalador le sem saber de UTF-8
-        with open(a.saida, "w", encoding="ascii") as f:
-            json.dump(res, f)
-    if not res["ok"]:
-        print(res["erro"], file=sys.stderr)
-    rc = 0 if res["ok"] else 1
-    if r is not None and r["travou"]:
-        # a thread da conferencia segue presa no driver, dentro do PortAudio: o atexit do sounddevice (Pa_Terminate)
-        # poderia travar a saida, e o instalador espera este processo sem prazo. Sai ja, com o --saida gravado
-        for cano in (sys.stdout, sys.stderr):
-            if cano is not None:
-                cano.flush()
-        os._exit(rc)
+    rc = 1
+    try:
+        if r is not None:  # o audio reiniciou: a conferencia dos aparelhos (#136). O resumo vai para o log do setup,
+            # e os mudos, um nome por aparelho fisico, para o aviso da ultima pagina (instalador/mudos.iss)
+            res["conferencia"] = r["resumo"]
+            res["mudos"] = r["mudos"]
+            res["aparelhos"] = aparelhos_de(r["mudos"])
+        if a.saida:  # em ASCII (a letra com acento vai escapada): o Pascal do instalador le sem saber de UTF-8
+            with open(a.saida, "w", encoding="ascii") as f:
+                json.dump(res, f)
+        if not res["ok"]:
+            print(res["erro"], file=sys.stderr)
+        rc = 0 if res["ok"] else 1
+    finally:
+        if r is not None and r["travou"]:
+            # a thread da conferencia segue presa no driver, dentro do PortAudio: o atexit do sounddevice
+            # (Pa_Terminate) poderia travar a saida, e o instalador espera este processo sem prazo. Sai ja, com o
+            # --saida gravado, e tambem quando gravar o --saida ou esvaziar os canos falhou (com erro)
+            for cano in (sys.stdout, sys.stderr):
+                try:
+                    if cano is not None:
+                        cano.flush()
+                except Exception:  # noqa: BLE001, S110 - saindo de qualquer jeito
+                    pass
+            os._exit(rc)
     return rc
 
 

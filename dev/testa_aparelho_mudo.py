@@ -438,6 +438,15 @@ class TestaLinhaDeComando(unittest.TestCase):
             self.assertEqual(json.loads(saida.read_text("ascii")),
                              {"ok": True, "conferencia": "devices: not checked (still running after 1 s)", "mudos": [],
                               "aparelhos": []})
+            # o --saida que nao grava (a pasta dele nao existe) tambem nao segura o processo: sai na hora, com erro
+            t0 = time.monotonic()
+            try:
+                p = subprocess.run([sys.executable, str(script), str(Path(tmp) / "nao-existe" / "saida.json")],
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+            except subprocess.TimeoutExpired:
+                self.fail("o --saida que falhou deixou o processo preso no atexit")
+            self.assertLess(time.monotonic() - t0, 30)
+            self.assertEqual(p.returncode, 1, p.stderr)
 
     def test_confere(self):
         pedido = []
