@@ -11,3 +11,9 @@ Todo arquivo de `/t/` sai com `Cache-Control: no-cache`, como a página (o `tema
 navegador confere cada um com o servidor antes de usar o que guardou, e não usa um `.js` ou um `.css` de antes sem
 conferir. O `dev/testa_i18n.py` lê o `index.html` e todos os `.js` e `.css` da pasta do tema, e cada bloco marcado
 (`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o `/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só.
+
+Parte do CSS do tema mora em arquivos ao lado do `index.html` (o `deck.css`, por exemplo), cada um com um bloco
+marcado inteiro e carregado por um `<link rel="stylesheet">` sem `media`, no mesmo lugar em que o bloco estava: a
+ordem das folhas e a cascata são as de antes, e os endereços relativos dentro do arquivo (`url(fonts/...)`) continuam
+saindo da pasta do tema. O bloco que estava dentro de um `@media` do `<style>` leva o mesmo `@media` em volta no
+arquivo, e o `<style>` fecha o `@media` antes do `<link>` e abre de novo depois.
