@@ -32,7 +32,8 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
   decisão escrita no PR. Rota ou campo novo entra no `API.md`, e a linha da tabela também.
 - As travas do servidor se pegam numa ordem só: a de [comandos.md](docs/arquitetura/comandos.md#as-travas).
 - O `engine.py` não ganha gancho novo para o módulo opcional de fora do repo: o que ele precisa passa pelo que já
-  existe ([fx.md](docs/arquitetura/fx.md)), e o `dev/testa_ganchos.py` falha com um a mais.
+  existe ([fx.md](docs/arquitetura/fx.md)), e o `dev/testa_ganchos.py` falha com um a mais. O mesmo vale para as rotas
+  só dele: o grupo `OUT_OF_REPO` do `permissao.py`, que o `testa_ganchos` também conta.
 - Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 - Mexeu em `instalador/`, nos `atualiza*.py`, no `migra.py`, no `pastas.py`, no `microfone/microfone.py` ou no
   `ritmelli.spec`: rode o "Monta o instalador" (`monta.yml`) na branch. Na CI, só ele compila o `.iss` e roda a
@@ -51,11 +52,11 @@ galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
 | Área | Arquivos | Teste (sem caminho, em `dev/`) |
 | --- | --- | --- |
 | Motor de áudio | `engine.py`, `sonoridade.py`, `transicao.py`, `batida.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_passagem` (o motor de verdade, que usa o `batida.py`), `testa_transicao`, `testa_anel`, `testa_ganchos` |
-| Servidor e YouTube | `server.py`, `comandos.py`, `automatico.py`, `yt_fora.py`, `yt_erros.py` | `testa_comandos`, `testa_automatico`, `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
-| `--mock` | `server.py`, `pastas.py` | `testa_mock` |
+| Servidor e YouTube | `server.py`, `comandos.py`, `automatico.py`, `music.py` (as funções puras de música), `yt_fora.py`, `yt_erros.py` | `testa_comandos`, `testa_automatico`, `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
+| `--mock` | `server.py`, `pastas.py`, `dev/so_mock.py` (a trava que tira as ferramentas de `dev/` da 8799) | `testa_mock`, `testa_so_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`) | `testa_grava` (só o `save_json`; o `grava_cfg` do `server.py` não tem teste próprio) |
 | Pasta protegida | `pastas.py` (`pasta_protegida`, `create_task`, `disarm`) e quem os chama (`microfone/microfone.py`, `atualizador.py`, `atualizacao.py`, `migra.py`) | `testa_pasta_protegida` (em memória; o `--disco` precisa de administrador e cria pasta em Program Files: só num Windows de teste), `testa_mfx`, `testa_atualizador`, `testa_atualizacao`, `testa_migra` |
-| A regra no setup | `instalador/protegida.ps1`, `instalador/ritmelli.iss` | nenhum em `dev/`: na CI, só a instalação do `.github/workflows/monta.yml` |
+| A regra no setup | `instalador/protegida.ps1`, `instalador/ritmelli.iss` | `testa_pasta_protegida --disco` (roda o `instalador/protegida.ps1` em cada caso e exige o mesmo veredito do `pastas.py`); o `.iss`, só a instalação do `.github/workflows/monta.yml` |
 | Pareamento e permissões | `pareamento.py`, `permissao.py`, o `guard` do `server.py` | `testa_pareamento`, `testa_mock`, `testa_protocolo` |
 | Protocolo da sessão remota | `docs/protocolo-remoto.md`, `docs/protocolo-remoto/v1/` | `testa_protocolo` (`--gera` escreve as fixtures de novo) |
 | Filtro e efeitos | `microfone/`, `fx.py`, `instalador/mudos.iss` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_aparelho_mudo` (os casos do setup de teste precisam do Inno Setup 6: sem ele, pulam no PC e reprovam no GitHub), `testa_voz` e `microfone/apo/teste/teste_reamostra.py` |
@@ -75,3 +76,5 @@ O `testa_filtro`, o `testa_microfone`, o `testa_voz` e o `teste_reamostra.py` pr
 Rode na raiz, com o venv: `$env:PYTHONUTF8 = '1'; python -m ruff check .; python dev\testa_tudo.py` (os outros modos e
 onde entra teste novo: o [Contributing](README.md#contributing) do README). O check "Testa o PR" roda o mesmo; print
 mudado no `compara` só bloqueia com a etiqueta `extracao-tema`: sem ela o check passa, e as diferenças ficam no artefato.
+O PR entra pela fila de merge da `main` (exige o "Testa o PR"; ninguém tem bypass): nada de `--admin`, e o `gh pr merge`
+cai no auto-merge, que o repo não permite. O caminho é a mutação GraphQL `enqueuePullRequest`, com `expectedHeadOid`.
