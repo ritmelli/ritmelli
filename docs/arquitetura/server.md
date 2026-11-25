@@ -15,9 +15,9 @@ pelo Host `127.0.0.1:<porta>`: ele passa pelo cookie do pareamento como o celula
 A regra dos comandos de música (tocar, enfileirar, pular, pausar, parar, a fila e o volume) mora no
 [`comandos.py`](comandos.md), e o avanço da fila é uma operação só, dele: a rota do comando lê o corpo, chama o
 comando e monta a resposta. O tocar da prateleira (`POST /api/library` com `play`), o nome novo do disco
-(`PATCH /api/library/{id}`) e o volume da música do `POST /api/settings` também passam pelos comandos; o resto dessas rotas (a prateleira, os downloads, as outras
-configurações do som) chama os métodos do `App` e do motor. A ordem das travas está no
-[`comandos.md`](comandos.md#as-travas).
+(`PATCH /api/library/{id}`) e o volume da música do `POST /api/settings` também passam pelos comandos; o resto
+dessas rotas (a prateleira, os downloads, as outras configurações do som) chama os métodos do `App` e do motor. A
+ordem das travas está no [`comandos.md`](comandos.md#as-travas).
 
 - Tocar um vídeo que não está na prateleira começa na hora pelo stream do YouTube (o
   yt-dlp dá o endereço do áudio em 1 a 3 s e o ffmpeg toca dele), com o download seguindo

@@ -952,13 +952,18 @@ def bloco(A, E):
     A.lib.update("d1", title="Disco d1")
 
     # the routes that used to reach past the commands: the POST /api/library with play of a record already on the
-    # shelf goes to the platter from the start (cmd.tocar), and the /api/settings music volume takes the command's rule
+    # shelf goes to the platter from the start (cmd.tocar with start 0: a short sound too, not on top, and not from
+    # its last_pos), and the /api/settings music volume takes the command's rule
     toca("d1")
-    E.seek(30.0)
+    A.lib.update("buzina", youtube_id="bbbbbbbbbb1", last_pos=1.5)
+    sobre0 = len(A.sobre)
     st, corpo = asyncio.run(asyncio.wait_for(pede_corpo(app, A, "POST", "/api/library",
-                                                         {"youtube_id": "aaaaaaaaaaa", "play": True}), 5))
-    confere(st == 200 and (corpo.get("item") or {}).get("id") == "d3" and no_prato(E) == "d3" and E.pos < 1.0,
-            f"the POST /api/library with play of a shelf record plays it from the start ({st}, {no_prato(E)}, {E.pos})")
+                                                         {"youtube_id": "bbbbbbbbbb1", "play": True}), 5))
+    confere(st == 200 and (corpo.get("item") or {}).get("id") == "buzina" and no_prato(E) == "buzina"
+            and E.pos < 0.5 and len(A.sobre) == sobre0,
+            f"the POST /api/library with play of a short shelf sound puts it on the platter from the start ({st}, "
+            f"{no_prato(E)}, {E.pos}, on top: {len(A.sobre) - sobre0})")
+    A.lib.update("buzina", youtube_id=None, last_pos=0)
     vol0 = E.vol
     st, _ = asyncio.run(asyncio.wait_for(pede_corpo(app, A, "POST", "/api/settings", {"vol": 0.25}), 5))
     confere(st == 200 and E.vol == 0.25 and A.cfg.get("vol") == 0.25,

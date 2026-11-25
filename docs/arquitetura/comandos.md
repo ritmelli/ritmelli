@@ -108,12 +108,12 @@ vai tocar.
 A ordem é a `fila_lock` do `App`, depois o `_lock` do motor (um `RLock`), depois o `_qlock` do motor, nunca ao
 contrário. Duas outras vêm logo antes do `_qlock` e nunca ficam na mão junto da `fila_lock` nem do `_lock`: a
 `proximo_lock` do `App` (os Próximos sobrepostos, no `pular`) e a trava da prateleira (`Library.lock`: o
-`App.remember_pos` pega ela, depois o `_qlock`, e grava o arquivo com o `_qlock` já solto). Com o `_qlock` na mão não
-se chama método do motor que pegue o `_lock`. A thread do áudio (o `_mixa`) nunca pega a `fila_lock` nem o `_lock`.
-Sob a `fila_lock` não se grava arquivo: o `andamentos.json` e o
-`versoes_audio.json` são copiados sob ela e gravados fora dela. A medida entra na memória mesmo se a gravação falha
-(quem lê esses dicionários depois a vê); a troca das parecidas da fila pela versão de áudio e o `andamentos_versao`,
-que faz o Automático reordenar, só vêm com a gravação feita, como antes.
+`App.remember_pos` pega ela, depois o `_qlock`, e grava o arquivo com o `_qlock` já solto). Com o `_qlock` na mão não se
+chama método do motor que pegue o `_lock`. A thread do áudio (o `_mixa`) nunca pega a `fila_lock` nem o `_lock`. Sob a
+`fila_lock` não se grava arquivo: o `andamentos.json` e o `versoes_audio.json` são copiados sob ela e gravados fora
+dela. A medida entra na memória mesmo se a gravação falha (quem lê esses dicionários depois a vê); a troca das parecidas
+da fila pela versão de áudio e o `andamentos_versao`, que faz o Automático reordenar, só vêm com a gravação feita, como
+antes.
 
 ## O que o servidor lê do motor
 
@@ -125,8 +125,8 @@ motor pelo `take_switch`, a passagem preparada pelo `drop_prepared` (o `cancelar
 leitura do estado pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. Toda mudança da fila passa pelo
 `App._change_queue`, que pega o `_qlock`, muda e confere a preparada no mesmo trecho. O que ainda pega as travas do
 motor por fora (o `_qlock` dos trechos do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
-`_solta_reserva` e do `_change_queue`, e o `_lock` do `_com_motor`) é contado pelo
-`dev/testa_ganchos.py`, que falha se o número sobe; o PR que tira um acesso baixa o teto junto.
+`_solta_reserva` e do `_change_queue`, e o `_lock` do `_com_motor`) é contado pelo `dev/testa_ganchos.py`, que
+falha se o número muda: acima do teto entrou acesso novo; abaixo, o PR que tirou um baixa o teto junto.
 
 ## A leitura do estado
 
