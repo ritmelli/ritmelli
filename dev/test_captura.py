@@ -1,5 +1,6 @@
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -34,6 +35,8 @@ def main():
         subprocess.run(["git", "worktree", "add", "--detach", str(wt), head], cwd=ROOT, check=True,
                        capture_output=True)
         try:
+            for script in ("dev/testa_tudo.py", *testa_tudo.CAPTURA):
+                shutil.copy2(ROOT / script, wt / script)
             with open(wt / "themes" / "ritmelli" / "ui-events.js", "a", encoding="utf-8") as f:
                 f.write(UNCOMMITTED)
             p = subprocess.run([sys.executable, "dev/testa_tudo.py", "--captura", str(cache), "--pasta", str(tela)],

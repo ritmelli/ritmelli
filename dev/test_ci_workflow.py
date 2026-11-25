@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -229,38 +230,6 @@ def requirement(line):
     return re.sub(r"[-_.]+", "-", m.group(1)).lower(), on_ci and bool(re.fullmatch(r"==[^=*,<>!~]+", version))
 
 
-def powershell():
-    return shutil.which("pwsh") or shutil.which("powershell")
-
-
-def run_step(shell, block, env):
-    with tempfile.TemporaryDirectory(prefix="ritmelli-ci-") as tmp:
-        script, output = Path(tmp) / "step.ps1", Path(tmp) / "github_output"
-        script.write_text("$ErrorActionPreference = 'stop'\n" + block, encoding="utf-8-sig")
-        output.touch()
-        p = subprocess.run([shell, "-NoProfile", "-NonInteractive", "-File", str(script)], cwd=ROOT,
-                           env=dict(os.environ, GITHUB_OUTPUT=str(output), **env), capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=120)
-        return p.returncode, p.stdout + p.stderr, output.read_text(encoding="utf-8-sig").splitlines()
-
-
-def test_compara_on_push(all_jobs):
-    shell = powershell()
-    check(bool(shell), "a PowerShell runs the compara steps")
-    if not shell:
-        return
-    lines = all_jobs["compara"]
-    areas, key = step_run(lines, "O PR mexe na tela?"), step_run(lines, "Capture key")
-    gone = {"BASE": "0" * 40, "COMPARA_BASE": "0" * 40, "ETIQUETAS": "[]"}
-    code, out, output = run_step(shell, areas, dict(gone, GITHUB_EVENT_NAME="push"))
-    check(code == 0 and "roda=true" in output, f"on the push, the compara runs without the areas of a base (exit {code})")
-    code, out, output = run_step(shell, key, dict(gone, GITHUB_EVENT_NAME="push"))
-    check(code == 0 and any(re.fullmatch(r"chave=.*-chrome\d+(\.\d+){3}", line) for line in output),
-          f"on the push, the capture key comes without resolving the base (exit {code}: {out.strip()[:200]})")
-    code, out, output = run_step(shell, key, dict(gone, GITHUB_EVENT_NAME="pull_request"))
-    check(code != 0 and "is not a commit here" in out, f"on a PR, a base that is not a commit fails the key (exit {code})")
-
-
 def test_unpinned():
     pinned = {name for name, exact in map(requirement, TRAVAS.read_text(encoding="utf-8").splitlines()) if exact}
     unpinned = set()
@@ -281,25 +250,31 @@ def test_bench_order():
         tmp = Path(tmp)
         names = ["fast_a", "fast_b", "fast_c", "long_x", "long_y"]
         for n in names:
-            stamp = tmp / n
-            (tmp / f"{n}.py").write_text(
-                "import time\n"
-                f"open({str(stamp) + '.start'!r}, 'w').write(repr(time.time()))\n"
-                "time.sleep(0.5)\n"
-                f"open({str(stamp) + '.end'!r}, 'w').write(repr(time.time()))\n", encoding="utf-8")
+            (tmp / f"{n}.py").write_text("print('ok')\n", encoding="utf-8")
         tests = [str(tmp / f"{n}.py") for n in names]
-        saved = testa_tudo.BANCA
-        testa_tudo.BANCA = tests[3:]
+        events, real, saved = [], testa_tudo.executa, testa_tudo.BANCA
+
+        def recorded(cmd, *args, **kw):
+            name = Path(cmd[-1]).stem
+            events.append(("start", name, threading.get_ident()))
+            try:
+                return real(cmd, *args, **kw)
+            finally:
+                events.append(("end", name, threading.get_ident()))
+
+        testa_tudo.BANCA, testa_tudo.executa = tests[3:], recorded
         try:
             with open(os.devnull, "w") as quiet, contextlib.redirect_stdout(quiet):
                 testa_tudo.roda("order", tests, completo=False, jobs=4)
         finally:
-            testa_tudo.BANCA = saved
-        at = {(kind, n): float((tmp / f"{n}.{kind}").read_text(encoding="utf-8")) for n in names
-              for kind in ("start", "end")}
-        fast_end = max(at[("end", n)] for n in names[:3])
-        check(at[("start", "long_x")] >= fast_end and at[("start", "long_y")] >= at[("end", "long_x")],
-              "the plain run takes the BANCA one by one, after the others")
+            testa_tudo.BANCA, testa_tudo.executa = saved, real
+        order = [(kind, n) for kind, n, _ in events]
+        threads = {n: t for kind, n, t in events if kind == "start"}
+        last_fast = max(order.index(("end", n)) for n in names[:3])
+        check(order.index(("start", "long_x")) > last_fast
+              and order[-4:] == [("start", "long_x"), ("end", "long_x"), ("start", "long_y"), ("end", "long_y")]
+              and threads["long_x"] == threads["long_y"] == threading.get_ident(),
+              "the plain run takes the BANCA one by one, after the others, on the calling thread")
 
 
 def test_without_destination():
@@ -326,7 +301,6 @@ def main():
     text = WORKFLOW.read_text(encoding="utf-8")
     all_jobs = jobs(text)
     test_shape(all_jobs, text)
-    test_compara_on_push(all_jobs)
     test_unpinned()
     test_bench_order()
     test_without_destination()

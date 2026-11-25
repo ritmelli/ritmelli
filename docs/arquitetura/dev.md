@@ -31,7 +31,8 @@ execução da fila aprovada no mesmo commit), os jobs que o push pula, as chaves
 e as bibliotecas sem versão no `instalador/travas.txt` (as conhecidas, da issue #231). O
 `dev/test_compara_not_ready.py` roda o `compara` com um sinal de pronto que nunca fecha e confere o
 diagnóstico, no celular e na mesa, e o `dev/test_captura.py` roda o `--captura` de verdade (os prints,
-a chave e o `head_cache` que o workflow lê para salvar). O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
+a chave e o `head_cache` que o workflow lê para salvar). O `dev/test_compara_push_steps.py` roda os
+passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
 cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
 roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo commit que testou,
