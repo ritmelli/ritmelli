@@ -86,6 +86,8 @@ function ConfereArvore($o) {
       foreach ($filho in [IO.Directory]::EnumerateFileSystemEntries($o.Caminho)) {
         # o Windows corta o ponto ou o espaco do fim ao abrir: a leitura acharia outro objeto
         if ($filho -match '[. ]$') { return "$filho has a name Windows can't open" }
+        # o MAX_PATH: sem o \\?\, o Windows diria que nao existe, e ele passaria sem conferir
+        if ($filho.Length -ge 260) { return "$filho is too long to check" }
         $f = Le $filho
         if ($f) { $pilha.Push(@($f, "$rel\$([IO.Path]::GetFileName($filho))")) }
       }
@@ -112,6 +114,7 @@ function Motivo {
   $c = $p.Substring(0, 3)
   for ($i = 0; $i -le $partes.Count; $i++) {
     if ($i) { $c = Join-Path $c $partes[$i - 1] }
+    if ($c.Length -ge 260) { return "$c is too long to check" }
     $o = Le $c
     if (-not $o) {
       # o destino (ou um pai dele) ainda nao existe: valem os ancestrais que existem, a raiz inclusive

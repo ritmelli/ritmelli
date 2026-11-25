@@ -286,6 +286,21 @@ with tempfile.TemporaryDirectory() as tmp:
     try:
         confere(migra.pasta_velha(rodando) == 0 and (rodando / "vitrola.exe").exists() and (rodando / "_internal").exists(),
                 "a pasta do app que esta rodando nunca e apagada")
+        # o app instalado dentro da pasta de antes (um /DIR= nela): nada dela sai, nem fica para o reinicio
+        dentro = Path(tmp) / "VitrolaComApp"
+        for c in ("vitrola.exe", "_internal/a.dll", "_internal/Ritmelli/ritmelli.exe"):
+            (dentro / c).parent.mkdir(parents=True, exist_ok=True)
+            (dentro / c).write_bytes(b"x")
+        pastas.APP = dentro / "_internal" / "Ritmelli"
+        reinicio, migra._apaga_no_reinicio = migra._apaga_no_reinicio, lambda c: agendados.append(c)
+        agendados = []
+        try:
+            confere(migra.pasta_velha(dentro) == 0 and not agendados
+                    and (dentro / "_internal" / "Ritmelli" / "ritmelli.exe").exists()
+                    and (dentro / "vitrola.exe").exists(),
+                    "o app instalado dentro da pasta de antes: nada dela sai")
+        finally:
+            migra._apaga_no_reinicio = reinicio
     finally:
         pastas.APP = app
     confere(vistas and vistas[0] == velha, f"a regra da pasta protegida confere a pasta de antes ({vistas[:1]})")

@@ -143,6 +143,9 @@ _SO_HERANCA = 0x08  # INHERIT_ONLY_ACE: a ACE nao vale para o proprio objeto
 # copiada) a herdaria
 _CRIADORES = ("S-1-3-0",)
 _PERMITE = (0, 9)  # ACCESS_ALLOWED e ACCESS_ALLOWED_CALLBACK
+# o MAX_PATH: um caminho desse tamanho em diante, sem o \\?\, o Windows diz que nao existe, e ele escaparia da regra.
+# Reprova nas duas conferencias (nenhuma instalacao chega perto)
+_MAX_PATH = 260
 _NEGA = (1, 6, 10, 12)  # as de negacao (simples, de objeto e callback) so tiram acesso
 
 
@@ -307,6 +310,8 @@ def _confere_arvore(caminho, d, le):
             filho = ntpath.join(caminho, nome)
             if nome[-1:] in (".", " "):  # o Windows corta o fim do nome ao abrir: a leitura acharia outro objeto
                 return f"{filho} has a name Windows can't open"
+            if len(filho) >= _MAX_PATH:  # sem o \\?\, o Windows diria que nao existe, e ele passaria sem conferir
+                return f"{filho} is too long to check"
             try:
                 df = le(filho)
             except OSError as e:
@@ -347,6 +352,8 @@ def motivo_desprotegida(pasta, raiz, le=_le_disco):
     for i in range(len(partes) + 1):
         if i:
             caminho = ntpath.join(caminho, partes[i - 1])
+        if len(caminho) >= _MAX_PATH:
+            return f"{caminho} is too long to check"
         try:
             d = le(caminho)
         except OSError as e:

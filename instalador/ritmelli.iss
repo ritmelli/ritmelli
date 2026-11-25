@@ -305,12 +305,18 @@ begin
     Exit;
   end;
   ExtractTemporaryFile(Script);
-  DeleteFile(Saida);
+  // a resposta de uma vez anterior nunca vale por esta: sem conseguir apaga-la, sem resposta
+  if FileExists(Saida) and not DeleteFile(Saida) then begin
+    Log(Script + ': could not remove the previous answer ' + Saida);
+    Exit;
+  end;
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
               '-NoProfile -NonInteractive -Command "& ([scriptblock]::Create([IO.File]::ReadAllText(' +
               Aspas(ExpandConstant('{tmp}\') + Script) + '))) ' + Args + ' -Saida ' + Aspas(Saida) + '"',
               '', SW_HIDE, ewWaitUntilTerminated, Codigo) then
     Log(Script + ': o PowerShell nao rodou (' + SysErrorMessage(Codigo) + ')')
+  else if Codigo <> 0 then
+    Log(Script + ': o PowerShell saiu com ' + IntToStr(Codigo))
   else if LoadStringFromFile(Saida, Texto) then
     Result := Trim(String(Texto));
 end;

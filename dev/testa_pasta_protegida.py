@@ -240,6 +240,11 @@ def em_memoria():
     d.poe(DESTINO + r"\_internal\a ", pasta=False)
     reprova("um nome terminado em espaco", d, "can't open")
     d = disco_base()
+    d.poe(DESTINO + "\\microfone\\log\\" + "x" * 230, dono=LS, reparse=True)
+    reprova("um caminho de 260 caracteres ou mais na arvore (sem o \\\\?\\ o Windows diria que nao existe)", d,
+            "too long")
+    reprova("um destino de 260 caracteres ou mais", disco_base(), "too long", RAIZ + "\\" + "x" * 250)
+    d = disco_base()
     d.muda(DESTINO, reparse=True)
     reprova("a propria pasta do app como juncao", d, "reparse point")
     d = disco_base()

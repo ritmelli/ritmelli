@@ -147,7 +147,8 @@ def pasta_velha(pasta=PASTA_VELHA):
     if not protegida:
         log(f"{pasta} was left as it is, the folder isn't protected: {protegida}")
         return 0
-    if not pasta.is_dir() or pasta.resolve() == pastas.APP.resolve():
+    # nunca a pasta do app que esta rodando, nem uma que a contenha (um /DIR= dentro da pasta de antes)
+    if not pasta.is_dir() or pastas.APP.resolve().is_relative_to(pasta.resolve()):
         return 0
     presos = []
 
