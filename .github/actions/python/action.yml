@@ -1,10 +1,8 @@
-# Python 3.12.10 with the libraries of one requirements file, installed into that interpreter with the versions of the
-# instalador/travas.txt (the ones the app ships with) and kept in the Actions cache by the runner OS, the Python version
-# and the hash of both requirements files and the travas.txt (not the image version: two image versions run side by
-# side for days, and the libraries of one Python build do not change with it). With the travas.txt in the key, a cache
-# hit holds the same app libraries a fresh install would get; the ones it leaves out (the yt-dlp, the dev-only ones of
-# the requirements-dev.txt) stay at the version of the install that filled the cache. On a hit nothing is installed; on
-# a miss the libraries are installed and saved right away, so a test that fails later in the job does not lose them. No virtual environment: on Windows its python.exe is a launcher that starts the real interpreter as a
+# Python 3.12.10 with the libraries of one requirements file, installed into that interpreter and kept in the Actions
+# cache (not by the image version: two
+# image versions run side by side for days, and the libraries of one Python build do not change with it). On a hit nothing is
+# installed; on a miss the libraries are installed and saved right away, so a test that fails later in the job does
+# not lose them. No virtual environment: on Windows its python.exe is a launcher that starts the real interpreter as a
 # child, and the tests that compare the pid of a process they started with the one it reports would see two processes.
 name: Python and the libraries
 description: Python 3.12.10 and the cached libraries of one requirements file

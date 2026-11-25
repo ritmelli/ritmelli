@@ -26,9 +26,11 @@ comentário `# manual: <comando> precisa de <aparelho>` no topo, antes da docstr
 falham com o teste sem destino, com o arquivo de `dev/` que tem o `manual:` e roda no check, e com o
 modo do `testa_tudo` que o `testa.yml` deixou de chamar. O `dev/test_ci_workflow.py` confere o que
 nenhuma execução de PR exercita: o bloco do "Testa o PR" num bash com um `gh` falso (o comentário
-que falha com 502 tenta de novo e, na última, reprova dizendo isso; no push, os jobs pulados só
-passam com uma execução da fila aprovada no mesmo commit), os jobs que o push pula, as chaves de
-cache e essa trava. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
+que o GitHub não confirma reprova dizendo isso; no push, os jobs pulados só passam com uma
+execução da fila aprovada no mesmo commit), os jobs que o push pula, as chaves de cache, essa trava
+e as bibliotecas sem versão no `instalador/travas.txt` (as conhecidas, da issue #231). O
+`dev/test_compara_not_ready.py` roda o `compara` com um sinal de pronto que nunca fecha e confere o
+diagnóstico. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
 cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
 roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo commit que testou,

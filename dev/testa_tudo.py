@@ -76,10 +76,7 @@ STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vo
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
     "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
-    "instalador/atualizacao/testa_parcial.py"]
-# the transition bench, the longest test (the real engine through every kind of transition, almost 2 minutes): the
-# plain run takes it after the COMPLETO; the testa.yml runs it in a job of its own (--banca), next to the COMPLETO
-# (--sem-banca), so it does not add to the longest job
+    "instalador/atualizacao/testa_parcial.py", "dev/test_compara_not_ready.py"]
 BANCA = ["dev/testa_passagem.py"]
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
@@ -126,8 +123,6 @@ AREAS = {
                   "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
     "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py"),
 }
-# these trigger every area: the testa.yml, its setup action, the lists and the filter here, and the versions the
-# libraries install with
 TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt")
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
 # renderizacao ou de traducao do tema para outro modulo (posta por quem mantem o repo)
@@ -157,8 +152,6 @@ def manual(arquivo):
 
 
 def is_test(rel):
-    """Whether the dev/ file is a test that needs a destination: dev/testa_*.py, or dev/test_*.py (the name of a new
-    test, in English). The dev/testa_tudo.py is the runner, not a test."""
     return rel.startswith(("dev/testa_", "dev/test_")) and rel != "dev/testa_tudo.py"
 
 
@@ -166,8 +159,8 @@ def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml", dev=RAIZ / "de
     """What takes a test out of the PR check unnoticed: a test of dev/ (is_test) in no list here (STDLIB, COMPLETO,
     BANCA, MICROFONE, PASSOS) and without the "manual:" line; a file with the line (a test or a dev/ tool) that runs in
     the check anyway, or with the line out of format; a call of INVOCATIONS that the testa.yml no longer makes, and a
-    dev/ script it calls directly instead of through PASSOS (in the lines that are not comments). dev: the folder whose
-    files are checked, each named dev/<file> (a test passes a folder of its own). Returns the failure lines."""
+    dev/ script it calls directly instead of through PASSOS (in the lines that are not comments). Returns the failure
+    lines."""
     rodam = set(COMPLETO) | set(BANCA) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
     falhas = []
     for p in sorted(Path(dev).glob("*.py")):
@@ -334,7 +327,7 @@ def testes(a):
         md += [f"**{titulo}:** ❌ nada rodou: " + "; ".join(impede)]
         escreve(a.resumo, md)
         return 1
-    # the filter tests all measure a cost or a level of the filter, and the bench is a single test: one by one
+    # the filter tests all measure a cost or a level of the filter: one by one
     falhas, linhas = roda(titulo, lista, completo=not a.so_stdlib and not a.microfone,
                           jobs=1 if a.microfone or a.banca else a.jobs)
     escreve(a.resumo, md + linhas)
@@ -389,9 +382,6 @@ def so_compara(a):
 
 
 def captura(a):
-    """The --captura: the compara capture of the HEAD (dev/compara.py --ref on this checkout) into the folder, with the
-    key of the HEAD, and nothing compared. The push to main runs only this: the merge queue already tested the
-    commit."""
     pasta = Path(a.pasta).resolve()
     pasta.mkdir(parents=True, exist_ok=True)
     if Path(a.captura).resolve().is_relative_to(pasta / "compara"):

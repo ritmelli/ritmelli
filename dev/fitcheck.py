@@ -104,8 +104,6 @@ PROBE = r"""(soDialogo => {
 
 # the page is ready to be checked: loaded, the fonts in, the first /api/state of the theme applied and every image
 # decoded. The compara waits for the same, plus its fake shelf. In a try: before the theme script runs, S does not exist
-# the conditions of the ready signal, by name: PRONTA is all of them, and a page that does not get ready can say which
-# one is missing (the dev/compara.py prints each)
 PRONTA_CONDICOES = (("document complete", "document.readyState === 'complete'"),
                     ("fonts loaded", "document.fonts.status === 'loaded'"),
                     ("S.state", "!!S.state"),
