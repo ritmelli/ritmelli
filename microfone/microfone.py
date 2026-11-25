@@ -420,8 +420,8 @@ def _depois_do_reinicio(assenta_s=ASSENTA_S):
         r = {**r, "travou": False, "resumo": f"devices: {len(r['conferidos'])} checked"
              + (f"; silent: {'; '.join(r['mudos'])}" if r["mudos"] else "")
              + (f"; couldn't open: {'; '.join(r['falhas'])}" if r["falhas"] else "")}
-        if r["conferidos"]:
-            grava_mudos(r["mudos"])
+        if r["conferidos"]:  # o mudo de antes que agora nem abriu segue sem medida: fica (o --saida e so de agora)
+            grava_mudos(r["mudos"] + [n for n in le_mudos() if n in r["falhas"] and n not in r["mudos"]])
     else:  # None (sem o sounddevice), o erro, ou o tempo que passou
         r = {"conferidos": [], "mudos": [], "falhas": [], "travou": not caixa,
              "resumo": f"devices: not checked ({'no sounddevice' if r is None else r})"}
@@ -926,13 +926,18 @@ def _desarma(motivo):
 
 
 def tarefa_rodando():
-    """A tarefa do filtro roda agora. Pelo Get-ScheduledTask, que da o estado sem traduzir (o schtasks /query sai na
-    lingua do Windows); sem resposta, False."""
+    """A tarefa do filtro roda ou esta na fila (Running, Queued). Pelo Get-ScheduledTask, que da o estado sem
+    traduzir (o schtasks /query sai na lingua do Windows). A consulta que falha ou passa de 10 s da False: sem ela, o
+    pede_tarefa segue como antes, pelo servico de audio."""
     caminho, nome = TAREFA.rsplit("\\", 1)
-    r = subprocess.run([POWERSHELL, "-NoProfile", "-Command",
-                        f"(Get-ScheduledTask -TaskPath '{caminho}\\' -TaskName '{nome}').State"],
-                       capture_output=True, text=True, encoding="oem", errors="replace", creationflags=NO_WINDOW)
-    return r.stdout.strip() == "Running"
+    try:
+        r = subprocess.run([POWERSHELL, "-NoProfile", "-Command",
+                            f"(Get-ScheduledTask -TaskPath '{caminho}\\' -TaskName '{nome}').State"],
+                           capture_output=True, text=True, encoding="oem", errors="replace", timeout=10,
+                           creationflags=NO_WINDOW)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return r.stdout.strip() in ("Running", "Queued")
 
 
 def pede_tarefa(nome, espera_s=60):
@@ -956,16 +961,19 @@ def pede_tarefa(nome, espera_s=60):
     # o filtro aparece no registro antes de a tarefa reiniciar o audio e conferir os aparelhos (#136): ate ela acabar,
     # o audiosrv RUNNING ainda pode ser o de antes do reinicio. Com o prazo da conferencia dela a mais
     fim += ASSENTA_S + CONFERE_MAX_S
-    while time.monotonic() < fim and tarefa_rodando():
+    while tarefa_rodando():
+        if time.monotonic() >= fim:  # presa: o audio pode nem ter reiniciado
+            return {"ok": False, "motivo": "tarefa_falhou", "detalhe": "the task is still running"}
         time.sleep(0.5)
-    while time.monotonic() < fim:  # o reinicio do audio: o servico volta depois do registro
+    while True:  # o reinicio do audio: o servico volta depois do registro (uma olhada ao menos, mesmo no fim do prazo)
         st = subprocess.run([SC, "query", "audiosrv"], capture_output=True, text=True, encoding="oem",
                             errors="replace", creationflags=NO_WINDOW).stdout
         if "RUNNING" in st:
             time.sleep(2.0)  # os aparelhos se enumeram de novo logo depois
             return {"ok": True}
+        if time.monotonic() >= fim:
+            return {"ok": False, "motivo": "audio"}
         time.sleep(0.5)
-    return {"ok": False, "motivo": "audio"}
 
 
 def _migra_registro():

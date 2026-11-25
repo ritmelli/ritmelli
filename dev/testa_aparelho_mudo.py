@@ -372,6 +372,10 @@ class TestaRegistro(unittest.TestCase):
         r = self._confere(lambda: {"conferidos": [UMC_IN, MIC], "mudos": [], "falhas": []})
         self.assertEqual(r["resumo"], "devices: 2 checked")
         self.assertEqual(filtro.le_mudos(), [], "o aparelho voltou: sai do registro")
+        filtro.grava_mudos([UMC_IN, UMC_OUT])
+        r = self._confere(lambda: {"conferidos": [MIC, UMC_OUT], "mudos": [], "falhas": [UMC_IN]})
+        self.assertEqual(filtro.le_mudos(), [UMC_IN], "o mudo que nem abriu segue sem medida: fica; o que abriu sai")
+        self.assertEqual(r["mudos"], [], "o --saida e so de agora")
 
     def test_conferencia_que_quebra_ou_trava(self):
         """Um driver que quebra ou trava na conferencia nao segura a instalacao nem mexe no registro."""
@@ -507,7 +511,7 @@ class TestaApp(unittest.TestCase):
                 eng.Engine._confere_mudos(m, [UMC_IN])
             self.assertEqual(m.error, "o de antes", muda)
         m = self._motor(_stack=None)  # o audio ja estava fechado (a reabertura que falhou tem o aviso dela)
-        with mock.patch.object(eng, "_confere_fora", lambda n: {"mudos": [UMC_IN]}), redirect_stdout(io.StringIO()):
+        with mock.patch.object(eng, "_confere_fora", side_effect=AssertionError("abriu os aparelhos sem audio")):
             eng.Engine._confere_mudos(m)
         self.assertIsNone(m.error)
 
@@ -525,10 +529,14 @@ class TestaApp(unittest.TestCase):
             with mock.patch.object(filtro, "le_mudos", lambda: []):
                 eng.Engine._confere_filtro(m, MIC)
             m._confere_mudos.assert_not_called()  # nenhum no registro: nenhum processo
-            # o aviso sai quando o audio reabre (a partida chama o _confere_filtro de novo)
-            m.error = m._aviso = eng._aviso_mudos([UMC_IN])
+            # o _confere_filtro tira o aviso dos aparelhos (o de preparar o microfone), mas nao o dos mudos: ele
+            # acabou de sair desta pilha (a conferencia depois da tarefa) e sai quando o audio reabre (o start)
+            m.error = m._aviso = {"key": "server.mic.preparing", "params": {}, "text": "x"}
             eng.Engine._confere_filtro(m, MIC)
             self.assertIsNone(m.error)
+            m.error = m._aviso = eng._aviso_mudos([UMC_IN])
+            eng.Engine._confere_filtro(m, MIC)
+            self.assertEqual(m.error["key"], "server.devices.silent")
 
     def test_depois_de_preparar_confere_todos(self):
         sem = {"filtro": False, "melhorias": True, "guid": "{a}"}
@@ -589,14 +597,48 @@ class TestaPedeTarefa(unittest.TestCase):
         self.assertEqual(ordem, ["schtasks.exe /run /tn", "tarefa True", "tarefa True", "tarefa False",
                                  "sc.exe query audiosrv"])
 
+    def _pede(self, rodando, sc="STATE : 4 RUNNING", relogio=None):
+        ordem = []
+
+        def run(cmd, **kw):
+            ordem.append(os.path.basename(cmd[0]).lower())
+            return types.SimpleNamespace(returncode=0, stdout=sc, stderr="")
+        with mock.patch.object(filtro, "tarefa_existe", lambda: True), \
+                mock.patch.object(filtro.subprocess, "run", run), \
+                mock.patch.object(filtro, "do_microfone", lambda n: {"filtro": True, "melhorias": True}), \
+                mock.patch.object(filtro, "tarefa_rodando", rodando), mock.patch.object(filtro.time, "sleep"), \
+                mock.patch.object(filtro.time, "monotonic", relogio or time.monotonic):
+            return filtro.pede_tarefa("IN 1"), ordem
+
+    def test_tarefa_presa(self):
+        """A tarefa que passa do prazo rodando: falhou, sem olhar o servico (o audio pode nem ter reiniciado)."""
+        t = iter(range(0, 10000, 10))
+        r, ordem = self._pede(lambda: True, relogio=lambda: next(t))
+        self.assertEqual(r, {"ok": False, "motivo": "tarefa_falhou", "detalhe": "the task is still running"})
+        self.assertNotIn("sc.exe", ordem)
+
+    def test_servico_olhado_no_fim_do_prazo(self):
+        """A tarefa acabou no fim do prazo: o servico ainda e olhado uma vez."""
+        t = iter([0, 1, 1000, 1000, 1000, 1000])
+        r, ordem = self._pede(lambda: False, relogio=lambda: next(t))
+        self.assertEqual((r, ordem), ({"ok": True}, ["schtasks.exe", "sc.exe"]))
+        t = iter([0, 1, 1000, 1000, 1000, 1000])
+        r, _ = self._pede(lambda: False, sc="STATE : 1 STOPPED", relogio=lambda: next(t))
+        self.assertEqual(r, {"ok": False, "motivo": "audio"})
+
     def test_tarefa_rodando(self):
-        for saida, quer in (("Running\r\n", True), ("Ready\r\n", False), ("", False)):
+        for saida, quer in (("Running\r\n", True), ("Queued\r\n", True),
+                            ("Ready\r\n", False), ("", False)):
             c = Chamadas()
             with mock.patch.object(filtro.subprocess, "run", c("run", types.SimpleNamespace(stdout=saida))):
                 self.assertIs(filtro.tarefa_rodando(), quer, saida)
             cmd = c.lista[0][1][0]
             self.assertEqual(cmd[0], filtro.POWERSHELL, "pelo caminho da System32")
             self.assertIn(r"Get-ScheduledTask -TaskPath '\Ritmelli\' -TaskName 'Microfone'", cmd[-1])
+            self.assertTrue(c.lista[0][2].get("timeout"), "a consulta tem prazo")
+        for erro in (OSError("powershell"), filtro.subprocess.TimeoutExpired("powershell", 10)):
+            with mock.patch.object(filtro.subprocess, "run", side_effect=erro):
+                self.assertFalse(filtro.tarefa_rodando(), "sem a consulta, segue pelo servico, como antes")
 
 
 RAIZ = Path(__file__).resolve().parent.parent

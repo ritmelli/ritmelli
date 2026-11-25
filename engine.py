@@ -1452,8 +1452,10 @@ class Engine:
             from microfone import injeta  # noqa: PLC0415
             if self.active.get("mic") == mic:
                 self._alvo = injeta.hash_microfone(st["guid"])
-                if self._aviso is not None and self.error == self._aviso:
-                    self.error = None
+                with self._lock:  # o dos mudos fica: ele acabou de sair desta pilha e sai quando o audio reabre
+                    if (self._aviso is not None and self.error == self._aviso
+                            and self._aviso.get("key") != "server.devices.silent"):
+                        self.error = None
             with self._lock:  # uma vez, so os que o instalador ou a tarefa acharam mudos: abrir todos a cada partida
                 ver = not self._mudos_vistos  # incomodaria
                 self._mudos_vistos = True
@@ -1502,6 +1504,8 @@ class Engine:
         reabriu (ou caiu) enquanto a conferencia rodava deixa o resultado de fora: ele e de antes, e a reabertura que
         falhou tem o aviso dela."""
         pilha = self._stack
+        if pilha is None:  # sem audio aberto, o resultado ficaria de fora: nem abre os aparelhos
+            return
         r = _confere_fora(nomes)
         if not r or not r.get("mudos"):
             return
