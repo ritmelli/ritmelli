@@ -98,7 +98,11 @@ faixa e o ganho novos, na mesma linha (da espera para o stream, também a posiç
 arquivo, com leitor novo, a passagem preparada sai; o religar do stream a mantém). A medida do ganho e o leitor ficam
 fora das travas, e o leitor que acaba só marca o fim, ou o erro, se ainda é o leitor do deck; o Repetir e o fim do
 leitor se decidem no mesmo trecho do `_qlock`. O `load`, o `espera` e o `stop` devolvem a `Captura` do que estava no
-prato logo antes: a posição que o servidor grava (`remember_pos`) é a desse instante.
+prato logo antes: a posição que o servidor grava (`remember_pos`) é a desse instante. O `load`, o `espera`, o `stop`, o
+`seek` e o `preparar` aceitam um `pode()`, conferido sob o `_qlock` antes de mudar qualquer coisa: falso, nada muda (o
+servidor confere ali a reserva de avanço, a primeira da fila, o deck e a linha que viu; ver [comandos.md](comandos.md)).
+Quem chama com as travas dele na mão passa também o `ganho` já medido e uma lista `depois`, onde fica o resto do comando
+(o leitor que começa, a onda, a medida), que ele roda ao soltá-las.
 
 A pausa vale no limite entre blocos. O `pause` devolve uma `Pausa`: com um bloco do prato retirado e ainda não
 publicado (o do disco, o do fim ou só o da passagem soando), ela fica pendente (o prato só pausa na confirmação) e se
