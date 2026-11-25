@@ -150,7 +150,7 @@ const I18N = (() => {
         <span class="rot" data-i18n="top.newVersion"></span>
       </button>
       <!-- so no PC (127.0.0.1): o codigo e os celulares conectados nao vao para a rede -->
-      <button class="btn-madeira" id="b-cel" type="button" data-i18n-title="top.connectPhone" hidden>
+      <button class="btn-madeira" id="b-cel" type="button" data-i18n-title="top.connectPhone" hidden data-pode="GET /api/pareamento">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10.5 18.5h3"/></svg>
         <span class="rot" data-i18n="top.phone"></span>
       </button>
@@ -159,7 +159,7 @@ const I18N = (() => {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(12 12) scale(.82) translate(-12 -12)"><circle cx="12" cy="12" r="3" vector-effect="non-scaling-stroke"/><path vector-effect="non-scaling-stroke" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></g></svg>
         <span class="rot" data-i18n="top.devices"></span>
       </button>
-      <button class="btn-madeira" id="b-desligar" type="button" data-i18n-title="top.shutdownTitle">
+      <button class="btn-madeira" id="b-desligar" type="button" data-i18n-title="top.shutdownTitle" hidden data-pode="POST /api/shutdown">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0"/></svg>
         <span class="rot" data-i18n="top.shutdown"></span>
       </button>
@@ -3388,7 +3388,7 @@ const pode = rota => !!(S.caps && S.caps.rotas && S.caps.rotas.includes(rota));
 function definirCaps(c) {
   const metricasAntes = pode('GET /api/metricas');
   S.caps = c && Array.isArray(c.rotas) ? c : null;
-  $('#b-cel').hidden = !pode('GET /api/pareamento');
+  for (const b of document.querySelectorAll('[data-pode]')) b.hidden = !pode(b.dataset.pode);   // only for whoever may call it
   desenharAtualizacao();
   if (!pode('GET /api/metricas')) $('#dd-met').hidden = true;
   else if (!metricasAntes && $('#dlg-disp').open) lerMetricas();   // o Microfone e fone aberto antes do caps chegar

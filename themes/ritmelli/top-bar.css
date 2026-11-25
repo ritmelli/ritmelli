@@ -58,7 +58,8 @@
   .busca { order: 3; flex-basis: 100%; max-width: none; }
   .botoes-topo .rot { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .botoes-topo .btn-madeira { padding: 8px 11px; }
-  /* Desligar sai do celular: cala a voz no jogo e de la nao se religa */
+  /* no room for Desligar in the narrow top bar (closing the window turns the app off too); at any width, only the PC
+     sees it (definirCaps) */
   #b-desligar { display: none; }
   .nome-marca { font-size: 1.5rem; }
 }

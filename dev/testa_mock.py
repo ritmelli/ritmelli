@@ -176,6 +176,8 @@ def tabela():
             "rota fora da tabela (ou nenhuma) e so do PC")
     confere(perm.papeis("HEAD", "/api/state") == perm.papeis("GET", "/api/state"), "o HEAD vale como o GET")
     confere(perm.papeis("POST", "/api/effects/reload") == perm.PC, "a recarga dos efeitos e so do PC")
+    confere(perm.OUT_OF_REPO and all(perm.TABELA.get(k) == perm.PC for k in perm.OUT_OF_REPO),
+            f"the routes only the module from outside the repo calls are PC only ({sorted(perm.OUT_OF_REPO)})")
     r = perm.Remotos()
     t = r.abre()
     confere(len(t) >= 40 and r.vale(t) and not r.vale(t[:-1]) and not r.vale("") and not r.vale(None),
@@ -220,12 +222,15 @@ async def papeis_no_guard():
         async def segue(req):  # a rota de verdade nao importa aqui: so se o guard deixou chegar nela
             return web.json_response({"ok": True, "chegou": True})
 
-        async def manda(metodo, caminho, de=cel, cookie=None, token=None, corpo=None, handler=None):
+        async def manda(metodo, caminho, de=cel, cookie=None, token=None, corpo=None, handler=None, host=None,
+                        origin=None, cookie_name=par.COOKIE):
             t = mock.Mock()
             t.get_extra_info.side_effect = lambda nome, d=None: (de, 50000) if nome == "peername" else d
-            cab = {"Host": f"{pc}:{porta}" if de == pc else f"{lan}:{porta}"}
+            cab = {"Host": host or (f"{pc}:{porta}" if de == pc else f"{lan}:{porta}")}
             if cookie:
-                cab["Cookie"] = f"{par.COOKIE}={cookie}"
+                cab["Cookie"] = f"{cookie_name}={cookie}"
+            if origin:
+                cab["Origin"] = origin
             if token is not None:
                 cab[perm.REMOTO] = token
             carga = streams.EMPTY_PAYLOAD
@@ -237,7 +242,8 @@ async def papeis_no_guard():
             req = make_mocked_request(metodo, caminho, headers=cab, transport=t, payload=carga, app=app)
             req._match_info = await app.router.resolve(req)  # a rota casada, como no servidor
             resp = await guard(req, handler or segue)
-            return resp, (json.loads(resp.body) if getattr(resp, "body", None) else {}), req
+            corpo = getattr(resp, "body", None) if resp.content_type == "application/json" else None
+            return resp, (json.loads(corpo) if corpo else {}), req
 
         async def status(*a, **k):
             resp, j, _ = await manda(*a, **k)
@@ -253,21 +259,41 @@ async def papeis_no_guard():
                      ("HEAD", "/api/themes"), ("HEAD", "/t/ritmelli/"), ("GET", server.TEMA_DE_ANTES + "/")):
             confere(await status(m, c) == 200, f"antes de parear: {m} {c} passa")
         resp, j, _ = await manda("GET", "/api/state")
-        confere(resp.status == 401 and j.get("parear") and j.get("caps") == perm.caps("publico") and j.get("mock"),
+        confere(resp.status == 401 and j.get("parear") and j.get("caps") == perm.caps("publico")
+                and j.get("mock") is True,
                 f"antes de parear, o /api/state e o 401 do pareamento, com o caps do pre-pareamento ({resp.status})")
         confere(j.get("caps", {}).get("rotas") == ["GET /api/themes", "POST /api/parear"],
                 f"o caps do pre-pareamento: so o /api/themes e o /api/parear ({j.get('caps')})")
         confere(await status("HEAD", "/api/state") == 401, "antes de parear, o HEAD do /api/state tambem pede o codigo")
         confere(await status("POST", "/api/effects/reload") == 403, "antes de parear, a recarga dos efeitos e 403")
         confere(await status("GET", "/api/nao-existe") == 403, "antes de parear, rota fora da tabela e 403")
+        confere(await status("POST", "/api/pareamento/codigo") == 403, "before pairing, a new code is PC only (403)")
+        A.mock = False
+        resp, j, _ = await manda("GET", "/api/state")
+        confere(resp.status == 401 and j.get("parear") and "mock" not in j,
+                "outside --mock, the pairing 401 has no \"mock\" (dev/so_mock.py refuses that server)")
+        A.mock = True
+        confere(await status("POST", "/api/play", host=f"ritmelli.example:{porta}") == 403,
+                "another Host (DNS rebinding), from the home network: 403")
+        confere(await status("POST", "/api/parear", origin="http://outro.example", corpo={"codigo": "1"}) == 403,
+                "another Origin on a write (CSRF), from the home network: 403")
 
         # o pareamento
         codigo, _ = A.celulares.codigo_atual()
-        resp, j, _ = await manda("POST", "/api/parear", corpo={"codigo": codigo},
+        outro = f"{(int(codigo) + 1) % 10 ** 6:06d}"
+        resp, j, _ = await manda("POST", "/api/parear", corpo={"codigo": outro}, handler=rota[("POST", "/api/parear")])
+        confere(resp.status == 403 and par.COOKIE not in resp.cookies,
+                f"the /api/parear with the wrong code pairs nothing ({resp.status})")
+        com_espaco = codigo[:3] + " " + codigo[3:]
+        resp, j, _ = await manda("POST", "/api/parear", corpo={"codigo": com_espaco},
                                  handler=rota[("POST", "/api/parear")])
         chave = resp.cookies.get(par.COOKIE)
-        confere(resp.status == 200 and chave is not None, f"o /api/parear com o codigo certo pareia ({resp.status})")
+        confere(resp.status == 200 and chave is not None and chave["httponly"] and chave["samesite"] == "Strict",
+                f"the /api/parear with the right code ({com_espaco!r}, a space in the middle) puts the key in an "
+                f"HttpOnly, SameSite=Strict cookie ({resp.status})")
         chave = chave.value if chave is not None else ""
+        confere(await status("POST", "/api/play", cookie=chave, cookie_name=par.COOKIE_VELHO) == 200,
+                "the key in the cookie from before the name change works too")
 
         # o celular pareado: o que o tema usa nele, com e sem parametro; o que e do PC, 403
         for m, c in (("POST", "/api/play"), ("DELETE", "/api/queue/q1"), ("DELETE", "/api/library/d1"),
@@ -277,8 +303,12 @@ async def papeis_no_guard():
         for m, c in (("POST", "/api/effects/reload"), ("DELETE", "/api/pareamento/abc"), ("GET", "/api/pareamento"),
                      ("HEAD", "/api/pareamento"), ("GET", "/api/atualizacao"), ("POST", "/api/metricas"),
                      ("POST", "/api/boas-vindas"), ("POST", "/api/janela/foco"), ("POST", "/api/volume"),
-                     ("POST", "/api/abaixa"), ("POST", "/api/sinal")):
+                     ("POST", "/api/abaixa"), ("POST", "/api/sinal"), ("POST", "/api/shutdown"), ("GET", "/api/lan"),
+                     *perm.OUT_OF_REPO):
             confere(await status(m, c, cookie=chave) == 403, f"o celular pareado: {m} {c} nao e dele (403)")
+        for m, c in (("POST", "/api/boas-vindas"), ("POST", "/api/janela/foco")):  # the guard alone turns them away
+            resp, j, _ = await manda(m, c, cookie=chave, handler=rota[(m, c)])
+            confere(resp.status == 403, f"the paired phone: {m} {c} through its real handler is 403 ({resp.status})")
         resp, j, _ = await manda("GET", "/api/state", cookie=chave, handler=rota[("GET", "/api/state")])
         confere(resp.status == 200 and j.get("caps") == perm.caps("celular") and par.COOKIE in resp.cookies,
                 "o /api/state do celular traz o caps dele e renova o cookie")
@@ -813,7 +843,7 @@ def ao_vivo(srv):
                            ("POST", "/api/volume", 403), ("POST", "/api/abaixa", 403), ("POST", "/api/sinal", 403),
                            ("POST", "/api/effects/reload", 403), ("GET", "/api/pareamento", 403),
                            ("POST", "/api/atualizacao/instalar", 403), ("HEAD", "/api/state", 401),
-                           ("DELETE", "/api/pareamento/abc", 403), ("POST", "/api/shutdown", 401)):
+                           ("DELETE", "/api/pareamento/abc", 403), ("POST", "/api/shutdown", 403)):
         s, _ = de_casa(srv, m, c, corpo={} if m == "POST" else None)
         confere(s == esperado, f"a rede de casa sem parear: {m} {c} -> {s} (esperado {esperado})")
     # o cookie com bytes que nao sao UTF-8 (o aiohttp os passa como substitutos): o tema abre, a API pede o codigo
