@@ -1,5 +1,6 @@
 # Python 3.12.10 with the libraries of one requirements file, installed into that interpreter and kept in the Actions
-# cache by the runner image, the Python version and the hash of both requirements files. On a hit nothing is
+# cache by the runner OS, the Python version and the hash of both requirements files (not the image version: two
+# image versions run side by side for days, and the libraries of one Python build do not change with it). On a hit nothing is
 # installed; on a miss the libraries are installed and saved right away, so a test that fails later in the job does
 # not lose them. No virtual environment: on Windows its python.exe is a launcher that starts the real interpreter as a
 # child, and the tests that compare the pid of a process they started with the one it reports would see two processes.
@@ -16,14 +17,14 @@ runs:
       id: python
       with:
         python-version: '3.12.10'
-    # where pip puts the libraries and their programs, and the runner image they were installed on
+    # where pip puts the libraries and their programs, and the runner OS
     - name: Cache key
       id: key
       shell: pwsh
       run: |
         $site = python -c "import sysconfig; print(sysconfig.get_path('purelib'))"
         $scripts = python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
-        Add-Content -Path $env:GITHUB_OUTPUT -Value "image=$env:ImageOS-$env:ImageVersion`nsite=$site`nscripts=$scripts" -Encoding utf8
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "image=$env:ImageOS`nsite=$site`nscripts=$scripts" -Encoding utf8
     - uses: actions/cache/restore@v6
       id: libs
       with:
