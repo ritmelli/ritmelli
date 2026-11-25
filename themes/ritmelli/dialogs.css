@@ -1,0 +1,228 @@
+/* DIALOGS-INICIO */
+/* ---------- menu, dialogos, aviso, fora do ar ---------- */
+.menu {
+  position: fixed; z-index: 30; min-width: 220px; padding: 6px; color: var(--tinta);
+}
+.menu button {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 6px; background: none;
+  font-size: .9375rem; font-weight: 500;
+}
+.menu button svg { width: 20px; height: 20px; flex: none; }
+.menu button:focus-visible { background: rgba(42,24,18,.1); outline-offset: -2px; }
+@media (hover: hover) { .menu button:hover { background: rgba(42,24,18,.1); outline-offset: -2px; } }
+.menu .perigo { color: #8E1E14; }
+.menu-cab, .menu-selo, .menu .lado { display: none; }
+.menu-fundo { position: fixed; inset: 0; z-index: 29; background: rgba(20,10,6,.6); }
+/* celular: as opcoes sobem de baixo, como no YouTube Music, com o disco no alto;
+   o voltar do Android fecha */
+@media (max-width: 899.98px) {
+  .menu.folha {
+    left: 0; right: 0; top: auto; bottom: 0; min-width: 0; max-height: 82dvh; overflow-y: auto; overscroll-behavior: contain;
+    padding: 4px 10px calc(14px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0;
+    animation: folha-sobe .22s ease-out; transition: transform .2s ease-out;
+  }
+  /* puxar as opcoes para baixo fecha, como no YouTube Music: no topo da
+     lista o dedo descendo e do gesto, subindo rola */
+  .menu.folha.no-topo { touch-action: pan-down; }
+  .menu.folha.puxando { transition: none; }
+  .menu.folha::before { content: ""; display: block; width: 38px; height: 4px; margin: 6px auto 4px; border-radius: 2px; background: rgba(42,24,18,.28); }
+  .menu.folha .menu-cab {
+    display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; align-items: center;
+    padding: 8px 6px 14px; margin-bottom: 4px; border-bottom: 1px solid rgba(42,24,18,.16);
+  }
+  .menu-cab .capinha { position: relative; width: 56px; aspect-ratio: 1; border-radius: 4px; overflow: hidden; background: var(--vinil); container-type: inline-size; }
+  .menu-cab .capinha img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .menu-cab .t { font-weight: 650; font-size: 1rem; line-height: 1.25; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .menu-cab .s { display: block; margin-top: 2px; font-size: .8125rem; color: var(--tinta-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .menu.folha button { min-height: 52px; padding: 0 10px; gap: 16px; font-size: 1rem; }
+  .menu.folha button svg { width: 24px; height: 24px; }
+}
+@keyframes folha-sobe { from { transform: translateY(100%); } }
+
+/* A seguir: a fila, que toca quando o disco do prato acaba; no celular mora
+   no toca-discos, no computador no alto da parede */
+.fila { display: grid; gap: 6px; }
+.fila[hidden] { display: none; }
+.cabeca-fila { display: flex; align-items: baseline; gap: 12px; }
+.cabeca-fila h2 { letter-spacing: .01em; }
+.cabeca-fila .limpar-fila[hidden] { display: none; }
+/* a parecida no prato vai para a prateleira pelo ⊕ da busca na ponta da linha do canal (dentro
+   do visor da musica, embaixo a direita; o "Mix de" sobrava com a chave do Tocar
+   parecidas ligada): o toque segue com 44 px, mas a linha fica da altura do texto e o icone encosta na beira; ele e
+   de pixel (no bloco do Habbo) */
+.canal-faixa { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.canal-faixa > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.canal-faixa .salvar { flex: none; margin: -12px -11px -12px 0; }
+.canal-faixa .salvar[hidden] { display: none; }
+.lista-fila { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.item-fila { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; align-items: center; border-radius: 8px; }
+.item-fila:has(> .salvar) { grid-template-columns: minmax(0, 1fr) 44px 44px 44px; }   /* (#53) o salvar antes do tirar */
+.item-fila.arrastando { position: relative; z-index: 2; }
+.tocar-fila {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; min-width: 0;
+  padding: 6px; border: 0; border-radius: 8px; background: none; color: inherit; text-align: left;
+}
+@media (hover: hover) { .tocar-fila:hover { background: rgba(255,240,220,.05); } }
+.tocar-fila:active, .tocar-fila.apertado { background: rgba(255,240,220,.1); }
+.tocar-fila .capinha { position: relative; display: block; width: 40px; height: 40px; border-radius: 3px; overflow: hidden; background: var(--vinil); container-type: inline-size; }
+.tocar-fila .capinha img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tocar-fila .txt { display: block; min-width: 0; }
+.tocar-fila .t { display: block; font-weight: 600; font-size: .875rem; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tocar-fila .s { display: block; font-size: .75rem; color: var(--marfim-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.item-fila .tirar, .item-fila .alca {
+  width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--marfim-2);
+}
+@media (hover: hover) { .item-fila .tirar:hover, .item-fila .alca:hover { color: var(--marfim); background: rgba(255,240,220,.06); } }
+.item-fila .tirar svg, .item-fila .alca svg { width: 20px; height: 20px; }
+.item-fila .alca { cursor: grab; touch-action: none; }
+.item-fila.arrastando .alca { cursor: grabbing; }
+@media (min-width: 900px) {
+  .fila-palco { display: none; }
+}
+@media (max-width: 899.98px) {
+  .fila-parede { display: none; }
+  .fila-palco { scroll-margin-top: 76px; }
+}
+
+dialog, .menu, .fora .cartao { color-scheme: light; }
+/* dialogos, fora do ar e codigo do celular: a chapa creme num caixilho de madeira, como o toca-discos. A borda
+   transparente deixa a madeira aparecer em volta da chapa, e a moldura de pixel vai por cima dela */
+dialog, .fora .cartao {
+  border: 8px solid transparent; border-radius: 4px; color: var(--tinta); border-image: var(--mold-caixa);
+  background: linear-gradient(#EFE4CB, #EFE4CB) padding-box, var(--veio) border-box, #74391A;
+  box-shadow: inset 0 0 0 2px var(--contorno), inset 2px 2px 0 2px rgba(255,255,255,.7), inset -2px -2px 0 2px rgba(42,24,18,.14);
+}
+dialog { width: min(520px, calc(100vw - 32px)); padding: 0; }
+dialog::backdrop { background: rgba(20,10,6,.62); }
+.dlg { padding: 18px 20px 16px; display: grid; gap: 14px; }
+/* a letra de pixel nos titulos e nas etiquetas, em multiplos da grade dela (37,333 e 18,667 px); o texto corrido e o
+   que se digita seguem na letra de sempre */
+.dlg h2, .fora h2 {
+  font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; font-weight: 400; font-stretch: 100%; line-height: 36px;
+  overflow-wrap: anywhere;
+}
+/* o titulo do confirmar leva o nome do disco: ate 3 linhas, para um nome comprido nao tomar o dialogo */
+#dc-t { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.dlg h3, .dlg label.campo { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; line-height: 1.1; }
+.dlg p { font-size: .9375rem; color: #3f2f24; }
+.dlg .rodape { display: flex; gap: 14px; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
+/* os campos sao o rebaixo escuro da busca: a moldura e o foco moram na regra dela */
+.dlg input[type=text], .dlg select {
+  width: 100%; padding: 0 12px;
+  font-family: "Archivo", system-ui, sans-serif; font-size: .9375rem; line-height: normal;
+}
+.dlg select:disabled { color: var(--marfim-2); }
+.dlg label.campo { display: grid; gap: 6px; }
+/* os dados de uso e os erros, no Microfone e fone: o titulo como o dos campos, a situacao e o botao com o link */
+.dlg .dd-met { display: grid; gap: 6px; }
+.dlg .dd-met h3 { margin: 0; }
+.dlg .dd-met .acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.dlg .em-uso { font-family: "Archivo", system-ui, sans-serif; font-weight: 400; font-size: .8125rem; line-height: 1.45; color: var(--tinta-2); }
+/* as teclas sao as do FX-12: a moldura, o aluminio e o aperto moram na regra delas */
+.dlg .btn { min-height: 2.75rem; }
+.dlg .btn.perigo { color: #fff; background: #97301F; }
+@media (hover: hover) { .dlg .btn.perigo:hover:not(:disabled) { background: #A93A27; } }
+.lembrete { display: grid; grid-template-columns: auto 1fr; gap: 10px; margin: 2px; padding: 10px 12px; background: #E2D3B3; border-image: var(--mold-etiqueta); font-size: .875rem; }
+.lembrete .lampada { margin-top: 5px; }
+.lembrete b { font-weight: 700; }
+.lembrete .lampada, .fora .lampada, .aviso .lampada { box-shadow: 0 0 0 2px var(--contorno); }
+.msg-dlg { font-size: .875rem; }
+.msg-dlg:empty { display: none; }
+.msg-dlg.erro { color: #8E1E14; }
+
+/* centrado por margem, nao por transform: com largura impar o translate cairia entre dois pixels e borraria a moldura */
+.aviso {
+  position: fixed; left: 0; right: 0; bottom: 22px; z-index: 40; width: fit-content; margin-inline: auto;
+  max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 4px; font-size: .9375rem;
+  background: var(--jacaranda); color: var(--marfim); border-image: var(--mold-objeto);
+  display: flex; gap: 10px; align-items: center;
+}
+/* aviso com acao (Na fila: ... Abrir): o texto encolhe numa linha e o botao fica inteiro */
+.aviso.com-acao { padding: 0 6px 0 16px; width: max-content; }
+.aviso.com-acao .aviso-t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aviso-acao { flex: none; min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--ambar-claro); font-weight: 700; }
+.aviso-acao:active, .aviso-acao.apertado { background: rgba(255,240,220,.1); }
+.fora {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px;
+  background: rgba(20,10,6,.78);
+}
+.fora .cartao { width: min(560px, 100%); padding: 20px 22px; display: grid; gap: 12px; }
+.fora h2 { display: flex; align-items: flex-start; gap: 12px; }
+.fora h2 .lampada { margin-top: 13px; }   /* na primeira linha, quando o titulo quebra no celular */
+.fora p { font-size: .9375rem; color: #3f2f24; }
+.fora code { font-family: inherit; font-weight: 700; font-stretch: 92%; background: rgba(42,24,18,.1); padding: 1px 6px; }
+.fora .tentando { font-size: .8125rem; color: var(--tinta-2); }
+
+/* celular: no PC, o botao Celular mostra o QR e o codigo (#dlg-cel); o celular ainda nao pareado digita o codigo
+   no #tela-parear, por cima de tudo */
+#dlg-cel { width: min(600px, calc(100vw - 32px)); }
+.cel-par { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.cel-qr { flex: none; margin: 2px; overflow: hidden; box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.45); }
+.cel-passos { flex: 1 1 220px; display: grid; gap: 8px; justify-items: start; }
+.cel-url { font-weight: 700; overflow-wrap: anywhere; }
+/* a Jersey 10 em 3x (56 px): 1 pixel da letra = 3 px de CSS */
+.dlg .cel-codigo { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 56px; font-weight: 400; font-stretch: 100%; line-height: .85714; letter-spacing: .04em; color: var(--tinta); }
+.cel-par.queimado .cel-qr, .cel-par.queimado .cel-passo { display: none; }
+.dlg .em-uso.erro { color: #8E1E14; }
+.cel-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cel-lista li { display: flex; gap: 12px; align-items: center; margin: 2px; padding: 6px 6px 9px 10px; background: #E2D3B3; border-image: var(--mold-etiqueta); }
+.dlg .cel-lista .btn { min-height: 1.875rem; padding: .125rem .75rem; font-size: .8125rem; }
+.cel-lista li.cel-vazio { margin: 0; padding: 0; background: none; border-image: none; }
+/* com celular na lista, o Fechar recua a margem e o padding da linha, e fica alinhado na direita com o Desconectar */
+#dlg-cel:has(.cel-lista .btn) .rodape { padding-right: 8px; }
+.cel-lista .cel-quem { flex: 1; min-width: 0; display: grid; }
+.cel-lista .cel-nome { font-weight: 600; font-size: .875rem; line-height: 1.3; }
+.cel-lista .cel-quando { font-size: .75rem; line-height: 1.3; color: var(--tinta-2); }
+.cel-vazio { font-size: .875rem; color: var(--tinta-2); }
+/* a versao nova: o led ambar na tecla do topo, as notas e o download numa barra de rebaixo que o ambar enche (--p de 0
+   a 1) */
+#b-atualizar { position: relative; }
+#b-atualizar::after {
+  content: ""; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; pointer-events: none;
+  background: var(--ambar); box-shadow: 0 0 0 2px var(--contorno), 0 0 8px 2px rgba(243,167,60,.6);
+}
+.notas-versao { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: .9375rem; color: #3f2f24; }
+.barra-baixa {
+  height: calc(12px + 6 * var(--px, 1px));
+  border: calc(3 * var(--px, 1px)) solid var(--contorno); border-radius: calc(15 * var(--px, 1px)); border-image: var(--mold-rebaixo);
+  background: linear-gradient(90deg, var(--ambar) calc(var(--p, 0) * 100%), #16110E 0);
+}
+#tela-parear { overflow-y: auto; }
+.dlg #pa-in { height: 3.25rem; font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; letter-spacing: .12em; text-align: center; color: var(--ambar-claro); }
+/* o teclado do celular sobe por cima da metade de baixo: o cartao fica no alto */
+@media (max-width: 899.98px) { #tela-parear { align-items: start; padding-top: 48px; } }
+
+/* boas-vindas: cada passo numa etiqueta, como os celulares conectados, com o numero na letra de pixel. Em duas
+   colunas, para caber sem rolar numa tela de notebook; a primeira musica e o celular, os que so tem um botao, ficam
+   cada um numa faixa larga embaixo */
+#dlg-boas { width: min(880px, calc(100vw - 32px)); }
+.boas-passos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; counter-reset: passo; }
+.boas-passos li {
+  counter-increment: passo; position: relative; display: grid; gap: 6px; justify-items: start; align-content: start;
+  margin: 2px; padding: 6px 12px 9px 44px; background: #E2D3B3; border-image: var(--mold-etiqueta);
+}
+/* as faixas de baixo, largas: o botao vai ao lado do texto */
+.boas-passos li:nth-child(n+3) { grid-column: 1 / -1; grid-template-columns: 1fr auto; column-gap: 16px; align-items: center; }
+.boas-passos li:nth-child(n+3) h3 { grid-column: 1 / -1; }
+@media (max-width: 759.98px) {
+  .boas-passos { grid-template-columns: 1fr; }
+  .boas-passos li:nth-child(n+3) { grid-template-columns: 1fr; }
+}
+/* o foco comeca no titulo, que nao e botao: o primeiro botao aceso parecia a acao principal */
+#db-t:focus { outline: none; }
+.boas-passos li::before {
+  content: counter(passo); position: absolute; left: 14px; top: 4px;
+  font-family: "Jersey 10", "Archivo", sans-serif; font-size: 37.333px; line-height: 36px; color: var(--tinta-2);
+}
+.dlg .boas-passos p { font-size: .875rem; }
+/* a dica do passo (o perfil do Discord): menor e mais clara que a instrucao */
+.dlg .boas-passos .boas-dica { font-size: .8125rem; color: var(--tinta-2); }
+.dlg .boas-status { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; }
+.boas-status .lampada { margin-top: 5px; box-shadow: 0 0 0 2px var(--contorno); }
+#db-disp span { display: block; }
+.boas-falta { display: grid; gap: 8px; justify-items: start; }
+.dlg .boas-passos .btn { min-height: 1.875rem; padding: .125rem .75rem; font-size: .8125rem; text-decoration: none; }
+
+/* DIALOGS-FIM */

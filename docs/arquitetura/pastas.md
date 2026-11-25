@@ -26,4 +26,6 @@ LocalService (o `audiodg.exe`) grava o log do filtro. A leitura abre cada objeto
 de reanálise (`_le_disco`), e a avaliação é separada dela, para o teste em memória
 (`dev/testa_pasta_protegida.py`; o `--disco` confere o mesmo no disco, como administrador). O
 instalador tem a mesma regra em PowerShell (`instalador\protegida.ps1`). O `do_windows` dá o
-caminho completo de um programa da System32.
+caminho completo de um programa da System32. As duas tarefas que rodam como SYSTEM (a do filtro e
+a da atualização) nascem pelo `create_task` e saem pelo `disarm`, que, com a pasta reprovada,
+apaga as duas (a outra antes da que está rodando, uma mesmo se a outra falhar) e confere depois.

@@ -1,0 +1,97 @@
+/* RECEIVER-INICIO */
+/* ---------- receptor ---------- */
+.janela { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; }
+.medidores { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.mostrador { position: relative; container-type: inline-size; }
+.mostrador svg { width: 100%; height: auto; overflow: visible; }
+/* moldura e nome ficam por cima da lampada: com a voz cortada so o mostrador apaga */
+.mostrador svg.tampa-m { position: absolute; left: 4px; top: 3px; width: calc(100% - 8px); z-index: 2; pointer-events: none; }
+.mostrador::before {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: rgba(40,17,6,.64); opacity: 0; transition: opacity .3s;
+}
+.mostrador.apagado::before { opacity: 1; }
+/* a camada da agulha, por cima da face */
+.mostrador .agulha-m { position: absolute; display: block; left: 4px; top: 3px; width: calc(100% - 8px); aspect-ratio: 120 / 78; pointer-events: none; }
+.mostrador .moldura { fill: #2D1A0F; }
+.mostrador .nome-m { /* nome em HTML sobre a faixa escura */
+  position: absolute; left: 0; right: 0; z-index: 2; pointer-events: none;
+  transform: translateY(-50%);
+  text-align: center; white-space: nowrap; line-height: 1;
+  text-transform: uppercase;   /* impresso no mostrador, como num medidor de verdade */
+  color: var(--ambar-claro);
+}
+/* mostrador estreito: a faixa escura desce uns pixels para o nome caber nela */
+@container (max-width: 100px) { .mostrador > svg:first-child { margin-bottom: 6px; } }
+.mostrador.apagado .nome-m { color: var(--sinal); }
+.controles { display: grid; gap: 4px; container-type: inline-size; }
+.fader { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; }
+/* o nome que nao cabe quebra a linha, nunca corta com reticencias: em ingles "Record in headphones" nao cabe nos
+   faders de uma linha so da tela baixa, e com o fone "Nenhum" o aviso do lado tambem nao cabia */
+.fader label { font-weight: 600; font-size: .875rem; line-height: 1.2; min-width: 0; overflow-wrap: break-word; }
+.fader label small { font-weight: 400; font-size: .8125rem; color: var(--tinta-2); margin-left: 6px; }
+.fader label small:empty { display: none; }   /* so aparece para dizer que nao ha fone */
+.fader output { font-variant-numeric: tabular-nums; font-size: .875rem; text-align: right; }
+.fader label { grid-row: 1; grid-column: 1; }
+.fader output { grid-row: 1; grid-column: 2; }
+.fader input { grid-row: 2; grid-column: 1 / -1; margin-top: 0; }
+.receptor input[type=range]:focus-visible { outline-offset: 0; }
+.chaves { display: flex; gap: 10px; flex-wrap: wrap; }
+.nivelar { display: grid; justify-items: start; gap: 6px; }
+.chaves .btn { flex: 1 1 auto; }
+.chave { gap: 10px; padding: 8px 14px; }
+.chave .lampada { width: 9px; height: 9px; }
+/* o Mutar voz ligado fica vermelho, como o microfone da barra (e afunda, na pele das teclas) */
+#b-cortar[aria-pressed="true"], #b-cortar[aria-pressed="true"]:hover:not(:disabled) {
+  color: #8E1E14; background: var(--escovado), #E2B5A7;
+}
+
+/* seletor de funcao: chave rotativa e visor do efeito, logo abaixo do mostrador da voz.
+   Visor apagado = voz natural; aceso em ambar = voz com efeito. O visor e um LCD positivo,
+   como nos som de carro e micro systems dos anos 90: o segmento escurece sobre o fundo aceso e
+   os apagados ficam de fantasma; sem luz, o vidro cinza-oliva do LCD desligado ainda le
+   (18/10). Fonte DSEG14 (SIL OFL 1.1, fonts/LICENSE.txt) */
+@font-face { font-family: "DSEG14"; src: url(fonts/DSEG14Classic-BoldItalic.woff2) format("woff2"); font-display: block; }
+/* a letra de pixel dos titulos de secao (Jersey 10, OFL, fonts/Jersey10-OFL.txt; so o latim) */
+@font-face { font-family: "Jersey 10"; src: url(fonts/Jersey10.woff2) format("woff2"); font-display: block; }
+/* a letra de pixel miuda das plaquinhas dos pedais (Silkscreen, OFL, fonts/Silkscreen-OFL.txt; so o latim) */
+@font-face { font-family: "Silkscreen"; src: url(fonts/Silkscreen.woff2) format("woff2"); font-display: block; }
+.seletor { justify-content: flex-start; gap: 10px; width: 100%; min-width: 0; padding: 3px 12px 3px 5px; text-align: left; container-type: inline-size; }
+/* seletor estreito: o atraso sai do visor (segue na tecla e no titulo do botao) */
+@container (max-width: 290px) { .seletor .atraso-ef { display: none; } }
+.dial { position: relative; width: calc(var(--alvo) - 6px); aspect-ratio: 1; flex: none; }
+.seletor .marcas { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.marcas line { stroke: #6f665a; stroke-width: 1.3; stroke-linecap: round; }
+.marcas line.ativa { stroke: #B5650F; stroke-width: 2.4; }
+.knob {
+  position: absolute; inset: 19%; border-radius: 50%;
+  background: repeating-conic-gradient(#7d7366 0 7.5deg, #e6e0d5 7.5deg 15deg);
+}
+.knob::before { content: ""; position: absolute; inset: 2px; border-radius: 50%; }
+.ponteiro { position: absolute; inset: 0; transform: rotate(var(--ang, -135deg)); transition: transform .45s cubic-bezier(.3,.7,.3,1); }
+.ponteiro::after { content: ""; position: absolute; left: 50%; top: 2px; width: 2px; height: 38%; margin-left: -1px; border-radius: 1px; background: var(--tinta); }
+.visor-ef {
+  --seg: rgba(26, 25, 14, .8); --fantasma: rgba(30, 30, 12, .075); --sombra-seg: rgba(0, 0, 0, .14);
+  flex: 1 1 auto; min-width: 0; height: calc(var(--alvo) - 14px); display: flex; align-items: center; gap: 8px;
+  padding: 0 8px 0 9px; color: var(--seg);
+  transition: box-shadow .3s;
+}
+.seletor.com-efeito .visor-ef {
+  --seg: rgba(36, 18, 2, .88); --fantasma: rgba(84, 44, 4, .11); --sombra-seg: rgba(128, 64, 0, .3);
+}
+/* o nome em 14 segmentos: casas fixas, todas com o fantasma "~" (todos os segmentos) atras */
+.seg-ef {
+  position: relative; z-index: 0; flex: 1 1 0; min-width: 0; overflow: hidden; white-space: pre;
+  font-family: "DSEG14", monospace; font-size: .9375rem; line-height: 1.15; text-shadow: .07em .07em 0 var(--sombra-seg);
+}
+.seg-ef::before { content: attr(data-f); position: absolute; left: 0; top: 0; z-index: -1; color: var(--fantasma); text-shadow: none; }
+.atraso-ef { flex: none; font-size: .625rem; font-weight: 800; font-stretch: 125%; letter-spacing: .08em; text-shadow: .07em .07em 0 var(--sombra-seg); }
+.atraso-ef:empty { display: none; }
+.seletor .seta-gav { transition: transform .25s; color: var(--tinta-2); }
+/* a seta vira quando a gaveta abre; no celular o seletor so leva ate ela, entao aponta sempre para baixo */
+@media (min-width: 900px) { .seletor[aria-expanded="true"] .seta-gav { transform: rotate(180deg); } }
+
+/* ---------- gaveta de efeitos: sai de baixo do receptor ---------- */
+.gaveta { grid-area: efeitos; position: relative; z-index: 1; min-width: 0; container-type: inline-size; }
+
+/* RECEIVER-FIM */

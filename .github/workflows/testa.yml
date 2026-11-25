@@ -148,6 +148,9 @@ jobs:
     name: Tela
     if: *real
     runs-on: windows-2025
+    permissions:
+      contents: read
+      pull-requests: read
     timeout-minutes: 25
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
@@ -159,12 +162,24 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12.10'
+      # the merge_group event carries no labels: they come from the PR that the queue entry is for (its ref ends in
+      # pr-<number>-<sha>)
       - name: O PR mexe na tela?
         id: areas
         env:
           ETIQUETAS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          GH_TOKEN: ${{ github.token }}
         # the testa_tudo reads the list from the variable: in an argument, PowerShell would mangle the JSON quotes
-        run: python dev/testa_tudo.py --areas $env:BASE
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'merge_group') {
+            $n = [regex]::Match($env:GITHUB_REF, '/pr-(\d+)-').Groups[1].Value
+            $env:ETIQUETAS = gh pr view $n -R $env:GITHUB_REPOSITORY --json labels --jq '[.labels[].name]'
+            if ($LASTEXITCODE -ne 0 -or -not $n) { "::error::the labels of the PR of $env:GITHUB_REF did not come"; exit 1 }
+          }
+          python dev/testa_tudo.py --areas $env:BASE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "extracao=$extracao" -Encoding utf8
       - uses: ./.github/actions/python
         if: steps.areas.outputs.tela == 'true'
         with:
@@ -219,8 +234,9 @@ jobs:
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
       mudaram: ${{ steps.compara.outputs.prints_mudaram }}
-    env:
-      EXTRACAO: ${{ contains(github.event.pull_request.labels.*.name, 'extracao-tema') }}
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -229,13 +245,23 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12.10'
+      # (the labels of a merge_group entry: see the same step of the tela)
       - name: O PR mexe na tela?
         id: areas
         env:
           ETIQUETAS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          GH_TOKEN: ${{ github.token }}
+        # the testa_tudo reads the list from the variable: in an argument, PowerShell would mangle the JSON quotes
         run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'merge_group') {
+            $n = [regex]::Match($env:GITHUB_REF, '/pr-(\d+)-').Groups[1].Value
+            $env:ETIQUETAS = gh pr view $n -R $env:GITHUB_REPOSITORY --json labels --jq '[.labels[].name]'
+            if ($LASTEXITCODE -ne 0 -or -not $n) { "::error::the labels of the PR of $env:GITHUB_REF did not come"; exit 1 }
+          }
           python dev/testa_tudo.py --areas $env:BASE
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "extracao=$extracao" -Encoding utf8
           $tela = Select-String -Path $env:GITHUB_OUTPUT -Pattern '^tela=true$' -Quiet
           $roda = if ($tela -or $env:GITHUB_EVENT_NAME -eq 'push') { 'true' } else { 'false' }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=$roda" -Encoding utf8
@@ -263,6 +289,8 @@ jobs:
       - name: compara
         id: compara
         if: steps.areas.outputs.roda == 'true'
+        env:
+          EXTRACAO: ${{ steps.areas.outputs.extracao }}
         run: |
           $mais = @()
           if ($env:GITHUB_EVENT_NAME -eq 'push') { $mais = @('--head-cache', "$env:RUNNER_TEMP\compara-head") }
@@ -305,6 +333,7 @@ jobs:
         env:
           APLICA: ${{ steps.areas.outputs.roda }}
           MUDOU: ${{ steps.compara.outputs.mudou }}
+          EXTRACAO: ${{ steps.areas.outputs.extracao }}
         run: |
           if (Test-Path "$env:RUNNER_TEMP\resumo.md") {
             $texto = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md"
@@ -331,6 +360,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Resumo e resultado
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -402,3 +432,10 @@ jobs:
               || echo "::warning::the summary comment on the PR did not go out"
           fi
           $ok
+      # cancelled before or while this job ran: nothing was published, and the check fails (a job whose steps all
+      # skipped would pass)
+      - name: Cancelada
+        if: ${{ cancelled() }}
+        run: |
+          echo "## ⏹️ Testa: execução cancelada (o comentário do PR fica como estava)" >> "$GITHUB_STEP_SUMMARY"
+          exit 1

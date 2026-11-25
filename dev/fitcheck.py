@@ -149,6 +149,7 @@ async def le_cdp(ws, pend, evento):
         if not f.done():
             f.set_exception(ConnectionError(f"the DevTools connection ended ({motivo})"))
     pend.clear()
+    await ws.close()  # a command sent after this fails at once on the closed socket, instead of waiting its timeout
 
 
 def fecha_chrome(chrome, prof):

@@ -1,0 +1,20 @@
+/* SKIN-VARS-INICIO */
+/* pele: as variaveis do toque de Habbo e as molduras de pixel, nas duas telas. No :root, porque o menu, os dialogos,
+   o aviso e o fora do ar moram fora do .app */
+:root {
+  --contorno: #1A0B04;
+  --duro: 0 0 0 2.5px var(--contorno), 0 4px 0 2.5px rgba(20,8,2,.62);   /* objeto e tecla */
+  --caixa: 0 0 0 2.5px var(--contorno), 0 5px 0 2.5px rgba(20,8,2,.5);    /* caixa: o mesmo contorno, a sombra mais baixa */
+  --luz-dentro: inset 0 0 0 2px rgba(255,236,214,.3);                     /* a linha clara da moldura dupla, onde o contorno e box-shadow */
+  --madeira-ap: #9A4E25;   /* a madeira alaranjada dos aparelhos do palco, a mesma do aro da prateleira (o p1) */
+  /* letra contornada: oito sombras duras de 2 px em volta e a sombra de baixo, sem desfoque, em
+     px inteiro como a letra de pixel */
+  --letra-contorno:
+    2px 0 0 var(--contorno), -2px 0 0 var(--contorno), 0 2px 0 var(--contorno), 0 -2px 0 var(--contorno),
+    2px 2px 0 var(--contorno), -2px 2px 0 var(--contorno), 2px -2px 0 var(--contorno), -2px -2px 0 var(--contorno),
+    0 4px 0 var(--contorno), 2px 4px 0 var(--contorno), -2px 4px 0 var(--contorno);
+  --letra-fina:
+    2px 0 0 var(--contorno), -2px 0 0 var(--contorno), 0 2px 0 var(--contorno), 0 -2px 0 var(--contorno),
+    2px 2px 0 var(--contorno), -2px 2px 0 var(--contorno), 2px -2px 0 var(--contorno), -2px -2px 0 var(--contorno);
+}
+/* SKIN-VARS-FIM */

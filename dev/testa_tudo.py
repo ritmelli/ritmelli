@@ -33,6 +33,7 @@ Every dev/testa_*.py has a destination: a list here (STDLIB, COMPLETO, MICROFONE
 says so at the top of the file, in a comment before the docstring, how and with what: "# manual: <comando> precisa de
 <aparelho>". Before running, the COMPLETO, the --so-stdlib and the --microfone fail on a test without destination, on a
 dev/ file with the "manual:" line that runs in the check, and on a mode of this script the testa.yml no longer calls.
+They also fail an AGENTS.md over 80 lines or with a file in its map that doesn't exist (agents_md).
 
 The --ref-cache is a folder with a capture of the compara: when it holds the one of the base (the commit and the key of
 the capture, CAPTURA), the base is not captured again; when it does not, the base capture goes there. The --head-cache
@@ -77,6 +78,8 @@ MODULOS = ("numpy", "scipy", "sounddevice", "pedalboard", "aiohttp", "segno", "y
 PROGRAMAS = ("ffmpeg", "ffprobe")
 # a linha de quem pulou uma parte por falta de biblioteca ("--   o guard do servidor ficou de fora: ...")
 PULOU = re.compile(r"^--\s.*ficou de fora.*$", re.M)
+# a line a test wants in the PR summary ("-- summary: <text>"), copied under the title of its run
+SUMMARY = re.compile(r"^-- summary: (.+?)\s*$", re.M)
 LIMITE_S = 600
 # the tests that measure time (a deadline, a cost per block, the wait between two events): with --jobs above 1 they run
 # one by one, alone, after the others, so a neighbour's load does not push them past a limit
@@ -156,7 +159,8 @@ def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml"):
     # a dev/ script the workflow called directly would skip the check above: it goes through PASSOS
     falhas += [f"the testa.yml runs \"python {s}\" directly: declare it in the PASSOS of dev/testa_tudo.py and call "
                "\"python dev/testa_tudo.py --passo <name>\""
-               for s in sorted(set(re.findall(r"python\s+(dev/\w+\.py)", codigo))) if s != "dev/testa_tudo.py"]
+               for s in sorted({m.replace("\\", "/") for m in re.findall(r"python\s+(dev[/\\]\w+\.py)", codigo)})
+               if s != "dev/testa_tudo.py"]
     return falhas
 
 
@@ -216,10 +220,11 @@ def roda(titulo, lista, completo, jobs=1):
         if t not in feitos:
             um(t)
     total = time.monotonic() - t0
-    falhas, tabela, md = [], [], []
+    falhas, tabela, md, notes = [], [], [], []
     for t in lista:
         motivo, dt, saida = feitos[t]
         tabela.append(f"| {'✅' if not motivo else '❌'} | `{t}` | {dt:.0f} s |")
+        notes += [f"- `{t}`: {n}" for n in SUMMARY.findall(saida)]
         if motivo:
             falhas.append(t)
             md += [f"<details><summary>❌ <code>{t}</code>: {motivo}</summary>", "", cerca(cauda(saida)), "",
@@ -230,6 +235,7 @@ def roda(titulo, lista, completo, jobs=1):
     como = f" ({jobs} por vez; os {len(lista) - len(juntos)} que medem tempo, um a um)" if juntos else ""
     md = [f"**{titulo}:** {'✅' if not falhas else '❌'} {passou} de {len(lista)} passaram, em {total:.0f} s{como}",
           ""] + md
+    md += [""] + notes if notes else []
     md += ["", "<details><summary>Cada teste</summary>", "", "| | Teste | Tempo |", "| --- | --- | --- |"] + tabela
     md += ["", "</details>"]
     return falhas, md
@@ -245,10 +251,37 @@ def falta_para_o_completo():
                     if not (pastas.ferramenta(p) or shutil.which(p))]
 
 
+AGENTS_MAX_LINES = 80
+# a file in the map: a backticked path with a folder or an extension (its first word, before an option)
+MAP_FILE = re.compile(r"^(?:[\w.-]+/)*[\w.-]+(?:/|\.[A-Za-z]\w*)$")
+
+
+def agents_md(path=RAIZ / "AGENTS.md"):
+    """What is wrong with the AGENTS.md: over AGENTS_MAX_LINES lines, or a file in the map table that doesn't exist (in
+    the files column, from the repo root; in the test column, a bare testa_* from dev/, a path from the root, and a
+    bare file name from dev/ or from the root, since a note there may name an app file)."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    problems = [f"AGENTS.md has {len(lines)} lines (at most {AGENTS_MAX_LINES})"] if len(lines) > AGENTS_MAX_LINES else []
+    rows = [line.split("|")[1:-1] for line in lines if line.startswith("|") and not line.startswith("| ---")]
+    for files, tests in ((r[1], r[2]) for r in rows[1:] if len(r) == 3):
+        cited = [(t, [RAIZ / t]) for t in (c.split()[0] for c in re.findall(r"`([^`]+)`", files)) if MAP_FILE.match(t)]
+        for t in (c.split()[0] for c in re.findall(r"`([^`]+)`", tests)):
+            if re.fullmatch(r"testa_\w+", t):
+                cited.append((t, [RAIZ / "dev" / f"{t}.py"]))
+            elif MAP_FILE.match(t):
+                cited.append((t, [RAIZ / t] if "/" in t else [RAIZ / "dev" / t, RAIZ / t]))
+        problems += [f"AGENTS.md cites {t}, which doesn't exist" for t, ps in cited if not any(p.exists() for p in ps)]
+    return problems
+
+
 def testes(a):
     titulo, lista = (("Testes so da biblioteca padrao", STDLIB) if a.so_stdlib else
                      ("Testes do filtro", MICROFONE) if a.microfone else ("Testes", COMPLETO))
     md = []
+    for p in (agents := agents_md()):
+        print(f"FALHA {p}")
+    if agents:
+        md += [f"**{titulo}:** ❌ AGENTS.md:", ""] + [f"- {p}" for p in agents] + [""]
     esquecidos = sem_destino()
     for t in esquecidos:
         print(f"FALHA {t}")
@@ -272,7 +305,7 @@ def testes(a):
     falhas, linhas = roda(titulo, lista, completo=not a.so_stdlib and not a.microfone,
                           jobs=1 if a.microfone else a.jobs)
     escreve(a.resumo, md + linhas)
-    return 1 if falhas or esquecidos else 0
+    return 1 if falhas or esquecidos or agents else 0
 
 
 def escreve(resumo, linhas):
@@ -389,10 +422,14 @@ def le_captura(cache, chave):
 
 
 def guarda_captura(origem, cache, chave):
-    """Puts the prints of the origem folder in the cache folder, with the key."""
+    """Puts the prints of the origem folder in the cache folder, with the key. Only the prints and the key of an older
+    capture leave the cache folder: anything else in it stays."""
     cache = Path(cache)
-    shutil.rmtree(cache, ignore_errors=True)
-    cache.mkdir(parents=True)
+    if cache.resolve() == Path(origem).resolve():
+        raise SystemExit(f"the cache folder {cache} is the folder of the capture itself")
+    cache.mkdir(parents=True, exist_ok=True)
+    for velho in [*cache.glob("*.png"), cache / "captura.txt"]:
+        velho.unlink(missing_ok=True)
     for png in Path(origem).glob("*.png"):
         shutil.copy2(png, cache / png.name)
     (cache / "captura.txt").write_text(chave + "\n", encoding="utf-8")

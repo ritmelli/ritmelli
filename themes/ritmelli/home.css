@@ -1,0 +1,390 @@
+/* HOME-INICIO */
+/* ---------- primeira pagina como o Jukebox digital do YouTube Music ---------- */
+/* sons rapidos como compactos de 7 polegadas (ideia de review): o disco gira e a
+   lampada acende enquanto o som toca por cima da musica */
+.chips { display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px; padding: 2px 16px 4px; scrollbar-width: none; overscroll-behavior-x: contain; }
+@media (max-width: 899.98px) {
+  .chips::-webkit-scrollbar { display: none; }
+}
+.compacto {
+  flex: none; position: relative; width: 92px; display: grid; justify-items: center; align-content: start; gap: 1px;
+  padding: 0 0 2px; border: 0; background: none; color: var(--marfim); font: inherit; text-align: center; cursor: pointer;
+}
+.sete {
+  position: relative; width: 78px; height: 78px; margin-bottom: 7px; border-radius: 50%;
+  background: repeating-radial-gradient(circle, #19120f 0 1px, #0e0a08 1px 2.6px);
+  box-shadow: 0 5px 10px -2px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.05) inset;
+}
+.sete::before {   /* brilho do vinil, parado mesmo com o disco girando */
+  content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; z-index: 2;
+  background: conic-gradient(from 25deg, rgba(255,255,255,0) 0deg, rgba(255,240,220,.16) 28deg, rgba(255,255,255,0) 58deg 180deg, rgba(255,240,220,.1) 208deg, rgba(255,255,255,0) 238deg);
+}
+.sete-gira { position: absolute; inset: 0; border-radius: 50%; }
+.sete-rot {   /* selo de papel com o furo grande do compacto e o miolo ambar (o adaptador de 45) */
+  position: absolute; inset: 21px; border-radius: 50%;
+  background: radial-gradient(circle, var(--vinil) 0 5.5px, var(--ambar) 5.5px 9px, rgba(0,0,0,.25) 9px 9.6px, transparent 9.6px),
+              repeating-radial-gradient(circle, rgba(0,0,0,0) 0 13.5px, rgba(0,0,0,.18) 13.5px 14px), var(--bg);
+}
+.sete-rot::after {   /* risca do selo: mostra o giro */
+  content: ""; position: absolute; left: 50%; top: 3px; width: 2px; height: 6px; margin-left: -1px; border-radius: 1px; background: var(--fg); opacity: .8;
+}
+.compacto.tocando .sete-gira { animation: girar 1.33s linear infinite; }
+.compacto .lampada { position: absolute; top: 2px; right: 8px; width: 9px; height: 9px; }
+.compacto .t { width: 100%; font-size: .8125rem; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere;
+               display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.compacto .d { font-size: .75rem; color: var(--marfim-2); font-variant-numeric: tabular-nums; }
+.compacto:active .sete, .compacto.apertado .sete { transform: scale(.96); }
+
+/* prateleira: grade de 3 x 3 capas por pagina, que corre de lado (os pontos dizem a pagina);
+   o nome vai por cima da capa e as tabuas seguem embaixo de cada fileira. Segurar a capa abre o
+   menu (Continuar de, fila, renomear, apagar) */
+#cab-prat { margin-bottom: 8px; }
+#cab-prat h2, .continuar h2, .rapidos h2 { font-size: 1.5rem; font-weight: 400; }
+@media (max-width: 899.98px) {
+  .estante {
+    --gap: 10px;
+    grid-template-columns: none; grid-auto-flow: column; grid-template-rows: repeat(3, auto);
+    grid-auto-columns: calc((100% - 2 * var(--gap)) / 3);
+    column-gap: var(--gap); row-gap: 16px; padding: 12px 0 2px;   /* 12 em cima: a capa no prato sobe 10 px */
+    overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none;
+  }
+  .estante::-webkit-scrollbar { display: none; }
+  .estante > li { grid-column: var(--c, auto); grid-row: var(--r, auto); }
+  .estante > li.pagina { scroll-snap-align: start; }
+  .estante > .vazio { grid-column: span 3; }
+  .estante .disco-item:last-child .borda { margin-right: calc(var(--gap) / -2); }
+  .estante .capa, .compacto { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}
+.estante .ficha {
+  position: absolute; left: 0; right: 0; top: 0; height: round(nearest, 100cqw, 1px); padding: 0 7px 6px;
+  display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; pointer-events: none; border-radius: 2px;
+  background: linear-gradient(180deg, rgba(10,6,4,0) 48%, rgba(10,6,4,.8));
+  transition: transform .25s cubic-bezier(.2,.8,.2,1);
+}
+.estante .ficha .nome { font-size: .8125rem; font-weight: 700; line-height: 1.2; color: #fff; -webkit-line-clamp: 1; overflow-wrap: anywhere;
+                        text-shadow: 0 2px 0 var(--contorno); }   /* a sombra dura dos textos na madeira, no lugar da borrada */
+.estante .disco-item[data-id] .acoes { display: none; }
+.estante .ficha .acoes > * { pointer-events: auto; }
+.estante .disco-item.no-prato .ficha { transform: translateY(-10px); }
+.estante .no-prato-tag { left: 6px; top: 6px; padding: 3px 7px 3px 6px; gap: 5px; font-size: .6875rem; }
+@media (max-width: 899.98px) {
+  .pontos { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
+  .pontos span { width: 7px; height: 7px; border-radius: 50%; background: rgba(238,227,207,.25); transition: background .2s; }
+  .pontos span.aqui { background: var(--marfim); }
+}
+
+/* continuar ouvindo: os discos que pararam no meio, com o quanto ja tocou */
+.continuar { display: block; margin-top: 30px; }
+.continuar .cabeca-sec { margin-bottom: 12px; }
+.cartoes { list-style: none; display: flex; gap: 12px; margin: 0 -16px; padding: 0 16px 4px; overflow-x: auto;
+           scroll-snap-type: x proximity; scroll-padding: 0 16px; scrollbar-width: none; overscroll-behavior-x: contain; }
+@media (max-width: 899.98px) {
+  .cartoes::-webkit-scrollbar { display: none; }
+}
+.cartao { flex: none; width: 176px; scroll-snap-align: start; }
+.cartao-b { display: grid; gap: 3px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cartao-capa { position: relative; display: block; aspect-ratio: 16 / 9; margin-bottom: 5px; border-radius: 3px; overflow: hidden;
+               background: var(--vinil); box-shadow: 5px 4px 12px rgba(0,0,0,.45); container-type: inline-size; }
+.cartao-capa img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cartao-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(23,17,15,.75); }
+.cartao-prog::before { content: ""; position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(var(--p, 0)); background: var(--ambar); }
+.cartao-b:active .cartao-capa, .cartao-b.apertado .cartao-capa { filter: brightness(.88); }
+.cartao-tit { font-size: .875rem; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.cartao-sub { font-size: .8125rem; color: var(--marfim-2); font-variant-numeric: tabular-nums; }
+@media (max-width: 899.98px) {
+
+  /* ---------- pagina inicial com corpo de movel (a pagina inicial ainda
+     era magra demais; dos mocks feitos a partir do print ficou o 6, e a pagina segue
+     ele, com as fitas cassete da H2 no Continuar ouvindo). A parede de jacaranda pega a luz quente
+     do abajur pelo alto a esquerda; no alto, a plaqueta de aluminio parafusada com a marca e a tecla
+     quadrada da engrenagem, soltas na madeira; a busca num rebaixo escuro dentro de um caixilho de
+     madeira; os titulos em letra marfim gravada na parede; os sons rapidos direto na parede; a
+     prateleira num painel de jacaranda mais claro com tres tabuas grossas flutuando, a quina de cima
+     acesa e a sombra embaixo. Caixilho e painel saem 8 px para dentro da margem (--beira) e as capas
+     ficam do tamanho de antes. So pintura parada: sem filtro, sem animacao nova, e nenhum dos
+     roladores (sons, estante, fitas) tem canto redondo ---------- */
+  .app { --beira: 8px; grid-template-areas: "topo" "parede"; row-gap: 18px; }   /* sem a fileira vazia do deck, que mora no palco */
+}
+/* pele de pixel do computador: daqui em diante, o que e pele (cor, moldura, letra, peca) sai do bloco
+   do celular e vale nas duas telas; o layout segue no bloco. O bloco fecha e abre de novo em volta de
+   cada trecho de pele, para a ordem das regras no celular nao mudar (o dev/compara.py confere que
+   ele sai identico). As medidas da pele contam em --px, o tamanho de um ponto: 1px sem ela, no celular */
+.app {
+  --parafuso: #3B3029 0 calc(1.6 * var(--px, 1px)), #8E8475 calc(1.7 * var(--px, 1px)) calc(2.2 * var(--px, 1px)),
+    rgba(255,255,255,.78) calc(2.3 * var(--px, 1px)) calc(2.9 * var(--px, 1px)),
+    rgba(0,0,0,.38) calc(3 * var(--px, 1px)) calc(3.5 * var(--px, 1px)), transparent calc(3.6 * var(--px, 1px));
+}
+/* painel inteirico de jacaranda alaranjado em luz chapada, como a parede dos quartos do hotel:
+   sem a luz de abajur no alto nem o canto escuro embaixo, a cor medida na parede do mock h1
+   (terceira rodada do Habbo, 19/10). Numa variavel so: o palco do toca-discos usa a mesma
+   parede */
+:root {
+  --parede-casa:
+    /* as juntas das ripas do lambri antigo: o vinco escuro e o filete aceso do mock */
+    linear-gradient(90deg, rgba(40,14,0,.55) 0 2px, rgba(255,150,40,.22) 2px 3px, rgba(0,0,0,0) 3px) 0 0 / 148px 100%,
+    var(--veio-v) 0 0 / 420px 900px,   /* o veio, uma camada so */
+    #6C3208;
+}
+/* a parede e o fundo da pagina, nao so do .app: nele, a pagina mais curta que a tela (a busca
+   carregando, com o teclado aberto) mostrava embaixo o lambri escuro de antes, que seguia no
+   body (metade da tela ficava com tons de madeira diferentes) */
+body { background: var(--parede-casa); }
+@media (max-width: 899.98px) {
+  /* o palco troca o lambri de ripas escuras pela mesma parede (a camada propria do ::before fica) */
+  .palco { background-color: #6C3208; }
+  .palco::before { background: var(--parede-casa); }
+  /* madeira dos aparelhos em cor chapada: com a parede tambem em degrade, o
+     degrade do tampo do toca-discos e das laterais do receiver fazia o aparelho se misturar com ela
+     em alguns trechos; o volume fica nos filetes de luz e sombra das bordas */
+  /* capa apertada: encolhe um pouco em vez de escurecer (o filtro repintava a capa a cada toque) */
+  .estante .capa { transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+  .pontos span { transition: none; }
+}
+.cartao-b .cartao-capa { transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+@media (max-width: 899.98px) {
+  button.capa:active, button.capa.apertado, .cartao-b:active .cartao-capa, .cartao-b.apertado .cartao-capa { filter: none; transform: scale(.98); }
+
+  /* topo: a plaqueta e as teclas soltas na parede, e a busca num rebaixo dentro do caixilho de
+     madeira de baixo (o ::after do topo, atras da fileira da busca). A pele das tres mora no trecho
+     de pele do topo, fora do bloco */
+  .topo { position: relative; z-index: 0; margin-inline: calc(-1 * var(--beira)); gap: 18px 12px; padding: 4px 8px 0; }
+  .topo::after {
+    content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: 64px; bottom: -8px; border-radius: 6px; pointer-events: none;
+    background: var(--veio), linear-gradient(180deg, #84431F 0%, #6C3517 50%, #552811 100%);
+    box-shadow: inset 0 1.5px 0 rgba(255,200,150,.4), inset 1px 0 0 rgba(255,200,150,.16), inset 0 -2px 0 rgba(0,0,0,.5), 0 0 0 1px #1A0B04, 0 8px 14px -5px rgba(0,0,0,.72);
+  }
+}
+
+/* titulo de cada secao: letra marfim grande gravada na parede, na letra de sempre, e a contagem
+   menor e apagada logo depois */
+#vista-prateleira .cabeca-sec { align-items: baseline; gap: 16px; margin: 0 0 10px; }
+#vista-prateleira .cabeca-sec h2 {
+  font-weight: 800; line-height: 1.15; color: #F2E6D0;
+  text-shadow: 0 -1px 0 rgba(255,238,206,.16), 0 1.5px 0 rgba(20,9,4,.7), 0 3px 8px rgba(0,0,0,.4);
+}
+#vista-prateleira .cabeca-sec .conta { color: #D2BE9F; font-size: .9375rem; text-shadow: 0 1px 0 rgba(20,9,4,.6); }
+
+/* sons rapidos: os compactos direto na parede, com o pino de latao no canto. Os quatro de hoje
+   cabem inteiros de 360 a 430 px; com mais de quatro o quinto aparece pela metade na beirada e
+   diz que a fileira corre de lado */
+.rapidos { gap: 0; margin-bottom: 24px; }
+.chips { --vao: 6px; gap: var(--vao); margin: 0 calc(-1 * var(--beira)); padding: 6px 8px 4px; }
+.compacto { width: calc((100% - 3 * var(--vao)) / 4); max-width: 128px; gap: 2px; }   /* no tablet ficam juntos na esquerda */
+.chips:has(> .compacto:nth-child(5)) > .compacto { width: calc((100% - 4 * var(--vao)) / 4.4); }
+/* o compacto acompanha a largura do cartao, ate o tamanho de antes */
+.sete { width: 100%; max-width: 80px; height: auto; aspect-ratio: 1; margin-bottom: 6px; box-shadow: 0 7px 12px -2px rgba(0,0,0,.72), 0 0 0 1px rgba(255,255,255,.05) inset; }
+.sete-rot { inset: 27%; }
+/* o pino de latao no canto do compacto; acende ambar quando o som toca */
+.compacto .lampada { top: 0; right: max(2px, calc(50% - 46px)); width: 10px; height: 10px; }   /* junto do disco, nao da beira do cartao */
+.compacto .lampada:not(.acesa) {
+  background: radial-gradient(circle at 35% 30%, #FFF0C8 0 1px, #E2BC74 2.2px, #A57C3C 4px, #5E421E 100%);
+  box-shadow: 0 1px 2px rgba(0,0,0,.75), 0 0 0 1px rgba(20,12,6,.5);
+}
+.compacto .t { color: #F6F0E7; font-size: .8125rem; font-weight: 700; line-height: 1.2; text-shadow: 0 1px 2px rgba(0,0,0,.65); }
+.compacto .d { color: #CDB99B; font-size: .75rem; text-shadow: 0 1px 1px rgba(0,0,0,.5); }
+
+/* prateleira: um painel de jacaranda mais claro pregado na parede, de cantos de cima redondos e
+   sombra na parede, com o titulo dentro e tres tabuas grossas flutuando. O painel e o ::before do
+   rolo, subindo a altura do titulo (52 px fixos); o rolo nao rola (quem rola de lado e a estante
+   dentro dele) */
+#vista-prateleira #cab-prat { position: relative; z-index: 1; height: 52px; margin: 0 calc(-1 * var(--beira)); padding: 16px 16px 0; }
+#rolo-prateleira { position: relative; z-index: 0; margin-inline: calc(-1 * var(--beira)); padding: 2px 10px 16px; }
+#rolo-prateleira::before {
+  content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: -52px; bottom: 0; border-radius: 6px 6px 4px 4px; pointer-events: none;
+  background:
+    radial-gradient(120% 40% at 10% 0%, rgba(255,170,90,.2), rgba(255,170,90,0) 70%),
+    linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,.28) 100%),
+    var(--veio-v) 0 0 / 420px 900px,
+    linear-gradient(180deg, #5A2A12 0%, #44200D 50%, #331708 100%);
+  box-shadow: inset 0 0 0 5px #7A3C1B, inset 0 2px 0 5px rgba(255,190,130,.32), inset 0 0 0 6px rgba(0,0,0,.45), inset 0 8px 14px 4px rgba(0,0,0,.35),
+    0 0 0 1px #1A0B04, 0 18px 30px -10px rgba(0,0,0,.72), 0 4px 10px rgba(0,0,0,.35);
+}
+@media (max-width: 899.98px) {
+  /* sem folga de lado na estante: as paginas encaixam no mesmo ponto */
+  .estante { border-radius: 0; padding: 12px 0 4px; row-gap: 18px; }
+}
+.estante .capa { border-radius: 2px; box-shadow: 0 9px 9px -6px rgba(0,0,0,.85), 4px 2px 12px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,248,235,.22); }
+.estante .disco-item.no-prato .capa { box-shadow: 0 18px 14px -8px rgba(0,0,0,.7), 5px 8px 16px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,248,235,.22); }
+.estante .ficha { padding: 0 6px 5px; background: linear-gradient(180deg, rgba(12,7,4,0) 42%, rgba(12,7,4,.72) 72%, rgba(18,10,6,.92) 100%); }
+/* tabua grossa flutuando: o tampo de cima aceso pela luz, a frente de veio e a sombra embaixo */
+.estante .borda {
+  height: 18px; z-index: 2;
+  background:
+    linear-gradient(180deg, #E8A06A 0 1px, #B8683A 1px 5px, #87451F 5px 6px, transparent 6px),
+    var(--veio),
+    linear-gradient(180deg, #82401C 0%, #6A3214 70%, #4C220C 100%);
+  box-shadow: inset 0 -1.5px 0 rgba(0,0,0,.5), 0 1px 0 rgba(0,0,0,.65), 0 14px 14px -6px rgba(0,0,0,.78);
+}
+@media (max-width: 899.98px) {
+  /* as paginas viram lampadas piloto embutidas no pe do painel */
+  .pontos {
+    width: fit-content; margin: 12px auto 0; padding: 5px 14px; border-radius: 99px; gap: 10px; background: #1A0E08;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 1px 0 rgba(255,214,170,.2), 0 0 0 1px #2D1910;
+  }
+  .pontos span { width: 9px; height: 9px; background: radial-gradient(circle at 35% 35%, #6b5446, #2b1d15); box-shadow: inset 0 0 0 1px rgba(0,0,0,.75), 0 0 0 1.5px #4E3424; }
+  .pontos span.aqui { background: radial-gradient(circle at 35% 35%, #fff2c8, var(--ambar) 55%, #b9701c); box-shadow: 0 0 8px 2px rgba(243,167,60,.6), 0 0 0 1.5px #7A5028; }
+
+  /* a barra do player e uma placa de aluminio parafusada nos quatro cantos, como a plaqueta do topo */
+  .palco .mini {
+    background:
+      radial-gradient(circle at 8px 9px, var(--parafuso)), radial-gradient(circle at calc(100% - 8px) 9px, var(--parafuso)),
+      radial-gradient(circle at 8px calc(100% - 11px - env(safe-area-inset-bottom)), var(--parafuso)),
+      radial-gradient(circle at calc(100% - 8px) calc(100% - 11px - env(safe-area-inset-bottom)), var(--parafuso)),
+      var(--escovado), linear-gradient(180deg, #DCD4C7, var(--aluminio) 50%, #BCB3A3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.75), inset 0 0 0 1px rgba(42,24,18,.18);
+  }
+}
+
+/* continuar ouvindo: fitas cassete dos anos 70 (a carcaca com os parafusos, a etiqueta creme
+   com a faixa laranja, a janela fume com os dois carreteis por cima da capa e o quanto ja tocou) */
+.continuar { margin-top: 24px; }
+.cartoes { border-radius: 0; gap: 14px; padding: 4px 16px 12px; }
+.cartao { width: 196px; }
+.cartao-b {
+  position: relative; grid-template-rows: auto auto auto; gap: 0; padding: 9px 10px 13px; border-radius: 7px; border: 1px solid #0E0806;
+  background:
+    radial-gradient(circle at 7px 7px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 7px) 7px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at 7px calc(100% - 7px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    linear-gradient(180deg, #352A24 0%, #241C18 74%, #1A1310 100%);
+  box-shadow: inset 0 1px 0 rgba(255,245,230,.18), inset 0 -4px 0 #120C09, 0 3px 0 #120B08, 0 10px 16px -5px rgba(0,0,0,.76);
+}
+/* o trapezio das cabecas na base da fita */
+.cartao-b::after {
+  content: ""; position: absolute; left: 24px; right: 24px; bottom: 2px; height: 7px; border-radius: 2px 2px 0 0; pointer-events: none;
+  background:
+    radial-gradient(circle at 22% 55%, #0D0806 0 2px, transparent 2.2px),
+    radial-gradient(circle at 50% 55%, #0D0806 0 2.2px, transparent 2.4px),
+    radial-gradient(circle at 78% 55%, #0D0806 0 2px, transparent 2.2px),
+    linear-gradient(180deg, #2D231E, #1E1612);
+  box-shadow: inset 0 1px 0 rgba(255,240,220,.14), 0 -1px 0 rgba(0,0,0,.6);
+}
+.cartao-tit {
+  grid-row: 1; padding: 5px 7px 0; border-radius: 4px 4px 0 0; border-bottom: 2px solid #F3E9D6;
+  background: linear-gradient(180deg, #D46527 0 3px, #F3A73C 3px 5px, transparent 5px), #F3E9D6;
+  color: var(--tinta); font-size: .8125rem; font-weight: 800; line-height: 1.18;
+  box-sizing: content-box; min-height: 2.36em;   /* as 2 linhas, sem contar o padding e a borda: titulo de 1 linha ou de 2, a fita e a mesma */
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+}
+.cartao-sub {
+  grid-row: 2; padding: 1px 7px 4px; background: #E6D8BE; color: #8E3B10;
+  font-size: .6875rem; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid #9E8A6C;
+}
+.cartao-capa {
+  grid-row: 3; aspect-ratio: 2.15 / 1; margin: 0; border-radius: 0 0 4px 4px; border: 3px solid #1C1512;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.85), 0 1px 0 rgba(255,240,220,.12);
+}
+.cartao-capa::before, .cartao-capa::after {
+  content: ""; position: absolute; top: 50%; width: 34px; height: 34px; margin-top: -19px; border-radius: 50%; z-index: 2; pointer-events: none;
+  background:
+    radial-gradient(circle, #120C09 0 5px, #E8E0D2 5.5px 9.5px, #2B211C 10px 12.5px, rgba(20,13,9,.68) 13px 100%),
+    repeating-conic-gradient(#F4EDE0 0 15deg, #2A201B 15deg 30deg);
+  box-shadow: 0 0 0 2px rgba(238,227,207,.55), 0 2px 5px rgba(0,0,0,.75);
+}
+.cartao-capa::before { left: 18px; }
+.cartao-capa::after { right: 18px; }
+.cartao-prog { z-index: 3; height: 5px; background: rgba(18,11,8,.88); }
+@media (max-width: 899.98px) {
+
+  /* barra: a beirada do palco recolhido, com o disco no prato, cortar voz e tocar; tocar nela
+     abre o palco. Gruda no alto do palco (sticky) por cima do cabecalho e some (opacidade) no
+     primeiro terco da subida, deixando a madeira do palco aparecer */
+  /* grade: o disco na esquerda, o titulo na linha de cima e o canal (ou a etiqueta do efeito)
+     na de baixo, cortar voz e tocar na direita; o botao de abrir fica por baixo cobrindo disco
+     e textos, e a etiqueta por cima dele, numa celula propria (nunca encosta no titulo) */
+  .mini {
+    display: grid; grid-template-columns: 48px minmax(0, 1fr) 44px 44px; grid-template-rows: auto auto;
+    column-gap: 4px; align-items: center; align-content: center;
+    position: sticky; top: 0; z-index: 5; flex: none;
+    height: var(--peek); margin: 0 -16px calc(-1 * var(--peek) - var(--fresta));
+    padding: 8px 12px env(safe-area-inset-bottom) 12px; border-radius: 16px 16px 0 0; color: var(--tinta);
+    background: var(--escovado), linear-gradient(180deg, #DCD4C7, var(--aluminio) 50%, #BCB3A3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+    transition: opacity .22s ease;
+  }
+  body.com-palco .mini { opacity: 0; pointer-events: none; }
+  .mini::before {
+    content: ""; position: absolute; left: 50%; top: 6px; width: 38px; height: 4px; margin-left: -19px;
+    border-radius: 2px; background: rgba(42,24,18,.32); pointer-events: none;
+  }
+  /* a barra nao rola nada: deslizar nela para cima sobe o palco junto com o dedo */
+  .mini { touch-action: none; }
+  .mini :focus-visible { outline-color: #8F4A0C; }
+  .mini-abrir {
+    grid-column: 1 / 3; grid-row: 1 / -1; align-self: stretch; margin: -8px 0 0 -8px;
+    padding: 0; border: 0; border-radius: 10px; background: none; color: inherit;
+  }
+  .mini-disco, .mini-tit, .mini-sub { pointer-events: none; }
+  .mini-disco {
+    grid-column: 1; grid-row: 1 / -1;
+    width: 48px; height: 48px; flex: none; border-radius: 50%; contain: paint;
+    background: repeating-radial-gradient(circle, #1d1715 0 1px, #120d0c 1px 2.6px);
+    box-shadow: 0 2px 5px rgba(0,0,0,.45), inset 0 0 0 2px #0e0a09;
+  }
+  .mini-gira { width: 100%; height: 100%; display: grid; place-items: center; animation: girar 1.8s linear infinite; animation-play-state: paused; }
+  body[data-status="playing"] .mini-gira, body[data-status="buffering"] .mini-gira { animation-play-state: running; }
+  .mini-rotulo { position: relative; width: 44%; height: 44%; border-radius: 50%; overflow: hidden; background: var(--vinho); }
+  .mini-rotulo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .mini-rotulo .capa-gerada .t { font-size: 40cqw; left: 0; right: 0; bottom: auto; top: 50%; transform: translateY(-50%); text-align: center; -webkit-line-clamp: 1; }
+  .mini-tit, .mini-sub, .mini-ef { grid-column: 2; margin-left: 7px; }
+  .mini-tit { grid-row: 1; align-self: end; min-width: 0; font-weight: 600; font-size: .9375rem; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini-sub { grid-row: 2; align-self: start; min-width: 0; font-size: .8125rem; line-height: 1.25; color: var(--tinta-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #mini-cortar { grid-column: 3; grid-row: 1 / -1; }
+  #mini-tocar { grid-column: 4; grid-row: 1 / -1; }
+  .mini-btn { width: 44px; height: 44px; flex: none; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--tinta); }
+  .mini-btn svg { width: 24px; height: 24px; }
+  .mini-btn:disabled { opacity: .4; }
+  .mini-btn:active:not(:disabled), .mini-btn.apertado:not(:disabled) { transform: scale(.9); }
+  .mini-abrir:active, .mini-abrir.apertado { background: rgba(42,24,18,.07); border-radius: 10px; }
+  .mais:active, .mais.apertado { background: rgba(255,240,220,.12); }
+  .mini-btn.cortada { color: #8E1E14; background: rgba(242,115,94,.22); }
+  .mini-tocar {
+    background: radial-gradient(circle at 40% 30%, #fbf7f0, #d8d0c2 45%, #a69d8e 80%);
+    box-shadow: 0 0 0 2px #9b9283, 0 2px 5px rgba(30,15,8,.45);
+  }
+  body[data-status="playing"] .mini-tocar, body[data-status="buffering"] .mini-tocar { box-shadow: 0 0 0 2px var(--ambar), 0 0 10px rgba(243,167,60,.55); }
+  /* efeito de voz ligado: etiqueta ambar no lugar do canal, para nunca esquecer a voz
+     alterada no jogo; tocar nela volta para a voz natural */
+  .mini-ef {
+    grid-row: 2; align-self: start; justify-self: start; position: relative; z-index: 1; margin-top: 3px;
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: calc(100% - 7px);
+    height: 22px; padding: 0 8px 0 10px; border: 0; border-radius: 99px;
+    font-size: .75rem; font-weight: 650; line-height: 1; color: var(--tinta);
+    background: radial-gradient(120% 190% at 50% 95%, var(--ambar-claro), var(--ambar) 55%, #C77A23);
+    box-shadow: inset 0 0 0 1px #3a2a1f, 0 0 8px rgba(243,167,60,.45);
+  }
+  .mini-ef::after { content: ""; position: absolute; inset: -3px -12px -19px; }   /* alvo de toque de 44 px, sem invadir o titulo: cresce para os lados e para baixo */
+  .mini-ef span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini-ef svg { width: 11px; height: 11px; flex: none; }
+  .mini-ef:active, .mini-ef.apertado { transform: scale(.95); }
+  .mini.com-efeito .mini-sub { display: none; }
+  /* progresso: ambar aceso num sulco escuro, como as lampadas dos medidores (a linha clara de 3 px sumia no aluminio) */
+  .mini-prog { position: absolute; left: 0; right: 0; bottom: env(safe-area-inset-bottom); height: 4px; background: #4A362A; box-shadow: inset 0 1px 1px rgba(0,0,0,.5); overflow: hidden; }
+  .mini-prog span { display: block; height: 100%; background: linear-gradient(180deg, var(--ambar-claro), var(--ambar) 45%, #D8862A); transform-origin: 0 50%; transform: scaleX(var(--prog, 0)); will-change: transform; }
+  body:not(.com-palco) .aviso { bottom: calc(var(--mini-h) + 14px + env(safe-area-inset-bottom)); }
+
+  /* ---------- toque de Habbo (dos mocks, a combinacao escolhida: o h1 na pagina
+     inicial, o p1 no toca-discos e a faixinha isometrica do h5 no topo). A linguagem dos moveis de
+     brinquedo do hotel, legivel de primeira (calibragem: tudo forte demais faz o olho ter que
+     interpretar a tela; letra de pixel e icone novo ficam de fora). Na primeira rodada ficou contido
+     demais e a segunda puxou mais (19/10): contorno
+     escuro de 2,5 px com sombra dura deslocada em tudo que e objeto, tecla ou caixa (plaqueta,
+     teclas, busca, discos, capas, fitas, painel da prateleira, tabuas, toca-discos, receiver, feltro,
+     barra), a letra dos titulos contornada como nos moveis do hotel, as tabuas com a quina acesa e
+     as teclas do transporte em madeira escura de chanfro forte. Parede e fotos ficam como estavam.
+     Sombra dura sem desfoque e mais barata de pintar que a esfumada. Teclas afundam: a sombra de
+     baixo encolhe enquanto a tecla desce (no aperto a sombra vai escrita: a var() de dentro de
+     --duro ja chega resolvida no :root).
+     Terceira rodada (19/10, as quatro coisas que faltavam para o mock): luz chapada
+     (a parede numa cor so e os objetos de tocar em cor lisa, o relevo num bisel duro de pixel: luz em
+     cima e a esquerda, sombra embaixo e a direita); moldura dupla (a linha clara colada por dentro do
+     contorno escuro, como as janelas do hotel); cantos em degrau nas caixas, na plaqueta, nas teclas
+     quadradas, nas fitas, na busca, no visor e na barra do player, pela border-image de 9 partes que o
+     dev/molduras.py desenha (contorno, linha clara, bisel e a sombra dura de baixo assados no desenho:
+     o box-shadow seguiria o retangulo e nao o degrau); e a letra de pixel so nos titulos de secao e
+     nas contagens. Texto, fotos e feltro ficam como estavam. Quarta rodada (19/10): a mesma lingua
+     no toca-discos, no receiver e no FX-12, no fim do bloco. Quinta (19/10): os pedais,
+     direto no bloco da pedaleira ---------- */
+}
+/* HOME-FIM */
