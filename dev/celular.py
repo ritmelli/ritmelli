@@ -50,8 +50,8 @@ CATS = ["devtools.timeline", "disabled-by-default-devtools.timeline", "disabled-
         "cc", "viz", "gpu", "benchmark", "input", "blink", "blink.animations", "toplevel"]
 
 
-def adb_forward(porta, esperar=False):
-    """O forward da 9222 (o DevTools do Chrome do celular) e o reverse da porta do --mock. Volta o adb."""
+def adb_forward(url, porta, esperar=False):
+    """O forward da 9222 (o DevTools do Chrome do celular) e o reverse da porta do --mock do url. Volta o adb."""
     adb = os.environ.get("ADB") or shutil.which("adb")
     if not adb:
         sys.exit("adb nao achado: ponha no PATH ou em ADB=<caminho do adb.exe>")
@@ -65,6 +65,10 @@ def adb_forward(porta, esperar=False):
         sys.exit(f"nenhum celular autorizado no adb:\n{lista}")
     subprocess.run([adb, "forward", "tcp:9222", "localabstract:chrome_devtools_remote"], check=True,
                    capture_output=True, text=True, encoding="utf-8", errors="replace")
+    try:
+        so_mock.confere(url)  # de novo logo antes do reverse: o --esperar pode ter levado ate 10 min
+    except so_mock.Recusa as ex:
+        sys.exit(f"recusado: {ex}")
     # --no-rebind: um mapeamento que ja existia no celular nao e trocado (nem removido no fim)
     r = subprocess.run([adb, "reverse", "--no-rebind", f"tcp:{porta}", f"tcp:{porta}"],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -203,6 +207,7 @@ async def palco_aberto(a):
     if not await a.js("S.palco"):
         await a.js("abrirPalcoComHistoria()")
         await asyncio.sleep(1.5)
+        await a.confere()
     await a.js("document.querySelector('#palco').scrollTop = 0")
     await asyncio.sleep(1.0)
 
@@ -303,7 +308,7 @@ async def main():
     except so_mock.Recusa as ex:
         sys.exit(f"recusado: {ex}")
     porta = so_mock.origem(args.url)[1]
-    adb = adb_forward(porta, args.esperar)
+    adb = adb_forward(args.url, porta, args.esperar)
     print("pelo adb reverse, o --mock e o tema veem 127.0.0.1: a medida sai com o papel do PC (a do celular pareado "
           "pela rede de casa segue manual)", file=sys.stderr, flush=True)
     try:
