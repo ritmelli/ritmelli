@@ -20,9 +20,10 @@ It also ratchets the reaches into the insides of two classes from the other modu
     count must equal APP_CEILING.
 The private names come from the class's own syntax tree: every method and nested class, every name assigned at the
 class's level (also under an if or a try there) and every self._x or cls._x its methods assign (also by setattr) whose
-name starts with one underscore (not two). A reach is a read, write or call of one of those names on an object other
-than the self or cls of a class's method (a class's own _lock is its own), and also a getattr, setattr, hasattr or
-delattr (or builtins.getattr and the rest) with the name as a literal.
+name starts with one underscore (not two). A reach is a read, write or call of one of those names, and also a getattr,
+setattr, hasattr or delattr (or builtins.getattr and the rest) with the name as a literal, on any object but the self
+or cls of a class's method reaching a name that class defines itself (a class's own _lock is its own; a subclass
+reaching an inherited one is a reach).
 What counts is the seam between modules: the class's own module stays out, since an underscore name is private to its
 module. Above the ceiling, a new reach went in: go through the interface. Below it, the PR lowers the ceiling with it.
 Both numbers go to the PR summary (the "-- summary:" lines that dev/testa_tudo.py collects).
@@ -182,46 +183,54 @@ def instance_stores(node, receivers=frozenset(("self", "cls"))):
         yield from instance_stores(child, inner)
 
 
-def privates(tree, classes):
-    """The private names the top-level classes named in classes define: their methods, nested classes and the names
-    assigned at the class's own level (also under an if or a try there, and in a tuple unpacking), and every self._x
-    or cls._x their methods assign (instance_stores). A helper def nested inside a method is not the class's."""
+def class_privates(c):
+    """The private names the class c defines: its methods, nested classes and the names assigned at its own level (also
+    under an if or a try there, and in a tuple unpacking), and every self._x or cls._x its methods assign
+    (instance_stores). A helper def nested inside a method is not the class's."""
     out = set()
-    for c in tree.body:
-        if not (isinstance(c, ast.ClassDef) and c.name in classes):
-            continue
-        for s in class_level(c.body):  # the class's own level: its methods, nested classes and _X = ...
-            if isinstance(s, ast.ClassDef):
-                out.add(s.name)
-            elif isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                out.add(s.name)
-                out |= set(instance_stores(s))
-            for target in (s.targets if isinstance(s, ast.Assign) else [s.target] if isinstance(s, ast.AnnAssign)
-                           else []):
-                out |= set(bound_names(target))
+    for s in class_level(c.body):  # the class's own level: its methods, nested classes and _X = ...
+        if isinstance(s, ast.ClassDef):
+            out.add(s.name)
+        elif isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            out.add(s.name)
+            out |= set(instance_stores(s))
+        for target in (s.targets if isinstance(s, ast.Assign) else [s.target] if isinstance(s, ast.AnnAssign)
+                       else []):
+            out |= set(bound_names(target))
     return {n for n in out if is_private(n)}
+
+
+def privates(tree, classes):
+    """The private names the top-level classes named in classes define (class_privates)."""
+    return set().union(*(class_privates(c) for c in tree.body if isinstance(c, ast.ClassDef) and c.name in classes))
 
 
 def reaches(owner, names):
     """[(module, line, name)] of the reaches into names from the modules at the root other than owner: an attribute,
     or a getattr/setattr/hasattr/delattr (also builtins.getattr and the rest) with the name as a literal, on any object
-    but the self or cls of a class's method (a module-level def f(self) gets no pass)."""
+    but the self or cls of a class's method reaching a name that class defines itself (its own _lock is its own; a
+    subclass reaching an inherited _x, or a module-level def f(self), gets no pass)."""
     out = []
     for f in sorted(RAIZ.glob("*.py")):
         if f.name == owner:
             continue
         tree = ast.parse(f.read_text(encoding="utf-8"))
-        in_method = {id(n) for c in ast.walk(tree) if isinstance(c, ast.ClassDef) for s in class_level(c.body)
-                     if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in ast.walk(s)}
+        own_names = {}  # id of each node in a class's method -> the names that class defines (ast.walk goes outer first)
+        for c in ast.walk(tree):
+            if isinstance(c, ast.ClassDef):
+                mine = class_privates(c)
+                for s in class_level(c.body):
+                    if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        own_names.update((id(n), mine) for n in ast.walk(s))
 
-        def passes(node, receiver):
-            return own(receiver) and id(node) in in_method
+        def passes(node, receiver, name):
+            return own(receiver) and name in own_names.get(id(node), ())
         for no in ast.walk(tree):
-            if isinstance(no, ast.Attribute) and no.attr in names and not passes(no, no.value):
+            if isinstance(no, ast.Attribute) and no.attr in names and not passes(no, no.value, no.attr):
                 out.append((f.name, no.lineno, no.attr))
             elif (isinstance(no, ast.Call) and attr_function(no.func) and len(no.args) >= 2
                   and isinstance(no.args[1], ast.Constant) and no.args[1].value in names
-                  and not passes(no, no.args[0])):
+                  and not passes(no, no.args[0], no.args[1].value)):
                 out.append((f.name, no.lineno, no.args[1].value))
     return sorted(out)
 
