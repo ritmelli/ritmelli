@@ -307,15 +307,22 @@ def _confere_arvore(caminho, d, le):
     return None
 
 
+def _nome_curto(nome):
+    """O componente tem a forma de um alias 8.3 (PROGRA~1, RITMEL~1.EXE): ate 8 caracteres com um ~ seguido de digito e
+    uma extensao de ate 3. Um nome longo com ~ (Ritmelli~2026, Ritmelli~Estudio) nao e alias."""
+    return (re.fullmatch(r"[^.]{1,8}(\.[^.]{1,3})?", nome) is not None
+            and re.search(r"~[0-9]", nome.split(".")[0]) is not None)
+
+
 def motivo_desprotegida(pasta, raiz, le=_le_disco):
     """Por que a pasta nao passa na regra da pasta protegida, ou None se passa. le(caminho) e quem le cada objeto (o
     _le_disco, ou uma descricao em memoria nos testes)."""
     pasta, raiz = ntpath.normpath(str(pasta)), ntpath.normpath(str(raiz))
-    if re.search(r"~[0-9]", pasta):
-        # um nome curto (8.3, como PROGRA~1): o instalador (o GetFullPath do .NET Framework) o expandiria, e a regra tem
-        # de dar o mesmo veredito nos dois. Um ~ sem digito depois nao e alias
-        return f"{pasta} has a short (8.3) name"
     unidade, resto = ntpath.splitdrive(pasta)
+    if any(_nome_curto(p) for p in resto.split("\\")):
+        # um nome curto (8.3, como PROGRA~1): o instalador (o GetFullPath do .NET Framework) o expandiria, e a regra tem
+        # de dar o mesmo veredito nos dois
+        return f"{pasta} has a short (8.3) name"
     if not unidade or not ntpath.isabs(pasta) or not ntpath.isabs(raiz):
         return f"{pasta} is not an absolute path"
     if not ntpath.normcase(pasta).startswith(ntpath.normcase(raiz).rstrip("\\") + "\\"):

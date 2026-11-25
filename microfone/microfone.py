@@ -313,7 +313,8 @@ def _prepara_dll(dll):
     if not protegida:
         sys.exit(f"the app folder isn't protected, the filter wasn't installed: {protegida}")
     os.makedirs(LOGS, exist_ok=True)
-    r = subprocess.run([ICACLS, LOGS, "/grant", "*S-1-5-19:(OI)(CI)M"], capture_output=True, text=True,
+    # o /L: na pasta mesmo, e nunca para onde ela apontaria (o LocalService escreve nela)
+    r = subprocess.run([ICACLS, LOGS, "/grant", "*S-1-5-19:(OI)(CI)M", "/L"], capture_output=True, text=True,
                        encoding="oem", errors="replace", creationflags=NO_WINDOW)
     if r.returncode:
         sys.exit(f"icacls on the log folder failed ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")

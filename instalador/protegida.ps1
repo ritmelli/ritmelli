@@ -94,8 +94,13 @@ function ConfereArvore($o) {
 
 function Motivo {
   # o GetFullPath do .NET Framework expande o nome curto (C:\PROGRA~1 vira C:\Program Files), e o app, pelo
-  # sys.executable, nao expande: a mesma pasta passaria aqui e reprovaria la. Um ~ sem digito depois nao e alias
-  if ($Pasta -match '~[0-9]') { return "$Pasta has a short (8.3) name" }
+  # sys.executable, nao expande: a mesma pasta passaria aqui e reprovaria la. Alias e o componente de ate 8 caracteres
+  # com um ~ seguido de digito e extensao de ate 3; um nome longo com ~ (Ritmelli~2026) nao e
+  foreach ($comp in ($Pasta -split '[\\/]' | Select-Object -Skip 1)) {
+    if ($comp -match '^[^.]{1,8}(\.[^.]{1,3})?$' -and $comp.Split('.')[0] -match '~[0-9]') {
+      return "$Pasta has a short (8.3) name"
+    }
+  }
   $p = [IO.Path]::GetFullPath($Pasta).TrimEnd('\')
   $r = [IO.Path]::GetFullPath($Raiz).TrimEnd('\')
   if (-not $p.StartsWith("$r\", [StringComparison]::OrdinalIgnoreCase)) { return "$p is outside $r" }

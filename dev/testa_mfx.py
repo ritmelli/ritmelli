@@ -453,6 +453,8 @@ class TestaPastaProtegida(Base):
         mf.instala_todos(r"C:\x\micfx.dll")
         destino = r"C:\Program Files\Ritmelli-2\microfone\micfx.dll"
         self.assertEqual(self.copias, [destino])
+        self.assertEqual(self.cmd.de("icacls"), [[mf.ICACLS, mf.LOGS, "/grant", "*S-1-5-19:(OI)(CI)M", "/L"]],
+                         "o icacls da pasta de log tem de ir com o /L (na pasta, e nao para onde ela apontaria)")
         self.assertEqual([c[-1] for c in self.cmd.de("regsvr32")], [destino])
         self.assertEqual(self.cmd.de("reinicia"), [["reinicia"]], "o audio nao reiniciou uma vez")
         self.assertEqual(self.apagadas, [], "a DLL anterior saiu")
