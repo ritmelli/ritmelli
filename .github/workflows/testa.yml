@@ -15,8 +15,10 @@
 #
 # The needs-owner label (a PR whose proof needs something outside CI: the microphone filter on a real Windows, the real
 # installer, a change to the triggers here or to the name of the required check) keeps the PR out of the main: the
-# "Testa o PR" of a merge_group entry fails while its PR has the label, and the owner merges it. The entry reads the
-# labels when it runs, so the gate needs no labeled trigger; on the PR the check only says the queue will refuse it.
+# "Testa o PR" of a merge_group entry fails while its PR has the label. The owner does the proof, removes the label and
+# puts the PR in the queue. The entry reads the labels when its etiquetas job runs, so the gate needs no labeled
+# trigger, and a label put on a PR already in the queue may come too late for its entry: take the PR out of the queue
+# first. On the PR the check only says the queue will refuse it.
 name: Testa
 
 on:
@@ -437,8 +439,7 @@ jobs:
               line = ""
           if line:
               print(("::error::" if code else "::notice::") + line.replace("*", ""))
-              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-                  f.write(line + "\n\n")
+          # the line goes in the summary through the next step (the job summary and the PR comment)
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"linha={line}\n")
           sys.exit(code)

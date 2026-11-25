@@ -75,6 +75,6 @@ onde entra teste novo: o [Contributing](README.md#contributing) do README). O ch
 mudado no `compara` só bloqueia com a etiqueta `extracao-tema`: sem ela o check passa, e as diferenças ficam no artefato.
 O PR entra pela fila de merge da `main` (exige o "Testa o PR"; ninguém tem bypass): nada de `--admin`, e o `gh pr merge`
 cai no auto-merge, que o repo não permite. O caminho é a mutação GraphQL `enqueuePullRequest`, com `expectedHeadOid`.
-PR cuja prova precisa de algo fora da CI (o filtro do microfone num Windows real, o instalador de verdade, um gatilho do
-`testa.yml`, o nome do check exigido) leva a etiqueta `needs-owner`: a fila recusa o PR com ela, e o merge é do dono. Os
+PR com prova fora da CI (o filtro do microfone num Windows real, o instalador real, um gatilho do `testa.yml`, o nome do
+check exigido) leva a etiqueta `needs-owner`, e a fila o recusa: o dono faz a prova, tira a etiqueta e põe na fila. Os
 dois últimos se provam no PR: o "Testa o PR" fica no head ao editar a descrição, pôr e tirar uma etiqueta e na fila.
