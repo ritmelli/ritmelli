@@ -71,8 +71,9 @@ with tempfile.TemporaryDirectory() as tmp:
             ok = True
         except PermissionError:
             ok = False
+        dt = time.monotonic() - t0
         solta.join()
-        confere(ok and time.monotonic() - t0 >= 0.25
+        confere(ok and dt >= 0.25
                 and json.loads(alvo.read_text(encoding="utf-8")) == {"depois": "de esperar"},
                 "aberto por 0,3 s: a gravacao espera e troca")
         confere(not sobras(pasta), f"nenhum temporario sobrando {sobras(pasta)}")
