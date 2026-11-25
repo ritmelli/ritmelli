@@ -26,6 +26,10 @@ SAMPLES = (
     ("a block function in strict mode", ("/* A-INICIO */\n'use strict';\n{ function h() {} }",
                                          "'custom';\n'use strict';\n{ function h() {} }"), set()),
 )
+KNOWN_FAILURES = (
+    ("a sloppy var named arguments", ("var arguments;", "var arguments;"), {"arguments"}),
+    ("a sloppy const named yield", ("const yield = 1;", "const yield = 2;"), {"yield"}),
+)
 BROKEN_SAMPLE = "'use strict';\nlet i = ;"
 FEATURE_HANDLERS = (
     ("search.js", "ui-events.js", "#q", "input"), ("search.js", "ui-events.js", "#q", "keydown"),
@@ -37,8 +41,13 @@ FEATURE_HANDLERS = (
     ("voice-effects.js", "ui-events.js", "#gaveta", "click"), ("voice-effects.js", "ui-events.js", "#gaveta-dir", "click"),
     ("voice-effects.js", "ui-events.js", "#desliga-ef", "click"), ("voice-effects.js", "ui-events.js", "#b-efeito", "click"),
     ("voice-effects.js", "ui-events.js", "#b-fechar-gav", "click"),
+    ("voice-effects.js", "ui-events.js", "#b-ouvir", "click"), ("voice-effects.js", "ui-events.js", "#mini-ef", "click"),
 )
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
+EARLIER_FAILURES = (
+    ("voice-effects.js", (("index.html", "#b-disp", "click"),)),
+    ("search.js", (("index.html", "#b-disp", "click"), ("queue.js", "#rolo-busca", "scroll"))),
+)
 SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc';"
                " document.getElementById('form-busca').requestSubmit(); })()")
 OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true,"
@@ -114,6 +123,12 @@ async def checks(tab):
         results.append((not errors and set(twice) == expected,
                         f"the name reader on {title}: {sorted(twice) or 'no name'} in more than one script"
                         f"{', ' + '; '.join(errors) if errors else ''}"))
+    for title, sources, expected in KNOWN_FAILURES:
+        twice, errors = await top_level_names(tab, [(f"{title} {n}", s) for n, s in enumerate(sources, 1)])
+        fixed = not errors and set(twice) == expected
+        results.append((not fixed, f"known failure #239 passes now on {title}: make it a regular sample and close the "
+                                   f"issue" if fixed else f"known failure #239: the name reader on {title} gives "
+                                                          f"{sorted(twice)}{', ' + '; '.join(errors) if errors else ''}"))
     _, errors = await top_level_names(tab, [("a broken script", BROKEN_SAMPLE)])
     results.append((bool(errors), f"the name reader on a script that does not compile reports it ({errors})"))
 
@@ -158,12 +173,26 @@ def held_until(activation):
     return run
 
 
+def after_a_failure(missing, expected):
+    async def run(tab):
+        await tab.cmd("Debugger.enable")
+        tab.failing.add(missing)
+        tab.holding.add("deck.js")
+        await missing_script.open_page(tab)
+        state = await until(tab, "({ran: !!document.querySelector('#ant-d svg')})", "s.ran", PAGE_READY_S)
+        found = {f"{kind} {selector}": await handler_files(tab, selector, kind) for _, selector, kind in expected}
+        await tab.release("deck.js", fail=False)
+        return [(state.get("ran") and all(found[f"{kind} {selector}"] == [file] for file, selector, kind in expected),
+                 f"with {missing} failed, the handlers registered after its binder still are ({found})")]
+    return run
+
+
 def main(argv=None):
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="The theme's scripts in a headless Chrome against a --mock server of its "
                                              "own: every top-level name declared by one script only (read by V8), the "
-                                             "search and effects drawer handlers in their own files and turned on where "
-                                             "they were, and the search's outside touch on the mesa. Exit 1 if a check "
+                                             "search and voice effects handlers in their own files and turned on where "
+                                             "they were, even after an earlier file failed, and the search's outside touch on the mesa. Exit 1 if a check "
                                              "fails.")
     ap.add_argument("--raiz", type=Path, default=RAIZ, help="the checkout whose server.py and theme are served")
     args = ap.parse_args(argv)
@@ -174,7 +203,8 @@ def main(argv=None):
             srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, raiz=args.raiz.resolve(),
                                         config={"boas_vindas": True})
             try:
-                for run in (checks, *(held_until(a) for a in RAN_BEFORE)):
+                for run in (checks, *(held_until(a) for a in RAN_BEFORE),
+                            *(after_a_failure(m, e) for m, e in EARLIER_FAILURES)):
                     results += asyncio.run(missing_script.with_tab(srv, run))
             finally:
                 compara.para_servidor(srv)

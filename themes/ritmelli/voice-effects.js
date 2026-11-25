@@ -1363,7 +1363,14 @@ const pisarPedal = e => {
   if (b.dataset.ef !== SEM_EFEITO && ligado) desligarEfeito();
   else escolherEfeito(b.dataset.ef);
 };
-function bindEffectsDrawer() {
+function bindVoiceEffects() {
+  $('#b-ouvir').addEventListener('click', () => {
+    const v = !(S.state && S.state.voice_monitor);
+    ligarChave($('#b-ouvir'), v); ajustar('voice_monitor', v);
+    // sem volume proprio: o teste toca em 100%, o mesmo nivel que vai para o jogo
+    if (v && S.state && S.state.voice_mon_vol !== 1) ajustar('voice_mon_vol', 1);
+    desenharEfeito();
+  });
   $('#gaveta').addEventListener('click', pisarPedal);
   $('#gaveta-dir').addEventListener('click', pisarPedal);
   $('#desliga-ef').addEventListener('click', desligarEfeito);
@@ -1373,5 +1380,6 @@ function bindEffectsDrawer() {
     abrirGaveta(!S.gaveta);
   });
   $('#b-fechar-gav').addEventListener('click', () => { abrirGaveta(false); $('#b-efeito').focus(); });
+  $('#mini-ef').addEventListener('click', desligarEfeito);
 }
 /* VOICE-EFFECTS-FIM */

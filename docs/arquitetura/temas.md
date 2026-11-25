@@ -29,12 +29,15 @@ fila, o A seguir) e o `ui-events.js` (os ouvintes de clique, de tecla e de ponte
 arquivo tirado dele começa com `'use strict'`, como o script inline que segue depois do `<script src>` dele.
 
 Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
-da gaveta da busca na mesa e os resultados) no `search.js`, os da gaveta de efeitos no `voice-effects.js`. O arquivo
-da parte guarda os ouvintes numa função (o `bindSearch()`, o `bindSearchResults()` e o `bindEffectsDrawer()`), e quem
-liga é o lugar em que eles eram registrados antes: o `ui-events.js` chama o `bindEffectsDrawer()` e o `bindSearch()`, e
-o `queue.js` chama o `bindSearchResults()`. Assim os controles só respondem quando os arquivos de que eles dependem já
-carregaram (o formulário da busca segue `inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos
-outros no mesmo alvo (o toque fora da busca para o evento depois de o ouvinte do `queue.js` na `window` ver o toque).
+da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de
+desligar o efeito da barra de baixo) no `voice-effects.js`. O arquivo da parte guarda os ouvintes numa função (o
+`bindSearch()`, o `bindSearchResults()` e o `bindVoiceEffects()`), e quem liga é o lugar em que eles eram registrados
+antes: o `ui-events.js` chama o `bindVoiceEffects()` e o `bindSearch()`, e o `queue.js` chama o `bindSearchResults()`.
+Assim os controles só respondem quando os arquivos de que eles dependem já carregaram (o formulário da busca segue
+`inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos outros no mesmo alvo (o toque fora da busca
+para o evento depois de o ouvinte do `queue.js` na `window` ver o toque). Com um arquivo anterior que faltou
+(`scriptsMissing()`), a chamada não acontece, e o resto do arquivo que chama segue registrando os seus ouvintes até a
+página ir para o aviso de fora do ar.
 
 Todo nome do alto de um script é declarado por um script só. O `dev/theme_scripts.py`, que o `--tela` do
 `dev/testa_tudo.py` roda, abre a página num Chrome sem tela contra um `--mock` e pega cada script como o V8 o leu. Cada

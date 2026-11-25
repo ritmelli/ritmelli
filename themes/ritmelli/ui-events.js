@@ -23,15 +23,7 @@ $('#b-repetir').addEventListener('click', () => { const v = !(S.state && S.state
 function alternarVoz() { const v = !(S.state && S.state.mic_mute); ligarChave($('#b-cortar'), v); ajustar('mic_mute', v); desenharReceptor(); }
 $('#b-cortar').addEventListener('click', alternarVoz);
 $('#b-nivelar').addEventListener('click', () => { const v = !(S.state && S.state.volume_auto); ligarChave($('#b-nivelar'), v); ajustar('volume_auto', v); });
-$('#b-ouvir').addEventListener('click', () => {
-  const v = !(S.state && S.state.voice_monitor);
-  ligarChave($('#b-ouvir'), v); ajustar('voice_monitor', v);
-  // sem volume proprio: o teste toca em 100%, o mesmo nivel que vai para o jogo
-  if (v && S.state && S.state.voice_mon_vol !== 1) ajustar('voice_mon_vol', 1);
-  desenharEfeito();
-});
-bindEffectsDrawer();
-textoBusca();
+if (!scriptsMissing().length) bindVoiceEffects();
 matchMedia('(max-width: 899.98px)').addEventListener('change', () => {
   abrirGaveta(S.gaveta); if (!celular()) abrirPalco(false); else abrirDisco(false); inertPalco(); textoBusca();
 });
@@ -65,7 +57,6 @@ $('#mini-abrir').addEventListener('click', () => celular() ? abrirPalcoComHistor
 $('#mini-seta').addEventListener('click', () => abrirDisco(!S.disco));
 $('#mini-ant').addEventListener('click', () => cmd('/api/prev'));
 $('#mini-prox').addEventListener('click', () => cmd('/api/next'));
-$('#mini-ef').addEventListener('click', desligarEfeito);
 $('#b-fechar-palco').addEventListener('click', fecharPalco);
 /* a pilha e [pagina, busca, palco, opcoes]: cada voltar fecha o que esta por cima. Entrada
    morta (de antes de a pagina recarregar, ou que diz aberto o que ja fechou) o voltar pula:
@@ -376,7 +367,7 @@ sk.addEventListener('keydown', e => {
   S.pos = t; desenharTempo();
   api('POST', '/api/seek', { t }).catch(err => avisar(err.message, true));
 });
-bindSearch();
+if (!scriptsMissing().length) bindSearch();
 $('#b-cel').addEventListener('click', abrirCelular);
 $('#b-disp').addEventListener('click', abrirDispositivos);
 $('#dica-ouvir').addEventListener('click', e => { if (e.target.closest('.ir-disp')) abrirDispositivos(); });

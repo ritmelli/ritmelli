@@ -342,6 +342,7 @@ function vigiarGavetaDaBusca() {
     window[on ? 'addEventListener' : 'removeEventListener'](t, engolirForaDaBusca, { capture: true, passive: false });
 }
 function bindSearch() {
+  textoBusca();
   $('#q').addEventListener('input', () => {
     clearTimeout(buscaT);
     const q = $('#q').value.trim();
