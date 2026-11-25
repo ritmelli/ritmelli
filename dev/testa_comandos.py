@@ -2493,7 +2493,7 @@ def two_nexts_table(A, E):
         release.set()
     confere(r1 == [None] and early and early[0] is x and no_prato(E) == "d2" and fila(A) == [],
             f"second Proximo after the first found the queue empty, before it finishes: first None (409), second the "
-            f"entry that came in, on its own (got {r1}, {early and (early[0] or {}).get('id')}, {no_prato(E)}, "
+            f"entry that came in, on its own (got {r1!r}, {early!r}, {no_prato(E)}, "
             f"{fila(A)})")
 
     for when, moment, between, change, first, second, platter, queue in table:
