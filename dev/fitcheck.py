@@ -249,13 +249,14 @@ async def run(a):
                 await asyncio.sleep(a.wait)
                 try:
                     await confere_pagina(cmd, a.url, barrados)
+                    if a.js:
+                        await cmd("Runtime.evaluate", expression=a.js)
+                        await asyncio.sleep(a.wait)
+                        await confere_pagina(cmd, a.url, barrados)  # o --js pode ter levado a pagina embora
                 except so_mock.Recusa as ex:
                     print(f"FALHA  {sz:>10}  {ex}; nada mais conferido")
                     falhas += 1
                     break
-                if a.js:
-                    await cmd("Runtime.evaluate", expression=a.js)
-                    await asyncio.sleep(a.wait)
                 if a.boas_vindas:  # se nao abrir, o PROBE diz "nenhuma janela aberta"
                     await espera_boas_vindas(cmd)
                 r = await cmd("Runtime.evaluate", expression=f"{PROBE}({'true' if a.boas_vindas else 'false'})",

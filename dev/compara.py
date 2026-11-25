@@ -43,7 +43,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import so_mock  # noqa: E402
-from fitcheck import CHROME, fecha_chrome  # noqa: E402
+from fitcheck import CHROME, barra_outra_origem, fecha_chrome  # noqa: E402
 from so_mock import free_port  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -178,14 +178,17 @@ def _monta_tocando(api):
 
 
 class Chrome:
-    def __init__(self, ws):
-        self.ws, self.seq, self.pend, self.erros = ws, 0, {}, []
+    def __init__(self, ws, base):
+        self.ws, self.seq, self.pend, self.erros, self.barrados = ws, 0, {}, [], []
+        self.fetch = barra_outra_origem(ws, base, self.barrados)  # o documento de outra origem, barrado
 
     async def le(self):
         async for raw in self.ws:
             m = json.loads(raw)
             if m.get("id") in self.pend:
                 self.pend.pop(m["id"]).set_result(m)
+            elif self.fetch(m):
+                pass
             elif m.get("method") == "Runtime.exceptionThrown":
                 d = m["params"]["exceptionDetails"]
                 self.erros.append("excecao: " + (d.get("exception", {}).get("description") or d.get("text", "")))
@@ -251,7 +254,7 @@ async def prints(a, srv, destino):
         if not ws_url:
             sys.exit("chrome headless nao subiu")
         async with websockets.connect(ws_url, max_size=64 * 1024 * 1024) as ws:
-            c = Chrome(ws)
+            c = Chrome(ws, srv.base)
             leitor = asyncio.create_task(c.le())
             for d in ("Page", "Runtime", "Network"):
                 await c.cmd(f"{d}.enable")
@@ -259,6 +262,7 @@ async def prints(a, srv, destino):
             await c.cmd("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
             await c.cmd("Emulation.setTouchEmulationEnabled", enabled=True, maxTouchPoints=5)
             await c.cmd("Page.addScriptToEvaluateOnNewDocument", source=SEM_NIVEIS)
+            await c.cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
 
             async def estado(nome):
                 await asyncio.sleep(a.wait)
@@ -283,9 +287,15 @@ async def prints(a, srv, destino):
                     pre = f"{cenario}-{tam}"
                     await c.cmd("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=float(dpr),
                                 mobile=True)
+                    try:
+                        srv.confere()  # a pagina so do filho vivo que responde como --mock
+                    except so_mock.Recusa as ex:
+                        sys.exit(f"{pre}: {ex}")
                     await c.cmd("Page.navigate", url=f"{srv.base}/t/ritmelli/?lang={a.lang}")
                     for _ in range(200):
                         await asyncio.sleep(0.1)
+                        if c.barrados:
+                            sys.exit(f"{pre}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
                         try:
                             if await c.js(PRONTO):
                                 break

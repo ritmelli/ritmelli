@@ -11,7 +11,7 @@ lancou excecao ou logou console.error.
 
 So fala com um servidor --mock (dev/so_mock.py): antes de abrir a pagina, recusa a porta 8799 e a origem cujo
 /api/state nao traz o "mock": true (sem seguir redirecionamento); no Chrome, barra o documento de outra origem; antes de
-cada --js e do Tab, confere de novo a origem da pagina e o marcador. Recusado, sai 1 sem print.
+cada --js, do Tab e do print, confere de novo a origem da pagina e o marcador. Recusado, sai 1 sem print.
 
 A tela de boas-vindas (a da primeira vez, com a prateleira vazia) cobre a pagina: antes do print ela e fechada pelo
 servidor, como o botao do fim dela (#126). Com o --boas-vindas ela fica, e o print e dela.
@@ -147,7 +147,7 @@ async def run(a):
                 elif r.get("result", {}).get("value") is not None:
                     print(f"js> {json.dumps(r['result']['value'], ensure_ascii=False)[:4000]}")
                 await asyncio.sleep(a.wait)
-            if a.tab and not await pode_agir():
+            if not await pode_agir():  # o ultimo --js pode ter levado a pagina embora: sem print
                 return 1
             for _ in range(a.tab):
                 for typ in ("rawKeyDown", "keyUp"):

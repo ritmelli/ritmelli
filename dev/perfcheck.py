@@ -87,9 +87,13 @@ async def run(a):
 
             async def post(rota, corpo):
                 await confere_pagina(cmd, a.url, barrados)  # o POST so pela pagina que segue no --mock
-                await cmd("Runtime.evaluate", awaitPromise=True, expression=(
-                    f"fetch('/api/{rota}', {{method: 'POST', headers: {{'Content-Type': 'application/json'}}, "
-                    f"body: {json.dumps(json.dumps(corpo))}}}).then(r => r.status)"))
+                r = await cmd("Runtime.evaluate", awaitPromise=True, returnByValue=True, expression=(
+                    f"fetch('/api/{rota}', {{method: 'POST', redirect: 'error', headers: {{'Content-Type': "
+                    f"'application/json'}}, body: {json.dumps(json.dumps(corpo))}}})"
+                    ".then(r => r.status, e => String(e))"))  # o redirecionamento vira erro, e nao e seguido
+                status = r.get("result", {}).get("value")
+                if not (isinstance(status, int) and 200 <= status < 300):
+                    raise SystemExit(f"o POST /api/{rota} falhou ({status}); nada medido")
 
             await cmd("Page.enable")
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)

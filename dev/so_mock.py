@@ -106,6 +106,8 @@ def estado(base, espera=5):
         j = None
     if not isinstance(j, dict) or j.get("mock") is not True:
         raise Recusa(f"{base} nao e um servidor --mock (o /api/state sem o \"mock\": true)")
+    if status == 401 and j.get("parear") is not True:
+        raise Recusa(f"{base}/api/state respondeu 401 sem ser o do pareamento")
     return j
 
 
@@ -152,6 +154,8 @@ class Filho:
             estado(self.base)
         except OSError as ex:
             raise Recusa(f"{self.base} nao respondeu ({ex})") from None
+        if self.srv.poll() is not None:  # saiu durante o GET: quem respondeu e outro
+            raise Recusa(f"o servidor de teste saiu (codigo {self.srv.returncode})")
 
     def api(self, metodo, rota, corpo=None, espera=15):
         self.confere()

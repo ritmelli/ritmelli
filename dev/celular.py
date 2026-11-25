@@ -120,12 +120,12 @@ class Aba:
 
 
 async def conectar(url, base):
-    """A aba de teste (a da origem do --mock); sem ela, abre uma em branco e, com o documento de outra origem barrado,
-    navega ate o url, depois de conferir o marcador de novo."""
+    """A aba de teste (a do url, com caminho e query); sem ela, abre uma em branco e, com o documento de outra origem
+    barrado, navega ate o url, depois de conferir o marcador de novo."""
     abas = [t for t in json.load(urllib.request.urlopen(BASE + "/json"))
-            if t["type"] == "page" and so_mock.mesma_origem(t["url"], base)]
+            if t["type"] == "page" and t["url"].split("#")[0] == url.split("#")[0]]
     if len(abas) > 1:
-        sys.exit(f"esperava uma aba de {base} no celular, achei {len(abas)}: feche as outras")
+        sys.exit(f"esperava uma aba de {url} no celular, achei {len(abas)}: feche as outras")
     nova = not abas
     if nova:
         abas = [json.load(urllib.request.urlopen(urllib.request.Request(BASE + "/json/new", method="PUT")))]
