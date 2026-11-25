@@ -183,8 +183,8 @@ def raiz_protegida():
 
 def _le_disco(caminho):
     """O objeto do disco como a regra le: None se nao existe; senao {dir, reparse, dono, dacl, filhos}, com a dacl como
-    [(tipo, flags, mascara, sid)] ou None (nula). Abre o proprio objeto, sem seguir ponto de reanalise. OSError se nao
-    da para ler."""
+    [(tipo, flags, mascara, sid)] ou None (nula) e os filhos como uma funcao que lista a pasta (so a arvore do destino a
+    chama). Abre o proprio objeto, sem seguir ponto de reanalise. OSError se nao da para ler."""
     import ctypes
     from ctypes import wintypes
     k32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -253,7 +253,8 @@ def _le_disco(caminho):
     finally:
         k32.CloseHandle(h)
     if d["dir"] and not d["reparse"]:
-        d["filhos"] = os.listdir(caminho)
+        # so quando a arvore pede (os ancestrais nao precisam): a listagem pode ser negada onde a leitura passa
+        d["filhos"] = lambda: os.listdir(caminho)
     return d
 
 
@@ -296,7 +297,13 @@ def _confere_arvore(caminho, d, le):
         motivo = _confere_objeto(caminho, d, no_log)
         if motivo:
             return motivo
-        for nome in (d.get("filhos") or ()) if d["dir"] else ():
+        filhos = d.get("filhos") if d["dir"] else None
+        if callable(filhos):
+            try:
+                filhos = filhos()
+            except OSError as e:
+                return f"couldn't list {caminho}: {e}"
+        for nome in filhos or ():
             filho = ntpath.join(caminho, nome)
             if nome[-1:] in (".", " "):  # o Windows corta o fim do nome ao abrir: a leitura acharia outro objeto
                 return f"{filho} has a name Windows can't open"

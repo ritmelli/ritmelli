@@ -92,8 +92,12 @@ class Disco:
             raise PermissionError(13, "Access is denied", caminho)
         if d["dir"] and not d["reparse"]:
             pai = ntpath.normpath(caminho).lower()
-            d["filhos"] = [ntpath.basename(c) for k, (c, _) in self.obj.items()
-                           if k != pai and ntpath.dirname(k) == pai]
+
+            def filhos():  # so quando a regra pede, como no _le_disco; sem_lista: a listagem e negada
+                if d.get("sem_lista"):
+                    raise PermissionError(13, "Access is denied", caminho)
+                return [ntpath.basename(c) for k, (c, _) in self.obj.items() if k != pai and ntpath.dirname(k) == pai]
+            d["filhos"] = filhos
         return d
 
 
@@ -166,6 +170,12 @@ def em_memoria():
     confere("a excecao da microfone\\log sem diferenca de caixa", avalia(d) is True, repr(avalia(d)))
     confere("um destino que ainda nao existe, dentro de uma pasta protegida", avalia(d, DESTINO + r"\Novo") is True)
     confere("um destino que ainda nao existe, direto na raiz", avalia(d, RAIZ + r"\Ritmelli-2") is True)
+    d = disco_base()
+    d.muda("C:\\", sem_lista=True)
+    d.muda(RAIZ, sem_lista=True)
+    confere("os ancestrais nao precisam ser listados (so a arvore do destino)", avalia(d) is True, repr(avalia(d)))
+    d.muda(DESTINO + r"\_internal", sem_lista=True)
+    reprova("uma pasta da arvore que nao se lista", d, "couldn't list")
 
     d = disco_base()
     d.muda(DESTINO + r"\_internal", dacl=acl_pasta() + [(0, OICI, M, LS)])
