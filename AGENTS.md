@@ -9,7 +9,7 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
 - Nunca no 8799, no Ritmelli instalado, com o microfone de verdade nem no Discord de quem usa: o som sai no jogo de quem
   está jogando. O servidor de teste é o `--mock` noutra porta, que por padrão trabalha numa pasta temporária, só com uma
   cópia da lista da prateleira: `python server.py --mock --port 8801 --no-browser`.
-- Só num Windows de teste, dito no PR: a prova do filtro e do setup real, o Discord (canal fechado de teste), o
+- Só num Windows de teste, dito no PR: provar filtro, setup e reinício do áudio; o Discord (canal fechado de teste); o
   `instala-todos` e o `remove` do `microfone\microfone.py` (mexem em todo microfone e no filtro do Ritmelli instalado).
 
 ## Regras
