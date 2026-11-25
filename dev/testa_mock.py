@@ -135,8 +135,8 @@ def rotas_do_fonte():
                 out.add(("GET", c.rstrip("/")))
             else:
                 ilegiveis.append(f"linha {no.lineno}: {ast.unparse(no)[:80]}")
-        elif ((dono_nome == "r" and id(no) in decoradores and (nome in metodos or nome == "route"))
-              or (dono_nome == "web" and nome in metodos)):
+        elif ((dono_nome == "r" and id(no) in decoradores) or dono_nome == "web") and (nome in metodos
+                                                                                       or nome == "route"):
             args = list(no.args)
             metodo = nome.upper()
             if nome == "route":
@@ -195,14 +195,17 @@ async def papeis_no_guard():
     lan, porta, cel, pc = "192.168.0.10", 8799, "192.168.0.50", "127.0.0.1"
     print("--- o guard, papel por papel")
     with tempfile.TemporaryDirectory() as tmp:
-        E = types.SimpleNamespace(pos=0.0, levels={})
+        E = types.SimpleNamespace(pos=0.0, levels={}, vol=0.5)
         A = types.SimpleNamespace(engine=E, port=porta, lan_ip=lan, mock=True, closing=False,
                                   celulares=par.Pareamento(Path(tmp) / "celulares.json"), remotos=perm.Remotos(),
                                   metricas=types.SimpleNamespace(erro=lambda *a, **k: None),
                                   atualizacao=types.SimpleNamespace(ao_abrir=lambda: None),
                                   snapshot=lambda: {"status": "idle"}, public_jobs=lambda: [],
-                                  lib=types.SimpleNamespace(version=1, public=lambda: [], get=lambda _: None))
+                                  lib=types.SimpleNamespace(version=1, public=lambda: [],
+                                                            get=lambda i: {"id": i} if i == "12345678901" else None),
+                                  save_cfg=lambda: None)
         app = server.build(A)
+        A.enfileirar = lambda b, remoto=False: server.App.enfileirar(A, b, remoto)  # o de verdade: so recusa aqui
         guard = app.middlewares[0]
         reais = {(r.method, r.resource.canonical) for r in app.router.routes() if r.resource is not None}
         sem_head = {("GET" if m == "HEAD" else m, c) for m, c in reais}
@@ -313,6 +316,25 @@ async def papeis_no_guard():
                      ("POST", "/api/shutdown"), ("GET", "/api/pareamento"), ("POST", "/api/parear"),
                      ("GET", "/api/themes"), ("POST", "/api/nao-existe"), ("GET", "/t/ritmelli/")):
             confere(await status(m, c, de=pc, token=token) == 403, f"o remoto: {m} {c} fora da lista (403)")
+        # a sessao acaba enquanto o corpo chega: o comando nao vale mais
+        t = mock.Mock()
+        t.get_extra_info.side_effect = lambda nome, d=None: (pc, 50000) if nome == "peername" else d
+        carga = streams.StreamReader(mock.Mock(_reading_paused=False), 2 ** 16, loop=asyncio.get_running_loop())
+        req = make_mocked_request("POST", "/api/volume", headers={"Host": f"{pc}:{porta}", perm.REMOTO: token,
+                                                                  "Content-Type": "application/json"},
+                                  transport=t, payload=carga, app=app)
+        req._match_info = await app.router.resolve(req)
+        tarefa = asyncio.ensure_future(guard(req, rota[("POST", "/api/volume")]))
+        await asyncio.sleep(0.05)
+        A.remotos.fecha(token)
+        carga.feed_data(b'{"vol": 0.9}')
+        carga.feed_eof()
+        try:
+            st = (await tarefa).status
+        except web.HTTPException as ex:
+            st = ex.status
+        confere(st == 401 and E.vol == 0.5, f"a sessao acabou com o corpo a caminho: {st}, e o volume nao muda")
+        token = A.remotos.abre()
         resp, j, _ = await manda("GET", "/api/state", de=pc, token=token, handler=rota[("GET", "/api/state")])
         confere(j.get("caps") == perm.caps("remoto")
                 and {tuple(x.split(" ", 1)) for x in j["caps"]["rotas"]} == VOCABULARIO,
@@ -320,11 +342,26 @@ async def papeis_no_guard():
         confere(await status("POST", "/api/play", token=token) == 401, "o token vindo da rede de casa: 401")
         confere(await status("POST", "/api/play", de="::1", token=token) == 401, "o token vindo do ::1: 401")
         for corpo in ({"url": "http://192.168.0.1/admin"}, {"url": "file:///C:/x"}, {"youtube_id": "curto"},
-                      {"query": "queen"}):
+                      {"query": "queen"}, {"id": 12345678901, "url": "http://192.168.0.1/admin"},
+                      {"youtube_id": 12345678901}, {"url": ["v=dQw4w9WgXcQ"]}):
             resp, _, _ = await manda("POST", "/api/queue", de=pc, token=token, corpo=corpo,
                                      handler=rota[("POST", "/api/queue")])
             confere(resp.status == 400, f"o remoto so enfileira disco da prateleira ou video do YouTube: {corpo} -> "
                     f"{resp.status}")
+        # o que passa: o video do YouTube, com a capa dele e nao a do corpo; o disco da prateleira pelo id
+        fila = types.SimpleNamespace(
+            lib=types.SimpleNamespace(get=lambda i: {"id": i, "title": "t"} if i == "d1" else None,
+                                      by_youtube=lambda _: None),
+            job_rodando=lambda _: None, new_job=lambda *a: {"id": "j1"}, run_download=lambda *a: None,
+            fila_lock=threading.Lock(), _por_na_fila=lambda *a, **k: None)
+        capa = "http://192.168.0.1/capa.png"
+        x, _ = server.App.enfileirar(fila, {"youtube_id": "dQw4w9WgXcQ", "thumb": capa}, True)
+        confere(x["youtube_id"] == "dQw4w9WgXcQ" and x["thumb"] == server.thumb("dQw4w9WgXcQ"),
+                f"o remoto enfileira o video do YouTube com a capa dele, nao a do corpo ({x['thumb']})")
+        x, _ = server.App.enfileirar(fila, {"youtube_id": "dQw4w9WgXcQ", "thumb": capa})
+        confere(x["thumb"] == capa, "o PC e o celular seguem mandando a capa (o tema manda a da busca)")
+        x, _ = server.App.enfileirar(fila, {"id": "d1"}, True)
+        confere(x["id"] == "d1", "o remoto enfileira o disco da prateleira pelo id")
         confere(await status("POST", "/api/play", de=pc, token=token[:-2] + "xx") == 401,
                 "o token errado, do 127.0.0.1: 401 (nao cai no papel do PC)")
         confere(await status("POST", "/api/play", de=pc, token="") == 401, "o cabecalho vazio, do 127.0.0.1: 401")

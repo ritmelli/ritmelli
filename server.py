@@ -1220,17 +1220,25 @@ class App:
                 self.fila = ordem + [x for x in self.fila if x["qid"] not in na_ordem]
                 self.fila_ordem = None
 
-    def enfileirar(self, b):
+    def enfileirar(self, b, remoto=False):
         """Entrada da fila pelo corpo do POST /api/queue. Disco que nao esta na prateleira ja
-        comeca a baixar, para estar pronto (ou quase) na vez dele."""
-        it = self.lib.get(b.get("id") or "")
+        comeca a baixar, para estar pronto (ou quase) na vez dele. O remoto (permissao.py) so poe o disco da
+        prateleira ou um video do YouTube, com a capa dele: nada de link de outro endereco para o PC baixar, nem de
+        capa que o tema abriria."""
+        iid = b.get("id")
+        it = self.lib.get(iid or "") if not remoto or isinstance(iid, str) else None
         j = None
         if not it:
-            target = (b.get("youtube_id") or b.get("url") or "").strip()
+            target = b.get("youtube_id") or b.get("url") or ""
+            if remoto and not isinstance(target, str):
+                target = ""
+            target = target.strip()
             if not target:
                 raise ValueError("Send the id of a record on the shelf, a video id or a YouTube link.")
             m = YT_URL.search(target)
             yid = m.group(1) if m else (target if YT_ID.match(target) else None)
+            if remoto and not yid:
+                raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
             it = self.lib.by_youtube(yid) if yid else None
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],
@@ -1244,7 +1252,8 @@ class App:
                 pool.submit(self.run_download, j, alvo)
             x = {"id": None, "youtube_id": yid, "url": None if yid else target,
                  "title": b.get("title") or target, "channel": b.get("channel"),
-                 "thumb": b.get("thumb") or thumb(yid), "duration": b.get("duration"), "job": j["id"]}
+                 "thumb": thumb(yid) if remoto else b.get("thumb") or thumb(yid), "duration": b.get("duration"),
+                 "job": j["id"]}
         x["qid"] = uuid.uuid4().hex[:8]
         with self.fila_lock:
             self._por_na_fila(x, seguir=bool(b.get("next")))
@@ -1969,6 +1978,10 @@ async def body(request):
     # toda rota le campos: uma lista ou um numero dava o erro 500, e o /api/parear e aberto a rede de casa
     if not isinstance(b, dict):
         raise web.HTTPBadRequest(text="The body must be a JSON object ({...}).")
+    vale = request.get("ainda_vale")  # o remoto: a sessao pode ter acabado enquanto o corpo chegava (o guard)
+    if vale is not None and not vale(request):
+        raise web.HTTPUnauthorized(text=json.dumps({"ok": False, "error": i18n.so_texto(
+            "The remote session token is invalid or has expired.")}), content_type="application/json")
     return b
 
 
@@ -2047,6 +2060,8 @@ def build(app_state):
         if papel not in pode:
             return recusa(request, papel, pode)
         request["papel"], request["remoto"] = papel, token
+        if papel == "remoto":
+            request["ainda_vale"] = ainda_vale  # o body() confere de novo depois de ler o corpo
         try:
             resp = await handler(request)
         except web.HTTPException:
@@ -2205,13 +2220,8 @@ def build(app_state):
     @r.post("/api/queue")
     async def queue_add(request):
         b = await body(request)
-        if request["papel"] == "remoto" and not A.lib.get(str(b.get("id") or "")):
-            # o remoto so enfileira o disco da prateleira ou um video do YouTube: nada de link de outro lugar nem busca
-            alvo = str(b.get("youtube_id") or b.get("url") or "").strip()
-            if not (YT_URL.search(alvo) or YT_ID.match(alvo)):
-                return j_err(i18n.so_texto("A remote session can only queue a record on the shelf or a YouTube video."))
         try:
-            x, j = A.enfileirar(b)
+            x, j = A.enfileirar(b, remoto=request["papel"] == "remoto")
         except ValueError as ex:
             return j_err(i18n.so_texto(str(ex)))
         # nada no prato (parado, ou o disco ja acabou): o que acabou de entrar toca na hora, sem

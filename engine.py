@@ -1240,7 +1240,8 @@ class Engine:
         self._sobre_cache = collections.OrderedDict()
         self._abaixa = None    # (ganho, monotonic do fim, db, ms): a musica abaixada no jogo ate o fim (abaixa)
         self._abaixa_g = 1.0   # o ganho do abaixamento no ultimo bloco: o proximo sai dele em rampa, sem estalo
-        self._sinal = None     # [bipe (n), posicao]: o sinal de teste no microfone (sinal); so ele escreve aqui
+        self._sinal = None     # [bipe (n), posicao, prazo]: o sinal de teste no microfone (sinal); so ele escreve
+        #                        aqui, e o bipe que nao comecou ate o prazo (monotonic) nao toca mais
         self.track = None      # item da biblioteca carregado
         self.paused = False
         self.ended = False
@@ -1990,10 +1991,10 @@ class Engine:
                 fone[:n, 1] += mv * self.voice_mon_vol
         si = self._sinal
         if si is not None and si[1] < len(si[0]):  # o bipe de teste: no jogo, nunca com a voz cortada
-            a, p = si
+            a, p = si[0], si[1]
             k = min(frames, len(a) - p)
-            if self.mic_mute:
-                k = len(a) - p  # cortada no meio, o resto dele nao toca mais
+            if self.mic_mute or (p == 0 and time.monotonic() > si[2]):
+                k = len(a) - p  # a voz cortada, ou a saida parada passou do prazo: o resto dele nao toca mais
             else:
                 buf[:k] += a[p:p + k, None]
             si[1] = p + k  # so a posicao: um bipe novo do sinal() troca a lista inteira, e este nao o apaga
@@ -3075,7 +3076,8 @@ class Engine:
         n = int(SINAL_S * SR)
         t = np.arange(n, dtype=np.float32) / SR
         borda = np.minimum(1.0, np.minimum(t, SINAL_S - t) / 0.02).astype(np.float32)  # 20 ms de rampa em cada ponta
-        self._sinal = [(10 ** (SINAL_DB / 20) * np.sin(2 * np.pi * SINAL_HZ * t) * borda).astype(np.float32), 0]
+        self._sinal = [(10 ** (SINAL_DB / 20) * np.sin(2 * np.pi * SINAL_HZ * t) * borda).astype(np.float32), 0,
+                       time.monotonic() + SINAL_S]
         return True
 
     def por_cima(self, track):
