@@ -279,6 +279,60 @@ def voltas(A, E):
             confere(fila(A) == [], erro)
 
 
+def andamento(A, E):
+    """O _vigia_andamento de verdade, uma volta por caso: a versao de audio e o andamento medidos sao gravados fora da
+    fila_lock; a medida fica na memoria mesmo se a gravacao falha, mas so vale na fila depois de gravada."""
+    print("--- o _vigia_andamento: a gravacao fora da fila_lock")
+
+    class Fim(Exception):
+        pass
+    E.cancelar_pronto()
+    if E.track is None:
+        cmd.tocar(A, "d1")
+    ate(lambda: E.status() == "playing")
+
+    def roda(o_que, yid, falha):
+        pedidos = iter([(o_que, {"id": None, "youtube_id": yid, "title": "parecida"})])
+
+        def a_medir():
+            try:
+                return next(pedidos)
+            except StopIteration:
+                raise Fim from None  # a segunda volta: o vigia sai
+
+        def grava(caminho, dados):
+            travado.append(A.fila_lock.locked())
+            if falha:
+                raise OSError("disco cheio")
+        travado, trocas, versao = [], [], A.andamentos_versao
+        v = {"youtube_id": "fffffffffff", "duration": 200, "title": "parecida", "channel": "c"}
+        with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(server, "ANDAMENTO_APOS_S", -1),
+              mock.patch.object(server, "save_json", grava), mock.patch.object(A, "_a_medir", a_medir),
+              mock.patch.object(A, "versao_audio", return_value=v),
+              mock.patch.object(A, "_mede_andamento", return_value={"ini": 100.0, "fim": 101.0}),
+              mock.patch.object(A, "_troca_audio", side_effect=lambda *a: trocas.append(a)),
+              mock.patch.object(threading, "excepthook", lambda a: None)):
+            A.auto = True
+            t = threading.Thread(target=A._vigia_andamento)
+            t.start()
+            t.join(10)
+            A.auto = False
+        return travado, trocas, A.andamentos_versao - versao, v
+
+    travado, trocas, subiu, v = roda("audio", "aaaaaaaaaa1", falha=False)
+    confere(travado == [False] and trocas == [("aaaaaaaaaa1", v)] and subiu == 1 and A.versoes["aaaaaaaaaa1"] == v,
+            f"a versao de audio: gravada fora da fila_lock e so entao vale na fila ({travado}, {len(trocas)}, {subiu})")
+    travado, trocas, subiu, v = roda("audio", "aaaaaaaaaa2", falha=True)
+    confere(travado == [False] and trocas == [] and subiu == 0 and A.versoes.get("aaaaaaaaaa2") == v,
+            f"a gravacao da versao falha: ela fica na memoria, mas nao vale na fila ({travado}, {len(trocas)}, {subiu})")
+    travado, _, subiu, _ = roda("medir", "aaaaaaaaaa3", falha=False)
+    confere(travado == [False] and subiu == 1 and A.andamentos.get("aaaaaaaaaa3") == {"ini": 100.0, "fim": 101.0},
+            f"o andamento: gravado fora da fila_lock e so entao reordena o Automatico ({travado}, {subiu})")
+    travado, _, subiu, _ = roda("medir", "aaaaaaaaaa4", falha=True)
+    confere(travado == [False] and subiu == 0 and A.andamentos.get("aaaaaaaaaa4") == {"ini": 100.0, "fim": 101.0},
+            f"a gravacao do andamento falha: ele fica na memoria, mas nao reordena ({travado}, {subiu})")
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         audio = Path(tmp) / "audio"  # a pasta dos arquivos de audio tambem e a temporaria: o Library cria a dele
@@ -287,6 +341,7 @@ def main():
             try:
                 comandos(A, E)
                 voltas(A, E)
+                andamento(A, E)
             finally:
                 E.close()
     if falhas:

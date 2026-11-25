@@ -38,7 +38,9 @@ No `_volta_fila` e no `_volta_auto`, a entrada sai da fila e, se tocar falhar, o
 A ordem é a `fila_lock` do `App`, depois o `_lock` do motor (um `RLock`), depois o `_qlock` do motor, nunca ao
 contrário. Com o `_qlock` na mão não se chama método do motor que pegue o `_lock`. A thread do áudio (o `_mixa`) nunca
 pega a `fila_lock` nem o `_lock`. Sob a `fila_lock` não se grava arquivo: o `andamentos.json` e o
-`versoes_audio.json` são copiados sob ela, gravados fora dela e só depois valem na fila, como antes.
+`versoes_audio.json` são copiados sob ela e gravados fora dela. A medida fica na memória mesmo se a gravação falha,
+mas só passa a valer na fila (a troca pela versão de áudio, a nova ordem do Automático) depois de gravada, como
+antes.
 
 ## Os vigias e o teste
 

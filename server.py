@@ -1860,15 +1860,20 @@ class App:
                     with self.fila_lock:
                         self.andamento_falhou[f"audio:{vid}"] = time.time()
                     continue
-                # grava fora da fila_lock (o disco lento nao segura a fila) e so depois aplica, como antes: a gravacao que
-                # falha nao deixa a versao valendo na fila
+                # grava fora da fila_lock (o disco lento nao segura a fila) e so depois aplica, na ordem de antes: a
+                # medida fica na memoria mesmo se a gravacao falha, mas so vale na fila depois de gravada
                 with self.fila_lock:
                     versoes = {**self.versoes, vid: v}
-                save_json(self.versoes_path, versoes)
-                with self.fila_lock:
-                    self.versoes[vid] = v
-                    self._troca_audio(vid, v)
-                    self.andamentos_versao += 1
+                gravou = False
+                try:
+                    save_json(self.versoes_path, versoes)
+                    gravou = True
+                finally:
+                    with self.fila_lock:
+                        self.versoes[vid] = v
+                        if gravou:
+                            self._troca_audio(vid, v)
+                            self.andamentos_versao += 1
                 print(f"audio: {x.get('title')!r}: " + (f"the audio version {v['youtube_id']} ({v['duration']} s)"
                                                          if v else "only the video"), file=sys.stderr, flush=True)
                 continue
@@ -1884,10 +1889,15 @@ class App:
                     self.andamento_falhou[c] = time.time()
                     continue
                 andamentos = {**self.andamentos, c: r}
-            save_json(self.andamentos_path, andamentos)  # fora da fila_lock e antes de valer, como a versao de audio
-            with self.fila_lock:
-                self.andamentos[c] = r
-                self.andamentos_versao += 1
+            gravou = False
+            try:  # fora da fila_lock e antes de valer, como a versao de audio
+                save_json(self.andamentos_path, andamentos)
+                gravou = True
+            finally:
+                with self.fila_lock:
+                    self.andamentos[c] = r
+                    if gravou:
+                        self.andamentos_versao += 1
             print(f"tempo: {x.get('title')!r}: start {r['ini']}, end {r['fim']} BPM in {time.time() - t0:.1f} s",
                   file=sys.stderr, flush=True)
 
