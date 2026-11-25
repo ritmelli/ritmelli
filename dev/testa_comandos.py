@@ -241,8 +241,8 @@ def voltas(A, E):
             f"mover na fila conta o lugar na fila que a tela ve, sem a entrada da virada ({fila(A)})")
     cmd.tirar_da_fila(A, z["qid"])
 
-    # o avanco com a virada pendente fecha ela antes (o Anterior guarda o que saiu nela primeiro) e toca a primeira que a
-    # tela mostra. Depois de cada caso, a virada volta a ficar pendente para os testes de baixo
+    # o avanco com a virada pendente fecha ela antes (o Anterior guarda o que saiu nela primeiro) e toca a primeira
+    # que a tela mostra. Depois de cada caso, a virada volta a ficar pendente para os testes de baixo
     v, f0, h0 = E.virou, list(A.fila), list(A.historico)
 
     def pendente(f=f0):
@@ -267,6 +267,32 @@ def voltas(A, E):
             "o vigia que ja tinha lido a virada nao concilia de novo nem apaga a marca do prato parado")
     A._volta_passagem()
     confere(A.parado_sem_fila is tr, "e a volta do vigia depois nao apaga essa marca (a virada ja foi fechada)")
+    pendente()
+
+    # a virada publicada pelo motor no instante em que o Proxima pega o _qlock (o vigia ainda nao a viu): o Proxima
+    # a fecha antes de escolher, e o Anterior guarda o que saiu nela antes do disco da virada
+    qlock, vistos, virou = E._qlock, [], [v]
+
+    class Vira:
+        """O mesmo _qlock; na primeira vez que alguem o pega, o motor acaba de virar."""
+
+        def __enter__(self):
+            if virou:
+                E.virou = virou.pop()
+            return qlock.__enter__()
+
+        def __exit__(self, *a):
+            return qlock.__exit__(*a)
+    pendente()
+    E.virou, E._qlock = None, Vira()
+    try:
+        with mock.patch.object(A, "tocar_entrada", side_effect=lambda q, **_: vistos.append((q, historico(A)[-1:]))):
+            cmd.pular(A)
+    finally:
+        E._qlock = qlock
+    confere(vistos == [(y, ["d3"])] and E.virou is None and fila(A) == [],
+            f"a virada que chega no meio do Proxima fecha antes de ele escolher: toca a seguinte com o Anterior em "
+            f"ordem ({[(q['id'], h) for q, h in vistos]})")
     pendente()
 
     # o vigia ganha a virada e fica suspenso no meio da conciliacao, logo antes de guardar no Anterior o que saiu; o

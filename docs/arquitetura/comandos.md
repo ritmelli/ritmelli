@@ -46,12 +46,12 @@ antes.
 
 O `App.leitura()` devolve o estado da tela e a posição do disco da mesma captura. A faixa, a posição, o estado de
 reprodução, a fila e a virada que o motor já confirmou saem juntos, sob a `fila_lock` e depois o `_qlock`. A fila
-exposta já não tem a entrada da virada que o `_volta_passagem` ainda vai conciliar. O `avanca` da virada tira a
-virada do motor e a entrada da fila sob a mesma `fila_lock`, então a leitura vê as duas ou nenhuma. O avanço sem virada
-(o Próxima, o fim do disco) fecha antes a virada pendente, então o Anterior guarda primeiro o disco que saiu nela,
-e só um dos dois concilia cada virada. Quem concilia guarda o histórico e limpa a marca do prato parado ainda sob
-a mesma `fila_lock`. O resto do motor e
-a formatação ficam fora das travas.
+exposta já não tem a entrada da virada que o `_volta_passagem` ainda vai conciliar. O `avanca` da virada tira a virada
+do motor e a entrada da fila sob a mesma `fila_lock`, então a leitura vê as duas ou nenhuma. O avanço sem virada (o
+Próxima, o fim do disco) fecha antes a virada pendente, sob a mesma `fila_lock` em que escolhe a próxima, então o
+Anterior guarda primeiro o disco que saiu nela, e só um dos dois concilia cada virada. Quem concilia guarda o
+histórico e limpa a marca do prato parado ainda sob a mesma `fila_lock`. O resto do motor e a formatação ficam fora
+das travas.
 
 O `/api/state` e o SSE usam essa captura. A cada volta, o SSE manda o `state` (só quando muda) e o `tick` com a
 posição da mesma captura, mesmo que o motor vire no meio do envio. Cada posição é da faixa que aquela volta entregou.
@@ -63,8 +63,8 @@ Cada vigia do `App` é um laço que chama a sua volta: `_volta_fila()`, `_volta_
 escutas), e o `relogio=False` deixa o `MockEngine` sem o relógio de 10 ms. O `dev/testa_comandos.py` usa os dois: o
 `App` de verdade no `--mock`, numa pasta temporária, com um leitor de mentira no lugar do ffmpeg. Ele mesmo chama o
 `engine._mixa(BLOCK)` e cada volta, e confere os comandos, o avanço no fim do disco, a virada da passagem, a parecida
-com o prato parado e o stream recusado. Confere também a leitura do estado com a virada
-ainda não conciliada, com o vigia suspenso no meio da conciliação e o `/api/state` de verdade com a preparação da próxima
-bloqueada, no endereço do stream e no `preparar` do motor. O `mover_na_fila` e o Próxima (`proxima`) contam a
-fila que a tela vê: a entrada da virada pendente fica para o vigia. O
+com o prato parado e o stream recusado. Confere também a leitura do estado com a virada ainda não conciliada, com o
+vigia suspenso no meio da conciliação e o `/api/state` de verdade com a preparação da próxima bloqueada, no endereço
+do stream e no `preparar` do motor. O `mover_na_fila` conta a fila que a tela vê (a entrada da virada pendente não se
+move e fica para o vigia), e o Próxima fecha a virada pendente antes de tocar a primeira que a tela mostra. O
 `dev/testa_mock.py` suspende o envio do SSE entre o `state` e o `tick` e força uma virada nesse intervalo.
