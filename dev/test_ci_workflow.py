@@ -206,8 +206,10 @@ def test_shape(all_jobs, text):
           f"the Testa o PR needs the six jobs and the Etiquetas ({needs.strip()})")
     check("--capture" in "".join(all_jobs["compara"]), "the compara job runs the --capture on the push")
     for name in testa_tudo.LONG_TESTS:
-        check(f"dev/testa_tudo.py --long {name} " in "\n".join(all_jobs.get(name, [])),
-              f"the {name} job runs its long test (--long {name})")
+        steps = "\n".join(all_jobs.get(name, [])).split("      - ")
+        runs = [st for st in steps if f"dev/testa_tudo.py --long {name} " in st]
+        check(len(runs) == 1 and "if:" not in runs[0],
+              f"the {name} job runs its long test (--long {name}) on every PR, with no condition on the step")
     saves = [line for line in all_jobs["compara"] if "steps.compara.outputs.head_cache == 'true'" in line]
     check(len(saves) == 2, f"the head capture is moved and saved to the cache when the step says head_cache ({len(saves)})")
     check(not any(re.search(r"\bsleep\b", line) for line in all_jobs["testa-o-pr"]), "the Testa o PR never sleeps")
