@@ -463,20 +463,30 @@ jobs:
               exit 1
             fi
           done
-          # on the push, the jobs the queue already ran on this commit are skipped: they pass only if a queue run of this
-          # workflow passed on the same commit (the queue moves the main to the commit it tested)
+          # on the push, the four jobs the queue already ran on this commit are skipped: they pass only if a queue run of
+          # this workflow passed on the same commit (the queue moves the main to the commit it tested). The Compara always
+          # has to pass: on the push it is the capture for the cache
           fila=""
+          consulta=""
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             for espera in 10 20 30 0; do
-              fila=$(gh api "repos/$REPO/actions/workflows/testa.yml/runs?event=merge_group&head_sha=$HEAD&per_page=20" \
-                --jq '[.workflow_runs[] | select(.conclusion == "success")][0].html_url // empty') && [ -n "$fila" ] && break
+              if r=$(gh api "repos/$REPO/actions/workflows/testa.yml/runs?event=merge_group&head_sha=$HEAD&per_page=20" \
+                --jq '[.workflow_runs[] | select(.conclusion == "success")][0].html_url // empty'); then
+                consulta=ok
+                fila="$r"
+                [ -n "$fila" ] && break
+              else
+                consulta=erro
+              fi
               [ "$espera" -gt 0 ] && sleep "$espera"
             done
           fi
-          vale() { [ "$1" = success ] || { [ "$1" = skipped ] && [ -n "$fila" ]; }; }
-          marca() { if [ "$1" = success ]; then echo "✅"; elif vale "$1"; then echo "⏭️ (a fila testou)"; else echo "❌ ($1)"; fi; }
+          # vale <state> [pula]: success, or skipped on a job the queue ran (pula) when the queue passed on the commit
+          vale() { [ "$1" = success ] || { [ "$2" = pula ] && [ "$1" = skipped ] && [ -n "$fila" ]; }; }
+          marca() { if [ "$1" = success ]; then echo "✅"; elif vale "$1" "$2"; then echo "⏭️ (a fila testou)"; else echo "❌ ($1)"; fi; }
           ok=true
-          for s in "${estados[@]}"; do vale "$s" || ok=false; done
+          for s in "$S_TESTES" "$S_BANCA" "$S_MICROFONE" "$S_TELA"; do vale "$s" pula || ok=false; done
+          vale "$S_COMPARA" || ok=false
           if $ok; then
             manchete="✅ Testa: tudo passou"
             n=${MUDARAM:-0}
@@ -498,12 +508,16 @@ jobs:
             echo
             if [ -n "$fila" ]; then echo "A fila já testou este commit: [a execução dela]($fila)."; echo; fi
             if [ "$GITHUB_EVENT_NAME" = push ] && [ -z "$fila" ]; then
-              echo "❌ nenhuma execução da fila passou neste commit: ele chegou à \`main\` sem a fila, e os testes não rodaram"
+              if [ "$consulta" = erro ]; then
+                echo "❌ a consulta das execuções da fila neste commit falhou: rode este job de novo"
+              else
+                echo "❌ nenhuma execução da fila passou neste commit: ele chegou à \`main\` sem a fila, e os testes não rodaram"
+              fi
               echo
             fi
             echo "| Testes | Banca | Filtro do microfone | Tela | Compara |"
             echo "| --- | --- | --- | --- | --- |"
-            echo "| $(marca "$S_TESTES") | $(marca "$S_BANCA") | $(marca "$S_MICROFONE") | $(marca "$S_TELA") | $(marca "$S_COMPARA") |"
+            echo "| $(marca "$S_TESTES" pula) | $(marca "$S_BANCA" pula) | $(marca "$S_MICROFONE" pula) | $(marca "$S_TELA" pula) | $(marca "$S_COMPARA") |"
             echo
             printf '%s\n\n' "$R_TESTES" "$R_BANCA" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
             if [ -n "$tempos" ]; then echo "**Tempo de cada job** (alvo: 10 min): $tempos"; echo; fi

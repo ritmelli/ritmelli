@@ -399,7 +399,7 @@ def captura(a):
     else:
         guarda_captura(pasta / "compara" / "ref", a.captura, chave_captura(head))
         saida_do_job({"head_cache": "true"})
-        md = [f"- ✅ captura do HEAD `{head[:12]}` guardada para o cache (a fila já testou este commit)"]
+        md = [f"- ✅ captura do HEAD `{head[:12]}` guardada para o cache"]
     escreve(a.resumo, ["**Compara:**", ""] + md)
     return 1 if cod != 0 else 0
 

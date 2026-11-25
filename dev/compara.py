@@ -108,6 +108,7 @@ RELOGIO_PARADO = "(() => { const t0 = performance.now(); performance.now = () =>
 PRONTO = f"{PRONTA} && S.lib.length > 0"
 PALCO = "document.querySelector('#palco')"
 MESA_DJ = "document.body.classList.contains('mesa-dj')"
+DIAGNOSTICO_S = 5.0  # each part of the diagnostic of a page that did not get ready
 
 
 def diagnostico_js(mesa):
@@ -125,24 +126,27 @@ def diagnostico_js(mesa):
 
 
 async def nao_ficou_pronto(c, pre, mesa, pasta):
-    """The page did not get ready in PRONTA_S: prints each condition, the console errors so far and a print of the
-    page (in <pasta>/nao-pronto), and exits 1."""
+    """The page did not get ready in PRONTA_S: prints each condition, the console errors so far, the browser's error
+    lines and a print of the page (in <pasta>/nao-pronto), each with a short deadline of its own (the page may be what
+    hangs), and exits 1."""
     print(f"{pre}: the theme was not ready in {PRONTA_S:.0f} s; each condition:", flush=True)
     try:
-        estado = await c.js(diagnostico_js(mesa))
+        estado = await asyncio.wait_for(c.js(diagnostico_js(mesa)), DIAGNOSTICO_S)
         for nome, valor in (estado or {}).items():
             print(f"  {nome}: {json.dumps(valor, ensure_ascii=False)}", flush=True)
     except Exception as ex:  # noqa: BLE001 - the page itself may be what broke
-        print(f"  (the conditions did not come: {ex})", flush=True)
+        print(f"  (the conditions did not come: {type(ex).__name__} {ex})", flush=True)
     for e in c.erros or ["(none)"]:
         print(f"  console: {e}", flush=True)
+    for e in c.log_erros or ["(none)"]:
+        print(f"  browser: {e}", flush=True)
     try:
         arquivo = pasta / "nao-pronto" / f"{pre}.png"
         arquivo.parent.mkdir(parents=True, exist_ok=True)
-        arquivo.write_bytes(await c.png())
+        arquivo.write_bytes(await asyncio.wait_for(c.png(), DIAGNOSTICO_S))
         print(f"  print: {arquivo}", flush=True)
     except Exception as ex:  # noqa: BLE001
-        print(f"  (the print did not come: {ex})", flush=True)
+        print(f"  (the print did not come: {type(ex).__name__} {ex})", flush=True)
     sys.exit(f"{pre}: o tema nao ficou pronto em {PRONTA_S:.0f} s" + (" (sem o body.mesa-dj)" if mesa else ""))
 
 
@@ -240,6 +244,9 @@ def _monta_tocando(api):
 class Chrome:
     def __init__(self, ws, base):
         self.ws, self.seq, self.pend, self.erros, self.barrados = ws, 0, {}, [], []
+        # the browser's own error lines since the last navigation (a script or a font that did not load): printed only
+        # when the page does not get ready, since a blocked font would also land here
+        self.log_erros = []
         self.fetch = barra_outra_origem(ws, base, self.barrados)  # o documento de outra origem, barrado
 
     async def le(self):
@@ -248,6 +255,9 @@ class Chrome:
     def evento(self, m):
         if not self.fetch(m) and (e := erro_da_pagina(m)):
             self.erros.append(e)
+        if m.get("method") == "Log.entryAdded" and m["params"]["entry"].get("level") == "error":
+            entry = m["params"]["entry"]
+            self.log_erros.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
 
     async def cmd(self, metodo, **params):
         self.seq += 1
@@ -309,7 +319,7 @@ async def prints(a, srv, destino):
         async with conecta_cdp(ws_url) as ws:
             c = Chrome(ws, srv.base)
             leitor = asyncio.create_task(c.le())
-            for d in ("Page", "Runtime", "Network"):
+            for d in ("Page", "Runtime", "Network", "Log"):
                 await c.cmd(f"{d}.enable")
             await c.cmd("Network.setBlockedURLs", urls=["*fonts.googleapis.com*", "*fonts.gstatic.com*"])
             await c.cmd("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
@@ -359,6 +369,7 @@ async def prints(a, srv, destino):
                         srv.confere()  # a pagina so do filho vivo que responde como --mock
                     except so_mock.Recusa as ex:
                         sys.exit(f"{pre}: {ex}")
+                    c.log_erros.clear()
                     await c.cmd("Page.navigate", url=f"{srv.base}/t/ritmelli/?lang={a.lang}")
                     fim = time.monotonic() + PRONTA_S
                     while True:
@@ -366,9 +377,11 @@ async def prints(a, srv, destino):
                         if c.barrados:
                             sys.exit(f"{pre}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
                         try:
-                            if await c.js(PRONTO + (f" && {MESA_DJ}" if mesa else "")):
+                            # no longer than the deadline: a page that does not answer still gets its diagnostic
+                            if await asyncio.wait_for(c.js(PRONTO + (f" && {MESA_DJ}" if mesa else "")),
+                                                      max(0.1, fim - time.monotonic())):
                                 break
-                        except RuntimeError:  # a pagina ainda nao tem o S
+                        except (RuntimeError, TimeoutError):  # a pagina ainda nao tem o S, ou nao respondeu
                             pass
                         if time.monotonic() > fim:
                             await nao_ficou_pronto(c, pre, mesa, destino.parent)

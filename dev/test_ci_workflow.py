@@ -84,7 +84,7 @@ FAKE_GH = r"""#!/bin/bash
 echo "gh $*" >> "$FAKE_LOG"
 if [ "$1" = api ]; then
   case "$2" in
-    *event=merge_group*) echo "$FAKE_QUEUE_URL" ;;
+    *event=merge_group*) if [ -n "$FAKE_QUEUE_FAILS" ]; then echo "HTTP 502" >&2; exit 1; fi; echo "$FAKE_QUEUE_URL" ;;
     *) echo "Testes 4 min 10 s" ;;
   esac
   exit 0
@@ -101,7 +101,7 @@ exit 2
 FAKE_SLEEP = '#!/bin/bash\necho "sleep $*" >> "$FAKE_LOG"\n'
 
 
-def run_summary(bash, block, event, states, comment_fails=0, queue_url=""):
+def run_summary(bash, block, event, states, comment_fails=0, queue_url="", queue_fails=False):
     """Runs the block of the "Testa o PR" with the states of the five jobs. Returns (exit code, stdout+stderr, step
     summary, the fake calls)."""
     with tempfile.TemporaryDirectory(prefix="ritmelli-ci-") as tmp:
@@ -112,14 +112,16 @@ def run_summary(bash, block, event, states, comment_fails=0, queue_url=""):
         (fake / "sleep").write_text(FAKE_SLEEP, encoding="utf-8", newline="\n")
         for f in fake.iterdir():
             f.chmod(0o755)
-        (tmp / "run.sh").write_text(block, encoding="utf-8", newline="\n")
+        # the PATH inside bash: Git for Windows puts its /usr/bin (with the real sleep) before the PATH it gets
+        (tmp / "run.sh").write_text('PATH="$PWD/bin:$PATH"\n' + block, encoding="utf-8", newline="\n")
         summary, log = tmp / "summary.md", tmp / "log.txt"
         summary.touch()
         log.touch()
         names = ("TESTES", "BANCA", "MICROFONE", "TELA", "COMPARA")
         env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ.get("PATH", ""), GITHUB_EVENT_NAME=event,
                    GITHUB_STEP_SUMMARY=str(summary), FAKE_LOG=str(log), FAKE_COUNT=str(tmp / "count"),
-                   FAKE_COMMENT_FAILS=str(comment_fails), FAKE_QUEUE_URL=queue_url, GH_TOKEN="x",
+                   FAKE_COMMENT_FAILS=str(comment_fails), FAKE_QUEUE_URL=queue_url,
+                   FAKE_QUEUE_FAILS="1" if queue_fails else "", GH_TOKEN="x",
                    REPO="ritmelli/ritmelli", PR="7" if event == "pull_request" else "", HEAD="c" * 40, RUN_ID="1",
                    ATTEMPT="1", EXECUCAO="https://example.invalid/run",
                    DO_REPO="true" if event == "pull_request" else "false", LINHAS="", MUDARAM="0",
@@ -141,9 +143,11 @@ def test_summary_block(all_jobs):
 
     code, out, summary, calls = run_summary(bash, block, "pull_request", ok5, comment_fails=2)
     comments = [c for c in calls if c.startswith("gh pr comment")]
+    sleeps = [c for c in calls if c.startswith("sleep")]
     check(code == 0 and len(comments) == 3 and "tudo passou" in summary,
           f"a comment that fails twice with a 502 goes out on the third try and the check passes "
           f"(exit {code}, {len(comments)} tries)")
+    check(sleeps == ["sleep 5", "sleep 20"], f"the waits between the tries went to the fake sleep ({sleeps})")
     check("| Banca |" in summary, "the summary table has the Banca column")
 
     code, out, summary, calls = run_summary(bash, block, "pull_request", ok5, comment_fails=9)
@@ -163,6 +167,14 @@ def test_summary_block(all_jobs):
           f"on the push, with no queue run passed on the commit, the check fails after asking 4 times "
           f"(exit {code}, {len(queries)} queries)")
 
+    code, out, summary, calls = run_summary(bash, block, "push", on_push, queue_url="", queue_fails=True)
+    check(code != 0 and "a consulta das execuções da fila neste commit falhou" in summary
+          and "sem a fila" not in summary,
+          f"on the push, a query that fails says so, and does not say the commit came without the queue (exit {code})")
+
+    code, out, summary, calls = run_summary(bash, block, "push", ["skipped"] * 5, queue_url="https://example.invalid/q")
+    check(code != 0, f"on the push, a skipped Compara (no capture) fails the check even with the queue run (exit {code})")
+
     code, out, summary, calls = run_summary(bash, block, "pull_request", ["skipped"] + ["success"] * 4)
     check(code != 0 and not any("event=merge_group" in c for c in calls),
           f"on a PR, a skipped job fails the check, and the queue is not asked (exit {code})")
@@ -180,8 +192,8 @@ def test_shape(all_jobs, text):
         check(job in all_jobs and not any(line.startswith("    if:") for line in all_jobs[job]),
               f"the {job} job runs on the push to main")
     needs = next((line for line in all_jobs["testa-o-pr"] if line.startswith("    needs:")), "")
-    check(needs == "    needs: [testes, banca, microfone, tela, compara]",
-          f"the Testa o PR needs the five jobs ({needs.strip()})")
+    ids = {n.strip() for n in needs.partition("[")[2].rstrip("]").split(",")}
+    check(ids == {"testes", "banca", "microfone", "tela", "compara"}, f"the Testa o PR needs the five jobs ({needs.strip()})")
     check("--captura" in "".join(all_jobs["compara"]), "the compara job runs the --captura on the push")
     captura = ", ".join(f"'{f}'" for f in testa_tudo.CAPTURA)
     keys = re.findall(r"key: compara-.*hashFiles\(([^)]*)\)", text)
