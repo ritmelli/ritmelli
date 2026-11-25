@@ -321,7 +321,7 @@ def ps_quote(text):
 
 def protected_ps1(folder, root):
     """The verdict of instalador/protegida.ps1, run as text by the system PowerShell like the setup's RodaPs does:
-    True, or the reason it gives."""
+    True, or the reason it gives. RuntimeError when it gives no answer: that is no verdict, not a refusal."""
     fd, out = tempfile.mkstemp(prefix="protegida-", suffix=".txt")
     os.close(fd)
     os.unlink(out)
@@ -333,11 +333,13 @@ def protected_ps1(folder, root):
         r = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-Command", command], capture_output=True,
                            text=True, encoding="oem", errors="replace", timeout=120)
         if r.returncode:
-            return f"powershell exited with {r.returncode}: {r.stdout.strip()} {r.stderr.strip()}"
+            raise RuntimeError(f"powershell exited with {r.returncode}: {r.stdout.strip()} {r.stderr.strip()}")
         try:
             answer = Path(out).read_text(encoding="ascii").strip()
         except OSError as e:
-            return f"protegida.ps1 gave no answer ({e}): {r.stderr.strip()}"
+            raise RuntimeError(f"protegida.ps1 gave no answer ({e}): {r.stderr.strip()}") from e
+        if not answer:
+            raise RuntimeError(f"protegida.ps1 gave an empty answer: {r.stderr.strip()}")
         return True if answer == "OK" else answer
     finally:
         try:
@@ -370,7 +372,11 @@ def no_disco():
 
     def same_in_ps1(nome, pasta, r):
         # the installer's copy of the rule has to reach the same verdict on the same disk
-        ps = protected_ps1(pasta, raiz)
+        try:
+            ps = protected_ps1(pasta, raiz)
+        except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
+            confere(f"protegida.ps1 agrees: {nome}", False, f"no verdict from protegida.ps1: {e}")
+            return
         confere(f"protegida.ps1 agrees: {nome}", (ps is True) == (r is True), f"pastas: {r!r}, protegida.ps1: {ps!r}")
 
     def passa(nome, pasta=base):

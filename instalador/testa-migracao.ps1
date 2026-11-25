@@ -58,16 +58,15 @@ function TaskExe($caminho, $nome) {
   if ($t) { ($t.Actions | Select-Object -First 1).Execute }
 }
 function ShortcutTarget($lnk) { if (Test-Path $lnk) { (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath } }
-function UninstallLocation {
-  $u = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$id" -ErrorAction SilentlyContinue
-  if ($u) { $u.InstallLocation.TrimEnd('\') }
-}
+function Uninstall { Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$id" -ErrorAction SilentlyContinue }
 if ($Scenario -eq 'dir-refused') {
   $codigo = RunSetup $Setup "setup-$Versao-dir" @('/DIR=C:\Ritmelli')
   Confere ($codigo -eq 7) "the setup with /DIR=C:\Ritmelli exits with 7 ($codigo)"
   Confere (Select-String (Join-Path $temp "setup-$Versao-dir.log") -Pattern 'is outside' -SimpleMatch -Quiet) 'its log says the folder is outside Program Files'
-  Confere (-not (Test-Path 'C:\Ritmelli\ritmelli.exe') -and -not (Test-Path "$app\ritmelli.exe")) 'nothing was installed'
-  Confere (-not (UninstallLocation)) 'there is no uninstall entry'
+  Confere (-not (Test-Path 'C:\Ritmelli') -and -not (Test-Path $app)) "neither C:\Ritmelli nor $app was created"
+  Confere (-not (Uninstall)) 'there is no uninstall entry'
+  Confere (-not (Test-Path "$menu\Ritmelli.lnk")) 'there is no Start menu shortcut'
+  Confere (-not ((Regra 'Ritmelli') -match 'Ritmelli')) 'there is no Ritmelli firewall rule'
   Confere (-not (Tarefa '\' 'Ritmelli Atualiza') -and -not (Tarefa '\Ritmelli\' 'Microfone')) 'there is no task'
 }
 if ($Scenario -eq 'outside-program-files' -or $Scenario -eq 'writable-folder') {
@@ -90,14 +89,16 @@ if ($Scenario -eq 'outside-program-files' -or $Scenario -eq 'writable-folder') {
   Roda $Setup "setup-$Versao"
   $exe = "$nova\ritmelli.exe"
   Confere ((Test-Path $exe) -and (Get-Item $exe).VersionInfo.ProductVersion -eq $Versao) "the ritmelli.exe in $nova is the $Versao"
-  Confere ((UninstallLocation) -eq $nova) "the uninstall entry points to $nova ($(UninstallLocation))"
+  $u = Uninstall
+  Confere ($u -and $u.InstallLocation.TrimEnd('\') -eq $nova -and $u.UninstallString -eq "`"$nova\unins000.exe`"" -and (Test-Path "$nova\unins000.exe")) "the uninstall entry points to $nova ($($u.InstallLocation), $($u.UninstallString))"
   $atualiza = TaskExe '\' 'Ritmelli Atualiza'
   Confere ($atualiza -eq $exe) "the Ritmelli Atualiza task runs $exe ($atualiza)"
   $microfone = TaskExe '\Ritmelli\' 'Microfone'
   Confere ($microfone -eq $exe) "the \Ritmelli\Microfone task runs $exe ($microfone)"
   $atalho = ShortcutTarget "$menu\Ritmelli.lnk"
   Confere ($atalho -eq $exe) "the Start menu shortcut opens $exe ($atalho)"
-  Confere ((Regra 'Ritmelli') -match [regex]::Escape($exe)) "the Ritmelli firewall rule allows $exe"
+  $regra = Regra 'Ritmelli'
+  Confere (($regra -match [regex]::Escape($exe)) -and -not ($regra -match [regex]::Escape("$velha\ritmelli.exe"))) "the Ritmelli firewall rule allows $exe, and none allows $velha\ritmelli.exe"
   Confere ((Test-Path "$velha\ritmelli.exe.antigo") -and -not (Test-Path "$velha\ritmelli.exe")) "the ritmelli.exe left in $velha is now ritmelli.exe.antigo"
 }
 if ($Scenario -ne 'update') {
