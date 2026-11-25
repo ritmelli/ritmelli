@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -14,7 +15,11 @@ TRAVAS = ROOT / "instalador" / "travas.txt"
 REQUIREMENTS = (ROOT / "requirements.txt", ROOT / "requirements-dev.txt")
 KNOWN_UNPINNED_ISSUE = "https://github.com/ritmelli/ritmelli/issues/231"
 KNOWN_UNPINNED = {"yt-dlp", "pillow", "onnx", "jsonschema"}
-QUEUE_URL = "https://example.invalid/queue"
+HEAD = "c" * 40
+QUEUE_URL = "https://example.invalid/queue/passed"
+RUNS = [{"head_sha": HEAD, "conclusion": "failure", "html_url": "https://example.invalid/queue/failed"},
+        {"head_sha": "d" * 40, "conclusion": "success", "html_url": "https://example.invalid/queue/other-commit"},
+        {"head_sha": HEAD, "conclusion": "success", "html_url": QUEUE_URL}]
 
 _spec = importlib.util.spec_from_file_location("testa_tudo", ROOT / "dev" / "testa_tudo.py")
 testa_tudo = importlib.util.module_from_spec(_spec)
@@ -70,41 +75,61 @@ def git_for_windows_bash():
     return None
 
 
-FAKE_GH = r"""#!/bin/bash
-echo "gh $*" >> "$FAKE_LOG"
-if [ "$1" = api ]; then
-  case "$2" in
-    *event=merge_group*) if [ -n "$FAKE_QUEUE_FAILS" ]; then echo "HTTP 502" >&2; exit 1; fi; echo "$FAKE_QUEUE_URL" ;;
-    *) echo "Testes 4 min 10 s" ;;
-  esac
-  exit 0
-fi
-if [ "$1 $2" = "pr comment" ]; then
-  if [ -n "$FAKE_COMMENT_FAILS" ]; then echo "non-200 OK status code: 502 Bad Gateway" >&2; exit 1; fi
-  exit 0
-fi
-echo "fake gh: unexpected call: $*" >&2
-exit 2
+FAKE_GH = """#!/bin/bash
+exec "$FAKE_PYTHON" "$FAKE_GH_PY" "$@"
+"""
+FAKE_GH_PY = r"""
+import json
+import os
+import re
+import sys
+from urllib.parse import parse_qs, urlparse
+
+args = sys.argv[1:]
+with open(os.environ["FAKE_LOG"], "a", encoding="utf-8") as log:
+    log.write("gh " + " ".join(args) + "\n")
+if args[:2] == ["pr", "comment"]:
+    if os.environ.get("FAKE_COMMENT_FAILS"):
+        sys.exit("non-200 OK status code: 502 Bad Gateway")
+    sys.exit(0)
+if args[0] != "api":
+    sys.exit(f"fake gh: unexpected call: {args}")
+url = urlparse(args[1])
+if not url.path.endswith("/actions/workflows/testa.yml/runs"):
+    print("Testes 4 min 10 s")
+    sys.exit(0)
+if os.environ.get("FAKE_QUEUE_FAILS"):
+    sys.exit("HTTP 502")
+query = parse_qs(url.query)
+runs = [r for r in json.loads(os.environ["FAKE_RUNS"])
+        if query.get("event") == ["merge_group"] and r["head_sha"] in query.get("head_sha", [r["head_sha"]])]
+jq = args[args.index("--jq") + 1]
+m = re.fullmatch(r'\[\.workflow_runs\[\] \| select\(\.conclusion == "(\w+)"\)\]\[0\]\.html_url // empty', jq)
+if not m:
+    sys.exit(f"fake gh: a --jq it does not know: {jq}")
+print(next((r["html_url"] for r in runs if r["conclusion"] == m.group(1)), ""))
 """
 
 
-def run_summary(bash, block, event, states, comment_fails=False, queue_url="", queue_fails=False, dono="success"):
+def run_summary(bash, block, event, states, comment_fails=False, runs=RUNS, queue_fails=False, dono="success"):
     with tempfile.TemporaryDirectory(prefix="ritmelli-ci-") as tmp:
         tmp = Path(tmp)
         fake = tmp / "bin"
         fake.mkdir()
         (fake / "gh").write_text(FAKE_GH, encoding="utf-8", newline="\n")
         (fake / "gh").chmod(0o755)
+        (tmp / "fake_gh.py").write_text(FAKE_GH_PY, encoding="utf-8")
         (tmp / "run.sh").write_text(block, encoding="utf-8", newline="\n")
         summary, log = tmp / "summary.md", tmp / "log.txt"
         summary.touch()
         log.touch()
         names = ("TESTES", "BANCA", "MICROFONE", "TELA", "COMPARA")
         env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ.get("PATH", ""), GITHUB_EVENT_NAME=event,
-                   GITHUB_STEP_SUMMARY=str(summary), FAKE_LOG=str(log),
-                   FAKE_COMMENT_FAILS="1" if comment_fails else "", FAKE_QUEUE_URL=queue_url,
+                   GITHUB_STEP_SUMMARY=str(summary), FAKE_LOG=str(log), FAKE_PYTHON=Path(sys.executable).as_posix(),
+                   FAKE_GH_PY=(tmp / "fake_gh.py").as_posix(), FAKE_RUNS=json.dumps(runs),
+                   FAKE_COMMENT_FAILS="1" if comment_fails else "",
                    FAKE_QUEUE_FAILS="1" if queue_fails else "", GH_TOKEN="x",
-                   REPO="ritmelli/ritmelli", PR="7" if event == "pull_request" else "", HEAD="c" * 40, RUN_ID="1",
+                   REPO="ritmelli/ritmelli", PR="7" if event == "pull_request" else "", HEAD=HEAD, RUN_ID="1",
                    ATTEMPT="1", EXECUCAO="https://example.invalid/run", S_DONO=dono, DONO="",
                    DO_REPO="true" if event == "pull_request" else "false", LINHAS="", MUDARAM="0",
                    **{f"S_{n}": s for n, s in zip(names, states)}, **{f"R_{n}": f"resumo {n}" for n in names})
@@ -134,12 +159,15 @@ def test_summary_block(all_jobs):
           and "não confirmou o comentário do resumo no PR" in summary,
           f"a comment GitHub does not confirm fails the check with that reason, tried once (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "push", on_push, queue_url=QUEUE_URL)
-    check(code == 0 and "a fila testou" in summary and QUEUE_URL in summary
+    code, out, summary, calls = run_summary(bash, block, "push", on_push)
+    queries = [c for c in calls if "event=merge_group" in c]
+    check(code == 0 and "a fila testou" in summary and QUEUE_URL in summary and "queue/failed" not in summary
+          and "other-commit" not in summary and len(queries) == 1
           and not any(c.startswith("gh pr comment") for c in calls),
-          f"on the push, the four skipped jobs pass when a queue run passed on the commit (exit {code})")
+          f"on the push, the four skipped jobs pass with the passed queue run of that very commit, asked once "
+          f"(exit {code}, {len(queries)} queries)")
 
-    code, out, summary, calls = run_summary(bash, block, "push", on_push, queue_url="")
+    code, out, summary, calls = run_summary(bash, block, "push", on_push, runs=RUNS[:2])
     check(code != 0 and "nenhuma execução aprovada da fila apareceu" in summary and "sem a fila" not in summary,
           f"on the push, with no passed queue run on the commit, the check fails (exit {code})")
 
@@ -148,7 +176,7 @@ def test_summary_block(all_jobs):
           and "nenhuma execução aprovada" not in summary,
           f"on the push, a failed query says so, and not that no queue run passed (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "push", ["skipped"] * 5, queue_url=QUEUE_URL)
+    code, out, summary, calls = run_summary(bash, block, "push", ["skipped"] * 5)
     check(code != 0, f"on the push, a skipped Compara (no capture) fails the check even with the queue run (exit {code})")
 
     code, out, summary, calls = run_summary(bash, block, "pull_request", ["skipped"] + ["success"] * 4)
@@ -175,6 +203,8 @@ def test_shape(all_jobs, text):
     check(ids == {"etiquetas", "testes", "banca", "microfone", "tela", "compara"},
           f"the Testa o PR needs the five jobs and the Etiquetas ({needs.strip()})")
     check("--captura" in "".join(all_jobs["compara"]), "the compara job runs the --captura on the push")
+    saves = [line for line in all_jobs["compara"] if "steps.compara.outputs.head_cache == 'true'" in line]
+    check(len(saves) == 2, f"the head capture is moved and saved to the cache when the step says head_cache ({len(saves)})")
     check(not any(re.search(r"\bsleep\b", line) for line in all_jobs["testa-o-pr"]), "the Testa o PR never sleeps")
     captura = ", ".join(f"'{f}'" for f in testa_tudo.CAPTURA)
     keys = re.findall(r"key: compara-.*hashFiles\(([^)]*)\)", text)
@@ -187,21 +217,24 @@ def test_shape(all_jobs, text):
           "the libraries are installed with the instalador/travas.txt as constraints")
 
 
-def package(line):
-    name = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", line)
-    return re.sub(r"[-_.]+", "-", name.group(1)).lower() if name else None
+def requirement(line):
+    spec = line.split("#")[0].split(";")[0].strip()
+    m = re.fullmatch(r"([A-Za-z0-9][A-Za-z0-9._-]*)(\[[^\]]*\])?\s*(.*)", spec)
+    if not m:
+        return None, False
+    version = m.group(3).replace(" ", "")
+    return re.sub(r"[-_.]+", "-", m.group(1)).lower(), bool(re.fullmatch(r"==[^=*,<>!~]+", version))
 
 
 def test_unpinned():
-    pinned = {package(line) for line in TRAVAS.read_text(encoding="utf-8").splitlines()
-              if "==" in line and not line.lstrip().startswith("#")}
+    pinned = {name for name, exact in map(requirement, TRAVAS.read_text(encoding="utf-8").splitlines()) if exact}
     unpinned = set()
     for req in REQUIREMENTS:
         for line in req.read_text(encoding="utf-8").splitlines():
-            line = line.split("#")[0].strip()
-            if not line or line.startswith("-") or "==" in line.split(";")[0]:
+            if line.strip().startswith("-"):
                 continue
-            if (name := package(line)) and name not in pinned:
+            name, exact = requirement(line)
+            if name and not exact and name not in pinned:
                 unpinned.add(name)
     check(unpinned == KNOWN_UNPINNED,
           f"the libraries the CI installs without a version in instalador/travas.txt are the known ones of "

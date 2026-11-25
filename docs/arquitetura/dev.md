@@ -13,8 +13,8 @@ esticamento da passagem seca o anel do jogo, no processo do motor e num auxiliar
 
 O `dev/testa_tudo.py` roda os testes que não usam som, aparelho nem rede externa, quatro
 por vez (os do `SERIAL`, que medem tempo, um a um e sozinhos, depois dos outros), pelas listas
-dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO`, a `BANCA` (a banca
-das passagens, o `testa_passagem`, o teste mais longo: o comando sem opção a roda depois do
+dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO`, a `BANCA` (os dois
+testes longos, a banca das passagens, o `testa_passagem`, e o `test_captura`: o comando sem opção a roda depois do
 `COMPLETO`; no `testa.yml`, o job de Testes roda o `--sem-banca` e um job próprio, ao lado, o
 `--banca`) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
 Inno Setup, para o setup de teste do `testa_aparelho_mudo`). No `COMPLETO` e na `BANCA`, biblioteca
@@ -30,7 +30,8 @@ que o GitHub não confirma reprova dizendo isso; no push, os jobs pulados só pa
 execução da fila aprovada no mesmo commit), os jobs que o push pula, as chaves de cache, essa trava
 e as bibliotecas sem versão no `instalador/travas.txt` (as conhecidas, da issue #231). O
 `dev/test_compara_not_ready.py` roda o `compara` com um sinal de pronto que nunca fecha e confere o
-diagnóstico. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
+diagnóstico, no celular e na mesa, e o `dev/test_captura.py` roda o `--captura` de verdade (os prints,
+a chave e o `head_cache` que o workflow lê para salvar). O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
 cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
 roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo commit que testou,

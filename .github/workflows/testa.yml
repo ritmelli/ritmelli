@@ -124,7 +124,7 @@ jobs:
         id: resumo
         if: always()
         run: |
-          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } else { '**Banca das passagens:** ❌ não chegou a rodar (ver a execução)' }
+          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } else { '**Banca:** ❌ não chegou a rodar (ver a execução)' }
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8

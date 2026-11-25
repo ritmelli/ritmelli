@@ -7,8 +7,9 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
                                            its own)
     python dev\testa_tudo.py --so-stdlib   the STDLIB, standard library only (the monta.yml runs it before installing)
     python dev\testa_tudo.py --microfone   the filter tests, with the DLLs of microfone\apo\compila.bat teste
-    python dev\testa_tudo.py --banca       only the transition bench (BANCA: the real engine, one pair per kind of
-                                           transition), the Banca job of the testa.yml
+    python dev\testa_tudo.py --banca       only the BANCA, the long ones: the transition bench (the real engine,
+                                           one pair per kind of transition) and the compara capture of the
+                                           --captura; the Banca job of the testa.yml
     python dev\testa_tudo.py --tela [--base origin/main] [--pasta logs\tela] [--ref-cache <dir>]
                                            the fitcheck in both languages against a --mock with temporary data and,
                                            with --base, the compara: the reference comes from the server and the theme
@@ -77,7 +78,7 @@ COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
     "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py", "dev/test_compara_not_ready.py"]
-BANCA = ["dev/testa_passagem.py"]
+BANCA = ["dev/testa_passagem.py", "dev/test_captura.py"]
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
 # pulariam
@@ -301,7 +302,7 @@ def agents_md(path=RAIZ / "AGENTS.md"):
 def testes(a):
     titulo, lista = (("Testes so da biblioteca padrao", STDLIB) if a.so_stdlib else
                      ("Testes do filtro", MICROFONE) if a.microfone else
-                     ("Banca das passagens", BANCA) if a.banca else
+                     ("Banca", BANCA) if a.banca else
                      ("Testes", COMPLETO + ([] if a.sem_banca else BANCA)))
     md = []
     for p in (agents := agents_md()):
@@ -585,7 +586,7 @@ def main():
     modo = ap.add_mutually_exclusive_group()
     modo.add_argument("--so-stdlib", action="store_true", help="only the STDLIB, which runs without the app libraries")
     modo.add_argument("--microfone", action="store_true", help="the filter tests (MICROFONE)")
-    modo.add_argument("--banca", action="store_true", help="only the transition bench (BANCA)")
+    modo.add_argument("--banca", action="store_true", help="only the long tests (BANCA)")
     modo.add_argument("--sem-banca", action="store_true", help="the COMPLETO without the BANCA")
     modo.add_argument("--tela", action="store_true", help="the fitcheck and, with --base, the compara")
     modo.add_argument("--compara", action="store_true", help="only the compara of the --tela (needs --base)")

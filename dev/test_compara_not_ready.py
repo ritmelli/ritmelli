@@ -1,21 +1,35 @@
+import asyncio
+import contextlib
+import importlib.util
+import io
 import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+from websockets.exceptions import ConnectionClosedError
+
 ROOT = Path(__file__).resolve().parent.parent
-SIZE = "390x844"
+CONSOLE_MARK = "ritmelli-test-console-error"
+SCRIPT_MARK = "ritmelli-test-missing.js"
+NEVER_READY = ("(() => { if (!window.__ritmelliTest) { window.__ritmelliTest = true; console.error('" + CONSOLE_MARK +
+               "'); const s = document.createElement('script'); s.src = '" + SCRIPT_MARK + "'; "
+               "document.head.appendChild(s); } return false; })()")
 DRIVER = r"""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(sys.argv[1]) / "dev"))
 import compara
-compara.PRONTO = "(S.lib.length > 0 && false)"
-compara.PRONTA_S = 2.0
+compara.PRONTO = sys.argv[4]
+compara.PRONTA_S = 3.0
 sys.argv = ["compara.py", "--ref", "--sizes", sys.argv[2], "--pasta", sys.argv[3]]
 sys.exit(compara.main())
 """
+
+_spec = importlib.util.spec_from_file_location("compara", ROOT / "dev" / "compara.py")
+compara = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(compara)
 
 failures = []
 
@@ -26,25 +40,62 @@ def check(ok, msg):
         failures.append(msg)
 
 
-def main():
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.path.insert(0, str(ROOT / "dev"))
-    from fitcheck import PRONTA_CONDICOES
+def never_ready(size, density, mesa):
     with tempfile.TemporaryDirectory(prefix="ritmelli-nao-pronto-") as tmp:
-        p = subprocess.run([sys.executable, "-c", DRIVER, str(ROOT), f"{SIZE}@3", tmp], cwd=ROOT,
+        p = subprocess.run([sys.executable, "-c", DRIVER, str(ROOT), f"{size}@{density}", tmp, NEVER_READY], cwd=ROOT,
                            env=dict(os.environ, PYTHONUTF8="1"), capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=180)
         out = p.stdout + p.stderr
         print(out.rstrip())
         lines = out.splitlines()
-        check(p.returncode != 0 and f"vazio-{SIZE}: o tema nao ficou pronto" in out,
-              f"a theme that never gets ready fails the capture (exit {p.returncode})")
-        for name, _ in [*PRONTA_CONDICOES, ("shelf on screen", "")]:
-            check(any(line.startswith(f"  {name}: ") for line in lines), f"the diagnostic prints the condition {name}")
-        for kind in ("console", "browser"):
-            check(any(line.startswith(f"  {kind}: ") for line in lines), f"the diagnostic prints the {kind} errors")
-        print_file = Path(tmp) / "nao-pronto" / f"vazio-{SIZE}.png"
-        check(print_file.is_file() and print_file.stat().st_size > 0, f"the diagnostic saves a print in {print_file}")
+        where = "the PC" if mesa else "the phone"
+        check(p.returncode != 0 and f"vazio-{size}: o tema nao ficou pronto" in out
+              and (" (sem o body.mesa-dj)" in out) == mesa,
+              f"on {where}, a theme that never gets ready fails the capture (exit {p.returncode})")
+        names = [n for n, _ in compara.PRONTA_CONDICOES] + ["shelf on screen"] + (["body.mesa-dj"] if mesa else [])
+        for name in names:
+            check(any(line.startswith(f"  {name}: ") for line in lines), f"on {where}, it prints the condition {name}")
+        check(any(line.startswith("  console: ") and CONSOLE_MARK in line for line in lines),
+              f"on {where}, it prints the console.error of the page")
+        check(any(line.startswith("  browser: ") and SCRIPT_MARK in line for line in lines),
+              f"on {where}, it prints the browser's line for the script that did not load")
+        print_file = Path(tmp) / "nao-pronto" / f"vazio-{size}.png"
+        check(print_file.is_file() and print_file.stat().st_size > 0, f"on {where}, it saves a print of the page")
+
+
+class ClosedChrome:
+    erros = ["console.error: collected before the close"]
+    log_erros = ["Failed to load resource: collected.js"]
+
+    async def js(self, expr):
+        raise ConnectionClosedError(None, None)
+
+    async def png(self):
+        raise ConnectionClosedError(None, None)
+
+
+def closed_connection():
+    out = io.StringIO()
+    with tempfile.TemporaryDirectory(prefix="ritmelli-nao-pronto-") as tmp, contextlib.redirect_stdout(out):
+        try:
+            asyncio.run(compara.nao_ficou_pronto(ClosedChrome(), "vazio-1x1", False, Path(tmp)))
+            ended = None
+        except SystemExit as ex:
+            ended = str(ex)
+    text = out.getvalue()
+    print(text.rstrip())
+    check(ended == f"vazio-1x1: o tema nao ficou pronto em {compara.PRONTA_S:.0f} s"
+          and "the conditions did not come: ConnectionClosedError" in text
+          and "console: console.error: collected before the close" in text
+          and "browser: Failed to load resource: collected.js" in text and "the print did not come" in text,
+          "with the connection to Chrome closed, the diagnostic still prints what it collected and fails")
+
+
+def main():
+    sys.stdout.reconfigure(encoding="utf-8")
+    closed_connection()
+    never_ready("390x844", 3, mesa=False)
+    never_ready("1920x1080", 1, mesa=True)
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 

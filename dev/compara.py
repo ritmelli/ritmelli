@@ -47,6 +47,7 @@ from urllib.parse import quote
 
 import numpy as np
 from PIL import Image
+from websockets.exceptions import ConnectionClosed
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import so_mock  # noqa: E402
@@ -124,7 +125,7 @@ async def nao_ficou_pronto(c, pre, mesa, pasta):
         estado = await c.js(diagnostico_js(mesa))
         for nome, valor in (estado or {}).items():
             print(f"  {nome}: {json.dumps(valor, ensure_ascii=False)}", flush=True)
-    except (RuntimeError, TimeoutError) as ex:
+    except (RuntimeError, TimeoutError, ConnectionClosed) as ex:
         print(f"  (the conditions did not come: {type(ex).__name__} {ex})", flush=True)
     for e in c.erros or ["(none)"]:
         print(f"  console: {e}", flush=True)
@@ -135,7 +136,7 @@ async def nao_ficou_pronto(c, pre, mesa, pasta):
         arquivo.parent.mkdir(parents=True, exist_ok=True)
         arquivo.write_bytes(await c.png())
         print(f"  print: {arquivo}", flush=True)
-    except (RuntimeError, TimeoutError, OSError) as ex:
+    except (RuntimeError, TimeoutError, ConnectionClosed, OSError) as ex:
         print(f"  (the print did not come: {type(ex).__name__} {ex})", flush=True)
     sys.exit(f"{pre}: o tema nao ficou pronto em {PRONTA_S:.0f} s" + (" (sem o body.mesa-dj)" if mesa else ""))
 
