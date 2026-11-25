@@ -24,6 +24,10 @@ def without(*gone):
     return lambda rel: None if rel in gone else testa_tudo.read_disk(rel)
 
 
+def overlay(files):
+    return lambda rel: files[rel] if rel in files else testa_tudo.read_disk(rel)
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     check(set(testa_tudo.LONG_TEST_ENTRIES) == set(testa_tudo.LONG_TESTS), "every long test has its entry points")
@@ -48,6 +52,13 @@ def main():
           "a module removed here is not an input of the tree here")
     got = testa_tudo.long_tests_for(removed, base="HEAD", read=without(*removed))
     check(got == [BENCH], f"a module the bench imports at the base, removed by the PR, still runs the bench ({got})")
+    added = {"dev/mina.py": "VALUE = 1\n"}
+    got = testa_tudo.long_tests_for(["dev/mina.py"], read=overlay(added))
+    check(BENCH in got, f"a new dev/ module that the engine imports (dev/ is on the path of the bench) runs it ({got})")
+    preset = testa_tudo.read_disk("microfone/preset.py") + "\nfrom . import preset_data\n"
+    relative = {"microfone/preset.py": preset, "microfone/preset_data.py": "VALUE = 1\n"}
+    got = testa_tudo.long_tests_for(["microfone/preset_data.py"], read=overlay(relative))
+    check(got == [BENCH, CAPTURE], f"a module reached by a relative import runs the tests that use it ({got})")
     p = subprocess.run([sys.executable, "dev/testa_tudo.py", "--long", "bench", "--base", "HEAD"], cwd=ROOT,
                        env=dict(os.environ, PYTHONUTF8="1"), capture_output=True, text=True, encoding="utf-8",
                        errors="replace", timeout=300)

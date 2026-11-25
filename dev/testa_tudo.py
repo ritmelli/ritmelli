@@ -160,15 +160,22 @@ def local_imports(entries, read):
         except SyntaxError:
             continue
         folder = rel.rpartition("/")[0]
+        prefixes = {"", "dev/", f"{folder}/" if folder else ""}
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                names = [n.name for n in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
-                names = [node.module] + [f"{node.module}.{n.name}" for n in node.names]
+                found = [(prefixes, n.name.split(".")) for n in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level:
+                package = folder.split("/")[:len(folder.split("/")) - node.level + 1] if folder else []
+                base = "/".join(package + (node.module.split(".") if node.module else []))
+                found = [({""}, base.split("/"))] + [({""}, base.split("/") + [n.name]) for n in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                parts = node.module.split(".")
+                found = [(prefixes, parts)] + [(prefixes, parts + [n.name]) for n in node.names]
             else:
                 continue
-            for path in (name.replace(".", "/") for name in names):
-                for prefix in {"", f"{folder}/" if folder else ""}:
+            for where, parts in found:
+                path = "/".join(p for p in parts if p)
+                for prefix in where:
                     queue += [f"{prefix}{path}.py", f"{prefix}{path}/__init__.py"]
     return seen
 
