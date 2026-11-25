@@ -45,8 +45,9 @@ FEATURE_HANDLERS = (
 )
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 EARLIER_FAILURES = (
-    ("voice-effects.js", (("index.html", "#b-disp", "click"),)),
-    ("search.js", (("index.html", "#b-disp", "click"), ("queue.js", "#rolo-busca", "scroll"))),
+    ("voice-effects.js", (("index.html", "#b-disp", "click"),), ()),
+    ("search.js", (("index.html", "#b-disp", "click"), ("queue.js", "#rolo-busca", "scroll")),
+     (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"),)),
 )
 SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc';"
                " document.getElementById('form-busca').requestSubmit(); })()")
@@ -173,17 +174,22 @@ def held_until(activation):
     return run
 
 
-def after_a_failure(missing, expected):
+def after_a_failure(missing, expected, page_checks):
     async def run(tab):
         await tab.cmd("Debugger.enable")
         tab.failing.add(missing)
         tab.holding.add("deck.js")
         await missing_script.open_page(tab)
-        state = await until(tab, "({ran: !!document.querySelector('#ant-d svg')})", "s.ran", PAGE_READY_S)
+        state = await until(tab, "({ran: !!document.querySelector('#ant-d svg')"
+                                 + "".join(f", {json.dumps(t)}: {e}" for t, e in page_checks) + "})", "s.ran",
+                            PAGE_READY_S)
         found = {f"{kind} {selector}": await handler_files(tab, selector, kind) for _, selector, kind in expected}
         await tab.release("deck.js", fail=False)
-        return [(state.get("ran") and all(found[f"{kind} {selector}"] == [file] for file, selector, kind in expected),
-                 f"with {missing} failed, the handlers registered after its binder still are ({found})")]
+        results = [(state.get("ran") and all(found[f"{kind} {selector}"] == [file] for file, selector, kind in expected),
+                    f"with {missing} failed, the handlers registered after its binder still are ({found})")]
+        results += [(state.get("ran") and state.get(title) is True, f"with {missing} failed, {title} ({state})")
+                    for title, _ in page_checks]
+        return results
     return run
 
 
@@ -204,7 +210,7 @@ def main(argv=None):
                                         config={"boas_vindas": True})
             try:
                 for run in (checks, *(held_until(a) for a in RAN_BEFORE),
-                            *(after_a_failure(m, e) for m, e in EARLIER_FAILURES)):
+                            *(after_a_failure(*f) for f in EARLIER_FAILURES)):
                     results += asyncio.run(missing_script.with_tab(srv, run))
             finally:
                 compara.para_servidor(srv)

@@ -24,7 +24,7 @@ function montarMesa() {
   if (on) $('#tv-tela').append(v); else $('.deck .canal-faixa').after(v);
   V.img = null; V.sujo = true;
   if (on) abrirMaleta(true);
-  rodinhas(on); vigiarGavetaDaBusca();
+  rodinhas(on); if (!scriptsMissing().length) vigiarGavetaDaBusca();
   montarGaveta(); S.filaSig = null; desenharFila(); desenharRapidos(); desenharMesa(); setasPrateleira();
   $('#cabo-calha')._geo = ''; requestAnimationFrame(medirCabos);
   medirBusca();
