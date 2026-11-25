@@ -314,10 +314,11 @@ barra) ou na linha que o avanço dele está publicando. Se o primeiro está conc
 passa para a linha da virada, e o segundo que se junta recebe a entrada da passagem, se ela ainda estava na fila, ou a
 primeira da fila, que o primeiro toca, se já tinha saído. Depois que o grupo tem o resultado, só se junta quem chega se
 ele tocou uma entrada e o prato segue na linha que ele publicou. Fora disso, o segundo abre o próprio grupo, como um
-Próximo novo; se outro avanço reservar na linha dele antes dele (o do primeiro, depois de um pulo na barra, ou o do fim
-do disco), esse avanço é o dele também, e os dois recebem o resultado dessa reserva (o
-[comandos.md](docs/arquitetura/comandos.md) descreve cada caso). O segundo que se junta espera o resultado até 5 s; se
-ainda não saiu, responde 409:
+Próximo novo; se outro avanço reservar primeiro na linha dele (o do primeiro, depois de um pulo na barra, ou o do fim do
+disco), o segundo espera o resultado dessa reserva e responde a entrada que ela tocar, e quando a reserva é a do
+primeiro os dois respondem a mesma entrada, mesmo em grupos distintos (o [comandos.md](docs/arquitetura/comandos.md)
+descreve cada caso). O segundo que espera o avanço de outro (o que se junta ao grupo, ou o que recebe a reserva de
+outro) espera o resultado até 5 s; se ainda não saiu, responde 409:
 
 | o segundo roda | o prato entre os dois | o primeiro responde | o segundo responde |
 |---|---|---|---|

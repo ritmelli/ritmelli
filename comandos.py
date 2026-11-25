@@ -133,6 +133,13 @@ def tocar(A, iid, start=None, retomar=False, loop=None, por_cima=CURTO):
     return "prato"
 
 
+def play_shelf_record(A, it):
+    """The shelf record it, the one the route already picked, on the platter from the start (the POST /api/library with
+    play of a record already on the shelf): a short sound too, never on top, and never from its last_pos. Returns
+    whether it swapped."""
+    return A.play_item(it, 0.0)
+
+
 def play_downloading(A, j, alvo, meta):
     """The video alvo, not on the shelf yet, on the platter right away over the stream while job j downloads it (the
     POST /api/library with play): when the file arrives, the engine moves to it without cutting. meta: the youtube_id,

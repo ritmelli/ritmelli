@@ -952,7 +952,7 @@ def bloco(A, E):
     A.lib.update("d1", title="Disco d1")
 
     # the routes that used to reach past the commands: the POST /api/library with play of a record already on the
-    # shelf goes to the platter from the start (cmd.tocar with start 0: a short sound too, not on top, and not from
+    # shelf goes to the platter from the start (cmd.play_shelf_record: a short sound too, not on top, and not from
     # its last_pos), and the /api/settings music volume takes the command's rule
     toca("d1")
     A.lib.update("buzina", youtube_id="bbbbbbbbbb1", last_pos=1.5)

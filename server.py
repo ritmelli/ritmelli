@@ -2096,7 +2096,7 @@ def build(app_state):
         it = A.lib.by_youtube(yid) if yid else None
         if it:
             if b.get("play"):
-                cmd.tocar(A, it["id"], start=0.0)  # from the start, on the platter (a short sound included)
+                cmd.play_shelf_record(A, it)
             return j_ok(item=it)
         alvo = yid or target
         j = A.job_rodando(alvo)  # ja baixando (da fila, ou um toque repetido): nao baixa de novo
