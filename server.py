@@ -181,17 +181,6 @@ def nome_da_musica(titulo, inteiro=False):
     return " ".join(re.sub(r"[^a-z ]", " ", t).split())
 
 
-def nome_da_musica(titulo, inteiro=False):
-    """O nome da musica no titulo, minusculo, sem acento e sem pontuacao: o que vem depois do " - ", sem parenteses nem
-    colchetes ("O REI DA CACIMBINHA - MURIÇOCA (Ao Vivo)" -> "muricoca"), como o _musica da mina; inteiro = o titulo
-    todo, so normalizado (onde a mina procura a que toca)."""
-    t = titulo or ""
-    if not inteiro:
-        t = re.sub(r"[(\[].*?[)\]]", " ", t.split(" - ")[-1])
-    t = "".join(c for c in unicodedata.normalize("NFKD", t.lower()) if not unicodedata.combining(c))
-    return " ".join(re.sub(r"[^a-z ]", " ", t).split())
-
-
 def auxiliar(modo):
     """O comando de um processo auxiliar (--yt, --andamento; ver o ritmelli.py): no app congelado, o proprio
     executavel; no codigo, o mesmo caminho pelo python."""
