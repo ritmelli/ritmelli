@@ -502,6 +502,54 @@
     "args": {}
    },
    "por_que": "id do comando fora do formato"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x19\n",
+    "comando": "pular",
+    "args": {}
+   },
+   "por_que": "id do comando com a quebra de linha no fim"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "s3ss40-d0-pc\n",
+    "id": "x20",
+    "comando": "pular",
+    "args": {}
+   },
+   "por_que": "id de sessao com a quebra de linha no fim"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x21",
+    "comando": "tirar_da_fila",
+    "args": {
+     "qid": "4f1c2a9b\n"
+    }
+   },
+   "por_que": "entrada da fila com a quebra de linha no fim"
+  },
+  {
+   "msg": {
+    "protocolo": 1,
+    "tipo": "comando",
+    "sessao": "sessao-de-teste-01",
+    "id": "x22",
+    "comando": "enfileirar",
+    "args": {
+     "youtube_id": "dQw4w9WgXcQ\n"
+    }
+   },
+   "por_que": "id de video com a quebra de linha no fim"
   }
  ],
  "resultados": [

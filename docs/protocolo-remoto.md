@@ -150,7 +150,8 @@ amostra dele, e o motor anda dentro do bloco a velocidade 1 (o `_tira`, que rotu
 - No fim natural, a âncora congela na posição final até a próxima ação ou faixa. A fila vazia com o fim do disco já
   lido já é o fim (`ended`), na foto do tick e na de reconexão, salvo com a virada no callback seguinte (a próxima
   com blocos, ou o `_virar_em` já alcançado, como no `_mixa`): o motor só diz `ended` no callback seguinte, mas o
-  prato parou ali.
+  prato parou ali. Com a virada pendente, o prato não parou e o que ele toca só esse callback decide: o tick não
+  publica nada, e a foto de início ou de reconexão espera por ele (até um bloco) e sai com o disco que entrou.
 
 ### Quando a âncora muda
 

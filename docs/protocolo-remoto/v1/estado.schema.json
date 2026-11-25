@@ -7,7 +7,7 @@
   "$defs": {
     "sessao": {
       "description": "O id da sessão aceita. Não é credencial: o token do papel remoto nunca sai do PC.",
-      "type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}$"
+      "type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}(?![\\s\\S])"
     },
     "rev": {
       "description": "Sobe 1 a cada estado que o PC publica na sessão; o pulso repete o do último estado.",
@@ -91,7 +91,7 @@
       "description": "Em segundos, até um dia; null quando não se sabe.",
       "oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 86400}]
     },
-    "youtube_id": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9_-]{11}$"}]},
+    "youtube_id": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9_-]{11}(?![\\s\\S])"}]},
     "thumb": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^https://", "maxLength": 500}]},
     "faixa": {
       "description": "O disco no prato.",

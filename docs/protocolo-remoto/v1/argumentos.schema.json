@@ -9,7 +9,7 @@
                "sinal"]
     },
     "disco": {"description": "O id de um disco da prateleira.", "type": "string", "minLength": 1, "maxLength": 200},
-    "qid": {"description": "O id de uma entrada da fila.", "type": "string", "pattern": "^[0-9a-f]{8}$"},
+    "qid": {"description": "O id de uma entrada da fila.", "type": "string", "pattern": "^[0-9a-f]{8}(?![\\s\\S])"},
     "texto": {"type": ["string", "null"], "maxLength": 400},
     "nada": {"type": "object", "maxProperties": 0},
     "tocar": {
@@ -28,7 +28,7 @@
          "properties": {"id": {"$ref": "#/$defs/disco"}, "next": {"type": "boolean"}}},
         {"type": "object", "additionalProperties": false, "required": ["youtube_id"],
          "properties": {
-           "youtube_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{11}$"},
+           "youtube_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{11}(?![\\s\\S])"},
            "title": {"$ref": "#/$defs/texto"},
            "channel": {"$ref": "#/$defs/texto"},
            "duration": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 86400}]},

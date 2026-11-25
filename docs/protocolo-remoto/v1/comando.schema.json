@@ -12,7 +12,7 @@
     "sessao": {"$ref": "urn:ritmelli:remoto:v1:estado#/$defs/sessao"},
     "id": {
       "description": "O id do comando, de quem manda, único na sessão: o repetido com o mesmo comando e os mesmos argumentos recebe o mesmo resultado, e com outros é recusado.",
-      "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"
+      "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}(?![\\s\\S])"
     },
     "comando": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/nome"},
     "args": {"type": "object"}
