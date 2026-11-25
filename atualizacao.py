@@ -43,7 +43,10 @@ from versao import VERSAO
 # o endereco https do manifest.json; a assinatura e o mesmo endereco com ".sig" no fim
 MANIFESTO = "https://github.com/ritmelli/ritmelli-releases/releases/latest/download/manifest.json"
 # numero -> chave publica Ed25519 (os 32 bytes em base64); o .sig diz qual delas assinou
-CHAVES = {1: "Bnvi5qyGzrl2bPDgG9UUCDHjhcTCU3lr9SHMKbkjLts="}
+# Key 2 is a reserve: no version is signed with it yet. If key 1 is ever lost or has to go, the installs that
+# already carry key 2 still accept the next version
+CHAVES = {1: "Bnvi5qyGzrl2bPDgG9UUCDHjhcTCU3lr9SHMKbkjLts=",
+          2: "hwKHawdmYamR9AjaI5uYxKXTDHKiyVUIoh+9afyBYWM="}
 SO_HTTPS = True  # os testes servem por http, numa porta local
 FORMATO = 1
 # os nomes do app que o manifesto pode trazer (#58). O publica.py publica "vitrola", o de antes da troca de nome: a
