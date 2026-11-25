@@ -48,8 +48,9 @@ preparada: a que já não vale não tira a preparada de quem vale. Os Próximos 
 primeiro voltar, mesmo com o primeiro já trocando o disco) dividem o mesmo avanço (`App.proximo`), se o prato ainda é a
 linha dele ou a que a reserva dele publicou: um só toca, e todos respondem a entrada dele. O Próximo depois de um Parar
 segue sozinho. O avanço já em curso que o Próximo encontra ao chegar (o do fim do disco) e a virada pendente que ele vê
-são o avanço dele, mesmo se terminarem antes de ele reservar; e o prato que muda de linha antes disso (o Parar) fica
-como está. O Próxima com a virada pendente devolve a entrada dela; se ela já saiu da fila, segue para a primeira. No
+são o avanço dele, mesmo se terminarem antes de ele reservar, e também o que outro começa na linha dele antes de ele
+reservar; o prato que muda de linha antes disso fica como está se trocou de disco (o Parar), e com o mesmo disco (um
+seek) o Próximo segue. O Próxima com a virada pendente devolve a entrada dela; se ela já saiu da fila, segue para a primeira. No
 `_volta_fila` e no `_volta_auto`, se tocar falhar, o erro vai para a tela (`engine.error`); em todos, a entrada quebrada
 sai da fila, menos quando outra reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz
 o avanço.

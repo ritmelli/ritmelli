@@ -1323,15 +1323,18 @@ class App:
             cmd.fecha_virada(self, v)
 
     def _solta_reserva(self, r, entrada):
-        """Com fila_lock: a reserva de avanco r resolvida (a entrada que tocou, ou None), liberando quem espera. Uma vez
-        so: a resolvida fica como esta."""
+        """Com fila_lock: a reserva de avanco r resolvida (a entrada que tocou, ou None), liberando quem espera, e os
+        Proximos ligados a ela. Uma vez so: a resolvida fica como esta."""
         if r.feita.is_set():
             return
-        with self.engine._qlock:
+        with self.engine._qlock:  # o mesmo trecho em que um Proximo se liga a ela (Proximo.liga): nenhum fica de fora
             if self.reserva is r:
                 self.reserva = None
-        r.entrada = entrada
-        r.feita.set()
+            r.entrada = entrada
+            r.feita.set()
+            grupos = list(r.grupos)
+        for g in grupos:
+            g.resolve(entrada)
 
     def _confere_preparo_sob(self):
         """Com fila_lock e o _qlock, no mesmo trecho em que a fila mudou: a passagem preparada para quem nao e mais a

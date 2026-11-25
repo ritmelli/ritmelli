@@ -1777,6 +1777,19 @@ def avanco(A, E):
         t.join(5)
     confere(res and res[0] is None and E.track is None and fila(A) == ["d2"],
             f"o Proximo com o Parar entre ver o prato e reservar: o prato fica parado ({no_prato(E)}, {fila(A)})")
+    no_avanco.clear()
+    libera.clear()
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    with mock.patch.object(cmd, "avanca", side_effect=avanca_preso):
+        t, res = em_thread(cmd.pular, A)
+        no_avanco.wait(5)
+        E.seek(1.0)  # o mesmo disco numa linha nova: nao e um Parar
+        libera.set()
+        t.join(5)
+    confere(res and res[0] is x and no_prato(E) == "d2" and fila(A) == [],
+            f"o Proximo com um seek entre ver o prato e reservar: segue para a primeira ({no_prato(E)}, {fila(A)})")
 
     # o Proximo que encontra o fim do disco (o vigia) no meio da troca e o vigia terminando antes de ele reservar: o
     # avanco do vigia e o dele
@@ -1836,6 +1849,64 @@ def avanco(A, E):
     confere(pend and res and res[0] is x and no_prato(E) == "d2" and fila(A) == ["d3"],
             f"o Proximo que viu a virada pendente, com o vigia conciliando antes: devolve a entrada dela "
             f"({no_prato(E)}, {fila(A)})")
+
+    # o Proximo que chega antes de o fim do disco (o vigia) reservar, e o vigia reservando e tocando antes de ele pegar a
+    # fila_lock: o avanco do vigia e o dele (nem 409, nem pular a seguinte)
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    toca_ate_o_fim(E)
+    no_avanco.clear()
+    libera.clear()
+    so_se[0] = lambda kw: kw.get("pular")
+    with mock.patch.object(cmd, "avanca", side_effect=avanca_preso):
+        tp, rp = em_thread(cmd.pular, A)
+        no_avanco.wait(5)
+        A._volta_fila(None)
+        libera.set()
+        tp.join(5)
+    confere(rp and rp[0] is x and no_prato(E) == "d2" and fila(A) == ["d3"],
+            f"o Proximo com o fim do disco reservando e tocando antes dele: devolve a entrada do fim do disco "
+            f"({no_prato(E)}, {fila(A)})")
+
+    # o segundo Proximo do mesmo avanco (juntou-se com o primeiro ainda no load) volta quando a reserva resolve, sem
+    # esperar o primeiro gravar a posicao
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    grava, gravando, libera_grava = A.remember_pos, threading.Event(), threading.Event()
+    carrega, no_load, solta_load = E.load, threading.Event(), threading.Event()
+
+    def grava_presa2(*a, **kw):
+        gravando.set()
+        libera_grava.wait(5)
+        return grava(*a, **kw)
+
+    def load_preso2(*a, **kw):
+        no_load.set()
+        solta_load.wait(5)
+        return carrega(*a, **kw)
+    A.remember_pos, E.load = grava_presa2, load_preso2
+    try:
+        t1, r1 = em_thread(cmd.pular, A)
+        no_load.wait(5)
+        t2, r2 = em_thread(cmd.pular, A)
+        t2.join(0.2)
+        solta_load.set()
+        gravando.wait(5)
+        t2.join(0.5)
+        antes = list(r2)
+        libera_grava.set()
+        t1.join(5)
+        t2.join(5)
+    finally:
+        solta_load.set()
+        libera_grava.set()
+        del A.remember_pos, E.load
+    confere(antes and antes[0] is x and r1 and r1[0] is x and no_prato(E) == "d2" and fila(A) == [],
+            f"o segundo Proximo volta com a reserva resolvida, antes de o primeiro gravar a posicao "
+            f"({antes and (antes[0] or {}).get('id')}, {r1 and (r1[0] or {}).get('id')}, {no_prato(E)}, {fila(A)})")
 
     # o Anterior, o Parar e o tocar da prateleira com a virada pendente: ela fecha antes de mexer no historico
     def vira_pendente():

@@ -39,6 +39,7 @@ class Reserva:
         self.feita = threading.Event()
         self.tocando = False  # a troca dela ja publicou o disco no prato (numa linha nova), e falta confirmar
         self.publicada = None  # o (deck, linha) que a troca dela publicou, anotado sob o _lock da troca
+        self.grupos = []  # os Proximos (comandos.Proximo) que esperam por ela; resolvem com ela (App._solta_reserva)
 
     def vale(self, E):
         """Com o _qlock do motor E: o prato ainda e o deck e a linha da reserva."""
@@ -69,6 +70,20 @@ class Proximo(Reserva):
     def __init__(self, deck, linha):
         super().__init__(deck, linha, None)
         self.r = None
+
+    def resolve(self, entrada):
+        """O resultado do grupo, uma vez so: os que esperam por ele voltam."""
+        if not self.feita.is_set():
+            self.entrada = entrada
+            self.feita.set()
+
+    def liga(self, r):
+        """Com o _qlock: r e o avanco deste grupo. Ele resolve quando r resolver (ou agora, se r ja resolveu), sem
+        esperar o resto do Proximo que o abriu (a gravacao da posicao)."""
+        self.r = r
+        r.grupos.append(self)
+        if r.feita.is_set():
+            self.resolve(r.entrada)
 
     def junta(self, E):
         """Com o _qlock do motor E: quem chega agora divide este avanco (o prato ainda na linha dele, ou na linha que a
@@ -216,7 +231,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
             vivo = (r0 is not None and r0.viva(E)
                     and (visto is None or (visto.deck is r0.deck and visto.linha == r0.linha)))
             if vivo and grupo is not None:
-                grupo.r = r0
+                grupo.liga(r0)
         if vivo:
             return r0.espera()
     with A.fila_lock:
@@ -225,6 +240,9 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                 v, E.virou = E.virou, None
                 if v is None:
                     d = E._deck
+                    if grupo is not None and grupo.r is not None:
+                        em_curso = grupo.r  # o avanco que outro fez para este Proximo enquanto ele chegava
+                        break
                     if visto is not None and (visto.deck is not d or visto.linha != d.linha):
                         return CEDEU
                     em_curso = A.reserva
@@ -236,8 +254,12 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                             return None
                         r = A.reserva = Reserva(d, d.linha, x)
                         E._cancela_passagem()  # a preparada sai: o motor nao vira para ela no meio do avanco
+                        p = A.proximo  # o Proximo que chegou nesta linha e ainda nao reservou: este avanco e o dele
+                        if (p is not None and p is not grupo and p.r is None and not p.feita.is_set()
+                                and p.deck is d and p.linha == d.linha):
+                            p.liga(r)
                     if grupo is not None:
-                        grupo.r = em_curso or r
+                        grupo.liga(em_curso or r)
                     break
             x = fecha_virada(A, v)  # o Anterior guarda primeiro o que saiu nela
             if pular and x is not None:
@@ -273,18 +295,20 @@ def pular(A):
     primeiro voltar, mesmo preso na fila_lock enquanto o primeiro troca o disco) dividem o mesmo avanco, se o prato
     ainda e a linha dele (ou a que a reserva dele publicou): um so toca, e os outros esperam o resultado dele, sem trava
     nenhuma. O avanco ja em curso que o Proximo encontra (o do fim do disco) e a virada pendente que ele ve sao o avanco
-    dele; o prato que muda de linha antes de ele reservar (o Parar) fica como esta. Volta a entrada, ou None com a fila
+    dele; o prato que muda de linha antes de ele reservar fica como esta se trocou de disco (o Parar), e com o mesmo
+    disco (um seek) o Proximo segue. Volta a entrada, ou None com a fila
     vazia (ou o avanco que nao tocou)."""
     E = A.engine
-    v = vx = None
+    v = vx = faixa = None
     with A.proximo_lock, E._qlock:
         p = A.proximo
         junta = p is not None and p.junta(E)
         if not junta:  # o primeiro desta linha (o de outra linha, de antes de um Parar, segue sozinho)
             p = A.proximo = Proximo(E._deck, E._deck.linha)
+            faixa = E.track
             r0 = A.reserva
             if r0 is not None and r0.viva(E):
-                p.r = r0  # o avanco de outro ja em curso nesta linha (o fim do disco): este Proximo e o dele
+                p.liga(r0)  # o avanco de outro ja em curso nesta linha (o fim do disco): este Proximo e o dele
             elif E.virou is not None:  # a virada que este Proximo viu e o avanco dele, mesmo se o vigia conciliar antes
                 v = E.virou
                 vx = next((y for y in A.fila if y["qid"] == v[2]), None)
@@ -299,14 +323,17 @@ def pular(A):
         else:
             x = avanca(A, pular=True, grupo=p, visto=p)  # o prato que mudou de linha no meio (o Parar) fica
             if x is CEDEU:
-                x = None
+                with E._qlock:  # o mesmo disco no mesmo deck numa linha nova (um seek): o Proximo ainda vale
+                    de_novo = faixa is not None and E.track is faixa and E._deck is p.deck
+                x = avanca(A, pular=True, visto=E.captura()) if de_novo else None
+                if x is CEDEU:
+                    x = None
         return x
     finally:
         with A.proximo_lock:
             if A.proximo is p:
                 A.proximo = None
-        p.entrada = x
-        p.feita.set()
+        p.resolve(x)
 
 
 def voltar(A):
