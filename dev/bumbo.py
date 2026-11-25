@@ -1,3 +1,4 @@
+# manual: python dev/bumbo.py <arquivo A> <arquivo B> precisa de duas musicas baixadas na prateleira (pastas.LIB)
 """Confere se a passagem no tempo do motor (engine.py) pos bumbo em cima de bumbo (e nao no contratempo), com
 um detector de bumbo proprio, independente do pente do motor: o grave abaixo de 120 Hz, o nivel dele em janelas
 de 5 ms, cada subida de 9 dB em 25 ms perto do nivel forte do trecho e um bumbo. A linha de bumbo de uma musica

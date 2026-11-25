@@ -17,7 +17,12 @@ processo e um depois do outro, e sai 1 se algum falhar. E o que o .github/workfl
         [--resumo arquivo.md]              acrescenta o resultado em markdown (o resumo do PR)
 
 No COMPLETO, biblioteca ou ffmpeg faltando e falha, e nao teste pulado: sem as bibliotecas do servidor, o testa_mock,
-o testa_migra e o testa_pareamento pulam a parte dele. Todo dev/testa_*.py tem de estar numa lista daqui.
+o testa_migra e o testa_pareamento pulam a parte dele.
+
+Todo dev/testa_*.py tem destino, e todo modo confere antes de rodar: ou roda no testa.yml (numa lista daqui ou num passo
+proprio, como o --disco do testa_pasta_protegida), ou so roda a mao e diz no topo do arquivo, num comentario antes da
+docstring, como e com o que: "# manual: <comando> precisa de <aparelho>". A conferencia le os passos do testa.yml e
+reprova o teste sem destino e o arquivo de dev/ com a linha "manual:" que roda la.
 Sai 0 se tudo passou e 1 se algo falhou; no --tela, 2 se so os prints do compara mudaram (o testa.yml decide).
 """
 import argparse
@@ -76,10 +81,64 @@ def areas(arquivos, etiquetas=()):
             | {ETIQUETAS[e] for e in etiquetas if e in ETIQUETAS})
 
 
-def fora_das_listas():
-    """Os dev/testa_*.py que nao estao em lista nenhuma (um teste novo esquecido aqui nunca rodaria no PR)."""
-    todos = {p.relative_to(RAIZ).as_posix() for p in (RAIZ / "dev").glob("testa_*.py")}
-    return sorted(todos - set(COMPLETO) - set(MICROFONE) - {"dev/testa_tudo.py"})
+def manual(arquivo):
+    """A linha "# manual: <comando> precisa de <aparelho>" do comentario do topo do arquivo (as linhas com # antes do
+    codigo e da docstring), ou None. A linha que comeca com "# manual:" fora desse formato volta tambem: a conferencia
+    acusa."""
+    for linha in Path(arquivo).read_text(encoding="utf-8").splitlines():
+        if not linha.startswith("#"):
+            return None
+        if re.match(r"#\s*manual:", linha):
+            return linha.strip()
+    return None
+
+
+def roda_no_yml(texto):
+    """Os scripts que os passos do testa.yml rodam: os que o run: de cada passo chama pelo caminho e os das listas do
+    testa_tudo.py que ele chama (sem modo, o COMPLETO; com --microfone, o MICROFONE; com --so-stdlib, o STDLIB)."""
+    linhas, runs, i = texto.splitlines(), [], 0
+    while i < len(linhas):
+        m = re.match(r"^(\s*)(?:-\s+)?run:\s*(.*)$", linhas[i])
+        i += 1
+        if not m:
+            continue
+        if not m.group(2).startswith(("|", ">")):
+            runs.append(m.group(2))
+            continue
+        bloco = []
+        while i < len(linhas) and (not linhas[i].strip() or len(linhas[i]) - len(linhas[i].lstrip()) > len(m.group(1))):
+            bloco.append(linhas[i])
+            i += 1
+        runs.append("\n".join(bloco))
+    rodam = set()
+    for run in runs:
+        for linha in run.replace("\\", "/").splitlines():
+            linha = linha.split("#")[0]
+            chamados = re.findall(r"[\w./-]+\.py", linha)
+            rodam.update(c.removeprefix("./") for c in chamados)
+            if "dev/testa_tudo.py" in chamados:
+                rodam.update(MICROFONE if "--microfone" in linha else STDLIB if "--so-stdlib" in linha else
+                             () if re.search(r"--(tela|areas)\b", linha) else COMPLETO)
+    return rodam
+
+
+def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml"):
+    """O que tira um teste do PR sem ninguem ver: o dev/testa_*.py que o testa.yml nao roda (nem por uma lista daqui nem
+    num passo proprio) e nao tem a linha "manual:"; e o que tem a linha (teste ou ferramenta de dev/) e roda la mesmo,
+    ou a tem fora do formato. Volta as linhas da falha."""
+    rodam = roda_no_yml(Path(yml).read_text(encoding="utf-8"))
+    falhas = []
+    for p in sorted((RAIZ / "dev").glob("*.py")):
+        rel, linha = p.relative_to(RAIZ).as_posix(), manual(p)
+        if linha and not re.match(r"#\s*manual:\s*\S.*\s+precisa de\s+\S", linha):
+            falhas.append(f"{rel}: a linha \"{linha}\" nao segue o formato \"# manual: <comando> precisa de <aparelho>\"")
+        elif linha and rel in rodam:
+            falhas.append(f"{rel} tem a linha \"manual:\" e roda no testa.yml: tire a linha ou tire o teste de la")
+        elif not linha and rel.startswith("dev/testa_") and rel != "dev/testa_tudo.py" and rel not in rodam:
+            falhas.append(f"{rel} nao roda no testa.yml (nem numa lista do dev/testa_tudo.py, STDLIB, COMPLETO ou "
+                          "MICROFONE, nem num passo) e nao tem no topo a linha \"# manual: <comando> precisa de "
+                          "<aparelho>\"")
+    return falhas
 
 
 def cerca(texto):
@@ -151,12 +210,12 @@ def testes(a):
     titulo, lista = (("Testes so da biblioteca padrao", STDLIB) if a.so_stdlib else
                      ("Testes do filtro", MICROFONE) if a.microfone else ("Testes", COMPLETO))
     md = []
-    esquecidos = fora_das_listas()
+    esquecidos = sem_destino()
     for t in esquecidos:
-        print(f"FALHA {t} nao esta em nenhuma lista do dev/testa_tudo.py (STDLIB, COMPLETO ou MICROFONE)")
+        print(f"FALHA {t}")
     if esquecidos:
-        md += [f"**{titulo}:** ❌ fora das listas do `dev/testa_tudo.py`: " + ", ".join(f"`{t}`" for t in esquecidos),
-               ""]
+        md += [f"**{titulo}:** ❌ teste sem destino ou \"manual:\" que roda no `testa.yml`:", ""]
+        md += [f"- {t}" for t in esquecidos] + [""]
     impede = []
     if a.microfone:
         saida = RAIZ / "microfone" / "apo" / "saida"
