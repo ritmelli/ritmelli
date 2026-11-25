@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from unittest import mock
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
@@ -25,6 +26,7 @@ import numpy as np  # noqa: E402
 with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, que nao sao deste teste
     import comandos as cmd  # noqa: E402
     import engine as eng  # noqa: E402
+    import pastas  # noqa: E402
     import server  # noqa: E402
 
 falhas = []
@@ -222,15 +224,39 @@ def voltas(A, E):
     confere(historico(A) == hist + ["d1"] and fila(A) == [],
             f"e a parecida que nao tocou nao vai para o Anterior ({historico(A)[len(hist):]})")
 
+    # a entrada quebrada no fim do disco: o erro vai para a tela (na_tela), e a volta segue sem travar a fila
+    ate(lambda: E.status() == "playing")
+    with A.fila_lock:
+        A.fila.append({"id": None, "youtube_id": None, "url": None, "title": "quebrada", "qid": "q0", "job": None})
+    toca_ate_o_fim(E)
+    tr, E.error = E.track, None
+    confere(A._volta_fila(None) is tr and fila(A) == [] and A.parado_sem_fila is not tr
+            and (E.error or {}).get("key") == "server.queue.playFailed",
+            f"o fim do disco com uma entrada quebrada: o erro vai para a tela, e ela sai da fila ({E.error})")
+    try:
+        with A.fila_lock:
+            A.fila.append({"id": None, "youtube_id": None, "url": None, "title": "quebrada", "qid": "q1", "job": None})
+        cmd.pular(A)
+        confere(False, "o pular com a entrada quebrada levanta o erro (a rota responde 500, como antes)")
+    except ValueError:
+        confere(fila(A) == [], "o pular com a entrada quebrada levanta o erro (a rota responde 500, como antes)")
+    try:
+        cmd.enfileirar(A, {})
+        confere(False, "o enfileirar sem disco nem video e a Recusa (400)")
+    except cmd.Recusa:
+        confere(True, "o enfileirar sem disco nem video e a Recusa (400)")
+
 
 def main():
     with tempfile.TemporaryDirectory() as tmp:
-        A, E = monta(Path(tmp))
-        try:
-            comandos(A, E)
-            voltas(A, E)
-        finally:
-            E.close()
+        audio = Path(tmp) / "audio"  # a pasta dos arquivos de audio tambem e a temporaria: o Library cria a dele
+        with mock.patch.object(server, "LIB", audio), mock.patch.object(pastas, "LIB", audio):
+            A, E = monta(Path(tmp))
+            try:
+                comandos(A, E)
+                voltas(A, E)
+            finally:
+                E.close()
     if falhas:
         print(f"\n{len(falhas)} falha(s)")
         sys.exit(1)

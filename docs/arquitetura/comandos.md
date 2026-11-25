@@ -6,7 +6,7 @@ do `App`, chama o mesmo comando. Cada função recebe o `App`; a fila, o histór
 
 | Comando | Rota | A regra que mora no comando |
 | --- | --- | --- |
-| `tocar` | `POST /api/play` | o som curto (até `CURTO_MAX_S`) toca por cima da música, salvo `por_cima` no corpo; continuar de onde parou é sempre a faixa principal |
+| `tocar` | `POST /api/play` | sem o `por_cima` no corpo, o som curto (até `CURTO_MAX_S`) toca por cima da música, só sem `start` e sem `resume`; com ele, o `por_cima` decide |
 | `enfileirar` | `POST /api/queue` | com nada no prato (parado, ou o disco já acabou), o que entra toca na hora; pausado ainda é disco no prato |
 | `tocar_da_fila` | `POST /api/queue/play` | a entrada sai da fila e toca |
 | `tirar_da_fila` | `DELETE /api/queue/{qid}` | a parecida tirada pelo usuário não volta nesta sessão |
