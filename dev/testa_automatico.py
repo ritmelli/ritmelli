@@ -78,15 +78,15 @@ def automatico(A, E):
     confere(A.auto and A.semente is None and A.mix is None, "o Automatico ligado, antes da primeira volta")
 
     # a primeira volta: o disco do prato vira a semente e a busca do Mix dela e pedida (a thread dela fica so pedida:
-    # quem busca e o teste)
-    with mock.patch.object(threading.Thread, "start", autospec=True) as iniciar:
+    # quem busca e o teste, com a semente que a volta passou a ela)
+    with mock.patch.object(threading, "Thread") as thread:
         visto, sinal = A._volta_auto(None, None)
-    base = A.mix_base
+    pedida = [(getattr(c.kwargs.get("target"), "__name__", None), c.kwargs.get("args")) for c in thread.call_args_list]
+    base = pedida[0][1][0] if pedida and pedida[0][1] else None
     confere(visto == "sssssssssss" and A.semente == {"youtube_id": "sssssssssss", "title": "Semente Primeira"}
-            and base == "sssssssssss" and A.mix is None and A.mix_buscando and iniciar.call_count == 1
-            and "sssssssssss" in A.fora and auto() == [],
-            f"a primeira volta: a semente e o disco do prato, e a busca do Mix dela fica pedida ({A.semente}, {base}, "
-            f"{iniciar.call_count} thread)")
+            and pedida == [("_busca_mix", ("sssssssssss",))] and thread.return_value.start.call_count == 1
+            and A.mix_base == base and A.mix is None and A.mix_buscando and "sssssssssss" in A.fora and auto() == [],
+            f"a primeira volta: a semente e o disco do prato, e a busca do Mix dela fica pedida ({A.semente}, {pedida})")
 
     # a busca, pelo mix_do do App (o falso)
     A._busca_mix(base)
