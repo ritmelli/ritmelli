@@ -1860,12 +1860,15 @@ class App:
                     with self.fila_lock:
                         self.andamento_falhou[f"audio:{vid}"] = time.time()
                     continue
+                # grava fora da fila_lock (o disco lento nao segura a fila) e so depois aplica, como antes: a gravacao que
+                # falha nao deixa a versao valendo na fila
+                with self.fila_lock:
+                    versoes = {**self.versoes, vid: v}
+                save_json(self.versoes_path, versoes)
                 with self.fila_lock:
                     self.versoes[vid] = v
-                    versoes = dict(self.versoes)
                     self._troca_audio(vid, v)
                     self.andamentos_versao += 1
-                save_json(self.versoes_path, versoes)  # fora da fila_lock: o disco lento nao segura a fila
                 print(f"audio: {x.get('title')!r}: " + (f"the audio version {v['youtube_id']} ({v['duration']} s)"
                                                          if v else "only the video"), file=sys.stderr, flush=True)
                 continue
@@ -1880,10 +1883,11 @@ class App:
                 if r is None:
                     self.andamento_falhou[c] = time.time()
                     continue
+                andamentos = {**self.andamentos, c: r}
+            save_json(self.andamentos_path, andamentos)  # fora da fila_lock e antes de valer, como a versao de audio
+            with self.fila_lock:
                 self.andamentos[c] = r
-                andamentos = dict(self.andamentos)
                 self.andamentos_versao += 1
-            save_json(self.andamentos_path, andamentos)  # fora da fila_lock, como a versao de audio acima
             print(f"tempo: {x.get('title')!r}: start {r['ini']}, end {r['fim']} BPM in {time.time() - t0:.1f} s",
                   file=sys.stderr, flush=True)
 
