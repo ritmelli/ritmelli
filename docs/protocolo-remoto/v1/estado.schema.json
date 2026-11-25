@@ -165,7 +165,7 @@
         "n": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
         "v": {"oneOf": [{"type": "number", "minimum": 0, "maximum": 2}, {"$ref": "#/$defs/cosseno"}]},
         "pos": {
-          "description": "A posição no começo do segmento, quando ela não continua a do anterior (a faixa que entra, depois do preenchimento).",
+          "description": "A posição no começo do segmento: quando ela não continua a do anterior (a faixa que entra, depois do preenchimento, a volta do Repetir), e também depois de uma curva ou de um preenchimento, onde segura o arredondamento.",
           "type": "number", "minimum": 0
         },
         "preenchimento": {"description": "O silêncio antes do início efetivo da faixa que entrou.", "const": true}
