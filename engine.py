@@ -2447,10 +2447,11 @@ class Engine:
             leitor()
 
     # passagem para a proxima ------------------------------------------------
-    def preparar(self, track, tag):
+    def preparar(self, track, tag, pode=None):
         """A proxima da fila no segundo deck (o servidor chama a TRANS_PREP_S do fim): o leitor dela
         decodifica o comeco, o deste vai ate o fim, e o _mede marca onde virar. O deck novo so aparece para o _mixa
-        sob o _qlock, ja com o ganho dele."""
+        sob o _qlock, ja com o ganho dele. pode(): conferido sob o _qlock antes de publicar (o servidor confere ali a
+        reserva de avanco, a cabeca da fila, o deck e a linha que viu); falso, nada e publicado e volta False."""
         if not track.get("path"):
             return False
         alvo, mede = self._ganho_de(track)  # fora das travas: pergunta ao servidor
@@ -2459,7 +2460,7 @@ class Engine:
         d.ganho = d.ganho_alvo = alvo  # o deck ainda e so daqui
         with self._lock:
             with self._qlock:
-                if self.track is None:
+                if self.track is None or (pode is not None and not pode()):
                     return False
                 self._cancela_passagem()
                 self._pronto, self.pronto_tag = d, tag
@@ -3181,15 +3182,16 @@ class Engine:
                 print(f"volume: nao guardei a medida de {track.get('title')!r}: {ex}", file=sys.stderr, flush=True)
 
     # comandos -------------------------------------------------------------
-    def espera(self, track):
+    def espera(self, track, pode=None):
         """Poe o disco no prato carregando, ainda sem audio: o endereco do stream do YouTube
         leva 1 a 3 s para sair, e a tela ja mostra o que vai tocar. Outro disco entrando desliga o Repetir. Volta a
-        Captura do que estava no prato antes."""
+        Captura do que estava no prato antes, ou None se o pode() (conferido sob o _qlock) recusou."""
         alvo, mede = self._ganho_de(track)
         with self._lock:
-            antes, leitor = self._restart(0.0, track=track, alvo=alvo, paused=False, prato=True)
-        self._comeca(leitor)
-        self._mede_se(track, mede)
+            antes, leitor = self._restart(0.0, track=track, alvo=alvo, paused=False, prato=True, pode=pode)
+        if antes is not None:
+            self._comeca(leitor)
+            self._mede_se(track, mede)
         return antes
 
     def tira_soou(self):
@@ -3277,15 +3279,17 @@ class Engine:
         repetido sai do cache)."""
         threading.Thread(target=self._toca_sobre, args=(track,), daemon=True).start()
 
-    def load(self, track, start=0.0, paused=False, loop=None):
+    def load(self, track, start=0.0, paused=False, loop=None, pode=None):
         """O disco no prato a partir de start, numa linha nova; loop: o Repetir, na mesma publicacao (None: fica como
-        esta no mesmo disco, e outro disco entrando o desliga). Volta a Captura do que estava no prato antes."""
+        esta no mesmo disco, e outro disco entrando o desliga). Volta a Captura do que estava no prato antes, ou None se
+        o pode() (conferido sob o _qlock: o servidor confere ali a reserva de avanco) recusou."""
         alvo, mede = self._ganho_de(track)
         with self._lock:
             antes, leitor = self._restart(self._clamp(start, track), track=track, alvo=alvo, paused=paused,
-                                          prato=True, loop=loop)
-        self._comeca(leitor)
-        self._mede_se(track, mede)
+                                          prato=True, loop=loop, pode=pode)
+        if antes is not None:
+            self._comeca(leitor)
+            self._mede_se(track, mede)
         return antes
 
     def _clamp(self, t, track=None):
@@ -3365,10 +3369,13 @@ class Engine:
                 leitor = self._restart(0.0, paused=False, pode=lambda: self.track is not None and self.ended)[1]
         self._comeca(leitor)
 
-    def stop(self):
-        """O disco sai do prato, numa linha nova. Volta a Captura do que estava no prato antes."""
+    def stop(self, pode=None):
+        """O disco sai do prato, numa linha nova. Volta a Captura do que estava no prato antes, ou None se o pode()
+        (conferido sob o _qlock) recusou."""
         with self._lock:
             with self._qlock:
+                if pode is not None and not pode():
+                    return None
                 antes = self._captura_atual()
                 self._cancela_passagem(tudo=True)
                 d = self._deck

@@ -401,21 +401,19 @@ async def papeis_no_guard():
         # o erro de tocar na hora a entrada que acabou de entrar nao e a recusa do corpo: o guard relanca, e o aiohttp
         # responde 500, como antes da camada de comandos
         falha_ao_tocar = ValueError("quebrou")
-
-        def quebra(x, historico=True):
-            raise falha_ao_tocar
         enfileirar, A.enfileirar = A.enfileirar, (lambda b, remoto=False: ({"qid": "q1"}, None))
-        A.tirar_da_fila, A.tocar_entrada, E.status = (lambda qid: True), quebra, (lambda: "idle")
+        E.captura = lambda: server.eng.Captura(None, 0.0, "idle", None, 0)  # o prato parado: a entrada toca na hora
         msg = "o POST /api/queue com o erro de tocar na hora: o erro sobe pelo guard (500), e nao vira 400"
         try:
-            resp, _, _ = await manda("POST", "/api/queue", de=pc, corpo={"id": "d1"},
-                                     handler=rota[("POST", "/api/queue")])
+            with mock.patch.object(server.cmd, "avanca", side_effect=falha_ao_tocar):  # o avanco que toca quebra
+                resp, _, _ = await manda("POST", "/api/queue", de=pc, corpo={"id": "d1"},
+                                         handler=rota[("POST", "/api/queue")])
             confere(False, f"{msg} ({resp.status})")
         except ValueError as ex:
             confere(ex is falha_ao_tocar, msg)
         finally:
             A.enfileirar = enfileirar
-            del A.tirar_da_fila, A.tocar_entrada, E.status
+            del E.captura
         confere(await status("POST", "/api/play", de=pc, token=token[:-2] + "xx") == 401,
                 "o token errado, do 127.0.0.1: 401 (nao cai no papel do PC)")
         confere(await status("POST", "/api/play", de=pc, token="") == 401, "o cabecalho vazio, do 127.0.0.1: 401")
