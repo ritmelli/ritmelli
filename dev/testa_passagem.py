@@ -14,9 +14,10 @@ Os pares:
   - seco: A corta 20 ms antes da batida que viria; B entra no tempo, a primeira batida dela no ultimo ataque de A (o
     golpe final), esticada no andamento de A (a 3%);
   - fade: A cai 6 dB num ataque e some em 7 s; B, a 2,5% de A, entra esticada no andamento de A, na batida da queda;
-  - dois: o mesmo fade, com B a 6% de A: A muda de andamento devagar antes e B estica o resto;
+  - dois: o mesmo fade, com B a 6% de A: A muda de andamento devagar antes e B estica o resto (with noise under A,
+    see the _fundo);
   - dois-106: the same, with B 6% faster than A (A speeds up, where "dois" slows it down);
-  - tone: "dois" with a single strong tone under A, instead of three;
+  - tone: "dois" with a single strong tone under A, instead of three tones and noise;
   - intro: the fade, with B at -30 dB for its first 13 beats (7.7 s): it comes in under A 12 of A's beats before the
     swap, its drop on A's beat at the swap;
   - meio: A a 70 BPM e B a 140, com um estalo forte e um fraco (12 dB abaixo): o forte cai na batida de A, o fraco no
@@ -25,8 +26,8 @@ Os pares:
 Cada par registra as posicoes dos ataques, do corte ou da queda, o ramo esperado e a janela da virada calculada delas
 (onde B tem de comecar para a primeira batida dela cair no ataque de A esperado), sem tomar o _virar_em do motor como
 resposta. A virada medida e a posicao de A no comeco do bloco em que o _mixa virou, e tem de cair a ate FOLGA_VIRADA da
-janela (in the intro pair, B's beat 1 on the attack of A 12 beats before the swap and its sound starting in the beat
-before). No par recusado, o motivo tem de ser o andamento, e no audio B so entra depois da virada e A cai. Nos pares
+janela (in the intro pair, B's beat 1 on the attack of A 12 beats before the swap and its sound starting up to half a
+beat before). No par recusado, o motivo tem de ser o andamento, e no audio B so entra depois da virada e A cai. Nos pares
 planejados, as primeiras 4 batidas de B tem de ter um ataque forte cada (nem um a mais, nem um a menos), no tempo da
 regua de A (a grade dos ataques de A na saida, nos REGUA_S antes da virada), cada um a ate ALINHA dela; e o controle
 negativo: o mesmo detector, com a mesma regua e a mesma amostra da virada, no sinal da faixa de B deslocado meio
@@ -86,6 +87,7 @@ FAIXA_B = (3000.0, 6000.0)  # os de B
 SOS_A, SOS_B = filtro(FAIXA_A, SR), filtro(FAIXA_B, SR)
 TONS_A, TOM_B = (1013.0, 1201.0, 1427.0), 1800.0  # os tons fixos por baixo dos ataques
 SOS_TOM_A, SOS_TOM_B = filtro((1150.0, 1250.0), SR), filtro((1750.0, 1850.0), SR)  # um tom de A, e o de B
+RUIDO_A = (600.0, 1300.0)  # the noise under A, with its tones, where A is stretched (the _fundo)
 TAU_B = 0.1        # a primeira batida de B, depois do comeco do som dela (o tom de baixo comeca no 0)
 FOLGA_VIRADA = 0.010  # a virada medida pode cair isso fora da janela (um bloco)
 ALINHA = 0.020     # cada ataque forte de B nas primeiras batidas, no maximo isso da regua de A
@@ -101,15 +103,16 @@ INTRO_DB = -30.0   # engine brings it in whole bars before the swap, with the dr
 INTRO_IN = 12      # beats before it
 
 # o par: os andamentos, o fim de A ("seco": corta; "fade": cai 6 dB e some), o ramo esperado e o acento de B (o
-# estalo fraco no meio de cada batida, no par meio). Then the tones under A, whether B starts with a quiet intro, and
-# the issue of a known engine defect the pair shows: it is expected to fail, and passing makes the bench fail, so the
-# fix takes it off the list
-Par = namedtuple("Par", "nome bpm_a bpm_b fim ramo meio tons_a intro issue", defaults=(TONS_A, False, None))
+# estalo fraco no meio de cada batida, no par meio). Then the tones under A and whether noise goes with them, whether
+# B starts with a quiet intro, and the issue of a known engine defect the pair shows: it is expected to fail, and
+# passing makes the bench fail, so the fix takes it off the list
+Par = namedtuple("Par", "nome bpm_a bpm_b fim ramo meio tons_a ruido_a intro issue",
+                 defaults=(TONS_A, False, False, None))
 PARES = [
     Par("seco", 100.0, 103.0, "seco", "seco", False),
     Par("fade", 100.0, 102.5, "fade", "fade", False),
-    Par("dois", 100.0, 94.0, "fade", "dois", False),
-    Par("dois-106", 100.0, 106.0, "fade", "dois", False, issue=196),
+    Par("dois", 100.0, 94.0, "fade", "dois", False, ruido_a=True),
+    Par("dois-106", 100.0, 106.0, "fade", "dois", False, ruido_a=True, issue=196),
     Par("tone", 100.0, 94.0, "fade", "dois", False, (1201.0,), issue=197),
     Par("intro", 100.0, 102.5, "fade", "fade", False, intro=True),
     Par("meio", 70.0, 140.0, "fade", "fade", True),
@@ -141,12 +144,19 @@ def _estalo(rng, faixa):
     return 0.4 * x / np.abs(x).max()
 
 
-def _fundo(n, rms, freqs):
-    """O som fixo por baixo dos ataques: tons de 1000 a 1800 Hz (fora das duas faixas e sem ataque), de rms dado. Sob A,
-    tres tons sem relacao entre si: com um tom so, a correlacao com que o motor acha o atraso da Rubber Band (o
-    esticar_saida) cai num pico do tom, e a que sai toca ~50 ms antes da posicao que o motor da a ela."""
+def _fundo(n, rms, freqs, rng=None):
+    """O som fixo por baixo dos ataques: tons de 1000 a 1800 Hz (fora das duas faixas e sem ataque), de rms dado. With
+    rng, half of the power is noise of RUIDO_A, under A in the pairs where A is stretched: tones alone repeat (three
+    of them almost do, every 53 ms), and the correlation with which the engine finds the Rubber Band delay
+    (esticar_saida) can land on a repeat, so the outgoing track plays ~50 ms before the position the engine gives it
+    (#197, the tone pair). The other pairs go without it: it leaks into the band of B's attacks."""
     t = np.arange(n) / SR
     x = sum(np.sin(2 * np.pi * f * t + k) for k, f in enumerate(freqs))
+    x = x / np.sqrt(np.mean(x * x))
+    if rng is not None:
+        from scipy import signal
+        r = signal.sosfilt(filtro(RUIDO_A, SR), rng.standard_normal(n + SR // 10))[SR // 10:]
+        x = x + r / np.sqrt(np.mean(r * r))
     return rms * x / np.sqrt(np.mean(x * x))
 
 
@@ -193,7 +203,7 @@ def monta(par, pasta):
         nivel = np.where(t < some, 10 ** (db / 20), 0.0)
         fixa.update(queda=queda, alvo=queda, inicio=queda - ANTES_S)
     n = int(dur * SR)
-    xa = _fundo(n, 0.14, par.tons_a)
+    xa = _fundo(n, 0.14, par.tons_a, rng if par.ruido_a else None)
     for t in ts_a:
         _poe(xa, _estalo(rng, FAIXA_A), t)
     xa *= nivel
@@ -217,9 +227,9 @@ def monta(par, pasta):
         janela = (fixa["queda"] - 0.05, fixa["queda"])
     elif par.intro:
         # B comes in INTRO_IN of A's beats before the swap: its beat 1 on that attack of A, and its sound starting
-        # somewhere in the beat before (where exactly is the engine's call: the bar starts at a beat of B)
+        # up to half a beat before (the bar starts at a beat of B, a few ms after where the engine starts it)
         alvo = fixa["queda"] - INTRO_IN * pa
-        janela = (alvo - pa - BLOCK / SR, alvo)
+        janela = (alvo - pa / 2 - BLOCK / SR, alvo)
         fixa.update(depois=DEPOIS_S + INTRO_IN * pa)  # the switch comes that much before the swap
     else:
         janela = (fixa["alvo"] - lead - BLOCK / SR, fixa["alvo"] - lead)
@@ -350,14 +360,14 @@ def ataques_b(yb, vo, ate, vies):
 
 
 def julga(yb, vo, f, p, lead, vies):
-    """O veredito dos ataques fortes de B nas primeiras 4 batidas contra a regua de A: (veredito, desvios, fracos). A
-    janela vai ate 3,75 periodos depois da primeira batida de B: pega a quarta dela, e tambem a quarta deslocada meio
-    periodo do controle negativo, mas nao a quinta."""
+    """O veredito dos ataques fortes de B nas primeiras 4 batidas contra a regua de A: (veredito, desvios, fracos, and
+    the strong attacks, in s of the output). A janela vai ate 3,75 periodos depois da primeira batida de B: pega a
+    quarta dela, e tambem a quarta deslocada meio periodo do controle negativo, mas nao a quinta."""
     fortes, fracos = ataques_b(yb, vo, vo / SR + lead + 3.75 * p, vies)
     if len(fortes) != 4:
         raise Falha(f"{len(fortes)} ataques fortes de B nas primeiras 4 batidas depois da virada, e nao 4")
     d = desvio(fortes, f, p)
-    return veredito(d, p), d, desvio(fracos, f, p)
+    return veredito(d, p), d, desvio(fracos, f, p), fortes
 
 
 def _rms_db(y, de, ate):
@@ -426,11 +436,11 @@ def confere(par, pasta, verboso):
             t_q = vo / SR + fx["queda"] - virada_a
             t_q = f + round((t_q - f) / p) * p
             de, lead = int(round((t_q - 2.5 * p) * SR)), 2.5 * p
-        v, d, fracos = julga(yb, de, f, p, lead, fx["vies"][1])
+        v, d, fracos, fortes = julga(yb, de, f, p, lead, fx["vies"][1])
         msgs.append(f"regua de A {60 / p:.2f} BPM; B: " + " ".join(f"{t * 1000:+.0f}" for t in d) + " ms"
                     + f" (vies do detector: A {fx['vies'][0] * 1000:+.0f}, B {fx['vies'][1] * 1000:+.0f} ms)")
         if par.intro:
-            drop = ataques_b(yb, de, de / SR + lead + 3.75 * p, fx["vies"][1])[0][0] - t_q
+            drop = fortes[0] - t_q
             msgs.append(f"B's drop {drop * 1000:+.0f} ms from A's beat at the swap")
             if abs(drop) > ALINHA:
                 falhas.append(f"B's drop landed {drop * 1000:+.0f} ms from A's beat at the swap")
@@ -445,7 +455,7 @@ def confere(par, pasta, verboso):
                 falhas.append(f"os ataques fracos de B ficaram {vf}, e nao no meio da batida de A")
         # o controle negativo: so o sinal de B, meio periodo da regua adiante
         h = int(round(p / 2 * SR))
-        vc, dc, _ = julga(np.concatenate([np.zeros(h), yb[:-h]]), de, f, p, lead, fx["vies"][1])
+        vc, dc, _, _ = julga(np.concatenate([np.zeros(h), yb[:-h]]), de, f, p, lead, fx["vies"][1])
         msgs.append(f"controle (B meio periodo adiante): {vc}")
         if vc != "contratempo":
             falhas.append(f"o controle negativo deu {vc!r} ({np.median(dc) * 1000:+.0f} ms), e nao contratempo")
