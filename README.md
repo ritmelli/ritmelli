@@ -520,8 +520,8 @@ and, when the change touches their area, the microphone filter tests and the int
 both languages and `dev/compara.py` against `main`). The "Trusted author" check
 (`.github/workflows/trusted-author.yml`) passes on a pull request by one of the two maintainers, and on any other only
 once a maintainer approves its current head: a push after the approval needs a new one. It runs the version on `main`
-(`pull_request_target`), so a pull request cannot change the rule for itself. Run the tests before you open one, with
-the virtual environment active:
+(`pull_request_target`, which an Actions policy of the repository has to allow), so a pull request cannot change
+the rule for itself. Run the tests before you open one, with the virtual environment active:
 
 ```powershell
 python -m ruff check .

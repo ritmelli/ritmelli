@@ -2,13 +2,18 @@
 # passes when the PR author is one of the two maintainers below. For any other author it passes only when one of the
 # two has an APPROVED review on the current head of the PR (its commit_id): a push after the approval fails the check
 # again, and a later change request by the same maintainer takes the approval back. To let such a PR in, a maintainer
-# approves its current head and re-runs this job (an approval alone starts no run).
+# approves its current head and re-runs this job (an approval alone starts no run; after the 30 days a run can be
+# re-run, closing and reopening the PR starts a new one).
 #
 # pull_request_target, not pull_request: the run takes this file from the main, not from the PR, so a PR cannot change
 # the rule to make its own check pass. That is also why the job checks out nothing and runs no code of the PR: it only
 # reads the PR and its reviews through the API, with a read-only token, and every value of the event reaches the script
 # through env:, never interpolated inside the run block. A PR that changes this file is tested by the main version
 # until it reaches the merge queue.
+#
+# From December 2, 2026, GitHub blocks pull_request_target in public repositories unless an Actions policy allows it
+# (Settings, Actions, Policies): the policy has to allow it for this file before the check is made required, or the
+# blocked run fails every pull request.
 #
 # merge_group: the queue entry carries no PR, so the number comes from its ref
 # (refs/heads/gh-readonly-queue/<base>/pr-<number>-<sha>) and the same rule runs on that PR, read again from the API. A
@@ -109,7 +114,8 @@ jobs:
                   return True, f"#{number} is by {author}, and {', '.join(ok)} approved its head {head[:12]}"
               return False, (f"#{number} is by {author}, who is not a maintainer, and no maintainer approved its current "
                              f"head {head[:12]}. One of the maintainers ({', '.join(TRUSTED)}) approves the pull request "
-                             "at this commit and then re-runs this job; a new push needs a new approval.")
+                             "at this commit and then re-runs this job (or closes and reopens the pull request); a new push needs a "
+                             "new approval.")
 
 
           def main():
