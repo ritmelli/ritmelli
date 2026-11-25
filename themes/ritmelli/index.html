@@ -8631,8 +8631,21 @@ function definirCaps(c) {
 
 /* ---------- conexao ---------- */
 let es = null, foraT = null, reconT = null;
+// o transporte.js que nao carregou (o servidor fora quando a pagina abriu): a conexao tenta carregar de novo, uma
+// carga por vez e a cada 3 s, e com ele de volta a pagina segue a carga normal
+let buscandoTransporte = false;
+function carregarTransporte() {
+  if (buscandoTransporte) return;
+  buscandoTransporte = true;
+  const s = document.createElement('script');
+  s.src = 'transporte.js';
+  s.onload = () => { buscandoTransporte = false; carregar(); };
+  s.onerror = () => { buscandoTransporte = false; s.remove(); reconT = setTimeout(conectar, 3000); };
+  document.head.append(s);
+}
 function conectar() {
   clearTimeout(reconT);
+  if (typeof TRANSPORTE === 'undefined') { carregarTransporte(); return; }
   if (es) es.fechar();
   try { es = TRANSPORTE.eventos('/api/events'); } catch (e) { reconT = setTimeout(conectar, 3000); return; }
   const fonte = es;
