@@ -447,21 +447,24 @@ def is_valid_unicode(*texts):
 
 
 TRACK_TEXTS = ("title", "channel", "thumb")  # what a body may bring about a video off the shelf, as text or null
+TRACK_FIELDS = TRACK_TEXTS + ("duration",)
 
 
-def check_track_fields(b, target):
+def check_track_fields(b, target, fields=TRACK_FIELDS):
     """The title, channel, thumb and duration the body b brings about the video target, which is not on the shelf (the
-    POST /api/queue and the POST /api/library): one rule for both routes and every role. The theme and the handoffs
-    read the texts as text (or null); the duration in seconds (or null, up to a day) wins over the one yt-dlp finds
-    and sizes the visualizer (engine.Onda allocates by it). The target and the texts go in valid Unicode
-    (is_valid_unicode). Raises ValueError, or the i18n.Recusa the theme can show for a duration longer than a day."""
-    dur = b.get("duration")
-    if not (all(b.get(k) is None or isinstance(b[k], str) for k in TRACK_TEXTS)
+    POST /api/queue, and the POST /api/library with play; saving without play only uses the title, as the download's
+    label): one rule for both routes and every role, on the fields the path uses. The theme and the handoffs read the
+    texts as text (or null); the duration in seconds (or null, up to a day) wins over the one yt-dlp finds and sizes
+    the visualizer (engine.Onda allocates by it). The target and the texts go in valid Unicode (is_valid_unicode).
+    Raises ValueError, or the i18n.Recusa the theme can show for a duration longer than a day."""
+    texts = [k for k in TRACK_TEXTS if k in fields]
+    dur = b.get("duration") if "duration" in fields else None
+    if not (all(b.get(k) is None or isinstance(b[k], str) for k in texts)
             and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool) and dur >= 0))):
         raise ValueError("Send title, channel and thumb as text and duration as seconds (up to a day).")
     if dur is not None and dur > QUEUE_DURATION_MAX_S:  # a search result can be this long: the theme shows it
         raise i18n.Recusa("server.queue.tooLong", "Ritmelli can't queue a video longer than a day.")
-    if not is_valid_unicode(target, *(b.get(k) for k in TRACK_TEXTS)):
+    if not is_valid_unicode(target, *(b.get(k) for k in texts)):
         raise ValueError("Send text in valid Unicode.")
 
 
@@ -2113,10 +2116,6 @@ def build(app_state):
         target = target.strip() if isinstance(target, str) else ""
         if not target:
             return j_err(i18n.so_texto("Send a YouTube link, a video ID, or search text."))
-        try:  # the same rule as the queue: with play, these fields go to the platter and the visualizer
-            check_track_fields(b, target)
-        except ValueError as ex:
-            return j_err(getattr(ex, "msg", None) or i18n.so_texto(str(ex)))
         m = YT_URL.search(target)
         yid = m.group(1) if m else (target if YT_ID.match(target) else None)
         it = A.lib.by_youtube(yid) if yid else None
@@ -2124,6 +2123,10 @@ def build(app_state):
             if b.get("play"):
                 cmd.play_shelf_record(A, it)
             return j_ok(item=it)
+        try:  # the queue's rule: with play, every field goes to the platter and the visualizer; without, the title
+            check_track_fields(b, target, TRACK_FIELDS if b.get("play") else ("title",))
+        except ValueError as ex:
+            return j_err(getattr(ex, "msg", None) or i18n.so_texto(str(ex)))
         alvo = yid or target
         j = A.job_rodando(alvo)  # ja baixando (da fila, ou um toque repetido): nao baixa de novo
         if j is None:

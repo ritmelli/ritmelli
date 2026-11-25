@@ -19,8 +19,8 @@ comando e monta a resposta. O tocar da prateleira (`POST /api/library` com `play
 dessas rotas (a prateleira, os downloads, as outras configurações do som) chama os métodos do `App` e do motor. A
 ordem das travas está no [`comandos.md`](comandos.md#as-travas).
 O `check_track_fields` confere os campos que o corpo traz de um vídeo fora da prateleira (`title`, `channel`,
-`thumb`, `duration` e o alvo) do mesmo jeito para todo papel, na fila (`App.enfileirar`) e no `POST /api/library`,
-com ou sem `play`, e o `PATCH /api/library` recusa o nome em Unicode inválido. O SSE manda o JSON só em ASCII:
+`thumb`, `duration` e o alvo) do mesmo jeito para todo papel, na fila (`App.enfileirar`) e no `POST /api/library`
+com `play` (sem ele, só o alvo e o título), e o `PATCH /api/library` recusa o nome em Unicode inválido. O SSE manda o JSON só em ASCII:
 um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez para todas as conexões.
 
 - Tocar um vídeo que não está na prateleira começa na hora pelo stream do YouTube (o
