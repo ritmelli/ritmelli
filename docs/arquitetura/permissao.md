@@ -22,7 +22,8 @@ Os papéis saem de quem conectou, nunca do Host (que quem pede escreve como quis
 As rotas que só o módulo de fora do repo chama (`/api/tocadas`, `/api/musica` e `/api/aquece`) ficam juntas no
 `OUT_OF_REPO` da tabela, só do PC, que é de onde ele conecta. O `dev/testa_ganchos.py` conta esse grupo como conta os
 ganchos do `engine.py`: rota nova para o módulo passa pelas que já existem. O `POST /api/shutdown` também é só do PC:
-desligado, o Ritmelli só religa no PC, e o tema mostra o Desligar pelo `caps`, não pela largura da tela.
+desligado, o Ritmelli só religa no PC, e o tema mostra o Desligar só a quem tem o `POST /api/shutdown` no `caps`
+(na tela estreita, que não tem lugar para ele, nem ao PC: fechar a janela também desliga).
 
 O `caps` (`{"papel", "rotas"}`) diz a cada conexão o que ela pode: vem no `/api/state`, no 401 do pareamento e como o
 primeiro evento do SSE, que fecha quando o celular é desconectado ou a sessão remota acaba. O `dev/testa_mock.py`
