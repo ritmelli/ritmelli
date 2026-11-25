@@ -11,12 +11,12 @@ The same ceiling holds the server routes that only that module calls: the OUT_OF
 from its text too, has to have exactly ROUTES_CEILING entries. A new route for the module goes through the ones already
 there; one that leaves lowers the ceiling in the same PR.
 
-It also ratchets the reaches into the engine's insides from the other modules at the repo root (server.py,
-comandos.py, automatico.py and the rest): every read or call of ._deck, ._qlock, ._lock, ._cancela_passagem, ._pronto,
-._saindo or ._ganho_de on an object other than self (a class's own _lock is its own). The count must equal
-TETO_MOTOR: above it, a new reach went in (use the engine's interface: Engine.line, on_line, take_switch,
-drop_prepared, gain_for, update_track, platter_state, tracks_in_use); below it, the PR lowers TETO_MOTOR with it. The
-number goes to the PR summary (the "-- summary:" line that dev/testa_tudo.py collects).
+It also ratchets the reaches into the engine's insides from the other modules at the repo root (server.py, comandos.py,
+automatico.py and the rest): every read or call of ._deck, ._qlock, ._lock, ._cancela_passagem, ._pronto, ._saindo or
+._ganho_de on an object other than self (a class's own _lock is its own). The count must equal ENGINE_CEILING: above it,
+a new reach went in (use the engine's interface: Engine.line, on_line, take_switch, drop_prepared, gain_for,
+update_track, platter_state, tracks_in_use); below it, the PR lowers ENGINE_CEILING with it. The number goes to the PR
+summary (the "-- summary:" line that dev/testa_tudo.py collects).
 
     python dev/testa_ganchos.py
 
@@ -30,7 +30,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 TETO = 26
 ROUTES_CEILING = 3
 # the reaches into the engine's insides from the modules at the root, other than engine.py; it only goes down
-TETO_MOTOR = 14
+ENGINE_CEILING = 14
 INSIDES = {"_deck", "_qlock", "_lock", "_cancela_passagem", "_pronto", "_saindo", "_ganho_de"}
 
 
@@ -158,17 +158,18 @@ else:
     else:
         print("ok    the routes for the module from outside the repo didn't grow")
 
-por_modulo = reaches()
-dentro = sum(por_modulo.values())
-detalhe = ", ".join(f"{k} {v}" for k, v in por_modulo.items()) or "none"
-print(f"-- summary: reaches into the engine's insides outside engine.py: {dentro} (ceiling {TETO_MOTOR}; {detalhe})")
-if dentro > TETO_MOTOR:
-    print(f"FALHA {dentro - TETO_MOTOR} new reach(es) into the engine's insides: go through the engine's interface "
-          "(docs/arquitetura/comandos.md)")
+per_module = reaches()
+reached = sum(per_module.values())
+detail = ", ".join(f"{k} {v}" for k, v in per_module.items()) or "none"
+print(f"-- summary: reaches into the engine's insides outside engine.py: {reached} "
+      f"(ceiling {ENGINE_CEILING}; {detail})")
+if reached > ENGINE_CEILING:
+    print(f"FAIL  {reached - ENGINE_CEILING} new reach(es) into the engine's insides: go through the engine's "
+          "interface (docs/arquitetura/comandos.md)")
     falhou = True
-elif dentro < TETO_MOTOR:
-    print(f"FALHA fewer reaches into the engine's insides: lower TETO_MOTOR in dev/testa_ganchos.py to {dentro} in this "
-          "same PR")
+elif reached < ENGINE_CEILING:
+    print(f"FAIL  fewer reaches into the engine's insides: lower ENGINE_CEILING in dev/testa_ganchos.py to {reached} "
+          "in this same PR")
     falhou = True
 else:
     print("ok    the reaches into the engine's insides did not grow")
