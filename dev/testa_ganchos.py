@@ -141,10 +141,30 @@ def class_level(body):
             yield from class_level(block.body)
 
 
+def bound_names(target):
+    """The names an assignment target binds: a name, or the names inside a tuple or list unpacking (also *rest)."""
+    if isinstance(target, ast.Name):
+        yield target.id
+    elif isinstance(target, (ast.Tuple, ast.List)):
+        for t in target.elts:
+            yield from bound_names(t)
+    elif isinstance(target, ast.Starred):
+        yield from bound_names(target.value)
+
+
+def walk_outside_classes(node):
+    """ast.walk of node without going into the classes nested in it (their self is another object)."""
+    todo = [node]
+    while todo:
+        n = todo.pop()
+        yield n
+        todo.extend(c for c in ast.iter_child_nodes(n) if not isinstance(c, ast.ClassDef))
+
+
 def privates(tree, classes):
     """The private names the top-level classes named in classes define: their methods and the names assigned at the
-    class's own level (also under an if or a try there), and every self._x or cls._x their methods assign (a helper
-    def nested inside a method is not the class's)."""
+    class's own level (also under an if or a try there, and in a tuple unpacking), and every self._x or cls._x their
+    methods assign (a helper def nested inside a method is not the class's, nor what a nested class assigns)."""
     out = set()
     for c in tree.body:
         if not (isinstance(c, ast.ClassDef) and c.name in classes):
@@ -152,13 +172,11 @@ def privates(tree, classes):
         for s in class_level(c.body):  # the class's own level: its methods and _X = ...
             if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 out.add(s.name)
+                out |= {no.attr for no in walk_outside_classes(s)
+                        if isinstance(no, ast.Attribute) and isinstance(no.ctx, ast.Store) and own(no.value)}
             for target in (s.targets if isinstance(s, ast.Assign) else [s.target] if isinstance(s, ast.AnnAssign)
                            else []):
-                if isinstance(target, ast.Name):
-                    out.add(target.id)
-        for no in ast.walk(c):
-            if isinstance(no, ast.Attribute) and isinstance(no.ctx, ast.Store) and own(no.value):
-                out.add(no.attr)
+                out |= set(bound_names(target))
     return {n for n in out if is_private(n)}
 
 

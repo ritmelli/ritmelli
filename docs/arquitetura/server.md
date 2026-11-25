@@ -116,8 +116,8 @@ o UTF-8 não codifica não quebra a volta, que é montada uma vez para todas as 
   (`chaves_musica`, `autores`, `mesma_faixa`, `busca_de`, `segundos`, `thumb`, `YT_ID`) no `music.py`. A pasta da
   prateleira (`LIB`) e o `save_json` ele importa do `pastas.py`; o que ainda é do servidor (o processo do YouTube, o
   processo auxiliar e o texto do erro) chega pela interface pública do `App` (`search_songs`, `run_helper`,
-  `yt_error`), como as mudanças da fila (`change_queue`, `remove_from_queue`) e o andamento medido
-  (`tempo_of`). O `dev/testa_automatico.py` confere a fila montada no `App` de verdade, com um `mix_do` falso e andamentos conhecidos.
+  `yt_error`), como as mudanças da fila (`change_queue`, `remove_from_queue`) e o andamento medido (`tempo_of`). O
+  `dev/testa_automatico.py` confere a fila montada no `App` de verdade, com um `mix_do` falso e andamentos conhecidos.
 - Versão só de áudio: o rádio traz de tudo, inclusive o que só existe no
   YouTube, mas a parecida que veio como vídeo (clipe com intro, vídeo com letra) toca a faixa
   do álbum quando o YouTube Music tem: uma busca de músicas com nome e artista (~0,5 s, antes
