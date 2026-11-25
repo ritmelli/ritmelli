@@ -11,3 +11,9 @@ Todo arquivo de `/t/` sai com `Cache-Control: no-cache`, como a página (o `tema
 navegador confere cada um com o servidor antes de usar o que guardou, e não usa um `.js` ou um `.css` de antes sem
 conferir. O `dev/testa_i18n.py` lê o `index.html` e todos os `.js` e `.css` da pasta do tema, e cada bloco marcado
 (`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o `/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só.
+
+O código do tema sai aos poucos do `index.html` para arquivos `.js` na pasta do tema, um bloco marcado por arquivo, que
+o `index.html` carrega por um `<script src>` no lugar em que o bloco estava, sem `defer`: os scripts rodam na mesma
+ordem, e o que um deles declara no alto continua à vista dos de depois. Já saíram: o `deck.js` (os toca-discos da
+mesa), o `mix.js` (o mixer da mesa), o `pedal.js` (os pedais da mesa) e o `maleta-vazia.js` (o aviso de vazio do A
+seguir).
