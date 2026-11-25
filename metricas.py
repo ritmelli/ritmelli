@@ -290,9 +290,11 @@ class SaudeAudio:
                 self._base = totais
             self._totais = totais
 
-    def anel_caiu(self):
-        """O anel fechou por erro: a perda e o efeito dele param de contar ja (a pausa ate o proximo nao entra)."""
+    def anel_caiu(self, s):
+        """O anel fechou por erro numa volta de s segundos: ela conta na maior volta, e a perda e o efeito dele param de
+        contar ja (a pausa ate o proximo nao entra)."""
         with self._lock:
+            self.volta_max = max(self.volta_max, s)
             self._leitores, self._perdido, self._fx = 0, False, False
 
     def fila(self, quadros, *, passagem=False, esticando=False):
@@ -447,6 +449,8 @@ class Metricas:
         p = {**props, "versao": VERSAO, "windows": self.base["windows"], "lingua": self.base["lingua"],
              "sessao": self.sessao, "$process_person_profile": False, "$geoip_disable": True, "$lib": "ritmelli"}
         with self._lock:
+            if not self.ativa():  # desligou agora: o desligar ja limpou a fila sob esta trava
+                return
             if self.fila.qsize() >= FILA_MAX:
                 self.fila.get_nowait()
             self.fila.put({"event": nome, "distinct_id": self.base["id"], "properties": p,

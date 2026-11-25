@@ -36,12 +36,11 @@ substituído por outro em caso de reinstalação), das versões do Ritmelli e do
 - a cada meia hora de uso e ao fechar o aplicativo: por quantos segundos a música tocou, por quantos a voz ficou com
   efeito e por quantos cada efeito ficou ativo;
 - também a cada meia hora e ao fechar o aplicativo, a saúde do som que vai para o jogo nessa meia hora (o evento
-  `audio`): quantas vezes o som
-  falhou porque o microfone ficou sem música para ler (`secas`), quantas dessas foram numa passagem entre músicas
-  (`secas_passagem`) e quantas durante um ajuste de andamento (`secas_esticamento`), a menor folga de som à frente do
-  microfone (`folga_min_ms`) e a maior demora entre dois envios (`volta_max_ms`), quantas passagens foram preparadas
-  (`passagens`), quantos ajustes de andamento começaram (`esticamentos`) e por quanto tempo algum estava em curso
-  (`esticamento_ms`), quantas vezes e por quantos segundos o microfone deixou de receber a música
+  `audio`): quantas vezes o som falhou porque o microfone ficou sem música para ler (`secas`), quantas dessas foram numa
+  passagem entre músicas (`secas_passagem`) e quantas durante um ajuste de andamento (`secas_esticamento`), a menor
+  folga de som à frente do microfone (`folga_min_ms`) e a maior demora entre dois envios (`volta_max_ms`), quantas
+  passagens foram preparadas (`passagens`), quantos ajustes de andamento começaram (`esticamentos`) e por quanto tempo
+  algum estava em curso (`esticamento_ms`), quantas vezes e por quantos segundos o microfone deixou de receber a música
   (`leitor_perdido`, `leitor_perdido_s`), por quantos segundos o efeito de voz rodou no filtro do microfone
   (`fx_no_filtro_s`) e a voz veio do microfone de reserva, aberto pelo Ritmelli (`mic_reserva_s`), e a taxa de
   amostragem do microfone (`voz_taxa`, como 48000);
@@ -111,16 +110,15 @@ new one if you reinstall), the Ritmelli and Windows versions, and the Windows la
 - which voice effect was turned on, each time one is turned on;
 - every half hour of use and when the app closes: how many seconds music played, how many seconds a voice effect was
   on, and how many seconds each effect stayed on;
-- also every half hour and when the app closes, the health of the sound sent to the game during that half hour
-  (the `audio` event): how many times
-  the sound dropped out because the microphone had no music to read (`secas`), how many of those happened during a
-  transition between songs (`secas_passagem`) and how many during a tempo adjustment (`secas_esticamento`), the
-  smallest buffer of sound ahead of the microphone (`folga_min_ms`) and the longest delay between two sends
-  (`volta_max_ms`), how many transitions were prepared (`passagens`), how many tempo adjustments started
-  (`esticamentos`) and for how long one was running (`esticamento_ms`), how many times and for how many seconds the
-  microphone stopped receiving the music (`leitor_perdido`, `leitor_perdido_s`), for how many seconds the voice effect
-  ran in the microphone filter (`fx_no_filtro_s`) and the voice came from the backup microphone opened by Ritmelli
-  (`mic_reserva_s`), and the microphone's sample rate (`voz_taxa`, such as 48000);
+- also every half hour and when the app closes, the health of the sound sent to the game during that half hour (the
+  `audio` event): how many times the sound dropped out because the microphone had no music to read (`secas`), how many
+  of those happened during a transition between songs (`secas_passagem`) and how many during a tempo adjustment
+  (`secas_esticamento`), the smallest buffer of sound ahead of the microphone (`folga_min_ms`) and the longest delay
+  between two sends (`volta_max_ms`), how many transitions were prepared (`passagens`), how many tempo adjustments
+  started (`esticamentos`) and for how long one was running (`esticamento_ms`), how many times and for how many seconds
+  the microphone stopped receiving the music (`leitor_perdido`, `leitor_perdido_s`), for how many seconds the voice
+  effect ran in the microphone filter (`fx_no_filtro_s`) and the voice came from the backup microphone opened by
+  Ritmelli (`mic_reserva_s`), and the microphone's sample rate (`voz_taxa`, such as 48000);
 - errors: the error type, the place in the code where it occurred (file, function, and line), and the error message,
   with anything in quotes, addresses, and folder paths removed.
 

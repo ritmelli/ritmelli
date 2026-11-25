@@ -284,7 +284,7 @@ with tempfile.TemporaryDirectory() as tmp:
     confere(not audios(m)[0], "sem nenhuma volta do Injetor na janela: o 'audio' nao sai (nem zerado)")
     e.janela.fila(0)
     volta(e, 0.01, fx_no_filtro=True)  # o efeito rodando no filtro...
-    e.janela.anel_caiu()  # ...e o anel fecha por erro: a pausa de 3 s ate a volta seguinte nao conta nele
+    e.janela.anel_caiu(0.2)  # ...e o anel fecha por erro: a pausa de 3 s ate a volta seguinte nao conta nele
     volta(e, 3.0, anel=False, leitores=0)
     fecha_janela(m)
     a5, _ = audios(m)
@@ -297,6 +297,22 @@ with tempfile.TemporaryDirectory() as tmp:
     fecha_janela(m)
     a7, _ = audios(m)
     confere(len(a7) == 1 and a7[0]["secas"] == 1, f"a seca entre o fim da janela e a volta seguinte conta ({a7})")
+
+    # o prazo do vigia, conferido sob a trava: a janela que acabou de comecar (uma escolha no meio) nao fecha pelo
+    # prazo da de antes; passado o USO_S dela, fecha
+    volta(e)
+    m._manda_audio(prazo=True)
+    confere(not audios(m)[0], "a janela mais nova que o USO_S: o vigia nao a fecha")
+    m._audio_desde -= met.USO_S
+    m._manda_audio(prazo=True)
+    confere(len(audios(m)[0]) == 1, "passado o USO_S dela, o vigia fecha a janela e o 'audio' sai")
+    # a volta que termina com o anel caindo conta na maior volta
+    volta(e)
+    e.janela.anel_caiu(0.7)
+    volta(e, 0.01, anel=False, leitores=0)
+    fecha_janela(m)
+    a8, _ = audios(m)
+    confere(len(a8) == 1 and a8[0]["volta_max_ms"] == 700.0, f"a volta do erro do anel entra na maior volta ({a8})")
 
     # o desligar no meio da janela: o que ela contou some, e a de depois comeca na hora de ligar de novo
     volta(e)

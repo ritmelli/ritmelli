@@ -1200,7 +1200,7 @@ class Injetor:
                     # novo; o estado do efeito zera mesmo se o fechamento falhar
                     falhou, self.m = self.m, None
                     servidos = ()
-                    self.saude.anel_caiu()  # a pausa abaixo nao conta no estado do anel que caiu
+                    self.saude.anel_caiu(volta)  # a pausa abaixo nao conta no estado do anel que caiu
                     try:
                         if falhou is not None:
                             falhou.fecha()
