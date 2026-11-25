@@ -838,7 +838,8 @@ def _confere_fora(nomes=None):
     cmd = [sys.executable]
     if not getattr(sys, "frozen", False):  # no codigo, o mesmo caminho pelo python (o server.auxiliar)
         cmd.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ritmelli.py"))
-    cmd += ["--microfone", "confere"] + [x for n in nomes or () for x in ("--aparelho", n)]
+    # o nome junto do --aparelho=: um nome que comeca com "-" nao vira outra opcao do argparse
+    cmd += ["--microfone", "confere"] + [f"--aparelho={n}" for n in nomes or ()]
     p = None
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,

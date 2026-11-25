@@ -446,6 +446,11 @@ class TestaLinhaDeComando(unittest.TestCase):
                 redirect_stdout(io.StringIO()) as out:
             self.assertEqual(filtro.main(["confere", "--aparelho", UMC_IN, "--aparelho", "Ação (Ç)"]), 0)
         self.assertEqual(pedido, [[UMC_IN, "Ação (Ç)"]])
+        pedido.clear()
+        with mock.patch.object(filtro, "confere_aparelhos", lambda n: pedido.append(n) or {"mudos": []}), \
+                redirect_stdout(io.StringIO()):
+            filtro.main(["confere", "--aparelho=-Entrada USB (X)"])
+        self.assertEqual(pedido, [["-Entrada USB (X)"]], "o nome que comeca com - vai junto do --aparelho=")
         self.assertEqual(json.loads(out.getvalue().strip()), {"mudos": [UMC_IN, "Ação (Ç)"]})
         self.assertTrue(out.getvalue().isascii(), "o JSON sai em ASCII: o cano do executavel nao e UTF-8")
 
@@ -470,7 +475,7 @@ class TestaApp(unittest.TestCase):
         with mock.patch.object(eng.subprocess, "run", c("run", saida)):
             r = eng._confere_fora([UMC_IN])
         cmd = c.lista[0][1][0]
-        self.assertEqual(cmd[-4:], ["--microfone", "confere", "--aparelho", UMC_IN])
+        self.assertEqual(cmd[-3:], ["--microfone", "confere", f"--aparelho={UMC_IN}"])
         self.assertEqual(r["mudos"], ["x"])
         quebrou = types.SimpleNamespace(stdout="", stderr="Traceback (most recent call last):\nRuntimeError: boom\n")
         for run, motivo in ((c("run", quebrou), "RuntimeError: boom"),
@@ -587,7 +592,7 @@ class TestaPedeTarefa(unittest.TestCase):
             return types.SimpleNamespace(returncode=0, stdout="STATE : 4 RUNNING", stderr="")
 
         def roda(prazo_s):
-            self.assertTrue(0.5 <= prazo_s <= 10, prazo_s)
+            self.assertTrue(5 <= prazo_s <= 10, prazo_s)
             v = next(rodando)
             ordem.append(f"tarefa {v}")
             return v
@@ -615,9 +620,20 @@ class TestaPedeTarefa(unittest.TestCase):
     def test_tarefa_presa(self):
         """A tarefa que passa do prazo rodando: falhou, sem olhar o servico (o audio pode nem ter reiniciado)."""
         t = iter(range(0, 10000, 10))
-        r, ordem = self._pede(lambda p: True, relogio=lambda: next(t))
+        prazos = []
+        r, ordem = self._pede(lambda p: prazos.append(p) or True, relogio=lambda: next(t))
         self.assertEqual(r, {"ok": False, "motivo": "tarefa_falhou", "detalhe": "the task is still running"})
         self.assertNotIn("sc.exe", ordem)
+        self.assertEqual((max(prazos), min(prazos)), (10.0, 5.0), "no fim do saldo, a consulta ainda tem 5 s (leva ~1 s)")
+        # vista rodando, a consulta que depois passa do prazo (None) conta como rodando: ainda presa
+        respostas = iter([True])
+        t = iter(range(0, 10000, 10))
+        r, ordem = self._pede(lambda p: next(respostas, None), relogio=lambda: next(t))
+        self.assertEqual(r, {"ok": False, "motivo": "tarefa_falhou", "detalhe": "the task is still running"})
+        self.assertNotIn("sc.exe", ordem)
+        # sem nunca ver a tarefa rodando, a consulta sem resposta segue pelo servico, como antes
+        r, ordem = self._pede(lambda p: None)
+        self.assertEqual((r, ordem), ({"ok": True}, ["schtasks.exe", "sc.exe"]))
 
     def test_servico_olhado_no_fim_do_prazo(self):
         """A tarefa acabou no fim do prazo: o servico ainda e olhado uma vez."""
@@ -638,9 +654,9 @@ class TestaPedeTarefa(unittest.TestCase):
             self.assertEqual(cmd[0], filtro.POWERSHELL, "pelo caminho da System32")
             self.assertIn(r"Get-ScheduledTask -TaskPath '\Ritmelli\' -TaskName 'Microfone'", cmd[-1])
             self.assertTrue(c.lista[0][2].get("timeout"), "a consulta tem prazo")
-        for erro in (OSError("powershell"), filtro.subprocess.TimeoutExpired("powershell", 10)):
+        for erro, quer in ((OSError("powershell"), False), (filtro.subprocess.TimeoutExpired("powershell", 10), None)):
             with mock.patch.object(filtro.subprocess, "run", side_effect=erro):
-                self.assertFalse(filtro.tarefa_rodando(), "sem a consulta, segue pelo servico, como antes")
+                self.assertIs(filtro.tarefa_rodando(), quer, "sem resposta, None; sem rodar, False")
 
 
 RAIZ = Path(__file__).resolve().parent.parent

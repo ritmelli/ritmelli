@@ -136,7 +136,8 @@ begin
   if P > 0 then
     Insert(Aviso + #13#10#13#10, Texto, P)
   else
-    Texto := TrimRight(Texto) + #13#10#13#10 + Aviso;
+    // o texto de reiniciar: a linha em branco do fim, antes das opcoes de reiniciar, volta depois do aviso
+    Texto := TrimRight(Texto) + #13#10#13#10 + Aviso + #13#10;
   WizardForm.FinishedLabel.Caption := Texto;
   WizardForm.AdjustLabelHeight(WizardForm.FinishedLabel);
   Desce := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height - Antes;
