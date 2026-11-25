@@ -1990,6 +1990,10 @@ def build(app_state):
             resp.del_cookie(par.COOKIE_VELHO, path="/")
         return resp
 
+    def marca():
+        # o "mock": true do /api/state, tambem no 401: as ferramentas de dev/ (dev/so_mock.py) so falam com o --mock
+        return {"mock": True} if A.mock else {}
+
     @web.middleware
     async def guard(request, handler):
         # Host fixo (DNS rebinding) e Origin conhecida em escrita (CSRF). Da rede de casa, a API so
@@ -2017,7 +2021,7 @@ def build(app_state):
                 return web.json_response({
                     "ok": False, "parear": True, "desconectado": bool(chave),
                     "error": i18n.msg("server.pair.required", "This phone isn't connected to Ritmelli. On the "
-                                      "computer, click Phone and scan the QR code.")}, status=401)
+                                      "computer, click Phone and scan the QR code."), **marca()}, status=401)
         try:
             resp = await handler(request)
         except web.HTTPException:
@@ -2036,7 +2040,7 @@ def build(app_state):
     @r.get("/api/state")
     async def state(_):
         return web.json_response({**A.snapshot(), "pos": round(E.pos, 2),
-                                  "levels": dict(E.levels)})
+                                  "levels": dict(E.levels), **marca()})
 
     @r.get("/api/onda/{iid}")
     async def onda(request):

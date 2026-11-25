@@ -5,9 +5,10 @@ referencia. E o gate da passagem do PC para pixel art: o celular tem que sair id
     python dev/compara.py           (depois: tira de novo e compara; sai 1 se algo mudou)
         [--pasta logs/compara] [--sizes 390x844@3,360x780@2.625] [--wait 0.6] [--lang pt_BR]
 
-Sobe o proprio servidor (server.py --mock numa porta livre) com uma prateleira de mentira, sempre a mesma,
-e os dados numa pasta temporaria (com a LOCALAPPDATA trocada: o Ritmelli de verdade nem fica sabendo). Os
-prints saem pelo Chrome headless, como no dev/shot.py, na densidade de tela de cada celular (o @ do
+Sobe o proprio servidor (server.py --mock numa porta livre, pelo dev/so_mock.py: nunca a 8799, nem uma porta em que
+alguem ja responde, e so manda pedido a ele enquanto ele esta vivo e responde como --mock) com uma prateleira de
+mentira, sempre a mesma, e os dados numa pasta temporaria (com a LOCALAPPDATA trocada: o Ritmelli de verdade nem fica
+sabendo). Os prints saem pelo Chrome headless, como no dev/shot.py, na densidade de tela de cada celular (o @ do
 tamanho). Para o mesmo tema dar o mesmo print toda vez:
 - as capas sao desenhos em data: URI e as fontes moram no tema (themes/ritmelli/fonts/; o bloqueio do
   Google Fonts fica de guarda, caso alguma volte a apontar para la): nada vem da internet;
@@ -41,7 +42,9 @@ import websockets
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fitcheck import CHROME, fecha_chrome, free_port  # noqa: E402
+import so_mock  # noqa: E402
+from fitcheck import CHROME, fecha_chrome  # noqa: E402
+from so_mock import free_port  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
 # o celular pequeno, o de sempre, o grande e o tablet em pe (abaixo de 900 px tambem e o layout do celular)
@@ -121,6 +124,8 @@ def prateleira():
 
 
 def sobe_servidor(tmp, porta, log):
+    """O servidor --mock na porta, com a prateleira de mentira: o so_mock.Filho dele. Sai antes de qualquer pedido se a
+    porta e a 8799, se alguem ja responde nela ou se quem responde nao e o filho vivo com o "mock": true."""
     dados, lib = tmp / "dados", tmp / "local" / "Ritmelli" / "library"
     dados.mkdir(parents=True)
     lib.mkdir(parents=True)
@@ -132,52 +137,42 @@ def sobe_servidor(tmp, porta, log):
         w.setframerate(8000)
         w.writeframes(bytes(2 * 8000 * dur))
     # sys.executable e o python de verdade: o "python" do PATH, com a LOCALAPPDATA trocada, instalaria outro
-    srv = subprocess.Popen([sys.executable, str(RAIZ / "server.py"), "--mock", "--no-browser", "--port", str(porta),
-                            "--data-dir", str(dados)], cwd=RAIZ, stdout=log, stderr=subprocess.STDOUT,
-                           env=dict(os.environ, LOCALAPPDATA=str(tmp / "local")))
-    for _ in range(300):
-        if srv.poll() is not None:
-            sys.exit(f"o servidor de teste nao subiu (ver {log.name})")
-        try:
-            api(porta, "GET", "/api/state")
-            return srv
-        except OSError:
-            time.sleep(0.1)
-    srv.kill()
-    sys.exit(f"o servidor de teste nao respondeu em 30 s (ver {log.name})")
-
-
-def para_servidor(srv, porta):
     try:
-        api(porta, "POST", "/api/shutdown")
-        srv.wait(10)
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        srv.kill()
-        srv.wait()
+        return so_mock.sobe([sys.executable, str(RAIZ / "server.py"), "--mock", "--no-browser", "--port", str(porta),
+                             "--data-dir", str(dados)], porta, cwd=RAIZ, stdout=log, stderr=subprocess.STDOUT,
+                            env=dict(os.environ, LOCALAPPDATA=str(tmp / "local")))
+    except so_mock.Recusa as ex:
+        sys.exit(f"{ex} (ver {log.name})")
 
 
-def api(porta, metodo, rota, corpo=None):
-    req = urllib.request.Request(f"http://127.0.0.1:{porta}{rota}", method=metodo,
-                                 data=None if corpo is None else json.dumps(corpo).encode(),
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return json.load(r)
+def para_servidor(srv):
+    """O /api/shutdown so ao filho vivo que responde como --mock; se nao, o handle dele."""
+    srv.encerra()
 
 
-def monta_tocando(porta):
-    """O disco pausado no meio, um efeito ligado e dois discos na fila."""
-    ef = next(e["id"] for e in api(porta, "GET", "/api/effects") if e["grupo"])
-    api(porta, "POST", "/api/settings", {"effect": ef})
-    api(porta, "POST", "/api/play", {"id": NO_PRATO, "start": PAUSA_EM})
+def monta_tocando(srv):
+    """O disco pausado no meio, um efeito ligado e dois discos na fila. Cada pedido confere antes o filho e o marcador
+    (so_mock.Filho.api); se a conferencia falha, so o filho sai."""
+    try:
+        _monta_tocando(srv.api)
+    except so_mock.Recusa as ex:
+        srv.mata()
+        sys.exit(f"o cenario tocando parou: {ex}")
+
+
+def _monta_tocando(api):
+    ef = next(e["id"] for e in api("GET", "/api/effects") if e["grupo"])
+    api("POST", "/api/settings", {"effect": ef})
+    api("POST", "/api/play", {"id": NO_PRATO, "start": PAUSA_EM})
     for _ in range(100):
-        if api(porta, "GET", "/api/state")["status"] == "playing":
+        if api("GET", "/api/state")["status"] == "playing":
             break
         time.sleep(0.1)
-    api(porta, "POST", "/api/pause")
-    api(porta, "POST", "/api/seek", {"t": PAUSA_EM})
+    api("POST", "/api/pause")
+    api("POST", "/api/seek", {"t": PAUSA_EM})
     for iid in NA_FILA:
-        api(porta, "POST", "/api/queue", {"id": iid})
-    s = api(porta, "GET", "/api/state")
+        api("POST", "/api/queue", {"id": iid})
+    s = api("GET", "/api/state")
     if s["status"] != "paused" or len(s["queue"]) != len(NA_FILA):
         sys.exit(f"o cenario tocando nao montou: status {s['status']}, {len(s['queue'])} na fila")
 
@@ -233,7 +228,7 @@ def diferenca(pa, pb, arquivo):
     return m
 
 
-async def prints(a, porta, destino):
+async def prints(a, srv, destino):
     instaveis = []
     prof = tempfile.mkdtemp(prefix="sbcomp_")
     cport = free_port()
@@ -281,14 +276,14 @@ async def prints(a, porta, destino):
 
             for cenario in ("vazio", "tocando"):
                 if cenario == "tocando":
-                    monta_tocando(porta)
+                    monta_tocando(srv)
                 for sz in a.sizes.split(","):
                     tam, dpr = sz.split("@")
                     w, h = map(int, tam.split("x"))
                     pre = f"{cenario}-{tam}"
                     await c.cmd("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=float(dpr),
                                 mobile=True)
-                    await c.cmd("Page.navigate", url=f"http://127.0.0.1:{porta}/t/ritmelli/?lang={a.lang}")
+                    await c.cmd("Page.navigate", url=f"{srv.base}/t/ritmelli/?lang={a.lang}")
                     for _ in range(200):
                         await asyncio.sleep(0.1)
                         try:
@@ -380,9 +375,9 @@ def main():
     with open(pasta / "servidor.log", "w", encoding="utf-8") as log:
         srv = sobe_servidor(tmp, porta, log)
         try:
-            erros, instaveis = asyncio.run(prints(a, porta, destino))
+            erros, instaveis = asyncio.run(prints(a, srv, destino))
         finally:
-            para_servidor(srv, porta)
+            para_servidor(srv)
             shutil.rmtree(tmp, ignore_errors=True)
     for e in erros:
         print(f"ERRO   {e}")

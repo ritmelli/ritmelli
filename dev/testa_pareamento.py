@@ -9,8 +9,8 @@ time.monotonic dele trocado aqui) e o celulares.json numa pasta temporaria:
 - o outro_codigo invalida o anterior.
 
 E o guard do servidor de verdade (server.build), com pedidos que chegam de um IP da rede de casa: sem a chave, uma rota
-que muda alguma coisa e recusada; com ela, passa. Essa parte precisa das bibliotecas do app (o aiohttp): a esteira roda
-este teste antes de instalar, e ela fica de fora.
+que muda alguma coisa e recusada; com ela, passa. No --mock, o 401 traz o "mock": true das ferramentas de dev/. Essa
+parte precisa das bibliotecas do app (o aiohttp): a esteira roda este teste antes de instalar, e ela fica de fora.
 
     python dev/testa_pareamento.py
 
@@ -156,7 +156,7 @@ async def guard_do_servidor():
         import server
     lan, porta, celular, pc = "192.168.0.10", 8799, "192.168.0.50", "127.0.0.1"
     with tempfile.TemporaryDirectory() as tmp:
-        A = types.SimpleNamespace(engine=None, port=porta, lan_ip=lan,
+        A = types.SimpleNamespace(engine=None, port=porta, lan_ip=lan, mock=False,
                                   celulares=par.Pareamento(Path(tmp) / "celulares.json"),
                                   metricas=types.SimpleNamespace(erro=lambda *a, **k: None))
         app = server.build(A)
@@ -199,6 +199,12 @@ async def guard_do_servidor():
                 f"sem a chave, uma rota que muda o Ritmelli e recusada ({resp.status}), e pede o pareamento")
         resp, chegou = await manda(pedido("GET", "/api/state"))
         confere(resp.status == 401 and not chegou, "sem a chave, nem o estado ele le")
+        confere("mock" not in corpo(resp), "fora do --mock, o 401 nao traz o \"mock\"")
+        A.mock = True
+        resp, chegou = await manda(pedido("GET", "/api/state"))
+        confere(resp.status == 401 and corpo(resp).get("mock") is True and corpo(resp).get("parear") and not chegou,
+                "no --mock, o 401 traz o \"mock\": true (dev/so_mock.py) e segue pedindo o pareamento")
+        A.mock = False
         for metodo, caminho in (("GET", "/api/pareamento"), ("POST", "/api/pareamento/codigo"),
                                 ("DELETE", "/api/pareamento/abc")):
             resp, chegou = await manda(pedido(metodo, caminho))

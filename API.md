@@ -79,6 +79,8 @@ reconecta sozinho; mostre que está reconectando.
  "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou Mensagem}}
 ```
 - `versao` = a versão do servidor (`versao.py`), para mostrar na tela.
+- `mock` = `true` só no servidor `--mock` (as ferramentas de `dev/` só falam com ele, `dev/so_mock.py`); o de
+  verdade não manda o campo.
 - `atualizacao` = a versão nova (ver "Versão nova"): `nova` é o número dela, ou `null`;
   `estado` é `parado`, `consultando`, `baixando`, `pronta` (o instalador baixado e conferido) ou
   `instalando`; `progresso` vai de 0 a 1 no download; `automatica: true` quando quem atualiza é a
@@ -334,7 +336,8 @@ visor.
 O PC (quem fala pelo `127.0.0.1`) usa tudo. Pela rede de casa, as páginas dos temas, a
 galeria e o `GET /api/themes` abrem para qualquer um, mas o resto da API responde **401**
 `{"ok": false, "parear": true, "desconectado": bool, "error": Mensagem}` até o celular parear;
-`desconectado` diz que ele mandou uma chave que não vale mais (o PC desconectou). O
+`desconectado` diz que ele mandou uma chave que não vale mais (o PC desconectou); no `--mock`, vem
+também `"mock": true`. O
 `/api/events` também responde 401, e o `EventSource` não mostra o status: quando ele fecha de
 vez, peça o `/api/state` para saber se é o 401.
 

@@ -380,8 +380,9 @@ them, in the blocks that start at `DECK-JS-INICIO`, `MIX-JS-INICIO` and `PEDAL-J
 `dev/fitcheck.py` checks the layout at several window and phone sizes, and `dev/shot.py` takes a screenshot. Both
 need the development packages (`requirements-dev.txt`) and drive Google Chrome from its default install folder,
 `C:\Program Files\Google\Chrome\Application\chrome.exe`. A Chrome installed only for your user, in `%LOCALAPPDATA%`,
-isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. If the server would still show
-the welcome screen, both close it first, as **Get started** does (the server then remembers it as seen). With
+isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. Both only talk to a `--mock`
+server: they refuse port 8799 and any server whose `/api/state` doesn't say `"mock": true`. If the server would still
+show the welcome screen, both close it first, as **Get started** does (the server then remembers it as seen). With
 `--boas-vindas`, `fitcheck.py` checks the welcome screen itself at every size and `shot.py` captures it. Leave the
 `--mock` server running and, in a second terminal at the repository root, activate the virtual environment, install
 the development packages once and run them:
