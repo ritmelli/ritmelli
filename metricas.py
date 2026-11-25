@@ -129,8 +129,8 @@ def limpa(txt):
 
 # os modulos do Ritmelli: a linha da pilha num deles e "do app" (o Sentry agrupa e destaca por ela, e o filtro da
 # conexao fechada pelo outro lado, abaixo, deixa passar). O dev/testa_metricas.py confere que nenhum ficou de fora
-NOSSOS = {"andamento", "atualizacao", "atualizador", "batida", "compasso", "conversor", "engine", "fx", "i18n",
-          "janela", "metricas", "microfone", "migra", "pareamento", "pastas", "permissao", "pista", "pistavoz",
+NOSSOS = {"andamento", "atualizacao", "atualizador", "batida", "comandos", "compasso", "conversor", "engine", "fx",
+          "i18n", "janela", "metricas", "microfone", "migra", "pareamento", "pastas", "permissao", "pista", "pistavoz",
           "ritmelli", "server", "sonoridade", "transicao", "versao", "winvol", "yt_erros", "yt_fora"}
 
 
