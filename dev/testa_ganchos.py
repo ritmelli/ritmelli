@@ -473,6 +473,12 @@ NOT_REACHES = [
 ]
 KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/232"
 KNOWN_MISSES = [
+    ("set by setattr in a loop over a module tuple",
+     "NAMES = ('_x',)\n\n\nclass Owner:\n    def __init__(self):\n        for k in NAMES:\n"
+     "            setattr(self, k, 0)\n",
+     "o._x\n"),
+    ("a tuple extended after it is assigned",
+     "def f(o):\n    names = ('y',)\n    names += ('_x',)\n    for k in names:\n        getattr(o, k)\n"),
     ("a key stored into the dictionary after it is assigned",
      "def f(o):\n    names = {'y': 1}\n    names['_x'] = 2\n    for k in names:\n        getattr(o, k)\n"),
     ("the name in a variable", "def f(o):\n    n = '_x'\n    return getattr(o, n)\n"),
@@ -500,8 +506,8 @@ for label, owner, other in NOT_REACHES:
     if case_reaches(owner, other):
         print(f"FAIL  the ratchet counts this as a reach: {label}")
         cases_failed = True
-for label, other in KNOWN_MISSES:
-    if case_reaches(OWNER, other):
+for label, *sources in KNOWN_MISSES:
+    if case_reaches(*sources) if len(sources) == 2 else case_reaches(OWNER, *sources):
         print(f"FAIL  the ratchet now counts this reach: {label}; move it from KNOWN_MISSES to CAUGHT and update "
               f"{KNOWN_MISSES_ISSUE}")
         cases_failed = True
