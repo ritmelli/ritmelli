@@ -886,9 +886,9 @@ class App:
                 tr = e.track
                 return (tr is not None and tr.get("job") == j["id"]
                         and (not tr.get("path") or e.esperando_arquivo()))
-            tr = e.track  # a cheap look first: an unrelated download doesn't wait for the engine's lock
-            if tr is not None and tr.get("job") == j["id"]:
-                e.stop(pode=no_source)  # sem stream e sem arquivo: o prato nao fica carregando para sempre
+            # the only decision is under the engine's lock: a swap that holds it and is about to put this job's record
+            # on the platter is seen once it publishes (a look before the lock would see the record of before)
+            e.stop(pode=no_source)  # sem stream e sem arquivo: o prato nao fica carregando para sempre
 
     # tocar ----------------------------------------------------------------
     def remember_pos(self, cap=None, pausa=None):
@@ -1217,19 +1217,19 @@ class App:
                 return "anterior"
         return None
 
-    def _fecha_viradas(self, sob=None):
+    def _fecha_viradas(self, read=None):
         """Com fila_lock: a virada que o motor ja confirmou e o vigia ainda nao conciliou fecha agora
         (comandos.concilia), antes de mexer no historico, e, no mesmo trecho do _qlock em que nao ha mais virada, a
         passagem preparada sai; ate soltar a fila_lock, o motor nao vira de novo (a preparacao nova publica sob a
-        fila_lock, _prepara). sob(): what to read in that same stretch of the _qlock (the Anterior); returns it."""
+        fila_lock, _prepara). read(): what to read in that same stretch of the _qlock (the Anterior); returns it."""
         e = self.engine
 
-        def sem_virada(v):
+        def no_switch(v):
             if v is not None:
                 return cmd.FECHA
             e.drop_prepared()
-            return sob() if sob is not None else None
-        return cmd.concilia(self, sem_virada)
+            return read() if read is not None else None
+        return cmd.concilia(self, no_switch)
 
     def _solta_reserva(self, r, entrada):
         """Com fila_lock: a reserva de avanco r resolvida (a entrada que tocou, ou None), liberando quem espera, e os
@@ -2248,7 +2248,7 @@ def build(app_state):
         if ruim:  # antes de mudar qualquer coisa
             return j_err(i18n.so_texto(f"The {ruim} must be a number from 0 to 1."))
         if "vol" in vols:
-            cmd.volume(A, vols.pop("vol"), grava=False)  # the music volume's rule; save_cfg writes it below
+            cmd.volume(A, vols.pop("vol"), save=False)  # the music volume's rule; save_cfg writes it below
         for k, v in vols.items():
             setattr(E, k, v)
         if "mic_vol" in b:

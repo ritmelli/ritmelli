@@ -306,17 +306,18 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 ### Dois Próximos juntos
 
 O `POST /api/next` que roda enquanto outro ainda corre divide o avanço dele: os dois tocam uma entrada só e respondem a
-mesma. O que conta é quando cada comando roda (no executor do servidor), não quando o pedido chegou: a janela vai de
-quando o comando do primeiro começa até ele terminar, depois de gravar a posição do disco que saiu. A resposta dele sai
-logo depois, e o comando que só roda depois disso já é um Próximo novo. Ela vale enquanto o prato segue na linha do
-primeiro: o mesmo disco, sem pulo na barra, ou a linha que o avanço dele acabou de publicar. Fora dela, o segundo avança
-sozinho, como um Próximo novo ("depois de o comando do primeiro terminar", abaixo). O segundo que divide o avanço
-espera o resultado dele até 5 s; se ainda não saiu, responde 409:
+mesma. O que conta é quando cada comando roda (no executor do servidor), não quando o pedido chegou: a janela abre
+quando o primeiro registra o grupo dos Próximos (logo no começo do comando) e fecha quando ele o retira, ao terminar,
+depois de gravar a posição do disco que saiu. A resposta dele sai logo depois, e o comando que só roda depois disso já é
+um Próximo novo. Ela vale enquanto o prato segue na linha do primeiro: o mesmo disco, sem pulo na barra, ou a linha que
+o avanço dele acabou de publicar. Fora dela, o segundo avança sozinho, como um Próximo novo ("depois de o comando do
+primeiro terminar", abaixo). O segundo que divide o avanço espera o resultado dele até 5 s; se ainda não saiu, responde
+409:
 
 | o segundo roda | o prato entre os dois | o primeiro responde | o segundo responde |
 |---|---|---|---|
-| antes de o primeiro reservar o avanço | nada mudou | a primeira da fila | a mesma |
-| antes de o primeiro reservar o avanço | parou | 409 | a primeira da fila, que toca no prato parado |
+| depois de o primeiro abrir o grupo, antes de ele reservar o avanço | nada mudou | a primeira da fila | a mesma |
+| depois de o primeiro abrir o grupo, antes de ele reservar o avanço | parou | 409 | a primeira da fila, que toca no prato parado |
 | com o primeiro trocando o disco | não muda: a troca segura o motor | a primeira da fila | a mesma |
 | com o primeiro gravando a posição | nada mudou | a primeira da fila | a mesma, na hora |
 | com o primeiro gravando a posição | parou, pulou na barra ou trocou de disco | a primeira da fila | a seguinte, que ele toca |

@@ -1003,6 +1003,32 @@ def bloco(A, E):
     confere(no_prato(E) == "d1" and E.status() == "playing" and j["status"] == "error",
             f"the platter swapped right before the stop: the failed download leaves the new record playing "
             f"({no_prato(E)}, {E.status()}, {j['status']})")
+    # the other way round: a swap holds the engine's lock and is about to put this job's record on the platter when
+    # the download fails; the stop waits for the lock and then sees the job's record, so it doesn't stay loading
+    toca("d1")
+    j = A.new_job("failing", True, "eeeeeeeeeee")
+    job_track = {"id": "job-falha3", "title": "loading", "job": j["id"], "path": None, "stream": True,
+                 "youtube_id": None, "duration": None, "lufs": -14.0}
+    real_stop, calling = E.stop, threading.Event()
+
+    def stop_called(*a, **kw):
+        calling.set()
+        return real_stop(*a, **kw)
+
+    def failing_download():
+        with (mock.patch.object(A, "download", side_effect=RuntimeError("boom")),
+              contextlib.redirect_stderr(io.StringIO())):
+            A.run_download(j, "eeeeeeeeeee")
+    with mock.patch.object(E, "stop", side_effect=stop_called):
+        with E._lock:  # the swap in the middle (espera takes the same RLock again)
+            td, _ = em_thread(failing_download)
+            ate(lambda: calling.is_set() or not td.is_alive())
+            td.join(0.2)
+            E.espera(job_track)
+        td.join(5)
+    confere(not td.is_alive() and E.track is None and j["status"] == "error",
+            f"a swap that publishes the job's record while the download fails: the stop sees it and the platter "
+            f"doesn't stay loading ({no_prato(E)}, {E.status()}, {j['status']})")
 
     # o leitor de uma linha que ja acabou nao marca o fim nem o erro da linha nova
     toca("d1")

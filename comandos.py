@@ -214,25 +214,25 @@ def limpar_fila(A):
     A.limpar_fila()
 
 
-def concilia(A, sob, fechou=None):
+def concilia(A, under, closed=None):
     """With the fila_lock: the one loop that reconciles the switch the engine already made on its own (the DJ
-    transition) with the queue. Each round runs sob(v) under the engine's _qlock, with v the pending switch (None
-    without one): sob returns FECHA (only with a v) to take v out of the engine in that same stretch and close it
+    transition) with the queue. Each round runs under(v) under the engine's _qlock, with v the pending switch (None
+    without one): under returns FECHA (only with a v) to take v out of the engine in that same stretch and close it
     (fecha_virada, with the _qlock released and the fila_lock still held), or anything else, which concilia returns.
-    fechou(x), with the entry of the switch just closed (None if it had already left the queue), returns FECHA to go
+    closed(x), with the entry of the switch just closed (None if it had already left the queue), returns FECHA to go
     round again, or the result. Since the switch leaves the engine under the fila_lock, only one caller reconciles each
     one, and the state read (App.leitura) sees the switch and its entry together, or neither."""
     E = A.engine
     while True:
         with E._qlock:
             v = E.virou
-            r = sob(v)
+            r = under(v)
             if r is not FECHA or v is None:
                 return r
             E.take_switch(v)
         x = fecha_virada(A, v)
-        if fechou is not None:
-            r = fechou(x)
+        if closed is not None:
+            r = closed(x)
             if r is not FECHA:
                 return r
 
@@ -272,7 +272,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
     E = A.engine
     if virada is not None:
         with A.fila_lock:  # only this switch: whoever comes after (the watcher, another advance) won't close it again
-            return concilia(A, lambda v: FECHA if v is virada else None, fechou=lambda x: x)
+            return concilia(A, lambda v: FECHA if v is virada else None, closed=lambda x: x)
     em_curso = r = None
     if not cede:
         # a reserva de outro ja em curso nesta linha (o vigia trocando o disco, com a fila_lock na mao): quem chega
@@ -289,7 +289,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
         if vivo:
             return r0.espera()
 
-    def reserva(v):  # under the _qlock, with the pending switch v (concilia)
+    def reserve(v):  # under the _qlock, with the pending switch v (concilia)
         nonlocal em_curso, r
         if grupo is not None and grupo.r is not None:
             em_curso = grupo.r  # o avanco que outro fez para este Proximo enquanto ele chegava (antes da virada)
@@ -322,7 +322,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
         return _SEGUE
     with A.fila_lock:
         # sem a entrada (ja saiu da fila), o Proximo segue para a primeira
-        res = concilia(A, reserva, fechou=lambda x: x if pular and x is not None else FECHA)
+        res = concilia(A, reserve, closed=lambda x: x if pular and x is not None else FECHA)
         if res is not _SEGUE:
             return res
     if em_curso is not None:
@@ -448,12 +448,12 @@ def ir_para(A, t):
     A.engine.seek(t)
 
 
-def volume(A, v, grava=True):
+def volume(A, v, save=True):
     """O volume da musica (de 0 a 1; fora disso, o limite), gravado sozinho: o resto do som fica como esta gravado.
-    grava=False: whoever calls writes it (the /api/settings saves the whole sound config right after). Volta o do
+    save=False: whoever calls writes it (the /api/settings saves the whole sound config right after). Volta o do
     motor."""
     v = max(0.0, min(1.0, float(v)))
     A.engine.vol = v
-    if grava:
+    if save:
         A.grava_cfg(vol=v)
     return A.engine.vol
