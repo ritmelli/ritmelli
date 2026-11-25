@@ -513,6 +513,7 @@ python dev\testa_metricas.py   # the anonymous usage data
 python dev\testa_migra.py      # the rename from Vitrola
 python dev\testa_mock.py       # the no-audio mode never touches real user data
 python dev\testa_pareamento.py # phone pairing: the code, wrong attempts, the key and disconnecting
+python dev\testa_grava.py      # saving the data files: two writers at once and a file another program has open
 ```
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
