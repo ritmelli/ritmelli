@@ -3,8 +3,9 @@ bisel e cantos em degrau, desenhados pixel a pixel e usados como border-image de
 
     python dev/molduras.py
 
-Grava as variaveis --mold-* no bloco entre "molduras:inicio" e "molduras:fim" do themes/ritmelli/index.html e
-do gallery/index.html (a pagina inicial, que fica fora do tema e leva so as que usa).
+Grava as variaveis --mold-* no themes/ritmelli/gerado/molduras.css (o arquivo inteiro, que o index.html do tema
+carrega por um <link>) e no bloco entre "molduras:inicio" e "molduras:fim" do gallery/index.html (a pagina inicial,
+que fica fora do tema e leva so as que usa). Rodado de novo com o mesmo desenho, nao muda nenhum dos dois.
 Cada moldura e um SVG pequeno (1 unidade = 1 ponto, shape-rendering crispEdges) com a quina
 inteira desenhada e o meio de cada lado esticado; a variavel ja leva o corte, a largura e o quanto a
 moldura sai para fora da caixa, entao no tema basta border-image: var(--mold-objeto).
@@ -38,6 +39,7 @@ from urllib.parse import quote
 
 RAIZ = Path(__file__).resolve().parent.parent
 TEMA = RAIZ / "themes" / "ritmelli" / "index.html"
+GERADO = RAIZ / "themes" / "ritmelli" / "gerado"   # o que os geradores de dev/ gravam para o tema, um arquivo cada
 GALERIA = RAIZ / "gallery" / "index.html"
 NA_GALERIA = ("objeto", "objeto-apertado", "caixa")
 CONTORNO = (26, 11, 4, 1)          # #1A0B04, o --contorno do tema
@@ -208,11 +210,27 @@ def pontos(*ns):
     return " ".join(f"calc({n} * var(--px, 1px))" if n else "0" for n in ns)
 
 
+def bloco(seletor, linhas):
+    return ("/* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */\n"
+            f"{seletor} {{\n" + "\n".join(linhas) + "\n}\n/* molduras:fim */")
+
+
+def grava_arquivo(arquivo, texto):
+    """Um arquivo do GERADO, inteiro: so escreve se mudou (rodar de novo nao mexe no arquivo). Diz se mudou."""
+    try:
+        if arquivo.read_text(encoding="utf-8") == texto:
+            return False
+    except FileNotFoundError:
+        arquivo.parent.mkdir(parents=True, exist_ok=True)
+    arquivo.write_text(texto, encoding="utf-8", newline="\n")
+    return True
+
+
 def grava(arquivo, seletor, linhas):
-    bloco = ("/* molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui) */\n"
-             f"{seletor} {{\n" + "\n".join(linhas) + "\n}\n/* molduras:fim */")
+    """O bloco entre as marcas num arquivo que tem mais coisa (o gallery/index.html). Diz se mudou."""
+    novo_bloco = bloco(seletor, linhas)
     txt = arquivo.read_text(encoding="utf-8")
-    novo, n = re.subn(r"^/\* molduras:inicio.*?/\* molduras:fim \*/", lambda _: bloco, txt, flags=re.S | re.M)
+    novo, n = re.subn(r"^/\* molduras:inicio.*?/\* molduras:fim \*/", lambda _: novo_bloco, txt, flags=re.S | re.M)
     if n != 1:
         sys.exit(f"bloco molduras:inicio/fim nao encontrado em {arquivo.name} (ou repetido)")
     if novo != txt:
@@ -237,7 +255,7 @@ def main():
         linhas[nome] = (f'  --mold-{nome}: url("{uri}") {prof} {prof} {baixo} {prof} / {pontos(prof, prof, baixo, prof)} / '
                         f"{pontos(sai, sai, sai_b, sai)} stretch;")
     # fora do bloco do celular: as molduras valem nas duas telas
-    mudou = grava(TEMA, ":root", list(linhas.values()))
+    mudou = grava_arquivo(GERADO / "molduras.css", bloco(":root", list(linhas.values())) + "\n")
     mudou |= grava(GALERIA, ":root", [linhas[n] for n in NA_GALERIA])
     print(f"{len(MOLDURAS)} molduras, {sum(map(len, linhas.values()))} caracteres" + ("" if mudou else " (sem mudanca)"))
 
