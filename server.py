@@ -6,6 +6,8 @@ propria (janela.py), ou no navegador sem o WebView2; --no-browser nao abre nenhu
     python server.py [--port 8799] [--no-browser] [--so-local]
     python server.py --mock --port 8801 [--data-dir <pasta>]   (sem som, pra testar tema; sem --data-dir, uma copia
                                                                da prateleira numa pasta temporaria)
+    python server.py --mock --port 8801 --papel-local celular  (o http://127.0.0.1:8801 faz o papel do celular da
+                                                               rede de casa; o http://localhost:8801 segue o PC)
 """
 import argparse
 import asyncio
@@ -616,12 +618,16 @@ class Library:
 
 
 class App:
-    def __init__(self, port, data_dir, mock=False, metricas_teste=False, vigias=True, relogio=True):
+    def __init__(self, port, data_dir, mock=False, metricas_teste=False, vigias=True, relogio=True, papel_local="pc"):
         """vigias=False e relogio=False sao dos testes (dev/testa_comandos.py): sem as threads dos vigias (quem testa
         chama cada volta, _volta_fila, _volta_passagem e _volta_auto, a mao) e, no --mock, sem o relogio de 10 ms do
-        MockEngine (quem testa chama o engine._mixa)."""
+        MockEngine (quem testa chama o engine._mixa). papel_local="celular" e o --papel-local celular, so no --mock:
+        o Host 127.0.0.1:<porta> passa pelo pareamento como o celular da rede de casa (o guard do build)."""
+        if papel_local != "pc" and not mock:
+            raise ValueError("papel_local only works with mock")
         self.port = port
         self.mock = mock
+        self.papel_local = papel_local
         data_dir.mkdir(parents=True, exist_ok=True)
         self.cfg_path = data_dir / "config.json"
         lib_json = data_dir / "library.json"
@@ -2113,10 +2119,14 @@ def build(app_state):
     E = A.engine
     loop_ = asyncio.get_running_loop
     locais = {f"127.0.0.1:{A.port}", f"localhost:{A.port}"}
+    # no --papel-local celular (so no --mock), quem pede pelo Host 127.0.0.1:<porta> faz o papel do celular da rede de
+    # casa: o cookie do pareamento, o 401 e a revogacao, como de outro aparelho. O localhost:<porta>, com os cookies
+    # separados no navegador, segue o PC
+    celular_local = f"127.0.0.1:{A.port}" if A.mock and A.papel_local == "celular" else None
 
     def do_pc(request):
         # pelo endereco de quem conectou: o Host quem pede escreve o que quiser
-        return request.remote in ("127.0.0.1", "::1")
+        return request.remote in ("127.0.0.1", "::1") and request.host != celular_local
 
     def com_chave(resp, chave, velho=False):
         resp.set_cookie(par.COOKIE, chave, max_age=par.COOKIE_S, path="/", httponly=True, samesite="Strict")
@@ -2745,9 +2755,10 @@ def build(app_state):
             caminho = "/"
         out = {"url": None, "codigo": None, "vale_s": 0, "queimado": False, "qr": None,
                "celulares": A.celulares.publico()}
-        if A.lan_ip:
+        ip = A.lan_ip or ("127.0.0.1" if celular_local else None)  # o --papel-local celular pareia pelo 127.0.0.1
+        if ip:
             codigo, vale_s = A.celulares.codigo_atual()
-            out.update(url=f"http://{A.lan_ip}:{A.port}{caminho}", codigo=codigo, vale_s=vale_s,
+            out.update(url=f"http://{ip}:{A.port}{caminho}", codigo=codigo, vale_s=vale_s,
                        queimado=codigo is None)
             if codigo:
                 out["qr"] = par.qr(f"{out['url']}?parear={codigo}")
@@ -2894,6 +2905,9 @@ def main():
     ap.add_argument("--data-dir", help="where library.json and config.json live (default: the user's; with --mock, a "
                                        "new temporary folder, never the user's)")
     ap.add_argument("--so-local", action="store_true", help="don't serve the home network (phone)")
+    ap.add_argument("--papel-local", choices=("celular",),
+                    help="with --mock: 'celular' makes http://127.0.0.1:<port> act as a phone on the home network "
+                         "(pairing, cookie, revoking); http://localhost:<port> stays the computer")
     ap.add_argument("--metricas-teste", action="store_true",
                     help="with --mock: the usage data notice and choice work, but nothing is read from the installer "
                          "and nothing is sent (the events stay in memory)")
@@ -2901,13 +2915,15 @@ def main():
     a = ap.parse_args()
     if a.metricas_teste and not a.mock:
         sys.exit("--metricas-teste only works with --mock")
+    if a.papel_local is not None and not a.mock:
+        sys.exit("--papel-local only works with --mock")
     dados = Path(a.data_dir) if a.data_dir else LIB
     if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
         dados = pastas.dados_do_mock(a.data_dir)
         if dados is None:
             sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
                      "temporary copy")
-    A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste)
+    A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste, papel_local=a.papel_local or "pc")
     if not a.mock:  # no --mock, o processo do YouTube so abre no primeiro pedido de quem testa (#128)
         threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
@@ -2915,6 +2931,9 @@ def main():
     url = f"http://127.0.0.1:{a.port}{pastas.PAGINA}"
     print(f"Ritmelli {VERSAO} at {url}{' (MOCK, no sound)' if a.mock else ''} | data in {dados if a.mock else pastas.DADOS}",
           flush=True)
+    if a.papel_local == "celular":
+        print(f"phone role: http://127.0.0.1:{a.port} pairs like a phone; the computer is "
+              f"http://localhost:{a.port}{pastas.PAGINA}", flush=True)
     # a janela propria (janela.py, #99), quando o WebView2 esta no PC; senao, a pagina no navegador, como antes.
     # --no-browser (a atualizacao reabrindo, os testes) nao abre nenhuma das duas
     if not a.no_browser:
