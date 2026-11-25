@@ -274,7 +274,6 @@ def resultado_repetido(guardados, cmd):
 
 CAMPOS_FAIXA = ("id", "title", "channel", "duration", "youtube_id", "thumb")
 CAMPOS_FILA = ("qid", "id", "title", "channel", "duration", "youtube_id", "thumb")
-PARADAS = ("paused", "buffering", "ended")  # as paradas que saem em ordem entre dois ticks (o stop, so no tick)
 EVENTO_DO_STATUS = {"playing": "retomada", "paused": "pausa", "buffering": "buffering", "ended": "fim",
                     "idle": "parada"}
 TEXTO_MAX, CAPA_MAX, FILA_MAX, DURACAO_MAX = 400, 500, 500, 86400
@@ -434,7 +433,6 @@ class Produtor:
     def __init__(self, e, sim, curvas, fila):
         self.e, self.sim, self.curvas, self.fila = e, sim, curvas, fila
         self.rev, self.pub, self.msgs, self.lidas = 0, None, [], 0
-        self.parou = None  # a ultima parada lida, ate o prato andar de novo (o fim que o tick so ve depois dela)
         self.pub_c = 0  # a amostra consumida do prato no instante da ancora publicada
         self.pub_deck = None  # o deck dela
 
@@ -443,10 +441,13 @@ class Produtor:
 
     def status(self):
         """O do motor, com a fila vazia e o fim do disco lido ja como o fim: o motor so diz ended no callback
-        seguinte, mas o prato parou ali."""
+        seguinte, mas o prato parou ali. Com a virada no callback seguinte (a proxima com blocos, ou o _virar_em ja
+        alcancado, como no _mixa), o prato nao para: segue playing."""
         e = self.e
         st = e.status()
-        return "ended" if st == "playing" and not e._q and e._eof_gen == e._gen else st
+        vira = e._pronto is not None and not e.paused and (
+            bool(e._pronto.q) or (e._virar_em is not None and e.pos >= e._virar_em))
+        return "ended" if st == "playing" and not e._q and e._eof_gen == e._gen and not vira else st
 
     def ancora(self, u, pos=None, recua=0, anda=None):
         e = self.e
@@ -502,10 +503,6 @@ class Produtor:
                                                 "origem": ev if ev in ("inicio", "reconexao") else "mudanca",
                                                 "agora": ms(u), "estado": p}})
 
-    def _marcas(self, u, tipo):
-        """As marcas desde o tick de antes, na ordem em que o callback anotou (a do bloco do tick vem depois dele)."""
-        return [m for m in self.sim.marcas[self.lidas:] if m["tipo"] == tipo]
-
     def _fronteiras(self, u, base, ate=None):
         """Cada fronteira que o prato cruzou desde a ancora publicada ate a amostra ate (por padrao, agora), em ordem: a
         ancora no instante dela. Com o prato seguindo igual, a janela da fila e refeita dali; antes de uma quebra (outro
@@ -523,27 +520,20 @@ class Produtor:
 
     def olha(self, u, reconexao=False):
         p = self.projecao(u)
-        if self.pub is None or reconexao:  # a ancora de agora: a parada de antes ja esta nela
-            self.lidas, self.parou = len(self.sim.marcas), None
+        if self.pub is None or reconexao:  # a ancora de agora: as marcas de antes ja estao nela
+            self.lidas = len(self.sim.marcas)
             return self._publica("reconexao" if reconexao else "inicio", p, u)
-        paradas_todas = self._marcas(u, "para")
-        anda = self._marcas(u, "anda")
-        self._le_paradas()
-        self._transicoes(u, p, sorted([m for m in paradas_todas if m["status"] in PARADAS] + anda,
-                                      key=lambda m: m["u"]))
-        # depois delas, as fronteiras ate a parada que segue (o stop) ou ate a quebra que o tick ja ve
+        # as marcas desde o tick de antes, na ordem em que o callback anotou (a do bloco do tick vem depois dele)
+        self._transicoes(u, p, self.sim.marcas[self.lidas:])
         velha = self.pub["ancora"]
-        quebras = [m["u"] for m in paradas_todas if m["status"] not in PARADAS
-                   and (velha is None or m["u"] >= self._u(velha))]
-        if velha is not None and velha["anda"] and (
-                p["status"] != "playing" or id(self.e._deck) != self.pub_deck
-                or (p["faixa"] or {}).get("id") != velha["faixa"]
-                or abs(posicao(velha, ms(u)) - p["ancora"]["pos"]) > MUDA_S):
-            quebras.append(u)  # o prato quebrou bem no tick: a marca do bloco dele so vem depois deste tick
-        # ate a quebra, so as estritamente antes: a fronteira bem no instante dela nao tocou
-        self._fronteiras(u, self.pub, ate=min(quebras) - 1 if quebras else u)
+        quebrou = velha is not None and velha["anda"] and (
+            p["status"] != "playing" or id(self.e._deck) != self.pub_deck
+            or (p["faixa"] or {}).get("id") != velha["faixa"]
+            or abs(posicao(velha, ms(u)) - p["ancora"]["pos"]) > MUDA_S)
+        # o prato quebrou bem no tick (a marca do bloco dele so vem depois deste tick): so as fronteiras estritamente
+        # antes, porque a bem no instante dela nao tocou
+        self._fronteiras(u, self.pub, ate=u - 1 if quebrou else u)
         ev = self.diferenca(p, u)
-        a = p["ancora"]
         c_ancora = None
         if ev == "fronteira":
             self._fronteiras(u, p)
@@ -551,23 +541,10 @@ class Produtor:
         elif ev == "projecao":  # so a projecao mudou: as fronteiras cruzadas antes, e a ancora publicada segue
             self._fronteiras(u, self.pub)
             p["ancora"], c_ancora = self.pub["ancora"], self.pub_c
-        elif (ev in ("pausa", "buffering", "fim") and a is not None and self.parou is not None
-              and self.pub["status"] == "playing" and self.parou["faixa"] == a["faixa"]
-              and self.parou["deck"] == id(self.e._deck)
-              and (self.pub["ancora"] is None or self.parou["u"] >= self._u(self.pub["ancora"]))):
-            # parado desde a hora em que o prato parou (o stop que deixa o disco; a parada que o tick so ve depois);
-            # sem marca depois da ultima retomada, o tick viu a parada antes dela, e a ancora e a de agora
-            p["ancora"] = dict(a, t=ms(self.parou["u"]))
-            self.parou = None
         self.lidas = len(self.sim.marcas)
         if ev is not None:
             self._publica(ev, p, u, c_ancora)
             self._fronteiras(u, p)  # a ancora no instante da marca: as fronteiras dela que ja tocaram, em ordem
-
-    def _le_paradas(self):
-        """A ultima parada das marcas novas, ate o prato andar de novo."""
-        for m in self.sim.marcas[self.lidas:]:
-            self.parou = m if m["tipo"] == "para" else None
 
     def _transicoes(self, u, p, marcas):
         """O que mudou desde o tick de antes, em ordem, cada coisa no instante dela: as fronteiras que o prato cruzou
@@ -578,10 +555,13 @@ class Produtor:
             if m["tipo"] == "para":
                 if self.pub["status"] != "playing":  # ja parado (a parada que o tick viu antes da marca dela)
                     continue
+                self._fronteiras(u, self.pub, ate=m["u"] - 1)
+                if m["status"] == "idle":  # o stop: o prato vazio
+                    self._publica("parada", dict(p, status="idle", faixa=None, ancora=None), u, 0)
+                    continue
                 base = self._base(p, m)
                 if base is None:
                     continue
-                self._fronteiras(u, self.pub, ate=m["u"] - 1)
                 self._publica("troca" if (self.pub["faixa"] or {}).get("id") != m["faixa"]
                               else EVENTO_DO_STATUS[m["status"]],
                               dict(base, status=m["status"], ancora={"faixa": m["faixa"], "pos": m["pos"],
@@ -610,12 +590,13 @@ class Produtor:
         return segs
 
     def _base(self, p, m):
-        """A projecao da faixa da marca: a de agora, a publicada (o disco que saiu entre dois ticks) ou, para a que
-        entrou e saiu entre os dois, a de agora com a faixa da marca, pela mesma lista de campos."""
+        """A projecao da faixa da marca: a de agora ou a publicada (o disco que saiu entre dois ticks), com a faixa como
+        ela estava na marca, pela mesma lista de campos (a que entrou e saiu entre os dois, a que trocou de fonte
+        depois); a mudanca dos campos dela sai depois, como projecao."""
         base = next((x for x in (p, self.pub) if (x["faixa"] or {}).get("id") == m["faixa"]), None)
-        if base is None and m.get("track") is not None:
-            base = dict(p, faixa=projeta({"status": "playing", "track": m["track"], "vol": VOL})["faixa"])
-        return base
+        if m.get("track") is None:
+            return base
+        return dict(base or p, faixa=projeta({"status": "playing", "track": m["track"], "vol": VOL})["faixa"])
 
     def _nova(self, m):
         """A marca que a ancora publicada nao previa: estrutural, ou o rotulo fora do que ela dizia ali. A de antes do
@@ -656,8 +637,7 @@ class Produtor:
         a = velho["ancora"]
         if a is not None:
             adiante = avanca(a, u - self._u(a))
-            if not equivalentes(adiante, p["ancora"]) and not (a["anda"] and not adiante["segmentos"]
-                                                               and not p["ancora"]["segmentos"]):
+            if not equivalentes(adiante, p["ancora"]):
                 return "mapa"
         if {k: v for k, v in velho.items() if k != "ancora"} != {k: v for k, v in p.items() if k != "ancora"}:
             return "projecao"
@@ -1606,6 +1586,7 @@ def fixture_estados():
                 fila=[dict(remota["fila"][0], job="ce14abe3")])),
             ("parado com faixa", lambda m: m["estado"].update(status="idle")),
             ("tocando com a ancora parada", lambda m: m["estado"]["ancora"].update(anda=False)),
+            ("tocando sem segmentos", lambda m: m["estado"]["ancora"].update(segmentos=[])),
             ("pausado com a ancora andando", lambda m: m["estado"].update(status="paused")),
             ("outra taxa", lambda m: m["estado"]["ancora"].update(taxa=44100)),
             ("velocidade zero", lambda m: m["estado"]["ancora"].update(segmentos=[{"n": None, "v": 0}])),
@@ -1924,8 +1905,8 @@ class Posicao(unittest.TestCase):
                 self.assertIsNotNone(s["n"], "so o ultimo segmento pode ser aberto")
             # vale do instante dela ate o da proxima foto que muda o mapa (a fronteira, a reconexao e a projecao seguem
             # com a mesma ancora): cada rotulo, por toda foto que ainda vale nele
-            prox = next((x["msg"] for x in msgs[i + 1:] if x["evento"] not in CONTINUA), None)
-            u_fim = math.inf if prox is None else _u((prox["estado"]["ancora"] or {}).get("t", prox["agora"]))
+            u_fim = min((_u((x["msg"]["estado"]["ancora"] or {}).get("t", x["msg"]["agora"]))
+                         for x in msgs[i + 1:] if x["evento"] not in CONTINUA), default=math.inf)
             self.assertLessEqual(_u(anc["t"]), u_fim, f"{nome}: rev {m['msg']['rev']} voltou no tempo")
             if len(anc["segmentos"]) == SEGMENTOS_MAX:  # cheia: so promete ate o comeco do ultimo segmento
                 u_fim = min(u_fim, _u(anc["t"]) + sum(x["n"] for x in anc["segmentos"][:-1]))
@@ -2149,6 +2130,91 @@ class Posicao(unittest.TestCase):
         vistos = [(m["evento"], _u(m["msg"]["estado"]["ancora"]["t"]) // BLOCO) for m in msgs
                   if m["msg"]["tipo"] == "estado"]
         self.assertEqual(vistos, [("inicio", 0), ("pausa", 5), ("mapa", 14), ("buffering", 21), ("retomada", 25)])
+
+    def test_stop_e_load(self):
+        """O stop e o load de outro disco entre dois ticks: o prato vazio no instante do stop, sem as voltas que o
+        disco de antes nao tocou, e a troca no primeiro bloco do novo."""
+        a = _deck("A", 0.0, 0.02)
+        um = list(a.q)
+        for _ in range(9):  # um som de 20 ms com o Repetir: uma volta a cada 2 blocos
+            a.q.extend(um)
+        a.eof_gen = -1
+        e = _motor(a)
+        sim = Sim(e)
+        b = _deck("B", 0.0, 3.0)
+
+        def stop(u):  # o stop do motor: a fila limpa e o prato sem disco
+            if u < 9 * BLOCO:
+                return False
+            with e._qlock:
+                e._q.clear()
+            e.track = None
+            return True
+
+        def load_b(u):
+            if u < 12 * BLOCO:
+                return False
+            e.track = a.track = b.track
+            e._restart(0.0)
+            with e._qlock:
+                a.q.extend(b.q)
+                a.eof_gen = a.gen
+            return True
+
+        msgs = _roda(e, sim, Produtor(e, sim, {}, lambda e_: []), 0.2, eventos=[stop, load_b])
+        vistos = [(m["evento"], m["msg"]["estado"]["status"], _u((m["msg"]["estado"]["ancora"] or {}).get(
+            "t", m["msg"]["agora"])) // BLOCO) for m in msgs if m["msg"]["tipo"] == "estado"]
+        # a volta de A no bloco 10 nao tocou: o stop no 9 vem antes
+        self.assertEqual(vistos, [("inicio", "playing", 0), ("fronteira", "playing", 2), ("fronteira", "playing", 4),
+                                  ("fronteira", "playing", 6), ("fronteira", "playing", 8), ("parada", "idle", 14),
+                                  ("troca", "playing", 12)])
+
+    def test_fim_com_a_virada_no_callback_seguinte(self):
+        """O tick entre o ultimo bloco de A e o callback que vira para B: o prato nao parou, e nao sai fim."""
+        a, b = _deck("A", 0.0, 0.1), _deck("B", 0.0, 1.0)
+        e = _motor(a, pronto=b)
+        sim = Sim(e)
+        prod = Produtor(e, sim, {}, lambda e_: [])
+        prod.olha(0)
+        for _ in range(10):
+            sim.vira()
+            sim.consome()
+        prod.olha(sim.u)  # o tick do servidor, fora da thread do som, pode cair aqui
+        sim.vira()
+        sim.consome()
+        prod.olha(sim.u)
+        self.assertEqual([m["evento"] for m in prod.msgs], ["inicio", "troca"])
+
+    def test_fonte_que_vira_arquivo(self):
+        """B entra pelo stream e vira o arquivo antes do tick seguinte: a foto da entrada leva a faixa como ela estava
+        ali, e a mudanca sai depois como projecao, com a mesma ancora."""
+        a = _deck("A", 0.0, 3.0)
+        e = _motor(a)
+        sim = Sim(e)
+        b = _deck("B", 0.0, 3.0)
+        b.track["stream"] = True
+
+        def load_b(u):
+            if u < 9 * BLOCO:
+                return False
+            e.track = a.track = b.track
+            e._restart(0.0)
+            with e._qlock:
+                a.q.extend(b.q)
+                a.eof_gen = a.gen
+            return True
+
+        def arquivo(u):  # o trocar_fonte: o disco no prato passa a ser o do arquivo, com a fila igual
+            if u < 11 * BLOCO:
+                return False
+            e.track = a.track = dict(b.track, stream=False, title="Disco B (arquivo)")
+            return True
+
+        msgs = _roda(e, sim, Produtor(e, sim, {}, lambda e_: []), 0.2, eventos=[load_b, arquivo])
+        vistos = [(m["evento"], m["msg"]["estado"]["faixa"]["stream"], m["msg"]["estado"]["faixa"]["title"],
+                   _u(m["msg"]["estado"]["ancora"]["t"]) // BLOCO) for m in msgs if m["msg"]["tipo"] == "estado"
+                  and m["evento"] != "inicio"]
+        self.assertEqual(vistos[:2], [("troca", True, "Disco B", 9), ("projecao", False, "Disco B (arquivo)", 9)])
 
     def test_repetir(self):
         _, msgs, mapa = self.confere("repetir")

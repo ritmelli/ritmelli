@@ -81,7 +81,7 @@
         },
         {
           "if": {"properties": {"status": {"const": "playing"}}},
-          "then": {"properties": {"ancora": {"properties": {"anda": {"const": true}}}}},
+          "then": {"properties": {"ancora": {"properties": {"anda": {"const": true}, "segmentos": {"minItems": 1}}}}},
           "else": {"properties": {"ancora": {"properties": {"anda": {"const": false}, "segmentos": {"maxItems": 0}}}}}
         }
       ]
