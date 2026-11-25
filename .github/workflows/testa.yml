@@ -76,7 +76,7 @@ jobs:
       - name: Testes
         id: testes
         if: ${{ !cancelled() && steps.ruff.outcome != 'skipped' }}
-        run: python dev/testa_tudo.py --sem-banca --resumo "$env:RUNNER_TEMP\resumo.md"
+        run: python dev/testa_tudo.py --without-long --resumo "$env:RUNNER_TEMP\resumo.md"
       # the protected folder on the real disk (the PASSOS of the dev/testa_tudo.py); the in-memory mode is in the STDLIB
       - name: Pasta protegida no disco
         id: disco
@@ -102,7 +102,7 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim`nlinhas<<$fim`n$linhas`n$fim" -Encoding utf8
 
-  banca:
+  bench:
     name: Banca
     if: github.event_name != 'push'
     runs-on: windows-2025
@@ -117,26 +117,65 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12.10'
-      - name: O PR mexe no motor ou na tela?
+      - name: O PR mexe no que a Banca usa?
         id: areas
         run: python dev/testa_tudo.py --areas $env:BASE
       - uses: ./.github/actions/python
-        if: steps.areas.outputs.banca == 'true'
+        if: steps.areas.outputs.bench == 'true'
         with:
           requirements: requirements-dev.txt
       - name: ffmpeg no PATH
-        if: steps.areas.outputs.banca == 'true'
+        if: steps.areas.outputs.bench == 'true'
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
       - name: Banca
-        if: steps.areas.outputs.banca == 'true'
-        run: python dev/testa_tudo.py --banca --base $env:BASE --resumo "$env:RUNNER_TEMP\resumo.md"
+        if: steps.areas.outputs.bench == 'true'
+        run: python dev/testa_tudo.py --long bench --base $env:BASE --resumo "$env:RUNNER_TEMP\resumo.md"
       - name: Resumo
         id: resumo
         if: always()
         env:
-          APLICA: ${{ steps.areas.outputs.banca }}
+          APLICA: ${{ steps.areas.outputs.bench }}
         run: |
-          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } elseif ($env:APLICA -eq 'false') { '**Banca:** não se aplica (o PR não mexe no motor nem na tela)' } else { '**Banca:** ❌ não chegou a rodar (ver a execução)' }
+          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } elseif ($env:APLICA -eq 'false') { '**Banca:** não se aplica (o PR não mexe no que a banca das passagens usa)' } else { '**Banca:** ❌ não chegou a rodar (ver a execução)' }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
+          $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
+
+  capture:
+    name: Captura
+    if: github.event_name != 'push'
+    runs-on: windows-2025
+    timeout-minutes: 25
+    outputs:
+      resumo: ${{ steps.resumo.outputs.resumo }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12.10'
+      - name: O PR mexe no que a Captura usa?
+        id: areas
+        run: python dev/testa_tudo.py --areas $env:BASE
+      - uses: ./.github/actions/python
+        if: steps.areas.outputs.capture == 'true'
+        with:
+          requirements: requirements-dev.txt
+      - name: ffmpeg no PATH
+        if: steps.areas.outputs.capture == 'true'
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
+      - name: Captura
+        if: steps.areas.outputs.capture == 'true'
+        run: python dev/testa_tudo.py --long capture --base $env:BASE --resumo "$env:RUNNER_TEMP\resumo.md"
+      - name: Resumo
+        id: resumo
+        if: always()
+        env:
+          APLICA: ${{ steps.areas.outputs.capture }}
+        run: |
+          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } elseif ($env:APLICA -eq 'false') { '**Captura:** não se aplica (o PR não mexe no que o teste da captura usa)' } else { '**Captura:** ❌ não chegou a rodar (ver a execução)' }
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
@@ -381,7 +420,7 @@ jobs:
           BASE_SHA: ${{ steps.chave.outputs.base }}
         run: |
           if ($env:GITHUB_EVENT_NAME -eq 'push') {
-            python dev/testa_tudo.py --captura "$env:RUNNER_TEMP\compara-head" --pasta "$env:RUNNER_TEMP\tela" --resumo "$env:RUNNER_TEMP\resumo.md"
+            python dev/testa_tudo.py --capture "$env:RUNNER_TEMP\compara-head" --pasta "$env:RUNNER_TEMP\tela" --resumo "$env:RUNNER_TEMP\resumo.md"
             exit $LASTEXITCODE
           }
           python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\tela" --ref-cache "$env:RUNNER_TEMP\compara-ref" --resumo "$env:RUNNER_TEMP\resumo.md"
@@ -441,7 +480,7 @@ jobs:
     name: Testa o PR
     # always(), not !cancelled(): a skipped job counts as green in the required check, and the cancelled run would pass
     if: ${{ always() }}
-    needs: [etiquetas, testes, banca, microfone, tela, compara]
+    needs: [etiquetas, testes, bench, capture, microfone, tela, compara]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -501,12 +540,14 @@ jobs:
           EXECUCAO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DO_REPO: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
           S_TESTES: ${{ needs.testes.result }}
-          S_BANCA: ${{ needs.banca.result }}
+          S_BENCH: ${{ needs.bench.result }}
+          S_CAPTURE: ${{ needs.capture.result }}
           S_MICROFONE: ${{ needs.microfone.result }}
           S_TELA: ${{ needs.tela.result }}
           S_COMPARA: ${{ needs.compara.result }}
           R_TESTES: ${{ needs.testes.outputs.resumo }}
-          R_BANCA: ${{ needs.banca.outputs.resumo }}
+          R_BENCH: ${{ needs.bench.outputs.resumo }}
+          R_CAPTURE: ${{ needs.capture.outputs.resumo }}
           R_MICROFONE: ${{ needs.microfone.outputs.resumo }}
           R_TELA: ${{ needs.tela.outputs.resumo }}
           R_COMPARA: ${{ needs.compara.outputs.resumo }}
@@ -515,7 +556,7 @@ jobs:
           DONO: ${{ steps.dono.outputs.linha }}
           S_DONO: ${{ steps.dono.outcome }}
         run: |
-          estados=("$S_TESTES" "$S_BANCA" "$S_MICROFONE" "$S_TELA" "$S_COMPARA")
+          estados=("$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_COMPARA")
           # a cancelled run proved nothing either way: it fails, and leaves the PR comment as the last run that ended wrote it
           for s in "${estados[@]}"; do
             if [ "$s" = cancelled ]; then
@@ -537,7 +578,7 @@ jobs:
           vale() { [ "$1" = success ] || { [ "$2" = pula ] && [ "$1" = skipped ] && [ -n "$fila" ]; }; }
           marca() { if [ "$1" = success ]; then echo "✅"; elif vale "$1" "$2"; then echo "⏭️ neste push"; else echo "❌ ($1)"; fi; }
           ok=true
-          for s in "$S_TESTES" "$S_BANCA" "$S_MICROFONE" "$S_TELA"; do vale "$s" pula || ok=false; done
+          for s in "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA"; do vale "$s" pula || ok=false; done
           for s in "$S_COMPARA" "$S_DONO"; do vale "$s" || ok=false; done
           if $ok; then
             manchete="✅ Testa: tudo passou"
@@ -567,12 +608,12 @@ jobs:
               fi
               echo
             fi
-            echo "| Testes | Banca | Filtro do microfone | Tela | Compara |"
-            echo "| --- | --- | --- | --- | --- |"
-            echo "| $(marca "$S_TESTES" pula) | $(marca "$S_BANCA" pula) | $(marca "$S_MICROFONE" pula) | $(marca "$S_TELA" pula) | $(marca "$S_COMPARA") |"
+            echo "| Testes | Banca | Captura | Filtro do microfone | Tela | Compara |"
+            echo "| --- | --- | --- | --- | --- | --- |"
+            echo "| $(marca "$S_TESTES" pula) | $(marca "$S_BENCH" pula) | $(marca "$S_CAPTURE" pula) | $(marca "$S_MICROFONE" pula) | $(marca "$S_TELA" pula) | $(marca "$S_COMPARA") |"
             echo
             if [ -n "$DONO" ]; then echo "$DONO"; echo; fi
-            printf '%s\n\n' "$R_TESTES" "$R_BANCA" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
+            printf '%s\n\n' "$R_TESTES" "$R_BENCH" "$R_CAPTURE" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
             if [ -n "$tempos" ]; then echo "**Tempo de cada job** (alvo: 10 min): $tempos"; echo; fi
             if [ -n "$LINHAS" ]; then echo "$LINHAS"; echo; fi
             echo "[A execução]($EXECUCAO), no commit \`${HEAD:0:12}\`."

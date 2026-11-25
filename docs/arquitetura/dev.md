@@ -13,17 +13,17 @@ esticamento da passagem seca o anel do jogo, no processo do motor e num auxiliar
 
 O `dev/testa_tudo.py` roda os testes que não usam som, aparelho nem rede externa, quatro
 por vez (os do `SERIAL`, que medem tempo, um a um e sozinhos, depois dos outros), pelas listas
-dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO`, a `BANCA` (os dois
-testes longos, a banca das passagens, o `testa_passagem`, e o `test_captura`: o comando sem opção a roda depois do
-`COMPLETO`; no `testa.yml`, o job de Testes roda o `--sem-banca` e um job próprio, ao lado, o
-`--banca --base`, que roda cada um só quando o PR mexe na área dele, no `BANCA_AREA`: o `motor`, que
-sai dos imports locais do `testa_passagem`, e a `tela`) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
-Inno Setup, para o setup de teste do `testa_aparelho_mudo`). No `COMPLETO` e na `BANCA`, biblioteca
+dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO`, o `LONG_TESTS` (os
+dois testes longos, a banca das passagens, o `testa_passagem`, e o `test_capture`: o comando sem opção os
+roda depois do `COMPLETO`; no `testa.yml`, o job de Testes roda o `--without-long`, e cada teste longo tem
+um job próprio ao lado (a Banca, `--long bench --base`, e a Captura, `--long capture --base`), que só o roda quando o PR muda uma entrada dele, no
+`LONG_TEST_INPUTS`: os módulos locais que ele importa, na base ou no PR, e os dados que ele lê) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
+Inno Setup, para o setup de teste do `testa_aparelho_mudo`). No `COMPLETO` e no `LONG_TESTS`, biblioteca
 ou ffmpeg faltando é falha. Todo teste de `dev/`, o `dev/testa_*.py` e o `dev/test_*.py` (todo teste
 novo, em inglês, nasce `test_*`), tem destino: uma lista, um passo próprio do `testa.yml` declarado
 no `PASSOS` (o `--passo disco` roda o `testa_pasta_protegida --disco`) ou, quando só roda à mão, o
 comentário `# manual: <comando> precisa de <aparelho>` no topo, antes da docstring (o
-`dev/bumbo.py` tem um). Antes de rodar, o `COMPLETO`, a `--banca`, o `--so-stdlib` e o `--microfone`
+`dev/bumbo.py` tem um). Antes de rodar, o `COMPLETO`, o `--long`, o `--so-stdlib` e o `--microfone`
 falham com o teste sem destino, com o arquivo de `dev/` que tem o `manual:` e roda no check, e com o
 modo do `testa_tudo` que o `testa.yml` deixou de chamar. O `dev/test_ci_workflow.py` confere o que
 nenhuma execução de PR exercita: o bloco do "Testa o PR" num bash com um `gh` falso (o comentário
@@ -31,13 +31,13 @@ que o GitHub não confirma reprova dizendo isso; no push, os jobs pulados só pa
 execução da fila aprovada no mesmo commit), os jobs que o push pula, as chaves de cache, essa trava
 e as bibliotecas sem versão no `instalador/travas.txt` (as conhecidas, da issue #231). O
 `dev/test_compara_not_ready.py` roda o `compara` com um sinal de pronto que nunca fecha e confere o
-diagnóstico, no celular e na mesa, e o `dev/test_captura.py` roda o `--captura` de verdade (os prints,
+diagnóstico, no celular e na mesa, e o `dev/test_capture.py` roda o `--capture` de verdade (os prints,
 a chave e o `head_cache` que o workflow lê para salvar). O `dev/test_compara_push_steps.py` roda os
 passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
 cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
 roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo commit que testou,
-então o push na `main` roda só a captura do `compara` desse commit para o cache (o `--captura`), e o
+então o push na `main` roda só a captura do `compara` desse commit para o cache (o `--capture`), e o
 "Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI se
 instalam com as versões do `instalador/travas.txt` (`-c`), que entra na chave do cache delas e na
 da captura do `compara`, e o PR que muda esse arquivo dispara todas as áreas. No PR, só abrir, reabrir e

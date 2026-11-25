@@ -52,7 +52,7 @@ def never_ready(size, density, mesa):
         check(p.returncode != 0 and f"vazio-{size}: o tema nao ficou pronto" in out
               and (" (sem o body.mesa-dj)" in out) == mesa,
               f"on {where}, a theme that never gets ready fails the capture (exit {p.returncode})")
-        names = [n for n, _ in compara.PRONTA_CONDICOES] + ["shelf on screen"] + (["body.mesa-dj"] if mesa else [])
+        names = [n for n, _ in compara.READY_CONDITIONS] + ["shelf on screen"] + (["body.mesa-dj"] if mesa else [])
         for name in names:
             check(any(line.startswith(f"  {name}: ") for line in lines), f"on {where}, it prints the condition {name}")
         check(any(line.startswith("  console: ") and CONSOLE_MARK in line for line in lines),
@@ -65,7 +65,7 @@ def never_ready(size, density, mesa):
 
 class ClosedChrome:
     erros = ["console.error: collected before the close"]
-    log_erros = ["Failed to load resource: collected.js"]
+    browser_errors = ["Failed to load resource: collected.js"]
     barrados = []
 
     def __init__(self, error):
@@ -80,12 +80,12 @@ class ClosedChrome:
 
 def closed_connection(error):
     kind = type(error).__name__
-    started = asyncio.run(asyncio.wait_for(compara.espera_pronto(ClosedChrome(error), "true", "vazio-1x1"), 5))
+    started = asyncio.run(asyncio.wait_for(compara.wait_ready(ClosedChrome(error), "true", "vazio-1x1"), 5))
     check(started is False, f"with a {kind}, the wait for the ready signal gives up at once and goes to the diagnostic")
     out = io.StringIO()
     with tempfile.TemporaryDirectory(prefix="ritmelli-nao-pronto-") as tmp, contextlib.redirect_stdout(out):
         try:
-            asyncio.run(compara.nao_ficou_pronto(ClosedChrome(error), "vazio-1x1", False, Path(tmp)))
+            asyncio.run(compara.report_not_ready(ClosedChrome(error), "vazio-1x1", False, Path(tmp)))
             ended = None
         except SystemExit as ex:
             ended = str(ex)

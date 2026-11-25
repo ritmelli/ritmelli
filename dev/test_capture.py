@@ -28,7 +28,7 @@ KEY = "import sys; sys.path.insert(0, 'dev'); import testa_tudo; print(testa_tud
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    with tempfile.TemporaryDirectory(prefix="ritmelli-captura-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="ritmelli-capture-") as tmp:
         tmp = Path(tmp)
         cache, tela, output, wt = tmp / "cache", tmp / "tela", tmp / "github_output", tmp / "wt"
         output.touch()
@@ -39,7 +39,7 @@ def main():
                 shutil.copy2(ROOT / script, wt / script)
             with open(wt / "themes" / "ritmelli" / "ui-events.js", "a", encoding="utf-8") as f:
                 f.write(UNCOMMITTED)
-            p = subprocess.run([sys.executable, "dev/testa_tudo.py", "--captura", str(cache), "--pasta", str(tela)],
+            p = subprocess.run([sys.executable, "dev/testa_tudo.py", "--capture", str(cache), "--pasta", str(tela)],
                                cwd=wt, env=dict(os.environ, PYTHONUTF8="1", GITHUB_OUTPUT=str(output)),
                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
             expected = subprocess.run([sys.executable, "-c", KEY, head], cwd=wt, capture_output=True, text=True,
@@ -48,7 +48,7 @@ def main():
             subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=ROOT, capture_output=True)
         print((p.stdout + p.stderr)[-3000:].rstrip())
         check(p.returncode == 0 and "ritmelli-test-uncommitted-edit" not in p.stdout + p.stderr,
-              f"the --captura renders the commit, not an uncommitted edit of the theme (exit {p.returncode})")
+              f"the --capture renders the commit, not an uncommitted edit of the theme (exit {p.returncode})")
         check("head_cache=true" in output.read_text(encoding="utf-8").splitlines(),
               "it tells the workflow to save the capture (head_cache=true)")
         key = (cache / "captura.txt").read_text(encoding="utf-8").strip() if (cache / "captura.txt").is_file() else ""

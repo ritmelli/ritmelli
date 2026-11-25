@@ -531,14 +531,14 @@ python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as th
 ```
 
 `python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library, and
-`--sem-banca` everything but the two long tests (the transition bench, `dev/testa_passagem.py`, and the compara
-capture, `dev/test_captura.py`, about 2 minutes each), which `--banca` runs alone; the pull request check runs the two
-in parallel jobs, and each long test only when the pull request touches its area (the engine, from the imports of the
-bench, or the screen). The tests run four at a time, except the ones that measure time, which run one by one after the others (`--jobs 1` runs
+`--without-long` everything but the two long tests (the transition bench, `dev/testa_passagem.py`, and the compara
+capture, `dev/test_capture.py`, about 2 minutes each), which `--long` runs alone; the pull request check runs each in a
+job of its own (Banca and Captura), next to the others, and each long test only when the pull request changes one of its inputs (the local modules it
+imports, at the base or in the pull request, and the data it reads). The tests run four at a time, except the ones that measure time, which run one by one after the others (`--jobs 1` runs
 everything one by one).
 
 A new test is named `dev/test_*.py` (in English; the older ones are `dev/testa_*.py`). Either kind goes into one of
-the lists in `dev/testa_tudo.py` (`STDLIB`, `COMPLETO`, `BANCA`, `MICROFONE`, or `PASSOS` for a step of its own in
+the lists in `dev/testa_tudo.py` (`STDLIB`, `COMPLETO`, `LONG_TESTS`, `MICROFONE`, or `PASSOS` for a step of its own in
 `testa.yml`). A test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
 `# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a `dev/test_*.py` or `dev/testa_*.py` that runs
 nowhere, on a `manual:` file that runs in the check, and when `testa.yml` stops calling one of its modes.

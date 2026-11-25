@@ -125,7 +125,7 @@ def run_summary(bash, block, event, states, comment_fails=False, runs=RUNS, queu
         summary, log = tmp / "summary.md", tmp / "log.txt"
         summary.touch()
         log.touch()
-        names = ("TESTES", "BANCA", "MICROFONE", "TELA", "COMPARA")
+        names = ("TESTES", "BENCH", "CAPTURE", "MICROFONE", "TELA", "COMPARA")
         env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ.get("PATH", ""), GITHUB_EVENT_NAME=event,
                    GITHUB_STEP_SUMMARY=str(summary), FAKE_LOG=str(log), FAKE_PYTHON=Path(sys.executable).as_posix(),
                    FAKE_GH_PY=(tmp / "fake_gh.py").as_posix(), FAKE_RUNS=json.dumps(runs),
@@ -147,15 +147,15 @@ def test_summary_block(all_jobs):
     if not bash:
         return
     block = step_run(all_jobs["testa-o-pr"], "Resumo e resultado")
-    ok5 = ["success"] * 5
-    on_push = ["skipped"] * 4 + ["success"]
+    ok6 = ["success"] * 6
+    on_push = ["skipped"] * 5 + ["success"]
 
-    code, out, summary, calls = run_summary(bash, block, "pull_request", ok5)
+    code, out, summary, calls = run_summary(bash, block, "pull_request", ok6)
     comments = [c for c in calls if c.startswith("gh pr comment")]
-    check(code == 0 and len(comments) == 1 and "tudo passou" in summary and "| Banca |" in summary,
-          f"a PR whose jobs pass gets one comment, with the Banca column, and passes (exit {code})")
+    check(code == 0 and len(comments) == 1 and "tudo passou" in summary and "| Banca | Captura |" in summary,
+          f"a PR whose jobs pass gets one comment, with the Banca and Captura columns, and passes (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "pull_request", ok5, comment_fails=True)
+    code, out, summary, calls = run_summary(bash, block, "pull_request", ok6, comment_fails=True)
     comments = [c for c in calls if c.startswith("gh pr comment")]
     check(code != 0 and len(comments) == 1 and "GitHub did not confirm the summary comment" in out
           and "não confirmou o comentário do resumo no PR" in summary,
@@ -163,10 +163,10 @@ def test_summary_block(all_jobs):
 
     code, out, summary, calls = run_summary(bash, block, "push", on_push)
     queries = [c for c in calls if "event=merge_group" in c]
-    check(code == 0 and summary.count("⏭️ neste push") == 4 and "a fila testou" not in summary and QUEUE_URL in summary and "queue/failed" not in summary
+    check(code == 0 and summary.count("⏭️ neste push") == 5 and "a fila testou" not in summary and QUEUE_URL in summary and "queue/failed" not in summary
           and "other-commit" not in summary and len(queries) == 1
           and not any(c.startswith("gh pr comment") for c in calls),
-          f"on the push, the four skipped jobs pass with the passed queue run of that very commit, asked once "
+          f"on the push, the five skipped jobs pass with the passed queue run of that very commit, asked once "
           f"(exit {code}, {len(queries)} queries)")
 
     code, out, summary, calls = run_summary(bash, block, "push", on_push, runs=RUNS[:2])
@@ -178,45 +178,47 @@ def test_summary_block(all_jobs):
           and "nenhuma execução aprovada" not in summary,
           f"on the push, a failed query says so, and not that no queue run passed (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "push", ["skipped"] * 5)
+    code, out, summary, calls = run_summary(bash, block, "push", ["skipped"] * 6)
     check(code != 0, f"on the push, a skipped Compara (no capture) fails the check even with the queue run (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "pull_request", ["skipped"] + ["success"] * 4)
+    code, out, summary, calls = run_summary(bash, block, "pull_request", ["skipped"] + ["success"] * 5)
     check(code != 0 and not any("event=merge_group" in c for c in calls),
           f"on a PR, a skipped job fails the check, and the queue is not asked (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "merge_group", ok5, dono="failure")
+    code, out, summary, calls = run_summary(bash, block, "merge_group", ok6, dono="failure")
     check(code != 0, f"a failed needs-owner step fails the check (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "pull_request", ["success", "cancelled"] + ["success"] * 3)
+    code, out, summary, calls = run_summary(bash, block, "pull_request", ["success", "cancelled"] + ["success"] * 4)
     check(code != 0 and not any(c.startswith("gh pr comment") for c in calls) and "cancelada" in summary,
           f"a cancelled job fails the check and leaves the PR comment as it was (exit {code})")
 
 
 def test_shape(all_jobs, text):
     skip = "    if: github.event_name != 'push'"
-    for job in ("testes", "banca", "microfone", "tela"):
+    for job in ("testes", "bench", "capture", "microfone", "tela"):
         check(skip in all_jobs.get(job, []), f"the {job} job skips on the push to main")
     for job in ("etiquetas", "compara"):
         check(job in all_jobs and not any(line.startswith("    if:") for line in all_jobs[job]),
               f"the {job} job runs on the push to main")
     needs = next((line for line in all_jobs["testa-o-pr"] if line.startswith("    needs:")), "")
     ids = {n.strip() for n in needs.partition("[")[2].rstrip("]").split(",")}
-    check(ids == {"etiquetas", "testes", "banca", "microfone", "tela", "compara"},
-          f"the Testa o PR needs the five jobs and the Etiquetas ({needs.strip()})")
-    check("--captura" in "".join(all_jobs["compara"]), "the compara job runs the --captura on the push")
-    banca = "\n".join(all_jobs["banca"])
-    after_areas = banca.split("id: areas", 1)[-1]
-    gated = [b for b in after_areas.split("      - ")[1:] if "name: Resumo" not in b]
-    check(len(gated) == 3 and all("if: steps.areas.outputs.banca == 'true'" in b for b in gated)
-          and "--banca --base $env:BASE" in banca,
-          f"the Banca installs and runs only the long tests whose area the PR touched ({len(gated)} gated steps)")
+    check(ids == {"etiquetas", "testes", "bench", "capture", "microfone", "tela", "compara"},
+          f"the Testa o PR needs the six jobs and the Etiquetas ({needs.strip()})")
+    check("--capture" in "".join(all_jobs["compara"]), "the compara job runs the --capture on the push")
+    for name in testa_tudo.LONG_TESTS:
+        long_job = "\n".join(all_jobs.get(name, []))
+        after_areas = long_job.split("id: areas", 1)[-1]
+        gated = [b for b in after_areas.split("      - ")[1:] if "name: Resumo" not in b]
+        check(len(gated) == 3 and all(f"if: steps.areas.outputs.{name} == 'true'" in b for b in gated)
+              and f"--long {name} --base $env:BASE" in long_job,
+              f"the {name} job installs and runs its long test only when the PR touched its inputs "
+              f"({len(gated)} gated steps)")
     saves = [line for line in all_jobs["compara"] if "steps.compara.outputs.head_cache == 'true'" in line]
     check(len(saves) == 2, f"the head capture is moved and saved to the cache when the step says head_cache ({len(saves)})")
     check(not any(re.search(r"\bsleep\b", line) for line in all_jobs["testa-o-pr"]), "the Testa o PR never sleeps")
-    captura = ", ".join(f"'{f}'" for f in testa_tudo.CAPTURA)
+    capture_files = ", ".join(f"'{f}'" for f in testa_tudo.CAPTURA)
     keys = re.findall(r"key: compara-.*hashFiles\(([^)]*)\)", text)
-    check(len(keys) == 2 and all(k == captura for k in keys),
+    check(len(keys) == 2 and all(k == capture_files for k in keys),
           f"both compara cache keys hash the CAPTURA files of dev/testa_tudo.py ({len(keys)} keys)")
     action = ACTION.read_text(encoding="utf-8")
     check(re.search(r"key: libs-.*hashFiles\([^)]*'instalador/travas.txt'", action) is not None,
@@ -258,7 +260,7 @@ def test_bench_order():
         for n in names:
             (tmp / f"{n}.py").write_text("print('ok')\n", encoding="utf-8")
         tests = [str(tmp / f"{n}.py") for n in names]
-        events, real, saved = [], testa_tudo.executa, testa_tudo.BANCA
+        events, real, saved = [], testa_tudo.executa, testa_tudo.LONG_TESTS
 
         def recorded(cmd, *args, **kw):
             name = Path(cmd[-1]).stem
@@ -268,19 +270,19 @@ def test_bench_order():
             finally:
                 events.append(("end", name, threading.get_ident()))
 
-        testa_tudo.BANCA, testa_tudo.executa = tests[3:], recorded
+        testa_tudo.LONG_TESTS, testa_tudo.executa = {"x": tests[3], "y": tests[4]}, recorded
         try:
             with open(os.devnull, "w") as quiet, contextlib.redirect_stdout(quiet):
                 testa_tudo.roda("order", tests, completo=False, jobs=4)
         finally:
-            testa_tudo.BANCA, testa_tudo.executa = saved, real
+            testa_tudo.LONG_TESTS, testa_tudo.executa = saved, real
         order = [(kind, n) for kind, n, _ in events]
         threads = {n: t for kind, n, t in events if kind == "start"}
         last_fast = max(order.index(("end", n)) for n in names[:3])
         check(order.index(("start", "long_x")) > last_fast
               and order[-4:] == [("start", "long_x"), ("end", "long_x"), ("start", "long_y"), ("end", "long_y")]
               and threads["long_x"] == threads["long_y"] == threading.get_ident(),
-              "the plain run takes the BANCA one by one, after the others, on the calling thread")
+              "the plain run takes the LONG_TESTS one by one, after the others, on the calling thread")
 
 
 def test_without_destination():
@@ -297,8 +299,9 @@ def test_without_destination():
         check(flagged == ["dev/test_lost.py", "dev/testa_perdido.py"],
               f"the lock flags the dev/test_* and dev/testa_* tests without destination, and only them ({flagged})")
     check(testa_tudo.sem_destino() == [], "every test of dev/ has a destination, and the testa.yml calls every mode")
-    check(not set(testa_tudo.BANCA) & set(testa_tudo.COMPLETO), "the bench is not in the COMPLETO (it would run twice)")
-    check(testa_tudo.SERIAL <= set(testa_tudo.COMPLETO + testa_tudo.BANCA), "every SERIAL test is in a list")
+    long_tests = set(testa_tudo.LONG_TESTS.values())
+    check(not long_tests & set(testa_tudo.COMPLETO), "no long test is in the COMPLETO (it would run twice)")
+    check(testa_tudo.SERIAL <= set(testa_tudo.COMPLETO) | long_tests, "every SERIAL test is in a list")
     check("instalador/travas.txt" in testa_tudo.TODAS, "a change to instalador/travas.txt triggers every area")
 
 

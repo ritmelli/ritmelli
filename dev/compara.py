@@ -51,7 +51,7 @@ from websockets.exceptions import ConnectionClosed
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import so_mock  # noqa: E402
-from fitcheck import (CHROME, PRONTA, PRONTA_CONDICOES, PRONTA_S, barra_outra_origem, conecta_cdp,  # noqa: E402
+from fitcheck import (CHROME, PRONTA, READY_CONDITIONS, PRONTA_S, barra_outra_origem, conecta_cdp,  # noqa: E402
                       erro_da_pagina, fecha_chrome, le_cdp)
 from so_mock import free_port  # noqa: E402
 
@@ -105,28 +105,28 @@ RELOGIO_PARADO = "(() => { const t0 = performance.now(); performance.now = () =>
 # the fitcheck's ready signal, plus the fake shelf on screen
 PRONTO = f"{PRONTA} && S.lib.length > 0"
 PALCO = "document.querySelector('#palco')"
-MESA_DJ = "document.body.classList.contains('mesa-dj')"
+DESK_MOUNTED = "document.body.classList.contains('mesa-dj')"
 
 
-def diagnostico_js(mesa):
-    partes = [*PRONTA_CONDICOES, ("shelf on screen", "S.lib.length > 0")] + ([("body.mesa-dj", MESA_DJ)] if mesa else [])
-    partes += [("document.readyState", "document.readyState"), ("document.fonts.status", "document.fonts.status"),
+def diagnostic_js(desk):
+    parts = [*READY_CONDITIONS, ("shelf on screen", "S.lib.length > 0")] + ([("body.mesa-dj", DESK_MOUNTED)] if desk else [])
+    parts += [("document.readyState", "document.readyState"), ("document.fonts.status", "document.fonts.status"),
                ("images not complete", "[...document.images].filter(i => !i.complete).map(i => i.src.slice(0, 120))"),
                ("scripts not loaded", "[...document.scripts].filter(s => s.src && "
                                       "!performance.getEntriesByName(s.src).length).map(s => s.src)")]
-    corpo = ", ".join(f"{json.dumps(nome)}: c(() => {js})" for nome, js in partes)
+    body = ", ".join(f"{json.dumps(name)}: c(() => {js})" for name, js in parts)
     return ("(() => { const c = f => { try { return f(); } catch (e) { return 'error: ' + e.message; } }; "
-            f"return {{{corpo}}}; }})()")
+            f"return {{{body}}}; }})()")
 
 
-async def espera_pronto(c, expr, pre):
-    fim = time.monotonic() + PRONTA_S
-    while time.monotonic() < fim:
+async def wait_ready(c, expr, label):
+    deadline = time.monotonic() + PRONTA_S
+    while time.monotonic() < deadline:
         await asyncio.sleep(0.1)
         if c.barrados:
-            sys.exit(f"{pre}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
+            sys.exit(f"{label}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
         try:
-            if await asyncio.wait_for(c.js(expr), max(0.1, fim - time.monotonic())):
+            if await asyncio.wait_for(c.js(expr), max(0.1, deadline - time.monotonic())):
                 return True
         except (RuntimeError, TimeoutError):  # a pagina ainda nao tem o S
             pass
@@ -135,26 +135,26 @@ async def espera_pronto(c, expr, pre):
     return False
 
 
-async def nao_ficou_pronto(c, pre, mesa, pasta):
-    print(f"{pre}: the theme was not ready in {PRONTA_S:.0f} s; each condition:", flush=True)
+async def report_not_ready(c, label, desk, folder):
+    print(f"{label}: the theme was not ready in {PRONTA_S:.0f} s; each condition:", flush=True)
     try:
-        estado = await c.js(diagnostico_js(mesa))
-        for nome, valor in (estado or {}).items():
-            print(f"  {nome}: {json.dumps(valor, ensure_ascii=False)}", flush=True)
+        conditions = await c.js(diagnostic_js(desk))
+        for name, value in (conditions or {}).items():
+            print(f"  {name}: {json.dumps(value, ensure_ascii=False)}", flush=True)
     except (RuntimeError, TimeoutError, ConnectionClosed, ConnectionError) as ex:
         print(f"  (the conditions did not come: {type(ex).__name__} {ex})", flush=True)
     for e in c.erros or ["(none)"]:
         print(f"  console: {e}", flush=True)
-    for e in c.log_erros or ["(none)"]:
+    for e in c.browser_errors or ["(none)"]:
         print(f"  browser: {e}", flush=True)
     try:
-        arquivo = pasta / "nao-pronto" / f"{pre}.png"
-        arquivo.parent.mkdir(parents=True, exist_ok=True)
-        arquivo.write_bytes(await c.png())
-        print(f"  print: {arquivo}", flush=True)
+        shot = folder / "nao-pronto" / f"{label}.png"
+        shot.parent.mkdir(parents=True, exist_ok=True)
+        shot.write_bytes(await c.png())
+        print(f"  print: {shot}", flush=True)
     except (RuntimeError, TimeoutError, ConnectionClosed, OSError) as ex:
         print(f"  (the print did not come: {type(ex).__name__} {ex})", flush=True)
-    sys.exit(f"{pre}: o tema nao ficou pronto em {PRONTA_S:.0f} s" + (" (sem o body.mesa-dj)" if mesa else ""))
+    sys.exit(f"{label}: o tema nao ficou pronto em {PRONTA_S:.0f} s" + (" (sem o body.mesa-dj)" if desk else ""))
 
 
 def na_mesa(w, h):
@@ -251,7 +251,7 @@ def _monta_tocando(api):
 class Chrome:
     def __init__(self, ws, base):
         self.ws, self.seq, self.pend, self.erros, self.barrados = ws, 0, {}, [], []
-        self.log_erros = []
+        self.browser_errors = []
         self.fetch = barra_outra_origem(ws, base, self.barrados)  # o documento de outra origem, barrado
 
     async def le(self):
@@ -262,7 +262,7 @@ class Chrome:
             self.erros.append(e)
         if m.get("method") == "Log.entryAdded" and m["params"]["entry"].get("level") == "error":
             entry = m["params"]["entry"]
-            self.log_erros.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
+            self.browser_errors.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
 
     async def cmd(self, metodo, **params):
         self.seq += 1
@@ -374,10 +374,10 @@ async def prints(a, srv, destino):
                         srv.confere()  # a pagina so do filho vivo que responde como --mock
                     except so_mock.Recusa as ex:
                         sys.exit(f"{pre}: {ex}")
-                    c.log_erros.clear()
+                    c.browser_errors.clear()
                     await c.cmd("Page.navigate", url=f"{srv.base}/t/ritmelli/?lang={a.lang}")
-                    if not await espera_pronto(c, PRONTO + (f" && {MESA_DJ}" if mesa else ""), pre):
-                        await nao_ficou_pronto(c, pre, mesa, destino.parent)
+                    if not await wait_ready(c, PRONTO + (f" && {DESK_MOUNTED}" if mesa else ""), pre):
+                        await report_not_ready(c, pre, mesa, destino.parent)
                     await asyncio.sleep(1)
                     if mesa:
                         # o ponto de toque do visor (movimento reduzido) fica onde o primeiro desenho o ancorou, e o
