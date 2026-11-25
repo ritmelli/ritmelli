@@ -2385,12 +2385,13 @@ class Engine:
             self._sobre.append([{"id": track["id"], "title": track.get("title")}, a, 0])
             del self._sobre[:-SOBRE_MAX]
 
-    def _restart(self, start, track=None, alvo=None, paused=None, nova_linha=True, prato=False, pode=None):
+    def _restart(self, start, track=None, alvo=None, paused=None, nova_linha=True, prato=False, pode=None,
+                 loop=None):
         """Com _lock: o disco do prato recomeca em start, publicado sob o _qlock como uma mudanca so: a faixa (track,
         quando troca; prato: e um disco entrando, e o primeiro som dele vai para o log), a linha nova (nova_linha; a
         troca da espera para o stream, sem audio ainda, fica na mesma), a posicao, o fim, o ganho do disco que entra
-        sem rampa (alvo), a pausa (paused) e a passagem desfeita, com o pedido de pausa da linha que acabou
-        substituido. O leitor recebe a faixa, o deck e o gen dessa mudanca e comeca fora das
+        sem rampa (alvo), a pausa (paused), o Repetir (loop) e a passagem desfeita, com o pedido de pausa da linha que
+        acabou substituido. O leitor recebe a faixa, o deck e o gen dessa mudanca e comeca fora das
         travas. pode(): conferido sob o _qlock antes de mudar qualquer coisa; falso, nada muda. start pode ser uma
         funcao, chamada ali mesmo (o seek limita pela duracao da faixa daquele instante). Volta (a Captura do que
         estava no prato logo antes, a posicao que o servidor grava, ou None; e quem comeca o leitor, ou None): quem
@@ -2411,6 +2412,8 @@ class Engine:
                 d.ganho_alvo = d.ganho = alvo
             if paused is not None:
                 self.paused = paused
+            if loop is not None:  # o leitor da faixa nova ja decide o fim com ele (_repete)
+                self.loop = bool(loop)
             if nova_linha:
                 d.linha += 1
             d.gen += 1
@@ -3193,8 +3196,8 @@ class Engine:
         audio ja decodificado termina (depois do bloco em curso, se a fila ja esta vazia), e o que esta na fila do
         microfone segue tocando: a linha fica a mesma, e o bloco ja retirado publica. So vale se
         o prato ainda tem `atual` (o mesmo objeto): se ele trocou de disco no meio, nada muda. A faixa e o ganho novos
-        entram sob o _qlock, no limite entre blocos (o ganho em rampa, a partir do proximo). Com leitor novo, a
-        passagem preparada na fonte de antes sai (a sobreposicao que ja soa segue)."""
+        entram sob o _qlock, no limite entre blocos (o ganho em rampa, a partir do proximo). Do stream para o arquivo,
+        com leitor novo, a passagem preparada sai (a sobreposicao que ja soa segue); o religar do stream a mantem."""
         alvo, mede = self._ganho_de(novo)
         if not atual.get("path"):  # da espera para o stream: ainda sem audio, nem leitor
             with self._lock:
@@ -3225,7 +3228,8 @@ class Engine:
                     d.gen += 1
                     gen = d.gen
                     d.eof_gen = -1
-                    self._cancela_passagem()  # a preparada foi medida na fonte de antes; o que ja soa segue
+                    if not str(novo.get("path") or "").startswith("http"):
+                        self._cancela_passagem()  # o arquivo substitui o stream em que a preparada foi medida
         self._onda_pede(novo)
         self._mede_se(novo, mede)
         if gen is not None:
@@ -3266,12 +3270,13 @@ class Engine:
         repetido sai do cache)."""
         threading.Thread(target=self._toca_sobre, args=(track,), daemon=True).start()
 
-    def load(self, track, start=0.0, paused=False):
-        """O disco no prato a partir de start, numa linha nova. Volta a Captura do que estava no prato antes."""
+    def load(self, track, start=0.0, paused=False, loop=None):
+        """O disco no prato a partir de start, numa linha nova; loop: o Repetir, na mesma publicacao (None: fica como
+        esta). Volta a Captura do que estava no prato antes."""
         alvo, mede = self._ganho_de(track)
         with self._lock:
             antes, leitor = self._restart(self._clamp(start, track), track=track, alvo=alvo, paused=paused,
-                                          prato=True)
+                                          prato=True, loop=loop)
         self._comeca(leitor)
         self._mede_se(track, mede)
         return antes
@@ -3349,7 +3354,7 @@ class Engine:
         with self._lock:
             with self._qlock:
                 fim = self._retoma_sob_trava()
-            if fim:  # so o _lock muda o fim de volta, e o _restart confere de novo no _qlock dele
+            if fim:  # o _vira do _mixa pode tirar o fim no meio (sem o _lock): o pode do _restart confere de novo
                 leitor = self._restart(0.0, paused=False, pode=lambda: self.track is not None and self.ended)[1]
         self._comeca(leitor)
 

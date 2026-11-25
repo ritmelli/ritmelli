@@ -1022,11 +1022,8 @@ class App:
         tr = dict(item, path=str(LIB / item["file"]), **(extra or {}))
         if loop is None:
             self.repetir_so_neste(item["id"])
-        elif not loop:
-            self.engine.set_loop(False)
-        cap = self.engine.load(tr, start=start)
-        if loop:  # depois da troca: ligar antes recomecaria o disco que ja tinha acabado
-            self.engine.set_loop(True)
+        # o Repetir pedido entra junto com a faixa (o set_loop antes recomecaria o disco que ja tinha acabado)
+        cap = self.engine.load(tr, start=start, loop=loop)
         self.remember_pos(cap)  # a posicao do que saiu, no instante da troca
 
     def tocar_remoto(self, j, target, meta, historico=True):

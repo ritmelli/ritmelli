@@ -838,9 +838,15 @@ def bloco(A, E):
     toca("d1", start=20.045)
     toca_ate_o_fim(E)
     A.lib.update("d1", last_pos=7.0)
-    cmd.tocar(A, "d2", loop=True)
+    comeca, visto = E._comeca, []
+    E._comeca = lambda leitor: (visto.append(E.loop), comeca(leitor))
+    try:
+        cmd.tocar(A, "d2", loop=True)
+    finally:
+        del E._comeca
     confere(no_prato(E) == "d2" and E.loop and A.lib.get("d1")["last_pos"] == 7.0,
             f"tocar com o Repetir depois do fim: o de antes nao recomeca nem grava 0 ({A.lib.get('d1')['last_pos']})")
+    confere(visto == [True], f"e o Repetir ja esta ligado quando o leitor da faixa nova comeca ({visto})")
     E.set_loop(False)
 
     # a pausa pedida com o bloco do fim retirado: o fim a substitui, sem gravar posicao

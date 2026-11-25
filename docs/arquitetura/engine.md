@@ -52,8 +52,8 @@ a fila já está vazia.
 O `load`, o `espera`, o `stop`, o `seek` e o `resume` que recomeça do fim publicam a troca sob o `_qlock`, como uma
 mudança só: a faixa, a linha, a posição, o fim e a passagem desfeita. O `seek` limita a posição pela duração da faixa
 e o `resume` confere o fim no mesmo trecho da trava. O `trocar_fonte` publica no mesmo trecho a faixa e o ganho novos,
-na mesma linha (da espera para o stream, também a posição e a passagem desfeita; com leitor novo, a passagem preparada
-na fonte de antes sai). A medida do ganho e o leitor ficam fora das travas, e o leitor que acaba só marca o fim, ou o
+na mesma linha (da espera para o stream, também a posição e a passagem desfeita; do stream para o arquivo, com leitor
+novo, a passagem preparada sai). A medida do ganho e o leitor ficam fora das travas, e o leitor que acaba só marca o fim, ou o
 erro, se ainda é o leitor do deck; o Repetir e o fim do leitor se decidem no mesmo trecho do `_qlock`. O `load`, o
 `espera` e o `stop` devolvem a `Captura` do que estava no prato logo antes: a posição que o servidor grava
 (`remember_pos`) é a desse instante.
