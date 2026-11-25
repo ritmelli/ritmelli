@@ -310,11 +310,14 @@ entrada só e respondem a mesma. O que conta é quando cada comando roda (no exe
 chegou: o primeiro registra o grupo dos Próximos logo no começo do comando e o retira ao terminar, depois de gravar a
 posição do disco que saiu, e a resposta dele sai logo depois. Enquanto o grupo ainda espera o avanço, inclusive com a
 troca do disco publicando, o segundo se junta a ele se o prato segue na linha do primeiro (o mesmo disco, sem pulo na
-barra) ou na linha que o avanço dele está publicando. Se o primeiro está conciliando uma passagem automática cuja
-entrada ainda estava na fila, o grupo passa para a linha da virada, e o segundo que se junta recebe a entrada da
-passagem. Depois que o grupo tem o resultado, só se junta quem chega se ele tocou uma entrada e o prato segue na linha
-que ele publicou. Fora disso, o segundo avança sozinho, como um Próximo novo. O segundo que se junta espera o resultado
-até 5 s; se ainda não saiu, responde 409:
+barra) ou na linha que o avanço dele está publicando. Se o primeiro está conciliando uma passagem automática, o grupo
+passa para a linha da virada, e o segundo que se junta recebe a entrada da passagem, se ela ainda estava na fila, ou a
+primeira da fila, que o primeiro toca, se já tinha saído. Depois que o grupo tem o resultado, só se junta quem chega se
+ele tocou uma entrada e o prato segue na linha que ele publicou. Fora disso, o segundo abre o próprio grupo, como um
+Próximo novo; se outro avanço reservar na linha dele antes dele (o do primeiro, depois de um pulo na barra, ou o do fim
+do disco), esse avanço é o dele também, e os dois recebem o resultado dessa reserva (o
+[comandos.md](docs/arquitetura/comandos.md) descreve cada caso). O segundo que se junta espera o resultado até 5 s; se
+ainda não saiu, responde 409:
 
 | o segundo roda | o prato entre os dois | o primeiro responde | o segundo responde |
 |---|---|---|---|
