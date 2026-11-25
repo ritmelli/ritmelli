@@ -4,7 +4,8 @@
 instalador, como administrador. O `--migra maquina` vem antes do filtro de microfone: copia o
 `HKLM\SOFTWARE\Vitrola` para o `HKLM\SOFTWARE\Ritmelli` sem trocar o que o novo já tem (a escolha
 dos dados de uso, o original de cada microfone e as vagas do hospedeiro: sem eles o filtro
-guardaria a si mesmo como original) e apaga as tarefas de antes. O `vitrola.exe` aberto o setup já
+guardaria a si mesmo como original) e apaga as tarefas de antes (o `schtasks` e o `powershell`
+pelo caminho completo da System32, o `pastas.do_windows`). O `vitrola.exe` aberto o setup já
 fechou, pelo caminho completo, no `PrepareToInstall` (`instalador\encerra.ps1`). O
 `--migra limpa` vem no fim, com o áudio já reiniciado na DLL nova: apaga o registro de antes e
 a pasta padrão de antes (`Program Files\Vitrola`), e o que estiver preso sai no reinício. A limpeza
