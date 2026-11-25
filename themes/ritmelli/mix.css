@@ -1,0 +1,55 @@
+/* MIX-INICIO */
+/* o mixer inteiro em pixel art: o canvas do mx por cima do receptor; o que ele desenha some do CSS (os elementos ficam,
+   transparentes, para o clique, o estado e o lugar) */
+body.mesa-dj .palco .receptor > canvas.mx-px { position: absolute; left: 0; top: 0; z-index: 6; display: block; pointer-events: none; image-rendering: pixelated; }
+body:not(.mesa-dj) canvas.mx-px { display: none; }
+body:not(.mesa-dj) .palco .receptor { translate: none !important; }
+body.mesa-dj .palco .receptor.mx-ok { background: none !important; padding: 16px 16px 14px; row-gap: 0; grid-template-rows: 70px minmax(0, 1fr) 44px 54px; }   /* (r16) o bloco dos faders 1 celula abaixo (os VUs desceram na r15 e os rotulos colaram neles); a xfader devolve os 2 px */   /* (r05) os 4 px da r04 encurtavam o trilho e a regua saia do curso do cursor */
+body.mesa-dj .palco .receptor.mx-ok::before, body.mesa-dj .palco .receptor.mx-ok::after, body.mesa-dj .palco .receptor.mx-ok .chassi-rec { visibility: hidden; }
+body.mesa-dj .palco .receptor.mx-ok :is(.janela, .fader label, .fader output, .fader input, .tecla-set, .xfader, .auto-luz) { opacity: 0 !important; }
+/* (r06) o filete e o crossfader 2 celulas acima e a placa 1 (o trilho mais longo da r05 apertou o bloco de baixo em 7/3/2/1
+   celulas): o canvas desenha os dois pelo lugar dos elementos, e a margem negativa sobe sem mexer na fileira do trilho */
+body.mesa-dj .palco .receptor.mx-ok .xfader { margin-top: -6px; }   /* (r16) -2: a fileira dela comeca 2 px depois e ela fica onde estava */
+body.mesa-dj .palco .receptor.mx-ok .auto-luz { margin-top: -2px; }
+body.mesa-dj .palco .receptor.mx-ok .janela { column-gap: 4px; margin-top: 2px; margin-bottom: 0; }   /* (r15) os VUs 1 celula abaixo: os parafusos de cima encostavam nos cantos deles (a celula sai do vao ate os rotulos) */
+/* a canaleta em pe entre o rotulo (36 px) e o valor (22 px) */
+body.mesa-dj .palco .receptor.mx-ok .fader input { --w: round(down, calc(100cqh - 66px), 2px); width: var(--w); top: calc(40px + var(--w) / 2); }
+/* as chaves do set sairam da mesa (ordem dele, 06/11): o tocar parecidas fica sempre ligado pelo JS da mesa */
+body.mesa-dj .palco .receptor .mix-set { display: none !important; }
+/* os rotulos dos volumes e o nome da placa em letra normal (Archivo em negrito), por cima do canvas, como no mock */
+body.mesa-dj .palco .receptor > .mx-txt { position: absolute; z-index: 7; display: block; pointer-events: none; font-family: "Archivo", sans-serif; color: #2E211A; text-align: center; }
+body.mesa-dj .palco .receptor > .mx-rot { width: max-content; font-size: 13px; line-height: 14px; font-weight: 700; font-stretch: 92%; letter-spacing: 0; }
+body.mesa-dj .palco .receptor > .mx-placa { white-space: nowrap; font-size: 11px; line-height: 12px; font-weight: 800; font-stretch: 86%; letter-spacing: .04em; text-transform: uppercase; color: #0F0805; }
+body:not(.mesa-dj) .mx-txt { display: none !important; }
+body.mesa-dj .palco .receptor > :is(.mx-placa-px, .mx-rot-px) { image-rendering: pixelated; }
+/* PADS-INICIO: os Sons rapidos em pixel art (1 celula = 2 px): a caixa inteira num canvas por baixo dos pads de verdade,
+   que ficam transparentes (o clique, o foco e o lugar sao deles); os nomes num canvas de letra de meia celula por cima */
+/* a caixa das pedaleiras no canvas do desenhaGav (pixel art); o canvas fica atras dos pedais e dos cabos */
+body.mesa-dj .palco .gaveta.gav-ok { position: relative; isolation: isolate; background: none; box-shadow: none; border-radius: 0; }
+body.mesa-dj .palco .gaveta > canvas.gav-px { position: absolute; left: 0; top: 0; z-index: -1; display: block; pointer-events: none; image-rendering: pixelated; }
+body:not(.mesa-dj) canvas.gav-px { display: none; }
+body.mesa-dj #pads.px-ok { border-image: none; background: none; border-radius: 0; padding: 60px 22px 28px; row-gap: 0; }   /* a base na linha da divisoria do mixer (r10: 1 celula a menos embaixo; r13: mais 2, com o sulco no meio da faixa dele) */
+body.mesa-dj #pads.px-ok > h2 { position: absolute; opacity: 0; pointer-events: none; }
+body.mesa-dj #pads.px-ok .pads-grade { position: relative; z-index: 2; grid-template-columns: repeat(3, 50px); gap: 8px 6px; justify-content: center; }
+body.mesa-dj #pads.px-ok .pad { grid-template-rows: 50px 20px; row-gap: 4px; }
+body.mesa-dj #pads.px-ok .pad-face { width: 50px; height: 50px; aspect-ratio: auto; opacity: 0; }
+body.mesa-dj #pads.px-ok .pad-nome { height: 20px; padding: 0; opacity: 0; }
+body.mesa-dj #pads.px-ok .pads-vazio { position: relative; z-index: 2; }
+body.mesa-dj #pads > canvas.pads-px { position: absolute; left: 0; top: 0; z-index: 0; display: block; pointer-events: none; image-rendering: pixelated; }
+/* o visor de DJ em pixel art (o MIX-JS desenha o gabinete, a moldura do tubo, a luz, os botoes e a grade num canvas por
+   baixo); o vidro e o que ele mostra seguem os de antes */
+body.mesa-dj #tv.px-ok { border-image: none; background: none; border-radius: 0; padding: 12px 12px 16px 12px; }
+body.mesa-dj #tv > canvas.tv-px { position: absolute; left: 0; top: 0; z-index: 0; display: block; pointer-events: none; image-rendering: pixelated; }
+body.mesa-dj #tv.px-ok .tv-vidro { border-image: none; background: none; box-shadow: none; border-radius: 0; padding: 14px 10px 10px; }
+body.mesa-dj #tv.px-ok .tv-lado { padding-top: 12px; gap: 12px; }
+body.mesa-dj #tv.px-ok .tv-lado > * { visibility: hidden; }
+body.mesa-dj #tv.px-ok .tv-lado .lampada { width: 14px; height: 14px; }
+body.mesa-dj #tv.px-ok .tv-knob { width: 26px; height: 26px; }
+body.mesa-dj #pads > canvas.pads-nomes { position: absolute; z-index: 1; display: block; pointer-events: none; image-rendering: pixelated; }
+body:not(.mesa-dj) #pads > canvas { display: none; }
+body:not(.mesa-dj) #pads { translate: none !important; }
+body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome { opacity: 1; padding: 0 5px; font-family: "Archivo", sans-serif; font-weight: 700; font-size: 12px; font-stretch: 70%; line-height: 20px; letter-spacing: -.01em; text-align: center; color: #2A1812; background: none; border-image: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto] { font-size: 0; }
+body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: attr(data-curto); font-size: 12px; }
+/* PADS-FIM */
+/* MIX-FIM */
