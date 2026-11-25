@@ -18,11 +18,13 @@ It also ratchets the reaches into the insides of two classes from the other modu
   - the App's (server.App), from comandos.py, automatico.py and the rest; the interface is its public methods
     (change_queue, remove_from_queue, release_reservation, with_engine, search_songs, run_helper and the others). The
     count must equal APP_CEILING.
-The private names come from the class's own syntax tree: every method, every name assigned in the class body and every
-self._x it assigns whose name starts with one underscore (not two). A reach is a read, write or call of one of those
-names on an object other than self or cls (a class's own _lock is its own), and also a getattr, setattr, hasattr or
-delattr with the name as a literal. Above the ceiling, a new reach went in: go through the interface. Below it, the PR
-lowers the ceiling with it. Both numbers go to the PR summary (the "-- summary:" lines that dev/testa_tudo.py collects).
+The private names come from the class's own syntax tree: every method, every name assigned at the class's level (also
+under an if or a try there) and every self._x or cls._x it assigns whose name starts with one underscore (not two). A
+reach is a read, write or call of one of those names on an object other than self or cls (a class's own _lock is its
+own), and also a getattr, setattr, hasattr or delattr (or builtins.getattr and the rest) with the name as a literal.
+What counts is the seam between modules: the class's own module stays out, since an underscore name is private to its
+module. Above the ceiling, a new reach went in: go through the interface. Below it, the PR lowers the ceiling with it.
+Both numbers go to the PR summary (the "-- summary:" lines that dev/testa_tudo.py collects).
 
     python dev/testa_ganchos.py
 
@@ -124,14 +126,30 @@ def own(node):
     return isinstance(node, ast.Name) and node.id in ("self", "cls")
 
 
+def class_level(body):
+    """The statements at a class's own level: its body and what the control blocks there hold (an if, a try), without
+    going into a def or a nested class."""
+    for s in body:
+        yield s
+        if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        for field in ("body", "orelse", "finalbody"):
+            inner = getattr(s, field, None)
+            if isinstance(inner, list):
+                yield from class_level(inner)
+        for block in getattr(s, "handlers", []) + getattr(s, "cases", []):
+            yield from class_level(block.body)
+
+
 def privates(tree, classes):
-    """The private names the top-level classes named in classes define: their methods, the names assigned in the class
-    body and every self._x or cls._x their methods assign (a helper def nested inside a method is not the class's)."""
+    """The private names the top-level classes named in classes define: their methods and the names assigned at the
+    class's own level (also under an if or a try there), and every self._x or cls._x their methods assign (a helper
+    def nested inside a method is not the class's)."""
     out = set()
     for c in tree.body:
         if not (isinstance(c, ast.ClassDef) and c.name in classes):
             continue
-        for s in c.body:  # the class body: its methods and _X = ...
+        for s in class_level(c.body):  # the class's own level: its methods and _X = ...
             if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 out.add(s.name)
             for target in (s.targets if isinstance(s, ast.Assign) else [s.target] if isinstance(s, ast.AnnAssign)

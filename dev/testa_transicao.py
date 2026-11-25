@@ -4,7 +4,8 @@ voltou, e este teste chama de novo cada uma e confere que volta o mesmo. Sem som
 transicao.py e o numpy. Toda funcao publica do transicao.py tem de ter ao menos um caso gravado.
 
 It also checks the bound the outgoing track's phase excerpt relies on (#208): sped up by at most SAI_MAX, FASE_MIN_S of
-its output reaches FASE_MIN_S * (1 + SAI_MAX) s of disc back from the switch, and that has to stay inside the stretch
+its output reaches FASE_MIN_S * (1 + SAI_MAX) s of disc back from the switch (the engine counts it back from the cut,
+nb beats later: this is the stricter bound), and that has to stay inside the stretch
 where its speed is already constant, which starts where transicao.rampa_saida ends the ramp. FASE_MIN_S is read from the
 text of engine.py, so the engine is still not imported.
 
@@ -207,12 +208,14 @@ def phase_excerpt_bound():
         ramp_end = start + n_ra * (1 + sa) / 2 / transicao.SR  # the ramp covers its samples at the mean speed
         # the margin between the end of the ramp and FASE_ANTES_S of disc before the switch (0.5 s in rampa_saida)
         margin = virar - transicao.FASE_ANTES_S - ramp_end
-        # the excerpt starts at whichever comes first: FASE_ANTES_S of disc or FASE_MIN_S of output before the switch
+        # the excerpt starts at whichever comes first: FASE_ANTES_S of disc before the switch, or FASE_MIN_S of output
+        # before it (the engine counts that one back from the cut, nb beats later, so this bound is the stricter one)
         excerpt = max(transicao.FASE_ANTES_S, fase_min_s * sa)
         bound = transicao.FASE_ANTES_S + margin
-        print(f"sa {sa:.2f}: max(FASE_ANTES_S, FASE_MIN_S * sa) = {excerpt:.2f} s <= FASE_ANTES_S + the ramp margin "
-              f"({margin:.2f} s) = {bound:.2f} s")
-        if excerpt > bound + 1e-9:
+        exceeds = excerpt > bound + 1e-9
+        print(f"sa {sa:.2f}: max(FASE_ANTES_S, FASE_MIN_S * sa) = {excerpt:.2f} s {'>' if exceeds else '<='} "
+              f"FASE_ANTES_S + the ramp margin ({margin:.2f} s) = {bound:.2f} s")
+        if exceeds:
             falhas.append(f"with the outgoing track at {sa:.2f}, FASE_MIN_S ({fase_min_s} s) of its output goes back "
                           f"{excerpt:.2f} s of disc from the switch, into its speed ramp, which ends {bound:.2f} s "
                           f"before it (FASE_MIN_S * (1 + SAI_MAX) <= FASE_ANTES_S + {margin:.2f})")
