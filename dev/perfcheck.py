@@ -104,16 +104,19 @@ async def run(a):
             if w < 900:
                 await cmd("Emulation.setTouchEmulationEnabled", enabled=True, maxTouchPoints=5)
             await cmd("Emulation.setCPUThrottlingRate", rate=a.cpu)
+            so_mock.confere(a.url)  # de novo logo antes de navegar: o Chrome levou segundos para subir
             await cmd("Page.navigate", url=a.url)
             await asyncio.sleep(2.5)
             await confere_pagina(cmd, a.url, barrados)  # a medida e da pagina do --mock pedido
             if a.play:
                 await post("play", {"id": a.play, "por_cima": False})
             await asyncio.sleep(2)
+            await confere_pagina(cmd, a.url, barrados)  # a medida e so da pagina do --mock
             await cmd("Tracing.start", categories=CATS, transferMode="ReportEvents")
             await asyncio.sleep(a.seg)
             await cmd("Tracing.end")
             await fim.wait()
+            await confere_pagina(cmd, a.url, barrados)  # a pagina seguiu no --mock durante a medida
             if a.play:
                 await post("stop", {})
             tarefa.cancel()

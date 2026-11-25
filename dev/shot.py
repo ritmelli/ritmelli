@@ -130,6 +130,11 @@ async def run(a):
             if a.reduced_motion:
                 await cmd("Emulation.setEmulatedMedia",
                           features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
+            try:
+                so_mock.confere(a.url)  # de novo logo antes de navegar: o Chrome levou segundos para subir
+            except so_mock.Recusa as ex:
+                print(f"recusado: {ex}")
+                return 1
             await cmd("Page.navigate", url=a.url)
             await asyncio.sleep(a.wait)
             if not await pode_agir():
