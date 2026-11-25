@@ -166,7 +166,7 @@ RECEIVERS = frozenset(("self", "cls"))
 def method_receivers(method):
     """The name that means a method's own object: its first positional parameter, when it is called self or cls (a
     staticmethod has none, and a second parameter called cls is just a parameter)."""
-    if any(isinstance(d, ast.Name) and d.id == "staticmethod" for d in method.decorator_list):
+    if any(attr_function(d, ("staticmethod",)) for d in method.decorator_list):
         return frozenset()
     first = (method.args.posonlyargs + method.args.args)[:1]
     return frozenset(p.arg for p in first) & RECEIVERS
@@ -197,9 +197,20 @@ def instance_stores(method):
             yield n.args[1].value
 
 
+def slot_names(value):
+    """The names a __slots__ declares: one string, or a tuple or list of them."""
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        yield value.value
+    elif isinstance(value, (ast.Tuple, ast.List)):
+        for e in value.elts:
+            if isinstance(e, ast.Constant) and isinstance(e.value, str):
+                yield e.value
+
+
 def class_privates(c):
-    """The private names the class c defines: its methods, nested classes and the names assigned at its own level (also
-    under an if or a try there, and in a tuple unpacking), and every self._x or cls._x its methods assign
+    """The private names the class c defines: its methods, nested classes, the names assigned at its own level (also
+    under an if or a try there, and in a tuple unpacking) and those its __slots__ declares, and every self._x or cls._x
+    its methods assign
     (instance_stores). A helper def nested inside a method is not the class's."""
     out = set()
     for s in class_level(c.body):  # the class's own level: its methods, nested classes and _X = ...
@@ -211,6 +222,8 @@ def class_privates(c):
         for target in (s.targets if isinstance(s, ast.Assign) else [s.target] if isinstance(s, ast.AnnAssign)
                        else []):
             out |= set(bound_names(target))
+            if isinstance(target, ast.Name) and target.id == "__slots__" and s.value is not None:
+                out |= set(slot_names(s.value))
     return {n for n in out if is_private(n)}
 
 
