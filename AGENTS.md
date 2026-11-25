@@ -55,6 +55,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 | Servidor e YouTube | `server.py`, `yt_fora.py`, `yt_erros.py` | `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py` | `testa_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`), o `grava_cfg` do `server.py` | `testa_grava` |
+| Pasta protegida | `pastas.py` (`pasta_protegida`), `instalador/protegida.ps1` e quem os chama (`microfone/microfone.py`, `atualizador.py`, `atualizacao.py`, `migra.py`, `instalador/ritmelli.iss`) | `testa_pasta_protegida` (em memória; o `--disco` precisa de administrador e cria pasta em Program Files: só num Windows de teste), `testa_mfx`, `testa_atualizador`, `testa_atualizacao`, `testa_migra` |
 | Pareamento | `pareamento.py`, o `guard` do `server.py` | `testa_pareamento` |
 | Filtro e efeitos | `microfone/`, `fx.py` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_voz` e `microfone/apo/teste/teste_reamostra.py` |
 | Troca de voz | `pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` | `testa_pedal_voz`, `testa_vozes`, `testa_pista`, `testa_conversor` |

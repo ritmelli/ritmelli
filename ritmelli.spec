@@ -20,6 +20,9 @@ datas = [
     # o icone da aba do navegador e o do celular (server.py); o setup tambem pega o .ico daqui
     ("icone/ritmelli.ico", "icone"),
     ("icone/toque.png", "icone"),
+    # a sentinela da pasta protegida, na _internal\: a atualizacao parcial so sai de uma versao que ja a tem
+    # (instalador/atualizacao/parcial.py). Nunca muda
+    ("instalador/pasta-protegida.txt", "."),
 ]
 datas += collect_data_files("ytmusicapi")  # os idiomas (locales\): sem hook pronto
 # o filtro de microfone (microfone/): o monta.ps1 compila antes de congelar; o microfone.py acha em _internal\microfone,

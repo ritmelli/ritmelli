@@ -10,7 +10,9 @@ nao muda-la. A versao instalada e a da propria tarefa (o versao.py do executavel
 chave que mora no executavel, e so para uma versao mais nova. O setup e baixado e conferido (o hash do manifesto) na
 pasta atualizacao\\ do app, que so administrador grava, e conferido de novo logo antes de rodar: conferir onde o usuario
 grava e rodar depois deixaria um programa dele trocar o arquivo no meio. O estado.json da mesma pasta e so leitura para
-quem usa o PC: e por ele que a tela do Ritmelli mostra o andamento.
+quem usa o PC: e por ele que a tela do Ritmelli mostra o andamento. Tudo isso depende de a pasta do app ser protegida
+(pastas.pasta_protegida): a rodada confere antes de gravar nela e, reprovada, apaga as duas tarefas que rodam como
+SYSTEM (a do filtro de microfone e a propria) e sai, sem baixar nem rodar nada. So o setup completo as cria de novo.
 
 Para testar fora do GitHub (a esteira faz), o endereco do manifesto e a chave podem vir do HKLM\\SOFTWARE\\Ritmelli\\
 Atualizador (Manifesto, Chave em base64 e SoHttps 0), que so administrador grava.
@@ -35,6 +37,9 @@ from versao import VERSAO
 TAREFA = "Ritmelli Atualiza"
 PASTA = pastas.APP / "atualizacao"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+# pelo caminho completo: pelo nome solto, o Windows procuraria antes na pasta do app (pastas.do_windows)
+SCHTASKS = pastas.do_windows("schtasks.exe")
+POWERSHELL = pastas.do_windows(os.path.join("WindowsPowerShell", "v1.0", "powershell.exe"))
 REG = r"SOFTWARE\Ritmelli\Atualizador"
 # o Ritmelli acabou de pedir (ao sair): ele ainda esta terminando de fechar, e os auxiliares dele (o --yt) vao junto
 ESPERA_FECHAR_S = 20.0
@@ -325,16 +330,22 @@ def instala(setup, sha256, versao_nova):
 def tarefa_existe():
     if sys.platform != "win32":
         return False
-    r = subprocess.run(["schtasks", "/query", "/tn", TAREFA], capture_output=True, creationflags=NO_WINDOW)
+    r = subprocess.run([SCHTASKS, "/query", "/tn", TAREFA], capture_output=True, creationflags=NO_WINDOW)
     return r.returncode == 0
 
 
 def tarefa_cria():
     """Cria (ou refaz) a tarefa, so no executavel instalado: pelo codigo, a tarefa rodaria como SYSTEM um .py que o
-    usuario pode mudar."""
+    usuario pode mudar. Com a pasta do app fora da regra da pasta protegida (pastas.pasta_protegida), apaga a que
+    existir e volta com erro."""
     if not getattr(sys, "frozen", False):
         print("the update task is only created by the installed executable")
         return 0
+    protegida = pastas.pasta_protegida()
+    if not protegida:
+        tarefa_apaga()
+        print(f"the task {TAREFA} wasn't created, the app folder isn't protected: {protegida}")
+        return 1
     import tempfile
     from xml.sax.saxutils import escape
     fd, xml = tempfile.mkstemp(suffix=".xml")
@@ -342,7 +353,7 @@ def tarefa_cria():
     try:
         with open(xml, "w", encoding="utf-16") as f:
             f.write(TAREFA_XML.replace("{exe}", escape(sys.executable)))
-        r = subprocess.run(["schtasks", "/create", "/tn", TAREFA, "/xml", xml, "/f"], capture_output=True, text=True,
+        r = subprocess.run([SCHTASKS, "/create", "/tn", TAREFA, "/xml", xml, "/f"], capture_output=True, text=True,
                            encoding="oem", errors="replace", creationflags=NO_WINDOW)
     finally:
         os.remove(xml)
@@ -353,16 +364,44 @@ def tarefa_cria():
     return 0
 
 
-def tarefa_apaga():
+def tarefa_apaga(encerrar=True):
     """Para a rodada que estiver no meio (esperando o Ritmelli fechar, ela instalaria por cima do desinstalador) e apaga
-    a tarefa."""
-    for args in (["/end"], ["/delete", "/f"]):
-        subprocess.run(["schtasks", *args, "/tn", TAREFA], capture_output=True, creationflags=NO_WINDOW)
+    a tarefa. encerrar=False so apaga: dentro da propria rodada, o /end encerraria este processo antes do /delete."""
+    for args in ((["/end"], ["/delete", "/f"]) if encerrar else (["/delete", "/f"],)):
+        subprocess.run([SCHTASKS, *args, "/tn", TAREFA], capture_output=True, creationflags=NO_WINDOW)
+
+
+def desarma(motivo):
+    """A rodada (que ja roda como SYSTEM) achou a pasta do app fora da regra da pasta protegida: as duas tarefas saem,
+    a do filtro de microfone primeiro e esta por ultimo (sem o /end), uma mesmo se a outra falhar, e nada se grava na
+    pasta: nem a atualizacao\\, nem o log, nem setup. So o setup completo cria as tarefas de novo. O codigo de saida."""
+    print(f"the app folder isn't protected: {motivo}", flush=True)
+    erros, tarefas = [], []
+    try:
+        from microfone import microfone
+        tarefas.append((microfone.TAREFA, microfone.tarefa_apaga, microfone.tarefa_existe))
+    except Exception as ex:  # noqa: BLE001 - a desta tarefa sai do mesmo jeito
+        erros.append(f"microphone task: {type(ex).__name__}: {ex}")
+    tarefas.append((TAREFA, lambda: tarefa_apaga(encerrar=False), tarefa_existe))
+    for nome, apaga, _ in tarefas:
+        try:
+            apaga()
+        except Exception as ex:  # noqa: BLE001 - a outra sai do mesmo jeito
+            erros.append(f"{nome}: {type(ex).__name__}: {ex}")
+    for nome, _, existe in tarefas:
+        try:
+            if existe():
+                erros.append(f"the task {nome} is still there")
+        except Exception as ex:  # noqa: BLE001
+            erros.append(f"{nome}: {type(ex).__name__}: {ex}")
+    print(f"couldn't remove the SYSTEM tasks: {'; '.join(erros)}" if erros else "the SYSTEM tasks were removed",
+          flush=True)
+    return 1
 
 
 def dispara():
     """Roda a tarefa agora (quem usa o PC pode: so nao pode muda-la). False se ela nao existe ou nao rodou."""
-    r = subprocess.run(["schtasks", "/run", "/tn", TAREFA], capture_output=True, creationflags=NO_WINDOW)
+    r = subprocess.run([SCHTASKS, "/run", "/tn", TAREFA], capture_output=True, creationflags=NO_WINDOW)
     return r.returncode == 0
 
 
@@ -395,7 +434,7 @@ def reabre():
           "if($s -and $s.estado -eq 'instalando'){while((Get-Process -Id $s.pid -ErrorAction SilentlyContinue) -and "
           "(Get-Date) -lt $fim){Start-Sleep 1}};"
           f"Start-Process -FilePath '{exe}'")
-    args = ["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps]
+    args = [POWERSHELL, "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps]
     # com um console escondido (o NO_WINDOW), e nao sem nenhum: o PowerShell aberto com DETACHED_PROCESS sai sem rodar
     # o comando. Fora do job de quem abriu o Ritmelli, quando der: ele fecha logo depois
     cf = NO_WINDOW | 0x00000200  # CREATE_NEW_PROCESS_GROUP
@@ -424,6 +463,10 @@ def main(args):
     if not getattr(sys, "frozen", False):
         print("the update round only runs in the installed executable")
         return 0
+    # a rodada roda como SYSTEM o setup que baixa para a pasta do app: so com ela protegida, e antes de gravar nela
+    protegida = pastas.pasta_protegida()
+    if not protegida:
+        return desarma(protegida)
     PASTA.mkdir(parents=True, exist_ok=True)
     arq = PASTA / "atualizador.log"
     try:
