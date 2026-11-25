@@ -963,7 +963,25 @@ def bloco(A, E):
             and E.pos < 0.5 and len(A.sobre) == sobre0,
             f"the POST /api/library with play of a short shelf sound puts it on the platter from the start ({st}, "
             f"{no_prato(E)}, {E.pos}, on top: {len(A.sobre) - sobre0})")
-    A.lib.update("buzina", youtube_id=None, last_pos=0)
+    # the record the route found is the one that plays, and the one it answers: a download that replaces the shelf
+    # record right after the route found it doesn't put the replacement on the platter
+    toca("d1")
+    real_by_youtube, replaced = A.lib.by_youtube, []
+
+    def found_then_replaced(yid):
+        it = real_by_youtube(yid)
+        if it is not None and not replaced:
+            replaced.append(it)
+            A.lib.add(dict(it, title="Replacement"))
+        return it
+    with mock.patch.object(A.lib, "by_youtube", found_then_replaced):
+        st, corpo = asyncio.run(asyncio.wait_for(pede_corpo(app, A, "POST", "/api/library",
+                                                             {"youtube_id": "bbbbbbbbbb1", "play": True}), 5))
+    confere(st == 200 and replaced and (corpo.get("item") or {}).get("title") == "Disco buzina"
+            and (E.track or {}).get("title") == "Disco buzina",
+            f"the POST /api/library with play plays and answers the record it found, not a replacement "
+            f"({st}, {(corpo.get('item') or {}).get('title')}, {(E.track or {}).get('title')})")
+    A.lib.update("buzina", title="Disco buzina", youtube_id=None, last_pos=0)
     vol0 = E.vol
     st, _ = asyncio.run(asyncio.wait_for(pede_corpo(app, A, "POST", "/api/settings", {"vol": 0.25}), 5))
     confere(st == 200 and E.vol == 0.25 and A.cfg.get("vol") == 0.25,

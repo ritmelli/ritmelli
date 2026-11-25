@@ -318,7 +318,7 @@ Próximo novo; se outro avanço reservar primeiro na linha dele (o do primeiro, 
 disco), o segundo espera o resultado dessa reserva e responde a entrada que ela tocar, e quando a reserva é a do
 primeiro os dois respondem a mesma entrada, mesmo em grupos distintos (o [comandos.md](docs/arquitetura/comandos.md)
 descreve cada caso). O segundo que espera o avanço de outro (o que se junta ao grupo, ou o que recebe a reserva de
-outro) espera o resultado até 5 s; se ainda não saiu, responde 409:
+outro) espera até 5 s, e responde 409 se o prazo vencer ou se o avanço terminar sem tocar uma entrada:
 
 | o segundo roda | o prato entre os dois | o primeiro responde | o segundo responde |
 |---|---|---|---|
