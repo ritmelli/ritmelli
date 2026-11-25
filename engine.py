@@ -8,6 +8,7 @@ import base64
 import collections
 import contextlib
 import ctypes
+import datetime
 import json
 import os
 import queue
@@ -257,6 +258,25 @@ def medir_fim(niv):
 
 FIM_RETRATO_S = 40.0       # o resumo do fim no log: as janelas de FIM_JANELA_S nos ultimos isso antes do som acabar
 FIM_JANELA_S = 5.0
+PASSAGENS_DIAS = 7         # logs/passagens/ guarda os registros dos ultimos isso de dias; os mais velhos saem
+
+
+def poda_passagens(pasta, hoje, dias=PASSAGENS_DIAS):
+    """Apaga de logs/passagens/ os AAAA-MM-DD.jsonl de mais de `dias` dias antes de `hoje` (um date) pelo nome, sem
+    mexer em outro arquivo. Sem isto a pasta crescia um arquivo por dia de uso para sempre. Volta os nomes apagados."""
+    apagados = []
+    for p in pasta.glob("*.jsonl"):
+        try:
+            dia = datetime.date.fromisoformat(p.stem)
+        except ValueError:
+            continue
+        if (hoje - dia).days > dias:
+            try:
+                p.unlink()
+                apagados.append(p.name)
+            except OSError:
+                pass  # aberto por outro programa: sai na proxima vez
+    return sorted(apagados)
 
 
 def retrato_fim(niv, fim):
@@ -1263,6 +1283,7 @@ class Engine:
         self._onda_lendo = set()  # os ids com a onda do arquivo na fila ou sendo lida
         self._visor_pas = None   # a passagem medida deste para a proxima
         self._visor_feita = None  # a que trouxe este disco, enquanto o tema ainda desenha a sobreposicao
+        self._passagens_dia = None  # o dia (AAAA-MM-DD) em que o _registra_fim ja podou logs/passagens/
         self._mic = collections.deque()
         self._mon = collections.deque()
         self._stack = None
@@ -2358,7 +2379,14 @@ class Engine:
                    "visor": {"passo": VISOR_PASSO, "db": list(VISOR_DB), "faixas": faixas}}
             pasta = pastas.LOGS / "passagens"
             pasta.mkdir(parents=True, exist_ok=True)
-            with open(pasta / (time.strftime("%Y-%m-%d") + ".jsonl"), "a", encoding="utf-8") as f:
+            hoje = time.strftime("%Y-%m-%d")
+            if self._passagens_dia != hoje:  # a primeira passagem do dia nesta sessao: os de mais de uma semana saem
+                self._passagens_dia = hoje
+                podados = poda_passagens(pasta, datetime.date.fromisoformat(hoje))
+                if podados:
+                    print(f"transition: removed {len(podados)} end records older than {PASSAGENS_DIAS} days",
+                          file=sys.stderr, flush=True)
+            with open(pasta / (hoje + ".jsonl"), "a", encoding="utf-8") as f:
                 f.write(json.dumps(reg, ensure_ascii=False) + "\n")
         except Exception as ex:  # noqa: BLE001 - o registro e so estudo: falhando, a passagem segue igual
             print(f"transition: the end record failed: {ex!r}", file=sys.stderr, flush=True)

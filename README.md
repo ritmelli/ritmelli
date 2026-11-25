@@ -523,7 +523,8 @@ If you changed the audio engine, the server, the filter or the updates, also run
 The description at the top of each file (in Portuguese) says exactly what it checks.
 
 - The audio engine (`engine.py`, `sonoridade.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
-  `dev/testa_congela.py` and `dev/testa_microfone.py`.
+  `dev/testa_congela.py`, `dev/testa_microfone.py` and `dev/testa_passagens.py` (the week of transition records in
+  `logs/passagens/`).
 - The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
   `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
