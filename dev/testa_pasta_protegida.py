@@ -250,7 +250,13 @@ def em_memoria():
     reprova("um nome curto 8.3 no caminho (o instalador o expandiria)", disco_base(), "short", r"C:\PROGRA~1\Ritmelli")
     reprova("um nome curto 8.3 dentro da raiz", disco_base(), "short", RAIZ + r"\RITMEL~1")
     reprova("um nome curto 8.3 com extensao", disco_base(), "short", RAIZ + r"\Ritmelli\RITMEL~1.EXE")
-    for longo in ("Ritmelli~Estudio", "Ritmelli~2026"):
+    reprova("um nome curto 8.3 terminado em ponto", disco_base(), "short", r"C:\PROGRA~1.\Ritmelli")
+    reprova("um nome curto 8.3 terminado em espaco", disco_base(), "short", RAIZ + "\\RITMEL~1 ")
+    d = disco_base()
+    d.muda(DESTINO + r"\ritmelli.exe", dacl=acl_arquivo() + [(0, IO, M, US)])
+    confere("uma ACE so de heranca num arquivo nao conta (nao vale nem tem filho)", avalia(d) is True,
+            repr(avalia(d)))
+    for longo in ("Ritmelli~Estudio", "Ritmelli~2026", "ABC\U0001F600DE~1"):
         d = disco_base()
         d.poe(RAIZ + "\\" + longo)
         confere(f"um ~ num nome longo de verdade ({longo}) nao e nome curto",

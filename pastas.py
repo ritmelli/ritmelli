@@ -266,6 +266,8 @@ def _confere_objeto(caminho, d, no_log):
     if aces is None:
         return f"{caminho} has a null DACL"
     for tipo, flags, mascara, sid in aces:
+        if flags & _SO_HERANCA and not d["dir"]:  # num arquivo, a so de heranca nao vale nem tem para quem passar
+            continue
         if tipo in _NEGA:
             continue
         if tipo not in _PERMITE:
@@ -309,9 +311,14 @@ def _confere_arvore(caminho, d, le):
 
 def _nome_curto(nome):
     """O componente tem a forma de um alias 8.3 (PROGRA~1, RITMEL~1.EXE): ate 8 caracteres com um ~ seguido de digito e
-    uma extensao de ate 3. Um nome longo com ~ (Ritmelli~2026, Ritmelli~Estudio) nao e alias."""
-    return (re.fullmatch(r"[^.]{1,8}(\.[^.]{1,3})?", nome) is not None
-            and re.search(r"~[0-9]", nome.split(".")[0]) is not None)
+    uma extensao de ate 3, sem o ponto ou o espaco do fim (o Windows os corta). Os tamanhos contam em UTF-16, como no
+    instalador. Um nome longo com ~ (Ritmelli~2026, Ritmelli~Estudio) nao e alias."""
+    base, ponto, ext = nome.rstrip(". ").partition(".")
+
+    def tamanho(s):
+        return len(s.encode("utf-16-le", "surrogatepass")) // 2
+    return ("." not in ext and 1 <= tamanho(base) <= 8 and (not ponto or 1 <= tamanho(ext) <= 3)
+            and re.search(r"~[0-9]", base) is not None)
 
 
 def motivo_desprotegida(pasta, raiz, le=_le_disco):

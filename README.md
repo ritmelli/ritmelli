@@ -270,9 +270,10 @@ local scripts for your user once: `Set-ExecutionPolicy -Scope CurrentUser Remote
    ```
 
    The filter DLL (`micfx.dll`) is copied to `%ProgramW6432%\Ritmelli\microfone` (on 64-bit Windows, the same
-   `C:\Program Files`), the folder the installed app uses, so it replaces the filter of an installed Ritmelli. Step 3
-   refuses, without changing anything, if that folder can be changed by someone other than the system and the
-   administrators (`pastas.pasta_protegida`).
+   `C:\Program Files`), so it replaces the filter of a Ritmelli installed there. The installed executable uses the
+   `microfone` folder of its own installation. Step 3 checks that folder first and refuses, without copying the filter
+   or changing the registry, if it can be changed by someone other than the system and the administrators
+   (`pastas.pasta_protegida`).
 
    - After plugging in a new microphone, run step 3 again. The installed app does this by itself, without
      administrator rights, through a Windows task that only the installer creates.

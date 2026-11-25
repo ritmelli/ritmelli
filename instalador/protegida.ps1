@@ -55,6 +55,8 @@ function ConfereObjeto($o, [bool]$noLog) {
   $dacl = $o.Sd.DiscretionaryAcl
   if ($null -eq $dacl) { return "$($o.Caminho) has a null DACL" }
   foreach ($ace in $dacl) {
+    # num arquivo, a so de heranca nao vale nem tem para quem passar
+    if (-not $o.Pasta -and (([int]$ace.AceFlags -band 0x08) -ne 0)) { continue }
     $tipo = [int]$ace.AceType
     if (@(1, 6, 10, 12) -contains $tipo) { continue }  # negacao: so tira acesso
     if (@(0, 9) -notcontains $tipo) { return "$($o.Caminho) has an ACE of type $tipo" }
@@ -97,7 +99,8 @@ function Motivo {
   # sys.executable, nao expande: a mesma pasta passaria aqui e reprovaria la. Alias e o componente de ate 8 caracteres
   # com um ~ seguido de digito e extensao de ate 3; um nome longo com ~ (Ritmelli~2026) nao e
   foreach ($comp in ($Pasta -split '[\\/]' | Select-Object -Skip 1)) {
-    if ($comp -match '^[^.]{1,8}(\.[^.]{1,3})?$' -and $comp.Split('.')[0] -match '~[0-9]') {
+    $c = $comp.TrimEnd('. ')  # o Windows corta o ponto e o espaco do fim
+    if ($c -match '^[^.]{1,8}(\.[^.]{1,3})?$' -and $c.Split('.')[0] -match '~[0-9]') {
       return "$Pasta has a short (8.3) name"
     }
   }
