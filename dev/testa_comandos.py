@@ -621,6 +621,21 @@ def arquivo(A, iid):
     return dict(A.lib.get(iid), path=str(server.LIB / f"{iid}.m4a"))
 
 
+async def pede_corpo(app, A, metodo, caminho, corpo):
+    """A rota de verdade com um corpo JSON, pelo guard, como o PC pede: (status, corpo)."""
+    from aiohttp import streams
+    t = mock.Mock()
+    t.get_extra_info.side_effect = lambda nome, d=None: ("127.0.0.1", 50000) if nome == "peername" else d
+    carga = streams.StreamReader(mock.Mock(_reading_paused=False), 2 ** 16, loop=asyncio.get_running_loop())
+    carga.feed_data(json.dumps(corpo).encode("utf-8"))
+    carga.feed_eof()
+    req = make_mocked_request(metodo, caminho, headers={"Host": f"127.0.0.1:{A.port}", "Content-Type": "application/json"},
+                              transport=t, payload=carga, app=app)
+    req._match_info = await app.router.resolve(req)
+    resp = await app.middlewares[0](req, req._match_info.handler)
+    return resp.status, json.loads(resp.body)
+
+
 async def pede(app, A, metodo, caminho):
     """A rota de verdade, pelo guard, como o PC pede: (status, corpo)."""
     t = mock.Mock()
@@ -788,7 +803,8 @@ def bloco(A, E):
     preparada = E._pronto is not None
     st2 = dict(st, path="http://stream.invalid/s1-novo", religou=1)
     E.trocar_fonte(st, st2)
-    confere(preparada and E._pronto is not None and E.pronto_tag == "t2", "o religar do stream mantem a passagem preparada")
+    confere(preparada and E._pronto is not None and E.pronto_tag == "t2",
+            "o religar do stream mantem a passagem preparada")
     ate(lambda: E._deck.eof_gen == E._deck.gen)
     with E._qlock:
         E._deck.eof_gen = -1  # o leitor do stream ainda le
@@ -856,8 +872,14 @@ def bloco(A, E):
     confere(visto == [True], f"e o Repetir ja esta ligado quando o leitor da faixa nova comeca ({visto})")
     E.load(arquivo(A, "d2"))
     confere(E.loop, "o mesmo disco de novo, sem o Repetir pedido: ele segue ligado")
-    E.load(arquivo(A, "d1"))
-    confere(not E.loop, "outro disco entrando, sem o Repetir pedido: ele desliga, na mesma publicacao da faixa")
+    visto.clear()
+    E._comeca = lambda leitor: (visto.append(E.loop), comeca(leitor))
+    try:
+        E.load(arquivo(A, "d1"))
+    finally:
+        del E._comeca
+    confere(not E.loop and visto == [False],
+            f"outro disco entrando, sem o Repetir pedido: ele desliga, na mesma publicacao da faixa ({visto})")
     E.set_loop(False)
 
     # a pausa pedida com o bloco do fim retirado: o fim a substitui, sem gravar posicao
@@ -907,6 +929,23 @@ def bloco(A, E):
     with E._qlock:
         E._saindo = None
     cmd.retomar(A)
+
+    # a pausa confirmada guarda a faixa daquele instante
+    toca("d1")
+    p = E.pause()
+    with E._qlock:
+        E.track["title"] = "outro nome"  # o prato muda o dicionario dele depois
+    confere(p.ok and p.track["title"] == "Disco d1", f"a pausa guarda a faixa do instante dela ({p.track['title']})")
+    with E._qlock:
+        E.track["title"] = "Disco d1"
+    cmd.retomar(A)
+
+    # o nome novo da prateleira entra na faixa do prato sob o _qlock, so se ela ainda e a mesma
+    toca("d1")
+    st, corpo = asyncio.run(asyncio.wait_for(pede_corpo(app, A, "PATCH", "/api/library/d1", {"title": "Novo d1"}), 5))
+    confere(st == 200 and E.track["title"] == "Novo d1" and E._deck.track is E.track,
+            f"o PATCH da prateleira poe o nome novo na faixa do prato ({st}, {E.track.get('title')})")
+    A.lib.update("d1", title="Disco d1")
 
     # o leitor de uma linha que ja acabou nao marca o fim nem o erro da linha nova
     toca("d1")

@@ -224,7 +224,8 @@ class Pausa:
     def resolve(self, track=None, pos=None, ok=False):
         """Com o _qlock do motor: uma vez so."""
         if not self.feita.is_set():
-            self.track, self.pos, self.ok = track, pos, ok
+            # uma copia: o dicionario do prato ainda muda depois (o canal que chega, o nome novo da prateleira)
+            self.track, self.pos, self.ok = (dict(track) if track is not None else None), pos, ok
             self.feita.set()
 
     def espera(self, prazo):
@@ -2285,8 +2286,11 @@ class Engine:
             if n == 0 and stream and track.get("job") and deck is self._deck:
                 # o download do mesmo disco esta a caminho (27/10: o YouTube deu 403 ao ffmpeg em 2 de ~15 streams, e
                 # o download chegava 2 s depois): sem erro e sem fim, o prato fica carregando e o trocar_fonte toca
-                # o arquivo de onde parou; se o download falhar, o servidor para o prato (esperando_arquivo)
-                self._espera_arquivo = gen
+                # o arquivo de onde parou; se o download falhar, o servidor para o prato (esperando_arquivo). So o
+                # leitor que ainda e o do prato marca: o substituido nao apaga a espera do novo
+                with self._qlock:
+                    if deck is self._deck and deck.gen == gen:
+                        self._espera_arquivo = gen
                 return
             if n == 0 and deck is not self._deck:  # a proxima que nao decodifica so nao entra
                 self._fim_do_leitor(deck, gen)
@@ -2391,11 +2395,11 @@ class Engine:
         quando troca; prato: e um disco entrando, e o primeiro som dele vai para o log), a linha nova (nova_linha; a
         troca da espera para o stream, sem audio ainda, fica na mesma), a posicao, o fim, o ganho do disco que entra
         sem rampa (alvo), a pausa (paused), o Repetir (loop; sem ele, um disco entrando no lugar de outro o desliga) e a
-        passagem desfeita, com o pedido de pausa da linha que acabou substituido. O leitor recebe a faixa, o deck e o gen dessa mudanca e comeca fora das
-        travas. pode(): conferido sob o _qlock antes de mudar qualquer coisa; falso, nada muda. start pode ser uma
-        funcao, chamada ali mesmo (o seek limita pela duracao da faixa daquele instante). Volta (a Captura do que
-        estava no prato logo antes, a posicao que o servidor grava, ou None; e quem comeca o leitor, ou None): quem
-        chama o comeca depois de soltar o _lock."""
+        passagem desfeita, com o pedido de pausa da linha que acabou substituido. O leitor recebe a faixa, o deck e o
+        gen dessa mudanca e comeca fora das travas. pode(): conferido sob o _qlock antes de mudar qualquer coisa;
+        falso, nada muda. start pode ser uma funcao, chamada ali mesmo (o seek limita pela duracao da faixa daquele
+        instante). Volta (a Captura do que estava no prato logo antes, a posicao que o servidor grava, ou None; e quem
+        comeca o leitor, ou None): quem chama o comeca depois de soltar o _lock."""
         with self._qlock:
             if pode is not None and not pode():
                 return None, None

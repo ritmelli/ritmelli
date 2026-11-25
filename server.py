@@ -2280,8 +2280,13 @@ def build(app_state):
         if isinstance(b.get("rapido"), bool):
             kw["rapido"] = b["rapido"]  # nos Sons rapidos do celular pela mao, mesmo com mais de 15 s
         it = A.lib.update(request.match_info["iid"], **kw)
-        if it and E.track is not None and E.track["id"] == it["id"]:
-            E.track = dict(E.track, **kw)  # o Estado mostra o nome novo na hora
+        if it:
+            with E._qlock:  # o Estado mostra o nome novo na hora, sem trocar a faixa do prato fora da trava
+                tr = E.track
+                if tr is not None and tr["id"] == it["id"]:
+                    E.track = dict(tr, **kw)
+                    if E._deck.track is tr:
+                        E._deck.track = E.track
         return j_ok(item=it) if it else j_err(sem_disco(), 404)
 
     @r.delete("/api/library/{iid}")
