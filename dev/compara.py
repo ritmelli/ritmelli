@@ -269,6 +269,8 @@ async def prints(a, srv, destino):
                 p1 = await c.png()
                 await asyncio.sleep(0.5)
                 p2 = await c.png()
+                if c.barrados:  # a pagina foi embora durante o estado: o print nao vale
+                    sys.exit(f"{nome}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
                 (destino / f"{nome}.png").write_bytes(p2)
                 if p1 != p2:
                     pa, pb = pixels(p1), pixels(p2)

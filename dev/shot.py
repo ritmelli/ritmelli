@@ -156,6 +156,8 @@ async def run(a):
                 await asyncio.sleep(0.05)
             if a.tab:
                 await asyncio.sleep(0.4)
+                if not await pode_agir():  # e logo antes do print, depois do Tab
+                    return 1
             shot = {"format": "png"}
             if a.full:
                 m = await cmd("Page.getLayoutMetrics")

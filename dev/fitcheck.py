@@ -245,20 +245,21 @@ async def run(a):
                 w, h = map(int, sz.split("x"))
                 await cmd("Emulation.setDeviceMetricsOverride", width=w, height=h,
                           deviceScaleFactor=1, mobile=w < 600)
-                await cmd("Page.navigate", url=a.url)
-                await asyncio.sleep(a.wait)
                 try:
+                    so_mock.confere(a.url)  # antes de cada navegacao: a porta pode ter mudado de dono
+                    await cmd("Page.navigate", url=a.url)
+                    await asyncio.sleep(a.wait)
                     await confere_pagina(cmd, a.url, barrados)
                     if a.js:
                         await cmd("Runtime.evaluate", expression=a.js)
                         await asyncio.sleep(a.wait)
-                        await confere_pagina(cmd, a.url, barrados)  # o --js pode ter levado a pagina embora
+                    if a.boas_vindas:  # se nao abrir, o PROBE diz "nenhuma janela aberta"
+                        await espera_boas_vindas(cmd)
+                    await confere_pagina(cmd, a.url, barrados)  # o --js e a espera podem ter levado a pagina embora
                 except so_mock.Recusa as ex:
                     print(f"FALHA  {sz:>10}  {ex}; nada mais conferido")
                     falhas += 1
                     break
-                if a.boas_vindas:  # se nao abrir, o PROBE diz "nenhuma janela aberta"
-                    await espera_boas_vindas(cmd)
                 r = await cmd("Runtime.evaluate", expression=f"{PROBE}({'true' if a.boas_vindas else 'false'})",
                               returnByValue=True)
                 v = r["result"]["value"]

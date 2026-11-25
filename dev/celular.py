@@ -34,6 +34,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 from collections import Counter
 
@@ -99,8 +100,12 @@ class Aba:
         return r.get("result", {}).get("value")
 
     async def confere(self):
-        """Antes de cada gesto: a aba segue na origem do --mock, nenhum documento barrado, e ele segue um --mock."""
+        """Antes de cada gesto: a aba segue na pagina do --url (origem e caminho; a galeria da mesma origem nao conta),
+        nenhum documento barrado, e ele segue um --mock."""
         await confere_pagina(self.cmd, self.url, self.barrados)
+        caminho = await self.js("location.pathname")
+        if caminho != urllib.parse.urlsplit(self.url).path:
+            raise so_mock.Recusa(f"a aba saiu de {urllib.parse.urlsplit(self.url).path} para {caminho}")
 
     async def css(self, regra):
         await self.js(f"(() => {{ document.getElementById('__medida')?.remove(); if (!{json.dumps(regra)}) return;"
