@@ -24,11 +24,14 @@ name: Testa
 on:
   pull_request:
     # No edited, labeled or unlabeled: a run on the same head, even one whose jobs all skip, is the newest check suite
-    # of this workflow on that commit, and the required check is read from the newest suite only, so it hid the
-    # "Testa o PR" of the run that tested (the merge queue refused the PR as missing the check). The extracao-tema
-    # and needs-owner labels and a stacked PR's new base are enforced by the merge_group run, which reads the labels of
-    # the PR when it runs and tests the real merge. On the PR, a label takes effect at the next push, a reopen or a full re-run; a new
-    # base only at the next push or a reopen (a re-run keeps the merge commit and the base of its old event)
+    # of this workflow on that commit, and the required check is read from the newest suite only, so it hid the "Testa o
+    # PR" of the run that tested (the merge queue refused the PR as missing the check). The extracao-tema and
+    # needs-owner labels and a stacked PR's new base are enforced by the merge_group run, which reads the labels of the
+    # PR when it runs and tests the real merge. On the PR, a label takes effect at the next push, a reopen or a full
+    # re-run; a new base only at the next push or a reopen (a re-run keeps the merge commit and the base of its old
+    # event)
+    # A change to these triggers or to the name of the required check gets the needs-owner label and is proved on its
+    # own PR: edit the description, put and remove a label and go through the queue, with "Testa o PR" still on the head
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
