@@ -14,8 +14,8 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - `themes/<slug>/index.html`, autossuficiente: HTML + CSS + JS puro, sem build. Arquivo
   extra (fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
   relativo (`./x.svg`), servido em `/t/<slug>/x.svg`.
-- Toda resposta de `/t/` sai com `Cache-Control: no-cache`: o navegador confere cada arquivo do tema antes de usar o
-  que guardou (o que não mudou volta como 304) e nunca junta um arquivo de antes com a página nova.
+- Toda resposta de `/t/` sai com `Cache-Control: no-cache`: o navegador confere cada arquivo do tema com o servidor
+  antes de usar o que guardou (o que não mudou volta como 304), e não usa um `.js` ou `.css` de antes sem conferir.
 - O slug `vitrola` é reservado: era o do tema `ritmelli` até a 0.6.0, e o servidor leva todo `/t/vitrola/...` para
   o mesmo caminho em `/t/ritmelli/` (302, com a mesma query), antes de procurar a pasta.
 - `themes/<slug>/meta.json`: `{"name": "...", "direction": "...", "blurb": "uma frase"}`. Cada campo pode vir
