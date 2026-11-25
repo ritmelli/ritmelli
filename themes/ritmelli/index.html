@@ -66,6 +66,27 @@ const I18N = (() => {
   const reserva = k => (tem(d.reserva, k) ? d.reserva[k] : undefined);
   return { lingua: d.lingua, lang, tem: existe, t, tp, num, rico, aplica, reserva };
 })();
+/* a theme file that does not load (the server was off when the page opened, a cut connection): the onerror of every
+   <script src> of the page calls scriptFailed. The start of the page calls functions from several files, so without
+   one of them it never connects. Once the parser is done, the page shows the off-air card and loads again as soon as
+   the file answers. The transporte.js alone is left to its own retry (carregarTransporte), which reconnects without
+   loading the page again */
+const scriptsFailed = [];
+function scriptFailed(s) { scriptsFailed.push(s.getAttribute('src')); }
+document.addEventListener('DOMContentLoaded', () => {
+  const missing = scriptsFailed.filter(f => f !== 'transporte.js');
+  if (!missing.length) return;
+  try { mostrarFora(); } catch (e) { document.getElementById('fora').hidden = false; }
+  const probe = () => {
+    const l = document.createElement('link');
+    // a query of its own each time: the browser does not fetch again a preload that failed on the same address
+    l.rel = 'preload'; l.as = 'script'; l.href = missing[0] + '?retry=' + Date.now();
+    l.onload = () => location.reload();
+    l.onerror = () => { l.remove(); setTimeout(probe, 3000); };
+    document.head.append(l);
+  };
+  setTimeout(probe, 3000);
+});
 </script>
 <!-- a pagina aparece quando os textos ja estao no lugar (o I18N.aplica, no comeco do script principal) -->
 <style>html:not(.i18n-ok) body { visibility: hidden; }</style>
@@ -110,7 +131,8 @@ const I18N = (() => {
 <link rel="stylesheet" href="deck.css">
 <link rel="stylesheet" href="mix.css">
 <link rel="stylesheet" href="pedal.css">
-<script src="gerado/pecas.js"></script>
+<script src="shared.js" onerror="scriptFailed(this)"></script>
+<script src="gerado/pecas.js" onerror="scriptFailed(this)"></script>
 </head>
 <body data-status="idle">
 <div class="app">
@@ -592,16 +614,12 @@ const I18N = (() => {
   </form>
 </div>
 
-<script src="transporte.js"></script>
+<script src="transporte.js" onerror="scriptFailed(this)"></script>
 <script>
 'use strict';
 // os textos da marcacao na lingua de quem usa (o I18N, no <head>), antes de qualquer coisa ler ou medir a tela; a
 // pagina so aparece depois, e aparece mesmo se der erro aqui
 try { I18N.aplica(); } finally { document.documentElement.classList.add('i18n-ok'); }
-const $ = (s, r = document) => r.querySelector(s);
-const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const reduz = matchMedia('(prefers-reduced-motion: reduce)');
 /* o palco da mesa (pedido dele, 06/11): a mesa monta sempre num tamanho fixo, PALCO_W x PALCO_H (a proporcao do mock
    B), e a pagina escala tudo para caber na janela, centrado; o que a janela tem de outra proporcao vira faixa de parede.
    Quando da, a escala cai num numero inteiro de pixels da tela por celula de 2 px (no notebook dele, 3x3), para o
@@ -642,33 +660,6 @@ function rectP(e) {
 }
 // a largura do palco (ou da janela, sem a mesa), para prender o que abre por cima dentro dele
 const larguraPalco = () => PALCO.k === 1 ? innerWidth : PALCO.w;
-
-const S = {
-  state: null, lib: [], jobs: [], pos: 0, levels: { mic: 0, track: 0, out: 0 },
-  online: null, jaConectou: false, desligado: false,
-  pareando: false,        // celular sem pareamento: o #tela-parear pede o codigo do PC
-  caps: null,             // o que esta pagina pode, pelo servidor ({papel, rotas}); null ate ele dizer
-  atualizando: null,      // a versao que o instalador esta pondo: a pagina recarrega quando o Ritmelli voltar
-  busca: null,            // null = prateleira; {q, link, itens, carregando, erro}
-  buscaSeq: 0,
-  jobAlvo: {},            // id do job -> youtube_id
-  jobCorpo: {},           // id do job -> corpo do POST, para tentar de novo
-  vistoFora: new Set(),   // (#53) os discos (id do YouTube ou link) que o prato ou a fila mostrou fora da prateleira
-  libOk: false,           // (#53) a prateleira ja chegou do servidor
-  chegou: new Map(),      // (#53) o que cada download desta pagina trouxe: alvo -> id do item na prateleira
-  segurando: {},          // slider sendo mexido: chave -> instante
-  arrastandoSeek: false,
-  rotuloId: undefined,
-  efeitos: null,          // lista de /api/effects, na ordem de exibicao
-  erroEfeitos: null,
-  gaveta: false,          // gaveta de efeitos aberta (so conta no computador)
-  palco: false,           // toca-discos aberto por cima da prateleira (so no celular)
-};
-const SEM_EFEITO = 'nenhum';
-/* a mesa de DJ (computador largo): lado = onde esta o deck no ar ('a' na esquerda, 'b' na direita); o deck da deixa
-   fica com a proxima da fila; antes = o disco que saiu na ultima troca de lado (ele segue no deck dele enquanto soa
-   na passagem); bpm = o andamento medido de cada disco que passou pela fila */
-const MESA = { montada: null, lado: 'a', idAr: null, trAr: null, antes: null, deixa: null, bpm: new Map(), trocaT: 0 };
 
 const SITUACAO = { idle: I18N.t('deck.status.idle'), buffering: I18N.t('deck.status.buffering'), playing: I18N.t('deck.status.playing'),
                    paused: I18N.t('deck.status.paused'), ended: I18N.t('deck.status.ended') };
@@ -1000,7 +991,7 @@ function ligarChave(b, on) {
 }
 
 </script>
-<script src="dj-visor.js"></script>
+<script src="dj-visor.js" onerror="scriptFailed(this)"></script>
 <script>
 'use strict';
 
@@ -1065,7 +1056,7 @@ function desenharReceptor() {
 function pintarFader(f) { f.style.setProperty('--p', (f.value / f.max * 100).toFixed(1) + '%'); f.style.setProperty('--f', (f.value / f.max).toFixed(4)); }
 
 </script>
-<script src="voice-effects.js"></script>
+<script src="voice-effects.js" onerror="scriptFailed(this)"></script>
 <script>
 'use strict';
 
@@ -1147,7 +1138,7 @@ function abrirDisco(on) {
 }
 
 </script>
-<script src="dj-desk.js"></script>
+<script src="dj-desk.js" onerror="scriptFailed(this)"></script>
 <script>
 'use strict';
 
@@ -1435,7 +1426,7 @@ function ajustar(k, v) {
 }
 
 </script>
-<script src="search.js"></script>
+<script src="search.js" onerror="scriptFailed(this)"></script>
 <script>
 'use strict';
 
@@ -1607,7 +1598,7 @@ document.addEventListener('pointerdown', e => {
 addEventListener('resize', () => { if (innerWidth !== larguraMenu) fecharMenu(false); });
 
 </script>
-<script src="queue.js"></script>
+<script src="queue.js" onerror="scriptFailed(this)"></script>
 <script>
 'use strict';
 
@@ -2129,7 +2120,7 @@ $('#dlg-disp').addEventListener('close', () => { if ($('#dlg-boas').open) confer
 $('#db-cel').addEventListener('click', abrirCelular);
 
 </script>
-<script src="ui-events.js"></script>
+<script src="ui-events.js" onerror="scriptFailed(this)"></script>
 <script>
 'use strict';
 
@@ -2202,14 +2193,14 @@ document.addEventListener('visibilitychange', () => {
   if (!S.online) armarFora();
 });
 </script>
-<script src="letra-placa.js"></script>
-<script src="prateleira.js"></script>
-<script src="maleta-tit.js"></script>
-<script src="mesa-topo.js"></script>
+<script src="letra-placa.js" onerror="scriptFailed(this)"></script>
+<script src="prateleira.js" onerror="scriptFailed(this)"></script>
+<script src="maleta-tit.js" onerror="scriptFailed(this)"></script>
+<script src="mesa-topo.js" onerror="scriptFailed(this)"></script>
 
-<script src="deck.js"></script>
-<script src="maleta-vazia.js"></script>
-<script src="mix.js"></script>
-<script src="pedal.js"></script>
+<script src="deck.js" onerror="scriptFailed(this)"></script>
+<script src="maleta-vazia.js" onerror="scriptFailed(this)"></script>
+<script src="mix.js" onerror="scriptFailed(this)"></script>
+<script src="pedal.js" onerror="scriptFailed(this)"></script>
 </body>
 </html>

@@ -137,9 +137,10 @@ def confere_blocos(tema, arquivos):
     print(f"{tema.name}: {len(arquivos)} file(s), {len({b for b, _ in onde})} marked block(s)")
 
 
-# The most lines of inline CSS and JS each theme's index.html may have. The number only goes down: new theme code goes
-# into a file of the theme folder, and a PR that moves code out of the page lowers it to the new count.
-INLINE_CEILING = {"ritmelli": 1644}
+# The lines of inline CSS and JS each theme's index.html has. The number only goes down: new theme code goes into a file
+# of the theme folder, and a PR that moves code out of the page lowers it to the new count. A count under the ceiling
+# fails too, so the ceiling follows each move and a later PR cannot spend the lines that one freed.
+INLINE_CEILING = {"ritmelli": 1633}
 INLINE = re.compile(r"<(style|script)\b([^>]*)>(.*?)</\1>", re.S)
 
 
@@ -155,16 +156,193 @@ def inline_lines(html):
 
 
 def check_inline_ceiling(tema, html):
-    """Fails when the index.html has more inline lines than its ceiling. The count goes to the PR summary (the
+    """Fails when the index.html has more or fewer inline lines than its ceiling. The count goes to the PR summary (the
     "-- summary:" line, which dev/testa_tudo.py copies)."""
     if tema.name not in INLINE_CEILING:
         return
     count, ceiling = inline_lines(html), INLINE_CEILING[tema.name]
-    note = f"; it can go down to {count}" if count < ceiling else ""
-    print(f"-- summary: {tema.name}/index.html: {count} lines of inline CSS and JS (ceiling {ceiling}{note})")
+    print(f"-- summary: {tema.name}/index.html: {count} lines of inline CSS and JS (ceiling {ceiling})")
     if count > ceiling:
         falha(f"{tema.name}: index.html has {count} lines of inline CSS and JS, over the ceiling of {ceiling}: new "
               f"theme code goes into a file of the theme folder (INLINE_CEILING in dev/testa_i18n.py only goes down)")
+    elif count < ceiling:
+        falha(f"{tema.name}: index.html has {count} lines of inline CSS and JS, under the ceiling of {ceiling}: lower "
+              f"INLINE_CEILING in dev/testa_i18n.py to {count}")
+
+
+# The file each theme loads before all its other scripts (the shared state and helpers). The onerror of every
+# <script src> of its page calls the same handler, scriptFailed, which the <head> declares before the first file.
+SHARED_FIRST = {"ritmelli": "shared.js"}
+SCRIPT_TAG = re.compile(r"<script\b([^>]*)>(.*?)</script>", re.S)
+ONERROR = 'onerror="scriptFailed(this)"'
+
+
+def page_scripts(html, arquivos):
+    """The scripts of the page in the order they run: (where, first line, text) for each inline <script> and each
+    <script src> (the src as written, and None for the text when the file is not in the theme folder)."""
+    out = []
+    for m in SCRIPT_TAG.finditer(html):
+        src = re.search(r'\bsrc="([^"]+)"', m.group(1))
+        if src:
+            out.append((src.group(1), 1, arquivos.get(src.group(1))))
+        else:
+            out.append(("index.html", html.count("\n", 0, m.start(2)) + 1, m.group(2)))
+    return out
+
+
+def check_script_tags(tema, html):
+    """Every <script src> of the page calls the common onerror, and the shared file is the first of them."""
+    if tema.name not in SHARED_FIRST:
+        return
+    tags = [(m.group(1), html.count("\n", 0, m.start()) + 1) for m in SCRIPT_TAG.finditer(html)
+            if re.search(r"\bsrc=", m.group(1))]
+    for attrs, line in tags:
+        if ONERROR not in attrs:
+            falha(f"{tema.name}: index.html:{line}: <script{attrs}> has no {ONERROR}: a file that does not load would "
+                  f"leave the page without a connection")
+    first = re.search(r'\bsrc="([^"]+)"', tags[0][0]).group(1) if tags else None
+    if first != SHARED_FIRST[tema.name]:
+        falha(f"{tema.name}: the first <script src> of the index.html is {first}, not {SHARED_FIRST[tema.name]}: the "
+              f"shared state and helpers load before every other script")
+
+
+REGEX_AFTER = set("(,=:[!&|?{};+-*%<>~^")
+REGEX_AFTER_WORD = re.compile(r"(?<![\w$.])(?:return|typeof|case|in|of|void|delete|throw|new|else|do)$")
+
+
+def js_code(text):
+    """The text of a script with its comments, strings, template literals and regex literals blanked (the newlines stay,
+    so the lines do too): the brackets left are the code's."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        c, nxt = text[i], text[i + 1:i + 2]
+        if c == "/" and nxt == "/":
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if c == "/" and nxt == "*":
+            j = text.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            out.append("\n" * text.count("\n", i, j))
+            i = j
+            continue
+        before = "".join(out[-40:]).rstrip()
+        regex = c == "/" and (not before or before[-1] in REGEX_AFTER or REGEX_AFTER_WORD.search(before))
+        if c in "'\"`" or regex:
+            j, depth, in_class = i + 1, 0, False
+            while j < n:
+                d = text[j]
+                if d == "\\":
+                    j += 2
+                    continue
+                if c == "`" and d == "$" and text[j + 1:j + 2] == "{":
+                    depth += 1
+                elif c == "`" and d == "}" and depth:
+                    depth -= 1
+                elif regex and d in "[]":
+                    in_class = d == "["
+                elif d == c and not depth and not in_class:
+                    break
+                elif d == "\n" and c != "`":
+                    break
+                j += 1
+            out.append('""' + "\n" * text.count("\n", i, j))
+            i = j + 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+DECL = re.compile(r"(?:async\s+)?function\b\s*\*?\s*([A-Za-z_$][\w$]*)|class\s+([A-Za-z_$][\w$]*)|(?:const|let|var)\s+")
+# a line that does not end the statement: it ends in an operator, or the next one starts with one
+GOES_ON = re.compile(r"[=,(\[{+\-*/?:&|]\s*$")
+GOES_ON_NEXT = re.compile(r"\s*(?:[.?:,+\-*/&|=]|\)|\])")
+
+
+def top_level_names(text):
+    """(name, line) for each name a script declares at its top level: function, class, const, let and var, the names
+    inside a destructuring pattern and the ones after a comma too."""
+    code = js_code(text)
+    names, depth, i, n = [], 0, 0, len(code)
+    while i < n:
+        c = code[i]
+        if c in "{([":
+            depth += 1
+        elif c in "})]":
+            depth -= 1
+        elif depth == 0 and (c.isalpha()) and (i == 0 or not (code[i - 1].isalnum() or code[i - 1] in "_$.")):
+            m = DECL.match(code, i)
+            before = code[:i].rstrip()[-1:]
+            # a statement starts after a ; or a }, or on a new line after a line that ended one (no semicolon there)
+            new_line = code[:i].rstrip(" \t").endswith("\n")
+            starts = not before or before in ";}" or (new_line and before not in "=(,:?&|+-*/[")
+            if m and starts:
+                line = code.count("\n", 0, i) + 1
+                if m.group(1) or m.group(2):
+                    names.append((m.group(1) or m.group(2), line))
+                    i = m.end()
+                    continue
+                j, d, part, parts = m.end(), 0, "", []
+                while j < n:
+                    ch = code[j]
+                    d += (ch in "{([") - (ch in "})]")
+                    if d == 0 and ch == ",":
+                        parts.append(part)
+                        part = ""
+                    elif d == 0 and (ch == ";" or ch == "\n" and not GOES_ON.search(part)
+                                     and not GOES_ON_NEXT.match(code, j + 1)):
+                        break
+                    else:
+                        part += ch
+                    j += 1
+                parts.append(part)
+                for p in parts:
+                    target = p[:p.index("=")] if "=" in p and not p.lstrip()[:1] in "{[" else p
+                    if p.lstrip()[:1] in "{[":
+                        # the pattern: what is before its closing bracket, without the keys of a { key: name }
+                        target = p[:p.rindex("}" if p.lstrip()[0] == "{" else "]") + 1]
+                    names += [(x, line) for x in re.findall(r"(?<![\w$.])([A-Za-z_$][\w$]*)(?!\s*:)", target)]
+                i = j
+                continue
+        i += 1
+    return names
+
+
+def check_unique_names(tema, html, arquivos):
+    """No name is declared at the top level twice among the scripts of the page (the inline ones and each file): a
+    second const or let stops the script that has it, and a second function silently takes the place of the first."""
+    if tema.name not in SHARED_FIRST:
+        return
+    where = {}
+    for unit, first, text in page_scripts(html, arquivos):
+        for name, line in top_level_names(text or ""):
+            where.setdefault(name, []).append(f"{unit}:{first + line - 1}")
+    for name, places in sorted(where.items()):
+        if len(places) > 1:
+            falha(f"{tema.name}: {name} is declared at the top level in {len(places)} places ({', '.join(places)}): "
+                  f"the scripts of a page share one scope")
+    print(f"{tema.name}: {len(where)} top-level names in the scripts of the page, each declared once")
+
+
+def check_name_reader():
+    """The reader of top-level names on a made-up script, and the duplicate failing across two scripts."""
+    text = ("'use strict';\nconst a = 1, b = f(2, 3), { c, d: e } = o, [g] = [];\nlet h\nfunction i() { const no1 = 1; }\n"
+            "async function j() {}\nclass K {}\nconst l = () => { let no2; };\nconst s = 'function no3() {}', r = /[(]/g;\n"
+            "// const no4 = 1\n/* let no5 */\nconst m = `${'}'}` + x\n  .y;\nif (a) { var no6; }\nvar n = cond\n  ? 1 : 2;\n")
+    got = [x for x, _ in top_level_names(text)]
+    want = ["a", "b", "c", "e", "g", "h", "i", "j", "K", "l", "s", "r", "m", "n"]
+    if got != want:
+        falha(f"top_level_names read {got}, expected {want}")
+    antes = len(falhas)
+    with contextlib.redirect_stdout(io.StringIO()):
+        check_unique_names(Path("ritmelli"), '<script src="x.js"></script><script>\nfunction dup() {}\n</script>',
+                           {"x.js": "let y;\nfunction dup() {}\n"})
+    if len(falhas) != antes + 1 or "dup is declared at the top level in 2 places (x.js:2, index.html:2)" not in falhas[-1]:
+        falha(f"check_unique_names should fail once on dup: {falhas[antes:]}")
+    else:
+        del falhas[antes:]
+    print("the top-level name reader checked")
 
 
 def confere_tema(tema, servidor, efeitos):
@@ -200,6 +378,8 @@ def confere_tema(tema, servidor, efeitos):
     arquivos = arquivos_do_tema(tema)
     confere_blocos(tema, arquivos)
     check_inline_ceiling(tema, arquivos["index.html"])
+    check_script_tags(tema, arquivos["index.html"])
+    check_unique_names(tema, arquivos["index.html"], arquivos)
     html = "\n".join(arquivos.values())
     # o que o tema pede: os data-i18n* e as chaves entre aspas nas linhas que chamam o I18N.t, o I18N.tp ou o
     # I18N.rico (pega o I18N.t(cond ? 'a.b' : 'a.c'))
@@ -554,6 +734,7 @@ def confere_modulo():
 
 def main():
     confere_modulo()
+    check_name_reader()
     temas = [d for d in sorted((RAIZ / "themes").iterdir()) if (d / "i18n").is_dir()]
     if not temas:
         falha("no theme has an i18n/ folder")

@@ -1,8 +1,6 @@
 /* VOICE-EFFECTS-INICIO */
 'use strict';
 /* ---------- efeitos de voz: seletor no receptor e gaveta de teclas ---------- */
-const celular = () => matchMedia('(max-width: 899.98px)').matches;
-const toque = () => matchMedia('(pointer: coarse)').matches;
 const angDial = (i, n) => n > 1 ? -135 + i * 270 / (n - 1) : 0;
 
 async function carregarEfeitos() {
