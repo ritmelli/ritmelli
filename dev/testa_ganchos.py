@@ -12,7 +12,7 @@ comandos.py, automatico.py and the rest): every read or call of ._deck, ._qlock,
 ._saindo or ._ganho_de on an object other than self (a class's own _lock is its own). The count must equal
 TETO_MOTOR: above it, a new reach went in (use the engine's interface: Engine.line, on_line, take_switch,
 drop_prepared, gain_for, update_track, platter_state, tracks_in_use); below it, the PR lowers TETO_MOTOR with it. The
-number goes to the PR summary (the "summary:" line that dev/testa_tudo.py collects).
+number goes to the PR summary (the "-- summary:" line that dev/testa_tudo.py collects).
 
     python dev/testa_ganchos.py
 
@@ -123,7 +123,7 @@ else:
 por_modulo = reaches()
 dentro = sum(por_modulo.values())
 detalhe = ", ".join(f"{k} {v}" for k, v in por_modulo.items()) or "none"
-print(f"summary: reaches into the engine's insides outside engine.py: {dentro} (ceiling {TETO_MOTOR}; {detalhe})")
+print(f"-- summary: reaches into the engine's insides outside engine.py: {dentro} (ceiling {TETO_MOTOR}; {detalhe})")
 if dentro > TETO_MOTOR:
     print(f"FALHA {dentro - TETO_MOTOR} new reach(es) into the engine's insides: go through the engine's interface "
           "(docs/arquitetura/comandos.md)")

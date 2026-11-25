@@ -23,6 +23,7 @@ Todo dev/testa_*.py tem destino: ou roda no testa.yml (numa lista daqui ou num p
 testa_pasta_protegida), ou so roda a mao e diz no topo do arquivo, num comentario antes da docstring, como e com o que:
 "# manual: <comando> precisa de <aparelho>". Antes de rodar, o COMPLETO, o --so-stdlib e o --microfone leem os passos do
 testa.yml e reprovam o teste sem destino e o arquivo de dev/ com a linha "manual:" que roda la.
+They also fail an AGENTS.md over 80 lines or with a file in its map that doesn't exist (agents_md).
 Sai 0 se tudo passou e 1 se algo falhou; no --tela, 2 se so os prints do compara mudaram (o testa.yml decide).
 """
 import argparse
@@ -59,6 +60,8 @@ MODULOS = ("numpy", "scipy", "sounddevice", "pedalboard", "aiohttp", "segno", "y
 PROGRAMAS = ("ffmpeg", "ffprobe")
 # a linha de quem pulou uma parte por falta de biblioteca ("--   o guard do servidor ficou de fora: ...")
 PULOU = re.compile(r"^--\s.*ficou de fora.*$", re.M)
+# a line a test wants in the PR summary ("-- summary: <text>"), copied under the title of its run
+SUMMARY = re.compile(r"^-- summary: (.+?)\s*$", re.M)
 LIMITE_S = 600
 
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva
@@ -233,16 +236,13 @@ def executa(cmd, limite=LIMITE_S, **kw):
 
 
 def roda(titulo, lista, completo):
-    """Roda cada teste da lista. Volta (as falhas, as linhas do markdown). A test's "summary: <text>" line goes to the
-    summary as a bullet (a number the PR shows, like the ratchet of dev/testa_ganchos.py)."""
-    falhas, tabela, md, numeros = [], [], [], []
+    """Roda cada teste da lista. Volta (as falhas, as linhas do markdown)."""
+    falhas, tabela, md, notes = [], [], [], []
     t0 = time.monotonic()
     for t in lista:
         ini = time.monotonic()
         cod, saida = executa([sys.executable, t])
         dt = time.monotonic() - ini
-        numeros += [f"- `{t}`: {linha[len('summary: '):].strip()}" for linha in saida.splitlines()
-                    if linha.startswith("summary: ")]
         motivo = None
         if cod != 0:
             motivo = f"sai {cod}" if isinstance(cod, int) else cod
@@ -250,6 +250,7 @@ def roda(titulo, lista, completo):
             motivo = "pulou uma parte por falta de biblioteca: " + PULOU.search(saida).group(0).strip()
         print(f"{'ok   ' if not motivo else 'FALHA'} {t} ({dt:.1f} s){'' if not motivo else ': ' + motivo}", flush=True)
         tabela.append(f"| {'✅' if not motivo else '❌'} | `{t}` | {dt:.0f} s |")
+        notes += [f"- `{t}`: {n}" for n in SUMMARY.findall(saida)]
         if motivo:
             print(saida.rstrip(), flush=True)
             falhas.append(t)
@@ -259,8 +260,7 @@ def roda(titulo, lista, completo):
     passou = len(lista) - len(falhas)
     print(f"{passou} de {len(lista)} passaram em {total:.0f} s", flush=True)
     md = [f"**{titulo}:** {'✅' if not falhas else '❌'} {passou} de {len(lista)} passaram, em {total:.0f} s", ""] + md
-    if numeros:
-        md += [""] + numeros
+    md += [""] + notes if notes else []
     md += ["", "<details><summary>Cada teste</summary>", "", "| | Teste | Tempo |", "| --- | --- | --- |"] + tabela
     md += ["", "</details>"]
     return falhas, md
@@ -276,10 +276,37 @@ def falta_para_o_completo():
                     if not (pastas.ferramenta(p) or shutil.which(p))]
 
 
+AGENTS_MAX_LINES = 80
+# a file in the map: a backticked path with a folder or an extension (its first word, before an option)
+MAP_FILE = re.compile(r"^(?:[\w.-]+/)*[\w.-]+(?:/|\.[A-Za-z]\w*)$")
+
+
+def agents_md(path=RAIZ / "AGENTS.md"):
+    """What is wrong with the AGENTS.md: over AGENTS_MAX_LINES lines, or a file in the map table that doesn't exist (in
+    the files column, from the repo root; in the test column, a bare testa_* from dev/, a path from the root, and a
+    bare file name from dev/ or from the root, since a note there may name an app file)."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    problems = [f"AGENTS.md has {len(lines)} lines (at most {AGENTS_MAX_LINES})"] if len(lines) > AGENTS_MAX_LINES else []
+    rows = [line.split("|")[1:-1] for line in lines if line.startswith("|") and not line.startswith("| ---")]
+    for files, tests in ((r[1], r[2]) for r in rows[1:] if len(r) == 3):
+        cited = [(t, [RAIZ / t]) for t in (c.split()[0] for c in re.findall(r"`([^`]+)`", files)) if MAP_FILE.match(t)]
+        for t in (c.split()[0] for c in re.findall(r"`([^`]+)`", tests)):
+            if re.fullmatch(r"testa_\w+", t):
+                cited.append((t, [RAIZ / "dev" / f"{t}.py"]))
+            elif MAP_FILE.match(t):
+                cited.append((t, [RAIZ / t] if "/" in t else [RAIZ / "dev" / t, RAIZ / t]))
+        problems += [f"AGENTS.md cites {t}, which doesn't exist" for t, ps in cited if not any(p.exists() for p in ps)]
+    return problems
+
+
 def testes(a):
     titulo, lista = (("Testes so da biblioteca padrao", STDLIB) if a.so_stdlib else
                      ("Testes do filtro", MICROFONE) if a.microfone else ("Testes", COMPLETO))
     md = []
+    for p in (agents := agents_md()):
+        print(f"FALHA {p}")
+    if agents:
+        md += [f"**{titulo}:** ❌ AGENTS.md:", ""] + [f"- {p}" for p in agents] + [""]
     esquecidos = sem_destino()
     for t in esquecidos:
         print(f"FALHA {t}")
@@ -301,7 +328,7 @@ def testes(a):
         return 1
     falhas, linhas = roda(titulo, lista, completo=not a.so_stdlib and not a.microfone)
     escreve(a.resumo, md + linhas)
-    return 1 if falhas or esquecidos else 0
+    return 1 if falhas or esquecidos or agents else 0
 
 
 def escreve(resumo, linhas):
