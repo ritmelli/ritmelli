@@ -316,25 +316,27 @@ async def papeis_no_guard():
                      ("POST", "/api/shutdown"), ("GET", "/api/pareamento"), ("POST", "/api/parear"),
                      ("GET", "/api/themes"), ("POST", "/api/nao-existe"), ("GET", "/t/ritmelli/")):
             confere(await status(m, c, de=pc, token=token) == 403, f"o remoto: {m} {c} fora da lista (403)")
-        # a sessao acaba enquanto o corpo chega: o comando nao vale mais
-        t = mock.Mock()
-        t.get_extra_info.side_effect = lambda nome, d=None: (pc, 50000) if nome == "peername" else d
-        carga = streams.StreamReader(mock.Mock(_reading_paused=False), 2 ** 16, loop=asyncio.get_running_loop())
-        req = make_mocked_request("POST", "/api/volume", headers={"Host": f"{pc}:{porta}", perm.REMOTO: token,
-                                                                  "Content-Type": "application/json"},
-                                  transport=t, payload=carga, app=app)
-        req._match_info = await app.router.resolve(req)
-        tarefa = asyncio.ensure_future(guard(req, rota[("POST", "/api/volume")]))
-        await asyncio.sleep(0.05)
-        A.remotos.fecha(token)
-        carga.feed_data(b'{"vol": 0.9}')
-        carga.feed_eof()
-        try:
-            st = (await tarefa).status
-        except web.HTTPException as ex:
-            st = ex.status
-        confere(st == 401 and E.vol == 0.5, f"a sessao acabou com o corpo a caminho: {st}, e o volume nao muda")
-        token = A.remotos.abre()
+        # a sessao acaba enquanto o corpo chega: o comando nao vale mais, nem com o corpo invalido (401, nao 400)
+        for dados in (b'{"vol": 0.9}', b'[1, 2]', b'{quebrado'):
+            t = mock.Mock()
+            t.get_extra_info.side_effect = lambda nome, d=None: (pc, 50000) if nome == "peername" else d
+            carga = streams.StreamReader(mock.Mock(_reading_paused=False), 2 ** 16, loop=asyncio.get_running_loop())
+            req = make_mocked_request("POST", "/api/volume", headers={"Host": f"{pc}:{porta}", perm.REMOTO: token,
+                                                                      "Content-Type": "application/json"},
+                                      transport=t, payload=carga, app=app)
+            req._match_info = await app.router.resolve(req)
+            tarefa = asyncio.ensure_future(guard(req, rota[("POST", "/api/volume")]))
+            await asyncio.sleep(0.05)
+            A.remotos.fecha(token)
+            carga.feed_data(dados)
+            carga.feed_eof()
+            try:
+                st = (await tarefa).status
+            except web.HTTPException as ex:
+                st = ex.status
+            confere(st == 401 and E.vol == 0.5, f"a sessao acabou com o corpo {dados!r} a caminho: {st}, e o volume "
+                    "nao muda")
+            token = A.remotos.abre()
         resp, j, _ = await manda("GET", "/api/state", de=pc, token=token, handler=rota[("GET", "/api/state")])
         confere(j.get("caps") == perm.caps("remoto")
                 and {tuple(x.split(" ", 1)) for x in j["caps"]["rotas"]} == VOCABULARIO,
@@ -343,7 +345,11 @@ async def papeis_no_guard():
         confere(await status("POST", "/api/play", de="::1", token=token) == 401, "o token vindo do ::1: 401")
         for corpo in ({"url": "http://192.168.0.1/admin"}, {"url": "file:///C:/x"}, {"youtube_id": "curto"},
                       {"query": "queen"}, {"id": 12345678901, "url": "http://192.168.0.1/admin"},
-                      {"youtube_id": 12345678901}, {"url": ["v=dQw4w9WgXcQ"]}):
+                      {"youtube_id": 12345678901}, {"url": ["v=dQw4w9WgXcQ"]},
+                      {"youtube_id": "dQw4w9WgXcQ", "title": ["x"]}, {"youtube_id": "dQw4w9WgXcQ", "channel": 3},
+                      {"youtube_id": "dQw4w9WgXcQ", "duration": "longa"},
+                      {"youtube_id": "dQw4w9WgXcQ", "duration": True},
+                      {"youtube_id": "dQw4w9WgXcQ", "duration": -1}):
             resp, _, _ = await manda("POST", "/api/queue", de=pc, token=token, corpo=corpo,
                                      handler=rota[("POST", "/api/queue")])
             confere(resp.status == 400, f"o remoto so enfileira disco da prateleira ou video do YouTube: {corpo} -> "
@@ -375,10 +381,12 @@ async def papeis_no_guard():
         confere(await status("POST", "/api/play", de=pc) == 200, "sem o cabecalho, o 127.0.0.1 segue o PC")
 
 
-def de_casa(porta, metodo, caminho, corpo=None, origem="127.0.0.2", cab=None):
+def de_casa(srv, metodo, caminho, corpo=None, origem="127.0.0.2", cab=None):
     """Um pedido ao --mock saindo do endereco origem (o 127.0.0.2 faz as vezes de um aparelho da rede de casa: o
-    servidor olha o endereco de quem conecta). Volta (status, o JSON ou o texto)."""
-    c = http.client.HTTPConnection("127.0.0.1", porta, timeout=10, source_address=(origem, 0))
+    servidor olha o endereco de quem conecta), so com o filho vivo e respondendo como --mock, como no Filho.api.
+    Volta (status, o JSON ou o texto)."""
+    srv.confere()
+    c = http.client.HTTPConnection("127.0.0.1", srv.porta, timeout=10, source_address=(origem, 0))
     try:
         dados = None if corpo is None else json.dumps(corpo).encode("utf-8")
         c.request(metodo, caminho, body=dados, headers={"Content-Type": "application/json", **(cab or {})})
@@ -404,7 +412,6 @@ def recusa_do(srv, metodo, rota, corpo):
 def ao_vivo(srv):
     """No --mock de verdade: o PC com tudo e a rede de casa recusada onde deve."""
     print("--- no --mock de verdade: o PC e a rede de casa (pelo 127.0.0.2)")
-    porta = srv.porta
     confere(srv.api("GET", "/api/state").get("caps") == perm.caps("pc"), "o PC: o /api/state traz o caps do PC")
     confere(srv.api("POST", "/api/volume", {"vol": 0.42}).get("vol") == 0.42
             and srv.api("GET", "/api/state").get("vol") == 0.42, "o PC: o /api/volume muda o volume da musica")
@@ -438,12 +445,11 @@ def ao_vivo(srv):
         confere(recusa_do(srv, "POST", "/api/abaixa", corpo) == 400, f"o /api/abaixa recusa {corpo}")
 
     try:
-        de_casa(porta, "GET", "/api/themes")
+        de_casa(srv, "GET", "/api/themes")
     except OSError as ex:
         print(f"--   a rede de casa pelo 127.0.0.2 ficou de fora: o sistema nao conecta dele ({ex})")
         return
-    srv.confere()  # o filho segue vivo e responde como --mock
-    s, j = de_casa(porta, "GET", "/api/state")
+    s, j = de_casa(srv, "GET", "/api/state")
     confere(s == 401 and isinstance(j, dict) and j.get("parear") and j.get("caps") == perm.caps("publico"),
             f"a rede de casa sem parear: o /api/state pede o codigo, com o caps do pre-pareamento ({s})")
     for m, c, esperado in (("GET", "/api/themes", 200), ("GET", "/t/ritmelli/", 200), ("POST", "/api/play", 401),
@@ -451,15 +457,15 @@ def ao_vivo(srv):
                            ("POST", "/api/effects/reload", 403), ("GET", "/api/pareamento", 403),
                            ("POST", "/api/atualizacao/instalar", 403), ("HEAD", "/api/state", 401),
                            ("DELETE", "/api/pareamento/abc", 403), ("POST", "/api/shutdown", 401)):
-        s, _ = de_casa(porta, m, c, corpo={} if m == "POST" else None)
+        s, _ = de_casa(srv, m, c, corpo={} if m == "POST" else None)
         confere(s == esperado, f"a rede de casa sem parear: {m} {c} -> {s} (esperado {esperado})")
-    s, _ = de_casa(porta, "POST", "/api/play", {}, origem="127.0.0.1", cab={"Host": "ritmelli.example"})
+    s, _ = de_casa(srv, "POST", "/api/play", {}, origem="127.0.0.1", cab={"Host": "ritmelli.example"})
     confere(s == 403, f"outro Host (DNS rebinding), mesmo do 127.0.0.1: 403 ({s})")
-    s, _ = de_casa(porta, "POST", "/api/play", {}, origem="127.0.0.1", cab={"Origin": "http://outro.example"})
+    s, _ = de_casa(srv, "POST", "/api/play", {}, origem="127.0.0.1", cab={"Origin": "http://outro.example"})
     confere(s == 403, f"outra Origin na escrita (CSRF), mesmo do 127.0.0.1: 403 ({s})")
-    s, _ = de_casa(porta, "POST", "/api/play", {}, origem="127.0.0.1", cab={perm.REMOTO: "x" * 43})
+    s, _ = de_casa(srv, "POST", "/api/play", {}, origem="127.0.0.1", cab={perm.REMOTO: "x" * 43})
     confere(s == 401, f"um token remoto que nao vale, do 127.0.0.1: 401 ({s})")
-    s, _ = de_casa(porta, "GET", "/api/state", cab={perm.REMOTO: "x" * 43})
+    s, _ = de_casa(srv, "GET", "/api/state", cab={perm.REMOTO: "x" * 43})
     confere(s == 401, f"um token remoto vindo de fora do 127.0.0.1: 401 ({s})")
     srv.confere()
 

@@ -1239,6 +1239,12 @@ class App:
             yid = m.group(1) if m else (target if YT_ID.match(target) else None)
             if remoto and not yid:
                 raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
+            if remoto and not (all(b.get(k) is None or isinstance(b[k], str) for k in ("title", "channel"))
+                               and (b.get("duration") is None or (isinstance(b["duration"], (int, float))
+                                                                  and not isinstance(b["duration"], bool)
+                                                                  and 0 <= b["duration"] < float("inf")))):
+                # o tema e as passagens leem estes campos: texto (ou null) e a duracao em segundos (ou null)
+                raise ValueError("A remote session sends title and channel as text and duration as seconds.")
             it = self.lib.by_youtube(yid) if yid else None
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],
@@ -1971,6 +1977,11 @@ def fora_da_fila():
 async def body(request):
     if not request.can_read_body:
         return {}
+    await request.read()  # o corpo inteiro (o aiohttp guarda: o json() abaixo le dele)
+    vale = request.get("ainda_vale")  # o remoto: a sessao pode ter acabado enquanto o corpo chegava (o guard)
+    if vale is not None and not vale(request):
+        raise web.HTTPUnauthorized(text=json.dumps({"ok": False, "error": i18n.so_texto(
+            "The remote session token is invalid or has expired.")}), content_type="application/json")
     try:
         b = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -1978,10 +1989,6 @@ async def body(request):
     # toda rota le campos: uma lista ou um numero dava o erro 500, e o /api/parear e aberto a rede de casa
     if not isinstance(b, dict):
         raise web.HTTPBadRequest(text="The body must be a JSON object ({...}).")
-    vale = request.get("ainda_vale")  # o remoto: a sessao pode ter acabado enquanto o corpo chegava (o guard)
-    if vale is not None and not vale(request):
-        raise web.HTTPUnauthorized(text=json.dumps({"ok": False, "error": i18n.so_texto(
-            "The remote session token is invalid or has expired.")}), content_type="application/json")
     return b
 
 
