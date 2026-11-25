@@ -40,7 +40,7 @@ STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vo
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "congela", "conversor", "ganho", "musica", "passagens",
-    "pedal_voz", "pista", "preabre", "rapido", "vivo")] + ["instalador/atualizacao/testa_parcial.py"]
+    "pedal_voz", "pista", "preabre", "protocolo", "rapido", "vivo")] + ["instalador/atualizacao/testa_parcial.py"]
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 MICROFONE = ["dev/testa_filtro.py", "dev/testa_voz.py", "dev/testa_microfone.py",
              "microfone/apo/teste/teste_reamostra.py"]
@@ -48,7 +48,7 @@ DLLS = ("teste_reamostra.dll", "voz.dll", "banca_filtro.dll")
 
 # o que o COMPLETO precisa (os modulos do requirements-dev.txt e os programas do PATH): sem um deles, falha antes
 MODULOS = ("numpy", "scipy", "sounddevice", "pedalboard", "aiohttp", "segno", "yt_dlp", "Cryptodome", "ytmusicapi",
-           "onnxruntime", "comtypes", "webview", "websockets", "PIL", "onnx")
+           "onnxruntime", "comtypes", "webview", "websockets", "PIL", "onnx", "jsonschema")
 PROGRAMAS = ("ffmpeg", "ffprobe")
 # a linha de quem pulou uma parte por falta de biblioteca ("--   o guard do servidor ficou de fora: ...")
 PULOU = re.compile(r"^--\s.*ficou de fora.*$", re.M)

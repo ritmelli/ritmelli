@@ -1,0 +1,112 @@
+{
+ "cenario": "repetir",
+ "descricao": "A volta do Repetir: a ancora nova no primeiro bloco da volta, com a faixa e o deck iguais.",
+ "relogio": {
+  "t0_ms": 1000000.0,
+  "taxa": 48000
+ },
+ "mensagens": [
+  {
+   "evento": "inicio",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 1,
+    "origem": "inicio",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 10.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 7.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "mapa",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 2,
+    "origem": "mudanca",
+    "agora": 1003000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 10.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 0.0,
+      "t": 1003000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

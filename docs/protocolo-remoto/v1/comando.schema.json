@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ritmelli:remoto:v1:comando",
+  "title": "Um comando da sessão remota, v1",
+  "description": "De quem manda para o relay e do relay para o PC. Os argumentos de cada comando estão em argumentos.schema.json, e a rota local de cada um em comandos.json. Ver docs/protocolo-remoto.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolo", "tipo", "sessao", "id", "comando", "args"],
+  "properties": {
+    "protocolo": {"const": 1},
+    "tipo": {"const": "comando"},
+    "sessao": {"$ref": "urn:ritmelli:remoto:v1:estado#/$defs/sessao"},
+    "id": {
+      "description": "O id do comando, de quem manda, único na sessão: o repetido com o mesmo comando e os mesmos argumentos recebe o mesmo resultado, e com outros é recusado.",
+      "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "comando": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/nome"},
+    "args": {"type": "object"}
+  },
+  "allOf": [
+    {"if": {"properties": {"comando": {"const": "tocar"}}},
+     "then": {"properties": {"args": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/tocar"}}}},
+    {"if": {"properties": {"comando": {"const": "enfileirar"}}},
+     "then": {"properties": {"args": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/enfileirar"}}}},
+    {"if": {"properties": {"comando": {"const": "pular"}}},
+     "then": {"properties": {"args": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/pular"}}}},
+    {"if": {"properties": {"comando": {"const": "pausar"}}},
+     "then": {"properties": {"args": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/pausar"}}}},
+    {"if": {"properties": {"comando": {"const": "retomar"}}},
+     "then": {"properties": {"args": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/retomar"}}}},
+    {"if": {"properties": {"comando": {"const": "tirar_da_fila"}}},
+     "then": {"properties": {"args": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/tirar_da_fila"}}}},
+    {"if": {"properties": {"comando": {"const": "mover_na_fila"}}},
+     "then": {"properties": {"args": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/mover_na_fila"}}}},
+    {"if": {"properties": {"comando": {"const": "volume"}}},
+     "then": {"properties": {"args": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/volume"}}}},
+    {"if": {"properties": {"comando": {"const": "abaixar"}}},
+     "then": {"properties": {"args": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/abaixar"}}}},
+    {"if": {"properties": {"comando": {"const": "sinal"}}},
+     "then": {"properties": {"args": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/sinal"}}}}
+  ]
+}

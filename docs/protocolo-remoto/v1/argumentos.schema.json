@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ritmelli:remoto:v1:argumentos",
+  "title": "Os argumentos de cada comando da sessão remota, v1",
+  "description": "O vocabulário é fechado: só estes comandos, e cada um só com estes argumentos. O relay confere, e o PC confere de novo. Ver docs/protocolo-remoto.md.",
+  "$defs": {
+    "nome": {
+      "enum": ["tocar", "enfileirar", "pular", "pausar", "retomar", "tirar_da_fila", "mover_na_fila", "volume", "abaixar",
+               "sinal"]
+    },
+    "disco": {"description": "O id de um disco da prateleira.", "type": "string", "minLength": 1, "maxLength": 200},
+    "qid": {"description": "O id de uma entrada da fila.", "type": "string", "pattern": "^[0-9a-f]{8}$"},
+    "texto": {"type": ["string", "null"], "maxLength": 400},
+    "nada": {"type": "object", "maxProperties": 0},
+    "tocar": {
+      "description": "Toca um disco da prateleira (id) ou uma entrada da fila (qid).",
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["id"],
+         "properties": {"id": {"$ref": "#/$defs/disco"}}},
+        {"type": "object", "additionalProperties": false, "required": ["qid"],
+         "properties": {"qid": {"$ref": "#/$defs/qid"}}}
+      ]
+    },
+    "enfileirar": {
+      "description": "Põe na fila um disco da prateleira (id) ou um vídeo do YouTube (youtube_id, com o título, o canal e a duração que quem pede viu); next põe logo a seguir.",
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["id"],
+         "properties": {"id": {"$ref": "#/$defs/disco"}, "next": {"type": "boolean"}}},
+        {"type": "object", "additionalProperties": false, "required": ["youtube_id"],
+         "properties": {
+           "youtube_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{11}$"},
+           "title": {"$ref": "#/$defs/texto"},
+           "channel": {"$ref": "#/$defs/texto"},
+           "duration": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 86400}]},
+           "next": {"type": "boolean"}
+         }}
+      ]
+    },
+    "pular": {"$ref": "#/$defs/nada"},
+    "pausar": {"$ref": "#/$defs/nada"},
+    "retomar": {"$ref": "#/$defs/nada"},
+    "tirar_da_fila": {
+      "type": "object", "additionalProperties": false, "required": ["qid"],
+      "properties": {"qid": {"$ref": "#/$defs/qid"}}
+    },
+    "mover_na_fila": {
+      "type": "object", "additionalProperties": false, "required": ["qid", "to"],
+      "properties": {
+        "qid": {"$ref": "#/$defs/qid"},
+        "to": {"description": "O lugar novo, a partir de 0.", "type": "integer", "minimum": 0, "maximum": 499}
+      }
+    },
+    "volume": {
+      "type": "object", "additionalProperties": false, "required": ["vol"],
+      "properties": {"vol": {"description": "O volume da música no jogo, de 0 a 1.", "type": "number", "minimum": 0, "maximum": 1}}
+    },
+    "abaixar": {
+      "description": "Abaixa a música no jogo db decibéis por ms milissegundos; zero em qualquer um tira o abaixamento.",
+      "type": "object", "additionalProperties": false, "required": ["db", "ms"],
+      "properties": {
+        "db": {"type": "number", "minimum": 0, "maximum": 40},
+        "ms": {"type": "integer", "minimum": 0, "maximum": 30000}
+      }
+    },
+    "sinal": {"$ref": "#/$defs/nada"}
+  }
+}

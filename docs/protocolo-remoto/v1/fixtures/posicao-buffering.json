@@ -1,0 +1,255 @@
+{
+ "cenario": "buffering",
+ "descricao": "O stream que para (buffering congela a posicao), a retomada depois do buffering, a pausa e a retomada.",
+ "relogio": {
+  "t0_ms": 1000000.0,
+  "taxa": 48000
+ },
+ "mensagens": [
+  {
+   "evento": "inicio",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 1,
+    "origem": "inicio",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": null,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 10.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "buffering",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 2,
+    "origem": "mudanca",
+    "agora": 1001000.0,
+    "estado": {
+     "status": "buffering",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": null,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 11.0,
+      "t": 1001000.0,
+      "taxa": 48000,
+      "anda": false,
+      "segmentos": []
+     }
+    }
+   }
+  },
+  {
+   "evento": "retomada",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 3,
+    "origem": "mudanca",
+    "agora": 1002000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": null,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 11.0,
+      "t": 1002000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "pausa",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 4,
+    "origem": "mudanca",
+    "agora": 1003000.0,
+    "estado": {
+     "status": "paused",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": null,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 12.0,
+      "t": 1003000.0,
+      "taxa": 48000,
+      "anda": false,
+      "segmentos": []
+     }
+    }
+   }
+  },
+  {
+   "evento": "retomada",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 5,
+    "origem": "mudanca",
+    "agora": 1003500.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": null,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 12.0,
+      "t": 1003500.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,240 @@
+{
+ "cenario": "final-seco-sem-limite",
+ "pad": 1138,
+ "ini": 1.0,
+ "origem": 0.9762916666666667,
+ "descricao": "O mesmo final seco, com a proxima comecando em 1 s (o silencio do comeco dela): a origem do pad fica acima de zero.",
+ "relogio": {
+  "t0_ms": 1000000.0,
+  "taxa": 48000
+ },
+ "mensagens": [
+  {
+   "evento": "inicio",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 1,
+    "origem": "inicio",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 32.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [
+      {
+       "qid": "00000001",
+       "id": "B",
+       "title": "Disco B",
+       "channel": null,
+       "duration": 20.0,
+       "youtube_id": null,
+       "thumb": null,
+       "auto": false
+      }
+     ],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 18.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "troca",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 2,
+    "origem": "mudanca",
+    "agora": 1013580.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "B",
+      "title": "Disco B",
+      "channel": null,
+      "duration": 20.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "B",
+      "pos": 0.9762916666666667,
+      "t": 1013580.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 1138,
+        "v": 1.0,
+        "preenchimento": true
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "reconexao",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 3,
+    "origem": "reconexao",
+    "agora": 1013600.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "B",
+      "title": "Disco B",
+      "channel": null,
+      "duration": 20.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "B",
+      "pos": 0.9962916666666667,
+      "t": 1013600.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 178,
+        "v": 1.0,
+        "preenchimento": true
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 4,
+    "origem": "mudanca",
+    "agora": 1013610.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "B",
+      "title": "Disco B",
+      "channel": null,
+      "duration": 20.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "B",
+      "pos": 1.0062916666666666,
+      "t": 1013610.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

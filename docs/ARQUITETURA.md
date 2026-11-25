@@ -17,6 +17,8 @@ Cada peça tem o seu arquivo em `arquitetura/`: quem muda uma peça muda só o a
 - [`winvol.py`](arquitetura/winvol.md): o volume do microfone no Windows.
 - [`pareamento.py`](arquitetura/pareamento.md): o celular pareado.
 - [`permissao.py`](arquitetura/permissao.md): quem pode chamar cada rota do servidor.
+- [O protocolo da sessão remota](protocolo-remoto.md): as mensagens entre o PC, o relay e quem manda, a âncora da
+  posição e o mapa de cada comando para a rota local (os esquemas e as fixtures em `protocolo-remoto/v1/`).
 - [`atualizacao.py`](arquitetura/atualizacao.md): o aviso de versão nova e a atualização pelo instalador.
 - [`server.py`](arquitetura/server.md): o servidor, a fila, as passagens, o Automático e o limite de abas.
 - [`API.md`](../API.md): contrato da API e checklist de todo tema.

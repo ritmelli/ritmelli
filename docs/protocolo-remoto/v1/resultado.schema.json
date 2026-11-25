@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ritmelli:remoto:v1:resultado",
+  "title": "O resultado de um comando da sessão remota, v1",
+  "description": "Do PC (ou do relay, quando ele mesmo recusa) para quem mandou o comando. O erro é só um código: a mensagem local nunca sai do PC. Ver docs/protocolo-remoto.md.",
+  "oneOf": [{"$ref": "#/$defs/ok"}, {"$ref": "#/$defs/erro"}],
+  "$defs": {
+    "ok": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolo", "tipo", "sessao", "id", "ok", "rev", "dados"],
+      "properties": {
+        "protocolo": {"const": 1},
+        "tipo": {"const": "resultado"},
+        "sessao": {"$ref": "urn:ritmelli:remoto:v1:estado#/$defs/sessao"},
+        "id": {"$ref": "urn:ritmelli:remoto:v1:comando#/properties/id"},
+        "ok": {"const": true},
+        "rev": {
+          "description": "O rev do estado que já mostra o comando aplicado (o estado com esse rev chega antes ou logo depois).",
+          "$ref": "urn:ritmelli:remoto:v1:estado#/$defs/rev"
+        },
+        "dados": {"$ref": "#/$defs/dados"},
+        "retido_ms": {"$ref": "urn:ritmelli:remoto:v1:estado#/$defs/retido_ms"}
+      }
+    },
+    "erro": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolo", "tipo", "sessao", "id", "ok", "erro"],
+      "properties": {
+        "protocolo": {"const": 1},
+        "tipo": {"const": "resultado"},
+        "sessao": {"$ref": "urn:ritmelli:remoto:v1:estado#/$defs/sessao"},
+        "id": {"$ref": "urn:ritmelli:remoto:v1:comando#/properties/id"},
+        "ok": {"const": false},
+        "erro": {"$ref": "#/$defs/codigo"},
+        "retido_ms": {"$ref": "urn:ritmelli:remoto:v1:estado#/$defs/retido_ms"}
+      }
+    },
+    "codigo": {
+      "description": "protocolo: versão que o outro lado não fala; sessao: sessão errada, encerrada ou sem acesso; fora_do_vocabulario; argumentos; id_repetido: o mesmo id com outro comando ou outros argumentos; sem_pc: o PC não está ligado ao relay; tempo: o PC não respondeu no prazo; nao_permitido, nao_encontrado, conflito e falha_local: a resposta da API local (403, 404, 409 e o resto).",
+      "enum": ["protocolo", "sessao", "fora_do_vocabulario", "argumentos", "id_repetido", "sem_pc", "tempo",
+               "nao_permitido", "nao_encontrado", "conflito", "falha_local"]
+    },
+    "dados": {
+      "description": "O que o comando devolve: o qid e se já tocou (enfileirar), o volume (volume), o abaixamento (abaixar); vazio nos outros.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "qid": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/qid"},
+        "tocando": {"type": "boolean"},
+        "vol": {"type": "number", "minimum": 0, "maximum": 1},
+        "abaixa": {"oneOf": [{"type": "null"}, {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/abaixar"}]}
+      }
+    }
+  }
+}
