@@ -16,8 +16,8 @@ processo e um depois do outro, e sai 1 se algum falhar. E o que o .github/workfl
                                            mudou desde a base, ou uma etiqueta do PR, dispara o job do filtro e o da tela
         [--resumo arquivo.md]              acrescenta o resultado em markdown (o resumo do PR)
 
-No COMPLETO, biblioteca ou ffmpeg faltando e falha, e nao teste pulado: sem as bibliotecas do servidor, o testa_mock,
-o testa_migra e o testa_pareamento pulam a parte dele.
+No COMPLETO, biblioteca ou ffmpeg faltando e falha, e nao teste pulado: sem as bibliotecas do servidor, o testa_mock
+e o testa_migra pulam a parte dele.
 
 Todo dev/testa_*.py tem destino: ou roda no testa.yml (numa lista daqui ou num passo proprio, como o --disco do
 testa_pasta_protegida), ou so roda a mao e diz no topo do arquivo, num comentario antes da docstring, como e com o que:
@@ -42,7 +42,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 # so a biblioteca padrao: a monta.yml roda estes antes de instalar as bibliotecas do app
 STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vozes", "pareamento", "grava", "mfx",
-                                             "ganchos", "pasta_protegida")]
+                                             "ganchos", "pasta_protegida", "so_mock")]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
