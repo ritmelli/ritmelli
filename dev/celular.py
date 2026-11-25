@@ -144,6 +144,21 @@ def do_pc(base, metodo, rota):
         return json.load(r)
 
 
+PAREADA = "!!(typeof S !== 'undefined' && S.caps && S.caps.papel === 'celular') && !S.pareando"
+
+
+async def espera_pareada(a, falha):
+    """Ate 10 s pela aba com o caps do celular e fora da tela do codigo; Recusa com a falha se nao."""
+    for _ in range(50):
+        await asyncio.sleep(0.2)
+        try:
+            if await a.js(PAREADA):
+                return
+        except RuntimeError:
+            pass  # a pagina recarregando
+    raise so_mock.Recusa(falha)
+
+
 async def parear_aba(a, base):
     """No --papel-local celular, a aba sem pareamento: o codigo do PC, digitado pelo tema (o parear dele, o mesmo do
     formulario), e a aba com o caps do celular. Volta os ids dos celulares que este script pareou, para desconectar."""
@@ -152,6 +167,10 @@ async def parear_aba(a, base):
     papel = await a.js("api('GET', '/api/state').then(s => s.caps && s.caps.papel,"
                        " e => { if (e.status === 401) return null; throw e; })")
     if papel == "celular":
+        # pareada pelo cookie (outra aba da mesma origem pode ter pareado), mas a tela pode seguir na do codigo
+        if not await a.js(PAREADA):
+            await a.cmd("Page.reload", ignoreCache=True)
+            await espera_pareada(a, "a aba nao saiu da tela do codigo ao recarregar")
         return []
     caminho = urllib.parse.urlsplit(a.url).path
     antes = do_pc(base, "GET", f"/api/pareamento?caminho={urllib.parse.quote(caminho)}")
@@ -159,12 +178,7 @@ async def parear_aba(a, base):
         raise so_mock.Recusa("o --mock nao deu o codigo do pareamento (o --papel-local celular gera no 127.0.0.1)")
     await a.confere()
     await a.js(f"parear({json.dumps(antes['codigo'])})")
-    for _ in range(50):
-        await asyncio.sleep(0.2)
-        if await a.js("!!(S.caps && S.caps.papel === 'celular') && !S.pareando"):
-            break
-    else:
-        raise so_mock.Recusa("a aba nao pareou com o codigo do PC")
+    await espera_pareada(a, "a aba nao pareou com o codigo do PC")
     de_antes = {c["id"] for c in antes.get("celulares", [])}
     novos = [c["id"] for c in do_pc(base, "GET", "/api/pareamento").get("celulares", []) if c["id"] not in de_antes]
     if len(novos) != 1:  # outro aparelho pareou no meio: nenhum sai, para nao desconectar o que nao e deste script
@@ -357,28 +371,30 @@ async def main():
     except so_mock.Recusa as ex:
         sys.exit(f"recusado: {ex}")
     porta = so_mock.origem(args.url)[1]
-    try:  # no --papel-local celular, o 127.0.0.1 recebe o 401 do pareamento
-        como_celular = so_mock.estado(base).get("parear") is True
-    except (so_mock.Recusa, OSError) as ex:
-        sys.exit(f"recusado: {ex}")
     adb = adb_forward(args.url, porta, args.esperar)
-    if not como_celular:
-        print("este --mock nao tem o --papel-local celular: pelo adb reverse, o tema ve 127.0.0.1 e a medida sai com o "
-              "papel do PC", file=sys.stderr, flush=True)
     try:
-        await medir(args, base, como_celular)
+        await medir(args, base)
     except so_mock.Recusa as ex:
         sys.exit(f"recusado: {ex}; nenhum gesto a mais, e a medida nao sai")
     finally:
         subprocess.run([adb, "reverse", "--remove", f"tcp:{porta}"], capture_output=True)
 
 
-async def medir(args, base, como_celular):
+async def medir(args, base):
     a = await conectar(args.url, base)
     pareados = []
     try:
+        # o papel, com a aba ja aberta (o --esperar do adb pode ter levado ate 10 min): no --papel-local celular, o
+        # 127.0.0.1 recebe o 401 do pareamento
+        try:
+            como_celular = so_mock.estado(base).get("parear") is True
+        except OSError as ex:
+            raise so_mock.Recusa(f"{base} nao respondeu ({ex})") from None
         if como_celular:
             pareados = await parear_aba(a, base)
+        else:
+            print("este --mock nao tem o --papel-local celular: pelo adb reverse, o tema ve 127.0.0.1 e a medida sai "
+                  "com o papel do PC", file=sys.stderr, flush=True)
         r = await {"rolagem": rolagem, "puxao": puxao, "abrir": abrir, "custo": custo, "dedo": dedo}[args.medida](a, args)
         await a.confere()  # a medida so vale se a aba seguiu no --mock ate o fim
         if isinstance(r, list):
