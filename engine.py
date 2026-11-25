@@ -7,6 +7,7 @@ manda (ver Injetor). O app passa a voz pelo mesmo motor de efeitos do filtro (mi
 import base64
 import collections
 import contextlib
+import copy
 import ctypes
 import datetime
 import json
@@ -183,13 +184,17 @@ def sem_cursor():
 
 
 class Deck:
-    """Um toca-discos do motor: o disco, a fila de blocos decodificados (t0, bloco) e a geracao do
-    leitor (o leitor para quando ela muda)."""
+    """Um toca-discos do motor: o disco, a fila de blocos decodificados (t0, bloco), a geracao do
+    leitor (o leitor para quando ela muda) e a linha de reproducao. A linha sobe no load, no stop, no seek e no
+    resume que recomeca do fim, e e ela que valida o bloco ja retirado pelo _mixa: o bloco so publica se o deck e a
+    linha dele ainda sao os do prato. O gen so invalida o que um leitor substituido ainda tentar por na fila: a troca
+    do stream pelo arquivo sobe o gen e mantem a linha (os blocos ja decodificados seguem valendo)."""
 
     def __init__(self, track=None):
         self.track = track
         self.q = collections.deque()
         self.gen = 0
+        self.linha = 0
         self.eof_gen = -1
         self.ahead = AHEAD
         # o nivel de cada bloco decodificado (t0, quadros, rms), o ja tocado inclusive: a medicao do fim
@@ -198,6 +203,48 @@ class Deck:
         # o volume automatico do disco (linear): aonde ele vai e onde esta (o _mixa anda de um ao outro)
         self.ganho_alvo = 1.0
         self.ganho = 1.0
+
+
+# o que estava no prato num instante, lido sob o _qlock: a faixa, a posicao, o estado (o status()), o deck e a linha
+Captura = collections.namedtuple("Captura", "track pos status deck linha")
+
+
+class Pausa:
+    """O pedido de pausa de uma linha do prato (Engine.pause). Vale no limite entre blocos: com um bloco do prato
+    retirado e ainda nao publicado, a confirmacao espera a publicacao dele; sem bloco, e na hora. Confirmado, guarda a
+    faixa e a posicao daquele instante (ok); o resume, o load, o stop, o seek, o fim do disco e o close resolvem o
+    pendente como substituido (sem ok). Os pedidos da mesma linha sao o mesmo objeto."""
+
+    def __init__(self, deck, linha):
+        self.deck, self.linha = deck, linha
+        self.track = self.pos = None
+        self.ok = False
+        self.feita = threading.Event()
+
+    def resolve(self, track=None, pos=None, ok=False):
+        """Com o _qlock do motor: uma vez so."""
+        if not self.feita.is_set():
+            # uma copia: o dicionario do prato ainda muda depois (o canal que chega, o nome novo da prateleira)
+            self.track, self.pos, self.ok = (dict(track) if track is not None else None), pos, ok
+            self.feita.set()
+
+    def espera(self, prazo):
+        """Ate prazo segundos pela resolucao; True so se foi confirmada."""
+        return self.feita.wait(prazo) and self.ok
+
+
+class _Bloco:
+    """Um bloco do _mixa: o que o _captura tirou sob o _qlock (o deck e a linha do prato, os pedacos do disco, o estado
+    da passagem e o do limitador, em copias), o que o _renderiza calculou fora da trava e o _publica aplica se o deck e
+    a linha ainda sao os do prato."""
+    __slots__ = ("deck", "linha", "track", "prato", "item", "fim", "pos", "ganho", "g1", "entrando", "ent",
+                 "ent_feitos", "saindo", "sai_blk", "sai", "sai_ganho", "sai_g1", "sai_zi", "sai_feitos",
+                 "sai_acabou", "eco", "eco_estado", "eco_p", "auto", "lim", "zera")
+
+    def __init__(self, deck, linha):
+        for k in self.__slots__:
+            setattr(self, k, None)
+        self.deck, self.linha = deck, linha
 
 
 FIM_RETRATO_S = 40.0       # o resumo do fim no log: as janelas de FIM_JANELA_S nos ultimos isso antes do som acabar
@@ -1208,6 +1255,10 @@ class Engine:
         self._eco = None         # [audio, feitos, deck que saiu]: o eco do corte no 1 (feitos < 0: ainda nao)
         self._eco_plano = None   # (audio, quadros depois da virada) do plano medido, ate a virada
         self._entrando = None    # [quadros, feitos, nivel, cheia]: a proxima subindo
+        # o bloco do prato que o _mixa retirou e ainda nao publicou, (deck, linha, onde ele acaba), sob o _qlock: a
+        # pausa espera a publicacao dele, e a troca do stream pelo arquivo comeca o leitor novo depois dele
+        self._bloco = None
+        self._pausa = None       # a Pausa da linha do prato (pendente ou confirmada), sob o _qlock
         self.virou = None        # (o que saiu, o que entrou, a tag) para o servidor tirar da fila
         self.preparos = 0        # as passagens preparadas desde que o motor abriu (o evento "audio" conta por janela)
         self.reserva_quadros = 0  # os quadros da voz que vieram do microfone de reserva (o _mic_cb), idem
@@ -1417,7 +1468,9 @@ class Engine:
         with self._lock:
             self._fechado = True
             self._recupera = None
-            self._gen += 1
+            with self._qlock:
+                self._gen += 1
+                self._solta_pausa()
             if self._stack:
                 self._stack.close()
                 self._stack = None
@@ -1816,98 +1869,12 @@ class Engine:
 
     def _mixa(self, frames):
         """O bloco que vai para o jogo, e o do fone na fila dele: o disco, os sons por cima, a voz (so a que volta pelo
-        app: com efeito) e a da mina. Quem chama e o relogio da saida, o Injetor."""
+        app: com efeito) e a da mina. Quem chama e o relogio da saida, o Injetor. O disco vem em tres passos: o
+        _captura tira o bloco e o estado da passagem sob o _qlock, o _renderiza calcula fora dele e o _publica aplica
+        sob o _qlock so se o deck e a linha ainda sao os do prato; senao, a musica deste bloco sai e nada dele vale."""
         buf = np.zeros((frames, 2), np.float32)
-        item = None
-        if self._pronto is not None and self.track is not None and not self.paused:
-            fim_deste = not self._q and self._eof_gen == self._gen
-            if (self._virar_em is not None and self.pos >= self._virar_em) or (fim_deste and self._pronto.q):
-                self._vira()
-        if self.track is not None and not self.paused:
-            with self._qlock:
-                item = self._tira(self._q, frames)
-            if not item and self._eof_gen == self._gen:
-                self.ended = True
-            p, tr = self._prato, self.track
-            if item and p is not None and tr.get("id") == p[0]:
-                self._prato = None
-                self._soou = (tr.get("title"), str(tr.get("path") or "").startswith("http"), p[1], time.time())
-        som = None  # arquivo + sons por cima, antes do volume
-        cru = None  # o disco sem o volume automatico, quando algum ganho dele nao e 1 (o limitador compara)
-        if item:
-            som = np.zeros((frames, 2), np.float32)
-            n = 0
-            for _, s in item:
-                som[n:n + len(s)] = s
-                n += len(s)
-            self.pos = item[-1][0] + len(item[-1][1]) / SR
-            ent = self._entrando
-            if ent is not None:  # a proxima subindo: um quarto de seno (e na passagem de DJ, ate cheia na troca)
-                g = ganho_entra(ent[1] + np.arange(n), ent[0], ent[2], ent[3])
-                som[:n] *= g[:, None]
-                ent[1] += n
-                if ent[1] >= max(ent[0], ent[3]):
-                    self._entrando = None
-            ga = self._ganho(self._deck, n)
-            if not np.isscalar(ga) or ga != 1.0:
-                cru = som.copy()
-                som[:n] *= ga
-        sai = self._saindo
-        if sai is not None and not self.paused:  # o que sai: o fim dele, abaixando em cosseno
-            with self._qlock:
-                blk = self._tira(sai[0].q, frames)
-            if not blk or sai[2] >= sai[1]:
-                sai[0].gen += 1
-                self._saindo = None
-            else:
-                s = blk[0][1] if len(blk) == 1 else np.concatenate([b[1] for b in blk])
-                n = len(s)
-                u = sai[2] + np.arange(n)
-                g = ganho_sai(u, sai[4], sai[1])
-                if sai[3] is not None:  # a troca de grave: o grave dele sai enquanto o da proxima entra
-                    gr = sai[3]
-                    agudo, gr[1] = signal.sosfilt(_GRAVE_HP, s, axis=0, zi=gr[1])
-                    fica = (1 - np.clip((u - gr[2]) / (gr[3] - gr[2]), 0.0, 1.0)).astype(np.float32)
-                    s = agudo + fica[:, None] * (s - agudo)
-                if som is None:
-                    som = np.zeros((frames, 2), np.float32)
-                s = s * g[:, None]
-                ga = self._ganho(sai[0], n)
-                if cru is None and (not np.isscalar(ga) or ga != 1.0):
-                    cru = som.copy()
-                if cru is not None:
-                    cru[:n] += s
-                som[:n] += s * ga
-                sai[2] += n
-        eco = self._eco
-        if eco is not None and not self.paused:  # o eco do corte no 1, comecando no golpe
-            a, p, dono = eco
-            i0 = max(0, -p)
-            if i0 < frames:
-                k = min(frames - i0, len(a) - max(0, p))
-                if k > 0:
-                    if som is None:
-                        som = np.zeros((frames, 2), np.float32)
-                    e = a[max(0, p):max(0, p) + k]
-                    ga = dono.ganho if self.volume_auto else 1.0  # o do disco que saiu, parado onde ele parou
-                    if cru is None and ga != 1.0:
-                        cru = som.copy()
-                    if cru is not None:
-                        cru[i0:i0 + k] += e
-                    som[i0:i0 + k] += e * ga
-            eco[1] = p + frames
-            if eco[1] >= len(a):
-                self._eco = None
-        if self._limitador_zera:  # o prato trocou ou pulou: os 2 ms do disco de antes nao saem
-            self._limitador_zera = False
-            self._limitador = sonoridade.Limitador()
-        lim = self._limitador
-        if som is not None or np.any(lim.hist):
-            # o disco passa sempre pelo limitador (o mesmo atraso com ou sem ganho); ele so age no que o ganho
-            # acrescentou acima de 0 dBFS. Parado (pausa, fim do disco), ele solta o que ainda segura
-            if som is None:
-                som = np.zeros((frames, 2), np.float32)
-            som = lim(som, cru)
+        b = self._captura(frames)
+        som = self._publica(b, self._renderiza(b, frames))  # arquivo + sons por cima, antes do volume
         if self._sobre:
             with self._slock:
                 vivos = []
@@ -1989,6 +1956,202 @@ class Engine:
         self._meter("out", buf)
         return buf
 
+    def _captura(self, frames):
+        """O comeco do bloco, num trecho so do _qlock: a virada, se e a hora (o deck preparado e a condicao dela
+        conferidos ali mesmo), e o que o bloco toca, do deck e da linha do prato desse instante. O estado da passagem
+        (a proxima subindo, o que sai, o eco), o ganho e o limitador vao em copias para o _renderiza."""
+        with self._qlock:
+            if self._pronto is not None and self.track is not None and not self.paused:
+                fim_deste = not self._q and self._eof_gen == self._gen
+                if (self._virar_em is not None and self.pos >= self._virar_em) or (fim_deste and self._pronto.q):
+                    self._vira()
+            d = self._deck
+            b = _Bloco(d, d.linha)
+            b.track, b.prato, b.auto = self.track, self._prato, self.volume_auto
+            if self.track is not None and not self.paused:
+                b.item = self._tira(d.q, frames)
+                b.fim = not b.item and d.eof_gen == d.gen
+                if b.item:
+                    t, s = b.item[-1]
+                    self._bloco = (d, d.linha, t + len(s) / SR)
+                elif b.fim and not self.ended:  # o bloco que publica o fim: a pausa no meio sai substituida por ele
+                    self._bloco = (d, d.linha, self.pos)
+            b.ganho = (d.ganho, d.ganho_alvo if b.auto else 1.0)
+            b.entrando = self._entrando
+            if b.entrando is not None:
+                b.ent = tuple(b.entrando)
+            sai = self._saindo
+            if sai is not None and not self.paused:
+                b.saindo, b.sai = sai, (sai[1], sai[2], sai[3], sai[4])
+                b.sai_blk = self._tira(sai[0].q, frames)
+                b.sai_ganho = (sai[0].ganho, sai[0].ganho_alvo if b.auto else 1.0)
+            eco = self._eco
+            if eco is not None and not self.paused:
+                b.eco, b.eco_estado = eco, (eco[0], eco[1], eco[2], eco[2].ganho)
+            if self._bloco is None and self.track is not None and not self.paused and (b.sai_blk or b.eco is not None):
+                self._bloco = (d, d.linha, self.pos)  # so a passagem soando: a pausa no meio espera este bloco
+            # o prato trocou ou pulou: os 2 ms do disco de antes nao saem (o pedido so se consome na publicacao)
+            b.zera = self._limitador_zera
+            b.lim = sonoridade.Limitador() if b.zera else copy.copy(self._limitador)
+        return b
+
+    @staticmethod
+    def _rampa_ganho(g0, alvo, n):
+        """O ganho automatico nas n amostras de um bloco, de g0 rumo ao alvo: (escalar, ou a rampa n x 1; onde ele
+        para, ou None se nao mudou)."""
+        if g0 == alvo:
+            return g0, None
+        k = 10 ** (GANHO_RAMPA_DB_S * n / SR / 20)
+        g1 = min(alvo, g0 * k) if alvo > g0 else max(alvo, g0 / k)
+        return np.geomspace(g0, g1, n, dtype=np.float32)[:, None], g1
+
+    def _renderiza(self, b, frames):
+        """Fora das travas: o som do disco do bloco b (o do prato, o que sai, o eco e o limitador), so sobre o que o
+        _captura copiou; o avanco de cada estado fica no b para o _publica. None sem som nenhum."""
+        som = None  # o disco, antes do volume
+        cru = None  # o disco sem o volume automatico, quando algum ganho dele nao e 1 (o limitador compara)
+        if b.item:
+            som = np.zeros((frames, 2), np.float32)
+            n = 0
+            for _, s in b.item:
+                som[n:n + len(s)] = s
+                n += len(s)
+            b.pos = b.item[-1][0] + len(b.item[-1][1]) / SR
+            if b.ent is not None:  # a proxima subindo: um quarto de seno (e na passagem de DJ, ate cheia na troca)
+                quadros, feitos, nivel, cheia = b.ent
+                g = ganho_entra(feitos + np.arange(n), quadros, nivel, cheia)
+                som[:n] *= g[:, None]
+                b.ent_feitos = feitos + n
+            ga, b.g1 = self._rampa_ganho(*b.ganho, n)
+            if not np.isscalar(ga) or ga != 1.0:
+                cru = som.copy()
+                som[:n] *= ga
+        if b.saindo is not None:  # o que sai: o fim dele, abaixando em cosseno
+            quadros, feitos, gr, segura = b.sai
+            if not b.sai_blk or feitos >= quadros:
+                b.sai_acabou = True
+            else:
+                blk = b.sai_blk
+                s = blk[0][1] if len(blk) == 1 else np.concatenate([x[1] for x in blk])
+                n = len(s)
+                u = feitos + np.arange(n)
+                g = ganho_sai(u, segura, quadros)
+                if gr is not None:  # a troca de grave: o grave dele sai enquanto o da proxima entra
+                    agudo, b.sai_zi = signal.sosfilt(_GRAVE_HP, s, axis=0, zi=gr[1])
+                    fica = (1 - np.clip((u - gr[2]) / (gr[3] - gr[2]), 0.0, 1.0)).astype(np.float32)
+                    s = agudo + fica[:, None] * (s - agudo)
+                if som is None:
+                    som = np.zeros((frames, 2), np.float32)
+                s = s * g[:, None]
+                ga, b.sai_g1 = self._rampa_ganho(*b.sai_ganho, n)
+                if cru is None and (not np.isscalar(ga) or ga != 1.0):
+                    cru = som.copy()
+                if cru is not None:
+                    cru[:n] += s
+                som[:n] += s * ga
+                b.sai_feitos = feitos + n
+        if b.eco is not None:  # o eco do corte no 1, comecando no golpe
+            a, p, dono, gd = b.eco_estado
+            # o ganho do disco que saiu, parado onde ele parou (o deste bloco, se ele ainda andou nele)
+            if b.saindo is not None and dono is b.saindo[0] and b.sai_g1 is not None:
+                gd = b.sai_g1
+            elif dono is b.deck and b.g1 is not None:
+                gd = b.g1
+            i0 = max(0, -p)
+            if i0 < frames:
+                k = min(frames - i0, len(a) - max(0, p))
+                if k > 0:
+                    if som is None:
+                        som = np.zeros((frames, 2), np.float32)
+                    e = a[max(0, p):max(0, p) + k]
+                    ga = gd if b.auto else 1.0
+                    if cru is None and ga != 1.0:
+                        cru = som.copy()
+                    if cru is not None:
+                        cru[i0:i0 + k] += e
+                    som[i0:i0 + k] += e * ga
+            b.eco_p = p + frames
+        if som is not None or np.any(b.lim.hist):
+            # o disco passa sempre pelo limitador (o mesmo atraso com ou sem ganho); ele so age no que o ganho
+            # acrescentou acima de 0 dBFS. Parado (pausa, fim do disco), ele solta o que ainda segura
+            if som is None:
+                som = np.zeros((frames, 2), np.float32)
+            som = b.lim(som, cru)
+        return som
+
+    def _publica(self, b, som):
+        """Sob o _qlock, o fim do bloco: com o deck e a linha do bloco ainda no prato, a posicao, o fim, o primeiro som,
+        o avanco da passagem, do ganho e do limitador e a confirmacao da pausa que esperava este bloco. Sem eles (o
+        load, o stop, o seek ou o recomeco do fim passaram no meio), nada disso vale e a musica do bloco sai: volta
+        None no lugar do som."""
+        with self._qlock:
+            self._bloco = None  # uma thread so faz blocos: o que estava retirado era este
+            if self._deck is not b.deck or b.deck.linha != b.linha:
+                return None
+            if b.item:
+                self.pos = b.pos
+                p, tr = b.prato, b.track
+                if p is not None and self._prato is p and tr.get("id") == p[0]:
+                    self._prato = None
+                    self._soou = (tr.get("title"), str(tr.get("path") or "").startswith("http"), p[1], time.time())
+            if b.fim and not b.deck.q and b.deck.eof_gen == b.deck.gen:  # o Repetir ligado no meio emenda outra volta
+                self.ended = True
+                self._solta_pausa()
+            ent = b.entrando
+            if b.ent_feitos is not None and self._entrando is ent:
+                ent[1] = b.ent_feitos
+                if ent[1] >= max(ent[0], ent[3]):
+                    self._entrando = None
+            if b.g1 is not None:
+                b.deck.ganho = b.g1
+            sai = b.saindo
+            if sai is not None and self._saindo is sai:
+                if b.sai_acabou:
+                    sai[0].gen += 1
+                    self._saindo = None
+                elif b.sai_feitos is not None:
+                    sai[2] = b.sai_feitos
+                    if b.sai_zi is not None:
+                        sai[3][1] = b.sai_zi
+                    if b.sai_g1 is not None:
+                        sai[0].ganho = b.sai_g1
+            if b.eco is not None and self._eco is b.eco:
+                b.eco[1] = b.eco_p
+                if b.eco_p >= len(b.eco[0]):
+                    self._eco = None
+            self._limitador = b.lim
+            if b.zera:
+                self._limitador_zera = False
+            pa = self._pausa
+            if pa is not None and not pa.feita.is_set() and pa.deck is b.deck and pa.linha == b.linha:
+                self.paused = True
+                pa.resolve(self.track, self.pos, ok=True)
+        return som
+
+    def _solta_pausa(self):
+        """Com _qlock: o pedido de pausa pendente (load, stop, seek, resume, fim, close) sai como substituido, sem
+        pausar nada; o ja confirmado deixa de valer para a gravacao da posicao."""
+        if self._pausa is not None:
+            self._pausa.resolve()
+            self._pausa = None
+
+    def pausa_vale(self, p):
+        """Com _qlock: a pausa p confirmada ainda e a do prato (a mesma linha, sem retomar nem trocar de disco)."""
+        return (self._pausa is p and p.ok and self.paused and not self.ended and self._deck is p.deck
+                and p.deck.linha == p.linha)
+
+    def captura(self):
+        """O que esta no prato agora, sob o _qlock (Captura)."""
+        with self._qlock:
+            return self._captura_atual()
+
+    def _captura_atual(self):
+        """Com _qlock: a Captura de agora. Com o bloco do prato em curso, a fila vazia e so dele: conta como tocando."""
+        d, st, bl = self._deck, self.status(), self._bloco
+        if st == "buffering" and bl is not None and bl[0] is d and bl[1] == d.linha:
+            st = "playing"
+        return Captura(self.track, self.pos, st, d, d.linha)
+
     @staticmethod
     def _tira(q, n):
         """Com _qlock: ate n amostras do comeco da fila q, em [(t0, pedaco)], partindo o bloco que passa (o
@@ -2064,7 +2227,7 @@ class Engine:
         path = track["path"]
         stream = str(path).startswith("http")  # o YouTube direto, antes de o download chegar
         pre = self._pre_pega(path) if stream and start == 0 else None
-        # o volume automatico do stream sem medida inteira: mede o que decodifica (o arquivo, o _poe_ganho mede fora),
+        # o volume automatico do stream sem medida inteira: mede o que decodifica (o arquivo, o _mede_se mede fora),
         # estima nos STREAM_ESTIMA_S e, se tocou do comeco ao fim, guarda a medida inteira
         med = sonoridade.Medidor() if stream and not self._lufs(track)[1] else None
         estima = list(STREAM_ESTIMA_S)
@@ -2123,11 +2286,14 @@ class Engine:
             if n == 0 and stream and track.get("job") and deck is self._deck:
                 # o download do mesmo disco esta a caminho (27/10: o YouTube deu 403 ao ffmpeg em 2 de ~15 streams, e
                 # o download chegava 2 s depois): sem erro e sem fim, o prato fica carregando e o trocar_fonte toca
-                # o arquivo de onde parou; se o download falhar, o servidor para o prato (esperando_arquivo)
-                self._espera_arquivo = gen
+                # o arquivo de onde parou; se o download falhar, o servidor para o prato (esperando_arquivo). So o
+                # leitor que ainda e o do prato marca: o substituido nao apaga a espera do novo
+                with self._qlock:
+                    if deck is self._deck and deck.gen == gen:
+                        self._espera_arquivo = gen
                 return
             if n == 0 and deck is not self._deck:  # a proxima que nao decodifica so nao entra
-                deck.eof_gen = gen
+                self._fim_do_leitor(deck, gen)
                 return
             # a parecida do Automatico (stream sem download) que o YouTube parou de mandar: sem audio nenhum, ou mais
             # que STREAM_CAIU_S antes do fim; o servidor tira um endereco novo e toca de onde parou (08/11: a H.S.K.T.
@@ -2139,16 +2305,35 @@ class Engine:
                 religar(track, fim, lambda: self._stream_desistiu(deck, gen, track, fim))
                 return
             if n == 0:
-                self._erro_de_leitura(track, t)
-                deck.eof_gen = gen
+                self._fim_do_leitor(deck, gen, erro=(track, t))
                 return
-            if not self.loop or deck is not self._deck:
-                deck.eof_gen = gen
+            if not self._repete(deck, gen):
                 return
             t = 0.0
         if pre is not None:  # o disco trocou entre pegar o aberto antes e comecar a ler: ninguem le esse ffmpeg
             mata(pre[1])
             pre[1].wait()
+
+    def _fim_do_leitor(self, deck, gen, erro=None):
+        """O leitor do gen acabou (no fim do disco, ou, com erro=(disco, t), sem ler nada): sob o _qlock, e so se ele
+        ainda e o leitor do deck. O de uma linha que ja acabou nao marca o fim nem o erro da linha nova."""
+        with self._qlock:
+            if deck.gen != gen:
+                return
+            if erro is not None and deck is self._deck:  # o que ja saiu do prato nao poe erro na faixa nova
+                self._erro_de_leitura(*erro)
+            deck.eof_gen = gen
+
+    def _repete(self, deck, gen):
+        """O leitor do gen chegou ao fim do disco: sob o _qlock, ou a volta seguinte (o Repetir ligado no prato), ou o
+        fim. O set_loop liga o Repetir no mesmo trecho em que confere o fim: um dos dois emenda."""
+        with self._qlock:
+            if deck.gen != gen:
+                return False
+            if self.loop and deck is self._deck:
+                return True
+            deck.eof_gen = gen
+            return False
 
     def _erro_de_leitura(self, track, t):
         nome = track.get("title") or "?"
@@ -2204,43 +2389,88 @@ class Engine:
             self._sobre.append([{"id": track["id"], "title": track.get("title")}, a, 0])
             del self._sobre[:-SOBRE_MAX]
 
-    def _restart(self, start):
+    def _restart(self, start, track=None, alvo=None, paused=None, nova_linha=True, prato=False, pode=None,
+                 loop=None):
+        """Com _lock: o disco do prato recomeca em start, publicado sob o _qlock como uma mudanca so: a faixa (track,
+        quando troca; prato: e um disco entrando, e o primeiro som dele vai para o log), a linha nova (nova_linha; a
+        troca da espera para o stream, sem audio ainda, fica na mesma), a posicao, o fim, o ganho do disco que entra
+        sem rampa (alvo), a pausa (paused), o Repetir (loop; sem ele, um disco entrando no lugar de outro o desliga) e a
+        passagem desfeita, com o pedido de pausa da linha que acabou substituido. O leitor recebe a faixa, o deck e o
+        gen dessa mudanca e comeca fora das travas. pode(): conferido sob o _qlock antes de mudar qualquer coisa;
+        falso, nada muda. start pode ser uma funcao, chamada ali mesmo (o seek limita pela duracao da faixa daquele
+        instante). Volta (a Captura do que estava no prato logo antes, a posicao que o servidor grava, ou None; e quem
+        comeca o leitor, ou None): quem chama o comeca depois de soltar o _lock."""
         with self._qlock:
+            if pode is not None and not pode():
+                return None, None
+            if callable(start):
+                start = start()
+            antes = self._captura_atual()
             self._cancela_passagem(tudo=True)
-            self._gen += 1
-            self._q.clear()
-            self._deck.niveis.clear()  # a posicao pulou: o nivel de antes nao e mais o caminho ate o fim
-            self._eof_gen = -1
-            gen = self._gen
+            d = self._deck
+            if loop is None and prato and self.track is not None and self.track.get("id") != track.get("id"):
+                loop = False  # o Repetir vale para o disco do prato: outro disco entrando desliga
+            if track is not None:
+                self.track = d.track = track
+            if prato:  # o disco que entra no prato agora: o primeiro som dele vai para o log
+                self._prato = (track.get("id"), time.time())
+            if alvo is not None:
+                d.ganho_alvo = d.ganho = alvo
+            if paused is not None:
+                self.paused = paused
+            if loop is not None:  # o leitor da faixa nova ja decide o fim com ele (_repete)
+                self.loop = bool(loop)
+            if nova_linha:
+                d.linha += 1
+            d.gen += 1
+            d.q.clear()
+            d.niveis.clear()  # a posicao pulou: o nivel de antes nao e mais o caminho ate o fim
+            d.eof_gen = -1
+            gen, tr = d.gen, self.track
             self._limitador_zera = True
-        self.pos = start
-        self.ended = False
-        self.error = None
-        if not self.track.get("path"):  # disco ainda esperando o stream abrir: sem leitor
-            return
-        self._onda_pede(self.track)
-        threading.Thread(target=self._reader, args=(gen, self.track, start, self._deck), daemon=True).start()
+            self.pos = start
+            self.ended = False
+            self.error = None
+            if nova_linha:
+                self._solta_pausa()
+        if not tr.get("path"):  # sem caminho, o disco ainda espera o stream abrir: sem leitor
+            return antes, None
+
+        def comeca():
+            self._onda_pede(tr)
+            threading.Thread(target=self._reader, args=(gen, tr, start, d), daemon=True).start()
+        return antes, comeca
+
+    @staticmethod
+    def _comeca(leitor):
+        if leitor is not None:
+            leitor()
 
     # passagem para a proxima ------------------------------------------------
     def preparar(self, track, tag):
         """A proxima da fila no segundo deck (o servidor chama a TRANS_PREP_S do fim): o leitor dela
-        decodifica o comeco, o deste vai ate o fim, e o _mede marca onde virar."""
+        decodifica o comeco, o deste vai ate o fim, e o _mede marca onde virar. O deck novo so aparece para o _mixa
+        sob o _qlock, ja com o ganho dele."""
+        if not track.get("path"):
+            return False
+        alvo, mede = self._ganho_de(track)  # fora das travas: pergunta ao servidor
+        d = Deck(track)
+        d.gen, d.ahead = 1, PRONTO_AHEAD
+        d.ganho = d.ganho_alvo = alvo  # o deck ainda e so daqui
         with self._lock:
-            if self.track is None or not track.get("path"):
-                return False
             with self._qlock:
+                if self.track is None:
+                    return False
                 self._cancela_passagem()
-                d = Deck(track)
-                d.gen, d.ahead = 1, PRONTO_AHEAD
-                self._poe_ganho(d, track, na_hora=True)
                 self._pronto, self.pronto_tag = d, tag
                 self._deck.ahead = 10 ** 9  # o fim deste inteiro na memoria para medir (45 s sao ~17 MB)
-                atual = self._deck
-            self._onda_pede(track)
-            self.preparos += 1
-            threading.Thread(target=self._reader, args=(1, track, 0.0, d), daemon=True).start()
-            threading.Thread(target=self._mede, args=(atual, d, self.track), daemon=True).start()
-            return True
+                atual, tr_atual = self._deck, self.track
+                self.preparos += 1
+        self._onda_pede(track)
+        self._mede_se(track, mede)
+        threading.Thread(target=self._reader, args=(1, track, 0.0, d), daemon=True).start()
+        threading.Thread(target=self._mede, args=(atual, d, tr_atual), daemon=True).start()
+        return True
 
     def em_passagem(self):
         """Do comeco do preparo da proxima ate PASSAGEM_DEPOIS_S depois da virada."""
@@ -2725,39 +2955,39 @@ class Engine:
                         f"{(tm - t0) / SR:.2f} s after it comes in")}, None
 
     def _vira(self):
-        """No callback de saida: a proxima vai para o prato; o que sai segue por baixo o tempo da
-        sobreposicao, abaixando (sem sobreposicao, o resto dele, silencio, fica para tras)."""
-        with self._qlock:
-            prox = self._pronto
-            if prox is None:
-                return
-            velho, sai, tag = self._deck, self.track, self.pronto_tag
-            medida = self._virar_em is not None
-            n = self._sobrepor if medida else 0
-            grave = None
-            if medida and self._grave is not None:
-                grave = [_GRAVE_HP, np.zeros((_GRAVE_HP.shape[0], 2, 2)), *self._grave]
-            self._saindo = [velho, n, 0, grave, self._segura if medida else 0] if n and velho.q else None
-            self._segura = 0
-            if self._saindo is None:
-                velho.gen += 1
-            ne = self._entrar if medida else 0
-            self._entrando = [ne, 0, self._nivel_entra if medida else 1.0, self._cheia if medida else 0] if ne else None
-            self._nivel_entra, self._cheia = 1.0, 0
-            # o eco e do disco que sai: leva o ganho automatico dele
-            self._eco = ([self._eco_plano[0], -self._eco_plano[1], velho]
-                         if medida and self._eco_plano is not None else None)
-            self._eco_plano = None
-            self._deck = prox
-            # o visor segue desenhando a passagem que acabou de virar (a sobreposicao vem toda depois da virada)
-            self._visor_feita, self._visor_pas = (self._visor_pas if medida else None), None
-            self._pronto = self.pronto_tag = self._virar_em = None
-            prox.ahead = AHEAD
-            self.track = prox.track
-            self.pos = prox.q[0][0] if prox.q else 0.0
-            self.ended = False
-            self.virou = (sai, prox.track, tag)
-            self._virou_em = time.monotonic()
+        """Com _qlock, no _captura, no mesmo trecho da trava em que ele conferiu a proxima preparada e a condicao
+        da virada: a proxima vai para o prato; o que sai segue por baixo o tempo da sobreposicao, abaixando (sem
+        sobreposicao, o resto dele, silencio, fica para tras)."""
+        prox = self._pronto
+        if prox is None:
+            return
+        velho, sai, tag = self._deck, self.track, self.pronto_tag
+        medida = self._virar_em is not None
+        n = self._sobrepor if medida else 0
+        grave = None
+        if medida and self._grave is not None:
+            grave = [_GRAVE_HP, np.zeros((_GRAVE_HP.shape[0], 2, 2)), *self._grave]
+        self._saindo = [velho, n, 0, grave, self._segura if medida else 0] if n and velho.q else None
+        self._segura = 0
+        if self._saindo is None:
+            velho.gen += 1
+        ne = self._entrar if medida else 0
+        self._entrando = [ne, 0, self._nivel_entra if medida else 1.0, self._cheia if medida else 0] if ne else None
+        self._nivel_entra, self._cheia = 1.0, 0
+        # o eco e do disco que sai: leva o ganho automatico dele
+        self._eco = ([self._eco_plano[0], -self._eco_plano[1], velho]
+                     if medida and self._eco_plano is not None else None)
+        self._eco_plano = None
+        self._deck = prox
+        # o visor segue desenhando a passagem que acabou de virar (a sobreposicao vem toda depois da virada)
+        self._visor_feita, self._visor_pas = (self._visor_pas if medida else None), None
+        self._pronto = self.pronto_tag = self._virar_em = None
+        prox.ahead = AHEAD
+        self.track = prox.track
+        self.pos = prox.q[0][0] if prox.q else 0.0
+        self.ended = False
+        self.virou = (sai, prox.track, tag)
+        self._virou_em = time.monotonic()
 
     # visor de DJ do tema ----------------------------------------------------
     def _onda_pede(self, track):
@@ -2903,15 +3133,16 @@ class Engine:
                 return float(v), True
         return self._medidas.get(self._chave(track), (None, False))
 
-    def _poe_ganho(self, deck, track, na_hora):
-        """O ganho do disco no deck pela medida que ja se tem (na_hora: sem rampa, o disco ainda nao tocou); sem a
-        medida inteira, o arquivo local se mede agora, fora daqui (o stream o leitor mede)."""
+    def _ganho_de(self, track):
+        """Fora das travas (pergunta ao servidor): o ganho do disco pela medida que ja se tem, e se o arquivo local
+        ainda precisa ser medido (sem a medida inteira; o stream o leitor mede)."""
         lufs, inteira = self._lufs(track)
-        deck.ganho_alvo = 10 ** (sonoridade.ganho_db(lufs) / 20)
-        if na_hora:
-            deck.ganho = deck.ganho_alvo
         path = str(track.get("path") or "")
-        if not inteira and path and not path.startswith("http"):
+        return 10 ** (sonoridade.ganho_db(lufs) / 20), not inteira and bool(path) and not path.startswith("http")
+
+    def _mede_se(self, track, mede):
+        """A medida do arquivo, fora daqui e das travas, quando o _ganho_de pediu."""
+        if mede:
             threading.Thread(target=self._mede_arquivo, args=(track,), daemon=True).start()
 
     def _mede_arquivo(self, track):
@@ -2949,28 +3180,17 @@ class Engine:
             except Exception as ex:  # noqa: BLE001 - sem guardar, mede de novo na proxima vez
                 print(f"volume: nao guardei a medida de {track.get('title')!r}: {ex}", file=sys.stderr, flush=True)
 
-    def _ganho(self, deck, n):
-        """No _mixa: o ganho automatico do deck nas n amostras deste bloco (escalar, ou a rampa n x 1 ate o alvo)."""
-        alvo = deck.ganho_alvo if self.volume_auto else 1.0
-        g0 = deck.ganho
-        if g0 == alvo:
-            return g0
-        k = 10 ** (GANHO_RAMPA_DB_S * n / SR / 20)
-        g1 = min(alvo, g0 * k) if alvo > g0 else max(alvo, g0 / k)
-        deck.ganho = g1
-        return np.geomspace(g0, g1, n, dtype=np.float32)[:, None]
-
     # comandos -------------------------------------------------------------
     def espera(self, track):
         """Poe o disco no prato carregando, ainda sem audio: o endereco do stream do YouTube
-        leva 1 a 3 s para sair, e a tela ja mostra o que vai tocar."""
+        leva 1 a 3 s para sair, e a tela ja mostra o que vai tocar. Outro disco entrando desliga o Repetir. Volta a
+        Captura do que estava no prato antes."""
+        alvo, mede = self._ganho_de(track)
         with self._lock:
-            self.track = track
-            self.paused = False
-            self._prato = (track.get("id"), time.time())
-            self._deck.track = track
-            self._poe_ganho(self._deck, track, na_hora=True)
-            self._restart(0.0)
+            antes, leitor = self._restart(0.0, track=track, alvo=alvo, paused=False, prato=True)
+        self._comeca(leitor)
+        self._mede_se(track, mede)
+        return antes
 
     def tira_soou(self):
         """O primeiro som do ultimo disco que entrou no prato, uma vez: (titulo, stream?, entrou, soou) ou None."""
@@ -2980,29 +3200,48 @@ class Engine:
     def trocar_fonte(self, atual, novo):
         """Troca o audio do disco no prato sem cortar: da espera para o stream, ou do stream
         para o arquivo que acabou de baixar. O leitor novo comeca onde o
-        audio ja decodificado termina, e o que esta na fila do microfone segue tocando. So vale se
-        o prato ainda tem `atual` (o mesmo objeto): se ele trocou de disco no meio, nada muda."""
-        with self._lock:
-            if self.track is not atual:
+        audio ja decodificado termina (depois do bloco em curso, se a fila ja esta vazia), e o que esta na fila do
+        microfone segue tocando: a linha fica a mesma, e o bloco ja retirado publica. So vale se
+        o prato ainda tem `atual` (o mesmo objeto): se ele trocou de disco no meio, nada muda. A faixa e o ganho novos
+        entram sob o _qlock, no limite entre blocos (o ganho em rampa, a partir do proximo). Do stream para o arquivo,
+        com leitor novo, a passagem preparada sai (a sobreposicao que ja soa segue); o religar do stream a mantem."""
+        alvo, mede = self._ganho_de(novo)
+        if not atual.get("path"):  # da espera para o stream: ainda sem audio, nem leitor
+            with self._lock:
+                antes, leitor = self._restart(lambda: self._clamp(self.pos, novo), track=novo, alvo=alvo,
+                                              nova_linha=False, pode=lambda: self.track is atual)
+            if antes is None:
                 return False
-            self._onda_pede(novo)
-            self._deck.track = novo
-            self._poe_ganho(self._deck, novo, na_hora=not atual.get("path"))  # tocando: o ganho novo vem em rampa
-            if not atual.get("path"):
-                self.track = novo
-                self._restart(self._clamp(self.pos))
-                return True
-            with self._qlock:
-                t = self._q[-1][0] + len(self._q[-1][1]) / SR if self._q else self.pos
-                dur = novo.get("duration") or 0
-                self.track = novo
-                if self.ended or self._eof_gen == self._gen or (dur and t >= dur - 2):
-                    return True  # no fim (ou quase): o leitor de agora termina o disco
-                self._gen += 1
-                gen = self._gen
-                self._eof_gen = -1
-            threading.Thread(target=self._reader, args=(gen, novo, t, self._deck), daemon=True).start()
+            self._comeca(leitor)
+            self._mede_se(novo, mede)
             return True
+        with self._lock:
+            with self._qlock:
+                if self.track is not atual:
+                    return False
+                d, bl = self._deck, self._bloco
+                if d.q:
+                    t = d.q[-1][0] + len(d.q[-1][1]) / SR
+                elif bl is not None and bl[0] is d and bl[1] == d.linha:
+                    t = bl[2]  # o bloco em curso ja saiu da fila: o leitor novo comeca depois dele
+                else:
+                    t = self.pos
+                dur = novo.get("duration") or 0
+                self.track = d.track = novo
+                d.ganho_alvo = alvo
+                if self.ended or d.eof_gen == d.gen or (dur and t >= dur - 2):
+                    gen = None  # no fim (ou quase): o leitor de agora termina o disco
+                else:
+                    d.gen += 1
+                    gen = d.gen
+                    d.eof_gen = -1
+                    if not str(novo.get("path") or "").startswith("http"):
+                        self._cancela_passagem()  # o arquivo substitui o stream em que a preparada foi medida
+        self._onda_pede(novo)
+        self._mede_se(novo, mede)
+        if gen is not None:
+            threading.Thread(target=self._reader, args=(gen, novo, t, d), daemon=True).start()
+        return True
 
     def esperando_arquivo(self):
         """O stream do disco no prato falhou e ele espera o download para tocar (ver o _reader)."""
@@ -3038,69 +3277,138 @@ class Engine:
         repetido sai do cache)."""
         threading.Thread(target=self._toca_sobre, args=(track,), daemon=True).start()
 
-    def load(self, track, start=0.0, paused=False):
+    def load(self, track, start=0.0, paused=False, loop=None):
+        """O disco no prato a partir de start, numa linha nova; loop: o Repetir, na mesma publicacao (None: fica como
+        esta no mesmo disco, e outro disco entrando o desliga). Volta a Captura do que estava no prato antes."""
+        alvo, mede = self._ganho_de(track)
         with self._lock:
-            self.track = track
-            self.paused = paused
-            self._prato = (track.get("id"), time.time())
-            self._deck.track = track
-            self._poe_ganho(self._deck, track, na_hora=True)
-            self._restart(self._clamp(start))
+            antes, leitor = self._restart(self._clamp(start, track), track=track, alvo=alvo, paused=paused,
+                                          prato=True, loop=loop)
+        self._comeca(leitor)
+        self._mede_se(track, mede)
+        return antes
 
-    def _clamp(self, t):
+    def _clamp(self, t, track=None):
         t = max(0.0, float(t))
-        dur = (self.track or {}).get("duration") or 0
+        dur = (track or self.track or {}).get("duration") or 0
         return min(t, max(0.0, dur - 0.05)) if dur else t
 
     def pause(self):
-        """Pausa o disco e cala os sons por cima: sem o Parar na tela (transporte do Spotify), o Pausar e o que silencia tudo."""
-        self.paused = True
+        """Pausa o disco e cala os sons por cima: sem o Parar na tela (transporte do Spotify), o Pausar e o que silencia tudo.
+        A pausa vale no limite entre blocos: com um bloco do prato retirado e ainda nao publicado, ela fica pendente (o
+        paused so liga na confirmacao) e se confirma quando o _mixa o publicar; sem ele, na hora. Volta a Pausa (os
+        pedidos da mesma linha sao a mesma)."""
+        with self._qlock:
+            p = self._pede_pausa()
         self.calar_sobre()
+        return p
+
+    def _pede_pausa(self):
+        """Com _qlock: o pause, sem calar os sons por cima. Volta a Pausa."""
+        d, p = self._deck, self._pausa
+        if self.track is None or self.ended:  # nada tocando: pausa como antes, sem posicao para gravar
+            self.paused = True
+            p = Pausa(d, d.linha)
+            p.resolve()
+            return p
+        if p is None or p.deck is not d or p.linha != d.linha:
+            p = self._pausa = Pausa(d, d.linha)
+        bl = self._bloco
+        if not p.feita.is_set() and (bl is None or bl[0] is not d or bl[1] != d.linha):
+            self.paused = True  # sem bloco em curso: a confirmacao e na hora
+            p.resolve(self.track, self.pos, ok=True)
+        return p
+
+    def _retoma_sob_trava(self):
+        """Com _qlock: o resume da pausa comum (o pedido pendente sai substituido). Volta True se o disco esta no fim:
+        quem chama recomeca do zero (o _restart, que confere o fim de novo)."""
+        if self.track is None:
+            return False
+        if self.ended:
+            return True
+        self.paused = False
+        self._solta_pausa()
+        return False
+
+    def alterna(self):
+        """O botao principal (o /api/toggle): tocando ou carregando, pausa e volta a Pausa; senao retoma e volta None.
+        A escolha e a acao vao no mesmo trecho do _qlock, sob o _lock: o segundo toggle ve a pausa do primeiro, uma
+        pausa ainda pendente conta como pausa (ele a retoma), e o fim publicado no meio nao vira pausa."""
+        leitor = None
+        with self._lock:
+            with self._qlock:
+                p = self._pausa
+                pendente = p is not None and not p.feita.is_set()
+                if not pendente and self.status() in ("playing", "buffering"):
+                    p, fim = self._pede_pausa(), False
+                else:
+                    p, fim = None, self._retoma_sob_trava()
+            if fim:
+                leitor = self._restart(0.0, paused=False, pode=lambda: self.track is not None and self.ended)[1]
+        if p is not None:
+            self.calar_sobre()
+        self._comeca(leitor)
+        return p
 
     def calar_sobre(self):
         with self._slock:
             self._sobre = []
 
     def resume(self):
-        with self._lock:
-            if self.track is None:
-                return
-            if self.ended:
-                self._restart(0.0)
-            self.paused = False
-
-    def stop(self):
+        """Retoma a pausa na mesma linha (o pedido de pausa pendente sai como substituido); no fim do disco, recomeca
+        do zero numa linha nova."""
+        leitor = None
         with self._lock:
             with self._qlock:
+                fim = self._retoma_sob_trava()
+            if fim:  # o _vira do _mixa pode tirar o fim no meio (sem o _lock): o pode do _restart confere de novo
+                leitor = self._restart(0.0, paused=False, pode=lambda: self.track is not None and self.ended)[1]
+        self._comeca(leitor)
+
+    def stop(self):
+        """O disco sai do prato, numa linha nova. Volta a Captura do que estava no prato antes."""
+        with self._lock:
+            with self._qlock:
+                antes = self._captura_atual()
                 self._cancela_passagem(tudo=True)
-                self._gen += 1
-                self._q.clear()
+                d = self._deck
+                d.linha += 1
+                d.gen += 1
+                d.q.clear()
                 self._limitador_zera = True
-            self.track = None
-            self.loop = False  # o Repetir vale para o disco do prato, e ele saiu
-            self.paused = False
-            self.ended = False
-            self.error = None
-            self.pos = 0.0
+                self.track = None
+                self.loop = False  # o Repetir vale para o disco do prato, e ele saiu
+                self.paused = False
+                self.ended = False
+                self.error = None
+                self.pos = 0.0
+                self._solta_pausa()
         self.calar_sobre()  # parar cala os sons por cima tambem
+        return antes
 
     def seek(self, t):
-        with self._lock:
-            if self.track is None:
-                return
-            self._restart(self._clamp(t))
+        with self._lock:  # o limite pela duracao e o da faixa no prato no mesmo trecho do _qlock
+            _, leitor = self._restart(lambda: self._clamp(t), pode=lambda: self.track is not None)
+        self._comeca(leitor)
 
     def set_loop(self, on):
         with self._lock:
-            self.loop = bool(on)
             # ligou o loop depois que o leitor ja chegou ao fim: emenda outra volta
-            if self.loop and self.track is not None and self._eof_gen == self._gen:
-                if self.ended:
-                    self._restart(0.0)
-                else:
-                    self._eof_gen = -1
-                    threading.Thread(target=self._reader, args=(self._gen, self.track, 0.0, self._deck),
-                                     daemon=True).start()
+            with self._qlock:
+                self.loop = bool(on)  # no mesmo trecho do _qlock em que o leitor decide repetir (_repete)
+                d = self._deck
+                emenda = self.loop and self.track is not None and d.eof_gen == d.gen
+                fim = emenda and self.ended
+                if emenda and not fim:
+                    d.eof_gen = -1
+                gen, tr = d.gen, self.track
+            leitor = None
+            if fim:  # recomeca so se ainda esta no fim, no mesmo trecho do _qlock
+                leitor = self._restart(0.0, pode=lambda: self.ended)[1]
+        if leitor is not None:
+            leitor()
+        elif emenda and not fim:
+            threading.Thread(target=self._reader, args=(gen, tr, 0.0, d), daemon=True).start()
 
     @property
     def planejando(self):
@@ -3187,7 +3495,9 @@ class MockEngine(Engine):
 
     def close(self):
         self._pedal_voz_fecha()
-        self._gen += 1
+        with self._qlock:
+            self._gen += 1
+            self._solta_pausa()
         self._run = False
 
     def _mina_liga(self):

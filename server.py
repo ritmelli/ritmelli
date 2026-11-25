@@ -995,28 +995,38 @@ class App:
                 self.engine.stop()  # sem stream e sem arquivo: o prato nao fica carregando para sempre
 
     # tocar ----------------------------------------------------------------
-    def remember_pos(self):
+    def remember_pos(self, cap=None, pausa=None):
+        """O last_pos do disco na prateleira, de uma captura do motor, e nunca relendo o motor depois dela: a do
+        instante da troca (cap, a Captura que o load, o espera e o stop devolvem) ou a da pausa confirmada (pausa, a
+        Pausa do engine.pause, que so grava se ainda vale: a mesma linha, sem retomar nem trocar de disco no meio). Sem
+        nenhuma das duas, a de agora. A trava da biblioteca vem antes do _qlock (que so confere e muda a memoria), e o
+        arquivo e gravado com o _qlock ja solto."""
         e = self.engine
-        if e.track is not None and e.status() in ("playing", "paused"):
-            self.lib.update(e.track["id"], last_pos=round(e.pos, 1))
-
-    def repetir_so_neste(self, novo_id):
-        """O Repetir vale para o disco do prato (o "repetir uma" do Spotify): outro disco entrando desliga. O mesmo
-        disco tocado de novo e o prato vazio (ligou antes de escolher) nao contam."""
-        tr = self.engine.track
-        if tr is not None and tr["id"] != novo_id:
-            self.engine.set_loop(False)
+        if pausa is not None:
+            tr, pos, vale = pausa.track, pausa.pos, pausa.ok
+        else:
+            cap = cap or e.captura()
+            tr, pos, vale = cap.track, cap.pos, cap.status in ("playing", "paused")
+        if tr is None or not vale:
+            return
+        with self.lib.lock:
+            it = self.lib.get(tr["id"])
+            if it is None:
+                return
+            with e._qlock:
+                if pausa is not None and not e.pausa_vale(pausa):
+                    return
+                it["last_pos"] = round(pos, 1)
+            self.lib._save()
 
     def play_item(self, item, start, loop=None, historico=True, extra=None):
-        self.remember_pos()
         if historico:
             self.guardar_historico(item["id"])
         tr = dict(item, path=str(LIB / item["file"]), **(extra or {}))
-        if loop is not None:
-            self.engine.set_loop(loop)
-        else:
-            self.repetir_so_neste(item["id"])
-        self.engine.load(tr, start=start)
+        # o Repetir entra junto com a faixa (o set_loop antes recomecaria o disco que ja tinha acabado); sem o pedido,
+        # o motor o desliga se o disco que sai e outro
+        cap = self.engine.load(tr, start=start, loop=loop)
+        self.remember_pos(cap)  # a posicao do que saiu, no instante da troca
 
     def tocar_remoto(self, j, target, meta, historico=True):
         """Toca na hora pelo stream do YouTube enquanto o download do job segue por tras;
@@ -1028,13 +1038,13 @@ class App:
               "channel": meta.get("channel"), "thumb": meta.get("thumb") or thumb(yid),
               "duration": meta.get("duration"), "youtube_id": yid, "alvo": None if yid else target,
               "path": None, "stream": True, "job": j["id"] if j else None, **marca_auto(meta)}
-        self.remember_pos()
         if historico:
             self.guardar_historico(tr["id"])
-        self.repetir_so_neste(tr["id"])
-        self.engine.espera(tr)
+        cap = self.engine.espera(tr)  # outro disco entrando desliga o Repetir
+        # o stream abre antes de gravar a posicao: uma gravacao que falha nao deixa o disco carregando para sempre
         threading.Thread(target=self._abre_stream, args=(tr, target, bool(meta.get("title"))),
                          daemon=True).start()
+        self.remember_pos(cap)
 
     def adianta_endereco(self, yid):
         """Pede ja o endereco do stream de yid (o primeiro resultado da busca do pedido falado), sem tocar: o tocar
@@ -2359,8 +2369,13 @@ def build(app_state):
         if isinstance(b.get("rapido"), bool):
             kw["rapido"] = b["rapido"]  # nos Sons rapidos do celular pela mao, mesmo com mais de 15 s
         it = A.lib.update(request.match_info["iid"], **kw)
-        if it and E.track is not None and E.track["id"] == it["id"]:
-            E.track = dict(E.track, **kw)  # o Estado mostra o nome novo na hora
+        if it:
+            with E._qlock:  # o Estado mostra o nome novo na hora, sem trocar a faixa do prato fora da trava
+                tr = E.track
+                if tr is not None and tr["id"] == it["id"]:
+                    E.track = dict(tr, **kw)
+                    if E._deck.track is tr:
+                        E._deck.track = E.track
         return j_ok(item=it) if it else j_err(sem_disco(), 404)
 
     @r.delete("/api/library/{iid}")
@@ -2438,9 +2453,10 @@ def build(app_state):
             return j_err(sem_disco(), 404)
         return j_ok(por_cima=True) if feito == "por_cima" else j_ok()
 
+    # a pausa vale no limite entre blocos do motor: o pausar espera a confirmacao numa thread, e o laco segue livre
     @r.post("/api/pause")
     async def pause(_):
-        cmd.pausar(A)
+        await loop_().run_in_executor(None, cmd.pausar, A)
         return j_ok()
 
     @r.post("/api/resume")
@@ -2450,7 +2466,7 @@ def build(app_state):
 
     @r.post("/api/toggle")
     async def toggle(_):
-        cmd.alternar(A)
+        await loop_().run_in_executor(None, cmd.alternar, A)
         return j_ok()
 
     @r.post("/api/stop")

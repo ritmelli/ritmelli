@@ -4,7 +4,9 @@ MockEngine. Quem anda o audio e o teste, chamando o engine._mixa(BLOCK); quem fa
 chamando a volta dele (_volta_fila, _volta_passagem e _volta_auto). O leitor do motor e um de mentira (blocos de
 silencio, sem ffmpeg), o som por cima so e anotado e o endereco do stream e recusado: nada vai a rede nem abre
 aparelho, e a prateleira e a pasta de quem usa nao sao lidas. E a leitura do estado (App.leitura) com a virada do
-motor ainda nao conciliada na fila, com o vigia suspenso no meio da conciliacao e com a preparacao bloqueada.
+motor ainda nao conciliada na fila, com o vigia suspenso no meio da conciliacao e com a preparacao bloqueada. E o
+bloco do _mixa parado entre a retirada e a publicacao (Suspenso), com um seek, um load, um resume do fim, uma troca de
+deck, a troca do stream pelo arquivo ou um pedido de pausa no meio.
 
     python dev/testa_comandos.py
 
@@ -384,8 +386,8 @@ def voltas(A, E):
     confere(E.virou is None and fila(A) == ["d2"] and historico(A)[-1:] == ["d3"] and no_prato(E) == "d1",
             f"o _volta_passagem tira da fila a que entrou e guarda a que saiu ({fila(A)}, {historico(A)[-1:]})")
 
-    # a preparacao da proxima bloqueada, no endereco do stream (fonte_de, fora das travas) e depois no E.preparar (com
-    # o E._lock na mao): o GET /api/state de verdade, pelo guard, segue respondendo
+    # a preparacao da proxima bloqueada, no endereco do stream (fonte_de, fora das travas) e depois no E.preparar, e o
+    # E._lock na mao de outra thread: o GET /api/state de verdade, pelo guard, segue respondendo
     app = server.build(A)
     rota_state = next(r.handler for r in app.router.routes()
                       if r.method == "GET" and r.resource is not None and r.resource.canonical == "/api/state")
@@ -425,13 +427,29 @@ def voltas(A, E):
         confere(preso.wait(5), "o _volta_passagem comeca a preparar a primeira da fila")
         state_responde("no endereco do stream")
         libera.set()
-        confere(na_onda.wait(5), "liberado o endereco, a preparacao entra no E.preparar (com o E._lock na mao)")
+        confere(na_onda.wait(5), "liberado o endereco, a preparacao entra no E.preparar")
         state_responde("no E.preparar")
     finally:
         libera.set()
         libera_onda.set()
         confere(ate(lambda: A.preparando is None), "liberada, a preparacao termina")
         A.fonte_de, E._onda_pede = fonte, onda
+
+    # o E._lock na mao de outra thread (um load, um preparar): o /api/state, que so usa a fila_lock e o _qlock, responde
+    com_lock, solta_lock = threading.Event(), threading.Event()
+
+    def segura_lock():
+        with E._lock:
+            com_lock.set()
+            solta_lock.wait(5)
+    segura = threading.Thread(target=segura_lock, daemon=True)
+    segura.start()
+    try:
+        confere(com_lock.wait(5), "outra thread segura o E._lock")
+        state_responde("com o E._lock na mao de outra thread")
+    finally:
+        solta_lock.set()
+        segura.join(5)
 
     # o pos do /api/state e o da mesma captura do estado: o motor que anda depois da leitura nao entra na resposta
     leitura, pos0 = A.leitura, E.pos
@@ -566,6 +584,460 @@ def andamento(A, E):
             f"a gravacao do andamento falha: ele fica na memoria, mas nao reordena ({travado}, {subiu})")
 
 
+class Suspenso:
+    """O _mixa de um bloco numa thread, parado entre o _captura (o bloco ja retirado sob o _qlock) e o _renderiza, ate
+    o solta(), que devolve o que ele mandou para o jogo."""
+
+    def __init__(self, E):
+        self.E, self.dentro, self.libera, self.saida = E, threading.Event(), threading.Event(), []
+        renderiza = E._renderiza
+
+        def preso(b, frames):
+            self.bloco = b
+            self.dentro.set()
+            self.libera.wait(5)
+            return renderiza(b, frames)
+        E._renderiza = preso
+        self.t = threading.Thread(target=lambda: self.saida.append(E._mixa(eng.BLOCK)))
+        self.t.start()
+        self.parou = self.dentro.wait(5)
+
+    def solta(self):
+        self.libera.set()
+        self.t.join(5)
+        del self.E._renderiza  # volta o do motor
+        return self.saida[0] if self.saida else None
+
+
+def enche(E, nivel):
+    """Os blocos na fila do prato passam a ter o nivel constante nivel (o leitor de mentira poe silencio)."""
+    with E._qlock:
+        q = E._deck.q
+        for i, (t, s) in enumerate(q):
+            q[i] = (t, np.full_like(s, nivel))
+
+
+def arquivo(A, iid):
+    return dict(A.lib.get(iid), path=str(server.LIB / f"{iid}.m4a"))
+
+
+async def pede_corpo(app, A, metodo, caminho, corpo):
+    """A rota de verdade com um corpo JSON, pelo guard, como o PC pede: (status, corpo)."""
+    from aiohttp import streams
+    t = mock.Mock()
+    t.get_extra_info.side_effect = lambda nome, d=None: ("127.0.0.1", 50000) if nome == "peername" else d
+    carga = streams.StreamReader(mock.Mock(_reading_paused=False), 2 ** 16, loop=asyncio.get_running_loop())
+    carga.feed_data(json.dumps(corpo).encode("utf-8"))
+    carga.feed_eof()
+    req = make_mocked_request(metodo, caminho, headers={"Host": f"127.0.0.1:{A.port}", "Content-Type": "application/json"},
+                              transport=t, payload=carga, app=app)
+    req._match_info = await app.router.resolve(req)
+    resp = await app.middlewares[0](req, req._match_info.handler)
+    return resp.status, json.loads(resp.body)
+
+
+async def pede(app, A, metodo, caminho):
+    """A rota de verdade, pelo guard, como o PC pede: (status, corpo)."""
+    t = mock.Mock()
+    t.get_extra_info.side_effect = lambda nome, d=None: ("127.0.0.1", 50000) if nome == "peername" else d
+    req = make_mocked_request(metodo, caminho, headers={"Host": f"127.0.0.1:{A.port}"}, transport=t, app=app)
+    req._match_info = await app.router.resolve(req)
+    resp = await app.middlewares[0](req, req._match_info.handler)
+    return resp.status, json.loads(resp.body)
+
+
+def bloco(A, E):
+    """O bloco do _mixa: retirado sob o _qlock, renderizado fora dele e publicado so se o deck e a linha ainda sao os
+    do prato. Cada caso para o _mixa depois de retirar o bloco (Suspenso), faz a outra operacao e solta."""
+    print("--- o bloco do motor: a linha de reproducao")
+    E.cancelar_pronto()
+    E.virou = None
+    cmd.limpar_fila(A)
+    app = server.build(A)
+    tiras, tira = [], E._tira
+
+    def tira_anota(q, n):  # o comeco de cada bloco que sai do prato, para conferir que eles sao contiguos
+        r = tira(q, n)
+        if r and q is E._deck.q:
+            tiras.append(r[0][0])
+        return r
+    E._tira = tira_anota
+
+    def toca(iid, start=0.0):
+        cmd.tocar(A, iid, start=start)
+        ate(lambda: E.status() == "playing")
+        enche(E, 0.25)
+
+    # um seek depois de retirar o bloco: ele nao publica posicao nem fim, e a musica dele sai
+    toca("d1")
+    s = Suspenso(E)
+    E.seek(10.0)
+    out = s.solta()
+    confere(s.parou and abs(E.pos - 10.0) < 1e-9 and not E.ended and out is not None and not np.any(out),
+            f"o bloco retirado antes de um seek nao publica posicao nem fim, e a musica dele sai ({E.pos})")
+    ate(lambda: E.status() == "playing")
+    E._mixa(eng.BLOCK)
+    confere(abs(E.pos - 10.01) < 1e-9, f"o primeiro bloco depois do seek e o do ponto novo ({E.pos})")
+
+    # o mesmo com um load durante uma passagem, com o eco soando e o limitador segurando o fim do bloco de antes: o
+    # bloco velho nao mexe na rampa, no ganho, no primeiro som nem no limitador da faixa nova
+    toca("d1")
+    velho = eng.Deck(arquivo(A, "d3"))
+    velho.q.extend((i * eng.BLOCK / eng.SR, np.full((eng.BLOCK, 2), 0.25, np.float32)) for i in range(10))
+    with E._qlock:
+        E._entrando = [4800, 0, 1.0, 0]
+        E._saindo = [velho, 4800, 0, None, 0]
+        E._eco = [np.full((4800, 2), 0.25, np.float32), 0, velho]
+        E._limitador.hist = np.full_like(E._limitador.hist, 0.5)
+        E._deck.ganho, E._deck.ganho_alvo = 1.0, 2.0
+    E.volume_auto = True
+    E.tira_soou()  # o primeiro som de antes (o do seek), que o vigia ja teria levado
+    s = Suspenso(E)
+    E.load(arquivo(A, "d2"))
+    ganho, prato = E._deck.ganho, E._prato
+    out = s.solta()
+    E.volume_auto = False
+    confere(s.parou and not np.any(out) and E.pos == 0.0 and E._deck.ganho == ganho and E._prato is prato
+            and E.tira_soou() is None,
+            "o bloco retirado antes de um load: nada dele toca, e ele nao mexe no ganho, na posicao nem no primeiro "
+            "som da faixa nova")
+    confere(E._entrando is None and E._saindo is None and E._eco is None and E._limitador_zera
+            and E._limitador is not s.bloco.lim,
+            "nem na passagem, no eco ou no limitador: o pedido de zerar o limitador da linha nova fica para ela")
+    ate(lambda: E.status() == "playing")
+    out = E._mixa(eng.BLOCK)
+    confere(not np.any(out) and E._prato is None and E.tira_soou() is not None and abs(E.pos - 0.01) < 1e-9,
+            "o primeiro bloco da faixa nova nao tem nada da anterior (o eco, o que saia, os 2 ms do limitador)")
+
+    # a troca de deck com o mesmo valor de linha e de gen: o deck do bloco e outro objeto, e o bloco nao publica
+    toca("d1")
+    s = Suspenso(E)
+    with E._qlock:
+        d = E._deck
+        outro = eng.Deck(d.track)
+        outro.linha, outro.gen, outro.eof_gen = d.linha, d.gen, d.eof_gen
+        E._deck, E.pos = outro, 50.0
+    out = s.solta()
+    confere(s.parou and E.pos == 50.0 and not E.ended and not np.any(out),
+            "a troca de deck com a mesma linha e o mesmo gen no meio do bloco: o bloco do deck de antes nao publica")
+
+    # o motor confere a proxima preparada e a condicao da virada no mesmo trecho do _qlock em que vira: a preparada
+    # que troca logo antes de o _mixa pegar a trava (ainda sem a virada medida) nao entra no prato
+    def prepara(iid, tag):
+        with contextlib.redirect_stderr(io.StringIO()):
+            E.preparar(arquivo(A, iid), tag)
+            ate(lambda: E._virar_em is not None)
+        with E._qlock:
+            E._virar_em = E.pos  # a hora da virada medida ja chegou
+
+    class AntesDaTrava:
+        """O mesmo _qlock; na primeira vez que alguem o pega, faz antes o que foi pedido (com a trava de verdade)."""
+
+        def __init__(self, trava, faz):
+            self.trava, self.faz = trava, [faz]
+
+        def __enter__(self):
+            if self.faz:
+                self.faz.pop()()
+            return self.trava.__enter__()
+
+        def __exit__(self, *a):
+            return self.trava.__exit__(*a)
+
+    toca("d1")
+    prepara("d2", "t2")
+    qlock, outra = E._qlock, eng.Deck(arquivo(A, "d3"))
+    outra.gen = 1
+    outra.q.append((0.0, np.zeros((eng.BLOCK, 2), np.float32)))
+
+    def reprepara():
+        with qlock:
+            E._cancela_passagem()
+            E._pronto, E.pronto_tag = outra, "t3"
+    E._qlock = AntesDaTrava(qlock, reprepara)
+    try:
+        E._mixa(eng.BLOCK)
+    finally:
+        E._qlock = qlock
+    confere(E.virou is None and no_prato(E) == "d1" and E._pronto is outra,
+            f"a preparada trocada logo antes do bloco, sem a virada medida, nao vira ({no_prato(E)})")
+    E.cancelar_pronto()
+
+    prepara("d2", "t2")
+    E._qlock = AntesDaTrava(qlock, lambda: E.load(arquivo(A, "d3")))
+    try:
+        E._mixa(eng.BLOCK)
+    finally:
+        E._qlock = qlock
+    confere(E.virou is None and no_prato(E) == "d3" and E._pronto is None,
+            f"o load logo antes do bloco da virada: ela nao acontece, e o disco do load fica ({no_prato(E)})")
+
+    # o load concorrendo com o _vira: o bloco ja retirado do deck que acabou de entrar nao publica
+    toca("d1")
+    prepara("d2", "t2")
+    s = Suspenso(E)
+    virou = E.virou is not None and no_prato(E) == "d2"
+    E.load(arquivo(A, "d3"))
+    out = s.solta()
+    confere(s.parou and virou and no_prato(E) == "d3" and E.pos == 0.0 and not np.any(out)
+            and E._saindo is None and E._entrando is None,
+            "o load logo depois da virada, com o bloco dela retirado: o bloco nao publica, e a passagem sai")
+    E.virou = None
+
+    # a troca do stream para o arquivo com o bloco retirado: ele sai uma vez, e o seguinte e contiguo
+    def no_stream():
+        tr = {"id": "s1", "title": "stream", "duration": 120.0, "path": None, "stream": True, "job": None,
+              "lufs": -14.0}
+        E.espera(tr)
+        st = dict(tr, path="http://stream.invalid/s1")
+        E.trocar_fonte(tr, st)
+        ate(lambda: E.status() == "playing")
+        with E._qlock:
+            E._deck.eof_gen = -1  # o leitor do stream ainda le
+        return st
+    # o religar do stream (o mesmo audio por outro endereco) mantem a passagem preparada; a troca para o arquivo, com
+    # leitor novo, a desfaz
+    st = no_stream()
+    with contextlib.redirect_stderr(io.StringIO()):
+        E.preparar(arquivo(A, "d2"), "t2")
+    preparada = E._pronto is not None
+    st2 = dict(st, path="http://stream.invalid/s1-novo", religou=1)
+    E.trocar_fonte(st, st2)
+    confere(preparada and E._pronto is not None and E.pronto_tag == "t2",
+            "o religar do stream mantem a passagem preparada")
+    ate(lambda: E._deck.eof_gen == E._deck.gen)
+    with E._qlock:
+        E._deck.eof_gen = -1  # o leitor do stream ainda le
+    E.trocar_fonte(st2, dict(st2, path=str(server.LIB / "s1.m4a")))
+    confere(E._pronto is None and E.pronto_tag is None,
+            "a troca do stream para o arquivo, com leitor novo, desfaz a passagem preparada na fonte de antes")
+
+    for vazia in (False, True):
+        st = no_stream()
+        if vazia:
+            with E._qlock:
+                while len(E._q) > 1:
+                    E._q.pop()
+        s = Suspenso(E)
+        fim = s.bloco.item[-1][0] + eng.BLOCK / eng.SR
+        E.trocar_fonte(st, dict(st, path=str(server.LIB / "s1.m4a")))
+        ate(lambda: len(E._q) > 0)
+        out = s.solta()
+        del tiras[:]
+        E._mixa(eng.BLOCK)
+        confere(s.parou and abs(E.pos - fim - 0.01) < 1e-9 and tiras and abs(tiras[0] - fim) < 1e-9,
+                f"a troca para o arquivo com o bloco do stream retirado{' e a fila vazia' if vazia else ''}: ele "
+                f"publica uma vez e o seguinte comeca onde ele acabou ({tiras[:1]}, {fim})")
+
+    # a cauda do limitador depois do fim, um resume do zero no meio e a liberacao: o bloco velho nao publica fim, nao
+    # entrega a cauda antiga e nao consome o pedido de zerar o limitador da linha nova
+    toca("d1")
+    toca_ate_o_fim(E)
+    with E._qlock:
+        E._limitador.hist = np.full_like(E._limitador.hist, 0.5)
+    s = Suspenso(E)
+    E.resume()
+    out = s.solta()
+    confere(s.parou and not E.ended and E.pos == 0.0 and E._limitador_zera and not np.any(out),
+            "a cauda do limitador suspensa e o resume do zero: o bloco velho nao publica o fim nem entrega a cauda")
+    ate(lambda: E.status() == "playing")
+    out = E._mixa(eng.BLOCK)
+    confere(abs(E.pos - 0.01) < 1e-9 and not np.any(out), "e a linha nova comeca do zero, sem a cauda de antes")
+
+    # o bloco que retirou o fim e o Repetir ligado no meio: a volta seguinte ja comecou, e o fim nao publica
+    toca("d1")
+    toca_ate_o_fim(E)
+    with E._qlock:
+        E.ended = False  # o fim ainda nao publicado
+    s = Suspenso(E)
+    E.set_loop(True)
+    ate(lambda: len(E._q) > 0)
+    s.solta()
+    confere(s.parou and s.bloco.fim and not E.ended and E.status() == "playing",
+            f"o Repetir ligado com o bloco do fim retirado: o fim nao publica, e a volta seguinte toca ({E.status()})")
+    E.set_loop(False)
+
+    # tocar com o Repetir pedido, com o disco de antes ja acabado: ele nao recomeca, e a posicao dele nao vira 0
+    toca("d1", start=20.045)
+    toca_ate_o_fim(E)
+    A.lib.update("d1", last_pos=7.0)
+    comeca, visto = E._comeca, []
+    E._comeca = lambda leitor: (visto.append(E.loop), comeca(leitor))
+    try:
+        cmd.tocar(A, "d2", loop=True)
+    finally:
+        del E._comeca
+    confere(no_prato(E) == "d2" and E.loop and A.lib.get("d1")["last_pos"] == 7.0,
+            f"tocar com o Repetir depois do fim: o de antes nao recomeca nem grava 0 ({A.lib.get('d1')['last_pos']})")
+    confere(visto == [True], f"e o Repetir ja esta ligado quando o leitor da faixa nova comeca ({visto})")
+    E.load(arquivo(A, "d2"))
+    confere(E.loop, "o mesmo disco de novo, sem o Repetir pedido: ele segue ligado")
+    visto.clear()
+    E._comeca = lambda leitor: (visto.append(E.loop), comeca(leitor))
+    try:
+        E.load(arquivo(A, "d1"))
+    finally:
+        del E._comeca
+    confere(not E.loop and visto == [False],
+            f"outro disco entrando, sem o Repetir pedido: ele desliga, na mesma publicacao da faixa ({visto})")
+    E.set_loop(False)
+
+    # a pausa pedida com o bloco do fim retirado: o fim a substitui, sem gravar posicao
+    toca("d1")
+    toca_ate_o_fim(E)
+    A.lib.update("d1", last_pos=7.0)
+    with E._qlock:
+        E.ended = False
+    s = Suspenso(E)
+    res = []
+    t = threading.Thread(target=lambda: res.append(cmd.pausar(A)))
+    t.start()
+    t.join(0.3)
+    esperou = t.is_alive()
+    s.solta()
+    t.join(5)
+    confere(s.parou and esperou and res == [False] and E.ended and A.lib.get("d1")["last_pos"] == 7.0,
+            f"a pausa com o bloco do fim retirado espera ele, e o fim a substitui sem gravar a posicao ({res})")
+    p = E.pause()
+    confere(p.feita.is_set() and not p.ok and E.paused, "pausar o disco que ja acabou: nada para confirmar nem gravar")
+
+    # o leitor que chega ao fim decide repetir no mesmo trecho em que o set_loop liga o Repetir
+    toca("d1")
+    with E._qlock:
+        d, gen = E._deck, E._deck.gen
+        d.eof_gen = -1
+    E.set_loop(True)
+    repete = E._repete(d, gen) and d.eof_gen == -1
+    E.set_loop(False)
+    confere(repete and not E._repete(d, gen) and d.eof_gen == gen and not E._repete(d, gen - 1),
+            "o leitor no fim: com o Repetir, a volta seguinte; sem, o fim; o de um gen velho, nada")
+
+    # a pausa com o prato sem bloco na fila, mas com a passagem soando (o que sai): ela espera esse bloco
+    toca("d1")
+    velho = eng.Deck(arquivo(A, "d3"))
+    velho.q.extend((i * eng.BLOCK / eng.SR, np.full((eng.BLOCK, 2), 0.25, np.float32)) for i in range(10))
+    with E._qlock:
+        E._q.clear()
+        E._deck.eof_gen = -1  # o leitor ainda le: o prato carregando
+        E._saindo = [velho, 4800, 0, None, 0]
+    s = Suspenso(E)
+    p = E.pause()
+    pendente = not p.feita.is_set() and not E.paused
+    s.solta()
+    confere(s.parou and pendente and p.ok and E.paused,
+            "a pausa com so o que sai soando no bloco espera a publicacao dele, e so entao pausa")
+    with E._qlock:
+        E._saindo = None
+    cmd.retomar(A)
+
+    # a pausa confirmada guarda a faixa daquele instante
+    toca("d1")
+    p = E.pause()
+    with E._qlock:
+        E.track["title"] = "outro nome"  # o prato muda o dicionario dele depois
+    confere(p.ok and p.track["title"] == "Disco d1", f"a pausa guarda a faixa do instante dela ({p.track['title']})")
+    with E._qlock:
+        E.track["title"] = "Disco d1"
+    cmd.retomar(A)
+
+    # o nome novo da prateleira entra na faixa do prato sob o _qlock, so se ela ainda e a mesma
+    toca("d1")
+    st, corpo = asyncio.run(asyncio.wait_for(pede_corpo(app, A, "PATCH", "/api/library/d1", {"title": "Novo d1"}), 5))
+    confere(st == 200 and E.track["title"] == "Novo d1" and E._deck.track is E.track,
+            f"o PATCH da prateleira poe o nome novo na faixa do prato ({st}, {E.track.get('title')})")
+    A.lib.update("d1", title="Disco d1")
+
+    # o leitor de uma linha que ja acabou nao marca o fim nem o erro da linha nova
+    toca("d1")
+    with E._qlock:
+        d, gen = E._deck, E._deck.gen
+        d.eof_gen, E.error = -1, None
+    E._fim_do_leitor(d, gen - 1, erro=(E.track, 0.0))
+    confere(d.eof_gen == -1 and E.error is None, "o leitor de um gen velho nao marca o fim nem o erro")
+
+    # a troca de disco com o bloco do prato em curso e a fila vazia: a posicao dele e gravada (ele estava tocando)
+    toca("d1", start=20.045)
+    with E._qlock:
+        while len(E._q) > 1:
+            E._q.pop()
+        E._deck.eof_gen = -1  # o leitor ainda le
+    A.lib.update("d1", last_pos=7.0)
+    s = Suspenso(E)
+    cmd.tocar(A, "d2")
+    s.solta()
+    confere(s.parou and A.lib.get("d1")["last_pos"] == 20.0,
+            f"a troca com o bloco em curso e a fila vazia grava a posicao do que saiu ({A.lib.get('d1')['last_pos']})")
+
+    # a pausa pelo /api/pause e pelo /api/toggle com o bloco retirado: ela espera a publicacao dele, sem prender o
+    # laco, e a posicao publicada e a gravada sao a do fim dele
+    def rota(caminho, res):
+        res.append(asyncio.run(asyncio.wait_for(pede(app, A, "POST", caminho), 5)))
+
+    for caminho in ("/api/pause", "/api/toggle"):
+        toca("d1", start=20.045)
+        s = Suspenso(E)
+
+        async def corre(caminho=caminho, s=s):
+            """O POST esperando a confirmacao e um GET /api/state no mesmo laco: ele responde com o POST pendente."""
+            pausa = asyncio.ensure_future(pede(app, A, "POST", caminho))
+            fim = time.monotonic() + 2
+            while not (E._pausa is not None and not E._pausa.feita.is_set()) and time.monotonic() < fim:
+                await asyncio.sleep(0.01)
+            st, _ = await asyncio.wait_for(pede(app, A, "GET", "/api/state"), 2)
+            livre = st == 200 and not pausa.done() and not E.paused  # pendente: o prato so pausa na confirmacao
+            out = s.solta()
+            return livre, out, await asyncio.wait_for(pausa, 5)
+        esperou, out, res = asyncio.run(corre())
+        pos = E.pos
+        confere(s.parou and esperou and res[0] == 200 and abs(pos - 20.055) < 1e-9
+                and A.lib.get("d1")["last_pos"] == round(pos, 1) == 20.1 and np.any(out),
+                f"o {caminho} com o bloco retirado espera a publicacao dele sem prender o laco (o /api/state responde), "
+                f"e a posicao gravada e a publicada ({pos}, {A.lib.get('d1')['last_pos']})")
+        for _ in range(3):
+            E._mixa(eng.BLOCK)
+        confere(E.pos == pos and A.lib.get("d1")["last_pos"] == 20.1, "e as duas ficam paradas na pausa")
+        del tiras[:]
+        cmd.retomar(A)
+        E._mixa(eng.BLOCK)
+        confere(tiras and abs(tiras[0] - pos) < 1e-9, f"e a retomada comeca onde a pausa parou ({tiras[:1]})")
+
+    # a mesma pausa com um load ou um resume antes de soltar o bloco: a espera termina, a linha nova segue e nenhuma
+    # posicao antiga e gravada
+    for nome, faz in (("load", lambda: E.load(arquivo(A, "d2"))), ("resume", E.resume),
+                      ("seek", lambda: E.seek(5.0)), ("toggle", lambda: cmd.alternar(A))):
+        toca("d1", start=20.045)
+        A.lib.update("d1", last_pos=7.0)
+        s = Suspenso(E)
+        res = []
+        t = threading.Thread(target=rota, args=("/api/pause", res))
+        t.start()
+        t.join(0.3)
+        faz()
+        t.join(2)
+        terminou = not t.is_alive() and res and res[0][0] == 200
+        out = s.solta()
+        mesma = nome in ("resume", "toggle")  # retomar (o segundo toggle tambem) preserva a linha
+        confere(s.parou and terminou and not E.paused and A.lib.get("d1")["last_pos"] == 7.0
+                and no_prato(E) == ("d2" if nome == "load" else "d1"),
+                f"o {nome} com a pausa esperando o bloco: a espera termina sem gravar a posicao, e o disco segue "
+                f"sem pausar")
+        confere(np.any(out) == mesma and not E.paused,
+                f"e o bloco retirado {'publica (a mesma linha)' if mesma else 'sai (a linha mudou)'} sem pausar nada")
+
+    # a troca de faixa entre a confirmacao da pausa e a gravacao: a posicao antiga nao e gravada
+    toca("d1", start=20.045)
+    A.lib.update("d1", last_pos=7.0)
+    trava = A.lib.lock
+    A.lib.lock = AntesDaTrava(trava, lambda: E.load(arquivo(A, "d2")))
+    try:
+        cmd.pausar(A)
+    finally:
+        A.lib.lock = trava
+    confere(A.lib.get("d1")["last_pos"] == 7.0 and no_prato(E) == "d2" and not E.paused,
+            "a troca de faixa entre a confirmacao da pausa e a gravacao: nada e gravado, e a faixa nova toca")
+    del E._tira
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         audio = Path(tmp) / "audio"  # a pasta dos arquivos de audio tambem e a temporaria: o Library cria a dele
@@ -575,6 +1047,7 @@ def main():
                 comandos(A, E)
                 voltas(A, E)
                 andamento(A, E)
+                bloco(A, E)
             finally:
                 E.close()
     if falhas:

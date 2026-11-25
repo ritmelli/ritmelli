@@ -76,3 +76,34 @@ filtro, então o `audiodg` e um jogo de verdade ficam de fora. E nos pares da ba
 medido (a decisão não depende disso, porque não houve seca a tirar). Nos PCs de quem usa, quem diz se isso muda é o
 evento "audio" da telemetria (o `secas_esticamento`, as secas com a Rubber Band em curso): com secas ali, a medida
 se repete, com a mesma ferramenta, num Windows de teste com um jogo.
+
+## O bloco e a linha de reprodução
+
+Cada `Deck` tem uma linha de reprodução, um contador que o `load`, o `stop`, o `seek` e o `resume` que recomeça do fim
+sobem. O `_mixa` faz cada bloco em três passos. O `_captura`, sob o `_qlock`, confere a próxima preparada e a condição
+da virada (e vira ali mesmo, no `_vira`), tira o bloco do prato e copia o estado da passagem (a próxima subindo, o que
+sai, o eco, o ganho do disco) e o do limitador. O `_renderiza` faz o som fora da trava, só sobre as cópias. O
+`_publica`, de novo sob o `_qlock`, só aplica a posição, o fim, o primeiro som, o avanço da passagem, do ganho e do
+limitador se o deck e a linha do bloco ainda forem os do prato; senão, a música daquele bloco sai e nada dele vale (nem
+o pedido de zerar o limitador, que fica para a linha nova). O `_gen` do leitor é outra coisa: ele só para o
+decodificador substituído. A troca do stream pelo arquivo (`trocar_fonte`) sobe o `_gen` e mantém a linha, então o
+bloco em curso publica, e o leitor novo começa depois do último bloco decodificado, ou depois do bloco em curso quando
+a fila já está vazia.
+
+O `load`, o `espera`, o `stop`, o `seek` e o `resume` que recomeça do fim publicam a troca sob o `_qlock`, como uma
+mudança só: a faixa, a linha, a posição, o fim e a passagem desfeita (no `load`, também o Repetir pedido: o leitor da
+faixa nova já o encontra ligado; sem o pedido, o disco que entra no lugar de outro o desliga). O `seek` limita a posição
+pela duração da faixa e o `resume` confere o fim no mesmo trecho da trava. O `trocar_fonte` publica no mesmo trecho a
+faixa e o ganho novos, na mesma linha (da espera para o stream, também a posição e a passagem desfeita; do stream para o
+arquivo, com leitor novo, a passagem preparada sai; o religar do stream a mantém). A medida do ganho e o leitor ficam
+fora das travas, e o leitor que acaba só marca o fim, ou o erro, se ainda é o leitor do deck; o Repetir e o fim do
+leitor se decidem no mesmo trecho do `_qlock`. O `load`, o `espera` e o `stop` devolvem a `Captura` do que estava no
+prato logo antes: a posição que o servidor grava (`remember_pos`) é a desse instante.
+
+A pausa vale no limite entre blocos. O `pause` devolve uma `Pausa`: com um bloco do prato retirado e ainda não
+publicado (o do disco, o do fim ou só o da passagem soando), ela fica pendente (o prato só pausa na confirmação) e se
+confirma na publicação dele; sem bloco, na hora. O `alterna` (o botão principal) decide e age no mesmo trecho do
+`_qlock`: uma pausa pendente conta como pausa, e o segundo toque a retoma. A confirmação guarda a faixa e a posição
+daquele instante, e o servidor grava essa posição só se a pausa ainda vale (a mesma linha, sem retomar nem trocar de
+disco no meio). O `resume`, o `load`, o `stop`, o `seek`, o fim do disco e o `close` resolvem o pedido pendente como
+substituído, sem gravar nada.

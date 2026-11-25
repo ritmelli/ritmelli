@@ -16,6 +16,8 @@ import pastas
 
 # o por_cima que nao veio no corpo do /api/play: o som curto (buzina, bordao) decide sozinho
 CURTO = object()
+# quanto o pausar espera o motor confirmar a pausa: o bloco em curso leva 10 ms, e so um _mixa parado passa disso
+PAUSA_ESPERA_S = 1.0
 
 
 class CorpoRecusado(ValueError):
@@ -131,8 +133,14 @@ def voltar(A):
 
 
 def pausar(A):
-    A.engine.pause()
-    A.remember_pos()
+    """Pausa no limite entre blocos do motor (engine.pause) e grava a posicao que ele confirmou. A espera e sem trava
+    nenhuma e tem prazo (PAUSA_ESPERA_S); o pedido substituido no meio (retomar, trocar de disco, ir para outro ponto)
+    termina a espera sem gravar nada. Volta se a pausa foi confirmada."""
+    p = A.engine.pause()
+    if not p.espera(PAUSA_ESPERA_S):
+        return False
+    A.remember_pos(pausa=p)
+    return True
 
 
 def retomar(A):
@@ -140,18 +148,18 @@ def retomar(A):
 
 
 def alternar(A):
-    """O botao principal (o /api/toggle): tocando ou carregando, pausa; senao, retoma."""
-    if A.engine.status() in ("playing", "buffering"):
-        pausar(A)
-    else:
-        retomar(A)
+    """O botao principal (o /api/toggle): tocando ou carregando, pausa e grava a posicao confirmada; senao, retoma. A
+    escolha e no motor (engine.alterna): dois toggles juntos nao pausam os dois, e uma pausa pendente o segundo
+    retoma."""
+    p = A.engine.alterna()
+    if p is not None and p.espera(PAUSA_ESPERA_S):
+        A.remember_pos(pausa=p)
 
 
 def parar(A):
-    """O disco sai do prato, e o Anterior toca ele de novo."""
-    A.remember_pos()
+    """O disco sai do prato, e o Anterior toca ele de novo. A posicao gravada e a do instante em que ele saiu."""
     A.guardar_historico()
-    A.engine.stop()
+    A.remember_pos(A.engine.stop())
 
 
 def ir_para(A, t):
