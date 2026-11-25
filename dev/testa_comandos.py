@@ -281,7 +281,8 @@ def voltas(A, E):
 
 def andamento(A, E):
     """O _vigia_andamento de verdade, uma volta por caso: a versao de audio e o andamento medidos sao gravados fora da
-    fila_lock; a medida fica na memoria mesmo se a gravacao falha, mas so vale na fila depois de gravada."""
+    fila_lock; a medida entra na memoria mesmo se a gravacao falha, e a troca na fila e o andamentos_versao so vem
+    com a gravacao feita. Enquanto grava, nada da medida aparece ainda."""
     print("--- o _vigia_andamento: a gravacao fora da fila_lock")
 
     class Fim(Exception):
@@ -300,15 +301,17 @@ def andamento(A, E):
             except StopIteration:
                 raise Fim from None  # a segunda volta: o vigia sai
 
-        def grava(caminho, dados):
-            gravados.append((caminho, dict(dados), A.fila_lock.locked()))
+        def grava(caminho, dados):  # o que ja aparecia enquanto o disco grava: o dicionario, o contador e as trocas
+            gravados.append((caminho, dict(dados), A.fila_lock.locked(), dict(ativo()), A.andamentos_versao,
+                             list(trocas)))
             if falha:
                 raise disco_cheio
         gravados, trocas, saiu, versao = [], [], [], A.andamentos_versao
         disco_cheio = OSError("disco cheio")
         v = {"youtube_id": "fffffffffff", "duration": 200, "title": "parecida", "channel": "c"}
-        caminho, antes = (A.versoes_path, dict(A.versoes)) if o_que == "audio" else (A.andamentos_path,
-                                                                                    dict(A.andamentos))
+        caminho, ativo = ((A.versoes_path, lambda: A.versoes) if o_que == "audio"
+                          else (A.andamentos_path, lambda: A.andamentos))
+        antes = dict(ativo())
         medida = v if o_que == "audio" else {"ini": 100.0, "fim": 101.0}
         with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(server, "ANDAMENTO_APOS_S", -1),
               mock.patch.object(server, "save_json", grava), mock.patch.object(A, "_a_medir", a_medir),
@@ -324,8 +327,9 @@ def andamento(A, E):
         confere(not t.is_alive() and len(saiu) == 1 and (saiu[0] is disco_cheio if falha else isinstance(saiu[0], Fim)),
                 f"o _vigia_andamento saiu sozinho, pela {'gravacao que falhou' if falha else 'volta seguinte'} "
                 f"({o_que}, {saiu})")
-        confere(gravados == [(caminho, {**antes, yid: medida}, False)],
-                f"uma gravacao so, no arquivo certo, com o que havia mais a medida, e sem a fila_lock ({o_que})")
+        confere(gravados == [(caminho, {**antes, yid: medida}, False, antes, versao, [])],
+                f"uma gravacao so, no arquivo certo, com o que havia mais a medida, sem a fila_lock, e com nada da "
+                f"medida aparecendo ainda ({o_que})")
         return [g[2] for g in gravados], trocas, A.andamentos_versao - versao, v
 
     travado, trocas, subiu, v = roda("audio", "aaaaaaaaaa1", falha=False)
