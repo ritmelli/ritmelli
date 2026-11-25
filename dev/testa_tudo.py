@@ -1,42 +1,60 @@
-r"""Roda os testes que nao usam som, aparelho nem rede externa (o loopback e o servidor falso valem), cada um no seu
-processo e um depois do outro, e sai 1 se algum falhar. E o que o .github/workflows/testa.yml roda em todo PR.
+r"""Runs the tests that need no sound, no device and no outside network (the loopback and the fake server are fine),
+each in its own process, and exits 1 if any fails. It is what the .github/workflows/testa.yml runs on every PR.
 
-    python dev\testa_tudo.py               o COMPLETO: o STDLIB mais os que usam as bibliotecas do app e o ffmpeg
-    python dev\testa_tudo.py --so-stdlib   o STDLIB, so da biblioteca padrao (a monta.yml roda antes de instalar)
-    python dev\testa_tudo.py --microfone   os do filtro, com as DLLs do microfone\apo\compila.bat teste
-    python dev\testa_tudo.py --tela [--base origin/main] [--pasta logs\tela]
-                                           o fitcheck nas duas linguas contra um --mock com dados temporarios e, com
-                                           --base, o compara: a referencia sai do servidor e do tema da base (num
-                                           worktree temporario), e a comparacao, dos daqui
+    python dev\testa_tudo.py               the COMPLETO: the STDLIB plus the ones that use the app libraries and ffmpeg
+    python dev\testa_tudo.py --so-stdlib   the STDLIB, standard library only (the monta.yml runs it before installing)
+    python dev\testa_tudo.py --microfone   the filter tests, with the DLLs of microfone\apo\compila.bat teste
+    python dev\testa_tudo.py --tela [--base origin/main] [--pasta logs\tela] [--ref-cache <dir>]
+                                           the fitcheck in both languages against a --mock with temporary data and,
+                                           with --base, the compara: the reference comes from the server and the theme
+                                           of the base (in a temporary worktree), the comparison from the ones here
+    python dev\testa_tudo.py --compara --base origin/main [--ref-cache <dir>] [--head-cache <dir>]
+                                           only the compara of the --tela (the testa.yml runs it in a job of its own)
+    python dev\testa_tudo.py --passo <name>
+                                           a step of the testa.yml that runs one script (PASSOS): the "disco" is the
+                                           testa_pasta_protegida.py --disco, the "metricas" the fitcheck.py --metricas
     python dev\testa_tudo.py --areas <base>
-                                           (as etiquetas do PR vem da variavel ETIQUETAS, uma lista em JSON:
-                                           $env:ETIQUETAS = '["extracao-tema"]'; no argumento, o PowerShell 5.1
-                                           tiraria as aspas)
-                                           o filtro por caminho do testa.yml: diz (e grava no GITHUB_OUTPUT) se o que
-                                           mudou desde a base, ou uma etiqueta do PR, dispara o job do filtro e o da tela
-        [--resumo arquivo.md]              acrescenta o resultado em markdown (o resumo do PR)
+                                           (the PR labels come from the ETIQUETAS variable, a JSON list:
+                                           $env:ETIQUETAS = '["extracao-tema"]'; in an argument, PowerShell 5.1 would
+                                           drop the quotes)
+                                           the path filter of the testa.yml: says (and writes to GITHUB_OUTPUT) whether
+                                           what changed since the base, or a PR label, triggers the filter job and the
+                                           screen jobs
+    python dev\testa_tudo.py --linhas <base>
+                                           the line count of the big files (LINHAS) against the base, for the summary
+        [--resumo arquivo.md]              appends the result in markdown (the PR summary)
+        [--jobs N]                         how many tests run at a time (default 4); the ones in SERIAL always run
+                                           one by one, alone, after the others
 
-No COMPLETO, biblioteca ou ffmpeg faltando e falha, e nao teste pulado: sem as bibliotecas do servidor, o testa_mock,
-o testa_migra e o testa_pareamento pulam a parte dele.
+In the COMPLETO, a missing library or ffmpeg is a failure, not a skipped test: without the server libraries, the
+testa_mock, the testa_migra and the testa_pareamento skip their part.
 
-Todo dev/testa_*.py tem destino: ou roda no testa.yml (numa lista daqui ou num passo proprio, como o --disco do
-testa_pasta_protegida), ou so roda a mao e diz no topo do arquivo, num comentario antes da docstring, como e com o que:
-"# manual: <comando> precisa de <aparelho>". Antes de rodar, o COMPLETO, o --so-stdlib e o --microfone leem os passos do
-testa.yml e reprovam o teste sem destino e o arquivo de dev/ com a linha "manual:" que roda la.
+Every dev/testa_*.py has a destination: a list here (STDLIB, COMPLETO, MICROFONE, PASSOS), or it only runs by hand and
+says so at the top of the file, in a comment before the docstring, how and with what: "# manual: <comando> precisa de
+<aparelho>". Before running, the COMPLETO, the --so-stdlib and the --microfone fail on a test without destination, on a
+dev/ file with the "manual:" line that runs in the check, and on a mode of this script the testa.yml no longer calls.
 They also fail an AGENTS.md over 80 lines or with a file in its map that doesn't exist (agents_md).
-Sai 0 se tudo passou e 1 se algo falhou; no --tela, 2 se so os prints do compara mudaram (o testa.yml decide).
+
+The --ref-cache is a folder with a capture of the compara: when it holds the one of the base (the commit and the key of
+the capture, CAPTURA), the base is not captured again; when it does not, the base capture goes there. The --head-cache
+gets the capture of the HEAD, which is the reference of the PRs that will have it as their base (the push to main).
+
+Exits 0 if everything passed and 1 if something failed; in the --tela and the --compara, 2 if only the compara prints
+changed (the testa.yml decides).
 """
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -65,6 +83,25 @@ PULOU = re.compile(r"^--\s.*ficou de fora.*$", re.M)
 # a line a test wants in the PR summary ("-- summary: <text>"), copied under the title of its run
 SUMMARY = re.compile(r"^-- summary: (.+?)\s*$", re.M)
 LIMITE_S = 600
+# the tests that measure time (a deadline, a cost per block, the wait between two events): with --jobs above 1 they run
+# one by one, alone, after the others, so a neighbour's load does not push them past a limit
+SERIAL = {f"dev/testa_{n}.py" for n in ("adianta", "mock", "grava", "comandos", "congela", "ganho", "musica", "passagem",
+                                         "pedal_voz", "pista", "vivo")}
+JOBS = 4
+# the steps of the testa.yml that run one script of their own, by name (--passo): the protected folder on the real disk
+# (it creates a folder in Program Files and changes its ACL with icacls, so it needs an administrator: the GitHub
+# machine is one; on a PC, only a test Windows) and the usage data notice of the theme
+PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas")}
+# what the --tela and the --compara run
+TELA = ("dev/fitcheck.py", "dev/compara.py")
+# the calls the testa.yml has to make, so every list and step above runs on the PR (sem_destino checks them)
+INVOCATIONS = ("dev/testa_tudo.py --resumo", "dev/testa_tudo.py --microfone", "dev/testa_tudo.py --tela",
+               "dev/testa_tudo.py --compara") + tuple(f"dev/testa_tudo.py --passo {n}" for n in PASSOS)
+# the big files whose line count goes in the summary, against the base (--linhas)
+LINHAS = ("engine.py", "server.py", "themes/ritmelli/index.html", "AGENTS.md")
+# what goes into the key of a compara capture besides the commit and the Chrome version: the scripts that take it and
+# the libraries of the server
+CAPTURA = ("dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py", "requirements.txt", "requirements-dev.txt")
 
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva
 # codigo de renderizacao ou de traducao para outro modulo poe o modulo na "tela"
@@ -73,8 +110,8 @@ AREAS = {
                   "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
     "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py"),
 }
-# os dois disparam todas as areas: o testa.yml e as listas e o filtro daqui
-TODAS = (".github/workflows/testa.yml", "dev/testa_tudo.py")
+# these trigger every area: the testa.yml, its setup action, and the lists and the filter here
+TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py")
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
 # renderizacao ou de traducao do tema para outro modulo (posta por quem mantem o repo)
 ETIQUETAS = {"extracao-tema": "tela"}
@@ -102,112 +139,35 @@ def manual(arquivo):
     return None
 
 
-def desligados(linhas):
-    """As linhas do yml sem o passo ou o job que tem o if: falso de saida (false, ${{ false }}): o GitHub nunca roda."""
-    linhas = list(linhas)
-    for j, linha in enumerate(linhas):
-        m = re.match(r"^(\s*(?:-\s+)?)if:\s*(?:\$\{\{\s*)?false(?:\s*\}\})?\s*$", linha)
-        if not m:
-            continue
-        col = len(m.group(1))  # a coluna das chaves do passo ou do job
-        k = j
-        # o comeco do bloco dono do if: o "- " do passo com as chaves nesta coluna, ou a chave do job, mais a esquerda
-        while "-" not in m.group(1) and k > 0:
-            k -= 1
-            chave = len(linhas[k]) - len(linhas[k].lstrip(" -"))
-            if linhas[k].strip() and (chave < col or chave == col and linhas[k].lstrip(" ").startswith("-")):
-                break
-        borda = len(linhas[k]) - len(linhas[k].lstrip(" "))
-        fim = k + 1
-        while fim < len(linhas) and (not linhas[fim].strip() or len(linhas[fim]) - len(linhas[fim].lstrip(" ")) > borda):
-            fim += 1
-        linhas[k:fim] = [""] * (fim - k)
-    return linhas
-
-
-def roda_no_yml(texto):
-    """Os scripts que os passos do testa.yml rodam: os que o run: de cada passo chama pelo python e os que o testa_tudo.py
-    chamado ali roda (sem modo, o COMPLETO; com --microfone, o MICROFONE; com --so-stdlib, o STDLIB; com --tela, o
-    fitcheck e, com --base, o compara). Caminho so citado (num echo, num comentario) nao conta, nem o passo ou o job com
-    o if: falso de saida."""
-    linhas, runs, i = desligados(texto.splitlines()), [], 0
-    while i < len(linhas):
-        m = re.match(r"^(\s*)(?:-\s+)?run:\s*(.*)$", linhas[i])
-        i += 1
-        if not m:
-            continue
-        if not m.group(2).startswith(("|", ">")):
-            v = m.group(2).strip()
-            if len(v) > 1 and v[0] == v[-1] == "'":  # o escalar entre aspas do YAML
-                v = v[1:-1].replace("''", "'")
-            elif len(v) > 1 and v[0] == v[-1] == '"':
-                try:
-                    v = json.loads(v)
-                except ValueError:
-                    v = v[1:-1]
-            runs.append(v)
-            continue
-        bloco = []
-        while i < len(linhas) and (not linhas[i].strip() or len(linhas[i]) - len(linhas[i].lstrip()) > len(m.group(1))):
-            bloco.append(linhas[i])
-            i += 1
-        # o > dobra as linhas num comando so
-        runs.append(" ".join(b.strip() for b in bloco) if m.group(2).startswith(">") else "\n".join(bloco))
-    rodam = set()
-    for run in runs:
-        # o que o PowerShell nao executa: o comentario de bloco e o texto dos here-strings
-        run = re.sub(r"<#.*?#>|@(['\"])[ \t]*\n.*?\n[ \t]*\1@", " ", run, flags=re.S).replace("\\", "/")
-        for linha in run.splitlines():
-            # cada comando da linha (entre ; & | parenteses e chaves, fora das aspas e antes do #): so conta o que
-            # comeca pelo python, e o script e o primeiro argumento depois das opcoes dele
-            lex = shlex.shlex(linha, posix=False, punctuation_chars=";&|(){}")
-            lex.whitespace_split = True
-            try:
-                palavras = list(lex)
-            except ValueError:  # aspas sem par: a linha so por espacos
-                palavras = linha.split("#")[0].split()
-            comandos, atual = [], []
-            for p in palavras:
-                if p and set(p) <= set(";&|(){}"):
-                    comandos.append(atual)
-                    atual = []
-                else:
-                    atual.append(p)
-            for cmd in comandos + [atual]:
-                if not cmd or not re.fullmatch(r"(?:[\w$.:/-]*/)?py(?:thon[\d.]*)?(?:\.exe)?", cmd[0].strip("\"'")):
-                    continue
-                args = [a.strip("\"'") for a in cmd[1:]]
-                while args and args[0].startswith("-") and args[0] != "-m":
-                    args.pop(0)
-                if not args or not args[0].endswith(".py"):
-                    continue
-                script, opcoes = args[0].removeprefix("./"), [a.split("=")[0] for a in args[1:]]
-                rodam.add(script)
-                if script == "dev/testa_tudo.py" and not {"-h", "--help"} & set(opcoes):  # a ajuda nao roda nada
-                    if "--tela" in opcoes:
-                        rodam.update(["dev/fitcheck.py"] + (["dev/compara.py"] if "--base" in opcoes else []))
-                    elif "--areas" not in opcoes:
-                        rodam.update(MICROFONE if "--microfone" in opcoes else STDLIB if "--so-stdlib" in opcoes else
-                                     COMPLETO)
-    return rodam
-
-
 def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml"):
-    """O que tira um teste do PR sem ninguem ver: o dev/testa_*.py que o testa.yml nao roda (nem por uma lista daqui nem
-    num passo proprio) e nao tem a linha "manual:"; e o que tem a linha (teste ou ferramenta de dev/) e roda la mesmo,
-    ou a tem fora do formato. Volta as linhas da falha."""
-    rodam = roda_no_yml(Path(yml).read_text(encoding="utf-8"))
+    """What takes a test out of the PR check unnoticed: a dev/testa_*.py in no list here (STDLIB, COMPLETO, MICROFONE,
+    PASSOS) and without the "manual:" line; a file with the line (a test or a dev/ tool) that runs in the check anyway,
+    or with the line out of format; a call of INVOCATIONS that the testa.yml no longer makes, and a dev/ script it calls
+    directly instead of through PASSOS (in the lines that are not comments). Returns the failure lines."""
+    rodam = set(COMPLETO) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
     falhas = []
     for p in sorted((RAIZ / "dev").glob("*.py")):
         rel, linha = p.relative_to(RAIZ).as_posix(), manual(p)
         if linha and not re.match(r"#\s*manual:\s*\S.*\s+precisa de\s+\S", linha):
-            falhas.append(f"{rel}: a linha \"{linha}\" nao segue o formato \"# manual: <comando> precisa de <aparelho>\"")
+            falhas.append(f"{rel}: the line \"{linha}\" does not follow \"# manual: <comando> precisa de <aparelho>\"")
         elif linha and rel in rodam:
-            falhas.append(f"{rel} tem a linha \"manual:\" e roda no testa.yml: tire a linha ou tire o teste de la")
+            falhas.append(f"{rel} has the \"manual:\" line and runs in the testa.yml: drop the line or the test")
         elif not linha and rel.startswith("dev/testa_") and rel != "dev/testa_tudo.py" and rel not in rodam:
-            falhas.append(f"{rel} nao roda no testa.yml (nem numa lista do dev/testa_tudo.py, STDLIB, COMPLETO ou "
-                          "MICROFONE, nem num passo) e nao tem no topo a linha \"# manual: <comando> precisa de "
-                          "<aparelho>\"")
+            falhas.append(f"{rel} runs nowhere (in no list of dev/testa_tudo.py: STDLIB, COMPLETO, MICROFONE or PASSOS) "
+                          "and has no \"# manual: <comando> precisa de <aparelho>\" line at the top")
+    linhas = Path(yml).read_text(encoding="utf-8").splitlines()
+    # the commands: a line that starts with python (in a run: block, or right after run:), the dev/ script with either
+    # separator, with or without quotes, and the rest of the line
+    comandos = [(m.group(2).replace("\\", "/"), m.group(3).strip()) for m in (
+        re.match(r"\s*(?:-\s+)?(?:run:\s*)?python(?:\.exe)?\s+(['\"]?)(dev[/\\]\w+\.py)\1(.*)$", linha)
+        for linha in linhas) if m]
+    falhas += [f"the testa.yml no longer runs \"python {c}\"" for c in INVOCATIONS
+               if not any(s == c.split()[0] and resto.startswith(c.split(maxsplit=1)[1]) for s, resto in comandos)]
+    # a dev/ script the workflow calls anywhere but through testa_tudo would skip the check above: it goes in PASSOS
+    citados = {m.replace("\\", "/") for linha in linhas if not linha.lstrip().startswith("#")
+               for m in re.findall(r"python(?:\.exe)?\s+['\"]?(dev[/\\]\w+\.py)", linha)}
+    falhas += [f"the testa.yml runs \"python {s}\" directly: declare it in the PASSOS of dev/testa_tudo.py and call "
+               "\"python dev/testa_tudo.py --passo <name>\"" for s in sorted(citados - {"dev/testa_tudo.py"})]
     return falhas
 
 
@@ -237,11 +197,13 @@ def executa(cmd, limite=LIMITE_S, **kw):
         return cod, f.read().decode("utf-8", "replace")
 
 
-def roda(titulo, lista, completo):
-    """Roda cada teste da lista. Volta (as falhas, as linhas do markdown)."""
-    falhas, tabela, md, notes = [], [], [], []
-    t0 = time.monotonic()
-    for t in lista:
+def roda(titulo, lista, completo, jobs=1):
+    """Runs each test of the list, each in its own process: with jobs above 1, the ones outside SERIAL that many at a
+    time, then the SERIAL ones one by one, alone. Returns (the failures, the markdown lines), in the order of the
+    list."""
+    feitos, trava = {}, threading.Lock()
+
+    def um(t):
         ini = time.monotonic()
         cod, saida = executa([sys.executable, t])
         dt = time.monotonic() - ini
@@ -250,18 +212,36 @@ def roda(titulo, lista, completo):
             motivo = f"sai {cod}" if isinstance(cod, int) else cod
         elif completo and PULOU.search(saida):
             motivo = "pulou uma parte por falta de biblioteca: " + PULOU.search(saida).group(0).strip()
-        print(f"{'ok   ' if not motivo else 'FALHA'} {t} ({dt:.1f} s){'' if not motivo else ': ' + motivo}", flush=True)
+        with trava:  # the line and the output of a failure together, even with tests ending at the same time
+            print(f"{'ok   ' if not motivo else 'FALHA'} {t} ({dt:.1f} s){'' if not motivo else ': ' + motivo}",
+                  flush=True)
+            if motivo:
+                print(saida.rstrip(), flush=True)
+        feitos[t] = (motivo, dt, saida)
+
+    t0 = time.monotonic()
+    juntos = [t for t in lista if t not in SERIAL] if jobs > 1 else []
+    with ThreadPoolExecutor(max(1, jobs)) as ex:
+        list(ex.map(um, juntos))
+    for t in lista:
+        if t not in feitos:
+            um(t)
+    total = time.monotonic() - t0
+    falhas, tabela, md, notes = [], [], [], []
+    for t in lista:
+        motivo, dt, saida = feitos[t]
         tabela.append(f"| {'✅' if not motivo else '❌'} | `{t}` | {dt:.0f} s |")
         notes += [f"- `{t}`: {n}" for n in SUMMARY.findall(saida)]
         if motivo:
-            print(saida.rstrip(), flush=True)
             falhas.append(t)
             md += [f"<details><summary>❌ <code>{t}</code>: {motivo}</summary>", "", cerca(cauda(saida)), "",
                    "</details>"]
-    total = time.monotonic() - t0
     passou = len(lista) - len(falhas)
-    print(f"{passou} de {len(lista)} passaram em {total:.0f} s", flush=True)
-    md = [f"**{titulo}:** {'✅' if not falhas else '❌'} {passou} de {len(lista)} passaram, em {total:.0f} s", ""] + md
+    como = f", {jobs} at a time and the {len(lista) - len(juntos)} that measure time one by one" if juntos else ""
+    print(f"{passou} of {len(lista)} passed in {total:.0f} s{como}", flush=True)
+    como = f" ({jobs} por vez; os {len(lista) - len(juntos)} que medem tempo, um a um)" if juntos else ""
+    md = [f"**{titulo}:** {'✅' if not falhas else '❌'} {passou} de {len(lista)} passaram, em {total:.0f} s{como}",
+          ""] + md
     md += [""] + notes if notes else []
     md += ["", "<details><summary>Cada teste</summary>", "", "| | Teste | Tempo |", "| --- | --- | --- |"] + tabela
     md += ["", "</details>"]
@@ -328,7 +308,9 @@ def testes(a):
         md += [f"**{titulo}:** ❌ nada rodou: " + "; ".join(impede)]
         escreve(a.resumo, md)
         return 1
-    falhas, linhas = roda(titulo, lista, completo=not a.so_stdlib and not a.microfone)
+    # the filter tests all measure a cost or a level of the filter: one by one
+    falhas, linhas = roda(titulo, lista, completo=not a.so_stdlib and not a.microfone,
+                          jobs=1 if a.microfone else a.jobs)
     escreve(a.resumo, md + linhas)
     return 1 if falhas or esquecidos or agents else 0
 
@@ -347,7 +329,7 @@ def diz_areas(a):
         print(f"o git diff contra {a.areas} falhou ({cod}):\n{saida}")
         return 1
     arquivos = [arq for arq in saida.split(chr(0)) if arq.strip()]
-    etiquetas = json.loads(os.environ.get("ETIQUETAS") or "[]")
+    etiquetas = json.loads(os.environ.get("ETIQUETAS") or "[]") or []  # null outside a PR (the push)
     disparadas = areas(arquivos, etiquetas)
     print(f"{len(arquivos)} arquivo(s) mudaram desde {a.areas}; etiquetas: {etiquetas or 'nenhuma'}")
     linhas = [f"{area}={'true' if area in disparadas else 'false'}" for area in AREAS]
@@ -359,22 +341,41 @@ def diz_areas(a):
 
 
 def tela(a):
-    """O --tela: o fitcheck nas duas linguas e, com --base, o compara da base contra o daqui."""
+    """The --tela: the fitcheck in both languages and, with --base, the compara of the base against the one here."""
+    pasta = Path(a.pasta).resolve()
+    pasta.mkdir(parents=True, exist_ok=True)  # without deleting: the --pasta can be a folder that already exists
+    md, bloqueia = fitcheck(pasta)
+    mudou = False
+    if a.base:
+        md_c, bloqueia_c, mudou = compara(a, pasta)
+        md, bloqueia = md + md_c, bloqueia or bloqueia_c
+    escreve(a.resumo, ["**Tela:**", ""] + md)
+    return 1 if bloqueia else 2 if mudou else 0
+
+
+def so_compara(a):
+    """The --compara: the compara of the --tela alone (the testa.yml runs it in a job of its own)."""
+    pasta = Path(a.pasta).resolve()
+    pasta.mkdir(parents=True, exist_ok=True)
+    md, bloqueia, mudou = compara(a, pasta)
+    escreve(a.resumo, ["**Compara:**", ""] + md)
+    return 1 if bloqueia else 2 if mudou else 0
+
+
+def fitcheck(pasta):
+    """The fitcheck in both languages against a --mock with the fake shelf of the compara, the data and the
+    LOCALAPPDATA temporary. Returns (the markdown lines, whether it blocks)."""
     sys.path.insert(0, str(RAIZ / "dev"))
     import so_mock
-    import compara  # numpy, pillow e websockets: so aqui, para o --so-stdlib seguir so da biblioteca padrao
+    import compara as cmp  # numpy, pillow and websockets: only here, so the --so-stdlib stays standard library only
 
-    pasta = Path(a.pasta).resolve()
-    pasta.mkdir(parents=True, exist_ok=True)  # sem apagar: o --pasta pode ser uma pasta que ja existe
-    md, bloqueia, mudou = ["**Tela:**", ""], False, False
-
-    # o fitcheck contra um --mock com a prateleira de mentira do compara, os dados e a LOCALAPPDATA temporarios
+    md, bloqueia = [], False
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-tela-"))
     try:
         dados = tmp / "dados"
         dados.mkdir()
         (tmp / "local").mkdir()
-        (dados / "library.json").write_text(json.dumps(compara.prateleira(), ensure_ascii=False), encoding="utf-8")
+        (dados / "library.json").write_text(json.dumps(cmp.prateleira(), ensure_ascii=False), encoding="utf-8")
         porta = so_mock.free_port()
         with open(pasta / "fitcheck-servidor.log", "w", encoding="utf-8") as log:
             try:
@@ -383,14 +384,14 @@ def tela(a):
                                    stderr=subprocess.STDOUT, env=dict(os.environ, LOCALAPPDATA=str(tmp / "local")))
             except so_mock.Recusa as ex:
                 srv = None
-                print(f"FALHA o --mock do fitcheck nao subiu: {ex}")
+                print(f"FALHA the --mock of the fitcheck did not start: {ex}")
                 md.append(f"- ❌ o `--mock` do fitcheck não subiu: {ex}")
                 bloqueia = True
             if srv:
                 try:
                     for lang in ("pt_BR", "en"):
                         cod, saida = executa([sys.executable, "dev/fitcheck.py", f"{srv.base}/t/ritmelli/?lang={lang}"])
-                        print(f"--- fitcheck {lang}: sai {cod}\n{saida.rstrip()}", flush=True)
+                        print(f"--- fitcheck {lang}: exits {cod}\n{saida.rstrip()}", flush=True)
                         ruins = [linha for linha in saida.splitlines() if linha.startswith(("FALHA", "Traceback"))]
                         if cod != 0:
                             bloqueia = True
@@ -403,63 +404,173 @@ def tela(a):
                     srv.encerra()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    return md, bloqueia
 
-    if a.base:
-        cod, saida = executa(["git", "rev-parse", "--verify", f"{a.base}^{{commit}}"], limite=60)
-        base = saida.strip()
+
+def chave_captura(commit):
+    """What a compara capture of the commit depends on: the commit, the scripts that take it (CAPTURA) and the Chrome
+    version (the newest version folder next to the chrome.exe). One line, written next to the prints."""
+    sys.path.insert(0, str(RAIZ / "dev"))
+    from fitcheck import CHROME
+    h = hashlib.sha256()
+    for f in CAPTURA:
+        h.update((RAIZ / f).read_bytes())
+    versoes = [p.name for p in Path(CHROME).parent.glob("*.*.*.*") if p.is_dir()]
+    chrome = max(versoes, key=lambda v: tuple(int(x) for x in v.split(".") if x.isdigit()), default="?")
+    return f"{commit} {h.hexdigest()[:16]} chrome {chrome}"
+
+
+def le_captura(cache, chave):
+    """The prints of the capture in the cache folder, if it is the one of the key; [] if not."""
+    marca = Path(cache) / "captura.txt"
+    if not marca.is_file() or marca.read_text(encoding="utf-8").strip() != chave:
+        return []
+    return sorted(Path(cache).glob("*.png"))
+
+
+def guarda_captura(origem, cache, chave):
+    """Puts the prints of the origem folder in the cache folder, with the key. Only the prints and the key of an older
+    capture leave the cache folder: anything else in it stays."""
+    cache = Path(cache)
+    cache.mkdir(parents=True, exist_ok=True)
+    for velho in [*cache.glob("*.png"), cache / "captura.txt"]:
+        velho.unlink(missing_ok=True)
+    for png in Path(origem).glob("*.png"):
+        shutil.copy2(png, cache / png.name)
+    (cache / "captura.txt").write_text(chave + "\n", encoding="utf-8")
+
+
+def compara(a, pasta):
+    """The compara: the reference from the server and the theme of the base (from the --ref-cache when it holds the
+    capture of the base, else in a temporary worktree), and the comparison from the ones here. Returns (the markdown
+    lines, whether it blocks, whether only prints changed). Writes to GITHUB_OUTPUT how many prints changed and which
+    caches it filled."""
+    md, bloqueia, mudou, saidas = [], False, False, {"prints_mudaram": 0}
+    ref = pasta / "compara" / "ref"
+    # a cache folder inside the compara folder would be emptied by the capture it is meant to hold
+    for c in (a.ref_cache, a.head_cache):
+        if c and Path(c).resolve().is_relative_to(pasta / "compara"):
+            raise SystemExit(f"the cache folder {c} is inside {pasta / 'compara'}: give it a folder of its own")
+    cod, saida = executa(["git", "rev-parse", "--verify", f"{a.base}^{{commit}}"], limite=60)
+    base = saida.strip()
+    de_onde = ""
+    cache = le_captura(a.ref_cache, chave_captura(base)) if a.ref_cache and cod == 0 else []
+    if cache:
+        shutil.rmtree(ref, ignore_errors=True)
+        ref.mkdir(parents=True)
+        for png in cache:
+            shutil.copy2(png, ref / png.name)
+        print(f"--- compara: the reference of the base {base[:12]} comes from the cache ({len(cache)} prints)",
+              flush=True)
+        de_onde = " (referência do cache)"
+    elif cod != 0:
+        print(f"FALHA the base {a.base} is not a commit here ({cod})")
+        md.append(f"- ❌ a base `{a.base}` não é um commit daqui")
+        bloqueia = True
+    else:
         wt = Path(tempfile.mkdtemp(prefix="ritmelli-base-")) / "base"
-        cod = cod or executa(["git", "worktree", "add", "--detach", str(wt), base], limite=300)[0]
+        cod = executa(["git", "worktree", "add", "--detach", str(wt), base], limite=300)[0]
         if cod != 0:
-            print(f"FALHA o worktree da base {a.base} nao saiu ({cod})")
+            print(f"FALHA the worktree of the base {a.base} did not come out ({cod})")
             md.append(f"- ❌ o worktree da base `{a.base}` não saiu")
             bloqueia = True
         else:
             try:
                 cod, saida = executa([sys.executable, "dev/compara.py", "--ref", "--raiz", str(wt),
                                       "--pasta", str(pasta / "compara")])
-                print(f"--- compara --ref da base {base[:12]}: sai {cod}\n{saida.rstrip()}", flush=True)
+                print(f"--- compara --ref of the base {base[:12]}: exits {cod}\n{saida.rstrip()}", flush=True)
                 if cod != 0:
                     bloqueia = True
                     md += [f"<details><summary>❌ compara: a captura da base <code>{base[:12]}</code> não vale "
                            f"(sai {cod})</summary>", "", cerca(cauda(saida)), "", "</details>"]
-                else:
-                    cod, saida = executa([sys.executable, "dev/compara.py", "--pasta", str(pasta / "compara")])
-                    print(f"--- compara do PR: sai {cod}\n{saida.rstrip()}", flush=True)
-                    fim = saida.strip().splitlines()[-1:] or [""]
-                    if cod == 2:
-                        mudou = True
-                        mudaram = [linha for linha in saida.splitlines() if linha.startswith(("MUDOU", "NOVO", "SUMIU"))]
-                        md += [f"<details><summary>⚠️ compara: os prints mudaram ({fim[0]})</summary>", "",
-                               cerca(cauda("\n".join(mudaram), 40)), "", "</details>"]
-                    elif cod != 0:
-                        bloqueia = True
-                        md += [f"<details><summary>❌ compara: a captura do PR não vale (sai {cod})</summary>", "",
-                               cerca(cauda(saida)), "", "</details>"]
-                    else:
-                        md.append(f"- ✅ compara contra a base `{base[:12]}`: {fim[0]}")
+                elif a.ref_cache:
+                    guarda_captura(ref, a.ref_cache, chave_captura(base))
+                    saidas["ref_cache"] = "true"
             finally:
                 executa(["git", "worktree", "remove", "--force", str(wt)], limite=300)
                 shutil.rmtree(wt.parent, ignore_errors=True)
-    escreve(a.resumo, md)
-    return 1 if bloqueia else 2 if mudou else 0
+    if not bloqueia:
+        cod, saida = executa([sys.executable, "dev/compara.py", "--pasta", str(pasta / "compara")])
+        print(f"--- compara of the PR: exits {cod}\n{saida.rstrip()}", flush=True)
+        fim = saida.strip().splitlines()[-1:] or [""]
+        if cod in (0, 2) and a.head_cache:
+            head = executa(["git", "rev-parse", "HEAD"], limite=60)[1].strip()
+            guarda_captura(pasta / "compara" / "agora", a.head_cache, chave_captura(head))
+            saidas["head_cache"] = "true"
+        if cod == 2:
+            mudou = True
+            mudaram = [linha for linha in saida.splitlines() if linha.startswith(("MUDOU", "NOVO", "SUMIU"))]
+            saidas["prints_mudaram"] = len(mudaram)
+            md += [f"<details><summary>⚠️ compara: os prints mudaram ({fim[0]})</summary>", "",
+                   cerca(cauda("\n".join(mudaram), 40)), "", "</details>"]
+        elif cod != 0:
+            bloqueia = True
+            md += [f"<details><summary>❌ compara: a captura do PR não vale (sai {cod})</summary>", "",
+                   cerca(cauda(saida)), "", "</details>"]
+        else:
+            md.append(f"- ✅ compara contra a base `{base[:12]}`{de_onde}: {fim[0]}")
+    saida_do_job(saidas)
+    return md, bloqueia, mudou
+
+
+def saida_do_job(valores):
+    """Writes name=value lines to the GITHUB_OUTPUT of the step, when there is one."""
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+            f.write("".join(f"{k}={v}\n" for k, v in valores.items()))
+
+
+def passo(a):
+    """The --passo: runs the script of the step, with its output as it comes, and exits with its code."""
+    return subprocess.run([sys.executable, *PASSOS[a.passo]], cwd=RAIZ, stdin=subprocess.DEVNULL,
+                          env=dict(os.environ, PYTHONUTF8="1")).returncode
+
+
+def linhas(a):
+    """The --linhas: the line count of each file of LINHAS here and the change against the base, in one markdown line
+    for the summary."""
+    partes = []
+    for f in LINHAS:
+        agora = len((RAIZ / f).read_text(encoding="utf-8").splitlines()) if (RAIZ / f).is_file() else 0
+        cod, antes = executa(["git", "show", f"{a.linhas}:{f}"], limite=60)
+        delta = agora - (len(antes.splitlines()) if cod == 0 else 0)
+        partes.append(f"`{f}` {agora}" + (f" ({delta:+d})" if delta else ""))
+    texto = "**Linhas, contra a base:** " + " · ".join(partes)
+    print(texto)
+    escreve(a.resumo, [texto])
+    return 0
 
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     modo = ap.add_mutually_exclusive_group()
-    modo.add_argument("--so-stdlib", action="store_true", help="so o STDLIB, que roda sem as bibliotecas do app")
-    modo.add_argument("--microfone", action="store_true", help="os testes do filtro (MICROFONE)")
-    modo.add_argument("--tela", action="store_true", help="o fitcheck e, com --base, o compara")
-    modo.add_argument("--areas", metavar="BASE", help="as areas que o que mudou desde BASE dispara")
-    ap.add_argument("--base", help="no --tela: a base do compara (um commit, um branch)")
-    ap.add_argument("--pasta", default=str(RAIZ / "logs" / "tela"), help="no --tela: onde ficam os prints e os logs")
-    ap.add_argument("--resumo", help="acrescenta o resultado em markdown a este arquivo")
+    modo.add_argument("--so-stdlib", action="store_true", help="only the STDLIB, which runs without the app libraries")
+    modo.add_argument("--microfone", action="store_true", help="the filter tests (MICROFONE)")
+    modo.add_argument("--tela", action="store_true", help="the fitcheck and, with --base, the compara")
+    modo.add_argument("--compara", action="store_true", help="only the compara of the --tela (needs --base)")
+    modo.add_argument("--passo", choices=sorted(PASSOS), help="a step of the testa.yml that runs one script")
+    modo.add_argument("--areas", metavar="BASE", help="the areas that what changed since BASE triggers")
+    modo.add_argument("--linhas", metavar="BASE", help="the line count of the big files against BASE")
+    ap.add_argument("--base", help="in the --tela and the --compara: the base of the compara (a commit, a branch)")
+    ap.add_argument("--pasta", default=str(RAIZ / "logs" / "tela"), help="where the prints and the logs go")
+    ap.add_argument("--ref-cache", help="a folder with the capture of the base, read and filled (see above)")
+    ap.add_argument("--head-cache", help="a folder that gets the capture of the HEAD")
+    ap.add_argument("--resumo", help="appends the result in markdown to this file")
+    ap.add_argument("--jobs", type=int, default=JOBS, help=f"how many tests at a time (default {JOBS})")
     a = ap.parse_args()
+    if a.compara and not a.base:
+        ap.error("the --compara needs the --base")
     if a.areas:
         return diz_areas(a)
+    if a.linhas:
+        return linhas(a)
+    if a.passo:
+        return passo(a)
     if a.tela:
         return tela(a)
+    if a.compara:
+        return so_compara(a)
     return testes(a)
 
 
