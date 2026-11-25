@@ -22,8 +22,8 @@ The private names come from the class's own syntax tree: every method and nested
 class's level (also under an if or a try there) and every self._x or cls._x its methods assign (also by setattr) whose
 name starts with one underscore (not two). A reach is a read, write or call of one of those names, and also a getattr,
 setattr, hasattr or delattr (or builtins.getattr and the rest) with the name as a literal, on any object but the self
-or cls of a class's method reaching a name that class defines itself (a class's own _lock is its own; a subclass
-reaching an inherited one is a reach).
+or cls of a method of a class without a base, reaching a name that class defines itself (a class's own _lock is its
+own); a class with a base gets no pass, so a subclass reading, assigning or overriding an inherited _x is a reach.
 What counts is the seam between modules: the class's own module stays out, since an underscore name is private to its
 module. Above the ceiling, a new reach went in: go through the interface. Below it, the PR lowers the ceiling with it.
 Both numbers go to the PR summary (the "-- summary:" lines that dev/testa_tudo.py collects).
@@ -208,8 +208,9 @@ def privates(tree, classes):
 def reaches(owner, names):
     """[(module, line, name)] of the reaches into names from the modules at the root other than owner: an attribute,
     or a getattr/setattr/hasattr/delattr (also builtins.getattr and the rest) with the name as a literal, on any object
-    but the self or cls of a class's method reaching a name that class defines itself (its own _lock is its own; a
-    subclass reaching an inherited _x, or a module-level def f(self), gets no pass)."""
+    but the self or cls of a method of a class without a base, reaching a name that class defines itself (its own _lock
+    is its own; a subclass reading, assigning or overriding an inherited _x counts, and so does a module-level
+    def f(self))."""
     out = []
     for f in sorted(RAIZ.glob("*.py")):
         if f.name == owner:
@@ -219,7 +220,9 @@ def reaches(owner, names):
         own_names = {}
         for c in ast.walk(tree):
             if isinstance(c, ast.ClassDef):
-                mine = class_privates(c)
+                # a class with a base may have inherited the owner's privates: assigning or overriding one there still
+                # reaches the owner's insides, so only a class without a base keeps its _x as its own
+                mine = set() if c.bases else class_privates(c)
                 for s in class_level(c.body):
                     if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         own_names.update((id(n), mine) for n in ast.walk(s))
