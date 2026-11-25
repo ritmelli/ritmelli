@@ -13,12 +13,11 @@
 # A PR from outside still needs a maintainer to approve the run (the GitHub default), and its token is read only: the
 # summary stays in the run, without the PR comment.
 #
-# The needs-owner label (a PR whose proof needs something outside CI: the microphone filter on a real Windows, the real
-# installer, a change to the triggers here or to the name of the required check) keeps the PR out of the main: the
-# "Testa o PR" of a merge_group entry fails while its PR has the label. The owner does the proof, removes the label and
-# puts the PR in the queue. The entry reads the labels when its etiquetas job runs, so the gate needs no labeled
-# trigger, and a label put on a PR already in the queue may come too late for its entry: take the PR out of the queue
-# first. On the PR the check only says the queue will refuse it.
+# The needs-owner label (a PR whose proof needs a physical action, such as plugging in or switching off a device, or a
+# decision of the owner) keeps the PR out of the main: the "Testa o PR" of a merge_group entry fails while its PR has
+# the label. The owner does the proof, removes the label and puts the PR in the queue. The entry reads the labels when
+# its etiquetas job runs, so the gate needs no labeled trigger, and a label put on a PR already in the queue may come
+# too late for its entry: take the PR out of the queue first. On the PR the check only says the queue will refuse it.
 name: Testa
 
 on:
@@ -30,8 +29,8 @@ on:
     # PR when it runs and tests the real merge. On the PR, a label takes effect at the next push, a reopen or a full
     # re-run; a new base only at the next push or a reopen (a re-run keeps the merge commit and the base of its old
     # event)
-    # A change to these triggers or to the name of the required check gets the needs-owner label and is proved on its
-    # own PR: edit the description, put and remove a label and go through the queue, with "Testa o PR" still on the head
+    # A change to these triggers or to the name of the required check is proved on its own PR: edit the description, put
+    # and remove a label and go through the queue, with "Testa o PR" still on the head.
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
@@ -435,7 +434,7 @@ jobs:
           if event == "merge_group" and labels is None:
               line, code = f"❌ **{LABEL}:** the labels of the PR did not come, so the queue entry fails", 1
           elif event == "merge_group" and LABEL in labels:
-              line, code = f"❌ **{LABEL}:** the PR has the label (its proof is outside CI): the owner merges it", 1
+              line, code = f"❌ **{LABEL}:** the PR has the label (its proof needs the owner): the owner merges it", 1
           elif labels and LABEL in labels:
               line = f"⚠️ **{LABEL}:** the merge queue refuses this PR while it has the label: the owner merges it"
           else:
