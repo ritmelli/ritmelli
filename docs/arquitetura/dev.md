@@ -25,7 +25,7 @@ print mudou e 1 se a captura não vale), `dev/perfcheck.py`
 `dev/celular.py` (mede rolagem, puxão e abrir do palco no Chrome do celular de verdade,
 por USB com adb; o emulado não reproduz o que trava lá), `dev/bumbo.py` (confere se a passagem
 no tempo de um par da prateleira pôs bumbo em cima de bumbo e não no contratempo, com um
-detector de bumbo próprio; no final seco para um começo sem bumbo, confere a primeira nota
+detector de bumbo próprio, o `dev/bumbo_mede.py`, que o `dev/testa_passagem.py` também usa; no final seco para um começo sem bumbo, confere a primeira nota
 contra o bumbo do que sai: sai 0 no tempo, 1 contratempo ou fora, 3 sem plano ou sem bumbo), `dev/texturas.py` (gera as
 texturas de ruído do tema em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
 (desenha as molduras de pixel do tema, contorno, linha clara, bisel e cantos em degrau, e
