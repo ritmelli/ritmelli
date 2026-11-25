@@ -66,34 +66,42 @@ def never_ready(size, density, mesa):
 class ClosedChrome:
     erros = ["console.error: collected before the close"]
     log_erros = ["Failed to load resource: collected.js"]
+    barrados = []
+
+    def __init__(self, error):
+        self.error = error
 
     async def js(self, expr):
-        raise ConnectionClosedError(None, None)
+        raise self.error
 
     async def png(self):
-        raise ConnectionClosedError(None, None)
+        raise self.error
 
 
-def closed_connection():
+def closed_connection(error):
+    kind = type(error).__name__
+    started = asyncio.run(asyncio.wait_for(compara.espera_pronto(ClosedChrome(error), "true", "vazio-1x1"), 5))
+    check(started is False, f"with a {kind}, the wait for the ready signal gives up at once and goes to the diagnostic")
     out = io.StringIO()
     with tempfile.TemporaryDirectory(prefix="ritmelli-nao-pronto-") as tmp, contextlib.redirect_stdout(out):
         try:
-            asyncio.run(compara.nao_ficou_pronto(ClosedChrome(), "vazio-1x1", False, Path(tmp)))
+            asyncio.run(compara.nao_ficou_pronto(ClosedChrome(error), "vazio-1x1", False, Path(tmp)))
             ended = None
         except SystemExit as ex:
             ended = str(ex)
     text = out.getvalue()
     print(text.rstrip())
     check(ended == f"vazio-1x1: o tema nao ficou pronto em {compara.PRONTA_S:.0f} s"
-          and "the conditions did not come: ConnectionClosedError" in text
+          and f"the conditions did not come: {kind}" in text
           and "console: console.error: collected before the close" in text
           and "browser: Failed to load resource: collected.js" in text and "the print did not come" in text,
-          "with the connection to Chrome closed, the diagnostic still prints what it collected and fails")
+          f"with a {kind}, the diagnostic still prints what it collected and fails")
 
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    closed_connection()
+    closed_connection(ConnectionClosedError(None, None))
+    closed_connection(ConnectionError("the CDP connection ended: closed"))
     never_ready("390x844", 3, mesa=False)
     never_ready("1920x1080", 1, mesa=True)
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")

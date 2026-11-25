@@ -119,13 +119,29 @@ def diagnostico_js(mesa):
             f"return {{{corpo}}}; }})()")
 
 
+async def espera_pronto(c, expr, pre):
+    fim = time.monotonic() + PRONTA_S
+    while time.monotonic() < fim:
+        await asyncio.sleep(0.1)
+        if c.barrados:
+            sys.exit(f"{pre}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
+        try:
+            if await asyncio.wait_for(c.js(expr), max(0.1, fim - time.monotonic())):
+                return True
+        except (RuntimeError, TimeoutError):  # a pagina ainda nao tem o S
+            pass
+        except (ConnectionClosed, ConnectionError):
+            return False
+    return False
+
+
 async def nao_ficou_pronto(c, pre, mesa, pasta):
     print(f"{pre}: the theme was not ready in {PRONTA_S:.0f} s; each condition:", flush=True)
     try:
         estado = await c.js(diagnostico_js(mesa))
         for nome, valor in (estado or {}).items():
             print(f"  {nome}: {json.dumps(valor, ensure_ascii=False)}", flush=True)
-    except (RuntimeError, TimeoutError, ConnectionClosed) as ex:
+    except (RuntimeError, TimeoutError, ConnectionClosed, ConnectionError) as ex:
         print(f"  (the conditions did not come: {type(ex).__name__} {ex})", flush=True)
     for e in c.erros or ["(none)"]:
         print(f"  console: {e}", flush=True)
@@ -360,19 +376,8 @@ async def prints(a, srv, destino):
                         sys.exit(f"{pre}: {ex}")
                     c.log_erros.clear()
                     await c.cmd("Page.navigate", url=f"{srv.base}/t/ritmelli/?lang={a.lang}")
-                    fim = time.monotonic() + PRONTA_S
-                    while True:
-                        await asyncio.sleep(0.1)
-                        if c.barrados:
-                            sys.exit(f"{pre}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
-                        try:
-                            if await asyncio.wait_for(c.js(PRONTO + (f" && {MESA_DJ}" if mesa else "")),
-                                                      max(0.1, fim - time.monotonic())):
-                                break
-                        except (RuntimeError, TimeoutError):  # a pagina ainda nao tem o S
-                            pass
-                        if time.monotonic() > fim:
-                            await nao_ficou_pronto(c, pre, mesa, destino.parent)
+                    if not await espera_pronto(c, PRONTO + (f" && {MESA_DJ}" if mesa else ""), pre):
+                        await nao_ficou_pronto(c, pre, mesa, destino.parent)
                     await asyncio.sleep(1)
                     if mesa:
                         # o ponto de toque do visor (movimento reduzido) fica onde o primeiro desenho o ancorou, e o

@@ -326,12 +326,13 @@ jobs:
           ETIQUETAS: ${{ needs.etiquetas.outputs.lista }}
         # the testa_tudo reads the list from the variable: in an argument, PowerShell would mangle the JSON quotes
         run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'push') { Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=true" -Encoding utf8; exit 0 }
           python dev/testa_tudo.py --areas $env:BASE
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "extracao=$extracao" -Encoding utf8
           $tela = Select-String -Path $env:GITHUB_OUTPUT -Pattern '^tela=true$' -Quiet
-          $roda = if ($tela -or $env:GITHUB_EVENT_NAME -eq 'push') { 'true' } else { 'false' }
+          $roda = if ($tela) { 'true' } else { 'false' }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=$roda" -Encoding utf8
       - uses: ./.github/actions/python
         if: steps.areas.outputs.roda == 'true'
@@ -347,9 +348,12 @@ jobs:
         if: steps.areas.outputs.roda == 'true'
         run: |
           $chrome = (Get-Item 'C:\Program Files\Google\Chrome\Application\chrome.exe').VersionInfo.ProductVersion
-          # the base as a commit sha, the way the push to main saves its capture
-          $base = git rev-parse --verify "$env:COMPARA_BASE^{commit}"
-          if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }
+          $base = ''
+          if ($env:GITHUB_EVENT_NAME -ne 'push') {
+            # the base as a commit sha, the way the push to main saves its capture
+            $base = git rev-parse --verify "$env:COMPARA_BASE^{commit}"
+            if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }
+          }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" -Encoding utf8
       - uses: actions/cache/restore@v6
         id: ref
@@ -519,7 +523,7 @@ jobs:
             fi
           fi
           vale() { [ "$1" = success ] || { [ "$2" = pula ] && [ "$1" = skipped ] && [ -n "$fila" ]; }; }
-          marca() { if [ "$1" = success ]; then echo "✅"; elif vale "$1" "$2"; then echo "⏭️ (a fila testou)"; else echo "❌ ($1)"; fi; }
+          marca() { if [ "$1" = success ]; then echo "✅"; elif vale "$1" "$2"; then echo "⏭️ neste push"; else echo "❌ ($1)"; fi; }
           ok=true
           for s in "$S_TESTES" "$S_BANCA" "$S_MICROFONE" "$S_TELA"; do vale "$s" pula || ok=false; done
           for s in "$S_COMPARA" "$S_DONO"; do vale "$s" || ok=false; done
