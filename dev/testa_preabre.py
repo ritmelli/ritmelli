@@ -135,7 +135,7 @@ class Preabre(unittest.TestCase):
         self.assertFalse(self.e.preabre(url))
         self.assertEqual(self.e._preabertos, {})
         with mock.patch.object(eng, "PRE_VALE_S", 0.0):
-            time.sleep(0.01)
+            time.sleep(0.05)  # mais que um tique do monotonic no Windows (~15,6 ms): com 10 ms, ele podia nem andar
             self.assertTrue(self.e.preabre(url), "vencido, o endereco pode abrir de novo")
 
     def test_leitor_durante_o_popen_nao_deixa_orfao(self):

@@ -2,8 +2,14 @@
 referencia. E o gate da passagem do PC para pixel art: o celular tem que sair identico.
 
     python dev/compara.py --ref     (antes de mexer no tema: grava os prints de referencia)
-    python dev/compara.py           (depois: tira de novo e compara; sai 1 se algo mudou)
-        [--pasta logs/compara] [--sizes 390x844@3,360x780@2.625] [--wait 0.6] [--lang pt_BR]
+    python dev/compara.py           (depois: tira de novo e compara)
+        [--pasta logs/compara] [--sizes 390x844@3,360x780@2.625] [--wait 0.6] [--lang pt_BR] [--raiz <pasta>]
+
+Sai 0 com todos os prints iguais e 2 se algum mudou. Sai 1 se a captura nao vale: o servidor ou o tema que nao sobe,
+um erro no console da pagina, um print instavel ou a referencia que falta; ai nada foi comparado.
+
+O --raiz tira os prints do servidor e do tema de outro checkout do Ritmelli (o da base de um PR, num worktree), com o
+compara.py, o Chrome e os cenarios daqui: o testa.yml grava a referencia com o --raiz da base e compara com o PR.
 
 Sobe o proprio servidor (server.py --mock numa porta livre, pelo dev/so_mock.py: nunca a 8799, nem uma porta em que
 alguem ja responde, e so manda pedido a ele enquanto ele esta vivo e responde como --mock) com uma prateleira de
@@ -43,7 +49,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import so_mock  # noqa: E402
-from fitcheck import CHROME, barra_outra_origem, fecha_chrome  # noqa: E402
+from fitcheck import CHROME, barra_outra_origem, erro_da_pagina, fecha_chrome  # noqa: E402
 from so_mock import free_port  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -123,9 +129,10 @@ def prateleira():
     return itens
 
 
-def sobe_servidor(tmp, porta, log):
-    """O servidor --mock na porta, com a prateleira de mentira: o so_mock.Filho dele. Sai antes de qualquer pedido se a
-    porta e a 8799, se alguem ja responde nela ou se quem responde nao e o filho vivo com o "mock": true."""
+def sobe_servidor(tmp, porta, log, raiz=RAIZ):
+    """O servidor --mock do checkout raiz na porta, com a prateleira de mentira: o so_mock.Filho dele. Sai antes de
+    qualquer pedido se a porta e a 8799, se alguem ja responde nela ou se quem responde nao e o filho vivo com o
+    "mock": true."""
     dados, lib = tmp / "dados", tmp / "local" / "Ritmelli" / "library"
     dados.mkdir(parents=True)
     lib.mkdir(parents=True)
@@ -138,8 +145,8 @@ def sobe_servidor(tmp, porta, log):
         w.writeframes(bytes(2 * 8000 * dur))
     # sys.executable e o python de verdade: o "python" do PATH, com a LOCALAPPDATA trocada, instalaria outro
     try:
-        return so_mock.sobe([sys.executable, str(RAIZ / "server.py"), "--mock", "--no-browser", "--port", str(porta),
-                             "--data-dir", str(dados)], porta, cwd=RAIZ, stdout=log, stderr=subprocess.STDOUT,
+        return so_mock.sobe([sys.executable, str(raiz / "server.py"), "--mock", "--no-browser", "--port", str(porta),
+                             "--data-dir", str(dados)], porta, cwd=raiz, stdout=log, stderr=subprocess.STDOUT,
                             env=dict(os.environ, LOCALAPPDATA=str(tmp / "local")))
     except so_mock.Recusa as ex:
         sys.exit(f"{ex} (ver {log.name})")
@@ -187,14 +194,8 @@ class Chrome:
             m = json.loads(raw)
             if m.get("id") in self.pend:
                 self.pend.pop(m["id"]).set_result(m)
-            elif self.fetch(m):
-                pass
-            elif m.get("method") == "Runtime.exceptionThrown":
-                d = m["params"]["exceptionDetails"]
-                self.erros.append("excecao: " + (d.get("exception", {}).get("description") or d.get("text", "")))
-            elif m.get("method") == "Runtime.consoleAPICalled" and m["params"]["type"] == "error":
-                self.erros.append("console.error: " + " ".join(str(x.get("value", x.get("description", "")))
-                                                                for x in m["params"]["args"]))
+            elif not self.fetch(m) and (e := erro_da_pagina(m)):
+                self.erros.append(e)
 
     async def cmd(self, metodo, **params):
         self.seq += 1
@@ -377,10 +378,17 @@ def main():
     ap.add_argument("--wait", type=float, default=0.6, help="segundos entre cada passo e o print")
     # o Chrome sem cabeca pede ingles: sem o ?lang=, a tela sairia na lingua dele, e nao na das referencias
     ap.add_argument("--lang", default="pt_BR", help="a lingua da tela (pt_BR ou en); a referencia e a comparacao na mesma")
+    ap.add_argument("--raiz", default=str(RAIZ), help="o checkout do Ritmelli cujo servidor e tema saem nos prints")
     a = ap.parse_args()
     pasta = Path(a.pasta)
-    if not a.ref and not (pasta / "ref").exists():
-        sys.exit(f"sem referencia em {pasta / 'ref'}: rode antes com --ref, no tema de antes da mudanca")
+    raiz = Path(a.raiz).resolve()
+    if not (raiz / "server.py").exists():
+        sys.exit(f"sem o server.py em {raiz}: o --raiz e a pasta de um checkout do Ritmelli")
+    shutil.rmtree(pasta / "diff", ignore_errors=True)  # a rodada que nao compara nao deixa o diff de antes
+    sem_ref = [t for t in (s.split("@")[0] for s in a.sizes.split(",")) if not any((pasta / "ref").glob(f"*-{t}-*.png"))]
+    if not a.ref and sem_ref:
+        sys.exit(f"sem referencia em {pasta / 'ref'} para {', '.join(sem_ref)}: rode antes com --ref, no tema de antes da "
+                 "mudanca")
     # a referencia nova nasce ao lado da antiga: refazer a antiga pede o tema de antes da mudanca
     destino = pasta / ("ref.novo" if a.ref else "agora")
     shutil.rmtree(destino, ignore_errors=True)
@@ -389,7 +397,7 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-compara-"))
     porta = free_port()
     with open(pasta / "servidor.log", "w", encoding="utf-8") as log:
-        srv = sobe_servidor(tmp, porta, log)
+        srv = sobe_servidor(tmp, porta, log, raiz)
         try:
             erros, instaveis = asyncio.run(prints(a, srv, destino))
         finally:
@@ -407,7 +415,10 @@ def main():
         destino.rename(pasta / "ref")
         print(f"{len(list((pasta / 'ref').glob('*.png')))} prints de referencia em {pasta / 'ref'}")
         return 0
-    return 1 if compara(pasta, [s.split("@")[0] for s in a.sizes.split(",")]) or erros or instaveis else 0
+    if erros or instaveis:
+        print("a captura nao vale: nada foi comparado")
+        return 1
+    return 2 if compara(pasta, [s.split("@")[0] for s in a.sizes.split(",")]) else 0
 
 
 if __name__ == "__main__":

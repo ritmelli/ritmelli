@@ -70,9 +70,15 @@ O `testa_filtro`, o `testa_microfone`, o `testa_voz` e o `teste_reamostra.py` pr
 
 ## Antes do PR
 
-A esteira (`.github/workflows/monta.yml`) não roda sozinha no PR. Rode as conferências que ela faz antes de montar,
-só com a biblioteca padrão, na raiz do repo, e depois os testes da área no mapa:
+Todo PR roda o `.github/workflows/testa.yml`, e o check "Testa o PR" só passa com tudo verde: o ruff do
+`pyproject.toml` (só as regras que pegam erro), o `dev/testa_tudo.py` e, quando o PR mexe na área deles, os testes do
+filtro e a tela (o `fitcheck` nas duas línguas e o `compara` contra a base). O resumo sai num comentário do PR. Rode o
+mesmo antes, na raiz do repo, com o venv:
 
 ```powershell
-$env:PYTHONUTF8 = '1'; foreach ($t in 'i18n', 'metricas', 'migra', 'mock', 'vozes', 'pareamento', 'grava') { python "dev\testa_$t.py"; if ($LASTEXITCODE) { throw "dev\testa_$t.py falhou" } }
+$env:PYTHONUTF8 = '1'; python -m ruff check .; python dev\testa_tudo.py
 ```
+
+O `--microfone` roda os do filtro (depois do `microfone\apo\compila.bat teste`), o `--tela --base origin/main` a tela
+e o `--so-stdlib` só os da biblioteca padrão, que a `monta.yml` (só à mão) roda antes de montar. Teste novo de `dev/`
+entra numa lista do `testa_tudo.py`, sem som, aparelho nem rede externa, ou o `testa_tudo` falha.

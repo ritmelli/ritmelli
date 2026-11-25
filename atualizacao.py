@@ -252,11 +252,13 @@ class Atualizacao:
 
     def _da_tarefa(self):
         """O estado da tarefa (o estado.json do atualizador), relido so quando muda: o resumo vai em todo estado ao
-        vivo."""
+        vivo. A marca leva o numero do arquivo (st_ino): o save_json troca o arquivo inteiro, e no Windows duas
+        gravacoes seguidas saem com o mesmo horario (ele anda em tiques)."""
         import atualizador
         arq = atualizador.PASTA / "estado.json"
         try:
-            marca = arq.stat().st_mtime_ns
+            st = arq.stat()
+            marca = (st.st_ino, st.st_mtime_ns, st.st_size)
         except OSError:
             return {}
         if self._auto_cache[0] != marca:

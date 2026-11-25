@@ -1,0 +1,9 @@
+# O ruff (python -m ruff check .), que o .github/workflows/testa.yml roda em todo PR: so as regras que pegam erro, e
+# nenhuma de estilo. E9: o arquivo que nem compila; F63 e F7: a comparacao e a instrucao que nunca funcionam (o is com
+# literal, o break fora do laco); F82: o nome indefinido, que e tambem o import faltando; F811: a definicao duplicada
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82", "F811"]

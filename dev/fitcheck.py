@@ -5,6 +5,8 @@
 
 O --js roda depois da carga, antes da conferencia (abrir uma pagina ou um painel e conferir ela tambem).
 
+Uma excecao sem tratamento ou um console.error da pagina, da navegacao ao fim da conferencia, tambem reprova o tamanho.
+
 So fala com um servidor --mock (dev/so_mock.py): antes de abrir a pagina, recusa a porta 8799 e a origem cujo
 /api/state nao traz o "mock": true (sem seguir redirecionamento); no Chrome, barra o documento de outra origem; antes de
 agir, confere de novo a origem da pagina e o marcador.
@@ -178,6 +180,17 @@ def barra_outra_origem(ws, base, barrados):
     return trata
 
 
+def erro_da_pagina(m):
+    """O texto do erro, se a mensagem do CDP e uma excecao sem tratamento ou um console.error da pagina; None se nao.
+    Pede o Runtime.enable."""
+    if m.get("method") == "Runtime.exceptionThrown":
+        d = m["params"]["exceptionDetails"]
+        return "excecao: " + (d.get("exception", {}).get("description") or d.get("text", ""))
+    if m.get("method") == "Runtime.consoleAPICalled" and m["params"]["type"] == "error":
+        return "console.error: " + " ".join(str(x.get("value", x.get("description", ""))) for x in m["params"]["args"])
+    return None
+
+
 async def confere_pagina(cmd, url, barrados):
     """Antes de agir: a pagina na origem do url, nenhum documento barrado e o servidor ainda um --mock."""
     if barrados:
@@ -219,7 +232,7 @@ async def run(a):
             except Exception:  # noqa: BLE001 - subindo
                 time.sleep(0.1)
         async with websockets.connect(ws_url, max_size=64 * 1024 * 1024) as ws:
-            seq, pend, barrados = [0], {}, []
+            seq, pend, barrados, erros = [0], {}, [], []
             fetch = barra_outra_origem(ws, base, barrados)
 
             async def leitor():
@@ -227,8 +240,8 @@ async def run(a):
                     m = json.loads(raw)
                     if m.get("id") in pend:
                         pend.pop(m["id"]).set_result(m)
-                    else:
-                        fetch(m)
+                    elif not fetch(m) and (e := erro_da_pagina(m)):
+                        erros.append(e)
 
             tarefa = asyncio.create_task(leitor())
 
@@ -240,6 +253,7 @@ async def run(a):
                 return (await asyncio.wait_for(f, 30)).get("result", {})
 
             await cmd("Page.enable")
+            await cmd("Runtime.enable")  # as excecoes e o console.error da pagina
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
             for sz in a.sizes.split(","):
                 w, h = map(int, sz.split("x"))
@@ -247,6 +261,7 @@ async def run(a):
                           deviceScaleFactor=1, mobile=w < 600)
                 try:
                     so_mock.confere(a.url)  # antes de cada navegacao: a porta pode ter mudado de dono
+                    erros.clear()
                     await cmd("Page.navigate", url=a.url)
                     await asyncio.sleep(a.wait)
                     await confere_pagina(cmd, a.url, barrados)
@@ -268,7 +283,7 @@ async def run(a):
                 rola_h = v["sw"] > v["vw"] + 1
                 # a janela por cima nao rola com a pagina: o que nao se alcanca nela reprova em qualquer tamanho
                 confere = desk or a.boas_vindas
-                ok = not rola_h and (not rola_v or not desk) and (v["n"] == 0 or not confere)
+                ok = not rola_h and (not rola_v or not desk) and (v["n"] == 0 or not confere) and not erros
                 falhas += not ok
                 msg = []
                 if rola_v:
@@ -278,6 +293,8 @@ async def run(a):
                     msg.append(f"pagina rola {v['sw'] - v['vw']} px de lado")
                 if v["n"] and confere:
                     msg.append(f"{v['n']} controle(s) cortado(s): " + "; ".join(v["cortados"]))
+                if erros:
+                    msg.append(f"{len(erros)} erro(s) na pagina: " + "; ".join(e[:200] for e in erros[:3]))
                 print(f"{'OK   ' if ok else 'FALHA'} {sz:>10}  " + (" | ".join(msg) or "cabe"))
                 if a.shots:
                     os.makedirs(a.shots, exist_ok=True)
