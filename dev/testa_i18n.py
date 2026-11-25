@@ -25,6 +25,7 @@ import json
 import re
 import sys
 import tempfile
+from html.parser import HTMLParser
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -140,7 +141,7 @@ def confere_blocos(tema, arquivos):
 # The lines of inline CSS and JS each theme's index.html has. The number only goes down: new theme code goes into a file
 # of the theme folder, and a PR that moves code out of the page lowers it to the new count. A count under the ceiling
 # fails too, so the ceiling follows each move and a later PR cannot spend the lines that one freed.
-INLINE_CEILING = {"ritmelli": 1636}
+INLINE_CEILING = {"ritmelli": 1637}
 INLINE = re.compile(r"<(style|script)\b([^>]*)>(.*?)</\1>", re.S)
 
 
@@ -174,9 +175,20 @@ def check_inline_ceiling(tema, html):
 # <script src> of its page calls the same handler, scriptFailed, which the <head> declares before the first file.
 SHARED_FIRST = {"ritmelli": "shared.js"}
 SCRIPT_TAG = re.compile(r"<script\b([^>]*)>(.*?)</script>", re.S)
-ONERROR = 'onerror="scriptFailed(this)"'
-ONERROR_ATTR = re.compile(r'(?<![\w-])onerror="scriptFailed\(this\)"')
-SRC_ATTR = re.compile(r'(?<![\w-])src\s*=\s*"([^"]+)"')
+ONERROR = "scriptFailed(this)"
+
+
+class _Attrs(HTMLParser):
+    def handle_starttag(self, tag, attrs):
+        self.attrs = dict(attrs)
+
+
+def tag_attrs(text):
+    """The attributes of a <script ...> tag as the browser reads them ({name: value}, None for a bare one)."""
+    parser = _Attrs()
+    parser.attrs = {}
+    parser.feed(f"<script{text}>")
+    return parser.attrs
 
 
 def page_scripts(html, arquivos):
@@ -184,25 +196,29 @@ def page_scripts(html, arquivos):
     <script src> (the src as written, and None for the text when the file is not in the theme folder)."""
     out = []
     for m in SCRIPT_TAG.finditer(html):
-        src = SRC_ATTR.search(m.group(1))
+        src = tag_attrs(m.group(1)).get("src")
         if src:
-            out.append((src.group(1), 1, arquivos.get(src.group(1))))
+            out.append((src, 1, arquivos.get(src)))
         else:
             out.append(("index.html", html.count("\n", 0, m.start(2)) + 1, m.group(2)))
     return out
 
 
 def check_script_tags(tema, html):
-    """Every <script src> of the page calls the common onerror, and the shared file is the first of them."""
+    """Every <script src> of the page is a classic script that runs in order (no defer, async or type) and calls the
+    common onerror, and the shared file is the first of them."""
     if tema.name not in SHARED_FIRST:
         return
-    tags = [(m.group(1), html.count("\n", 0, m.start()) + 1) for m in SCRIPT_TAG.finditer(html)
-            if SRC_ATTR.search(m.group(1))]
-    for attrs, line in tags:
-        if not ONERROR_ATTR.search(attrs):
-            falha(f"{tema.name}: index.html:{line}: <script{attrs}> has no {ONERROR}: a file that does not load would "
-                  f"leave the page without a connection")
-    first = SRC_ATTR.search(tags[0][0]).group(1) if tags else None
+    tags = [(tag_attrs(m.group(1)), m.group(1), html.count("\n", 0, m.start()) + 1) for m in SCRIPT_TAG.finditer(html)]
+    tags = [t for t in tags if t[0].get("src")]
+    for attrs, text, line in tags:
+        if attrs.get("onerror") != ONERROR:
+            falha(f"{tema.name}: index.html:{line}: <script{text}> has no onerror=\"{ONERROR}\": a file that does not "
+                  f"load would leave the page without a connection")
+        for extra in sorted({"defer", "async", "type"} & attrs.keys()):
+            falha(f"{tema.name}: index.html:{line}: <script{text}> has {extra}: the scripts of the page run in order, "
+                  f"each one before the parser goes on")
+    first = tags[0][0]["src"] if tags else None
     if first != SHARED_FIRST[tema.name]:
         falha(f"{tema.name}: the first <script src> of the index.html is {first}, not {SHARED_FIRST[tema.name]}: the "
               f"shared state and helpers load before every other script")
@@ -279,7 +295,7 @@ def pattern_names(target):
             continue
         depth += (ch in "{([") - (ch in "})]")
         kept += ch
-    return re.findall(r"(?<![\w$.])([A-Za-z_$][\w$]*)(?!\s*:)", kept)
+    return re.findall(r"(?<![\w$.])([A-Za-z_$][\w$]*)(?![\w$]|\s*:)", kept)
 
 
 def declarators(code, j):
@@ -329,6 +345,7 @@ def top_level_names(text):
             # a statement starts after a ; or a }, or on a new line after a line that ended one (no semicolon there)
             new_line = code[:i].rstrip(" \t").endswith("\n")
             starts = not before or before in ";{}" or (new_line and before not in "=(,:?&|+-*/[")
+            starts = starts or (depth > 0 and before == "(" and code[:i].rstrip()[:-1].rstrip().endswith("for"))
             if m and starts:
                 line = code.count("\n", 0, i) + 1
                 if depth == 0 and (m.group(1) or m.group(2)):
@@ -363,9 +380,9 @@ def check_name_reader():
     text = ("'use strict';\nconst a = 1, b = f(2, 3), { c, d: e } = o, [g] = [];\nlet h\nfunction i() { const no1 = 1; }\n"
             "async function j() {}\nclass K {}\nconst l = () => { let no2; };\nconst s = 'function no3() {}', r = /[(]/g;\n"
             "// const no4 = 1\n/* let no5 */\nconst m = `${'}'}` + x\n  .y;\nif (a) { var t; let no6; }\nvar n = cond\n  ? 1 : 2;\n"
-            "const { u = no7, v: w = no8 } = data, [z = no9] = [];\n")
+            "const { u = no7, v: w = no8, label: nm = no10 } = data, [z = no9] = [];\nfor (var q = 0; q < 1; q++) {}\n")
     got = [x for x, _ in top_level_names(text)]
-    want = ["a", "b", "c", "e", "g", "h", "i", "j", "K", "l", "s", "r", "m", "t", "n", "u", "w", "z"]
+    want = ["a", "b", "c", "e", "g", "h", "i", "j", "K", "l", "s", "r", "m", "t", "n", "u", "w", "nm", "z", "q"]
     if got != want:
         falha(f"top_level_names read {got}, expected {want}")
     antes = len(falhas)
@@ -377,9 +394,12 @@ def check_name_reader():
     else:
         del falhas[antes:]
     with contextlib.redirect_stdout(io.StringIO()):
-        check_script_tags(Path("ritmelli"), '<script src="shared.js" data-onerror="scriptFailed(this)"></script>')
-    if len(falhas) != antes + 1 or "has no onerror" not in falhas[-1]:
-        falha(f"check_script_tags should fail once on a data-onerror: {falhas[antes:]}")
+        check_script_tags(Path("ritmelli"), '<script src="shared.js" data-onerror="scriptFailed(this)"></script>'
+                          "<script src='queue.js' title='onerror=\"scriptFailed(this)\"'></script>"
+                          '<script src="x.js" onerror="scriptFailed(this)" defer></script>')
+    if len(falhas) != antes + 3 or "has no onerror" not in falhas[-3] or "has defer" not in falhas[-1]:
+        falha(f"check_script_tags should fail on a data-onerror, an onerror in another attribute and a defer: "
+              f"{falhas[antes:]}")
     else:
         del falhas[antes:]
     print("the top-level name reader and the script tag check checked")
