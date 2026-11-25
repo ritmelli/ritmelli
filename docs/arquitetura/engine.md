@@ -49,13 +49,17 @@ decodificador substituído. A troca do stream pelo arquivo (`trocar_fonte`) sobe
 bloco em curso publica, e o leitor novo começa depois do último bloco decodificado, ou depois do bloco em curso quando
 a fila já está vazia.
 
-O `load`, o `espera`, o `stop`, o `seek`, o `resume` e o `trocar_fonte` publicam a troca sob o `_qlock`, como uma
-mudança só: a faixa, a linha, a posição, o fim e a passagem desfeita. A medida do ganho e o leitor ficam fora das
-travas. O `load`, o `espera` e o `stop` devolvem a `Captura` do que estava no prato logo antes: a posição que o
+O `load`, o `espera`, o `stop`, o `seek` e o `resume` que recomeça do fim publicam a troca sob o `_qlock`, como uma
+mudança só: a faixa, a linha, a posição, o fim e a passagem desfeita. O `seek` limita a posição pela duração da faixa
+e o `resume` confere o fim no mesmo trecho da trava. O `trocar_fonte` publica no mesmo trecho a faixa e o ganho novos,
+na mesma linha (da espera para o stream, também a posição e a passagem desfeita). A medida do ganho e o leitor ficam
+fora das travas, e o leitor que acaba só marca o fim, ou o erro, se ainda é o leitor do deck. O `load`, o `espera` e o `stop` devolvem a `Captura` do que estava no prato logo antes: a posição que o
 servidor grava (`remember_pos`) é a desse instante.
 
 A pausa vale no limite entre blocos. O `pause` devolve uma `Pausa`: com um bloco do prato retirado e ainda não
-publicado, ela se confirma na publicação dele; sem bloco, na hora. A confirmação guarda a faixa e a posição daquele
+publicado, ela fica pendente (o prato só pausa na confirmação) e se confirma na publicação dele; sem bloco, na hora. O
+`alterna` (o botão principal) decide e age sob o `_lock`: uma pausa pendente conta como pausa, e o segundo toque a
+retoma. A confirmação guarda a faixa e a posição daquele
 instante, e o servidor grava essa posição só se a pausa ainda vale (a mesma linha, sem retomar nem trocar de disco no
 meio). O `resume`, o `load`, o `stop`, o `seek`, o fim do disco e o `close` resolvem o pedido pendente como
 substituído, sem gravar nada.

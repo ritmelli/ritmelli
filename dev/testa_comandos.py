@@ -796,6 +796,59 @@ def bloco(A, E):
     out = E._mixa(eng.BLOCK)
     confere(abs(E.pos - 0.01) < 1e-9 and not np.any(out), "e a linha nova comeca do zero, sem a cauda de antes")
 
+    # o bloco que retirou o fim e o Repetir ligado no meio: a volta seguinte ja comecou, e o fim nao publica
+    toca("d1")
+    toca_ate_o_fim(E)
+    with E._qlock:
+        E.ended = False  # o fim ainda nao publicado
+    s = Suspenso(E)
+    E.set_loop(True)
+    ate(lambda: len(E._q) > 0)
+    s.solta()
+    confere(s.parou and s.bloco.fim and not E.ended and E.status() == "playing",
+            f"o Repetir ligado com o bloco do fim retirado: o fim nao publica, e a volta seguinte toca ({E.status()})")
+    E.set_loop(False)
+
+    # a pausa pedida com o bloco do fim retirado: o fim a substitui, sem gravar posicao
+    toca("d1")
+    toca_ate_o_fim(E)
+    A.lib.update("d1", last_pos=7.0)
+    with E._qlock:
+        E.ended = False
+    s = Suspenso(E)
+    res = []
+    t = threading.Thread(target=lambda: res.append(cmd.pausar(A)))
+    t.start()
+    t.join(0.3)
+    esperou = t.is_alive()
+    s.solta()
+    t.join(5)
+    confere(s.parou and esperou and res == [False] and E.ended and A.lib.get("d1")["last_pos"] == 7.0,
+            f"a pausa com o bloco do fim retirado espera ele, e o fim a substitui sem gravar a posicao ({res})")
+    p = E.pause()
+    confere(p.feita.is_set() and not p.ok and E.paused, "pausar o disco que ja acabou: nada para confirmar nem gravar")
+
+    # o leitor de uma linha que ja acabou nao marca o fim nem o erro da linha nova
+    toca("d1")
+    with E._qlock:
+        d, gen = E._deck, E._deck.gen
+        d.eof_gen, E.error = -1, None
+    E._fim_do_leitor(d, gen - 1, erro=(E.track, 0.0))
+    confere(d.eof_gen == -1 and E.error is None, "o leitor de um gen velho nao marca o fim nem o erro")
+
+    # a troca de disco com o bloco do prato em curso e a fila vazia: a posicao dele e gravada (ele estava tocando)
+    toca("d1", start=20.045)
+    with E._qlock:
+        while len(E._q) > 1:
+            E._q.pop()
+        E._deck.eof_gen = -1  # o leitor ainda le
+    A.lib.update("d1", last_pos=7.0)
+    s = Suspenso(E)
+    cmd.tocar(A, "d2")
+    s.solta()
+    confere(s.parou and A.lib.get("d1")["last_pos"] == 20.0,
+            f"a troca com o bloco em curso e a fila vazia grava a posicao do que saiu ({A.lib.get('d1')['last_pos']})")
+
     # a pausa pelo /api/pause e pelo /api/toggle com o bloco retirado: ela espera a publicacao dele, sem prender o
     # laco, e a posicao publicada e a gravada sao a do fim dele
     def rota(caminho, res):
@@ -808,7 +861,7 @@ def bloco(A, E):
         t = threading.Thread(target=rota, args=(caminho, res))
         t.start()
         t.join(0.3)
-        esperou = t.is_alive() and E.paused
+        esperou = t.is_alive() and not E.paused  # pendente: o prato so pausa na confirmacao
         out = s.solta()
         t.join(5)
         pos = E.pos
@@ -826,7 +879,8 @@ def bloco(A, E):
 
     # a mesma pausa com um load ou um resume antes de soltar o bloco: a espera termina, a linha nova segue e nenhuma
     # posicao antiga e gravada
-    for nome, faz in (("load", lambda: E.load(arquivo(A, "d2"))), ("resume", E.resume)):
+    for nome, faz in (("load", lambda: E.load(arquivo(A, "d2"))), ("resume", E.resume),
+                      ("seek", lambda: E.seek(5.0)), ("toggle", lambda: cmd.alternar(A))):
         toca("d1", start=20.045)
         A.lib.update("d1", last_pos=7.0)
         s = Suspenso(E)
@@ -838,11 +892,13 @@ def bloco(A, E):
         t.join(2)
         terminou = not t.is_alive() and res and res[0][0] == 200
         out = s.solta()
+        mesma = nome in ("resume", "toggle")  # retomar (o segundo toggle tambem) preserva a linha
         confere(s.parou and terminou and not E.paused and A.lib.get("d1")["last_pos"] == 7.0
                 and no_prato(E) == ("d2" if nome == "load" else "d1"),
-                f"o {nome} com a pausa esperando o bloco: a espera termina sem gravar a posicao, e o disco segue")
-        confere(np.any(out) == (nome == "resume"),
-                f"e o bloco retirado {'publica (a mesma linha)' if nome == 'resume' else 'sai (a linha mudou)'}")
+                f"o {nome} com a pausa esperando o bloco: a espera termina sem gravar a posicao, e o disco segue "
+                f"sem pausar")
+        confere(np.any(out) == mesma and not E.paused,
+                f"e o bloco retirado {'publica (a mesma linha)' if mesma else 'sai (a linha mudou)'} sem pausar nada")
 
     # a troca de faixa entre a confirmacao da pausa e a gravacao: a posicao antiga nao e gravada
     toca("d1", start=20.045)

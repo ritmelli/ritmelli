@@ -1039,9 +1039,11 @@ class App:
         if historico:
             self.guardar_historico(tr["id"])
         self.repetir_so_neste(tr["id"])
-        self.remember_pos(self.engine.espera(tr))
+        cap = self.engine.espera(tr)
+        # o stream abre antes de gravar a posicao: uma gravacao que falha nao deixa o disco carregando para sempre
         threading.Thread(target=self._abre_stream, args=(tr, target, bool(meta.get("title"))),
                          daemon=True).start()
+        self.remember_pos(cap)
 
     def adianta_endereco(self, yid):
         """Pede ja o endereco do stream de yid (o primeiro resultado da busca do pedido falado), sem tocar: o tocar

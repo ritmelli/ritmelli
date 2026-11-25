@@ -148,11 +148,12 @@ def retomar(A):
 
 
 def alternar(A):
-    """O botao principal (o /api/toggle): tocando ou carregando, pausa; senao, retoma."""
-    if A.engine.status() in ("playing", "buffering"):
-        pausar(A)
-    else:
-        retomar(A)
+    """O botao principal (o /api/toggle): tocando ou carregando, pausa e grava a posicao confirmada; senao, retoma. A
+    escolha e no motor (engine.alterna): dois toggles juntos nao pausam os dois, e uma pausa pendente o segundo
+    retoma."""
+    p = A.engine.alterna()
+    if p is not None and p.espera(PAUSA_ESPERA_S):
+        A.remember_pos(pausa=p)
 
 
 def parar(A):
