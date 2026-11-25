@@ -33,12 +33,10 @@ def _motor():
 
 
 def _passa(e):
-    """Uma passagem: o registro do fim, com a saida de erro guardada."""
-    err = io.StringIO()
+    """Uma passagem: o registro do fim, com a saida de erro calada."""
     with mock.patch.object(eng, "retrato_fim", return_value=(-14.0, 110.0, [-140], [-1.0])), \
-            contextlib.redirect_stderr(err):
+            contextlib.redirect_stderr(io.StringIO()):
         e._registra_fim(None, DISCO, dict(DISCO, id="b"), 200.0, None, None, False, 0.0, 195.0, 4.0, None, "teste")
-    return err.getvalue()
 
 
 class Teto(unittest.TestCase):
