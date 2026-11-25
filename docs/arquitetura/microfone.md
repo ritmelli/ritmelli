@@ -1,0 +1,72 @@
+# A saída para o jogo (`microfone/`)
+
+`microfone/`: a saída para o jogo. O `apo/micfx.dll` é um efeito de áudio do Windows (APO) que
+o `microfone.py` pendura nas vagas EFX e LFX de todo microfone do PC, guardando o original (e
+devolvendo no remove); o Windows carrega a DLL dentro do `audiodg.exe`, uma instância por
+microfone, e cada uma lê o GUID do microfone dela (PKEY_AudioEndpoint_GUID). Um anel de memória
+compartilhada (`anel.h`; o lado do app é o `injeta.py`) liga as duas pontas: o app marca o
+alvo (o hash do GUID do microfone escolhido) e só a instância do alvo age. Nela, a cada bloco
+do microfone, a DLL copia a voz crua (mono, na taxa do microfone) para o app e soma a música
+que o app deixou, bit a bit a 48 kHz e por um reamostrador sinc nas outras taxas. No motor, o
+`Injetor` (uma thread com a prioridade de áudio do Windows, a MMCSS "Pro Audio") chama o misturador
+(`_mixa`) e escreve no anel ~30 ms à frente do microfone, no ritmo dele; sem leitor do alvo, anda pelo relógio do PC e
+a música segue no fone. A folga foi medida no `dev/mede_folga.py`: o que a gasta é a troca de música, e para caber em
+30 ms o processo roda acima do normal (a thread que segura o interpretador não perde a CPU para o jogo) e o ffmpeg
+morre pelo `mata` (o `kill` do `subprocess` prendia o interpretador enquanto o Windows matava o processo). Preso a
+um console, o Python pergunta ao `conhost` a cada `io.open` e a cada thread nova, e com a CPU cheia isso prende o
+interpretador de 10 a 25 ms: o executável e o `pythonw` (o `soundboard.ps1` sobe por ele) não têm console. A voz crua que volta (reamostrada para 48 kHz) alimenta o medidor, o ouvir a própria voz,
+a mina e o efeito; o microfone que o motor abre só fica de reserva para quando ela não chega.
+Sem efeito e sem corte, a voz crua segue no microfone. O efeito de voz roda no próprio filtro:
+o `preset.py` lê o efeito do `fx.py` e monta o preset (as etapas, com os coeficientes
+projetados pelo scipy na taxa do microfone), o `Injetor` escreve no anel e a DLL monta a
+cadeia (`apo/voz.h`, numa memória separada no LockForProcess) e passa a voz por ela no mesmo
+bloco, sem atraso além do do efeito, e devolve a voz com efeito ao app para o fone e o medidor.
+Medido ao vivo como o app roda (sem console, o motor num processo só dele, `dev/mede_voz_ao_vivo.py`
+num cabo virtual, 14/11), a voz com o Eco chegou no microfone +0,5 ms depois da crua com o efeito
+no filtro, e +66 ms pelo app (na banca, `dev/mede_voz.py`, o caminho pelo app dá 30 a 40 ms). Enquanto o filtro não responde ao preset (até
+200 ms) a voz crua segue; efeito com etapa que o filtro não roda na taxa do microfone, ou preset
+recusado, vai pelo app: ele passa a voz crua pelo mesmo `voz.h`, no `voz.dll` a 48 kHz
+(`microfone/voz.py`), manda o pulso "sem voz" e a voz dele vai no anel. No microfone sem o
+filtro, a voz que o motor abre passa pelo `voz.dll` do mesmo jeito, para o ouvir a própria voz.
+Sem o `voz.dll` o app sobe igual: o efeito segue no filtro, e a voz que sairia do app vai crua,
+com um aviso na tela e no log. A voz cortada também
+vai pelo pulso. O filtro só tira a crua e só aplica o efeito com o pulso vivo, então o Ritmelli
+que cai não deixa o microfone mudo nem com a voz de robô. Com o microfone aberto por dois
+programas, o Windows pode montar duas cadeias, cada uma com a sua instância do filtro: as duas
+põem o efeito e a música no próprio som, mas só uma escreve a voz crua e só uma escreve a com
+efeito que voltam ao app; quando a dona fecha, sai do alvo ou fica 500 ms sem bloco, a outra
+assume (#70). A voz que o filtro não tem como converter no bloco dele (a de um modelo que roda
+na placa de vídeo, num processo à parte) volta pela pista da voz do anel: esse processo lê a voz crua
+como o app, converte e escreve na pista (`pista_liga`, `pista_escreve` e `pista_pulso` do `injeta.py`),
+e o filtro põe ela no lugar da voz do microfone no mesmo ponto em que soma a música. A pista tem
+escritor e folga só dela: a voz não paga os ~30 ms de folga que o misturador da música precisa, e o
+app segue sendo o único que escreve a música. Sem dado, o bloco sai em silêncio (a voz do microfone
+não vaza por um atraso do escritor); escritor que para de bater por 1 s, ou pista desligada, devolvem
+a voz do microfone; a voz cortada no app corta a da pista também. O app lê a pista para o fone
+(ouvir a própria voz) e o medidor, com uma fila própria (`PISTA_MAX` e `PISTA_ENCHE` no `engine.py`):
+a voz convertida chega em rajadas do tamanho do bloco do conversor. Microfone de notebook com
+cancelamento de eco e redutor de ruído do fabricante no MFX (o da Fortemedia, #49) apagaria a
+música somada no EFX como ruído, e o Windows só aceita a peça de cancelamento de eco como a
+última da lista de MFX (nada nosso pode vir depois dela). Ali o `microfone.py` troca o último
+MFX do fabricante por um hospedeiro da mesma DLL, que carrega o APO do fabricante por dentro,
+repassa tudo a ele e, no que sai, põe o efeito de voz, corta a voz quando o app pede e soma a
+música; o EFX desse microfone fica só com a voz crua para o app. O efeito ia no EFX, antes do
+fabricante, e o redutor apagava partes dele como ruído: o Rádio de polícia inteiro e a cauda da
+Catedral (#78). Com o efeito montado, a voz cortada passa pelo fabricante e o hospedeiro corta
+depois do efeito, então ouvir a própria voz com efeito segue valendo com ela cortada. O
+redutor segue ligado e a música chega igual no modo normal e no RAW. Quem pendura é o
+instalador (administrador, `ritmelli.exe --microfone instala-todos --tarefa`), que também cria a
+tarefa do Windows `\Ritmelli\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
+pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
+prepara, sem UAC, um microfone que apareceu depois. Ao desinstalar, o original de todo
+microfone volta e a tarefa sai. O nome do microfone é o do Windows (Core Audio, casado pelo id
+do aparelho): o montado do registro perde o "2- " que o Windows põe quando há dois aparelhos com
+o mesmo nome. `dev/testa_microfone.py` testa o motor contra um anel falso, sem som, e a voz
+com efeito que sai do app pelo `voz.dll` (e sem ele);
+`dev/testa_filtro.py` roda o `micfx.cpp` de verdade fora do audiodg (a `banca_filtro.dll` do
+`apo\compila.bat teste`, com o anel num nome só do teste, duas cadeias no mesmo anel e o
+hospedeiro do MFX com um fabricante falso por dentro, sozinho e com o EFX na frente);
+`dev/testa_mfx.py` confere as vagas de MFX num registro falso; `dev/testa_voz.py` confere cada
+efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a amostra, e em outras taxas;
+`dev/mede_voz_ao_vivo.py` mede ao vivo, num microfone virtual com o filtro, o atraso da voz com
+efeito no filtro e pelo app (toca estalos de verdade nesse microfone).
