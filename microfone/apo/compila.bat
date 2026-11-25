@@ -19,17 +19,34 @@ exit /b 1
 call "%VS%" >nul
 cd /d "%~dp0"
 if not exist saida mkdir saida
-if "%1"=="teste" goto teste
-cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /DUNICODE /D_UNICODE /LD micfx.cpp /Fosaida\ /Fesaida\micfx.dll /link /DEF:micfx.def audiobaseprocessingobject.lib audiomediatypecrt.lib legacy_stdio_definitions.lib ole32.lib advapi32.lib user32.lib
+rem The version resource of both DLLs (version.rc), with the version from versao.py: saida\version.h, then one .res per
+rem DLL. Code signing refuses a DLL without it
+set "VERSAO="
+for /f "tokens=3" %%v in ('findstr /b /c:"VERSAO = " ..\..\versao.py') do set "VERSAO=%%~v"
+echo %VERSAO%| findstr /r "^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$" >nul
+if errorlevel 1 (
+  echo couldn't read the version X.Y.Z from versao.py ^(got "%VERSAO%"^)
+  exit /b 1
+)
+for /f "tokens=1-3 delims=." %%a in ("%VERSAO%") do (
+  > saida\version.h echo #define RITMELLI_VERSION %%a,%%b,%%c,0
+  >> saida\version.h echo #define RITMELLI_VERSION_STR "%VERSAO%"
+)
+rc /nologo /i saida /d RITMELLI_MICFX /fo saida\micfx.res version.rc
 if errorlevel 1 exit /b %errorlevel%
-cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD voz.cpp /Fosaida\ /Fesaida\voz.dll
+rc /nologo /i saida /d RITMELLI_VOZ /fo saida\voz.res version.rc
+if errorlevel 1 exit /b %errorlevel%
+if "%1"=="teste" goto teste
+cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /DUNICODE /D_UNICODE /LD micfx.cpp saida\micfx.res /Fosaida\ /Fesaida\micfx.dll /link /DEF:micfx.def audiobaseprocessingobject.lib audiomediatypecrt.lib legacy_stdio_definitions.lib ole32.lib advapi32.lib user32.lib
+if errorlevel 1 exit /b %errorlevel%
+cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD voz.cpp saida\voz.res /Fosaida\ /Fesaida\voz.dll
 exit /b %errorlevel%
 :teste
 rem compila.bat teste: a banca do reamostra.h (teste\teste_reamostra.py mede) e o voz.dll, o motor dos efeitos de voz
 rem (voz.h) fora do audiodg, para o microfone\voz.py e o dev\testa_voz.py (o mesmo do alvo normal)
 cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD teste\teste_reamostra.cpp /Fosaida\ /Fesaida\teste_reamostra.dll
 if errorlevel 1 exit /b %errorlevel%
-cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD voz.cpp /Fosaida\ /Fesaida\voz.dll
+cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD voz.cpp saida\voz.res /Fosaida\ /Fesaida\voz.dll
 if errorlevel 1 exit /b %errorlevel%
 rem a banca do filtro inteiro (o micfx.cpp com o anel num nome so do teste; dev\testa_filtro.py)
 cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /DUNICODE /D_UNICODE /LD teste\banca_filtro.cpp /Fosaida\ /Fesaida\banca_filtro.dll /link audiobaseprocessingobject.lib audiomediatypecrt.lib legacy_stdio_definitions.lib ole32.lib advapi32.lib user32.lib

@@ -12,6 +12,7 @@ propria (janela.py), ou no navegador sem o WebView2; --no-browser nao abre nenhu
 import argparse
 import asyncio
 import contextlib
+import hashlib
 import importlib
 import json
 import math
@@ -59,6 +60,18 @@ THEMES = HERE / "themes"
 # o endereco do tema ate a 0.6.0, quando ele se chamava vitrola (#58): o celular pareado, o atalho na tela inicial e o
 # favorito ainda abrem este, e o servidor leva cada caminho dele para o mesmo no tema de agora (o tema_de_antes)
 TEMA_DE_ANTES = "/t/vitrola"
+INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
+
+
+def inline_scripts(html, folder):
+    return INLINE_SCRIPT.sub(lambda m: f"<script>\n{(folder / m.group(1)).read_text(encoding='utf-8')}</script>", html)
+
+
+def theme_page(page, texts, language):
+    html = inline_scripts(i18n.injeta(page.read_text(encoding="utf-8"), texts, language), page.parent)
+    return html, f'"{hashlib.sha256(html.encode("utf-8")).hexdigest()[:32]}"'
+
+
 YT_URL = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
 PAGINA_FOLGA = 8  # a busca pede tantos a mais na pagina de resultados: canal e playlist ocupam lugar e saem
 TICK = 1 / 15
@@ -443,6 +456,28 @@ def is_valid_unicode(*texts):
     except UnicodeEncodeError:
         return False
     return True
+
+
+TRACK_TEXTS = ("title", "channel", "thumb")  # what a body may bring about a video off the shelf, as text or null
+TRACK_FIELDS = TRACK_TEXTS + ("duration",)
+
+
+def check_track_fields(b, target, fields=TRACK_FIELDS):
+    """The title, channel, thumb and duration the body b brings about the video target, which is not on the shelf (the
+    POST /api/queue, and the POST /api/library with play; saving without play only uses the title, as the download's
+    label): one rule for both routes and every role, on the fields the path uses. The theme and the handoffs read the
+    texts as text (or null); the duration in seconds (or null, up to a day) wins over the one yt-dlp finds and sizes
+    the visualizer (engine.Onda allocates by it). The target and the texts go in valid Unicode (is_valid_unicode).
+    Raises ValueError, or the i18n.Recusa the theme can show for a duration longer than a day."""
+    texts = [k for k in TRACK_TEXTS if k in fields]
+    dur = b.get("duration") if "duration" in fields else None
+    if not (all(b.get(k) is None or isinstance(b[k], str) for k in texts)
+            and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool) and dur >= 0))):
+        raise ValueError("Send title, channel and thumb as text and duration as seconds (up to a day).")
+    if dur is not None and dur > QUEUE_DURATION_MAX_S:  # a search result can be this long: the theme shows it
+        raise i18n.Recusa("server.queue.tooLong", "Ritmelli can't queue a video longer than a day.")
+    if not is_valid_unicode(target, *(b.get(k) for k in texts)):
+        raise ValueError("Send text in valid Unicode.")
 
 
 def antes_das_parecidas(fila):
@@ -1350,16 +1385,7 @@ class App:
             yid = m.group(1) if m else (target if YT_ID.match(target) else None)
             if remoto and not yid:
                 raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
-            # every role, the PC included: the theme and the handoffs read these fields as text (or null), and the
-            # duration in seconds (or null, up to a day) wins over the one yt-dlp finds and sizes the visualizer
-            dur = b.get("duration")
-            if not (all(b.get(k) is None or isinstance(b[k], str) for k in ("title", "channel"))
-                    and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool) and dur >= 0))):
-                raise ValueError("Send title and channel as text and duration as seconds (up to a day).")
-            if dur is not None and dur > QUEUE_DURATION_MAX_S:  # a search result can be this long: the theme shows it
-                raise i18n.Recusa("server.queue.tooLong", "Ritmelli can't queue a video longer than a day.")
-            if not is_valid_unicode(target, b.get("title"), b.get("channel")):
-                raise ValueError("Send text in valid Unicode.")
+            check_track_fields(b, target)  # every role, the PC included
             it = self.lib.by_youtube(yid) if yid else None
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],
@@ -2113,7 +2139,8 @@ def build(app_state):
     @r.post("/api/library")
     async def lib_add(request):
         b = await body(request)
-        target = (b.get("youtube_id") or b.get("url") or b.get("query") or "").strip()
+        target = b.get("youtube_id") or b.get("url") or b.get("query") or ""
+        target = target.strip() if isinstance(target, str) else ""
         if not target:
             return j_err(i18n.so_texto("Send a YouTube link, a video ID, or search text."))
         m = YT_URL.search(target)
@@ -2123,6 +2150,10 @@ def build(app_state):
             if b.get("play"):
                 cmd.play_shelf_record(A, it)
             return j_ok(item=it)
+        try:  # the queue's rule: with play, every field goes to the platter and the visualizer; without, the title
+            check_track_fields(b, target, TRACK_FIELDS if b.get("play") else ("title",))
+        except ValueError as ex:
+            return j_err(getattr(ex, "msg", None) or i18n.so_texto(str(ex)))
         alvo = yid or target
         j = A.job_rodando(alvo)  # ja baixando (da fila, ou um toque repetido): nao baixa de novo
         if j is None:
@@ -2599,12 +2630,10 @@ def build(app_state):
         volta como 304, sem baixar a pagina de novo"""
         textos = p.parent / "i18n"
         lingua = i18n.escolher(request.query.get("lang"), request.headers.get("Accept-Language", ""))
-        etag = f'"{p.stat().st_mtime_ns}-{i18n.versao(textos)}-{lingua}"'
+        html, etag = await asyncio.get_running_loop().run_in_executor(None, lambda: theme_page(p, textos, lingua))
         cab = {"ETag": etag, "Cache-Control": "no-cache", "Vary": "Accept-Language"}
         if etag in (x.strip() for x in request.headers.get("If-None-Match", "").split(",")):
             return web.Response(status=304, headers=cab)
-        html = await asyncio.get_running_loop().run_in_executor(
-            None, lambda: i18n.injeta(p.read_text(encoding="utf-8"), textos, lingua))
         return web.Response(text=html, content_type="text/html", headers=cab)
 
     @r.get("/t/{slug}")

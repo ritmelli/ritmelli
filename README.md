@@ -355,8 +355,8 @@ server started without `--data-dir` shows it again every time it starts (with `-
 enough).
 
 The interface is the theme in `themes/ritmelli/` (HTML, CSS and JavaScript, no build step): `index.html` is the page,
-and the `.js` files it loads, its fonts (`fonts/`) and its images (`texturas/`) sit next to it. Edit a file, save it
-and reload the page. What a theme receives from the server is in [API.md](API.md#tema).
+and the `.css` and `.js` files it loads (`shared.js` first), its fonts (`fonts/`) and its images (`texturas/`) sit next
+to it. Edit a file, save it and reload the page. What a theme receives from the server is in [API.md](API.md#tema).
 
 To switch the language, add `?lang=pt_BR` or `?lang=en` to the end of the address. Interface texts live in
 `themes/ritmelli/i18n/i18n_en.properties` and `i18n_pt_BR.properties`, with the same keys in both files, in the same
