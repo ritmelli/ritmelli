@@ -3,11 +3,13 @@ vigias=False, relogio=False), no mesmo processo e numa pasta temporaria, sem as 
 MockEngine. Quem anda o audio e o teste, chamando o engine._mixa(BLOCK); quem faz o papel de cada vigia e o teste,
 chamando a volta dele (_volta_fila, _volta_passagem e _volta_auto). O leitor do motor e um de mentira (blocos de
 silencio, sem ffmpeg), o som por cima so e anotado e o endereco do stream e recusado: nada vai a rede nem abre
-aparelho, e a prateleira e a pasta de quem usa nao sao lidas.
+aparelho, e a prateleira e a pasta de quem usa nao sao lidas. E a leitura do estado (App.leitura) com a virada do
+motor ainda nao conciliada na fila, com o vigia suspenso no meio da conciliacao e com a preparacao bloqueada.
 
     python dev/testa_comandos.py
 
 Sai 1 se algo falha."""
+import asyncio
 import contextlib
 import io
 import json
@@ -22,6 +24,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 import numpy as np  # noqa: E402
+from aiohttp.test_utils import make_mocked_request  # noqa: E402
 
 with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, que nao sao deste teste
     import comandos as cmd  # noqa: E402
@@ -218,10 +221,93 @@ def voltas(A, E):
             if E.virou is not None:
                 break
     confere(E.virou is not None and no_prato(E) == "d1", "o _mixa vira para a preparada no fim do disco")
-    A._volta_passagem()
+
+    # a leitura do estado com a virada confirmada no motor e ainda nao conciliada na fila
+    est, pos = A.leitura()
+    confere(fila(A) == ["d1", "d2"], "a virada ainda nao conciliada: a entrada que entrou segue na fila do App")
+    confere(est["track"]["id"] == "d1" and pos == E.pos and [q["qid"] for q in est["queue"]] == [y["qid"]],
+            f"e a leitura ja e da virada: a faixa nova, a posicao dela e a fila sem a entrada que entrou "
+            f"({est['track']['id']}, {[q['id'] for q in est['queue']]})")
+    z, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    confere(not cmd.mover_na_fila(A, x["qid"], 1), "a entrada da virada ainda nao conciliada nao se move")
+    confere(cmd.mover_na_fila(A, y["qid"], 1) and [q["id"] for q in A.leitura()[0]["queue"]] == ["d3", "d2"],
+            f"mover na fila conta o lugar na fila que a tela ve, sem a entrada da virada ({fila(A)})")
+    cmd.tirar_da_fila(A, z["qid"])
+
+    # o vigia suspenso no meio da conciliacao, com a fila_lock na mao: a leitura espera e nunca ve a virada sem a fila
+    tirar, dentro, solta = A._tirar, threading.Event(), threading.Event()
+
+    def tirar_devagar(q):
+        dentro.set()
+        solta.wait(5)
+        tirar(q)
+    A._tirar = tirar_devagar
+    vigia = threading.Thread(target=A._volta_passagem)
+    vigia.start()
+    dentro.wait(5)
+    lidas = []
+    leitor = threading.Thread(target=lambda: lidas.append(A.leitura()))
+    leitor.start()
+    leitor.join(0.3)
+    confere(not lidas and E.virou is None, "com o vigia no meio da conciliacao, a leitura espera a fila_lock")
+    solta.set()
+    vigia.join(5)
+    leitor.join(5)
     ate(lambda: A.preparando is None)  # a volta ja prepara a seguinte (a d2): o teste so segue com ela pronta
+    A._tirar = tirar
+    confere(lidas and lidas[0][0]["track"]["id"] == "d1" and [q["qid"] for q in lidas[0][0]["queue"]] == [y["qid"]],
+            "e depois le a virada conciliada: a mesma faixa e a mesma fila")
     confere(E.virou is None and fila(A) == ["d2"] and historico(A)[-1:] == ["d3"] and no_prato(E) == "d1",
             f"o _volta_passagem tira da fila a que entrou e guarda a que saiu ({fila(A)}, {historico(A)[-1:]})")
+
+    # a preparacao da proxima bloqueada, no endereco do stream (fonte_de, fora das travas) e depois no E.preparar (com
+    # o E._lock na mao): o GET /api/state de verdade, pelo guard, segue respondendo
+    app = server.build(A)
+    rota_state = next(r.handler for r in app.router.routes()
+                      if r.method == "GET" and r.resource is not None and r.resource.canonical == "/api/state")
+
+    async def pede_state():
+        t = mock.Mock()
+        t.get_extra_info.side_effect = lambda nome, d=None: ("127.0.0.1", 50000) if nome == "peername" else d
+        req = make_mocked_request("GET", "/api/state", headers={"Host": f"127.0.0.1:{A.port}"}, transport=t, app=app)
+        req._match_info = await app.router.resolve(req)
+        resp = await app.middlewares[0](req, rota_state)
+        return resp.status, json.loads(resp.body)
+
+    def state_responde(quando):
+        t0 = time.monotonic()
+        st, corpo = asyncio.run(asyncio.wait_for(pede_state(), 2))
+        dt = time.monotonic() - t0
+        confere(st == 200 and dt < 0.5 and corpo["track"]["id"] == "d1" and "pos" in corpo,
+                f"com a preparacao bloqueada {quando}, o /api/state responde ({st}, {dt:.3f} s)")
+
+    fonte, preso, libera = A.fonte_de, threading.Event(), threading.Event()
+    onda, na_onda, libera_onda = E._onda_pede, threading.Event(), threading.Event()
+
+    def fonte_presa(q):
+        preso.set()
+        libera.wait(5)
+        return fonte(q)
+
+    def onda_presa(tr):
+        na_onda.set()
+        libera_onda.wait(5)
+        return onda(tr)
+
+    E.cancelar_pronto()
+    A.fonte_de, E._onda_pede = fonte_presa, onda_presa
+    try:
+        A._volta_passagem()
+        confere(preso.wait(5), "o _volta_passagem comeca a preparar a primeira da fila")
+        state_responde("no endereco do stream")
+        libera.set()
+        confere(na_onda.wait(5), "liberado o endereco, a preparacao entra no E.preparar (com o E._lock na mao)")
+        state_responde("no E.preparar")
+    finally:
+        libera.set()
+        libera_onda.set()
+        confere(ate(lambda: A.preparando is None), "liberada, a preparacao termina")
+        A.fonte_de, E._onda_pede = fonte, onda
 
     # o stream da parecida que nao abriu: a fila avanca sem guardar a parecida no Anterior
     cmd.limpar_fila(A)

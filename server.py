@@ -737,20 +737,31 @@ class App:
             except RuntimeError:
                 pass  # o loop ja fechou: o servidor parou antes (o Desligar da pagina)
 
-    def snapshot(self):
-        """Estado do motor mais a fila (A seguir), o Aleatorio, o Automatico e quantos discos o
-        Anterior tem."""
-        snap = self.engine.snapshot()
+    def leitura(self):
+        """O estado para a tela (o do motor mais a fila, o Aleatorio, o Automatico e quantos discos o Anterior tem) e a
+        posicao do disco, da mesma captura: (estado, pos). A faixa, a posicao, o estado de reproducao, a fila e a virada
+        que o motor ja confirmou saem juntos, sob a fila_lock e depois o _qlock do motor (a ordem do comandos.py), e a
+        fila exposta ja nao tem a entrada da virada que o _volta_passagem ainda vai conciliar. O resto do motor e a
+        formatacao ficam fora das travas. A posicao vai a parte: ela anda a cada bloco, e o SSE so manda o state quando
+        ele muda (a posicao vai no tick da mesma volta)."""
+        e = self.engine
         with self.fila_lock:
-            extra = {"queue": [self._com_bpm(x) for x in self.fila], "shuffle": self.fila_ordem is not None,
-                     "auto": self.auto, "history": len(self.historico), "versao": VERSAO,
-                     "atualizacao": self.atualizacao.resumo()}
-            if snap.get("track"):
-                extra["track"] = self._com_bpm(snap["track"])  # o andamento ja medido do disco do prato, para o deck do tema
+            with e._qlock:
+                tr, pos, status, virou = e.track, e.pos, e.status(), e.virou
+                tr = None if tr is None else dict(tr)
+            fora = virou[2] if virou is not None else None
+            fila = [dict(x) for x in self.fila if x["qid"] != fora]
+            shuffle, auto, historico = self.fila_ordem is not None, self.auto, len(self.historico)
+        snap = e.snapshot()
+        snap.update(status=status, duration=None if tr is None else tr.get("duration"),
+                    track=None if tr is None else self._com_bpm(  # o andamento ja medido, para o deck do tema
+                        {k: v for k, v in tr.items() if k not in ("path", "headers")}))
+        snap.update(queue=[self._com_bpm(x) for x in fila], shuffle=shuffle, auto=auto, history=historico,
+                    versao=VERSAO, atualizacao=self.atualizacao.resumo())
         pv = self.pedal_voz()
         if pv is not None:
-            extra["pedal_voz"] = pv
-        return {**snap, **extra}
+            snap["pedal_voz"] = pv
+        return snap, pos
 
     _pedal_voz_erro = None   # o ultimo erro do estado() do pedal de voz: o log diz cada erro uma vez, nao a cada tick
 
@@ -1346,13 +1357,19 @@ class App:
 
     def mover_na_fila(self, qid, to):
         """Arrastar muda a ordem de tocar; com o Aleatorio ligado, a ordem montada fica como
-        estava."""
+        estava. O to e o lugar na fila que a tela ve (leitura): sem a entrada da virada que o motor ja confirmou e o
+        _volta_passagem ainda vai conciliar, que tambem nao se move."""
         with self.fila_lock:
-            x = next((e for e in self.fila if e["qid"] == qid), None)
+            with self.engine._qlock:
+                virou = self.engine.virou
+            fora = virou[2] if virou is not None else None
+            x = next((e for e in self.fila if e["qid"] == qid and qid != fora), None)
             if not x:
                 return False
             self.fila.remove(x)
-            self.fila.insert(max(0, min(to, len(self.fila))), x)
+            vistas = [e for e in self.fila if e["qid"] != fora]
+            to = max(0, min(to, len(vistas)))
+            self.fila.insert(self.fila.index(vistas[to]) if to < len(vistas) else len(self.fila), x)
             if x.get("auto"):
                 x["fixa"] = True  # a parecida que o usuario arrastou fica onde ele pos: a ordem por andamento nao mexe nela
             return True
@@ -1466,9 +1483,8 @@ class App:
         e = self.engine
         v = e.virou
         if v is not None:
-            e.virou = None
             try:
-                cmd.avanca(self, virada=v)
+                cmd.avanca(self, virada=v)  # tira a virada do motor junto com a entrada dela da fila
             except Exception as ex:  # noqa: BLE001
                 print(f"transition: the switch didn't close the queue: {ex}", file=sys.stderr, flush=True)
         tr = e.track
@@ -2108,7 +2124,8 @@ def build(app_state):
     @r.get("/api/state")
     async def state(request):
         # o caps: o que quem pede pode fazer (o papel do guard, permissao.caps)
-        return web.json_response({**A.snapshot(), "pos": round(E.pos, 2),
+        s, pos = A.leitura()  # o estado e a posicao da mesma captura
+        return web.json_response({**s, "pos": round(pos, 2),
                                   "levels": dict(E.levels), "caps": perm.caps(request["papel"]), **marca()})
 
     @r.get("/api/onda/{iid}")
@@ -2571,7 +2588,9 @@ def build(app_state):
                     # desconectado no PC, ou a sessao remota acabou: o tema pede o codigo sem esperar a reconexao
                     await send("desconectado", {})
                     break
-                s = A.snapshot()
+                # o state e o tick desta volta saem da mesma captura, valendo ate o fim do envio dela, mesmo se o
+                # motor virar no meio: cada posicao e da faixa que esta volta entregou
+                s, pos = A.leitura()
                 if s != last["state"]:
                     last["state"] = s
                     await send("state", s)
@@ -2582,7 +2601,7 @@ def build(app_state):
                 if jb != last["jobs"]:
                     last["jobs"] = [dict(x) for x in jb]
                     await send("jobs", jb)
-                await send("tick", {"pos": round(E.pos, 2),
+                await send("tick", {"pos": round(pos, 2),
                                     "levels": {k: round(v, 4) for k, v in E.levels.items()}})
                 await asyncio.sleep(TICK)
         except (ConnectionResetError, asyncio.CancelledError):

@@ -85,7 +85,13 @@ def avanca(A, virada=None, historico=True, na_tela=False):
     engine.error), e nao para quem chamou (os vigias: entrada quebrada nao trava a fila)."""
     if virada is not None:
         sai, entrou, tag = virada
+        E = A.engine
         with A.fila_lock:
+            # a virada sai do motor e a entrada dela sai da fila sob a mesma fila_lock: a leitura do estado (App.leitura)
+            # ve as duas, ou nenhuma
+            with E._qlock:
+                if E.virou is virada:
+                    E.virou = None
             x = next((y for y in A.fila if y["qid"] == tag), None)
             if x:
                 A._tirar(x)
