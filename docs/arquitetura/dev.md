@@ -29,9 +29,9 @@ detector de bumbo próprio; no final seco para um começo sem bumbo, confere a p
 contra o bumbo do que sai: sai 0 no tempo, 1 contratempo ou fora, 3 sem plano ou sem bumbo), `dev/texturas.py` (gera as
 texturas de ruído do tema em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
 (desenha as molduras de pixel do tema, contorno, linha clara, bisel e cantos em degrau, e
-grava as variáveis `--mold-*` de border-image no tema, fora do bloco do celular, porque valem
-nas duas telas, com o tamanho do ponto na variável `--px`, 1px quando o tema não a define, e no
-`gallery/index.html` as que a galeria usa),
+grava as variáveis `--mold-*` de border-image no `themes/ritmelli/gerado/molduras.css`, o arquivo inteiro, que o
+tema carrega fora do bloco do celular, porque valem nas duas telas, com o tamanho do ponto na variável `--px`, 1px
+quando o tema não a define, e no bloco `molduras:inicio` do `gallery/index.html` as que a galeria usa),
 `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos, em duas
 camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema, fora
 do bloco do celular),
