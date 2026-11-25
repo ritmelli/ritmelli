@@ -4,8 +4,8 @@ sombra dura, desenhados celula a celula.
 
     python dev/compactos.py
 
-Grava as variaveis --compacto-base e --compacto-tampa no bloco entre "compactos:inicio" e
-"compactos:fim" do themes/ritmelli/index.html.
+Grava as variaveis --compacto-base e --compacto-tampa no themes/ritmelli/gerado/compactos.css (o arquivo inteiro,
+que o index.html do tema carrega por um <link>). Rodado de novo com o mesmo desenho, nao muda o arquivo.
 
 O compacto gira enquanto o som toca, e um degrau girando balanca. Por isso o desenho fica parado em
 duas camadas e so o selo redondo gira entre elas (o .sete-gira com o .sete-rot, na cor do som):
@@ -25,11 +25,10 @@ densidade 3). A base sai 1 celula para fora dos lados e de cima (o contorno) e 3
 e sombra); o tema posiciona o ::before com esses mesmos numeros em porcentagem.
 """
 import math
-import re
 import sys
 from urllib.parse import quote
 
-from molduras import CONTORNO, TEMA, svg
+from molduras import CONTORNO, GERADO, grava_arquivo, svg
 
 CELULAS = 40                         # o compacto tem 40 x 40 celulas
 SOMBRA = 2                           # a sombra dura desce 2 celulas (4 px, como a --duro)
@@ -129,14 +128,9 @@ def main():
         linhas.append(f'  --compacto-{nome}: url("{uri}");')
     bloco = ("/* compactos:inicio (gravado pelo dev/compactos.py: o desenho mora la, nao editar aqui) */\n"
              ".app {\n" + "\n".join(linhas) + "\n}\n/* compactos:fim */")
-    txt = TEMA.read_text(encoding="utf-8")
-    novo, n = re.subn(r"^/\* compactos:inicio.*?/\* compactos:fim \*/", lambda _: bloco, txt, flags=re.S | re.M)
-    if n != 1:
-        sys.exit("bloco compactos:inicio/fim nao encontrado no tema (ou repetido)")
-    if novo != txt:
-        TEMA.write_text(novo, encoding="utf-8", newline="\n")
+    mudou = grava_arquivo(GERADO / "compactos.css", bloco + "\n")
     print(f"selo de raio {SELO_R} celulas (inset {50 - SELO_R / CELULAS * 100:.2f}%), {sum(len(x) for x in linhas)} caracteres"
-          + ("" if novo != txt else " (sem mudanca)"))
+          + ("" if mudou else " (sem mudanca)"))
 
 
 if __name__ == "__main__":

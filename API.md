@@ -11,9 +11,11 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 
 ## Tema
 
-- `themes/<slug>/index.html`, autossuficiente: HTML + CSS + JS puro, sem build. Arquivo
-  extra (fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
-  relativo (`./x.svg`), servido em `/t/<slug>/x.svg`.
+- `themes/<slug>/index.html`, a página do tema: HTML + CSS + JS puro, sem build. Arquivo
+  extra (script `.js`, fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
+  relativo (`./x.svg`, `<script src="x.js">`), servido em `/t/<slug>/x.svg`.
+- Toda resposta de `/t/` sai com `Cache-Control: no-cache`: o navegador confere cada arquivo do tema com o servidor
+  antes de usar o que guardou (o que não mudou volta como 304), e não usa um `.js` ou `.css` de antes sem conferir.
 - O slug `vitrola` é reservado: era o do tema `ritmelli` até a 0.6.0, e o servidor leva todo `/t/vitrola/...` para
   o mesmo caminho em `/t/ritmelli/` (302, com a mesma query), antes de procurar a pasta.
 - `themes/<slug>/meta.json`: `{"name": "...", "direction": "...", "blurb": "uma frase"}`. Cada campo pode vir
@@ -21,8 +23,8 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - O ícone é do servidor, igual para todo tema: a aba do navegador pega o `/favicon.ico`
   sem nada no tema, e o atalho na tela inicial do celular pede
   `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` no `<head>`.
-- Nada externo: as fontes moram no próprio tema (`themes/<slug>/fonts/`, com a licença ao lado), e script externo
-  nenhum.
+- Nada de fora: as fontes e os scripts moram no próprio tema (as fontes em `themes/<slug>/fonts/`, com a licença ao
+  lado), e nenhum script vem de outra origem.
 - API sempre por caminho absoluto (`/api/...`), mesma origem. Escrita é `fetch` com
   `method` e, quando tem corpo, `Content-Type: application/json`.
 - Texto da interface com acentuação completa no português e sem travessão. O servidor não
@@ -38,7 +40,8 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
   está no `i18n.py`, e o `python dev/testa_i18n.py` confere os arquivos contra o tema.
 - O tema abre também no celular, pela rede de casa (`http://<ip do PC>:8799/`): nada de
   endereço `127.0.0.1` escrito no tema e nada que dependa de mouse. Pela rede, a API só
-  responde ao celular pareado (ver "Celular: pareamento").
+  responde ao celular pareado (ver "Celular: pareamento"), e só no que a tabela de "Quem pode cada rota" abre para
+  ele.
 
 ## Estado ao vivo: `GET /api/events` (SSE)
 
@@ -46,11 +49,17 @@ Use `new EventSource('/api/events')`. Eventos:
 
 | evento | quando | `data` |
 |---|---|---|
+| `caps` | ao conectar, antes de todos | o que esta conexão pode fazer (ver "Quem pode cada rota") |
 | `state` | ao conectar e a cada mudança | objeto Estado (abaixo) |
 | `library` | ao conectar e a cada mudança | lista de Item |
 | `jobs` | ao conectar e a cada mudança | lista de Job (o terminado some depois de 20 s) |
 | `tick` | 15 vezes por segundo | `{"pos": s, "levels": {"mic": r, "track": r, "out": r}}` |
-| `desconectado` | o PC desconectou este celular (logo depois a conexão fecha) | `{}` |
+| `desconectado` | o PC desconectou este celular, ou a sessão remota acabou (logo depois a conexão fecha) | `{}` |
+
+O servidor monta o `state`, a lista do `library`, a do `jobs` e o `tick` uma vez por volta (15 por segundo) e
+entrega a mesma volta a todas as conexões abertas; só o `caps` e a autorização são de cada uma. O `state` e o `tick` de
+uma volta saem da mesma captura: o `pos` é sempre da faixa do último `state` entregue. Uma conexão que fica para trás
+(a aba em segundo plano, a rede lenta) pula para a volta mais nova, sem atrasar as outras.
 
 `levels` é RMS linear de 0 a 1, com queda suave (dBFS = 20·log10(r); -60 dB já é
 silêncio). `mic` = voz (mesmo mutada, para mostrar que o microfone vive), `track` = arquivo
@@ -67,18 +76,28 @@ reconecta sozinho; mostre que está reconectando.
  "volume_auto": true, "ganho_db": 0.0,
  "monitor_on": true, "loop": false,
  "effect": "nenhum", "voice_monitor": false, "voice_mon_vol": 0.8,
- "por_cima": [{"id": "...", "title": "..."}],
+ "por_cima": [{"id": "...", "title": "..."}], "abaixa": null,
  "devices": {"mic": "default", "monitor": "default"},
  "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
  "microfone": {"anel": true, "leitores": 1, "folga_min_ms": 40.0, "secas": 0, "volta_max_ms": 4.5,
                "preparando": null, "efeito_no_filtro": false},
  "error": null ou Mensagem,
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
- "versao": "0.1.0",
+ "versao": "0.1.0", "api": 1,
  "visor": {"ondas": 3, "passagens": [Passagem]},
- "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou Mensagem}}
+ "atualizacao": {"nova": "0.3.0" ou null, "estado": "parado", "progresso": 0.0, "erro": null ou Mensagem},
+ "caps": {"papel": "pc", "rotas": ["DELETE /api/library/{iid}", "..."]}}
 ```
+- `caps` = o que quem pediu pode fazer (ver "Quem pode cada rota"); só no `GET /api/state` (no SSE, é o evento
+  `caps`).
+- `abaixa` = a música abaixada no jogo pelo `POST /api/abaixa`, `{"db", "ms"}` (o pedido), enquanto vale; `null`
+  quando não há, e de novo `null` sozinho no fim do prazo.
 - `versao` = a versão do servidor (`versao.py`), para mostrar na tela.
+- `api` = a versão deste contrato do Estado e do SSE (`API` do `server.py`, hoje 1). Sobe só quando muda algo que um
+  cliente de hoje já lê: um campo ou um evento sai, muda de nome ou de sentido. Campo, evento ou rota nova não sobe:
+  quem lê ignora o que não conhece. Vem no `GET /api/state` e no `state` do SSE.
+- `mock` = `true` só no servidor `--mock` (as ferramentas de `dev/` só falam com ele, `dev/so_mock.py`), no
+  `GET /api/state` e no `state` do SSE; o de verdade não manda o campo.
 - `atualizacao` = a versão nova (ver "Versão nova"): `nova` é o número dela, ou `null`;
   `estado` é `parado`, `consultando`, `baixando`, `pronta` (o instalador baixado e conferido) ou
   `instalando`; `progresso` vai de 0 a 1 no download; `automatica: true` quando quem atualiza é a
@@ -243,10 +262,14 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/toggle` | - | pausa ou continua; pausar cala também os sons por cima |
 | `POST /api/pause` / `POST /api/resume` | - | idem, explícito |
 | `POST /api/stop` | - | descarrega o arquivo, desliga o `loop` e cala os sons por cima (a voz segue); o disco entra no `history` |
-| `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca; fila vazia = 409 |
+| `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca, e responde `{"entry": ...}` com a entrada que tocou; logo depois de uma passagem automática, a entrada que acabou de entrar nela; dois juntos tocam uma só, e os dois respondem a mesma; fila vazia, ou o prato que trocou de disco no meio, = 409 |
 | `POST /api/prev` | - | Anterior do Spotify: com mais de 3 s de disco (ou nada antes dele), volta ao começo (`{"did": "inicio"}`); senão toca o último do `history`, e o disco do prato vai para o topo da `queue` (`{"did": "anterior"}`); nada no prato nem antes = 409 |
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
-| `POST /api/settings` | qualquer de `vol`, `mon_vol`, `mic_vol`, `mic_mute`, `monitor_on`, `loop`, `shuffle`, `auto`, `effect`, `voice_monitor`, `voice_mon_vol`, `volume_auto` | ajusta ao vivo; salva `vol`, `mon_vol`, `monitor_on`, `voice_mon_vol`, `auto` e `volume_auto` (`mic_vol` vai direto para o Windows); `mic_mute`, `loop`, `shuffle`, `voice_monitor` e o efeito voltam ao padrão quando o servidor sobe |
+| `POST /api/volume` | `{"vol": 0.5}` | só o volume da música no jogo, de 0 a 1 (fora disso, o limite), com a mesma validação do `vol` do `/api/settings`, e grava só ele no `config.json`; responde `{"ok": true, "vol": 0.5}`; sem número, 400. É o volume que o remoto pode mudar |
+| `POST /api/abaixa` | `{"db": 12, "ms": 3000}` | abaixa a música no jogo `db` decibéis (até 40) por `ms` milissegundos (um inteiro, até 30000), sem gravar nada, e ela volta sozinha no prazo (o fone de quem toca segue igual); um pedido novo troca o de antes, e zero em qualquer um tira o abaixamento na hora; responde `{"ok": true, "abaixa": {"db", "ms"} ou null}`; fora da faixa, 400 |
+| `POST /api/sinal` | - | um bipe curto de teste (0,4 s, 880 Hz, -18 dBFS) no microfone, no que o jogo ouve, sem passar pelo volume da música; responde `{"ok": true}`; com a voz cortada (`mic_mute`), não toca (e o que tocava para) e responde 409 |
+| `POST /api/effects/reload` | - | só no PC: lê o `fx.py` de novo sem reiniciar o servidor nem cortar a música; responde `{"ok": true, "effects": n, "effect": "<id>"}` |
+| `POST /api/settings` | qualquer de `vol`, `mon_vol`, `mic_vol`, `mic_mute`, `monitor_on`, `loop`, `shuffle`, `auto`, `effect`, `voice_monitor`, `voice_mon_vol`, `volume_auto` | ajusta ao vivo (`vol`, `mon_vol` e `voice_mon_vol` de 0 a 1, e fora disso o limite; o que não é número responde 400 e nada muda); salva `vol`, `mon_vol`, `monitor_on`, `voice_mon_vol`, `auto` e `volume_auto` (`mic_vol` vai direto para o Windows); `mic_mute`, `loop`, `shuffle`, `voice_monitor` e o efeito voltam ao padrão quando o servidor sobe |
 | `GET /api/onda/<id>` | - | a onda do disco para o visor de DJ: `{"id", "passo": 0.04, "n", "completa", "fonte": "arquivo" ou "stream", "versao", "onda"}`, `onda` em base64 de `n` colunas de 3 bytes (grave até 200 Hz, médio até 2 kHz, agudo até 6 kHz), cada uma de `passo` s do disco, em dB de -60 (0) a 0 (255); ~24 KB para 4 min. O motor lê a do disco da prateleira inteira quando ele entra no prato ou na passagem; a do stream só chega até onde o áudio já foi decodificado (`completa: false`: peça de novo). 404 = ainda não tem |
 | `GET /api/effects` | - | `[{"id","grupo","latencia_ms"}]`, na ordem de exibição; `grupo` é o id do grupo, vazio no "Sem efeito"; os grupos hoje são `radio` (Rádio e alto-falante), `ambiente` e `personagem`. O nome e a descrição de cada efeito e o nome de cada grupo são textos do tema, nas línguas dele: `effect.<id>.name`, `effect.<id>.desc` e `effect.group.<grupo>` (o `python dev/testa_i18n.py` confere que todo tema com a pasta `i18n/` tem os de todos os efeitos do `fx.py`). O item `pistavoz` (o pedal de troca de voz, quando existe) traz também `"vozes": ["mina", "lira"]` |
 | `POST /api/pedal_voz` | `{"voz": "lira"}` | escolhe a voz do pedal de troca de voz (uma das `vozes` do item `pistavoz` de `/api/effects`); responde `{"ok": true, "pedal_voz": {...}}`. Sem o pedal, 404; voz que não é dele, 400; o módulo sem resposta em 15 s, 504; um erro do módulo, 500 com o motivo. Ligar e desligar o pedal é o `effect` de sempre |
@@ -254,7 +277,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `GET /api/musica?q=<pedido>&n=3` | - | busca de música no YouTube Music, a do pedido falado: com o melhor resultado sendo um artista e o pedido só o nome dele, as mais tocadas dele ("Raul" -> Metamorfose Ambulante); senão, as músicas e vídeos da busca. Mesmo formato do `/api/search`; até 4 s, senão 502 (quem pede cai no `/api/search`) |
 | `POST /api/aquece` | - | alguém vai pedir (a mina chama quando uma fala começa): renova as conexões com o YouTube paradas há mais de 180 s no processo do endereço e nas reservas (o YouTube fecha a parada aos ~240 s) e abre o processo do endereço que está vazio; responde na hora `{"ok": true, "aquecidos": n}` |
 | `POST /api/library` | `{"youtube_id": "..."}` ou `{"url": "..."}` ou `{"query": "..."}`, mais `"play": bool`, `"title"?`, `"channel"?`, `"thumb"?`, `"duration"?` | baixa para a biblioteca (Job); com `play`, toca na hora pelo stream do YouTube enquanto baixa e responde `{"job": ..., "streaming": true}` (título, canal, capa e duração do corpo aparecem no prato desde o primeiro instante); se já existe, responde `{"item": ...}` e toca na hora; o mesmo vídeo já baixando não baixa de novo |
-| `POST /api/queue` | `{"id": "<disco>"}` ou `{"youtube_id": "...", "title"?, "channel"?, "thumb"?, "duration"?}` ou `{"url": "..."}`, mais `"next": bool?` | põe na fila (no fim, ou logo a seguir com `next`); vídeo fora da prateleira já começa a baixar; com nada no prato, toca na hora em vez de entrar na fila; responde `{"entry": Entrada, "job": Job ou null, "playing": bool}` |
+| `POST /api/queue` | `{"id": "<disco>"}` ou `{"youtube_id": "...", "title"?, "channel"?, "thumb"?, "duration"?}` ou `{"url": "..."}`, mais `"next": bool?` | põe na fila (no fim, ou logo a seguir com `next`); vídeo fora da prateleira já começa a baixar; com nada no prato, toca na hora em vez de entrar na fila (se o fim do disco já estava avançando para outra, só entra na fila, com `playing: false`); responde `{"entry": Entrada, "job": Job ou null, "playing": bool}` |
 | `DELETE /api/queue/<qid>` | - | tira da fila (parecida do Automático tirada não volta nesta sessão) |
 | `DELETE /api/queue` | - | esvazia a fila (as parecidas que estavam nela não voltam; com o Automático ligado, entram outras) |
 | `POST /api/queue/move` | `{"qid": "...", "to": 0}` | muda a entrada de lugar (`to` a partir de 0) |
@@ -265,8 +288,8 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou ""}` | troca dispositivo (reabre o áudio); microfone sem o filtro (apareceu depois da instalação) é preparado pela tarefa do instalador, sem UAC (ver `microfone.preparando`) |
 | `GET /api/boas-vindas` | - | `{"mostrar": bool}`: verdadeiro na primeira vez no PC (prateleira vazia e as boas-vindas nunca fechadas); pelo celular, sempre falso |
 | `POST /api/boas-vindas` | - | só no PC: as boas-vindas foram vistas e não voltam (fica no `config.json`) |
-| `GET /api/metricas` | - | só no PC: `{"situacao", "politica"}`, os dados de uso e os erros (`metricas.py`, o [PRIVACIDADE.md](PRIVACIDADE.md)): `situacao` é `"ligada"`, `"desligada"`, `"decidir"` (ninguém escolheu: o tema mostra o aviso) ou `"fora"` (pelo código ou no `--mock`, nunca envia); `politica` é o endereço da política |
-| `POST /api/metricas` | `{"ligar": bool}` | só no PC: a escolha de quem usa, que vale sobre a da página do instalador (fica no `config.json`); responde como o `GET`; com `"fora"`, 409 |
+| `GET /api/metricas` | - | só no PC: `{"situacao", "politica", "texto", "texto_atual"}`, os dados de uso e os erros (`metricas.py`, o [PRIVACIDADE.md](PRIVACIDADE.md)): `situacao` é `"ligada"`, `"desligada"`, `"decidir"` (ninguém escolheu: o tema mostra o aviso) ou `"fora"` (pelo código ou no `--mock` sem o `--metricas-teste`, nunca envia); `politica` é o endereço da política; `texto` é a versão do texto em que a escolha que vale foi feita (a do app, senão a do instalador; 1 para a escolha de antes das versões, 0 sem escolha ou com `"fora"`) e `texto_atual`, a de agora: com `"ligada"` e `texto` menor, o tema mostra o aviso de novo |
+| `POST /api/metricas` | `{"ligar": bool}` | só no PC: a escolha de quem usa, que vale sobre a da página do instalador; grava no `config.json` o `metricas` e o `metricas_texto` (o `texto_atual`) juntos; responde como o `GET`; com `"fora"`, 409 |
 | `GET /api/themes` | `?lang` (opcional) | `[{"slug","url","name","direction","blurb"}]`, cada texto na língua de quem pede (o `?lang=` ou o `Accept-Language`), quando o `meta.json` traz por língua |
 | `POST /api/shutdown` | - | desliga o servidor (a música para de tocar no microfone; a voz segue normal, sem efeito); a janela própria fecha junto |
 | `POST /api/janela/foco` | - | só no PC: traz a janela própria (`janela.py`) para a frente, restaurada se estava minimizada; 404 quando o Ritmelli abriu no navegador (sem o WebView2, ou com `--no-browser`). É o que o Ritmelli aberto de novo pede ao que já está ligado |
@@ -299,8 +322,9 @@ o Alienígena volta. O contrato com o módulo:
 - `pistavoz.estado()`: `{"voz": <id>, "visor": None | "fale" | "ouvindo" | "pronto", "progresso": 0..1 | None}`; vai
   para o `pedal_voz` do Estado (e do SSE). `visor` é o passo do ajuste que o pedal mostra no visor em vez da voz: `fale`
   (pede para a pessoa falar), `ouvindo` (com o `progresso` de 0 a 1, que o servidor arredonda em passos de 1/12) e
-  `pronto`; `null` = o visor mostra a voz. O `estado()` roda no laço do servidor a cada tick do SSE, para cada página
-  aberta: tem de responder na hora, sem disco nem rede, e aguentar um `escolhe()` ou `liga()` chegando de outra thread.
+  `pronto`; `null` = o visor mostra a voz. O `estado()` roda no laço do servidor uma vez a cada volta do SSE (a mesma
+  para todas as páginas abertas) e a cada `GET /api/state`: tem de responder na hora, sem disco nem rede, e aguentar um
+  `escolhe()` ou `liga()` chegando de outra thread.
   Uma voz que não é das `VOZES` sai como a primeira; um erro sai como a primeira voz sem passo, e vai para o log uma vez.
 - `pistavoz.escolhe(voz)`: troca a voz, e a voz que já está escolhida refaz o ajuste do tom (o clique nela de novo);
   chamado pelo `POST /api/pedal_voz`, fora do laço, numa thread só dele e na
@@ -329,12 +353,47 @@ O tema mostra o pedal com o visor e as vozes (o rótulo da escolhida aceso) e ma
 `POST /api/pedal_voz` no clique de cada uma. Textos do tema: `effect.pistavoz.name`, `effect.pistavoz.desc` e os do
 visor.
 
+## Quem pode cada rota
+
+O `guard` do servidor confere o Host e a Origin de sempre e depois a tabela do `permissao.py`:
+`(método, rota) → papéis`, com a rota como o aiohttp a escreve (`/api/library/{iid}`, sem o id) e o `HEAD`
+valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
+
+- `pc`: quem conecta pelo `127.0.0.1` sem o cabeçalho do remoto. Pode tudo.
+- `celular`: da rede de casa, com a chave do pareamento no cookie (ver "Celular: pareamento").
+- `publico`: da rede de casa, sem chave que valha: só o tema, os arquivos dele, a galeria, o `GET /api/themes` e o
+  `POST /api/parear`. O resto que o celular pode responde 401 (o do pareamento); o que é só do PC, 403.
+- `remoto`: quem conecta pelo `127.0.0.1` (só o IPv4) com o cabeçalho `X-Ritmelli-Remoto: <token>`, o token de uma
+  sessão remota aceita (`secrets.token_urlsafe(32)`, gerado a cada sessão e revogado quando ela acaba). O cabeçalho
+  com token errado, vencido ou vindo de fora do `127.0.0.1` responde 401, mesmo do `127.0.0.1`: quem manda o
+  cabeçalho nunca cai no papel do PC. Comando fora da lista dele, 403; no `POST /api/queue`, ele só põe o `id` de um
+  disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, `title` e
+  `channel` como texto ou `null`, `duration` em segundos (de 0 a 86400) ou `null`, e o alvo e os textos em Unicode
+  válido (UTF-8); o resto é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma
+  sessão abre um token. O que a sessão remota manda e recebe pela internet está no
+  [protocolo da sessão remota](docs/protocolo-remoto.md).
+
+| rota | `pc` | `celular` | `remoto` | `publico` |
+|---|---|---|---|---|
+| as páginas e os arquivos dos temas (`/t/...`), a galeria (`/`), os ícones, `GET /api/themes`, `POST /api/parear` | sim | sim | 403 | sim |
+| `GET /api/state`, `GET /api/events` | sim | sim | sim | 401 |
+| `POST /api/play`, `POST /api/queue` (o remoto, só disco da prateleira ou vídeo do YouTube), `POST /api/queue/play`, `POST /api/next`, `POST /api/pause`, `POST /api/resume`, `DELETE /api/queue/<qid>`, `POST /api/queue/move` | sim | sim | sim | 401 |
+| `POST /api/volume`, `POST /api/abaixa`, `POST /api/sinal` | sim | 403 | sim | 403 |
+| `GET /api/onda/<id>`, `GET /api/library`, `GET /api/tocadas`, `GET /api/jobs`, `GET /api/search`, `GET /api/musica`, `POST /api/aquece`, `POST /api/library`, `PATCH` e `DELETE /api/library/<id>`, `DELETE /api/queue`, `POST /api/prev`, `POST /api/toggle`, `POST /api/stop`, `POST /api/seek`, `POST /api/settings`, `GET /api/effects`, `POST /api/pedal_voz`, `GET` e `POST /api/devices`, `GET /api/boas-vindas`, `POST /api/shutdown`, `GET /api/lan` | sim | sim | 403 | 401 |
+| `POST /api/effects/reload`, `POST /api/boas-vindas`, `POST /api/janela/foco`, `/api/metricas`, `/api/atualizacao/...`, `/api/pareamento/...`, e toda rota fora da tabela | sim | 403 | 403 | 403 |
+
+`caps` = `{"papel": "pc" | "celular" | "remoto" | "publico", "rotas": ["POST /api/play", ...]}`: as rotas da API que
+esse papel alcança, em ordem, no formato `"<MÉTODO> <rota>"`. Vem no `GET /api/state`, no 401 do pareamento (o do
+`publico`) e como o primeiro evento do `GET /api/events`. O papel não muda numa conexão do SSE: o celular
+desconectado e a sessão remota encerrada recebem o `desconectado` e a conexão fecha.
+
 ## Celular: pareamento
 
 O PC (quem fala pelo `127.0.0.1`) usa tudo. Pela rede de casa, as páginas dos temas, a
-galeria e o `GET /api/themes` abrem para qualquer um, mas o resto da API responde **401**
-`{"ok": false, "parear": true, "desconectado": bool, "error": Mensagem}` até o celular parear;
-`desconectado` diz que ele mandou uma chave que não vale mais (o PC desconectou). O
+galeria e o `GET /api/themes` abrem para qualquer um, mas o resto da API que o celular pode usar responde **401**
+`{"ok": false, "parear": true, "desconectado": bool, "error": Mensagem, "caps": {...}}` até o celular parear;
+`desconectado` diz que ele mandou uma chave que não vale mais (o PC desconectou); `caps` é o do pré-pareamento (ver
+"Quem pode cada rota"); no `--mock`, vem também `"mock": true`. O que é só do PC responde 403, pareado ou não. O
 `/api/events` também responde 401, e o `EventSource` não mostra o status: quando ele fecha de
 vez, peça o `/api/state` para saber se é o 401.
 
@@ -343,8 +402,9 @@ vez, peça o `/api/state` para saber se é o 401.
   lugar a outro sozinhos no próximo `GET /api/pareamento`.
 - Pareado, o celular ganha a chave num cookie (`HttpOnly`, `SameSite=Strict`), que vale até o
   PC desconectar. Cada `GET /api/state` renova o prazo do cookie no navegador.
-- `GET /api/pareamento`: `url` = o endereço do tema (`caminho`) na rede de casa, ou `null`
-  sem rede (aí `codigo` e `qr` também vêm `null`); `codigo` = o de agora, ou `null` quando
+- `GET /api/pareamento`: `url` = o endereço do tema (`caminho`) na rede de casa (no
+  `--mock --papel-local celular`, o do `127.0.0.1`), ou `null` sem rede (aí `codigo` e `qr`
+  também vêm `null`); `codigo` = o de agora, ou `null` quando
   `queimado`; `vale_s` = quantos segundos ele ainda vale; `qr` = as linhas do QR do link
   `<url>?parear=<codigo>`, de cima para baixo, com `"1"` no módulo escuro e sem a margem
   (desenhe 4 módulos claros em volta); `celulares` = `[{"id", "nome", "desde", "visto"}]`,
@@ -459,11 +519,14 @@ passo do microfone e do fone, do mesmo microfone no jogo e nas chamadas (no Disc
 Estúdio), da primeira música e do celular. Fechar de
 qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.
 
-Os dados de uso e os erros (`GET /api/metricas`), no PC: com `"decidir"`, todo tema mostra uma vez o
+Os dados de uso e os erros (`GET /api/metricas`), no PC: com `"decidir"`, e com `"ligada"` e o `texto`
+menor que o `texto_atual` (quem ligou num texto que não falava do que vai agora), todo tema mostra uma vez o
 que vai (o texto do `PRIVACIDADE.md`, ou um resumo com o link da `politica`) e os botões Enviar e
 Não enviar, que mandam o `POST /api/metricas`; fechar sem escolher pergunta de novo na próxima vez,
-e nada sai antes. Com `"ligada"` ou `"desligada"`, o tema mostra a situação e o botão de trocar
-junto da escolha de microfone e fone. A SignPath pede que a pessoa possa desligar.
+e nada sai antes (com `"ligada"` e o texto de antes, só o que esse texto dizia). Com `"ligada"` ou `"desligada"`, o tema mostra a situação e o botão de trocar
+junto da escolha de microfone e fone. Ligar por esse botão com o `texto` menor que o `texto_atual` mostra antes o
+aviso (o texto de agora), e o `POST` sai do Enviar dele; com o texto de agora, liga direto. A SignPath pede que a
+pessoa possa desligar.
 
 ## Teste sem som
 
@@ -471,7 +534,13 @@ junto da escolha de microfone e fone. A SignPath pede que a pessoa possa desliga
 dispositivo de áudio (relógio falso, voz falsa no medidor, download fingido em 3 s), com
 uma cópia da biblioteca numa pasta temporária, apagada quando o servidor fecha, ou em
 `--data-dir <pasta>`. A pasta de quem usa o `--mock` recusa: o download fingido copia o disco
-mais curto com outro nome, e lá viraria disco falso na prateleira. Print: `python dev/shot.py <url> <png> [--size
+mais curto com outro nome, e lá viraria disco falso na prateleira. No `--mock`, os dados de uso ficam em `"fora"`;
+com `--metricas-teste` (só junto do `--mock`), o aviso e a escolha funcionam, sem ler a escolha do instalador, e o que
+sairia fica só na memória do servidor, sem rede nenhuma. Com `--papel-local celular` (só junto do `--mock`), o
+`http://127.0.0.1:<porta>` faz o papel do celular da rede de casa: o 401 do pareamento com o `caps` do pré-pareamento,
+o cookie do `POST /api/parear`, o `caps` do celular e a revogação fechando o SSE, como de outro aparelho; o
+`http://localhost:<porta>`, com os cookies separados no navegador, segue o PC, e nele o `GET /api/pareamento` gera o
+código com o `url` em `http://127.0.0.1:<porta>`. Print: `python dev/shot.py <url> <png> [--size
 390x844] [--js "..."] [--tab N] [--reduced-motion] [--offline-ok]`, que também lista os erros
 do console (`--tab` aperta Tab para o anel de foco aparecer; `--offline-ok` não conta a
 reconexão do SSE com o servidor fora).

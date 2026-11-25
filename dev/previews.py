@@ -25,14 +25,14 @@ def main():
     ap.add_argument("slugs", nargs="*")
     ap.add_argument("--port", type=int, help="porta do servidor de teste; sem ela, uma livre")
     a = ap.parse_args()
-    porta = a.port or compara.free_port()
+    porta = a.port or compara.free_port()  # o --port 8799 sai no sobe_servidor, antes de qualquer pedido
     slugs = a.slugs or sorted(p.name for p in (HERE / "themes").iterdir()
                               if (p / "index.html").exists())
     tmp = Path(tempfile.mkdtemp(prefix="sbprev_"))
     with open(tmp / "srv.log", "wb") as log:
         srv = compara.sobe_servidor(tmp, porta, log)
         try:
-            compara.monta_tocando(porta)
+            compara.monta_tocando(srv)
             rc = 0
             for s in slugs:
                 pasta = HERE / "themes" / s
@@ -47,7 +47,7 @@ def main():
                     rc |= r.returncode
             return rc
         finally:
-            compara.para_servidor(srv, porta)
+            compara.para_servidor(srv)
 
 
 if __name__ == "__main__":

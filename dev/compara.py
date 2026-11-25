@@ -1,13 +1,20 @@
-"""Confere se a tela do celular mudou: prints do tema em estados fixos, comparados pixel a pixel com os de
-referencia. E o gate da passagem do PC para pixel art: o celular tem que sair identico.
+"""Confere se a tela mudou, no celular e na mesa do PC: prints do tema em estados fixos, comparados pixel a pixel com
+os de referencia.
 
     python dev/compara.py --ref     (antes de mexer no tema: grava os prints de referencia)
-    python dev/compara.py           (depois: tira de novo e compara; sai 1 se algo mudou)
-        [--pasta logs/compara] [--sizes 390x844@3,360x780@2.625] [--wait 0.6] [--lang pt_BR]
+    python dev/compara.py           (depois: tira de novo e compara)
+        [--pasta logs/compara] [--sizes 390x844@3,1920x1080@1] [--wait 0.6] [--lang pt_BR] [--raiz <pasta>]
 
-Sobe o proprio servidor (server.py --mock numa porta livre) com uma prateleira de mentira, sempre a mesma,
-e os dados numa pasta temporaria (com a LOCALAPPDATA trocada: o Ritmelli de verdade nem fica sabendo). Os
-prints saem pelo Chrome headless, como no dev/shot.py, na densidade de tela de cada celular (o @ do
+Sai 0 com todos os prints iguais e 2 se algum mudou. Sai 1 se a captura nao vale: o servidor ou o tema que nao sobe,
+um erro no console da pagina, um print instavel ou a referencia que falta; ai nada foi comparado.
+
+O --raiz tira os prints do servidor e do tema de outro checkout do Ritmelli (o da base de um PR, num worktree), com o
+compara.py, o Chrome e os cenarios daqui: o testa.yml grava a referencia com o --raiz da base e compara com o PR.
+
+Sobe o proprio servidor (server.py --mock numa porta livre, pelo dev/so_mock.py: nunca a 8799, nem uma porta em que
+alguem ja responde, e so manda pedido a ele enquanto ele esta vivo e responde como --mock) com uma prateleira de
+mentira, sempre a mesma, e os dados numa pasta temporaria (com a LOCALAPPDATA trocada: o Ritmelli de verdade nem fica
+sabendo). Os prints saem pelo Chrome headless, como no dev/shot.py, na densidade de tela de cada celular (o @ do
 tamanho). Para o mesmo tema dar o mesmo print toda vez:
 - as capas sao desenhos em data: URI e as fontes moram no tema (themes/ritmelli/fonts/; o bloqueio do
   Google Fonts fica de guarda, caso alguma volte a apontar para la): nada vem da internet;
@@ -17,8 +24,10 @@ tamanho). Para o mesmo tema dar o mesmo print toda vez:
 
 Dois cenarios: vazio (nada no prato) e tocando (um disco pausado no meio, um efeito ligado e dois discos na
 fila). Em cada um, a pagina inicial e o palco aberto, rolando de tela em tela; no vazio tambem o menu de
-um disco e o dialogo Microfone e fone. Os prints ficam em <pasta>/ref e <pasta>/agora; o que mudou vai
-para <pasta>/diff, em vermelho por cima do print novo apagado.
+um disco e o dialogo Microfone e fone. O tamanho de PC (o 1920x1080, ou outro em que a mesa liga) sai como o PC: sem o
+toque, sem o celular emulado, com o performance.now parado (o letreiro dos toca-discos fica no comeco), so depois de a
+mesa (o body.mesa-dj) montar e sem o palco, que na mesa nao abre. Os prints ficam em <pasta>/ref e <pasta>/agora; o
+que mudou vai para <pasta>/diff, em vermelho por cima do print novo apagado.
 """
 import argparse
 import asyncio
@@ -41,11 +50,13 @@ import websockets
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fitcheck import CHROME, fecha_chrome, free_port  # noqa: E402
+import so_mock  # noqa: E402
+from fitcheck import CHROME, barra_outra_origem, erro_da_pagina, fecha_chrome  # noqa: E402
+from so_mock import free_port  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
-# o celular pequeno, o de sempre, o grande e o tablet em pe (abaixo de 900 px tambem e o layout do celular)
-SIZES = "360x780@2.625,390x844@3,430x932@3,768x1024@2"
+# o celular pequeno, o de sempre, o grande e o tablet em pe (abaixo de 900 px tambem e o layout do celular), e o PC
+SIZES = "360x780@2.625,390x844@3,430x932@3,768x1024@2,1920x1080@1"
 
 # id, titulo, canal, duracao (s), capa (de, ate, cor, forma; None = a capa que o tema gera), onde parou (s), vezes
 DISCOS = [
@@ -87,9 +98,17 @@ SEM_NIVEIS = """(() => {
     }, ...resto);
   };
 })();"""
+# na mesa, antes de qualquer script do tema: o performance.now parado no comeco da pagina. O letreiro das telas dos
+# toca-discos anda pelo relogio mesmo com o movimento reduzido, e dois prints seguidos saiam com o titulo em outro lugar
+RELOGIO_PARADO = "(() => { const t0 = performance.now(); performance.now = () => t0; })();"
 PRONTO = ("document.readyState === 'complete' && document.fonts.status === 'loaded' && !!S.state && "
           "S.lib.length > 0 && [...document.images].every(i => i.complete)")
 PALCO = "document.querySelector('#palco')"
+
+
+def na_mesa(w, h):
+    """O tamanho liga a mesa do PC: o mqUnica do tema, 1400 px de largura e a proporcao de 20/19 para cima."""
+    return w >= 1400 and w * 19 >= h * 20
 
 
 def capa(de, ate, cor, forma):
@@ -120,11 +139,17 @@ def prateleira():
     return itens
 
 
-def sobe_servidor(tmp, porta, log):
+def sobe_servidor(tmp, porta, log, raiz=RAIZ, config=None, extras=(), env=None):
+    """O servidor --mock do checkout raiz na porta, com a prateleira de mentira: o so_mock.Filho dele. Sai antes de
+    qualquer pedido se a porta e a 8799, se alguem ja responde nela ou se quem responde nao e o filho vivo com o
+    "mock": true. config: o config.json dos dados dele, gravado antes de subir; extras: mais argumentos do server.py
+    (o --metricas-teste do fitcheck --metricas); env: mais variaveis para ele (a rede presa numa armadilha)."""
     dados, lib = tmp / "dados", tmp / "local" / "Ritmelli" / "library"
     dados.mkdir(parents=True)
     lib.mkdir(parents=True)
     (dados / "library.json").write_text(json.dumps(prateleira(), ensure_ascii=False), encoding="utf-8")
+    if config is not None:
+        (dados / "config.json").write_text(json.dumps(config), encoding="utf-8")
     dur = next(d[3] for d in DISCOS if d[0] == NO_PRATO)
     with wave.open(str(lib / f"{NO_PRATO}.wav"), "wb") as w:
         w.setnchannels(1)
@@ -132,71 +157,58 @@ def sobe_servidor(tmp, porta, log):
         w.setframerate(8000)
         w.writeframes(bytes(2 * 8000 * dur))
     # sys.executable e o python de verdade: o "python" do PATH, com a LOCALAPPDATA trocada, instalaria outro
-    srv = subprocess.Popen([sys.executable, str(RAIZ / "server.py"), "--mock", "--no-browser", "--port", str(porta),
-                            "--data-dir", str(dados)], cwd=RAIZ, stdout=log, stderr=subprocess.STDOUT,
-                           env=dict(os.environ, LOCALAPPDATA=str(tmp / "local")))
-    for _ in range(300):
-        if srv.poll() is not None:
-            sys.exit(f"o servidor de teste nao subiu (ver {log.name})")
-        try:
-            api(porta, "GET", "/api/state")
-            return srv
-        except OSError:
-            time.sleep(0.1)
-    srv.kill()
-    sys.exit(f"o servidor de teste nao respondeu em 30 s (ver {log.name})")
-
-
-def para_servidor(srv, porta):
     try:
-        api(porta, "POST", "/api/shutdown")
-        srv.wait(10)
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        srv.kill()
-        srv.wait()
+        return so_mock.sobe([sys.executable, str(raiz / "server.py"), "--mock", "--no-browser", "--port", str(porta),
+                             "--data-dir", str(dados), *extras], porta, cwd=raiz, stdout=log, stderr=subprocess.STDOUT,
+                            env=dict(os.environ, **(env or {}), LOCALAPPDATA=str(tmp / "local")))
+    except so_mock.Recusa as ex:
+        sys.exit(f"{ex} (ver {log.name})")
 
 
-def api(porta, metodo, rota, corpo=None):
-    req = urllib.request.Request(f"http://127.0.0.1:{porta}{rota}", method=metodo,
-                                 data=None if corpo is None else json.dumps(corpo).encode(),
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return json.load(r)
+def para_servidor(srv):
+    """O /api/shutdown so ao filho vivo que responde como --mock; se nao, o handle dele."""
+    srv.encerra()
 
 
-def monta_tocando(porta):
-    """O disco pausado no meio, um efeito ligado e dois discos na fila."""
-    ef = next(e["id"] for e in api(porta, "GET", "/api/effects") if e["grupo"])
-    api(porta, "POST", "/api/settings", {"effect": ef})
-    api(porta, "POST", "/api/play", {"id": NO_PRATO, "start": PAUSA_EM})
+def monta_tocando(srv):
+    """O disco pausado no meio, um efeito ligado e dois discos na fila. Cada pedido confere antes o filho e o marcador
+    (so_mock.Filho.api); se a conferencia falha, so o filho sai."""
+    try:
+        _monta_tocando(srv.api)
+    except so_mock.Recusa as ex:
+        srv.mata()
+        sys.exit(f"o cenario tocando parou: {ex}")
+
+
+def _monta_tocando(api):
+    ef = next(e["id"] for e in api("GET", "/api/effects") if e["grupo"])
+    api("POST", "/api/settings", {"effect": ef})
+    api("POST", "/api/play", {"id": NO_PRATO, "start": PAUSA_EM})
     for _ in range(100):
-        if api(porta, "GET", "/api/state")["status"] == "playing":
+        if api("GET", "/api/state")["status"] == "playing":
             break
         time.sleep(0.1)
-    api(porta, "POST", "/api/pause")
-    api(porta, "POST", "/api/seek", {"t": PAUSA_EM})
+    api("POST", "/api/pause")
+    api("POST", "/api/seek", {"t": PAUSA_EM})
     for iid in NA_FILA:
-        api(porta, "POST", "/api/queue", {"id": iid})
-    s = api(porta, "GET", "/api/state")
+        api("POST", "/api/queue", {"id": iid})
+    s = api("GET", "/api/state")
     if s["status"] != "paused" or len(s["queue"]) != len(NA_FILA):
         sys.exit(f"o cenario tocando nao montou: status {s['status']}, {len(s['queue'])} na fila")
 
 
 class Chrome:
-    def __init__(self, ws):
-        self.ws, self.seq, self.pend, self.erros = ws, 0, {}, []
+    def __init__(self, ws, base):
+        self.ws, self.seq, self.pend, self.erros, self.barrados = ws, 0, {}, [], []
+        self.fetch = barra_outra_origem(ws, base, self.barrados)  # o documento de outra origem, barrado
 
     async def le(self):
         async for raw in self.ws:
             m = json.loads(raw)
             if m.get("id") in self.pend:
                 self.pend.pop(m["id"]).set_result(m)
-            elif m.get("method") == "Runtime.exceptionThrown":
-                d = m["params"]["exceptionDetails"]
-                self.erros.append("excecao: " + (d.get("exception", {}).get("description") or d.get("text", "")))
-            elif m.get("method") == "Runtime.consoleAPICalled" and m["params"]["type"] == "error":
-                self.erros.append("console.error: " + " ".join(str(x.get("value", x.get("description", "")))
-                                                                for x in m["params"]["args"]))
+            elif not self.fetch(m) and (e := erro_da_pagina(m)):
+                self.erros.append(e)
 
     async def cmd(self, metodo, **params):
         self.seq += 1
@@ -233,7 +245,7 @@ def diferenca(pa, pb, arquivo):
     return m
 
 
-async def prints(a, porta, destino):
+async def prints(a, srv, destino):
     instaveis = []
     prof = tempfile.mkdtemp(prefix="sbcomp_")
     cport = free_port()
@@ -256,20 +268,26 @@ async def prints(a, porta, destino):
         if not ws_url:
             sys.exit("chrome headless nao subiu")
         async with websockets.connect(ws_url, max_size=64 * 1024 * 1024) as ws:
-            c = Chrome(ws)
+            c = Chrome(ws, srv.base)
             leitor = asyncio.create_task(c.le())
             for d in ("Page", "Runtime", "Network"):
                 await c.cmd(f"{d}.enable")
             await c.cmd("Network.setBlockedURLs", urls=["*fonts.googleapis.com*", "*fonts.gstatic.com*"])
             await c.cmd("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
-            await c.cmd("Emulation.setTouchEmulationEnabled", enabled=True, maxTouchPoints=5)
             await c.cmd("Page.addScriptToEvaluateOnNewDocument", source=SEM_NIVEIS)
+            await c.cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
 
             async def estado(nome):
                 await asyncio.sleep(a.wait)
                 p1 = await c.png()
                 await asyncio.sleep(0.5)
                 p2 = await c.png()
+                if c.barrados:  # a pagina foi embora durante o estado: o print nao vale
+                    sys.exit(f"{nome}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
+                try:
+                    srv.confere()  # o filho seguiu vivo e --mock durante o estado
+                except so_mock.Recusa as ex:
+                    sys.exit(f"{nome}: {ex}")
                 (destino / f"{nome}.png").write_bytes(p2)
                 if p1 != p2:
                     pa, pb = pixels(p1), pixels(p2)
@@ -279,26 +297,49 @@ async def prints(a, porta, destino):
                         instaveis.append(f"{nome}: {int(m.sum())} pixels, ate {delta} de 255")
                 print(f"  {nome}", flush=True)
 
+            relogio = None
             for cenario in ("vazio", "tocando"):
                 if cenario == "tocando":
-                    monta_tocando(porta)
+                    monta_tocando(srv)
                 for sz in a.sizes.split(","):
                     tam, dpr = sz.split("@")
                     w, h = map(int, tam.split("x"))
                     pre = f"{cenario}-{tam}"
+                    # o celular com o toque; o PC (a mesa) sem ele, com o mouse
+                    mesa = na_mesa(w, h)
+                    await c.cmd("Emulation.setTouchEmulationEnabled", enabled=not mesa, maxTouchPoints=1 if mesa else 5)
                     await c.cmd("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=float(dpr),
-                                mobile=True)
-                    await c.cmd("Page.navigate", url=f"http://127.0.0.1:{porta}/t/ritmelli/?lang={a.lang}")
+                                mobile=not mesa)
+                    if relogio:
+                        await c.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=relogio)
+                    relogio = None
+                    if mesa:
+                        r = await c.cmd("Page.addScriptToEvaluateOnNewDocument", source=RELOGIO_PARADO)
+                        relogio = r["identifier"]
+                    try:
+                        srv.confere()  # a pagina so do filho vivo que responde como --mock
+                    except so_mock.Recusa as ex:
+                        sys.exit(f"{pre}: {ex}")
+                    await c.cmd("Page.navigate", url=f"{srv.base}/t/ritmelli/?lang={a.lang}")
                     for _ in range(200):
                         await asyncio.sleep(0.1)
+                        if c.barrados:
+                            sys.exit(f"{pre}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
                         try:
-                            if await c.js(PRONTO):
+                            if await c.js(PRONTO + (" && document.body.classList.contains('mesa-dj')" if mesa else "")):
                                 break
                         except RuntimeError:  # a pagina ainda nao tem o S
                             pass
                     else:
-                        sys.exit(f"{pre}: o tema nao ficou pronto em 20 s")
+                        sys.exit(f"{pre}: o tema nao ficou pronto em 20 s" + (" (sem o body.mesa-dj)" if mesa else ""))
                     await asyncio.sleep(1)
+                    if mesa:
+                        # o ponto de toque do visor (movimento reduzido) fica onde o primeiro desenho o ancorou, e o
+                        # visor pode ter desenhado antes da mesa montar (noutra largura), antes das fontes ou antes da
+                        # posicao do disco chegar. Ancora de novo depois da espera, com as fontes prontas, e desenha na
+                        # hora: o temporizador do visor so redesenha com disco no prato, e no vazio a ancora velha ficava
+                        await c.js("document.fonts.ready.then(() => { V.ancora = null; V.sujo = true; "
+                                   "desenharVisor(performance.now()); })")
                     for i in range(await c.js("Math.ceil(document.documentElement.scrollHeight / innerHeight)")):
                         await c.js(f"scrollTo(0, {i} * innerHeight)")
                         await estado(f"{pre}-inicio-{i}")
@@ -318,6 +359,8 @@ async def prints(a, porta, destino):
                             await asyncio.sleep(0.1)
                         await estado(f"{pre}-dialogo")
                         await c.js("document.querySelector('#dlg-disp').close()")
+                    if mesa:  # a mesa ja e o palco inteiro, numa tela so
+                        continue
                     await c.js("document.querySelector('#mini-abrir').click()")
                     await asyncio.sleep(0.5)
                     for i in range(await c.js(f"(p => Math.ceil(p.scrollHeight / p.clientHeight))({PALCO})")):
@@ -366,10 +409,17 @@ def main():
     ap.add_argument("--wait", type=float, default=0.6, help="segundos entre cada passo e o print")
     # o Chrome sem cabeca pede ingles: sem o ?lang=, a tela sairia na lingua dele, e nao na das referencias
     ap.add_argument("--lang", default="pt_BR", help="a lingua da tela (pt_BR ou en); a referencia e a comparacao na mesma")
+    ap.add_argument("--raiz", default=str(RAIZ), help="o checkout do Ritmelli cujo servidor e tema saem nos prints")
     a = ap.parse_args()
     pasta = Path(a.pasta)
-    if not a.ref and not (pasta / "ref").exists():
-        sys.exit(f"sem referencia em {pasta / 'ref'}: rode antes com --ref, no tema de antes da mudanca")
+    raiz = Path(a.raiz).resolve()
+    if not (raiz / "server.py").exists():
+        sys.exit(f"sem o server.py em {raiz}: o --raiz e a pasta de um checkout do Ritmelli")
+    shutil.rmtree(pasta / "diff", ignore_errors=True)  # a rodada que nao compara nao deixa o diff de antes
+    sem_ref = [t for t in (s.split("@")[0] for s in a.sizes.split(",")) if not any((pasta / "ref").glob(f"*-{t}-*.png"))]
+    if not a.ref and sem_ref:
+        sys.exit(f"sem referencia em {pasta / 'ref'} para {', '.join(sem_ref)}: rode antes com --ref, no tema de antes da "
+                 "mudanca")
     # a referencia nova nasce ao lado da antiga: refazer a antiga pede o tema de antes da mudanca
     destino = pasta / ("ref.novo" if a.ref else "agora")
     shutil.rmtree(destino, ignore_errors=True)
@@ -378,11 +428,11 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-compara-"))
     porta = free_port()
     with open(pasta / "servidor.log", "w", encoding="utf-8") as log:
-        srv = sobe_servidor(tmp, porta, log)
+        srv = sobe_servidor(tmp, porta, log, raiz)
         try:
-            erros, instaveis = asyncio.run(prints(a, porta, destino))
+            erros, instaveis = asyncio.run(prints(a, srv, destino))
         finally:
-            para_servidor(srv, porta)
+            para_servidor(srv)
             shutil.rmtree(tmp, ignore_errors=True)
     for e in erros:
         print(f"ERRO   {e}")
@@ -396,7 +446,10 @@ def main():
         destino.rename(pasta / "ref")
         print(f"{len(list((pasta / 'ref').glob('*.png')))} prints de referencia em {pasta / 'ref'}")
         return 0
-    return 1 if compara(pasta, [s.split("@")[0] for s in a.sizes.split(",")]) or erros or instaveis else 0
+    if erros or instaveis:
+        print("a captura nao vale: nada foi comparado")
+        return 1
+    return 2 if compara(pasta, [s.split("@")[0] for s in a.sizes.split(",")]) else 0
 
 
 if __name__ == "__main__":

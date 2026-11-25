@@ -1,0 +1,220 @@
+{
+ "cenario": "volta-e-virada",
+ "descricao": "A volta do Repetir e a virada para outro disco no mesmo intervalo entre dois ticks: a ancora da volta sai com o disco que saiu, e a da virada com o que entrou, cada uma no instante dela.",
+ "relogio": {
+  "t0_ms": 1000000.0,
+  "taxa": 48000
+ },
+ "mensagens": [
+  {
+   "evento": "inicio",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 1,
+    "origem": "inicio",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 0.1,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [
+      {
+       "qid": "00000001",
+       "id": "B",
+       "title": "Disco B",
+       "channel": null,
+       "duration": 3.0,
+       "youtube_id": null,
+       "thumb": null,
+       "auto": false
+      }
+     ],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 0.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 4800,
+        "v": 1.0
+       },
+       {
+        "n": 4800,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 4800,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 4800,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "fronteira",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 2,
+    "origem": "mudanca",
+    "agora": 1000140.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "A",
+      "title": "Disco A",
+      "channel": null,
+      "duration": 0.1,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [
+      {
+       "qid": "00000001",
+       "id": "B",
+       "title": "Disco B",
+       "channel": null,
+       "duration": 3.0,
+       "youtube_id": null,
+       "thumb": null,
+       "auto": false
+      }
+     ],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "A",
+      "pos": 0.0,
+      "t": 1000100.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": 4800,
+        "v": 1.0
+       },
+       {
+        "n": 4800,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": 4800,
+        "v": 1.0,
+        "pos": 0.0
+       },
+       {
+        "n": null,
+        "v": 1.0,
+        "pos": 0.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "evento": "troca",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 3,
+    "origem": "mudanca",
+    "agora": 1000140.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "B",
+      "title": "Disco B",
+      "channel": null,
+      "duration": 3.0,
+      "youtube_id": null,
+      "thumb": null,
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "B",
+      "pos": 0.0,
+      "t": 1000120.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

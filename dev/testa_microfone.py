@@ -12,12 +12,19 @@ filtro recusou o efeito, ou o microfone sem o filtro e a voz so no fone) passa p
 e nunca pelo fx.py; sem o voz.dll o motor sobe igual, a voz segue crua e o aviso sai uma vez. O fx.py recarregado
 com o mesmo efeito ligado reenvia o preset ao filtro.
 
+O vigia com o leitor perdido (o motor de verdade, com a partida trocada por uma que so sobe o Injetor no anel falso, e
+a lista de aparelhos parada): o filtro que para de ler com o motor ainda no mesmo microfone faz o vigia reabrir, com
+intervalo e ate o limite de tentativas, e o leitor que volta zera a conta; o leitor que volta sozinho antes do prazo,
+o fim da captura (o motor fechado) e a troca manual de microfone (para um que nunca teve leitor) nao reabrem nada.
+
     microfone\\apo\\compila.bat teste
     python dev/testa_microfone.py
 
 Sai 1 se algo falhar.
 """
+import contextlib
 import ctypes
+import itertools
 import os
 import sys
 import threading
@@ -125,6 +132,12 @@ class MotorFalso:
         self._pista_viva = False
         self._alvo, self._voz_anel_em, self.voz, self.voz_fx = alvo, -1e9, [], []
 
+    def totais_saude(self):  # a janela do evento "audio" (metricas.SaudeAudio)
+        return 0, 0.0
+
+    def em_passagem(self):
+        return False
+
     def voz_pelo_app(self):
         return eng.Engine.voz_pelo_app(self)
 
@@ -140,7 +153,200 @@ class MotorFalso:
         return np.repeat(x[:, None], 2, axis=1)
 
 
+# o vigia em tempo de teste: a lista lida a cada 50 ms, o leitor dado como perdido em 0,3 s e as reaberturas a cada
+# 0,3 s, ate 3 (create: o motor de antes da recuperacao nao tem esses nomes, e o caso persistente falha nele)
+VIGIA_RAPIDO = {"VIGIA_S": 0.05, "LEITOR_PERDIDO_S": 0.3, "LEITOR_INTERVALO_S": 0.3, "LEITOR_TENTATIVAS": 3}
+LISTA = {"inputs": ["Mic", "Mic2"], "outputs": [], "default_input": "Mic", "default_output": None}
+ALVOS = {"Mic": ALVO, "Mic2": OUTRO}  # o Mic e o que o AnelFalso le; o Mic2, ninguem
+
+
+class VigiaNoAnel:
+    """O Engine de verdade com o vigia rodando, a lista de aparelhos parada (LISTA) e a partida (start) trocada por uma
+    que so sobe o Injetor no anel falso, com o alvo do microfone escolhido (ALVOS). Guarda cada abertura (microfone,
+    monotonic)."""
+
+    def __init__(self):
+        self.e = e = eng.Engine(mic="Mic", monitor="")
+        self.aberturas = []
+        e.start = self._start
+        self._patches = contextlib.ExitStack()
+        self._patches.enter_context(mock.patch.multiple(eng, create=True, **VIGIA_RAPIDO))
+        self._patches.enter_context(mock.patch.object(eng, "list_devices_live", return_value=LISTA))
+        self._patches.enter_context(mock.patch.object(eng, "_rescan"))
+        with e._lock:
+            e.start()
+        e._vigia = threading.Thread(target=e._vigia_loop, daemon=True)
+        e._vigia.start()
+
+    def _start(self, reserva=False, fixos=()):
+        e = self.e
+        e._fechado = False
+        mic = e.devices["mic"]
+        e.active = {"mic": mic, "monitor": ""}
+        e._alvo = ALVOS[mic]
+        st = contextlib.ExitStack()
+        segue = e._saude_segue  # como o start: a reabertura do leitor perdido continua a janela, no mesmo microfone
+        inj = eng.Injetor(e, segue[1] if segue and segue[0] == mic else None)
+        st.callback(inj.para)
+        e._stack, e._injetor = st, inj
+        self.aberturas.append((mic, time.monotonic()))
+
+    def reaberturas(self):
+        return len(self.aberturas) - 1
+
+    def fecha(self):
+        self.e.close()  # o vigia segue vivo, mas parado: o motor esta fechado
+        self._patches.close()
+
+
 class TestaMicrofone(unittest.TestCase):
+    def _espera_leitor(self, v):
+        prazo = time.monotonic() + 2.0
+        while not v.e._injetor.leitores and time.monotonic() < prazo:
+            time.sleep(0.01)
+        self.assertTrue(v.e._injetor.leitores, "o Injetor nao viu o leitor do anel")
+
+    def test_vigia_reabre_o_leitor_perdido(self):
+        """O filtro do microfone em uso para de ler e nao volta, com o motor ainda capturando o mesmo microfone e a
+        lista de aparelhos parada: o vigia reabre o audio depois de LEITOR_PERDIDO_S, a cada LEITOR_INTERVALO_S, no
+        maximo LEITOR_TENTATIVAS vezes; o leitor que volta zera a conta, e a perda seguinte reabre de novo."""
+        anel = AnelFalso()
+        anel.liga()
+        v = VigiaNoAnel()
+        try:
+            self._espera_leitor(v)
+            janela = v.e._injetor.saude
+            time.sleep(0.3)
+            self.assertEqual(v.reaberturas(), 0, "com o leitor vivo o vigia nao reabre")
+            anel.desliga()  # o filtro parou de ler; o motor segue capturando o mesmo microfone
+            time.sleep(0.3 + 3 * 0.3 + 0.5)
+            self.assertEqual(v.reaberturas(), 3, "o leitor perdido tem que reabrir ate o limite de tentativas")
+            # a janela do evento "audio" segue nas reaberturas, com a perda que as pediu
+            self.assertIs(v.e._injetor.saude, janela, "a reabertura do leitor perdido trocou a janela do audio")
+            self.assertEqual(janela.leitor_perdido, 1, "a perda que pediu a reabertura sumiu da janela do audio")
+            self.assertTrue(all(m == "Mic" for m, _ in v.aberturas), "a reabertura trocou de microfone")
+            em = [t for _, t in v.aberturas[1:]]
+            self.assertTrue(all(b - a >= 0.3 - 0.02 for a, b in itertools.pairwise(em)), "reabriu sem o intervalo")
+            time.sleep(0.6)
+            self.assertEqual(v.reaberturas(), 3, "passou do limite de tentativas")
+            anel.liga()  # o filtro voltou a ler: a conta zera
+            self._espera_leitor(v)
+            time.sleep(0.2)
+            anel.desliga()
+            time.sleep(0.3 + 0.4)
+            self.assertGreaterEqual(v.reaberturas(), 4, "depois de o leitor voltar, a perda nova nao reabriu")
+        finally:
+            v.fecha()
+            if anel._vai:
+                anel.desliga()
+
+    def test_recupera_leitor_conta(self):
+        """A conta do _recupera_leitor num relogio controlado, sem threads: o leitor que volta e some de novo entre
+        duas voltas do vigia recomeca a conta (e o prazo) da perda nova; a reabertura que falha (sem stream nenhum)
+        segue na conta, no intervalo e ate o limite."""
+        e = eng.Engine(mic="Mic", monitor="")
+        e.active = {"mic": "Mic", "monitor": ""}
+        agora = [100.0]
+        reaberturas = []
+
+        def injetor(perdeu_em=None):
+            return mock.Mock(leitores=0, perdeu_em=perdeu_em)
+
+        def reabre(falha=False):
+            reaberturas.append(agora[0])
+            e._stack = None if falha else contextlib.ExitStack()
+            if falha:
+                e._caiu_no_vigia = True
+            else:
+                e._injetor, e._caiu_no_vigia = injetor(), False
+
+        def volta(dt):
+            agora[0] += dt
+            e._recupera_leitor()
+
+        e._stack, e._injetor = contextlib.ExitStack(), mock.Mock(leitores=1, perdeu_em=50.0)
+        with mock.patch.multiple(eng, create=True, LEITOR_PERDIDO_S=10.0, LEITOR_INTERVALO_S=30.0,
+                                 LEITOR_TENTATIVAS=3), \
+                mock.patch.object(eng.time, "monotonic", side_effect=lambda: agora[0]), \
+                mock.patch.object(e, "_reabre", side_effect=reabre):
+            volta(0.0)  # o leitor vivo com um perdeu_em lido antes de ele voltar: nao reabre
+            self.assertEqual(reaberturas, [], "reabriu com o leitor vivo")
+            e._injetor = injetor(perdeu_em=100.0)
+            volta(9.0)
+            self.assertEqual(reaberturas, [], "reabriu antes do prazo")
+            volta(1.0)
+            self.assertEqual(reaberturas, [110.0])
+            # o Injetor novo viu o leitor voltar e sumir de novo entre duas voltas do vigia
+            volta(2.0)
+            e._injetor.perdeu_em = 113.0
+            volta(2.0)
+            self.assertIsNone(e._recupera, "o leitor que voltou nao zerou a conta")
+            volta(7.0)
+            self.assertEqual(reaberturas, [110.0], "reabriu antes do prazo da perda nova")
+            volta(2.0)  # 123: 10 s da perda nova
+            self.assertEqual(reaberturas, [110.0, 123.0])
+            self.assertEqual(e._recupera[1], 1, "a perda nova nao comecou a conta do zero")
+            # as duas proximas falham (sem stream nenhum): seguem no intervalo, ate o limite
+            e._reabre.side_effect = lambda: reabre(falha=True)
+            for _ in range(5):
+                volta(30.0)
+            self.assertEqual(reaberturas, [110.0, 123.0, 153.0, 183.0], "a reabertura que falhou parou a conta")
+            self.assertIsNone(e._stack)
+            e.close()
+            self.assertIsNone(e._recupera, "o motor fechado nao zerou a conta")
+
+    def test_vigia_nao_reabre_o_leitor_que_volta_sozinho(self):
+        """O leitor que some e volta antes de LEITOR_PERDIDO_S (o filtro que o Windows remonta sozinho) nao reabre: o
+        Injetor viu a perda, e o leitor volta logo depois, bem antes do prazo (1 s neste teste)."""
+        anel = AnelFalso()
+        anel.liga()
+        v = VigiaNoAnel()
+        try:
+            with mock.patch.object(eng, "LEITOR_PERDIDO_S", 1.0):
+                self._espera_leitor(v)
+                anel.desliga()
+                prazo = time.monotonic() + 2.0
+                while v.e._injetor.leitores and time.monotonic() < prazo:
+                    time.sleep(0.005)
+                self.assertEqual(v.e._injetor.leitores, 0, "o Injetor nao viu a perda")
+                anel.liga()
+                self._espera_leitor(v)
+                time.sleep(1.5)
+                self.assertEqual(v.reaberturas(), 0, "o leitor voltou sozinho e o vigia reabriu")
+        finally:
+            v.fecha()
+            anel.desliga()
+
+    def test_vigia_nao_reabre_no_fim_da_captura(self):
+        """O motor fechado (a captura acabou, e o filtro para de ler por isso): o vigia nao reabre nada."""
+        anel = AnelFalso()
+        anel.liga()
+        v = VigiaNoAnel()
+        try:
+            self._espera_leitor(v)
+            v.e.close()
+            anel.desliga()
+            time.sleep(1.0)
+            self.assertEqual(v.reaberturas(), 0, "o motor fechado de proposito foi reaberto")
+        finally:
+            v.fecha()
+
+    def test_vigia_nao_reabre_na_troca_manual(self):
+        """A troca manual para um microfone que nunca teve leitor (sem o filtro): o leitor do de antes some com a
+        troca, e o vigia nao reabre nem volta para o de antes."""
+        anel = AnelFalso()
+        anel.liga()
+        v = VigiaNoAnel()
+        try:
+            self._espera_leitor(v)
+            v.e.set_devices(mic="Mic2")
+            anel.desliga()
+            time.sleep(1.0)
+            self.assertEqual([m for m, _ in v.aberturas], ["Mic", "Mic2"], "o vigia mexeu na troca manual")
+            self.assertEqual(v.e.active["mic"], "Mic2")
+        finally:
+            v.fecha()
+
     def test_injetor_no_ritmo_do_leitor(self):
         anel = AnelFalso()
         anel.liga()
@@ -170,6 +376,29 @@ class TestaMicrofone(unittest.TestCase):
         esperado = (np.arange(len(lido)) + round(lido[0] * 100000)) % 100000 / 100000
         np.testing.assert_allclose(lido, esperado.astype(np.float32), atol=0,
                                    err_msg="o que o filtro leu nao e a sequencia do misturador")
+
+    def test_leitor_que_some_no_meio_do_preenchimento(self):
+        """O leitor some entre o vivos() e o enchimento do anel (o na_fila ja nao o ve e da 0): o Injetor escreve no
+        maximo INJ_FOLGA blocos nessa volta e, na seguinte, ve que ficou sem leitor (o vigia depende disso)."""
+        anel = AnelFalso()
+        anel.liga()
+        motor = MotorFalso()
+        inj = eng.Injetor(motor)
+        try:
+            prazo = time.monotonic() + 2.0
+            while not inj.leitores and time.monotonic() < prazo:
+                time.sleep(0.01)
+            self.assertTrue(inj.leitores)
+            with mock.patch.object(injeta.Microfone, "na_fila", return_value=0):
+                time.sleep(0.05)
+                anel.desliga()
+                time.sleep(0.3)
+                self.assertEqual(inj.leitores, 0, "o Injetor ficou preso enchendo o anel sem leitor")
+                self.assertIsNotNone(inj.perdeu_em, "o Injetor nao marcou a perda do leitor")
+        finally:
+            inj.para()
+            if anel._vai:
+                anel.desliga()
 
     def test_leitor_de_outro_microfone_nao_conta(self):
         anel = AnelFalso()
@@ -211,7 +440,8 @@ class TestaMicrofone(unittest.TestCase):
             anel.desliga()
         self.assertTrue(motor.voz, f"a voz crua a {taxa} Hz nao chegou ao motor")
         self.assertTrue(all(len(b) == eng.BLOCK for b in motor.voz), "a voz chega em blocos do motor")
-        self.assertGreater(time.monotonic() - motor._voz_anel_em, 0)
+        # >= 0: no Windows o monotonic anda em tiques de ~15,6 ms, e a ultima voz pode ser do mesmo tique
+        self.assertGreaterEqual(time.monotonic() - motor._voz_anel_em, 0)
         self.assertLess(time.monotonic() - motor._voz_anel_em, 1.0, "o motor nao soube da voz do filtro")
         x = np.concatenate(motor.voz)
         return x

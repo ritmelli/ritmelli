@@ -10,10 +10,17 @@
 ; Desinstalar tira o filtro, devolve o efeito original de cada microfone e apaga as duas tarefas. Os dados de quem usa
 ; (%LOCALAPPDATA%\Ritmelli) ficam.
 ;
+; A pasta do app tem de ser protegida (o protegida.ps1, a mesma regra do pastas.pasta_protegida do app): as duas
+; tarefas rodam como SYSTEM o ritmelli.exe dela, e a de atualizacao roda dali o setup baixado. Por isso nao ha pagina de
+; escolher a pasta: o destino e a instalacao anterior, quando ela passa na regra, ou a Program Files\Ritmelli, ou a
+; primeira Program Files\Ritmelli-N livre quando aquela nao passa. A instalacao anterior que fica para tras (fora de
+; Program Files, ou numa pasta que nao passa) nao e apagada nem desinstalada: so o ritmelli.exe dela vira
+; ritmelli.exe.antigo (renomeia.ps1), e nenhuma tarefa aponta mais para ela. Um /DIR= e conferido do mesmo jeito.
+;
 ; A troca de nome (#58): ate a 0.4.1 o app se chamava Vitrola (vitrola.exe em Program Files\Vitrola, as tarefas
 ; "Vitrola Atualiza" e \Vitrola\Microfone, o HKLM\SOFTWARE\Vitrola). Por cima de uma instalacao dessas, o setup fecha o
-; app de antes, muda a pasta padrao para Program Files\Ritmelli (a escolhida a mao fica), copia o registro antes do
-; filtro, troca as tarefas e, no fim, apaga o que sobrou do app de antes (migra.py). Os dados de quem usa mudam de
+; app de antes (pelo caminho do vitrola.exe, encerra.ps1), muda a pasta para Program Files\Ritmelli, copia o registro
+; antes do filtro, troca as tarefas e, no fim, apaga o que sobrou do app de antes (migra.py, so numa pasta protegida). Os dados de quem usa mudam de
 ; pasta no proprio app, ao abrir (pastas.migra). O AppId e o mesmo: para o Windows e a mesma instalacao.
 ;
 ; Com /DParcial e /DApaga (o monta.ps1 -Anterior), sai a atualizacao parcial, o caminho B do atualizador: o mesmo setup,
@@ -46,9 +53,11 @@ AppVerName=Ritmelli {#Versao}
 AppPublisher=Behling Informática Ltda.
 AppCopyright=Software livre sob a GPLv3 / Free software under the GPLv3
 VersionInfoVersion={#Versao}
-; a pasta da instalacao anterior, menos a padrao de antes da troca de nome (PastaPadrao, no [Code])
+; a pasta da instalacao anterior quando ela e protegida, menos a padrao de antes da troca de nome (PastaPadrao, no
+; [Code]); sem pagina para escolher outra
 DefaultDirName={code:PastaPadrao}
 UsePreviousAppDir=no
+DisableDirPage=yes
 DisableProgramGroupPage=yes
 ; administrador de qualquer jeito: o firewall e o filtro dos microfones pedem
 PrivilegesRequired=admin
@@ -130,6 +139,8 @@ pt.VozesDescricao=O instalador está baixando as vozes Mina e Lira do GitHub (ce
 en.VozesDescricao=Setup is downloading the Mina and Lira voices from GitHub (about {#VozesMB} MB).
 pt.VozesErro=Não foi possível baixar as vozes do pedal de troca de voz (%1).%n%nConfira a conexão com a internet e clique em Instalar para tentar novamente.
 en.VozesErro=Setup couldn't download the voices for the voice changer pedal (%1).%n%nCheck your internet connection and click Install to try again.
+pt.PastaDesprotegida=O Ritmelli não pode ser instalado em %1, porque essa pasta não está protegida contra alterações de outros usuários e programas (%2).%n%nAs tarefas do Ritmelli rodam como sistema e só usam uma pasta que apenas os administradores podem alterar.
+en.PastaDesprotegida=Ritmelli can't be installed in %1, because that folder isn't protected from changes by other users and programs (%2).%n%nRitmelli's tasks run as the system and only use a folder that only administrators can change.
 pt.ParcialSemApp=Esta é uma atualização do Ritmelli e só pode ser aplicada a uma instalação existente. Para instalar o Ritmelli, use o arquivo Ritmelli-{#Versao}-setup.exe.
 en.ParcialSemApp=This is a Ritmelli update and can only be applied to an existing installation. To install Ritmelli, use Ritmelli-{#Versao}-setup.exe.
 ; a pagina dos dados de uso e dos erros (metricas.py): a politica na instalacao e a opcao de desligar, como a SignPath
@@ -140,8 +151,8 @@ pt.MetricasDescricao=O que o Ritmelli pode enviar para melhorar o aplicativo, se
 en.MetricasDescricao=What Ritmelli can send to help improve the app, without identifying you.
 pt.MetricasSub=Leia o que é enviado. Se não quiser enviar, desmarque a caixa abaixo. É possível alterar essa escolha depois no Ritmelli, pelo botão Microfone e fone.
 en.MetricasSub=Review the details below. If you do not want to send this data, clear the check box. You can change this choice later in Ritmelli with the Mic and headphones button.
-pt.MetricasTexto=O Ritmelli pode enviar dados anônimos de uso e relatórios de erro para saber quantas pessoas o usam, se as novas versões chegam até elas, quais erros ocorrem e quais efeitos são usados.%n%nO que é enviado: um código aleatório desta instalação, as versões do Ritmelli e do Windows e o idioma do Windows; um registro por dia de uso; por quanto tempo a música toca e cada efeito de voz fica ativo; e os erros, com a parte do aplicativo em que ocorreram.%n%nO que nunca é enviado: nome, conta, e-mail, músicas, buscas, links, áudio, voz ou o nome dos seus dispositivos. O endereço IP não é armazenado.%n%nPara onde vão os dados: os dados de uso, para o PostHog, e os relatórios de erro, para o Sentry. São dois serviços de outras empresas, com armazenamento na União Europeia. Os dados de uso são mantidos por até 1 ano, e os relatórios de erro, por até 90 dias.%n%nPolítica de privacidade completa: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
-en.MetricasTexto=Ritmelli can send anonymous usage data and error reports so we can learn how many people use it, whether new versions are reaching them, which errors occur, and which effects are used.%n%nWhat is sent: a random ID for this installation, the Ritmelli and Windows versions, and the Windows language; one entry per day of use; how long music plays and how long each voice effect stays on; and errors, with the part of the app where they occurred.%n%nWhat is never sent: name, account, email, music, searches, links, audio, voice, or the names of your devices. Your IP address is not stored.%n%nWhere the data goes: usage data to PostHog and error reports to Sentry, two third-party services that store it in the European Union. Usage data is kept for up to 1 year, and error reports for up to 90 days.%n%nFull privacy policy: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md#ritmelli-privacy-policy
+pt.MetricasTexto=O Ritmelli pode enviar dados anônimos de uso e relatórios de erro para saber quantas pessoas o usam, se as novas versões chegam até elas, se o som chega ao jogo sem falhas, quais erros ocorrem e quais efeitos são usados.%n%nO que é enviado: um código aleatório desta instalação, as versões do Ritmelli e do Windows e o idioma do Windows; um registro por dia de uso; por quanto tempo a música toca e cada efeito de voz fica ativo; a saúde do som que vai para o jogo (quantas vezes ele falhou e quantas dessas foram numa passagem entre músicas ou num ajuste de andamento, a menor folga e a maior demora do envio, quantas passagens e quantos ajustes de andamento houve e quanto tempo os ajustes levaram, quantas vezes e por quanto tempo o microfone deixou de receber a música, por quanto tempo o efeito de voz rodou no filtro do microfone e a voz veio do microfone de reserva, e a taxa do microfone); e os erros, com a parte do aplicativo em que ocorreram.%n%nO que nunca é enviado: nome, conta, e-mail, músicas, buscas, links, áudio, voz ou o nome dos seus dispositivos. O endereço IP não é armazenado.%n%nPara onde vão os dados: os dados de uso, para o PostHog, e os relatórios de erro, para o Sentry. São dois serviços de outras empresas, com armazenamento na União Europeia. Os dados de uso são mantidos por até 1 ano, e os relatórios de erro, por até 90 dias.%n%nPolítica de privacidade completa: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md
+en.MetricasTexto=Ritmelli can send anonymous usage data and error reports so we can learn how many people use it, whether new versions are reaching them, whether the sound reaches the game without dropouts, which errors occur, and which effects are used.%n%nWhat is sent: a random ID for this installation, the Ritmelli and Windows versions, and the Windows language; one entry per day of use; how long music plays and how long each voice effect stays on; the health of the sound sent to the game (how many times it dropped out and how many of those happened during a transition between songs or a tempo adjustment, the smallest buffer and the longest delay in sending, how many transitions and tempo adjustments there were and how long the adjustments took, how many times and for how long the microphone stopped receiving the music, how long the voice effect ran in the microphone filter and the voice came from the backup microphone, and the microphone's sample rate); and errors, with the part of the app where they occurred.%n%nWhat is never sent: name, account, email, music, searches, links, audio, voice, or the names of your devices. Your IP address is not stored.%n%nWhere the data goes: usage data to PostHog and error reports to Sentry, two third-party services that store it in the European Union. Usage data is kept for up to 1 year, and error reports for up to 90 days.%n%nFull privacy policy: https://github.com/ritmelli/ritmelli/blob/main/PRIVACIDADE.md#ritmelli-privacy-policy
 pt.MetricasCaixa=Enviar dados anônimos de uso e relatórios de erro
 en.MetricasCaixa=Send anonymous usage data and error reports
 
@@ -164,6 +175,12 @@ Type: files; Name: "{autodesktop}\Vitrola.lnk"
 #endif
 
 [Files]
+; o que o [Code] roda pelo PowerShell do sistema, so na {tmp}: a regra da pasta protegida, o fim dos processos da
+; instalacao que o setup substitui e a renomeacao do ritmelli.exe da que fica para tras. No comeco do [Files]: com a
+; compressao solida, um arquivo do fim so sairia depois de descomprimir o app inteiro, e o [Code] extrai estes antes
+Source: "protegida.ps1"; Flags: dontcopy
+Source: "encerra.ps1"; Flags: dontcopy
+Source: "renomeia.ps1"; Flags: dontcopy
 #ifdef Parcial
 ; so o que mudou, cada arquivo no caminho dele na pasta do app (a bin\ tambem, se o ffmpeg ou o Deno mudaram)
 Source: "{#Parcial}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -184,6 +201,9 @@ Source: "{#Terceiros}"; DestDir: "{app}"; DestName: "TERCEIROS.txt"; Flags: igno
 ; quando a pessoa viu a pagina, ou com /metricas=0 ou 1: a atualizacao em silencio mantem a escolha de antes (a de
 ; antes da troca de nome vem pelo migra.py), e quem nunca escolheu ve o aviso no Ritmelli antes de qualquer envio
 Root: HKLM; Subkey: "SOFTWARE\Ritmelli"; ValueType: dword; ValueName: "Metricas"; ValueData: "{code:MetricasValor}"; Flags: uninsdeletevalue uninsdeletekeyifempty; Check: GravaMetricas
+; e a versao do texto da pagina (o MetricasTexto acima): o TEXTO do metricas.py, que o dev/testa_metricas.py confere. Quem
+; ligou num texto de antes (sem ela) ve o aviso de novo no Ritmelli
+Root: HKLM; Subkey: "SOFTWARE\Ritmelli"; ValueType: dword; ValueName: "MetricasVersao"; ValueData: "2"; Flags: uninsdeletevalue uninsdeletekeyifempty; Check: GravaMetricas
 
 [Icons]
 Name: "{autoprograms}\Ritmelli"; Filename: "{app}\ritmelli.exe"
@@ -201,10 +221,16 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Ritmelli"" dir=in action=allow program=""{app}\ritmelli.exe"" enable=yes profile=private,public"; StatusMsg: "{cm:Firewall}"; Flags: runhidden
 ; o filtro em todo microfone que ainda nao tem, a DLL desta versao no lugar da velha e a tarefa do Windows que faz o
 ; mesmo depois, chamada pelo app sem UAC (o audio do PC reinicia so se algo mudou: atualizar sem DLL nova nao mexe).
-; O resultado vai para a {tmp}: os aparelhos que ficaram mudos depois do reinicio do audio (#136, mudos.iss)
+; O resultado vai para a {tmp}: os aparelhos que ficaram mudos depois do reinicio do audio (#136, mudos.iss).
+; So o setup completo cria as tarefas: a parcial so troca a DLL, e as tarefas que o app apagou por achar a pasta
+; desprotegida continuam apagadas ate o setup completo
+#ifdef Parcial
+Filename: "{app}\ritmelli.exe"; Parameters: "--microfone instala-todos --saida ""{tmp}\microfone.json"""; StatusMsg: "{cm:Microfone}"; Flags: runhidden
+#else
 Filename: "{app}\ritmelli.exe"; Parameters: "--microfone instala-todos --tarefa --saida ""{tmp}\microfone.json"""; StatusMsg: "{cm:Microfone}"; Flags: runhidden
 ; a tarefa da atualizacao automatica (atualizador.py): no logon e de 4 em 4 horas, como SYSTEM, sem UAC
 Filename: "{app}\ritmelli.exe"; Parameters: "--atualizador tarefa"; Flags: runhidden
+#endif
 ; o que sobrou do app de antes da troca de nome, com o filtro novo ja no lugar (migra.py)
 Filename: "{app}\ritmelli.exe"; Parameters: "--migra limpa"; Flags: runhidden
 ; como quem instalou, e nao como administrador: os dados vao para o %LOCALAPPDATA% dele
@@ -244,16 +270,145 @@ const
   // a chave de desinstalacao do Inno para o AppId: e nela que mora a pasta da instalacao anterior
   ChaveDesinstalar = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{320EB2BD-48BC-420D-8F52-C22F644E47D4}_is1';
 
-// a pasta da instalacao anterior; a padrao de antes da troca de nome (Program Files\Vitrola) vira a nova
-// (Program Files\Ritmelli), e a escolhida a mao fica. Sem instalacao anterior, a nova
-function PastaPadrao(Param: String): String;
+var
+  // a pasta da instalacao anterior, lida no comeco: antes de um /DIR= (que pula o PastaPadrao) e antes de o setup
+  // gravar a pasta nova no registro
+  PastaAnterior: String;
+  // a pasta que o PastaPadrao escolheu (ele confere a regra uma vez so)
+  PastaEscolhida: String;
+
+function InitializeSetup: Boolean;
 var
   Anterior: String;
 begin
-  Result := ExpandConstant('{autopf}\Ritmelli');
-  if RegQueryStringValue(HKLM64, ChaveDesinstalar, 'Inno Setup: App Path', Anterior) and (Anterior <> '') and
-     (CompareText(RemoveBackslashUnlessRoot(Anterior), ExpandConstant('{autopf}\Vitrola')) <> 0) then
-    Result := Anterior;
+  Result := True;
+  if RegQueryStringValue(HKLM64, ChaveDesinstalar, 'Inno Setup: App Path', Anterior) and (Anterior <> '') then
+    PastaAnterior := RemoveBackslashUnlessRoot(Anterior);
+  Log('instalacao anterior: ' + PastaAnterior);
+end;
+
+// o texto entre aspas simples do PowerShell: cada aspa simples dobrada, inclusive as tipograficas, que o PowerShell
+// tambem le como aspa simples (U+2018, U+2019, U+201A e U+201B)
+function Aspas(S: String): String;
+begin
+  StringChangeEx(S, '''', '''''', True);
+  StringChangeEx(S, #$2018, #$2018#$2018, True);
+  StringChangeEx(S, #$2019, #$2019#$2019, True);
+  StringChangeEx(S, #$201A, #$201A#$201A, True);
+  StringChangeEx(S, #$201B, #$201B#$201B, True);
+  Result := '''' + S + '''';
+end;
+
+// roda um .ps1 do setup (extraido para a {tmp}) pelo PowerShell do sistema, como texto: a politica de execucao de
+// scripts do PC nao entra. Args ja vem com as aspas. O .ps1 responde no arquivo Saida; '' sem resposta
+function RodaPs(Script, Args, Saida: String): String;
+var
+  Codigo: Integer;
+  Texto: AnsiString;
+begin
+  Result := '';
+  // nenhum caminho do Windows tem aspas duplas: com uma, o comando entre aspas duplas acabaria no meio
+  if (Pos('"', Args) > 0) or (Pos('"', Saida) > 0) then begin
+    Log(Script + ': argument with a double quote refused');
+    Exit;
+  end;
+  ExtractTemporaryFile(Script);
+  // a resposta de uma vez anterior nunca vale por esta: sem conseguir apaga-la, sem resposta
+  if FileExists(Saida) and not DeleteFile(Saida) then begin
+    Log(Script + ': could not remove the previous answer ' + Saida);
+    Exit;
+  end;
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+              '-NoProfile -NonInteractive -Command "& ([scriptblock]::Create([IO.File]::ReadAllText(' +
+              Aspas(ExpandConstant('{tmp}\') + Script) + '))) ' + Args + ' -Saida ' + Aspas(Saida) + '"',
+              '', SW_HIDE, ewWaitUntilTerminated, Codigo) then
+    Log(Script + ': o PowerShell nao rodou (' + SysErrorMessage(Codigo) + ')')
+  else if Codigo <> 0 then
+    Log(Script + ': o PowerShell saiu com ' + IntToStr(Codigo))
+  else if LoadStringFromFile(Saida, Texto) then
+    Result := Trim(String(Texto));
+end;
+
+// a regra da pasta protegida (protegida.ps1) com a raiz {autopf}: '' se a pasta passa; senao, o motivo
+function Protegida(Pasta: String): String;
+begin
+  Result := RodaPs('protegida.ps1', '-Pasta ' + Aspas(Pasta) + ' -Raiz ' + Aspas(ExpandConstant('{autopf}')),
+                   ExpandConstant('{tmp}\protegida.txt'));
+  if Result = 'OK' then
+    Result := ''
+  else if Result = '' then
+    Result := 'the check did not answer';
+  if Result = '' then
+    Log('pasta protegida: ' + Pasta)
+  else
+    Log('pasta nao protegida: ' + Pasta + ': ' + Result);
+end;
+
+// a pasta do app: a instalacao anterior, quando ela passa na regra da pasta protegida e nao e a padrao de antes da
+// troca de nome (Program Files\Vitrola, que vai para a Program Files\Ritmelli); senao a Program Files\Ritmelli, se ela
+// passar; e se nem ela passar (a propria instalacao anterior ali, com uma ACL que reprova), a primeira
+// Program Files\Ritmelli-N livre. Se a raiz nao passa, fica a Program Files\Ritmelli, e a conferencia do destino recusa
+// com o motivo. A parcial so serve por cima da instalacao anterior (a conferencia do destino recusa o resto)
+function PastaPadrao(Param: String): String;
+var
+  Raiz, Candidata: String;
+  N: Integer;
+begin
+  if PastaEscolhida <> '' then begin
+    Result := PastaEscolhida;
+    Exit;
+  end;
+  Raiz := ExpandConstant('{autopf}');
+  Result := Raiz + '\Ritmelli';
+#ifdef Parcial
+  if PastaAnterior <> '' then
+    Result := PastaAnterior;
+#else
+  if (PastaAnterior <> '') and (CompareText(PastaAnterior, Raiz + '\Vitrola') <> 0) and
+     (Protegida(PastaAnterior) = '') then
+    Result := PastaAnterior
+  else if Protegida(Result) <> '' then
+    for N := 2 to 99 do begin
+      Candidata := Raiz + '\Ritmelli-' + IntToStr(N);
+      if not DirExists(Candidata) and not FileExists(Candidata) then begin
+        // livre: ou ela passa, ou quem reprova e a raiz (e fica a Ritmelli, que a conferencia do destino recusa)
+        if Protegida(Candidata) = '' then
+          Result := Candidata;
+        Break;
+      end;
+    end;
+#endif
+  Log('pasta do app: ' + Result);
+  PastaEscolhida := Result;
+end;
+
+// o destino final: a regra da pasta protegida e, na parcial, a instalacao anterior com o ritmelli.exe. '' se serve;
+// senao, a mensagem para quem instala
+function ConfereDestino: String;
+var
+  Destino, Motivo: String;
+begin
+  Result := '';
+  Destino := RemoveBackslashUnlessRoot(WizardDirValue);
+#ifdef Parcial
+  if (PastaAnterior = '') or (CompareText(Destino, PastaAnterior) <> 0) then begin
+    Log('destino recusado: ' + Destino + ' nao e a instalacao anterior (' + PastaAnterior + ')');
+    Result := CustomMessage('ParcialSemApp');
+    Exit;
+  end;
+#endif
+  // a regra antes de olhar qualquer coisa dentro do destino
+  Motivo := Protegida(Destino);
+  if Motivo <> '' then begin
+    Result := FmtMessage(CustomMessage('PastaDesprotegida'), [Destino, Motivo]);
+    Exit;
+  end;
+#ifdef Parcial
+  if not FileExists(AddBackslash(Destino) + 'ritmelli.exe') then begin
+    Log('destino recusado: ' + Destino + ' nao tem o ritmelli.exe');
+    Result := CustomMessage('ParcialSemApp');
+  end;
+#endif
 end;
 
 // setup.exe /VERYSILENT /reabrir=1, o da atualizacao pelo app: abre o Ritmelli de novo no fim
@@ -405,14 +560,25 @@ begin
   end;
 end;
 
-// no clique de Instalar (e na mesma hora em silencio), antes de qualquer mudanca: as vozes que faltam. Se nao vierem,
-// o setup fica na pagina de Pronto (em silencio, sai com 1)
+// no clique de Instalar (e na mesma hora em silencio), antes de qualquer mudanca: o destino e as vozes que faltam. Um
+// destino recusado nao baixa as vozes nem le a {app}\vozes: com a janela, o setup fica na pagina de Pronto; em
+// silencio, segue para o PrepareToInstall, que recusa de novo e sai com o codigo 7. Se as vozes nao vierem, o setup
+// fica na pagina de Pronto (em silencio, sai com 1)
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   Erro: String;
 begin
   Result := True;
   if CurPageID = wpReady then begin
+    Erro := ConfereDestino;
+    if Erro <> '' then begin
+      Log('destino recusado: ' + Erro);
+      if not WizardSilent then begin
+        MsgBox(Erro, mbCriticalError, MB_OK);
+        Result := False;
+      end;
+      Exit;
+    end;
     Erro := BaixaVozes;
     if Erro <> '' then begin
       Log('vozes: ' + Erro);
@@ -444,23 +610,66 @@ begin
     end;
 end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
+// a migracao para outra pasta (a anterior ficou fora de Program Files, reprovou na regra ou e a Program Files\Vitrola):
+// a pasta anterior fica onde esta, sem nenhuma tarefa apontando para ela (apagar uma pasta escolhida a mao arriscaria
+// arquivos de outros programas), e so o ritmelli.exe dela vira ritmelli.exe.antigo (renomeia.ps1, que confere o
+// caminho e o arquivo antes): o atualizador da versao antiga, que espera este setup terminar, reabriria a versao
+// velha. Em qualquer erro, so o motivo vai para o log
+procedure AposentaAnterior;
+var
+  Destino, Exe, Resposta: String;
 begin
-  if CurStep = ssPostInstall then
-    LimpaVozes;
+  Destino := RemoveBackslashUnlessRoot(WizardDirValue);
+  if (PastaAnterior = '') or (CompareText(PastaAnterior, Destino) = 0) then
+    Exit;
+  Log('migracao: a instalacao anterior em ' + PastaAnterior + ' fica onde esta, e o app vai para ' + Destino);
+  // sem conferir antes se o exe existe: o renomeia.ps1 diz no log por que nao renomeou (nao existe, ponto de
+  // reanalise, acesso negado)
+  Exe := AddBackslash(PastaAnterior) + 'ritmelli.exe';
+  Resposta := RodaPs('renomeia.ps1', '-Exe ' + Aspas(Exe) + ' -Destino ' + Aspas(Destino),
+                     ExpandConstant('{tmp}\renomeia.txt'));
+  if Resposta = '' then
+    Resposta := 'the rename did not answer';
+  Log('migracao: ' + Resposta);
 end;
 
-// antes de trocar os arquivos: o app de antes da troca de nome (vitrola.exe) segura os arquivos dele, e o Restart
-// Manager so fecha o que esta na pasta nova. A parcial, alem disso, so serve por cima de um Ritmelli instalado: sem
-// ele falta todo o resto, e em silencio o setup sai com o codigo 7
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then begin
+    LimpaVozes;
+    AposentaAnterior;
+  end;
+end;
+
+// da instalacao que o setup substitui (a anterior e a Program Files\Vitrola): o vitrola.exe; e, quando o destino e
+// outra pasta, tambem o ritmelli.exe e os da bin\ (na mesma pasta, o Restart Manager ja fecha o que o setup troca).
+// Caminhos separados por |
+function AlvosDe(Pasta, Destino: String): String;
+begin
+  Pasta := RemoveBackslashUnlessRoot(Pasta);
+  Result := Pasta + '\vitrola.exe|';
+  if CompareText(Pasta, Destino) <> 0 then
+    Result := Result + Pasta + '\ritmelli.exe|' + Pasta + '\bin\ffmpeg.exe|' + Pasta + '\bin\ffprobe.exe|' + Pasta +
+              '\bin\deno.exe|';
+end;
+
+// antes de trocar os arquivos, e antes de encerrar ou rodar qualquer coisa: o destino (a regra da pasta protegida; na
+// parcial, a instalacao anterior, sem a qual falta todo o resto). Recusado, em silencio o setup sai com o codigo 7.
+// Depois, o que segura a instalacao que o setup substitui sai pelo caminho completo do executavel (encerra.ps1): nunca o
+// que roda da atualizacao\ (o setup baixado pela tarefa), o proprio setup, quem o lancou ou outro programa
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  Codigo: Integer;
+  Destino, Alvos, Resposta: String;
 begin
-  Result := '';
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM vitrola.exe', '', SW_HIDE, ewWaitUntilTerminated, Codigo);
-#ifdef Parcial
-  if not FileExists(ExpandConstant('{app}\ritmelli.exe')) then
-    Result := CustomMessage('ParcialSemApp');
-#endif
+  Result := ConfereDestino;
+  if Result <> '' then begin
+    Log('destino recusado: ' + Result);
+    Exit;
+  end;
+  Destino := RemoveBackslashUnlessRoot(WizardDirValue);
+  Alvos := AlvosDe(ExpandConstant('{autopf}\Vitrola'), Destino);
+  if (PastaAnterior <> '') and (CompareText(PastaAnterior, ExpandConstant('{autopf}\Vitrola')) <> 0) then
+    Alvos := Alvos + AlvosDe(PastaAnterior, Destino);
+  Resposta := RodaPs('encerra.ps1', '-Caminhos ' + Aspas(Alvos), ExpandConstant('{tmp}\encerra.txt'));
+  Log('processos da instalacao anterior: ' + Resposta);
 end;

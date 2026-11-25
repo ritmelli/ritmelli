@@ -269,8 +269,11 @@ local scripts for your user once: `Set-ExecutionPolicy -Scope CurrentUser Remote
    python microfone\microfone.py instala-todos
    ```
 
-   The filter DLL (`micfx.dll`) is copied to `%ProgramFiles%\Ritmelli\microfone`, the folder the installed app uses,
-   so it replaces the filter of an installed Ritmelli.
+   The filter DLL (`micfx.dll`) is copied to `%ProgramW6432%\Ritmelli\microfone` (on 64-bit Windows, the same
+   `C:\Program Files`), so it replaces the filter of a Ritmelli installed there. The installed executable uses the
+   `microfone` folder of its own installation. Step 3 first checks `%ProgramW6432%\Ritmelli`, the app folder, and
+   refuses, without copying the filter or changing the registry, if it can be changed by someone other than the system
+   and the administrators (`pastas.pasta_protegida`).
 
    - After plugging in a new microphone, run step 3 again. The installed app does this by itself, without
      administrator rights, through a Windows task that only the installer creates.
@@ -351,37 +354,38 @@ shelf, the page opens with the welcome screen; close it with **Get started**. Wh
 server started without `--data-dir` shows it again every time it starts (with `--data-dir`, closing it once is
 enough).
 
-All of the interface's code is in one file, `themes/ritmelli/index.html` (HTML, CSS and JavaScript, no build step),
-with its fonts and images next to it in `fonts/` and `texturas/`. Edit the file, save it and reload the page. What a
-theme receives from the server is in [API.md](API.md#tema).
+The interface is the theme in `themes/ritmelli/` (HTML, CSS and JavaScript, no build step): `index.html` is the page,
+and the `.js` files it loads, its fonts (`fonts/`) and its images (`texturas/`) sit next to it. Edit a file, save it
+and reload the page. What a theme receives from the server is in [API.md](API.md#tema).
 
 To switch the language, add `?lang=pt_BR` or `?lang=en` to the end of the address. Interface texts live in
 `themes/ritmelli/i18n/i18n_en.properties` and `i18n_pt_BR.properties`, with the same keys in both files, in the same
 order.
 
-Part of the pixel art isn't edited in `index.html` directly: scripts in `dev/` draw it and write it into the file or,
-for the textures, into `texturas/`. To change a generated part, edit the drawing in its script and run the script
+Part of the pixel art isn't edited in `index.html` directly: scripts in `dev/` draw it and write it into
+`themes/ritmelli/gerado/` or, for the textures, into `texturas/`. To change a generated part, edit the drawing in its script and run the script
 again (for example, `python dev\pecas.py`). A change made by hand in a generated part is lost the next time its
 script runs.
 
-- `dev/molduras.py`: the frames, between the `molduras:inicio` and `molduras:fim` comments (it writes the same block
-  in `gallery/index.html` too).
-- `dev/compactos.py`: the Quick sounds records, between `compactos:inicio` and `compactos:fim`.
-- `dev/pecas.py`: the tonearm, knobs, buttons and other pieces, between `pecas:inicio` and `pecas:fim`, and constants
-  such as `KNOBS`, `PE_SVG` and `LED_SVG`.
+- `dev/molduras.py`: the frames, in `gerado/molduras.css` (and between the `molduras:inicio` and `molduras:fim`
+  comments of `gallery/index.html`, which uses some of them).
+- `dev/compactos.py`: the Quick sounds records, in `gerado/compactos.css`.
+- `dev/pecas.py`: the tonearm, knobs, buttons and other pieces, in `gerado/pecas.css`, and constants such as `KNOBS`,
+  `PE_SVG` and `LED_SVG`, in `gerado/pecas.js`.
 - `dev/texturas.py`: the `.webp` textures in `texturas/`, except `sala-iso.webp`. It renders them in Google Chrome and,
   like `dev/shot.py` below, needs the development packages.
 
 `sala-iso.webp` and the `.png` images in `texturas/` aren't generated; edit them as image files. The turntables, the
 mixer, the Quick sounds pads and the voice effect pedals of the wide layout in the screenshot (a window at least
-1400 px wide and a little wider than it is tall) aren't generated either: canvas code in `index.html` itself draws
-them, in the blocks that start at `DECK-JS-INICIO`, `MIX-JS-INICIO` and `PEDAL-JS-INICIO`, so you edit them there.
+1400 px wide and a little wider than it is tall) aren't generated either: canvas code in the theme itself draws
+them, in `deck.js`, `mix.js` and `pedal.js` in the theme folder, so you edit them there.
 
 `dev/fitcheck.py` checks the layout at several window and phone sizes, and `dev/shot.py` takes a screenshot. Both
 need the development packages (`requirements-dev.txt`) and drive Google Chrome from its default install folder,
 `C:\Program Files\Google\Chrome\Application\chrome.exe`. A Chrome installed only for your user, in `%LOCALAPPDATA%`,
-isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. If the server would still show
-the welcome screen, both close it first, as **Get started** does (the server then remembers it as seen). With
+isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. Both only talk to a `--mock`
+server: they refuse port 8799 and any server whose `/api/state` doesn't say `"mock": true`. If the server would still
+show the welcome screen, both close it first, as **Get started** does (the server then remembers it as seen). With
 `--boas-vindas`, `fitcheck.py` checks the welcome screen itself at every size and `shot.py` captures it. Leave the
 `--mock` server running and, in a second terminal at the repository root, activate the virtual environment, install
 the development packages once and run them:
@@ -467,7 +471,9 @@ The code, its comments and the internal docs are in Brazilian Portuguese.
 | `ritmelli.spec` | the executable's configuration (PyInstaller) |
 | `soundboard.ps1` | starts, stops and checks Ritmelli from a terminal |
 | `server.py` | the aiohttp server: the API, the events (SSE), the queue, Play similar songs, search and download |
+| `comandos.py` | the server's music commands (play, queue, transport, music volume) and the queue advance they share |
 | `engine.py` | the audio engine: mixing, the two decks and the transitions |
+| `transicao.py` | the transition math that reads no audio: where each record ends and starts by its block levels, fade or hard ending, how the next one comes in, and the timing from the measured beat grids |
 | `batida.py`, `compasso.py`, `andamento.py` | beat analysis: the tempo and beat grid of each transition (`batida.py`), the downbeat (`compasso.py`) and each record's tempo, which orders Play similar songs (`andamento.py`) |
 | `sonoridade.py` | each song's loudness (EBU R128) and the automatic volume that plays songs at a similar level |
 | `fx.py` | the voice effects: each effect's settings and reference math (what you hear is processed in C++, by `microfone/apo/voz.h`) |
@@ -478,6 +484,7 @@ The code, its comments and the internal docs are in Brazilian Portuguese.
 | `i18n.py` | the interface texts in each language: reads the theme's `.properties` files, applies them to the page and builds the messages the server sends for the interface to translate |
 | `pastas.py` | where user data lives, and where the app finds ffmpeg, ffprobe and Deno |
 | `pareamento.py` | the phone pairing code and QR code, and the list of paired phones |
+| `permissao.py` | who may call each server route: the computer, a paired phone, a remote session or anyone on the home network |
 | `yt_fora.py` | YouTube access (yt-dlp and ytmusicapi), in a separate process |
 | `yt_erros.py` | tells a video's own errors (unavailable, private, age-restricted) apart from a YouTube failure |
 | `winvol.py` | the microphone volume in Windows |
@@ -488,9 +495,10 @@ The code, its comments and the internal docs are in Brazilian Portuguese.
 | `gallery/` | the home page that lists the themes (`index.html`), with its texts in both languages (`i18n/`) |
 | `icone/` | the app icon (executable, installer, browser tab and phone), generated by `dev/icone.py` |
 | `dev/` | development tools: screenshots, layout checks, pixel-art generation and the tests |
-| `docs/` | the architecture notes (`ARQUITETURA.md`) and the images in this README |
+| `docs/` | the architecture notes (`ARQUITETURA.md`, an index to one file per part in `arquitetura/`) and the images in this README |
 | `instalador/` | the installer: `monta.ps1`, `ritmelli.iss`, ffmpeg, bootloader, the partial update, the voice download (`vozes_iss.py`) and the license texts |
 | `.github/workflows/monta.yml` | the pipeline that builds and tests the installer |
+| `.github/workflows/testa.yml` | the tests every pull request runs |
 
 How each part works is described in [docs/ARQUITETURA.md](docs/ARQUITETURA.md), and the contract between the server
 and the interface in [API.md](API.md) (both in Portuguese).
@@ -504,16 +512,25 @@ one in [Run](#run), and open the pull request from a branch of your fork against
 the team are merged after a review by an organization member. Security problems go through the
 [security policy](https://github.com/ritmelli/ritmelli/security/policy), not through issues.
 
-Pull requests don't trigger the pipeline (a maintainer runs it by hand), so run its pre-build checks yourself before
-you open one. They need only the Python standard library:
+Every pull request runs `.github/workflows/testa.yml` on a GitHub-hosted Windows machine (from a fork, once a
+maintainer approves the run): `ruff` with the error-only rules in `pyproject.toml`, the tests in `dev/testa_tudo.py`
+and, when the change touches their area, the microphone filter tests and the interface checks (`dev/fitcheck.py` in
+both languages and `dev/compara.py` against `main`). Run the same before you open one, with the virtual environment
+active:
 
 ```powershell
-python dev\testa_i18n.py       # the interface texts in both languages
-python dev\testa_metricas.py   # the anonymous usage data
-python dev\testa_migra.py      # the rename from Vitrola
-python dev\testa_mock.py       # the no-audio mode never touches real user data
-python dev\testa_pareamento.py # phone pairing: the code, wrong attempts, the key and disconnecting
+python -m ruff check .
+python dev\testa_tudo.py                           # every test that needs no audio device and no internet
+python dev\testa_tudo.py --microfone               # the filter tests, after microfone\apo\compila.bat teste
+python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as the pull request check runs them
 ```
+
+`python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library.
+
+A new `dev/testa_*.py` goes into one of the lists in `dev/testa_tudo.py` or into a step of its own in `testa.yml`. A
+test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
+`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` reads the `testa.yml` steps and fails on a test that
+runs nowhere and on a `manual:` file that runs there.
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
 [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks
@@ -522,12 +539,17 @@ has to pass, as it does on `main`. If you changed the welcome screen, also run i
 If you changed the audio engine, the server, the filter or the updates, also run the tests that cover your change.
 The description at the top of each file (in Portuguese) says exactly what it checks.
 
-- The audio engine (`engine.py`, `sonoridade.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
-  `dev/testa_congela.py` and `dev/testa_microfone.py`.
-- The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
-  `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
+- The audio engine (`engine.py`, `sonoridade.py`, `transicao.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
+  `dev/testa_congela.py`, `dev/testa_microfone.py`, `dev/testa_passagens.py` (the week of transition records in
+  `logs/passagens/`), `dev/testa_passagem.py` (synthetic pairs through the real engine, one per kind of transition;
+  `--codigo <folder>` runs the same pairs against the engine of another checkout, such as the base of your PR),
+  `dev/testa_transicao.py` (the transition math, `transicao.py`, on the engine's calls recorded from those pairs;
+  `--grava` records them again) and `dev/testa_anel.py`.
+- The server and YouTube access (`server.py`, `comandos.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_comandos.py`,
+  `dev/testa_adianta.py`, `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
-  `dev/testa_microfone.py`, `dev/testa_aparelho_mudo.py`, `dev/testa_voz.py` and
+  `dev/testa_microfone.py`, `dev/testa_anel.py` (the ring is released after every failure),
+  `dev/testa_aparelho_mudo.py`, `dev/testa_voz.py` and
   `microfone/apo/teste/teste_reamostra.py` (the filter's resampler, `reamostra.h`).
 - The voice changer pedal (`pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` and the `pistavoz` hook in
   `fx.py`, `engine.py` and `server.py`; the contract is in [API.md](API.md#pedal-de-troca-de-voz)):
@@ -536,6 +558,9 @@ The description at the top of each file (in Portuguese) says exactly what it che
   `python dev\vozes.py baixa` downloads from the [ritmelli-voices](https://github.com/ritmelli/ritmelli-voices)
   releases into `vozes\` (about 325 MB, checked by SHA-256), and a graphics card; without them the Alien pedal stays.
   With the models downloaded, `set RITMELLI_VOZES_TESTE=1` also runs `testa_pista.py` against the real models.
+- The protected app folder rule (`pastas.pasta_protegida`, and `instalador/protegida.ps1`, the same rule in the
+  installer): `dev/testa_pasta_protegida.py` (in memory; `--disco` checks real folders in Program Files and needs an
+  elevated administrator, so only on a test Windows).
 - The updates (`atualizacao.py`, `atualizador.py`, `instalador/atualizacao/`): `dev/testa_atualizacao.py`,
   `dev/testa_atualizador.py` and `instalador/atualizacao/testa_parcial.py` (the partial update and its manifest).
 

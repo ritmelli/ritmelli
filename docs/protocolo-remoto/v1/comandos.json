@@ -1,0 +1,30 @@
+{
+  "protocolo": 1,
+  "sobre": "O mapa de cada comando da sessão remota para a rota local que o conector chama com o token do papel remoto (a tabela do permissao.py). Os argumentos com o nome de um {campo} da rota vão no caminho; os outros vão no corpo em JSON, com os mesmos nomes. Com mais de uma rota, vale a que tem o argumento do quando. Ver docs/protocolo-remoto.md.",
+  "leitura": [
+    {"metodo": "GET", "rota": "/api/state"},
+    {"metodo": "GET", "rota": "/api/events"}
+  ],
+  "comandos": {
+    "tocar": [
+      {"quando": "id", "metodo": "POST", "rota": "/api/play"},
+      {"quando": "qid", "metodo": "POST", "rota": "/api/queue/play"}
+    ],
+    "enfileirar": [{"metodo": "POST", "rota": "/api/queue"}],
+    "pular": [{"metodo": "POST", "rota": "/api/next"}],
+    "pausar": [{"metodo": "POST", "rota": "/api/pause"}],
+    "retomar": [{"metodo": "POST", "rota": "/api/resume"}],
+    "tirar_da_fila": [{"metodo": "DELETE", "rota": "/api/queue/{qid}"}],
+    "mover_na_fila": [{"metodo": "POST", "rota": "/api/queue/move"}],
+    "volume": [{"metodo": "POST", "rota": "/api/volume"}],
+    "abaixar": [{"metodo": "POST", "rota": "/api/abaixa"}],
+    "sinal": [{"metodo": "POST", "rota": "/api/sinal"}]
+  },
+  "dados": {
+    "enfileirar": {"qid": "entry.qid", "tocando": "playing"},
+    "volume": {"vol": "vol"},
+    "abaixar": {"abaixa": "abaixa"}
+  },
+  "erros": {"400": "argumentos", "401": "sessao", "403": "nao_permitido", "404": "nao_encontrado", "409": "conflito",
+            "outro": "falha_local"}
+}

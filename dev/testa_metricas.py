@@ -1,7 +1,9 @@
 """Confere os dados de uso e os erros (metricas.py, o PRIVACIDADE.md): so sai o que esta no EVENTOS, nada sai sem a
 escolha de quem usa, desligar joga fora o que nao saiu, o uso soma o que o motor faz, o "ativo" sai uma vez por dia, e
-o erro vai sem caminho de pasta, sem o que esta entre aspas e sem variavel. Nao usa a rede: o envio e trocado por uma
-lista.
+o erro vai sem caminho de pasta, sem o que esta entre aspas e sem variavel. E o "audio": a janela da saude da saida
+para o jogo (a Rubber Band que atravessa duas janelas, o desligar no meio de uma), so com a escolha no texto de agora,
+a versao do texto pela escolha do app ou do instalador (texto 1 ou 2, e o aviso de novo) e o --metricas-teste. Nao usa
+a rede: o envio e trocado por uma lista.
 
     python dev/testa_metricas.py                 os testes
     python dev/testa_metricas.py --de-verdade    tambem manda um evento "teste_de_envio" ao PostHog e um erro de
@@ -38,9 +40,13 @@ class Motor:
         return self._st
 
 
-def nova(cfg=None, instalador=None, tmp=None):
+def nova(cfg=None, instalador=None, tmp=None, texto_inst=None):
+    # a escolha do instalador (o Metricas do HKLM) e a versao do texto dele (o MetricasVersao), trocadas por falsas
     met.escolha_do_instalador = lambda: instalador
-    m = met.Metricas(cfg if cfg is not None else {}, lambda: None, estado=Path(tmp) / "metricas.json")
+    met.texto_do_instalador = lambda: texto_inst
+    cfg = cfg if cfg is not None else {}
+    # o gravar e o da App (grava_cfg): muda o cfg (e la grava o config.json, sob a trava do cfg)
+    m = met.Metricas(cfg, lambda **mud: cfg.update(mud), estado=Path(tmp) / "metricas.json")
     m.fora = False  # pelo codigo ficaria "fora": o teste liga
     enviados = []
     m.envia = lambda url, dados, cab: enviados.append((url, dados, cab)) or 200
@@ -55,7 +61,7 @@ with tempfile.TemporaryDirectory() as tmp:
     confere(m.situacao() == "ligada", "o instalador marcou: ligada")
     m, _ = nova(cfg={"metricas": False}, instalador=True, tmp=tmp)
     confere(m.situacao() == "desligada", "a escolha feita no Ritmelli vale sobre a do instalador")
-    m2 = met.Metricas({}, lambda: None, mock=True, estado=Path(tmp) / "x.json")
+    m2 = met.Metricas({}, lambda **mud: None, mock=True, estado=Path(tmp) / "x.json")
     confere(m2.situacao() == "fora", "no --mock: fora, nunca envia")
 
     # desligada ou sem escolha: nada sai
@@ -141,6 +147,306 @@ with tempfile.TemporaryDirectory() as tmp:
     m.escolhe(False)
     m._manda_fila()
     confere(m.fila.empty() and not env and m.cfg["metricas"] is False, "desligar descarta a fila e nada sai")
+
+    # a versao do texto: a escolha do app ou a do instalador, com texto 1 (sem versao) ou 2, e o aviso de novo
+    def aviso(pub):
+        """A mesma regra do metricasSePrecisar do tema."""
+        return pub["situacao"] == "decidir" or (pub["situacao"] == "ligada" and pub["texto"] < pub["texto_atual"])
+
+    casos = [
+        # (cfg, instalador, MetricasVersao, situacao, texto, aviso)
+        ({}, None, None, "decidir", 0, True),
+        ({}, True, None, "ligada", 1, True),
+        ({}, True, 2, "ligada", 2, False),
+        ({}, False, None, "desligada", 1, False),
+        ({}, False, 2, "desligada", 2, False),
+        ({"metricas": True}, None, None, "ligada", 1, True),
+        ({"metricas": True, "metricas_texto": 2}, None, None, "ligada", 2, False),
+        ({"metricas": False}, True, 2, "desligada", 1, False),
+        ({"metricas": False, "metricas_texto": 2}, None, None, "desligada", 2, False),
+        ({"metricas": True}, False, 2, "ligada", 1, True),  # a escolha e do app: a versao e a dele, nao a do HKLM
+        ({"metricas": True, "metricas_texto": 2}, False, None, "ligada", 2, False),
+        ({"metricas": True, "metricas_texto": "2"}, None, None, "ligada", 1, True),  # versao torta: a de antes
+    ]
+    for cfg, inst, vers, sit, txt, av in casos:
+        m, _ = nova(cfg=dict(cfg), instalador=inst, texto_inst=vers, tmp=tmp)
+        pub = m.publico()
+        confere(pub["situacao"] == sit and pub["texto"] == txt and pub["texto_atual"] == met.TEXTO == 2
+                and aviso(pub) == av and m.texto() == txt,
+                f"app {cfg}, instalador {inst} com a versao {vers}: {sit}, texto {txt}, "
+                f"{'com' if av else 'sem'} aviso ({pub})")
+    m2 = met.Metricas({}, lambda **mud: None, mock=True, estado=Path(tmp) / "x.json")
+    confere(m2.publico()["texto"] == 0 and m2.texto() == 0, "fora (o --mock): texto 0, sem ler o instalador")
+    for ligar in (True, False):
+        m, _ = nova(cfg={"metricas": True}, instalador=True, texto_inst=None, tmp=tmp)
+        m.escolhe(ligar)
+        pub = m.publico()
+        confere(m.cfg == {"metricas": ligar, "metricas_texto": 2} and pub["texto"] == 2 and not aviso(pub),
+                f"escolher {'Enviar' if ligar else 'Nao enviar'} grava o metricas e o metricas_texto 2 juntos, e o "
+                f"aviso nao volta ({m.cfg})")
+
+    # o --metricas-teste: liga sem ler o instalador, guarda na memoria e o erro nem sai
+    met.escolha_do_instalador, met.texto_do_instalador = (lambda: True), (lambda: 2)
+    mt = met.Metricas({}, lambda **mud: None, mock=True, estado=Path(tmp) / "t.json", teste=True)
+    confere(mt.situacao() == "decidir" and mt.texto() == 0,
+            f"--metricas-teste: sem ler o instalador (que diria ligada), decidir ({mt.situacao()})")
+    mt.cfg["metricas"] = True
+    mt.evento("ativo", primeira_vez=True)
+    mt._manda_fila()
+    mt.erro(ValueError, ValueError("x"), None, "teste")
+    confere([e["event"] for e in mt.guardados] == ["ativo"] and not mt.erros,
+            "--metricas-teste: o lote fica na memoria, e o erro nao vai")
+
+    # o "audio": a janela da saude da saida para o jogo, com um relogio de mentira
+    class Relogio:
+        t = 100.0
+
+        def __call__(self):
+            return self.t
+
+    rel = Relogio()
+    rb = met.EmCurso(rel)
+
+    class MotorComAudio(Motor):
+        def __init__(self):
+            super().__init__()
+            self.preparos, self.reserva_s, self.aberto = 0, 0.0, True
+            self.janela = met.SaudeAudio(48000)
+
+        def saude_audio(self, aberto=True):  # como a do Engine: o Injetor parado so no descarte
+            return self.janela if self.aberto or not aberto else None
+
+    def volta(e, s=0.01, **kw):
+        """Uma volta do Injetor: s segundos no relogio, com o estado dado (o resto, o de um microfone normal)."""
+        rel.t += s
+        est = {"anel": True, "leitores": 1, "fx_no_filtro": False, "voz_taxa": 48000}
+        est.update(kw)
+        e.janela.volta(s, totais=(e.preparos, e.reserva_s, *rb.total()), **est)
+
+    def audios(m):
+        evs = [m.fila.get_nowait() for _ in range(m.fila.qsize())]
+        return [x["properties"] for x in evs if x["event"] == "audio"], evs
+
+    def fecha_janela(m):
+        """O fim de uma janela, como no vigia: o "uso" e o "audio"."""
+        m._fecha_uso()
+        m._manda_audio()
+
+    m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
+    e = MotorComAudio()
+    m.engine = e
+    volta(e)
+    e.janela.fila(4800)
+    m._confere_audio()  # a escolha no texto de agora passa a valer: a janela comeca aqui, o de antes some
+    volta(e)
+    e.janela.fila(960)  # 20 ms
+    e.preparos += 1  # uma passagem preparada
+    volta(e)
+    e.janela.fila(0, passagem=True)  # seca no meio dela
+    rb_ctx = rb.roda()
+    rb_ctx.__enter__()  # a Rubber Band comeca nesta janela...
+    volta(e, 2.0)
+    volta(e, 0.05, leitores=0)  # o leitor sumiu com o anel aberto
+    volta(e, 3.0, leitores=0)
+    volta(e, 0.01, leitores=2)
+    fecha_janela(m)  # ...e a janela fecha com ela em curso
+    a1, evs = audios(m)
+    confere(len(a1) == 1 and set(a1[0]) - permitidas == met.EVENTOS["audio"],
+            f"o 'audio' sai com exatamente as propriedades do EVENTOS, alem das comuns "
+            f"({sorted(set(a1[0]) - permitidas) if a1 else a1})")
+    fora = [(x["event"], k) for x in evs for k in x["properties"] if k not in met.EVENTOS[x["event"]] | permitidas]
+    confere(not fora, f"o 'audio' so com as propriedades da lista, alem das comuns ({fora})")
+    a1 = a1[0] if a1 else {}
+    confere(a1.get("secas") == 1 and a1.get("secas_passagem") == 1 and a1.get("secas_esticamento") == 0
+            and a1.get("folga_min_ms") == 0.0 and a1.get("passagens") == 1 and a1.get("esticamentos") == 1
+            and a1.get("volta_max_ms") == 3000.0 and a1.get("leitor_perdido") == 1
+            and a1.get("leitor_perdido_s") == 3 and a1.get("voz_taxa") == 48000,
+            f"a primeira janela conta o que passou nela, e so depois do comeco ({a1})")
+    confere(a1.get("esticamento_ms") == 5060, f"a Rubber Band em curso no fim da janela: o tempo ate ali ({a1})")
+    volta(e, 1.0, fx_no_filtro=True)
+    e.reserva_s += 2.0  # 2 s de voz pelo microfone de reserva (os quadros do _mic_cb)
+    e.janela.fila(0, esticando=True)  # seca na janela seguinte, com a mesma chamada em curso
+    volta(e, 2.0)
+    rel.t += 0.5
+    rb_ctx.__exit__(None, None, None)  # a chamada acaba na seguinte
+    volta(e, 1.0)
+    fecha_janela(m)
+    a2, _ = audios(m)
+    a2 = a2[0] if a2 else {}
+    confere(a2.get("esticamento_ms") == 3500 and a2.get("esticamentos") == 0 and a2.get("secas_esticamento") == 1
+            and a2.get("secas") == 1 and a2.get("passagens") == 0 and a2.get("leitor_perdido") == 0,
+            f"a Rubber Band que comecou na janela de antes entra no esticamento_ms das duas, e a seca dela e desta ({a2})")
+    confere(a2.get("fx_no_filtro_s") == 2 and a2.get("mic_reserva_s") == 2,
+            f"o tempo com o efeito no filtro e com a voz pelo microfone de reserva ({a2})")
+
+    # a janela em que a thread da saida nao andou (o audio fechado, o Injetor parado): nenhum "audio"
+    fecha_janela(m)
+    confere(not audios(m)[0], "sem nenhuma volta do Injetor na janela: o 'audio' nao sai (nem zerado)")
+    e.janela.fila(0)
+    volta(e, 0.01, fx_no_filtro=True)  # o efeito rodando no filtro...
+    e.janela.anel_caiu(0.2)  # ...e o anel fecha por erro: a pausa de 3 s ate a volta seguinte nao conta nele
+    volta(e, 3.0, anel=False, leitores=0)
+    fecha_janela(m)
+    a5, _ = audios(m)
+    confere(len(a5) == 1 and a5[0]["fx_no_filtro_s"] == 0 and a5[0]["leitor_perdido"] == 0,
+            f"o anel que caiu: a pausa ate o proximo nao conta como efeito nem como leitor perdido ({a5})")
+    volta(e)
+    fecha_janela(m)
+    audios(m)
+    e.janela.fila(0)  # a seca logo depois do fim da janela, antes da volta seguinte do Injetor
+    fecha_janela(m)
+    a7, _ = audios(m)
+    confere(len(a7) == 1 and a7[0]["secas"] == 1, f"a seca entre o fim da janela e a volta seguinte conta ({a7})")
+
+    # o prazo do vigia, conferido sob a trava: a janela que acabou de comecar (uma escolha no meio) nao fecha pelo
+    # prazo da de antes; passado o USO_S dela, fecha
+    volta(e)
+    m._manda_audio(prazo=True)
+    confere(not audios(m)[0], "a janela mais nova que o USO_S: o vigia nao a fecha")
+    m._audio_desde -= met.USO_S
+    m._manda_audio(prazo=True)
+    confere(len(audios(m)[0]) == 1, "passado o USO_S dela, o vigia fecha a janela e o 'audio' sai")
+    # a volta que termina com o anel caindo conta na maior volta; a que caiu antes de contar, tambem no estado de antes
+    volta(e, 0.01, fx_no_filtro=True)
+    fecha_janela(m)
+    audios(m)
+    e.janela.anel_caiu(2.0, contou=False)  # a unica volta da janela, com o efeito no filtro ate cair
+    fecha_janela(m)
+    a9, _ = audios(m)
+    confere(len(a9) == 1 and a9[0]["fx_no_filtro_s"] == 2 and a9[0]["volta_max_ms"] == 2000.0,
+            f"o anel que cai antes de a volta contar: a janela sai, com o tempo no estado de antes ({a9})")
+    volta(e)
+    e.janela.anel_caiu(0.7)
+    volta(e, 0.01, anel=False, leitores=0)
+    fecha_janela(m)
+    a8, _ = audios(m)
+    confere(len(a8) == 1 and a8[0]["volta_max_ms"] == 700.0, f"a volta do erro do anel entra na maior volta ({a8})")
+
+    # o desligar no meio da janela: o que ela contou some, e a de depois comeca na hora de ligar de novo
+    volta(e)
+    e.janela.fila(0)
+    m.escolhe(False)
+    fecha_janela(m)
+    confere(not audios(m)[0], "desligada no meio da janela: o 'audio' nao sai")
+    volta(e)
+    e.janela.fila(0)
+    e.janela.fila(0)
+    m.escolhe(True)  # sem esperar o vigia
+    volta(e)
+    e.janela.fila(0)
+    fecha_janela(m)
+    a3, _ = audios(m)
+    confere(len(a3) == 1 and a3[0]["secas"] == 1, f"ligada de novo: a janela comeca ali, sem o que veio antes ({a3})")
+
+    # ligada num texto de antes: os outros eventos saem, o "audio" nao, ate o Enviar do aviso de novo
+    m, env = nova(cfg={"metricas": True}, tmp=tmp)
+    e = MotorComAudio()
+    m.engine = e
+    m._confere_audio()
+    volta(e)
+    e._st = "playing"
+    m._olha(5)
+    fecha_janela(m)
+    a4, evs = audios(m)
+    confere(not a4 and [x["event"] for x in evs] == ["uso"], f"ligada no texto 1: o 'uso' sai, o 'audio' nao ({evs})")
+    m.escolhe(True)  # o Enviar do aviso de novo
+    volta(e)
+    fecha_janela(m)
+    confere(len(audios(m)[0]) == 1, "o Enviar do aviso, no texto 2: o 'audio' passa a sair")
+    m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
+    m.engine = Motor()  # o --mock, ou o audio fechado: sem a janela
+    m._confere_audio()
+    fecha_janela(m)
+    confere(not audios(m)[0], "sem Injetor (o --mock, o audio fechado): nenhum 'audio'")
+
+    # a escolha no texto de agora que ja valia ao abrir: o vigia nao joga fora o comeco da janela do Injetor
+    import threading
+    import time as _t
+    m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
+    e = MotorComAudio()
+    volta(e)
+    e.janela.fila(0)  # a seca logo na abertura do audio
+    th = threading.Thread(target=m.vigia, args=(e,), daemon=True)
+    th.start()
+    for _ in range(100):
+        if m._audio_vale:
+            break
+        _t.sleep(0.01)
+    volta(e)
+    m.fecha()  # fechado antes da primeira volta do vigia
+    th.join(5)
+    a6 = [x for _, corpo, _ in env for x in json.loads(corpo).get("batch", []) if x["event"] == "audio"]
+    confere(not th.is_alive() and len(a6) == 1 and a6[0]["properties"]["secas"] == 1
+            and re.fullmatch(r"[0-9a-f]{32}", a6[0]["distinct_id"] or "") is not None,
+            f"aberto com a escolha no texto 2 e fechado logo: a janela conta desde a abertura do audio, sai com o id, "
+            f"e o vigia para ({a6})")
+
+    # o aceite no meio de uma reabertura do leitor perdido que falhou (o Injetor parado): o que veio antes some
+    m, env = nova(cfg={"metricas": True}, tmp=tmp)
+    e = MotorComAudio()
+    m.engine = e
+    volta(e, 0.01, leitores=0)
+    e.janela.fila(0)  # antes do aceite
+    e.aberto = False  # a reabertura falhou: o audio fechado, o Injetor parado com a janela que a proxima continua
+    m.escolhe(True)  # o Enviar do aviso, no texto 2
+    e.aberto = True  # a reabertura seguinte deu certo, com a mesma janela
+    volta(e)
+    fecha_janela(m)
+    a11, _ = audios(m)
+    confere(len(a11) == 1 and a11[0]["secas"] == 0,
+            f"o aceite com o Injetor parado: a janela que a reabertura continua comeca no aceite ({a11})")
+
+    # o desligar com a gravacao do config.json falhando: o cfg ja diz desligada, e nada do que veio antes fica
+    m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
+    e = MotorComAudio()
+    m.engine = e
+    m._confere_audio()
+    volta(e)
+    e.janela.fila(0)
+    m.evento("ativo", primeira_vez=False)
+
+    def grava_falhando(**mud):
+        m.cfg.update(mud)  # como o grava_cfg: o cfg muda antes de o disco falhar
+        raise OSError("disco cheio")
+    m.gravar = grava_falhando
+    try:
+        m.escolhe(False)
+        confere(False, "o erro da gravacao chega a quem escolheu (o POST)")
+    except OSError:
+        confere(True, "o erro da gravacao chega a quem escolheu (o POST)")
+    m.gravar = lambda **mud: m.cfg.update(mud)
+    m.escolhe(True)
+    volta(e)
+    fecha_janela(m)
+    a10, evs = audios(m)
+    confere([x["event"] for x in evs] == ["audio"] and a10[0]["secas"] == 0,
+            f"desligada com a gravacao falhando: a fila e a janela de antes somem, mesmo ligando de novo ({evs})")
+
+    # o lote que falha enquanto a pessoa desliga (e liga de novo) nao volta para a fila
+    m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
+    m.evento("ativo", primeira_vez=False)
+
+    def falha_desligando(url, dados, cab):
+        m.escolhe(False)  # desligou durante o envio...
+        m.escolhe(True)  # ...e ligou de novo
+        raise OSError("sem rede")
+    m.envia = falha_desligando
+    m._manda_fila()
+    confere(m.fila.empty(), "desligada durante o envio que falhou: o lote nao volta para a fila, nem ligando de novo")
+    m.evento("ativo", primeira_vez=False)
+    m.envia = lambda url, dados, cab: (_ for _ in ()).throw(OSError("sem rede"))
+    m._manda_fila()
+    confere(m.fila.qsize() == 1, "sem rede, com o envio ligado: o lote volta para a fila")
+
+    # o instalador grava a versao do texto de agora, e a politica lista cada campo do "audio"
+    iss = (RAIZ / "instalador" / "ritmelli.iss").read_text(encoding="utf-8-sig")
+    reg = re.search(r'ValueName: "MetricasVersao"; ValueData: "(\d+)"; Flags: ([^;]+); Check: (\w+)', iss)
+    confere(reg is not None and int(reg.group(1)) == met.TEXTO and reg.group(2).split() ==
+            ["uninsdeletevalue", "uninsdeletekeyifempty"] and reg.group(3) == "GravaMetricas",
+            f"o instalador grava o MetricasVersao {met.TEXTO}, sob o GravaMetricas ({reg and reg.groups()})")
+    pol = (RAIZ / "PRIVACIDADE.md").read_text(encoding="utf-8")
+    sem = sorted(c for c in met.EVENTOS["audio"] if pol.count(f"`{c}`") < 2)
+    confere(not sem, f"o PRIVACIDADE.md lista cada campo do 'audio', nas duas linguas (faltam: {sem})")
 
     # a mensagem do erro, limpa
     casos = {

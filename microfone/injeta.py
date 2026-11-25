@@ -12,6 +12,7 @@ volta em voz_fx. A voz convertida fora do filtro (por um processo que le a voz c
 pista da voz: pista_liga, pista_escreve e pista_pulso; o filtro poe ela no lugar da voz do microfone enquanto o
 escritor bate.
 """
+import contextlib
 import ctypes
 import os
 import struct
@@ -86,21 +87,27 @@ class SemFiltro(RuntimeError):
 
 class Microfone:
     def __init__(self):
+        self._h = self._p = None
         h = k32.OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, False, MAPA)
         if not h:
             raise SemFiltro(f"the ring {MAPA} doesn't exist (no microphone with the filter in use; error "
                             f"{ctypes.get_last_error()})")
         self._h = h
-        self._p = k32.MapViewOfFile(h, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, ctypes.sizeof(Anel))
-        if not self._p:
-            raise SemFiltro(f"MapViewOfFile failed ({ctypes.get_last_error()})")
-        self.a = Anel.from_address(self._p)
-        if self.a.magia != MAGIA or self.a.versao != VERSAO:
-            raise SemFiltro(f"ring with unexpected magic/version ({self.a.magia:#x}/{self.a.versao})")
-        self.dados = np.ctypeslib.as_array(self.a.dados).reshape(QUADROS, CANAIS)
-        self._voz = np.ctypeslib.as_array(self.a.voz)
-        self._voz_fx = np.ctypeslib.as_array(self.a.voz_fx)
-        self._pista = np.ctypeslib.as_array(self.a.pista).reshape(PISTA_QUADROS, CANAIS)
+        try:
+            self._p = k32.MapViewOfFile(h, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, ctypes.sizeof(Anel))
+            if not self._p:
+                raise SemFiltro(f"MapViewOfFile failed ({ctypes.get_last_error()})")
+            self.a = Anel.from_address(self._p)
+            if self.a.magia != MAGIA or self.a.versao != VERSAO:
+                raise SemFiltro(f"ring with unexpected magic/version ({self.a.magia:#x}/{self.a.versao})")
+            self.dados = np.ctypeslib.as_array(self.a.dados).reshape(QUADROS, CANAIS)
+            self._voz = np.ctypeslib.as_array(self.a.voz)
+            self._voz_fx = np.ctypeslib.as_array(self.a.voz_fx)
+            self._pista = np.ctypeslib.as_array(self.a.pista).reshape(PISTA_QUADROS, CANAIS)
+        except BaseException:
+            with contextlib.suppress(Exception):  # o erro que sobe e o de abrir, e nao o de fechar
+                self.fecha()  # o handle e a vista abertos aqui nao ficam para tras com o erro
+            raise
         self.voz_pos = None  # ate onde o app leu a voz crua (comeca no que chegar depois de abrir)
         self.fx_pos = None   # e a voz com efeito
         self.pista_pos = None  # e a voz da pista (o app le o que o processo da voz escreveu, para o fone)
@@ -268,12 +275,16 @@ class Microfone:
             winmm.timeEndPeriod(1)
 
     def fecha(self):
-        if self._p:
-            k32.UnmapViewOfFile(self._p)
-            self._p = None
-        if self._h:
-            k32.CloseHandle(self._h)
-            self._h = None
+        """Solta a vista e o handle, cada um uma vez (chamar de novo nao faz nada); o handle fecha mesmo se soltar a
+        vista falhar."""
+        p, self._p = self._p, None
+        h, self._h = self._h, None
+        try:
+            if p:
+                k32.UnmapViewOfFile(p)
+        finally:
+            if h:
+                k32.CloseHandle(h)
 
 
 def le_wav(caminho):
