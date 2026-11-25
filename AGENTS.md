@@ -28,10 +28,9 @@ português ou inglês.
 - Todo texto novo da interface nas duas línguas: `themes/ritmelli/i18n/i18n_en.properties` e `i18n_pt_BR.properties`,
   com as mesmas chaves na mesma ordem, e os da galeria em `gallery/i18n/`. O servidor não escreve frase para a tela:
   manda a Mensagem do `i18n.msg`, com uma chave `server.*`. Log e erro técnico ficam em inglês.
-- Rota nova do `server.py`: da rede de casa, toda `/api/` responde ao celular pareado, menos as que o `guard` fecha
-  (`/api/pareamento`, `/api/atualizacao` e `/api/metricas`) e as que o próprio handler recusa pelo `do_pc` (o
-  `POST /api/boas-vindas` e o `POST /api/janela/foco`). Rota nova nasce só para o PC, fechada de um desses jeitos, e
-  abrir para o celular é decisão escrita no PR. Rota ou campo novo entra no `API.md`.
+- Rota nova do `server.py`: quem pode chamar cada uma é a tabela do `permissao.py`, que o `guard` confere. Rota fora
+  da tabela é só do PC, e o `dev/testa_mock.py` falha enquanto ela não entra; abrir para o celular ou para o remoto é
+  decisão escrita no PR. Rota ou campo novo entra no `API.md`, e a linha da tabela também.
 - O `engine.py` não ganha gancho novo para o módulo opcional de fora do repo: o que ele precisa passa pelo que já
   existe ([fx.md](docs/arquitetura/fx.md)), e o `dev/testa_ganchos.py` falha com um a mais.
 - Mudou uma peça, muda o arquivo dela em `docs/arquitetura/`.
@@ -55,7 +54,7 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 | Servidor e YouTube | `server.py`, `yt_fora.py`, `yt_erros.py` | `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py` | `testa_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`), o `grava_cfg` do `server.py` | `testa_grava` |
-| Pareamento | `pareamento.py`, o `guard` do `server.py` | `testa_pareamento` |
+| Pareamento e permissões | `pareamento.py`, `permissao.py`, o `guard` do `server.py` | `testa_pareamento`, `testa_mock` |
 | Filtro e efeitos | `microfone/`, `fx.py` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_voz` e `microfone/apo/teste/teste_reamostra.py` |
 | Troca de voz | `pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` | `testa_pedal_voz`, `testa_vozes`, `testa_pista`, `testa_conversor` |
 | Atualizações | `atualizacao.py`, `atualizador.py`, `instalador/atualizacao/` | `testa_atualizacao`, `testa_atualizador` e `instalador/atualizacao/testa_parcial.py` |

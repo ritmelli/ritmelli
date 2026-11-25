@@ -16,6 +16,7 @@ Cada peça tem o seu arquivo em `arquitetura/`: quem muda uma peça muda só o a
 - [`pistavoz.py`](arquitetura/pistavoz.md): o pedal de troca de voz (`pista.py`, `conversor.py`, `vozes.json`).
 - [`winvol.py`](arquitetura/winvol.md): o volume do microfone no Windows.
 - [`pareamento.py`](arquitetura/pareamento.md): o celular pareado.
+- [`permissao.py`](arquitetura/permissao.md): quem pode chamar cada rota do servidor.
 - [`atualizacao.py`](arquitetura/atualizacao.md): o aviso de versão nova e a atualização pelo instalador.
 - [`server.py`](arquitetura/server.md): o servidor, a fila, as passagens, o Automático e o limite de abas.
 - [`API.md`](../API.md): contrato da API e checklist de todo tema.

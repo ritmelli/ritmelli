@@ -186,6 +186,8 @@ async def guard_do_servidor():
             return make_mocked_request(metodo, caminho, headers=cab, transport=t, payload=carga)
 
         async def manda(req, handler=segue):
+            # a rota casada, como no servidor: o guard confere quem pode pela rota canonica (permissao.py)
+            req._match_info = await app.router.resolve(req)
             n = len(passou)
             resp = await guard(req, handler)
             return resp, len(passou) > n

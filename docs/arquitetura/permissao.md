@@ -1,0 +1,23 @@
+# Quem pode cada rota (`permissao.py`)
+
+`permissao.py`: a tabela `(método, rota) → papéis` que o `guard` do `server.py` confere em todo pedido, depois do
+Host e da Origin. A rota é a canônica do aiohttp (`/api/library/{iid}`, sem o id), e o `HEAD` vale como o `GET`.
+Rota fora da tabela é só do PC: rota nova nasce fechada, e abrir para o celular ou para o remoto é uma linha
+escrita de propósito. Antes da tabela, cada rota nova da API abria sozinha para o celular pareado, e o
+`/api/effects/reload` (que relê o `fx.py`) ficava ao alcance dele.
+
+Os papéis saem de quem conectou, nunca do Host (que quem pede escreve como quiser):
+
+- `pc`: o `127.0.0.1` sem o cabeçalho do remoto, que pode tudo;
+- `celular`: da rede de casa, com a chave do pareamento (`pareamento.py`) no cookie;
+- `publico`: da rede de casa, sem chave que valha: só o tema, os arquivos dele, a galeria e o pareamento;
+- `remoto`: o `127.0.0.1` com o cabeçalho `X-Ritmelli-Remoto` e o token de uma sessão aceita (`Remotos`, um
+  `secrets.token_urlsafe(32)` por sessão, só na memória, revogado quando ela acaba). Só o vocabulário fechado:
+  tocar, enfileirar, pular, pausar, retomar, tirar e mover na fila, o volume da música, abaixar a música e o sinal
+  de teste, e ler o estado. Token que não vale dá 401, mesmo do `127.0.0.1`: o cabeçalho nunca cai no papel do PC.
+  Por ora nenhuma sessão abre um token.
+
+O `caps` (`{"papel", "rotas"}`) diz a cada conexão o que ela pode: vem no `/api/state`, no 401 do pareamento e como o
+primeiro evento do SSE, que fecha quando o celular é desconectado ou a sessão remota acaba. O `dev/testa_mock.py`
+confere que toda rota do `server.py` está na tabela (pelo fonte e pelo roteador do aiohttp) e cada papel no `guard`
+de verdade e num `--mock`, com a rede de casa feita pelo `127.0.0.2`.
