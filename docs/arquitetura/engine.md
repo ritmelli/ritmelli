@@ -35,3 +35,27 @@ a prateleira aos poucos. Na prateleira de 14/11, as músicas iam de -19,2 a -5,3
 -9,3); o alvo de -11 (o do modo "Alto" do Spotify, que também sobe com limitador) deixa o Sultans
 of Swing (+3,1 dB) com 0,2% do tempo acima de 3 dB de limitação, e em -10 seriam 2,7%.
 `dev/testa_ganho.py` testa a medida, o limitador e o motor sem som.
+
+## O bloco e a linha de reprodução
+
+Cada `Deck` tem uma linha de reprodução, um contador que o `load`, o `stop`, o `seek` e o `resume` que recomeça do fim
+sobem. O `_mixa` faz cada bloco em três passos. O `_captura`, sob o `_qlock`, confere a próxima preparada e a condição
+da virada (e vira ali mesmo, no `_vira`), tira o bloco do prato e copia o estado da passagem (a próxima subindo, o que
+sai, o eco, o ganho do disco) e o do limitador. O `_renderiza` faz o som fora da trava, só sobre as cópias. O
+`_publica`, de novo sob o `_qlock`, só aplica a posição, o fim, o primeiro som, o avanço da passagem, do ganho e do
+limitador se o deck e a linha do bloco ainda forem os do prato; senão, a música daquele bloco sai e nada dele vale (nem
+o pedido de zerar o limitador, que fica para a linha nova). O `_gen` do leitor é outra coisa: ele só para o
+decodificador substituído. A troca do stream pelo arquivo (`trocar_fonte`) sobe o `_gen` e mantém a linha, então o
+bloco em curso publica, e o leitor novo começa depois do último bloco decodificado, ou depois do bloco em curso quando
+a fila já está vazia.
+
+O `load`, o `espera`, o `stop`, o `seek`, o `resume` e o `trocar_fonte` publicam a troca sob o `_qlock`, como uma
+mudança só: a faixa, a linha, a posição, o fim e a passagem desfeita. A medida do ganho e o leitor ficam fora das
+travas. O `load`, o `espera` e o `stop` devolvem a `Captura` do que estava no prato logo antes: a posição que o
+servidor grava (`remember_pos`) é a desse instante.
+
+A pausa vale no limite entre blocos. O `pause` devolve uma `Pausa`: com um bloco do prato retirado e ainda não
+publicado, ela se confirma na publicação dele; sem bloco, na hora. A confirmação guarda a faixa e a posição daquele
+instante, e o servidor grava essa posição só se a pausa ainda vale (a mesma linha, sem retomar nem trocar de disco no
+meio). O `resume`, o `load`, o `stop`, o `seek`, o fim do disco e o `close` resolvem o pedido pendente como
+substituído, sem gravar nada.

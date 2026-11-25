@@ -985,10 +985,29 @@ class App:
                 self.engine.stop()  # sem stream e sem arquivo: o prato nao fica carregando para sempre
 
     # tocar ----------------------------------------------------------------
-    def remember_pos(self):
+    def remember_pos(self, cap=None, pausa=None):
+        """O last_pos do disco na prateleira, de uma captura do motor, e nunca relendo o motor depois dela: a do
+        instante da troca (cap, a Captura que o load, o espera e o stop devolvem) ou a da pausa confirmada (pausa, a
+        Pausa do engine.pause, que so grava se ainda vale: a mesma linha, sem retomar nem trocar de disco no meio). Sem
+        nenhuma das duas, a de agora. A trava da biblioteca vem antes do _qlock (que so confere e muda a memoria), e o
+        arquivo e gravado com o _qlock ja solto."""
         e = self.engine
-        if e.track is not None and e.status() in ("playing", "paused"):
-            self.lib.update(e.track["id"], last_pos=round(e.pos, 1))
+        if pausa is not None:
+            tr, pos, vale = pausa.track, pausa.pos, pausa.ok
+        else:
+            cap = cap or e.captura()
+            tr, pos, vale = cap.track, cap.pos, cap.status in ("playing", "paused")
+        if tr is None or not vale:
+            return
+        with self.lib.lock:
+            it = self.lib.get(tr["id"])
+            if it is None:
+                return
+            with e._qlock:
+                if pausa is not None and not e.pausa_vale(pausa):
+                    return
+                it["last_pos"] = round(pos, 1)
+            self.lib._save()
 
     def repetir_so_neste(self, novo_id):
         """O Repetir vale para o disco do prato (o "repetir uma" do Spotify): outro disco entrando desliga. O mesmo
@@ -998,7 +1017,6 @@ class App:
             self.engine.set_loop(False)
 
     def play_item(self, item, start, loop=None, historico=True, extra=None):
-        self.remember_pos()
         if historico:
             self.guardar_historico(item["id"])
         tr = dict(item, path=str(LIB / item["file"]), **(extra or {}))
@@ -1006,7 +1024,7 @@ class App:
             self.engine.set_loop(loop)
         else:
             self.repetir_so_neste(item["id"])
-        self.engine.load(tr, start=start)
+        self.remember_pos(self.engine.load(tr, start=start))  # a posicao do que saiu, no instante da troca
 
     def tocar_remoto(self, j, target, meta, historico=True):
         """Toca na hora pelo stream do YouTube enquanto o download do job segue por tras;
@@ -1018,11 +1036,10 @@ class App:
               "channel": meta.get("channel"), "thumb": meta.get("thumb") or thumb(yid),
               "duration": meta.get("duration"), "youtube_id": yid, "alvo": None if yid else target,
               "path": None, "stream": True, "job": j["id"] if j else None, **marca_auto(meta)}
-        self.remember_pos()
         if historico:
             self.guardar_historico(tr["id"])
         self.repetir_so_neste(tr["id"])
-        self.engine.espera(tr)
+        self.remember_pos(self.engine.espera(tr))
         threading.Thread(target=self._abre_stream, args=(tr, target, bool(meta.get("title"))),
                          daemon=True).start()
 
@@ -2349,9 +2366,10 @@ def build(app_state):
             return j_err(sem_disco(), 404)
         return j_ok(por_cima=True) if feito == "por_cima" else j_ok()
 
+    # a pausa vale no limite entre blocos do motor: o pausar espera a confirmacao numa thread, e o laco segue livre
     @r.post("/api/pause")
     async def pause(_):
-        cmd.pausar(A)
+        await loop_().run_in_executor(None, cmd.pausar, A)
         return j_ok()
 
     @r.post("/api/resume")
@@ -2361,7 +2379,7 @@ def build(app_state):
 
     @r.post("/api/toggle")
     async def toggle(_):
-        cmd.alternar(A)
+        await loop_().run_in_executor(None, cmd.alternar, A)
         return j_ok()
 
     @r.post("/api/stop")

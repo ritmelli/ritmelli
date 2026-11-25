@@ -13,8 +13,8 @@ do `App`, chama o mesmo comando. Cada função recebe o `App`; a fila, o histór
 | `mover_na_fila`, `limpar_fila` | `POST /api/queue/move`, `DELETE /api/queue` | |
 | `pular` | `POST /api/next` | o avanço da fila |
 | `voltar` | `POST /api/prev` | o Anterior do `App` |
-| `pausar`, `retomar`, `alternar` | `POST /api/pause`, `/api/resume`, `/api/toggle` | pausar grava a posição do disco; o alternar pausa o que toca ou carrega e retoma o resto |
-| `parar` | `POST /api/stop` | o disco parado entra no histórico, e o Anterior toca ele de novo |
+| `pausar`, `retomar`, `alternar` | `POST /api/pause`, `/api/resume`, `/api/toggle` | pausar espera o motor confirmar a pausa no limite entre blocos (sem trava e sem prender o laço do servidor) e grava a posição confirmada; o alternar pausa o que toca ou carrega e retoma o resto |
+| `parar` | `POST /api/stop` | o disco parado entra no histórico, e o Anterior toca ele de novo; a posição gravada é a do instante em que ele saiu |
 | `ir_para` | `POST /api/seek` | |
 | `volume` | `POST /api/volume` | grava só o volume da música |
 
@@ -68,3 +68,7 @@ vigia suspenso no meio da conciliação e o `/api/state` de verdade com a prepar
 do stream e no `preparar` do motor. O `mover_na_fila` conta a fila que a tela vê (a entrada da virada pendente não se
 move e fica para o vigia), e o Próxima fecha a virada pendente antes de tocar a primeira que a tela mostra. O
 `dev/testa_mock.py` suspende o envio do SSE entre o `state` e o `tick` e força uma virada nesse intervalo.
+
+O bloco do motor (ver [engine.md](engine.md)) também passa pelo teste: o `_mixa` parado depois de retirar um bloco,
+enquanto um `seek`, um `load`, um `resume` do fim, uma troca de deck ou a troca do stream pelo arquivo passam, e a
+pausa pelo `/api/pause` e pelo `/api/toggle` esperando a publicação dele.
