@@ -36,7 +36,8 @@ first of them is on A's beat at the swap.
 
 Known failures: a pair with an issue shows a known engine defect (dois-106, #196; tone, #197). It runs and its result
 is shown, but its failure does not count; passing does, so the PR that fixes the defect takes the pair off the list.
-A pair that could not be judged (a timeout, too few attacks to measure) fails all the same.
+A pair that could not be judged (a timeout, too few attacks to measure), or that fails in a way other than its defect
+(SINTOMAS), fails all the same.
 
     python dev/testa_passagem.py [--codigo <pasta>] [--par seco ...] [-v]
 
@@ -120,6 +121,9 @@ PARES = [
     Par("meio", 70.0, 140.0, "fade", "fade", True),
     Par("recusada", 90.0, 110.0, "fade", "recusada", False),
 ]
+# the failures each known defect gives (how they start): any other failure in its pair is a regression, and counts
+SINTOMAS = {196: ("o ramo foi ", "a virada caiu "),  # the plan refused, and the switch where the volume one does it
+            197: ("a virada caiu ",)}                 # the switch ~50 ms early
 RECUSA = "transition: beats not aligned: tempos far apart,"  # a recusa por andamento no log do motor (par recusada)
 RAMOS = {"seco": "final seco no tempo", "fade": "fade-out no tempo, B esticada",
          "dois": "fade-out no tempo, os dois esticados", "recusada": "so de volume (o plano no tempo recusou)"}
@@ -500,12 +504,14 @@ def main():
             # a pair that could not be judged (a timeout, too few attacks to measure) fails, known or not: only a
             # verdict the checks gave counts as the known defect
             if par.issue is not None and not erro:
-                if falhas:  # the known defect, still there: shown, and not counted
+                outras = [f for f in falhas if not f.startswith(SINTOMAS[par.issue])]
+                if falhas and not outras:  # the known defect, still there: shown, and not counted
                     print(f"known {par.nome} ({dt:.1f} s), #{par.issue}: " + "; ".join(msgs + falhas), flush=True)
                     conhecidas.append(f"{par.nome} (#{par.issue})")
                     continue
-                falhas = [f"passed, but it is a known failure (#{par.issue}): if the engine fix is on purpose, the "
-                          "pair leaves the known failures in the same PR"]
+                if not falhas:
+                    falhas = [f"passed, but it is a known failure (#{par.issue}): if the engine fix is on purpose, the "
+                              "pair leaves the known failures in the same PR"]
             print(f"{'ok   ' if not falhas else 'FALHA'} {par.nome} ({dt:.1f} s): " + "; ".join(msgs + falhas),
                   flush=True)
             if falhas:
