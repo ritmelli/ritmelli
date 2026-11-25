@@ -7,7 +7,8 @@ mesmos WAV sinteticos), com a saida para o jogo no Injetor de verdade escrevendo
 dev/testa_microfone.py (o leitor que tira 10 ms a cada 10 ms, como o audiodg, num anel Local\ so da medida). O
 AnelFalso roda num processo dele, de prioridade alta, como o audiodg: no processo do motor, a parada do interpretador
 parava o leitor junto e escondia a seca. Em cada passagem, na mesma janela nos dois modos (do preparar ate A tocar
-FIM_ANTES_S antes da virada que a banca calcula para o par, pela posicao de A, e nao pelo relogio), conta: as secas do
+FIM_ANTES_S antes da virada que a banca calcula para o par, pela posicao de A, e nao pelo relogio: depois do corte do
+auxiliar, que fica FOLGA_S antes dela, e antes da virada), conta: as secas do
 Injetor (o anel vazio quando a thread voltou), as faltas do leitor (os 10 ms que ele nao achou: o filtro soltaria
 silencio), a pior volta da thread e o menor tanto no anel; e, a parte, o tempo ate a decisao, o do plano (o "planned
 in" do log do motor) e o ramo.
@@ -63,7 +64,8 @@ sys.path.insert(0, str(RAIZ))
 sys.path.insert(1, str(DEV))
 
 AQUECE_S = 2.0      # A toca isso (o leitor e o anel assentam) antes do preparar
-FIM_ANTES_S = 0.5   # a janela da medida acaba quando A chega a isso da virada (a virada fica de fora)
+FIM_ANTES_S = 0.2   # a janela acaba quando A chega a isso da virada: depois do corte do auxiliar (FOLGA_S, 0,3 s, e
+                    # a checagem de 20 ms), e a virada fica de fora
 PRAZO_PLANO_S = 90.0
 PARES = ("seco", "fade", "dois")  # os pares da banca que esticam (o recusado nao chama a Rubber Band)
 ABAIXO_DO_NORMAL = 0x00004000
@@ -262,7 +264,6 @@ def _passa(eng, banca, tm, fx, modo, carga, aux_normal, log):
         fim.enter_context(contextlib.redirect_stderr(log))
         e = eng.Engine("mede", "")
         e._onda_pede = lambda *a: None  # noqa: SLF001 - a onda do visor: a thread dela seguraria o motor vivo
-        e._onda_acumulador = lambda tr: None  # noqa: SLF001
 
         def _para_motor():
             e._cancela_passagem(tudo=True)  # noqa: SLF001
@@ -278,7 +279,8 @@ def _passa(eng, banca, tm, fx, modo, carga, aux_normal, log):
         anel.zera()
         inj.secas, inj.folga_min, inj.volta_max = 0, None, 0.0
         inj.voltas[:] = 0
-        virada, fim_janela = fx["janela"][1], fx["janela"][0] - FIM_ANTES_S  # posicoes de A
+        virada = fx["janela"][1]  # posicao de A
+        fim_janela = virada - FIM_ANTES_S
         if aux is not None:
             aux.venceu = lambda: e.pos >= virada - eng.FOLGA_S
         t0, p0 = time.perf_counter(), e.pos
