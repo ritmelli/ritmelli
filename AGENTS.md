@@ -76,5 +76,5 @@ onde entra teste novo: o [Contributing](README.md#contributing) do README). O ch
 mudado no `compara` só bloqueia com a etiqueta `extracao-tema` (sem ela, fica no artefato). A fila de merge da `main`
 exige ele e o "Trusted author": PR de quem não é um dos dois mantenedores só passa aprovado por um deles no head atual.
 Sem bypass nem `--admin`; `gh pr merge` cai no auto-merge, vedado: é o GraphQL `enqueuePullRequest`, `expectedHeadOid`.
-PR cuja prova pede ação física ou decisão do dono leva a etiqueta `needs-owner`: o passo "Needs owner" do `testa.yml`
-(testado pelo `dev/test_needs_owner.py`) faz a fila recusá-lo; o dono prova, tira a etiqueta e o enfileira.
+A fila recusa PR com a etiqueta `needs-owner` (o passo "Needs owner" do `testa.yml`, testado pelo
+`dev/test_needs_owner.py`): ela marca a prova que pede ação física ou decisão do dono, e o dono a tira depois de provar.
