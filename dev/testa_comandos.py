@@ -237,6 +237,46 @@ def voltas(A, E):
             f"mover na fila conta o lugar na fila que a tela ve, sem a entrada da virada ({fila(A)})")
     cmd.tirar_da_fila(A, z["qid"])
 
+    # o Proxima com a virada pendente: a primeira que a tela mostra, e nao a da virada, que ja toca
+    with mock.patch.object(A, "tocar_entrada") as tocou:
+        confere(cmd.pular(A) is y and tocou.call_args[0][0] is y and fila(A) == ["d1"],
+                "o Proxima com a virada pendente toca a que a tela mostra; a da virada fica para o vigia")
+        confere(cmd.pular(A) is None and fila(A) == ["d1"],
+                "so com a da virada na fila, o Proxima nao tem o que tocar (409)")
+    with A.fila_lock:
+        A.fila.append(y)
+
+    # a leitura pega o _qlock do motor: com ele na mao de outro (o _mixa no meio do bloco), ela espera
+    class Avisa:
+        """O mesmo _qlock, avisando quando alguem tenta pegar."""
+
+        def __init__(self, trava, chegou):
+            self.trava, self.chegou = trava, chegou
+
+        def __enter__(self):
+            self.chegou.set()
+            return self.trava.__enter__()
+
+        def __exit__(self, *a):
+            return self.trava.__exit__(*a)
+
+    qlock, chegou, lidas = E._qlock, threading.Event(), []
+    leitor = threading.Thread(target=lambda: lidas.append(A.leitura()))
+    qlock.acquire()
+    try:
+        E._qlock = Avisa(qlock, chegou)
+        leitor.start()
+        confere(chegou.wait(2), "a leitura chega ao _qlock do motor")
+        leitor.join(0.2)
+        confere(leitor.is_alive() and not lidas, "com o _qlock na mao de outro, a leitura espera")
+    finally:
+        qlock.release()
+        leitor.join(5)
+        E._qlock = qlock
+    confere(lidas and lidas[0][0]["track"]["id"] == "d1" and lidas[0][1] == E.pos
+            and [q["qid"] for q in lidas[0][0]["queue"]] == [y["qid"]],
+            "solto o _qlock, a leitura volta com a faixa, a posicao e a fila da virada")
+
     # o vigia suspenso no meio da conciliacao, com a fila_lock na mao: a leitura espera e nunca ve a virada sem a fila
     tirar, dentro, solta = A._tirar, threading.Event(), threading.Event()
 

@@ -1302,9 +1302,13 @@ class App:
             return x
 
     def proxima(self):
-        """Tira o primeiro do A seguir (None com a fila vazia)."""
+        """Tira o primeiro do A seguir (None com a fila vazia). O primeiro e o que a tela ve (leitura): a entrada da
+        virada que o motor ja confirmou, e que o _volta_passagem ainda vai conciliar, fica para ele."""
         with self.fila_lock:
-            x = self.fila[0] if self.fila else None
+            with self.engine._qlock:
+                virou = self.engine.virou
+            fora = virou[2] if virou is not None else None
+            x = next((y for y in self.fila if y["qid"] != fora), None)
             if x:
                 self._tirar(x)
             return x

@@ -60,5 +60,6 @@ escutas), e o `relogio=False` deixa o `MockEngine` sem o relógio de 10 ms. O `d
 `engine._mixa(BLOCK)` e cada volta, e confere os comandos, o avanço no fim do disco, a virada da passagem, a parecida
 com o prato parado e o stream recusado. Confere também a leitura do estado com a virada
 ainda não conciliada, com o vigia suspenso no meio da conciliação e o `/api/state` de verdade com a preparação da próxima
-bloqueada, no endereço do stream e no `preparar` do motor. O `mover_na_fila` conta o lugar na fila que a tela vê. O
+bloqueada, no endereço do stream e no `preparar` do motor. O `mover_na_fila` e o Próxima (`proxima`) contam a
+fila que a tela vê: a entrada da virada pendente fica para o vigia. O
 `dev/testa_mock.py` suspende o envio do SSE entre o `state` e o `tick` e força uma virada nesse intervalo.
