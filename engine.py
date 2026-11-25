@@ -3177,10 +3177,13 @@ class MockEngine(Engine):
                     pass
         return act
 
+    relogio = True  # False (os testes, server.App(relogio=False)): sem o _clock, quem testa chama o _mixa
+
     def start(self, reserva=False):
         self.active = self._real_names()
         self._run = True
-        threading.Thread(target=self._clock, daemon=True).start()
+        if self.relogio:
+            threading.Thread(target=self._clock, daemon=True).start()
 
     def close(self):
         self._pedal_voz_fecha()
