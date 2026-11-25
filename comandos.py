@@ -77,6 +77,20 @@ def limpar_fila(A):
     A.limpar_fila()
 
 
+def fecha_virada(A, virada):
+    """Com a fila_lock, e com a virada ja tirada do motor (o E.virou limpo sob o _qlock): a entrada dela sai da fila, o
+    que saiu entra no Anterior e a marca do prato parado sai, sem soltar a trava. O Proxima ou o fim do disco que
+    chegar logo depois espera, guarda o disco da virada depois dele e marca o prato depois. Volta a entrada (None se
+    ela ja tinha saido)."""
+    sai, entrou, tag = virada
+    x = next((y for y in A.fila if y["qid"] == tag), None)
+    if x:
+        A._tirar(x)
+    A._guardar_historico(entrou["id"], tr=sai)
+    A.parado_sem_fila = None
+    return x
+
+
 def avanca(A, virada=None, historico=True, na_tela=False):
     """O avanco da fila. Sem virada, a primeira do A seguir sai da fila e toca (historico=False: o disco que sai do
     prato nao entra no Anterior). Com virada, o (o que saiu, o que entrou, a tag) do motor, que ja virou sozinho
@@ -84,15 +98,16 @@ def avanca(A, virada=None, historico=True, na_tela=False):
     com a fila vazia, ou, na virada, se ela ja tinha saido). na_tela: o erro de tocar vai para a tela (o
     engine.error), e nao para quem chamou (os vigias: entrada quebrada nao trava a fila)."""
     if virada is not None:
-        sai, entrou, tag = virada
+        E = A.engine
         with A.fila_lock:
-            x = next((y for y in A.fila if y["qid"] == tag), None)
-            if x:
-                A._tirar(x)
-        A.guardar_historico(entrou["id"], tr=sai)
-        A.parado_sem_fila = None
-        return x
-    x = A.proxima()
+            # a virada sai do motor e a entrada dela sai da fila sob a mesma fila_lock: a leitura do estado
+            # (App.leitura) ve as duas, ou nenhuma. Quem chega depois (o vigia, ou o App.proxima) nao concilia de novo
+            with E._qlock:
+                if E.virou is not virada:
+                    return None
+                E.virou = None
+            return fecha_virada(A, virada)
+    x = A.proxima()  # fecha antes a virada pendente: o Anterior guarda o que saiu nela primeiro
     if x is None:
         return None
     try:

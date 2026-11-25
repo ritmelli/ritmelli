@@ -11,7 +11,8 @@ filho esta vivo e responde como --mock; se nao, so ele sai, pelo handle.
 E quem pode chamar cada rota (permissao.py): toda rota do server.py esta na tabela, e a tabela so tem rotas que existem
 (pelo fonte, sem as bibliotecas; pelo roteador do aiohttp, com elas). Com as bibliotecas, o guard de verdade, pedido a
 pedido: o PC, o celular antes e depois de parear, o remoto com o token e sem ele, a rota com parametro, o HEAD, a
-desconexao no SSE e o caps de cada papel. E, no mesmo --mock do teste sem rede, o PC com tudo (o /api/volume, o
+desconexao no SSE e o caps de cada papel, e o SSE com o motor virando entre o state e o tick (cada posicao e
+da faixa entregue naquela volta). E, no mesmo --mock do teste sem rede, o PC com tudo (o /api/volume, o
 /api/abaixa voltando sozinho no prazo, o /api/sinal, a recarga dos efeitos) e a rede de casa recusada onde deve, com os
 pedidos saindo do 127.0.0.2: o --mock so escuta no 127.0.0.1, e o servidor olha o endereco de quem conecta.
 
@@ -201,7 +202,7 @@ async def papeis_no_guard():
                                   celulares=par.Pareamento(Path(tmp) / "celulares.json"), remotos=perm.Remotos(),
                                   metricas=types.SimpleNamespace(erro=lambda *a, **k: None),
                                   atualizacao=types.SimpleNamespace(ao_abrir=lambda: None),
-                                  snapshot=lambda: {"status": "idle"}, public_jobs=lambda: [],
+                                  leitura=lambda: ({"status": "idle"}, 0.0), public_jobs=lambda: [],
                                   lib=types.SimpleNamespace(version=1, public=lambda: [],
                                                             get=lambda i: {"id": i} if i == "12345678901" else None),
                                   grava_cfg=lambda **k: None)
@@ -425,6 +426,51 @@ async def papeis_no_guard():
         resp, j, _ = await manda("POST", "/api/play", de=pc, token=token)
         confere(resp.status == 401, f"o token vencido (a sessao acabou), do 127.0.0.1: 401 ({resp.status})")
         confere(await status("POST", "/api/play", de=pc) == 200, "sem o cabecalho, o 127.0.0.1 segue o PC")
+
+        # o SSE: o state e o tick de uma volta saem da mesma captura (App.leitura), mesmo com o motor virando no meio
+        # do envio. O envio fica suspenso logo depois do state, e a virada acontece ali: a faixa nova, com a posicao dela
+        capturas = [({"status": "playing", "track": {"id": "t1"}}, 100.0)]
+        A.leitura, E.pos = (lambda: capturas[-1]), 100.0
+        t = mock.Mock()
+        t.get_extra_info.side_effect = lambda nome, d=None: (pc, 50000) if nome == "peername" else d
+        req = make_mocked_request("GET", "/api/events", headers={"Host": f"{pc}:{porta}"}, transport=t, app=app)
+        req._match_info = await app.router.resolve(req)
+        escrito, no_state, solta = [], asyncio.Event(), asyncio.Event()
+
+        async def escreve(dados):
+            escrito.append(dados.decode("utf-8"))
+            if dados.startswith(b"event: state") and not no_state.is_set():
+                no_state.set()
+                await solta.wait()
+
+        def eventos():
+            return [(e, json.loads(d)) for e, d in re.findall(r"^event: (\w+)\ndata: (.*)$", "".join(escrito), re.M)]
+
+        req._payload_writer.write = escreve
+        tarefa = asyncio.ensure_future(guard(req, rota[("GET", "/api/events")]))
+        try:
+            await asyncio.wait_for(no_state.wait(), 3)
+            capturas.append(({"status": "playing", "track": {"id": "t2"}}, 0.5))
+            E.pos = 0.5
+            solta.set()
+            for _ in range(100):  # ate a volta seguinte entregar a faixa nova e o tick dela
+                ev = eventos()
+                if [e for e, d in ev if e == "state"][1:] and ev[-1][0] == "tick":
+                    break
+                await asyncio.sleep(0.05)
+        finally:
+            solta.set()
+            A.closing = True
+            await asyncio.wait_for(tarefa, 3)
+            A.closing, A.leitura, E.pos = False, (lambda: ({"status": "idle"}, 0.0)), 0.0
+        faixa, pares = None, []
+        for e, d in eventos():
+            if e == "state":
+                faixa = d["track"]["id"]
+            elif e == "tick":
+                pares.append((faixa, d["pos"]))
+        confere(pares[:1] == [("t1", 100.0)] and ("t2", 0.5) in pares and set(pares) <= {("t1", 100.0), ("t2", 0.5)},
+                f"o SSE com a virada entre o state e o tick: cada posicao e da faixa entregue na volta dela ({pares})")
 
 
 def de_casa(srv, metodo, caminho, corpo=None, origem="127.0.0.2", cab=None):

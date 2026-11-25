@@ -3,11 +3,13 @@ vigias=False, relogio=False), no mesmo processo e numa pasta temporaria, sem as 
 MockEngine. Quem anda o audio e o teste, chamando o engine._mixa(BLOCK); quem faz o papel de cada vigia e o teste,
 chamando a volta dele (_volta_fila, _volta_passagem e _volta_auto). O leitor do motor e um de mentira (blocos de
 silencio, sem ffmpeg), o som por cima so e anotado e o endereco do stream e recusado: nada vai a rede nem abre
-aparelho, e a prateleira e a pasta de quem usa nao sao lidas.
+aparelho, e a prateleira e a pasta de quem usa nao sao lidas. E a leitura do estado (App.leitura) com a virada do
+motor ainda nao conciliada na fila, com o vigia suspenso no meio da conciliacao e com a preparacao bloqueada.
 
     python dev/testa_comandos.py
 
 Sai 1 se algo falha."""
+import asyncio
 import contextlib
 import io
 import json
@@ -22,6 +24,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 import numpy as np  # noqa: E402
+from aiohttp.test_utils import make_mocked_request  # noqa: E402
 
 with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, que nao sao deste teste
     import comandos as cmd  # noqa: E402
@@ -226,10 +229,225 @@ def voltas(A, E):
             if E.virou is not None:
                 break
     confere(E.virou is not None and no_prato(E) == "d1", "o _mixa vira para a preparada no fim do disco")
+
+    # a leitura do estado com a virada confirmada no motor e ainda nao conciliada na fila
+    est, pos = A.leitura()
+    confere(fila(A) == ["d1", "d2"], "a virada ainda nao conciliada: a entrada que entrou segue na fila do App")
+    confere(est["track"]["id"] == "d1" and pos == E.pos and [q["qid"] for q in est["queue"]] == [y["qid"]],
+            f"e a leitura ja e da virada: a faixa nova, a posicao dela e a fila sem a entrada que entrou "
+            f"({est['track']['id']}, {[q['id'] for q in est['queue']]})")
+    z, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    confere(not cmd.mover_na_fila(A, x["qid"], 1), "a entrada da virada ainda nao conciliada nao se move")
+    confere(cmd.mover_na_fila(A, y["qid"], 1) and [q["id"] for q in A.leitura()[0]["queue"]] == ["d3", "d2"],
+            f"mover na fila conta o lugar na fila que a tela ve, sem a entrada da virada ({fila(A)})")
+    cmd.tirar_da_fila(A, z["qid"])
+
+    # o avanco com a virada pendente fecha ela antes (o Anterior guarda o que saiu nela primeiro) e toca a primeira
+    # que a tela mostra. Depois de cada caso, a virada volta a ficar pendente para os testes de baixo
+    v, f0, h0 = E.virou, list(A.fila), list(A.historico)
+
+    def pendente(f=f0):
+        with A.fila_lock:
+            A.fila[:], A.historico[:] = list(f), list(h0)
+        E.virou, E.ended, A.parado_sem_fila = v, False, None
+
+    vistos = []
+    with mock.patch.object(A, "tocar_entrada", side_effect=lambda q, **_: vistos.append(
+            (q, E.virou, historico(A)[-1:], fila(A)))):
+        confere(cmd.pular(A) is y and vistos == [(y, None, ["d3"], [])],
+                f"o Proxima com a virada pendente: fecha a virada (o Anterior guarda a d3) e toca a que a tela mostra "
+                f"({[(q['id'], w, h, f) for q, w, h, f in vistos]})")
+    pendente([x])
+    confere(cmd.pular(A) is None and E.virou is None and fila(A) == [] and historico(A)[-1:] == ["d3"],
+            "so com a da virada na fila, o Proxima fecha a virada e nao tem o que tocar (409)")
+    pendente([x])
+    tr, E.ended = E.track, True  # o disco que entrou na virada ja acabou, antes de o vigia conciliar
+    confere(A._volta_fila(None) is tr and A.parado_sem_fila is tr and E.virou is None,
+            "o fim do disco com a virada pendente e a fila vazia: o prato fica marcado como parado")
+    confere(cmd.avanca(A, virada=v) is None and A.parado_sem_fila is tr and historico(A)[-1:] == ["d3"],
+            "o vigia que ja tinha lido a virada nao concilia de novo nem apaga a marca do prato parado")
     A._volta_passagem()
+    confere(A.parado_sem_fila is tr, "e a volta do vigia depois nao apaga essa marca (a virada ja foi fechada)")
+    pendente()
+
+    # a virada publicada pelo motor no instante em que o Proxima pega o _qlock (o vigia ainda nao a viu): o Proxima
+    # a fecha antes de escolher, e o Anterior guarda o que saiu nela antes do disco da virada
+    qlock, vistos, virou = E._qlock, [], [v]
+
+    class Vira:
+        """O mesmo _qlock; na primeira vez que alguem o pega, o motor acaba de virar."""
+
+        def __enter__(self):
+            if virou:
+                E.virou = virou.pop()
+            return qlock.__enter__()
+
+        def __exit__(self, *a):
+            return qlock.__exit__(*a)
+    pendente()
+    E.virou, E._qlock = None, Vira()
+    try:
+        with mock.patch.object(A, "tocar_entrada", side_effect=lambda q, **_: vistos.append((q, historico(A)[-1:]))):
+            cmd.pular(A)
+    finally:
+        E._qlock = qlock
+    confere(vistos == [(y, ["d3"])] and E.virou is None and fila(A) == [],
+            f"a virada que chega no meio do Proxima fecha antes de ele escolher: toca a seguinte com o Anterior em "
+            f"ordem ({[(q['id'], h) for q, h in vistos]})")
+    pendente()
+
+    # o vigia ganha a virada e fica suspenso no meio da conciliacao, logo antes de guardar no Anterior o que saiu; o
+    # Proxima que chega nesse meio espera, e o Anterior guarda o que saiu na virada antes do disco da virada
+    guardar, guardar_com_trava = A.guardar_historico, A._guardar_historico
+    dentro, solta, vistos = threading.Event(), threading.Event(), []
+
+    def devagar(guarda):
+        def f(novo_id=None, tr=None):
+            if tr is v[0]:
+                dentro.set()
+                solta.wait(5)
+            return guarda(novo_id, tr)
+        return f
+    A.guardar_historico, A._guardar_historico = devagar(guardar), devagar(guardar_com_trava)
+    try:
+        with mock.patch.object(A, "tocar_entrada", side_effect=lambda q, **_: vistos.append(historico(A)[-1:])):
+            vigia = threading.Thread(target=cmd.avanca, args=(A,), kwargs={"virada": v})
+            vigia.start()
+            confere(dentro.wait(5), "o vigia concilia a virada e para no meio, com a fila_lock na mao")
+            proxima = threading.Thread(target=cmd.pular, args=(A,))
+            proxima.start()
+            proxima.join(0.2)
+            confere(proxima.is_alive() and not vistos, "o Proxima que chega nesse meio espera a conciliacao")
+            solta.set()
+            vigia.join(5)
+            proxima.join(5)
+        confere(vistos == [["d3"]], f"e so toca depois de o Anterior guardar o que saiu na virada ({vistos})")
+    finally:
+        solta.set()
+        A.guardar_historico, A._guardar_historico = guardar, guardar_com_trava
+    pendente()
+
+    # a leitura pega o _qlock do motor: com ele na mao de outro (o _mixa no meio do bloco), ela espera
+    class Avisa:
+        """O mesmo _qlock, avisando quando alguem tenta pegar."""
+
+        def __init__(self, trava, chegou):
+            self.trava, self.chegou = trava, chegou
+
+        def __enter__(self):
+            self.chegou.set()
+            return self.trava.__enter__()
+
+        def __exit__(self, *a):
+            return self.trava.__exit__(*a)
+
+    qlock, chegou, lidas = E._qlock, threading.Event(), []
+    leitor = threading.Thread(target=lambda: lidas.append(A.leitura()))
+    qlock.acquire()
+    try:
+        E._qlock = Avisa(qlock, chegou)
+        leitor.start()
+        confere(chegou.wait(2), "a leitura chega ao _qlock do motor")
+        leitor.join(0.2)
+        confere(leitor.is_alive() and not lidas, "com o _qlock na mao de outro, a leitura espera")
+    finally:
+        qlock.release()
+        leitor.join(5)
+        E._qlock = qlock
+    confere(lidas and lidas[0][0]["track"]["id"] == "d1" and lidas[0][1] == E.pos
+            and [q["qid"] for q in lidas[0][0]["queue"]] == [y["qid"]],
+            "solto o _qlock, a leitura volta com a faixa, a posicao e a fila da virada")
+
+    # o vigia suspenso no meio da conciliacao, com a fila_lock na mao: a leitura espera e nunca ve a virada sem a fila
+    tirar, dentro, solta = A._tirar, threading.Event(), threading.Event()
+
+    def tirar_devagar(q):
+        dentro.set()
+        solta.wait(5)
+        tirar(q)
+    A._tirar = tirar_devagar
+    vigia = threading.Thread(target=A._volta_passagem)
+    vigia.start()
+    dentro.wait(5)
+    lidas = []
+    leitor = threading.Thread(target=lambda: lidas.append(A.leitura()))
+    leitor.start()
+    leitor.join(0.3)
+    confere(not lidas and E.virou is None, "com o vigia no meio da conciliacao, a leitura espera a fila_lock")
+    solta.set()
+    vigia.join(5)
+    leitor.join(5)
     ate(lambda: A.preparando is None)  # a volta ja prepara a seguinte (a d2): o teste so segue com ela pronta
+    A._tirar = tirar
+    confere(lidas and lidas[0][0]["track"]["id"] == "d1" and [q["qid"] for q in lidas[0][0]["queue"]] == [y["qid"]],
+            "e depois le a virada conciliada: a mesma faixa e a mesma fila")
     confere(E.virou is None and fila(A) == ["d2"] and historico(A)[-1:] == ["d3"] and no_prato(E) == "d1",
             f"o _volta_passagem tira da fila a que entrou e guarda a que saiu ({fila(A)}, {historico(A)[-1:]})")
+
+    # a preparacao da proxima bloqueada, no endereco do stream (fonte_de, fora das travas) e depois no E.preparar (com
+    # o E._lock na mao): o GET /api/state de verdade, pelo guard, segue respondendo
+    app = server.build(A)
+    rota_state = next(r.handler for r in app.router.routes()
+                      if r.method == "GET" and r.resource is not None and r.resource.canonical == "/api/state")
+
+    async def pede_state():
+        t = mock.Mock()
+        t.get_extra_info.side_effect = lambda nome, d=None: ("127.0.0.1", 50000) if nome == "peername" else d
+        req = make_mocked_request("GET", "/api/state", headers={"Host": f"127.0.0.1:{A.port}"}, transport=t, app=app)
+        req._match_info = await app.router.resolve(req)
+        resp = await app.middlewares[0](req, rota_state)
+        return resp.status, json.loads(resp.body)
+
+    def state_responde(quando):
+        t0 = time.monotonic()
+        st, corpo = asyncio.run(asyncio.wait_for(pede_state(), 2))
+        dt = time.monotonic() - t0
+        confere(st == 200 and dt < 0.5 and corpo["track"]["id"] == "d1" and "pos" in corpo,
+                f"com a preparacao bloqueada {quando}, o /api/state responde ({st}, {dt:.3f} s)")
+
+    fonte, preso, libera = A.fonte_de, threading.Event(), threading.Event()
+    onda, na_onda, libera_onda = E._onda_pede, threading.Event(), threading.Event()
+
+    def fonte_presa(q):
+        preso.set()
+        libera.wait(5)
+        return fonte(q)
+
+    def onda_presa(tr):
+        na_onda.set()
+        libera_onda.wait(5)
+        return onda(tr)
+
+    E.cancelar_pronto()
+    A.fonte_de, E._onda_pede = fonte_presa, onda_presa
+    try:
+        A._volta_passagem()
+        confere(preso.wait(5), "o _volta_passagem comeca a preparar a primeira da fila")
+        state_responde("no endereco do stream")
+        libera.set()
+        confere(na_onda.wait(5), "liberado o endereco, a preparacao entra no E.preparar (com o E._lock na mao)")
+        state_responde("no E.preparar")
+    finally:
+        libera.set()
+        libera_onda.set()
+        confere(ate(lambda: A.preparando is None), "liberada, a preparacao termina")
+        A.fonte_de, E._onda_pede = fonte, onda
+
+    # o pos do /api/state e o da mesma captura do estado: o motor que anda depois da leitura nao entra na resposta
+    leitura, pos0 = A.leitura, E.pos
+
+    def leitura_e_anda():
+        r = leitura()
+        E.pos = 0.5  # o motor andou depois da captura
+        return r
+    E.pos = 12.34
+    try:
+        with mock.patch.object(A, "leitura", leitura_e_anda):
+            st, corpo = asyncio.run(asyncio.wait_for(pede_state(), 2))
+    finally:
+        E.pos = pos0
+    confere(st == 200 and corpo["track"]["id"] == "d1" and corpo["pos"] == 12.34,
+            f"o pos do /api/state e o da captura, nao o do motor depois dela ({corpo.get('pos')})")
 
     # o stream da parecida que nao abriu: a fila avanca sem guardar a parecida no Anterior
     cmd.limpar_fila(A)
