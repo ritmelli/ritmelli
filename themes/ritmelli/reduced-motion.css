@@ -1,0 +1,19 @@
+/* REDUCED-MOTION-INICIO */
+@media (prefers-reduced-motion: reduce) {
+  .disco-voando .dv-capa { animation: none; }
+  .disco-voando.voltando { transition: none; }
+  .giratorio { animation: none; }
+  .lampada.piscando { animation: none; }
+  .braco, .disco, .brilho, .capa, .mostrador::before, .rolo { transition: none; }
+  .disco-item.no-prato .capa { transform: none; }
+  .estante .disco-item.no-prato .ficha { transform: none; }
+  .compacto.tocando .sete-gira { animation: none; }
+  body.com-gaveta .gaveta { animation: none; }
+  .ponteiro, .visor-ef, .seletor .seta-gav { transition: none; }
+  .palco, .palco.anima, body.com-palco .palco { transition: none; }
+  .mini-gira { animation: none; }
+  .mini-seta svg { transition: none; }
+  .menu.folha { animation: none; transition: none; }
+  .resultado.voltando .corpo, .resultado .fundo-fila svg { transition: none; }
+}
+/* REDUCED-MOTION-FIM */
