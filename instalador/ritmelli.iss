@@ -377,16 +377,24 @@ begin
   Result := '';
   Destino := RemoveBackslashUnlessRoot(WizardDirValue);
 #ifdef Parcial
-  if (PastaAnterior = '') or (CompareText(Destino, PastaAnterior) <> 0) or
-     not FileExists(AddBackslash(Destino) + 'ritmelli.exe') then begin
+  if (PastaAnterior = '') or (CompareText(Destino, PastaAnterior) <> 0) then begin
     Log('destino recusado: ' + Destino + ' nao e a instalacao anterior (' + PastaAnterior + ')');
     Result := CustomMessage('ParcialSemApp');
     Exit;
   end;
 #endif
+  // a regra antes de olhar qualquer coisa dentro do destino
   Motivo := Protegida(Destino);
-  if Motivo <> '' then
+  if Motivo <> '' then begin
     Result := FmtMessage(CustomMessage('PastaDesprotegida'), [Destino, Motivo]);
+    Exit;
+  end;
+#ifdef Parcial
+  if not FileExists(AddBackslash(Destino) + 'ritmelli.exe') then begin
+    Log('destino recusado: ' + Destino + ' nao tem o ritmelli.exe');
+    Result := CustomMessage('ParcialSemApp');
+  end;
+#endif
 end;
 
 // setup.exe /VERYSILENT /reabrir=1, o da atualizacao pelo app: abre o Ritmelli de novo no fim

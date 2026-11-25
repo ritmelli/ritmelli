@@ -259,8 +259,8 @@ def em_memoria():
     for longo in ("Ritmelli~Estudio", "Ritmelli~2026", "ABC\U0001F600DE~1"):
         d = disco_base()
         d.poe(RAIZ + "\\" + longo)
-        confere(f"um ~ num nome longo de verdade ({longo}) nao e nome curto",
-                avalia(d, RAIZ + "\\" + longo) is True, repr(avalia(d, RAIZ + "\\" + longo)))
+        confere(f"um ~ num nome longo de verdade ({longo!a}) nao e nome curto",
+                avalia(d, RAIZ + "\\" + longo) is True, ascii(avalia(d, RAIZ + "\\" + longo)))
     r = avalia(disco_base(), r"C:\Ritmelli")
     confere("a recusa e falsa e diz o motivo", not r and "outside" in str(r) and isinstance(r, pastas.Reprovada))
 
