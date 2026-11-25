@@ -1,10 +1,12 @@
-# Tests each PR on a GitHub Windows machine: the ruff (the pyproject.toml), the tests of the dev/testa_tudo.py and, when
-# the PR touches their area, the tests of the microphone filter and the screen (the fitcheck in one job, the compara in
-# another). The "Testa o PR" job always runs and only passes with the others: it is the required check of the main.
+# Tests each PR on GitHub Windows machines: the ruff (the pyproject.toml) and the tests of the dev/testa_tudo.py in one
+# job, the transition bench (its BANCA, the longest test) in another, and, when the PR touches their area, the tests of
+# the microphone filter and the screen (the fitcheck in one job, the compara in another). The "Testa o PR" job always
+# runs and only passes with the others: it is the required check of the main.
 #
-# It also runs on the push to main (the merged tree, which the PR did not test when the main moved after it) and on the
-# merge queue (merge_group), when it gets turned on in the repository settings. The push to main also leaves the
-# compara capture of the new commit in the cache: it is the reference of the PRs that will have it as their base.
+# It also runs on the merge queue (merge_group), which tests the real merge of the PR with the main, and on the push to
+# main. The queue moves the main to the very commit it tested, so the push runs only the compara capture of that commit
+# for the cache (the reference of the PRs that will have it as their base), and the "Testa o PR" of the push fails if
+# no queue run of the testa.yml passed on that commit (a commit that reached the main some other way).
 #
 # No paths: in the trigger, because a required check that does not run leaves the PR stuck. The path filter lives inside
 # each job, by the git diff against the base (the AREAS of the dev/testa_tudo.py), and the job that does not apply
@@ -46,6 +48,7 @@ jobs:
   # app), the protected folder on the real disk and the line count of the big files against the base
   testes:
     name: Testes
+    if: github.event_name != 'push'
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
@@ -95,11 +98,41 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim`nlinhas<<$fim`n$linhas`n$fim" -Encoding utf8
 
+  # the transition bench (the BANCA of the dev/testa_tudo.py): the real engine through every kind of transition, almost
+  # two minutes, in a job of its own so it runs next to the Testes instead of after them
+  banca:
+    name: Banca
+    if: github.event_name != 'push'
+    runs-on: windows-2025
+    timeout-minutes: 25
+    outputs:
+      resumo: ${{ steps.resumo.outputs.resumo }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/python
+        with:
+          requirements: requirements-dev.txt
+      - name: ffmpeg no PATH
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
+      - name: Banca
+        run: python dev/testa_tudo.py --banca --resumo "$env:RUNNER_TEMP\resumo.md"
+      - name: Resumo
+        id: resumo
+        if: always()
+        run: |
+          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } else { '**Banca das passagens:** ❌ não chegou a rodar (ver a execução)' }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
+          $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
+
   # the filter tests (the MICROFONE of the dev/testa_tudo.py), with the DLLs of the microfone\apo\compila.bat teste and
   # the Inno Setup (the test setup of the silent device, dev/testa_aparelho_mudo.py): only when the PR touches the
   # filter, the engine, the effects or their tests
   microfone:
     name: Filtro do microfone
+    if: github.event_name != 'push'
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
@@ -193,6 +226,7 @@ jobs:
   tela:
     name: Tela
     needs: etiquetas
+    if: github.event_name != 'push'
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
@@ -261,7 +295,7 @@ jobs:
   # in the same Chrome. The reference comes from the cache when a run already took it with the same commit, scripts,
   # libraries, Chrome and runner image; if not, from the base in a worktree, and it goes to the cache. A print that
   # changed blocks only with the extracao-tema label; without it, the differences go in the artifact, for review. On the
-  # push to main it always runs: the capture of the new commit goes to the cache
+  # push to main it only captures the new commit (--captura), for the cache: the queue already compared it
   compara:
     name: Compara
     needs: etiquetas
@@ -318,10 +352,10 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" -Encoding utf8
       - uses: actions/cache/restore@v6
         id: ref
-        if: steps.areas.outputs.roda == 'true'
+        if: steps.areas.outputs.roda == 'true' && github.event_name != 'push'
         with:
           path: ${{ runner.temp }}\compara-ref
-          key: compara-${{ steps.chave.outputs.base }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt') }}
+          key: compara-${{ steps.chave.outputs.base }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt') }}
       - name: compara
         id: compara
         if: steps.areas.outputs.roda == 'true'
@@ -329,9 +363,11 @@ jobs:
           EXTRACAO: ${{ steps.areas.outputs.extracao }}
           BASE_SHA: ${{ steps.chave.outputs.base }}
         run: |
-          $mais = @()
-          if ($env:GITHUB_EVENT_NAME -eq 'push') { $mais = @('--head-cache', "$env:RUNNER_TEMP\compara-head") }
-          python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\tela" --ref-cache "$env:RUNNER_TEMP\compara-ref" @mais --resumo "$env:RUNNER_TEMP\resumo.md"
+          if ($env:GITHUB_EVENT_NAME -eq 'push') {
+            python dev/testa_tudo.py --captura "$env:RUNNER_TEMP\compara-head" --pasta "$env:RUNNER_TEMP\tela" --resumo "$env:RUNNER_TEMP\resumo.md"
+            exit $LASTEXITCODE
+          }
+          python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\tela" --ref-cache "$env:RUNNER_TEMP\compara-ref" --resumo "$env:RUNNER_TEMP\resumo.md"
           $cod = $LASTEXITCODE
           if ($cod -eq 2) {
             Add-Content -Path $env:GITHUB_OUTPUT -Value 'mudou=true' -Encoding utf8
@@ -355,7 +391,7 @@ jobs:
         if: always() && steps.compara.outputs.head_cache == 'true'
         with:
           path: ${{ runner.temp }}\compara-ref
-          key: compara-${{ github.sha }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt') }}
+          key: compara-${{ github.sha }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt') }}
       - name: Prints
         if: always() && (steps.compara.outcome == 'failure' || steps.compara.outputs.mudou == 'true')
         uses: actions/upload-artifact@v7
@@ -382,13 +418,13 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
-  # the required check: always runs, joins the summaries and only passes with the other four (the one that does not
-  # apply passes without running)
+  # the required check: always runs, joins the summaries and only passes with the other five (the one that does not
+  # apply passes without running; on the push, the ones the queue already ran are skipped)
   testa-o-pr:
     name: Testa o PR
     # always(), not !cancelled(): a skipped job counts as green in the required check, and the cancelled run would pass
     if: ${{ always() }}
-    needs: [testes, microfone, tela, compara]
+    needs: [testes, banca, microfone, tela, compara]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -407,17 +443,19 @@ jobs:
           EXECUCAO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DO_REPO: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
           S_TESTES: ${{ needs.testes.result }}
+          S_BANCA: ${{ needs.banca.result }}
           S_MICROFONE: ${{ needs.microfone.result }}
           S_TELA: ${{ needs.tela.result }}
           S_COMPARA: ${{ needs.compara.result }}
           R_TESTES: ${{ needs.testes.outputs.resumo }}
+          R_BANCA: ${{ needs.banca.outputs.resumo }}
           R_MICROFONE: ${{ needs.microfone.outputs.resumo }}
           R_TELA: ${{ needs.tela.outputs.resumo }}
           R_COMPARA: ${{ needs.compara.outputs.resumo }}
           LINHAS: ${{ needs.testes.outputs.linhas }}
           MUDARAM: ${{ needs.compara.outputs.mudaram }}
         run: |
-          estados=("$S_TESTES" "$S_MICROFONE" "$S_TELA" "$S_COMPARA")
+          estados=("$S_TESTES" "$S_BANCA" "$S_MICROFONE" "$S_TELA" "$S_COMPARA")
           # a cancelled run proved nothing either way: it fails, and leaves the PR comment as the last run that ended wrote it
           for s in "${estados[@]}"; do
             if [ "$s" = cancelled ]; then
@@ -425,9 +463,20 @@ jobs:
               exit 1
             fi
           done
-          marca() { if [ "$1" = success ]; then echo "✅"; else echo "❌ ($1)"; fi; }
+          # on the push, the jobs the queue already ran on this commit are skipped: they pass only if a queue run of this
+          # workflow passed on the same commit (the queue moves the main to the commit it tested)
+          fila=""
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            for espera in 10 20 30 0; do
+              fila=$(gh api "repos/$REPO/actions/workflows/testa.yml/runs?event=merge_group&head_sha=$HEAD&per_page=20" \
+                --jq '[.workflow_runs[] | select(.conclusion == "success")][0].html_url // empty') && [ -n "$fila" ] && break
+              [ "$espera" -gt 0 ] && sleep "$espera"
+            done
+          fi
+          vale() { [ "$1" = success ] || { [ "$1" = skipped ] && [ -n "$fila" ]; }; }
+          marca() { if [ "$1" = success ]; then echo "✅"; elif vale "$1"; then echo "⏭️ (a fila testou)"; else echo "❌ ($1)"; fi; }
           ok=true
-          for s in "${estados[@]}"; do [ "$s" = success ] || ok=false; done
+          for s in "${estados[@]}"; do vale "$s" || ok=false; done
           if $ok; then
             manchete="✅ Testa: tudo passou"
             n=${MUDARAM:-0}
@@ -447,20 +496,36 @@ jobs:
           {
             echo "## $manchete"
             echo
-            echo "| Testes | Filtro do microfone | Tela | Compara |"
-            echo "| --- | --- | --- | --- |"
-            echo "| $(marca "$S_TESTES") | $(marca "$S_MICROFONE") | $(marca "$S_TELA") | $(marca "$S_COMPARA") |"
+            if [ -n "$fila" ]; then echo "A fila já testou este commit: [a execução dela]($fila)."; echo; fi
+            if [ "$GITHUB_EVENT_NAME" = push ] && [ -z "$fila" ]; then
+              echo "❌ nenhuma execução da fila passou neste commit: ele chegou à \`main\` sem a fila, e os testes não rodaram"
+              echo
+            fi
+            echo "| Testes | Banca | Filtro do microfone | Tela | Compara |"
+            echo "| --- | --- | --- | --- | --- |"
+            echo "| $(marca "$S_TESTES") | $(marca "$S_BANCA") | $(marca "$S_MICROFONE") | $(marca "$S_TELA") | $(marca "$S_COMPARA") |"
             echo
-            printf '%s\n\n' "$R_TESTES" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
+            printf '%s\n\n' "$R_TESTES" "$R_BANCA" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
             if [ -n "$tempos" ]; then echo "**Tempo de cada job** (alvo: 10 min): $tempos"; echo; fi
             if [ -n "$LINHAS" ]; then echo "$LINHAS"; echo; fi
             echo "[A execução]($EXECUCAO), no commit \`${HEAD:0:12}\`."
           } > resumo.md
           cat resumo.md >> "$GITHUB_STEP_SUMMARY"
-          # one comment per PR, updated on every run. On a fork PR the token is read only; outside a PR there is none
+          # one comment per PR, updated on every run. On a fork PR the token is read only; outside a PR there is none.
+          # A comment that does not go out (a 502 from GitHub) is tried again; after the last try the check fails with
+          # that reason, since the comment on the PR is still the one of another run (it read "algo falhou" on a PR
+          # whose run passed)
           if [ "$DO_REPO" = true ]; then
-            gh pr comment "$PR" -R "$REPO" --body-file resumo.md --edit-last --create-if-none \
-              || echo "::warning::the summary comment on the PR did not go out"
+            comentou=false
+            for espera in 5 20 0; do
+              if gh pr comment "$PR" -R "$REPO" --body-file resumo.md --edit-last --create-if-none; then comentou=true; break; fi
+              [ "$espera" -gt 0 ] && sleep "$espera"
+            done
+            if ! $comentou; then
+              echo "::error::the summary comment on the PR did not go out in 3 tries, so the comment there is from another run: re-run this job"
+              echo "**❌ o comentário do resumo no PR não saiu em 3 tentativas: o que está lá é de outra execução. Rode este job de novo.**" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
           fi
           $ok
       # cancelled before or while this job ran: nothing was published, and the check fails (a job whose steps all

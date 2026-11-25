@@ -8,6 +8,9 @@ os de referencia.
 Sai 0 com todos os prints iguais e 2 se algum mudou. Sai 1 se a captura nao vale: o servidor ou o tema que nao sobe,
 um erro no console da pagina, um print instavel ou a referencia que falta; ai nada foi comparado.
 
+A page that is not ready in time (PRONTA_S) prints each condition of the ready signal, what is still loading, the
+console errors so far and a print, in <pasta>/nao-pronto.
+
 O --raiz tira os prints do servidor e do tema de outro checkout do Ritmelli (o da base de um PR, num worktree), com o
 compara.py, o Chrome e os cenarios daqui: o testa.yml grava a referencia com o --raiz da base e compara com o PR.
 
@@ -50,8 +53,8 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import so_mock  # noqa: E402
-from fitcheck import (CHROME, PRONTA, barra_outra_origem, conecta_cdp, erro_da_pagina,  # noqa: E402
-                      fecha_chrome, le_cdp)
+from fitcheck import (CHROME, PRONTA, PRONTA_CONDICOES, PRONTA_S, barra_outra_origem, conecta_cdp,  # noqa: E402
+                      erro_da_pagina, fecha_chrome, le_cdp)
 from so_mock import free_port  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -104,6 +107,43 @@ RELOGIO_PARADO = "(() => { const t0 = performance.now(); performance.now = () =>
 # the fitcheck's ready signal, plus the fake shelf on screen
 PRONTO = f"{PRONTA} && S.lib.length > 0"
 PALCO = "document.querySelector('#palco')"
+MESA_DJ = "document.body.classList.contains('mesa-dj')"
+
+
+def diagnostico_js(mesa):
+    """An expression that gives, by name, each condition the compara waits for (the PRONTA_CONDICOES of the fitcheck,
+    the shelf and, on the PC, the body.mesa-dj), each one caught on its own, plus what is still loading: the images not
+    complete and the scripts of the page without a resource timing entry (not loaded yet)."""
+    partes = [*PRONTA_CONDICOES, ("shelf on screen", "S.lib.length > 0")] + ([("body.mesa-dj", MESA_DJ)] if mesa else [])
+    partes += [("document.readyState", "document.readyState"), ("document.fonts.status", "document.fonts.status"),
+               ("images not complete", "[...document.images].filter(i => !i.complete).map(i => i.src.slice(0, 120))"),
+               ("scripts not loaded", "[...document.scripts].filter(s => s.src && "
+                                      "!performance.getEntriesByName(s.src).length).map(s => s.src)")]
+    corpo = ", ".join(f"{json.dumps(nome)}: c(() => {js})" for nome, js in partes)
+    return ("(() => { const c = f => { try { return f(); } catch (e) { return 'error: ' + e.message; } }; "
+            f"return {{{corpo}}}; }})()")
+
+
+async def nao_ficou_pronto(c, pre, mesa, pasta):
+    """The page did not get ready in PRONTA_S: prints each condition, the console errors so far and a print of the
+    page (in <pasta>/nao-pronto), and exits 1."""
+    print(f"{pre}: the theme was not ready in {PRONTA_S:.0f} s; each condition:", flush=True)
+    try:
+        estado = await c.js(diagnostico_js(mesa))
+        for nome, valor in (estado or {}).items():
+            print(f"  {nome}: {json.dumps(valor, ensure_ascii=False)}", flush=True)
+    except Exception as ex:  # noqa: BLE001 - the page itself may be what broke
+        print(f"  (the conditions did not come: {ex})", flush=True)
+    for e in c.erros or ["(none)"]:
+        print(f"  console: {e}", flush=True)
+    try:
+        arquivo = pasta / "nao-pronto" / f"{pre}.png"
+        arquivo.parent.mkdir(parents=True, exist_ok=True)
+        arquivo.write_bytes(await c.png())
+        print(f"  print: {arquivo}", flush=True)
+    except Exception as ex:  # noqa: BLE001
+        print(f"  (the print did not come: {ex})", flush=True)
+    sys.exit(f"{pre}: o tema nao ficou pronto em {PRONTA_S:.0f} s" + (" (sem o body.mesa-dj)" if mesa else ""))
 
 
 def na_mesa(w, h):
@@ -320,17 +360,18 @@ async def prints(a, srv, destino):
                     except so_mock.Recusa as ex:
                         sys.exit(f"{pre}: {ex}")
                     await c.cmd("Page.navigate", url=f"{srv.base}/t/ritmelli/?lang={a.lang}")
-                    for _ in range(200):
+                    fim = time.monotonic() + PRONTA_S
+                    while True:
                         await asyncio.sleep(0.1)
                         if c.barrados:
                             sys.exit(f"{pre}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
                         try:
-                            if await c.js(PRONTO + (" && document.body.classList.contains('mesa-dj')" if mesa else "")):
+                            if await c.js(PRONTO + (f" && {MESA_DJ}" if mesa else "")):
                                 break
                         except RuntimeError:  # a pagina ainda nao tem o S
                             pass
-                    else:
-                        sys.exit(f"{pre}: o tema nao ficou pronto em 20 s" + (" (sem o body.mesa-dj)" if mesa else ""))
+                        if time.monotonic() > fim:
+                            await nao_ficou_pronto(c, pre, mesa, destino.parent)
                     await asyncio.sleep(1)
                     if mesa:
                         # o ponto de toque do visor (movimento reduzido) fica onde o primeiro desenho o ancorou, e o
@@ -423,6 +464,7 @@ def main():
     destino = pasta / ("ref.novo" if a.ref else "agora")
     shutil.rmtree(destino, ignore_errors=True)
     shutil.rmtree(pasta / "instavel", ignore_errors=True)
+    shutil.rmtree(pasta / "nao-pronto", ignore_errors=True)
     destino.mkdir(parents=True)
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-compara-"))
     porta = free_port()

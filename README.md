@@ -526,6 +526,7 @@ the rule for itself. Run the tests before you open one, with the virtual environ
 ```powershell
 python -m ruff check .
 python dev\testa_tudo.py                           # every test that needs no audio device and no internet
+python dev\testa_tudo.py --banca                   # the transition bench (dev/testa_passagem.py), about 2 minutes
 python dev\testa_tudo.py --microfone               # the filter tests, after microfone\apo\compila.bat teste
 python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as the pull request check runs them
 ```
@@ -534,10 +535,11 @@ python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as th
 tests run four at a time, except the ones that measure time, which run one by one after the others (`--jobs 1` runs
 everything one by one).
 
-A new `dev/testa_*.py` goes into one of the lists in `dev/testa_tudo.py` (`STDLIB`, `COMPLETO`, `MICROFONE`, or
-`PASSOS` for a step of its own in `testa.yml`). A test or tool that only runs by hand says so in a comment at the top
-of the file, before the docstring: `# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a test that
-runs nowhere, on a `manual:` file that runs in the check, and when `testa.yml` stops calling one of its modes.
+A new test is named `dev/test_*.py` (in English; the older ones are `dev/testa_*.py`). Either kind goes into one of
+the lists in `dev/testa_tudo.py` (`STDLIB`, `COMPLETO`, `BANCA`, `MICROFONE`, or `PASSOS` for a step of its own in
+`testa.yml`). A test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
+`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a `dev/test_*.py` or `dev/testa_*.py` that runs
+nowhere, on a `manual:` file that runs in the check, and when `testa.yml` stops calling one of its modes.
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
 [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks

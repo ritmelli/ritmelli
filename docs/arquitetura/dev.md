@@ -13,18 +13,28 @@ esticamento da passagem seca o anel do jogo, no processo do motor e num auxiliar
 
 O `dev/testa_tudo.py` roda os testes que não usam som, aparelho nem rede externa, quatro
 por vez (os do `SERIAL`, que medem tempo, um a um e sozinhos, depois dos outros), pelas listas
-dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO` e o `MICROFONE` (este
-sempre um a um; o job do filtro roda com o Inno Setup, para o setup de teste do
-`testa_aparelho_mudo`). No `COMPLETO`, biblioteca ou ffmpeg faltando é falha. Todo `dev/testa_*.py`
-tem destino: uma lista, um passo próprio do `testa.yml` declarado no `PASSOS` (o `--passo disco`
-roda o `testa_pasta_protegida --disco`) ou, quando só roda à mão, o comentário `# manual:
-<comando> precisa de <aparelho>` no topo, antes da docstring (o `dev/bumbo.py` tem um). Antes de
-rodar, o `COMPLETO`, o `--so-stdlib` e o `--microfone` falham com o teste sem destino, com o
-arquivo de `dev/` que tem o `manual:` e roda no check, e com o modo do `testa_tudo` que o
-`testa.yml` deixou de chamar. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
+dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO`, a `BANCA` (o
+`--banca`: a banca das passagens, o `testa_passagem`, o teste mais longo, num job próprio do
+`testa.yml`, ao lado do de Testes) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
+Inno Setup, para o setup de teste do `testa_aparelho_mudo`). No `COMPLETO` e na `BANCA`, biblioteca
+ou ffmpeg faltando é falha. Todo teste de `dev/`, o `dev/testa_*.py` e o `dev/test_*.py` (todo teste
+novo, em inglês, nasce `test_*`), tem destino: uma lista, um passo próprio do `testa.yml` declarado
+no `PASSOS` (o `--passo disco` roda o `testa_pasta_protegida --disco`) ou, quando só roda à mão, o
+comentário `# manual: <comando> precisa de <aparelho>` no topo, antes da docstring (o
+`dev/bumbo.py` tem um). Antes de rodar, o `COMPLETO`, a `--banca`, o `--so-stdlib` e o `--microfone`
+falham com o teste sem destino, com o arquivo de `dev/` que tem o `manual:` e roda no check, e com o
+modo do `testa_tudo` que o `testa.yml` deixou de chamar. O `dev/test_ci_workflow.py` confere o que
+nenhuma execução de PR exercita: o bloco do "Testa o PR" num bash com um `gh` falso (o comentário
+que falha com 502 tenta de novo e, na última, reprova dizendo isso; no push, os jobs pulados só
+passam com uma execução da fila aprovada no mesmo commit), os jobs que o push pula, as chaves de
+cache e essa trava. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
 cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
-roda tudo isso em todo PR, no push na `main` e na fila de merge. No PR, só abrir, reabrir e
+roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo commit que testou,
+então o push na `main` roda só a captura do `compara` desse commit para o cache (o `--captura`), e o
+"Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI se
+instalam com as versões do `instalador/travas.txt` (`-c`), que entra na chave do cache delas e na
+da captura do `compara`. No PR, só abrir, reabrir e
 um commit novo rodam o check: editar a descrição ou mexer numa etiqueta não roda, porque uma
 execução no mesmo commit vira a suite mais nova do workflow e o check exigido sai só dela
 (encobriria o "Testa o PR" de quem testou). A etiqueta `extracao-tema` e a base nova de um PR
@@ -40,7 +50,7 @@ aceita o `config.json`, argumentos e variáveis a mais, com a rede presa num pro
 de "a tela não mudou", no celular e na mesa do PC, a 1920x1080: prints do tema em estados fixos,
 com uma prateleira de mentira e o servidor em `--mock`, comparados pixel a pixel com os de
 referência gravados antes da mudança, também de outro checkout pelo `--raiz`; sai 2 se um
-print mudou e 1 se a captura não vale), `dev/perfcheck.py`
+print mudou e 1 se a captura não vale; o tema que não fica pronto no prazo imprime cada condição do sinal de pronto, o que ainda carrega, os erros do console e um print em `<pasta>/nao-pronto`), `dev/perfcheck.py`
 (quanto o tema redesenha por segundo com música tocando, no celular emulado),
 `dev/celular.py` (mede rolagem, puxão e abrir do palco no Chrome do celular de verdade,
 por USB com adb; o emulado não reproduz o que trava lá; num `--mock --papel-local celular`, a aba pareia como o
