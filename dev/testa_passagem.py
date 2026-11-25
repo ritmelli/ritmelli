@@ -364,20 +364,24 @@ def confere(par, pasta, verboso):
     yb = signal.sosfiltfilt(SOS_B, x)
     if ramo == "recusada":
         # a passagem de volume no audio: B nao soa antes da virada (a faixa dela fica 30 dB abaixo do que soa depois),
-        # entra depois dela, e A some. E e cruzada, e nao corte: pelos tons fixos, A ainda soa logo depois da virada,
-        # enquanto B entra baixa e sobe
+        # entra depois dela, e A some. E e cruzada, e nao corte: pelos tons fixos, logo depois da virada A ainda soa e B
+        # ja soa, baixa, e sobe
         v = vo / SR
         ta, tb = signal.sosfiltfilt(SOS_TOM_A, x), signal.sosfiltfilt(SOS_TOM_B, x)
         a_fica = _rms_db(ta, v + 0.2, v + 0.6) - _rms_db(ta, v - 0.5, v)
         b_sobe = _rms_db(tb, v + 1.5, v + 2.0) - _rms_db(tb, v + 0.05, v + 0.35)
+        b_junto = _rms_db(tb, v + 0.2, v + 0.6) - _rms_db(tb, v + 2.5, v + 3.0)  # B ja soa enquanto A ainda soa
         sobe = _rms_db(yb, v + 1.0, v + 3.0) - _rms_db(yb, v - 3.0, v)
         depois = ataques_b(yb, vo, v + 3.0, fx["vies"][1])
         ya = signal.sosfiltfilt(SOS_A, x)
         cai = _rms_db(ya, v - 1.0, v) - _rms_db(ya, v + 2.5, v + 3.5)
         msgs.append(f"B sobe {sobe:.0f} dB e tem {len(depois[0]) + len(depois[1])} ataques nos 3 s depois da virada; "
-                    f"A cai {cai:.0f} dB; sobrepondo, A a {a_fica:+.0f} dB logo depois e B {b_sobe:+.0f} dB em 2 s")
+                    f"A cai {cai:.0f} dB; sobrepondo, A a {a_fica:+.0f} dB e B a {b_junto:+.0f} dB logo depois, "
+                    f"e B {b_sobe:+.0f} dB em 2 s")
         if a_fica < -15:
             falhas.append(f"A ficou a {a_fica:.0f} dB logo depois da virada: corte, e nao cruzamento")
+        if b_junto < -25:
+            falhas.append(f"B a {b_junto:.0f} dB de 0,2 a 0,6 s depois da virada: sem sobreposicao com A")
         if b_sobe < 6:
             falhas.append(f"B subiu so {b_sobe:.0f} dB na sobreposicao: entrou cheia, e nao cruzada")
         if sobe < 30:
