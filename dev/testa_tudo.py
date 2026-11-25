@@ -27,7 +27,7 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
                                            one by one, alone, after the others
 
 In the COMPLETO, a missing library or ffmpeg is a failure, not a skipped test: without the server libraries, the
-testa_mock, the testa_migra and the testa_pareamento skip their part.
+testa_mock and the testa_migra skip their part.
 
 Every dev/testa_*.py has a destination: a list here (STDLIB, COMPLETO, MICROFONE, PASSOS), or it only runs by hand and
 says so at the top of the file, in a comment before the docstring, how and with what: "# manual: <comando> precisa de
@@ -61,7 +61,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 # so a biblioteca padrao: a monta.yml roda estes antes de instalar as bibliotecas do app
 STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vozes", "pareamento", "grava", "mfx",
-                                             "ganchos", "pasta_protegida")]
+                                             "ganchos", "pasta_protegida", "so_mock")]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",

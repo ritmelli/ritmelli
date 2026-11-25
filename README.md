@@ -612,10 +612,11 @@ Until the SignPath Foundation approves the project, versions are published unsig
 - **Privacy policy:** [PRIVACIDADE.md](PRIVACIDADE.md#ritmelli-privacy-policy), summarized in [Privacy](#privacy)
   along with the link to Google's privacy policy for YouTube and YouTube Music. The installer shows the main points
   and lets you turn off usage data and error reports.
-- **What is signed:** `ritmelli.exe`, the installer and the partial update, built from this code by this repository's
-  pipeline (`.github/workflows/monta.yml`) on a GitHub-hosted machine. Deno ships in the installer exactly as its
-  project distributes it, and ffmpeg and ffprobe are built by the team with audio features only
-  (`instalador/ffmpeg/`); none of the three carries Ritmelli's signature.
+- **What is signed:** `ritmelli.exe`, the microphone filter and its effects engine (`micfx.dll` and `voz.dll`), the
+  installer and the partial update, built from this code by this repository's pipeline (`.github/workflows/monta.yml`)
+  on a GitHub-hosted machine. Deno ships in the installer exactly as its project distributes it, and ffmpeg and ffprobe
+  are built by the team with audio features only (`instalador/ffmpeg/`); none of the three carries Ritmelli's
+  signature.
 
 ## License
 

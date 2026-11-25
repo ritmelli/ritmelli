@@ -24,6 +24,15 @@ LIVRE = frozenset({"pc", "celular", "publico"})        # o tema e o pareamento: 
 TAMBEM_REMOTO = frozenset({"pc", "celular", "remoto"})  # os comandos do vocabulario remoto que o tema ja usa
 SO_REMOTO = frozenset({"pc", "remoto"})  # os do remoto que o tema nao usa: fechados para o celular
 
+# The routes only the optional module from outside the repo calls. It runs on the PC and connects through 127.0.0.1, so
+# it has the "pc" role: the theme never uses these, and they stay closed to the phone and to the remote session. The
+# count is held by dev/testa_ganchos.py: a new route for that module goes through the ones already here.
+OUT_OF_REPO = (
+    ("GET", "/api/tocadas"),   # what has played since the server started
+    ("GET", "/api/musica"),    # the YouTube Music search of a spoken request
+    ("POST", "/api/aquece"),   # someone started talking: warm up the YouTube connections
+)
+
 TABELA = {
     # o tema, os arquivos dele, a galeria e o pareamento
     ("GET", "/"): LIVRE,
@@ -57,11 +66,8 @@ TABELA = {
     # o celular pareado: o que o tema usa nele
     ("GET", "/api/onda/{iid}"): CELULAR,
     ("GET", "/api/library"): CELULAR,
-    ("GET", "/api/tocadas"): CELULAR,
     ("GET", "/api/jobs"): CELULAR,
     ("GET", "/api/search"): CELULAR,
-    ("GET", "/api/musica"): CELULAR,
-    ("POST", "/api/aquece"): CELULAR,
     ("POST", "/api/library"): CELULAR,
     ("PATCH", "/api/library/{iid}"): CELULAR,
     ("DELETE", "/api/library/{iid}"): CELULAR,
@@ -76,10 +82,13 @@ TABELA = {
     ("GET", "/api/devices"): CELULAR,
     ("POST", "/api/devices"): CELULAR,
     ("GET", "/api/boas-vindas"): CELULAR,
-    ("POST", "/api/shutdown"): CELULAR,
-    ("GET", "/api/lan"): CELULAR,
+
+    # only the module from outside the repo (OUT_OF_REPO), which is the PC
+    **dict.fromkeys(OUT_OF_REPO, PC),
 
     # so o PC
+    ("POST", "/api/shutdown"): PC,  # off, the app can only be turned back on from the PC itself
+    ("GET", "/api/lan"): PC,
     ("POST", "/api/effects/reload"): PC,
     ("POST", "/api/boas-vindas"): PC,
     ("POST", "/api/janela/foco"): PC,
