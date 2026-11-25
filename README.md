@@ -525,12 +525,14 @@ python dev\testa_tudo.py --microfone               # the filter tests, after mic
 python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as the pull request check runs them
 ```
 
-`python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library.
+`python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library. The
+tests run four at a time, except the ones that measure time, which run one by one after the others (`--jobs 1` runs
+everything one by one).
 
-A new `dev/testa_*.py` goes into one of the lists in `dev/testa_tudo.py` or into a step of its own in `testa.yml`. A
-test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
-`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` reads the `testa.yml` steps and fails on a test that
-runs nowhere and on a `manual:` file that runs there.
+A new `dev/testa_*.py` goes into one of the lists in `dev/testa_tudo.py` (`STDLIB`, `COMPLETO`, `MICROFONE`, or
+`PASSOS` for a step of its own in `testa.yml`). A test or tool that only runs by hand says so in a comment at the top
+of the file, before the docstring: `# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a test that
+runs nowhere, on a `manual:` file that runs in the check, and when `testa.yml` stops calling one of its modes.
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
 [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks

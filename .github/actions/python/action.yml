@@ -1,0 +1,45 @@
+# Python 3.12.10 with a virtual environment of one requirements file, kept in the Actions cache by the runner image,
+# the Python version and the hash of both requirements files. On a hit nothing is installed; on a miss the libraries
+# are installed and the environment is saved right away, so a test that fails later in the job does not lose it.
+name: Python and the libraries
+description: Python 3.12.10 and a cached virtual environment with the libraries of one requirements file
+inputs:
+  requirements:
+    description: the requirements file (requirements.txt or requirements-dev.txt)
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v7
+      id: python
+      with:
+        python-version: '3.12.10'
+    - name: Cache key
+      id: key
+      shell: pwsh
+      run: Add-Content -Path $env:GITHUB_OUTPUT -Value "image=$env:ImageOS-$env:ImageVersion" -Encoding utf8
+    - uses: actions/cache/restore@v6
+      id: venv
+      with:
+        path: ${{ runner.temp }}\venv
+        key: venv-${{ steps.key.outputs.image }}-py${{ steps.python.outputs.python-version }}-${{ inputs.requirements }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+    - name: Bibliotecas
+      if: steps.venv.outputs.cache-hit != 'true'
+      shell: pwsh
+      env:
+        REQUIREMENTS: ${{ inputs.requirements }}
+      run: |
+        python -m venv "$env:RUNNER_TEMP\venv"
+        & "$env:RUNNER_TEMP\venv\Scripts\python.exe" -m pip install --disable-pip-version-check -r $env:REQUIREMENTS
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    - uses: actions/cache/save@v6
+      if: steps.venv.outputs.cache-hit != 'true'
+      with:
+        path: ${{ runner.temp }}\venv
+        key: ${{ steps.venv.outputs.cache-primary-key }}
+    # the environment first in the PATH: "python" in the next steps, and the sys.executable of the tests, is its own
+    - name: Virtual environment in the PATH
+      shell: pwsh
+      run: |
+        Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\venv\Scripts" -Encoding utf8
+        Add-Content -Path $env:GITHUB_ENV -Value "VIRTUAL_ENV=$env:RUNNER_TEMP\venv" -Encoding utf8
