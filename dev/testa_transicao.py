@@ -3,6 +3,11 @@ que o motor fez ao transicao.py nos pares da banca das passagens (dev/testa_pass
 voltou, e este teste chama de novo cada uma e confere que volta o mesmo. Sem som, sem ffmpeg e sem o motor: so o
 transicao.py e o numpy. Toda funcao publica do transicao.py tem de ter ao menos um caso gravado.
 
+It also checks the bound the outgoing track's phase excerpt relies on (#208): sped up by at most SAI_MAX, FASE_MIN_S of
+its output reaches FASE_MIN_S * (1 + SAI_MAX) s of disc back from the switch, and that has to stay inside the stretch
+where its speed is already constant, which starts where transicao.rampa_saida ends the ramp. FASE_MIN_S is read from the
+text of engine.py, so the engine is still not imported.
+
     python dev/testa_transicao.py            confere os casos gravados
     python dev/testa_transicao.py --grava    roda a banca das passagens neste checkout (precisa do ffmpeg, como ela) e
                                              regrava o JSON com as chamadas que o motor fez
@@ -16,6 +21,7 @@ ser exata.
 
 Sai 1 se algo falha."""
 import argparse
+import ast
 import base64
 import hashlib
 import inspect
@@ -174,6 +180,40 @@ def _igual(a, b):
     return a == b
 
 
+def engine_constant(name):
+    """A constant assigned at the top of engine.py, read from its text (the engine is not imported here)."""
+    tree = ast.parse((RAIZ / "engine.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == name):
+            return ast.literal_eval(node.value)
+    raise LookupError(f"engine.py has no top-level {name} written as a literal")
+
+
+def phase_excerpt_bound():
+    """The failures of the bound #208 relies on: the phase excerpt of the outgoing track, FASE_MIN_S of its output at
+    the fastest speed it can take (1 + SAI_MAX), stays where that speed is already constant."""
+    try:
+        fase_min_s = engine_constant("FASE_MIN_S")
+    except LookupError as ex:
+        return [str(ex)]
+    virar = 100.0
+    falhas = []
+    for sa in (1 + transicao.SAI_MAX, 1 - transicao.SAI_MAX):
+        n_ra, start = transicao.rampa_saida(sa, virar)
+        ramp_end = start + n_ra * (1 + sa) / 2 / transicao.SR  # the ramp covers its samples at the mean speed
+        constant = virar - ramp_end
+        # the excerpt starts at whichever comes first: FASE_ANTES_S of disc or FASE_MIN_S of output before the switch
+        excerpt = max(transicao.FASE_ANTES_S, fase_min_s * sa)
+        print(f"sa {sa:.2f}: the phase excerpt reaches {excerpt:.2f} s of disc before the switch; the speed is "
+              f"constant for the last {constant:.2f} s")
+        if excerpt > constant + 1e-9:
+            falhas.append(f"with the outgoing track at {sa:.2f}, FASE_MIN_S ({fase_min_s} s) of its output goes back "
+                          f"{excerpt:.2f} s of disc from the switch, into its speed ramp, which ends {constant:.2f} s "
+                          f"before it (FASE_MIN_S * (1 + SAI_MAX) <= FASE_ANTES_S + 0.5)")
+    return falhas
+
+
 def confere():
     if not CASOS.exists():
         print(f"FALHA sem {CASOS.name}: python dev/testa_transicao.py --grava")
@@ -198,6 +238,7 @@ def confere():
     sem = [n for n in _publicas() if n not in por_fn]
     if sem:
         falhas.append(f"funcao publica do transicao.py sem caso gravado: {', '.join(sem)}")
+    falhas += phase_excerpt_bound()
     for f in falhas:
         print(f"FALHA {f}")
     print("ok" if not falhas else f"{len(falhas)} falha(s)")

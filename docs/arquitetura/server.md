@@ -113,7 +113,10 @@ o UTF-8 não codifica não quebra a volta, que é montada uma vez para todas as 
   de fora, os andamentos e as versões) e a busca de rede (o `mix_do`) seguem no `App`, e o `App` repassa o
   `ligar_auto`, o `_busca_mix` e a `_volta_auto()` a ele. As constantes do Automático (`AUTO_FILA`, `AUTO_JANELA_S`,
   `ANDAMENTO_APOS_S` e as outras) moram no `automatico.py`, e as funções puras de música que ele e o servidor usam
-  (`chaves_musica`, `autores`, `mesma_faixa`, `busca_de`, `segundos`, `thumb`) no `music.py`. O
+  (`chaves_musica`, `autores`, `mesma_faixa`, `busca_de`, `segundos`, `thumb`, `YT_ID`) no `music.py`. A pasta da
+  prateleira (`LIB`) e o `save_json` ele importa do `pastas.py`; o que ainda é do servidor (o processo do YouTube, o
+  processo auxiliar e o texto do erro) chega pela interface pública do `App` (`search_songs`, `run_helper`,
+  `yt_error`), como as mudanças da fila (`change_queue`, `remove_from_queue`, `tempo_of`). O
   `dev/testa_automatico.py` confere a fila montada no `App` de verdade, com um `mix_do` falso e andamentos conhecidos.
 - Versão só de áudio: o rádio traz de tudo, inclusive o que só existe no
   YouTube, mas a parecida que veio como vídeo (clipe com intro, vídeo com letra) toca a faixa

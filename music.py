@@ -5,6 +5,8 @@ Automatico (automatico.py) both use them: whether two videos are the same song (
 import re
 import unicodedata
 
+YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")  # a YouTube video id
+
 
 def thumb(yid):
     return f"https://i.ytimg.com/vi/{yid}/mqdefault.jpg" if yid else None

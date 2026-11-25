@@ -11,12 +11,18 @@ The same ceiling holds the server routes that only that module calls: the OUT_OF
 from its text too, has to have exactly ROUTES_CEILING entries. A new route for the module goes through the ones already
 there; one that leaves lowers the ceiling in the same PR.
 
-It also ratchets the reaches into the engine's insides from the other modules at the repo root (server.py, comandos.py,
-automatico.py and the rest): every read or call of ._deck, ._qlock, ._lock, ._cancela_passagem, ._pronto, ._saindo or
-._ganho_de on an object other than self (a class's own _lock is its own). The count must equal ENGINE_CEILING: above it,
-a new reach went in (use the engine's interface: Engine.line, on_line, take_switch, drop_prepared, gain_for,
-update_track, platter_state, tracks_in_use); below it, the PR lowers ENGINE_CEILING with it. The number goes to the PR
-summary (the "-- summary:" line that dev/testa_tudo.py collects).
+It also ratchets the reaches into the insides of two classes from the other modules at the repo root:
+  - the engine's (Engine and MockEngine, in engine.py), from server.py, comandos.py, automatico.py and the rest; the
+    interface is Engine.line, on_line, take_switch, drop_prepared, gain_for, update_track, platter_state and
+    tracks_in_use. The count must equal ENGINE_CEILING;
+  - the App's (server.App), from comandos.py, automatico.py and the rest; the interface is its public methods
+    (change_queue, remove_from_queue, release_reservation, with_engine, search_songs, run_helper and the others). The
+    count must equal APP_CEILING.
+The private names come from the class's own syntax tree: every method, every name assigned in the class body and every
+self._x it assigns whose name starts with one underscore (not two). A reach is a read, write or call of one of those
+names on an object other than self or cls (a class's own _lock is its own), and also a getattr, setattr, hasattr or
+delattr with the name as a literal. Above the ceiling, a new reach went in: go through the interface. Below it, the PR
+lowers the ceiling with it. Both numbers go to the PR summary (the "-- summary:" lines that dev/testa_tudo.py collects).
 
     python dev/testa_ganchos.py
 
@@ -31,7 +37,8 @@ TETO = 26
 ROUTES_CEILING = 3
 # the reaches into the engine's insides from the modules at the root, other than engine.py; it only goes down
 ENGINE_CEILING = 14
-INSIDES = {"_deck", "_qlock", "_lock", "_cancela_passagem", "_pronto", "_saindo", "_ganho_de"}
+# the reaches into the App's insides from the modules at the root, other than server.py; it only goes down
+APP_CEILING = 0
 
 
 def opcionais(arvore):
@@ -109,18 +116,79 @@ def out_of_repo_routes(tree):
     return None
 
 
-def reaches():
-    """{module: count} of the reaches into the engine's insides (INSIDES) outside engine.py."""
-    out = {}
-    for f in sorted(RAIZ.glob("*.py")):
-        if f.name == "engine.py":
+def is_private(name):
+    return name.startswith("_") and not name.startswith("__")
+
+
+def privates(tree, classes):
+    """The private names the top-level classes named in classes define: their methods, the names assigned in the class
+    body and every self._x their methods assign."""
+    out = set()
+    for c in tree.body:
+        if not (isinstance(c, ast.ClassDef) and c.name in classes):
             continue
-        n = sum(1 for no in ast.walk(ast.parse(f.read_text(encoding="utf-8")))
-                if isinstance(no, ast.Attribute) and no.attr in INSIDES
-                and not (isinstance(no.value, ast.Name) and no.value.id in ("self", "cls")))
-        if n:
-            out[f.name] = n
-    return out
+        for s in c.body:  # the class body: _X = ...
+            for target in (s.targets if isinstance(s, ast.Assign) else [s.target] if isinstance(s, ast.AnnAssign)
+                           else []):
+                if isinstance(target, ast.Name):
+                    out.add(target.id)
+        for no in ast.walk(c):
+            if isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out.add(no.name)
+            elif (isinstance(no, ast.Attribute) and isinstance(no.ctx, ast.Store) and isinstance(no.value, ast.Name)
+                  and no.value.id == "self"):
+                out.add(no.attr)
+    return {n for n in out if is_private(n)}
+
+
+def own(node):
+    return isinstance(node, ast.Name) and node.id in ("self", "cls")
+
+
+def reaches(owner, names):
+    """[(module, line, name)] of the reaches into names from the modules at the root other than owner: an attribute
+    on an object other than self or cls, or a getattr/setattr/hasattr/delattr with the name as a literal."""
+    out = []
+    for f in sorted(RAIZ.glob("*.py")):
+        if f.name == owner:
+            continue
+        for no in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if isinstance(no, ast.Attribute) and no.attr in names and not own(no.value):
+                out.append((f.name, no.lineno, no.attr))
+            elif (isinstance(no, ast.Call) and isinstance(no.func, ast.Name)
+                  and no.func.id in ("getattr", "setattr", "hasattr", "delattr") and len(no.args) >= 2
+                  and isinstance(no.args[1], ast.Constant) and no.args[1].value in names and not own(no.args[0])):
+                out.append((f.name, no.lineno, no.args[1].value))
+    return sorted(out)
+
+
+def ratchet(what, owner, classes, ceiling, ceiling_name):
+    """Checks the reaches into the insides of classes (top-level in the module owner) against the ceiling; True if it
+    fails."""
+    names = privates(ast.parse((RAIZ / owner).read_text(encoding="utf-8")), classes)
+    if not names:
+        print(f"FAIL  {owner} defines no private name in {', '.join(sorted(classes))}: the classes moved or were "
+              "renamed")
+        return True
+    found = reaches(owner, names)
+    per_module = {}
+    for module, _, _ in found:
+        per_module[module] = per_module.get(module, 0) + 1
+    detail = ", ".join(f"{k} {v}" for k, v in per_module.items()) or "none"
+    print(f"-- summary: reaches into the {what}'s insides outside {owner}: {len(found)} "
+          f"(ceiling {ceiling}; {detail})")
+    if len(found) == ceiling:
+        print(f"ok    the reaches into the {what}'s insides did not grow")
+        return False
+    if len(found) > ceiling:
+        print(f"FAIL  {len(found) - ceiling} new reach(es) into the {what}'s insides: go through its public interface "
+              "(docs/arquitetura/comandos.md)")
+    else:
+        print(f"FAIL  fewer reaches into the {what}'s insides: lower {ceiling_name} in dev/testa_ganchos.py to "
+              f"{len(found)} in this same PR")
+    for module, line, name in found:
+        print(f"        {module}:{line} .{name}")
+    return True
 
 
 falhou = False
@@ -158,19 +226,6 @@ else:
     else:
         print("ok    the routes for the module from outside the repo didn't grow")
 
-per_module = reaches()
-reached = sum(per_module.values())
-detail = ", ".join(f"{k} {v}" for k, v in per_module.items()) or "none"
-print(f"-- summary: reaches into the engine's insides outside engine.py: {reached} "
-      f"(ceiling {ENGINE_CEILING}; {detail})")
-if reached > ENGINE_CEILING:
-    print(f"FAIL  {reached - ENGINE_CEILING} new reach(es) into the engine's insides: go through the engine's "
-          "interface (docs/arquitetura/comandos.md)")
-    falhou = True
-elif reached < ENGINE_CEILING:
-    print(f"FAIL  fewer reaches into the engine's insides: lower ENGINE_CEILING in dev/testa_ganchos.py to {reached} "
-          "in this same PR")
-    falhou = True
-else:
-    print("ok    the reaches into the engine's insides did not grow")
+falhou |= ratchet("engine", "engine.py", {"Engine", "MockEngine"}, ENGINE_CEILING, "ENGINE_CEILING")
+falhou |= ratchet("App", "server.py", {"App"}, APP_CEILING, "APP_CEILING")
 sys.exit(1 if falhou else 0)
