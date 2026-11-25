@@ -128,8 +128,8 @@ LONG_TITLES = {"bench": "Banca", "capture": "Captura"}
 LONG_TEST_INPUTS = {
     "bench": (("dev/testa_passagem.py",),
               ("instalador/ffmpeg/", "modelos/", "vozes.json", "requirements.txt", "requirements-dev.txt")),
-    "capture": (("dev/test_capture.py", "dev/testa_tudo.py", "dev/compara.py", "server.py"),
-                ("themes/", "instalador/ffmpeg/", "vozes.json", *CAPTURA)),
+    "capture": (("dev/test_capture.py", "dev/testa_tudo.py", "dev/compara.py", "server.py", "ritmelli.py"),
+                ("themes/", "instalador/ffmpeg/", "modelos/", "vozes.json", *CAPTURA)),
 }
 
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva

@@ -32,7 +32,7 @@ def main():
               "fx.py", "microfone/preset.py", "microfone/voz.py"}
     check(needed <= bench, f"the inputs of the bench hold what it imports ({sorted(needed - bench)} missing)")
     cases = {"engine.py": [BENCH, CAPTURE], "batida.py": [BENCH, CAPTURE], "microfone/preset.py": [BENCH, CAPTURE],
-             "instalador/ffmpeg/bin/ffmpeg.exe": [BENCH, CAPTURE], "modelos/compasso.onnx": [BENCH],
+             "instalador/ffmpeg/bin/ffmpeg.exe": [BENCH, CAPTURE], "modelos/compasso.onnx": [BENCH, CAPTURE], "ritmelli.py": [CAPTURE], "andamento.py": [CAPTURE],
              "vozes.json": [BENCH, CAPTURE], "themes/ritmelli/deck.js": [CAPTURE], "dev/compara.py": [CAPTURE],
              "dev/test_capture.py": [CAPTURE], "comandos.py": [CAPTURE], "dev/testa_passagem.py": [BENCH],
              "requirements-dev.txt": [BENCH, CAPTURE],
