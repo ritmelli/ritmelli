@@ -28,11 +28,14 @@ public static class RitmelliEncerra {
     static extern bool QueryFullProcessImageNameW(IntPtr h, uint flags, StringBuilder b, ref uint n);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool TerminateProcess(IntPtr h, uint codigo);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern uint WaitForSingleObject(IntPtr h, uint ms);
     [DllImport("kernel32.dll")]
     static extern bool CloseHandle(IntPtr h);
 
     public static string Encerra(int pid, IEnumerable<string> alvos) {
-        IntPtr h = OpenProcess(0x0001 | 0x1000, false, pid);  // PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION
+        // PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE
+        IntPtr h = OpenProcess(0x0001 | 0x1000 | 0x00100000, false, pid);
         if (h == IntPtr.Zero) return "couldn't open " + pid + " (" + new Win32Exception(Marshal.GetLastWin32Error()).Message + ")";
         try {
             StringBuilder b = new StringBuilder(1024);
@@ -45,6 +48,9 @@ public static class RitmelliEncerra {
                 if (a == normal) {
                     if (!TerminateProcess(h, 1))
                         return "couldn't close " + pid + " " + caminho + " (" + new Win32Exception(Marshal.GetLastWin32Error()).Message + ")";
+                    // o fim e assincrono: espera o processo soltar os arquivos antes de o setup troca-los
+                    if (WaitForSingleObject(h, 5000) != 0)
+                        return "closed " + pid + " " + caminho + " (still exiting after 5 s)";
                     return "closed " + pid + " " + caminho;
                 }
             }

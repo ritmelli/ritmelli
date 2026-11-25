@@ -114,12 +114,12 @@ def save_json(path, data):
 # - o caminho, normalizado (sem ..), fica dentro da raiz (Program Files), e nem ele, nem nenhum ancestral, nem nada
 #   dentro dele e ponto de reanalise (juncao, link simbolico);
 # - o dono da pasta e de tudo que existe dentro dela e SYSTEM, Administradores ou TrustedInstaller;
-# - nenhuma ACE de permissao da a outro principal escrita, acrescimo ou criacao, exclusao (inclusive a de filhos),
-#   WRITE_DAC ou WRITE_OWNER. As so de heranca do CREATOR OWNER e do CREATOR GROUP ficam de fora (toda subpasta de
-#   Program Files herda a do CREATOR OWNER, e ela vira a de quem cria o filho); as outras so de heranca contam, porque
-#   o que nascer depois da conferencia as herdaria. A mesma regra de dono e de ACE vale para cada pasta entre a raiz
-#   (inclusive) e o destino: um pai que deixe outro apagar ou trocar a pasta do app reprova. DACL nula ou ilegivel
-#   reprova, e tambem um nome que o Windows nao abre como esta (terminado em ponto ou espaco);
+# - nenhuma ACE de permissao da a outro principal escrita (dos dados, dos atributos ou dos atributos estendidos),
+#   acrescimo ou criacao, exclusao (inclusive a de filhos), WRITE_DAC ou WRITE_OWNER. A so de heranca do CREATOR OWNER
+#   fica de fora (toda subpasta de Program Files a herda, e ela vira a de quem cria o filho); as outras so de heranca
+#   contam, porque o que nascer depois da conferencia as herdaria. A mesma regra de dono e de ACE vale para cada pasta
+#   entre a raiz (inclusive) e o destino: um pai que deixe outro apagar ou trocar a pasta do app reprova. DACL nula ou
+#   ilegivel reprova, e tambem um nome que o Windows nao abre como esta (terminado em ponto ou espaco);
 # - a excecao: na microfone\log, onde nada se executa, o LocalService (o audiodg.exe grava o log do filtro) pode
 #   escrever, criar e apagar, nunca WRITE_DAC nem WRITE_OWNER na pasta, e ser dono dos arquivos de log (e ter controle
 #   total sobre os que sao dele), nunca da pasta.
@@ -130,14 +130,17 @@ SID_TRUSTED_INSTALLER = "S-1-5-80-956008885-3418522649-1831038044-1853292631-227
 SID_LOCAL_SERVICE = "S-1-5-19"
 DONOS = frozenset((SID_SYSTEM, SID_ADMINS, SID_TRUSTED_INSTALLER))
 LOG_DO_FILTRO = ("microfone", "log")
-# FILE_WRITE_DATA, FILE_APPEND_DATA (criar arquivo e subpasta), FILE_DELETE_CHILD, DELETE, WRITE_DAC, WRITE_OWNER, e os
+# FILE_WRITE_DATA, FILE_APPEND_DATA (criar arquivo e subpasta), FILE_WRITE_EA, FILE_DELETE_CHILD,
+# FILE_WRITE_ATTRIBUTES (basta para transformar uma pasta vazia em juncao), DELETE, WRITE_DAC, WRITE_OWNER, e os
 # genericos que valem por eles (GENERIC_WRITE, GENERIC_ALL)
-_ESCRITA = 0x2 | 0x4 | 0x40 | 0x10000 | 0x40000 | 0x80000 | 0x40000000 | 0x10000000
+_ESCRITA = 0x2 | 0x4 | 0x10 | 0x40 | 0x100 | 0x10000 | 0x40000 | 0x80000 | 0x40000000 | 0x10000000
 _TROCA_ACL = 0x40000 | 0x80000 | 0x10000000  # WRITE_DAC, WRITE_OWNER, GENERIC_ALL
 _SO_HERANCA = 0x08  # INHERIT_ONLY_ACE: a ACE nao vale para o proprio objeto
-# CREATOR OWNER e CREATOR GROUP: so de heranca, viram a ACE de quem cria o filho. Qualquer outra ACE so de heranca que
-# de escrita reprova: o que nasce depois da conferencia (o setup baixado, a DLL copiada) a herdaria
-_CRIADORES = ("S-1-3-0", "S-1-3-1")
+# CREATOR OWNER: so de heranca, vira a ACE de quem cria o filho (um dos donos, ou o LocalService no log dele). Qualquer
+# outra ACE so de heranca que de escrita reprova, inclusive a do CREATOR GROUP (vira a do grupo primario de quem cria,
+# que numa conta local e o None, de todos os usuarios): o que nasce depois da conferencia (o setup baixado, a DLL
+# copiada) a herdaria
+_CRIADORES = ("S-1-3-0",)
 _PERMITE = (0, 9)  # ACCESS_ALLOWED e ACCESS_ALLOWED_CALLBACK
 _NEGA = (1, 6, 10, 12)  # as de negacao (simples, de objeto e callback) so tiram acesso
 

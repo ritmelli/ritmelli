@@ -137,7 +137,15 @@ def em_memoria():
     reprova("uma ACE so de heranca que da escrita a Usuarios (o que nascer depois a herdaria)", d, US)
     d = disco_base()
     d.muda(DESTINO, dacl=acl_pasta() + [(0, OICI | IO, F, "S-1-3-1")])
-    confere("a ACE so de heranca do CREATOR GROUP nao conta", avalia(d) is True)
+    reprova("a ACE so de heranca do CREATOR GROUP (vira a do grupo primario de quem cria, o None de todos)", d,
+            "S-1-3-1")
+    for direito, nome in ((0x2, "FILE_WRITE_DATA"), (0x4, "FILE_APPEND_DATA"), (0x10, "FILE_WRITE_EA"),
+                          (0x40, "FILE_DELETE_CHILD"), (0x100, "FILE_WRITE_ATTRIBUTES"), (0x10000, "DELETE"),
+                          (WD, "WRITE_DAC"), (0x80000, "WRITE_OWNER"), (0x40000000, "GENERIC_WRITE")):
+        d = disco_base()
+        d.poe(RAIZ + r"\Pai", dacl=acl_pasta() + [(0, 0, RX | direito, US)])
+        d.poe(RAIZ + r"\Pai\Ritmelli")
+        reprova(f"so o {nome} de Usuarios num pai", d, US, RAIZ + r"\Pai\Ritmelli")
     d = disco_base()
     # o micfx.log que o audiodg.exe cria depois da rotacao: dono LocalService, e o CREATOR OWNER herdado vira
     # LocalService:(F)

@@ -771,11 +771,14 @@ def main(argv=None):
     dll = a.dll or dll_padrao()
     res = {"ok": True}
     try:
-        if a.acao == "instala-todos" and getattr(sys, "frozen", False):
-            # a tarefa do filtro roda isto como SYSTEM sem passar pelo tarefa_cria: a pasta e conferida antes de tudo
+        if a.acao in ("instala", "instala-todos"):
+            # antes de tudo, ate de migrar o registro. A tarefa do filtro roda o instala-todos do executavel como SYSTEM
+            # sem passar pelo tarefa_cria: com a pasta reprovada, ele apaga as duas tarefas
             protegida = _protegida()
             if not protegida:
-                _desarma(protegida)
+                if a.acao == "instala-todos" and getattr(sys, "frozen", False):
+                    _desarma(protegida)
+                sys.exit(f"the app folder isn't protected, the filter wasn't installed: {protegida}")
         if a.acao != "estado":
             _migra_registro()
         if a.acao == "estado":

@@ -604,7 +604,8 @@ begin
   Exe := AddBackslash(PastaAnterior) + 'ritmelli.exe';
   if not FileExists(Exe) then
     Exit;
-  Resposta := RodaPs('renomeia.ps1', '-Exe ' + Aspas(Exe), ExpandConstant('{tmp}\renomeia.txt'));
+  Resposta := RodaPs('renomeia.ps1', '-Exe ' + Aspas(Exe) + ' -Destino ' + Aspas(Destino),
+                     ExpandConstant('{tmp}\renomeia.txt'));
   if Resposta = '' then
     Resposta := 'the rename did not answer';
   Log('migracao: ' + Resposta);

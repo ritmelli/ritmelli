@@ -6,14 +6,16 @@
 # - o arquivo e aberto sem seguir ponto de reanalise e sem deixar outro processo gravar nele ou troca-lo, o caminho final
 #   do que foi aberto tem de ser o pedido, e o recurso de versao dele tem de dizer Ritmelli (lido de uma copia dos bytes
 #   abertos);
+# - a pasta dele nao pode ser a instalacao nova por outro nome (um nome curto 8.3 no /DIR=): ai o exe e o recem-instalado;
 # - a renomeacao e feita sobre esse mesmo arquivo aberto, e nunca sobrescreve um ritmelli.exe.antigo que ja exista.
 # Qualquer outro caso so vai para o log.
 #
 # O setup roda este arquivo como texto (um scriptblock), sem depender da politica de execucao de scripts:
-#   & ([scriptblock]::Create([IO.File]::ReadAllText('renomeia.ps1'))) -Exe <...\ritmelli.exe> -Saida <arquivo>
+#   & ([scriptblock]::Create([IO.File]::ReadAllText('renomeia.ps1'))) -Exe <...\ritmelli.exe> -Destino <{app}>
+#     -Saida <arquivo>
 # Grava no -Saida o que fez (so ASCII, para o log do Inno). -Produto existe para os testes (outro exe no lugar).
-param([Parameter(Mandatory = $true)][string]$Exe, [Parameter(Mandatory = $true)][string]$Saida,
-      [string]$Produto = 'Ritmelli')
+param([Parameter(Mandatory = $true)][string]$Exe, [Parameter(Mandatory = $true)][string]$Destino,
+      [Parameter(Mandatory = $true)][string]$Saida, [string]$Produto = 'Ritmelli')
 
 $codigo = @'
 using System;
@@ -57,7 +59,16 @@ public static class RitmelliRenomeia {
         return s.StartsWith(@"\\?\") ? s.Substring(4) : s;
     }
 
-    public static string Renomeia(string exe, string copia, string produto) {
+    // o caminho final de uma pasta (com o \\?\), ou null se ela nao abre
+    static string PastaFinal(string pasta) {
+        const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+        using (SafeFileHandle h = CreateFileW(pasta, 0, 7, IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS,
+                                              IntPtr.Zero)) {
+            return h.IsInvalid ? null : Final(h);
+        }
+    }
+
+    public static string Renomeia(string exe, string copia, string produto, string destino) {
         string cheio = Path.GetFullPath(exe);
         string raiz = Path.GetPathRoot(cheio);
         string c = raiz;
@@ -78,6 +89,13 @@ public static class RitmelliRenomeia {
             string final = Final(h);
             if (!string.Equals(SemPrefixo(final), cheio, StringComparison.OrdinalIgnoreCase))
                 return "not renamed: " + cheio + " resolves to " + SemPrefixo(final);
+            // a pasta anterior e a nova sao a mesma por outro nome (um nome curto 8.3 no /DIR=): o exe e o recem-instalado
+            string novaPasta = PastaFinal(destino);
+            if (novaPasta == null)
+                return "not renamed: couldn't open the new installation folder " + destino;
+            if (string.Equals(final.Substring(0, final.LastIndexOf('\\')), novaPasta.TrimEnd('\\'),
+                              StringComparison.OrdinalIgnoreCase))
+                return "not renamed: " + cheio + " is in the new installation folder";
             // o FileStream usa o mesmo handle (e o fecha no fim): a renomeacao vem antes disso
             FileStream f = new FileStream(h, FileAccess.Read, 1 << 16, false);
             try {
@@ -120,7 +138,7 @@ public static class RitmelliRenomeia {
 try {
   Add-Type -TypeDefinition $codigo -Language CSharp
   $copia = Join-Path ([IO.Path]::GetDirectoryName($Saida)) ("renomeia-" + [guid]::NewGuid().ToString('N') + '.exe')
-  $texto = [RitmelliRenomeia]::Renomeia($Exe, $copia, $Produto)
+  $texto = [RitmelliRenomeia]::Renomeia($Exe, $copia, $Produto, $Destino)
 } catch {
   $texto = "not renamed: $($_.Exception.Message)"
 }

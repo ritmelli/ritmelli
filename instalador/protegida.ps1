@@ -4,8 +4,9 @@
 #
 # - o caminho, normalizado, fica dentro da raiz, e nem ele, nem um ancestral, nem nada dentro dele e ponto de reanalise;
 # - o dono da pasta e de tudo dentro dela e SYSTEM, Administradores ou TrustedInstaller;
-# - nenhuma ACE de permissao da a outro principal escrita, acrescimo ou criacao, exclusao (inclusive a de filhos),
-#   WRITE_DAC ou WRITE_OWNER (das so de heranca, so as do CREATOR OWNER e do CREATOR GROUP ficam de fora); o mesmo vale
+# - nenhuma ACE de permissao da a outro principal escrita (dos dados, dos atributos ou dos atributos estendidos),
+#   acrescimo ou criacao, exclusao (inclusive a de filhos), WRITE_DAC ou WRITE_OWNER (das so de heranca, so a do
+#   CREATOR OWNER fica de fora); o mesmo vale
 #   para cada pasta da raiz (inclusive) ate o pai do destino. DACL nula ou ilegivel reprova, e tambem um nome que o
 #   Windows nao abre como esta (terminado em ponto ou espaco);
 # - na microfone\log, o LocalService (o audiodg.exe grava o log do filtro) pode escrever, criar e apagar, nunca
@@ -21,9 +22,11 @@ param([Parameter(Mandatory = $true)][string]$Pasta, [Parameter(Mandatory = $true
 
 $donos = @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
 $servico = 'S-1-5-19'
-$criadores = @('S-1-3-0', 'S-1-3-1')  # CREATOR OWNER e CREATOR GROUP: so de heranca, viram a ACE de quem cria
-# FILE_WRITE_DATA, FILE_APPEND_DATA, FILE_DELETE_CHILD, DELETE, WRITE_DAC, WRITE_OWNER, GENERIC_WRITE, GENERIC_ALL
-$escrita = 0x2 -bor 0x4 -bor 0x40 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x40000000 -bor 0x10000000
+# CREATOR OWNER: so de heranca, vira a ACE de quem cria (o CREATOR GROUP viraria a do grupo primario dele, o None)
+$criadores = @('S-1-3-0')
+# FILE_WRITE_DATA, FILE_APPEND_DATA, FILE_WRITE_EA, FILE_DELETE_CHILD, FILE_WRITE_ATTRIBUTES (basta para transformar
+# uma pasta vazia em juncao), DELETE, WRITE_DAC, WRITE_OWNER, GENERIC_WRITE, GENERIC_ALL
+$escrita = 0x2 -bor 0x4 -bor 0x10 -bor 0x40 -bor 0x100 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x40000000 -bor 0x10000000
 $trocaAcl = 0x40000 -bor 0x80000 -bor 0x10000000
 $reparse = [int][IO.FileAttributes]::ReparsePoint
 $pastaAttr = [int][IO.FileAttributes]::Directory

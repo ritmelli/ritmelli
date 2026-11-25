@@ -418,15 +418,19 @@ class TestaPastaProtegida(Base):
         self.assertEqual(self.copias + self.pastas_criadas + self.apagadas, [])
 
     def test_instala_todos_pelo_codigo_nao_desarma(self):
-        """Pelo codigo (o passo do README, como administrador), o instala-todos nao apaga tarefa nenhuma: a recusa vem
-        do _prepara_dll, sem mexer em nada."""
+        """Pelo codigo (o passo do README, como administrador), o instala e o instala-todos nao apagam tarefa nenhuma:
+        recusam antes de migrar o registro, sem mexer em nada."""
         carrega(False)
         self.tearDown_winreg()
         self.aprova = False
-        self.falsos(existe=[r"C:\x\micfx.dll"])
-        with mock.patch.object(mf, "_migra_registro", lambda: None):
-            self.assertEqual(mf.main(["instala-todos", "--dll", r"C:\x\micfx.dll"]), 1)
-        self.nada_mexido()
+        for acao in (["instala-todos"], ["instala", "--microfone", "IN 2"]):
+            with self.subTest(acao=acao[0]):
+                self.falsos(existe=[r"C:\x\micfx.dll"])
+                migrou = []
+                with mock.patch.object(mf, "_migra_registro", lambda: migrou.append(1)):
+                    self.assertEqual(mf.main([*acao, "--dll", r"C:\x\micfx.dll"]), 1)
+                self.assertEqual(migrou, [], "migrou o registro antes de conferir a pasta")
+                self.nada_mexido()
 
     def test_dll_registrada_em_outra_pasta(self):
         """O filtro registrado aponta para outra pasta (a instalacao anterior): a DLL desta pasta e registrada, o audio
