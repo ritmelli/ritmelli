@@ -153,6 +153,122 @@ def rotas_do_fonte():
     return out, ilegiveis
 
 
+TRACK_FIELDS = {"title", "channel", "thumb", "duration"}
+# the bodies about a video off the shelf that no route takes, from any role (server.check_track_fields)
+BAD_TRACK_BODIES = ({"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"},
+                    {"youtube_id": "dQw4w9WgXcQ", "channel": "\udfff"},
+                    {"youtube_id": "dQw4w9WgXcQ", "thumb": "https://i.ytimg.com/\ud800"},
+                    {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&x=\ud800"},
+                    {"youtube_id": "dQw4w9WgXcQ", "title": ["x"]}, {"youtube_id": "dQw4w9WgXcQ", "channel": 3},
+                    {"youtube_id": "dQw4w9WgXcQ", "thumb": {"url": "x"}},
+                    {"youtube_id": "dQw4w9WgXcQ", "duration": "x"}, {"youtube_id": "dQw4w9WgXcQ", "duration": True},
+                    {"youtube_id": "dQw4w9WgXcQ", "duration": -1}, {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7},
+                    {"youtube_id": "dQw4w9WgXcQ", "duration": 1e9}, {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 400},
+                    {"youtube_id": "dQw4w9WgXcQ", "duration": float("inf")},
+                    {"youtube_id": "dQw4w9WgXcQ", "duration": float("nan")}, {"url": ["v=dQw4w9WgXcQ"]})
+# the routes whose body reaches those fields, with what each one needs to take that path: every one refuses the bodies
+# above; the rename (PATCH /api/library/{iid}) has its own rule, checked on its own below
+TRACK_ROUTES = ((("POST", "/api/queue"), {}), (("POST", "/api/library"), {}),
+                (("POST", "/api/library"), {"play": True}))
+RENAME_ROUTE = ("PATCH", "/api/library/{iid}")
+
+
+def track_field_routes():
+    """The routes of server.py whose request body reaches a read of title, channel, thumb or duration, by the source:
+    the handler reads one from the body, or hands the body to a function of server.py or comandos.py that does (the
+    route's cmd.X, the App's A.X or self.X, a function of the same module by its name), followed argument by argument.
+    Returns {route: [the functions on the way]}."""
+    import ast
+    defs = {}  # (module, name, is_method) -> the def
+    modulo = {}  # id(def) -> its module
+    decoradas = []
+    for arq in ("server", "comandos"):
+        for no in ast.walk(ast.parse((RAIZ / f"{arq}.py").read_text(encoding="utf-8"))):
+            if isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                metodo = bool(no.args.args) and no.args.args[0].arg == "self"
+                defs.setdefault((arq, no.name, metodo), no)
+                modulo[id(no)] = arq
+                if arq == "server" and no.decorator_list:
+                    decoradas.append(no)
+
+    def chamada(arq, no):
+        """The def a call goes to, and how many of its parameters come before the call's first argument (self)."""
+        f = no.func
+        if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
+            if f.value.id == "cmd":
+                return defs.get(("comandos", f.attr, False)), 0
+            if f.value.id in ("A", "self"):
+                return defs.get(("server", f.attr, True)), 1
+            if f.value.id == "App":
+                return defs.get(("server", f.attr, True)), 0
+        if isinstance(f, ast.Name):
+            return defs.get((arq, f.id, False)), 0
+        return None, 0
+
+    def le(fn, var, caminho):
+        """The functions on the way from the body var of fn to a read of a track field, or None."""
+        if (fn.name, var) in caminho:
+            return None
+        caminho = caminho + [(fn.name, var)]
+        dinamico = False
+        for no in ast.walk(fn):
+            alvo = chave = None
+            if (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute) and no.func.attr == "get"
+                    and isinstance(no.func.value, ast.Name) and no.args):
+                alvo, chave = no.func.value.id, no.args[0]
+            elif isinstance(no, ast.Subscript) and isinstance(no.value, ast.Name):
+                alvo, chave = no.value.id, no.slice
+            if alvo == var:
+                if isinstance(chave, ast.Constant) and chave.value in TRACK_FIELDS:
+                    return [n for n, _ in caminho]
+                dinamico |= not isinstance(chave, ast.Constant)
+        nomes = {c.value for c in ast.walk(fn) if isinstance(c, ast.Constant) and isinstance(c.value, str)}
+        if dinamico and nomes & TRACK_FIELDS:  # b[k] for k in ("title",): a field by a name the function has
+            return [n for n, _ in caminho]
+        for no in ast.walk(fn):
+            if not isinstance(no, ast.Call):
+                continue
+            alvo, antes = chamada(modulo[id(fn)], no)
+            if alvo is None:
+                continue
+            params = [a.arg for a in alvo.args.args]
+            pares = [(antes + i, a) for i, a in enumerate(no.args)]
+            pares += [(params.index(k.arg), k.value) for k in no.keywords if k.arg in params]
+            for i, a in pares:
+                if isinstance(a, ast.Name) and a.id == var and i < len(params):
+                    achou = le(alvo, params[i], caminho)
+                    if achou:
+                        return achou
+        return None
+
+    out = {}
+    for fn in decoradas:
+        rotas = [(d.func.attr.upper(), d.args[0].value) for d in fn.decorator_list
+                 if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and isinstance(d.func.value, ast.Name)
+                 and d.func.value.id == "r" and d.args and isinstance(d.args[0], ast.Constant)]
+        corpos = [n.targets[0].id for n in ast.walk(fn) if isinstance(n, ast.Assign) and len(n.targets) == 1
+                  and isinstance(n.targets[0], ast.Name) and isinstance(n.value, ast.Await)
+                  and isinstance(n.value.value, ast.Call) and isinstance(n.value.value.func, ast.Name)
+                  and n.value.value.func.id == "body"]
+        for rota in rotas:
+            for var in corpos:
+                achou = le(fn, var, [])
+                if achou:
+                    out[rota] = achou
+    return out
+
+
+def campos_da_faixa():
+    print("--- every route that takes title, channel, thumb or duration (by the source)")
+    achadas = track_field_routes()
+    cobertas = {r for r, _ in TRACK_ROUTES} | {RENAME_ROUTE}
+    confere(("POST", "/api/queue") in achadas and ("POST", "/api/library") in achadas,
+            f"the source search finds the queue and the shelf ({sorted(achadas)})")
+    confere(set(achadas) == cobertas, f"every route whose body reaches a track field is in TRACK_ROUTES, which this "
+            f"test sends the bad bodies to (not covered: {sorted(set(achadas) - cobertas)}; covered but no longer "
+            f"found: {sorted(cobertas - set(achadas))}; the way: {achadas})")
+
+
 def tabela():
     print("--- a tabela de quem pode cada rota (permissao.py)")
     rotas, ilegiveis = rotas_do_fonte()
@@ -336,20 +452,15 @@ async def papeis_no_guard():
         renamed = []
         A.lib.update = lambda iid, **kw: renamed.append((iid, kw))
         for who, kw in (("the paired phone", {"cookie": chave}), ("the PC", {"de": pc})):
-            for corpo in ({"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"},
-                          {"youtube_id": "dQw4w9WgXcQ", "channel": "\udfff"},
-                          {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&x=\ud800"},
-                          {"youtube_id": "dQw4w9WgXcQ", "title": ["x"]},
-                          {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7},
-                          {"youtube_id": "dQw4w9WgXcQ", "duration": True},
-                          {"url": ["v=dQw4w9WgXcQ"]}):
-                try:  # the body that gets through goes on to the rest of the app, which this one does not have
-                    resp, _, _ = await manda("POST", "/api/queue", corpo=corpo, handler=rota[("POST", "/api/queue")],
-                                             **kw)
-                    st = resp.status
-                except Exception as ex:
-                    st = f"accepted, then {type(ex).__name__}"
-                confere(st == 400, f"{who} cannot queue {str(corpo)[:70]} ({st})")
+            for (m, c), extra in TRACK_ROUTES:
+                for corpo in BAD_TRACK_BODIES:
+                    corpo = {**corpo, **extra}
+                    try:  # the body that gets through goes on to the rest of the app, which this one does not have
+                        resp, _, _ = await manda(m, c, corpo=corpo, handler=rota[(m, c)], **kw)
+                        st = resp.status
+                    except Exception as ex:
+                        st = f"accepted, then {type(ex).__name__}"
+                    confere(st == 400, f"{who}: {m} {c} refuses {str(corpo)[:80]} ({st})")
             resp, j, _ = await manda("PATCH", "/api/library/d1", corpo={"title": "a\ud800b"},
                                      handler=rota[("PATCH", "/api/library/{iid}")], **kw)
             confere(resp.status == 400 and not renamed and j["error"].get("key") == "server.library.badTitle",
@@ -444,16 +555,7 @@ async def papeis_no_guard():
         confere(await status("POST", "/api/play", de="::1", token=token) == 401, "o token vindo do ::1: 401")
         for corpo in ({"url": "http://192.168.0.1/admin"}, {"url": "file:///C:/x"}, {"youtube_id": "curto"},
                       {"query": "queen"}, {"id": 12345678901, "url": "http://192.168.0.1/admin"},
-                      {"youtube_id": 12345678901}, {"url": ["v=dQw4w9WgXcQ"]},
-                      {"youtube_id": "dQw4w9WgXcQ", "title": ["x"]}, {"youtube_id": "dQw4w9WgXcQ", "channel": 3},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": "longa"},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": True},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": -1},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 400},
-                      {"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"},
-                      {"youtube_id": "dQw4w9WgXcQ", "channel": "\udfff"},
-                      {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&x=\ud800"}):
+                      {"youtube_id": 12345678901}, *BAD_TRACK_BODIES):
             resp, _, _ = await manda("POST", "/api/queue", de=pc, token=token, corpo=corpo,
                                      handler=rota[("POST", "/api/queue")])
             confere(resp.status == 400, f"o remoto so enfileira disco da prateleira ou video do YouTube: "
@@ -818,9 +920,17 @@ def ao_vivo(srv):
 
     # the PC is held to the same queue rules as the remote session, and a rename with a lone surrogate is refused: the
     # SSE stays up and carries the next change whole
-    for corpo in ({"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"}, {"youtube_id": "dQw4w9WgXcQ", "duration": -1},
-                  {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7}, {"youtube_id": "dQw4w9WgXcQ", "channel": 3}):
-        confere(recusa_do(srv, "POST", "/api/queue", corpo) == 400, f"the PC cannot queue {corpo}")
+    for (m, c), extra in TRACK_ROUTES:
+        for corpo in BAD_TRACK_BODIES:
+            corpo = {**corpo, **extra}
+            confere(recusa_do(srv, m, c, corpo) == 400, f"the PC: {m} {c} refuses {str(corpo)[:80]}")
+    jobs = srv.api("GET", "/api/jobs")
+    confere(not jobs, f"no refused body started a download ({jobs})")
+    r = srv.api("POST", "/api/library", {"youtube_id": "djV11Xbc914", "play": True, "title": "a-ha", "channel": None,
+                                         "thumb": "https://i.ytimg.com/vi/djV11Xbc914/mqdefault.jpg", "duration": 30})
+    tocando = (srv.api("GET", "/api/state").get("track") or {}).get("id")
+    confere((r.get("item") or {}).get("id") == "d2" and tocando == "d2",
+            f"a body with every field right still plays the record from the shelf ({r}, playing {tocando})")
     confere(recusa_do(srv, "PATCH", "/api/library/d2", {"title": "a\ud800b"}) == 400,
             "the PC cannot rename a record with a lone surrogate")
     title = "a-ha – Take On Me (versão)"
@@ -958,6 +1068,7 @@ def sem_rede():
 
 
 tabela()
+campos_da_faixa()
 try:
     import aiohttp  # noqa: F401
     import numpy  # noqa: F401

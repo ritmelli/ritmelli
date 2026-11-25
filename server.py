@@ -446,6 +446,25 @@ def is_valid_unicode(*texts):
     return True
 
 
+TRACK_TEXTS = ("title", "channel", "thumb")  # what a body may bring about a video off the shelf, as text or null
+
+
+def check_track_fields(b, target):
+    """The title, channel, thumb and duration the body b brings about the video target, which is not on the shelf (the
+    POST /api/queue and the POST /api/library): one rule for both routes and every role. The theme and the handoffs
+    read the texts as text (or null); the duration in seconds (or null, up to a day) wins over the one yt-dlp finds
+    and sizes the visualizer (engine.Onda allocates by it). The target and the texts go in valid Unicode
+    (is_valid_unicode). Raises ValueError, or the i18n.Recusa the theme can show for a duration longer than a day."""
+    dur = b.get("duration")
+    if not (all(b.get(k) is None or isinstance(b[k], str) for k in TRACK_TEXTS)
+            and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool) and dur >= 0))):
+        raise ValueError("Send title, channel and thumb as text and duration as seconds (up to a day).")
+    if dur is not None and dur > QUEUE_DURATION_MAX_S:  # a search result can be this long: the theme shows it
+        raise i18n.Recusa("server.queue.tooLong", "Ritmelli can't queue a video longer than a day.")
+    if not is_valid_unicode(target, *(b.get(k) for k in TRACK_TEXTS)):
+        raise ValueError("Send text in valid Unicode.")
+
+
 def antes_das_parecidas(fila):
     """Onde entra o que o usuario poe na fila: antes da primeira parecida do Automatico."""
     return next((i for i, x in enumerate(fila) if x.get("auto")), len(fila))
@@ -1350,16 +1369,7 @@ class App:
             yid = m.group(1) if m else (target if YT_ID.match(target) else None)
             if remoto and not yid:
                 raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
-            # every role, the PC included: the theme and the handoffs read these fields as text (or null), and the
-            # duration in seconds (or null, up to a day) wins over the one yt-dlp finds and sizes the visualizer
-            dur = b.get("duration")
-            if not (all(b.get(k) is None or isinstance(b[k], str) for k in ("title", "channel"))
-                    and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool) and dur >= 0))):
-                raise ValueError("Send title and channel as text and duration as seconds (up to a day).")
-            if dur is not None and dur > QUEUE_DURATION_MAX_S:  # a search result can be this long: the theme shows it
-                raise i18n.Recusa("server.queue.tooLong", "Ritmelli can't queue a video longer than a day.")
-            if not is_valid_unicode(target, b.get("title"), b.get("channel")):
-                raise ValueError("Send text in valid Unicode.")
+            check_track_fields(b, target)  # every role, the PC included
             it = self.lib.by_youtube(yid) if yid else None
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],
@@ -2099,9 +2109,14 @@ def build(app_state):
     @r.post("/api/library")
     async def lib_add(request):
         b = await body(request)
-        target = (b.get("youtube_id") or b.get("url") or b.get("query") or "").strip()
+        target = b.get("youtube_id") or b.get("url") or b.get("query") or ""
+        target = target.strip() if isinstance(target, str) else ""
         if not target:
             return j_err(i18n.so_texto("Send a YouTube link, a video ID, or search text."))
+        try:  # the same rule as the queue: with play, these fields go to the platter and the visualizer
+            check_track_fields(b, target)
+        except ValueError as ex:
+            return j_err(getattr(ex, "msg", None) or i18n.so_texto(str(ex)))
         m = YT_URL.search(target)
         yid = m.group(1) if m else (target if YT_ID.match(target) else None)
         it = A.lib.by_youtube(yid) if yid else None
