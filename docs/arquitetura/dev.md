@@ -35,15 +35,17 @@ detector de bumbo próprio, o `dev/bumbo_mede.py`, que o `dev/testa_passagem.py`
 contra o bumbo do que sai: sai 0 no tempo, 1 contratempo ou fora, 3 sem plano ou sem bumbo), `dev/texturas.py` (gera as
 texturas de ruído do tema em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
 (desenha as molduras de pixel do tema, contorno, linha clara, bisel e cantos em degrau, e
-grava as variáveis `--mold-*` de border-image no tema, fora do bloco do celular, porque valem
-nas duas telas, com o tamanho do ponto na variável `--px`, 1px quando o tema não a define, e no
-`gallery/index.html` as que a galeria usa),
+grava as variáveis `--mold-*` de border-image no `themes/ritmelli/gerado/molduras.css`, o arquivo inteiro, que o
+tema carrega fora do bloco do celular, porque valem nas duas telas, com o tamanho do ponto na variável `--px`, 1px
+quando o tema não a define, e no bloco `molduras:inicio` do `gallery/index.html` as que a galeria usa),
 `dev/compactos.py` (desenha em pixel os compactos dos Sons rápidos, em duas
-camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no tema, fora
-do bloco do celular),
+camadas paradas em volta do selo que gira, e grava as variáveis `--compacto-*` no
+`themes/ritmelli/gerado/compactos.css`, o arquivo inteiro, que o tema carrega fora do bloco do celular),
 `dev/pecas.py` (desenha em pixel o braço do toca-discos, já inclinado em seis ângulos, a
 base e o descanso dele, os botões de tocar do palco e do mini player e o pisador, os knobs e
 o LED dos pedais, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as
 variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem` e `--led-recuo` no
-tema, fora do bloco do celular, e no JS a `PE_SVG`, a `LED_SVG`, os `KNOBS`, a `CHAVE_PARECIDAS` e o `SALVAR_PIXEL`) e `dev/previews.py` (gera o preview de cada tema para a galeria, um `preview_<lingua>.png` por língua no tema com textos e um `preview.png` no que não tem, com a prateleira de mentira do
+`themes/ritmelli/gerado/pecas.css`, que o tema carrega fora do bloco do celular, e a `PE_SVG`, a `LED_SVG`, os `KNOBS`, a
+`CHAVE_PARECIDAS` e o `SALVAR_PIXEL` no `themes/ritmelli/gerado/pecas.js`, que o tema carrega antes do script principal;
+os dois arquivos inteiros) e `dev/previews.py` (gera o preview de cada tema para a galeria, um `preview_<lingua>.png` por língua no tema com textos e um `preview.png` no que não tem, com a prateleira de mentira do
 `dev/compara.py`; ele entra no git porque o instalador leva a pasta do tema como ela está).
