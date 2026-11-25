@@ -384,6 +384,7 @@ def main():
     raiz = Path(a.raiz).resolve()
     if not (raiz / "server.py").exists():
         sys.exit(f"sem o server.py em {raiz}: o --raiz e a pasta de um checkout do Ritmelli")
+    shutil.rmtree(pasta / "diff", ignore_errors=True)  # a rodada que nao compara nao deixa o diff de antes
     sem_ref = [t for t in (s.split("@")[0] for s in a.sizes.split(",")) if not any((pasta / "ref").glob(f"*-{t}-*.png"))]
     if not a.ref and sem_ref:
         sys.exit(f"sem referencia em {pasta / 'ref'} para {', '.join(sem_ref)}: rode antes com --ref, no tema de antes da "
@@ -392,7 +393,6 @@ def main():
     destino = pasta / ("ref.novo" if a.ref else "agora")
     shutil.rmtree(destino, ignore_errors=True)
     shutil.rmtree(pasta / "instavel", ignore_errors=True)
-    shutil.rmtree(pasta / "diff", ignore_errors=True)  # a captura que nao vale sai antes de comparar: sem o diff de antes
     destino.mkdir(parents=True)
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-compara-"))
     porta = free_port()

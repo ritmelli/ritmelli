@@ -138,9 +138,13 @@ def roda(titulo, lista, completo):
 
 
 def falta_para_o_completo():
-    """O que o COMPLETO precisa e nao esta aqui."""
+    """O que o COMPLETO precisa e nao esta aqui. O ffmpeg e o ffprobe pela regra do motor: o do bin/ da raiz
+    (pastas.ferramenta) ou o do PATH."""
+    sys.path.insert(0, str(RAIZ))
+    import pastas  # so da biblioteca padrao
     falta = [f"o modulo {m}" for m in MODULOS if importlib.util.find_spec(m) is None]
-    return falta + [f"o {p} no PATH" for p in PROGRAMAS if not shutil.which(p)]
+    return falta + [f"o {p} (nem no bin/ nem no PATH)" for p in PROGRAMAS
+                    if not (pastas.ferramenta(p) or shutil.which(p))]
 
 
 def testes(a):
