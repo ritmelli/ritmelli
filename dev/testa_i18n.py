@@ -141,7 +141,7 @@ def confere_blocos(tema, arquivos):
 # The lines of inline CSS and JS each theme's index.html has. The number only goes down: new theme code goes into a file
 # of the theme folder, and a PR that moves code out of the page lowers it to the new count. A count under the ceiling
 # fails too, so the ceiling follows each move and a later PR cannot spend the lines that one freed.
-INLINE_CEILING = {"ritmelli": 1642}
+INLINE_CEILING = {"ritmelli": 1641}
 INLINE = re.compile(r"<(style|script)\b([^>]*)>(.*?)</\1>", re.S)
 
 
@@ -187,7 +187,10 @@ class _Scripts(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         if tag == "script":
-            self.open = [dict(attrs), self.getpos()[0], None, ""]
+            first = {}
+            for name, value in attrs:   # a repeated attribute: the browser keeps the first one
+                first.setdefault(name, value)
+            self.open = [first, self.getpos()[0], None, ""]
             self.found.append(self.open)
 
     def handle_data(self, data):
@@ -285,7 +288,7 @@ def js_code(text):
     return "".join(out)
 
 
-DECL = re.compile(r"(?:async\s+)?function\b\s*\*?\s*([A-Za-z_$][\w$]*)|class\s+([A-Za-z_$][\w$]*)|(?:const|let|var)\s+")
+DECL = re.compile(r"(?:async\s+)?function\b\s*\*?\s*([A-Za-z_$][\w$]*)|class\s+([A-Za-z_$][\w$]*)|(?:const|let|var)(?=[\s\[{])\s*")
 # a line that does not end the statement: it ends in an operator, or the next one starts with one
 GOES_ON = re.compile(r"[=,(\[{+\-*/?:&|]\s*$")
 GOES_ON_NEXT = re.compile(r"\s*(?:[.?:,+\-*/&|=]|\)|\])")
@@ -374,7 +377,7 @@ def var_lines(text):
     """The lines of a script with a var (a var in a block of the top level is global, which the reader above does not
     follow into blocks)."""
     code = js_code(text)
-    return [code.count("\n", 0, m.start()) + 1 for m in re.finditer(r"(?<![\w$.])var\s", code)]
+    return [code.count("\n", 0, m.start()) + 1 for m in re.finditer(r"(?<![\w$.])var(?=[\s\[{])", code)]
 
 
 def check_unique_names(tema, html, arquivos):
@@ -401,13 +404,13 @@ def check_name_reader():
             "async function j() {}\nclass K {}\nconst l = () => { let no2; };\nconst s = 'function no3() {}', r = /[(]/g;\n"
             "// const no4 = 1\n/* let no5 */\nconst m = `${'}'}` + x\n  .y;\nif (a) { let no6; }\nvar n = cond\n  ? 1 : 2;\n"
             "const { u = no7, v: w = no8, label: nm = no10 } = data, [z = no9] = [];\nfor (const no11 of all) {}\n"
-            "function f() { var no12; }\n")
+            "function f() { var no12; }\nconst[o1] = d;\nvar{o2} = d;\n")
     got = [x for x, _ in top_level_names(text)]
-    want = ["a", "b", "c", "e", "g", "h", "i", "j", "K", "l", "s", "r", "m", "n", "u", "w", "nm", "z", "f"]
+    want = ["a", "b", "c", "e", "g", "h", "i", "j", "K", "l", "s", "r", "m", "n", "u", "w", "nm", "z", "f", "o1", "o2"]
     if got != want:
         falha(f"top_level_names read {got}, expected {want}")
-    if var_lines(text) != [14, 18]:
-        falha(f"var_lines read {var_lines(text)}, expected [14, 18]")
+    if var_lines(text) != [14, 18, 20]:
+        falha(f"var_lines read {var_lines(text)}, expected [14, 18, 20]")
     antes = len(falhas)
     with contextlib.redirect_stdout(io.StringIO()):
         check_unique_names(Path("ritmelli"), '<script src = "x.js"></script><script>\nfunction dup() {}\n</script>',
@@ -420,12 +423,12 @@ def check_name_reader():
         check_script_tags(Path("ritmelli"), '<script src="shared.js" data-onerror="scriptFailed(this)"></script>'
                           "<script src='queue.js' title='onerror=\"scriptFailed(this)\"'></script>"
                           '<script src="x.js" onerror="scriptFailed(this)" defer></script>'
-                          '<SCRIPT title="a > b" SRC="deck.js"></SCRIPT>')
-    if (len(falhas) != antes + 4 or "has no onerror" not in falhas[-4] or "has defer" not in falhas[-2]
-            or "deck.js" not in falhas[-1]):
-        falha(f"check_script_tags should fail on a data-onerror, an onerror in another attribute, a defer and a tag in "
-              f"capitals with a > in an attribute: "
-              f"{falhas[antes:]}")
+                          '<SCRIPT title="a > b" SRC="deck.js"></SCRIPT>'
+                          '<script src="y.js" onerror="other()" onerror="scriptFailed(this)"></script>')
+    if (len(falhas) != antes + 5 or "has no onerror" not in falhas[-5] or "has defer" not in falhas[-3]
+            or "deck.js" not in falhas[-2] or "y.js" not in falhas[-1]):
+        falha(f"check_script_tags should fail on a data-onerror, an onerror in another attribute, a defer, a tag in "
+              f"capitals with a > in an attribute and a repeated onerror: {falhas[antes:]}")
     else:
         del falhas[antes:]
     print("the top-level name reader and the script tag check checked")

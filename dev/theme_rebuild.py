@@ -21,8 +21,10 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
-SCRIPT_SRC = re.compile(r'<script src="([^"]+)"([^>]*)></script>')
-LINK_CSS = re.compile(r'<link rel="stylesheet" href="([^"]+)"([^>]*)>')
+# the other attributes of a tag: anything up to its ">", a quoted value whole (a ">" inside one does not close the tag)
+ATTRS = r"""((?:[^>"']|"[^"]*"|'[^']*')*)"""
+SCRIPT_SRC = re.compile(r'<script src="([^"]+)"' + ATTRS + r'></script>')
+LINK_CSS = re.compile(r'<link rel="stylesheet" href="([^"]+)"' + ATTRS + r'>')
 TAG = re.compile(r"^\s*</?(?:script|style)\b[^>]*>\s*$")
 MIN_PIECE = 2   # the shortest piece of a split run that counts as moved: a lone "}" would match anywhere
 

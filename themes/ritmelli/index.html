@@ -67,22 +67,21 @@ const I18N = (() => {
   return { lingua: d.lingua, lang, tem: existe, t, tp, num, rico, aplica, reserva };
 })();
 /* a theme file that does not load (the server was off when the page opened, a cut connection): the onerror of every
-   <script src> of the page calls scriptFailed. The start of the page calls functions from several files, so without
-   one of them it never connects. Once the parser is done, the page shows the off-air card instead of starting its
-   calls to the server (the DOMContentLoaded at the end of the main script) and loads again as soon as the file
-   answers, at the address it opened with (the ?parear= of the QR, which the page takes out of the address, comes
-   back). The transporte.js alone is left to its own retry (carregarTransporte), which reconnects without loading the
-   page again */
+   <script src> calls scriptFailed. The start of the page needs functions from several files, so once the parser is
+   done the page does not start its calls to the server (the DOMContentLoaded at the end of the main script): it
+   closes what a click opened meanwhile, shows the off-air card and loads again when the file answers (a query of its
+   own each try: the browser does not fetch again a preload that failed), at the address it opened with (with the
+   ?parear= of the QR). The transporte.js alone keeps its own retry (carregarTransporte), without loading again */
 const scriptsFailed = [], firstAddress = location.href;
 function scriptFailed(s) { scriptsFailed.push(s.getAttribute('src')); }
 const scriptsMissing = () => scriptsFailed.filter(f => f !== 'transporte.js');
 document.addEventListener('DOMContentLoaded', () => {
   const missing = scriptsMissing();
   if (!missing.length) return;
+  document.querySelectorAll('dialog[open]').forEach(d => d.close()); document.getElementById('tela-parear').hidden = true;
   try { mostrarFora(); } catch (e) { document.getElementById('fora').hidden = false; }
   const probe = () => {
     const l = document.createElement('link');
-    // a query of its own each time: the browser does not fetch again a preload that failed on the same address
     l.rel = 'preload'; l.as = 'script'; l.href = missing[0] + '?retry=' + Date.now();
     l.onload = () => { if (location.href === firstAddress) location.reload(); else location.replace(firstAddress); };
     l.onerror = () => { l.remove(); setTimeout(probe, 3000); };
