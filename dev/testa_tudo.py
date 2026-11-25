@@ -30,6 +30,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -116,17 +117,38 @@ def roda_no_yml(texto):
         runs.append(" ".join(b.strip() for b in bloco) if m.group(2).startswith(">") else "\n".join(bloco))
     rodam = set()
     for run in runs:
-        for linha in run.replace("\\", "/").splitlines():
-            linha = linha.split("#")[0]
-            for chamada in re.finditer(r"(?:^|[\s;&|(\"'])py(?:thon[\d.]*)?(?:\.exe)?[\"']?(?:\s+-\S+)*\s+[\"']?"
-                                       r"([\w./-]+\.py)\b", linha):
-                script, resto = chamada.group(1).removeprefix("./"), linha[chamada.end():]
+        run = re.sub(r"<#.*?#>", " ", run.replace("\\", "/"), flags=re.S)  # o comentario de bloco do PowerShell
+        for linha in run.splitlines():
+            # cada comando da linha (entre ; & | e parenteses, fora das aspas e antes do #): so conta o que comeca
+            # pelo python, e o script e o primeiro argumento depois das opcoes dele
+            lex = shlex.shlex(linha, posix=False, punctuation_chars=";&|()")
+            lex.whitespace_split = True
+            try:
+                palavras = list(lex)
+            except ValueError:  # aspas sem par: a linha so por espacos
+                palavras = linha.split("#")[0].split()
+            comandos, atual = [], []
+            for p in palavras:
+                if p and set(p) <= set(";&|()"):
+                    comandos.append(atual)
+                    atual = []
+                else:
+                    atual.append(p)
+            for cmd in comandos + [atual]:
+                if not cmd or not re.fullmatch(r"(?:[\w$.:/-]*/)?py(?:thon[\d.]*)?(?:\.exe)?", cmd[0].strip("\"'")):
+                    continue
+                args = [a.strip("\"'") for a in cmd[1:]]
+                while args and args[0].startswith("-") and args[0] != "-m":
+                    args.pop(0)
+                if not args or not args[0].endswith(".py"):
+                    continue
+                script, opcoes = args[0].removeprefix("./"), args[1:]
                 rodam.add(script)
                 if script == "dev/testa_tudo.py":
-                    if "--tela" in resto:
-                        rodam.update(["dev/fitcheck.py"] + (["dev/compara.py"] if "--base" in resto else []))
-                    elif "--areas" not in resto:
-                        rodam.update(MICROFONE if "--microfone" in resto else STDLIB if "--so-stdlib" in resto else
+                    if "--tela" in opcoes:
+                        rodam.update(["dev/fitcheck.py"] + (["dev/compara.py"] if "--base" in opcoes else []))
+                    elif "--areas" not in opcoes:
+                        rodam.update(MICROFONE if "--microfone" in opcoes else STDLIB if "--so-stdlib" in opcoes else
                                      COMPLETO)
     return rodam
 
