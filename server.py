@@ -2243,7 +2243,8 @@ def build(app_state):
     @r.post("/api/settings")
     async def settings(request):
         b = await body(request)
-        vols = {k: volume(b[k]) for k in ("vol", "mon_vol", "voice_mon_vol") if k in b}
+        # the music volume's limit is the command's (cmd.volume); the others are clamped here
+        vols = {k: numero(b[k]) if k == "vol" else volume(b[k]) for k in ("vol", "mon_vol", "voice_mon_vol") if k in b}
         ruim = next((k for k, v in vols.items() if v is None), None)
         if ruim:  # antes de mudar qualquer coisa
             return j_err(i18n.so_texto(f"The {ruim} must be a number from 0 to 1."))
