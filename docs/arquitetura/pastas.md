@@ -16,9 +16,11 @@ naquela abertura e a troca tenta de novo na próxima.
 A regra da pasta protegida (`pasta_protegida`): as duas tarefas do Windows que rodam como SYSTEM o
 `ritmelli.exe` da pasta do app (a do filtro de microfone e a da atualização) só usam uma pasta que
 apenas o sistema e os administradores conseguem alterar. A pasta fica dentro da Program Files de 64
-bits, sem ponto de reanálise nem nome curto 8.3 no caminho ou dentro dela; o dono dela e de tudo
-dentro é SYSTEM, Administradores ou TrustedInstaller; e nenhuma ACE dá a outro principal escrita,
-criação, exclusão, `WRITE_DAC` ou `WRITE_OWNER`, nela, em tudo dentro dela e nos pais até a raiz
+bits, sem ponto de reanálise no caminho nem dentro dela, sem nome curto 8.3 no caminho e sem nome
+que o Windows não abre como está (terminado em ponto ou espaço, ou num caminho de 260 caracteres ou
+mais, contados em UTF-16); o dono dela e de tudo dentro é SYSTEM, Administradores ou
+TrustedInstaller; e nenhuma ACE dá a outro principal escrita, criação, exclusão, `WRITE_DAC` ou
+`WRITE_OWNER`, nela, em tudo dentro dela e nos pais até a raiz
 (das só de herança, só a do CREATOR OWNER fica de fora). A exceção é a `microfone\log`, onde o
 LocalService (o `audiodg.exe`) grava o log do filtro. A leitura abre cada objeto sem seguir ponto
 de reanálise (`_le_disco`), e a avaliação é separada dela, para o teste em memória

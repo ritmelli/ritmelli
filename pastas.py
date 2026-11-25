@@ -336,7 +336,7 @@ def _confere_arvore(caminho, d, le):
             filho = ntpath.join(caminho, nome)
             if nome[-1:] in (".", " "):  # o Windows corta o fim do nome ao abrir: a leitura acharia outro objeto
                 return f"{filho} has a name Windows can't open"
-            if len(filho) >= _MAX_PATH:  # sem o \\?\, o Windows diria que nao existe, e ele passaria sem conferir
+            if _utf16(filho) >= _MAX_PATH:  # sem o \\?\, o Windows diria que nao existe, e ele passaria sem conferir
                 return f"{filho} is too long to check"
             try:
                 df = le(filho)
@@ -347,15 +347,17 @@ def _confere_arvore(caminho, d, le):
     return None
 
 
+def _utf16(s):
+    """O tamanho em unidades UTF-16, como o Windows (e o .Length do PowerShell) conta."""
+    return len(s.encode("utf-16-le", "surrogatepass")) // 2
+
+
 def _nome_curto(nome):
     """O componente tem a forma de um alias 8.3 (PROGRA~1, RITMEL~1.EXE): ate 8 caracteres com um ~ seguido de digito e
     uma extensao de ate 3, sem o ponto ou o espaco do fim (o Windows os corta). Os tamanhos contam em UTF-16, como no
     instalador. Um nome longo com ~ (Ritmelli~2026, Ritmelli~Estudio) nao e alias."""
     base, ponto, ext = nome.rstrip(". ").partition(".")
-
-    def tamanho(s):
-        return len(s.encode("utf-16-le", "surrogatepass")) // 2
-    return ("." not in ext and 1 <= tamanho(base) <= 8 and (not ponto or 1 <= tamanho(ext) <= 3)
+    return ("." not in ext and 1 <= _utf16(base) <= 8 and (not ponto or 1 <= _utf16(ext) <= 3)
             and re.search(r"~[0-9]", base) is not None)
 
 
@@ -378,7 +380,7 @@ def motivo_desprotegida(pasta, raiz, le=_le_disco):
     for i in range(len(partes) + 1):
         if i:
             caminho = ntpath.join(caminho, partes[i - 1])
-        if len(caminho) >= _MAX_PATH:
+        if _utf16(caminho) >= _MAX_PATH:
             return f"{caminho} is too long to check"
         try:
             d = le(caminho)

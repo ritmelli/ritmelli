@@ -13,9 +13,10 @@ administrador. Os dados de quem usa (%LOCALAPPDATA%) mudam de pasta no proprio a
 
 A copia do registro vem antes de tudo porque o microfone.py guarda o efeito original de cada microfone so quando nao
 acha o de antes: sem ela, ele guardaria o nosso filtro como original, e desinstalar nao devolveria o do fabricante. O
-app que estava na pasta padrao (Program Files\Vitrola) passa para a Program Files\Ritmelli; o que estava numa pasta
-escolhida a mao fica nela (o ritmelli.iss decide), e dela o setup so apaga o vitrola.exe. A limpeza da pasta de
-antes so mexe numa pasta protegida (pastas.pasta_protegida): ela roda como administrador, e tambem em toda rodada da
+app que estava na pasta padrao (Program Files\Vitrola) passa para a Program Files\Ritmelli; o que estava noutra pasta
+so fica nela se ela for protegida (o ritmelli.iss decide), e quando o destino muda o setup so renomeia o ritmelli.exe
+de antes para ritmelli.exe.antigo. A limpeza da pasta padrao de antes so mexe nela se ela for protegida
+(pastas.pasta_protegida) e nao tiver o app instalado dentro: ela roda como administrador, e tambem em toda rodada da
 tarefa de atualizacao, como SYSTEM."""
 import os
 import shutil

@@ -245,6 +245,11 @@ def em_memoria():
             "too long")
     reprova("um destino de 260 caracteres ou mais", disco_base(), "too long", RAIZ + "\\" + "x" * 250)
     d = disco_base()
+    d.poe(DESTINO + "\\microfone\\log\\" + "\U0001F3B5" * 115, dono=LS, reparse=True)
+    reprova("um caminho de 260 ou mais em UTF-16 na arvore, com caracteres fora do BMP", d, "too long")
+    reprova("um destino de 260 ou mais em UTF-16, com caracteres fora do BMP (contam dois, como no Windows)", disco_base(),
+            "too long", RAIZ + "\\" + "\U0001F3B5" * 125)
+    d = disco_base()
     d.muda(DESTINO, reparse=True)
     reprova("a propria pasta do app como juncao", d, "reparse point")
     d = disco_base()
