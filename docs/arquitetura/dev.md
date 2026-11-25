@@ -17,7 +17,7 @@ das listas também. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR, 
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
 deitado; uma exceção ou um `console.error` da página também reprova), `dev/compara.py` (gate
-de "o celular não mudou": prints do tema em estados fixos,
+de "a tela não mudou", no celular e na mesa do PC, a 1920x1080: prints do tema em estados fixos,
 com uma prateleira de mentira e o servidor em `--mock`, comparados pixel a pixel com os de
 referência gravados antes da mudança, também de outro checkout pelo `--raiz`; sai 2 se um
 print mudou e 1 se a captura não vale), `dev/perfcheck.py`

@@ -2713,6 +2713,13 @@ def build(app_state):
     app = web.Application(middlewares=[guard])
     app.add_routes(r)
     app.router.add_static("/t/", THEMES, show_index=False)
+
+    async def tema_sem_guardar(request, resp):
+        # todo arquivo do tema (o .js, o .css, a fonte) como a pagina: o navegador confere com o servidor antes de
+        # usar o que guardou (o que nao mudou volta como 304, sem o corpo), e nao usa um arquivo de antes sem conferir
+        if request.path.startswith("/t/"):
+            resp.headers.setdefault("Cache-Control", "no-cache")
+    app.on_response_prepare.append(tema_sem_guardar)
     return app
 
 
