@@ -131,10 +131,11 @@ falha se o número muda: acima do teto entrou acesso novo; abaixo, o PR que tiro
 privados do motor saem da árvore de sintaxe do `engine.py` (os métodos e os `self._x` que a `Engine` e a `MockEngine`
 definem), e o `getattr` com o nome escrito também conta.
 
-Os comandos e o Automático mexem no `App` só pela interface pública dele: `change_queue`, `remove_from_queue`,
-`remove_if_queued`, `save_history`, `release_reservation`, `close_switches`, `with_engine`, `tempo_of`,
-`search_songs`, `run_helper` e `yt_error`. O mesmo `dev/testa_ganchos.py` conta os acessos aos privados do `App`
-fora do `server.py`, pela mesma regra, contra o `APP_CEILING`, que hoje é zero.
+Os comandos e o Automático mexem no `App` só pela interface pública dele. O que eles chamavam por privados virou
+público com estes nomes: `change_queue`, `remove_from_queue`, `remove_if_queued`, `save_history`,
+`release_reservation`, `close_switches`, `with_engine` e `tempo_of`; e o que o Automático lia do servidor pelo
+`sys.modules` chega por `search_songs`, `run_helper` e `yt_error`. O mesmo `dev/testa_ganchos.py` conta os acessos
+aos privados do `App` fora do `server.py`, pela mesma regra, contra o `APP_CEILING`, que hoje é zero.
 
 ## A leitura do estado
 

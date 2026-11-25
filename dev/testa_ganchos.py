@@ -18,10 +18,11 @@ It also ratchets the reaches into the insides of two classes from the other modu
   - the App's (server.App), from comandos.py, automatico.py and the rest; the interface is its public methods
     (change_queue, remove_from_queue, release_reservation, with_engine, search_songs, run_helper and the others). The
     count must equal APP_CEILING.
-The private names come from the class's own syntax tree: every method, every name assigned at the class's level (also
-under an if or a try there) and every self._x or cls._x it assigns whose name starts with one underscore (not two). A
-reach is a read, write or call of one of those names on an object other than self or cls (a class's own _lock is its
-own), and also a getattr, setattr, hasattr or delattr (or builtins.getattr and the rest) with the name as a literal.
+The private names come from the class's own syntax tree: every method and nested class, every name assigned at the
+class's level (also under an if or a try there) and every self._x or cls._x its methods assign (also by setattr) whose
+name starts with one underscore (not two). A reach is a read, write or call of one of those names on an object other
+than the self or cls of a class's method (a class's own _lock is its own), and also a getattr, setattr, hasattr or
+delattr (or builtins.getattr and the rest) with the name as a literal.
 What counts is the seam between modules: the class's own module stays out, since an underscore name is private to its
 module. Above the ceiling, a new reach went in: go through the interface. Below it, the PR lowers the ceiling with it.
 Both numbers go to the PR summary (the "-- summary:" lines that dev/testa_tudo.py collects).
@@ -152,10 +153,20 @@ def bound_names(target):
         yield from bound_names(target.value)
 
 
+ATTR_FUNCTIONS = ("getattr", "setattr", "hasattr", "delattr")
+
+
+def attr_function(func, names=ATTR_FUNCTIONS):
+    """Whether a call's func is getattr and its kin (or one of names), by name or through the builtins module."""
+    return ((isinstance(func, ast.Name) and func.id in names)
+            or (isinstance(func, ast.Attribute) and func.attr in names and isinstance(func.value, ast.Name)
+                and func.value.id == "builtins"))
+
+
 def instance_stores(node, receivers=frozenset(("self", "cls"))):
-    """The attributes assigned on the method's own self or cls inside node: a function nested in it that takes a self
-    or cls of its own (a method of a nested class) assigns on another object, and one that does not still assigns on
-    the outer one, which it captured."""
+    """The attributes assigned on the method's own self or cls inside node (self._x = ..., or setattr(self, "_x", ...)):
+    a function nested in it that takes a self or cls of its own (a method of a nested class) assigns on another object,
+    and one that does not still assigns on the outer one, which it captured."""
     for child in ast.iter_child_nodes(node):
         inner = receivers
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
@@ -164,6 +175,10 @@ def instance_stores(node, receivers=frozenset(("self", "cls"))):
         elif (isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Store) and isinstance(child.value, ast.Name)
               and child.value.id in receivers):
             yield child.attr
+        elif (isinstance(child, ast.Call) and attr_function(child.func, ("setattr",)) and len(child.args) >= 2
+              and isinstance(child.args[0], ast.Name) and child.args[0].id in receivers
+              and isinstance(child.args[1], ast.Constant) and isinstance(child.args[1].value, str)):
+            yield child.args[1].value
         yield from instance_stores(child, inner)
 
 
@@ -187,29 +202,26 @@ def privates(tree, classes):
     return {n for n in out if is_private(n)}
 
 
-ATTR_FUNCTIONS = ("getattr", "setattr", "hasattr", "delattr")
-
-
-def attr_function(func):
-    """Whether a call's func is getattr and its kin, by name or through the builtins module."""
-    return ((isinstance(func, ast.Name) and func.id in ATTR_FUNCTIONS)
-            or (isinstance(func, ast.Attribute) and func.attr in ATTR_FUNCTIONS and isinstance(func.value, ast.Name)
-                and func.value.id == "builtins"))
-
-
 def reaches(owner, names):
-    """[(module, line, name)] of the reaches into names from the modules at the root other than owner: an attribute
-    on an object other than self or cls, or a getattr/setattr/hasattr/delattr (also builtins.getattr and the rest)
-    with the name as a literal."""
+    """[(module, line, name)] of the reaches into names from the modules at the root other than owner: an attribute,
+    or a getattr/setattr/hasattr/delattr (also builtins.getattr and the rest) with the name as a literal, on any object
+    but the self or cls of a class's method (a module-level def f(self) gets no pass)."""
     out = []
     for f in sorted(RAIZ.glob("*.py")):
         if f.name == owner:
             continue
-        for no in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
-            if isinstance(no, ast.Attribute) and no.attr in names and not own(no.value):
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        in_method = {id(n) for c in ast.walk(tree) if isinstance(c, ast.ClassDef) for s in class_level(c.body)
+                     if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in ast.walk(s)}
+
+        def passes(node, receiver):
+            return own(receiver) and id(node) in in_method
+        for no in ast.walk(tree):
+            if isinstance(no, ast.Attribute) and no.attr in names and not passes(no, no.value):
                 out.append((f.name, no.lineno, no.attr))
             elif (isinstance(no, ast.Call) and attr_function(no.func) and len(no.args) >= 2
-                  and isinstance(no.args[1], ast.Constant) and no.args[1].value in names and not own(no.args[0])):
+                  and isinstance(no.args[1], ast.Constant) and no.args[1].value in names
+                  and not passes(no, no.args[0])):
                 out.append((f.name, no.lineno, no.args[1].value))
     return sorted(out)
 
