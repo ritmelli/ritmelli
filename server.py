@@ -2490,9 +2490,7 @@ def build(app_state):
         return web.json_response({"mostrar": do_pc(request) and A.boas_vindas_pendentes()})
 
     @r.post("/api/boas-vindas")
-    async def boas_vindas_vistas(request):
-        if not do_pc(request):
-            return j_err(i18n.so_texto("The welcome screen is only available on the computer."), 403)
+    async def boas_vindas_vistas(_):  # only the PC: the guard (permissao.py) turns the others away
         A.boas_vindas_vistas()
         return j_ok()
 
@@ -2524,8 +2522,8 @@ def build(app_state):
 
     # o Ritmelli aberto de novo (o atalho clicado com ele ligado, ritmelli.py): a janela dele vem para a frente
     @r.post("/api/janela/foco")
-    async def janela_foco(request):
-        if not do_pc(request) or A.janela is None:
+    async def janela_foco(_):  # only the PC, by the guard
+        if A.janela is None:
             return j_err("no window", 404)
         ok = await loop_().run_in_executor(pool, A.janela.foco)
         return j_ok() if ok else j_err("the window didn't come to the front", 409)

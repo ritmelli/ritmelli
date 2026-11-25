@@ -379,8 +379,9 @@ valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
 | `GET /api/state`, `GET /api/events` | sim | sim | sim | 401 |
 | `POST /api/play`, `POST /api/queue` (o remoto, só disco da prateleira ou vídeo do YouTube), `POST /api/queue/play`, `POST /api/next`, `POST /api/pause`, `POST /api/resume`, `DELETE /api/queue/<qid>`, `POST /api/queue/move` | sim | sim | sim | 401 |
 | `POST /api/volume`, `POST /api/abaixa`, `POST /api/sinal` | sim | 403 | sim | 403 |
-| `GET /api/onda/<id>`, `GET /api/library`, `GET /api/tocadas`, `GET /api/jobs`, `GET /api/search`, `GET /api/musica`, `POST /api/aquece`, `POST /api/library`, `PATCH` e `DELETE /api/library/<id>`, `DELETE /api/queue`, `POST /api/prev`, `POST /api/toggle`, `POST /api/stop`, `POST /api/seek`, `POST /api/settings`, `GET /api/effects`, `POST /api/pedal_voz`, `GET` e `POST /api/devices`, `GET /api/boas-vindas`, `POST /api/shutdown`, `GET /api/lan` | sim | sim | 403 | 401 |
-| `POST /api/effects/reload`, `POST /api/boas-vindas`, `POST /api/janela/foco`, `/api/metricas`, `/api/atualizacao/...`, `/api/pareamento/...`, e toda rota fora da tabela | sim | 403 | 403 | 403 |
+| `GET /api/onda/<id>`, `GET /api/library`, `GET /api/jobs`, `GET /api/search`, `POST /api/library`, `PATCH` e `DELETE /api/library/<id>`, `DELETE /api/queue`, `POST /api/prev`, `POST /api/toggle`, `POST /api/stop`, `POST /api/seek`, `POST /api/settings`, `GET /api/effects`, `POST /api/pedal_voz`, `GET` e `POST /api/devices`, `GET /api/boas-vindas` | sim | sim | 403 | 401 |
+| `GET /api/tocadas`, `GET /api/musica`, `POST /api/aquece` (o grupo `OUT_OF_REPO`: só o módulo de fora do repo chama, do PC) | sim | 403 | 403 | 403 |
+| `POST /api/shutdown`, `GET /api/lan`, `POST /api/effects/reload`, `POST /api/boas-vindas`, `POST /api/janela/foco`, `/api/metricas`, `/api/atualizacao/...`, `/api/pareamento/...`, e toda rota fora da tabela | sim | 403 | 403 | 403 |
 
 `caps` = `{"papel": "pc" | "celular" | "remoto" | "publico", "rotas": ["POST /api/play", ...]}`: as rotas da API que
 esse papel alcança, em ordem, no formato `"<MÉTODO> <rota>"`. Vem no `GET /api/state`, no 401 do pareamento (o do

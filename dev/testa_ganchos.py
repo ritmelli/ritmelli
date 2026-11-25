@@ -7,9 +7,13 @@ acima dele, entrou gancho novo; abaixo, saiu um, e o TETO desce junto no mesmo P
 modulo escapa da conta, e a regra vale igual (docs/arquitetura/fx.md). So a biblioteca padrao, lendo o texto do
 engine.py: nada e importado nem tocado.
 
+The same ceiling holds the server routes that only that module calls: the OUT_OF_REPO group of permissao.py, read
+from its text too, has to have exactly ROUTES_CEILING entries. A new route for the module goes through the ones already
+there; one that leaves lowers the ceiling in the same PR.
+
     python dev/testa_ganchos.py
 
-Sai 1 se a conta nao bate."""
+Sai 1 se uma das contas nao bate."""
 import ast
 import re
 import sys
@@ -17,6 +21,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 TETO = 26
+ROUTES_CEILING = 3
 
 
 def opcionais(arvore):
@@ -81,6 +86,20 @@ def ganchos(arvore, modulo):
     return achados
 
 
+def out_of_repo_routes(tree):
+    """The (method, route) pairs of the OUT_OF_REPO tuple in permissao.py, or None when it isn't a literal tuple."""
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "OUT_OF_REPO"
+                                                 for t in node.targets)):
+            try:
+                routes = ast.literal_eval(node.value)
+            except ValueError:
+                return None
+            return routes if isinstance(routes, tuple) else None
+    return None
+
+
+falhou = False
 arvore = ast.parse((RAIZ / "engine.py").read_text(encoding="utf-8"))
 modulos = opcionais(arvore)
 conta = len(set().union(*(ganchos(arvore, m) for m in modulos))) if modulos else 0
@@ -88,8 +107,30 @@ print(f"modulos opcionais no engine.py: {len(modulos)}; ganchos: {conta} (TETO {
 if conta > TETO:
     print(f"FALHA o engine.py ganhou {conta - TETO} gancho(s) para o modulo de fora do repo: o que ele precisa passa "
           "pelo que ja existe (docs/arquitetura/fx.md)")
-    sys.exit(1)
-if conta < TETO:
+    falhou = True
+elif conta < TETO:
     print(f"FALHA saiu gancho: baixe o TETO do dev/testa_ganchos.py para {conta} neste mesmo PR")
-    sys.exit(1)
-print("ok    os ganchos para o modulo de fora do repo nao cresceram")
+    falhou = True
+else:
+    print("ok    os ganchos para o modulo de fora do repo nao cresceram")
+
+routes = out_of_repo_routes(ast.parse((RAIZ / "permissao.py").read_text(encoding="utf-8")))
+if routes is None:
+    print("FAIL  permissao.py has no OUT_OF_REPO tuple written as a literal: the routes can't be counted")
+    falhou = True
+else:
+    count = len(set(routes))
+    print(f"routes only the module from outside the repo calls: {count} (ROUTES_CEILING {ROUTES_CEILING})")
+    if count != len(routes):
+        print("FAIL  OUT_OF_REPO lists the same route twice")
+        falhou = True
+    elif count > ROUTES_CEILING:
+        print(f"FAIL  the server gained {count - ROUTES_CEILING} route(s) for the module from outside the repo: what "
+              "it needs goes through the ones it already has")
+        falhou = True
+    elif count < ROUTES_CEILING:
+        print(f"FAIL  a route left: lower ROUTES_CEILING in dev/testa_ganchos.py to {count} in this same PR")
+        falhou = True
+    else:
+        print("ok    the routes for the module from outside the repo didn't grow")
+sys.exit(1 if falhou else 0)

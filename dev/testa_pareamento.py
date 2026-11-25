@@ -8,14 +8,11 @@ time.monotonic dele trocado aqui) e o celulares.json numa pasta temporaria:
 - desconectar tira o aparelho, e a chave dele deixa de valer;
 - o outro_codigo invalida o anterior.
 
-E o guard do servidor de verdade (server.build), com pedidos que chegam de um IP da rede de casa: sem a chave, uma rota
-que muda alguma coisa e recusada; com ela, passa. No --mock, o 401 traz o "mock": true das ferramentas de dev/. Essa
-parte precisa das bibliotecas do app (o aiohttp): a esteira roda este teste antes de instalar, e ela fica de fora.
+The server's guard, with requests from the home network, is tested in dev/testa_mock.py (papeis_no_guard).
 
     python dev/testa_pareamento.py
 
 Sai 1 se algo falha."""
-import asyncio
 import contextlib
 import hashlib
 import io
@@ -143,115 +140,6 @@ with tempfile.TemporaryDirectory() as tmp:
         p = par.Pareamento(arq)
     confere(p.aparelhos == [] and "unreadable" in log.getvalue(), "o app abre com a lista vazia, e o log diz")
 
-
-async def guard_do_servidor():
-    """Os pedidos de um celular da rede de casa (o IP de quem conectou, que e o que o servidor olha) pelo guard do
-    server.build de verdade, num app com o resto de mentira."""
-    from unittest import mock
-
-    from aiohttp import streams, web
-    from aiohttp.test_utils import make_mocked_request
-
-    with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, que nao sao deste teste
-        import server
-    lan, porta, celular, pc = "192.168.0.10", 8799, "192.168.0.50", "127.0.0.1"
-    with tempfile.TemporaryDirectory() as tmp:
-        A = types.SimpleNamespace(engine=None, port=porta, lan_ip=lan, mock=False,
-                                  celulares=par.Pareamento(Path(tmp) / "celulares.json"),
-                                  metricas=types.SimpleNamespace(erro=lambda *a, **k: None))
-        app = server.build(A)
-        guard = app.middlewares[0]
-        rota_parear = next(r.handler for r in app.router.routes()
-                           if r.method == "POST" and r.resource and r.resource.canonical == "/api/parear")
-        passou = []
-
-        async def segue(req):  # a rota de verdade nao importa aqui: so se o guard deixou chegar nela
-            passou.append((req.method, req.path))
-            return web.json_response({"ok": True})
-
-        def pedido(metodo, caminho, de=celular, host=None, cookie=None, origem=None, corpo=None):
-            t = mock.Mock()
-            t.get_extra_info.side_effect = lambda nome, d=None: (de, 50000) if nome == "peername" else d
-            cab = {"Host": host or (f"{pc}:{porta}" if de == pc else f"{lan}:{porta}")}
-            if cookie:
-                cab["Cookie"] = cookie
-            if origem:
-                cab["Origin"] = origem
-            carga = streams.EMPTY_PAYLOAD
-            if corpo is not None:
-                cab["Content-Type"] = "application/json"
-                carga = streams.StreamReader(mock.Mock(_reading_paused=False), 2 ** 16, loop=asyncio.get_running_loop())
-                carga.feed_data(json.dumps(corpo).encode("utf-8"))
-                carga.feed_eof()
-            return make_mocked_request(metodo, caminho, headers=cab, transport=t, payload=carga)
-
-        async def manda(req, handler=segue):
-            # a rota casada, como no servidor: o guard confere quem pode pela rota canonica (permissao.py)
-            req._match_info = await app.router.resolve(req)
-            n = len(passou)
-            resp = await guard(req, handler)
-            return resp, len(passou) > n
-
-        def corpo(resp):
-            return json.loads(resp.body) if resp.body else {}
-
-        print("--- o guard do servidor, com pedidos de um celular da rede de casa")
-        resp, chegou = await manda(pedido("POST", "/api/play"))
-        confere(resp.status == 401 and corpo(resp).get("parear") and not chegou,
-                f"sem a chave, uma rota que muda o Ritmelli e recusada ({resp.status}), e pede o pareamento")
-        resp, chegou = await manda(pedido("GET", "/api/state"))
-        confere(resp.status == 401 and not chegou, "sem a chave, nem o estado ele le")
-        confere("mock" not in corpo(resp), "fora do --mock, o 401 nao traz o \"mock\"")
-        A.mock = True
-        resp, chegou = await manda(pedido("GET", "/api/state"))
-        confere(resp.status == 401 and corpo(resp).get("mock") is True and corpo(resp).get("parear") and not chegou,
-                "no --mock, o 401 traz o \"mock\": true (dev/so_mock.py) e segue pedindo o pareamento")
-        A.mock = False
-        for metodo, caminho in (("GET", "/api/pareamento"), ("POST", "/api/pareamento/codigo"),
-                                ("DELETE", "/api/pareamento/abc")):
-            resp, chegou = await manda(pedido(metodo, caminho))
-            confere(resp.status == 403 and not chegou, f"{metodo} {caminho}: so no PC ({resp.status})")
-        for caminho in ("/t/ritmelli/", server.TEMA_DE_ANTES + "/"):  # o de antes (#58) leva ao novo
-            resp, chegou = await manda(pedido("GET", caminho))
-            confere(chegou, f"{caminho}: a pagina do tema abre sem a chave, e nela que o celular digita o codigo")
-        resp, chegou = await manda(pedido("POST", "/api/play", host="ritmelli.example:8799"))
-        confere(resp.status == 403 and not chegou, "outro Host (DNS rebinding): recusado")
-        resp, chegou = await manda(pedido("POST", "/api/parear", origem="http://outro.example", corpo={"codigo": "1"}))
-        confere(resp.status == 403 and not chegou, "outra Origin na escrita (CSRF): recusado")
-
-        codigo, _ = A.celulares.codigo_atual()
-        resp, _ = await manda(pedido("POST", "/api/parear", corpo={"codigo": errado(codigo)}), rota_parear)
-        confere(resp.status == 403 and par.COOKIE not in resp.cookies,
-                f"o /api/parear com o codigo errado: {resp.status}")
-        com_espaco = {"codigo": codigo[:3] + " " + codigo[3:]}
-        resp, _ = await manda(pedido("POST", "/api/parear", corpo=com_espaco), rota_parear)
-        biscoito = resp.cookies.get(par.COOKIE)
-        confere(resp.status == 200 and biscoito is not None and biscoito["httponly"]
-                and biscoito["samesite"] == "Strict",
-                f"o /api/parear com o codigo certo (com espaco no meio: {com_espaco['codigo']!r}) poe a chave num "
-                "cookie HttpOnly e SameSite=Strict")
-        chave = biscoito.value if biscoito is not None else ""
-        resp, chegou = await manda(pedido("POST", "/api/play", cookie=f"{par.COOKIE}={chave}"))
-        confere(chegou, "com a chave, a mesma rota passa")
-        resp, chegou = await manda(pedido("POST", "/api/play", cookie=f"{par.COOKIE_VELHO}={chave}"))
-        confere(chegou, "com a chave no cookie de antes da troca de nome tambem")
-        resp, chegou = await manda(pedido("GET", "/api/pareamento", cookie=f"{par.COOKIE}={chave}"))
-        confere(resp.status == 403 and not chegou, "pareado, o codigo e a lista dos celulares seguem so no PC")
-        A.celulares.desconecta(A.celulares.publico()[0]["id"])
-        resp, chegou = await manda(pedido("POST", "/api/play", cookie=f"{par.COOKIE}={chave}"))
-        confere(resp.status == 401 and corpo(resp).get("desconectado") and not chegou,
-                "desconectado no PC, a chave dele e recusada, e o tema sabe que foi desconectado")
-        resp, chegou = await manda(pedido("POST", "/api/play", de=pc))
-        confere(chegou, "o PC (127.0.0.1) muda tudo sem chave")
-
-
-try:
-    import aiohttp  # noqa: F401
-    import numpy  # noqa: F401
-except ImportError as ex:
-    print(f"--   o guard do servidor ficou de fora: sem as bibliotecas do app ({ex.name})")
-else:
-    asyncio.run(guard_do_servidor())
 
 print("\nFALHOU: " + "; ".join(falhas) if falhas else "\ntudo certo")
 sys.exit(1 if falhas else 0)
