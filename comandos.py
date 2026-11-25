@@ -97,7 +97,7 @@ def avanca(A, virada=None, historico=True, na_tela=False):
         return None
     try:
         A.tocar_entrada(x, historico=historico)
-    except Exception as ex:
+    except Exception as ex:  # noqa: BLE001 - nos vigias, entrada quebrada nao trava a fila
         if not na_tela:
             raise
         A.engine.error = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
