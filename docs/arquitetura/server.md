@@ -28,7 +28,10 @@ falha de vez em quando. O servidor habilita o Node e o Deno nas opções do yt-d
   silêncio; fade-out recebe o próximo por baixo, em até 8 s com curva de potência constante,
   e o rabo dele 20 dB abaixo do normal fica para trás. Vale para toda passagem automática;
   o Repetir, a Próxima, o Anterior e o pulo na barra seguem cortando. O log mostra cada
-  medição (`transition: ...`).
+  medição (`transition: ...`). As contas que não leem áudio (o fim, o começo e o corpo pelo
+  nível dos blocos, a escolha entre fade e final seco, a entrada do próximo e os tempos a partir
+  das grades e fases já medidas) moram no `transicao.py`; o `dev/testa_transicao.py` as roda sobre
+  as chamadas gravadas da banca das passagens (`dev/testa_passagem.py`).
 - Passagem no tempo: o `batida.py` acha o andamento e a grade de batidas dos 20 s do fim do
   disco e dos 20 s do começo do próximo, e a fase de cada um no trecho em que os dois tocam
   juntos. Entre a batida e o contratempo quem decide é o bumbo, nos 20 s: o trecho curto só
