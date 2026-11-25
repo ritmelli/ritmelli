@@ -11,9 +11,9 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 
 ## Tema
 
-- `themes/<slug>/index.html`, autossuficiente: HTML + CSS + JS puro, sem build. Arquivo
-  extra (fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
-  relativo (`./x.svg`), servido em `/t/<slug>/x.svg`.
+- `themes/<slug>/index.html`, a página do tema: HTML + CSS + JS puro, sem build. Arquivo
+  extra (script `.js`, fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
+  relativo (`./x.svg`, `<script src="x.js">`), servido em `/t/<slug>/x.svg`.
 - Toda resposta de `/t/` sai com `Cache-Control: no-cache`: o navegador confere cada arquivo do tema com o servidor
   antes de usar o que guardou (o que não mudou volta como 304), e não usa um `.js` ou `.css` de antes sem conferir.
 - O slug `vitrola` é reservado: era o do tema `ritmelli` até a 0.6.0, e o servidor leva todo `/t/vitrola/...` para
@@ -23,8 +23,8 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - O ícone é do servidor, igual para todo tema: a aba do navegador pega o `/favicon.ico`
   sem nada no tema, e o atalho na tela inicial do celular pede
   `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` no `<head>`.
-- Nada externo: as fontes moram no próprio tema (`themes/<slug>/fonts/`, com a licença ao lado), e script externo
-  nenhum.
+- Nada de fora: as fontes e os scripts moram no próprio tema (as fontes em `themes/<slug>/fonts/`, com a licença ao
+  lado), e nenhum script vem de outra origem.
 - API sempre por caminho absoluto (`/api/...`), mesma origem. Escrita é `fetch` com
   `method` e, quando tem corpo, `Content-Type: application/json`.
 - Texto da interface com acentuação completa no português e sem travessão. O servidor não
