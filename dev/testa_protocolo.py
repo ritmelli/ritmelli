@@ -694,6 +694,7 @@ def _motor(atual, pronto=None, pos=0.0):
     e._virar_em = e._eco_plano = e._visor_pas = e._visor_feita = None
     e._saindo = e._entrando = e._eco = None
     e.pronto_falhou = None
+    e._bloco = e._pausa = None  # o bloco em curso e a pausa pendente (o _captura_atual e o _restart os leem)
     e._registra_fim = lambda *a, **k: None  # o registro do fim grava em logs/: fora daqui
     return e
 
