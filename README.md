@@ -561,10 +561,10 @@ The description at the top of each file (in Portuguese) says exactly what it che
   `python dev\vozes.py baixa` downloads from the [ritmelli-voices](https://github.com/ritmelli/ritmelli-voices)
   releases into `vozes\` (about 325 MB, checked by SHA-256), and a graphics card; without them the Alien pedal stays.
   With the models downloaded, `set RITMELLI_VOZES_TESTE=1` also runs `testa_pista.py` against the real models.
-- The protected app folder rule (`pastas.pasta_protegida`): `dev/testa_pasta_protegida.py` (in memory; `--disco`
-  checks real folders in Program Files and needs an elevated administrator, so only on a test Windows). The same rule
-  in the installer, `instalador/protegida.ps1`, runs in the setup: no test in `dev/` covers it, and in CI only the
-  installs of the `monta.yml` pipeline run it.
+- The protected app folder rule (`pastas.pasta_protegida`, and `instalador/protegida.ps1`, the same rule in the
+  installer): `dev/testa_pasta_protegida.py` (in memory; `--disco` checks real folders in Program Files with both
+  copies of the rule, which have to agree, and needs an elevated administrator, so only on a test Windows). The setup's
+  choice of folder runs in the `testa-migracao` scenarios of the `monta.yml` pipeline.
 - The updates (`atualizacao.py`, `atualizador.py`, `instalador/atualizacao/`): `dev/testa_atualizacao.py`,
   `dev/testa_atualizador.py` and `instalador/atualizacao/testa_parcial.py` (the partial update and its manifest).
 
