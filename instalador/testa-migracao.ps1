@@ -13,9 +13,9 @@
 # - dir-refused: the new setup with /DIR=C:\Ritmelli on a clean machine exits with 7 and installs nothing;
 # - writable-folder: the 0.6.0 in Program Files\Ritmelli, made writable by Users, then the new setup: the app ends up in
 #   Program Files\Ritmelli-2, and the old ritmelli.exe is renamed as above.
-# In both scenarios that change folders, the voice files (vozes.json) come from the old folder with their sha256
-# checked, and none is downloaded; in writable-folder one of them is changed in the old folder first, and the setup
-# has to refuse it and download only that one.
+# In both scenarios that change folders, the voice files (vozes.json) the old folder has with the right sha256 are
+# copied from it, and only the missing or mismatching ones are downloaded; in writable-folder one of the copiable files
+# is changed in the old folder first, and the setup has to refuse it and download it.
 # Precisa de administrador e de uma maquina sem o app. Roda no job testa-migracao da esteira e numa maquina de teste.
 # Uso: testa-migracao.ps1 -Setup <Ritmelli-X.Y.Z-setup.exe> -Versao <X.Y.Z> [-Scenario <name>] [-Vozes <vozes.json>]
 param([Parameter(Mandatory = $true)][string]$Setup, [Parameter(Mandatory = $true)][string]$Versao,
