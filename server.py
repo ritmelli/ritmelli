@@ -611,7 +611,7 @@ class Library:
 
 
 class App:
-    def __init__(self, port, data_dir, mock=False):
+    def __init__(self, port, data_dir, mock=False, metricas_teste=False):
         self.port = port
         self.mock = mock
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -695,8 +695,11 @@ class App:
                 v = self.cfg[k]
                 setattr(self.engine, k, v if isinstance(v, bool) else max(0.0, min(1.0, float(v))))
         self.engine.liga()
-        # os dados de uso e os erros (metricas.py, #102): so saem com a escolha de quem usa, e nunca no --mock
-        self.metricas = met.Metricas(self.cfg, lambda ligar: self.grava_cfg(metricas=ligar), mock=mock)
+        # os dados de uso e os erros (metricas.py, #102): so saem com a escolha de quem usa, e nunca no --mock. No
+        # --mock, o metricas.json (o id e o dia) fica na pasta de dados dele; o --metricas-teste liga o aviso e a escolha
+        # sem ler o instalador, e o envio so guarda na memoria
+        self.metricas = met.Metricas(self.cfg, self.grava_cfg, mock=mock, teste=metricas_teste,
+                                     **({"estado": data_dir / "metricas.json"} if mock else {}))
         self.metricas.instala_ganchos()
         threading.Thread(target=self.metricas.vigia, args=(self.engine,), daemon=True, name="metricas").start()
         threading.Thread(target=self._vigia_fila, daemon=True).start()
@@ -2792,15 +2795,20 @@ def main():
     ap.add_argument("--data-dir", help="where library.json and config.json live (default: the user's; with --mock, a "
                                        "new temporary folder, never the user's)")
     ap.add_argument("--so-local", action="store_true", help="don't serve the home network (phone)")
+    ap.add_argument("--metricas-teste", action="store_true",
+                    help="with --mock: the usage data notice and choice work, but nothing is read from the installer "
+                         "and nothing is sent (the events stay in memory)")
     ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
+    if a.metricas_teste and not a.mock:
+        sys.exit("--metricas-teste only works with --mock")
     dados = Path(a.data_dir) if a.data_dir else LIB
     if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
         dados = pastas.dados_do_mock(a.data_dir)
         if dados is None:
             sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
                      "temporary copy")
-    A = App(a.port, dados, mock=a.mock)
+    A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste)
     if not a.mock:  # no --mock, o processo do YouTube so abre no primeiro pedido de quem testa (#128)
         threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
