@@ -221,12 +221,13 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Ritmelli"" dir=in action=allow program=""{app}\ritmelli.exe"" enable=yes profile=private,public"; StatusMsg: "{cm:Firewall}"; Flags: runhidden
 ; o filtro em todo microfone que ainda nao tem, a DLL desta versao no lugar da velha e a tarefa do Windows que faz o
 ; mesmo depois, chamada pelo app sem UAC (o audio do PC reinicia so se algo mudou: atualizar sem DLL nova nao mexe).
+; O resultado vai para a {tmp}: os aparelhos que ficaram mudos depois do reinicio do audio (#136, mudos.iss).
 ; So o setup completo cria as tarefas: a parcial so troca a DLL, e as tarefas que o app apagou por achar a pasta
 ; desprotegida continuam apagadas ate o setup completo
 #ifdef Parcial
-Filename: "{app}\ritmelli.exe"; Parameters: "--microfone instala-todos"; StatusMsg: "{cm:Microfone}"; Flags: runhidden
+Filename: "{app}\ritmelli.exe"; Parameters: "--microfone instala-todos --saida ""{tmp}\microfone.json"""; StatusMsg: "{cm:Microfone}"; Flags: runhidden
 #else
-Filename: "{app}\ritmelli.exe"; Parameters: "--microfone instala-todos --tarefa"; StatusMsg: "{cm:Microfone}"; Flags: runhidden
+Filename: "{app}\ritmelli.exe"; Parameters: "--microfone instala-todos --tarefa --saida ""{tmp}\microfone.json"""; StatusMsg: "{cm:Microfone}"; Flags: runhidden
 ; a tarefa da atualizacao automatica (atualizador.py): no logon e de 4 em 4 horas, como SYSTEM, sem UAC
 Filename: "{app}\ritmelli.exe"; Parameters: "--atualizador tarefa"; Flags: runhidden
 #endif
@@ -259,6 +260,10 @@ Type: filesandordirs; Name: "{app}\vozes"
 ; da troca de nome sai tambem, se o app nao chegou a abrir depois dela
 Type: files; Name: "{localappdata}\Ritmelli\metricas.json"
 Type: files; Name: "{localappdata}\Vitrola\metricas.json"
+
+; o aparelho mudo na pagina de concluido (#136): fora do [Code], porque o mudos.iss traz as secoes dele (as
+; frases e o codigo, com os eventos marcados, que nao trombam com os daqui)
+#include "mudos.iss"
 
 [Code]
 const

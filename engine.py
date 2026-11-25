@@ -831,6 +831,35 @@ def _erro_da_tarefa(r, mic):
                     reason=r.get("detalhe") or motivo or "?")
 
 
+def _confere_fora(nomes=None):
+    """O confere_aparelhos (microfone/microfone.py) num processo a parte, com o PortAudio dele: o daqui e o dos streams
+    do motor, e abrir aparelhos nele de outra thread enquanto o vigia rele a lista (_rescan) derrubaria tudo. O
+    processo novo ainda le a lista do Windows de agora. {"conferidos", "mudos", "falhas"}, ou None se nao deu."""
+    cmd = [sys.executable]
+    if not getattr(sys, "frozen", False):  # no codigo, o mesmo caminho pelo python (o server.auxiliar)
+        cmd.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ritmelli.py"))
+    # o nome junto do --aparelho=: um nome que comeca com "-" nao vira outra opcao do argparse
+    cmd += ["--microfone", "confere"] + [f"--aparelho={n}" for n in nomes or ()]
+    p = None
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+                           creationflags=NO_WINDOW, startupinfo=sem_cursor())
+        return json.loads(p.stdout.strip().splitlines()[-1])
+    except Exception as ex:  # noqa: BLE001 - sem a conferencia, nenhum aviso: nunca um aviso falso
+        motivo = p.stderr.strip()[-300:] if p is not None and p.stderr.strip() else f"{type(ex).__name__}: {ex}"
+        print(f"devices: not checked ({motivo})")
+        return None
+
+
+def _aviso_mudos(mudos):
+    """A mensagem da tela com os aparelhos que abrem e nao entregam som (#136): um nome por aparelho, o que se tira do
+    cabo ("BEHRINGER UMC 404HD 192k", e nao cada entrada e saida dele)."""
+    from microfone import microfone as filtro  # noqa: PLC0415
+    return i18n.msg("server.devices.silent", "Windows stopped receiving sound from the device \"{name}\". Unplug its "
+                                             "USB cable and plug it back in.",
+                    name="\", \"".join(filtro.aparelhos_de(mudos)))
+
+
 def _do_microfone(mic):
     """O estado do filtro no microfone (o item do microfone.estado_dados: guid, filtro, melhorias), ou None se nao deu
     para ler ou o Windows nao conhece esse nome."""
@@ -1189,6 +1218,7 @@ class Engine:
         self._voz_anel_em = -1e9  # monotonic da ultima voz crua que o filtro devolveu (a do microfone fica de reserva)
         self.preparando = None  # o microfone que o Windows esta preparando para o Ritmelli (a tarefa do instalador)
         self._preparados = set()  # os microfones em que a preparacao ja rodou nesta sessao (nao repete)
+        self._mudos_vistos = False  # os aparelhos mudos que o instalador ou a tarefa acharam ja foram conferidos
         self.monitor_on = True
         self.loop = False
         self.effect = "nenhum"  # efeito de voz (fx.py); sempre comeca sem efeito
@@ -1415,15 +1445,26 @@ class Engine:
     def _confere_filtro(self, mic):
         """O microfone em uso com o filtro: o alvo do anel e o hash dele. Sem o filtro (um microfone que apareceu depois
         da instalacao) ou com as melhorias de audio desligadas, roda a tarefa do instalador, que prepara como SYSTEM
-        sem pedir nada a ninguem, e reabre o audio (o do Windows reinicia uns segundos). Uma vez por microfone."""
+        sem pedir nada a ninguem, e reabre o audio (o do Windows reinicia uns segundos). Uma vez por microfone. Depois
+        de reiniciar o audio, e uma vez com o filtro pronto, confere se algum aparelho parou de entregar som (#136)."""
         _com_init()
         st = _do_microfone(mic)
         if st and st["filtro"] and st["melhorias"]:
             from microfone import injeta  # noqa: PLC0415
             if self.active.get("mic") == mic:
                 self._alvo = injeta.hash_microfone(st["guid"])
-                if self._aviso is not None and self.error == self._aviso:
-                    self.error = None
+                with self._lock:  # o dos mudos fica: ele acabou de sair desta pilha e sai quando o audio reabre
+                    if (self._aviso is not None and self.error == self._aviso
+                            and self._aviso.get("key") != "server.devices.silent"):
+                        self.error = None
+            with self._lock:  # uma vez, so os que o instalador ou a tarefa acharam mudos: abrir todos a cada partida
+                ver = not self._mudos_vistos  # incomodaria
+                self._mudos_vistos = True
+            if ver:
+                from microfone import microfone as filtro  # noqa: PLC0415
+                mudos = filtro.le_mudos()
+                if mudos:
+                    self._confere_mudos(mudos)
             return
         if mic in self._preparados:
             if self.active.get("mic") == mic:
@@ -1448,8 +1489,36 @@ class Engine:
         if self.error == prep:
             self._aviso = self.error = None
         with self._lock:  # o audio do Windows reiniciou: os streams daqui morreram
-            if not self._fechado and self.active.get("mic") == mic:
+            if self._fechado:
+                return
+            # os do registro entram nesta, e antes do _reabre: o _confere_filtro que ele abre nao confere junto
+            self._mudos_vistos = True
+            if self.active.get("mic") == mic:
                 self._reabre()
+        self._confere_mudos()  # todos: o reinicio do audio pode ter deixado qualquer aparelho mudo
+
+    def _confere_mudos(self, nomes=None):
+        """Confere (num processo a parte, _confere_fora) se os aparelhos, ou so esses nomes, entregam som, e avisa na
+        tela os que abrem e nao entregam nada (#136: uma interface USB depois do reinicio do audio, ate tirar o cabo).
+        O aviso e dos aparelhos (_aviso), como o da reserva: sai quando o audio reabre (o vigia reabre quando o
+        aparelho em uso e tirado e posto de volta), e ao tocar, parar ou pular, como todo erro da tela. O audio que
+        reabriu (ou caiu) enquanto a conferencia rodava deixa o resultado de fora: ele e de antes, e a reabertura que
+        falhou tem o aviso dela. Sem audio aberto (a reabertura depois da tarefa que falhou), nem abre os aparelhos:
+        os mudos do registro (a conferencia da propria tarefa) ficam para quando o audio abrir (_confere_filtro)."""
+        with self._lock:  # o _reabre fecha e abre sob o _lock: aqui, nunca a pilha do meio dele
+            pilha = self._stack
+            if pilha is None:
+                self._mudos_vistos = False
+                return
+        r = _confere_fora(nomes)
+        mudos = (r or {}).get("mudos")
+        if mudos:
+            print(f"devices: silent: {'; '.join(mudos)}")
+        with self._lock:
+            if self._stack is None:  # o audio caiu durante a conferencia: os do registro, para quando ele voltar
+                self._mudos_vistos = False
+            elif mudos and not self._fechado and self._stack is pilha:
+                self._aviso = self.error = _aviso_mudos(mudos)
 
     def liga(self):
         """A partida do servidor. Se o audio nao abre (sem microfone, aparelho que recusa), o servidor sobe mesmo

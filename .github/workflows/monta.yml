@@ -272,6 +272,13 @@ jobs:
           $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -PassThru
           if (-not $p.WaitForExit(600000)) { Stop-Process $p -Force; Get-Content $log -Tail 40; throw 'o setup não terminou em 10 min' }
           if ($p.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "o setup saiu com $($p.ExitCode)" }
+          # a conferência dos aparelhos depois do reinício do áudio (#136, instalador/mudos.iss): o resumo vai no log do
+          # setup. Sem microfone aqui, o áudio não reinicia e o resumo diz isso; sem a linha, o mudos.iss não rodou, e com o
+          # "sem o microfone.json", o ritmelli.exe congelado não entregou o --saida do [Run] ao mudos.iss
+          $conf = Select-String $log -Pattern 'aparelhos( mudos)?: '
+          if (-not $conf) { Get-Content $log -Tail 40; throw 'o setup não pôs o resumo da conferência dos aparelhos no log' }
+          if ($conf | Where-Object Line -Match 'aparelhos: sem o microfone\.json') { Get-Content $log -Tail 40; throw 'o ritmelli.exe não gravou o --saida do --microfone instala-todos' }
+          $conf | ForEach-Object { $_.Line } | Write-Host
           $app = "$env:ProgramFiles\Ritmelli"
           foreach ($f in 'ritmelli.exe', 'bin\ffmpeg.exe', 'bin\ffprobe.exe', 'bin\deno.exe', 'LICENSE.txt', 'TERCEIROS.txt',
                    '_internal\microfone\voz.dll') {

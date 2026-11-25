@@ -94,8 +94,9 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim`nlinhas<<$fim`n$linhas`n$fim" -Encoding utf8
 
-  # the filter tests (the MICROFONE of the dev/testa_tudo.py), with the DLLs of the microfone\apo\compila.bat teste: only
-  # when the PR touches the filter, the engine, the effects or their tests
+  # the filter tests (the MICROFONE of the dev/testa_tudo.py), with the DLLs of the microfone\apo\compila.bat teste and
+  # the Inno Setup (the test setup of the silent device, dev/testa_aparelho_mudo.py): only when the PR touches the
+  # filter, the engine, the effects or their tests
   microfone:
     name: Filtro do microfone
     if: *real
@@ -123,6 +124,20 @@ jobs:
         if: steps.areas.outputs.microfone == 'true'
         shell: cmd
         run: microfone\apo\compila.bat teste
+      # o mesmo da monta.yml, na pasta do usuário: o dev/testa_aparelho_mudo.py monta e roda em silêncio um setup que
+      # não instala nada, com o instalador/mudos.iss (sem o ISCC, no GitHub, ele reprova em vez de pular)
+      - name: Inno Setup 6.7.3
+        if: steps.areas.outputs.microfone == 'true'
+        shell: powershell
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $exe = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $exe -UseBasicParsing
+          $h = (Get-FileHash $exe -Algorithm SHA256).Hash
+          if ($h -ne '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732') { throw "o Inno Setup veio com hash $h" }
+          $p = Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/SP-' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "o instalador do Inno Setup saiu com $($p.ExitCode)" }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe")) { throw 'o ISCC.exe nao ficou na pasta do usuario' }
       - name: Testes do filtro
         if: steps.areas.outputs.microfone == 'true'
         run: python dev/testa_tudo.py --microfone --resumo "$env:RUNNER_TEMP\resumo.md"

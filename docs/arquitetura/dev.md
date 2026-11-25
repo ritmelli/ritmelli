@@ -14,7 +14,8 @@ esticamento da passagem seca o anel do jogo, no processo do motor e num auxiliar
 O `dev/testa_tudo.py` roda os testes que não usam som, aparelho nem rede externa, quatro
 por vez (os do `SERIAL`, que medem tempo, um a um e sozinhos, depois dos outros), pelas listas
 dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO` e o `MICROFONE` (este
-sempre um a um). No `COMPLETO`, biblioteca ou ffmpeg faltando é falha. Todo `dev/testa_*.py`
+sempre um a um; o job do filtro roda com o Inno Setup, para o setup de teste do
+`testa_aparelho_mudo`). No `COMPLETO`, biblioteca ou ffmpeg faltando é falha. Todo `dev/testa_*.py`
 tem destino: uma lista, um passo próprio do `testa.yml` declarado no `PASSOS` (o `--passo disco`
 roda o `testa_pasta_protegida --disco`) ou, quando só roda à mão, o comentário `# manual:
 <comando> precisa de <aparelho>` no topo, antes da docstring (o `dev/bumbo.py` tem um). Antes de
