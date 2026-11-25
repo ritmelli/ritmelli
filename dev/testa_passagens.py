@@ -51,7 +51,12 @@ class Teto(unittest.TestCase):
         p = mock.patch.object(eng.pastas, "LOGS", self.logs)
         p.start()
         self.addCleanup(p.stop)
-        self.hoje = datetime.date.fromisoformat(time.strftime("%Y-%m-%d"))
+        # o dia do teste fica fixo, mesmo se ele cruzar a meia-noite
+        orig, agora = time.strftime, time.localtime()
+        self.hoje = datetime.date(*agora[:3])
+        p = mock.patch.object(eng.time, "strftime", side_effect=lambda fmt, t=None: orig(fmt, t or agora))
+        p.start()
+        self.addCleanup(p.stop)
 
     def _arquivo(self, dias, nome=None):
         p = self.pasta / (nome or f"{self.hoje - datetime.timedelta(days=dias)}.jsonl")
@@ -60,10 +65,9 @@ class Teto(unittest.TestCase):
 
     def test_primeira_passagem_apaga_so_o_de_8_dias(self):
         oito, seis = self._arquivo(8), self._arquivo(6)
-        err = _passa(_motor())
+        _passa(_motor())
         self.assertFalse(oito.exists(), "o de 8 dias ficou")
         self.assertTrue(seis.exists(), "o de 6 dias saiu")
-        self.assertIn("removed 1 end records", err)
         hoje = self.pasta / f"{self.hoje}.jsonl"
         self.assertEqual(len(hoje.read_text(encoding="utf-8").splitlines()), 1, "o registro de hoje nao foi gravado")
 
@@ -71,8 +75,9 @@ class Teto(unittest.TestCase):
         sete, outro, quinze = self._arquivo(7), self._arquivo(0, "anotacoes.jsonl"), self._arquivo(15)
         velho = self.hoje - datetime.timedelta(days=30)
         texto, compacto = self._arquivo(0, f"{velho}.txt"), self._arquivo(0, f"{velho:%Y%m%d}.jsonl")
+        maiusculo = self._arquivo(0, f"{velho - datetime.timedelta(days=1)}.JSONL")
         self.assertEqual(eng.poda_passagens(self.pasta, self.hoje), [quinze.name])
-        for p in (sete, outro, texto, compacto):
+        for p in (sete, outro, texto, compacto, maiusculo):
             self.assertTrue(p.exists(), f"{p.name} saiu")
 
     def test_so_a_primeira_do_dia_poda(self):

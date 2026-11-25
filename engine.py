@@ -270,7 +270,7 @@ def poda_passagens(pasta, hoje, dias=PASSAGENS_DIAS):
             dia = datetime.date.fromisoformat(p.stem)
         except ValueError:
             continue
-        if p.stem == dia.isoformat() and (hoje - dia).days > dias:  # o fromisoformat aceita tambem 20260101
+        if p.name == f"{dia.isoformat()}.jsonl" and (hoje - dia).days > dias:  # nem 20260101 nem .JSONL
             try:
                 p.unlink()
                 apagados.append(p.name)
