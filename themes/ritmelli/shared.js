@@ -48,4 +48,5 @@ function sombrear(r) {
   const fim = r.scrollHeight - r.clientHeight;
   r.classList.toggle('mais-cima', fim > 1 && r.scrollTop > 2);
 }
+function dialogoAberto() { return !!document.querySelector('dialog[open]') || !$('#fora').hidden || !$('#tela-parear').hidden; }
 /* SHARED-JS-FIM */

@@ -1355,4 +1355,21 @@ function abrirGaveta(on) {
   }
   sombrear($('#rolo-gav'));
 }
+function desligarEfeito() { escolherEfeito(SEM_EFEITO); }   // sem aviso: o visor ja mostra Sem efeito
+// tocar de novo no efeito ligado desliga, como no Voicemod
+const pisarPedal = e => {
+  const b = e.target.closest('.tecla[data-ef]'); if (!b) return;
+  const ligado = !!S.state && efeitoAtual().id === b.dataset.ef;
+  if (b.dataset.ef !== SEM_EFEITO && ligado) desligarEfeito();
+  else escolherEfeito(b.dataset.ef);
+};
+$('#gaveta').addEventListener('click', pisarPedal);
+$('#gaveta-dir').addEventListener('click', pisarPedal);
+$('#desliga-ef').addEventListener('click', desligarEfeito);
+$('#b-efeito').addEventListener('click', () => {
+  // no celular a gaveta ja esta aberta logo abaixo: o seletor so leva ate ela
+  if (celular()) { $('#gaveta').scrollIntoView({ block: 'start', behavior: reduz.matches ? 'auto' : 'smooth' }); return; }
+  abrirGaveta(!S.gaveta);
+});
+$('#b-fechar-gav').addEventListener('click', () => { abrirGaveta(false); $('#b-efeito').focus(); });
 /* VOICE-EFFECTS-FIM */

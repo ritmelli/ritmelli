@@ -17,16 +17,29 @@ O código do tema sai aos poucos do `index.html` para arquivos `.js` na pasta do
 o `index.html` carrega por um `<script src>` no lugar em que o bloco estava, sem `defer`: os scripts rodam na mesma
 ordem, e o que um deles declara no alto continua à vista dos de depois. O primeiro é o `shared.js`, carregado no
 `<head>`: o estado da página (`S`), o da mesa de DJ (`MESA`) e os ajudantes de todos (o `$`, o `el`, o `clamp`, o
-`reduz`, o `celular()`, o `toque()`, o `abrirMaleta()` e o `sombrear()`). Já saíram também: o `deck.js` (os toca-discos
+`reduz`, o `celular()`, o `toque()`, o `abrirMaleta()`, o `sombrear()` e o `dialogoAberto()`). Já saíram também: o `deck.js` (os toca-discos
 da mesa), o `mix.js` (o mixer da mesa), o `pedal.js` (os pedais da mesa), o `maleta-vazia.js` (o aviso de vazio do A
 seguir), o `letra-placa.js` (a letra de pixel das placas da mesa), o `prateleira.js` (o título e a contagem da plaqueta
 da prateleira), o `maleta-tit.js` (o título da placa da maleta) e o `mesa-topo.js` (a plaqueta e as teclas do topo da
 mesa em largura par). O `dj-visor.js` (o visor de DJ: a onda do disco que corre sob o ponto fixo do play), o
 `voice-effects.js` (os efeitos de voz: o seletor no receptor e a gaveta de teclas), o `dj-desk.js` (os dois decks da
 mesa de DJ, que se revezam como num set, no computador largo), o `search.js` (a busca e os resultados), o `queue.js` (a
-fila, o A seguir) e o `ui-events.js` (os ouvintes de clique, de tecla e de ponteiro da página) saíram do script
-principal da página, que é estrito: o arquivo tirado dele começa com `'use strict'`, como o script inline que segue
-depois do `<script src>` dele. Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a
+fila, o A seguir) e o `ui-events.js` (os ouvintes de clique, de tecla e de ponteiro das partes que ainda moram no
+`index.html`: o palco, a prateleira, os toca-discos, o teclado) saíram do script principal da página, que é estrito: o
+arquivo tirado dele começa com `'use strict'`, como o script inline que segue depois do `<script src>` dele.
+
+Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela e o toque fora
+da gaveta da busca na mesa) no `search.js`, os da gaveta de efeitos no `voice-effects.js`. Um ouvinte que vai para um
+arquivo carregado antes passa a ser registrado antes dos outros no mesmo alvo: o toque fora da busca na mesa, que agora
+vem antes do ouvinte do `queue.js` na `window`, para o evento com `stopPropagation`, e não com
+`stopImmediatePropagation`, e o do `queue.js` segue vendo o toque. Todo nome do alto de um script é declarado por um
+script só: o `dev/theme_scripts.py`, que o `--tela` do `dev/testa_tudo.py` roda, abre a página num Chrome sem tela
+contra um `--mock`, pega cada script como o V8 o leu, roda cada um num mundo isolado com um `throw 0` logo depois do
+`'use strict'` (as declarações nascem e nada roda) e falha com um nome declarado em dois scripts (função, `var`, `let`,
+`const` ou `class`). Ele confere também que os ouvintes da busca e da gaveta de efeitos são dos arquivos delas e que o
+`queue.js` vê o toque que fecha a busca na mesa.
+
+Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a
 página de novo nos dois commits (cada `<script src>`, `<link>` e `<!-- inline-script: -->` trocado pelo texto do
 arquivo, sem as marcas, com os outros atributos da tag numa linha e cada `'use strict'` como `[strict]`) e sai 0 só com
 as duas páginas iguais, linha a linha; diferentes, ela separa os blocos que só mudaram de lugar das linhas novas ou que
