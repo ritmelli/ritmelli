@@ -1009,20 +1009,12 @@ class App:
                 it["last_pos"] = round(pos, 1)
             self.lib._save()
 
-    def repetir_so_neste(self, novo_id):
-        """O Repetir vale para o disco do prato (o "repetir uma" do Spotify): outro disco entrando desliga. O mesmo
-        disco tocado de novo e o prato vazio (ligou antes de escolher) nao contam."""
-        tr = self.engine.track
-        if tr is not None and tr["id"] != novo_id:
-            self.engine.set_loop(False)
-
     def play_item(self, item, start, loop=None, historico=True, extra=None):
         if historico:
             self.guardar_historico(item["id"])
         tr = dict(item, path=str(LIB / item["file"]), **(extra or {}))
-        if loop is None:
-            self.repetir_so_neste(item["id"])
-        # o Repetir pedido entra junto com a faixa (o set_loop antes recomecaria o disco que ja tinha acabado)
+        # o Repetir entra junto com a faixa (o set_loop antes recomecaria o disco que ja tinha acabado); sem o pedido,
+        # o motor o desliga se o disco que sai e outro
         cap = self.engine.load(tr, start=start, loop=loop)
         self.remember_pos(cap)  # a posicao do que saiu, no instante da troca
 
@@ -1038,8 +1030,7 @@ class App:
               "path": None, "stream": True, "job": j["id"] if j else None, **marca_auto(meta)}
         if historico:
             self.guardar_historico(tr["id"])
-        self.repetir_so_neste(tr["id"])
-        cap = self.engine.espera(tr)
+        cap = self.engine.espera(tr)  # outro disco entrando desliga o Repetir
         # o stream abre antes de gravar a posicao: uma gravacao que falha nao deixa o disco carregando para sempre
         threading.Thread(target=self._abre_stream, args=(tr, target, bool(meta.get("title"))),
                          daemon=True).start()

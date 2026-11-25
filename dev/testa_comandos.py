@@ -780,13 +780,20 @@ def bloco(A, E):
         with E._qlock:
             E._deck.eof_gen = -1  # o leitor do stream ainda le
         return st
-    # a troca para o arquivo com leitor novo desfaz a passagem preparada na fonte de antes
+    # o religar do stream (o mesmo audio por outro endereco) mantem a passagem preparada; a troca para o arquivo, com
+    # leitor novo, a desfaz
     st = no_stream()
     with contextlib.redirect_stderr(io.StringIO()):
         E.preparar(arquivo(A, "d2"), "t2")
     preparada = E._pronto is not None
-    E.trocar_fonte(st, dict(st, path=str(server.LIB / "s1.m4a")))
-    confere(preparada and E._pronto is None and E.pronto_tag is None,
+    st2 = dict(st, path="http://stream.invalid/s1-novo", religou=1)
+    E.trocar_fonte(st, st2)
+    confere(preparada and E._pronto is not None and E.pronto_tag == "t2", "o religar do stream mantem a passagem preparada")
+    ate(lambda: E._deck.eof_gen == E._deck.gen)
+    with E._qlock:
+        E._deck.eof_gen = -1  # o leitor do stream ainda le
+    E.trocar_fonte(st2, dict(st2, path=str(server.LIB / "s1.m4a")))
+    confere(E._pronto is None and E.pronto_tag is None,
             "a troca do stream para o arquivo, com leitor novo, desfaz a passagem preparada na fonte de antes")
 
     for vazia in (False, True):
@@ -847,6 +854,10 @@ def bloco(A, E):
     confere(no_prato(E) == "d2" and E.loop and A.lib.get("d1")["last_pos"] == 7.0,
             f"tocar com o Repetir depois do fim: o de antes nao recomeca nem grava 0 ({A.lib.get('d1')['last_pos']})")
     confere(visto == [True], f"e o Repetir ja esta ligado quando o leitor da faixa nova comeca ({visto})")
+    E.load(arquivo(A, "d2"))
+    confere(E.loop, "o mesmo disco de novo, sem o Repetir pedido: ele segue ligado")
+    E.load(arquivo(A, "d1"))
+    confere(not E.loop, "outro disco entrando, sem o Repetir pedido: ele desliga, na mesma publicacao da faixa")
     E.set_loop(False)
 
     # a pausa pedida com o bloco do fim retirado: o fim a substitui, sem gravar posicao

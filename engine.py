@@ -2390,8 +2390,8 @@ class Engine:
         """Com _lock: o disco do prato recomeca em start, publicado sob o _qlock como uma mudanca so: a faixa (track,
         quando troca; prato: e um disco entrando, e o primeiro som dele vai para o log), a linha nova (nova_linha; a
         troca da espera para o stream, sem audio ainda, fica na mesma), a posicao, o fim, o ganho do disco que entra
-        sem rampa (alvo), a pausa (paused), o Repetir (loop) e a passagem desfeita, com o pedido de pausa da linha que
-        acabou substituido. O leitor recebe a faixa, o deck e o gen dessa mudanca e comeca fora das
+        sem rampa (alvo), a pausa (paused), o Repetir (loop; sem ele, um disco entrando no lugar de outro o desliga) e a
+        passagem desfeita, com o pedido de pausa da linha que acabou substituido. O leitor recebe a faixa, o deck e o gen dessa mudanca e comeca fora das
         travas. pode(): conferido sob o _qlock antes de mudar qualquer coisa; falso, nada muda. start pode ser uma
         funcao, chamada ali mesmo (o seek limita pela duracao da faixa daquele instante). Volta (a Captura do que
         estava no prato logo antes, a posicao que o servidor grava, ou None; e quem comeca o leitor, ou None): quem
@@ -2404,6 +2404,8 @@ class Engine:
             antes = self._captura_atual()
             self._cancela_passagem(tudo=True)
             d = self._deck
+            if loop is None and prato and self.track is not None and self.track.get("id") != track.get("id"):
+                loop = False  # o Repetir vale para o disco do prato: outro disco entrando desliga
             if track is not None:
                 self.track = d.track = track
             if prato:  # o disco que entra no prato agora: o primeiro som dele vai para o log
@@ -3177,7 +3179,8 @@ class Engine:
     # comandos -------------------------------------------------------------
     def espera(self, track):
         """Poe o disco no prato carregando, ainda sem audio: o endereco do stream do YouTube
-        leva 1 a 3 s para sair, e a tela ja mostra o que vai tocar. Volta a Captura do que estava no prato antes."""
+        leva 1 a 3 s para sair, e a tela ja mostra o que vai tocar. Outro disco entrando desliga o Repetir. Volta a
+        Captura do que estava no prato antes."""
         alvo, mede = self._ganho_de(track)
         with self._lock:
             antes, leitor = self._restart(0.0, track=track, alvo=alvo, paused=False, prato=True)
@@ -3272,7 +3275,7 @@ class Engine:
 
     def load(self, track, start=0.0, paused=False, loop=None):
         """O disco no prato a partir de start, numa linha nova; loop: o Repetir, na mesma publicacao (None: fica como
-        esta). Volta a Captura do que estava no prato antes."""
+        esta no mesmo disco, e outro disco entrando o desliga). Volta a Captura do que estava no prato antes."""
         alvo, mede = self._ganho_de(track)
         with self._lock:
             antes, leitor = self._restart(self._clamp(start, track), track=track, alvo=alvo, paused=paused,
