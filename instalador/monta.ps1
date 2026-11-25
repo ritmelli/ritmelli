@@ -66,6 +66,12 @@ if (-not $SemCongelar) {
     "criando o venv em $raiz..."
     Roda 'venv' { python -m venv $raiz }
   }
+  # mina is an optional local module that is not part of the app: the spec excludes it, and a build where it imports
+  # (next to the code, in the venv or on the PYTHONPATH, as PyInstaller sees it) is refused before anything else runs
+  Push-Location $Ritmelli
+  try { $mina = & "$venv\python.exe" -c "import importlib.util; s = importlib.util.find_spec('mina'); print(s.origin if s else '')" } finally { Pop-Location }
+  if ($LASTEXITCODE -ne 0) { throw "the mina check exited with $LASTEXITCODE" }
+  if ($mina) { throw "mina is importable ($mina) and is not part of the app: move it off the path to build" }
   # a cada build: as versoes de travas.txt (o PC e o GitHub montam com as mesmas, e elas so mudam de proposito), o que
   # entrou no requirements.txt e ainda nao esta na trava, e o yt-dlp sempre o mais novo (o YouTube quebra o velho, e o
   # update do app e o unico jeito de o novo chegar a quem usa)
