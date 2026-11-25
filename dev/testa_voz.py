@@ -36,6 +36,9 @@ import fx  # noqa: E402
 from microfone import preset, voz  # noqa: E402
 
 SR, B = fx.SR, 480
+# the Fdn alone: the most it may cost per 10 ms block, measured as the fastest of FDN_RUNS passes (on the shared GitHub
+# machine one pass took 0.359 ms on 25/11; on a PC a pass takes about 0.08)
+FDN_MAX_MS, FDN_RUNS = 0.3, 5
 # paridade minima (dB de SNR) a 48 kHz; os demais, LIMITE_PADRAO. O chorus do robo e do alien segue a mesma formula
 # da pedalboard com um residuo do oscilador dela (~ -43 dB num chorus sozinho): medido 41 e 35 dB em 14/11
 LIMITE_PADRAO = 60.0
@@ -137,15 +140,22 @@ def main(argv=None):
     salas = [(eid, f) for eid in efeitos() for f in fx.criar(eid).depois if isinstance(f, fx.Fdn)]
     salas.append(("fdn-completa", fx.Fdn(30, (2.0, 1.5, 0.6), cortes=(400, 3000), difusao_ms=50, passos=6, pre_ms=7,
                                          mod_ms=1.0, cedo=0.5, molhado=0.2)))
+    # the cost is the fastest of FDN_RUNS passes over the speech, each on a new chain: a pass that another process
+    # interrupted measures the machine, not the filter
     for eid, f in salas:
         e = fx.Efeito(depois=[f])
         c = voz.Cadeia(preset.compila(e, SR), SR)
-        t0 = time.perf_counter()
         y = em_blocos(c, x)
-        ms = (time.perf_counter() - t0) / (len(y) / B) * 1000
         s = snr(em_blocos(e, x), y)
         confere(c.finito and s >= 120, f"{eid}: a Fdn sozinha, paridade {s:.1f} dB (minimo 120)")
-        confere(ms < 0.3, f"{eid}: a Fdn custa {ms:.3f} ms por bloco de 10 ms (maximo 0,3)")
+        ms = []
+        for _ in range(FDN_RUNS):
+            c = voz.Cadeia(preset.compila(e, SR), SR)
+            t0 = time.perf_counter()
+            em_blocos(c, x)
+            ms.append((time.perf_counter() - t0) / (len(y) / B) * 1000)
+        confere(min(ms) < FDN_MAX_MS, f"{eid}: the Fdn costs {min(ms):.3f} ms per 10 ms block, the best of {FDN_RUNS} "
+                f"passes (at most {FDN_MAX_MS}; the worst pass, {max(ms):.3f})")
 
     # o radio inteiro: o som do canal (chiado, squelch, bip) sai com o volume do fx.py
     e = fx.criar("radio-policia")

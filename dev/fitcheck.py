@@ -102,6 +102,56 @@ PROBE = r"""(soDialogo => {
 })"""
 
 
+# the page is ready to be checked: loaded, the fonts in, the first /api/state of the theme applied and every image
+# decoded. The compara waits for the same, plus its fake shelf. In a try: before the theme script runs, S does not exist
+PRONTA = ("(() => { try { return document.readyState === 'complete' && document.fonts.status === 'loaded' && "
+          "!!S.state && [...document.images].every(i => i.complete); } catch (e) { return false; } })()")
+PRONTA_S = 20.0
+JS_WAIT_S = 1.5
+
+
+async def espera_pronta(cmd, barrados):
+    """Waits up to PRONTA_S for the PRONTA of the page. cmd: the CDP command of the caller. False when it did not get
+    ready, or when the page tried to leave for another origin (barrados)."""
+    fim = time.monotonic() + PRONTA_S
+    while time.monotonic() < fim and not barrados:
+        r = await cmd("Runtime.evaluate", expression=PRONTA, returnByValue=True)
+        if r.get("result", {}).get("value") is True:
+            return True
+        await asyncio.sleep(0.1)
+    return False
+
+
+def conecta_cdp(ws_url):
+    """The websocket to a tab of the headless Chrome. Without the keepalive ping: on a busy machine the pong came late,
+    the library closed the connection with 1011 in the middle of a check, and the next command waited out its whole
+    timeout. On the loopback, to a Chrome this process started, a keepalive has nothing to find."""
+    return websockets.connect(ws_url, max_size=64 * 1024 * 1024, ping_interval=None)
+
+
+async def le_cdp(ws, pend, evento):
+    """Reads the CDP messages: the answer to a command goes to its future in pend (unless that command already gave
+    up), every other message to evento(m). When the connection ends, the commands still waiting fail at once with the
+    reason, instead of each one waiting out its timeout."""
+    motivo = "closed"
+    try:
+        async for raw in ws:
+            m = json.loads(raw)
+            if m.get("id") in pend:
+                f = pend.pop(m["id"])
+                if not f.done():
+                    f.set_result(m)
+            else:
+                evento(m)
+    except Exception as ex:  # noqa: BLE001 - the connection closed, or a message that broke the reading
+        motivo = str(ex) or type(ex).__name__
+    for f in pend.values():
+        if not f.done():
+            f.set_exception(ConnectionError(f"the DevTools connection ended ({motivo})"))
+    pend.clear()
+    await ws.close()  # a command sent after this fails at once on the closed socket, instead of waiting its timeout
+
+
 def fecha_chrome(chrome, prof):
     """Fecha o Chrome sem tela e apaga o perfil dele, que antes ficava no %TEMP% a cada rodada. Vai a arvore inteira (o
     taskkill /T): o kill so fecha o processo principal, e o chrome_crashpad_handler, filho dele, seguia segurando um
@@ -236,19 +286,15 @@ async def run(a):
                 break
             except Exception:  # noqa: BLE001 - subindo
                 time.sleep(0.1)
-        async with websockets.connect(ws_url, max_size=64 * 1024 * 1024) as ws:
+        async with conecta_cdp(ws_url) as ws:
             seq, pend, barrados, erros = [0], {}, [], []
             fetch = barra_outra_origem(ws, base, barrados)
 
-            async def leitor():
-                async for raw in ws:
-                    m = json.loads(raw)
-                    if m.get("id") in pend:
-                        pend.pop(m["id"]).set_result(m)
-                    elif not fetch(m) and (e := erro_da_pagina(m)):
-                        erros.append(e)
+            def evento(m):
+                if not fetch(m) and (e := erro_da_pagina(m)):
+                    erros.append(e)
 
-            tarefa = asyncio.create_task(leitor())
+            tarefa = asyncio.create_task(le_cdp(ws, pend, evento))
 
             async def cmd(method, **params):
                 seq[0] += 1
@@ -268,11 +314,17 @@ async def run(a):
                     so_mock.confere(a.url)  # antes de cada navegacao: a porta pode ter mudado de dono
                     erros.clear()
                     await cmd("Page.navigate", url=a.url)
+                    pronta = await espera_pronta(cmd, barrados)
+                    await confere_pagina(cmd, a.url, barrados)  # a page that left for another origin is refused here
+                    if not pronta:
+                        print(f"FALHA  {sz:>10}  the page was not ready in {PRONTA_S:.0f} s")
+                        falhas += 1
+                        continue
                     await asyncio.sleep(a.wait)
                     await confere_pagina(cmd, a.url, barrados)
                     if a.js:
                         await cmd("Runtime.evaluate", expression=a.js)
-                        await asyncio.sleep(a.wait)
+                        await asyncio.sleep(max(a.wait, JS_WAIT_S))  # what the --js opens has no ready signal
                     if a.boas_vindas:  # se nao abrir, o PROBE diz "nenhuma janela aberta"
                         await espera_boas_vindas(cmd)
                     await confere_pagina(cmd, a.url, barrados)  # o --js e a espera podem ter levado a pagina embora
@@ -282,7 +334,13 @@ async def run(a):
                     break
                 r = await cmd("Runtime.evaluate", expression=f"{PROBE}({'true' if a.boas_vindas else 'false'})",
                               returnByValue=True)
-                v = r["result"]["value"]
+                v = r.get("result", {}).get("value")
+                if r.get("exceptionDetails") or not isinstance(v, dict):
+                    d = r.get("exceptionDetails", {})
+                    print(f"FALHA  {sz:>10}  the check did not run on the page: "
+                          f"{d.get('exception', {}).get('description') or d.get('text') or r}"[:400])
+                    falhas += 1
+                    continue
                 desk = w >= 900
                 rola_v = v["sh"] > v["vh"] + 1
                 rola_h = v["sw"] > v["vw"] + 1
@@ -374,18 +432,14 @@ async def aviso_no_chrome(base, botao):
                 break
             except Exception:  # noqa: BLE001 - subindo
                 time.sleep(0.1)
-        async with websockets.connect(ws_url, max_size=64 * 1024 * 1024) as ws:
+        async with conecta_cdp(ws_url) as ws:
             seq, pend, barrados = [0], {}, []
             fetch = barra_outra_origem(ws, base, barrados)
 
-            async def leitor():
-                async for raw in ws:
-                    m = json.loads(raw)
-                    if m.get("id") in pend:
-                        pend.pop(m["id"]).set_result(m)
-                    elif not fetch(m) and (e := erro_da_pagina(m)):
-                        r["erros"].append(e)
-            tarefa = asyncio.create_task(leitor())
+            def evento(m):
+                if not fetch(m) and (e := erro_da_pagina(m)):
+                    r["erros"].append(e)
+            tarefa = asyncio.create_task(le_cdp(ws, pend, evento))
 
             async def cmd(method, **params):
                 seq[0] += 1
@@ -581,7 +635,8 @@ def main():
     ap.add_argument("--metricas", action="store_true",
                     help="o aviso dos dados de uso: sobe os proprios --mock --metricas-teste, um por situacao e botao")
     ap.add_argument("--sizes", default=SIZES)
-    ap.add_argument("--wait", type=float, default=1.5)
+    ap.add_argument("--wait", type=float, default=0.5,
+                    help="seconds after the page is ready (and at least 1.5 after the --js)")
     ap.add_argument("--shots", help="pasta para salvar um print por tamanho")
     ap.add_argument("--js", help="JS que roda depois da carga, antes da conferencia")
     ap.add_argument("--boas-vindas", action="store_true",
