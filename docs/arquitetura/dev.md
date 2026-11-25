@@ -19,7 +19,7 @@ de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celu
 deitado; uma exceção ou um `console.error` da página também reprova; com `--metricas`, sem url, confere o aviso dos
 dados de uso: sobe um `--mock --metricas-teste` por situação e por botão pelo `sobe_servidor` do `compara`, que
 aceita o `config.json`, argumentos e variáveis a mais, com a rede presa num proxy de armadilha), `dev/compara.py` (gate
-de "o celular não mudou": prints do tema em estados fixos,
+de "a tela não mudou", no celular e na mesa do PC, a 1920x1080: prints do tema em estados fixos,
 com uma prateleira de mentira e o servidor em `--mock`, comparados pixel a pixel com os de
 referência gravados antes da mudança, também de outro checkout pelo `--raiz`; sai 2 se um
 print mudou e 1 se a captura não vale), `dev/perfcheck.py`
@@ -27,7 +27,7 @@ print mudou e 1 se a captura não vale), `dev/perfcheck.py`
 `dev/celular.py` (mede rolagem, puxão e abrir do palco no Chrome do celular de verdade,
 por USB com adb; o emulado não reproduz o que trava lá), `dev/bumbo.py` (confere se a passagem
 no tempo de um par da prateleira pôs bumbo em cima de bumbo e não no contratempo, com um
-detector de bumbo próprio; no final seco para um começo sem bumbo, confere a primeira nota
+detector de bumbo próprio, o `dev/bumbo_mede.py`, que o `dev/testa_passagem.py` também usa; no final seco para um começo sem bumbo, confere a primeira nota
 contra o bumbo do que sai: sai 0 no tempo, 1 contratempo ou fora, 3 sem plano ou sem bumbo), `dev/texturas.py` (gera as
 texturas de ruído do tema em WebP a partir dos SVGs que moram nele), `dev/molduras.py`
 (desenha as molduras de pixel do tema, contorno, linha clara, bisel e cantos em degrau, e
