@@ -500,6 +500,7 @@ The internal docs and the older code are in Brazilian Portuguese; new code is in
 | `instalador/` | the installer: `monta.ps1`, `ritmelli.iss`, ffmpeg, bootloader, the partial update, the voice download (`vozes_iss.py`) and the license texts |
 | `.github/workflows/monta.yml` | the pipeline that builds and tests the installer |
 | `.github/workflows/testa.yml` | the tests every pull request runs |
+| `.github/workflows/trusted-author.yml` | the check that keeps a pull request from outside the team out of `main` until a maintainer approves it |
 
 How each part works is described in [docs/ARQUITETURA.md](docs/ARQUITETURA.md), and the contract between the server
 and the interface in [API.md](API.md) (both in Portuguese).
@@ -516,8 +517,11 @@ the team are merged after a review by an organization member. Security problems 
 Every pull request runs `.github/workflows/testa.yml` on a GitHub-hosted Windows machine (from a fork, once a
 maintainer approves the run): `ruff` with the error-only rules in `pyproject.toml`, the tests in `dev/testa_tudo.py`
 and, when the change touches their area, the microphone filter tests and the interface checks (`dev/fitcheck.py` in
-both languages and `dev/compara.py` against `main`). Run the same before you open one, with the virtual environment
-active:
+both languages and `dev/compara.py` against `main`). The "Trusted author" check
+(`.github/workflows/trusted-author.yml`) passes on a pull request by one of the two maintainers, and on any other only
+once a maintainer approves its current head: a push after the approval needs a new one. It runs the version on `main`
+(`pull_request_target`, which an Actions policy of the repository has to allow), so a pull request cannot change
+the rule for itself. Run the tests before you open one, with the virtual environment active:
 
 ```powershell
 python -m ruff check .
