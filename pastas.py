@@ -229,13 +229,14 @@ def create_task(name, xml, exe):
 def disarm(first, own):
     """The app folder failed the protected folder rule inside a task's run: both SYSTEM tasks are removed, the other one
     (first) before the running one (own), each even if the other fails, and both are checked afterwards. own is
-    (name, delete, exists); first is a function that returns the same for the other task and may raise (its module
-    didn't load), which still lets own go. The list of errors, empty when both are gone."""
+    (name, delete, exists); first is (label, load), where load returns the same for the other task and may raise (its
+    module didn't load), which still lets own go. The list of errors, empty when both are gone."""
     errors, tasks = [], []
+    label, load = first
     try:
-        tasks.append(first())
+        tasks.append(load())
     except Exception as ex:  # noqa: BLE001 - the running task is removed all the same
-        errors.append(f"the other task: {type(ex).__name__}: {ex}")
+        errors.append(f"{label}: {type(ex).__name__}: {ex}")
     tasks.append(own)
     for name, delete, _ in tasks:
         try:

@@ -506,9 +506,9 @@ and the interface in [API.md](API.md) (both in Portuguese).
 
 ## Contributing
 
-Bug reports and ideas are welcome in [Issues](https://github.com/ritmelli/ritmelli/issues), and code changes as
-[pull requests](https://github.com/ritmelli/ritmelli/pulls), in English or Portuguese (new code, its comments and the
-commit messages are in English; the older code is in Brazilian Portuguese). To send a change, fork the repository, clone your fork instead of this
+Bug reports and ideas are welcome in [Issues](https://github.com/ritmelli/ritmelli/issues), in English or
+Portuguese, and code changes as [pull requests](https://github.com/ritmelli/ritmelli/pulls), in English (new code,
+its comments and the commit messages are in English; the older code is in Brazilian Portuguese). To send a change, fork the repository, clone your fork instead of this
 one in [Run](#run), and open the pull request from a branch of your fork against `main`. Pull requests from outside
 the team are merged after a review by an organization member. Security problems go through the
 [security policy](https://github.com/ritmelli/ritmelli/security/policy), not through issues.
@@ -561,7 +561,8 @@ The description at the top of each file (in Portuguese) says exactly what it che
   With the models downloaded, `set RITMELLI_VOZES_TESTE=1` also runs `testa_pista.py` against the real models.
 - The protected app folder rule (`pastas.pasta_protegida`): `dev/testa_pasta_protegida.py` (in memory; `--disco`
   checks real folders in Program Files and needs an elevated administrator, so only on a test Windows). The same rule
-  in the installer, `instalador/protegida.ps1`, only runs when the `monta.yml` pipeline installs the app.
+  in the installer, `instalador/protegida.ps1`, runs in the setup: no test in `dev/` covers it, and in CI only the
+  installs of the `monta.yml` pipeline run it.
 - The updates (`atualizacao.py`, `atualizador.py`, `instalador/atualizacao/`): `dev/testa_atualizacao.py`,
   `dev/testa_atualizador.py` and `instalador/atualizacao/testa_parcial.py` (the partial update and its manifest).
 
@@ -569,9 +570,10 @@ They all run with the virtual environment active, some need ffmpeg, and `testa_f
 `testa_voz.py` and `teste_reamostra.py` need the DLLs built by `microfone\apo\compila.bat teste` (with Ritmelli off,
 `--mock` included, since a running Ritmelli keeps `voz.dll` open).
 
-The beat analysis (`batida.py`, `compasso.py`, `andamento.py`), the window (`janela.py`), the microphone volume
-(`winvol.py`) and the phone pairing (`pareamento.py`, apart from the old Vitrola cookie that `testa_migra.py` checks)
-have no test of their own yet: if you change them, say in the pull request how you checked the change.
+The phone pairing (`pareamento.py`) is checked by `dev/testa_pareamento.py`, and `batida.py` runs inside the engine
+that `dev/testa_passagem.py` drives. The rest of the beat analysis (`compasso.py`, `andamento.py`), the window
+(`janela.py`) and the microphone volume (`winvol.py`) have no test yet: if you change them, say in the pull request
+how you checked the change.
 
 To change a voice effect, edit its settings in `fx.py`; `microfone/preset.py` turns them into the preset that the C++
 engine (`microfone/apo/voz.h`) runs. A new kind of processing step also needs code in `voz.h`, and

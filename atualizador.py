@@ -371,7 +371,7 @@ def desarma(motivo):
         from microfone import microfone
         return microfone.TAREFA, microfone.tarefa_apaga, microfone.tarefa_existe
 
-    errors = pastas.disarm(filter_task, (TAREFA, lambda: tarefa_apaga(encerrar=False), tarefa_existe))
+    errors = pastas.disarm(("microphone task", filter_task), (TAREFA, lambda: tarefa_apaga(encerrar=False), tarefa_existe))
     print(f"couldn't remove the SYSTEM tasks: {'; '.join(errors)}" if errors else "the SYSTEM tasks were removed",
           flush=True)
     return 1

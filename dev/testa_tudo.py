@@ -273,25 +273,25 @@ def falta_para_o_completo():
 
 
 AGENTS_MAX_LINES = 80
-# a file in the map: a backticked path with a folder or an extension; in the test column a bare name lives in dev/
-MAP_FILE = re.compile(r"^(?:[\w.-]+/)*[\w.-]+(?:/|\.(?:py|md|json|iss|ps1|html|h|js|css|properties|spec|txt))$")
+# a file in the map: a backticked path with a folder or an extension (its first word, before an option)
+MAP_FILE = re.compile(r"^(?:[\w.-]+/)*[\w.-]+(?:/|\.[A-Za-z]\w*)$")
 
 
 def agents_md(path=RAIZ / "AGENTS.md"):
     """What is wrong with the AGENTS.md: over AGENTS_MAX_LINES lines, or a file in the map table that doesn't exist (in
-    the files column, from the repo root; in the test column, a bare testa_* from dev/, and a bare .py from dev/ or
-    from the root, since a note there may name an app file)."""
+    the files column, from the repo root; in the test column, a bare testa_* from dev/, a path from the root, and a
+    bare file name from dev/ or from the root, since a note there may name an app file)."""
     lines = path.read_text(encoding="utf-8").splitlines()
     problems = [f"AGENTS.md has {len(lines)} lines (at most {AGENTS_MAX_LINES})"] if len(lines) > AGENTS_MAX_LINES else []
     rows = [line.split("|")[1:-1] for line in lines if line.startswith("|") and not line.startswith("| ---")]
     for files, tests in ((r[1], r[2]) for r in rows[1:] if len(r) == 3):
-        cited = [(t, RAIZ / t) for t in re.findall(r"`([^`]+)`", files) if MAP_FILE.match(t)]
-        for token in (t.split()[0] for t in re.findall(r"`([^`]+)`", tests)):
-            if MAP_FILE.match(token) and (token.endswith(".py") or "/" in token):
-                found = RAIZ / token if "/" in token or not (RAIZ / "dev" / token).exists() else RAIZ / "dev" / token
-                cited.append((token, found))
-        cited += [(t, RAIZ / "dev" / f"{t}.py") for t in re.findall(r"`(testa_\w+)`", tests)]
-        problems += [f"AGENTS.md cites {name}, which doesn't exist" for name, p in cited if not p.exists()]
+        cited = [(t, [RAIZ / t]) for t in (c.split()[0] for c in re.findall(r"`([^`]+)`", files)) if MAP_FILE.match(t)]
+        for t in (c.split()[0] for c in re.findall(r"`([^`]+)`", tests)):
+            if re.fullmatch(r"testa_\w+", t):
+                cited.append((t, [RAIZ / "dev" / f"{t}.py"]))
+            elif MAP_FILE.match(t):
+                cited.append((t, [RAIZ / t] if "/" in t else [RAIZ / "dev" / t, RAIZ / t]))
+        problems += [f"AGENTS.md cites {t}, which doesn't exist" for t, ps in cited if not any(p.exists() for p in ps)]
     return problems
 
 

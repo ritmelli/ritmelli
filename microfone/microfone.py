@@ -715,7 +715,7 @@ def _desarma(motivo):
         import atualizador  # noqa: PLC0415 - the app module (always there in the executable)
         return atualizador.TAREFA, atualizador.tarefa_apaga, atualizador.tarefa_existe
 
-    errors = pastas.disarm(update_task, (TAREFA, tarefa_apaga, tarefa_existe))
+    errors = pastas.disarm(("update task", update_task), (TAREFA, tarefa_apaga, tarefa_existe))
     sys.exit(f"the app folder isn't protected ({motivo}): "
              + (f"couldn't remove the SYSTEM tasks ({'; '.join(errors)})" if errors else "the SYSTEM tasks were removed"))
 

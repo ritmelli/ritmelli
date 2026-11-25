@@ -35,8 +35,8 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
   existe ([fx.md](docs/arquitetura/fx.md)), e o `dev/testa_ganchos.py` falha com um a mais.
 - Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 - Mexeu em `instalador/`, nos `atualiza*.py`, no `migra.py`, no `pastas.py`, no `microfone/microfone.py` ou no
-  `ritmelli.spec`: rode o "Monta o instalador" (`monta.yml`) na branch. Só ele compila o `.iss` e roda a parcial, a
-  migração e o atualizador.
+  `ritmelli.spec`: rode o "Monta o instalador" (`monta.yml`) na branch. Na CI, só ele compila o `.iss` e roda a
+  parcial, a migração e o atualizador.
 - Mudou uma peça, muda o arquivo dela em `docs/arquitetura/`.
 
 ## As superfícies de uma mudança
@@ -55,7 +55,7 @@ galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
 | `--mock` | `server.py`, `pastas.py` | `testa_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`) | `testa_grava` (só o `save_json`; o `grava_cfg` do `server.py` não tem teste próprio) |
 | Pasta protegida | `pastas.py` (`pasta_protegida`, `create_task`, `disarm`) e quem os chama (`microfone/microfone.py`, `atualizador.py`, `atualizacao.py`, `migra.py`) | `testa_pasta_protegida` (em memória; o `--disco` precisa de administrador e cria pasta em Program Files: só num Windows de teste), `testa_mfx`, `testa_atualizador`, `testa_atualizacao`, `testa_migra` |
-| A regra no setup | `instalador/protegida.ps1`, `instalador/ritmelli.iss` | nenhum em `dev/`: só a instalação do `monta.yml` |
+| A regra no setup | `instalador/protegida.ps1`, `instalador/ritmelli.iss` | nenhum em `dev/`: na CI, só a instalação do `.github/workflows/monta.yml` |
 | Pareamento e permissões | `pareamento.py`, `permissao.py`, o `guard` do `server.py` | `testa_pareamento`, `testa_mock`, `testa_protocolo` |
 | Protocolo da sessão remota | `docs/protocolo-remoto.md`, `docs/protocolo-remoto/v1/` | `testa_protocolo` (`--gera` escreve as fixtures de novo) |
 | Filtro e efeitos | `microfone/`, `fx.py` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_voz` e `microfone/apo/teste/teste_reamostra.py` |
@@ -64,7 +64,7 @@ galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
 | Dados de uso | `metricas.py` e o aviso deles no tema | `testa_metricas`; o aviso, `fitcheck.py --metricas` (sobe os próprios `--mock --metricas-teste`, sem rede) |
 | Troca de nome | `migra.py` | `testa_migra` |
-| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e um `library.json` com `[]` |
+| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e uma library.json só com `[]` |
 | Sem teste | `compasso.py`, `andamento.py`, `janela.py`, `winvol.py` | o PR diz como conferiu |
 
 O `testa_filtro`, o `testa_microfone`, o `testa_voz` e o `teste_reamostra.py` precisam das DLLs do
