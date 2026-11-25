@@ -73,4 +73,6 @@ Os limites da medida: foi neste PC, com o `AnelFalso` (um leitor simulado de 480
 sem aparelho, sem o anel `Global\` e sem o filtro registrado; a ferramenta usa o `AnelFalso` também num PC com o
 filtro, então o `audiodg` e um jogo de verdade ficam de fora. E nos pares da banca a virada fica ~33 s depois do
 `preparar`, e o app prepara 3 min antes do fim: lá o auxiliar abaixo do normal teria mais tempo, e isso não foi
-medido (a decisão não depende disso, porque não houve seca a tirar).
+medido (a decisão não depende disso, porque não houve seca a tirar). Nos PCs de quem usa, quem diz se isso muda é o
+evento "audio" da telemetria (o `secas_esticamento`, as secas com a Rubber Band em curso): com secas ali, a medida
+se repete, com a mesma ferramenta, num Windows de teste com um jogo.
