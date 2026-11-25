@@ -16,9 +16,12 @@ name: Testa
 
 on:
   pull_request:
-    # labeled and unlabeled: the extracao-tema label changes what the compara blocks. edited: a stacked PR whose base
-    # changed to the main is tested again against it. The other edits and labels test nothing (see the concurrency)
-    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+    # No edited, labeled or unlabeled: a run on the same head, even one whose jobs all skip, is the newest check suite
+    # of this workflow on that commit, and the required check is read from the newest suite only, so it hid the
+    # "Testa o PR" of the run that tested (the merge queue refused the PR as missing the check). The extracao-tema
+    # label and a stacked PR's new base are enforced by the merge_group run, which reads the labels of the PR when it
+    # runs and tests the real merge; on the PR they take effect at the next push or re-run
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
   merge_group:
@@ -26,12 +29,10 @@ on:
 permissions:
   contents: read
 
-# one run per PR: a new commit cancels the run of the old one. An edit that keeps the base and a label other than
-# extracao-tema get a group of their own, so they do not cancel the run that is testing; their jobs skip (the "real"
-# below), and their last job takes another name, so the required check stays the one of the run that tested. Every
-# push to main gets a group of its own too: each merged commit is tested
+# one run per PR: a new commit cancels the run of the old one. Every push to main gets a group of its own: each merged
+# commit is tested
 concurrency:
-  group: testa-${{ github.event.pull_request.number || github.ref }}${{ ((github.event.action == 'edited' && !github.event.changes.base) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'extracao-tema')) && format('-{0}', github.run_id) || (github.event_name == 'push' && format('-{0}', github.sha)) || '' }}
+  group: testa-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: true
 
 env:
@@ -44,7 +45,6 @@ jobs:
   # app), the protected folder on the real disk and the line count of the big files against the base
   testes:
     name: Testes
-    if: &real ${{ !((github.event.action == 'edited' && !github.event.changes.base) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'extracao-tema')) }}
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
@@ -99,7 +99,6 @@ jobs:
   # filter, the engine, the effects or their tests
   microfone:
     name: Filtro do microfone
-    if: *real
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
@@ -161,7 +160,6 @@ jobs:
   # server injects in it or the tools, and on every PR with the extracao-tema label
   tela:
     name: Tela
-    if: *real
     runs-on: windows-2025
     permissions:
       contents: read
@@ -177,17 +175,17 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12.10'
-      # the merge_group event carries no labels: they come from the PR that the queue entry is for (its ref ends in
-      # pr-<number>-<sha>)
+      # the labels as they are now, not as the event saw them (a re-run, after a label changed, gets the new ones); a
+      # merge_group entry carries no PR: it is the one in its ref (pr-<number>-<sha>)
       - name: O PR mexe na tela?
         id: areas
         env:
-          ETIQUETAS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
         # the testa_tudo reads the list from the variable: in an argument, PowerShell would mangle the JSON quotes
         run: |
-          if ($env:GITHUB_EVENT_NAME -eq 'merge_group') {
-            $n = [regex]::Match($env:GITHUB_REF, '/pr-(\d+)-').Groups[1].Value
+          $n = if ($env:GITHUB_EVENT_NAME -eq 'merge_group') { [regex]::Match($env:GITHUB_REF, '/pr-(\d+)-').Groups[1].Value } else { $env:PR }
+          if ($n -or $env:GITHUB_EVENT_NAME -eq 'merge_group') {
             $env:ETIQUETAS = gh pr view $n -R $env:GITHUB_REPOSITORY --json labels --jq '[.labels[].name]'
             if ($LASTEXITCODE -ne 0 -or -not $n) { "::error::the labels of the PR of $env:GITHUB_REF did not come"; exit 1 }
           }
@@ -243,7 +241,6 @@ jobs:
   # push to main it always runs: the capture of the new commit goes to the cache
   compara:
     name: Compara
-    if: *real
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
@@ -266,16 +263,16 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12.10'
-      # (the labels of a merge_group entry: see the same step of the tela)
+      # (the labels: see the same step of the tela)
       - name: O PR mexe na tela?
         id: areas
         env:
-          ETIQUETAS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
         # the testa_tudo reads the list from the variable: in an argument, PowerShell would mangle the JSON quotes
         run: |
-          if ($env:GITHUB_EVENT_NAME -eq 'merge_group') {
-            $n = [regex]::Match($env:GITHUB_REF, '/pr-(\d+)-').Groups[1].Value
+          $n = if ($env:GITHUB_EVENT_NAME -eq 'merge_group') { [regex]::Match($env:GITHUB_REF, '/pr-(\d+)-').Groups[1].Value } else { $env:PR }
+          if ($n -or $env:GITHUB_EVENT_NAME -eq 'merge_group') {
             $env:ETIQUETAS = gh pr view $n -R $env:GITHUB_REPOSITORY --json labels --jq '[.labels[].name]'
             if ($LASTEXITCODE -ne 0 -or -not $n) { "::error::the labels of the PR of $env:GITHUB_REF did not come"; exit 1 }
           }
@@ -371,10 +368,9 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
   # the required check: always runs, joins the summaries and only passes with the other four (the one that does not
-  # apply passes without running). In a run whose event tests nothing (see the concurrency), the jobs above skip and
-  # this one takes another name: the required check stays the one of the run that tested
+  # apply passes without running)
   testa-o-pr:
-    name: ${{ needs.testes.result == 'skipped' && 'Testa o PR (evento sem teste)' || 'Testa o PR' }}
+    name: Testa o PR
     # always(), not !cancelled(): a skipped job counts as green in the required check, and the cancelled run would pass
     if: ${{ always() }}
     needs: [testes, microfone, tela, compara]
@@ -395,7 +391,6 @@ jobs:
           ATTEMPT: ${{ github.run_attempt }}
           EXECUCAO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DO_REPO: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
-          SEM_TESTE: ${{ needs.testes.result == 'skipped' }}
           S_TESTES: ${{ needs.testes.result }}
           S_MICROFONE: ${{ needs.microfone.result }}
           S_TELA: ${{ needs.tela.result }}
@@ -407,10 +402,6 @@ jobs:
           LINHAS: ${{ needs.testes.outputs.linhas }}
           MUDARAM: ${{ needs.compara.outputs.mudaram }}
         run: |
-          if [ "$SEM_TESTE" = true ]; then
-            echo "This event (an edit that keeps the base, or a label other than extracao-tema) tests nothing: the required check is the one of the run that tested." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
           estados=("$S_TESTES" "$S_MICROFONE" "$S_TELA" "$S_COMPARA")
           # a cancelled run proved nothing either way: it fails, and leaves the PR comment as the last run that ended wrote it
           for s in "${estados[@]}"; do
