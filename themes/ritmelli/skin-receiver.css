@@ -1,0 +1,166 @@
+/* SKIN-RECEIVER-INICIO */
+/* pele: o receiver, nas duas telas */
+/* receiver: a caixa em duas camadas. A face da moldura (contorno, linha clara e bisel) num pseudo
+   por cima das laterais de madeira, que cobriam a linha clara de dentro; a sombra dura noutro, por
+   baixo do chassi, para os pes ficarem por cima dela (os pes descem 2 px a mais: o contorno por
+   cima comeria a ponta de cima deles) */
+.palco .receptor { border-radius: 4px; }
+.palco .receptor::before, .palco .receptor::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 4px; }
+.palco .receptor::before { z-index: -1; border-image: var(--mold-caixa-sombra); }
+.palco .receptor::after { z-index: 0; border-image: var(--mold-caixa-face); }
+/* o gabinete de madeira inteiro em volta da chapa, como no p1 (19/10): o chassi e a
+   madeira alaranjada do toca-discos (as laterais saem: a caixa toda e madeira) e a chapa creme e a
+   .parafusos-rec, recuada da beira e com o contorno por fora. Por dentro do mesmo tamanho de antes:
+   a madeira de cima e de baixo saem do respiro (o painel desce 2 px, o vao do VU aos volumes
+   encolhe 4, o de baixo cresce 2). Em cima a madeira e fina, so a quina acesa (no p1 a chapa
+   encosta no contorno), dos lados e de 10 px e embaixo de 6, com os pes */
+.palco .receptor { padding: 27px 20px 17px; row-gap: 10px; }
+.palco .chassi-rec { border-radius: 4px; background: var(--veio-v), var(--madeira-ap); }
+.palco .parafusos-rec {
+  position: absolute; inset: 5px 12px 8px;
+  background:
+    linear-gradient(180deg, rgba(42,24,18,.08) 0 15px, rgba(42,24,18,.5) 15px 17px, rgba(255,255,255,.6) 17px 19px, transparent 19px),
+    var(--escovado), #D6CFC2;
+  box-shadow: 0 0 0 2px var(--contorno), inset 2px 0 0 rgba(255,255,255,.6), inset -2px 0 0 rgba(42,24,18,.18), inset 0 -2px 0 rgba(42,24,18,.18);
+}
+.palco .parafusos-rec::before, .palco .parafusos-rec::after { left: 4px; right: 4px; }
+.palco .parafusos-rec::before { top: 4px; }
+.palco .parafusos-rec::after { bottom: 3px; }
+.palco .marca-ap { top: 6px; }
+.palco .marca-ap::after { background: rgba(42,24,18,.28); }
+/* os VUs na janela de moldura dupla em degrau (contorno, linha clara, a sombra dura do rebaixo em
+   cima e o beico claro da chapa embaixo) */
+.palco .janela { border-radius: 4px; border-image: var(--mold-vu); background: #FDB238; }
+/* o mostrador do mock p1, com as cores amostradas dele: o ambar chapado e mais vivo, sem o reflexo de vidro;
+   as divisoes pretas com o filete claro; a faixa do nome reta (a curva era nossa) e um pouco mais escura, ate o
+   fundo da janela */
+.palco .mostrador + .mostrador { box-shadow: inset 2px 0 0 #120A04, inset 3px 0 0 rgba(255,214,120,.9); }
+/* a escala 5 px mais alta, perto do topo como no mock; os 5 px passam para baixo da faixa do nome,
+   e o receiver fica do mesmo tamanho */
+.palco .mostrador { padding: 3px 4px 5px; }
+.palco .mostrador .nome-m { top: calc(4px + 100cqw * .56); }
+@container (max-width: 100px) { .palco .mostrador .nome-m { top: calc(7px + 100cqw * .554); } }
+/* VOZ, DISCO e JOGO na letra de pixel dos titulos (Jersey 10): 18,667 px da 1 px
+   de CSS por pixel da letra, sem pixel borrado, e o tamanho dos nomes do mock (o recuo da esquerda
+   devolve o espaco de depois da ultima letra, para o nome ficar no meio); o VOZ MUTADA sem o espaco
+   entre as letras, senao nao cabe */
+.palco .mostrador .nome-m { font-family: "Jersey 10", "Archivo", sans-serif; font-size: 18.667px; font-weight: 400; font-stretch: 100%; letter-spacing: .1em; padding-left: .1em; }
+.palco .mostrador.apagado .nome-m { letter-spacing: .02em; padding-left: .02em; }
+/* os VUs em pixel: a face e a agulha nos canvas de celulas de 1 px do JS (desenharVUs); o svg vazio segura a
+   altura do mostrador */
+.palco .mostrador canvas { display: block; image-rendering: pixelated; }
+.palco .mostrador .vu-face { position: absolute; left: 4px; top: 3px; }
+.palco .mostrador .vu-agulha { position: absolute; left: 0; top: 0; }
+.fader label, .fader output { text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
+/* FX-12: o corpo de aluminio liso na moldura de pixel, rente ao feltro (sem sombra, desde 18/10);
+   o RITMELLI na moldura miuda; o painel do visor numa chapa fina por dentro; o LCD liso de contorno
+   duro; o botao giratorio e o Ouvir minha voz com o contorno e a sombra dura, o Ouvir afundando no
+   aperto e ficando afundado enquanto liga */
+.palco .gaveta::after { border-radius: 3px; box-shadow: none; border-image: var(--mold-embutido); background: var(--escovado), #D6CFC2; }
+.palco .cabeca-gav::before { border-radius: 0; box-shadow: none; border-image: var(--mold-etiqueta-escura); }
+.palco .visor-gav { border-color: transparent; border-radius: 10px; box-shadow: none; border-image: var(--mold-chapa); background: var(--escovado), #E2DBCF; }
+/* pele: o LCD, o botao giratorio e as teclas de chapa. Afundam no aperto e o Ouvir e o Mutar voz ficam afundados
+   enquanto ligam: nas duas telas, mas o seletor, o Mutar voz e o Voltar so aparecem no computador */
+.palco .seletor .visor-ef {
+  border-radius: 2px; background: #9A967D;
+  box-shadow: inset 0 0 0 2px var(--contorno), inset 0 5px 0 rgba(0,0,0,.16), 0 2px 0 rgba(255,255,255,.6);
+}
+.palco .seletor.com-efeito .visor-ef {
+  background: #F4B252;
+  box-shadow: inset 0 0 0 2px var(--contorno), inset 0 5px 0 rgba(120,56,0,.16), 0 0 14px rgba(243,167,60,.38), 0 2px 0 rgba(255,255,255,.6);
+}
+.palco .seletor .knob { box-shadow: 0 0 0 2px var(--contorno), 0 3px 0 2px rgba(20,8,2,.4); }
+.palco .seletor .knob::before { background: #E8E2D7; box-shadow: inset 2px 2px 0 rgba(255,255,255,.75), inset -2px -2px 0 rgba(42,24,18,.18); }
+.palco .mesa-gav .btn, .palco .medidores .btn, .dlg .btn { border-color: transparent; border-radius: 4px; box-shadow: none; border-image: var(--mold-objeto); background: var(--escovado), #E2DBCF; }
+.palco .mesa-gav .btn:active:not(:disabled), .palco .mesa-gav .btn.apertado:not(:disabled),
+.palco .medidores .btn:active:not(:disabled), .palco .medidores .btn.apertado:not(:disabled),
+.dlg .btn:active:not(:disabled), .dlg .btn.apertado:not(:disabled), .palco .chave[aria-pressed="true"] {
+  transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(42,24,18,.16); border-image: var(--mold-objeto-apertado);
+}
+.palco .chave[aria-pressed="true"] { background: var(--escovado), #C4BBAD; }
+@media (hover: hover) {
+  .palco .medidores .btn:hover:not(:disabled, [aria-pressed="true"]), .palco .mesa-gav .btn:hover:not(:disabled, [aria-pressed="true"]), .dlg .btn:hover:not(:disabled) { background: var(--escovado), #EEE8DD; }
+}
+/* no computador a gaveta toma o lugar da parede: o FX-12 e uma faixa baixa, com a plaqueta, o Ouvir e o Voltar numa
+   linha, e os pedais rolam por dentro no feltro. O visor sai: o seletor do receiver, logo acima, ja mostra o efeito (o
+   visor e do celular, que nao tem o seletor), e o pedal aceso desliga pisando de novo. Os grupos ficam lado a lado (a
+   largura e a de 6 pedais de 80, os vaos, e os 30 de margem para os cabos); os plugues e cabos saem pelas margens do
+   banco */
+@media (min-width: 900px) {
+  .palco .gaveta {
+    margin: 0; padding: 9px 14px 0;
+    grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "cabeca ouvir fechar" "dica dica dica" "lista lista lista";
+  }
+  .palco .gaveta:has(.dica-ouvir.so-dica) {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "cabeca ouvir fechar" "lista lista lista";
+  }
+  .palco .gaveta::after { grid-row: 1; margin: -6px -8px -10px; }
+  /* as duas teclas baixas, para a faixa ocupar pouco; a moldura sai 3 px da caixa (7 embaixo, com a parede), e o clique
+     pega nela tambem */
+  .palco .mesa-gav .btn { min-height: 26px; padding-block: 0; font-size: .8125rem; }
+  .palco .mesa-gav .btn::after { content: ""; position: absolute; inset: -3px -3px -7px; }
+  .palco .visor-gav { display: none; }
+  @container (max-width: 34rem) { .palco .cabeca-gav .placa-gav { display: none; } }   /* so o RITMELLI: o resto nao cabe ao lado das teclas */
+  #b-fechar-gav { grid-area: fechar; position: relative; z-index: 2; gap: .28em; }
+  @container (max-width: 40rem) { .gav-longo { display: none; } }
+  .palco .gaveta > .rolo { align-self: stretch; margin: 2px -14px 0; padding: 0; }
+  .palco #banco { display: flex; flex-wrap: wrap; gap: 16px 24px; max-width: 628px; margin-inline: auto; padding: 2px 30px 0; }
+  .palco .grupo-ef { min-width: 0; }
+  .palco .grupo-ef + .grupo-ef { margin-top: 0; }
+  .palco .teclas { display: flex; flex-wrap: wrap; }
+  .palco .tecla { flex: 0 0 80px; }
+  .palco .t-desc { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }   /* a etiqueta mostra; fica para o leitor de tela */
+}
+/* a descricao do efeito numa etiqueta por cima do pedal (fixa na tela, para o rolo da gaveta nao cortar) */
+.dica-pedal {
+  position: fixed; z-index: 30; max-width: 280px; padding: 3px 7px 4px; pointer-events: none;
+  font-size: .8125rem; line-height: 1.3; color: var(--tinta); background: #EFE4CF;
+  border-image: var(--mold-etiqueta);
+}
+@media (max-width: 899.98px) {
+
+  /* opcoes do disco: a contracapa do LP subindo (o mock de 20/10, com os
+     textos fora do pixel art). O papelao creme na moldura de pixel da barra, so com o degrau em cima
+     e sem a beirada de baixo (e a beira da tela), o anel gasto do disco impresso por baixo, o selo RITMELLI LP, a
+     capinha num contorno de pixel e as acoes como a lista de faixas: o LADO A com o Continuar numa tecla ambar,
+     filetes entre as faixas e o Apagar sozinho no LADO B, depois do pontilhado. Os icones em pixel; a letra e a
+     de sempre */
+  .menu.folha {
+    padding: 0 14px calc(14px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0;
+    border-image: var(--mold-barra); border-image-width: 13px 13px 0 13px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 110 110' shape-rendering='crispEdges'%3E%3Cpath fill='%232A1812' fill-opacity='.07' d='M46 1h18v1h-18zM42 2h26v1h-26zM38 3h14v1h-14zM58 3h14v1h-14zM35 4h9v1h-9zM66 4h9v1h-9zM33 5h7v1h-7zM70 5h7v1h-7zM31 6h6v1h-6zM73 6h6v1h-6zM29 7h6v1h-6zM75 7h6v1h-6zM27 8h6v1h-6zM77 8h6v1h-6zM26 9h5v1h-5zM79 9h5v1h-5zM24 10h5v1h-5zM81 10h5v1h-5zM23 11h4v1h-4zM83 11h4v1h-4zM21 12h5v1h-5zM84 12h5v1h-5zM20 13h4v1h-4zM86 13h4v1h-4zM19 14h4v1h-4zM87 14h4v1h-4zM18 15h4v1h-4zM88 15h4v1h-4zM17 16h4v1h-4zM89 16h4v1h-4zM16 17h4v1h-4zM90 17h4v1h-4zM15 18h4v1h-4zM91 18h4v1h-4zM14 19h4v1h-4zM92 19h4v1h-4zM13 20h4v1h-4zM93 20h4v1h-4zM12 21h4v1h-4zM94 21h4v1h-4zM12 22h3v1h-3zM95 22h3v1h-3zM11 23h3v1h-3zM96 23h3v1h-3zM10 24h3v1h-3zM97 24h3v1h-3zM10 25h3v1h-3zM97 25h3v1h-3zM9 26h3v1h-3zM98 26h3v1h-3zM8 27h3v1h-3zM99 27h3v1h-3zM8 28h3v1h-3zM99 28h3v1h-3zM7 29h3v1h-3zM100 29h3v1h-3zM7 30h3v1h-3zM100 30h3v1h-3zM6 31h3v1h-3zM101 31h3v1h-3zM6 32h3v1h-3zM101 32h3v1h-3zM5 33h3v1h-3zM102 33h3v1h-3zM5 34h3v1h-3zM102 34h3v1h-3zM4 35h3v1h-3zM103 35h3v1h-3zM4 36h3v1h-3zM103 36h3v1h-3zM4 37h2v1h-2zM104 37h2v1h-2zM3 38h3v1h-3zM104 38h3v1h-3zM3 39h3v1h-3zM104 39h3v1h-3zM3 40h2v1h-2zM105 40h2v1h-2zM3 41h2v1h-2zM105 41h2v1h-2zM2 42h3v1h-3zM105 42h3v1h-3zM2 43h3v1h-3zM105 43h3v1h-3zM2 44h2v1h-2zM106 44h2v1h-2zM2 45h2v1h-2zM106 45h2v1h-2zM1 46h3v1h-3zM106 46h3v1h-3zM1 47h3v1h-3zM106 47h3v1h-3zM1 48h3v1h-3zM106 48h3v1h-3zM1 49h3v1h-3zM106 49h3v1h-3zM1 50h3v1h-3zM106 50h3v1h-3zM1 51h3v1h-3zM106 51h3v1h-3zM1 52h2v1h-2zM107 52h2v1h-2zM1 53h2v1h-2zM107 53h2v1h-2zM1 54h2v1h-2zM107 54h2v1h-2zM1 55h2v1h-2zM107 55h2v1h-2zM1 56h2v1h-2zM107 56h2v1h-2zM1 57h2v1h-2zM107 57h2v1h-2zM1 58h3v1h-3zM106 58h3v1h-3zM1 59h3v1h-3zM106 59h3v1h-3zM1 60h3v1h-3zM106 60h3v1h-3zM1 61h3v1h-3zM106 61h3v1h-3zM1 62h3v1h-3zM106 62h3v1h-3zM1 63h3v1h-3zM106 63h3v1h-3zM2 64h2v1h-2zM106 64h2v1h-2zM2 65h2v1h-2zM106 65h2v1h-2zM2 66h3v1h-3zM105 66h3v1h-3zM2 67h3v1h-3zM105 67h3v1h-3zM3 68h2v1h-2zM105 68h2v1h-2zM3 69h2v1h-2zM105 69h2v1h-2zM3 70h3v1h-3zM104 70h3v1h-3zM3 71h3v1h-3zM104 71h3v1h-3zM4 72h2v1h-2zM104 72h2v1h-2zM4 73h3v1h-3zM103 73h3v1h-3zM4 74h3v1h-3zM103 74h3v1h-3zM5 75h3v1h-3zM102 75h3v1h-3zM5 76h3v1h-3zM102 76h3v1h-3zM6 77h3v1h-3zM101 77h3v1h-3zM6 78h3v1h-3zM101 78h3v1h-3zM7 79h3v1h-3zM100 79h3v1h-3zM7 80h3v1h-3zM100 80h3v1h-3zM8 81h3v1h-3zM99 81h3v1h-3zM8 82h3v1h-3zM99 82h3v1h-3zM9 83h3v1h-3zM98 83h3v1h-3zM10 84h3v1h-3zM97 84h3v1h-3zM10 85h3v1h-3zM97 85h3v1h-3zM11 86h3v1h-3zM96 86h3v1h-3zM12 87h3v1h-3zM95 87h3v1h-3zM12 88h4v1h-4zM94 88h4v1h-4zM13 89h4v1h-4zM93 89h4v1h-4zM14 90h4v1h-4zM92 90h4v1h-4zM15 91h4v1h-4zM91 91h4v1h-4zM16 92h4v1h-4zM90 92h4v1h-4zM17 93h4v1h-4zM89 93h4v1h-4zM18 94h4v1h-4zM88 94h4v1h-4zM19 95h4v1h-4zM87 95h4v1h-4zM20 96h4v1h-4zM86 96h4v1h-4zM21 97h5v1h-5zM84 97h5v1h-5zM23 98h4v1h-4zM83 98h4v1h-4zM24 99h5v1h-5zM81 99h5v1h-5zM26 100h5v1h-5zM79 100h5v1h-5zM27 101h6v1h-6zM77 101h6v1h-6zM29 102h6v1h-6zM75 102h6v1h-6zM31 103h6v1h-6zM73 103h6v1h-6zM33 104h7v1h-7zM70 104h7v1h-7zM35 105h9v1h-9zM66 105h9v1h-9zM38 106h14v1h-14zM58 106h14v1h-14zM42 107h26v1h-26zM46 108h18v1h-18z'/%3E%3C/svg%3E") right -46px top 112px / 220px 220px no-repeat, #EFE4CB;
+  }
+  .menu.folha::before {
+    width: 36px; height: 4px; margin: 11px auto 7px; border-radius: 0; background: rgba(42,24,18,.55);
+    clip-path: polygon(1px 0, calc(100% - 1px) 0, 100% 1px, 100% calc(100% - 1px), calc(100% - 1px) 100%, 1px 100%, 0 calc(100% - 1px), 0 1px);
+  }
+  .menu.folha .menu-selo {
+    display: block; position: absolute; top: 11px; right: 16px;
+    font-size: .625rem; font-weight: 700; letter-spacing: .14em; line-height: 1; text-transform: uppercase; color: var(--tinta-2);
+  }
+  .menu.folha .menu-cab { padding: 12px 4px 10px; margin: 0; border-top: 2px solid rgba(42,24,18,.6); border-bottom: 0; }
+  .menu.folha .menu-cab .capinha { border-radius: 0; margin: 2px; width: 52px; box-shadow: 0 0 0 2px var(--contorno); }
+  .menu.folha .lado {
+    display: flex; align-items: center; gap: 8px; padding: 6px 4px 4px;
+    font-size: .625rem; font-weight: 700; letter-spacing: .14em; line-height: 1; text-transform: uppercase; color: var(--tinta-2);
+  }
+  .menu.folha .lado::after { content: ""; flex: 1; height: 2px; background: rgba(42,24,18,.6); }
+  .menu.folha .lado-b {
+    margin-top: 10px; padding-top: 14px;
+    background: repeating-linear-gradient(90deg, rgba(42,24,18,.6) 0 6px, transparent 6px 10px) 0 0 / 100% 2px no-repeat;
+  }
+  .menu.folha button { border-radius: 0; border-bottom: 1px solid rgba(42,24,18,.22); }
+  .menu.folha button:last-child { border-bottom: 0; }
+  .menu.folha button:active { background: rgba(42,24,18,.08); }
+  /* o Continuar: a tecla ambar com o contorno e a sombra dura da moldura de pixel (sai 3 px para os lados e
+     desce 4 de sombra); apertada desce como as outras teclas */
+  .menu.folha button[data-acao="continuar"] {
+    width: calc(100% - 6px); min-height: 46px; margin: 6px 3px 12px; border: 0; border-radius: 4px; font-weight: 650;
+    background: var(--ambar); border-image: var(--mold-objeto);
+  }
+  .menu.folha button[data-acao="continuar"]:active { transform: translateY(3px); background: var(--ambar); border-image: var(--mold-objeto-apertado); }
+}
+
+/* SKIN-RECEIVER-FIM */

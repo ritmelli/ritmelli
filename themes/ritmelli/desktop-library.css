@@ -1,0 +1,176 @@
+/* DESKTOP-LIBRARY-INICIO */
+/* ---------- computador: a biblioteca e a barra de baixo, como o YouTube Music (05/11). A parede (sons rapidos e
+   prateleira) toma a tela; o disco no prato vai para a barra de baixo, a mesma placa de aluminio da barra do celular,
+   larga, com os pulos e o tempo; e a seta dela abre a pagina do disco: o toca-discos, o receiver e a maleta do A seguir
+   (a gaveta de efeitos abre por cima da maleta, como abria por cima da prateleira). No celular nada muda ---------- */
+.mini .mini-pc, .fila-vazia, .botoes-topo .so-pc { display: none; }
+@media (min-width: 900px) {
+  :root { --barra-h: 76px; }
+  /* recolhido: a parede e a barra */
+  body:not(.com-disco) .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "topo" "parede" "mini"; }
+  body:not(.com-disco) :is(.deck, .receptor, .gaveta, .cabo-calha) { display: none; }
+  body.com-gaveta:not(.com-disco) .parede { visibility: visible; }
+  body:not(.com-disco) .parede > .fila-parede { display: none; }
+  /* os Sons rapidos na coluna da esquerda, presos no alto enquanto a prateleira rola (a barra lateral do YouTube Music):
+     em cima da prateleira eles tomavam a altura de uma fileira de capas, e na tela de 720 sobrava uma so */
+  body:not(.com-disco) .parede:has(> .fila-parede) {
+    grid-template-columns: 9.5rem minmax(0, 1fr); grid-template-rows: auto auto 1fr; column-gap: 22px;
+    grid-template-areas: "rapidos cab" "rapidos prat" "rapidos cont";
+  }
+  body:not(.com-disco) .parede:has(> #rapidos[hidden]) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "cab" "prat" "cont"; }
+  body:not(.com-disco) .rapidos { position: sticky; top: 0; align-self: start; margin: 0; padding-top: 18px; }
+  /* o titulo em duas linhas no meio da coluna, na letra de pixel da Prateleira, e a contagem embaixo (o #vista-prateleira
+     na frente: ganha da linha de titulo das secoes) */
+  body:not(.com-disco) #vista-prateleira #rapidos .cabeca-sec { flex-direction: column; align-items: center; gap: 4px; margin-bottom: 12px; text-align: center; }
+  body:not(.com-disco) .rapidos .chips { flex-direction: column; align-items: center; gap: 14px; padding: 0; }
+  /* aberta: a grade de antes, com a maleta no lugar da prateleira e a barra embaixo (o toca-discos conta a altura dela) */
+  body.com-disco .app {
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "topo topo" "deck receptor" "deck parede";
+    --deck-w: clamp(320px, min(42vw, (100dvh - var(--resto)) * 1.25), 1100px);
+  }
+  body.com-disco .parede > :is(#vista-busca, #vista-prateleira) { display: none; }
+  body.com-disco .app > .parede:has(> #vista-prateleira):has(> .fila-parede) { grid-template: "fila" auto / minmax(0, 1fr); }
+  /* a maleta na proporcao do celular (pedido dele, 05/11): a largura da de la, 312 px, com o desenho no mesmo tamanho; com
+     600 px os discos ficavam achatados (a capa quadrada some atras dos da frente, e so a faixa de 48 px aparece) */
+  body.com-disco .fila-parede { width: 312px; max-width: 100%; }
+  /* o receiver como o do celular (pedido dele, 05/11: largo, ele parecia grande demais): uma coluna so, da largura de la,
+     com os medidores em cima e os volumes embaixo. Os efeitos saem dele (o seletor); onde eles vao morar no computador ele
+     ainda decide. O Mutar voz tambem sai (pedido dele): o microfone da barra de baixo faz o mesmo */
+  .palco .receptor { grid-template-columns: minmax(0, 1fr); row-gap: 14px; justify-self: start; align-self: start; width: 358px; max-width: 100%; }
+  .palco .medidores { display: contents; }
+  .palco .janela { order: 1; }
+  .palco .controles { order: 2; }
+  .palco .chaves { display: none; }
+  .palco .medidores .seletor { display: none; }
+  body.com-disco .fila-vazia:not([hidden]) {
+    display: block; grid-area: fila; align-self: start; justify-self: center; max-width: 40rem; margin: 6px 0 0; padding: 0 12px; text-wrap: balance;
+    text-align: center; font-size: .9375rem; line-height: 1.5; color: var(--marfim-2);
+  }
+  .fila-vazia b { display: block; margin-bottom: 2px; font-size: 1.0625rem; color: var(--marfim); }
+  .aviso { bottom: calc(var(--barra-h) + 14px); }
+  .parede { margin-bottom: calc(-1 * var(--fresta)); }
+  /* a pagina do disco sem a barra (05/11): ela repetia o toca-discos (o nome, o tempo e os pulos). A volta para a
+     prateleira e o mutar da voz moram no topo; o aviso desce para o pe da tela */
+  body.com-disco .mini { display: none; }
+  body.com-disco .aviso { bottom: 22px; }
+  body.com-disco .parede { margin-bottom: 0; }
+  .botoes-topo .so-pc { display: inline-flex; }
+  body:not(.com-disco) #b-mudo-topo { display: none; }
+  body.com-disco #b-pagina .vai-disco, body:not(.com-disco) #b-pagina .vai-prat { display: none; }
+  .ic-mic { display: contents; }
+  /* a voz mutada acende em vermelho, como o microfone da barra */
+  #b-mudo-topo.cortada { color: #8E1E14; background-color: #EFC3B7; }
+  @media (hover: hover) { #b-mudo-topo.cortada:hover { background-color: #F3CFC5; } }
+
+  /* a barra: o disco e o nome na esquerda (o clique abre a pagina), o mudo encostado nos pulos, os pulos no meio, o tempo
+     e a seta na direita. As cinco colunas: a esquerda e a direita do mesmo tamanho, entao os pulos ficam no centro */
+  .mini {
+    grid-area: mini; position: relative; z-index: 5;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto minmax(0, 1fr); grid-template-rows: auto auto;
+    align-items: center; align-content: center; column-gap: 10px;
+    height: var(--barra-h);
+    margin: 0 calc(-1 * clamp(20px, 2.4vw, 44px)) calc(-1 * var(--pad-y));
+    padding: 6px clamp(20px, 2.4vw, 44px) 4px;
+    color: var(--tinta);
+    border-image: var(--mold-barra);
+    background:
+      radial-gradient(circle at 10px 11px, var(--parafuso)), radial-gradient(circle at calc(100% - 10px) 11px, var(--parafuso)),
+      radial-gradient(circle at 10px calc(100% - 11px), var(--parafuso)), radial-gradient(circle at calc(100% - 10px) calc(100% - 11px), var(--parafuso)),
+      var(--escovado), #D2CABC;
+  }
+  .mini :focus-visible { outline-color: #8F4A0C; }
+  .mini-abrir {
+    grid-column: 1; grid-row: 1 / -1; align-self: stretch; margin: 2px 52px 2px -8px;
+    padding: 0; border: 0; border-radius: 8px; background: none; color: inherit; cursor: pointer;
+  }
+  .mini-disco, .mini-tit, .mini-sub, .mini-tempo { pointer-events: none; }
+  .mini-disco {
+    grid-column: 1; grid-row: 1 / -1; justify-self: start;
+    width: 52px; height: 52px; border-radius: 50%; contain: paint;
+    background: repeating-radial-gradient(circle, #1d1715 0 1px, #120d0c 1px 2.6px);
+    box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.4), inset 0 0 0 2px #0e0a09;
+  }
+  .mini-gira { width: 100%; height: 100%; display: grid; place-items: center; animation: girar 1.8s linear infinite; animation-play-state: paused; }
+  body[data-status="playing"] .mini-gira, body[data-status="buffering"] .mini-gira { animation-play-state: running; }
+  .mini-rotulo { position: relative; width: 44%; height: 44%; border-radius: 50%; overflow: hidden; background: var(--vinho); }
+  .mini-rotulo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .mini-rotulo .capa-gerada .t { font-size: 40cqw; left: 0; right: 0; bottom: auto; top: 50%; transform: translateY(-50%); text-align: center; -webkit-line-clamp: 1; }
+  .mini-tit, .mini-sub, .mini-ef { grid-column: 1; margin-left: 68px; margin-right: 60px; }
+  .mini-tit { grid-row: 1; align-self: end; min-width: 0; font-weight: 650; font-size: 1rem; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini-sub { grid-row: 2; align-self: start; min-width: 0; font-size: .875rem; line-height: 1.3; color: var(--tinta-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini.com-efeito .mini-sub { display: none; }
+  #mini-cortar { grid-column: 1; grid-row: 1 / -1; justify-self: end; }
+  #mini-ant { grid-column: 2; grid-row: 1 / -1; }
+  #mini-tocar { grid-column: 3; grid-row: 1 / -1; margin-inline: 6px; }
+  #mini-prox { grid-column: 4; grid-row: 1 / -1; }
+  .mini-tempo { grid-column: 5; grid-row: 1 / -1; justify-self: start; margin-left: 4px; font-size: .875rem; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--tinta-2); }
+  #mini-seta { grid-column: 5; grid-row: 1 / -1; justify-self: end; }
+  .mini .mini-pc.mini-btn { display: grid; }
+  .mini .mini-tempo { display: block; }
+  .mini-btn { width: 44px; height: 44px; flex: none; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--tinta); }
+  .mini-btn svg { width: 24px; height: 24px; }
+  #mini-ant svg, #mini-prox svg { width: 22px; height: 22px; }
+  .mini-btn:disabled { opacity: .4; }
+  .mini-btn.ausente { visibility: hidden; }
+  .mini-btn.cortada { color: #8E1E14; background: rgba(242,115,94,.22); }
+  .mini-seta svg { width: 15px; height: 9px; transition: transform .2s ease; }
+  body.com-disco .mini-seta svg { transform: rotate(180deg); }
+  @media (hover: hover) {
+    .mini-btn:hover:not(:disabled, .mini-tocar) { background: rgba(42,24,18,.09); }
+    .mini-btn.cortada:hover { background: rgba(242,115,94,.32); }
+    .mini-abrir:hover { background: rgba(42,24,18,.06); }
+  }
+  .mini-btn:active:not(:disabled, .mini-tocar) { transform: scale(.92); }
+  /* o tocar e o de pixel da barra do celular, no mesmo tamanho; apertado desce 2 px na sombra */
+  .palco .mini-tocar { position: relative; background: none; box-shadow: none; }
+  .palco .mini-tocar svg { visibility: hidden; }
+  .palco .mini-tocar::before, .palco .mini-tocar::after { content: ""; position: absolute; pointer-events: none; }
+  .palco .mini-tocar::before {
+    left: -4.667px; top: -4.667px; width: 53.333px; height: 55.333px;
+    background: var(--tocar-mini-parado) 0 0 / 53.333px 53.333px no-repeat, var(--tocar-mini-sombra) 0 2px / 53.333px 53.333px no-repeat;
+  }
+  .palco .mini-tocar::after { left: 10px; top: 10px; width: 24px; height: 24px; background: var(--icone-mini-tocar) 0 0 / 100% 100% no-repeat; }
+  .palco .mini-tocar:disabled::after { background-image: var(--icone-mini-tocar-apagado); }
+  .palco .mini-tocar:active:not(:disabled) { transform: translateY(2px); }
+  .palco .mini-tocar:active:not(:disabled)::before { background-position: 0 0, 0 0; }
+  body[data-status="playing"] .palco .mini-tocar::before, body[data-status="buffering"] .palco .mini-tocar::before,
+  body[data-sobre] .palco .mini-tocar::before { background-image: var(--tocar-mini-tocando), var(--tocar-mini-sombra); }
+  body[data-status="playing"] .palco .mini-tocar::after, body[data-status="buffering"] .palco .mini-tocar::after,
+  body[data-sobre] .palco .mini-tocar::after { background-image: var(--icone-mini-pausar); }
+  /* a etiqueta do efeito ligado no lugar do canal, em pixel como a do celular; o clique volta para a voz natural */
+  .mini-ef {
+    grid-row: 2; align-self: start; justify-self: start; position: relative; z-index: 1; margin-top: 5px;
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: calc(100% - 128px);
+    height: 18px; padding: 0 7px 0 8px; border: 0; border-radius: 0;
+    font-size: .75rem; font-weight: 650; line-height: 1; color: var(--tinta);
+    background: var(--ambar); border-image: var(--mold-etiqueta);
+  }
+  .mini-ef span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini-ef svg { width: 8px; height: 8px; flex: none; }
+  .mini-ef:active { transform: translateY(1px); }
+  /* o progresso no pe da placa: ambar aceso num sulco escuro */
+  .mini-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #4A362A; box-shadow: inset 0 1px 1px rgba(0,0,0,.5); overflow: hidden; }
+  .mini-prog span { display: block; height: 100%; background: linear-gradient(180deg, #FFD08A 0 1px, var(--ambar) 1px); transform-origin: 0 50%; transform: scaleX(var(--prog, 0)); will-change: transform; }
+}
+/* monitor em pe: o toca-discos e o receiver lado a lado em cima, a maleta embaixo */
+@media (min-width: 900px) and (max-aspect-ratio: 19/20) {
+  body.com-disco .app {
+    --deck-w: clamp(300px, min(50vw, (100dvh - 20rem) * .55), 900px);
+    grid-template-areas: "topo topo" "deck receptor" "parede parede";
+  }
+}
+/* tela deitada com largura para as tres: a maleta aberta entre o toca-discos e o receiver, da altura toda (pedido dele,
+   05/11), e o receiver na coluna da direita. O toca-discos encolhe pela largura que sobra das duas (312 da maleta, 358 do
+   receiver, os dois vaos dos cabos); abaixo de 1160 px nao cabem as tres, e a maleta fica embaixo do receiver */
+@media (min-width: 1160px) and (min-aspect-ratio: 20/19) {
+  body.com-disco .app {
+    grid-template-columns: var(--deck-w) 312px minmax(0, 1fr);
+    grid-template-areas: "topo topo topo" "deck parede receptor" "deck parede .";
+    --deck-w: clamp(320px, min(42vw, 100vw - 2 * clamp(20px, 2.4vw, 44px) - 312px - 358px - 2 * clamp(60px, 5.5vw, 76px),
+                               (100dvh - var(--resto)) * 1.25), 1100px);
+  }
+  /* o alto da maleta na linha do alto do toca-discos e do receiver (a margem de cima e do celular; os 8 da folga do rolo) */
+  body.com-disco .fila-parede { margin-top: -8px; }
+}
+/* DESKTOP-LIBRARY-FIM */

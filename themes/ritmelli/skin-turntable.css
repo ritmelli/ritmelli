@@ -1,0 +1,87 @@
+/* SKIN-TURNTABLE-INICIO */
+/* pele: o toca-discos, nas duas telas */
+/* ---------- quarta rodada (19/10): a mesma lingua nos
+   tres aparelhos do palco. Cor lisa no lugar do degrade, o bisel duro de pixel, o contorno com a
+   linha clara colada por dentro, a sombra dura e os cantos em degrau pelas molduras do
+   dev/molduras.py. O disco, o prato e o anel do estroboscopio seguem redondos e girando como antes
+   (nada muda na camada que gira); os textos gravados ficam na letra de sempre; o FX-12 segue rente
+   ao feltro (desde 18/10) e os pedais, o feltro e os cabos nao mudam ---------- */
+
+/* toca-discos: o tampo de madeira na moldura grossa (contorno, filete aceso, bisel e a sombra
+   dura); a chapa creme lisa com a moldura fina por dentro, para a madeira em volta seguir a vista */
+/* a moldura de madeira grossa e alaranjada do p1 (19/10): mais clara que a parede,
+   com o filete aceso por fora e o contorno da chapa por dentro. Ela cresce para dentro (o aparelho
+   fica do tamanho de antes) e o prato encolhe 4% em volta do proprio centro para nao encostar na
+   chapa; o centro e o mesmo e o anguloPara() encolhe o raio do sulco junto, para a agulha seguir no disco */
+.palco .tampo { border-radius: 4px; border-image: var(--mold-caixa); background: var(--veio), var(--madeira-ap); }
+.palco .placa { inset: 3cqw; border-radius: 10px; border-image: var(--mold-chapa); background: var(--escovado), #D6CFC2; }
+/* o prato com o contorno e a sombra dura no lugar da esfumada, e o brilho do vinil em duas cunhas
+   de borda seca (so o que fica parado: o giratorio e o anel nao mudam) */
+.palco .prato { transform: scale(.96); box-shadow: 0 0 0 2px var(--contorno), 0 3px 0 2px rgba(20,8,2,.42); }
+/* o anel do estroboscopio em 64 quadradinhos creme e pretos de borda seca, como no p1 (girando
+   com o prato, como antes) */
+.palco .aro { background: repeating-conic-gradient(#2A221E 0 2.8125deg, #F1E9D8 2.8125deg 5.625deg); }
+.palco .brilho {
+  background: conic-gradient(from -28deg, rgba(255,240,220,0) 0 8deg, rgba(255,240,220,.12) 8deg 32deg, rgba(255,240,220,0) 32deg 188deg,
+                             rgba(255,240,220,.08) 188deg 210deg, rgba(255,240,220,0) 210deg);
+}
+.palco .eixo { background: #EEE8DE; box-shadow: 0 0 0 1.5px var(--contorno); }
+/* o braco em pixel como no p1 (19/10; antes era liso demais): o dev/pecas.py desenha o braco inteiro
+   (contrapeso, tubo, cabeca, levantador e a bola do pivo) ja inclinado, com o degrau na tela: o
+   descanso e seis angulos no curso do disco, de 4 em 4 graus; o desenhoDoBraco() da a faixa do angulo
+   para o data-desenho. O desenho mora no .tubo, girado de volta em volta do pivo: sobram no maximo 2 graus
+   de giro (com 5, a alca fina da cabeca virava zigue-zague) */
+/* o braco passa por cima da plaquinha RITMELLI (z-index 2): parado, a cabeca descia por baixo dela
+   (19/10) */
+.palco .braco { z-index: 3; }
+.palco .braco > .tubo, .palco .braco[data-desenho="a"] > .tubo {
+  left: var(--braco-a-esq); top: var(--braco-a-topo); width: var(--braco-a-larg); height: var(--braco-a-alt);
+  transform-origin: var(--braco-a-origem); transform: rotate(var(--braco-a-desfaz)); background: var(--braco-a-arte) 0 0 / 100% 100% no-repeat;
+}
+.palco .braco[data-desenho="repouso"] > .tubo {
+  left: var(--braco-repouso-esq); top: var(--braco-repouso-topo); width: var(--braco-repouso-larg); height: var(--braco-repouso-alt);
+  transform-origin: var(--braco-repouso-origem); transform: rotate(var(--braco-repouso-desfaz)); background-image: var(--braco-repouso-arte);
+}
+.palco .braco[data-desenho="inicio"] > .tubo {
+  left: var(--braco-inicio-esq); top: var(--braco-inicio-topo); width: var(--braco-inicio-larg); height: var(--braco-inicio-alt);
+  transform-origin: var(--braco-inicio-origem); transform: rotate(var(--braco-inicio-desfaz)); background-image: var(--braco-inicio-arte);
+}
+.palco .braco[data-desenho="b"] > .tubo {
+  left: var(--braco-b-esq); top: var(--braco-b-topo); width: var(--braco-b-larg); height: var(--braco-b-alt);
+  transform-origin: var(--braco-b-origem); transform: rotate(var(--braco-b-desfaz)); background-image: var(--braco-b-arte);
+}
+.palco .braco[data-desenho="c"] > .tubo {
+  left: var(--braco-c-esq); top: var(--braco-c-topo); width: var(--braco-c-larg); height: var(--braco-c-alt);
+  transform-origin: var(--braco-c-origem); transform: rotate(var(--braco-c-desfaz)); background-image: var(--braco-c-arte);
+}
+.palco .braco[data-desenho="d"] > .tubo {
+  left: var(--braco-d-esq); top: var(--braco-d-topo); width: var(--braco-d-larg); height: var(--braco-d-alt);
+  transform-origin: var(--braco-d-origem); transform: rotate(var(--braco-d-desfaz)); background-image: var(--braco-d-arte);
+}
+.palco .braco[data-desenho="e"] > .tubo {
+  left: var(--braco-e-esq); top: var(--braco-e-topo); width: var(--braco-e-larg); height: var(--braco-e-alt);
+  transform-origin: var(--braco-e-origem); transform: rotate(var(--braco-e-desfaz)); background-image: var(--braco-e-arte);
+}
+/* a base do pivo e o descanso nao giram: degrau de verdade, num pseudo que sai do elemento o contorno
+   (1 celula) e a sombra (a base 3 celulas, o descanso 2) */
+.palco .base-braco::before, .palco .descanso::before { content: ""; position: absolute; pointer-events: none; }
+.palco .base-braco { width: 10cqw; height: 10cqw; }   /* do tamanho do mock (11 era maior que a dele) */
+.palco .base-braco::before { inset: -4% -4% -16%; background: var(--base-braco) 0 0 / 100% 100% no-repeat; }
+.palco .descanso::before { inset: -8.333% -8.333% -25%; background: var(--descanso) 0 0 / 100% 100% no-repeat; }
+.palco .descanso { left: 88cqw; }   /* debaixo do braco reto (o moverBraco() descansa ele a 0 grau no celular) */
+/* o selo 33/45: a etiqueta lisa na moldura miuda de contorno e quina comida (a letra e a mesma) */
+.palco .selo-placa { border-color: transparent; background: #E9E3D8; border-image: var(--mold-etiqueta); }
+/* no computador, como no celular: sem o "Tocando/Pausado" (o botao grande e o disco girando ja
+   dizem), e o tocar de pixel no tamanho para que foi desenhado */
+@media (min-width: 900px) {
+  .situacao { display: none; }
+  .tocar-grande { width: 68px; height: 68px; }
+  /* a mesa no formato do tampo, centrada: em tela baixa ele fica mais estreito que a coluna, e os pes e os cabos,
+     que moram na mesa, ficavam soltos na largura dela */
+  .mesa { aspect-ratio: 5 / 4; align-self: center; }
+  /* a altura da tela manda no toca-discos, e a faixa embaixo dele e o que divide a coluna com ele: a chave do fim do
+     disco na altura dela (o toque e so na chave, a linha nao precisa dos 44 px do dedo), colada nas teclas */
+  .palco .faixa > .fim-disco:not([hidden]) { min-height: 0; margin-top: 0; position: relative; top: 5px; }   /* desce sem somar altura: o tocar nao fica grudado, e o tampo segue do tamanho que a coluna conta */
+  .palco .linha-tempo { margin-top: 0; }
+}
+/* SKIN-TURNTABLE-FIM */

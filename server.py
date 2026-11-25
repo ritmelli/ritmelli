@@ -2569,7 +2569,7 @@ def build(app_state):
     async def pagina_com_textos(request, p):
         """Uma pagina com a pasta i18n/ ao lado (um tema, a galeria): os textos da lingua de quem abre (i18n.py) vao
         dentro dela. O ETag muda com a pagina, com os textos e com a lingua: a pagina igual a que o navegador ja tem
-        volta como 304, sem baixar o 1,2 MB do tema de novo"""
+        volta como 304, sem baixar a pagina de novo"""
         textos = p.parent / "i18n"
         lingua = i18n.escolher(request.query.get("lang"), request.headers.get("Accept-Language", ""))
         etag = f'"{p.stat().st_mtime_ns}-{i18n.versao(textos)}-{lingua}"'

@@ -1,0 +1,182 @@
+/* SKIN-LIBRARY-INICIO */
+/* sons rapidos: o compacto em pixel art como no mock h1 (19/10), desenhado pelo
+   dev/compactos.py: silhueta em degrau com o contorno, sulcos, a borda com bisel, o brilho em
+   xadrez nas diagonais e a sombra dura. Ele gira enquanto o som toca, e degrau girando balanca:
+   o desenho fica parado em duas camadas (a base por baixo do selo, a tampa por cima) e so o selo
+   redondo gira entre elas. A tampa esconde a beira redonda do selo num anel em degrau da cor do
+   vinil, e a risca do selo mostra o giro. O pino de latao liso com o ponto de luz duro */
+.compacto .sete { background: none; box-shadow: none; }
+.compacto .sete::before {   /* a base sai 1 celula (2 px) para os lados e para cima e 3 para baixo: o contorno e a sombra */
+  content: ""; z-index: auto; inset: -2.5% -2.5% -7.5%; border-radius: 0;
+  background: var(--compacto-base) 0 0 / 100% 100% no-repeat;
+}
+.compacto .sete::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: var(--compacto-tampa) 0 0 / 100% 100% no-repeat; }
+.compacto .sete-rot { inset: 24.85%; background: var(--bg); }   /* o raio do selo do dev/compactos.py (SELO_R) */
+.compacto .lampada:not(.acesa) {
+  background: radial-gradient(circle at 35% 35%, #FFF3CF 0 1.5px, #D6A758 1.5px);
+  box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.45);
+}
+.compacto .t { text-shadow: 0 2px 0 var(--contorno), 1px 1px 0 var(--contorno), -1px 1px 0 var(--contorno); }
+.compacto .d { text-shadow: 0 1.5px 0 var(--contorno); }
+/* a mesma sombra dura de baixo nos textos soltos na madeira, a dos rotulos da chave do fim do disco: a fila do palco e os
+   resultados da busca, 2 px na linha principal e 1,5 px na pequena, como no compacto, e nos icones da ponta (o tirar
+   e a alca da fila, o ... e o + da busca) num drop-shadow */
+.cabeca-fila h2, .cabeca-fila .limpar-fila, .tocar-fila .t, .resultado .tit { text-shadow: 0 2px 0 var(--contorno); }
+.cabeca-fila .conta, .tocar-fila .s, .resultado .sub { text-shadow: 0 1.5px 0 var(--contorno); }
+.item-fila .tirar svg, .item-fila .alca svg, .resultado .acao-res > svg { filter: drop-shadow(0 1.5px 0 var(--contorno)); }
+@media (max-width: 899.98px) {
+  /* o tirar e a alca da fila pegam o dedo so em cima do desenho, para nao tirar nem mexer sem querer (a
+     area de toque do tamanho do desenho): o botao segue com 44 px na grade e nao pega o toque, e o
+     ::after cobre o traco do icone de 24 em 20 px com a ponta redonda (o x 10 x 10 px, as duas linhas 13 x 7 px) */
+  .item-fila .tirar, .item-fila .alca { position: relative; pointer-events: none; }
+  .item-fila .tirar::after, .item-fila .alca::after { content: ""; position: absolute; pointer-events: auto; }
+  .item-fila .tirar::after { inset: calc(50% - 5px); }
+  .item-fila .alca::after { inset: calc(50% - 3.5px) calc(50% - 6.5px); }
+  /* no creme a sombra preta dobrava a letra: la vai uma clara, de 1 px, que deixa o texto gravado (a de 2 px
+     ficava grande demais): o receiver e o nome e o
+     artista do player de baixo; no preto do visor a do canal fica com a dura de 2 px do titulo, mais abaixo */
+  .mini-tit, .mini-sub { text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
+}
+
+/* prateleira: o painel e as tabuas na versao leve; a capa com o contorno por dentro (o ::after,
+   que fica por cima da foto e nao vaza da pagina que corre de lado) e a sombra dura reta embaixo */
+/* o painel em cor lisa, com a moldura de pixel por fora e o caixilho de madeira por dentro */
+#rolo-prateleira::before {
+  border-radius: 4px; border-image: var(--mold-caixa);
+  background: var(--veio-v) 0 0 / 420px 900px, #48210E;
+  box-shadow: inset 0 0 0 6px #9A4E25, inset 0 2px 0 6px rgba(255,200,145,.55), inset 0 0 0 9px var(--contorno), inset 0 12px 0 0 rgba(0,0,0,.2);
+}
+/* tabua de brinquedo: contorno em cima, a quina acesa, o tampo, a frente de veio em cor lisa, o
+   contorno de baixo e a sombra dura reta (sem contorno dos lados: as tabuas de cada capa se emendam) */
+.estante .borda {
+  background:
+    linear-gradient(180deg, var(--contorno) 0 2px, #F7BC88 2px 4px, #CC7A42 4px 7px, #7E3D1A 7px 8px, transparent 8px),
+    var(--veio),
+    #77391A;
+  box-shadow: inset 0 -3px 0 var(--contorno), 0 6px 0 rgba(20,8,2,.55);
+}
+.estante .capa { border-radius: 3px; box-shadow: 0 4px 0 rgba(20,8,2,.62); }
+.estante .disco-item.no-prato .capa { box-shadow: 0 12px 0 -1px rgba(20,8,2,.36); }
+.estante .capa::after { border-radius: inherit; box-shadow: inset 0 0 0 2.5px var(--contorno), inset 0 0 0 3.5px rgba(255,240,220,.3); }
+/* o No prato vira uma pilula grossa contornada */
+.estante .no-prato-tag {
+  background: #2B1B12; color: #FBEFD9; font-weight: 700;
+  box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.55), inset 0 1px 0 rgba(255,230,200,.2);
+}
+@media (max-width: 899.98px) {
+  /* as paginas: lampadas num trilho escuro com borda firme */
+  .pontos { box-shadow: var(--luz-dentro), inset 0 4px 0 rgba(0,0,0,.6), var(--duro); }
+  .pontos span { background: #4A3426; box-shadow: 0 0 0 2px var(--contorno), inset 1px 1px 0 rgba(255,236,214,.25); }
+  .pontos span.aqui { background: radial-gradient(circle at 35% 35%, #FFF2C8 0 1.5px, var(--ambar) 1.5px); box-shadow: 0 0 0 2px var(--contorno), 0 0 8px 2px rgba(243,167,60,.55); }
+}
+
+/* fitas: a carcaca lisa na moldura de pixel (os parafusos para dentro, longe do degrau), a base
+   das cabecas lisa e a janela com a sombra dura */
+.cartao-b {
+  border: 0; border-radius: 4px; border-image: var(--mold-objeto); box-shadow: inset 0 -4px 0 #120C09;
+  background:
+    radial-gradient(circle at 9px 9px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 9px) 9px, #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at 9px calc(100% - 9px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), #120C09 0 1.5px, #5C5046 1.6px 2.6px, transparent 2.8px),
+    #2B221D;
+}
+.cartao-b::after {
+  background:
+    radial-gradient(circle at 22% 55%, #0D0806 0 2px, transparent 2.2px),
+    radial-gradient(circle at 50% 55%, #0D0806 0 2.2px, transparent 2.4px),
+    radial-gradient(circle at 78% 55%, #0D0806 0 2px, transparent 2.2px),
+    #251C17;
+}
+.cartao-capa { box-shadow: inset 0 3px 0 rgba(0,0,0,.6), 0 1px 0 rgba(255,240,220,.12); }
+@media (max-width: 899.98px) {
+
+  /* barra do player: a placa de aluminio liso na moldura de pixel por dentro (por fora o palco
+     cortaria), com o degrau so nas quinas de cima; o disco e o tocar com contorno, o tocar liso com
+     o bisel duro; a etiqueta do efeito e o progresso em ambar liso. Os degraus das quinas de cima da moldura
+     (6 x 3 e 3 x 3 px) sao vazados de verdade: o fundo do palco, a parede dele e o cabecalho deixam esses dois
+     cantos sem pintar (sobravam 3 pixels marrons em cada lado, que subiam junto com o palco; era o
+     cabecalho). Sem recorte no palco: o raio de 16 cortava o degrau e sobrava o arco, e o clip-path no lugar
+     dele fazia o Chrome do celular desenhar a barra de rolagem do palco fixa na beirada da direita (visto num
+     print, 22/10). O fundo da barra segue com 16, dentro do degrau */
+  .palco {
+    border-radius: 0;
+    --sem-quinas: linear-gradient(#000 0 0) 0 6px / 100% 100% no-repeat, linear-gradient(#000 0 0) 3px 3px / calc(100% - 6px) 3px no-repeat,
+      linear-gradient(#000 0 0) 6px 0 / calc(100% - 12px) 3px no-repeat;
+    /* por baixo, nos degraus, a sombra que o palco joga logo acima da beirada (o box-shadow nunca pinta dentro
+       da caixa): sem ela o degrau mostrava a pagina mais clara que a volta (o tom de marrom
+       ficava diferente). 24 a 29% de preto, medido no print entre a pagina com e sem a sombra */
+    background: linear-gradient(#6C3208 0 0) 0 6px / 100% 100% no-repeat, linear-gradient(#6C3208 0 0) 3px 3px / calc(100% - 6px) 3px no-repeat,
+      linear-gradient(#6C3208 0 0) 6px 0 / calc(100% - 12px) 3px no-repeat,
+      linear-gradient(90deg, rgba(0,0,0,.24), rgba(0,0,0,.29) 6px calc(100% - 6px), rgba(0,0,0,.24)) 0 0 / 100% 6px no-repeat;
+  }
+  .palco::before { top: 6px; height: calc(var(--alto-palco, 100%) - 6px); }
+  /* no-clip: a mascara para na caixa e cortaria a sombra dura de 4 px embaixo do cabecalho */
+  .palco .palco-topo { mask: var(--sem-quinas); mask-clip: no-clip; }
+  .palco .mini {
+    box-shadow: none; border-image: var(--mold-barra);
+    background:
+      radial-gradient(circle at 10px 11px, var(--parafuso)), radial-gradient(circle at calc(100% - 10px) 11px, var(--parafuso)),
+      radial-gradient(circle at 10px calc(100% - 11px - env(safe-area-inset-bottom)), var(--parafuso)),
+      radial-gradient(circle at calc(100% - 10px) calc(100% - 11px - env(safe-area-inset-bottom)), var(--parafuso)),
+      var(--escovado), #D2CABC;
+    /* o disco e o tocar 3 px abaixo do meio da placa que se ve (acima do progresso de 4 px): com os
+       8 px de cima de antes a sombra do tocar encostava na borda de baixo, e no meio exato pareciam
+       altos (os dois, 19/10) */
+    padding-top: 6px; padding-bottom: calc(4px + env(safe-area-inset-bottom));
+  }
+  /* o tocar de pixel passa 4,7 px da caixa de cada lado e o circulo do mudo encostava nele: a
+     coluna do mudo ganha 6 px do lado do tocar */
+  .palco .mini { grid-template-columns: 48px minmax(0, 1fr) 50px 44px; }
+  .palco #mini-cortar { justify-self: start; }
+  .mini-disco { box-shadow: 0 0 0 2px var(--contorno), 0 2px 0 2px rgba(20,8,2,.4), inset 0 0 0 2px #0e0a09; }
+  .palco .mini-tocar {
+    background: #E6DFD3;
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.8), inset 0 -2px 0 rgba(42,24,18,.22), 0 0 0 2px #9b9283, 0 0 0 4px var(--contorno), 0 3px 0 4px rgba(20,8,2,.4);
+  }
+  body[data-status="playing"] .palco .mini-tocar, body[data-status="buffering"] .palco .mini-tocar {
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.8), inset 0 -2px 0 rgba(42,24,18,.22), 0 0 0 2px var(--ambar), 0 0 0 4px var(--contorno), 0 3px 0 4px rgba(20,8,2,.4), 0 0 10px 3px rgba(243,167,60,.45);
+  }
+  /* o tocar da barra de baixo e o mesmo objeto do grande, em pixel do mesmo jeito (o filete da face
+     mais fino); apertado desce 2 px na sombra em vez de encolher */
+  .palco .mini-tocar, body[data-status="playing"] .palco .mini-tocar, body[data-status="buffering"] .palco .mini-tocar { position: relative; background: none; box-shadow: none; }
+  .palco .mini-tocar svg { visibility: hidden; }
+  .palco .mini-tocar::before, .palco .mini-tocar::after { content: ""; position: absolute; pointer-events: none; }
+  .palco .mini-tocar::before {
+    left: -4.667px; top: -4.667px; width: 53.333px; height: 55.333px;   /* 40 celulas de 4/3 px (4 px de tela no celular de teste) */
+    background: var(--tocar-mini-parado) 0 0 / 53.333px 53.333px no-repeat, var(--tocar-mini-sombra) 0 2px / 53.333px 53.333px no-repeat;
+  }
+  .palco .mini-tocar::after { left: 10px; top: 10px; width: 24px; height: 24px; background: var(--icone-mini-tocar) 0 0 / 100% 100% no-repeat; }
+  .palco .mini-tocar:disabled::after { background-image: var(--icone-mini-tocar-apagado); }
+  .palco .mini-tocar:active:not(:disabled), .palco .mini-tocar.apertado:not(:disabled) { transform: translateY(2px); }
+  .palco .mini-tocar:active:not(:disabled)::before, .palco .mini-tocar.apertado:not(:disabled)::before { background-position: 0 0, 0 0; }
+  body[data-status="playing"] .palco .mini-tocar::before, body[data-status="buffering"] .palco .mini-tocar::before {
+    background-image: var(--tocar-mini-tocando), var(--tocar-mini-sombra);
+  }
+  body[data-status="playing"] .palco .mini-tocar::after, body[data-status="buffering"] .palco .mini-tocar::after { background-image: var(--icone-mini-pausar); }
+  /* som rapido tocando por cima (data-sobre): o pausar aceso, mesmo sem disco no prato (25/10) */
+  body[data-sobre] .palco .mini-tocar::before { background-image: var(--tocar-mini-tocando), var(--tocar-mini-sombra); }
+  body[data-sobre] .palco .mini-tocar::after { background-image: var(--icone-mini-pausar); }
+  /* a etiqueta do efeito ligado em pixel (a bolha nao estava em pixel art): o ambar liso na
+     moldura miuda de degrau e o x de pixel; o nome segue na letra de sempre. A
+     moldura sai 2 px para fora da caixa, que perde 4 px de altura e entra 2 px na margem para a etiqueta ficar do
+     tamanho e no lugar da bolha; apertada desce 1 px em vez de encolher (encolher borra o pixel) */
+  .palco .mini-ef {
+    height: 18px; margin-top: 5px; margin-left: 9px; max-width: calc(100% - 11px); padding: 0 7px 0 8px; gap: 6px;
+    border-radius: 0; box-shadow: none; background: var(--ambar); border-image: var(--mold-etiqueta);
+  }
+  .palco .mini-ef::after { inset: -5px -12px -21px; }
+  .palco .mini-ef svg { width: 8px; height: 8px; }
+  .palco .mini-ef:active, .palco .mini-ef.apertado { transform: translateY(1px); }
+  .palco .mini-prog span { background: linear-gradient(180deg, #FFD08A 0 1px, var(--ambar) 1px); }
+
+  /* palco: a plaquinha RITMELLI da barra; os pes dos aparelhos descem para ficar a vista por cima da
+     sombra dura (os do receiver 2 px a mais: o contorno dele vem por cima, ver a quarta rodada). O
+     toca-discos, o receiver e o FX-12 estao na quarta rodada, no fim deste bloco */
+  .palco .palco-topo {
+    background-image: var(--veio); background-color: var(--jacaranda-2);
+    box-shadow: inset 0 -2.5px 0 var(--contorno), inset 0 -3.5px 0 rgba(238,227,207,.1), 0 4px 0 rgba(20,8,2,.42);
+  }
+  .palco .palco-chapa { border-radius: 3px; box-shadow: none; border-image: var(--mold-caixa); background: var(--escovado), #D6CFC2; }
+}
+/* SKIN-LIBRARY-FIM */
