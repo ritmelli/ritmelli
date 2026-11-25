@@ -306,7 +306,15 @@ with tempfile.TemporaryDirectory() as tmp:
     m._audio_desde -= met.USO_S
     m._manda_audio(prazo=True)
     confere(len(audios(m)[0]) == 1, "passado o USO_S dela, o vigia fecha a janela e o 'audio' sai")
-    # a volta que termina com o anel caindo conta na maior volta
+    # a volta que termina com o anel caindo conta na maior volta; a que caiu antes de contar, tambem no estado de antes
+    volta(e, 0.01, fx_no_filtro=True)
+    fecha_janela(m)
+    audios(m)
+    e.janela.anel_caiu(2.0, contou=False)  # a unica volta da janela, com o efeito no filtro ate cair
+    fecha_janela(m)
+    a9, _ = audios(m)
+    confere(len(a9) == 1 and a9[0]["fx_no_filtro_s"] == 2 and a9[0]["volta_max_ms"] == 2000.0,
+            f"o anel que cai antes de a volta contar: a janela sai, com o tempo no estado de antes ({a9})")
     volta(e)
     e.janela.anel_caiu(0.7)
     volta(e, 0.01, anel=False, leitores=0)
@@ -372,6 +380,32 @@ with tempfile.TemporaryDirectory() as tmp:
             and re.fullmatch(r"[0-9a-f]{32}", a6[0]["distinct_id"] or "") is not None,
             f"aberto com a escolha no texto 2 e fechado logo: a janela conta desde a abertura do audio, sai com o id, "
             f"e o vigia para ({a6})")
+
+    # o desligar com a gravacao do config.json falhando: o cfg ja diz desligada, e nada do que veio antes fica
+    m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)
+    e = MotorComAudio()
+    m.engine = e
+    m._confere_audio()
+    volta(e)
+    e.janela.fila(0)
+    m.evento("ativo", primeira_vez=False)
+
+    def grava_falhando(**mud):
+        m.cfg.update(mud)  # como o grava_cfg: o cfg muda antes de o disco falhar
+        raise OSError("disco cheio")
+    m.gravar = grava_falhando
+    try:
+        m.escolhe(False)
+        confere(False, "o erro da gravacao chega a quem escolheu (o POST)")
+    except OSError:
+        confere(True, "o erro da gravacao chega a quem escolheu (o POST)")
+    m.gravar = lambda **mud: m.cfg.update(mud)
+    m.escolhe(True)
+    volta(e)
+    fecha_janela(m)
+    a10, evs = audios(m)
+    confere([x["event"] for x in evs] == ["audio"] and a10[0]["secas"] == 0,
+            f"desligada com a gravacao falhando: a fila e a janela de antes somem, mesmo ligando de novo ({evs})")
 
     # o lote que falha enquanto a pessoa desliga (e liga de novo) nao volta para a fila
     m, env = nova(cfg={"metricas": True, "metricas_texto": 2}, tmp=tmp)

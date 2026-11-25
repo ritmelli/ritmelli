@@ -1010,7 +1010,7 @@ class Injetor:
     efeito tem etapa que ele nao roda nessa taxa, a voz vai pelo app, que passa ela pelo mesmo motor (o voz.dll, a
     48 kHz) e manda no lugar da crua."""
 
-    def __init__(self, motor):
+    def __init__(self, motor, saude=None):
         self.motor = motor
         self.m = None
         self.leitores = 0
@@ -1030,8 +1030,8 @@ class Injetor:
         self.voltas = np.zeros(VOLTA_MS, np.int64)
         self._seca_dita = -1e9
         # a mesma medida e mais um pouco por janela, para o evento "audio" (metricas.py): a de cima segue a do
-        # /api/state, desde que o Injetor abriu
-        self.saude = metricas.SaudeAudio(SR)
+        # /api/state, desde que o Injetor abriu. Na reabertura do leitor perdido, a janela do de antes continua (saude)
+        self.saude = saude if saude is not None else metricas.SaudeAudio(SR)
         self._para48k_fx = _Para48k()  # a voz com efeito que o filtro devolve tem a sua
         self._resto_fx = np.zeros(0, np.float32)
         self._resto_pista = np.zeros(0, np.float32)  # e a voz da pista (ja a 48 kHz)
@@ -1167,6 +1167,7 @@ class Injetor:
                 agora = time.perf_counter()
                 volta, antes = agora - antes, agora
                 self._volta(volta)
+                contou = False  # a janela do "audio" ja recebeu esta volta
                 try:
                     m = self._abre()
                     if m is not None:
@@ -1182,6 +1183,7 @@ class Injetor:
                     self.saude.volta(volta, anel=m is not None, leitores=self.leitores,
                                      fx_no_filtro=self.efeito_no_filtro, voz_taxa=self.voz_taxa,
                                      totais=(*mo.totais_saude(), *RUBBER_BAND.total()))
+                    contou = True
                     if vivos:
                         self._teve_leitor, self.perdeu_em = True, None
                         donos = tuple(sorted(lt.dono for lt in vivos))
@@ -1216,7 +1218,7 @@ class Injetor:
                     # novo; o estado do efeito zera mesmo se o fechamento falhar
                     falhou, self.m = self.m, None
                     servidos = ()
-                    self.saude.anel_caiu(volta)  # a pausa abaixo nao conta no estado do anel que caiu
+                    self.saude.anel_caiu(volta, contou)  # a pausa abaixo nao conta no estado do anel que caiu
                     try:
                         if falhou is not None:
                             falhou.fecha()
@@ -1352,6 +1354,7 @@ class Engine:
         self._fechado = False     # close() de proposito: o vigia nao reabre
         self._caiu_no_vigia = False  # a reabertura do vigia falhou: ele pode tentar de novo
         self._recupera = None     # (microfone, reaberturas, monotonic da ultima) do leitor perdido (_recupera_leitor)
+        self._saude_segue = None  # a janela do "audio" que o Injetor da reabertura do leitor perdido continua
         self._aviso = None        # aviso dos aparelhos (reserva, reabertura que falhou): so ele sai quando voltam
 
     # o deck do prato (o resto do motor fala com ele por estes nomes)
@@ -1446,7 +1449,7 @@ class Engine:
             st.enter_context(sd.InputStream(device=mic_i, channels=mic_d["max_input_channels"],
                                             samplerate=SR, blocksize=BLOCK, dtype="float32",
                                             extra_settings=WASAPI, callback=self._mic_cb))
-            inj = Injetor(self)
+            inj = Injetor(self, self._saude_segue)
             st.callback(inj.para)
             if mon_i is not None:
                 st.enter_context(sd.OutputStream(device=mon_i, channels=2, samplerate=SR,
@@ -1597,7 +1600,11 @@ class Engine:
                 return
             print(f"game output: the microphone filter stopped reading \"{mic}\"; reopening the audio "
                   f"(attempt {n + 1} of {LEITOR_TENTATIVAS})", file=sys.stderr, flush=True)
-            self._reabre()
+            self._saude_segue = inj.saude  # a perda que pede a reabertura fica na janela do evento "audio"
+            try:
+                self._reabre()
+            finally:
+                self._saude_segue = None
             # o Injetor novo (ou o de antes, se a reabertura falhou) ainda sem perda marcada
             self._recupera = (mic, n + 1, agora, (self._injetor, None))
 

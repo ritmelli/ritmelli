@@ -185,7 +185,7 @@ class VigiaNoAnel:
         e.active = {"mic": mic, "monitor": ""}
         e._alvo = ALVOS[mic]
         st = contextlib.ExitStack()
-        inj = eng.Injetor(e)
+        inj = eng.Injetor(e, e._saude_segue)  # como o start: a reabertura do leitor perdido continua a janela
         st.callback(inj.para)
         e._stack, e._injetor = st, inj
         self.aberturas.append((mic, time.monotonic()))
@@ -214,11 +214,15 @@ class TestaMicrofone(unittest.TestCase):
         v = VigiaNoAnel()
         try:
             self._espera_leitor(v)
+            janela = v.e._injetor.saude
             time.sleep(0.3)
             self.assertEqual(v.reaberturas(), 0, "com o leitor vivo o vigia nao reabre")
             anel.desliga()  # o filtro parou de ler; o motor segue capturando o mesmo microfone
             time.sleep(0.3 + 3 * 0.3 + 0.5)
             self.assertEqual(v.reaberturas(), 3, "o leitor perdido tem que reabrir ate o limite de tentativas")
+            # a janela do evento "audio" segue nas reaberturas, com a perda que as pediu
+            self.assertIs(v.e._injetor.saude, janela, "a reabertura do leitor perdido trocou a janela do audio")
+            self.assertEqual(janela.leitor_perdido, 1, "a perda que pediu a reabertura sumiu da janela do audio")
             self.assertTrue(all(m == "Mic" for m, _ in v.aberturas), "a reabertura trocou de microfone")
             em = [t for _, t in v.aberturas[1:]]
             self.assertTrue(all(b - a >= 0.3 - 0.02 for a, b in itertools.pairwise(em)), "reabriu sem o intervalo")

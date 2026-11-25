@@ -180,7 +180,8 @@ jobs:
       # com a rede presa numa armadilha; confere quando o aviso abre, o que cada botão grava e que nada sai pela rede
       - name: Aviso dos dados de uso
         id: metricas
-        if: ${{ !cancelled() && steps.areas.outputs.tela == 'true' }}
+        # roda mesmo com o fitcheck e o compara vermelhos, mas nao sem as bibliotecas (o passo deles pulado)
+        if: ${{ !cancelled() && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}
         run: python dev/fitcheck.py --metricas
       - name: Prints
         if: always() && (steps.tela.outcome == 'failure' || steps.tela.outputs.mudou == 'true')

@@ -290,11 +290,15 @@ class SaudeAudio:
                 self._base = totais
             self._totais = totais
 
-    def anel_caiu(self, s):
-        """O anel fechou por erro numa volta de s segundos: ela conta na maior volta, e a perda e o efeito dele param de
-        contar ja (a pausa ate o proximo nao entra)."""
+    def anel_caiu(self, s, contou=True):
+        """O anel fechou por erro numa volta de s segundos: ela conta na maior volta (e, se a volta nao chegou a contar,
+        no estado da de antes), e a perda e o efeito dele param de contar ja (a pausa ate o proximo nao entra)."""
         with self._lock:
             self.volta_max = max(self.volta_max, s)
+            if not contou and self._totais is not None:
+                self._andou = True
+                self.leitor_perdido_s += s * self._perdido
+                self.fx_no_filtro_s += s * self._fx
             self._leitores, self._perdido, self._fx = 0, False, False
 
     def fila(self, quadros, *, passagem=False, esticando=False):
@@ -398,15 +402,17 @@ class Metricas:
         """A escolha feita no Ritmelli (o aviso ou o Microfone e fone), sempre no texto de agora. Desligar joga fora o
         que nao saiu e a janela do "audio"."""
         with self._audio_lock:  # a escolha e a janela do "audio" juntas: duas escolhas seguidas nao se cruzam
-            self.gravar(metricas=bool(ligar), metricas_texto=TEXTO)
-            if not ligar:
-                with self._lock:
-                    while not self.fila.empty():
-                        self.fila.get_nowait()
-                    self._geracao += 1
-                self._fecha_audio(manda=False)
-                self._audio_vale = False
-            else:
+            try:
+                self.gravar(metricas=bool(ligar), metricas_texto=TEXTO)
+            finally:
+                if not ligar:  # mesmo com a gravacao falhando (o cfg ja diz desligada): nada do que veio antes fica
+                    with self._lock:
+                        while not self.fila.empty():
+                            self.fila.get_nowait()
+                        self._geracao += 1
+                    self._fecha_audio(manda=False)
+                    self._audio_vale = False
+            if ligar:
                 self._confere_audio()  # a janela comeca na hora da escolha
         if ligar:
             self._acorda.set()
