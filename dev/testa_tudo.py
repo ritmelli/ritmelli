@@ -96,11 +96,35 @@ def manual(arquivo):
     return None
 
 
+def desligados(linhas):
+    """As linhas do yml sem o passo ou o job que tem o if: falso de saida (false, ${{ false }}): o GitHub nunca roda."""
+    linhas = list(linhas)
+    for j, linha in enumerate(linhas):
+        m = re.match(r"^(\s*(?:-\s+)?)if:\s*(?:\$\{\{\s*)?false(?:\s*\}\})?\s*$", linha)
+        if not m:
+            continue
+        col = len(m.group(1))  # a coluna das chaves do passo ou do job
+        k = j
+        # o comeco do bloco dono do if: o "- " do passo com as chaves nesta coluna, ou a chave do job, mais a esquerda
+        while "-" not in m.group(1) and k > 0:
+            k -= 1
+            chave = len(linhas[k]) - len(linhas[k].lstrip(" -"))
+            if linhas[k].strip() and (chave < col or chave == col and linhas[k].lstrip(" ").startswith("-")):
+                break
+        borda = len(linhas[k]) - len(linhas[k].lstrip(" "))
+        fim = k + 1
+        while fim < len(linhas) and (not linhas[fim].strip() or len(linhas[fim]) - len(linhas[fim].lstrip(" ")) > borda):
+            fim += 1
+        linhas[k:fim] = [""] * (fim - k)
+    return linhas
+
+
 def roda_no_yml(texto):
     """Os scripts que os passos do testa.yml rodam: os que o run: de cada passo chama pelo python e os que o testa_tudo.py
     chamado ali roda (sem modo, o COMPLETO; com --microfone, o MICROFONE; com --so-stdlib, o STDLIB; com --tela, o
-    fitcheck e, com --base, o compara). Caminho so citado (num echo, num comentario) nao conta."""
-    linhas, runs, i = texto.splitlines(), [], 0
+    fitcheck e, com --base, o compara). Caminho so citado (num echo, num comentario) nao conta, nem o passo ou o job com
+    o if: falso de saida."""
+    linhas, runs, i = desligados(texto.splitlines()), [], 0
     while i < len(linhas):
         m = re.match(r"^(\s*)(?:-\s+)?run:\s*(.*)$", linhas[i])
         i += 1
@@ -153,7 +177,7 @@ def roda_no_yml(texto):
                     continue
                 script, opcoes = args[0].removeprefix("./"), [a.split("=")[0] for a in args[1:]]
                 rodam.add(script)
-                if script == "dev/testa_tudo.py":
+                if script == "dev/testa_tudo.py" and not {"-h", "--help"} & set(opcoes):  # a ajuda nao roda nada
                     if "--tela" in opcoes:
                         rodam.update(["dev/fitcheck.py"] + (["dev/compara.py"] if "--base" in opcoes else []))
                     elif "--areas" not in opcoes:
