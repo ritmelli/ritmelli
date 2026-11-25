@@ -6,7 +6,8 @@ do `App`, chama o mesmo comando. Cada função recebe o `App`; a fila, o histór
 
 | Comando | Rota | A regra que mora no comando |
 | --- | --- | --- |
-| `tocar` | `POST /api/play` | sem o `por_cima` no corpo, o som curto (até `CURTO_MAX_S`) toca por cima da música, só sem `start` e sem `resume`; com ele, o `por_cima` decide |
+| `tocar` | `POST /api/play`, e o `POST /api/library` com `play` de um disco que já está na prateleira | sem o `por_cima` no corpo, o som curto (até `CURTO_MAX_S`) toca por cima da música, só sem `start` e sem `resume`; com ele, o `por_cima` decide (a prateleira manda `start` 0: vai sempre para o prato) |
+| `tocar_baixando` | `POST /api/library` com `play` de um vídeo fora da prateleira | toca na hora pelo stream enquanto o download segue; o arquivo substitui o stream sem cortar |
 | `enfileirar` | `POST /api/queue` | com nada no prato (parado, ou o disco já acabou), o que entra toca na hora, num avanço reservado (se o fim do disco reservou antes, só guarda); pausado ainda é disco no prato |
 | `tocar_da_fila` | `POST /api/queue/play` | a entrada sai da fila e toca |
 | `tirar_da_fila` | `DELETE /api/queue/{qid}` | a parecida tirada pelo usuário não volta nesta sessão |
@@ -16,7 +17,7 @@ do `App`, chama o mesmo comando. Cada função recebe o `App`; a fila, o histór
 | `pausar`, `retomar`, `alternar` | `POST /api/pause`, `/api/resume`, `/api/toggle` | pausar espera o motor confirmar a pausa no limite entre blocos (sem trava e sem prender o laço do servidor) e grava a posição confirmada; o alternar pausa o que toca ou carrega e retoma o resto |
 | `parar` | `POST /api/stop` | o disco parado entra no histórico, e o Anterior toca ele de novo; a posição gravada é a do instante em que ele saiu |
 | `ir_para` | `POST /api/seek` | |
-| `volume` | `POST /api/volume` | grava só o volume da música |
+| `volume` | `POST /api/volume`, e o `vol` do `POST /api/settings` | o limite de 0 a 1; o `/api/volume` grava só o volume da música, e o `/api/settings` grava a configuração do som inteira depois |
 
 ## O avanço da fila
 
@@ -30,6 +31,11 @@ na linha do prato (`Reserva`): há uma só reserva em curso por deck e linha (`A
 - o stream da parecida que não abriu (`_abre_stream`), sem guardar no histórico;
 - a parecida que chegou com o prato parado (`_volta_auto`);
 - o enfileirar com o prato parado, para a entrada que acabou de entrar.
+
+A virada pendente é conciliada num laço só, o `concilia` do `comandos.py`: a cada volta, sob a `fila_lock` e o
+`_qlock`, quem chama vê a virada pendente e decide se ela fecha (ela sai do motor pelo `Engine.take_switch` no mesmo
+trecho, e o `fecha_virada` a tira da fila com o `_qlock` solto) ou se para ali com o que leu. O avanço, o Anterior, o
+Parar, a troca e o vigia da passagem passam por ele.
 
 Sob a `fila_lock` e o `_qlock`, o avanço fecha antes a virada pendente e reserva a entrada para o deck e a linha do
 prato, tirando a passagem preparada (o motor não vira para ela no meio). Tocar corre fora das travas, e a troca
@@ -57,6 +63,15 @@ já saiu da fila, segue para a primeira. O Próximo que concilia a virada passa 
 nesse meio se junta a ele; o grupo só fica com a virada se a entrada dela ainda está na fila. No `_volta_fila` e no
 `_volta_auto`, se tocar falhar, o erro vai para a tela (`engine.error`); em todos, a entrada quebrada sai da fila, menos
 quando outra reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz o avanço.
+
+Três avanços tentam de novo, cada um pela sua regra, e o número de tentativas é o mesmo (`ADVANCE_TRIES`):
+
+- o enfileirar com o prato parado (`toca_se_parado`) tenta de novo quando a reserva de outro que ele esperou não tocou,
+  sempre com o prato que viu ao pôr a entrada na fila: o prato que mudou de linha depois fica como está;
+- a parecida sem stream (`_abre_stream`) captura o prato a cada tentativa e tenta de novo quando cedeu a vez (um seek
+  no meio); com a fila vazia, para o prato pelo `pode` do `stop`, e tenta de novo se o `pode` recusou;
+- o Próximo (`pular`) tenta de novo uma vez só, quando cedeu a vez com o mesmo disco no mesmo deck (um seek), e o
+  grupo passa para a linha do seek.
 
 O `POST /api/queue` põe na fila no laço do servidor, como o tocar e a prateleira (a procura do download do mesmo vídeo
 e a criação de um novo não correm com outro pedido), e só o tocar na hora vai ao executor, com o prato visto no laço
@@ -90,11 +105,26 @@ vai tocar.
 ## As travas
 
 A ordem é a `fila_lock` do `App`, depois o `_lock` do motor (um `RLock`), depois o `_qlock` do motor, nunca ao
-contrário. Com o `_qlock` na mão não se chama método do motor que pegue o `_lock`. A thread do áudio (o `_mixa`) nunca
-pega a `fila_lock` nem o `_lock`. Sob a `fila_lock` não se grava arquivo: o `andamentos.json` e o
+contrário. Duas outras vêm logo antes do `_qlock` e nunca ficam na mão junto da `fila_lock` nem do `_lock`: a
+`proximo_lock` do `App` (os Próximos sobrepostos, no `pular`) e a trava da prateleira (`Library.lock`: o
+`App.remember_pos` pega ela, depois o `_qlock`, e grava o arquivo com o `_qlock` já solto). Com o `_qlock` na mão não
+se chama método do motor que pegue o `_lock`. A thread do áudio (o `_mixa`) nunca pega a `fila_lock` nem o `_lock`.
+Sob a `fila_lock` não se grava arquivo: o `andamentos.json` e o
 `versoes_audio.json` são copiados sob ela e gravados fora dela. A medida entra na memória mesmo se a gravação falha
 (quem lê esses dicionários depois a vê); a troca das parecidas da fila pela versão de áudio e o `andamentos_versao`,
 que faz o Automático reordenar, só vêm com a gravação feita, como antes.
+
+## O que o servidor lê do motor
+
+O servidor e os comandos leem e conferem o prato pela interface do motor, e não pelos campos de dentro dele: a
+`Engine.line()` dá a linha do prato (a `Line`, com o deck e a linha, os mesmos dois campos da `Captura`, da `Reserva`
+e do `Proximo`), e a `Engine.on_line(t)` confere, sob o `_qlock`, se o prato ainda é aquela linha. A virada sai do
+motor pelo `take_switch`, a passagem preparada pelo `drop_prepared` (o `cancelar_pronto` é o mesmo, pegando o
+`_qlock`), o ganho medido antes das travas pelo `gain_for`, o nome novo do disco no prato pelo `update_track`, a
+leitura do estado pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. Toda mudança da fila passa pelo
+`App._change_queue`, que pega o `_qlock`, muda e confere a preparada no mesmo trecho. O que ainda pega as travas do
+motor por fora (o `_qlock` dos trechos do Próximo, do avanço e da troca, e o `_lock` do `_com_motor`) é contado pelo
+`dev/testa_ganchos.py`, que falha se o número sobe; o PR que tira um acesso baixa o teto junto.
 
 ## A leitura do estado
 

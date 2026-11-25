@@ -29,6 +29,7 @@ import numpy as np  # noqa: E402
 from aiohttp.test_utils import make_mocked_request  # noqa: E402
 
 with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, que nao sao deste teste
+    import automatico  # noqa: E402
     import comandos as cmd  # noqa: E402
     import engine as eng  # noqa: E402
     import pastas  # noqa: E402
@@ -553,7 +554,7 @@ def andamento(A, E):
                           else (A.andamentos_path, lambda: A.andamentos))
         antes = dict(ativo())
         medida = v if o_que == "audio" else {"ini": 100.0, "fim": 101.0}
-        with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(server, "ANDAMENTO_APOS_S", -1),
+        with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(automatico, "ANDAMENTO_APOS_S", -1),
               mock.patch.object(server, "save_json", grava), mock.patch.object(A.automatico, "_a_medir", a_medir),
               mock.patch.object(A.automatico, "versao_audio", return_value=v),
               mock.patch.object(A.automatico, "_mede_andamento", return_value={"ini": 100.0, "fim": 101.0}),
@@ -949,6 +950,36 @@ def bloco(A, E):
     confere(st == 200 and E.track["title"] == "Novo d1" and E._deck.track is E.track,
             f"o PATCH da prateleira poe o nome novo na faixa do prato ({st}, {E.track.get('title')})")
     A.lib.update("d1", title="Disco d1")
+
+    # the routes that used to reach past the commands: the POST /api/library with play of a record already on the
+    # shelf goes to the platter from the start (cmd.tocar), and the /api/settings music volume takes the command's rule
+    toca("d1")
+    E.seek(30.0)
+    st, corpo = asyncio.run(asyncio.wait_for(pede_corpo(app, A, "POST", "/api/library",
+                                                         {"youtube_id": "aaaaaaaaaaa", "play": True}), 5))
+    confere(st == 200 and (corpo.get("item") or {}).get("id") == "d3" and no_prato(E) == "d3" and E.pos < 1.0,
+            f"the POST /api/library with play of a shelf record plays it from the start ({st}, {no_prato(E)}, {E.pos})")
+    vol0 = E.vol
+    st, _ = asyncio.run(asyncio.wait_for(pede_corpo(app, A, "POST", "/api/settings", {"vol": 0.25}), 5))
+    confere(st == 200 and E.vol == 0.25 and A.cfg.get("vol") == 0.25,
+            f"the /api/settings music volume goes through the command and is saved ({st}, {E.vol}, {A.cfg.get('vol')})")
+    cmd.volume(A, vol0)
+
+    # the download that fails stops the platter only while it still holds that job's record, with no stream and no
+    # file, checked under the engine's lock (stop's pode)
+    j = A.new_job("failing", True, "bbbbbbbbbbb")
+    E.espera({"id": "job-falha", "title": "loading", "job": j["id"], "path": None, "stream": True,
+              "youtube_id": None, "duration": None, "lufs": -14.0})
+    with mock.patch.object(A, "download", side_effect=RuntimeError("boom")),             contextlib.redirect_stderr(io.StringIO()):
+        A.run_download(j, "bbbbbbbbbbb")
+    confere(E.track is None and j["status"] == "error",
+            f"the failed download stops the platter that waited for it ({no_prato(E)}, {j['status']})")
+    toca("d1")
+    j = A.new_job("failing", True, "ccccccccccc")
+    with mock.patch.object(A, "download", side_effect=RuntimeError("boom")),             contextlib.redirect_stderr(io.StringIO()):
+        A.run_download(j, "ccccccccccc")
+    confere(no_prato(E) == "d1" and E.status() == "playing",
+            f"with another record on the platter, the failed download leaves it playing ({no_prato(E)}, {E.status()})")
 
     # o leitor de uma linha que ja acabou nao marca o fim nem o erro da linha nova
     toca("d1")
@@ -2260,6 +2291,125 @@ def avanco(A, E):
     limpa()
 
 
+def two_nexts_table(A, E):
+    """The rule of two Proximos together (API.md, "Dois Próximos juntos") as a table: the moment the second one
+    arrives, against what happens to the platter between the two, and what each one returns."""
+    print("--- two Proximos together, as a table")
+
+    def fresh():
+        E.cancelar_pronto()
+        E.set_loop(False)
+        E.virou = None
+        cmd.limpar_fila(A)
+        A.parado_sem_fila = None
+        cmd.tocar(A, "d1")
+        ate(lambda: E.status() == "playing")
+        x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+        y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+        return x, y
+
+    def before_reserving(change):
+        """The first holds its Proximo and waits for the fila_lock the test holds: it has not reserved yet."""
+        with A.fila_lock:
+            t1, r1 = em_thread(cmd.pular, A)
+            ate(lambda: A.proximo is not None)
+            t1.join(0.2)
+            change()
+            t2, r2 = em_thread(cmd.pular, A)
+            t2.join(0.2)
+        t1.join(5)
+        t2.join(5)
+        return r1, r2, None
+
+    def while_swapping(change):
+        """The first is inside the engine's load, with the fila_lock and the engine's _lock held."""
+        carrega, inside, release = E.load, threading.Event(), threading.Event()
+
+        def stuck_load(*a, **kw):
+            inside.set()
+            release.wait(5)
+            return carrega(*a, **kw)
+        E.load = stuck_load
+        try:
+            t1, r1 = em_thread(cmd.pular, A)
+            inside.wait(5)
+            change()
+            t2, r2 = em_thread(cmd.pular, A)
+            t2.join(0.3)
+            release.set()
+            t1.join(5)
+            t2.join(5)
+        finally:
+            release.set()
+            del E.load
+        return r1, r2, None
+
+    def while_saving(change):
+        """The first already swapped and is saving the position of the record that left (only its own call waits)."""
+        grava, saving, release = A.remember_pos, threading.Event(), threading.Event()
+
+        def stuck_save(*a, **kw):
+            if not saving.is_set():
+                saving.set()
+                release.wait(5)
+            return grava(*a, **kw)
+        A.remember_pos = stuck_save
+        try:
+            t1, r1 = em_thread(cmd.pular, A)
+            saving.wait(5)
+            change()
+            t2, r2 = em_thread(cmd.pular, A)
+            t2.join(0.5)
+            early = list(r2)  # before the first returns
+            release.set()
+            t1.join(5)
+            t2.join(5)
+        finally:
+            release.set()
+            del A.remember_pos
+        return r1, r2, early
+
+    def after_returning(change):
+        r1 = [cmd.pular(A)]
+        change()
+        return r1, [cmd.pular(A)], None
+
+    def nothing():
+        pass
+
+    def stop_engine():  # the platter stops on a new line (the test holds the fila_lock: the engine's stop, not /api/stop)
+        E.stop()
+
+    # (when the second arrives, what happens to the platter in between, what the first returns, what the second
+    # returns, the platter and the queue at the end); "x" is the first of the queue, "y" the next one
+    table = [
+        ("before the first reserves", before_reserving, "nothing", nothing, "x", "x", "d2", ["d3"]),
+        ("before the first reserves", before_reserving, "stopped", stop_engine, None, "x", "d2", ["d3"]),
+        ("while the first swaps", while_swapping, "nothing", nothing, "x", "x", "d2", ["d3"]),
+        ("while the first saves the position", while_saving, "nothing", nothing, "x", "x", "d2", ["d3"]),
+        ("while the first saves the position", while_saving, "stopped", lambda: cmd.parar(A), "x", "y", "d3", []),
+        ("while the first saves the position", while_saving, "seek", lambda: cmd.ir_para(A, 5.0), "x", "y", "d3", []),
+        ("while the first saves the position", while_saving, "another record", lambda: cmd.tocar(A, "d1"), "x", "y",
+         "d3", []),
+        ("after the first returns", after_returning, "nothing", nothing, "x", "y", "d3", []),
+    ]
+    for when, moment, between, change, first, second, platter, queue in table:
+        x, y = fresh()
+        with contextlib.redirect_stderr(io.StringIO()):
+            r1, r2, early = moment(change)
+
+        def name(r):
+            if not r:
+                return "nothing returned"
+            return "x" if r[0] is x else "y" if r[0] is y else None if r[0] is None else repr(r[0])[:60]
+        got = (name(r1), name(r2), no_prato(E), fila(A))
+        ok = got == (first, second, platter, queue)
+        if early is not None:
+            ok = ok and name(early) == second  # sharing the advance, the second returns before the first
+        confere(ok, f"second Proximo {when}, platter {between}: first {first}, second {second}, platter {platter}, "
+                    f"queue {queue} (got {got}{'' if early is None else f', before the first: {name(early)}'})")
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         audio = Path(tmp) / "audio"  # a pasta dos arquivos de audio tambem e a temporaria: o Library cria a dele
@@ -2271,6 +2421,7 @@ def main():
                 andamento(A, E)
                 bloco(A, E)
                 avanco(A, E)
+                two_nexts_table(A, E)
             finally:
                 E.close()
     if falhas:

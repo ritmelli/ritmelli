@@ -7,6 +7,13 @@ acima dele, entrou gancho novo; abaixo, saiu um, e o TETO desce junto no mesmo P
 modulo escapa da conta, e a regra vale igual (docs/arquitetura/fx.md). So a biblioteca padrao, lendo o texto do
 engine.py: nada e importado nem tocado.
 
+It also ratchets the reaches into the engine's insides from the other modules at the repo root (server.py,
+comandos.py, automatico.py and the rest): every read or call of ._deck, ._qlock, ._lock, ._cancela_passagem, ._pronto,
+._saindo or ._ganho_de on an object other than self (a class's own _lock is its own). The count must equal
+TETO_MOTOR: above it, a new reach went in (use the engine's interface: Engine.line, on_line, take_switch,
+drop_prepared, gain_for, update_track, platter_state, tracks_in_use); below it, the PR lowers TETO_MOTOR with it. The
+number goes to the PR summary (the "summary:" line that dev/testa_tudo.py collects).
+
     python dev/testa_ganchos.py
 
 Sai 1 se a conta nao bate."""
@@ -17,6 +24,9 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 TETO = 26
+# the reaches into the engine's insides from the modules at the root, other than engine.py; it only goes down
+TETO_MOTOR = 14
+INSIDES = {"_deck", "_qlock", "_lock", "_cancela_passagem", "_pronto", "_saindo", "_ganho_de"}
 
 
 def opcionais(arvore):
@@ -81,15 +91,48 @@ def ganchos(arvore, modulo):
     return achados
 
 
+def reaches():
+    """{module: count} of the reaches into the engine's insides (INSIDES) outside engine.py."""
+    out = {}
+    for f in sorted(RAIZ.glob("*.py")):
+        if f.name == "engine.py":
+            continue
+        n = sum(1 for no in ast.walk(ast.parse(f.read_text(encoding="utf-8")))
+                if isinstance(no, ast.Attribute) and no.attr in INSIDES
+                and not (isinstance(no.value, ast.Name) and no.value.id in ("self", "cls")))
+        if n:
+            out[f.name] = n
+    return out
+
+
 arvore = ast.parse((RAIZ / "engine.py").read_text(encoding="utf-8"))
 modulos = opcionais(arvore)
 conta = len(set().union(*(ganchos(arvore, m) for m in modulos))) if modulos else 0
 print(f"modulos opcionais no engine.py: {len(modulos)}; ganchos: {conta} (TETO {TETO})")
+falhou = False
 if conta > TETO:
     print(f"FALHA o engine.py ganhou {conta - TETO} gancho(s) para o modulo de fora do repo: o que ele precisa passa "
           "pelo que ja existe (docs/arquitetura/fx.md)")
-    sys.exit(1)
-if conta < TETO:
+    falhou = True
+elif conta < TETO:
     print(f"FALHA saiu gancho: baixe o TETO do dev/testa_ganchos.py para {conta} neste mesmo PR")
+    falhou = True
+else:
+    print("ok    os ganchos para o modulo de fora do repo nao cresceram")
+
+por_modulo = reaches()
+dentro = sum(por_modulo.values())
+detalhe = ", ".join(f"{k} {v}" for k, v in por_modulo.items()) or "none"
+print(f"summary: reaches into the engine's insides outside engine.py: {dentro} (ceiling {TETO_MOTOR}; {detalhe})")
+if dentro > TETO_MOTOR:
+    print(f"FALHA {dentro - TETO_MOTOR} new reach(es) into the engine's insides: go through the engine's interface "
+          "(docs/arquitetura/comandos.md)")
+    falhou = True
+elif dentro < TETO_MOTOR:
+    print(f"FALHA fewer reaches into the engine's insides: lower TETO_MOTOR in dev/testa_ganchos.py to {dentro} in this "
+          "same PR")
+    falhou = True
+else:
+    print("ok    the reaches into the engine's insides did not grow")
+if falhou:
     sys.exit(1)
-print("ok    os ganchos para o modulo de fora do repo nao cresceram")

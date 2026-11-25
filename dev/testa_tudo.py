@@ -233,13 +233,16 @@ def executa(cmd, limite=LIMITE_S, **kw):
 
 
 def roda(titulo, lista, completo):
-    """Roda cada teste da lista. Volta (as falhas, as linhas do markdown)."""
-    falhas, tabela, md = [], [], []
+    """Roda cada teste da lista. Volta (as falhas, as linhas do markdown). A test's "summary: <text>" line goes to the
+    summary as a bullet (a number the PR shows, like the ratchet of dev/testa_ganchos.py)."""
+    falhas, tabela, md, numeros = [], [], [], []
     t0 = time.monotonic()
     for t in lista:
         ini = time.monotonic()
         cod, saida = executa([sys.executable, t])
         dt = time.monotonic() - ini
+        numeros += [f"- `{t}`: {linha[len('summary: '):].strip()}" for linha in saida.splitlines()
+                    if linha.startswith("summary: ")]
         motivo = None
         if cod != 0:
             motivo = f"sai {cod}" if isinstance(cod, int) else cod
@@ -256,6 +259,8 @@ def roda(titulo, lista, completo):
     passou = len(lista) - len(falhas)
     print(f"{passou} de {len(lista)} passaram em {total:.0f} s", flush=True)
     md = [f"**{titulo}:** {'✅' if not falhas else '❌'} {passou} de {len(lista)} passaram, em {total:.0f} s", ""] + md
+    if numeros:
+        md += [""] + numeros
     md += ["", "<details><summary>Cada teste</summary>", "", "| | Teste | Tempo |", "| --- | --- | --- |"] + tabela
     md += ["", "</details>"]
     return falhas, md
