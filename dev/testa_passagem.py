@@ -75,6 +75,8 @@ SR, BLOCK = eng.SR, eng.BLOCK
 FAIXA_A = (200.0, 500.0)    # os estalos de A
 FAIXA_B = (3000.0, 6000.0)  # os de B
 SOS_A, SOS_B = filtro(FAIXA_A, SR), filtro(FAIXA_B, SR)
+TONS_A, TOM_B = (1013.0, 1201.0, 1427.0), 1800.0  # os tons fixos por baixo dos ataques
+SOS_TOM_A, SOS_TOM_B = filtro((1150.0, 1250.0), SR), filtro((1750.0, 1850.0), SR)  # um tom de A, e o de B
 TAU_B = 0.1        # a primeira batida de B, depois do comeco do som dela (o tom de baixo comeca no 0)
 FOLGA_VIRADA = 0.010  # a virada medida pode cair isso fora da janela (um bloco)
 ALINHA = 0.020     # cada ataque forte de B nas primeiras batidas, no maximo isso da regua de A
@@ -96,7 +98,7 @@ PARES = [
     Par("meio", 70.0, 140.0, "fade", "fade", True),
     Par("recusada", 90.0, 110.0, "fade", "recusada", False),
 ]
-RECUSA = "tempos far apart"  # o motivo da recusa no log do motor, no par recusada
+RECUSA = "transition: beats not aligned: tempos far apart,"  # a recusa por andamento no log do motor (par recusada)
 RAMOS = {"seco": "final seco no tempo", "fade": "fade-out no tempo, B esticada",
          "dois": "fade-out no tempo, os dois esticados", "recusada": "so de volume (o plano no tempo recusou)"}
 
@@ -174,14 +176,14 @@ def monta(par, pasta):
         nivel = np.where(t < some, 10 ** (db / 20), 0.0)
         fixa.update(queda=queda, alvo=queda, inicio=queda - ANTES_S)
     n = int(dur * SR)
-    xa = _fundo(n, 0.14, (1013.0, 1201.0, 1427.0))
+    xa = _fundo(n, 0.14, TONS_A)
     for t in ts_a:
         _poe(xa, _estalo(rng, FAIXA_A), t)
     xa *= nivel
     # B: o tom desde o comeco, os estalos desde TAU_B (no par meio, o fraco no meio de cada batida, 12 dB abaixo)
     dur_b = 75.0  # a volta lenta de B ao andamento dela leva ate o RAMPA_MAX_S do motor (60 s), e tem de caber em B
     nb = int(dur_b * SR)
-    xb = _fundo(nb, 0.085, (1800.0,))
+    xb = _fundo(nb, 0.085, (TOM_B,))
     ts_b = TAU_B + np.arange(int((dur_b - TAU_B - 0.2) / pb)) * pb
     for i, t in enumerate(ts_b):
         _poe(xb, _estalo(rng, FAIXA_B) * (10 ** (-12 / 20) if par.meio and i % 2 else 1.0), t)
@@ -353,7 +355,7 @@ def confere(par, pasta, verboso):
     falhas = []
     if ramo != par.ramo:
         falhas.append(f"o ramo foi {RAMOS[ramo]!r}, e o esperado {RAMOS[par.ramo]!r} ({decisao})")
-    elif ramo == "recusada" and RECUSA not in decisao:
+    elif ramo == "recusada" and not decisao.startswith(RECUSA):
         falhas.append(f"a recusa nao foi por andamento ({decisao})")
     lo, hi = fx["janela"]
     if not lo - FOLGA_VIRADA <= virada_a <= hi + FOLGA_VIRADA:
@@ -362,14 +364,22 @@ def confere(par, pasta, verboso):
     yb = signal.sosfiltfilt(SOS_B, x)
     if ramo == "recusada":
         # a passagem de volume no audio: B nao soa antes da virada (a faixa dela fica 30 dB abaixo do que soa depois),
-        # entra depois dela, e A some
+        # entra depois dela, e A some. E e cruzada, e nao corte: pelos tons fixos, A ainda soa logo depois da virada,
+        # enquanto B entra baixa e sobe
         v = vo / SR
+        ta, tb = signal.sosfiltfilt(SOS_TOM_A, x), signal.sosfiltfilt(SOS_TOM_B, x)
+        a_fica = _rms_db(ta, v + 0.2, v + 0.6) - _rms_db(ta, v - 0.5, v)
+        b_sobe = _rms_db(tb, v + 1.5, v + 2.0) - _rms_db(tb, v + 0.05, v + 0.35)
         sobe = _rms_db(yb, v + 1.0, v + 3.0) - _rms_db(yb, v - 3.0, v)
         depois = ataques_b(yb, vo, v + 3.0, fx["vies"][1])
         ya = signal.sosfiltfilt(SOS_A, x)
         cai = _rms_db(ya, v - 1.0, v) - _rms_db(ya, v + 2.5, v + 3.5)
         msgs.append(f"B sobe {sobe:.0f} dB e tem {len(depois[0]) + len(depois[1])} ataques nos 3 s depois da virada; "
-                    f"A cai {cai:.0f} dB")
+                    f"A cai {cai:.0f} dB; sobrepondo, A a {a_fica:+.0f} dB logo depois e B {b_sobe:+.0f} dB em 2 s")
+        if a_fica < -15:
+            falhas.append(f"A ficou a {a_fica:.0f} dB logo depois da virada: corte, e nao cruzamento")
+        if b_sobe < 6:
+            falhas.append(f"B subiu so {b_sobe:.0f} dB na sobreposicao: entrou cheia, e nao cruzada")
         if sobe < 30:
             falhas.append(f"a faixa de B subiu so {sobe:.0f} dB na virada")
         if len(depois[0]) + len(depois[1]) < 4:

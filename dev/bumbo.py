@@ -23,7 +23,8 @@ pela posicao (com o esticamento e a virada do motor no meio, que e o que se conf
 Veredito (e saida): NO TEMPO (0, bumbo no bumbo), CONTRATEMPO ou FORA (1), SEM PLANO (a passagem foi so de
 volume) ou SEM BUMBO (pouco bumbo para julgar) (3). O teste que pegou o contratempo do Overdose (21/10): com o
 codigo de antes da correcao (--codigo numa pasta com o engine.py e o batida.py do commit c8930a5a e o fx.py), os
-tres pares com bumbo dao CONTRATEMPO; com o de hoje, NO TEMPO.
+tres pares com bumbo dao CONTRATEMPO; com o de hoje, NO TEMPO. O --codigo precisa de um motor com o Engine._mixa: o
+daquele commit so tinha o _out_cb, e para ele vale o dev/bumbo.py da mesma epoca.
 
     python dev/bumbo.py <arquivo A> <arquivo B> [--codigo <pasta com engine.py e batida.py>]
 
