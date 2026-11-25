@@ -2363,12 +2363,13 @@ def two_nexts_table(A, E):
 
         def stuck_load(*a, **kw):
             inside.set()
-            release.wait(5)
+            release.wait(30)  # only the test releases it (the finally too)
             return carrega(*a, **kw)
         E.load = stuck_load
         try:
             t1, r1 = em_thread(cmd.pular, A)
-            inside.wait(5)
+            if not inside.wait(5):
+                confere(False, "the first Proximo never got into the engine's load")
             change()
             t2, r2 = arrive_second()
             release.set()
@@ -2386,12 +2387,13 @@ def two_nexts_table(A, E):
         def stuck_save(*a, **kw):
             if not saving.is_set():
                 saving.set()
-                release.wait(5)
+                release.wait(30)  # only the test releases it (the finally too)
             return grava(*a, **kw)
         A.remember_pos = stuck_save
         try:
             t1, r1 = em_thread(cmd.pular, A)
-            saving.wait(5)
+            if not saving.wait(5):
+                confere(False, "the first Proximo never got to saving the position")
             change()
             t2, r2 = em_thread(cmd.pular, A)
             t2.join(5)  # in every row the second no longer depends on the first, which is still saving

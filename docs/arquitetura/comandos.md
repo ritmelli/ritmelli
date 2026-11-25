@@ -65,7 +65,7 @@ nesse meio se junta a ele; o grupo só fica com a virada se a entrada dela ainda
 `_volta_auto`, se tocar falhar, o erro vai para a tela (`engine.error`); em todos, a entrada quebrada sai da fila, menos
 quando outra reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz o avanço.
 
-Três avanços tentam de novo, cada um pela sua regra, e o número de tentativas é o mesmo (`ADVANCE_TRIES`):
+Três avanços tentam de novo, cada um pela sua regra; os dois primeiros até `ADVANCE_TRIES` vezes:
 
 - o enfileirar com o prato parado (`toca_se_parado`) tenta de novo quando a reserva de outro que ele esperou não tocou,
   sempre com o prato que viu ao pôr a entrada na fila: o prato que mudou de linha depois fica como está;
@@ -124,7 +124,8 @@ motor pelo `take_switch`, a passagem preparada pelo `drop_prepared` (o `cancelar
 `_qlock`), o ganho medido antes das travas pelo `gain_for`, o nome novo do disco no prato pelo `update_track`, a
 leitura do estado pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. Toda mudança da fila passa pelo
 `App._change_queue`, que pega o `_qlock`, muda e confere a preparada no mesmo trecho. O que ainda pega as travas do
-motor por fora (o `_qlock` dos trechos do Próximo, do avanço e da troca, e o `_lock` do `_com_motor`) é contado pelo
+motor por fora (o `_qlock` dos trechos do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
+`_solta_reserva` e do `_change_queue`, e o `_lock` do `_com_motor`) é contado pelo
 `dev/testa_ganchos.py`, que falha se o número sobe; o PR que tira um acesso baixa o teto junto.
 
 ## A leitura do estado

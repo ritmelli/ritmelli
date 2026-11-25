@@ -305,11 +305,12 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 
 ### Dois Próximos juntos
 
-O `POST /api/next` que chega enquanto outro ainda corre divide o avanço dele: os dois tocam uma entrada só e respondem
-a mesma. A janela vai da chegada do primeiro até o comando dele terminar, depois de gravar a posição do disco que
-saiu; a resposta dele sai logo depois, e o pedido que chega nesse intervalo já é um Próximo novo. Ela vale enquanto o
-prato segue na linha do primeiro: o mesmo disco, sem pulo na barra, ou a linha que o avanço dele acabou de publicar.
-Fora dela, o segundo avança sozinho, como um Próximo novo ("depois de o primeiro responder", abaixo):
+O `POST /api/next` que roda enquanto outro ainda corre divide o avanço dele: os dois tocam uma entrada só e respondem a
+mesma. O que conta é quando cada comando roda (no executor do servidor), não quando o pedido chegou: a janela vai de
+quando o comando do primeiro começa até ele terminar, depois de gravar a posição do disco que saiu. A resposta dele sai
+logo depois, e o comando que só roda depois disso já é um Próximo novo. Ela vale enquanto o prato segue na linha do
+primeiro: o mesmo disco, sem pulo na barra, ou a linha que o avanço dele acabou de publicar. Fora dela, o segundo avança
+sozinho, como um Próximo novo ("depois de o primeiro responder", abaixo):
 
 | o segundo chega | o prato entre os dois | o primeiro responde | o segundo responde |
 |---|---|---|---|

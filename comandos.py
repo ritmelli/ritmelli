@@ -144,7 +144,7 @@ def play_downloading(A, j, alvo, meta):
 def update_record(A, iid, **fields):
     """The shelf record iid gets fields (the PATCH /api/library/{iid}: the title, the "rapido"), and the platter's
     track too when it is that record, so the state shows the new name right away (Engine.update_track, under the
-    engine's lock). Returns the record, or None if it is not on the shelf."""
+    engine's _qlock). Returns the record, or None if it is not on the shelf."""
     it = A.lib.update(iid, **fields)
     if it:
         A.engine.update_track(it["id"], **fields)

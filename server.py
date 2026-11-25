@@ -886,8 +886,7 @@ class App:
                 tr = e.track
                 return (tr is not None and tr.get("job") == j["id"]
                         and (not tr.get("path") or e.esperando_arquivo()))
-            if no_source():
-                e.stop(pode=no_source)  # sem stream e sem arquivo: o prato nao fica carregando para sempre
+            e.stop(pode=no_source)  # sem stream e sem arquivo: o prato nao fica carregando para sempre
 
     # tocar ----------------------------------------------------------------
     def remember_pos(self, cap=None, pausa=None):
