@@ -1992,7 +1992,8 @@ async def body(request):
             "The remote session token is invalid or has expired.")}), content_type="application/json")
     try:
         b = await request.json()
-    except (ValueError, UnicodeDecodeError):  # o JSONDecodeError, e o inteiro com digitos demais
+    except (ValueError, LookupError, RecursionError):  # o JSON quebrado, o inteiro com digitos demais, o UTF-8
+        # torto (o UnicodeDecodeError e um ValueError), o charset que nao existe e o aninhamento fundo demais
         raise web.HTTPBadRequest(text="The body must be JSON in UTF-8.")
     # toda rota le campos: uma lista ou um numero dava o erro 500, e o /api/parear e aberto a rede de casa
     if not isinstance(b, dict):
@@ -2027,9 +2028,9 @@ def build(app_state):
         ("/api/metricas", "Sending usage data and error reports can only be turned on or off on the computer."),
     )
 
-    def recusa(request, papel, pode):
+    def recusa(request, papel, pode, chave):
         if papel == "publico" and "celular" in pode:
-            chave = par.chave_do(request.cookies)
+            # chave: a do cookie, ja sem a que nao e ASCII (o guard); com uma, o PC desconectou este aparelho
             return web.json_response({
                 "ok": False, "parear": True, "desconectado": bool(chave),
                 "error": i18n.msg("server.pair.required", "This phone isn't connected to Ritmelli. On the "
@@ -2057,6 +2058,7 @@ def build(app_state):
         rota = getattr(request.match_info.route.resource, "canonical", None)  # /api/library/{iid}, sem o id
         pode = perm.papeis(request.method, rota)
         token = request.headers.get(perm.REMOTO)
+        chave = None
         if token is not None:
             # o cabecalho do remoto nunca cai no papel do PC: token que nao vale, ou de fora do 127.0.0.1, e 401
             if not (request.remote == "127.0.0.1" and A.remotos.vale(token)):
@@ -2074,7 +2076,7 @@ def build(app_state):
             pareado = A.celulares.confere(chave) if usa else A.celulares.vale(chave)
             papel = "celular" if pareado else "publico"
         if papel not in pode:
-            return recusa(request, papel, pode)
+            return recusa(request, papel, pode, chave)
         request["papel"], request["remoto"] = papel, token
         if papel == "remoto":
             request["ainda_vale"] = ainda_vale  # o body() confere de novo depois de ler o corpo

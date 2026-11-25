@@ -129,9 +129,10 @@ def rotas_do_fonte():
             continue
         nome, dono = no.func.attr, no.func.value
         dono_nome = dono.id if isinstance(dono, ast.Name) else getattr(dono, "attr", None)
-        if nome == "add_static" or (dono_nome == "router" and nome.startswith("add_") and nome != "add_routes"):
+        estatico = nome == "add_static" or (nome == "static" and dono_nome in ("r", "web"))
+        if estatico or (dono_nome == "router" and nome.startswith("add_") and nome != "add_routes"):
             c = caminho(no.args[0]) if no.args else None
-            if nome == "add_static" and c is not None:
+            if estatico and c is not None:
                 out.add(("GET", c.rstrip("/")))
             else:
                 ilegiveis.append(f"linha {no.lineno}: {ast.unparse(no)[:80]}")
@@ -203,7 +204,7 @@ async def papeis_no_guard():
                                   snapshot=lambda: {"status": "idle"}, public_jobs=lambda: [],
                                   lib=types.SimpleNamespace(version=1, public=lambda: [],
                                                             get=lambda i: {"id": i} if i == "12345678901" else None),
-                                  save_cfg=lambda: None)
+                                  grava_cfg=lambda **k: None)
         app = server.build(A)
         A.enfileirar = lambda b, remoto=False: server.App.enfileirar(A, b, remoto)  # o de verdade: so recusa aqui
         guard = app.middlewares[0]
@@ -309,7 +310,8 @@ async def papeis_no_guard():
         torto = "ç" * 43  # fora do ASCII (o byte cru, que vira substituto, vai no --mock de verdade)
         confere(await status("GET", "/t/ritmelli/", cookie=torto) == 200, "o cookie que nao e ASCII: o tema abre")
         resp, j, _ = await manda("GET", "/api/state", cookie=torto)
-        confere(resp.status == 401 and j.get("parear"), f"o cookie que nao e ASCII: a API pede o codigo ({resp.status})")
+        confere(resp.status == 401 and j.get("parear") and not j.get("desconectado"),
+                f"o cookie que nao e ASCII: a API pede o codigo, sem dizer que o PC desconectou ({resp.status})")
 
         # o remoto: o token da sessao, so do 127.0.0.1, so o vocabulario
         token = A.remotos.abre()
@@ -320,21 +322,22 @@ async def papeis_no_guard():
                      ("POST", "/api/shutdown"), ("GET", "/api/pareamento"), ("POST", "/api/parear"),
                      ("GET", "/api/themes"), ("POST", "/api/nao-existe"), ("GET", "/t/ritmelli/")):
             confere(await status(m, c, de=pc, token=token) == 403, f"o remoto: {m} {c} fora da lista (403)")
-        # o inteiro com digitos demais no JSON: 400, nao 500
-        t = mock.Mock()
-        t.get_extra_info.side_effect = lambda nome, d=None: (pc, 50000) if nome == "peername" else d
-        carga = streams.StreamReader(mock.Mock(_reading_paused=False), 2 ** 16, loop=asyncio.get_running_loop())
-        carga.feed_data(b'{"vol": 1' + b"0" * 5000 + b"}")
-        carga.feed_eof()
-        req = make_mocked_request("POST", "/api/volume", headers={"Host": f"{pc}:{porta}",
-                                                                  "Content-Type": "application/json"},
-                                  transport=t, payload=carga, app=app)
-        req._match_info = await app.router.resolve(req)
-        try:
-            st = (await guard(req, rota[("POST", "/api/volume")])).status
-        except web.HTTPException as ex:
-            st = ex.status
-        confere(st == 400 and E.vol == 0.5, f"o inteiro com 5000 digitos no corpo: {st}")
+        # o corpo torto: o inteiro com digitos demais, o aninhamento fundo e o charset que nao existe sao 400, nao 500
+        for dados, tipo in ((b'{"vol": 1' + b"0" * 5000 + b"}", "application/json"), (b"[" * 100000, "application/json"),
+                            (b'{"vol": 0.9}', "application/json; charset=nope")):
+            t = mock.Mock()
+            t.get_extra_info.side_effect = lambda nome, d=None: (pc, 50000) if nome == "peername" else d
+            carga = streams.StreamReader(mock.Mock(_reading_paused=False), 2 ** 20, loop=asyncio.get_running_loop())
+            carga.feed_data(dados)
+            carga.feed_eof()
+            req = make_mocked_request("POST", "/api/volume", headers={"Host": f"{pc}:{porta}", "Content-Type": tipo},
+                                      transport=t, payload=carga, app=app)
+            req._match_info = await app.router.resolve(req)
+            try:
+                st = (await guard(req, rota[("POST", "/api/volume")])).status
+            except web.HTTPException as ex:
+                st = ex.status
+            confere(st == 400 and E.vol == 0.5, f"o corpo torto ({dados[:12]!r}..., {tipo}): {st}")
 
         # a sessao acaba enquanto o corpo chega: o comando nao vale mais, nem com o corpo invalido (401, nao 400)
         for dados in (b'{"vol": 0.9}', b'[1, 2]', b'{quebrado'):
@@ -489,7 +492,8 @@ def ao_vivo(srv):
     s, _ = de_casa(srv, "GET", "/t/ritmelli/", cab=biscoito)
     confere(s == 200, f"a rede de casa com o cookie de bytes tortos: o tema abre ({s})")
     s, j = de_casa(srv, "GET", "/api/state", cab=biscoito)
-    confere(s == 401 and isinstance(j, dict) and j.get("parear"), f"e o /api/state pede o codigo ({s})")
+    confere(s == 401 and isinstance(j, dict) and j.get("parear") and not j.get("desconectado"),
+            f"e o /api/state pede o codigo, sem dizer que o PC desconectou ({s})")
     s, _ = de_casa(srv, "POST", "/api/play", {}, origem="127.0.0.1", cab={"Host": "ritmelli.example"})
     confere(s == 403, f"outro Host (DNS rebinding), mesmo do 127.0.0.1: 403 ({s})")
     s, _ = de_casa(srv, "POST", "/api/play", {}, origem="127.0.0.1", cab={"Origin": "http://outro.example"})

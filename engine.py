@@ -3072,6 +3072,7 @@ class Engine:
     def sinal(self):
         """O bipe curto de teste no microfone (o que o jogo ouve), com as pontas suaves. Com a voz cortada, nada."""
         if self.mic_mute:
+            self._sinal = None  # o de antes tambem nao toca quando a voz voltar
             return False
         n = int(SINAL_S * SR)
         t = np.arange(n, dtype=np.float32) / SR
