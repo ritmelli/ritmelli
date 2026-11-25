@@ -211,7 +211,8 @@ class TestaMicrofone(unittest.TestCase):
             anel.desliga()
         self.assertTrue(motor.voz, f"a voz crua a {taxa} Hz nao chegou ao motor")
         self.assertTrue(all(len(b) == eng.BLOCK for b in motor.voz), "a voz chega em blocos do motor")
-        self.assertGreater(time.monotonic() - motor._voz_anel_em, 0)
+        # >= 0: no Windows o monotonic anda em tiques de ~15,6 ms, e a ultima voz pode ser do mesmo tique
+        self.assertGreaterEqual(time.monotonic() - motor._voz_anel_em, 0)
         self.assertLess(time.monotonic() - motor._voz_anel_em, 1.0, "o motor nao soube da voz do filtro")
         x = np.concatenate(motor.voz)
         return x
