@@ -4,7 +4,9 @@ pasta, ela mesma. O download de mentira do --mock copia o disco mais curto com o
 virava disco falso na prateleira. A LOCALAPPDATA e temporaria: nada de verdade e tocado.
 
 E que o --mock nao vai a rede sozinho (#128), pelo servidor de verdade: so com as bibliotecas dele (a esteira roda este
-teste antes de instalar, e essa parte fica de fora).
+teste antes de instalar, e essa parte fica de fora). O servidor sobe pelo dev/so_mock.py, so da biblioteca padrao: a
+porta nunca e a 8799 nem uma em que alguem ja responde, e cada pedido, o /api/shutdown inclusive, so vai enquanto o
+filho esta vivo e responde como --mock; se nao, so ele sai, pelo handle.
 
     python dev/testa_mock.py
 
@@ -18,11 +20,13 @@ import sys
 import tempfile
 import threading
 import time
-import urllib.request
 import wave
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import so_mock  # noqa: E402
+
 falhas = []
 
 
@@ -101,18 +105,7 @@ def sem_rede():
                     tentativas.append("?")
     threading.Thread(target=atende, daemon=True).start()
     proxy = f"http://127.0.0.1:{arm.getsockname()[1]}"
-    direto = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # o teste fala com o servidor sem a armadilha
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        porta = s.getsockname()[1]
-
-    def api(metodo, rota, corpo=None, espera=10):
-        req = urllib.request.Request(f"http://127.0.0.1:{porta}{rota}", method=metodo,
-                                     data=None if corpo is None else json.dumps(corpo).encode(),
-                                     headers={"Content-Type": "application/json"})
-        with direto.open(req, timeout=espera) as r:
-            return json.load(r)
-
+    porta = so_mock.free_port()  # o so_mock fala com o servidor sem proxy: sem a armadilha
     t = Path(tempfile.mkdtemp(prefix="testa_mock_rede_"))
     try:
         dados, lib = t / "dados", t / "local" / "Ritmelli" / "library"
@@ -132,21 +125,17 @@ def sem_rede():
         env = {**os.environ, "LOCALAPPDATA": str(t / "local"), "HTTP_PROXY": proxy, "HTTPS_PROXY": proxy,
                "ALL_PROXY": proxy, "NO_PROXY": "127.0.0.1,localhost"}
         with open(t / "servidor.log", "w", encoding="utf-8") as log:
-            srv = subprocess.Popen([sys.executable, str(RAIZ / "server.py"), "--mock", "--no-browser", "--port",
-                                    str(porta), "--data-dir", str(dados)], cwd=RAIZ, env=env, stdout=log,
-                                   stderr=subprocess.STDOUT)
             try:
-                subiu, limite = False, time.monotonic() + 60
-                while not subiu and srv.poll() is None and time.monotonic() < limite:
-                    try:
-                        api("GET", "/api/state", espera=2)
-                        subiu = True
-                    except OSError:
-                        time.sleep(0.2)
-                if not subiu:   # o servidor caiu ou nao respondeu: o fim do log diz por que
-                    print((t / "servidor.log").read_text(encoding="utf-8", errors="replace")[-1500:])
-                    confere(False, "o servidor --mock subiu para o teste sem rede (o log dele esta acima)")
-                    return
+                srv = so_mock.sobe([sys.executable, str(RAIZ / "server.py"), "--mock", "--no-browser", "--port",
+                                    str(porta), "--data-dir", str(dados)], porta, limite=60, cwd=RAIZ, env=env,
+                                   stdout=log, stderr=subprocess.STDOUT)
+            except so_mock.Recusa as ex:   # a porta tomada, o servidor caiu ou nao respondeu: o fim do log diz por que
+                arm.close()
+                print((t / "servidor.log").read_text(encoding="utf-8", errors="replace")[-1500:])
+                confere(False, f"o servidor --mock subiu para o teste sem rede: {ex} (o log dele esta acima)")
+                return
+            api = srv.api
+            try:
                 api("POST", "/api/play", {"id": "d1"})
                 api("POST", "/api/aquece", {})  # a mina avisando que alguem comecou a falar
                 time.sleep(8)  # as capas a cada 2 s, o Automatico em 0,5 s, o aquecimento logo ao subir
@@ -162,13 +151,10 @@ def sem_rede():
                     time.sleep(0.1)
                 confere(len(tentativas) > len(sozinho), f"a busca que a pessoa pede cai na armadilha: ela pega "
                         f"({tentativas[len(sozinho):][:2]})")
+            except so_mock.Recusa as ex:   # o filho caiu, ou a porta deixou de responder como --mock
+                confere(False, f"o teste sem rede parou: {ex}")
             finally:
-                try:
-                    api("POST", "/api/shutdown", espera=5)
-                    srv.wait(15)
-                except (OSError, subprocess.TimeoutExpired):
-                    srv.kill()
-                    srv.wait()
+                srv.encerra(15)
                 arm.close()
     finally:
         # o servidor saiu, mas o ffmpeg que media a sonoridade de um disco ainda pode estar com o .wav aberto: a pasta

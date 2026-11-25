@@ -1,5 +1,13 @@
 # As ferramentas de `dev/`
 
+As ferramentas de `dev/` que abrem o tema ou mandam comandos (o `shot`, o `fitcheck`, o
+`perfcheck`, o `celular`, o `compara`, o `previews` e o `testa_mock`) só falam com um servidor
+`--mock`, pelo `dev/so_mock.py` (só da biblioteca padrão): ele responde `"mock": true` no
+`/api/state`, também no 401 do pareamento, e elas recusam a porta 8799, o servidor sem o
+marcador e o redirecionamento para outra origem. Os medidores que abrem o anel de verdade
+(`dev/mede_folga.py`, `dev/mede_voz_ao_vivo.py`) são manuais, num Windows de teste, e saem
+antes de abrir o anel quando a 8799 aceita conexão.
+
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
 deitado), `dev/compara.py` (gate de "o celular não mudou": prints do tema em estados fixos,

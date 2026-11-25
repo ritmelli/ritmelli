@@ -8,6 +8,7 @@ import base64
 import collections
 import contextlib
 import ctypes
+import datetime
 import json
 import os
 import queue
@@ -257,6 +258,25 @@ def medir_fim(niv):
 
 FIM_RETRATO_S = 40.0       # o resumo do fim no log: as janelas de FIM_JANELA_S nos ultimos isso antes do som acabar
 FIM_JANELA_S = 5.0
+PASSAGENS_DIAS = 7         # logs/passagens/ guarda os registros dos ultimos isso de dias; os mais velhos saem
+
+
+def poda_passagens(pasta, hoje, dias=PASSAGENS_DIAS):
+    """Apaga de logs/passagens/ os AAAA-MM-DD.jsonl de mais de `dias` dias antes de `hoje` (um date) pelo nome, sem
+    mexer em outro arquivo. Sem isto a pasta crescia um arquivo por dia de uso para sempre. Volta os nomes apagados."""
+    apagados = []
+    for p in pasta.glob("*.jsonl"):
+        try:
+            dia = datetime.date.fromisoformat(p.stem)
+        except ValueError:
+            continue
+        if p.name == f"{dia.isoformat()}.jsonl" and (hoje - dia).days > dias:  # nem 20260101 nem .JSONL
+            try:
+                p.unlink()
+                apagados.append(p.name)
+            except OSError:
+                pass  # aberto por outro programa: sai na proxima vez
+    return sorted(apagados)
 
 
 def retrato_fim(niv, fim):
@@ -992,6 +1012,8 @@ class Injetor:
         self._preset_ok = False  # o efeito tem preset (o filtro roda)
         self._preset_em = 0.0    # monotonic da escrita
         self.efeito_no_filtro = False
+        self.voz_taxa = 0  # a taxa do microfone alvo, copiada do anel pela thread: quem esta fora dela le daqui, e nao
+        # da vista, que a thread fecha quando o anel falha
         self._th = threading.Thread(target=self._loop, daemon=True, name="ritmelli-microfone")
         self._th.start()
 
@@ -1046,7 +1068,7 @@ class Injetor:
         (efeito_no_filtro), ainda nao respondeu (_fx_pendente: a voz crua segue) ou recusou (a voz vai pelo app)."""
         mo = self.motor
         eid = mo._fx_id  # noqa: SLF001
-        taxa = int(m.a.voz_taxa)
+        taxa = self.voz_taxa = int(m.a.voz_taxa)
         chave = (eid, taxa, preset.geracao())
         if chave != self._preset:
             dados = preset.pede(eid, taxa) if eid and taxa else None
@@ -1068,6 +1090,7 @@ class Injetor:
         self.motor._fx_filtro = self.motor._fx_pendente = False  # noqa: SLF001
         self.motor._pista_viva = False  # noqa: SLF001
         self._preset = None
+        self.voz_taxa = 0  # o anel que vier depois diz a dele
 
     def _voz(self, m):
         """A voz crua que chegou, a 48 kHz, em blocos de BLOCK para o motor (o que sobra fica para a proxima); com o
@@ -1148,9 +1171,17 @@ class Injetor:
                                                                            "back through the microphone, close and "
                                                                            "reopen Ritmelli.",
                                                 reason=str(ex)[:160])
-                    self.m = None
+                    # o anel que falhou fecha (o mapa e o handle nao ficam abertos ate o app sair) e o _abre tenta um
+                    # novo; o estado do efeito zera mesmo se o fechamento falhar
+                    falhou, self.m = self.m, None
                     servidos = ()
-                    self._solta_efeito()
+                    try:
+                        if falhou is not None:
+                            falhou.fecha()
+                    except Exception:  # noqa: BLE001, S110 - o erro que vale ja esta na tela
+                        pass
+                    finally:
+                        self._solta_efeito()
                     time.sleep(0.5)
                 time.sleep(0.002)
         finally:
@@ -1263,6 +1294,7 @@ class Engine:
         self._onda_lendo = set()  # os ids com a onda do arquivo na fila ou sendo lida
         self._visor_pas = None   # a passagem medida deste para a proxima
         self._visor_feita = None  # a que trouxe este disco, enquanto o tema ainda desenha a sobreposicao
+        self._passagens_dia = None  # o dia (AAAA-MM-DD) em que o _registra_fim ja podou logs/passagens/
         self._mic = collections.deque()
         self._mon = collections.deque()
         self._stack = None
@@ -1621,11 +1653,11 @@ class Engine:
             raise i18n.Recusa("server.effect.unknown", "Unknown voice effect \"{id}\".", id=effect_id) from None
         cadeia = self._cadeia(effect_id) if nova is not None else None
         inj = self._injetor
-        m = inj.m if inj is not None else None
-        if nova is not None and m is not None and m.a.voz_taxa:
+        taxa = inj.voz_taxa if inj is not None and inj.m is not None else 0
+        if nova is not None and taxa:
             # o preset do filtro fica pronto aqui, e nao na thread da saida para o jogo (o do Locutor projeta um FIR de
             # 1023, ate ~70 ms): o Injetor so acha o efeito novo depois disso
-            preset.preset(effect_id, int(m.a.voz_taxa))
+            preset.preset(effect_id, taxa)
         self.effect = effect_id
         self._fx_falta_dito = False
         self._fx = cadeia  # antes do _fx_id: quando o Injetor acha o efeito novo, a cadeia do app ja e a dele
@@ -2358,7 +2390,14 @@ class Engine:
                    "visor": {"passo": VISOR_PASSO, "db": list(VISOR_DB), "faixas": faixas}}
             pasta = pastas.LOGS / "passagens"
             pasta.mkdir(parents=True, exist_ok=True)
-            with open(pasta / (time.strftime("%Y-%m-%d") + ".jsonl"), "a", encoding="utf-8") as f:
+            hoje = time.strftime("%Y-%m-%d")
+            if self._passagens_dia != hoje:  # a primeira passagem do dia nesta sessao: os de mais de uma semana saem
+                self._passagens_dia = hoje
+                podados = poda_passagens(pasta, datetime.date.fromisoformat(hoje))
+                if podados:
+                    print(f"transition: removed {len(podados)} end records older than {PASSAGENS_DIAS} days",
+                          file=sys.stderr, flush=True)
+            with open(pasta / (hoje + ".jsonl"), "a", encoding="utf-8") as f:
                 f.write(json.dumps(reg, ensure_ascii=False) + "\n")
         except Exception as ex:  # noqa: BLE001 - o registro e so estudo: falhando, a passagem segue igual
             print(f"transition: the end record failed: {ex!r}", file=sys.stderr, flush=True)

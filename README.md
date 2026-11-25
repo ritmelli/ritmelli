@@ -380,8 +380,9 @@ them, in the blocks that start at `DECK-JS-INICIO`, `MIX-JS-INICIO` and `PEDAL-J
 `dev/fitcheck.py` checks the layout at several window and phone sizes, and `dev/shot.py` takes a screenshot. Both
 need the development packages (`requirements-dev.txt`) and drive Google Chrome from its default install folder,
 `C:\Program Files\Google\Chrome\Application\chrome.exe`. A Chrome installed only for your user, in `%LOCALAPPDATA%`,
-isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. If the server would still show
-the welcome screen, both close it first, as **Get started** does (the server then remembers it as seen). With
+isn't found; `winget install -e --id Google.Chrome` installs it in the default folder. Both only talk to a `--mock`
+server: they refuse port 8799 and any server whose `/api/state` doesn't say `"mock": true`. If the server would still
+show the welcome screen, both close it first, as **Get started** does (the server then remembers it as seen). With
 `--boas-vindas`, `fitcheck.py` checks the welcome screen itself at every size and `shot.py` captures it. Leave the
 `--mock` server running and, in a second terminal at the repository root, activate the virtual environment, install
 the development packages once and run them:
@@ -513,6 +514,7 @@ python dev\testa_metricas.py   # the anonymous usage data
 python dev\testa_migra.py      # the rename from Vitrola
 python dev\testa_mock.py       # the no-audio mode never touches real user data
 python dev\testa_pareamento.py # phone pairing: the code, wrong attempts, the key and disconnecting
+python dev\testa_grava.py      # saving the data files: two writers at once and a file another program has open
 ```
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
@@ -523,12 +525,13 @@ If you changed the audio engine, the server, the filter or the updates, also run
 The description at the top of each file (in Portuguese) says exactly what it checks.
 
 - The audio engine (`engine.py`, `sonoridade.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
-  `dev/testa_congela.py` and `dev/testa_microfone.py`.
+  `dev/testa_congela.py`, `dev/testa_microfone.py`, `dev/testa_passagens.py` (the week of transition records in
+  `logs/passagens/`) and `dev/testa_anel.py`.
 - The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
   `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
-  `dev/testa_microfone.py`, `dev/testa_voz.py` and `microfone/apo/teste/teste_reamostra.py` (the filter's
-  resampler, `reamostra.h`).
+  `dev/testa_microfone.py`, `dev/testa_anel.py` (the ring is released after every failure), `dev/testa_voz.py` and
+  `microfone/apo/teste/teste_reamostra.py` (the filter's resampler, `reamostra.h`).
 - The voice changer pedal (`pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` and the `pistavoz` hook in
   `fx.py`, `engine.py` and `server.py`; the contract is in [API.md](API.md#pedal-de-troca-de-voz)):
   `dev/testa_pedal_voz.py`, `dev/testa_vozes.py`, `dev/testa_pista.py` and `dev/testa_conversor.py` (the voice

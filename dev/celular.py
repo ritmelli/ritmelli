@@ -1,14 +1,21 @@
-"""Mede o tema no Chrome do celular de verdade (USB, depuracao ligada), so rolando e puxando:
-nunca toca em botao (o som do 8799 sai no jogo).
+"""Mede o tema no Chrome do celular de verdade (USB, depuracao ligada), so rolando e puxando, numa aba de um servidor
+--mock do PC, nunca no Ritmelli de verdade (o som do 8799 sai no jogo).
 
-    python dev/celular.py rolagem [--recarregar] [--css "<regra injetada>"] [--trace saida.json]
-    python dev/celular.py puxao [--css ...]       # puxa o palco aberto 150 px para baixo e volta
-    python dev/celular.py abrir                   # abre e fecha o palco pela funcao do app
-    python dev/celular.py custo                   # ms de estilo das classes que o palco troca
-    python dev/celular.py dedo [--segundos 15] [--esperar]   # so grava, enquanto o usuario rola com o dedo
+    python dev/celular.py rolagem --url URL [--recarregar] [--css "<regra injetada>"] [--trace saida.json]
+    python dev/celular.py puxao --url URL [--css ...]   # puxa o palco aberto 150 px para baixo e volta
+    python dev/celular.py abrir --url URL               # abre e fecha o palco pela funcao do app
+    python dev/celular.py custo --url URL               # ms de estilo das classes que o palco troca
+    python dev/celular.py dedo --url URL [--segundos 15] [--esperar]   # so grava, enquanto o usuario rola com o dedo
 
-Antes: adb no PATH (ou ADB=<caminho do adb.exe>) e o celular autorizado em `adb devices`; o
-script faz o forward da porta 9222 e so mexe na aba :8799/t/ritmelli (as outras abas sao do usuario).
+URL e a aba de teste, a do --mock (python server.py --mock --port 8801 --no-browser) como o PC a abre, sempre em
+127.0.0.1: http://127.0.0.1:8801/t/ritmelli/. Antes: adb no PATH (ou ADB=<caminho do adb.exe>) e o celular autorizado
+em `adb devices`. O script so fala com um --mock (dev/so_mock.py): recusa a porta 8799 e a origem cujo /api/state nao
+traz o "mock": true (sem seguir redirecionamento). Faz o forward da porta 9222 e o `adb reverse` da porta do --mock (ele
+so escuta em 127.0.0.1; um mapeamento que ja existia no celular nao e trocado), abre a aba de teste se ela nao estiver
+aberta e so mexe nela (as outras abas sao do usuario). Nela, barra o documento de outra origem; antes de abrir a aba,
+antes de cada gesto e antes de publicar a medida, confere de novo o marcador e a pagina da aba. Pelo adb reverse, o
+--mock e o tema veem 127.0.0.1: a medida sai com o papel do PC, e a do papel do celular (pareado pela rede de casa)
+segue manual.
 O celular de teste e um Galaxy S20 FE: tela de 120 Hz (um quadro a cada 8,3 ms), densidade 3. O
 emulado do Chrome no PC nao reproduz o que trava la (no 18/10, as agulhas e as texturas so
 travavam no aparelho). Leitura do resultado da rolagem:
@@ -28,17 +35,23 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 from collections import Counter
 
 import websockets
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import so_mock  # noqa: E402
+from fitcheck import barra_outra_origem, confere_pagina  # noqa: E402
 
 BASE = "http://127.0.0.1:9222"
 CATS = ["devtools.timeline", "disabled-by-default-devtools.timeline", "disabled-by-default-devtools.timeline.frame",
         "cc", "viz", "gpu", "benchmark", "input", "blink", "blink.animations", "toplevel"]
 
 
-def adb_forward(esperar=False):
+def adb_forward(url, porta, esperar=False):
+    """O forward da 9222 (o DevTools do Chrome do celular) e o reverse da porta do --mock do url. Volta o adb."""
     adb = os.environ.get("ADB") or shutil.which("adb")
     if not adb:
         sys.exit("adb nao achado: ponha no PATH ou em ADB=<caminho do adb.exe>")
@@ -52,11 +65,24 @@ def adb_forward(esperar=False):
         sys.exit(f"nenhum celular autorizado no adb:\n{lista}")
     subprocess.run([adb, "forward", "tcp:9222", "localabstract:chrome_devtools_remote"], check=True,
                    capture_output=True, text=True, encoding="utf-8", errors="replace")
+    try:
+        so_mock.confere(url)  # de novo logo antes do reverse: o --esperar pode ter levado ate 10 min
+    except so_mock.Recusa as ex:
+        sys.exit(f"recusado: {ex}")
+    # --no-rebind: um mapeamento que ja existia no celular nao e trocado (nem removido no fim)
+    r = subprocess.run([adb, "reverse", "--no-rebind", f"tcp:{porta}", f"tcp:{porta}"],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r.returncode:
+        sys.exit(f"o adb reverse da porta {porta} nao foi criado ({(r.stderr or r.stdout).strip()}); se ja existe "
+                 f"(adb reverse --list), use outra porta no --mock ou tire o de antes (adb reverse --remove tcp:{porta})")
+    return adb
 
 
 class Aba:
-    def __init__(self, ws):
-        self.ws, self.n, self.pend, self.on = ws, 0, {}, {}
+    def __init__(self, ws, url, base):
+        self.ws, self.url, self.n, self.pend, self.on, self.barrados = ws, url, 0, {}, {}, []
+        fetch = barra_outra_origem(ws, base, self.barrados)  # o documento de outra origem, barrado (so_mock.DOCUMENTOS)
+        self.on["Fetch.requestPaused"] = lambda p: fetch({"method": "Fetch.requestPaused", "params": p})
 
     async def laco(self):
         async for raw in self.ws:
@@ -82,6 +108,14 @@ class Aba:
             raise RuntimeError(r["exceptionDetails"].get("exception", {}).get("description"))
         return r.get("result", {}).get("value")
 
+    async def confere(self):
+        """Antes de cada gesto: a aba segue na pagina do --url (origem e caminho; a galeria da mesma origem nao conta),
+        nenhum documento barrado, e ele segue um --mock."""
+        await confere_pagina(self.cmd, self.url, self.barrados)
+        caminho = await self.js("location.pathname")
+        if caminho != urllib.parse.urlsplit(self.url).path:
+            raise so_mock.Recusa(f"a aba saiu de {urllib.parse.urlsplit(self.url).path} para {caminho}")
+
     async def css(self, regra):
         await self.js(f"(() => {{ document.getElementById('__medida')?.remove(); if (!{json.dumps(regra)}) return;"
                       f" const s = document.createElement('style'); s.id = '__medida'; s.textContent = {json.dumps(regra)}; document.head.append(s); }})()")
@@ -99,14 +133,27 @@ class Aba:
         return ev
 
 
-async def conectar():
-    abas = [t for t in json.load(urllib.request.urlopen(BASE + "/json")) if t["type"] == "page" and ":8799/t/ritmelli" in t["url"]]
-    if len(abas) != 1:
-        sys.exit(f"esperava uma aba do tema no celular, achei {len(abas)}")
-    a = Aba(await websockets.connect(abas[0]["webSocketDebuggerUrl"], max_size=1 << 30))
-    asyncio.create_task(a.laco())
+async def conectar(url, base):
+    """A aba de teste (a do url, com caminho e query); sem ela, abre uma em branco e, com o documento de outra origem
+    barrado, navega ate o url, depois de conferir o marcador de novo."""
+    abas = [t for t in json.load(urllib.request.urlopen(BASE + "/json"))
+            if t["type"] == "page" and t["url"].split("#")[0] == url.split("#")[0]]
+    if len(abas) > 1:
+        sys.exit(f"esperava uma aba de {url} no celular, achei {len(abas)}: feche as outras")
+    nova = not abas
+    if nova:
+        abas = [json.load(urllib.request.urlopen(urllib.request.Request(BASE + "/json/new", method="PUT")))]
+    a = Aba(await websockets.connect(abas[0]["webSocketDebuggerUrl"], max_size=1 << 30), url, base)
+    a.laco_t = asyncio.create_task(a.laco())  # guardada: o loop so tem referencia fraca da tarefa
     await a.cmd("Runtime.enable")
     await a.cmd("Page.enable")
+    await a.cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
+    if nova:
+        so_mock.confere(url)
+        await a.cmd("Page.navigate", url=url)
+        print(f"aba de teste aberta no celular: {url}", file=sys.stderr, flush=True)
+        await asyncio.sleep(5)  # a carga do tema
+    await a.confere()
     return a
 
 
@@ -160,29 +207,35 @@ async def palco_aberto(a):
     if not await a.js("S.palco"):
         await a.js("abrirPalcoComHistoria()")
         await asyncio.sleep(1.5)
+        await a.confere()
     await a.js("document.querySelector('#palco').scrollTop = 0")
     await asyncio.sleep(1.0)
 
 
 async def rolagem(a, args):
+    await a.confere()
     if args.recarregar:
         await a.cmd("Page.reload", ignoreCache=True)
         await asyncio.sleep(5)
+        await a.confere()
     await a.css(args.css)
     await palco_aberto(a)
 
     async def gesto():
         for dy in (-520, -520, -520, 520, 520, 520):   # tres puxoes ate os pedais e tres de volta, com fling
+            await a.confere()
             await a.cmd("Input.synthesizeScrollGesture", x=180, y=420, yDistance=dy, speed=1800, gestureSourceType="touch", preventFling=False)
             await asyncio.sleep(1.2)
     return await a.gravar(gesto)
 
 
 async def puxao(a, args):
+    await a.confere()
     await a.css(args.css)
     await palco_aberto(a)
 
     async def gesto():
+        await a.confere()
         await a.cmd("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": 180, "y": 300}])
         for y in list(range(300, 452, 8)) + list(range(452, 299, -8)):   # desce 150 px e volta: nao fecha
             t = time.perf_counter()
@@ -194,12 +247,14 @@ async def puxao(a, args):
 
 
 async def abrir(a, args):
+    await a.confere()
     if await a.js("S.palco"):
         await a.js("fecharPalco()")
         await asyncio.sleep(1.5)
     saidas = {}
     for acao in ("abrirPalcoComHistoria()", "fecharPalco()"):
         async def gesto(acao=acao):
+            await a.confere()
             await a.js(acao)
             await asyncio.sleep(1.0)
         ev = await a.gravar(gesto)
@@ -212,6 +267,7 @@ async def abrir(a, args):
 async def dedo(a, args):
     """espera o usuario abrir o palco e comecar a rolar (ate 5 min) e grava --segundos sem injetar nada:
     a rolagem e a do dedo do usuario"""
+    await a.confere()
     topo = None
     for _ in range(600):
         y = await a.js("S.palco ? document.querySelector('#palco').scrollTop : null")
@@ -219,11 +275,13 @@ async def dedo(a, args):
             break
         topo = y if y is not None else None
         await asyncio.sleep(0.5)
+    await a.confere()  # a espera pode ter levado ate 5 min
     print(f"gravando {args.segundos:g} s: pode rolar", file=sys.stderr, flush=True)
     return await a.gravar(lambda: asyncio.sleep(args.segundos))
 
 
 async def custo(a, args):
+    await a.confere()
     return await a.js("""(() => {
       const p = document.querySelector('#palco'), b = document.body;
       const mede = (f, desf) => { const xs = []; for (let i = 0; i < 4; i++) { b.offsetHeight; const t0 = performance.now(); f(); b.offsetHeight;
@@ -236,16 +294,36 @@ async def custo(a, args):
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("medida", choices=("rolagem", "puxao", "abrir", "custo", "dedo"))
+    ap.add_argument("--url", required=True, help="a aba de teste, a do --mock: http://127.0.0.1:8801/t/ritmelli/")
     ap.add_argument("--recarregar", action="store_true")
     ap.add_argument("--css", default="")
     ap.add_argument("--trace")
     ap.add_argument("--segundos", type=float, default=15)
     ap.add_argument("--esperar", action="store_true", help="espera o celular aparecer no adb (ate 10 min)")
     args = ap.parse_args()
-    adb_forward(args.esperar)
-    a = await conectar()
+    try:
+        if urllib.parse.urlsplit(args.url).hostname != "127.0.0.1":  # o PC e o celular (adb reverse) no mesmo lugar
+            raise so_mock.Recusa(f"{args.url}: a aba de teste e a do --mock em http://127.0.0.1:<porta>/...")
+        base = so_mock.confere(args.url)  # antes do adb e da aba
+    except so_mock.Recusa as ex:
+        sys.exit(f"recusado: {ex}")
+    porta = so_mock.origem(args.url)[1]
+    adb = adb_forward(args.url, porta, args.esperar)
+    print("pelo adb reverse, o --mock e o tema veem 127.0.0.1: a medida sai com o papel do PC (a do celular pareado "
+          "pela rede de casa segue manual)", file=sys.stderr, flush=True)
+    try:
+        await medir(args, base)
+    except so_mock.Recusa as ex:
+        sys.exit(f"recusado: {ex}; nenhum gesto a mais, e a medida nao sai")
+    finally:
+        subprocess.run([adb, "reverse", "--remove", f"tcp:{porta}"], capture_output=True)
+
+
+async def medir(args, base):
+    a = await conectar(args.url, base)
     try:
         r = await {"rolagem": rolagem, "puxao": puxao, "abrir": abrir, "custo": custo, "dedo": dedo}[args.medida](a, args)
+        await a.confere()  # a medida so vale se a aba seguiu no --mock ate o fim
         if isinstance(r, list):
             if args.trace:
                 with open(args.trace, "w", encoding="utf-8") as f:
@@ -253,8 +331,12 @@ async def main():
             r = resumo(r)
         print(json.dumps(r, ensure_ascii=False, indent=1))
     finally:
-        await a.css("")
-        await a.js("document.querySelector('#palco').scrollTop = 0")
+        try:
+            await a.confere()
+            await a.css("")
+            await a.js("document.querySelector('#palco').scrollTop = 0")
+        except so_mock.Recusa:
+            pass  # a aba saiu do --mock: nada mais nela
         await a.ws.close()
 
 

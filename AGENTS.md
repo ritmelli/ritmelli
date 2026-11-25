@@ -49,11 +49,12 @@ Toda mudança tem de cobrir as que toca, e o PR diz quais:
 
 | Área | Arquivos | Teste (sem caminho, em `dev/`) |
 | --- | --- | --- |
-| Motor de áudio | `engine.py`, `sonoridade.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone` |
+| Motor de áudio | `engine.py`, `sonoridade.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_anel` |
 | Servidor e YouTube | `server.py`, `yt_fora.py`, `yt_erros.py` | `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py` | `testa_mock` |
+| Gravação dos dados | `pastas.py` (`save_json`), o `grava_cfg` do `server.py` | `testa_grava` |
 | Pareamento | `pareamento.py`, o `guard` do `server.py` | `testa_pareamento` |
-| Filtro e efeitos | `microfone/`, `fx.py` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_voz` e `microfone/apo/teste/teste_reamostra.py` |
+| Filtro e efeitos | `microfone/`, `fx.py` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_voz` e `microfone/apo/teste/teste_reamostra.py` |
 | Troca de voz | `pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` | `testa_pedal_voz`, `testa_vozes`, `testa_pista`, `testa_conversor` |
 | Atualizações | `atualizacao.py`, `atualizador.py`, `instalador/atualizacao/` | `testa_atualizacao`, `testa_atualizador` e `instalador/atualizacao/testa_parcial.py` |
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
@@ -71,5 +72,5 @@ A esteira (`.github/workflows/monta.yml`) não roda sozinha no PR. Rode as confe
 só com a biblioteca padrão, na raiz do repo, e depois os testes da área no mapa:
 
 ```powershell
-$env:PYTHONUTF8 = '1'; foreach ($t in 'i18n', 'metricas', 'migra', 'mock', 'vozes', 'pareamento') { python "dev\testa_$t.py"; if ($LASTEXITCODE) { throw "dev\testa_$t.py falhou" } }
+$env:PYTHONUTF8 = '1'; foreach ($t in 'i18n', 'metricas', 'migra', 'mock', 'vozes', 'pareamento', 'grava') { python "dev\testa_$t.py"; if ($LASTEXITCODE) { throw "dev\testa_$t.py falhou" } }
 ```

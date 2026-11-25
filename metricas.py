@@ -181,8 +181,9 @@ def _posta(url, dados, cabecalhos):
 
 
 class Metricas:
-    """O envio, de uma thread so. cfg e o config.json do app (o metricas que a pessoa escolheu no Ritmelli mora nele);
-    gravar e quem grava o config (App.save_cfg). Sem ligar(), nada sai."""
+    """O envio, de uma thread so. cfg e o config.json do app (o metricas que a pessoa escolheu no Ritmelli mora nele),
+    que aqui so se le; gravar(ligar) e quem muda o metricas do cfg e grava o config (App.grava_cfg, sob a trava do
+    cfg). Sem ligar(), nada sai."""
 
     def __init__(self, cfg, gravar, mock=False, estado=ESTADO):
         self.cfg, self.gravar, self.estado_path = cfg, gravar, estado
@@ -220,8 +221,7 @@ class Metricas:
 
     def escolhe(self, ligar):
         """A escolha feita no Ritmelli (o aviso ou o Microfone e fone). Desligar joga fora o que nao saiu."""
-        self.cfg["metricas"] = bool(ligar)
-        self.gravar()
+        self.gravar(bool(ligar))
         if not ligar:
             with self._lock:
                 while not self.fila.empty():
