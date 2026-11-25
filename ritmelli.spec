@@ -39,7 +39,9 @@ a = Analysis(
     datas=datas,
     # o yt-dlp acha o resolvedor do desafio do YouTube (os .js, que o hook dele ja leva) sem import direto
     hiddenimports=collect_submodules("yt_dlp_ejs"),
-    excludes=["tkinter"],
+    # mina, fim and lucy_voz are optional local modules that are not part of the app (engine.py and fx.py only use mina
+    # where it sits next to the code): PyInstaller would freeze whatever it finds on the path, so they stay out
+    excludes=["tkinter", "mina", "fim", "lucy_voz"],
 )
 # a informacao de versao do exe (Propriedades > Detalhes, e o nome no Gerenciador de Tarefas): sem ela, tudo em branco
 with open(os.path.join(SPECPATH, "versao.py"), encoding="utf-8") as f:
