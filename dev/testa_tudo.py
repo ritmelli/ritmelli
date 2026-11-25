@@ -83,7 +83,7 @@ SUMMARY = re.compile(r"^-- summary: (.+?)\s*$", re.M)
 LIMITE_S = 600
 # the tests that measure time (a deadline, a cost per block, the wait between two events): with --jobs above 1 they run
 # one by one, alone, after the others, so a neighbour's load does not push them past a limit
-SERIAL = {f"dev/testa_{n}.py" for n in ("mock", "grava", "comandos", "congela", "ganho", "musica", "passagem",
+SERIAL = {f"dev/testa_{n}.py" for n in ("adianta", "mock", "grava", "comandos", "congela", "ganho", "musica", "passagem",
                                          "pedal_voz", "pista", "vivo")}
 JOBS = 4
 # the steps of the testa.yml that run one script of their own, by name (--passo): the protected folder on the real disk
