@@ -1,5 +1,7 @@
+# manual: python dev/bumbo.py <arquivo A> <arquivo B> precisa de duas musicas baixadas na prateleira (pastas.LIB)
 """Confere se a passagem no tempo do motor (engine.py) pos bumbo em cima de bumbo (e nao no contratempo), com
-um detector de bumbo proprio, independente do pente do motor: o grave abaixo de 120 Hz, o nivel dele em janelas
+um detector de bumbo proprio (o dev/bumbo_mede.py, o mesmo do dev/testa_passagem.py), independente do pente do
+motor: o grave abaixo de 120 Hz, o nivel dele em janelas
 de 5 ms, cada subida de 9 dB em 25 ms perto do nivel forte do trecho e um bumbo. A linha de bumbo de uma musica
 e a fase, no periodo da batida dela, em que mais bumbos caem (o bumbo do rap e sincopado: um bumbo solto no
 contratempo nao muda a linha). Bumbo forte nos dois meios tempos so gera aviso: a linha vale (o Overdose tem
@@ -22,7 +24,8 @@ pela posicao (com o esticamento e a virada do motor no meio, que e o que se conf
 Veredito (e saida): NO TEMPO (0, bumbo no bumbo), CONTRATEMPO ou FORA (1), SEM PLANO (a passagem foi so de
 volume) ou SEM BUMBO (pouco bumbo para julgar) (3). O teste que pegou o contratempo do Overdose (21/10): com o
 codigo de antes da correcao (--codigo numa pasta com o engine.py e o batida.py do commit c8930a5a e o fx.py), os
-tres pares com bumbo dao CONTRATEMPO; com o de hoje, NO TEMPO.
+tres pares com bumbo dao CONTRATEMPO; com o de hoje, NO TEMPO. O --codigo precisa de um motor com o Engine._mixa: o
+daquele commit so tinha o _out_cb, e para ele vale o dev/bumbo.py da mesma epoca.
 
     python dev/bumbo.py <arquivo A> <arquivo B> [--codigo <pasta com engine.py e batida.py>]
 
@@ -34,7 +37,6 @@ import time
 from pathlib import Path
 
 import numpy as np
-from scipy import signal
 
 SB = Path(__file__).resolve().parent.parent
 args = sys.argv[1:]
@@ -47,12 +49,11 @@ sys.path.insert(0, str(codigo))
 sys.path.insert(1, str(SB))  # o pastas.py de agora, mesmo com --codigo de antes dele
 import batida  # noqa: E402
 import engine as eng  # noqa: E402
+from bumbo_mede import TOL, bumbos, desvio, grade  # noqa: E402
 from pastas import LIB  # noqa: E402
 
 SR = eng.SR
 lib = {x["file"]: x for x in json.load(open(LIB / "library.json", encoding="utf-8"))}
-TOL = 0.040        # bumbo ate 40 ms da linha conta como em cima dela
-LP = signal.butter(4, 120, "lowpass", fs=SR, output="sos")
 
 
 def faixa(arq):
@@ -65,56 +66,11 @@ def arquivo(track, ini, dur):
     return np.frombuffer(ff.stdout[: len(ff.stdout) // 4 * 4], np.float32)
 
 
-def bumbos(x):
-    """Os bumbos de x (mono), em s desde o comeco de x."""
-    g = signal.sosfiltfilt(LP, x)
-    e = np.sqrt(np.convolve(g * g, np.ones(240) / 240, mode="same"))[::48]  # 1 valor por ms
-    db = 20 * np.log10(e + 1e-6)
-    sobe = np.full_like(db, -99.0)
-    sobe[25:] = db[25:] - db[:-25]
-    forte = np.percentile(db, 95)
-    cand = np.nonzero((sobe > 9) & (db > forte - 18))[0]
-    picos = []
-    for i in cand:
-        if picos and i - picos[-1][-1] <= 150:
-            picos[-1].append(i)
-        else:
-            picos.append([i])
-    # o bumbo vale onde o grave comeca a subir (3 dB acima do vale de antes), nao no meio da subida: o bumbo
-    # grave e comprido sobe por dezenas de ms (o do Otonoke marcava 58 ms depois do ataque e reprovava a
-    # primeira nota do Lose Yourself, que caiu certa)
-    ts = []
-    for g in map(np.array, picos):
-        i = int(g[int(np.argmax(sobe[g]))])
-        j0 = max(0, i - 60)
-        vale = j0 + int(np.argmin(db[j0:i]))
-        acima = np.nonzero(db[vale:i + 1] > db[vale] + 3)[0]
-        ts.append(vale + (acima[0] if len(acima) else i - vale))
-    return np.array(ts) / 1000.0
-
-
-def desvio(ts, f, p):
-    """O desvio de cada t ate a linha mais perto da grade (fase f, periodo p), de -p/2 a p/2."""
-    return (ts - f + p / 2) % p - p / 2
-
-
-def grade(ts, p):
-    """A linha de bumbo (fase em s) no periodo p: a fase, entre as dos proprios bumbos, com mais bumbos a ate
-    TOL dela (afinada pela media deles); e quantos caem nela e no meio tempo dela."""
-    cont = [int((np.abs(desvio(ts, t, p)) < TOL).sum()) for t in ts]
-    t = ts[int(np.argmax(cont))]
-    d = desvio(ts, t, p)
-    f = (t + d[np.abs(d) < TOL].mean()) % p
-    d = desvio(ts, f, p)
-    return f, int((np.abs(d) < TOL).sum()), int((np.abs(np.abs(d) - p / 2) < TOL).sum())
-
-
 A, B = faixa(args[0]), faixa(args[1])
 e = eng.Engine("x", "")
 e.active = {"mic": "x", "monitor": ""}
 e.vol = 1.0
 e.load(A, start=max(0.0, A["duration"] - 55))
-buf = np.zeros((eng.BLOCK, 2), np.float32)
 saida, preparado, virou_em, guardado, a_depois, mapa = [], False, None, False, [], []
 while True:
     for _ in range(30000):  # ate 60 s: o plano no tempo com a volta lenta leva uns 9 s, e o Ritmelli espera
@@ -135,8 +91,7 @@ while True:
                     e._deck.q[i] = (t, np.zeros_like(a))
         guardado = True
         sob, entra, troca_grave = e._sobrepor, e._entrar, e._grave
-    e._out_cb(buf, eng.BLOCK, None, None)
-    saida.append(buf.copy())
+    saida.append(e._mixa(eng.BLOCK).copy())
     if e.virou is not None and virou_em is None:
         virou_em = len(saida) * eng.BLOCK - eng.BLOCK
     if virou_em is not None:

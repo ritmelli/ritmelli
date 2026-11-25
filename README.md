@@ -526,6 +526,11 @@ python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as th
 
 `python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library.
 
+A new `dev/testa_*.py` goes into one of the lists in `dev/testa_tudo.py` or into a step of its own in `testa.yml`. A
+test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
+`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` reads the `testa.yml` steps and fails on a test that
+runs nowhere and on a `manual:` file that runs there.
+
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
 [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks
 has to pass, as it does on `main`. If you changed the welcome screen, also run it with `--boas-vindas`.
@@ -535,7 +540,9 @@ The description at the top of each file (in Portuguese) says exactly what it che
 
 - The audio engine (`engine.py`, `sonoridade.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
   `dev/testa_congela.py`, `dev/testa_microfone.py`, `dev/testa_passagens.py` (the week of transition records in
-  `logs/passagens/`) and `dev/testa_anel.py`.
+  `logs/passagens/`), `dev/testa_passagem.py` (synthetic pairs through the real engine, one per kind of transition;
+  `--codigo <folder>` runs the same pairs against the engine of another checkout, such as the base of your PR) and
+  `dev/testa_anel.py`.
 - The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
   `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
