@@ -50,10 +50,11 @@ linha dele ou a que a reserva dele publicou: um só toca, e todos respondem a en
 segue sozinho. O avanço já em curso que o Próximo encontra ao chegar (o do fim do disco) e a virada pendente que ele vê
 são o avanço dele, mesmo se terminarem antes de ele reservar, e também o que outro começa na linha dele antes de ele
 reservar; o prato que muda de linha antes disso fica como está se trocou de disco (o Parar), e com o mesmo disco (um
-seek) o Próximo segue. O Próxima com a virada pendente devolve a entrada dela; se ela já saiu da fila, segue para a primeira. No
-`_volta_fila` e no `_volta_auto`, se tocar falhar, o erro vai para a tela (`engine.error`); em todos, a entrada quebrada
-sai da fila, menos quando outra reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz
-o avanço.
+seek) o Próximo segue, com o grupo passando para a linha do seek. O grupo já resolvido, com o primeiro Próximo ainda
+gravando a posição, aceita quem chega se tocou e o prato segue na linha que ele publicou. O Próxima com a virada
+pendente devolve a entrada dela; se ela já saiu da fila, segue para a primeira. No `_volta_fila` e no `_volta_auto`, se
+tocar falhar, o erro vai para a tela (`engine.error`); em todos, a entrada quebrada sai da fila, menos quando outra
+reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz o avanço.
 
 O `POST /api/queue` põe na fila no laço do servidor, como o tocar e a prateleira (a procura do download do mesmo vídeo
 e a criação de um novo não correm com outro pedido), e só o tocar na hora vai ao executor, com o prato visto no laço
@@ -62,12 +63,15 @@ logo depois de a entrada entrar: um Parar que chega antes da thread não vira um
 Toda troca de disco passa pelo `App._troca`, sob a `fila_lock`: o Anterior, o Parar (que não troca, mas guarda) e o
 tocar da prateleira fecham antes a virada pendente, e o Anterior guarda primeiro o que saiu nela; o Anterior escolhe
 entre voltar ao começo e tocar o de antes com a faixa e a posição lidas no mesmo trecho do `_qlock` em que não há
-virada, e a passagem preparada sai ali. A troca, o Parar e a publicação da preparação pegam a `fila_lock` e o `_lock` do
-motor pelo `App._com_motor`, que nunca espera o `_lock` com a `fila_lock` na mão: com o `_lock` ocupado (a reabertura do
-áudio, a troca de aparelho), solta a `fila_lock`, espera fora e tenta de novo, e a leitura do estado segue respondendo
-enquanto um vigia ou uma rota no executor espera o `_lock` (as rotas que trocam no laço, como o `/api/play`, ainda
-esperam ali, como antes). O ganho do disco que entra é medido antes, e o leitor que começa, a onda e a medida rodam
-depois de soltar as duas (o `depois` do `load`, do `espera` e do `preparar`).
+virada, e a passagem preparada sai ali. Ele só lê o topo do histórico: a troca confere que o prato ainda é a linha que
+ele viu e o topo ainda é o que ele escolheu, e o topo sai só com a troca feita; o recomeço confere a linha no `pode` do
+`seek`. O que mudou no meio (um Próximo, um seek, o esquecer) faz o Anterior escolher de novo. A troca, o Parar e a
+publicação da preparação pegam a `fila_lock` e o `_lock` do motor pelo `App._com_motor`, que nunca espera o `_lock` com
+a `fila_lock` na mão: com o `_lock` ocupado (a reabertura do áudio, a troca de aparelho), solta a `fila_lock`, espera
+fora e tenta de novo, e a leitura do estado segue respondendo enquanto um vigia ou uma rota no executor espera o `_lock`
+(as rotas que trocam no laço, como o `/api/play`, ainda esperam ali, como antes). O ganho do disco que entra é medido
+antes, e o leitor que começa, a onda e a medida rodam depois de soltar as duas (o `depois` do `load`, do `espera` e do
+`preparar`).
 
 ## A passagem e a cabeça da fila
 
@@ -134,5 +138,5 @@ sai da fila; dois Próximos juntos, com o `/api/state` respondendo enquanto o se
 primeiro já no `load`, e a reserva que falha ou é invalidada liberando quem esperava; o Próximo esperando o `_lock` do
 motor com o `/api/state` respondendo; a reserva velha que falha com uma nova na mesma entrada; a gravação da posição que
 falha; o enfileirar e a parecida sem stream que esperaram uma reserva que não tocou; o Próximo com a troca do vigia já
-publicada e por confirmar, e depois de um Parar; o enfileirar com o Parar logo depois; e o Anterior, o Parar, o tocar
-da prateleira e o Próximo com a virada pendente.
+publicada e por confirmar, e depois de um Parar; o enfileirar com o Parar logo depois; e o Anterior, o Parar, o tocar da
+prateleira e o Próximo com a virada pendente.

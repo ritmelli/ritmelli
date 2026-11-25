@@ -1592,12 +1592,12 @@ def avanco(A, E):
         ate(lambda: E._virar_em is not None)
     seek, antes_do_seek = E.seek, []
 
-    def seek_depois_do_bloco(t):  # o bloco que viraria chega entre a escolha do Anterior e o seek
+    def seek_depois_do_bloco(t, pode=None):  # o bloco que viraria chega entre a escolha do Anterior e o seek
         antes_do_seek.append(E._pronto is not None)
         with E._qlock:
             E._virar_em = E.pos
         E._mixa(eng.BLOCK)
-        return seek(t)
+        return seek(t, pode=pode)
     E.seek = seek_depois_do_bloco
     try:
         with contextlib.redirect_stderr(io.StringIO()):
@@ -1870,6 +1870,35 @@ def avanco(A, E):
             f"o Proximo com o fim do disco reservando e tocando antes dele: devolve a entrada do fim do disco "
             f"({no_prato(E)}, {fila(A)})")
 
+    # o segundo Proximo que chega com o primeiro gravando a posicao (sem Parar no meio) divide o mesmo avanco: volta
+    # na hora com a mesma entrada, sem pular a seguinte
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    grava, gravando, libera_grava = A.remember_pos, threading.Event(), threading.Event()
+
+    def grava_presa3(*a, **kw):
+        gravando.set()
+        libera_grava.wait(5)
+        return grava(*a, **kw)
+    A.remember_pos = grava_presa3
+    try:
+        t1, r1 = em_thread(cmd.pular, A)
+        gravando.wait(5)
+        t2, r2 = em_thread(cmd.pular, A)
+        t2.join(0.5)
+        antes = list(r2)
+        libera_grava.set()
+        t1.join(5)
+        t2.join(5)
+    finally:
+        libera_grava.set()
+        del A.remember_pos
+    confere(antes and antes[0] is x and r1 and r1[0] is x and no_prato(E) == "d2" and fila(A) == ["d3"],
+            f"o segundo Proximo com o primeiro gravando a posicao: a mesma entrada, na hora "
+            f"({antes and (antes[0] or {}).get('id')}, {no_prato(E)}, {fila(A)})")
+
     # o segundo Proximo do mesmo avanco (juntou-se com o primeiro ainda no load) volta quando a reserva resolve, sem
     # esperar o primeiro gravar a posicao
     limpa()
@@ -1907,6 +1936,130 @@ def avanco(A, E):
     confere(antes and antes[0] is x and r1 and r1[0] is x and no_prato(E) == "d2" and fila(A) == [],
             f"o segundo Proximo volta com a reserva resolvida, antes de o primeiro gravar a posicao "
             f"({antes and (antes[0] or {}).get('id')}, {r1 and (r1[0] or {}).get('id')}, {no_prato(E)}, {fila(A)})")
+
+    # o Proximo que outro avanco ja ligou nao troca de avanco: o do fim do disco falhou (a entrada saiu), e o seguinte
+    # do vigia nao vira o dele (o grupo responde o mesmo para todos)
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    toca_ate_o_fim(E)
+    no_avanco.clear()
+    libera.clear()
+    so_se[0] = lambda kw: kw.get("pular")
+    with mock.patch.object(cmd, "avanca", side_effect=avanca_preso):
+        tp, rp = em_thread(cmd.pular, A)
+        no_avanco.wait(5)
+        s1 = Segura(A)
+        try:
+            tv, _ = em_thread(A._volta_fila, None)
+            s1.dentro.wait(5)
+            cmd.tirar_da_fila(A, x["qid"])
+            s1.solta()
+            tv.join(5)
+        finally:
+            s1.fim()
+        s2 = Segura(A)
+        try:
+            tv, _ = em_thread(A._volta_fila, None)
+            s2.dentro.wait(5)
+            libera.set()
+            tp.join(1)
+            cedo = list(rp)
+            s2.solta()
+            tv.join(5)
+            tp.join(5)
+        finally:
+            s2.fim()
+    confere(cedo and cedo[0] is None and no_prato(E) == "d3" and fila(A) == [],
+            f"o Proximo ligado ao avanco que falhou responde o resultado dele, sem trocar pelo seguinte "
+            f"({cedo and (cedo[0] or {}).get('id')}, {no_prato(E)}, {fila(A)})")
+
+    # o grupo que escolheu a virada pendente nao e ligado por uma reserva que outro cria na linha dele: o seguidor
+    # responde a entrada da virada, como o primeiro
+    no_avanco.clear()
+    libera.clear()
+    so_se[0] = lambda kw: "virada" in kw
+    limpa()
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    y, _, _ = cmd.enfileirar(A, {"id": "d3"})
+    with contextlib.redirect_stderr(io.StringIO()):
+        E.preparar(arquivo(A, "d2"), x["qid"])
+        ate(lambda: E._virar_em is not None)
+        with E._qlock:
+            E._virar_em = E.pos
+        E._mixa(eng.BLOCK)
+    with mock.patch.object(cmd, "avanca", side_effect=avanca_preso):
+        t1, r1 = em_thread(cmd.pular, A)
+        no_avanco.wait(5)
+        t2, r2 = em_thread(cmd.pular, A)
+        t2.join(0.2)
+        avanca(A)  # outro avanco nesta linha (como o do fim do disco): concilia a virada e reserva a seguinte
+        libera.set()
+        t1.join(5)
+        t2.join(5)
+    confere(r1 and r1[0] is x and r2 and r2[0] is x,
+            f"o grupo da virada pendente responde a entrada dela para todos ({r1 and (r1[0] or {}).get('id')}, "
+            f"{r2 and (r2[0] or {}).get('id')})")
+
+    # o Anterior e um Proximo no meio, entre a escolha do Anterior e a troca: o Anterior escolhe de novo, com o prato
+    # e o historico de agora
+    limpa()
+    toca("d3")
+    toca("d1")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    real, vez = A.tocar_entrada, []
+
+    def tocar_com_proximo(xx, **kw):
+        if not vez and kw.get("anterior"):
+            vez.append(1)
+            cmd.pular(A)  # o Proximo passa entre a escolha do Anterior e a troca dele
+        return real(xx, **kw)
+    A.tocar_entrada = tocar_com_proximo
+    try:
+        feito = cmd.voltar(A)
+    finally:
+        del A.tocar_entrada
+    confere(vez and feito == "anterior" and no_prato(E) == "d1" and fila(A) == ["d2"],
+            f"o Anterior com um Proximo entre a escolha e a troca: volta ao que o Proximo tirou ({feito}, "
+            f"{no_prato(E)}, {fila(A)})")
+    for nome, mexe, espera in (("um seek (so a linha muda)", lambda: E.seek(50.0), ("inicio", "d1")),
+                               ("o esquecer do disco (so o historico muda)", lambda: A.esquecer("d3", None),
+                                ("anterior", "d2"))):
+        limpa()
+        toca("d2")
+        toca("d3")
+        toca("d1")
+        real, vez = A.tocar_entrada, []
+
+        def tocar_com(xx, mexe=mexe, vez=vez, real=real, **kw):
+            if not vez and kw.get("anterior"):
+                vez.append(1)
+                mexe()
+            return real(xx, **kw)
+        A.tocar_entrada = tocar_com
+        try:
+            feito = cmd.voltar(A)
+        finally:
+            del A.tocar_entrada
+        confere(vez and (feito, no_prato(E)) == espera,
+                f"o Anterior com {nome} entre a escolha e a troca: escolhe de novo ({feito}, {no_prato(E)})")
+    toca("d1", start=50.0)
+    sk, vez = E.seek, []
+
+    def seek_com_troca(t, pode=None):
+        if not vez:
+            vez.append(1)
+            cmd.tocar(A, "d3")  # outro disco entre a escolha do recomeco e o seek
+        return sk(t, pode=pode)
+    E.seek = seek_com_troca
+    try:
+        feito = cmd.voltar(A)
+    finally:
+        del E.seek
+    confere(vez and feito == "anterior" and no_prato(E) == "d1" and E.pos < 1.0,
+            f"o Anterior que ia recomecar, com outro disco no meio: escolhe de novo ({feito}, {no_prato(E)})")
 
     # o Anterior, o Parar e o tocar da prateleira com a virada pendente: ela fecha antes de mexer no historico
     def vira_pendente():

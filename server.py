@@ -1033,7 +1033,8 @@ class App:
         avanco da fila), ela ainda tem de ser a do App, e o motor confere sob o _qlock que o prato ainda e o deck e a
         linha dela; com a entrada (da fila), ela ainda tem de estar na fila, e sai dela na mesma troca. O que saiu do
         prato (a Captura que o motor devolve) entra no Anterior (historico=False: nao entra) ou, no Anterior
-        (anterior=True), volta ao topo da fila. O Repetir vale para o disco do prato: loop decide, e sem ele o motor o
+        (anterior=(deck, linha, x): o prato e o topo do historico que ele viu, conferidos aqui, e o topo sai so com a
+        troca feita), volta ao topo da fila. O Repetir vale para o disco do prato: loop decide, e sem ele o motor o
         desliga se o disco que sai e outro (na mesma publicacao da faixa). A posicao do que saiu e gravada fora das
         travas. Volta se trocou."""
         e = self.engine
@@ -1054,6 +1055,11 @@ class App:
             if not na_fila():  # a virada que fechou agora era a dela
                 return None
             pode = (lambda: reserva.toca(e)) if reserva is not None else None
+            if anterior:
+                d0, linha0, x0 = anterior
+                if not (self.historico and self.historico[-1] is x0):
+                    return None  # outro avanco mexeu no historico depois da escolha do Anterior
+                pode = (lambda: e._deck is d0 and e._deck.linha == linha0)  # o prato que ele viu
             cap = (e.espera(tr, pode=pode, ganho=ganho, depois=depois) if stream
                    else e.load(tr, start=start, pode=pode, loop=loop, ganho=ganho, depois=depois))
             if cap is None:
@@ -1065,6 +1071,7 @@ class App:
                 self._tirar(entrada)
             sai = cap.track
             if anterior:
+                self.historico.pop()  # o topo que o Anterior escolheu (conferido acima)
                 y = self.entrada_de(sai) if sai is not None else None
                 if y:
                     self._por_na_fila(y, seguir=True)
@@ -1289,24 +1296,27 @@ class App:
         senao toca o disco de antes, e o do prato vai para o topo da fila (na mesma troca, App._troca). A virada
         pendente fecha antes de escolher: o Anterior ja tem o disco que saiu nela. Volta o que fez."""
         e = self.engine
-        with self.fila_lock:
-            while True:  # a faixa e a posicao saem do mesmo trecho do _qlock em que a virada pendente ja fechou
-                with e._qlock:
-                    v, e.virou = e.virou, None
-                    if v is None:
-                        e._cancela_passagem()  # e o motor nao vira entre a escolha e a troca
-                        tr, pos = e.track, e.pos
-                        break
-                cmd.fecha_virada(self, v)
-            volta = tr is not None and (pos > ANTERIOR_REINICIA_S or not self.historico)
-            x = None if volta or not self.historico else self.historico.pop()
-        if volta:
-            e.seek(0.0)
-            return "inicio"
-        if x is None:
-            return None
-        self.tocar_entrada(x, historico=False, anterior=True)
-        return "anterior"
+        for _ in range(3):  # o prato ou o historico que mudou entre a escolha e a troca: escolhe de novo
+            with self.fila_lock:
+                while True:  # a faixa, a posicao e a linha saem do mesmo trecho do _qlock em que a virada ja fechou
+                    with e._qlock:
+                        v, e.virou = e.virou, None
+                        if v is None:
+                            e._cancela_passagem()  # e o motor nao vira entre a escolha e a troca
+                            tr, pos, d, linha = e.track, e.pos, e._deck, e._deck.linha
+                            break
+                    cmd.fecha_virada(self, v)
+                volta = tr is not None and (pos > ANTERIOR_REINICIA_S or not self.historico)
+                x = None if volta or not self.historico else self.historico[-1]  # sai na troca (App._troca)
+            if volta:
+                if e.seek(0.0, pode=lambda: e._deck is d and e._deck.linha == linha):
+                    return "inicio"
+                continue
+            if x is None:
+                return None
+            if self.tocar_entrada(x, historico=False, anterior=(d, linha, x)):
+                return "anterior"
+        return None
 
     def _fecha_viradas(self):
         """Com fila_lock: a virada que o motor ja confirmou e o vigia ainda nao conciliou fecha agora
@@ -1332,9 +1342,8 @@ class App:
                 self.reserva = None
             r.entrada = entrada
             r.feita.set()
-            grupos = list(r.grupos)
-        for g in grupos:
-            g.resolve(entrada)
+            for g in r.grupos:
+                g.resolve(entrada)
 
     def _confere_preparo_sob(self):
         """Com fila_lock e o _qlock, no mesmo trecho em que a fila mudou: a passagem preparada para quem nao e mais a

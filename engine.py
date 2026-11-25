@@ -3407,10 +3407,14 @@ class Engine:
         self.calar_sobre()  # parar cala os sons por cima tambem
         return antes
 
-    def seek(self, t):
+    def seek(self, t, pode=None):
+        """O disco do prato a partir de t, numa linha nova. pode(): conferido sob o _qlock antes de mudar qualquer
+        coisa (o Anterior confere ali o deck e a linha que viu); falso, nada muda. Volta se mudou."""
         with self._lock:  # o limite pela duracao e o da faixa no prato no mesmo trecho do _qlock
-            _, leitor = self._restart(lambda: self._clamp(t), pode=lambda: self.track is not None)
+            antes, leitor = self._restart(lambda: self._clamp(t),
+                                          pode=lambda: self.track is not None and (pode is None or pode()))
         self._comeca(leitor)
+        return antes is not None
 
     def set_loop(self, on):
         with self._lock:
