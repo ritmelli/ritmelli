@@ -6,20 +6,21 @@ O motor de verdade toca, em tempo real, os pares da banca que esticam (dev/testa
 mesmos WAV sinteticos), com a saida para o jogo no Injetor de verdade escrevendo no AnelFalso do
 dev/testa_microfone.py (o leitor que tira 10 ms a cada 10 ms, como o audiodg, num anel Local\ so da medida). O
 AnelFalso roda num processo dele, de prioridade alta, como o audiodg: no processo do motor, a parada do interpretador
-parava o leitor junto e escondia a seca. Em cada passagem, na mesma janela nos dois modos (JANELA_S desde o preparar,
-ou ate DEPOIS_S depois da decisao, se ela vier mais tarde), conta: as secas do Injetor (o anel vazio quando a thread
-voltou), as faltas do leitor (os 10 ms que ele nao achou: o filtro soltaria silencio), a pior volta da thread e o menor
-tanto no anel; e, a parte, o tempo ate a decisao, o do plano (o "planned in" do log do motor) e o ramo.
+parava o leitor junto e escondia a seca. Em cada passagem, na mesma janela nos dois modos (do preparar ate A tocar
+FIM_ANTES_S antes da virada que a banca calcula para o par, pela posicao de A, e nao pelo relogio), conta: as secas do
+Injetor (o anel vazio quando a thread voltou), as faltas do leitor (os 10 ms que ele nao achou: o filtro soltaria
+silencio), a pior volta da thread e o menor tanto no anel; e, a parte, o tempo ate a decisao, o do plano (o "planned
+in" do log do motor) e o ramo.
 
 Os modos, com o mesmo audio e a mesma carga:
   - local: o esticar e o esticar_saida no processo do motor, como o app faz hoje;
   - auxiliar: os dois num processo a parte (este script com --serve), aberto abaixo do normal antes da passagem (o
     caso bom dele: o import do motor e das bibliotecas ja feito; o tempo de abrir sai na medida, a parte). O pedido vai
     por cano: o x em float32, e volta a saida e as posicoes. O prazo e o do motor: o plano que fica pronto perto da
-    virada (ou depois da rampa da que sai) ele recusa sozinho, e a passagem fica so de volume. A espera pelo auxiliar
-    corta onde o motor ja recusaria a resposta (FOLGA_S antes da virada), e a passagem sai como "perdeu o prazo" (o
-    motor faz a de volume). Esperar mais nao serve: no par seco, A acaba logo depois da virada e o planejador sai sem
-    decidir.
+    virada (ou, no par dois, depois do comeco da rampa da que sai) ele recusa sozinho, e a passagem fica so de volume.
+    A espera pelo auxiliar so corta quando A chega a FOLGA_S da virada (pela posicao dela), onde o motor ja recusaria
+    qualquer resposta, e a passagem sai como "perdeu o prazo" (o motor faz a de volume). Esperar mais nao serve: no par
+    seco, A acaba logo depois da virada e o planejador sai sem decidir.
 
 Nos pares da banca, A comeca 35 s antes do fim e a virada fica ~33 s depois do preparar; o app prepara 3 min antes do
 fim, entao la o prazo do plano e mais folgado que aqui.
@@ -31,8 +32,8 @@ local vai antes, como aquecimento, fora da conta.
 --aux-normal: o auxiliar na prioridade normal, e nao abaixo dela (para comparar).
 
 --carga N: N processos ocupando a CPU na prioridade normal (o jogo) durante cada passagem, e mortos no fim dela; o
-dobro dos nucleos faz o papel de um PC mais fraco. Cada passagem dura de 25 a 40 s; com --vezes 2, os tres pares e os
-dois modos, ~5 min (com carga, melhor um par por vez).
+dobro dos nucleos faz o papel de um PC mais fraco. Cada passagem dura ~38 s; com --vezes 2, os tres pares e os dois
+modos, ~8 min (melhor um par por vez).
 
     python dev/mede_esticamento.py [--carga N] [--vezes K] [--modo local auxiliar] [--par seco fade dois]
                                    [--aux-normal] [--json saida.json] [-v]
@@ -62,8 +63,7 @@ sys.path.insert(0, str(RAIZ))
 sys.path.insert(1, str(DEV))
 
 AQUECE_S = 2.0      # A toca isso (o leitor e o anel assentam) antes do preparar
-JANELA_S = 20.0     # a janela da medida, desde o preparar (o plano local leva ate ~12 s)
-DEPOIS_S = 0.5      # ou ate isso depois da decisao publicada, se ela vier depois
+FIM_ANTES_S = 0.5   # a janela da medida acaba quando A chega a isso da virada (a virada fica de fora)
 PRAZO_PLANO_S = 90.0
 PARES = ("seco", "fade", "dois")  # os pares da banca que esticam (o recusado nao chama a Rubber Band)
 ABAIXO_DO_NORMAL = 0x00004000
@@ -160,7 +160,7 @@ class Auxiliar:
         self.abrir_s = time.perf_counter() - t
         self.lock = threading.Lock()
         self.chamadas = []  # (funcao, segundos, amostras de x)
-        self.prazo = None  # perf_counter em que o motor ja recusaria o plano (a passagem marca)
+        self.venceu = lambda: False  # o motor ja recusaria a resposta (a passagem troca)
         self.perdeu = False
 
     def chama(self, f, x, *args):
@@ -184,7 +184,8 @@ class Auxiliar:
                     res["erro"] = ex
             th = threading.Thread(target=_troca, daemon=True)
             th.start()
-            th.join(None if self.prazo is None else max(0.0, self.prazo - t))
+            while th.is_alive() and not self.venceu():
+                th.join(0.02)
             self.chamadas.append((f, time.perf_counter() - t, len(x)))
             if th.is_alive():
                 self.perdeu = True
@@ -260,6 +261,8 @@ def _passa(eng, banca, tm, fx, modo, carga, aux_normal, log):
         injeta.MAPA = anel.nome
         fim.enter_context(contextlib.redirect_stderr(log))
         e = eng.Engine("mede", "")
+        e._onda_pede = lambda *a: None  # noqa: SLF001 - a onda do visor: a thread dela seguraria o motor vivo
+        e._onda_acumulador = lambda tr: None  # noqa: SLF001
 
         def _para_motor():
             e._cancela_passagem(tudo=True)  # noqa: SLF001
@@ -275,17 +278,26 @@ def _passa(eng, banca, tm, fx, modo, carga, aux_normal, log):
         anel.zera()
         inj.secas, inj.folga_min, inj.volta_max = 0, None, 0.0
         inj.voltas[:] = 0
-        t0 = time.perf_counter()
+        virada, fim_janela = fx["janela"][1], fx["janela"][0] - FIM_ANTES_S  # posicoes de A
         if aux is not None:
-            aux.prazo = t0 + (fx["janela"][1] - e.pos) - eng.FOLGA_S
+            aux.venceu = lambda: e.pos >= virada - eng.FOLGA_S
+        t0, p0 = time.perf_counter(), e.pos
         if not e.preparar(fx["b"], "mede"):
             raise banca.Falha("o preparar recusou B")
-        banca._espera(decidiu, PRAZO_PLANO_S, "o planejador nao publicou a decisao")  # noqa: SLF001
-        ate_decisao = time.perf_counter() - t0
-        janela = max(JANELA_S, ate_decisao + DEPOIS_S)
-        time.sleep(max(0.0, t0 + janela - time.perf_counter()))
+        decidiu_em = []
+
+        def _marca(fim):  # a hora da decisao, vista enquanto espera
+            if not decidiu_em and decidiu():
+                decidiu_em.append(time.perf_counter() - t0)
+            return fim()
+        banca._espera(lambda: _marca(lambda: e.pos >= fim_janela), PRAZO_PLANO_S,  # noqa: SLF001
+                      "A nao chegou ao fim da janela")
         secas, volta_max, folga_min, p99 = inj.secas, inj.volta_max, inj.folga_min, _p99(inj.voltas)
         faltou = anel.faltas()
+        janela = e.pos - p0
+        banca._espera(lambda: _marca(lambda: decidiu_em), PRAZO_PLANO_S,  # noqa: SLF001
+                      "o planejador nao publicou a decisao")
+        ate_decisao = decidiu_em[0]
     decisao = decidiu()
     plano = log.acha("transition: prepared ")
     plano_s = float(plano.split("planned in ")[1].split(" s")[0]) if plano else None
