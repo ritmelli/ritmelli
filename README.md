@@ -362,7 +362,7 @@ To switch the language, add `?lang=pt_BR` or `?lang=en` to the end of the addres
 `themes/ritmelli/i18n/i18n_en.properties` and `i18n_pt_BR.properties`, with the same keys in both files, in the same
 order.
 
-Part of the pixel art isn't edited in `index.html` directly: scripts in `dev/` draw it and write it into the file, into
+Part of the pixel art isn't edited in `index.html` directly: scripts in `dev/` draw it and write it into
 `themes/ritmelli/gerado/` or, for the textures, into `texturas/`. To change a generated part, edit the drawing in its script and run the script
 again (for example, `python dev\pecas.py`). A change made by hand in a generated part is lost the next time its
 script runs.
@@ -370,8 +370,8 @@ script runs.
 - `dev/molduras.py`: the frames, in `gerado/molduras.css` (and between the `molduras:inicio` and `molduras:fim`
   comments of `gallery/index.html`, which uses some of them).
 - `dev/compactos.py`: the Quick sounds records, in `gerado/compactos.css`.
-- `dev/pecas.py`: the tonearm, knobs, buttons and other pieces, between `pecas:inicio` and `pecas:fim`, and constants
-  such as `KNOBS`, `PE_SVG` and `LED_SVG`.
+- `dev/pecas.py`: the tonearm, knobs, buttons and other pieces, in `gerado/pecas.css`, and constants such as `KNOBS`,
+  `PE_SVG` and `LED_SVG`, in `gerado/pecas.js`.
 - `dev/texturas.py`: the `.webp` textures in `texturas/`, except `sala-iso.webp`. It renders them in Google Chrome and,
   like `dev/shot.py` below, needs the development packages.
 

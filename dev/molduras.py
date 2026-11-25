@@ -38,7 +38,6 @@ from pathlib import Path
 from urllib.parse import quote
 
 RAIZ = Path(__file__).resolve().parent.parent
-TEMA = RAIZ / "themes" / "ritmelli" / "index.html"
 GERADO = RAIZ / "themes" / "ritmelli" / "gerado"   # o que os geradores de dev/ gravam para o tema, um arquivo cada
 GALERIA = RAIZ / "gallery" / "index.html"
 NA_GALERIA = ("objeto", "objeto-apertado", "caixa")
