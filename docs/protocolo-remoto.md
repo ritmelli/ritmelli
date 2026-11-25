@@ -75,32 +75,32 @@ parada. Com `anda: false` (pausa, buffering, fim), a posição é `pos` e os seg
 ### O que o PC põe na âncora
 
 O mapa de amostras do motor são os rótulos dos blocos na fila do prato: cada bloco leva a posição do disco na primeira
-amostra dele, e o motor anda dentro do bloco a velocidade 1 (o `_tira`, `engine.py:2008`, e o `pos` do `_mixa`,
-`engine.py:1858`). A âncora reproduz esses rótulos:
+amostra dele, e o motor anda dentro do bloco a velocidade 1 (o `_tira` e o `pos` do `_mixa`, no `engine.py`). A
+âncora reproduz esses rótulos:
 
 - `pos` é o rótulo do próximo bloco da fila do prato, não o `pos` do motor (que soma o bloco a velocidade 1 e, numa
   rampa, fica até `(v - 1) * 10 ms` longe do rótulo seguinte). Com a fila vazia (buffering, fim), é o `pos` do motor.
 - Sem passagem marcada: um segmento aberto em 1.
-- A rampa de saída do `_plano_dois` (`engine.py:2694`): a que sai vai de 1 a `sa` em meio cosseno (`esticar_saida`,
-  `engine.py:409`) por `n_ra` amostras a partir do rótulo `t_r` (`engine.py:2702` a `2712`), e segue em `sa` até o fim
-  dos blocos esticados. O `_mede` troca a cauda da fila do prato por esses blocos (`engine.py:2334`), então a âncora
+- A rampa de saída do `_plano_dois`: a que sai vai de 1 a `sa` em meio cosseno (o `esticar_saida`) por `n_ra`
+  amostras a partir do rótulo `t_r`, e segue em `sa` até o fim dos blocos esticados. O `_mede` troca a cauda da fila
+  do prato por esses blocos (o `sai_q` do plano), então a âncora
   publicada ali leva três segmentos: 1 até `t_r`, o meio cosseno `{"de": 1, "ate": sa}` e `sa`. O `va` do visor
   sozinho não reconstrói o meio da rampa: o PC guarda do plano aplicado o `t_r`, o `n_ra`, o `sa` e o total de
   amostras esticadas (hoje o `n_ra` é uma conta dentro do `_plano_dois`, que a implementação passa a devolver no
   plano). A fase da curva, numa foto tirada no meio, é o total menos o que ainda está na fila a partir de `t_r`.
-- A entrada esticada (`esticar`, `engine.py:379`; a mesma conta do `_visor_rampa`, `engine.py:676`, e do `vdjFi`,
-  `index.html:5348`): `sb` por `n_sob` amostras, depois o meio cosseno de `1 + k` até 1 em `n_rampa`, depois 1 aberto.
-  Os números saem do plano sem o arredondamento do `_visor_publico` (`engine.py:684`), que corta `k` em 4 casas.
+- A entrada esticada (o `esticar`; a mesma conta do `_visor_rampa` e do `vdjFi` do tema): `sb` por `n_sob` amostras,
+  depois o meio cosseno de `1 + k` até 1 em `n_rampa`, depois 1 aberto. Os números saem do plano sem o arredondamento
+  do `_visor_publico`, que corta `k` em 4 casas.
 - O preenchimento: quando a virada vem antes do início da faixa de entrada, ela começa com `pad` amostras de silêncio
-  (`engine.py:2569` e `2575` no `_plano_batida`, `2738` e `2755` no `_plano_dois`; no corte no golpe, o `pad` passa de
-  um bloco, `engine.py:2557` a `2562`). A âncora leva um segmento `{"n": pad, "v": 1, "preenchimento": true}` a partir
+  (o `cabeca` do `_plano_batida` e do `_plano_dois`; no final seco com o corte no golpe, sem esticar, o `pad` passa de
+  um bloco). A âncora leva um segmento `{"n": pad, "v": 1, "preenchimento": true}` a partir
   da origem que o motor rotulou, `max(0, ini - pad / 48000)` (o limite em zero vem do motor), e o seguinte com
   `"pos": ini`. Com a origem presa em zero, o motor mostra a posição andando de 0 até `pad / 48000` e voltando ao
   `ini` na fronteira; a âncora reproduz isso, e o `preenchimento` deixa quem desenha a barra segurar o zero se quiser.
   A fase na faixa que entrou são as amostras do prato desde a virada.
-- A passagem cancelada (`_cancela_passagem`, `engine.py:2263`) limpa a preparação e o visor, mas os blocos esticados
+- A passagem cancelada (o `_cancela_passagem`) limpa a preparação e o visor, mas os blocos esticados
   ficam na fila do prato: os segmentos deles seguem na âncora até serem consumidos ou trocados.
-- A volta do Repetir (`engine.py:2160`): o leitor põe a volta na mesma fila, com o rótulo voltando a 0; a âncora nova
+- A volta do Repetir (o `_reader`): o leitor põe a volta na mesma fila, com o rótulo voltando a 0; a âncora nova
   sai no primeiro bloco da volta, com a faixa e o deck iguais.
 - No fim natural, a âncora congela na posição final até a próxima ação ou faixa.
 
