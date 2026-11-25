@@ -927,19 +927,18 @@ def _desarma(motivo):
 
 def tarefa_rodando(prazo_s=10.0):
     """A tarefa do filtro roda ou esta na fila (Running, Queued). Pelo Get-ScheduledTask, que da o estado sem
-    traduzir (o schtasks /query sai na lingua do Windows). True ou False; None se a consulta passou do prazo, e False
-    se ela nem rodou."""
+    traduzir (o schtasks /query sai na lingua do Windows). True (Running, Queued) ou False (Ready, Disabled); None
+    sem um estado desses: a consulta que falhou, passou do prazo ou respondeu outra coisa."""
     caminho, nome = TAREFA.rsplit("\\", 1)
     try:
         r = subprocess.run([POWERSHELL, "-NoProfile", "-Command",
                             f"(Get-ScheduledTask -TaskPath '{caminho}\\' -TaskName '{nome}').State"],
                            capture_output=True, text=True, encoding="oem", errors="replace", timeout=prazo_s,
                            creationflags=NO_WINDOW)
-    except subprocess.TimeoutExpired:
+    except (OSError, subprocess.TimeoutExpired):
         return None
-    except OSError:
-        return False
-    return r.stdout.strip() in ("Running", "Queued")
+    estado = r.stdout.strip()
+    return True if estado in ("Running", "Queued") else False if estado in ("Ready", "Disabled") else None
 
 
 def pede_tarefa(nome, espera_s=60):
@@ -963,8 +962,8 @@ def pede_tarefa(nome, espera_s=60):
     # o filtro aparece no registro antes de a tarefa reiniciar o audio e conferir os aparelhos (#136): ate ela acabar,
     # o audiosrv RUNNING ainda pode ser o de antes do reinicio. Com o prazo da conferencia dela a mais
     fim += ASSENTA_S + CONFERE_MAX_S
-    # a consulta leva ~1 s: o prazo dela tem piso de 5 s, para acabar mesmo no fim do saldo. Sem resposta antes de ver a
-    # tarefa rodando, segue pelo servico, como antes; depois de ver, sem resposta conta como rodando
+    # a consulta leva ~1 s: o prazo dela tem piso de 5 s, para acabar mesmo no fim do saldo. Sem estado (None) antes de
+    # ver a tarefa rodando, segue pelo servico, como antes; depois de ver, conta como rodando ate o Ready
     viu = False
     while (rodando := tarefa_rodando(min(10.0, max(5.0, fim - time.monotonic())))) or (rodando is None and viu):
         viu = True

@@ -585,7 +585,7 @@ class TestaPedeTarefa(unittest.TestCase):
     aparelhos, entao o audiosrv RUNNING so vale depois de ela acabar (o reabre e a conferencia do app vem depois)."""
 
     def test_espera_a_tarefa_acabar(self):
-        ordem, rodando = [], iter([True, True, False])
+        ordem, rodando = [], iter([True, None, False])  # a do meio falhou: ainda rodando, ate o Ready
 
         def run(cmd, **kw):
             ordem.append(" ".join([os.path.basename(cmd[0]).lower(), *cmd[1:3]]))
@@ -601,7 +601,7 @@ class TestaPedeTarefa(unittest.TestCase):
                 mock.patch.object(filtro, "do_microfone", lambda n: {"filtro": True, "melhorias": True}), \
                 mock.patch.object(filtro, "tarefa_rodando", roda), mock.patch.object(filtro.time, "sleep"):
             self.assertEqual(filtro.pede_tarefa("IN 1"), {"ok": True})
-        self.assertEqual(ordem, ["schtasks.exe /run /tn", "tarefa True", "tarefa True", "tarefa False",
+        self.assertEqual(ordem, ["schtasks.exe /run /tn", "tarefa True", "tarefa None", "tarefa False",
                                  "sc.exe query audiosrv"])
 
     def _pede(self, rodando, sc="STATE : 4 RUNNING", relogio=None):
@@ -645,8 +645,8 @@ class TestaPedeTarefa(unittest.TestCase):
         self.assertEqual(r, {"ok": False, "motivo": "audio"})
 
     def test_tarefa_rodando(self):
-        for saida, quer in (("Running\r\n", True), ("Queued\r\n", True),
-                            ("Ready\r\n", False), ("", False)):
+        for saida, quer in (("Running\r\n", True), ("Queued\r\n", True), ("Ready\r\n", False),
+                            ("Disabled\r\n", False), ("", None), ("Unknown\r\n", None)):
             c = Chamadas()
             with mock.patch.object(filtro.subprocess, "run", c("run", types.SimpleNamespace(stdout=saida))):
                 self.assertIs(filtro.tarefa_rodando(), quer, saida)
@@ -654,9 +654,9 @@ class TestaPedeTarefa(unittest.TestCase):
             self.assertEqual(cmd[0], filtro.POWERSHELL, "pelo caminho da System32")
             self.assertIn(r"Get-ScheduledTask -TaskPath '\Ritmelli\' -TaskName 'Microfone'", cmd[-1])
             self.assertTrue(c.lista[0][2].get("timeout"), "a consulta tem prazo")
-        for erro, quer in ((OSError("powershell"), False), (filtro.subprocess.TimeoutExpired("powershell", 10), None)):
+        for erro in (OSError("powershell"), filtro.subprocess.TimeoutExpired("powershell", 10)):
             with mock.patch.object(filtro.subprocess, "run", side_effect=erro):
-                self.assertIs(filtro.tarefa_rodando(), quer, "sem resposta, None; sem rodar, False")
+                self.assertIsNone(filtro.tarefa_rodando(), "sem estado: None (o pede_tarefa decide pelo que ja viu)")
 
 
 RAIZ = Path(__file__).resolve().parent.parent
