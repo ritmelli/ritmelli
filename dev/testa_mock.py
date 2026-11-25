@@ -11,8 +11,9 @@ filho esta vivo e responde como --mock; se nao, so ele sai, pelo handle.
 E quem pode chamar cada rota (permissao.py): toda rota do server.py esta na tabela, e a tabela so tem rotas que existem
 (pelo fonte, sem as bibliotecas; pelo roteador do aiohttp, com elas). Com as bibliotecas, o guard de verdade, pedido a
 pedido: o PC, o celular antes e depois de parear, o remoto com o token e sem ele, a rota com parametro, o HEAD, a
-desconexao no SSE e o caps de cada papel, e o SSE com o motor virando entre o state e o tick (cada posicao e
-da faixa entregue naquela volta). E, no mesmo --mock do teste sem rede, o PC com tudo (o /api/volume, o
+desconexao no SSE e o caps de cada papel, e o SSE com dois PCs ligados: o snapshot montado uma vez por volta para os
+dois, e o motor virando entre o state e o tick com o envio de um deles suspenso (cada posicao e da faixa entregue
+naquela volta, e o outro segue recebendo). E, no mesmo --mock do teste sem rede, o PC com tudo (o /api/volume, o
 /api/abaixa voltando sozinho no prazo, o /api/sinal, a recarga dos efeitos) e a rede de casa recusada onde deve, com os
 pedidos saindo do 127.0.0.2: o --mock so escuta no 127.0.0.1, e o servidor olha o endereco de quem conecta.
 
@@ -428,49 +429,115 @@ async def papeis_no_guard():
         confere(await status("POST", "/api/play", de=pc) == 200, "sem o cabecalho, o 127.0.0.1 segue o PC")
 
         # o SSE: o state e o tick de uma volta saem da mesma captura (App.leitura), mesmo com o motor virando no meio
-        # do envio. O envio fica suspenso logo depois do state, e a virada acontece ali: a faixa nova, com a posicao dela
-        capturas = [({"status": "playing", "track": {"id": "t1"}}, 100.0)]
-        A.leitura, E.pos = (lambda: capturas[-1]), 100.0
-        t = mock.Mock()
-        t.get_extra_info.side_effect = lambda nome, d=None: (pc, 50000) if nome == "peername" else d
-        req = make_mocked_request("GET", "/api/events", headers={"Host": f"{pc}:{porta}"}, transport=t, app=app)
-        req._match_info = await app.router.resolve(req)
-        escrito, no_state, solta = [], asyncio.Event(), asyncio.Event()
+        # do envio, e o snapshot base e montado uma vez por volta para todas as conexoes (server.Voltas). Dois PCs
+        # ligados: o envio do primeiro fica suspenso logo depois do state, e a virada acontece ali (a faixa nova, com a
+        # posicao dela); o segundo segue livre e recebe a virada enquanto o primeiro esta parado
+        capturas, lidas = [({"status": "playing", "track": {"id": "t1"}}, 100.0)], []
 
-        async def escreve(dados):
-            escrito.append(dados.decode("utf-8"))
-            if dados.startswith(b"event: state") and not no_state.is_set():
-                no_state.set()
-                await solta.wait()
+        def leitura():
+            lidas.append(1)
+            return capturas[-1]
+        A.leitura, E.pos = leitura, 100.0
+        no_state, solta = asyncio.Event(), asyncio.Event()
 
-        def eventos():
+        def cliente(suspende):
+            t = mock.Mock()
+            t.get_extra_info.side_effect = lambda nome, d=None: (pc, 50000) if nome == "peername" else d
+            req = make_mocked_request("GET", "/api/events", headers={"Host": f"{pc}:{porta}"}, transport=t, app=app)
+            escrito = []
+
+            async def escreve(dados):
+                escrito.append(dados.decode("utf-8"))
+                if suspende and dados.startswith(b"event: state") and not no_state.is_set():
+                    no_state.set()
+                    await solta.wait()
+            req._payload_writer.write = escreve
+            return req, escrito
+
+        def eventos(escrito):
             return [(e, json.loads(d)) for e, d in re.findall(r"^event: (\w+)\ndata: (.*)$", "".join(escrito), re.M)]
 
-        req._payload_writer.write = escreve
-        tarefa = asyncio.ensure_future(guard(req, rota[("GET", "/api/events")]))
+        def pares(escrito):
+            faixa, out = None, []
+            for e, d in eventos(escrito):
+                if e == "state":
+                    faixa = d["track"]["id"]
+                elif e == "tick":
+                    out.append((faixa, d["pos"]))
+            return out
+
+        async def ate(cond):
+            for _ in range(100):
+                if cond():
+                    return True
+                await asyncio.sleep(0.05)
+            return False
+
+        def com_t2(escrito):  # a faixa nova chegou, e o tick dela depois
+            ev = eventos(escrito)
+            return any(e == "state" and d["track"]["id"] == "t2" for e, d in ev) and ev[-1][0] == "tick"
+
+        tarefas = []
         try:
+            (req1, escrito1), (req2, escrito2) = cliente(True), cliente(False)
+            for req in (req1, req2):
+                req._match_info = await app.router.resolve(req)
+                tarefas.append(asyncio.ensure_future(guard(req, rota[("GET", "/api/events")])))
             await asyncio.wait_for(no_state.wait(), 3)
             capturas.append(({"status": "playing", "track": {"id": "t2"}}, 0.5))
             E.pos = 0.5
+            livre = await ate(lambda: com_t2(escrito2))
+            confere(livre and no_state.is_set() and not solta.is_set() and not com_t2(escrito1),
+                    "com o envio de um PC suspenso, o outro segue recebendo as voltas, a virada inclusive")
             solta.set()
-            for _ in range(100):  # ate a volta seguinte entregar a faixa nova e o tick dela
-                ev = eventos()
-                if [e for e, d in ev if e == "state"][1:] and ev[-1][0] == "tick":
-                    break
-                await asyncio.sleep(0.05)
+            await ate(lambda: com_t2(escrito1))
+            await asyncio.sleep(5 * server.TICK)  # algumas voltas com os dois livres
         finally:
             solta.set()
             A.closing = True
-            await asyncio.wait_for(tarefa, 3)
-            A.closing, A.leitura, E.pos = False, (lambda: ({"status": "idle"}, 0.0)), 0.0
-        faixa, pares = None, []
-        for e, d in eventos():
-            if e == "state":
-                faixa = d["track"]["id"]
-            elif e == "tick":
-                pares.append((faixa, d["pos"]))
-        confere(pares[:1] == [("t1", 100.0)] and ("t2", 0.5) in pares and set(pares) <= {("t1", 100.0), ("t2", 0.5)},
-                f"o SSE com a virada entre o state e o tick: cada posicao e da faixa entregue na volta dela ({pares})")
+            for tarefa in tarefas:
+                await asyncio.wait_for(tarefa, 3)
+            A.closing, E.pos = False, 0.0
+        for nome, escrito in (("suspenso", escrito1), ("livre", escrito2)):
+            p = pares(escrito)
+            confere(p[:1] == [("t1", 100.0)] and ("t2", 0.5) in p and set(p) <= {("t1", 100.0), ("t2", 0.5)},
+                    f"o SSE com a virada entre o state e o tick, no PC {nome}: cada posicao e da faixa entregue na "
+                    f"volta dela ({p})")
+        estados = [d for e, d in eventos(escrito1) + eventos(escrito2) if e == "state"]
+        confere(estados and all(d.get("api") == server.API and d.get("mock") is True for d in estados),
+                f"o state do SSE leva o \"api\": {server.API} e o \"mock\" ({[sorted(d) for d in estados[:1]]})")
+        # o livre entrega toda volta: as leituras sao as voltas dele, e no maximo a que estava no ar no fechamento.
+        # Com cada conexao montando a sua, as do suspenso viriam a mais
+        n1, n2 = len(pares(escrito1)), len(pares(escrito2))
+        confere(n1 >= 2 and n2 >= 5 and len(lidas) <= n2 + 1,
+                f"com dois PCs ligados, o snapshot e montado uma vez por volta ({len(lidas)} leituras; {n2} voltas "
+                f"entregues ao livre, {n1} ao suspenso)")
+        antes = len(lidas)
+        await asyncio.sleep(5 * server.TICK)
+        confere(len(lidas) == antes, f"sem conexao aberta, nada e montado ({len(lidas) - antes} leituras a mais)")
+        A.leitura = lambda: ({"status": "idle"}, 0.0)
+        resp, j, _ = await manda("GET", "/api/state", de=pc, handler=rota[("GET", "/api/state")])
+        confere(j.get("api") == server.API and j.get("mock") is True,
+                f"o /api/state leva o \"api\" e o \"mock\" ({ {k: j.get(k) for k in ('api', 'mock')} })")
+
+        # o erro de montar a volta sobe para a conexao que a espera (o guard o leva as metricas, como quando cada
+        # conexao lia a sua), e a conexao seguinte monta de novo
+        quebrou = ValueError("leitura quebrou")
+
+        def leitura_quebrada():
+            raise quebrou
+        A.leitura = leitura_quebrada
+        try:
+            await asyncio.wait_for(manda("GET", "/api/events", de=pc, handler=rota[("GET", "/api/events")]), 3)
+            confere(False, "o erro de montar a volta sobe para a conexao (ela terminou sem erro)")
+        except ValueError as ex:
+            confere(ex is quebrou, "o erro de montar a volta sobe para a conexao")
+        finally:
+            A.leitura = lambda: ({"status": "idle"}, 0.0)
+        ev, terminou = await eventos_ate_revogar(lambda: setattr(A, "closing", True), de=pc)
+        A.closing = False
+        confere(terminou and [e for e, _ in ev][:3] == ["caps", "state", "library"],
+                f"depois do erro, a conexao seguinte recebe a volta de novo ({[e for e, _ in ev][:3]})")
 
 
 def de_casa(srv, metodo, caminho, corpo=None, origem="127.0.0.2", cab=None):

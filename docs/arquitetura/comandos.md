@@ -53,8 +53,13 @@ Anterior guarda primeiro o disco que saiu nela, e só um dos dois concilia cada 
 histórico e limpa a marca do prato parado ainda sob a mesma `fila_lock`. O resto do motor e a formatação ficam fora
 das travas.
 
-O `/api/state` e o SSE usam essa captura. A cada volta, o SSE manda o `state` (só quando muda) e o `tick` com a
-posição da mesma captura, mesmo que o motor vire no meio do envio. Cada posição é da faixa que aquela volta entregou.
+O `/api/state` e o SSE usam essa captura, com o `"api"` (a versão do contrato, `API` do `server.py`) e o `"mock"`
+por cima. A volta do SSE é a unidade de publicação: o `Voltas` do `server.py` monta uma a cada `TICK`, só enquanto há
+conexão aberta, com a captura, a prateleira e os jobs já em bytes, e entrega a mesma a todas as conexões. Cada conexão
+manda o `state` (só quando muda desde o que ela entregou), a prateleira e os jobs que mudaram, e o `tick` com a posição
+da mesma captura, mesmo que o motor vire no meio do envio. Cada posição é da faixa que aquela volta entregou. O `caps`
+e a conferência da autorização (o celular desconectado, a sessão remota que acabou) seguem de cada conexão. A conexão
+com o envio parado segura a sua volta inteira e, ao voltar, pula para a mais nova; as outras não esperam por ela.
 
 ## Os vigias e o teste
 
@@ -67,4 +72,6 @@ com o prato parado e o stream recusado. Confere também a leitura do estado com 
 vigia suspenso no meio da conciliação e o `/api/state` de verdade com a preparação da próxima bloqueada, no endereço
 do stream e no `preparar` do motor. O `mover_na_fila` conta a fila que a tela vê (a entrada da virada pendente não se
 move e fica para o vigia), e o Próxima fecha a virada pendente antes de tocar a primeira que a tela mostra. O
-`dev/testa_mock.py` suspende o envio do SSE entre o `state` e o `tick` e força uma virada nesse intervalo.
+`dev/testa_mock.py` liga dois PCs ao SSE, suspende o envio de um entre o `state` e o `tick` e força uma virada nesse
+intervalo: o outro recebe a virada enquanto o primeiro está parado, cada posição é da faixa da volta dela nos dois, e
+a captura é lida uma vez por volta, não uma por conexão.
