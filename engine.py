@@ -106,6 +106,13 @@ VOLTA_MS = 200
 # o efeito de voz no filtro (issue #63): ate isso sem o filtro responder ao preset, a voz crua segue; depois, pelo app
 PRESET_ESPERA_S = 0.2
 VIGIA_TENTATIVAS = 3  # reaberturas por mudanca da lista (o PortAudio as vezes ainda nao ve o aparelho)
+# o filtro do microfone em uso que para de ler com o motor ainda capturando o mesmo microfone e a lista parada: depois
+# de LEITOR_PERDIDO_S sem leitor (o filtro que o Windows remonta sozinho volta antes), o vigia reabre o audio, a cada
+# LEITOR_INTERVALO_S, no maximo LEITOR_TENTATIVAS vezes; o leitor que volta zera a conta. Cada reabertura corta uns
+# 90 ms do som, e a musica, sem leitor, ja segue so no fone
+LEITOR_PERDIDO_S = 10.0
+LEITOR_INTERVALO_S = 30.0
+LEITOR_TENTATIVAS = 3
 # passagem de uma musica para a proxima da fila (a transicao de DJ)
 TRANS_PREP_S = 180         # o servidor prepara a proxima quando falta isso para o fim (o fim deste fica na
                            # memoria, ~70 MB, para medir e planejar com folga: com 60 s, num notebook com o VRChat
@@ -994,6 +1001,8 @@ class Injetor:
         self.motor = motor
         self.m = None
         self.leitores = 0
+        self._teve_leitor = False
+        self.perdeu_em = None  # monotonic em que o ultimo leitor do alvo sumiu; None com leitor, ou se nunca teve um
         self._vai = True
         self._tentou = -1e9
         self._para48k = _Para48k()
@@ -1152,6 +1161,7 @@ class Injetor:
                     vivos = m.vivos() if m is not None else []
                     self.leitores = len(vivos)
                     if vivos:
+                        self._teve_leitor, self.perdeu_em = True, None
                         donos = tuple(sorted(lt.dono for lt in vivos))
                         fila = m.na_fila()
                         if donos == servidos:
@@ -1163,6 +1173,8 @@ class Injetor:
                         prox = time.perf_counter() + BLOCK / SR
                     else:
                         servidos = ()
+                        if self._teve_leitor and self.perdeu_em is None:
+                            self.perdeu_em = time.monotonic()  # o vigia reabre se ele nao voltar (_recupera_leitor)
                         if agora - prox > 0.2:  # voltou de um leitor, ou a thread atrasou: nao corre atras
                             prox = agora
                         while self._vai and agora >= prox:
@@ -1309,6 +1321,7 @@ class Engine:
         self._vigia = None        # thread que segue o aparelho escolhido (_vigia_loop)
         self._fechado = False     # close() de proposito: o vigia nao reabre
         self._caiu_no_vigia = False  # a reabertura do vigia falhou: ele pode tentar de novo
+        self._recupera = None     # (microfone, reaberturas, monotonic da ultima) do leitor perdido (_recupera_leitor)
         self._aviso = None        # aviso dos aparelhos (reserva, reabertura que falhou): so ele sai quando voltam
 
     # o deck do prato (o resto do motor fala com ele por estes nomes)
@@ -1490,8 +1503,8 @@ class Engine:
         """Segue sozinho o aparelho escolhido quando ele conecta ou desconecta (o Quest pelo
         Virtual Desktop, 20/10): le a lista do Windows a cada VIGIA_S e, so quando ela muda,
         reabre o que a partida com reserva abriria, se for diferente do que esta aberto. Lista
-        parada nao reabre nada (cada reabertura corta uns 90 ms); a escolha do usuario (devices) e o
-        config nunca mudam daqui."""
+        parada so reabre o filtro que parou de ler (_recupera_leitor; cada reabertura corta uns 90 ms);
+        a escolha do usuario (devices) e o config nunca mudam daqui."""
         _com_init()
         assin, resta = None, 0
         while True:
@@ -1506,6 +1519,7 @@ class Engine:
             if a != assin:
                 assin, resta = a, VIGIA_TENTATIVAS
             if resta <= 0:
+                self._recupera_leitor()
                 continue
             # sob o lock da troca manual: o desejado sai das escolhas de agora, nunca de antes
             # de um set_devices que terminou no meio
@@ -1520,6 +1534,30 @@ class Engine:
                     continue
                 resta -= 1
                 self._reabre()
+
+    def _recupera_leitor(self):
+        """O filtro do microfone em uso parou de ler e nao voltou, com o motor ainda capturando o mesmo microfone e a
+        lista de aparelhos parada (o vigia so reabria quando ela mudava): reabre depois de LEITOR_PERDIDO_S sem leitor,
+        a cada LEITOR_INTERVALO_S, no maximo LEITOR_TENTATIVAS vezes. O microfone que nunca teve leitor (sem o filtro)
+        nao conta; o leitor que volta, o motor fechado, a reabertura que falhou e a troca manual zeram a conta."""
+        with self._lock:
+            inj, r = self._injetor, self._recupera
+            mic = self.active.get("mic")
+            if self._fechado or self._stack is None or inj is None or inj.leitores or (r and r[0] != mic):
+                self._recupera = None
+                return
+            agora = time.monotonic()
+            if r is None:
+                if inj.perdeu_em is None or agora - inj.perdeu_em < LEITOR_PERDIDO_S:
+                    return  # nunca teve leitor (sem o filtro), ou ainda cedo: o que o Windows remonta volta antes
+                r = (mic, 0, -1e9)
+            _, n, em = self._recupera = r
+            if n >= LEITOR_TENTATIVAS or agora - em < LEITOR_INTERVALO_S:
+                return
+            self._recupera = (mic, n + 1, agora)
+            print(f"game output: the microphone filter stopped reading \"{mic}\"; reopening the audio "
+                  f"(attempt {n + 1} of {LEITOR_TENTATIVAS})", file=sys.stderr, flush=True)
+            self._reabre()
 
     def _reabre(self):
         """Fecha so os streams (o disco segue no prato), rele o PortAudio e abre com reserva.
@@ -1597,6 +1635,7 @@ class Engine:
             if self._stack:
                 self._stack.close()
                 self._stack = None
+            self._recupera = None  # a escolha de agora: a conta do leitor perdido recomeca
             _rescan()
             self.devices = new
             # so o que veio na troca tem que existir; o outro escolhido que esta desligado segue na reserva: trocar o

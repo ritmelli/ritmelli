@@ -24,6 +24,7 @@ Sai 1 se algo falhar.
 """
 import contextlib
 import ctypes
+import itertools
 import os
 import sys
 import threading
@@ -150,14 +151,13 @@ class MotorFalso:
 # 0,3 s, ate 3 (create: o motor de antes da recuperacao nao tem esses nomes, e o caso persistente falha nele)
 VIGIA_RAPIDO = {"VIGIA_S": 0.05, "LEITOR_PERDIDO_S": 0.3, "LEITOR_INTERVALO_S": 0.3, "LEITOR_TENTATIVAS": 3}
 LISTA = {"inputs": ["Mic", "Mic2"], "outputs": [], "default_input": "Mic", "default_output": None}
+ALVOS = {"Mic": ALVO, "Mic2": OUTRO}  # o Mic e o que o AnelFalso le; o Mic2, ninguem
 
 
 class VigiaNoAnel:
     """O Engine de verdade com o vigia rodando, a lista de aparelhos parada (LISTA) e a partida (start) trocada por uma
-    que so sobe o Injetor no anel falso, com o alvo do microfone escolhido (o Mic e o ALVO, que o AnelFalso le; o Mic2
-    e o OUTRO, que ninguem le). Guarda cada abertura (microfone, monotonic)."""
-
-    ALVOS = {"Mic": ALVO, "Mic2": OUTRO}
+    que so sobe o Injetor no anel falso, com o alvo do microfone escolhido (ALVOS). Guarda cada abertura (microfone,
+    monotonic)."""
 
     def __init__(self):
         self.e = e = eng.Engine(mic="Mic", monitor="")
@@ -177,7 +177,7 @@ class VigiaNoAnel:
         e._fechado = False
         mic = e.devices["mic"]
         e.active = {"mic": mic, "monitor": ""}
-        e._alvo = self.ALVOS[mic]
+        e._alvo = ALVOS[mic]
         st = contextlib.ExitStack()
         inj = eng.Injetor(e)
         st.callback(inj.para)
@@ -215,7 +215,7 @@ class TestaMicrofone(unittest.TestCase):
             self.assertEqual(v.reaberturas(), 3, "o leitor perdido tem que reabrir ate o limite de tentativas")
             self.assertTrue(all(m == "Mic" for m, _ in v.aberturas), "a reabertura trocou de microfone")
             em = [t for _, t in v.aberturas[1:]]
-            self.assertTrue(all(b - a >= 0.3 - 0.02 for a, b in zip(em, em[1:])), "reabriu sem o intervalo")
+            self.assertTrue(all(b - a >= 0.3 - 0.02 for a, b in itertools.pairwise(em)), "reabriu sem o intervalo")
             time.sleep(0.6)
             self.assertEqual(v.reaberturas(), 3, "passou do limite de tentativas")
             anel.liga()  # o filtro voltou a ler: a conta zera
