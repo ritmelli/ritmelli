@@ -16,4 +16,5 @@ O código do tema sai aos poucos do `index.html` para arquivos `.js` na pasta do
 o `index.html` carrega por um `<script src>` no lugar em que o bloco estava, sem `defer`: os scripts rodam na mesma
 ordem, e o que um deles declara no alto continua à vista dos de depois. Já saíram: o `deck.js` (os toca-discos da
 mesa), o `mix.js` (o mixer da mesa), o `pedal.js` (os pedais da mesa), o `maleta-vazia.js` (o aviso de vazio do A
-seguir) e o `letra-placa.js` (a letra de pixel das placas da mesa).
+seguir), o `letra-placa.js` (a letra de pixel das placas da mesa) e o `prateleira.js` (o título e a contagem da
+plaqueta da prateleira).
