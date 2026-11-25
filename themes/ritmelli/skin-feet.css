@@ -1,0 +1,24 @@
+/* SKIN-FEET-INICIO */
+/* pele: os pes dos aparelhos, nas duas telas */
+/* a sombra dura so debaixo de cada pe, numa camada do proprio fundo: o box-shadow seguia a tira inteira
+   e riscava uma linha de um pe ao outro; os do toca-discos abaixo da barra do palco (z 3), senao passavam
+   por cima dela na rolagem */
+.palco .pes-mesa {
+  z-index: 2; bottom: -10px; height: 9px;
+  background:
+    linear-gradient(90deg,
+      #160F0C 0 8px, #C89B54 8px 18px, #160F0C 18px 26px,
+      transparent 26px calc(100% - 26px),
+      #160F0C calc(100% - 26px) calc(100% - 18px), #C89B54 calc(100% - 18px) calc(100% - 8px), #160F0C calc(100% - 8px) 100%) 0 0 / 100% 7px no-repeat,
+    linear-gradient(90deg, rgba(0,0,0,.45) 0 26px, transparent 26px calc(100% - 26px), rgba(0,0,0,.45) calc(100% - 26px)) 0 100% / 100% 2px no-repeat;
+}
+.palco .pes-ap {
+  bottom: -12px; height: 9px;
+  background:
+    linear-gradient(90deg,
+      #17100D 0 6px, #CCA05A 6px 15px, #17100D 15px 22px,
+      transparent 22px calc(100% - 22px),
+      #17100D calc(100% - 22px) calc(100% - 15px), #CCA05A calc(100% - 15px) calc(100% - 6px), #17100D calc(100% - 6px) 100%) 0 0 / 100% 7px no-repeat,
+    linear-gradient(90deg, rgba(0,0,0,.45) 0 22px, transparent 22px calc(100% - 22px), rgba(0,0,0,.45) calc(100% - 22px)) 0 100% / 100% 2px no-repeat;
+}
+/* SKIN-FEET-FIM */

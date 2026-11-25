@@ -1,0 +1,35 @@
+/* SKIN-TRACK-DISPLAY-INICIO */
+/* pele: o visor da faixa e a chave do fim do disco, nas duas telas */
+/* titulo e canal num visor escuro rebaixado dentro de um caixilho de madeira, como a busca (o p1):
+   o caixilho e o ::before e o visor o ::after da faixa, itens da grade nas duas primeiras linhas;
+   cada linha da faixa ganha o lugar fixo para os dois nao empurrarem ninguem */
+.palco .faixa { grid-template-columns: minmax(0, 1fr); }
+.palco .faixa > .titulo-faixa { grid-area: 1 / 1; }   /* linha e coluna: so a linha, o visor ocupando a coluna 1 abria uma coluna 2 */
+.palco .faixa > .canal-faixa { grid-area: 2 / 1; }
+.palco .faixa > .linha-tempo { grid-area: 3 / 1; }
+.palco .faixa > .comandos { grid-area: 4 / 1; }
+.palco .faixa > .fim-disco { grid-area: 5 / 1; }
+.palco .faixa > .erro-faixa { grid-area: 6 / 1; }
+/* o que acontece no fim do disco: "Só este disco", a chave 110/220 do dev/pecas.py (desde 22/10;
+   o pegador vai para o lado escolhido e mostra 110 ou 220) e "Tocar parecidas" numa
+   linha solta embaixo dos botoes, sem caixa (a caixa com um botao so pesava entre os botoes e o receiver), as duas
+   opcoes escritas para quem nunca usou e a escolhida acesa. A chave fica no meio, embaixo do tocar, com a coluna da
+   esquerda arredondada ao px para o degrau cair na grade da tela; o A seguir so aparece com fila */
+.palco .faixa > .fim-disco:not([hidden]) {
+  display: grid; grid-template-columns: round(down, calc(50% - 30px), 1px) 60px minmax(0, 1fr); align-items: center;
+  min-height: 44px; margin-top: 8px; padding: 0; border: 0; background: none; text-align: left;
+  font-size: .875rem; font-weight: 500; line-height: 1.2; color: var(--marfim-2); text-shadow: 0 2px 0 var(--contorno);
+}
+.palco .fim-disco .op-so { justify-self: end; padding-right: 12px; text-align: right; }
+.palco .fim-disco .op-par { padding-left: 12px; }
+.palco .fim-disco .ch, .palco .fim-disco .ch svg { display: block; width: 60px; height: 32px; }
+/* o toque so na chave (22/10: so a chave, nao a linha toda; no 25/10, depois de so
+   o vermelho, a chave 110/220 inteira): a linha nao pega o dedo e o
+   ::after cobre a chave inteira (60 x 32); o clique sobe da chave para o botao */
+.palco .faixa > .fim-disco { pointer-events: none; }
+.palco .fim-disco .ch { position: relative; }
+.palco .fim-disco .ch::after { content: ""; position: absolute; inset: 0; pointer-events: auto; }
+.palco .fim-disco[aria-checked="false"] .op-so { color: #F3E7D3; font-weight: 600; }
+.palco .fim-disco[aria-checked="true"] .op-par { color: var(--ambar-claro); font-weight: 600; }
+.palco .fim-disco[aria-checked="true"] .ch-des, .palco .fim-disco[aria-checked="false"] .ch-lig { display: none; }
+/* SKIN-TRACK-DISPLAY-FIM */
