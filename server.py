@@ -11,6 +11,7 @@ import argparse
 import asyncio
 import importlib
 import json
+import math
 import queue
 import random
 import re
@@ -40,6 +41,7 @@ import fx
 import i18n
 import metricas as met
 import pareamento as par
+import permissao as perm
 import pastas
 import sonoridade
 from pastas import save_json
@@ -56,6 +58,7 @@ YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 YT_URL = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
 PAGINA_FOLGA = 8  # a busca pede tantos a mais na pagina de resultados: canal e playlist ocupam lugar e saem
 TICK = 1 / 15
+REMOTO_DURACAO_MAX_S = 24 * 3600  # a duracao que o remoto manda na fila: o visor (engine.Onda) aloca por ela
 ESCUTA_S = 30.0  # tocando de fato esse tempo (ou 80% do disco, se for mais curto), conta uma escuta
 BUSCA_MAX = 200  # o carregar mais da busca vai ate aqui
 # o YouTube so libera todos os formatos com um runtime de JavaScript (pacote yt-dlp-ejs); o
@@ -622,6 +625,7 @@ class App:
         self.cfg.pop("lan_token", None)  # a chave do link do celular de antes, que saiu (hoje e o pareamento.py)
         self.lan_ip = None
         self.celulares = par.Pareamento(data_dir / "celulares.json")
+        self.remotos = perm.Remotos()  # os tokens das sessoes remotas aceitas (permissao.py); por ora, nenhuma
         if fx.pistavoz is not None and callable(getattr(fx.pistavoz, "dados", None)):
             fx.pistavoz.dados(data_dir)  # as vozes e o estado do pedal de voz (no --mock, na pasta temporaria)
         self._adiantados = {}  # youtube_id -> (Future do endereco, hora em que saiu): ver adianta_endereco
@@ -1217,17 +1221,38 @@ class App:
                 self.fila = ordem + [x for x in self.fila if x["qid"] not in na_ordem]
                 self.fila_ordem = None
 
-    def enfileirar(self, b):
+    def enfileirar(self, b, remoto=False):
         """Entrada da fila pelo corpo do POST /api/queue. Disco que nao esta na prateleira ja
-        comeca a baixar, para estar pronto (ou quase) na vez dele."""
-        it = self.lib.get(b.get("id") or "")
+        comeca a baixar, para estar pronto (ou quase) na vez dele. O remoto (permissao.py) so poe o disco da
+        prateleira ou um video do YouTube, com a capa dele: nada de link de outro endereco para o PC baixar, nem de
+        capa que o tema abriria."""
+        iid = b.get("id")
+        it = self.lib.get(iid or "") if not remoto or isinstance(iid, str) else None
         j = None
         if not it:
-            target = (b.get("youtube_id") or b.get("url") or "").strip()
+            target = b.get("youtube_id") or b.get("url") or ""
+            if remoto and not isinstance(target, str):
+                target = ""
+            target = target.strip()
             if not target:
                 raise ValueError("Send the id of a record on the shelf, a video id or a YouTube link.")
             m = YT_URL.search(target)
             yid = m.group(1) if m else (target if YT_ID.match(target) else None)
+            if remoto and not yid:
+                raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
+            if remoto and not (all(b.get(k) is None or isinstance(b[k], str) for k in ("title", "channel"))
+                               and (b.get("duration") is None or (isinstance(b["duration"], (int, float))
+                                                                  and not isinstance(b["duration"], bool)
+                                                                  and 0 <= b["duration"] <= REMOTO_DURACAO_MAX_S))):
+                # o tema e as passagens leem estes campos: texto (ou null) e a duracao em segundos (ou null, ate um dia)
+                raise ValueError("A remote session sends title and channel as text and duration as seconds (up to a "
+                                 "day).")
+            if remoto:
+                try:  # o texto vai a todo SSE: um substituto solto do JSON (\ud800) derrubaria o evento de todos
+                    for v in (target, b.get("title"), b.get("channel")):
+                        (v or "").encode("utf-8")
+                except UnicodeEncodeError:
+                    raise ValueError("A remote session sends text in valid Unicode.") from None
             it = self.lib.by_youtube(yid) if yid else None
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],
@@ -1241,7 +1266,8 @@ class App:
                 pool.submit(self.run_download, j, alvo)
             x = {"id": None, "youtube_id": yid, "url": None if yid else target,
                  "title": b.get("title") or target, "channel": b.get("channel"),
-                 "thumb": b.get("thumb") or thumb(yid), "duration": b.get("duration"), "job": j["id"]}
+                 "thumb": thumb(yid) if remoto else b.get("thumb") or thumb(yid), "duration": b.get("duration"),
+                 "job": j["id"]}
         x["qid"] = uuid.uuid4().hex[:8]
         with self.fila_lock:
             self._por_na_fila(x, seguir=bool(b.get("next")))
@@ -1959,9 +1985,15 @@ def fora_da_fila():
 async def body(request):
     if not request.can_read_body:
         return {}
+    await request.read()  # o corpo inteiro (o aiohttp guarda: o json() abaixo le dele)
+    vale = request.get("ainda_vale")  # o remoto: a sessao pode ter acabado enquanto o corpo chegava (o guard)
+    if vale is not None and not vale(request):
+        raise web.HTTPUnauthorized(text=json.dumps({"ok": False, "error": i18n.so_texto(
+            "The remote session token is invalid or has expired.")}), content_type="application/json")
     try:
         b = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (ValueError, LookupError, RecursionError):  # o JSON quebrado, o inteiro com digitos demais, o UTF-8
+        # torto (o UnicodeDecodeError e um ValueError), o charset que nao existe e o aninhamento fundo demais
         raise web.HTTPBadRequest(text="The body must be JSON in UTF-8.")
     # toda rota le campos: uma lista ou um numero dava o erro 500, e o /api/parear e aberto a rede de casa
     if not isinstance(b, dict):
@@ -1974,7 +2006,6 @@ def build(app_state):
     E = A.engine
     loop_ = asyncio.get_running_loop
     locais = {f"127.0.0.1:{A.port}", f"localhost:{A.port}"}
-    livres = {("GET", "/api/themes"), ("POST", "/api/parear")}  # o que o celular alcanca antes de parear
 
     def do_pc(request):
         # pelo endereco de quem conectou: o Host quem pede escreve o que quiser
@@ -1990,13 +2021,33 @@ def build(app_state):
         # o "mock": true do /api/state, tambem no 401: as ferramentas de dev/ (dev/so_mock.py) so falam com o --mock
         return {"mock": True} if A.mock else {}
 
+    # a recusa de quem nao pode, pela rota: as tres areas que tinham a frase propria seguem com ela
+    so_no_pc = (
+        ("/api/pareamento", "The connection code and connected phones can only be viewed on the computer."),
+        ("/api/atualizacao", "New versions can only be installed from the computer."),
+        ("/api/metricas", "Sending usage data and error reports can only be turned on or off on the computer."),
+    )
+
+    def recusa(request, papel, pode, chave):
+        if papel == "publico" and "celular" in pode:
+            # chave: a do cookie, ja sem a que nao e ASCII (o guard); com uma, o PC desconectou este aparelho
+            return web.json_response({
+                "ok": False, "parear": True, "desconectado": bool(chave),
+                "error": i18n.msg("server.pair.required", "This phone isn't connected to Ritmelli. On the "
+                                  "computer, click Phone and scan the QR code."),
+                "caps": perm.caps(papel), **marca()}, status=401)
+        if papel == "remoto":
+            return j_err(i18n.so_texto("A remote session can't do this."), 403)
+        frase = next((f for p, f in so_no_pc if request.path.startswith(p)), "This can only be done on the computer.")
+        return j_err(i18n.so_texto(frase), 403)
+
     @web.middleware
     async def guard(request, handler):
-        # Host fixo (DNS rebinding) e Origin conhecida em escrita (CSRF). Da rede de casa, a API so
-        # com a chave do pareamento (pareamento.py): o instalador libera a entrada no firewall
-        # tambem no perfil Publico; --so-local fecha a rede. O IP da rede e o de agora: a porta do
-        # celular pode reabrir em outro (servir). As paginas dos temas sao livres: e nelas que o
-        # celular digita o codigo
+        # Host fixo (DNS rebinding) e Origin conhecida em escrita (CSRF). Depois, a tabela de quem pode cada rota
+        # (permissao.py): da rede de casa, so o tema e o pareamento sem a chave (pareamento.py); com ela, o que o
+        # celular usa; o remoto (o token da sessao, so do 127.0.0.1), a lista dele; o resto, so o PC. O instalador
+        # libera a entrada no firewall tambem no perfil Publico; --so-local fecha a rede. O IP da rede e o de agora:
+        # a porta do celular pode reabrir em outro (servir)
         allowed = locais | {f"{A.lan_ip}:{A.port}"} if A.lan_ip else locais
         if request.host not in allowed:
             return web.Response(status=403, text="host not allowed")
@@ -2004,39 +2055,60 @@ def build(app_state):
             origin = request.headers.get("Origin")
             if origin and origin.split("://", 1)[-1] not in allowed:
                 return web.Response(status=403, text="origin not allowed")
-        celular = request.path.startswith("/api/") and not do_pc(request)
-        if celular and request.path.startswith("/api/pareamento"):
-            return j_err(i18n.so_texto("The connection code and connected phones can only be viewed on the computer."), 403)
-        if celular and request.path.startswith("/api/atualizacao"):
-            return j_err(i18n.so_texto("New versions can only be installed from the computer."), 403)
-        if celular and request.path.startswith("/api/metricas"):
-            return j_err(i18n.so_texto("Sending usage data and error reports can only be turned on or off on the computer."), 403)
-        if celular and (request.method, request.path) not in livres:
+        rota = getattr(request.match_info.route.resource, "canonical", None)  # /api/library/{iid}, sem o id
+        pode = perm.papeis(request.method, rota)
+        token = request.headers.get(perm.REMOTO)
+        chave = None
+        if token is not None:
+            # o cabecalho do remoto nunca cai no papel do PC: token que nao vale, ou de fora do 127.0.0.1, e 401
+            if not (request.remote == "127.0.0.1" and A.remotos.vale(token)):
+                return web.json_response({"ok": False, "error": i18n.so_texto(
+                    "The remote session token is invalid or has expired."), **marca()}, status=401)
+            papel = "remoto"
+        elif do_pc(request):
+            papel = "pc"
+        else:
             chave = par.chave_do(request.cookies)
-            if not A.celulares.confere(chave):
-                return web.json_response({
-                    "ok": False, "parear": True, "desconectado": bool(chave),
-                    "error": i18n.msg("server.pair.required", "This phone isn't connected to Ritmelli. On the "
-                                      "computer, click Phone and scan the QR code."), **marca()}, status=401)
+            chave = chave if chave and chave.isascii() else None  # a chave e ASCII: outra coisa no cookie nao vale
+            # so a rota que o celular usa (e que nao e livre) marca o aparelho como visto; a livre (o tema, cada
+            # arquivo dele) e a que nao e dele so olham a chave
+            usa = "celular" in pode and "publico" not in pode
+            pareado = A.celulares.confere(chave) if usa else A.celulares.vale(chave)
+            papel = "celular" if pareado else "publico"
+        if papel not in pode:
+            return recusa(request, papel, pode, chave)
+        request["papel"], request["remoto"] = papel, token
+        if papel == "remoto":
+            request["ainda_vale"] = ainda_vale  # o body() confere de novo depois de ler o corpo
         try:
             resp = await handler(request)
         except web.HTTPException:
             raise
         except Exception as ex:  # o erro que viraria um 500: vai para o Sentry (metricas.py) e segue igual
-            rota = getattr(request.match_info.route.resource, "canonical", None) or "?"  # /api/library/{iid}, sem o id
-            A.metricas.erro(type(ex), ex, ex.__traceback__, f"api:{request.method} {rota}"[:80])
+            A.metricas.erro(type(ex), ex, ex.__traceback__, f"api:{request.method} {rota or '?'}"[:80])
             raise
-        if celular and request.path == "/api/state":
+        if papel == "celular" and request.path == "/api/state":
             # cada abertura do tema renova o prazo do cookie
             com_chave(resp, par.chave_do(request.cookies), velho=par.COOKIE_VELHO in request.cookies)
         return resp
 
+    def ainda_vale(request):
+        """A conexao segue autorizada (o SSE pergunta a cada tick): o celular nao foi desconectado, a sessao remota
+        nao acabou."""
+        papel = request.get("papel")
+        if papel == "celular":
+            return A.celulares.vale(par.chave_do(request.cookies))
+        if papel == "remoto":
+            return A.remotos.vale(request.get("remoto"))
+        return True
+
     r = web.RouteTableDef()
 
     @r.get("/api/state")
-    async def state(_):
+    async def state(request):
+        # o caps: o que quem pede pode fazer (o papel do guard, permissao.caps)
         return web.json_response({**A.snapshot(), "pos": round(E.pos, 2),
-                                  "levels": dict(E.levels), **marca()})
+                                  "levels": dict(E.levels), "caps": perm.caps(request["papel"]), **marca()})
 
     @r.get("/api/onda/{iid}")
     async def onda(request):
@@ -2167,7 +2239,7 @@ def build(app_state):
     async def queue_add(request):
         b = await body(request)
         try:
-            x, j = A.enfileirar(b)
+            x, j = A.enfileirar(b, remoto=request["papel"] == "remoto")
         except ValueError as ex:
             return j_err(i18n.so_texto(str(ex)))
         # nada no prato (parado, ou o disco ja acabou): o que acabou de entrar toca na hora, sem
@@ -2277,12 +2349,30 @@ def build(app_state):
         E.seek(float(b["t"]))
         return j_ok()
 
+    def volume(v):
+        """Um volume do corpo, de 0 a 1 (fora disso, o limite); None se nao e um numero."""
+        v = numero(v)
+        return None if v is None else max(0.0, min(1.0, v))
+
+    def numero(v):
+        """O numero finito do corpo (o JSON true nao conta); None se nao e um."""
+        if isinstance(v, bool):
+            return None
+        try:
+            v = float(v)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return v if math.isfinite(v) else None
+
     @r.post("/api/settings")
     async def settings(request):
         b = await body(request)
-        for k in ("vol", "mon_vol", "voice_mon_vol"):
-            if k in b:
-                setattr(E, k, max(0.0, min(1.0, float(b[k]))))
+        vols = {k: volume(b[k]) for k in ("vol", "mon_vol", "voice_mon_vol") if k in b}
+        ruim = next((k for k, v in vols.items() if v is None), None)
+        if ruim:  # antes de mudar qualquer coisa
+            return j_err(i18n.so_texto(f"The {ruim} must be a number from 0 to 1."))
+        for k, v in vols.items():
+            setattr(E, k, v)
         if "mic_vol" in b:
             E.set_mic_vol(b["mic_vol"])  # nivel do mic no Windows
         for k in ("mic_mute", "monitor_on", "voice_monitor", "volume_auto"):
@@ -2302,6 +2392,36 @@ def build(app_state):
         if "auto" in b:
             A.ligar_auto(bool(b["auto"]))
         A.save_cfg()
+        return j_ok()
+
+    # o volume da musica no jogo, sozinho: o que o remoto pode mudar (o /api/settings segue com o vol para os temas, e
+    # fora do remoto)
+    @r.post("/api/volume")
+    async def volume_(request):
+        b = await body(request)
+        v = volume(b.get("vol"))
+        if v is None:
+            return j_err(i18n.so_texto("Missing the music volume (vol, a number from 0 to 1)."))
+        E.vol = v
+        A.grava_cfg(vol=v)  # so o volume da musica: o resto do som fica como esta gravado
+        return j_ok(vol=round(E.vol, 6))
+
+    @r.post("/api/abaixa")
+    async def abaixa(request):
+        """Abaixa a musica no jogo por um tempo (quem fala por cima dela), sem gravar nada: volta sozinha no prazo."""
+        b = await body(request)
+        db, ms = numero(b.get("db")), numero(b.get("ms"))
+        if db is None or ms is None or not (0 <= db <= eng.ABAIXA_MAX_DB and 0 <= ms <= eng.ABAIXA_MAX_MS
+                                            and ms == int(ms)):
+            return j_err(i18n.so_texto(f"Send db (0 to {eng.ABAIXA_MAX_DB:g}) and ms (a whole number from 0 to "
+                                       f"{eng.ABAIXA_MAX_MS}); zero in either one ends the ducking."))
+        E.abaixa(db, ms)
+        return j_ok(abaixa=E.abaixamento())
+
+    @r.post("/api/sinal")
+    async def sinal(_):
+        if not E.sinal():
+            return j_err(i18n.so_texto("The microphone is muted: the test signal didn't play."), 409)
         return j_ok()
 
     efeitos = fx.lista()
@@ -2462,17 +2582,18 @@ def build(app_state):
                                            "Cache-Control": "no-cache"})
         await resp.prepare(request)
         last = {"state": None, "library": -1, "jobs": None}
-        chave = None if do_pc(request) else par.chave_do(request.cookies)
-        if do_pc(request):
+        if request["papel"] == "pc":
             A.atualizacao.ao_abrir()  # a pagina do PC abriu: consulta a versao nova, se faz tempo (atualizacao.py)
 
         async def send(ev, data):
             await resp.write(f"event: {ev}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
                              .encode("utf-8"))
         try:
+            await send("caps", perm.caps(request["papel"]))  # o papel nao muda na conexao: a revogacao a encerra
             while not A.closing:
-                if chave is not None and not A.celulares.vale(chave):
-                    await send("desconectado", {})  # desconectado no PC: o tema pede o codigo sem esperar a reconexao
+                if not ainda_vale(request):
+                    # desconectado no PC, ou a sessao remota acabou: o tema pede o codigo sem esperar a reconexao
+                    await send("desconectado", {})
                     break
                 s = A.snapshot()
                 if s != last["state"]:

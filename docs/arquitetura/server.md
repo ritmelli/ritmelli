@@ -1,8 +1,8 @@
 # O servidor (`server.py`)
 
 `server.py`: aiohttp no 127.0.0.1 e no IP da rede de casa (Host fixo contra DNS
-rebinding, Origin conhecida em toda escrita contra CSRF, a API da rede só para o celular
-pareado), SSE em `/api/events`, busca e
+rebinding, Origin conhecida em toda escrita contra CSRF, e a tabela de quem pode cada rota do
+[`permissao.py`](permissao.md)), SSE em `/api/events`, busca e
 download pelo yt_dlp (no `yt_fora.py`). Instalar com `pip install -U "yt-dlp[default]"` (traz o yt-dlp-ejs) e
 ter um runtime de JavaScript (Node ou Deno): sem ele o YouTube esconde formatos e o stream
 falha de vez em quando. O servidor habilita o Node e o Deno nas opções do yt-dlp.
