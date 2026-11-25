@@ -249,6 +249,10 @@ def em_memoria():
     reprova("um caminho relativo", disco_base(), "absolute", r"Ritmelli")
     reprova("um nome curto 8.3 no caminho (o instalador o expandiria)", disco_base(), "short", r"C:\PROGRA~1\Ritmelli")
     reprova("um nome curto 8.3 dentro da raiz", disco_base(), "short", RAIZ + r"\RITMEL~1")
+    d = disco_base()
+    d.poe(RAIZ + r"\Ritmelli~Estudio")
+    confere("um ~ num nome longo de verdade (sem digito depois) nao e nome curto",
+            avalia(d, RAIZ + r"\Ritmelli~Estudio") is True, repr(avalia(d, RAIZ + r"\Ritmelli~Estudio")))
     r = avalia(disco_base(), r"C:\Ritmelli")
     confere("a recusa e falsa e diz o motivo", not r and "outside" in str(r) and isinstance(r, pastas.Reprovada))
 

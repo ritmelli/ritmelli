@@ -601,9 +601,9 @@ begin
   if (PastaAnterior = '') or (CompareText(PastaAnterior, Destino) = 0) then
     Exit;
   Log('migracao: a instalacao anterior em ' + PastaAnterior + ' fica onde esta, e o app vai para ' + Destino);
+  // sem conferir antes se o exe existe: o renomeia.ps1 diz no log por que nao renomeou (nao existe, ponto de
+  // reanalise, acesso negado)
   Exe := AddBackslash(PastaAnterior) + 'ritmelli.exe';
-  if not FileExists(Exe) then
-    Exit;
   Resposta := RodaPs('renomeia.ps1', '-Exe ' + Aspas(Exe) + ' -Destino ' + Aspas(Destino),
                      ExpandConstant('{tmp}\renomeia.txt'));
   if Resposta = '' then

@@ -8,6 +8,7 @@ duas tarefas que rodam como SYSTEM conferem antes de usar a pasta do app."""
 import json
 import ntpath
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -310,9 +311,9 @@ def motivo_desprotegida(pasta, raiz, le=_le_disco):
     """Por que a pasta nao passa na regra da pasta protegida, ou None se passa. le(caminho) e quem le cada objeto (o
     _le_disco, ou uma descricao em memoria nos testes)."""
     pasta, raiz = ntpath.normpath(str(pasta)), ntpath.normpath(str(raiz))
-    if "~" in pasta:
-        # um nome curto (8.3): o instalador (o GetFullPath do .NET Framework) o expandiria, e a regra tem de dar o mesmo
-        # veredito nos dois
+    if re.search(r"~[0-9]", pasta):
+        # um nome curto (8.3, como PROGRA~1): o instalador (o GetFullPath do .NET Framework) o expandiria, e a regra tem
+        # de dar o mesmo veredito nos dois. Um ~ sem digito depois nao e alias
         return f"{pasta} has a short (8.3) name"
     unidade, resto = ntpath.splitdrive(pasta)
     if not unidade or not ntpath.isabs(pasta) or not ntpath.isabs(raiz):
