@@ -7,9 +7,10 @@ O estado do Automatico mora no App (auto, semente, mix, mix_base, ponte, mix_bus
 fora_musica, andamentos, andamentos_versao, versoes), porque a leitura do estado, o save_cfg e o _recusar o leem: o
 Automatico o le e o muda pelo app, sob a app.fila_lock, na ordem das travas do comandos.py, e a fila muda pelo
 App.change_queue. O mix_do chega resolvido a cada chamada (o teste troca o do App). Its constants live here and the
-music functions (chaves_musica, autores, mesma_faixa, busca_de, YT_ID) in music.py; the shelf's folder (LIB) and
-save_json come from pastas.py. What is still the server's (the YouTube process, the helper process, the error text)
-comes through the App's public interface (search_songs, run_helper, yt_error), like the queue changes."""
+music functions (chaves_musica, autores, mesma_faixa, busca_de, YT_ID) in music.py; the shelf's folder (pastas.LIB,
+read when it is used) and save_json come from pastas.py. What is still the server's (the YouTube process, the helper
+process, the error text) comes through the App's public interface (search_songs, run_helper, yt_error), like the queue
+changes."""
 import json
 import sys
 import threading
@@ -20,8 +21,9 @@ import andamento as an
 import comandos as cmd
 import engine as eng
 import music
+import pastas
 from music import YT_ID
-from pastas import LIB, save_json
+from pastas import save_json
 
 AUTO_FILA = 5  # o Automatico mantem tantas parecidas no fim do A seguir
 AUTO_LOTE = 50  # quantas parecidas cada busca traz (o radio do YouTube Music da 50 em ~1 s, 21/10)
@@ -278,10 +280,10 @@ class Automatico:
         A = self.app
         it = (A.lib.get(x["id"]) if x.get("id") else None) or \
              (A.lib.by_youtube(x["youtube_id"]) if x.get("youtube_id") else None)
-        if it and (LIB / it["file"]).exists():
+        if it and (pastas.LIB / it["file"]).exists():
             if not it.get("duration"):
                 return None
-            pedido = {"fonte": str(LIB / it["file"]), "dur": it["duration"]}
+            pedido = {"fonte": str(pastas.LIB / it["file"]), "dur": it["duration"]}
         elif x.get("youtube_id") and not A.mock:  # no --mock, so o arquivo: o stream iria a rede sozinho (#128)
             pedido = {"yt": A.alvo_yt(x["youtube_id"]), "opts": A.opts_stream(), "dur": x.get("duration")}
         else:

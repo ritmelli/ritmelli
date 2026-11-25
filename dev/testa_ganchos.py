@@ -120,34 +120,44 @@ def is_private(name):
     return name.startswith("_") and not name.startswith("__")
 
 
+def own(node):
+    return isinstance(node, ast.Name) and node.id in ("self", "cls")
+
+
 def privates(tree, classes):
     """The private names the top-level classes named in classes define: their methods, the names assigned in the class
-    body and every self._x their methods assign."""
+    body and every self._x or cls._x their methods assign (a helper def nested inside a method is not the class's)."""
     out = set()
     for c in tree.body:
         if not (isinstance(c, ast.ClassDef) and c.name in classes):
             continue
-        for s in c.body:  # the class body: _X = ...
+        for s in c.body:  # the class body: its methods and _X = ...
+            if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out.add(s.name)
             for target in (s.targets if isinstance(s, ast.Assign) else [s.target] if isinstance(s, ast.AnnAssign)
                            else []):
                 if isinstance(target, ast.Name):
                     out.add(target.id)
         for no in ast.walk(c):
-            if isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                out.add(no.name)
-            elif (isinstance(no, ast.Attribute) and isinstance(no.ctx, ast.Store) and isinstance(no.value, ast.Name)
-                  and no.value.id == "self"):
+            if isinstance(no, ast.Attribute) and isinstance(no.ctx, ast.Store) and own(no.value):
                 out.add(no.attr)
     return {n for n in out if is_private(n)}
 
 
-def own(node):
-    return isinstance(node, ast.Name) and node.id in ("self", "cls")
+ATTR_FUNCTIONS = ("getattr", "setattr", "hasattr", "delattr")
+
+
+def attr_function(func):
+    """Whether a call's func is getattr and its kin, by name or through the builtins module."""
+    return ((isinstance(func, ast.Name) and func.id in ATTR_FUNCTIONS)
+            or (isinstance(func, ast.Attribute) and func.attr in ATTR_FUNCTIONS and isinstance(func.value, ast.Name)
+                and func.value.id == "builtins"))
 
 
 def reaches(owner, names):
     """[(module, line, name)] of the reaches into names from the modules at the root other than owner: an attribute
-    on an object other than self or cls, or a getattr/setattr/hasattr/delattr with the name as a literal."""
+    on an object other than self or cls, or a getattr/setattr/hasattr/delattr (also builtins.getattr and the rest)
+    with the name as a literal."""
     out = []
     for f in sorted(RAIZ.glob("*.py")):
         if f.name == owner:
@@ -155,8 +165,7 @@ def reaches(owner, names):
         for no in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
             if isinstance(no, ast.Attribute) and no.attr in names and not own(no.value):
                 out.append((f.name, no.lineno, no.attr))
-            elif (isinstance(no, ast.Call) and isinstance(no.func, ast.Name)
-                  and no.func.id in ("getattr", "setattr", "hasattr", "delattr") and len(no.args) >= 2
+            elif (isinstance(no, ast.Call) and attr_function(no.func) and len(no.args) >= 2
                   and isinstance(no.args[1], ast.Constant) and no.args[1].value in names and not own(no.args[0])):
                 out.append((f.name, no.lineno, no.args[1].value))
     return sorted(out)

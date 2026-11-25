@@ -186,7 +186,10 @@ def engine_constant(name):
     for node in tree.body:
         if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
                 and node.targets[0].id == name):
-            return ast.literal_eval(node.value)
+            try:
+                return ast.literal_eval(node.value)
+            except ValueError:
+                break
     raise LookupError(f"engine.py has no top-level {name} written as a literal")
 
 
@@ -202,15 +205,17 @@ def phase_excerpt_bound():
     for sa in (1 + transicao.SAI_MAX, 1 - transicao.SAI_MAX):
         n_ra, start = transicao.rampa_saida(sa, virar)
         ramp_end = start + n_ra * (1 + sa) / 2 / transicao.SR  # the ramp covers its samples at the mean speed
-        constant = virar - ramp_end
+        # the margin between the end of the ramp and FASE_ANTES_S of disc before the switch (0.5 s in rampa_saida)
+        margin = virar - transicao.FASE_ANTES_S - ramp_end
         # the excerpt starts at whichever comes first: FASE_ANTES_S of disc or FASE_MIN_S of output before the switch
         excerpt = max(transicao.FASE_ANTES_S, fase_min_s * sa)
-        print(f"sa {sa:.2f}: the phase excerpt reaches {excerpt:.2f} s of disc before the switch; the speed is "
-              f"constant for the last {constant:.2f} s")
-        if excerpt > constant + 1e-9:
+        bound = transicao.FASE_ANTES_S + margin
+        print(f"sa {sa:.2f}: max(FASE_ANTES_S, FASE_MIN_S * sa) = {excerpt:.2f} s <= FASE_ANTES_S + the ramp margin "
+              f"({margin:.2f} s) = {bound:.2f} s")
+        if excerpt > bound + 1e-9:
             falhas.append(f"with the outgoing track at {sa:.2f}, FASE_MIN_S ({fase_min_s} s) of its output goes back "
-                          f"{excerpt:.2f} s of disc from the switch, into its speed ramp, which ends {constant:.2f} s "
-                          f"before it (FASE_MIN_S * (1 + SAI_MAX) <= FASE_ANTES_S + 0.5)")
+                          f"{excerpt:.2f} s of disc from the switch, into its speed ramp, which ends {bound:.2f} s "
+                          f"before it (FASE_MIN_S * (1 + SAI_MAX) <= FASE_ANTES_S + {margin:.2f})")
     return falhas
 
 
