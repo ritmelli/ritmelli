@@ -432,6 +432,22 @@ def voltas(A, E):
         confere(ate(lambda: A.preparando is None), "liberada, a preparacao termina")
         A.fonte_de, E._onda_pede = fonte, onda
 
+    # o pos do /api/state e o da mesma captura do estado: o motor que anda depois da leitura nao entra na resposta
+    leitura, pos0 = A.leitura, E.pos
+
+    def leitura_e_anda():
+        r = leitura()
+        E.pos = 0.5  # o motor andou depois da captura
+        return r
+    E.pos = 12.34
+    try:
+        with mock.patch.object(A, "leitura", leitura_e_anda):
+            st, corpo = asyncio.run(asyncio.wait_for(pede_state(), 2))
+    finally:
+        E.pos = pos0
+    confere(st == 200 and corpo["track"]["id"] == "d1" and corpo["pos"] == 12.34,
+            f"o pos do /api/state e o da captura, nao o do motor depois dela ({corpo.get('pos')})")
+
     # o stream da parecida que nao abriu: a fila avanca sem guardar a parecida no Anterior
     cmd.limpar_fila(A)
     parecida = {"id": None, "youtube_id": "ccccccccccc", "url": None, "title": "parecida", "channel": None,
