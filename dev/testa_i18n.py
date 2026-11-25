@@ -13,7 +13,9 @@ guarda chave server.* que o servidor nao manda. Os efeitos do fx.py: cada um com
 grupo com effect.group.<grupo>, e nenhuma chave effect.* sobrando. As palavras do pixel art: cada lingua so com as
 letras que a tabela de pixel delas tem (as placas, os mostradores do mixer, a fita da voz, os nomes dos pedais da mesa
 e o visor do pedal de troca de voz). O meta.json de cada tema: o campo que vem por lingua tem as duas. No i18n.py: o leitor do .properties, a escolha da lingua, o texto
-posto na pagina e a mensagem. Sai 1 se algo falha."""
+posto na pagina e a mensagem. O tema e o index.html e todos os .js e .css da pasta dele (e das de dentro), e cada bloco
+marcado (o /* NOME-INICIO ... /* NOME-FIM */, e o /* nome:inicio ... /* nome:fim */ que um gerador de dev/ grava) mora
+num lugar so: o que sai do index.html para um arquivo nao fica nos dois. Sai 1 se algo falha."""
 import ast
 import contextlib
 import io
@@ -108,6 +110,32 @@ def efeitos_do_servidor():
     return chaves
 
 
+def arquivos_do_tema(tema):
+    """{caminho na pasta do tema: texto}: o index.html primeiro e depois todo .js e .css da pasta e das de dentro."""
+    extras = sorted(p for p in tema.rglob("*") if p.suffix in (".js", ".css") and p.is_file())
+    return {p.relative_to(tema).as_posix(): p.read_text(encoding="utf-8") for p in [tema / "index.html", *extras]}
+
+
+# a marca de um bloco: /* DECK-JS-INICIO, /* DECK-JS-FIM */, /* pecas:inicio, /* pecas:fim */
+MARCA_BLOCO = re.compile(r"/\*\s*(?:([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*)-(INICIO|FIM)|([a-z]+):(inicio|fim))\b")
+
+
+def confere_blocos(tema, arquivos):
+    """Cada marca de bloco aparece uma vez so em todo o tema: o bloco que saiu do index.html para um .js ou .css e ficou
+    tambem no index.html (ou foi copiado duas vezes) falha, com os lugares."""
+    onde = {}
+    for nome, texto in arquivos.items():
+        for m in MARCA_BLOCO.finditer(texto):
+            bloco, ponta = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4).upper())
+            linha = texto.count("\n", 0, m.start()) + 1
+            onde.setdefault((bloco, ponta), []).append(f"{nome}:{linha}")
+    for (bloco, ponta), lugares in sorted(onde.items()):
+        if len(lugares) > 1:
+            falha(f"{tema.name}: the {ponta} mark of the block {bloco} is in {len(lugares)} places "
+                  f"({', '.join(lugares)}): a block lives in one file only")
+    print(f"{tema.name}: {len(arquivos)} file(s), {len({b for b, _ in onde})} marked block(s)")
+
+
 def confere_tema(tema, servidor, efeitos):
     pasta = tema / "i18n"
     try:
@@ -138,7 +166,9 @@ def confere_tema(tema, servidor, efeitos):
             elif k in base and tags(base[k]) is not None and tags(v) != tags(base[k]):
                 falha(f"{tema.name}: {k} has the tags {tags(v)} in {lingua}, {tags(base[k])} in {i18n.RESERVA}")
 
-    html = (tema / "index.html").read_text(encoding="utf-8")
+    arquivos = arquivos_do_tema(tema)
+    confere_blocos(tema, arquivos)
+    html = "\n".join(arquivos.values())
     # o que o tema pede: os data-i18n* e as chaves entre aspas nas linhas que chamam o I18N.t, o I18N.tp ou o
     # I18N.rico (pega o I18N.t(cond ? 'a.b' : 'a.c'))
     pedidas = set(re.findall(rf'data-i18n(?:-[a-z-]+)?="({CHAVE})"', html))
@@ -314,11 +344,12 @@ def confere_pixel(tema, html, por_lingua):
     pedal = larguras_pedal(html)
     topos = topos_do_pedal(html)
     if pedal and topos is None:
-        falha(f"{tema.name}: couldn't read TOPOS (the name lines of the desk pedal) in index.html (update topos_do_pedal)")
+        falha(f"{tema.name}: couldn't read TOPOS (the name lines of the desk pedal) in the theme "
+              f"(update topos_do_pedal)")
     medidas = medidas_do_pedal(html) if pedal else None
     if pedal and medidas is None:
         falha(f"{tema.name}: couldn't read the name width, the display width or the voice changer width (PEDAL CSS) of "
-              f"the desk pedal in index.html (update medidas_do_pedal)")
+              f"the desk pedal in the theme (update medidas_do_pedal)")
     nome_pedal, visor_pedal, nome_troca = medidas or (0, 0, 0)
     tabelas = {
         "G8": set(g8) if g8 else None,
@@ -334,7 +365,8 @@ def confere_pixel(tema, html, por_lingua):
                   "NOMEV": "const NOMEV", "LETRAS_FITA": "const LETRAS_FITA", "PEDAL": "const LETRA_PEDAL"}
     for nome, tabela in tabelas.items():
         if DECLARACAO[nome] in html and not tabela:
-            falha(f"{tema.name}: couldn't read the pixel font {nome} in index.html (its format changed? update confere_pixel)")
+            falha(f"{tema.name}: couldn't read the pixel font {nome} in the theme "
+                  f"(its format changed? update confere_pixel)")
     if all(t is None for t in tabelas.values()):
         return
     # (chave, tabela, o texto como a tela desenha)
