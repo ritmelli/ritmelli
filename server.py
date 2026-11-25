@@ -1020,11 +1020,14 @@ class App:
         if historico:
             self.guardar_historico(item["id"])
         tr = dict(item, path=str(LIB / item["file"]), **(extra or {}))
-        if loop is not None:
-            self.engine.set_loop(loop)
-        else:
+        if loop is None:
             self.repetir_so_neste(item["id"])
-        self.remember_pos(self.engine.load(tr, start=start))  # a posicao do que saiu, no instante da troca
+        elif not loop:
+            self.engine.set_loop(False)
+        cap = self.engine.load(tr, start=start)
+        if loop:  # depois da troca: ligar antes recomecaria o disco que ja tinha acabado
+            self.engine.set_loop(True)
+        self.remember_pos(cap)  # a posicao do que saiu, no instante da troca
 
     def tocar_remoto(self, j, target, meta, historico=True):
         """Toca na hora pelo stream do YouTube enquanto o download do job segue por tras;

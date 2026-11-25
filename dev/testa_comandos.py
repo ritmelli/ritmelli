@@ -386,8 +386,8 @@ def voltas(A, E):
     confere(E.virou is None and fila(A) == ["d2"] and historico(A)[-1:] == ["d3"] and no_prato(E) == "d1",
             f"o _volta_passagem tira da fila a que entrou e guarda a que saiu ({fila(A)}, {historico(A)[-1:]})")
 
-    # a preparacao da proxima bloqueada, no endereco do stream (fonte_de, fora das travas) e depois no E.preparar (com
-    # o E._lock na mao): o GET /api/state de verdade, pelo guard, segue respondendo
+    # a preparacao da proxima bloqueada, no endereco do stream (fonte_de, fora das travas) e depois no E.preparar, e o
+    # E._lock na mao de outra thread: o GET /api/state de verdade, pelo guard, segue respondendo
     app = server.build(A)
     rota_state = next(r.handler for r in app.router.routes()
                       if r.method == "GET" and r.resource is not None and r.resource.canonical == "/api/state")
@@ -427,13 +427,29 @@ def voltas(A, E):
         confere(preso.wait(5), "o _volta_passagem comeca a preparar a primeira da fila")
         state_responde("no endereco do stream")
         libera.set()
-        confere(na_onda.wait(5), "liberado o endereco, a preparacao entra no E.preparar (com o E._lock na mao)")
+        confere(na_onda.wait(5), "liberado o endereco, a preparacao entra no E.preparar")
         state_responde("no E.preparar")
     finally:
         libera.set()
         libera_onda.set()
         confere(ate(lambda: A.preparando is None), "liberada, a preparacao termina")
         A.fonte_de, E._onda_pede = fonte, onda
+
+    # o E._lock na mao de outra thread (um load, um preparar): o /api/state, que so usa a fila_lock e o _qlock, responde
+    com_lock, solta_lock = threading.Event(), threading.Event()
+
+    def segura_lock():
+        with E._lock:
+            com_lock.set()
+            solta_lock.wait(5)
+    segura = threading.Thread(target=segura_lock, daemon=True)
+    segura.start()
+    try:
+        confere(com_lock.wait(5), "outra thread segura o E._lock")
+        state_responde("com o E._lock na mao de outra thread")
+    finally:
+        solta_lock.set()
+        segura.join(5)
 
     # o pos do /api/state e o da mesma captura do estado: o motor que anda depois da leitura nao entra na resposta
     leitura, pos0 = A.leitura, E.pos
@@ -764,6 +780,15 @@ def bloco(A, E):
         with E._qlock:
             E._deck.eof_gen = -1  # o leitor do stream ainda le
         return st
+    # a troca para o arquivo com leitor novo desfaz a passagem preparada na fonte de antes
+    st = no_stream()
+    with contextlib.redirect_stderr(io.StringIO()):
+        E.preparar(arquivo(A, "d2"), "t2")
+    preparada = E._pronto is not None
+    E.trocar_fonte(st, dict(st, path=str(server.LIB / "s1.m4a")))
+    confere(preparada and E._pronto is None and E.pronto_tag is None,
+            "a troca do stream para o arquivo, com leitor novo, desfaz a passagem preparada na fonte de antes")
+
     for vazia in (False, True):
         st = no_stream()
         if vazia:
@@ -809,6 +834,15 @@ def bloco(A, E):
             f"o Repetir ligado com o bloco do fim retirado: o fim nao publica, e a volta seguinte toca ({E.status()})")
     E.set_loop(False)
 
+    # tocar com o Repetir pedido, com o disco de antes ja acabado: ele nao recomeca, e a posicao dele nao vira 0
+    toca("d1", start=20.045)
+    toca_ate_o_fim(E)
+    A.lib.update("d1", last_pos=7.0)
+    cmd.tocar(A, "d2", loop=True)
+    confere(no_prato(E) == "d2" and E.loop and A.lib.get("d1")["last_pos"] == 7.0,
+            f"tocar com o Repetir depois do fim: o de antes nao recomeca nem grava 0 ({A.lib.get('d1')['last_pos']})")
+    E.set_loop(False)
+
     # a pausa pedida com o bloco do fim retirado: o fim a substitui, sem gravar posicao
     toca("d1")
     toca_ate_o_fim(E)
@@ -827,6 +861,35 @@ def bloco(A, E):
             f"a pausa com o bloco do fim retirado espera ele, e o fim a substitui sem gravar a posicao ({res})")
     p = E.pause()
     confere(p.feita.is_set() and not p.ok and E.paused, "pausar o disco que ja acabou: nada para confirmar nem gravar")
+
+    # o leitor que chega ao fim decide repetir no mesmo trecho em que o set_loop liga o Repetir
+    toca("d1")
+    with E._qlock:
+        d, gen = E._deck, E._deck.gen
+        d.eof_gen = -1
+    E.set_loop(True)
+    repete = E._repete(d, gen) and d.eof_gen == -1
+    E.set_loop(False)
+    confere(repete and not E._repete(d, gen) and d.eof_gen == gen and not E._repete(d, gen - 1),
+            "o leitor no fim: com o Repetir, a volta seguinte; sem, o fim; o de um gen velho, nada")
+
+    # a pausa com o prato sem bloco na fila, mas com a passagem soando (o que sai): ela espera esse bloco
+    toca("d1")
+    velho = eng.Deck(arquivo(A, "d3"))
+    velho.q.extend((i * eng.BLOCK / eng.SR, np.full((eng.BLOCK, 2), 0.25, np.float32)) for i in range(10))
+    with E._qlock:
+        E._q.clear()
+        E._deck.eof_gen = -1  # o leitor ainda le: o prato carregando
+        E._saindo = [velho, 4800, 0, None, 0]
+    s = Suspenso(E)
+    p = E.pause()
+    pendente = not p.feita.is_set() and not E.paused
+    s.solta()
+    confere(s.parou and pendente and p.ok and E.paused,
+            "a pausa com so o que sai soando no bloco espera a publicacao dele, e so entao pausa")
+    with E._qlock:
+        E._saindo = None
+    cmd.retomar(A)
 
     # o leitor de uma linha que ja acabou nao marca o fim nem o erro da linha nova
     toca("d1")
