@@ -2108,6 +2108,39 @@ def avanco(A, E):
     confere(no_prato(E) == "d2" and fila(A) == [],
             f"a parecida sem stream com um seek no meio: a seguinte toca ({no_prato(E)}, {fila(A)})")
 
+    # o Automatico com o prato parado cuja fila esvaziou antes de reservar: a marca do prato parado fica, e a parecida
+    # que chegar depois ainda toca
+    limpa()
+    toca("d1")
+    toca_ate_o_fim(E)
+    A._volta_fila(None)
+    marcado = E.track
+    with A.fila_lock:
+        A.fila.append({"id": "d3", "youtube_id": None, "url": None, "title": "Disco d3", "duration": 120.0,
+                       "job": None, "qid": "pw", "auto": True, "fixa": True, "auto_de": "semente"})
+    A.auto, A.semente, A.mix, A.ponte = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, [], None
+    real_av = cmd.avanca
+
+    def esvazia_e_avanca(*a, **kw):
+        cmd.limpar_fila(A)  # a fila esvazia antes de o Automatico reservar
+        return real_av(*a, **kw)
+    try:
+        with mock.patch.object(cmd, "avanca", side_effect=esvazia_e_avanca):
+            A._volta_auto((E.track or {}).get("youtube_id"), None)
+    finally:
+        A.auto = False
+    confere(A.parado_sem_fila is marcado and marcado is not None,
+            "o Automatico que nao tocou nada (a fila esvaziou) deixa a marca do prato parado")
+
+    # o Proximo que encontra a fila vazia resolve o grupo ali mesmo: outra reserva que vier antes do fim dele nao o liga
+    limpa()
+    toca("d1")
+    with E._qlock:
+        g = cmd.Proximo(E._deck, E._deck.linha)
+    r_vazia = avanca(A, pular=True, grupo=g, visto=g)
+    confere(r_vazia is None and g.feita.is_set() and g.entrada is None,
+            f"o Proximo com a fila vazia resolve o grupo antes de voltar ({r_vazia}, {g.feita.is_set()})")
+
     # o Anterior e um Proximo no meio, entre a escolha do Anterior e a troca: o Anterior escolhe de novo, com o prato
     # e o historico de agora
     limpa()

@@ -249,6 +249,8 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                 v, E.virou = E.virou, None
                 if v is not None and pular and grupo is not None:
                     grupo.deck, grupo.linha = E._deck, E._deck.linha  # quem chega agora junta neste, que concilia
+                    if any(y["qid"] == v[2] for y in A.fila):
+                        grupo.virada = v  # e o avanco dele e a virada: outra reserva nesta linha nao o liga
                 if v is None:
                     d = E._deck
                     if visto is not None and (visto.deck is not d or visto.linha != d.linha):
@@ -259,6 +261,8 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                     if em_curso is None:
                         x = entrada if entrada is not None else (A.fila[0] if A.fila else None)
                         if x is None or not any(y is x for y in A.fila):
+                            if grupo is not None:
+                                grupo.resolve(None)  # o Proximo que nao tem o que tocar ja decidiu: ninguem o liga
                             return None
                         r = A.reserva = Reserva(d, d.linha, x)
                         E._cancela_passagem()  # a preparada sai: o motor nao vira para ela no meio do avanco

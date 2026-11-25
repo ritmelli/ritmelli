@@ -1929,9 +1929,10 @@ class App:
         # la quando a volta de antes cedeu a outro avanco que nao a tocou
         if (entrou or self.fila) and tr is not None and tr is self.parado_sem_fila:
             cap = e.captura()
-            if cap.track is tr and cap.status == "ended" and \
-                    cmd.avanca(self, na_tela=True, visto=cap, cede=True) is not cmd.CEDEU:
-                self.parado_sem_fila = None
+            if cap.track is tr and cap.status == "ended":
+                x = cmd.avanca(self, na_tela=True, visto=cap, cede=True)
+                if x is not None and x is not cmd.CEDEU:  # so o avanco que tocou tira a marca do prato parado
+                    self.parado_sem_fila = None
         return visto, sinal
 
 
