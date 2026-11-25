@@ -472,7 +472,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          sparse-checkout: /instalador/testa-migracao.ps1
+          # the vozes.json: the voice files the setup has to bring from the old folder, with their sha256
+          sparse-checkout: |
+            /instalador/testa-migracao.ps1
+            /vozes.json
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v8
         with:

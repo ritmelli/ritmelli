@@ -13,10 +13,14 @@
 # - dir-refused: the new setup with /DIR=C:\Ritmelli on a clean machine exits with 7 and installs nothing;
 # - writable-folder: the 0.6.0 in Program Files\Ritmelli, made writable by Users, then the new setup: the app ends up in
 #   Program Files\Ritmelli-2, and the old ritmelli.exe is renamed as above.
+# In both scenarios that change folders, the voice files (vozes.json) come from the old folder with their sha256
+# checked, and none is downloaded; in writable-folder one of them is changed in the old folder first, and the setup
+# has to refuse it and download only that one.
 # Precisa de administrador e de uma maquina sem o app. Roda no job testa-migracao da esteira e numa maquina de teste.
-# Uso: testa-migracao.ps1 -Setup <Ritmelli-X.Y.Z-setup.exe> -Versao <X.Y.Z> [-Scenario <name>]
+# Uso: testa-migracao.ps1 -Setup <Ritmelli-X.Y.Z-setup.exe> -Versao <X.Y.Z> [-Scenario <name>] [-Vozes <vozes.json>]
 param([Parameter(Mandatory = $true)][string]$Setup, [Parameter(Mandatory = $true)][string]$Versao,
-      [ValidateSet('update', 'outside-program-files', 'dir-refused', 'writable-folder')][string]$Scenario = 'update')
+      [ValidateSet('update', 'outside-program-files', 'dir-refused', 'writable-folder')][string]$Scenario = 'update',
+      [string]$Vozes = (Join-Path $PSScriptRoot '..\vozes.json'))
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -86,7 +90,30 @@ if ($Scenario -eq 'outside-program-files' -or $Scenario -eq 'writable-folder') {
     if ($LASTEXITCODE -ne 0) { throw "icacls couldn't make $velha writable by Users" }
   }
   "the 0.6.0 is installed in $velha"
+  # the voices (vozes.json) come from the old folder, checked by their sha256. In writable-folder, one of them is
+  # changed there first, as anyone could in a folder Users can write to: the setup has to refuse it and download it
+  $listaVozes = Get-Content $Vozes -Raw -Encoding UTF8 | ConvertFrom-Json
+  $esperadas = @(foreach ($r in @($listaVozes.engine) + @($listaVozes.vozes)) { foreach ($a in $r.arquivos) { [pscustomobject]@{ Caminho = "$($r.tag)\$($a.nome)"; Sha = $a.sha256 } } })
+  if (-not (Test-Path "$velha\vozes\$($esperadas[0].Caminho)")) { throw "the 0.6.0 has no voices in $velha\vozes" }
+  $mexida = $null
+  if ($Scenario -eq 'writable-folder') {
+    $mexida = ($esperadas | Where-Object { $_.Caminho -like '*\voz.json' } | Select-Object -First 1).Caminho
+    Add-Content "$velha\vozes\$mexida" ' ' -Encoding ascii
+  }
   Roda $Setup "setup-$Versao"
+  $log = Get-Content (Join-Path $temp "setup-$Versao.log")
+  $copiadas = @($log | Select-String -Pattern 'vozes: copied (\S+) from' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+  $baixadas = @($log | Select-String -Pattern 'vozes: downloading (\S+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+  $outras = @($esperadas | Where-Object { $_.Caminho -ne $mexida } | ForEach-Object { $_.Caminho })
+  Confere ((($outras | Sort-Object) -join '|') -eq (($copiadas | Sort-Object) -join '|')) "the setup copied the $($outras.Count) voice files from $velha with their sha256 checked ($($copiadas.Count) copied)"
+  if ($mexida) {
+    Confere ($log | Select-String -Pattern "$([regex]::Escape("$velha\vozes\$mexida")) does not match its sha256" -Quiet) "the changed $mexida was refused"
+    Confere (($baixadas.Count -eq 1) -and ($baixadas[0] -eq $mexida)) "only the changed $mexida was downloaded ($($baixadas -join ', '))"
+  } else {
+    Confere ($baixadas.Count -eq 0) "no voice file was downloaded ($($baixadas -join ', '))"
+  }
+  $erradas = @($esperadas | Where-Object { -not (Test-Path "$nova\vozes\$($_.Caminho)") -or (Get-FileHash "$nova\vozes\$($_.Caminho)" -Algorithm SHA256).Hash -ne $_.Sha })
+  Confere ($erradas.Count -eq 0) "every voice file in $nova\vozes has its sha256 ($($erradas.Caminho -join ', '))"
   $exe = "$nova\ritmelli.exe"
   Confere ((Test-Path $exe) -and (Get-Item $exe).VersionInfo.ProductVersion -eq $Versao) "the ritmelli.exe in $nova is the $Versao"
   $u = Uninstall
