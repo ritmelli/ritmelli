@@ -18,7 +18,10 @@ ordem, e o que um deles declara no alto continua à vista dos de depois. Já sa�
 mesa), o `mix.js` (o mixer da mesa), o `pedal.js` (os pedais da mesa), o `maleta-vazia.js` (o aviso de vazio do A
 seguir), o `letra-placa.js` (a letra de pixel das placas da mesa), o `prateleira.js` (o título e a contagem da plaqueta
 da prateleira), o `maleta-tit.js` (o título da placa da maleta) e o `mesa-topo.js` (a plaqueta e as teclas do topo da
-mesa em largura par).
+mesa em largura par). The
+`voice-effects.js` (the voice effects: the selector on the receiver and the key drawer) came out of the main script
+of the page, which is strict: a file taken from it starts with `'use strict'`, and so does the inline script that
+resumes after its `<script src>`.
 
 Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `index.html`
 chama, e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o
@@ -36,13 +39,15 @@ Parte do CSS do tema mora em arquivos ao lado do `index.html` (o `deck.css`, por
 marcado inteiro e carregado por um `<link rel="stylesheet">` sem `media`, no mesmo lugar em que o bloco estava: a
 ordem das folhas e a cascata são as de antes, e os endereços relativos dentro do arquivo (`url(fonts/...)`) continuam
 saindo da pasta do tema. O bloco que estava dentro de um `@media` do `<style>` leva o mesmo `@media` em volta no
-arquivo, e o `<style>` fecha o `@media` antes do `<link>` e abre de novo depois. O que um gerador de `dev/` desenha
+arquivo. O que um gerador de `dev/` desenha
 mora em `gerado/` (o `gerado/molduras.css`, por exemplo): o gerador grava o arquivo inteiro e não mexe no
 `index.html`, e o que se muda à mão ali some na próxima vez que ele roda.
 
-The base CSS of the theme is out of the page too, one marked block per file, in the order the page loads them:
-`base.css` (the fonts, the colors and the reset), `buttons.css`, `grid.css`, `top-bar.css`, `turntable.css`,
-`receiver.css`, `devices.css`, `wall.css`, `dialogs.css`, `phone.css`, `pedalboard.css`, `home.css` and
-`skin-vars.css`. The CSS still inline has its blocks marked already, ready to move. The `dev/testa_i18n.py` keeps a
+All the CSS of the theme is in files now, one marked block per file, and the `<link>` list at the top of the
+`index.html` is the order of the cascade: `base.css` (the fonts, the colors and the reset) first, the sections of the
+page (`buttons.css`, `top-bar.css`, `phone.css`, ...), the skin over them (`skin-vars.css`, the generated sheets,
+`skin-top.css`, `skin-case.css`, ...), the desktop and DJ desk layouts (`desktop-library.css`, `dj-desk.css`, ...) and
+`reduced-motion.css` near the end, before the `deck.css`, `mix.css` and `pedal.css` of the desk. Only the one line
+that hides the page until its texts are in place stays inline. The `dev/testa_i18n.py` keeps a
 ceiling on the lines of inline CSS and JS left in the `index.html` (`INLINE_CEILING`): it only goes down, new theme
 code goes into a file of the folder, and the count goes to the PR summary.

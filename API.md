@@ -59,7 +59,8 @@ Use `new EventSource('/api/events')`. Eventos:
 O servidor monta o `state`, a lista do `library`, a do `jobs` e o `tick` uma vez por volta (15 por segundo) e
 entrega a mesma volta a todas as conexões abertas; só o `caps` e a autorização são de cada uma. O `state` e o `tick` de
 uma volta saem da mesma captura: o `pos` é sempre da faixa do último `state` entregue. Uma conexão que fica para trás
-(a aba em segundo plano, a rede lenta) pula para a volta mais nova, sem atrasar as outras.
+(a aba em segundo plano, a rede lenta) pula para a volta mais nova, sem atrasar as outras. O `data` é JSON só em
+ASCII (o que não é ASCII vai como `\uXXXX`): um texto que o UTF-8 não codifica não derruba o evento.
 
 `levels` é RMS linear de 0 a 1, com queda suave (dBFS = 20·log10(r); -60 dB já é
 silêncio). `mic` = voz (mesmo mutada, para mostrar que o microfone vive), `track` = arquivo
@@ -277,12 +278,12 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `GET /api/musica?q=<pedido>&n=3` | - | busca de música no YouTube Music, a do pedido falado: com o melhor resultado sendo um artista e o pedido só o nome dele, as mais tocadas dele ("Raul" -> Metamorfose Ambulante); senão, as músicas e vídeos da busca. Mesmo formato do `/api/search`; até 4 s, senão 502 (quem pede cai no `/api/search`) |
 | `POST /api/aquece` | - | alguém vai pedir (a mina chama quando uma fala começa): renova as conexões com o YouTube paradas há mais de 180 s no processo do endereço e nas reservas (o YouTube fecha a parada aos ~240 s) e abre o processo do endereço que está vazio; responde na hora `{"ok": true, "aquecidos": n}` |
 | `POST /api/library` | `{"youtube_id": "..."}` ou `{"url": "..."}` ou `{"query": "..."}`, mais `"play": bool`, `"title"?`, `"channel"?`, `"thumb"?`, `"duration"?` | baixa para a biblioteca (Job); com `play`, toca na hora pelo stream do YouTube enquanto baixa e responde `{"job": ..., "streaming": true}` (título, canal, capa e duração do corpo aparecem no prato desde o primeiro instante); se já existe, responde `{"item": ...}` e toca na hora; o mesmo vídeo já baixando não baixa de novo |
-| `POST /api/queue` | `{"id": "<disco>"}` ou `{"youtube_id": "...", "title"?, "channel"?, "thumb"?, "duration"?}` ou `{"url": "..."}`, mais `"next": bool?` | põe na fila (no fim, ou logo a seguir com `next`); vídeo fora da prateleira já começa a baixar; com nada no prato, toca na hora em vez de entrar na fila (se o fim do disco já estava avançando para outra, só entra na fila, com `playing: false`); responde `{"entry": Entrada, "job": Job ou null, "playing": bool}` |
+| `POST /api/queue` | `{"id": "<disco>"}` ou `{"youtube_id": "...", "title"?, "channel"?, "thumb"?, "duration"?}` ou `{"url": "..."}`, mais `"next": bool?` | põe na fila (no fim, ou logo a seguir com `next`); vídeo fora da prateleira já começa a baixar; com nada no prato, toca na hora em vez de entrar na fila (se o fim do disco já estava avançando para outra, só entra na fila, com `playing: false`); de qualquer papel, `title` e `channel` vão como texto ou `null`, `duration` em segundos (de 0 a 86400) ou `null`, e o alvo e os textos em Unicode válido (UTF-8), senão 400 (a `duration` de mais de um dia, com a mensagem `server.queue.tooLong`); responde `{"entry": Entrada, "job": Job ou null, "playing": bool}` |
 | `DELETE /api/queue/<qid>` | - | tira da fila (parecida do Automático tirada não volta nesta sessão) |
 | `DELETE /api/queue` | - | esvazia a fila (as parecidas que estavam nela não voltam; com o Automático ligado, entram outras) |
 | `POST /api/queue/move` | `{"qid": "...", "to": 0}` | muda a entrada de lugar (`to` a partir de 0) |
 | `POST /api/queue/play` | `{"qid": "..."}` | tira da fila e toca agora |
-| `PATCH /api/library/<id>` | `{"title": "..."}` e/ou `{"rapido": bool}` | renomeia; `rapido` põe ou tira o disco dos Sons rápidos do celular (os de até 15 s já estão lá sem isso) |
+| `PATCH /api/library/<id>` | `{"title": "..."}` e/ou `{"rapido": bool}` | renomeia (o `title` em Unicode inválido é 400); `rapido` põe ou tira o disco dos Sons rápidos do celular (os de até 15 s já estão lá sem isso) |
 | `DELETE /api/library/<id>` | - | apaga da biblioteca (e o arquivo); o disco no prato segue tocando e o arquivo dele sai quando o motor largar |
 | `GET /api/devices` | - | `{"inputs": [...], "outputs": [...], "default_input", "default_output", "current", "active", "filtro"}`; `filtro` é `{"filtro": bool, "melhorias": bool}` do microfone em uso (o filtro pendurado nele, e as melhorias de áudio do Windows ligadas, sem as quais ele não carrega), ou null se não deu para ler |
 | `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou ""}` | troca dispositivo (reabre o áudio); microfone sem o filtro (apareceu depois da instalação) é preparado pela tarefa do instalador, sem UAC (ver `microfone.preparando`) |
@@ -367,9 +368,8 @@ valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
   sessão remota aceita (`secrets.token_urlsafe(32)`, gerado a cada sessão e revogado quando ela acaba). O cabeçalho
   com token errado, vencido ou vindo de fora do `127.0.0.1` responde 401, mesmo do `127.0.0.1`: quem manda o
   cabeçalho nunca cai no papel do PC. Comando fora da lista dele, 403; no `POST /api/queue`, ele só põe o `id` de um
-  disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, `title` e
-  `channel` como texto ou `null`, `duration` em segundos (de 0 a 86400) ou `null`, e o alvo e os textos em Unicode
-  válido (UTF-8); o resto é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma
+  disco da prateleira ou um vídeo do YouTube (`youtube_id` ou link), com a capa do próprio disco ou vídeo, e
+  `title`, `channel` e `duration` seguem a regra de todo papel (ver o `POST /api/queue`); o resto é 400. A sessão que acaba enquanto o corpo do pedido chega também dá 401. Por ora nenhuma
   sessão abre um token. O que a sessão remota manda e recebe pela internet está no
   [protocolo da sessão remota](docs/protocolo-remoto.md).
 
@@ -379,8 +379,9 @@ valendo como o `GET`. Rota fora da tabela é só do PC. Os papéis:
 | `GET /api/state`, `GET /api/events` | sim | sim | sim | 401 |
 | `POST /api/play`, `POST /api/queue` (o remoto, só disco da prateleira ou vídeo do YouTube), `POST /api/queue/play`, `POST /api/next`, `POST /api/pause`, `POST /api/resume`, `DELETE /api/queue/<qid>`, `POST /api/queue/move` | sim | sim | sim | 401 |
 | `POST /api/volume`, `POST /api/abaixa`, `POST /api/sinal` | sim | 403 | sim | 403 |
-| `GET /api/onda/<id>`, `GET /api/library`, `GET /api/tocadas`, `GET /api/jobs`, `GET /api/search`, `GET /api/musica`, `POST /api/aquece`, `POST /api/library`, `PATCH` e `DELETE /api/library/<id>`, `DELETE /api/queue`, `POST /api/prev`, `POST /api/toggle`, `POST /api/stop`, `POST /api/seek`, `POST /api/settings`, `GET /api/effects`, `POST /api/pedal_voz`, `GET` e `POST /api/devices`, `GET /api/boas-vindas`, `POST /api/shutdown`, `GET /api/lan` | sim | sim | 403 | 401 |
-| `POST /api/effects/reload`, `POST /api/boas-vindas`, `POST /api/janela/foco`, `/api/metricas`, `/api/atualizacao/...`, `/api/pareamento/...`, e toda rota fora da tabela | sim | 403 | 403 | 403 |
+| `GET /api/onda/<id>`, `GET /api/library`, `GET /api/jobs`, `GET /api/search`, `POST /api/library`, `PATCH` e `DELETE /api/library/<id>`, `DELETE /api/queue`, `POST /api/prev`, `POST /api/toggle`, `POST /api/stop`, `POST /api/seek`, `POST /api/settings`, `GET /api/effects`, `POST /api/pedal_voz`, `GET` e `POST /api/devices`, `GET /api/boas-vindas` | sim | sim | 403 | 401 |
+| `GET /api/tocadas`, `GET /api/musica`, `POST /api/aquece` (o grupo `OUT_OF_REPO`: só o módulo de fora do repo chama, do PC) | sim | 403 | 403 | 403 |
+| `POST /api/shutdown`, `GET /api/lan`, `POST /api/effects/reload`, `POST /api/boas-vindas`, `POST /api/janela/foco`, `/api/metricas`, `/api/atualizacao/...`, `/api/pareamento/...`, e toda rota fora da tabela | sim | 403 | 403 | 403 |
 
 `caps` = `{"papel": "pc" | "celular" | "remoto" | "publico", "rotas": ["POST /api/play", ...]}`: as rotas da API que
 esse papel alcança, em ordem, no formato `"<MÉTODO> <rota>"`. Vem no `GET /api/state`, no 401 do pareamento (o do

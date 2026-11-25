@@ -19,6 +19,12 @@ Os papéis saem de quem conectou, nunca do Host (que quem pede escreve como quis
   `/api/abaixa` e `/api/sinal`) ficam fechadas para o celular. Token que não vale dá 401, mesmo do `127.0.0.1`: o
   cabeçalho nunca cai no papel do PC. Por ora nenhuma sessão abre um token.
 
+As rotas que só o módulo de fora do repo chama (`/api/tocadas`, `/api/musica` e `/api/aquece`) ficam juntas no
+`OUT_OF_REPO` da tabela, só do PC, que é de onde ele conecta. O `dev/testa_ganchos.py` conta esse grupo como conta os
+ganchos do `engine.py`: rota nova para o módulo passa pelas que já existem. O `POST /api/shutdown` também é só do PC:
+desligado, o Ritmelli só religa no PC, e o tema mostra o Desligar só a quem tem o `POST /api/shutdown` no `caps`
+(na tela estreita, que não tem lugar para ele, nem ao PC: fechar a janela também desliga).
+
 O `caps` (`{"papel", "rotas"}`) diz a cada conexão o que ela pode: vem no `/api/state`, no 401 do pareamento e como o
 primeiro evento do SSE, que fecha quando o celular é desconectado ou a sessão remota acaba. O `dev/testa_mock.py`
 confere que toda rota do `server.py` está na tabela (pelo fonte e pelo roteador do aiohttp) e cada papel no `guard`

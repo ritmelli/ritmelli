@@ -14,6 +14,9 @@ pelo Host `127.0.0.1:<porta>`: ele passa pelo cookie do pareamento como o celula
 
 A regra dos comandos de música (tocar, enfileirar, pular, pausar, parar, a fila e o volume) mora no
 [`comandos.py`](comandos.md), e o avanço da fila é uma operação só, dele; as rotas só leem o corpo e respondem.
+O `App.enfileirar` confere os campos do corpo da fila (`title`, `channel`, `duration` e o alvo) do mesmo jeito para
+todo papel, e o `PATCH /api/library` recusa o nome em Unicode inválido. O SSE manda o JSON só em ASCII: um texto que
+o UTF-8 não codifica não quebra a volta, que é montada uma vez para todas as conexões.
 
 - Tocar um vídeo que não está na prateleira começa na hora pelo stream do YouTube (o
   yt-dlp dá o endereço do áudio em 1 a 3 s e o ffmpeg toca dele), com o download seguindo
