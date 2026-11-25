@@ -354,9 +354,9 @@ shelf, the page opens with the welcome screen; close it with **Get started**. Wh
 server started without `--data-dir` shows it again every time it starts (with `--data-dir`, closing it once is
 enough).
 
-All of the interface's code is in one file, `themes/ritmelli/index.html` (HTML, CSS and JavaScript, no build step),
-with its fonts and images next to it in `fonts/` and `texturas/`. Edit the file, save it and reload the page. What a
-theme receives from the server is in [API.md](API.md#tema).
+The interface is the theme in `themes/ritmelli/` (HTML, CSS and JavaScript, no build step): `index.html` is the page,
+and the `.js` files it loads, its fonts (`fonts/`) and its images (`texturas/`) sit next to it. Edit a file, save it
+and reload the page. What a theme receives from the server is in [API.md](API.md#tema).
 
 To switch the language, add `?lang=pt_BR` or `?lang=en` to the end of the address. Interface texts live in
 `themes/ritmelli/i18n/i18n_en.properties` and `i18n_pt_BR.properties`, with the same keys in both files, in the same
@@ -377,8 +377,8 @@ script runs.
 
 `sala-iso.webp` and the `.png` images in `texturas/` aren't generated; edit them as image files. The turntables, the
 mixer, the Quick sounds pads and the voice effect pedals of the wide layout in the screenshot (a window at least
-1400 px wide and a little wider than it is tall) aren't generated either: canvas code in `index.html` itself draws
-them, in the blocks that start at `DECK-JS-INICIO`, `MIX-JS-INICIO` and `PEDAL-JS-INICIO`, so you edit them there.
+1400 px wide and a little wider than it is tall) aren't generated either: canvas code in the theme itself draws
+them, in `deck.js`, `mix.js` and `pedal.js` in the theme folder, so you edit them there.
 
 `dev/fitcheck.py` checks the layout at several window and phone sizes, and `dev/shot.py` takes a screenshot. Both
 need the development packages (`requirements-dev.txt`) and drive Google Chrome from its default install folder,
@@ -471,6 +471,7 @@ The code, its comments and the internal docs are in Brazilian Portuguese.
 | `ritmelli.spec` | the executable's configuration (PyInstaller) |
 | `soundboard.ps1` | starts, stops and checks Ritmelli from a terminal |
 | `server.py` | the aiohttp server: the API, the events (SSE), the queue, Play similar songs, search and download |
+| `comandos.py` | the server's music commands (play, queue, transport, music volume) and the queue advance they share |
 | `engine.py` | the audio engine: mixing, the two decks and the transitions |
 | `transicao.py` | the transition math that reads no audio: where each record ends and starts by its block levels, fade or hard ending, how the next one comes in, and the timing from the measured beat grids |
 | `batida.py`, `compasso.py`, `andamento.py` | beat analysis: the tempo and beat grid of each transition (`batida.py`), the downbeat (`compasso.py`) and each record's tempo, which orders Play similar songs (`andamento.py`) |
@@ -544,8 +545,8 @@ The description at the top of each file (in Portuguese) says exactly what it che
   `--codigo <folder>` runs the same pairs against the engine of another checkout, such as the base of your PR),
   `dev/testa_transicao.py` (the transition math, `transicao.py`, on the engine's calls recorded from those pairs;
   `--grava` records them again) and `dev/testa_anel.py`.
-- The server and YouTube access (`server.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_adianta.py`,
-  `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
+- The server and YouTube access (`server.py`, `comandos.py`, `yt_fora.py`, `yt_erros.py`): `dev/testa_comandos.py`,
+  `dev/testa_adianta.py`, `dev/testa_rapido.py`, `dev/testa_vivo.py` and `dev/testa_musica.py`.
 - The microphone filter and the voice effects (`microfone/`, `fx.py`): `dev/testa_filtro.py`, `dev/testa_mfx.py`,
   `dev/testa_microfone.py`, `dev/testa_anel.py` (the ring is released after every failure), `dev/testa_voz.py` and
   `microfone/apo/teste/teste_reamostra.py` (the filter's resampler, `reamostra.h`).
