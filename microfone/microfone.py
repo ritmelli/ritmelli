@@ -693,17 +693,8 @@ def tarefa_cria():
         tarefa_apaga()
         print(f"the task {TAREFA} wasn't created, the app folder isn't protected: {protegida}")
         return
-    import tempfile  # noqa: PLC0415
-    from xml.sax.saxutils import escape  # noqa: PLC0415
-    fd, xml = tempfile.mkstemp(suffix=".xml")
-    os.close(fd)
-    try:
-        with open(xml, "w", encoding="utf-16") as f:
-            f.write(TAREFA_XML.replace("{exe}", escape(sys.executable)))
-        r = subprocess.run([SCHTASKS, "/create", "/tn", TAREFA, "/xml", xml, "/f"], capture_output=True, text=True,
-                           encoding="oem", errors="replace", creationflags=NO_WINDOW)
-    finally:
-        os.remove(xml)
+    import pastas  # noqa: PLC0415 - the app module (always there in the executable)
+    r = pastas.create_task(TAREFA, TAREFA_XML, sys.executable)
     if r.returncode:
         sys.exit(f"couldn't create the task ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
     print(f"task {TAREFA} created")
@@ -714,29 +705,19 @@ def tarefa_apaga():
 
 
 def _desarma(motivo):
-    """O instala-todos do executavel (o da tarefa, que roda como SYSTEM) achou a pasta do app fora da regra da pasta
-    protegida: as duas tarefas saem, a da atualizacao primeiro (com o /end, que encerra uma rodada no meio) e esta por
-    ultimo, uma mesmo se a outra falhar, e sai com erro sem gravar nada na pasta. So o setup completo cria de novo."""
-    erros, tarefas = [], []
-    try:
-        import atualizador  # noqa: PLC0415 - o modulo do app (no executavel, sempre junto)
-        tarefas.append((atualizador.TAREFA, atualizador.tarefa_apaga, atualizador.tarefa_existe))
-    except Exception as ex:  # noqa: BLE001 - a desta tarefa sai do mesmo jeito
-        erros.append(f"update task: {type(ex).__name__}: {ex}")
-    tarefas.append((TAREFA, tarefa_apaga, tarefa_existe))
-    for nome, apaga, _ in tarefas:
-        try:
-            apaga()
-        except Exception as ex:  # noqa: BLE001 - a outra sai do mesmo jeito
-            erros.append(f"{nome}: {type(ex).__name__}: {ex}")
-    for nome, _, existe in tarefas:
-        try:
-            if existe():
-                erros.append(f"the task {nome} is still there")
-        except Exception as ex:  # noqa: BLE001
-            erros.append(f"{nome}: {type(ex).__name__}: {ex}")
+    """The executable's instala-todos (the task's, which runs as SYSTEM) found the app folder outside the protected
+    folder rule: both tasks are removed (pastas.disarm), the update one first (with /end, which stops a run in the
+    middle) and this one last, and it exits with an error without writing anything to the folder. Only the full setup
+    creates them again."""
+    import pastas  # noqa: PLC0415 - the app module (always there in the executable)
+
+    def update_task():
+        import atualizador  # noqa: PLC0415 - the app module (always there in the executable)
+        return atualizador.TAREFA, atualizador.tarefa_apaga, atualizador.tarefa_existe
+
+    errors = pastas.disarm(update_task, (TAREFA, tarefa_apaga, tarefa_existe))
     sys.exit(f"the app folder isn't protected ({motivo}): "
-             + (f"couldn't remove the SYSTEM tasks ({'; '.join(erros)})" if erros else "the SYSTEM tasks were removed"))
+             + (f"couldn't remove the SYSTEM tasks ({'; '.join(errors)})" if errors else "the SYSTEM tasks were removed"))
 
 
 def pede_tarefa(nome, espera_s=60):

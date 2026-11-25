@@ -346,17 +346,7 @@ def tarefa_cria():
         tarefa_apaga()
         print(f"the task {TAREFA} wasn't created, the app folder isn't protected: {protegida}")
         return 1
-    import tempfile
-    from xml.sax.saxutils import escape
-    fd, xml = tempfile.mkstemp(suffix=".xml")
-    os.close(fd)
-    try:
-        with open(xml, "w", encoding="utf-16") as f:
-            f.write(TAREFA_XML.replace("{exe}", escape(sys.executable)))
-        r = subprocess.run([SCHTASKS, "/create", "/tn", TAREFA, "/xml", xml, "/f"], capture_output=True, text=True,
-                           encoding="oem", errors="replace", creationflags=NO_WINDOW)
-    finally:
-        os.remove(xml)
+    r = pastas.create_task(TAREFA, TAREFA_XML, sys.executable)
     if r.returncode:
         print(f"couldn't create the task ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
         return r.returncode
@@ -372,29 +362,17 @@ def tarefa_apaga(encerrar=True):
 
 
 def desarma(motivo):
-    """A rodada (que ja roda como SYSTEM) achou a pasta do app fora da regra da pasta protegida: as duas tarefas saem,
-    a do filtro de microfone primeiro e esta por ultimo (sem o /end), uma mesmo se a outra falhar, e nada se grava na
-    pasta: nem a atualizacao\\, nem o log, nem setup. So o setup completo cria as tarefas de novo. O codigo de saida."""
+    """The run (already as SYSTEM) found the app folder outside the protected folder rule: both tasks are removed
+    (pastas.disarm), the microphone filter's first and this one last (without /end), and nothing is written to the
+    folder: not atualizacao\\, not the log, not a setup. Only the full setup creates the tasks again. The exit code."""
     print(f"the app folder isn't protected: {motivo}", flush=True)
-    erros, tarefas = [], []
-    try:
+
+    def filter_task():
         from microfone import microfone
-        tarefas.append((microfone.TAREFA, microfone.tarefa_apaga, microfone.tarefa_existe))
-    except Exception as ex:  # noqa: BLE001 - a desta tarefa sai do mesmo jeito
-        erros.append(f"microphone task: {type(ex).__name__}: {ex}")
-    tarefas.append((TAREFA, lambda: tarefa_apaga(encerrar=False), tarefa_existe))
-    for nome, apaga, _ in tarefas:
-        try:
-            apaga()
-        except Exception as ex:  # noqa: BLE001 - a outra sai do mesmo jeito
-            erros.append(f"{nome}: {type(ex).__name__}: {ex}")
-    for nome, _, existe in tarefas:
-        try:
-            if existe():
-                erros.append(f"the task {nome} is still there")
-        except Exception as ex:  # noqa: BLE001
-            erros.append(f"{nome}: {type(ex).__name__}: {ex}")
-    print(f"couldn't remove the SYSTEM tasks: {'; '.join(erros)}" if erros else "the SYSTEM tasks were removed",
+        return microfone.TAREFA, microfone.tarefa_apaga, microfone.tarefa_existe
+
+    errors = pastas.disarm(filter_task, (TAREFA, lambda: tarefa_apaga(encerrar=False), tarefa_existe))
+    print(f"couldn't remove the SYSTEM tasks: {'; '.join(errors)}" if errors else "the SYSTEM tasks were removed",
           flush=True)
     return 1
 

@@ -4,7 +4,8 @@ das ferramentas de dev/ (logs/efeitos/) seguem na pasta do codigo. O ffmpeg, o f
 app (o instalador poe); sem ela, saem do PATH, como no codigo. A porta do servidor e a pagina que o app abre moram
 aqui tambem: o ritmelli.py precisa delas antes de carregar o servidor. E o jeito de gravar os .json dos dados
 (save_json), o mesmo para o servidor e para o pareamento, e a regra da pasta protegida (pasta_protegida), que as
-duas tarefas que rodam como SYSTEM conferem antes de usar a pasta do app."""
+duas tarefas que rodam como SYSTEM conferem antes de usar a pasta do app. Those two tasks are created and disarmed
+here too (create_task, disarm), in one place for both."""
 import json
 import ntpath
 import os
@@ -203,6 +204,51 @@ def do_windows(nome):
     if not 0 < n < 260:
         raise OSError("GetSystemDirectoryW failed")
     return os.path.join(b.value, nome)
+
+
+# ---------- the two Windows tasks that run as SYSTEM (the microphone filter's and the update's) ----------
+
+def create_task(name, xml, exe):
+    """Creates (or replaces) the task from its XML, with {exe} as the program it runs: schtasks /create from a temporary
+    file, by its full System32 path. The finished subprocess.run, for the caller to report its own way."""
+    import subprocess
+    import tempfile
+    from xml.sax.saxutils import escape
+    fd, path = tempfile.mkstemp(suffix=".xml")
+    os.close(fd)
+    try:
+        with open(path, "w", encoding="utf-16") as f:
+            f.write(xml.replace("{exe}", escape(exe)))
+        return subprocess.run([do_windows("schtasks.exe"), "/create", "/tn", name, "/xml", path, "/f"],
+                              capture_output=True, text=True, encoding="oem", errors="replace",
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    finally:
+        os.remove(path)
+
+
+def disarm(first, own):
+    """The app folder failed the protected folder rule inside a task's run: both SYSTEM tasks are removed, the other one
+    (first) before the running one (own), each even if the other fails, and both are checked afterwards. own is
+    (name, delete, exists); first is a function that returns the same for the other task and may raise (its module
+    didn't load), which still lets own go. The list of errors, empty when both are gone."""
+    errors, tasks = [], []
+    try:
+        tasks.append(first())
+    except Exception as ex:  # noqa: BLE001 - the running task is removed all the same
+        errors.append(f"the other task: {type(ex).__name__}: {ex}")
+    tasks.append(own)
+    for name, delete, _ in tasks:
+        try:
+            delete()
+        except Exception as ex:  # noqa: BLE001 - the other task is removed all the same
+            errors.append(f"{name}: {type(ex).__name__}: {ex}")
+    for name, _, exists in tasks:
+        try:
+            if exists():
+                errors.append(f"the task {name} is still there")
+        except Exception as ex:  # noqa: BLE001
+            errors.append(f"{name}: {type(ex).__name__}: {ex}")
+    return errors
 
 
 def raiz_protegida():
