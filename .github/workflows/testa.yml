@@ -240,7 +240,8 @@ jobs:
     env:
       # what the prints are compared to: in a merge_group entry, the tree just before its PR (the first parent of the
       # entry), so the extracao-tema label of that PR blocks only what that PR changed, not what a PR ahead of it in the
-      # queue changed
+      # queue changed. This holds for a queue that merges with a merge commit (how this repo merges) or a squash; with
+      # rebase, the first parent would already hold the earlier commits of the same PR
       COMPARA_BASE: ${{ github.event_name == 'merge_group' && format('{0}^1', github.event.merge_group.head_sha) || github.event.pull_request.base.sha || github.event.before }}
     steps:
       - uses: actions/checkout@v7
@@ -284,22 +285,26 @@ jobs:
         if: steps.areas.outputs.roda == 'true'
         run: |
           $chrome = (Get-Item 'C:\Program Files\Google\Chrome\Application\chrome.exe').VersionInfo.ProductVersion
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome" -Encoding utf8
+          # the base as a commit sha, the way the push to main saves its capture
+          $base = git rev-parse --verify "$env:COMPARA_BASE^{commit}"
+          if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" -Encoding utf8
       - uses: actions/cache/restore@v6
         id: ref
         if: steps.areas.outputs.roda == 'true'
         with:
           path: ${{ runner.temp }}\compara-ref
-          key: compara-${{ env.COMPARA_BASE }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt') }}
+          key: compara-${{ steps.chave.outputs.base }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt') }}
       - name: compara
         id: compara
         if: steps.areas.outputs.roda == 'true'
         env:
           EXTRACAO: ${{ steps.areas.outputs.extracao }}
+          BASE_SHA: ${{ steps.chave.outputs.base }}
         run: |
           $mais = @()
           if ($env:GITHUB_EVENT_NAME -eq 'push') { $mais = @('--head-cache', "$env:RUNNER_TEMP\compara-head") }
-          python dev/testa_tudo.py --compara --base $env:COMPARA_BASE --pasta "$env:RUNNER_TEMP\tela" --ref-cache "$env:RUNNER_TEMP\compara-ref" @mais --resumo "$env:RUNNER_TEMP\resumo.md"
+          python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\tela" --ref-cache "$env:RUNNER_TEMP\compara-ref" @mais --resumo "$env:RUNNER_TEMP\resumo.md"
           $cod = $LASTEXITCODE
           if ($cod -eq 2) {
             Add-Content -Path $env:GITHUB_OUTPUT -Value 'mudou=true' -Encoding utf8
