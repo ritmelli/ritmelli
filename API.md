@@ -14,6 +14,8 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - `themes/<slug>/index.html`, autossuficiente: HTML + CSS + JS puro, sem build. Arquivo
   extra (fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
   relativo (`./x.svg`), servido em `/t/<slug>/x.svg`.
+- Toda resposta de `/t/` sai com `Cache-Control: no-cache`: o navegador confere cada arquivo do tema com o servidor
+  antes de usar o que guardou (o que não mudou volta como 304), e não usa um `.js` ou `.css` de antes sem conferir.
 - O slug `vitrola` é reservado: era o do tema `ritmelli` até a 0.6.0, e o servidor leva todo `/t/vitrola/...` para
   o mesmo caminho em `/t/ritmelli/` (302, com a mesma query), antes de procurar a pasta.
 - `themes/<slug>/meta.json`: `{"name": "...", "direction": "...", "blurb": "uma frase"}`. Cada campo pode vir
@@ -278,8 +280,8 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/devices` | `{"mic"?: nome ou "default", "monitor"?: nome, "default" ou ""}` | troca dispositivo (reabre o áudio); microfone sem o filtro (apareceu depois da instalação) é preparado pela tarefa do instalador, sem UAC (ver `microfone.preparando`) |
 | `GET /api/boas-vindas` | - | `{"mostrar": bool}`: verdadeiro na primeira vez no PC (prateleira vazia e as boas-vindas nunca fechadas); pelo celular, sempre falso |
 | `POST /api/boas-vindas` | - | só no PC: as boas-vindas foram vistas e não voltam (fica no `config.json`) |
-| `GET /api/metricas` | - | só no PC: `{"situacao", "politica"}`, os dados de uso e os erros (`metricas.py`, o [PRIVACIDADE.md](PRIVACIDADE.md)): `situacao` é `"ligada"`, `"desligada"`, `"decidir"` (ninguém escolheu: o tema mostra o aviso) ou `"fora"` (pelo código ou no `--mock`, nunca envia); `politica` é o endereço da política |
-| `POST /api/metricas` | `{"ligar": bool}` | só no PC: a escolha de quem usa, que vale sobre a da página do instalador (fica no `config.json`); responde como o `GET`; com `"fora"`, 409 |
+| `GET /api/metricas` | - | só no PC: `{"situacao", "politica", "texto", "texto_atual"}`, os dados de uso e os erros (`metricas.py`, o [PRIVACIDADE.md](PRIVACIDADE.md)): `situacao` é `"ligada"`, `"desligada"`, `"decidir"` (ninguém escolheu: o tema mostra o aviso) ou `"fora"` (pelo código ou no `--mock` sem o `--metricas-teste`, nunca envia); `politica` é o endereço da política; `texto` é a versão do texto em que a escolha que vale foi feita (a do app, senão a do instalador; 1 para a escolha de antes das versões, 0 sem escolha ou com `"fora"`) e `texto_atual`, a de agora: com `"ligada"` e `texto` menor, o tema mostra o aviso de novo |
+| `POST /api/metricas` | `{"ligar": bool}` | só no PC: a escolha de quem usa, que vale sobre a da página do instalador; grava no `config.json` o `metricas` e o `metricas_texto` (o `texto_atual`) juntos; responde como o `GET`; com `"fora"`, 409 |
 | `GET /api/themes` | `?lang` (opcional) | `[{"slug","url","name","direction","blurb"}]`, cada texto na língua de quem pede (o `?lang=` ou o `Accept-Language`), quando o `meta.json` traz por língua |
 | `POST /api/shutdown` | - | desliga o servidor (a música para de tocar no microfone; a voz segue normal, sem efeito); a janela própria fecha junto |
 | `POST /api/janela/foco` | - | só no PC: traz a janela própria (`janela.py`) para a frente, restaurada se estava minimizada; 404 quando o Ritmelli abriu no navegador (sem o WebView2, ou com `--no-browser`). É o que o Ritmelli aberto de novo pede ao que já está ligado |
@@ -507,11 +509,14 @@ passo do microfone e do fone, do mesmo microfone no jogo e nas chamadas (no Disc
 Estúdio), da primeira música e do celular. Fechar de
 qualquer jeito manda o `POST /api/boas-vindas`. Nos outros temas, as boas-vindas são opcionais.
 
-Os dados de uso e os erros (`GET /api/metricas`), no PC: com `"decidir"`, todo tema mostra uma vez o
+Os dados de uso e os erros (`GET /api/metricas`), no PC: com `"decidir"`, e com `"ligada"` e o `texto`
+menor que o `texto_atual` (quem ligou num texto que não falava do que vai agora), todo tema mostra uma vez o
 que vai (o texto do `PRIVACIDADE.md`, ou um resumo com o link da `politica`) e os botões Enviar e
 Não enviar, que mandam o `POST /api/metricas`; fechar sem escolher pergunta de novo na próxima vez,
-e nada sai antes. Com `"ligada"` ou `"desligada"`, o tema mostra a situação e o botão de trocar
-junto da escolha de microfone e fone. A SignPath pede que a pessoa possa desligar.
+e nada sai antes (com `"ligada"` e o texto de antes, só o que esse texto dizia). Com `"ligada"` ou `"desligada"`, o tema mostra a situação e o botão de trocar
+junto da escolha de microfone e fone. Ligar por esse botão com o `texto` menor que o `texto_atual` mostra antes o
+aviso (o texto de agora), e o `POST` sai do Enviar dele; com o texto de agora, liga direto. A SignPath pede que a
+pessoa possa desligar.
 
 ## Teste sem som
 
@@ -519,7 +524,9 @@ junto da escolha de microfone e fone. A SignPath pede que a pessoa possa desliga
 dispositivo de áudio (relógio falso, voz falsa no medidor, download fingido em 3 s), com
 uma cópia da biblioteca numa pasta temporária, apagada quando o servidor fecha, ou em
 `--data-dir <pasta>`. A pasta de quem usa o `--mock` recusa: o download fingido copia o disco
-mais curto com outro nome, e lá viraria disco falso na prateleira. Print: `python dev/shot.py <url> <png> [--size
+mais curto com outro nome, e lá viraria disco falso na prateleira. No `--mock`, os dados de uso ficam em `"fora"`;
+com `--metricas-teste` (só junto do `--mock`), o aviso e a escolha funcionam, sem ler a escolha do instalador, e o que
+sairia fica só na memória do servidor, sem rede nenhuma. Print: `python dev/shot.py <url> <png> [--size
 390x844] [--js "..."] [--tab N] [--reduced-motion] [--offline-ok]`, que também lista os erros
 do console (`--tab` aperta Tab para o anel de foco aparecer; `--offline-ok` não conta a
 reconexão do SSE com o servidor fora).
