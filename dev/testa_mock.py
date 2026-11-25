@@ -153,6 +153,187 @@ def rotas_do_fonte():
     return out, ilegiveis
 
 
+TRACK_FIELDS = {"title", "channel", "thumb", "duration"}
+# the bodies about a video off the shelf that no route takes, from any role (server.check_track_fields)
+BAD_TRACK_BODIES = ({"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"},
+                    {"youtube_id": "dQw4w9WgXcQ", "channel": "\udfff"},
+                    {"youtube_id": "dQw4w9WgXcQ", "thumb": "https://i.ytimg.com/\ud800"},
+                    {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&x=\ud800"},
+                    {"youtube_id": "dQw4w9WgXcQ", "title": ["x"]}, {"youtube_id": "dQw4w9WgXcQ", "channel": 3},
+                    {"youtube_id": "dQw4w9WgXcQ", "thumb": {"url": "x"}},
+                    {"youtube_id": "dQw4w9WgXcQ", "duration": "x"}, {"youtube_id": "dQw4w9WgXcQ", "duration": True},
+                    {"youtube_id": "dQw4w9WgXcQ", "duration": -1}, {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7},
+                    {"youtube_id": "dQw4w9WgXcQ", "duration": 1e9}, {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 400},
+                    {"youtube_id": "dQw4w9WgXcQ", "duration": float("inf")},
+                    {"youtube_id": "dQw4w9WgXcQ", "duration": float("nan")}, {"url": ["v=dQw4w9WgXcQ"]})
+# the routes whose body reaches those fields, with what each one needs to take that path and the fields it uses there:
+# each refuses the bodies above that are bad in the target or in one of those fields. Saving without play only uses the
+# title (the download's label): a search result longer than a day can still be saved. The rename
+# (PATCH /api/library/{iid}) has its own rule, checked on its own below
+TRACK_ROUTES = ((("POST", "/api/queue"), {}, TRACK_FIELDS), (("POST", "/api/library"), {"play": True}, TRACK_FIELDS),
+                (("POST", "/api/library"), {}, {"title"}))
+
+
+def bad_bodies_for(extra, campos):
+    """The BAD_TRACK_BODIES a route refuses when it uses only these fields, with what it needs (extra) added."""
+    return [{**c, **extra} for c in BAD_TRACK_BODIES if set(c) - {"youtube_id", "url"} <= set(campos)]
+RENAME_ROUTE = ("PATCH", "/api/library/{iid}")
+
+
+def track_field_routes(fontes=None):
+    """The routes of server.py whose request body reaches a read of title, channel, thumb or duration, by the source
+    (fontes: {"server": source, "comandos": source}, the files by default). The body is followed name by name: the
+    handler reads a field from it (b.get("title"), b["title"], or b[k] in a function that names a field), or hands it
+    to a function of server.py or comandos.py (the route's cmd.X, the App's A.X or self.X, a function of the same
+    module by its name), parameter by parameter. Any other use of the body (a copy, dict(b), b.items(), an alias, a
+    function from elsewhere) loses the trail: that route comes back in the second dict, so a new way of reading the
+    body cannot slip past this test. Returns ({route: [the functions on the way]}, {route: [where the trail is lost]})."""
+    import ast
+    if fontes is None:
+        fontes = {arq: (RAIZ / f"{arq}.py").read_text(encoding="utf-8") for arq in ("server", "comandos")}
+    defs = {}  # (module, name, is_method) -> the def
+    modulo = {}  # id(def) -> its module
+    pai = {}  # id(node) -> its parent
+    decoradas = []
+    arvores = [(arq, ast.parse(fonte)) for arq, fonte in fontes.items()]  # alive: pai goes by id()
+    for arq, arvore in arvores:
+        for no in ast.walk(arvore):
+            for filho in ast.iter_child_nodes(no):
+                pai[id(filho)] = no
+            if isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                metodo = bool(no.args.args) and no.args.args[0].arg == "self"
+                defs.setdefault((arq, no.name, metodo), no)
+                modulo[id(no)] = arq
+                if arq == "server" and no.decorator_list:
+                    decoradas.append(no)
+
+    def chamada(arq, no):
+        """The def a call goes to, and how many of its parameters come before the call's first argument (self)."""
+        f = no.func
+        if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
+            if f.value.id == "cmd":
+                return defs.get(("comandos", f.attr, False)), 0
+            if f.value.id in ("A", "self"):
+                return defs.get(("server", f.attr, True)), 1
+            if f.value.id == "App":
+                return defs.get(("server", f.attr, True)), 0
+        if isinstance(f, ast.Name):
+            return defs.get((arq, f.id, False)), 0
+        return None, 0
+
+    def segue(fn, var, caminho, lido, perdido):
+        """Every use of the body var in fn: a field read goes to lido (the way there), and a use this test cannot
+        follow to perdido."""
+        if (id(fn), var) in [(id(f), v) for f, v in caminho]:
+            return
+        caminho = caminho + [(fn, var)]
+        nomes = {c.value for c in ast.walk(fn) if isinstance(c, ast.Constant) and isinstance(c.value, str)}
+
+        def chaves(no, nome):
+            """The keys the loop name takes at no, when the loop around it (a for or a comprehension) goes over a
+            literal tuple or list of strings: for k in ("vol", "mon_vol"). None if it is anything else."""
+            a = pai.get(id(no))
+            while a is not None and a is not fn:
+                gens = (a.generators if isinstance(a, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))
+                        else [a] if isinstance(a, ast.For) else [])
+                laço = next((g for g in gens if isinstance(g.target, ast.Name) and g.target.id == nome), None)
+                if laço is not None:
+                    elts = laço.iter.elts if isinstance(laço.iter, (ast.Tuple, ast.List)) else [None]
+                    ok = all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in elts)
+                    return {e.value for e in elts} if ok else None
+                a = pai.get(id(a))
+            return None
+        for no in ast.walk(fn):
+            if not (isinstance(no, ast.Name) and no.id == var and isinstance(no.ctx, ast.Load)):
+                continue
+            p = pai[id(no)]
+            onde = f"{fn.name}:{no.lineno} {ast.unparse(pai.get(id(p), p))[:70]}"
+            chave = None
+            if isinstance(p, ast.Attribute) and p.attr == "get" and isinstance(pai.get(id(p)), ast.Call) \
+                    and pai[id(p)].func is p and pai[id(p)].args:
+                chave = pai[id(p)].args[0]
+            elif isinstance(p, ast.Subscript) and p.value is no:
+                chave = p.slice
+            elif (isinstance(p, ast.Compare) and len(p.ops) == 1 and isinstance(p.ops[0], (ast.In, ast.NotIn))
+                  and p.comparators[0] is no):
+                chave = p.left  # "t" in b
+            if chave is not None:
+                conhecidas = ({chave.value} if isinstance(chave, ast.Constant)
+                              else chaves(no, chave.id) if isinstance(chave, ast.Name) else None)
+                if conhecidas is not None:
+                    if conhecidas & TRACK_FIELDS:
+                        lido.append([f.name for f, _ in caminho])
+                elif nomes & TRACK_FIELDS:  # a key from elsewhere, in a function that names a field: it reads them
+                    lido.append([f.name for f, _ in caminho])
+                else:
+                    perdido.append(onde)  # a key from elsewhere
+                continue
+            if isinstance(p, ast.Call) and (no in p.args or any(k.value is no for k in p.keywords)):
+                alvo, antes = chamada(modulo[id(fn)], p)
+                params = [a.arg for a in alvo.args.args] if alvo else []
+                pos = antes + p.args.index(no) if no in p.args else \
+                    next((params.index(k.arg) for k in p.keywords if k.value is no and k.arg in params), None)
+                if alvo is None or pos is None or pos >= len(params):
+                    perdido.append(onde)
+                else:
+                    segue(alvo, params[pos], caminho, lido, perdido)
+                continue
+            perdido.append(onde)
+
+    achadas, perdidas = {}, {}
+    for fn in decoradas:
+        rotas = [(d.func.attr.upper(), d.args[0].value) for d in fn.decorator_list
+                 if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and isinstance(d.func.value, ast.Name)
+                 and d.func.value.id == "r" and d.args and isinstance(d.args[0], ast.Constant)]
+        guardados = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and len(n.targets) == 1
+                     and isinstance(n.targets[0], ast.Name) and isinstance(n.value, ast.Await)
+                     and isinstance(n.value.value, ast.Call) and isinstance(n.value.value.func, ast.Name)
+                     and n.value.value.func.id == "body"]  # b = await body(request), and nothing else
+        corpos = [n.targets[0].id for n in guardados]
+        perdido_aqui = [f"{fn.name}:{n.lineno} {ast.unparse(n)[:70]}" for n in ast.walk(fn)
+                        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "body"
+                        and not any(n is a.value.value for a in guardados)]  # the body not kept in one name
+        for rota in rotas:
+            lido, perdido = [], list(perdido_aqui)
+            for var in corpos:
+                segue(fn, var, [], lido, perdido)
+            if lido:
+                achadas[rota] = lido[0]
+            if perdido:
+                perdidas[rota] = perdido
+    return achadas, perdidas
+
+
+def campos_da_faixa():
+    print("--- every route that takes title, channel, thumb or duration (by the source)")
+    achadas, perdidas = track_field_routes()
+    cobertas = {r for r, _, _ in TRACK_ROUTES} | {RENAME_ROUTE}
+    confere(("POST", "/api/queue") in achadas and ("POST", "/api/library") in achadas,
+            f"the source search finds the queue and the shelf ({sorted(achadas)})")
+    confere(set(achadas) == cobertas, f"every route whose body reaches a track field is in TRACK_ROUTES, which this "
+            f"test sends the bad bodies to (not covered: {sorted(set(achadas) - cobertas)}; covered but no longer "
+            f"found: {sorted(cobertas - set(achadas))}; the way: {achadas})")
+    confere(not perdidas, f"the search follows the body of every route to the end, so none reads a track field "
+            f"behind its back ({perdidas})")
+    # the search itself: a route that copies the body, or reads it under another name, is caught
+    base = "import comandos as cmd\nasync def body(r): return {}\n"
+    for corpo_da_rota, deve in (('b = await body(request)\n    return b.get("title")', "achada"),
+                                ('b = await body(request)\n    p = dict(b)\n    return p.get("title")', "perdida"),
+                                ('b = await body(request)\n    p = b\n    return p.get("title")', "perdida"),
+                                ('b = p = await body(request)\n    return b.get("title")', "perdida"),
+                                ('p, = [await body(request)]\n    return p.get("title")', "perdida"),
+                                ('b = await body(request)\n    return cmd.x(A, b)', "achada"),
+                                ('b = await body(request)\n    return cmd.y(A, b)', "perdida"),
+                                ('b = await body(request)\n    return [b[k] for k in ("vol", "title")]', "achada"),
+                                ('b = await body(request)\n    return [b[k] for k in KEYS]', "perdida"),
+                                ('b = await body(request)\n    return b.get("vol")', "nada")):
+        fonte = base + f'@r.post("/api/x")\nasync def x(request):\n    {corpo_da_rota}\n'
+        com = "def x(A, b):\n    return b['duration']\ndef y(A, b):\n    return list(b.items())\n"
+        achadas, perdidas = track_field_routes({"server": fonte, "comandos": com})
+        veio = "achada" if achadas else "perdida" if perdidas else "nada"
+        confere(veio == deve, f"the search on the route {corpo_da_rota.replace(chr(10) + '    ', '; ')}: {deve} ({veio})")
+
+
 def tabela():
     print("--- a tabela de quem pode cada rota (permissao.py)")
     rotas, ilegiveis = rotas_do_fonte()
@@ -207,7 +388,8 @@ async def papeis_no_guard():
                                   atualizacao=types.SimpleNamespace(ao_abrir=lambda: None),
                                   leitura=lambda: ({"status": "idle"}, 0.0), public_jobs=lambda: [],
                                   lib=types.SimpleNamespace(version=1, public=lambda: [],
-                                                            get=lambda i: {"id": i} if i == "12345678901" else None),
+                                                            get=lambda i: {"id": i} if i == "12345678901" else None,
+                                                            by_youtube=lambda _: None),
                                   grava_cfg=lambda **k: None)
         app = server.build(A)
         A.enfileirar = lambda b, remoto=False: server.App.enfileirar(A, b, remoto)  # o de verdade: so recusa aqui
@@ -336,20 +518,25 @@ async def papeis_no_guard():
         renamed = []
         A.lib.update = lambda iid, **kw: renamed.append((iid, kw))
         for who, kw in (("the paired phone", {"cookie": chave}), ("the PC", {"de": pc})):
-            for corpo in ({"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"},
-                          {"youtube_id": "dQw4w9WgXcQ", "channel": "\udfff"},
-                          {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&x=\ud800"},
-                          {"youtube_id": "dQw4w9WgXcQ", "title": ["x"]},
-                          {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7},
-                          {"youtube_id": "dQw4w9WgXcQ", "duration": True},
-                          {"url": ["v=dQw4w9WgXcQ"]}):
-                try:  # the body that gets through goes on to the rest of the app, which this one does not have
-                    resp, _, _ = await manda("POST", "/api/queue", corpo=corpo, handler=rota[("POST", "/api/queue")],
-                                             **kw)
-                    st = resp.status
-                except Exception as ex:
-                    st = f"accepted, then {type(ex).__name__}"
-                confere(st == 400, f"{who} cannot queue {str(corpo)[:70]} ({st})")
+            for (m, c), extra, campos in TRACK_ROUTES:
+                for corpo in bad_bodies_for(extra, campos):
+                    try:  # the body that gets through goes on to the rest of the app, which this one does not have
+                        resp, _, _ = await manda(m, c, corpo=corpo, handler=rota[(m, c)], **kw)
+                        st = resp.status
+                    except Exception as ex:
+                        st = f"accepted, then {type(ex).__name__}"
+                    confere(st == 400, f"{who}: {m} {c} refuses {str(corpo)[:80]} ({st})")
+            corpo = {"youtube_id": "dQw4w9WgXcQ", "title": "Live", "duration": 90000}  # a long search result, saved
+            labels = []
+            A.job_rodando, A.run_download = (lambda _: None), (lambda *a: None)
+            A.new_job = lambda label, play, alvo: labels.append(label) or {"id": "j1"}
+            try:
+                resp, j, _ = await manda("POST", "/api/library", corpo=corpo, handler=rota[("POST", "/api/library")],
+                                         **kw)
+            finally:
+                del A.job_rodando, A.run_download, A.new_job
+            confere(resp.status == 200 and j.get("job") == {"id": "j1"} and labels == ["Live"],
+                    f"{who} can still save a search result longer than a day, without play ({resp.status}, {j})")
             resp, j, _ = await manda("PATCH", "/api/library/d1", corpo={"title": "a\ud800b"},
                                      handler=rota[("PATCH", "/api/library/{iid}")], **kw)
             confere(resp.status == 400 and not renamed and j["error"].get("key") == "server.library.badTitle",
@@ -444,20 +631,14 @@ async def papeis_no_guard():
         confere(await status("POST", "/api/play", de="::1", token=token) == 401, "o token vindo do ::1: 401")
         for corpo in ({"url": "http://192.168.0.1/admin"}, {"url": "file:///C:/x"}, {"youtube_id": "curto"},
                       {"query": "queen"}, {"id": 12345678901, "url": "http://192.168.0.1/admin"},
-                      {"youtube_id": 12345678901}, {"url": ["v=dQw4w9WgXcQ"]},
-                      {"youtube_id": "dQw4w9WgXcQ", "title": ["x"]}, {"youtube_id": "dQw4w9WgXcQ", "channel": 3},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": "longa"},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": True},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": -1},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7},
-                      {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 400},
-                      {"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"},
-                      {"youtube_id": "dQw4w9WgXcQ", "channel": "\udfff"},
-                      {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&x=\ud800"}):
-            resp, _, _ = await manda("POST", "/api/queue", de=pc, token=token, corpo=corpo,
-                                     handler=rota[("POST", "/api/queue")])
-            confere(resp.status == 400, f"o remoto so enfileira disco da prateleira ou video do YouTube: "
-                    f"{str(corpo)[:90]} -> {resp.status}")
+                      {"youtube_id": 12345678901}, *BAD_TRACK_BODIES):
+            try:  # the body that gets through goes on to the rest of the app, which this one does not have
+                resp, _, _ = await manda("POST", "/api/queue", de=pc, token=token, corpo=corpo,
+                                         handler=rota[("POST", "/api/queue")])
+                st = resp.status
+            except Exception as ex:
+                st = f"accepted, then {type(ex).__name__}"
+            confere(st == 400, f"o remoto so enfileira disco da prateleira ou video do YouTube: {str(corpo)[:90]} -> {st}")
         # o que passa: o video do YouTube, com a capa dele e nao a do corpo; o disco da prateleira pelo id
         fila = types.SimpleNamespace(
             lib=types.SimpleNamespace(get=lambda i: {"id": i, "title": "t"} if i == "d1" else None,
@@ -818,9 +999,16 @@ def ao_vivo(srv):
 
     # the PC is held to the same queue rules as the remote session, and a rename with a lone surrogate is refused: the
     # SSE stays up and carries the next change whole
-    for corpo in ({"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"}, {"youtube_id": "dQw4w9WgXcQ", "duration": -1},
-                  {"youtube_id": "dQw4w9WgXcQ", "duration": 10 ** 7}, {"youtube_id": "dQw4w9WgXcQ", "channel": 3}):
-        confere(recusa_do(srv, "POST", "/api/queue", corpo) == 400, f"the PC cannot queue {corpo}")
+    for (m, c), extra, campos in TRACK_ROUTES:
+        for corpo in bad_bodies_for(extra, campos):
+            confere(recusa_do(srv, m, c, corpo) == 400, f"the PC: {m} {c} refuses {str(corpo)[:80]}")
+    jobs = srv.api("GET", "/api/jobs")
+    confere(not jobs, f"no refused body started a download ({jobs})")
+    r = srv.api("POST", "/api/library", {"youtube_id": "djV11Xbc914", "play": True, "title": "a-ha", "channel": None,
+                                         "thumb": "https://i.ytimg.com/vi/djV11Xbc914/mqdefault.jpg", "duration": 30})
+    tocando = (srv.api("GET", "/api/state").get("track") or {}).get("id")
+    confere((r.get("item") or {}).get("id") == "d2" and tocando == "d2",
+            f"a body with every field right still plays the record from the shelf ({r}, playing {tocando})")
     confere(recusa_do(srv, "PATCH", "/api/library/d2", {"title": "a\ud800b"}) == 400,
             "the PC cannot rename a record with a lone surrogate")
     title = "a-ha – Take On Me (versão)"
@@ -958,6 +1146,7 @@ def sem_rede():
 
 
 tabela()
+campos_da_faixa()
 try:
     import aiohttp  # noqa: F401
     import numpy  # noqa: F401

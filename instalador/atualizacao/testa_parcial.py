@@ -4,7 +4,9 @@
 
 Precisa do pycryptodomex (o venv do build tem). Cada caso roda o script de verdade, num processo a parte, e confere o
 codigo de saida e o que ele gravou: a pasta da parcial (o que mudou, o que entrou e o que saiu, com o { de um nome
-dobrado para o Inno), o manifesto com a parcial e a conferencia do --assina.
+dobrado para o Inno) e o manifesto com a parcial.
+
+The manifest goes out unsigned: publica.py takes no key (the ritmelli-server pipeline signs it).
 """
 import base64
 import hashlib
@@ -168,21 +170,12 @@ errado.write_text(json.dumps({"de": "0.3.3", "arquivos": ["_internal/nao-existe.
 cod, out = roda("publica.py", *base, "--parcial", parc, "--parcial-info", errado)
 caso("um parcial.json de outro build e recusado", cod != 0 and "nao bate" in out, out)
 
-print("--- o --assina com a parcial")
-roda("publica.py", *base, "--parcial", parc, "--parcial-info", saida / "parcial.json")
-assina = ["--assina", saida_m / "manifest.json", "--setup", setup, "--chave", arq_chave, "--app-py", app_py]
-cod, out = roda("publica.py", *assina, "--parcial", parc)
-caso("assina com a parcial certa", cod == 0 and (saida_m / "manifest.json.sig").exists(), out)
-cod, out = roda("publica.py", *assina)
-caso("o manifesto com a parcial e sem o --parcial e recusado", cod != 0 and "nao veio" in out, out)
-shutil.copy(parc, tmp / "guarda.exe")
-parc.write_bytes(b"setup parcial trocado")
-cod, out = roda("publica.py", *assina, "--parcial", parc)
-caso("a parcial trocada depois do manifesto e recusada", cod != 0 and "nao e a parcial" in out, out)
-shutil.copy(tmp / "guarda.exe", parc)
-roda("publica.py", *base)
-cod, out = roda("publica.py", *assina, "--parcial", parc)
-caso("o --parcial num manifesto sem a parcial e recusado", cod != 0 and "nao tem a parcial" in out, out)
+print("--- publica.py does not sign")
+for flag in (["--chave", arq_chave], ["--assina", saida_m / "manifest.json"]):
+    (saida_m / "manifest.json.sig").unlink(missing_ok=True)
+    cod, out = roda("publica.py", *base, *flag)
+    caso(f"{flag[0]} is refused and no manifest.json.sig is written",
+         cod != 0 and "unrecognized arguments" in out and not (saida_m / "manifest.json.sig").exists(), out)
 
 shutil.rmtree(tmp, ignore_errors=True)
 print("tudo certo" if not falhas else f"FALHAS: {', '.join(falhas)}")

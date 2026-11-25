@@ -70,8 +70,8 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 # so a biblioteca padrao: a monta.yml roda estes antes de instalar as bibliotecas do app
 STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vozes", "pareamento", "grava", "mfx",
-                                             "ganchos", "pasta_protegida", "so_mock")] + ["dev/test_trusted_author.py",
-                                                                                   "dev/test_ci_workflow.py"]
+                                             "ganchos", "pasta_protegida", "so_mock")] + [
+    "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py"]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",

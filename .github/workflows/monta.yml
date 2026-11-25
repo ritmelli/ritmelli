@@ -111,6 +111,22 @@ jobs:
           $v = (Select-String -Path versao.py -Pattern '^VERSAO = "(.+)"').Matches[0].Groups[1].Value
           # ascii: no PowerShell 5, o >> grava em UTF-16, e o utf8 dele poe BOM
           Add-Content -Path $env:GITHUB_OUTPUT -Value "versao=$v" -Encoding ascii
+      # the version resource of our two DLLs (microfone/apo/version.rc, from versao.py), as built: code signing needs the
+      # product name and the version, and the DLL without them would stop the first signed build
+      - name: Version resource of the DLLs
+        shell: powershell
+        env:
+          VERSAO: ${{ steps.congela.outputs.versao }}
+        run: |
+          foreach ($d in 'micfx.dll', 'voz.dll') {
+            $v = (Get-Item "dist\ritmelli\_internal\microfone\$d").VersionInfo
+            $numeros = "$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart)"
+            "${d}: ProductName=$($v.ProductName) ProductVersion=$($v.ProductVersion) FileVersion=$($v.FileVersion) ($numeros) FileDescription=$($v.FileDescription) OriginalFilename=$($v.OriginalFilename)"
+            if ($v.ProductName -ne 'Ritmelli' -or $v.ProductVersion -ne $env:VERSAO -or $v.FileVersion -ne $env:VERSAO -or
+                $numeros -ne $env:VERSAO -or $v.OriginalFilename -ne $d) {
+              throw "$d has no version resource of Ritmelli $env:VERSAO"
+            }
+          }
 
       # assinatura do ritmelli.exe, antes de ele entrar no setup e na parcial. The zip keeps the layout of dist\ritmelli
       # (ritmelli.exe at the root, the DLLs in _internal\microfone); the SIGNPATH_ARTIFACT_APP configuration signs the
@@ -127,7 +143,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
       - if: env.ASSINA == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -173,7 +189,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
       - if: env.ASSINA == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -472,7 +488,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          sparse-checkout: /instalador/testa-migracao.ps1
+          # the vozes.json: the voice files the setup has to bring from the old folder, with their sha256
+          sparse-checkout: |
+            /instalador/testa-migracao.ps1
+            /vozes.json
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v8
         with:

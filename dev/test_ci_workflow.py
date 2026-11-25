@@ -107,7 +107,7 @@ exit 2
 FAKE_SLEEP = '#!/bin/bash\necho "sleep $*" >> "$FAKE_LOG"\n'
 
 
-def run_summary(bash, block, event, states, comment_fails=0, queue_url="", queue_fails=False):
+def run_summary(bash, block, event, states, comment_fails=0, queue_url="", queue_fails=False, dono="success"):
     """Runs the block of the "Testa o PR" with the states of the five jobs. Returns (exit code, stdout+stderr, step
     summary, the fake calls)."""
     with tempfile.TemporaryDirectory(prefix="ritmelli-ci-") as tmp:
@@ -129,7 +129,7 @@ def run_summary(bash, block, event, states, comment_fails=0, queue_url="", queue
                    FAKE_COMMENT_FAILS=str(comment_fails), FAKE_QUEUE_URL=queue_url,
                    FAKE_QUEUE_FAILS="1" if queue_fails else "", GH_TOKEN="x",
                    REPO="ritmelli/ritmelli", PR="7" if event == "pull_request" else "", HEAD="c" * 40, RUN_ID="1",
-                   ATTEMPT="1", EXECUCAO="https://example.invalid/run",
+                   ATTEMPT="1", EXECUCAO="https://example.invalid/run", S_DONO=dono, DONO="",
                    DO_REPO="true" if event == "pull_request" else "false", LINHAS="", MUDARAM="0",
                    **{f"S_{n}": s for n, s in zip(names, states)}, **{f"R_{n}": f"resumo {n}" for n in names})
         p = subprocess.run([bash, "--noprofile", "--norc", "-eo", "pipefail", "run.sh"], cwd=tmp, env=env,
@@ -190,6 +190,9 @@ def test_summary_block(all_jobs):
     check(code != 0 and not any("event=merge_group" in c for c in calls),
           f"on a PR, a skipped job fails the check, and the queue is not asked (exit {code})")
 
+    code, out, summary, calls = run_summary(bash, block, "merge_group", ok5, dono="failure")
+    check(code != 0, f"a failed needs-owner step fails the check, as before (exit {code})")
+
     code, out, summary, calls = run_summary(bash, block, "pull_request", ["success", "cancelled"] + ["success"] * 3)
     check(code != 0 and not any(c.startswith("gh pr comment") for c in calls) and "cancelada" in summary,
           f"a cancelled job fails the check and leaves the PR comment as it was (exit {code})")
@@ -204,7 +207,8 @@ def test_shape(all_jobs, text):
               f"the {job} job runs on the push to main")
     needs = next((line for line in all_jobs["testa-o-pr"] if line.startswith("    needs:")), "")
     ids = {n.strip() for n in needs.partition("[")[2].rstrip("]").split(",")}
-    check(ids == {"testes", "banca", "microfone", "tela", "compara"}, f"the Testa o PR needs the five jobs ({needs.strip()})")
+    check(ids == {"etiquetas", "testes", "banca", "microfone", "tela", "compara"},
+          f"the Testa o PR needs the five jobs and the Etiquetas ({needs.strip()})")
     check("--captura" in "".join(all_jobs["compara"]), "the compara job runs the --captura on the push")
     captura = ", ".join(f"'{f}'" for f in testa_tudo.CAPTURA)
     keys = re.findall(r"key: compara-.*hashFiles\(([^)]*)\)", text)
