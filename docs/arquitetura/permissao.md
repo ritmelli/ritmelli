@@ -23,3 +23,7 @@ O `caps` (`{"papel", "rotas"}`) diz a cada conexão o que ela pode: vem no `/api
 primeiro evento do SSE, que fecha quando o celular é desconectado ou a sessão remota acaba. O `dev/testa_mock.py`
 confere que toda rota do `server.py` está na tabela (pelo fonte e pelo roteador do aiohttp) e cada papel no `guard`
 de verdade e num `--mock`, com a rede de casa feita pelo `127.0.0.2`.
+
+O que a sessão remota manda pela internet e a rota local de cada comando estão no
+[protocolo da sessão remota](../protocolo-remoto.md): o `dev/testa_protocolo.py` falha se o mapa de comandos de lá e
+as rotas do `remoto` daqui não forem as mesmas.
