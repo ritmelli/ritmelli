@@ -114,12 +114,15 @@ def save_json(path, data):
 # - o caminho, normalizado (sem ..), fica dentro da raiz (Program Files), e nem ele, nem nenhum ancestral, nem nada
 #   dentro dele e ponto de reanalise (juncao, link simbolico);
 # - o dono da pasta e de tudo que existe dentro dela e SYSTEM, Administradores ou TrustedInstaller;
-# - nenhuma ACE de permissao que vale para o proprio objeto (as so de heranca ficam de fora, como o CREATOR OWNER que
-#   toda subpasta de Program Files herda) da a outro principal escrita, acrescimo ou criacao, exclusao (inclusive a de
-#   filhos), WRITE_DAC ou WRITE_OWNER. A mesma regra de dono e de ACE vale para cada pasta entre a raiz (inclusive) e o
-#   destino: um pai que deixe outro apagar ou trocar a pasta do app reprova. DACL nula ou ilegivel reprova;
+# - nenhuma ACE de permissao da a outro principal escrita, acrescimo ou criacao, exclusao (inclusive a de filhos),
+#   WRITE_DAC ou WRITE_OWNER. As so de heranca do CREATOR OWNER e do CREATOR GROUP ficam de fora (toda subpasta de
+#   Program Files herda a do CREATOR OWNER, e ela vira a de quem cria o filho); as outras so de heranca contam, porque
+#   o que nascer depois da conferencia as herdaria. A mesma regra de dono e de ACE vale para cada pasta entre a raiz
+#   (inclusive) e o destino: um pai que deixe outro apagar ou trocar a pasta do app reprova. DACL nula ou ilegivel
+#   reprova, e tambem um nome que o Windows nao abre como esta (terminado em ponto ou espaco);
 # - a excecao: na microfone\log, onde nada se executa, o LocalService (o audiodg.exe grava o log do filtro) pode
-#   escrever, criar e apagar, nunca WRITE_DAC nem WRITE_OWNER, e ser dono dos arquivos de log, nunca da pasta.
+#   escrever, criar e apagar, nunca WRITE_DAC nem WRITE_OWNER na pasta, e ser dono dos arquivos de log (e ter controle
+#   total sobre os que sao dele), nunca da pasta.
 # Destino que ainda nao existe e conferido pelos ancestrais que existem.
 SID_SYSTEM = "S-1-5-18"
 SID_ADMINS = "S-1-5-32-544"
@@ -132,6 +135,9 @@ LOG_DO_FILTRO = ("microfone", "log")
 _ESCRITA = 0x2 | 0x4 | 0x40 | 0x10000 | 0x40000 | 0x80000 | 0x40000000 | 0x10000000
 _TROCA_ACL = 0x40000 | 0x80000 | 0x10000000  # WRITE_DAC, WRITE_OWNER, GENERIC_ALL
 _SO_HERANCA = 0x08  # INHERIT_ONLY_ACE: a ACE nao vale para o proprio objeto
+# CREATOR OWNER e CREATOR GROUP: so de heranca, viram a ACE de quem cria o filho. Qualquer outra ACE so de heranca que
+# de escrita reprova: o que nasce depois da conferencia (o setup baixado, a DLL copiada) a herdaria
+_CRIADORES = ("S-1-3-0", "S-1-3-1")
 _PERMITE = (0, 9)  # ACCESS_ALLOWED e ACCESS_ALLOWED_CALLBACK
 _NEGA = (1, 6, 10, 12)  # as de negacao (simples, de objeto e callback) so tiram acesso
 
@@ -246,16 +252,21 @@ def _confere_objeto(caminho, d, no_log):
             continue
         if tipo not in _PERMITE:
             return f"{caminho} has an ACE of type {tipo}"
-        if flags & _SO_HERANCA or sid in DONOS or not mascara & _ESCRITA:
+        if sid in DONOS or not mascara & _ESCRITA:
             continue
-        if no_log and sid == SID_LOCAL_SERVICE and not mascara & _TROCA_ACL:
+        if flags & _SO_HERANCA and sid in _CRIADORES:  # vira a ACE de quem cria o filho, que ja e um dos donos
+            continue
+        # o LocalService na microfone\log: escrever, criar e apagar; o controle total so num arquivo que e dele (o
+        # micfx.log que o audiodg.exe cria depois da rotacao herda o CREATOR OWNER como LocalService:F)
+        if no_log and sid == SID_LOCAL_SERVICE and (not mascara & _TROCA_ACL
+                                                     or (not d["dir"] and dono == SID_LOCAL_SERVICE)):
             continue
         return f"{caminho} lets {sid} write or change it (access 0x{mascara:08x})"
     return None
 
 
 def _confere_arvore(caminho, d, le):
-    """O motivo pelo qual o objeto ou algo dentro dele reprova, ou None. Nao entra em ponto de reanalise: ele reprova."""
+    """O motivo pelo qual o objeto ou algo dentro dele reprova, ou None. Nao entra em ponto de reanalise: reprova."""
     pilha = [(caminho, d, ())]
     while pilha:
         caminho, d, rel = pilha.pop()
@@ -267,6 +278,8 @@ def _confere_arvore(caminho, d, le):
             return motivo
         for nome in (d.get("filhos") or ()) if d["dir"] else ():
             filho = ntpath.join(caminho, nome)
+            if nome[-1:] in (".", " "):  # o Windows corta o fim do nome ao abrir: a leitura acharia outro objeto
+                return f"{filho} has a name Windows can't open"
             try:
                 df = le(filho)
             except OSError as e:
@@ -300,10 +313,10 @@ def motivo_desprotegida(pasta, raiz, le=_le_disco):
             return f"{raiz} doesn't exist" if i <= na_raiz else None
         if d["reparse"]:
             return f"{caminho} is a reparse point"
-        if i == len(partes):
-            return _confere_arvore(caminho, d, le)
         if not d["dir"]:
             return f"{caminho} is not a folder"
+        if i == len(partes):
+            return _confere_arvore(caminho, d, le)
         if i >= na_raiz:  # da raiz ao pai do destino: dono e ACEs, sem olhar o que mais tem dentro
             motivo = _confere_objeto(caminho, d, False)
             if motivo:

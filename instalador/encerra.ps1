@@ -10,7 +10,53 @@
 param([Parameter(Mandatory = $true)][string]$Caminhos, [Parameter(Mandatory = $true)][string]$Saida)
 
 $linhas = New-Object System.Collections.Generic.List[string]
+# o handle prende o processo (o pid nao volta a outro enquanto ele esta aberto): o caminho e conferido de novo por esse
+# handle, e o fim usa o mesmo handle. Um pid que saiu e voltou em outro programa fica. Os direitos sao os do
+# Stop-Process (encerrar) e o de ler o caminho
+$codigo = @'
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class RitmelliEncerra {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr OpenProcess(uint acesso, bool herda, int pid);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool QueryFullProcessImageNameW(IntPtr h, uint flags, StringBuilder b, ref uint n);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool TerminateProcess(IntPtr h, uint codigo);
+    [DllImport("kernel32.dll")]
+    static extern bool CloseHandle(IntPtr h);
+
+    public static string Encerra(int pid, IEnumerable<string> alvos) {
+        IntPtr h = OpenProcess(0x0001 | 0x1000, false, pid);  // PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION
+        if (h == IntPtr.Zero) return "couldn't open " + pid + " (" + new Win32Exception(Marshal.GetLastWin32Error()).Message + ")";
+        try {
+            StringBuilder b = new StringBuilder(1024);
+            uint n = (uint)b.Capacity;
+            if (!QueryFullProcessImageNameW(h, 0, b, ref n))
+                return "couldn't read the path of " + pid + " (" + new Win32Exception(Marshal.GetLastWin32Error()).Message + ")";
+            string caminho = b.ToString();
+            string normal = Path.GetFullPath(caminho).ToLowerInvariant();
+            foreach (string a in alvos) {
+                if (a == normal) {
+                    if (!TerminateProcess(h, 1))
+                        return "couldn't close " + pid + " " + caminho + " (" + new Win32Exception(Marshal.GetLastWin32Error()).Message + ")";
+                    return "closed " + pid + " " + caminho;
+                }
+            }
+            return "left " + pid + ": it is now " + caminho;
+        } finally {
+            CloseHandle(h);
+        }
+    }
+}
+'@
 try {
+  Add-Type -TypeDefinition $codigo -Language CSharp
   $alvos = @($Caminhos -split '\|' | Where-Object { $_ } | ForEach-Object { [IO.Path]::GetFullPath($_).ToLowerInvariant() })
   $processos = @(Get-CimInstance Win32_Process)
   $pai = @{}
@@ -22,8 +68,7 @@ try {
     if (-not $p.ExecutablePath -or $meus.ContainsKey([int]$p.ProcessId)) { continue }
     if ($alvos -contains $p.ExecutablePath.ToLowerInvariant()) {
       try {
-        Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop
-        $linhas.Add("closed $($p.ProcessId) $($p.ExecutablePath)")
+        $linhas.Add([RitmelliEncerra]::Encerra([int]$p.ProcessId, [string[]]$alvos))
       } catch {
         $linhas.Add("couldn't close $($p.ProcessId) $($p.ExecutablePath): $($_.Exception.Message)")
       }

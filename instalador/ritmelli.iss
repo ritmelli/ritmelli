@@ -175,6 +175,12 @@ Type: files; Name: "{autodesktop}\Vitrola.lnk"
 #endif
 
 [Files]
+; o que o [Code] roda pelo PowerShell do sistema, so na {tmp}: a regra da pasta protegida, o fim dos processos da
+; instalacao que o setup substitui e a renomeacao do ritmelli.exe da que fica para tras. No comeco do [Files]: com a
+; compressao solida, um arquivo do fim so sairia depois de descomprimir o app inteiro, e o [Code] extrai estes antes
+Source: "protegida.ps1"; Flags: dontcopy
+Source: "encerra.ps1"; Flags: dontcopy
+Source: "renomeia.ps1"; Flags: dontcopy
 #ifdef Parcial
 ; so o que mudou, cada arquivo no caminho dele na pasta do app (a bin\ tambem, se o ffmpeg ou o Deno mudaram)
 Source: "{#Parcial}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -189,11 +195,6 @@ Source: "{#Deno}\deno.exe"; DestDir: "{app}\bin"; Flags: ignoreversion
 ; quem recebe o programa recebe as licencas: a GPLv3 do Ritmelli e o texto de cada componente de terceiros
 Source: "{#Licenca}"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "{#Terceiros}"; DestDir: "{app}"; DestName: "TERCEIROS.txt"; Flags: ignoreversion
-; o que o [Code] roda pelo PowerShell do sistema, so na {tmp}: a regra da pasta protegida, o fim dos processos da
-; instalacao que o setup substitui e a renomeacao do ritmelli.exe da que fica para tras
-Source: "protegida.ps1"; Flags: dontcopy
-Source: "encerra.ps1"; Flags: dontcopy
-Source: "renomeia.ps1"; Flags: dontcopy
 
 [Registry]
 ; a escolha da pagina dos dados de uso e dos erros, que o metricas.py le (a feita no Ritmelli vale sobre ela). So grava
@@ -278,10 +279,15 @@ begin
   Log('instalacao anterior: ' + PastaAnterior);
 end;
 
-// o texto entre aspas simples do PowerShell (com a aspa simples dobrada)
+// o texto entre aspas simples do PowerShell: cada aspa simples dobrada, inclusive as tipograficas, que o PowerShell
+// tambem le como aspa simples (U+2018, U+2019, U+201A e U+201B)
 function Aspas(S: String): String;
 begin
   StringChangeEx(S, '''', '''''', True);
+  StringChangeEx(S, #$2018, #$2018#$2018, True);
+  StringChangeEx(S, #$2019, #$2019#$2019, True);
+  StringChangeEx(S, #$201A, #$201A#$201A, True);
+  StringChangeEx(S, #$201B, #$201B#$201B, True);
   Result := '''' + S + '''';
 end;
 
@@ -293,6 +299,11 @@ var
   Texto: AnsiString;
 begin
   Result := '';
+  // nenhum caminho do Windows tem aspas duplas: com uma, o comando entre aspas duplas acabaria no meio
+  if (Pos('"', Args) > 0) or (Pos('"', Saida) > 0) then begin
+    Log(Script + ': argument with a double quote refused');
+    Exit;
+  end;
   ExtractTemporaryFile(Script);
   DeleteFile(Saida);
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),

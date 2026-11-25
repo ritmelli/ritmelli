@@ -134,7 +134,20 @@ def em_memoria():
     confere("a pasta como o setup cria: CREATOR OWNER so de heranca, donos TrustedInstaller, SYSTEM e Administradores, "
             "e o LocalService na microfone\\log", r is True, repr(r))
     d.muda(DESTINO, dacl=acl_pasta() + [(0, OICI | IO, M, US)])
-    confere("uma ACE de Usuarios so de heranca nao conta", avalia(d) is True)
+    reprova("uma ACE so de heranca que da escrita a Usuarios (o que nascer depois a herdaria)", d, US)
+    d = disco_base()
+    d.muda(DESTINO, dacl=acl_pasta() + [(0, OICI | IO, F, "S-1-3-1")])
+    confere("a ACE so de heranca do CREATOR GROUP nao conta", avalia(d) is True)
+    d = disco_base()
+    # o micfx.log que o audiodg.exe cria depois da rotacao: dono LocalService, e o CREATOR OWNER herdado vira
+    # LocalService:(F)
+    d.muda(DESTINO + r"\microfone\log\micfx.log", dono=LS,
+           dacl=acl_arquivo() + [(0, HERDADA, M, LS), (0, HERDADA, F, LS)])
+    d.poe(DESTINO + r"\microfone\log\micfx.log.1", pasta=False, dacl=acl_arquivo() + [(0, HERDADA, M, LS)])
+    confere("o log que o audiodg.exe cria depois da rotacao (LocalService dono, com controle total)", avalia(d) is True,
+            repr(avalia(d)))
+    d.muda(DESTINO + r"\microfone\log\micfx.log", dono=BA)
+    reprova("o controle total do LocalService num log que nao e dele", d, LS)
     d = disco_base()
     d.muda(DESTINO + r"\ritmelli.exe", dacl=acl_arquivo() + [(1, 0, M, US)])
     confere("uma ACE de negacao so tira acesso", avalia(d) is True)
@@ -203,8 +216,20 @@ def em_memoria():
     d.poe(DESTINO + r"\microfone\log\j", reparse=True)
     reprova("uma juncao dentro da microfone\\log", d, "reparse point")
     d = disco_base()
+    d.poe(DESTINO + r"\microfone\log\x.", dono=LS)
+    reprova("um nome terminado em ponto (o Windows abriria outro)", d, "can't open")
+    d = disco_base()
+    d.poe(DESTINO + r"\_internal\a ", pasta=False)
+    reprova("um nome terminado em espaco", d, "can't open")
+    d = disco_base()
     d.muda(DESTINO, reparse=True)
     reprova("a propria pasta do app como juncao", d, "reparse point")
+    d = disco_base()
+    d.obj.pop(DESTINO.lower())
+    d.poe(DESTINO, pasta=False)
+    for k in [k for k in d.obj if k.startswith(DESTINO.lower() + "\\")]:
+        d.obj.pop(k)
+    reprova("o proprio destino como arquivo", d, "not a folder")
     d = disco_base()
     d.poe(RAIZ + r"\J", reparse=True)
     reprova("uma juncao no caminho", d, "reparse point", RAIZ + r"\J\Ritmelli")
@@ -259,6 +284,11 @@ def no_disco():
         log.mkdir(parents=True)
         icacls(log, "/grant", "*S-1-5-19:(OI)(CI)M")
         (log / "micfx.log").write_bytes(b"x")
+        # o log que o audiodg.exe cria depois da rotacao: dono LocalService, com o controle total do CREATOR OWNER
+        rot = log / "micfx.log.1"
+        rot.write_bytes(b"x")
+        icacls(rot, "/setowner", "*S-1-5-19")
+        icacls(rot, "/grant", "*S-1-5-19:F")
         passa("a pasta nova em Program Files, como o setup cria, com o LocalService na microfone\\log")
 
         icacls(base, "/grant", "*S-1-5-32-545:(OI)(CI)M")

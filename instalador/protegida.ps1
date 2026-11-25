@@ -4,11 +4,13 @@
 #
 # - o caminho, normalizado, fica dentro da raiz, e nem ele, nem um ancestral, nem nada dentro dele e ponto de reanalise;
 # - o dono da pasta e de tudo dentro dela e SYSTEM, Administradores ou TrustedInstaller;
-# - nenhuma ACE de permissao que vale para o proprio objeto (as so de heranca ficam de fora) da a outro principal
-#   escrita, acrescimo ou criacao, exclusao (inclusive a de filhos), WRITE_DAC ou WRITE_OWNER; o mesmo vale para cada
-#   pasta da raiz (inclusive) ate o pai do destino. DACL nula ou ilegivel reprova;
+# - nenhuma ACE de permissao da a outro principal escrita, acrescimo ou criacao, exclusao (inclusive a de filhos),
+#   WRITE_DAC ou WRITE_OWNER (das so de heranca, so as do CREATOR OWNER e do CREATOR GROUP ficam de fora); o mesmo vale
+#   para cada pasta da raiz (inclusive) ate o pai do destino. DACL nula ou ilegivel reprova, e tambem um nome que o
+#   Windows nao abre como esta (terminado em ponto ou espaco);
 # - na microfone\log, o LocalService (o audiodg.exe grava o log do filtro) pode escrever, criar e apagar, nunca
-#   WRITE_DAC nem WRITE_OWNER, e ser dono dos arquivos, nunca da pasta.
+#   WRITE_DAC nem WRITE_OWNER na pasta, e ser dono dos arquivos (com controle total sobre os que sao dele), nunca da
+#   pasta.
 # O destino que ainda nao existe e conferido pelos ancestrais que existem.
 #
 # O setup roda este arquivo como texto (um scriptblock), sem depender da politica de execucao de scripts:
@@ -19,6 +21,7 @@ param([Parameter(Mandatory = $true)][string]$Pasta, [Parameter(Mandatory = $true
 
 $donos = @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
 $servico = 'S-1-5-19'
+$criadores = @('S-1-3-0', 'S-1-3-1')  # CREATOR OWNER e CREATOR GROUP: so de heranca, viram a ACE de quem cria
 # FILE_WRITE_DATA, FILE_APPEND_DATA, FILE_DELETE_CHILD, DELETE, WRITE_DAC, WRITE_OWNER, GENERIC_WRITE, GENERIC_ALL
 $escrita = 0x2 -bor 0x4 -bor 0x40 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x40000000 -bor 0x10000000
 $trocaAcl = 0x40000 -bor 0x80000 -bor 0x10000000
@@ -52,11 +55,12 @@ function ConfereObjeto($o, [bool]$noLog) {
     $tipo = [int]$ace.AceType
     if (@(1, 6, 10, 12) -contains $tipo) { continue }  # negacao: so tira acesso
     if (@(0, 9) -notcontains $tipo) { return "$($o.Caminho) has an ACE of type $tipo" }
-    if (([int]$ace.AceFlags -band 0x08) -ne 0) { continue }  # so de heranca
     $sid = $ace.SecurityIdentifier.Value
     $mascara = [int]$ace.AccessMask
     if (($donos -contains $sid) -or (($mascara -band $escrita) -eq 0)) { continue }
-    if ($noLog -and $sid -eq $servico -and (($mascara -band $trocaAcl) -eq 0)) { continue }
+    if ((([int]$ace.AceFlags -band 0x08) -ne 0) -and ($criadores -contains $sid)) { continue }
+    # o controle total so num arquivo de log que e do LocalService (o micfx.log que o audiodg.exe cria na rotacao)
+    if ($noLog -and $sid -eq $servico -and ((($mascara -band $trocaAcl) -eq 0) -or (-not $o.Pasta -and $dono -eq $servico))) { continue }
     return "$($o.Caminho) lets $sid write or change it (access 0x$('{0:x8}' -f $mascara))"
   }
   $null
@@ -75,6 +79,8 @@ function ConfereArvore($o) {
     if ($m) { return $m }
     if ($o.Pasta) {
       foreach ($filho in [IO.Directory]::EnumerateFileSystemEntries($o.Caminho)) {
+        # o Windows corta o ponto ou o espaco do fim ao abrir: a leitura acharia outro objeto
+        if ($filho -match '[. ]$') { return "$filho has a name Windows can't open" }
         $f = Le $filho
         if ($f) { $pilha.Push(@($f, "$rel\$([IO.Path]::GetFileName($filho))")) }
       }
@@ -99,8 +105,8 @@ function Motivo {
       return $null
     }
     if ($o.Reparse) { return "$c is a reparse point" }
-    if ($i -eq $partes.Count) { return ConfereArvore $o }
     if (-not $o.Pasta) { return "$c is not a folder" }
+    if ($i -eq $partes.Count) { return ConfereArvore $o }
     if ($i -ge $raizPartes) {
       $m = ConfereObjeto $o $false
       if ($m) { return $m }
