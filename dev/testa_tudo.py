@@ -107,7 +107,15 @@ def roda_no_yml(texto):
         if not m:
             continue
         if not m.group(2).startswith(("|", ">")):
-            runs.append(m.group(2))
+            v = m.group(2).strip()
+            if len(v) > 1 and v[0] == v[-1] == "'":  # o escalar entre aspas do YAML
+                v = v[1:-1].replace("''", "'")
+            elif len(v) > 1 and v[0] == v[-1] == '"':
+                try:
+                    v = json.loads(v)
+                except ValueError:
+                    v = v[1:-1]
+            runs.append(v)
             continue
         bloco = []
         while i < len(linhas) and (not linhas[i].strip() or len(linhas[i]) - len(linhas[i].lstrip()) > len(m.group(1))):
@@ -117,11 +125,12 @@ def roda_no_yml(texto):
         runs.append(" ".join(b.strip() for b in bloco) if m.group(2).startswith(">") else "\n".join(bloco))
     rodam = set()
     for run in runs:
-        run = re.sub(r"<#.*?#>", " ", run.replace("\\", "/"), flags=re.S)  # o comentario de bloco do PowerShell
+        # o que o PowerShell nao executa: o comentario de bloco e o texto dos here-strings
+        run = re.sub(r"<#.*?#>|@(['\"])[ \t]*\n.*?\n[ \t]*\1@", " ", run, flags=re.S).replace("\\", "/")
         for linha in run.splitlines():
-            # cada comando da linha (entre ; & | e parenteses, fora das aspas e antes do #): so conta o que comeca
-            # pelo python, e o script e o primeiro argumento depois das opcoes dele
-            lex = shlex.shlex(linha, posix=False, punctuation_chars=";&|()")
+            # cada comando da linha (entre ; & | parenteses e chaves, fora das aspas e antes do #): so conta o que
+            # comeca pelo python, e o script e o primeiro argumento depois das opcoes dele
+            lex = shlex.shlex(linha, posix=False, punctuation_chars=";&|(){}")
             lex.whitespace_split = True
             try:
                 palavras = list(lex)
@@ -129,7 +138,7 @@ def roda_no_yml(texto):
                 palavras = linha.split("#")[0].split()
             comandos, atual = [], []
             for p in palavras:
-                if p and set(p) <= set(";&|()"):
+                if p and set(p) <= set(";&|(){}"):
                     comandos.append(atual)
                     atual = []
                 else:
@@ -142,7 +151,7 @@ def roda_no_yml(texto):
                     args.pop(0)
                 if not args or not args[0].endswith(".py"):
                     continue
-                script, opcoes = args[0].removeprefix("./"), args[1:]
+                script, opcoes = args[0].removeprefix("./"), [a.split("=")[0] for a in args[1:]]
                 rodam.add(script)
                 if script == "dev/testa_tudo.py":
                     if "--tela" in opcoes:
