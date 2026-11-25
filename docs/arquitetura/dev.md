@@ -31,6 +31,12 @@ execução no mesmo commit vira a suite mais nova do workflow e o check exigido 
 empilhado valem na fila de merge, que lê as etiquetas na hora e testa o merge de verdade; no
 PR, a etiqueta vale no próximo commit, ao reabrir ou num re-run completo, e a base nova só no
 próximo commit ou ao reabrir (o re-run repete a base do evento antigo).
+A etiqueta `needs-owner` (prova fora da CI: o filtro num Windows real, o instalador de verdade, um
+gatilho do `testa.yml` ou o nome do check exigido) também vale na fila: o passo "Needs owner" do
+"Testa o PR" lê a lista do job das etiquetas e reprova a entrada da fila cujo PR a tem, ou cujas
+etiquetas não vieram; no PR ele só avisa no resumo, e o merge fica com o dono. O
+`dev/test_needs_owner.py` roda esse passo, fora do GitHub, em cada caso, e confere os gatilhos e o
+nome do check exigido.
 
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande

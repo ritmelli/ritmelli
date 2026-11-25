@@ -12,6 +12,11 @@
 #
 # A PR from outside still needs a maintainer to approve the run (the GitHub default), and its token is read only: the
 # summary stays in the run, without the PR comment.
+#
+# The needs-owner label (a PR whose proof needs something outside CI: the microphone filter on a real Windows, the real
+# installer, a change to the triggers here or to the name of the required check) keeps the PR out of the main: the
+# "Testa o PR" of a merge_group entry fails while its PR has the label, and the owner merges it. The entry reads the
+# labels when it runs, so the gate needs no labeled trigger; on the PR the check only says the queue will refuse it.
 name: Testa
 
 on:
@@ -19,8 +24,8 @@ on:
     # No edited, labeled or unlabeled: a run on the same head, even one whose jobs all skip, is the newest check suite
     # of this workflow on that commit, and the required check is read from the newest suite only, so it hid the
     # "Testa o PR" of the run that tested (the merge queue refused the PR as missing the check). The extracao-tema
-    # label and a stacked PR's new base are enforced by the merge_group run, which reads the labels of the PR when it
-    # runs and tests the real merge. On the PR, a label takes effect at the next push, a reopen or a full re-run; a new
+    # and needs-owner labels and a stacked PR's new base are enforced by the merge_group run, which reads the labels of
+    # the PR when it runs and tests the real merge. On the PR, a label takes effect at the next push, a reopen or a full re-run; a new
     # base only at the next push or a reopen (a re-run keeps the merge commit and the base of its old event)
     types: [opened, synchronize, reopened]
   push:
@@ -383,18 +388,60 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
   # the required check: always runs, joins the summaries and only passes with the other four (the one that does not
-  # apply passes without running)
+  # apply passes without running) and, in a merge_group entry, without the needs-owner label on its PR
   testa-o-pr:
     name: Testa o PR
     # always(), not !cancelled(): a skipped job counts as green in the required check, and the cancelled run would pass
     if: ${{ always() }}
-    needs: [testes, microfone, tela, compara]
+    needs: [etiquetas, testes, microfone, tela, compara]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       actions: read
       pull-requests: write
     steps:
+      # the owner gate: fails a merge_group entry whose PR has the needs-owner label, or whose labels did not come, so
+      # the queue refuses it; on the PR and the push it passes, with a line for the summary when the label is there.
+      # The dev/test_needs_owner.py runs this run block
+      - name: Needs owner
+        id: dono
+        if: ${{ !cancelled() }}
+        env:
+          EVENT: ${{ github.event_name }}
+          LABELS: ${{ needs.etiquetas.outputs.lista }}
+          LABELS_RESULT: ${{ needs.etiquetas.result }}
+        shell: python3 {0}
+        run: |
+          import json
+          import os
+          import sys
+
+          LABEL = "needs-owner"
+          event = os.environ.get("EVENT", "")
+          labels = None
+          if os.environ.get("LABELS_RESULT") == "success":
+              try:
+                  labels = json.loads(os.environ.get("LABELS", ""))
+              except ValueError:
+                  pass
+          if not (isinstance(labels, list) and all(isinstance(x, str) for x in labels)):
+              labels = None
+          code = 0
+          if event == "merge_group" and labels is None:
+              line, code = f"❌ **{LABEL}:** the labels of the PR did not come, so the queue entry fails", 1
+          elif event == "merge_group" and LABEL in labels:
+              line, code = f"❌ **{LABEL}:** the PR has the label (its proof is outside CI): the owner merges it", 1
+          elif labels and LABEL in labels:
+              line = f"⚠️ **{LABEL}:** the merge queue refuses this PR while it has the label: the owner merges it"
+          else:
+              line = ""
+          if line:
+              print(("::error::" if code else "::notice::") + line.replace("*", ""))
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+                  f.write(line + "\n\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"linha={line}\n")
+          sys.exit(code)
       - name: Resumo e resultado
         if: ${{ !cancelled() }}
         env:
@@ -416,6 +463,8 @@ jobs:
           R_COMPARA: ${{ needs.compara.outputs.resumo }}
           LINHAS: ${{ needs.testes.outputs.linhas }}
           MUDARAM: ${{ needs.compara.outputs.mudaram }}
+          DONO: ${{ steps.dono.outputs.linha }}
+          S_DONO: ${{ steps.dono.outcome }}
         run: |
           estados=("$S_TESTES" "$S_MICROFONE" "$S_TELA" "$S_COMPARA")
           # a cancelled run proved nothing either way: it fails, and leaves the PR comment as the last run that ended wrote it
@@ -427,7 +476,7 @@ jobs:
           done
           marca() { if [ "$1" = success ]; then echo "✅"; else echo "❌ ($1)"; fi; }
           ok=true
-          for s in "${estados[@]}"; do [ "$s" = success ] || ok=false; done
+          for s in "${estados[@]}" "$S_DONO"; do [ "$s" = success ] || ok=false; done
           if $ok; then
             manchete="✅ Testa: tudo passou"
             n=${MUDARAM:-0}
@@ -451,6 +500,7 @@ jobs:
             echo "| --- | --- | --- | --- |"
             echo "| $(marca "$S_TESTES") | $(marca "$S_MICROFONE") | $(marca "$S_TELA") | $(marca "$S_COMPARA") |"
             echo
+            if [ -n "$DONO" ]; then echo "$DONO"; echo; fi
             printf '%s\n\n' "$R_TESTES" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
             if [ -n "$tempos" ]; then echo "**Tempo de cada job** (alvo: 10 min): $tempos"; echo; fi
             if [ -n "$LINHAS" ]; then echo "$LINHAS"; echo; fi

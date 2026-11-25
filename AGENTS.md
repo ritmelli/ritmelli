@@ -9,9 +9,8 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
 - Nunca no 8799, no Ritmelli instalado nem com o microfone de verdade: o som sai no jogo de quem está jogando. O
   servidor de teste é o `--mock` noutra porta, que por padrão trabalha numa pasta temporária, só com uma cópia da
   lista da prateleira: `python server.py --mock --port 8801 --no-browser`.
-- Nunca no Discord de quem usa; só num canal fechado de teste e num Windows de teste.
-- O `microfone\microfone.py instala-todos` e o `remove` mexem em todo microfone do PC e no filtro do Ritmelli
-  instalado: só num Windows de teste.
+- Nunca no Discord de quem usa: só num canal fechado de teste e num Windows de teste. Também só num Windows de teste o
+  `instala-todos` e o `remove` do `microfone\microfone.py`, que mexem em todo microfone e no filtro instalado.
 
 ## Regras
 
@@ -37,7 +36,8 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
 - Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 - Mexeu em `instalador/`, nos `atualiza*.py`, no `migra.py`, no `pastas.py`, no `microfone/microfone.py` ou no
   `ritmelli.spec`: rode o "Monta o instalador" (`monta.yml`) na branch. Na CI, só ele compila o `.iss` e roda a
-  parcial, a migração e o atualizador.
+  parcial, a migração e o atualizador. Os nomes de artefato e de job dele são contrato com o `ritmelli-server`, cuja
+  esteira de publicação baixa o artefato por eles: quem muda um muda lá junto.
 - Mudou uma peça, muda o arquivo dela em `docs/arquitetura/`.
 
 ## As superfícies de uma mudança
@@ -59,7 +59,7 @@ galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
 | A regra no setup | `instalador/protegida.ps1`, `instalador/ritmelli.iss` | `testa_pasta_protegida --disco` (roda o `instalador/protegida.ps1` em cada caso e exige o mesmo veredito do `pastas.py`); o `.iss`, só a instalação do `.github/workflows/monta.yml` |
 | Pareamento e permissões | `pareamento.py`, `permissao.py`, o `guard` do `server.py` | `testa_pareamento`, `testa_mock`, `testa_protocolo` |
 | Protocolo da sessão remota | `docs/protocolo-remoto.md`, `docs/protocolo-remoto/v1/` | `testa_protocolo` (`--gera` escreve as fixtures de novo) |
-| Filtro e efeitos | `microfone/`, `fx.py`, `instalador/mudos.iss` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_aparelho_mudo` (os casos do setup de teste precisam do Inno Setup 6: sem ele, pulam no PC e reprovam no GitHub), `testa_voz` e `microfone/apo/teste/teste_reamostra.py` |
+| Filtro e efeitos | `microfone/`, `fx.py`, `instalador/mudos.iss` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_aparelho_mudo` (os casos do setup de teste precisam do Inno Setup 6: sem ele, pulam no PC e reprovam no GitHub), `testa_voz` e `microfone/apo/teste/teste_reamostra.py` (este, o `testa_filtro`, o `testa_microfone` e o `testa_voz` precisam das DLLs do `microfone\apo\compila.bat teste`, com o Ritmelli desligado: o `--mock` também segura a DLL dos efeitos) |
 | Troca de voz | `pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` | `testa_pedal_voz`, `testa_vozes`, `testa_pista`, `testa_conversor` |
 | Atualizações | `atualizacao.py`, `atualizador.py`, `instalador/atualizacao/` | `testa_atualizacao`, `testa_atualizador` e `instalador/atualizacao/testa_parcial.py` |
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
@@ -68,9 +68,6 @@ galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
 | Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e uma library.json só com `[]` |
 | Sem teste | `compasso.py`, `andamento.py`, `janela.py`, `winvol.py` | o PR diz como conferiu |
 
-O `testa_filtro`, o `testa_microfone`, o `testa_voz` e o `teste_reamostra.py` precisam das DLLs do
-`microfone\apo\compila.bat teste`, com o Ritmelli desligado (`--mock` incluído, que segura o `voz.dll`).
-
 ## Antes do PR
 
 Rode na raiz, com o venv: `$env:PYTHONUTF8 = '1'; python -m ruff check .; python dev\testa_tudo.py` (os outros modos e
@@ -78,3 +75,6 @@ onde entra teste novo: o [Contributing](README.md#contributing) do README). O ch
 mudado no `compara` só bloqueia com a etiqueta `extracao-tema`: sem ela o check passa, e as diferenças ficam no artefato.
 O PR entra pela fila de merge da `main` (exige o "Testa o PR"; ninguém tem bypass): nada de `--admin`, e o `gh pr merge`
 cai no auto-merge, que o repo não permite. O caminho é a mutação GraphQL `enqueuePullRequest`, com `expectedHeadOid`.
+PR cuja prova precisa de algo fora da CI (o filtro do microfone num Windows real, o instalador de verdade, um gatilho do
+`testa.yml`, o nome do check exigido) leva a etiqueta `needs-owner`: a fila recusa o PR com ela, e o merge é do dono. Os
+dois últimos se provam no PR: o "Testa o PR" fica no head ao editar a descrição, pôr e tirar uma etiqueta e na fila.
