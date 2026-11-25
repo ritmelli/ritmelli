@@ -1,55 +1,67 @@
-# Testa cada PR numa máquina Windows do GitHub: o ruff (o pyproject.toml), os testes do dev/testa_tudo.py e, quando o
-# PR mexe na área deles, os testes do filtro de microfone e a tela (o fitcheck e o compara). O job "Testa o PR" sempre
-# roda e só passa com os outros: é ele o check exigido na trava da main.
+# Tests each PR on a GitHub Windows machine: the ruff (the pyproject.toml), the tests of the dev/testa_tudo.py and, when
+# the PR touches their area, the tests of the microphone filter and the screen (the fitcheck in one job, the compara in
+# another). The "Testa o PR" job always runs and only passes with the others: it is the required check of the main.
 #
-# Sem paths: no gatilho, porque um check exigido que não roda deixa o PR travado. O filtro por caminho fica dentro de
-# cada job, pelo git diff contra o base.sha (o AREAS do dev/testa_tudo.py), e o job que não se aplica passa sem rodar.
+# It also runs on the push to main (the merged tree, which the PR did not test when the main moved after it) and on the
+# merge queue (merge_group), when it gets turned on in the repository settings. The push to main also leaves the
+# compara capture of the new commit in the cache: it is the reference of the PRs that will have it as their base.
 #
-# PR de fora continua pedindo a aprovação de quem mantém o repo para rodar (o padrão do GitHub), e nele o token é só de
-# leitura: o resumo fica só na execução, sem o comentário no PR.
+# No paths: in the trigger, because a required check that does not run leaves the PR stuck. The path filter lives inside
+# each job, by the git diff against the base (the AREAS of the dev/testa_tudo.py), and the job that does not apply
+# passes without running.
+#
+# A PR from outside still needs a maintainer to approve the run (the GitHub default), and its token is read only: the
+# summary stays in the run, without the PR comment.
 name: Testa
 
 on:
   pull_request:
-    # labeled e unlabeled: a etiqueta extracao-tema muda o que o compara bloqueia
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    # labeled and unlabeled: the extracao-tema label changes what the compara blocks. edited: a stacked PR whose base
+    # changed to the main is tested again against it. The other edits and labels test nothing (see the concurrency)
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+  push:
+    branches: [main]
+  merge_group:
 
 permissions:
   contents: read
 
+# one run per PR: a new commit cancels the run of the old one. An edit that keeps the base and a label other than
+# extracao-tema get a group of their own, so they do not cancel the run that is testing; their jobs skip (the "real"
+# below), and their last job takes another name, so the required check stays the one of the run that tested. Every
+# push to main gets a group of its own too: each merged commit is tested
 concurrency:
-  group: testa-${{ github.event.pull_request.number }}
+  group: testa-${{ github.event.pull_request.number || github.ref }}${{ ((github.event.action == 'edited' && !github.event.changes.base) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'extracao-tema')) && format('-{0}', github.run_id) || (github.event_name == 'push' && format('-{0}', github.sha)) || '' }}
   cancel-in-progress: true
 
 env:
   PYTHONUTF8: '1'
+  # what the PR, the queue entry or the push is compared to
+  BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
 
 jobs:
-  # o ruff e o COMPLETO do dev/testa_tudo.py, com as bibliotecas do requirements-dev.txt e o ffmpeg do app
+  # the ruff, the COMPLETO of the dev/testa_tudo.py (the libraries of the requirements-dev.txt and the ffmpeg of the
+  # app), the protected folder on the real disk and the line count of the big files against the base
   testes:
     name: Testes
+    if: &real ${{ !((github.event.action == 'edited' && !github.event.changes.base) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'extracao-tema')) }}
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
+      linhas: ${{ steps.resumo.outputs.linhas }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/python
         with:
-          python-version: '3.12.10'
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-      - name: Bibliotecas
-        run: python -m pip install -r requirements-dev.txt
-      # o ffmpeg só de áudio que vai no app (o PATH vale para os passos seguintes)
+          requirements: requirements-dev.txt
+      # the audio-only ffmpeg that goes in the app (the PATH holds for the next steps)
       - name: ffmpeg no PATH
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
-      # o --output-format github marca cada erro na linha dele, no diff do PR
+      # the --output-format github marks each error on its line, in the PR diff
       - name: ruff
         id: ruff
         run: python -m ruff check --output-format github .
@@ -57,12 +69,15 @@ jobs:
         id: testes
         if: ${{ !cancelled() && steps.ruff.outcome != 'skipped' }}
         run: python dev/testa_tudo.py --resumo "$env:RUNNER_TEMP\resumo.md"
-      # a pasta protegida no disco de verdade: cria uma pasta em Program Files e mexe na ACL dela com o icacls, por isso
-      # precisa de administrador (a máquina do GitHub é; num PC, só num Windows de teste). O modo em memória está no STDLIB
+      # the protected folder on the real disk (the PASSOS of the dev/testa_tudo.py); the in-memory mode is in the STDLIB
       - name: Pasta protegida no disco
         id: disco
         if: ${{ !cancelled() && steps.ruff.outcome != 'skipped' }}
-        run: python dev/testa_pasta_protegida.py --disco
+        run: python dev/testa_tudo.py --passo disco
+      - name: Linhas
+        if: ${{ !cancelled() && env.BASE != '' }}
+        continue-on-error: true
+        run: python dev/testa_tudo.py --linhas $env:BASE --resumo "$env:RUNNER_TEMP\linhas.md"
       - name: Resumo
         id: resumo
         if: always()
@@ -75,13 +90,15 @@ jobs:
           if (Test-Path "$env:RUNNER_TEMP\resumo.md") { $l += Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" }
           $texto = $l -join "`n"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
+          $linhas = if (Test-Path "$env:RUNNER_TEMP\linhas.md") { (Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\linhas.md").Trim() } else { '' }
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim`nlinhas<<$fim`n$linhas`n$fim" -Encoding utf8
 
-  # os testes do filtro (o MICROFONE do dev/testa_tudo.py), com as DLLs do microfone\apo\compila.bat teste: só quando o
-  # PR mexe no filtro, no motor, nos efeitos ou nos testes deles
+  # the filter tests (the MICROFONE of the dev/testa_tudo.py), with the DLLs of the microfone\apo\compila.bat teste: only
+  # when the PR touches the filter, the engine, the effects or their tests
   microfone:
     name: Filtro do microfone
+    if: *real
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
@@ -91,19 +108,17 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # the area filter needs only the standard library: the libraries come after it, when the area applies
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12.10'
-          cache: pip
-          cache-dependency-path: requirements.txt
       - name: O PR mexe no filtro?
         id: areas
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
         run: python dev/testa_tudo.py --areas $env:BASE
-      - name: Bibliotecas
+      - uses: ./.github/actions/python
         if: steps.areas.outputs.microfone == 'true'
-        run: python -m pip install -r requirements.txt
+        with:
+          requirements: requirements.txt
       - name: Compila as DLLs de teste
         if: steps.areas.outputs.microfone == 'true'
         shell: cmd
@@ -124,18 +139,21 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
-  # a tela (o --tela do dev/testa_tudo.py): o fitcheck nas duas línguas contra o --mock com dados temporários e o
-  # compara, com a referência do base.sha (num worktree) e a comparação do PR, no mesmo Chrome. Só quando o PR mexe no
-  # tema, no que o servidor injeta nele ou nas duas ferramentas, e em todo PR com a etiqueta extracao-tema. Print que
-  # mudou bloqueia só com a etiqueta; sem ela, as diferenças vão no artefato, para revisão
+  # the screen, part 1 (the --tela of the dev/testa_tudo.py, without --base): the fitcheck in both languages against a
+  # --mock with temporary data, and the usage data notice of the theme (the fitcheck --metricas: one --mock
+  # --metricas-teste per situation and per button, with the network caught in a trap; it checks when the notice opens,
+  # what each button saves and that nothing leaves through the network). Only when the PR touches the theme, what the
+  # server injects in it or the tools, and on every PR with the extracao-tema label
   tela:
     name: Tela
+    if: *real
     runs-on: windows-2025
+    permissions:
+      contents: read
+      pull-requests: read
     timeout-minutes: 25
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
-    env:
-      EXTRACAO: ${{ contains(github.event.pull_request.labels.*.name, 'extracao-tema') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -144,47 +162,42 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12.10'
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
+      # the merge_group event carries no labels: they come from the PR that the queue entry is for (its ref ends in
+      # pr-<number>-<sha>)
       - name: O PR mexe na tela?
         id: areas
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
           ETIQUETAS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
-        # o testa_tudo le a lista da variavel: no argumento, o PowerShell mexeria nas aspas do JSON
-        run: python dev/testa_tudo.py --areas $env:BASE
-      - name: Bibliotecas
+          GH_TOKEN: ${{ github.token }}
+        # the testa_tudo reads the list from the variable: in an argument, PowerShell would mangle the JSON quotes
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'merge_group') {
+            $n = [regex]::Match($env:GITHUB_REF, '/pr-(\d+)-').Groups[1].Value
+            $env:ETIQUETAS = gh pr view $n -R $env:GITHUB_REPOSITORY --json labels --jq '[.labels[].name]'
+            if ($LASTEXITCODE -ne 0 -or -not $n) { "::error::the labels of the PR of $env:GITHUB_REF did not come"; exit 1 }
+          }
+          python dev/testa_tudo.py --areas $env:BASE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "extracao=$extracao" -Encoding utf8
+      - uses: ./.github/actions/python
         if: steps.areas.outputs.tela == 'true'
-        run: python -m pip install -r requirements-dev.txt
+        with:
+          requirements: requirements-dev.txt
       - name: ffmpeg no PATH
         if: steps.areas.outputs.tela == 'true'
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
-      - name: fitcheck e compara
+      - name: fitcheck
         id: tela
         if: steps.areas.outputs.tela == 'true'
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          python dev/testa_tudo.py --tela --base $env:BASE --pasta "$env:RUNNER_TEMP\tela" --resumo "$env:RUNNER_TEMP\resumo.md"
-          $cod = $LASTEXITCODE
-          if ($cod -eq 2) {
-            Add-Content -Path $env:GITHUB_OUTPUT -Value 'mudou=true' -Encoding utf8
-            if ($env:EXTRACAO -eq 'true') { '::error::os prints do compara mudaram, e o PR tem a etiqueta extracao-tema'; exit 1 }
-            '::warning::os prints do compara mudaram: as diferenças estão no artefato tela, para revisão'
-            exit 0
-          }
-          exit $cod
-      # o aviso dos dados de uso no tema (o fitcheck --metricas): um --mock --metricas-teste por situação e por botão,
-      # com a rede presa numa armadilha; confere quando o aviso abre, o que cada botão grava e que nada sai pela rede
+        run: python dev/testa_tudo.py --tela --pasta "$env:RUNNER_TEMP\tela" --resumo "$env:RUNNER_TEMP\resumo.md"
+      # runs even with the fitcheck red, but not without the libraries (its step skipped)
       - name: Aviso dos dados de uso
         id: metricas
-        # roda mesmo com o fitcheck e o compara vermelhos, mas nao sem as bibliotecas (o passo deles pulado)
         if: ${{ !cancelled() && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}
-        run: python dev/fitcheck.py --metricas
-      - name: Prints
-        if: always() && (steps.tela.outcome == 'failure' || steps.tela.outputs.mudou == 'true')
+        run: python dev/testa_tudo.py --passo metricas
+      - name: Logs
+        if: always() && steps.tela.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: tela
@@ -196,12 +209,10 @@ jobs:
         if: always()
         env:
           APLICA: ${{ steps.areas.outputs.tela }}
-          MUDOU: ${{ steps.tela.outputs.mudou }}
           METRICAS: ${{ steps.metricas.outcome }}
         run: |
           if (Test-Path "$env:RUNNER_TEMP\resumo.md") {
             $texto = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md"
-            if ($env:MUDOU -eq 'true') { $texto += "`n" + $(if ($env:EXTRACAO -eq 'true') { '❌ com a etiqueta extracao-tema, print que mudou bloqueia' } else { '⚠️ sem a etiqueta extracao-tema, print que mudou não bloqueia: as diferenças estão no artefato `tela`' }) }
             $texto += "`n- $(if ($env:METRICAS -eq 'success') { '✅' } elseif ($env:METRICAS -eq 'failure') { '❌' } else { "não rodou ($env:METRICAS):" }) o aviso dos dados de uso (``fitcheck.py --metricas``)"
           }
           elseif ($env:APLICA -ne 'true' -and $env:APLICA) { $texto = '**Tela:** não se aplica (o PR não mexe na tela e não tem a etiqueta extracao-tema)' }
@@ -210,49 +221,231 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
-  # o check exigido: sempre roda, junta os resumos e só passa com os outros três (o que não se aplica passa sem rodar)
+  # the screen, part 2 (the --compara of the dev/testa_tudo.py): the reference of the base and the comparison of the PR,
+  # in the same Chrome. The reference comes from the cache when a run already took it with the same commit, scripts,
+  # libraries, Chrome and runner image; if not, from the base in a worktree, and it goes to the cache. A print that
+  # changed blocks only with the extracao-tema label; without it, the differences go in the artifact, for review. On the
+  # push to main it always runs: the capture of the new commit goes to the cache
+  compara:
+    name: Compara
+    if: *real
+    runs-on: windows-2025
+    timeout-minutes: 25
+    outputs:
+      resumo: ${{ steps.resumo.outputs.resumo }}
+      mudaram: ${{ steps.compara.outputs.prints_mudaram }}
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      # what the prints are compared to: in a merge_group entry, the tree just before its PR (the first parent of the
+      # entry), so the extracao-tema label of that PR blocks only what that PR changed, not what a PR ahead of it in the
+      # queue changed. This holds for a queue that merges with a merge commit (how this repo merges) or a squash; with
+      # rebase, the first parent would already hold the earlier commits of the same PR
+      COMPARA_BASE: ${{ github.event_name == 'merge_group' && format('{0}^1', github.event.merge_group.head_sha) || github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12.10'
+      # (the labels of a merge_group entry: see the same step of the tela)
+      - name: O PR mexe na tela?
+        id: areas
+        env:
+          ETIQUETAS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          GH_TOKEN: ${{ github.token }}
+        # the testa_tudo reads the list from the variable: in an argument, PowerShell would mangle the JSON quotes
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'merge_group') {
+            $n = [regex]::Match($env:GITHUB_REF, '/pr-(\d+)-').Groups[1].Value
+            $env:ETIQUETAS = gh pr view $n -R $env:GITHUB_REPOSITORY --json labels --jq '[.labels[].name]'
+            if ($LASTEXITCODE -ne 0 -or -not $n) { "::error::the labels of the PR of $env:GITHUB_REF did not come"; exit 1 }
+          }
+          python dev/testa_tudo.py --areas $env:BASE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "extracao=$extracao" -Encoding utf8
+          $tela = Select-String -Path $env:GITHUB_OUTPUT -Pattern '^tela=true$' -Quiet
+          $roda = if ($tela -or $env:GITHUB_EVENT_NAME -eq 'push') { 'true' } else { 'false' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=$roda" -Encoding utf8
+      - uses: ./.github/actions/python
+        if: steps.areas.outputs.roda == 'true'
+        with:
+          requirements: requirements-dev.txt
+      - name: ffmpeg no PATH
+        if: steps.areas.outputs.roda == 'true'
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
+      # what a capture depends on besides the commit (the same as the CAPTURA of the dev/testa_tudo.py, which checks it
+      # again in the folder): the runner image and the Chrome version
+      - name: Capture key
+        id: chave
+        if: steps.areas.outputs.roda == 'true'
+        run: |
+          $chrome = (Get-Item 'C:\Program Files\Google\Chrome\Application\chrome.exe').VersionInfo.ProductVersion
+          # the base as a commit sha, the way the push to main saves its capture
+          $base = git rev-parse --verify "$env:COMPARA_BASE^{commit}"
+          if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" -Encoding utf8
+      - uses: actions/cache/restore@v6
+        id: ref
+        if: steps.areas.outputs.roda == 'true'
+        with:
+          path: ${{ runner.temp }}\compara-ref
+          key: compara-${{ steps.chave.outputs.base }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt') }}
+      - name: compara
+        id: compara
+        if: steps.areas.outputs.roda == 'true'
+        env:
+          EXTRACAO: ${{ steps.areas.outputs.extracao }}
+          BASE_SHA: ${{ steps.chave.outputs.base }}
+        run: |
+          $mais = @()
+          if ($env:GITHUB_EVENT_NAME -eq 'push') { $mais = @('--head-cache', "$env:RUNNER_TEMP\compara-head") }
+          python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\tela" --ref-cache "$env:RUNNER_TEMP\compara-ref" @mais --resumo "$env:RUNNER_TEMP\resumo.md"
+          $cod = $LASTEXITCODE
+          if ($cod -eq 2) {
+            Add-Content -Path $env:GITHUB_OUTPUT -Value 'mudou=true' -Encoding utf8
+            if ($env:EXTRACAO -eq 'true') { '::error::the compara prints changed, and the PR has the extracao-tema label'; exit 1 }
+            '::warning::the compara prints changed: the differences are in the compara artifact, for review'
+            exit 0
+          }
+          exit $cod
+      - uses: actions/cache/save@v6
+        if: always() && steps.compara.outputs.ref_cache == 'true'
+        with:
+          path: ${{ runner.temp }}\compara-ref
+          key: ${{ steps.ref.outputs.cache-primary-key }}
+      # the path is part of the cache version: the PRs restore into compara-ref, so the HEAD capture is saved from there
+      - name: HEAD capture as a reference
+        if: always() && steps.compara.outputs.head_cache == 'true'
+        run: |
+          Remove-Item -Recurse -Force "$env:RUNNER_TEMP\compara-ref" -ErrorAction SilentlyContinue
+          Move-Item "$env:RUNNER_TEMP\compara-head" "$env:RUNNER_TEMP\compara-ref"
+      - uses: actions/cache/save@v6
+        if: always() && steps.compara.outputs.head_cache == 'true'
+        with:
+          path: ${{ runner.temp }}\compara-ref
+          key: compara-${{ github.sha }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt') }}
+      - name: Prints
+        if: always() && (steps.compara.outcome == 'failure' || steps.compara.outputs.mudou == 'true')
+        uses: actions/upload-artifact@v7
+        with:
+          name: compara
+          path: ${{ runner.temp }}/tela/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Resumo
+        id: resumo
+        if: always()
+        env:
+          APLICA: ${{ steps.areas.outputs.roda }}
+          MUDOU: ${{ steps.compara.outputs.mudou }}
+          EXTRACAO: ${{ steps.areas.outputs.extracao }}
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP\resumo.md") {
+            $texto = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md"
+            if ($env:MUDOU -eq 'true') { $texto += "`n" + $(if ($env:EXTRACAO -eq 'true') { '❌ com a etiqueta extracao-tema, print que mudou bloqueia' } else { '⚠️ sem a etiqueta extracao-tema, print que mudou não bloqueia: as diferenças estão no artefato `compara`' }) }
+          }
+          elseif ($env:APLICA -ne 'true' -and $env:APLICA) { $texto = '**Compara:** não se aplica (o PR não mexe na tela e não tem a etiqueta extracao-tema)' }
+          else { $texto = '**Compara:** ❌ não chegou a rodar (ver a execução)' }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
+          $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
+
+  # the required check: always runs, joins the summaries and only passes with the other four (the one that does not
+  # apply passes without running). In a run whose event tests nothing (see the concurrency), the jobs above skip and
+  # this one takes another name: the required check stays the one of the run that tested
   testa-o-pr:
-    name: Testa o PR
-    # always(), e nao !cancelled(): o job pulado conta como verde no check exigido, e a execucao cancelada passaria
+    name: ${{ needs.testes.result == 'skipped' && 'Testa o PR (evento sem teste)' || 'Testa o PR' }}
+    # always(), not !cancelled(): a skipped job counts as green in the required check, and the cancelled run would pass
     if: ${{ always() }}
-    needs: [testes, microfone, tela]
+    needs: [testes, microfone, tela, compara]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
+      actions: read
       pull-requests: write
     steps:
       - name: Resumo e resultado
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          ATTEMPT: ${{ github.run_attempt }}
           EXECUCAO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          DO_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          DO_REPO: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+          SEM_TESTE: ${{ needs.testes.result == 'skipped' }}
           S_TESTES: ${{ needs.testes.result }}
           S_MICROFONE: ${{ needs.microfone.result }}
           S_TELA: ${{ needs.tela.result }}
+          S_COMPARA: ${{ needs.compara.result }}
           R_TESTES: ${{ needs.testes.outputs.resumo }}
           R_MICROFONE: ${{ needs.microfone.outputs.resumo }}
           R_TELA: ${{ needs.tela.outputs.resumo }}
+          R_COMPARA: ${{ needs.compara.outputs.resumo }}
+          LINHAS: ${{ needs.testes.outputs.linhas }}
+          MUDARAM: ${{ needs.compara.outputs.mudaram }}
         run: |
+          if [ "$SEM_TESTE" = true ]; then
+            echo "This event (an edit that keeps the base, or a label other than extracao-tema) tests nothing: the required check is the one of the run that tested." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          estados=("$S_TESTES" "$S_MICROFONE" "$S_TELA" "$S_COMPARA")
+          # a cancelled run proved nothing either way: it fails, and leaves the PR comment as the last run that ended wrote it
+          for s in "${estados[@]}"; do
+            if [ "$s" = cancelled ]; then
+              echo "## ⏹️ Testa: execução cancelada (o comentário do PR fica como estava)" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+          done
           marca() { if [ "$1" = success ]; then echo "✅"; else echo "❌ ($1)"; fi; }
           ok=true
-          for s in "$S_TESTES" "$S_MICROFONE" "$S_TELA"; do [ "$s" = success ] || ok=false; done
+          for s in "${estados[@]}"; do [ "$s" = success ] || ok=false; done
+          if $ok; then
+            manchete="✅ Testa: tudo passou"
+            n=${MUDARAM:-0}
+            if [ "$n" -gt 0 ]; then
+              manchete="✅ Testa: passou · ⚠️ $n $([ "$n" -eq 1 ] && echo "print mudou" || echo "prints mudaram")"
+            fi
+            if [ "$ATTEMPT" -gt 1 ]; then manchete="$manchete (na ${ATTEMPT}ª tentativa)"; fi
+          else
+            manchete="❌ Testa: algo falhou"
+          fi
+          # how long each job took, against the target of 10 minutes (the jobs that ran; this one is still running)
+          tempos=$(gh api "repos/$REPO/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs" --jq '[.jobs[]
+            | select(.conclusion != null and .conclusion != "skipped" and .started_at != null and .completed_at != null)
+            | ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) as $d
+            | "\(.name) \($d / 60 | floor) min \($d % 60) s\(if $d > 600 then " ⚠️" else "" end)"] | join(" · ")' \
+            || echo "")
           {
-            if $ok; then echo "## ✅ Testa: tudo passou"; else echo "## ❌ Testa: algo falhou"; fi
+            echo "## $manchete"
             echo
-            echo "| Testes | Filtro do microfone | Tela |"
-            echo "| --- | --- | --- |"
-            echo "| $(marca "$S_TESTES") | $(marca "$S_MICROFONE") | $(marca "$S_TELA") |"
+            echo "| Testes | Filtro do microfone | Tela | Compara |"
+            echo "| --- | --- | --- | --- |"
+            echo "| $(marca "$S_TESTES") | $(marca "$S_MICROFONE") | $(marca "$S_TELA") | $(marca "$S_COMPARA") |"
             echo
-            printf '%s\n\n' "$R_TESTES" "$R_MICROFONE" "$R_TELA"
+            printf '%s\n\n' "$R_TESTES" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
+            if [ -n "$tempos" ]; then echo "**Tempo de cada job** (alvo: 10 min): $tempos"; echo; fi
+            if [ -n "$LINHAS" ]; then echo "$LINHAS"; echo; fi
             echo "[A execução]($EXECUCAO), no commit \`${HEAD:0:12}\`."
           } > resumo.md
           cat resumo.md >> "$GITHUB_STEP_SUMMARY"
-          # um comentário só por PR, atualizado a cada execução. No PR de fork, o token é só de leitura
+          # one comment per PR, updated on every run. On a fork PR the token is read only; outside a PR there is none
           if [ "$DO_REPO" = true ]; then
             gh pr comment "$PR" -R "$REPO" --body-file resumo.md --edit-last --create-if-none \
-              || echo "::warning::o comentário do resumo no PR não saiu"
+              || echo "::warning::the summary comment on the PR did not go out"
           fi
           $ok
+      # cancelled before or while this job ran: nothing was published, and the check fails (a job whose steps all
+      # skipped would pass)
+      - name: Cancelada
+        if: ${{ cancelled() }}
+        run: |
+          echo "## ⏹️ Testa: execução cancelada (o comentário do PR fica como estava)" >> "$GITHUB_STEP_SUMMARY"
+          exit 1

@@ -1,0 +1,8 @@
+/* LOW-SCREEN-INICIO */
+/* tela muito baixa (o celular grande deitado): o receiver de uma coluna passava 10 px da tela; os vaos dele encolhem */
+@media (min-width: 900px) and (max-height: 499.98px) {
+  :where(body:not(.mesa-dj)) {
+  .palco .receptor { row-gap: 6px; padding-bottom: 10px; }
+  }
+}
+/* LOW-SCREEN-FIM */
