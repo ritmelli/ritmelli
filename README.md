@@ -471,6 +471,7 @@ The code, its comments and the internal docs are in Brazilian Portuguese.
 | `ritmelli.spec` | the executable's configuration (PyInstaller) |
 | `soundboard.ps1` | starts, stops and checks Ritmelli from a terminal |
 | `server.py` | the aiohttp server: the API, the events (SSE), the queue, Play similar songs, search and download |
+| `comandos.py` | the server's music commands (play, queue, transport, music volume) and the queue advance they share |
 | `engine.py` | the audio engine: mixing, the two decks and the transitions |
 | `batida.py`, `compasso.py`, `andamento.py` | beat analysis: the tempo and beat grid of each transition (`batida.py`), the downbeat (`compasso.py`) and each record's tempo, which orders Play similar songs (`andamento.py`) |
 | `sonoridade.py` | each song's loudness (EBU R128) and the automatic volume that plays songs at a similar level |

@@ -63,11 +63,14 @@ def monta(tmp):
     (tmp / "library.json").write_text(json.dumps([disco("d1"), disco("d2"), disco("d3", yid="aaaaaaaaaaa"),
                                                   disco("buzina", dur=3.0)]), encoding="utf-8")
     antes = set(threading.enumerate())
-    with contextlib.redirect_stderr(io.StringIO()):
-        A = server.App(0, tmp, mock=True, vigias=False, relogio=False)  # o App nao abre porta: quem abre e o servir
+    # o App nao abre porta (quem abre e o servir), e os aparelhos do Windows nao sao lidos: o motor liga sem eles
+    with (contextlib.redirect_stderr(io.StringIO()),
+          mock.patch.object(eng.MockEngine, "_real_names", return_value={"mic": "", "monitor": ""})):
+        A = server.App(0, tmp, mock=True, vigias=False, relogio=False)
     novas = [t.name for t in set(threading.enumerate()) - antes]
     confere(not novas, f"o App sem vigias e sem relogio nao sobe thread nenhuma ({novas})")
     E = A.engine
+    confere(getattr(E, "_run", False) and E.error is None, f"o motor ligou, sem o relogio ({E.error})")
     E.volume_auto = False
 
     def leitor(gen, track, start, deck):
