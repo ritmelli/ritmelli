@@ -324,7 +324,8 @@ def andamento(A, E):
             f"a versao de audio: gravada fora da fila_lock e so entao vale na fila ({travado}, {len(trocas)}, {subiu})")
     travado, trocas, subiu, v = roda("audio", "aaaaaaaaaa2", falha=True)
     confere(travado == [False] and trocas == [] and subiu == 0 and A.versoes.get("aaaaaaaaaa2") == v,
-            f"a gravacao da versao falha: ela fica na memoria, mas nao vale na fila ({travado}, {len(trocas)}, {subiu})")
+            f"a gravacao da versao falha: ela fica na memoria, mas nao vale na fila "
+            f"({travado}, {len(trocas)}, {subiu})")
     travado, _, subiu, _ = roda("medir", "aaaaaaaaaa3", falha=False)
     confere(travado == [False] and subiu == 1 and A.andamentos.get("aaaaaaaaaa3") == {"ini": 100.0, "fim": 101.0},
             f"o andamento: gravado fora da fila_lock e so entao reordena o Automatico ({travado}, {subiu})")
