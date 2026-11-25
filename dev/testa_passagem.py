@@ -123,8 +123,8 @@ PARES = [
     Par("meio", 70.0, 140.0, "fade", "fade", True),
     Par("recusada", 90.0, 110.0, "fade", "recusada", False),
 ]
-# the failures each known defect gives (regular expressions, from the start): any other failure in its pair is a
-# regression, and counts
+# the failures each known defect gives (regular expressions, from the start), the first of them always there: any
+# other failure in its pair, or the others without the first, is a regression, and counts
 SINTOMAS = {
     # the plan refused for too short a phase excerpt, and the switch late, where the volume one does it
     196: (r"o ramo foi .*\(transition: beats not aligned: too little of the end of this one \(already changed\) for "
@@ -518,8 +518,10 @@ def main():
             # a pair that could not be judged (a timeout, too few attacks to measure) fails, known or not: only a
             # verdict the checks gave counts as the known defect
             if par.issue is not None and not erro:
-                outras = [f for f in falhas if not any(re.match(x, f) for x in SINTOMAS[par.issue])]
-                if falhas and not outras:  # the known defect, still there: shown, and not counted
+                sintomas = SINTOMAS[par.issue]
+                outras = [f for f in falhas if not any(re.match(x, f) for x in sintomas)]
+                if falhas and not outras and any(re.match(sintomas[0], f) for f in falhas):
+                    # the known defect, still there: shown, and not counted
                     print(f"known {par.nome} ({dt:.1f} s), #{par.issue}: " + "; ".join(msgs + falhas), flush=True)
                     conhecidas.append(f"{par.nome} (#{par.issue})")
                     continue
