@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ritmelli:remoto:v1:estado",
+  "title": "O que o PC publica na sessão remota, v1: o estado (a projeção com a âncora da posição) e o pulso",
+  "description": "Do PC para o relay e do relay para quem manda; o relay acrescenta o retido_ms ao entregar. Ver docs/protocolo-remoto.md.",
+  "oneOf": [{"$ref": "#/$defs/estado"}, {"$ref": "#/$defs/pulso"}],
+  "$defs": {
+    "sessao": {
+      "description": "O id da sessão aceita. Não é credencial: o token do papel remoto nunca sai do PC.",
+      "type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}(?![\\s\\S])"
+    },
+    "rev": {
+      "description": "Sobe 1 a cada estado que o PC publica na sessão; o pulso repete o do último estado.",
+      "type": "integer", "minimum": 1
+    },
+    "agora": {
+      "description": "O relógio monotônico do PC, em ms, quando a mensagem saiu dele.",
+      "type": "number", "minimum": 0
+    },
+    "retido_ms": {
+      "description": "Só do relay para quem manda: quanto tempo o relay segurou a mensagem antes de entregar.",
+      "type": "number", "minimum": 0
+    },
+    "estado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolo", "tipo", "sessao", "rev", "origem", "agora", "estado"],
+      "properties": {
+        "protocolo": {"const": 1},
+        "tipo": {"const": "estado"},
+        "sessao": {"$ref": "#/$defs/sessao"},
+        "rev": {"$ref": "#/$defs/rev"},
+        "origem": {
+          "description": "inicio: a primeira foto da sessão; reconexao: a foto completa depois de o conector religar; mudanca: as outras.",
+          "enum": ["inicio", "reconexao", "mudanca"]
+        },
+        "agora": {"$ref": "#/$defs/agora"},
+        "retido_ms": {"$ref": "#/$defs/retido_ms"},
+        "estado": {"$ref": "#/$defs/projecao"}
+      }
+    },
+    "pulso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolo", "tipo", "sessao", "rev", "agora"],
+      "properties": {
+        "protocolo": {"const": 1},
+        "tipo": {"const": "pulso"},
+        "sessao": {"$ref": "#/$defs/sessao"},
+        "rev": {"$ref": "#/$defs/rev"},
+        "agora": {"$ref": "#/$defs/agora"},
+        "retido_ms": {"$ref": "#/$defs/retido_ms"}
+      }
+    },
+    "projecao": {
+      "description": "A projeção para fora do PC, campo a campo: aparelhos, microfone, atualização e erros locais nunca entram.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "faixa", "fila", "vol", "abaixa", "capacidades", "ancora"],
+      "properties": {
+        "status": {"enum": ["idle", "buffering", "playing", "paused", "ended"]},
+        "faixa": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/faixa"}]},
+        "fila": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/entrada"}},
+        "vol": {"description": "O volume da música no jogo, de 0 a 1.", "type": "number", "minimum": 0, "maximum": 1},
+        "abaixa": {
+          "description": "A música abaixada no jogo pelo comando abaixar, enquanto vale; null quando não há.",
+          "oneOf": [{"type": "null"}, {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/abaixar"}]
+        },
+        "capacidades": {
+          "description": "Os comandos que esta sessão pode mandar.",
+          "type": "array", "uniqueItems": true,
+          "items": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/nome"}
+        },
+        "ancora": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/ancora"}]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "idle"}}},
+          "then": {"properties": {"faixa": {"type": "null"}, "ancora": {"type": "null"}}},
+          "else": {"properties": {"faixa": {"type": "object"}, "ancora": {"type": "object"}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "playing"}}},
+          "then": {"properties": {"ancora": {"properties": {"anda": {"const": true}, "segmentos": {"minItems": 1}}}}},
+          "else": {"properties": {"ancora": {"properties": {"anda": {"const": false}, "segmentos": {"maxItems": 0}}}}}
+        }
+      ]
+    },
+    "texto": {"type": ["string", "null"], "maxLength": 400},
+    "duracao": {
+      "description": "Em segundos, até um dia; null quando não se sabe.",
+      "oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 86400}]
+    },
+    "youtube_id": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9_-]{11}(?![\\s\\S])"}]},
+    "thumb": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^https://", "maxLength": 500}]},
+    "faixa": {
+      "description": "O disco no prato.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "channel", "duration", "youtube_id", "thumb", "stream"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 200},
+        "title": {"$ref": "#/$defs/texto"},
+        "channel": {"$ref": "#/$defs/texto"},
+        "duration": {"$ref": "#/$defs/duracao"},
+        "youtube_id": {"$ref": "#/$defs/youtube_id"},
+        "thumb": {"$ref": "#/$defs/thumb"},
+        "stream": {"description": "Tocando pelo stream do YouTube, antes de o download chegar.", "type": "boolean"}
+      }
+    },
+    "entrada": {
+      "description": "Uma entrada da fila, na ordem em que vai tocar.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["qid", "id", "title", "channel", "duration", "youtube_id", "thumb", "auto"],
+      "properties": {
+        "qid": {"$ref": "urn:ritmelli:remoto:v1:argumentos#/$defs/qid"},
+        "id": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 200}]},
+        "title": {"$ref": "#/$defs/texto"},
+        "channel": {"$ref": "#/$defs/texto"},
+        "duration": {"$ref": "#/$defs/duracao"},
+        "youtube_id": {"$ref": "#/$defs/youtube_id"},
+        "thumb": {"$ref": "#/$defs/thumb"},
+        "auto": {"description": "Posta pelo Automático.", "type": "boolean"}
+      }
+    },
+    "ancora": {
+      "description": "A posição da faixa no prato no instante t do relógio do PC, e as velocidades que o prato segue dali em diante.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["faixa", "pos", "t", "taxa", "anda", "segmentos"],
+      "properties": {
+        "faixa": {
+          "description": "O id da faixa no prato (o mesmo da faixa da projeção).",
+          "type": "string", "minLength": 1, "maxLength": 200
+        },
+        "pos": {"description": "A posição no disco no instante t, em segundos do disco.", "type": "number", "minimum": 0},
+        "t": {"description": "O instante da âncora no relógio do PC (o mesmo do agora), em ms.", "type": "number", "minimum": 0},
+        "taxa": {"description": "As amostras de saída por segundo em que os segmentos se contam.", "const": 48000},
+        "anda": {"description": "false: a posição fica parada em pos (pausa, buffering, fim).", "type": "boolean"},
+        "segmentos": {
+          "description": "O primeiro começa no pos da âncora e não leva pos; só o último pode ser aberto; no meio cosseno, fase + n <= total (essas duas o esquema não diz: ver a validação no documento).",
+          "type": "array", "maxItems": 8, "prefixItems": [{"allOf": [{"$ref": "#/$defs/segmento"}, {"not": {"required": ["pos"]}}]}],
+          "items": {"$ref": "#/$defs/segmento"}
+        }
+      }
+    },
+    "segmento": {
+      "description": "Um trecho de n amostras de saída em que o disco anda na velocidade v; só o último, em velocidade constante, pode ser aberto (n null). A velocidade 0 só vale no preenchimento (o bloco que o motor prendeu em zero).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n", "v"],
+      "allOf": [
+        {
+          "if": {"required": ["preenchimento"]},
+          "then": {"properties": {"n": {"type": "integer"}, "v": {"type": "number", "minimum": 0}}},
+          "else": {"properties": {"v": {"not": {"const": 0}}}}
+        },
+        {
+          "if": {"properties": {"v": {"type": "object"}}},
+          "then": {"properties": {"n": {"type": "integer"}}}
+        }
+      ],
+      "properties": {
+        "n": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
+        "v": {"oneOf": [{"type": "number", "minimum": 0, "maximum": 2}, {"$ref": "#/$defs/cosseno"}]},
+        "pos": {
+          "description": "A posição no começo do segmento: quando ela não continua a do anterior (a faixa que entra, depois do preenchimento, a volta do Repetir), e também depois de uma curva ou de um preenchimento, onde segura o arredondamento.",
+          "type": "number", "minimum": 0
+        },
+        "preenchimento": {"description": "O silêncio antes do início efetivo da faixa que entrou.", "const": true}
+      }
+    },
+    "cosseno": {
+      "description": "Meio cosseno de de até ate em total amostras: v(i) = ate + (de - ate) * (1 + cos(pi * i / total)) / 2, com i a partir de fase.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["de", "ate", "total", "fase"],
+      "properties": {
+        "de": {"type": "number", "exclusiveMinimum": 0, "maximum": 2},
+        "ate": {"type": "number", "exclusiveMinimum": 0, "maximum": 2},
+        "total": {"type": "integer", "minimum": 1},
+        "fase": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

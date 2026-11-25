@@ -7,15 +7,16 @@
     python dev/celular.py custo --url URL               # ms de estilo das classes que o palco troca
     python dev/celular.py dedo --url URL [--segundos 15] [--esperar]   # so grava, enquanto o usuario rola com o dedo
 
-URL e a aba de teste, a do --mock (python server.py --mock --port 8801 --no-browser) como o PC a abre, sempre em
-127.0.0.1: http://127.0.0.1:8801/t/ritmelli/. Antes: adb no PATH (ou ADB=<caminho do adb.exe>) e o celular autorizado
-em `adb devices`. O script so fala com um --mock (dev/so_mock.py): recusa a porta 8799 e a origem cujo /api/state nao
+URL e a aba de teste, a do --mock com o papel do celular (python server.py --mock --port 8801 --no-browser
+--papel-local celular), sempre em 127.0.0.1: http://127.0.0.1:8801/t/ritmelli/. Antes: adb no PATH (ou ADB=<caminho do
+adb.exe>) e o celular autorizado em `adb devices`. O script so fala com um --mock (dev/so_mock.py): recusa a porta 8799 e a origem cujo /api/state nao
 traz o "mock": true (sem seguir redirecionamento). Faz o forward da porta 9222 e o `adb reverse` da porta do --mock (ele
 so escuta em 127.0.0.1; um mapeamento que ja existia no celular nao e trocado), abre a aba de teste se ela nao estiver
 aberta e so mexe nela (as outras abas sao do usuario). Nela, barra o documento de outra origem; antes de abrir a aba,
 antes de cada gesto e antes de publicar a medida, confere de novo o marcador e a pagina da aba. Pelo adb reverse, o
---mock e o tema veem 127.0.0.1: a medida sai com o papel do PC, e a do papel do celular (pareado pela rede de casa)
-segue manual.
+--mock e o tema veem 127.0.0.1, que no --papel-local celular faz o papel do celular da rede de casa: a aba pede o
+codigo, o script o le pelo lado do PC (o GET /api/pareamento com o Host localhost:<porta>), pareia a aba pelo tema e, no
+fim, desconecta pelo PC o celular que pareou. Num --mock sem o --papel-local celular, a medida sai com o papel do PC.
 O celular de teste e um Galaxy S20 FE: tela de 120 Hz (um quadro a cada 8,3 ms), densidade 3. O
 emulado do Chrome no PC nao reproduz o que trava la (no 18/10, as agulhas e as texturas so
 travavam no aparelho). Leitura do resultado da rolagem:
@@ -131,6 +132,73 @@ class Aba:
         await self.cmd("Tracing.end")
         await asyncio.wait_for(fim.wait(), 120)
         return ev
+
+
+def do_pc(base, metodo, rota):
+    """Um pedido ao --mock pelo lado do PC: o mesmo 127.0.0.1, com o Host localhost:<porta>, que o --papel-local
+    celular deixa com o papel do PC. So depois de conferir que a origem segue um --mock."""
+    so_mock.confere(base)
+    porta = so_mock.origem(base)[1]
+    req = urllib.request.Request(base + rota, method=metodo, headers={"Host": f"localhost:{porta}"})
+    with so_mock.abre(req) as r:
+        return json.load(r)
+
+
+def no_papel(papel):
+    """A aba com o caps do papel e fora da tela do codigo (o JS)."""
+    return f"!!(typeof S !== 'undefined' && S.caps && S.caps.papel === '{papel}') && !S.pareando"
+
+
+PAREADA = no_papel("celular")
+
+
+async def espera_pareada(a, falha, quer=PAREADA):
+    """Ate 10 s pela aba no papel (quer, o JS do no_papel) e fora da tela do codigo; Recusa com a falha se nao."""
+    for _ in range(50):
+        await asyncio.sleep(0.2)
+        try:
+            if await a.js(quer):
+                return
+        except RuntimeError:
+            pass  # a pagina recarregando
+    raise so_mock.Recusa(falha)
+
+
+async def parear_aba(a, base):
+    """No --papel-local celular, a aba sem pareamento: o codigo do PC, digitado pelo tema (o parear dele, o mesmo do
+    formulario), e a aba com o caps do celular. Volta os ids dos celulares que este script pareou, para desconectar."""
+    # o papel de agora, pelo servidor (o api() do tema, na propria aba): o S.caps pode ser o de um --mock de antes na
+    # mesma porta, e o 401 ja poe a aba na tela do codigo
+    papel = await a.js("api('GET', '/api/state').then(s => s.caps && s.caps.papel,"
+                       " e => { if (e.status === 401) return null; throw e; })")
+    if papel == "celular":
+        # pareada pelo cookie (outra aba da mesma origem pode ter pareado), mas a tela pode seguir na do codigo
+        if not await a.js(PAREADA):
+            await a.cmd("Page.reload", ignoreCache=True)
+            await espera_pareada(a, "a aba nao saiu da tela do codigo ao recarregar")
+        return []
+    caminho = urllib.parse.urlsplit(a.url).path
+    antes = do_pc(base, "GET", f"/api/pareamento?caminho={urllib.parse.quote(caminho)}")
+    if not antes.get("codigo"):
+        raise so_mock.Recusa("o --mock nao deu o codigo do pareamento (o --papel-local celular gera no 127.0.0.1)")
+    await a.confere()
+    await a.js(f"parear({json.dumps(antes['codigo'])})")
+    await espera_pareada(a, "a aba nao pareou com o codigo do PC")
+    de_antes = {c["id"] for c in antes.get("celulares", [])}
+    novos = [c["id"] for c in do_pc(base, "GET", "/api/pareamento").get("celulares", []) if c["id"] not in de_antes]
+    if len(novos) != 1:  # outro aparelho pareou no meio: nenhum sai, para nao desconectar o que nao e deste script
+        raise so_mock.Recusa(f"esperava um aparelho novo no PC depois de parear a aba, achei {len(novos)}")
+    print("aba pareada como celular", file=sys.stderr, flush=True)
+    return novos
+
+
+def desconectar(base, ids):
+    """Desconecta pelo PC os celulares que o script pareou."""
+    for aid in ids:
+        try:
+            do_pc(base, "DELETE", f"/api/pareamento/{urllib.parse.quote(aid)}")
+        except (so_mock.Recusa, OSError, ValueError) as ex:
+            print(f"o celular {aid} nao foi desconectado: {ex}", file=sys.stderr, flush=True)
 
 
 async def conectar(url, base):
@@ -309,8 +377,6 @@ async def main():
         sys.exit(f"recusado: {ex}")
     porta = so_mock.origem(args.url)[1]
     adb = adb_forward(args.url, porta, args.esperar)
-    print("pelo adb reverse, o --mock e o tema veem 127.0.0.1: a medida sai com o papel do PC (a do celular pareado "
-          "pela rede de casa segue manual)", file=sys.stderr, flush=True)
     try:
         await medir(args, base)
     except so_mock.Recusa as ex:
@@ -321,7 +387,23 @@ async def main():
 
 async def medir(args, base):
     a = await conectar(args.url, base)
+    pareados = []
     try:
+        # o papel, com a aba ja aberta (o --esperar do adb pode ter levado ate 10 min): no --papel-local celular, o
+        # 127.0.0.1 recebe o 401 do pareamento
+        try:
+            como_celular = so_mock.estado(base).get("parear") is True
+        except OSError as ex:
+            raise so_mock.Recusa(f"{base} nao respondeu ({ex})") from None
+        if como_celular:
+            pareados = await parear_aba(a, base)
+        else:
+            print("este --mock nao tem o --papel-local celular: pelo adb reverse, o tema ve 127.0.0.1 e a medida sai "
+                  "com o papel do PC", file=sys.stderr, flush=True)
+            # a aba de uma medida de antes pode ter ficado na tela do codigo (o fim dela desconecta o celular)
+            if not await a.js(no_papel("pc")):
+                await a.cmd("Page.reload", ignoreCache=True)
+                await espera_pareada(a, "a aba nao chegou ao papel do PC ao recarregar", no_papel("pc"))
         r = await {"rolagem": rolagem, "puxao": puxao, "abrir": abrir, "custo": custo, "dedo": dedo}[args.medida](a, args)
         await a.confere()  # a medida so vale se a aba seguiu no --mock ate o fim
         if isinstance(r, list):
@@ -332,12 +414,15 @@ async def medir(args, base):
         print(json.dumps(r, ensure_ascii=False, indent=1))
     finally:
         try:
-            await a.confere()
-            await a.css("")
-            await a.js("document.querySelector('#palco').scrollTop = 0")
-        except so_mock.Recusa:
-            pass  # a aba saiu do --mock: nada mais nela
-        await a.ws.close()
+            try:
+                await a.confere()
+                await a.css("")
+                await a.js("document.querySelector('#palco').scrollTop = 0")
+            except so_mock.Recusa:
+                pass  # a aba saiu do --mock: nada mais nela
+            await a.ws.close()
+        finally:
+            desconectar(base, pareados)  # mesmo se a limpeza da aba falhou
 
 
 if __name__ == "__main__":

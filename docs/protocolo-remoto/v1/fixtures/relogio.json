@@ -1,0 +1,252 @@
+{
+ "descricao": "O relogio do PC visto por quem recebe: o desvio e o menor (chegada - agora - retido_ms). E a foto adiantada (a virada com o t 30 ms depois do agora): a ancora de antes vale ate o t dela.",
+ "desvio_real_ms": 5000.0,
+ "entregas": [
+  {
+   "chega_ms": 1009400.0,
+   "transito_ms": 400.0,
+   "nota": "a foto guardada no relay, entregue 4 s depois a quem conectou, e atrasada 400 ms na rede",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 3,
+    "origem": "mudanca",
+    "agora": 1000000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "w6kKVs-h9Ns",
+      "title": "Um disco",
+      "channel": "Um canal",
+      "duration": 236.0,
+      "youtube_id": "w6kKVs-h9Ns",
+      "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "w6kKVs-h9Ns",
+      "pos": 10.0,
+      "t": 1000000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    },
+    "retido_ms": 4000.0
+   }
+  },
+  {
+   "chega_ms": 1009525.0,
+   "transito_ms": 25.0,
+   "nota": "o pulso, mais rapido: o erro cai de 400 para 25 ms",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "pulso",
+    "sessao": "sessao-de-teste-01",
+    "rev": 3,
+    "agora": 1004500.0
+   }
+  },
+  {
+   "chega_ms": 1011400.0,
+   "transito_ms": 400.0,
+   "nota": "a foto atrasada na rede: o relogio nao piora",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "estado",
+    "sessao": "sessao-de-teste-01",
+    "rev": 4,
+    "origem": "mudanca",
+    "agora": 1006000.0,
+    "estado": {
+     "status": "playing",
+     "faixa": {
+      "id": "w6kKVs-h9Ns",
+      "title": "Um disco",
+      "channel": "Um canal",
+      "duration": 236.0,
+      "youtube_id": "w6kKVs-h9Ns",
+      "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+      "stream": false
+     },
+     "fila": [],
+     "vol": 0.6,
+     "abaixa": null,
+     "capacidades": [
+      "tocar",
+      "enfileirar",
+      "pular",
+      "pausar",
+      "retomar",
+      "tirar_da_fila",
+      "mover_na_fila",
+      "volume",
+      "abaixar",
+      "sinal"
+     ],
+     "ancora": {
+      "faixa": "w6kKVs-h9Ns",
+      "pos": 16.0,
+      "t": 1006000.0,
+      "taxa": 48000,
+      "anda": true,
+      "segmentos": [
+       {
+        "n": null,
+        "v": 1.0
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "chega_ms": 1012020.0,
+   "transito_ms": 20.0,
+   "nota": "o pulso seguinte corrige",
+   "msg": {
+    "protocolo": 1,
+    "tipo": "pulso",
+    "sessao": "sessao-de-teste-01",
+    "rev": 4,
+    "agora": 1007000.0
+   }
+  }
+ ],
+ "adiantada": [
+  {
+   "protocolo": 1,
+   "tipo": "estado",
+   "sessao": "sessao-de-teste-01",
+   "rev": 7,
+   "origem": "mudanca",
+   "agora": 1000000.0,
+   "estado": {
+    "status": "playing",
+    "faixa": {
+     "id": "w6kKVs-h9Ns",
+     "title": "Um disco",
+     "channel": "Um canal",
+     "duration": 236.0,
+     "youtube_id": "w6kKVs-h9Ns",
+     "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+     "stream": false
+    },
+    "fila": [],
+    "vol": 0.6,
+    "abaixa": null,
+    "capacidades": [
+     "tocar",
+     "enfileirar",
+     "pular",
+     "pausar",
+     "retomar",
+     "tirar_da_fila",
+     "mover_na_fila",
+     "volume",
+     "abaixar",
+     "sinal"
+    ],
+    "ancora": {
+     "faixa": "w6kKVs-h9Ns",
+     "pos": 30.0,
+     "t": 1000000.0,
+     "taxa": 48000,
+     "anda": true,
+     "segmentos": [
+      {
+       "n": null,
+       "v": 1.0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "protocolo": 1,
+   "tipo": "estado",
+   "sessao": "sessao-de-teste-01",
+   "rev": 8,
+   "origem": "mudanca",
+   "agora": 1000970.0,
+   "estado": {
+    "status": "playing",
+    "faixa": {
+     "id": "dQw4w9WgXcQ",
+     "title": "Um disco",
+     "channel": "Um canal",
+     "duration": 236.0,
+     "youtube_id": "dQw4w9WgXcQ",
+     "thumb": "https://i.ytimg.com/vi/w6kKVs-h9Ns/mqdefault.jpg",
+     "stream": false
+    },
+    "fila": [],
+    "vol": 0.6,
+    "abaixa": null,
+    "capacidades": [
+     "tocar",
+     "enfileirar",
+     "pular",
+     "pausar",
+     "retomar",
+     "tirar_da_fila",
+     "mover_na_fila",
+     "volume",
+     "abaixar",
+     "sinal"
+    ],
+    "ancora": {
+     "faixa": "dQw4w9WgXcQ",
+     "pos": 0.0,
+     "t": 1001000.0,
+     "taxa": 48000,
+     "anda": true,
+     "segmentos": [
+      {
+       "n": null,
+       "v": 1.0
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "leituras": [
+  {
+   "pc_ms": 1000990.0,
+   "faixa": "w6kKVs-h9Ns",
+   "pos": 30.99
+  },
+  {
+   "pc_ms": 1001000.0,
+   "faixa": "dQw4w9WgXcQ",
+   "pos": 0.0
+  },
+  {
+   "pc_ms": 1001500.0,
+   "faixa": "dQw4w9WgXcQ",
+   "pos": 0.5
+  }
+ ]
+}
