@@ -158,15 +158,17 @@ def _dec(v, niveis, colunas):
 
 
 def _igual(a, b):
-    """O que voltou (a) contra o gravado (b): bool e None iguais, numero a TOL, lista item a item."""
+    """O que voltou (a) contra o gravado (b): bool e None iguais, inteiro inteiro e igual (o motor usa como tamanho de
+    array), o resto a TOL, lista item a item."""
     if isinstance(b, bool) or b is None:
         return a is b or (isinstance(a, (bool, np.bool_)) and bool(a) == b)
-    if isinstance(b, (int, float)):
-        if isinstance(a, (bool, np.bool_)) or not isinstance(a, (int, float, np.integer, np.floating)):
-            return False
-        if isinstance(b, int) and not isinstance(b, bool) and isinstance(a, (int, np.integer)):
-            return int(a) == b
-        return math.isclose(float(a), float(b), rel_tol=TOL, abs_tol=TOL)
+    if isinstance(a, (bool, np.bool_)):
+        return False
+    if isinstance(b, int):
+        return isinstance(a, (int, np.integer)) and int(a) == b
+    if isinstance(b, float):
+        return isinstance(a, (int, float, np.integer, np.floating)) and math.isclose(float(a), b, rel_tol=TOL,
+                                                                                      abs_tol=TOL)
     if isinstance(b, list):
         return isinstance(a, (list, tuple)) and len(a) == len(b) and all(_igual(x, y) for x, y in zip(a, b))
     return a == b
