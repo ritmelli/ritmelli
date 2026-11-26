@@ -262,6 +262,15 @@ def ready_answer_past_the_deadline():
     outcome = asyncio.run(fitcheck.wait_ready(ready_but_late, "true", [], 0.2))
     check(outcome is fitcheck.Ready.TIMED_OUT,
           f"the shared ready wait does not accept a ready answer that came after its deadline ({outcome})")
+    blocked = []
+
+    async def ready_after_a_block(method, **params):
+        blocked.append("http://elsewhere.invalid/")
+        return {"result": {"value": True}}
+
+    outcome = asyncio.run(fitcheck.wait_ready(ready_after_a_block, "true", blocked, 5))
+    check(outcome is fitcheck.Ready.LEFT,
+          f"a page blocked from leaving while a probe was out is reported as leaving, not ready ({outcome})")
 
 
 def notice_page_not_ready():
