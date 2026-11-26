@@ -30,10 +30,10 @@ import urllib.request
 import websockets
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import so_mock  # noqa: E402
-from fitcheck import (SEM_BOAS_VINDAS, barra_outra_origem, confere_pagina, espera_boas_vindas,  # noqa: E402
+import so_mock
+from fitcheck import (SEM_BOAS_VINDAS, barra_outra_origem, confere_pagina, espera_boas_vindas,
                       fecha_boas_vindas, fecha_chrome)
-from so_mock import free_port  # noqa: E402
+from so_mock import free_port
 
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
@@ -63,7 +63,7 @@ async def run(a):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - o Chrome ainda esta subindo
+            except Exception:  # o Chrome ainda esta subindo
                 time.sleep(0.1)
         if not ws_url:
             sys.exit("chrome headless nao subiu")

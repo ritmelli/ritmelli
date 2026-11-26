@@ -75,8 +75,8 @@ ALTA = 0x00000080  # o leitor, no lugar do audiodg
 def _anel():
     """O leitor num processo a parte: cria o AnelFalso, diz o nome dele e le ate o stdin fechar; "zera" zera as faltas
     e "conta" devolve quantas foram."""
-    import testa_microfone as tm  # noqa: PLC0415
-    from microfone import injeta  # noqa: PLC0415
+    import testa_microfone as tm
+    from microfone import injeta
     anel = tm.AnelFalso()
     anel.liga()
     print(injeta.MAPA, flush=True)
@@ -126,7 +126,7 @@ class Leitor:
 def _serve():
     """O auxiliar: le pedidos do stdin (uma linha JSON e o x em float32) e responde (uma linha JSON, a saida em float32 e
     as posicoes em float64), ate o stdin fechar."""
-    import engine as eng  # noqa: PLC0415 - so o auxiliar carrega o motor aqui
+    import engine as eng  # so o auxiliar carrega o motor aqui
     ent, sai = sys.stdin.buffer, sys.stdout.buffer
     sai.write(b"pronto\n")
     sai.flush()
@@ -182,7 +182,7 @@ class Auxiliar:
                     z = np.frombuffer(self.p.stdout.read(h["n"] * 8), np.float32).reshape(-1, 2).copy()
                     phi = np.frombuffer(self.p.stdout.read(h["m"] * 8), np.float64).copy()
                     res["ok"] = (z, phi)
-                except Exception as ex:  # noqa: BLE001 - vai para quem chamou
+                except Exception as ex:  # vai para quem chamou
                     res["erro"] = ex
             th = threading.Thread(target=_troca, daemon=True)
             th.start()
@@ -229,7 +229,7 @@ def passa(eng, banca, tm, fx, modo, carga, aux_normal, verboso):
 
 
 def _passa(eng, banca, tm, fx, modo, carga, aux_normal, log):
-    from microfone import injeta  # noqa: PLC0415
+    from microfone import injeta
     orig = eng.esticar, eng.esticar_saida
     chamadas = []  # (funcao, segundos, amostras de x)
     aux = None
@@ -263,19 +263,19 @@ def _passa(eng, banca, tm, fx, modo, carga, aux_normal, log):
         injeta.MAPA = anel.nome
         fim.enter_context(contextlib.redirect_stderr(log))
         e = eng.Engine("mede", "")
-        e._onda_pede = lambda *a: None  # noqa: SLF001 - a onda do visor: a thread dela seguraria o motor vivo
+        e._onda_pede = lambda *a: None  # a onda do visor: a thread dela seguraria o motor vivo
 
         def _para_motor():
-            e._cancela_passagem(tudo=True)  # noqa: SLF001
-            e._deck.gen += 1  # noqa: SLF001
+            e._cancela_passagem(tudo=True)
+            e._deck.gen += 1
         fim.callback(_para_motor)
         e.active = {"mic": "mede", "monitor": ""}
-        e._alvo = tm.ALVO  # noqa: SLF001 - o microfone que o AnelFalso le
+        e._alvo = tm.ALVO  # o microfone que o AnelFalso le
         e.vol, e.volume_auto = 1.0, False
         e.load(fx["a"], start=fx["inicio"])
         inj = eng.Injetor(e)
         fim.callback(inj.para)
-        banca._espera(lambda: inj.leitores and e.pos >= fx["inicio"] + AQUECE_S, 15.0, "A nao tocou")  # noqa: SLF001
+        banca._espera(lambda: inj.leitores and e.pos >= fx["inicio"] + AQUECE_S, 15.0, "A nao tocou")
         anel.zera()
         inj.secas, inj.folga_min, inj.volta_max = 0, None, 0.0
         inj.voltas[:] = 0
@@ -292,18 +292,18 @@ def _passa(eng, banca, tm, fx, modo, carga, aux_normal, log):
             if not decidiu_em and decidiu():
                 decidiu_em.append(time.perf_counter() - t0)
             return fim()
-        banca._espera(lambda: _marca(lambda: e.pos >= fim_janela), PRAZO_PLANO_S,  # noqa: SLF001
+        banca._espera(lambda: _marca(lambda: e.pos >= fim_janela), PRAZO_PLANO_S,
                       "A nao chegou ao fim da janela")
         secas, volta_max, folga_min, p99 = inj.secas, inj.volta_max, inj.folga_min, _p99(inj.voltas)
         faltou = anel.faltas()
         janela = e.pos - p0
-        banca._espera(lambda: _marca(lambda: decidiu_em), PRAZO_PLANO_S,  # noqa: SLF001
+        banca._espera(lambda: _marca(lambda: decidiu_em), PRAZO_PLANO_S,
                       "o planejador nao publicou a decisao")
         ate_decisao = decidiu_em[0]
     decisao = decidiu()
     plano = log.acha("transition: prepared ")
     plano_s = float(plano.split("planned in ")[1].split(" s")[0]) if plano else None
-    ramo = "perdeu o prazo" if aux is not None and aux.perdeu else banca._ramo(decisao)  # noqa: SLF001
+    ramo = "perdeu o prazo" if aux is not None and aux.perdeu else banca._ramo(decisao)
     return {"modo": modo, "carga": carga, "ramo": ramo, "decisao": decisao,
             "plano_s": plano_s, "ate_decisao_s": round(ate_decisao, 2), "janela_s": round(janela, 1),
             "secas": secas, "faltou": faltou, "volta_max_ms": round(volta_max * 1000, 1), "volta_p99_ms": p99,
@@ -330,17 +330,17 @@ def main():
     if a.anel:
         return _anel()
     if not a.console and not sys.stdout.isatty() and not sys.stderr.isatty():
-        import ctypes  # noqa: PLC0415
+        import ctypes
         ctypes.windll.kernel32.FreeConsole()  # sem console, como o executavel: a saida ja vai para arquivo ou cano
     sys.stdout.reconfigure(encoding="utf-8")
     argv, sys.argv = sys.argv, sys.argv[:1]  # a banca e o teste do microfone leem os argumentos deles ao importar
     try:
-        import testa_microfone as tm  # noqa: PLC0415 - poe o MICFX_MAPA num nome Local\ so do teste, antes do motor
-        import testa_passagem as banca  # noqa: PLC0415
+        import testa_microfone as tm  # poe o MICFX_MAPA num nome Local\ so do teste, antes do motor
+        import testa_passagem as banca
     finally:
         sys.argv = argv
     eng = banca.eng
-    eng._processo_acima()  # noqa: SLF001 - como o app
+    eng._processo_acima()  # como o app
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-estica-"))
     eng.pastas.LOGS = tmp / "logs"  # o registro do fim de cada passagem vai para a pasta temporaria
     feitas, falhas = [], []

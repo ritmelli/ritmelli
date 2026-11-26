@@ -15,7 +15,7 @@ from unittest import mock
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
-import server  # noqa: E402
+import server
 
 FALSO = f'''
 import os, sys, time
