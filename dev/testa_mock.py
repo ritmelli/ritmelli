@@ -300,6 +300,7 @@ def track_field_routes(sources=None):
     def follow_request(fn, var, path, lost):
         if (id(fn), var) in [(id(f), v) for f, v in path]:
             return
+        in_route = not path
         path = path + [(fn, var)]
         for node, p, where in loads_of(fn, var):
             if isinstance(p, ast.Attribute):
@@ -309,6 +310,8 @@ def track_field_routes(sources=None):
                 continue
             elif passed_to(p, node):
                 if isinstance(p.func, ast.Name) and p.func.id == "body" and module_of[id(fn)] == "server":
+                    if not in_route:
+                        lost.append(where)
                     continue
                 target, param = parameter_for(fn, p, node)
                 if target is not None:
@@ -367,6 +370,7 @@ TRACKER_CASES = (('b = await body(request)\n    return b.get("title")', "found")
                  ('return await request.multipart()', "lost"),
                  ('return await request.content.read()', "lost"),
                  ('return await reads(request)', "lost"),
+                 ('return await via(request)', "lost"),
                  ('q = request\n    return await q.json()', "lost"),
                  ('return other.parse(request)', "lost"),
                  ('await other.prepare(request)', "lost"),
@@ -394,6 +398,7 @@ def check_track_field_routes():
     confere(not lost, f"the search follows the body of every route to the end, so none reads a track field "
             f"behind its back; a route reads its body only through body() ({lost})")
     base = ("import comandos as cmd\nasync def body(r): return {}\nasync def reads(r): return await r.json()\n"
+            "async def via(r):\n    b = await body(r)\n    return b['title']\n"
             "class App:\n    def keep(self, b):\n        return b['thumb']\n")
     helpers = "def x(A, b):\n    return b['duration']\ndef y(A, b):\n    return list(b.items())\n"
     for decorator, params, route_body, expected in ([('@r.post("/api/x")', "request", *c) for c in TRACKER_CASES]
@@ -623,13 +628,11 @@ async def papeis_no_guard():
                     lookups.clear()
             finally:
                 A.lib.get, A.lib.by_youtube = shelf_get, shelf_by_youtube
-            labels, platter = [], []
+            labels, streamed = [], []
             A.job_rodando, A.run_download, A.job_update = (lambda _: None), (lambda *a: None), (lambda j, **k: None)
             A.new_job = lambda label, play, alvo: labels.append(label) or {"id": "j1"}
-            A.tocar_remoto = lambda j, target, meta: server.App.tocar_remoto(A, j, target, meta)
-            A._troca = lambda tr, **kw: platter.append((tr, kw.get("stream"))) or True
-            played = {"youtube_id": "dQw4w9WgXcQ", "play": True, "title": "Live", "channel": "Band",
-                      "thumb": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", "duration": 233}
+            A.tocar_remoto = lambda j, target, meta: streamed.append(target) or True
+            played = {"youtube_id": "dQw4w9WgXcQ", "play": True, "title": "Live", "duration": 233}
             try:
                 resp, j, _ = await manda("POST", "/api/library", handler=rota[("POST", "/api/library")], **kw,
                                          corpo={"youtube_id": "dQw4w9WgXcQ", "title": "Live", "duration": 90000})
@@ -638,12 +641,10 @@ async def papeis_no_guard():
                 resp, j, _ = await manda("POST", "/api/library", corpo=played, handler=rota[("POST", "/api/library")],
                                          **kw)
             finally:
-                del A.job_rodando, A.run_download, A.job_update, A.new_job, A.tocar_remoto, A._troca
-            on_platter = ({k: platter[-1][0].get(k) for k in TRACK_FIELDS}, platter[-1][1]) if platter else None
-            confere(resp.status == 200 and j.get("streaming") is True
-                    and on_platter == ({k: played[k] for k in TRACK_FIELDS}, ("dQw4w9WgXcQ", True)),
-                    f"{who} plays a video off the shelf right away over the stream, with the four fields of the body on "
-                    f"the platter ({resp.status}, {j}, {on_platter})")
+                del A.job_rodando, A.run_download, A.job_update, A.new_job, A.tocar_remoto
+            confere(resp.status == 200 and j.get("streaming") is True and streamed == ["dQw4w9WgXcQ"],
+                    f"{who} can play a video off the shelf right away (dev/testa_comandos.py checks the platter) "
+                    f"({resp.status}, {j}, {streamed})")
             resp, j, _ = await manda("PATCH", "/api/library/d1", corpo={"title": "a\ud800b"},
                                      handler=rota[("PATCH", "/api/library/{iid}")], **kw)
             confere(resp.status == 400 and not renamed and j["error"].get("key") == "server.library.badTitle",
