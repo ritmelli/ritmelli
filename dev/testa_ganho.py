@@ -296,9 +296,10 @@ class TestaMotor(unittest.TestCase):
             self.e._mixa(B)
             ts.append(time.perf_counter() - t0)
         ms = np.array(ts) * 1000
-        print(f"\n  _mixa com ganho e limitador: {ms.mean():.3f} ms em media, {np.percentile(ms, 99):.3f} no p99",
-              file=sys.stderr)
-        self.assertLess(float(ms.mean()), 0.3)  # a media: o p99 sobe com o PC ocupado (so se mostra)
+        print(f"\n  _mixa com ganho e limitador: {np.median(ms):.3f} ms na mediana, {ms.mean():.3f} em media, "
+              f"{np.percentile(ms, 99):.3f} no p99", file=sys.stderr)
+        # the median: a call or two the runner stalls for tens of ms moves the mean, not what each call costs
+        self.assertLess(float(np.median(ms)), 0.15)
 
 
 if __name__ == "__main__":
