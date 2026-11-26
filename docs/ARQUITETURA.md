@@ -10,6 +10,10 @@ e no celular (`themes/ritmelli/`, layout do celular abaixo de 900 px); i18n, nas
 (`microfone/`); o instalador (`instalador/`) e a migração de quem já tem o app (`migra.py`); a galeria (`gallery/`,
 previews no `dev/previews.py`).
 
+Código novo ou mexido (nomes, comentários, docstrings, log e erro), commits e PRs em inglês; o que já existe
+não se renomeia em massa. Texto da tela, nas duas línguas pelo i18n: o servidor não escreve frase para a tela.
+Os docs de `docs/` ficam em português.
+
 - [`engine.py`](arquitetura/engine.md): o motor de áudio, a mistura e o volume automático (`sonoridade.py`).
 - [`microfone/`](arquitetura/microfone.md): a saída para o jogo, o filtro (APO), o anel e a pista da voz.
 - [`batida.py`](arquitetura/batida.md): andamento e grade de batidas para a passagem no tempo.

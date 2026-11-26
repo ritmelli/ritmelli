@@ -61,6 +61,7 @@ class VolumeDo(Patched):
 class LerGravar(unittest.TestCase):
     def test_reads_the_level_as_a_float(self):
         self.assertEqual(winvol.ler(Endpoint(level=1)), 1.0)
+        self.assertEqual(winvol.ler(Endpoint(level=0.25)), 0.25)
         self.assertIsInstance(winvol.ler(Endpoint(level=1)), float)
 
     def test_writes_a_level_held_between_zero_and_one(self):

@@ -32,7 +32,6 @@ ISSUE_URL = re.compile(r"(?<![\w./-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+
 URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
 SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])(?:[A-Za-z\d-]+/[\w.-]+)?#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
-QUOTED = re.compile(r'"([^"\n]+)"')
 RESULT = re.compile(r"\b(?:pass(?:es|ed)?|fail(?:s|ed)?|successfully|\d+ of \d+|\d+/\d+)\b", re.I)
 OPEN_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s")
 CODE_SPAN = re.compile(r"(`+)(?!`)(?:(?!\n[ \t]*\n).)*?(?<!`)\1(?!`)", re.S)
@@ -1275,7 +1274,6 @@ def agents_rules_without_check(t):
     for n, rule in agents_rules(t.files.get("AGENTS.md", "")):
         cited = {name.replace("\\", "/") for c in re.findall(r"`([^`]+)`", rule) if c.split()
                  for name in (c.strip(), c.split()[0])}
-        cited |= set(QUOTED.findall(rule))
         if not cited & valid:
             items.append(("AGENTS.md", n))
     return items

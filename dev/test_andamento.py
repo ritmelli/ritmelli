@@ -42,6 +42,10 @@ class Ordena(unittest.TestCase):
     def test_a_volume_jump_leaves_the_one_that_would_match_for_later(self):
         self.assertEqual(an.ordena(120.0, True, ["a", "e"], tempo, 2), ["e", "a"])
 
+    def test_a_pick_with_no_firm_end_turns_the_next_into_a_volume_jump(self):
+        tempos = {"f": {"ini": 120.0, "fim": None}, "m": {"ini": 121.0, "fim": 121.0}, "e": None}
+        self.assertEqual(an.ordena(120.0, False, ["f", "m", "e"], tempos.get, 3), ["f", "e", "m"])
+
     def test_not_measured_yet_waits_behind_one_that_matches(self):
         self.assertEqual(an.ordena(120.0, False, ["e", "a"], tempo, 2), ["a", "e"])
 

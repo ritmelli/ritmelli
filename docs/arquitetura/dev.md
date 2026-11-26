@@ -137,3 +137,21 @@ variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem` e `--led-recuo
 `CHAVE_PARECIDAS` e o `SALVAR_PIXEL` no `themes/ritmelli/gerado/pecas.js`, que o tema carrega antes do script principal;
 os dois arquivos inteiros) e `dev/previews.py` (gera o preview de cada tema para a galeria, um `preview_<lingua>.png` por língua no tema com textos e um `preview.png` no que não tem, com a prateleira de mentira do
 `dev/compara.py`; ele entra no git porque o instalador leva a pasta do tema como ela está).
+
+## Onde testar
+
+Nunca no Ritmelli instalado, com o microfone de verdade nem no Discord de quem usa: o som sai no jogo de quem está
+jogando. O Discord se testa num canal fechado de teste, e o `instala-todos` e o `remove` do
+`microfone\microfone.py`, que mexem em todo microfone e no filtro do Ritmelli instalado, só num Windows de teste.
+
+## A montagem
+
+Na CI, só o "Monta o instalador" (`monta.yml`) compila o `.iss` e roda a parcial, a migração e o atualizador. Os
+nomes dos artefatos dele (`Ritmelli-<versão>` e `ritmelli-exe-<versão>`) e dos jobs `testa`, `testa-atualizador`,
+`testa-migracao` e `testa-parcial` são contrato com a esteira de publicação do `ritmelli-server`, que acha a
+execução por eles: renomear um quebra a publicação, e o nome muda junto com o server.
+
+## A fila
+
+A fila de merge da `main` não tem bypass nem `--admin`. O `gh pr merge` cai no auto-merge, que o repo não permite: o
+PR entra pela mutação GraphQL `enqueuePullRequest`, com o `expectedHeadOid` do head que passou.

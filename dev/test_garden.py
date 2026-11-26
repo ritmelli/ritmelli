@@ -494,15 +494,12 @@ CASES = {
         ("a job of the testa.yml", {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n",
                                     ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n    name: Testa o PR\n"},
          {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n"}),
-        ("a check named in double quotes", {"AGENTS.md": AGENTS_OK + "- Run \"Testa o PR\" before the queue.\n",
-                                            ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n"
-                                                                          "    name: Testa o PR\n"},
-         {"AGENTS.md": AGENTS_OK + "- Run \"Testa o PR\" before the queue.\n"}),
-        ("a job of another workflow is no check",
-         {".github/workflows/monta.yml": "on:\n  push:\njobs:\n  testa-parcial:\n    runs-on: windows-2025\n",
-          "AGENTS.md": AGENTS_OK},
-         {".github/workflows/monta.yml": "on:\n  push:\njobs:\n  testa-parcial:\n    runs-on: windows-2025\n",
-          "AGENTS.md": AGENTS_OK + "- The `testa-parcial` job of `monta.yml` and the \"Monta o instalador\".\n"}),
+        ("a check named in double quotes is no citation", {"AGENTS.md": AGENTS_OK, ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n    name: Testa o PR\n"},
+         {"AGENTS.md": AGENTS_OK + "- Run \"testa_i18n\" and \"Testa o PR\" before the queue.\n", ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n    name: Testa o PR\n"}),
+        ("the name of another workflow is no check", {"AGENTS.md": AGENTS_OK, ".github/workflows/monta.yml": "name: Monta o instalador\non:\n  push:\njobs:\n  testa-parcial:\n    runs-on: windows-2025\n"},
+         {"AGENTS.md": AGENTS_OK + "- Run `Monta o instalador` on the branch.\n", ".github/workflows/monta.yml": "name: Monta o instalador\non:\n  push:\njobs:\n  testa-parcial:\n    runs-on: windows-2025\n"}),
+        ("a job of another workflow is no check", {"AGENTS.md": AGENTS_OK, ".github/workflows/monta.yml": "name: Monta o instalador\non:\n  push:\njobs:\n  testa-parcial:\n    runs-on: windows-2025\n"},
+         {"AGENTS.md": AGENTS_OK + "- The `testa-parcial` job of `monta.yml`.\n", ".github/workflows/monta.yml": "name: Monta o instalador\non:\n  push:\njobs:\n  testa-parcial:\n    runs-on: windows-2025\n"}),
     ],
 }
 

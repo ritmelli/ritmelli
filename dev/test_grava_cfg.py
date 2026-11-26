@@ -13,16 +13,28 @@ import server
 WRITERS = 24
 
 
+class WatchedCfg(dict):
+    def __init__(self, lock, *args):
+        super().__init__(*args)
+        self.lock = lock
+        self.updates_held = []
+
+    def update(self, *args, **kwargs):
+        self.updates_held.append(self.lock.locked())
+        super().update(*args, **kwargs)
+
+
 class GravaCfg(unittest.TestCase):
     def setUp(self):
         self.real_save = server.save_json
         self.addCleanup(setattr, server, "save_json", self.real_save)
 
     def app(self, folder):
-        return types.SimpleNamespace(cfg={"mic": "default"}, cfg_lock=threading.Lock(),
+        lock = threading.Lock()
+        return types.SimpleNamespace(cfg=WatchedCfg(lock, {"mic": "default"}), cfg_lock=lock,
                                      cfg_path=Path(folder) / "config.json")
 
-    def test_every_save_holds_the_lock(self):
+    def test_the_change_and_the_save_both_hold_the_lock(self):
         with tempfile.TemporaryDirectory() as folder:
             app = self.app(folder)
             held = []
@@ -34,6 +46,7 @@ class GravaCfg(unittest.TestCase):
             server.save_json = save
             server.App.grava_cfg(app, vol=0.5)
             self.assertEqual(held, [True])
+            self.assertEqual(app.cfg.updates_held, [True])
 
     def test_writers_from_many_threads_all_land_in_the_file(self):
         with tempfile.TemporaryDirectory() as folder:

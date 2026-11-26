@@ -19,6 +19,13 @@ class Echo:
         return x[None, :, 0], x[None, :, 1]
 
 
+class Tagged(Echo):
+    def run(self, outputs, feed):
+        b, u = super().run(outputs, feed)
+        call = len(self.lengths)
+        return b * 0 + call, u * 0 + call
+
+
 def frames(n):
     idx = np.arange(n, dtype=np.float32)
     return np.stack([idx, -idx], axis=1)
@@ -44,6 +51,21 @@ class Logits(unittest.TestCase):
         self.check_stitched(2 * compasso.PEDACO + 37)
         self.assertEqual(self.session.lengths, [compasso.PEDACO] * len(self.session.lengths))
 
+    def test_where_chunks_overlap_the_earlier_chunk_wins(self):
+        compasso._abre = lambda: Tagged()
+        n = 2 * compasso.PEDACO + 37
+        b, _ = compasso.logits(frames(n))
+        step = compasso.PEDACO - 2 * compasso.BORDA
+        self.assertEqual(b[0], 3.0)
+        self.assertEqual(b[step - 1], 3.0)
+        self.assertEqual(b[step], 2.0)
+        self.assertEqual(b[n - 1], 1.0)
+        last_start = n - compasso.PEDACO + 2 * compasso.BORDA
+        self.assertLess(last_start, 2 * step)
+        self.assertEqual(b[last_start], 2.0)
+        self.assertEqual(b[2 * step - 1], 2.0)
+        self.assertEqual(b[2 * step], 1.0)
+
     def test_a_track_of_exactly_one_chunk(self):
         self.check_stitched(compasso.PEDACO - 2 * compasso.BORDA)
 
@@ -54,6 +76,7 @@ class Picos(unittest.TestCase):
         lg[10] = lg[11] = 3.0
         lg[30], lg[31] = 2.0, 1.0
         lg[45] = -0.5
+        lg[52] = 0.0
         np.testing.assert_allclose(compasso._picos(lg), [10.5, 30.0])
 
     def test_only_the_highest_in_seven_frames_counts(self):

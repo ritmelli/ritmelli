@@ -1,51 +1,40 @@
 # AGENTS.md
 
-O que vale para quem muda o código do Ritmelli e que o código não diz sozinho. Como cada peça funciona:
-[docs/ARQUITETURA.md](docs/ARQUITETURA.md). O contrato entre o servidor e a interface: [API.md](API.md). Instalar, rodar
-e contribuir: [README.md](README.md). Cada regra cita a verificação que a segura, e o arquivo fica em até 80 linhas (o
-`dev/garden.py` confere as duas).
+O que vale para quem muda o código do Ritmelli e que o código não diz sozinho. Como cada peça funciona e as convenções
+do repo: [docs/ARQUITETURA.md](docs/ARQUITETURA.md). O contrato entre o servidor e a interface: [API.md](API.md).
+Instalar, rodar e contribuir: [README.md](README.md). Cada regra cita a verificação que a segura, e o arquivo fica em
+até 80 linhas (o `dev/garden.py` confere as duas).
 
 ## Onde testar
 
-- Nunca no 8799, no Ritmelli instalado, com o microfone de verdade nem no Discord de quem usa: o som sai no jogo de quem
-  está jogando. O servidor de teste é o `--mock` noutra porta, que por padrão trabalha numa pasta temporária, só com uma
-  cópia da lista da prateleira: `python server.py --mock --port 8801 --no-browser`. As ferramentas de `dev/` não falam
-  com a 8799 (a trava do `dev/so_mock.py`, provada pelo `dev/testa_so_mock.py`).
+- Nunca na 8799, que é o Ritmelli de quem está jogando: as ferramentas de `dev/` recusam falar com ela (a trava do
+  `dev/so_mock.py`, provada pelo `dev/testa_so_mock.py`). O servidor de teste é o `--mock` noutra porta, numa pasta
+  temporária (o `testa_mock` confere): `python server.py --mock --port 8801 --no-browser`.
 
 ## Regras
 
-- Código novo ou mexido (nomes, comentários, docstrings, log e erro), commits e PRs em inglês; o que já existe não se
-  renomeia em massa. Texto da tela, nas duas línguas pelo i18n (o `testa_i18n` confere); `docs/`, em português.
-- Nada pesado no processo do áudio: o bloco é de 10 ms, e o que segura o interpretador estala o som no jogo. Biblioteca
-  lenta ou conta longa vai para um processo auxiliar, como o `yt_fora.py` (`ritmelli.py --yt`) e o `andamento.py`
-  (`ritmelli.py --andamento`), que o servidor abre pelo `auxiliar` do `server.py`; o `dev/test_audio_imports.py` falha
-  se o processo do servidor carregar o `yt_fora.py` ou as bibliotecas dele.
-- O anel tem dois lados: o `microfone/apo/anel.h` e o espelho dele em ctypes no `microfone/injeta.py`. Mudou o layout,
-  muda nos dois e sobe o `MICFX_VERSAO` e o nome do mapa (`MICFX_MAPA`): a versão velha pode estar viva no `audiodg`. O
-  `testa_microfone` faz o motor escrever pelo `injeta.py` num leitor feito do `anel.h`.
+- O processo do servidor não carrega o `yt_fora.py` nem as bibliotecas dele (yt-dlp, ytmusicapi, requests): o YouTube
+  roda no processo auxiliar (`ritmelli.py --yt`), que o `auxiliar` do `server.py` abre. O `dev/test_audio_imports.py`
+  falha se um módulo que o servidor carrega, também os de `microfone/`, importar um deles no topo.
+- O anel tem dois lados, o `microfone/apo/anel.h` e o espelho dele em ctypes no `microfone/injeta.py`: o `testa_filtro`
+  faz o filtro de verdade ler o que o `injeta.py` escreve.
 - Efeito de voz: as configurações moram no `fx.py`, e o `microfone/preset.py` as leva ao motor em C++. Etapa nova
   precisa do par no `microfone/apo/voz.h` (o `dev/testa_voz.py` falha sem ele).
-- Texto novo da interface nas duas línguas: `themes/ritmelli/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, com
-  as mesmas chaves na mesma ordem, e os da galeria em `gallery/i18n/` (o `testa_i18n` confere). O servidor não escreve
-  frase para a tela: manda a Mensagem do `i18n.msg`, com uma chave `server.*`.
-- Rota nova do `server.py`: quem pode chamar cada uma é a tabela do `permissao.py`, que o `guard` confere. Rota fora
-  da tabela é só do PC, e o `dev/testa_mock.py` falha enquanto ela não entra; abrir para o celular ou para o remoto é
-  decisão escrita no PR. Rota ou campo novo entra no `API.md`, e a linha da tabela também.
+- Texto novo da interface nas duas línguas: `themes/ritmelli/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, com as
+  mesmas chaves na mesma ordem, e os da galeria em `gallery/i18n/`; a mensagem do servidor vai pelo `i18n.msg` ou pela
+  `i18n.Recusa`, com uma chave `server.*` que existe em todo tema (o `testa_i18n` confere as três coisas).
+- Rota nova do `server.py` entra na tabela do `permissao.py`, que o `guard` confere: rota fora da tabela é só do PC, e o
+  `dev/testa_mock.py` falha enquanto ela não entra.
 - As travas do servidor se pegam numa ordem só: a de [comandos.md](docs/arquitetura/comandos.md#as-travas).
-- O módulo opcional de fora do repo passa pelos ganchos do `engine.py` e pelas rotas que já existem
-  ([fx.md](docs/arquitetura/fx.md); o grupo `OUT_OF_REPO` do `permissao.py`), e os outros módulos da raiz mexem na
-  `Engine`, no `App`, no Automático e na `Library` só pela interface pública
-  ([comandos.md](docs/arquitetura/comandos.md)): o `dev/testa_ganchos.py` conta os ganchos, as rotas, os acessos e as
-  escritas, e o `dev/garden.py` segura cada conta no seu teto.
-- Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`: o
-  `dev/garden.py` segura as linhas inline dele no teto `theme_inline_lines`.
-- O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`: `instalador/`, os `atualiza*.py`, o `migra.py`, o
-  `pastas.py`, o `microfone/microfone.py`, o `microfone/apo/`, o `ritmelli.spec`) só passa no "Testa o PR" com uma
-  execução aprovada do "Monta o instalador" (`monta.yml`) no head: rode-o na branch (o "Verdict", provado pelo
-  `dev/test_ci_workflow.py`). Na CI, só ele compila o `.iss` e roda a parcial, a migração e o atualizador. Os nomes dos
-  artefatos dele (`Ritmelli-<versão>` e `ritmelli-exe-<versão>`) e dos jobs `testa`, `testa-atualizador`,
-  `testa-migracao` e `testa-parcial` são contrato com a esteira de publicação do `ritmelli-server`, que acha a execução
-  por eles: renomear um quebra a publicação; muda junto com o server.
+- O `dev/testa_ganchos.py` conta os ganchos do `engine.py` para o módulo opcional de fora do repo, as rotas do grupo
+  `OUT_OF_REPO` do `permissao.py`, os acessos dos outros módulos da raiz aos privados do motor, do `App` e do
+  Automático, os do resto do `server.py` aos privados da `Library` e as escritas diretas no estado do `App` e do motor;
+  o `dev/garden.py` segura cada conta no seu teto ([fx.md](docs/arquitetura/fx.md),
+  [comandos.md](docs/arquitetura/comandos.md)).
+- As linhas de CSS e JS inline do `themes/ritmelli/index.html` não sobem: o teto `theme_inline_lines` do
+  `dev/garden.py`.
+- O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`) só passa no "Testa o PR" com uma execução aprovada
+  do "Monta o instalador" (`monta.yml`) no head: rode-o na branch (o "Verdict", provado pelo `dev/test_ci_workflow.py`).
 
 ## O mapa: área, arquivos e teste
 
@@ -71,10 +60,9 @@ e contribuir: [README.md](README.md). Cada regra cita a verificação que a segu
 ## Antes do PR
 
 Rode na raiz, com o venv: `$env:PYTHONUTF8 = '1'; python -m ruff check .; python dev\testa_tudo.py` (os outros modos e
-onde entra teste novo: o [Contributing](README.md#contributing) do README). O check "Testa o PR" roda o mesmo; print
-mudado no `compara` só bloqueia com a etiqueta `extracao-tema` (sem ela, fica no artefato). A fila de merge da `main`
-exige ele e o "Trusted author" (`dev/test_trusted_author.py`): PR de quem não é um dos dois mantenedores só passa
-aprovado por um deles no head atual. Sem bypass nem `--admin`; `gh pr merge` cai no auto-merge, vedado: é o GraphQL
-`enqueuePullRequest`, `expectedHeadOid`. A descrição tem a seção de prova (o passo "PR description"). A fila recusa PR
-com a etiqueta `needs-owner` (o passo "Verdict" do `testa.yml` e o `dequeue-on-label.yml`, testados pelo
-`dev/test_needs_owner.py`): ela marca a prova que pede ação física ou decisão do dono, e o dono a tira depois de provar.
+onde entra teste novo: o [Contributing](README.md#contributing) do README). O check "Testa o PR" junta os jobs do
+`testa.yml`: o `testes` roda o `dev/testa_tudo.py` sem os longos e o `dev/garden.py`, que também lê a descrição do PR (a
+seção de prova); o `compara` só bloqueia com a etiqueta `extracao-tema`. A fila de merge da `main` exige ele e o
+"Trusted author" (`dev/test_trusted_author.py`: PR de quem não é um dos dois mantenedores só passa aprovado por um deles
+no head atual), e recusa PR com a etiqueta `needs-owner` (o passo "Verdict" do `testa.yml` e o `dequeue-on-label.yml`,
+testados pelo `dev/test_needs_owner.py`). Como entrar na fila: [dev.md](docs/arquitetura/dev.md#a-fila).
