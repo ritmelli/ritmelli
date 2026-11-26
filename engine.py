@@ -135,9 +135,6 @@ BATIDA_MIN_S = 12.0        # com menos que isso de um lado, a passagem segue sem
 FASE_MIN_S = 4.0           # a fase sai do trecho onde as duas soam juntas, de pelo menos isso
 NOTA_MIN = 3.0             # o pente da fase nesse trecho tem de cair nos ataques pelo menos isso acima da media
 SAI_FOLGA_S = 12.0         # a rampa da que sai so vale se ainda falta isso para ela comecar quando o plano comeca
-# a rede (compasso.py) quando o batida.py nao firma: com ela, 35% das passagens da prateleira no tempo em vez de 28%
-REDE_ATRASO = 0.038        # as batidas da rede caem ~38 ms depois das nossas (mediana de 9853 batidas, 21/10)
-REDE_REGULAR = 0.9         # firme pela rede: 90% dos intervalos a 8% da mediana
 GRAVE_HZ = 180.0           # a troca de grave: abaixo disso, um disco de cada vez
 # a passagem como a de um DJ (a entrada da proxima, o DJ_BATIDAS e o corpo dela, no transicao.py)
 DJ_SAI_BATIDAS = 4         # depois da troca, a que sai some nisso de batidas dela
@@ -425,63 +422,6 @@ def _esticar_comeco(blocos_b, ini, s, n_sob):
     return (z, phi, ate, n_rampa), None
 
 
-def _regular(bt):
-    """Os intervalos entre as batidas da rede e se sao regulares (REDE_REGULAR deles a 8% da mediana)."""
-    ibi = np.diff(bt)
-    if len(ibi) < 4:
-        return ibi, False
-    m = float(np.median(ibi))
-    return ibi, bool(np.mean(np.abs(ibi / m - 1) <= 0.08) >= REDE_REGULAR)
-
-
-def network_beat_grid(x):
-    """A Grade do trecho x pela rede, para quando o batida.py nao firma (None sem o modelo ou com as batidas
-    irregulares): o andamento pelo ajuste de reta nas batidas (o numero de cada uma pela soma dos intervalos: pela
-    distancia ao comeco dividida pela mediana, que vem presa nos quadros de 20 ms dela, a 40a virava a 41a), na
-    oitava lenta do batida.py, com o lado pelos 1 dela (a grade lenta cai no 1 e no 3) e REDE_ATRASO antes."""
-    r = compasso.uns(x, SR)
-    if r is None or len(r[0]) < 8:
-        return None
-    bt, ut = r
-    ibi, ok = _regular(bt)
-    if not ok:
-        return None
-    k = np.r_[0, np.cumsum(np.maximum(np.round(ibi / np.median(ibi)), 1))]
-    p, c = np.polyfit(k, bt, 1)
-    P = float(p)
-    while 60 / P >= 2 * batida.LENTA:
-        P *= 2
-    while 60 / P < batida.LENTA:
-        P /= 2
-    ancora = float(ut[0]) if len(ut) else float(bt[0])
-    f = (float(c + np.round((ancora - c) / p) * p) - REDE_ATRASO) % P
-    # entre a batida e o contratempo quem decide e o bumbo, como no batida.py (o Overdose, 21/10): na intro falada
-    # da NWA a rede pos a batida no meio tempo do bumbo, e ela entrava no contratempo do Stay With Me
-    mono = x.mean(axis=1) if x.ndim > 1 else x
-    fps = SR / batida.HOP
-    meios = np.array([f, (f + P / 2) % P]) * fps
-    ng = batida._notas(batida._suave(batida.ataques(np.asarray(mono, np.float32), SR, batida.GRAVE_HZ)), P * fps, meios)
-    virou = bool(ng[1] > ng[0] and ng[0] <= batida.GRAVE_DECIDE * ng[1])
-    if virou:
-        f = (f + P / 2) % P
-    return batida.Grade(60 / P, P, f, True, f"by the network: {60 / float(p):.1f} BPM{', the kick flipped the side' if virou else ''}")
-
-
-def _fase_rede(x, periodo, perto):
-    """A fase (s desde o comeco de x) da grade de periodo dado pelas batidas da rede em x, perto de perto: a
-    mediana do desvio das batidas que caem a menos de um quarto de periodo da grade (as do meio tempo ficam de
-    fora); None sem batidas regulares ou sem nenhuma na grade."""
-    r = compasso.uns(x, SR)
-    if r is None:
-        return None
-    bt = r[0] - REDE_ATRASO
-    if not _regular(bt)[1]:
-        return None
-    d = (bt - perto + periodo / 2) % periodo - periodo / 2
-    d = d[np.abs(d) < periodo / 4]
-    return float((perto + np.median(d)) % periodo) if len(d) >= 3 else None
-
-
 def _golpe_final(blocos, b1, pa, queda):
     """O golpe final deste para o corte no 1 do final seco: a ultima batida da grade antes de b1 (a batida em que a
     proxima entraria depois do fim para o ouvido) com o pico a ate GOLPE_DB do normal das de antes (o percentil 75 dos
@@ -523,7 +463,7 @@ def _batida_tocada(x, reserva):
     r = compasso.uns(x, SR) if x is not None and len(x) >= 0.8 * ECO_MEDE_S * SR else None
     if r is None or len(r[0]) < 6:
         return reserva
-    ibi, ok = _regular(r[0])
+    ibi, ok = batida.network_intervals(r[0])
     return float(np.median(ibi)) if ok else reserva
 
 
@@ -2821,11 +2761,11 @@ class Engine:
             # Despacito media 90,0 em vez de 89,0, e 1% em 14 s de sobreposicao e mais de 100 ms)
             antes = queda if fade else fim
             t_r, xr = _junta(blocos_a, antes - BATIDA_S, antes)
-            g = network_beat_grid(xr) if xr is not None and len(xr) >= BATIDA_MIN_S * SR else None
+            g = batida.network_beat_grid(xr, SR) if xr is not None and len(xr) >= BATIDA_MIN_S * SR else None
             if g is not None:
                 ga, t_a = g, t_r
         if not gb.firme:
-            g = network_beat_grid(xb)
+            g = batida.network_beat_grid(xb, SR)
             if g is not None:
                 gb = g
         if not ga.firme:
@@ -2854,7 +2794,7 @@ class Engine:
                 return None, f"too little of {quem} for the phase"
             f, nota = batida.fase(x, SR, periodo, (longa - t) % periodo)
             if nota < NOTA_MIN:  # sem ataque claro para o pente (violao, piano, fala): as batidas da rede
-                f = _fase_rede(x, periodo, (longa - t) % periodo)
+                f = batida.network_phase(x, SR, periodo, (longa - t) % periodo)
                 if f is None:
                     return None, f"{quem} has no clear beat where both play together (comb {nota:.1f}, nor by the network)"
             return t + f, None

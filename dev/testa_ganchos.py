@@ -386,23 +386,57 @@ def module_privates(tree):
     return {n for n in out if is_private(n)}
 
 
-def module_aliases(tree, owner_module):
-    return {a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names
-            if a.name == owner_module}
+class ModuleBindings:
+    def __init__(self, tree, owner_module):
+        self.bound = {}
+        self.enclosing = {}
+        for n, scope in nodes_with_scope(tree, tree):
+            if isinstance(n, SCOPES):
+                self.enclosing[id(n)] = scope
+                if not isinstance(n, ast.Lambda):
+                    self.bind(scope, n.name, False)
+                if not isinstance(n, ast.ClassDef):
+                    a = n.args
+                    for arg in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg]:
+                        if arg:
+                            self.bind(n, arg.arg, False)
+            elif isinstance(n, ast.Import):
+                for a in n.names:
+                    self.bind(scope, a.asname or a.name.split(".")[0], a.name == owner_module)
+            elif isinstance(n, ast.ImportFrom):
+                for a in n.names:
+                    self.bind(scope, a.asname or a.name, False)
+            elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                self.bind(scope, n.id, False)
+
+    def bind(self, scope, name, is_module):
+        key = (id(scope), name)
+        self.bound[key] = self.bound.get(key, True) and is_module
+
+    def is_module(self, name, scope):
+        while scope is not None:
+            found = self.bound.get((id(scope), name))
+            if found is not None:
+                return found
+            scope = self.enclosing.get(id(scope))
+            while isinstance(scope, ast.ClassDef):
+                scope = self.enclosing.get(id(scope))
+        return False
 
 
 def module_private_reaches(module, tree, owner_module, names):
-    aliases = module_aliases(tree, owner_module)
+    bindings = ModuleBindings(tree, owner_module)
     loop_names = loop_variable_names(tree)
+
+    def the_module(node, scope):
+        return isinstance(node, ast.Name) and bindings.is_module(node.id, scope)
     out = []
-    for no in ast.walk(tree):
+    for no, scope in nodes_with_scope(tree, tree):
         if isinstance(no, ast.ImportFrom) and no.module == owner_module and not no.level:
             out += [(module, no.lineno, a.name) for a in no.names if a.name in names]
-        elif (isinstance(no, ast.Attribute) and isinstance(no.value, ast.Name) and no.value.id in aliases
-              and no.attr in names):
+        elif isinstance(no, ast.Attribute) and no.attr in names and the_module(no.value, scope):
             out.append((module, no.lineno, no.attr))
-        elif (isinstance(no, ast.Call) and call_args(no) and isinstance(call_args(no)[0], ast.Name)
-              and call_args(no)[0].id in aliases):
+        elif isinstance(no, ast.Call) and call_args(no) and the_module(call_args(no)[0], scope):
             out += [(module, no.lineno, n) for n in attr_call_names(no, loop_names) if n in names]
     return out
 
@@ -425,17 +459,19 @@ def instance_state(tree, classes):
     return {n for n in out if not n.startswith("_")}
 
 
+def held_attribute(node):
+    while isinstance(node, ast.Subscript):
+        node = node.value
+    return [(node.value, node.attr)] if isinstance(node, ast.Attribute) else []
+
+
 def written_attributes(node, loop_names):
     if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del)):
         return [(node.value, node.attr)]
     if isinstance(node, ast.Subscript) and isinstance(node.ctx, (ast.Store, ast.Del)):
-        base = node.value
-        while isinstance(base, ast.Subscript):
-            base = base.value
-        return [(base.value, base.attr)] if isinstance(base, ast.Attribute) else []
-    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in CONTAINER_MUTATORS
-            and isinstance(node.func.value, ast.Attribute)):
-        return [(node.func.value.value, node.func.value.attr)]
+        return held_attribute(node.value)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in CONTAINER_MUTATORS:
+        return held_attribute(node.func.value)
     return [(call_args(node)[0], n) for n in attr_call_names(node, loop_names, ("setattr", "delattr"))]
 
 
@@ -622,6 +658,8 @@ MODULE_CAUGHT = [
     ("an attribute of the module under another name", MODULE_OWNER,
      "import owner as o\n\n\ndef f():\n    return o._x()\n"),
     ("the module imported inside a function", MODULE_OWNER, "def f():\n    import owner\n    return owner._x\n"),
+    ("the module seen from a method", MODULE_OWNER,
+     "import owner as e\n\n\nclass C:\n    def m(self):\n        return e._x\n"),
     ("a name imported from the module", MODULE_OWNER, "from owner import _x\n"),
     ("getattr on the module", MODULE_OWNER, "import owner\n\n\ndef f():\n    return getattr(owner, '_x')\n"),
     ("a private class", "class _x:\n    pass\n", "import owner\n\nowner._x\n"),
@@ -635,6 +673,10 @@ MODULE_NOT_REACHES = [
     ("a public name of the module", "def _x():\n    pass\n\n\ndef x():\n    pass\n", "import owner\n\nowner.x\n"),
     ("the same name on another object", MODULE_OWNER, "import owner\n\n\ndef f(o):\n    return o._x\n"),
     ("the same name in another module", MODULE_OWNER, "import other\n\nother._x\n"),
+    ("a parameter that shadows the module", MODULE_OWNER,
+     "import owner as e\n\n\ndef f(e):\n    return e._x\n"),
+    ("a local that shadows the module", MODULE_OWNER,
+     "import owner\n\n\ndef f(o):\n    owner = o\n    return owner._x\n"),
 ]
 MODULE_KNOWN_MISSES = [
     ("importlib.import_module", MODULE_OWNER,
@@ -653,6 +695,7 @@ WRITES_CAUGHT = [
     ("an item of an item", APP_NAMES, "def f(A):\n    A.x[0][1] = 2\n"),
     ("a del", APP_NAMES, "def f(A):\n    del A.x\n"),
     ("a container method", APP_NAMES, "def f(app):\n    app.x.append(1)\n"),
+    ("a container method on an item", APP_NAMES, "def f(A):\n    A.x[0]['tags'].append(1)\n"),
     ("setattr", APP_NAMES, "def f(A):\n    setattr(A, 'x', 1)\n"),
     ("a read-only property", APP_NAMES, "def f(A):\n    A.p = 1\n"),
     ("object.__setattr__", APP_NAMES, "def f(A):\n    object.__setattr__(A, 'x', 1)\n"),

@@ -18,6 +18,8 @@ from collections import namedtuple
 import numpy as np
 from scipy import ndimage, signal
 
+import compasso
+
 HOP = 512           # quadros de ~10,7 ms a 48 kHz
 NFFT = 2048
 BPM_MIN, BPM_MAX = 60.0, 200.0
@@ -36,6 +38,9 @@ CAIXA_TROCA = 2.0   # com isso de folga, e as duas metades apontando o mesmo, va
                     # (calibrado 21/10 contra o BPM publicado de 22 musicas e um tap manual no Bota Tudo Em Mim, 130)
 TRECHO_MIN_S = 6.0  # menos que isso nao mede
 
+# a rede (compasso.py) quando o batida.py nao firma: com ela, 35% das passagens da prateleira no tempo em vez de 28%
+REDE_ATRASO = 0.038        # as batidas da rede caem ~38 ms depois das nossas (mediana de 9853 batidas, 21/10)
+REDE_REGULAR = 0.9         # firme pela rede: 90% dos intervalos a 8% da mediana
 Grade = namedtuple("Grade", "bpm periodo fase firme motivo")
 # bpm na oitava lenta; periodo em s; fase = a primeira batida, em s desde o comeco do trecho;
 # firme = da para alinhar; motivo = por que nao (ou o resumo da medicao), para o log
@@ -239,3 +244,60 @@ def fase(x, sr, periodo, perto):
     _, f, _, _ = _pente(o, periodo * fps, afinar=False, perto=perto * fps)
     nota = _pente(o, periodo * fps, afinar=False)[2]
     return f / fps, nota
+
+
+def network_intervals(bt):
+    """Os intervalos entre as batidas da rede e se sao regulares (REDE_REGULAR deles a 8% da mediana)."""
+    ibi = np.diff(bt)
+    if len(ibi) < 4:
+        return ibi, False
+    m = float(np.median(ibi))
+    return ibi, bool(np.mean(np.abs(ibi / m - 1) <= 0.08) >= REDE_REGULAR)
+
+
+def network_beat_grid(x, sr):
+    """A Grade do trecho x pela rede, para quando o batida.py nao firma (None sem o modelo ou com as batidas
+    irregulares): o andamento pelo ajuste de reta nas batidas (o numero de cada uma pela soma dos intervalos: pela
+    distancia ao comeco dividida pela mediana, que vem presa nos quadros de 20 ms dela, a 40a virava a 41a), na
+    oitava lenta do batida.py, com o lado pelos 1 dela (a grade lenta cai no 1 e no 3) e REDE_ATRASO antes."""
+    r = compasso.uns(x, sr)
+    if r is None or len(r[0]) < 8:
+        return None
+    bt, ut = r
+    ibi, ok = network_intervals(bt)
+    if not ok:
+        return None
+    k = np.r_[0, np.cumsum(np.maximum(np.round(ibi / np.median(ibi)), 1))]
+    p, c = np.polyfit(k, bt, 1)
+    P = float(p)
+    while 60 / P >= 2 * LENTA:
+        P *= 2
+    while 60 / P < LENTA:
+        P /= 2
+    ancora = float(ut[0]) if len(ut) else float(bt[0])
+    f = (float(c + np.round((ancora - c) / p) * p) - REDE_ATRASO) % P
+    # entre a batida e o contratempo quem decide e o bumbo, como no batida.py (o Overdose, 21/10): na intro falada
+    # da NWA a rede pos a batida no meio tempo do bumbo, e ela entrava no contratempo do Stay With Me
+    mono = x.mean(axis=1) if x.ndim > 1 else x
+    fps = sr / HOP
+    meios = np.array([f, (f + P / 2) % P]) * fps
+    ng = _notas(_suave(ataques(np.asarray(mono, np.float32), sr, GRAVE_HZ)), P * fps, meios)
+    virou = bool(ng[1] > ng[0] and ng[0] <= GRAVE_DECIDE * ng[1])
+    if virou:
+        f = (f + P / 2) % P
+    return Grade(60 / P, P, f, True, f"by the network: {60 / float(p):.1f} BPM{', the kick flipped the side' if virou else ''}")
+
+
+def network_phase(x, sr, periodo, perto):
+    """A fase (s desde o comeco de x) da grade de periodo dado pelas batidas da rede em x, perto de perto: a
+    mediana do desvio das batidas que caem a menos de um quarto de periodo da grade (as do meio tempo ficam de
+    fora); None sem batidas regulares ou sem nenhuma na grade."""
+    r = compasso.uns(x, sr)
+    if r is None:
+        return None
+    bt = r[0] - REDE_ATRASO
+    if not network_intervals(bt)[1]:
+        return None
+    d = (bt - perto + periodo / 2) % periodo - periodo / 2
+    d = d[np.abs(d) < periodo / 4]
+    return float((perto + np.median(d)) % periodo) if len(d) >= 3 else None

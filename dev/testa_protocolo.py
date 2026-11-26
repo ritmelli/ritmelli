@@ -1070,7 +1070,7 @@ def _patches_seco(golpe, esticar):
     ela, a 2% (esticada no andamento deste). So a medida das batidas fica fixa."""
     g = [types.SimpleNamespace(periodo=0.5, fase=0.1, bpm=120.0, firme=True, motivo=""),
          types.SimpleNamespace(periodo=0.51, fase=0.1, bpm=117.6, firme=esticar, motivo="fixo no teste")]
-    return [mock.patch.object(eng.batida, "medir", side_effect=g), mock.patch.object(eng, "network_beat_grid", return_value=None),
+    return [mock.patch.object(eng.batida, "medir", side_effect=g), mock.patch.object(eng.batida, "network_beat_grid", return_value=None),
             mock.patch.object(eng.batida, "fase", return_value=(0.0, 10.0)),
             mock.patch.object(eng, "_golpe_final", return_value=golpe),
             mock.patch.object(eng, "_batida_tocada", return_value=0.5),
