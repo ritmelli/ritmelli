@@ -113,12 +113,17 @@ class Template:
     def __init__(self, html, built=False):
         self.html, self.found, self.elements, self.texts, self.svg, self.select = html, [], [], [], False, False
         self.marks, self.built, self.modules, self.unimported, self.map_at, self.map_end = set(), built, None, [], 0, 0
+        self.policy_at = None
         i = 0
         while i < len(html):
             i = self.token(i)
         if self.unimported:
             self.refuse(self.map_at, f"the module {self.unimported[0]} of the import map has no import after the map: "
                                      f"the browser would not run it")
+        if self.policy_at is not None and (self.modules is not None or any(f[2] == "module" for f in self.found)):
+            self.refuse(self.policy_at, "a Content-Security-Policy in a <meta> on a page with modules, which can keep "
+                                        "the browser from running the data: modules of the import map: send the "
+                                        "policy as a header of the server")
         stray = [m.start() for m in re.finditer(re.escape(i18n.MARCA), html) if m.start() not in self.marks]
         if stray and not built:
             self.refuse(stray[0], f"the {i18n.MARCA} mark is read only as a comment of its own, where the server puts "
@@ -154,6 +159,9 @@ class Template:
         if "srcdoc" in attrs:
             self.refuse(i, f"the tag {raw[:60]!r} writes a page in an attribute, whose files the browser would fetch: "
                            f"leave it out")
+        if tag == "meta" and unescape(attrs.get("http-equiv", "")).strip(" \t\n\r\f").lower() == \
+                "content-security-policy" and self.policy_at is None:
+            self.policy_at = i
         if loose := [a for a in PLAIN_ATTRIBUTES if "&" in attrs.get(a, "")]:
             self.refuse(i, f"the {loose[0]} of the tag {raw[:60]!r} has an &: write the value itself")
         if tag in ("script", "style", "link") and (loose := [m.group(0) for a in ("src", "href")

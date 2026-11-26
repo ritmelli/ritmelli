@@ -38,8 +38,6 @@ import { LETRA_PLACA } from "letters.js";
       cab.classList.add('tit-px');
     }
   }
-  // redesenha quando a contagem muda, quando a mesa monta (a classe do body) e quando o canvas volta em branco (o
-  // repinta-canvas do repintarCanvas, #119); nada mais dispara
   const obs = new MutationObserver(desenhaTit);
   obs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
   for (const c of document.querySelectorAll('.fila-parede .cabeca-fila .conta')) obs.observe(c, { childList: true, characterData: true, subtree: true });

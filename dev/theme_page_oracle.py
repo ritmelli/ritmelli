@@ -28,7 +28,12 @@ MODULES = {"a.js": "import { b } from \"b.js\";\ndocument.documentElement.datase
            "d.js": "document.documentElement.dataset.ran += ' c'; ",
            "e.js": "document.documentElement.dataset.ran += new Error().stack.includes('at e.js:') ? ' e' : ' e unnamed';",
            "f.js": "document.documentElement.dataset.ran += ' f';",
-           "g.js": "document.documentElement.dataset.ran += ' f';"}
+           "g.js": "document.documentElement.dataset.ran += ' f';",
+           "h.js": "var arguments;\ndocument.documentElement.dataset.ran += ' h';",
+           "i.js": "const yield = 1;\ndocument.documentElement.dataset.ran += ' i';"}
+STRICT_ONLY = ("h.js", "i.js")
+POLICY = '<meta http-equiv="Content-Security-Policy" content="script-src \'unsafe-inline\'">'
+CLASSIC = '<script>document.documentElement.dataset.ran = "classic";</script>'
 MODULE_TEMPLATE = "<head>\n" + "".join(f'<script type="module" src="{name}"></script>\n' for name in MODULES)
 
 
@@ -75,11 +80,11 @@ async def chrome_views(base, count, asked):
     async def run(tab):
         views = []
         for n in range(count):
-            loads, before = tab.loads, len(asked)
+            loads, before, thrown = tab.loads, len(asked), len(tab.thrown)
             await tab.cmd("Page.navigate", url=f"{base}/{n}")
             loaded = await tab.tab_reaches(lambda: tab.loads > loads, LOADED_S)
-            views.append((await tab.js(READ), await tab.js(RAN), asked[before:]) if loaded
-                         else (f"page {n} did not load in {LOADED_S:.0f} s", "", asked[before:]))
+            views.append((await tab.js(READ), await tab.js(RAN), asked[before:], tab.thrown[thrown:]) if loaded
+                         else (f"page {n} did not load in {LOADED_S:.0f} s", "", asked[before:], []))
         return views
     return await missing_script.with_tab(types.SimpleNamespace(base=base), run)
 
@@ -98,8 +103,9 @@ def main(argv=None):
         texts.setdefault(html, what)
     accepted = [(what, html, view) for html, what in texts.items() if (view := built_view(html)) is not None]
     built = module_page()
+    blocked = built.replace("<head>\n", f"<head>\n{POLICY}\n{CLASSIC}\n", 1)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", so_mock.free_port()), Pages)
-    server.pages = [(NO_SCRIPTS, html) for _, html, _ in accepted] + [(BUILT_SCRIPTS, built)]
+    server.pages = [(NO_SCRIPTS, html) for _, html, _ in accepted] + [(BUILT_SCRIPTS, built), (BUILT_SCRIPTS, blocked)]
     server.asked = []
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
@@ -110,16 +116,24 @@ def main(argv=None):
         server.server_close()
     results = [(len(accepted) > 2 and accepted[0][0] == "the theme template" and accepted[1][0] == "the gallery template",
                 f"the build accepts the theme, the gallery and {len(accepted) - 2} of the cases")]
-    for (what, _, view), (seen, _, _) in zip(accepted, views):
+    for (what, _, view), (seen, _, _, _) in zip(accepted, views):
         results.append((view == seen, f"{what}: the build reads the scripts, styles and links Chrome has "
                                       f"({len(view)}{'' if view == seen else f'; build {view}, Chrome {seen}'})"))
-    built_seen, ran, asked = views[-1]
+    built_seen, ran, asked, thrown = views[-2]
     asked = [path for path in asked if path != f"/{len(accepted)}"]
     expected_ran = "a after b á ç ⋯ ? > # % </script> <!-- c c e f f"
     results.append((built_view(built, True) == built_seen and ran == expected_ran and not asked,
                     f"a built page with modules runs them from its import map, asking the server for nothing but the "
                     f"page (ran: {ran!r}, other requests: {asked}, build {built_view(built, True)}, "
                     f"Chrome {built_seen})"))
+    strict = [line for line in thrown if line and "SyntaxError" in line]
+    results.append((len(strict) == len(STRICT_ONLY) and ran == expected_ran,
+                    f"a module that declares arguments or yield, which a classic script may, does not run, as a "
+                    f"module is in strict mode, and the other modules run (#239; errors: {strict})"))
+    _, blocked_ran, _, _ = views[-1]
+    results.append((blocked_ran == "classic" and theme_page.strict(blocked, True)[1] is not None,
+                    f"a Content-Security-Policy in a <meta> keeps the modules from running while the classic script "
+                    f"runs, and the build refuses that page (ran: {blocked_ran!r})"))
     for ok, message in results:
         print(f"{'OK  ' if ok else 'FAIL'} {message}", flush=True)
     return 0 if all(ok for ok, _ in results) else 1

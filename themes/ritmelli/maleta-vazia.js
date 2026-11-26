@@ -55,7 +55,7 @@ import { deckGlyphs } from "deck.js";
   }
   const p = document.getElementById('fila-vazia');
   const agenda = () => requestAnimationFrame(desenha);
-  document.addEventListener('repinta-canvas', agenda);   // (#119) o canvas devolvido em branco (repintarCanvas)
+  document.addEventListener('repinta-canvas', agenda);
   if (p) {
     new MutationObserver(agenda).observe(p, { attributes: true, attributeFilter: ['hidden'] });
     new ResizeObserver(agenda).observe(p);

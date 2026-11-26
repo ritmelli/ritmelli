@@ -102,7 +102,9 @@ OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEv
                  " cancelable: true, composed: true, isPrimary: true, pointerId: 7, pointerType: 'touch', button: 0,"
                  " clientX: 11, clientY: 13}))")
 REDRAWN_CANVASES = {"the mixer": "canvas.mx-px", "the monitor": "#tv > canvas.tv-px",
-                    "the pads": "#pads > canvas.pads-px"}
+                    "the pads": "#pads > canvas.pads-px", "the deck's shadow": "canvas.dk-sombra",
+                    "the case title": "canvas.tit-px", "the shelf count": "canvas.conta-px",
+                    "the empty case": "canvas.vazia-px"}
 CANVAS_REDRAWN = ("(async () => { const c = document.querySelector(%s);"
                 " if (!c || !c.width) return {canvas: false};"
                 " const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));"

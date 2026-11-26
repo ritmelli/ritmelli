@@ -777,8 +777,7 @@ export const deckGlyphs = { gl, larg, ready: () => fontesOk };
     }
     requestAnimationFrame(quadro);
   }
-  // (#119) o canvas devolvido em branco (repintarCanvas): a chave do desenho parado (o chaveE, que tambem pinta a
-  // sombra e refaz a base e o braco fora da tela) e a do rotulo zeradas, o proximo quadro pinta o deck inteiro
+  // (#119) a chave do rotulo do disco zerada com a do desenho parado: o proximo quadro pinta o rotulo de novo
   document.addEventListener('repinta-canvas', () => {
     for (const d of decks.values()) { d.chaveE = ''; d.labChave = ''; }
   });

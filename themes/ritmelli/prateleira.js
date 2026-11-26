@@ -152,7 +152,7 @@ import { LETRA_PLACA } from "letters.js";
     const conta = document.getElementById('conta'), est = document.getElementById('estante');
     if (conta) new MutationObserver(desenhaConta).observe(conta, { childList: true, characterData: true, subtree: true });
     if (est) new MutationObserver(marcaTeclas).observe(est, { childList: true, subtree: true });
-    document.addEventListener('repinta-canvas', desenhaConta);   // (#119) o canvas devolvido em branco (repintarCanvas)
+    document.addEventListener('repinta-canvas', desenhaConta);
     desenhaConta(); marcaTeclas();
   }
   document.addEventListener('DOMContentLoaded', liga);

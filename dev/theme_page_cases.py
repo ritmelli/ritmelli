@@ -271,11 +271,16 @@ REFUSED = {
                                       "has a type the build does not read"),
     "a module written in the template": ('<script type="module">import "first.js";</script>', {},
                                          "has a type the build does not read"),
+    "a security policy in a meta of a page with modules": (
+        '<meta http-equiv="Content-Security-Policy" content="script-src \'unsafe-inline\'">\n'
+        '<script type="module" src="first.js"></script>', {}, "a Content-Security-Policy in a <meta>"),
 }
 
 KEPT = {
     "a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
     "a title of plain text": ("<title>Ritmelli &amp; co</title>", None),
+    "a security policy in a meta of a page without modules": (
+        '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'">', None),
     "a script ended by />, which the browser reads as an open script": (
         "<script/><a title='</script><script src=\"first.js\"></script>'>",
         "<script/><a title='</script><script>\nconst first = 1;\n</script>'>"),

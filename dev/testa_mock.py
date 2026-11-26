@@ -1220,6 +1220,9 @@ def a_built_page_reads_only_its_own_modules(folder):
         "an import of a module out of the map": (built, 'import "second.js";', 'import "third.js";'),
         "a module script that does more than import": (built, 'import "first.js";', 'import "first.js"; f();'),
         "an import before the map": first + built,
+        "a security policy in a meta": (built, "<head>\n",
+                                        '<head>\n<meta http-equiv="Content-Security-Policy" content="script-src '
+                                        "'unsafe-inline'\">\n"),
     }
     for what, page in altered.items():
         if isinstance(page, tuple):
