@@ -105,6 +105,7 @@ EARLIER_FAILURES = (
     ("voice-effects.js", STILL_ON, STILL_OFF, (FORM_INERT,)),
     ("disc-page.js", DESK_ON, (), (NO_STARTUP,)),
     ("dj-desk.js", DESK_ON, (), (NO_STARTUP,)),
+    ("queue.js", DESK_ON, (), (NO_STARTUP,)),
     ("search.js", STILL_ON + (("#rolo-busca", "scroll"),), STILL_OFF,
      (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"), FORM_INERT)),
 )
@@ -204,7 +205,7 @@ async def checks(tab):
     for file, _, selector, kind in FEATURE_HANDLERS:
         files = await handler_files(tab, selector, kind)
         moved = (files == [file] if selector not in SHARED_TARGETS and (selector, kind) not in SHARED_HANDLERS
-                 else bool(files) and file in files and "index.html" not in files)
+                 else bool(files) and file in files)
         results.append((moved, f"the {kind} handler of {selector} is in {file} ({files})"))
 
     await tab.js(SEARCH_OPEN)

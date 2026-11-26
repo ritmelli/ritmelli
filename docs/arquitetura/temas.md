@@ -57,8 +57,8 @@ o `bindShelf()`, o `bindPhoneButton()`, o `bindDeviceButtons()` e o `bindDeskBut
 dos efeitos, do toca-discos, do receptor, do palco, da página do disco, da prateleira, do celular e dos
 dispositivos, o `queue.js` chama o `bindSearchResults()` e o `start.js` chama o `bindDeskButtons()` antes da
 partida. Com um arquivo da base faltando, o `ui-events.js` para no mesmo ponto em que parava, com os
-mesmos ouvintes já registrados, e a partida não roda quando os botões da mesa param no meio (sem o `disc-page.js` ou
-o `dj-desk.js`), como no script único em que os dois moravam. Sem o `shared.js` (sem o `$`), o `connection.js` e o
+mesmos ouvintes já registrados, e a partida não roda quando os botões da mesa param no meio (sem o `disc-page.js`, o
+`dj-desk.js` ou o `queue.js`, de que o `montarMesa()` precisa), como no script único em que os dois moravam. Sem o `shared.js` (sem o `$`), o `connection.js` e o
 `pairing.js` não registram os ouvintes da rede nem tira o `?parear` do endereço: na base, o bloco inteiro parava antes
 deles.
 Assim os controles só respondem quando os arquivos de que eles dependem já carregaram (o formulário da busca segue
