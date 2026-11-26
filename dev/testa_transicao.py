@@ -127,8 +127,14 @@ def bench_fingerprint(path=BANCA):
     source = path.read_text(encoding="utf-8")
     docstrings = _docstring_starts(ast.parse(source))
     skip = {tokenize.COMMENT, tokenize.NL, tokenize.ENCODING, tokenize.ENDMARKER}
-    kept = [f"{tokenize.tok_name[t.type]} {t.string}" for t in tokenize.generate_tokens(io.StringIO(source).readline)
-            if t.type not in skip and not (t.type == tokenize.STRING and t.start in docstrings)]
+    kept, in_docstring = [], False
+    for t in tokenize.generate_tokens(io.StringIO(source).readline):
+        if t.type == tokenize.STRING and t.start in docstrings:
+            in_docstring = True
+        elif in_docstring and t.type == tokenize.NEWLINE:
+            in_docstring = False
+        elif t.type not in skip and not in_docstring:
+            kept.append(f"{tokenize.tok_name[t.type]} {t.string}")
     return hashlib.sha1("\n".join(kept).encode()).hexdigest()
 
 
