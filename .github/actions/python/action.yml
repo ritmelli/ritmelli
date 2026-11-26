@@ -47,7 +47,7 @@ runs:
           ${{ steps.key.outputs.site }}
           ${{ steps.key.outputs.scripts }}
         key: ${{ steps.libs.outputs.cache-primary-key }}
-    - name: yt-dlp, the newest on every run, outside the cache (the app build does the same)
+    - name: Upgrade yt-dlp and yt-dlp-ejs after the cache setup, on every run (the app build does the same)
       shell: pwsh
       run: |
         python -m pip install --disable-pip-version-check --upgrade "yt-dlp[default]" yt-dlp-ejs -c instalador/travas.txt
