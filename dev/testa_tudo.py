@@ -81,7 +81,8 @@ STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vo
                                              "ganchos", "pasta_protegida", "so_mock")] + [
     "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py",
     "dev/test_forbidden_terms.py", "dev/test_music.py", "dev/test_bumbo_grid.py", "dev/garden.py",
-    "dev/test_garden.py", "dev/test_lock_order.py", "dev/test_queue_entries.py"]
+    "dev/test_garden.py", "dev/test_monta_contract.py", "dev/test_lock_order.py",
+    "dev/test_queue_entries.py"]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
