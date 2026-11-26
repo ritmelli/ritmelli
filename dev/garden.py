@@ -439,7 +439,7 @@ def kept(path, lexed, comment):
 class Tree:
     def __init__(self, files):
         self.files = files
-        self._lexed, self._ast = {}, {}
+        self._lexed, self._ast, self._hooks = {}, {}, None
 
     def lexed(self, path):
         if path not in self._lexed:
@@ -456,6 +456,11 @@ class Tree:
 
     def paths(self, *suffixes):
         return sorted(p for p in self.files if suffix(p) in suffixes)
+
+    def hooks(self):
+        if self._hooks is None:
+            self._hooks = load_dev_module("testa_ganchos").counts(self.files)
+        return self._hooks
 
 
 def license_header(lexed):
@@ -1016,24 +1021,36 @@ def testa_tudo():
     return load_dev_module("testa_tudo")
 
 
-def hooks(t):
-    return load_dev_module("testa_ganchos").counts(t.files)
-
-
 def engine_hooks(t):
-    return hooks(t)["engine_hooks"]
+    return t.hooks()["engine_hooks"]
 
 
 def out_of_repo_routes(t):
-    return hooks(t)["out_of_repo_routes"]
+    return t.hooks()["out_of_repo_routes"]
 
 
 def engine_reaches(t):
-    return hooks(t)["engine_reaches"]
+    return t.hooks()["engine_reaches"]
 
 
 def app_reaches(t):
-    return hooks(t)["app_reaches"]
+    return t.hooks()["app_reaches"]
+
+
+def automatico_reaches(t):
+    return t.hooks()["automatico_reaches"]
+
+
+def library_reaches(t):
+    return t.hooks()["library_reaches"]
+
+
+def app_writes(t):
+    return t.hooks()["app_writes"]
+
+
+def engine_writes(t):
+    return t.hooks()["engine_writes"]
 
 
 def theme_inline_lines(t):
@@ -1095,7 +1112,8 @@ def agents_rules_without_check(t):
 COUNTERS = {f.__name__: f for f in (
     comment_lines, docstring_lines, suppressions, sleeps_app, sleeps_dev, theme_timers, theme_animation_frames,
     retries, broad_excepts, skipped_tests, todo_markers, prose_justifications, non_ascii_identifiers, engine_hooks,
-    out_of_repo_routes, engine_reaches, app_reaches, theme_inline_lines, *(file_lines(n) for n in BIG_FILES),
+    out_of_repo_routes, engine_reaches, app_reaches, automatico_reaches, library_reaches, app_writes, engine_writes,
+    theme_inline_lines, *(file_lines(n) for n in BIG_FILES),
     agents_rules_without_check)}
 
 

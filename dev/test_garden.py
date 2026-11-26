@@ -24,10 +24,13 @@ def check(ok, msg):
         failures.append(msg)
 
 
-ENGINE = "try:\n    import fora\nexcept ImportError:\n    fora = None\n\n\nclass Engine:\n    def _inside(self):\n        pass\n"
+ENGINE = "try:\n    import fora\nexcept ImportError:\n    fora = None\n\n\nclass Engine:\n    def _inside(self):\n        pass\n\n    def __init__(self):\n        self.pos = 0\n"
 PERMISSAO = 'OUT_OF_REPO = (\n    ("GET", "/api/a"),\n)\n'
-SERVER = "class App:\n    def _state(self):\n        pass\n"
-HOOKS_BASE = {"engine.py": ENGINE, "permissao.py": PERMISSAO, "server.py": SERVER, "comandos.py": "x = 1\n"}
+SERVER = ("class App:\n    def __init__(self):\n        self.queue = []\n\n    def _state(self):\n        pass\n\n\n"
+          "class Library:\n    def _books(self):\n        return self._books\n")
+AUTOMATICO = "class Automatico:\n    def _round(self):\n        pass\n"
+HOOKS_BASE = {"engine.py": ENGINE, "permissao.py": PERMISSAO, "server.py": SERVER, "automatico.py": AUTOMATICO,
+              "comandos.py": "x = 1\n"}
 WORKFLOW = ("name: W\non:\n  push:\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: S\n"
             "        shell: python3 {0}\n        run: |\n          try:\n              pass\n{handler}")
 INDEX = "<html>\n<script>\nlet a = 1;\n</script>\n</html>\n"
@@ -348,6 +351,22 @@ CASES = {
     "app_reaches": [
         ("a reach from another module", HOOKS_BASE, {**HOOKS_BASE, "comandos.py": "def f(a):\n    return a._state\n"}),
     ],
+    "automatico_reaches": [
+        ("a reach from another module", HOOKS_BASE, {**HOOKS_BASE, "comandos.py": "def f(a):\n    return a._round()\n"}),
+    ],
+    "library_reaches": [
+        ("a reach from the rest of server.py",
+         {**HOOKS_BASE, "server.py": SERVER + "\n\ndef f(lib):\n    return lib.books\n"},
+         {**HOOKS_BASE, "server.py": SERVER + "\n\ndef f(lib):\n    return lib._books()\n"}),
+    ],
+    "app_writes": [
+        ("a write to the App's state", {**HOOKS_BASE, "comandos.py": "def f(A):\n    return A.queue[0]\n"},
+         {**HOOKS_BASE, "comandos.py": "def f(A):\n    A.queue.append(1)\n"}),
+    ],
+    "engine_writes": [
+        ("a write to the engine's state", {**HOOKS_BASE, "comandos.py": "def f(E):\n    return E.pos\n"},
+         {**HOOKS_BASE, "comandos.py": "def f(E):\n    E.pos = 1\n"}),
+    ],
     "theme_inline_lines": [
         ("an inline line", {"themes/ritmelli/index.html": INDEX},
          {"themes/ritmelli/index.html": INDEX.replace("let a = 1;\n", "let a = 1;\nlet b = 2;\n")}),
@@ -499,6 +518,13 @@ def test_acceptance():
     raised = dict(ceilings, comment_lines=ceilings["comment_lines"] + 1)
     names = {f.split(":")[0] for f in garden.check(garden.scoreboard(weedy), raised, ceilings, {})[0]}
     check("comment_lines" in names, "the ceiling raised along with the comment still fails")
+    base = garden.scoreboard(HOOKS_BASE)
+    ceilings = {k: garden.count_of(v) for k, v in base.items()}
+    writes = {**HOOKS_BASE, "comandos.py": "def f(A):\n    A.queue = []\n"}
+    raised = dict(ceilings, app_writes=ceilings["app_writes"] + 1)
+    failed, _ = garden.check(garden.scoreboard(writes), raised, ceilings, {"comandos.py": {2}})
+    check(len(failed) == 1 and failed[0].startswith("app_writes: the ceiling went up"),
+          f"a direct write to the App with app_writes raised along with it fails ({failed})")
 
 
 def test_description():

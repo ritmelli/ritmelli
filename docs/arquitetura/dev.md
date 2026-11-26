@@ -83,7 +83,7 @@ procura a execução pela API (na fila, no head do PR da entrada). Sem ela, o ve
 O placar do jardim, o `dev/garden.py` (no `STDLIB`), conta o mato do repo: as linhas de comentário de cada
 linguagem e as de docstring, as supressões, as esperas do app e as de `dev/`, os timers do tema, os retries, os
 `except` largos, os testes pulados, as marcas de pendência, a prosa sem issue, os nomes sem ASCII, os acessos que o
-`dev/testa_ganchos.py` conta, as linhas inline do tema, as linhas dos arquivos grandes e do `AGENTS.md` e as regras
+`dev/testa_ganchos.py` conta (e as escritas diretas no estado do `App` e do motor), as linhas inline do tema, as linhas dos arquivos grandes e do `AGENTS.md` e as regras
 dele sem verificação. Cada número tem um teto no `dev/garden.json`: acima dele, ou abaixo sem o teto descer junto, o
 check reprova, e o teto do PR nunca passa o da base (o `$env:BASE` no PR; na fila, o commit sobre o qual a entrada
 foi montada, que vem no nome da ref dela, como no `compara`). Uma base sem `dev/garden.json` é medida. Cada contador

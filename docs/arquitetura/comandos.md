@@ -31,7 +31,7 @@ na linha do prato (`Reserva`): há uma só reserva em curso por deck e linha (`A
 - o fim do disco (`_volta_fila`);
 - a virada da passagem (`_volta_passagem`);
 - o stream da parecida que não abriu (`_abre_stream`), sem guardar no histórico;
-- a parecida que chegou com o prato parado (`_volta_auto`);
+- a parecida que chegou com o prato parado (`auto_round`);
 - o enfileirar com o prato parado, para a entrada que acabou de entrar.
 
 A virada pendente é conciliada num laço só, o `concilia` do `comandos.py`: a cada volta, sob a `fila_lock` e o
@@ -63,7 +63,7 @@ grupo passando para a linha do seek. O grupo já resolvido, com o primeiro Próx
 chega se tocou e o prato segue na linha que ele publicou. O Próxima com a virada pendente devolve a entrada dela; se ela
 já saiu da fila, segue para a primeira. O Próximo que concilia a virada passa o grupo para a linha dela, e quem chega
 nesse meio se junta a ele; o grupo só fica com a virada se a entrada dela ainda está na fila. No `_volta_fila` e no
-`_volta_auto`, se tocar falhar, o erro vai para a tela (`engine.error`); em todos, a entrada quebrada sai da fila, menos
+`auto_round`, se tocar falhar, o erro vai para a tela (`Engine.set_error`, lido em `engine.error`); em todos, a entrada quebrada sai da fila, menos
 quando outra reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz o avanço.
 
 Três avanços tentam de novo, cada um pela sua regra; os dois primeiros até `ADVANCE_TRIES` vezes:
@@ -85,8 +85,9 @@ entre voltar ao começo e tocar o de antes com a faixa e a posição lidas no me
 virada, e a passagem preparada sai ali. Ele só lê o topo do histórico: a troca confere que o prato ainda é a linha que
 ele viu e o topo ainda é o que ele escolheu, e o topo sai só com a troca feita; o recomeço confere a linha no `pode` do
 `seek`. O que mudou no meio (um Próximo, um seek, o esquecer) faz o Anterior escolher de novo. A troca, o Parar e a
-publicação da preparação pegam a `fila_lock` e o `_lock` do motor pelo `App.with_engine`, que nunca espera o `_lock`
-com a `fila_lock` na mão: com o `_lock` ocupado (a reabertura do áudio, a troca de aparelho), solta a `fila_lock`, espera
+publicação da preparação pegam a `fila_lock` e o `_lock` do motor pelo `App.with_engine`, que entrega a `fila_lock` ao
+`Engine.with_lock` do motor; ele nunca espera o `_lock` com a `fila_lock` na mão (o `engine_seams` do
+`dev/testa_comandos.py` confere): com o `_lock` ocupado (a reabertura do áudio, a troca de aparelho), solta a `fila_lock`, espera
 fora e tenta de novo, e a leitura do estado segue respondendo enquanto um vigia ou uma rota no executor espera o `_lock`
 (as rotas que trocam no laço, como o `/api/play`, ainda esperam ali, como antes). O ganho do disco que entra é medido
 antes, e o leitor que começa, a onda e a medida rodam depois de soltar as duas (o `depois` do `load`, do `espera` e do
@@ -123,20 +124,28 @@ O servidor e os comandos leem e conferem o prato pela interface do motor, e não
 e do `Proximo`), e a `Engine.on_line(t)` confere, sob o `_qlock`, se o prato ainda é aquela linha. A virada sai do
 motor pelo `take_switch`, a passagem preparada pelo `drop_prepared` (o `cancelar_pronto` é o mesmo, pegando o
 `_qlock`), o ganho medido antes das travas pelo `gain_for`, o nome novo do disco no prato pelo `update_track`, a
-leitura do estado pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. Toda mudança da fila passa pelo
-`App.change_queue`, que pega o `_qlock`, muda e confere a preparada no mesmo trecho. O que ainda pega as travas do
-motor por fora (o `_qlock` dos trechos do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
-`release_reservation` e do `change_queue`, e o `_lock` do `with_engine`) é contado pelo `dev/testa_ganchos.py`, e o
-`dev/garden.py` segura a conta no teto `engine_reaches` do `dev/garden.json`: acima do teto entrou acesso novo;
-abaixo, o PR que tirou um baixa o teto junto. Os nomes
-privados do motor saem da árvore de sintaxe do `engine.py` (os métodos e os `self._x` que a `Engine` e a `MockEngine`
-definem), e o `getattr` com o nome escrito também conta.
+leitura do estado pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. A mudança da fila feita pelo
+`App.change_queue` pega o `_qlock`, muda e confere a preparada no mesmo trecho; o `_troca_audio` do Automático ainda
+muda entradas da fila por fora dele (#211, e a forma que o `dev/testa_ganchos.py` não vê está na #232). Os trechos do servidor e dos
+comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
+`release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo
+`Engine.with_lock`. A falha de preparar a próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, e o erro
+da tela entra pelo `set_error` (o `error` do motor só se lê).
 
-Os comandos e o Automático mexem no `App` só pela interface pública dele. O que eles chamavam por privados virou
-público com estes nomes: `change_queue`, `remove_from_queue`, `remove_if_queued`, `save_history`,
-`release_reservation`, `close_switches`, `with_engine` e `tempo_of`; e o que o Automático lia do servidor pelo
-`sys.modules` chega por `search_songs`, `run_helper` e `yt_error`. O mesmo `dev/testa_ganchos.py` conta os acessos
-aos privados do `App` fora do `server.py`, pela mesma regra, contra o teto `app_reaches` do `dev/garden.json`, que é zero.
+Os comandos e o Automático chamam o `App` só pela interface pública dele: `change_queue`, `remove_from_queue`,
+`remove_if_queued`, `save_history`, `release_reservation`, `close_switches`, `with_engine`, `tempo_of`,
+`search_songs`, `run_helper` e os outros; o que eles ainda escrevem direto no estado do `App` é contado
+abaixo. O servidor chama o Automático pela dele (`ligar_auto`,
+`run_auto_watcher` e `run_tempo_watcher`); o `auto_round` e o `fetch_mix` são a volta do vigia das parecidas e a busca
+que ela pede, que os testes chamam pelo `A.automatico`. A prateleira grava pelo `Library.save`.
+
+O `dev/testa_ganchos.py` conta, e o `dev/garden.py` segura cada número no seu teto do `dev/garden.json`, que só
+desce: os acessos aos nomes privados do motor (`engine_reaches`), do `App` (`app_reaches`) e do Automático
+(`automatico_reaches`) vindos dos outros módulos da raiz, contando também os privados de módulo do `engine.py`, do
+`server.py` e do `automatico.py`; os acessos aos privados da `Library` vindos do resto do `server.py`
+(`library_reaches`); e as escritas diretas no estado público do `App` (`app_writes`) e do motor (`engine_writes`)
+vindas de fora do módulo deles. O que conta como acesso ou escrita são os casos do próprio teste; as formas que ele
+ainda não vê estão na #232.
 
 ## A leitura do estado
 
@@ -158,7 +167,7 @@ com o envio parado segura a sua volta inteira e, ao voltar, pula para a mais nov
 
 ## Os vigias e o teste
 
-Cada vigia do `App` é um laço que chama a sua volta: `_volta_fila()`, `_volta_passagem()` e `_volta_auto()`. O
+Cada vigia do `App` é um laço que chama a sua volta: `_volta_fila()`, `_volta_passagem()` e `auto_round()`. O
 `server.App(..., vigias=False)` não sobe nenhuma das threads dos vigias (nem a das métricas, a da sonoridade e a das
 escutas), e o `relogio=False` deixa o `MockEngine` sem o relógio de 10 ms. O `dev/testa_comandos.py` usa os dois: o
 `App` de verdade no `--mock`, numa pasta temporária, com um leitor de mentira no lugar do ffmpeg. Ele mesmo chama o

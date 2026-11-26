@@ -33,7 +33,7 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
 - O módulo opcional de fora do repo passa pelos ganchos do `engine.py` e pelas rotas que já existem
   ([fx.md](docs/arquitetura/fx.md); o grupo `OUT_OF_REPO` do `permissao.py`), e os outros módulos da raiz mexem na
   `Engine` e no `App` só pela interface pública ([comandos.md](docs/arquitetura/comandos.md)): o `dev/testa_ganchos.py`
-  conta, e o `dev/garden.py` segura as quatro contas nos tetos do `dev/garden.json`.
+  conta, e o `dev/garden.py` segura cada conta no seu teto do `dev/garden.json`.
 - Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 - Mexeu em `instalador/`, nos `atualiza*.py`, no `migra.py`, no `pastas.py`, no `microfone/microfone.py` ou no
   `ritmelli.spec`: rode o "Monta o instalador" (`monta.yml`) na branch. Na CI, só ele compila o `.iss` e roda a parcial,
