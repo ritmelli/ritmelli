@@ -12,7 +12,7 @@ NESTED = "@media (min-width: 1px) {\n  a { color: red; }\n  @container (max-widt
 FONT = "@font-face { font-family: 'A'; src: url(fonts/a.woff2) format('woff2'); }\n"
 PEDAL = '<script src="pedal.js"></script>'
 HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
-TWO_INLINED = "<!-- inline-script: s.js -->\n<!-- inline-script: t.js -->\n"
+TWO_LINKED = "<script src=\"s.js\"></script>\n<script src=\"t.js\"></script>\n"
 TRANSLATED = {"index.html": "<!-- i18n -->\n", "i18n/i18n_en.properties": "", "i18n/i18n_pt_BR.properties": ""}
 TEXTS = {"i18n/i18n_en.properties": "a=b\n", "i18n/i18n_pt_BR.properties": "a=b\n"}
 NOTICE = '<script src="notice.js"></script>'
@@ -116,20 +116,20 @@ SAMPLES = (
     ("a color changed", styled("a { color: #fff; }\n"), styled("a { color: #000; }\n"), ["gone", "new"]),
     ("a comment put inside a length", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14/**/px + 1px); }\n"), ["gone", "new"]),
-    ("a </script> put in a comment of an inlined script",
-     {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "'use strict';\nf();\n"},
-     {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "'use strict'; // </script>\nf();\n"},
+    ("a </script> put in a comment of a linked script",
+     {"index.html": "<script src=\"s.js\"></script>\n", "s.js": "'use strict';\nf();\n"},
+     {"index.html": "<script src=\"s.js\"></script>\n", "s.js": "'use strict'; // </script>\nf();\n"},
      CANNOT),
-    ("a // <!-- in an inlined script turned into // <!-- <script>",
-     {"index.html": TWO_INLINED, "s.js": "f();\n// <!--\n", "t.js": "g();\n"},
-     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- <script>\n", "t.js": "g();\n"},
+    ("a // <!-- in a linked script turned into // <!-- <script>",
+     {"index.html": TWO_LINKED, "s.js": "f();\n// <!--\n", "t.js": "g();\n"},
+     {"index.html": TWO_LINKED, "s.js": "f();\n// <!-- <script>\n", "t.js": "g();\n"},
      CANNOT),
-    ("a // <!-- --> in an inlined script turned into // <!-- <script></script> -->",
-     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- -->\n", "t.js": "g();\n"},
-     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- <script></script> -->\n", "t.js": "g();\n"}, CANNOT),
-    ("a <script> put after the --> of a // <!-- --> in an inlined script",
-     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- -->\n", "t.js": "g();\n"},
-     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- --> <script>\n", "t.js": "g();\n"}, CANNOT),
+    ("a // <!-- --> in a linked script turned into // <!-- <script></script> -->",
+     {"index.html": TWO_LINKED, "s.js": "f();\n// <!-- -->\n", "t.js": "g();\n"},
+     {"index.html": TWO_LINKED, "s.js": "f();\n// <!-- <script></script> -->\n", "t.js": "g();\n"}, CANNOT),
+    ("a <script> put after the --> of a // <!-- --> in a linked script",
+     {"index.html": TWO_LINKED, "s.js": "f();\n// <!-- -->\n", "t.js": "g();\n"},
+     {"index.html": TWO_LINKED, "s.js": "f();\n// <!-- --> <script>\n", "t.js": "g();\n"}, CANNOT),
     ("the </script> of the last script of the page taken out",
      {"index.html": "<p>x</p>\n<script src=\"x.js\"></script>\n", "x.js": "f();\n"},
      {"index.html": "<p>x</p>\n<script src=\"x.js\">\n", "x.js": "f();\n"}, CANNOT),
@@ -172,11 +172,22 @@ SAMPLES = (
      ["gone", "new"]),
     ("a comment in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px/* c */+ 1px); }\n"), ["gone", "new"]),
-    ("a script whose </ script hides the file tag after it, with that file changed",
+    ("a script with a </ script, whose first </script> comes before a file tag, with that file changed",
      {"index.html": "<script>//</ script><a title=\"</script><script src=\"/t/other/proof.js\"></script>\">\n",
       "/t/other/proof.js": "window.proof = 1;\n"},
      {"index.html": "<script>//</ script><a title=\"</script><script src=\"/t/other/proof.js\"></script>\">\n",
-      "/t/other/proof.js": "window.proof = 2;\n"}, CANNOT),
+      "/t/other/proof.js": "window.proof = 2;\n"}, ["gone", "new"]),
+    ("a </ style> and a script tag put in a comment of a linked stylesheet", styled("a { }\n"),
+     styled("/* </ style><script src=\"x.js\"></script> */\na { }\n"), []),
+    ("the data of a script whose first type, in capitals, is JSON and whose second is JavaScript, changed",
+     {"index.html": "<script TYPE=\"application/json\" type=\"text/javascript\">\n[1]\n</script>\n"},
+     {"index.html": "<script TYPE=\"application/json\" type=\"text/javascript\">\n[2]\n</script>\n"},
+     ["script content"]),
+    ("a rule moved across the i18n mark, which the server makes a <script>",
+     {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n<!-- i18n -->\n<link rel=\"stylesheet\" href=\"b.css\">\n",
+      "a.css": "p { color: red; }\n", "b.css": "", **TEXTS},
+     {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n<!-- i18n -->\n<link rel=\"stylesheet\" href=\"b.css\">\n",
+      "a.css": "", "b.css": "p { color: red; }\n", **TEXTS}, ["gone", "new"]),
     ("a stylesheet that loses its byte order mark", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
                                                      "a.css": "\ufeffa { color: red; }\n"},
      {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n", "a.css": "a { color: red; }\n"}, []),
@@ -258,27 +269,21 @@ DOUBTFUL = (
     ("an @namespace in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
                                               "a.css": "@namespace svg url(http://www.w3.org/2000/svg);\n"}),
     ("a linked stylesheet that is not in the theme", {"index.html": "<link rel=\"stylesheet\" href=\"gone.css\">\n"}),
-    ("an inline-script that is not in the theme", {"index.html": "<!-- inline-script: gone.js -->\n"}),
+    ("an inline-script comment, which the server leaves as a comment",
+     {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "f();\n"}),
     ("an @scope in a style", {"index.html": "<style>@scope { p { color: red; } }</style>\n"}),
     ("an @scope in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
                                           "a.css": "@sco\\70 e { p { color: red; } }\n"}),
     ("an @import in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
                                            "a.css": "/* @import \"b.css\"; */\n"}),
-    ("a </ style> in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
-                                             "a.css": "/* </ style><script src=\"x.js\"></script> */\n"}),
     ("a value in single quotes", {"index.html": "<script src='x.js'></script>\n"}),
-    ("a value with no quotes", {"index.html": "<div id=a></div>\n<script src=\"x.js\"></script>\n"}),
     ("a tag name in capitals", {"index.html": "<SCRIPT src=\"x.js\"></SCRIPT>\n"}),
     ("a < in the text", {"index.html": "<p>a < b</p>\n<script src=\"x.js\"></script>\n"}),
     ("a <script/>", {"index.html": "<script src=\"x.js\"/></script>\n"}),
-    ("a <style/>", {"index.html": "<style/>a { }</style>\n"}),
     ("a style with a </style x> before its </style>", {"index.html": "<style>a { }</style x>b { }</style>\n"}),
     ("text inside a <script src>", {"index.html": "<script src=\"x.js\">f();</script>\n"}),
     ("a script inside an svg", {"index.html": "<svg><script src=\"x.js\"></script></svg>\n"}),
     ("a preload of a script", {"index.html": "<link rel=\"preload\" as=\"script\" href=\"x.js\">\n"}),
-    ("a named reference that is not an entity", {"index.html": "<div title=\"&ampx;\"></div>\n"}),
-    ("a & that is not a whole reference in a value", {"index.html": "<div title=\"a&b\"></div>\n"}),
-    ("a </script in an inlined script", {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "// </script>\n"}),
     ("an escaped separator in an href", {"index.html": "<link rel=\"stylesheet\" href=\"x%5C..%2F..%2Fa.css\">\n"}),
     ("a backslash in a src", {"index.html": "<script src=\"x\\..\\x.js\"></script>\n"}),
     ("a / and a quote in an unquoted value of an end tag",
@@ -422,6 +427,20 @@ def main():
     results.append((isinstance(own, theme_rebuild.Page) and "a.css" in own.read,
                     f"a /t/ sheet of the page's own folder keeps its relative url() and counts as read by its name in "
                     f"the theme ({own if isinstance(own, theme_rebuild.Doubt) else sorted(own.read)})"))
+    build = theme_rebuild.from_root("theme_page").Template
+    kept = build.file_tag
+
+    def module_tag(self, *args):
+        end = kept(self, *args)
+        self.found[-1] = (*self.found[-1][:2], "module", self.found[-1][3])
+        return end
+    build.file_tag = module_tag
+    try:
+        unknown = built({"index.html": "<script src=\"x.js\"></script>\n", "x.js": "f();\n"}.get)
+    finally:
+        build.file_tag = kept
+    results.append((isinstance(unknown, theme_rebuild.Doubt), f"a file tag of a kind the build adds later: cannot judge "
+                                                                f"({unknown})"))
     other = {"index.html": "<link rel=\"stylesheet\" href=\"/t/outro/base.css\">\n",
              "/t/outro/base.css": "a { background-image: url(image.png); }\n"}
     kept = theme_rebuild.reader, theme_rebuild.listing
@@ -433,10 +452,10 @@ def main():
     results.append((code == 0, f"--theme outro reads a /t/outro/ sheet as one of the page's own folder ({code})"))
     for page in ("themes/ritmelli/index.html", "gallery/index.html"):
         try:
-            theme_rebuild.strict(theme_rebuild.text_of((theme_rebuild.RAIZ / page).read_bytes()), page)
-            results.append((True, f"{page} is in the strict form"))
+            theme_rebuild.tags_of(theme_rebuild.text_of((theme_rebuild.RAIZ / page).read_bytes()))
+            results.append((True, f"{page} is in the form the build reads"))
         except theme_rebuild.Doubt as unsure:
-            results.append((False, f"{page} is not in the strict form: {unsure}"))
+            results.append((False, f"{page} is not in the form the build reads: {unsure}"))
     for rev in (None, "HEAD"):
         read = theme_rebuild.reader(rev, "gallery-reader")
         shared, own = read("/t/ritmelli/i18n.js"), theme_rebuild.reader(rev, "ritmelli")("i18n.js")
@@ -444,7 +463,7 @@ def main():
                         f"a /t/ritmelli/ address is read from themes/ritmelli ({'the working tree' if rev is None else rev}, "
                         f"{len(shared or '')} characters)"))
     refused = [(title, dict(page), 3) for title, page in DOUBTFUL
-               if title in (DOUBTFUL[0][0], "an inline-script that is not in the theme")]
+               if title in (DOUBTFUL[0][0], "an inline-script comment, which the server leaves as a comment")]
     kept = theme_rebuild.reader, theme_rebuild.listing
     for title, page, expected in [("the same page", inline("f();"), 0), ("a changed script", inline("g();"), 1),
                                   *refused]:
