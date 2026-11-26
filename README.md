@@ -580,7 +580,8 @@ The description at the top of each test file explains what it checks.
   copies of the rule, which have to agree, and needs an elevated administrator, so only on a test Windows). The setup's
   choice of folder runs in the `testa-migracao` scenarios of the `monta.yml` pipeline.
 - The updates (`atualizacao.py`, `atualizador.py`, `instalador/atualizacao/`): `dev/testa_atualizacao.py`,
-  `dev/testa_atualizador.py` and `instalador/atualizacao/testa_parcial.py` (the partial update and its manifest).
+  `dev/testa_atualizador.py` and `instalador/atualizacao/testa_parcial.py` (the partial update, its manifest and the
+  `publica.py` call that `build_manifest.py` builds).
 
 They all run with the virtual environment active, some need ffmpeg, and `testa_filtro.py`, `testa_microfone.py`,
 `testa_voz.py` and `teste_reamostra.py` need the DLLs built by `microfone\apo\compila.bat teste` (with Ritmelli off,
