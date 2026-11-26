@@ -234,16 +234,25 @@ class _Job:
     def left_after(self, seconds):
         handles = self.members()
         try:
+            listed = [handle for handle in handles if self._running(handle)]
             fim = time.monotonic() + seconds
-            for handle in handles:
+            for handle in listed:
                 self.k.WaitForSingleObject(wintypes.HANDLE(handle), max(0, int((fim - time.monotonic()) * 1000)))
-            left = self.active()
-            running = [self._running(handle) for handle in handles] if left else []
-            seen = [(self._image(handle), alive) for handle, alive in zip(handles, running)]
+            left = self._still_running()
+            running = [self._running(handle) for handle in listed] if left else []
+            seen = [(self._image(handle), alive) for handle, alive in zip(listed, running)]
         finally:
             for handle in handles:
                 self.k.CloseHandle(wintypes.HANDLE(handle))
         return left, seen
+
+    def _still_running(self):
+        handles = self.members()
+        try:
+            return sum(self._running(handle) for handle in handles)
+        finally:
+            for handle in handles:
+                self.k.CloseHandle(wintypes.HANDLE(handle))
 
     def _image(self, handle):
         size, name = wintypes.DWORD(1024), ctypes.create_unicode_buffer(1024)
