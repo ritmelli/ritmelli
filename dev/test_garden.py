@@ -293,6 +293,16 @@ CASES = {
                   "subprocess.run(['powershell', '-Command', '\\n'.join([part])])\n"},
          {"a.py": "import subprocess\ns = 'Start-Sleep 1'\nif flag:\n    part = s\nelse:\n    part = s\n"
                   "subprocess.run(['powershell', '-Command', '\\n'.join([part])])\n"}),
+        ("a name the class sets after a method is read from around the class",
+         {"a.py": "import subprocess\nps = 'Get-Date'\nclass C:\n    def f(self, x=subprocess.run(['powershell', '-Command', ps])):\n"
+                  "        pass\n    ps = 'Start-Sleep 1'\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nclass C:\n    def f(self, x=subprocess.run(['powershell', '-Command', ps])):\n"
+                  "        pass\n    ps = 'Get-Date'\n"}),
+        ("a name the class body uses before setting it is read from around the class",
+         {"a.py": "import subprocess\nps = 'Get-Date'\nclass C:\n    x = subprocess.run(['powershell', '-Command', ps])\n"
+                  "    ps = 'Start-Sleep 1'\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nclass C:\n    x = subprocess.run(['powershell', '-Command', ps])\n"
+                  "    ps = 'Get-Date'\n"}),
         ("a branch's script does not reach the other branch",
          {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\nelse:\n    " + RUN_PS},
          {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\n" + RUN_PS}),

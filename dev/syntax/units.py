@@ -330,6 +330,9 @@ class Assignments:
             if bound:
                 bound = [b for b in bound if not self.other_branch(b[2], chain)]
                 earlier = sorted((b for b in bound if b[0] <= position(name)), key=lambda b: b[0], reverse=True)
+                if not outer and not earlier and isinstance(scope, ast.ClassDef):
+                    scope, outer = self.scope_of.get(id(scope)), True
+                    continue
                 if outer and len(bound) > 1 and any(b[0] > position(name) for b in bound):
                     return []
                 if outer and not earlier:
