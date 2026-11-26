@@ -21,8 +21,8 @@ até 80 linhas (o `dev/garden.py` confere as duas).
 - Efeito de voz: as configurações moram no `fx.py`, e o `microfone/preset.py` as leva ao motor em C++. Etapa nova
   precisa do par no `microfone/apo/voz.h` (o `dev/testa_voz.py` falha sem ele).
 - Texto novo da interface nas duas línguas: `themes/ritmelli/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, com as
-  mesmas chaves na mesma ordem, e os da galeria em `gallery/i18n/`; a mensagem do servidor vai pelo `i18n.msg` ou pela
-  `i18n.Recusa`, com uma chave `server.*` que existe em todo tema (o `testa_i18n` confere as três coisas).
+  mesmas chaves na mesma ordem, e os da galeria em `gallery/i18n/`; a chave `server.*` de cada `i18n.msg` e
+  `i18n.Recusa` do servidor existe em todo tema, com os mesmos parâmetros (o `testa_i18n` confere as duas coisas).
 - Rota nova do `server.py` entra na tabela do `permissao.py`, que o `guard` confere: rota fora da tabela é só do PC, e o
   `dev/testa_mock.py` falha enquanto ela não entra.
 - As travas do servidor se pegam numa ordem só: a de [comandos.md](docs/arquitetura/comandos.md#as-travas).
@@ -55,14 +55,15 @@ até 80 linhas (o `dev/garden.py` confere as duas).
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
 | Dados de uso | `metricas.py` e o aviso deles no tema | `testa_metricas`; o aviso, `fitcheck.py --metricas` (sobe os próprios `--mock --metricas-teste`, sem rede) |
 | Troca de nome | `migra.py` | `testa_migra` |
-| Interface | `themes/ritmelli/`, `gallery/`, `janela.py` | `fitcheck.py`, `missing_script.py` e `theme_scripts.py` (o `--tela` do `testa_tudo` roda os três) contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e uma library.json só com `[]`; a janela, o app instalado no job `testa` do `monta.yml` |
+| Interface | `themes/ritmelli/`, `gallery/`, `janela.py` | `fitcheck.py`, `missing_script.py` e `theme_scripts.py` (o `--tela` do `testa_tudo` roda os três) contra o `--mock` |
 
 ## Antes do PR
 
 Rode na raiz, com o venv: `$env:PYTHONUTF8 = '1'; python -m ruff check .; python dev\testa_tudo.py` (os outros modos e
 onde entra teste novo: o [Contributing](README.md#contributing) do README). O check "Testa o PR" junta os jobs do
 `testa.yml`: o `testes` roda o `dev/testa_tudo.py` sem os longos e o `dev/garden.py`, que também lê a descrição do PR (a
-seção de prova); o `compara` só bloqueia com a etiqueta `extracao-tema`. A fila de merge da `main` exige ele e o
-"Trusted author" (`dev/test_trusted_author.py`: PR de quem não é um dos dois mantenedores só passa aprovado por um deles
-no head atual), e recusa PR com a etiqueta `needs-owner` (o passo "Verdict" do `testa.yml` e o `dequeue-on-label.yml`,
-testados pelo `dev/test_needs_owner.py`). Como entrar na fila: [dev.md](docs/arquitetura/dev.md#a-fila).
+seção de prova); a mudança de print no `compara` só bloqueia com a etiqueta `extracao-tema`. A fila de merge da `main`
+exige ele e o "Trusted author" (`dev/test_trusted_author.py`: PR de quem não é um dos dois mantenedores só passa
+aprovado por um deles no head atual), e recusa PR com a etiqueta `needs-owner` (o passo "Verdict" do `testa.yml` e o
+`dequeue-on-label.yml`, testados pelo `dev/test_needs_owner.py`). Como entrar na fila:
+[dev.md](docs/arquitetura/dev.md#a-fila).

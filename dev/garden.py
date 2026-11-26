@@ -1255,9 +1255,16 @@ def workflow_jobs(t):
 
 
 def agents_rules(text):
-    rules, current = [], None
+    rules, current, row = [], None, None
     for n, line in enumerate(text.splitlines(), 1):
-        if not line.strip() or line.startswith(("#", "|")):
+        if line.startswith("|"):
+            row = 0 if row is None else row + 1
+            if row >= 2:
+                rules.append([n, line.strip().strip("|").split("|")[-1]])
+            current = None
+            continue
+        row = None
+        if not line.strip() or line.startswith("#"):
             current = None
             continue
         if re.match(r"^\s*(?:[-*+]|\d+[.)])\s", line) or current is None:
@@ -1269,14 +1276,21 @@ def agents_rules(text):
 
 
 def agents_rules_without_check(t):
-    valid = verification_names(t) | workflow_jobs(t)
+    tests, jobs = verification_names(t), workflow_jobs(t)
     items = []
     for n, rule in agents_rules(t.files.get("AGENTS.md", "")):
-        cited = {name.replace("\\", "/") for c in re.findall(r"`([^`]+)`", rule) if c.split()
-                 for name in (c.strip(), c.split()[0])}
-        if not cited & valid:
+        if not any(cites_check(span.replace("\\", "/"), tests, jobs) for span in re.findall(r"`([^`]+)`", rule)):
             items.append(("AGENTS.md", n))
     return items
+
+
+def cites_check(span, tests, jobs):
+    words = span.split()
+    if not words:
+        return False
+    if span.strip() in tests or span.strip() in jobs:
+        return True
+    return words[0] in tests and all(w.startswith("-") for w in words[1:])
 
 
 COUNTERS = {f.__name__: f for f in (

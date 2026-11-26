@@ -14,6 +14,9 @@ todos os `.js` e `.css` da pasta do tema, e cada bloco marcado (`/* NOME-INICIO 
 `/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só, aberto e fechado nele, nessa ordem.
 
 Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
+Quem muda as boas-vindas roda o `dev/fitcheck.py` também com `--boas-vindas`, num `--mock` com `--data-dir`
+novo e uma `library.json` só com `[]`. A janela própria (`janela.py`) se prova no app instalado, no job `testa`
+do `monta.yml`.
 O código do tema sai aos poucos do `index.html` para arquivos `.js` na pasta do tema, um bloco marcado por arquivo, que
 o `index.html` carrega por um `<script src>` no lugar em que o bloco estava, sem `defer`: os scripts rodam na mesma
 ordem, e o que um deles declara no alto continua à vista dos de depois. O primeiro é o `shared.js`, carregado no
