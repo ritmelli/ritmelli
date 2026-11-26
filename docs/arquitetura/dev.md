@@ -18,21 +18,33 @@ dois testes longos, a banca das passagens, o `testa_passagem`, e o `test_capture
 roda depois do `COMPLETO`; no `testa.yml`, o job de Testes roda o `--without-long`, e cada teste longo tem
 um job próprio ao lado (a Banca, `--long bench`, e a Captura, `--long capture`)) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
 Inno Setup, para o setup de teste do `testa_aparelho_mudo`). No `COMPLETO` e no `LONG_TESTS`, biblioteca
-ou ffmpeg faltando é falha. Todo teste de `dev/`, o `dev/testa_*.py` e o `dev/test_*.py` (todo teste
-novo, em inglês, nasce `test_*`), tem destino: uma lista, um passo próprio do `testa.yml` declarado
-no `PASSOS` (o `--passo disco` roda o `testa_pasta_protegida --disco`) ou, quando só roda à mão, o
+ou ffmpeg faltando é falha. Todo teste do `git ls-files`, de qualquer pasta (`test*.py`, `testa*.py`,
+`teste*.py` e os `test*.ps1`; todo teste novo, em inglês, nasce `test_*`), tem destino: uma lista, um
+passo próprio do `testa.yml` declarado no `PASSOS` (o `--passo disco` roda o
+`testa_pasta_protegida --disco`), a linha do `PS1_TESTS` para um `.ps1` (o job, o passo, o comando e a
+condição dele no `monta.yml`) ou, quando só roda à mão, o
 comentário `# manual: <comando> precisa de <aparelho>` no topo, antes da docstring (o
 `dev/bumbo.py` tem um). Antes de rodar, o `COMPLETO`, o `--long`, o `--so-stdlib` e o `--microfone`
-falham com o teste sem destino, com o arquivo de `dev/` que tem o `manual:` e roda no check, e com o
-modo do `testa_tudo` que o `testa.yml` deixou de chamar. O `dev/test_ci_workflow.py` confere o que
+falham com o teste sem destino, com o arquivo que tem o `manual:` e roda nos checks, e com o modo do
+`REQUIRED_MODES` que saiu do check exigido: o job, o passo, o comando, o env ou a condição de cada um,
+e os passos que a condição e o env leem pelo `id` (os do `SOURCE_STEPS`, fixados do mesmo jeito). O
+`dev/test_ci_workflow.py` confere o que
 nenhuma execução de PR exercita: o bloco do "Testa o PR" num bash com um `gh` falso (o comentário
 que o GitHub não confirma reprova dizendo isso; no push, os jobs pulados só passam com uma
 execução da fila aprovada no mesmo commit), os jobs que o push pula, as chaves de cache, essa trava
-e as bibliotecas sem versão no `instalador/travas.txt` (as conhecidas, da issue #231). O
+(com um mutante de cada modo), o leitor de YAML dos testes (o `dev/workflow_yaml.py`, só da biblioteca
+padrão, que recusa o que não conhece), os gatilhos exatos do `testa.yml`, sem filtro de caminho nem
+de branch, um job só com o nome "Testa o PR" em todos os workflows, nenhum passo dele com `if:` além
+do "Cancelada", com um mutante de cada, e as bibliotecas sem versão no `instalador/travas.txt` (as conhecidas, da issue #231). O
 `dev/test_compara_not_ready.py` roda o `compara` com um sinal de pronto que nunca fecha e confere o
 diagnóstico, no celular e na mesa, e o `dev/test_capture.py` roda o `--capture` de verdade (os prints,
 a chave e o `head_cache` que o workflow lê para salvar). O `dev/test_compara_push_steps.py` roda os
-passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
+passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O
+`dev/test_release_workflow.py` lê os workflows e as ações locais como YAML: toda action fixada num
+commit (as duas da SignPath no mesmo), o `sparse-checkout` de cada job da `monta.yml` com o que os
+scripts dele leem, a conferência do recurso de versão das DLLs depois da montagem e no job do
+filtro, com os nomes e a tabela de língua do `ritmelli.exe` (`ritmelli.spec`), e o Inno Setup só
+pela ação `.github/actions/inno-setup`. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
 cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
 roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo commit que testou,
@@ -43,17 +55,21 @@ da captura do `compara`, e o PR que muda esse arquivo dispara todas as áreas. N
 um commit novo rodam o check: editar a descrição ou mexer numa etiqueta não roda, porque uma
 execução no mesmo commit vira a suite mais nova do workflow e o check exigido sai só dela
 (encobriria o "Testa o PR" de quem testou). A etiqueta `extracao-tema` e a base nova de um PR
-empilhado valem na fila de merge, que lê as etiquetas na hora e testa o merge de verdade; no
-PR, a etiqueta vale no próximo commit, ao reabrir ou num re-run completo, e a base nova só no
-próximo commit ou ao reabrir (o re-run repete a base do evento antigo).
+empilhado valem na fila de merge, que testa o merge de verdade; na entrada da fila, o `compara`
+compara com o commit de antes do PR, o da ref da entrada (`pr-<número>-<commit>`). No PR, a
+etiqueta vale no próximo commit, ao reabrir ou num re-run completo, e a base nova só no próximo
+commit ou ao reabrir (o re-run repete a base do evento antigo).
 A etiqueta `needs-owner` (prova que pede ação física, como plugar ou desligar um aparelho, ou
-decisão do dono) também vale na fila: o passo "Needs owner" do "Testa o PR" lê a lista do job das
-etiquetas e reprova a entrada da fila cujo PR a tem, ou cujas etiquetas não vieram; no PR ele só
-avisa no resumo. O dono faz a prova, tira a etiqueta e põe o PR na fila. A etiqueta posta com o PR
-já na fila pode chegar tarde para a entrada dele: tirar o PR da fila antes. A prova de um gatilho do
-`testa.yml` ou do nome do check exigido se faz no próprio PR (editar a descrição, pôr e tirar uma
-etiqueta e passar pela fila, com o "Testa o PR" no head). O `dev/test_needs_owner.py` roda esse
-passo, fora do GitHub, em cada caso, e confere os gatilhos e o nome do check exigido.
+decisão do dono) também vale na fila: o passo "Verdict" do "Testa o PR" relê as etiquetas do PR
+pela API na hora de decidir e reprova a entrada da fila cujo PR a tem ou cujas etiquetas não
+vieram, e também a que tem uma `extracao-tema` que os jobs da tela não viram; no PR ele só avisa
+da `needs-owner` no resumo. Uma dessas duas etiquetas posta num PR que está na fila tira o PR dela
+(o `.github/workflows/dequeue-on-label.yml`, que confere antes se a etiqueta segue no PR), menos o PR
+de um fork, cujo token só lê (a issue #255). O dono faz a prova, tira a etiqueta e põe o PR na
+fila. O `dev/test_needs_owner.py` roda num bash com um `gh` falso o passo das etiquetas, o
+"Verdict" e o do `dequeue-on-label.yml`, também com a lista que muda entre o job das etiquetas e o
+veredito. A prova de um gatilho do `testa.yml` ou do nome do check exigido se faz no próprio PR
+(editar a descrição, pôr e tirar uma etiqueta e passar pela fila, com o "Testa o PR" no head).
 
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
