@@ -90,7 +90,8 @@ COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py", "dev/test_compara_not_ready.py",
     "dev/test_compara_push_steps.py", "dev/test_external_module.py", "dev/test_release_workflow.py",
-    "dev/test_fitcheck_ready.py", "dev/test_mock_stop.py", "dev/test_races_211.py"]
+    "dev/test_fitcheck_ready.py", "dev/test_mock_stop.py", "dev/test_races_211.py",
+    "dev/test_stretch_outgoing.py"]
 LONG_TESTS = {"bench": "dev/testa_passagem.py", "capture": "dev/test_capture.py"}
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
