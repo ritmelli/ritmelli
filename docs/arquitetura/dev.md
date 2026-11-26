@@ -35,20 +35,24 @@ execução da fila aprovada no mesmo commit), os jobs que o push pula, as chaves
 (com um mutante de cada modo), o leitor de YAML dos testes (o `dev/workflow_yaml.py`, só da biblioteca
 padrão, que recusa o que não conhece), os gatilhos exatos do `testa.yml`, sem filtro de caminho nem
 de branch, um job só com o nome "Testa o PR" em todos os workflows, nenhum passo dele com `if:` além
-do "Cancelada", com um mutante de cada, e as bibliotecas sem versão no `instalador/travas.txt` (as conhecidas, da issue #231). O
+do "Cancelada", com um mutante de cada, e que toda biblioteca da CI tem versão exata (no `instalador/travas.txt`, no
+`dev/travas.txt` ou na própria linha), menos o yt-dlp, que a ação do Python instala o mais novo a cada execução. O
 `fitcheck` e o `compara` esperam o tema pela mesma função (o `wait_ready` do `dev/fitcheck.py`), que separa o
 Chrome que caiu do tema que não ficou pronto e, no segundo caso, mostra cada condição, os erros da página e as
 respostas com erro (o `Network.responseReceived`). O `dev/test_compara_not_ready.py` roda o `compara` com um sinal
-de pronto que nunca fecha e confere o diagnóstico, no celular e na mesa; o `dev/test_fitcheck_ready.py` faz o mesmo
-no `fitcheck` e confere o relógio do aviso dos dados de uso: os 6 s contam da resposta do `GET /api/state` da página
+de pronto que nunca fecha e confere o diagnóstico, no celular e na mesa, com os 3 s contados da página carregada e
+do script que ele injeta já recusado (sem isso, um runner lento chegava ao veredito antes do 404); o
+`dev/test_fitcheck_ready.py` faz o mesmo no `fitcheck` e confere o relógio do aviso dos dados de uso: os 6 s contam da resposta do `GET /api/state` da página
 (o aviso só abre depois do estado), e não do `Page.navigate`. Com um script do tema ou o estado atrasados de propósito
 o aviso ainda passa, também na reabertura depois do Esc (cada carga conta do estado dela), e um aviso que abre 8 s
-depois do estado reprova. Todo servidor de teste que o `dev/so_mock.py` sobe nasce
+depois do estado reprova. O servidor desses casos sobe com o `dev/stacks_hook` (um `sitecustomize` ligado a um
+socket do teste): quando o `GET /api/state` não volta do servidor em 2 s, o proxy do teste pede as pilhas de todas
+as threads dele, e elas saem no veredito (o `server_stacks`). Todo servidor de teste que o `dev/so_mock.py` sobe nasce
 suspenso num job do Windows (o que ele abrir fica no job) e recebe o `--stop-on-stdin-eof`: desliga quando o teste
 fecha a entrada dele, sem pedido, e o papel do celular, que o `POST /api/shutdown` recusa, desliga do mesmo jeito.
 Toda parada esvazia o job. Na parada pela entrada, o servidor que não sai em 10 s, sai com erro ou deixa processo
-rodando reprova a parada dizendo isso; no último caso, a recusa diz o nome de cada processo que estava no job quando
-o servidor parou e se ele ainda rodava depois da espera. Um `server.py` mais velho, sem a flag (a base de um `compara`), desliga
+rodando reprova a parada dizendo isso; no último caso, a recusa diz o nome de cada processo que ainda rodava no job
+quando o servidor parou e se ele ainda rodava depois da espera. Um `server.py` mais velho, sem a flag (a base de um `compara`), desliga
 pelo `POST /api/shutdown`, só enquanto responde como `--mock`, e o job dele também sai vazio
 (`dev/testa_so_mock.py`, `dev/test_mock_stop.py`). O `dev/test_capture.py` roda o `--capture` de verdade (os prints,
 a chave e o `head_cache` que o workflow lê para salvar). O `dev/test_compara_push_steps.py` roda os
@@ -81,8 +85,9 @@ pelo `--compara`, com a referência da base no cache do Actions), e o `--areas` 
 `.github/workflows/testa.yml`, que roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo
 commit que testou, então o push na `main` roda só a captura do `compara` desse commit para o cache (o
 `--capture`), e o "Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI
-se instalam com as versões do `instalador/travas.txt` (`-c`), que entra na chave do cache delas e na da
-captura do `compara`, e o PR que muda esse arquivo dispara todas as áreas. No PR, só abrir, reabrir e um
+se instalam com as versões do `instalador/travas.txt` (`-c`) e as de dev com as do `dev/travas.txt` (o `-c` do
+`requirements-dev.txt`); os dois entram na chave do cache delas e na da captura do `compara`, e o PR que muda um
+deles dispara todas as áreas. No PR, só abrir, reabrir e um
 commit novo rodam o check: editar a descrição ou mexer numa etiqueta não roda, porque uma execução no mesmo
 commit vira a suite mais nova do workflow e o check exigido sai só dela (encobriria o "Testa o PR" de quem
 testou). A etiqueta `extracao-tema` e a base nova de um PR empilhado valem na fila de merge, que testa o merge

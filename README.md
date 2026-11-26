@@ -447,8 +447,9 @@ instalador\monta.ps1 -Anterior <manifest.json>    # also builds the partial upda
 
 - `-Anterior` also needs that version's `manifest.json.sig` next to the manifest. Both are among the assets of each
   release in [ritmelli/ritmelli-releases](https://github.com/ritmelli/ritmelli-releases/releases).
-- Library versions are pinned in `instalador/travas.txt`, except yt-dlp, which always ships at its latest version
-  because YouTube changes tend to break older ones.
+- Library versions are pinned in `instalador/travas.txt` (the dev-only ones in `dev/travas.txt`), except yt-dlp, which
+  always ships at its latest version because YouTube changes tend to break older ones; the CI installs the newest on
+  every run too.
 - The audio-only ffmpeg (`instalador/ffmpeg/`) and the PyInstaller bootloader (`instalador/bootloader/`) are built by
   the team. Their build scripts sit next to the binaries, and each `FONTE.txt` says where the source came from and how
   it was built.
