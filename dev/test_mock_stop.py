@@ -1,4 +1,6 @@
+import _winapi
 import ctypes
+import io
 import json
 import os
 import subprocess
@@ -180,27 +182,57 @@ def flag_only_for_a_server_that_knows_it():
               "would refuse it")
 
 
+def endless_wav_header():
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(bytes(2 * 8000))
+    head = bytearray(buf.getvalue())
+    head[4:8] = head[40:44] = (0xFFFFFFF0).to_bytes(4, "little")
+    return bytes(head)
+
+
 def measurement_stopped_by_the_given_kill():
     sys.path.insert(0, str(ROOT))
     import engine
     import sonoridade
-    with tempfile.TemporaryDirectory(prefix="ritmelli-measure-stop-", ignore_cleanup_errors=True) as tmp:
-        _, wav = shelf_with_one_long_track(Path(tmp))
-        result, kills = [], []
-        measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(wav, engine.FFMPEG)))
+    name = rf"\\.\pipe\ritmelli-measure-stop-{os.getpid()}"
+    pipe = _winapi.CreateNamedPipe(name, _winapi.PIPE_ACCESS_DUPLEX | _winapi.FILE_FLAG_OVERLAPPED, 0, 1, 65536, 65536,
+                                   0, _winapi.NULL)
+    result, kills, connected, broken = [], [], False, False
+    measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(Path(name), engine.FFMPEG)))
+
+    def kill(p):
+        kills.append(p)
+        engine.mata(p)
+
+    stopping = threading.Thread(target=sonoridade.stop_measurements, args=(kill,))
+    try:
         measuring.start()
-        found = wait_for_ffmpeg_on(wav)
-
-        def kill(p):
-            kills.append(p)
-            engine.mata(p)
-
-        sonoridade.stop_measurements(kill)
-        measuring.join(30)
-        left = holders(wav)
-    check(bool(found) and len(kills) == 1 and result == [None] and not left,
-          f"stop_measurements ends a running measurement through the kill it is given (the engine's mata) and waits "
-          f"for it: nothing holds the track after ({found}, {len(kills)} kill, {result}, {left})")
+        connecting = _winapi.ConnectNamedPipe(pipe, overlapped=True)
+        connected = _winapi.WaitForSingleObject(connecting.event, int(HOLDER_WAIT_S * 1000)) == _winapi.WAIT_OBJECT_0
+        if connected:
+            writing, _ = _winapi.WriteFile(pipe, endless_wav_header(), overlapped=True)
+            writing.GetOverlappedResult(True)
+            stopping.start()
+            stopping.join(HOLDER_WAIT_S)
+            measuring.join(HOLDER_WAIT_S)
+            try:
+                writing, _ = _winapi.WriteFile(pipe, bytes(1024), overlapped=True)
+                writing.GetOverlappedResult(True)
+            except BrokenPipeError:
+                broken = True
+    finally:
+        _winapi.CloseHandle(pipe)
+        measuring.join()
+        if connected:
+            stopping.join()
+    check(connected and len(kills) == 1 and result == [None] and broken,
+          f"stop_measurements ends a measurement still reading its track through the kill it is given (the engine's "
+          f"mata) and waits for it: the ffmpeg is gone when it returns (opened {connected}, {len(kills)} kill, "
+          f"{result}, gone {broken})")
 
 
 def stop(srv):
