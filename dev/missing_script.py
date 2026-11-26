@@ -202,29 +202,6 @@ async def with_tab(srv, run):
         fitcheck.fecha_chrome(chrome, profile)
 
 
-async def with_tabs(srv, runs):
-    chrome, profile = start_chrome()
-    results = []
-    try:
-        address = devtools_address(chrome, CHROME_UP_S)
-        netloc = urllib.parse.urlsplit(address).netloc
-        async with fitcheck.conecta_cdp(address) as ws:
-            browser = Tab(ws, srv.base)
-            reader = asyncio.create_task(fitcheck.le_cdp(ws, browser.pending, browser.on_event))
-            for run in runs:
-                context = (await browser.cmd("Target.createBrowserContext"))["browserContextId"]
-                target = (await browser.cmd("Target.createTarget", url="about:blank",
-                                            browserContextId=context))["targetId"]
-                async with fitcheck.conecta_cdp(f"ws://{netloc}/devtools/page/{target}") as page:
-                    results.append(await run_in_tab(page, srv, run))
-                await browser.cmd("Target.closeTarget", targetId=target)
-                await browser.cmd("Target.disposeBrowserContext", browserContextId=context)
-            reader.cancel()
-    finally:
-        fitcheck.fecha_chrome(chrome, profile)
-    return results
-
-
 async def open_page(tab, query=""):
     url = tab.base + THEME + query
     so_mock.confere(url)

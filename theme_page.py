@@ -77,9 +77,13 @@ def place(html, i):
 class Template:
     def __init__(self, html):
         self.html, self.found, self.elements, self.texts, self.svg, self.select = html, [], [], [], False, False
+        self.marks = set()
         i = 0
         while i < len(html):
             i = self.token(i)
+        if stray := [m.start() for m in re.finditer(re.escape(i18n.MARCA), html) if m.start() not in self.marks]:
+            self.refuse(stray[0], f"the {i18n.MARCA} mark is read only as a comment of its own, where the server puts "
+                                  f"the texts: write it outside any tag, style or script")
 
     def refuse(self, i, message):
         raise ThemePageError(message, place(self.html, i))
@@ -91,6 +95,8 @@ class Template:
                     return self.start_tag(m, i)
                 if kind == "end tag":
                     self.end_tag(m.group(1).lower(), i)
+                if kind == "comment" and m.group(0) == i18n.MARCA:
+                    self.marks.add(i)
                 return m.end()
         self.refuse(i, f"{self.html[i:i + 30]!r} is outside the forms the build reads: write {EXPECTED}")
 
@@ -269,7 +275,9 @@ def theme_of_template(rel):
 
 def build(page, texts, language):
     try:
-        html = inline_files(i18n.injeta(utf8_text(page, page.name), texts, language), page.parent)
+        raw = utf8_text(page, page.name)
+        template(raw)
+        html = inline_files(i18n.injeta(raw, texts, language), page.parent)
     except ThemePageError as ex:
         from aiohttp import web
         where = shown(page) + (f":{ex.at[0]}:{ex.at[1]}" if ex.at else "")

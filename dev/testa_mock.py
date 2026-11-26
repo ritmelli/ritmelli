@@ -1183,6 +1183,11 @@ async def a_missing_file_answers_500(server, folder):
     for slug, name in (("share", "//unreachable.invalid/share/x.js"), ("tshare", "/t///unreachable.invalid/share/x.js")):
         (folder / "themes" / slug).mkdir()
         (folder / "themes" / slug / "index.html").write_text(f'<head>\n<script src="{name}"></script>\n', encoding="utf-8")
+    marked = folder / "themes" / "marked"
+    (marked / "i18n").mkdir(parents=True)
+    (marked / "index.html").write_text("<head>\n<style>/* <!-- i18n --> */</style>\n<!-- i18n -->\n", encoding="utf-8")
+    for language in ("en", "pt_BR"):
+        (marked / "i18n" / f"i18n_{language}.properties").write_text("a=b\n", encoding="utf-8")
     read_text = Path.read_text
 
     def locked(path, *args, **kwargs):
@@ -1251,6 +1256,8 @@ async def a_missing_file_answers_500(server, folder):
                 shares_read, network[:] = network[:], []
                 files = {slug: (resp.status, await resp.text()) for slug in ("share", "tshare")
                          for resp in [await client.get(f"/t/{slug}/", headers={"Host": f"localhost:{A.port}"})]}
+            resp = await client.get("/t/marked/", headers={"Host": f"localhost:{A.port}"})
+            mark = resp.status, await resp.text()
     confere(status == 500 and "themes/broken/index.html:2:1 was not built: gone.js is missing from themes/broken" in said
             and said in log.getvalue() and str(folder) not in said and folder.name not in said,
             f"through the route, a missing theme file answers 500 with the template, the file and the rule, the log "
@@ -1274,6 +1281,9 @@ async def a_missing_file_answers_500(server, folder):
             and "//unreachable.invalid/share/x.js is outside themes/share" in files["share"][1]
             and "/t///unreachable.invalid/share/x.js is outside themes" in files["tshare"][1],
             f"a file tag naming a network share stops the build without the PC reading it ({files}, read: {network})")
+    confere(mark[0] == 500 and "themes/marked/index.html:2:11 was not built: the <!-- i18n --> mark is read only as a "
+            "comment of its own" in mark[1],
+            f"an i18n mark in a style before the real one stops the build, read before the texts go in ({mark})")
 
 
 def index_names():

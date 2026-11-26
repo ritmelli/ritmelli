@@ -164,9 +164,9 @@ def known_reference(m):
 
 def body_problem(element, body, from_file):
     if element == "script":
-        return from_file and body or re.search(r"</script|<!--", body, re.I)
+        return from_file and body or re.search(r"</\s*script|<!--", body, re.I)
     if element == "style":
-        return re.search(r"</style", body, re.I) or sheet_reaches_out(body)
+        return re.search(r"</\s*style", body, re.I) or sheet_reaches_out(body)
     return "<" in body
 
 
@@ -311,8 +311,9 @@ def assemble(read, files=None, theme="ritmelli"):
 
     def fetch(name):
         names.add(name.removeprefix(f"/t/{theme}/"))
-        return read(name)
-    html = need("index.html")
+        text = read(name)
+        return text if text is None else text.removeprefix("\ufeff")
+    html = need("index.html").removeprefix("\ufeff")
     strict(html, "index.html")
     if refused := from_root("theme_page").strict(html)[1]:
         raise Doubt(f"index.html, line {refused[0]}: {refused[2]}, which the server refuses")
@@ -349,7 +350,7 @@ def assemble(read, files=None, theme="ritmelli"):
                 raise Doubt(f"{name}: the page links it, and it is not in the theme (the browser gets a 404)")
             if kind == "script" and body_problem("script", text, False):
                 raise Doubt(f"{name}: a </script or a <!-- in a script the server puts inline")
-            if kind == "script" and text.lstrip("\ufeff").startswith("#!"):
+            if kind == "script" and text.startswith("#!"):
                 raise Doubt(f"{name}: a #! at its start, which only a script file read on its own allows")
             if kind == "link" and re.search(r"</style", text, re.I):
                 raise Doubt(f"{name}: a </style in a sheet the server puts inline")

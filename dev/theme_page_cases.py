@@ -248,6 +248,10 @@ REFUSED = {
     "an icon name with a carriage return": ('<link rel="icon" href="a\r\nb.png">', {},
                                              "is outside the forms the build reads"),
     "an icon name with a NUL": ('<link rel="icon" href="a\x00b.png">', {}, "is outside the forms the build reads"),
+    "the i18n mark in an attribute": ('<meta name="note" content="texts go at <!-- i18n -->">', {}, "mark is read only as a comment of its own"),
+    "the i18n mark in a style": ("<style>/* the texts go at <!-- i18n --> */</style>", {}, "mark is read only as a comment of its own"),
+    "the i18n mark in a style before the real one": ("<style>/* <!-- i18n --> */</style>\n<!-- i18n -->", {},
+                                                      "mark is read only as a comment of its own"),
 }
 
 KEPT = {
