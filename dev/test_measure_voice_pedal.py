@@ -65,10 +65,10 @@ class Refusal(unittest.TestCase):
         self.assertIn(measure_voices()[0], why)
 
 
-def track_up_line(after_s):
+def track_up_line(after_s, seen_s=None):
     pedal = dryouts.VoicePedalStart(clock=lambda: 100.0)
     pedal.sent(pedal.pedal(True))
-    pedal.clock = lambda: 100.0 + after_s
+    pedal.clock = lambda: 100.0 + (after_s if seen_s is None else seen_s)
     with mock.patch("sys.stderr", io.StringIO()) as err:
         pedal.track(1 + round((100.0 + after_s) * 1000) % (2**32 - 1))
     return err.getvalue().strip()
@@ -97,8 +97,12 @@ class CycleRow(unittest.TestCase):
                                          ["warning", *FIM])
         self.assertIsNone(problem)
         self.assertEqual(got, {"cycle": 3, "dry_outs": 2, "dry_outs_while_starting": 1, "new_longest_return_ms": None,
-                               "track_up_after_s": 3.1, "voice_blocks": 74, "voice_track_dry_outs": 1,
+                               "track_up_after_s": [3.1, 3.1], "voice_blocks": 74, "voice_track_dry_outs": 1,
                                "voice_slowest_block_ms": 101.1})
+
+    def test_a_track_seen_later_than_its_stamp_gives_its_interval(self):
+        got, _ = row([state(), state()], server_lines=["pedal_voz: pronto", track_up_line(3.1, 3.6)])
+        self.assertEqual(got["track_up_after_s"], [3.1, 3.6])
 
     def test_a_longer_return_in_the_cycle(self):
         got, _ = row([state(volta=434.0), state(volta=656.0)])

@@ -18,6 +18,10 @@ def up_after(up_ms, sent):
     return sent is not None and up_ms > round(sent * 1000)
 
 
+def span(first, last):
+    return f"{first:.2f}" if f"{first:.2f}" == f"{last:.2f}" else f"between {first:.2f} and {last:.2f}"
+
+
 class VoicePedalStart:
     def __init__(self, clock=time.monotonic):
         self.clock = clock
@@ -38,7 +42,7 @@ class VoicePedalStart:
             self._on = None
             return None
         if start is None:
-            start = self._on = [self.clock(), None, None, None]
+            start = self._on = [self.clock(), None, None, None, None]
         return start
 
     def sent(self, start):
@@ -57,8 +61,9 @@ class VoicePedalStart:
             else:
                 owner = next((e for e in reversed(ended) if up_after(up_ms, e[3]) and up_at <= e[1] + TICK_S), None)
             if owner is not None:
-                tell(f"voice pedal: its voice track came up {up_at - owner[0]:.2f} s after the pedal turned on")
-                owner[2] = up_at
+                tell(f"voice pedal: its voice track came up {span(up_at - owner[0], now - owner[0])} s after the pedal "
+                     "turned on")
+                owner[2], owner[4] = up_at, now
             self.track_up_at = up_at
         self._stamp = stamp
 
@@ -69,35 +74,35 @@ class VoicePedalStart:
             start = next((e for e in reversed(ended) if e[0] <= empty_at and e[1] > off_by), start)
         if start is None:
             return None, None
-        on_at, off_at, up_at, _ = start
+        on_at, off_at, up_at, _, seen_at = start
         if (empty_at is not None and on_at > empty_at) or (None not in (off_by, off_at) and off_at <= off_by):
             return on_at, None
         now = self.clock()
         pedal = f"the pedal turned on {now - on_at:.2f} s ago"
-        if off_at is not None:
-            pedal += f" and off {now - off_at:.2f} s ago"
-            if empty_at is not None and off_at <= empty_at:
-                pedal += " (before the ring was seen empty, maybe before it ran dry)"
         if lo is not None and on_at > lo:
             pedal += " (after the ring was last filled, maybe after it ran dry)"
         elif lo is None and empty_at is not None:
             pedal += " (with no fill seen, maybe after it ran dry)"
+        if off_at is not None:
+            pedal += f" and off {now - off_at:.2f} s ago"
+            if empty_at is not None and off_at <= empty_at:
+                pedal += " (before the ring was seen empty, maybe before it ran dry)"
         if up_at is None:
             return on_at, f"{pedal}, its voice track isn't up yet"
         if (lo if lo is not None else now if empty_at is None else empty_at) - up_at > AFTER_TRACK_S:
             return on_at, None
+        up = f"{pedal}, its voice track came up {span(now - up_at, now - seen_at)} s ago"
         if empty_at is not None and up_at > empty_at + TICK_S:
-            return on_at, f"{pedal}, its voice track came up {now - up_at:.2f} s ago, after the ring ran dry"
+            return on_at, f"{up}, after the ring ran dry"
         if lo is None and empty_at is not None:
-            return on_at, (f"{pedal}, its voice track came up {now - up_at:.2f} s ago, with no fill seen, "
-                           "so which came first is not known")
+            return on_at, f"{up}, with no fill seen, so which came first is not known"
         if lo is not None and up_at > lo + TICK_S:
-            return on_at, (f"{pedal}, its voice track came up {now - up_at:.2f} s ago, after the ring was last filled, "
-                           "so which came first is not known")
+            return on_at, f"{up}, after the ring was last filled, so which came first is not known"
         if lo is not None and up_at > lo - TICK_S:
-            return on_at, (f"{pedal}, its voice track came up {now - up_at:.2f} s ago, within a tick of the ring's last "
-                           "fill, so which came first is not known")
-        return on_at, f"{pedal}, its voice track came up {now - up_at:.2f} s ago"
+            return on_at, f"{up}, within a tick of the ring's last fill, so which came first is not known"
+        if lo is not None and seen_at > lo:
+            return on_at, f"{up}, across the ring's last fill, so which came first is not known"
+        return on_at, up
 
 
 INJECTORS = itertools.count(1)

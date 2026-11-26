@@ -251,20 +251,20 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal.clock = clock
         self.assertIn("turned on 1.00 s ago", pedal.starting()[1])
 
-    def away(self, pedal_on_at, up_at, empty_at=0.756):
+    def away(self, pedal_on_at, up_at, empty_at=0.756, seen_at=None):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         if pedal_on_at is not None:
             now[0] = pedal_on_at
             pedal.sent(pedal.pedal(True))
         dry = dryouts.RingDryOuts(pedal)
+        steps = sorted([(0.1, lambda: dry.read_ring(lambda: 1)), (empty_at, lambda: dry.read_ring(lambda: 0)),
+                        (up_at if seen_at is None else seen_at, lambda: pedal.track(stamp(up_at)))], key=lambda x: x[0])
         with mock.patch("sys.stderr", io.StringIO()) as log:
-            now[0] = 0.1
-            dry.read_ring(lambda: 1)
-            now[0] = empty_at
-            dry.read_ring(lambda: 0)
+            for at, step in steps:
+                now[0] = at
+                step()
             now[0] = 0.756
-            pedal.track(stamp(up_at))
             dry.ran_dry(0.656, 1, 0.0)
         return dry.while_pedal_starting, log.getvalue()
 
@@ -295,6 +295,15 @@ class TestVoicePedalStart(unittest.TestCase):
         for up_at, empty_at, said in ((0.08, 0.756, "came up 0.68 s ago;"), (0.52, 0.5, "after the ring ran dry")):
             with self.subTest(up_at=up_at, empty_at=empty_at):
                 counted, log = self.away(0.0, up_at, empty_at=empty_at)
+                self.assertEqual(counted, 1)
+                self.assertIn(said, log)
+
+    def test_a_track_stamped_before_the_fill_but_seen_after_it_has_no_order(self):
+        for seen_at, said in ((0.756, "came up between 0.68 and 0.00 s ago, across the ring's last fill, so which came "
+                                      "first is not known"),
+                              (0.085, "came up between 0.68 and 0.67 s ago;")):
+            with self.subTest(seen_at=seen_at):
+                counted, log = self.away(0.0, 0.08, seen_at=seen_at)
                 self.assertEqual(counted, 1)
                 self.assertIn(said, log)
 
@@ -418,13 +427,14 @@ class TestVoicePedalStart(unittest.TestCase):
             now[0] = read_at + 0.05
             dry.read_ring(lambda: 0)
             dry.ran_dry(0.05, 1, 0.0)
-        self.assertEqual(told, [f"voice pedal: its voice track came up {up_at:.2f} s after the pedal turned on"])
+        self.assertEqual(told, [f"voice pedal: its voice track came up between {up_at:.2f} and {read_at:.2f} s after "
+                                f"the pedal turned on"])
         return dry.while_pedal_starting, log.getvalue()
 
     def test_a_pedal_off_while_its_track_is_told_keeps_the_track(self):
         counted, log = self.pedal_off_while_its_track_is_told(1.5, 1.2, 1.6)
         self.assertEqual(counted, 1)
-        self.assertIn("its voice track came up 0.15 s ago", log)
+        self.assertIn("its voice track came up between 0.15 and 0.05 s ago", log)
 
     def test_a_pedal_off_while_its_track_is_told_keeps_its_window(self):
         counted, log = self.pedal_off_while_its_track_is_told(0.1, 6.1, 6.15)
@@ -509,7 +519,8 @@ class TestVoicePedalStart(unittest.TestCase):
             dry.read_ring(lambda: 0)
             dry.ran_dry(0.05, 1, 0.0)
         self.assertEqual(dry.while_pedal_starting, 1, "the start's track came up 0.01 s after its off, inside TICK_S")
-        self.assertIn("voice pedal: its voice track came up 6.21 s after the pedal turned on", log.getvalue())
+        self.assertIn("voice pedal: its voice track came up between 6.21 and 6.30 s after the pedal turned on",
+                      log.getvalue())
 
     def test_a_start_turning_off_is_told_without_a_ring(self):
         now, pedal, _ = self.pedal_turning_off(1.0, 1.5, 2.0)
@@ -536,7 +547,8 @@ class TestVoicePedalStart(unittest.TestCase):
     def test_an_ended_start_takes_its_track_read_after_it_ended(self):
         counted, log = self.ended_start_with_a_track_read_late(0.456)
         self.assertEqual(counted, 1)
-        self.assertIn("came up 0.46 s ago, after the ring was last filled, so which came first is not known", log)
+        self.assertIn("came up between 0.46 and 0.00 s ago, after the ring was last filled, so which came first is "
+                      "not known", log)
 
     def test_an_ended_start_does_not_take_a_track_up_after_it_ended(self):
         counted, log = self.ended_start_with_a_track_read_late(0.056)
@@ -545,7 +557,8 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertNotIn("voice pedal: its voice track came up", log, "a track up after the pedal turned off")
 
     def test_an_ended_start_takes_a_track_within_a_tick_of_its_end(self):
-        for up_s_ago, said in ((0.246, "came up 0.25 s ago, after the ring was last filled, so which came first is not "
+        for up_s_ago, said in ((0.246, "came up between 0.25 and 0.00 s ago, after the ring was last filled, so which "
+                                       "came first is not "
                                        "known"),
                                (0.236, "its voice track isn't up yet")):
             with self.subTest(up_s_ago=up_s_ago):
@@ -606,8 +619,10 @@ class TestVoicePedalStart(unittest.TestCase):
             pedal.track(stamp(1.5))
             now[0] = 3.5
             pedal.track(stamp(3.2))
-        self.assertEqual(lines, ["voice pedal: its voice track came up 0.50 s after the pedal turned on",
-                                 "voice pedal: its voice track came up 0.70 s after the pedal turned on"],
+        self.assertEqual(lines, ["voice pedal: its voice track came up between 0.50 and 1.70 s after the pedal turned "
+                                 "on",
+                                 "voice pedal: its voice track came up between 0.70 and 1.00 s after the pedal turned "
+                                 "on"],
                          "one line for each start, each against its own pedal")
 
     def test_a_track_up_just_after_the_pedal_turned_on_again_is_the_start_that_is_on(self):
@@ -622,7 +637,8 @@ class TestVoicePedalStart(unittest.TestCase):
             pedal.sent(pedal.pedal(True))
             now[0] = 2.5
             pedal.track(stamp(2.312))
-        self.assertEqual(lines, ["voice pedal: its voice track came up 0.01 s after the pedal turned on"],
+        self.assertEqual(lines, ["voice pedal: its voice track came up between 0.01 and 0.20 s after the pedal turned "
+                                 "on"],
                          "a track up in the start that is on is told against its pedal")
 
     def test_a_late_track_of_an_ended_start_survives_the_next_track(self):
@@ -637,7 +653,7 @@ class TestVoicePedalStart(unittest.TestCase):
             now[0] = 3.2
             pedal.track(stamp(3.2))
             told = pedal.starting(2.0, 2.4)[1]
-        self.assertIn("its voice track came up 1.70 s ago", told,
+        self.assertIn("its voice track came up between 1.70 and 0.80 s ago, across the ring's last fill", told,
                       "the track read after the pedal turned off is still that start's once another one came up")
 
     def test_a_late_track_of_an_earlier_start_is_not_the_next_ones(self):
@@ -790,18 +806,21 @@ class TestVoicePedalStart(unittest.TestCase):
         counted, log = self.run_starts([(1.0, "on"), (1.05, "track"), (1.3, "fill"), (1.32, "off"), (1.34, "on"),
                                         (1.36, "track"), (1.4, "empty"), (1.45, "off")], 1.5)
         self.assertEqual(counted, 1)
-        self.assertIn("the pedal turned on 0.16 s ago and off 0.05 s ago", log)
+        self.assertIn("the pedal turned on 0.16 s ago (after the ring was last filled, maybe after it ran dry) and "
+                      "off 0.05 s ago", log)
 
     def test_a_track_read_after_two_starts_ended_is_the_latest_one_it_fits(self):
         _, log = self.run_starts([(1.0, "on"), (1.5, "off"), (1.502, "on"), (1.6, "off"), (1.7, "track", 1.512)], 1.8)
-        self.assertIn("voice pedal: its voice track came up 0.01 s after the pedal turned on", log)
+        self.assertIn("voice pedal: its voice track came up between 0.01 and 0.20 s after the pedal turned on", log)
 
     def test_a_track_read_after_two_starts_ended_still_finds_the_first(self):
         counted, log = self.run_starts([(1.0, "on"), (1.3, "fill"), (1.4, "empty"), (1.5, "off"),
                                         (1.6, "on"), (1.7, "off"), (1.75, "track", 1.2)], 1.75)
         self.assertEqual(counted, 1)
-        self.assertIn("voice pedal: its voice track came up 0.20 s after the pedal turned on", log)
-        self.assertIn("the pedal turned on 0.75 s ago and off 0.25 s ago, its voice track came up 0.55 s ago", log)
+        self.assertIn("voice pedal: its voice track came up between 0.20 and 0.75 s after the pedal turned on", log)
+        self.assertIn("the pedal turned on 0.75 s ago and off 0.25 s ago, its voice track came up between 0.55 and "
+                      "0.00 s "
+                      "ago, across the ring's last fill", log)
 
     def test_a_track_up_before_its_start_was_sent_is_not_its(self):
         now = [1.0]
@@ -860,7 +879,8 @@ class TestVoicePedalStart(unittest.TestCase):
             pedal.sent(pedal.pedal(True))
             now[0] = 2.1
             pedal.track(stamp(1.5))
-        self.assertIn("voice pedal: its voice track came up 0.50 s after the pedal turned on", log.getvalue())
+        self.assertIn("voice pedal: its voice track came up between 0.50 and 1.10 s after the pedal turned on",
+                      log.getvalue())
 
     def test_only_the_last_ended_starts_are_kept(self):
         now = [0.0]
@@ -881,7 +901,7 @@ class TestVoicePedalStart(unittest.TestCase):
             now[0] = wrap + 0.5
             pedal.track(stamp(wrap - 0.5))
         self.assertAlmostEqual(pedal.track_up_at, wrap - 0.5, places=3)
-        self.assertIn("its voice track came up 0.50 s after the pedal turned on", log.getvalue())
+        self.assertIn("its voice track came up between 0.50 and 1.50 s after the pedal turned on", log.getvalue())
 
     def test_one_stamp_is_one_start(self):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
@@ -1049,7 +1069,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         return [ln for ln in self.logged().splitlines() if "while the voice pedal was starting" in ln]
 
     def offset(self, line, what):
-        return float(re.search(what + r" (\d+\.\d+) s ago", line).group(1))
+        return float(re.search(what + r" (?:between )?(\d+\.\d+)(?: and \d+\.\d+)? s ago", line).group(1))
 
     def test_dry_out_before_the_track_is_up(self):
         self.pedal_on(2.0)
@@ -1131,7 +1151,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertTrue(espera(lambda: self.motor.voice_pedal.track_up_at is not None), "the track was not seen")
         self.dry_out()
         self.assertEqual(self.offset(self.pedal_lines()[-1], "came up"), 0.5)
-        self.assertIn("its voice track came up 1.00 s after the pedal turned on", self.logged())
+        self.assertIn("its voice track came up between 1.00 and 1.50 s after the pedal turned on", self.logged())
 
     def test_a_track_up_just_after_the_last_fill_has_no_order(self):
         self.pedal_on(1.0)
@@ -1201,6 +1221,40 @@ class TestVoicePedalDryOut(unittest.TestCase):
         stamped = self.a.pista_estado >> 32
         self.producer.pista_liga(False)
         self.assertEqual(self.a.pista_estado, stamped << 32, "turning off keeps the stamp")
+
+    def test_a_track_published_after_its_clock_has_no_order_across_the_fill(self):
+        self.pedal_on(1.0)
+        entered, release = threading.Event(), threading.Event()
+        real = injeta.clock
+
+        def held():
+            sampled = real()
+            if threading.current_thread().name == "producer":
+                entered.set()
+                release.wait(5)
+            return sampled
+        self.enterContext(mock.patch.object(injeta, "clock", held))
+        producer = threading.Thread(target=self.producer.pista_liga, name="producer", daemon=True)
+        producer.start()
+        self.addCleanup(producer.join, 5)
+        self.addCleanup(release.set)
+        self.assertTrue(entered.wait(3), "the producer never read its clock")
+        self.advance(0.1)
+        self.wait_filled()
+        read_ring = self.inj.dry_outs.read_ring
+
+        def published_after_the_empty_read(read):
+            held_now = read_ring(read)
+            if held_now == 0 and not release.is_set():
+                release.set()
+                self.assertTrue(espera(lambda: self.a.pista_estado != 0), "the producer never published")
+                self.advance(0.05)
+            return held_now
+        self.inj.dry_outs.read_ring = published_after_the_empty_read
+        self.dry_done.clear()
+        self.drain.set()
+        self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
+        self.assertIn("across the ring's last fill, so which came first is not known", self.pedal_lines()[-1])
 
     def test_dry_out_long_after_the_track_came_up(self):
         self.pedal_on(0.0)
@@ -1272,7 +1326,8 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.drain.set()
         self.gate.set()
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
-        self.assertIn("came up 0.10 s ago, after the ring was last filled, so which came first is not known",
+        self.assertIn("came up between 0.10 and 0.00 s ago, after the ring was last filled, so which came first is "
+                      "not known",
                       self.pedal_lines()[-1])
 
     def test_track_up_after_the_ring_was_seen_empty(self):
@@ -1329,9 +1384,10 @@ class TestVoicePedalDryOut(unittest.TestCase):
     def test_pedal_off_before_its_track_was_seen(self):
         self.pedal_off_before_its_track_is_seen(0.2)
         self.assertEqual(self.inj.dry_outs.while_pedal_starting, 1)
-        self.assertEqual(self.logged().count("its voice track came up 1.00 s after the pedal turned on"), 1,
+        up = "its voice track came up between 1.00 and 1.21 s after the pedal turned on"
+        self.assertEqual(self.logged().count(up), 1,
                          "the track came up while the pedal was on, so its line is written once")
-        self.assertIn("its voice track came up 0.21 s ago", self.pedal_lines()[-1])
+        self.assertIn("its voice track came up between 0.21 and 0.00 s ago", self.pedal_lines()[-1])
 
     def test_pedal_off_before_its_track_was_seen_past_its_window(self):
         self.pedal_off_before_its_track_is_seen(dryouts.AFTER_TRACK_S + 0.2)
@@ -1349,7 +1405,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.after_read_gate.set()
         self.seen_up()
         self.assertEqual(self.motor.voice_pedal.track_up_at, up_at)
-        self.assertIn("its voice track came up 1.00 s after the pedal turned on", self.logged())
+        self.assertIn("its voice track came up between 1.00 and 1.66 s after the pedal turned on", self.logged())
 
     def test_track_up_as_the_clock_wraps(self):
         self.advance(2**32 / 1000 - self.now)
@@ -1371,7 +1427,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.gate.set()
         self.seen_up()
         self.assertEqual(self.motor.voice_pedal.track_up_at, up_at)
-        self.assertIn("its voice track came up 1.00 s after the pedal turned on", self.logged())
+        self.assertIn("its voice track came up between 1.00 and 1.50 s after the pedal turned on", self.logged())
 
     def test_the_counts_are_published_together(self):
         self.pedal_on(1.0)

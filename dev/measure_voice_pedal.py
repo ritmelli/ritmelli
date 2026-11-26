@@ -21,7 +21,8 @@ OFF_S = 4.0
 UP_S = 60.0
 VOICE_SESSIONS = 4
 DRY_LINE = re.compile(r"ran dry .*?(\d+) so far, injector (\d+)\)")
-UP_LINE = re.compile(r"voice pedal: its voice track came up (\d+\.\d+) s after the pedal turned on")
+UP_LINE = re.compile(r"voice pedal: its voice track came up (?:between )?(\d+\.\d+)(?: and (\d+\.\d+))? s after the "
+                     r"pedal turned on")
 
 
 def lines(path):
@@ -146,7 +147,7 @@ def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_
         return None, f"cycle {n}: the ring never measured its headroom, so its dry-outs weren't counted"
     if not any(ln.startswith("pedal_voz: pronto") for ln in server_lines):
         return None, f"cycle {n}: the voice process never said it was ready within {on_s:.0f} s of the pedal (--on-s)"
-    ups = [float(m.group(1)) for ln in server_lines if (m := UP_LINE.search(ln))]
+    ups = [[float(m[1]), float(m[2] or m[1])] for ln in server_lines if (m := UP_LINE.search(ln))]
     if not ups:
         return None, f"cycle {n}: the ring never saw this cycle's voice track come up"
     errors = [ln for ln in server_lines if ln.startswith("pedal_voz: erro")]
@@ -281,7 +282,7 @@ def main():
               "cycles": cycles,
               "dry_outs": sum(c["dry_outs"] for c in cycles),
               "dry_outs_while_starting": sum(c["dry_outs_while_starting"] for c in cycles),
-              "slowest_track_up_s": max([c["track_up_after_s"] for c in cycles] or [None]),
+              "slowest_track_up_s": max((c["track_up_after_s"] for c in cycles), key=lambda up: up[1], default=None),
               "longest_return_ms_since_the_ring_opened": start["microfone"]["volta_max_ms"],
               "voice_blocks": sum(c["voice_blocks"] or 0 for c in cycles),
               "voice_slowest_block_ms": max(blocks or [0.0]),
