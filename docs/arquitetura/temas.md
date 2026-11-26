@@ -193,9 +193,10 @@ declarações nascem e nada roda), e os nomes saem do escopo local dele. Um nome
 aceita (um `var arguments`, um `const yield`): os dois ficam no teste como falha conhecida da issue #239. Ele confere
 também que cada ouvinte das partes é do arquivo dela, que a página só passa a vigiar a própria visibilidade no
 `DOMContentLoaded`, com o `carregar()` já declarado (uma aba que aparece durante a leitura da página não conecta antes
-da partida), que o `queue.js` vê o toque que fecha a busca na mesa, e que os canvas do mixer, do monitor, dos pads,
-da sombra do deck, do título da maleta, da contagem da prateleira e do aviso de vazio, limpos, ficam limpos até um
-`repinta-canvas` e então se pintam de novo (o canvas que o navegador devolve em branco, #119).
+da partida), que o `queue.js` vê o toque que fecha a busca na mesa, e que os canvas do monitor, dos pads, da sombra
+do deck, do título da maleta, da contagem da prateleira e do aviso de vazio, limpos, ficam limpos até um
+`repinta-canvas` e então se pintam de novo (o canvas que o navegador devolve em branco, #119). O do mixer fica de fora:
+com o `--mock` tocando, cada passo das agulhas dos VUs põe de volta a imagem inteira dele.
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits
 como o servidor a monta: cada `<script src="..."></script>` e `<link rel="stylesheet" href="...">` trocado pelo texto
