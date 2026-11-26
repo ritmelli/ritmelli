@@ -231,25 +231,34 @@ if sys.platform == "win32":
         subprocess.Popen = popen
     args, kw = capturado[0]
     marca = tmp / "reabriu.txt"
-    exe = str(atualizador.pastas.APP / "ritmelli.exe")
-    trocado = args[-1].replace(f"Start-Process -FilePath '{exe}'", f"Set-Content -LiteralPath '{marca}' -Value ok")
+    exe, marca_ps = (str(c).replace("'", "''") for c in (atualizador.pastas.APP / "ritmelli.exe", marca))
+    trocado = args[-1].replace(f"Start-Process -FilePath '{exe}'", f"Set-Content -LiteralPath '{marca_ps}' -Value ok")
     caso("no fim, abre o Ritmelli da pasta do app", trocado != args[-1])
-    atualizador._grava(estado="pronta")
-    try:
-        popen([*args[:-1], trocado], **kw)
-    except OSError:  # fora de um job que deixa sair dele (o reabre faz o mesmo)
-        popen([*args[:-1], trocado], **dict(kw, creationflags=kw["creationflags"] & ~0x01000000))
-    time.sleep(2)
-    caso("antes de o instalador comecar, nao abre", not marca.exists())
-    dorme = popen([sys.executable, "-c", "import time; time.sleep(3)"])
-    atualizador._grava(estado="instalando", pid=dorme.pid)
-    time.sleep(1.5)
-    caso("com o instalador rodando, espera", not marca.exists())
-    dorme.wait()
-    fim = time.monotonic() + 15
-    while not marca.exists() and time.monotonic() < fim:
-        time.sleep(0.2)
-    caso("o instalador terminou: abre (com as flags do reabre, o PowerShell escondido roda)", marca.exists())
+    leu = trocado.replace("catch{}}while(", "catch{};Write-Output \"estado=$($s.estado)\"}while(")
+    ouvido = leu.replace("(Get-Date) -lt $fim){Start-Sleep 1}",
+                         "(Get-Date) -lt $fim){Write-Output esperando;Start-Sleep 1}")
+    ouve = args[-1] != trocado != leu != ouvido
+    caso("the test hears each state the reopen reads and each wait for the installer", ouve)
+    if ouve:
+        atualizador._grava(estado="pronta")
+        kw = dict(kw, stdout=subprocess.PIPE, text=True)
+        try:
+            reabre = popen([*args[:-1], ouvido], **kw)
+        except OSError:  # fora de um job que deixa sair dele (o reabre faz o mesmo)
+            reabre = popen([*args[:-1], ouvido], **dict(kw, creationflags=kw["creationflags"] & ~0x01000000))
+        linhas = iter(reabre.stdout)
+        viu = next((linha.strip() for linha in linhas if linha.strip() == "estado=pronta"), None)
+        caso("antes de o instalador comecar, nao abre", viu and not marca.exists(), viu)
+        instalador = popen([sys.executable, "-c", "import sys; sys.stdin.read()"], stdin=subprocess.PIPE)
+        try:
+            atualizador._grava(estado="instalando", pid=instalador.pid)
+            viu = next((linha.strip() for linha in linhas if linha.strip() == "esperando"), None)
+            caso("com o instalador rodando, espera", viu and not marca.exists(), viu)
+        finally:
+            instalador.stdin.close()
+            instalador.wait()
+        reabre.communicate()
+        caso("o instalador terminou: abre (com as flags do reabre, o PowerShell escondido roda)", marca.exists())
 
 print("--- o ao_sair")
 disparos, reaberturas = [], []
