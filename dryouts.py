@@ -128,7 +128,7 @@ class RingDryOuts:
     def __init__(self, pedal):
         self.pedal = pedal
         self.injector = next(INJECTORS)
-        self.readers, self._served = 0, ()
+        self._readers = ((), 0)
         self.while_pedal_starting = 0
         self.counts = (0, 0, 0.0)
         self._told_at = -1e9
@@ -147,12 +147,14 @@ class RingDryOuts:
 
     def state(self):
         dry_outs, while_pedal_starting, longest = self.counts
+        owners, changes = self._readers
         return {"secas": dry_outs, "secas_pedal": while_pedal_starting, "volta_max_ms": round(longest * 1000, 1),
-                "injetor": self.injector, "leitores_trocados": self.readers}
+                "injetor": self.injector, "leitores": len(owners), "leitores_trocados": changes}
 
     def served(self, owners):
-        if owners != self._served:
-            self._served, self.readers = owners, self.readers + 1
+        served, changes = self._readers
+        if owners != served:
+            self._readers = (owners, changes + 1)
         return owners
 
     def read_ring(self, read):

@@ -1324,6 +1324,31 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertEqual(self.inj.estado()["leitores_trocados"], before + 1,
                          "the new reader waited for the ring to be filled for it")
 
+    def test_the_readers_and_their_changes_are_published_together(self):
+        self.a.leitor[0].dono = 0
+        self.assertTrue(espera(lambda: self.inj.estado()["leitores"] == 0), "the reader never went")
+        before = self.inj.estado()["leitores_trocados"]
+        hold, held = threading.Event(), threading.Event()
+        volta = self.inj.saude.volta
+
+        def held_volta(*a, **kw):
+            if kw.get("leitores") and not held.is_set():
+                held.set()
+                hold.wait()
+            return volta(*a, **kw)
+
+        self.addCleanup(hold.set)
+        self.inj.saude.volta = held_volta
+        self.a.leitor[0].dono = 1
+        self.assertTrue(held.wait(3), "the reader never came back")
+        state = self.inj.estado()
+        self.assertEqual((state["leitores"], state["leitores_trocados"]), (0, before),
+                         "the reader came back in the state before its change was counted")
+        hold.set()
+        self.assertTrue(espera(lambda: self.inj.estado()["leitores"] == 1), "the reader never showed")
+        state = self.inj.estado()
+        self.assertEqual((state["leitores"], state["leitores_trocados"]), (1, before + 1))
+
     def test_a_ring_that_failed_is_a_change_of_its_readers(self):
         self.wait_filled()
         before = self.inj.estado()["leitores_trocados"]

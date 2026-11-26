@@ -161,7 +161,16 @@ def sse(*rounds_sent):
 
 
 FALLBACK = "Microfone (Realtek(R) Audio)"
-DRY = "game output: the microphone ring ran dry (the thread came back after 656 ms; {} so far, injector {})"
+def dry_out_line(count, injector, pedal=False):
+    start = dryouts.VoicePedalStart(clock=lambda: 100.0)
+    if pedal:
+        start.pedal(True)
+    dry = dryouts.RingDryOuts(start)
+    dry.injector = injector
+    with mock.patch("sys.stderr", io.StringIO()) as err:
+        dry.ran_dry(0.656, count, 0.0)
+        dryouts.LOG.written()
+    return err.getvalue().strip()
 
 
 class Main(unittest.TestCase):
@@ -240,10 +249,10 @@ class Main(unittest.TestCase):
         why, _, result = self.run_main(state(), "--cycles", "1",
                                        events=[(1.0, state(0, 0, 9.0, 10.0)), (15.0, state(0, 0, 9.0, 10.0)),
                                                (20.48, None), (20.52, state(1, 1, 656.0, 10.0))],
-                                       late_lines=[DRY.format(1, 1)])
+                                       late_lines=[dry_out_line(1, 1, pedal=True)])
         self.assertIsNone(why)
         self.assertEqual((result["dry_outs"], result["longest_return_ms_since_the_ring_opened"],
-                          result["dry_out_lines"]), (1, 656.0, [DRY.format(1, 1)]),
+                          result["dry_out_lines"]), (1, 656.0, [dry_out_line(1, 1, pedal=True)]),
                          "the first round past the end closes the cycle, with what it carries")
 
     def test_each_cycle_takes_the_rounds_of_its_own_window(self):
@@ -265,7 +274,7 @@ class Main(unittest.TestCase):
                           result["longest_return_ms_since_the_ring_opened"]), (0, None, 9.0))
 
     def test_the_result_lists_only_the_dry_outs_between_its_cuts(self):
-        told = [DRY.format(2, 7)] + [DRY.format(n, 1) for n in (1, 2, 3)]
+        told = [dry_out_line(2, 7)] + [dry_out_line(n, 1) for n in (1, 2, 3)]
         why, _, result = self.run_main(state(), "--cycles", "1",
                                        events=[(1.0, state(1, 0, 9.0, 10.0)), (15.0, state(2, 0, 656.0, 10.0)),
                                                (25.0, None)],

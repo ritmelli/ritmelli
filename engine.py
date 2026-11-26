@@ -952,7 +952,7 @@ class Injetor:
         self._th.start()
 
     def estado(self):
-        return {"anel": self.m is not None, "leitores": self.leitores,
+        return {"anel": self.m is not None,
                 "folga_min_ms": None if self.folga_min is None else round(self.folga_min * 1000 / SR, 1),
                 **self.dry_outs.state(), "efeito_no_filtro": self.efeito_no_filtro}
 
