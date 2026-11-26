@@ -463,6 +463,13 @@ CASES = {
          {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
                   "        return None\ndef poll():\n    for _ in items:\n"
                   "        x: _\n        if attempt():\n            break\n        time.sleep(1)\n"}),
+        ("a for over items that annotates _ with no value",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    print(_)\n    _: int\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    print(x)\n    _: int\n    if attempt():\n        break\n    time.sleep(1)\n"}),
         ("a redirection of the errors keeps the test of an expression",
          {"a.ps1": "function attempt { try { Get-Date } catch { $null } }\nwhile ($true) {\n    $done = attempt\n"
                    "    if (($done) >$null) { break }\n    Start-Sleep 1\n}\n"},
@@ -1185,6 +1192,11 @@ KNOWN_MISSES = [
      {"a.py": "import itertools\nimport time\ndef attempt(i):\n    try:\n        return action(i)\n    except OSError:\n"
               "        return None\nfor i in itertools.count():\n    if attempt(i):\n        break\n    time.sleep(1)\n"},
      ((".py",), r"(?m)\bfor\b[^\n]*\bin[ \t]+(?:itertools\.)?count\(")),
+    ("sleeps_app", "a name a class in a function annotates with no value, which Python reads from the module",
+     {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef g():\n    ps = 'Get-Date'\n    class C:\n        ps: str\n"
+              "        x = subprocess.run(['powershell', '-Command', ps])\n"},
+     ((".py",), r"(?ms)\A(?=.*['\"]-[Cc]ommand['\"])(?=.*^([ \t]+)class\b[^\n]*:[ \t]*\n(?:\1[ \t][^\n]*\n){0,40}?"
+                r"\1[ \t]+\w+[ \t]*:[ \t]*[^=\n]+\n)")),
 ]
 
 KNOWN_NOISE = [

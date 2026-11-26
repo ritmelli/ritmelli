@@ -522,10 +522,12 @@ class PythonLowering:
 
 def reads_underscore(nodes):
     augmented = {id(n.target) for n in nodes if isinstance(n, ast.AugAssign)}
+    declared = {id(n.target) for n in nodes if isinstance(n, ast.AnnAssign) and n.value is None}
     names = [n for n in nodes if isinstance(n, ast.Name) and n.id == "_"]
-    rebinds = any(isinstance(n.ctx, ast.Store) and id(n) not in augmented for n in names) or \
+    reads = any(isinstance(n.ctx, ast.Load) or id(n) in augmented for n in names)
+    rebinds = any(isinstance(n.ctx, ast.Store) and id(n) not in augmented | declared for n in names) or \
         any(bound_name(n) == "_" for n in nodes)
-    return bool(names) and not rebinds
+    return reads and not rebinds
 
 
 def bound_name(node):
