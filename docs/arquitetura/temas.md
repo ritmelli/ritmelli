@@ -38,8 +38,9 @@ folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `se
 servidor nenhum script nem nenhuma folha: não existe página com um arquivo faltando. Um módulo entra por
 `<script type="module" src="nome.js"></script>`, com o nome em minúsculas, algarismos, `-` e `/`. A montagem põe, no
 lugar da primeira tag de módulo, um `<script type="importmap">` com cada módulo da página num endereço `data:` (o texto
-do arquivo em percent-encoding, com uma linha `//# sourceURL=nome.js` no fim, para o erro de um módulo apontar o
-arquivo e a linha, e não o endereço inteiro), e troca cada tag de módulo por um
+do arquivo em base64, que o Chrome decodifica em metade do tempo do percent-encoding, com uma linha
+`//# sourceURL=nome.js` no fim, para o erro de um módulo apontar o arquivo e a linha, e não o endereço inteiro), e
+troca cada tag de módulo por um
 `<script type="module">import "nome.js";</script>`, o primeiro logo depois do mapa.
 Um módulo importa o outro pelo nome (`import { glyphs } from "pixel.js";`), que o mapa resolve dentro da própria
 página. A gramática lê o mapa e as linhas de import só na página montada (o `strict(html, built=True)`), e só se o mapa
@@ -196,9 +197,10 @@ folha da montagem (o `sheet_problem` do `theme_page.py`). Fora disso ela recusa,
 linha), e sai 3 (não sei julgar): um `@namespace` ou um `@scope` numa folha, mesmo escapado ou num comentário (o
 prefixo do primeiro só vale na folha dele e o escopo do segundo depende do elemento que guarda a folha), um arquivo
 ligado pela página que não está no tema (o servidor não monta a página), um arquivo que não é texto em UTF-8 e um
-comentário `<!-- inline-script: -->`, que os servidores de antes do `theme_page.py` trocavam por um arquivo e o de agora deixa como comentário. Num módulo, um `import()` ou
-um import cujo texto não é o nome de um módulo que a página marca (um escape nele também) sai 3: a ordem em que os
-módulos rodam vem só dos imports escritos. Cada `<script type="module" src="nome.js"></script>` é um bloco
+comentário `<!-- inline-script: -->`, que os servidores de antes do `theme_page.py` trocavam por um arquivo e o de agora deixa como comentário. Um `import()` em
+qualquer script (o nome nu dele só se resolve pelo mapa, que a página tem a partir da primeira tag de módulo) e, num
+módulo, um import cujo texto não é o nome de um módulo que a página marca (um escape nele também) saem 3: a ordem em
+que os módulos rodam vem só dos imports escritos. Cada `<script type="module" src="nome.js"></script>` é um bloco
 `[module nome.js]`, com o texto do arquivo (o mapa de imports que o servidor escreve não é marcação do modelo). Um `\r` sozinho
 conta como fim de linha, como no navegador (lido do git ou da pasta).
 Numa folha, entre as regras e nas pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab vertical
@@ -241,7 +243,8 @@ não analisa, ou que o V8 (num Chrome sem tela) não compila, é mudança. O res
 `dev/testa_tudo.py`, confere o veredito em páginas pequenas e no tema com o `notice.js` trocado com o `covers.js`, com o
 `desk-buttons.js` e o `start.js` antes do `ui-events.js`, com o `bindShelfClick` levado do `shelf.js` para o fim do
 `start.js`, com a tag do `deck.js` depois da do `mix.js` e com o `pincel` levado do `pixel.js` para o `deck.js`; a tag
-do `maleta-vazia.js` antes da do `deck.js`, que ele importa e por isso roda antes, sai 0.
+do `maleta-vazia.js` antes da do `deck.js` sai 0, porque o `maleta-vazia.js` importa o `deck.js`, que por isso roda
+antes dele.
 
 O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
 dos dois commits num Chrome sem tela, contra um `--mock` de cada, no tamanho do PC (a mesa) e no de um celular, e

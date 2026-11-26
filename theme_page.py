@@ -1,3 +1,4 @@
+import base64
 import contextlib
 import functools
 import hashlib
@@ -5,7 +6,6 @@ import json
 import os
 import re
 import sys
-import urllib.parse
 from html import unescape
 from html.entities import html5
 from pathlib import Path
@@ -17,8 +17,7 @@ SCRIPT_TAG = re.compile(r'<script src="([^"]+)">')
 MODULE_NAME = "[a-z0-9][a-z0-9-]*(?:/[a-z0-9][a-z0-9-]*)*[.]js"
 MODULE_TAG = re.compile(rf'<script type="module" src="({MODULE_NAME})">')
 MODULE_IMPORT = re.compile(rf'import "({MODULE_NAME})";')
-MODULE_SOURCE = "data:text/javascript,"
-URL_KEPT = " !$&'()*+,;=:@/?[]{}^|`>~"
+MODULE_SOURCE = "data:text/javascript;base64,"
 BUILT_SCRIPTS = {"importmap": '<script type="importmap">', "module": '<script type="module">'}
 SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
 REFERENCE = re.compile(r"&(?:[A-Za-z][A-Za-z0-9]*;)?")
@@ -83,7 +82,7 @@ def place(html, i):
 
 
 def module_url(text):
-    return MODULE_SOURCE + urllib.parse.quote(text, safe=URL_KEPT)
+    return MODULE_SOURCE + base64.b64encode(text.encode("utf-8")).decode("ascii")
 
 
 def source_url(name):
@@ -98,7 +97,7 @@ def import_map(modules):
 def read_import_map(body):
     with contextlib.suppress(ValueError, TypeError, AttributeError, KeyError):
         imports = json.loads(body)["imports"]
-        decoded = {name: urllib.parse.unquote(url.removeprefix(MODULE_SOURCE), errors="strict")
+        decoded = {name: base64.b64decode(url.removeprefix(MODULE_SOURCE)).decode("utf-8")
                    for name, url in imports.items()
                    if re.fullmatch(MODULE_NAME, name) and url.startswith(MODULE_SOURCE)}
         modules = {name: text.removesuffix(source_url(name)) for name, text in decoded.items()}

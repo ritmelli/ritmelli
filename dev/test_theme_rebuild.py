@@ -401,6 +401,10 @@ DOUBTFUL = (
     ("a module importing one the page does not tag", {"index.html": ONE_MODULE, "m.js": 'import "y.js";\n'}),
     ("a module importing a name written with an escape", {"index.html": ONE_MODULE, "m.js": 'import "m\\u002ejs";\n'}),
     ("a module file with a </script", {"index.html": ONE_MODULE, "m.js": "// </script>\n"}),
+    ("an import() in a classic script file", {"index.html": "<script src=\"s.js\"></script>\n" + ONE_MODULE,
+                                               "s.js": 'import("m.js");\n', "m.js": RUNS}),
+    ("an import() in an inline classic script", {"index.html": "<script>\nimport(\"m.js\");\n</script>\n" + ONE_MODULE,
+                                                 "m.js": RUNS}),
 )
 
 

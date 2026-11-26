@@ -31,8 +31,8 @@ linked file that is not in the theme (the server does not build the page), a fil
 with a </script or a <!-- or that starts with #!, a sheet file with a </style or that fails the build's sheet check (theme_page.sheet_problem: no @import, and outside the
 page's folder only plain url() values that are not relative), an @import, @namespace or @scope in any sheet (even
 escaped or in a comment), an <!-- inline-script: --> comment, which servers before theme_page replaced with a file,
-and a module with an import() or an import whose text is not the name of a module the page tags (an escape in it
-included).
+an import() in any script (its bare name resolves only by the import map, which the page has from its first module
+tag on), and a module with an import whose text is not the name of a module the page tags (an escape in it included).
 In a sheet, only CSS whitespace and comments may sit between and around the rules.
 
 Exit 0 when the head only moves code: the two pages are the same, or
@@ -329,6 +329,11 @@ def assemble(read, files=None, theme="ritmelli"):
             blocks[current[-1]].raw.append(line)
         else:
             items.append(("line", line, None, None))
+    for block in blocks:
+        if block.kind == "script" and block.code and "import" in block.text and (
+                line := dynamic_import(parsers()["script"].parse(block.text.encode("utf-8")).root_node)):
+            raise Doubt(f"{block.header}, line {line}: an import(), whose name only the import map resolves, and the "
+                        f"page has the map only from its first module tag on")
     texts = translations(need) if any(kind == "i18n" for _, _, kind, *_ in tags) else ()
     return Page(items, blocks, texts, frozenset(names), files or {}, modules)
 
@@ -339,16 +344,22 @@ def walk(node):
         yield from walk(child)
 
 
+def dynamic_import(root):
+    return next((node.start_point[0] + 1 for node in walk(root) if node.type == "call_expression"
+                 and node.child_by_field_name("function").type == "import"), None)
+
+
 def evaluation_order(tagged, sources):
     if not tagged:
         return ()
     parser, imports = parsers()["script"], {}
     for name in tagged:
         imports[name] = []
-        for node in walk(parser.parse(sources[name].encode("utf-8")).root_node):
+        root = parser.parse(sources[name].encode("utf-8")).root_node
+        if line := dynamic_import(root):
+            raise Doubt(f"{name}, line {line}: an import(), whose module is known only when it runs")
+        for node in walk(root):
             line = node.start_point[0] + 1
-            if node.type == "call_expression" and node.child_by_field_name("function").type == "import":
-                raise Doubt(f"{name}, line {line}: an import(), whose module is known only when it runs")
             if node.type not in ("import_statement", "export_statement") or not (
                     source := node.child_by_field_name("source")):
                 continue

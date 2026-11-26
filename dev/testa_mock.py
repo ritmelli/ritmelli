@@ -1184,17 +1184,17 @@ def a_built_page_reads_only_its_own_modules(folder):
     (folder / "spaced.js").write_text("x; ", encoding="utf-8")
     spaced = theme_page.inline_files('<head>\n<script type="module" src="spaced.js"></script>\n', folder)
     spaced_read, spaced_error = theme_page.strict(spaced, True)
-    named = 'x; %0A//%23 sourceURL=spaced.js%0A"'
-    confere(named in spaced and not spaced_error and spaced_read.texts == [("module", "\nx; ")],
-            f"a module's address ends in the sourceURL line the build adds, which names its file, so no URL parser "
-            f"drops a space at the end of its text ({spaced_error or spaced_read.texts})")
+    named = theme_page.module_url("\nx; \n//# sourceURL=spaced.js\n")
+    confere(f'"{named}"' in spaced and not spaced_error and spaced_read.texts == [("module", "\nx; ")],
+            f"a module's address is its text in base64 with the sourceURL line the build adds, which names its file, "
+            f"and a space at the end of the text stays ({spaced_error or spaced_read.texts})")
     imports, first = built.index('{"imports"'), '<script type="module">import "first.js";</script>'
     second = '<script type="module">import "second.js";</script>'
 
     def mapped(modules):
         return f'<script type="importmap">{theme_page.import_map(modules)}</script>{first}{second * (len(modules) > 1)}'
     altered = {
-        "a module without the sourceURL line the build adds": spaced.replace(named, 'x; "', 1),
+        "a module without the sourceURL line the build adds": spaced.replace(named, theme_page.module_url("\nx; "), 1),
         "a carriage return, which the build reads as a line break": mapped({"first.js": "\nconst first = 1;\r\n"}),
         "a classic script between the map and the first import": built.replace(
             f"</script>{first}", f"</script><script>go();</script>{first}", 1),
@@ -1208,8 +1208,14 @@ def a_built_page_reads_only_its_own_modules(folder):
         "a module imported twice": built.replace(second, second + second, 1),
         "the imports in another order than the map": built.replace(f"{first}\n{second}", f"{second}\n{first}", 1),
         "another key in the map": built.replace('{"imports":', '{"scopes":{},"imports":', 1),
-        "a module at an address": built.replace("data:text/javascript,%0Aconst", "https://example.com/a.js#", 1),
-        "a module encoded otherwise": built.replace("%3C/script", "%3c/script", 1),
+        "a module at an address": built.replace(theme_page.MODULE_SOURCE, "https://example.com/a.js#", 1),
+        "a module in percent-encoding": built.replace(
+            theme_page.module_url("\nconst first = 1;\n\n//# sourceURL=first.js\n"),
+            "data:text/javascript,%0Aconst%20first%20=%201;%0A%0A//%23%20sourceURL=first.js%0A", 1),
+        "a module with another media type": built.replace(theme_page.MODULE_SOURCE,
+                                                          "data:text/javascript;charset=utf-8;base64,", 1),
+        "a module in base64 with a line break": built.replace(theme_page.MODULE_SOURCE + "Cm",
+                                                              theme_page.MODULE_SOURCE + "C\\nm", 1),
         "a second map": built.replace(first, f'<script type="importmap">{built[imports:built.index("</script>")]}'
                                              f'</script>{first}', 1),
         "an import of a module out of the map": built.replace('import "second.js";', 'import "third.js";', 1),

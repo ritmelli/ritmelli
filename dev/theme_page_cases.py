@@ -311,7 +311,7 @@ KEPT = {
                                                      "f: url(HTTPS://example.com/x.png); }\n</style>"),
     "a module, in the import map before its import": (
         '<script type="module" src="first.js"></script>',
-        '<script type="importmap">{"imports":{"first.js":"data:text/javascript,%0Aconst first = 1;%0A%0A//%23 '
-        'sourceURL=first.js%0A"}}</script>'
+        '<script type="importmap">{"imports":{"first.js":"data:text/javascript;base64,'
+        'CmNvbnN0IGZpcnN0ID0gMTsKCi8vIyBzb3VyY2VVUkw9Zmlyc3QuanMK"}}</script>'
         '<script type="module">import "first.js";</script>'),
 }
