@@ -82,7 +82,8 @@ class VoicePedalStart:
         off_at = None
         if (lo is not None and empty_at is not None and last_on is not None and lo < last_on[1]
                 and last_on[0] <= empty_at and (on_at is None or on_at > empty_at)):
-            on_at, off_at, up_at = last_on
+            on_at, off_at, kept = last_on
+            up_at = up_at if up_at is not None and on_at <= up_at <= off_at else kept
         if on_at is None or (empty_at is not None and on_at > empty_at):
             return on_at, None
         now = self.clock()
