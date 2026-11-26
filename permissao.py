@@ -40,7 +40,6 @@ TABELA = {
     ("GET", "/apple-touch-icon.png"): LIVRE,
     ("GET", "/t/{slug}"): LIVRE,
     ("GET", "/t/{slug}/"): LIVRE,
-    ("GET", "/t/{slug}/{index}"): LIVRE,      # o index.html em qualquer caixa leva a /t/{slug}/
     ("GET", "/t"): LIVRE,                      # os arquivos dos temas (o static do /t/)
     ("GET", "/t/vitrola{resto}"): LIVRE,      # o endereco de antes da troca de nome (o TEMA_DE_ANTES do server.py)
     ("GET", "/api/themes"): LIVRE,

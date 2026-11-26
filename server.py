@@ -17,6 +17,7 @@ import hashlib
 import importlib
 import json
 import math
+import os
 import queue
 import random
 import re
@@ -67,6 +68,15 @@ SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
 CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
 RELATIVE_URL = re.compile(r"""url\((?!\s*['"]?(?:[a-z][a-z0-9+.-]*:|/|#))""", re.IGNORECASE)
 IMPORT_RULE = re.compile(r"@import\b", re.IGNORECASE)
+CSS_COMMENT = re.compile(r"/\*.*?(?:\*/|$)", re.DOTALL)
+CSS_STRING = re.compile(r"""\"(?:[^"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'""", re.DOTALL)
+CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})[ \t\r\n\f]?|(.))", re.DOTALL)
+
+
+def css_as_read(text):
+    def char(m):
+        return chr(min(int(m.group(1), 16), 0xFFFD)) if m.group(1) else m.group(2)
+    return CSS_ESCAPE.sub(char, CSS_COMMENT.sub(" ", text))
 
 
 class ThemePageError(Exception):
@@ -122,9 +132,10 @@ def inline_files(html, folder):
         path, text = theme_file(folder, name)
         if closes := CLOSES_ELEMENT[tag].search(text):
             raise ThemePageError(f"{name} has {closes.group(0)}, which its <{tag}> cannot hold")
-        if tag == "style" and IMPORT_RULE.search(text):
+        read = css_as_read(text) if tag == "style" else ""
+        if IMPORT_RULE.search(CSS_STRING.sub('""', read)):
             raise ThemePageError(f"{name} has an @import, which the browser would fetch outside the page")
-        if tag == "style" and path.parent != folder.resolve() and RELATIVE_URL.search(text):
+        if read and path.parent != folder.resolve() and RELATIVE_URL.search(read):
             raise ThemePageError(f"{name} has a relative url(), which the page would resolve from its own folder")
         parts += [html[done:start], f"<{tag}>\n{text}</{tag}>"]
         done = end
@@ -2623,15 +2634,21 @@ def build(app_state):
             return web.Response(status=304, headers=cab)
         return web.Response(text=html, content_type="text/html", headers=cab)
 
-    @r.get("/t/{slug}/{index:[Ii][Nn][Dd][Ee][Xx]\\.[Hh][Tt][Mm][Ll]}")
-    async def theme_index_file(request):
-        raise web.HTTPFound(request.rel_url.with_path(f"/t/{request.match_info['slug']}/").with_query(request.rel_url.query))
-
     @r.get("/t/{slug}")
     async def theme_redirect(request):
         raise web.HTTPFound(f"/t/{request.match_info['slug']}/")
 
-    app = web.Application(middlewares=[guard])
+    @web.middleware
+    async def built_page_only(request, handler):
+        rel = request.path.removeprefix("/t/")
+        if rel != request.path and "/" in rel:
+            slug = rel.split("/", 1)[0]
+            with contextlib.suppress(OSError, ValueError):
+                if os.path.samefile(THEMES / rel, THEMES / slug / "index.html"):
+                    raise web.HTTPFound(request.rel_url.with_path(f"/t/{slug}/").with_query(request.rel_url.query))
+        return await handler(request)
+
+    app = web.Application(middlewares=[guard, built_page_only])
     app.add_routes(r)
     app.router.add_static("/t/", THEMES, show_index=False)
 

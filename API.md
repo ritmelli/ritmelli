@@ -14,7 +14,7 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - `themes/<slug>/index.html`, a página do tema: HTML + CSS + JS puro, sem build. Arquivo
   extra (script `.js`, fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
   relativo (`./x.svg`, `fonts/x.woff2`), servido em `/t/<slug>/x.svg`; os `.js` e os `.css` entram na página (ver
-  abaixo). O `/t/<slug>/index.html`, em qualquer caixa, leva à página montada, em `/t/<slug>/` (302, com a mesma query).
+  abaixo). O `index.html` do tema, por qualquer nome do mesmo arquivo, leva à página montada, em `/t/<slug>/` (302, com a mesma query).
 - Toda resposta de `/t/` sai com `Cache-Control: no-cache`: o navegador confere cada arquivo do tema com o servidor
   antes de usar o que guardou (o que não mudou volta como 304), e não usa uma letra, uma textura ou uma imagem de antes
   sem conferir.

@@ -1142,6 +1142,11 @@ def the_theme_page_build():
                                                              {"sub/b.css": "a { b: url( 'x.png' ); }\n"}, "relative url()"),
             "a sheet with an @import": ('<link rel="stylesheet" href="a.css">', {"a.css": '@import "palette.css";\n'},
                                         "a.css has an @import"),
+            "a sheet with an escaped @import": ('<link rel="stylesheet" href="a.css">',
+                                                {"a.css": '@im\\70 ort "palette.css";\n'}, "a.css has an @import"),
+            "a sheet in a subfolder with an escaped relative url()": ('<link rel="stylesheet" href="sub/b.css">',
+                                                                      {"sub/b.css": "a { b: \\75rl(x.png); }\n"},
+                                                                      "relative url()"),
         }
         (folder / "sub").mkdir()
         for what, (tag, files, said) in refused.items():
@@ -1158,9 +1163,13 @@ def the_theme_page_build():
         (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url( 'data:x' ); }\n",
                                               encoding="utf-8")
         sheet.write_text("a { b: url(fonts/x.woff2); }\n", encoding="utf-8")
+        (folder / "d.css").write_text("/* @import x; */ a::after { content: \"@import\"; }\n", encoding="utf-8")
         kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
                 "a sheet of the page folder with a relative url()": ('<link rel="stylesheet" href="a.css">',
                                                                      "<style>\na { b: url(fonts/x.woff2); }\n</style>"),
+                "a sheet with @import only in a comment and a string": (
+                    '<link rel="stylesheet" href="d.css">',
+                    "<style>\n/* @import x; */ a::after { content: \"@import\"; }\n</style>"),
                 "a sheet in a subfolder with data: and # urls": ('<link rel="stylesheet" href="sub/c.css">',
                                                                  "<style>\na { b: url(data:image/png;base64,AA); c: "
                                                                  "url(#d); e: url( 'data:x' ); }\n</style>")}
@@ -1207,6 +1216,19 @@ async def a_missing_file_answers_500(server, folder):
             f"through the route, a missing theme file answers 500 and the log names it ({status})")
 
 
+def index_names():
+    names = ["/t/ritmelli/index.html", "/t/ritmelli/INDEX.HTML", "/t/ritmelli/index.html.", "/t/ritmelli/index.html%20",
+             "/t/ritmelli//index.html", "/t/ritmelli/./index.html"]
+    if sys.platform == "win32":
+        import ctypes
+        page = RAIZ / "themes" / "ritmelli" / "index.html"
+        short = ctypes.create_unicode_buffer(1024)
+        if ctypes.windll.kernel32.GetShortPathNameW(str(page), short, len(short)):
+            names.append("/t/ritmelli/" + Path(short.value).name)
+        names.append("/t/ritmelli/index.html::$DATA")
+    return names
+
+
 def ao_vivo(srv):
     """No --mock de verdade: o PC com tudo e a rede de casa recusada onde deve."""
     print("--- no --mock de verdade: o PC e a rede de casa (pelo 127.0.0.2)")
@@ -1223,7 +1245,7 @@ def ao_vivo(srv):
         script = conn.getresponse()
         script.read()
         index = []
-        for path in ("/t/ritmelli/index.html", "/t/ritmelli/INDEX.HTML"):
+        for path in index_names():
             conn.request("GET", f"{path}?lang=pt_BR&parear=123456")
             answer = conn.getresponse()
             answer.read()
@@ -1234,8 +1256,8 @@ def ao_vivo(srv):
              script.getheader("Cache-Control")) == ("no-cache", 304, "no-cache", 200, "no-cache"),
             f"/t/ answers with Cache-Control: no-cache: the page ({page_cache}), its 304 ({again.status}, "
             f"{again.getheader('Cache-Control')}) and a .js ({script.status}, {script.getheader('Cache-Control')})")
-    confere(index == [(302, "/t/ritmelli/?lang=pt_BR&parear=123456")] * 2,
-            f"/t/ritmelli/index.html, in any case, takes to the built page with its query ({index})")
+    confere(index == [(302, "/t/ritmelli/?lang=pt_BR&parear=123456")] * len(index_names()),
+            f"every name of the theme's index.html takes to the built page with its query ({index_names()}: {index})")
     confere(srv.api("GET", "/api/state").get("caps") == perm.caps("pc"), "o PC: o /api/state traz o caps do PC")
     confere(srv.api("POST", "/api/volume", {"vol": 0.42}).get("vol") == 0.42
             and srv.api("GET", "/api/state").get("vol") == 0.42, "o PC: o /api/volume muda o volume da musica")

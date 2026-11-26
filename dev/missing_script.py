@@ -266,10 +266,10 @@ def the_server_drops(raiz, role, language):
             by_qr = language == LANGUAGES[1]
             ready = await paired_phone(tab, by_qr)
             if by_qr:
-                search = await tab.js("location.search")
-                results.append((ready and "parear" not in search,
-                                f"phone in {language}: paired by the QR link, the page takes the code out of its address "
-                                f"({search!r})"))
+                history = [e["url"] for e in (await tab.cmd("Page.getNavigationHistory"))["entries"]]
+                results.append((ready and history and not any("parear" in url for url in history),
+                                f"phone in {language}: paired by the QR link, no entry of the tab's history keeps the code "
+                                f"({history})"))
         else:
             await open_page(tab, f"?lang={language}")
             ready = (await tab.page_reaches("s.online === true && !s.card", PAGE_READY_S)).get("online") is True
