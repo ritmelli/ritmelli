@@ -1088,7 +1088,7 @@ class Injetor:
                     contou = True
                     if vivos:
                         self._teve_leitor, self.perdeu_em = True, None
-                        donos = tuple(sorted(lt.dono for lt in vivos))
+                        donos = self.dry_outs.served(tuple(sorted(lt.dono for lt in vivos)))
                         fila = self.dry_outs.read_ring(m.na_fila)
                         if donos == servidos:
                             self._confere_fila(fila, volta, m)
@@ -1099,7 +1099,7 @@ class Injetor:
                                 break
                             m.escreve(self.motor._mixa(BLOCK))
                             fila = self.dry_outs.read_ring(m.na_fila)
-                        servidos = self.dry_outs.served(donos)
+                        servidos = donos
                         prox = time.perf_counter() + BLOCK / SR
                     else:
                         servidos = self.dry_outs.served(())
@@ -1117,7 +1117,7 @@ class Injetor:
                     # o anel que falhou fecha (o mapa e o handle nao ficam abertos ate o app sair) e o _abre tenta um
                     # novo; o estado do efeito zera mesmo se o fechamento falhar
                     falhou, self.m = self.m, None
-                    servidos = ()
+                    servidos = self.dry_outs.served(())
                     self.saude.anel_caiu(volta, contou)  # a pausa abaixo nao conta no estado do anel que caiu
                     try:
                         if falhou is not None:

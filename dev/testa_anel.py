@@ -817,7 +817,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.log = io.StringIO()
         full = eng.INJ_FOLGA * eng.BLOCK
 
-        self.wrote = self.drain_next = False
+        self.wrote = self.drain_next = self.fail_next = False
 
         def na_fila(m):
             if not self.gate.is_set():
@@ -836,6 +836,9 @@ class TestVoicePedalDryOut(unittest.TestCase):
             return full
 
         def escreve(m, x):
+            if self.fail_next:
+                self.fail_next = False
+                raise OSError("the ring failed")
             if not self.write_gate.is_set():
                 self.write_held.set()
                 self.write_gate.wait()
@@ -1309,6 +1312,26 @@ class TestVoicePedalDryOut(unittest.TestCase):
         for n, (owner, what) in enumerate(((2, "another reader"), (0, "no reader"), (2, "the reader back")), 1):
             self.a.leitor[0].dono = owner
             self.assertTrue(espera(lambda n=n: self.inj.estado()["leitores_trocados"] == before + n), what)
+
+    def test_a_new_reader_is_in_the_state_before_the_ring_is_filled_for_it(self):
+        self.wait_filled()
+        before = self.inj.estado()["leitores_trocados"]
+        self.write_held.clear()
+        self.write_gate.clear()
+        self.a.leitor[0].dono = 2
+        self.drain.set()
+        self.assertTrue(self.write_held.wait(3), "the ring was never filled for the new reader")
+        self.assertEqual(self.inj.estado()["leitores_trocados"], before + 1,
+                         "the new reader waited for the ring to be filled for it")
+
+    def test_a_ring_that_failed_is_a_change_of_its_readers(self):
+        self.wait_filled()
+        before = self.inj.estado()["leitores_trocados"]
+        self.inj._tentou = -1e9
+        self.fail_next = True
+        self.drain.set()
+        self.assertTrue(espera(lambda: self.inj.estado()["leitores_trocados"] == before + 2),
+                        "the ring that failed served no reader, and its reader came back")
 
     def test_the_longest_return_is_published_with_the_counts(self):
         self.pedal_on(1.0)
