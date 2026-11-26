@@ -12,7 +12,7 @@ CALL, DECLARATION = "globalThis.result = f();", "function f() { return 1; }"
 FOUR_LINES = "function f() {\n  const x = 1;\n  return x;\n}"
 NESTED = "@media (min-width: 1px) {\n  a { color: red; }\n  @container (max-width: 1rem) { .b::after { content: %s; } }\n}\n"
 FONT = "@font-face { font-family: 'A'; src: url(fonts/a.woff2) format('woff2'); }\n"
-PEDAL = '<script src="pedal.js"></script>'
+PEDAL = '<script type="module" src="pedal.js"></script>'
 HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
 TWO_LINKED = "<script src=\"s.js\"></script>\n<script src=\"t.js\"></script>\n"
 TRANSLATED = {"index.html": "<!-- i18n -->\n", "i18n/i18n_en.properties": "", "i18n/i18n_pt_BR.properties": ""}
@@ -20,6 +20,12 @@ TEXTS = {"i18n/i18n_en.properties": "a=b\n", "i18n/i18n_pt_BR.properties": "a=b\
 NOTICE = '<script src="notice.js"></script>'
 CANNOT = "cannot judge"
 LEFT, CAME = "declaration left its script", "declaration came into the script"
+MODULES = '<script type="module" src="a.js"></script>\n<script type="module" src="b.js"></script>\n'
+SWAPPED = '<script type="module" src="b.js"></script>\n<script type="module" src="a.js"></script>\n'
+ONE_MODULE = '<script type="module" src="m.js"></script>\n'
+AROUND = ('<link rel="stylesheet" href="a.css">\n<script type="module" src="m.js"></script>\n'
+          '<link rel="stylesheet" href="b.css">\n')
+RULE, RUNS = "body { color: red; }\n", "globalThis.m = 1;\n"
 
 
 def inline(*scripts):
@@ -284,6 +290,26 @@ SAMPLES = (
     ("two functions of one name swapped", inline("function f() { return 1; }\nfunction f() { return 2; }\nf();"),
      inline("function f() { return 2; }\nfunction f() { return 1; }\nf();"),
      ["declarations of one name in another order"]),
+    ("two module tags swapped, which run in the same order, the one imported first",
+     {"index.html": MODULES, "a.js": 'import { b } from "b.js";\nglobalThis.r = b();\n',
+      "b.js": "export const b = () => 1;\n"},
+     {"index.html": SWAPPED, "a.js": 'import { b } from "b.js";\nglobalThis.r = b();\n',
+      "b.js": "export const b = () => 1;\n"}, []),
+    ("two module tags swapped, which then run in another order",
+     {"index.html": MODULES, "a.js": "globalThis.a = 1;\n", "b.js": "globalThis.b = 2;\n"},
+     {"index.html": SWAPPED, "a.js": "globalThis.a = 1;\n", "b.js": "globalThis.b = 2;\n"},
+     ["modules in another order", "moved out of order"]),
+    ("a function moved from one module to another",
+     {"index.html": MODULES, "a.js": f"{DECLARATION}\nglobalThis.r = f();\n", "b.js": "globalThis.b = 2;\n"},
+     {"index.html": MODULES, "a.js": "globalThis.r = f();\n", "b.js": f"{DECLARATION}\nglobalThis.b = 2;\n"},
+     [LEFT, CAME]),
+    ("a statement moved from one module to the next, in the same order",
+     {"index.html": MODULES, "a.js": "globalThis.a = 1;\nglobalThis.c = 3;\n", "b.js": "globalThis.b = 2;\n"},
+     {"index.html": MODULES, "a.js": "globalThis.a = 1;\n", "b.js": "globalThis.c = 3;\nglobalThis.b = 2;\n"},
+     ["moved to another script"]),
+    ("a rule moved between two sheets with a module tag between them, which runs after both",
+     {"index.html": AROUND, "a.css": RULE, "b.css": "", "m.js": RUNS},
+     {"index.html": AROUND, "a.css": "", "b.css": RULE, "m.js": RUNS}, []),
 )
 
 
@@ -371,6 +397,10 @@ DOUBTFUL = (
      {"index.html": "<script title=\"src=a\" src=x&#46;js></script>\n"}),
     ("a character reference in an href", {"index.html": "<link rel=\"stylesheet\" href=\"a&#46;css\">\n"}),
     ("a script start tag that never ends", {"index.html": "<script src=\"x.js\"\n"}),
+    ("a module with an import()", {"index.html": ONE_MODULE, "m.js": 'import("x.js");\n'}),
+    ("a module importing one the page does not tag", {"index.html": ONE_MODULE, "m.js": 'import "y.js";\n'}),
+    ("a module importing a name written with an escape", {"index.html": ONE_MODULE, "m.js": 'import "m\\u002ejs";\n'}),
+    ("a module file with a </script", {"index.html": ONE_MODULE, "m.js": "// </script>\n"}),
 )
 
 
@@ -396,6 +426,19 @@ def early(html, _):
     inlined = '<script src="desk-buttons.js"></script>\n<script src="start.js"></script>\n'
     ui_events = '<script src="ui-events.js"></script>\n'
     return html.replace(inlined, "").replace(ui_events, inlined + ui_events) if inlined in html else ""
+
+
+def tag_swap(first, second):
+    one, other = (f'<script type="module" src="{name}"></script>' for name in (first, second))
+    return lambda html, _: html.replace(one, "\0").replace(other, one).replace("\0", other) if one in html else ""
+
+
+PINCEL = "export function pincel(W, H) {"
+
+
+def pincel(text):
+    start = text.find(PINCEL)
+    return text[start:text.find("\n", start) + 1] if start >= 0 else ""
 
 
 def binder(text):
@@ -460,7 +503,13 @@ def main():
         ("transporte.js renamed",
          {"index.html": lambda html, _: html.replace('src="transporte.js"', 'src="transporte-new.js"')
           if 'src="transporte.js"' in html else "",
-          "transporte-new.js": lambda _, read: read("transporte.js")}, "script tag or strict mode"))]
+          "transporte-new.js": lambda _, read: read("transporte.js")}, "script tag or strict mode"),
+        ("the deck.js module tagged after mix.js", {"index.html": tag_swap("deck.js", "mix.js")},
+         "modules in another order"),
+        ("the pincel of pixel.js moved to the end of deck.js",
+         {"pixel.js": lambda text, _: text.replace(pincel(text), "") if pincel(text) else "",
+          "deck.js": lambda text, read: text + pincel(read("pixel.js"))}, "moved out of order"))]
+    same_order = built(theme_mutant({"index.html": tag_swap("deck.js", "maleta-vazia.js")}), files)
     mutants.append(("texturas/veio.webp holding the image of veio-v.webp",
                     built(theme_rebuild.reader(None, "ritmelli"), other_grain), "file changed"))
     pages = [theme, *(page for _, a, b, _ in samples for page in (a, b)), *(page for _, page, _ in mutants)]
@@ -481,6 +530,9 @@ def main():
     for title, head, _ in [*mutants[:2], *(x for x in mutants if "desenharQR" in x[0])]:
         code = theme_rebuild.judge(theme, head, compiles, **quiet)
         results.append((code == 1, f"the verdict on the theme with {title} is {code}"))
+    code = theme_rebuild.judge(theme, same_order, compiles, **quiet)
+    results.append((code == 0, f"the verdict on the theme with maleta-vazia.js tagged before deck.js, which it imports "
+                               f"and so runs after, is {code}"))
     allowed = next((a, b) for title, a, b, _ in samples if title == "two functions swapped")
     code = theme_rebuild.judge(*allowed, compiles, **quiet)
     results.append((code == 0, f"the verdict on two functions swapped is {code}"))
@@ -497,7 +549,7 @@ def main():
 
     def module_tag(self, *args):
         end = kept(self, *args)
-        self.found[-1] = (*self.found[-1][:2], "module", self.found[-1][3])
+        self.found[-1] = (*self.found[-1][:2], "worklet", self.found[-1][3])
         return end
     build.file_tag = module_tag
     try:

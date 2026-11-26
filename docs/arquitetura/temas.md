@@ -196,7 +196,10 @@ folha da montagem (o `sheet_problem` do `theme_page.py`). Fora disso ela recusa,
 linha), e sai 3 (não sei julgar): um `@namespace` ou um `@scope` numa folha, mesmo escapado ou num comentário (o
 prefixo do primeiro só vale na folha dele e o escopo do segundo depende do elemento que guarda a folha), um arquivo
 ligado pela página que não está no tema (o servidor não monta a página), um arquivo que não é texto em UTF-8 e um
-comentário `<!-- inline-script: -->`, que os servidores de antes do `theme_page.py` trocavam por um arquivo e o de agora deixa como comentário. Um `\r` sozinho
+comentário `<!-- inline-script: -->`, que os servidores de antes do `theme_page.py` trocavam por um arquivo e o de agora deixa como comentário. Num módulo, um `import()` ou
+um import cujo texto não é o nome de um módulo que a página marca (um escape nele também) sai 3: a ordem em que os
+módulos rodam vem só dos imports escritos. Cada `<script type="module" src="nome.js"></script>` é um bloco
+`[module nome.js]`, com o texto do arquivo (o mapa de imports que o servidor escreve não é marcação do modelo). Um `\r` sozinho
 conta como fim de linha, como no navegador (lido do git ou da pasta).
 Numa folha, entre as regras e nas pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab vertical
 antes de um seletor) é uma folha que não se lê.
@@ -213,7 +216,11 @@ Ela sai 0 quando o head só muda código de lugar:
 - toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha, numa folha da mesma pasta e inline
   ou de arquivo como na base (pode mudar de folha ligada ali, com a mesma extensão: as URLs relativas dela continuam
   apontando para o mesmo arquivo) e com os mesmos scripts antes da folha dela
-  (um script vê as regras das folhas que vêm antes dele);
+  (um script vê as regras das folhas que vêm antes dele; um módulo roda depois de todos os clássicos e da marcação
+  inteira, e não conta);
+- os módulos são os mesmos e rodam na mesma ordem, a do navegador: em profundidade, a partir da ordem das tags, cada um
+  depois dos que ele importa; e cada módulo, pelo nome, declara as mesmas funções e tem toda outra instrução do alto da
+  base, na mesma ordem (os nomes de um módulo são dele, então nada muda de um módulo para outro);
 - as traduções que o servidor põe na página (a pasta `i18n/`, na página com a marca do i18n) são as mesmas linhas, na
   mesma ordem (uma linha repetida também conta: chave repetida é erro no `i18n.ler`), sem o espaço das pontas que o
   `i18n.ler` também tira (o espaço depois de uma `\` fica), com as linhas quebradas onde o `i18n.ler` as quebra (o
@@ -232,8 +239,9 @@ função de mesmo nome guardam a ordem (vale a última). A parte do CSS
 que a gramática não conhece (um `@container` dentro de `@media`) também é comparada pelos tokens, e um script que
 não analisa, ou que o V8 (num Chrome sem tela) não compila, é mudança. O resto sai 1, com cada mudança impressa. O `dev/test_theme_rebuild.py`, do COMPLETO do
 `dev/testa_tudo.py`, confere o veredito em páginas pequenas e no tema com o `notice.js` trocado com o `covers.js`, com o
-`desk-buttons.js` e o `start.js` antes do `ui-events.js` e com o `bindShelfClick` levado do `shelf.js` para o fim do
-`start.js`.
+`desk-buttons.js` e o `start.js` antes do `ui-events.js`, com o `bindShelfClick` levado do `shelf.js` para o fim do
+`start.js`, com a tag do `deck.js` depois da do `mix.js` e com o `pincel` levado do `pixel.js` para o `deck.js`; a tag
+do `maleta-vazia.js` antes da do `deck.js`, que ele importa e por isso roda antes, sai 0.
 
 O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
 dos dois commits num Chrome sem tela, contra um `--mock` de cada, no tamanho do PC (a mesa) e no de um celular, e

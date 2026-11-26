@@ -20,7 +20,9 @@ The page is the index.html of the theme as the server builds it: every <script s
 <link rel="stylesheet" href="..."> replaced by the text of its file, and the i18n mark, when the page has one and
 the theme an i18n folder, by the <script> of the texts (a folder with one language only exits 3). Every script and stylesheet sits between a line that opens it ([script NAME], [script],
 [link NAME], [style] or [i18n texts], with the tag's other attributes when it has any) and a [/script] or [/style]
-line. <base> and <head> are git commits (the head defaults to the working tree).
+line; a <script type="module" src="name.js"></script> is a [module NAME] block, closed by [/module], with the text of
+its file (the import map the server writes for it is not markup of the template). <base> and <head> are git commits
+(the head defaults to the working tree).
 
 The tool reads index.html with the build's own reader (theme_page.Template), so a page the build refuses exits 3, with
 the line and the build's reason. On top of it, it exits 3, naming the file, for a file tag whose address is not a plain
@@ -28,7 +30,9 @@ path inside the theme (like gerado/base.css, or /t/<theme>/ and a plain path, re
 linked file that is not in the theme (the server does not build the page), a file that is not UTF-8 text, a script file
 with a </script or a <!-- or that starts with #!, a sheet file with a </style or that fails the build's sheet check (theme_page.sheet_problem: no @import, and outside the
 page's folder only plain url() values that are not relative), an @import, @namespace or @scope in any sheet (even
-escaped or in a comment), and an <!-- inline-script: --> comment, which servers before theme_page replaced with a file.
+escaped or in a comment), an <!-- inline-script: --> comment, which servers before theme_page replaced with a file,
+and a module with an import() or an import whose text is not the name of a module the page tags (an escape in it
+included).
 In a sheet, only CSS whitespace and comments may sit between and around the rules.
 
 Exit 0 when the head only moves code: the two pages are the same, or
@@ -45,7 +49,12 @@ Exit 0 when the head only moves code: the two pages are the same, or
 - every style rule of the base is in the head, in the same order, under the same stylesheet attributes, in a
   stylesheet of the same folder and extension and inline or from a file as before (it may move to another linked
   stylesheet there: its relative URLs keep their target) and with the same scripts before its stylesheet
-  (a script sees the rules of the stylesheets before it);
+  (a script sees the rules of the stylesheets before it; a module runs after every classic script and the whole
+  markup, so modules do not count);
+- the head runs the same modules in the same order, depth first from the order of their tags with each module after
+  the ones it imports (the order the browser runs them in), and each module, by its name, declares the same functions
+  and has every other top-level statement of the base, in the same order (a module's names are its own, so nothing
+  moves between modules);
 - the translation lines the server puts in the page (the i18n folder, for a page with the i18n mark) are the same,
   in the same order and as many times, split and trimmed as i18n.ler splits and trims them.
 Statements and rules are compared as syntax trees (tree-sitter), with the text of every node that no child covers,
@@ -58,7 +67,7 @@ printed, and the exit is 1."""
 
 CANNOT_JUDGE = 3
 LEFTOVER_MARKER = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
-FILE_KINDS = {"script": "script", "style": "link"}
+FILE_KINDS = {"script": "script", "style": "link", "module": "module"}
 JS_MIME = ("application/ecmascript", "application/javascript", "application/x-ecmascript", "application/x-javascript",
            "text/ecmascript", "text/javascript", "text/javascript1.0", "text/javascript1.1", "text/javascript1.2",
            "text/javascript1.3", "text/javascript1.4", "text/javascript1.5", "text/jscript", "text/livescript",
@@ -158,6 +167,7 @@ class Page:
     texts: tuple = ()
     read: frozenset = frozenset()
     files: dict = field(default_factory=dict)
+    modules: tuple = ()
 
     def view(self):
         lines = []
@@ -184,6 +194,8 @@ def block_of(kind, name, others):
                      type_of(others).lower() in ("", "text/css"), posixpath.dirname(name) if kind == "link" else "",
                      source=("file", posixpath.splitext(name)[1].lower()) if kind == "link"
                      else ("inline",))
+    if kind == "module":
+        return Block("module", header("module", name, others), tuple(others.items()), True, source=("module", name))
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
                  runs(others), source=("file" if kind == "script" else "inline", name))
 
@@ -267,6 +279,7 @@ def assemble(read, files=None, theme="ritmelli"):
         raise Doubt(f"{missing[0]}: not in the theme, whose i18n folder the server reads for the mark")
     closes = from_root("theme_page").CLOSES_ELEMENT
     blocks = [block_of(kind, name, others) for _, _, kind, name, others, _, _ in tags]
+    sources = {}
     for block, (begin, end, *_) in zip(blocks, tags):
         block.edges = (edge(html[:begin][::-1]), edge(html[end:]))
     page = html
@@ -287,9 +300,9 @@ def assemble(read, files=None, theme="ritmelli"):
                         f"the theme (like gerado/base.css)")
         if (text := fetch(name)) is None:
             raise Doubt(f"{name}: the page links it, and it is not in the theme (the server does not build the page)")
-        if kind == "script" and closes["script"].search(text):
+        if kind in ("script", "module") and closes["script"].search(text):
             raise Doubt(f"{name}: a </script or a <!-- in a script the server puts inline")
-        if kind == "script" and text.startswith("#!"):
+        if kind in ("script", "module") and text.startswith("#!"):
             raise Doubt(f"{name}: a #! at its start, which only a script file read on its own allows")
         if kind == "link" and closes["style"].search(text):
             raise Doubt(f"{name}: a </style in a sheet the server puts inline")
@@ -299,7 +312,10 @@ def assemble(read, files=None, theme="ritmelli"):
         if kind == "link" and sheet_reaches_out(text):
             raise Doubt(f"{name}: an @import, @namespace or @scope, even escaped or in a comment, which ties the "
                         f"sheet to something outside its rules")
+        if kind == "module":
+            sources[name] = text
         page = page[:begin] + opened + f"{text}{closed}" + page[end:]
+    modules = evaluation_order([name for _, _, kind, name, *_ in tags if kind == "module"], sources)
     items, current = [], []
     for line in page.split("\n"):
         sentinel = SENTINEL.match(line)
@@ -314,7 +330,44 @@ def assemble(read, files=None, theme="ritmelli"):
         else:
             items.append(("line", line, None, None))
     texts = translations(need) if any(kind == "i18n" for _, _, kind, *_ in tags) else ()
-    return Page(items, blocks, texts, frozenset(names), files or {})
+    return Page(items, blocks, texts, frozenset(names), files or {}, modules)
+
+
+def walk(node):
+    yield node
+    for child in node.children:
+        yield from walk(child)
+
+
+def evaluation_order(tagged, sources):
+    if not tagged:
+        return ()
+    parser, imports = parsers()["script"], {}
+    for name in tagged:
+        imports[name] = []
+        for node in walk(parser.parse(sources[name].encode("utf-8")).root_node):
+            line = node.start_point[0] + 1
+            if node.type == "call_expression" and node.child_by_field_name("function").type == "import":
+                raise Doubt(f"{name}, line {line}: an import(), whose module is known only when it runs")
+            if node.type not in ("import_statement", "export_statement") or not (
+                    source := node.child_by_field_name("source")):
+                continue
+            target = source.text.decode("utf-8")[1:-1]
+            if target not in sources:
+                raise Doubt(f"{name}, line {line}: an import of {target}, written as {source.text.decode('utf-8')}, "
+                            f"which is not the name of a module of the page")
+            imports[name].append(target)
+    order, seen = [], set()
+
+    def visit(name):
+        if name not in seen:
+            seen.add(name)
+            for target in imports[name]:
+                visit(target)
+            order.append(name)
+    for name in tagged:
+        visit(name)
+    return tuple(order)
 
 
 def from_root(module):
@@ -386,7 +439,8 @@ def parsers():
     import tree_sitter
     import tree_sitter_css
     import tree_sitter_javascript
-    return {"script": tree_sitter.Parser(tree_sitter.Language(tree_sitter_javascript.language())),
+    javascript = tree_sitter.Parser(tree_sitter.Language(tree_sitter_javascript.language()))
+    return {"script": javascript, "module": javascript,
             "style": tree_sitter.Parser(tree_sitter.Language(tree_sitter_css.language()))}
 
 
@@ -451,7 +505,8 @@ class Parsed:
 def parse(parser, block, n, compiles):
     src = block.text.encode("utf-8")
     tree = parser.parse(src)
-    out = Parsed(error=block.kind == "script" and (tree.root_node.has_error or not compiles[block.text]))
+    out = Parsed(error=block.kind in ("script", "module") and (
+        tree.root_node.has_error or block.kind == "script" and not compiles[block.text]))
     prologue = block.kind == "script"
     if block.kind == "style":
         edges = [0, *(x for node in tree.root_node.children for x in (node.start_byte, node.end_byte)), len(src)]
@@ -470,7 +525,8 @@ def parse(parser, block, n, compiles):
                     text.split("\n")[0][:120],
                     JS_ESCAPE.sub(lambda m: chr(int(m.group(1) or m.group(2), 16)),
                                   src[name.start_byte:name.end_byte].decode("utf-8")) if name else "")
-        (out.declarations if block.kind == "script" and node.type in DECLARATIONS else out.units).append(unit)
+        (out.declarations if block.kind in ("script", "module") and node.type in DECLARATIONS else out.units).append(
+            unit)
     return out
 
 
@@ -499,7 +555,7 @@ def compare_sequences(report, what, a, b, place_a, place_b):
 
 
 def markup(page):
-    order = {"script": 0, "style": 0}
+    order = {"script": 0, "style": 0, "module": 0}
     out = []
     for item in page.items:
         if item[0] == "open":
@@ -520,6 +576,23 @@ def compare_files(report, a, b):
         if a.files.get(name) != b.files.get(name):
             kind = "file gone" if name not in b.files else "file new" if name not in a.files else "file changed"
             report.changes.append((kind, name, []))
+
+
+def compare_declarations(report, header_a, header_b, parsed_a, parsed_b):
+    mine, theirs = collections.defaultdict(list), collections.defaultdict(list)
+    for unit in (parsed_a or Parsed()).declarations:
+        mine[unit.name].append(unit)
+    for unit in (parsed_b or Parsed()).declarations:
+        theirs[unit.name].append(unit)
+    report.declarations += sum(len(v) for v in mine.values())
+    for name in sorted(set(mine) | set(theirs)):
+        before, after = [u.shape for u in mine[name]], [u.shape for u in theirs[name]]
+        texts = {u.shape: u.text for u in mine[name] + theirs[name]}
+        left, came = collections.Counter(before) - collections.Counter(after), collections.Counter(after) - collections.Counter(before)
+        report.changes += [("declaration left its script", header_a, [texts[s]]) for s in left.elements()]
+        report.changes += [("declaration came into the script", header_b, [texts[s]]) for s in came.elements()]
+        if before != after and not left and not came:
+            report.changes.append(("declarations of one name in another order", f"{header_b}: {name}", []))
 
 
 def compare(a, b, compiles):
@@ -551,20 +624,20 @@ def compare(a, b, compiles):
                                    f"{by.header} (strict: {sy})", []))
         if not bx.code and bx.raw != by.raw:
             report.changes.append(("script content", f"script {k + 1}: {bx.header}", []))
-        mine, theirs = collections.defaultdict(list), collections.defaultdict(list)
-        for unit in (parsed_a.get(x) or Parsed()).declarations:
-            mine[unit.name].append(unit)
-        for unit in (parsed_b.get(y) or Parsed()).declarations:
-            theirs[unit.name].append(unit)
-        report.declarations += sum(len(v) for v in mine.values())
-        for name in sorted(set(mine) | set(theirs)):
-            before, after = [u.shape for u in mine[name]], [u.shape for u in theirs[name]]
-            texts = {u.shape: u.text for u in mine[name] + theirs[name]}
-            left, came = collections.Counter(before) - collections.Counter(after), collections.Counter(after) - collections.Counter(before)
-            report.changes += [("declaration left its script", bx.header, [texts[s]]) for s in left.elements()]
-            report.changes += [("declaration came into the script", by.header, [texts[s]]) for s in came.elements()]
-            if before != after and not left and not came:
-                report.changes.append(("declarations of one name in another order", f"{by.header}: {name}", []))
+        compare_declarations(report, bx.header, by.header, parsed_a.get(x), parsed_b.get(y))
+    at_a, at_b = ({page.blocks[n].source[1]: n for n in parsed if page.blocks[n].kind == "module"}
+                  for page, parsed in ((a, parsed_a), (b, parsed_b)))
+    if a.modules != b.modules:
+        report.changes.append(("modules in another order" if sorted(a.modules) == sorted(b.modules) else "modules",
+                               f"the base runs {', '.join(a.modules) or 'none'} and the head "
+                               f"{', '.join(b.modules) or 'none'}", []))
+    for name in sorted(set(a.modules) | set(b.modules)):
+        compare_declarations(report, f"[module {name}]", f"[module {name}]", parsed_a.get(at_a.get(name)),
+                             parsed_b.get(at_b.get(name)))
+    compare_sequences(report, "module statement",
+                      *([(u.shape, name, u.text) for name in page.modules for u in parsed[at[name]].units]
+                        for page, parsed, at in ((a, parsed_a, at_a), (b, parsed_b, at_b))),
+                      lambda name: f"[module {name}]", lambda name: f"[module {name}]")
     for kind, what in (("script", "statement"), ("style", "style rule")):
         units = []
         for page, scripts, parsed in ((a, scripts_a, parsed_a), (b, scripts_b, parsed_b)):
