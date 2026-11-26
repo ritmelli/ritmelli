@@ -227,6 +227,7 @@ VERSION_FILE, VERSION_LINES = re.subn(r'^VERSAO = "[^"\r\n]*"', 'VERSAO = "<vers
                                       (AQUI.parents[1] / "versao.py").read_text(encoding="utf-8"), flags=re.M)
 caso("the fake versao.py is the real one with only the VERSAO line swapped", VERSION_LINES == 1)
 RECORDED_MANIFEST = '{"recorded": true}'
+PARTIAL_INFO = json.dumps({"de": "0.3.3", "arquivos": ["ritmelli.exe"], "apaga": ["_internal/sai.pyd"]})
 RECORDER = f"""import argparse
 import json
 import runpy
@@ -256,6 +257,7 @@ def record(self, *args, **kwargs):
         lines = [line.strip() for line in path.read_text(encoding="utf-8-sig").splitlines()] if path else []
         if any(lines):
             notes[n] = [line for line in lines if line]
+    options.saida.mkdir(parents=True, exist_ok=True)
     (options.saida / "manifest.json").write_text({RECORDED_MANIFEST!r}, encoding="utf-8")
     call = {{"options": {{k: effective(k, v) for k, v in vars(options).items()}}, "notes": notes}}
     Path(__file__).with_name("publica-call.json").write_text(json.dumps(call), encoding="utf-8")
@@ -282,7 +284,7 @@ def manifest_call(source, version="0.3.4", notas=None, notas_en=None, partial=Fa
     if partial:
         (output / f"Ritmelli-{version}-parcial.exe").write_bytes(b"setup parcial")
     if partial_info:
-        (output / f"PARCIAL-{version}.json").write_text("{}", encoding="utf-8")
+        (output / f"PARCIAL-{version}.json").write_text(PARTIAL_INFO, encoding="utf-8")
     laid_out = {f.name: f.read_bytes() for f in output.iterdir()}
     env = {k: v for k, v in os.environ.items() if k.upper() not in ("NOTAS", "NOTAS_EN", "PYTHONUTF8")}
     env.update({k: v for k, v in (("NOTAS", notas), ("NOTAS_EN", notas_en)) if v is not None})
@@ -290,7 +292,7 @@ def manifest_call(source, version="0.3.4", notas=None, notas_en=None, partial=Fa
                        errors="replace", env=env)
     record = scripts / "publica-call.json"
     call = json.loads(record.read_text(encoding="utf-8")) if record.exists() else {"options": {}, "notes": {}}
-    if record.exists():
+    if call["options"].get("saida") == output.as_posix():
         laid_out["manifest.json"] = RECORDED_MANIFEST.encode()
     untouched = {f.name: f.read_bytes() for f in output.iterdir()} == laid_out
     code = p.returncode if untouched else f"the script changed {output}"
@@ -429,7 +431,12 @@ MANIFEST_CASES = {
          '    [p.unlink() for p in OUTPUT.glob("PARCIAL-*.json")]\n    return [str(a) for a in arguments]'),
         ("    return [str(a) for a in arguments]",
          '    [p.write_text(p.read_text(encoding="utf-8"), encoding="utf-8-sig")'
-         ' for p in OUTPUT.glob("PARCIAL-*.json")]\n    return [str(a) for a in arguments]')]),
+         ' for p in OUTPUT.glob("PARCIAL-*.json")]\n    return [str(a) for a in arguments]'),
+        ("    return [str(a) for a in arguments]",
+         '    import json\n'
+         '    [p.write_text(json.dumps({k: v for k, v in json.loads(p.read_text(encoding="utf-8")).items()'
+         ' if k != "apaga"}), encoding="utf-8") for p in OUTPUT.glob("PARCIAL-*.json")]\n'
+         "    return [str(a) for a in arguments]")]),
     "every combination of NOTAS and NOTAS_EN (absent, blank or with a note) and the partial setup gives each its own "
     "options": (combinations_case, [
         ("        if lines:\n", '        if lines and os.environ.get("NOTAS_EN"):\n'),
