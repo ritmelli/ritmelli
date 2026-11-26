@@ -32,9 +32,10 @@ the gallery use, one list for HTML and one inside <svg>. A <script> or <style> e
 script file holds no </script or <!-- and a sheet file no </style. A <title>, <iframe> or <select> holds no <. A
 script src and a stylesheet href (with rel="stylesheet" alone) are plain paths inside the theme, like
 gerado/base.css, or /t/<theme>/ and a plain path, read from that theme's folder.
-Anything else, and <script/>, <style/>, a <base>, a preload or prefetch <link>, a srcdoc, a NUL in a value, a & in a rel, type or as, a & that is no whole reference in a value, a script type
-that is not JavaScript or JSON, an @import, @namespace or @scope in a sheet (even escaped or in a comment),
-or a linked or inlined file that is not in the theme, exits 3, naming the file (and, in index.html, the line and the
+Anything else, and <script/>, <style/>, a <base>, a preload or prefetch <link>, a srcdoc, a NUL in a value, a & in
+a rel, type or as, a & that is no whole reference in a value, a script type that is not JavaScript or JSON, an
+@import, @namespace or @scope in a sheet (even escaped or in a comment), or a linked or inlined file that is not in
+the theme, exits 3, naming the file (and, in index.html, the line and the
 place). In a sheet, only CSS whitespace and comments may sit between and around the rules.
 
 Exit 0 when the head only moves code: the two pages are the same, or
