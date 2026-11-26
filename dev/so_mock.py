@@ -232,8 +232,6 @@ class _Job:
         return found
 
     def left_after(self, seconds):
-        """Waits up to seconds for the processes in the job to end: (how many are still active, and, when any is, each
-        process that was in it when the wait began, as (image name, still running))."""
         handles = self.members()
         try:
             fim = time.monotonic() + seconds

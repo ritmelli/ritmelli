@@ -412,14 +412,12 @@ def starts():
 
 
 class FakeKernel:
-    """The kernel32 calls of so_mock._Job.left_after: a process per handle as (name or None, exit code, running)."""
-
     def __init__(self, processes, exits_on_first_name=None):
         self.processes, self.named = {h: list(v) for h, v in processes.items()}, []
         self.exits_on_first_name = exits_on_first_name
 
     def WaitForSingleObject(self, handle, ms):
-        return 0x102 if self.processes[handle.value][2] else 0  # WAIT_TIMEOUT: the process still runs
+        return so_mock.WAIT_TIMEOUT if self.processes[handle.value][2] else 0
 
     def QueryFullProcessImageNameW(self, handle, flags, buf, size):
         name = self.processes[handle.value][0]
