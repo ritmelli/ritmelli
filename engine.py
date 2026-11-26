@@ -963,14 +963,14 @@ class Injetor:
 
     def _confere_fila(self, fila, volta, m):
         """O menor tanto no anel na chegada da thread, e a seca contada (o que diz, e quando: dryouts.RingDryOuts)."""
-        if self.folga_min is None or fila < self.folga_min:
-            self.folga_min = fila
         seca = fila == 0
         self.saude.fila(fila, passagem=seca and self.motor.em_passagem(), esticando=seca and RUBBER_BAND.em_curso())
         if seca:
             self.secas += 1
             self.motor.voice_pedal.track(m.pista_ligou())
             self.dry_outs.ran_dry(volta, self.secas, self.volta_max)
+        if self.folga_min is None or fila < self.folga_min:
+            self.folga_min = fila
 
     def para(self):
         self._vai = False

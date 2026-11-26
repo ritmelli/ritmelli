@@ -57,7 +57,7 @@ dele veio depois, a que subiu dentro dele fica sem ordem (sem leitura com algo, 
 até o vazio fica sem ordem, e todo pedal que ligou antes do vazio sai com a nota), o pedal que ligou depois dele não
 conta no `secas_pedal`, o que ligou dentro dele, ou na mesma hora da última leitura com algo, sai com a nota de que pode
 ter ligado depois da seca, e a linha dá só até quanto depois dele o anel secou, o que desligou dentro dele, ou na mesma
-hora da última leitura com algo (sem ela, da leitura vazia), conta com a subida que acabou e com a pista dela (das
+hora da última leitura com algo ou da leitura vazia, conta com a subida que acabou e com a pista dela (das
 `ENDED_STARTS` últimas subidas que acabaram, a mais nova que ligou antes do vazio e desligou na última leitura com algo
 ou depois dela, ou, sem ela, no vazio ou depois dele, e não só a última, porque o pedal pode ligar e desligar de novo
 antes de a seca ser classificada; a pista lida tarde vai para a mais nova em que ela cabe; também a que só foi lida
@@ -90,18 +90,19 @@ maior de cima dos ciclos, entre os quais está a subida mais lenta; a linha leva
 `requested_on_s`, e o tempo entre as respostas dos dois `POST` do pedal, `on_s_between_responses`, que mostra um pedal
 ligado por mais tempo quando a ferramenta atrasou para ler o stream), de um stream de estado só, aberto depois de
 escolher o microfone, que dá a base (o primeiro state com o anel aberto, um leitor e a folga já medida, antes de o pedal
-ligar: o leitor sai no estado antes da primeira volta que confere a fila dele) e os estados de todos os ciclos: cada
-`tick` leva a hora da captura da volta dele (`t`, o `time.monotonic` do servidor, o mesmo relógio da ferramenta, que
-sobe o servidor com o próprio Python), e o `state` de uma volta vem logo antes do `tick` dela, então cada state tem a
-hora da volta; uma janela do ciclo leva as voltas até a primeira do fim dela em diante, que fecha a janela com o que
-traz, e a seguinte começa depois dela, então cada volta é de uma janela só, não importa quanto a ferramenta atrasou para
-ler; o fim do ciclo é o último state da janela; o `tick` leva também o número da volta (`n`), e um salto nele (a conexão
-que ficou para trás pula para a volta mais nova) para a medição, porque um state do meio pode ter mostrado o anel
-quebrado; o stream que fecha para a medição, de um anel que mediu a folga e de um anel sem interrupção (leitor o tempo
-todo, o mesmo microfone, e contadores que não voltam; e o mesmo `injetor` do `/api/state`, o número que cada
-`RingDryOuts` ganha ao nascer, que pega um `Injetor` aberto de novo, mesmo com os mesmos contadores; e o mesmo
-`leitores_trocados`, porque o vazio de um leitor que acabou de chegar não conta como seca), ou a medição para e diz qual
-ciclo. O `dev/test_measure_voice_pedal.py` confere a recusa e a linha de cada ciclo. Testes:
+ligar: o leitor sai no estado antes da primeira volta que confere a fila dele; e o `Injetor` conta e publica a seca de
+uma leitura vazia antes de a folga ir a zero, então nenhum state mostra a folga em zero sem a seca dela) e os estados de
+todos os ciclos: cada `tick` leva a hora da captura da volta dele (`t`, o `time.monotonic` do servidor, o mesmo relógio
+da ferramenta, que sobe o servidor com o próprio Python), e o `state` de uma volta vem logo antes do `tick` dela, então
+cada state tem a hora da volta; uma janela do ciclo leva as voltas até a primeira do fim dela em diante, que fecha a
+janela com o que traz, e a seguinte começa depois dela, então cada volta é de uma janela só, não importa quanto a
+ferramenta atrasou para ler; o fim do ciclo é o último state da janela; o `tick` leva também o número da volta (`n`), e
+um salto nele (a conexão que ficou para trás pula para a volta mais nova) para a medição, porque um state do meio pode
+ter mostrado o anel quebrado; o stream que fecha para a medição, de um anel que mediu a folga e de um anel sem
+interrupção (leitor o tempo todo, o mesmo microfone, e contadores que não voltam; e o mesmo `injetor` do `/api/state`, o
+número que cada `RingDryOuts` ganha ao nascer, que pega um `Injetor` aberto de novo, mesmo com os mesmos contadores; e o
+mesmo `leitores_trocados`, porque o vazio de um leitor que acabou de chegar não conta como seca), ou a medição para e
+diz qual ciclo. O `dev/test_measure_voice_pedal.py` confere a recusa e a linha de cada ciclo. Testes:
 `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso), `python dev/testa_vozes.py` (o `vozes.json`, o que o
 instalador baixa e o `impedimento()`), `python dev/testa_pista.py` (o processo contra um anel falso; com
 `RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade) e `python dev/testa_conversor.py` (o motor com modelos de

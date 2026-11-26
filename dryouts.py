@@ -89,8 +89,8 @@ class VoicePedalStart:
             pedal += " (with no fill seen, maybe after it ran dry)"
         if off_at is not None:
             pedal += f" and off {now - off_at:.2f} s ago"
-            if off_at == off_by:
-                read = "last fill" if lo is not None else "empty read"
+            if off_at in (lo, empty_at):
+                read = "last fill" if off_at == lo else "empty read"
                 pedal += f" (at the clock reading of the ring's {read}, maybe before it ran dry)"
             elif empty_at is not None and off_at <= empty_at:
                 pedal += " (before the ring was seen empty, maybe before it ran dry)"

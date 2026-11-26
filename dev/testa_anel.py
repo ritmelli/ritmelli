@@ -537,6 +537,11 @@ class TestVoicePedalStart(unittest.TestCase):
                     self.assertEqual(dry.while_pedal_starting, 0, "the ring had music 0.2 s after the pedal turned off")
                     self.assertIn("the microphone ring ran dry (", log.getvalue())
 
+    def test_after_a_fill_a_pedal_off_at_the_empty_read_is_at_its_clock_reading(self):
+        counted, log = self.run_starts([(1.0, "on"), (1.1, "fill"), (1.2, "empty"), (1.2, "off")], 1.3)
+        self.assertEqual(counted, 1)
+        self.assertIn("and off 0.10 s ago (at the clock reading of the ring's empty read, maybe before it ran dry)", log)
+
     def test_without_a_fill_a_pedal_off_at_the_empty_read_may_be_the_dry_outs(self):
         counted, log = self.run_starts([(1.0, "on"), (1.2, "empty"), (1.2, "off")], 1.3)
         self.assertEqual(counted, 1)
@@ -1349,6 +1354,17 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
         self.published()
         return self.pedal_lines()[-1]
+
+    def test_a_dry_out_is_counted_before_the_headroom_goes_to_zero(self):
+        seen, ran_dry = [], self.inj.dry_outs.ran_dry
+
+        def at_entry(*args):
+            seen.append(self.inj.estado())
+            return ran_dry(*args)
+        self.inj.dry_outs.ran_dry = at_entry
+        self.dry_out()
+        self.assertGreater(seen[0]["folga_min_ms"], 0.0, "a state with the headroom at zero and the dry-out not counted")
+        self.assertEqual((self.inj.estado()["folga_min_ms"], self.inj.estado()["secas"]), (0.0, 1))
 
     def test_dry_out_long_after_the_track_came_up(self):
         self.pedal_on(0.0)
