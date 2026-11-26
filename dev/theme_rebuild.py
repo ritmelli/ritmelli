@@ -375,7 +375,7 @@ def assemble(read, files=None, theme="ritmelli"):
             blocks[current[-1]].raw.append(line)
         else:
             items.append(("line", line, None, None))
-    texts = translations(need, page)
+    texts = translations(need, html)
     return Page(items, blocks, texts, frozenset(names), files or {})
 
 

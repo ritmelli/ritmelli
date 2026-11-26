@@ -1186,8 +1186,12 @@ async def a_missing_file_answers_500(server, folder):
     marked = folder / "themes" / "marked"
     (marked / "i18n").mkdir(parents=True)
     (marked / "index.html").write_text("<head>\n<style>/* <!-- i18n --> */</style>\n<!-- i18n -->\n", encoding="utf-8")
+    placed = folder / "themes" / "placed"
+    (placed / "i18n").mkdir(parents=True)
+    (placed / "index.html").write_text('<head><!-- i18n --><script src="gone.js"></script></head>\n', encoding="utf-8")
     for language in ("en", "pt_BR"):
-        (marked / "i18n" / f"i18n_{language}.properties").write_text("a=b\n", encoding="utf-8")
+        for theme in (marked, placed):
+            (theme / "i18n" / f"i18n_{language}.properties").write_text("a=b\n", encoding="utf-8")
     read_text = Path.read_text
 
     def locked(path, *args, **kwargs):
@@ -1258,6 +1262,8 @@ async def a_missing_file_answers_500(server, folder):
                          for resp in [await client.get(f"/t/{slug}/", headers={"Host": f"localhost:{A.port}"})]}
             resp = await client.get("/t/marked/", headers={"Host": f"localhost:{A.port}"})
             mark = resp.status, await resp.text()
+            resp = await client.get("/t/placed/", headers={"Host": f"localhost:{A.port}"})
+            placed_at = resp.status, await resp.text()
     confere(status == 500 and "themes/broken/index.html:2:1 was not built: gone.js is missing from themes/broken" in said
             and said in log.getvalue() and str(folder) not in said and folder.name not in said,
             f"through the route, a missing theme file answers 500 with the template, the file and the rule, the log "
@@ -1284,6 +1290,9 @@ async def a_missing_file_answers_500(server, folder):
     confere(mark[0] == 500 and "themes/marked/index.html:2:11 was not built: the <!-- i18n --> mark is read only as a "
             "comment of its own" in mark[1],
             f"an i18n mark in a style before the real one stops the build, read before the texts go in ({mark})")
+    confere(placed_at[0] == 500 and "themes/placed/index.html:1:20 was not built: gone.js is missing" in placed_at[1],
+            f"a file tag after the i18n mark on its line is refused at its column in the template, not in the page "
+            f"with the texts in ({placed_at})")
 
 
 def index_names():

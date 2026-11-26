@@ -256,6 +256,7 @@ REFUSED = {
                                 "mark is read only as a comment of its own"),
     "the i18n mark in a select": ('<select id="s"><!-- i18n --></select>', {},
                                   "mark is read only as a comment of its own"),
+    "the i18n mark before the doctype": ("<!-- i18n --><!doctype html>", {}, "comes before the <!doctype html>"),
     "the i18n mark in a style before the real one": ("<style>/* <!-- i18n --> */</style>\n<!-- i18n -->", {},
                                                       "mark is read only as a comment of its own"),
 }

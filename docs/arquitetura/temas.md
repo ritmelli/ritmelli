@@ -80,7 +80,8 @@ Depois da gramática, a montagem ainda recusa, e o que escrever no lugar:
   `<link>`): o `<select>` vazio, preenchido pelo código do tema;
 - o `srcdoc`, que escreve uma página num atributo: tirá-lo, e pôr no próprio tema o que ele mostrava;
 - a marca `<!-- i18n -->` fora de um comentário só dela (num atributo, num `<style>` ou num `<script>`) ou dentro de um
-  `<svg>` ou de um `<select>`, onde o `<script>` dos textos não entra: a marca sozinha, como comentário, no `<head>`.
+  `<svg>` ou de um `<select>`, onde o `<script>` dos textos não entra, e a marca antes do `<!doctype html>`, onde esse
+  `<script>` poria a página em quirks mode: a marca sozinha, como comentário, no `<head>`.
 
 O `dev/testa_mock.py` confere cada caso da lista e cada forma fora da gramática (os casos moram no
 `dev/theme_page_cases.py`). O `dev/theme_page_oracle.py`, que o `--tela` do `dev/testa_tudo.py` roda, abre num Chrome

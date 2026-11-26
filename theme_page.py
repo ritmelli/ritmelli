@@ -98,6 +98,9 @@ class Template:
                     self.end_tag(m.group(1).lower(), i)
                 if kind == "comment" and m.group(0) == i18n.MARCA and not self.svg and not self.select:
                     self.marks.add(i)
+                if kind == "doctype" and self.marks:
+                    self.refuse(min(self.marks), f"the {i18n.MARCA} mark comes before the <!doctype html>, where the "
+                                                 f"texts' <script> would put the page in quirks mode: write it after")
                 return m.end()
         self.refuse(i, f"{self.html[i:i + 30]!r} is outside the forms the build reads: write {EXPECTED}")
 
@@ -242,13 +245,13 @@ def utf8_text(path, name):
         raise unreadable(name, ex) from ex
 
 
-def inline_files(html, folder):
+def inline_files(html, folder, places=None):
     parts, done = [], 0
-    for start, end, tag, name in file_tags(html):
+    for n, (start, end, tag, name) in enumerate(file_tags(html)):
         try:
             parts += [html[done:start], f"<{tag}>\n{file_text(folder, tag, name)}</{tag}>"]
         except ThemePageError as ex:
-            raise ThemePageError(str(ex), place(html, start)) from ex
+            raise ThemePageError(str(ex), places[n] if places else place(html, start)) from ex
         done = end
     return "".join(parts) + html[done:]
 
@@ -277,8 +280,8 @@ def theme_of_template(rel):
 def build(page, texts, language):
     try:
         raw = utf8_text(page, page.name)
-        template(raw)
-        html = inline_files(i18n.injeta(raw, texts, language), page.parent)
+        places = [place(raw, start) for start, *_ in template(raw).found]
+        html = inline_files(i18n.injeta(raw, texts, language), page.parent, places)
     except ThemePageError as ex:
         from aiohttp import web
         where = shown(page) + (f":{ex.at[0]}:{ex.at[1]}" if ex.at else "")

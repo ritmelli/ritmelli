@@ -14,6 +14,7 @@ PEDAL = '<script src="pedal.js"></script>'
 HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
 TWO_INLINED = "<!-- inline-script: s.js -->\n<!-- inline-script: t.js -->\n"
 TRANSLATED = {"index.html": "<!-- i18n -->\n", "i18n/i18n_en.properties": "", "i18n/i18n_pt_BR.properties": ""}
+TEXTS = {"i18n/i18n_en.properties": "a=b\n", "i18n/i18n_pt_BR.properties": "a=b\n"}
 NOTICE = '<script src="notice.js"></script>'
 CANNOT = "cannot judge"
 LEFT, CAME = "declaration left its script", "declaration came into the script"
@@ -180,6 +181,8 @@ SAMPLES = (
                                                      "a.css": "\ufeffa { color: red; }\n"},
      {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n", "a.css": "a { color: red; }\n"}, []),
     ("a page that loses its byte order mark", {"index.html": "\ufeff<p>x</p>\n"}, {"index.html": "<p>x</p>\n"}, []),
+    ("an i18n mark put in a comment of a linked sheet", {**styled("a { color: red; }\n"), **TEXTS},
+     {**styled("/* <!-- i18n --> */\na { color: red; }\n"), **TEXTS}, []),
     ("a stylesheet moved to another folder", {"index.html": "<link rel=\"stylesheet\" href=\"base.css\">\n",
                                               "base.css": "a { color: red; }\n"},
      {"index.html": "<link rel=\"stylesheet\" href=\"gerado/base.css\">\n", "gerado/base.css": "a { color: red; }\n"},
