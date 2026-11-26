@@ -1971,9 +1971,10 @@ def build(app_state):
     def monta_volta(antes):
         """A volta do SSE (Voltas): o state, a prateleira e os jobs com a chave de cada um e o evento em bytes, e o tick
         da mesma captura. O que nao mudou desde a volta de antes e o mesmo objeto: a conexao compara por identidade."""
-        s, pos = leitura()
+        t, (s, pos) = time.monotonic(), leitura()
         jb = [dict(x) for x in A.public_jobs()]  # a mesma copia na chave e no evento: o download muda os de la
-        v = {"tick": evento("tick", {"pos": round(pos, 2), "levels": {k: round(x, 4) for k, x in E.levels.items()}})}
+        v = {"tick": evento("tick", {"pos": round(pos, 2), "t": round(t, 3),
+                                     "levels": {k: round(x, 4) for k, x in E.levels.items()}})}
         for nome, chave, dados in (("state", s, lambda: s), ("library", A.lib.version, A.lib.public),
                                    ("jobs", jb, lambda: jb)):
             v[nome] = antes[nome] if antes is not None and antes[nome][0] == chave else (chave, evento(nome, dados()))
@@ -2435,8 +2436,7 @@ def build(app_state):
 
     @r.get("/api/events")
     async def events(request):
-        resp = web.StreamResponse(headers={"Content-Type": "text/event-stream",
-                                           "Cache-Control": "no-cache"})
+        resp = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"})
         await resp.prepare(request)
         if request["papel"] == "pc":
             A.atualizacao.ao_abrir()  # a pagina do PC abriu: consulta a versao nova, se faz tempo (atualizacao.py)

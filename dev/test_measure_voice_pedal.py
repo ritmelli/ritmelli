@@ -145,13 +145,21 @@ class CycleRow(unittest.TestCase):
                 self.assertTrue(problem.startswith("cycle 5: "), problem)
 
 
-def stream(*states_sent):
-    return io.BytesIO(b"".join(b"event: state\ndata: " + json.dumps(s).encode() + b"\n\n" for s in states_sent))
+def event(name, data):
+    return f"event: {name}\ndata: {json.dumps(data)}\n\n".encode()
+
+
+def sse(*rounds_sent):
+    return io.BytesIO(b"".join((event("state", st) if st is not None else b"") + event("tick", {"pos": 0, "t": t})
+                               for t, st in rounds_sent))
+
+
+FALLBACK = "Microfone (Realtek(R) Audio)"
 
 
 class Main(unittest.TestCase):
     def run_main(self, got, *args, events=(), asked=MIC, late_lines=()):
-        sent, got = [], list(got)
+        sent = []
         work = Path(self.enterContext(tempfile.TemporaryDirectory()))
         err = []
 
@@ -165,23 +173,21 @@ class Main(unittest.TestCase):
             path = req.full_url.split("8970", 1)[1]
             sent.append((req.get_method(), path))
             if path == "/api/shutdown" and late_lines:
-                err[0].write("".join(ln + chr(10) for ln in late_lines))
+                err[0].write("".join(ln + "\n" for ln in late_lines))
                 err[0].flush()
             if path == "/api/events":
-                return stream(*events)
+                return sse(*events)
             if req.data and json.loads(req.data) == {"effect": "pistavoz"}:
                 err[0].write("\n".join(READY) + "\n")
                 err[0].flush()
                 logs = work / "local" / "Ritmelli" / "logs"
                 logs.mkdir(parents=True, exist_ok=True)
                 (logs / "pistavoz.log").write_text("\n".join(FIM) + "\n", encoding="utf-8")
-            answers = {"/api/effects": [{"id": "pistavoz"}]}
-            if path == "/api/state":
-                answers[path] = got.pop(0) if len(got) > 1 else got[0]
+            answers = {"/api/effects": [{"id": "pistavoz"}], "/api/state": got}
             return io.BytesIO(json.dumps(answers.get(path, {})).encode())
 
         proc = mock.Mock(**{"poll.return_value": None})
-        read_states, ticks = measure.read_states, itertools.count(1000.0)
+        ticks = itertools.count(0.0, 10.0)
         with (mock.patch("onnxruntime.get_available_providers", return_value=WITH_DML),
               mock.patch("onnxruntime.__version__", PINNED),
               mock.patch.object(measure.so_mock, "sai_se_o_app_ligado"),
@@ -190,8 +196,7 @@ class Main(unittest.TestCase):
               mock.patch.object(measure.tempfile, "mkdtemp", return_value=str(work)),
               mock.patch.object(measure.urllib.request, "urlopen", urlopen),
               mock.patch.object(measure, "OFF_S", 0.5),
-              mock.patch.object(measure, "read_states",
-                                lambda r, seconds, clock=None: read_states(r, seconds, lambda: next(ticks))),
+              mock.patch.object(measure, "clock", lambda: next(ticks)),
               mock.patch.object(sys, "argv", ["measure_voice_pedal.py", asked, "--port", "8970", "--on-s", "0.5",
                                               "--out", str(work / "out.json"), *args])):
             try:
@@ -203,73 +208,70 @@ class Main(unittest.TestCase):
         return why, sent, json.loads(out.read_text(encoding="utf-8")) if out.is_file() else None
 
     def test_a_fallback_microphone_stops_before_the_pedal(self):
-        why, sent, _ = self.run_main([state(mic="Microfone (Realtek(R) Audio)")])
-        self.assertIn("opened the microphone 'Microfone (Realtek(R) Audio)' and not 'IN 1'", why)
+        why, sent, _ = self.run_main(state(mic=FALLBACK))
+        self.assertIn(f"opened the microphone '{FALLBACK}' and not 'IN 1'", why)
         self.assertEqual(sent, [("GET", "/api/effects"), ("POST", "/api/devices"), ("GET", "/api/state"),
                                 ("POST", "/api/shutdown")])
 
     def test_a_fallback_microphone_after_the_filter_read_stops_before_the_pedal(self):
-        why, sent, _ = self.run_main([state()], events=[state(mic="Microfone (Realtek(R) Audio)")])
-        self.assertIn("opened the microphone 'Microfone (Realtek(R) Audio)' and not 'IN 1'", why)
+        why, sent, _ = self.run_main(state(), events=[(1.0, state(mic=FALLBACK))])
+        self.assertIn(f"opened the microphone '{FALLBACK}' and not 'IN 1'", why)
         self.assertEqual(sent, [("GET", "/api/effects"), ("POST", "/api/devices"), ("GET", "/api/state"),
                                 ("GET", "/api/events"), ("POST", "/api/shutdown")])
 
-    def test_a_state_read_apart_from_the_stream_does_not_break_a_cycle(self):
-        why, sent, result = self.run_main([state(1, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0)], "--cycles", "1",
-                                          events=[state(0, 0, 9.0, 10.0), state(0, 0, 9.0, 10.0),
-                                                  state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0)])
+    def test_a_cycle_is_the_rounds_before_its_end(self):
+        why, sent, result = self.run_main(state(), "--cycles", "1",
+                                          events=[(1.0, state(0, 0, 9.0, 10.0)), (5.0, state(0, 0, 9.0, 10.0)),
+                                                  (15.0, state(1, 1, 656.0, 10.0)), (25.0, None)])
         self.assertIsNone(why)
-        self.assertEqual(sent.count(("GET", "/api/events")), 1, "one stream for the whole measurement")
-        self.assertEqual((len(result["cycles"]), result["dry_outs"], result["dry_outs_while_starting"],
-                          result["onnxruntime"]), (1, 1, 1, PINNED),
-                         "the dry-out still queued in the stream past the cycle's wait is that cycle's")
+        self.assertEqual((sent.count(("GET", "/api/events")), sent.count(("GET", "/api/state"))), (1, 1),
+                         "one stream for the whole measurement, and /api/state only to check the microphone")
+        self.assertEqual((result["dry_outs"], result["dry_outs_while_starting"], result["onnxruntime"],
+                          result["cycles"][0]["new_longest_return_ms"]), (1, 1, PINNED, 656.0))
 
-    def test_each_cycle_ends_where_its_state_was_read(self):
-        why, _, result = self.run_main([state(), state(1, 1, 656.0, 10.0), state(2, 2, 656.0, 10.0)], "--cycles", "2",
-                                       events=[state(0, 0, 9.0, 10.0)] * 3 + [state(2, 2, 656.0, 10.0)] * 3)
+    def test_each_cycle_takes_the_rounds_of_its_own_window(self):
+        why, _, result = self.run_main(state(), "--cycles", "2",
+                                       events=[(1.0, state(0, 0, 9.0, 10.0)), (15.0, state(1, 1, 656.0, 10.0)),
+                                               (22.0, state(2, 2, 656.0, 10.0)), (45.0, None)])
         self.assertIsNone(why)
         self.assertEqual([(c["dry_outs"], c["dry_outs_while_starting"]) for c in result["cycles"]], [(1, 1), (1, 1)],
-                         "the dry-out the stream showed past the first cut is the second cycle's")
+                         "the round at 22 s is past the first cycle's end (20.5 s), so it is the second's")
         self.assertEqual((result["dry_outs"], result["dry_outs_while_starting"]), (2, 2))
 
-    def test_a_catch_up_on_the_headroom_alone_keeps_the_cut(self):
-        why, _, result = self.run_main([state(), state(0, 0, 9.0, 8.0)], "--cycles", "1",
-                                       events=[state(0, 0, 9.0, 10.0)] * 3 + [state(1, 1, 656.0, 0.0)])
+    def test_a_round_past_the_last_end_is_not_measured(self):
+        why, _, result = self.run_main(state(), "--cycles", "1",
+                                       events=[(1.0, state(0, 0, 9.0, 10.0)), (15.0, state(0, 0, 9.0, 10.0)),
+                                               (25.0, state(1, 1, 656.0, 0.0))])
         self.assertIsNone(why)
         self.assertEqual((result["dry_outs"], result["cycles"][0]["new_longest_return_ms"],
-                          result["longest_return_ms_since_the_ring_opened"]), (0, None, 9.0),
-                         "the dry-out the stream showed past the cut isn't this cycle's")
+                          result["longest_return_ms_since_the_ring_opened"]), (0, None, 9.0))
 
     def test_the_result_lists_only_the_dry_outs_between_its_cuts(self):
         told = [f"game output: the microphone ring ran dry (the thread came back after 656 ms; {n} so far)"
                 for n in (1, 2, 3)]
-        why, _, result = self.run_main([state(), state(2, 0, 656.0, 10.0)], "--cycles", "1",
-                                       events=[state(1, 0, 9.0, 10.0)] * 3 + [state(2, 0, 656.0, 10.0)],
+        why, _, result = self.run_main(state(), "--cycles", "1",
+                                       events=[(1.0, state(1, 0, 9.0, 10.0)), (15.0, state(2, 0, 656.0, 10.0)),
+                                               (25.0, None)],
                                        late_lines=told)
         self.assertIsNone(why)
         self.assertEqual((result["dry_outs"], result["dry_out_lines"]), (1, [told[1]]))
 
-    def test_a_broken_ring_at_the_end_of_a_cycle_stops_the_measurement(self):
-        healthy = [state(0, 0, 9.0, 10.0)] * 3
-        cases = {"the ring closed": {"active_devices": {"mic": MIC}, "microfone": {"anel": False, "leitores": 0}},
-                 "the reader gone": state(0, 0, 9.0, 10.0, leitores=0),
-                 "the injector opened again": state(0, 0, 0.0, None)}
-        for what, end in cases.items():
+    def test_a_broken_ring_in_a_cycle_stops_the_measurement(self):
+        cases = {"the ring closed": ({"active_devices": {"mic": MIC}, "microfone": {"anel": False, "leitores": 0}},
+                                     "the ring had no reader"),
+                 "the reader gone": (state(0, 0, 9.0, 10.0, leitores=0), "the ring had no reader"),
+                 "another microphone": (state(0, 0, 9.0, 10.0, mic=FALLBACK), "the ring had no reader"),
+                 "the injector opened again": (state(0, 0, 0.0, None), "the ring's counters started over")}
+        for what, (broken, said) in cases.items():
             with self.subTest(what):
-                why, _, result = self.run_main([state(), end], "--cycles", "1", events=healthy)
-                self.assertIn("cycle 1: at the end of the wait, /api/state: ", why)
+                why, _, result = self.run_main(state(), "--cycles", "1",
+                                               events=[(1.0, state(2, 0, 9.0, 10.0)), (15.0, broken), (25.0, None)])
+                self.assertIn(f"cycle 1: {said}", why)
                 self.assertIsNone(result)
 
-    def test_a_broken_ring_while_catching_up_stops_the_measurement(self):
-        why, _, result = self.run_main([state(), state(1, 0, 9.0, 10.0)], "--cycles", "1",
-                                       events=[state(0, 0, 9.0, 10.0)] * 3 + [state(0, 0, 9.0, 10.0, leitores=0)])
-        self.assertIn("cycle 1: the ring had no reader", why)
-        self.assertIsNone(result)
-
-    def test_a_real_drop_of_the_counters_still_stops_the_measurement(self):
-        why, _, result = self.run_main([state()], "--cycles", "1",
-                                       events=[state(2, 0, 9.0, 10.0), state(0, 0, 0.0, None), state(0, 0, 9.0, 10.0)])
-        self.assertIn("the ring's counters started over", why)
+    def test_a_stream_that_closes_stops_the_measurement(self):
+        why, _, result = self.run_main(state(), "--cycles", "1", events=[(1.0, state(0, 0, 9.0, 10.0))])
+        self.assertIn("cycle 1: the server's state stream closed", why)
         self.assertIsNone(result)
 
     def test_the_name_asked_in_another_case_is_the_same_microphone(self):
@@ -277,58 +279,39 @@ class Main(unittest.TestCase):
         self.assertIn("opened the microphone None", measure.mic_refusal(MIC, state(mic=None)))
 
 
-class EarlyStop(unittest.TestCase):
-    def test_stopping_early_leaves_the_stream_at_the_next_event(self):
-        r = stream(state(), state(1))
-        self.assertEqual(next(measure.read_states(r, 8.0, clock=lambda: 100.0)), state())
-        self.assertEqual(list(measure.read_states(r, 0.0, clock=lambda: 200.0)), [state(1)])
+class TheRecord(unittest.TestCase):
+    def test_a_state_belongs_to_the_round_of_the_tick_after_it(self):
+        record = measure.Record(sse((1.0, state()), (2.0, None), (3.0, state(1)), (9.0, None)))
+        self.assertEqual((record.until(2.5), record.current), ([state()], state()))
+        self.assertEqual((record.until(5.0), record.current), ([state(1)], state(1)))
 
-    def test_an_event_without_its_name_is_not_a_state(self):
-        r = io.BytesIO(stream(state()).getvalue() + b"data: {}\n\n" + stream(state(1)).getvalue())
-        times = iter([100.0, 100.0, 100.0, 109.0])
-        self.assertEqual(list(measure.read_states(r, 8.0, clock=lambda: next(times))), [state(), state(1)])
+    def test_an_old_round_read_late_still_counts_and_the_state_after_it_too(self):
+        record = measure.Record(sse((4.0, None), (4.5, state(1, 1, 656.0)), (5.5, None)))
+        self.assertEqual(record.until(5.0), [state(1, 1, 656.0)],
+                         "how late the tool reads the stream doesn't move a round from one window to another")
 
+    def test_a_round_at_or_past_the_end_waits_for_the_next_window(self):
+        record = measure.Record(sse((1.0, state()), (6.0, state(1)), (9.0, None)))
+        self.assertEqual(record.until(5.0), [state()])
+        self.assertEqual(record.until(6.0), [])
+        self.assertEqual(record.until(7.0), [state(1)])
 
-class CatchUp(unittest.TestCase):
-    def test_a_state_queued_past_the_wait_is_read(self):
-        r = stream(state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0), state(1, 1, 656.0, 10.0))
-        got = measure.catch_up(r, state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0), MIC, clock=lambda: 100.0)
-        self.assertEqual(got, [state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0)])
+    def test_a_wanted_state_stops_the_wait_and_leaves_the_rest(self):
+        record = measure.Record(sse((1.0, state(leitores=0)), (2.0, state()), (3.0, state(1)), (9.0, None)))
+        self.assertEqual(record.until(100.0, want=lambda st: st["microfone"]["leitores"] >= 1),
+                         [state(leitores=0), state()])
+        self.assertEqual(record.until(5.0), [state(1)])
 
-    def test_the_least_headroom_is_caught_up_too(self):
-        r = stream(state(folga=None), state(folga=12.0))
-        got = measure.catch_up(r, state(folga=None), state(folga=12.0), MIC, clock=lambda: 100.0)
-        self.assertEqual(got, [state(folga=None), state(folga=12.0)])
-
-    def test_a_drop_between_two_states_of_the_catch_up_stops_it(self):
-        r = stream(state(2, 0, 9.0, 10.0), state(1, 0, 9.0, 10.0))
-        with self.assertRaises(EOFError) as stop:
-            measure.catch_up(r, state(0, 0, 9.0, 10.0), state(3, 0, 9.0, 10.0), MIC, clock=lambda: 100.0)
-        self.assertIn("counters started over", str(stop.exception))
-
-    def test_a_stream_already_there_reads_nothing(self):
-        self.assertEqual(measure.catch_up(stream(), state(1, 1, 9.0), state(1, 1, 9.0), MIC), [])
-
-    def test_a_stream_that_never_gets_there_stops(self):
-        times = iter([100.0, 100.0, 200.0])
-        with self.assertRaises(EOFError) as stop:
-            measure.catch_up(stream(state(), state()), state(), state(1), MIC, seconds=60.0, clock=lambda: next(times))
-        self.assertIn("didn't reach the counters of /api/state", str(stop.exception))
-
-
-class ReadStates(unittest.TestCase):
-    def test_a_stream_that_ends_early_stops_the_wait(self):
-        got = []
+    def test_a_stream_that_closes_stops_the_wait(self):
+        record = measure.Record(sse((1.0, state())))
         with self.assertRaises(EOFError):
-            got.extend(measure.read_states(stream(state()), 8.0, clock=lambda: 100.0))
-        self.assertEqual(got, [state()])
+            record.until(5.0)
+        self.assertEqual(record.current, state())
 
-    def test_the_wait_ends_at_the_end_of_an_event_past_its_deadline(self):
-        times = iter([100.0, 100.0, 109.0])
-        r = stream(state(), state(1), state(2))
-        self.assertEqual(list(measure.read_states(r, 8.0, clock=lambda: next(times))), [state(), state(1)])
-        self.assertEqual(list(measure.read_states(r, 0.0, clock=lambda: 200.0)), [state(2)],
-                         "the next wait starts at the next whole event")
+    def test_other_events_are_not_states(self):
+        r = io.BytesIO(event("caps", {}) + event("library", [{"id": "x"}]) + b"data: {}\n\n" + event("state", state())
+                       + event("jobs", []) + event("tick", {"pos": 0, "t": 1.0}) + event("tick", {"pos": 0, "t": 9.0}))
+        self.assertEqual(measure.Record(r).until(5.0), [state()])
 
 
 if __name__ == "__main__":

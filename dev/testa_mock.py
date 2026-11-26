@@ -816,7 +816,7 @@ async def papeis_no_guard():
         # do envio, e o snapshot base e montado uma vez por volta para todas as conexoes (server.Voltas). Dois PCs
         # ligados: o envio do primeiro fica suspenso logo depois do state, e a virada acontece ali (a faixa nova, com a
         # posicao dela); o segundo segue livre e recebe a virada enquanto o primeiro esta parado
-        capturas, lidas = [({"status": "playing", "track": {"id": "t1"}}, 100.0)], []
+        capturas, lidas, comeco = [({"status": "playing", "track": {"id": "t1"}}, 100.0)], [], time.monotonic()
 
         def leitura():
             lidas.append(1)
@@ -887,6 +887,9 @@ async def papeis_no_guard():
             confere(p[:1] == [("t1", 100.0)] and ("t2", 0.5) in p and set(p) <= {("t1", 100.0), ("t2", 0.5)},
                     f"o SSE com a virada entre o state e o tick, no PC {nome}: cada posicao e da faixa entregue na "
                     f"volta dela ({p})")
+        ts = [d.get("t") for e, d in eventos(escrito2) if e == "tick"]
+        confere(ts and all(isinstance(x, float) for x in ts) and ts == sorted(ts) and comeco <= ts[0] <= ts[-1]
+                <= time.monotonic(), f"o tick leva a hora da captura da volta dele, no time.monotonic ({ts[:3]})")
         estados = [d for e, d in eventos(escrito1) + eventos(escrito2) if e == "state"]
         confere(estados and all(d.get("api") == server.API and d.get("mock") is True for d in estados),
                 f"o state do SSE leva o \"api\": {server.API} e o \"mock\" ({[sorted(d) for d in estados[:1]]})")

@@ -56,12 +56,15 @@ def voice_refusal(voice, voices):
     return None
 
 
-def read_states(r, seconds, clock=time.monotonic):
-    end, event, data = clock() + seconds, None, None
+clock = time.monotonic
+
+
+def rounds(r):
+    event = data = state = None
     while True:
         raw = r.readline()
         if not raw:
-            raise EOFError(f"the server's state stream closed {end - clock():.1f} s before the end of the wait")
+            raise EOFError("the server's state stream closed")
         line = raw.decode("utf-8").strip()
         if line.startswith("event: "):
             event = line[7:]
@@ -69,34 +72,33 @@ def read_states(r, seconds, clock=time.monotonic):
             data = line[6:]
         elif not line:
             if event == "state" and data is not None:
-                yield json.loads(data)
+                state = json.loads(data)
+            elif event == "tick" and data is not None:
+                yield json.loads(data)["t"], state
+                state = None
             event = data = None
-            if clock() >= end:
-                return
 
 
-def caught_up(seen, target):
-    a, b = seen["microfone"], target["microfone"]
-    headroom = b["folga_min_ms"] is None or (a["folga_min_ms"] is not None and a["folga_min_ms"] <= b["folga_min_ms"])
-    return headroom and all(a[k] >= b[k] for k in ("secas", "secas_pedal", "volta_max_ms"))
+class Record:
+    def __init__(self, r):
+        self._rounds, self._ahead, self.current = rounds(r), None, None
 
+    def _next(self):
+        ahead, self._ahead = self._ahead, None
+        return ahead or next(self._rounds)
 
-def catch_up(r, seen, target, mic, seconds=UP_S, clock=time.monotonic):
-    problem = interruption([seen, target], mic)
-    if problem:
-        raise EOFError(f"at the end of the wait, /api/state: {problem}")
-    if caught_up(seen, target):
-        return []
-    got = []
-    for st in read_states(r, seconds, clock):
-        problem = interruption([seen, st], mic)
-        if problem:
-            raise EOFError(problem)
-        got.append(st)
-        seen = st
-        if caught_up(st, target):
-            return got
-    raise EOFError(f"the state stream didn't reach the counters of /api/state in {seconds:.0f} s")
+    def until(self, end, want=None):
+        got = []
+        while True:
+            t, state = self._next()
+            if t >= end:
+                self._ahead = t, state
+                return got
+            if state is not None:
+                got.append(state)
+                self.current = state
+                if want and want(state):
+                    return got
 
 
 def mic_refusal(asked, state):
@@ -121,12 +123,11 @@ def interruption(states_seen, mic):
     return None
 
 
-def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_S, base=None, cut=None):
+def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_S):
     broke = interruption(states_seen, mic)
     if broke:
         return None, f"cycle {n}: {broke}"
-    base, cut = base or states_seen[0], cut or states_seen[-1]
-    if cut["microfone"]["folga_min_ms"] is None:
+    if states_seen[-1]["microfone"]["folga_min_ms"] is None:
         return None, f"cycle {n}: the ring never measured its headroom, so its dry-outs weren't counted"
     if not any(ln.startswith("pedal_voz: pronto") for ln in server_lines):
         return None, f"cycle {n}: the voice process never said it was ready within {on_s:.0f} s of the pedal (--on-s)"
@@ -141,7 +142,7 @@ def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_
         return None, f"cycle {n}: the voice process converted no block (its log has no fim with blocks)"
     if provider == "dml" and ends[-1].get("providers") != ["DmlExecutionProvider"] * VOICE_SESSIONS:
         return None, f"cycle {n}: the voice sessions ran on {ends[-1].get('providers')}, not all on DirectML"
-    before, after = base["microfone"], cut["microfone"]
+    before, after = states_seen[0]["microfone"], states_seen[-1]["microfone"]
     rose = after["volta_max_ms"] > before["volta_max_ms"]
     return {"cycle": n, "dry_outs": after["secas"] - before["secas"],
             "dry_outs_while_starting": after["secas_pedal"] - before["secas_pedal"],
@@ -209,12 +210,14 @@ def main():
             if refusal:
                 sys.exit(refusal)
             events = urllib.request.urlopen(base + "/api/events", timeout=30)
+            record = Record(events)
             try:
-                last = next((st for st in read_states(events, UP_S) if st["microfone"]["leitores"] >= 1), None)
+                read = record.until(clock() + UP_S, want=lambda st: st["microfone"]["leitores"] >= 1)
             except EOFError as ex:
                 sys.exit(f"waiting for the filter to read the ring: {ex} (see {server_err})")
-            if last is None:
-                sys.exit(f"the filter of {a.mic} never read the ring (see {server_err})")
+            last = record.current
+            if last is None or last["microfone"]["leitores"] < 1:
+                sys.exit(f"the filter of {a.mic} never read the ring (see {server_err}; {len(read)} state(s) seen)")
             refusal = mic_refusal(a.mic, last)
             if refusal:
                 sys.exit(refusal)
@@ -227,18 +230,14 @@ def main():
                 seen = len(lines(work / "server.err"))
                 try:
                     call("POST", "/api/settings", {"effect": "pistavoz"})
-                    during = list(read_states(events, a.on_s))
+                    during = record.until(clock() + a.on_s)
                     call("POST", "/api/settings", {"effect": "nenhum"})
-                    during += list(read_states(events, OFF_S))
-                    cut = call("GET", "/api/state")
-                    during += catch_up(events, (during or [last])[-1], cut, mic)
+                    during += record.until(clock() + OFF_S)
                 except EOFError as ex:
                     sys.exit(f"cycle {n}: {ex} (see {server_err} and {log})")
-                states_seen = [last, *during]
-                last = states_seen[-1]
-                c, problem = cycle_row(n, states_seen, mic, a.provider, lines(server_err)[seen:], lines(log), a.on_s,
-                                       start, cut)
-                start = cut
+                states_seen = [start, *during]
+                start = states_seen[-1]
+                c, problem = cycle_row(n, states_seen, mic, a.provider, lines(server_err)[seen:], lines(log), a.on_s)
                 if problem:
                     sys.exit(f"{problem} (see {work / 'server.err'} and {log})")
                 cycles.append(c)
