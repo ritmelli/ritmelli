@@ -399,8 +399,10 @@ def lexical_nodes(node, scope):
         yield child, scope
         if isinstance(child, FUNCTIONS):
             a = child.args
-            yield from visit(a.defaults + [d for d in a.kw_defaults if d] + getattr(child, "decorator_list", []),
-                             scope)
+            annotations = [p.annotation for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg]
+                           if p and p.annotation] + [r for r in [getattr(child, "returns", None)] if r]
+            yield from visit(a.defaults + [d for d in a.kw_defaults if d] + getattr(child, "decorator_list", [])
+                             + annotations, scope)
             yield from visit(child.body if isinstance(child.body, list) else [child.body], child)
         elif isinstance(child, ast.ClassDef):
             yield from visit(child.bases + child.keywords + child.decorator_list, scope)
@@ -690,6 +692,8 @@ MODULE_CAUGHT = [
     ("the module after a comprehension that reuses its name", MODULE_OWNER,
      "import owner as e\n\nnames = [e for e in ()]\ne._x\n"),
     ("a default argument", MODULE_OWNER, "import owner as e\n\n\ndef f(e=e._x):\n    return e\n"),
+    ("a parameter annotation", MODULE_OWNER, "import owner as e\n\n\ndef f(e: e._x):\n    return e\n"),
+    ("a return annotation", MODULE_OWNER, "import owner as e\n\n\ndef f(e) -> e._x:\n    return e\n"),
     ("the first iterable of a comprehension", MODULE_OWNER,
      "import owner as e\n\nvalues = [e for e in e._x]\n"),
     ("the module seen from a method", MODULE_OWNER,
