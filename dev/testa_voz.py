@@ -32,8 +32,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # o modulo do pedal de troca de voz (de fora do repo) fica de fora daqui: com ele o fx.py troca o alienigena pelo
 # pedal dele, e estas contas sao as dos efeitos daqui
 sys.modules.setdefault("pistavoz", None)
-import fx  # noqa: E402
-from microfone import preset, voz  # noqa: E402
+import fx
+from microfone import preset, voz
 
 SR, B = fx.SR, 480
 # the Fdn alone: the most it may cost per 10 ms block, measured as the fastest of FDN_RUNS passes (on the shared GitHub

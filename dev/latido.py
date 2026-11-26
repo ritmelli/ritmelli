@@ -13,8 +13,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import efeitos as ef  # noqa: E402
-import fx  # noqa: E402
+import efeitos as ef
+import fx
 
 SR, B = fx.SR, 480
 NIVEIS = (-6, -12, -18, -24, -30)  # latido em dB abaixo da fala mediana do usuario

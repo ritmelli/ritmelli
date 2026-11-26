@@ -54,7 +54,7 @@ def _guarded_connect_ex(self, address):
 socket.socket.connect, socket.socket.connect_ex = _guarded_connect, _guarded_connect_ex
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import so_mock  # noqa: E402
+import so_mock
 
 failures = []
 

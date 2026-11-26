@@ -119,9 +119,9 @@ def _laco_voz():
             continue
         try:
             fut.set_result(fn(arg))
-        except Exception as ex:  # noqa: BLE001 - o erro do modulo vai para quem pediu
+        except Exception as ex:  # o erro do modulo vai para quem pediu
             fut.set_exception(ex)
-        except BaseException as ex:  # noqa: BLE001 - um SystemExit do modulo, relancado no handler, parava o laco do servidor
+        except BaseException as ex:  # um SystemExit do modulo, relancado no handler, parava o laco do servidor
             fut.set_exception(RuntimeError(f"{type(ex).__name__}: {ex}"))
 
 
@@ -726,7 +726,7 @@ class App:
         try:
             e = dict(mod.estado() or {})
             cls._pedal_voz_erro = None
-        except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o estado dele nao derruba o do app
+        except Exception as ex:  # o modulo e de fora: o estado dele nao derruba o do app
             msg = f"{type(ex).__name__}: {str(ex)[:120]}"
             if msg != cls._pedal_voz_erro:
                 cls._pedal_voz_erro = msg
@@ -826,7 +826,7 @@ class App:
         def faz():
             try:
                 ch = fora.pede("canal", yid=yid, limite=CANAL_LIMITE_S).get("channel")
-            except Exception as ex:  # noqa: BLE001 - fica sem o canal
+            except Exception as ex:  # fica sem o canal
                 print(f"stream: the channel of {yid} didn't come ({yt_msg(ex)})", file=sys.stderr, flush=True)
                 return
             if ch and not tr.get("channel"):
@@ -885,7 +885,7 @@ class App:
                 info = fora.pede("info", alvo=f"https://www.youtube.com/watch?v={yid}", opts={**YDL, "skip_download": True})
                 title = info.get("title") or title
                 channel = info.get("channel") or info.get("uploader")
-            except Exception:  # noqa: BLE001 - o mock segue com o rotulo
+            except Exception:  # o mock segue com o rotulo
                 pass
         item = dict(base, id=yid or f"mock-{j['id']}", title=title, youtube_id=yid,
                     channel=channel, thumb=thumb(yid),
@@ -922,7 +922,7 @@ class App:
             tr = self.engine.track
             if tr is not None and tr.get("job") == j["id"]:
                 self.engine.trocar_fonte(tr, dict(item, path=str(LIB / item["file"])))
-        except Exception as ex:  # noqa: BLE001 - o erro vai pra tela
+        except Exception as ex:  # o erro vai pra tela
             self.job_update(j, status="error", finished=time.time(),
                             error=i18n.msg("server.download.failed", "The download failed ({reason}). Check the "
                                            "link or try another video.", reason=yt_msg(ex)))
@@ -1097,7 +1097,7 @@ class App:
         info, hdr = fut.result()
         try:
             self.engine.preabre(info.get("url"), hdr)
-        except Exception as ex:  # noqa: BLE001 - sem o aberto antes, o leitor abre o dele como antes
+        except Exception as ex:  # sem o aberto antes, o leitor abre o dele como antes
             print(f"stream: the ffmpeg opened earlier failed ({str(ex)[:120]})", file=sys.stderr, flush=True)
 
     def adianta_da_busca(self, res, n):
@@ -1146,7 +1146,7 @@ class App:
                 else:
                     info, hdr = self.stream_info(target, formato)
                 break
-            except Exception as ex:  # noqa: BLE001 - o motivo vai para o log e para a tela
+            except Exception as ex:  # o motivo vai para o log e para a tela
                 motivo = yt_msg(ex)
                 print(f"stream: attempt {i + 1} of 3 failed for {target}: {motivo}", file=sys.stderr, flush=True)
                 if erro_do_video(ex):  # o video nao toca pra ninguem: tentar de novo so gasta ~2 s e o IP de casa
@@ -1203,7 +1203,7 @@ class App:
               file=sys.stderr, flush=True)
         try:
             info, hdr = self.stream_info(tr.get("youtube_id") or tr.get("alvo"))
-        except Exception as ex:  # noqa: BLE001 - sem endereco, o disco acaba como antes
+        except Exception as ex:  # sem endereco, o disco acaba como antes
             print(f"stream: the new address of {nome!r} failed ({yt_msg(ex)}): moving on to the next one",
                   file=sys.stderr, flush=True)
             desistir()
@@ -1587,7 +1587,7 @@ class App:
                 if self.fila and self.fila[0] is x:
                     e.preparar(novo, x["qid"], pode=pode, ganho=ganho, depois=depois)
             self.with_engine(publica)
-        except Exception as ex:  # noqa: BLE001 - sem a proxima pronta, ela toca no fim como antes
+        except Exception as ex:  # sem a proxima pronta, ela toca no fim como antes
             self.passagem_falhou = chave
             print(f"transition: couldn't prepare {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
         finally:
@@ -1610,7 +1610,7 @@ class App:
         if v is not None:
             try:
                 cmd.avanca(self, virada=v)  # tira a virada do motor junto com a entrada dela da fila
-            except Exception as ex:  # noqa: BLE001
+            except Exception as ex:
                 print(f"transition: the switch didn't close the queue: {ex}", file=sys.stderr, flush=True)
         cap = e.captura()
         tr = cap.track
@@ -1643,7 +1643,7 @@ class App:
             if out:
                 return out
             motivo = "veio vazio"
-        except Exception as ex:  # noqa: BLE001 - sem o radio, o Mix do YouTube segura o Automatico
+        except Exception as ex:  # sem o radio, o Mix do YouTube segura o Automatico
             motivo = yt_msg(ex)
         print(f"auto: the YouTube Music radio of {yid} failed ({motivo}); using the YouTube Mix",
               file=sys.stderr, flush=True)
@@ -1740,7 +1740,7 @@ class App:
                 continue
             try:
                 v = self.capa_musica(alvo)
-            except Exception as ex:  # noqa: BLE001 - sem a busca, o disco fica com a miniatura e tenta de novo depois
+            except Exception as ex:  # sem a busca, o disco fica com a miniatura e tenta de novo depois
                 print(f"cover: couldn't look up {alvo.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
                 time.sleep(60)
                 continue
@@ -1874,7 +1874,7 @@ class Voltas:
             pronta, self._nova = self._nova, asyncio.get_running_loop().create_future()
             try:
                 v = self.monta(self.volta)
-            except Exception as ex:  # noqa: BLE001 - vai para quem espera esta volta; a proxima conexao recomeca
+            except Exception as ex:  # vai para quem espera esta volta; a proxima conexao recomeca
                 self.volta = None
                 pronta.set_exception(ex)
                 pronta.exception()  # ninguem esperando: o asyncio nao reclama do erro sem leitor
@@ -2093,7 +2093,7 @@ def build(app_state):
             return j_err(i18n.msg("server.search.empty", "Type what you want to search for, or paste a YouTube link."))
         try:
             res = await loop_().run_in_executor(pool, A.search, q, n, start)
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             return j_err(i18n.msg("server.search.failed", "The YouTube search failed ({reason}). Check your "
                                   "internet connection and try again.", reason=yt_msg(ex)), 502)
         for x in res:
@@ -2116,7 +2116,7 @@ def build(app_state):
         try:
             res = await loop_().run_in_executor(
                 pool_rapido, lambda: fora.pede("musica", q=q, n=n, limite=BUSCA_MUSICA_S))
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             return j_err(i18n.so_texto(f"The YouTube Music search failed ({yt_msg(ex)})."), 502)
         for x in res:
             it = A.lib.by_youtube(x["youtube_id"])
@@ -2374,7 +2374,7 @@ def build(app_state):
             preset.esquece()  # o filtro e o app montam o efeito do preset: o projetado com o fx.py velho sai
             efeitos[:] = fx.lista()
             E.set_effect(E.effect if fx.existe(E.effect) else "nenhum")  # o efeito que saiu da lista desliga
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             return j_err(i18n.so_texto(f"Couldn't reload the effects ({str(ex)[:200]})."), 500)
         return j_ok(effects=len(efeitos), effect=E.effect)
 
@@ -2392,7 +2392,7 @@ def build(app_state):
             # o modulo travado nao prende a tela na voz clicada: no prazo, 504; o erro dele (qualquer um), 500
             if not await escolhe_voz(mod.escolhe, voz):
                 return j_err(i18n.so_texto("The voice changer pedal didn't answer."), 504)
-        except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o erro dele vira a resposta
+        except Exception as ex:  # o modulo e de fora: o erro dele vira a resposta
             return j_err(i18n.so_texto(f"Couldn't change the voice ({str(ex)[:200]})."), 500)
         return j_ok(pedal_voz=A.pedal_voz())
 
@@ -2400,7 +2400,7 @@ def build(app_state):
         """O filtro no microfone em uso: {"filtro", "melhorias"} (null se nao deu para ler)."""
         try:
             m = filtro.do_microfone(E.active.get("mic"))
-        except Exception:  # noqa: BLE001 - sem ler o registro, a tela segue sem o estado do filtro
+        except Exception:  # sem ler o registro, a tela segue sem o estado do filtro
             return None
         return {"filtro": m["filtro"], "melhorias": m["melhorias"]} if m else None
 
@@ -2417,7 +2417,7 @@ def build(app_state):
             await loop_().run_in_executor(pool, lambda: E.set_devices(mic=b.get("mic"), monitor=b.get("monitor")))
         except i18n.Recusa as ex:  # a nossa: o aparelho que sumiu
             return j_err(ex.msg)
-        except Exception as ex:  # noqa: BLE001 - PortAudio fala ingles
+        except Exception as ex:  # PortAudio fala ingles
             return j_err(i18n.msg("server.devices.openFailed", "Ritmelli couldn't open that device ({reason}) and "
                                                                "went back to the previous one. Make sure that device "
                                                                "is connected and that no recording or audio editing "

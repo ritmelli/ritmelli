@@ -53,7 +53,7 @@ import so_mock
 import fitcheck
 from fitcheck import (CHROME, DIAGNOSTIC_DOMAINS, PRONTA, READY_CONDITIONS, PageEvents, Ready,
                       barra_outra_origem, conecta_cdp, fecha_chrome, le_cdp)
-from so_mock import free_port  # noqa: E402
+from so_mock import free_port
 
 RAIZ = Path(__file__).resolve().parent.parent
 # o celular pequeno, o de sempre, o grande e o tablet em pe (abaixo de 900 px tambem e o layout do celular), e o PC
@@ -278,7 +278,7 @@ async def prints(a, srv, destino):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{cport}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - o Chrome ainda esta subindo
+            except Exception:  # o Chrome ainda esta subindo
                 time.sleep(0.1)
         if not ws_url:
             sys.exit("chrome headless nao subiu")
