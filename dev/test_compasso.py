@@ -70,6 +70,9 @@ class Logits(unittest.TestCase):
     def test_a_track_of_exactly_one_chunk(self):
         self.check_stitched(STEP, [CHUNK])
 
+    def test_one_frame_past_one_chunk_takes_two_full_chunks(self):
+        self.check_stitched(STEP + 1, [CHUNK, CHUNK])
+
 
 class Picos(unittest.TestCase):
     def test_peaks_above_zero_and_their_glued_neighbours_merge(self):
