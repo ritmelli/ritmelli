@@ -441,10 +441,11 @@ class FakeKernel:
         return 1
 
 
-def leftovers(processes, active, exits_on_first_name=None, ended_before_listing=()):
+def leftovers(processes, active, exits_on_first_name=None, ended_before_listing=(), born_in_wait=()):
     job = object.__new__(so_mock._Job)
+    listings = [[h for h in processes if h not in born_in_wait], list(processes)]
     job.k = FakeKernel(processes, exits_on_first_name, ended_before_listing)
-    with mock.patch.object(so_mock._Job, "members", lambda self: list(processes)),             mock.patch.object(so_mock._Job, "active", lambda self: active):
+    with mock.patch.object(so_mock._Job, "members", lambda self: listings.pop(0) if len(listings) > 1 else listings[0]),             mock.patch.object(so_mock._Job, "active", lambda self: active):
         try:
             return job.left_after(0.01), job.k.named
         except so_mock.Recusa as ex:
@@ -473,6 +474,10 @@ def left_after_names():
     check(left == 1 and seen == [("python.exe", True)] and named == [2],
           f"a process that had already ended when the job was listed, as the server whose wait returned, is not named "
           f"as left in the job ({seen}, {named})")
+    (left, seen), _ = leftovers({1: ("python.exe", 0, False), 2: ("ffmpeg.exe", 259, True)}, 0, born_in_wait={2})
+    check(left == 1 and seen == [("python.exe", False)],
+          f"a process started during the wait counts as left, and the names are those running when the job was listed "
+          f"({left}, {seen})")
 
 
 app_port()
