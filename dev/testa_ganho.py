@@ -290,11 +290,17 @@ class TestaMotor(unittest.TestCase):
         self.e.load(tr)
         self.toca(20)
         ts = []
+        cpu = 0.0
         for _ in range(400):
             self.espera(lambda: len(self.e._q) > 2 or self.e._eof_gen == self.e._gen, 5)
+            c0 = time.thread_time()
             t0 = time.perf_counter()
             self.e._mixa(B)
             ts.append(time.perf_counter() - t0)
+            cpu += time.thread_time() - c0
+        import json, os
+        if os.environ.get("GANHO_DUMP"):
+            Path(os.environ["GANHO_DUMP"]).write_text(json.dumps({"wall": ts, "cpu": cpu}))
         ms = np.array(ts) * 1000
         print(f"\n  _mixa com ganho e limitador: {ms.mean():.3f} ms em media, {np.percentile(ms, 99):.3f} no p99",
               file=sys.stderr)
