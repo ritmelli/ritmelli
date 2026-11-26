@@ -1397,8 +1397,8 @@ def main():
              "antes, leitor = self._restart(None, track=novo,",
              "antes, leitor = self._restart(None, track=initial,"),
             ("the load handing the record it built on entry to the _restart",
-             "            antes, leitor = self._restart(self._clamp(start, initial), track=track,",
-             "            antes, leitor = self._restart(self._clamp(start, initial), track=initial,")):
+             "            antes, leitor = self._restart(start, track=track,",
+             "            antes, leitor = self._restart(start, track=initial,")):
         early = sources["engine.py"].replace(old, new, 1)
         check(early != sources["engine.py"] and builder_failures(ast.parse(early)),
               f"with {what}, that check fails ({builder_failures(ast.parse(early))})")

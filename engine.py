@@ -3375,8 +3375,7 @@ class Engine:
         initial = track() if callable(track) else track
         alvo, mede = self._ganho_de(initial) if ganho is None else ganho
         with self._lock:
-            antes, leitor = self._restart(self._clamp(start, initial), track=track, alvo=alvo, paused=paused,
-                                          prato=True, loop=loop, pode=pode)
+            antes, leitor = self._restart(start, track=track, alvo=alvo, paused=paused, prato=True, loop=loop, pode=pode)
         if antes is not None:
             self._segue(depois, lambda: (self._comeca(leitor), self._mede_se(initial, mede)))
         return antes

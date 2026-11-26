@@ -6,7 +6,7 @@ CONSTANTS Qids, NoQid, Raised, RIds, GIds,
           ClosingRecordsTheSwitch, FailedSwapReleasesReservation,
           QueueChangeUnderQlock, ReserveReadsProximoWithoutLock, TakingTheSwitchClearsIt, Reopens,
           PreparesAgain, ClosesTheSecondSwitch, MixerTakesOnlyQlock, PlayErrorReachesTheGroup,
-          RaisingNextTakesTheResolvedResult
+          RaisingNextTakesTheResolvedResult, PlaysCanSucceed
 
 VARIABLES pc, s
 
@@ -49,7 +49,7 @@ Init ==
               res |-> [r \in RIds |-> NoRes], appRes |-> 0, nextRid |-> 1,
               grp |-> [g \in GIds |-> NoGroup], proximo |-> 0, nextGid |-> 1,
               n |-> [x \in Nexts |-> NoNext],
-              overlap |-> FALSE, switched |-> <<>>, closed |-> <<>>, played |-> 0, badSwitch |-> FALSE,
+              overlap |-> FALSE, switched |-> <<>>, closed |-> <<>>, played |-> 0, failed |-> 0, badSwitch |-> FALSE,
               sqOld |-> 0, pwSeen |-> NoSwitch]
 
 Viva(S, r) == ~S.res[r].feita /\ (S.res[r].tocando \/ S.res[r].line = S.line)
@@ -255,7 +255,8 @@ NextWaitsReservation(p) ==
 NextPlays(p) ==
     LET r == s.n[p].r
         x == s.res[r].x
-    IN \/ /\ WithEngineTry(p, "nx_play", "nx_troca", "nx_play_wait")
+    IN \/ /\ PlaysCanSucceed
+          /\ WithEngineTry(p, "nx_play", "nx_troca", "nx_play_wait")
           /\ UNCHANGED s
        \/ /\ At(p, "nx_play")
           /\ UNCHANGED <<owner, orderBroken, s>>
@@ -267,7 +268,9 @@ NextPlays(p) ==
        \/ /\ At(p, "nx_raise_release")
           /\ SectionThenRelease(p, "_qlock", {"fila_lock"})
           /\ LET a == s.appRes
-                 S1 == IF a = 0 \/ a = r \/ s.res[a].x /= x THEN CheckPrepared([s EXCEPT !.fila = Without(@, x)])
+                 S1 == IF a = 0 \/ a = r \/ s.res[a].x /= x
+                       THEN CheckPrepared([s EXCEPT !.fila = Without(@, x),
+                                                    !.failed = @ + IF x \in Range(s.fila) THEN 1 ELSE 0])
                        ELSE s
              IN s' = SetN(ReleaseReservation(S1, r, IF PlayErrorReachesTheGroup THEN Raised ELSE NoQid),
                           p, "x", IF RaisingNextTakesTheResolvedResult /\ s.res[r].feita THEN s.res[r].entrada ELSE Raised)
@@ -470,8 +473,11 @@ SwitchClosesOnce ==
     /\ Range(s.closed) \subseteq Range(s.switched)
     /\ Quiescent => Range(s.closed) = Range(s.switched)
 
-OneAdvance ==
-    Quiescent /\ s.overlap => s.n["N1"].res = s.n["N2"].res /\ s.played <= 1
+SameResult == Quiescent /\ s.overlap => s.n["N1"].res = s.n["N2"].res
+
+OneRemoval == Quiescent /\ s.overlap => s.played + s.failed <= 1
+
+OneAdvance == SameResult /\ OneRemoval
 
 Pos(q, x) == CHOOSE k \in 1..Len(q) : q[k] = x
 

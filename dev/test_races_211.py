@@ -932,6 +932,40 @@ def audio_version_while_the_passage_reads_the_source(A, E, readers):
           f"not prepared with the source of before ({x['youtube_id']} in the queue, prepared {E.pronto_tag})")
 
 
+def failed_source_before_the_audio_version(A, E, readers):
+    cmd.limpar_fila(A)
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x = {"id": "d3", "youtube_id": "aaaaaaaaaaa", "url": None, "title": "similar", "channel": "c",
+         "duration": 600.0, "job": None, "qid": "similar5", "auto": True}
+    y = dict(x, id="d2", youtube_id="bbbbbbbbbbb", qid="other5")
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.extend([x, y]))
+    read, go, tried = threading.Event(), threading.Event(), threading.Event()
+
+    def fails(entry):
+        read.set()
+        go.wait(WAIT_S)
+        raise RuntimeError("the source of before is gone")
+    v = {"youtube_id": "fffffffffff", "duration": 200, "title": "similar", "channel": "c"}
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()):
+        with mock.patch.object(A, "fonte_de", fails):
+            A._volta_passagem()
+            read.wait(WAIT_S)
+            cmd.mover_na_fila(A, y["qid"], 0)
+            with A.fila_lock:
+                A.automatico._troca_audio("aaaaaaaaaaa", v)
+            cmd.mover_na_fila(A, y["qid"], 1)
+            go.set()
+            harness.ate(lambda: A.preparando is None)
+        with mock.patch.object(A, "_prepara", side_effect=lambda *a: tried.set()) as prepara:
+            A._volta_passagem()
+            tried.wait(WAIT_S)
+        A.preparando = None
+    check(tried.is_set() and prepara.call_args.args[1] is x and x["youtube_id"] == "fffffffffff",
+          f"a source of before that failed while the entry took the audio version does not keep the new version from "
+          f"its passage ({A.passagem_falhou}, prepared again: {tried.is_set()})")
+
+
 def audio_version_entries(A, E):
     cmd.limpar_fila(A)
     entry = {"id": None, "url": None, "title": "similar", "channel": "c", "duration": 300.0, "job": None,
@@ -1017,6 +1051,7 @@ def main():
                 audio_version_during_a_pending_switch(A, E, readers)
                 audio_version_while_the_engine_switches(A, E, readers)
                 audio_version_while_the_passage_reads_the_source(A, E, readers)
+                failed_source_before_the_audio_version(A, E, readers)
                 audio_version_entries(A, E)
                 audio_version_while_an_entry_plays_from_the_queue(A)
                 file_wait_after_a_passage_switch(A, E, readers)

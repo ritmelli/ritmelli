@@ -606,8 +606,8 @@ class App:
         self.sonoridade_falhou = set()  # os discos da prateleira que o ffmpeg nao mediu: nao tenta de novo
         self._son_lock = threading.Lock()
         self.parado_sem_fila = None  # disco que acabou com a fila vazia: a parecida que chegar toca
-        self.preparando = None  # (disco, qid) da passagem sendo preparada (o stream leva 1 a 3 s)
-        self.passagem_falhou = None  # (disco, qid) que nao deu para preparar: toca no fim, como antes
+        self.preparando = None  # (disco, qid, fonte) da passagem sendo preparada (o stream leva 1 a 3 s)
+        self.passagem_falhou = None  # (disco, qid, fonte) que nao deu para preparar: toca no fim, como antes
         self.closing = False
         # a janela propria (janela.py), quando ha: fechar ela desliga o servidor (pede_desligar), e o servidor que
         # para sozinho fecha ela (main). O loop e o desliga sao do servir e do build
@@ -1564,9 +1564,9 @@ class App:
         with self.fila_lock:
             x = self.fila[0] if self.fila else None
             seen = dict(x or {})
-        failed = e.take_prepare_failure()
+        failed, fonte = e.take_prepare_failure(), seen.get("youtube_id") or seen.get("url")
         if failed is not None:
-            self.passagem_falhou = (id(tr), failed)
+            self.passagem_falhou = (id(tr), failed, fonte)
         dur = tr.get("duration") if tr else None
         pode = (x is not None and dur and tr.get("path") and not e.loop
                 and cap.status in ("playing", "paused", "buffering"))
@@ -1574,7 +1574,7 @@ class App:
             e.cancelar_pronto()
         if not pode or e.pronto_tag is not None or dur - cap.pos > eng.TRANS_PREP_S:
             return
-        chave = (id(tr), x["qid"])
+        chave = (id(tr), x["qid"], fonte)
         if self.preparando is not None or chave == self.passagem_falhou:
             return
         self.preparando = chave

@@ -708,6 +708,10 @@ def bloco(A, E):
     ate(lambda: E.status() == "playing")
     E._mixa(eng.BLOCK)
     confere(abs(E.pos - 10.01) < 1e-9, f"o primeiro bloco depois do seek e o do ponto novo ({E.pos})")
+    E.seek(500.0)
+    confere(abs(E.pos - (120.0 - 0.05)) < 1e-9, f"a seek past the end starts at the end of the record ({E.pos})")
+    E.seek(-3.0)
+    confere(E.pos == 0.0, f"a seek before the start starts at 0 ({E.pos})")
 
     # o mesmo com um load durante uma passagem, com o eco soando e o limitador segurando o fim do bloco de antes: o
     # bloco velho nao mexe na rampa, no ganho, no primeiro som nem no limitador da faixa nova
@@ -2767,7 +2771,7 @@ def engine_seams(A, E):
         finally:
             E.__class__ = engine_class
         A._volta_passagem()
-    confere(A.passagem_falhou == (id(E.track), x["qid"]) and again is None,
+    confere(A.passagem_falhou == (id(E.track), x["qid"], x.get("youtube_id") or x.get("url")) and again is None,
             f"the passage watcher takes the prepare failure out of the engine, once ({A.passagem_falhou})")
     confere(uses and all(uses), f"and reads and clears it under the engine's _qlock ({uses})")
     confere(not prepara.called and A.preparando is None,
