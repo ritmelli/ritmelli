@@ -59,12 +59,19 @@ def voice_refusal(voice, voices):
 clock = time.monotonic
 
 
+class StreamBroken(Exception):
+    pass
+
+
 def rounds(r):
     event = data = state = None
     while True:
-        raw = r.readline()
+        try:
+            raw = r.readline()
+        except TimeoutError:
+            raise StreamBroken("the server's state stream sent nothing for 30 s") from None
         if not raw:
-            raise EOFError("the server's state stream closed")
+            raise StreamBroken("the server's state stream closed")
         line = raw.decode("utf-8").strip()
         if line.startswith("event: "):
             event = line[7:]
@@ -74,31 +81,31 @@ def rounds(r):
             if event == "state" and data is not None:
                 state = json.loads(data)
             elif event == "tick" and data is not None:
-                yield json.loads(data)["t"], state
+                tick = json.loads(data)
+                yield tick["t"], tick["n"], state
                 state = None
             event = data = None
 
 
 class Record:
     def __init__(self, r):
-        self._rounds, self._ahead, self.current = rounds(r), None, None
-
-    def _next(self):
-        ahead, self._ahead = self._ahead, None
-        return ahead or next(self._rounds)
+        self._rounds, self._n, self.current = rounds(r), None, None
 
     def until(self, end, want=None):
         got = []
         while True:
-            t, state = self._next()
-            if t >= end:
-                self._ahead = t, state
-                return got
+            t, n, state = next(self._rounds)
+            if self._n is not None and n != self._n + 1:
+                raise StreamBroken(f"the state stream skipped rounds {self._n + 1} to {n - 1}, so the ring wasn't "
+                                   "seen whole")
+            self._n = n
             if state is not None:
                 got.append(state)
                 self.current = state
                 if want and want(state):
                     return got
+            if t >= end:
+                return got
 
 
 def mic_refusal(asked, state):
@@ -213,7 +220,7 @@ def main():
             record = Record(events)
             try:
                 read = record.until(clock() + UP_S, want=lambda st: st["microfone"]["leitores"] >= 1)
-            except EOFError as ex:
+            except StreamBroken as ex:
                 sys.exit(f"waiting for the filter to read the ring: {ex} (see {server_err})")
             last = record.current
             if last is None or last["microfone"]["leitores"] < 1:
@@ -233,7 +240,7 @@ def main():
                     during = record.until(clock() + a.on_s)
                     call("POST", "/api/settings", {"effect": "nenhum"})
                     during += record.until(clock() + OFF_S)
-                except EOFError as ex:
+                except StreamBroken as ex:
                     sys.exit(f"cycle {n}: {ex} (see {server_err} and {log})")
                 states_seen = [start, *during]
                 start = states_seen[-1]

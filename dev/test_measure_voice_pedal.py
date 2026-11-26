@@ -150,11 +150,15 @@ def event(name, data):
 
 
 def sse(*rounds_sent):
-    return io.BytesIO(b"".join((event("state", st) if st is not None else b"") + event("tick", {"pos": 0, "t": t})
-                               for t, st in rounds_sent))
+    out = b""
+    for k, (t, st, *n) in enumerate(rounds_sent):
+        tick = event("tick", {"pos": 0, "t": t, "n": (n or [k + 1])[0]})
+        out += (event("state", st) if st is not None else b"") + tick
+    return io.BytesIO(out)
 
 
 FALLBACK = "Microfone (Realtek(R) Audio)"
+DRY = "game output: the microphone ring ran dry (the thread came back after 656 ms; {} so far)"
 
 
 class Main(unittest.TestCase):
@@ -219,7 +223,7 @@ class Main(unittest.TestCase):
         self.assertEqual(sent, [("GET", "/api/effects"), ("POST", "/api/devices"), ("GET", "/api/state"),
                                 ("GET", "/api/events"), ("POST", "/api/shutdown")])
 
-    def test_a_cycle_is_the_rounds_before_its_end(self):
+    def test_a_cycle_is_the_rounds_up_to_the_first_one_past_its_end(self):
         why, sent, result = self.run_main(state(), "--cycles", "1",
                                           events=[(1.0, state(0, 0, 9.0, 10.0)), (5.0, state(0, 0, 9.0, 10.0)),
                                                   (15.0, state(1, 1, 656.0, 10.0)), (25.0, None)])
@@ -229,26 +233,36 @@ class Main(unittest.TestCase):
         self.assertEqual((result["dry_outs"], result["dry_outs_while_starting"], result["onnxruntime"],
                           result["cycles"][0]["new_longest_return_ms"]), (1, 1, PINNED, 656.0))
 
+    def test_a_dry_out_captured_just_past_the_end_is_its_cycles(self):
+        why, _, result = self.run_main(state(), "--cycles", "1",
+                                       events=[(1.0, state(0, 0, 9.0, 10.0)), (15.0, state(0, 0, 9.0, 10.0)),
+                                               (20.48, None), (20.52, state(1, 1, 656.0, 10.0))],
+                                       late_lines=[DRY.format(1)])
+        self.assertIsNone(why)
+        self.assertEqual((result["dry_outs"], result["longest_return_ms_since_the_ring_opened"],
+                          result["dry_out_lines"]), (1, 656.0, [DRY.format(1)]),
+                         "the first round past the end closes the cycle, with what it carries")
+
     def test_each_cycle_takes_the_rounds_of_its_own_window(self):
         why, _, result = self.run_main(state(), "--cycles", "2",
                                        events=[(1.0, state(0, 0, 9.0, 10.0)), (15.0, state(1, 1, 656.0, 10.0)),
-                                               (22.0, state(2, 2, 656.0, 10.0)), (45.0, None)])
+                                               (21.0, None), (22.0, state(2, 2, 656.0, 10.0)), (45.0, None),
+                                               (46.0, None)])
         self.assertIsNone(why)
         self.assertEqual([(c["dry_outs"], c["dry_outs_while_starting"]) for c in result["cycles"]], [(1, 1), (1, 1)],
-                         "the round at 22 s is past the first cycle's end (20.5 s), so it is the second's")
+                         "the round at 21 s closed the first cycle, so the one at 22 s is the second's")
         self.assertEqual((result["dry_outs"], result["dry_outs_while_starting"]), (2, 2))
 
-    def test_a_round_past_the_last_end_is_not_measured(self):
+    def test_a_round_after_the_last_cut_is_not_measured(self):
         why, _, result = self.run_main(state(), "--cycles", "1",
                                        events=[(1.0, state(0, 0, 9.0, 10.0)), (15.0, state(0, 0, 9.0, 10.0)),
-                                               (25.0, state(1, 1, 656.0, 0.0))])
+                                               (21.0, None), (25.0, state(1, 1, 656.0, 0.0))])
         self.assertIsNone(why)
         self.assertEqual((result["dry_outs"], result["cycles"][0]["new_longest_return_ms"],
                           result["longest_return_ms_since_the_ring_opened"]), (0, None, 9.0))
 
     def test_the_result_lists_only_the_dry_outs_between_its_cuts(self):
-        told = [f"game output: the microphone ring ran dry (the thread came back after 656 ms; {n} so far)"
-                for n in (1, 2, 3)]
+        told = [DRY.format(n) for n in (1, 2, 3)]
         why, _, result = self.run_main(state(), "--cycles", "1",
                                        events=[(1.0, state(1, 0, 9.0, 10.0)), (15.0, state(2, 0, 656.0, 10.0)),
                                                (25.0, None)],
@@ -269,6 +283,13 @@ class Main(unittest.TestCase):
                 self.assertIn(f"cycle 1: {said}", why)
                 self.assertIsNone(result)
 
+    def test_skipped_rounds_stop_the_measurement(self):
+        why, _, result = self.run_main(state(), "--cycles", "1",
+                                       events=[(1.0, state(0, 0, 9.0, 10.0), 10), (15.0, state(0, 0, 9.0, 10.0), 12),
+                                               (25.0, None, 13)])
+        self.assertIn("cycle 1: the state stream skipped rounds 11 to 11", why)
+        self.assertIsNone(result)
+
     def test_a_stream_that_closes_stops_the_measurement(self):
         why, _, result = self.run_main(state(), "--cycles", "1", events=[(1.0, state(0, 0, 9.0, 10.0))])
         self.assertIn("cycle 1: the server's state stream closed", why)
@@ -282,7 +303,7 @@ class Main(unittest.TestCase):
 class TheRecord(unittest.TestCase):
     def test_a_state_belongs_to_the_round_of_the_tick_after_it(self):
         record = measure.Record(sse((1.0, state()), (2.0, None), (3.0, state(1)), (9.0, None)))
-        self.assertEqual((record.until(2.5), record.current), ([state()], state()))
+        self.assertEqual((record.until(1.5), record.current), ([state()], state()))
         self.assertEqual((record.until(5.0), record.current), ([state(1)], state(1)))
 
     def test_an_old_round_read_late_still_counts_and_the_state_after_it_too(self):
@@ -290,11 +311,11 @@ class TheRecord(unittest.TestCase):
         self.assertEqual(record.until(5.0), [state(1, 1, 656.0)],
                          "how late the tool reads the stream doesn't move a round from one window to another")
 
-    def test_a_round_at_or_past_the_end_waits_for_the_next_window(self):
-        record = measure.Record(sse((1.0, state()), (6.0, state(1)), (9.0, None)))
-        self.assertEqual(record.until(5.0), [state()])
-        self.assertEqual(record.until(6.0), [])
-        self.assertEqual(record.until(7.0), [state(1)])
+    def test_the_first_round_at_or_past_the_end_closes_the_window(self):
+        record = measure.Record(sse((1.0, state()), (5.0, state(1)), (6.0, state(2)), (9.0, None)))
+        self.assertEqual(record.until(5.0), [state(), state(1)])
+        self.assertEqual(record.until(5.5), [state(2)])
+        self.assertEqual(record.until(7.0), [], "a round already past the end closes the window on its own")
 
     def test_a_wanted_state_stops_the_wait_and_leaves_the_rest(self):
         record = measure.Record(sse((1.0, state(leitores=0)), (2.0, state()), (3.0, state(1)), (9.0, None)))
@@ -304,13 +325,26 @@ class TheRecord(unittest.TestCase):
 
     def test_a_stream_that_closes_stops_the_wait(self):
         record = measure.Record(sse((1.0, state())))
-        with self.assertRaises(EOFError):
+        with self.assertRaises(measure.StreamBroken):
             record.until(5.0)
         self.assertEqual(record.current, state())
 
+    def test_a_silent_stream_stops_the_wait(self):
+        r = mock.Mock(**{"readline.side_effect": TimeoutError("timed out")})
+        with self.assertRaises(measure.StreamBroken) as stop:
+            measure.Record(r).until(5.0)
+        self.assertIn("sent nothing for 30 s", str(stop.exception))
+
+    def test_skipped_rounds_stop_the_wait(self):
+        record = measure.Record(sse((1.0, state(), 7), (2.0, state(1), 9), (3.0, None, 10)))
+        with self.assertRaises(measure.StreamBroken) as stop:
+            record.until(5.0)
+        self.assertIn("skipped rounds 8 to 8", str(stop.exception))
+
     def test_other_events_are_not_states(self):
         r = io.BytesIO(event("caps", {}) + event("library", [{"id": "x"}]) + b"data: {}\n\n" + event("state", state())
-                       + event("jobs", []) + event("tick", {"pos": 0, "t": 1.0}) + event("tick", {"pos": 0, "t": 9.0}))
+                       + event("jobs", []) + event("tick", {"pos": 0, "t": 1.0, "n": 1})
+                       + event("tick", {"pos": 0, "t": 9.0, "n": 2}))
         self.assertEqual(measure.Record(r).until(5.0), [state()])
 
 

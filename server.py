@@ -1768,7 +1768,7 @@ class Voltas:
     sua volta inteira e, ao voltar, pula para a mais nova: as outras nao esperam por ela. Sem conexao aberta, nada e
     montado.
 
-    monta(volta de antes ou None) -> dict da volta; o n (o numero dela) e daqui."""
+    monta(volta de antes ou None, n) -> dict da volta, com n o numero dela (daqui)."""
 
     def __init__(self, monta, intervalo):
         self.monta, self.intervalo = monta, intervalo
@@ -1802,7 +1802,7 @@ class Voltas:
         while self.ouvintes:
             pronta, self._nova = self._nova, asyncio.get_running_loop().create_future()
             try:
-                v = self.monta(self.volta)
+                v = self.monta(self.volta, self.n + 1)
             except Exception as ex:  # vai para quem espera esta volta; a proxima conexao recomeca
                 self.volta = None
                 pronta.set_exception(ex)
@@ -1968,13 +1968,13 @@ def build(app_state):
         # is built once for every connection never fails over it
         return f"event: {nome}\ndata: {json.dumps(dados)}\n\n".encode("ascii")
 
-    def monta_volta(antes):
+    def monta_volta(antes, n):
         """A volta do SSE (Voltas): o state, a prateleira e os jobs com a chave de cada um e o evento em bytes, e o tick
         da mesma captura. O que nao mudou desde a volta de antes e o mesmo objeto: a conexao compara por identidade."""
         t, (s, pos) = time.monotonic(), leitura()
         jb = [dict(x) for x in A.public_jobs()]  # a mesma copia na chave e no evento: o download muda os de la
         v = {"tick": evento("tick", {"pos": round(pos, 2), "t": round(t, 3),
-                                     "levels": {k: round(x, 4) for k, x in E.levels.items()}})}
+                                     "levels": {k: round(x, 4) for k, x in E.levels.items()}, "n": n})}
         for nome, chave, dados in (("state", s, lambda: s), ("library", A.lib.version, A.lib.public),
                                    ("jobs", jb, lambda: jb)):
             v[nome] = antes[nome] if antes is not None and antes[nome][0] == chave else (chave, evento(nome, dados()))

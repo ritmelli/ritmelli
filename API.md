@@ -58,15 +58,16 @@ Use `new EventSource('/api/events')`. Eventos:
 | `state` | ao conectar e a cada mudança | objeto Estado (abaixo) |
 | `library` | ao conectar e a cada mudança | lista de Item |
 | `jobs` | ao conectar e a cada mudança | lista de Job (o terminado some depois de 20 s) |
-| `tick` | 15 vezes por segundo | `{"pos": s, "t": s, "levels": {"mic": r, "track": r, "out": r}}` |
+| `tick` | 15 vezes por segundo | `{"pos": s, "t": s, "levels": {"mic": r, "track": r, "out": r}, "n": i}` |
 | `desconectado` | o PC desconectou este celular, ou a sessão remota acabou (logo depois a conexão fecha) | `{}` |
 
 O servidor monta o `state`, a lista do `library`, a do `jobs` e o `tick` uma vez por volta (15 por segundo) e entrega a
 mesma volta a todas as conexões abertas; só o `caps` e a autorização são de cada uma. O `state` e o `tick` de uma volta
 saem da mesma captura: o `pos` é sempre da faixa do último `state` entregue, e o `t` do `tick` é a hora dessa captura (o
-`time.monotonic` do servidor, em segundos). Uma conexão que fica para trás (a aba em segundo plano, a rede lenta) pula
-para a volta mais nova, sem atrasar as outras. O `data` é JSON só em ASCII (o que não é ASCII vai como `\uXXXX`): um
-texto que o UTF-8 não codifica não derruba o evento.
+`time.monotonic` do servidor, em segundos), e o `n` é o número da volta (sobe de um em um: uma conexão que vê um salto
+perdeu as voltas do meio). Uma conexão que fica para trás (a aba em segundo plano, a rede lenta) pula para a volta mais
+nova, sem atrasar as outras. O `data` é JSON só em ASCII (o que não é ASCII vai como `\uXXXX`): um texto que o UTF-8 não
+codifica não derruba o evento.
 
 `levels` é RMS linear de 0 a 1, com queda suave (dBFS = 20·log10(r); -60 dB já é
 silêncio). `mic` = voz (mesmo mutada, para mostrar que o microfone vive), `track` = arquivo

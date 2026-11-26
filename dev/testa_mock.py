@@ -873,6 +873,8 @@ async def papeis_no_guard():
             livre = await ate(lambda: com_t2(escrito2))
             confere(livre and no_state.is_set() and not solta.is_set() and not com_t2(escrito1),
                     "com o envio de um PC suspenso, o outro segue recebendo as voltas, a virada inclusive")
+            visto = len(pares(escrito2))
+            await ate(lambda: len(pares(escrito2)) >= visto + 3)
             solta.set()
             await ate(lambda: com_t2(escrito1))
             await asyncio.sleep(5 * server.TICK)  # algumas voltas com os dois livres
@@ -888,8 +890,14 @@ async def papeis_no_guard():
                     f"o SSE com a virada entre o state e o tick, no PC {nome}: cada posicao e da faixa entregue na "
                     f"volta dela ({p})")
         ts = [d.get("t") for e, d in eventos(escrito2) if e == "tick"]
-        confere(ts and all(isinstance(x, float) for x in ts) and ts == sorted(ts) and comeco <= ts[0] <= ts[-1]
-                <= time.monotonic(), f"o tick leva a hora da captura da volta dele, no time.monotonic ({ts[:3]})")
+        confere(ts and all(isinstance(x, float) for x in ts) and ts == sorted(ts)
+                and round(comeco, 3) <= ts[0] <= ts[-1] <= round(time.monotonic(), 3),
+                f"o tick leva a hora da captura da volta dele, no time.monotonic ({ts[:3]})")
+        numeros = {nome: [d.get("n") for e, d in eventos(escrito) if e == "tick"]
+                   for nome, escrito in (("suspenso", escrito1), ("livre", escrito2))}
+        saltos = {nome: [b - a for a, b in zip(ns, ns[1:])] for nome, ns in numeros.items()}
+        confere(set(saltos["livre"]) == {1} and max(saltos["suspenso"]) > 1,
+                f"o tick leva o numero da volta: o livre recebe todas, o suspenso pula as que perdeu ({saltos})")
         estados = [d for e, d in eventos(escrito1) + eventos(escrito2) if e == "state"]
         confere(estados and all(d.get("api") == server.API and d.get("mock") is True for d in estados),
                 f"o state do SSE leva o \"api\": {server.API} e o \"mock\" ({[sorted(d) for d in estados[:1]]})")
