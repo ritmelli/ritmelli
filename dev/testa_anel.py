@@ -253,16 +253,76 @@ class TestVoicePedalStart(unittest.TestCase):
         log = dryouts.Log(size=2)
         self.addCleanup(release.set)
         with mock.patch("sys.stderr", Slow()):
-            log.tell("first")
+            first = threading.Thread(target=log.tell, args=("first",), daemon=True)
+            first.start()
+            first.join(3.0)
+            self.assertFalse(first.is_alive(), "telling a line made its caller wait for the log")
             self.assertTrue(espera(lambda: log._lines.empty()), "the writer never took the first line")
-            teller = threading.Thread(target=lambda: [log.tell(line) for line in ("second", "third", "fourth")])
+            teller = threading.Thread(target=lambda: [log.tell(line) for line in ("second", "third", "fourth")],
+                                      daemon=True)
             teller.start()
             teller.join(3.0)
             self.assertFalse(teller.is_alive(), "a full log made its caller wait")
             self.assertEqual(log.dropped, 1)
             release.set()
             log.written()
-        self.assertEqual(written.getvalue().split(), ["first", "second", "third"])
+        self.assertEqual(written.getvalue().splitlines(),
+                         ["first", "second (1 line(s) of the dry-out log dropped before this one)", "third"])
+
+    def test_a_track_up_while_the_thread_was_away_has_no_order(self):
+        now = [0.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        pedal.pedal(True)
+        now[0] = 0.8
+        pedal.track(True, 7_000, 0.4)
+        dry = dryouts.RingDryOuts(pedal)
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            dry.ran_dry(0.656, 1)
+            dry.ran_dry(0.1, 2)
+            dryouts.LOG.written()
+        lines = [ln for ln in log.getvalue().splitlines() if "ran dry" in ln]
+        self.assertIn("which came first is not known", lines[0])
+        self.assertNotIn("which came first", lines[1])
+
+    def test_telling_starts_no_thread(self):
+        log = dryouts.Log()
+        with mock.patch.object(threading.Thread, "start", side_effect=AssertionError("tell() started a thread")):
+            log.tell("a line")
+        log.written()
+
+    def test_a_failed_write_is_dropped_and_the_log_goes_on(self):
+        written = io.StringIO()
+
+        class Failing:
+            failed = False
+
+            def write(self, text):
+                if not Failing.failed:
+                    Failing.failed = True
+                    raise OSError("disk full")
+                return written.write(text)
+
+            def flush(self):
+                pass
+
+        log = dryouts.Log()
+        with mock.patch("sys.stderr", Failing()):
+            log.tell("first")
+            log.tell("second")
+            done = threading.Thread(target=log.written, daemon=True)
+            done.start()
+            done.join(3.0)
+        self.assertFalse(done.is_alive(), "the log stopped after a failed write")
+        self.assertEqual((log.dropped, written.getvalue().splitlines()),
+                         (1, ["second (1 line(s) of the dry-out log dropped before this one)"]))
+
+    def test_the_track_is_up_only_once_its_line_is_queued(self):
+        pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
+        pedal.pedal(True)
+        seen = []
+        with mock.patch.object(dryouts.LOG, "tell", side_effect=lambda line: seen.append(pedal.track_up_at)):
+            pedal.track(True, 7_000, 0.0)
+        self.assertEqual((seen, pedal.track_up_at), ([None], 5.0))
 
     def test_one_stamp_is_one_start(self):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
@@ -319,10 +379,10 @@ class TestVoicePedalDryOut(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         self.producer = injeta.Microfone()
+        self.addCleanup(dryouts.LOG.written)
         self.inj = eng.Injetor(self.motor)
         self.addCleanup(self.inj.para)
         self.addCleanup(self.gate.set)
-        self.addCleanup(dryouts.LOG.written)
         self.assertTrue(espera(lambda: self.inj.folga_min is not None), "the injector never served the reader")
         self.dry_done = threading.Event()
         ran_dry = self.inj.dry_outs.ran_dry
