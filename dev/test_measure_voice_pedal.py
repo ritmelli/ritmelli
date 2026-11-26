@@ -1,3 +1,5 @@
+import io
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -32,14 +34,14 @@ class Refusal(unittest.TestCase):
         self.assertEqual(self.run_main(CPU_ONLY, "--provider", "cpu"), "past the check")
 
 
-READY = ["pedal_voz: pronto"]
-FIM = ['fim {"blocos": 74, "secas": 1, "conta_ms_max": 101.1, "voz_taxa": 48000, "provedores": '
+READY = ["pedal_voz: pronto", "game output: voice pedal: its voice track came up 3.10 s after the pedal turned on"]
+FIM = ['fim {"blocos": 74, "secas": 1, "conta_ms_max": 101.1, "voz_taxa": 48000, "providers": '
        '["DmlExecutionProvider", "DmlExecutionProvider", "DmlExecutionProvider", "DmlExecutionProvider"]}']
 MIC = "IN 1"
 
 
-def state(secas=0, secas_pedal=0, volta=4.6, folga=20.0, leitores=1, mic=MIC):
-    return {"active_devices": {"mic": mic}, "microfone": {"anel": True, "leitores": leitores, "secas": secas,
+def state(secas=0, secas_pedal=0, volta=4.6, folga=20.0, leitores=1, mic=MIC, anel=True):
+    return {"active_devices": {"mic": mic}, "microfone": {"anel": anel, "leitores": leitores, "secas": secas,
                                                          "secas_pedal": secas_pedal, "volta_max_ms": volta,
                                                          "folga_min_ms": folga}}
 
@@ -54,7 +56,8 @@ class CycleRow(unittest.TestCase):
                                          ["warning", *FIM])
         self.assertIsNone(problem)
         self.assertEqual(got, {"cycle": 3, "dry_outs": 2, "dry_outs_while_starting": 1, "new_longest_return_ms": None,
-                               "voice_blocks": 74, "voice_track_dry_outs": 1, "voice_slowest_block_ms": 101.1})
+                               "track_up_after_s": 3.1, "voice_blocks": 74, "voice_track_dry_outs": 1,
+                               "voice_slowest_block_ms": 101.1})
 
     def test_a_longer_return_in_the_cycle(self):
         got, _ = row([state(volta=434.0), state(volta=656.0)])
@@ -62,9 +65,11 @@ class CycleRow(unittest.TestCase):
 
     def test_a_cycle_without_its_voice_stops_the_measurement(self):
         cpu = [FIM[0].replace("DmlExecutionProvider", "CPUExecutionProvider", 1)]
-        cases = {"no ready": ([], FIM), "an error": ([*READY, "pedal_voz: erro: the voice engine didn't start"], FIM),
+        cases = {"no ready": ([], FIM), "no track up": (["pedal_voz: pronto"], FIM),
+                 "an error": ([*READY, "pedal_voz: erro: the voice engine didn't start"], FIM),
                  "no fim": (READY, ["warning"]), "no block": (READY, ['fim {"blocos": 0}']),
-                 "a session on the processor": (READY, cpu), "no providers": (READY, ['fim {"blocos": 74}'])}
+                 "a session on the processor": (READY, cpu), "no providers": (READY, ['fim {"blocos": 74}']),
+                 "one session told": (READY, ['fim {"blocos": 74, "providers": ["DmlExecutionProvider"]}'])}
         for what, (server_lines, voice_lines) in cases.items():
             with self.subTest(what):
                 got, problem = row([state(), state()], server_lines, voice_lines)
@@ -79,18 +84,40 @@ class CycleRow(unittest.TestCase):
         self.assertIsNone(row([state(), state()], voice_lines=cpu, provider="cpu")[1])
 
     def test_an_interrupted_cycle_stops_the_measurement(self):
-        cases = {"the reader gone and back": [state(), state(leitores=0), state()],
+        cases = {"the ring closed": [state(), state(anel=False), state()],
+                 "the reader gone and back": [state(), state(leitores=0), state()],
                  "another microphone": [state(), state(mic="Other"), state()],
                  "the injector opened again, the same counters at both ends": [state(2, 0, 9.0, 10.0),
                                                                                state(0, 0, 0.0, None),
                                                                                state(0, 0, 3.1, 30.0),
                                                                                state(2, 0, 9.0, 10.0)],
-                 "the counters lower at the end": [state(4, 1, 9.0, 10.0), state(1, 0, 9.0, 10.0)]}
+                 "the counters lower at the end": [state(4, 1, 9.0, 10.0), state(1, 0, 9.0, 10.0)],
+                 "the pedal's count lower": [state(3, 1, 9.0, 10.0), state(3, 0, 9.0, 10.0)],
+                 "the longest return lower": [state(0, 0, 9.0, 10.0), state(0, 0, 4.0, 10.0)],
+                 "the least headroom higher": [state(0, 0, 9.0, 10.0), state(0, 0, 9.0, 20.0)],
+                 "the least headroom unmeasured again": [state(0, 0, 9.0, 10.0), state(0, 0, 9.0, None)]}
         for what, states_seen in cases.items():
             with self.subTest(what):
                 got, problem = row(states_seen)
                 self.assertIsNone(got)
                 self.assertTrue(problem.startswith("cycle 5: "), problem)
+
+
+def stream(*states_sent):
+    return io.BytesIO(b"".join(b"event: state\ndata: " + json.dumps(s).encode() + b"\n\n" for s in states_sent))
+
+
+class ReadStates(unittest.TestCase):
+    def test_a_stream_that_ends_early_stops_the_wait(self):
+        got = []
+        with self.assertRaises(EOFError):
+            got.extend(measure.read_states(stream(state()), 8.0, clock=lambda: 100.0))
+        self.assertEqual(got, [state()])
+
+    def test_the_wait_ends_at_its_deadline(self):
+        times = iter([100.0, 100.0, 100.0, 109.0])
+        self.assertEqual(list(measure.read_states(stream(state(), state(1)), 8.0, clock=lambda: next(times))),
+                         [state()])
 
 
 if __name__ == "__main__":

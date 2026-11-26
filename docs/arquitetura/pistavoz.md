@@ -41,7 +41,7 @@ isso de verdade (manual: o microfone com o filtro, a placa de vídeo e os modelo
 servidor de verdade deste checkout, numa porta dele e com dados temporários, e só com o runtime do app (o
 `onnxruntime-directml`): sem o `DmlExecutionProvider`, ele se recusa a rodar antes de abrir qualquer coisa, a não ser
 com `--provider cpu`. Cada ciclo precisa da voz de verdade (o processo da voz disse `pronto`, sem `erro`, e o `fim` do
-log dele tem blocos e, com `--provider dml`, as quatro sessões no DirectML: o `fim` traz o `Conversor.provedores()`), e
+log dele tem blocos e, com `--provider dml`, as quatro sessões no DirectML: o `fim` traz o `Conversor.providers()`), e
 de um anel sem interrupção (leitor o tempo todo, o mesmo microfone, e contadores que não voltam, o que pega um `Injetor`
 aberto de novo), ou a medição para e diz qual ciclo. O `dev/test_measure_voice_pedal.py` confere a recusa e a linha de
 cada ciclo: uma medição com o conversor no processador, num Python sem o runtime do app, secava o anel na subida do

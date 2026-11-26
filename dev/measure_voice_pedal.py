@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,8 @@ import so_mock
 ON_S = 8.0
 OFF_S = 4.0
 UP_S = 60.0
+VOICE_SESSIONS = 4
+UP_LINE = re.compile(r"voice pedal: its voice track came up (\d+\.\d+) s after the pedal turned on")
 
 
 def lines(path):
@@ -33,19 +36,22 @@ def runtime_refusal(provider):
     return None
 
 
+def read_states(r, seconds, clock=time.monotonic):
+    end, event = clock() + seconds, None
+    while clock() < end:
+        raw = r.readline()
+        if not raw:
+            raise EOFError(f"the server's state stream closed {end - clock():.1f} s before the end of the wait")
+        line = raw.decode("utf-8").strip()
+        if line.startswith("event: "):
+            event = line[7:]
+        elif line.startswith("data: ") and event == "state":
+            yield json.loads(line[6:])
+
+
 def states(base, seconds):
-    end = time.monotonic() + seconds
     with urllib.request.urlopen(base + "/api/events", timeout=seconds + 5) as r:
-        event = None
-        while time.monotonic() < end:
-            raw = r.readline()
-            if not raw:
-                return
-            line = raw.decode("utf-8").strip()
-            if line.startswith("event: "):
-                event = line[7:]
-            elif line.startswith("data: ") and event == "state":
-                yield json.loads(line[6:])
+        yield from read_states(r, seconds)
 
 
 def hold(base, seconds):
@@ -61,30 +67,34 @@ def interruption(states_seen, mic):
     for a, b in zip(states_seen, states_seen[1:]):
         a, b = a["microfone"], b["microfone"]
         dropped = a["folga_min_ms"] is not None and (b["folga_min_ms"] is None or b["folga_min_ms"] > a["folga_min_ms"])
-        if b["secas"] < a["secas"] or b["volta_max_ms"] < a["volta_max_ms"] or dropped:
+        if any(b[k] < a[k] for k in ("secas", "secas_pedal", "volta_max_ms")) or dropped:
             return "the ring's counters started over (the injector was opened again)"
     return None
 
 
-def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines):
+def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_S):
     broke = interruption(states_seen, mic)
     if broke:
         return None, f"cycle {n}: {broke}"
     if not any(ln.startswith("pedal_voz: pronto") for ln in server_lines):
-        return None, f"cycle {n}: the voice process never said it was ready"
+        return None, f"cycle {n}: the voice process never said it was ready within {on_s:.0f} s of the pedal (--on-s)"
+    ups = [float(m.group(1)) for ln in server_lines if (m := UP_LINE.search(ln))]
+    if not ups:
+        return None, f"cycle {n}: the ring never saw this cycle's voice track come up"
     errors = [ln for ln in server_lines if ln.startswith("pedal_voz: erro")]
     if errors:
         return None, f"cycle {n}: {errors[0]}"
     ends = [json.loads(ln[4:]) for ln in voice_lines if ln.startswith("fim ")]
     if not ends or not ends[-1].get("blocos"):
         return None, f"cycle {n}: the voice process converted no block (its log has no fim with blocks)"
-    if provider == "dml" and set(ends[-1].get("provedores") or ["none"]) != {"DmlExecutionProvider"}:
-        return None, f"cycle {n}: the voice sessions ran on {ends[-1].get('provedores')}, not all on DirectML"
+    if provider == "dml" and ends[-1].get("providers") != ["DmlExecutionProvider"] * VOICE_SESSIONS:
+        return None, f"cycle {n}: the voice sessions ran on {ends[-1].get('providers')}, not all on DirectML"
     before, after = states_seen[0]["microfone"], states_seen[-1]["microfone"]
     rose = after["volta_max_ms"] > before["volta_max_ms"]
     return {"cycle": n, "dry_outs": after["secas"] - before["secas"],
             "dry_outs_while_starting": after["secas_pedal"] - before["secas_pedal"],
-            "new_longest_return_ms": after["volta_max_ms"] if rose else None, "voice_blocks": ends[-1]["blocos"],
+            "new_longest_return_ms": after["volta_max_ms"] if rose else None, "track_up_after_s": ups[0],
+            "voice_blocks": ends[-1]["blocos"],
             "voice_track_dry_outs": ends[-1].get("secas"), "voice_slowest_block_ms": ends[-1].get("conta_ms_max")}, None
 
 
@@ -97,6 +107,7 @@ def main():
     ap.add_argument("--voice", default=None, help="one of the voices in vozes.json (default: the first)")
     ap.add_argument("--speaker-hz", type=float, default=120.0)
     ap.add_argument("--provider", choices=("dml", "cpu"), default="dml")
+    ap.add_argument("--on-s", type=float, default=ON_S, help="how long the pedal stays on in each cycle")
     ap.add_argument("--out", type=Path, default=Path("voice_pedal.json"))
     a = ap.parse_args()
     refusal = runtime_refusal(a.provider)
@@ -139,8 +150,12 @@ def main():
             if "pistavoz" not in [e.get("id") for e in call("GET", "/api/effects")]:
                 sys.exit(f"the voice pedal is off in this checkout (see {work / 'server.err'})")
             call("POST", "/api/devices", {"mic": a.mic})
-            if not any(st["microfone"]["leitores"] >= 1 for st in states(base, UP_S)):
-                sys.exit(f"the filter of {a.mic} never read the ring (see {work / 'server.err'})")
+            try:
+                read = any(st["microfone"]["leitores"] >= 1 for st in states(base, UP_S))
+            except EOFError as ex:
+                sys.exit(f"waiting for the filter to read the ring: {ex} (see {server_err})")
+            if not read:
+                sys.exit(f"the filter of {a.mic} never read the ring (see {server_err})")
             state = call("GET", "/api/state")
             print(f"microphone {state['active_devices']['mic']}, voice {voice}; before: {state['microfone']}",
                   flush=True)
@@ -148,13 +163,16 @@ def main():
             mic, last = state["active_devices"]["mic"], state
             for n in range(1, a.cycles + 1):
                 seen = len(lines(work / "server.err"))
-                call("POST", "/api/settings", {"effect": "pistavoz"})
-                during = hold(base, ON_S)
-                call("POST", "/api/settings", {"effect": "nenhum"})
-                during += hold(base, OFF_S)
+                try:
+                    call("POST", "/api/settings", {"effect": "pistavoz"})
+                    during = hold(base, a.on_s)
+                    call("POST", "/api/settings", {"effect": "nenhum"})
+                    during += hold(base, OFF_S)
+                except EOFError as ex:
+                    sys.exit(f"cycle {n}: {ex} (see {server_err} and {log})")
                 states_seen = [last, *during, call("GET", "/api/state")]
                 last = states_seen[-1]
-                c, problem = cycle_row(n, states_seen, mic, a.provider, lines(work / "server.err")[seen:], lines(log))
+                c, problem = cycle_row(n, states_seen, mic, a.provider, lines(server_err)[seen:], lines(log), a.on_s)
                 if problem:
                     sys.exit(f"{problem} (see {work / 'server.err'} and {log})")
                 cycles.append(c)
@@ -175,6 +193,7 @@ def main():
     result = {"microphone": a.mic, "voice": voice, "provider": a.provider, "cycles": cycles,
               "dry_outs": sum(c["dry_outs"] for c in cycles),
               "dry_outs_while_starting": sum(c["dry_outs_while_starting"] for c in cycles),
+              "slowest_track_up_s": max([c["track_up_after_s"] for c in cycles] or [None]),
               "longest_return_ms_since_the_ring_opened": last["microfone"]["volta_max_ms"],
               "voice_blocks": sum(c["voice_blocks"] or 0 for c in cycles),
               "voice_slowest_block_ms": max(blocks or [0.0]),

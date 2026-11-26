@@ -166,7 +166,7 @@ class Conversor:
         self.fator = f32(2 ** (float(tom) / 12))
         self._zera()
 
-    def provedores(self):
+    def providers(self):
         return [s.get_providers()[0] for s in (self.s_cont, self.s_tom, self.s_encp, self.s_dec)]
 
     @staticmethod

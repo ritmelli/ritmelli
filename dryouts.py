@@ -19,12 +19,14 @@ class VoicePedalStart:
             self.on_at = self.clock()
 
     def track(self, live, stamp=None, up_s_ago=0.0):
-        if live and (not self._live or stamp != self._stamp):
+        if (stamp and stamp != self._stamp) or (live and not self._live):
             self.track_up_at, on_at = self.clock() - up_s_ago, self.on_at
             if on_at is not None and self.track_up_at >= on_at:
                 print(f"voice pedal: its voice track came up {self.track_up_at - on_at:.2f} s after the pedal turned "
                       "on", file=sys.stderr, flush=True)
-        self._live, self._stamp = live, stamp
+        self._live = live
+        if stamp is not None:
+            self._stamp = stamp
         return live
 
     def starting(self):

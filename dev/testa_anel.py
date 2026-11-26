@@ -393,6 +393,20 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.dry_out()
         self.assertIn("came up 0.00 s ago", self.pedal_lines()[-1])
 
+    def test_track_on_and_off_while_the_injector_was_away(self):
+        self.pedal_on(1.0)
+        self.gate.clear()
+        self.assertTrue(self.held.wait(3), "the injector never got to the ring")
+        self.producer.pista_liga(True)
+        self.advance(0.3)
+        self.producer.pista_liga(False)
+        self.advance(0.2)
+        self.gate.set()
+        self.assertTrue(espera(lambda: self.motor.voice_pedal.track_up_at is not None), "the track was not seen")
+        self.dry_out()
+        self.assertEqual(self.offset(self.pedal_lines()[-1], "came up"), 0.5)
+        self.assertIn("its voice track came up 1.00 s after the pedal turned on", self.log.getvalue())
+
     def test_dry_out_long_after_the_track_came_up(self):
         self.pedal_on(0.0)
         self.track_up()
