@@ -430,12 +430,12 @@ class ModuleBindings:
             if isinstance(n, SCOPES + COMPREHENSIONS):
                 self.enclosing[id(n)] = scope
         self.bind_all(nodes)
-        local = set(self.bound)
-        for n, scope in nodes:
-            if isinstance(n, ast.Global):
-                self.declared.update(((id(scope), name), tree) for name in n.names)
-            elif isinstance(n, ast.Nonlocal):
-                self.declared.update(((id(scope), name), self.binder_above(scope, name, local)) for name in n.names)
+        declarations = [(n, scope) for n, scope in nodes if isinstance(n, (ast.Global, ast.Nonlocal))]
+        local = set(self.bound) - {(id(scope), name) for n, scope in declarations for name in n.names}
+        for n, scope in declarations:
+            outer = (lambda name: tree) if isinstance(n, ast.Global) else (
+                lambda name: self.binder_above(scope, name, local))
+            self.declared.update(((id(scope), name), outer(name)) for name in n.names)
         self.bind_all(nodes)
 
     def bind_all(self, nodes):
@@ -456,6 +456,8 @@ class ModuleBindings:
                     self.bind(scope, a.asname or a.name, None)
             elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
                 self.bind(scope, n.id, None)
+            elif isinstance(n, ast.ExceptHandler) and n.name:
+                self.bind(scope, n.name, None)
 
     def function_above(self, scope):
         scope = self.enclosing.get(id(scope))
@@ -746,6 +748,9 @@ MODULE_CAUGHT = [
     ("a nonlocal two functions up", MODULE_OWNER,
      "def outer():\n    import owner as e\n\n    def middle():\n        def inner():\n            nonlocal e\n"
      "            e = e._x\n        return inner\n    return middle\n"),
+    ("a nonlocal through a function that declares it too", MODULE_OWNER,
+     "def outer():\n    e = None\n\n    def middle():\n        nonlocal e\n        e = 1\n\n        def inner():\n"
+     "            nonlocal e\n            import owner as e\n        inner()\n    middle()\n    return e._x\n"),
     ("a nonlocal the function assigns", MODULE_OWNER,
      "def outer():\n    import owner as e\n\n    def inner():\n        nonlocal e\n        e = e._x\n    return inner\n"),
     ("a reach before the alias is rebound", MODULE_OWNER, "import owner as e\n\ne._x()\ne = None\n"),
@@ -775,6 +780,8 @@ MODULE_NOT_REACHES = [
     ("a parameter of a nested function that shadows the module", MODULE_OWNER,
      "import owner as e\n\n\ndef f():\n    def g(e):\n        return e._x\n    return g\n"),
     ("a parameter named importlib", MODULE_OWNER, "def f(importlib):\n    return importlib.import_module('owner')._x\n"),
+    ("an exception caught as sys", MODULE_OWNER,
+     "import sys\n\n\ndef f():\n    try:\n        pass\n    except Exception as sys:\n        return sys.modules['owner']._x\n"),
     ("a parameter named sys", MODULE_OWNER, "def f(sys):\n    return sys.modules['owner']._x\n"),
     ("a local that shadows the module", MODULE_OWNER,
      "import owner\n\n\ndef f(o):\n    owner = o\n    return owner._x\n"),
