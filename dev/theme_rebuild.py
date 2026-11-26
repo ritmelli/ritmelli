@@ -9,40 +9,33 @@ import subprocess
 import sys
 import types
 from dataclasses import dataclass, field
-from html.entities import html5
-from html.parser import HTMLParser
+from html import unescape
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 
 USAGE = """Proof that a change to a theme only moves code: the page put back together on two commits, compared.
 
-The page is the index.html of the theme with every <!-- inline-script: --> made a <script> with the text of its file,
-and every <script src> and <link rel="stylesheet"> replaced by the text of the file the
-browser requests (the path of the URL, without the query and the fragment). Every script and stylesheet sits between a
-line that opens it ([script NAME], [inline-script NAME], [script], [link NAME] or [style], with the tag's other
-attributes when it has any) and a [/script] or [/style] line. <base> and <head> are git commits (the head defaults to
-the working tree).
+The page is the index.html of the theme as the server builds it: every <script src="..."></script> and
+<link rel="stylesheet" href="..."> replaced by the text of its file, and the i18n mark, when the page has one and
+the theme an i18n folder, by the <script> of the texts (a folder with one language only exits 3). Every script and stylesheet sits between a line that opens it ([script NAME], [script],
+[link NAME], [style] or [i18n texts], with the tag's other attributes when it has any) and a [/script] or [/style]
+line. <base> and <head> are git commits (the head defaults to the working tree).
 
-The tool refuses what the build refuses (index.html goes through theme_page.strict first), and then judges only a page
-in a strict form of its own that the browser reads one way: text with no < between tags, start tags with name="value"
-attributes (or a bare name), each once and in lower case outside <svg>, separated by ASCII spaces, end tags </name>,
-comments <!-- ... --> with no -- inside, and <!doctype html>. The elements are the ones the theme and the gallery use,
-one list for HTML and one inside <svg>. A <script> or <style> ends at its first </script> or </style>, with no <!-- in a
-script and no text in a <script src>; the server puts every linked file inline, so a script file holds no </script or
-<!-- and starts with no #!, and a sheet file holds no </style and passes the build's sheet check
-(theme_page.sheet_problem: no @import, and outside the page's folder only plain url() values that are not relative). A
-<title>, <iframe> or <select> holds no <. A script src and a stylesheet href (with rel="stylesheet" alone) are plain
-paths inside the theme, like gerado/base.css, or /t/<theme>/ and a plain path, read from that theme's folder. Anything
-else, and <script/>, <style/>, a <base>, a preload or prefetch <link>, a srcdoc, a NUL in a value, a & in a rel, type or
-as, a & that is no whole reference in a value, a script type that is not JavaScript or JSON, an @import, @namespace or
-@scope in a sheet (even escaped or in a comment), or a linked or inlined file that is not in the theme, exits 3, naming
-the file (and, in index.html, the line and the place). In a sheet, only CSS whitespace and comments may sit between and
-around the rules.
+The tool reads index.html with the build's own reader (theme_page.Template), so a page the build refuses exits 3, with
+the line and the build's reason. On top of it, it exits 3, naming the file, for a file tag whose address is not a plain
+path inside the theme (like gerado/base.css, or /t/<theme>/ and a plain path, read from that theme's folder), a
+linked file that is not in the theme (the server does not build the page), a file that is not UTF-8 text, a script file
+with a </script or a <!-- or that starts with #!, a sheet file with a </style or that fails the build's sheet check (theme_page.sheet_problem: no @import, and outside the
+page's folder only plain url() values that are not relative), an @import, @namespace or @scope in any sheet (even
+escaped or in a comment), and an <!-- inline-script: --> comment, which servers before theme_page replaced with a file.
+In a sheet, only CSS whitespace and comments may sit between and around the rules.
 
 Exit 0 when the head only moves code: the two pages are the same, or
 - every file of the theme that the page does not read (images, fonts) has the same content;
-- the markup is the same, line by line and in order, with every script and stylesheet in the same place in it;
+- the markup is the same, line by line and in order, with every script and stylesheet in the same place in it,
+  with the same between it and the text on each side: nothing, the same HTML spaces, or HTML spaces with a line
+  break;
 - the head has the same scripts in the same order, each loaded the same way (inline or from the same file), with the
   same attributes and the same strict mode;
 - each script declares the same functions at its top level (they may move inside it: a script's function declarations
@@ -63,31 +56,19 @@ and a part the CSS grammar does not know (an @container inside @media) is compar
 in a headless Chrome, does not compile, or that tree-sitter does not parse, is a change. Anything else is a change,
 printed, and the exit is 1."""
 
-INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
-INLINED = "data-theme-rebuild-inline-script"
 CANNOT_JUDGE = 3
-TAG = r"[A-Za-z][A-Za-z0-9-]*"
-START_TAG = re.compile(rf'<({TAG})((?:[ \t\n]+[A-Za-z][A-Za-z0-9_:.-]*(?:="[^"]*")?)*)[ \t\n]*(/?)>')
-END_TAG = re.compile(rf"</({TAG})>")
-COMMENT_TAG = re.compile(r"<!--(?![>-])((?:(?!--).)*)-->", re.S)
-DOCTYPE = re.compile(r"<!doctype html>", re.I)
-ATTRIBUTE = re.compile(r'([A-Za-z][A-Za-z0-9_:.-]*)(?:="([^"]*)")?')
-SCRIPT_TYPES = ("", "text/javascript", "application/json")
-CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re.S)
+LEFTOVER_MARKER = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
+FILE_KINDS = {"script": "script", "style": "link"}
+JS_MIME = ("application/ecmascript", "application/javascript", "application/x-ecmascript", "application/x-javascript",
+           "text/ecmascript", "text/javascript", "text/javascript1.0", "text/javascript1.1", "text/javascript1.2",
+           "text/javascript1.3", "text/javascript1.4", "text/javascript1.5", "text/jscript", "text/livescript",
+           "text/x-ecmascript", "text/x-javascript")
 PLAIN_PATH = re.compile(r"(?:/t/[A-Za-z0-9_-]+/)?[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+")
-WHOLE_REFERENCE = re.compile(r"&(?:[A-Za-z][A-Za-z0-9]*|#[0-9]+|#[xX][0-9A-Fa-f]+);")
-TEXT_ONLY = ("title", "iframe")
-HTML_ELEMENTS = ("a", "b", "body", "button", "canvas", "dialog", "div", "form", "h1", "h2", "h3", "head", "header",
-                 "html", "iframe", "input", "kbd", "label", "li", "link", "main", "meta", "ol", "output", "p", "script",
-                 "section", "select", "small", "span", "style", "svg", "title", "ul")
-SVG_ELEMENTS = ("circle", "g", "mask", "path", "rect")
 TRAILING_SPACE = re.compile(r"(?<!\\)\s+$")
 CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
 HTML_SPACE = " \t\n\r\f"
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
 SENTINEL = re.compile(r"^\x00(open (\d+)|close)\x00$")
-JS_TYPES = ("", "text/javascript")
-CSS_TYPES = ("", "text/css")
 DECLARATIONS = ("function_declaration", "generator_function_declaration")
 COMMENTS = ("comment", "html_comment")
 RESTRICTED = ("return_statement", "break_statement", "continue_statement", "throw_statement", "yield_expression",
@@ -104,83 +85,17 @@ class Doubt(Exception):
     pass
 
 
-def strict(html, name):
-    def refuse(at, why):
-        raise Doubt(f"{name}, line {html.count(chr(10), 0, at) + 1}: {why}: {html[at:at + 60]!r}")
-
-    at, foreign = 0, []
-    while (at := html.find("<", at)) >= 0:
-        tag = next((m for m in (p.match(html, at) for p in (DOCTYPE, COMMENT_TAG, END_TAG, START_TAG)) if m), None)
-        if tag is None:
-            refuse(at, "not a tag of the strict form")
-        if tag.re is COMMENT_TAG and "--!>" in tag.group(1):
-            refuse(at, "a comment with --!>")
-        if tag.re in (START_TAG, END_TAG) and tag.group(1) not in (SVG_ELEMENTS if foreign else HTML_ELEMENTS) and \
-                not (foreign and tag.re is END_TAG and tag.group(1) == "svg"):
-            refuse(at, f"an element the theme does not use {'inside <svg>' if foreign else 'in its HTML'}")
-        if tag.re is END_TAG and tag.group(1) == "svg" and foreign:
-            foreign.pop()
-        if tag.re is START_TAG:
-            element, pairs = tag.group(1), ATTRIBUTE.findall(tag.group(2))
-            attributes = dict(pairs)
-            if len({k.lower() for k, _ in pairs}) < len(pairs):
-                refuse(at, "an attribute written twice")
-            if element != "svg" and not foreign and any(k != k.lower() for k, _ in pairs):
-                refuse(at, "an attribute name in capitals")
-            if element == "base" or element == "link" and {"preload", "modulepreload", "prefetch"} & set(
-                    attributes.get("rel", "").lower().split()):
-                refuse(at, f"a <{element}> that changes or adds what the page fetches")
-            if element == "svg" and not tag.group(3):
-                foreign.append(element)
-            if "srcdoc" in attributes or any("\0" in v for v in attributes.values()):
-                refuse(at, "a srcdoc or a NUL in a value")
-            if any("&" in attributes.get(k, "") for k in ("rel", "type", "as")):
-                refuse(at, "a & in a rel, type or as")
-            if element == "script" and type_of(attributes) not in SCRIPT_TYPES:
-                refuse(at, "a script type that is not plain JavaScript or JSON (a module can import files)")
-            if loose := [v for k, v in attributes.items() if "&" in WHOLE_REFERENCE.sub(known_reference, v)]:
-                refuse(at, f"a & that is not a whole reference in {loose[0]!r}")
-            sheet = element == "link" and "stylesheet" in attributes.get("rel", "").lower().split()
-            if sheet and attributes["rel"] != "stylesheet":
-                refuse(at, "a stylesheet link whose rel is not just stylesheet")
-            address = attributes.get("src") if element == "script" else attributes.get("href") if sheet else None
-            if address is not None and not PLAIN_PATH.fullmatch(address):
-                refuse(at, "a file address that is not a plain path inside the theme (like gerado/base.css)")
-            if element in ("script", "style", "select") + TEXT_ONLY:
-                if tag.group(3):
-                    refuse(at, f"a <{element}/>")
-                close = html.find(f"</{element}>", tag.end())
-                body = html[tag.end():close] if close >= 0 else ""
-                if close < 0 or body_problem(element, body, "src" in attributes):
-                    refuse(at, f"a <{element}> that does not end at its first </{element}>, with no other tag in it")
-                at = close + len(f"</{element}>")
-                continue
-        at = tag.end()
-
-
-def known_reference(m):
-    return "" if m.group(0)[1] == "#" or m.group(0)[1:] in html5 else m.group(0)
-
-
-def body_problem(element, body, from_file):
-    if element == "script":
-        return from_file and body or re.search(r"</\s*script|<!--", body, re.I)
-    if element == "style":
-        return re.search(r"</\s*style", body, re.I) or sheet_reaches_out(body)
-    return "<" in body
-
-
 def sheet_reaches_out(text):
-    read = css_unescape(text).lower()
+    read = from_root("theme_page").css_unescape(text).lower()
     return any(rule in read for rule in ("@import", "@namespace", "@scope"))
 
 
-def css_unescape(text):
-    return CSS_ESCAPE.sub(lambda m: chr(min(int(m.group(1), 16), 0xFFFD)) if m.group(1) else m.group(2), text)
-
-
-def text_of(data):
-    return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+def text_of(data, name="the page"):
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as broken:
+        raise Doubt(f"{name}: not UTF-8 text (byte {broken.start}), which the server refuses") from broken
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def theme_path(name, theme):
@@ -189,12 +104,12 @@ def theme_path(name, theme):
 
 def reader(rev, theme):
     if rev is None:
-        return lambda name: (text_of((RAIZ / theme_path(name, theme)).read_bytes())
+        return lambda name: (text_of((RAIZ / theme_path(name, theme)).read_bytes(), name)
                              if (RAIZ / theme_path(name, theme)).is_file() else None)
 
     def show(name):
         out = subprocess.run(["git", "-C", str(RAIZ), "show", f"{rev}:{theme_path(name, theme)}"], capture_output=True)
-        return None if out.returncode else text_of(out.stdout)
+        return None if out.returncode else text_of(out.stdout, name)
     return show
 
 
@@ -214,7 +129,10 @@ def listing(rev, theme):
     else:
         rows = [x.split("\t", 1) for x in git("ls-tree", "-r", "-z", rev, "--", folder).split("\0") if x]
         names, ids = [path for _, path in rows], [meta.split()[2] for meta, _ in rows]
-    return {name[len(folder):]: blob for name, blob in zip(names, ids)}
+    found = {name[len(folder):]: blob for name, blob in zip(names, ids)}
+    if (RAIZ / folder / "i18n").is_dir() if rev is None else any(x.startswith("i18n/") for x in found):
+        found["i18n/"] = "a folder"
+    return found
 
 
 @dataclass
@@ -226,6 +144,7 @@ class Block:
     folder: str = ""
     source: tuple = ()
     raw: list = field(default_factory=list)
+    edges: tuple = ()
 
     @property
     def text(self):
@@ -252,52 +171,77 @@ class Page:
         return lines
 
 
-class _FileTags(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=False)
-        self.found, self.in_src, self.open = [], False, []
-
-    def handle_starttag(self, tag, attrs):
-        first = {}
-        for name, value in attrs:
-            first.setdefault(name, value)
-        if tag == "script" and first.get("src"):
-            self.in_src = True
-            self.found.append(("script", first.pop("src"), first, self.getpos(), self.get_starttag_text()))
-        elif tag in ("script", "style"):
-            name = first.pop(INLINED, None)
-            self.open.append(tag)
-            self.found.append(("inline-script" if name else f"{tag}-open", name, first, self.getpos(),
-                               self.get_starttag_text()))
-        elif tag == "link" and (first.get("rel") or "").lower() == "stylesheet" and first.get("href"):
-            first.pop("rel")
-            self.found.append(("link", first.pop("href"), first, self.getpos(), self.get_starttag_text()))
-
-    def handle_endtag(self, tag):
-        if tag == "script" and self.in_src:
-            self.in_src = False
-        elif self.open and self.open[-1] == tag:
-            self.open.pop()
-            self.found.append((f"{tag}-close", None, {}, self.getpos(), None))
-
-
 def header(kind, name, others):
     title = " ".join(x for x in (kind, name) if x)
     return f"[{title}: {list(others.items())!r}]" if others else f"[{title}]"
 
 
 def block_of(kind, name, others):
+    if kind == "i18n":
+        return Block("script", "[i18n texts]", (), False, source=("i18n",))
     if kind in ("link", "style-open"):
         return Block("style", header("link" if kind == "link" else "style", name, others), tuple(others.items()),
-                     type_of(others) in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "",
+                     type_of(others).lower() in ("", "text/css"), posixpath.dirname(name) if kind == "link" else "",
                      source=("file", posixpath.splitext(name)[1].lower()) if kind == "link"
                      else ("inline",))
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
-                 type_of(others) in JS_TYPES, source=("file" if kind == "script" else "inline", name))
+                 runs(others), source=("file" if kind == "script" else "inline", name))
+
+
+def edge(text):
+    space = text[:len(text) - len(text.lstrip(HTML_SPACE))]
+    if not text:
+        return "a line break"
+    return "a line break" if "\n" in space else f"the spaces {space!r}" if space else "nothing"
 
 
 def type_of(attributes):
-    return (attributes.get("type") or "").strip(" \t\n\r\f").lower()
+    return attributes.get("type") or ""
+
+
+def runs(others):
+    if "type" in others:
+        return others["type"] == "" or unescape(others["type"]).strip(HTML_SPACE).lower() in JS_MIME
+    language = unescape(others.get("language", ""))
+    return language == "" or f"text/{language}".lower() in JS_MIME
+
+
+def attributes(raw):
+    first = {}
+    for name, value in from_root("theme_page").ATTRIBUTE.findall(raw):
+        first.setdefault(name.lower(), value[1:-1] if value[:1] in "\"'" and value else value)
+    return first
+
+
+def tags_of(html):
+    theme_page = from_root("theme_page")
+
+    class Tags(theme_page.Template):
+        def token(self, i):
+            if (m := theme_page.GRAMMAR["comment"].match(self.html, i)) and LEFTOVER_MARKER.fullmatch(m.group(0)):
+                leftover.append(i)
+            return super().token(i)
+
+        def start_tag(self, m, i):
+            end = super().start_tag(m, i)
+            tag, others = m.group(1).lower(), attributes(m.group(2))
+            if tag == "style" or tag == "script" and "src" not in others:
+                inline.append((i, end, f"{tag}-open", None, others, m.end(), end - len(tag) - 3))
+            return end
+    inline, leftover = [], []
+    try:
+        template = Tags(html)
+    except theme_page.ThemePageError as refused:
+        raise Doubt(f"index.html, line {refused.at[0]}: {refused}, which the server refuses") from refused
+    if leftover:
+        raise Doubt(f"index.html, line {html.count(chr(10), 0, leftover[0]) + 1}: an <!-- inline-script: --> comment, "
+                    f"which servers before theme_page replaced with a file and this one leaves as a comment")
+    if unread := [(start, kind) for start, _, kind, _ in template.found if kind not in FILE_KINDS]:
+        raise Doubt(f"index.html, line {html.count(chr(10), 0, unread[0][0]) + 1}: a file tag of the kind "
+                    f"{unread[0][1]!r}, which this tool does not read")
+    found = [(start, end, FILE_KINDS[kind], name, {}, None, None) for start, end, kind, name in template.found]
+    marks = [(at, at + len(from_root("i18n").MARCA), "i18n", None, {}, None, None) for at in sorted(template.marks)[:1]]
+    return sorted(found + inline + marks)
 
 
 def assemble(read, files=None, theme="ritmelli"):
@@ -314,54 +258,48 @@ def assemble(read, files=None, theme="ritmelli"):
         text = read(name)
         return text if text is None else text.removeprefix("\ufeff")
     html = need("index.html").removeprefix("\ufeff")
-    strict(html, "index.html")
-    if refused := from_root("theme_page").strict(html)[1]:
-        raise Doubt(f"index.html, line {refused[0]}: {refused[2]}, which the server refuses")
-    for marker in INLINE_SCRIPT.finditer(html):
-        inlined = marker.group(1)
-        if read(inlined) is None:
-            raise Doubt(f"index.html, line {html.count(chr(10), 0, marker.start()) + 1}: the inline-script {inlined} is "
-                        f"not in the theme")
-        if body_problem("script", need(inlined), False):
-            raise Doubt(f"{inlined}: a </script or a <!-- in a script the server puts inline")
-    page = INLINE_SCRIPT.sub(lambda m: f'<script {INLINED}="{m.group(1)}">\n{need(m.group(1))}</script>', html)
-    parser = _FileTags()
-    parser.feed(page)
-    parser.close()
-    line_starts = [0]
-    for line in page.split("\n"):
-        line_starts.append(line_starts[-1] + len(line) + 1)
-    opened = [x for x in parser.found if not x[0].endswith("-close")]
-    blocks = [block_of(kind, name, others) for kind, name, others, _, _ in opened]
-    number = {id(x): n for n, x in enumerate(opened)}
-    for found in reversed(parser.found):
-        kind, name, others, (line, column), text = found
-        begin = line_starts[line - 1] + column
-        if kind.endswith("-close"):
-            end = page.index(">", begin) + 1
-            page = page[:begin] + "\n\x00close\x00\n" + page[end:]
+    tags = tags_of(html)
+    languages = [f"i18n/i18n_{language}.properties" for language in from_root("i18n").LINGUAS]
+    if (marked := [x for x in tags if x[2] == "i18n"]) and not any(read(x) is not None for x in languages) and \
+            not any(x.startswith("i18n/") for x in files or {}):
+        tags.remove(marked[0])
+    elif marked and (missing := [x for x in languages if read(x) is None]):
+        raise Doubt(f"{missing[0]}: not in the theme, whose i18n folder the server reads for the mark")
+    closes = from_root("theme_page").CLOSES_ELEMENT
+    blocks = [block_of(kind, name, others) for _, _, kind, name, others, _, _ in tags]
+    for block, (begin, end, *_) in zip(blocks, tags):
+        block.edges = (edge(html[:begin][::-1]), edge(html[end:]))
+    page = html
+    for n, (begin, end, kind, name, others, body_start, body_end) in reversed(list(enumerate(tags))):
+        opened, closed = f"\n\x00open {n}\x00\n", "\n\x00close\x00\n"
+        if kind == "i18n":
+            page = page[:begin] + opened + closed + page[end:]
             continue
-        end = begin + len(text)
-        if kind == "script":
-            end += len("</script>")
-        body = f"\n\x00open {number[id(found)]}\x00\n"
-        if kind in ("script", "link"):
-            if (text := fetch(name)) is None:
-                raise Doubt(f"{name}: the page links it, and it is not in the theme (the browser gets a 404)")
-            if kind == "script" and body_problem("script", text, False):
-                raise Doubt(f"{name}: a </script or a <!-- in a script the server puts inline")
-            if kind == "script" and text.startswith("#!"):
-                raise Doubt(f"{name}: a #! at its start, which only a script file read on its own allows")
-            if kind == "link" and re.search(r"</\s*style", text, re.I):
-                raise Doubt(f"{name}: a </style in a sheet the server puts inline")
-            outside = posixpath.dirname(theme_path(name, theme)) != f"themes/{theme}"
-            if kind == "link" and (problem := from_root("theme_page").sheet_problem(text, outside)):
-                raise Doubt(f"{name}: {problem}, which the server refuses")
-            if kind == "link" and sheet_reaches_out(text):
-                raise Doubt(f"{name}: an @import, @namespace or @scope, even escaped or in a comment, which ties the "
-                            f"sheet to something outside its rules")
-            body += f"{text}\n\x00close\x00\n"
-        page = page[:begin] + body + page[end:]
+        if kind.endswith("-open"):
+            if kind == "style-open" and sheet_reaches_out(page[body_start:body_end]):
+                raise Doubt(f"index.html, line {html.count(chr(10), 0, begin) + 1}: an @import, @namespace or @scope "
+                            f"in a <style>, even escaped or in a comment, which ties the sheet to something outside "
+                            f"its rules")
+            page = page[:begin] + opened + page[body_start:body_end] + closed + page[end:]
+            continue
+        if not PLAIN_PATH.fullmatch(name):
+            raise Doubt(f"index.html, line {html.count(chr(10), 0, begin) + 1}: {name!r} is not a plain path inside "
+                        f"the theme (like gerado/base.css)")
+        if (text := fetch(name)) is None:
+            raise Doubt(f"{name}: the page links it, and it is not in the theme (the server does not build the page)")
+        if kind == "script" and closes["script"].search(text):
+            raise Doubt(f"{name}: a </script or a <!-- in a script the server puts inline")
+        if kind == "script" and text.startswith("#!"):
+            raise Doubt(f"{name}: a #! at its start, which only a script file read on its own allows")
+        if kind == "link" and closes["style"].search(text):
+            raise Doubt(f"{name}: a </style in a sheet the server puts inline")
+        outside = posixpath.dirname(theme_path(name, theme)) != f"themes/{theme}"
+        if kind == "link" and (problem := from_root("theme_page").sheet_problem(text, outside)):
+            raise Doubt(f"{name}: {problem}, which the server refuses")
+        if kind == "link" and sheet_reaches_out(text):
+            raise Doubt(f"{name}: an @import, @namespace or @scope, even escaped or in a comment, which ties the "
+                        f"sheet to something outside its rules")
+        page = page[:begin] + opened + f"{text}{closed}" + page[end:]
     items, current = [], []
     for line in page.split("\n"):
         sentinel = SENTINEL.match(line)
@@ -375,7 +313,7 @@ def assemble(read, files=None, theme="ritmelli"):
             blocks[current[-1]].raw.append(line)
         else:
             items.append(("line", line, None, None))
-    texts = translations(need, html)
+    texts = translations(need) if any(kind == "i18n" for _, _, kind, *_ in tags) else ()
     return Page(items, blocks, texts, frozenset(names), files or {})
 
 
@@ -385,10 +323,8 @@ def from_root(module):
     return importlib.import_module(module)
 
 
-def translations(read, page):
+def translations(read):
     i18n = from_root("i18n")
-    if i18n.MARCA not in page:
-        return ()
     return tuple((language, tuple(TRAILING_SPACE.sub("", line.lstrip())
                                   for line in read(f"i18n/i18n_{language}.properties").splitlines()
                                   if line.strip() and not line.lstrip().startswith(("#", "!"))))
@@ -568,7 +504,11 @@ def markup(page):
     for item in page.items:
         if item[0] == "open":
             kind = page.blocks[item[1]].kind
-            out.append(((kind, order[kind]), None, page.blocks[item[1]].header))
+            block = page.blocks[item[1]]
+            edges = f" (before it {block.edges[0]}, after it {block.edges[1]})"
+            data = None if block.code else tuple(block.raw)
+            out.append(((kind, order[kind], block.edges, block.others if kind == "style" else None, data), None,
+                        block.header + edges))
             order[kind] += 1
         elif item[0] == "line" and item[2] is None and item[1].strip(HTML_SPACE):
             out.append((("line", item[1].strip(HTML_SPACE)), None, item[1].strip(HTML_SPACE)))
@@ -576,7 +516,7 @@ def markup(page):
 
 
 def compare_files(report, a, b):
-    for name in sorted((set(a.files) | set(b.files)) - a.read - b.read):
+    for name in sorted((set(a.files) | set(b.files)) - a.read - b.read - {"i18n/"}):
         if a.files.get(name) != b.files.get(name):
             kind = "file gone" if name not in b.files else "file new" if name not in a.files else "file changed"
             report.changes.append((kind, name, []))
@@ -609,7 +549,7 @@ def compare(a, b, compiles):
         if (bx.source, bx.others, sx) != (by.source, by.others, sy):
             report.changes.append(("script tag or strict mode", f"script {k + 1}: {bx.header} (strict: {sx}) -> "
                                    f"{by.header} (strict: {sy})", []))
-        if not bx.code and [r.strip() for r in bx.raw if r.strip()] != [r.strip() for r in by.raw if r.strip()]:
+        if not bx.code and bx.raw != by.raw:
             report.changes.append(("script content", f"script {k + 1}: {bx.header}", []))
         mine, theirs = collections.defaultdict(list), collections.defaultdict(list)
         for unit in (parsed_a.get(x) or Parsed()).declarations:
