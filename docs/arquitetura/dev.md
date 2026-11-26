@@ -89,8 +89,8 @@ comentário do PowerShell não conta. A chamada do `publica.py` que o `build_man
 `NOTAS` e do `NOTAS_EN`, cada língua por si, e nenhuma nota com as duas ausentes, vazias ou em branco, o `--parcial` e
 o `--parcial-info` só com o setup parcial, e o código de saída do `publica.py`) o
 `instalador/atualizacao/testa_parcial.py` confere rodando o script numa pasta de mentira, com um `publica.py` que passa
-a linha de comando pelo parser do `publica.py` de verdade e grava o que ele leu (os caminhos resolvidos e as notas como
-o `publica.py` as lê); cada caso traz os mutantes do script que ele reprova. O
+a linha de comando pelo parser do `publica.py` de verdade e grava o que ele leu (os caminhos resolvidos, menos o
+nome do `--setup` e do `--parcial`, que o `publica.py` confere como veio, e as notas como o `publica.py` as lê); cada caso traz os mutantes do script que ele reprova. O
 `atualizacao/test_contract.py` do `ritmelli-server` roda o mesmo script num build de mentira, até a assinatura de
 ensaio e as notas da versão. O
 `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda em três jobs:
