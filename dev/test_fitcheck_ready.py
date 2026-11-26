@@ -118,6 +118,7 @@ LATE_ASKED = "/__ritmelli-test-late-notice"
 LATE_STATE_S = 2.0
 STACKS_HOOK = ROOT / "dev" / "stacks_hook"
 STACKS_MARK = "---- the server's stacks, asked by the test"
+STACKS_END = "---- end of the server's stacks"
 HELD_CHILD = '''
 import sys
 import threading
@@ -199,7 +200,11 @@ class ServerStacks:
 
     def of(self, log):
         text = Path(log).read_text(encoding="utf-8", errors="replace")
-        return text[text.index(STACKS_MARK):] if self.asked and STACKS_MARK in text else None
+        if not self.asked or STACKS_MARK not in text:
+            return None
+        start = text.index(STACKS_MARK)
+        end = text.find(STACKS_END, start)
+        return text[start:] if end < 0 else text[start:end + len(STACKS_END)]
 
     def close(self):
         if self.asker is not None:
@@ -297,9 +302,9 @@ def notice_through(proxy_options, config, button=None):
                     stacks.close()
                     found = stacks.of(tmp / "server.log")
                     if found:
-                        print(found[-6000:], file=sys.stderr, flush=True)
+                        print(found, file=sys.stderr, flush=True)
         if found:
-            r["server_stacks"] = found[-6000:]
+            r["server_stacks"] = found
     return r, proxy
 
 
@@ -333,7 +338,7 @@ def stacks_of_a_held_process():
         def read():
             for line in child.stderr:
                 seen.append(line)
-                if "held_in_this_function" in line:
+                if STACKS_END in line:
                     dumped.set()
 
         threading.Thread(target=read, daemon=True).start()
@@ -343,7 +348,7 @@ def stacks_of_a_held_process():
         child.wait()
         stacks.close()
     text = "".join(seen)
-    check(STACKS_MARK in text and "held_in_this_function" in text,
+    check(STACKS_MARK in text and "held_in_this_function" in text.split(STACKS_END)[0] and STACKS_END in text,
           f"a test server asked for its stacks prints every thread's, with the function it is held in ({text[-300:]!r})")
 
 

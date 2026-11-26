@@ -5,6 +5,7 @@ import sys
 import threading
 
 MARK = "---- the server's stacks, asked by the test"
+END = "---- end of the server's stacks"
 
 
 def answer(port):
@@ -12,6 +13,7 @@ def answer(port):
         while asker.recv(1):
             print(MARK, file=sys.stderr, flush=True)
             faulthandler.dump_traceback(all_threads=True)
+            print(END, file=sys.stderr, flush=True)
 
 
 if os.environ.get("RITMELLI_STACKS_PORT"):
