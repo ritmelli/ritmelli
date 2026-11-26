@@ -435,8 +435,6 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
-  # the TLA+ model of the locks (dev/tla/): the TLC on the two configurations and on the mutants of each property,
-  # with the pinned tla2tools.jar, on the ubuntu machine
   tla:
     name: TLA+ model
     if: github.event_name != 'push'

@@ -2,7 +2,7 @@
 EXTENDS Locks, TLC
 
 CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, StreamChecksItsTrack,
-          RefusedStreamStopsWithoutTheFile, RefusedStreamTriesTheFileFirst
+          RefusedStreamStopsWithoutTheFile, RefusedStreamTriesTheFileFirst, PrepareChecksTheVersion
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack,
@@ -16,7 +16,7 @@ queueVars == <<fila, ver, virou, closing, preparando>>
 localVars == <<prX, prVer, prLine, prTrack, keptHead, pwSeen>>
 vars == <<pc, lockVars, platVars, jobVars, queueVars, localVars>>
 
-Workers == {"Download", "Swap", "Stream", "Prepare", "AudioVersion", "Play", "Forget"}
+Workers == {"Download", "Swap", "Stream", "Prepare", "AudioVersion", "Play", "Forget", "Move"}
 Procs == Workers \cup {"Mixer", "PassageWatcher"}
 
 NoTrack == [id |-> 0, job |-> FALSE, qid |-> NoQid, ver |-> "-", path |-> "none"]
@@ -61,6 +61,7 @@ Init ==
                  [] p = "AudioVersion" -> "av_start"
                  [] p = "Play" -> "pl_try"
                  [] p = "Forget" -> "fg_start"
+                 [] p = "Move" -> "mv_lock1"
                  [] p = "Mixer" -> "mx"
                  [] p = "PassageWatcher" -> "pw_idle"]
     /\ track = [id |-> 1, job |-> FALSE, qid |-> NoQid, ver |-> "-", path |-> "file"]
@@ -287,10 +288,11 @@ PrepareReads ==
     /\ Section("Prepare", "fila_lock")
     /\ IF fila /= <<>> /\ Playing /\ pronto.qid = NoQid
        THEN /\ prX' = Head(fila) /\ prLine' = line /\ prTrack' = track.id
+            /\ prVer' = IF PrepareChecksTheVersion THEN ver[Head(fila)] ELSE prVer
             /\ nearEnd' = TRUE
             /\ Goto("Prepare", "pr_mark")
-       ELSE UNCHANGED <<prX, prLine, prTrack, nearEnd>> /\ Goto("Prepare", "done")
-    /\ UNCHANGED <<track, nextId, line, pronto, jobVars, queueVars, prVer, keptHead, pwSeen>>
+       ELSE UNCHANGED <<prX, prVer, prLine, prTrack, nearEnd>> /\ Goto("Prepare", "done")
+    /\ UNCHANGED <<track, nextId, line, pronto, jobVars, queueVars, keptHead, pwSeen>>
 
 PrepareMarks ==
     /\ At("Prepare", "pr_mark")
@@ -300,7 +302,7 @@ PrepareMarks ==
 
 PrepareSource ==
     /\ At("Prepare", "pr_source")
-    /\ prVer' = ver[prX]
+    /\ prVer' = IF PrepareChecksTheVersion THEN prVer ELSE ver[prX]
     /\ Goto("Prepare", "pr_try")
     /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prLine, prTrack, keptHead, pwSeen>>
 
@@ -311,7 +313,8 @@ PrepareLocks ==
 PreparePublishes ==
     /\ At("Prepare", "pr_publish")
     /\ Section("Prepare", "_qlock")
-    /\ IF Head0(fila) = prX /\ virou.tag = NoQid /\ line = prLine /\ track.id = prTrack /\ pronto.qid = NoQid
+    /\ IF /\ Head0(fila) = prX /\ virou.tag = NoQid /\ line = prLine /\ track.id = prTrack /\ pronto.qid = NoQid
+          /\ (PrepareChecksTheVersion => ver[prX] = prVer)
        THEN pronto' = [qid |-> prX, ver |-> prVer]
        ELSE UNCHANGED pronto
     /\ Goto("Prepare", "pr_release")
@@ -323,6 +326,22 @@ PrepareReleases ==
     /\ preparando' = NoQid
     /\ Goto("Prepare", "done")
     /\ UNCHANGED <<platVars, jobVars, fila, ver, virou, closing, localVars>>
+
+MoveLocks ==
+    /\ pc["Move"] \in {"mv_lock1", "mv_lock2"}
+    /\ Acquire("Move", "fila_lock")
+    /\ Goto("Move", IF pc["Move"] = "mv_lock1" THEN "mv_swap1" ELSE "mv_swap2")
+    /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
+
+MoveSwaps ==
+    /\ pc["Move"] \in {"mv_swap1", "mv_swap2"}
+    /\ SectionThenRelease("Move", "_qlock", {"fila_lock"})
+    /\ LET f == IF Len(fila) = 2 THEN <<fila[2], fila[1]>> ELSE fila
+           h == Head0(Without(f, virou.tag))
+       IN /\ fila' = f
+          /\ pronto' = IF pronto.qid /= NoQid /\ pronto.qid /= h THEN NoPronto ELSE pronto
+    /\ Goto("Move", IF pc["Move"] = "mv_swap1" THEN "mv_lock2" ELSE "done")
+    /\ UNCHANGED <<track, nextId, line, nearEnd, jobVars, ver, virou, closing, preparando, localVars>>
 
 Held1 ==
     IF fila /= <<>> /\ (nearEnd \/ pronto.qid = Head(fila) \/ preparando = Head(fila))
@@ -405,7 +424,7 @@ Step ==
     \/ DownloadDoneRead \/ DownloadDoneSkip \/ DownloadDoneLock \/ DownloadDoneFile
     \/ SwapLocks \/ SwapCloses \/ SwapPublishes \/ SwapReleases
     \/ StreamTries \/ StreamOpened \/ StreamRefusedToday \/ StreamRefusedChecksJob
-    \/ PlayLocks \/ PlaySwaps \/ ForgetsTheRecord
+    \/ PlayLocks \/ PlaySwaps \/ ForgetsTheRecord \/ MoveLocks \/ MoveSwaps
     \/ MixerTime \/ MixerSwitches
     \/ PrepareReads \/ PrepareMarks \/ PrepareSource \/ PrepareLocks \/ PreparePublishes \/ PrepareReleases
     \/ AudioVersionLocks \/ AudioVersionToday \/ AudioVersionThroughChangeQueue

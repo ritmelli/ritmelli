@@ -97,8 +97,9 @@ antes, e o leitor que começa, a onda e a medida rodam depois de soltar as duas 
 ## A passagem e a cabeça da fila
 
 A volta do `_volta_passagem` guarda o deck e a linha do prato que viu. A fonte da primeira da fila e o ganho dela saem
-fora das travas (o endereço do stream leva 1 a 3 s), e a publicação (`preparar`) é sob a `fila_lock`: ela confere que
-a entrada ainda é a primeira e, no `pode` sob o `_qlock`, que não há virada pendente nem avanço reservado em curso
+fora das travas (o endereço do stream leva 1 a 3 s), de uma cópia da entrada tirada sob a `fila_lock`, e a publicação
+(`preparar`) é sob a `fila_lock`: ela confere que a entrada ainda é a primeira e igual à cópia (a que saiu da frente,
+trocou de versão e voltou não publica a fonte de antes) e, no `pode` sob o `_qlock`, que não há virada pendente nem avanço reservado em curso
 nesta linha e que o prato ainda é o mesmo deck, a mesma linha e o mesmo disco, sem o Repetir, sem ter acabado e sem
 nada preparado. Quem fecha a virada e troca o disco sob a `fila_lock` não vê uma preparação entrar no meio. Toda
 mudança da fila (pôr, tirar, mover, limpar, a ordem do Automático, o Aleatório e o esquecer) acontece no mesmo trecho
@@ -126,7 +127,8 @@ que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock
 `change_queue`, do `close_switches` e do `concilia` (a `fila_lock` e o `_qlock`), a do `with_engine` (a `fila_lock` e o
 `_lock`) e o `pode` dos métodos do motor (o `_lock` e o `_qlock`), e as funções locais que elas chamam também. Com a
 `fila_lock` na mão, nem o código nem o que ele chama grava arquivo (`save_json`, `_save`, `write_text`, `write_bytes`).
-Confere também que o `_mixa` e os métodos da `Engine` que ele chama só pegam o `_qlock`.
+Confere também que o `_mixa` e os métodos e as funções do `engine.py` que ele chama, das travas do modelo, só pegam o
+`_qlock` (o `AudioLocks` do `Locks.tla`); o `_slock` dos sons por cima não entra no modelo.
 
 ## O modelo das travas (`dev/tla/`)
 
@@ -134,15 +136,16 @@ O modelo TLA+ descreve as travas e o estado que elas guardam, e o TLC confere to
 posição do disco viram escolha não determinística, e os `qid` são simétricos (`SYMMETRY`). São duas configurações:
 
 - `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio, o vigia
-  da passagem, o tocar de outro disco e o esquecer da prateleira, com uma ou duas entradas e um job. Confere a ordem das
+  da passagem, o tocar de outro disco, o esquecer da prateleira e duas trocas de lugar na fila (a entrada sai da frente e
+  volta), com uma ou duas entradas e um job. Confere a ordem das
   travas; que nenhum prato fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na prateleira)
   e o stream recusado; que o stream recusado só para ou troca o disco daquela tentativa; e que a entrada da virada
   pendente tem a mesma versão que o prato toca (as duas corridas da #211).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança
   da fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
-  `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que o mixer só pega as do
-  `AudioLocks` (o `_qlock`, as mesmas que o `dev/test_lock_order.py` acha no `_mixa`), e a falta de impasse; que a
-  virada só vai para a cabeça da fila e que cada uma fecha uma vez, e todas fecham; que dois Próximos sobrepostos (o
+  `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o
+  mixer só pega as do `AudioLocks` (o `_qlock`, as mesmas que o `dev/test_lock_order.py` acha no `_mixa` e nos métodos e
+  funções do `engine.py` que ele chama), e a falta de impasse; que a virada só vai para a cabeça da fila e que cada uma fecha uma vez, e todas fecham; que dois Próximos sobrepostos (o
   segundo chega com o prato ainda na linha do primeiro, ou na linha que o avanço dele publicou) dão um avanço só e o
   mesmo resultado, também quando o tocar falha; que o Anterior recebe cada disco que saiu do prato uma vez, na ordem em que saiu,
   e nenhum fica de fora; e que toda reserva resolve, com justiça fraca.

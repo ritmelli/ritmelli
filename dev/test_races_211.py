@@ -250,6 +250,38 @@ def audio_version_while_the_engine_switches(A, E, readers):
           f"({closed and closed['youtube_id']} in the queue, {playing} on the platter)")
 
 
+def audio_version_while_the_passage_reads_the_source(A, E, readers):
+    cmd.limpar_fila(A)
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x = {"id": "d3", "youtube_id": "aaaaaaaaaaa", "url": None, "title": "similar", "channel": "c",
+         "duration": 600.0, "job": None, "qid": "similar4", "auto": True}
+    y = dict(x, id="d2", youtube_id="bbbbbbbbbbb", qid="other4")
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.extend([x, y]))
+    read, go, source = threading.Event(), threading.Event(), A.fonte_de
+
+    def reads(entry):
+        found = source(entry)
+        read.set()
+        go.wait(WAIT_S)
+        return found
+    cap = E.captura()
+    v = {"youtube_id": "fffffffffff", "duration": 200, "title": "similar", "channel": "c"}
+    with mock.patch.object(A, "fonte_de", reads), contextlib.redirect_stderr(io.StringIO()):
+        t = threading.Thread(target=A._prepara, args=(cap.track, x, (id(cap.track), x["qid"]), cap))
+        t.start()
+        read.wait(WAIT_S)
+        cmd.mover_na_fila(A, x["qid"], 1)
+        with A.fila_lock:
+            A.automatico._troca_audio("aaaaaaaaaaa", v)
+        cmd.mover_na_fila(A, x["qid"], 0)
+        go.set()
+        t.join(WAIT_S)
+    check(A.fila[0] is x and x["youtube_id"] == "fffffffffff" and E.pronto_tag is None,
+          f"an entry that left the head, took the audio version and came back while the passage read its source is "
+          f"not prepared with the source of before ({x['youtube_id']} in the queue, prepared {E.pronto_tag})")
+
+
 def audio_version_entries(A, E):
     cmd.limpar_fila(A)
     entry = {"id": None, "url": None, "title": "similar", "channel": "c", "duration": 300.0, "job": None,
@@ -294,6 +326,7 @@ def main():
                 warning_after_another_record_took_the_platter(A, E, readers)
                 audio_version_during_a_pending_switch(A, E, readers)
                 audio_version_while_the_engine_switches(A, E, readers)
+                audio_version_while_the_passage_reads_the_source(A, E, readers)
                 audio_version_entries(A, E)
             finally:
                 E.close()

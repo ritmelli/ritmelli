@@ -293,20 +293,24 @@ def methods(tree, cls):
 
 
 def audio_locks(text):
-    funcs = methods(ast.parse(text), AUDIO[0])
-    seen, todo, taken = set(), [AUDIO[1]], {}
+    tree = ast.parse(text)
+    funcs = {("self", k): f for k, f in methods(tree, AUDIO[0]).items()}
+    funcs.update({("module", f.name): f for f in tree.body if isinstance(f, ast.FunctionDef)})
+    seen, todo, taken = set(), [("self", AUDIO[1])], {}
     while todo:
-        name = todo.pop()
-        if name in seen or name not in funcs:
+        key = todo.pop()
+        if key in seen or key not in funcs:
             continue
-        seen.add(name)
-        for n in ast.walk(funcs[name]):
+        seen.add(key)
+        for n in ast.walk(funcs[key]):
             lock = lock_of(n.context_expr, AUDIO[0]) if isinstance(n, ast.withitem) else acquired(n, AUDIO[0])
             if lock:
-                taken.setdefault(lock, set()).add(name)
+                taken.setdefault(lock, set()).add(key[1])
             if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                     and isinstance(n.func.value, ast.Name) and n.func.value.id == "self"):
-                todo.append(n.func.attr)
+                todo.append(("self", n.func.attr))
+            elif isinstance(n, ast.Call) and isinstance(n.func, ast.Name):
+                todo.append(("module", n.func.id))
     return seen, taken
 
 
@@ -424,6 +428,12 @@ def self_test(order, before):
     _, taken = audio_locks(engine)
     check(taken.get("_lock") == {"_vira"},
           f"the audio check sees the _lock taken by a method the _mixa calls ({taken})")
+    engine = ("def take_engine_lock(e):\n    with e._lock:\n        pass\n"
+              "class Engine:\n    def _mixa(self):\n        take_engine_lock(self)\n        with self._qlock:\n"
+              "            pass\n")
+    _, taken = audio_locks(engine)
+    check(taken.get("_lock") == {"take_engine_lock"},
+          f"the audio check sees the _lock taken by a module function the _mixa calls ({taken})")
 
 
 def main():

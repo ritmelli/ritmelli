@@ -59,6 +59,23 @@ def passed_to_change_queue(func):
     return names, lambdas
 
 
+def callback_escapes(modules):
+    out = []
+    for module, tree in modules:
+        for func in ast.walk(tree):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            nested = {n.name for n in ast.walk(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                      and n is not func}
+            names, _ = passed_to_change_queue(func)
+            passed = {id(a) for n in ast.walk(func) if isinstance(n, ast.Call) and called(n) == "change_queue"
+                      for a in list(n.args) + [kw.value for kw in n.keywords if kw.arg == "change"]}
+            out += [f"{module}:{n.lineno}: {n.id}, passed to change_queue, used outside it in {func.name}"
+                    for n in ast.walk(func) if isinstance(n, ast.Name) and n.id in names & nested
+                    and id(n) not in passed]
+    return out
+
+
 def own_nodes(func, skip=frozenset()):
     todo = list(ast.iter_child_nodes(func))
     while todo:
@@ -164,13 +181,17 @@ class Entries:
         for _ in range(4):
             for node in self.walk(func):
                 if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
-                    for t in node.targets if isinstance(node, ast.Assign) else [node.target]:
-                        if isinstance(t, ast.Attribute) and t.attr in self.attrs:
-                            scope.containers |= set(targets(node.value))
-                        elif self.is_container(node.value, scope):
-                            scope.containers |= set(targets(t))
-                        elif self.is_entry(node.value, scope):
-                            scope.entries |= set(targets(t))
+                    for root in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                        pairs = list(zip(root.elts, node.value.elts)) if (
+                            isinstance(root, (ast.Tuple, ast.List)) and isinstance(node.value, (ast.Tuple, ast.List))
+                            and len(root.elts) == len(node.value.elts)) else [(root, node.value)]
+                        for t, value in pairs:
+                            if isinstance(t, ast.Attribute) and t.attr in self.attrs:
+                                scope.containers |= set(targets(value))
+                            elif self.is_container(value, scope):
+                                scope.containers |= set(targets(t))
+                            elif self.is_entry(value, scope):
+                                scope.entries |= set(targets(t))
                 elif isinstance(node, (ast.For, ast.comprehension)):
                     scope.entries |= self.loop_entries(node.iter, node.target, scope)
                 elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
@@ -369,7 +390,7 @@ def scan(sources):
             changes += v.found
             passing += v.passing
         params = queue_params(modules, passing)
-    return entry_writes, changes
+    return entry_writes, changes + callback_escapes(modules)
 
 
 BASE_USES = '''
@@ -417,6 +438,7 @@ ENTRY_FORMS = {
     "an entry passed to a function of another module": ({"comandos.py": "def marca(x):\n    x['audio'] = True\n",
                                                          "case.py": "def f(A):\n    cmd.marca(A.fila[0])\n"}, 1),
     "a tuple assignment to an entry": ({"case.py": "def f(A):\n    A.fila[0]['audio'], y = True, 1\n"}, 1),
+    "an entry of the Mix from unpacking": ({"case.py": "def f(A):\n    x, _ = A.mix[0], None\n    x.update(a=1)\n"}, 1),
     "a new dict from an entry":({"case.py": "def f(A):\n    for m in A.mix:\n        m = dict(m, ordem=1)\n"}, 0),
     "a dict that is no entry": ({"case.py": "def f(A):\n    d = {}\n    d['k'] = 1\n    d.update(a=1)\n"}, 0),
     "a helper that writes the entries of the Mix it gets": (
@@ -456,6 +478,12 @@ QUEUE_FORMS = {
         {"server.py": "class App:\n    def f(self):\n        self.fila, self.fila_ordem = [], None\n"}, 1),
     "an alias made inside a block and passed on": (
         {"case.py": "def f(A, c):\n    if c:\n        q = A.fila\n    p = q\n    p.clear()\n"}, 1),
+    "a change_queue callback also called by itself": (
+        {"server.py": "class App:\n    def f(self, x):\n        def remove_entry():\n            self.fila.remove(x)\n"
+                      "        remove_entry()\n        self.change_queue(remove_entry)\n"}, 1),
+    "a change_queue callback handed to another function": (
+        {"server.py": "class App:\n    def f(self, x):\n        def remove_entry():\n            self.fila.remove(x)\n"
+                      "        later(remove_entry)\n        self.change_queue(remove_entry)\n"}, 1),
     "another class's own fila": ({"fx.py": "class Fx:\n    def f(self):\n        self.fila = []\n"}, 0),
     "the App building its queue in __init__": (
         {"server.py": "class App:\n    def __init__(self):\n        self.fila = []\n"}, 0),
@@ -483,6 +511,11 @@ def main():
     got, _ = scan(dict(sources, **{"server.py": direct}))
     check(direct != sources["server.py"] and len(got) == 1,
           f"with the App's audio version writing the entries without change_queue, the check fails ({got})")
+    direct = sources["server.py"].replace("self.change_queue(swap_entries)",
+                                          "swap_entries()\n        self.change_queue(swap_entries)")
+    _, got = scan(dict(sources, **{"server.py": direct}))
+    check(direct != sources["server.py"] and len(got) == 1,
+          f"with the App's audio version also calling its change_queue callback by itself, the check fails ({got})")
     direct = sources["server.py"].replace("self.change_queue(replace_queue)", "replace_queue()")
     _, got = scan(dict(sources, **{"server.py": direct}))
     check(direct != sources["server.py"] and len(got) == 1,

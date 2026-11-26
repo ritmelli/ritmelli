@@ -43,7 +43,7 @@ class Reserva:
     def __init__(self, deck, linha, x):
         self.deck, self.linha, self.x = deck, linha, x
         self.entrada = None
-        self.erro = None
+        self.error = None
         self.feita = threading.Event()
         self.tocando = False  # a troca dela ja publicou o disco no prato (numa linha nova), e falta confirmar
         self.publicada = None  # o (deck, linha) que a troca dela publicou, anotado sob o _lock da troca
@@ -81,16 +81,16 @@ class Proximo(Reserva):
         self.r = None
         self.virada = None  # a virada pendente que ele viu: o avanco dele e ela, e nenhuma reserva o liga
 
-    def resolve(self, entrada, erro=None):
+    def resolve(self, entrada, error=None):
         """Com o _qlock: o resultado do grupo, uma vez so; os que esperam por ele voltam."""
         if not self.feita.is_set():
-            self.entrada, self.erro = entrada, erro
+            self.entrada, self.error = entrada, error
             self.feita.set()
 
     def espera(self, prazo=None):
         x = super().espera(prazo)
-        if self.erro is not None:
-            raise self.erro
+        if self.error is not None:
+            raise self.error
         return x
 
     def liga(self, r):
@@ -99,7 +99,7 @@ class Proximo(Reserva):
         self.r = r
         r.grupos.append(self)
         if r.feita.is_set():
-            self.resolve(r.entrada, r.erro)
+            self.resolve(r.entrada, r.error)
 
     def junta(self, E):
         """Com o _qlock do motor E: quem chega agora divide este avanco (o prato ainda na linha dele, ou na linha que a
@@ -347,7 +347,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                 A.remove_if_queued(r.x)
             A.release_reservation(r, None, None if na_tela else ex)
         if not na_tela:
-            if grupo is not None and r.erro is not ex:
+            if grupo is not None and r.error is not ex:
                 return r.entrada
             raise
         E.error = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",

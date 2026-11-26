@@ -1303,7 +1303,7 @@ class App:
             return read() if read is not None else None
         return cmd.concilia(self, no_switch)
 
-    def release_reservation(self, r, entrada, erro=None):
+    def release_reservation(self, r, entrada, error=None):
         """Com fila_lock: a reserva de avanco r resolvida (a entrada que tocou, ou None), liberando quem espera, e os
         Proximos ligados a ela. Uma vez so: a resolvida fica como esta."""
         if r.feita.is_set():
@@ -1311,10 +1311,10 @@ class App:
         with self.engine._qlock:  # o mesmo trecho em que um Proximo se liga a ela (Proximo.liga): nenhum fica de fora
             if self.reserva is r:
                 self.reserva = None
-            r.entrada, r.erro = entrada, erro
+            r.entrada, r.error = entrada, error
             r.feita.set()
             for g in r.grupos:
-                g.resolve(entrada, erro)
+                g.resolve(entrada, error)
 
     def _confere_preparo_sob(self):
         """Com fila_lock e o _qlock, no mesmo trecho em que a fila mudou: a passagem preparada para quem nao e mais a
@@ -1608,7 +1608,9 @@ class App:
         Repetir, sem ter acabado e sem nada preparado. Quem fecha a virada e troca o disco do prato sob a fila_lock (o
         Parar, a troca) nao ve uma preparacao nova entrar no meio."""
         try:
-            novo = self.fonte_de(x)
+            with self.fila_lock:
+                seen = dict(x)
+            novo = self.fonte_de(seen)
             if novo is None:
                 self.passagem_falhou = chave
                 return
@@ -1621,7 +1623,7 @@ class App:
                         and not e.loop and not e.ended and e.pronto_tag is None)
 
             def publica(depois):
-                if self.fila and self.fila[0] is x:
+                if self.fila and self.fila[0] is x and x == seen:
                     e.preparar(novo, x["qid"], pode=pode, ganho=ganho, depois=depois)
             self.with_engine(publica)
         except Exception as ex:  # sem a proxima pronta, ela toca no fim como antes
