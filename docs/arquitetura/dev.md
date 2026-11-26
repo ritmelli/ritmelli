@@ -107,6 +107,18 @@ entrada). Sem ela, o veredito diz o comando (`gh workflow run monta.yml --ref <b
 passa, roda-se o job de novo. O `dev/test_ci_workflow.py` roda esse trecho com o `gh` falso e confere o
 caminho da resposta, do `--areas` ao "Verdict".
 
+O placar do jardim, o `dev/garden.py` (no `STDLIB`), conta o mato do repo: as linhas de comentário de cada
+linguagem e as de docstring, as supressões, as esperas do app e as de `dev/`, os timers do tema, os retries, os
+`except` largos, os testes pulados, as marcas de pendência, a prosa sem issue, os nomes sem ASCII, os acessos que o
+`dev/testa_ganchos.py` conta (e as escritas diretas no estado do `App` e do motor), as linhas inline do tema, as linhas dos arquivos grandes e do `AGENTS.md` e as regras
+dele sem verificação. Cada número tem um teto no `dev/garden.json`: acima dele, ou abaixo sem o teto descer junto, o
+check reprova, e o teto do PR nunca passa o da base (o `$env:BASE` no PR; na fila, o commit sobre o qual a entrada
+foi montada, que vem no nome da ref dela, como no `compara`). Uma base sem `dev/garden.json` é medida. Cada contador
+que mudou vai para o resumo do PR numa linha `-- summary:`, e o `--list <contador>` mostra onde está cada item. O passo "PR description" do job de
+Testes lê a descrição do PR pela API, no PR e na fila (que pega a edição depois do verde), e reprova sem a seção de
+prova ou com uma frase de justificativa sem link de issue. O `dev/test_garden.py` tem, por contador, um caso que
+sobe e um que não conta.
+
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
 deitado; uma exceção ou um `console.error` da página também reprova; com `--metricas`, sem url, confere o aviso dos
