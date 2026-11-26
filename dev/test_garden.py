@@ -1,6 +1,10 @@
+import contextlib
 import importlib.util
+import io
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -140,6 +144,13 @@ CASES = {
          {"a.py": "ps = 'foreach($x in $y){while($true){try{f $x;break}catch{Start-Sleep 1}}}'\n"}),
         ("a do-while followed by another loop", {"a.py": "ps = 'do{f}while($a);while($b){Start-Sleep 1}'\n"},
          {"a.py": "ps = 'do{try{f}catch{};Start-Sleep 1}while($a);while($b){Start-Sleep 1}'\n"}),
+        ("a script's onerror that loads it again", {"a.js": "l.onerror = () => { l.remove(); };\nsetTimeout(go, 3000);\n"},
+         {"a.js": "l.onerror = () => { l.remove(); setTimeout(loadAgainWhenItAnswers, 3000); };\n"}),
+        ("a catch that reconnects", {"a.html": "<script>\ntry { f(); } catch (e) { setTimeout(() => g(), 1); }\n</script>\n"},
+         {"a.html": "<script>\ntry { es = T.eventos(u); } catch (e) { reconT = setTimeout(conectar, 3000); return; }\n"
+                    "</script>\n"}),
+        ("a promise catch that tries again", {"a.js": "fetch(u).then(go);\n"},
+         {"a.js": "function go() { fetch(u).catch(() => setTimeout(go, 3000)); }\n"}),
     ],
     "broad_excepts": [
         ("except Exception", {"a.py": "try:\n    f()\nexcept OSError:\n    pass\n"},
@@ -173,8 +184,8 @@ CASES = {
     ],
     "prose_justifications": [
         ("in a comment", {"a.py": "print('using the old one for now')\n"}, {"a.py": "x = 1  # for now\n"}),
-        ("in a docstring", {"a.py": "def f():\n    '''Accepted risk: #12.'''\n"},
-         {"a.py": "def f():\n    '''Accepted risk.'''\n"}),
+        ("a docstring is not a comment", {"a.py": "def f():\n    '''Accepted risk.'''\n"},
+         {"a.py": "def f():\n    '''Accepted risk.'''\n    return 1  # accepted risk\n"}),
         ("in a .md", {"a.md": "Sem teste: issue #5\n"}, {"a.md": "Sem teste.\n"}),
     ],
     "non_ascii_identifiers": [
@@ -220,8 +231,10 @@ KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/254"
 KNOWN_MISSES = [
     ("broad_excepts", "a PowerShell catch with no type", {"a.ps1": "try { f } catch { }\n"}),
     ("broad_excepts", "a JavaScript catch", {"a.js": "try { f(); } catch (e) { }\n"}),
-    ("retries", "a JavaScript callback that reschedules itself after a failure",
-     {"themes/t/a.js": "function go() { fetch(u).catch(() => setTimeout(go, 3000)); }\n"}),
+    ("retries", "a JavaScript failure told by an if (index.html, the transport not loaded)",
+     {"a.js": "s.onload = () => { if (typeof T === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); } };\n"}),
+    ("retries", "a JavaScript failure told by a .then (index.html, the pairing check)",
+     {"a.js": "p.then(volta => { if (volta && !S.pareando) reconT = setTimeout(conectar, 3000); });\n"}),
 ]
 
 
@@ -273,7 +286,15 @@ def test_check():
           f"one summary line per counter that changed, against the base ({summary})")
     _, first = garden.check({"a": 1}, {"a": 1}, None)
     check(first == ["-- summary: garden a: 1 (new, no ceiling on the base)"],
-          f"with no garden.json on the base, every counter goes to the summary ({first})")
+          f"with no base at all, every counter goes to the summary ({first})")
+    failed, measured = garden.check({"a": [("x.py", 1)] * 2, "b": 5}, {"a": 2, "b": 5}, {"a": 3, "b": 5},
+                                    base_has_ceilings=False)
+    check(failed == [] and measured == ["-- summary: garden a: 2 (-1 against the base)"],
+          f"a base from before the scoreboard is measured: the delta of what changed, no ceiling check ({measured})")
+    _, root = garden.git("rev-list", "--max-parents=0", "HEAD")
+    tree = garden.base_tree(root.split()[0])
+    check(bool(tree) and all("\r" not in text for text in tree.values()),
+          f"the base tree is read from git, with its text files ({len(tree)})")
     _, quiet = garden.check({"a": 1}, {"a": 1}, {"a": 1})
     check(quiet == ["-- summary: garden: no counter changed against the base (1 counters)"],
           f"with no change, one line says so ({quiet})")
@@ -306,6 +327,10 @@ def test_description():
         "a link to a run": "## Proof\n\nThe [run](https://github.com/o/r/actions/runs/123) fails on the base.\n",
         "a screenshot": "**Proof**\n\n![the page](https://github.com/user-attachments/assets/1)\n",
         "a code block": "## Proof\n\n```\n$ make\nok\n```\n",
+        "bold sub-labels under the heading": "## Proof\n\n**Before the change** ([run 1](https://github.com/o/r/"
+                                             "actions/runs/1)): fails.\n",
+        "a label and test names under the heading": "## How it was proved\n\nLocally: `testa_tudo` 30/30 and "
+                                                    "`--microfone` 4/4.\n",
     }
     for label, body in passing.items():
         check(garden.description_problems(body) == [], f"a proof section with {label} passes")
@@ -314,6 +339,8 @@ def test_description():
         "an issue link as the only proof": "## Proof\n\nSee #12 and https://github.com/o/r/issues/12.\n",
         "the proof after the section ends": "## Proof\n\nIt works.\n\n## Notes\n\n`python dev/x.py`\n",
         "a heading with nothing under it": "## Proof\n## Other\n![a](https://x/a.png)\n",
+        "a plain label after it": "Proof: it works.\nNotes: `python dev/x.py` is the next step.\n",
+        "an empty code block": "## Proof\n\n```\n```\n",
     }
     for label, body in failing.items():
         check(garden.description_problems(body) != [], f"a proof section with {label} fails")
@@ -325,6 +352,44 @@ def test_description():
     check(garden.pr_number("merge_group", {"merge_group": {"head_ref": "refs/heads/gh-readonly-queue/main/pr-246-"
                                                            + "a" * 40}}) == 246, "the PR number of a merge_group entry")
     check(garden.pr_number("push", {}) is None, "no PR on a push")
+
+
+def run_description(event_name, event, body):
+    asked = []
+
+    def fetch(repo, number):
+        asked.append((repo, number))
+        return body
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "event.json"
+        path.write_text(json.dumps(event), encoding="utf-8")
+        saved = {k: os.environ.get(k) for k in ("GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH", "GITHUB_REPOSITORY")}
+        os.environ.update(GITHUB_EVENT_NAME=event_name, GITHUB_EVENT_PATH=str(path), GITHUB_REPOSITORY="o/r")
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = garden.check_description(fetch)
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+    return code, asked
+
+
+def test_description_step():
+    good = "**How it was proven**\n- `python dev/garden.py` fails on the base.\n"
+    queue = {"merge_group": {"head_ref": "refs/heads/gh-readonly-queue/main/pr-9-" + "b" * 40}}
+    code, asked = run_description("pull_request", {"pull_request": {"number": 9}}, good)
+    check(code == 0 and asked == [("o/r", 9)], f"on the PR, the description is read from the API and passes ({asked})")
+    code, asked = run_description("merge_group", queue, "Edited after the green check.\n")
+    check(code == 1 and asked == [("o/r", 9)], "in the queue, a description edited to drop its proof fails")
+    code, asked = run_description("merge_group", {"merge_group": {"head_ref": "refs/heads/main"}}, good)
+    check(code == 1 and asked == [], "a queue entry that names no PR fails")
+    code, asked = run_description("pull_request", {}, good)
+    check(code == 1 and asked == [], "a pull_request event with no PR number fails")
+    code, asked = run_description("push", {}, good)
+    check(code == 0 and asked == [], "a push has no description to check")
 
 
 def test_base():
@@ -399,6 +464,7 @@ test_check()
 test_acceptance()
 test_description()
 test_base()
+test_description_step()
 WORKFLOW_TEXT = (ROOT / ".github" / "workflows" / "testa.yml").read_text(encoding="utf-8")
 problems = workflow_problems(WORKFLOW_TEXT)
 check(problems == [], f"the PR description step runs in the required check on every PR and queue entry ({problems})")

@@ -49,15 +49,18 @@ LEFT_OUT_QUOTED = re.compile(r"(?:^|[\"'])--\s[^\"']*ficou de fora")
 SKIP_NAMES = {"skip", "skipIf", "skipUnless", "expectedFailure", "skipTest", "SkipTest", "xfail", "skipif"}
 BROAD = {"Exception", "BaseException"}
 SLEEP_MODULES = {"time", "asyncio"}
+JS_RETRY = re.compile(r"(?:\bonerror\s*=|\bcatch\s*(?:\([^)]*\))?\s*\{|\.catch\s*\()"
+                      r".*\bsetTimeout\s*\(\s*[A-Za-z_$][\w$]*\s*,")
 PS_LOOP = re.compile(r"\b(?:for|foreach|while|do)\b", re.I)
 PROOF_LABEL = re.compile(r"^(?:how it was (?:proven|proved|tested)|proof\b|prova\b|como foi provado)", re.I)
 SECTION_LABEL = re.compile(r"^\s*(?:#{1,6}\s+(?P<heading>[^:]+?)(?::\s*(?P<rest>.*))?\s*$"
                            r"|\*\*(?P<bold>[^*]+?):?\*\*:?\s*(?P<rest2>.*)$"
-                           r"|(?P<plain>[A-Z][^:`]{1,40}):\s*(?P<rest3>.*)$)")
+                           r"|(?P<plain>[A-Z][\w ,'/-]{1,40}):(?:\s+(?P<rest3>.*))?$)")
 RUN_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/actions/runs/\d+")
 IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)|<img\s|https://github\.com/user-attachments/")
-PROOF_SPAN = re.compile(r"^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff)\b"
-                        r"|[\w./\\-]+\.(?:py|ps1|yml|js|sh|bat|iss|cpp|html)\b")
+PROOF_SPAN = re.compile(r"^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)\b"
+                        r"|[\w./\\-]+\.(?:py|ps1|yml|js|sh|bat|iss|cpp|html)\b|^\s*(?:test|testa|teste)_\w+"
+                        r"|^\s*--[a-z][\w-]*")
 BIG_FILES = {"engine_py_lines": "engine.py", "server_py_lines": "server.py",
              "index_html_lines": "themes/ritmelli/index.html", "agents_md_lines": "AGENTS.md"}
 
@@ -644,6 +647,8 @@ def retries(t):
             items += [(p, n) for n, s in python_strings(t, p) if START_SLEEP.search(s) and powershell_retries(s)]
     for p in t.paths(".ps1", ".psd1", ".yml"):
         items += [(p, n) for n in powershell_retries(joined_code(t.lexed(p)))]
+    for p in t.paths(".js", ".html"):
+        items += [(p, n) for n, code in sorted(t.lexed(p).code.items()) if JS_RETRY.search(code)]
     return items
 
 
@@ -760,21 +765,12 @@ def markdown_lines(t):
             yield p, n, line
 
 
-def docstring_texts(t):
-    for p in t.paths(".py", ".spec"):
-        tree = t.tree(p)
-        if tree is not None:
-            for d in docstrings(tree):
-                for k, text in enumerate(d.value.value.splitlines()):
-                    yield p, d.lineno + k, text
-
-
 def todo_markers(t):
     return [(p, n) for p, n, text in [*comment_texts(t), *markdown_lines(t)] if TODO.search(text)]
 
 
 def prose_justifications(t):
-    return sorted({(p, n) for p, n, text in [*comment_texts(t), *docstring_texts(t), *markdown_lines(t)]
+    return sorted({(p, n) for p, n, text in [*comment_texts(t), *markdown_lines(t)]
                    if PROSE.search(text) and not ISSUE.search(text)})
 
 
@@ -926,6 +922,28 @@ def working_tree():
     return files
 
 
+def base_tree(base):
+    _, out = git("ls-tree", "-r", "-z", "--name-only", base)
+    paths = [p for p in out.split("\0") if p and (suffix(p) in LEXERS or suffix(p) == ".md" or p in BIG_FILES.values())]
+    request = "".join(f"{base}:{p}\n" for p in paths).encode("utf-8")
+    data = subprocess.run(["git", "cat-file", "--batch"], cwd=ROOT, input=request, capture_output=True,
+                          check=True).stdout
+    files, i = {}, 0
+    for p in paths:
+        end = data.index(b"\n", i)
+        header = data[i:end].split()
+        i = end + 1
+        if len(header) < 3 or header[1] != b"blob":
+            continue
+        size = int(header[2])
+        try:
+            files[p] = data[i:i + size].decode("utf-8").replace("\r\n", "\n")
+        except UnicodeDecodeError:
+            pass
+        i += size + 1
+    return files
+
+
 def base_commit():
     base = os.environ.get("BASE", "").strip()
     if base:
@@ -970,7 +988,7 @@ def new_items(items, added):
     return [i for i in items if i[1] in added.get(i[0], ())]
 
 
-def check(counts, ceilings, base, added=None):
+def check(counts, ceilings, base, added=None, base_has_ceilings=True):
     failures, summary = [], []
     for name, value in counts.items():
         n = count_of(value)
@@ -983,7 +1001,7 @@ def check(counts, ceilings, base, added=None):
         if ceiling is None:
             failures.append(f"{name}: {n}, with no ceiling in dev/garden.json: add \"{name}\": {n}")
             continue
-        if before is not None and ceiling > before:
+        if before is not None and base_has_ceilings and ceiling > before:
             failures.append(f"{name}: the ceiling went up from {before} to {ceiling} in dev/garden.json: a ceiling "
                             f"only goes down")
         if n > ceiling:
@@ -1012,7 +1030,10 @@ def run():
     except BaseError as ex:
         print(f"FAIL  {ex}")
         return 1
-    failures, summary = check(counts, ceilings, before, added_lines(base))
+    measured = before is None and bool(base)
+    if measured:
+        before = {name: count_of(value) for name, value in scoreboard(base_tree(base)).items()}
+    failures, summary = check(counts, ceilings, before, added_lines(base), base_has_ceilings=not measured)
     for name, value in counts.items():
         print(f"{'ok  ' if count_of(value) == ceilings.get(name) else 'FAIL'}  {name}: {count_of(value)} "
               f"(ceiling {ceilings.get(name)})")
@@ -1052,12 +1073,21 @@ def proof_label(line):
     return (m.group("rest") or m.group("rest2") or m.group("rest3") or "").strip()
 
 
-def is_section_start(line):
-    return bool(re.match(r"^\s*(?:#{1,6}\s|\*\*[^*]+\*\*)", line)) or proof_label(line) is not None
+def heading_level(line):
+    m = re.match(r"^\s*(#{1,6})\s", line)
+    return len(m.group(1)) if m else None
+
+
+def ends_section(line, level):
+    if level is not None:
+        other = heading_level(line)
+        return other is not None and other <= level
+    return bool(SECTION_LABEL.match(line))
 
 
 def has_proof(text):
-    if re.search(r"^\s*(?:```|~~~)", text, re.M) or RUN_LINK.search(text) or IMAGE.search(text):
+    fenced = re.finditer(r"^\s*(```|~~~)[^\n]*\n(.*?)^\s*\1", text, re.M | re.S)
+    if any(m.group(2).strip() for m in fenced) or RUN_LINK.search(text) or IMAGE.search(text):
         return True
     return any(PROOF_SPAN.search(span) for span in re.findall(r"`([^`\n]+)`", text))
 
@@ -1066,9 +1096,9 @@ def proof_sections(lines):
     for i, line in enumerate(lines):
         rest = proof_label(line)
         if rest is not None:
-            section = [rest]
+            section, level = [rest], heading_level(line)
             for nxt in lines[i + 1:]:
-                if is_section_start(nxt):
+                if ends_section(nxt, level):
                     break
                 section.append(nxt)
             yield "\n".join(section)
@@ -1097,16 +1127,19 @@ def fetch_description(repo, number):
     return r.stdout
 
 
-def check_description():
+def check_description(fetch=fetch_description):
     event_name = os.environ.get("GITHUB_EVENT_NAME", "")
     path = os.environ.get("GITHUB_EVENT_PATH", "")
     event = json.loads(Path(path).read_text(encoding="utf-8")) if path else {}
     number = pr_number(event_name, event)
+    if number is None and event_name in ("pull_request", "merge_group"):
+        print(f"FAIL  this {event_name} event names no PR: its description can't be read")
+        return 1
     if number is None:
         print(f"ok    no PR in this {event_name or 'run'}: no description to check")
         return 0
     try:
-        body = fetch_description(os.environ["GITHUB_REPOSITORY"], number)
+        body = fetch(os.environ["GITHUB_REPOSITORY"], number)
     except (RuntimeError, KeyError) as ex:
         print(f"FAIL  the description of PR #{number} could not be read: {ex}")
         return 1
