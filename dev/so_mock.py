@@ -12,20 +12,14 @@ de agir; no Chrome, o DOCUMENTOS e o libera_ou_barra barram o documento de outra
 Quem sobe o proprio servidor (compara, previews, testa_mock) usa o sobe: a porta recusada antes do Popen se e a 8799 ou
 se alguem ja responde nela, e cada pedido, o /api/shutdown inclusive, so com o filho vivo e o marcador na origem; se
 nao, so o filho sai, pelo handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado."""
-import contextlib
-import ctypes
-import http.client
 import json
-import signal
 import socket
 import subprocess
 import sys
-import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from ctypes import wintypes
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -146,205 +140,12 @@ def libera_ou_barra(params, base):
     return "Fetch.failRequest", {"requestId": params["requestId"], "errorReason": "BlockedByClient"}
 
 
-class _BasicLimits(ctypes.Structure):
-    _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
-                ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
-                ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
-                ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD)]
-
-
-class _Limits(ctypes.Structure):
-    _fields_ = [("BasicLimitInformation", _BasicLimits), ("IoInfo", ctypes.c_uint64 * 6),
-                ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
-                ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
-
-
-def _kernel():
-    k = ctypes.WinDLL("kernel32", use_last_error=True)
-    k.CreateJobObjectW.restype = wintypes.HANDLE
-    k.OpenProcess.restype = wintypes.HANDLE
-    return k
-
-
-class _Accounting(ctypes.Structure):
-    _fields_ = [("TotalUserTime", ctypes.c_int64), ("TotalKernelTime", ctypes.c_int64),
-                ("ThisPeriodTotalUserTime", ctypes.c_int64), ("ThisPeriodTotalKernelTime", ctypes.c_int64),
-                ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
-                ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD)]
-
-
-def _resume(process):
-    return ctypes.WinDLL("ntdll").NtResumeProcess(wintypes.HANDLE(int(process)))
-
-
-class _Job:
-    def __init__(self):
-        k = self.k = _kernel()
-        self.job, self.outcome = k.CreateJobObjectW(None, None), None
-        limits = _Limits()
-        limits.BasicLimitInformation.LimitFlags = 0x2000
-        if not (self.job and k.SetInformationJobObject(self.job, 9, ctypes.byref(limits), ctypes.sizeof(limits))):
-            error = ctypes.get_last_error()
-            self.close()
-            raise Recusa(f"o job do servidor de teste nao foi criado (erro {error})")
-
-    def assign(self, process):
-        if not self.k.AssignProcessToJobObject(self.job, wintypes.HANDLE(int(process))):
-            raise Recusa(f"o servidor de teste nao entrou no job (erro {ctypes.get_last_error()})")
-
-    def active(self):
-        info = _Accounting()
-        if not self.k.QueryInformationJobObject(self.job, 1, ctypes.byref(info), ctypes.sizeof(info), None):
-            raise Recusa(f"o job do servidor de teste nao respondeu (erro {ctypes.get_last_error()})")
-        return info.ActiveProcesses
-
-    def pids(self, size=64):
-        word = ctypes.sizeof(ctypes.c_size_t)
-        while True:
-            listed = ctypes.create_string_buffer(8 + word * size)
-            if self.k.QueryInformationJobObject(self.job, 3, listed, len(listed), None):
-                count = wintypes.DWORD.from_buffer(listed, 4).value
-                return list((ctypes.c_size_t * count).from_buffer(listed, 8))
-            if ctypes.get_last_error() != 234:
-                raise Recusa(f"o job do servidor de teste nao listou os processos (erro {ctypes.get_last_error()})")
-            size = max(2 * size, wintypes.DWORD.from_buffer(listed, 0).value)
-
-    def members(self, opened):
-        for pid in self.pids():
-            handle = self.k.OpenProcess(0x00100000 | 0x1000, False, pid)
-            inside = wintypes.BOOL()
-            if handle and self.k.IsProcessInJob(wintypes.HANDLE(handle), self.job, ctypes.byref(inside)) and inside:
-                opened[pid] = handle
-            elif handle:
-                self.k.CloseHandle(wintypes.HANDLE(handle))
-        return [pid for pid in self.pids() if pid not in opened]
-
-    def end(self, seconds=10.0):
-        if self.outcome is True:
-            return
-        if self.outcome is not None:
-            raise self.outcome
-        try:
-            self._end(seconds)
-            self.outcome = True
-        except Recusa as ex:
-            self.outcome = ex
-            raise
-        finally:
-            self.close()
-
-    def _end(self, seconds):
-        closed = _Limits()
-        closed.BasicLimitInformation.LimitFlags = 0x2000 | 0x8
-        closed.BasicLimitInformation.ActiveProcessLimit = 1
-        if not self.k.SetInformationJobObject(self.job, 9, ctypes.byref(closed), ctypes.sizeof(closed)):
-            raise Recusa(f"o job do servidor de teste nao fechou para processos novos (erro {ctypes.get_last_error()})")
-        opened = {}
-        try:
-            missing = self.members(opened)
-            if not self.k.TerminateJobObject(self.job, 1):
-                raise Recusa(f"o job do servidor de teste nao foi encerrado (erro {ctypes.get_last_error()})")
-            fim = time.monotonic() + seconds
-            for handle in opened.values():
-                left = max(0, int((fim - time.monotonic()) * 1000))
-                if self.k.WaitForSingleObject(wintypes.HANDLE(handle), left) != 0:
-                    raise Recusa(f"os processos do servidor de teste nao sairam em {seconds:g} s")
-        finally:
-            for handle in opened.values():
-                self.k.CloseHandle(wintypes.HANDLE(handle))
-        if missing:
-            raise Recusa(f"o job foi encerrado, mas a saida dos processos {missing} nao foi conferida")
-        if self.active():
-            raise Recusa("o job do servidor de teste ainda tem processos depois de encerrado")
-
-    def close(self):
-        if self.job:
-            self.k.CloseHandle(wintypes.HANDLE(self.job))
-        self.job = None
-
-
-def _hold(caught):
-    try:
-        return [signal.signal(signal.SIGINT, lambda *_: caught.append(True))]
-    except ValueError:
-        return []
-
-
-def _release(previous):
-    for handler in previous:
-        signal.signal(signal.SIGINT, handler)
-
-
-@contextlib.contextmanager
-def _ctrl_c_held(cleanup):
-    caught = []
-    previous = _hold(caught)
-    try:
-        yield caught
-        if caught:
-            raise KeyboardInterrupt
-    except BaseException as ex:
-        try:
-            cleanup()
-        finally:
-            _release(previous)
-        if caught and not isinstance(ex, KeyboardInterrupt):
-            raise KeyboardInterrupt from ex
-        raise
-    try:
-        _release(previous)
-        if caught:
-            raise KeyboardInterrupt
-    except KeyboardInterrupt:
-        held = _hold(caught)
-        try:
-            cleanup()
-        finally:
-            _release(held)
-        raise
-
-
-def _drop(proc, job, assigned):
-    try:
-        if assigned:
-            job.end()
-            proc.wait(10)
-        elif getattr(proc, "_handle", None) is not None:
-            _kernel().TerminateProcess(wintypes.HANDLE(int(proc._handle)), 1)
-            proc.wait(10)
-    finally:
-        if job:
-            job.close()
-
-
-def start_job(cmd, **popen):
-    if sys.platform != "win32":
-        return subprocess.Popen(cmd, **popen), None
-    flags = popen.pop("creationflags", 0)
-    proc = job = None
-    assigned = False
-    with _ctrl_c_held(lambda: _drop(proc, job, assigned)):
-        job = _Job()
-        proc = subprocess.Popen(cmd, creationflags=flags | 0x4, **popen)
-        handle = getattr(proc, "_handle", None)
-        if handle is not None:
-            job.assign(handle)
-            assigned = True
-            status = _resume(handle) & 0xFFFFFFFF
-            if status:
-                raise Recusa(f"o servidor de teste nao foi retomado (NTSTATUS {status:#010x})")
-    if not assigned:
-        job.close()
-        return proc, None
-    return proc, job
-
-
 class Filho:
     """O servidor --mock que a ferramenta subiu (srv, o Popen) na porta dela. Cada pedido, o /api/shutdown inclusive,
     so com ele vivo e a origem respondendo com o marcador; se nao, so ele sai, pelo handle."""
 
-    def __init__(self, srv, porta, job=None):
-        self.srv, self.porta, self.base, self.job = srv, porta, f"http://127.0.0.1:{porta}", job
+    def __init__(self, srv, porta):
+        self.srv, self.porta, self.base = srv, porta, f"http://127.0.0.1:{porta}"
 
     def confere(self):
         if self.srv.poll() is not None:
@@ -365,10 +166,6 @@ class Filho:
             return json.load(r)
 
     def mata(self):
-        if self.job:
-            self.job.end()
-            self.srv.wait(10)
-            return
         if self.srv.poll() is None:
             self.srv.kill()
         self.srv.wait()
@@ -380,9 +177,6 @@ class Filho:
             self.srv.wait(espera)
         except (Recusa, OSError, ValueError, subprocess.TimeoutExpired):
             self.mata()
-            return
-        if self.job:
-            self.job.end()
 
 
 def sobe(cmd, porta, limite=30.0, **popen):
@@ -393,47 +187,24 @@ def sobe(cmd, porta, limite=30.0, **popen):
         raise Recusa(f"a porta {porta} e a do Ritmelli de verdade: o servidor de teste sobe noutra")
     if porta_responde(porta):
         raise Recusa(f"a porta {porta} ja responde: outro servidor esta nela")
-    f = None
-    with _ctrl_c_held(lambda: f.mata() if f else None) as caught:
-        proc, job = start_job(cmd, **popen)
-        f = Filho(proc, porta, job)
-        fim = time.monotonic() + limite
-        while not caught:
+    f = Filho(subprocess.Popen(cmd, **popen), porta)
+    fim = time.monotonic() + limite
+    try:
+        while True:
             if f.srv.poll() is not None:
                 raise Recusa(f"o servidor de teste saiu ao subir (codigo {f.srv.returncode})")
-            answered = _probe(f.base, caught, fim, limite)
-            if answered is False:
+            try:
+                estado(f.base, 2)
+            except OSError:
                 if time.monotonic() > fim:
-                    raise Recusa(f"o servidor de teste nao respondeu em {limite:g} s")
+                    raise Recusa(f"o servidor de teste nao respondeu em {limite:g} s") from None
                 time.sleep(0.1)
-            elif answered and f.srv.poll() is None:  # quem respondeu pode ser outro, e o filho ter caido por nao achar a porta
+                continue
+            if f.srv.poll() is None:  # quem respondeu pode ser outro, e o filho ter caido por nao achar a porta
                 return f
-
-
-def _probe(base, caught, fim, limite):
-    answer = []
-
-    def run():
-        try:
-            answer.append(estado(base, 2))
-        except (OSError, Recusa, http.client.HTTPException) as ex:
-            answer.append(ex)
-
-    probe = threading.Thread(target=run, daemon=True)
-    probe.start()
-    while probe.is_alive() and not caught and time.monotonic() <= fim:
-        probe.join(0.1)
-    if caught:
-        return None
-    if probe.is_alive():
-        raise Recusa(f"o servidor de teste nao respondeu em {limite:g} s")
-    if not answer:
-        raise Recusa(f"a consulta ao {base}/api/state parou sem resposta")
-    if isinstance(answer[0], OSError):
-        return False
-    if isinstance(answer[0], BaseException):
-        raise answer[0]
-    return True
+    except BaseException:
+        f.mata()
+        raise
 
 
 def sai_se_o_app_ligado(o_que):
