@@ -26,13 +26,31 @@ def lines(path):
     return path.read_text(encoding="utf-8", errors="replace").splitlines() if path.is_file() else []
 
 
+def pinned_runtime():
+    for line in lines(ROOT / "instalador" / "travas.txt"):
+        if line.startswith("onnxruntime-directml=="):
+            return line.split("==", 1)[1].strip()
+    return None
+
+
 def runtime_refusal(provider):
     import onnxruntime
-    if provider == "dml" and "DmlExecutionProvider" not in onnxruntime.get_available_providers():
+    install = ("install the app's runtime (pip install -r requirements.txt -c instalador/travas.txt, in a venv of its "
+               "own) or pass --provider cpu to measure the processor on purpose")
+    if provider != "dml":
+        return None
+    if "DmlExecutionProvider" not in onnxruntime.get_available_providers():
         return (f"onnxruntime {onnxruntime.__version__} here has no DmlExecutionProvider, so the voice process would "
-                "run on the processor and not where the app runs it: install the app's runtime (pip install -r "
-                "requirements.txt -c instalador/travas.txt, in a venv of its own) or pass --provider cpu to measure "
-                "the processor on purpose")
+                f"run on the processor and not where the app runs it: {install}")
+    if onnxruntime.__version__ != pinned_runtime():
+        return (f"onnxruntime {onnxruntime.__version__} here is not the {pinned_runtime()} the installer pins "
+                f"(instalador/travas.txt): {install}")
+    return None
+
+
+def voice_refusal(voice, voices):
+    if voice is not None and voice not in voices:
+        return f"no voice {voice!r} in vozes.json: pass one of {', '.join(voices)}"
     return None
 
 
@@ -120,7 +138,10 @@ def main():
     ap.add_argument("--on-s", type=float, default=ON_S, help="how long the pedal stays on in each cycle")
     ap.add_argument("--out", type=Path, default=Path("voice_pedal.json"))
     a = ap.parse_args()
-    refusal = runtime_refusal(a.provider)
+    sys.path.insert(0, str(ROOT))
+    import onnxruntime
+    import pistavoz
+    refusal = runtime_refusal(a.provider) or voice_refusal(a.voice, pistavoz.VOZES)
     if refusal:
         sys.exit(refusal)
     so_mock.sai_se_o_app_ligado("dev/measure_voice_pedal.py")
@@ -129,8 +150,6 @@ def main():
     work = Path(tempfile.mkdtemp(prefix="ritmelli-voice-pedal-"))
     (work / "local").mkdir()
     (work / "data").mkdir()
-    sys.path.insert(0, str(ROOT))
-    import pistavoz
     voice = a.voice or pistavoz.VOZES[0]
     (work / "data" / "pedal_voz.json").write_text(json.dumps({"voz": voice, "falante_hz": a.speaker_hz}),
                                                   encoding="utf-8")
@@ -206,7 +225,8 @@ def main():
                     job.end()
     dry = [ln for ln in lines(work / "server.err") if "ran dry" in ln]
     blocks = [c["voice_slowest_block_ms"] for c in cycles if c["voice_slowest_block_ms"] is not None]
-    result = {"microphone": mic, "voice": voice, "provider": a.provider, "cycles": cycles,
+    result = {"microphone": mic, "voice": voice, "provider": a.provider, "onnxruntime": onnxruntime.__version__,
+              "cycles": cycles,
               "dry_outs": sum(c["dry_outs"] for c in cycles),
               "dry_outs_while_starting": sum(c["dry_outs_while_starting"] for c in cycles),
               "slowest_track_up_s": max([c["track_up_after_s"] for c in cycles] or [None]),

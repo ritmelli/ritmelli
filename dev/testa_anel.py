@@ -232,6 +232,10 @@ class TestaInjetor(unittest.TestCase):
         self.assertEqual(pedidos, [("robo", 44100)], "o preset do filtro nao ficou pronto na taxa do Injetor")
 
 
+def stamp(t):
+    return 1 + round(t * 1000) % (2**32 - 1)
+
+
 class TestVoicePedalStart(unittest.TestCase):
     def test_pedal_off_while_a_dry_out_is_told(self):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
@@ -293,7 +297,7 @@ class TestVoicePedalStart(unittest.TestCase):
             now[0] = empty_at
             dry.read_ring(lambda: 0)
             now[0] = 0.756
-            pedal.track(True, round(up_at * 1000))
+            pedal.track(True, stamp(up_at))
             dry.ran_dry(0.656, 1)
             dryouts.LOG.written()
         return dry.while_pedal_starting, log.getvalue()
@@ -345,13 +349,13 @@ class TestVoicePedalStart(unittest.TestCase):
         with mock.patch("sys.stderr", io.StringIO()) as log:
             pedal.pedal(True)
             now[0] = 0.1
-            pedal.track(True, 100)
+            pedal.track(True, stamp(0.1))
             now[0] = 6.0
             dry.read_ring(lambda: 1)
             now[0] = 6.1
             pedal.pedal(False)
             now[0] = 6.3
-            pedal.track(True, 6_300)
+            pedal.track(True, stamp(6.3))
             now[0] = 6.35
             dry.read_ring(lambda: 0)
             dry.ran_dry(0.35, 1)
@@ -371,7 +375,7 @@ class TestVoicePedalStart(unittest.TestCase):
             pedal.pedal(False)
             now[0] = 1.656
             dry.read_ring(lambda: 0)
-            pedal.track(True, round((now[0] - up_s_ago) * 1000))
+            pedal.track(True, stamp(now[0] - up_s_ago))
             dry.ran_dry(0.656, 1)
             dryouts.LOG.written()
         return dry.while_pedal_starting, log.getvalue()
@@ -401,7 +405,7 @@ class TestVoicePedalStart(unittest.TestCase):
         dry = dryouts.RingDryOuts(pedal)
         with mock.patch("sys.stderr", io.StringIO()) as log:
             pedal.pedal(True)
-            pedal.track(True, 1_000)
+            pedal.track(True, stamp(1.0))
             for at, step in sorted([(1.2, lambda: dry.read_ring(lambda: 1)), (1.6, lambda: dry.read_ring(lambda: 0)),
                                     (off_at, lambda: pedal.pedal(False))], key=lambda x: x[0]):
                 now[0] = at
@@ -466,7 +470,7 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal.pedal(True)
         seen = []
         with mock.patch.object(dryouts.LOG, "tell", side_effect=lambda line: seen.append(pedal.track_up_at)):
-            pedal.track(True, 5_000)
+            pedal.track(True, stamp(5.0))
         self.assertEqual((seen, pedal.track_up_at), ([None], 5.0))
 
     def test_one_stamp_is_one_start(self):
@@ -474,11 +478,11 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal.pedal(True)
         with mock.patch("sys.stderr", io.StringIO()) as log:
             pedal.clock = lambda: 6.0
-            pedal.track(False, 5_800)
+            pedal.track(False, stamp(5.8))
             pedal.clock = lambda: 6.5
-            pedal.track(True, 5_800)
-            pedal.track(False, 5_800)
-            pedal.track(True, 5_800)
+            pedal.track(True, stamp(5.8))
+            pedal.track(False, stamp(5.8))
+            pedal.track(True, stamp(5.8))
             dryouts.LOG.written()
         self.assertEqual(log.getvalue().count("its voice track came up"), 1,
                          "the stamp seen before the track was live, and the track flapping, are the same start")
@@ -884,6 +888,13 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.after_read_gate.set()
         self.seen_up()
         self.assertEqual(self.motor.voice_pedal.track_up_at, up_at)
+        self.assertIn("its voice track came up 1.00 s after the pedal turned on", self.logged())
+
+    def test_track_up_as_the_clock_wraps(self):
+        self.advance(2**32 / 1000 - self.now)
+        self.pedal_on(1.0)
+        self.track_up()
+        self.assertEqual(self.motor.voice_pedal.track_up_at, self.now)
         self.assertIn("its voice track came up 1.00 s after the pedal turned on", self.logged())
 
     def test_the_counts_are_published_together(self):

@@ -69,7 +69,7 @@ class VoicePedalStart:
         now = self.clock()
         new = (stamp != self._stamp) if stamp else (live and not self._live)
         if new:
-            up_at = now - (round(now * 1000) - stamp) % 2**32 / 1000 if stamp else now
+            up_at = now - (round(now * 1000) - (stamp - 1)) % (2**32 - 1) / 1000 if stamp else now
             on_at = self.on_at
             if on_at is not None and up_at >= on_at:
                 LOG.tell(f"voice pedal: its voice track came up {up_at - on_at:.2f} s after the pedal turned on")

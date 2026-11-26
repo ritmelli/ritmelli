@@ -201,7 +201,7 @@ class Microfone:
         Desligada, a voz do microfone volta na hora. A leitura comeca do que for escrito a partir daqui: quem quer
         folga escreve um pouco de silencio logo depois de ligar, antes da voz."""
         if ligada and not self._pista_ligou:
-            self.a.pista_ligou_ms = round(clock() * 1000) & 0xFFFFFFFF or 1
+            self.a.pista_ligou_ms = 1 + round(clock() * 1000) % (2**32 - 1)
         self.a.pista_batida = k32.GetTickCount64()
         if ligada and not self.a.pista_ligada:
             self.a.pista_inicio = self.a.pista_escrito  # antes de ligar: o filtro so le a marca com a pista ligada

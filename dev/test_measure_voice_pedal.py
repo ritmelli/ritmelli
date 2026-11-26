@@ -12,13 +12,20 @@ import dryouts
 import measure_voice_pedal as measure
 
 CPU_ONLY = ["AzureExecutionProvider", "CPUExecutionProvider"]
+PINNED = measure.pinned_runtime()
 WITH_DML = ["DmlExecutionProvider", "CPUExecutionProvider"]
 
 
+def measure_voices():
+    import pistavoz
+    return pistavoz.VOZES
+
+
 class Refusal(unittest.TestCase):
-    def run_main(self, available, *args):
+    def run_main(self, available, *args, version=PINNED):
         started = []
         with (mock.patch("onnxruntime.get_available_providers", return_value=available),
+              mock.patch("onnxruntime.__version__", version),
               mock.patch.object(measure.so_mock, "sai_se_o_app_ligado", side_effect=SystemExit("past the check")),
               mock.patch.object(measure.so_mock, "start_job", side_effect=lambda *a, **k: started.append(a)),
               mock.patch.object(sys, "argv", ["measure_voice_pedal.py", "IN 1", *args]),
@@ -34,7 +41,16 @@ class Refusal(unittest.TestCase):
         self.assertEqual(self.run_main(WITH_DML), "past the check")
 
     def test_the_processor_on_purpose_goes_on(self):
-        self.assertEqual(self.run_main(CPU_ONLY, "--provider", "cpu"), "past the check")
+        self.assertEqual(self.run_main(CPU_ONLY, "--provider", "cpu", version="1.32.0"), "past the check")
+
+    def test_another_version_of_the_runtime_is_refused(self):
+        self.assertIn(f"onnxruntime 1.24.3 here is not the {PINNED} the installer pins",
+                      self.run_main(WITH_DML, version="1.24.3"))
+
+    def test_an_unknown_voice_is_refused(self):
+        why = self.run_main(WITH_DML, "--voice", "nobody")
+        self.assertIn("no voice 'nobody' in vozes.json: pass one of ", why)
+        self.assertIn(measure_voices()[0], why)
 
 
 def track_up_line(after_s):
@@ -42,7 +58,7 @@ def track_up_line(after_s):
     pedal.pedal(True)
     pedal.clock = lambda: 100.0 + after_s
     with mock.patch("sys.stderr", io.StringIO()) as err:
-        pedal.track(True, stamp=round((100.0 + after_s) * 1000))
+        pedal.track(True, stamp=1 + round((100.0 + after_s) * 1000) % (2**32 - 1))
         dryouts.LOG.written()
     return err.getvalue().strip()
 
@@ -136,6 +152,7 @@ class TheMicrophone(unittest.TestCase):
 
         proc = mock.Mock(**{"poll.return_value": None})
         with (mock.patch("onnxruntime.get_available_providers", return_value=WITH_DML),
+              mock.patch("onnxruntime.__version__", PINNED),
               mock.patch.object(measure.so_mock, "sai_se_o_app_ligado"),
               mock.patch.object(measure.so_mock, "porta_responde", side_effect=[False, True]),
               mock.patch.object(measure.so_mock, "start_job", return_value=(proc, None)),
