@@ -152,12 +152,12 @@ def contract_problems(doc):
     problems += [p for p in (step_output_problem(monta, name) for name in ("anterior", "parcial")) if p]
     for required, output in GATED_JOBS.items():
         gated = [j for k, j in jobs.items() if display(k, j) == required or display(k, j).startswith(required + " (")]
-        condition = str(gated[0].get("if", "")).strip() if gated else ""
-        needs = (gated[0].get("needs") or []) if gated else []
-        if "monta" not in ([needs] if isinstance(needs, str) else needs):
-            problems.append(f"{required} does not need the monta job, so its if: cannot read the monta outputs")
-        if not re.fullmatch(rf"needs\.monta\.outputs\.{output}\s*==\s*'true'", bare(condition) or ""):
-            problems.append(f"the if: of {required} does not read the {output} output of the monta job")
+        for job in gated:
+            needs = job.get("needs") or []
+            if "monta" not in ([needs] if isinstance(needs, str) else needs):
+                problems.append(f"{required} does not need the monta job, so its if: cannot read the monta outputs")
+            if not re.fullmatch(rf"needs\.monta\.outputs\.{output}\s*==\s*'true'", bare(job.get("if", "")) or ""):
+                problems.append(f"the if: of {required} does not read the {output} output of the monta job")
     run_uploads = uploads(jobs)
     found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
     problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
@@ -211,6 +211,10 @@ def shown(doc, name):
 def source_step(doc, name):
     value = inner(doc["jobs"]["monta"]["outputs"][name])
     return step_by_id(doc["jobs"]["monta"], re.fullmatch(STEP_OUTPUTS[name], value).group(1))
+
+
+def free_job(doc, base):
+    return next(f"{base}{n or ''}" for n in range(len(doc["jobs"]) + 1) if f"{base}{n or ''}" not in doc["jobs"])
 
 
 def free_id(doc, base):
@@ -331,6 +335,9 @@ def main():
         "the id of the step behind the anterior output": lambda d: source_step(d, "anterior").update(
             id=free_id(d, "previous")),
         "the needs of testa-parcial": lambda d: shown(d, "testa-parcial").update(needs=["testa"]),
+        "a second testa-migracao job gated by parcial": lambda d: d["jobs"].update(
+            {free_job(d, "partial-checks"): dict(copy.deepcopy(shown(d, "testa-parcial")),
+                                                 name="testa-migracao (partial checks)")}),
         "the needs of testa-migracao": lambda d: shown(d, "testa-migracao").update(needs=["testa"]),
         "the comparison in the if: of testa-parcial": lambda d: shown(d, "testa-parcial").update(
             {"if": shown(d, "testa-parcial")["if"].replace("==", "!=")}),
