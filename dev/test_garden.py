@@ -243,6 +243,33 @@ CASES = {
          {"a.py": "import time\ndef f():\n    x: int = time.sleep(1)\n"}),
         ("a sleep in the index of an assignment in a PowerShell condition", {"a.ps1": "if ($a[$(Get-Date)] = 1) { }\n"},
          {"a.ps1": "if ($a[$(Start-Sleep 1)] = 1) { }\n"}),
+        ("a function's script set in its branch, beside another in the other branch",
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Get-Date'\n    def run():\n        subprocess.run(['powershell', '-Command', ps])\n    run()\nelse:\n    ps = 'Start-Sleep 1'\n"},
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Start-Sleep 1'\n    def run():\n        subprocess.run(['powershell', '-Command', ps])\n    run()\nelse:\n    ps = 'Get-Date'\n"}),
+        ("a function's joined script set in its branch, beside another in the other branch",
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Get-Date'\n    def run():\n        subprocess.run(['powershell', '-Command', '\\n'.join([ps])])\n    run()\nelse:\n    ps = 'Start-Sleep 1'\n"},
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Start-Sleep 1'\n    def run():\n        subprocess.run(['powershell', '-Command', '\\n'.join([ps])])\n    run()\nelse:\n    ps = 'Get-Date'\n"}),
+        ("a script in an annotation that Python keeps as text",
+         {"a.py": "from __future__ import annotations\nimport subprocess\nx: subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"},
+         {"a.py": "import subprocess\nx: subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"}),
+        ("a script in a result annotation that Python keeps as text",
+         {"a.py": "from __future__ import annotations\nimport subprocess\ndef f() -> subprocess.run(['powershell', '-Command', 'Start-Sleep 1']):\n    pass\n"},
+         {"a.py": "import subprocess\ndef f() -> subprocess.run(['powershell', '-Command', 'Start-Sleep 1']):\n    pass\n"}),
+        ("a script in the annotation of a local variable",
+         {"a.py": "import subprocess\ndef f():\n    x: subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"},
+         {"a.py": "import subprocess\ndef f():\n    x: int = subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"}),
+        ("a script in the annotation of a class variable inside a function",
+         {"a.py": "import subprocess\ndef f():\n    class C:\n        x: int\n"},
+         {"a.py": "import subprocess\ndef f():\n    class C:\n        x: subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"}),
+        ("an annotation with no value keeps the module's script",
+         {"a.py": "import subprocess\nps = 'Get-Date'\nps: str\n" + RUN_PS},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nps: str\n" + RUN_PS}),
+        ("an annotation with no value keeps the class's script",
+         {"a.py": "import subprocess\nclass C:\n    ps = 'Get-Date'\n    ps: str\n    " + RUN_PS},
+         {"a.py": "import subprocess\nclass C:\n    ps = 'Start-Sleep 1'\n    ps: str\n    " + RUN_PS}),
+        ("a keyword glued to a string in an f-string field",
+         {"a.py": "import subprocess\nps = f'{1 if\"{\"else 2}; Get-Date'\n" + RUN_PS},
+         {"a.py": "import subprocess\nps = f'{1 if\"{\"else 2}; Start-Sleep 1'\n" + RUN_PS}),
         ("a branch's script does not reach the other branch",
          {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\nelse:\n    " + RUN_PS},
          {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\n" + RUN_PS}),
@@ -951,6 +978,7 @@ CASES = {
 }
 
 KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/254"
+POWERSHELL_SOURCES = (".ps1", ".psd1", ".yml", ".yaml", ".py")
 KNOWN_MISSES = [
     ("broad_excepts", "a JavaScript catch that handles nothing but is not empty",
      {"a.js": "try { f(); } catch (e) { void e; }\n"},
@@ -961,6 +989,46 @@ KNOWN_MISSES = [
               "    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }\n"
               "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"},
      ((".js", ".html"), r"onload\s*=[^;]*?\{[^}]*?if\s*\([^)]*\)\s*\{[^}]*setTimeout\(")),
+
+    ("suppressions", "a quiet -ErrorAction in parentheses",
+     {"a.ps1": "Get-Item x -ErrorAction ('SilentlyContinue')\n"},
+     (POWERSHELL_SOURCES, r"(?i)-(?:erroraction|ea)\s*:?\s*\(\s*['\"]")),
+
+    ("sleeps_dev", "a YAML key given by an alias",
+     {".github/workflows/w.yml": "k: &r run\njobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                 "      - *r: Start-Sleep 1\n"},
+     ((".yml", ".yaml"), r"(?m)^[ \t]*(?:-[ \t]+)?\*[\w-]+[ \t]*:")),
+
+    ("sleeps_app", "a PowerShell command name with a backtick escape", {"a.ps1": "St`art-Sleep 1\n"},
+     (POWERSHELL_SOURCES, r"(?m)(?:^|[;|{(])[ \t]*[A-Za-z][\w-]*`[A-Za-z][\w-]*")),
+
+    ("suppressions", "a PowerShell parameter name with a backtick escape",
+     {"a.ps1": "Get-Item x -Error`Action SilentlyContinue\n"},
+     (POWERSHELL_SOURCES, r"[ \t]-[A-Za-z]+`[A-Za-z]")),
+
+    ("suppressions", "a cast on $ErrorActionPreference",
+     {"a.ps1": "[string]$ErrorActionPreference = 'SilentlyContinue'\n"},
+     (POWERSHELL_SOURCES, r"(?i)\][ \t]*\$(?:global:|script:)?ErrorActionPreference[ \t]*=")),
+
+    ("retries", "a PowerShell foreach over a range in parentheses",
+     {"a.ps1": "function attempt($n) { try { f $n } catch { $null } }\n"
+               "foreach ($i in (1..5)) { if ($s = attempt $i) { break }; Start-Sleep 1 }\n"},
+     (POWERSHELL_SOURCES, r"(?i)foreach[ \t]*\([ \t]*\$\w+[ \t]+in[ \t]+\([ \t]*\d+[ \t]*\.\.")),
+
+    ("sleeps_app", "a module script set again after the function that passes it",
+     {"a.py": "import subprocess\nS = 'Get-Date'\ndef f():\n    subprocess.run(['powershell', '-Command', S])\n"
+              "S = 'Start-Sleep 1'\n"},
+     ((".py",), r"['\"]-(?:[Cc]ommand|c)['\"],[ \t]*(?P<n>[A-Za-z_]\w*)\b(?![ \t]*[(.\[])"
+                r"(?=(?:[^\n]*\n)*?(?P=n)[ \t]*=[^=])")),
+]
+
+KNOWN_NOISE = [
+    ("retries", "a Python index named like the loop's condition, taken for an assignment",
+     {"a.py": "import time\nwhile active:\n    try:\n        d[active] = False\n    except OSError:\n        pass\n"
+              "    time.sleep(1)\n"},
+     ((".py",), r"(?m)^([ \t]*)while[ \t]+(?:not[ \t]+)?(\w+)[ \t]*:[ \t]*\n(?:\1[ \t]+\S[^\n]*\n|[ \t]*\n){0,40}?"
+                r"\1[ \t]+try[ \t]*:[ \t]*\n(?:\1[ \t]+\S[^\n]*\n|[ \t]*\n){0,40}?"
+                r"\1[ \t]+[\w.]+\[[^\]\n]*\b\2\b[^\]\n]*\][ \t]*=[^=]")),
 ]
 
 
@@ -1041,6 +1109,14 @@ def test_unreadable():
              {"a.py": "import subprocess\nPS = 'Get-Date'\ndef run():\n    subprocess.run(['powershell', '-Command', PS])\n"
                       "PS = 'Start-Sleep 1'\n"},
              "a.py:4: the PowerShell reader can't follow the script"),
+            ("script joined from two values the reader can't follow",
+             {"a.py": "import subprocess\nif flag:\n    part = first()\nelse:\n    part = second()\n"
+                      "ps = '\\n'.join([part])\n" + RUN_PS},
+             "a.py:7: the PowerShell reader can't follow the script"),
+            ("script of a function that only annotates it",
+             {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef f():\n    ps: str\n"
+                      "    subprocess.run(['powershell', '-Command', ps])\n"},
+             "a.py:5: the PowerShell reader can't follow the script"),
             ("Python step of a composite action",
              {"action.yml": "runs:\n  steps:\n    - shell: python\n      run: this is not Python!\n"},
              "action.yml:4: the Python reader stops here")):
@@ -1097,15 +1173,17 @@ def uses_of(tree, suffixes, pattern):
 
 
 def test_known_misses():
-    tree = garden.working_tree(ROOT)
-    for name, label, files, detector in KNOWN_MISSES:
-        check(count(name, files) == 0, f"known miss ({KNOWN_MISSES_ISSUE}): {name} does not count {label}; when it "
-              f"does, move the case to CASES")
-        check(bool(uses_of(files, *detector)), f"known miss ({KNOWN_MISSES_ISSUE}): the detector of {label} "
+    tree = {p: text for p, text in garden.working_tree(ROOT).items() if p not in garden.GARDEN_FILES}
+    for noise, (name, label, files, detector) in [(False, m) for m in KNOWN_MISSES] + [(True, m) for m in KNOWN_NOISE]:
+        kind = "known noise" if noise else "known miss"
+        wrong = count(name, files) > 0 if noise else count(name, files) == 0
+        check(wrong, f"{kind} ({KNOWN_MISSES_ISSUE}): {name} {'counts' if noise else 'does not count'} {label}; when "
+              f"it {'stops' if noise else 'does'}, move the case to CASES")
+        check(bool(uses_of(files, *detector)), f"{kind} ({KNOWN_MISSES_ISSUE}): the detector of {label} "
               f"finds its own case")
         used = uses_of(tree, *detector)
-        check(not used, f"known miss ({KNOWN_MISSES_ISSUE}): the repo does not use {label} yet ({used[:3]}); "
-              f"when it does, make {name} count it and move the case to CASES")
+        check(not used, f"{kind} ({KNOWN_MISSES_ISSUE}): the repo does not use {label} yet ({used[:3]}); "
+              f"when it does, make {name} {'leave it out' if noise else 'count it'} and move the case to CASES")
 
 
 def test_check():

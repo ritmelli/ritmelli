@@ -19,6 +19,7 @@ LITERAL_START = re.compile(r"([A-Za-z]*)('''|\"\"\"|'|\")")
 ESCAPE_START = "\n\\'\"abfnrtv01234567xuUN"
 HEX_DIGITS = {"x": 2, "u": 4, "U": 8}
 SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+FUNCTION_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 
 
 @dataclass(eq=False)
@@ -184,6 +185,8 @@ def field_end(raw, i):
             k = i
             while k > i - 2 and raw[k - 1] in "rRbBfFuU":
                 k -= 1
+            if raw[k - 1:k].isalnum() or raw[k - 1:k] == "_":
+                k = i
             i = string_end(raw, i, raw[k:i].lower())
             continue
         if c == "#":
@@ -300,7 +303,9 @@ class Assignments:
                     continue
                 inner = (*blocks, (id(node), field_name)) if isinstance(child, ast.stmt) else blocks
                 self.scope_of[id(child)], self.blocks_of[id(child)], self.nodes[id(child)] = scope, inner, child
-                if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
+                declared = isinstance(node, ast.AnnAssign) and node.value is None and \
+                    not isinstance(scope, FUNCTION_SCOPES)
+                if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store) and not declared:
                     targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
                     plain = isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and targets == [child]
                     at = end_position(node) if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) else \
@@ -315,6 +320,7 @@ class Assignments:
         chain = self.blocks_of.get(id(name), ())
         while scope is not None:
             bound = None if outer and isinstance(scope, ast.ClassDef) else self.bindings.get((id(scope), name.id))
+            bound = [b for b in bound or [] if not self.other_branch(b[2], chain)]
             if bound:
                 earlier = sorted((b for b in bound if b[0] <= position(name)), key=lambda b: b[0], reverse=True)
                 if outer and len(bound) > 1 and any(b[0] > position(name) for b in bound):
@@ -323,8 +329,6 @@ class Assignments:
                     earlier = bound
                 found, branches = [], {}
                 for _, value, blocks in earlier:
-                    if self.other_branch(blocks, chain):
-                        continue
                     block = blocks[-1] if blocks else None
                     found.append(value)
                     if block is None or block in chain or self.covered(branches, block, chain):
@@ -352,8 +356,7 @@ class Assignments:
             return [None]
         out = []
         for value in self.reaching(expression):
-            out += [v for v in (self.values(value, depth + 1) if value is not None else [None])
-                    if v is not None or None not in out]
+            out += self.values(value, depth + 1) if value is not None else [None]
         return out or [None]
 
 
@@ -388,8 +391,24 @@ def joined_script(tokens, source_text, expression, names):
     return (text, lines) if text else None
 
 
+def evaluated(tree):
+    postponed = ir.postponed_annotations(tree)
+    stack = [(tree, False)]
+    while stack:
+        node, in_function = stack.pop()
+        yield node
+        for name, value in ast.iter_fields(node):
+            if name == "annotation" and (postponed or (in_function and isinstance(node, ast.AnnAssign))) or \
+                    name == "returns" and postponed:
+                continue
+            inside = (in_function or name == "body" and isinstance(node, FUNCTION_SCOPES)) and \
+                not (name == "body" and isinstance(node, ast.ClassDef))
+            stack += [(child, inside) for child in (value if isinstance(value, list) else [value])
+                      if isinstance(child, ast.AST)]
+
+
 def command_lists(tree):
-    for node in ast.walk(tree):
+    for node in evaluated(tree):
         if isinstance(node, (ast.List, ast.Tuple)):
             elements = node.elts
             for k, e in enumerate(elements):
