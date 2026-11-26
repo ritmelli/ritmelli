@@ -28,6 +28,9 @@ class Activated:
         return self.endpoint if interface is winvol.IAudioEndpointVolume else None
 
 
+FRIENDLY_NAME = ("{A45C254E-DF1C-4EFD-8020-67D146A850E0}", 14)
+
+
 class PropertyStore:
     def __init__(self, name):
         self.name = name
@@ -36,7 +39,7 @@ class PropertyStore:
     def GetValue(self, key, value):
         key, pv = key._obj, value._obj
         self.keys.append((str(key.fmtid), key.pid))
-        if (str(key.fmtid), key.pid) == (str(winvol.PKEY_FRIENDLY_NAME.fmtid), winvol.PKEY_FRIENDLY_NAME.pid):
+        if (str(key.fmtid), key.pid) == FRIENDLY_NAME:
             text = ctypes.create_unicode_buffer(self.name)
             alloc = ctypes.windll.ole32.CoTaskMemAlloc
             alloc.restype, alloc.argtypes = ctypes.c_void_p, [ctypes.c_size_t]
