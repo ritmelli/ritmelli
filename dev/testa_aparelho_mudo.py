@@ -266,9 +266,9 @@ class TestaReinicio(unittest.TestCase):
         self.assertEqual(self.c.nomes(), [], "nada novo: nem reinicia nem confere")
         self.assertIsNone(r)
 
-    def _install_with(self, mics, pendura):
+    def _install_with(self, mics, pendura, parou=False):
         self.c.lista.clear()
-        with mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
+        with mock.patch.object(filtro, "_prepara_dll", lambda dll: parou), \
                 mock.patch.object(filtro, "microfones", lambda todos=False: mics), \
                 mock.patch.object(filtro, "_pendura", pendura), \
                 mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), redirect_stderr(io.StringIO()):
@@ -278,9 +278,19 @@ class TestaReinicio(unittest.TestCase):
         old = ("{old}", "IN 0", "Old")
 
         def no_properties(ep):
-            raise FileNotFoundError(2, "The system cannot find the file specified")
+            raise filtro.MissingEndpointProperties(2, "The system cannot find the file specified")
         self.assertIsNone(self._install_with([old], no_properties))
         self.assertEqual(self.c.nomes(), [])
+
+        def value_gone_later(ep):
+            raise FileNotFoundError(2, "The system cannot find the file specified")
+        with self.assertRaises(filtro.FilterNotInstalled):
+            self._install_with([old], value_gone_later)
+
+    def test_pendura_without_properties(self):
+        with mock.patch.object(filtro.winreg, "OpenKey", side_effect=FileNotFoundError(2, "not found")), \
+                self.assertRaises(filtro.MissingEndpointProperties):
+            filtro._pendura("{old}")
 
     def test_instala_todos_device_error_fails_after_the_others(self):
         mics = [("{old}", "IN 0", "Old"), ("{a}", "IN 1", "X"), ("{b}", "IN 2", "Y")]
@@ -288,7 +298,7 @@ class TestaReinicio(unittest.TestCase):
 
         def pendura(ep):
             if ep == "{old}":
-                raise FileNotFoundError(2, "The system cannot find the file specified")
+                raise filtro.MissingEndpointProperties(2, "The system cannot find the file specified")
             if ep == "{a}":
                 raise PermissionError(13, "Access is denied")
             done.append(ep)
@@ -296,11 +306,23 @@ class TestaReinicio(unittest.TestCase):
         with self.assertRaises(filtro.FilterNotInstalled) as caught:
             self._install_with(mics, pendura)
         self.assertEqual(done, ["{b}"], "the other microphones still get the filter")
-        self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": False}), "a failed device may be half written")
+        self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": False}), "the new microphone {b}")
         self.assertEqual(self.c.nomes(), ["reinicia", "confere"])
         self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
         self.assertIn("IN 1 (X): [Errno 13] Access is denied", str(caught.exception))
         self.assertNotIn("IN 0", str(caught.exception))
+
+    def test_instala_todos_device_error_alone_leaves_the_audio(self):
+        def denied(ep):
+            raise PermissionError(13, "Access is denied")
+        with self.assertRaises(filtro.FilterNotInstalled) as caught:
+            self._install_with([("{a}", "IN 1", "X")], denied)
+        self.assertEqual(self.c.nomes(), [], "a device that keeps refusing doesn't restart the audio on every run")
+        self.assertIsNone(caught.exception.check)
+        with self.assertRaises(filtro.FilterNotInstalled) as caught:
+            self._install_with([("{a}", "IN 1", "X")], denied, parou=True)
+        self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": True}), "only the DLL changed")
+        self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
 
     def test_instala_um(self):
         for parou, novo, quer in ((True, False, True), (False, True, False), (True, True, False), (False, False, None)):
@@ -591,9 +613,14 @@ class TestDiagnosticStreams(unittest.TestCase):
         writers = {"_log", "_result"}
         allowed = {id(n) for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) and f.name in writers
                    for n in ast.walk(f)}
-        prints = [n.lineno for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                  and n.func.id == "print" and id(n) not in allowed]
-        self.assertEqual(prints, [], "microfone.py prints outside _log (diagnostics) and _result (the answer)")
+        def writes(call):
+            f = call.func
+            if isinstance(f, ast.Name):
+                return f.id == "print"
+            return (isinstance(f, ast.Attribute) and f.attr == "write" and isinstance(f.value, ast.Attribute)
+                    and isinstance(f.value.value, ast.Name) and f.value.value.id == "sys")
+        prints = [n.lineno for n in ast.walk(tree) if isinstance(n, ast.Call) and writes(n) and id(n) not in allowed]
+        self.assertEqual(prints, [], "microfone.py writes outside _log (diagnostics) and _result (the answer)")
 
 
 class TestaApp(unittest.TestCase):
@@ -684,7 +711,8 @@ class TestaApp(unittest.TestCase):
 
     def test_depois_de_preparar_confere_todos(self):
         sem = {"filtro": False, "melhorias": True, "guid": "{a}"}
-        for r, quer in (({"ok": True}, True), ({"ok": False, "motivo": "audio"}, False)):
+        for r, quer in (({"ok": True}, True), ({"ok": False, "motivo": "audio"}, False),
+                        ({"ok": False, "motivo": "nao_pronto", "reopen": True}, True)):
             m = self._motor()
             ordem = []
             m._reabre.side_effect = lambda m=m: ordem.append(("reabre", m._mudos_vistos))
@@ -695,6 +723,7 @@ class TestaApp(unittest.TestCase):
                 eng.Engine._confere_filtro(m, MIC)
             self.assertEqual(ordem, [("reabre", True), ("confere", ())] if quer else [], r)
             self.assertEqual(m._mudos_vistos, quer, "os do registro entram na de todos; sem ela, ficam para depois")
+            self.assertEqual(m.error is None, r["ok"], r)
         m = self._motor(_fechado=True)  # o motor fechou enquanto a tarefa rodava: nem reabre nem confere
         with mock.patch.object(eng, "_do_microfone", lambda mic: sem), \
                 mock.patch.object(filtro, "pede_tarefa", lambda mic: {"ok": True}):
@@ -742,7 +771,7 @@ class TestaPedeTarefa(unittest.TestCase):
         self.assertEqual(ordem, ["schtasks.exe /run /tn", "tarefa True", "tarefa None", "tarefa False",
                                  "sc.exe query audiosrv"])
 
-    def _pede(self, rodando, sc="STATE : 4 RUNNING", relogio=None):
+    def _pede(self, rodando, sc="STATE : 4 RUNNING", relogio=None, ready=True):
         ordem = []
 
         def run(cmd, **kw):
@@ -750,7 +779,7 @@ class TestaPedeTarefa(unittest.TestCase):
             return types.SimpleNamespace(returncode=0, stdout=sc, stderr="")
         with mock.patch.object(filtro, "tarefa_existe", lambda: True), \
                 mock.patch.object(filtro.subprocess, "run", run), \
-                mock.patch.object(filtro, "do_microfone", lambda n: {"filtro": True, "melhorias": True}), \
+                mock.patch.object(filtro, "do_microfone", lambda n: {"filtro": ready, "melhorias": True}), \
                 mock.patch.object(filtro, "tarefa_rodando", rodando), mock.patch.object(filtro.time, "sleep"), \
                 mock.patch.object(filtro.time, "monotonic", relogio or time.monotonic):
             return filtro.pede_tarefa("IN 1"), ordem
@@ -781,6 +810,14 @@ class TestaPedeTarefa(unittest.TestCase):
         t = iter([0, 1, 1000, 1000, 1000, 1000])
         r, _ = self._pede(lambda p: False, sc="STATE : 1 STOPPED", relogio=lambda: next(t))
         self.assertEqual(r, {"ok": False, "motivo": "audio"})
+
+    def test_refused_microphone_waits_for_the_task_and_asks_to_reopen(self):
+        rodando = iter([True, False])
+        t = iter(range(0, 10000, 10))
+        r, ordem = self._pede(lambda p: next(rodando), relogio=lambda: next(t), ready=False)
+        self.assertEqual(r, {"ok": False, "motivo": "nao_pronto", "reopen": True})
+        self.assertEqual(ordem, ["schtasks.exe", "sc.exe"], "the task may have restarted the audio: wait for it")
+        self.assertEqual(next(rodando, "drained"), "drained")
 
     def test_tarefa_rodando(self):
         for saida, quer in (("Running\r\n", True), ("Queued\r\n", True), ("Ready\r\n", False),
@@ -818,10 +855,12 @@ if scenario == "fail":
         sys.exit("a microphone failed (test)")
 elif scenario == "denied":
     def denied(ep):
-        raise PermissionError(13, "Access is denied")
+        if ep == "{a}":
+            raise PermissionError(13, "Access is denied")
+        return True
     checked = {"conferidos": ["a"] * 5, "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 5 checked"}
     filtro._prepara_dll = lambda dll: False
-    filtro.microfones = lambda todos=False: [("{a}", "IN 1", "X")]
+    filtro.microfones = lambda todos=False: [("{a}", "IN 1", "X"), ("{b}", "IN 2", "Y")]
     filtro._pendura = denied
     filtro.reinicia_audio = lambda so_servico=False: None
     filtro._depois_do_reinicio = lambda: checked

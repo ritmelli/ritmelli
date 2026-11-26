@@ -409,7 +409,7 @@ jobs:
             throw 'o desinstalador deixou a escolha dos dados de uso'
           }
           $tarefaMic = { Get-ScheduledTask -TaskPath '\Ritmelli\' -TaskName 'Microfone' -ErrorAction SilentlyContinue }
-          for ($i = 0; $i -lt 30 -and ((Test-Path $mic) -or (& $tarefaMic) -or (& $silentValueLeft)); $i++) { Start-Sleep 1 }
+          for ($i = 0; $i -lt 30 -and ((Test-Path $mic) -or (& $tarefaMic)); $i++) { Start-Sleep 1 }
           if (Test-Path $mic) { throw "o desinstalador deixou a pasta $mic" }
           if (& $tarefaMic) { throw 'o desinstalador deixou a tarefa \Ritmelli\Microfone' }
           if (& $silentValueLeft) { throw 'the uninstaller left the _mudos value in HKLM\SOFTWARE\Ritmelli\Microfone' }

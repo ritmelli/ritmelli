@@ -65,7 +65,9 @@ tarefa do Windows `\Ritmelli\Microfone`: roda como SYSTEM o mesmo `instala-todos
 pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
 prepara, sem UAC, um microfone que apareceu depois, e só reabre o áudio quando a tarefa acaba: o filtro
 aparece no registro antes de ela reiniciar o áudio e conferir os aparelhos. Reabre mesmo quando quem usa trocou
-de microfone no meio: o reinício do áudio derrubou os streams de qualquer microfone. Ao desinstalar, o original de
+de microfone no meio: o reinício do áudio derrubou os streams de qualquer microfone. Quando a tarefa não prepara o
+microfone pedido, o `pede_tarefa` ainda espera ela acabar e o áudio voltar, e o motor reabre do mesmo jeito.
+Ao desinstalar, o original de
 todo microfone volta, e a tarefa e os mudos do registro saem. A DLL e o log moram na `microfone\` da pasta do executável (pelo
 código, na `%ProgramW6432%\Ritmelli`), e tudo isso só vale com essa pasta protegida
 (`pastas.pasta_protegida`): o `instala` e o `instala-todos` conferem antes de tudo e recusam, e o
@@ -80,9 +82,9 @@ até tirar o cabo, #136) vai para o registro e para o `--saida`, que o instalado
 de concluído (`instalador/mudos.iss`), com o resumo da conferência no log do setup; o motor
 confere de novo, num processo à parte, e avisa quem usa. O `ok` do `--saida` decide o fim do setup: com o
 `instala-todos` em erro, ou sem o arquivo, o setup sai com 9 (o `GetCustomSetupExitCode` do `mudos.iss`), e a
-esteira reprova. O microfone que recusa o filtro também conta como erro: os outros recebem o filtro, o áudio reinicia
-inteiro e a conferência vai junto no `--saida`; só o aparelho velho sem as propriedades no registro fica de fora sem
-erro. O resultado é o `--saida` e o código de saída; o diagnóstico vai para o stderr, pelo `_log`, e
+esteira reprova. O microfone que recusa o filtro também conta como erro: os outros recebem o filtro, e a conferência,
+quando o áudio reiniciou por causa deles, vai junto no `--saida`; só o aparelho velho sem as propriedades no registro
+fica de fora sem erro. O resultado é o `--saida` e o código de saída; o diagnóstico vai para o stderr, pelo `_log`, e
 some sem mudar o resultado quando não há console (o executável) ou quando o cano fechou. Na desinstalação não há conferência: não
 sobra app para avisar. O `remove` com a pasta reprovada também não confere. Só a DLL nova
 reinicia só o Audiosrv, sem desmontar os aparelhos. Os programas do Windows (`schtasks`, `regsvr32`, `icacls`,

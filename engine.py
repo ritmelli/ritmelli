@@ -1488,8 +1488,9 @@ class Engine:
             self.preparando = None
         if not r.get("ok"):
             self._aviso = self.error = _erro_da_tarefa(r, mic)
-            return
-        if self.error == prep:
+            if not r.get("reopen"):
+                return
+        elif self.error == prep:
             self._aviso = self.error = None
         with self._lock:  # o audio do Windows reiniciou: os streams daqui morreram
             if self._fechado:

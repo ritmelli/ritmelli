@@ -525,11 +525,19 @@ def _prepara_dll(dll):
     return parou
 
 
+class MissingEndpointProperties(FileNotFoundError):
+    pass
+
+
 def _pendura(ep):
     """Pendura o filtro no microfone (a chave dele no registro), guardando o original; liga as melhorias de audio se
     estavam desativadas (sem elas nenhum efeito carrega; o remove desativa de novo). True se mudou algo."""
     base = rf"{CAPTURA}\{ep}"
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base + r"\Properties") as p:
+    try:
+        p = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base + r"\Properties")
+    except FileNotFoundError as ex:
+        raise MissingEndpointProperties(*ex.args) from ex
+    with p:
         sem_melhorias = (le(p, SEM_MELHORIAS) or (0,))[0]
     mudou = False
     with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, base + r"\FxProperties", 0,
@@ -694,21 +702,22 @@ def instala_todos(dll):
     """Pendura em todo microfone do Windows (ativo, desligado ou desconectado) que nao tem o filtro, e troca a DLL se
     a do app mudou. O audio do PC so reinicia se algo mudou: rodar de novo sem nada novo nao mexe no som, e so a DLL
     nova reinicia so o servico de audio. A conferencia dos aparelhos, se o audio reiniciou (confere_aparelhos), ou
-    None."""
+    None. Um microfone que recusa o filtro nao segura os outros nem reinicia o audio por si: no fim, FilterNotInstalled,
+    com a conferencia (ou None)."""
     parou = _prepara_dll(dll)
     novos, failures = [], []
     for m in microfones(todos=True):
         try:
             if _pendura(m[0]):
                 novos.append(m)
-        except FileNotFoundError:
+        except MissingEndpointProperties:
             continue
         except OSError as ex:
             failures.append(f"{m[1]} ({m[2]}): {ex}")
-    if novos or failures or parou:
-        reinicia_audio(so_servico=not (novos or failures))
+    if novos or parou:
+        reinicia_audio(so_servico=not novos)
     _log(f"filter on {len(microfones(todos=True))} microphones; now: {len(novos)}{'; DLL replaced' if parou else ''}")
-    check = _depois_do_reinicio() if novos or failures or parou else None
+    check = _depois_do_reinicio() if novos or parou else None
     if failures:
         raise FilterNotInstalled(failures, check)
     return check
@@ -947,8 +956,8 @@ def tarefa_rodando(prazo_s=10.0):
 
 def pede_tarefa(nome, espera_s=60):
     """Do app, sem administrador: roda a tarefa do instalador e espera o microfone ter o filtro (e as melhorias) e o
-    audio do Windows voltar. {ok} ou {ok: False, motivo, detalhe}: o motivo e um codigo (sem_tarefa, tarefa_falhou,
-    nao_pronto, audio), e quem chama poe a frase na lingua da tela (o engine.py)."""
+    audio do Windows voltar. {ok} ou {ok: False, motivo, detalhe, reopen}: o motivo e um codigo (sem_tarefa,
+    tarefa_falhou, nao_pronto, audio), e quem chama poe a frase na lingua da tela (o engine.py)."""
     if not tarefa_existe():
         return {"ok": False, "motivo": "sem_tarefa"}
     r = subprocess.run([SCHTASKS, "/run", "/tn", TAREFA], capture_output=True, text=True, encoding="oem",
@@ -956,13 +965,11 @@ def pede_tarefa(nome, espera_s=60):
     if r.returncode:
         return {"ok": False, "motivo": "tarefa_falhou", "detalhe": r.stdout.strip() or r.stderr.strip()}
     fim = time.monotonic() + espera_s
-    while time.monotonic() < fim:
+    ready = False
+    while not ready and time.monotonic() < fim:
         time.sleep(1.0)
         m = do_microfone(nome)
-        if m and m["filtro"] and m["melhorias"]:
-            break
-    else:
-        return {"ok": False, "motivo": "nao_pronto"}
+        ready = bool(m and m["filtro"] and m["melhorias"])
     # o filtro aparece no registro antes de a tarefa reiniciar o audio e conferir os aparelhos (#136): ate ela acabar,
     # o audiosrv RUNNING ainda pode ser o de antes do reinicio. Com o prazo da conferencia dela a mais
     fim += ASSENTA_S + CONFERE_MAX_S
@@ -979,7 +986,7 @@ def pede_tarefa(nome, espera_s=60):
                             errors="replace", creationflags=NO_WINDOW).stdout
         if "RUNNING" in st:
             time.sleep(2.0)  # os aparelhos se enumeram de novo logo depois
-            return {"ok": True}
+            return {"ok": True} if ready else {"ok": False, "motivo": "nao_pronto", "reopen": True}
         if time.monotonic() >= fim:
             return {"ok": False, "motivo": "audio"}
         time.sleep(0.5)
