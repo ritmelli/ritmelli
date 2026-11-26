@@ -534,7 +534,7 @@ python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as th
 `python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library, and
 `--without-long` everything but the two long tests (the transition bench, `dev/testa_passagem.py`, and the compara
 capture, `dev/test_capture.py`, about 2 minutes each), which `--long` runs alone; the pull request check runs each in a
-job of its own (Banca and Captura), next to the others. The tests run four at a time, except the ones that measure time, which run one by one after the others (`--jobs 1` runs
+job of its own (Banca and Captura, this one only when the PR touches the screen), next to the others. The tests run four at a time, except the ones that measure time, which run one by one after the others (`--jobs 1` runs
 everything one by one).
 
 A new test is named `dev/test_*.py` (in English; the older ones are `dev/testa_*.py`). Either kind goes into one of
