@@ -31,7 +31,7 @@ BEGIN
       VALUE "InternalName", RITMELLI_FILE
       VALUE "LegalCopyright", "Software livre sob a GPLv3 / Free software under the GPLv3"
       VALUE "OriginalFilename", RITMELLI_FILE ".dll"
-      VALUE "ProductName", "Ritmelli"
+      VALUE "ProductName", "Ritmeli"
       VALUE "ProductVersion", RITMELLI_VERSION_STR
     END
   END
