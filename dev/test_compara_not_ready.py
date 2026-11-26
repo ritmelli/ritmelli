@@ -33,6 +33,8 @@ LOADED_S = float(sys.argv[5])
 
 async def wait_ready(cmd, expr, blocked, timeout_s):
     loaded = await real_wait(cmd, f"({expr}, {LOADED})", blocked, LOADED_S)
+    if loaded is fitcheck.Ready.TIMED_OUT:
+        sys.exit(f"setup: the page did not load with the injected script failed in {LOADED_S:.0f} s")
     if loaded is not fitcheck.Ready.READY:
         return loaded
     return await real_wait(cmd, expr, blocked, timeout_s)
