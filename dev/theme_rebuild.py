@@ -64,8 +64,6 @@ CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
 HTML_SPACE = " \t\n\r\f"
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
 SENTINEL = re.compile(r"^\x00(open (\d+)|close)\x00$")
-JS_TYPES = ("", "text/javascript")
-CSS_TYPES = ("", "text/css")
 DECLARATIONS = ("function_declaration", "generator_function_declaration")
 COMMENTS = ("comment", "html_comment")
 RESTRICTED = ("return_statement", "break_statement", "continue_statement", "throw_statement", "yield_expression",
@@ -178,11 +176,11 @@ def block_of(kind, name, others):
         return Block("script", "[i18n texts]", (), False, source=("i18n",))
     if kind in ("link", "style-open"):
         return Block("style", header("link" if kind == "link" else "style", name, others), tuple(others.items()),
-                     type_of(others) in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "",
+                     type_of(others).lower() in ("", "text/css"), posixpath.dirname(name) if kind == "link" else "",
                      source=("file", posixpath.splitext(name)[1].lower()) if kind == "link"
                      else ("inline",))
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
-                 type_of(others) in JS_TYPES, source=("file" if kind == "script" else "inline", name))
+                 runs(type_of(others)), source=("file" if kind == "script" else "inline", name))
 
 
 def edge(text):
@@ -193,7 +191,11 @@ def edge(text):
 
 
 def type_of(attributes):
-    return (attributes.get("type") or "").strip(" \t\n\r\f").lower()
+    return attributes.get("type") or ""
+
+
+def runs(kind):
+    return kind == "" or kind.strip(HTML_SPACE).lower() == "text/javascript"
 
 
 def attributes(raw):
