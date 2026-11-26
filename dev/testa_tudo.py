@@ -116,7 +116,8 @@ JOBS = 4
 # machine is one; on a PC, only a test Windows) and the usage data notice of the theme
 PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas")}
 # what the --tela and the --compara run
-TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme_scripts.py")
+TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme_scripts.py",
+        "dev/test_theme_listeners.py")
 NOT_ON_PUSH = "github.event_name != 'push'"
 AFTER_RUFF = "${{ !cancelled() && steps.ruff.outcome != 'skipped' }}"
 SUMMARY_ARG = r'--resumo "$env:RUNNER_TEMP\resumo.md"'
@@ -218,7 +219,7 @@ AREAS = {
     "microfone": ("microfone/", "fx.py", "engine.py", "versao.py", "dev/testa_filtro.py", "dev/testa_voz.py",
                   "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
     "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py",
-             "dev/missing_script.py", "dev/theme_scripts.py"),
+             "dev/missing_script.py", "dev/theme_scripts.py", "dev/theme_listeners.py", "dev/test_theme_listeners.py"),
 }
 TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt")
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
@@ -670,7 +671,8 @@ def fitcheck(pasta):
                 finally:
                     srv.encerra()
         for script, what in (("dev/missing_script.py", "a theme file that does not load"),
-                             ("dev/theme_scripts.py", "the theme's scripts")):
+                             ("dev/theme_scripts.py", "the theme's scripts"),
+                             ("dev/test_theme_listeners.py", "the listener reader of dev/theme_listeners.py")):
             cod, saida = executa([sys.executable, script])
             print(f"--- {Path(script).stem}: exits {cod}\n{saida.rstrip()}", flush=True)
             if cod != 0:

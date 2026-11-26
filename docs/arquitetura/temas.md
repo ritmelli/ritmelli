@@ -85,9 +85,13 @@ arquivo, sem as marcas, com os outros atributos da tag numa linha e cada `'use s
 as duas páginas iguais, linha a linha; diferentes, ela separa os blocos que só mudaram de lugar das linhas novas ou que
 sumiram (um arquivo novo traz o próprio `[strict]`). O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
 dos dois commits num Chrome sem tela, contra um `--mock` de cada, no tamanho do PC (a mesa) e no de um celular, e
-compara os ouvintes de cada nó, do `document` e da `window`, na ordem em que entraram (o `getEventListeners` do
-DevTools), com as opções e o texto de cada função; sai 0 só com as duas tabelas iguais. O arquivo em que um ouvinte mora
-não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função, mantém a tabela.
+compara duas tabelas. A primeira tem os ouvintes ligados no fim da carga, na ordem em que entraram (o
+`getEventListeners` do DevTools), com as opções e o texto de cada função: os de cada nó, do `document` e da `window`, e
+os dos outros alvos em que a página pôs um ouvinte (cada `MediaQueryList` pela consulta dela, o `navigator.connection` e
+o resto pelo tipo). A segunda tem cada chamada de `addEventListener` e `removeEventListener` desde o começo da página,
+por alvo e evento, na ordem: um ouvinte posto e tirado antes da leitura aparece nela. Sai 0 só com as tabelas iguais. O
+arquivo em que um ouvinte mora não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função,
+mantém as tabelas. O `dev/test_theme_listeners.py`, que o `--tela` roda, confere a leitura numa página própria.
 
 Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `api.js` chama,
 e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o

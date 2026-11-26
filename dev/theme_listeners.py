@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import difflib
 import importlib
 import subprocess
 import sys
@@ -16,13 +17,23 @@ missing_script = importlib.import_module("missing_script")
 RAIZ = Path(__file__).resolve().parent.parent
 USAGE = """Proof that a theme change keeps the page's event listeners: the theme of two commits (the head defaults to the
 working tree) opened in a headless Chrome against a --mock server of each, at the PC size (the DJ desk) and at a phone
-size, once the page is connected. For every node, the document and the window, the listeners of each event type are
-read in the order they were added (the DevTools getEventListeners), with the capture, passive and once flags and the
-handler's source text, each line without its indentation. Exit 0 only when both commits give the same table;
-otherwise the differences are printed and the exit is 1. The file a handler lives in is not compared: moving a handler
-between files, or into a function, keeps the table. The <script> tags are left out: their only listener is the
-onerror="scriptFailed(this)" that dev/testa_i18n.py requires on each of them."""
-READ = """(() => {
+size, once the page is connected. Two tables are compared:
+- the listeners on at that moment, read in the order they were added (the DevTools getEventListeners), with the
+  capture, passive and once flags and the handler's source text, each line without its indentation: those of every
+  node, the document and the window, and those of the other targets the page added a listener to (each MediaQueryList
+  as matchMedia(<its query>), navigator.connection, and the rest by their kind);
+- every addEventListener and removeEventListener call the page made since it began, per target and event type, in
+  order, with the options as given and the handler's text: a listener added and removed before the table is read shows
+  here.
+Exit 0 only when both commits give the same tables; otherwise the differences are printed and the exit is 1. The file a
+handler lives in is not compared: moving a handler between files, or into a function, keeps the tables. The <script>
+tags are left out: their only listener is the onerror="scriptFailed(this)" that dev/testa_i18n.py requires on each of
+them."""
+KEY = "Symbol.for('ritmelli-listeners')"
+RECORDER = """(() => {
+  'use strict';
+  const add = EventTarget.prototype.addEventListener, remove = EventTarget.prototype.removeEventListener;
+  const calls = [], targets = [];
   const path = e => {
     const parts = [];
     for (let n = e; n && n.nodeType === 1; n = n.parentElement) {
@@ -32,13 +43,35 @@ READ = """(() => {
     }
     return parts.join(' > ');
   };
+  const name = t => t === window ? 'window' : t === document ? 'document' : t instanceof Node ? path(t)
+    : t instanceof MediaQueryList ? `matchMedia(${t.media})` : t === navigator.connection ? 'navigator.connection'
+    : t.constructor.name;
+  const options = o => o !== null && typeof o === 'object' ? [o.capture ?? null, o.passive ?? null, o.once ?? null]
+    : [o ?? null, null, null];
+  const record = (op, target, type, listener, o) => {
+    if (!(target instanceof Node) && target !== window && !targets.includes(target)) targets.push(target);
+    const handler = typeof listener === 'function' ? listener : listener?.handleEvent ?? listener;
+    calls.push([name(target), type, op, ...options(o), String(handler)]);
+  };
+  EventTarget.prototype.addEventListener = function addEventListener(type, listener, o) {
+    record('add', this ?? window, type, listener, o);
+    return add.call(this, type, listener, o);
+  };
+  EventTarget.prototype.removeEventListener = function removeEventListener(type, listener, o) {
+    record('remove', this ?? window, type, listener, o);
+    return remove.call(this, type, listener, o);
+  };
+  Object.defineProperty(window, %s, {value: {calls, targets, name}});
+})()""" % KEY
+READ = """(() => {
+  const {calls, targets, name} = window[%s];
   const rows = [];
-  for (const [where, target] of [['window', window], ['document', document],
-                                 ...[...document.querySelectorAll(':not(script)')].map(e => [path(e), e])])
+  for (const [where, target] of [['window', window], ['document', document], ...targets.map(t => [name(t), t]),
+                                 ...[...document.querySelectorAll(':not(script)')].map(e => [name(e), e])])
     for (const [kind, list] of Object.entries(getEventListeners(target)))
       for (const x of list) rows.push([where, kind, x.useCapture, x.passive, x.once, String(x.listener)]);
-  return rows;
-})()"""
+  return {rows, calls};
+})()""" % KEY
 SIZES = {"pc": None, "phone": {"width": 390, "height": 844, "deviceScaleFactor": 3, "mobile": True}}
 READY_S = 15.0
 
@@ -55,15 +88,25 @@ def checkout(rev, folder):
 async def table(tab, size):
     if size:
         await tab.cmd("Emulation.setDeviceMetricsOverride", **size)
+    await tab.cmd("Page.addScriptToEvaluateOnNewDocument", source=RECORDER)
     await missing_script.open_page(tab)
     await tab.tab_reaches(lambda: tab.loads >= 1, READY_S)
     ready = await tab.page_reaches("s.online === true", READY_S)
+    return ready.get("online") is True, await read_tables(tab)
+
+
+async def read_tables(tab):
     found = await tab.cmd("Runtime.evaluate", expression=READ, includeCommandLineAPI=True, returnByValue=True)
     rows = {}
-    for where, kind, capture, passive, once, text in found["result"]["value"]:
-        rows.setdefault((where, kind), []).append(
-            (capture, passive, once, "\n".join(line.strip() for line in text.splitlines())))
-    return ready.get("online") is True, rows
+    for where, kind, capture, passive, once, text in found["result"]["value"]["rows"]:
+        rows.setdefault(("on", where, kind), []).append((capture, passive, once, unindented(text)))
+    for where, kind, op, capture, passive, once, text in found["result"]["value"]["calls"]:
+        rows.setdefault(("calls", where, kind), []).append((op, capture, passive, once, unindented(text)))
+    return rows
+
+
+def unindented(text):
+    return "\n".join(line.strip() for line in text.splitlines())
 
 
 def tables(raiz):
@@ -86,10 +129,13 @@ def differences(a, b):
     lines = []
     for key in sorted(set(a) | set(b)):
         if a.get(key) != b.get(key):
-            where, kind = key
-            lines.append(f"{where} {kind}:")
-            lines += [f"  - {flags[:3]} {flags[3][:160]!r}" for flags in a.get(key, [])]
-            lines += [f"  + {flags[:3]} {flags[3][:160]!r}" for flags in b.get(key, [])]
+            table, where, kind = key
+            lines.append(f"{where} {kind}{' (the calls)' if table == 'calls' else ''}:")
+            old, new = a.get(key, []), b.get(key, [])
+            for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes():
+                if tag != "equal":
+                    lines += [f"  - {flags[:-1]} {flags[-1][:160]!r}" for flags in old[i1:i2]]
+                    lines += [f"  + {flags[:-1]} {flags[-1][:160]!r}" for flags in new[j1:j2]]
     return lines
 
 
@@ -107,10 +153,12 @@ def main(argv=None):
     for name in SIZES:
         (base_ready, a), (head_ready, b) = base[name], head[name]
         diff = differences(a, b)
-        count = sum(len(v) for v in b.values())
+        count = sum(len(v) for k, v in b.items() if k[0] == "on")
+        made = sum(len(v) for k, v in b.items() if k[0] == "calls")
         print(f"{name}: {args.base} {'connected' if base_ready else 'NOT connected'}, "
               f"{args.head or 'working tree'} {'connected' if head_ready else 'NOT connected'}; "
-              f"{count} listeners, {len(diff and [x for x in diff if not x.startswith('  ')])} target(s) differ")
+              f"{count} listeners, {made} add and remove calls, "
+              f"{len([x for x in diff if not x.startswith('  ')])} target(s) differ")
         print("\n".join(diff))
         same = same and base_ready and head_ready and not diff
     return 0 if same else 1
