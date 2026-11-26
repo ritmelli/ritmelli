@@ -291,6 +291,14 @@ class TestVoicePedalStart(unittest.TestCase):
                 self.assertEqual(counted, 1)
                 self.assertIn(said, log, "a track up just before the last fill isn't after it")
 
+    def test_a_track_up_within_a_tick_of_the_fill_but_seen_past_it_is_across_it(self):
+        for seen_at, said in ((0.756, "across the ring's last fill, so which came first is not known"),
+                              (0.11, "within a tick of the ring's last fill, so which came first is not known")):
+            with self.subTest(seen_at=seen_at):
+                counted, log = self.away(0.0, 0.095, seen_at=seen_at)
+                self.assertEqual(counted, 1)
+                self.assertIn(said, log)
+
     def test_a_track_up_past_a_tick_of_the_read_has_its_order(self):
         for up_at, empty_at, said in ((0.08, 0.756, "came up between 0.67 and 0.68 s ago;"), (0.52, 0.5, "after the ring ran dry")):
             with self.subTest(up_at=up_at, empty_at=empty_at):

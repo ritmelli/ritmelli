@@ -890,7 +890,7 @@ async def papeis_no_guard():
                     f"o SSE com a virada entre o state e o tick, no PC {nome}: cada posicao e da faixa entregue na "
                     f"volta dela ({p})")
         ts = [d.get("t") for e, d in eventos(escrito2) if e == "tick"]
-        confere(ts and all(isinstance(x, float) for x in ts) and ts == sorted(ts)
+        confere(ts and all(isinstance(x, float) for x in ts) and all(a < b for a, b in zip(ts, ts[1:]))
                 and round(comeco, 3) <= ts[0] <= ts[-1] <= round(time.monotonic(), 3),
                 f"o tick leva a hora da captura da volta dele, no time.monotonic ({ts[:3]})")
         numeros = {nome: [d.get("n") for e, d in eventos(escrito) if e == "tick"]

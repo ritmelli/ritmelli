@@ -55,7 +55,7 @@ class VoicePedalStart:
         if stamp and stamp != self._stamp:
             now_ms = round(now * 1000)
             up_ms = now_ms - (now_ms - (stamp - 1)) % (2**32 - 1)
-            up_at = min((up_ms - 0.5) / 1000, now)
+            up_at = (up_ms - 0.5) / 1000
             on, ended = self._on, self._ended
             if on is not None and up_after(up_ms, on[3]) and (on[1] is None or up_at <= on[1] + TICK_S):
                 owner = on
@@ -104,7 +104,7 @@ class VoicePedalStart:
             return on_at, f"{up}, with no fill seen, so which came first is not known"
         if lo is not None and up_at > lo + TICK_S:
             return on_at, f"{up}, after the ring was last filled, so which came first is not known"
-        if lo is not None and up_at > lo - TICK_S:
+        if lo is not None and up_at > lo - TICK_S and seen_at <= lo + TICK_S:
             return on_at, f"{up}, within a tick of the ring's last fill, so which came first is not known"
         if lo is not None and seen_at >= lo:
             return on_at, f"{up}, across the ring's last fill, so which came first is not known"
