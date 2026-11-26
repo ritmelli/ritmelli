@@ -472,6 +472,16 @@
   },
   {
    "par": "dois",
+   "fn": "phase_excerpt_start",
+   "args": [
+    653888,
+    848441
+   ],
+   "kw": {},
+   "saida": 653888
+  },
+  {
+   "par": "dois",
    "fn": "na_grade",
    "args": [
     674368.0,
@@ -612,6 +622,16 @@
   },
   {
    "par": "dois-106",
+   "fn": "phase_excerpt_start",
+   "args": [
+    407392,
+    598003
+   ],
+   "kw": {},
+   "saida": 406003
+  },
+  {
+   "par": "dois-106",
    "fn": "na_grade",
    "args": [
     427635.0,
@@ -749,6 +769,16 @@
     629894,
     38.123312264619884
    ]
+  },
+  {
+   "par": "tone",
+   "fn": "phase_excerpt_start",
+   "args": [
+    653888,
+    848441
+   ],
+   "kw": {},
+   "saida": 653888
   },
   {
    "par": "tone",
