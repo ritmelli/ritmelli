@@ -122,14 +122,16 @@ class CycleRow(unittest.TestCase):
 
 
 class TheMicrophone(unittest.TestCase):
-    def run_main(self, opened, asked=MIC):
-        sent = []
+    def run_main(self, opened, asked=MIC, readers=0):
+        sent, opened = [], list(opened)
         work = self.enterContext(tempfile.TemporaryDirectory())
 
         def urlopen(req, timeout=None):
             path = req.full_url.split("8970", 1)[1]
             sent.append((req.get_method(), path))
-            answers = {"/api/effects": [{"id": "pistavoz"}], "/api/state": state(mic=opened)}
+            answers = {"/api/effects": [{"id": "pistavoz"}]}
+            if path == "/api/state":
+                answers[path] = state(mic=opened.pop(0) if len(opened) > 1 else opened[0])
             return io.BytesIO(json.dumps(answers.get(path, {})).encode())
 
         proc = mock.Mock(**{"poll.return_value": None})
@@ -139,17 +141,23 @@ class TheMicrophone(unittest.TestCase):
               mock.patch.object(measure.so_mock, "start_job", return_value=(proc, None)),
               mock.patch.object(measure.tempfile, "mkdtemp", return_value=work),
               mock.patch.object(measure.urllib.request, "urlopen", urlopen),
-              mock.patch.object(measure, "states", lambda base, seconds: iter([state(mic=opened, leitores=0)])),
+              mock.patch.object(measure, "states", lambda base, seconds: iter([state(mic=opened[0], leitores=readers)])),
               mock.patch.object(sys, "argv", ["measure_voice_pedal.py", asked, "--port", "8970"]),
               self.assertRaises(SystemExit) as stop):
             measure.main()
         return str(stop.exception.code), sent
 
     def test_a_fallback_microphone_stops_before_the_pedal(self):
-        why, sent = self.run_main("Microfone (Realtek(R) Audio)")
+        why, sent = self.run_main(["Microfone (Realtek(R) Audio)"])
         self.assertIn("opened the microphone 'Microfone (Realtek(R) Audio)' and not 'IN 1'", why)
         self.assertEqual(sent, [("GET", "/api/effects"), ("POST", "/api/devices"), ("GET", "/api/state"),
                                 ("POST", "/api/shutdown")])
+
+    def test_a_fallback_microphone_after_the_filter_read_stops_before_the_pedal(self):
+        why, sent = self.run_main([MIC, "Microfone (Realtek(R) Audio)"], readers=1)
+        self.assertIn("opened the microphone 'Microfone (Realtek(R) Audio)' and not 'IN 1'", why)
+        self.assertEqual(sent, [("GET", "/api/effects"), ("POST", "/api/devices"), ("GET", "/api/state"),
+                                ("GET", "/api/state"), ("POST", "/api/shutdown")])
 
     def test_the_name_asked_in_another_case_is_the_same_microphone(self):
         self.assertIsNone(measure.mic_refusal("in 1", state()))

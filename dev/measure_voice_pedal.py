@@ -170,6 +170,9 @@ def main():
             if not read:
                 sys.exit(f"the filter of {a.mic} never read the ring (see {server_err})")
             state = call("GET", "/api/state")
+            refusal = mic_refusal(a.mic, state)
+            if refusal:
+                sys.exit(refusal)
             print(f"microphone {state['active_devices']['mic']}, voice {voice}; before: {state['microfone']}",
                   flush=True)
             log = work / "local" / "Ritmelli" / "logs" / "pistavoz.log"
