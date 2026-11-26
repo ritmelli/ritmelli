@@ -88,8 +88,8 @@ comentário do PowerShell não conta. A chamada do `publica.py` que o `build_man
 `--url` do setup da versão do `versao.py`, a `--saida` na `instalador/saida`, onde o `monta.ps1` grava os setups, o
 `--notas` e o `--notas-en` com as linhas do `NOTAS` e do `NOTAS_EN`, cada língua por si e todas as linhas, mesmo além
 do limite que o `publica.py` recusa, e nenhuma nota com as duas ausentes, vazias ou em branco, o `--parcial` e o
-`--parcial-info` só com o setup parcial, cada opção por si em toda combinação das duas línguas e da parcial, e
-o código de saída do `publica.py`) o
+`--parcial-info` só com o setup parcial, todas as opções certas em cada combinação das duas línguas (ausente, em
+branco ou com nota) com e sem a parcial, e o código de saída do `publica.py`) o
 `instalador/atualizacao/testa_parcial.py` confere rodando o script numa pasta de mentira, com um `publica.py` que passa
 a linha de comando pelo parser do `publica.py` de verdade e grava o que ele leu (os caminhos resolvidos, menos o
 nome do `--setup` e do `--parcial`, que o `publica.py` confere como veio, e as notas como o `publica.py` as lê);

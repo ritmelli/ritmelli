@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from Cryptodome.PublicKey import ECC
@@ -341,16 +342,28 @@ def partial_case(source):
                for v, (code, options, _, output, _) in results), results
 
 
+def combination_call(source, run):
+    pt, en, partial = run
+    return run, manifest_call(source, version=VERSIONS[1], notas=pt, notas_en=en, partial=partial, partial_info=partial)
+
+
+def combination_ok(run, call):
+    (pt, en, partial), (code, options, notes, output, _) = run, call
+    v = VERSIONS[1]
+    expected = {k: [n] for k, n in (("notas", pt), ("notas_en", en)) if n and n.strip(" |")}
+    return code == 0 and notes == expected \
+        and options.get("setup") == (output / f"Ritmelli-{v}-setup.exe").as_posix() \
+        and options.get("url") == f"{RELEASES}/v{v}/Ritmelli-{v}-setup.exe" and options.get("saida") == output.as_posix() \
+        and options.get("parcial") == ((output / f"Ritmelli-{v}-parcial.exe").as_posix() if partial else None) \
+        and options.get("parcial_info") == ((output / f"PARCIAL-{v}.json").as_posix() if partial else None)
+
+
 def combinations_case(source):
-    runs = [(pt, en, partial) for pt in (False, True) for en in (False, True) for partial in (False, True)]
-    results = [(run, manifest_call(source, notas="Nota da versão" if run[0] else None,
-                                   notas_en="Release note" if run[1] else None, partial=run[2], partial_info=run[2]))
-               for run in runs]
-    return all(code == 0 and notes == {**({"notas": ["Nota da versão"]} if pt else {}),
-                                       **({"notas_en": ["Release note"]} if en else {})}
-               and options.get("parcial") == ((output / "Ritmelli-0.3.4-parcial.exe").as_posix() if partial else None)
-               and options.get("parcial_info") == ((output / "PARCIAL-0.3.4.json").as_posix() if partial else None)
-               for (pt, en, partial), (code, options, notes, output, _) in results), results
+    runs = [(pt, en, partial) for pt in (None, " ", "Nota da versão") for en in (None, " | ", "Release note")
+            for partial in (False, True)]
+    with ThreadPoolExecutor() as pool:
+        results = list(pool.map(lambda run: combination_call(source, run), runs))
+    return all(combination_ok(run, call) for run, call in results), results
 
 
 def exit_case(source):
@@ -381,8 +394,7 @@ MANIFEST_CASES = {
             ("[n.strip() for n in", "[n.strip()[:500] for n in"),
             ('.split("|")', '.split(",")'),
             ('encoding="utf-8-sig"', 'encoding="cp1252"'),
-            ('encoding="utf-8-sig"', 'encoding="cp1252" if variable == "NOTAS_EN" else "utf-8-sig"'),
-]),
+            ('encoding="utf-8-sig"', 'encoding="cp1252" if variable == "NOTAS_EN" else "utf-8-sig"')]),
     "NOTAS and NOTAS_EN absent, empty or blank give publica.py no notes": (no_notes_case, [
         ('(os.environ.get(variable) or "")', "os.environ[variable]")]),
     "no --parcial or --parcial-info without the partial setup, even with a PARCIAL-<version>.json": (no_partial_case, [
@@ -396,8 +408,15 @@ MANIFEST_CASES = {
         ('f"PARCIAL-{version}.json"', '"PARCIAL-0.3.4.json"'),
         ('f"Ritmelli-{version}-parcial.exe"', 'f"ritmelli-{version}-parcial.exe"'),
         ('arguments += ["--parcial"', 'arguments = ["--parcial"')]),
-    "every combination of NOTAS, NOTAS_EN and the partial setup gives each its own options": (combinations_case, [
+    "every combination of NOTAS and NOTAS_EN (absent, blank or with a note) and the partial setup gives each its own "
+    "options": (combinations_case, [
         ("        if lines:\n", '        if lines and os.environ.get("NOTAS_EN"):\n'),
+        ("        if lines:\n", '        if lines and frozen_version().startswith("0.3"):\n'),
+        ("        if lines:\n", "        if not lines and os.environ.get(variable):\n            return []\n"
+                              "        if lines:\n"),
+        ("if partial.exists():", 'if partial.exists() and os.environ.get("NOTAS", "x").strip():'),
+        ('f"{RELEASES}/v{version}/{setup.name}"',
+         'f"{RELEASES}/v{version}/{setup.name}" + ("?lang=en" if not os.environ.get("NOTAS") else "")'),
         ("        if lines:\n", "        if not lines:\n            return []\n        if True:\n"),
         ("        if lines:\n",
          '        if lines and (variable == "NOTAS_EN" or not any(OUTPUT.glob("*-parcial.exe"))):\n'),
