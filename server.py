@@ -983,11 +983,9 @@ class App:
             self.close_switches()
             if not na_fila():  # a virada que fechou agora era a dela
                 return None
-            pode = (lambda: reserva.toca(e)) if reserva is not None else None
-            if anterior:
-                if not (self.historico and self.historico[-1] is x0):
-                    return None  # outro avanco mexeu no historico depois da escolha do Anterior
-                pode = (lambda: e.on_line(linha0))  # o prato que ele viu
+            if anterior and not (self.historico and self.historico[-1] is x0):
+                return None  # outro avanco mexeu no historico depois da escolha do Anterior
+            pode = (lambda: e.on_line(linha0)) if anterior else (lambda: reserva.toca(e)) if reserva is not None else None
             cap = (e.espera(tr, pode=pode, ganho=ganho, depois=depois) if stream
                    else e.load(source, start=start, pode=pode, loop=loop, ganho=ganho, depois=depois))
             if cap is None:

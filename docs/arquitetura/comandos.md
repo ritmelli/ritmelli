@@ -142,13 +142,17 @@ local) contam como o método do App que o App pôs ali, e todo gancho que o moto
 `with ... as`), para que cada `with` e `acquire` diga a sua. Confere também que o `_mixa` e os métodos e as funções do
 `engine.py` que ele chama, das travas do modelo, só pegam o `_qlock` (o `AudioLocks` do `Locks.tla`); o `_slock` dos
 sons por cima não entra no modelo. No lugar de uma dessas funções, a checagem só aceita as formas que o código usa e que
-ela lê com certeza: um `lambda`; `None`; um disco montado ali (`dict(...)` ou `{...}`); um condicional entre esses; o
-nome de uma função local; um nome que só recebe esses por atribuições simples (`nome = ...`), também o de uma função de
-fora em que a função de dentro roda; um parâmetro que é a vaga da própria função (o `f` do `with_engine`, o `pode` do
-motor, o `source` do `_troca`); e um nome que recebe `self.metodo(...)` da própria classe, quando cada `return` dele é
-uma dessas formas (o `fonte_de`). Qualquer outra (um apelido de outro nome, uma tupla, um `:=`, um método ligado, um
-`partial`, a chamada passada direto ou devolvida de outra fábrica, um `or`) reprova, com o arquivo e a linha, a forma
-achada e as que valem.
+ela lê com certeza: um `lambda` sem argumento padrão, que é um escopo próprio; `None`; um disco montado ali (`dict(...)`
+ou `{...}`); um condicional entre esses; e um nome. O nome só vale se a função que o liga, com as que estão dentro dela,
+o liga uma vez só, e essa ligação é um `=` simples a uma dessas formas ou a `self.metodo(...)` da própria classe, quando
+cada `return` dele é uma dessas formas (o `fonte_de`), um `def` sem argumento padrão, ou um parâmetro que é a vaga da
+própria função (o `f` do `with_engine`, o `pode` do motor, o `source` do `_troca`). Qualquer outra ligação do mesmo nome
+ali reprova: um parâmetro de `def` ou de `lambda`, `for`, `with ... as`, `except ... as`, `import ... as`, `:=`,
+`nonlocal`, `global`, `del`, uma captura de `match`, uma variável de compreensão ou um segundo `=`. Qualquer outra forma
+(um apelido de outro nome, uma tupla, um método ligado, um `partial`, a chamada passada direto ou devolvida de outra
+fábrica, a mesma função em vagas com travas diferentes, um `or`, um parâmetro repassado a uma vaga que pede travas que a
+sua não tem, ou, na função da vaga ou em qualquer chamada feita com uma trava na mão, uma local que chama outra local,
+mais de um nível) reprova também, com o arquivo e a linha, a forma achada e as que valem.
 
 ## O modelo das travas (`dev/tla/`)
 
@@ -217,21 +221,33 @@ pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. Toda mudança da
 pega o `_qlock`, muda e confere a preparada no mesmo trecho: fora do `App`, nenhum módulo escreve nas entradas da fila
 ou do Mix (atribuição, `update`, subscript ou `del`), e o `dev/test_queue_entries.py` falha se escrever, seguindo as
 entradas e as listas que uma função devolve e as que ela recebe, até nada mais mudar. Ele só segue as formas que o
-código usa: uma entrada ou uma lista vai para um nome por uma atribuição simples, sai de uma chamada ou de uma tupla do
-mesmo tamanho quando se desempacota, passa por um laço com um nome só ou com o `enumerate(...)`, e o mutador dela é
-chamado onde é pego. Qualquer outra (um `:=`, uma anotação, desempacotar a fila ou o Mix, um `*`, o `getattr`, o mutador
-guardado ou devolvido sem a chamada, uma atribuição encadeada) reprova, com o arquivo e a linha. Dentro do `App`, as
-entradas da fila só mudam numa função passada ao `change_queue`, e a própria fila (atribuição, fatia, `append`, `remove`
-e afins, também por um apelido dela ou por quem a recebe como argumento) só muda ali, em qualquer módulo. A versão de
-áudio das parecidas entra no Mix do Automático como entradas novas (o `_troca_audio`, que não escreve nas que já
-existem) e na fila pelo `App.apply_audio_version`, que muda a fila pelo `change_queue` e, no mesmo trecho do `_qlock`,
-deixa como estão a entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca), a primeira da fila presa e
-a que uma reserva em curso vai tocar (`App.reserva`); o `tocar_da_fila` e a preparação da passagem leem a entrada numa
-cópia feita sob a `fila_lock`, e uma versão de áudio que chega no meio não mistura o alvo de antes com os dados de
-depois. Os trechos do servidor e dos comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da
-troca, do `remember_pos`, do `release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o
-`_lock` só pelo `Engine.with_lock`. A falha de preparar a próxima sai do motor pelo `take_prepare_failure`, sob o
-`_qlock`, e o erro da tela entra pelo `set_error` (o `error` do motor só se lê).
+código usa. Uma referência à fila, ao Mix, a uma fatia deles ou a uma entrada só aparece assim: lendo um campo ou
+chamando um método ali mesmo (o mutador chamado conta como escrita); comparada ou testada; ligada a um nome por um `=`
+simples ou aos atributos da própria fila e da entrada (`fila`, `fila_ordem`, `mix`, `_mix`, `x`, `entrada`,
+`historico`); passada por posição ou por nome a uma função nomeada, ou devolvida por uma, que ele segue (também por um
+dict ligado a um nome só usado como `**nome` e pelo `args` de uma thread com `target`), com no máximo quatro repasses
+seguidos, a função que recebe e passa adiante (o máximo do código: `App.tocar_entrada`, `App.tocar_remoto`,
+`App._troca`, `App.release_reservation` e `Proximo.resolve`; o teste falha se a cadeia mais funda do código não der
+quatro, para o teto descer junto). Nessa conta, `self.metodo()` só vai à própria classe e às bases dela, `modulo.f()` à
+função do módulo importado, e `obj.metodo()` aos métodos com esse nome que aceitam os argumentos da chamada, nunca a um
+método da própria fila ou da entrada; num laço com um nome só ou com o `enumerate(...)` desempacotado em dois;
+desempacotada de uma chamada ou de uma tupla do mesmo tamanho; ou copiada (`list()`, `sorted()`, uma compreensão, uma
+fatia, `{**x}`). Qualquer outra reprova, com o arquivo e a linha: um `:=`, uma anotação, desempacotar a fila ou o Mix,
+um `*`, o `getattr`, o mutador guardado ou devolvido sem a chamada, uma atribuição encadeada, guardar num atributo que
+não é da fila, sob uma chave ou num dict, numa lista, numa tupla ou num conjunto, passar a uma lambda, o `enumerate` sem
+desempacotar, a própria fila devolvida por uma função, um quinto repasse seguido, e, no `App`, um nome que recebe o
+retorno de um método dele que devolve a própria fila. Dentro do `App`, as entradas da fila só mudam numa função passada
+ao `change_queue`, e a própria fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido dela ou por
+quem a recebe como argumento) só muda ali, em qualquer módulo. A versão de áudio das parecidas entra no Mix do
+Automático como entradas novas (o `_troca_audio`, que não escreve nas que já existem) e na fila pelo
+`App.apply_audio_version`, que muda a fila pelo `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a
+entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca), a primeira da fila presa e a que uma reserva
+em curso vai tocar (`App.reserva`); o `tocar_da_fila` e a preparação da passagem leem a entrada numa cópia feita sob a
+`fila_lock`, e uma versão de áudio que chega no meio não mistura o alvo de antes com os dados de depois. Os trechos do
+servidor e dos comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`,
+do `release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo
+`Engine.with_lock`. A falha de preparar a próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, e o erro da
+tela entra pelo `set_error` (o `error` do motor só se lê).
 
 Os comandos e o Automático chamam o `App` só pela interface pública dele: `change_queue`, `remove_from_queue`,
 `remove_if_queued`, `save_history`, `release_reservation`, `close_switches`, `with_engine`,

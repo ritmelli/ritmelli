@@ -216,7 +216,7 @@ def own_calls(func):
         n = todo.pop()
         if isinstance(n, ast.Call):
             out.append(n)
-        if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
             todo.extend(ast.iter_child_nodes(n))
     return out
 
@@ -226,16 +226,43 @@ def params_of(func):
     return [p.arg for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if p]
 
 
-def stores_of(func, name):
-    return [n for n in scope_nodes(func) if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Store)]
+def bindings(nodes, name):
+    plain = {id(n.targets[0]) for n in nodes if isinstance(n, ast.Assign) and len(n.targets) == 1
+             and isinstance(n.targets[0], ast.Name)}
+    out = []
+    for n in nodes:
+        if isinstance(n, ast.arg) and n.arg == name:
+            out.append(("a parameter", n))
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
+            out.append(("a def", n))
+        elif isinstance(n, ast.ClassDef) and n.name == name:
+            out.append(("a class", n))
+        elif isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Store):
+            out.append(("a plain =", n) if id(n) in plain else ("a binding other than a plain =", n))
+        elif isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Del):
+            out.append(("a del", n))
+        elif isinstance(n, ast.ExceptHandler) and n.name == name:
+            out.append(("an except ... as", n))
+        elif isinstance(n, ast.alias) and (n.asname or n.name.split(".")[0]) == name:
+            out.append(("an import", n))
+        elif isinstance(n, (ast.Nonlocal, ast.Global)) and name in n.names:
+            out.append(("a nonlocal or global", n))
+        elif isinstance(n, (ast.MatchAs, ast.MatchStar)) and n.name == name or (
+                isinstance(n, ast.MatchMapping) and n.rest == name):
+            out.append(("a match capture", n))
+    return out
 
 
-def defs_of(func, name):
-    return [n for n in scope_nodes(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name]
+def own_bindings(func, name):
+    return bindings(list(ast.walk(func.args)) + list(scope_nodes(func)), name)
 
 
 def binds(func, name):
-    return name in params_of(func) or bool(stores_of(func, name) or defs_of(func, name))
+    return bool(own_bindings(func, name))
+
+
+def has_defaults(func):
+    return bool(func.args.defaults) or any(d is not None for d in func.args.kw_defaults)
 
 
 def is_record(value):
@@ -243,8 +270,9 @@ def is_record(value):
         isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "dict")
 
 
-ACCEPTED = ("a lambda, None, a record built there (dict(...) or {...}), a conditional between those, a local def, a "
-            "name bound only by plain assignments to those, a parameter that is the function's own slot, or a name "
+ACCEPTED = ("a lambda or a local def without default arguments, None, a record built there (dict(...) or {...}), a "
+            "conditional between those, a name its function (and the functions inside it) binds once, by a plain = to "
+            "one of those, a parameter that is the function's own slot, or a name "
             "bound to self.<method>(...) whose every return is one of those")
 
 
@@ -438,8 +466,10 @@ class Walker(ast.NodeVisitor):
     def __init__(self, name, order, before, table, summary):
         self.name, self.order, self.before, self.table, self.summary = name, order, before, table, summary
         self.cls, self.held, self.bad, self.used, self.nested, self.followed = None, [], [], set(), 0, 0
-        self.callbacks, self.walked, self.scopes, self.refused = {}, 0, [], set()
+        self.callbacks, self.walked, self.scopes, self.refused, self.slot_locks = {}, 0, [], set(), []
         self.keys = {id(f): k for k, f in table.items()}
+        self.owner = {id(n): f for k, f in table.items() if k[0] == name for n in ast.walk(f)
+                      if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))}
 
     def take(self, lock, line, waits=True):
         self.used.add(lock)
@@ -497,12 +527,19 @@ class Walker(ast.NodeVisitor):
         if nested is not None:
             self.followed += 1
             self.against_held(self.local_locks(nested), node, nested.name)
+            deeper = self.local_calls(nested)
+            if deeper and id(node) not in self.refused:
+                self.refused.add(id(node))
+                self.bad.append(f"{self.name}:{node.lineno}: {nested.name}, a local called with {', '.join(self.held)} "
+                                f"held, calls the local {deeper[0][1].name} ({self.name}:{deeper[0][0].lineno}), more "
+                                f"than one level, which is not a form the check reads: call at most one level of local "
+                                f"functions with a lock held")
 
     def premark(self, func, scopes):
         outer, self.scopes = self.scopes, scopes
         self.mark_callbacks(func)
         for n in scope_nodes(func):
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                 self.premark(n, scopes + [func])
         self.scopes = outer
 
@@ -534,13 +571,14 @@ class Walker(ast.NodeVisitor):
             return False
         slots, params = self.slots_of(key), [p.arg for p in func.args.posonlyargs + func.args.args]
         params = params[1:] if key[1] and params[:1] == ["self"] else params
-        return name in slots or (name in params and params.index(name) in slots)
+        outer = slots.get(name, slots.get(params.index(name)) if name in params else None)
+        return outer is not None and set(self.slot_locks) <= set(outer)
 
     def accepted(self, value, chain, bound=False):
         if bound and isinstance(value, ast.Name):
             return [], f"{ast.unparse(value)}, an alias of another name"
         if isinstance(value, ast.Lambda):
-            return [value], None
+            return ([], "a lambda with default arguments") if has_defaults(value) else ([value], None)
         if is_record(value):
             return [], None
         if isinstance(value, ast.IfExp):
@@ -562,19 +600,37 @@ class Walker(ast.NodeVisitor):
         if at is None:
             return [], f"{name}, which no enclosing function binds"
         func = chain[at]
-        stores, defs = stores_of(func, name), defs_of(func, name)
-        plain = [n for n in scope_nodes(func) if isinstance(n, ast.Assign) and len(n.targets) == 1
-                 and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name]
-        if name in params_of(func):
-            if stores or defs or not self.forwards(func, name):
-                return [], f"{name}, a parameter of {func.name} that is not one of its own slots"
+        found = [b for b in bindings([n for n in ast.walk(func) if n is not func], name)]
+        where = getattr(func, "name", "a lambda")
+        if len(found) != 1:
+            return [], (f"{name}, bound {len(found)} times in {where} and the functions inside it "
+                        f"({', '.join(sorted({k for k, _ in found}))})")
+        kind, node = found[0]
+        if kind == "a parameter":
+            if not self.forwards(func, name):
+                return [], (f"{name}, a parameter of {where} that is not one of its own slots, or a slot whose locks "
+                            f"do not hold this slot's {self.slot_locks}")
             return [], None
-        if len(defs) == 1 and not stores:
-            return defs, None
-        if defs or not stores or len(stores) != len(plain):
-            return [], f"{name}, bound in a form the check does not read"
-        found = [self.accepted(n.value, chain[:at + 1], bound=True) for n in plain]
-        return [t for ts, _ in found for t in ts], next((p for _, p in found if p), None)
+        if kind == "a def":
+            return ([], f"{name}, a def with default arguments") if has_defaults(node) else ([node], None)
+        if kind == "a plain =":
+            assign = next(n for n in scope_nodes(func) if isinstance(n, ast.Assign) and n.targets[0] is node)
+            return self.accepted(assign.value, chain[:at + 1], bound=True)
+        return [], f"{name}, bound by {kind}"
+
+    def local_calls(self, f):
+        top = self.owner.get(id(f))
+        if top is None:
+            return []
+        defs = {n.name: n for n in ast.walk(top) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not top}
+        return [(c, defs[c.func.id]) for c in own_calls(f) if isinstance(c.func, ast.Name) and c.func.id in defs]
+
+    def too_deep(self, target):
+        for _, inner in self.local_calls(target):
+            for call, deeper in self.local_calls(inner):
+                return (f"{getattr(target, 'name', 'a lambda')}, which calls the local {inner.name}, which calls the "
+                        f"local {deeper.name} ({self.name}:{call.lineno}), more than one level")
+        return None
 
     def mark_callbacks(self, func):
         for call in own_calls(func):
@@ -583,6 +639,7 @@ class Walker(ast.NodeVisitor):
                 args = list(enumerate(call.args)) + [(k.arg, k.value) for k in call.keywords]
                 for slot, arg in args:
                     if slot in slots:
+                        self.slot_locks = slots[slot]
                         targets, problem = self.accepted(arg, self.scopes + [func])
                         if problem and id(arg) not in self.refused:
                             self.refused.add(id(arg))
@@ -590,6 +647,12 @@ class Walker(ast.NodeVisitor):
                                             f"{key[1] + '.' if key[1] else ''}{key[2]}, is not a form the check reads: "
                                             f"pass {ACCEPTED}")
                         for target in targets:
+                            deep = self.too_deep(target)
+                            if deep and id(target) not in self.refused:
+                                self.refused.add(id(target))
+                                self.bad.append(f"{self.name}:{arg.lineno}: {deep}, in the slot {slot} of "
+                                                f"{key[1] + '.' if key[1] else ''}{key[2]}, is not a form the check "
+                                                f"reads: call at most one level of local functions there")
                             held = self.callbacks.setdefault(id(target), list(slots[slot]))
                             if held != list(slots[slot]) and id(target) not in self.refused:
                                 self.refused.add(id(target))
@@ -1042,6 +1105,50 @@ def self_test(order, before):
         "a copy under the fila_lock, written after it": (
             "def f(A, p):\n    with A.fila_lock:\n        d = dict(A.cfg)\n    save_json(p, d)\n", 0),
     }
+    bound_forms = {
+        "a second =": "def f(A):\n    cb = lambda: None\n    cb = lambda: None\n    A.change_queue(cb)\n",
+        "a parameter of the function that is not its slot": "def f(A, cb):\n    A.change_queue(cb)\n",
+        "a parameter of a lambda that shadows the name": (
+            "def f(A, E):\n    cb = lambda: None\n    run = lambda cb: A.change_queue(cb)\n    run(E.stop)\n"),
+        "a parameter of a lambda handed on as an engine pode": (
+            "def f(A, E):\n    p = None\n    go = lambda p: E.stop(pode=p)\n    go(lambda: A.lib.update())\n"),
+        "a for": "def f(A, cbs):\n    for cb in cbs:\n        A.change_queue(cb)\n",
+        "a with ... as": "def f(A, ctx):\n    with ctx as cb:\n        A.change_queue(cb)\n",
+        "an except ... as": ("def f(A):\n    cb = lambda: None\n    try:\n        pass\n    except Exception as cb:\n"
+                             "        pass\n    A.change_queue(cb)\n"),
+        "an import ... as": "def f(A):\n    from os import getcwd as cb\n    A.change_queue(cb)\n",
+        "an assignment expression": "def f(A):\n    if (cb := (lambda: None)):\n        A.change_queue(cb)\n",
+        "a nonlocal in a nested function": ("def f(A, E):\n    cb = lambda: None\n    def g():\n        nonlocal cb\n"
+                                            "        cb = E.stop\n    g()\n    A.change_queue(cb)\n"),
+        "a global": "def f(A):\n    global cb\n    cb = lambda: None\n    A.change_queue(cb)\n",
+        "a del": "def f(A):\n    cb = lambda: None\n    del cb\n    A.change_queue(cb)\n",
+        "a match capture": "def f(A, v):\n    match v:\n        case cb:\n            A.change_queue(cb)\n",
+        "a comprehension variable": "def f(A):\n    cb = lambda: None\n    [cb for cb in ()]\n    A.change_queue(cb)\n",
+        "a lambda with a default argument": "def f(A, E):\n    A.change_queue(lambda s=E.stop: s())\n",
+        "a def with a default argument": ("def f(A, E):\n    def change(s=E.stop):\n        s()\n"
+                                          "    A.change_queue(change)\n"),
+    }
+    for what, code in bound_forms.items():
+        bad = refusals(dict(stubs, **{"case.py": code}), order, before)
+        check(bool(bad), f"a callback name bound by {what} is refused as a form the check does not read ({bad[:1]})")
+    deep = ("def f(A, E):\n    def reread():\n        with E._qlock:\n            pass\n    def refresh():\n"
+            "        reread()\n    def change():\n        refresh()\n    A.change_queue(change)\n")
+    bad = refusals(dict(stubs, **{"case.py": deep}), order, before)
+    check(bool(bad), f"a change that calls a local that calls another local is refused, more than one level ({bad[:1]})")
+    one = ("def f(A, E):\n    def refresh():\n        with E._qlock:\n            pass\n    def change():\n"
+           "        refresh()\n    A.change_queue(change)\n")
+    bad, *_ = scan(dict(stubs, **{"case.py": one}), order, before)
+    check(bad and not refuses(bad), f"one level of local calls is read: the local that takes the _qlock again is "
+                                    f"flagged ({bad[:1]})")
+    forwarding = "def concilia(A, under, closed=None):\n    A.change_queue(closed)\n"
+    stricter = refusals(dict(stubs, **{"comandos.py": forwarding}), order, before)
+    check(bool(stricter), f"a slot parameter handed on to a slot that needs more locks than its own is refused "
+                          f"({stricter[:1]})")
+    held = ("def f(A, E):\n    def inner():\n        with A.lib.lock:\n            return True\n    def outer():\n"
+            "        return inner()\n    with E._qlock:\n        outer()\n")
+    bad, *_ = scan(dict(stubs, **{"case.py": held}), order, before)
+    check(refuses(bad), f"a local called with a lock held that calls another local is refused, more than one level "
+                        f"({[b for b in bad if 'form the check' in b][:1]})")
     for what, (code, expected) in callbacks.items():
         bad, *_ = scan(dict(stubs, **{"case.py": code}), order, before)
         check(bool(bad) == bool(expected), f"the check {'flags' if expected else 'accepts'} {what} ({bad})")
@@ -1323,6 +1430,15 @@ def main():
     bad = refusals(dict(sources, **{"server.py": two_levels}), order, before)
     check(two_levels.count("_shelf_builder") == 2 and refuses(bad),
           f"and with fonte_de returning the builder another method returns ({[b for b in bad if 'form the check' in b][:1]})")
+    chain = sources["server.py"].replace(
+        "        def swap_entries():\n            e, r = self.engine, self.reserva\n",
+        "        def reread():\n            with self.engine.state_section():\n                pass\n\n"
+        "        def refresh():\n            reread()\n\n"
+        "        def swap_entries():\n            refresh()\n            e, r = self.engine, self.reserva\n", 1)
+    bad = refusals(dict(sources, **{"server.py": chain}), order, before)
+    check(chain != sources["server.py"] and refuses(bad),
+          f"with swap_entries calling refresh, which calls reread, which takes the _qlock again, the check refuses the "
+          f"form ({[b for b in bad if 'form the check' in b][:1]})")
     closure = locked.replace("                if self.fila and self.fila[0] is x and x == seen:\n",
                              "                novo = dict(seen)\n                if self.fila and self.fila[0] is x and x == seen:\n", 1)
     bad, *_ = scan(dict(sources, **{"server.py": closure}), order, before)
