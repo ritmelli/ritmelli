@@ -82,6 +82,7 @@ class Lexed:
     code: dict = field(default_factory=dict)
     comments: list = field(default_factory=list)
     strings: list = field(default_factory=list)
+    runs: list = field(default_factory=list)
 
     def add_code(self, line, text):
         self.code[line] = self.code.get(line, "") + text
@@ -381,7 +382,9 @@ def lex_yaml(text):
         if m.group(3) == "run":
             indent = min((indent_of(b) for b in body if b.strip()), default=0)
             script = "\n".join(b[indent:] for b in body)
-            shift(lexer_for_shell(yaml_shell(lines, n - 1))(script), n, out)
+            shell = yaml_shell(lines, n - 1)
+            out.runs.append((n, shell, script))
+            shift(lexer_for_shell(shell)(script), n, out)
         else:
             for k, b in enumerate(body, n + 1):
                 out.code[k] = b
@@ -510,22 +513,17 @@ def python_strings(t, path):
     return out
 
 
+STRING_TOKENS = {tokenize.STRING, *(getattr(tokenize, n) for n in ("FSTRING_MIDDLE", "TSTRING_MIDDLE")
+                                    if hasattr(tokenize, n))}
+
+
 def python_string_lines(t, path):
-    tree = t.tree(path)
-    if tree is None or path in GARDEN_FILES:
+    if t.tree(path) is None or path in GARDEN_FILES:
         return []
-    raw = t.files[path].splitlines()
-    inside_f_strings = {id(v) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr) for v in node.values}
     out = []
-    for node in ast.walk(tree):
-        literal = isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in inside_f_strings
-        if not (literal or isinstance(node, ast.JoinedStr)):
-            continue
-        for n in range(node.lineno, node.end_lineno + 1):
-            line = raw[n - 1] if n <= len(raw) else ""
-            start = node.col_offset if n == node.lineno else 0
-            end = node.end_col_offset if n == node.end_lineno else len(line)
-            out.append((n, line[start:end]))
+    for tok in tokenize.generate_tokens(io.StringIO(t.files[path]).readline):
+        if tok.type in STRING_TOKENS:
+            out += [(tok.start[0] + k, piece) for k, piece in enumerate(tok.string.split("\n"))]
     return out
 
 
@@ -582,6 +580,11 @@ def sleeps(t):
         if tree is not None:
             aliases = sleep_aliases(tree)
             items += [(p, n.lineno) for n in ast.walk(tree) if is_sleep(n, aliases)]
+    for p in t.paths(".yml"):
+        if p.startswith(".github/"):
+            for offset, tree in workflow_python(t, p):
+                aliases = sleep_aliases(tree)
+                items += [(p, offset + n.lineno) for n in ast.walk(tree) if is_sleep(n, aliases)]
     for p in t.paths(*COMMENT_EXTENSIONS):
         for n, code in code_lines(t, p):
             items += [(p, n)] * len(START_SLEEP.findall(code))
@@ -849,28 +852,12 @@ def broad_handlers(tree):
 
 
 def workflow_python(t, path):
-    try:
-        doc = workflow_yaml.loads(t.files[path], name=path)
-    except workflow_yaml.YamlError:
-        return []
-    out = []
-    jobs = doc.get("jobs") if isinstance(doc, dict) else None
-    steps = [s for job in (jobs or {}).values() if isinstance(job, dict) for s in workflow_yaml.job_steps(job)]
-    if isinstance(doc, dict) and isinstance(doc.get("runs"), dict):
-        steps += [s for s in doc["runs"].get("steps") or [] if isinstance(s, dict)]
-    for s in steps:
-        if (s.get("shell") or "").startswith("python") and isinstance(s.get("run"), str):
-            out.append((s.get("name") or "", s["run"]))
-    return out
-
-
-def line_of(text, needle, line_in_block):
-    lines = text.splitlines()
-    first = needle.splitlines()[0].strip() if needle.strip() else ""
-    for n, line in enumerate(lines, 1):
-        if first and line.strip() == first:
-            return n + line_in_block - 1
-    return 0
+    for offset, shell, script in t.lexed(path).runs:
+        if shell.startswith("python"):
+            try:
+                yield offset, ast.parse(script)
+            except SyntaxError:
+                continue
 
 
 def broad_excepts(t):
@@ -881,12 +868,8 @@ def broad_excepts(t):
             items += [(p, n) for n in broad_handlers(tree)]
     for p in t.paths(".yml"):
         if p.startswith(".github/"):
-            for _, run in workflow_python(t, p):
-                try:
-                    tree = ast.parse(run)
-                except SyntaxError:
-                    continue
-                items += [(p, line_of(t.files[p], run, n)) for n in broad_handlers(tree)]
+            for offset, tree in workflow_python(t, p):
+                items += [(p, offset + n) for n in broad_handlers(tree)]
     for p in t.paths(".iss"):
         lexed = t.lexed(p)
         code_start = next((n for n, c in sorted(lexed.code.items()) if c.strip().lower() == "[code]"), None)
@@ -1040,7 +1023,7 @@ def agents_rules(text):
         if not line.strip() or line.startswith(("#", "|")):
             current = None
             continue
-        if line.startswith("- ") or current is None:
+        if re.match(r"^\s*(?:[-*+]|\d+[.)])\s", line) or current is None:
             current = [n, line]
             rules.append(current)
         else:

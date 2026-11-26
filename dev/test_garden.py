@@ -31,6 +31,8 @@ HOOKS_BASE = {"engine.py": ENGINE, "permissao.py": PERMISSAO, "server.py": SERVE
 WORKFLOW = ("name: W\non:\n  push:\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: S\n"
             "        shell: python3 {0}\n        run: |\n          try:\n              pass\n{handler}")
 INDEX = "<html>\n<script>\nlet a = 1;\n</script>\n</html>\n"
+PY_STEP = ("jobs:\n  JOB:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: S\n        shell: python3 {0}\n"
+           "        run: |\n          import time\n          time.sleep(1)\n")
 AGENTS_OK = "# AGENTS.md\n\n- A rule that `testa_i18n` holds.\n"
 
 MOLDURAS = next(iter(garden.GENERATED_MARKERS))
@@ -121,6 +123,9 @@ CASES = {
                                 "dev/test_x.py": "import time\ntime.sleep(1)\n",
                                 "instalador/testa-x.ps1": "Start-Sleep 1\n"},
          {"dev/testa_x.py": "import time\ntime.sleep(1)\n", "dev/shot.py": "import time\ntime.sleep(1)\n"}),
+        ("a sleep in a Python step, in a test job and in a build job",
+         {".github/workflows/w.yml": PY_STEP.replace("JOB", "testa")},
+         {".github/workflows/w.yml": PY_STEP.replace("JOB", "testa") + PY_STEP.split("jobs:\n")[1].replace("JOB", "monta")}),
         ("a workflow's test job is a test, its build job is not",
          {".github/workflows/w.yml": "jobs:\n  testa:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"},
          {".github/workflows/w.yml": "jobs:\n  testa:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"
@@ -317,6 +322,10 @@ CASES = {
          {"AGENTS.md": AGENTS_OK + "- A rule about `yt_fora.py` and `monta.yml`.\n"}),
         ("a paragraph", {"AGENTS.md": AGENTS_OK + "\nA paragraph that `dev/garden.py` holds.\n"},
          {"AGENTS.md": AGENTS_OK + "\nA paragraph with no check.\n"}),
+        ("a numbered item after one with its check", {"AGENTS.md": "# A\n\n1. A rule that `testa_i18n` holds.\n"},
+         {"AGENTS.md": "# A\n\n1. A rule that `testa_i18n` holds.\n2. A rule with no check.\n"}),
+        ("a sub-item after one with its check", {"AGENTS.md": AGENTS_OK},
+         {"AGENTS.md": AGENTS_OK + "  - a sub-rule with no check.\n"}),
         ("a job of the testa.yml", {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n",
                                     ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n    name: Testa o PR\n"},
          {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n"}),
@@ -359,6 +368,12 @@ def test_string_lines():
     two = "ps = ('do{Start-Sleep 1}while($a);'\n      'if($b){Start-Sleep 1}')\n"
     items = garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": two}))
     check(items == [("a.py", 1), ("a.py", 2)], f"each fragment of a concatenated string keeps its own line ({items})")
+    between = "ps = ('do{f}while($a);'  # Start-Sleep here is a comment\n      'if($b){g}')\n"
+    check(garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": between})) == [],
+          "a comment between two fragments of a string is not part of it")
+    wide = "x = ('ação', 'Start-Sleep 1')\n"
+    check(garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": wide})) == [("a.py", 1)],
+          "a string after a wide character is read whole")
 
 
 def test_known_misses():
@@ -428,7 +443,8 @@ def test_description():
         "a heading with a list": "## How it was proven\n\n- `gh run view 1` shows the step failing on the base.\n",
         "a link to a run": "## Proof\n\nThe [run](https://github.com/o/r/actions/runs/123) fails on the base.\n",
         "a screenshot": "**Proof**\n\n![the page](https://github.com/user-attachments/assets/1)\n",
-        "a code block": "## Proof\n\n```\n$ python dev/testa_i18n.py\nok    the keys\n```\n",
+        "a command after a prompt": "## Proof\n\n```\n$ python dev/testa_i18n.py\n```\n",
+        "a test's output": "## Proof\n\n```\nok    the keys\n```\n",
         "a test runner's output": "## Proof\n\n```\n===== 12 passed in 3.1s =====\n```\n",
         "the summary of dev/testa_tudo.py": "## Proof\n\n```\n14 of 14 passed in 37 s, 4 at a time\n```\n",
         "a heading inside the code block": "# Change\n\n## Proof\n\n```bash\n# Before\n$ python dev/x.py\nfails\n```\n",
