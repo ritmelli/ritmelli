@@ -126,7 +126,9 @@ check reprova, e o teto do PR nunca passa o da base (o `$env:BASE` no PR; na fil
 foi montada, que vem no nome da ref dela, como no `compara`). Uma base sem `dev/garden.json` é medida. Cada contador
 que mudou vai para o resumo do PR numa linha `-- summary:`, e o `--list <contador>` mostra onde está cada item. O passo "PR description" do job de
 Testes lê a descrição do PR pela API, no PR e na fila (que pega a edição depois do verde), e reprova sem a seção de
-prova ou com uma frase de justificativa sem link de issue. O `dev/test_garden.py` tem, por contador, um caso que
+prova, com uma frase de justificativa sem link de issue, ou com uma palavra de fechar (`Closes`, `Fixes`, `Resolves`)
+com issue no meio de uma frase: o GitHub fecha a issue onde quer que ela esteja, também num "does not fix", e
+ela só vale numa linha que começa por ela. O `dev/test_garden.py` tem, por contador, um caso que
 sobe e um que não conta.
 
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
