@@ -28,9 +28,10 @@ The tool judges only a page in a strict form the browser reads one way: text wit
 name="value" attributes (or a bare name), each once and in lower case outside <svg>, separated by ASCII spaces, end
 tags </name>, comments <!-- ... --> with no -- inside, and <!doctype html>. The elements are the ones the theme and
 the gallery use, one list for HTML and one inside <svg>. A <script> or <style> ends at its first </script> or
-</style>, with no <!-- in a script (nor in the files the server inlines) and no text in a <script src>; a <title>,
-<iframe> or <select> holds no <. A script src and a stylesheet href (with rel="stylesheet" alone) are plain paths
-inside the theme, like gerado/base.css. Anything else, and <script/>, <style/>, a <base>, a preload or prefetch
+</style>, with no <!-- in a script and no text in a <script src>; the server puts every linked file inline, so a
+script file holds no </script or <!-- and a sheet file no </style. A <title>, <iframe> or <select> holds no <. A
+script src and a stylesheet href (with rel="stylesheet" alone) are plain paths inside the theme, like
+gerado/base.css, or /t/<theme>/ and a plain path, read from that theme's folder. Anything else, and <script/>, <style/>, a <base>, a preload or prefetch
 <link>, a srcdoc, a NUL in a value, a & in a rel, type or as, a & that is no whole reference in a value, a script type
 that is not JavaScript or JSON, an @import, @namespace or @scope in a sheet (even escaped or in a comment),
 or a linked or inlined file that is not in the theme, exits 3, naming the file (and, in index.html, the line and the
@@ -70,7 +71,7 @@ DOCTYPE = re.compile(r"<!doctype html>", re.I)
 ATTRIBUTE = re.compile(r'([A-Za-z][A-Za-z0-9_:.-]*)(?:="([^"]*)")?')
 SCRIPT_TYPES = ("", "text/javascript", "application/json")
 CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re.S)
-PLAIN_PATH = re.compile(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+")
+PLAIN_PATH = re.compile(r"(?:/t/[A-Za-z0-9_-]+/)?[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+")
 WHOLE_REFERENCE = re.compile(r"&(?:[A-Za-z][A-Za-z0-9]*|#[0-9]+|#[xX][0-9A-Fa-f]+);")
 TEXT_ONLY = ("title", "iframe")
 HTML_ELEMENTS = ("a", "b", "body", "button", "canvas", "dialog", "div", "form", "h1", "h2", "h3", "head", "header",
@@ -180,12 +181,13 @@ def text_of(data):
 
 
 def reader(rev, theme):
-    folder = f"themes/{theme}/"
+    def where(name):
+        return f"themes/{name[3:]}" if name.startswith("/t/") else f"themes/{theme}/{name}"
     if rev is None:
-        return lambda name: text_of((RAIZ / folder / name).read_bytes()) if (RAIZ / folder / name).is_file() else None
+        return lambda name: text_of((RAIZ / where(name)).read_bytes()) if (RAIZ / where(name)).is_file() else None
 
     def show(name):
-        out = subprocess.run(["git", "-C", str(RAIZ), "show", f"{rev}:{folder}{name}"], capture_output=True)
+        out = subprocess.run(["git", "-C", str(RAIZ), "show", f"{rev}:{where(name)}"], capture_output=True)
         return None if out.returncode else text_of(out.stdout)
     return show
 
@@ -337,6 +339,10 @@ def assemble(read, files=None):
         if kind in ("script", "link"):
             if (text := fetch(name)) is None:
                 raise Doubt(f"{name}: the page links it, and it is not in the theme (the browser gets a 404)")
+            if kind == "script" and body_problem("script", text, False):
+                raise Doubt(f"{name}: a </script or a <!-- in a script the server puts inline")
+            if kind == "link" and re.search(r"</style", text, re.I):
+                raise Doubt(f"{name}: a </style in a sheet the server puts inline")
             if kind == "link" and sheet_reaches_out(text):
                 raise Doubt(f"{name}: an @import, @namespace or @scope, even escaped or in a comment, which ties the "
                             f"sheet to something outside its rules")

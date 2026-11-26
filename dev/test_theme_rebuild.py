@@ -10,11 +10,11 @@ CALL, DECLARATION = "globalThis.result = f();", "function f() { return 1; }"
 FOUR_LINES = "function f() {\n  const x = 1;\n  return x;\n}"
 NESTED = "@media (min-width: 1px) {\n  a { color: red; }\n  @container (max-width: 1rem) { .b::after { content: %s; } }\n}\n"
 FONT = "@font-face { font-family: 'A'; src: url(fonts/a.woff2) format('woff2'); }\n"
-PEDAL = '<script src="pedal.js" onerror="scriptFailed(this)"></script>'
+PEDAL = '<script src="pedal.js"></script>'
 HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
 TWO_INLINED = "<!-- inline-script: s.js -->\n<!-- inline-script: t.js -->\n"
 TRANSLATED = {"index.html": "<!-- i18n -->\n", "i18n/i18n_en.properties": "", "i18n/i18n_pt_BR.properties": ""}
-NOTICE = '<script src="notice.js" onerror="scriptFailed(this)"></script>'
+NOTICE = '<script src="notice.js"></script>'
 CANNOT = "cannot judge"
 LEFT, CAME = "declaration left its script", "declaration came into the script"
 
@@ -280,13 +280,13 @@ def theme_mutant(changes):
 
 
 def swapped(html, _):
-    notice, covers = NOTICE, '<script src="covers.js" onerror="scriptFailed(this)"></script>'
+    notice, covers = NOTICE, '<script src="covers.js"></script>'
     return html.replace(notice, "\0").replace(covers, notice).replace("\0", covers) if covers in html else ""
 
 
 def early(html, _):
-    inlined = "<!-- inline-script: desk-buttons.js -->\n<!-- inline-script: start.js -->\n"
-    ui_events = '<script src="ui-events.js" onerror="scriptFailed(this)"></script>\n'
+    inlined = '<script src="desk-buttons.js"></script>\n<script src="start.js"></script>\n'
+    ui_events = '<script src="ui-events.js"></script>\n'
     return html.replace(inlined, "").replace(ui_events, inlined + ui_events) if inlined in html else ""
 
 
@@ -314,9 +314,6 @@ def main():
         *((f"a {end} in a comment on the first line of start.js",
            {"start.js": lambda text, _, end=end: text.replace("'use strict';", f"'use strict'; // {end}", 1)
             if "'use strict';" in text else ""}, CANNOT) for end in ("</script>", "</script/>", "</script x>")),
-        ("start.js loaded from its file instead of inline",
-         {"index.html": lambda html, _: html.replace("<!-- inline-script: start.js -->", '<script src="start.js"></script>')
-          if "<!-- inline-script: start.js -->" in html else ""}, "script tag or strict mode"),
         ("the </script> of pedal.js taken out",
          {"index.html": lambda html, _: html.replace(PEDAL, PEDAL.removesuffix("</script>")) if PEDAL in html else ""},
          CANNOT),
@@ -344,7 +341,12 @@ def main():
         ("a vertical tab put before the first .btn rule of buttons.css",
          {"buttons.css": lambda text, _: text.replace("\n.btn", "\n\v.btn", 1)}, "does not parse"),
         ("pedal.css linked from the root of the site",
-         {"index.html": lambda html, _: html.replace('href="pedal.css"', 'href="/t/ritmelli/pedal.css"')}, CANNOT),
+         {"index.html": lambda html, _: html.replace('href="pedal.css"', 'href="/t/ritmelli/pedal.css"')}, "gone"),
+        ("a <!-- put in a comment on the first line of start.js",
+         {"start.js": lambda text, _: text.replace("'use strict';", "'use strict'; // <!--", 1)
+          if "'use strict';" in text else ""}, CANNOT),
+        ("a </style> put in a comment of base.css",
+         {"base.css": lambda text, _: "/* </style> */\n" + text}, CANNOT),
         ("the rules of pedal.css moved to the end of mix.css and pedal.css deleted",
          {"mix.css": lambda text, read: text + read("pedal.css"), "pedal.css": lambda *_: None}, CANNOT),
         ("transporte.js renamed",
@@ -383,6 +385,12 @@ def main():
             results.append((True, f"{page} is in the strict form"))
         except theme_rebuild.Doubt as unsure:
             results.append((False, f"{page} is not in the strict form: {unsure}"))
+    for rev in (None, "HEAD"):
+        read = theme_rebuild.reader(rev, "gallery-reader")
+        shared, own = read("/t/ritmelli/i18n.js"), theme_rebuild.reader(rev, "ritmelli")("i18n.js")
+        results.append((shared is not None and shared == own,
+                        f"a /t/ritmelli/ address is read from themes/ritmelli ({'the working tree' if rev is None else rev}, "
+                        f"{len(shared or '')} characters)"))
     refused = [x for x in DOUBTFUL if x[0] in (DOUBTFUL[0][0], "an inline-script that is not in the theme")]
     kept = theme_rebuild.reader, theme_rebuild.listing
     for title, page in refused:
