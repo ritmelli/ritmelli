@@ -104,12 +104,12 @@ def output_lines(run, key):
     path = r"""(?:^|\s)-Path\s+("?)(?:\$env:GITHUB_OUTPUT|\$\{env:GITHUB_OUTPUT\})\1(?=\s|$)"""
     lines = re.finditer(r"(?<![^\n;{}])[ \t]*Add-Content\b[^\n;]*", code(run), re.I)
     return [(m.start(), m.group(0)) for m in lines
-            if re.search(path, m.group(0), re.I) for _ in re.finditer(rf"""["']{key}=""", m.group(0))]
+            if re.search(path, m.group(0), re.I) for _ in re.finditer(rf"""["']{key}=""", m.group(0), re.I)]
 
 
 def writes_output(run, key):
     lines = output_lines(run, key)
-    return len(lines) == 1 and f'"{key}=$' in lines[0][1]
+    return len(lines) == 1 and re.search(rf'"{key}=\$', lines[0][1], re.I) is not None
 
 
 def bare(condition):
@@ -582,6 +582,12 @@ def main():
                                              {"uses": upload(d, exe)["uses"],
                                               "with": {"name": "ritmelli-exe-${{ steps.v.outputs.versao }}",
                                                        "path": "dist/ritmelli/ritmelli.exe"}}]}}),
+        "a later PARCIAL=false in capitals": lambda d: source_step(d, "parcial").update(
+            run=source_step(d, "parcial")["run"].rstrip("\n")
+            + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "PARCIAL=false" -Encoding ascii\n'),
+        "a later empty VERSAO= in capitals": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
+            run=step_by_id(d["jobs"]["monta"], "congela")["run"].rstrip("\n")
+            + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "VERSAO=" -Encoding ascii\n'),
         "a parcial=false in a one-line if block": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nif ($env:ANTERIOR) { Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false" -Encoding ascii }\n'),
