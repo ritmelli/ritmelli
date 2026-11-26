@@ -16,7 +16,6 @@ ser exata.
 
 Sai 1 se algo falha."""
 import argparse
-import ast
 import base64
 import hashlib
 import inspect
@@ -175,41 +174,29 @@ def _igual(a, b):
     return a == b
 
 
-def engine_constant_from_its_text(name):
-    tree = ast.parse((RAIZ / "engine.py").read_text(encoding="utf-8"))
-    for node in tree.body:
-        if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id == name):
-            try:
-                return ast.literal_eval(node.value)
-            except ValueError:
-                break
-    raise LookupError(f"engine.py has no top-level {name} written as a literal")
-
-
 def phase_excerpt_stays_after_the_outgoing_ramp():
-    try:
-        fase_min_s = engine_constant_from_its_text("FASE_MIN_S")
-    except LookupError as ex:
-        return [str(ex)]
     virar = 100.0
-    falhas = []
+    failures = []
     for sa in (1 + transicao.SAI_MAX, 1 - transicao.SAI_MAX):
         n_ra, ramp_start = transicao.rampa_saida(sa, virar)
-        disc_seconds_in_ramp = n_ra * (1 + sa) / 2 / transicao.SR
-        ramp_margin = virar - transicao.FASE_ANTES_S - (ramp_start + disc_seconds_in_ramp)
-        excerpt_from_switch = max(transicao.FASE_ANTES_S, fase_min_s * sa)
-        constant_speed_from_switch = transicao.FASE_ANTES_S + ramp_margin
-        exceeds = excerpt_from_switch > constant_speed_from_switch + 1e-9
-        print(f"sa {sa:.2f}: max(FASE_ANTES_S, FASE_MIN_S * sa) = {excerpt_from_switch:.2f} s "
-              f"{'>' if exceeds else '<='} FASE_ANTES_S + the ramp margin ({ramp_margin:.2f} s) = "
-              f"{constant_speed_from_switch:.2f} s")
-        if exceeds:
-            falhas.append(f"with the outgoing track at {sa:.2f}, FASE_MIN_S ({fase_min_s} s) of its output goes back "
-                          f"{excerpt_from_switch:.2f} s of disc from the switch, into its speed ramp, which ends "
-                          f"{constant_speed_from_switch:.2f} s before it "
-                          f"(FASE_MIN_S * (1 + SAI_MAX) <= FASE_ANTES_S + {ramp_margin:.2f})")
-    return falhas
+        ramp_end = ramp_start + n_ra * (1 + sa) / 2 / transicao.SR
+
+        def output_at(t):
+            return n_ra + round((t - ramp_end) * transicao.SR / sa)
+        swap = output_at(virar)
+        start = transicao.phase_excerpt_start(output_at(virar - transicao.FASE_ANTES_S), swap)
+        start_on_disc = ramp_end + (start - n_ra) * sa / transicao.SR
+        length = (swap - start) / transicao.SR
+        print(f"sa {sa:.2f}: the phase excerpt starts at {start_on_disc:.2f} s of the disc and lasts {length:.2f} s "
+              f"of output; the speed ramp ends at {ramp_end:.2f} s, the swap is at {virar:.2f} s")
+        if start < n_ra:
+            failures.append(f"with the outgoing track at {sa:.2f}, the phase excerpt (transicao.phase_excerpt_start) "
+                            f"starts at {start_on_disc:.2f} s of the disc, inside its speed ramp (until "
+                            f"{ramp_end:.2f} s)")
+        if length < transicao.FASE_MIN_S:
+            failures.append(f"with the outgoing track at {sa:.2f}, the phase excerpt (transicao.phase_excerpt_start) "
+                            f"lasts {length:.2f} s of output, less than FASE_MIN_S ({transicao.FASE_MIN_S} s)")
+    return failures
 
 
 def confere():
