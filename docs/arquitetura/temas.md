@@ -145,19 +145,20 @@ da partida), e que o `queue.js` vê o toque que fecha a busca na mesa.
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits,
 com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, e cada `<script src>` e `<link>`
-trocado pelo texto do arquivo. Ela só julga a página numa forma mais estreita que a da montagem: as duas listas de
-elementos do `theme_page.py`, descritas acima, e atributos só `nome="valor"` ou só o nome, sem espaço em volta do `=`,
-cada um uma vez e em minúsculas fora do `<svg>`. O `src` de um script e o `href` de uma folha são, além disso, um
-caminho simples dentro do tema, como `gerado/molduras.css`, ou `/t/<tema>/` seguido de um caminho simples, lido da pasta
-daquele tema, sem `..`, busca, `#`, `%`, `&` nem `\`. Como o servidor põe todo arquivo ligado na página, um script
-ligado não tem `</script`, `<!--` nem `#!` no começo, e uma folha ligada não tem `</style` e passa pela conferência de
-folha da montagem (o `sheet_problem` do `theme_page.py`). Fora disso ela recusa, com o arquivo (e, no `index.html`, a
-linha e o trecho), e sai 3 (não sei julgar): um `@namespace` ou um `@scope` numa folha, mesmo escapado ou num comentário
-(o prefixo do primeiro só vale na folha dele e o escopo do segundo depende do elemento que guarda a folha), um arquivo
-ligado pela página que não está no tema (o navegador recebe um 404) e um arquivo que o servidor põe inline e não está no
-tema (ele não monta a página). Um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta).
-Numa folha, entre as regras e nas pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab vertical
-antes de um seletor) é uma folha que não se lê.
+trocado pelo texto do arquivo. A ferramenta recusa o que a montagem recusa (o `index.html` passa antes pelo `strict` do
+`theme_page.py`), e a forma própria dela é mais estreita ainda: as duas listas de elementos do `theme_page.py`,
+descritas acima, e atributos só `nome="valor"` ou só o nome, sem espaço em volta do `=`, cada um uma vez e em minúsculas
+fora do `<svg>`. O `src` de um script e o `href` de uma folha são, além disso, um caminho simples dentro do tema, como
+`gerado/molduras.css`, ou `/t/<tema>/` seguido de um caminho simples, lido da pasta daquele tema, sem `..`, busca, `#`,
+`%`, `&` nem `\`. Como o servidor põe todo arquivo ligado na página, um script ligado não tem `</script`, `<!--` nem
+`#!` no começo, e uma folha ligada não tem `</style` e passa pela conferência de folha da montagem (o `sheet_problem` do
+`theme_page.py`). Fora disso ela recusa, com o arquivo (e, no `index.html`, a linha e o trecho), e sai 3 (não sei
+julgar): um `@namespace` ou um `@scope` numa folha, mesmo escapado ou num comentário (o prefixo do primeiro só vale na
+folha dele e o escopo do segundo depende do elemento que guarda a folha), um arquivo ligado pela página que não está no
+tema (o navegador recebe um 404) e um arquivo que o servidor põe inline e não está no tema (ele não monta a página). Um
+`\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta). Numa folha, entre as regras e nas
+pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab vertical antes de um seletor) é uma folha
+que não se lê.
 Ela sai 0 quando o head só muda código de lugar:
 - todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada

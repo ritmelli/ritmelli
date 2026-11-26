@@ -82,8 +82,8 @@ SAMPLES = (
      ["gone", "new"]),
     ("a <style> line reindented inside a template literal", inline("const s = `a\n<style>\nb`;\nf();"),
      inline("const s = `a\n  <style>\nb`;\nf();"), ["gone", "new"]),
-    ("a script that gains an attribute", {"index.html": "<script src=\"x.js\"></script>", "x.js": "x();\n"},
-     {"index.html": "<script src=\"x.js\" defer></script>", "x.js": "x();\n"}, ["script tag or strict mode"]),
+    ("a script that gains an attribute", {"index.html": "<script>\nx();\n</script>"},
+     {"index.html": "<script defer>\nx();\n</script>"}, ["script tag or strict mode"]),
     ("a script with a comment before 'use strict' that loses it",
      {"index.html": "<script src=\"x.js\"></script>", "x.js": "/* c */\n'use strict';\nx();\n"},
      {"index.html": "<script src=\"x.js\"></script>", "x.js": "/* c */\nx();\n"}, ["script tag or strict mode", "gone"]),
@@ -99,11 +99,9 @@ SAMPLES = (
                                                    "a.css": "a { }\nb { }\n", "b.css": "c { }\n"},
      {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n<link rel=\"stylesheet\" href=\"b.css\">\n",
       "a.css": "a { }\n", "b.css": "b { }\nc { }\n"}, []),
-    ("a style rule moved into a stylesheet for print", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n"
-                                                                      "<link rel=\"stylesheet\" href=\"b.css\" media=\"print\">\n",
-                                                        "a.css": "a { }\nb { }\n", "b.css": "c { }\n"},
-     {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n<link rel=\"stylesheet\" href=\"b.css\" media=\"print\">\n",
-      "a.css": "a { }\n", "b.css": "b { }\nc { }\n"}, ["gone", "new"]),
+    ("a style rule moved into a stylesheet for print",
+     {"index.html": "<style>\na { }\nb { }\n</style>\n<style media=\"print\">\nc { }\n</style>\n"},
+     {"index.html": "<style>\na { }\n</style>\n<style media=\"print\">\nb { }\nc { }\n</style>\n"}, ["gone", "new"]),
     ("a block mark put inside a CSS string", styled(".menu::before { content: \"\"; }\n"),
      styled(".menu::before { content: \"/* DIALOGS-INICIO */\"; }\n"), ["gone", "new"]),
     ("a block mark taken out of a stylesheet", styled("/* A-INICIO */\na { color: red; }\n/* A-FIM */\n"),
@@ -147,8 +145,8 @@ SAMPLES = (
     ("two spaces put around the = of a quoted value with a > in the end tag of a script",
      {"index.html": "<script src=\"x.js\"></script>\n", "x.js": "f();\n"},
      {"index.html": "<script src=\"x.js\"></script x  =  \"a>b\">\n", "x.js": "f();\n"}, CANNOT),
-    ("a title with a character reference put on a script", {"index.html": "<script src=\"x.js\"></script>\n", "x.js": ""},
-     {"index.html": "<script src=\"x.js\" title=\"a&amp;b\"></script>\n", "x.js": ""}, ["script tag or strict mode"]),
+    ("a title with a character reference put on a script", {"index.html": "<script>\n</script>\n"},
+     {"index.html": "<script title=\"a&amp;b\">\n</script>\n"}, ["script tag or strict mode"]),
     ("a stylesheet linked with a query", styled(HIDDEN),
      {"index.html": "<link rel=\"stylesheet\" href=\"a.css?v=2\">\n", "a.css": HIDDEN}, CANNOT),
     ("a </script y> in a quoted value of the start tag of a script turned into </script z>",
@@ -210,6 +208,20 @@ DOUBTFUL = (
      {"index.html": "<link rel=\"stylesheet\" href=\"/t/other/x.css\">\n",
       "/t/other/x.css": "a { background-image: url(image.png); }\n"}),
     ("a linked script that starts with #!", {"index.html": "<script src=\"s.js\"></script>\n", "s.js": "#!x\nf();\n"}),
+    ("a linked script that starts with a byte order mark and #!",
+     {"index.html": "<script src=\"s.js\"></script>\n", "s.js": "\ufeff#!x\nf();\n"}),
+    ("a file tag the server refuses: another order", {"index.html": "<link href=\"a.css\" rel=\"stylesheet\">\n",
+                                                      "a.css": "a { }\n"}),
+    ("a file tag the server refuses: a space before its >", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\" >\n",
+                                                            "a.css": "a { }\n"}),
+    ("a file tag the server refuses: a two-space gap", {"index.html": "<link rel=\"stylesheet\"  href=\"a.css\">\n",
+                                                        "a.css": "a { }\n"}),
+    ("a file tag the server refuses: />", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\"/>\n", "a.css": "a { }\n"}),
+    ("a file tag the server refuses: a line break in the tag",
+     {"index.html": "<script\nsrc=\"s.js\"></script>\n", "s.js": "f();\n"}),
+    ("a file tag the server refuses: defer", {"index.html": "<script src=\"s.js\" defer></script>\n", "s.js": "f();\n"}),
+    ("a file tag the server refuses: onerror",
+     {"index.html": "<script src=\"s.js\" onerror=\"scriptFailed(this)\"></script>\n", "s.js": "f();\n"}),
     ("an alternate stylesheet", {"index.html": "<link rel=\"alternate stylesheet\" href=\"a.css\">\n"}),
     ("a script from a folder above", {"index.html": "<script src=\"../x.js\"></script>\n"}),
     ("an element the theme does not use", {"index.html": "<marquee>a</marquee>\n<script src=\"x.js\"></script>\n"}),
@@ -390,8 +402,18 @@ def main():
         results.append((isinstance(unsure, theme_rebuild.Doubt), f"{title}: cannot judge ({unsure})"))
     own = built({"index.html": "<link rel=\"stylesheet\" href=\"/t/ritmelli/a.css\">\n",
                  "/t/ritmelli/a.css": "a { background-image: url(image.png); }\n"}.get)
-    results.append((isinstance(own, theme_rebuild.Page), f"a /t/ sheet of the page's own folder keeps its relative "
-                                                          f"url() ({own if isinstance(own, theme_rebuild.Doubt) else 'read'})"))
+    results.append((isinstance(own, theme_rebuild.Page) and "a.css" in own.read,
+                    f"a /t/ sheet of the page's own folder keeps its relative url() and counts as read by its name in "
+                    f"the theme ({own if isinstance(own, theme_rebuild.Doubt) else sorted(own.read)})"))
+    other = {"index.html": "<link rel=\"stylesheet\" href=\"/t/outro/base.css\">\n",
+             "/t/outro/base.css": "a { background-image: url(image.png); }\n"}
+    kept = theme_rebuild.reader, theme_rebuild.listing
+    theme_rebuild.reader, theme_rebuild.listing = (lambda rev, _: other.get), (lambda rev, _: {})
+    try:
+        code = theme_rebuild.main(["base", "head", "--theme", "outro"])
+    finally:
+        theme_rebuild.reader, theme_rebuild.listing = kept
+    results.append((code == 0, f"--theme outro reads a /t/outro/ sheet as one of the page's own folder ({code})"))
     for page in ("themes/ritmelli/index.html", "gallery/index.html"):
         try:
             theme_rebuild.strict(theme_rebuild.text_of((theme_rebuild.RAIZ / page).read_bytes()), page)

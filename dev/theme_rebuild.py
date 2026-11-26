@@ -24,7 +24,8 @@ line that opens it ([script NAME], [inline-script NAME], [script], [link NAME] o
 attributes when it has any) and a [/script] or [/style] line. <base> and <head> are git commits (the head defaults to
 the working tree).
 
-The tool judges only a page in a strict form the browser reads one way: text with no < between tags, start tags with
+The tool refuses what the build refuses (index.html goes through theme_page.strict first), and judges only a page in a
+strict form of its own, narrower still, that the browser reads one way: text with no < between tags, start tags with
 name="value" attributes (or a bare name), each once and in lower case outside <svg>, separated by ASCII spaces, end tags
 </name>, comments <!-- ... --> with no -- inside, and <!doctype html>. The elements are the ones the theme and the
 gallery use, one list for HTML and one inside <svg>. A <script> or <style> ends at its first </script> or </style>, with
@@ -309,10 +310,12 @@ def assemble(read, files=None, theme="ritmelli"):
         return text
 
     def fetch(name):
-        names.add(name)
+        names.add(name.removeprefix(f"/t/{theme}/"))
         return read(name)
     html = need("index.html")
     strict(html, "index.html")
+    if refused := from_root("theme_page").strict(html)[1]:
+        raise Doubt(f"index.html, line {refused[0]}: {refused[2]}, which the server refuses")
     for marker in INLINE_SCRIPT.finditer(html):
         inlined = marker.group(1)
         if read(inlined) is None:
@@ -351,7 +354,7 @@ def assemble(read, files=None, theme="ritmelli"):
             if kind == "link" and re.search(r"</style", text, re.I):
                 raise Doubt(f"{name}: a </style in a sheet the server puts inline")
             outside = posixpath.dirname(theme_path(name, theme)) != f"themes/{theme}"
-            if kind == "link" and (problem := build_rules().sheet_problem(text, outside)):
+            if kind == "link" and (problem := from_root("theme_page").sheet_problem(text, outside)):
                 raise Doubt(f"{name}: {problem}, which the server refuses")
             if kind == "link" and sheet_reaches_out(text):
                 raise Doubt(f"{name}: an @import, @namespace or @scope, even escaped or in a comment, which ties the "
@@ -375,16 +378,14 @@ def assemble(read, files=None, theme="ritmelli"):
     return Page(items, blocks, texts, frozenset(names), files or {})
 
 
-def build_rules():
+def from_root(module):
     if str(RAIZ) not in sys.path:
         sys.path.insert(0, str(RAIZ))
-    return importlib.import_module("theme_page")
+    return importlib.import_module(module)
 
 
 def translations(read, page):
-    if str(RAIZ) not in sys.path:
-        sys.path.insert(0, str(RAIZ))
-    i18n = importlib.import_module("i18n")
+    i18n = from_root("i18n")
     if i18n.MARCA not in page:
         return ()
     return tuple((language, tuple(TRAILING_SPACE.sub("", line.lstrip())
