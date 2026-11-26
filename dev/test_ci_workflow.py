@@ -106,6 +106,8 @@ def required_check_failures(flows):
         out.append(f"the steps of the required job with an if: are {conditioned}, not only the Cancelada, last")
     if any("continue-on-error" in x for x in [required, *steps]):
         out.append("the required job or a step of it has continue-on-error")
+    if "defaults" in testa or "defaults" in required or any("shell" in s for s in steps):
+        out.append("the required job runs its steps in a shell of its own (defaults or shell:)")
     verdict = find_step(required, "Verdict") or {}
     if steps[:1] != [verdict] or len(steps) != 2:
         out.append(f"the required job is not the Verdict and the Cancelada ({[s.get('name') for s in steps]})")
@@ -157,6 +159,11 @@ def test_required_check(flows, text):
             ("continue-on-error on the Verdict", lambda f: step_of(f, "testa-o-pr", "Verdict").update({"continue-on-error": "true"})),
             ("a job the required job does not need", lambda f: f[TESTA]["jobs"].update({"extra": {"runs-on": "x"}})),
             ("the result of the etiquetas job not read", lambda f: step_of(f, "testa-o-pr", "Verdict")["env"].pop("S_ETIQUETAS")),
+            ("shell: cat {0} on the Verdict", lambda f: step_of(f, "testa-o-pr", "Verdict").update({"shell": "cat {0}"})),
+            ("shell: cat {0} on the Cancelada", lambda f: step_of(f, "testa-o-pr", "Cancelada").update({"shell": "cat {0}"})),
+            ("a default shell on the required job",
+             lambda f: f[TESTA]["jobs"]["testa-o-pr"].update({"defaults": {"run": {"shell": "cat {0}"}}})),
+            ("a default shell on the testa.yml", lambda f: f[TESTA].update({"defaults": {"run": {"shell": "cat {0}"}}})),
     ):
         check(required_check_failures(mutated(flows, change)) != [], f"the mutant with {why} fails")
     with tempfile.TemporaryDirectory(prefix="ritmelli-flows-") as tmp:
@@ -202,12 +209,24 @@ def test_modes(flows):
              lambda s: s.update({"continue-on-error": "true"})),
             ("microfone", "O PR mexe no filtro?", "if: false on the filter areas step", lambda s: s.update({"if": "false"})),
             ("tela", "O PR mexe na tela?", "another env on the areas step", lambda s: s.update({"env": {"ETIQUETAS": "[]"}})),
-            ("testes", "ruff", "if: false on the ruff step", lambda s: s.update({"if": "false"}))):
+            ("testes", "ruff", "if: false on the ruff step", lambda s: s.update({"if": "false"})),
+            ("compara", "compara", "shell: cmd on the compara step", lambda s: s.update({"shell": "cmd"})),
+            ("compara", "O PR mexe na tela?", "BASE: HEAD on the areas step",
+             lambda s: s.update({"env": {**s["env"], "BASE": "HEAD"}}))):
         found = testa_tudo.mode_failures(mutated(flows, lambda f: change(step_of(f, job, step))))
         check(found != [], f"the mutant with {why} ({job} job) fails")
+    for why, change in (("BASE: HEAD on the testa.yml", lambda f: f[TESTA]["env"].update({"BASE": "HEAD"})),
+                        ("BASE: HEAD on the tela job", lambda f: f[TESTA]["jobs"]["tela"].update({"env": {"BASE": "HEAD"}})),
+                        ("BASE: HEAD on a step of the tela job",
+                         lambda f: f[TESTA]["jobs"]["tela"]["steps"][0].update({"env": {"BASE": "HEAD"}})),
+                        ("a default shell on the testa.yml", lambda f: f[TESTA].update({"defaults": {"run": {"shell": "cmd"}}})),
+                        ("a default shell on the microfone job",
+                         lambda f: f[TESTA]["jobs"]["microfone"].update({"defaults": {"run": {"shell": "cmd"}}}))):
+        check(testa_tudo.mode_failures(mutated(flows, change)) != [], f"the mutant with {why} fails the modes")
     monta = ".github/workflows/monta.yml"
     for rel, (job, _, step, _, _) in testa_tudo.PS1_TESTS.items():
         for why, change in (("if: false on its step", lambda s: s.update({"if": "false"})),
+                            ("shell: cmd on its step", lambda s: s.update({"shell": "cmd"})),
                             ("if: false on its job", None)):
             found = testa_tudo.ps1_failures(mutated(flows, lambda f: (
                 change(find_step(f[monta]["jobs"][job], step)) if change else f[monta]["jobs"][job].update({"if": "false"}))))

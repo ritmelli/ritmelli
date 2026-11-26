@@ -150,6 +150,7 @@ REQUIRED_MODES = {
 }
 COMPARA_ENV = {"EXTRACAO": "${{ steps.areas.outputs.extracao }}", "BASE_SHA": "${{ steps.chave.outputs.base }}"}
 REQUIRED_ENV = {"--compara": COMPARA_ENV, "--capture": COMPARA_ENV}
+BASE_ENV = "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
 AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE"
 SCREEN_AREAS_RUN = "\n".join((
     AREAS_RUN,
@@ -252,9 +253,10 @@ def tracked(root=RAIZ):
     return [f for f in out.decode("utf-8").split("\0") if f]
 
 
-def step_failures(where, jobs, job_id, job_if, step_name, step_if, run, env, sources=None):
+def step_failures(where, jobs, job_id, job_if, step_name, step_if, run, env, sources=None, shell=None):
     """What takes a step out of its run: its job or step gone, a condition other than job_if and step_if, a
-    continue-on-error, a run other than run, an env other than env, or a step its condition and env read by id that is
+    continue-on-error, defaults on the job, a shell other than shell, a run other than run, an env other than env, or
+    a step its condition and env read by id that is
     not a single earlier step of the job, or (with sources, the ids of the job whose steps are pinned) not one of
     them."""
     job = jobs.get(job_id)
@@ -265,6 +267,8 @@ def step_failures(where, jobs, job_id, job_if, step_name, step_if, run, env, sou
         falhas.append(f"{where}: the job runs with if: {job.get('if')}, not {job_if}")
     if job.get("continue-on-error") is not None:
         falhas.append(f"{where}: the job has continue-on-error")
+    if job.get("defaults") is not None:
+        falhas.append(f"{where}: the job has defaults")
     step = find_step(job, step_name)
     if step is None:
         return falhas + [f"{where}: no single step with that name"]
@@ -272,6 +276,8 @@ def step_failures(where, jobs, job_id, job_if, step_name, step_if, run, env, sou
         falhas.append(f"{where}: the step runs with if: {step.get('if')}, not {step_if}")
     if step.get("continue-on-error") is not None:
         falhas.append(f"{where}: the step has continue-on-error")
+    if step.get("shell") != shell:
+        falhas.append(f"{where}: the step runs in the shell {step.get('shell')}, not {shell}")
     if (step.get("run") or "").rstrip("\n") != run:
         falhas.append(f"{where}: the step no longer runs exactly {run!r}")
     if step.get("env") != env:
@@ -308,8 +314,11 @@ def source_failures(jobs):
 
 def ps1_failures(flows):
     """The step_failures of each PowerShell test of PS1_TESTS in the monta.yml, by its path."""
-    jobs = (flows.get(".github/workflows/monta.yml") or {}).get("jobs") or {}
-    return {rel: step_failures(f"{rel} (the monta.yml job {row[0]}, step \"{row[2]}\")", jobs, *row, PS1_ENV[rel])
+    monta = flows.get(".github/workflows/monta.yml") or {}
+    jobs = monta.get("jobs") or {}
+    top = ["the monta.yml has defaults"] if monta.get("defaults") is not None else []
+    return {rel: top + step_failures(f"{rel} (the monta.yml job {row[0]}, step \"{row[2]}\")", jobs, *row,
+                                     PS1_ENV[rel], shell="powershell")
             for rel, row in PS1_TESTS.items()}
 
 
@@ -322,6 +331,12 @@ def mode_failures(flows):
     verdict = find_step(required, VERDICT_STEP) or {}
     results = set((verdict.get("env") or {}).values())
     falhas, sources = source_failures(jobs)
+    if testa.get("defaults") is not None:
+        falhas.append("the testa.yml has defaults")
+    if (testa.get("env") or {}).get("BASE") != BASE_ENV:
+        falhas.append(f"the BASE of the testa.yml is {(testa.get('env') or {}).get('BASE')}, not {BASE_ENV}")
+    falhas += [f"the {job_id} job of the testa.yml sets its own BASE" for job_id, job in jobs.items()
+               if "BASE" in (job.get("env") or {}) or any("BASE" in (s.get("env") or {}) for s in job_steps(job))]
     for mode, (job_id, job_if, step_name, step_if, run) in REQUIRED_MODES.items():
         where = f"the testa.yml mode {mode} (job {job_id}, step \"{step_name}\")"
         falhas += step_failures(where, jobs, job_id, job_if, step_name, step_if, run, REQUIRED_ENV.get(mode),
