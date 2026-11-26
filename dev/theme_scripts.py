@@ -109,7 +109,6 @@ PADS_REDRAWN = ("(async () => { const c = document.querySelector('#pads > canvas
                 " document.dispatchEvent(new Event('repinta-canvas')); await frame();"
                 " return {canvas: true, drawn: drawn !== cleared, stays, back: c.toDataURL() === drawn}; })()")
 PAGE_READY_S = 15.0
-INLINE_MARK = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 
 
 async def until(tab, state, condition, seconds):
@@ -238,12 +237,8 @@ async def checks(tab):
 
 def inline_scripts(raiz):
     found, _ = missing_script.page_files(raiz, missing_script.THEME)
-    files = {text + (missing_script.theme_page.source_url(name) if kind == "module" else ""): name
-             for kind, name, text in found or [] if kind in ("script", "module")}
-    theme = raiz / "themes" / "ritmelli"
-    for name in INLINE_MARK.findall((theme / "index.html").read_text(encoding="utf-8")):
-        files["\n" + (theme / name).read_text(encoding="utf-8")] = name
-    return files
+    return {text + (missing_script.theme_page.source_url(name) if kind == "module" else ""): name
+            for kind, name, text in found or [] if kind in ("script", "module")}
 
 
 def main(argv=None):
