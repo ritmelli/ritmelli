@@ -3,242 +3,11 @@
    de metal escovado com os parafusos, os tres VUs (a janela ambar, o arco, os numeros e a agulha do medidor da
    pagina), os volumes em pe com as marcas e o pino creme, as chaves do set, o crossfader e a placa da transicao
    automatica. Os elementos de verdade seguem ali, transparentes: o clique, o estado e o lugar vem deles. */
+import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACENTO, pincel, px, recorte, solto, caixa, sombraCaixa, lg, icone } from "pixel.js";
 (() => {
-  const cor = (r, g, b, a = 255) => ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
-  const esc = (c, k) => cor((c & 255) * k | 0, ((c >> 8) & 255) * k | 0, ((c >> 16) & 255) * k | 0, c >>> 24);
-  const O = cor(26, 11, 4), O2 = cor(46, 20, 9), SOMBRA = cor(30, 12, 4, 110), SOMBRA_F = cor(30, 12, 4, 80);
-  const M = { M0: cor(248, 190, 140), P1: cor(234, 146, 92), P2: cor(206, 116, 68), P3: cor(184, 94, 52), WF: cor(166, 82, 44),
-              P35: cor(150, 70, 38), W6: cor(142, 67, 35), W5: cor(134, 64, 33), P4: cor(120, 52, 26) };
-  const CH = { veio: cor(223, 216, 201), base: cor(227, 220, 205), risca: cor(220, 213, 197), risca2: cor(231, 225, 212), luz: cor(244, 239, 228), sombra: cor(196, 187, 170) };
-  const TINTA = cor(42, 24, 18), CREME = cor(239, 230, 213), CREME_L = cor(252, 247, 236), CREME_S = cor(206, 192, 168);
+  const { gl, larg, texto } = glyphs();
   const AMBAR = [cor(255, 214, 110), cor(252, 186, 72), cor(224, 148, 46)];   // (r06) a canaleta do crossfader no ambar dos volumes (a de baixo lia marrom)
 
-  // ---------------- as fontes de bitmap: cada letra desenhada grande e lida na grade da propria fonte
-  const FONTES = { j: { fam: '"Jersey 10"', S: 300, u: 32 }, v: { fam: '"VT323"', S: 300, u: 24 } };
-  let fontesOk = false; void fontesOk;
-  const OVRV = { B: ["###.", "#..#", "#..#", "###.", "#..#", "#..#", "###."], "8": [".##.", "#..#", "#..#", ".##.", "#..#", "#..#", ".##."],
-                 ",": [".#", "#."] };
-  const GC = new Map();
-  let gcv = null, gx = null;
-  function glifo(fk, ch) {
-    const k = fk + ch;
-    let g = GC.get(k);
-    if (g) return g;
-    if (fk === 'v' && OVRV[ch]) {                     // o B e o 8 diferentes, a virgula com cauda
-      const h = glifo('v', 'H'), rows = OVRV[ch];
-      g = { adv: h.adv, w: rows[0].length, h: rows.length, dx: h.dx, dy: ch === ',' ? -1 : h.dy,
-            bits: Uint8Array.from(rows.join('').split('').map(q => q === '#' ? 1 : 0)) };
-      GC.set(k, g);
-      return g;
-    }
-    if (!gcv) { gcv = document.createElement('canvas'); gcv.width = 1000; gcv.height = 800; gx = gcv.getContext('2d', { willReadFrequently: true }); }
-    const F = FONTES[fk], u = F.u, ox = 300, oy = 500;
-    gx.clearRect(0, 0, 1000, 800); gx.font = F.S + 'px ' + F.fam; gx.fillStyle = '#fff'; gx.textBaseline = 'alphabetic';
-    gx.fillText(ch, ox, oy);
-    const m = gx.measureText(ch), adv = Math.max(1, Math.round(m.width / u));
-    const l = Math.round(ox - m.actualBoundingBoxLeft), t = Math.round(oy - m.actualBoundingBoxAscent);
-    const r = Math.round(ox + m.actualBoundingBoxRight), b = Math.round(oy + m.actualBoundingBoxDescent);
-    const nx = Math.max(0, Math.round((r - l) / u)), ny = Math.max(0, Math.round((b - t) / u));
-    g = { adv, w: nx, h: ny, dx: Math.round((l - ox) / u), dy: Math.round((t - oy) / u), bits: new Uint8Array(nx * ny) };
-    if (nx && ny) {
-      const W = nx * u, d = gx.getImageData(l, t, W, ny * u).data;
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-        let on = 0;
-        for (let sy = 0; sy < 4; sy++) for (let sx = 0; sx < 4; sx++) {
-          const px = Math.floor(i * u + (sx + .5) * u / 4), py = Math.floor(j * u + (sy + .5) * u / 4);
-          if (d[(py * W + px) * 4 + 3] > 127) on++;
-        }
-        g.bits[j * nx + i] = on >= 8 ? 1 : 0;
-      }
-    }
-    GC.set(k, g);
-    return g;
-  }
-  // ---------------- a fonte 5x7 desenhada a mao (maiusculas de 7, x de 5, descendentes de 2), proporcional; os acentos
-  // sao marcas compostas por cima da letra; o que ela nao tem cai na VT323 lida na grade
-  const F57 = {
-    A: [".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"], B: ["####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."],
-    C: [".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."], D: ["####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."],
-    E: ["#####", "#....", "#....", "####.", "#....", "#....", "#####"], F: ["#####", "#....", "#....", "####.", "#....", "#....", "#...."],
-    G: [".###.", "#...#", "#....", "#.###", "#...#", "#...#", ".####"], H: ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
-    I: ["###", ".#.", ".#.", ".#.", ".#.", ".#.", "###"], J: ["..###", "...#.", "...#.", "...#.", "#..#.", "#..#.", ".##.."],
-    K: ["#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"], L: ["#....", "#....", "#....", "#....", "#....", "#....", "#####"],
-    M: ["#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"], N: ["#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"],
-    O: [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."], P: ["####.", "#...#", "#...#", "####.", "#....", "#....", "#...."],
-    Q: [".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#"], R: ["####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"],
-    S: [".###.", "#...#", "#....", ".###.", "....#", "#...#", ".###."], T: ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."],
-    U: ["#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."], V: ["#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#.."],
-    W: ["#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#"], X: ["#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"],
-    Y: ["#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."], Z: ["#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"],
-    a: [".....", ".....", ".###.", "....#", ".####", "#...#", ".####"], b: ["#....", "#....", "####.", "#...#", "#...#", "#...#", "####."],
-    c: ["....", "....", ".###", "#...", "#...", "#...", ".###"], d: ["....#", "....#", ".####", "#...#", "#...#", "#...#", ".####"],
-    e: [".....", ".....", ".###.", "#...#", "#####", "#....", ".###."], f: ["..##", ".#..", "###.", ".#..", ".#..", ".#..", ".#.."],
-    g: [".....", ".....", ".####", "#...#", "#...#", "#...#", ".####", "....#", ".###."], h: ["#....", "#....", "####.", "#...#", "#...#", "#...#", "#...#"],
-    i: [".#.", "...", "##.", ".#.", ".#.", ".#.", "###"], j: ["..#", "...", ".##", "..#", "..#", "..#", "..#", "#.#", ".#."],
-    k: ["#...", "#...", "#..#", "#.#.", "##..", "#.#.", "#..#"], l: ["##.", ".#.", ".#.", ".#.", ".#.", ".#.", "###"],
-    m: [".....", ".....", "##.#.", "#.#.#", "#.#.#", "#.#.#", "#.#.#"], n: [".....", ".....", "####.", "#...#", "#...#", "#...#", "#...#"],
-    o: [".....", ".....", ".###.", "#...#", "#...#", "#...#", ".###."], p: [".....", ".....", "####.", "#...#", "#...#", "#...#", "####.", "#....", "#...."],
-    q: [".....", ".....", ".####", "#...#", "#...#", "#...#", ".####", "....#", "....#"], r: ["....", "....", "#.##", "##..", "#...", "#...", "#..."],
-    s: ["....", "....", ".###", "#...", ".##.", "...#", "###."], t: [".#..", ".#..", "###.", ".#..", ".#..", ".#..", "..##"],
-    u: [".....", ".....", "#...#", "#...#", "#...#", "#...#", ".####"], v: [".....", ".....", "#...#", "#...#", "#...#", ".#.#.", "..#.."],
-    w: [".....", ".....", "#...#", "#...#", "#.#.#", "#.#.#", ".#.#."], x: [".....", ".....", "#...#", ".#.#.", "..#..", ".#.#.", "#...#"],
-    y: [".....", ".....", "#...#", "#...#", "#...#", "#...#", ".####", "....#", ".###."], z: [".....", ".....", "#####", "...#.", "..#..", ".#...", "#####"],
-    "0": [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."], "1": [".#.", "##.", ".#.", ".#.", ".#.", ".#.", "###"],
-    "2": [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"], "3": ["####.", "....#", "....#", ".###.", "....#", "....#", "####."],
-    "4": ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."], "5": ["#####", "#....", "####.", "....#", "....#", "#...#", ".###."],
-    "6": ["..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."], "7": ["#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."],
-    "8": [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."], "9": [".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."],
-    " ": ["...", "...", "...", "...", "...", "...", "..."], ".": [".", ".", ".", ".", ".", ".", "#"], ",": ["..", "..", "..", "..", "..", "..", ".#", "#."],
-    ":": [".", ".", "#", ".", ".", "#", "."], ";": ["..", "..", ".#", "..", "..", ".#", "#."], "-": ["....", "....", "....", "####", "....", "....", "...."],
-    "–": [".....", ".....", ".....", "#####", ".....", ".....", "....."], "—": ["......", "......", "......", "######", "......", "......", "......"],
-    "|": ["#", "#", "#", "#", "#", "#", "#", "#", "#"], "/": ["....#", "...#.", "...#.", "..#..", ".#...", ".#...", "#...."],
-    "(": ["..#", ".#.", "#..", "#..", "#..", ".#.", "..#"], ")": ["#..", ".#.", "..#", "..#", "..#", ".#.", "#.."],
-    "[": ["##", "#.", "#.", "#.", "#.", "#.", "##"], "]": ["##", ".#", ".#", ".#", ".#", ".#", "##"],
-    "!": ["#", "#", "#", "#", "#", ".", "#"], "?": [".###.", "#...#", "....#", "...#.", "..#..", ".....", "..#.."],
-    "'": ["#", "#", ".", ".", ".", ".", "."], "’": [".#", "#.", "..", "..", "..", "..", ".."], "\"": ["#.#", "#.#", "...", "...", "...", "...", "..."],
-    "&": [".##..", "#..#.", "#.#..", ".#...", "#.#.#", "#..#.", ".##.#"], "+": [".....", "..#..", "..#..", "#####", "..#..", "..#..", "....."],
-    "=": [".....", ".....", "#####", ".....", "#####", ".....", "....."], "*": [".....", "#.#.#", ".###.", "#####", ".###.", "#.#.#", "....."],
-    "#": [".#.#.", "#####", ".#.#.", ".#.#.", "#####", ".#.#.", "....."], "%": ["##..#", "##..#", "...#.", "..#..", ".#...", "#..##", "#..##"],
-    "_": [".....", ".....", ".....", ".....", ".....", ".....", ".....", "#####"], "@": [".###.", "#...#", "#.###", "#.#.#", "#.###", "#....", ".###."],
-    "•": ["...", "...", ".#.", "###", ".#.", "...", "..."], "·": [".", ".", ".", "#", ".", ".", "."], "~": [".....", ".....", ".#..#", "#.##.", ".....", ".....", "....."],
-    "$": [".###.", "#.#.#", "#.#..", ".###.", "..#.#", "#.#.#", ".###."], "<": ["...#", "..#.", ".#..", "#...", ".#..", "..#.", "...#"], ">": ["#...", ".#..", "..#.", "...#", "..#.", ".#..", "#..."],
-  };
-  const MARCA = { "́": ["..#", ".#."], "̀": ["#..", ".#."], "̂": [".#.", "#.#"], "̃": [".#.#", "#.#."], "̈": ["#.#"] };
-  const ACENTO = { "á": "á", "à": "à", "â": "â", "ã": "ã", "ä": "ä", "é": "é", "è": "è", "ê": "ê", "ë": "ë",
-    "í": "í", "ì": "ì", "î": "î", "ï": "ï", "ó": "ó", "ò": "ò", "ô": "ô", "õ": "õ", "ö": "ö",
-    "ú": "ú", "ù": "ù", "û": "û", "ü": "ü", "ñ": "ñ", "Á": "Á", "À": "À", "Â": "Â", "Ã": "Ã", "Ä": "Ä",
-    "É": "É", "Ê": "Ê", "Í": "Í", "Ó": "Ó", "Ô": "Ô", "Õ": "Õ", "Ö": "Ö", "Ú": "Ú", "Ü": "Ü", "Ñ": "Ñ" };
-  // um glifo da 5x7: {adv, w, h, dx, dy, bits} no mesmo formato da fonte lida (dy = linha do topo em relacao a base)
-  function glifo57(ch, bold, tab) {
-    const k = '5' + (bold ? 'b' : '') + (tab ? 't' : '') + ch;
-    let g = GC.get(k);
-    if (g) return g;
-    let rows = F57[ch], marca = null, cedilha = false;
-    if (!rows && ACENTO[ch]) { rows = F57[ACENTO[ch][0]]; marca = MARCA[ACENTO[ch][1]]; }
-    if (!rows && (ch === 'ç' || ch === 'Ç')) { rows = F57[ch === 'ç' ? 'c' : 'C']; cedilha = true; }
-    if (!rows) return null;
-    const w0 = rows[0].length, maius = ch === ch.toUpperCase() && ch !== ch.toLowerCase();
-    const top = marca ? (maius ? -2 : 0) : 0;                      // a marca das maiusculas sobe 2 linhas acima delas
-    const nrows = Math.max(rows.length, cedilha ? 9 : 0);
-    const W = w0 + (bold ? 1 : 0), Hh = nrows - top;
-    const bits = new Uint8Array(W * Hh);
-    rows.forEach((l, j) => [...l].forEach((q, i) => {
-      if (q !== '#') return;
-      bits[(j - top) * W + i] = 1;
-      if (bold && (i + 2 >= w0 || l[i + 2] !== '#') && (i + 1 >= w0 || l[i + 1] !== '#')) bits[(j - top) * W + i + 1] = 1;
-    }));
-    if (marca) {
-      const mw = marca[0].length, mx = Math.floor((w0 - mw) / 2), my = maius ? 0 : (marca.length === 1 ? 1 : 0);
-      // nas minusculas a marca fica no lugar do pingo (linhas 0 e 1), apagando o que a letra tinha ali
-      if (!maius) for (let j = 0; j < 2; j++) for (let i = 0; i < W; i++) bits[(j - top) * W + i] = 0;
-      marca.forEach((l, j) => [...l].forEach((q, i) => { if (q === '#') bits[(my + j) * W + mx + i] = 1; }));
-    }
-    if (cedilha) { const cx = Math.floor(w0 / 2); bits[(7 - top) * W + cx] = 1; bits[(8 - top) * W + cx - 1] = 1; }
-    g = { adv: W + 1, w: W, h: Hh, dx: 0, dy: top - 7, bits };
-    if (tab && /[0-9]/.test(ch) && w0 < 5) {            // o digito estreito no passo fixo: centrado na caixa de 5
-      const Wt = 5 + (bold ? 1 : 0), o = Math.floor((5 - w0) / 2), b2 = new Uint8Array(Wt * Hh);
-      for (let j = 0; j < Hh; j++) for (let i = 0; i < W; i++) b2[j * Wt + i + o] = bits[j * W + i];
-      g = { adv: Wt + 1, w: Wt, h: Hh, dx: 0, dy: top - 7, bits: b2 };
-    }
-    GC.set(k, g);
-    return g;
-  }
-  const gl = (fk, ch) => (fk === 'f' || fk === 'fb' || fk === 'ft') ? (glifo57(ch, fk !== 'f', fk === 'ft') || glifo('v', ch)) : glifo(fk, ch);
-  const larg = (fk, s, bold) => [...s].reduce((t, ch) => t + gl(fk, ch).adv + (bold ? 1 : 0), 0);
-
-  // ---------------- o pincel: um buffer de celulas com recorte e escurecimento
-  function pincel(W, H) { return { u: new Uint32Array(W * H), W, H, cx0: 0, cy0: 0, cx1: W, cy1: H, dim: 1 }; }
-  function px(P, x, y, c) {
-    x |= 0; y |= 0;
-    if (x < P.cx0 || y < P.cy0 || x >= P.cx1 || y >= P.cy1 || !c) return;
-    if (P.dim !== 1) c = esc(c, P.dim);
-    const a = c >>> 24, i = y * P.W + x;
-    if (a === 255) { P.u[i] = c; return; }
-    const o = P.u[i], oa = o >>> 24;
-    if (!oa) { P.u[i] = c; return; }
-    const k = a / 255, mix = s => (((c >> s) & 255) * k + ((o >> s) & 255) * (1 - k)) | 0;
-    P.u[i] = cor(mix(0), mix(8), mix(16), Math.max(oa, a));
-  }
-  const ret = (P, x0, y0, x1, y1, c) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) px(P, x, y, c); };
-  const recorte = (P, x0, y0, x1, y1) => { P.cx0 = Math.max(0, x0); P.cy0 = Math.max(0, y0); P.cx1 = Math.min(P.W, x1); P.cy1 = Math.min(P.H, y1); };
-  const solto = P => { P.cx0 = 0; P.cy0 = 0; P.cx1 = P.W; P.cy1 = P.H; };
-  function texto(P, fk, s, x, yb, c, o = {}) {
-    const passa = (k, dx, dy) => {
-      let pen = x;
-      for (const ch of s) {
-        const g = gl(fk, ch);
-        for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) if (g.bits[j * g.w + i]) {
-          const X = pen + g.dx + i + dx, Y = yb + g.dy + j + dy;
-          px(P, X, Y, k);
-          if (o.bold) px(P, X + 1, Y, k);
-        }
-        pen += g.adv + (o.bold ? 1 : 0) + (o.esp || 0);
-      }
-      return pen;
-    };
-    if (o.sombra) passa(o.sombra, 0, 1);
-    return passa(c, 0, 0);
-  }
-  // a caixa com contorno, quinas em degrau de n, a luz em cima e a esquerda e a sombra embaixo e a direita
-  function caixa(P, x0, y0, x1, y1, face, luz, somb, n = 1, contorno = O) {
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-      const dx = Math.min(x - x0, x1 - 1 - x), dy = Math.min(y - y0, y1 - 1 - y);
-      if (dx + dy < n) continue;
-      if (dx + dy === n || dx === 0 || dy === 0) { px(P, x, y, contorno); continue; }
-      const l = x - x0 === 1 || y - y0 === 1 || dx + dy === n + 1 && (x - x0 < 3 && y - y0 < 3);
-      const s = x1 - 1 - x === 1 || y1 - 1 - y === 1;
-      px(P, x, y, s ? somb : l ? luz : face);
-    }
-  }
-  function sombraCaixa(P, x0, y0, x1, y1, dx, dy, n = 1) {
-    for (let y = y0 + dy; y < y1 + dy; y++) for (let x = x0 + dx; x < x1 + dx; x++) {
-      const qx = x - dx, qy = y - dy, ex = Math.min(qx - x0, x1 - 1 - qx), ey = Math.min(qy - y0, y1 - 1 - qy);
-      if (ex + ey < n) continue;
-      const dentro = x >= x0 && x < x1 && y >= y0 && y < y1 && Math.min(x - x0, x1 - 1 - x) + Math.min(y - y0, y1 - 1 - y) >= n;
-      if (!dentro) px(P, x, y, SOMBRA);
-    }
-  }
-  function disco(P, x0, y0, R, f, sombra) {
-    for (let y = Math.floor(y0 - R - 2); y <= Math.ceil(y0 + R + 3); y++) for (let x = Math.floor(x0 - R - 2); x <= Math.ceil(x0 + R + 3); x++) {
-      const dx = x + .5 - x0, dy = y + .5 - y0, r = Math.hypot(dx, dy);
-      if (r > R + 1) { if (sombra && Math.hypot(dx - sombra[0], dy - sombra[1]) <= R + 1) px(P, x, y, SOMBRA); continue; }
-      if (r > R) { px(P, x, y, O); continue; }
-      px(P, x, y, f(dx, dy, r));
-    }
-  }
-  const esfera = (c, luz, somb, R) => (dx, dy) => (dx + dy) / R > .55 ? somb : Math.hypot(dx + R * .4, dy + R * .4) < R * .38 ? luz : c;
-  // a esfera em tres massas: o brilho pequeno em cima a esquerda, o meio-tom e o crescente de sombra embaixo a direita
-  const esfera3 = (c, luz, somb, R, hb = 1.1) => (dx, dy) => {
-    const r = Math.hypot(dx, dy), k = (dx + dy) / (r * Math.SQRT2 || 1);
-    if (Math.hypot(dx + R * .42, dy + R * .42) < Math.max(hb, R * .2)) return luz;
-    if ((r > R - 1.7 && k > .25) || (dx + dy) / R > 1.05) return somb;
-    return c;
-  };
-
-  // ---------------- os glifos desenhados a mao (plaquinha e icones)
-  const RITMELLI = { V: ["##.##", "##.##", "##.##", ".###.", "..#.."], I: ["##", "##", "##", "##", "##"],
-    T: ["######", "..##..", "..##..", "..##..", "..##.."], R: ["####.", "##.##", "####.", "##.#.", "##.##"],
-    O: [".###.", "##.##", "##.##", "##.##", ".###."], L: ["##...", "##...", "##...", "##...", "#####"], A: [".###.", "##.##", "#####", "##.##", "##.##"],
-    M: ["##...##", "###.###", "##.#.##", "##...##", "##...##"], E: ["#####", "##...", "####.", "##...", "#####"] };
-  const MIUDA = { "3": ["###", "..#", ".##", "..#", "###"], "4": ["#.#", "#.#", "###", "..#", "..#"], "5": ["###", "#..", "###", "..#", "###"],
-    "/": ["..#", "..#", ".#.", "#..", "#.."], R: ["##.", "#.#", "##.", "#.#", "#.#"], P: ["##.", "#.#", "##.", "#..", "#.."],
-    M: ["#...#", "##.##", "#.#.#", "#...#", "#...#"], " ": [".."] };
-  const lg = (t, f) => [...t].reduce((s, ch, i) => s + f[ch][0].length + (i ? 1 : 0), 0);
-  function mapa(P, t, f, x, y, c) {
-    for (const ch of t) { const g = f[ch]; g.forEach((l, j) => [...l].forEach((q, i) => { if (q === '#') px(P, x + i, y + j, c); })); x += g[0].length + 1; }
-  }
-  const ICONE = {
-    ant: ["##.....#", "##....##", "##...###", "##..####", "##.#####", "##.#####", "##..####", "##...###", "##....##", "##.....#"],
-    prox: ["#.....##", "##....##", "###...##", "####..##", "#####.##", "#####.##", "####..##", "###...##", "##....##", "#.....##"],
-    tocar: ["#..........", "###........", "####.......", "######.....", "#######....", "#########..", "##########.", "###########",
-            "##########.", "#########..", "#######....", "######.....", "####.......", "###........", "#.........."],
-    pausar: ["###...###", "###...###", "###...###", "###...###", "###...###", "###...###", "###...###", "###...###", "###...###",
-             "###...###", "###...###", "###...###", "###...###"],
-  };
-  const icone = (P, nome, cx, cy, c, k = 1) => {
-    const g = ICONE[nome], w = g[0].length * k, h = g.length * k, x0 = Math.round(cx - w / 2), y0 = Math.round(cy - h / 2);
-    g.forEach((l, j) => [...l].forEach((q, i) => { if (q === '#') ret(P, x0 + i * k, y0 + j * k, x0 + (i + 1) * k, y0 + (j + 1) * k, c); }));
-  };
 
   // ================= o mixer: painel de metal escovado com os VUs, os volumes em pe, as chaves do set, o crossfader e a
   // placa da transicao automatica
@@ -596,10 +365,9 @@
   // palco, o Windows a 125%): o do fone tem um texto curto so para ele, e o do label segue para o resto
   const TEXTO_DESENHADO = { 'f-mon': I18N.t('mixer.recordInHeadphonesShort') };
   // como os rotulos dos volumes saem: a fonte (8 ou 10 de altura), o espaco entre letras, a cor e o filete claro embaixo
-  // (gravado); window.MX_ROT troca na hora, para comparar
+  // (gravado)
   const ROT0 = { alt: 8, esp: 2, cor: [46, 33, 26], grav: true };   // 4 + 2: mais espaco e gravado (escolha dele, 06/11)
   const PLACA0 = { esp: 2, alt: 8, linhas: 1, folga: false, grav: false };   // 1: mais espaco entre as letras (escolha dele, 06/11)
-  window.mxRedesenha = () => { if (mx) mx.chaveE = ''; };
   const relM = (el, D) => { const r = rectP(el); return { x0: Math.round((r.left - D.left) / 2), y0: Math.round((r.top - D.top) / 2), x1: Math.round((r.right - D.left) / 2), y1: Math.round((r.bottom - D.top) / 2), h: r.height, w: r.width }; };
   const vis = el => el && !el.hidden && el.offsetParent !== null && getComputedStyle(el).display !== 'none';
   function preparaMx(rec) {
@@ -670,7 +438,7 @@
       };
       for (const e of Object.values(m.txt || {})) e.style.display = 'none';
       // as linhas de cada rotulo antes, para todos ficarem com o meio na mesma altura (o de uma linha no meio do de duas)
-      const RT = Object.assign({}, ROT0, window.MX_ROT || {}), FR = RT.alt === 10 ? F10 : F8, lg = t => largB(t, FR, RT.esp);
+      const RT = { ...ROT0 }, FR = RT.alt === 10 ? F10 : F8, lg = t => largB(t, FR, RT.esp);
       const AL = FR.h;
       let LSr = LS, LH = AL + 4;   // o pixel da letra e a distancia entre as linhas dos rotulos (a placa segue no LS)
       const quebra8 = t => {
@@ -718,7 +486,7 @@
         // vazio pelo meio do alfa
         let cv = m.placaCv;
         if (!cv) { cv = document.createElement('canvas'); cv.className = 'mx-txt mx-placa-px'; cv.setAttribute('aria-hidden', 'true'); m.rec.appendChild(cv); m.placaCv = cv; }
-        const PL = Object.assign({}, PLACA0, window.MX_PLACA || {}), FP = PL.alt === 10 ? F10 : F8, lp = t_ => largB(t_, FP, PL.esp);
+        const PL = { ...PLACA0 }, FP = PL.alt === 10 ? F10 : F8, lp = t_ => largB(t_, FP, PL.esp);
         const t = (m.auto.textContent || '').trim().toUpperCase(), ls = PL.linhas === 2 ? t.split(/\s+/) : [t];
         // (r09) 1 fileira vazia em cima (h0 + 1, o canvas 1 pixel acima): o top cai em 1/64 de px do layout, fora da
         // tela, e o Chrome estica a fileira 0 em 1 px de tela; com ela vazia, o acento do A e do til deixa de engordar
@@ -850,10 +618,9 @@
   const COSTURA = cor(236, 212, 168), FURO = cor(92, 42, 18), PLACA = { face: cor(239, 229, 208), luz: cor(250, 243, 228), somb: cor(204, 168, 116), dir: cor(224, 206, 174) };
   function preparaPads(sec) {
     if (pd && pd.sec === sec) return pd;
-    const cv = document.createElement('canvas'), nm = document.createElement('canvas');
-    cv.className = 'pads-px'; nm.className = 'pads-nomes';
-    for (const c of [cv, nm]) { c.setAttribute('aria-hidden', 'true'); sec.prepend(c); }
-    pd = { sec, cv, ctx: cv.getContext('2d'), nm, chave: '' };
+    const cv = document.createElement('canvas');
+    cv.className = 'pads-px'; cv.setAttribute('aria-hidden', 'true'); sec.prepend(cv);
+    pd = { sec, cv, ctx: cv.getContext('2d'), chave: '' };
     sec.classList.add('px-ok');
     return pd;
   }
@@ -1039,13 +806,10 @@
     });
     const dT = (devicePixelRatio || 1) * PALCO.k, LS = Math.max(Math.round(dT), Math.ceil((devicePixelRatio || 1) - 1e-6)) / dT;
     const tit = ((p.sec.querySelector('h2') || {}).textContent || I18N.t('pads.title')).trim();
-    // os nomes na letra normal estreita, a da maleta (escolha dele, 06/11: a de pixel cortava em 4 letras no notebook);
-    // a de pixel fica pelo window.PAD_NOMES = 'pixel'
-    const modo = window.PAD_NOMES === 'pixel' ? 'pixel' : 'vetor';
-    p.sec.classList.toggle('nomes-vetor', modo === 'vetor');
+    p.sec.classList.add('nomes-vetor');
     // (r05) o nome que nao cabe corta na palavra, sem reticencia ("Buzina", nao "Buzina ..."): o texto do elemento fica
     // inteiro (leitor de tela e o title do botao), o curto vai no data-curto e o CSS mostra so ele
-    if (modo === 'vetor') for (const n of p.sec.querySelectorAll('.pad-nome')) {
+    for (const n of p.sec.querySelectorAll('.pad-nome')) {
       const cheio = n.textContent, chave = cheio + '|' + n.clientWidth;
       if (!n.clientWidth || n.dataset.medido === chave) continue;
       n.dataset.medido = chave; delete n.dataset.curto;
@@ -1057,9 +821,8 @@
       n.dataset.curto = pal.slice(0, Math.max(1, k)).join(' ');
     }
     const altN = Math.round(((faces.find(f => f.N) || {}).N || { h: 20 }).h / 2);
-    const chave = [modo, altN, W, H, LS, tit, fontesMx, faces.map(f => [f.F.x0, f.F.y0, f.F.x1, f.N ? f.N.y0 : '', f.nome, f.cor, f.aceso, f.aperta, f.vazio].join(',')).join(';')].join('|');
+    const chave = [altN, W, H, LS, tit, fontesMx, faces.map(f => [f.F.x0, f.F.y0, f.F.x1, f.N ? f.N.y0 : '', f.nome, f.cor, f.aceso, f.aperta, f.vazio].join(',')).join(';')].join('|');
     if (chave === p.chave) return;
-    const geoNomes = [modo, altN, W, H, LS, faces.map(f => [f.F.x0, f.N ? f.N.y0 : '', f.nome].join(',')).join(';')].join('|');
     p.chave = chave;
     const P = pincel(W + M_, H + M_);
     sombraCaixa(P, 0, 0, W, H, 2, 2, 2);   // a sombra da caixa na parede
@@ -1105,34 +868,6 @@
     const img = p.ctx.createImageData(W + M_, H + M_);
     new Uint32Array(img.data.buffer).set(P.u);
     p.ctx.putImageData(img, 0, 0);
-    // os nomes: letra 5x7 de meia celula (nunca abaixo de 1 px CSS, sempre em pixel inteiro da tela), com 2 px de creme
-    // ate cada borda; o que nao cabe e cortado com '..'
-    if (geoNomes !== p.geoNomes) {
-      p.geoNomes = geoNomes;
-      const wc = Math.ceil(D.width / LS), hc = Math.ceil(D.height / LS);
-      p.nm.width = wc; p.nm.height = hc; p.nm.style.width = wc * LS + 'px'; p.nm.style.height = hc * LS + 'px';
-      p.nm.style.left = (Math.round(D.left * dT) / dT - D.left) + 'px'; p.nm.style.top = (Math.round(D.top * dT) / dT - D.top) + 'px';
-      const c = p.nm.getContext('2d'), im = c.createImageData(wc, hc);
-      const put = (X, Y) => { if (X < 0 || Y < 0 || X >= wc || Y >= hc) return; const q = 4 * (Y * wc + X); im.data[q] = 42; im.data[q + 1] = 24; im.data[q + 2] = 18; im.data[q + 3] = 255; };
-      const lw = t => larg('f', t) - 1;
-      const corta = (t, maxw) => { if (lw(t) <= maxw) return t; while (t && lw(t.trimEnd() + '..') > maxw) t = t.slice(0, -1); return t.trimEnd() + '..'; };
-      for (const f of faces) {
-        if (modo === 'vetor' || !f.N || !f.nome) continue;
-        const S = f.F.x1 - f.F.x0, maxw = Math.floor((2 * S - 12) / LS);
-        const linhas = [corta(f.nome, maxw)];
-        const meio = (2 * f.N.y0 + f.N.h / 2) / LS, bloco = 7 + 9 * (linhas.length - 1);
-        linhas.forEach((t, k) => {
-          const x0 = Math.round((2 * f.F.x0 + S) / LS - lw(t) / 2), yb2 = Math.round(meio - bloco / 2 - .5) + 7 + 9 * k;
-          let pen = x0;
-          for (const ch of t) {
-            const g = gl('f', ch);
-            for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) if (g.bits[j * g.w + i]) put(pen + g.dx + i, yb2 + g.dy + j);
-            pen += g.adv;
-          }
-        });
-      }
-      c.putImageData(im, 0, 0);
-    }
   }
   // ---------------- o visor de DJ: o gabinete de madeira com as cantoneiras de latao, a moldura escura do tubo em volta do
   // vidro, e no painel da direita a luz vermelha, os dois botoes e a grade do alto-falante. O vidro e o que ele mostra
@@ -1591,10 +1326,10 @@
   document.addEventListener('repinta-canvas', () => {
     if (mx) mx.chaveE = '';
     if (tvp) tvp.chave = '';
-    if (pd) pd.chave = pd.geoNomes = '';
+    if (pd) pd.chave = '';
   });
-  Promise.all([document.fonts.load('300px "Jersey 10"'), document.fonts.load('300px "VT323"'), document.fonts.load('700 12px "Archivo"')]).then(() => { fontesMx = true; fontesOk = true; });
+  Promise.all([document.fonts.load('300px "Jersey 10"'), document.fonts.load('300px "VT323"'), document.fonts.load('700 12px "Archivo"')]).then(() => { fontesMx = true; });
   const ligaMx = () => requestAnimationFrame(quadroMx);
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ligaMx); else ligaMx();
+  document.addEventListener('DOMContentLoaded', ligaMx);
 })();
 /* MIX-JS-FIM */

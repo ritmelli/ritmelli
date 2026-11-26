@@ -259,6 +259,18 @@ REFUSED = {
     "the i18n mark before the doctype": ("<!-- i18n --><!doctype html>", {}, "comes before the <!doctype html>"),
     "the i18n mark in a style before the real one": ("<style>/* <!-- i18n --> */</style>\n<!-- i18n -->", {},
                                                       "mark is read only as a comment of its own"),
+    "a module tag with another attribute": ('<script type="module" src="first.js" async></script>', {},
+                                            "is not <script src="),
+    "a module name in capitals": ('<script type="module" src="First.js"></script>', {}, "is not <script src="),
+    "a module of another theme": ('<script type="module" src="/t/other/m.js"></script>', {}, "is not <script src="),
+    "a module tagged twice": ('<script type="module" src="first.js"></script>\n'
+                              '<script type="module" src="first.js"></script>', {}, "is tagged twice"),
+    "a module that starts with #!": ('<script type="module" src="bang.js"></script>', {"bang.js": "#!x\n"},
+                                     "starts with #!"),
+    "an import map in the template": ('<script type="importmap">{"imports":{}}</script>', {},
+                                      "has a type the build does not read"),
+    "a module written in the template": ('<script type="module">import "first.js";</script>', {},
+                                         "has a type the build does not read"),
 }
 
 KEPT = {
@@ -293,5 +305,9 @@ KEPT = {
     "a sheet in a subfolder with data: and # urls": ('<link rel="stylesheet" href="sub/c.css">',
                                                      "<style>\na { b: url(data:image/png;base64,AA); c: "
                                                      "url(#d); e: url( 'data:x' ); "
-                                                     "f: url(HTTPS://example.com/x.png); }\n</style>")
+                                                     "f: url(HTTPS://example.com/x.png); }\n</style>"),
+    "a module, in the import map before its import": (
+        '<script type="module" src="first.js"></script>',
+        '<script type="importmap">{"imports":{"first.js":"data:text/javascript,%0Aconst first = 1;%0A"}}</script>'
+        '<script type="module">import "first.js";</script>'),
 }

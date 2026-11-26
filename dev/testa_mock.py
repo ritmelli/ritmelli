@@ -1151,7 +1151,7 @@ def the_theme_page_build():
         refused_read, error = theme_page.strict("<head>\n  <table></table>")
         theme_read, no_error = theme_page.strict(real.read_text(encoding="utf-8"))
         confere(refused_read is None and error[:2] == (2, 3) and error[2].startswith("the <table> is not one of the elements")
-                and no_error is None and len(theme_read.found) == 82,
+                and no_error is None and len(theme_read.found) == 83,
                 f"strict() gives the first refusal with its line and column, or the template it read ({error}, {no_error})")
         theme_page.build(real, real.parent / "i18n", "en")
         sheets = sum(tag == "style" for _, _, tag, _ in theme_page.file_tags(real.read_text(encoding="utf-8")))
@@ -1160,7 +1160,34 @@ def the_theme_page_build():
         after = theme_page.sheet_problem.cache_info()
         confere(sheets > 0 and after.misses == before.misses and after.hits - before.hits == sheets,
                 f"a second build of the unchanged page reuses the check of each of its {sheets} sheets ({before} -> {after})")
+        a_built_page_reads_only_its_own_modules(folder)
         asyncio.run(a_missing_file_answers_500(server, folder))
+
+
+def a_built_page_reads_only_its_own_modules(folder):
+    import theme_page
+    (folder / "first.js").write_text("const first = 1;\n", encoding="utf-8")
+    (folder / "second.js").write_text("export const second = '</script> <!-- # %';\n", encoding="utf-8")
+    built = theme_page.inline_files('<head>\n<script type="module" src="first.js"></script>\n'
+                                    '<script type="module" src="second.js"></script>\n', folder)
+    read, error = theme_page.strict(built, True)
+    confere(not error and read.texts == [("module", "\nconst first = 1;\n"),
+                                         ("module", "\nexport const second = '</script> <!-- # %';\n")],
+            f"a built page gives the text of each module of its import map, in order ({error or read.texts})")
+    confere(theme_page.strict(built)[1] is not None, "the import map the build writes is not read in a template")
+    imports, first = built.index('{"imports"'), '<script type="module">import "first.js";</script>'
+    altered = {
+        "another key in the map": built.replace('{"imports":', '{"scopes":{},"imports":', 1),
+        "a module at an address": built.replace("data:text/javascript,%0Aconst", "https://example.com/a.js#", 1),
+        "a module encoded otherwise": built.replace("%3C/script", "%3c/script", 1),
+        "a second map": built.replace(first, f'<script type="importmap">{built[imports:built.index("</script>")]}'
+                                             f'</script>{first}', 1),
+        "an import of a module out of the map": built.replace('import "second.js";', 'import "third.js";', 1),
+        "a module script that does more than import": built.replace('import "first.js";', 'import "first.js"; f();', 1),
+        "an import before the map": first + built,
+    }
+    for what, html in altered.items():
+        confere(theme_page.strict(html, True)[1] is not None, f"a built page with {what} is not read as built")
 
 
 async def a_missing_file_answers_500(server, folder):

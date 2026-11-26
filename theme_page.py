@@ -1,9 +1,11 @@
 import contextlib
 import functools
 import hashlib
+import json
 import os
 import re
 import sys
+import urllib.parse
 from html import unescape
 from html.entities import html5
 from pathlib import Path
@@ -12,6 +14,12 @@ import i18n
 
 THEMES = Path(__file__).resolve().parent / "themes"
 SCRIPT_TAG = re.compile(r'<script src="([^"]+)">')
+MODULE_NAME = "[a-z0-9][a-z0-9-]*(?:/[a-z0-9][a-z0-9-]*)*[.]js"
+MODULE_TAG = re.compile(rf'<script type="module" src="({MODULE_NAME})">')
+MODULE_IMPORT = re.compile(rf'import "({MODULE_NAME})";')
+MODULE_SOURCE = "data:text/javascript,"
+URL_KEPT = " !$&'()*+,;=:@/?[]{}^|`>~"
+BUILT_SCRIPTS = {"importmap": '<script type="importmap">', "module": '<script type="module">'}
 SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
 REFERENCE = re.compile(r"&(?:[A-Za-z][A-Za-z0-9]*;)?")
 CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
@@ -74,10 +82,26 @@ def place(html, i):
     return html.count("\n", 0, i) + 1, i - html.rfind("\n", 0, i)
 
 
+def import_map(modules):
+    return json.dumps({"imports": {name: MODULE_SOURCE + urllib.parse.quote(text, safe=URL_KEPT)
+                                   for name, text in modules.items()}}, separators=(",", ":"))
+
+
+def read_import_map(body):
+    with contextlib.suppress(ValueError, TypeError, AttributeError):
+        imports = json.loads(body)["imports"]
+        modules = {name: urllib.parse.unquote(url.removeprefix(MODULE_SOURCE), errors="strict")
+                   for name, url in imports.items()
+                   if re.fullmatch(MODULE_NAME, name) and url.startswith(MODULE_SOURCE)}
+        if len(modules) == len(imports) and import_map(modules) == body:
+            return modules
+    return None
+
+
 class Template:
     def __init__(self, html, built=False):
         self.html, self.found, self.elements, self.texts, self.svg, self.select = html, [], [], [], False, False
-        self.marks = set()
+        self.marks, self.built, self.modules = set(), built, None
         i = 0
         while i < len(html):
             i = self.token(i)
@@ -132,25 +156,44 @@ class Template:
             self.select = True
             return body
         if tag == "script" and "src" in attrs:
-            return self.file_tag(i, raw, SCRIPT_TAG, "script", "</script>", attrs)
+            module = attrs.get("type") == "module"
+            return self.file_tag(i, raw, MODULE_TAG if module else SCRIPT_TAG, "module" if module else "script",
+                                 "</script>", attrs)
         if tag == "link":
             return self.link(i, raw, attrs)
         if tag not in BODY:
             return body
-        if tag == "script" and attrs.get("type", "").strip(" \t\n\r\f").lower() not in SCRIPT_TYPES:
+        script_type = attrs.get("type", "").strip(" \t\n\r\f").lower() if tag == "script" else ""
+        if script_type not in SCRIPT_TYPES and not (self.built and BUILT_SCRIPTS.get(script_type) == raw):
             self.refuse(i, f"the tag {raw!r} has a type the build does not read for certain (a module can import "
                            f"files the page would fetch): write a <script> without the type, with "
-                           f"type=\"text/javascript\" or type=\"application/json\", or a file tag")
+                           f"type=\"text/javascript\" or type=\"application/json\", or a file tag, with "
+                           f"type=\"module\" for a module")
         if not (text := BODY[tag].match(self.html, body)):
             holds = "<!-- or " if tag == "script" else "a < or " if tag in TEXT_ONLY else ""
             self.refuse(i, f"the <{tag}> holds {holds}does not end in </{tag}>, which the browser can read differently")
         inside = text.group(0)[:-len(tag) - 3]
+        if script_type in BUILT_SCRIPTS:
+            self.built_script(i, script_type, inside)
+            self.record(tag, attrs)
+            return text.end()
         if tag == "style" and (problem := sheet_problem(inside, False)):
             self.refuse(i, f"the <style> has {problem}")
         if tag in ("script", "style"):
             self.record(tag, attrs)
             self.texts.append((tag, inside))
         return text.end()
+
+    def built_script(self, i, kind, inside):
+        if kind == "importmap":
+            if self.modules is not None or (modules := read_import_map(inside)) is None:
+                self.refuse(i, "the import map is not the one the build writes: one map, before the modules, with each "
+                               "module of the page as a data: address")
+            self.modules = modules
+            self.texts += [("module", text) for text in modules.values()]
+        elif not (m := MODULE_IMPORT.fullmatch(inside)) or m.group(1) not in (self.modules or {}):
+            self.refuse(i, f"the module script {inside[:60]!r} is not the import of a module of the page's import map "
+                           f"that the build writes")
 
     def listed(self, i, written, tag):
         if tag not in (SVG_ELEMENTS if self.svg else HTML_ELEMENTS):
@@ -175,10 +218,14 @@ class Template:
     def file_tag(self, i, raw, canonical, kind, end, attrs):
         written = canonical.fullmatch(raw)
         if not written or not self.html.startswith(end, i + len(raw)):
-            self.refuse(i, f"the tag {raw!r} is not <script src=\"...\"></script> or <link rel=\"stylesheet\" "
-                           f"href=\"...\">, the only file tags the page puts inline")
-        self.found.append((i, i + len(raw) + len(end), kind, unescape(written.group(1))))
-        self.record("script" if kind == "script" else "link", attrs)
+            self.refuse(i, f"the tag {raw!r} is not <script src=\"...\"></script>, <script type=\"module\" "
+                           f"src=\"name.js\"></script> with a name of lower-case letters, digits, - and / or <link "
+                           f"rel=\"stylesheet\" href=\"...\">, the only file tags the page puts inside itself")
+        name = unescape(written.group(1))
+        if kind == "module" and any(k == "module" and n == name for _, _, k, n in self.found):
+            self.refuse(i, f"the module {name} is tagged twice: a module goes in the import map once")
+        self.found.append((i, i + len(raw) + len(end), kind, name))
+        self.record("link" if kind == "style" else "script", attrs)
         return i + len(raw) + len(end)
 
     def end_tag(self, tag, i):
@@ -246,22 +293,31 @@ def utf8_text(path, name):
 
 
 def inline_files(html, folder, places=None):
-    parts, done = [], 0
+    parts, done, modules, slot = [], 0, {}, None
     for n, (start, end, tag, name) in enumerate(file_tags(html)):
         try:
-            parts += [html[done:start], f"<{tag}>\n{file_text(folder, tag, name)}</{tag}>"]
+            text = "\n" + file_text(folder, tag, name)
         except ThemePageError as ex:
             raise ThemePageError(str(ex), places[n] if places else place(html, start)) from ex
+        parts.append(html[done:start])
+        if tag == "module":
+            slot = len(parts) if slot is None else slot
+            modules[name] = text
+            parts.append(f'{BUILT_SCRIPTS["module"]}import "{name}";</script>')
+        else:
+            parts.append(f"<{tag}>{text}</{tag}>")
         done = end
+    if modules:
+        parts.insert(slot, f'{BUILT_SCRIPTS["importmap"]}{import_map(modules)}</script>')
     return "".join(parts) + html[done:]
 
 
 def file_text(folder, tag, name):
     path, text = theme_file(folder, name)
-    if tag == "script" and text.startswith("#!"):
+    if tag in ("script", "module") and text.startswith("#!"):
         raise ThemePageError(f"{name} starts with #!, which only a script file read on its own allows: remove that "
                              f"line")
-    if closes := CLOSES_ELEMENT[tag].search(text):
+    if (closes := CLOSES_ELEMENT.get(tag)) and (closes := closes.search(text)):
         raise ThemePageError(f"{name} has {closes.group(0)}, which its <{tag}> cannot hold")
     if tag == "style" and (problem := sheet_problem(text, path.parent != folder.resolve())):
         raise ThemePageError(f"{name} has {problem}")

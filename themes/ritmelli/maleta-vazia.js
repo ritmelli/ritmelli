@@ -2,6 +2,7 @@
 /* (r09) o aviso de vazio do A seguir na letra das telas dos toca-discos (a 5x7 do deck, 1 pixel
    da letra = 1 celula), num canvas de 1 px por celula mostrado a 2x, sem suavizar; o texto do DOM segue por cima, transparente.
    Cada linha centrada no eixo da maleta; o titulo na negrita (a do "Nada no prato"), a dica na regular, a sombra de 1 celula */
+import { deckGlyphs } from "deck.js";
 (() => {
   const BR = [251, 239, 217], DICA = [176, 160, 138], SOMB = [26, 11, 4];
   // do topo do aviso (a linha do chao da bandeja) ao topo das maiusculas, em px do palco; de base a base, em celulas
@@ -15,10 +16,10 @@
     return gulosa(lo);
   }
   function desenha() {
-    const p = document.getElementById('fila-vazia'), L = window.PX_LETRA, mal = document.querySelector('.fila-parede.maleta');
+    const p = document.getElementById('fila-vazia'), L = deckGlyphs, mal = document.querySelector('.fila-parede.maleta');
     if (!p) return;
     const cv0 = p.querySelector('canvas.vazia-px');
-    if (!document.body.classList.contains('mesa-dj') || p.hidden || !L || !L.pronto() || !mal || !mal.offsetWidth || mal.offsetParent !== p.offsetParent) {
+    if (!document.body.classList.contains('mesa-dj') || p.hidden || !L.ready() || !mal || !mal.offsetWidth || mal.offsetParent !== p.offsetParent) {
       p.classList.remove('px-ok'); if (cv0) cv0.remove(); return;
     }
     const b = p.querySelector('b'), tit = (b ? b.textContent : '').trim();

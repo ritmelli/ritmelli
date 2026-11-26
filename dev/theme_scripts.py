@@ -148,7 +148,7 @@ async def page_scripts(tab):
     found = []
     for s in tab.scripts:
         aux = s.get("executionContextAuxData") or {}
-        if aux.get("isDefault") and so_mock.mesma_origem(s["url"], tab.base):
+        if aux.get("isDefault") and not s.get("isModule") and so_mock.mesma_origem(s["url"], tab.base):
             name, source = await script_name(tab, s)
             found.append((name or f"index.html:{s['startLine'] + 1}", source))
     return found
@@ -177,7 +177,8 @@ async def checks(tab):
     await missing_script.open_page(tab)
     await tab.tab_reaches(lambda: tab.loads >= 1, PAGE_READY_S)
     ready = await until(tab, "({mesa: typeof MESA !== 'undefined' && MESA.montada, online: typeof S !== 'undefined'"
-                             " && S.online, scripts: document.scripts.length})", "s.mesa && s.online", PAGE_READY_S)
+                             " && S.online, scripts: [...document.scripts].filter(s => !['module', 'importmap']"
+                             ".includes(s.type)).length})", "s.mesa && s.online", PAGE_READY_S)
     results = []
 
     for title, sources, expected in SAMPLES:
@@ -224,7 +225,7 @@ async def checks(tab):
 
 def inline_scripts(raiz):
     found, _ = missing_script.page_files(raiz, missing_script.THEME)
-    files = {text: name for kind, name, text in found or [] if kind == "script"}
+    files = {text: name for kind, name, text in found or [] if kind in ("script", "module")}
     theme = raiz / "themes" / "ritmelli"
     for name in INLINE_MARK.findall((theme / "index.html").read_text(encoding="utf-8")):
         files["\n" + (theme / name).read_text(encoding="utf-8")] = name

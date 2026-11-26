@@ -35,7 +35,13 @@ A página do tema chega inteira numa resposta só. O `index.html` lista os arqui
 que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="stylesheet" href="arquivo.css">` por
 folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `server.py` chama) troca cada um por um
 `<script>` ou um `<style>` com o texto do arquivo, sem a marca de ordem de bytes (BOM) do começo, e a página não pede ao
-servidor nenhum script nem nenhuma folha: não existe página com um arquivo faltando. A montagem lê o modelo inteiro por
+servidor nenhum script nem nenhuma folha: não existe página com um arquivo faltando. Um módulo entra por
+`<script type="module" src="nome.js"></script>`, com o nome em minúsculas, algarismos, `-` e `/`. A montagem põe, no
+lugar da primeira tag de módulo, um `<script type="importmap">` com cada módulo da página num endereço `data:` (o texto
+do arquivo em percent-encoding), e troca cada tag de módulo por um `<script type="module">import "nome.js";</script>`.
+Um módulo importa o outro pelo nome (`import { glyphs } from "pixel.js";`), que o mapa resolve dentro da própria
+página. A gramática lê o mapa e as linhas de import só na página montada (o `strict(html, built=True)`), e só se o mapa
+for, byte a byte, o que a montagem escreveria com os mesmos módulos. A montagem lê o modelo inteiro por
 uma gramática estrita, que só aceita texto sem `<`, a tag de abertura com atributos `nome="valor"` (ou com aspas
 simples, ou sem aspas, sem retorno de carro nem NUL no valor) separados por espaço ASCII, a tag de fim `</nome>`, o
 comentário `<!-- texto sem -- -->` e o `<!doctype html>`; o texto do `<script>`, do `<style>`, do `<title>` e do
@@ -62,11 +68,13 @@ Depois da gramática, a montagem ainda recusa, e o que escrever no lugar:
 - o arquivo, ou o próprio `index.html`, que não é texto UTF-8 ou que não se deixa ler: salvá-lo em UTF-8, ou fechar o
   que o segura;
 - a tag de arquivo com outro atributo, outra ordem, maiúsculas ou algo antes do fim: exatamente
-  `<script src="arquivo.js"></script>` ou `<link rel="stylesheet" href="arquivo.css">`;
+  `<script src="arquivo.js"></script>`, `<script type="module" src="nome.js"></script>` ou
+  `<link rel="stylesheet" href="arquivo.css">`; e o mesmo módulo em duas tags: uma só;
 - um `&` no `src` ou no `href` de um `<script>`, de um `<style>` ou de um `<link>` que não abre uma referência nomeada
   inteira, e toda referência numérica: o nome sem `&`, ou com `&amp;`; e um `&` no `rel`, no `type` ou no `as`: o valor
   escrito por extenso;
-- o script com `</script` ou `<!--` ou que começa com `#!`, e a folha com `</style`: o texto sem eles;
+- o script com `</script` ou `<!--` ou que começa com `#!`, o módulo que começa com `#!` e a folha com `</style`: o
+  texto sem eles;
 - a folha, de arquivo ou escrita na página, com `@import`, mesmo num comentário ou numa string (a folha se lê com os
   escapes de CSS decodificados): uma tag de arquivo por folha;
 - a folha de outra pasta com um `url()` relativo, uma `\` ou um `image-set(`: só `url()` simples, com `https://`,
@@ -74,7 +82,8 @@ Depois da gramática, a montagem ainda recusa, e o que escrever no lugar:
 - o `<link rel="modulepreload">`, o `<link rel="prefetch">` e o `<link rel="preload">` de um script ou de uma folha: a
   tag de arquivo;
 - o `<script>` escrito na página com um `type` que não é `text/javascript` nem `application/json` (o `module` importa
-  arquivos): um `<script>` sem `type` ou com um desses dois, ou a tag de arquivo;
+  arquivos), e o `importmap` e o módulo escritos no modelo: um `<script>` sem `type` ou com um desses dois, a tag de
+  arquivo ou a tag de módulo;
 - toda tag dentro de um `<select>`, onde um navegador pode descartar ou mover o que a montagem leria (o Chrome de hoje
   guarda ali o `<link>` e o `<style>`; o leitor antigo do `<select>`, que outros navegadores ainda usam, descarta o
   `<link>`): o `<select>` vazio, preenchido pelo código do tema;
@@ -88,7 +97,9 @@ O `dev/testa_mock.py` confere cada caso da lista e cada forma fora da gramática
 sem tela, com os scripts bloqueados pelo cabeçalho `Content-Security-Policy: script-src 'none'` (o Chrome lê a página
 como com o JavaScript ligado, e o `<noscript>` como texto), o tema, a galeria e cada caso que a montagem aceita, e
 reprova quando os `<script>`, `<style>` e `<link>` do DOM, com o `src`, o `href`, o `rel` e o `type`, não são, na mesma
-ordem, os que a montagem leu: uma forma que a gramática aceita e o navegador lê de outro jeito vira falha de teste. O
+ordem, os que a montagem leu: uma forma que a gramática aceita e o navegador lê de outro jeito vira falha de teste.
+Ele abre também uma página montada com dois módulos, um importando o outro, com os scripts da página e os `data:`
+liberados, e reprova se eles não rodam ou se o Chrome pede ao servidor qualquer coisa além da página. O
 `dev/missing_script.py`, que o `--tela` também roda, lê a página e a galeria como o servidor as manda, nas duas línguas,
 de um `--mock` como o PC e de outro como o celular, pela mesma gramática da montagem (o `strict` do `theme_page.py`), e
 reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
@@ -96,7 +107,10 @@ faça ao servidor. O `dev/garden.py` conta as linhas de CSS e
 JS escritas no próprio `index.html` e guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código
 novo do tema vai num arquivo da pasta, e a contagem vai para o resumo do PR.
 
-Os scripts são clássicos, sem `defer`: rodam na ordem da lista, e o que um declara no alto fica à vista dos de depois.
+Os scripts clássicos, sem `defer`, rodam na ordem da lista, e o que um declara no alto fica à vista dos de depois. Os
+módulos rodam depois de todos os clássicos e antes do `DOMContentLoaded`, cada um com o escopo dele e no modo estrito:
+um módulo lê o que os clássicos declaram, mas um clássico não importa de um módulo. Por isso um arquivo vira módulo
+quando nenhum clássico lê os nomes dele, e o `i18n.js` e o `shared.js`, que todos leem, são os últimos.
 No `<head>`, logo depois dos textos que o servidor põe no `<!-- i18n -->`, vêm o `i18n.js` (o `I18N`, ver o
 [i18n.md](i18n.md)), o `shared.js` (o estado da página, `S`, o da mesa de DJ, `MESA`, e os ajudantes de todos: o `$`, o
 `el`, o `clamp`, o `reduz`, o `celular()`, o `toque()`, o `abrirMaleta()`, o `sombrear()`, o `dialogoAberto()`, o
@@ -118,10 +132,14 @@ código e os celulares conectados); o `update.js` (a versão nova); o `caps.js` 
 servidor); o `connection.js` (a conexão e o aviso de fora do ar); o `pairing.js` (o pareamento do celular); o
 `welcome.js` (as boas-vindas); o `ui-events.js` (o ponto que chama os binders das partes, e os ouvintes da página
 toda, como o teclado e o voltar); o `desk-buttons.js` (os botões da mesa de DJ); o `start.js` (a partida: monta a
-página e, no `DOMContentLoaded`, carrega e conecta); e os desenhos de pixel da mesa: o `letra-placa.js` (a letra das
-placas), o `prateleira.js` (o título e a contagem da plaqueta da prateleira), o `maleta-tit.js` (o título da placa da
-maleta), o `mesa-topo.js` (a plaqueta e as teclas do topo em largura par), o `deck.js` (os toca-discos), o
-`maleta-vazia.js` (o aviso de vazio do A seguir), o `mix.js` (o mixer) e o `pedal.js` (os pedais).
+página e, no `DOMContentLoaded`, carrega e conecta). Depois vêm os desenhos de pixel da mesa, que são módulos: o
+`letters.js` (as letras das placas e dos pedais), o `pixel.js` (o motor de pixel: as cores, o pincel, as caixas, os
+discos, as esferas, os ícones e as letras 5x7 e de bitmap, que o `glyphs()` monta com um cache por quem chama, com os
+glifos próprios dele), o `prateleira.js` (o título e a contagem da plaqueta da prateleira), o `maleta-tit.js` (o título
+da placa da maleta), o `mesa-topo.js` (a plaqueta e as teclas do topo em largura par), o `deck.js` (os toca-discos, que
+exporta a letra deles, o `deckGlyphs`), o `maleta-vazia.js` (o aviso de vazio do A seguir, na letra do `deck.js`), o
+`mix.js` (o mixer) e o `pedal.js` (os pedais). Os que esperavam o `DOMContentLoaded` só enquanto a página carregava
+esperam sempre, e rodam depois da partida, como antes.
 
 Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
 da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de

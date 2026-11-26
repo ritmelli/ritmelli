@@ -45,7 +45,6 @@ body.mesa-dj #tv.px-ok .tv-lado { padding-top: 12px; gap: 12px; }
 body.mesa-dj #tv.px-ok .tv-lado > * { visibility: hidden; }
 body.mesa-dj #tv.px-ok .tv-lado .lampada { width: 14px; height: 14px; }
 body.mesa-dj #tv.px-ok .tv-knob { width: 26px; height: 26px; }
-body.mesa-dj #pads > canvas.pads-nomes { position: absolute; z-index: 1; display: block; pointer-events: none; image-rendering: pixelated; }
 body:not(.mesa-dj) #pads > canvas { display: none; }
 body:not(.mesa-dj) #pads { translate: none !important; }
 body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome { opacity: 1; padding: 0 5px; font-family: "Archivo", sans-serif; font-weight: 700; font-size: 12px; font-stretch: 70%; line-height: 20px; letter-spacing: -.01em; text-align: center; color: #2A1812; background: none; border-image: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
