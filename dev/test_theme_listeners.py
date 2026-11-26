@@ -29,7 +29,6 @@ LOADED_S = 10.0
 
 
 async def read(tab, source):
-    await tab.cmd("Page.addScriptToEvaluateOnNewDocument", source=theme_listeners.RECORDER)
     loads = tab.loads
     await tab.cmd("Page.navigate", url="data:text/html," + urllib.parse.quote(source))
     await tab.tab_reaches(lambda: tab.loads > loads, LOADED_S)
@@ -37,6 +36,7 @@ async def read(tab, source):
 
 
 async def pages(tab):
+    await tab.cmd("Page.addScriptToEvaluateOnNewDocument", source=theme_listeners.RECORDER)
     return [await read(tab, PAGE % parts) for parts in ((MEDIA, PAIR), ("", PAIR), (MEDIA, ""))]
 
 
