@@ -595,12 +595,12 @@ def named(receiver, names):
             or (isinstance(receiver, ast.Attribute) and receiver.attr in names))
 
 
-def state_writes(module, tree, names, receivers):
+def state_writes(module, tree, names, receivers, undeclared=False):
     loop_names = loop_variable_names(tree)
     bindings = ModuleBindings(tree)
     return [(module, node.lineno, attr) for node, scope in lexical_nodes(tree, tree)
             for receiver, attr in written_attributes(node, loop_names, bindings, scope)
-            if attr in names and named(receiver, receivers)]
+            if (attr in names or undeclared and not attr.startswith("_")) and named(receiver, receivers)]
 
 
 def class_reaches(files, owner, classes):
@@ -614,11 +614,12 @@ def class_reaches(files, owner, classes):
                   + module_private_reaches(m, parsed(files[m]), owner.removesuffix(".py"), module_names))
 
 
-def owner_writes(files, owner, classes, receivers):
+def owner_writes(files, owner, classes, receivers, undeclared=False):
     names = instance_state(parsed(files.get(owner, "")), classes)
     if not names:
         return None
-    return sorted(r for m in root_modules(files, owner) for r in state_writes(m, parsed(files[m]), names, receivers))
+    return sorted(r for m in root_modules(files, owner)
+                  for r in state_writes(m, parsed(files[m]), names, receivers, undeclared))
 
 
 def library_reaches(files):
@@ -637,7 +638,7 @@ SEAMS = {
     "app_reaches": lambda files: class_reaches(files, "server.py", {"App"}),
     "automatico_reaches": lambda files: class_reaches(files, "automatico.py", {"Automatico"}),
     "library_reaches": library_reaches,
-    "app_writes": lambda files: owner_writes(files, "server.py", {"App"}, APP_NAMES),
+    "app_writes": lambda files: owner_writes(files, "server.py", {"App"}, APP_NAMES, undeclared=True),
     "engine_writes": lambda files: owner_writes(files, "engine.py", {"Engine", "MockEngine"}, ENGINE_NAMES),
 }
 
@@ -846,8 +847,9 @@ MODULE_KNOWN_MISSES = [
 STATE_OWNER = "class App:\n    def __init__(self):\n        self.x = []\n\n    @property\n    def p(self):\n        return 1\n"
 WRITES_CAUGHT = [
     ("an assignment", APP_NAMES, "def f(A):\n    A.x = 1\n"),
+    ("an attribute the App doesn't declare", APP_NAMES, "def f(A):\n    A.y = 1\n"),
     ("an augmented assignment", APP_NAMES, "def f(A):\n    A.x += [1]\n"),
-    ("one of a pair", APP_NAMES, "def f(A):\n    A.x, A.y = 1, 2\n"),
+    ("one of a pair", APP_NAMES, "def f(A, o):\n    A.x, o.y = 1, 2\n"),
     ("through self.app", APP_NAMES, "class Other:\n    def m(self):\n        self.app.x = 1\n"),
     ("an item", APP_NAMES, "def f(A):\n    A.x[0] = 1\n"),
     ("a slice", APP_NAMES, "def f(A):\n    A.x[1:] = []\n"),
@@ -875,7 +877,6 @@ WRITES_NOT_COUNTED = [
     ("a call of a public method", APP_NAMES, "def f(A):\n    A.change_queue(A.x.copy)\n"),
     ("another class's own attribute", APP_NAMES, "class Other:\n    def m(self):\n        self.x = 1\n"),
     ("an object that is not the App", APP_NAMES, "def f(o):\n    o.x = 1\n"),
-    ("an attribute the App does not have", APP_NAMES, "def f(A):\n    A.y = 1\n"),
 ]
 WRITES_KNOWN_MISSES = [
     ("the App under another name", APP_NAMES, "def f(server_app):\n    server_app.x = 1\n"),
@@ -894,7 +895,8 @@ def case_module_reaches(owner, other):
 
 
 def case_writes(receivers, other):
-    return len(state_writes("case.py", ast.parse(other), instance_state(ast.parse(STATE_OWNER), {"App"}), receivers))
+    return len(state_writes("case.py", ast.parse(other), instance_state(ast.parse(STATE_OWNER), {"App"}), receivers,
+                            receivers is APP_NAMES))
 
 
 def check_cases(what, count, caught, not_counted, misses):
