@@ -264,6 +264,7 @@ def file_near_the_end_of_a_silent_stream(A, E, readers):
             A.run_download(j, target)
     del A._abre_stream
     check(readers.wait("short1"), "the file that arrives near the end of a silent stream gets a reader of its own")
+    check(E.error is None, f"and the warning that it would play once the download finished leaves ({E.error})")
 
 
 def warning_after_another_record_took_the_platter(A, E, readers):
@@ -364,13 +365,13 @@ def audio_version_while_the_engine_switches(A, E, readers):
     real = A.automatico.head_held
     inside = []
 
-    def presa():
+    def check_held():
         inside.append(E._qlock.locked())
         if not inside[-1]:
             mix_until_the_switch(E)
         return real()
     v = {"youtube_id": "fffffffffff", "duration": 200, "title": "similar", "channel": "c"}
-    with A.fila_lock, mock.patch.object(A.automatico, "head_held", presa):
+    with A.fila_lock, mock.patch.object(A.automatico, "head_held", check_held):
         A.automatico._troca_audio("aaaaaaaaaaa", v)
     check(inside == [True], f"the audio version reads the pending switch and the held head in one stretch of the "
                             f"_qlock, where the engine cannot switch ({inside})")

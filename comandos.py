@@ -353,12 +353,12 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
             A.release_reservation(r, None, None if na_tela else ex)
         if not na_tela and (grupo is None or r.error is ex):
             raise
-        aviso = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
+        warning = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
                          title=r.x.get("title") or "?", reason=i18n.motivo(ex, 120))
         if na_tela:
-            E.set_error(aviso)
+            E.set_error(warning)
             return r.x
-        if not E.warn_on(None, aviso):
+        if not E.warn_on(None, warning):
             print(f"queue: {r.x.get('title')!r} failed after its advance was resolved: {ex}", file=sys.stderr, flush=True)
         return r.entrada
     if not tocou:  # a reserva foi invalidada no meio (o prato trocou, ou a entrada saiu da fila)

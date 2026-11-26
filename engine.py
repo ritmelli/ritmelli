@@ -3331,6 +3331,7 @@ class Engine:
                 dur = novo.get("duration") or 0
                 self.track = d.track = novo
                 d.ganho_alvo = alvo
+                self._error = None
                 if self._espera_arquivo != d.gen and (self.ended or d.eof_gen == d.gen or (dur and t >= dur - 2)):
                     gen = None  # no fim (ou quase): o leitor de agora termina o disco
                 else:

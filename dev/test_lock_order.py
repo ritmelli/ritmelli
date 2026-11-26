@@ -71,7 +71,12 @@ def nonblocking(call):
     return isinstance(first, ast.Constant) and first.value is False
 
 
+HOOKS = {}
+
+
 def function_table(trees):
+    HOOKS.clear()
+    HOOKS.update(hooks(trees))
     out = {}
     for module, tree in trees.items():
         for n in tree.body:
@@ -103,7 +108,23 @@ def resolve(table, call, module, cls):
             keys = [("automatico.py", "Automatico", name)]
         elif isinstance(v, ast.Attribute) and v.attr == "lib":
             keys = [("server.py", "Library", name)]
+    keys = [HOOKS.get(k, k) for k in keys]
     return [k for k in dict.fromkeys(keys) if k in table]
+
+
+def hooks(trees):
+    setters = {}
+    for f in ast.walk(trees.get("engine.py", ast.Module(body=[], type_ignores=[]))):
+        if (isinstance(f, ast.FunctionDef) and len(f.body) == 1 and isinstance(f.body[0], ast.Assign)
+                and isinstance(f.body[0].targets[0], ast.Attribute) and isinstance(f.body[0].value, ast.Name)):
+            setters[f.name] = f.body[0].targets[0].attr
+    out = {}
+    for call in ast.walk(trees.get("server.py", ast.Module(body=[], type_ignores=[]))):
+        if (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.func.attr in setters
+                and call.args and isinstance(call.args[0], ast.Lambda) and isinstance(call.args[0].body, ast.Call)
+                and isinstance(call.args[0].body.func, ast.Attribute)):
+            out[("engine.py", "Engine", setters[call.func.attr])] = ("server.py", "App", call.args[0].body.func.attr)
+    return out
 
 
 def summaries(table):
@@ -609,6 +630,15 @@ def main():
                    f"acquisitions, {followed} calls followed, {walked} callbacks; {bad})")
     check(used == set(order) | before, f"the code takes exactly the locks the model declares ({sorted(used)})")
     trees = {m: ast.parse(sources[m], m) for m in MODULES}
+    inside = sources["engine.py"].replace(
+        "                        self._espera_arquivo = gen\n                if waits and self._stream_silent is not None:\n"
+        "                    self._stream_silent(track)\n",
+        "                        self._espera_arquivo = gen\n                    if waits and self._stream_silent is not None:\n"
+        "                        self._stream_silent(track)\n")
+    bad, *_ = scan(dict(sources, **{"engine.py": inside}), order, before)
+    check(inside != sources["engine.py"] and any("_stream_refused" in b for b in bad),
+          f"with the reader handing a silent stream to the App while it holds the _qlock, the check fails, through the "
+          f"hook the App registers ({bad[:1]})")
     callers = caller_failures(trees)
     check(not callers, f"whoever calls the change_queue, the close_switches and the concilia holds the fila_lock, also "
                        f"up the calls to the entry points ({callers})")

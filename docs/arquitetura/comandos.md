@@ -142,11 +142,12 @@ O modelo TLA+ descreve as travas e o estado que elas guardam, e o TLC confere to
 posição do disco viram escolha não determinística, e os `qid` são simétricos (`SYMMETRY`). São duas configurações:
 
 - `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio, o vigia da
-  passagem, o tocar de outro disco, o esquecer da prateleira, duas trocas de lugar na fila (a entrada sai da frente e
-  volta) e o stream que abre sem dar áudio, com uma ou duas entradas e um job. Confere a ordem das travas; que nenhum
-  prato fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na prateleira) e o stream
-  recusado ou sem áudio; que o stream recusado só para ou troca o disco daquela tentativa; e que a entrada da virada
-  pendente tem a mesma versão que o prato toca (as duas corridas da #211).
+  passagem, o tocar de outro disco, o esquecer da prateleira, uma reserva de avanço em curso, duas trocas de lugar na
+  fila (a entrada sai da frente e volta) e o stream que abre sem dar áudio, com uma ou duas entradas e um job. Confere a
+  ordem das travas; que nenhum prato fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na
+  prateleira) e o stream recusado ou sem áudio; que o stream recusado só para ou troca o disco daquela tentativa; que a
+  entrada que uma reserva em curso vai tocar segue na versão que ela leu; e que a entrada da virada pendente tem a mesma
+  versão que o prato toca (as duas corridas da #211).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o
