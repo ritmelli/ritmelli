@@ -191,19 +191,22 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   ali. O tocar de um disco que baixa lê antes a prateleira, como o `tocar_entrada`: com o disco já ali, a troca fecha a
   virada pendente e publica o arquivo da prateleira, sem job e sem stream, e uma execução mostra que esse caminho chega
   ao prato (o `SwapLeavesTheShelfFileOff` quebra no `SwapPublishesTheFile`). O leitor do stream que chega ao fim
-  (`WithTheCleanEnd`, o `eof_gen == gen` do motor) faz a troca para o arquivo guardar o deck preparado, como o
-  `trocar_fonte`, que então não começa leitor novo nem cancela a passagem: uma execução confere todas as propriedades
-  com ele, outra mostra o mixer virando para esse deck (o `NoSwitchToAKeptDeck` quebra no `MixerSwitches`), e o mutante
-  que tira o deck nessa troca não chega lá. O arquivo no prato, como no código, não leva o job (o `dict(item, path=...)`
-  não tem a chave), e o download que termina só entrega o arquivo ao disco do job (`HandoverOnlyOntoTheJobsRecord`). A
-  troca de nome na prateleira (`WithTheRename`: a prateleira, depois o `update_track` sob o `_qlock`) corre contra o
-  download, o stream, a passagem e o tocar da prateleira: quando tudo para, o disco do prato tem o nome atual
-  (`PlatterHasTheCurrentName`), com um mutante por caminho: o `update_track` que põe um dicionário novo no prato, o
-  arquivo do download, o da passagem e o do tocar montados antes da trava, e o segundo deck que não recebe o nome. Três
-  execuções mostram, como falhas conhecidas da #303, o stream que abre, o disco de um job tocado enquanto baixa e o
-  stream que a passagem prepara, que levam o nome copiado antes e quebram o `NameIsCurrentOutsideARename` (fora de uma
-  troca de nome em curso, o disco do prato tem o nome atual); cada uma fica presa à ação do seu caminho, o último passo
-  do contraexemplo (o `action` do `Run`).
+  (`WithTheCleanEnd`) e o stream de um job que cai (`WithTheDrop`), que o motor marca do mesmo jeito (o `eof_gen ==
+  gen`), fazem a troca para o arquivo guardar o deck preparado, como o `trocar_fonte`, que então não começa leitor novo
+  nem cancela a passagem: uma execução confere todas as propriedades com o fim do stream, e duas mostram o mixer virando
+  para esse deck, uma em cada caminho (o `NoSwitchToAKeptDeck` quebra no `MixerSwitches`; o mixer do modelo vira a
+  qualquer hora em que há deck preparado, porque o tempo é escolha livre e o motor vira na marca da virada, que a troca
+  no fim não tira, mesmo sem áudio no deck preparado), e o mutante que tira o deck nessa troca não chega lá. Cada
+  testemunha (o `WITNESSES`) tem uma execução do código que passa na mesma configuração. O arquivo no prato, como no
+  código, não leva o job (o `dict(item, path=...)` não tem a chave), e o download que termina só entrega o arquivo ao
+  disco do job (`HandoverOnlyOntoTheJobsRecord`). A troca de nome na prateleira (`WithTheRename`: a prateleira, depois o
+  `update_track` sob o `_qlock`) corre contra o download, o stream, a passagem e o tocar da prateleira: quando tudo
+  para, o disco do prato tem o nome atual (`PlatterHasTheCurrentName`), com um mutante por caminho: o `update_track` que
+  põe um dicionário novo no prato, o arquivo do download, o da passagem e o do tocar montados antes da trava, e o
+  segundo deck que não recebe o nome. Três execuções mostram, como falhas conhecidas da #303, o stream que abre, o disco
+  de um job tocado enquanto baixa e o stream que a passagem prepara, que levam o nome copiado antes e quebram o
+  `NameIsCurrentOutsideARename` (fora de uma troca de nome em curso, o disco do prato tem o nome atual); cada uma fica
+  presa à ação do seu caminho, o último passo do contraexemplo (o `action` do `Run`).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o
@@ -217,47 +220,51 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   fora; e que toda reserva resolve, com justiça fraca.
 - `PassageFailure`: o vigia da passagem, o preparo que ele começa (que escolhe a fonte depois, como o `_prepara` com o
   `fonte_de`) e o motor que falha o deck preparado, com duas entradas, a cabeça que muda, a versão de áudio e o arquivo
-  que chega à prateleira a qualquer hora. A falha leva a chave do preparo que a gerou (o disco, a entrada, a fonte e o
+  que chega à prateleira a qualquer hora. A falha leva a chave do preparo que a gerou (a tocada, a entrada, a fonte e o
   registro da prateleira que ele escolheu, por identidade, porque um download de novo sai com o mesmo `id`, o mesmo nome
   de arquivo e às vezes o mesmo `added`, e as mudanças no registro (o nome, o `lufs`, as vezes tocadas) são no mesmo
   objeto: o `_prepara` a passa ao `Engine.preparar`, e o motor a devolve pelo `take_prepare_failure`), e o vigia guarda
-  essas chaves num conjunto, as do disco que toca (a chave leva o disco por identidade, `comandos.Identity`, e não pelo
-  `id`, que outro disco pode herdar), sem rotular a falha pelo que viu; ele lê a falha e tira o deck preparado para
-  outra entrada no mesmo trecho do `_qlock` (`take_prepare_failure(keep=)`), e o preparo confere a fonte que escolheu
-  contra o conjunto antes de abrir o stream ou o arquivo (o `fonte_de` recebe a mesma leitura da prateleira). A
-  prateleira ganha, perde e troca o arquivo a qualquer hora (os `Files` do modelo são downloads do mesmo arquivo; dois
-  só numa execução à parte, com uma fonte só). Confere que uma falha só bloqueia o preparo que a gerou
-  (`FailureBlocksOnlyItsPrepare`) e que a fonte que falhou não começa de novo (`NoRetryOfTheFailedSource`), com oito
-  mutantes: a falha só com a entrada, a falha com a chave da cabeça da fila, o preparo com a chave que o vigia pediu em
-  vez da fonte que ele escolheu, uma falha só guardada (a segunda apaga a primeira), o preparo que não confere a fonte
-  que escolheu, o deck de outra entrada tirado num segundo trecho do `_qlock` depois de ler a falha, o preparo que
-  confere a fonte que escolheu só pela entrada (e recusa o arquivo depois que o stream falhou) e a chave com o que dois
-  downloads do arquivo têm em comum, como o nome (e recusa o download que substitui um que falhou). O `dev/test_tla.py`
-  exige de cada spec uma execução do código que passa conferindo todas as invariantes, e da `LocksAndSwitch` e da
-  `PassageFailure` as do tamanho que o `WHOLE` pede, contando os membros distintos de cada conjunto nas constantes que
-  cada execução usa (a `PassageFailure`, uma com duas entradas, duas fontes e um arquivo e outra com duas entradas, uma
-  fonte e dois arquivos), que só mudam conjuntos, nunca o que liga um mutante.
+  essas chaves num conjunto, as da tocada de agora (o `tocada` da `Captura`, um contador do motor que muda quando, e só
+  quando, um disco novo entra no prato: o `load`, o `espera` e o `_vira`; a troca de fonte põe outro dicionário no prato
+  e o pulo começa uma linha nova, mas os dois seguem na mesma tocada), sem rotular a falha pelo que viu; ele lê a falha
+  e tira o deck preparado para outra entrada no mesmo trecho do `_qlock` (`take_prepare_failure(keep=)`), e o preparo
+  confere a fonte que escolheu contra o conjunto antes de abrir o stream ou o arquivo (o `fonte_de` recebe a mesma
+  leitura da prateleira). A prateleira ganha, perde e troca o arquivo a qualquer hora (os `Files` do modelo são
+  downloads do mesmo arquivo; dois só numa execução à parte, com uma fonte só). Numa execução à parte (`Last = 1`, uma
+  fonte), um disco novo entra no prato, a fonte troca e o disco pula, e o vigia poda as falhas de outra tocada. Confere
+  que uma falha só bloqueia o preparo da mesma tocada que a gerou (`FailureBlocksOnlyItsPrepare`) e que a fonte que
+  falhou não começa de novo na tocada que segue no prato (`NoRetryOfTheFailedSource`), com onze mutantes: o contador que
+  sobe na troca de fonte, o que sobe no pulo, a chave pelo disco, que a troca de fonte substitui, a falha só com a
+  entrada, a falha com a chave da cabeça da fila, o preparo com a chave que o vigia pediu em vez da fonte que ele
+  escolheu, uma falha só guardada (a segunda apaga a primeira), o preparo que não confere a fonte que escolheu, o deck
+  de outra entrada tirado num segundo trecho do `_qlock` depois de ler a falha, o preparo que confere a fonte que
+  escolheu só pela entrada (e recusa o arquivo depois que o stream falhou) e a chave com o que dois downloads do arquivo
+  têm em comum, como o nome (e recusa o download que substitui um que falhou). O `dev/test_tla.py` exige de cada spec
+  uma execução do código que passa conferindo todas as invariantes, e da `LocksAndSwitch` e da `PassageFailure` as do
+  tamanho que o `WHOLE` pede, contando os membros distintos de cada conjunto nas constantes que cada execução usa (a
+  `PassageFailure`, uma com duas entradas, duas fontes e um arquivo, outra com duas entradas, uma fonte e dois arquivos,
+  e a das tocadas, com `Last = 1`), que só mudam conjuntos e o `Last`, nunca o que liga um mutante.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas três, cada execução em
-menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em seis com todas as propriedades, além das doze
+menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em seis com todas as propriedades, além das treze
 acima (as três da #294 e do controle, a da parecida que a prateleira já tem, as seis da troca de nome, a do acerto na
-prateleira e a do deck guardado no fim do stream; a troca de nome com o download, o stream e a troca roda em quatro
-partes, que juntas são a configuração inteira (o `dev/test_tla.py` confere, nas execuções da lista, que as partes rodam
-a troca de nome e que cada escolha do `Races211.cfg` entra uma vez): o download que falha, e o que põe o disco na
-prateleira com o stream que dá áudio, com o stream calado e uma entrada na fila, e com o stream calado e duas): o
-download, o stream e a troca, sem as trocas de lugar na fila, uma vez com o tocar de outro disco e outra com o esquecer
-da prateleira; o download, o stream e um pulo na barra, sem as trocas de lugar e sem o tocar de outro disco, o esquecer
-e a reserva; as trocas de lugar, a reserva, a preparação da passagem e a versão de áudio, sem o job; os dois juntos, com
-uma troca de lugar só e sem o tocar de outro disco, o esquecer e a reserva; e o download, o stream e a troca com o
-leitor do stream que chega ao fim, sem as trocas de lugar, o pulo e o esquecer; o pulo na barra só entra na terceira), e
-roda também os mutantes: cada propriedade tem um que desfaz o que ela protege, e o mutante tem de ser pego. Antes do
-TLC, ele confere que cada execução do código que passa confere todas as invariantes da sua spec (só deixa de fora uma
-invariante a execução que repete a configuração de uma falha conhecida da #294, e só a que essa falha quebra) e o
-deadlock, e que a de justiça confere o `ReservationsResolve`, sem a simetria e sem a reabertura do motor; o mutante que
-passa só confere testemunhas da sua spec (o `WITNESSES`: o `NoSwitchToAKeptDeck`). No PR, o job `tla` do `testa.yml`
-roda isso numa máquina ubuntu (`python dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS`
-aponta para um `tla2tools.jar` já baixado. As duas corridas da #211 se repetem no App de verdade no
-`dev/test_races_211.py`, com os passos do contraexemplo, um de cada vez.
+prateleira e as duas do deck guardado; a troca de nome com o download, o stream e a troca roda em quatro partes, que
+juntas são a configuração inteira (o `dev/test_tla.py` confere, nas execuções da lista, que as partes rodam a troca de
+nome e que cada escolha do `Races211.cfg` entra uma vez): o download que falha, e o que põe o disco na prateleira com o
+stream que dá áudio, com o stream calado e uma entrada na fila, e com o stream calado e duas): o download, o stream e a
+troca, sem as trocas de lugar na fila, uma vez com o tocar de outro disco e outra com o esquecer da prateleira; o
+download, o stream e um pulo na barra, sem as trocas de lugar e sem o tocar de outro disco, o esquecer e a reserva; as
+trocas de lugar, a reserva, a preparação da passagem e a versão de áudio, sem o job; os dois juntos, com uma troca de
+lugar só e sem o tocar de outro disco, o esquecer e a reserva; e o download, o stream e a troca com o leitor do stream
+que chega ao fim, sem as trocas de lugar, o pulo e o esquecer; o pulo na barra só entra na terceira), e roda também os
+mutantes: cada propriedade tem um que desfaz o que ela protege, e o mutante tem de ser pego. Antes do TLC, ele confere
+que cada execução do código que passa confere todas as invariantes da sua spec (só deixa de fora uma invariante a
+execução que repete a configuração de uma falha conhecida da #294, e só a que essa falha quebra) e o deadlock, e que a
+de justiça confere o `ReservationsResolve`, sem a simetria e sem a reabertura do motor; o mutante que passa só confere
+testemunhas da sua spec (o `WITNESSES`: o `NoSwitchToAKeptDeck`). No PR, o job `tla` do `testa.yml` roda isso numa
+máquina ubuntu (`python dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um
+`tla2tools.jar` já baixado. As duas corridas da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os
+passos do contraexemplo, um de cada vez.
 
 ## O que o servidor lê do motor
 

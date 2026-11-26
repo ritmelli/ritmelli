@@ -44,11 +44,15 @@ RENAME_PLAY = (("WithTheRename", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"), (
                ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE"))
 PART_CONSTANTS = ("DownloadOutcomes", "StreamReaderStartsWith", "QueueLengths")
 WHOLE = {"LocksAndSwitch": ({"Qids": 2, "RIds": 2, "GIds": 2},),
-         "PassageFailure": ({"Entries": 2, "Sources": 2, "Files": 1}, {"Entries": 2, "Sources": 1, "Files": 2})}
+         "PassageFailure": ({"Entries": 2, "Sources": 2, "Files": 1}, {"Entries": 2, "Sources": 1, "Files": 2},
+                            {"Entries": 2, "Sources": 1, "Files": 1, "Last": 1})}
 CLEAN_END = (("WithTheCleanEnd", "TRUE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"),
              ("WithTheForget", "FALSE"))
-WITNESSES = {"Races211": {"NoSwitchToAKeptDeck"}}
+WITNESSES = {"Races211": {"NoSwitchToAKeptDeck", "SwapLeavesTheShelfFileOff"}}
+DROP = (("WithTheDrop", "TRUE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"),
+        ("WithTheForget", "FALSE"))
 TWO_FILES = (("Files", "{f1, f2}"), ("Sources", "{s1}"))
+PLAYS = (("Last", "1"), ("Sources", "{s1}"))
 REQUIRED = {
     "Races211": {"TypeOK", "LockOrderKept", "NoOrphanLoading", "NoStaleLoading", "SwitchEntryMatchesPlatter",
                  "ReservedEntryMatchesRead", "StreamActsOnItsAttempt", "NoRefusalWhilePlaying",
@@ -90,6 +94,9 @@ RUNS = (
     Run("Races211, the code as it is: a file handover after the stream's reader reached its end keeps the prepared "
         "deck, and the mixer switches to it", "Races211", "invariant NoSwitchToAKeptDeck",
         invariants=("NoSwitchToAKeptDeck",), constants=CLEAN_END, action="MixerSwitches"),
+    Run("Races211, the code as it is: a file handover after the job's stream dropped keeps the prepared deck too, "
+        "and the mixer switches to it", "Races211", "invariant NoSwitchToAKeptDeck",
+        invariants=("NoSwitchToAKeptDeck",), constants=DROP, action="MixerSwitches"),
     Run("mutant: a file handover after the stream's reader reached its end drops the prepared deck, and the mixer "
         "never switches to a kept one", "Races211", invariants=("NoSwitchToAKeptDeck",),
         constants=CLEAN_END + (("TheEndKeepsThePrepared", "FALSE"),)),
@@ -161,8 +168,7 @@ RUNS = (
         constants=(("FileSwapStartsItsReader", "FALSE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"))),
     Run("Races211, the code as it is with a stream that drops: every property but the one #294 breaks", "Races211",
         unchecked=("NoStaleLoading",),
-        constants=(("WithTheDrop", "TRUE"), ("WithTheMoves", "FALSE"),
-                   ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
+        constants=DROP),
     Run("Races211, the code as it is with a switch to a job's stream: every property but the one #294 breaks",
         "Races211",
         unchecked=("FinishedDownloadReachesThePlatter",),
@@ -188,8 +194,7 @@ RUNS = (
                    ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
     Run("known failure #294: a stream with a download that drops before its end ends the record, and the file that "
         "comes has no reader", "Races211", "invariant NoStaleLoading", invariants=("NoStaleLoading",),
-        constants=(("WithTheDrop", "TRUE"), ("WithTheMoves", "FALSE"),
-                   ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
+        constants=DROP),
     Run("known failure #294: a switch to a stream whose download finished while it waited prepared keeps the stream",
         "Races211", "invariant FinishedDownloadReachesThePlatter", invariants=("FinishedDownloadReachesThePlatter",),
         constants=(("WithTheJobSwitch", "TRUE"), ("WithTheMoves", "FALSE"),
@@ -278,6 +283,16 @@ RUNS = (
     Run("mutant: the key holds the shelf file's name only, and a download under that name that replaces a failed one "
         "is refused", "PassageFailure", "invariant FailureBlocksOnlyItsPrepare",
         constants=TWO_FILES + (("FileKeyedByName", "TRUE"),)),
+    Run("PassageFailure, the code as it is with a new record entering the platter, a source handover and a seek (one "
+        "source): the key holds the play, and a failure blocks only the prepares of its play", "PassageFailure",
+        constants=PLAYS),
+    Run("mutant: the play counter goes up on a source handover, and the failed source opens again in the same play",
+        "PassageFailure", "invariant NoRetryOfTheFailedSource", constants=PLAYS + (("PlayUpOnTheHandover", "TRUE"),)),
+    Run("mutant: the play counter goes up on a seek, and the failed source opens again in the same play",
+        "PassageFailure", "invariant NoRetryOfTheFailedSource", constants=PLAYS + (("PlayUpOnTheSeek", "TRUE"),)),
+    Run("mutant: the key holds the record by identity, which a source handover replaces, and the failed source opens "
+        "again in the same play", "PassageFailure", "invariant NoRetryOfTheFailedSource",
+        constants=PLAYS + (("KeyByTheRecord", "TRUE"),)),
 )
 
 failures = []
@@ -419,8 +434,8 @@ def rename_part_failures(runs, cfg_text):
 
 def set_sizes(cfg_text):
     constants = (c.split(" = ", 1) for c in parse_cfg(cfg_text).get("CONSTANTS", []))
-    return {name: len(set(re.findall(r"\w+", value))) for name, value in constants
-            if re.fullmatch(r"\{\s*(\w+\s*(,\s*\w+\s*)*)?\}", value)}
+    return {name: int(value) if value.isdigit() else len(set(re.findall(r"\w+", value))) for name, value in constants
+            if value.isdigit() or re.fullmatch(r"\{\s*(\w+\s*(,\s*\w+\s*)*)?\}", value)}
 
 
 def covers(run, cfg_text, need):
@@ -456,6 +471,10 @@ def invariant_failures(runs, cfgs):
             for need in needs if not any(r.spec == spec and r.expect == "pass" and r.specification is None
                                          and r.invariants is None and not r.unchecked and covers(r, cfgs[spec], need)
                                          for r in runs)]
+    code = {(r.spec, frozenset(r.constants)) for r in runs if r.expect == "pass" and r.specification is None
+            and r.invariants is None}
+    out += [f"{r.title} shows a path no passing run of the code checks in its configuration" for r in runs
+            if r.expect.split()[-1] in WITNESSES.get(r.spec, ()) and (r.spec, frozenset(r.constants)) not in code]
     return out + ([] if fair else ["no passing run checks ReservationsResolve under FairSpec"])
 
 
@@ -516,6 +535,13 @@ def main():
             ("a passing run of the code names only the witness of the kept deck",
              [replace(r, invariants=("NoSwitchToAKeptDeck",)) if r.title.startswith(
                  "Races211, the code as it is with a stream reader that reaches its end") else r for r in RUNS]),
+            ("the schedule has no passing run with the stream's clean end",
+             [r for r in RUNS if not (r.expect == "pass" and r.constants == CLEAN_END and r.invariants is None)]),
+            ("the passing run with the stream's clean end turns it off",
+             [replace(r, constants=tuple(c for c in r.constants if c[0] != "WithTheCleanEnd"))
+              if r.expect == "pass" and r.constants == CLEAN_END and r.invariants is None else r for r in RUNS]),
+            ("the passing run of PassageFailure with the plays is gone",
+             [r for r in RUNS if not (r.spec == "PassageFailure" and r.expect == "pass" and r.constants == PLAYS)]),
             ("the passing run of PassageFailure names one source twice",
              [replace(r, constants=(("Sources", "{s1, s1}"),)) if r.spec == "PassageFailure" and r.expect == "pass"
               and not r.constants else r for r in RUNS]),

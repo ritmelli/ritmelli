@@ -120,7 +120,7 @@ mudança só: a faixa, a linha, a posição, o fim e a passagem desfeita (no `lo
 faixa nova já o encontra ligado; sem o pedido, o disco que entra no lugar de outro o desliga). O `seek` limita a posição
 pela duração da faixa e o `resume` confere o fim no mesmo trecho da trava. O `trocar_fonte` publica no mesmo trecho a
 faixa e o ganho novos, na mesma linha (da espera para o stream, também a posição e a passagem desfeita; do stream para o
-arquivo, sempre com o leitor novo do arquivo, salvo o disco que já acabou, e a passagem preparada sai; o religar do
+arquivo, com o leitor novo do arquivo e a passagem preparada saindo, salvo quando o disco ou o leitor do stream já chegou ao fim, pelo fim do stream ou pela queda do stream de um job (aí não começa leitor novo e a passagem preparada fica); o religar do
 stream a mantém). A faixa nova pode vir como uma função, que o `trocar_fonte` (e o `load` e o `preparar`, para o segundo
 deck) chama nesse trecho do `_qlock`: o arquivo da prateleira entra com o nome que ela tem na hora da troca, mesmo que o
 disco tenha sido renomeado depois de quem pediu a troca o ler. A medida do ganho e o leitor ficam fora das travas, e o
@@ -137,20 +137,22 @@ viu; ver [comandos.md](comandos.md)). Quem chama com as travas dele na mão pass
 `depois`, onde fica o resto do comando (o leitor que começa, a onda, a medida), que ele roda ao soltá-las.
 
 O servidor confere a linha pela interface do motor, e não pelos campos de dentro: o `line()` dá a `Line` (o deck e a
-linha do prato, os mesmos dois campos da `Captura`), e o `on_line(t)` diz, sob o `_qlock`, se o prato ainda é a linha de
-`t`. A virada que o motor fez sozinho sai pelo `take_switch` (sob o `_qlock`, só a que ainda é a pendente), a passagem
-preparada pelo `drop_prepared` (sob o `_qlock`), o ganho medido antes das travas pelo `gain_for`, o nome novo do disco
-no prato e no segundo deck pelo `update_track` (no próprio dicionário de cada um, sob o `_qlock`: quem o guarda, como o
-download que vai entregar o arquivo, ainda guarda o disco do prato), a faixa, a posição, o estado e a virada de uma
-leitura só pelo `platter_state` e os arquivos que o motor lê pelo `tracks_in_use`. Quem precisa do `_qlock` junto com o
-estado dele (o servidor e os comandos) o pega pelo `state_section()`, que segura a trava no corpo do `with` e não a
-entrega; o `_lock` vem pelo `with_lock(outer, f)`, que pega a trava de fora (a `fila_lock` do `App`) e nunca espera o
-`_lock` com ela na mão, na ordem de [As travas](comandos.md#as-travas). A falha de preparar a próxima sai pelo
-`take_prepare_failure` (lida e limpa sob o `_qlock`, com a chave que o servidor passou ao `preparar`; no mesmo trecho
-sai o deck preparado para uma entrada que não é a de `keep`, e com `keep=None` qualquer deck preparado), e o erro da
-tela entra pelo `set_error`; o aviso do stream entra pelo `warn_on`, num lugar à parte: o `error` (só se lê) dá o erro
-e, sem ele, o aviso do stream, que sai na troca para o arquivo, no `_restart`, na virada e no `stop`. O `snapshot` não
-traz o estado, a faixa nem a duração: o servidor lê os três com a posição e a fila numa captura só (`App.leitura`).
+linha do prato, os mesmos dois campos da `Captura`; a `Captura` leva também a tocada, o contador que só sobe quando um
+disco novo entra no prato, no `load`, no `espera` e no `_vira`, e que a troca de fonte e o pulo não mudam), e o
+`on_line(t)` diz, sob o `_qlock`, se o prato ainda é a linha de `t`. A virada que o motor fez sozinho sai pelo
+`take_switch` (sob o `_qlock`, só a que ainda é a pendente), a passagem preparada pelo `drop_prepared` (sob o `_qlock`),
+o ganho medido antes das travas pelo `gain_for`, o nome novo do disco no prato e no segundo deck pelo `update_track` (no
+próprio dicionário de cada um, sob o `_qlock`: quem o guarda, como o download que vai entregar o arquivo, ainda guarda o
+disco do prato), a faixa, a posição, o estado e a virada de uma leitura só pelo `platter_state` e os arquivos que o
+motor lê pelo `tracks_in_use`. Quem precisa do `_qlock` junto com o estado dele (o servidor e os comandos) o pega pelo
+`state_section()`, que segura a trava no corpo do `with` e não a entrega; o `_lock` vem pelo `with_lock(outer, f)`, que
+pega a trava de fora (a `fila_lock` do `App`) e nunca espera o `_lock` com ela na mão, na ordem de [As
+travas](comandos.md#as-travas). A falha de preparar a próxima sai pelo `take_prepare_failure` (lida e limpa sob o
+`_qlock`, com a chave que o servidor passou ao `preparar`; no mesmo trecho sai o deck preparado para uma entrada que não
+é a de `keep`, e com `keep=None` qualquer deck preparado), e o erro da tela entra pelo `set_error`; o aviso do stream
+entra pelo `warn_on`, num lugar à parte: o `error` (só se lê) dá o erro e, sem ele, o aviso do stream, que sai na troca
+para o arquivo, no `_restart`, na virada e no `stop`. O `snapshot` não traz o estado, a faixa nem a duração: o servidor
+lê os três com a posição e a fila numa captura só (`App.leitura`).
 
 A pausa vale no limite entre blocos. O `pause` devolve uma `Pausa`: com um bloco do prato retirado e ainda não
 publicado (o do disco, o do fim ou só o da passagem soando), ela fica pendente (o prato só pausa na confirmação) e se

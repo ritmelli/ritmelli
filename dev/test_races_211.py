@@ -1035,7 +1035,7 @@ def two_entries(A, n):
 
 
 def carried_key(A, x):
-    return cmd.Identity(A.engine.captura().track), x["qid"], A.passage_source(x)
+    return A.engine.captura().tocada, x["qid"], A.passage_source(x)
 
 
 def watch(A, launches):
@@ -1225,29 +1225,63 @@ def two_failures_on_one_record(A, E, readers):
     check(launches.qids == [x["qid"], y["qid"]],
           f"two prepares that fail on the same record both stay failed: the first is not started again when it "
           f"comes back to the head after the second failed ({A.failed_passages}, launched {launches.qids})")
-    old = E.captura().track
+    old = E.captura().tocada
     check(play(A, E, readers, "d2"), "d2 is on the platter, read")
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
         watch(A, launches)
-    check(not any(k[0].obj is old for k in A.failed_passages),
+    check(not any(k[0] == old for k in A.failed_passages),
           f"the failures of a record leave when another record plays ({A.failed_passages})")
 
 
-def failure_of_an_earlier_record_with_the_same_identity_hash(A, E, readers):
+def failure_of_an_earlier_play_of_the_record_playing(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x, _ = two_entries(A, 18)
     launches = Launches()
-    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(cmd, "id", lambda obj: 7, create=True):
-        earlier = dict(E.captura().track)
-        key = (cmd.Identity(earlier), x["qid"], A.passage_source(x))
-        same = cmd.Identity(earlier) == key[0] and hash(key[0]) == hash(cmd.Identity(E.captura().track))
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
+        key = (E.captura().tocada - 1, x["qid"], A.passage_source(x))
         A.failed_passages.add(key)
-        distinct = carried_key(A, x) not in A.failed_passages
+        distinct = carried_key(A, x) != key and E.captura().track is E.track
         watch(A, launches)
     A.failed_passages.clear()
-    check(same and distinct and launches.qids == [x["qid"]],
-          f"a failure of an earlier record whose identity hashes like the one playing does not block the one playing "
-          f"(same {same}, distinct {distinct}, launched {launches.qids})")
+    check(distinct and launches.qids == [x["qid"]],
+          f"a failure of an earlier play, with the same record object on the platter, does not block the play now "
+          f"(distinct {distinct}, launched {launches.qids})")
+
+
+def failure_kept_through_the_file_handover_at_the_stream_end(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x, _ = two_entries(A, 21)
+    launches, key, old = Launches(), carried_key(A, x), E.captura().track
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(A, "stream_info") as opens:
+        with E.state_section():
+            E._deck.eof_gen = E._deck.gen
+        handed = E.trocar_fonte(old, dict(old, title="the file"))
+        with E.state_section():
+            E._prepare_failure = key
+        watch(A, launches)
+    replaced = E.captura().track is not old and E.captura().track.get("title") == "the file"
+    A.failed_passages.clear()
+    check(handed and replaced and launches.qids == [] and not opens.called,
+          f"a failure the engine reports after the file handover at the stream's end, with the key the prepare carried "
+          f"from before it, still blocks that source: the handover put a new record on the platter in the same play "
+          f"(handed {handed}, replaced {replaced}, launched {launches.qids}, opened {opens.call_count})")
+
+
+def failure_kept_through_a_seek(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x, _ = two_entries(A, 22)
+    launches, key = Launches(), carried_key(A, x)
+    A.failed_passages.add(key)
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
+        line = E.captura().linha
+        E.seek(30.0)
+        moved = readers.wait("d1") and E.captura().linha != line
+        watch(A, launches)
+    kept = key in A.failed_passages
+    A.failed_passages.clear()
+    check(moved and kept and launches.qids == [],
+          f"a seek starts a new line in the same play, and the play's failures still block their source (moved "
+          f"{moved}, kept {kept}, launched {launches.qids})")
 
 
 def shelf_record_deleted_before_the_pick(A, E, readers):
@@ -1471,7 +1505,9 @@ def main():
                 gain_failure_of_a_shelf_file(A, E, readers)
                 two_failures_on_one_record(A, E, readers)
                 shelf_record_deleted_before_the_pick(A, E, readers)
-                failure_of_an_earlier_record_with_the_same_identity_hash(A, E, readers)
+                failure_of_an_earlier_play_of_the_record_playing(A, E, readers)
+                failure_kept_through_the_file_handover_at_the_stream_end(A, E, readers)
+                failure_kept_through_a_seek(A, E, readers)
                 replacement_shelf_file_after_its_predecessor_failed(A, E, readers)
                 engine_failure_through_the_real_prepare(A, E, readers)
                 audio_version_entries(A, E)

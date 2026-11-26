@@ -324,8 +324,10 @@ StreamReaderEnds ==
     /\ At("StreamReader", "sr_dropped")
     /\ Section("StreamReader", "_qlock")
     /\ noReader' = (noReader \/ (track.id = swTr /\ gen = stGen))
+    /\ stream' = IF track.id = swTr /\ gen = stGen THEN "ended" ELSE stream
     /\ Goto("StreamReader", "done")
-    /\ UNCHANGED <<track, nextId, line, pronto, nearEnd, gen, jobVars, queueVars, localVars>>
+    /\ UNCHANGED <<track, nextId, line, pronto, nearEnd, gen, jobStatus, shelf, swTr, dlSaw, wrongTrack, fileWait, stGen,
+                   refusedPlaying, shelfName, dlName, queueVars, localVars>>
 
 StreamReaderReachesItsEnd ==
     /\ At("StreamReader", "sr_ended")

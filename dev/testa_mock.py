@@ -788,7 +788,7 @@ async def papeis_no_guard():
         # responde 500
         falha_ao_tocar = ValueError("quebrou")
         enfileirar, A.enfileirar = A.enfileirar, (lambda b, remoto=False: ({"qid": "q1"}, None))
-        E.captura = lambda: server.eng.Captura(None, 0.0, "idle", None, 0)  # o prato parado: a entrada toca na hora
+        E.captura = lambda: server.eng.Captura(None, 0.0, "idle", None, 0, 0)  # o prato parado: a entrada toca na hora
         msg = "o POST /api/queue com o erro de tocar na hora: o erro sobe pelo guard (500), e nao vira 400"
         try:
             with mock.patch.object(server.cmd, "avanca", side_effect=falha_ao_tocar):  # o avanco que toca quebra
