@@ -52,7 +52,7 @@ START_SLEEP = re.compile(r"\bStart-Sleep\b", re.I)
 THEME_TIMER = re.compile(r"\b(?:setTimeout|setInterval|requestIdleCallback)\s*\(")
 ANIMATION_FRAME = re.compile(r"\brequestAnimationFrame\s*\(")
 TODO = re.compile(r"\b(?:TODO|FIXME|HACK|XXX)\b")
-PROSE = re.compile(r"risco aceito|accepted risk|sem prova|por enquanto|for now|known issue", re.I)
+PROSE = re.compile(r"risco\s+aceito|accepted\s+risk|sem\s+prova|por\s+enquanto|for\s+now|known\s+issue", re.I)
 LEFT_OUT = re.compile(r"^--\s.*ficou de fora", re.S)
 KNOWN_FAILURE = re.compile(r"^\s*known failure", re.I)
 LEFT_OUT_QUOTED = re.compile(r"[\"']--\s[^\"']*ficou de fora")
@@ -1110,8 +1110,11 @@ def todo_markers(t):
 def prose_in_markdown(t):
     for p in t.paths(".md"):
         for chunk in paragraphs(t.files[p].splitlines()):
-            if not cites_issue(" ".join(line for _, line in chunk)):
-                yield from ((p, i + 1) for i, line in chunk if PROSE.search(line))
+            text = "\n".join(line for _, line in chunk)
+            masked = CODE_SPAN.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+            if not cites_issue(masked):
+                yield from ((p, chunk[text.count("\n", 0, m.start())][0] + 1)
+                            for m in PROSE.finditer(masked.replace("\n", " ")))
 
 
 def prose_justifications(t):
