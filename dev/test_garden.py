@@ -104,6 +104,10 @@ CASES = {
         ("pragma warning", {"a.cpp": "#pragma once\n"}, {"a.cpp": "#pragma warning(disable: 4996)\n"}),
         ("continue-on-error", {"a.yml": "steps:\n  - run: echo continue-on-error\n    continue-on-error: false\n"},
          {"a.yml": "steps:\n  - run: echo\n    continue-on-error: true\n"}),
+        ("noqa in a one-line Python step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n        run: \"print(1)\"\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
+                                     "        run: \"print(1)  # noqa\"\n"}),
         ("SilentlyContinue", {"a.ps1": "$ProgressPreference = 'SilentlyContinue'\n"},
          {"a.ps1": "Get-Item x -ErrorAction SilentlyContinue\n"}),
         ("SilentlyContinue in a Python string", {"a.py": "ps = 'Get-Item x'\n"},
@@ -283,6 +287,11 @@ CASES = {
                                      "        run: import unittest; raise unittest.SkipTest('no X (#12)')\n"},
          {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
                                      "        run: \"import unittest; raise unittest.SkipTest('no X')\"\n"}),
+        ("SkipTest in a one-line Python step with its issue in the YAML comment",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
+                                     "        run: import unittest; raise unittest.SkipTest()  # #250\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
+                                     "        run: import unittest; raise unittest.SkipTest()  # no issue\n"}),
         ("skipIf in a .yaml workflow",
          {".github/workflows/w.yaml": PY_STEP.replace("JOB", "testa").replace("time.sleep(1)\n", "x = 1\n")},
          {".github/workflows/w.yaml": PY_STEP.replace("JOB", "testa").replace(
@@ -534,6 +543,9 @@ def test_description():
         "an issues path off GitHub as the issue": good + "\nThe rest stays for now (https://example.org/issues/250).\n",
         "a host that ends in github.com": good + "\nThe rest stays for now (https://not-github.com/o/r/issues/250).\n",
         "a fragment after a dash": good + "\nThe rest stays for now (https://example.org/page-#250).\n",
+        "an issues path of GitHub on another host": good + "\nThe rest stays for now "
+                                                          "(https://example.org/github.com/o/r/issues/250).\n",
+        "an anchor as the link's target": good + "\nThe rest stays for now ([details](#250)).\n",
         "the issue in the next paragraph": good + "\nThe rest stays for now.\n\nSee #250.\n",
         "the issue in the next list item": good + "\n- The rest stays for now.\n- #250 is another thing.\n",
     }

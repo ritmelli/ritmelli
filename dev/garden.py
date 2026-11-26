@@ -27,9 +27,10 @@ against the base goes to the PR summary as a "-- summary:" line."""
 COMMENT_EXTENSIONS = (".py", ".js", ".css", ".ps1", ".yml", ".yaml", ".cpp", ".h", ".iss", ".bat", ".html", ".rc", ".spec",
                       ".sh", ".toml", ".psd1", ".isl")
 GARDEN_FILES = ("dev/garden.py", "dev/test_garden.py")
-ISSUE_URL = re.compile(r"(?<![\w.-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+/[\w.-]+/issues/\d+(?![\w-])")
+ISSUE_URL = re.compile(r"(?<![\w./-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+/[\w.-]+/issues/\d+(?![\w-])")
 URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
 SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])#\d+\b")
+LINK_TARGET = re.compile(r"\]\([^)]*\)")
 PARAGRAPH_START = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\*\*)")
 BLOCK_MARKER = re.compile(r"^\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b")
 KEPT_COMMENT = re.compile(r"^\s*manual:|^\s*i18n-ok\s*$|^ inline-script: [\w-]+\.js $")
@@ -389,7 +390,12 @@ def lex_yaml(text):
         if not m:
             inline = INLINE_RUN.match(out.code[n])
             if inline:
-                out.runs.append((n - 1, yaml_shell(lines, n - 1), unquote(inline.group(1))))
+                shell, script = yaml_shell(lines, n - 1), unquote(inline.group(1))
+                out.runs.append((n - 1, shell, script))
+                if not lexed.comments:
+                    run = lexer_for_shell(shell)(script)
+                    out.comments += [Comment(c.start + n - 1, c.end + n - 1, c.text) for c in run.comments]
+                    out.strings += [(k + n - 1, text) for k, text in run.strings]
             continue
         end = n
         while end < len(lines) and (not lines[end].strip() or indent_of(lines[end]) > key_indent(line)):
@@ -906,7 +912,7 @@ def broad_excepts(t):
 
 
 def cites_issue(text):
-    return bool(ISSUE_URL.search(text) or SHORT_ISSUE.search(URL.sub(" ", text)))
+    return bool(ISSUE_URL.search(text) or SHORT_ISSUE.search(URL.sub(" ", LINK_TARGET.sub("] ", text))))
 
 
 def skip_names(tree):
@@ -936,8 +942,9 @@ def skip_markers(tree, lines):
 def skipped_tests(t):
     items = []
     for p in workflow_paths(t):
+        raw = t.files[p].splitlines()
         items += [(p, offset + n) for offset, tree, script in workflow_python(t, p)
-                  for n in skip_markers(tree, script.splitlines())]
+                  for n in skip_markers(tree, script.splitlines()) if not cites_issue(raw[offset + n - 1])]
     for p in t.paths(".py", ".spec"):
         tree = t.tree(p)
         if tree is None:
