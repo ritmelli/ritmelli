@@ -117,6 +117,14 @@ class RingDryOuts:
         self._start, self._told_this_start = None, 0
         self.filled_at = self.empty_at = None
 
+    def _bounds(self, on_at):
+        lo, empty_at = self.filled_at, self.empty_at
+        if empty_at is None:
+            return ""
+        if lo is None:
+            return f" it ran dry by {empty_at - on_at:.2f} s after the pedal turned on;"
+        return f" it ran dry between {lo - on_at:.2f} and {empty_at - on_at:.2f} s after the pedal turned on;"
+
     def state(self):
         dry_outs, while_pedal_starting = self.counts
         return {"secas": dry_outs, "secas_pedal": while_pedal_starting}
@@ -141,8 +149,8 @@ class RingDryOuts:
             self._told_this_start += 1
             if self._told_this_start <= PEDAL_LINES:
                 LOG.tell(f"game output: the microphone ring ran dry while the voice pedal was starting (the thread "
-                         f"came back after {back_s * 1000:.0f} ms; {starting}; {self.while_pedal_starting} of {count} "
-                         "so far)")
+                         f"came back after {back_s * 1000:.0f} ms;{self._bounds(start)} {starting}; "
+                         f"{self.while_pedal_starting} of {count} so far)")
                 return
         if self.pedal.clock() - self._told_at > QUIET_S:
             self._told_at = self.pedal.clock()

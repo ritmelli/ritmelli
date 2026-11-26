@@ -3,6 +3,7 @@ import json
 import sys
 import tempfile
 import unittest
+import urllib.request
 from pathlib import Path
 from unittest import mock
 
@@ -44,6 +45,7 @@ class Refusal(unittest.TestCase):
         self.assertEqual(self.run_main(CPU_ONLY, "--provider", "cpu", version="1.32.0"), "past the check")
 
     def test_another_version_of_the_runtime_is_refused(self):
+        self.assertRegex(PINNED or "", r"^\d+\.\d+\.\d+$")
         self.assertIn(f"onnxruntime 1.24.3 here is not the {PINNED} the installer pins",
                       self.run_main(WITH_DML, version="1.24.3"))
 
@@ -137,17 +139,34 @@ class CycleRow(unittest.TestCase):
                 self.assertTrue(problem.startswith("cycle 5: "), problem)
 
 
-class TheMicrophone(unittest.TestCase):
-    def run_main(self, opened, asked=MIC, readers=0):
-        sent, opened = [], list(opened)
-        work = self.enterContext(tempfile.TemporaryDirectory())
+def stream(*states_sent):
+    return io.BytesIO(b"".join(b"event: state\ndata: " + json.dumps(s).encode() + b"\n\n" for s in states_sent))
+
+
+class Main(unittest.TestCase):
+    def run_main(self, got, *args, events=(), asked=MIC):
+        sent, got = [], list(got)
+        work = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        err = []
+
+        def start_job(cmd, **kw):
+            err.append(kw["stderr"])
+            return proc, None
 
         def urlopen(req, timeout=None):
+            if isinstance(req, str):
+                req = urllib.request.Request(req)
             path = req.full_url.split("8970", 1)[1]
             sent.append((req.get_method(), path))
-            answers = {"/api/effects": [{"id": "pistavoz"}]}
-            if path == "/api/state":
-                answers[path] = state(mic=opened.pop(0) if len(opened) > 1 else opened[0])
+            if path == "/api/events":
+                return stream(*events)
+            if req.data and json.loads(req.data) == {"effect": "pistavoz"}:
+                err[0].write("\n".join(READY) + "\n")
+                err[0].flush()
+                logs = work / "local" / "Ritmelli" / "logs"
+                logs.mkdir(parents=True, exist_ok=True)
+                (logs / "pistavoz.log").write_text("\n".join(FIM) + "\n", encoding="utf-8")
+            answers = {"/api/effects": [{"id": "pistavoz"}], "/api/state": got.pop(0) if len(got) > 1 else got[0]}
             return io.BytesIO(json.dumps(answers.get(path, {})).encode())
 
         proc = mock.Mock(**{"poll.return_value": None})
@@ -155,34 +174,49 @@ class TheMicrophone(unittest.TestCase):
               mock.patch("onnxruntime.__version__", PINNED),
               mock.patch.object(measure.so_mock, "sai_se_o_app_ligado"),
               mock.patch.object(measure.so_mock, "porta_responde", side_effect=[False, True]),
-              mock.patch.object(measure.so_mock, "start_job", return_value=(proc, None)),
-              mock.patch.object(measure.tempfile, "mkdtemp", return_value=work),
+              mock.patch.object(measure.so_mock, "start_job", start_job),
+              mock.patch.object(measure.tempfile, "mkdtemp", return_value=str(work)),
               mock.patch.object(measure.urllib.request, "urlopen", urlopen),
-              mock.patch.object(measure, "states", lambda base, seconds: iter([state(mic=opened[0], leitores=readers)])),
-              mock.patch.object(sys, "argv", ["measure_voice_pedal.py", asked, "--port", "8970"]),
-              self.assertRaises(SystemExit) as stop):
-            measure.main()
-        return str(stop.exception.code), sent
+              mock.patch.object(measure, "OFF_S", 0.0),
+              mock.patch.object(sys, "argv", ["measure_voice_pedal.py", asked, "--port", "8970", "--on-s", "0",
+                                              "--out", str(work / "out.json"), *args])):
+            try:
+                measure.main()
+                why = None
+            except SystemExit as stop:
+                why = str(stop.code)
+        out = work / "out.json"
+        return why, sent, json.loads(out.read_text(encoding="utf-8")) if out.is_file() else None
 
     def test_a_fallback_microphone_stops_before_the_pedal(self):
-        why, sent = self.run_main(["Microfone (Realtek(R) Audio)"])
+        why, sent, _ = self.run_main([state(mic="Microfone (Realtek(R) Audio)")])
         self.assertIn("opened the microphone 'Microfone (Realtek(R) Audio)' and not 'IN 1'", why)
         self.assertEqual(sent, [("GET", "/api/effects"), ("POST", "/api/devices"), ("GET", "/api/state"),
                                 ("POST", "/api/shutdown")])
 
     def test_a_fallback_microphone_after_the_filter_read_stops_before_the_pedal(self):
-        why, sent = self.run_main([MIC, "Microfone (Realtek(R) Audio)"], readers=1)
+        why, sent, _ = self.run_main([state()], events=[state(mic="Microfone (Realtek(R) Audio)")])
         self.assertIn("opened the microphone 'Microfone (Realtek(R) Audio)' and not 'IN 1'", why)
         self.assertEqual(sent, [("GET", "/api/effects"), ("POST", "/api/devices"), ("GET", "/api/state"),
-                                ("GET", "/api/state"), ("POST", "/api/shutdown")])
+                                ("GET", "/api/events"), ("POST", "/api/shutdown")])
+
+    def test_a_state_read_apart_from_the_stream_does_not_break_a_cycle(self):
+        why, sent, result = self.run_main([state(1, 0, 9.0, 10.0)], "--cycles", "1",
+                                          events=[state(0, 0, 9.0, 10.0), state(0, 0, 9.0, 10.0),
+                                                  state(0, 0, 9.0, 10.0)])
+        self.assertIsNone(why)
+        self.assertEqual(sent.count(("GET", "/api/events")), 1, "one stream for the whole measurement")
+        self.assertEqual((len(result["cycles"]), result["dry_outs"], result["onnxruntime"]), (1, 0, PINNED))
+
+    def test_a_real_drop_of_the_counters_still_stops_the_measurement(self):
+        why, _, result = self.run_main([state()], "--cycles", "1",
+                                       events=[state(2, 0, 9.0, 10.0), state(0, 0, 0.0, None), state(0, 0, 9.0, 10.0)])
+        self.assertIn("the ring's counters started over", why)
+        self.assertIsNone(result)
 
     def test_the_name_asked_in_another_case_is_the_same_microphone(self):
         self.assertIsNone(measure.mic_refusal("in 1", state()))
         self.assertIn("opened the microphone None", measure.mic_refusal(MIC, state(mic=None)))
-
-
-def stream(*states_sent):
-    return io.BytesIO(b"".join(b"event: state\ndata: " + json.dumps(s).encode() + b"\n\n" for s in states_sent))
 
 
 class ReadStates(unittest.TestCase):
@@ -192,10 +226,12 @@ class ReadStates(unittest.TestCase):
             got.extend(measure.read_states(stream(state()), 8.0, clock=lambda: 100.0))
         self.assertEqual(got, [state()])
 
-    def test_the_wait_ends_at_its_deadline(self):
-        times = iter([100.0, 100.0, 100.0, 109.0])
-        self.assertEqual(list(measure.read_states(stream(state(), state(1)), 8.0, clock=lambda: next(times))),
-                         [state()])
+    def test_the_wait_ends_at_the_end_of_an_event_past_its_deadline(self):
+        times = iter([100.0, 100.0, 109.0])
+        r = stream(state(), state(1), state(2))
+        self.assertEqual(list(measure.read_states(r, 8.0, clock=lambda: next(times))), [state(), state(1)])
+        self.assertEqual(list(measure.read_states(r, 0.0, clock=lambda: 200.0)), [state(2)],
+                         "the next wait starts at the next whole event")
 
 
 if __name__ == "__main__":

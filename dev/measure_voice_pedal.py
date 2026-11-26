@@ -56,7 +56,7 @@ def voice_refusal(voice, voices):
 
 def read_states(r, seconds, clock=time.monotonic):
     end, event = clock() + seconds, None
-    while clock() < end:
+    while True:
         raw = r.readline()
         if not raw:
             raise EOFError(f"the server's state stream closed {end - clock():.1f} s before the end of the wait")
@@ -65,15 +65,8 @@ def read_states(r, seconds, clock=time.monotonic):
             event = line[7:]
         elif line.startswith("data: ") and event == "state":
             yield json.loads(line[6:])
-
-
-def states(base, seconds):
-    with urllib.request.urlopen(base + "/api/events", timeout=seconds + 5) as r:
-        yield from read_states(r, seconds)
-
-
-def hold(base, seconds):
-    return list(states(base, seconds))
+        elif not line and clock() >= end:
+            return
 
 
 def mic_refusal(asked, state):
@@ -167,7 +160,7 @@ def main():
     server_err = work / "server.err"
     with open(work / "server.out", "w", encoding="utf-8") as out, open(server_err, "w", encoding="utf-8") as err:
         proc, job = so_mock.start_job(cmd, cwd=ROOT, env=env, stdout=out, stderr=err)
-        cycles = []
+        cycles, events = [], None
         try:
             end = time.monotonic() + UP_S
             while not so_mock.porta_responde(a.port):
@@ -182,30 +175,30 @@ def main():
             refusal = mic_refusal(a.mic, call("GET", "/api/state"))
             if refusal:
                 sys.exit(refusal)
+            events = urllib.request.urlopen(base + "/api/events", timeout=30)
             try:
-                read = any(st["microfone"]["leitores"] >= 1 for st in states(base, UP_S))
+                last = next((st for st in read_states(events, UP_S) if st["microfone"]["leitores"] >= 1), None)
             except EOFError as ex:
                 sys.exit(f"waiting for the filter to read the ring: {ex} (see {server_err})")
-            if not read:
+            if last is None:
                 sys.exit(f"the filter of {a.mic} never read the ring (see {server_err})")
-            state = call("GET", "/api/state")
-            refusal = mic_refusal(a.mic, state)
+            refusal = mic_refusal(a.mic, last)
             if refusal:
                 sys.exit(refusal)
-            print(f"microphone {state['active_devices']['mic']}, voice {voice}; before: {state['microfone']}",
+            print(f"microphone {last['active_devices']['mic']}, voice {voice}; before: {last['microfone']}",
                   flush=True)
             log = work / "local" / "Ritmelli" / "logs" / "pistavoz.log"
-            mic, last = state["active_devices"]["mic"], state
+            mic = last["active_devices"]["mic"]
             for n in range(1, a.cycles + 1):
                 seen = len(lines(work / "server.err"))
                 try:
                     call("POST", "/api/settings", {"effect": "pistavoz"})
-                    during = hold(base, a.on_s)
+                    during = list(read_states(events, a.on_s))
                     call("POST", "/api/settings", {"effect": "nenhum"})
-                    during += hold(base, OFF_S)
+                    during += list(read_states(events, OFF_S))
                 except EOFError as ex:
                     sys.exit(f"cycle {n}: {ex} (see {server_err} and {log})")
-                states_seen = [last, *during, call("GET", "/api/state")]
+                states_seen = [last, *during]
                 last = states_seen[-1]
                 c, problem = cycle_row(n, states_seen, mic, a.provider, lines(server_err)[seen:], lines(log), a.on_s)
                 if problem:
@@ -213,6 +206,8 @@ def main():
                 cycles.append(c)
                 print(json.dumps(c), flush=True)
         finally:
+            if events is not None:
+                events.close()
             try:
                 if proc.poll() is None:
                     call("POST", "/api/shutdown", {}, timeout=5)
