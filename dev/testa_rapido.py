@@ -126,6 +126,13 @@ class Rapido(unittest.TestCase):
                   "Requested format is not available", None):
             self.assertFalse(erro_do_video(m), m)
 
+    def test_yt_msg(self):
+        from yt_erros import yt_msg
+        self.assertEqual(yt_msg(RuntimeError("ERROR: [youtube] abc: [x] Video unavailable")), "abc: [x] Video unavailable")
+        self.assertEqual(yt_msg(RuntimeError("[youtube] [abc] Sign in")), "Sign in")
+        self.assertEqual(yt_msg(RuntimeError("x" * 200)), "x" * 160)
+        self.assertEqual(yt_msg(ValueError("ERROR: ")), "ValueError")
+
     def test_canal_depois(self):
         pedidos = []
         song = types.SimpleNamespace(headers={"X-Goog-Visitor-Id": "Cgt"},
