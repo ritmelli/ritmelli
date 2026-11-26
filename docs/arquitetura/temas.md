@@ -24,8 +24,8 @@ da prateleira), o `maleta-tit.js` (o título da placa da maleta) e o `mesa-topo.
 mesa em largura par). O `dj-visor.js` (o visor de DJ: a onda do disco que corre sob o ponto fixo do play), o
 `voice-effects.js` (os efeitos de voz: o seletor no receptor e a gaveta de teclas), o `dj-desk.js` (os dois decks da
 mesa de DJ, que se revezam como num set, no computador largo), o `search.js` (a busca e os resultados), o `queue.js` (a
-fila, o A seguir) e o `ui-events.js` (os ouvintes de clique, de tecla e de ponteiro das partes que ainda moram no
-`index.html`, como o teclado e o voltar) saíram do script principal da página, que é estrito: o arquivo tirado
+fila, o A seguir) e o `ui-events.js` (o ponto que chama os binders das partes, e os ouvintes da página toda, como o
+teclado e o voltar) saíram do script principal da página, que é estrito: o arquivo tirado
 dele começa com `'use strict'`, como o script inline que segue depois do `<script src>` dele. Depois do `transporte.js`
 vêm o `desk-scale.js` (a escala do palco da mesa: o `PALCO`, o `ajustarPalco()` e o `rectP()`), o `api.js` (o `api()`
 e o texto das mensagens do servidor), o `notice.js` (o aviso rápido), o `covers.js` (as capas), o `tonearm.js` (o braço
@@ -40,7 +40,8 @@ Microfone e fone e o desligar), o `phone.js` (o QR, o código e os celulares con
 nova), o `caps.js` (o que a página pode, pelo caps do servidor), o `connection.js` (a conexão e o aviso de fora do ar),
 o `pairing.js` (o pareamento do celular) e o `welcome.js` (as boas-vindas). Depois do `ui-events.js` vêm o
 `desk-buttons.js` (os botões da mesa de DJ) e o `start.js` (a partida: monta a página e, no `DOMContentLoaded`,
-carrega e conecta). Inline ficam só o `I18N` do `<head>` e a
+carrega e conecta), que o servidor põe inline na página (o `inline-script`): eles rodam logo depois do `ui-events.js`,
+sem esperar a rede, como o script em que moravam, e o pareamento aceito no meio da carga já acha o `carregar()`. Inline ficam só o `I18N` do `<head>` e a
 linha que aplica os textos e mostra a página (o `i18n-ok`): num arquivo que não carregasse, a página, com o aviso de
 fora do ar, ficaria escondida.
 

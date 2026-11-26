@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import importlib
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -76,19 +77,21 @@ FEATURE_HANDLERS = (
     ("connection.js", "connection.js", "window", "online"), ("connection.js", "connection.js", "window", "offline"),
     ("pairing.js", "pairing.js", "#form-parear", "submit"),
     ("welcome.js", "welcome.js", "#dlg-boas", "close"), ("welcome.js", "welcome.js", "#dlg-disp", "close"),
-    ("desk-buttons.js", "start.js", "#tocar-d", "click"), ("desk-buttons.js", "start.js", "#prox-d", "click"),
-    ("desk-buttons.js", "start.js", "#m-aleatorio", "click"), ("desk-buttons.js", "start.js", "#m-repetir", "click"),
-    ("desk-buttons.js", "start.js", "#m-parecidas", "click"), ("desk-buttons.js", "start.js", "#pads-grade", "click"),
-    ("desk-buttons.js", "start.js", "#pads-grade", "contextmenu"),
-    ("desk-buttons.js", "start.js", "#prat-esq", "click"), ("desk-buttons.js", "start.js", "#prat-dir", "click"),
+    ("desk-buttons.js", "ui-events.js", "#tocar-d", "click"), ("desk-buttons.js", "ui-events.js", "#prox-d", "click"),
+    ("desk-buttons.js", "ui-events.js", "#m-aleatorio", "click"), ("desk-buttons.js", "ui-events.js", "#m-repetir", "click"),
+    ("desk-buttons.js", "ui-events.js", "#m-parecidas", "click"), ("desk-buttons.js", "ui-events.js", "#pads-grade", "click"),
+    ("desk-buttons.js", "ui-events.js", "#pads-grade", "contextmenu"),
+    ("desk-buttons.js", "ui-events.js", "#prat-esq", "click"), ("desk-buttons.js", "ui-events.js", "#prat-dir", "click"),
     ("start.js", "start.js", "document", "DOMContentLoaded"),
-    ("desk-buttons.js", "start.js", "#estante", "scroll"), ("start.js", "start.js", "document", "visibilitychange"),
+    ("desk-buttons.js", "ui-events.js", "#estante", "scroll"), ("start.js", "start.js", "document", "visibilitychange"),
     ("connection.js", "connection.js", "navigator.connection", "change"),
-    ("dj-desk.js", "start.js", "mqUnica", "change"),
+    ("dj-desk.js", "ui-events.js", "mqUnica", "change"),
 )
 SHARED_TARGETS = ("window", "document", "navigator.connection", "mqUnica")
 SHARED_HANDLERS = (("#estante", "scroll"),)
-RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos", "start.js": "bindDeskButtons"}
+INLINE_STAYS = (("document", "DOMContentLoaded"),)
+MARK = re.compile(r"/\* ([A-Z0-9-]+)-JS-INICIO \*/")
+RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
             ("#seek", "input"), ("#estante", "click"), ("#mini-abrir", "click"), ("#b-pagina", "click"))
 STILL_OFF = (("#b-ouvir", "click"), ("#gaveta", "click"), ("#q", "input"), ("#resultados", "click"))
@@ -167,10 +170,19 @@ async def handler_files(tab, selector, kind):
     target = node["result"].get("objectId")
     if not target:
         return None
-    urls = {s["scriptId"]: s["url"] for s in tab.scripts}
     listeners = (await tab.cmd("DOMDebugger.getEventListeners", objectId=target))["listeners"]
-    return sorted({missing_script.theme_file(urls.get(x["scriptId"], "")) or "index.html" for x in listeners
+    return sorted({await script_file(tab, x["scriptId"]) for x in listeners
                    if x["type"] == kind and x["useCapture"] == (phase == "capture")})
+
+
+async def script_file(tab, script_id):
+    url = next((s["url"] for s in tab.scripts if s["scriptId"] == script_id), "")
+    name = missing_script.theme_file(url)
+    if name:
+        return name
+    source = (await tab.cmd("Debugger.getScriptSource", scriptId=script_id))["scriptSource"]
+    mark = MARK.match(source.lstrip())
+    return f"{mark.group(1).lower()}.js" if mark else "index.html"
 
 
 async def checks(tab):
@@ -205,7 +217,8 @@ async def checks(tab):
     for file, _, selector, kind in FEATURE_HANDLERS:
         files = await handler_files(tab, selector, kind)
         moved = (files == [file] if selector not in SHARED_TARGETS and (selector, kind) not in SHARED_HANDLERS
-                 else bool(files) and file in files)
+                 else bool(files) and file in files
+                 and ("index.html" not in files or (selector, kind) in INLINE_STAYS))
         results.append((moved, f"the {kind} handler of {selector} is in {file} ({files})"))
 
     await tab.js(SEARCH_OPEN)

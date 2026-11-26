@@ -1,6 +1,6 @@
 /* START-JS-INICIO */
 'use strict';
-if (scriptLoaded('desk-buttons.js')) bindDeskButtons();
+bindDeskButtons();
 
 /* ---------- inicio ---------- */
 montarMostradores();
