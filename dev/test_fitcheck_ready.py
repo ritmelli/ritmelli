@@ -4,6 +4,7 @@ import io
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -114,6 +115,48 @@ print("RESULT " + json.dumps({"r": r, "waits": len(waits)}))
 """
 LATE_S = fitcheck.AVISO_ESPERA_S + 2
 LATE_ASKED = "/__ritmelli-test-late-notice"
+LATE_STATE_S = 2.0
+STACKS_HOOK = ROOT / "dev" / "stacks_hook"
+STACKS_MARK = "---- the server's stacks, asked by the test"
+HELD_CHILD = '''
+import sys
+import threading
+
+
+def held_in_this_function():
+    print("ready", flush=True)
+    threading.Event().wait()
+
+
+held_in_this_function()
+'''
+SLOW_UPSTREAM = '''
+import http.server
+import sys
+import threading
+
+
+class Slow(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        state_held_upstream()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", "2")
+        self.end_headers()
+        self.wfile.write(b"{}")
+
+    def log_message(self, *args):
+        pass
+
+
+def state_held_upstream():
+    threading.Event().wait(float(sys.argv[2]))
+
+
+server = http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), Slow)
+print("listening", flush=True)
+server.serve_forever()
+'''
 LATE_NOTICE = ("<script>(() => { const show = HTMLDialogElement.prototype.showModal; "
                "HTMLDialogElement.prototype.showModal = function () { if (this.id !== 'dlg-metricas') "
                f"return show.call(this); fetch('{LATE_ASKED}'); "
@@ -129,12 +172,43 @@ def check(ok, msg):
         failures.append(msg)
 
 
+class ServerStacks:
+    def __init__(self):
+        self.listener = socket.create_server(("127.0.0.1", 0))
+        self.port, self.asker, self.asked = self.listener.getsockname()[1], None, False
+        self.accepted = threading.Event()
+        threading.Thread(target=self.accept, daemon=True).start()
+
+    def accept(self):
+        with contextlib.suppress(OSError):
+            self.asker, _ = self.listener.accept()
+        self.accepted.set()
+
+    def env(self):
+        path = os.pathsep.join(p for p in (str(STACKS_HOOK), os.environ.get("PYTHONPATH")) if p)
+        return {"PYTHONPATH": path, "RITMELLI_STACKS_PORT": str(self.port)}
+
+    def ask(self):
+        if self.asker is not None and not self.asked:
+            self.asked = True
+            self.asker.sendall(b"x")
+
+    def of(self, log):
+        text = Path(log).read_text(encoding="utf-8", errors="replace")
+        return text[text.index(STACKS_MARK):] if self.asked and STACKS_MARK in text else None
+
+    def close(self):
+        if self.asker is not None:
+            self.asker.close()
+        self.listener.close()
+
+
 class ThemeProxy:
-    def __init__(self, target, hold_script_s=0, hold_state_s=0, late_notice=False):
+    def __init__(self, target, hold_script_s=0, hold_state_s=0, late_notice=False, stacks=None):
         self.target, self.port = target, so_mock.free_port()
         self.base = f"http://127.0.0.1:{self.port}"
         self.hold_script_s, self.hold_state_s, self.late_notice = hold_script_s, hold_state_s, late_notice
-        self.held, self.started = [], threading.Event()
+        self.held, self.started, self.stacks = [], threading.Event(), stacks
 
     def hold_for(self, request):
         from_browser = "Chrome" in request.headers.get("User-Agent", "")
@@ -154,8 +228,13 @@ class ThemeProxy:
         headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS | {"accept-encoding"}}
         if "Origin" in request.headers:
             headers["Origin"] = self.target
+        late = None
+        if self.stacks is not None and request.path == "/api/state":
+            late = asyncio.get_running_loop().call_later(LATE_STATE_S, self.stacks.ask)
         async with self.session.request(request.method, self.target + request.path_qs, headers=headers,
                                         data=await request.read(), allow_redirects=False) as upstream:
+            if late is not None:
+                late.cancel()
             response = web.StreamResponse(status=upstream.status, headers={
                 k: v for k, v in upstream.headers.items() if k.lower() not in HOP_HEADERS})
             await response.prepare(request)
@@ -184,10 +263,12 @@ class ThemeProxy:
 def notice_through(proxy_options, config, button=None):
     with tempfile.TemporaryDirectory(prefix="ritmelli-notice-") as tmp:
         tmp = Path(tmp)
+        stacks = ServerStacks()
         with open(tmp / "server.log", "w", encoding="utf-8") as log:
-            srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, config=config, extras=["--metricas-teste"])
+            srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, config=config, extras=["--metricas-teste"],
+                                        env=stacks.env())
             try:
-                proxy = ThemeProxy(srv.base, **proxy_options)
+                proxy = ThemeProxy(srv.base, stacks=stacks, **proxy_options)
                 loop, stop = asyncio.new_event_loop(), asyncio.Event()
                 thread = threading.Thread(target=loop.run_until_complete, args=(proxy.serve(stop),), daemon=True)
                 thread.start()
@@ -198,8 +279,72 @@ def notice_through(proxy_options, config, button=None):
                     loop.call_soon_threadsafe(stop.set)
                     thread.join(10)
             finally:
-                compara.para_servidor(srv)
+                try:
+                    compara.para_servidor(srv)
+                finally:
+                    stacks.close()
+        if server_stacks := stacks.of(tmp / "server.log"):
+            r["server_stacks"] = server_stacks[-6000:]
     return r, proxy
+
+
+def child_stacks(code, stacks, *args):
+    child = subprocess.Popen([sys.executable, "-c", code, *args], env=dict(os.environ, **stacks.env()),
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+    stacks.accepted.wait(10)
+    return child
+
+
+def stacks_of_a_held_process():
+    stacks = ServerStacks()
+    child = child_stacks(HELD_CHILD, stacks)
+    try:
+        child.stdout.readline()
+        stacks.ask()
+        seen, dumped = [], threading.Event()
+
+        def read():
+            for line in child.stderr:
+                seen.append(line)
+                if "held_in_this_function" in line:
+                    dumped.set()
+
+        threading.Thread(target=read, daemon=True).start()
+        dumped.wait(10)
+    finally:
+        child.kill()
+        child.wait()
+        stacks.close()
+    text = "".join(seen)
+    check(STACKS_MARK in text and "held_in_this_function" in text,
+          f"a test server asked for its stacks prints every thread's, with the function it is held in ({text[-300:]!r})")
+
+
+def proxy_asks_when_the_state_is_late():
+    stacks, port = ServerStacks(), so_mock.free_port()
+    child = child_stacks(SLOW_UPSTREAM, stacks, str(port), str(LATE_STATE_S + 1))
+    try:
+        child.stdout.readline()
+        proxy = ThemeProxy(f"http://127.0.0.1:{port}", stacks=stacks)
+        loop, stop = asyncio.new_event_loop(), asyncio.Event()
+        thread = threading.Thread(target=loop.run_until_complete, args=(proxy.serve(stop),), daemon=True)
+        thread.start()
+        proxy.started.wait(10)
+
+        async def state():
+            async with ClientSession() as session, session.get(proxy.base + "/api/state") as r:
+                return r.status
+
+        status = asyncio.run(state())
+        loop.call_soon_threadsafe(stop.set)
+        thread.join(10)
+    finally:
+        child.kill()
+        _, err = child.communicate()
+        stacks.close()
+    check(status == 200 and stacks.asked and "state_held_upstream" in err,
+          f"the proxy asks the server for its stacks once its GET /api/state is {LATE_STATE_S:.0f} s late, and they show "
+          f"where the server is held ({status}, asked {stacks.asked}, {err[-300:]!r})")
 
 
 def notice_on_slow_load():
@@ -471,6 +616,8 @@ def main():
     clock_from_the_event_not_from_its_handling()
     no_wall_clock_in_the_conversion()
     ready_answer_past_the_deadline()
+    stacks_of_a_held_process()
+    proxy_asks_when_the_state_is_late()
     notice_on_slow_load()
     notice_on_slow_state()
     notice_reopens_on_slow_state()
