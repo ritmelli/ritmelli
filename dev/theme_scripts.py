@@ -2,8 +2,10 @@ import argparse
 import asyncio
 import importlib
 import json
+import re
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -73,13 +75,30 @@ FEATURE_HANDLERS = (
     ("options.js", "options.js", "#menu", "pointerup"), ("options.js", "options.js", "#menu", "pointercancel"),
     ("options.js", "options.js", "#menu", "touchmove"), ("options.js", "options.js", "#menu", "click:capture"),
     ("options.js", "options.js", "document", "pointerdown"), ("options.js", "options.js", "window", "resize"),
+    ("connection.js", "connection.js", "window", "online"), ("connection.js", "connection.js", "window", "offline"),
+    ("pairing.js", "pairing.js", "#form-parear", "submit"),
+    ("welcome.js", "welcome.js", "#dlg-boas", "close"), ("welcome.js", "welcome.js", "#dlg-disp", "close"),
+    ("desk-buttons.js", "ui-events.js", "#tocar-d", "click"), ("desk-buttons.js", "ui-events.js", "#prox-d", "click"),
+    ("desk-buttons.js", "ui-events.js", "#m-aleatorio", "click"), ("desk-buttons.js", "ui-events.js", "#m-repetir", "click"),
+    ("desk-buttons.js", "ui-events.js", "#m-parecidas", "click"), ("desk-buttons.js", "ui-events.js", "#pads-grade", "click"),
+    ("desk-buttons.js", "ui-events.js", "#pads-grade", "contextmenu"),
+    ("desk-buttons.js", "ui-events.js", "#prat-esq", "click"), ("desk-buttons.js", "ui-events.js", "#prat-dir", "click"),
+    ("start.js", "start.js", "document", "DOMContentLoaded"),
+    ("desk-buttons.js", "ui-events.js", "#estante", "scroll"), ("start.js", "start.js", "document", "visibilitychange"),
+    ("connection.js", "connection.js", "navigator.connection", "change"),
+    ("dj-desk.js", "ui-events.js", "mqUnica", "change"),
 )
-SHARED_TARGETS = ("window", "document")
+SHARED_TARGETS = ("window", "document", "navigator.connection", "mqUnica")
+SHARED_HANDLERS = (("#estante", "scroll"),)
+INLINE_STAYS = (("document", "DOMContentLoaded"),)
+MARK = re.compile(r"/\* ([A-Z0-9-]+)-JS-INICIO \*/")
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
             ("#seek", "input"), ("#estante", "click"), ("#mini-abrir", "click"), ("#b-pagina", "click"))
 STILL_OFF = (("#b-ouvir", "click"), ("#gaveta", "click"), ("#q", "input"), ("#resultados", "click"))
 FORM_INERT = ("the search form stays inert", "document.getElementById('form-busca')?.inert === true")
+NO_STARTUP = ("the startup does not run", "document.getElementById('mini-cortar')?.innerHTML === ''")
+DESK_ON = (("#tocar-d", "click"), ("#pads-grade", "click"), ("#prat-dir", "click"))
 EARLIER_FAILURES = (
     ("gerado/pecas.js", (), (), (FORM_INERT,)),
     ("dj-visor.js", (("#b-disp", "click"),), STILL_OFF, (FORM_INERT,)),
@@ -88,6 +107,9 @@ EARLIER_FAILURES = (
     ("turntable.js", (("#estante", "click"), ("#mini-tocar", "click"), ("#mini-cortar", "click"), ("#b-pagina", "click")),
      (("#mini-abrir", "click"), ("#b-disp", "click")), (FORM_INERT,)),
     ("voice-effects.js", STILL_ON, STILL_OFF, (FORM_INERT,)),
+    ("disc-page.js", DESK_ON, (), (NO_STARTUP,)),
+    ("dj-desk.js", DESK_ON, (), (NO_STARTUP,)),
+    ("queue.js", DESK_ON, (), (NO_STARTUP,)),
     ("search.js", STILL_ON + (("#rolo-busca", "scroll"),), STILL_OFF,
      (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"), FORM_INERT)),
 )
@@ -149,10 +171,19 @@ async def handler_files(tab, selector, kind):
     target = node["result"].get("objectId")
     if not target:
         return None
-    urls = {s["scriptId"]: s["url"] for s in tab.scripts}
     listeners = (await tab.cmd("DOMDebugger.getEventListeners", objectId=target))["listeners"]
-    return sorted({missing_script.theme_file(urls.get(x["scriptId"], "")) or "index.html" for x in listeners
+    return sorted({await script_file(tab, x["scriptId"]) for x in listeners
                    if x["type"] == kind and x["useCapture"] == (phase == "capture")})
+
+
+async def script_file(tab, script_id):
+    url = next((s["url"] for s in tab.scripts if s["scriptId"] == script_id), "")
+    name = missing_script.theme_file(url)
+    if name:
+        return name
+    source = (await tab.cmd("Debugger.getScriptSource", scriptId=script_id))["scriptSource"]
+    mark = MARK.match(source.lstrip())
+    return f"{mark.group(1).lower()}.js" if mark else "index.html"
 
 
 async def checks(tab):
@@ -186,8 +217,9 @@ async def checks(tab):
 
     for file, _, selector, kind in FEATURE_HANDLERS:
         files = await handler_files(tab, selector, kind)
-        moved = (files == [file] if selector not in SHARED_TARGETS
-                 else bool(files) and file in files and "index.html" not in files)
+        moved = (files == [file] if selector not in SHARED_TARGETS and (selector, kind) not in SHARED_HANDLERS
+                 else bool(files) and file in files
+                 and ("index.html" not in files or (selector, kind) in INLINE_STAYS))
         results.append((moved, f"the {kind} handler of {selector} is in {file} ({files})"))
 
     await tab.js(SEARCH_OPEN)
@@ -207,9 +239,10 @@ def held_until(activation):
         state = await until(tab, f"({{ran: typeof {RAN_BEFORE[activation]} === 'function',"
                                  " inert: document.getElementById('form-busca')?.inert})", "s.ran", PAGE_READY_S)
         early = {}
-        for _, at, selector, kind in FEATURE_HANDLERS:
+        for file, at, selector, kind in FEATURE_HANDLERS:
             if at == activation:
-                early[f"{kind} {selector}"] = await handler_files(tab, selector, kind)
+                files = await handler_files(tab, selector, kind)
+                early[f"{kind} {selector}"] = [f for f in files or [] if f == file]
         await tab.release(activation, fail=False)
         results = [(state.get("ran") and not any(early.values()),
                     f"with {activation} still loading, the handlers it turns on are not on yet ({early})")]
@@ -220,13 +253,29 @@ def held_until(activation):
     return run
 
 
+async def startup_with_the_search(tab):
+    await tab.cmd("Debugger.enable")
+    with urllib.request.urlopen(tab.base + missing_script.THEME, timeout=10) as r:
+        page = r.read().decode("utf-8")
+    files = [a["src"] for a, *_ in missing_script.testa_i18n.script_elements(page) if a.get("src")]
+    after = files[files.index("ui-events.js") + 1]
+    tab.holding.add(after)
+    await missing_script.open_page(tab)
+    state = await until(tab, "({on: document.getElementById('form-busca')?.inert === false,"
+                             " carregar: typeof carregar})", "s.on && s.carregar === 'function'", PAGE_READY_S)
+    await tab.release(after, fail=False)
+    return [(state.get("on") and state.get("carregar") == "function",
+             f"with {after}, the first file after ui-events.js, held, carregar() is there by the time the search is on "
+             f"and a pairing can end ({state})")]
+
+
 def after_a_failure(missing, expected, off, page_checks):
     async def run(tab):
         await tab.cmd("Debugger.enable")
         tab.failing.add(missing)
         tab.holding.add("deck.js")
         await missing_script.open_page(tab)
-        state = await until(tab, "({ran: !!document.querySelector('#ant-d svg')"
+        state = await until(tab, "({ran: !!document.querySelector('script[src=\"deck.js\"]')"
                                  + "".join(f", {json.dumps(t)}: {e}" for t, e in page_checks) + "})", "s.ran",
                             PAGE_READY_S)
         found = {f"{kind} {selector}": await handler_files(tab, selector, kind) for selector, kind in expected}
@@ -258,7 +307,7 @@ def main(argv=None):
             srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, raiz=args.raiz.resolve(),
                                         config={"boas_vindas": True})
             try:
-                for run in (checks, *(held_until(a) for a in RAN_BEFORE),
+                for run in (checks, *(held_until(a) for a in RAN_BEFORE), startup_with_the_search,
                             *(after_a_failure(*f) for f in EARLIER_FAILURES)):
                     results += asyncio.run(missing_script.with_tab(srv, run))
             finally:
