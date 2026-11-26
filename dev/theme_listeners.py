@@ -21,7 +21,8 @@ size, once the page is connected. Two tables are compared:
 - the listeners on at that moment, read in the order they were added (the DevTools getEventListeners), with the
   capture, passive and once flags and the handler's source text, each line without its indentation: those of every
   node, the document and the window, and those of the other targets the page added a listener to (each MediaQueryList
-  as matchMedia(<its query>), navigator.connection, and the rest by their kind);
+  as matchMedia(<its query>) #<n>, numbered per query in the order of its first add or remove call,
+  navigator.connection, and the rest by their kind);
 - every addEventListener and removeEventListener call the page made since it began, per target and event type, in
   order, with the options as given and the handler's text: a listener added and removed before the table is read shows
   here.
@@ -43,8 +44,13 @@ RECORDER = """(() => {
     }
     return parts.join(' > ');
   };
+  const queries = new Map();
+  const query = t => {
+    if (!queries.has(t)) queries.set(t, [...queries.keys()].filter(q => q.media === t.media).length + 1);
+    return `matchMedia(${t.media}) #${queries.get(t)}`;
+  };
   const name = t => t === window ? 'window' : t === document ? 'document' : t instanceof Node ? path(t)
-    : t instanceof MediaQueryList ? `matchMedia(${t.media})` : t === navigator.connection ? 'navigator.connection'
+    : t instanceof MediaQueryList ? query(t) : t === navigator.connection ? 'navigator.connection'
     : t.constructor.name;
   const options = o => o !== null && typeof o === 'object' ? [o.capture ?? null, o.passive ?? null, o.once ?? null]
     : [o ?? null, null, null];
