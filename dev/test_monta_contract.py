@@ -1,13 +1,21 @@
 import copy
+import importlib.util
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 from workflow_yaml import job_steps, load
 
 ROOT = Path(__file__).resolve().parent.parent
 MONTA = ROOT / ".github" / "workflows" / "monta.yml"
+BUILD_MANIFEST = ROOT / "instalador" / "atualizacao" / "build_manifest.py"
+MANIFEST_RUN = ['& "$env:LOCALAPPDATA\\ritmelli-build\\Scripts\\python.exe" '
+                'instalador\\atualizacao\\build_manifest.py',
+                'if ($LASTEXITCODE -ne 0) { throw "build_manifest.py exited with $LASTEXITCODE" }']
+DIRECTIVE = re.compile(r"#requires\b", re.I)
+CALLS = re.compile(r"\b(build_manifest|publica)\b", re.I)
 VERSION = "${{ steps.congela.outputs.versao }}"
 MARK = "<version>"
 EXPRESSION = re.compile(r"\$\{\{.*?\}\}", re.S)
@@ -16,7 +24,7 @@ REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial"
 GATED_JOBS = {"testa-migracao": "anterior", "testa-parcial": "parcial"}
 BUILDS = ({"anterior": True, "parcial": True}, {"anterior": True, "parcial": False})
 SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
-NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
+NOTES = {"NOTAS": "${{ inputs.notas }}", "NOTAS_EN": "${{ inputs.notas_en }}"}
 STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.([\w-]+)\s*!=\s*''",
                 "parcial": r"steps\.([\w-]+)\.outputs\.(parcial)"}
 RESERVED = ("Ritmelli-", "ritmelli-exe-")
@@ -82,10 +90,29 @@ def step_by_id(job, step_id):
     return found[0] if len(found) == 1 else None
 
 
+def commands(run):
+    return [line.strip() for line in str(run).splitlines()
+            if line.strip() and not (line.strip().startswith("#") and not DIRECTIVE.match(line.strip()))]
+
+
 def manifest_step(job):
-    found = [s for s in job_steps(job)
-             if "instalador/atualizacao/publica.py" in code(s.get("run", "")).replace("\\", "/")]
+    found = [s for s in job_steps(job) if commands(s.get("run", "")) == MANIFEST_RUN]
     return found[0] if len(found) == 1 else None
+
+
+def texts(node):
+    if isinstance(node, dict):
+        return [t for k, v in node.items() for t in (*texts(k), *texts(v))]
+    if isinstance(node, list):
+        return [t for v in node for t in texts(v)]
+    return [str(node)]
+
+
+def manifest_folder(script=BUILD_MANIFEST):
+    spec = importlib.util.spec_from_file_location("build_manifest", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.OUTPUT.as_posix()
 
 
 def output_lines(run, key):
@@ -135,10 +162,6 @@ def code(run):
     return re.sub(r"<#.*?#>|#[^\n]*", lambda m: re.sub(r"[^\n]", " ", m.group(0)), str(run), flags=re.S)
 
 
-def active(run, found):
-    return bool(found) and code(run)[found.start():found.end()] == found.group(0)
-
-
 def condition_holds(condition, build, needs):
     if condition is None:
         return True
@@ -158,30 +181,12 @@ def runs(jobs, job_id, build, seen=()):
     return condition_holds(job.get("if"), build, needs) and all(runs(jobs, n, build, seen + (job_id,)) for n in needs)
 
 
-SAIDA = r"""['"]--saida['"],\s*(?:(['"])([^'"]*)\1|\$(\w+))\s*[,)]"""
-
-
-def output_folder(run):
-    run = str(run)
-    found = re.search(SAIDA, run)
-    if not active(run, found) or len(re.findall(SAIDA, code(run))) != 1:
-        return None
-    if found.group(3):
-        if len(re.findall(rf"\${found.group(3)}\s*[-+*/]?=(?!=)", run, re.I)) != 1:
-            return None
-        found = re.search(rf"""^[ \t]*\${found.group(3)}\s*=\s*(['"])([^'"]*)\1[ \t]*$""", run, re.M | re.I)
-        if not active(run, found):
-            return None
-    value = found.group(2)
-    return value if value and "$" not in value else None
-
-
 def one_literal_file(path, filename):
     path = str(path or "").strip()
     return "\n" not in path and not any(c in path for c in "*?[!") and Path(path).name == filename
 
 
-def contract_problems(doc):
+def contract_problems(doc, script=BUILD_MANIFEST):
     problems = []
     dispatch = (doc.get("on") or {}).get("workflow_dispatch") if isinstance(doc.get("on"), dict) else None
     inputs = (dispatch or {}).get("inputs") or {}
@@ -229,50 +234,23 @@ def contract_problems(doc):
     if len(found[EXE]) == 1 and not one_literal_file(found[EXE][0].get("path"), "ritmelli.exe"):
         problems.append(f"the {EXE} artifact is not the ritmelli.exe alone ({found[EXE][0].get('path')!r})")
     manifest = manifest_step(monta)
-    first = next((s for j in jobs.values() if not switched_off(j.get("if")) for s in job_steps(j)
-                  if "publica.py" in str(s.get("run", "")) and not switched_off(s.get("if"))), None)
+    callers = [s for j in jobs.values() for s in job_steps(j) if any(CALLS.search(t) for t in texts(s))]
+    folder = manifest_folder(script)
     if manifest is None or switched_off(manifest.get("if")):
-        problems.append("the monta job has no one step that runs publica.py")
-    elif first is not manifest:
-        problems.append("an earlier step mentions publica.py, and the pipeline reads that step as the one that runs it")
+        problems.append("the monta job has no one step that runs build_manifest.py, the script that runs publica.py")
+    elif callers != [manifest]:
+        problems.append("another step mentions build_manifest or publica, and the pipeline reads only the step that "
+                        "runs build_manifest.py")
     elif "if" in manifest:
-        problems.append("the step that runs publica.py runs only under an if:, so the manifest may be missing")
+        problems.append("the step that runs build_manifest.py runs only under an if:, so the manifest may be missing")
     else:
-        run = str(manifest.get("run", ""))
-        saida = output_folder(run)
-        if saida is None:
-            problems.append("the step that runs publica.py has no one literal --saida")
-        elif len(found[SETUP]) == 1 and normal_path(found[SETUP][0].get("path")) != normal_path(saida):
-            problems.append(f"the {SETUP} artifact is {found[SETUP][0].get('path')!r}, not the folder publica.py "
-                            f"writes the manifest to ({saida})")
-        for name, (value, option) in NOTES.items():
+        if len(found[SETUP]) == 1 and normal_path(found[SETUP][0].get("path")) != normal_path(folder):
+            problems.append(f"the {SETUP} artifact is {found[SETUP][0].get('path')!r}, not the folder "
+                            f"build_manifest.py writes the manifest to ({folder})")
+        for name, value in NOTES.items():
             if inner((manifest.get("env") or {}).get(name, "")) != inner(value):
-                problems.append(f"the step that runs publica.py does not get {name} from {value}")
-            if not re.search(rf"""@\(['"]{name}['"], ['"][a-z_]+['"], ['"]{option}['"]\)""", code(run)):
-                problems.append(f"the step that runs publica.py does not pass {name} as {option}")
+                problems.append(f"the step that runs build_manifest.py does not get {name} from {value}")
     return problems
-
-
-def notes_loop(lines):
-    start = next(i for i, line in enumerate(lines) if line.lstrip().startswith("foreach") and "NOTAS_EN" in line)
-    depth = 0
-    for end in range(start, len(lines)):
-        depth += lines[end].count("{") - lines[end].count("}")
-        if depth <= 0:
-            return start, end
-    return start, len(lines) - 1
-
-
-def comment_notes_loop(run):
-    lines = str(run).splitlines()
-    start, end = notes_loop(lines)
-    return "\n".join(lines[:start] + ["# " + line for line in lines[start:end + 1]] + lines[end + 1:]) + "\n"
-
-
-def block_notes_loop(run):
-    lines = str(run).splitlines()
-    start, end = notes_loop(lines)
-    return "\n".join(lines[:start] + ["<#"] + lines[start:end + 1] + ["#>"] + lines[end + 1:]) + "\n"
 
 
 def shown(doc, name):
@@ -358,39 +336,20 @@ def main():
         step = manifest_step(d["jobs"]["monta"])
         step.update(run=change(step["run"]))
 
-    def assign_folder(d, value):
-        edit_run(d, lambda run: re.sub(r"^(\s*\$saida\s*=\s*)('[^']*'|\"[^\"]*\")", lambda m: m.group(1) + value, run,
-                                       count=1, flags=re.M))
-
-    def move_folder(d):
-        assign_folder(d, "'instalador\\out'")
-
-    moved = mutant(doc, lambda d: (upload(d, setup)["with"].update(path="instalador/out/"), move_folder(d),
+    folder, other = manifest_folder(), manifest_folder() + "_moved"
+    moved = mutant(doc, lambda d: (upload(d, setup)["with"].update(path=other + "/"),
                                    source_step(d, "parcial").update(run=source_step(d, "parcial")["run"].replace(
-                                       'Test-Path "instalador\\saida\\', 'Test-Path "instalador\\out\\'))))
-    check(output_folder(manifest_step(moved["jobs"]["monta"])["run"]) == "instalador\\out"
-          and contract_problems(moved) == [],
-          "the --saida of publica.py and the Ritmelli artifact path moved together keep the contract")
-    quoted = mutant(doc, lambda d: assign_folder(d, '"instalador\\saida"'))
-    check('"instalador\\saida"' in manifest_step(quoted["jobs"]["monta"])["run"] and contract_problems(quoted) == [],
-          "the folder of --saida in double quotes keeps the contract")
-    option = mutant(doc, lambda d: edit_run(d, lambda run: run.replace("'--saida', $saida", '"--saida", $saida')))
-    check('"--saida", $saida' in manifest_step(option["jobs"]["monta"])["run"] and contract_problems(option) == [],
-          "the --saida option in double quotes keeps the contract")
-    script = "instalador\\atualizacao\\publica.py"
-    forward = mutant(doc, lambda d: edit_run(d, lambda run: run.replace(script, "instalador/atualizacao/publica.py")))
-    check(script in manifest_step(doc["jobs"]["monta"])["run"] and contract_problems(forward) == [],
-          "the publica.py call written with forward slashes keeps the contract")
-    tuples = mutant(doc, lambda d: edit_run(d, lambda run: run.replace(
-        "@('NOTAS', 'notas', '--notas')", '@("NOTAS", "notas", "--notas")').replace(
-        "@('NOTAS_EN', 'notas_en', '--notas-en')", '@("NOTAS_EN", "notas_en", "--notas-en")')))
-    check('@("NOTAS", "notas", "--notas")' in manifest_step(tuples["jobs"]["monta"])["run"]
-          and '@("NOTAS_EN", "notas_en", "--notas-en")' in manifest_step(tuples["jobs"]["monta"])["run"]
-          and contract_problems(tuples) == [], "the notes tuples in double quotes keep the contract")
-    broken = mutant(doc, lambda d: edit_run(d, lambda run: run.replace("'--saida', $saida)",
-                                                                       "'--saida',\n    $saida)")))
-    check("'--saida',\n" in manifest_step(broken["jobs"]["monta"])["run"] and contract_problems(broken) == [],
-          "the --saida value on the next line keeps the contract")
+                                       f'Test-Path "{folder}/'.replace("/", "\\"),
+                                       f'Test-Path "{other}/'.replace("/", "\\")))))
+    with tempfile.TemporaryDirectory() as temp:
+        script = Path(temp, BUILD_MANIFEST.name)
+        source, count = re.subn(r"(?m)^OUTPUT = [^\r\n]+", f"OUTPUT = Path({other!r})",
+                                BUILD_MANIFEST.read_text(encoding="utf-8"))
+        script.write_text(source, encoding="utf-8")
+        check(count == 1 and contract_problems(moved, script) == [],
+              "the folder build_manifest.py writes to and the Ritmelli artifact path moved together keep the contract")
+        check([p for p in contract_problems(doc, script) if "not the folder build_manifest.py writes" in p] != [],
+              "the check catches the folder build_manifest.py writes to changed alone")
     marks = mutant(doc, lambda d: edit_run(d, lambda run: "# a <# in a line comment\n" + run + "# and a #> later\n"))
     check(contract_problems(marks) == [], "line comments that mention <# and #> keep the contract")
     cased = mutant(doc, lambda d: source_step(d, "parcial").update(
@@ -411,11 +370,6 @@ def main():
                                                       "contract")
     check(contract_problems(migration_first) == [],
           "testa needing testa-migracao, which runs in every published build, keeps the contract")
-    cited = mutant(doc, lambda d: edit_run(d, lambda run: run + "# publica.py also takes '--saida', $other)\n"))
-    check(contract_problems(cited) == [], "a comment citing --saida after the real option keeps the contract")
-    later = mutant(doc, lambda d: shown(d, "testa")["steps"].append(
-        {"name": "Lista", "shell": "powershell", "run": "# publica.py wrote the manifest\n"}))
-    check(contract_problems(later) == [], "a step after the manifest that mentions publica.py keeps the contract")
     helper = mutant(doc, lambda d: d["jobs"]["monta"]["steps"].append(
         {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-.1", "path": "x"}}))
     check(contract_problems(helper) == [], "an artifact named Ritmelli-.1, which the pipeline never takes for the "
@@ -492,36 +446,37 @@ def main():
         "a second Ritmelli artifact": lambda d: d["jobs"]["monta"]["steps"].append(copy.deepcopy(upload(d, setup))),
         "a Ritmelli artifact with a literal version": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-0.0.0", "path": "x"}}),
-        "the step that runs publica.py switched off": lambda d: manifest_step(d["jobs"]["monta"]).update(
+        "the step that runs build_manifest.py switched off": lambda d: manifest_step(d["jobs"]["monta"]).update(
             {"if": "false"}),
         "the ritmelli.exe path with a wildcard": lambda d: upload(d, exe)["with"].update(path="dist/*/ritmelli.exe"),
         "the ritmelli.exe path with two files": lambda d: upload(d, exe)["with"].update(
             path="dist/ritmelli/ritmelli.exe\ndist/ritmelli/ritmelli2.exe"),
-        "the --saida of publica.py alone": move_folder,
-        "the --saida of publica.py commented out": lambda d: edit_run(d, lambda run: run.replace(
-            ", '--saida', $saida)", ") # '--saida', $saida")),
-        "the folder of --saida joined again": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$saida = Join-Path $saida 'x'", run, count=1, flags=re.M)),
-        "the folder of --saida assigned again in other case": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$Saida = 'instalador_out'", run, count=1, flags=re.M)),
         "a Ritmelli artifact named by a format expression": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, setup)["uses"],
              "with": {"name": "Ritmelli-${{ format('{0}', github.run_number) }}", "path": "x"}}),
         "a Ritmelli artifact named by the version and a suffix": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": setup + ".1", "path": "x"}}),
-        "the notes loop commented out": lambda d: edit_run(d, comment_notes_loop),
-        "the publica.py call commented out": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(&.*publica\.py.*)$", r"\1# \2", run, count=1, flags=re.M)),
-        "the step that runs publica.py under a condition": lambda d: manifest_step(d["jobs"]["monta"]).update(
+        "the manifest step running publica.py instead of build_manifest.py": lambda d: edit_run(
+            d, lambda run: run.replace("build_manifest.py", "publica.py")),
+        "a step after the manifest that mentions publica.py": lambda d: shown(d, "testa")["steps"].append(
+            {"name": "Lista", "shell": "powershell", "run": "# publica.py wrote the manifest\n"}),
+        "a switched-off step that runs publica.py": lambda d: shown(d, "testa")["steps"].append(
+            {"if": "false", "run": "python instalador\\atualizacao\\publica.py --app outro\n"}),
+        "an action whose script mentions publica": lambda d: shown(d, "testa")["steps"].append(
+            {"uses": "actions/github-script@v7", "with": {"script": "// publica"}}),
+        "the build_manifest.py call written with forward slashes": lambda d: edit_run(d, lambda run: run.replace(
+            "instalador\\atualizacao\\build_manifest.py", "instalador/atualizacao/build_manifest.py")),
+        "a second line in the manifest step that runs publica.py": lambda d: edit_run(
+            d, lambda run: run + "& python instalador\\atualizacao\\publica.py --app outro\n"),
+        "a #Requires line in the manifest step": lambda d: edit_run(d, lambda run: "#Requires -Version 7.0\n" + run),
+        "the build's Python from another folder": lambda d: edit_run(d, lambda run: run.replace(
+            "ritmelli-build", "ritmelli-other")),
+        "the step that runs build_manifest.py under a condition": lambda d: manifest_step(d["jobs"]["monta"]).update(
             {"if": "env.ASSINA == 'true'"}),
         "the congela step under a condition": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
             {"if": "github.event_name == 'push'"}),
         "a Ritmelli artifact named by another expression": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{ github.run_number }}", "path": "x"}}),
-        "the --saida of publica.py with a subfolder": lambda d: edit_run(d, lambda run: run.replace(
-            "'--saida', $saida)", "'--saida', $saida + '\\sub')")),
-        "the only assignment of the --saida folder commented out": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(\$saida\s*=.*)$", r"\1# \2", run, count=1, flags=re.M)),
         "testa-atualizador gated by anterior without needing monta": lambda d: shown(d, "testa-atualizador").update(
             {"if": shown(d, "testa-migracao")["if"],
              "needs": [next(k for k, j in d["jobs"].items() if j is shown(d, "testa"))]}),
@@ -624,89 +579,41 @@ def main():
                 "$env:GITHUB_OUTPUT", "$env:GITHUB_OUTPUT_FILE")),
         "testa needing testa-parcial": lambda d: shown(d, "testa").update(
             needs=["monta", next(k for k, j in d["jobs"].items() if j is shown(d, "testa-parcial"))]),
-        "a block comment with the artifact folder before a --saida moved elsewhere": lambda d: (
-            edit_run(d, lambda run: re.sub(r"^(\s*)(\$args_ = )", lambda m: m.group(1) + "<# '--saida', '"
-                                           + output_folder(run) + "') #>\n" + m.group(1) + m.group(2), run,
-                                           count=1, flags=re.M)),
-            move_folder(d)),
-        "a block comment on its own lines with the artifact folder before a --saida moved elsewhere": lambda d: (
-            edit_run(d, lambda run: re.sub(r"^(\s*)(\$args_ = )", lambda m: m.group(1) + "<#\n" + m.group(1)
-                                           + "'--saida', '" + output_folder(run) + "')\n" + m.group(1) + "#>\n"
-                                           + m.group(1) + m.group(2), run, count=1, flags=re.M)),
-            move_folder(d)),
         "testa-atualizador needing testa-parcial through an always() job": lambda d: (
             d["jobs"].update({free_job(d, "bridge"): {
                 "runs-on": "ubuntu-latest", "if": "always()", "steps": [{"run": "echo"}],
                 "needs": [next(k for k, j in d["jobs"].items() if j is shown(d, "testa-parcial"))]}}),
             shown(d, "testa-atualizador").update(
                 needs=["monta", [k for k in d["jobs"] if k.startswith("bridge")][-1]])),
-        "the --saida assignment in a block comment": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(\$saida\s*=.*)$", r"\1<#\n\1\2\n\1#>", run, count=1, flags=re.M)),
-        "a comment with the artifact folder before a --saida moved elsewhere": lambda d: (
-            edit_run(d, lambda run: re.sub(r"^(\s*)(\$args_ = )", lambda m: m.group(1) + "# '--saida', '"
-                                           + output_folder(run) + "')\n" + m.group(1) + m.group(2), run,
-                                           count=1, flags=re.M)),
-            move_folder(d)),
-        "a second active --saida": lambda d: edit_run(d, lambda run: run.replace(
-            "'--saida', $saida)", "'--saida', $saida, '--saida', 'elsewhere')")),
         "testa-atualizador needing a switched-off job": lambda d: (
             d["jobs"].update({free_job(d, "gate"): {"runs-on": "ubuntu-latest", "if": "false",
                                                     "steps": [{"run": "echo"}]}}),
             shown(d, "testa-atualizador").update(needs=["monta", [k for k in d["jobs"] if k.startswith("gate")][-1]])),
-        "the notes loop in a block comment": lambda d: edit_run(d, block_notes_loop),
         "a switched-off job shown like testa-atualizador": lambda d: d["jobs"].update(
             {free_job(d, "extra"): dict(copy.deepcopy(shown(d, "testa-atualizador")),
                                         name="testa-atualizador (extra)", **{"if": "${{ false }}"})}),
         "the Ritmelli artifact named with the marker itself": lambda d: upload(d, setup)["with"].update(
             name=f"Ritmelli-{MARK}"),
-        "the --saida option left only in a comment": lambda d: edit_run(d, lambda run: run.replace(
-            ", '--saida', $saida)", ")\n# '--saida', $saida)")),
-        "a comment that assigns the folder of --saida": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(\$saida\s*=.*)$", r"\1# $saida = 'saida'\n\1\2", run, count=1, flags=re.M)),
-        "a trailing comment on the --saida assignment": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(\$saida\s*=.*)$", r"\1\2  # the artifact folder", run, count=1, flags=re.M)),
-        "the --saida assignment with a type": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(\$saida\s*=)", r"\1[string]\2", run, count=1, flags=re.M)),
-        "a statement before the --saida assignment on its line": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(\$saida\s*=)", r"\1$x = 1; \2", run, count=1, flags=re.M)),
-        "a $ in the single-quoted folder of --saida": lambda d: (
-            assign_folder(d, "'instalador\\$saida'"), upload(d, setup)["with"].update(path="instalador/$saida/")),
         "the testa-atualizador job switched off": lambda d: shown(d, "testa-atualizador").update(
             {"if": "${{ false }}"}),
-        "the folder of --saida assigned twice": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$saida += '_other'", run, count=1, flags=re.M)),
         "the ritmelli-exe upload under a condition": lambda d: upload(d, exe).update(
             {"if": "github.event_name == 'push'"}),
-        "the --saida of publica.py": lambda d: manifest_step(d["jobs"]["monta"]).update(
-            run=manifest_step(d["jobs"]["monta"])["run"].replace("'--saida', $saida", "'--out', $saida")),
         "a second Ritmelli artifact in another job": lambda d: shown(d, "testa")["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{ needs.monta.outputs.versao }}",
                                                          "path": "saida/"}}),
         "the notas of the manifest": lambda d: manifest_step(d["jobs"]["monta"])["env"].pop("NOTAS"),
         "the notas_en of the manifest": lambda d: manifest_step(d["jobs"]["monta"])["env"].update(
             NOTAS_EN="${{ inputs.notas }}"),
-        "the NOTAS_EN the manifest reads": lambda d: manifest_step(d["jobs"]["monta"]).update(
-            run=re.sub(r"@\((['\"])NOTAS_EN\1,", r"@(\1NOTES_EN\1,", manifest_step(d["jobs"]["monta"])["run"])),
-        "the option of the notas": lambda d: manifest_step(d["jobs"]["monta"]).update(
-            run=re.sub(r"(['\"])--notas\1\)", "'--notes')", manifest_step(d["jobs"]["monta"])["run"])),
     }
     for job_id in ("testa", "testa-atualizador", "testa-parcial"):
         mutants[f"the shown name of the job {job_id}"] = (lambda j: lambda d: shown(d, j).update(
             name=f"{j}-renamed"))(job_id)
     mutants["the name of the testa-migracao job"] = lambda d: shown(d, "testa-migracao").update(
         name="migracao (${{ matrix.scenario }})")
-    packed_folder = mutant(doc, lambda d: edit_run(d, lambda run: run.replace("$saida = '", "$saida='")))
-    check("$saida='" in manifest_step(packed_folder["jobs"]["monta"])["run"]
-          and contract_problems(packed_folder) == [],
-          "the folder of --saida assigned without spaces keeps the contract")
     testa_id = next(k for k, j in doc["jobs"].items() if display(k, j) == "testa")
     renamed_job = mutant(doc, lambda d: d["jobs"].update(smoke=dict(d["jobs"].pop(testa_id), name="testa")))
     check(contract_problems(renamed_job) == [], "the testa job with another id and the same shown name keeps the "
                                                 "contract")
-    item = mutant(doc, lambda d: edit_run(d, lambda run: re.sub(r"\$n\b", "$item", run)))
-    check("$item" in manifest_step(item["jobs"]["monta"])["run"] and contract_problems(item) == []
-          and comment_notes_loop(manifest_step(item["jobs"]["monta"])["run"]).count("# foreach") == 1,
-          "the notes loop with another variable keeps the contract and its mutant still comments it out")
     compact = mutant(doc, lambda d: d["jobs"]["monta"]["outputs"].update(
         anterior=d["jobs"]["monta"]["outputs"]["anterior"].replace(" != ", "!=")))
     check("!=''" in compact["jobs"]["monta"]["outputs"]["anterior"] and contract_problems(compact) == [],
@@ -725,10 +632,8 @@ def main():
                                             for j in GATED_JOBS])
         check(contract_problems(gated_form) == [], f"the if: of the gated jobs {label} keeps the contract")
     for base, label in ((doc, ""), (spaces, " (version expression without spaces)"),
-                        (packed_folder, " (folder of --saida assigned without spaces)"),
                         (renamed_job, " (testa job with another id)"),
-                        (renamed_steps, " (steps behind anterior and parcial with other ids)"),
-                        (tuples, " (notes tuple in double quotes)")):
+                        (renamed_steps, " (steps behind anterior and parcial with other ids)")):
         for name, change in mutants.items():
             check(contract_problems(mutant(base, change)) != [], f"the check catches {name} changed{label}")
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
