@@ -57,8 +57,7 @@ SECTION_LABEL = re.compile(r"^\s*(?:#{1,6}\s+(?P<heading>[^:]+?)(?::\s*(?P<rest>
 RUN_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/actions/runs/\d+")
 IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)|<img\s|https://github\.com/user-attachments/")
 PROOF_SPAN = re.compile(r"^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)\b"
-                        r"|[\w./\\-]+\.(?:py|ps1|yml|js|sh|bat|iss|cpp|html)\b|^\s*(?:test|testa|teste)_\w+"
-                        r"|^\s*--[a-z][\w-]*")
+                        r"|[\w./\\-]+\.(?:py|ps1|yml|js|sh|bat|iss|cpp|html)\b|^\s*(?:test|testa|teste)_\w+")
 BLOCK_PROOF = re.compile(r"^\s*(?:\$|>|PS [^>]*>|[A-Z]:\\[^>]*>)\s*\S"
                          r"|^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)\s"
                          r"|^\s*(?:ok|FAIL|FALHA)\s|^\s*(?:=+\s*)?\d+ (?:of|de) \d+\b|^\s*(?:=+\s*)?\d+ (?:passed|failed)\b"
@@ -440,8 +439,12 @@ def comment_lines(t):
         for c in lexed.comments:
             if not kept(p, lexed, c):
                 lines |= set(range(c.start, c.end + 1))
-            elif c.end > c.start and any(text.strip(" */") for text in c.text.splitlines()[1:]):
-                lines |= set(range(c.start + 1, c.end + 1))
+            else:
+                if c.end > c.start and any(text.strip(" */") for text in c.text.splitlines()[1:]):
+                    lines |= set(range(c.start + 1, c.end + 1))
+                marker = BLOCK_MARKER.match(c.text)
+                if marker and re.search(r"[^\W\d_]", (c.text.splitlines() or [""])[0][marker.end():]):
+                    lines.add(c.start)
         items += [(p, n) for n in sorted(lines)]
     return items
 
@@ -843,8 +846,9 @@ def skipped_tests(t):
         items += [(p, n) for n, s in python_strings(t, p) if (LEFT_OUT.match(s) or KNOWN_FAILURE.match(s))
                   and not ISSUE.search(s)]
     for p in t.paths(".yml", ".ps1", ".psd1"):
+        raw = t.files[p].splitlines()
         items += [(p, n) for n, code in sorted(t.lexed(p).code.items())
-                  if LEFT_OUT_QUOTED.search(code) and not ISSUE.search(code)]
+                  if LEFT_OUT_QUOTED.search(code) and not ISSUE.search(raw[n - 1] if n <= len(raw) else code)]
     return sorted(set(items))
 
 
@@ -884,7 +888,11 @@ def identifiers(tree):
         elif isinstance(node, ast.keyword) and node.arg:
             yield node, node.arg
         elif isinstance(node, ast.alias):
-            yield node, node.asname or node.name
+            yield node, node.name
+            if node.asname:
+                yield node, node.asname
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            yield node, node.module
         elif isinstance(node, (ast.Global, ast.Nonlocal)):
             for name in node.names:
                 yield node, name
