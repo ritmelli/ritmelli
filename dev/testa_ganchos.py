@@ -787,6 +787,8 @@ MODULE_NOT_REACHES = [
      "import owner\n\n\ndef f(o):\n    owner = o\n    return owner._x\n"),
 ]
 MODULE_KNOWN_MISSES = [
+    ("a method default read before the class body rebinds the alias", MODULE_OWNER,
+     "import owner as e\n\n\nclass C:\n    def f(self, x=e._x):\n        return x\n    e = None\n"),
     ("the module bound to another name", MODULE_OWNER, "import owner\n\nm = owner\nm._x\n"),
 ]
 STATE_OWNER = "class App:\n    def __init__(self):\n        self.x = []\n\n    @property\n    def p(self):\n        return 1\n"
