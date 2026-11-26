@@ -1,0 +1,16 @@
+name: Inno Setup
+description: Inno Setup 6.7.3 in the user folder, the first place instalador/monta.ps1 and dev/testa_aparelho_mudo.py look
+runs:
+  using: composite
+  steps:
+    - name: Inno Setup 6.7.3
+      shell: powershell
+      run: |
+        $ProgressPreference = 'SilentlyContinue'
+        $exe = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+        Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $exe -UseBasicParsing
+        $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+        if ($hash -ne '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732') { throw "the Inno Setup installer came with hash $hash" }
+        $p = Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/SP-' -Wait -PassThru
+        if ($p.ExitCode -ne 0) { throw "the Inno Setup installer exited with $($p.ExitCode)" }
+        if (-not (Test-Path "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe")) { throw 'ISCC.exe is not in the user folder' }

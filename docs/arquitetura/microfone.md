@@ -111,4 +111,7 @@ reprovada) com os comandos gravados; `dev/testa_aparelho_mudo.py` confere a conf
 a página do instalador com um aparelho mudo de mentira; `dev/testa_voz.py` confere cada
 efeito do `voz.h` (pelo `voz.dll`) contra o `fx.py`, amostra a amostra, e em outras taxas;
 `dev/mede_voz_ao_vivo.py` mede ao vivo, num microfone virtual com o filtro, o atraso da voz com
-efeito no filtro e pelo app (toca estalos de verdade nesse microfone).
+efeito no filtro e pelo app (toca estalos de verdade nesse microfone). O `apo\compila.bat teste`
+também compila a `micfx.dll`, e o `microfone\apo\check_version.ps1` confere o recurso de versão
+das duas DLLs (o `version.rc`, com a versão do `versao.py`): o job do filtro do `testa.yml` roda
+ele nas DLLs de teste, e a `monta.yml`, nas do build.

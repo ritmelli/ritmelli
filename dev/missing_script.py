@@ -229,6 +229,17 @@ async def the_qr_code_survives(tab):
              f"dj-desk.js fails on a ?parear= address: the page loads again at it ({tab.documents})")]
 
 
+async def the_qr_code_stays_without_shared_js(tab):
+    tab.failing.add("shared.js")
+    await open_page(tab, "?parear=123456")
+    card = (await tab.page_reaches("s.card", CARD_SHOWS_S)).get("card")
+    search = await tab.js("location.search")
+    tab.failing.clear()
+    return [(card and search == "?parear=123456",
+             f"shared.js fails on a ?parear= address: the address keeps the code while the off-air card is open "
+             f"({search!r})")]
+
+
 async def transporte_alone(tab):
     tab.failing.add("transporte.js")
     await open_page(tab)
@@ -350,7 +361,8 @@ async def every_file_brings_the_card(tab):
              f"no call to the server ({missed or 'all of them'})")]
 
 
-PC = (a_file_that_fails, a_late_call_counts_for_its_page, the_qr_code_survives, transporte_alone, a_dialog_opened_before,
+PC = (a_file_that_fails, a_late_call_counts_for_its_page, the_qr_code_survives, the_qr_code_stays_without_shared_js,
+      transporte_alone, a_dialog_opened_before,
       the_shared_file_fails, every_file_brings_the_card)
 PHONE = (a_late_pairing_request, a_pairing_that_answers_after_the_failure)
 

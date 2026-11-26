@@ -42,11 +42,11 @@ jobs:
     steps:
       # a credencial sai do disco logo depois de baixar (persist-credentials): o build instala dezenas de pacotes de
       # terceiros
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       # o Python do build à mão
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12.10'
           cache: pip
@@ -63,19 +63,7 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: python dev/testa_tudo.py --so-stdlib
-      # o Inno Setup do build à mão, na pasta do usuário, que é a primeira onde o monta.ps1 procura (a máquina do
-      # GitHub pode trazer outra versão em Program Files)
-      - name: Inno Setup 6.7.3
-        shell: powershell
-        run: |
-          $ProgressPreference = 'SilentlyContinue'
-          $exe = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
-          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $exe -UseBasicParsing
-          $h = (Get-FileHash $exe -Algorithm SHA256).Hash
-          if ($h -ne '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732') { throw "o Inno Setup veio com hash $h" }
-          $p = Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/SP-' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "o instalador do Inno Setup saiu com $($p.ExitCode)" }
-          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe")) { throw 'o ISCC.exe nao ficou na pasta do usuario' }
+      - uses: ./.github/actions/inno-setup
       # o manifesto da última versão publicada, de onde a parcial compara (o parcial.py confere a assinatura). Sem
       # nenhuma publicada, só o setup completo.
       # A failed download only means "nothing published" when the releases repo really has no release: otherwise the
@@ -111,29 +99,16 @@ jobs:
           $v = (Select-String -Path versao.py -Pattern '^VERSAO = "(.+)"').Matches[0].Groups[1].Value
           # ascii: no PowerShell 5, o >> grava em UTF-16, e o utf8 dele poe BOM
           Add-Content -Path $env:GITHUB_OUTPUT -Value "versao=$v" -Encoding ascii
-      # the version resource of our two DLLs (microfone/apo/version.rc, from versao.py), as built: code signing needs the
-      # product name and the version, and the DLL without them would stop the first signed build
       - name: Version resource of the DLLs
         shell: powershell
-        env:
-          VERSAO: ${{ steps.congela.outputs.versao }}
-        run: |
-          foreach ($d in 'micfx.dll', 'voz.dll') {
-            $v = (Get-Item "dist\ritmelli\_internal\microfone\$d").VersionInfo
-            $numeros = "$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart)"
-            "${d}: ProductName=$($v.ProductName) ProductVersion=$($v.ProductVersion) FileVersion=$($v.FileVersion) ($numeros) FileDescription=$($v.FileDescription) OriginalFilename=$($v.OriginalFilename)"
-            if ($v.ProductName -ne 'Ritmelli' -or $v.ProductVersion -ne $env:VERSAO -or $v.FileVersion -ne $env:VERSAO -or
-                $numeros -ne $env:VERSAO -or $v.OriginalFilename -ne $d) {
-              throw "$d has no version resource of Ritmelli $env:VERSAO"
-            }
-          }
+        run: microfone\apo\check_version.ps1 -Folder dist\ritmelli\_internal\microfone
 
       # assinatura do ritmelli.exe, antes de ele entrar no setup e na parcial. The zip keeps the layout of dist\ritmelli
       # (ritmelli.exe at the root, the DLLs in _internal\microfone); the SIGNPATH_ARTIFACT_APP configuration signs the
       # three
       - if: env.ASSINA == 'true'
         id: app-sem-assinatura
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: assinar-app-${{ steps.congela.outputs.versao }}
           path: |
@@ -143,7 +118,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
       - if: env.ASSINA == 'true'
-        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -182,14 +157,14 @@ jobs:
       # assinatura do setup e da parcial, antes do manifesto
       - if: env.ASSINA == 'true'
         id: setup-sem-assinatura
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: assinar-setup-${{ steps.congela.outputs.versao }}
           path: instalador/saida/Ritmelli-*.exe
           retention-days: 1
           if-no-files-found: error
       - if: env.ASSINA == 'true'
-        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -251,7 +226,7 @@ jobs:
           if (-not ($m.arquivos | Where-Object { $_.caminho -eq $s })) { throw "o manifesto nao tem a $s" }
           if ($m.parcial -and (@($m.parcial.arquivos) -contains $s)) { throw "a parcial traz a $s" }
           if ($m.parcial) { "a $s esta no manifesto e fora da parcial" } else { "a $s esta no manifesto (sem parcial)" }
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: Ritmelli-${{ steps.congela.outputs.versao }}
           path: instalador/saida/
@@ -259,7 +234,7 @@ jobs:
           compression-level: 0
           if-no-files-found: error
       # o ritmelli.exe solto, para o VirusTotal da esteira de publicação (no setup ele vai compactado)
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ritmelli-exe-${{ steps.congela.outputs.versao }}
           path: dist/ritmelli/ritmelli.exe
@@ -273,7 +248,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: Ritmelli-${{ needs.monta.outputs.versao }}
       - name: Instala, abre e desinstala
@@ -426,19 +401,19 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           sparse-checkout: |
             /instalador/testa-atualizador.ps1
             /instalador/atualizacao/manifesto_de_teste.py
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12.10'
       - name: pycryptodomex
         run: python -m pip install pycryptodomex==3.24.2
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: Ritmelli-${{ needs.monta.outputs.versao }}
           path: saida
@@ -458,12 +433,12 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           sparse-checkout: /instalador/testa-parcial.ps1
           sparse-checkout-cone-mode: false
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: Ritmelli-${{ needs.monta.outputs.versao }}
           path: saida
@@ -491,15 +466,14 @@ jobs:
         scenario: [update, outside-program-files, dir-refused, writable-folder]
     name: testa-migracao (${{ matrix.scenario }})
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          # the vozes.json: the voice files the setup has to bring from the old folder, with their sha256
           sparse-checkout: |
             /instalador/testa-migracao.ps1
             /vozes.json
           sparse-checkout-cone-mode: false
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: Ritmelli-${{ needs.monta.outputs.versao }}
           path: saida
