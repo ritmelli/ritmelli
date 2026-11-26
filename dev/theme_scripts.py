@@ -42,12 +42,26 @@ FEATURE_HANDLERS = (
     ("voice-effects.js", "ui-events.js", "#desliga-ef", "click"), ("voice-effects.js", "ui-events.js", "#b-efeito", "click"),
     ("voice-effects.js", "ui-events.js", "#b-fechar-gav", "click"),
     ("voice-effects.js", "ui-events.js", "#b-ouvir", "click"), ("voice-effects.js", "ui-events.js", "#mini-ef", "click"),
+    ("turntable.js", "ui-events.js", "#b-anterior", "click"), ("turntable.js", "ui-events.js", "#b-proxima", "click"),
+    ("turntable.js", "ui-events.js", "#b-aleatorio", "click"), ("turntable.js", "ui-events.js", "#b-repetir", "click"),
+    ("turntable.js", "ui-events.js", "#seek", "input"), ("turntable.js", "ui-events.js", "#seek", "change"),
+    ("turntable.js", "ui-events.js", "#seek", "keydown"),
+    ("receiver.js", "ui-events.js", "#b-cortar", "click"), ("receiver.js", "ui-events.js", "#b-nivelar", "click"),
+    ("receiver.js", "ui-events.js", "#f-vol", "input"), ("receiver.js", "ui-events.js", "#f-mon", "input"),
+    ("receiver.js", "ui-events.js", "#f-mic", "input"), ("receiver.js", "ui-events.js", "#mini-cortar", "click"),
+    ("receiver.js", "ui-events.js", "#b-mudo-topo", "click"), ("receiver.js", "ui-events.js", "#palco-cortar", "click"),
 )
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
+STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
+            ("#seek", "input"))
+STILL_OFF = (("#b-ouvir", "click"), ("#gaveta", "click"), ("#q", "input"), ("#resultados", "click"))
+FORM_INERT = ("the search form stays inert", "document.getElementById('form-busca')?.inert === true")
 EARLIER_FAILURES = (
-    ("voice-effects.js", (("index.html", "#b-disp", "click"),), ()),
-    ("search.js", (("index.html", "#b-disp", "click"), ("queue.js", "#rolo-busca", "scroll")),
-     (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"),)),
+    ("gerado/pecas.js", (), (), (FORM_INERT,)),
+    ("dj-visor.js", (("#b-disp", "click"),), STILL_OFF, (FORM_INERT,)),
+    ("voice-effects.js", STILL_ON, STILL_OFF, (FORM_INERT,)),
+    ("search.js", STILL_ON + (("#rolo-busca", "scroll"),), STILL_OFF,
+     (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"), FORM_INERT)),
 )
 SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc';"
                " document.getElementById('form-busca').requestSubmit(); })()")
@@ -108,7 +122,7 @@ async def handler_files(tab, selector, kind):
     urls = {s["scriptId"]: s["url"] for s in tab.scripts}
     listeners = (await tab.cmd("DOMDebugger.getEventListeners", objectId=target))["listeners"]
     return sorted({missing_script.theme_file(urls.get(x["scriptId"], "")) or "index.html" for x in listeners
-                   if x["type"] == kind})
+                   if x["type"] == kind and not x["useCapture"]})
 
 
 async def checks(tab):
@@ -174,7 +188,7 @@ def held_until(activation):
     return run
 
 
-def after_a_failure(missing, expected, page_checks):
+def after_a_failure(missing, expected, off, page_checks):
     async def run(tab):
         await tab.cmd("Debugger.enable")
         tab.failing.add(missing)
@@ -183,10 +197,13 @@ def after_a_failure(missing, expected, page_checks):
         state = await until(tab, "({ran: !!document.querySelector('#ant-d svg')"
                                  + "".join(f", {json.dumps(t)}: {e}" for t, e in page_checks) + "})", "s.ran",
                             PAGE_READY_S)
-        found = {f"{kind} {selector}": await handler_files(tab, selector, kind) for _, selector, kind in expected}
+        found = {f"{kind} {selector}": await handler_files(tab, selector, kind) for selector, kind in expected}
+        early = {f"{kind} {selector}": await handler_files(tab, selector, kind) for selector, kind in off}
         await tab.release("deck.js", fail=False)
-        results = [(state.get("ran") and all(found[f"{kind} {selector}"] == [file] for file, selector, kind in expected),
-                    f"with {missing} failed, the handlers registered after its binder still are ({found})")]
+        results = [(state.get("ran") and all(found.values()),
+                    f"with {missing} failed, the handlers registered after its binder still are ({found})"),
+                   (state.get("ran") and not any(early.values()),
+                    f"with {missing} failed, the handlers that wait for every file are not on ({early})")]
         results += [(state.get("ran") and state.get(title) is True, f"with {missing} failed, {title} ({state})")
                     for title, _ in page_checks]
         return results
