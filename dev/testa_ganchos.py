@@ -391,39 +391,47 @@ FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 
 
 def lexical_nodes(node, scope):
+    for child in ast.iter_child_nodes(node):
+        yield from lexical_node(child, scope)
+
+
+def lexical_node(node, scope):
     def visit(parts, where):
         for part in parts:
-            yield part, where
-            yield from lexical_nodes(part, where)
-    for child in ast.iter_child_nodes(node):
-        yield child, scope
-        if isinstance(child, FUNCTIONS):
-            a = child.args
-            annotations = [p.annotation for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg]
-                           if p and p.annotation] + [r for r in [getattr(child, "returns", None)] if r]
-            yield from visit(a.defaults + [d for d in a.kw_defaults if d] + getattr(child, "decorator_list", [])
-                             + annotations, scope)
-            yield from visit(child.body if isinstance(child.body, list) else [child.body], child)
-        elif isinstance(child, ast.ClassDef):
-            yield from visit(child.bases + child.keywords + child.decorator_list, scope)
-            yield from visit(child.body, child)
-        elif isinstance(child, COMPREHENSIONS):
-            first, *later = child.generators
-            yield from visit([first.iter], scope)
-            elements = [child.key, child.value] if isinstance(child, ast.DictComp) else [child.elt]
-            yield from visit([first.target, *first.ifs]
-                             + [n for g in later for n in (g.target, g.iter, *g.ifs)] + elements, child)
-        else:
-            yield from lexical_nodes(child, scope)
+            yield from lexical_node(part, where)
+    yield node, scope
+    if isinstance(node, FUNCTIONS):
+        a = node.args
+        annotations = [p.annotation for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg]
+                       if p and p.annotation] + [r for r in [getattr(node, "returns", None)] if r]
+        yield from visit(a.defaults + [d for d in a.kw_defaults if d] + getattr(node, "decorator_list", [])
+                         + annotations, scope)
+        yield from visit(node.body if isinstance(node.body, list) else [node.body], node)
+    elif isinstance(node, ast.ClassDef):
+        yield from visit(node.bases + node.keywords + node.decorator_list, scope)
+        yield from visit(node.body, node)
+    elif isinstance(node, COMPREHENSIONS):
+        first, *later = node.generators
+        yield from visit([first.iter], scope)
+        elements = [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
+        yield from visit([first.target, *first.ifs]
+                         + [n for g in later for n in (g.target, g.iter, *g.ifs)] + elements, node)
+    else:
+        yield from lexical_nodes(node, scope)
 
 
 class ModuleBindings:
     def __init__(self, tree, owner_module):
         self.bound = {}
         self.enclosing = {}
+        self.declared = {}
         for n, scope in lexical_nodes(tree, tree):
             if isinstance(n, SCOPES + COMPREHENSIONS):
                 self.enclosing[id(n)] = scope
+            elif isinstance(n, (ast.Global, ast.Nonlocal)):
+                outer = tree if isinstance(n, ast.Global) else self.function_above(scope)
+                self.declared.update(((id(scope), name), outer) for name in n.names)
+        for n, scope in lexical_nodes(tree, tree):
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 self.bind(scope, n.name, False)
             if isinstance(n, FUNCTIONS):
@@ -440,12 +448,20 @@ class ModuleBindings:
             elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
                 self.bind(scope, n.id, False)
 
+    def function_above(self, scope):
+        scope = self.enclosing.get(id(scope))
+        while isinstance(scope, ast.ClassDef):
+            scope = self.enclosing.get(id(scope))
+        return scope
+
     def bind(self, scope, name, is_module):
+        scope = self.declared.get((id(scope), name), scope)
         key = (id(scope), name)
         self.bound[key] = self.bound.get(key, False) or is_module
 
     def is_module(self, name, scope):
         while scope is not None:
+            scope = self.declared.get((id(scope), name), scope)
             found = self.bound.get((id(scope), name))
             if found is not None:
                 return found
@@ -455,12 +471,26 @@ class ModuleBindings:
         return False
 
 
+def string_literal_arg(call):
+    first = call_args(call)[:1]
+    return first[0].value if first and isinstance(first[0], ast.Constant) else None
+
+
 def module_private_reaches(module, tree, owner_module, names):
     bindings = ModuleBindings(tree, owner_module)
     loop_names = loop_variable_names(tree)
 
     def the_module(node, scope):
-        return isinstance(node, ast.Name) and bindings.is_module(node.id, scope)
+        if isinstance(node, ast.Name):
+            return bindings.is_module(node.id, scope)
+        if isinstance(node, ast.Call):
+            return (isinstance(node.func, ast.Attribute) and node.func.attr == "import_module"
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id == "importlib"
+                    and string_literal_arg(node) == owner_module)
+        return (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "modules" and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "sys" and isinstance(node.slice, ast.Constant)
+                and node.slice.value == owner_module)
     out = []
     for no, scope in lexical_nodes(tree, tree):
         if isinstance(no, ast.ImportFrom) and no.module == owner_module and not no.level:
@@ -693,6 +723,13 @@ MODULE_CAUGHT = [
     ("the module after a comprehension that reuses its name", MODULE_OWNER,
      "import owner as e\n\nnames = [e for e in ()]\ne._x\n"),
     ("a default argument", MODULE_OWNER, "import owner as e\n\n\ndef f(e=e._x):\n    return e\n"),
+    ("importlib.import_module", MODULE_OWNER,
+     "import importlib\n\n\ndef f():\n    return importlib.import_module('owner')._x\n"),
+    ("sys.modules", MODULE_OWNER, "import sys\n\n\ndef f():\n    return sys.modules['owner']._x\n"),
+    ("a global the function assigns", MODULE_OWNER,
+     "import owner as e\n\n\ndef f():\n    global e\n    e = e._x\n"),
+    ("a nonlocal the function assigns", MODULE_OWNER,
+     "def outer():\n    import owner as e\n\n    def inner():\n        nonlocal e\n        e = e._x\n    return inner\n"),
     ("a reach before the alias is rebound", MODULE_OWNER, "import owner as e\n\ne._x()\ne = None\n"),
     ("a parameter annotation", MODULE_OWNER, "import owner as e\n\n\ndef f(e: e._x):\n    return e\n"),
     ("a return annotation", MODULE_OWNER, "import owner as e\n\n\ndef f(e) -> e._x:\n    return e\n"),
@@ -717,13 +754,12 @@ MODULE_NOT_REACHES = [
      "import owner as e\n\n\ndef f(e):\n    return e._x\n"),
     ("a comprehension variable that shadows the module", MODULE_OWNER,
      "import owner as e\n\nvalues = [e._x for e in ()]\n"),
+    ("a parameter of a nested function that shadows the module", MODULE_OWNER,
+     "import owner as e\n\n\ndef f():\n    def g(e):\n        return e._x\n    return g\n"),
     ("a local that shadows the module", MODULE_OWNER,
      "import owner\n\n\ndef f(o):\n    owner = o\n    return owner._x\n"),
 ]
 MODULE_KNOWN_MISSES = [
-    ("importlib.import_module", MODULE_OWNER,
-     "import importlib\n\n\ndef f():\n    return importlib.import_module('owner')._x\n"),
-    ("sys.modules", MODULE_OWNER, "import sys\n\n\ndef f():\n    return sys.modules['owner']._x\n"),
     ("the module bound to another name", MODULE_OWNER, "import owner\n\nm = owner\nm._x\n"),
 ]
 STATE_OWNER = "class App:\n    def __init__(self):\n        self.x = []\n\n    @property\n    def p(self):\n        return 1\n"
@@ -738,6 +774,8 @@ WRITES_CAUGHT = [
     ("a del", APP_NAMES, "def f(A):\n    del A.x\n"),
     ("a container method", APP_NAMES, "def f(app):\n    app.x.append(1)\n"),
     ("a set method that changes it", APP_NAMES, "def f(A, ids):\n    A.x.difference_update(ids)\n"),
+    ("intersection_update", APP_NAMES, "def f(A, ids):\n    A.x.intersection_update(ids)\n"),
+    ("symmetric_difference_update", APP_NAMES, "def f(A, ids):\n    A.x.symmetric_difference_update(ids)\n"),
     ("a container method on an item", APP_NAMES, "def f(A):\n    A.x[0]['tags'].append(1)\n"),
     ("setattr", APP_NAMES, "def f(A):\n    setattr(A, 'x', 1)\n"),
     ("a read-only property", APP_NAMES, "def f(A):\n    A.p = 1\n"),

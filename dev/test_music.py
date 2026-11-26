@@ -42,7 +42,10 @@ class FindTrack(unittest.TestCase):
             if f.name == "music.py":
                 continue
             for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
-                if isinstance(node, ast.Call):
+                if isinstance(node, ast.ImportFrom) and node.module == "music" and any(
+                        a.name == "mesma_faixa" for a in node.names):
+                    callers.append(f"{f.name}:{node.lineno}")
+                elif isinstance(node, ast.Call):
                     name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
                     if name == "mesma_faixa":
                         callers.append(f"{f.name}:{node.lineno}")

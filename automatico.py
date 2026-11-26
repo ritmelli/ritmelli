@@ -6,7 +6,7 @@ vigia das parecidas (run_auto_watcher, uma auto_round a cada 0,5 s) busca o Mix 
 O estado do Automatico mora no App (auto, semente, mix, mix_base, ponte, mix_buscando, mix_falhou, fora,
 fora_musica, andamentos, andamentos_versao, versoes), porque a leitura do estado, o save_cfg e o _recusar o leem: o
 Automatico o le e o muda pelo app, sob a app.fila_lock, na ordem das travas do comandos.py, e a fila muda pelo
-App.change_queue. O mix_do chega resolvido a cada chamada (o teste troca o do App). Its constants live here and the
+App.change_queue, menos as entradas que o _troca_audio troca no lugar (#211). O mix_do chega resolvido a cada chamada (o teste troca o do App). Its constants live here and the
 music functions (chaves_musica, autores, find_track, track_artists) in music.py; the shelf's folder (pastas.LIB,
 read when it is used) and save_json come from pastas.py, and the error text (yt_msg) from yt_erros.py. What is still
 the server's (the YouTube process, the helper process) comes through the App's public interface (search_songs,
