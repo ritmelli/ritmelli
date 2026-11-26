@@ -59,6 +59,16 @@ FEATURE_HANDLERS = (
     ("stage.js", "ui-events.js", "#mini-ant", "click"), ("stage.js", "ui-events.js", "#mini-prox", "click"),
     ("stage.js", "ui-events.js", "#b-fechar-palco", "click"), ("stage.js", "ui-events.js", "#palco", "pointerdown"),
     ("disc-page.js", "ui-events.js", "#b-pagina", "click"),
+    ("phone.js", "ui-events.js", "#b-cel", "click"), ("devices.js", "ui-events.js", "#b-disp", "click"),
+    ("devices.js", "ui-events.js", "#dica-ouvir", "click"), ("devices.js", "ui-events.js", "#b-desligar", "click"),
+    ("options.js", "options.js", "#menu", "click"), ("options.js", "options.js", "#menu", "keydown"),
+    ("options.js", "options.js", "#menu", "pointerdown"), ("options.js", "options.js", "#menu-fundo", "click"),
+    ("dialogs.js", "dialogs.js", "#dn-nao", "click"),
+    ("metrics.js", "metrics.js", "#dd-met-btn", "click"), ("metrics.js", "metrics.js", "#dlg-metricas", "close"),
+    ("devices.js", "devices.js", "#dd-mic", "change"), ("devices.js", "devices.js", "#dd-mon", "change"),
+    ("phone.js", "phone.js", "#dlg-cel", "close"), ("phone.js", "phone.js", "#dcel-lista", "click"),
+    ("phone.js", "phone.js", "#dcel-outro", "click"),
+    ("update.js", "update.js", "#b-atualizar", "click"), ("update.js", "update.js", "#da-ok", "click"),
 )
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
