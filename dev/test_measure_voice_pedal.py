@@ -150,7 +150,7 @@ def stream(*states_sent):
 
 
 class Main(unittest.TestCase):
-    def run_main(self, got, *args, events=(), asked=MIC):
+    def run_main(self, got, *args, events=(), asked=MIC, late_lines=()):
         sent, got = [], list(got)
         work = Path(self.enterContext(tempfile.TemporaryDirectory()))
         err = []
@@ -164,6 +164,9 @@ class Main(unittest.TestCase):
                 req = urllib.request.Request(req)
             path = req.full_url.split("8970", 1)[1]
             sent.append((req.get_method(), path))
+            if path == "/api/shutdown" and late_lines:
+                err[0].write("".join(ln + chr(10) for ln in late_lines))
+                err[0].flush()
             if path == "/api/events":
                 return stream(*events)
             if req.data and json.loads(req.data) == {"effect": "pistavoz"}:
@@ -236,6 +239,15 @@ class Main(unittest.TestCase):
         self.assertEqual((result["dry_outs"], result["cycles"][0]["new_longest_return_ms"],
                           result["longest_return_ms_since_the_ring_opened"]), (0, None, 9.0),
                          "the dry-out the stream showed past the cut isn't this cycle's")
+
+    def test_the_result_lists_only_the_dry_outs_between_its_cuts(self):
+        told = [f"game output: the microphone ring ran dry (the thread came back after 656 ms; {n} so far)"
+                for n in (1, 2, 3)]
+        why, _, result = self.run_main([state(), state(2, 0, 656.0, 10.0)], "--cycles", "1",
+                                       events=[state(1, 0, 9.0, 10.0)] * 3 + [state(2, 0, 656.0, 10.0)],
+                                       late_lines=told)
+        self.assertIsNone(why)
+        self.assertEqual((result["dry_outs"], result["dry_out_lines"]), (1, [told[1]]))
 
     def test_a_broken_ring_at_the_end_of_a_cycle_stops_the_measurement(self):
         healthy = [state(0, 0, 9.0, 10.0)] * 3

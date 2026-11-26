@@ -20,6 +20,7 @@ ON_S = 8.0
 OFF_S = 4.0
 UP_S = 60.0
 VOICE_SESSIONS = 4
+DRY_LINE = re.compile(r"ran dry .*?(\d+) so far\)")
 UP_LINE = re.compile(r"voice pedal: its voice track came up (\d+\.\d+) s after the pedal turned on")
 
 
@@ -221,6 +222,7 @@ def main():
                   flush=True)
             log = work / "local" / "Ritmelli" / "logs" / "pistavoz.log"
             mic, start = last["active_devices"]["mic"], last
+            first = last["microfone"]["secas"]
             for n in range(1, a.cycles + 1):
                 seen = len(lines(work / "server.err"))
                 try:
@@ -254,7 +256,8 @@ def main():
             finally:
                 if job:
                     job.end()
-    dry = [ln for ln in lines(work / "server.err") if "ran dry" in ln]
+    dry = [ln for ln in lines(work / "server.err")
+           if (m := DRY_LINE.search(ln)) and first < int(m.group(1)) <= start["microfone"]["secas"]]
     blocks = [c["voice_slowest_block_ms"] for c in cycles if c["voice_slowest_block_ms"] is not None]
     result = {"microphone": mic, "voice": voice, "provider": a.provider, "onnxruntime": onnxruntime.__version__,
               "cycles": cycles,
