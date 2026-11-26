@@ -169,6 +169,8 @@ BAD_TRACK_BODIES = ({"youtube_id": "dQw4w9WgXcQ", "title": "a\ud800b"},
 TRACK_ROUTES = ((("POST", "/api/queue"), {}, TRACK_FIELDS), (("POST", "/api/library"), {"play": True}, TRACK_FIELDS),
                 (("POST", "/api/library"), {}, {"title"}))
 RENAME_ROUTE = ("PATCH", "/api/library/{iid}")
+EMPTY_TARGET_TEXT = {"/api/queue": "Send the id of a record on the shelf, a video id or a YouTube link.",
+                     "/api/library": "Send a YouTube link, a video ID, or search text."}
 BODY_READERS = {"read", "text", "json", "post", "multipart", "content"}
 
 
@@ -1152,9 +1154,15 @@ def ao_vivo(srv):
         for sent in (on_shelf, {**on_shelf, "id": "d2"}):
             queue = answer_of(srv, "POST", "/api/queue", sent)
             library = answer_of(srv, "POST", "/api/library", {**sent, "play": True})
-            keys = [(a[1] or {}).get("error", {}).get("key") for a in (queue, library)]
-            confere(queue[0] == library[0] == 400 and keys[0] == keys[1], f"the queue and the shelf with play refuse "
-                    f"{str(sent)[:90]} alike, with the same message key (queue {queue}, shelf {library})")
+            target = sent.get("youtube_id") or sent.get("url")
+            if isinstance(target, str) and target.strip():
+                confere(queue == library and queue[0] == 400, f"the queue and the shelf with play refuse "
+                        f"{str(sent)[:90]} with the same answer (queue {queue}, shelf {library})")
+            else:
+                confere((queue, library) == tuple((400, {"ok": False, "error": {"text": EMPTY_TARGET_TEXT[route]}})
+                                                  for route in ("/api/queue", "/api/library")),
+                        f"the queue and the shelf with play refuse {str(sent)[:90]} for its missing target, each "
+                        f"with its own text (queue {queue}, shelf {library})")
     queue = answer_of(srv, "POST", "/api/queue", {"youtube_id": "djV11Xbc914", "title": "a-ha", "duration": 30})
     srv.api("DELETE", "/api/queue")
     confere(queue[0] == 200, f"the queue takes the same record with every field right ({queue})")
