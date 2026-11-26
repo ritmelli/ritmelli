@@ -26,11 +26,11 @@ A ceiling over the base's fails as well, so a PR can't raise it along with the w
 against the base goes to the PR summary as a "-- summary:" line."""
 
 COMMENT_EXTENSIONS = (".py", ".js", ".css", ".ps1", ".yml", ".yaml", ".cpp", ".h", ".iss", ".bat", ".html", ".rc", ".spec",
-                      ".sh", ".toml", ".psd1", ".isl")
+                      ".sh", ".toml", ".psd1", ".isl", ".properties")
 GARDEN_FILES = ("dev/garden.py", "dev/test_garden.py")
 ISSUE_URL = re.compile(r"(?<![\w./-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+/[\w.-]+/issues/\d+(?![\w-])")
 URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
-SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])#\d+\b")
+SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])(?:[A-Za-z\d-]+/[\w.-]+)?#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
 QUOTED = re.compile(r'"([^"\n]+)"')
 RESULT = re.compile(r"\b(?:pass(?:es|ed)?|fail(?:s|ed)?|successfully|\d+ of \d+|\d+/\d+)\b", re.I)
@@ -52,7 +52,8 @@ START_SLEEP = re.compile(r"\bStart-Sleep\b", re.I)
 THEME_TIMER = re.compile(r"\b(?:setTimeout|setInterval|requestIdleCallback)\s*\(")
 ANIMATION_FRAME = re.compile(r"\brequestAnimationFrame\s*\(")
 TODO = re.compile(r"\b(?:TODO|FIXME|HACK|XXX)\b")
-PROSE = re.compile(r"risco\s+aceito|accepted\s+risk|sem\s+prova|por\s+enquanto|for\s+now|known\s+issue", re.I)
+PROSE = re.compile(r"\b(?:risco\s+aceito|accepted\s+risk|sem\s+prova|por\s+enquanto|for\s+now|known\s+issue)\b",
+                   re.I)
 LEFT_OUT = re.compile(r"^--\s.*ficou de fora", re.S)
 KNOWN_FAILURE = re.compile(r"^\s*known failure", re.I)
 LEFT_OUT_QUOTED = re.compile(r"[\"']--\s[^\"']*ficou de fora")
@@ -67,7 +68,8 @@ PS_EXITS = re.compile(r"\b(?:break|return|exit)\b", re.I)
 PS_STRING = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"`]|`.)*\"", re.S)
 PS_VARIABLE = re.compile(r"\$(\w+)")
 PS_ASSIGNED = re.compile(r"\$(\w+)\s*=(?!=)")
-PROOF_LABEL = re.compile(r"^(?:how it was (?:proven|proved|tested)|proof\b|prova\b|como foi provado)", re.I)
+PROOF_LABEL = re.compile(r"^(?:how it was (?:proven|proved|tested)|proof\b|prova\b|como foi provado|testing\b"
+                         r"|test plan\b)", re.I)
 SECTION_LABEL = re.compile(r"^\s*(?:#{1,6}\s+(?P<heading>[^:]+?)(?::\s*(?P<rest>.*))?\s*$"
                            r"|\*\*(?P<bold>[^*]+?):?\*\*:?\s*(?P<rest2>.*)$"
                            r"|(?P<plain>[A-Z][\w ,'/-]{1,40}):(?:\s+(?P<rest3>.*))?$)")
@@ -117,6 +119,17 @@ def lex_python(text):
             comment_cols[t.start[0]] = t.start[1]
     for n, line in enumerate(lines, 1):
         out.code[n] = line[:comment_cols[n]] if n in comment_cols else line
+    return out
+
+
+def lex_properties(text):
+    out = Lexed()
+    for n, line in enumerate(text.splitlines(), 1):
+        if line.lstrip().startswith(("#", "!")):
+            out.comments.append(Comment(n, n, line.lstrip()[1:]))
+            out.code[n] = ""
+        else:
+            out.code[n] = line
     return out
 
 
@@ -428,7 +441,7 @@ def lex_yaml(text):
 LEXERS = {".py": lex_python, ".spec": lex_python, ".js": lambda t: lex_c(t, js=True), ".css": lambda t: lex_c(t, css=True),
           ".cpp": lex_c, ".h": lex_c, ".rc": lex_c, ".ps1": lex_powershell, ".psd1": lex_powershell, ".yml": lex_yaml, ".yaml": lex_yaml,
           ".iss": lex_iss, ".isl": lex_semicolon, ".bat": lex_bat, ".html": lex_html, ".sh": lex_hash,
-          ".toml": lex_hash}
+          ".toml": lex_hash, ".properties": lex_properties}
 
 
 def suffix(path):
@@ -1092,9 +1105,20 @@ def comment_blocks(t):
 
 def prose_in_comments(t):
     for p, block in comment_blocks(t):
-        if not cites_issue(" ".join(c.text for c in block)):
-            for c in block:
-                yield from ((p, c.start + k) for k, text in enumerate(c.text.splitlines()) if PROSE.search(text))
+        lines = [(c.start + k, text) for c in block for k, text in enumerate(c.text.splitlines())]
+        yield from ((p, n) for n in prose_lines(lines))
+
+
+def mask_code(text):
+    return CODE_SPAN.sub(lambda m: re.sub(r"[^\n]", "x", m.group(0)), text)
+
+
+def prose_lines(lines, code_spans=False):
+    text = "\n".join(line for _, line in lines)
+    masked = mask_code(text) if code_spans else text
+    if cites_issue(masked):
+        return []
+    return [lines[text.count("\n", 0, m.start())][0] for m in PROSE.finditer(masked.replace("\n", " "))]
 
 
 def markdown_lines(t):
@@ -1110,11 +1134,7 @@ def todo_markers(t):
 def prose_in_markdown(t):
     for p in t.paths(".md"):
         for chunk in paragraphs(t.files[p].splitlines()):
-            text = "\n".join(line for _, line in chunk)
-            masked = CODE_SPAN.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
-            if not cites_issue(masked):
-                yield from ((p, chunk[text.count("\n", 0, m.start())][0] + 1)
-                            for m in PROSE.finditer(masked.replace("\n", " ")))
+            yield from ((p, i + 1) for i in prose_lines(chunk, code_spans=True))
 
 
 def prose_justifications(t):
@@ -1581,7 +1601,7 @@ def description_problems(body):
         problems.append("the proof section has no run, test or screenshot (a command or a test file in `code`, a code "
                         "block, a link to a run or an image)")
     for chunk in paragraphs(lines):
-        text = CODE_SPAN.sub("", "\n".join(line for _, line in chunk)).replace("\n", " ")
+        text = mask_code("\n".join(line for _, line in chunk)).replace("\n", " ")
         phrase = PROSE.search(text)
         if phrase and not cites_issue(text):
             n = next((i for i, line in chunk if PROSE.search(line)), chunk[0][0]) + 1

@@ -65,6 +65,8 @@ CASES = {
         ("a license header", {"a.py": "# SPDX-License-Identifier: GPL-3.0-or-later\nx = 1\n"},
          {"a.py": "# SPDX-License-Identifier: GPL-3.0-or-later\n# why\nx = 1\n"}),
         ("powershell", {"a.ps1": "$a = 'x # y'\n$b = \"#$a\"\n"}, {"a.ps1": "$a = 1 # why\n"}),
+        ("properties", {"a.properties": "key=value # not a comment\nother=! nor this\n"},
+         {"a.properties": "# a comment\n! another\nkey=value\n"}, 2),
         ("powershell block", {"a.ps1": "$a = @'\n# inside a here-string\n'@\n"}, {"a.ps1": "<#\n why\n#>\n$a = 1\n"}, 3),
         ("psd1", {"a.psd1": "@{ A = '#' }\n"}, {"a.psd1": "# why\n@{ A = 1 }\n"}),
         ("yml", {"a.yml": "a: 'b # c'\n"}, {"a.yml": "a: b  # why\n"}),
@@ -397,6 +399,12 @@ CASES = {
         ("the issue on the next line of the paragraph",
          {"a.md": "The old reader stays for now, until\n[#119](https://github.com/o/r/issues/119) lands.\n"},
          {"a.md": "The old reader stays for now.\n\nSee #119 for another thing.\n"}),
+        ("a word that holds the phrase, and a phrase across code",
+         {"a.md": "Reproduced an unknown issue in the old build.\nThe known `config.json` issue.\n"},
+         {"a.md": "Reproduced a known issue in the old build.\n"}),
+        ("a phrase broken across two comment lines",
+         {"a.py": "# Keep this fallback for\n# now, until #119 lands.\nx = 1\n"},
+         {"a.py": "# Keep this fallback for\n# now.\nx = 1\n"}),
         ("a phrase broken across two lines",
          {"a.md": "The old reader stays por\nenquanto, until #119 lands.\n",
           "b.md": "The scoreboard counts `por enquanto` with no issue.\n"},
@@ -657,6 +665,7 @@ def test_description():
                                              "actions/runs/1)): fails.\n",
         "a checked item": "## Proof\n\n- [x] `python dev/testa_i18n.py` passes.\n",
         "an open item next to a run": "## Proof\n\n- [ ] the phone\n- `python dev/testa_i18n.py` passes.\n",
+        "a Testing heading": "## Testing\n\n`python dev/test_garden.py` passed.\n",
         "a run after a subcommand": "## Proof\n\nruff check . passed.\n",
         "an option after a subcommand": "## Proof\n\ngit diff --check passed.\n",
         "a run told in plain text": "## Proof\n\nRan python dev/test_garden.py successfully.\n",
@@ -719,6 +728,8 @@ def test_description():
         check(garden.description_problems(body) != [], f"a proof section with {label} fails")
     prose = good + "\nThe rest stays for now.\n"
     check(any("for now" in p for p in garden.description_problems(prose)), "a prose phrase with no issue fails")
+    check(garden.description_problems(good + "\nThe fallback stays for now, tracked in ritmelli/ritmelli#254.\n") == [],
+          "a prose phrase with an owner/repo#n reference passes")
     check(garden.description_problems(good + "\nThe rest stays for now (#250).\n") == [],
           "a prose phrase with its issue passes")
     check(garden.description_problems(good + "\nThe rest stays for now ([details](https://github.com/o/r/issues/250)).\n")
