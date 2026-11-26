@@ -34,7 +34,8 @@ Os ganchos do `engine.py` para o módulo opcional de fora do repo não crescem: 
 atributo ou chamada nova para ele, e o que ele precisar daqui em diante passa pelo contrato
 acima. Os que já existem ficam como estão. O `dev/testa_ganchos.py` conta esses ganchos (os
 nomes do `engine.py` com o nome do módulo, o que o engine lê dele e o que chama nele) contra
-um teto e falha quando a conta passa dele; quando um gancho sai, o teto desce no mesmo PR.
+o teto `engine_hooks` do `dev/garden.json`, que o `dev/garden.py` segura: falha quando a conta passa dele; quando um
+gancho sai, o teto desce no mesmo PR.
 Gancho com um nome que não lembra o módulo escapa da conta, e a regra vale igual.
 
 ## Filtro "Quest como SM58"
