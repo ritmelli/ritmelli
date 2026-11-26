@@ -35,6 +35,7 @@ sys.argv = ["server.py", "--no-browser", "--port", sys.argv[2], *sys.argv[3:]]
 server.main()
 """
 HOLDER_WAIT_S = 30.0
+PROCESS_SUSPEND_RESUME = 0x0800
 CHILD_HOLDS_THE_TRACK = '''
 import subprocess
 import sys
@@ -66,7 +67,7 @@ class RmProcessInfo(ctypes.Structure):
                 ("AppStatus", wintypes.ULONG), ("TSSessionId", wintypes.DWORD), ("bRestartable", wintypes.BOOL)]
 
 
-def holders(path):
+def holder_processes(path):
     rm = ctypes.WinDLL("rstrtmgr")
     session, key = wintypes.DWORD(), ctypes.create_unicode_buffer(64)
     if rm.RmStartSession(ctypes.byref(session), 0, key):
@@ -79,9 +80,27 @@ def holders(path):
         infos = (RmProcessInfo * 16)()
         if rm.RmGetList(session, ctypes.byref(needed), ctypes.byref(count), infos, ctypes.byref(reasons)):
             raise OSError("RmGetList failed")
-        return [infos[i].strAppName for i in range(count.value)]
+        return [(infos[i].strAppName, infos[i].Process.dwProcessId) for i in range(count.value)]
     finally:
         rm.RmEndSession(session)
+
+
+def holders(path):
+    return [name for name, _ in holder_processes(path)]
+
+
+def suspend(pid):
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    handle = kernel.OpenProcess(PROCESS_SUSPEND_RESUME, False, pid)
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        status = ctypes.WinDLL("ntdll").NtSuspendProcess(wintypes.HANDLE(handle))
+        if status:
+            raise OSError(f"NtSuspendProcess failed for {pid}: {status:#x}")
+    finally:
+        kernel.CloseHandle(wintypes.HANDLE(handle))
 
 
 def shelf_with_one_long_track(tmp):
@@ -103,8 +122,8 @@ def shelf_with_one_long_track(tmp):
 def wait_for_ffmpeg_on(path):
     deadline = time.monotonic() + HOLDER_WAIT_S
     while time.monotonic() < deadline:
-        found = holders(path)
-        if any(name.lower().startswith("ffmpeg") for name in found):
+        found = [(name, pid) for name, pid in holder_processes(path) if name.lower().startswith("ffmpeg")]
+        if found:
             return found
         time.sleep(0.05)
     return []
@@ -121,9 +140,12 @@ def stop_while_measuring(role, extras):
                                stderr=subprocess.STDOUT, env=dict(os.environ, LOCALAPPDATA=str(tmp / "local")))
             try:
                 measuring = wait_for_ffmpeg_on(wav)
+                for _, pid in measuring:
+                    suspend(pid)
             finally:
                 stop_error = stop(srv)
-        check(bool(measuring), f"{role}: the shelf loudness measurement opened the track with ffmpeg ({measuring})")
+        check(bool(measuring), f"{role}: the shelf loudness measurement opened the track with ffmpeg, held there "
+                               f"(suspended) until the stop ({measuring})")
         left = holders(wav)
         try:
             os.remove(wav)
