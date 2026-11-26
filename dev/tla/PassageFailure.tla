@@ -1,12 +1,14 @@
 ------------------------------ MODULE PassageFailure ------------------------------
 EXTENDS TLC
 
-CONSTANTS Entries, Sources, NoKey, FailureCarriesTheKey, FailureLabelledByTheHead, PrepareKeysItsPick,
-          FailuresKeptTogether, PickChecksTheFailures, TakeDropsTheStaleDeck, PickMatchesByEntry
+CONSTANTS Entries, Sources, Files, NoFile, NoKey, FailureCarriesTheKey, FailureLabelledByTheHead, PrepareKeysItsPick,
+          FailuresKeptTogether, PickChecksTheFailures, TakeDropsTheStaleDeck, PickMatchesByEntry, FileKeyedByPresence
 
-Keys == [e : Entries, src : Sources, file : BOOLEAN]
+Keys == [e : Entries, src : Sources, file : Files \cup {NoFile, "present"}]
 
-Symmetry == Permutations(Entries) \cup Permutations(Sources)
+Symmetry == Permutations(Entries) \cup Permutations(Sources) \cup Permutations(Files)
+
+Label(k) == IF FileKeyedByPresence /\ k.file /= NoFile THEN [k EXCEPT !.file = "present"] ELSE k
 
 VARIABLES head, src, shelf, failed, failedSources, busy, worker, asked, picked, carried, prepared, preparedSource,
           failure, watcher, took, tookHead, tookSrc, tookBusy, tookPronto, blockedOther, retriedTheFailure
@@ -25,7 +27,7 @@ Stored(m, k) == IF FailuresKeptTogether THEN m \cup {k} ELSE {k}
 Init ==
     /\ head \in Entries
     /\ src \in [Entries -> Sources]
-    /\ shelf = [e \in Entries |-> FALSE]
+    /\ shelf = [e \in Entries |-> NoFile]
     /\ failed = {} /\ failedSources = {} /\ busy = FALSE /\ worker = "idle"
     /\ asked = NoKey /\ picked = NoKey /\ carried = NoKey
     /\ prepared = NoKey /\ preparedSource = NoKey /\ failure = NoKey
@@ -46,7 +48,7 @@ AudioVersion ==
                    failure, watcherVars, blockedOther, retriedTheFailure>>
 
 ShelfChanges ==
-    /\ \E e \in Entries : shelf' = [shelf EXCEPT ![e] = ~shelf[e]]
+    /\ \E e \in Entries, f \in Files \cup {NoFile} : f /= shelf[e] /\ shelf' = [shelf EXCEPT ![e] = f]
     /\ UNCHANGED <<head, src, failed, failedSources, busy, worker, asked, picked, carried, prepared, preparedSource,
                    failure, watcherVars, blockedOther, retriedTheFailure>>
 
@@ -70,7 +72,8 @@ PollCancels ==
                    tookHead, tookSrc, tookBusy, tookPronto, blockedOther, retriedTheFailure>>
 
 PollDecides ==
-    LET k == [e |-> tookHead, src |-> tookSrc, file |-> shelf[tookHead]]
+    LET a == [e |-> tookHead, src |-> tookSrc, file |-> shelf[tookHead]]
+        k == Label(a)
         f == IF FailureLabelledByTheHead THEN k ELSE took
         m == IF took = NoKey THEN failed ELSE Stored(failed, f)
     IN /\ watcher = "cancelled"
@@ -79,17 +82,17 @@ PollDecides ==
        /\ IF tookBusy \/ (tookPronto /= NoKey /\ tookPronto.e = tookHead)
           THEN UNCHANGED <<busy, worker, asked, blockedOther, retriedTheFailure>>
           ELSE IF Blocks(m, k)
-          THEN /\ blockedOther' = (blockedOther \/ k \notin failedSources)
+          THEN /\ blockedOther' = (blockedOther \/ a \notin failedSources)
                /\ UNCHANGED <<busy, worker, asked, retriedTheFailure>>
           ELSE /\ busy' = TRUE /\ worker' = "picking" /\ asked' = k
-               /\ retriedTheFailure' = (retriedTheFailure \/ k \in failedSources)
+               /\ retriedTheFailure' = (retriedTheFailure \/ a \in failedSources)
                /\ UNCHANGED blockedOther
        /\ UNCHANGED <<head, src, shelf, failedSources, picked, carried, prepared, preparedSource, failure, took,
                       tookHead, tookSrc, tookBusy, tookPronto>>
 
 Pick ==
     LET p == [asked EXCEPT !.file = shelf[asked.e]]
-        c == IF PrepareKeysItsPick THEN p ELSE asked
+        c == IF PrepareKeysItsPick THEN Label(p) ELSE asked
     IN /\ worker = "picking"
        /\ picked' = p /\ carried' = c
        /\ IF PickChecksTheFailures /\ PickBlocks(failed, c)
@@ -131,7 +134,7 @@ Next == MoveHead \/ AudioVersion \/ ShelfChanges \/ PollTakes \/ PollCancels \/ 
 Spec == Init /\ [][Next]_vars
 
 TypeOK ==
-    /\ head \in Entries /\ src \in [Entries -> Sources] /\ shelf \in [Entries -> BOOLEAN]
+    /\ head \in Entries /\ src \in [Entries -> Sources] /\ shelf \in [Entries -> Files \cup {NoFile}]
     /\ failed \subseteq Keys /\ failedSources \subseteq Keys
     /\ {asked, picked, carried, prepared, preparedSource, failure, took, tookPronto} \subseteq Keys \cup {NoKey}
     /\ busy \in BOOLEAN /\ worker \in {"idle", "picking", "picked"}

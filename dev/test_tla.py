@@ -43,6 +43,8 @@ RENAME_SWITCH = RENAME + (("WithTheJobSwitch", "TRUE"), ("DownloadEndsBeforeTheS
 RENAME_PLAY = (("WithTheRename", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"), ("WithTheMoves", "FALSE"),
                ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE"))
 PART_CONSTANTS = ("DownloadOutcomes", "StreamReaderStartsWith", "QueueLengths")
+WHOLE = ("LocksAndSwitch", "PassageFailure")
+TWO_FILES = (("Files", "{f1, f2}"), ("Sources", "{s1}"))
 REQUIRED = {
     "Races211": {"TypeOK", "LockOrderKept", "NoOrphanLoading", "NoStaleLoading", "SwitchEntryMatchesPlatter",
                  "ReservedEntryMatchesRead", "StreamActsOnItsAttempt", "NoRefusalWhilePlaying",
@@ -259,6 +261,11 @@ RUNS = (
         constants=(("TakeDropsTheStaleDeck", "FALSE"),)),
     Run("mutant: the prepare matches its pick against the failures by the entry, and refuses a file after its stream "
         "failed", "PassageFailure", "invariant FailureBlocksOnlyItsPrepare", constants=(("PickMatchesByEntry", "TRUE"),)),
+    Run("PassageFailure, the code as it is with two files for the shelf (one source): a file that replaces a failed one "
+        "gets its own prepare", "PassageFailure", constants=TWO_FILES),
+    Run("mutant: the key holds only whether the shelf has a file, and a file that replaces a failed one is refused",
+        "PassageFailure", "invariant FailureBlocksOnlyItsPrepare",
+        constants=TWO_FILES + (("FileKeyedByPresence", "TRUE"),)),
 )
 
 failures = []
@@ -419,6 +426,9 @@ def invariant_failures(runs, cfgs):
     out += [f"{spec} has no passing run of the code that checks every invariant" for spec in REQUIRED
             if not any(r.spec == spec and r.expect == "pass" and r.specification is None and r.invariants is None
                        and not r.unchecked for r in runs)]
+    out += [f"{spec} has no passing run of its whole configuration" for spec in WHOLE
+            if not any(r.spec == spec and r.expect == "pass" and r.specification is None and r.invariants is None
+                       and not r.constants for r in runs)]
     return out + ([] if fair else ["no passing run checks ReservationsResolve under FairSpec"])
 
 
@@ -461,6 +471,9 @@ def main():
              [replace(r, unchecked=("NoOrphanLoading",)) if r is drop else r for r in RUNS]),
             ("the schedule has no passing run of PassageFailure",
              [r for r in RUNS if not (r.spec == "PassageFailure" and r.expect == "pass")]),
+            ("the passing run of PassageFailure has one source only",
+             [replace(r, constants=(("Sources", "{s1}"),)) if r.spec == "PassageFailure" and r.expect == "pass" else r
+              for r in RUNS]),
             ("a run with no known failure leaves out SwitchEntryMatchesPlatter",
              [replace(r, unchecked=("SwitchEntryMatchesPlatter",)) if r is moves else r for r in RUNS])):
         check(invariant_failures(schedule, cfgs) != [], f"the mutant where {name} fails")

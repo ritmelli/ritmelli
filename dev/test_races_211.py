@@ -805,11 +805,12 @@ def downloading_job_played_after_a_rename(A, E, readers):
          "job": j["id"], "qid": "named5"}
     with A.fila_lock:
         A.change_queue(lambda: A.fila.append(x))
-    remote = A.tocar_remoto
+    remote, renamed = A.tocar_remoto, []
 
     def shelved_and_renamed_after_the_miss(*a, **kw):
         A.lib.add(dict(A.lib.get("d2"), id=target, youtube_id=target, title="the old name"))
         cmd.update_record(A, target, title="the new name")
+        renamed.append(target)
         return remote(*a, **kw)
     stream = StreamThread(A)
     with (contextlib.redirect_stderr(io.StringIO()),
@@ -819,6 +820,8 @@ def downloading_job_played_after_a_rename(A, E, readers):
               "the Next's play missed the shelf, the record was shelved and renamed while the job ran, and the job's "
               "record went on the platter")
     del A._abre_stream
+    check(renamed == [target] and (A.lib.get(target) or {}).get("title") == "the new name",
+          f"the rename ran once, after the Next missed the shelf, and the shelf has the new name ({renamed})")
     check((E.track or {}).get("id") == target and j["status"] == "running",
           "the job's waiting record is on the platter")
     check(shown_title(A) == "the old name",
@@ -836,11 +839,12 @@ def prepared_stream_renamed_before_it_is_published(A, E, readers):
     with A.fila_lock:
         A.change_queue(lambda: A.fila.append(x))
     info = {"url": "https://stream.invalid/v", "id": target, "title": "the old name", "duration": 600.0}
-    channel = A.canal_depois
+    channel, renamed = A.canal_depois, []
 
     def shelved_and_renamed_after_the_build(d, *a, **kw):
         A.lib.add(dict(A.lib.get("d2"), id=target, youtube_id=target, title="the old name"))
         cmd.update_record(A, target, title="the new name")
+        renamed.append(target)
         return channel(d, *a, **kw)
     cap = E.captura()
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "stream_info", return_value=(info, {})),
@@ -848,7 +852,10 @@ def prepared_stream_renamed_before_it_is_published(A, E, readers):
         A._prepara(cap.track, x, dict(x), cap)
     check(E.pronto_tag == x["qid"], "the job's stream is prepared on the second deck")
     check(E.virou is not None or mix_until_the_switch(E), "the engine switched to the prepared stream")
-    check((E.track or {}).get("id") == target, "the job's prepared stream is on the platter after the switch")
+    check(renamed == [target] and (A.lib.get(target) or {}).get("title") == "the new name",
+          f"the rename ran once, while the passage built the job's stream, and the shelf has the new name ({renamed})")
+    check((E.track or {}).get("id") == target and str((E.track or {}).get("path", "")).startswith("https://"),
+          "the job's prepared stream, its HTTP address, is on the platter after the switch")
     check(shown_title(A) == "the old name",
           f"known failure #303: a rename on the shelf while the passage prepares a job's stream leaves the queue "
           f"entry's name on the platter after the switch ({shown_title(A)})")
@@ -1248,18 +1255,47 @@ def shelf_record_deleted_before_the_pick(A, E, readers):
     x = similar_on_its_own(A, "n", 15)
     A.failed_passages.add(carried_key(A, x))
     A.lib.add(shelf_record("n", 15))
-    picking, go = threading.Event(), threading.Event()
+    picking, go, lookups = threading.Event(), threading.Event(), []
+    pauses = worker_pauses(A, picking, go)
+
+    def looks(entry):
+        found = pauses(entry)
+        if threading.current_thread() is not threading.main_thread():
+            lookups.append((found, threading.current_thread()))
+        return found
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()), \
-            mock.patch.object(A, "shelf_item", worker_pauses(A, picking, go)), \
+            mock.patch.object(A, "shelf_item", looks), \
             mock.patch.object(A, "stream_info", side_effect=RuntimeError("the stream that failed")) as opens:
         A._volta_passagem()
         paused = picking.wait(WAIT_S)
         A.lib.remove("shelf15")
         go.set()
-        harness.ate(lambda: A.preparando is None)
-    check(paused and not opens.called,
-          f"a shelf record deleted between the poll and the pick leaves the stream that failed before: the prepare "
-          f"checks the source it picked and does not open it again (opened {opens.call_count})")
+        ended = harness.ate(lambda: len(lookups) == 1 and not lookups[0][1].is_alive())
+    check(paused and ended and len(lookups) == 1 and lookups[0][0][1] is None and not opens.called,
+          f"a shelf record deleted between the poll and the pick leaves the stream that failed before: the worker's "
+          f"own lookup saw the deletion, it ended, and it did not open that stream again (paused {paused}, ended "
+          f"{ended}, lookups {len(lookups)}, opened {opens.call_count})")
+
+
+def replacement_shelf_file_after_its_predecessor_failed(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x = similar_on_its_own(A, "p", 19)
+    A.lib.add(shelf_record("p", 19))
+    A.failed_passages.add(carried_key(A, x))
+    A.lib.remove("shelf19")
+    A.lib.add(dict(shelf_record("p", 19), id="shelf20", file="shelf20.m4a"))
+    launches = Launches()
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
+        watch(A, launches)
+        cap = E.captura()
+        with mock.patch.object(E, "preparar", return_value=True) as prepares:
+            A._prepara(cap.track, x, dict(x), cap)
+    A.lib.remove("shelf20")
+    A.failed_passages.clear()
+    handed = prepares.call_args.args[0]() if prepares.call_count == 1 and callable(prepares.call_args.args[0]) else None
+    check(launches.qids == [x["qid"]] and (handed or {}).get("file") == "shelf20.m4a",
+          f"a shelf file that replaces one whose prepare failed, for the same entry, gets its own prepare, and the "
+          f"worker hands the new file to the engine (launched {launches.qids}, handed {(handed or {}).get('file')})")
 
 
 def engine_failure_through_the_real_prepare(A, E, readers):
@@ -1433,6 +1469,7 @@ def main():
                 two_failures_on_one_record(A, E, readers)
                 shelf_record_deleted_before_the_pick(A, E, readers)
                 failure_of_an_earlier_record_with_the_same_identity_hash(A, E, readers)
+                replacement_shelf_file_after_its_predecessor_failed(A, E, readers)
                 engine_failure_through_the_real_prepare(A, E, readers)
                 audio_version_entries(A, E)
                 audio_version_while_an_entry_plays_from_the_queue(A)
