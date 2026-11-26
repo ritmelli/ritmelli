@@ -113,7 +113,8 @@ aceita o `config.json`, argumentos e variáveis a mais, com a rede presa num pro
 de "a tela não mudou", no celular e na mesa do PC, a 1920x1080: prints do tema em estados fixos,
 com uma prateleira de mentira e o servidor em `--mock`, comparados pixel a pixel com os de
 referência gravados antes da mudança, também de outro checkout pelo `--raiz`; sai 2 se um
-print mudou e 1 se a captura não vale; o tema que não fica pronto no prazo imprime cada condição do sinal de pronto, o que ainda carrega, os erros do console e um print em `<pasta>/nao-pronto`), `dev/perfcheck.py`
+print mudou e 1 se a captura não vale; o tema que não fica pronto no prazo imprime cada condição do sinal de pronto, o que ainda carrega, os erros do console e um print em `<pasta>/nao-pronto`; a pasta temporária do servidor sai mesmo quando ele recusa
+subir ou o desligar dele falha), `dev/perfcheck.py`
 (quanto o tema redesenha por segundo com música tocando, no celular emulado),
 `dev/celular.py` (mede rolagem, puxão e abrir do palco no Chrome do celular de verdade,
 por USB com adb; o emulado não reproduz o que trava lá; num `--mock --papel-local celular`, a aba pareia como o
