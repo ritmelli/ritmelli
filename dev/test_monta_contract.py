@@ -10,9 +10,10 @@ from workflow_yaml import job_steps, load
 ROOT = Path(__file__).resolve().parent.parent
 MONTA = ROOT / ".github" / "workflows" / "monta.yml"
 BUILD_MANIFEST = ROOT / "instalador" / "atualizacao" / "build_manifest.py"
-SCRIPT = "instalador/atualizacao/build_manifest.py"
-INVOCATION = re.compile(r'^[ \t]*&[ \t]*"[^"\n]*\\python\.exe"[ \t]+instalador[\\/]atualizacao[\\/]'
-                        r'build_manifest\.py[ \t]*$', re.M)
+MANIFEST_RUN = ['& "$env:LOCALAPPDATA\\ritmelli-build\\Scripts\\python.exe" '
+                'instalador\\atualizacao\\build_manifest.py',
+                'if ($LASTEXITCODE -ne 0) { throw "build_manifest.py exited with $LASTEXITCODE" }']
+DIRECTIVE = re.compile(r"#requires\b", re.I)
 CALLS = re.compile(r"\b(build_manifest|publica)\b", re.I)
 VERSION = "${{ steps.congela.outputs.versao }}"
 MARK = "<version>"
@@ -88,8 +89,13 @@ def step_by_id(job, step_id):
     return found[0] if len(found) == 1 else None
 
 
+def commands(run):
+    return [line.strip() for line in str(run).splitlines()
+            if line.strip() and not (line.strip().startswith("#") and not DIRECTIVE.match(line.strip()))]
+
+
 def manifest_step(job):
-    found = [s for s in job_steps(job) if INVOCATION.search(code(s.get("run", "")))]
+    found = [s for s in job_steps(job) if commands(s.get("run", "")) == MANIFEST_RUN]
     return found[0] if len(found) == 1 else None
 
 
@@ -338,10 +344,6 @@ def main():
           "the folder build_manifest.py writes to and the Ritmelli artifact path moved together keep the contract")
     check([p for p in contract_problems(doc, folder=other) if "not the folder build_manifest.py writes" in p] != [],
           "the check catches the folder build_manifest.py writes to changed alone")
-    script = "instalador\\atualizacao\\build_manifest.py"
-    forward = mutant(doc, lambda d: edit_run(d, lambda run: run.replace(script, SCRIPT)))
-    check(script in manifest_step(doc["jobs"]["monta"])["run"] and contract_problems(forward) == [],
-          "the build_manifest.py call written with forward slashes keeps the contract")
     marks = mutant(doc, lambda d: edit_run(d, lambda run: "# a <# in a line comment\n" + run + "# and a #> later\n"))
     check(contract_problems(marks) == [], "line comments that mention <# and #> keep the contract")
     cased = mutant(doc, lambda d: source_step(d, "parcial").update(
@@ -460,6 +462,13 @@ def main():
             {"uses": "actions/github-script@v7", "with": {"script": "// publica"}}),
         "the manifest step that only prints the script's path": lambda d: manifest_step(d["jobs"]["monta"]).update(
             run="Write-Output 'instalador\\atualizacao\\build_manifest.py'\n"),
+        "the build_manifest.py call written with forward slashes": lambda d: edit_run(d, lambda run: run.replace(
+            "instalador\\atualizacao\\build_manifest.py", "instalador/atualizacao/build_manifest.py")),
+        "a second line in the manifest step that runs publica.py": lambda d: edit_run(
+            d, lambda run: run + "& python instalador\\atualizacao\\publica.py --app outro\n"),
+        "a #Requires line in the manifest step": lambda d: edit_run(d, lambda run: "#Requires -Version 7.0\n" + run),
+        "the build's Python from another folder": lambda d: edit_run(d, lambda run: run.replace(
+            "ritmelli-build", "ritmelli-other")),
         "the step that runs build_manifest.py under a condition": lambda d: manifest_step(d["jobs"]["monta"]).update(
             {"if": "env.ASSINA == 'true'"}),
         "the congela step under a condition": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(

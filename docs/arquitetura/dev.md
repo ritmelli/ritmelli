@@ -78,9 +78,11 @@ uma vez na execução inteira, contados como o server conta (sem o job ou o pass
 artefato que a esteira tomaria pela versão (`Ritmelli-1.2.3`), nem outro `ritmelli-exe-` seguido de uma versão,
 nem um nome cuja expressão poderia completar um desses dois prefixos (`${{ format('Ritmelli-{0}', …) }}`,
 `Rit${{ … }}`). Os dois artefatos (que também não podem sair de um job que deixe de rodar numa dessas
-montagens), o `congela`, o passo do manifesto e os passos das saídas `anterior` e `parcial` não podem ter `if:`;
-nenhum outro passo cita `build_manifest` ou `publica`, em qualquer campo, comentário ou passo desligado (como o
-server lê); e, ao achar o passo do manifesto e as saídas, o que está em comentário do PowerShell não conta. O
+montagens), o `congela`, o passo do manifesto (que roda exatamente a chamada do `build_manifest.py` com o
+Python do venv e o `throw` do `$LASTEXITCODE`, como o server lê, com um `#requires` contando como linha) e os
+passos das saídas `anterior` e `parcial` não podem ter `if:`; nenhum outro passo cita `build_manifest` ou
+`publica`, em qualquer campo, comentário ou passo desligado (como o server lê); e, nas saídas, o que está em
+comentário do PowerShell não conta. O
 `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda num job à parte,
 pelo `--compara`, com a referência da base no cache do Actions), e o `--areas` é o filtro por caminho do
 `.github/workflows/testa.yml`, que roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo
