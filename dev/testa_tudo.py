@@ -150,6 +150,34 @@ REQUIRED_MODES = {
 }
 COMPARA_ENV = {"EXTRACAO": "${{ steps.areas.outputs.extracao }}", "BASE_SHA": "${{ steps.chave.outputs.base }}"}
 REQUIRED_ENV = {"--compara": COMPARA_ENV, "--capture": COMPARA_ENV}
+AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE"
+SCREEN_AREAS_RUN = "\n".join((
+    AREAS_RUN,
+    "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+    """$extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }""",
+    'Add-Content -Path $env:GITHUB_OUTPUT -Value "extracao=$extracao" -Encoding utf8'))
+LABELS_ENV = {"ETIQUETAS": "${{ needs.etiquetas.outputs.lista }}"}
+SOURCE_STEPS = {
+    ("testes", "ruff"): ("ruff", None, "python -m ruff check --output-format github .", None),
+    ("microfone", "areas"): ("O PR mexe no filtro?", None, AREAS_RUN, None),
+    ("tela", "areas"): ("O PR mexe na tela?", None, SCREEN_AREAS_RUN, LABELS_ENV),
+    ("compara", "areas"): ("O PR mexe na tela?", None, "\n".join((
+        """if ($env:GITHUB_EVENT_NAME -eq 'push') { Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=true" -Encoding utf8; """
+        "exit 0 }",
+        SCREEN_AREAS_RUN,
+        "$tela = Select-String -Path $env:GITHUB_OUTPUT -Pattern '^tela=true$' -Quiet",
+        "$roda = if ($tela) { 'true' } else { 'false' }",
+        'Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=$roda" -Encoding utf8')), LABELS_ENV),
+    ("compara", "chave"): ("Capture key", "steps.areas.outputs.roda == 'true'", "\n".join((
+        r"$chrome = (Get-Item 'C:\Program Files\Google\Chrome\Application\chrome.exe').VersionInfo.ProductVersion",
+        "$base = ''",
+        "if ($env:GITHUB_EVENT_NAME -ne 'push') {",
+        '  $base = git rev-parse --verify "$env:COMPARA_BASE^{commit}"',
+        '  if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }',
+        "}",
+        'Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" '
+        "-Encoding utf8")), None),
+}
 PS1_TESTS = {
     "instalador/testa-atualizador.ps1": (
         "testa-atualizador", None, "Instala, a tarefa atualiza e o Ritmelli abre de novo", None,
@@ -212,7 +240,7 @@ def manual(arquivo):
     return None
 
 
-TEST_NAME = re.compile(r"(?:test|testa|teste)(?:_\w+)?\.py|(?:test|testa|teste)(?:-[\w-]+)?\.ps1")
+TEST_NAME = re.compile(r"(?:test|testa|teste)(?:_\w+)?\.py|(?:test|testa|teste)(?:[-_][\w-]+)?\.ps1")
 
 
 def is_test(rel):
@@ -224,10 +252,11 @@ def tracked(root=RAIZ):
     return [f for f in out.decode("utf-8").split("\0") if f]
 
 
-def step_failures(where, jobs, job_id, job_if, step_name, step_if, run, env):
+def step_failures(where, jobs, job_id, job_if, step_name, step_if, run, env, sources=None):
     """What takes a step out of its run: its job or step gone, a condition other than job_if and step_if, a
     continue-on-error, a run other than run, an env other than env, or a step its condition and env read by id that is
-    not a single earlier step of the job."""
+    not a single earlier step of the job, or (with sources, the ids of the job whose steps are pinned) not one of
+    them."""
     job = jobs.get(job_id)
     if job is None:
         return [f"{where}: the job is gone"]
@@ -252,7 +281,29 @@ def step_failures(where, jobs, job_id, job_if, step_name, step_if, run, env):
     read = set(re.findall(r"steps\.([\w-]+)\.", " ".join([step_if or "", *(env or {}).values()])))
     falhas += [f"{where}: it reads steps.{i}, which is not a single earlier step of the job" for i in sorted(read)
                if before.count(i) != 1]
+    if sources is not None:
+        falhas += [f"{where}: it reads steps.{i}, a step with no row in SOURCE_STEPS" for i in sorted(read - sources)]
     return falhas
+
+
+def source_failures(jobs):
+    """The step_failures of each step of SOURCE_STEPS, and the ids of each job whose steps are pinned (its
+    SOURCE_STEPS and the steps of its REQUIRED_MODES)."""
+    sources = {}
+    for (job_id, step_id), _ in SOURCE_STEPS.items():
+        sources.setdefault(job_id, set()).add(step_id)
+    for job_id, _, step_name, _, _ in REQUIRED_MODES.values():
+        step = find_step(jobs.get(job_id) or {}, step_name) or {}
+        if step.get("id"):
+            sources.setdefault(job_id, set()).add(step["id"])
+    falhas = []
+    for (job_id, step_id), (step_name, step_if, run, env) in SOURCE_STEPS.items():
+        job = jobs.get(job_id) or {}
+        where = f"the testa.yml step \"{step_name}\" (job {job_id}, id {step_id}), which a required mode reads"
+        falhas += step_failures(where, jobs, job_id, job.get("if"), step_name, step_if, run, env, sources[job_id])
+        if (find_step(job, step_name) or {}).get("id") != step_id:
+            falhas.append(f"{where}: its id is not {step_id}")
+    return falhas, sources
 
 
 def ps1_failures(flows):
@@ -263,17 +314,18 @@ def ps1_failures(flows):
 
 
 def mode_failures(flows):
-    """What takes a mode of REQUIRED_MODES out of the required check: its step_failures, or its job missing from the
-    needs and the verdict of the required job."""
+    """What takes a mode of REQUIRED_MODES out of the required check: its step_failures, the source_failures of the
+    steps it reads, or its job missing from the needs and the verdict of the required job."""
     testa = flows.get(".github/workflows/testa.yml") or {}
     jobs = testa.get("jobs") or {}
     required = jobs.get(REQUIRED_JOB) or {}
     verdict = find_step(required, VERDICT_STEP) or {}
     results = set((verdict.get("env") or {}).values())
-    falhas = []
+    falhas, sources = source_failures(jobs)
     for mode, (job_id, job_if, step_name, step_if, run) in REQUIRED_MODES.items():
         where = f"the testa.yml mode {mode} (job {job_id}, step \"{step_name}\")"
-        falhas += step_failures(where, jobs, job_id, job_if, step_name, step_if, run, REQUIRED_ENV.get(mode))
+        falhas += step_failures(where, jobs, job_id, job_if, step_name, step_if, run, REQUIRED_ENV.get(mode),
+                                sources.get(job_id, set()))
         if job_id not in (required.get("needs") or []):
             falhas.append(f"{where}: the {REQUIRED_JOB} job does not need it")
         if f"${{{{ needs.{job_id}.result }}}}" not in results:

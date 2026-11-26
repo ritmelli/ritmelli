@@ -194,7 +194,15 @@ def test_modes(flows):
             ("compara", "compara", "the compara base taken from the event", lambda s: s["env"].update({"BASE_SHA": "${{ env.BASE }}"})),
             ("tela", "fitcheck", "the id of the fitcheck step removed", lambda s: s.pop("id")),
             ("tela", "O PR mexe na tela?", "the id of the areas step changed",
-             lambda s: s.update({"id": "areas-later"}))):
+             lambda s: s.update({"id": "areas-later"})),
+            ("compara", "O PR mexe na tela?", "if: false on the areas step", lambda s: s.update({"if": "false"})),
+            ("compara", "O PR mexe na tela?", "an exit 0 first in the areas step",
+             lambda s: s.update({"run": "exit 0\n" + s["run"]})),
+            ("compara", "Capture key", "continue-on-error on the capture key step",
+             lambda s: s.update({"continue-on-error": "true"})),
+            ("microfone", "O PR mexe no filtro?", "if: false on the filter areas step", lambda s: s.update({"if": "false"})),
+            ("tela", "O PR mexe na tela?", "another env on the areas step", lambda s: s.update({"env": {"ETIQUETAS": "[]"}})),
+            ("testes", "ruff", "if: false on the ruff step", lambda s: s.update({"if": "false"}))):
         found = testa_tudo.mode_failures(mutated(flows, lambda f: change(step_of(f, job, step))))
         check(found != [], f"the mutant with {why} ({job} job) fails")
     monta = ".github/workflows/monta.yml"
@@ -371,6 +379,7 @@ def test_without_destination(flows):
             "microfone/apo/teste/teste_novo.py": "print('a new C++ test runner')\n",
             "instalador/ffmpeg/testa.py": "print('a test named testa.py')\n",
             "instalador/testa-novo.ps1": "Write-Output 'a PowerShell test no workflow runs'\n",
+            "instalador/test_new.ps1": "Write-Output 'a new PowerShell test named test_'\n",
             "instalador/testa-atualizador.ps1": "Write-Output 'run by the monta.yml'\n",
             "instalador/testa-a-mao.ps1": "# manual: instalador\\testa-a-mao.ps1 precisa de um Windows de teste\n",
             "instalador/atualizacao/testa_parcial.py": "print('in the COMPLETO')\n",
@@ -382,7 +391,8 @@ def test_without_destination(flows):
         found = testa_tudo.sem_destino(root=root, files=sorted(files), flows=flows)
         flagged = sorted(f.split()[0].rstrip(":") for f in found if "runs nowhere" in f or "does not follow" in f)
         check(flagged == ["dev/bad_manual.py", "dev/test_lost.py", "dev/testa_perdido.py", "instalador/ffmpeg/testa.py",
-                          "instalador/test_new.py", "instalador/testa-novo.ps1", "microfone/apo/teste/teste_novo.py"],
+                          "instalador/test_new.ps1", "instalador/test_new.py", "instalador/testa-novo.ps1",
+                          "microfone/apo/teste/teste_novo.py"],
               f"the lock flags every test of the git ls-files without destination, in or out of dev/, and only them "
               f"({flagged})")
         echo = mutated(flows, lambda f: next(
