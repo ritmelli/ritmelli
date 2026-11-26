@@ -6,7 +6,7 @@
   "sleeps_dev": 67,
   "theme_timers": 30,
   "theme_animation_frames": 16,
-  "retries": 30,
+  "retries": 31,
   "broad_excepts": 134,
   "skipped_tests": 6,
   "todo_markers": 0,

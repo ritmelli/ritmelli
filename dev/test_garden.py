@@ -42,6 +42,15 @@ AGENTS_OK ="# AGENTS.md\n\n- A rule that `testa_i18n` holds.\n"
 
 MOLDURAS = next(iter(garden.GENERATED_MARKERS))
 RUN_PS = "subprocess.run([POWERSHELL, '-Command', ps])\n"
+ATTEMPT = "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+ATTEMPT_PS = "function attempt { try { f } catch { $null } }\n"
+NESTED_FSTRING = ("import subprocess\nsubprocess.run(['powershell', '-Command', "
+                  "f\"Write-Output '{f\"{\"}\"}\"}'{TAIL}\"])\n")
+ASYNC_RETRY = ("import asyncio\nasync def attempt():\n    try:\n        return await f()\n    except OSError:\n"
+               "        return None\nasync def main():\n    while True:\n        if await CALL():\n"
+               "            break\n        await asyncio.sleep(1)\n")
+ACTION = "runs:\n  using: composite\n  steps:\n    - shell: pwsh\n      run: RUN\n"
+ALIASED_JOB = "jobs:\n  test: &t\n    runs-on: windows-2025\n    steps:\n      - run: RUN\n  build: *t\n"
 
 CASES = {
     "comment_lines": [
@@ -193,6 +202,29 @@ CASES = {
          {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef run():\n    subprocess.run(['powershell', '-Command', ps])\n"}),
         ("in microfone/", {"dev/a.py": "import time\ntime.sleep(1)\n"},
          {"dev/a.py": "import time\ntime.sleep(1)\n", "microfone/a.py": "import time\ntime.sleep(1)\n"}),
+        ("a sleep in the type of an except",
+         {"a.py": "import time\ntry:\n    f()\nexcept get_type(x):\n    pass\n"},
+         {"a.py": "import time\ntry:\n    f()\nexcept get_type(time.sleep(1)):\n    pass\n"}),
+        ("a sleep in the annotation of a parameter", {"a.py": "import time\ndef f(x: int):\n    pass\n"},
+         {"a.py": "import time\ndef f(x: time.sleep(1)):\n    pass\n"}),
+        ("a sleep in the annotation of a result", {"a.py": "import time\ndef f() -> int:\n    pass\n"},
+         {"a.py": "import time\ndef f() -> time.sleep(1):\n    pass\n"}),
+        ("a sleep in the index of a PowerShell assignment", {"a.ps1": "$a[$(Get-Date)] = 42\n"},
+         {"a.ps1": "$a[$(Start-Sleep 1)] = 42\n"}),
+        ("a module script set in either branch",
+         {"a.py": "import subprocess\nif flag:\n    PS = 'Get-Item x'\nelse:\n    PS = 'Get-Date'\n"
+                  "def run():\n    subprocess.run(['powershell', '-Command', PS])\n"},
+         {"a.py": "import subprocess\nif flag:\n    PS = 'Start-Sleep 1'\nelse:\n    PS = 'Get-Date'\n"
+                  "def run():\n    subprocess.run(['powershell', '-Command', PS])\n"}),
+        ("a script set before an if that sets it in both branches",
+         {"a.py": "import subprocess\nps = loader()\nif flag:\n    ps = 'Get-Date'\nelse:\n    ps = 'Get-Item x'\n"
+                  + RUN_PS},
+         {"a.py": "import subprocess\nps = loader()\nif flag:\n    ps = 'Start-Sleep 1'\nelse:\n    ps = 'Get-Item x'\n"
+                  + RUN_PS}),
+        ("a script with an f-string inside a field", {"a.py": NESTED_FSTRING.replace("{TAIL}", "")},
+         {"a.py": NESTED_FSTRING.replace("{TAIL}", "; Start-Sleep 1")}),
+        ("a composite action outside .github", {"tools/a/action.yml": ACTION.replace("RUN", "Write-Output 1")},
+         {"tools/a/action.yml": ACTION.replace("RUN", "Start-Sleep 1")}),
     ],
     "sleeps_dev": [
         ("Start-Sleep in a one-line PowerShell step",
@@ -249,6 +281,8 @@ CASES = {
                                      "          subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"}),
         ("a workflow", {"instalador/testa-x.ps1": "Start-Sleep 1\n"},
          {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"}),
+        ("a job that is an alias of another", {".github/workflows/w.yml": ALIASED_JOB.replace("RUN", "Write-Output 1")},
+         {".github/workflows/w.yml": ALIASED_JOB.replace("RUN", "Start-Sleep 1")}),
     ],
     "theme_timers": [
         ("setTimeout", {"themes/t/a.js": "// setTimeout(f, 1)\nconst s = 'setTimeout(';\n"},
@@ -507,6 +541,84 @@ CASES = {
          {"a.js": "function connect(url) {\n  try { open(url); } catch (e) { setTimeout(() => connect(url), 100); }\n}\n"}),
         ("a promise catch that tries again", {"a.js": "fetch(u).then(go);\n"},
          {"a.js": "function go() { fetch(u).catch(() => setTimeout(go, 3000)); }\n"}),
+        ("a switch key is no test of the flag",
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { $s = attempt; switch ($x) { $s { break outer } }; "
+                                "Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { $s = attempt; if ($s) { break outer }; Start-Sleep 1 }\n"}),
+        ("a break inside a switch leaves only the switch",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt) { switch (1) { 1 { break } } }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt) { break }; Start-Sleep 1 }\n"}),
+        ("a labeled break inside a switch leaves the loop",
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { if (attempt) { switch (1) { 1 { break } } }; "
+                                "Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { if (attempt) { switch (1) { 1 { break outer } } }; "
+                                "Start-Sleep 1 }\n"}),
+        ("a flag passed to another call is no test of it",
+         {"a.py": ATTEMPT + "while True:\n    s = attempt()\n    if check(s):\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    s = attempt()\n    if s:\n        break\n    time.sleep(1)\n"}),
+        ("a PowerShell flag passed to a command is no test of it",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $s = attempt; if (Test-Path $s) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $s = attempt; if ($s) { break }; Start-Sleep 1 }\n"}),
+        ("a flag set from the negated helper",
+         {"a.py": ATTEMPT + "while True:\n    done = not attempt()\n    if done:\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    done = attempt()\n    if done:\n        break\n    time.sleep(1)\n"}),
+        ("a flag set from a comparison of the helper",
+         {"a.py": ATTEMPT + "while True:\n    done = attempt() is None\n    if done:\n        break\n"
+                            "    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    done = attempt()\n    if done:\n        break\n    time.sleep(1)\n"}),
+        ("a PowerShell flag set from a comparison of the helper",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $done = (attempt) -eq $null; if ($done) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $done = attempt; if ($done) { break }; Start-Sleep 1 }\n"}),
+        ("a helper piped to another command",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt | Out-Null) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt) { break }; Start-Sleep 1 }\n"}),
+        ("a walrus that sets the flag from another call",
+         {"a.py": ATTEMPT + "while True:\n    s = attempt()\n    if (s := other()):\n        break\n"
+                            "    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    s = attempt()\n    if (s := attempt()):\n        break\n"
+                            "    time.sleep(1)\n"}),
+        ("an awaited helper", {"a.py": ASYNC_RETRY.replace("CALL", "other")},
+         {"a.py": ASYNC_RETRY.replace("CALL", "attempt")}),
+        ("a sleep in the iterable is no wait between tries",
+         {"a.py": "import time\nfor x in items(time.sleep(1)):\n    try:\n        f()\n        break\n"
+                  "    except OSError:\n        pass\n"},
+         {"a.py": "import time\nfor x in items():\n    try:\n        f()\n        break\n    except OSError:\n"
+                  "        time.sleep(1)\n"}),
+        ("a sleep in the else of a for is no wait between tries",
+         {"a.py": "import time\nfor x in items():\n    try:\n        f()\n        break\n    except OSError:\n"
+                  "        pass\nelse:\n    time.sleep(1)\n"},
+         {"a.py": "import time\nfor x in items():\n    try:\n        f()\n        break\n    except OSError:\n"
+                  "        time.sleep(1)\nelse:\n    pass\n"}),
+        ("a sleep in the else of a while is no wait between tries",
+         {"a.py": "import time\nwhile tries():\n    try:\n        f()\n        break\n    except OSError:\n"
+                  "        pass\nelse:\n    time.sleep(1)\n"},
+         {"a.py": "import time\nwhile tries():\n    try:\n        f()\n        break\n    except OSError:\n"
+                  "        time.sleep(1)\nelse:\n    pass\n"}),
+        ("a sleep in the start of a PowerShell for is no wait between tries",
+         {"a.ps1": "for ($i = $(Start-Sleep 1); $i -lt 3; $i++) { try { f; break } catch { } }\n"},
+         {"a.ps1": "for ($i = 0; $i -lt 3; Start-Sleep 1) { try { f; break } catch { } }\n"}),
+        ("a sleep in the list of a PowerShell foreach is no wait between tries",
+         {"a.ps1": "foreach ($x in $(Start-Sleep 1; 1..3)) { try { f; break } catch { } }\n"},
+         {"a.ps1": "foreach ($x in 1..3) { try { f; break } catch { Start-Sleep 1 } }\n"}),
+        ("a helper whose output goes elsewhere",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt > $null) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt 2>$null) { break }; Start-Sleep 1 }\n"}),
+        ("a helper whose errors join its output",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt 2>&1) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt 2>$null) { break }; Start-Sleep 1 }\n"}),
+        ("a PowerShell loop condition that compares the flag",
+         {"a.ps1": "while ($running -eq $true) { try { f; $other = $false } catch { }; Start-Sleep 1 }\n"},
+         {"a.ps1": "while ($running -eq $true) { try { f; $running = $false } catch { }; Start-Sleep 1 }\n"}),
+        ("a walrus inside a comparison sets the flag",
+         {"a.py": ATTEMPT + "while True:\n    if (other := attempt()) is None:\n        log()\n    if r:\n"
+                            "        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    if (r := attempt()) is None:\n        log()\n    if r:\n"
+                            "        break\n    time.sleep(1)\n"}),
+        ("a helper that reaches the attempt through the list of its own loop",
+         {"a.py": ATTEMPT + "def ready():\n    for m in listed():\n        return m\n    return None\n"
+                      "while not done:\n    time.sleep(1)\n    done = ready()\n"},
+         {"a.py": ATTEMPT + "def ready():\n    for m in attempt():\n        return m\n    return None\n"
+                      "while not done:\n    time.sleep(1)\n    done = ready()\n"}),
     ],
     "broad_excepts": [
         ("a PowerShell catch with no type", {"a.ps1": "try { f } catch [IO.IOException] { }\n"},
@@ -840,18 +952,32 @@ def test_unreadable():
              {"a.py": "import subprocess\ndef run(script):\n    subprocess.run(['powershell', '-Command', script])\n"},
              "a.py:3: the PowerShell reader can't follow the script"),
             ("testa.yml", {".github/workflows/testa.yml": "jobs:\n  a: [\n"},
-             ".github/workflows/testa.yml:2: the YAML reader stops here")):
+             ".github/workflows/testa.yml:2: the YAML reader stops here"),
+            ("script joined from a name with two values",
+             {"a.py": "import subprocess\npart = 'Get-Date'\nif flag:\n    part = 'Start-Sleep 1'\n"
+                      "ps = '\\n'.join([part])\n" + RUN_PS},
+             "a.py:6: the PowerShell reader can't follow the script"),
+            ("script set in a try and in its else",
+             {"a.py": "import subprocess\nps = loader()\ntry:\n    ps = 'Get-Date'\nexcept OSError:\n    pass\n"
+                      "else:\n    ps = 'Get-Item x'\n" + RUN_PS},
+             "a.py:9: the PowerShell reader can't follow the script"),
+            ("script set in both branches of an if inside another if",
+             {"a.py": "import subprocess\nps = loader()\nif a:\n    if b:\n        ps = 'Get-Date'\n    else:\n"
+                      "        ps = 'Get-Item x'\n" + RUN_PS},
+             "a.py:8: the PowerShell reader can't follow the script")):
         try:
             problems = garden.measure(files)[1]
         except ValueError as ex:
             problems = [repr(ex)]
         check(any(p.startswith(place) for p in problems), f"an unreadable {label} is reported at its place ({problems})")
-    try:
-        garden.measure({".github/workflows/testa.yml": "? [a]\n: b\n"})
-        crashed = ""
-    except ValueError as ex:
-        crashed = repr(ex)
-    check(not crashed, f"a testa.yml with a collection as a key does not stop the count ({crashed})")
+    for label, text in (("a collection as a key", "? [a]\n: b\n"),
+                        ("a list as the name of a job", "jobs: {one: {name: [hi]}}\n")):
+        try:
+            garden.measure({".github/workflows/testa.yml": text})
+            crashed = ""
+        except ValueError as ex:
+            crashed = repr(ex)
+        check(not crashed, f"a testa.yml with {label} does not stop the count ({crashed})")
 
 
 def test_workflow_python_lines():

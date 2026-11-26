@@ -13,7 +13,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
-import workflow_yaml
 from syntax import ir, units
 from syntax.text import Source
 
@@ -609,7 +608,8 @@ def unit_items(t, suffixes, rule, workflows_only=False):
 
 
 def outside_workflows(path):
-    return suffix(path) in (".yml", ".yaml") and not path.startswith(".github/")
+    return suffix(path) in (".yml", ".yaml") and not path.startswith(".github/") and \
+        Path(path).name not in ("action.yml", "action.yaml")
 
 
 def foreign_code(t, path):
@@ -1024,17 +1024,15 @@ def verification_names(t=None):
 
 
 def workflow_jobs(t):
-    text = t.files.get(".github/workflows/testa.yml")
-    if text is None:
+    path = ".github/workflows/testa.yml"
+    stream = t.pieces(path)[0].tree if path in t.files else None
+    jobs = units.yaml.resolved(units.mapping_value(stream.documents[0].root, "jobs")) if stream and \
+        stream.documents else None
+    if not isinstance(jobs, units.yaml.Mapping):
         return set()
-    try:
-        doc = workflow_yaml.loads(text, name="testa.yml")
-    except ValueError:
-        return set()
-    jobs = doc.get("jobs") if isinstance(doc, dict) else None
-    if not isinstance(jobs, dict):
-        return set()
-    return set(jobs) | {j.get("name") for j in jobs.values() if isinstance(j, dict) and j.get("name")}
+    names = [units.yaml.scalar_text(key) for key, _ in jobs.pairs]
+    names += [units.yaml.scalar_text(units.mapping_value(job, "name")) for _, job in jobs.pairs]
+    return set(names) - {None}
 
 
 def agents_rules(text):

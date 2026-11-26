@@ -151,6 +151,19 @@ def escape_end(raw, i):
     return i + 2
 
 
+def string_end(raw, i, formatted):
+    quote = raw[i:i + 3] if raw[i:i + 3] in ("'''", '"""') else raw[i]
+    i += len(quote)
+    while raw[i:i + len(quote)] != quote:
+        if raw[i] == "\\" or (formatted and raw[i:i + 2] in ("{{", "}}")):
+            i += 2
+        elif formatted and raw[i] == "{":
+            i = field_end(raw, i + 1)[0] + 1
+        else:
+            i += 1
+    return i + len(quote)
+
+
 def field_end(raw, i):
     depth, spec, debug = 0, False, None
     while True:
@@ -163,11 +176,10 @@ def field_end(raw, i):
             i += 1
             continue
         if c in "'\"":
-            quote = raw[i:i + 3] if raw[i:i + 3] in ("'''", '"""') else c
-            i += len(quote)
-            while raw[i:i + len(quote)] != quote:
-                i += 2 if raw[i] == "\\" else 1
-            i += len(quote)
+            k = i
+            while k > i - 2 and raw[k - 1] in "rRbBfFuU":
+                k -= 1
+            i = string_end(raw, i, "f" in raw[k:i].lower())
             continue
         if c == "#":
             i = raw.index("\n", i)
@@ -270,7 +282,7 @@ def end_position(node):
 
 class Assignments:
     def __init__(self, tree):
-        self.scope_of, self.blocks_of, self.bindings = {}, {}, {}
+        self.scope_of, self.blocks_of, self.bindings, self.nodes = {}, {}, {}, {}
         self.visit(tree, tree, ())
 
     def bind(self, scope, name, at, value, block):
@@ -282,7 +294,7 @@ class Assignments:
                 if not isinstance(child, ast.AST):
                     continue
                 inner = (*blocks, (id(node), field_name)) if isinstance(child, ast.stmt) else blocks
-                self.scope_of[id(child)], self.blocks_of[id(child)] = scope, inner
+                self.scope_of[id(child)], self.blocks_of[id(child)], self.nodes[id(child)] = scope, inner, child
                 if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
                     targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
                     plain = isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and targets == [child]
@@ -300,16 +312,24 @@ class Assignments:
             bound = None if outer and isinstance(scope, ast.ClassDef) else self.bindings.get((id(scope), name.id))
             if bound:
                 earlier = sorted((b for b in bound if b[0] <= position(name)), key=lambda b: b[0], reverse=True)
-                if outer:
-                    earlier = earlier[:1] or (bound if len(bound) == 1 else [])
-                found = []
+                if outer and not earlier:
+                    earlier = bound if len(bound) == 1 else []
+                found, branches = [], {}
                 for _, value, block in earlier:
                     found.append(value)
-                    if outer or block is None or block in chain:
+                    if block is None or block in chain or self.covered(branches, block, chain):
                         break
                 return found
             scope, outer = self.scope_of.get(id(scope)), True
         return []
+
+    def covered(self, branches, block, chain):
+        owner, branch = block
+        if branch not in ("body", "orelse") or not isinstance(self.nodes.get(owner), ast.If):
+            return False
+        branches.setdefault(owner, set()).add(branch)
+        return branches[owner] == {"body", "orelse"} and self.blocks_of[owner][-1:] and \
+            self.blocks_of[owner][-1] in chain
 
     def values(self, expression, depth=0):
         if isinstance(expression, (ast.Constant, ast.JoinedStr)) or joined(expression):
@@ -324,9 +344,6 @@ class Assignments:
             out += found
         return out
 
-    def value(self, expression):
-        found = self.values(expression)
-        return found[0] if len(found) == 1 else None
 
 
 def joined(expression):
@@ -339,7 +356,10 @@ def joined(expression):
 def joined_script(tokens, source_text, expression, names):
     separator, text, lines = expression.func.value.value, "", []
     for k, element in enumerate(expression.args[0].elts):
-        value = names.value(element)
+        values = names.values(element)
+        if len(values) > 1:
+            return None
+        value = values[0] if values else None
         if isinstance(value, ast.Constant) and value.value == "":
             built = ("", [])
         elif joined(value):
@@ -447,7 +467,7 @@ def steps_with_shells(root):
         for item in sequence_items(steps):
             step = yaml.resolved(item)
             if isinstance(yaml.resolved(mapping_value(step, "run")), yaml.Scalar):
-                found.append((steps if isinstance(steps, yaml.Alias) else item, step, default))
+                found.append((next((n for n in (owner, steps, item) if isinstance(n, yaml.Alias)), item), step, default))
     return found
 
 

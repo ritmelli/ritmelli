@@ -135,29 +135,49 @@ HARD_CASES = [
     "data Messages {\n    ConvertFrom-StringData @'\nkey = value\n'@\n}\n",
     "using namespace System.IO; $a = 1 # c\n:outer\nwhile ($true) { break outer }\n:? 1\n",
     "$r = ${using:remote}\n[int]\n[string]$x = 1\ndata -SupportedCommand Foo { 'x' }\n",
+    "Write-Output '" + chr(0x1F600) + "'; & \"Write-Output\" 1\n& 'Get-Date' 2\n",
 ]
 
 ASSIGN_OPS = {"=": "Equals", "+=": "PlusEquals", "-=": "MinusEquals", "*=": "MultiplyEquals", "/=": "DivideEquals",
               "%=": "RemainderEquals", "??=": "QuestionQuestionEquals"}
 
 
+def utf16(text):
+    out, at = [], 0
+    for c in text:
+        out.append(at)
+        at += 2 if ord(c) > 0xFFFF else 1
+    return [*out, at]
+
+
+def command_name(command):
+    if command.name is None and isinstance(command.name_node, ps.String) and not command.name_node.parts:
+        return command.name_node.value
+    return command.name or ""
+
+
 def ours(text):
     script = ps.parse(text)
     nodes = list(ps.walk(script))
+    u = utf16(text)
     loops = {ps.While: "WhileStatementAst", ps.For: "ForStatementAst", ps.Foreach: "ForEachStatementAst"}
     return {
-        "comments": sorted([c.span.start, c.span.end] for c in script.comments),
-        "strings": sorted([n.span.start, n.span.end] for n in nodes if isinstance(n, ps.String)),
-        "commands": sorted([n.span.start, n.name or ""] for n in nodes if isinstance(n, ps.Command)),
+        "comments": sorted([u[c.span.start], u[c.span.end]] for c in script.comments),
+        "strings": sorted([u[n.span.start], u[n.span.end]] for n in nodes if isinstance(n, ps.String)),
+        "commands": sorted([u[n.span.start], command_name(n)] for n in nodes if isinstance(n, ps.Command)),
         "loops": sorted([("DoUntilStatementAst" if n.until else "DoWhileStatementAst") if isinstance(n, ps.DoLoop)
-                         else loops[type(n)], n.span.start, n.span.end] for n in nodes
+                         else loops[type(n)], u[n.span.start], u[n.span.end]] for n in nodes
                         if isinstance(n, (ps.DoLoop, *loops))),
-        "tries": sorted([n.span.start, n.span.end, sorted([c.span.start, c.body.span.start, c.body.span.end,
-                                                           "|".join(c.types)] for c in n.catches),
-                         n.finally_block.span.start if n.finally_block else -1] for n in nodes if isinstance(n, ps.Try)),
-        "functions": sorted([n.span.start, n.name] for n in nodes if isinstance(n, ps.Function)),
-        "assigns": sorted([n.span.start, n.span.end, ASSIGN_OPS[n.op]] for n in nodes if isinstance(n, ps.Assign)),
-        "variables": sorted([n.span.start, n.span.end, n.name, n.splat] for n in nodes if isinstance(n, ps.Variable)),
+        "tries": sorted([u[n.span.start], u[n.span.end], sorted([u[c.span.start], u[c.body.span.start],
+                                                                 u[c.body.span.end], "|".join(c.types)]
+                                                                for c in n.catches),
+                         u[n.finally_block.span.start] if n.finally_block else -1] for n in nodes
+                        if isinstance(n, ps.Try)),
+        "functions": sorted([u[n.span.start], n.name] for n in nodes if isinstance(n, ps.Function)),
+        "assigns": sorted([u[n.span.start], u[n.span.end], ASSIGN_OPS[n.op]] for n in nodes
+                          if isinstance(n, ps.Assign)),
+        "variables": sorted([u[n.span.start], u[n.span.end], n.name, n.splat] for n in nodes
+                            if isinstance(n, ps.Variable)),
     }
 
 
