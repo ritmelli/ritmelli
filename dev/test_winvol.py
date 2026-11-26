@@ -29,7 +29,8 @@ class Activated:
 
 
 FRIENDLY_NAME = ("{A45C254E-DF1C-4EFD-8020-67D146A850E0}", 14)
-RENDER, CAPTURE, ACTIVE, STGM_READ, VT_LPWSTR, CLSCTX_ALL = 0, 1, 1, 0, 31, 23
+RENDER, CAPTURE, MULTIMEDIA, ACTIVE, STGM_READ, VT_LPWSTR, CLSCTX_ALL = 0, 1, 1, 1, 0, 31, 23
+E_NOTFOUND = -2147023728
 ENUMERATOR = "{BCDE0395-E52F-467C-8E3D-C4579291692E}"
 IMM_DEVICE_ENUMERATOR = "{A95664D2-9614-4F35-A746-DE8DB63617E6}"
 ENDPOINT_VOLUME = "{5CDF2C82-841E-4546-9722-0CF74078229A}"
@@ -81,19 +82,38 @@ class Collection:
 
 
 class Enumerator:
-    def __init__(self, by_flow):
+    def __init__(self, by_flow, defaults=None):
         self.by_flow = by_flow
+        self.defaults = defaults or {}
         self.calls = []
+        self.default_calls = []
 
     def EnumAudioEndpoints(self, flow, state):
         self.calls.append((flow, state))
         return Collection(self.by_flow.get(flow, []) if state == ACTIVE else [])
+
+    def GetDefaultAudioEndpoint(self, flow, role):
+        self.default_calls.append((flow, role))
+        if role == MULTIMEDIA and flow in self.defaults:
+            return self.defaults[flow]
+        raise winvol.comtypes.COMError(E_NOTFOUND, "Element not found", None)
 
 
 class Patched(unittest.TestCase):
     def patch(self, name, value):
         self.addCleanup(setattr, winvol, name, getattr(winvol, name))
         setattr(winvol, name, value)
+
+    def enumerate_with(self, enumerator):
+        created = []
+
+        def create(clsid, interface, context):
+            created.append((str(clsid), str(interface._iid_), context))
+            return enumerator
+
+        self.patch("comtypes", type("C", (), {"CoCreateInstance": staticmethod(create),
+                                             "COMError": winvol.comtypes.COMError}))
+        return created
 
 
 class VolumeDo(Patched):
@@ -117,14 +137,7 @@ class VolumeDoThroughTheEnumerator(Patched):
         speaker = Device(Endpoint(), "Headset")
         capture = Device(mic, "Headset")
         enumerator = Enumerator({CAPTURE: [capture], RENDER: [speaker]})
-        created = []
-
-        def create(clsid, interface, context):
-            created.append((str(clsid), str(interface._iid_), context))
-            return enumerator
-
-        self.patch("comtypes", type("C", (), {"CoCreateInstance": staticmethod(create),
-                                             "COMError": winvol.comtypes.COMError}))
+        created = self.enumerate_with(enumerator)
         self.assertIs(winvol.volume_do("headset"), mic)
         self.assertEqual(created, [(ENUMERATOR, IMM_DEVICE_ENUMERATOR, CLSCTX_ALL)])
         self.assertEqual(enumerator.calls, [(CAPTURE, ACTIVE)])
@@ -147,12 +160,14 @@ class LerGravar(unittest.TestCase):
 
 class Dispositivos(Patched):
     def test_inputs_outputs_and_defaults_in_the_format_of_list_devices(self):
-        names = {CAPTURE: [("Mic A", None), ("Mic B", None)], RENDER: [("Fone", None)]}
-        defaults = {CAPTURE: "Mic B", RENDER: None}
-        self.patch("_ativos", names.get)
-        self.patch("_padrao", defaults.get)
+        enumerator = Enumerator({CAPTURE: [Device(Endpoint(), "Mic A"), Device(Endpoint(), "Mic B")],
+                                 RENDER: [Device(Endpoint(), "Fone")]}, {CAPTURE: Device(Endpoint(), "Mic B")})
+        created = self.enumerate_with(enumerator)
         self.assertEqual(winvol.dispositivos(), {"inputs": ["Mic A", "Mic B"], "outputs": ["Fone"],
                                                  "default_input": "Mic B", "default_output": None})
+        self.assertEqual(enumerator.calls, [(CAPTURE, ACTIVE), (RENDER, ACTIVE)])
+        self.assertEqual(enumerator.default_calls, [(CAPTURE, MULTIMEDIA), (RENDER, MULTIMEDIA)])
+        self.assertEqual(created, [(ENUMERATOR, IMM_DEVICE_ENUMERATOR, CLSCTX_ALL)] * 4)
 
 
 if __name__ == "__main__":

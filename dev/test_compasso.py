@@ -8,6 +8,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import compasso
 
+CHUNK, EDGE = 1500, 6
+STEP = CHUNK - 2 * EDGE
+
 
 class Echo:
     def __init__(self):
@@ -38,36 +41,34 @@ class Logits(unittest.TestCase):
         self.session = Echo()
         compasso._abre = lambda: self.session
 
-    def check_stitched(self, n):
+    def check_stitched(self, n, lengths):
         b, u = compasso.logits(frames(n))
         np.testing.assert_array_equal(b, np.arange(n, dtype=np.float32))
         np.testing.assert_array_equal(u, -np.arange(n, dtype=np.float32))
-        self.assertTrue(all(length <= compasso.PEDACO for length in self.session.lengths))
+        self.assertEqual(self.session.lengths, lengths)
 
     def test_a_track_shorter_than_one_chunk(self):
-        self.check_stitched(compasso.PEDACO // 3)
+        self.check_stitched(500, [500 + 2 * EDGE])
 
     def test_a_track_of_several_chunks_with_a_short_last_one(self):
-        self.check_stitched(2 * compasso.PEDACO + 37)
-        self.assertEqual(self.session.lengths, [compasso.PEDACO] * len(self.session.lengths))
+        self.check_stitched(2 * CHUNK + 37, [CHUNK] * 3)
 
     def test_where_chunks_overlap_the_earlier_chunk_wins(self):
         compasso._abre = lambda: Tagged()
-        n = 2 * compasso.PEDACO + 37
+        n = 2 * CHUNK + 37
         b, _ = compasso.logits(frames(n))
-        step = compasso.PEDACO - 2 * compasso.BORDA
         self.assertEqual(b[0], 3.0)
-        self.assertEqual(b[step - 1], 3.0)
-        self.assertEqual(b[step], 2.0)
+        self.assertEqual(b[STEP - 1], 3.0)
+        self.assertEqual(b[STEP], 2.0)
         self.assertEqual(b[n - 1], 1.0)
-        last_start = n - compasso.PEDACO + 2 * compasso.BORDA
-        self.assertLess(last_start, 2 * step)
+        last_start = n - CHUNK + 2 * EDGE
+        self.assertLess(last_start, 2 * STEP)
         self.assertEqual(b[last_start], 2.0)
-        self.assertEqual(b[2 * step - 1], 2.0)
-        self.assertEqual(b[2 * step], 1.0)
+        self.assertEqual(b[2 * STEP - 1], 2.0)
+        self.assertEqual(b[2 * STEP], 1.0)
 
     def test_a_track_of_exactly_one_chunk(self):
-        self.check_stitched(compasso.PEDACO - 2 * compasso.BORDA)
+        self.check_stitched(STEP, [CHUNK])
 
 
 class Picos(unittest.TestCase):
