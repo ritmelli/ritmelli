@@ -130,8 +130,8 @@ CASES = {
          {".github/workflows/w.yml": PY_STEP.replace("JOB", "testa")},
          {".github/workflows/w.yml": PY_STEP.replace("JOB", "testa") + PY_STEP.split("jobs:\n")[1].replace("JOB", "monta")}),
         ("a workflow's test job is a test, its build job is not",
-         {".github/workflows/w.yml": "jobs:\n  testa:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"},
-         {".github/workflows/w.yml": "jobs:\n  testa:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"
+         {".github/workflows/w.yml": "jobs:\n  testes:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"},
+         {".github/workflows/w.yml": "jobs:\n  testes:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"
                                      "  monta:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"}),
         ("a workflow", {"instalador/testa-x.ps1": "Start-Sleep 1\n"},
          {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"}),
@@ -398,6 +398,14 @@ def test_workflow_python_lines():
                    "              pass\n          except Exception:\n              pass\n        shell: python\n")
     found = garden.COUNTERS["broad_excepts"](garden.Tree({".github/workflows/w.yml": shell_after}))
     check(found == [(".github/workflows/w.yml", 8)], f"a step that names its shell after the block ({found})")
+    note = WORKFLOW.replace("          try:\n", "          '''Why the check reads the labels here.'''\n          try:\n").replace(
+        "{handler}", "          except OSError:\n              pass\n")
+    found = garden.COUNTERS["docstring_lines"](garden.Tree({".github/workflows/w.yml": note}))
+    check(found == [(".github/workflows/w.yml", 11)], f"a module docstring in a workflow's Python step ({found})")
+    name = WORKFLOW.replace("              pass\n{handler}", "              métrica = 1\n{handler}").replace(
+        "{handler}", "          except OSError:\n              pass\n")
+    found = garden.COUNTERS["non_ascii_identifiers"](garden.Tree({".github/workflows/w.yml": name}))
+    check(found == [(".github/workflows/w.yml", 12)], f"a non-ASCII name in a workflow's Python step ({found})")
     retry = PY_STEP.replace("JOB", "monta").replace(
         "time.sleep(1)\n", "for _ in range(3):\n              try:\n                  f()\n                  break\n"
                            "              except OSError:\n                  time.sleep(1)\n")

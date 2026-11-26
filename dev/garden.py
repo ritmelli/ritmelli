@@ -469,7 +469,7 @@ def comment_lines(t):
 
 
 def docstrings(tree):
-    for node in [tree, *ast.walk(tree)]:
+    for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
             first = node.body[0]
             if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(
@@ -486,7 +486,14 @@ def docstring_lines(t):
             for d in docstrings(tree):
                 lines |= set(range(d.lineno, d.end_lineno + 1))
             items += [(p, n) for n in sorted(lines)]
+    for p in workflow_paths(t):
+        for offset, tree, _ in workflow_python(t, p):
+            items += [(p, offset + n) for d in docstrings(tree) for n in range(d.lineno, d.end_lineno + 1)]
     return items
+
+
+def workflow_paths(t):
+    return [p for p in t.paths(".yml") if p.startswith(".github/")]
 
 
 def python_strings(t, path):
@@ -582,7 +589,7 @@ def sleeps(t):
             items += [(p, n.lineno) for n in ast.walk(tree) if is_sleep(n, aliases)]
     for p in t.paths(".yml"):
         if p.startswith(".github/"):
-            for offset, tree in workflow_python(t, p):
+            for offset, tree, _ in workflow_python(t, p):
                 aliases = sleep_aliases(tree)
                 items += [(p, offset + n.lineno) for n in ast.walk(tree) if is_sleep(n, aliases)]
     for p in t.paths(*COMMENT_EXTENSIONS):
@@ -591,7 +598,7 @@ def sleeps(t):
     return items
 
 
-TEST_JOB = re.compile(r"^(?:test|testa|teste)(?:[-_][\w-]+)?$")
+TEST_JOB = re.compile(r"^(?:test|testa|teste)s?(?:[-_][\w-]+)?$")
 
 
 def test_job_lines(text):
@@ -830,7 +837,7 @@ def retries(t):
             items += [(p, n) for n, s in python_strings(t, p) if START_SLEEP.search(s) and powershell_retries(s)]
     for p in t.paths(".yml"):
         if p.startswith(".github/"):
-            items += [(p, offset + n) for offset, tree in workflow_python(t, p) for n in python_retries(tree)]
+            items += [(p, offset + n) for offset, tree, _ in workflow_python(t, p) for n in python_retries(tree)]
     for p in t.paths(".ps1", ".psd1", ".yml"):
         items += [(p, n) for n in powershell_retries(joined_code(t.lexed(p)))]
     for p in t.paths(".js", ".html"):
@@ -858,7 +865,7 @@ def workflow_python(t, path):
     for offset, shell, script in t.lexed(path).runs:
         if shell.startswith("python"):
             try:
-                yield offset, ast.parse(script)
+                yield offset, ast.parse(script), script
             except SyntaxError:
                 continue
 
@@ -871,7 +878,7 @@ def broad_excepts(t):
             items += [(p, n) for n in broad_handlers(tree)]
     for p in t.paths(".yml"):
         if p.startswith(".github/"):
-            for offset, tree in workflow_python(t, p):
+            for offset, tree, _ in workflow_python(t, p):
                 items += [(p, offset + n) for n in broad_handlers(tree)]
     for p in t.paths(".iss"):
         lexed = t.lexed(p)
@@ -949,9 +956,16 @@ def non_ascii_identifiers(t):
         tree = t.tree(p)
         if tree is None:
             continue
-        tokens = tokenize.generate_tokens(io.StringIO(t.files[p]).readline)
-        items += [(p, tok.start[0]) for tok in tokens if tok.type == tokenize.NAME and not tok.string.isascii()]
+        items += [(p, line) for line in non_ascii_names(t.files[p])]
+    for p in workflow_paths(t):
+        for offset, _, script in workflow_python(t, p):
+            items += [(p, offset + line) for line in non_ascii_names(script)]
     return items
+
+
+def non_ascii_names(source):
+    tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+    return [tok.start[0] for tok in tokens if tok.type == tokenize.NAME and not tok.string.isascii()]
 
 
 LOADED = {}
