@@ -50,7 +50,8 @@ Exit 0 when the head only moves code: the two pages are the same, or
 - every other top-level statement of the base is in the head, in the same order and in the same script;
 - every style rule of the base is in the head, in the same order, under the same stylesheet attributes, in a
   stylesheet of the same folder and extension and inline or from a file as before (it may move to another linked
-  stylesheet there: its relative URLs keep their target) and with the same scripts before its stylesheet (a script sees the rules of the stylesheets before it);
+  stylesheet there: its relative URLs keep their target) and with the same scripts before its stylesheet
+  (a script sees the rules of the stylesheets before it);
 - the translation lines the server puts in the page (the i18n folder, for a page with the i18n mark) are the same,
   in the same order and as many times, split and trimmed as i18n.ler splits and trims them.
 Statements and rules are compared as syntax trees (tree-sitter), with the text of every node that no child covers,
