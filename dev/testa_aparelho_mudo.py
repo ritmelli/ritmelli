@@ -378,8 +378,9 @@ class TestaReinicio(unittest.TestCase):
                 raise PermissionError(13, "Access is denied")
             done.append(ep)
             return True
-        with self.assertRaises(filtro.FilterChangeFailed) as caught:
+        with self.assertRaises(filtro.FilterChangeFailed) as caught, mock.patch.object(filtro, "_log") as log:
             self._install_with(mics, pendura)
+        log.assert_called_once_with("microphones changed: 1; left out: 1")
         self.assertEqual(done, ["{b}"], "the other microphones still get the filter")
         self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": False}), "the new microphone {b}")
         self.assertEqual(self.c.nomes(), ["reinicia", "confere"])
