@@ -472,7 +472,7 @@ class TestVoicePedalStart(unittest.TestCase):
         with mock.patch("sys.stderr", io.StringIO()) as log:
             now[0] = 6.3
             pedal.track(True, stamp(6.22))
-            pedal._ended, pedal._on = pedal._on, None
+            pedal._ended, pedal._on = (pedal._on,), None
             dry.read_ring(lambda: 0)
             dry.ran_dry(0.05, 1, 0.0)
         self.assertEqual(dry.while_pedal_starting, 0, "the start's own track came up 6.0 s before the ring was filled")
@@ -491,7 +491,7 @@ class TestVoicePedalStart(unittest.TestCase):
                     now[0] = 2.0
                     pedal._on[1] = now[0]
                     if done:
-                        pedal._ended, pedal._on = pedal._on, None
+                        pedal._ended, pedal._on = (pedal._on,), None
                     now[0] = filled
                     dry.read_ring(lambda: 1)
                     now[0] = 2.8
@@ -505,7 +505,7 @@ class TestVoicePedalStart(unittest.TestCase):
         with mock.patch("sys.stderr", io.StringIO()) as log:
             now[0] = 6.3
             pedal.track(True, stamp(6.21))
-            pedal._ended, pedal._on = pedal._on, None
+            pedal._ended, pedal._on = (pedal._on,), None
             dry.read_ring(lambda: 0)
             dry.ran_dry(0.05, 1, 0.0)
         self.assertEqual(dry.while_pedal_starting, 1, "the start's track came up 0.01 s after its off, inside TICK_S")
@@ -685,6 +685,43 @@ class TestVoicePedalStart(unittest.TestCase):
         now[0] = 2.0
         self.assertEqual(pedal.starting(None, 1.5), (None, None),
                          "with no read that found something, the dry-out may have come before the start ended or not")
+
+    def run_starts(self, steps, at):
+        now = [0.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        dry = dryouts.RingDryOuts(pedal)
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            for t, step, *up in steps:
+                now[0] = t
+                {"on": lambda: pedal.pedal(True), "off": lambda: pedal.pedal(False),
+                 "track": lambda: pedal.track(True, stamp((up or [t])[0])), "fill": lambda: dry.read_ring(lambda: 1),
+                 "empty": lambda: dry.read_ring(lambda: 0)}[step]()
+            now[0] = at
+            dry.ran_dry(at - 1.3, 1, 0.0)
+        return dry.while_pedal_starting, log.getvalue()
+
+    def test_a_dry_out_seen_before_two_starts_ended_is_the_first_starts(self):
+        counted, log = self.run_starts([(1.0, "on"), (1.2, "track"), (1.3, "fill"), (1.4, "empty"), (1.5, "off"),
+                                        (1.6, "on"), (1.7, "off")], 1.75)
+        self.assertEqual(counted, 1, "the first start was on when the ring was seen empty")
+        self.assertIn("the pedal turned on 0.75 s ago and off 0.25 s ago, its voice track came up 0.55 s ago", log)
+
+    def test_of_two_ended_starts_that_cross_the_dry_out_the_latest_is_told(self):
+        counted, log = self.run_starts([(1.0, "on"), (1.05, "track"), (1.3, "fill"), (1.32, "off"), (1.34, "on"),
+                                        (1.36, "track"), (1.4, "empty"), (1.45, "off")], 1.5)
+        self.assertEqual(counted, 1)
+        self.assertIn("the pedal turned on 0.16 s ago and off 0.05 s ago", log)
+
+    def test_a_track_read_after_two_starts_ended_is_the_latest_one_it_fits(self):
+        _, log = self.run_starts([(1.0, "on"), (1.5, "off"), (1.502, "on"), (1.6, "off"), (1.7, "track", 1.512)], 1.8)
+        self.assertIn("voice pedal: its voice track came up 0.01 s after the pedal turned on", log)
+
+    def test_only_the_last_ended_starts_are_kept(self):
+        pedal = dryouts.VoicePedalStart(clock=lambda: 1.0)
+        for _ in range(3 * dryouts.ENDED_STARTS):
+            pedal.pedal(True)
+            pedal.pedal(False)
+        self.assertEqual(len(pedal._ended), dryouts.ENDED_STARTS)
 
     def test_a_stamp_from_before_the_wrap_read_after_it(self):
         wrap = 2**32 / 1000

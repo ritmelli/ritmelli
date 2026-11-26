@@ -7,6 +7,7 @@ AFTER_TRACK_S = 5.0
 QUIET_S = 10.0
 PEDAL_LINES = 10
 TICK_S = 0.016
+ENDED_STARTS = 8
 
 
 def tell(line):
@@ -16,7 +17,8 @@ def tell(line):
 class VoicePedalStart:
     def __init__(self, clock=time.monotonic):
         self.clock = clock
-        self.track_up_at = self._stamp = self._on = self._ended = None
+        self.track_up_at = self._stamp = self._on = None
+        self._ended = ()
         self._live = False
 
     @property
@@ -29,7 +31,7 @@ class VoicePedalStart:
         if not on:
             if start is not None:
                 start[1] = self.clock()
-                self._ended = start
+                self._ended = (*self._ended, start)[-ENDED_STARTS:]
             self._on = None
         elif start is None:
             self._on = [self.clock(), None, None]
@@ -39,11 +41,11 @@ class VoicePedalStart:
         new = (stamp != self._stamp) if stamp else (live and not self._live)
         if new:
             up_at = now - (round(now * 1000) - (stamp - 1)) % (2**32 - 1) / 1000 if stamp else now
-            on, ended, owner = self._on, self._ended, None
+            on, ended = self._on, self._ended
             if on is not None and up_at >= on[0] and (on[1] is None or up_at <= on[1] + TICK_S):
                 owner = on
-            elif ended is not None and ended[0] <= up_at <= ended[1] + TICK_S:
-                owner = ended
+            else:
+                owner = next((e for e in reversed(ended) if e[0] <= up_at <= e[1] + TICK_S), None)
             if owner is not None:
                 tell(f"voice pedal: its voice track came up {up_at - owner[0]:.2f} s after the pedal turned on")
                 owner[2] = up_at
@@ -55,9 +57,8 @@ class VoicePedalStart:
 
     def starting(self, lo=None, empty_at=None):
         start, ended = self._on, self._ended
-        if (lo is not None and empty_at is not None and ended is not None
-                and ended[0] <= empty_at and (start is None or start[0] > empty_at)):
-            start = ended
+        if lo is not None and empty_at is not None and (start is None or start[0] > empty_at):
+            start = next((e for e in reversed(ended) if e[0] <= empty_at and e[1] > lo), start)
         if start is None:
             return None, None
         on_at, off_at, up_at = start
