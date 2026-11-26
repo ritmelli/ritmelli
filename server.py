@@ -1283,7 +1283,7 @@ class App:
     def change_queue(self, change):
         """With fila_lock: change() changes the queue (and the order the user built) under the engine's _qlock, and the
         prepared passage is checked in that same stretch (_confere_preparo_sob), so the engine never switches to an
-        entry that is no longer first. Every queue change goes through here. Returns what change returns."""
+        entry that is no longer first. Returns what change returns."""
         with self.engine.state_section():
             r = change()
             self._confere_preparo_sob()

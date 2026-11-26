@@ -421,32 +421,41 @@ def lexical_node(node, scope):
 
 
 class ModuleBindings:
-    def __init__(self, tree, owner_module):
-        self.bound = {}
+    def __init__(self, tree):
+        self.tree = tree
         self.enclosing = {}
         self.declared = {}
-        for n, scope in lexical_nodes(tree, tree):
+        nodes = list(lexical_nodes(tree, tree))
+        for n, scope in nodes:
             if isinstance(n, SCOPES + COMPREHENSIONS):
                 self.enclosing[id(n)] = scope
-            elif isinstance(n, (ast.Global, ast.Nonlocal)):
-                outer = tree if isinstance(n, ast.Global) else self.function_above(scope)
-                self.declared.update(((id(scope), name), outer) for name in n.names)
-        for n, scope in lexical_nodes(tree, tree):
+        self.bind_all(nodes)
+        local = set(self.bound)
+        for n, scope in nodes:
+            if isinstance(n, ast.Global):
+                self.declared.update(((id(scope), name), tree) for name in n.names)
+            elif isinstance(n, ast.Nonlocal):
+                self.declared.update(((id(scope), name), self.binder_above(scope, name, local)) for name in n.names)
+        self.bind_all(nodes)
+
+    def bind_all(self, nodes):
+        self.bound = {}
+        for n, scope in nodes:
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                self.bind(scope, n.name, False)
+                self.bind(scope, n.name, None)
             if isinstance(n, FUNCTIONS):
                 a = n.args
                 for arg in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg]:
                     if arg:
-                        self.bind(n, arg.arg, False)
+                        self.bind(n, arg.arg, None)
             elif isinstance(n, ast.Import):
                 for a in n.names:
-                    self.bind(scope, a.asname or a.name.split(".")[0], a.name == owner_module)
+                    self.bind(scope, a.asname or a.name.split(".")[0], a.name if a.asname else a.name.split(".")[0])
             elif isinstance(n, ast.ImportFrom):
                 for a in n.names:
-                    self.bind(scope, a.asname or a.name, False)
+                    self.bind(scope, a.asname or a.name, None)
             elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
-                self.bind(scope, n.id, False)
+                self.bind(scope, n.id, None)
 
     def function_above(self, scope):
         scope = self.enclosing.get(id(scope))
@@ -454,43 +463,47 @@ class ModuleBindings:
             scope = self.enclosing.get(id(scope))
         return scope
 
-    def bind(self, scope, name, is_module):
-        scope = self.declared.get((id(scope), name), scope)
-        key = (id(scope), name)
-        self.bound[key] = self.bound.get(key, False) or is_module
+    def binder_above(self, scope, name, local):
+        scope = self.function_above(scope)
+        while scope is not None and scope is not self.tree and (id(scope), name) not in local:
+            scope = self.function_above(scope)
+        return scope
 
-    def is_module(self, name, scope):
+    def bind(self, scope, name, module):
+        scope = self.declared.get((id(scope), name), scope)
+        self.bound.setdefault((id(scope), name), set()).update([module] if module else [])
+
+    def modules(self, name, scope):
         while scope is not None:
             scope = self.declared.get((id(scope), name), scope)
             found = self.bound.get((id(scope), name))
             if found is not None:
                 return found
-            scope = self.enclosing.get(id(scope))
-            while isinstance(scope, ast.ClassDef):
-                scope = self.enclosing.get(id(scope))
-        return False
+            scope = self.function_above(scope)
+        return set()
 
 
-def string_literal_arg(call):
-    first = call_args(call)[:1]
+def string_literal_arg(call, keyword):
+    first = call_args(call)[:1] or [k.value for k in call.keywords if k.arg == keyword]
     return first[0].value if first and isinstance(first[0], ast.Constant) else None
 
 
 def module_private_reaches(module, tree, owner_module, names):
-    bindings = ModuleBindings(tree, owner_module)
+    bindings = ModuleBindings(tree)
     loop_names = loop_variable_names(tree)
 
+    def holds(node, module, scope):
+        return isinstance(node, ast.Name) and module in bindings.modules(node.id, scope)
+
     def the_module(node, scope):
-        if isinstance(node, ast.Name):
-            return bindings.is_module(node.id, scope)
         if isinstance(node, ast.Call):
             return (isinstance(node.func, ast.Attribute) and node.func.attr == "import_module"
-                    and isinstance(node.func.value, ast.Name) and node.func.value.id == "importlib"
-                    and string_literal_arg(node) == owner_module)
-        return (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute)
-                and node.value.attr == "modules" and isinstance(node.value.value, ast.Name)
-                and node.value.value.id == "sys" and isinstance(node.slice, ast.Constant)
-                and node.slice.value == owner_module)
+                    and holds(node.func.value, "importlib", scope) and string_literal_arg(node, "name") == owner_module)
+        if isinstance(node, ast.Subscript):
+            return (isinstance(node.value, ast.Attribute) and node.value.attr == "modules"
+                    and holds(node.value.value, "sys", scope) and isinstance(node.slice, ast.Constant)
+                    and node.slice.value == owner_module)
+        return holds(node, owner_module, scope)
     out = []
     for no, scope in lexical_nodes(tree, tree):
         if isinstance(no, ast.ImportFrom) and no.module == owner_module and not no.level:
@@ -728,6 +741,11 @@ MODULE_CAUGHT = [
     ("sys.modules", MODULE_OWNER, "import sys\n\n\ndef f():\n    return sys.modules['owner']._x\n"),
     ("a global the function assigns", MODULE_OWNER,
      "import owner as e\n\n\ndef f():\n    global e\n    e = e._x\n"),
+    ("importlib.import_module with the name as a keyword", MODULE_OWNER,
+     "import importlib\n\nimportlib.import_module(name='owner')._x\n"),
+    ("a nonlocal two functions up", MODULE_OWNER,
+     "def outer():\n    import owner as e\n\n    def middle():\n        def inner():\n            nonlocal e\n"
+     "            e = e._x\n        return inner\n    return middle\n"),
     ("a nonlocal the function assigns", MODULE_OWNER,
      "def outer():\n    import owner as e\n\n    def inner():\n        nonlocal e\n        e = e._x\n    return inner\n"),
     ("a reach before the alias is rebound", MODULE_OWNER, "import owner as e\n\ne._x()\ne = None\n"),
@@ -756,6 +774,8 @@ MODULE_NOT_REACHES = [
      "import owner as e\n\nvalues = [e._x for e in ()]\n"),
     ("a parameter of a nested function that shadows the module", MODULE_OWNER,
      "import owner as e\n\n\ndef f():\n    def g(e):\n        return e._x\n    return g\n"),
+    ("a parameter named importlib", MODULE_OWNER, "def f(importlib):\n    return importlib.import_module('owner')._x\n"),
+    ("a parameter named sys", MODULE_OWNER, "def f(sys):\n    return sys.modules['owner']._x\n"),
     ("a local that shadows the module", MODULE_OWNER,
      "import owner\n\n\ndef f(o):\n    owner = o\n    return owner._x\n"),
 ]
