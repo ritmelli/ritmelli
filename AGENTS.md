@@ -20,10 +20,10 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   faz o filtro de verdade ler o que o `injeta.py` escreve.
 - Efeito de voz: as configurações moram no `fx.py`, e o `microfone/preset.py` as leva ao motor em C++. Etapa nova
   precisa do par no `microfone/apo/voz.h` (o `dev/testa_voz.py` falha sem ele).
-- Texto novo da interface nas duas línguas: `themes/ritmelli/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, com as
-  mesmas chaves na mesma ordem, e os da galeria em `gallery/i18n/`; a chave `server.*` de cada `i18n.msg` e
-  `i18n.Recusa` do servidor existe em todo tema com `i18n/`, com os mesmos parâmetros (o `testa_i18n` confere as duas
-  coisas).
+- A chave que o tema pede (num `data-i18n*` ou no `I18N.t`) existe nas duas línguas:
+  `themes/ritmelli/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, com as mesmas chaves na mesma ordem, e as da
+  galeria em `gallery/i18n/`; a chave `server.*` de cada `i18n.msg` e `i18n.Recusa` do servidor existe em todo tema com
+  `i18n/`, com os mesmos parâmetros (o `testa_i18n` confere as duas coisas).
 - Rota nova do `server.py` entra na tabela do `permissao.py`, que o `guard` confere: rota fora da tabela é só do PC, e o
   `dev/testa_mock.py` falha enquanto ela não entra.
 - As travas do servidor se pegam numa ordem só: a de [comandos.md](docs/arquitetura/comandos.md#as-travas).

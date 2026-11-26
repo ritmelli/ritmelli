@@ -29,6 +29,10 @@ class Activated:
 
 
 FRIENDLY_NAME = ("{A45C254E-DF1C-4EFD-8020-67D146A850E0}", 14)
+RENDER, CAPTURE, ACTIVE, STGM_READ, VT_LPWSTR, CLSCTX_ALL = 0, 1, 1, 0, 31, 23
+ENUMERATOR = "{BCDE0395-E52F-467C-8E3D-C4579291692E}"
+IMM_DEVICE_ENUMERATOR = "{A95664D2-9614-4F35-A746-DE8DB63617E6}"
+ENDPOINT_VOLUME = "{5CDF2C82-841E-4546-9722-0CF74078229A}"
 
 
 class PropertyStore:
@@ -45,7 +49,7 @@ class PropertyStore:
             alloc.restype, alloc.argtypes = ctypes.c_void_p, [ctypes.c_size_t]
             memory = alloc(ctypes.sizeof(text))
             ctypes.memmove(memory, text, ctypes.sizeof(text))
-            pv.vt, pv.val = winvol.VT_LPWSTR, memory
+            pv.vt, pv.val = VT_LPWSTR, memory
 
 
 class Device:
@@ -57,12 +61,12 @@ class Device:
         self.store = PropertyStore(name)
 
     def OpenPropertyStore(self, mode):
-        return self.store if mode == winvol.STGM_READ else None
+        return self.store if mode == STGM_READ else None
 
     def Activate(self, iid, context, params):
         self.activations += 1
-        self.iids.append(iid)
-        return Activated(self.endpoint) if iid == winvol.IAudioEndpointVolume._iid_ else None
+        self.iids.append((str(iid), context))
+        return Activated(self.endpoint) if str(iid) == ENDPOINT_VOLUME else None
 
 
 class Collection:
@@ -83,7 +87,7 @@ class Enumerator:
 
     def EnumAudioEndpoints(self, flow, state):
         self.calls.append((flow, state))
-        return Collection(self.by_flow.get(flow, []) if state == winvol.DEVICE_STATE_ACTIVE else [])
+        return Collection(self.by_flow.get(flow, []) if state == ACTIVE else [])
 
 
 class Patched(unittest.TestCase):
@@ -112,12 +116,19 @@ class VolumeDoThroughTheEnumerator(Patched):
         mic = Endpoint()
         speaker = Device(Endpoint(), "Headset")
         capture = Device(mic, "Headset")
-        enumerator = Enumerator({winvol.E_CAPTURE: [capture], winvol.E_RENDER: [speaker]})
-        self.patch("comtypes", type("C", (), {"CoCreateInstance": staticmethod(lambda *a: enumerator),
+        enumerator = Enumerator({CAPTURE: [capture], RENDER: [speaker]})
+        created = []
+
+        def create(clsid, interface, context):
+            created.append((str(clsid), str(interface._iid_), context))
+            return enumerator
+
+        self.patch("comtypes", type("C", (), {"CoCreateInstance": staticmethod(create),
                                              "COMError": winvol.comtypes.COMError}))
         self.assertIs(winvol.volume_do("headset"), mic)
-        self.assertEqual(enumerator.calls, [(winvol.E_CAPTURE, winvol.DEVICE_STATE_ACTIVE)])
-        self.assertEqual(capture.iids, [winvol.IAudioEndpointVolume._iid_])
+        self.assertEqual(created, [(ENUMERATOR, IMM_DEVICE_ENUMERATOR, CLSCTX_ALL)])
+        self.assertEqual(enumerator.calls, [(CAPTURE, ACTIVE)])
+        self.assertEqual(capture.iids, [(ENDPOINT_VOLUME, CLSCTX_ALL)])
         self.assertEqual(speaker.activations, 0)
 
 
@@ -136,8 +147,8 @@ class LerGravar(unittest.TestCase):
 
 class Dispositivos(Patched):
     def test_inputs_outputs_and_defaults_in_the_format_of_list_devices(self):
-        names = {winvol.E_CAPTURE: [("Mic A", None), ("Mic B", None)], winvol.E_RENDER: [("Fone", None)]}
-        defaults = {winvol.E_CAPTURE: "Mic B", winvol.E_RENDER: None}
+        names = {CAPTURE: [("Mic A", None), ("Mic B", None)], RENDER: [("Fone", None)]}
+        defaults = {CAPTURE: "Mic B", RENDER: None}
         self.patch("_ativos", names.get)
         self.patch("_padrao", defaults.get)
         self.assertEqual(winvol.dispositivos(), {"inputs": ["Mic A", "Mic B"], "outputs": ["Fone"],
