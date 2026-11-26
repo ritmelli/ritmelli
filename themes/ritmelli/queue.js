@@ -53,9 +53,7 @@ function capaInteira(img) {
     p.crossOrigin = 'anonymous'; p.referrerPolicy = 'no-referrer';
     p.onload = () => {
       if (p.naturalWidth <= 120 && resto.length) return tenta(resto);   // o cinza do YouTube no lugar da que nao existe
-      let corte = '';
-      try { corte = medeFaixas(p); } catch { /* sem CORS a copia nao se le: fica sem cortar */ }
-      const capa = { src: p.src, corte };
+      const capa = { src: p.src, corte: medeFaixas(p) };
       CAPAS.set(id, capa);
       for (const i of espera) aplicaCapa(i, capa);
     };
@@ -284,7 +282,7 @@ for (const sec of document.querySelectorAll('.fila')) {
   });
 }
 
-if (!scriptsMissing().length) bindSearchResults();
+bindSearchResults();
 
 document.querySelectorAll('.rolo').forEach(r => {
   r.addEventListener('scroll', () => { fecharMenu(false); sombrear(r); }, { passive: true });
