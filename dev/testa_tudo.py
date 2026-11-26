@@ -41,11 +41,12 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
 In the COMPLETO and the --long, a missing library or ffmpeg is a failure, not a skipped test: without the server
 libraries, the testa_mock and the testa_migra skip their part.
 
-Every dev/testa_*.py and dev/test_*.py (a new test, in English, is named test_*) has a destination: a list here (STDLIB,
-COMPLETO, LONG_TESTS, MICROFONE, PASSOS), or it only runs by hand and says so at the top of the file, in a comment before
-the docstring, how and with what: "# manual: <comando> precisa de <aparelho>". Before running, the COMPLETO, the
---long, the --so-stdlib and the --microfone fail on a test without destination, on a dev/ file with the "manual:" line
-that runs in the check, and on a mode of this script the testa.yml no longer calls.
+Every test of the git ls-files, in any folder (test*.py, testa*.py, teste*.py and the test*.ps1; a new test, in English,
+is named test_*), has a destination: a list here (STDLIB, COMPLETO, LONG_TESTS, MICROFONE, PASSOS) or a workflow step for
+a .ps1, or it only runs by hand and says so at the top of the file, in a comment before the docstring, how and with
+what: "# manual: <comando> precisa de <aparelho>". Before running, the COMPLETO, the --long, the --so-stdlib and the
+--microfone fail on a test without destination, on a file with the "manual:" line that runs in the checks, and on a
+mode of REQUIRED_MODES that left the required check (its job, step, command or condition).
 They also fail an AGENTS.md over 80 lines or with a file in its map that doesn't exist (agents_md).
 
 The --ref-cache is a folder with a capture of the compara: when it holds the one of the base (the commit and the key of
@@ -70,6 +71,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from workflow_yaml import find_step, job_steps, workflows
+
 RAIZ = Path(__file__).resolve().parent.parent
 
 # so a biblioteca padrao: a monta.yml roda estes antes de instalar as bibliotecas do app
@@ -82,8 +85,8 @@ COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
     "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py", "dev/test_compara_not_ready.py",
-    "dev/test_compara_push_steps.py", "dev/test_external_module.py", "dev/test_fitcheck_ready.py",
-    "dev/test_mock_stop.py"]
+    "dev/test_compara_push_steps.py", "dev/test_external_module.py", "dev/test_release_workflow.py",
+    "dev/test_fitcheck_ready.py", "dev/test_mock_stop.py"]
 LONG_TESTS = {"bench": "dev/testa_passagem.py", "capture": "dev/test_capture.py"}
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
@@ -94,7 +97,7 @@ DLLS = ("teste_reamostra.dll", "voz.dll", "banca_filtro.dll")
 
 # o que o COMPLETO precisa (os modulos do requirements-dev.txt e os programas do PATH): sem um deles, falha antes
 MODULOS = ("numpy", "scipy", "sounddevice", "pedalboard", "aiohttp", "segno", "yt_dlp", "Cryptodome", "ytmusicapi",
-           "onnxruntime", "comtypes", "webview", "websockets", "PIL", "onnx", "jsonschema")
+           "onnxruntime", "comtypes", "webview", "websockets", "PIL", "onnx", "jsonschema", "yaml")
 PROGRAMAS = ("ffmpeg", "ffprobe")
 # a linha de quem pulou uma parte por falta de biblioteca ("--   o guard do servidor ficou de fora: ...")
 PULOU = re.compile(r"^--\s.*ficou de fora.*$", re.M)
@@ -112,10 +115,91 @@ JOBS = 4
 PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas")}
 # what the --tela and the --compara run
 TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme_scripts.py")
-# the calls the testa.yml has to make, so every list and step above runs on the PR (sem_destino checks them)
-INVOCATIONS = ("dev/testa_tudo.py --without-long", "dev/testa_tudo.py --microfone", "dev/testa_tudo.py --tela",
-               "dev/testa_tudo.py --compara", "dev/testa_tudo.py --capture") + tuple(
-    f"dev/testa_tudo.py --passo {n}" for n in PASSOS) + tuple(f"dev/testa_tudo.py --long {n}" for n in LONG_TESTS)
+NOT_ON_PUSH = "github.event_name != 'push'"
+AFTER_RUFF = "${{ !cancelled() && steps.ruff.outcome != 'skipped' }}"
+SUMMARY_ARG = r'--resumo "$env:RUNNER_TEMP\resumo.md"'
+COMPARA_RUN = "\n".join((
+    "if ($env:GITHUB_EVENT_NAME -eq 'push') {",
+    f'  python dev/testa_tudo.py --capture "$env:RUNNER_TEMP\\compara-head" --pasta "$env:RUNNER_TEMP\\tela" {SUMMARY_ARG}',
+    "  exit $LASTEXITCODE",
+    "}",
+    'python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\\tela" --ref-cache '
+    f'"$env:RUNNER_TEMP\\compara-ref" {SUMMARY_ARG}',
+    "$cod = $LASTEXITCODE",
+    "if ($cod -eq 2) {",
+    "  Add-Content -Path $env:GITHUB_OUTPUT -Value 'mudou=true' -Encoding utf8",
+    "  if ($env:EXTRACAO -eq 'true') { '::error::the compara prints changed, and the PR has the extracao-tema label'; exit 1 }",
+    "  '::warning::the compara prints changed: the differences are in the compara artifact, for review'",
+    "  exit 0",
+    "}",
+    "exit $cod"))
+REQUIRED_MODES = {
+    "--without-long": ("testes", NOT_ON_PUSH, "Testes", AFTER_RUFF,
+                       f"python dev/testa_tudo.py --without-long {SUMMARY_ARG}"),
+    "--passo disco": ("testes", NOT_ON_PUSH, "Pasta protegida no disco", AFTER_RUFF,
+                      "python dev/testa_tudo.py --passo disco"),
+    "--long bench": ("bench", NOT_ON_PUSH, "Banca", None, f"python dev/testa_tudo.py --long bench {SUMMARY_ARG}"),
+    "--long capture": ("capture", NOT_ON_PUSH, "Captura", None, f"python dev/testa_tudo.py --long capture {SUMMARY_ARG}"),
+    "--microfone": ("microfone", NOT_ON_PUSH, "Testes do filtro", "steps.areas.outputs.microfone == 'true'",
+                    f"python dev/testa_tudo.py --microfone {SUMMARY_ARG}"),
+    "--tela": ("tela", NOT_ON_PUSH, "fitcheck", "steps.areas.outputs.tela == 'true'",
+               f'python dev/testa_tudo.py --tela --pasta "$env:RUNNER_TEMP\\tela" {SUMMARY_ARG}'),
+    "--passo metricas": ("tela", NOT_ON_PUSH, "Aviso dos dados de uso",
+                         "${{ !cancelled() && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}",
+                         "python dev/testa_tudo.py --passo metricas"),
+    "--compara": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
+    "--capture": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
+}
+COMPARA_ENV = {"EXTRACAO": "${{ steps.areas.outputs.extracao }}", "BASE_SHA": "${{ steps.chave.outputs.base }}"}
+REQUIRED_ENV = {"--compara": COMPARA_ENV, "--capture": COMPARA_ENV}
+BASE_ENV = "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
+AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE"
+SCREEN_AREAS_RUN = "\n".join((
+    AREAS_RUN,
+    "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+    """$extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }""",
+    'Add-Content -Path $env:GITHUB_OUTPUT -Value "extracao=$extracao" -Encoding utf8'))
+LABELS_ENV = {"ETIQUETAS": "${{ needs.etiquetas.outputs.lista }}"}
+SOURCE_STEPS = {
+    ("testes", "ruff"): ("ruff", None, "python -m ruff check --output-format github .", None),
+    ("microfone", "areas"): ("O PR mexe no filtro?", None, AREAS_RUN, None),
+    ("tela", "areas"): ("O PR mexe na tela?", None, SCREEN_AREAS_RUN, LABELS_ENV),
+    ("compara", "areas"): ("O PR mexe na tela?", None, "\n".join((
+        """if ($env:GITHUB_EVENT_NAME -eq 'push') { Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=true" -Encoding utf8; """
+        "exit 0 }",
+        SCREEN_AREAS_RUN,
+        "$tela = Select-String -Path $env:GITHUB_OUTPUT -Pattern '^tela=true$' -Quiet",
+        "$roda = if ($tela) { 'true' } else { 'false' }",
+        'Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=$roda" -Encoding utf8')), LABELS_ENV),
+    ("compara", "chave"): ("Capture key", "steps.areas.outputs.roda == 'true'", "\n".join((
+        r"$chrome = (Get-Item 'C:\Program Files\Google\Chrome\Application\chrome.exe').VersionInfo.ProductVersion",
+        "$base = ''",
+        "if ($env:GITHUB_EVENT_NAME -ne 'push') {",
+        '  $base = git rev-parse --verify "$env:COMPARA_BASE^{commit}"',
+        '  if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }',
+        "}",
+        'Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" '
+        "-Encoding utf8")), None),
+}
+PS1_TESTS = {
+    "instalador/testa-atualizador.ps1": (
+        "testa-atualizador", None, "Instala, a tarefa atualiza e o Ritmelli abre de novo", None,
+        r'instalador\testa-atualizador.ps1 -Setup "saida\Ritmelli-$env:VERSAO-setup.exe" -Manifesto saida\manifest.json'),
+    "instalador/testa-parcial.ps1": (
+        "testa-parcial", "needs.monta.outputs.parcial == 'true'", "Instala a anterior, aplica a parcial e confere", None,
+        r'instalador\testa-parcial.ps1 -Manifesto saida\manifest.json -Parcial "saida\Ritmelli-$env:VERSAO-parcial.exe"'),
+    "instalador/testa-migracao.ps1": (
+        "testa-migracao", "needs.monta.outputs.anterior == 'true'",
+        "Instala a publicada, o setup novo por cima e confere (${{ matrix.scenario }})", None,
+        r'instalador\testa-migracao.ps1 -Setup "saida\Ritmelli-$env:VERSAO-setup.exe" -Versao $env:VERSAO '
+        r'-Scenario $env:SCENARIO'),
+}
+PS1_ENV = {"instalador/testa-atualizador.ps1": {"VERSAO": "${{ needs.monta.outputs.versao }}"},
+           "instalador/testa-parcial.ps1": {"VERSAO": "${{ needs.monta.outputs.versao }}"},
+           "instalador/testa-migracao.ps1": {"VERSAO": "${{ needs.monta.outputs.versao }}",
+                                             "SCENARIO": "${{ matrix.scenario }}"}}
+REQUIRED_JOB = "testa-o-pr"
+VERDICT_STEP = "Verdict"
 # the big files whose line count goes in the summary, against the base (--linhas)
 LINHAS = ("engine.py", "server.py", "themes/ritmelli/index.html", "AGENTS.md")
 # what goes into the key of a compara capture besides the commit and the Chrome version: the scripts that take it and
@@ -126,7 +210,7 @@ LONG_TITLES = {"bench": "Banca", "capture": "Captura"}
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva
 # codigo de renderizacao ou de traducao para outro modulo poe o modulo na "tela"
 AREAS = {
-    "microfone": ("microfone/", "fx.py", "engine.py", "dev/testa_filtro.py", "dev/testa_voz.py",
+    "microfone": ("microfone/", "fx.py", "engine.py", "versao.py", "dev/testa_filtro.py", "dev/testa_voz.py",
                   "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
     "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py",
              "dev/missing_script.py", "dev/theme_scripts.py"),
@@ -159,38 +243,145 @@ def manual(arquivo):
     return None
 
 
+TEST_NAME = re.compile(r"(?:test|testa|teste)(?:_\w+)?\.py|(?:test|testa|teste)(?:[-_][\w-]+)?\.ps1")
+
+
 def is_test(rel):
-    return rel.startswith(("dev/testa_", "dev/test_")) and rel != "dev/testa_tudo.py"
+    return TEST_NAME.fullmatch(rel.rsplit("/", 1)[-1]) is not None and rel != "dev/testa_tudo.py"
 
 
-def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml", dev=RAIZ / "dev"):
-    """What takes a test out of the PR check unnoticed: a test of dev/ (is_test) in no list here (STDLIB, COMPLETO,
-    LONG_TESTS, MICROFONE, PASSOS) and without the "manual:" line; a file with the line (a test or a dev/ tool) that runs in
-    the check anyway, or with the line out of format; a call of INVOCATIONS that the testa.yml no longer makes, and a
-    dev/ script it calls directly instead of through PASSOS (in the lines that are not comments). Returns the failure
-    lines."""
-    rodam = set(COMPLETO) | set(LONG_TESTS.values()) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
+def tracked(root=RAIZ):
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, check=True).stdout
+    return [f for f in out.decode("utf-8").split("\0") if f]
+
+
+def step_failures(where, jobs, job_id, job_if, step_name, step_if, run, env, sources=None, shell=None):
+    """What takes a step out of its run: its job or step gone, a condition other than job_if and step_if, a
+    continue-on-error, defaults on the job, a shell other than shell, a run other than run, an env other than env, or
+    a step its condition and env read by id that is
+    not a single earlier step of the job, or (with sources, the ids of the job whose steps are pinned) not one of
+    them."""
+    job = jobs.get(job_id)
+    if job is None:
+        return [f"{where}: the job is gone"]
     falhas = []
-    for p in sorted(Path(dev).glob("*.py")):
-        rel, linha = f"dev/{p.name}", manual(p)
+    if job.get("if") != job_if:
+        falhas.append(f"{where}: the job runs with if: {job.get('if')}, not {job_if}")
+    if job.get("continue-on-error") is not None:
+        falhas.append(f"{where}: the job has continue-on-error")
+    if job.get("defaults") is not None:
+        falhas.append(f"{where}: the job has defaults")
+    step = find_step(job, step_name)
+    if step is None:
+        return falhas + [f"{where}: no single step with that name"]
+    if step.get("if") != step_if:
+        falhas.append(f"{where}: the step runs with if: {step.get('if')}, not {step_if}")
+    if step.get("continue-on-error") is not None:
+        falhas.append(f"{where}: the step has continue-on-error")
+    if step.get("shell") != shell:
+        falhas.append(f"{where}: the step runs in the shell {step.get('shell')}, not {shell}")
+    if (step.get("run") or "").rstrip("\n") != run:
+        falhas.append(f"{where}: the step no longer runs exactly {run!r}")
+    if step.get("env") != env:
+        falhas.append(f"{where}: the step env is {step.get('env')}, not {env}")
+    steps = job_steps(job)
+    before = [s.get("id") for s in steps[:steps.index(step)]]
+    read = set(re.findall(r"steps\.([\w-]+)\.", " ".join([step_if or "", *(env or {}).values()])))
+    falhas += [f"{where}: it reads steps.{i}, which is not a single earlier step of the job" for i in sorted(read)
+               if before.count(i) != 1]
+    if sources is not None:
+        falhas += [f"{where}: it reads steps.{i}, a step with no row in SOURCE_STEPS" for i in sorted(read - sources)]
+    return falhas
+
+
+def source_failures(jobs):
+    """The step_failures of each step of SOURCE_STEPS, and the ids of each job whose steps are pinned (its
+    SOURCE_STEPS and the steps of its REQUIRED_MODES)."""
+    sources = {}
+    for (job_id, step_id), _ in SOURCE_STEPS.items():
+        sources.setdefault(job_id, set()).add(step_id)
+    for job_id, _, step_name, _, _ in REQUIRED_MODES.values():
+        step = find_step(jobs.get(job_id) or {}, step_name) or {}
+        if step.get("id"):
+            sources.setdefault(job_id, set()).add(step["id"])
+    falhas = []
+    for (job_id, step_id), (step_name, step_if, run, env) in SOURCE_STEPS.items():
+        job = jobs.get(job_id) or {}
+        where = f"the testa.yml step \"{step_name}\" (job {job_id}, id {step_id}), which a required mode reads"
+        falhas += step_failures(where, jobs, job_id, job.get("if"), step_name, step_if, run, env, sources[job_id])
+        if (find_step(job, step_name) or {}).get("id") != step_id:
+            falhas.append(f"{where}: its id is not {step_id}")
+    return falhas, sources
+
+
+def ps1_failures(flows):
+    """The step_failures of each PowerShell test of PS1_TESTS in the monta.yml, by its path."""
+    monta = flows.get(".github/workflows/monta.yml") or {}
+    jobs = monta.get("jobs") or {}
+    top = ["the monta.yml has defaults"] if monta.get("defaults") is not None else []
+    return {rel: top + step_failures(f"{rel} (the monta.yml job {row[0]}, step \"{row[2]}\")", jobs, *row,
+                                     PS1_ENV[rel], shell="powershell")
+            for rel, row in PS1_TESTS.items()}
+
+
+def mode_failures(flows):
+    """What takes a mode of REQUIRED_MODES out of the required check: its step_failures, the source_failures of the
+    steps it reads, or its job missing from the needs and the verdict of the required job."""
+    testa = flows.get(".github/workflows/testa.yml") or {}
+    jobs = testa.get("jobs") or {}
+    required = jobs.get(REQUIRED_JOB) or {}
+    verdict = find_step(required, VERDICT_STEP) or {}
+    results = set((verdict.get("env") or {}).values())
+    falhas, sources = source_failures(jobs)
+    if testa.get("defaults") is not None:
+        falhas.append("the testa.yml has defaults")
+    if (testa.get("env") or {}).get("BASE") != BASE_ENV:
+        falhas.append(f"the BASE of the testa.yml is {(testa.get('env') or {}).get('BASE')}, not {BASE_ENV}")
+    falhas += [f"the {job_id} job of the testa.yml sets its own BASE" for job_id, job in jobs.items()
+               if "BASE" in (job.get("env") or {}) or any("BASE" in (s.get("env") or {}) for s in job_steps(job))]
+    for mode, (job_id, job_if, step_name, step_if, run) in REQUIRED_MODES.items():
+        where = f"the testa.yml mode {mode} (job {job_id}, step \"{step_name}\")"
+        falhas += step_failures(where, jobs, job_id, job_if, step_name, step_if, run, REQUIRED_ENV.get(mode),
+                                sources.get(job_id, set()))
+        if job_id not in (required.get("needs") or []):
+            falhas.append(f"{where}: the {REQUIRED_JOB} job does not need it")
+        if f"${{{{ needs.{job_id}.result }}}}" not in results:
+            falhas.append(f"{where}: the {VERDICT_STEP} step does not read its result")
+    passos = {f"--passo {n}" for n in PASSOS} | {f"--long {n}" for n in LONG_TESTS}
+    falhas += [f"{m} has no row in REQUIRED_MODES" for m in sorted(passos - set(REQUIRED_MODES))]
+    return falhas
+
+
+def sem_destino(root=RAIZ, files=None, flows=None):
+    """What takes a test out of the checks unnoticed: a Python test of the repo (is_test, in any folder of the git
+    ls-files) in no list here (STDLIB, COMPLETO, LONG_TESTS, MICROFONE, PASSOS, TELA), a PowerShell test outside
+    PS1_TESTS, either without the "manual:" line; a PS1_TESTS step out of the monta.yml (ps1_failures); a file with the line that runs anyway, or with the line out
+    of format; a mode of REQUIRED_MODES out of the required check (mode_failures), and a dev/ script the testa.yml calls
+    directly instead of through PASSOS. Returns the failure lines."""
+    root = Path(root)
+    files = tracked(root) if files is None else files
+    flows = workflows(root) if flows is None else flows
+    rodam = set(COMPLETO) | set(LONG_TESTS.values()) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
+    ps1 = ps1_failures(flows)
+    falhas = []
+    for rel in sorted(f for f in files if f.endswith((".py", ".ps1"))):
+        if not (root / rel).is_file():
+            continue
+        linha = manual(root / rel)
+        runs_somewhere = rel in rodam if rel.endswith(".py") else rel in ps1
+        falhas += ps1.get(rel, [])
         if linha and not re.match(r"#\s*manual:\s*\S.*\s+precisa de\s+\S", linha):
             falhas.append(f"{rel}: the line \"{linha}\" does not follow \"# manual: <comando> precisa de <aparelho>\"")
-        elif linha and rel in rodam:
-            falhas.append(f"{rel} has the \"manual:\" line and runs in the testa.yml: drop the line or the test")
-        elif not linha and is_test(rel) and rel not in rodam:
-            falhas.append(f"{rel} runs nowhere (in no list of dev/testa_tudo.py: STDLIB, COMPLETO, LONG_TESTS, MICROFONE or "
-                          "PASSOS) and has no \"# manual: <comando> precisa de <aparelho>\" line at the top")
-    linhas = Path(yml).read_text(encoding="utf-8").splitlines()
-    # the commands: a line that starts with python (in a run: block, or right after run:), the dev/ script with either
-    # separator, with or without quotes, and the rest of the line
-    comandos = [(m.group(2).replace("\\", "/"), m.group(3).strip()) for m in (
-        re.match(r"\s*(?:-\s+)?(?:run:\s*)?python(?:\.exe)?\s+(['\"]?)(dev[/\\]\w+\.py)\1(.*)$", linha)
-        for linha in linhas) if m]
-    falhas += [f"the testa.yml no longer runs \"python {c}\"" for c in INVOCATIONS
-               if not any(s == c.split()[0] and resto.startswith(c.split(maxsplit=1)[1]) for s, resto in comandos)]
-    # a dev/ script the workflow calls anywhere but through testa_tudo would skip the check above: it goes in PASSOS
-    citados = {m.replace("\\", "/") for linha in linhas if not linha.lstrip().startswith("#")
-               for m in re.findall(r"python(?:\.exe)?\s+['\"]?(dev[/\\]\w+\.py)", linha)}
+        elif linha and runs_somewhere:
+            falhas.append(f"{rel} has the \"manual:\" line and runs in the checks: drop the line or the test")
+        elif not linha and is_test(rel) and not runs_somewhere:
+            falhas.append(f"{rel} runs nowhere (in no list of dev/testa_tudo.py: STDLIB, COMPLETO, LONG_TESTS, "
+                          "MICROFONE or PASSOS, or PS1_TESTS for a .ps1) and has no "
+                          "\"# manual: <comando> precisa de <aparelho>\" line at the top")
+    falhas += mode_failures(flows)
+    testa = flows.get(".github/workflows/testa.yml") or {}
+    citados = {m.replace("\\", "/") for job in (testa.get("jobs") or {}).values() for step in job_steps(job)
+               for m in re.findall(r"python(?:\.exe)?\s+['\"]?(dev[/\\]\w+\.py)", step.get("run") or "")}
     falhas += [f"the testa.yml runs \"python {s}\" directly: declare it in the PASSOS of dev/testa_tudo.py and call "
                "\"python dev/testa_tudo.py --passo <name>\"" for s in sorted(citados - {"dev/testa_tudo.py"})]
     return falhas
