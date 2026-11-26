@@ -1,5 +1,8 @@
 # A saída para o jogo (`microfone/`)
 
+O `instala-todos` e o `remove` do `microfone\microfone.py` mexem em todo microfone e no filtro do Ritmelli
+instalado: rodam só num Windows de teste, como o Discord, que se testa só num canal fechado de teste.
+
 `microfone/`: a saída para o jogo. O `apo/micfx.dll` é um efeito de áudio do Windows (APO) que
 o `microfone.py` pendura nas vagas EFX e LFX de todo microfone do PC, guardando o original (e
 devolvendo no remove); o Windows carrega a DLL dentro do `audiodg.exe`, uma instância por

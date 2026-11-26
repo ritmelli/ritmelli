@@ -1245,19 +1245,14 @@ def verification_names(t=None):
 
 
 def workflow_jobs(t):
-    names = set()
-    for p in t.paths(".yml", ".yaml"):
-        if p.startswith(".github/workflows/"):
-            try:
-                doc = workflow_yaml.loads(t.files[p], name=Path(p).name)
-            except workflow_yaml.YamlError:
-                continue
-            jobs = doc.get("jobs") if isinstance(doc, dict) else None
-            if isinstance(jobs, dict):
-                names |= set(jobs) | {j.get("name") for j in jobs.values() if isinstance(j, dict) and j.get("name")}
-            if isinstance(doc, dict) and isinstance(doc.get("name"), str):
-                names.add(doc["name"])
-    return names
+    text = t.files.get(".github/workflows/testa.yml")
+    if text is None:
+        return set()
+    doc = workflow_yaml.loads(text, name="testa.yml")
+    jobs = doc.get("jobs") if isinstance(doc, dict) else None
+    if not isinstance(jobs, dict):
+        return set()
+    return set(jobs) | {j.get("name") for j in jobs.values() if isinstance(j, dict) and j.get("name")}
 
 
 def agents_rules(text):
