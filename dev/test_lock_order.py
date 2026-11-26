@@ -23,6 +23,10 @@ CALLBACKS = {
 CALLER_HOLDS = {("server.py", "App", "change_queue"): {"fila_lock"}, ("server.py", "App", "close_switches"): {"fila_lock"},
                 ("comandos.py", None, "concilia"): {"fila_lock"}}
 ENGINE_GUARD = ["_lock", "_qlock"]
+BUILDERS = {("engine.py", "Engine", "trocar_fonte"): ("novo", 1, ENGINE_GUARD),
+            ("engine.py", "Engine", "preparar"): ("track", 0, ENGINE_GUARD),
+            ("engine.py", "Engine", "load"): ("track", 0, ENGINE_GUARD),
+            ("server.py", "App", "_troca"): ("tr", 0, ["fila_lock"] + ENGINE_GUARD)}
 WRITERS = {"save_json", "_save", "write_text", "write_bytes"}
 WRITES = "a file write"
 NO_WRITES = {"fila_lock", "_lock", "_qlock"}
@@ -464,6 +468,9 @@ class Walker(ast.NodeVisitor):
                 slots = dict(CALLBACKS.get(key, {}))
                 if key[0] == "engine.py":
                     slots["pode"] = ENGINE_GUARD
+                if key in BUILDERS:
+                    name, at, locks = BUILDERS[key]
+                    slots[name] = slots[at] = locks
                 args = list(enumerate(call.args)) + [(k.arg, k.value) for k in call.keywords]
                 for slot, arg in args:
                     if slot in slots:
@@ -586,6 +593,47 @@ def pode_guarantees(tree):
         return memo[name]
     return {name: guarantee(name) for name, f in funcs.items()
             if not name.startswith("_") and "pode" in [a.arg for a in f.args.args + f.args.kwonlyargs]}
+
+
+def builder_held(funcs, name, param, memo):
+    if (name, param) in memo:
+        return memo[name, param]
+    memo[name, param] = set()
+    sites = []
+    calls_with_locks(funcs[name], "Engine", set(), sites, {})
+    best = set()
+    for call, held in sites:
+        f = call.func
+        if isinstance(f, ast.Name) and f.id == param:
+            here = held
+        elif (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id == "self" and f.attr in funcs
+              and any(isinstance(kw.value, ast.Name) and kw.value.id == param for kw in call.keywords)):
+            kw = next(kw.arg for kw in call.keywords if isinstance(kw.value, ast.Name) and kw.value.id == param)
+            here = held | builder_held(funcs, f.attr, kw, memo)
+        else:
+            continue
+        best = here if len(here) > len(best) else best
+    memo[name, param] = best
+    return best
+
+
+def builder_failures(tree):
+    funcs, memo = methods(tree, "Engine"), {}
+    out = [f"Engine.{key[2]} calls its builder {name} under {sorted(builder_held(funcs, key[2], name, memo))}, not "
+           f"under {locks}" for key, (name, _, locks) in BUILDERS.items() if key[0] == "engine.py"
+           and not set(locks) <= builder_held(funcs, key[2], name, memo)]
+    for key, (name, _, _) in BUILDERS.items():
+        if key[0] == "engine.py":
+            out += [f"Engine.{key[2]}:{n.lineno} publishes a track that is not its builder's call"
+                    for n in ast.walk(funcs[key[2]]) if isinstance(n, ast.Assign)
+                    and any(isinstance(t, ast.Attribute) and t.attr == "track" for t in n.targets)
+                    and not any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == name
+                                for c in ast.walk(n.value))]
+            out += [f"Engine.{key[2]}:{n.lineno} hands the _restart a track that is not its builder"
+                    for n in ast.walk(funcs[key[2]]) if isinstance(n, ast.Call) and called_attr(n) == "_restart"
+                    for kw in n.keywords if kw.arg == "track"
+                    and not (isinstance(kw.value, ast.Name) and kw.value.id == name)]
+    return out
 
 
 def pode_failures(tree):
@@ -993,6 +1041,33 @@ def main():
     bare = sources["engine.py"].replace("        with self._qlock:\n            yield\n", "        yield\n", 1)
     check(bare != sources["engine.py"] and not section_yields_under_qlock(ast.parse(bare)),
           "with the state_section yielding without the _qlock, that check fails")
+    built = builder_failures(trees["engine.py"])
+    check(not built, f"every Engine method that takes a builder calls it under the _lock and the _qlock, where it "
+                     f"publishes ({built})")
+    for what, old, new in (
+            ("the trocar_fonte publishing the record it built on entry",
+             "                novo = self.track = d.track = novo() if callable(novo) else novo\n",
+             "                novo = self.track = d.track = initial\n"),
+            ("the preparar publishing the record it built on entry",
+             "                d.track = track = track() if callable(track) else initial\n",
+             "                d.track = track = initial\n"),
+            ("the trocar_fonte handing the record it built on entry to the _restart",
+             "antes, leitor = self._restart(lambda: self._clamp(self.pos, initial), track=novo,",
+             "antes, leitor = self._restart(lambda: self._clamp(self.pos, initial), track=initial,"),
+            ("the load handing the record it built on entry to the _restart",
+             "            antes, leitor = self._restart(self._clamp(start, initial), track=track,",
+             "            antes, leitor = self._restart(self._clamp(start, initial), track=initial,")):
+        early = sources["engine.py"].replace(old, new, 1)
+        check(early != sources["engine.py"] and builder_failures(ast.parse(early)),
+              f"with {what}, that check fails ({builder_failures(ast.parse(early))})")
+    locked = sources["server.py"].replace(
+        'self.engine.trocar_fonte(tr, lambda: dict(item, path=str(LIB / item["file"])))',
+        'self.engine.trocar_fonte(tr, lambda: self.lib.update(item["id"]) and dict(item, path=str(LIB / item["file"])))',
+        1)
+    bad, *_ = scan(dict(sources, **{"server.py": locked}), order, before)
+    check(locked != sources["server.py"] and any("lib_lock" in b for b in bad),
+          f"with the download's builder taking the shelf's lock, which the engine runs under the _qlock, the order "
+          f"check fails ({[b for b in bad if 'lib_lock' in b][:1]})")
     guarded = pode_guarantees(trees["engine.py"])
     check(len(guarded) >= 5 and not pode_failures(trees["engine.py"]),
           f"every Engine method that takes a pode runs it under the _lock and the _qlock, also through the methods it "

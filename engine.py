@@ -2444,7 +2444,7 @@ class Engine:
         with self._qlock:
             if pode is not None and not pode():
                 return None, None
-            start, track = [v() if callable(v) else v for v in (start, track)]
+            start, track = (start() if callable(start) else start), (track() if callable(track) else track)
             antes = self._captura_atual()
             self._cancela_passagem(tudo=True)
             d = self._deck
@@ -2504,17 +2504,17 @@ class Engine:
         reserva de avanco, a primeira da fila, o deck e a linha que viu); falso, nada e publicado e volta False.
         ganho: o (alvo, mede) do _ganho_de, ja medido por quem chama (o servidor mede antes de pegar as travas).
         depois: o leitor dela e a medida comecam quando quem chama soltar as travas dele (_segue)."""
-        primeiro = track() if callable(track) else track
-        if not primeiro.get("path"):
+        initial = track() if callable(track) else track
+        if not initial.get("path"):
             return False
-        alvo, mede = self._ganho_de(primeiro) if ganho is None else ganho  # fora das travas: pergunta ao servidor
-        d = Deck(primeiro)
+        alvo, mede = self._ganho_de(initial) if ganho is None else ganho  # fora das travas: pergunta ao servidor
+        d = Deck(initial)
         d.gen, d.ahead, d.ganho, d.ganho_alvo = 1, PRONTO_AHEAD, alvo, alvo
         with self._lock:
             with self._qlock:
                 if self.track is None or (pode is not None and not pode()):
                     return False
-                d.track = track = track() if callable(track) else primeiro
+                d.track = track = track() if callable(track) else initial
                 self._cancela_passagem()
                 self._pronto, self.pronto_tag = d, tag
                 self._deck.ahead = 10 ** 9  # o fim deste inteiro na memoria para medir (45 s sao ~17 MB)
@@ -3285,16 +3285,16 @@ class Engine:
         return s
 
     def trocar_fonte(self, atual, novo):
-        primeiro = novo() if callable(novo) else novo
-        alvo, mede = self._ganho_de(primeiro)
+        initial = novo() if callable(novo) else novo
+        alvo, mede = self._ganho_de(initial)
         if not atual.get("path"):  # da espera para o stream: ainda sem audio, nem leitor
             with self._lock:
-                antes, leitor = self._restart(lambda: self._clamp(self.pos, primeiro), track=novo, alvo=alvo,
+                antes, leitor = self._restart(lambda: self._clamp(self.pos, initial), track=novo, alvo=alvo,
                                               nova_linha=False, pode=lambda: self.track is atual)
             if antes is None:
                 return False
             self._comeca(leitor)
-            self._mede_se(primeiro, mede)
+            self._mede_se(initial, mede)
             return True
         with self._lock:
             with self._qlock:
@@ -3307,7 +3307,7 @@ class Engine:
                     t = bl[2]  # o bloco em curso ja saiu da fila: o leitor novo comeca depois dele
                 else:
                     t = self.pos
-                dur = primeiro.get("duration") or 0
+                dur = initial.get("duration") or 0
                 novo = self.track = d.track = novo() if callable(novo) else novo
                 d.ganho_alvo = alvo
                 self._stream_warning = None
@@ -3371,13 +3371,13 @@ class Engine:
         esta no mesmo disco, e outro disco entrando o desliga). Volta a Captura do que estava no prato antes, ou None se
         o pode() (conferido sob o _qlock: o servidor confere ali a reserva de avanco) recusou. ganho: o do _ganho_de,
         ja medido por quem chama; depois: o leitor comeca quando quem chama soltar as travas (_segue)."""
-        primeiro = track() if callable(track) else track
-        alvo, mede = self._ganho_de(primeiro) if ganho is None else ganho
+        initial = track() if callable(track) else track
+        alvo, mede = self._ganho_de(initial) if ganho is None else ganho
         with self._lock:
-            antes, leitor = self._restart(self._clamp(start, primeiro), track=track, alvo=alvo, paused=paused,
+            antes, leitor = self._restart(self._clamp(start, initial), track=track, alvo=alvo, paused=paused,
                                           prato=True, loop=loop, pode=pode)
         if antes is not None:
-            self._segue(depois, lambda: (self._comeca(leitor), self._mede_se(primeiro, mede)))
+            self._segue(depois, lambda: (self._comeca(leitor), self._mede_se(initial, mede)))
         return antes
 
     def _clamp(self, t, track=None):

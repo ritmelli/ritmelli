@@ -83,6 +83,18 @@ class StreamThread:
         A._abre_stream = opens
 
 
+def renamed_after_the_first_build(A, iid, title, build):
+    first = [True]
+
+    def built():
+        record = build()
+        if first[0]:
+            first[0] = False
+            cmd.update_record(A, iid, title=title)
+        return record
+    return built
+
+
 def play(A, E, readers, iid):
     cmd.tocar(A, iid)
     return readers.wait(iid)
@@ -304,8 +316,7 @@ def file_after_the_record_was_renamed_on_the_shelf(A, E, readers):
     swap = E.trocar_fonte
 
     def renamed_first(atual, novo):
-        cmd.update_record(A, item["id"], title="a new name")
-        return swap(atual, novo)
+        return swap(atual, renamed_after_the_first_build(A, item["id"], "a new name", novo))
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "trocar_fonte", renamed_first),
           mock.patch.object(A, "download", side_effect=lambda *a: A.lib.add(item) or item)):
         A.run_download(j, target)
@@ -733,8 +744,7 @@ def passage_to_a_shelf_file_renamed_on_the_way(A, E, readers, before_the_publish
     prepare = E.preparar
 
     def renamed_first(track, *a, **kw):
-        cmd.update_record(A, iid, title="the new name")
-        return prepare(track, *a, **kw)
+        return prepare(renamed_after_the_first_build(A, iid, "the new name", track), *a, **kw)
     cap = E.captura()
     with (contextlib.redirect_stderr(io.StringIO()),
           mock.patch.object(E, "preparar", renamed_first if before_the_publish else prepare)):
@@ -749,14 +759,65 @@ def passage_to_a_shelf_file_renamed_on_the_way(A, E, readers, before_the_publish
           f"a rename on the shelf {when} reaches the platter after the switch ({tr.get('id')}, {tr.get('title')})")
 
 
+def stream_renamed_while_it_opens(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "uuuuuuuuuuu"
+    j = A.new_job("downloading", True, target)
+    info = {"url": "https://stream.invalid/u", "id": target, "title": "the old name", "duration": 200.0}
+    swap = E.trocar_fonte
+
+    def renamed_first(atual, novo):
+        if not callable(novo) and str(novo.get("path", "")).startswith("http"):
+            A.lib.add(dict(A.lib.get("d2"), id=atual["id"], youtube_id=target, title="the old name"))
+            cmd.update_record(A, atual["id"], title="the new name")
+        return swap(atual, novo)
+    stream = StreamThread(A)
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "trocar_fonte", renamed_first),
+          mock.patch.object(A, "stream_info", return_value=(info, {}))):
+        check(cmd.play_downloading(A, j, target, {"youtube_id": target, "title": "the old name"})
+              and stream.ended.wait(WAIT_S), "the job's record is on the platter and its stream opened")
+    del A._abre_stream
+    tr = E.track or {}
+    check(str(tr.get("path", "")).startswith("https://") and tr.get("title") == "the old name",
+          f"known failure #303: a rename on the shelf while the stream opens is undone by the stream's record, built "
+          f"before ({tr.get('title')})")
+
+
+def prepared_stream_renamed_before_it_is_published(A, E, readers):
+    cmd.limpar_fila(A)
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "vvvvvvvvvvv"
+    j = A.new_job("downloading", True, target)
+    x = {"id": None, "youtube_id": target, "url": None, "title": "the old name", "channel": "c", "duration": 600.0,
+         "job": j["id"], "qid": "named4"}
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.append(x))
+    info = {"url": "https://stream.invalid/v", "id": target, "title": "the old name", "duration": 600.0}
+    prepare = E.preparar
+
+    def shelved_and_renamed_first(track, *a, **kw):
+        A.lib.add(dict(A.lib.get("d2"), id=target, youtube_id=target, title="the old name"))
+        cmd.update_record(A, target, title="the new name")
+        return prepare(track, *a, **kw)
+    cap = E.captura()
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "stream_info", return_value=(info, {})),
+          mock.patch.object(E, "preparar", shelved_and_renamed_first)):
+        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
+    check(E.pronto_tag == x["qid"], "the job's stream is prepared on the second deck")
+    check(E.virou is not None or mix_until_the_switch(E), "the engine switched to the prepared stream")
+    tr = E.track or {}
+    check(tr.get("id") == target and tr.get("title") == "the old name",
+          f"known failure #303: a rename on the shelf while the passage prepares a job's stream leaves the queue "
+          f"entry's name on the platter after the switch ({tr.get('id')}, {tr.get('title')})")
+
+
 def play_from_the_shelf_renamed_on_the_way(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     A.lib.add(dict(A.lib.get("d2"), id="named3", title="the old name"))
     load = E.load
 
     def renamed_first(track, *a, **kw):
-        cmd.update_record(A, "named3", title="the new name")
-        return load(track, *a, **kw)
+        return load(renamed_after_the_first_build(A, "named3", "the new name", track), *a, **kw)
     with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "load", renamed_first):
         played = A.play_item(A.lib.get("named3"), 0.0)
     tr = E.track or {}
@@ -914,6 +975,8 @@ def main():
                 passage_to_a_shelf_file_renamed_on_the_way(A, E, readers, True)
                 passage_to_a_shelf_file_renamed_on_the_way(A, E, readers, False)
                 play_from_the_shelf_renamed_on_the_way(A, E, readers)
+                stream_renamed_while_it_opens(A, E, readers)
+                prepared_stream_renamed_before_it_is_published(A, E, readers)
                 audio_version_during_a_pending_switch(A, E, readers)
                 audio_version_while_the_engine_switches(A, E, readers)
                 audio_version_while_the_passage_reads_the_source(A, E, readers)

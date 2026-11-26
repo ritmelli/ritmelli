@@ -14,14 +14,14 @@ VARIABLES pc, track, nextId, line, pronto, nearEnd, noReader, gen,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying,
           fila, ver, virou, closing, preparando,
           prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, resQ, resVer,
-          shelfName, dlName, prName, plName
+          shelfName, dlName, prName, plName, stName, srName
 
 lockVars == <<owner, orderBroken>>
 platVars == <<track, nextId, line, pronto, nearEnd, noReader, gen>>
 jobVars == <<jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying, shelfName, dlName>>
 queueVars == <<fila, ver, virou, closing, preparando>>
 localVars == <<prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, resQ, resVer,
-               prName, plName>>
+               prName, plName, stName, srName>>
 vars == <<pc, lockVars, platVars, jobVars, queueVars, localVars>>
 
 Workers == {"Download", "Swap", "Stream", "Prepare", "AudioVersion", "Play", "Forget", "Move", "Reserve", "Seek", "StreamReader",
@@ -66,11 +66,7 @@ NewSourceWith(path, without, name) ==
     /\ noReader' = without
     /\ UNCHANGED <<line, nearEnd, gen>>
 
-NewSource(path) == NewSourceWith(path, FALSE, track.name)
-
 FileHandoverNamed(name) == NewSourceWith("file", (track.path = "stream" /\ ~FileSwapStartsItsReader) \/ noReader, name)
-
-FileHandover == FileHandoverNamed(shelfName)
 
 Init ==
     /\ owner = [l \in Locks |-> NoProc]
@@ -133,6 +129,8 @@ Init ==
     /\ dlName = 0
     /\ prName = 0
     /\ plName = 0
+    /\ stName = 0
+    /\ srName = 0
 
 DownloadEnds ==
     /\ At("Download", "dl_run")
@@ -243,7 +241,8 @@ StreamTries ==
     /\ \/ track.id /= swTr /\ stream' = "gone" /\ Goto("Stream", "done")
        \/ track.id = swTr /\ Goto("Stream", "st_opened") /\ UNCHANGED stream
        \/ track.id = swTr /\ stream' = "refused" /\ Goto("Stream", "done")
-    /\ UNCHANGED <<lockVars, platVars, jobStatus, shelf, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying, queueVars, localVars, shelfName, dlName>>
+    /\ stName' = IF track.id = swTr THEN track.name ELSE stName
+    /\ UNCHANGED <<lockVars, platVars, jobStatus, shelf, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, resQ, resVer, prName, plName, shelfName, dlName, srName>>
 
 StreamOpened ==
     \/ /\ At("Stream", "st_opened")
@@ -253,7 +252,7 @@ StreamOpened ==
     \/ /\ At("Stream", "st_opened_swap")
        /\ SectionThenRelease("Stream", "_qlock", {"_lock"})
        /\ IF track.id = swTr
-          THEN NewSource("stream") /\ swTr' = nextId /\ Goto("Stream", "st_after")
+          THEN NewSourceWith("stream", FALSE, stName) /\ swTr' = nextId /\ Goto("Stream", "st_after")
           ELSE UNCHANGED <<platVars, swTr, shelfName, dlName>> /\ Goto("Stream", "done")
        /\ stream' = "ok"
        /\ stGen' = gen
@@ -262,14 +261,16 @@ StreamOpened ==
        /\ IF OpenedStreamLooksForTheFile /\ FileReady
           THEN Goto("Stream", "st_open_file_lock")
           ELSE Goto("Stream", "done")
-       /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
+       /\ stName' = IF OpenedStreamLooksForTheFile /\ FileReady THEN shelfName ELSE stName
+       /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, resQ, resVer, prName, plName, srName>>
     \/ /\ At("Stream", "st_open_file_lock")
        /\ Acquire("Stream", "_lock")
        /\ Goto("Stream", "st_open_file")
        /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
     \/ /\ At("Stream", "st_open_file")
        /\ SectionThenRelease("Stream", "_qlock", {"_lock"})
-       /\ IF track.id = swTr THEN FileHandover ELSE UNCHANGED platVars
+       /\ IF track.id = swTr THEN FileHandoverNamed(IF RecordBuiltUnderTheLock THEN shelfName ELSE stName)
+          ELSE UNCHANGED platVars
        /\ Goto("Stream", "done")
        /\ UNCHANGED <<jobVars, queueVars, localVars>>
     \/ /\ At("StreamReader", "st_reading")
@@ -317,14 +318,16 @@ StreamRefusedChecksJob ==
     /\ StreamFailureChecksJob
     /\ \/ /\ At("StreamReader", "st_refused")
           /\ Goto("StreamReader", IF RefusedStreamTriesTheFileFirst /\ FileReady THEN "st_file_lock" ELSE "st_stop_lock")
-          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
+          /\ srName' = IF RefusedStreamTriesTheFileFirst /\ FileReady THEN shelfName ELSE srName
+          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, resQ, resVer, prName, plName, stName>>
        \/ /\ At("StreamReader", "st_file_lock")
           /\ Acquire("StreamReader", "_lock")
           /\ Goto("StreamReader", "st_file")
           /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
        \/ /\ At("StreamReader", "st_file")
           /\ SectionThenRelease("StreamReader", "_qlock", {"_lock"})
-          /\ \/ ActsOn(TRUE) /\ FileHandover /\ Flags /\ Goto("StreamReader", "done")
+          /\ \/ /\ ActsOn(TRUE) /\ FileHandoverNamed(IF RecordBuiltUnderTheLock THEN shelfName ELSE srName)
+                /\ Flags /\ Goto("StreamReader", "done")
              \/ /\ ~ActsOn(TRUE) /\ UNCHANGED <<platVars, wrongTrack, shelfName, dlName>>
                 /\ Goto("StreamReader", IF RefusedStreamTriesTheFileFirst THEN "st_stop_lock" ELSE "st_warn")
           /\ UNCHANGED <<jobStatus, shelf, stream, swTr, dlSaw, fileWait, stGen, refusedPlaying, queueVars, localVars, shelfName, dlName>>
@@ -341,7 +344,8 @@ StreamRefusedChecksJob ==
           /\ UNCHANGED <<jobStatus, shelf, stream, swTr, dlSaw, fileWait, stGen, queueVars, localVars, shelfName, dlName>>
        \/ /\ At("StreamReader", "st_read_shelf")
           /\ Goto("StreamReader", IF FileReady THEN "st_file_lock" ELSE "st_warn")
-          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
+          /\ srName' = IF FileReady THEN shelfName ELSE srName
+          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, resQ, resVer, prName, plName, stName>>
        \/ /\ At("StreamReader", "st_warn")
           /\ Section("StreamReader", "_qlock")
           /\ \/ ActsOn(Waits) /\ Flags /\ Refuses
@@ -353,7 +357,7 @@ PlayLocks ==
     /\ WithEngineTry("Play", "pl_try", "pl_swap", "pl_wait")
     /\ plName' = shelfName
     /\ UNCHANGED <<platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead,
-                   pwSeen, resQ, resVer, prName>>
+                   pwSeen, resQ, resVer, prName, stName, srName>>
 
 PlaySwaps ==
     /\ At("Play", "pl_swap")
@@ -397,9 +401,9 @@ PrepareReads ==
             /\ prVer' = IF PrepareChecksTheVersion THEN ver[Head(fila)] ELSE prVer
             /\ nearEnd' = TRUE
             /\ Goto("Prepare", "pr_mark")
-       ELSE UNCHANGED <<prX, prVer, prLine, prTrack, prGen, nearEnd, prName, plName>> /\ Goto("Prepare", "done")
+       ELSE UNCHANGED <<prX, prVer, prLine, prTrack, prGen, nearEnd, prName, plName, stName, srName>> /\ Goto("Prepare", "done")
     /\ UNCHANGED <<track, nextId, line, noReader, gen, pronto, jobVars, queueVars, prJob, prPath, stalePrepared,
-                   keptHead, pwSeen, resQ, resVer, prName, plName>>
+                   keptHead, pwSeen, resQ, resVer, prName, plName, stName, srName>>
 
 PrepareMarks ==
     /\ At("Prepare", "pr_mark")
@@ -419,7 +423,7 @@ PrepareSource ==
                          [] OTHER -> "none"
     /\ prName' = shelfName
     /\ Goto("Prepare", "pr_try")
-    /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prLine, prTrack, prGen, stalePrepared, keptHead, pwSeen, resQ, resVer, plName>>
+    /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prLine, prTrack, prGen, stalePrepared, keptHead, pwSeen, resQ, resVer, plName, stName, srName>>
 
 PrepareLocks ==
     /\ WithEngineTry("Prepare", "pr_try", "pr_publish", "pr_wait")
@@ -431,12 +435,13 @@ PreparePublishes ==
     /\ IF /\ Head0(fila) = prX /\ virou.tag = NoQid /\ line = prLine /\ track.id = prTrack /\ pronto.qid = NoQid
           /\ (PrepareChecksTheVersion => ver[prX] = prVer) /\ prPath /= "none"
        THEN /\ pronto' = [qid |-> prX, ver |-> prVer, job |-> prJob, path |-> prPath, rec |-> prJob,
-                           name |-> IF RecordBuiltUnderTheLock THEN shelfName ELSE prName]
+                           name |-> IF prPath = "file" /\ RecordBuiltUnderTheLock THEN shelfName
+                                    ELSE IF prPath = "file" THEN prName ELSE 0]
             /\ stalePrepared' = (stalePrepared \/ gen /= prGen)
-       ELSE UNCHANGED <<pronto, stalePrepared, prName, plName>>
+       ELSE UNCHANGED <<pronto, stalePrepared, prName, plName, stName, srName>>
     /\ Goto("Prepare", "pr_release")
     /\ UNCHANGED <<track, nextId, line, noReader, gen, nearEnd, jobVars, queueVars,
-                   prX, prVer, prLine, prTrack, prGen, prJob, prPath, keptHead, pwSeen, resQ, resVer, prName, plName>>
+                   prX, prVer, prLine, prTrack, prGen, prJob, prPath, keptHead, pwSeen, resQ, resVer, prName, plName, stName, srName>>
 
 PrepareReleases ==
     /\ At("Prepare", "pr_release")
@@ -458,14 +463,14 @@ MoveSwaps ==
 Reserves ==
     \/ /\ At("Reserve", "rs_take")
        /\ SectionBoth("Reserve", "fila_lock", "_qlock")
-       /\ IF fila /= <<>> THEN resQ' = Head(fila) /\ resVer' = ver[Head(fila)] ELSE UNCHANGED <<resQ, resVer, prName, plName>>
+       /\ IF fila /= <<>> THEN resQ' = Head(fila) /\ resVer' = ver[Head(fila)] ELSE UNCHANGED <<resQ, resVer, prName, plName, stName, srName>>
        /\ Goto("Reserve", IF fila /= <<>> THEN "rs_play" ELSE "done")
-       /\ UNCHANGED <<platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, prName, plName>>
+       /\ UNCHANGED <<platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, prName, plName, stName, srName>>
     \/ /\ At("Reserve", "rs_play")
        /\ SectionBoth("Reserve", "fila_lock", "_qlock")
        /\ resQ' = NoQid
        /\ Goto("Reserve", "done")
-       /\ UNCHANGED <<platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, resVer, prName, plName>>
+       /\ UNCHANGED <<platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, resVer, prName, plName, stName, srName>>
 
 Seeks ==
     \/ /\ At("Seek", "sk_lock")
@@ -505,7 +510,7 @@ AudioVersionToday ==
     /\ \/ /\ At("AudioVersion", "av_held")
           /\ keptHead' = Held1
           /\ Goto("AudioVersion", "av_swap")
-          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, pwSeen, resQ, resVer, prName, plName>>
+          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, pwSeen, resQ, resVer, prName, plName, stName, srName>>
        \/ /\ At("AudioVersion", "av_swap")
           /\ \E q \in Qids : ToAudio(q, {keptHead})
           /\ Release("AudioVersion", "fila_lock")
@@ -525,7 +530,7 @@ PassageWatcherSees ==
     /\ virou.tag /= NoQid
     /\ pwSeen' = virou
     /\ Goto("PassageWatcher", "pw_lock")
-    /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, resQ, resVer, prName, plName>>
+    /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, resQ, resVer, prName, plName, stName, srName>>
 
 PassageWatcherLocks ==
     /\ At("PassageWatcher", "pw_lock")
@@ -621,6 +626,8 @@ NoRefusalWhilePlaying == ~refusedPlaying
 NoPassageFromBeforeTheSeek == ~stalePrepared
 
 FinishedDownloadReachesThePlatter == Quiescent => ~(track.job /\ track.path = "stream" /\ FileReady)
+
+NameIsCurrentOutsideARename == pc["Rename"] /= "rn_platter" => (track.rec => track.name = shelfName)
 
 PlatterHasTheCurrentName == Quiescent => (track.rec => track.name = shelfName)
 

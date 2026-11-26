@@ -58,6 +58,13 @@ RUNS = (
     Run("mutant: the shelf record a play puts on the platter is built before the load takes the _qlock", "Races211",
         "invariant PlatterHasTheCurrentName", invariants=("PlatterHasTheCurrentName",),
         constants=RENAME_PLAY + (("RecordBuiltUnderTheLock", "FALSE"),)),
+    Run("known failure #303: a rename on the shelf while a job's stream opens: the stream comes in with the name it "
+        "copied before", "Races211", "invariant NameIsCurrentOutsideARename",
+        invariants=("NameIsCurrentOutsideARename",), constants=RENAME),
+    Run("known failure #303: a rename on the shelf while the passage prepares a job's stream: the stream keeps the "
+        "queue entry's name", "Races211", "invariant NameIsCurrentOutsideARename",
+        invariants=("NameIsCurrentOutsideARename",),
+        constants=RENAME + (("WithTheJobSwitch", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"))),
     Run("mutant: a rename on the shelf puts a new track dict on the platter", "Races211",
         "invariant FinishedDownloadReachesThePlatter", invariants=("FinishedDownloadReachesThePlatter",),
         constants=RENAME + (("RenameReplacesTheTrack", "TRUE"),)),
