@@ -144,10 +144,10 @@ class RingDryOuts:
             self._told_this_start += 1
             if self._told_this_start <= PEDAL_LINES:
                 tell(f"game output: the microphone ring ran dry while the voice pedal was starting (the thread "
-                         f"came back after {back_s * 1000:.0f} ms;{self._bounds(start)} {starting}; "
-                         f"{self.while_pedal_starting} of {count} so far, injector {self.injector})")
+                     f"came back after {back_s * 1000:.0f} ms;{self._bounds(start)} {starting}; "
+                     f"{self.while_pedal_starting} of {count} so far, injector {self.injector})")
                 return
         if self.pedal.clock() - self._told_at > QUIET_S:
             self._told_at = self.pedal.clock()
             tell(f"game output: the microphone ring ran dry (the thread came back after {back_s * 1000:.0f} ms; "
-                     f"{count} so far, injector {self.injector})")
+                 f"{count} so far, injector {self.injector})")
