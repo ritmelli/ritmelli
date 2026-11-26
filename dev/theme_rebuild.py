@@ -37,7 +37,6 @@ SENTINEL = re.compile(r"^\x00(open (\d+)|close)\x00$")
 JS_TYPES = (None, "", "text/javascript")
 MIN_PIECE = 2
 SUSPENDED = "(function* () {%s\n;eval('');\n})()"
-FUNCTION = re.compile(r"(?:async\s+)?function\b")
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 SOURCE = "function () { return Function.prototype.toString.call(this); }"
 
@@ -260,7 +259,7 @@ class V8:
                 continue
             source = (await self.tab.cmd("Runtime.callFunctionOn", objectId=value["objectId"],
                                          functionDeclaration=SOURCE, returnByValue=True))["result"]["value"]
-            if not FUNCTION.match(source) or source not in rest:
+            if source not in rest:
                 return False
             rest = rest.replace(source, "", 1)
         return not COMMENT.sub("", rest).strip(" \t\n;")
