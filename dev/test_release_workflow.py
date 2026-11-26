@@ -5,6 +5,7 @@ of the real file and has to catch it.
     python dev/test_release_workflow.py
 """
 import copy
+import importlib.util
 import re
 import sys
 import tempfile
@@ -13,6 +14,9 @@ from pathlib import Path, PureWindowsPath
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+_spec = importlib.util.spec_from_file_location("testa_tudo", ROOT / "dev" / "testa_tudo.py")
+testa_tudo = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(testa_tudo)
 WORKFLOWS = ROOT / ".github" / "workflows"
 ACTIONS = ROOT / ".github" / "actions"
 MONTA = WORKFLOWS / "monta.yml"
@@ -24,7 +28,8 @@ VERSION_CHECK = re.compile(r"microfone\\apo\\check_version\.ps1 -Folder (\S+)")
 DLL_FOLDERS = {"monta": "dist\\ritmelli\\_internal\\microfone", "microfone": "microfone\\apo\\saida"}
 DLL_IFS = {"monta": None, "microfone": "steps.areas.outputs.microfone == 'true'"}
 SCRIPT_CALL = re.compile(r"^\s*(?:&\s*)?(?:\.[\\/])?(instalador[\\/][\w.-]+\.ps1)", re.M)
-JOB_SCRIPTS = {"testa-atualizador": "/instalador/testa-atualizador.ps1", "testa-parcial": "/instalador/testa-parcial.ps1",
+JOB_SCRIPTS = {"testa-atualizador": "/instalador/testa-atualizador.ps1",
+               "testa-parcial": "/instalador/testa-parcial.ps1",
                "testa-migracao": "/instalador/testa-migracao.ps1"}
 
 failures = []
@@ -141,6 +146,11 @@ def ps1_refs(script):
     return out
 
 
+def called_scripts(job_steps):
+    runs = "\n".join(s.get("run", "") for s in job_steps)
+    return {"/" + m.replace("\\", "/") for m in SCRIPT_CALL.findall(runs)}
+
+
 def sparse_problems(doc):
     problems = []
     for job_id, job in doc["jobs"].items():
@@ -152,16 +162,16 @@ def sparse_problems(doc):
         if any(p.startswith("/") for p in listed) and checkout["with"].get("sparse-checkout-cone-mode") is not False:
             problems.append(f"{job_id} lists /paths without sparse-checkout-cone-mode: false")
         after = job["steps"][job["steps"].index(checkout) + 1:]
-        always = "\n".join(s.get("run", "") for s in after if "if" not in s and not s.get("continue-on-error"))
-        if job_id in JOB_SCRIPTS and JOB_SCRIPTS[job_id] not in {"/" + m.replace("\\", "/") for m in SCRIPT_CALL.findall(always)}:
+        always = [s for s in after if "if" not in s and not s.get("continue-on-error")]
+        if job_id in JOB_SCRIPTS and JOB_SCRIPTS[job_id] not in called_scripts(always):
             problems.append(f"{job_id} does not run {JOB_SCRIPTS[job_id]}")
-        runs = "\n".join(s.get("run", "") for s in after)
-        needed = {"/" + m.replace("\\", "/") for m in SCRIPT_CALL.findall(runs)}
+        needed = called_scripts(after)
         for script in sorted(needed):
             if (ROOT / script.lstrip("/")).is_file():
                 needed |= ps1_refs(ROOT / script.lstrip("/"))
         problems += [f"{job_id} needs {p}" for p in sorted(needed - listed)]
-        problems += [f"{job_id} lists {p}, which does not exist" for p in sorted(listed) if not (ROOT / p.lstrip("/")).exists()]
+        problems += [f"{job_id} lists {p}, which does not exist" for p in sorted(listed)
+                     if not (ROOT / p.lstrip("/")).exists()]
     return problems
 
 
@@ -186,7 +196,8 @@ def test_sparse_checkout():
     check("testa-migracao needs /vozes.json" in sparse_problems(mutant),
           "the check catches /vozes.json missing with the script called as ./instalador/testa-migracao.ps1")
     run["run"] = run["run"].replace("./instalador/testa-migracao.ps1", "instalador\\testa-migracao.ps1")
-    for name, change in (("under if: false", {"if": "${{ false }}"}), ("with continue-on-error", {"continue-on-error": True})):
+    for name, change in (("under if: false", {"if": "${{ false }}"}),
+                         ("with continue-on-error", {"continue-on-error": True})):
         disabled = copy.deepcopy(mutant)
         step = next(s for s in disabled["jobs"]["testa-migracao"]["steps"] if "testa-migracao.ps1" in s.get("run", ""))
         step.update(change)
@@ -232,9 +243,18 @@ def built_testa(step):
 
 def test_version_resource():
     monta, testa = load(MONTA), load(TESTA)
+    for path in ("versao.py", "microfone/apo/version.rc"):
+        check("microfone" in testa_tudo.areas([path]), f"a PR that changes only {path} runs the filter job")
+    saved = testa_tudo.AREAS
+    try:
+        testa_tudo.AREAS = {**saved, "microfone": tuple(x for x in saved["microfone"] if x != "versao.py")}
+        check("microfone" not in testa_tudo.areas(["versao.py"]), "the check catches versao.py out of the filter area")
+    finally:
+        testa_tudo.AREAS = saved
     check(version_check_after(monta["jobs"]["monta"]["steps"], built_monta, DLL_FOLDERS["monta"], DLL_IFS["monta"]),
           "the monta job checks the version resource of the DLLs after the build")
-    check(version_check_after(testa["jobs"]["microfone"]["steps"], built_testa, DLL_FOLDERS["microfone"], DLL_IFS["microfone"]),
+    check(version_check_after(testa["jobs"]["microfone"]["steps"], built_testa, DLL_FOLDERS["microfone"],
+                              DLL_IFS["microfone"]),
           "the microfone job of the testa.yml checks the version resource of the DLLs it compiled, under the same if")
     mutations = {"without it": None, "with continue-on-error": {"continue-on-error": True},
                  "printing the call": lambda step: {"run": "Write-Host " + step["run"]},
@@ -265,11 +285,31 @@ def test_version_resource():
     check(copies == [], f"the Inno Setup is downloaded only in {INNO} ({copies})")
 
 
+SHARED_STRINGS = re.compile(r'(?:VALUE|StringStruct\()\s*"(CompanyName|LegalCopyright|ProductName)",\s*"([^"]+)"')
+
+
+def same_strings_as_the_exe(rc, spec):
+    dll, exe = dict(SHARED_STRINGS.findall(rc)), dict(SHARED_STRINGS.findall(spec))
+    return (len(dll) == 3 and dll == exe and 'BLOCK "041604B0"' in rc and 'StringTable("041604B0"' in spec
+            and "0x0416, 1200" in rc and "0x0416, 1200" in spec)
+
+
+def test_version_strings():
+    rc = (ROOT / "microfone" / "apo" / "version.rc").read_text(encoding="utf-8")
+    spec = (ROOT / "ritmelli.spec").read_text(encoding="utf-8")
+    check(same_strings_as_the_exe(rc, spec), "the DLL version resource has the names and the table of the ritmelli.exe")
+    for old, new in (("Behling Informática Ltda.", "Behling Informatica Ltda."), ("041604B0", "040904B0"),
+                     ("Free software under the GPLv3", "Free software"), ("0x0416, 1200", "0x0409, 1200")):
+        check(not same_strings_as_the_exe(rc.replace(old, new, 1), spec),
+              f"the check catches {old!r} changed in version.rc")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     test_pins()
     test_sparse_checkout()
     test_version_resource()
+    test_version_strings()
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 
