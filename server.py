@@ -56,7 +56,6 @@ from yt_erros import erro_do_video, yt_msg
 
 HERE = Path(__file__).resolve().parent
 LIB = pastas.LIB  # audio baixado; library.json e config.json moram em --data-dir
-THEMES = theme_page.THEMES
 # o endereco do tema ate a 0.6.0, quando ele se chamava vitrola (#58): o celular pareado, o atalho na tela inicial e o
 # favorito ainda abrem este, e o servidor leva cada caminho dele para o mesmo no tema de agora (o tema_de_antes)
 TEMA_DE_ANTES = "/t/vitrola"
@@ -2351,7 +2350,7 @@ def build(app_state):
         # o nome, a direcao e a frase podem vir por lingua no meta.json: vao na de quem pede, como a pagina
         lingua = i18n.escolher(request.query.get("lang"), request.headers.get("Accept-Language", ""))
         out = []
-        for d in sorted(p for p in THEMES.iterdir() if (p / "index.html").exists()):
+        for d in sorted(p for p in theme_page.THEMES.iterdir() if (p / "index.html").exists()):
             meta = {}
             if (d / "meta.json").exists():
                 meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
@@ -2530,8 +2529,8 @@ def build(app_state):
 
     @r.get("/t/{slug}/")
     async def theme_index(request):
-        p = THEMES / request.match_info["slug"] / "index.html"
-        if not p.exists() or THEMES not in p.resolve().parents:
+        p = theme_page.THEMES / request.match_info["slug"] / "index.html"
+        if not p.exists() or theme_page.THEMES not in p.resolve().parents:
             raise web.HTTPNotFound()
         return await pagina_com_textos(request, p)
 
@@ -2560,7 +2559,7 @@ def build(app_state):
 
     app = web.Application(middlewares=[guard, built_page_only])
     app.add_routes(r)
-    app.router.add_static("/t/", THEMES, show_index=False)
+    app.router.add_static("/t/", theme_page.THEMES, show_index=False)
 
     async def tema_sem_guardar(request, resp):
         # todo arquivo do tema (o .js, o .css, a fonte) como a pagina: o navegador confere com o servidor antes de

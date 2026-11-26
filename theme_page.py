@@ -12,13 +12,10 @@ THEMES = Path(__file__).resolve().parent / "themes"
 SCRIPT_TAG = re.compile(r'<script src="([^"]+)">')
 SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
 CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
-IMPORT_RULE = re.compile(r"@import\b", re.IGNORECASE)
-CSS_COMMENT_OR_STRING = re.compile(r"""/\*.*?(?:\*/|$)"""
-                                   r"""|"(?P<double>[^"\\\n]*(?:\\(?:\r\n|.)[^"\\\n]*)*)"?"""
-                                   r"""|'(?P<single>[^'\\\n]*(?:\\(?:\r\n|.)[^'\\\n]*)*)'?""", re.DOTALL)
 CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re.DOTALL)
-STRING_MARK = "\ue000"
-URL_VALUE = re.compile(r"url\(\s*(?:" + STRING_MARK + r"(\d+)" + STRING_MARK + r"|([^)\s]*))", re.IGNORECASE)
+URL_START = re.compile(r"url\(\s*['\"]?", re.IGNORECASE)
+IMAGE_SET = re.compile(r"(?:-webkit-)?image-set\(((?:[^()]|\([^()]*\))*)\)", re.IGNORECASE)
+IMAGE_SET_STRING = re.compile(r"(?:^|,)\s*['\"]")
 NOT_RELATIVE = re.compile(r"\s*(?:[a-z][a-z0-9+.-]*:|/|#)", re.IGNORECASE)
 
 
@@ -28,21 +25,13 @@ def css_unescape(text):
 
 @functools.lru_cache(maxsize=256)
 def sheet_problem(text, outside_page_folder):
-    strings = []
-
-    def token(m):
-        body = m.group("double") if m.group("double") is not None else m.group("single")
-        if body is None:
-            return " "
-        strings.append(css_unescape(body))
-        return f"{STRING_MARK}{len(strings) - 1}{STRING_MARK}"
-    plain = css_unescape(CSS_COMMENT_OR_STRING.sub(token, text))
-    if IMPORT_RULE.search(plain):
-        return "an @import, which the browser would fetch outside the page"
-    for m in URL_VALUE.finditer(plain) if outside_page_folder else ():
-        value = strings[int(m.group(1))] if m.group(1) is not None else m.group(2)
-        if value.strip() and not NOT_RELATIVE.match(value):
-            return "a relative url(), which the page would resolve from its own folder"
+    read = css_unescape(text)
+    if "@import" in read.lower():
+        return "@import, even escaped or in a comment or a string, which the browser could fetch outside the page"
+    starts = [m.end() for m in URL_START.finditer(read)]
+    starts += [m.start(1) + s.end() for m in IMAGE_SET.finditer(read) for s in IMAGE_SET_STRING.finditer(m.group(1))]
+    if outside_page_folder and any(not NOT_RELATIVE.match(read, at) for at in starts):
+        return "a relative url(), even escaped or in a comment or a string, which the page would resolve from its own folder"
     return None
 
 

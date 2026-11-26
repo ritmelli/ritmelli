@@ -1142,26 +1142,46 @@ def the_theme_page_build():
             "a sheet in a subfolder with a relative url()": ('<link rel="stylesheet" href="sub/b.css">',
                                                              {"sub/b.css": "a { b: url( 'x.png' ); }\n"}, "relative url()"),
             "a sheet with an @import": ('<link rel="stylesheet" href="a.css">', {"a.css": '@import "palette.css";\n'},
-                                        "a.css has an @import"),
+                                        "a.css has @import"),
             "a sheet with an escaped @import": ('<link rel="stylesheet" href="a.css">',
-                                                {"a.css": '@im\\70 ort "palette.css";\n'}, "a.css has an @import"),
+                                                {"a.css": '@im\\70 ort "palette.css";\n'}, "a.css has @import"),
             "a sheet in a subfolder with an escaped relative url()": ('<link rel="stylesheet" href="sub/b.css">',
                                                                       {"sub/b.css": "a { b: \\75rl(x.png); }\n"},
                                                                       "relative url()"),
             "a sheet with an @import escaped across a CRLF": ('<link rel="stylesheet" href="a.css">',
-                                                              {"a.css": '@im\\70\r\nort "p.css";\n'}, "a.css has an @import"),
+                                                              {"a.css": '@im\\70\r\nort "p.css";\n'}, "a.css has @import"),
             "a sheet with an escaped quote before an @import": ('<link rel="stylesheet" href="a.css">',
                                                                 {"a.css": '@layer x\\22; @import "p.css";\n'},
-                                                                "a.css has an @import"),
+                                                                "a.css has @import"),
             "a sheet with an @import between strings of escaped quotes": (
                 '<link rel="stylesheet" href="a.css">',
-                {"a.css": 'a { content: "\\""; } @import "p.css"; a { content: "\\""; }\n'}, "a.css has an @import"),
+                {"a.css": 'a { content: "\\""; } @import "p.css"; a { content: "\\""; }\n'}, "a.css has @import"),
             "a sheet with an @import between strings of /* and */": (
                 '<link rel="stylesheet" href="a.css">',
-                {"a.css": 'a { content: "/*"; } @import "p.css"; a { content: "*/"; }\n'}, "a.css has an @import"),
+                {"a.css": 'a { content: "/*"; } @import "p.css"; a { content: "*/"; }\n'}, "a.css has @import"),
             "a sheet in a subfolder with /* in a string, then a relative url()": (
                 '<link rel="stylesheet" href="sub/b.css">',
                 {"sub/b.css": '.a { content: "/*"; } .b { background: url(x.png); } /* */\n'}, "relative url()"),
+            "a sheet with a backslash quote before an @import": ('<link rel="stylesheet" href="a.css">',
+                                                                 {"a.css": '@layer x\\"; @import "p.css";\n'},
+                                                                 "a.css has @import"),
+            "a sheet with a backslash apostrophe before an @import": ('<link rel="stylesheet" href="a.css">',
+                                                                      {"a.css": "@layer x\\'; @import 'p.css';\n"},
+                                                                      "a.css has @import"),
+            "a sheet in a subfolder with an escaped ) in a relative url()": ('<link rel="stylesheet" href="sub/b.css">',
+                                                                             {"sub/b.css": "a { b: url(\\)x.png); }\n"},
+                                                                             "relative url()"),
+            "a sheet in a subfolder with a relative string in an image-set()": (
+                '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": 'a { b: image-set("x.png" 1x); }\n'},
+                "relative url()"),
+            "a sheet with @import only in a string": ('<link rel="stylesheet" href="a.css">',
+                                                      {"a.css": 'a::after { content: "\\" @import \\""; }\n'},
+                                                      "a.css has @import"),
+            "a sheet with @import only in a comment": ('<link rel="stylesheet" href="a.css">',
+                                                       {"a.css": "/* @import x; */ a { b: c; }\n"}, "a.css has @import"),
+            "a sheet in a subfolder with url() only inside a string": (
+                '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": 'a::after { content: "url(example.png)"; }\n'},
+                "relative url()"),
         }
         (folder / "sub").mkdir()
         for what, (tag, files, said) in refused.items():
@@ -1175,27 +1195,17 @@ def the_theme_page_build():
             except theme_page.ThemePageError as ex:
                 error = str(ex)
             confere(said in error, f"{what} stops the build of the page ({error})")
-        (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url( 'data:x' ); }\n",
+        (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url( 'data:x' ); "
+                                              "f: image-set(url('data:y') 2x, 'data:z' type('image/avif') 1x); }\n",
                                               encoding="utf-8")
         sheet.write_text("a { b: url(fonts/x.woff2); }\n", encoding="utf-8")
-        (folder / "d.css").write_text("/* @import x; */ a::after { content: \"@import\"; }\n", encoding="utf-8")
-        (folder / "e.css").write_text('a::after { content: "\\" @import \\""; }\n', encoding="utf-8")
-        (folder / "sub" / "f.css").write_text('a::after { content: "url(example.png)"; }\n', encoding="utf-8")
         kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
                 "a sheet of the page folder with a relative url()": ('<link rel="stylesheet" href="a.css">',
                                                                      "<style>\na { b: url(fonts/x.woff2); }\n</style>"),
-                "a sheet with @import in a string of escaped quotes": (
-                    '<link rel="stylesheet" href="e.css">',
-                    '<style>\na::after { content: "\\" @import \\""; }\n</style>'),
-                "a sheet in a subfolder with url() only inside a string": (
-                    '<link rel="stylesheet" href="sub/f.css">',
-                    '<style>\na::after { content: "url(example.png)"; }\n</style>'),
-                "a sheet with @import only in a comment and a string": (
-                    '<link rel="stylesheet" href="d.css">',
-                    "<style>\n/* @import x; */ a::after { content: \"@import\"; }\n</style>"),
                 "a sheet in a subfolder with data: and # urls": ('<link rel="stylesheet" href="sub/c.css">',
                                                                  "<style>\na { b: url(data:image/png;base64,AA); c: "
-                                                                 "url(#d); e: url( 'data:x' ); }\n</style>")}
+                                                                 "url(#d); e: url( 'data:x' ); f: image-set(url('data:y') "
+                                                                 "2x, 'data:z' type('image/avif') 1x); }\n</style>")}
         for what, (tag, expected) in kept.items():
             try:
                 out = theme_page.inline_files(tag, folder)
@@ -1204,10 +1214,12 @@ def the_theme_page_build():
             confere(out == (expected or tag), f"{what} builds as it should ({out[:90]!r})")
         real = theme_page.THEMES / "ritmelli" / "index.html"
         theme_page.build(real, real.parent / "i18n", "en")
-        misses = theme_page.sheet_problem.cache_info().misses
+        sheets = sum(tag == "style" for _, _, tag, _ in theme_page.file_tags(real.read_text(encoding="utf-8")))
+        before = theme_page.sheet_problem.cache_info()
         theme_page.build(real, real.parent / "i18n", "en")
-        confere(theme_page.sheet_problem.cache_info().misses == misses,
-                f"a second build of the unchanged page reads no sheet again ({theme_page.sheet_problem.cache_info()})")
+        after = theme_page.sheet_problem.cache_info()
+        confere(sheets > 0 and after.misses == before.misses and after.hits - before.hits == sheets,
+                f"a second build of the unchanged page reuses the check of each of its {sheets} sheets ({before} -> {after})")
         asyncio.run(a_missing_file_answers_500(server, folder))
 
 
@@ -1233,7 +1245,7 @@ async def a_missing_file_answers_500(server, folder):
     handler = logging.StreamHandler(log)
     logger = logging.getLogger("aiohttp.server")
     themes = (folder / "themes").resolve()
-    with mock.patch.object(server, "THEMES", themes), mock.patch.object(server.theme_page, "THEMES", themes):
+    with mock.patch.object(server.theme_page, "THEMES", themes):
         logger.addHandler(handler)
         try:
             A.port = so_mock.free_port()
