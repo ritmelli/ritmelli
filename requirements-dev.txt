@@ -1,4 +1,6 @@
 -r requirements.txt
+# the exact versions of the dev-only libraries (#231)
+-c dev/travas.txt
 # dev/shot.py, dev/fitcheck.py, dev/perfcheck.py e dev/celular.py falam com o Chrome pelo DevTools
 websockets>=12
 # dev/texturas.py, dev/compara.py e dev/icone.py
