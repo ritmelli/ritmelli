@@ -270,7 +270,7 @@ def run_summary(block, event, states, comment_fails=False, runs=RUNS, queue_fail
            "PR": "7" if event == "pull_request" else "", "HEAD": HEAD, "RUN_ID": "1", "ATTEMPT": "1",
            "EXECUCAO": "https://example.invalid/run",
            "DO_REPO": "true" if event == "pull_request" and not fork else "false",
-           "LABELS_PR": "" if event == "push" else "7", "LABELS": "[]", "LINHAS": "", "MUDARAM": "0",
+           "LABELS_PR": "" if event == "push" else "7", "LABELS": "[]", "MUDARAM": "0",
            "MONTA": "" if event == "push" else monta, "PR_HEAD": PR_HEAD if event == "pull_request" else ""}
     env.update({f"S_{n}": s for n, s in zip(NEEDS, states)})
     env.update({f"R_{n}": f"resumo {n}" for n in NEEDS[1:]})
