@@ -33,6 +33,7 @@ URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
 SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
 QUOTED = re.compile(r'"([^"\n]+)"')
+RESULT = re.compile(r"\b(?:pass(?:es|ed)?|fail(?:s|ed)?|successfully|\d+ of \d+|\d+/\d+)\b", re.I)
 OPEN_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s")
 CODE_SPAN = re.compile(r"(`+)(?!`)(?:(?!\n[ \t]*\n).)*?(?<!`)\1(?!`)", re.S)
 PARAGRAPH_START = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>)")
@@ -51,8 +52,7 @@ START_SLEEP = re.compile(r"\bStart-Sleep\b", re.I)
 THEME_TIMER = re.compile(r"\b(?:setTimeout|setInterval|requestIdleCallback)\s*\(")
 ANIMATION_FRAME = re.compile(r"\brequestAnimationFrame\s*\(")
 TODO = re.compile(r"\b(?:TODO|FIXME|HACK|XXX)\b")
-PROSE = re.compile(r"risco aceito|accepted risk|sem prova|por enquanto|for now|known issue|sem teste|have no test yet",
-                   re.I)
+PROSE = re.compile(r"risco aceito|accepted risk|sem prova|por enquanto|for now|known issue", re.I)
 LEFT_OUT = re.compile(r"^--\s.*ficou de fora", re.S)
 KNOWN_FAILURE = re.compile(r"^\s*known failure", re.I)
 LEFT_OUT_QUOTED = re.compile(r"[\"']--\s[^\"']*ficou de fora")
@@ -1076,6 +1076,25 @@ def comment_texts(t):
                 yield p, c.start + k, text
 
 
+def comment_blocks(t):
+    for p in t.paths(*COMMENT_EXTENSIONS):
+        block = []
+        for c in sorted(t.lexed(p).comments, key=lambda c: c.start):
+            if block and c.start > block[-1].end + 1:
+                yield p, block
+                block = []
+            block.append(c)
+        if block:
+            yield p, block
+
+
+def prose_in_comments(t):
+    for p, block in comment_blocks(t):
+        if not cites_issue(" ".join(c.text for c in block)):
+            for c in block:
+                yield from ((p, c.start + k) for k, text in enumerate(c.text.splitlines()) if PROSE.search(text))
+
+
 def markdown_lines(t):
     for p in t.paths(".md"):
         for n, line in enumerate(t.files[p].splitlines(), 1):
@@ -1087,8 +1106,8 @@ def todo_markers(t):
 
 
 def prose_justifications(t):
-    return sorted({(p, n) for p, n, text in [*comment_texts(t), *markdown_lines(t)]
-                   if PROSE.search(text) and not cites_issue(text)})
+    return sorted({*prose_in_comments(t), *((p, n) for p, n, text in markdown_lines(t)
+                                            if PROSE.search(text) and not cites_issue(text))})
 
 
 def non_ascii_identifiers(t):
@@ -1482,7 +1501,17 @@ def has_proof(text):
     outside_code = CODE_SPAN.sub("", prose)
     if RUN_LINK.search(outside_code) or IMAGE.search(outside_code):
         return True
-    return any(proof_span(span) for span in re.findall(r"`([^`\n]+)`", prose))
+    if any(proof_span(span) for span in re.findall(r"`([^`\n]+)`", prose)):
+        return True
+    return any(plain_proof(line) for line in outside_code.splitlines())
+
+
+def plain_proof(line):
+    if not RESULT.search(line):
+        return False
+    words = re.findall(r"[\w./\\-]+", line.replace("\\", "/"))
+    return any((w in PROOF_COMMANDS and i + 1 < len(words) and re.search(r"[./]|^-", words[i + 1]))
+               or w.rstrip(".") in verification_names() for i, w in enumerate(words))
 
 
 def proof_span(span):

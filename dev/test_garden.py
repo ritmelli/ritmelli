@@ -386,11 +386,19 @@ CASES = {
     ],
     "prose_justifications": [
         ("in a comment", {"a.py": "print('using the old one for now')\n"}, {"a.py": "x = 1  # for now\n"}),
+        ("the issue at the top of the comment block",
+         {"a.js": "/* (#119) a prova de que a aba voltou em branco: o pixel do meio. Sem prova\n"
+                  "   (fora da mesa), a mesa inteira */\nlet a = 1;\n"},
+         {"a.js": "/* a prova de que a aba voltou em branco: o pixel do meio. Sem prova\n"
+                  "   (fora da mesa), a mesa inteira */\nlet a = 1;\n"}),
+        ("a map row and a contributing note with no test",
+         {"a.md": "| Sem teste | `compasso.py` | o PR diz como conferiu |\nThe window has no test yet: say how you checked.\n"},
+         {"a.md": "| Sem teste | `compasso.py` | accepted risk |\n"}),
         ("a description of what did not change", {"a.md": "as rotas que trocam no laço ainda esperam ali, como antes\n"},
          {"a.md": "as rotas que trocam no laço ainda esperam ali, por enquanto\n"}),
         ("a docstring is not a comment", {"a.py": "def f():\n    '''Accepted risk.'''\n"},
          {"a.py": "def f():\n    '''Accepted risk.'''\n    return 1  # accepted risk\n"}),
-        ("in a .md", {"a.md": "Sem teste: issue #5\n"}, {"a.md": "Sem teste.\n"}),
+        ("in a .md", {"a.md": "Sem prova: issue #5\n"}, {"a.md": "Sem prova.\n"}),
     ],
     "non_ascii_identifiers": [
         ("a name", {"a.py": "x = 'laço'\n"}, {"a.py": "laço = 1\n"}),
@@ -635,6 +643,8 @@ def test_description():
                                              "actions/runs/1)): fails.\n",
         "a checked item": "## Proof\n\n- [x] `python dev/testa_i18n.py` passes.\n",
         "an open item next to a run": "## Proof\n\n- [ ] the phone\n- `python dev/testa_i18n.py` passes.\n",
+        "a run told in plain text": "## Proof\n\nRan python dev/test_garden.py successfully.\n",
+        "a test named in plain text with its result": "## Proof\n\ntesta_i18n passes 70 of 70.\n",
         "a label and test names under the heading": "## How it was proved\n\nLocally: `testa_tudo` 30/30 and "
                                                     "`--microfone` 4/4.\n",
     }
