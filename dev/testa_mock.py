@@ -1189,6 +1189,12 @@ async def a_missing_file_answers_500(server, folder):
         if path.name == "held.js":
             raise PermissionError(13, "Permission denied")
         return read_text(path, *args, **kwargs)
+    stat_of = os.stat
+
+    def stat_locked(path, *args, **kwargs):
+        if os.fspath(path).endswith("held.js"):
+            raise PermissionError(13, "Permission denied")
+        return stat_of(path, *args, **kwargs)
     import pareamento as par
     A = types.SimpleNamespace(engine=types.SimpleNamespace(pos=0.0, levels={}, vol=0.5), port=8801, lan_ip=None,
                               mock=True, closing=False, papel_local=None,
@@ -1223,9 +1229,12 @@ async def a_missing_file_answers_500(server, folder):
             status, said = resp.status, await resp.text()
             latin = await client.get("/t/latin/", headers={"Host": f"localhost:{A.port}"})
             latin = latin.status, await latin.text()
-            with mock.patch.object(Path, "read_text", locked):
-                unread = await client.get("/t/held/", headers={"Host": f"localhost:{A.port}"})
-                unread = unread.status, await unread.text()
+            unread = {}
+            for what, patched in (("text", mock.patch.object(Path, "read_text", locked)),
+                                  ("metadata", mock.patch.object(os, "stat", stat_locked))):
+                with patched:
+                    resp = await client.get("/t/held/", headers={"Host": f"localhost:{A.port}"})
+                    unread[what] = resp.status, await resp.text()
             with mock.patch.object(server.theme_page.os.path, "samefile", recorded):
                 sent = await client.get("/t/broken/index.html", headers={"Host": f"localhost:{A.port}"},
                                         allow_redirects=False)
@@ -1248,9 +1257,11 @@ async def a_missing_file_answers_500(server, folder):
     confere(latin[0] == 500 and "themes/latin/index.html was not built: index.html is not UTF-8 text" in latin[1]
             and latin[1] in log.getvalue(),
             f"a template that is not UTF-8 answers 500 naming it, and the log says the same ({latin})")
-    confere(unread[0] == 500 and "themes/held/index.html:2:1 was not built: held.js could not be read (Permission denied)" in unread[1]
-            and unread[1] in log.getvalue() and str(folder) not in unread[1],
-            f"a theme file that exists but cannot be read answers 500 naming it, and the log says the same ({unread})")
+    for what, (code, text) in unread.items():
+        confere(code == 500 and "themes/held/index.html:2:1 was not built: held.js could not be read (Permission denied)"
+                in text and text in log.getvalue() and str(folder) not in text,
+                f"a theme file whose {what} cannot be read answers 500 naming it, and the log says the same "
+                f"({code}, {text!r})")
     confere(sent.status == 302 and compared == [False],
             f"the index.html redirect compares the file off the server's loop ({sent.status}, on the loop: {compared})")
     confere(alias.status == 302 and alias.headers.get("Location") == "/t/broken/?lang=pt_BR",

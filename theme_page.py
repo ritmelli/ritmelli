@@ -209,11 +209,21 @@ def resolved_inside(base, rel):
 
 def theme_file(folder, name):
     inside = THEMES if name.startswith("/t/") else folder
-    if not (path := resolved_inside(inside, name.removeprefix("/t/"))):
+    try:
+        path = resolved_inside(inside, name.removeprefix("/t/"))
+        found = path is not None and path.is_file()
+    except OSError as ex:
+        raise unreadable(name, ex) from ex
+    if not path:
         raise ThemePageError(f"{name} is outside {shown(inside)}")
-    if not path.is_file():
+    if not found:
         raise ThemePageError(f"{name} is missing from {shown(inside)}")
     return path, utf8_text(path, name)
+
+
+def unreadable(name, ex):
+    return ThemePageError(f"{name} could not be read ({ex.strerror or type(ex).__name__}): close what holds it, or let "
+                          f"the app read it")
 
 
 def utf8_text(path, name):
@@ -222,8 +232,7 @@ def utf8_text(path, name):
     except UnicodeDecodeError as ex:
         raise ThemePageError(f"{name} is not UTF-8 text (byte {ex.start}): save it as UTF-8") from ex
     except OSError as ex:
-        raise ThemePageError(f"{name} could not be read ({ex.strerror or type(ex).__name__}): close what holds it, "
-                             f"or let the app read it") from ex
+        raise unreadable(name, ex) from ex
 
 
 def inline_files(html, folder):

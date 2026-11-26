@@ -25,9 +25,9 @@ dobrada, `::$DATA`, um link físico numa subpasta do tema), leva por 302 à pág
 query: o `built_page_only` do `server.py`, só nos pedidos do static, compara numa thread o arquivo pedido com o
 `index.html` do tema pelo `os.path.samefile`. Essa conferência, a rota do tema e as tags de arquivo passam pela mesma
 porta, o `resolved_inside` do `theme_page.py`: antes de qualquer leitura do disco, o caminho tem de estar, pela
-escrita, dentro de `themes/` (ou da pasta da página, numa tag de arquivo), e um `/t///host/share/...`, um slug com
-`%5C` ou um `src="//host/share/x.js"` nunca faz o PC abrir um compartilhamento de rede. O `dev/testa_mock.py` confere
-os nomes e esses endereços.
+escrita, dentro de `themes/` (numa tag de arquivo sem `/t/`, dentro da pasta da página), e um `/t///host/share/...`,
+um slug com `%5C` ou um `src="//host/share/x.js"` nunca faz o PC abrir um compartilhamento de rede. O
+`dev/testa_mock.py` confere os nomes e esses endereços.
 
 A página do tema chega inteira numa resposta só. O `index.html` lista os arquivos da pasta do tema, cada um no lugar em
 que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="stylesheet" href="arquivo.css">` por
