@@ -52,7 +52,7 @@ Toda mudança cobre as que toca, e o PR diz quais: o servidor e o contrato no `A
 
 | Área | Arquivos | Teste (sem caminho, em `dev/`) |
 | --- | --- | --- |
-| Motor de áudio | `engine.py`, `sonoridade.py`, `transicao.py`, `batida.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_passagem` (o motor de verdade, que usa o `batida.py`), `testa_transicao`, `testa_anel`, `testa_ganchos` |
+| Motor de áudio | `engine.py`, `sonoridade.py`, `transicao.py`, `batida.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_passagem` (o motor de verdade, que usa o `batida.py`), `testa_transicao`, `test_stretch_outgoing` (o `esticar_saida` pela Rubber Band de verdade), `testa_anel`, `testa_ganchos` |
 | Servidor e YouTube | `server.py`, `comandos.py`, `automatico.py`, `music.py` (as funções puras de música), `yt_fora.py`, `yt_erros.py` | `testa_comandos`, `testa_automatico`, `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py`, `dev/so_mock.py` (a trava que tira as ferramentas de `dev/` da 8799) | `testa_mock`, `testa_so_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`) | `testa_grava` (só o `save_json`; o `grava_cfg` do `server.py` não tem teste próprio) |
