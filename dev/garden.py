@@ -597,7 +597,10 @@ def unit_items(t, suffixes, rule):
     items = []
     for p in t.paths(*suffixes):
         for piece in t.units(p):
-            items += [(p, n) for n in rule(piece.unit)]
+            try:
+                items += [(p, n) for n in rule(piece.unit)]
+            except RecursionError:
+                piece.unit, piece.problem = None, units.too_deep(piece)
     return items
 
 

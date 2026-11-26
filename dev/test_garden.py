@@ -298,6 +298,11 @@ CASES = {
                   "        pass\n    ps = 'Start-Sleep 1'\n"},
          {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nclass C:\n    def f(self, x=subprocess.run(['powershell', '-Command', ps])):\n"
                   "        pass\n    ps = 'Get-Date'\n"}),
+        ("a class in a function that sets the name later reads it from the module, as LOAD_NAME does",
+         {"a.py": "import subprocess\nps = 'Get-Date'\ndef g():\n    ps = 'Start-Sleep 1'\n    class C:\n"
+                  "        x = subprocess.run(['powershell', '-Command', ps])\n        ps = 'Get-Item x'\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef g():\n    ps = 'Get-Date'\n    class C:\n"
+                  "        x = subprocess.run(['powershell', '-Command', ps])\n        ps = 'Get-Item x'\n"}),
         ("a name the class body uses before setting it is read from around the class",
          {"a.py": "import subprocess\nps = 'Get-Date'\nclass C:\n    x = subprocess.run(['powershell', '-Command', ps])\n"
                   "    ps = 'Start-Sleep 1'\n"},
@@ -392,6 +397,34 @@ CASES = {
                   "        return None\nfor _ in items:\n    if attempt(_):\n        break\n    time.sleep(1)\n"},
          {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
                   "        return None\nfor _ in items:\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that only sets _ again",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    x = _\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    _ = None\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that sets _ again by unpacking or by another for",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    for x in _:\n        pass\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    for _ in range(2):\n        pass\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that adds to _",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    _ += 1\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    _ = 1\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that binds _ by an import",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    import m\n    print(_)\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    import m as _\n    print(_)\n    if attempt():\n        break\n    time.sleep(1)\n"}),
         ("a redirection of the errors keeps the test of an expression",
          {"a.ps1": "function attempt { try { Get-Date } catch { $null } }\nwhile ($true) {\n    $done = attempt\n"
                    "    if (($done) >$null) { break }\n    Start-Sleep 1\n}\n"},
@@ -1101,9 +1134,27 @@ KNOWN_MISSES = [
 
     ("sleeps_app", "a sleep imported by a wildcard", {"a.py": "from time import *\nsleep(1)\n"},
      ((".py",), r"(?m)^[ \t]*from[ \t]+(?:time|asyncio)[ \t]+import[ \t]+\*")),
+    ("sleeps_app", "a class that sets the script in a branch, read from around the class when the branch does not run",
+     {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nclass C:\n    if flag:\n        ps = 'Get-Date'\n"
+              "    subprocess.run(['powershell', '-Command', ps])\n"},
+     ((".py",), r"(?ms)\A(?=.*['\"]-[Cc]ommand['\"])(?=.*^([ \t]*)class\b[^\n]*:[ \t]*\n(?:\1[ \t][^\n]*\n){0,40}?"
+                r"(\1[ \t]+)if\b[^\n]*:[ \t]*\n\2[ \t]+\w+[ \t]*=[^=])")),
+
+    ("retries", "a wait inside a script block that the catch runs",
+     {"a.ps1": "while ($true) {\n    try { f; break } catch { & { Start-Sleep 1 } }\n}\n"},
+     (POWERSHELL_SOURCES, r"(?i)[&.][ \t]*\{[^}\n]*\bStart-Sleep\b")),
+    ("retries", "a for over itertools.count whose body uses the counter",
+     {"a.py": "import itertools\nimport time\ndef attempt(i):\n    try:\n        return action(i)\n    except OSError:\n"
+              "        return None\nfor i in itertools.count():\n    if attempt(i):\n        break\n    time.sleep(1)\n"},
+     ((".py",), r"(?m)\bfor\b[^\n]*\bin[ \t]+(?:itertools\.)?count\(")),
 ]
 
 KNOWN_NOISE = [
+    ("sleeps_app", "a class that reads the script before the module sets it, read as if the class ran later",
+     {"a.py": "import subprocess\nclass C:\n    x = subprocess.run(['powershell', '-Command', ps])\n"
+              "    ps = 'Get-Date'\nps = 'Start-Sleep 1'\n"},
+     ((".py",), r"(?ms)^class\b[^\n]*:[ \t]*\n(?:[ \t][^\n]*\n){0,40}?[ \t][^\n]*['\"]-[Cc]ommand['\"],[ \t]*(\w+)\b"
+                r".*?^\1[ \t]*=[^=]")),
     ("sleeps_app", "an if, elif and else that all set the script, read as if the earlier value reached the use",
      {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nif a:\n    ps = 'Get-Date'\nelif b:\n    ps = 'Get-Item x'\nelse:\n"
               "    ps = 'Write-Output 1'\nsubprocess.run(['powershell', '-Command', ps])\n"},
@@ -1236,6 +1287,19 @@ def test_unreadable():
              ".github/workflows/w.yml:1: the YAML reader stops here"),
             ("PowerShell nested too deep", {"a.ps1": "$x = " + "(" * 400 + "1" + ")" * 400 + "\n"},
              "a.ps1:1: the PowerShell reader stops here"),
+            ("Python too deep for its own parser", {"a.py": "x = " + "a+" * 5000 + "a\n"},
+             "a.py:1: the Python reader stops here"),
+            ("Python too deep to lower", {"a.py": "x = " + "a+" * 1500 + "a\n"},
+             "a.py:1: the Python reader stops here"),
+            ("PowerShell too deep to lower", {"a.ps1": "$x = " + "1+" * 1200 + "1\n"},
+             "a.ps1:1: the PowerShell reader stops here"),
+            ("PowerShell too deep for the rules",
+             {"a.ps1": "while ($true) { if ($a) { $x = 1 }" + " elseif ($a) { $x = 1 }" * 1000 + " }\n"},
+             "a.ps1:1: the PowerShell reader stops here"),
+            ("Python too deep to follow its names",
+             {"a.py": "from __future__ import annotations\nimport subprocess\n"
+                      "subprocess.run(['powershell', '-Command', 'Get-Date'])\nx: " + "a." * 1500 + "b = 1\n"},
+             "a.py:1: the Python reader stops here"),
             ("Python step of a composite action",
              {"action.yml": "runs:\n  steps:\n    - shell: python\n      run: this is not Python!\n"},
              "action.yml:4: the Python reader stops here")):

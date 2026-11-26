@@ -52,6 +52,11 @@ def offsets_line_of(source, offsets, fallback):
     return line_of
 
 
+def too_deep(piece):
+    reader, start = ("Python", 1) if piece.language == "python" else ("PowerShell", 0)
+    return f"{piece.path}:{piece.line_of(start)}: the {reader} reader stops here: a nesting too deep to read"
+
+
 def powershell_piece(path, text, line_of, shell=None):
     piece = Piece(path, "powershell", text, line_of, shell=shell)
     try:
@@ -74,7 +79,10 @@ def powershell_piece(path, text, line_of, shell=None):
     for node in ps.walk(script):
         if isinstance(node, ps.String):
             piece.strings.append((line_of(node.span.start), node.value))
-    piece.unit = ir.powershell_unit(script, line_of)
+    try:
+        piece.unit = ir.powershell_unit(script, line_of)
+    except RecursionError:
+        return Piece(path, "powershell", text, line_of, shell=shell, problem=too_deep(piece))
     return piece
 
 
@@ -84,6 +92,9 @@ def python_piece(path, text, line_of=None, language="python", tokens=True):
     try:
         tree = ast.parse(text)
         tokens = list(tokenize.generate_tokens(io.StringIO(text).readline)) if tokens else []
+    except (RecursionError, MemoryError):
+        piece.problem = too_deep(piece)
+        return piece
     except (SyntaxError, tokenize.TokenError, IndentationError, ValueError) as ex:
         piece.problem = f"{path}:{line_of(getattr(ex, 'lineno', 1) or 1)}: the Python reader stops here: {ex}"
         return piece
@@ -98,7 +109,10 @@ def python_piece(path, text, line_of=None, language="python", tokens=True):
                 if chunk:
                     line = line_of(t.start[0] + k)
                     piece.code_lines[line] = piece.code_lines.get(line, "") + chunk + " "
-    piece.unit = ir.python_unit(tree, line_of)
+    try:
+        piece.unit = ir.python_unit(tree, line_of)
+    except RecursionError:
+        return Piece(path, language, text, line_of, problem=too_deep(piece))
     return piece
 
 
@@ -291,7 +305,7 @@ def end_position(node):
 
 class Assignments:
     def __init__(self, tree):
-        self.scope_of, self.blocks_of, self.bindings, self.nodes = {}, {}, {}, {}
+        self.tree, self.scope_of, self.blocks_of, self.bindings, self.nodes = tree, {}, {}, {}, {}
         self.visit(tree, tree, ())
 
     def bind(self, scope, name, at, value, block):
@@ -331,7 +345,7 @@ class Assignments:
                 bound = [b for b in bound if not self.other_branch(b[2], chain)]
                 earlier = sorted((b for b in bound if b[0] <= position(name)), key=lambda b: b[0], reverse=True)
                 if not outer and not earlier and isinstance(scope, ast.ClassDef):
-                    scope, outer = self.scope_of.get(id(scope)), True
+                    scope, outer = self.tree, True
                     continue
                 if outer and len(bound) > 1 and any(b[0] > position(name) for b in bound):
                     return []
@@ -433,7 +447,12 @@ def embedded_powershell(path, tree, text, file_line=None):
         return []
     file_line = file_line or (lambda n: n)
     tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
-    names = Assignments(tree)
+    try:
+        names = Assignments(tree)
+    except RecursionError:
+        piece = Piece(path, "python", text, file_line)
+        piece.problem = too_deep(piece)
+        return [piece]
     pieces, seen = [], set()
     for _, script_node in found:
         targets = list(dict.fromkeys(names.values(script_node)))

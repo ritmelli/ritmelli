@@ -481,8 +481,8 @@ class PythonLowering:
         if isinstance(loop.iter, ast.Call) and isinstance(loop.iter.func, ast.Name) and loop.iter.func.id == "range":
             return True
         targets = {n.id for n in ast.walk(loop.target) if isinstance(n, ast.Name)}
-        used = {n.id for s in loop.body for n in ast.walk(s) if isinstance(n, ast.Name)}
-        return not targets & used
+        used = {n.id for s in loop.body for n in ast.walk(s) if isinstance(n, ast.Name) and n.id != "_"}
+        return not targets & used and not ("_" in targets and reads_underscore(loop.body))
 
     def exits(self, call):
         f = call.func
@@ -497,6 +497,15 @@ class PythonLowering:
         if isinstance(node, ast.Name):
             return node.id in PYTHON_BROAD
         return isinstance(node, ast.Attribute) and node.attr in PYTHON_BROAD
+
+
+def reads_underscore(body):
+    nodes = [n for s in body for n in ast.walk(s)]
+    augmented = {id(n.target) for n in nodes if isinstance(n, ast.AugAssign)}
+    names = [n for n in nodes if isinstance(n, ast.Name) and n.id == "_"]
+    rebinds = any(not isinstance(n.ctx, ast.Load) and id(n) not in augmented for n in names) or \
+        any("_" in (getattr(n, "name", None), getattr(n, "asname", None), getattr(n, "arg", None)) for n in nodes)
+    return bool(names) and not rebinds
 
 
 class PowerShellLowering:
