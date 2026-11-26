@@ -164,15 +164,23 @@ ALVOS = {"Mic": ALVO, "Mic2": OUTRO}  # o Mic e o que o AnelFalso le; o Mic2, ni
 
 
 class VigiaNoAnel:
-    """O Engine de verdade com o vigia rodando, a lista de aparelhos parada (LISTA) e a partida (start) trocada por uma
-    que so sobe o Injetor no anel falso, com o alvo do microfone escolhido (ALVOS). Guarda cada abertura (microfone,
-    monotonic)."""
+    """The real Engine with its watcher running, the device list frozen (LISTA) and start replaced by one that only
+    brings the Injetor up on the fake ring, aimed at the chosen microphone (ALVOS). It records each opening (microphone,
+    monotonic) and when each reopen was decided (decididas: the call that logs it, before the write), and
+    espera_reaberturas waits for the openings themselves instead of a fixed time."""
 
     def __init__(self):
         self.e = e = eng.Engine(mic="Mic", monitor="")
-        self.aberturas = []
+        self.aberturas, self.decididas = [], []
+        self._abriu = threading.Condition()
         e.start = self._start
         self._patches = contextlib.ExitStack()
+
+        def print_and_mark(*args, **kwargs):
+            if args and "reopening the audio" in str(args[0]):
+                self.decididas.append(time.monotonic())
+            print(*args, **kwargs)
+        self._patches.enter_context(mock.patch.object(eng, "print", print_and_mark, create=True))
         self._patches.enter_context(mock.patch.multiple(eng, create=True, **VIGIA_RAPIDO))
         self._patches.enter_context(mock.patch.object(eng, "list_devices_live", return_value=LISTA))
         self._patches.enter_context(mock.patch.object(eng, "_rescan"))
@@ -192,10 +200,16 @@ class VigiaNoAnel:
         inj = eng.Injetor(e, segue[1] if segue and segue[0] == mic else None)
         st.callback(inj.para)
         e._stack, e._injetor = st, inj
-        self.aberturas.append((mic, time.monotonic()))
+        with self._abriu:
+            self.aberturas.append((mic, time.monotonic()))
+            self._abriu.notify_all()
 
     def reaberturas(self):
         return len(self.aberturas) - 1
+
+    def espera_reaberturas(self, n, prazo_s=10.0):
+        with self._abriu:
+            return self._abriu.wait_for(lambda: self.reaberturas() >= n, prazo_s)
 
     def fecha(self):
         self.e.close()  # o vigia segue vivo, mas parado: o motor esta fechado
@@ -222,22 +236,19 @@ class TestaMicrofone(unittest.TestCase):
             time.sleep(0.3)
             self.assertEqual(v.reaberturas(), 0, "com o leitor vivo o vigia nao reabre")
             anel.desliga()  # o filtro parou de ler; o motor segue capturando o mesmo microfone
-            time.sleep(0.3 + 3 * 0.3 + 0.5)
-            self.assertEqual(v.reaberturas(), 3, "o leitor perdido tem que reabrir ate o limite de tentativas")
+            self.assertTrue(v.espera_reaberturas(3), "o leitor perdido tem que reabrir ate o limite de tentativas")
             # a janela do evento "audio" segue nas reaberturas, com a perda que as pediu
             self.assertIs(v.e._injetor.saude, janela, "a reabertura do leitor perdido trocou a janela do audio")
             self.assertEqual(janela.leitor_perdido, 1, "a perda que pediu a reabertura sumiu da janela do audio")
             self.assertTrue(all(m == "Mic" for m, _ in v.aberturas), "a reabertura trocou de microfone")
-            em = [t for _, t in v.aberturas[1:]]
-            self.assertTrue(all(b - a >= 0.3 - 0.02 for a, b in itertools.pairwise(em)), "reabriu sem o intervalo")
+            self.assertTrue(all(b - a >= 0.3 - 0.02 for a, b in itertools.pairwise(v.decididas)), "reabriu sem o intervalo")
             time.sleep(0.6)
             self.assertEqual(v.reaberturas(), 3, "passou do limite de tentativas")
             anel.liga()  # o filtro voltou a ler: a conta zera
             self._espera_leitor(v)
             time.sleep(0.2)
             anel.desliga()
-            time.sleep(0.3 + 0.4)
-            self.assertGreaterEqual(v.reaberturas(), 4, "depois de o leitor voltar, a perda nova nao reabriu")
+            self.assertTrue(v.espera_reaberturas(4), "depois de o leitor voltar, a perda nova nao reabriu")
         finally:
             v.fecha()
             if anel._vai:
