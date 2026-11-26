@@ -20,9 +20,10 @@ TESTA = WORKFLOWS / "testa.yml"
 PINNED = re.compile(r"[\w.-]+/[\w.-]+(/[\w./-]+)?@[0-9a-f]{40}")
 SIGNPATH = "signpath/github-action-submit-signing-request"
 INNO = "./.github/actions/inno-setup"
-VERSION_CHECK = re.compile(r"microfone\\apo\\check_version\.ps1 -Folder (\S+)( -Version \$env:VERSAO)?")
+VERSION_CHECK = re.compile(r"microfone\\apo\\check_version\.ps1 -Folder (\S+)")
 DLL_FOLDERS = {"monta": "dist\\ritmelli\\_internal\\microfone", "microfone": "microfone\\apo\\saida"}
-SCRIPT_CALL = re.compile(r"(?<![\w/\\])(?:\.[\\/])?(instalador[\\/][\w.-]+\.ps1)")
+DLL_IFS = {"monta": None, "microfone": "steps.areas.outputs.microfone == 'true'"}
+SCRIPT_CALL = re.compile(r"^\s*(?:&\s*)?(?:\.[\\/])?(instalador[\\/][\w.-]+\.ps1)", re.M)
 JOB_SCRIPTS = {"testa-atualizador": "/instalador/testa-atualizador.ps1", "testa-parcial": "/instalador/testa-parcial.ps1",
                "testa-migracao": "/instalador/testa-migracao.ps1"}
 
@@ -41,7 +42,14 @@ def load(path):
 
 def files(root=ROOT):
     workflows = [p for ext in ("*.yml", "*.yaml") for p in (root / ".github" / "workflows").glob(ext)]
-    actions = [p for name in ("action.yml", "action.yaml") for p in (root / ".github" / "actions").rglob(name)]
+    actions = {p for name in ("action.yml", "action.yaml") for p in (root / ".github" / "actions").rglob(name)}
+    pending = workflows + sorted(actions)
+    while pending:
+        for _, u in uses(load(pending.pop())):
+            for manifest in (root / u / name for name in ("action.yml", "action.yaml") if u.startswith("./")):
+                if manifest.is_file() and manifest not in actions:
+                    actions.add(manifest)
+                    pending.append(manifest)
     return sorted(workflows) + sorted(actions)
 
 
@@ -104,14 +112,18 @@ def test_pins():
     check(unpinned(action) != [], "the check catches actions/setup-python@v7 in a local action")
     with tempfile.TemporaryDirectory(prefix="ritmelli-pins-") as tmp:
         tmp = Path(tmp)
-        moving = "jobs:\n  x:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@v7\n"
+        moving = ("jobs:\n  x:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@v7\n"
+                  "      - uses: ./dev/actions/example\n")
         nested = "runs:\n  using: composite\n  steps:\n    - uses: actions/cache/save@v6\n"
-        for rel, text in ((".github/workflows/other.yaml", moving), (".github/actions/a/b/action.yaml", nested)):
+        outside = "runs:\n  using: composite\n  steps:\n    - uses: actions/checkout@v7\n"
+        for rel, text in ((".github/workflows/other.yaml", moving), (".github/actions/a/b/action.yaml", nested),
+                          ("dev/actions/example/action.yml", outside)):
             (tmp / rel).parent.mkdir(parents=True)
             (tmp / rel).write_text(text, encoding="utf-8")
         found = {p.relative_to(tmp).as_posix(): unpinned(load(p)) for p in files(tmp)}
-        check(sorted(found) == [".github/actions/a/b/action.yaml", ".github/workflows/other.yaml"]
-              and all(found.values()), f"the check reads a .yaml workflow and a nested action.yaml ({found})")
+        check(sorted(found) == [".github/actions/a/b/action.yaml", ".github/workflows/other.yaml",
+                                "dev/actions/example/action.yml"] and all(found.values()),
+              f"the check reads a .yaml workflow, a nested action.yaml and a local action outside .github ({found})")
 
 
 def ps1_refs(script):
@@ -137,7 +149,7 @@ def sparse_problems(doc):
         if sparse is None:
             continue
         listed = {line.strip() for line in sparse.splitlines() if line.strip()}
-        runs = " ".join(s.get("run", "") for s in job["steps"])
+        runs = "\n".join(s.get("run", "") for s in job["steps"])
         needed = {"/" + m.replace("\\", "/") for m in SCRIPT_CALL.findall(runs)}
         if job_id in JOB_SCRIPTS and JOB_SCRIPTS[job_id] not in needed:
             problems.append(f"{job_id} does not run {JOB_SCRIPTS[job_id]}")
@@ -169,14 +181,17 @@ def test_sparse_checkout():
     checkout["sparse-checkout"] = checkout["sparse-checkout"].replace("/vozes.json", "")
     check("testa-migracao needs /vozes.json" in sparse_problems(mutant),
           "the check catches /vozes.json missing with the script called as ./instalador/testa-migracao.ps1")
+    run["run"] = "Write-Host instalador\\testa-migracao.ps1"
+    check("testa-migracao does not run /instalador/testa-migracao.ps1" in sparse_problems(mutant),
+          "the check catches a step that only prints the script name")
     run["run"] = "instalador\\other.ps1"
     check("testa-migracao does not run /instalador/testa-migracao.ps1" in sparse_problems(mutant),
           "the check fails when the testa-migracao job no longer calls its script in a form it reads")
 
 
-def version_check_after(job_steps, build, folder):
+def version_check_after(job_steps, build, folder, required_if):
     i = next((n for n, s in enumerate(job_steps) if build(s)), None)
-    if i is None:
+    if i is None or job_steps[i].get("if") != required_if:
         return False
     for s in job_steps[i + 1:]:
         m = VERSION_CHECK.fullmatch(s.get("run", "").strip())
@@ -196,12 +211,12 @@ def built_testa(step):
 
 def test_version_resource():
     monta, testa = load(MONTA), load(TESTA)
-    check(version_check_after(monta["jobs"]["monta"]["steps"], built_monta, DLL_FOLDERS["monta"]),
+    check(version_check_after(monta["jobs"]["monta"]["steps"], built_monta, DLL_FOLDERS["monta"], DLL_IFS["monta"]),
           "the monta job checks the version resource of the DLLs after the build")
-    check(version_check_after(testa["jobs"]["microfone"]["steps"], built_testa, DLL_FOLDERS["microfone"]),
+    check(version_check_after(testa["jobs"]["microfone"]["steps"], built_testa, DLL_FOLDERS["microfone"], DLL_IFS["microfone"]),
           "the microfone job of the testa.yml checks the version resource of the DLLs it compiled, under the same if")
     mutations = {"without it": None, "with continue-on-error": {"continue-on-error": True},
-                 "printing the call": {"run": "Write-Host microfone\\apo\\check_version.ps1 -Folder x"},
+                 "printing the call": lambda step: {"run": "Write-Host " + step["run"]},
                  "on another folder": {"run": "microfone\\apo\\check_version.ps1 -Folder dist"},
                  "under another if": {"if": "false"}}
     for doc, job, built in ((monta, "monta", built_monta), (testa, "microfone", built_testa)):
@@ -212,8 +227,15 @@ def test_version_resource():
             if change is None:
                 del job_steps[i]
             else:
-                job_steps[i].update(change)
-            check(not version_check_after(job_steps, built, DLL_FOLDERS[job]), f"the check catches the {job} job {name}")
+                job_steps[i].update(change(job_steps[i]) if callable(change) else change)
+            check(not version_check_after(job_steps, built, DLL_FOLDERS[job], DLL_IFS[job]),
+                  f"the check catches the {job} job {name}")
+    mutant = copy.deepcopy(testa)
+    for s in mutant["jobs"]["microfone"]["steps"]:
+        if built_testa(s) or "check_version.ps1" in s.get("run", ""):
+            s["if"] = "${{ false }}"
+    check(not version_check_after(mutant["jobs"]["microfone"]["steps"], built_testa, DLL_FOLDERS["microfone"],
+                                  DLL_IFS["microfone"]), "the check catches the build and the check both skipped")
     for doc, job in ((monta, "monta"), (testa, "microfone")):
         names = [s.get("uses") for s in doc["jobs"][job]["steps"]]
         check(INNO in names, f"the {job} job installs the Inno Setup through {INNO}")

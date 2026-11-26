@@ -91,13 +91,11 @@ if ($Scenario -eq 'outside-program-files' -or $Scenario -eq 'writable-folder') {
   $expected = @(foreach ($r in @($voiceList.engine) + @($voiceList.vozes)) { foreach ($a in $r.arquivos) { [pscustomobject]@{ Path = "$($r.tag)\$($a.nome)"; Sha = $a.sha256 } } })
   $copiable = @($expected | Where-Object { (Test-Path "$velha\vozes\$($_.Path)") -and (Get-FileHash "$velha\vozes\$($_.Path)" -Algorithm SHA256).Hash -eq $_.Sha } | ForEach-Object { $_.Path })
   $changed = $null
-  if ($Scenario -eq 'writable-folder') {
-    $changed = $copiable | Sort-Object { $_ -notlike '*\voz.json' } | Select-Object -First 1
-    Add-Content "$velha\vozes\$changed" ' ' -Encoding ascii
-  }
+  if ($Scenario -eq 'writable-folder') { $changed = $copiable | Sort-Object { $_ -notlike '*\voz.json' } | Select-Object -First 1 }
   $locked = $copiable | Where-Object { $_ -ne $changed } | Sort-Object | Select-Object -Last 1
   $toCopy = @($copiable | Where-Object { $_ -ne $changed -and $_ -ne $locked })
   if (-not $locked -or -not $toCopy.Count) { throw "$($copiable.Count) voice files of the current vozes.json are in $velha\vozes: the test needs one to lock and one to copy" }
+  if ($changed) { Add-Content "$velha\vozes\$changed" ' ' -Encoding ascii }
   $toDownload = @($expected | ForEach-Object { $_.Path } | Where-Object { $toCopy -notcontains $_ })
   $lock = [IO.File]::Open("$velha\vozes\$locked", 'Open', 'Read', 'None')
   try { Roda $Setup "setup-$Versao" } finally { $lock.Dispose() }

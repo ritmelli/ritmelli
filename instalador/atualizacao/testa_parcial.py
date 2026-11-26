@@ -161,9 +161,9 @@ p = m.get("parcial", {})
 caso("the manifest with the partial is written, and no .sig", cod == 0 and m and not list(saida_m.glob("*.sig")), out)
 full_only = tmp / "saida-full-only"
 full_only.mkdir()
-cod, out = roda("publica.py", *base[:-1], full_only)
+full_cod, full_out = roda("publica.py", "--setup", setup, "--url", url, "--app", dist, "--bin", binf, "--saida", full_only)
 caso("the manifest without a partial is written, and no .sig",
-     cod == 0 and (full_only / "manifest.json").exists() and not list(full_only.glob("*.sig")), out)
+     full_cod == 0 and (full_only / "manifest.json").exists() and not list(full_only.glob("*.sig")), full_out)
 caso("o manifesto leva a parcial", cod == 0 and p.get("sha256") == sha(b"setup parcial") and p.get("tamanho") == 13
      and p.get("de") == "0.3.3" and p.get("apaga") == ["_internal/sai.pyd"], out)
 caso("a parcial no mesmo endereco do setup",

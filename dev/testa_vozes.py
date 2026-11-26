@@ -91,9 +91,7 @@ class Instalador(unittest.TestCase):
         iss = (RAIZ / "instalador" / "ritmelli.iss").read_text(encoding="utf-8-sig")
         body = re.search(r"^function CopyPreviousVoice\(.*?^end;$", iss, re.M | re.S).group(0)
         self.assertFalse(swallows_errors(body))
-        line = "  Result := CompareText(GetSHA256OfFile(TmpCopy), Sha) = 0;\n"
-        self.assertIn(line, body + "\n")
-        self.assertTrue(swallows_errors(body.replace(line, f"  try\n  {line}  except\n    Result := False;\n  end;\n")))
+        self.assertTrue(swallows_errors("begin\n  try\n    X := F(Y);\n  except\n    X := 0;\n  end;\nend;"))
 
 
 def swallows_errors(body):

@@ -101,9 +101,7 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "versao=$v" -Encoding ascii
       - name: Version resource of the DLLs
         shell: powershell
-        env:
-          VERSAO: ${{ steps.congela.outputs.versao }}
-        run: microfone\apo\check_version.ps1 -Folder dist\ritmelli\_internal\microfone -Version $env:VERSAO
+        run: microfone\apo\check_version.ps1 -Folder dist\ritmelli\_internal\microfone
 
       # assinatura do ritmelli.exe, antes de ele entrar no setup e na parcial. The zip keeps the layout of dist\ritmelli
       # (ritmelli.exe at the root, the DLLs in _internal\microfone); the SIGNPATH_ARTIFACT_APP configuration signs the

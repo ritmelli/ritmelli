@@ -1,8 +1,6 @@
-param([Parameter(Mandatory = $true)][string]$Folder, [string]$Version)
+param([Parameter(Mandatory = $true)][string]$Folder)
 $ErrorActionPreference = 'Stop'
-if (-not $Version) {
-  $Version = (Select-String -Path (Join-Path $PSScriptRoot '..\..\versao.py') -Pattern '^VERSAO = "(.+)"').Matches[0].Groups[1].Value
-}
+$Version = (Select-String -Path (Join-Path $PSScriptRoot '..\..\versao.py') -Pattern '^VERSAO = "(.+)"').Matches[0].Groups[1].Value
 foreach ($dll in 'micfx.dll', 'voz.dll') {
   $v = (Get-Item (Join-Path $Folder $dll)).VersionInfo
   $numbers = "$($v.FileMajorPart).$($v.FileMinorPart).$($v.FileBuildPart)"
