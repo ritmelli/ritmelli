@@ -89,10 +89,15 @@ def manifest_step(job):
     return found[0] if len(found) == 1 else None
 
 
-def writes_output(run, key):
+def output_lines(run, key):
     path = r"""(?:^|\s)-Path\s+("?)(?:\$env:GITHUB_OUTPUT|\$\{env:GITHUB_OUTPUT\})\1(?=\s|$)"""
-    return any(re.match(r"\s*Add-Content\b", c, re.I) and re.search(path, c, re.I) and f'"{key}=$' in c
-               for c in code(run).splitlines())
+    lines = re.finditer(r"[^\n]*", code(run))
+    return [(m.start(), m.group(0)) for m in lines if re.match(r"\s*Add-Content\b", m.group(0), re.I)
+            and re.search(path, m.group(0), re.I) and f'"{key}=$' in m.group(0)]
+
+
+def writes_output(run, key):
+    return bool(output_lines(run, key))
 
 
 def bare(condition):
@@ -107,10 +112,12 @@ def partial_probed(job, folder):
     if not step or inner((step.get("env") or {}).get("VERSAO", "")) != inner(VERSION):
         return False
     run = code(step.get("run", ""))
-    probes = re.findall(r'^\s*\$(\w+)\s*=\s*Test-Path\s+(?:-Path\s+)?"([^"]+)"\s*$', run, re.M)
+    probes = re.finditer(r'^\s*\$(\w+)\s*=\s*Test-Path\s+(?:-Path\s+)?"([^"]+)"\s*$', run, re.M)
     written = r'"parcial=\$\(\${0}\.ToString\(\)\.ToLower\(\)\)"|"parcial=\${0}"'
-    return any(normal_path(path) == wanted and re.search(written.format(name), run, re.I)
-               and len(re.findall(rf"\${name}\b\s*[-+*/]?=(?!=)", run, re.I)) == 1 for name, path in probes)
+    return any(normal_path(m.group(2)) == wanted
+               and len(re.findall(rf"\${m.group(1)}\b\s*[-+*/]?=(?!=)", run, re.I)) == 1
+               and any(at > m.start() and re.search(written.format(m.group(1)), line, re.I)
+                       for at, line in output_lines(run, "parcial")) for m in probes)
 
 
 def step_output_problem(job, name):
@@ -287,6 +294,14 @@ def rename_step(doc, old, base):
     step_by_id(monta, old)["id"] = new
     text = json.dumps(monta).replace(f"steps.{old}.", f"steps.{new}.")
     doc["jobs"]["monta"] = json.loads(text)
+
+
+def move_output_before_probe(run):
+    lines = str(run).split("\n")
+    probe = next(i for i, line in enumerate(lines) if "= Test-Path" in line and "-parcial.exe" in line)
+    output = next(i for i, line in enumerate(lines) if '"parcial=$' in line)
+    lines.insert(probe, lines.pop(output))
+    return "\n".join(lines)
 
 
 def move_exe_upload(doc):
@@ -514,6 +529,13 @@ def main():
         "a second partial probe for another file": lambda d: source_step(d, "parcial").update(
             run=re.sub(r'^(\s*)(\$parcial = Test-Path "[^"]*)-parcial\.exe"$', r'\1\2-parcial.exe"\n\1\2-partial.exe"',
                        source_step(d, "parcial")["run"], count=1, flags=re.M)),
+        "a log line with the parcial before an Add-Content from another variable": lambda d: source_step(
+            d, "parcial").update(run=source_step(d, "parcial")["run"].replace(
+                'Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=$($parcial.',
+                '"parcial=$($parcial.ToString().ToLower())"\n'
+                'Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=$($other.')),
+        "the parcial written before the probe": lambda d: source_step(d, "parcial").update(
+            run=move_output_before_probe(source_step(d, "parcial")["run"])),
         "the partial probe negated": lambda d: source_step(d, "parcial").update(
             run=re.sub(r'= Test-Path ("[^"]*-parcial\.exe")', r"= -not (Test-Path \1)",
                        source_step(d, "parcial")["run"])),
