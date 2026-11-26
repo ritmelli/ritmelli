@@ -210,12 +210,14 @@ class TestaConferencia(unittest.TestCase):
                          ["BEHRINGER UMC 404HD 192k", "Realtek High Definition Audio"], "um por aparelho, na ordem")
 
 
+REAL_AUDIO_SERVICE = filtro.servico_audio
+
+
 def refusing_powershell(service, state="Running"):
     def run(cmd, **kw):
         line = " ".join(cmd)
         if f"-Service {service} " in line:
-            failed = "-ErrorAction Stop" in line
-            return types.SimpleNamespace(returncode=1 if failed else 0, stdout="", stderr="Cannot restart service")
+            return types.SimpleNamespace(returncode=1, stdout="", stderr="Cannot restart service")
         return types.SimpleNamespace(returncode=0, stdout=state, stderr="")
     return run
 
@@ -412,6 +414,21 @@ class TestaReinicio(unittest.TestCase):
         self.assertEqual(self.c.nomes(), ["reinicia", "confere"], "sobrou filtro: confere e grava, como ao instalar")
         self.assertEqual(r, {"mudos": [UMC_IN]})
 
+    def test_remove_cleans_up_when_the_audio_service_fails(self):
+        self.c.lista.clear()
+        with mock.patch.object(filtro.subprocess, "run", refusing_powershell("audiosrv")), \
+                mock.patch.object(filtro, "servico_audio", REAL_AUDIO_SERVICE), \
+                mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
+                mock.patch.object(filtro, "_devolve", lambda ep: True), \
+                mock.patch.object(filtro, "tem_filtro", lambda ep: False), \
+                mock.patch.object(filtro, "tarefa_apaga", self.c("tarefa_apaga")), \
+                mock.patch.object(filtro, "_esquece_hospedes", self.c("esquece")), \
+                mock.patch.object(filtro, "grava_mudos", self.c("grava_mudos")), redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit) as caught:
+            filtro.remove()
+        self.assertEqual(caught.exception.code, "the Start of the audio service failed (1): Cannot restart service")
+        self.assertEqual(self.c.nomes(), ["tarefa_apaga", "esquece", "grava_mudos"], "the uninstaller still cleans up")
+
     def test_remove_reprovada(self):
         """Com a pasta do app reprovada (pastas.pasta_protegida), o remove devolve os microfones e sai com erro, sem
         conferir: o sounddevice de la nao e carregado. Desinstalando, os mudos saem do registro do mesmo jeito."""
@@ -531,21 +548,6 @@ class TestaLinhaDeComando(unittest.TestCase):
                 filtro.main(["instala-todos", "--dll", str(dll), "--saida", str(saida)])
             self.assertEqual(json.loads(saida.read_text("utf-8")), {"ok": True}, "sem reinicio, sem conferencia")
 
-    @unittest.expectedFailure
-    def test_repeated_install_after_a_failed_restart(self):
-        changed = iter([True, False])
-        checked = {"conferidos": [MIC], "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 1 checked"}
-        with tempfile.TemporaryDirectory() as tmp:
-            args = ["instala-todos", "--dll", __file__, "--saida", str(Path(tmp) / "result.json")]
-            with mock.patch.object(filtro, "_migra_registro", lambda: None), \
-                    mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
-                    mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
-                    mock.patch.object(filtro, "_pendura", lambda ep: next(changed)), \
-                    mock.patch.object(filtro, "reinicia_audio", lambda so_servico=False: "the restart failed"), \
-                    mock.patch.object(filtro, "_depois_do_reinicio", lambda: checked), redirect_stderr(io.StringIO()):
-                codes = filtro.main(args), filtro.main(args)
-        self.assertEqual(codes, (1, 1), "#262: the second run must not pass without the restart that never happened")
-
     def test_device_error_writes_ok_false_with_the_check(self):
         r = {"conferidos": [MIC], "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 1 checked"}
 
@@ -608,6 +610,38 @@ class TestaLinhaDeComando(unittest.TestCase):
         """O app roda o ritmelli.py --microfone confere de verdade; com um nome que nao existe, nada abre."""
         r = eng._confere_fora(["nenhum aparelho com este nome (teste)"])
         self.assertEqual(r, {"conferidos": [], "mudos": [], "falhas": []})
+
+
+class TestRepeatedInstallAfterAFailedRestart(unittest.TestCase):
+    def setUp(self):
+        changed = iter([True, False])
+        checked = {"conferidos": [MIC], "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 1 checked"}
+        self.restarts, self.runs = [], []
+
+        def restart(so_servico=False):
+            self.restarts.append(so_servico)
+            return "the restart failed"
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(filtro, "_protegida", lambda: True), \
+                    mock.patch.object(filtro, "_migra_registro", lambda: None), \
+                    mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
+                    mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
+                    mock.patch.object(filtro, "_pendura", lambda ep: next(changed)), \
+                    mock.patch.object(filtro, "reinicia_audio", restart), \
+                    mock.patch.object(filtro, "_depois_do_reinicio", lambda: checked), redirect_stderr(io.StringIO()):
+                for n in (1, 2):
+                    result_file = Path(tmp) / f"result-{n}.json"
+                    code = filtro.main(["instala-todos", "--dll", __file__, "--saida", str(result_file)])
+                    self.runs.append((code, json.loads(result_file.read_text("ascii"))))
+
+    def test_the_first_run_reports_the_failed_restart(self):
+        self.assertEqual(self.runs[0], (1, {"ok": False, "erro": "the restart failed",
+                                            "conferencia": "devices: 1 checked", "mudos": [], "aparelhos": []}))
+        self.assertEqual(self.restarts[0], False, "a new microphone: the full restart")
+
+    @unittest.expectedFailure
+    def test_the_second_run_does_not_pass_without_the_restart(self):
+        self.assertEqual(self.runs[1][0], 1, "#262: the restart of the first run never happened")
 
 
 class TestDiagnosticStreams(unittest.TestCase):

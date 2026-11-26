@@ -786,18 +786,18 @@ def remove(filtro=None):
     elif not sobrou and os.path.exists(destino):
         subprocess.run([REGSVR32, "/s", "/u", destino], capture_output=True, creationflags=NO_WINDOW)
     r = None
-    if mexeu:
-        reinicia_audio()
-        # sem filtro nenhum (a desinstalacao), nao ha app para avisar nem --saida para ler; com a pasta reprovada, o
-        # sounddevice de la nao e carregado: nao confere
-        if sobrou and protegida:
-            r = _depois_do_reinicio()
-    if not sobrou:  # o audiodg ja soltou a DLL: saem a pasta (a DLL e o log), a tarefa, os hospedeiros e os mudos
-        if protegida:
-            shutil.rmtree(PASTA, ignore_errors=True)
-        tarefa_apaga()
-        _esquece_hospedes()
-        grava_mudos([])
+    try:
+        if mexeu:
+            reinicia_audio()
+            if sobrou and protegida:
+                r = _depois_do_reinicio()
+    finally:
+        if not sobrou:
+            if protegida:
+                shutil.rmtree(PASTA, ignore_errors=True)
+            tarefa_apaga()
+            _esquece_hospedes()
+            grava_mudos([])
     if not protegida:
         sys.exit(f"the app folder isn't protected ({protegida}): the microphones were restored, and {PASTA} was "
                  "left as it is")
