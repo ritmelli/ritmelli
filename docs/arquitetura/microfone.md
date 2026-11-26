@@ -90,9 +90,10 @@ esteira reprova. O microfone que recusa o filtro também conta como erro: os out
 quando o áudio reiniciou por causa deles ou da DLL nova, vai junto no `--saida`. Ficam de fora sem erro só o aparelho
 velho sem as propriedades no registro e o que não está presente (o `DeviceState` NOTPRESENT), não tem a chave
 `FxProperties` e em que o Windows nega criá-la até ao administrador (`LockedEndpointNotPresent`: um aparelho que já
-saiu do PC). Em outro estado (ativo, desativado, desconectado), no que não tem o estado legível, ou com a chave lá, a
-recusa continua erro. O AudioEndpointBuilder que não reinicia também conta como erro (o Audiosrv volta do mesmo
-jeito), e o comando do Audiosrv que falha também, mesmo com o serviço rodando. O
+saiu do PC). Em outro estado (ativo, desativado, desconectado), no que não tem o estado legível, com a chave lá ou
+quando nem dá para saber se ela falta (a consulta da chave também falha), a recusa continua erro. O
+AudioEndpointBuilder que não reinicia também conta como erro (o Audiosrv volta do mesmo jeito), e o comando do
+Audiosrv que falha também, mesmo com o serviço rodando. O
 resultado é o `--saida` e o código de saída; o diagnóstico vai para o stderr, pelo `_log`, e some sem mudar o
 resultado quando não há console (o executável) ou quando o cano fechou. Na desinstalação não há conferência: não
 sobra app para avisar. O `remove` com a pasta reprovada também não confere. Só a DLL nova
