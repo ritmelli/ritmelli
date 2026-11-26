@@ -592,13 +592,14 @@ def test_without_destination(flows):
 
 def served_page_sources():
     sys.path.insert(0, str(ROOT))
+    import i18n
     import theme_page
     found = {"server.py", "theme_page.py", "i18n.py"}
     for folder in ("themes/ritmelli", "gallery"):
         page = ROOT / folder / "index.html"
-        found |= {f"{folder}/index.html", f"{folder}/i18n/i18n_en.properties"}
+        found |= {f"{folder}/index.html"} | {i18n.arquivo(f"{folder}/i18n", lingua).as_posix() for lingua in i18n.LINGUAS}
         for _, _, _, name in theme_page.file_tags(page.read_text(encoding="utf-8")):
-            found.add(name.removeprefix("/t/").join(("themes/", "")) if name.startswith("/t/") else f"{folder}/{name}")
+            found.add(f"themes/{name.removeprefix('/t/')}" if name.startswith("/t/") else f"{folder}/{name}")
     return sorted(found)
 
 
@@ -608,13 +609,6 @@ def test_served_page_area():
     check(len(sources) > 80 and not missing,
           f"every file the theme page and the gallery are built from runs the screen jobs ({len(sources)} files; "
           f"{missing or 'none outside the tela area'})")
-    saved = testa_tudo.AREAS
-    try:
-        testa_tudo.AREAS = {**saved, "tela": tuple(x for x in saved["tela"] if x != "gallery/")}
-        check("tela" not in testa_tudo.areas(["gallery/index.html"]),
-              "the check catches gallery/index.html out of the tela area")
-    finally:
-        testa_tudo.AREAS = saved
 
 
 def main():

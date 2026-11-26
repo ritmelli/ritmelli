@@ -2529,10 +2529,10 @@ def build(app_state):
 
     @r.get("/t/{slug}/")
     async def theme_index(request):
-        p = theme_page.THEMES / request.match_info["slug"] / "index.html"
-        if p.parent.parent != theme_page.THEMES or not p.exists() or theme_page.THEMES not in p.resolve().parents:
+        slug = await asyncio.to_thread(theme_page.theme_of_template, f"{request.match_info['slug']}/index.html")
+        if not slug:
             raise web.HTTPNotFound()
-        return await pagina_com_textos(request, p)
+        return await pagina_com_textos(request, theme_page.THEMES / slug / "index.html")
 
     async def pagina_com_textos(request, p):
         """Uma pagina com a pasta i18n/ ao lado (um tema, a galeria): os textos da lingua de quem abre (i18n.py) vao

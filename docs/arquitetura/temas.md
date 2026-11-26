@@ -13,6 +13,14 @@ conferir (o `dev/testa_mock.py` confere a página, o 304 dela e um `.js`). O `de
 todos os `.js` e `.css` da pasta do tema, e cada bloco marcado (`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o
 `/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só, aberto e fechado nele, nessa ordem.
 
+O `index.html` do tema, por qualquer nome do mesmo arquivo (outra caixa, o nome 8.3, ponto ou espaço no fim, barra
+dobrada, `::$DATA`, um link físico numa subpasta do tema), leva por 302 à página montada em `/t/<slug>/`, com a mesma
+query: o `built_page_only` do `server.py`, só nos pedidos do static, compara numa thread o arquivo pedido com o
+`index.html` do tema pelo `os.path.samefile`. Essa conferência e a rota do tema passam pela mesma porta, o
+`theme_of_template` do `theme_page.py`: antes de qualquer leitura do disco, o caminho pedido tem de estar, pela
+escrita, dentro de `themes/`, e um `/t///host/share/...` ou um slug com `%5C` nunca faz o PC abrir um compartilhamento
+de rede. O `dev/testa_mock.py` confere os nomes e esses endereços.
+
 A página do tema chega inteira numa resposta só. O `index.html` lista os arquivos da pasta do tema, cada um no lugar em
 que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="stylesheet" href="arquivo.css">` por
 folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `server.py` chama) troca cada um por um
@@ -21,9 +29,9 @@ existe página com um arquivo faltando. O arquivo que falta ou que sai da pasta,
 volta dele (`</script` ou `<!--` num script, `</style` ou `@import` numa folha) e a tag de arquivo escrita de outro
 jeito param a montagem no servidor, que responde 500 e põe no log o nome do arquivo. A folha se lê com os escapes de
 CSS decodificados, também nos comentários e nas strings, e o `@import` que aparece em qualquer lugar dela, mesmo só num
-comentário ou numa string, para a montagem. A folha de outra pasta só leva `url()` simples, com endereço absoluto,
-`data:`, `/` ou `#`, porque a página lê os endereços a partir da pasta dela: um `url()` relativo, uma `\` ou um
-`image-set(` nela também param a montagem. O que a montagem não distingue com certeza de uma busca, ela recusa; o
+comentário ou numa string, para a montagem. A folha de outra pasta só leva `url()` simples, com `https://`, `http://`,
+outro esquema, `data:`, `/` ou `#`, porque a página lê os endereços a partir da pasta dela: um `url()` relativo, uma `\`
+ou um `image-set(` nela também param a montagem. O que a montagem não distingue com certeza de uma busca, ela recusa; o
 `dev/testa_mock.py` confere cada um desses casos. O `dev/missing_script.py`, que o `--tela` do `dev/testa_tudo.py` roda,
 lê a página e a galeria como o servidor as manda, nas duas línguas, de um `--mock` como o PC e de outro como o celular,
 e reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas. O `dev/garden.py` conta as linhas de CSS e JS

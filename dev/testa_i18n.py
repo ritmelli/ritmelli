@@ -160,8 +160,6 @@ def inline_lines(html):
     return total
 
 
-
-
 class _Scripts(HTMLParser):
 
     def __init__(self, tags):

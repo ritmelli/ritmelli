@@ -9,13 +9,14 @@ from pathlib import Path
 import i18n
 
 THEMES = Path(__file__).resolve().parent / "themes"
-SCRIPT_TAG = re.compile(r'<script src="([^"]+)">')
-SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
+SCRIPT_TAG = re.compile(r'<script src="[^"]+">')
+SHEET_TAG = re.compile(r'<link rel="stylesheet" href="[^"]+">')
 CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
 CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re.DOTALL)
-URL_START = re.compile(r"url\(\s*['\"]?", re.IGNORECASE)
+URL_START = re.compile(r"url\([ \t\r\n\f]*['\"]?", re.IGNORECASE)
 NOT_PLAIN_OUTSIDE = re.compile(r"\\|image-set\(", re.IGNORECASE)
-NOT_RELATIVE = re.compile(r"\s*(?:[a-z][a-z0-9+.-]*:|/|#)", re.IGNORECASE)
+NOT_RELATIVE = re.compile(r"[ \t\r\n\f]*(?:https?://|(?!https?:)[a-z][a-z0-9+.-]*:|/|#)", re.IGNORECASE | re.ASCII)
+TEXT_ONLY = ("textarea", "title")
 
 
 def css_unescape(text):
@@ -50,13 +51,15 @@ class FileTags(HTMLParser):
         self.close()
 
     def handle_starttag(self, tag, attrs):
+        if tag in TEXT_ONLY:
+            self.set_cdata_mode(tag)
         first = {}
         for name, value in attrs:
             first.setdefault(name, value)
         if tag == "script" and "src" in first:
-            canonical, kind, end = SCRIPT_TAG, "script", "</script>"
+            canonical, kind, end, name = SCRIPT_TAG, "script", "</script>", first["src"]
         elif tag == "link" and "stylesheet" in (first.get("rel") or "").lower().split():
-            canonical, kind, end = SHEET_TAG, "style", ""
+            canonical, kind, end, name = SHEET_TAG, "style", "", first.get("href")
         else:
             return
         raw = self.get_starttag_text()
@@ -66,7 +69,7 @@ class FileTags(HTMLParser):
         if not written or not self.html.startswith(end, at + len(raw)):
             raise ThemePageError(f"the tag {raw!r} is not <script src=\"...\"></script> or "
                                  f"<link rel=\"stylesheet\" href=\"...\">, the only file tags the page puts inline")
-        self.found.append((at, at + len(raw) + len(end), kind, written.group(1)))
+        self.found.append((at, at + len(raw) + len(end), kind, name))
 
 
 @functools.lru_cache(maxsize=16)
@@ -103,7 +106,7 @@ def theme_of_template(rel):
         return None
     with contextlib.suppress(OSError, ValueError):
         parts = path.resolve().relative_to(THEMES.resolve()).parts
-        if len(parts) == 2 and os.path.samefile(path, THEMES / parts[0] / "index.html"):
+        if len(parts) >= 2 and os.path.samefile(path, THEMES / parts[0] / "index.html"):
             return parts[0]
     return None
 

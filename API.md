@@ -14,7 +14,8 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - `themes/<slug>/index.html`, a página do tema: HTML + CSS + JS puro, sem build. Arquivo
   extra (script `.js`, fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
   relativo (`./x.svg`, `fonts/x.woff2`), servido em `/t/<slug>/x.svg`; os `.js` e os `.css` entram na página (ver
-  abaixo). O `index.html` do tema, por qualquer nome do mesmo arquivo, leva à página montada, em `/t/<slug>/` (302, com a mesma query).
+  abaixo). O `index.html` do tema, por qualquer nome do mesmo arquivo, leva à página montada, em `/t/<slug>/` (302, com
+  a mesma query).
 - Toda resposta de `/t/` sai com `Cache-Control: no-cache`: o navegador confere cada arquivo do tema com o servidor
   antes de usar o que guardou (o que não mudou volta como 304), e não usa uma letra, uma textura ou uma imagem de antes
   sem conferir.
@@ -47,10 +48,10 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
   sai da pasta, o script com `</script` ou `<!--`, a folha com `</style` ou com `@import` e a tag de arquivo escrita de
   outro jeito não montam a página: a resposta é 500, com o nome do arquivo no log. A folha se lê com os escapes de CSS
   decodificados, também nos comentários e nas strings, e o `@import` escrito só num comentário ou numa string também
-  para a montagem. A folha de outra pasta só leva `url()` simples, com endereço absoluto, `data:`, `/` ou `#`: nela, um
-  `url()` relativo, uma `\` ou um `image-set(` também param a montagem, porque a página lê os endereços a partir da
-  pasta dela. O `dev/testa_mock.py` confere a troca, o `ETag`, cada recusa e o 500, e o `dev/missing_script.py`, a
-  página servida.
+  para a montagem. A folha de outra pasta só leva `url()` simples, com `https://`, `http://`, outro esquema, `data:`,
+  `/` ou `#`: nela, um `url()` relativo, uma `\` ou um `image-set(` também param a montagem, porque a página lê os
+  endereços a partir da pasta dela. O `dev/testa_mock.py` confere a troca, o `ETag`, cada recusa e o 500, e o
+  `dev/missing_script.py`, a página servida.
 - O tema abre também no celular, pela rede de casa (`http://<ip do PC>:8799/`): nada de
   endereço `127.0.0.1` escrito no tema e nada que dependa de mouse. Pela rede, a API só
   responde ao celular pareado (ver "Celular: pareamento"), e só no que a tabela de "Quem pode cada rota" abre para
