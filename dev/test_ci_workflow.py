@@ -3,6 +3,7 @@ import copy
 import importlib.util
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -325,6 +326,12 @@ def test_summary_block(flows):
     code, out, summary, calls = run_summary(block, "pull_request", ["success", "success", "cancelled"] + ["success"] * 4)
     check(code != 0 and not any(c.startswith("gh pr comment") for c in calls) and "cancelada" in summary,
           f"a cancelled job fails the check and leaves the PR comment as it was (exit {code})")
+    cancelled = step_of(flows, "testa-o-pr", "Cancelada")["run"]
+    ran = run_step(cancelled, {})
+    check(ran.code != 0 and not ran.calls and "cancelada" in ran.summary,
+          f"the Cancelada step, which runs when the Verdict is skipped, fails the check (exit {ran.code})")
+    ran = run_step(cancelled.replace("exit 1", "exit 0"), {})
+    check(ran.code == 0, f"the mutant Cancelada with exit 0 passes, so the case above catches it (exit {ran.code})")
 
 
 def requirement(line):
@@ -404,15 +411,18 @@ def test_without_destination(flows):
             "instalador/atualizacao/testa_parcial.py": "print('in the COMPLETO')\n",
             "dev/bad_manual.py": "# manual: run me\n",
         }
-        for rel, body in files.items():
+        for rel, body in {**files, "instalador/test_untracked.py": "print('not in the git index')\n"}.items():
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
             (root / rel).write_text(body, encoding="utf-8")
-        found = testa_tudo.sem_destino(root=root, files=sorted(files), flows=flows)
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+        subprocess.run(["git", "add", "--", *files], cwd=root, check=True)
+        found = testa_tudo.sem_destino(root=root, flows=flows)
         flagged = sorted(f.split()[0].rstrip(":") for f in found if "runs nowhere" in f or "does not follow" in f)
         check(flagged == ["dev/bad_manual.py", "dev/test_lost.py", "dev/testa_perdido.py", "instalador/ffmpeg/testa.py",
                           "instalador/test_new.ps1", "instalador/test_new.py", "instalador/testa-novo.ps1",
                           "microfone/apo/teste/teste_novo.py"],
-              f"the lock flags every test of the git ls-files without destination, in or out of dev/, and only them "
+              f"the lock flags every test of the git ls-files without destination, in or out of dev/, and only them, "
+              f"not a file outside the index "
               f"({flagged})")
         echo = mutated(flows, lambda f: next(
             s for j in f[".github/workflows/monta.yml"]["jobs"].values() for s in job_steps(j)
