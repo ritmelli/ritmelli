@@ -54,6 +54,7 @@ sys.argv = ["server.py", *sys.argv[2:]]
 server.main()
 """
 HOLDER_WAIT_S = 30.0
+ERROR_OPERATION_ABORTED = 995
 CHILD_HOLDS_THE_TRACK = '''
 import subprocess
 import sys
@@ -202,6 +203,52 @@ def flag_only_for_a_server_that_knows_it():
               "would refuse it")
 
 
+def pipe_named(name):
+    return _winapi.CreateNamedPipe(name, _winapi.PIPE_ACCESS_DUPLEX | _winapi.FILE_FLAG_OVERLAPPED, 0, 1, 65536, 65536,
+                                   0, _winapi.NULL)
+
+
+def connect_within(pipe, seconds):
+    connecting = _winapi.ConnectNamedPipe(pipe, overlapped=True)
+    if _winapi.WaitForSingleObject(connecting.event, int(seconds * 1000)) != _winapi.WAIT_OBJECT_0:
+        connecting.cancel()
+    _, error = connecting.GetOverlappedResult(True)
+    return error == 0
+
+
+class RecordedConnect:
+    def __init__(self, overlapped, calls):
+        self.overlapped, self.calls, self.event = overlapped, calls, overlapped.event
+
+    def cancel(self):
+        self.calls.append("cancel")
+        self.overlapped.cancel()
+
+    def GetOverlappedResult(self, wait):
+        result = self.overlapped.GetOverlappedResult(wait)
+        self.calls.append(("result", wait, result[1]))
+        return result
+
+
+def connect_that_times_out_is_cancelled_then_collected():
+    calls, connected, in_time = [], [], False
+    real = _winapi.ConnectNamedPipe
+    pipe = pipe_named(rf"\\.\pipe\ritmelli-nobody-{os.getpid()}")
+    connecting = threading.Thread(target=lambda: connected.append(connect_within(pipe, 0.001)), daemon=True)
+    _winapi.ConnectNamedPipe = lambda handle, overlapped: RecordedConnect(real(handle, overlapped=overlapped), calls)
+    try:
+        connecting.start()
+        connecting.join(HOLDER_WAIT_S)
+        in_time = not connecting.is_alive()
+    finally:
+        _winapi.ConnectNamedPipe = real
+        _winapi.CloseHandle(pipe)
+        connecting.join(HOLDER_WAIT_S)
+    check(in_time and connected == [False] and calls == ["cancel", ("result", True, ERROR_OPERATION_ABORTED)],
+          f"a pipe connect that nobody answers is cancelled, then its result collected before the pipe closes, and "
+          f"it reports no connection (in time {in_time}, {connected}, {calls})")
+
+
 def endless_wav_header():
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
@@ -219,8 +266,7 @@ def measurement_stopped_by_the_given_kill():
     import engine
     import sonoridade
     name = rf"\\.\pipe\ritmelli-measure-stop-{os.getpid()}"
-    pipe = _winapi.CreateNamedPipe(name, _winapi.PIPE_ACCESS_DUPLEX | _winapi.FILE_FLAG_OVERLAPPED, 0, 1, 65536, 65536,
-                                   0, _winapi.NULL)
+    pipe = pipe_named(name)
     result, kills, waited_by, connected, returned_in_time, broken = [], [], [], False, False, False
     measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(Path(name), engine.FFMPEG)),
                                  daemon=True)
@@ -245,8 +291,7 @@ def measurement_stopped_by_the_given_kill():
     stopping = threading.Thread(target=stop, daemon=True)
     try:
         measuring.start()
-        connecting = _winapi.ConnectNamedPipe(pipe, overlapped=True)
-        connected = _winapi.WaitForSingleObject(connecting.event, int(HOLDER_WAIT_S * 1000)) == _winapi.WAIT_OBJECT_0
+        connected = connect_within(pipe, HOLDER_WAIT_S)
         if connected:
             writing, _ = _winapi.WriteFile(pipe, endless_wav_header(), overlapped=True)
             writing.GetOverlappedResult(True)
@@ -443,9 +488,41 @@ def compara_folder_removed_when_the_stop_fails():
           f"a compara whose server stop fails keeps that failure and still removes its temporary folder ({refused})")
 
 
+def compara_folder_removed_when_the_server_refuses():
+    made, real_mkdtemp = [], compara.tempfile.mkdtemp
+
+    def mkdtemp(*args, **kwargs):
+        made.append(real_mkdtemp(*args, **kwargs))
+        return made[-1]
+
+    argv = sys.argv
+    with tempfile.TemporaryDirectory(prefix="ritmelli-refusal-check-") as folder:
+        checkout = Path(folder) / "checkout"
+        checkout.mkdir()
+        (checkout / "server.py").write_text("import sys\nsys.exit(3)\n", encoding="utf-8")
+        compara.tempfile.mkdtemp = mkdtemp
+        sys.argv = ["compara.py", "--ref", "--sizes", "390x844@3", "--pasta", str(Path(folder) / "out"), "--raiz",
+                    str(checkout)]
+        try:
+            compara.main()
+            refused = None
+        except SystemExit as ex:
+            refused = str(ex.code)
+        finally:
+            sys.argv = argv
+            compara.tempfile.mkdtemp = real_mkdtemp
+    server_folders = [m for m in made if "ritmelli-compara-" in Path(m).name]
+    check(refused is not None and "(codigo 3)" in refused and len(server_folders) == 1
+          and not Path(server_folders[0]).exists(),
+          f"a compara whose server refuses to start exits with that refusal and still removes its temporary folder "
+          f"({refused}, {server_folders})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     compara_folder_removed_when_the_stop_fails()
+    compara_folder_removed_when_the_server_refuses()
+    connect_that_times_out_is_cancelled_then_collected()
     job_api_failures()
     resume_cleanup_when_terminate_fails()
     resume_that_fails()
