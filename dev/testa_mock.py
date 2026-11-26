@@ -1233,8 +1233,9 @@ async def a_missing_file_answers_500(server, folder):
             for what, patched in (("text", mock.patch.object(Path, "read_text", locked)),
                                   ("metadata", mock.patch.object(os, "stat", stat_locked))):
                 with patched:
+                    before = log.tell()
                     resp = await client.get("/t/held/", headers={"Host": f"localhost:{A.port}"})
-                    unread[what] = resp.status, await resp.text()
+                    unread[what] = resp.status, await resp.text(), log.getvalue()[before:]
             with mock.patch.object(server.theme_page.os.path, "samefile", recorded):
                 sent = await client.get("/t/broken/index.html", headers={"Host": f"localhost:{A.port}"},
                                         allow_redirects=False)
@@ -1257,9 +1258,9 @@ async def a_missing_file_answers_500(server, folder):
     confere(latin[0] == 500 and "themes/latin/index.html was not built: index.html is not UTF-8 text" in latin[1]
             and latin[1] in log.getvalue(),
             f"a template that is not UTF-8 answers 500 naming it, and the log says the same ({latin})")
-    for what, (code, text) in unread.items():
+    for what, (code, text, logged) in unread.items():
         confere(code == 500 and "themes/held/index.html:2:1 was not built: held.js could not be read (Permission denied)"
-                in text and text in log.getvalue() and str(folder) not in text,
+                in text and text in logged and str(folder) not in text,
                 f"a theme file whose {what} cannot be read answers 500 naming it, and the log says the same "
                 f"({code}, {text!r})")
     confere(sent.status == 302 and compared == [False],

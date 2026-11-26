@@ -173,9 +173,13 @@ SAMPLES = (
      ["gone", "new"]),
     ("a comment in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px/* c */+ 1px); }\n"), ["gone", "new"]),
-    ("a stylesheet with a font moved to another folder", {"index.html": "<link rel=\"stylesheet\" href=\"base.css\">\n",
-                                                          "base.css": FONT},
-     {"index.html": "<link rel=\"stylesheet\" href=\"gerado/base.css\">\n", "gerado/base.css": FONT}, ["gone", "new"]),
+    ("a stylesheet moved to another folder", {"index.html": "<link rel=\"stylesheet\" href=\"base.css\">\n",
+                                              "base.css": "a { color: red; }\n"},
+     {"index.html": "<link rel=\"stylesheet\" href=\"gerado/base.css\">\n", "gerado/base.css": "a { color: red; }\n"},
+     ["gone", "new"]),
+    ("a stylesheet with a font moved to another folder, which the server refuses",
+     {"index.html": "<link rel=\"stylesheet\" href=\"base.css\">\n", "base.css": FONT},
+     {"index.html": "<link rel=\"stylesheet\" href=\"gerado/base.css\">\n", "gerado/base.css": FONT}, CANNOT),
     ("a line break put after throw", inline("function g(x) {\n  throw x;\n}"),
      inline("function g(x) {\n  throw\n  x;\n}"), ["does not parse", LEFT, CAME]),
     ("a line break put after the comment between return and its template",
@@ -200,7 +204,12 @@ SAMPLES = (
 DOUBTFUL = (
     ("an href in capitals", {"index.html": "<link rel=\"stylesheet\" HREF=\"ba%73e.css\">\n"}),
     ("an href written twice", {"index.html": "<link rel=\"stylesheet\" href=\"ba%73e.css\" href=\"base.css\">\n"}),
-    ("a stylesheet from the root of the site", {"index.html": "<link rel=\"stylesheet\" href=\"/t/ritmelli/a.css\">\n"}),
+    ("a stylesheet from the root of the site",
+     {"index.html": "<link rel=\"stylesheet\" href=\"/a.css\">\n", "/a.css": "a { b: c; }\n"}),
+    ("a sheet of another theme with a relative url()",
+     {"index.html": "<link rel=\"stylesheet\" href=\"/t/other/x.css\">\n",
+      "/t/other/x.css": "a { background-image: url(image.png); }\n"}),
+    ("a linked script that starts with #!", {"index.html": "<script src=\"s.js\"></script>\n", "s.js": "#!x\nf();\n"}),
     ("an alternate stylesheet", {"index.html": "<link rel=\"alternate stylesheet\" href=\"a.css\">\n"}),
     ("a script from a folder above", {"index.html": "<script src=\"../x.js\"></script>\n"}),
     ("an element the theme does not use", {"index.html": "<marquee>a</marquee>\n<script src=\"x.js\"></script>\n"}),
@@ -379,6 +388,10 @@ def main():
     for title, page in DOUBTFUL:
         unsure = built({**page, "x.js": "f();\n"}.get)
         results.append((isinstance(unsure, theme_rebuild.Doubt), f"{title}: cannot judge ({unsure})"))
+    own = built({"index.html": "<link rel=\"stylesheet\" href=\"/t/ritmelli/a.css\">\n",
+                 "/t/ritmelli/a.css": "a { background-image: url(image.png); }\n"}.get)
+    results.append((isinstance(own, theme_rebuild.Page), f"a /t/ sheet of the page's own folder keeps its relative "
+                                                          f"url() ({own if isinstance(own, theme_rebuild.Doubt) else 'read'})"))
     for page in ("themes/ritmelli/index.html", "gallery/index.html"):
         try:
             theme_rebuild.strict(theme_rebuild.text_of((theme_rebuild.RAIZ / page).read_bytes()), page)

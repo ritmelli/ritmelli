@@ -18,25 +18,26 @@ RAIZ = Path(__file__).resolve().parent.parent
 USAGE = """Proof that a change to a theme only moves code: the page put back together on two commits, compared.
 
 The page is the index.html of the theme with every <!-- inline-script: --> made a <script> with the text of its file,
-as the server sends it, and every <script src> and <link rel="stylesheet"> replaced by the text of the file the
+and every <script src> and <link rel="stylesheet"> replaced by the text of the file the
 browser requests (the path of the URL, without the query and the fragment). Every script and stylesheet sits between a
 line that opens it ([script NAME], [inline-script NAME], [script], [link NAME] or [style], with the tag's other
 attributes when it has any) and a [/script] or [/style] line. <base> and <head> are git commits (the head defaults to
 the working tree).
 
 The tool judges only a page in a strict form the browser reads one way: text with no < between tags, start tags with
-name="value" attributes (or a bare name), each once and in lower case outside <svg>, separated by ASCII spaces, end
-tags </name>, comments <!-- ... --> with no -- inside, and <!doctype html>. The elements are the ones the theme and
-the gallery use, one list for HTML and one inside <svg>. A <script> or <style> ends at its first </script> or
-</style>, with no <!-- in a script and no text in a <script src>; the server puts every linked file inline, so a
-script file holds no </script or <!-- and a sheet file no </style. A <title>, <iframe> or <select> holds no <. A
-script src and a stylesheet href (with rel="stylesheet" alone) are plain paths inside the theme, like
-gerado/base.css, or /t/<theme>/ and a plain path, read from that theme's folder.
-Anything else, and <script/>, <style/>, a <base>, a preload or prefetch <link>, a srcdoc, a NUL in a value, a & in
-a rel, type or as, a & that is no whole reference in a value, a script type that is not JavaScript or JSON, an
-@import, @namespace or @scope in a sheet (even escaped or in a comment), or a linked or inlined file that is not in
-the theme, exits 3, naming the file (and, in index.html, the line and the
-place). In a sheet, only CSS whitespace and comments may sit between and around the rules.
+name="value" attributes (or a bare name), each once and in lower case outside <svg>, separated by ASCII spaces, end tags
+</name>, comments <!-- ... --> with no -- inside, and <!doctype html>. The elements are the ones the theme and the
+gallery use, one list for HTML and one inside <svg>. A <script> or <style> ends at its first </script> or </style>, with
+no <!-- in a script and no text in a <script src>; the server puts every linked file inline, so a script file holds no
+</script or <!-- and starts with no #!, and a sheet file holds no </style and passes the build's sheet check
+(theme_page.sheet_problem: no @import, and outside the page's folder only plain url() values that are not relative). A
+<title>, <iframe> or <select> holds no <. A script src and a stylesheet href (with rel="stylesheet" alone) are plain
+paths inside the theme, like gerado/base.css, or /t/<theme>/ and a plain path, read from that theme's folder. Anything
+else, and <script/>, <style/>, a <base>, a preload or prefetch <link>, a srcdoc, a NUL in a value, a & in a rel, type or
+as, a & that is no whole reference in a value, a script type that is not JavaScript or JSON, an @import, @namespace or
+@scope in a sheet (even escaped or in a comment), or a linked or inlined file that is not in the theme, exits 3, naming
+the file (and, in index.html, the line and the place). In a sheet, only CSS whitespace and comments may sit between and
+around the rules.
 
 Exit 0 when the head only moves code: the two pages are the same, or
 - every file of the theme that the page does not read (images, fonts) has the same content;
@@ -49,8 +50,7 @@ Exit 0 when the head only moves code: the two pages are the same, or
 - every other top-level statement of the base is in the head, in the same order and in the same script;
 - every style rule of the base is in the head, in the same order, under the same stylesheet attributes, in a
   stylesheet of the same folder and extension and inline or from a file as before (it may move to another linked
-  stylesheet there: its relative URLs keep their target and the server sends it with the same type) and with the
-  same scripts before its stylesheet (a script sees the rules of the stylesheets before it);
+  stylesheet there: its relative URLs keep their target) and with the same scripts before its stylesheet (a script sees the rules of the stylesheets before it);
 - the translation lines the server puts in the page (the i18n folder, for a page with the i18n mark) are the same,
   in the same order and as many times, split and trimmed as i18n.ler splits and trims them.
 Statements and rules are compared as syntax trees (tree-sitter), with the text of every node that no child covers,
@@ -181,14 +181,17 @@ def text_of(data):
     return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
 
 
+def theme_path(name, theme):
+    return f"themes/{name[3:]}" if name.startswith("/t/") else f"themes/{theme}/{name}"
+
+
 def reader(rev, theme):
-    def where(name):
-        return f"themes/{name[3:]}" if name.startswith("/t/") else f"themes/{theme}/{name}"
     if rev is None:
-        return lambda name: text_of((RAIZ / where(name)).read_bytes()) if (RAIZ / where(name)).is_file() else None
+        return lambda name: (text_of((RAIZ / theme_path(name, theme)).read_bytes())
+                             if (RAIZ / theme_path(name, theme)).is_file() else None)
 
     def show(name):
-        out = subprocess.run(["git", "-C", str(RAIZ), "show", f"{rev}:{where(name)}"], capture_output=True)
+        out = subprocess.run(["git", "-C", str(RAIZ), "show", f"{rev}:{theme_path(name, theme)}"], capture_output=True)
         return None if out.returncode else text_of(out.stdout)
     return show
 
@@ -295,7 +298,7 @@ def type_of(attributes):
     return (attributes.get("type") or "").strip(" \t\n\r\f").lower()
 
 
-def assemble(read, files=None):
+def assemble(read, files=None, theme="ritmelli"):
     names = set()
 
     def need(name):
@@ -342,8 +345,13 @@ def assemble(read, files=None):
                 raise Doubt(f"{name}: the page links it, and it is not in the theme (the browser gets a 404)")
             if kind == "script" and body_problem("script", text, False):
                 raise Doubt(f"{name}: a </script or a <!-- in a script the server puts inline")
+            if kind == "script" and text.lstrip("\ufeff").startswith("#!"):
+                raise Doubt(f"{name}: a #! at its start, which only a script file read on its own allows")
             if kind == "link" and re.search(r"</style", text, re.I):
                 raise Doubt(f"{name}: a </style in a sheet the server puts inline")
+            outside = posixpath.dirname(theme_path(name, theme)) != f"themes/{theme}"
+            if kind == "link" and (problem := build_rules().sheet_problem(text, outside)):
+                raise Doubt(f"{name}: {problem}, which the server refuses")
             if kind == "link" and sheet_reaches_out(text):
                 raise Doubt(f"{name}: an @import, @namespace or @scope, even escaped or in a comment, which ties the "
                             f"sheet to something outside its rules")
@@ -364,6 +372,12 @@ def assemble(read, files=None):
             items.append(("line", line, None, None))
     texts = translations(need, page)
     return Page(items, blocks, texts, frozenset(names), files or {})
+
+
+def build_rules():
+    if str(RAIZ) not in sys.path:
+        sys.path.insert(0, str(RAIZ))
+    return importlib.import_module("theme_page")
 
 
 def translations(read, page):
@@ -630,8 +644,8 @@ def main(argv=None):
     ap.add_argument("--theme", default="ritmelli")
     args = ap.parse_args(argv)
     try:
-        a = assemble(reader(args.base, args.theme), listing(args.base, args.theme))
-        b = assemble(reader(args.head, args.theme), listing(args.head, args.theme))
+        a = assemble(reader(args.base, args.theme), listing(args.base, args.theme), args.theme)
+        b = assemble(reader(args.head, args.theme), listing(args.head, args.theme), args.theme)
     except Doubt as unsure:
         print(f"cannot judge, the browser may read this otherwise: {unsure}")
         return CANNOT_JUDGE
