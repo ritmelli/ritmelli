@@ -1,3 +1,4 @@
+# manual: powershell instalador\ffmpeg\testa.ps1 precisa de o ffmpeg completo de antes no instalador\vendor e o venv do build
 """Confere o ffmpeg so de audio (bin\\) contra o ffmpeg completo de antes: os mesmos comandos do motor do Ritmelli nos
 discos da biblioteca, a duracao pelo ffprobe, um stream https, os consertos de container do yt-dlp e o que o yt-dlp acha
 dele. Sai 1 se alguma coisa nao bate.

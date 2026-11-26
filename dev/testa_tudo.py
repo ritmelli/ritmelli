@@ -41,11 +41,12 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
 In the COMPLETO and the --long, a missing library or ffmpeg is a failure, not a skipped test: without the server
 libraries, the testa_mock and the testa_migra skip their part.
 
-Every dev/testa_*.py and dev/test_*.py (a new test, in English, is named test_*) has a destination: a list here (STDLIB,
-COMPLETO, LONG_TESTS, MICROFONE, PASSOS), or it only runs by hand and says so at the top of the file, in a comment before
-the docstring, how and with what: "# manual: <comando> precisa de <aparelho>". Before running, the COMPLETO, the
---long, the --so-stdlib and the --microfone fail on a test without destination, on a dev/ file with the "manual:" line
-that runs in the check, and on a mode of this script the testa.yml no longer calls.
+Every test of the git ls-files, in any folder (test*.py, testa*.py, teste*.py and the test*.ps1; a new test, in English,
+is named test_*), has a destination: a list here (STDLIB, COMPLETO, LONG_TESTS, MICROFONE, PASSOS) or a workflow step for
+a .ps1, or it only runs by hand and says so at the top of the file, in a comment before the docstring, how and with
+what: "# manual: <comando> precisa de <aparelho>". Before running, the COMPLETO, the --long, the --so-stdlib and the
+--microfone fail on a test without destination, on a file with the "manual:" line that runs in the checks, and on a
+mode of REQUIRED_MODES that left the required check (its job, step, command or condition).
 They also fail an AGENTS.md over 80 lines or with a file in its map that doesn't exist (agents_md).
 
 The --ref-cache is a folder with a capture of the compara: when it holds the one of the base (the commit and the key of
@@ -69,6 +70,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+from workflow_yaml import find_step, job_steps, workflows
 
 RAIZ = Path(__file__).resolve().parent.parent
 
@@ -110,10 +113,22 @@ JOBS = 4
 PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas")}
 # what the --tela and the --compara run
 TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme_scripts.py")
-# the calls the testa.yml has to make, so every list and step above runs on the PR (sem_destino checks them)
-INVOCATIONS = ("dev/testa_tudo.py --without-long", "dev/testa_tudo.py --microfone", "dev/testa_tudo.py --tela",
-               "dev/testa_tudo.py --compara", "dev/testa_tudo.py --capture") + tuple(
-    f"dev/testa_tudo.py --passo {n}" for n in PASSOS) + tuple(f"dev/testa_tudo.py --long {n}" for n in LONG_TESTS)
+NOT_ON_PUSH = "github.event_name != 'push'"
+AFTER_RUFF = "${{ !cancelled() && steps.ruff.outcome != 'skipped' }}"
+REQUIRED_MODES = {
+    "--without-long": ("testes", NOT_ON_PUSH, "Testes", AFTER_RUFF),
+    "--passo disco": ("testes", NOT_ON_PUSH, "Pasta protegida no disco", AFTER_RUFF),
+    "--long bench": ("bench", NOT_ON_PUSH, "Banca", None),
+    "--long capture": ("capture", NOT_ON_PUSH, "Captura", None),
+    "--microfone": ("microfone", NOT_ON_PUSH, "Testes do filtro", "steps.areas.outputs.microfone == 'true'"),
+    "--tela": ("tela", NOT_ON_PUSH, "fitcheck", "steps.areas.outputs.tela == 'true'"),
+    "--passo metricas": ("tela", NOT_ON_PUSH, "Aviso dos dados de uso",
+                         "${{ !cancelled() && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}"),
+    "--compara": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'"),
+    "--capture": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'"),
+}
+REQUIRED_JOB = "testa-o-pr"
+VERDICT_STEP = "Verdict"
 # the big files whose line count goes in the summary, against the base (--linhas)
 LINHAS = ("engine.py", "server.py", "themes/ritmelli/index.html", "AGENTS.md")
 # what goes into the key of a compara capture besides the commit and the Chrome version: the scripts that take it and
@@ -157,38 +172,88 @@ def manual(arquivo):
     return None
 
 
+TEST_NAME = re.compile(r"(?:test|testa|teste)(?:_\w+)?\.py|(?:test|testa|teste)(?:-[\w-]+)?\.ps1")
+
+
 def is_test(rel):
-    return rel.startswith(("dev/testa_", "dev/test_")) and rel != "dev/testa_tudo.py"
+    return TEST_NAME.fullmatch(rel.rsplit("/", 1)[-1]) is not None and rel != "dev/testa_tudo.py"
 
 
-def sem_destino(yml=RAIZ / ".github" / "workflows" / "testa.yml", dev=RAIZ / "dev"):
-    """What takes a test out of the PR check unnoticed: a test of dev/ (is_test) in no list here (STDLIB, COMPLETO,
-    LONG_TESTS, MICROFONE, PASSOS) and without the "manual:" line; a file with the line (a test or a dev/ tool) that runs in
-    the check anyway, or with the line out of format; a call of INVOCATIONS that the testa.yml no longer makes, and a
-    dev/ script it calls directly instead of through PASSOS (in the lines that are not comments). Returns the failure
-    lines."""
-    rodam = set(COMPLETO) | set(LONG_TESTS.values()) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
+def tracked(root=RAIZ):
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, check=True).stdout
+    return [f for f in out.decode("utf-8").split("\0") if f]
+
+
+def mode_failures(flows):
+    """What takes a mode of REQUIRED_MODES out of the required check: its job, its step, the command, the condition of
+    the job or the step, a continue-on-error, or the job missing from the needs and the verdict of the required job."""
+    testa = flows.get(".github/workflows/testa.yml") or {}
+    jobs = testa.get("jobs") or {}
+    required = jobs.get(REQUIRED_JOB) or {}
+    verdict = find_step(required, VERDICT_STEP) or {}
+    results = set((verdict.get("env") or {}).values())
     falhas = []
-    for p in sorted(Path(dev).glob("*.py")):
-        rel, linha = f"dev/{p.name}", manual(p)
+    for mode, (job_id, job_if, step_name, step_if) in REQUIRED_MODES.items():
+        where = f"the testa.yml mode {mode} (job {job_id}, step \"{step_name}\")"
+        job = jobs.get(job_id)
+        if job is None:
+            falhas.append(f"{where}: the job is gone")
+            continue
+        if job.get("if") != job_if:
+            falhas.append(f"{where}: the job runs with if: {job.get('if')}, not {job_if}")
+        if job.get("continue-on-error") is not None:
+            falhas.append(f"{where}: the job has continue-on-error")
+        if job_id not in (required.get("needs") or []):
+            falhas.append(f"{where}: the {REQUIRED_JOB} job does not need it")
+        if f"${{{{ needs.{job_id}.result }}}}" not in results:
+            falhas.append(f"{where}: the {VERDICT_STEP} step does not read its result")
+        step = find_step(job, step_name)
+        if step is None:
+            falhas.append(f"{where}: no single step with that name")
+            continue
+        if step.get("if") != step_if:
+            falhas.append(f"{where}: the step runs with if: {step.get('if')}, not {step_if}")
+        if step.get("continue-on-error") is not None:
+            falhas.append(f"{where}: the step has continue-on-error")
+        command = re.compile(rf"\s*python(?:\.exe)?\s+dev/testa_tudo\.py\s+{re.escape(mode)}(?:\s.*)?")
+        if not any(command.fullmatch(line) for line in (step.get("run") or "").splitlines()):
+            falhas.append(f"{where}: the step no longer runs \"python dev/testa_tudo.py {mode}\"")
+    passos = {f"--passo {n}" for n in PASSOS} | {f"--long {n}" for n in LONG_TESTS}
+    falhas += [f"{m} has no row in REQUIRED_MODES" for m in sorted(passos - set(REQUIRED_MODES))]
+    return falhas
+
+
+def sem_destino(root=RAIZ, files=None, flows=None):
+    """What takes a test out of the checks unnoticed: a Python test of the repo (is_test, in any folder of the git
+    ls-files) in no list here (STDLIB, COMPLETO, LONG_TESTS, MICROFONE, PASSOS, TELA), a PowerShell test that no
+    workflow step runs, either without the "manual:" line; a file with the line that runs anyway, or with the line out
+    of format; a mode of REQUIRED_MODES out of the required check (mode_failures), and a dev/ script the testa.yml calls
+    directly instead of through PASSOS. Returns the failure lines."""
+    root = Path(root)
+    files = tracked(root) if files is None else files
+    flows = workflows(root) if flows is None else flows
+    runs = [step.get("run") or "" for flow in flows.values() for job in (flow.get("jobs") or {}).values()
+            for step in job_steps(job)]
+    rodam = set(COMPLETO) | set(LONG_TESTS.values()) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
+    called = {f.replace("\\", "/") for run in runs for f in re.findall(r"[\w./\\-]+\.ps1", run)}
+    falhas = []
+    for rel in sorted(f for f in files if f.endswith((".py", ".ps1"))):
+        if not (root / rel).is_file():
+            continue
+        linha = manual(root / rel)
+        runs_somewhere = rel in rodam if rel.endswith(".py") else rel in called
         if linha and not re.match(r"#\s*manual:\s*\S.*\s+precisa de\s+\S", linha):
             falhas.append(f"{rel}: the line \"{linha}\" does not follow \"# manual: <comando> precisa de <aparelho>\"")
-        elif linha and rel in rodam:
-            falhas.append(f"{rel} has the \"manual:\" line and runs in the testa.yml: drop the line or the test")
-        elif not linha and is_test(rel) and rel not in rodam:
-            falhas.append(f"{rel} runs nowhere (in no list of dev/testa_tudo.py: STDLIB, COMPLETO, LONG_TESTS, MICROFONE or "
-                          "PASSOS) and has no \"# manual: <comando> precisa de <aparelho>\" line at the top")
-    linhas = Path(yml).read_text(encoding="utf-8").splitlines()
-    # the commands: a line that starts with python (in a run: block, or right after run:), the dev/ script with either
-    # separator, with or without quotes, and the rest of the line
-    comandos = [(m.group(2).replace("\\", "/"), m.group(3).strip()) for m in (
-        re.match(r"\s*(?:-\s+)?(?:run:\s*)?python(?:\.exe)?\s+(['\"]?)(dev[/\\]\w+\.py)\1(.*)$", linha)
-        for linha in linhas) if m]
-    falhas += [f"the testa.yml no longer runs \"python {c}\"" for c in INVOCATIONS
-               if not any(s == c.split()[0] and resto.startswith(c.split(maxsplit=1)[1]) for s, resto in comandos)]
-    # a dev/ script the workflow calls anywhere but through testa_tudo would skip the check above: it goes in PASSOS
-    citados = {m.replace("\\", "/") for linha in linhas if not linha.lstrip().startswith("#")
-               for m in re.findall(r"python(?:\.exe)?\s+['\"]?(dev[/\\]\w+\.py)", linha)}
+        elif linha and runs_somewhere:
+            falhas.append(f"{rel} has the \"manual:\" line and runs in the checks: drop the line or the test")
+        elif not linha and is_test(rel) and not runs_somewhere:
+            falhas.append(f"{rel} runs nowhere (in no list of dev/testa_tudo.py: STDLIB, COMPLETO, LONG_TESTS, "
+                          "MICROFONE or PASSOS, or no workflow step for a .ps1) and has no "
+                          "\"# manual: <comando> precisa de <aparelho>\" line at the top")
+    falhas += mode_failures(flows)
+    testa = flows.get(".github/workflows/testa.yml") or {}
+    citados = {m.replace("\\", "/") for job in (testa.get("jobs") or {}).values() for step in job_steps(job)
+               for m in re.findall(r"python(?:\.exe)?\s+['\"]?(dev[/\\]\w+\.py)", step.get("run") or "")}
     falhas += [f"the testa.yml runs \"python {s}\" directly: declare it in the PASSOS of dev/testa_tudo.py and call "
                "\"python dev/testa_tudo.py --passo <name>\"" for s in sorted(citados - {"dev/testa_tudo.py"})]
     return falhas

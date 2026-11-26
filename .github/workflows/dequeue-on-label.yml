@@ -1,0 +1,40 @@
+name: Dequeue on label
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  dequeue:
+    name: Dequeue on label
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Leave the merge queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          LABEL: ${{ github.event.label.name }}
+        run: |
+          case "$LABEL" in
+            needs-owner|extracao-tema) ;;
+            *) echo "the $LABEL label does not gate the queue"; exit 0 ;;
+          esac
+          pr=$(gh api graphql -F number="$PR" -f owner="${REPO%%/*}" -f name="${REPO#*/}" \
+            -f query='query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { id isInMergeQueue } } }' \
+            --jq '.data.repository.pullRequest | "\(.id) \(.isInMergeQueue)"')
+          read -r id queued <<< "$pr"
+          [ -n "$id" ] || { echo "::error::PR $PR did not come from the API"; exit 1; }
+          if [ "$queued" != true ]; then
+            echo "PR $PR is not in the merge queue"
+            exit 0
+          fi
+          gh api graphql -f id="$id" -f query='mutation($id: ID!) { dequeuePullRequest(input: {id: $id}) { clientMutationId } }' > /dev/null
+          echo "::notice::the $LABEL label took PR $PR out of the merge queue"
