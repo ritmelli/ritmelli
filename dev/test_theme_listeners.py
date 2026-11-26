@@ -1,7 +1,7 @@
 """dev/theme_listeners.py on a page of its own, in a headless Chrome: the listeners of a MediaQueryList (by
 addEventListener, by addListener and by onchange), of navigator.connection (both ways) and of a node are in the table
-of what is on, a listener added and removed before the table is read is in the table of the calls, and taking out or
-moving any of them makes the two tables differ. Exit 1 if a check fails."""
+of what is on, a listener added and removed, or an onchange set and cleared, before the table is read is in the table
+of the calls, and taking out or moving any of them makes the two tables differ. Exit 1 if a check fails."""
 import asyncio
 import importlib
 import sys
@@ -25,6 +25,9 @@ function gone() {}
 wide.addEventListener('change', first);
 document.getElementById('box').addEventListener('click', function onClick() {}, {passive: true});
 {media}
+{cleared_media}
+{cleared_network}
+{order}
 {connection}
 {pair}
 {legacy}
@@ -34,6 +37,12 @@ document.getElementById('box').addEventListener('click', function onClick() {}, 
 </script>"""
 PARTS = {
     "media": "wide.addEventListener('change', onWide);",
+    "cleared_media": "const temporary = matchMedia('(min-width: 40px)'); temporary.onchange = function onCleared() {};"
+                     " temporary.onchange = null;",
+    "cleared_network": "if (navigator.connection) { navigator.connection.onchange = function onNetworkCleared() {};"
+                       " navigator.connection.onchange = null; }",
+    "order": "const [l1, l2, l3] = [1, 2, 3].map(() => matchMedia('(min-width: 50px)'));"
+             " l1.addEventListener('change', onOld); l2.addEventListener('change', onWide);",
     "connection": "if (navigator.connection) navigator.connection.addEventListener('change', function onNetwork() {});",
     "pair": "addEventListener('resize', gone); removeEventListener('resize', gone);",
     "legacy": "matchMedia('(min-width: 20px)').addListener(onOld);",
@@ -50,6 +59,14 @@ VARIANTS = {
     "without the addListener": ({"legacy": ""}, "matchMedia((min-width: 20px)) #1 change:"),
     "without the onchange of a MediaQueryList": ({"property": ""}, "matchMedia((min-width: 30px)) #1 change:"),
     "without the onchange of navigator.connection": ({"network": ""}, "navigator.connection change:"),
+    "without an onchange set and cleared on a MediaQueryList": (
+        {"cleared_media": ""}, "matchMedia((min-width: 40px)) #1 change (the calls):"),
+    "without an onchange set and cleared on navigator.connection": (
+        {"cleared_network": ""}, "navigator.connection change (the calls):"),
+    "with a listener moved to a MediaQueryList of the same query made later, which the browser tells after": (
+        {"order": "const [l1, l2, l3] = [1, 2, 3].map(() => matchMedia('(min-width: 50px)'));"
+                  " l3.addEventListener('change', onOld); l2.addEventListener('change', onWide);"},
+        "matchMedia((min-width: 50px)) #1 change:"),
     "with the remove call moved to the other button out of the page": (
         {"buttons": "b1.addEventListener('click', onButton); b2.addEventListener('click', onButton);"
                     " b2.removeEventListener('click', onButton);"}, "button click (the calls):"),

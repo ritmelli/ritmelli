@@ -20,13 +20,14 @@ working tree) opened in a headless Chrome against a --mock server of each, at th
 size, once the page is connected. Two tables are compared:
 - the listeners on at that moment, read in the order they were added (the DevTools getEventListeners), with the
   capture, passive and once flags and the handler's source text, each line without its indentation: those of every
-  node, the document and the window, of navigator.connection, of every MediaQueryList the page made with a listener
-  on (matchMedia(<its query>) #<n>, numbered per query in the order of its first add or remove call, then of its
-  making) and of the other targets the page added a listener to, by their kind;
-- every addEventListener, removeEventListener, addListener and removeListener call the page made since it began, per
-  target and event type, in order, with the options as given and the handler's text (a node by its path at its first
-  call, with #<n> when another node had that path): a listener added and removed before the table is read shows
-  here.
+  node, the document, the window and navigator.connection, of every MediaQueryList the page made that had a listener
+  or a call, and of the other targets the page added a listener to, by their kind. A MediaQueryList is
+  matchMedia(<its query>) #<n>, numbered per query among those in the order they were made, which is the order the
+  browser tells them of a change;
+- every addEventListener, removeEventListener, addListener and removeListener call and every onchange set on a
+  MediaQueryList or navigator.connection since the page began, per target and event type, in order, with the options
+  as given and the handler's text (a node by its path at its first call, with #<n> when another node had that path): a
+  listener added and removed before the table is read shows here.
 Exit 0 only when both commits give the same tables; otherwise the differences are printed and the exit is 1. The file a
 handler lives in is not compared: moving a handler between files, or into a function, keeps the tables. The <script>
 tags are left out: their only listener is the onerror="scriptFailed(this)" that dev/testa_i18n.py requires on each of
@@ -47,29 +48,17 @@ RECORDER = """(() => {
     }
     return parts.join(' > ');
   };
-  const queries = new Map();
-  const query = t => {
-    if (!queries.has(t)) queries.set(t, [...queries.keys()].filter(q => q.media === t.media).length + 1);
-    return `matchMedia(${t.media}) #${queries.get(t)}`;
-  };
-  const name = t => t === window ? 'window' : t === document ? 'document' : t instanceof Node ? path(t)
-    : t instanceof MediaQueryList ? query(t) : t === navigator.connection ? 'navigator.connection'
-    : t.constructor.name;
-  const node = t => {
-    if (!nodes.has(t)) {
-      const p = path(t), n = (paths.get(p) ?? 0) + 1;
-      paths.set(p, n);
-      nodes.set(t, n > 1 ? `${p} #${n}` : p);
-    }
-    return nodes.get(t);
-  };
   const options = o => o !== null && typeof o === 'object' ? [o.capture ?? null, o.passive ?? null, o.once ?? null]
     : [o ?? null, null, null];
   const record = (op, target, type, listener, o) => {
     if (!(target instanceof Node) && target !== window && !targets.includes(target)) targets.push(target);
+    if (target instanceof Node && target !== document && !nodes.has(target)) {
+      const p = path(target), n = (paths.get(p) ?? 0) + 1;
+      paths.set(p, n);
+      nodes.set(target, n > 1 ? `${p} #${n}` : p);
+    }
     const handler = typeof listener === 'function' ? listener : listener?.handleEvent ?? listener;
-    calls.push([target instanceof Node && target !== document ? node(target) : name(target), type, op, ...options(o),
-                String(handler)]);
+    calls.push([target, type, op, ...options(o), String(handler)]);
   };
   EventTarget.prototype.addEventListener = function addEventListener(type, listener, o) {
     record('add', this ?? window, type, listener, o);
@@ -87,23 +76,34 @@ RECORDER = """(() => {
     record('removeListener', this, 'change', listener);
     return unlisten.call(this, listener);
   };
+  for (const kind of [list, window.NetworkInformation?.prototype]) {
+    const property = kind && Object.getOwnPropertyDescriptor(kind, 'onchange');
+    if (property) Object.defineProperty(kind, 'onchange', {...property, set(handler) {
+      record('onchange', this, 'change', handler);
+      property.set.call(this, handler);
+    }});
+  }
   window.matchMedia = function matchMedia(query) {
     const found = media.call(window, query);
     made.push(found);
     return found;
   };
-  Object.defineProperty(window, %s, {value: {calls, targets, made, name}});
+  Object.defineProperty(window, %s, {value: {calls, targets, made, nodes, path}});
 })()""" % KEY
 READ = """(() => {
-  const {calls, targets, made, name} = window[%s];
-  const others = [...targets, ...made.filter(m => !targets.includes(m) && Object.keys(getEventListeners(m)).length),
+  const {calls, targets, made, nodes, path} = window[%s];
+  const lists = made.filter(m => targets.includes(m) || Object.keys(getEventListeners(m)).length);
+  const name = t => t === window ? 'window' : t === document ? 'document' : t instanceof Node ? path(t)
+    : t instanceof MediaQueryList ? `matchMedia(${t.media}) #${lists.filter(m => m.media === t.media).indexOf(t) + 1}`
+    : t === navigator.connection ? 'navigator.connection' : t.constructor.name;
+  const others = [...lists, ...targets.filter(t => !(t instanceof MediaQueryList)),
                   ...(navigator.connection && !targets.includes(navigator.connection) ? [navigator.connection] : [])];
   const rows = [];
   for (const [where, target] of [['window', window], ['document', document], ...others.map(t => [name(t), t]),
                                  ...[...document.querySelectorAll(':not(script)')].map(e => [name(e), e])])
     for (const [kind, list] of Object.entries(getEventListeners(target)))
       for (const x of list) rows.push([where, kind, x.useCapture, x.passive, x.once, String(x.listener)]);
-  return {rows, calls};
+  return {rows, calls: calls.map(([target, ...rest]) => [nodes.get(target) ?? name(target), ...rest])};
 })()""" % KEY
 SIZES = {"pc": None, "phone": {"width": 390, "height": 844, "deviceScaleFactor": 3, "mobile": True}}
 READY_S = 15.0
