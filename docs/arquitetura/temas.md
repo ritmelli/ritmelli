@@ -174,7 +174,7 @@ Ela sai 0 quando o head só muda código de lugar:
   mudar de lugar dentro dele, porque existem antes de qualquer instrução dele rodar, e só nele;
 - toda outra instrução do alto está no head, na mesma ordem e no mesmo script;
 - toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha, numa folha da mesma pasta e inline
-  ou de arquivo como antes (pode mudar de folha ligada ali, com a mesma extensão: as URLs relativas dela continuam
+  ou de arquivo como na base (pode mudar de folha ligada ali, com a mesma extensão: as URLs relativas dela continuam
   apontando para o mesmo arquivo) e com os mesmos scripts antes da folha dela
   (um script vê as regras das folhas que vêm antes dele);
 - as traduções que o servidor põe na página (a pasta `i18n/`, na página com a marca do i18n) são as mesmas linhas, na

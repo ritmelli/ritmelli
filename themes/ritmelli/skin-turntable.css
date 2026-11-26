@@ -3,7 +3,7 @@
 /* ---------- quarta rodada (19/10): a mesma lingua nos
    tres aparelhos do palco. Cor lisa no lugar do degrade, o bisel duro de pixel, o contorno com a
    linha clara colada por dentro, a sombra dura e os cantos em degrau pelas molduras do
-   dev/molduras.py. O disco, o prato e o anel do estroboscopio seguem redondos e girando como antes
+   dev/molduras.py. O disco, o prato e o anel do estroboscopio seguem redondos e girando
    (nada muda na camada que gira); os textos gravados ficam na letra de sempre; o FX-12 segue rente
    ao feltro (desde 18/10) e os pedais, o feltro e os cabos nao mudam ---------- */
 
@@ -19,7 +19,7 @@
    de borda seca (so o que fica parado: o giratorio e o anel nao mudam) */
 .palco .prato { transform: scale(.96); box-shadow: 0 0 0 2px var(--contorno), 0 3px 0 2px rgba(20,8,2,.42); }
 /* o anel do estroboscopio em 64 quadradinhos creme e pretos de borda seca, como no p1 (girando
-   com o prato, como antes) */
+   com o prato) */
 .palco .aro { background: repeating-conic-gradient(#2A221E 0 2.8125deg, #F1E9D8 2.8125deg 5.625deg); }
 .palco .brilho {
   background: conic-gradient(from -28deg, rgba(255,240,220,0) 0 8deg, rgba(255,240,220,.12) 8deg 32deg, rgba(255,240,220,0) 32deg 188deg,
