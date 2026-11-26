@@ -94,7 +94,12 @@ O script que chega ao fim da página sem fechar, e que por isso o navegador não
 O fim de uma tag `<script>`, `<style>`, `</script>` ou `</style>` respeita as aspas de um valor, que só abrem no começo
 dele (depois do `=`), e um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta). O
 `src` e o `href` se leem como a URL que o navegador pede (sem a busca e o `#`, com os `%` desfeitos), e um arquivo que
-não está lá é um script ou uma folha que o servidor não entrega. Ela sai 0 quando o head só muda código de lugar:
+não está lá é um script ou uma folha que o servidor não entrega. O que ela não lê com certeza como o navegador, ela
+não julga: sai 3 e mostra o trecho do `index.html` quando acha um `<base>`, um elemento de texto (`title`, `textarea`,
+`noscript`, `xmp`, `iframe`, `noembed`, `noframes`, `plaintext`) com `<` dentro ou sem o fim dele, um comentário que não
+fecha ou que fecha de um jeito raro (`<!-->`, `<!--->`, `--!>`), um `<!` que não é comentário nem doctype, um `<?`, um
+`</` sem nome, um `&` na tag de um `<script src>` ou de um `<link>`, ou uma tag de script ou de estilo que não acaba.
+Ela sai 0 quando o head só muda código de lugar:
 - todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
   folha de estilo no mesmo lugar dela;

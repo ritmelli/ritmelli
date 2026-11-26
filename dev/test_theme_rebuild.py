@@ -178,6 +178,21 @@ SAMPLES = (
 )
 
 
+DOUBTFUL = (
+    ("a script inside a textarea", {"index.html": "<textarea><script src='x.js'></script></textarea>\n"}),
+    ("a tag inside a closed textarea", {"index.html": "<textarea><b>a</b></textarea>\n<script src='x.js'></script>\n"}),
+    ("a title that never closes", {"index.html": "<title>Ritmelli\n<script src='x.js'></script>\n"}),
+    ("a base URL", {"index.html": "<base href='other/'>\n<script src='x.js'></script>\n"}),
+    ("a comment closed by its own <!-->", {"index.html": "<!--> <script src='x.js'></script> -->\n"}),
+    ("a comment closed by --!>", {"index.html": "<!-- a --!> <script src='x.js'></script> -->\n"}),
+    ("a comment that never closes", {"index.html": "<script src='x.js'></script>\n<!-- a\n"}),
+    ("a CDATA section", {"index.html": "<![CDATA[ a ]]>\n<script src='x.js'></script>\n"}),
+    ("a character reference in a src", {"index.html": "<script src='x&#46;js'></script>\n"}),
+    ("a character reference in an href", {"index.html": "<link rel='stylesheet' href='a&#46;css'>\n"}),
+    ("a script start tag that never ends", {"index.html": "<script src='x.js'\n"}),
+)
+
+
 def theme_mutant(changes):
     read = theme_rebuild.reader(None, "ritmelli")
     return lambda name: changes[name](read(name), read) if name in changes \
@@ -271,6 +286,20 @@ def main():
     allowed = next((a, b) for title, a, b, _ in samples if title == "two functions swapped")
     code = theme_rebuild.judge(*allowed, compiles, **quiet)
     results.append((code == 0, f"the verdict on two functions swapped is {code}"))
+    for title, page in DOUBTFUL:
+        try:
+            theme_rebuild.assemble({**page, "x.js": "f();\n"}.get)
+            results.append((False, f"{title}: judged"))
+        except theme_rebuild.Doubt as unsure:
+            results.append((True, f"{title}: cannot judge ({unsure})"))
+    pages = {"base": inline("f();"), "head": dict(DOUBTFUL[0][1])}
+    kept = theme_rebuild.reader, theme_rebuild.listing
+    theme_rebuild.reader, theme_rebuild.listing = (lambda rev, _: pages[rev].get), (lambda rev, _: {})
+    try:
+        code = theme_rebuild.main(["base", "head"])
+    finally:
+        theme_rebuild.reader, theme_rebuild.listing = kept
+    results.append((code == theme_rebuild.CANNOT_JUDGE, f"the verdict on {DOUBTFUL[0][0]} is {code}"))
     report = theme_rebuild.compare(theme, theme, compiles)
     results.append((not report.changes and report.declarations > 100,
                     f"the theme against itself only moves code ({report.declarations} declarations compared)"))

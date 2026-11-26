@@ -18,34 +18,47 @@ RAIZ = Path(__file__).resolve().parent.parent
 USAGE = """Proof that a change to a theme only moves code: the page put back together on two commits, compared.
 
 The page is the index.html of the theme with every <!-- inline-script: --> made a <script> with the text of its file,
-as the server sends it, and every <script src>
-and <link rel="stylesheet"> replaced by the text of its file. A script or style ends where the browser ends it: at the
-first </script or </style followed by a space, / or >, with the escaped states of script data (a <!-- and a
-<script inside it), as the HTML tokenizer does (so a </script> in a comment of a script ends it there). Every script and stylesheet, from a file or inline, sits between a line that opens it
-([script NAME], [inline-script NAME], [script], [link NAME] or [style], with the tag's other attributes when it has
-any) and a [/script] or [/style] line. <base> and <head> are git commits (the head defaults to the working tree).
+as the server sends it, and every <script src> and <link rel="stylesheet"> replaced by the text of the file the
+browser requests (the path of the URL, without the query and the fragment). Tags end where the HTML tokenizer ends
+them: a quote opens a value only where a value starts, a script ends at its </script with the escaped states of
+script data, and a script that reaches the end of the page unclosed, which the browser does not run, is another
+script. Every script and stylesheet sits between a line that opens it ([script NAME], [inline-script NAME], [script],
+[link NAME] or [style], with the tag's other attributes when it has any) and a [/script] or [/style] line. <base> and
+<head> are git commits (the head defaults to the working tree).
+
+Exit 3, naming the place, when the page holds markup the browser may read otherwise: a <base>, a text element
+(title, textarea, noscript, xmp, iframe, noembed, noframes, plaintext) with a < inside or never closed, a comment
+never closed or closed by <!-->, <!---> or --!>, a <! that is no comment nor doctype, a <?, a </ with no name, a & in
+the tag of a <script src> or a <link>, or a script or style tag that never ends.
 
 Exit 0 when the head only moves code: the two pages are the same, or
+- every file of the theme that the page does not read (images, fonts) has the same content;
 - the markup is the same, line by line and in order, with every script and stylesheet in the same place in it;
 - the head has the same scripts in the same order, each loaded the same way (inline or from the same file), with the
   same attributes and the same strict mode;
 - each script declares the same functions at its top level (they may move inside it: a script's function declarations
-  exist before any of its statements runs, and only there);
+  exist before any of its statements runs, and only there), and the declarations of one name keep their order (the
+  last one wins);
 - every other top-level statement of the base is in the head, in the same order and in the same script;
 - every style rule of the base is in the head, in the same order, under the same stylesheet attributes, in a
-  stylesheet of the same folder and inline or from a file as before (it may move to another linked stylesheet there:
-  its relative URLs keep their target);
-- the translations the server puts in the page (the i18n folder, for a page with the i18n mark) are the same.
+  stylesheet of the same folder and extension and inline or from a file as before (it may move to another linked
+  stylesheet there: its relative URLs keep their target and the server sends it with the same type);
+- the translation lines the server puts in the page (the i18n folder, for a page with the i18n mark) are the same,
+  in the same order and as many times, split and trimmed as i18n.ler splits and trims them.
 Statements and rules are compared as syntax trees (tree-sitter), with the text of every node that no child covers,
-without comments and whitespace outside strings and templates, so a block mark, a blank line or a new indentation is no change, while a space inside a template literal,
-or a mark that joins two tokens, is. In CSS, whether a token follows whitespace, a comment
-or nothing counts too (calc() needs the spaces around + and -, and a comment splits 14/**/px). A part the CSS grammar does not know (an @container inside @media) is compared by its tokens too.
-Declarations of one name keep their order (the last one wins). A script that V8, in a headless Chrome, does not
-compile, or that tree-sitter does not parse, is a change. Anything else is a change, printed, and the exit is 1."""
+without comments and whitespace outside strings and templates: a block mark, a blank line or a new indentation is no
+change, while a space inside a template literal, or a mark that joins two tokens, is. In CSS, whether a token follows
+whitespace, a comment or nothing counts too (calc() needs the spaces around + and -, and a comment splits 14/**/px),
+and a part the CSS grammar does not know (an @container inside @media) is compared by its tokens. A script that V8,
+in a headless Chrome, does not compile, or that tree-sitter does not parse, is a change. Anything else is a change,
+printed, and the exit is 1."""
 
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 INLINED = "data-theme-rebuild-inline-script"
 UNCLOSED = "data-theme-rebuild-never-closed"
+CANNOT_JUDGE = 3
+TEXT_ELEMENT = re.compile(r"<(title|textarea|noscript|xmp|iframe|noembed|noframes|plaintext)(?=[\t\n\f\r />])", re.I)
+ODD_MARKUP = re.compile(r"<base(?=[\t\n\f\r />])|<!(?!--|doctype[\t\n\f\r >])|<\?|</(?![A-Za-z])|<!--", re.I)
 RAW_TEXT = re.compile(r"<!--.*?-->|<(script|style)(?=[\t\n\f\r />])", re.I | re.S)
 SCRIPT_START = re.compile(r"<script[\t\n\f\r />]", re.I)
 SCRIPT_END = re.compile(r"</script[\t\n\f\r />]", re.I)
@@ -63,6 +76,29 @@ COMMENTS = ("comment", "html_comment")
 STRICT = ("'use strict'", '"use strict"')
 CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 MIN_PIECE = 2
+
+
+class Doubt(Exception):
+    pass
+
+
+def doubt(text, at):
+    raise Doubt(f"index.html: {text[at:at + 60]!r}")
+
+
+def check_markup(text):
+    if odd := ODD_MARKUP.search(text):
+        doubt(text, odd.start())
+    for element in TEXT_ELEMENT.finditer(text):
+        started = tag_end(text, element.end())
+        close = re.compile(rf"</{element.group(1)}", re.I).search(text, started + 1) if started >= 0 else None
+        if not close or "<" in text[started + 1:close.start()]:
+            doubt(text, element.start())
+
+
+def check_comment(text):
+    if text.startswith(("<!-->", "<!--->")) or "--!>" in text:
+        doubt(text, 0)
 
 
 def text_of(data):
@@ -144,6 +180,8 @@ class _FileTags(HTMLParser):
         first = {}
         for name, value in attrs:
             first.setdefault(name, value)
+        if (tag == "script" and first.get("src") or tag == "link") and "&" in self.get_starttag_text():
+            raise Doubt(f"index.html: {self.get_starttag_text()!r}")
         if tag == "script" and first.get("src"):
             self.in_src = True
             self.found.append(("script", first.pop("src"), first, self.getpos(), self.get_starttag_text()))
@@ -189,14 +227,16 @@ def block_of(kind, name, others):
 def ended_as_the_browser_ends(page):
     out, at = [], 0
     while opened := RAW_TEXT.search(page, at):
+        check_markup(page[at:opened.start()])
         if not opened.group(1):
+            check_comment(opened.group(0))
             out.append(page[at:opened.end()])
             at = opened.end()
             continue
         kind = opened.group(1).lower()
         started = tag_end(page, opened.end()) + 1
         if not started:
-            break
+            doubt(page, opened.start())
         end = script_end(page, started) if kind == "script" else page_end(page, started, STYLE_END)
         close = tag_end(page, end + len(f"</{kind}")) if end >= 0 else -1
         if close < 0 and kind == "script":
@@ -206,6 +246,7 @@ def ended_as_the_browser_ends(page):
             return "".join(out) + page[at:started] + inert(page[started:])
         out.append(page[at:started] + inert(page[started:end]) + f"</{kind}>")
         at = close + 1
+    check_markup(page[at:])
     return "".join(out) + page[at:]
 
 
@@ -573,8 +614,12 @@ def main(argv=None):
     ap.add_argument("head", nargs="?")
     ap.add_argument("--theme", default="ritmelli")
     args = ap.parse_args(argv)
-    a = assemble(reader(args.base, args.theme), listing(args.base, args.theme))
-    b = assemble(reader(args.head, args.theme), listing(args.head, args.theme))
+    try:
+        a = assemble(reader(args.base, args.theme), listing(args.base, args.theme))
+        b = assemble(reader(args.head, args.theme), listing(args.head, args.theme))
+    except Doubt as unsure:
+        print(f"cannot judge, the browser may read this otherwise: {unsure}")
+        return CANNOT_JUDGE
     print(f"{args.base}: {len(a.view())} lines; {args.head or 'working tree'}: {len(b.view())} lines")
     return judge(a, b)
 
