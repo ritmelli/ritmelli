@@ -45,7 +45,9 @@ do script que ele injeta já recusado (sem isso, um runner lento chegava ao vere
 `dev/test_fitcheck_ready.py` faz o mesmo no `fitcheck` e confere o relógio do aviso dos dados de uso: os 6 s contam da resposta do `GET /api/state` da página
 (o aviso só abre depois do estado), e não do `Page.navigate`. Com um script do tema ou o estado atrasados de propósito
 o aviso ainda passa, também na reabertura depois do Esc (cada carga conta do estado dela), e um aviso que abre 8 s
-depois do estado reprova. Todo servidor de teste que o `dev/so_mock.py` sobe nasce
+depois do estado reprova. O servidor desses casos sobe com o `dev/stacks_hook` (um `sitecustomize` ligado a um
+socket do teste): quando o `GET /api/state` não volta do servidor em 2 s, o proxy do teste pede as pilhas de todas
+as threads dele, e elas saem no veredito (o `server_stacks`). Todo servidor de teste que o `dev/so_mock.py` sobe nasce
 suspenso num job do Windows (o que ele abrir fica no job) e recebe o `--stop-on-stdin-eof`: desliga quando o teste
 fecha a entrada dele, sem pedido, e o papel do celular, que o `POST /api/shutdown` recusa, desliga do mesmo jeito.
 Toda parada esvazia o job. Na parada pela entrada, o servidor que não sai em 10 s, sai com erro ou deixa processo
