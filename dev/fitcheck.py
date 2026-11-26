@@ -129,18 +129,19 @@ class Ready(enum.Enum):
 async def wait_ready(cmd, expr, blocked, timeout_s):
     deadline = time.monotonic() + timeout_s
     while not blocked:
+        if (left := deadline - time.monotonic()) <= 0:
+            return Ready.TIMED_OUT
         try:
-            r = await asyncio.wait_for(cmd("Runtime.evaluate", expression=expr, returnByValue=True),
-                                       max(0.1, deadline - time.monotonic()))
+            r = await asyncio.wait_for(cmd("Runtime.evaluate", expression=expr, returnByValue=True), left)
         except CDP_GONE:
             return Ready.CHROME_GONE
         except (RuntimeError, TimeoutError):
             r = {}
+        if time.monotonic() > deadline:
+            return Ready.TIMED_OUT
         if r.get("result", {}).get("value") is True:
             return Ready.READY
-        if time.monotonic() >= deadline:
-            return Ready.TIMED_OUT
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
     return Ready.LEFT
 
 
@@ -181,17 +182,28 @@ async def wait_notice(cmd, deadline):
     return False
 
 
+async def calibrate_clock(cmd, events):
+    await cmd("Performance.enable")
+    before = time.monotonic()
+    metrics = (await cmd("Performance.getMetrics")).get("metrics", [])
+    after = time.monotonic()
+    ticks = next((m["value"] for m in metrics if m.get("name") == "Timestamp"), None)
+    if ticks is None:
+        raise RuntimeError("Performance.getMetrics gave no Timestamp to set the CDP clock against")
+    events.mono_minus_ticks = (before + after) / 2 - ticks
+
+
 class PageEvents:
-    def __init__(self):
+    def __init__(self, origin=None):
         self.page_errors, self.browser_errors, self.failed_responses = [], [], []
-        self.state_changed = asyncio.Event()
+        self.state_changed, self.origin, self.mono_minus_ticks = asyncio.Event(), origin, None
         self.new_load()
 
     def new_load(self):
         self.browser_errors.clear()
         self.failed_responses.clear()
         self.state_requests, self.state_ok, self.state_done, self.loads = {}, set(), {}, {}
-        self.loader = self.mono_minus_ticks = None
+        self.loader = None
 
     def monotonic_of(self, ticks):
         if ticks is None or self.mono_minus_ticks is None:
@@ -206,27 +218,34 @@ class PageEvents:
     def load_at(self):
         return self.monotonic_of(self.loads.get(self.loader))
 
+    def is_state(self, url):
+        u = urllib.parse.urlsplit(url)
+        return u.path == "/api/state" and (self.origin is None or f"{u.scheme}://{u.netloc}" == self.origin)
+
     def take(self, m):
         method, params = m.get("method"), m.get("params", {})
+        request_id = params.get("requestId")
         if e := erro_da_pagina(m):
             self.page_errors.append(e)
         elif method == "Log.entryAdded" and params["entry"].get("level") == "error":
             entry = params["entry"]
             self.browser_errors.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
         elif method == "Network.requestWillBeSent":
-            if "wallTime" in params and "timestamp" in params:
-                self.mono_minus_ticks = params["wallTime"] - params["timestamp"] + time.monotonic() - time.time()
             request = params.get("request", {})
-            if request.get("method") == "GET" and urllib.parse.urlsplit(request.get("url", "")).path == "/api/state":
-                self.state_requests[params["requestId"]] = params.get("loaderId")
+            self.state_ok.discard(request_id)
+            if request.get("method") == "GET" and self.is_state(request.get("url", "")):
+                self.state_requests[request_id] = params.get("loaderId")
+            else:
+                self.state_requests.pop(request_id, None)
         elif method == "Network.responseReceived":
             response = params["response"]
             if response.get("status", 0) >= 400:
                 self.failed_responses.append(f"{response['status']} {response.get('url', '')}")
-            elif 200 <= response.get("status", 0) < 300:
-                self.state_ok.add(params.get("requestId"))
-        elif method == "Network.loadingFinished" and params.get("requestId") in self.state_requests.keys() & self.state_ok:
-            self.state_done.setdefault(self.state_requests[params["requestId"]], params.get("timestamp"))
+            elif (200 <= response.get("status", 0) < 300 and request_id in self.state_requests
+                  and self.is_state(response.get("url", ""))):
+                self.state_ok.add(request_id)
+        elif method == "Network.loadingFinished" and request_id in self.state_requests.keys() & self.state_ok:
+            self.state_done.setdefault(self.state_requests[request_id], params.get("timestamp"))
             self.state_changed.set()
         elif method == "Page.lifecycleEvent" and params.get("name") == "load":
             self.loads.setdefault(params.get("loaderId"), params.get("timestamp"))
@@ -597,7 +616,7 @@ async def aviso_no_chrome(base, botao):
             except Exception:  # subindo
                 time.sleep(0.1)
         async with conecta_cdp(ws_url) as ws:
-            seq, pend, barrados, events = [0], {}, [], PageEvents()
+            seq, pend, barrados, events = [0], {}, [], PageEvents(base)
             events.page_errors = r["erros"]
             fetch = barra_outra_origem(ws, base, barrados)
 
@@ -634,6 +653,7 @@ async def aviso_no_chrome(base, botao):
             for domain in DIAGNOSTIC_DOMAINS:
                 await cmd(f"{domain}.enable")
             await cmd("Page.setLifecycleEventsEnabled", enabled=True)
+            await calibrate_clock(cmd, events)
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
             r["abriu"] = await load_and_wait_notice()
             if events.load_at is not None and events.state_at is not None:

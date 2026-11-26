@@ -102,11 +102,12 @@ jobs:
           }
           "injected rounds that did not give the expected diagnoses: $bad of 8"
           exit $bad
-      - name: The base clock (from Page.navigate) on the slow load and the slow state, both must fail
+      - name: Mutant whose clock starts at Page.navigate, the CDP instrumentation kept; both slow cases must fail
         if: always()
         run: |
-          git checkout origin/main -- dev/fitcheck.py dev/compara.py
-          python -c "import sys; sys.path.insert(0, 'dev'); import test_fitcheck_ready as t; t.notice_on_slow_load(); t.notice_on_slow_state(); print(f'{len(t.failures)} of 2 failed on the base clock'); sys.exit(0 if len(t.failures) == 2 else 1)"
+          python experiment/clock_mutant.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python experiment/clock_mutant_check.py
           $code = $LASTEXITCODE
-          git checkout HEAD -- dev/fitcheck.py dev/compara.py
+          git checkout HEAD -- dev/fitcheck.py
           exit $code
