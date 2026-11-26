@@ -144,6 +144,14 @@ async def wait_ready(cmd, expr, blocked, timeout_s):
     return Ready.LEFT
 
 
+async def navigate_and_wait(cmd, url, expr, blocked, timeout_s):
+    try:
+        await cmd("Page.navigate", url=url)
+    except CDP_GONE:
+        return Ready.CHROME_GONE
+    return await wait_ready(cmd, expr, blocked, timeout_s)
+
+
 class PageEvents:
     def __init__(self):
         self.page_errors, self.browser_errors, self.failed_responses = [], [], []
@@ -399,8 +407,7 @@ async def run(a):
                     so_mock.confere(a.url)  # antes de cada navegacao: a porta pode ter mudado de dono
                     erros.clear()
                     events.new_load()
-                    await cmd("Page.navigate", url=a.url)
-                    ready = await wait_ready(cmd, PRONTA, barrados, PRONTA_S)
+                    ready = await navigate_and_wait(cmd, a.url, PRONTA, barrados, PRONTA_S)
                     if ready is Ready.CHROME_GONE:
                         verdict = await report_not_ready(cmd, f"{sz:>10}", ready, READY_CONDITIONS, events, PRONTA_S)
                         print(f"FALHA  {verdict}; nothing more checked")
@@ -557,8 +564,7 @@ async def aviso_no_chrome(base, botao):
             async def load_and_wait_notice():
                 so_mock.confere(url)
                 events.new_load()
-                await cmd("Page.navigate", url=url)
-                ready = await wait_ready(cmd, PRONTA, barrados, PRONTA_S)
+                ready = await navigate_and_wait(cmd, url, PRONTA, barrados, PRONTA_S)
                 if ready is not Ready.READY:
                     r["not_ready"].append(await report_not_ready(cmd, "notice", ready, READY_CONDITIONS, events,
                                                                  PRONTA_S))
@@ -570,6 +576,9 @@ async def aviso_no_chrome(base, botao):
                 await cmd(f"{domain}.enable")
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
             r["abriu"] = await load_and_wait_notice()
+            if r["not_ready"]:
+                tarefa.cancel()
+                return r
             await confere_pagina(cmd, url, barrados)
             if botao == "ligar" and not r["abriu"]:
                 # o Microfone e fone aberto pelo botao dele, e o Comecar a enviar da linha dos dados de uso

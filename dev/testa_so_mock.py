@@ -11,8 +11,8 @@ starts is a fake Popen: nothing is run.
   even to the app port), a 401 that isn't the pairing one, another status, a body that isn't JSON; the 200 and the
   pairing 401 with the marker pass;
 - confere_pagina and libera_ou_barra turn away the page or document from another origin;
-- the Filho stops its child by closing the child's stdin, never by a request, and kills its own handle only when the
-  child does not exit;
+- the Filho stops a child started with the stop flag by closing its stdin, with no request, and an older one by the
+  /api/shutdown only while it answers as a --mock; it kills its own handle only when the child does not exit;
 - sobe returns the Filho only with the child alive and the marker, and kills the child when that doesn't happen;
 - sai_se_o_app_ligado exits when the app port answers (that answer is faked: nothing connects to it).
 
@@ -123,10 +123,10 @@ class FakeStdin:
 class FakeChild:
     """The Popen of a child that runs nothing: poll() says whether it is alive; kill() ends it."""
 
-    def __init__(self, alive=True, stops_on_eof=True):
+    def __init__(self, alive=True, stops_on_eof=True, piped=True):
         self.returncode = None if alive else 1
         self.killed = False
-        self.stdin, self.stops_on_eof = FakeStdin(), stops_on_eof
+        self.stdin, self.stops_on_eof = FakeStdin() if piped else None, stops_on_eof
 
     def poll(self):
         return self.returncode
@@ -136,7 +136,7 @@ class FakeChild:
         self.returncode = -9
 
     def wait(self, timeout=None):
-        if self.returncode is None and self.stdin.closed and self.stops_on_eof:
+        if self.returncode is None and self.stdin and self.stdin.closed and self.stops_on_eof:
             self.returncode = 0
         if self.returncode is None:
             raise subprocess.TimeoutExpired("fake child", timeout)
@@ -269,6 +269,21 @@ def child(srv):
     f = so_mock.Filho(stubborn, srv.port)
     f.encerra(espera=1)
     check(stubborn.stdin.closed and stubborn.killed, "a child that does not exit when its stdin closes: its handle killed")
+    srv.says(200, {"ok": True})
+    old = FakeChild(piped=False)
+    f = so_mock.Filho(old, srv.port)
+    n = len(srv.requests)
+    f.encerra(espera=1)
+    check(srv.requests[n:] == [("GET", "/api/state")] and old.killed,
+          f"a child without the stop flag whose port stopped answering as a --mock: no /api/shutdown, only its handle "
+          f"({srv.requests[n:]})")
+    srv.says(200, {"mock": True})
+    old = FakeChild(piped=False)
+    f = so_mock.Filho(old, srv.port)
+    n = len(srv.requests)
+    f.encerra(espera=1)
+    check(("POST", "/api/shutdown") in srv.requests[n:] and old.killed,
+          "a live --mock child without the stop flag: encerra sends the /api/shutdown, then its handle when it stays")
 
 
 def starts():
@@ -297,6 +312,13 @@ def starts():
     cmd, kw = calls[-1]
     check(cmd == ["server.py", "--mock", so_mock.STOP_FLAG] and kw.get("stdin") is subprocess.PIPE,
           f"sobe starts the child with {so_mock.STOP_FLAG} and its stdin a pipe this process holds ({cmd})")
+    started.pop().close()
+    port = so_mock.free_port()
+    with mock.patch.object(so_mock.subprocess, "Popen", side_effect=popen_that_serves({"mock": True})):
+        so_mock.sobe(["server.py", "--mock"], port, limite=5, stop_flag=False)
+    cmd, kw = calls[-1]
+    check(cmd == ["server.py", "--mock"] and "stdin" not in kw,
+          f"sobe with stop_flag=False, for a server.py that predates the flag, starts it as before ({cmd})")
     started.pop().close()
 
     port = so_mock.free_port()

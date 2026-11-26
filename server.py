@@ -2730,7 +2730,7 @@ def main():
                          "and nothing is sent (the events stay in memory)")
     ap.add_argument("--stop-on-stdin-eof", action="store_true",
                     help="with --mock: stop like the Desligar button when stdin closes (the dev/so_mock.py that started "
-                         "the server holds the other end, so only that process can stop it)")
+                         "the server holds the other end; the phone role, which /api/shutdown refuses, stops this way)")
     ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
     if a.metricas_teste and not a.mock:

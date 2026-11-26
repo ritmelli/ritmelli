@@ -89,6 +89,10 @@ def closed_connection(error):
     outcome = asyncio.run(asyncio.wait_for(fitcheck.wait_ready(chrome.cmd, "true", [], 20), 5))
     check(outcome is fitcheck.Ready.CHROME_GONE,
           f"with a {kind}, the wait for the ready signal gives up at once as a Chrome that went away ({outcome})")
+    navigated = asyncio.run(asyncio.wait_for(
+        fitcheck.navigate_and_wait(chrome.cmd, "http://127.0.0.1:1/t/ritmelli/", "true", [], 20), 5))
+    check(navigated is fitcheck.Ready.CHROME_GONE and chrome.calls[-1] == "Page.navigate",
+          f"with a {kind} during the Page.navigate, the navigation ends as a Chrome that went away ({navigated})")
     out = io.StringIO()
     with tempfile.TemporaryDirectory(prefix="ritmelli-nao-pronto-") as tmp, contextlib.redirect_stdout(out):
         try:
