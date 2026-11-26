@@ -4,14 +4,15 @@ EXTENDS Locks, Integers, TLC
 CONSTANTS Qids, NoQid, RIds, GIds,
           NextsJoin, NextsJoinAfterPublish, NextResolvesItsGroup, StopClosesSwitches, StopSavesItsRecord,
           ClosingRecordsTheSwitch, FailedSwapReleasesReservation,
-          QueueChangeUnderQlock, ReserveReadsProximoWithoutLock, TakingTheSwitchClearsIt, Reopens
+          QueueChangeUnderQlock, ReserveReadsProximoWithoutLock, TakingTheSwitchClearsIt, Reopens,
+          PreparesAgain, ClosesTheSecondSwitch
 
 VARIABLES pc, s
 
 vars == <<owner, orderBroken, pc, s>>
 
 Nexts == {"N1", "N2"}
-Workers == Nexts \cup {"StopOrChange", "Reopen"}
+Workers == Nexts \cup {"StopOrChange", "Reopen", "Prepare"}
 Procs == Workers \cup {"Mixer", "PassageWatcher"}
 
 NoTrack == [id |-> 0, qid |-> NoQid]
@@ -37,6 +38,7 @@ Init ==
                CASE p \in Nexts -> "nx_start"
                  [] p = "StopOrChange" -> "sq_start"
                  [] p = "Reopen" -> IF Reopens THEN "ro_start" ELSE "done"
+                 [] p = "Prepare" -> IF PreparesAgain THEN "pr_start" ELSE "done"
                  [] p = "Mixer" -> "mx"
                  [] p = "PassageWatcher" -> "pw_idle"]
     /\ \E f \in TwoEntries, p0 \in {"none", "head"} :
@@ -389,8 +391,19 @@ PassageWatcherProc ==
        /\ Goto("PassageWatcher", "pw_idle")
     \/ /\ At("PassageWatcher", "pw_close")
        /\ SectionThenRelease("PassageWatcher", "_qlock", {"fila_lock"})
-       /\ s' = FechaVirada(s, s.pwSeen)
+       /\ s' = IF ClosesTheSecondSwitch \/ s.closed = <<>> THEN FechaVirada(s, s.pwSeen) ELSE s
        /\ Goto("PassageWatcher", "pw_idle")
+
+PrepareProc ==
+    \/ /\ WithEngineTry("Prepare", "pr_start", "pr_publish", "pr_wait")
+       /\ UNCHANGED s
+    \/ /\ At("Prepare", "pr_publish")
+       /\ SectionThenRelease("Prepare", "_qlock", {"fila_lock", "_lock"})
+       /\ s' = IF /\ s.pronto = NoQid /\ s.virou.tag = NoQid /\ s.track.id /= 0 /\ s.fila /= <<>>
+                  /\ (s.appRes = 0 \/ ~Viva(s, s.appRes))
+               THEN [s EXCEPT !.pronto = Head(s.fila)]
+               ELSE s
+       /\ Goto("Prepare", "done")
 
 ReopenProc ==
     \/ /\ At("Reopen", "ro_start")
@@ -408,6 +421,7 @@ Proc(p) ==
       [] p = "StopOrChange" -> StopOrChangeProc
       [] p = "PassageWatcher" -> PassageWatcherProc
       [] p = "Reopen" -> ReopenProc
+      [] p = "Prepare" -> PrepareProc
 
 Quiescent ==
     /\ \A p \in Workers : pc[p] = "done"
@@ -418,7 +432,7 @@ Next ==
     \/ \E p \in Nexts :
           \/ NextStarts(p) \/ NextDispatches(p) \/ NextClosesItsSwitch(p) \/ NextChecksRunning(p)
           \/ NextReserves(p) \/ NextWaitsReservation(p) \/ NextPlays(p) \/ NextFinishes(p)
-    \/ MixerProc \/ StopOrChangeProc \/ PassageWatcherProc \/ ReopenProc
+    \/ MixerProc \/ StopOrChangeProc \/ PassageWatcherProc \/ ReopenProc \/ PrepareProc
     \/ Quiescent /\ UNCHANGED vars
 
 Spec == Init /\ [][Next]_vars

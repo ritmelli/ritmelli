@@ -1190,18 +1190,18 @@ class App:
         def shelf_record():
             return self.lib.get(j["item_id"]) if j is not None and j["status"] == "done" else None
 
+        it = shelf_record()
+        if it is not None and e.trocar_fonte(tr, dict(it, path=str(LIB / it["file"]))):
+            return
+
         def no_file_will_come():
             return e.track is tr and j is not None and (
                 j["status"] == "error" or (j["status"] == "done" and shelf_record() is None))
         if e.stop(pode=no_file_will_come) is not None:
             return
-        it = shelf_record()
-        if it is not None and e.trocar_fonte(tr, dict(it, path=str(LIB / it["file"]))):
-            return
-        if e.track is tr:
-            e.error = i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play right away "
+        e.warn_on(tr, i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play right away "
                                                               "({reason}). It will play as soon as the download "
-                                                              "finishes.", reason=reason)
+                                                              "finishes.", reason=reason))
 
     def religar_stream(self, tr, pos, desistir):
         """O leitor do motor (na thread dele): o stream da parecida do Automatico caiu em pos, sem audio ou antes do

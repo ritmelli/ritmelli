@@ -2,7 +2,7 @@
 EXTENDS Locks, TLC
 
 CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, StreamChecksItsTrack,
-          RefusedStreamStopsWithoutTheFile
+          RefusedStreamStopsWithoutTheFile, RefusedStreamTriesTheFileFirst
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack,
@@ -209,25 +209,43 @@ ActsOn(cond) == (track.id = swTr \/ ~StreamChecksItsTrack) /\ cond
 
 Flags == wrongTrack' = (wrongTrack \/ track.id /= swTr)
 
+FileReady == jobStatus = "done" /\ shelf
+
 StreamRefusedChecksJob ==
     /\ StreamFailureChecksJob
     /\ \/ /\ At("Stream", "st_refused")
+          /\ Goto("Stream", IF RefusedStreamTriesTheFileFirst /\ FileReady THEN "st_file_lock" ELSE "st_stop_lock")
+          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
+       \/ /\ At("Stream", "st_file_lock")
           /\ Acquire("Stream", "_lock")
-          /\ Goto("Stream", IF jobStatus = "done" /\ shelf THEN "st_refused_file" ELSE "st_refused_stop")
+          /\ Goto("Stream", "st_file")
           /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
-       \/ /\ At("Stream", "st_refused_file")
+       \/ /\ At("Stream", "st_file")
           /\ SectionThenRelease("Stream", "_qlock", {"_lock"})
-          /\ \/ ActsOn(TRUE) /\ NewSource("file") /\ Flags
-             \/ ~ActsOn(TRUE) /\ UNCHANGED <<platVars, wrongTrack>>
-          /\ Goto("Stream", "done")
+          /\ \/ ActsOn(TRUE) /\ NewSource("file") /\ Flags /\ Goto("Stream", "done")
+             \/ /\ ~ActsOn(TRUE) /\ UNCHANGED <<platVars, wrongTrack>>
+                /\ Goto("Stream", IF RefusedStreamTriesTheFileFirst THEN "st_stop_lock" ELSE "st_warn")
           /\ UNCHANGED <<jobStatus, shelf, stream, swTr, dlSaw, queueVars, localVars>>
-       \/ /\ At("Stream", "st_refused_stop")
+       \/ /\ At("Stream", "st_stop_lock")
+          /\ Acquire("Stream", "_lock")
+          /\ Goto("Stream", "st_stop")
+          /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
+       \/ /\ At("Stream", "st_stop")
           /\ SectionThenRelease("Stream", "_qlock", {"_lock"})
           /\ LET noFile == jobStatus = "error" \/ (RefusedStreamStopsWithoutTheFile /\ jobStatus = "done" /\ ~shelf)
-             IN \/ ActsOn(noFile) /\ StopPlatter /\ Flags
-                \/ ~ActsOn(noFile) /\ UNCHANGED <<platVars, wrongTrack>>
-          /\ Goto("Stream", "done")
+             IN \/ ActsOn(noFile) /\ StopPlatter /\ Flags /\ Goto("Stream", "done")
+                \/ /\ ~ActsOn(noFile) /\ UNCHANGED <<platVars, wrongTrack>>
+                   /\ Goto("Stream", IF RefusedStreamTriesTheFileFirst THEN "st_warn" ELSE "st_read_shelf")
           /\ UNCHANGED <<jobStatus, shelf, stream, swTr, dlSaw, queueVars, localVars>>
+       \/ /\ At("Stream", "st_read_shelf")
+          /\ Goto("Stream", IF FileReady THEN "st_file_lock" ELSE "st_warn")
+          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
+       \/ /\ At("Stream", "st_warn")
+          /\ Section("Stream", "_qlock")
+          /\ \/ ActsOn(TRUE) /\ Flags
+             \/ ~ActsOn(TRUE) /\ UNCHANGED wrongTrack
+          /\ Goto("Stream", "done")
+          /\ UNCHANGED <<platVars, jobStatus, shelf, stream, swTr, dlSaw, queueVars, localVars>>
 
 PlayLocks ==
     /\ WithEngineTry("Play", "pl_try", "pl_swap", "pl_wait")

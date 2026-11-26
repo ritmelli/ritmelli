@@ -110,6 +110,54 @@ def finished_download_that_left_the_shelf(A, E, readers):
           f"({j['status']}, {E.status()})")
 
 
+def finished_download_forgotten_during_the_refusal(A, E, readers):
+    item = A.lib.get("d2")
+    real_get = A.lib.get
+
+    def get_then_forget(iid):
+        it = real_get(iid)
+        if iid == "d2" and it is not None:
+            A.lib.items.remove(it)
+        return it
+    try:
+        with mock.patch.object(A.lib, "get", side_effect=get_then_forget):
+            j, loading = download_ends_before_the_swap_and_the_stream_is_refused(
+                A, E, readers, {"return_value": item}, "fffffffffff")
+    finally:
+        if real_get("d2") is None:
+            A.lib.items.append(item)
+    tr = E.track or {}
+    check(not loading and (tr.get("id") == "d2" or E.track is None),
+          f"a finished download whose record leaves the shelf right after the refusal reads it does not leave the "
+          f"platter loading ({j['status']}, {E.status()}, {tr.get('id')})")
+
+
+def warning_after_another_record_took_the_platter(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "ggggggggggg"
+    j = A.new_job("downloading", True, target)
+    real_msg = server.i18n.msg
+    built = []
+
+    def msg_then_play(key, *a, **kw):
+        m = real_msg(key, *a, **kw)
+        if key == "server.player.streamRefused":
+            built.append(m)
+            cmd.tocar(A, "d2")
+        return m
+    stream = StreamThread(A)
+    try:
+        with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(server.i18n, "msg", msg_then_play):
+            cmd.play_downloading(A, j, target, {"youtube_id": target, "title": "still downloading"})
+            check(stream.ended.wait(WAIT_S) and readers.wait("d2"),
+                  "the stream of the running job was refused, and d2 took the platter while the warning was built")
+    finally:
+        del A._abre_stream
+        A.job_update(j, status="error")
+    check(len(built) == 1 and E.track is not None and E.track["id"] == "d2" and E.error is not built[0],
+          f"the warning of the refused stream does not land on the record that replaced it ({E.error})")
+
+
 def refused_stream_after_another_record(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     target = "eeeeeeeeeee"
@@ -239,7 +287,9 @@ def main():
                 failed_download(A, E, readers)
                 finished_download(A, E, readers)
                 finished_download_that_left_the_shelf(A, E, readers)
+                finished_download_forgotten_during_the_refusal(A, E, readers)
                 refused_stream_after_another_record(A, E, readers)
+                warning_after_another_record_took_the_platter(A, E, readers)
                 audio_version_during_a_pending_switch(A, E, readers)
                 audio_version_while_the_engine_switches(A, E, readers)
                 audio_version_entries(A, E)

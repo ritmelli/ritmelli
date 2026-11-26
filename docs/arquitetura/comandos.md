@@ -119,9 +119,11 @@ antes.
 A ordem está declarada no modelo (`dev/tla/Locks.tla`, o `LockOrder` e o `BeforeQlockOnly`), e o
 `dev/test_lock_order.py` compara com ela cada `with` das travas (e o `_lock.acquire`) do `comandos.py`, do `server.py`,
 do `automatico.py` e do `engine.py`, pela árvore de sintaxe, e também cada chamada feita com uma trava na mão a um
-método do `App`, da `Engine`, do `Automatico` ou do `comandos.py` (com o `_qlock` na mão, nenhum método que pegue o
-`_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock` só se tenta, com `acquire(blocking=False)` (o
-`with_engine`). Confere também que o `_mixa` e os métodos da `Engine` que ele chama só pegam o `_qlock`.
+método do `App`, da `Engine`, do `Automatico`, da prateleira ou do `comandos.py` (com o `_qlock` na mão, nenhum método
+que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock` só se tenta, com
+`acquire(blocking=False)` (o `with_engine`). As funções que outro roda com as travas na mão contam com elas: as do
+`change_queue`, do `close_switches` e do `concilia` (a `fila_lock` e o `_qlock`), a do `with_engine` (a `fila_lock` e o
+`_lock`) e o `pode` dos métodos do motor (o `_lock` e o `_qlock`). Confere também que o `_mixa` e os métodos da `Engine` que ele chama só pegam o `_qlock`.
 
 ## O modelo das travas (`dev/tla/`)
 
@@ -156,8 +158,9 @@ motor pelo `take_switch`, a passagem preparada pelo `drop_prepared` (o `cancelar
 leitura do estado pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. Toda mudança da fila passa pelo
 `App.change_queue`, que pega o `_qlock`, muda e confere a preparada no mesmo trecho: fora do `App`, nenhum módulo
 escreve nas entradas da fila ou do Mix (atribuição, `update`, subscript ou `del`), e o `dev/test_queue_entries.py`
-falha se escrever; ele falha também com uma mudança da própria fila (atribuição, fatia, `append`, `remove` e afins) fora
-de uma função passada ao `change_queue`. A versão de áudio das parecidas entra pelo `App.apply_audio_version`, que muda a fila pelo
+falha se escrever. Dentro do `App`, as entradas da fila só mudam numa função passada ao `change_queue`, e a própria
+fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido dela ou por quem a recebe como argumento) só
+muda ali, em qualquer módulo. A versão de áudio das parecidas entra pelo `App.apply_audio_version`, que muda a fila pelo
 `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo `qid`, a mesma versão
 que o prato toca) e a primeira da fila presa. O que ainda pega as travas do
 motor por fora (o `_qlock` dos trechos do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do

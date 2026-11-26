@@ -3389,6 +3389,13 @@ class Engine:
             threading.Thread(target=self._reader, args=(gen, novo, t, d), daemon=True).start()
         return True
 
+    def warn_on(self, track, message):
+        with self._qlock:
+            if self.track is not track:
+                return False
+            self.error = message
+            return True
+
     def esperando_arquivo(self):
         """O stream do disco no prato falhou e ele espera o download para tocar (ver o _reader)."""
         return self._espera_arquivo is not None and self._espera_arquivo == self._gen

@@ -11,6 +11,14 @@ AUDIO = ("Engine", "_mixa")
 APP_NAMES = {"A", "app"}
 ENGINE_NAMES = {"e", "E", "engine"}
 SUBCLASSES = {"MockEngine": "Engine"}
+QUEUE_HELD = ["fila_lock", "_qlock"]
+CALLBACKS = {
+    ("server.py", "App", "change_queue"): {0: QUEUE_HELD, "change": QUEUE_HELD},
+    ("server.py", "App", "with_engine"): {0: ["fila_lock", "_lock"], "f": ["fila_lock", "_lock"]},
+    ("server.py", "App", "close_switches"): {0: QUEUE_HELD, "read": QUEUE_HELD},
+    ("comandos.py", None, "concilia"): {1: QUEUE_HELD, "under": QUEUE_HELD, 2: ["fila_lock"], "closed": ["fila_lock"]},
+}
+ENGINE_GUARD = ["_lock", "_qlock"]
 
 failures = []
 
@@ -80,6 +88,8 @@ def resolve(table, call, module, cls):
             keys = [("comandos.py", None, name)]
         elif isinstance(v, ast.Attribute) and v.attr == "automatico":
             keys = [("automatico.py", "Automatico", name)]
+        elif isinstance(v, ast.Attribute) and v.attr == "lib":
+            keys = [("server.py", "Library", name)]
     return [k for k in dict.fromkeys(keys) if k in table]
 
 
@@ -117,6 +127,7 @@ class Walker(ast.NodeVisitor):
     def __init__(self, name, order, before, table, summary):
         self.name, self.order, self.before, self.table, self.summary = name, order, before, table, summary
         self.cls, self.held, self.bad, self.used, self.nested, self.followed = None, [], [], set(), 0, 0
+        self.callbacks, self.walked = {}, 0
 
     def take(self, lock, line, waits=True):
         self.used.add(lock)
@@ -144,13 +155,46 @@ class Walker(ast.NodeVisitor):
         self.generic_visit(node)
         self.cls = outer
 
+    def callables(self, func, arg):
+        if isinstance(arg, ast.Lambda):
+            return [arg]
+        if not isinstance(arg, ast.Name):
+            return []
+        out = [n for n in ast.walk(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+               and n.name == arg.id and n is not func]
+        for n in ast.walk(func):
+            if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == arg.id for t in n.targets):
+                out += [m for m in ast.walk(n.value) if isinstance(m, ast.Lambda)]
+        return out
+
+    def mark_callbacks(self, func):
+        for call in ast.walk(func):
+            if not isinstance(call, ast.Call):
+                continue
+            for key in resolve(self.table, call, self.name, self.cls):
+                slots = dict(CALLBACKS.get(key, {}))
+                if key[0] == "engine.py":
+                    slots["pode"] = ENGINE_GUARD
+                args = list(enumerate(call.args)) + [(k.arg, k.value) for k in call.keywords]
+                for slot, arg in args:
+                    if slot in slots:
+                        for target in self.callables(func, arg):
+                            self.callbacks[id(target)] = slots[slot]
+
     def visit_FunctionDef(self, node):
-        outer, self.held = self.held, []
+        self.walked += id(node) in self.callbacks
+        outer, self.held = self.held, list(self.callbacks.get(id(node), []))
+        self.mark_callbacks(node)
         self.generic_visit(node)
         self.held = outer
 
     visit_AsyncFunctionDef = visit_FunctionDef
-    visit_Lambda = visit_FunctionDef
+
+    def visit_Lambda(self, node):
+        self.walked += id(node) in self.callbacks
+        outer, self.held = self.held, list(self.callbacks.get(id(node), []))
+        self.generic_visit(node)
+        self.held = outer
 
     def visit_With(self, node):
         taken = []
@@ -180,7 +224,7 @@ def scan(sources, order, before):
     trees = {name: ast.parse(text, name) for name, text in sources.items()}
     table = function_table(trees)
     summary = summaries(table)
-    bad, used, nested, followed = [], set(), 0, 0
+    bad, used, nested, followed, walked = [], set(), 0, 0, 0
     for name, tree in trees.items():
         w = Walker(name, order, before, table, summary)
         w.visit(tree)
@@ -188,7 +232,8 @@ def scan(sources, order, before):
         used |= w.used
         nested += w.nested
         followed += w.followed
-    return bad, used, nested, followed
+        walked += w.walked
+    return bad, used, nested, followed, walked
 
 
 def methods(tree, cls):
@@ -254,19 +299,48 @@ def self_test(order, before):
             {"engine.py": "class Engine:\n    def a(self):\n        with self._lock:\n            self.b()\n"
                           "    def b(self):\n        with self._lock:\n            pass\n"}, 0),
     }
+    stubs = {"server.py": "class App:\n    def change_queue(self, change):\n        pass\n"
+                          "    def with_engine(self, f):\n        pass\n"
+                          "class Library:\n    def update(self):\n        with self.lock:\n            pass\n",
+             "engine.py": "class Engine:\n    def stop(self, pode=None):\n        with self._lock:\n"
+                          "            with self._qlock:\n                pass\n",
+             "comandos.py": "def concilia(A, under, closed=None):\n    pass\n"}
+    callbacks = {
+        "a change passed to change_queue that stops the engine": (
+            "def f(A, E):\n    A.change_queue(lambda: E.stop())\n", 1),
+        "a change passed by keyword to change_queue that stops the engine": (
+            "def f(A, E):\n    def change():\n        E.stop()\n    A.change_queue(change=change)\n", 1),
+        "a with_engine body that takes the proximo_lock": (
+            "def f(A):\n    def body(depois):\n        with A.proximo_lock:\n            pass\n"
+            "    A.with_engine(body)\n", 1),
+        "a concilia round that takes the proximo_lock": (
+            "def f(A):\n    def under(v):\n        with A.proximo_lock:\n            return None\n"
+            "    cmd.concilia(A, under)\n", 1),
+        "the shelf's lock inside an engine pode": (
+            "def f(A, E):\n    def pode():\n        with A.lib.lock:\n            return True\n"
+            "    E.stop(pode=pode)\n", 1),
+        "a pode bound to a variable that stops the engine": (
+            "def f(A, E):\n    pode = (lambda: E.stop()) if A else None\n    E.stop(pode=pode)\n", 1),
+        "a shelf method that takes its lock, called with the fila_lock held": (
+            "def f(A):\n    with A.fila_lock:\n        A.lib.update()\n", 1),
+        "a pode that only reads the platter": ("def f(A, E, tr):\n    E.stop(pode=lambda: E.track is tr)\n", 0),
+    }
+    for what, (code, expected) in callbacks.items():
+        bad, *_ = scan(dict(stubs, **{"case.py": code}), order, before)
+        check(bool(bad) == bool(expected), f"the check {'flags' if expected else 'accepts'} {what} ({bad})")
     for what, (code, expected) in cases.items():
-        bad, _, _, _ = scan({"case.py": code}, order, before)
+        bad, *_ = scan({"case.py": code}, order, before)
         check(len(bad) == expected, f"the check {'flags' if expected else 'accepts'} {what} ({bad})")
     for what, (sources, expected) in calls.items():
-        bad, _, _, _ = scan(sources, order, before)
+        bad, *_ = scan(sources, order, before)
         check(len(bad) == expected, f"the check {'flags' if expected else 'accepts'} {what} ({bad})")
     real = {m: (ROOT / m).read_text(encoding="utf-8") for m in MODULES}
     swapped = [order[1], order[0], *order[2:]]
-    bad, _, _, _ = scan(real, swapped, before)
+    bad, *_ = scan(real, swapped, before)
     check(bool(bad), f"with the _lock declared before the fila_lock in the model, the code breaks the order "
                      f"({len(bad)} places, the first {bad[:1]})")
     waits = dict(real, **{"server.py": real["server.py"].replace("acquire(blocking=False)", "acquire()")})
-    bad, _, _, _ = scan(waits, order, before)
+    bad, *_ = scan(waits, order, before)
     check(waits["server.py"] != real["server.py"] and bool(bad),
           f"with the with_engine waiting for the _lock with the fila_lock held, the check fails ({bad[:1]})")
     engine = ("class Engine:\n    def _mixa(self):\n        with self._qlock:\n            self._vira()\n"
@@ -283,10 +357,10 @@ def main():
         sys.exit(1)
     self_test(order, before)
     sources = {m: (ROOT / m).read_text(encoding="utf-8") for m in MODULES}
-    bad, used, nested, followed = scan(sources, order, before)
+    bad, used, nested, followed, walked = scan(sources, order, before)
     check(not bad, f"every with of the locks in {', '.join(MODULES)} follows the order declared in the model, also "
-                   f"through the calls made with a lock held ({nested} nested acquisitions, {followed} calls "
-                   f"followed; {bad})")
+                   f"through the calls made with a lock held and the callbacks run under one ({nested} nested "
+                   f"acquisitions, {followed} calls followed, {walked} callbacks; {bad})")
     check(used == set(order) | before, f"the code takes exactly the locks the model declares ({sorted(used)})")
     seen, taken = audio_locks(sources["engine.py"])
     check(set(taken) == {"_qlock"}, f"the audio thread ({'.'.join(AUDIO)} and the {len(seen) - 1} Engine methods it "
