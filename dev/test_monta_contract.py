@@ -76,7 +76,8 @@ def step_by_id(job, step_id):
 
 
 def manifest_step(job):
-    found = [s for s in job_steps(job) if "instalador\\atualizacao\\publica.py" in str(s.get("run", ""))]
+    found = [s for s in job_steps(job)
+             if "instalador/atualizacao/publica.py" in str(s.get("run", "")).replace("\\", "/")]
     return found[0] if len(found) == 1 else None
 
 
@@ -93,7 +94,7 @@ def literal(value):
 
 
 def output_folder(run):
-    value = re.findall(r"""['"]--saida['"],\s*('[^']*'|"[^"]*"|\$\w+)""", code(run))
+    value = re.findall(r"""['"]--saida['"],\s*('[^']*'|"[^"]*"|\$\w+)\s*[,)]""", code(run))
     if len(value) != 1 or not value[0].startswith("$"):
         return literal(value[0]) if len(value) == 1 else None
     assigned = re.findall(rf"\{value[0]}\b\s*([-+*/]?=)(?!=)\s*(.*?)\s*$", code(run), re.M | re.I)
@@ -205,6 +206,10 @@ def main():
     option = mutant(doc, lambda d: edit_run(d, lambda run: run.replace("'--saida', $saida", '"--saida", $saida')))
     check('"--saida", $saida' in manifest_step(option["jobs"]["monta"])["run"] and contract_problems(option) == [],
           "the --saida option in double quotes keeps the contract")
+    script = "instalador\\atualizacao\\publica.py"
+    forward = mutant(doc, lambda d: edit_run(d, lambda run: run.replace(script, "instalador/atualizacao/publica.py")))
+    check(script in manifest_step(doc["jobs"]["monta"])["run"] and contract_problems(forward) == [],
+          "the publica.py call written with forward slashes keeps the contract")
     other_dir = mutant(doc, lambda d: upload(d, exe)["with"].update(path="dist/app/ritmelli.exe"))
     check(contract_problems(other_dir) == [], "the ritmelli.exe in another folder keeps the contract")
     dotted = mutant(doc, lambda d: upload(d, exe)["with"].update(path="./dist/ritmelli/ritmelli.exe"))
@@ -258,6 +263,8 @@ def main():
             r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$Saida = 'instalador_out'", run, count=1, flags=re.M)),
         "a Ritmelli artifact named by another expression": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{ github.run_number }}", "path": "x"}}),
+        "the --saida of publica.py with a subfolder": lambda d: edit_run(d, lambda run: run.replace(
+            "'--saida', $saida)", "'--saida', $saida + '\\sub')")),
         "the folder of --saida assigned twice": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$saida += '_other'", run, count=1, flags=re.M)),
         "the ritmelli-exe upload under a condition": lambda d: upload(d, exe).update(
