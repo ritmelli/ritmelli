@@ -85,16 +85,16 @@ arquivo, sem as marcas, com os outros atributos da tag numa linha e cada `'use s
 as duas páginas iguais, linha a linha; diferentes, ela separa os blocos que só mudaram de lugar das linhas novas ou que
 sumiram (um arquivo novo traz o próprio `[strict]`). O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
 dos dois commits num Chrome sem tela, contra um `--mock` de cada, no tamanho do PC (a mesa) e no de um celular, e
-compara duas tabelas. A primeira tem os ouvintes ligados no fim da carga, na ordem em que entraram (o
+compara três tabelas. A primeira tem os ouvintes ligados no fim da carga, na ordem em que entraram (o
 `getEventListeners` do DevTools), com as opções e o texto de cada função: os de cada nó, do `document`, da `window` e do
 `navigator.connection`, os de cada `MediaQueryList` que a página criou e que teve um ouvinte ou uma chamada (pela
-consulta, numeradas entre as da mesma consulta na ordem em que nasceram, que é a ordem em que o navegador avisa de uma
-mudança, e a lista delas nessa ordem, entre consultas, também é comparada; o `onchange` e o `addListener`
-entram) e os dos outros alvos em que a página pôs um ouvinte, pelo tipo. A
-segunda tem cada chamada de `addEventListener`, `removeEventListener`, `addListener` e `removeListener`, e cada
-`onchange` posto numa `MediaQueryList` ou no `navigator.connection`, desde o começo da página, por alvo e evento, na
-ordem (um nó pelo caminho da primeira chamada, numerado quando outro nó já tinha o mesmo): um ouvinte posto e tirado
-antes da leitura aparece nela. Sai 0 só com as tabelas iguais. O
+consulta, numeradas entre as da mesma consulta na ordem em que nasceram; o `onchange` e o `addListener` entram) e os
+dos outros alvos em que a página pôs um ouvinte, pelo tipo. A segunda tem cada chamada de `addEventListener`,
+`removeEventListener`, `addListener` e `removeListener`, e cada `onchange` posto numa `MediaQueryList` ou no
+`navigator.connection`, desde o começo da página, por alvo e evento, na ordem (um nó pelo caminho da primeira chamada,
+numerado quando outro nó já tinha o mesmo): um ouvinte posto e tirado antes da leitura aparece nela. A terceira tem
+essas `MediaQueryList` na ordem em que nasceram, entre consultas, que é a ordem em que o navegador avisa de uma
+mudança. Sai 0 só com as tabelas iguais. O
 arquivo em que um ouvinte mora não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função,
 mantém as tabelas. O `dev/test_theme_listeners.py`, que o `--tela` roda, confere a leitura numa página própria.
 

@@ -17,17 +17,18 @@ missing_script = importlib.import_module("missing_script")
 RAIZ = Path(__file__).resolve().parent.parent
 USAGE = """Proof that a theme change keeps the page's event listeners: the theme of two commits (the head defaults to the
 working tree) opened in a headless Chrome against a --mock server of each, at the PC size (the DJ desk) and at a phone
-size, once the page is connected. Two tables are compared:
+size, once the page is connected. Three tables are compared:
 - the listeners on at that moment, read in the order they were added (the DevTools getEventListeners), with the
   capture, passive and once flags and the handler's source text, each line without its indentation: those of every
   node, the document, the window and navigator.connection, of every MediaQueryList the page made that had a listener
   or a call, and of the other targets the page added a listener to, by their kind. A MediaQueryList is
-  matchMedia(<its query>) #<n>, numbered per query among those in the order they were made, which is the order the
-  browser tells them of a change, and the list of them in that order, across queries, is compared too;
+  matchMedia(<its query>) #<n>, numbered per query in the order the lists were made;
 - every addEventListener, removeEventListener, addListener and removeListener call and every onchange set on a
   MediaQueryList or navigator.connection since the page began, per target and event type, in order, with the options
   as given and the handler's text (a node by its path at its first call, with #<n> when another node had that path): a
-  listener added and removed before the table is read shows here.
+  listener added and removed before the table is read shows here;
+- those MediaQueryLists in the order they were made, across queries, which is the order the browser tells them of a
+  change.
 Exit 0 only when both commits give the same tables; otherwise the differences are printed and the exit is 1. The file a
 handler lives in is not compared: moving a handler between files, or into a function, keeps the tables. The <script>
 tags are left out: their only listener is the onerror="scriptFailed(this)" that dev/testa_i18n.py requires on each of
