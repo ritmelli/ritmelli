@@ -71,7 +71,8 @@ mensagem própria: se o microfone recusado ainda é o ativo, a conferência que 
 (`server.mic.notReadyReinstall`). Ao desinstalar, o original de
 todo microfone volta, o `remove` tenta apagar a pasta do filtro (a DLL ainda presa no `audiodg` pode deixá-la para
 trás) e a tarefa, as vagas do hospedeiro e os mudos do registro saem, mesmo quando o reinício do áudio falha (o
-Audiosrv que não volta ou o AudioEndpointBuilder que não reinicia: o `remove` sai com o erro depois de limpar). A DLL e o log moram na `microfone\` da pasta do
+Audiosrv que não volta ou o AudioEndpointBuilder que não reinicia: o `remove` sai com o erro depois de limpar). A
+DLL e o log moram na `microfone\` da pasta do
 executável (pelo código, na `%ProgramW6432%\Ritmelli`), e tudo isso só vale com essa pasta protegida
 (`pastas.pasta_protegida`): o `instala` e o `instala-todos` conferem antes de tudo e recusam, e o
 `instala-todos` do executável, o da tarefa, ainda apaga as duas tarefas que rodam como SYSTEM (a da

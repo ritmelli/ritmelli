@@ -292,6 +292,44 @@ class TestaMfx(Base):
         self.assertIsNone(self.vaga(0))
 
 
+class TestFailedListWriteAfterTheSingleEffect(Base):
+    """#261: _pendura deletes the maker's single EFX/MFX before it writes the list that takes it over."""
+
+    def _first_and_second_run(self, failing_list):
+        r = self.reg
+        self.microfone({mf.EFX: (EFX_FM, r.REG_SZ), mf.MFX: (MFX_FM, r.REG_SZ),
+                        mf.MODOS_MFX: ([mf.MODO_PADRAO, mf.MODO_RAW], r.REG_MULTI_SZ)})
+        real_set_value, refused = r.SetValueEx, []
+
+        def set_value(key, name, reserved, kind, value):
+            if name.lower() == failing_list.lower() and not refused:
+                refused.append(name)
+                raise OSError("the list write was refused")
+            real_set_value(key, name, reserved, kind, value)
+        with mock.patch.object(r, "SetValueEx", set_value), self.assertRaises(OSError):
+            mf._pendura(EP)
+        self.assertEqual(refused, [failing_list])
+        mf._pendura(EP)
+        self.assertEqual(self.le(mf.EFX_LISTA)[-1], mf.CLSID, "the second run installs the filter")
+
+    def test_the_second_run_after_a_failed_efx_list_write_installs_the_filter(self):
+        self._first_and_second_run(mf.EFX_LISTA)
+
+    def test_the_second_run_after_a_failed_mfx_list_write_installs_the_filter(self):
+        self._first_and_second_run(mf.MFX_LISTA)
+
+    @unittest.expectedFailure
+    def test_the_maker_efx_survives_a_failed_list_write(self):
+        self._first_and_second_run(mf.EFX_LISTA)
+        self.assertEqual(self.le(mf.EFX_LISTA), [EFX_FM, mf.CLSID], "#261: the maker's EFX left the chain")
+
+    @unittest.expectedFailure
+    def test_the_maker_mfx_survives_a_failed_list_write(self):
+        self._first_and_second_run(mf.MFX_LISTA)
+        self.assertEqual((self.le(mf.MFX_LISTA), self.vaga(0)), ([HOST0], MFX_FM),
+                         "#261: the maker's MFX left the chain")
+
+
 class Gravador:
     """O subprocess.run de mentira: guarda cada comando e responde como o Windows (o schtasks /query nao acha a
     tarefa). Com reg e inproc, o regsvr32 grava o InprocServer32 do filtro como o de verdade."""

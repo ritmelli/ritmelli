@@ -699,12 +699,12 @@ def instala(filtro, dll):
     restart_error = reinicia_audio(so_servico=not novo) if novo or parou else None
     check = _depois_do_reinicio() if novo or parou else None
     if restart_error:
-        raise FilterNotInstalled([restart_error], check)
+        raise FilterChangeFailed([restart_error], check)
     _log(f"installed on {nome} ({apar}) {ep}")
     return check
 
 
-class FilterNotInstalled(Exception):
+class FilterChangeFailed(Exception):
     def __init__(self, failures, check):
         super().__init__("; ".join(failures))
         self.check = check
@@ -716,7 +716,7 @@ def instala_todos(dll):
     new leaves the sound alone, and only a new DLL restarts only the audio service. Returns the device check if the
     audio restarted (confere_aparelhos), or None. A microphone that refuses the filter doesn't stop the others or
     restart the audio by itself, and an AudioEndpointBuilder that doesn't restart fails too: at the end,
-    FilterNotInstalled carries the check (or None)."""
+    FilterChangeFailed carries the check (or None)."""
     parou = _prepara_dll(dll)
     novos, failures = [], []
     for m in microfones(todos=True):
@@ -734,7 +734,7 @@ def instala_todos(dll):
     _log(f"filter on {len(microfones(todos=True))} microphones; now: {len(novos)}{'; DLL replaced' if parou else ''}")
     check = _depois_do_reinicio() if novos or parou else None
     if failures:
-        raise FilterNotInstalled(failures, check)
+        raise FilterChangeFailed(failures, check)
     return check
 
 
@@ -772,7 +772,7 @@ def remove(filtro=None):
     folder outside the protected folder rule, the microphones are restored the same way (it's only registry), but the
     DLL there is neither loaded nor deleted: its registration goes through winreg, and the command exits with an
     error. The cleanup runs even when the restart fails; an AudioEndpointBuilder that didn't restart then raises
-    FilterNotInstalled. Return the device check if the audio restarted, some microphone keeps the filter and the
+    FilterChangeFailed. Return the device check if the audio restarted, some microphone keeps the filter and the
     folder passed (_depois_do_reinicio), or None."""
     alvos = [acha(filtro)] if filtro else microfones(todos=True)
     mexeu = False
@@ -804,7 +804,7 @@ def remove(filtro=None):
         sys.exit(f"the app folder isn't protected ({protegida}): the microphones were restored, and {PASTA} was "
                  "left as it is")
     if restart_error:
-        raise FilterNotInstalled([restart_error], r)
+        raise FilterChangeFailed([restart_error], r)
     return r
 
 
@@ -1010,8 +1010,7 @@ def pede_tarefa(nome, espera_s=60):
                             errors="replace", creationflags=NO_WINDOW).stdout
         if "RUNNING" in st:
             time.sleep(2.0)  # os aparelhos se enumeram de novo logo depois
-            if not ready:
-                ready = _microphone_ready(nome)
+            ready = _microphone_ready(nome)
             return {"ok": True} if ready else {"ok": False, "motivo": "nao_pronto", "reopen": True}
         if time.monotonic() >= fim:
             return {"ok": False, "motivo": "audio"}
@@ -1070,7 +1069,7 @@ def main(argv=None):
                 r = instala_todos(dll)
         else:
             r = remove(a.microfone)
-    except FilterNotInstalled as ex:
+    except FilterChangeFailed as ex:
         r = ex.check
         res = {"ok": False, "erro": str(ex)}
     except SystemExit as ex:

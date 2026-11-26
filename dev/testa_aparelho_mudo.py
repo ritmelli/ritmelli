@@ -272,14 +272,14 @@ class TestaReinicio(unittest.TestCase):
             with mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
                     mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
                     mock.patch.object(filtro, "_pendura", lambda ep: True), \
-                    redirect_stderr(io.StringIO()), self.assertRaises(filtro.FilterNotInstalled) as caught:
+                    redirect_stderr(io.StringIO()), self.assertRaises(filtro.FilterChangeFailed) as caught:
                 filtro.instala_todos("micfx.dll")
             self.assertEqual(str(caught.exception), reason)
             self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
             with mock.patch.object(filtro, "acha", lambda f: ("{a}", "IN 1", "X")), \
                     mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
                     mock.patch.object(filtro, "_pendura", lambda ep: True), \
-                    redirect_stderr(io.StringIO()), self.assertRaises(filtro.FilterNotInstalled) as caught:
+                    redirect_stderr(io.StringIO()), self.assertRaises(filtro.FilterChangeFailed) as caught:
                 filtro.instala("IN 1", "micfx.dll")
             self.assertEqual((str(caught.exception), caught.exception.check), (reason, {"mudos": [UMC_IN]}))
         self.assertIsNone(filtro.reinicia_audio(), "a restart that worked")
@@ -337,7 +337,7 @@ class TestaReinicio(unittest.TestCase):
 
         def value_gone_later(ep):
             raise FileNotFoundError(2, "The system cannot find the file specified")
-        with self.assertRaises(filtro.FilterNotInstalled):
+        with self.assertRaises(filtro.FilterChangeFailed):
             self._install_with([old], value_gone_later)
 
     def test_pendura_without_properties(self):
@@ -363,7 +363,7 @@ class TestaReinicio(unittest.TestCase):
                 raise PermissionError(13, "Access is denied")
             done.append(ep)
             return True
-        with self.assertRaises(filtro.FilterNotInstalled) as caught:
+        with self.assertRaises(filtro.FilterChangeFailed) as caught:
             self._install_with(mics, pendura)
         self.assertEqual(done, ["{b}"], "the other microphones still get the filter")
         self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": False}), "the new microphone {b}")
@@ -375,11 +375,11 @@ class TestaReinicio(unittest.TestCase):
     def test_instala_todos_device_error_alone_leaves_the_audio(self):
         def denied(ep):
             raise PermissionError(13, "Access is denied")
-        with self.assertRaises(filtro.FilterNotInstalled) as caught:
+        with self.assertRaises(filtro.FilterChangeFailed) as caught:
             self._install_with([("{a}", "IN 1", "X")], denied)
         self.assertEqual(self.c.nomes(), [], "a device that keeps refusing doesn't restart the audio on every run")
         self.assertIsNone(caught.exception.check)
-        with self.assertRaises(filtro.FilterNotInstalled) as caught:
+        with self.assertRaises(filtro.FilterChangeFailed) as caught:
             self._install_with([("{a}", "IN 1", "X")], denied, dll_changed=True)
         self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": True}), "only the DLL changed")
         self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
@@ -447,7 +447,7 @@ class TestaReinicio(unittest.TestCase):
                 mock.patch.object(filtro, "tarefa_apaga", self.c("tarefa_apaga")), \
                 mock.patch.object(filtro, "_esquece_hospedes", self.c("esquece")), \
                 mock.patch.object(filtro, "grava_mudos", self.c("grava_mudos")), redirect_stderr(io.StringIO()), \
-                self.assertRaises(filtro.FilterNotInstalled) as caught:
+                self.assertRaises(filtro.FilterChangeFailed) as caught:
             filtro.remove()
         return str(caught.exception), caught.exception.check
 
@@ -585,7 +585,7 @@ class TestaLinhaDeComando(unittest.TestCase):
         r = {"conferidos": [MIC], "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 1 checked"}
 
         def install_all(dll):
-            raise filtro.FilterNotInstalled(["the filter wasn't installed on IN 1 (X): [Errno 13] Access is denied"], r)
+            raise filtro.FilterChangeFailed(["the filter wasn't installed on IN 1 (X): [Errno 13] Access is denied"], r)
         with tempfile.TemporaryDirectory() as tmp:
             result_file = Path(tmp) / "result.json"
             with mock.patch.object(filtro, "_migra_registro", lambda: None), \
@@ -980,6 +980,13 @@ class TestaPedeTarefa(unittest.TestCase):
         t = iter(range(0, 10000, 10))
         r, order = self._pede(lambda p: False, relogio=lambda: next(t), ready=lambda calls: "sc.exe" in calls)
         self.assertEqual(r, {"ok": True}, "the microphone is read again once the audio service is back")
+        self.assertEqual(order, ["schtasks.exe", "sc.exe"])
+
+    def test_microphone_gone_after_the_audio_came_back(self):
+        t = iter(range(0, 10000, 10))
+        r, order = self._pede(lambda p: False, relogio=lambda: next(t), ready=lambda calls: "sc.exe" not in calls)
+        self.assertEqual(r, {"ok": False, "motivo": "nao_pronto", "reopen": True},
+                         "ready before the restart, gone once the audio service is back")
         self.assertEqual(order, ["schtasks.exe", "sc.exe"])
 
     def test_tarefa_rodando(self):
