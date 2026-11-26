@@ -22,6 +22,7 @@ EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
 INPUTS = ("notas", "notas_en")
 REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial")
 GATED_JOBS = {"testa-migracao": "anterior", "testa-parcial": "parcial"}
+BUILDS = ({"anterior": True, "parcial": True}, {"anterior": True, "parcial": False})
 SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
 STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.([\w-]+)\s*!=\s*''",
@@ -88,7 +89,8 @@ def manifest_step(job):
 
 
 def writes_output(run, key):
-    return any(re.search(r"\$\{?env:GITHUB_OUTPUT\}?", c, re.I) and f'"{key}=$' in c for c in code(run).splitlines())
+    return any(re.search(r"\$env:GITHUB_OUTPUT\b|\$\{env:GITHUB_OUTPUT\}", c, re.I) and f'"{key}=$' in c
+               for c in code(run).splitlines())
 
 
 def bare(condition):
@@ -115,17 +117,24 @@ def active(run, found):
     return bool(found) and code(run)[found.start():found.end()] == found.group(0)
 
 
-def needs_of(jobs, job_id, seen=()):
-    needs = (jobs.get(job_id) or {}).get("needs") or []
-    needs = [needs] if isinstance(needs, str) else needs
-    return set(needs) | {m for n in needs if n not in seen for m in needs_of(jobs, n, seen + (job_id,))}
 
 
-def skipped(jobs, job_id, seen=()):
-    job = jobs.get(job_id) or {}
+def condition_holds(condition, build):
+    if condition is None:
+        return True
+    text = bare(condition) or ""
+    if re.fullmatch(r"(always|success)\(\)", text):
+        return True
+    gate = re.fullmatch(r"needs\.monta\.outputs\.(\w+)\s*==\s*'true'", text)
+    return bool(gate) and build.get(gate.group(1), False)
+
+
+def runs(jobs, job_id, build, seen=()):
+    job = jobs.get(job_id)
+    if job is None or job_id in seen or not condition_holds(job.get("if"), build):
+        return False
     needs = job.get("needs") or []
-    needs = [needs] if isinstance(needs, str) else needs
-    return switched_off(job.get("if")) or any(n not in seen and skipped(jobs, n, seen + (job_id,)) for n in needs)
+    return all(runs(jobs, n, build, seen + (job_id,)) for n in ([needs] if isinstance(needs, str) else needs))
 
 
 SAIDA = r"""['"]--saida['"],\s*(?:(['"])([^'"]*)\1|\$(\w+))\s*[,)]"""
@@ -161,12 +170,9 @@ def contract_problems(doc):
     jobs = doc.get("jobs") or {}
     for required in REQUIRED_JOBS:
         ids = [k for k, j in jobs.items() if display(k, j) == required or display(k, j).startswith(required + " (")]
-        if not ids or any(skipped(jobs, k) for k in ids):
-            problems.append(f"monta.yml has no job shown as {required} that always runs")
-        gated = {k for k, j in jobs.items() for g in GATED_JOBS
-                 if display(k, j) == g or display(k, j).startswith(g + " (")}
-        if any(needs_of(jobs, k) & (gated - {k}) for k in ids):
-            problems.append(f"{required} needs a job that runs only in some builds")
+        builds = [b for b in BUILDS if required != "testa-parcial" or b["parcial"]]
+        if not ids or not all(runs(jobs, k, b) for k in ids for b in builds):
+            problems.append(f"monta.yml has no job shown as {required} that runs in every build the pipeline expects")
     monta = jobs.get("monta") or {}
     congela = step_by_id(monta, "congela")
     if congela is None:
@@ -342,6 +348,10 @@ def main():
           "the --saida value on the next line keeps the contract")
     marks = mutant(doc, lambda d: edit_run(d, lambda run: "# a <# in a line comment\n" + run + "# and a #> later\n"))
     check(contract_problems(marks) == [], "line comments that mention <# and #> keep the contract")
+    migration_first = mutant(doc, lambda d: shown(d, "testa").update(
+        needs=["monta", next(k for k, j in d["jobs"].items() if j is shown(d, "testa-migracao"))]))
+    check(contract_problems(migration_first) == [],
+          "testa needing testa-migracao, which runs in every published build, keeps the contract")
     cited = mutant(doc, lambda d: edit_run(d, lambda run: run + "# publica.py also takes '--saida', $other)\n"))
     check(contract_problems(cited) == [], "a comment citing --saida after the real option keeps the contract")
     later = mutant(doc, lambda d: shown(d, "testa")["steps"].append(
@@ -453,6 +463,11 @@ def main():
             "'--saida', $saida)", "'--saida', $saida + '\\sub')")),
         "the only assignment of the --saida folder commented out": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1# \2", run, count=1, flags=re.M)),
+        "testa-atualizador gated like testa-parcial": lambda d: shown(d, "testa-atualizador").update(
+            {"if": shown(d, "testa-parcial")["if"]}),
+        "the congela writing to another environment variable": lambda d: step_by_id(
+            d["jobs"]["monta"], "congela").update(run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(
+                "$env:GITHUB_OUTPUT", "$env:GITHUB_OUTPUT_FILE")),
         "testa needing testa-parcial": lambda d: shown(d, "testa").update(
             needs=["monta", next(k for k, j in d["jobs"].items() if j is shown(d, "testa-parcial"))]),
         "a block comment with the artifact folder before a --saida moved elsewhere": lambda d: (
