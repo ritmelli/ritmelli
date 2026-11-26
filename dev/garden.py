@@ -32,6 +32,7 @@ ISSUE_URL = re.compile(r"(?<![\w./-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+
 URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
 SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
+CODE_SPAN = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)")
 PARAGRAPH_START = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\*\*)")
 BLOCK_MARKER = re.compile(r"^\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b")
 KEPT_COMMENT = re.compile(r"^\s*manual:|^\s*i18n-ok\s*$|^ inline-script: [\w-]+\.js $")
@@ -1359,7 +1360,8 @@ def has_proof(text):
     if any(kind == "code" and BLOCK_PROOF.search(body) for kind, body in parts):
         return True
     prose = "\n".join(body for kind, body in parts if kind == "text")
-    if RUN_LINK.search(prose) or IMAGE.search(prose):
+    outside_code = CODE_SPAN.sub("", prose)
+    if RUN_LINK.search(outside_code) or IMAGE.search(outside_code):
         return True
     return any(proof_span(span) for span in re.findall(r"`([^`\n]+)`", prose))
 
@@ -1418,7 +1420,7 @@ def description_problems(body):
         problems.append("the proof section has no run, test or screenshot (a command or a test file in `code`, a code "
                         "block, a link to a run or an image)")
     for chunk in paragraphs(lines):
-        text = " ".join(re.sub(r"(`+)(?!`).*?(?<!`)\1(?!`)", "", line) for _, line in chunk)
+        text = " ".join(CODE_SPAN.sub("", line) for _, line in chunk)
         phrase = PROSE.search(text)
         if phrase and not cites_issue(text):
             n = next((i for i, line in chunk if PROSE.search(line)), chunk[0][0]) + 1
