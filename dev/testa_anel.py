@@ -336,6 +336,28 @@ class TestVoicePedalStart(unittest.TestCase):
                 self.assertEqual(counted, 1)
                 self.assertIn(said, log)
 
+    def test_the_line_without_a_fill_or_an_empty_read(self):
+        now = [0.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        pedal.pedal(True)
+        for reads, said in (([0], "came back after 500 ms; it ran dry by 0.50 s after the pedal turned on; "),
+                            ([], "came back after 500 ms; the pedal turned on")):
+            with self.subTest(reads=reads):
+                dry = dryouts.RingDryOuts(pedal)
+                with mock.patch("sys.stderr", io.StringIO()) as log:
+                    now[0] = 0.5
+                    for held in reads:
+                        dry.read_ring(lambda: held)
+                    dry.ran_dry(0.5, 1)
+                    dryouts.LOG.written()
+                self.assertEqual(dry.while_pedal_starting, 1)
+                self.assertIn(said, log.getvalue())
+
+    def test_the_bounds_of_the_line_never_narrow(self):
+        counted, log = self.away(-0.006, 0.0, empty_at=0.108)
+        self.assertEqual(counted, 1)
+        self.assertIn("it ran dry between 0.10 and 0.12 s after the pedal turned on;", log)
+
     def test_a_pedal_on_after_the_ring_was_seen_empty_does_not_count(self):
         counted, log = self.away(0.6, 0.7, empty_at=0.5)
         self.assertEqual(counted, 0)

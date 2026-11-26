@@ -55,7 +55,7 @@ def voice_refusal(voice, voices):
 
 
 def read_states(r, seconds, clock=time.monotonic):
-    end, event = clock() + seconds, None
+    end, event, data = clock() + seconds, None, None
     while True:
         raw = r.readline()
         if not raw:
@@ -63,10 +63,30 @@ def read_states(r, seconds, clock=time.monotonic):
         line = raw.decode("utf-8").strip()
         if line.startswith("event: "):
             event = line[7:]
-        elif line.startswith("data: ") and event == "state":
-            yield json.loads(line[6:])
-        elif not line and clock() >= end:
-            return
+        elif line.startswith("data: "):
+            data = line[6:]
+        elif not line:
+            if event == "state" and data is not None:
+                yield json.loads(data)
+            event = data = None
+            if clock() >= end:
+                return
+
+
+def caught_up(seen, target):
+    a, b = seen["microfone"], target["microfone"]
+    return all(a[k] >= b[k] for k in ("secas", "secas_pedal", "volta_max_ms"))
+
+
+def catch_up(r, seen, target, seconds=UP_S, clock=time.monotonic):
+    if caught_up(seen, target):
+        return []
+    got = []
+    for st in read_states(r, seconds, clock):
+        got.append(st)
+        if caught_up(st, target):
+            return got
+    raise EOFError(f"the state stream didn't reach the counters of /api/state in {seconds:.0f} s")
 
 
 def mic_refusal(asked, state):
@@ -196,6 +216,7 @@ def main():
                     during = list(read_states(events, a.on_s))
                     call("POST", "/api/settings", {"effect": "nenhum"})
                     during += list(read_states(events, OFF_S))
+                    during += catch_up(events, (during or [last])[-1], call("GET", "/api/state"))
                 except EOFError as ex:
                     sys.exit(f"cycle {n}: {ex} (see {server_err} and {log})")
                 states_seen = [last, *during]

@@ -1,3 +1,4 @@
+import math
 import queue
 import sys
 import threading
@@ -121,9 +122,11 @@ class RingDryOuts:
         lo, empty_at = self.filled_at, self.empty_at
         if empty_at is None:
             return ""
+        by = math.ceil(round((empty_at - on_at) * 100, 6)) / 100
         if lo is None:
-            return f" it ran dry by {empty_at - on_at:.2f} s after the pedal turned on;"
-        return f" it ran dry between {lo - on_at:.2f} and {empty_at - on_at:.2f} s after the pedal turned on;"
+            return f" it ran dry by {by:.2f} s after the pedal turned on;"
+        since = math.floor(round((lo - on_at) * 100, 6)) / 100
+        return f" it ran dry between {since:.2f} and {by:.2f} s after the pedal turned on;"
 
     def state(self):
         dry_outs, while_pedal_starting = self.counts

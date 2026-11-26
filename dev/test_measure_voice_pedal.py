@@ -201,12 +201,14 @@ class Main(unittest.TestCase):
                                 ("GET", "/api/events"), ("POST", "/api/shutdown")])
 
     def test_a_state_read_apart_from_the_stream_does_not_break_a_cycle(self):
-        why, sent, result = self.run_main([state(1, 0, 9.0, 10.0)], "--cycles", "1",
+        why, sent, result = self.run_main([state(), state(1, 1, 656.0, 10.0)], "--cycles", "1",
                                           events=[state(0, 0, 9.0, 10.0), state(0, 0, 9.0, 10.0),
-                                                  state(0, 0, 9.0, 10.0)])
+                                                  state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0)])
         self.assertIsNone(why)
         self.assertEqual(sent.count(("GET", "/api/events")), 1, "one stream for the whole measurement")
-        self.assertEqual((len(result["cycles"]), result["dry_outs"], result["onnxruntime"]), (1, 0, PINNED))
+        self.assertEqual((len(result["cycles"]), result["dry_outs"], result["dry_outs_while_starting"],
+                          result["onnxruntime"]), (1, 1, 1, PINNED),
+                         "the dry-out still queued in the stream past the cycle's wait is that cycle's")
 
     def test_a_real_drop_of_the_counters_still_stops_the_measurement(self):
         why, _, result = self.run_main([state()], "--cycles", "1",
@@ -217,6 +219,34 @@ class Main(unittest.TestCase):
     def test_the_name_asked_in_another_case_is_the_same_microphone(self):
         self.assertIsNone(measure.mic_refusal("in 1", state()))
         self.assertIn("opened the microphone None", measure.mic_refusal(MIC, state(mic=None)))
+
+
+class EarlyStop(unittest.TestCase):
+    def test_stopping_early_leaves_the_stream_at_the_next_event(self):
+        r = stream(state(), state(1))
+        self.assertEqual(next(measure.read_states(r, 8.0, clock=lambda: 100.0)), state())
+        self.assertEqual(list(measure.read_states(r, 0.0, clock=lambda: 200.0)), [state(1)])
+
+    def test_an_event_without_its_name_is_not_a_state(self):
+        r = io.BytesIO(stream(state()).getvalue() + b"data: {}\n\n" + stream(state(1)).getvalue())
+        times = iter([100.0, 100.0, 100.0, 109.0])
+        self.assertEqual(list(measure.read_states(r, 8.0, clock=lambda: next(times))), [state(), state(1)])
+
+
+class CatchUp(unittest.TestCase):
+    def test_a_state_queued_past_the_wait_is_read(self):
+        r = stream(state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0), state(1, 1, 656.0, 10.0))
+        got = measure.catch_up(r, state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0), clock=lambda: 100.0)
+        self.assertEqual(got, [state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0)])
+
+    def test_a_stream_already_there_reads_nothing(self):
+        self.assertEqual(measure.catch_up(stream(), state(1, 1, 9.0), state(1, 1, 9.0)), [])
+
+    def test_a_stream_that_never_gets_there_stops(self):
+        times = iter([100.0, 100.0, 200.0])
+        with self.assertRaises(EOFError) as stop:
+            measure.catch_up(stream(state(), state()), state(), state(1), seconds=60.0, clock=lambda: next(times))
+        self.assertIn("didn't reach the counters of /api/state", str(stop.exception))
 
 
 class ReadStates(unittest.TestCase):
