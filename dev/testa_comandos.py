@@ -2767,7 +2767,7 @@ def engine_seams(A, E):
         E.__class__ = Watched
         try:
             A._volta_passagem()
-            again = E.take_prepare_failure()
+            again, _ = E.take_prepare_failure()
         finally:
             E.__class__ = engine_class
         A._volta_passagem()

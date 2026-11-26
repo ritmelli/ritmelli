@@ -2150,7 +2150,7 @@ class Engine:
     def take_prepare_failure(self):
         with self._qlock:
             tag, self._prepare_failure_tag = self._prepare_failure_tag, None
-            return tag
+            return tag, self.pronto_tag
 
     @contextlib.contextmanager
     def state_section(self):

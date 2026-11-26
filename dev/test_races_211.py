@@ -996,38 +996,72 @@ def engine_prepare_failure_before_the_audio_version(A, E, readers):
           f"the new version gets its passage ({A.passagem_falhou}, prepared again: {tried.is_set()})")
 
 
-def engine_prepare_failure_read_with_another_head(A, E, readers):
+class Launches:
+    def __init__(self):
+        self.qids = []
+
+    def __call__(self, target=None, args=(), daemon=None):
+        self.qids.append(args[1]["qid"])
+        return self
+
+    def start(self):
+        return None
+
+
+def two_entries(A, n):
     cmd.limpar_fila(A)
-    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x = {"id": "d3", "youtube_id": "aaaaaaaaaaa", "url": None, "title": "similar", "channel": "c",
-         "duration": 600.0, "job": None, "qid": "similar7", "auto": True}
-    y = dict(x, id="d2", youtube_id="bbbbbbbbbbb", qid="other7")
+         "duration": 600.0, "job": None, "qid": f"similar{n}", "auto": True}
+    y = dict(x, id="d2", youtube_id="bbbbbbbbbbb", qid=f"other{n}")
     with A.fila_lock:
         A.change_queue(lambda: A.fila.extend([x, y]))
-    prepared, calls = threading.Event(), []
+    return x, y
 
-    def records(*a):
-        calls.append(a[1])
-        prepared.set()
-    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(A, "_prepara", side_effect=records):
+
+def watch(A, launches):
+    with mock.patch.object(server.threading, "Thread", launches):
         A._volta_passagem()
-        prepared.wait(WAIT_S)
-        A.preparando = None
+    A.preparando = None
+
+
+def engine_prepare_failure_read_with_another_head(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x, y = two_entries(A, 7)
+    launches = Launches()
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
+        watch(A, launches)
         with E.state_section():
             E._prepare_failure_tag = x["qid"]
         cmd.mover_na_fila(A, y["qid"], 0)
-        prepared.clear()
-        A._volta_passagem()
-        prepared.wait(WAIT_S)
-        A.preparando = None
+        watch(A, launches)
         cmd.mover_na_fila(A, y["qid"], 1)
-        prepared.clear()
-        A._volta_passagem()
-        prepared.wait(1)
-        A.preparando = None
-    check(calls[:1] == [x] and calls.count(x) == 1,
-          f"an engine prepare failure read while another entry is at the head stays with the entry that failed: it is "
-          f"not prepared again when it comes back unchanged ({A.passagem_falhou}, prepared {[c['qid'] for c in calls]})")
+        watch(A, launches)
+    check(launches.qids == [x["qid"], y["qid"]],
+          f"an engine prepare failure read while another entry is at the head stays with the entry that failed: the "
+          f"other head is prepared, and the one that failed is not prepared again when it comes back unchanged "
+          f"({A.passagem_falhou}, launched {launches.qids})")
+
+
+def engine_prepare_failure_right_after_the_poll(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x, _ = two_entries(A, 8)
+    launches, take = Launches(), E.take_prepare_failure
+
+    def fails_after_the_take():
+        found = take()
+        with E.state_section():
+            E._prepare_failure_tag, E.pronto_tag = x["qid"], None
+        return found
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
+        watch(A, launches)
+        with E.state_section():
+            E.pronto_tag = x["qid"]
+        with mock.patch.object(E, "take_prepare_failure", fails_after_the_take):
+            watch(A, launches)
+        watch(A, launches)
+    check(launches.qids == [x["qid"]],
+          f"a prepare that fails right after the watcher reads the engine is not started again, then or on the next "
+          f"pass ({A.passagem_falhou}, launched {launches.qids})")
 
 
 def audio_version_entries(A, E):
@@ -1118,6 +1152,7 @@ def main():
                 failed_source_before_the_audio_version(A, E, readers)
                 engine_prepare_failure_before_the_audio_version(A, E, readers)
                 engine_prepare_failure_read_with_another_head(A, E, readers)
+                engine_prepare_failure_right_after_the_poll(A, E, readers)
                 audio_version_entries(A, E)
                 audio_version_while_an_entry_plays_from_the_queue(A)
                 file_wait_after_a_passage_switch(A, E, readers)

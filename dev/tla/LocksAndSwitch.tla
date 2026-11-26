@@ -6,7 +6,8 @@ CONSTANTS Qids, NoQid, Raised, RIds, GIds,
           ClosingRecordsTheSwitch, FailedSwapReleasesReservation,
           QueueChangeUnderQlock, ReserveReadsProximoWithoutLock, TakingTheSwitchClearsIt, Reopens,
           PreparesAgain, ClosesTheSecondSwitch, MixerTakesOnlyQlock, PlayErrorReachesTheGroup,
-          RaisingNextTakesTheResolvedResult, PlaysCanSucceed, TakenSwitchEndsTheAdvance
+          RaisingNextTakesTheResolvedResult, PlaysCanSucceed, TakenSwitchEndsTheAdvance,
+          SwitchFoundAtReserveEndsTheAdvance
 
 VARIABLES pc, s
 
@@ -238,9 +239,10 @@ NextReserves(p) ==
        /\ LET v == s.n[p].v
               present == v.tag \in Range(s.fila)
           IN IF present
-             THEN /\ SectionThenRelease(p, "_qlock", {"fila_lock"})
-                  /\ s' = SetN(FechaVirada(s, v), p, "x", v.tag)
-                  /\ Goto(p, "nx_finish")
+             THEN /\ IF SwitchFoundAtReserveEndsTheAdvance
+                     THEN SectionThenRelease(p, "_qlock", {"fila_lock"}) /\ Goto(p, "nx_finish")
+                     ELSE Section(p, "_qlock") /\ Goto(p, "nx_reserve")
+                  /\ s' = SetN([FechaVirada(s, v) EXCEPT !.taken = @ + 1], p, "x", v.tag)
              ELSE /\ Section(p, "_qlock")
                   /\ s' = FechaVirada(s, v)
                   /\ Goto(p, "nx_reserve")
