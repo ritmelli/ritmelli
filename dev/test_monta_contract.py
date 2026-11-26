@@ -56,14 +56,14 @@ def mark(name, versions):
 
 def uploads(jobs):
     out = []
-    for job in jobs.values():
+    for job_id, job in jobs.items():
         if switched_off(job.get("if")):
             continue
         needs = job.get("needs") or []
-        versions = {f"needs.{n}.outputs.versao" for n in ([needs] if isinstance(needs, str) else needs)
-                    if "versao" in ((jobs.get(n) or {}).get("outputs") or {})}
-        if "versao" in (job.get("outputs") or {}):
-            versions |= {inner(job["outputs"]["versao"])} - {None}
+        needs = [needs] if isinstance(needs, str) else needs
+        versions = {"needs.monta.outputs.versao"} if "monta" in needs else set()
+        if job_id == "monta":
+            versions.add(inner(VERSION))
         for s in job_steps(job):
             if str(s.get("uses", "")).startswith("actions/upload-artifact@") and not switched_off(s.get("if")):
                 w = s.get("with") or {}
@@ -234,6 +234,14 @@ def rename_step(doc, old, base):
     doc["jobs"]["monta"] = json.loads(text)
 
 
+def version_from_other_job(doc, name):
+    other = free_job(doc, "metadata")
+    doc["jobs"][other] = {"runs-on": "ubuntu-latest", "outputs": {"versao": "${{ steps.n.outputs.versao }}"},
+                          "steps": [{"id": "n", "run": "echo versao=1 >> $GITHUB_OUTPUT"}]}
+    doc["jobs"]["monta"]["needs"] = [other]
+    upload(doc, name)["with"]["name"] = f"ritmelli-exe-${{{{ needs.{other}.outputs.versao }}}}"
+
+
 def mutant(doc, change):
     doc = copy.deepcopy(doc)
     change(doc)
@@ -345,6 +353,7 @@ def main():
         "a step before the manifest that mentions publica.py": lambda d: d["jobs"]["monta"]["steps"].insert(
             d["jobs"]["monta"]["steps"].index(step_by_id(d["jobs"]["monta"], "congela")) + 1,
             {"name": "Lista", "shell": "powershell", "run": "# publica.py writes the manifest later\n"}),
+        "the ritmelli-exe artifact named by the versao of another job": lambda d: version_from_other_job(d, exe),
         "a second testa-migracao job gated by parcial": lambda d: d["jobs"].update(
             {free_job(d, "partial-checks"): dict(copy.deepcopy(shown(d, "testa-parcial")),
                                                  name="testa-migracao (partial checks)")}),
