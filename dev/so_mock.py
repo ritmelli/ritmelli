@@ -10,8 +10,11 @@ Servidor sem o marcador e recusado: nao ha excecao.
 Quem abre o tema (shot, fitcheck, perfcheck, celular) chama o confere antes de abrir a pagina e o confere_pagina antes
 de agir; no Chrome, o DOCUMENTOS e o libera_ou_barra barram o documento de outra origem (o redirecionamento).
 Quem sobe o proprio servidor (compara, previews, testa_mock) usa o sobe: a porta recusada antes do Popen se e a 8799 ou
-se alguem ja responde nela, e cada pedido, o /api/shutdown inclusive, so com o filho vivo e o marcador na origem; se
-nao, so o filho sai, pelo handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado."""
+se alguem ja responde nela, e cada pedido so com o filho vivo e o marcador na origem; se nao, so o filho sai, pelo
+handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado.
+
+The child stops when this process closes its stdin (STOP_FLAG): no request, so no other process can send it, and the
+phone role, which the /api/shutdown refuses, stops the same way."""
 import json
 import socket
 import subprocess
@@ -27,6 +30,7 @@ from pastas import PORTA as PORTA_DO_APP  # noqa: E402 - 8799
 
 # no Fetch.enable do CDP: cada documento (a pagina, um iframe, um redirecionamento dele) para antes do pedido
 DOCUMENTOS = [{"urlPattern": "*", "resourceType": "Document", "requestStage": "Request"}]
+STOP_FLAG = "--stop-on-stdin-eof"
 
 
 class Recusa(Exception):
@@ -141,8 +145,8 @@ def libera_ou_barra(params, base):
 
 
 class Filho:
-    """O servidor --mock que a ferramenta subiu (srv, o Popen) na porta dela. Cada pedido, o /api/shutdown inclusive,
-    so com ele vivo e a origem respondendo com o marcador; se nao, so ele sai, pelo handle."""
+    """O servidor --mock que a ferramenta subiu (srv, o Popen) na porta dela. Cada pedido so com ele vivo e a origem
+    respondendo com o marcador; se nao, so ele sai, pelo handle."""
 
     def __init__(self, srv, porta):
         self.srv, self.porta, self.base = srv, porta, f"http://127.0.0.1:{porta}"
@@ -171,11 +175,12 @@ class Filho:
         self.srv.wait()
 
     def encerra(self, espera=10):
-        """O /api/shutdown, se ele ainda e o --mock que subiu; se nao, ou se ele nao sai, o handle."""
+        """Closes the child's stdin, the stop of STOP_FLAG, and waits for it to exit; if it does not, its handle."""
+        if self.srv.stdin:
+            self.srv.stdin.close()
         try:
-            self.api("POST", "/api/shutdown", espera=5)
             self.srv.wait(espera)
-        except (Recusa, OSError, ValueError, subprocess.TimeoutExpired):
+        except subprocess.TimeoutExpired:
             self.mata()
 
 
@@ -187,7 +192,7 @@ def sobe(cmd, porta, limite=30.0, **popen):
         raise Recusa(f"a porta {porta} e a do Ritmelli de verdade: o servidor de teste sobe noutra")
     if porta_responde(porta):
         raise Recusa(f"a porta {porta} ja responde: outro servidor esta nela")
-    f = Filho(subprocess.Popen(cmd, **popen), porta)
+    f = Filho(subprocess.Popen([*cmd, STOP_FLAG], stdin=subprocess.PIPE, **popen), porta)
     fim = time.monotonic() + limite
     try:
         while True:

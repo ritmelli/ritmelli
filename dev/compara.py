@@ -49,9 +49,9 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import so_mock  # noqa: E402
-import fitcheck  # noqa: E402
-from fitcheck import (CHROME, DIAGNOSTIC_DOMAINS, PRONTA, READY_CONDITIONS, PageEvents, Ready,  # noqa: E402
+import so_mock
+import fitcheck
+from fitcheck import (CHROME, DIAGNOSTIC_DOMAINS, PRONTA, READY_CONDITIONS, PageEvents, Ready,
                       barra_outra_origem, conecta_cdp, fecha_chrome, le_cdp)
 from so_mock import free_port  # noqa: E402
 
@@ -180,7 +180,7 @@ def sobe_servidor(tmp, porta, log, raiz=RAIZ, config=None, extras=(), env=None):
 
 
 def para_servidor(srv):
-    """O /api/shutdown so ao filho vivo que responde como --mock; se nao, o handle dele."""
+    """The so_mock.Filho stop: its stdin closed, and its handle if it does not exit."""
     srv.encerra()
 
 

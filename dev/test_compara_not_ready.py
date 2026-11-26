@@ -29,8 +29,8 @@ sys.exit(compara.main())
 """
 
 sys.path.insert(0, str(ROOT / "dev"))
-import compara  # noqa: E402
-import fitcheck  # noqa: E402
+import compara
+import fitcheck
 
 failures = []
 

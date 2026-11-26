@@ -2728,12 +2728,17 @@ def main():
     ap.add_argument("--metricas-teste", action="store_true",
                     help="with --mock: the usage data notice and choice work, but nothing is read from the installer "
                          "and nothing is sent (the events stay in memory)")
+    ap.add_argument("--stop-on-stdin-eof", action="store_true",
+                    help="with --mock: stop like the Desligar button when stdin closes (the dev/so_mock.py that started "
+                         "the server holds the other end, so only that process can stop it)")
     ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
     if a.metricas_teste and not a.mock:
         sys.exit("--metricas-teste only works with --mock")
     if a.papel_local is not None and not a.mock:
         sys.exit("--papel-local only works with --mock")
+    if a.stop_on_stdin_eof and not a.mock:
+        sys.exit("--stop-on-stdin-eof only works with --mock")
     dados = Path(a.data_dir) if a.data_dir else LIB
     if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
         dados = pastas.dados_do_mock(a.data_dir)
@@ -2741,6 +2746,8 @@ def main():
             sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
                      "temporary copy")
     A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste, papel_local=a.papel_local or "pc")
+    if a.stop_on_stdin_eof:
+        threading.Thread(target=stop_on_stdin_eof, args=(A,), daemon=True).start()
     if not a.mock:  # no --mock, o processo do YouTube so abre no primeiro pedido de quem testa (#128)
         threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
@@ -2772,6 +2779,11 @@ def main():
         t.join(timeout=20)
 
 
+def stop_on_stdin_eof(A):
+    sys.stdin.buffer.read()
+    A.pede_desligar()
+
+
 def roda(A, a):
     """O servidor ate desligar, e o audio fechado no fim. Com a janela, ela fecha junto."""
     try:
@@ -2779,6 +2791,7 @@ def roda(A, a):
     except (GracefulExit, KeyboardInterrupt):
         pass
     finally:
+        sonoridade.stop_measurements()
         A.metricas.fecha()  # o uso ate aqui e o que ficou na fila, antes de o audio fechar (no maximo 3 s sem rede)
         A.engine.close()
         if A.janela is not None:
