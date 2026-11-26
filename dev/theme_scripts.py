@@ -69,7 +69,12 @@ FEATURE_HANDLERS = (
     ("phone.js", "phone.js", "#dlg-cel", "close"), ("phone.js", "phone.js", "#dcel-lista", "click"),
     ("phone.js", "phone.js", "#dcel-outro", "click"),
     ("update.js", "update.js", "#b-atualizar", "click"), ("update.js", "update.js", "#da-ok", "click"),
+    ("options.js", "options.js", "#menu", "scroll"), ("options.js", "options.js", "#menu", "pointermove"),
+    ("options.js", "options.js", "#menu", "pointerup"), ("options.js", "options.js", "#menu", "pointercancel"),
+    ("options.js", "options.js", "#menu", "touchmove"), ("options.js", "options.js", "#menu", "click:capture"),
+    ("options.js", "options.js", "document", "pointerdown"), ("options.js", "options.js", "window", "resize"),
 )
+SHARED_TARGETS = ("window", "document")
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
             ("#seek", "input"), ("#estante", "click"), ("#mini-abrir", "click"), ("#b-pagina", "click"))
@@ -138,14 +143,16 @@ async def page_scripts(tab):
 
 
 async def handler_files(tab, selector, kind):
-    node = await tab.cmd("Runtime.evaluate", expression=f"document.querySelector({json.dumps(selector)})")
+    kind, _, phase = kind.partition(":")
+    found = selector if selector in SHARED_TARGETS else f"document.querySelector({json.dumps(selector)})"
+    node = await tab.cmd("Runtime.evaluate", expression=found)
     target = node["result"].get("objectId")
     if not target:
         return None
     urls = {s["scriptId"]: s["url"] for s in tab.scripts}
     listeners = (await tab.cmd("DOMDebugger.getEventListeners", objectId=target))["listeners"]
     return sorted({missing_script.theme_file(urls.get(x["scriptId"], "")) or "index.html" for x in listeners
-                   if x["type"] == kind and not x["useCapture"]})
+                   if x["type"] == kind and x["useCapture"] == (phase == "capture")})
 
 
 async def checks(tab):
@@ -179,7 +186,9 @@ async def checks(tab):
 
     for file, _, selector, kind in FEATURE_HANDLERS:
         files = await handler_files(tab, selector, kind)
-        results.append((files == [file], f"the {kind} handler of {selector} is in {file} ({files})"))
+        moved = (files == [file] if selector not in SHARED_TARGETS
+                 else bool(files) and file in files and "index.html" not in files)
+        results.append((moved, f"the {kind} handler of {selector} is in {file} ({files})"))
 
     await tab.js(SEARCH_OPEN)
     opened = await until(tab, "({open: !!S.busca && !document.getElementById('vista-busca').hidden})", "s.open", 5.0)

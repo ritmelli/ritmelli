@@ -710,8 +710,10 @@ function armarFora() {
 }
 // (#107) o celular que muda de rede com o cartao aberto (sai dos dados moveis, liga o Wi-Fi): o texto acompanha
 const redeMudou = () => { if (!$('#fora').hidden && !S.online && !S.desligado && !S.atualizando) mostrarFora(); };
-addEventListener('online', redeMudou); addEventListener('offline', redeMudou);
-if (navigator.connection) navigator.connection.addEventListener('change', redeMudou);
+if (typeof $ === 'function') {
+  addEventListener('online', redeMudou); addEventListener('offline', redeMudou);
+  if (navigator.connection) navigator.connection.addEventListener('change', redeMudou);
+}
 function online(on) {
   if (on === S.online) return;
   S.online = on; agulhasPixel();
@@ -755,7 +757,9 @@ function mostrarFora() {
 /* ---------- pareamento (no celular): a API responde 401 ate o celular mandar o codigo que o PC mostra. O QR ja
    traz o codigo no link (?parear=), e ai nada se digita ---------- */
 let codigoQR = new URLSearchParams(location.search).get('parear');
-if (codigoQR) history.replaceState(null, '', location.pathname + location.hash);  // o codigo usado nao fica no historico
+if (typeof $ === 'function') {
+  if (codigoQR) history.replaceState(null, '', location.pathname + location.hash);  // o codigo usado nao fica no historico
+}
 function pedirPareamento(desconectado, caps) {
   definirCaps(caps || null);
   if (S.pareando || scriptsMissing().length) return;

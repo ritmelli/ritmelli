@@ -53,7 +53,9 @@ o `bindShelf()`, o `bindPhoneButton()` e o `bindDeviceButtons()`), e quem liga �
 dos efeitos, do toca-discos, do receptor, do palco, da página do disco, da prateleira, do celular e dos
 dispositivos, e o `queue.js` chama o
 `bindSearchResults()`. Com um arquivo da base faltando, o `ui-events.js` para no mesmo ponto em que parava, com os
-mesmos ouvintes já registrados.
+mesmos ouvintes já registrados. Sem o `shared.js` (sem o `$`), o script inline que segue os arquivos depois do
+`queue.js` não registra os ouvintes da rede nem tira o `?parear` do endereço: na base, o bloco inteiro parava antes
+deles.
 Assim os controles só respondem quando os arquivos de que eles dependem já carregaram (o formulário da busca segue
 `inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos outros no mesmo alvo (o toque fora da busca
 para o evento depois de o ouvinte do `queue.js` na `window` ver o toque). A busca, os resultados e os efeitos de voz
