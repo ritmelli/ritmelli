@@ -245,6 +245,10 @@ def effective(key, value):
 
 def record(self, *args, **kwargs):
     options = parse(self, *args, **kwargs)
+    missing = [k for k in ("setup", "parcial", "parcial_info")
+               if getattr(options, k) and not getattr(options, k).is_file()]
+    if missing:
+        sys.exit(f"no file for {{missing}}")
     notes = {{}}
     for n in ("notas", "notas_en"):
         path = getattr(options, n)
@@ -311,7 +315,7 @@ LONG_NOTES = {"notas": ["á" * 501, *(f"Nota {n}" for n in range(1, 31))],
 
 
 def notes_case(source):
-    runs = [(dict(notas=" Correção do  áudio | Nota\ndois |"), {"notas": ["Correção do  áudio", "Nota", "dois"]}),
+    runs = [(dict(notas=" Correção do  áudio | Nota dois |"), {"notas": ["Correção do  áudio", "Nota dois"]}),
             (dict(notas_en="Don’t skip this fix|| Note two ", partial=True, partial_info=True),
              {"notas_en": ["Don’t skip this fix", "Note two"]}),
             (dict(notas="|".join(LONG_NOTES["notas"]), notas_en="|".join(LONG_NOTES["notas_en"])),
@@ -353,7 +357,8 @@ def combination_ok(run, call):
     expected = {k: [n] for k, n in (("notas", pt), ("notas_en", en)) if n and n.strip(" |")}
     return code == 0 and notes == expected \
         and options.get("setup") == (output / f"Ritmelli-{v}-setup.exe").as_posix() \
-        and options.get("url") == f"{RELEASES}/v{v}/Ritmelli-{v}-setup.exe" and options.get("saida") == output.as_posix() \
+        and options.get("url") == f"{RELEASES}/v{v}/Ritmelli-{v}-setup.exe" \
+        and options.get("saida") == output.as_posix() \
         and options.get("parcial") == ((output / f"Ritmelli-{v}-parcial.exe").as_posix() if partial else None) \
         and options.get("parcial_info") == ((output / f"PARCIAL-{v}.json").as_posix() if partial else None)
 
@@ -408,7 +413,9 @@ MANIFEST_CASES = {
         ('f"PARCIAL-{version}.json"', 'f"PARCIAL.json"'),
         ('f"PARCIAL-{version}.json"', '"PARCIAL-0.3.4.json"'),
         ('f"Ritmelli-{version}-parcial.exe"', 'f"ritmelli-{version}-parcial.exe"'),
-        ('arguments += ["--parcial"', 'arguments = ["--parcial"')]),
+        ('arguments += ["--parcial"', 'arguments = ["--parcial"'),
+        ("    return [str(a) for a in arguments]",
+         '    [p.unlink() for p in OUTPUT.glob("PARCIAL-*.json")]\n    return [str(a) for a in arguments]')]),
     "every combination of NOTAS and NOTAS_EN (absent, blank or with a note) and the partial setup gives each its own "
     "options": (combinations_case, [
         ("        if lines:\n", '        if lines and os.environ.get("NOTAS_EN"):\n'),
@@ -424,7 +431,8 @@ MANIFEST_CASES = {
         ("*notes_options(notes_folder)]", '*(notes_options(notes_folder) if not any(OUTPUT.glob("*-parcial.exe")) '
                                           'else [])]'),
         ("if partial.exists():", "if partial.exists() and not notes_options(notes_folder):"),
-        ("if partial.exists():", 'if partial.exists() and (not os.environ.get("NOTAS_EN") or os.environ.get("NOTAS")):')]),
+        ("if partial.exists():",
+         'if partial.exists() and (not os.environ.get("NOTAS_EN") or os.environ.get("NOTAS")):')]),
     "a publica.py failure fails the step with its exit code": (exit_case, [
         ("sys.exit(result.returncode)", "sys.exit(0)")]),
 }
