@@ -89,7 +89,8 @@ compara duas tabelas. A primeira tem os ouvintes ligados no fim da carga, na ord
 `getEventListeners` do DevTools), com as opções e o texto de cada função: os de cada nó, do `document`, da `window` e do
 `navigator.connection`, os de cada `MediaQueryList` que a página criou e que teve um ouvinte ou uma chamada (pela
 consulta, numeradas entre as da mesma consulta na ordem em que nasceram, que é a ordem em que o navegador avisa de uma
-mudança; o `onchange` e o `addListener` entram) e os dos outros alvos em que a página pôs um ouvinte, pelo tipo. A
+mudança, e a lista delas nessa ordem, entre consultas, também é comparada; o `onchange` e o `addListener`
+entram) e os dos outros alvos em que a página pôs um ouvinte, pelo tipo. A
 segunda tem cada chamada de `addEventListener`, `removeEventListener`, `addListener` e `removeListener`, e cada
 `onchange` posto numa `MediaQueryList` ou no `navigator.connection`, desde o começo da página, por alvo e evento, na
 ordem (um nó pelo caminho da primeira chamada, numerado quando outro nó já tinha o mesmo): um ouvinte posto e tirado

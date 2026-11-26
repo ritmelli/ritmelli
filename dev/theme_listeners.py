@@ -23,7 +23,7 @@ size, once the page is connected. Two tables are compared:
   node, the document, the window and navigator.connection, of every MediaQueryList the page made that had a listener
   or a call, and of the other targets the page added a listener to, by their kind. A MediaQueryList is
   matchMedia(<its query>) #<n>, numbered per query among those in the order they were made, which is the order the
-  browser tells them of a change;
+  browser tells them of a change, and the list of them in that order, across queries, is compared too;
 - every addEventListener, removeEventListener, addListener and removeListener call and every onchange set on a
   MediaQueryList or navigator.connection since the page began, per target and event type, in order, with the options
   as given and the handler's text (a node by its path at its first call, with #<n> when another node had that path): a
@@ -103,7 +103,8 @@ READ = """(() => {
                                  ...[...document.querySelectorAll(':not(script)')].map(e => [name(e), e])])
     for (const [kind, list] of Object.entries(getEventListeners(target)))
       for (const x of list) rows.push([where, kind, x.useCapture, x.passive, x.once, String(x.listener)]);
-  return {rows, calls: calls.map(([target, ...rest]) => [nodes.get(target) ?? name(target), ...rest])};
+  return {rows, lists: lists.map(name),
+          calls: calls.map(([target, ...rest]) => [nodes.get(target) ?? name(target), ...rest])};
 })()""" % KEY
 SIZES = {"pc": None, "phone": {"width": 390, "height": 844, "deviceScaleFactor": 3, "mobile": True}}
 READY_S = 15.0
@@ -135,6 +136,8 @@ async def read_tables(tab):
         rows.setdefault(("on", where, kind), []).append((capture, passive, once, unindented(text)))
     for where, kind, op, capture, passive, once, text in found["result"]["value"]["calls"]:
         rows.setdefault(("calls", where, kind), []).append((op, capture, passive, once, unindented(text)))
+    rows[("made", "the MediaQueryLists", "in the order they were made")] = [
+        (where,) for where in found["result"]["value"]["lists"]]
     return rows
 
 

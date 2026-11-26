@@ -25,6 +25,8 @@ function gone() {}
 wide.addEventListener('change', first);
 document.getElementById('box').addEventListener('click', function onClick() {}, {passive: true});
 {media}
+{crossed}
+{transient}
 {cleared_media}
 {cleared_network}
 {order}
@@ -37,6 +39,11 @@ document.getElementById('box').addEventListener('click', function onClick() {}, 
 </script>"""
 PARTS = {
     "media": "wide.addEventListener('change', onWide);",
+    "crossed": "const narrow = matchMedia('(max-width: 60px)'), tall = matchMedia('(min-height: 60px)');"
+               " narrow.addEventListener('change', onOld); tall.addEventListener('change', onWide);",
+    "transient": "wide.addEventListener('change', gone); wide.removeEventListener('change', gone);"
+                 " if (navigator.connection) { navigator.connection.addEventListener('change', gone);"
+                 " navigator.connection.removeEventListener('change', gone); }",
     "cleared_media": "const temporary = matchMedia('(min-width: 40px)'); temporary.onchange = function onCleared() {};"
                      " temporary.onchange = null;",
     "cleared_network": "if (navigator.connection) { navigator.connection.onchange = function onNetworkCleared() {};"
@@ -59,6 +66,10 @@ VARIANTS = {
     "without the addListener": ({"legacy": ""}, "matchMedia((min-width: 20px)) #1 change:"),
     "without the onchange of a MediaQueryList": ({"property": ""}, "matchMedia((min-width: 30px)) #1 change:"),
     "without the onchange of navigator.connection": ({"network": ""}, "navigator.connection change:"),
+    "with two lists of different queries made in the other order": (
+        {"crossed": "const tall = matchMedia('(min-height: 60px)'), narrow = matchMedia('(max-width: 60px)');"
+                    " narrow.addEventListener('change', onOld); tall.addEventListener('change', onWide);"},
+        "the MediaQueryLists in the order they were made:"),
     "without an onchange set and cleared on a MediaQueryList": (
         {"cleared_media": ""}, "matchMedia((min-width: 40px)) #1 change (the calls):"),
     "without an onchange set and cleared on navigator.connection": (
@@ -117,6 +128,13 @@ def main():
         (("window", "resize") not in on and calls.get(("window", "resize")) == [("add", "function gone() {}"),
                                                                                   ("remove", "function gone() {}")],
          f"the listener added and removed before the read is only in the calls ({calls.get(('window', 'resize'))})"),
+        (calls.get(("matchMedia((min-width: 10px)) #1", "change"), [])[-2:] == [("add", "function gone() {}"),
+                                                                                  ("remove", "function gone() {}")]
+         and ("add", "function gone() {}") in calls.get(("navigator.connection", "change"), [])
+         and ("remove", "function gone() {}") in calls.get(("navigator.connection", "change"), [])
+         and "function gone() {}" not in on.get(("matchMedia((min-width: 10px)) #1", "change"), [])
+         + on.get(("navigator.connection", "change"), []),
+         "a listener added and removed on a MediaQueryList and on navigator.connection is only in the calls"),
         (calls.get(("button", "click")) == [("add", "function onButton() {}"), ("remove", "function onButton() {}")]
          and calls.get(("button #2", "click")) == [("add", "function onButton() {}")],
          "two buttons out of the page with the same path keep their own calls"),
