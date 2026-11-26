@@ -102,6 +102,15 @@ def mesma_faixa(c, r):
     return bool(rt and rt <= ct and (ct - rt) <= (ra | cc) and (ra & (ct | cc)) and d and dc - 150 <= d <= dc + 20)
 
 
+def find_track(item, search):
+    return next((r for r in search(busca_de(item))
+                 if r.get("videoId") and YT_ID.match(r["videoId"]) and mesma_faixa(item, r)), None)
+
+
+def track_artists(track):
+    return ", ".join(a["name"] for a in track.get("artists") or [] if a.get("name"))
+
+
 def busca_de(x):
     """O texto da busca da versao de audio da parecida: o titulo sem os parenteses so de video ("[Official Video]";
     o "(Remix)" fica) e, no clipe oficial, os artistas na frente quando o titulo nao os traz (no video com letra o

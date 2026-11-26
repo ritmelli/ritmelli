@@ -1,16 +1,17 @@
-r"""Confere os comandos de musica (comandos.py) e o avanco da fila no App de verdade: o server.App(..., mock=True,
-vigias=False, relogio=False), no mesmo processo e numa pasta temporaria, sem as threads dos vigias nem o relogio do
-MockEngine. Quem anda o audio e o teste, chamando o engine._mixa(BLOCK); quem faz o papel de cada vigia e o teste,
-chamando a volta dele (_volta_fila, _volta_passagem e _volta_auto). O leitor do motor e um de mentira (blocos de
-silencio, sem ffmpeg), o som por cima so e anotado e o endereco do stream e recusado: nada vai a rede nem abre
-aparelho, e a prateleira e a pasta de quem usa nao sao lidas. E a leitura do estado (App.leitura) com a virada do
-motor ainda nao conciliada na fila, com o vigia suspenso no meio da conciliacao e com a preparacao bloqueada. E o
-bloco do _mixa parado entre a retirada e a publicacao (Suspenso), com um seek, um load, um resume do fim, uma troca de
-deck, a troca do stream pelo arquivo ou um pedido de pausa no meio.
+r"""Checks the music commands (comandos.py) and the queue advance on the real App: server.App(..., mock=True,
+vigias=False, relogio=False), in the same process and a temporary folder, without the watcher threads or the
+MockEngine's clock. The test moves the audio, calling engine._mixa(BLOCK), and plays each watcher, calling its round
+(_volta_fila, _volta_passagem and Automatico.auto_round). The engine's reader is a fake one (silent blocks, no
+ffmpeg), the sound on top is only recorded and the stream address is refused: nothing goes to the network or opens a
+device, and the user's shelf and folder are not read. Also the state read (App.leitura) with the engine's switch not
+yet reconciled with the queue, with the watcher suspended in the middle of reconciling and with the preparation
+blocked. And the _mixa block stopped between taking and publishing (Suspenso), with a seek, a load, a resume from the
+end, a deck swap, the stream replaced by the file or a pause request in the middle. And the engine's public seams
+(engine_seams).
 
     python dev/testa_comandos.py
 
-Sai 1 se algo falha."""
+Exits 1 if something fails."""
 import asyncio
 import contextlib
 import io
@@ -210,13 +211,13 @@ def voltas(A, E):
             "a volta seguinte, com o mesmo disco visto, nao avanca de novo")
     A.tirar_da_fila(x["qid"])
 
-    # a parecida que chega com o prato parado toca na hora (_volta_auto)
+    # the similar track that arrives with the platter stopped plays right away (auto_round)
     A.auto, A.semente, A.mix_base = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, "bbbbbbbbbbb"
     A.mix = [{"youtube_id": "aaaaaaaaaaa", "title": "Disco d3", "duration": 120.0, "ordem": 1}]
-    visto, sinal = A._volta_auto(None, None)
+    visto, sinal = A.automatico.auto_round(None, None)
     confere(no_prato(E) == "d3" and E.track.get("auto") and A.parado_sem_fila is None and fila(A) == [],
-            f"o _volta_auto: a parecida que chegou com o prato parado toca na hora ({no_prato(E)})")
-    visto, sinal = A._volta_auto(visto, sinal)
+            f"auto_round: the similar track that arrived with the platter stopped plays right away ({no_prato(E)})")
+    visto, sinal = A.automatico.auto_round(visto, sinal)
     confere(visto == "aaaaaaaaaaa" and A.ponte == "aaaaaaaaaaa",
             "a volta seguinte ve a parecida no prato: o Automatico segue do Mix dela quando o da semente acabar")
     A.auto = False
@@ -492,7 +493,8 @@ def voltas(A, E):
     with A.fila_lock:
         A.fila.append({"id": None, "youtube_id": None, "url": None, "title": "quebrada", "qid": "q0", "job": None})
     toca_ate_o_fim(E)
-    tr, E.error = E.track, None
+    tr = E.track
+    E.set_error(None)
     confere(A._volta_fila(None) is tr and fila(A) == [] and A.parado_sem_fila is not tr
             and (E.error or {}).get("key") == "server.queue.playFailed",
             f"o fim do disco com uma entrada quebrada: o erro vai para a tela, e ela sai da fila ({E.error})")
@@ -523,10 +525,10 @@ def voltas(A, E):
 
 
 def andamento(A, E):
-    """O _vigia_andamento de verdade (o do App.automatico), uma volta por caso: a versao de audio e o andamento medidos
-    sao gravados fora da fila_lock; a medida entra na memoria mesmo se a gravacao falha, e a troca na fila e o
-    andamentos_versao so vem com a gravacao feita. Enquanto grava, nada da medida aparece ainda."""
-    print("--- o _vigia_andamento: a gravacao fora da fila_lock")
+    """The real run_tempo_watcher (App.automatico's), one round per case: the measured audio version and tempo are
+    written outside the fila_lock; the measure enters memory even if the write fails, and the queue swap and
+    andamentos_versao only come once the write is done. While it writes, nothing of the measure shows yet."""
+    print("--- run_tempo_watcher: the write outside the fila_lock")
 
     class Fim(Exception):
         pass
@@ -563,12 +565,12 @@ def andamento(A, E):
               mock.patch.object(A.automatico, "_troca_audio", side_effect=lambda *a: trocas.append(a)),
               mock.patch.object(threading, "excepthook", lambda a: saiu.append(a.exc_value))):
             A.auto = True
-            t = threading.Thread(target=A.automatico._vigia_andamento, daemon=True)
+            t = threading.Thread(target=A.automatico.run_tempo_watcher, daemon=True)
             t.start()
             t.join(10)
             A.auto = False
         confere(not t.is_alive() and len(saiu) == 1 and (saiu[0] is disco_cheio if falha else isinstance(saiu[0], Fim)),
-                f"o _vigia_andamento saiu sozinho, pela {'gravacao que falhou' if falha else 'volta seguinte'} "
+                f"run_tempo_watcher left on its own, through {'the failed write' if falha else 'the next round'} "
                 f"({o_que}, {saiu})")
         confere(gravados == [(caminho, {**antes, yid: medida}, False, antes, versao, [])],
                 f"uma gravacao so, no arquivo certo, com o que havia mais a medida, sem a fila_lock, e com nada da "
@@ -1075,7 +1077,8 @@ def bloco(A, E):
     toca("d1")
     with E._qlock:
         d, gen = E._deck, E._deck.gen
-        d.eof_gen, E.error = -1, None
+        d.eof_gen = -1
+        E.set_error(None)
     E._fim_do_leitor(d, gen - 1, erro=(E.track, 0.0))
     confere(d.eof_gen == -1 and E.error is None, "o leitor de um gen velho nao marca o fim nem o erro")
 
@@ -1420,7 +1423,7 @@ def avanco(A, E):
     def joined_next_and_a_play_that_raises(stops, then_plays=False):
         limpa()
         toca("d1")
-        E.error = None
+        E.set_error(None)
         cmd.enfileirar(A, {"id": "d2"})
         cmd.enfileirar(A, {"id": "d3"})
         playing, joined, refused = threading.Event(), threading.Event(), RuntimeError("the entry would not play")
@@ -1666,7 +1669,7 @@ def avanco(A, E):
             tq.join(5)
     finally:
         s.fim()
-    E.error = None
+    E.set_error(None)
     confere(rq and rq[0][2] is True and no_prato(E) == "d2" and fila(A) == [],
             f"o enfileirar que esperou a reserva do vigia, e ela quebrou: a entrada nova toca ({rq and rq[0][2]}, "
             f"{no_prato(E)}, {fila(A)})")
@@ -1798,7 +1801,7 @@ def avanco(A, E):
                        "job": None, "qid": "pz", "auto": True, "fixa": True, "auto_de": "semente"})
     A.auto, A.semente, A.mix, A.ponte = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, [], None
     try:
-        A._volta_auto((E.track or {}).get("youtube_id"), None)
+        A.automatico.auto_round((E.track or {}).get("youtube_id"), None)
     finally:
         A.auto = False
     confere(marcado and no_prato(E) == "d3" and fila(A) == [] and A.parado_sem_fila is None,
@@ -2304,7 +2307,7 @@ def avanco(A, E):
         return real_av(*a, **kw)
     try:
         with mock.patch.object(cmd, "avanca", side_effect=esvazia_e_avanca):
-            A._volta_auto((E.track or {}).get("youtube_id"), None)
+            A.automatico.auto_round((E.track or {}).get("youtube_id"), None)
     finally:
         A.auto = False
     confere(A.parado_sem_fila is marcado and marcado is not None,
@@ -2679,6 +2682,112 @@ def mixa():
         confere(bloco()[2] == 0.0, "a beep that didn't start by its deadline doesn't play")
 
 
+def engine_seams(A, E):
+    print("--- the engine's public seams: state_section, take_prepare_failure and with_lock")
+    with E.state_section() as handle:
+        held = E._qlock.locked()
+    confere(handle is None and held and not E._qlock.locked(),
+            f"state_section holds the _qlock in its body, hands out no lock and releases it ({handle})")
+    with contextlib.suppress(KeyError), E.state_section():
+        raise KeyError("body")
+    confere(not E._qlock.locked(), "and releases it when the body raises")
+
+    cmd.tocar(A, "d1")
+    confere(ate(lambda: E.status() == "playing"), f"the record plays ({E.status()})")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
+    A.passagem_falhou = None
+    engine_class, uses = type(E), []
+
+    class Watched(engine_class):
+        @property
+        def _prepare_failure_tag(self):
+            uses.append(self._qlock.locked())
+            return self.__dict__["_prepare_failure_tag"]
+
+        @_prepare_failure_tag.setter
+        def _prepare_failure_tag(self, value):
+            uses.append(self._qlock.locked())
+            self.__dict__["_prepare_failure_tag"] = value
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(A, "_prepara") as prepara:
+        A._volta_passagem()
+        confere(ate(lambda: prepara.called) and prepara.call_args.args[1] is x,
+                "inside the preparation window, the head of the queue is prepared")
+        A.preparando = None
+        prepara.reset_mock()
+        with E.state_section():
+            E._prepare_failure_tag = x["qid"]
+        E.__class__ = Watched
+        try:
+            A._volta_passagem()
+            again = E.take_prepare_failure()
+        finally:
+            E.__class__ = engine_class
+        A._volta_passagem()
+    confere(A.passagem_falhou == (id(E.track), x["qid"]) and again is None,
+            f"the passage watcher takes the prepare failure out of the engine, once ({A.passagem_falhou})")
+    confere(uses and all(uses), f"and reads and clears it under the engine's _qlock ({uses})")
+    confere(not prepara.called and A.preparando is None,
+            f"and the head that failed is not prepared again ({prepara.call_count}, {A.preparando})")
+    cmd.tirar_da_fila(A, x["qid"])
+
+    real, holding, release, waiting = E._lock, threading.Event(), threading.Event(), threading.Event()
+
+    class Spy:
+        def acquire(self, blocking=True):
+            return real.acquire(blocking)
+
+        def release(self):
+            real.release()
+
+        def __enter__(self):
+            waiting.set()
+            return real.__enter__()
+
+        def __exit__(self, *a):
+            return real.__exit__(*a)
+
+    def engine_lock_free():
+        free = []
+
+        def probe():
+            free.append(real.acquire(blocking=False))
+            if free[-1]:
+                real.release()
+        em_thread(probe)[0].join(5)
+        return free == [True]
+
+    seen, after_seen, result = [], [], []
+
+    def f(after):
+        seen.append((A.fila_lock.locked(), engine_lock_free()))
+        after.append(lambda: after_seen.append((A.fila_lock.locked(), engine_lock_free())))
+        return "ran"
+
+    def hold():
+        with real:
+            holding.set()
+            release.wait(5)
+    holder, _ = em_thread(hold)
+    confere(holding.wait(5), "another thread holds the engine's _lock")
+    E._lock = Spy()
+    try:
+        waiter, _ = em_thread(lambda: result.append(A.with_engine(f)))
+        confere(waiting.wait(5), "with_engine waits for the engine's _lock")
+        free = A.fila_lock.acquire(timeout=1)
+        if free:
+            A.fila_lock.release()
+        confere(free and not seen, "while it waits for the engine's _lock, with_engine does not hold the fila_lock")
+        release.set()
+        waiter.join(5)
+    finally:
+        release.set()
+        holder.join(5)
+        E._lock = real
+    confere(result == ["ran"] and seen == [(True, False)],
+            f"then f runs once, with the fila_lock and the engine's _lock held ({result}, {seen})")
+    confere(after_seen == [(False, True)], f"and what f leaves for after runs with both released ({after_seen})")
+
+
 def main():
     mixa()
     with tempfile.TemporaryDirectory() as tmp:
@@ -2692,6 +2801,7 @@ def main():
                 bloco(A, E)
                 avanco(A, E)
                 two_nexts_table(A, E)
+                engine_seams(A, E)
                 off_shelf_play(A, E)
             finally:
                 E.close()

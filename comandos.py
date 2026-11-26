@@ -3,10 +3,10 @@ ponto do disco, tirar, mover e limpar a fila e o volume da musica. A regra de ca
 rota do server.py le o corpo, chama o comando e monta a resposta, e quem nao e rota (os vigias do App) chama o
 mesmo comando. Cada funcao recebe o App do server.py (A); a fila, o historico e a fila_lock sao dele.
 
-O avanco da fila e uma operacao so (avanca): o Proxima (/api/next), o fim do disco (_volta_fila), a virada da
-passagem (_volta_passagem), o stream da parecida que nao abriu (_abre_stream), a parecida que chegou com o prato
-parado (_volta_auto) e o enfileirar com o prato parado passam por ela, com uma reserva so por deck e linha do prato
-(Reserva).
+Advancing the queue is a single operation (avanca): Next (/api/next), the end of the record (_volta_fila), the
+passage switch (_volta_passagem), the similar track whose stream didn't open (_abre_stream), the similar track that
+arrived with the platter stopped (Automatico.auto_round) and enqueueing with the platter stopped all go through it,
+with one reservation per deck and platter line (Reserva).
 
 The platter's line is read and checked through the engine's interface (Engine.line, Engine.on_line, with the deck
 and line a Captura already carries), and the switch the engine made on its own is reconciled in one loop
@@ -236,7 +236,7 @@ def concilia(A, under, closed=None):
     one, and the state read (App.leitura) sees the switch and its entry together, or neither."""
     E = A.engine
     while True:
-        with E._qlock:
+        with E.state_section():
             v = E.virou
             r = under(v)
             if r is not FECHA or v is None:
@@ -289,7 +289,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
     if not cede:
         # a reserva de outro ja em curso nesta linha (o vigia trocando o disco, com a fila_lock na mao): quem chega
         # espera o resultado dela, sem disputar a fila_lock e reservar a seguinte depois
-        with E._qlock:
+        with E.state_section():
             if grupo is not None and grupo.r is not None:
                 r0, vivo = grupo.r, True  # o avanco que ja e deste grupo (mesmo resolvido): ele nao troca de avanco
             else:
@@ -355,7 +355,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
         aviso = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
                          title=r.x.get("title") or "?", reason=i18n.motivo(ex, 120))
         if na_tela:
-            E.error = aviso
+            E.set_error(aviso)
             return r.x
         if not E.warn_on(None, aviso):
             print(f"queue: {r.x.get('title')!r} failed after its advance was resolved: {ex}", file=sys.stderr, flush=True)
@@ -377,7 +377,7 @@ def pular(A):
     seek) o Proximo segue. Volta a entrada, ou None com a fila vazia (ou o avanco que nao tocou)."""
     E = A.engine
     v = vx = faixa = None
-    with A.proximo_lock, E._qlock:
+    with A.proximo_lock, E.state_section():
         p = A.proximo
         junta = p is not None and p.junta(E)
         if not junta:  # o primeiro desta linha (o de outra linha, de antes de um Parar, segue sozinho)
@@ -401,7 +401,7 @@ def pular(A):
         else:
             x = avanca(A, pular=True, grupo=p, visto=p)  # o prato que mudou de linha no meio (o Parar) fica
             if x is CEDEU:
-                with A.proximo_lock, E._qlock:  # o mesmo disco no mesmo deck numa linha nova (um seek): o Proximo
+                with A.proximo_lock, E.state_section():  # the same record on the same deck in a new line (a seek): Next
                     agora = E.line()
                     de_novo = faixa is not None and E.track is faixa and agora.deck is p.deck  # ainda vale
                     if de_novo:
@@ -411,7 +411,7 @@ def pular(A):
                     x = None
         return x
     finally:
-        with A.proximo_lock, E._qlock:
+        with A.proximo_lock, E.state_section():
             if A.proximo is p:
                 A.proximo = None
             p.resolve(x)

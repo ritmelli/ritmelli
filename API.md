@@ -38,7 +38,8 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
   do navegador: a primeira que temos na preferência dele, e o inglês quando ele não pede nenhuma
   das duas. `?lang=en` ou `?lang=pt_BR` no endereço força uma, para testar. O formato do arquivo
   está no `i18n.py`, e o `python dev/testa_i18n.py` confere os arquivos contra o tema.
-- Script que tem de rodar antes de qualquer arquivo do tema (o que trata o arquivo que não carrega): o comentário
+- Script que tem de rodar antes de qualquer arquivo do tema (o que trata o arquivo que não carrega), ou logo depois
+  de um, sem esperar a rede (os botões da mesa e a partida, depois do `ui-events.js`): o comentário
   `<!-- inline-script: <arquivo>.js -->` no `index.html`. A página chega com ele trocado por um `<script>` com o texto
   desse arquivo da pasta do tema, e o `ETag` dela muda quando o arquivo muda. O `dev/testa_i18n.py` confere que o
   arquivo existe e não tem `</script>`, e o `dev/testa_mock.py` confere a troca e o `ETag`.

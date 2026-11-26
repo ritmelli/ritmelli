@@ -12,7 +12,9 @@ APP_NAMES = {"A", "app"}
 ENGINE_NAMES = {"e", "E", "engine"}
 SUBCLASSES = {"MockEngine": "Engine"}
 QUEUE_HELD = ["fila_lock", "_qlock"]
+PARAM_LOCKS = {("Engine", "outer"): "fila_lock"}
 CALLBACKS = {
+    ("engine.py", "Engine", "with_lock"): {1: ["fila_lock", "_lock"], "f": ["fila_lock", "_lock"]},
     ("server.py", "App", "change_queue"): {0: QUEUE_HELD, "change": QUEUE_HELD},
     ("server.py", "App", "with_engine"): {0: ["fila_lock", "_lock"], "f": ["fila_lock", "_lock"]},
     ("server.py", "App", "close_switches"): {0: QUEUE_HELD, "read": QUEUE_HELD},
@@ -45,6 +47,10 @@ def declared(text):
 
 
 def lock_of(node, cls):
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "state_section":
+        return "_qlock"
+    if isinstance(node, ast.Name):
+        return PARAM_LOCKS.get((cls, node.id))
     if isinstance(node, ast.Attribute):
         if node.attr == "lock" and (
                 (isinstance(node.value, ast.Attribute) and node.value.attr == "lib")
@@ -352,6 +358,17 @@ def pode_failures(tree):
             for name, held in pode_guarantees(tree).items() if not set(ENGINE_GUARD) <= held]
 
 
+def called_attr(call):
+    return call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", None)
+
+
+def outer_failures(trees):
+    calls = [c for t in trees.values() for c in ast.walk(t) if isinstance(c, ast.Call) and called_attr(c) == "with_lock"]
+    return [f"with_lock called with {ast.unparse(c.args[0]) if c.args else 'nothing'} as its outer lock, not the "
+            f"fila_lock" for c in calls if not (c.args and isinstance(c.args[0], ast.Attribute)
+                                                and c.args[0].attr == "fila_lock")] + ([] if calls else ["no with_lock"])
+
+
 def scope_failures(trees):
     out = []
     for key, slots in CALLBACKS.items():
@@ -367,6 +384,10 @@ def scope_failures(trees):
             if not isinstance(slot, str):
                 continue
             sites = [h for c, h in found if isinstance(c.func, ast.Name) and c.func.id == slot]
+            sites += [set(other[s]) | CALLER_HOLDS.get(k, set()) for c, _ in found for k, other in CALLBACKS.items()
+                      if called_attr(c) == k[2] for s, a in list(enumerate(c.args)) + [(kw.arg, kw.value)
+                                                                                    for kw in c.keywords]
+                      if s in other and isinstance(a, ast.Name) and a.id == slot]
             need = set(locks) - CALLER_HOLDS.get(key, set())
             if slot not in params or not sites or any(not need <= h for h in sites):
                 out.append(f"{module}: {name} runs its {slot} with {[sorted(h) for h in sites]}, not with "
@@ -526,9 +547,9 @@ def self_test(order, before):
     check(helper != real["server.py"] and bool(bad),
           f"with the shelf's lock taken in the refused stream's shelf_record, which its pode calls, the check fails "
           f"({bad[:1]})")
-    waits = dict(real, **{"server.py": real["server.py"].replace("acquire(blocking=False)", "acquire()")})
+    waits = dict(real, **{"engine.py": real["engine.py"].replace("acquire(blocking=False)", "acquire()")})
     bad, *_ = scan(waits, order, before)
-    check(waits["server.py"] != real["server.py"] and bool(bad),
+    check(waits["engine.py"] != real["engine.py"] and bool(bad),
           f"with the with_engine waiting for the _lock with the fila_lock held, the check fails ({bad[:1]})")
     engine = ("class Engine:\n    def _mixa(self):\n        with self._qlock:\n            self._vira()\n"
               "    def _vira(self):\n        with self._lock:\n            pass\n")
@@ -556,11 +577,11 @@ def main():
                    f"acquisitions, {followed} calls followed, {walked} callbacks; {bad})")
     check(used == set(order) | before, f"the code takes exactly the locks the model declares ({sorted(used)})")
     trees = {m: ast.parse(sources[m], m) for m in MODULES}
-    scope = scope_failures(trees)
+    scope = scope_failures(trees) + outer_failures(trees)
     check(not scope, f"each callback the check follows runs, in the code that calls it, under the locks the check "
                      f"gives it ({len(CALLBACKS)} functions; {scope})")
-    moved = sources["server.py"].replace("        with self.engine._qlock:\n            r = change()\n",
-                                         "        r = change()\n        with self.engine._qlock:\n")
+    moved = sources["server.py"].replace("        with self.engine.state_section():\n            r = change()\n",
+                                         "        r = change()\n        with self.engine.state_section():\n")
     scope = scope_failures(dict(trees, **{"server.py": ast.parse(moved)}))
     check(moved != sources["server.py"] and len(scope) == 1,
           f"with the change_queue running its change before taking the _qlock, the scope check fails ({scope})")
