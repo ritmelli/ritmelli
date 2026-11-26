@@ -72,7 +72,7 @@ class Adianta(unittest.TestCase):
     def test_o_usado_nao_pede_de_novo(self):
         self.app.adianta_endereco(YID)
         self.abre()
-        self.app.adianta_endereco(YID)  # a busca da LLM chegando depois do disco ja tocar
+        self.app.adianta_endereco(YID)
         time.sleep(0.1)
         self.assertEqual(self.pedidos, [YID], "o endereco do disco que ja toca nao sai de novo")
         self.assertIsNone(self.app.endereco_adiantado(YID), "a marca do usado nao e endereco")

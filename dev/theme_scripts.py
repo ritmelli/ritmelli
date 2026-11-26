@@ -50,15 +50,28 @@ FEATURE_HANDLERS = (
     ("receiver.js", "ui-events.js", "#f-vol", "input"), ("receiver.js", "ui-events.js", "#f-mon", "input"),
     ("receiver.js", "ui-events.js", "#f-mic", "input"), ("receiver.js", "ui-events.js", "#mini-cortar", "click"),
     ("receiver.js", "ui-events.js", "#b-mudo-topo", "click"), ("receiver.js", "ui-events.js", "#palco-cortar", "click"),
+    ("commands.js", "ui-events.js", "#b-tocar", "click"), ("commands.js", "ui-events.js", "#mini-tocar", "click"),
+    ("shelf.js", "ui-events.js", "#estante", "click"), ("shelf.js", "ui-events.js", "#estante", "contextmenu"),
+    ("shelf.js", "ui-events.js", "#estante", "pointerdown"),
+    ("shelf.js", "ui-events.js", "#chips", "click"), ("shelf.js", "ui-events.js", "#chips", "contextmenu"),
+    ("shelf.js", "ui-events.js", "#cartoes", "click"),
+    ("stage.js", "ui-events.js", "#mini-abrir", "click"), ("stage.js", "ui-events.js", "#mini-seta", "click"),
+    ("stage.js", "ui-events.js", "#mini-ant", "click"), ("stage.js", "ui-events.js", "#mini-prox", "click"),
+    ("stage.js", "ui-events.js", "#b-fechar-palco", "click"), ("stage.js", "ui-events.js", "#palco", "pointerdown"),
+    ("disc-page.js", "ui-events.js", "#b-pagina", "click"),
 )
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
-            ("#seek", "input"))
+            ("#seek", "input"), ("#estante", "click"), ("#mini-abrir", "click"), ("#b-pagina", "click"))
 STILL_OFF = (("#b-ouvir", "click"), ("#gaveta", "click"), ("#q", "input"), ("#resultados", "click"))
 FORM_INERT = ("the search form stays inert", "document.getElementById('form-busca')?.inert === true")
 EARLIER_FAILURES = (
     ("gerado/pecas.js", (), (), (FORM_INERT,)),
     ("dj-visor.js", (("#b-disp", "click"),), STILL_OFF, (FORM_INERT,)),
+    ("receiver.js", (("#estante", "click"), ("#mini-tocar", "click")), (("#mini-abrir", "click"), ("#b-disp", "click")),
+     (FORM_INERT,)),
+    ("turntable.js", (("#estante", "click"), ("#mini-tocar", "click"), ("#mini-cortar", "click"), ("#b-pagina", "click")),
+     (("#mini-abrir", "click"), ("#b-disp", "click")), (FORM_INERT,)),
     ("voice-effects.js", STILL_ON, STILL_OFF, (FORM_INERT,)),
     ("search.js", STILL_ON + (("#rolo-busca", "scroll"),), STILL_OFF,
      (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"), FORM_INERT)),
@@ -201,9 +214,9 @@ def after_a_failure(missing, expected, off, page_checks):
         early = {f"{kind} {selector}": await handler_files(tab, selector, kind) for selector, kind in off}
         await tab.release("deck.js", fail=False)
         results = [(state.get("ran") and all(found.values()),
-                    f"with {missing} failed, the handlers registered after its binder still are ({found})"),
+                    f"with {missing} failed and deck.js loading, these handlers are on ({found})"),
                    (state.get("ran") and not any(early.values()),
-                    f"with {missing} failed, the handlers that wait for every file are not on ({early})")]
+                    f"with {missing} failed and deck.js loading, these handlers are not on ({early})")]
         results += [(state.get("ran") and state.get(title) is True, f"with {missing} failed, {title} ({state})")
                     for title, _ in page_checks]
         return results

@@ -1843,26 +1843,14 @@ class Engine:
     def _mina_liga(self):
         if not self.mina_permitida or mina is None:
             return
-        if self._mina is None:
-            self._mina = mina.Mina(self)
         try:
+            if self._mina is None:
+                self._mina = mina.Mina(self)
             self._mina.liga()
-        except ValueError as ex:  # sem a chave: o pedal fica aceso e o aviso sai na interface
-            self.error = self._mina_sem_chave(ex)
-
-    def _mina_sem_chave(self, ex):
-        """O aviso da mina que nao liga por falta da chave, na lingua de quem olha. O mina.py (do ritmelli-server) so
-        diz em portugues, num texto: aqui ele sai pela chave, com os mesmos arquivos que o mina.py procura no
-        pastas.DADOS. Outro erro (sem o estado "erro" dele, que vem junto com a falta da chave) sai como veio."""
-        if getattr(self._mina, "estado", None) != "erro":
-            return i18n.so_texto(str(ex))
-        if getattr(self._mina, "_motor", None) == "eleven":
-            return i18n.msg("server.mina.noElevenKey", "Mina DJ on ElevenAgents needs an ElevenLabs API key (in the "
-                                                       "ELEVENLABS_API_KEY environment variable or the {keyFile} "
-                                                       "file) and the agent ID (in the {agentFile} file).",
-                            keyFile=str(pastas.DADOS / "eleven_key.txt"), agentFile=str(pastas.DADOS / "eleven_agente.txt"))
-        return i18n.msg("server.mina.noOpenAiKey", "Mina DJ needs an OpenAI API key: set it in the OPENAI_API_KEY "
-                                                   "environment variable or in the {keyFile} file.", keyFile=str(pastas.DADOS / "openai_key.txt"))
+        except i18n.Recusa as ex:
+            self.error = ex.msg
+        except ValueError as ex:
+            self.error = i18n.msg("server.mina.notConfigured", "This effect isn't configured ({reason}).", reason=str(ex))
 
     def mina_voz(self, x):
         """A voz dela, float32 48 kHz mono, na fila do jogo. Volta em quantos segundos ela comeca a tocar (a gravacao
@@ -1882,21 +1870,15 @@ class Engine:
             return (len(b) - n) / SR
 
     def mina_cala(self):
-        """Interromperam a mina (ElevenAgents, mina.CEDE_EL): a voz dela que ainda nao tocou sai da fila."""
         with self._mina_lock:
             self._mina_buf = self._mina_buf[:0]
             self._mina_int_n = 0
 
     def mina_interjeicao(self, x):
-        """A interjeicao dela (mina.py), float32 48 kHz mono, na hora em que quem fala com ela parou: so entra com a
-        fila so de silencio (a resposta do GPT-Live ainda nao chegou; quando chega, toca logo depois dela) e nao
-        conta como a voz dela pro guarda, que segue mandando o jogo pro GPT-Live. Volta se entrou."""
         with self._mina_lock:
             b = self._mina_buf
             if len(b) and float(np.max(np.abs(b))) >= mina.QUIET_RMS:  # a voz da resposta ja esta na fila
                 return False
-            # o que estava na fila e o silencio que o GPT-Live manda sem parar com a sessao aberta (a fila vazia,
-            # como era a condicao, nunca acontecia: no jogo de 01/11 nenhuma interjeicao entrou)
             self._mina_buf = np.asarray(x, np.float32)
             self._mina_int_n = len(self._mina_buf)
         return True
