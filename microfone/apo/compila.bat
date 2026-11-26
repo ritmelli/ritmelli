@@ -40,8 +40,6 @@ if errorlevel 1 exit /b %errorlevel%
 cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD voz.cpp saida\voz.res /Fosaida\ /Fesaida\voz.dll
 exit /b %errorlevel%
 :teste
-rem compila.bat teste: a banca do reamostra.h (teste\teste_reamostra.py mede) e o voz.dll, o motor dos efeitos de voz
-rem (voz.h) fora do audiodg, para o microfone\voz.py e o dev\testa_voz.py (o mesmo do alvo normal)
 cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD teste\teste_reamostra.cpp /Fosaida\ /Fesaida\teste_reamostra.dll
 if errorlevel 1 exit /b %errorlevel%
 cl /nologo /O2 /EHsc /W4 /MT /std:c++17 /LD voz.cpp saida\voz.res /Fosaida\ /Fesaida\voz.dll

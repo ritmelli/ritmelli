@@ -149,11 +149,14 @@ def sparse_problems(doc):
         if sparse is None:
             continue
         listed = {line.strip() for line in sparse.splitlines() if line.strip()}
+        if any(p.startswith("/") for p in listed) and checkout["with"].get("sparse-checkout-cone-mode") is not False:
+            problems.append(f"{job_id} lists /paths without sparse-checkout-cone-mode: false")
         after = job["steps"][job["steps"].index(checkout) + 1:]
-        runs = "\n".join(s.get("run", "") for s in after if "if" not in s and not s.get("continue-on-error"))
-        needed = {"/" + m.replace("\\", "/") for m in SCRIPT_CALL.findall(runs)}
-        if job_id in JOB_SCRIPTS and JOB_SCRIPTS[job_id] not in needed:
+        always = "\n".join(s.get("run", "") for s in after if "if" not in s and not s.get("continue-on-error"))
+        if job_id in JOB_SCRIPTS and JOB_SCRIPTS[job_id] not in {"/" + m.replace("\\", "/") for m in SCRIPT_CALL.findall(always)}:
             problems.append(f"{job_id} does not run {JOB_SCRIPTS[job_id]}")
+        runs = "\n".join(s.get("run", "") for s in after)
+        needed = {"/" + m.replace("\\", "/") for m in SCRIPT_CALL.findall(runs)}
         for script in sorted(needed):
             if (ROOT / script.lstrip("/")).is_file():
                 needed |= ps1_refs(ROOT / script.lstrip("/"))
@@ -189,6 +192,16 @@ def test_sparse_checkout():
         step.update(change)
         check("testa-migracao does not run /instalador/testa-migracao.ps1" in sparse_problems(disabled),
               f"the check catches the testa-migracao step {name}")
+    conditional = copy.deepcopy(mutant)
+    conditional["jobs"]["testa-migracao"]["steps"].append({"if": "matrix.scenario == 'update'", "shell": "powershell",
+                                                           "run": "instalador\\testa-parcial.ps1 -Manifesto x"})
+    check("testa-migracao needs /instalador/testa-parcial.ps1" in sparse_problems(conditional),
+          "the check catches a script that only a conditional step calls, missing in the checkout")
+    cone = copy.deepcopy(monta)
+    del next(s for s in cone["jobs"]["testa-migracao"]["steps"]
+             if s.get("uses", "").startswith("actions/checkout@"))["with"]["sparse-checkout-cone-mode"]
+    check("testa-migracao lists /paths without sparse-checkout-cone-mode: false" in sparse_problems(cone),
+          "the check catches the testa-migracao checkout without sparse-checkout-cone-mode: false")
     run["run"] = "Write-Host instalador\\testa-migracao.ps1"
     check("testa-migracao does not run /instalador/testa-migracao.ps1" in sparse_problems(mutant),
           "the check catches a step that only prints the script name")

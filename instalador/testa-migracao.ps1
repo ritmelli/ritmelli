@@ -14,7 +14,6 @@
 # - writable-folder: the 0.6.0 in Program Files\Ritmelli, made writable by Users, then the new setup: the app ends up in
 #   Program Files\Ritmelli-2, and the old ritmelli.exe is renamed as above.
 # Precisa de administrador e de uma maquina sem o app. Roda no job testa-migracao da esteira e numa maquina de teste.
-# Uso: testa-migracao.ps1 -Setup <Ritmelli-X.Y.Z-setup.exe> -Versao <X.Y.Z> [-Scenario <name>] [-Vozes <vozes.json>]
 param([Parameter(Mandatory = $true)][string]$Setup, [Parameter(Mandatory = $true)][string]$Versao,
       [ValidateSet('update', 'outside-program-files', 'dir-refused', 'writable-folder')][string]$Scenario = 'update',
       [string]$Vozes = (Join-Path $PSScriptRoot '..\vozes.json'))
