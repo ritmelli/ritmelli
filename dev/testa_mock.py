@@ -1180,6 +1180,9 @@ async def a_missing_file_answers_500(server, folder):
     held.mkdir()
     (held / "index.html").write_text('<head>\n<script src="held.js"></script>\n', encoding="utf-8")
     (held / "held.js").write_text("1;\n", encoding="utf-8")
+    for slug, name in (("share", "//unreachable.invalid/share/x.js"), ("tshare", "/t///unreachable.invalid/share/x.js")):
+        (folder / "themes" / slug).mkdir()
+        (folder / "themes" / slug / "index.html").write_text(f'<head>\n<script src="{name}"></script>\n', encoding="utf-8")
     read_text = Path.read_text
 
     def locked(path, *args, **kwargs):
@@ -1235,6 +1238,8 @@ async def a_missing_file_answers_500(server, folder):
                           for name in ("/t///unreachable.invalid/share/index.html",
                                        "/t/%5C%5Cunreachable.invalid%5Cshare/x.png",
                                        "/t/%5C%5Cunreachable.invalid%5Cshare/")}
+                files = {slug: (resp.status, await resp.text()) for slug in ("share", "tshare")
+                         for resp in [await client.get(f"/t/{slug}/", headers={"Host": f"localhost:{A.port}"})]}
     confere(status == 500 and "themes/broken/index.html:2:1 was not built: gone.js is missing from themes/broken" in said
             and said in log.getvalue() and str(folder) not in said and folder.name not in said,
             f"through the route, a missing theme file answers 500 with the template, the file and the rule, the log "
@@ -1252,6 +1257,10 @@ async def a_missing_file_answers_500(server, folder):
             f"{alias.headers.get('Location')})")
     confere(not network and all(code in (403, 404) for code in shares.values()),
             f"a theme address naming a network share is refused without the PC reading it ({shares}, read: {network})")
+    confere(not network and files["share"][0] == files["tshare"][0] == 500
+            and "//unreachable.invalid/share/x.js is outside themes/share" in files["share"][1]
+            and "/t///unreachable.invalid/share/x.js is outside themes" in files["tshare"][1],
+            f"a file tag naming a network share stops the build without the PC reading it ({files}, read: {network})")
 
 
 def index_names():

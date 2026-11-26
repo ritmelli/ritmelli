@@ -203,8 +203,9 @@ def shown(path):
 
 def theme_file(folder, name):
     inside = THEMES if name.startswith("/t/") else folder
-    path = (inside / name.removeprefix("/t/")).resolve()
-    if not path.is_relative_to(inside.resolve()):
+    written = inside / name.removeprefix("/t/")
+    path = written.resolve() if written.is_relative_to(inside) else None
+    if path is None or not path.is_relative_to(inside.resolve()):
         raise ThemePageError(f"{name} is outside {shown(inside)}")
     if not path.is_file():
         raise ThemePageError(f"{name} is missing from {shown(inside)}")
