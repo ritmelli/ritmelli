@@ -80,8 +80,8 @@ ap.add_argument("-v", action="store_true", help="mostra o log do motor")
 ARGS = ap.parse_args()
 sys.path.insert(0, str(ARGS.codigo.resolve()))
 sys.path.insert(1, str(DEV))
-import engine as eng  # noqa: E402
-from bumbo_mede import ataques, desvio, filtro, veredito  # noqa: E402
+import engine as eng
+from bumbo_mede import ataques, desvio, filtro, veredito
 
 SR, BLOCK = eng.SR, eng.BLOCK
 FAIXA_A = (200.0, 500.0)    # os estalos de A

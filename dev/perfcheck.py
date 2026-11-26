@@ -29,9 +29,9 @@ import urllib.request
 import websockets
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import so_mock  # noqa: E402
-from fitcheck import CHROME, barra_outra_origem, confere_pagina  # noqa: E402
-from so_mock import free_port  # noqa: E402
+import so_mock
+from fitcheck import CHROME, barra_outra_origem, confere_pagina
+from so_mock import free_port
 
 CATS = ("devtools.timeline,disabled-by-default-devtools.timeline,"
         "disabled-by-default-devtools.timeline.invalidationTracking,cc,benchmark")
@@ -58,7 +58,7 @@ async def run(a):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - subindo
+            except Exception:  # subindo
                 time.sleep(0.1)
         async with websockets.connect(ws_url, max_size=512 * 1024 * 1024) as ws:
             seq, pend, evs, fim, barrados = [0], {}, [], asyncio.Event(), []

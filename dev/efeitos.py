@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # o modulo do pedal de troca de voz (de fora do repo) fica de fora daqui: com ele o fx.py troca o alienigena pelo
 # pedal dele, e estas contas sao as dos efeitos daqui
 sys.modules.setdefault("pistavoz", None)
-import fx  # noqa: E402
+import fx
 
 SR, B = fx.SR, 480
 FAIXA = {"radio-policia": 25, "megafone": 20}  # dB abaixo do meio (1,5 kHz)

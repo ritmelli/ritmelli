@@ -39,10 +39,10 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import engine as eng  # noqa: E402
+import engine as eng
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import so_mock  # noqa: E402
+import so_mock
 
 AQUECE_S = 3.0  # o comeco (ffmpeg abrindo, o modelo da rede carregando) fica fora da medida
 CICLO_S = 40.0  # no --ciclo, esta musica comeca isso antes do fim
@@ -92,8 +92,8 @@ def _onde(inj, ultima, para, paradas, parada_s):
             continue
         vista = t
         nomes = {th.ident: th.name for th in threading.enumerate()}
-        for ident, f in sys._current_frames().items():  # noqa: SLF001
-            if ident in (eu, inj._th.ident):  # noqa: SLF001
+        for ident, f in sys._current_frames().items():
+            if ident in (eu, inj._th.ident):
                 continue
             pilha = traceback.extract_stack(f)[-3:]
             paradas[f"{nomes.get(ident, ident)}: " + " <- ".join(
@@ -116,19 +116,19 @@ def main():
     a = ap.parse_args()
     so_mock.sai_se_o_app_ligado("o mede_folga")  # antes de abrir o anel e o microfone
     if not a.console and not sys.stdout.isatty() and not sys.stderr.isatty():
-        import ctypes  # noqa: PLC0415
+        import ctypes
         ctypes.windll.kernel32.FreeConsole()  # sem console, como o executavel: a saida ja vai para arquivo ou cano
     eng.INJ_FOLGA = a.folga
     eng.INJ_MMCSS = not a.sem_mmcss
 
     nome = eng.find_dev(a.mic, "in")[1]["name"]
-    st = eng._do_microfone(nome)  # noqa: SLF001
+    st = eng._do_microfone(nome)
     if not (st and st["filtro"] and st["melhorias"]):
         sys.exit(f"{nome}: sem o filtro pronto ({st}); nada tocado")
 
     e = eng.Engine(nome, "")
     e.start()
-    inj = e._injetor  # noqa: SLF001
+    inj = e._injetor
     limite = time.monotonic() + 15
     while inj.leitores == 0 and time.monotonic() < limite:
         time.sleep(0.1)
@@ -145,12 +145,12 @@ def main():
     para = threading.Event()
     paradas = collections.Counter()
     if a.onde is not None:
-        ultima, volta = [time.perf_counter()], inj._volta  # noqa: SLF001
+        ultima, volta = [time.perf_counter()], inj._volta
 
         def _marca(s):
             ultima[0] = time.perf_counter()
             volta(s)
-        inj._volta = _marca  # noqa: SLF001
+        inj._volta = _marca
         threading.Thread(target=_onde, args=(inj, ultima, para, paradas, a.onde / 1000), daemon=True).start()
     feitas = []
     if a.passagem or a.ciclo:
