@@ -1015,11 +1015,6 @@ KNOWN_MISSES = [
                "foreach ($i in (1..5)) { if ($s = attempt $i) { break }; Start-Sleep 1 }\n"},
      (POWERSHELL_SOURCES, r"(?i)foreach[ \t]*\([ \t]*\$\w+[ \t]+in[ \t]+\([ \t]*\d+[ \t]*\.\.")),
 
-    ("sleeps_app", "a module script set again after the function that passes it",
-     {"a.py": "import subprocess\nS = 'Get-Date'\ndef f():\n    subprocess.run(['powershell', '-Command', S])\n"
-              "S = 'Start-Sleep 1'\n"},
-     ((".py",), r"['\"]-(?:[Cc]ommand|c)['\"],[ \t]*(?P<n>[A-Za-z_]\w*)\b(?![ \t]*[(.\[])"
-                r"(?=(?:[^\n]*\n)*?(?P=n)[ \t]*=[^=])")),
 ]
 
 KNOWN_NOISE = [
@@ -1112,6 +1107,10 @@ def test_unreadable():
             ("script joined from two values the reader can't follow",
              {"a.py": "import subprocess\nif flag:\n    part = first()\nelse:\n    part = second()\n"
                       "ps = '\\n'.join([part])\n" + RUN_PS},
+             "a.py:7: the PowerShell reader can't follow the script"),
+            ("script of a function that sets it only in the other branch",
+             {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef f():\n    if flag:\n        ps = 'Get-Date'\n"
+                      "    else:\n        subprocess.run(['powershell', '-Command', ps])\n"},
              "a.py:7: the PowerShell reader can't follow the script"),
             ("script of a function that only annotates it",
              {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef f():\n    ps: str\n"

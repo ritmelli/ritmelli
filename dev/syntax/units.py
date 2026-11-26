@@ -320,8 +320,8 @@ class Assignments:
         chain = self.blocks_of.get(id(name), ())
         while scope is not None:
             bound = None if outer and isinstance(scope, ast.ClassDef) else self.bindings.get((id(scope), name.id))
-            bound = [b for b in bound or [] if not self.other_branch(b[2], chain)]
             if bound:
+                bound = [b for b in bound if not self.other_branch(b[2], chain)]
                 earlier = sorted((b for b in bound if b[0] <= position(name)), key=lambda b: b[0], reverse=True)
                 if outer and len(bound) > 1 and any(b[0] > position(name) for b in bound):
                     return []
