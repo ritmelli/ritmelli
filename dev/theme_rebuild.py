@@ -56,7 +56,6 @@ printed, and the exit is 1."""
 CANNOT_JUDGE = 3
 LEFTOVER_MARKER = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 FILE_KINDS = {"script": "script", "style": "link"}
-EDGE = "\x02"
 PLAIN_PATH = re.compile(r"(?:/t/[A-Za-z0-9_-]+/)?[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+")
 TRAILING_SPACE = re.compile(r"(?<!\\)\s+$")
 CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
@@ -133,6 +132,7 @@ class Block:
     folder: str = ""
     source: tuple = ()
     raw: list = field(default_factory=list)
+    touches: tuple = ()
 
     @property
     def text(self):
@@ -154,7 +154,7 @@ class Page:
                 lines.append(self.blocks[item[1]].header)
             elif item[0] == "close":
                 lines.append(f"[/{self.blocks[item[1]].kind}]")
-            elif (text := MARK.sub("", item[1].replace(EDGE, "")).rstrip()).strip():
+            elif (text := MARK.sub("", item[1]).rstrip()).strip():
                 lines.append(text)
         return lines
 
@@ -228,11 +228,20 @@ def assemble(read, files=None, theme="ritmelli"):
         raise Doubt(f"index.html, line {html.count(chr(10), 0, leftover.start()) + 1}: an <!-- inline-script: --> "
                     f"comment, which servers before theme_page replaced with a file and this one leaves as a comment")
     tags = tags_of(html)
+    languages = [f"i18n/i18n_{language}.properties" for language in from_root("i18n").LINGUAS]
+    if (marked := [x for x in tags if x[2] == "i18n"]) and not any(read(x) is not None for x in languages) and \
+            not any(x.startswith("i18n/") for x in files or {}):
+        tags.remove(marked[0])
+    elif marked and (missing := [x for x in languages if read(x) is None]):
+        raise Doubt(f"{missing[0]}: not in the theme, whose i18n folder the server reads for the mark")
     closes = from_root("theme_page").CLOSES_ELEMENT
     blocks = [block_of(kind, name, others) for _, _, kind, name, others, _, _ in tags]
+    for block, (begin, end, *_) in zip(blocks, tags):
+        block.touches = tuple(side for side, at in (("before", begin - 1), ("after", end))
+                              if 0 <= at < len(html) and html[at] not in HTML_SPACE)
     page = html
     for n, (begin, end, kind, name, others, body_start, body_end) in reversed(list(enumerate(tags))):
-        opened, closed = f"{EDGE}\n\x00open {n}\x00\n", f"\n\x00close\x00\n{EDGE}"
+        opened, closed = f"\n\x00open {n}\x00\n", "\n\x00close\x00\n"
         if kind == "i18n":
             page = page[:begin] + opened + closed + page[end:]
             continue
@@ -465,17 +474,13 @@ def markup(page):
     for item in page.items:
         if item[0] == "open":
             kind = page.blocks[item[1]].kind
-            out.append(((kind, order[kind]), None, page.blocks[item[1]].header))
+            block = page.blocks[item[1]]
+            touching = f" (touching the text {' and '.join(block.touches)} it)" if block.touches else ""
+            out.append(((kind, order[kind], block.touches), None, block.header + touching))
             order[kind] += 1
-        elif item[0] == "line" and item[2] is None and (text := edged(item[1])):
-            out.append((("line", text), None, text))
+        elif item[0] == "line" and item[2] is None and item[1].strip(HTML_SPACE):
+            out.append((("line", item[1].strip(HTML_SPACE)), None, item[1].strip(HTML_SPACE)))
     return out
-
-
-def edged(line):
-    text = line.strip(EDGE)
-    text = text if line.startswith(EDGE) else text.lstrip(HTML_SPACE)
-    return text if line.endswith(EDGE) else text.rstrip(HTML_SPACE)
 
 
 def compare_files(report, a, b):
