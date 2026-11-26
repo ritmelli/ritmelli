@@ -782,6 +782,15 @@ class TestDiagnosticStreams(unittest.TestCase):
         result_callers = sorted({f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) for n in ast.walk(f)
                                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_result"})
         self.assertEqual(result_callers, ["estado", "main"], "only estado and confere answer on stdout")
+        main = next(f for f in tree.body if isinstance(f, ast.FunctionDef) and f.name == "main")
+        confere = next(n for n in ast.walk(main)
+                       if isinstance(n, ast.If) and ast.unparse(n.test) == "a.acao == 'confere'")
+
+        def result_lines(node):
+            return [n.lineno for n in ast.walk(node)
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_result"]
+        self.assertEqual(result_lines(main), [line for s in confere.body for line in result_lines(s)],
+                         "main answers on stdout only for confere")
 
 
 class TestaApp(unittest.TestCase):
