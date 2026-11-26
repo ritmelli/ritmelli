@@ -223,7 +223,8 @@ async def checks(tab):
 
 
 def inline_scripts(raiz):
-    files = {text: name for kind, name, text in missing_script.page_files(raiz, missing_script.THEME) if kind == "script"}
+    found, _ = missing_script.page_files(raiz, missing_script.THEME)
+    files = {text: name for kind, name, text in found or [] if kind == "script"}
     theme = raiz / "themes" / "ritmelli"
     for name in INLINE_MARK.findall((theme / "index.html").read_text(encoding="utf-8")):
         files["\n" + (theme / name).read_text(encoding="utf-8")] = name

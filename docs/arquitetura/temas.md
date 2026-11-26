@@ -84,8 +84,9 @@ como com o JavaScript ligado, e o `<noscript>` como texto), o tema, a galeria e 
 reprova quando os `<script>`, `<style>` e `<link>` do DOM, com o `src`, o `href`, o `rel` e o `type`, não são, na mesma
 ordem, os que a montagem leu: uma forma que a gramática aceita e o navegador lê de outro jeito vira falha de teste. O
 `dev/missing_script.py`, que o `--tela` também roda, lê a página e a galeria como o servidor as manda, nas duas línguas,
-de um `--mock` como o PC e de outro como o celular, e reprova com um `<script src>` ou um `<link rel="stylesheet">`
-nelas ou com um pedido de script ou de folha que o Chrome faça ao servidor. O `dev/garden.py` conta as linhas de CSS e
+de um `--mock` como o PC e de outro como o celular, pela mesma gramática da montagem (o `strict` do `theme_page.py`), e
+reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
+faça ao servidor. O `dev/garden.py` conta as linhas de CSS e
 JS escritas no próprio `index.html` e guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código
 novo do tema vai num arquivo da pasta, e a contagem vai para o resumo do PR.
 
