@@ -108,8 +108,18 @@ def step_output_problem(job, name):
 
 
 def code(run):
-    text = re.sub(r"<#.*?#>", "", str(run), flags=re.S)
-    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+    text = re.sub(r"<#.*?#>", lambda m: re.sub(r"[^\n]", " ", m.group(0)), str(run), flags=re.S)
+    return re.sub(r"#[^\n]*", lambda m: " " * len(m.group(0)), text)
+
+
+def active(run, found):
+    return bool(found) and code(run)[found.start():found.end()] == found.group(0)
+
+
+def needs_of(jobs, job_id, seen=()):
+    needs = (jobs.get(job_id) or {}).get("needs") or []
+    needs = [needs] if isinstance(needs, str) else needs
+    return set(needs) | {m for n in needs if n not in seen for m in needs_of(jobs, n, seen + (job_id,))}
 
 
 def skipped(jobs, job_id, seen=()):
@@ -124,14 +134,16 @@ SAIDA = r"""['"]--saida['"],\s*(?:(['"])([^'"]*)\1|\$(\w+))\s*[,)]"""
 
 def output_folder(run):
     run = str(run)
-    first = re.search(SAIDA, run)
-    active = first and re.search(SAIDA, code(run[run.rfind("\n", 0, first.start()) + 1:].split("\n", 1)[0]))
-    found = first if active and len(re.findall(SAIDA, code(run))) == 1 else None
-    if found and found.group(3):
+    found = re.search(SAIDA, run)
+    if not active(run, found) or len(re.findall(SAIDA, code(run))) != 1:
+        return None
+    if found.group(3):
         if len(re.findall(rf"\${found.group(3)}\s*[-+*/]?=(?!=)", run, re.I)) != 1:
             return None
-        found = re.search(rf"""^\s*\${found.group(3)}\s*=\s*(['"])([^'"]*)\1\s*$""", run, re.M | re.I)
-    value = found and found.group(2)
+        found = re.search(rf"""^[ \t]*\${found.group(3)}\s*=\s*(['"])([^'"]*)\1[ \t]*$""", run, re.M | re.I)
+        if not active(run, found):
+            return None
+    value = found.group(2)
     return value if value and "$" not in value else None
 
 
@@ -152,6 +164,10 @@ def contract_problems(doc):
         ids = [k for k, j in jobs.items() if display(k, j) == required or display(k, j).startswith(required + " (")]
         if not ids or any(skipped(jobs, k) for k in ids):
             problems.append(f"monta.yml has no job shown as {required} that always runs")
+        gated = {k for k, j in jobs.items() for g in GATED_JOBS
+                 if display(k, j) == g or display(k, j).startswith(g + " (")}
+        if any(needs_of(jobs, k) & (gated - {k}) for k in ids):
+            problems.append(f"{required} needs a job that runs only in some builds")
     monta = jobs.get("monta") or {}
     congela = step_by_id(monta, "congela")
     if congela is None:
@@ -321,6 +337,10 @@ def main():
     check('@("NOTAS", "notas", "--notas")' in manifest_step(tuples["jobs"]["monta"])["run"]
           and '@("NOTAS_EN", "notas_en", "--notas-en")' in manifest_step(tuples["jobs"]["monta"])["run"]
           and contract_problems(tuples) == [], "the notes tuples in double quotes keep the contract")
+    broken = mutant(doc, lambda d: edit_run(d, lambda run: run.replace("'--saida', $saida)",
+                                                                       "'--saida',\n    $saida)")))
+    check("'--saida',\n" in manifest_step(broken["jobs"]["monta"])["run"] and contract_problems(broken) == [],
+          "the --saida value on the next line keeps the contract")
     cited = mutant(doc, lambda d: edit_run(d, lambda run: run + "# publica.py also takes '--saida', $other)\n"))
     check(contract_problems(cited) == [], "a comment citing --saida after the real option keeps the contract")
     later = mutant(doc, lambda d: shown(d, "testa")["steps"].append(
@@ -432,6 +452,15 @@ def main():
             "'--saida', $saida)", "'--saida', $saida + '\\sub')")),
         "the only assignment of the --saida folder commented out": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1# \2", run, count=1, flags=re.M)),
+        "testa needing testa-parcial": lambda d: shown(d, "testa").update(
+            needs=["monta", next(k for k, j in d["jobs"].items() if j is shown(d, "testa-parcial"))]),
+        "a block comment with the artifact folder before a --saida moved elsewhere": lambda d: (
+            edit_run(d, lambda run: re.sub(r"^(\s*)(\$args_ = )", lambda m: m.group(1) + "<# '--saida', '"
+                                           + output_folder(run) + "') #>\n" + m.group(1) + m.group(2), run,
+                                           count=1, flags=re.M)),
+            move_folder(d)),
+        "the --saida assignment in a block comment": lambda d: edit_run(d, lambda run: re.sub(
+            r"^(\s*)(\$saida\s*=.*)$", r"\1<#\n\1\2\n\1#>", run, count=1, flags=re.M)),
         "a comment with the artifact folder before a --saida moved elsewhere": lambda d: (
             edit_run(d, lambda run: re.sub(r"^(\s*)(\$args_ = )", lambda m: m.group(1) + "# '--saida', '"
                                            + output_folder(run) + "')\n" + m.group(1) + m.group(2), run,
