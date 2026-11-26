@@ -193,7 +193,12 @@ CASES = {
                                                "        pass\n    time.sleep(1)\n"},
          {"a.py": "import time\nwhile True:\n    try:\n        get()\n    except OSError:\n        pass\n"
                   "    if done():\n        return\n    time.sleep(1)\n"}),
-        ("an outer loop around a retry", {"a.py": "import time\nfor a in b:\n    x = 1\n"},
+        ("a watcher that polls the same after a success and a failure (engine.py's _vigia_loop)",
+         {"a.py": "import time\nwhile True:\n    time.sleep(1)\n    try:\n        d = read()\n    except OSError:\n"
+                  "        continue\n    use(d)\n"},
+         {"a.py": "import time\nwhile True:\n    try:\n        d = read()\n    except OSError:\n        time.sleep(1)\n"
+                  "        continue\n    use(d)\n"}),
+        ("an outer loop around a retry",{"a.py": "import time\nfor a in b:\n    x = 1\n"},
          {"a.py": "import time\nfor a in b:\n    while True:\n        try:\n            f()\n        except OSError:\n"
                   "            time.sleep(1)\n"}),
         ("a retry in a workflow's Python step",
@@ -588,7 +593,11 @@ def test_description():
         "an issues path of GitHub on another host": good + "\nThe rest stays for now "
                                                           "(https://example.org/github.com/o/r/issues/250).\n",
         "a run link only as an example in code": "## Proof\n\nThe link looks like `https://github.com/o/r/actions/runs/1`.\n",
-        "an image only as an example in code": "## Proof\n\n`![a](https://github.com/user-attachments/assets/1)`\n",
+        "a run link as an example in code across lines": "## Proof\n\nThe link looks like `see\n"
+                                                         "https://github.com/o/r/actions/runs/1`.\n",
+        "an image as an example in code across lines": "## Proof\n\nLike `this\n![a](https://github.com/user-attachments/"
+                                                       "assets/1)` here.\n",
+        "an image only as an example in code":"## Proof\n\n`![a](https://github.com/user-attachments/assets/1)`\n",
         "an anchor as the link's target":good + "\nThe rest stays for now ([details](#250)).\n",
         "the issue in the next paragraph": good + "\nThe rest stays for now.\n\nSee #250.\n",
         "the issue in the next list item": good + "\n- The rest stays for now.\n- #250 is another thing.\n",

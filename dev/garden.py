@@ -32,7 +32,7 @@ ISSUE_URL = re.compile(r"(?<![\w./-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+
 URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
 SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
-CODE_SPAN = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)")
+CODE_SPAN = re.compile(r"(`+)(?!`)(?:(?!\n[ \t]*\n).)*?(?<!`)\1(?!`)", re.S)
 PARAGRAPH_START = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\*\*)")
 BLOCK_MARKER = re.compile(r"^\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b")
 KEPT_COMMENT = re.compile(r"^\s*manual:|^\s*i18n-ok\s*$|^ inline-script: [\w-]+\.js $")
@@ -1420,7 +1420,7 @@ def description_problems(body):
         problems.append("the proof section has no run, test or screenshot (a command or a test file in `code`, a code "
                         "block, a link to a run or an image)")
     for chunk in paragraphs(lines):
-        text = " ".join(CODE_SPAN.sub("", line) for _, line in chunk)
+        text = CODE_SPAN.sub("", "\n".join(line for _, line in chunk)).replace("\n", " ")
         phrase = PROSE.search(text)
         if phrase and not cites_issue(text):
             n = next((i for i, line in chunk if PROSE.search(line)), chunk[0][0]) + 1
