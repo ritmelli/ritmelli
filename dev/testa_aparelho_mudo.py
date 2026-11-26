@@ -779,6 +779,9 @@ class TestDiagnosticStreams(unittest.TestCase):
                     and isinstance(f.value.value, ast.Name) and f.value.value.id == "sys")
         prints = [n.lineno for n in ast.walk(tree) if isinstance(n, ast.Call) and writes(n) and id(n) not in allowed]
         self.assertEqual(prints, [], "microfone.py writes outside _log (diagnostics) and _result (the answer)")
+        result_callers = sorted({f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) for n in ast.walk(f)
+                                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_result"})
+        self.assertEqual(result_callers, ["estado", "main"], "only estado and confere answer on stdout")
 
 
 class TestaApp(unittest.TestCase):
