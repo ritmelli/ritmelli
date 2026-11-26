@@ -138,15 +138,16 @@ O servidor confere a linha pela interface do motor, e não pelos campos de dentr
 linha do prato, os mesmos dois campos da `Captura`), e o `on_line(t)` diz, sob o `_qlock`, se o prato ainda é a linha de
 `t`. A virada que o motor fez sozinho sai pelo `take_switch` (sob o `_qlock`, só a que ainda é a pendente), a passagem
 preparada pelo `drop_prepared` (sob o `_qlock`; o `cancelar_pronto` pega a trava), o ganho medido antes das travas pelo
-`gain_for`, o nome novo do disco no prato pelo `update_track`, a faixa, a posição, o estado e a virada de uma leitura só
-pelo `platter_state` e os arquivos que o motor lê pelo `tracks_in_use`. Quem precisa do `_qlock` junto com o estado dele
-(o servidor e os comandos) o pega pelo `state_section()`, que segura a trava no corpo do `with` e não a entrega; o
-`_lock` vem pelo `with_lock(outer, f)`, que pega a trava de fora (a `fila_lock` do `App`) e nunca espera o `_lock` com
-ela na mão, na ordem de [As travas](comandos.md#as-travas). A falha de preparar a próxima sai pelo
-`take_prepare_failure` (lida e limpa sob o `_qlock`), e o erro da tela entra pelo `set_error`; o aviso do stream entra
-pelo `warn_on`, num lugar à parte: o `error` (só se lê) dá o erro e, sem ele, o aviso do stream, que sai na troca para o
-arquivo, no `_restart` e no `stop`. O `snapshot` não traz o estado, a faixa nem a duração: o servidor lê os três com a
-posição e a fila numa captura só (`App.leitura`).
+`gain_for`, o nome novo do disco no prato pelo `update_track` (no próprio dicionário do prato, sob o `_qlock`: quem o
+guarda, como o download que vai entregar o arquivo, ainda guarda o disco do prato), a faixa, a posição, o estado e a
+virada de uma leitura só pelo `platter_state` e os arquivos que o motor lê pelo `tracks_in_use`. Quem precisa do
+`_qlock` junto com o estado dele (o servidor e os comandos) o pega pelo `state_section()`, que segura a trava no corpo
+do `with` e não a entrega; o `_lock` vem pelo `with_lock(outer, f)`, que pega a trava de fora (a `fila_lock` do `App`) e
+nunca espera o `_lock` com ela na mão, na ordem de [As travas](comandos.md#as-travas). A falha de preparar a próxima sai
+pelo `take_prepare_failure` (lida e limpa sob o `_qlock`), e o erro da tela entra pelo `set_error`; o aviso do stream
+entra pelo `warn_on`, num lugar à parte: o `error` (só se lê) dá o erro e, sem ele, o aviso do stream, que sai na troca
+para o arquivo, no `_restart` e no `stop`. O `snapshot` não traz o estado, a faixa nem a duração: o servidor lê os três
+com a posição e a fila numa captura só (`App.leitura`).
 
 A pausa vale no limite entre blocos. O `pause` devolve uma `Pausa`: com um bloco do prato retirado e ainda não
 publicado (o do disco, o do fim ou só o da passagem soando), ela fica pendente (o prato só pausa na confirmação) e se

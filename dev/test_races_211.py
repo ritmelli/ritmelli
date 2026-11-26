@@ -290,6 +290,31 @@ def file_after_a_refused_stream(A, E, readers, device_warning=None):
           f"{'the device warning that came after it' if device_warning else 'none'} ({E.error})")
 
 
+def file_after_the_record_was_renamed_on_the_shelf(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "rrrrrrrrrrr"
+    j = A.new_job("downloading", True, target)
+    stream = StreamThread(A)
+    with contextlib.redirect_stderr(io.StringIO()):
+        swapped = cmd.play_downloading(A, j, target, {"youtube_id": target, "title": "the renamed one"})
+        check(swapped and stream.ended.wait(WAIT_S), "the job's record is on the platter and its stream was refused")
+    del A._abre_stream
+    waiting = E.track
+    item = dict(A.lib.get("d2"), id=waiting["id"], youtube_id=target, title="the renamed one")
+    swap = E.trocar_fonte
+
+    def renamed_first(atual, novo):
+        cmd.update_record(A, item["id"], title="a new name")
+        return swap(atual, novo)
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "trocar_fonte", renamed_first),
+          mock.patch.object(A, "download", side_effect=lambda *a: A.lib.add(item) or item)):
+        A.run_download(j, target)
+    tr = E.track or {}
+    check(readers.wait(item["id"]) and str(tr.get("path", "")).endswith("d2.m4a"),
+          f"a rename on the shelf between the download reading the platter and its swap still puts the file on the "
+          f"platter ({tr.get('title')}, {tr.get('path')})")
+
+
 def file_near_the_end_of_a_stream_with_audio(A, E, readers, repeat=False):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     target = "qqqqqqqqq22" if repeat else "qqqqqqqqqqq"
@@ -665,6 +690,34 @@ def download_done_while_its_stream_is_prepared(A, E, readers):
           f"({tr.get('path')})")
 
 
+def finished_download_after_a_passage_switched_to_its_file(A, E, readers):
+    cmd.limpar_fila(A)
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "ttttttttttt"
+    j = A.new_job("downloading", True, target)
+    x = {"id": None, "youtube_id": target, "url": None, "title": "shelved", "channel": "c", "duration": 600.0,
+         "job": j["id"], "qid": "shelf8"}
+    item = {"id": "shelf8", "title": "shelved", "file": "shelf8.m4a", "duration": 600.0, "lufs": -14.0,
+            "youtube_id": target}
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.append(x))
+    switched = []
+
+    def download(*a):
+        A.lib.add(item)
+        cap = E.captura()
+        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
+        if E.virou is not None or mix_until_the_switch(E):
+            switched.append(E.track)
+        return item
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "download", side_effect=download),
+          mock.patch.object(E, "trocar_fonte", wraps=E.trocar_fonte) as swap):
+        A.run_download(j, target)
+    check(switched and switched[0].get("id") == "shelf8" and E.track is switched[0] and not swap.called,
+          f"a download that finishes after the passage switched to its shelf file leaves that file on the platter, "
+          f"with no hand-over ({switched and switched[0].get('path')}, {swap.call_count})")
+
+
 def audio_version_during_a_pending_switch(A, E, readers):
     x = prepared_similar(A, E, readers, "similar1")
     mix_until_the_switch(E)
@@ -794,6 +847,7 @@ def main():
                 silent_stream_after_the_download_failed(A, E, readers)
                 stream_opens_after_the_download_read_the_platter(A, E, readers)
                 file_after_a_refused_stream(A, E, readers)
+                file_after_the_record_was_renamed_on_the_shelf(A, E, readers)
                 file_after_a_refused_stream(
                     A, E, readers, server.i18n.msg("server.devices.notFound", "Couldn't find the device."))
                 file_near_the_end_of_a_stream_with_audio(A, E, readers)
@@ -809,6 +863,7 @@ def main():
                 file_before_the_silent_stream_reports(A, E, readers)
                 warning_after_another_record_took_the_platter(A, E, readers)
                 download_done_while_its_stream_is_prepared(A, E, readers)
+                finished_download_after_a_passage_switched_to_its_file(A, E, readers)
                 audio_version_during_a_pending_switch(A, E, readers)
                 audio_version_while_the_engine_switches(A, E, readers)
                 audio_version_while_the_passage_reads_the_source(A, E, readers)

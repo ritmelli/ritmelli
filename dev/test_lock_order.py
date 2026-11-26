@@ -161,6 +161,54 @@ def function_table(trees):
     return table
 
 
+def section_yields_under_qlock(engine):
+    func = defined(engine, "Engine", "state_section")
+    if func is None:
+        return False
+    yields = [n for n in ast.walk(func) if isinstance(n, (ast.Yield, ast.YieldFrom))]
+    held = {id(n) for w in ast.walk(func) if isinstance(w, ast.With)
+            and any(lock_of(i.context_expr, "Engine") == "_qlock" for i in w.items)
+            for b in w.body for n in ast.walk(b)}
+    return bool(yields) and all(id(y) in held for y in yields)
+
+
+def by_getattr(node):
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr"
+            and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)):
+        return ast.Attribute(value=node.args[0], attr=node.args[1].value, ctx=ast.Load())
+    return node
+
+
+def bound_keys(table, value, names, module, cls):
+    value = by_getattr(value)
+    if isinstance(value, ast.Name):
+        return names.get(value.id, [])
+    if isinstance(value, ast.IfExp):
+        return (bound_keys(table, value.body, names, module, cls)
+                + bound_keys(table, value.orelse, names, module, cls))
+    if isinstance(value, ast.BoolOp):
+        return [k for v in value.values for k in bound_keys(table, v, names, module, cls)]
+    if isinstance(value, ast.Attribute):
+        return resolve(table, ast.Call(func=value, args=[], keywords=[]), module, cls)
+    return []
+
+
+def bindings_of(func):
+    for n in ast.walk(func):
+        if isinstance(n, ast.Assign):
+            targets, value = n.targets, n.value
+        elif isinstance(n, (ast.AnnAssign, ast.NamedExpr)) and n.value is not None:
+            targets, value = [n.target], n.value
+        else:
+            continue
+        for t in targets:
+            if isinstance(t, (ast.Tuple, ast.List)) and isinstance(value, (ast.Tuple, ast.List)) \
+                    and len(t.elts) == len(value.elts):
+                yield from ((u, v) for u, v in zip(t.elts, value.elts) if isinstance(u, ast.Name))
+            elif isinstance(t, ast.Name):
+                yield t, value
+
+
 def bound_aliases(trees, table):
     out = {}
     for module, tree in trees.items():
@@ -168,14 +216,13 @@ def bound_aliases(trees, table):
         scopes += [(c.name, f) for c in tree.body if isinstance(c, ast.ClassDef) for f in c.body
                    if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))]
         for cls, func in scopes:
-            names = {}
-            for n in ast.walk(func):
-                target = n.targets[0] if isinstance(n, ast.Assign) and len(n.targets) == 1 else getattr(n, "target", None)
-                if (isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and isinstance(target, ast.Name)
-                        and isinstance(n.value, ast.Attribute)):
-                    keys = resolve(table, ast.Call(func=n.value, args=[], keywords=[]), module, cls)
+            names, pairs, before = {}, list(bindings_of(func)), -1
+            while sum(map(len, names.values())) != before:
+                before = sum(map(len, names.values()))
+                for target, value in pairs:
+                    keys = bound_keys(table, value, names, module, cls)
                     if keys:
-                        names[target.id] = keys
+                        names[target.id] = list(dict.fromkeys(names.get(target.id, []) + keys))
             for n in ast.walk(func):
                 if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in names
                         and id(n) not in table.aliased):
@@ -184,7 +231,7 @@ def bound_aliases(trees, table):
 
 
 def resolve(table, call, module, cls):
-    f, keys = call.func, []
+    f, keys = by_getattr(call.func), []
     if id(call) in table.aliased:
         keys = list(table.aliased[id(call)])
     elif isinstance(f, ast.Name):
@@ -721,6 +768,15 @@ def self_test(order, before):
         "an engine method that takes the _lock, called through a local name with the _qlock held": (
             {"engine.py": "class Engine:\n    def stop(self):\n        with self._lock:\n            pass\n",
              "case.py": "def f(A, E):\n    finish = E.stop\n    with E.state_section():\n        finish()\n"}, 1),
+        **{f"an engine method that takes the _lock, called with the _qlock held through {what}": (
+            {"engine.py": "class Engine:\n    def stop(self):\n        with self._lock:\n            pass\n",
+             "case.py": f"def f(A, E, c):\n{bind}    with E.state_section():\n        {call}\n"}, 1)
+           for what, bind, call in (
+               ("getattr", "", "getattr(E, 'stop')()"),
+               ("a name bound by getattr", "    finish = getattr(E, 'stop')\n", "finish()"),
+               ("a name unpacked from a tuple", "    finish, x = E.stop, 1\n", "finish()"),
+               ("a chain of names", "    a = E.stop\n    finish = a\n", "finish()"),
+               ("a name bound by a conditional", "    finish = E.stop if c else None\n", "finish()"))},
         "the change_queue called with the _qlock already held": (
             {"server.py": "class App:\n    def change_queue(self, c):\n        with self.engine._qlock:\n"
                           "            c()\n    def f(self):\n        with self.engine._qlock:\n"
@@ -872,13 +928,16 @@ def main():
         bad, *_ = scan(dict(sources, **{"engine.py": moved}), order, before)
         check(moved != sources["engine.py"] and any(callee in b for b in bad),
               f"with {what} called under the _qlock, the check fails ({[b for b in bad if callee in b][:1]})")
-    hidden = sources["comandos.py"].replace(
-        "        cap = A.engine.stop()\n",
-        "        finish = A.engine.stop\n        with A.engine.state_section():\n            cap = finish()\n", 1)
-    bad, *_ = scan(dict(sources, **{"comandos.py": hidden}), order, before)
-    check(hidden != sources["comandos.py"] and any("Engine.stop" in b for b in bad),
-          f"with the Stop calling the engine's stop through a local name under the _qlock, the check fails "
-          f"({[b for b in bad if 'Engine.stop' in b][:1]})")
+    for what, bind in (("a local name", "        finish = A.engine.stop\n"),
+                       ("a local name bound in two branches", "        if A.fila:\n            finish = A.engine.stop\n"
+                                                             "        else:\n"
+                                                             "            finish = A.engine.esperando_arquivo\n")):
+        hidden = sources["comandos.py"].replace(
+            "        cap = A.engine.stop()\n", bind + "        with A.engine.state_section():\n            cap = finish()\n", 1)
+        bad, *_ = scan(dict(sources, **{"comandos.py": hidden}), order, before)
+        check(hidden != sources["comandos.py"] and any("Engine.stop" in b for b in bad),
+              f"with the Stop calling the engine's stop through {what} under the _qlock, the check fails "
+              f"({[b for b in bad if 'Engine.stop' in b][:1]})")
     later = ("class App:\n    def change_queue(self, change):\n        pass\n    def f(self):\n"
              "        with self.fila_lock:\n            threading.Thread(target=lambda: self.change_queue(None)).start()\n")
     callers = caller_failures({"server.py": ast.parse(later)})
@@ -901,6 +960,11 @@ def main():
     scope = scope_failures(dict(trees, **{"server.py": ast.parse(moved)}))
     check(moved != sources["server.py"] and len(scope) == 1,
           f"with the change_queue running its change before taking the _qlock, the scope check fails ({scope})")
+    check(section_yields_under_qlock(trees["engine.py"]),
+          "the engine's state_section yields only inside a with of the _qlock, the lock its callers are counted as holding")
+    bare = sources["engine.py"].replace("        with self._qlock:\n            yield\n", "        yield\n", 1)
+    check(bare != sources["engine.py"] and not section_yields_under_qlock(ast.parse(bare)),
+          "with the state_section yielding without the _qlock, that check fails")
     guarded = pode_guarantees(trees["engine.py"])
     check(len(guarded) >= 5 and not pode_failures(trees["engine.py"]),
           f"every Engine method that takes a pode runs it under the _lock and the _qlock, also through the methods it "

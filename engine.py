@@ -3211,15 +3211,13 @@ class Engine:
         return self._ganho_de(track)
 
     def update_track(self, iid, **fields):
-        """The platter's record iid gets fields (the shelf renamed it): the state shows them right away, and the
-        platter's track is swapped under the _qlock, never outside it. Returns whether the platter held it."""
+        """The platter's record iid gets fields (the shelf renamed it), in place under the _qlock: whoever holds the
+        track still holds the platter's record. Returns whether the platter held it."""
         with self._qlock:
             tr = self.track
             if tr is None or tr["id"] != iid:
                 return False
-            self.track = dict(tr, **fields)
-            if self._deck.track is tr:
-                self._deck.track = self.track
+            tr.update(fields)
             return True
 
     def _ganho_de(self, track):

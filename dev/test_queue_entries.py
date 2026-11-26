@@ -76,6 +76,13 @@ def callback_escapes(modules):
     return out
 
 
+def by_getattr(node):
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr"
+            and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)):
+        return node.args[0], node.args[1].value
+    return None
+
+
 def own_nodes(func, skip=frozenset()):
     todo = list(ast.iter_child_nodes(func))
     while todo:
@@ -261,6 +268,19 @@ class Entries:
                         changed = found = True
         return found
 
+    def mutator(self, node, scope):
+        taken = by_getattr(node)
+        if taken:
+            return taken[1] in MUTATORS and self.is_entry(taken[0], scope)
+        return isinstance(node, ast.Attribute) and node.attr in MUTATORS and self.is_entry(node.value, scope)
+
+    def escaping(self, module, func, scope):
+        bound = {t.id for n in ast.walk(func) if isinstance(n, ast.Assign) and self.mutator(n.value, scope)
+                 for t in n.targets if isinstance(t, ast.Name)}
+        return [f"{module}:{n.lineno}: a mutator of an entry returned from a change_queue callback, in {func.name}"
+                for n in ast.walk(func) if isinstance(n, ast.Return) and n.value is not None
+                and (self.mutator(n.value, scope) or (isinstance(n.value, ast.Name) and n.value.id in bound))]
+
     def write_target(self, node, scope):
         return isinstance(node, ast.Subscript) and self.is_entry(node.value, scope)
 
@@ -281,6 +301,7 @@ class Entries:
             if ((module, cls) == OWNER) != self.owner_only:
                 continue
             if self.owner_only and (id(func) in allowed or func.name == "__init__"):
+                out += self.escaping(module, func, self.scope_of(func, parent, parents))
                 continue
             scope = self.scope_of(func, parent, parents)
             callees = {id(n.func) for n in ast.walk(func) if isinstance(n, ast.Call)}
@@ -304,6 +325,8 @@ class Entries:
                       and isinstance(node.func.value, ast.Name) and node.func.value.id == "dict"
                       and node.func.attr in MUTATORS and node.args and self.is_entry(node.args[0], scope)):
                     hit = f"dict.{node.func.attr}()"
+                elif (taken := by_getattr(node)) and taken[1] in MUTATORS and self.is_entry(taken[0], scope):
+                    hit = f"a .{taken[1]} taken by getattr"
                 if hit:
                     where = "in the App outside a change_queue" if self.owner_only else "outside the App"
                     out.append(f"{module}:{node.lineno}: {hit} on an entry of the queue or the Mix {where}, in "
@@ -353,7 +376,7 @@ def direct_aliases(func, module, cls, known):
 class QueueChanges(ast.NodeVisitor):
     def __init__(self, module, params):
         self.module, self.params, self.cls, self.stack, self.found, self.passing = module, params, None, [], [], []
-        self.callees = set()
+        self.callees, self.bound = set(), []
 
     def visit_ClassDef(self, node):
         outer, self.cls = self.cls, node.name
@@ -367,14 +390,36 @@ class QueueChanges(ast.NodeVisitor):
         own = {n for n in Entries.param_names(node) if n in self.params.get(node.name, set())}
         aliases = direct_aliases(node, self.module, self.cls, (parent[2] if parent else set()) | own)
         self.stack.append((allowed, passed_to_change_queue(node), aliases))
+        self.bound.append({t.id for n in ast.walk(node) if isinstance(n, ast.Assign) and self.changer(n.value)
+                           for t in n.targets if isinstance(t, ast.Name)})
         self.generic_visit(node)
+        self.bound.pop()
         self.stack.pop()
+
+    def changer(self, node):
+        taken = by_getattr(node)
+        if taken:
+            return taken[1] in CHANGERS and self.queue_ref(taken[0])
+        return isinstance(node, ast.Attribute) and node.attr in CHANGERS and self.queue_ref(node.value)
+
+    def escapes(self, node, value):
+        if value is not None and (self.changer(value) or (isinstance(value, ast.Name) and self.bound
+                                                          and value.id in self.bound[-1])):
+            self.found.append(f"{self.module}:{node.lineno}: a changer of the queue returned from a change_queue "
+                              f"callback")
+
+    def visit_Return(self, node):
+        if self.stack and self.stack[-1][0]:
+            self.escapes(node, node.value)
+        self.generic_visit(node)
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_Lambda(self, node):
         parent = self.stack[-1] if self.stack else None
         allowed = parent is not None and id(node) in parent[1][1]
+        if allowed:
+            self.escapes(node, node.body)
         self.stack.append((allowed, (set(), set()), parent[2] if parent else set()))
         self.generic_visit(node)
         self.stack.pop()
@@ -420,6 +465,12 @@ class QueueChanges(ast.NodeVisitor):
         self.callees.add(id(node.func))
         if isinstance(node.func, ast.Attribute) and node.func.attr in CHANGERS and self.queue_ref(node.func.value):
             self.flag(node, f".{node.func.attr}() on the queue")
+        if (isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "list" and node.func.attr in CHANGERS and node.args
+                and self.queue_ref(node.args[0])):
+            self.flag(node, f"list.{node.func.attr}() on the queue")
+        if (taken := by_getattr(node)) and taken[1] in CHANGERS and self.queue_ref(taken[0]):
+            self.flag(node, f"a .{taken[1]} of the queue taken by getattr")
         name = called(node)
         slots = list(enumerate(node.args)) + [(kw.arg, kw.value) for kw in node.keywords]
         self.passing += [(name, slot, isinstance(node.func, ast.Attribute)) for slot, a in slots if self.queue_ref(a)]
@@ -500,6 +551,11 @@ ENTRY_FORMS = {
         {"case.py": "def f(A):\n    (e := A.fila[0]).update(audio=True)\n"}, 1),
     "a captured update of an entry": (
         {"case.py": "def f(A):\n    rewrite = A.fila[0].update\n    rewrite(audio=True)\n"}, 1),
+    "a mutator of an entry returned from the App's change": (
+        {"server.py": "class App:\n    def f(self):\n        def ch():\n            return self.fila[0].update\n"
+                      "        self.change_queue(ch)(audio=True)\n"}, 1),
+    "an update of an entry taken by getattr": (
+        {"case.py": "def f(A):\n    getattr(A.fila[0], 'update')(audio=True)\n"}, 1),
     "an entry of a queue bound inline": ({"case.py": "def f(A):\n    (q := A.fila)[0]['audio'] = True\n"}, 1),
     "an entry found by next()":({"case.py": "def f(A, q):\n    x = next((y for y in A.fila if y['qid'] == q), None)"
                                              "\n    x['fixa'] = True\n"}, 1),
@@ -582,9 +638,20 @@ QUEUE_FORMS = {
     "a queue chosen by a conditional, inline": (
         {"case.py": "def f(A, flag):\n    (A.fila if flag else A.fila_ordem).clear()\n"}, 1),
     "a captured append of the queue": ({"case.py": "def f(A, x):\n    add = A.fila.append\n    add(x)\n"}, 1),
+    "a changer of the queue returned from the change": (
+        {"case.py": "def f(A, x):\n    def ch():\n        return A.fila.remove\n    A.change_queue(ch)(x)\n"}, 1),
+    "a changer of the queue returned through a name from the change": (
+        {"case.py": "def f(A, x):\n    def ch():\n        rm = A.fila.remove\n        return rm\n"
+                    "    A.change_queue(ch)(x)\n"}, 1),
+    "a changer of the queue returned by a lambda passed as the change": (
+        {"case.py": "def f(A, x):\n    A.change_queue(lambda: A.fila.remove)(x)\n"}, 1),
+    "a changer of the queue called inside the change, its result returned": (
+        {"case.py": "def f(A, x):\n    def ch():\n        return A.fila.remove(x)\n    A.change_queue(ch)\n"}, 0),
     "a captured append of the queue inside the change": (
         {"case.py": "def f(A, x):\n    def ch():\n        add = A.fila.append\n        add(x)\n    A.change_queue(ch)\n"},
         0),
+    "an append of the queue taken by getattr": ({"case.py": "def f(A, x):\n    getattr(A.fila, 'append')(x)\n"}, 1),
+    "list.append on the queue": ({"case.py": "def f(A, x):\n    list.append(A.fila, x)\n"}, 1),
     "a queue bound by an assignment expression": ({"case.py": "def f(A):\n    if q := A.fila:\n        q.clear()\n"}, 1),
     "another class's own fila": ({"fx.py": "class Fx:\n    def f(self):\n        self.fila = []\n"}, 0),
     "the App building its queue in __init__": (
@@ -635,6 +702,15 @@ def main():
     _, got = scan(dict(sources, **{"server.py": direct}))
     check(direct != sources["server.py"] and len(got) == 1,
           f"with the App removing from its queue through an assignment expression, the check fails ({got})")
+    escaped = sources["server.py"].replace(
+        "        def remove_entry():\n            self.fila.remove(x)\n", "        def remove_entry():\n", 1).replace(
+        "                self.fila_ordem.remove(x)\n        self.change_queue(remove_entry)\n",
+        "                self.fila_ordem.remove(x)\n            return self.fila.remove\n"
+        "        self.change_queue(remove_entry)(x)\n", 1)
+    _, got = scan(dict(sources, **{"server.py": escaped}))
+    check(escaped.count("return self.fila.remove") == 1 and len(got) == 1,
+          f"with the App's remove_from_queue returning the queue's remove from its change and calling it after, the "
+          f"check fails ({got})")
     writes, changes = scan(sources)
     check(not writes, f"no module writes an entry of the queue or the Mix outside the {OWNER[1]} ({writes})")
     check(not changes, f"every change to the queue in the {len(sources)} modules goes through change_queue "
