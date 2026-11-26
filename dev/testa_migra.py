@@ -25,14 +25,14 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
-import migra  # noqa: E402
+import migra
 
 try:  # a esteira roda este teste antes de instalar as bibliotecas: o QR do pareamento nao entra aqui
-    import segno  # noqa: F401
+    import segno
 except ImportError:
     import types
     sys.modules["segno"] = types.ModuleType("segno")
-import pareamento  # noqa: E402
+import pareamento
 
 falhas = []
 
@@ -278,7 +278,7 @@ with tempfile.TemporaryDirectory() as tmp:
             "o que nao era do app fica, e a pasta tambem")
     confere(migra.pasta_velha(Path(tmp) / "NaoExiste") == 0, "sem a pasta de antes: nada a fazer")
     # a pasta do app que esta rodando (aqui, uma de mentira no lugar do pastas.APP) nunca e apagada
-    import pastas  # noqa: E402
+    import pastas
     rodando = Path(tmp) / "Rodando"
     (rodando / "_internal").mkdir(parents=True)
     (rodando / "vitrola.exe").write_bytes(b"x")
@@ -346,8 +346,8 @@ def tema_de_antes():
     /t/vitrola/. O servidor de verdade, no --mock, numa porta livre, com a LOCALAPPDATA e a pasta de dados temporarias,
     leva cada caminho dele para o mesmo no tema de agora, com a query, sem tirar o lugar do static do /t/."""
     try:
-        import aiohttp  # noqa: F401
-        import numpy  # noqa: F401
+        import aiohttp
+        import numpy
     except ImportError as ex:
         print(f"--   o endereco do tema de antes ficou de fora: sem as bibliotecas do servidor ({ex.name})")
         return
@@ -422,7 +422,7 @@ def tema_de_antes():
 
 
 print("--- o endereco do tema de antes")
-import pastas  # noqa: E402
+import pastas
 
 confere(pastas.PAGINA == "/t/ritmelli/" and (RAIZ / "themes" / "ritmelli" / "index.html").is_file()
         and not (RAIZ / "themes" / "vitrola").exists(), f"o app abre no tema de agora, que existe ({pastas.PAGINA})")

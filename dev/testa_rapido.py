@@ -13,8 +13,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import server  # noqa: E402
-import yt_fora  # noqa: E402
+import server
+import yt_fora
 
 OPTS = {"quiet": True, "format": "bestaudio[protocol^=http]/bestaudio/best"}
 

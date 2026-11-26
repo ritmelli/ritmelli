@@ -27,10 +27,10 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 try:  # o QR (segno) nao entra aqui, e a esteira roda este teste antes de instalar as bibliotecas
-    import segno  # noqa: F401
+    import segno
 except ImportError:
     sys.modules["segno"] = types.ModuleType("segno")
-import pareamento as par  # noqa: E402
+import pareamento as par
 
 falhas = []
 

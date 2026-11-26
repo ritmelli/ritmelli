@@ -13,11 +13,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import efeitos as ef  # noqa: E402
+import efeitos as ef
 # o modulo do pedal de troca de voz (de fora do repo) fica de fora daqui: com ele o fx.py troca o alienigena pelo
 # pedal dele, e estas contas sao as dos efeitos daqui
 sys.modules.setdefault("pistavoz", None)
-import fx  # noqa: E402
+import fx
 
 SR, B, N = fx.SR, 480, 2048
 f = np.fft.rfftfreq(N, 1 / SR)

@@ -52,7 +52,7 @@ class Automatico:
         A = self.app
         try:
             lista = self.mix_do(base)
-        except Exception as ex:  # noqa: BLE001 - sem Mix, o Automatico espera e tenta de novo
+        except Exception as ex:  # sem Mix, o Automatico espera e tenta de novo
             print(f"auto: the Mix of {base} failed: {A.yt_error(ex)}", file=sys.stderr, flush=True)
             lista = None
         with A.fila_lock:
@@ -318,7 +318,7 @@ class Automatico:
                 vid = x["youtube_id"]
                 try:
                     v = self.versao_audio(x)
-                except Exception as ex:  # noqa: BLE001 - sem a busca, a parecida toca o video
+                except Exception as ex:  # sem a busca, a parecida toca o video
                     print(f"audio: couldn't look up {x.get('title')!r}: {A.yt_error(ex)}", file=sys.stderr, flush=True)
                     with A.fila_lock:
                         A.andamento_falhou[f"audio:{vid}"] = time.time()
@@ -345,7 +345,7 @@ class Automatico:
             t0 = time.time()
             try:
                 r = self._mede_andamento(x)
-            except Exception as ex:  # noqa: BLE001 - sem medida, a parecida fica sem andamento (vai para o salto)
+            except Exception as ex:  # sem medida, a parecida fica sem andamento (vai para o salto)
                 r = None
                 print(f"tempo: couldn't measure {x.get('title')!r}: {A.yt_error(ex)}", file=sys.stderr, flush=True)
             with A.fila_lock:

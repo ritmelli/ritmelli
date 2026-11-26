@@ -337,7 +337,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
         return CEDEU if cede else em_curso.espera()
     try:
         tocou = A.tocar_entrada(r.x, historico=historico, entrada=r.x, reserva=r)
-    except Exception as ex:  # noqa: BLE001 - nos vigias, entrada quebrada nao trava a fila
+    except Exception as ex:  # nos vigias, entrada quebrada nao trava a fila
         if r.feita.is_set() and r.entrada is r.x:  # tocou: o que falhou veio depois (a gravacao da posicao)
             print(f"queue: {r.x.get('title')!r} played, but then: {ex}", file=sys.stderr, flush=True)
             return r.x

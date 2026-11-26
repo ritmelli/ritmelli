@@ -42,9 +42,9 @@ from unittest import mock
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import engine as eng  # noqa: E402
-from microfone import injeta  # noqa: E402
-from microfone import microfone as filtro  # noqa: E402
+import engine as eng
+from microfone import injeta
+from microfone import microfone as filtro
 
 UMC_IN = "IN 1-2 (BEHRINGER UMC 404HD 192k)"
 UMC_OUT = "OUT 1-2 (BEHRINGER UMC 404HD 192k)"
@@ -105,16 +105,16 @@ class SdFalso:
     def query_devices(self):
         return self.devs
 
-    def WasapiSettings(self, auto_convert=False):  # noqa: N802 - o nome do sounddevice
+    def WasapiSettings(self, auto_convert=False):  # o nome do sounddevice
         return object()
 
-    def InputStream(self, **kw):  # noqa: N802
+    def InputStream(self, **kw):
         d = self.devs[kw["device"]]
         if d["_jeito"] == "nunca":
             raise AssertionError(f"abriu {d['name']} (host api {d['hostapi']})")
         return Fluxo(self, "in", **kw)
 
-    def OutputStream(self, **kw):  # noqa: N802
+    def OutputStream(self, **kw):
         return Fluxo(self, "out", **kw)
 
 
@@ -304,7 +304,7 @@ class TestaReinicio(unittest.TestCase):
     def test_remove_reprovada(self):
         """Com a pasta do app reprovada (pastas.pasta_protegida), o remove devolve os microfones e sai com erro, sem
         conferir: o sounddevice de la nao e carregado. Desinstalando, os mudos saem do registro do mesmo jeito."""
-        import pastas  # noqa: PLC0415
+        import pastas
         self.protegida = pastas.Reprovada("test folder")
         for sobra, quer in ((True, ["reinicia"]),
                             (False, ["apaga_com", "reinicia", "tarefa_apaga", "esquece", "grava_mudos"])):

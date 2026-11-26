@@ -23,7 +23,7 @@ import websockets
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fitcheck import CHROME, free_port  # noqa: E402
+from fitcheck import CHROME, free_port
 
 SAIDA = Path(__file__).resolve().parent.parent / "themes" / "ritmelli" / "texturas"
 # nome: (SVG em data URI, largura e altura em px de CSS, densidade da imagem gravada)
@@ -55,7 +55,7 @@ async def main():
             try:
                 ws_url = next(t["webSocketDebuggerUrl"] for t in json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json")) if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001
+            except Exception:
                 time.sleep(0.1)
         async with websockets.connect(ws_url, max_size=1 << 30) as ws:
             n = [0]

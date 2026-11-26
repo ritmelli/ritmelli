@@ -27,9 +27,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # o pistavoz de verdade (se estiver ao lado do codigo) fica de fora: cada teste poe o dele
 sys.modules["pistavoz"] = None
-import engine  # noqa: E402
-import fx  # noqa: E402
-import server  # noqa: E402
+import engine
+import fx
+import server
 
 
 def falso(**campos):

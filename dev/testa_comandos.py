@@ -26,15 +26,15 @@ from unittest import mock
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-import numpy as np  # noqa: E402
-from aiohttp.test_utils import make_mocked_request  # noqa: E402
+import numpy as np
+from aiohttp.test_utils import make_mocked_request
 
 with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, que nao sao deste teste
-    import automatico  # noqa: E402
-    import comandos as cmd  # noqa: E402
-    import engine as eng  # noqa: E402
-    import pastas  # noqa: E402
-    import server  # noqa: E402
+    import automatico
+    import comandos as cmd
+    import engine as eng
+    import pastas
+    import server
 
 falhas = []
 BLOCOS = 30  # cada disco de mentira tem 0,3 s de audio
@@ -1175,7 +1175,7 @@ def em_thread(f, *a, **kw):
     def roda():
         try:
             res.append(f(*a, **kw))
-        except Exception as ex:  # noqa: BLE001 - o erro vira o resultado
+        except Exception as ex:  # o erro vira o resultado
             res.append(ex)
     t = threading.Thread(target=roda)
     t.start()

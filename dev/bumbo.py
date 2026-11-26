@@ -47,10 +47,10 @@ if "--codigo" in args:
     del args[i:i + 2]
 sys.path.insert(0, str(codigo))
 sys.path.insert(1, str(SB))  # o pastas.py de agora, mesmo com --codigo de antes dele
-import batida  # noqa: E402
-import engine as eng  # noqa: E402
-from bumbo_mede import TOL, bumbos, desvio, grade  # noqa: E402
-from pastas import LIB  # noqa: E402
+import batida
+import engine as eng
+from bumbo_mede import TOL, bumbos, desvio, grade
+from pastas import LIB
 
 SR = eng.SR
 lib = {x["file"]: x for x in json.load(open(LIB / "library.json", encoding="utf-8"))}

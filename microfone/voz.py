@@ -19,7 +19,7 @@ _dll = None
 
 def caminho():
     if getattr(sys, "frozen", False):
-        return os.path.join(sys._MEIPASS, "microfone", "voz.dll")  # noqa: SLF001
+        return os.path.join(sys._MEIPASS, "microfone", "voz.dll")
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "apo", "saida", "voz.dll")
 
 

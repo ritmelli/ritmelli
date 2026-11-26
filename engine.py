@@ -36,7 +36,7 @@ from microfone import preset  # o preset do efeito no filtro: importado aqui, nu
 from microfone import voz  # o mesmo motor de efeitos do filtro, para a voz com efeito que sai pelo app
 # as contas da passagem sem audio (o nivel, o fade ou o final seco, a entrada da proxima e os tempos) moram no
 # transicao.py; o motor, e quem le daqui (o andamento.py), segue com os mesmos nomes
-from transicao import (BLOCK, FADE_MIN_S, FASE_ANTES_S, FOLGA_S, RAMPA_MAX_S, RAMPA_MIN_S, RAMPA_TAXA,  # noqa: F401
+from transicao import (BLOCK, FADE_MIN_S, FASE_ANTES_S, FOLGA_S, RAMPA_MAX_S, RAMPA_MIN_S, RAMPA_TAXA,
                        SAI_MAX, SR, TEMPO_MAX, TRANS_MAX_S, TRANS_SECO_S, _niveis, medir_fim, medir_inicio)
 
 try:  # o pedal da mina: modulo de fora deste repo, posto ao lado do codigo so onde ela roda
@@ -718,9 +718,9 @@ def list_devices_live():
     do PortAudio."""
     try:
         _com_init()
-        import winvol  # noqa: PLC0415 - comtypes so em thread MTA (ver _winvol_loop)
+        import winvol  # comtypes so em thread MTA (ver _winvol_loop)
         return winvol.dispositivos()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return list_devices()
 
 
@@ -728,8 +728,8 @@ def _rescan():
     """Rele a lista do PortAudio, para abrir o que conectou depois de ele subir. Reiniciar o
     PortAudio derruba todo stream aberto: so com o motor fechado."""
     _com_init()
-    sd._terminate()  # noqa: SLF001 - o sounddevice nao tem releitura publica
-    sd._initialize()  # noqa: SLF001
+    sd._terminate()  # o sounddevice nao tem releitura publica
+    sd._initialize()
 
 
 def _mic_padrao(d):
@@ -848,7 +848,7 @@ def _confere_fora(nomes=None):
         p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
                            creationflags=NO_WINDOW, startupinfo=sem_cursor())
         return json.loads(p.stdout.strip().splitlines()[-1])
-    except Exception as ex:  # noqa: BLE001 - sem a conferencia, nenhum aviso: nunca um aviso falso
+    except Exception as ex:  # sem a conferencia, nenhum aviso: nunca um aviso falso
         motivo = p.stderr.strip()[-300:] if p is not None and p.stderr.strip() else f"{type(ex).__name__}: {ex}"
         print(f"devices: not checked ({motivo})")
         return None
@@ -857,7 +857,7 @@ def _confere_fora(nomes=None):
 def _aviso_mudos(mudos):
     """A mensagem da tela com os aparelhos que abrem e nao entregam som (#136): um nome por aparelho, o que se tira do
     cabo ("BEHRINGER UMC 404HD 192k", e nao cada entrada e saida dele)."""
-    from microfone import microfone as filtro  # noqa: PLC0415
+    from microfone import microfone as filtro
     return i18n.msg("server.devices.silent", "Windows stopped receiving sound from the device \"{name}\". Unplug its "
                                              "USB cable and plug it back in.",
                     name="\", \"".join(filtro.aparelhos_de(mudos)))
@@ -867,9 +867,9 @@ def _do_microfone(mic):
     """O estado do filtro no microfone (o item do microfone.estado_dados: guid, filtro, melhorias), ou None se nao deu
     para ler ou o Windows nao conhece esse nome."""
     try:
-        from microfone import microfone as filtro  # noqa: PLC0415 - le o registro do Windows
+        from microfone import microfone as filtro  # le o registro do Windows
         return filtro.do_microfone(mic)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -1050,7 +1050,7 @@ class Injetor:
                 m.pulso(False)  # a voz volta na hora, sem esperar o pulso vencer
                 m.alvo(0)       # e nenhum filtro mexe mais no som
                 m.fecha()
-            except Exception:  # noqa: BLE001, S110 - fechando: o filtro devolve a voz sozinho em 1 s
+            except Exception:  # fechando: o filtro devolve a voz sozinho em 1 s
                 pass
 
     def _abre(self):
@@ -1058,7 +1058,7 @@ class Injetor:
         if self.m is not None or time.monotonic() - self._tentou < 1.0:
             return self.m
         self._tentou = time.monotonic()
-        from microfone import injeta  # noqa: PLC0415 - so no Windows
+        from microfone import injeta  # so no Windows
         try:
             self.m = injeta.Microfone()
         except injeta.SemFiltro:
@@ -1069,28 +1069,28 @@ class Injetor:
         """O preset do efeito escolhido no anel (na taxa do microfone alvo) e o estado do filtro com ele: roda
         (efeito_no_filtro), ainda nao respondeu (_fx_pendente: a voz crua segue) ou recusou (a voz vai pelo app)."""
         mo = self.motor
-        eid = mo._fx_id  # noqa: SLF001
+        eid = mo._fx_id
         taxa = self.voz_taxa = int(m.a.voz_taxa)
         chave = (eid, taxa, preset.geracao())
         if chave != self._preset:
             dados = preset.pede(eid, taxa) if eid and taxa else None
             if dados is preset.PENDENTE:  # o projeto roda a parte (ate ~70 ms): a voz crua segue ate ficar pronto
                 self.efeito_no_filtro = False
-                mo._fx_filtro, mo._fx_pendente = False, True  # noqa: SLF001
+                mo._fx_filtro, mo._fx_pendente = False, True
                 return
             self._preset_seq = m.preset(dados or b"")
             self._preset, self._preset_ok, self._preset_em = chave, dados is not None, time.monotonic()
         feito, erro = m.preset_estado()
         respondeu = feito == self._preset_seq
         self.efeito_no_filtro = self._preset_ok and respondeu and erro == 0
-        mo._fx_filtro = self.efeito_no_filtro  # noqa: SLF001
-        mo._fx_pendente = (self._preset_ok and not respondeu  # noqa: SLF001
+        mo._fx_filtro = self.efeito_no_filtro
+        mo._fx_pendente = (self._preset_ok and not respondeu
                            and time.monotonic() - self._preset_em < PRESET_ESPERA_S)
 
     def _solta_efeito(self):
         self.efeito_no_filtro = False
-        self.motor._fx_filtro = self.motor._fx_pendente = False  # noqa: SLF001
-        self.motor._pista_viva = False  # noqa: SLF001
+        self.motor._fx_filtro = self.motor._fx_pendente = False
+        self.motor._pista_viva = False
         self._preset = None
         self.voz_taxa = 0  # o anel que vier depois diz a dele
 
@@ -1102,18 +1102,18 @@ class Injetor:
             y = np.concatenate([self._resto_fx, self._para48k_fx(y, taxa_fx)])
             n = len(y) // BLOCK * BLOCK
             for k in range(0, n, BLOCK):
-                self.motor._push_voz_fx(y[k:k + BLOCK])  # noqa: SLF001
+                self.motor._push_voz_fx(y[k:k + BLOCK])
             self._resto_fx = y[n:]
         # a pista da voz no comando (um processo converte a voz e o filtro poe no lugar da do microfone): o fone e o
         # medidor levam a voz dela, que e o que o jogo ouve, e nao a crua
         p = m.pista_le()  # sempre le: a posicao anda junto com o escritor
         viva = m.pista_viva()
-        self.motor._pista_viva = viva  # noqa: SLF001
+        self.motor._pista_viva = viva
         if viva and len(p):
             p = np.concatenate([self._resto_pista, p])
             n = len(p) // BLOCK * BLOCK
             for k in range(0, n, BLOCK):
-                self.motor._push_voz_fx(p[k:k + BLOCK])  # noqa: SLF001
+                self.motor._push_voz_fx(p[k:k + BLOCK])
             self._resto_pista = p[n:]
         elif not viva:
             self._resto_pista = self._resto_pista[:0]
@@ -1123,9 +1123,9 @@ class Injetor:
         x = np.concatenate([self._resto, self._para48k(x, taxa)])
         n = len(x) // BLOCK * BLOCK
         for k in range(0, n, BLOCK):
-            self.motor._push_mic(x[k:k + BLOCK])  # noqa: SLF001
+            self.motor._push_mic(x[k:k + BLOCK])
         self._resto = x[n:]
-        self.motor._voz_anel_em = time.monotonic()  # noqa: SLF001
+        self.motor._voz_anel_em = time.monotonic()
 
     def _loop(self):
         winmm = ctypes.WinDLL("winmm")
@@ -1143,7 +1143,7 @@ class Injetor:
                 try:
                     m = self._abre()
                     if m is not None:
-                        m.alvo(self.motor._alvo)  # noqa: SLF001
+                        m.alvo(self.motor._alvo)
                         self._efeito(m)
                         m.pulso(self.motor.voz_pelo_app())
                         self._voz(m)
@@ -1167,7 +1167,7 @@ class Injetor:
                         for _ in range(INJ_FOLGA):
                             if not self._vai or fila > (INJ_FOLGA - 1) * BLOCK:
                                 break
-                            m.escreve(self.motor._mixa(BLOCK))  # noqa: SLF001
+                            m.escreve(self.motor._mixa(BLOCK))
                             fila = m.na_fila()
                         servidos = donos
                         prox = time.perf_counter() + BLOCK / SR
@@ -1178,9 +1178,9 @@ class Injetor:
                         if agora - prox > 0.2:  # voltou de um leitor, ou a thread atrasou: nao corre atras
                             prox = agora
                         while self._vai and agora >= prox:
-                            self.motor._mixa(BLOCK)  # noqa: SLF001 - o fone e o relogio da musica seguem
+                            self.motor._mixa(BLOCK)  # o fone e o relogio da musica seguem
                             prox += BLOCK / SR
-                except Exception as ex:  # noqa: BLE001 - a thread nao morre calada: o erro vai pra tela
+                except Exception as ex:  # a thread nao morre calada: o erro vai pra tela
                     self.motor.set_error(i18n.msg("server.mic.outputFailed", "Couldn't send audio to the microphone "
                                                   "({reason}). If the music doesn't come back through the "
                                                   "microphone, close and reopen Ritmelli.", reason=str(ex)[:160]))
@@ -1192,7 +1192,7 @@ class Injetor:
                     try:
                         if falhou is not None:
                             falhou.fecha()
-                    except Exception:  # noqa: BLE001, S110 - o erro que vale ja esta na tela
+                    except Exception:  # o erro que vale ja esta na tela
                         pass
                     finally:
                         self._solta_efeito()
@@ -1451,7 +1451,7 @@ class Engine:
         _com_init()
         st = _do_microfone(mic)
         if st and st["filtro"] and st["melhorias"]:
-            from microfone import injeta  # noqa: PLC0415
+            from microfone import injeta
             if self.active.get("mic") == mic:
                 self._alvo = injeta.hash_microfone(st["guid"])
                 with self._lock:  # o dos mudos fica: ele acabou de sair desta pilha e sai quando o audio reabre
@@ -1462,7 +1462,7 @@ class Engine:
                 ver = not self._mudos_vistos  # incomodaria
                 self._mudos_vistos = True
             if ver:
-                from microfone import microfone as filtro  # noqa: PLC0415
+                from microfone import microfone as filtro
                 mudos = filtro.le_mudos()
                 if mudos:
                     self._confere_mudos(mudos)
@@ -1475,7 +1475,7 @@ class Engine:
                                                                                     "reinstalling Ritmelli.", name=mic)
             return
         self._preparados.add(mic)
-        from microfone import microfone as filtro  # noqa: PLC0415
+        from microfone import microfone as filtro
         self.preparando = mic
         # o som do PC some enquanto o Windows reinicia o audio: a tela diz por que
         prep = self._aviso = self._error = i18n.msg("server.mic.preparing", "Preparing the microphone \"{name}\" for "
@@ -1528,7 +1528,7 @@ class Engine:
         with self._lock:
             try:
                 self.start(reserva=True)
-            except Exception as ex:  # noqa: BLE001
+            except Exception as ex:
                 self._sem_audio(ex)
 
     def close(self):
@@ -1565,7 +1565,7 @@ class Engine:
                 continue
             try:
                 d = list_devices_live()
-            except Exception:  # noqa: BLE001 - leitura falhou: tenta na volta
+            except Exception:  # leitura falhou: tenta na volta
                 continue
             a = (tuple(d["inputs"]), tuple(d["outputs"]), d["default_input"], d["default_output"])
             if a != assin:
@@ -1637,7 +1637,7 @@ class Engine:
             _rescan()
             self.start(reserva=True)
             self._caiu_no_vigia = False
-        except Exception as ex:  # noqa: BLE001 - tenta de novo na volta, dentro do VIGIA_TENTATIVAS
+        except Exception as ex:  # tenta de novo na volta, dentro do VIGIA_TENTATIVAS
             self._sem_audio(ex)
 
     def _sem_audio(self, ex):
@@ -1665,7 +1665,7 @@ class Engine:
         _com_init()
         # o comtypes inicia o COM de quem importa: aqui, em MTA (a thread principal ja e STA
         # pelo sounddevice, e la o import quebraria)
-        import winvol  # noqa: PLC0415
+        import winvol
         ep, nome = None, None
         while True:
             try:
@@ -1690,7 +1690,7 @@ class Engine:
                 lido = winvol.ler(ep)
                 if n == self._wv_n:  # pedido novo no meio da leitura: a barra fica com ele
                     self.mic_vol = lido
-            except Exception:  # noqa: BLE001 - mic desconectado: procura de novo na volta
+            except Exception:  # mic desconectado: procura de novo na volta
                 ep, nome = None, None
 
     def set_devices(self, mic=None, monitor=None):
@@ -1739,7 +1739,7 @@ class Engine:
         if f is not None:
             try:
                 x = f(x)  # o motor do filtro (voz.h) pelo voz.dll, a 48 kHz
-            except Exception as ex:  # noqa: BLE001 - efeito quebrado nao pode calar a voz
+            except Exception as ex:  # efeito quebrado nao pode calar a voz
                 self._fx_id, self._fx, self.effect = None, None, "nenhum"
                 self._error = i18n.msg("server.effect.failed", "The voice effect failed ({reason}). You're back to "
                                                               "your natural voice.", reason=str(ex)[:120])
@@ -1805,7 +1805,7 @@ class Engine:
                 return
             try:
                 pv.liga(ligado)
-            except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o erro dele nao derruba a troca de efeito
+            except Exception as ex:  # o modulo e de fora: o erro dele nao derruba a troca de efeito
                 print(f"pedal_voz: liga() failed ({str(ex)[:120]})", file=sys.stderr, flush=True)
 
     def _pedal_voz_fecha(self):
@@ -2505,7 +2505,7 @@ class Engine:
                     self._sobre_cache.popitem(last=False)
             else:
                 self._sobre_cache.move_to_end(chave)
-        except Exception:  # noqa: BLE001 - som por cima quebrado nao derruba o resto
+        except Exception:  # som por cima quebrado nao derruba o resto
             self._error = i18n.msg("server.player.readFailed", "Couldn't read the audio of \"{title}\". The file may "
                                                               "be corrupted. Delete the record and download it "
                                                               "again.", title=track.get("title") or "?")
@@ -2692,7 +2692,7 @@ class Engine:
         try:
             plano, motivo = (self._plano_batida(atual, prox, fade, fim, queda, baixo, ini, virar, sobrepor)
                              if queda is not None else (None, "no drop at the end"))
-        except Exception as ex:  # noqa: BLE001 - a passagem no tempo e um extra: sem ela, a de volume
+        except Exception as ex:  # a passagem no tempo e um extra: sem ela, a de volume
             plano, motivo = None, f"error: {ex!r}"
         with self._qlock:
             if self._pronto is not prox or self._deck is not atual:
@@ -2791,7 +2791,7 @@ class Engine:
                           file=sys.stderr, flush=True)
             with open(pasta / (hoje + ".jsonl"), "a", encoding="utf-8") as f:
                 f.write(json.dumps(reg, ensure_ascii=False) + "\n")
-        except Exception as ex:  # noqa: BLE001 - o registro e so estudo: falhando, a passagem segue igual
+        except Exception as ex:  # o registro e so estudo: falhando, a passagem segue igual
             print(f"transition: the end record failed: {ex!r}", file=sys.stderr, flush=True)
 
     def _plano_batida(self, atual, prox, fade, fim, queda, baixo, ini, virar, sobrepor):
@@ -3192,7 +3192,7 @@ class Engine:
             try:
                 if self._onda_viva(iid):
                     self._onda_arquivo(iid, path, dur)
-            except Exception as ex:  # noqa: BLE001 - sem a onda, o visor fica so com a linha do meio
+            except Exception as ex:  # sem a onda, o visor fica so com a linha do meio
                 print(f"waveform: couldn't read the waveform of {iid}: {ex!r}", file=sys.stderr, flush=True)
             finally:
                 with self._olock:
@@ -3284,7 +3284,7 @@ class Engine:
         if self.sonoridade_de is not None:
             try:
                 v = self.sonoridade_de(track)
-            except Exception:  # noqa: BLE001 - sem a medida guardada, mede de novo
+            except Exception:  # sem a medida guardada, mede de novo
                 v = None
             if v is not None:
                 return float(v), True
@@ -3351,7 +3351,7 @@ class Engine:
         if inteira and self.mediu is not None:
             try:
                 self.mediu(track, float(lufs))
-            except Exception as ex:  # noqa: BLE001 - sem guardar, mede de novo na proxima vez
+            except Exception as ex:  # sem guardar, mede de novo na proxima vez
                 print(f"volume: nao guardei a medida de {track.get('title')!r}: {ex}", file=sys.stderr, flush=True)
 
     # comandos -------------------------------------------------------------
