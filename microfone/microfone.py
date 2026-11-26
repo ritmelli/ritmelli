@@ -539,6 +539,36 @@ class MissingEndpointProperties(FileNotFoundError):
     pass
 
 
+class LockedInactiveEndpoint(PermissionError):
+    pass
+
+
+def _key_exists(path):
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path):
+            return True
+    except FileNotFoundError:
+        return False
+
+
+def _active(base):
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as k:
+        return (le(k, "DeviceState") or (0,))[0] == 1
+
+
+def _open_fx_properties(base):
+    """The FxProperties key of the endpoint, created when missing. An endpoint that isn't active, has no FxProperties
+    and where Windows denies creating it even to an administrator raises LockedInactiveEndpoint: a device that left the
+    PC, which the filter can't reach. On an active endpoint, or with the key there, the denial stays an error."""
+    path = base + r"\FxProperties"
+    try:
+        return winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, path, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE)
+    except PermissionError as ex:
+        if _active(base) or _key_exists(path):
+            raise
+        raise LockedInactiveEndpoint(*ex.args) from ex
+
+
 def _pendura(ep):
     """Pendura o filtro no microfone (a chave dele no registro), guardando o original; liga as melhorias de audio se
     estavam desativadas (sem elas nenhum efeito carrega; o remove desativa de novo). True se mudou algo."""
@@ -550,8 +580,7 @@ def _pendura(ep):
     with p:
         sem_melhorias = (le(p, SEM_MELHORIAS) or (0,))[0]
     mudou = False
-    with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, base + r"\FxProperties", 0,
-                            winreg.KEY_READ | winreg.KEY_SET_VALUE) as fx, \
+    with _open_fx_properties(base) as fx, \
             winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, rf"{SALVO}\{ep}", 0, winreg.KEY_ALL_ACCESS) as salvo:
         if not nosso(fx):  # guarda so o original (pendurar de novo nao apaga ele)
             for k in GUARDADOS:
@@ -716,14 +745,15 @@ def instala_todos(dll):
     new leaves the sound alone, and only a new DLL restarts only the audio service. Returns the device check if the
     audio restarted (confere_aparelhos), or None. A microphone that refuses the filter doesn't stop the others or
     restart the audio by itself, and an AudioEndpointBuilder that doesn't restart fails too: at the end,
-    FilterChangeFailed carries the check (or None)."""
+    FilterChangeFailed carries the check (or None). Only an endpoint without Properties and a LockedInactiveEndpoint
+    are left out without an error."""
     parou = _prepara_dll(dll)
     novos, failures = [], []
     for m in microfones(todos=True):
         try:
             if _pendura(m[0]):
                 novos.append(m)
-        except MissingEndpointProperties:
+        except (MissingEndpointProperties, LockedInactiveEndpoint):
             continue
         except OSError as ex:
             failures.append(f"the filter wasn't installed on {m[1]} ({m[2]}): {ex}")

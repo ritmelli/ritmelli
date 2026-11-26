@@ -292,6 +292,43 @@ class TestaMfx(Base):
         self.assertIsNone(self.vaga(0))
 
 
+class TestEndpointWithoutFxProperties(Base):
+    """The endpoint of a device that left the PC: no FxProperties, and Windows denies creating it."""
+
+    def _endpoint(self, state, fx_properties=False):
+        r = self.reg
+        props = r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}\\Properties")
+        r.SetValueEx(props, mf.SEM_MELHORIAS, 0, r.REG_DWORD, 0)
+        r.SetValueEx(r.OpenKey(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}"), "DeviceState", 0, r.REG_DWORD, state)
+        if fx_properties:
+            r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}\\FxProperties")
+        real_create = r.CreateKeyEx
+
+        def create(root, sub, reserved=0, access=0):
+            if sub.lower().endswith("\\fxproperties"):
+                raise PermissionError(13, "Access is denied")
+            return real_create(root, sub, reserved, access)
+        self.enterContext(mock.patch.object(r, "CreateKeyEx", create))
+
+    def test_a_device_not_present_is_left_out_untouched(self):
+        self._endpoint(4)
+        with self.assertRaises(mf.LockedInactiveEndpoint):
+            mf._pendura(EP)
+        self.assertNotIn(f"HKLM\\{mf.SALVO}\\{EP}".lower(), self.reg.chaves, "nothing saved for it")
+
+    def test_an_active_endpoint_still_fails(self):
+        self._endpoint(1)
+        with self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertNotIsInstance(caught.exception, mf.LockedInactiveEndpoint)
+
+    def test_a_denied_key_that_is_there_still_fails(self):
+        self._endpoint(4, fx_properties=True)
+        with self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertNotIsInstance(caught.exception, mf.LockedInactiveEndpoint)
+
+
 class FailedListWriteAfterTheSingleEffect:
     """#261: _pendura deletes the maker's single EFX/MFX before it writes the list that takes it over. setUp runs the
     first install with that list write refused once, then the second one."""

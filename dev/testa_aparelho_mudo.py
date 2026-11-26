@@ -340,6 +340,19 @@ class TestaReinicio(unittest.TestCase):
         with self.assertRaises(filtro.FilterChangeFailed):
             self._install_with([old], value_gone_later)
 
+    def test_instala_todos_skips_the_locked_inactive_endpoint_only(self):
+        gone = ("{gone}", "Microphone", "High Definition Audio Device")
+
+        def locked(ep):
+            raise filtro.LockedInactiveEndpoint(13, "Access is denied")
+        self.assertIsNone(self._install_with([gone], locked))
+        self.assertEqual(self.c.nomes(), [])
+
+        def denied(ep):
+            raise PermissionError(13, "Access is denied")
+        with self.assertRaises(filtro.FilterChangeFailed):
+            self._install_with([gone], denied)
+
     def test_pendura_without_properties(self):
         with mock.patch.object(filtro.winreg, "OpenKey", side_effect=FileNotFoundError(2, "not found")), \
                 self.assertRaises(filtro.MissingEndpointProperties):
