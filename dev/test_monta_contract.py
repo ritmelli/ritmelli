@@ -77,7 +77,7 @@ def step_by_id(job, step_id):
 
 def manifest_step(job):
     found = [s for s in job_steps(job)
-             if "instalador/atualizacao/publica.py" in str(s.get("run", "")).replace("\\", "/")]
+             if "instalador/atualizacao/publica.py" in code(s.get("run", "")).replace("\\", "/")]
     return found[0] if len(found) == 1 else None
 
 
@@ -142,6 +142,8 @@ def contract_problems(doc):
     manifest = manifest_step(monta)
     if manifest is None or switched_off(manifest.get("if")):
         problems.append("the monta job has no one step that runs publica.py")
+    elif "if" in manifest:
+        problems.append("the step that runs publica.py runs only under an if:, so the manifest may be missing")
     else:
         run = str(manifest.get("run", ""))
         saida = output_folder(run)
@@ -293,6 +295,10 @@ def main():
         "a Ritmelli artifact named by the version and a suffix": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": setup + ".1", "path": "x"}}),
         "the notes loop commented out": lambda d: edit_run(d, comment_notes_loop),
+        "the publica.py call commented out": lambda d: edit_run(d, lambda run: re.sub(
+            r"^(\s*)(&.*publica\.py.*)$", r"\1# \2", run, count=1, flags=re.M)),
+        "the step that runs publica.py under a condition": lambda d: manifest_step(d["jobs"]["monta"]).update(
+            {"if": "env.ASSINA == 'true'"}),
         "the congela step under a condition": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
             {"if": "github.event_name == 'push'"}),
         "a Ritmelli artifact named by another expression": lambda d: d["jobs"]["monta"]["steps"].append(
