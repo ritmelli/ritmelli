@@ -121,13 +121,13 @@ class FakeStdin:
 
 
 class FakeJob:
-    def __init__(self, left=0, query_fails=False):
-        self.left, self.ended, self.query_fails = left, False, query_fails
+    def __init__(self, left=0, query_fails=False, seen=()):
+        self.left, self.ended, self.query_fails, self.seen = left, False, query_fails, list(seen)
 
     def left_after(self, seconds):
         if self.query_fails:
             raise so_mock.Recusa("the test server job did not list its processes (error 5)")
-        return self.left
+        return self.left, self.seen
 
     def end(self, seconds=10.0):
         self.ended = True
@@ -287,10 +287,12 @@ def child(srv):
     job = FakeJob()
     so_mock.Filho(FakeChild(), srv.port, job).encerra(espera=1)
     check(job.ended, "a clean stop still ends the server's job, so nothing it started outlives it")
-    job = FakeJob(left=2)
+    job = FakeJob(left=1, seen=[("ffmpeg.exe", False), ("conhost.exe", True)])
     msg = refused(so_mock.Filho(FakeChild(), srv.port, job).encerra, espera=1)
-    check(job.ended and msg is not None and "left 2" in msg,
-          f"a server that stops but leaves processes running fails the stop, with them ended ({msg})")
+    check(job.ended and msg is not None and "left 1" in msg and "ffmpeg.exe ended after 1 s" in msg
+          and "conhost.exe still running after 1 s" in msg,
+          f"a server that stops but leaves processes running fails the stop, with them ended, and names each process "
+          f"that was in its job and whether it was still running ({msg})")
     job = FakeJob(query_fails=True)
     msg = refused(so_mock.Filho(FakeChild(), srv.port, job).encerra, espera=1)
     check(job.ended and msg is not None and "did not list" in msg,

@@ -30,6 +30,7 @@ from pastas import PORTA as PORTA_DO_APP  # 8799
 # no Fetch.enable do CDP: cada documento (a pagina, um iframe, um redirecionamento dele) para antes do pedido
 DOCUMENTOS = [{"urlPattern": "*", "resourceType": "Document", "requestStage": "Request"}]
 STOP_FLAG = "--stop-on-stdin-eof"
+STILL_ACTIVE = 259
 
 
 class Recusa(Exception):
@@ -231,15 +232,30 @@ class _Job:
         return found
 
     def left_after(self, seconds):
+        """Waits up to seconds for the processes in the job to end: (how many are still active, and each process that
+        was in it, as (image name, still running))."""
         handles = self.members()
         try:
             fim = time.monotonic() + seconds
             for handle in handles:
                 self.k.WaitForSingleObject(wintypes.HANDLE(handle), max(0, int((fim - time.monotonic()) * 1000)))
+            seen = [(self._image(handle), self._running(handle)) for handle in handles]
         finally:
             for handle in handles:
                 self.k.CloseHandle(wintypes.HANDLE(handle))
-        return self.active()
+        return self.active(), seen
+
+    def _image(self, handle):
+        size, name = wintypes.DWORD(1024), ctypes.create_unicode_buffer(1024)
+        if not self.k.QueryFullProcessImageNameW(wintypes.HANDLE(handle), 0, name, ctypes.byref(size)):
+            raise Recusa(f"a process of the test server job could not be named (error {ctypes.get_last_error()})")
+        return Path(name.value).name
+
+    def _running(self, handle):
+        code = wintypes.DWORD()
+        if not self.k.GetExitCodeProcess(wintypes.HANDLE(handle), ctypes.byref(code)):
+            raise Recusa(f"a process of the test server job could not be checked (error {ctypes.get_last_error()})")
+        return code.value == STILL_ACTIVE
 
     def end(self, seconds=10.0):
         if not self.job:
@@ -359,11 +375,14 @@ class Filho:
             self.mata()
             raise Recusa(f"the test server did not stop within {espera:g} s of its stdin closing: killed with the "
                          "processes it started") from None
-        left = self.job.left_after(espera) if self.job else 0
+        left, seen = self.job.left_after(espera) if self.job else (0, [])
         if code != 0:
             raise Recusa(f"the test server exited with code {code}, not by its own stop")
         if left:
-            raise Recusa(f"the test server stopped and left {left} process(es) it started running: ended")
+            named = ", ".join(f"{name} {'still running' if running else 'ended'} after {espera:g} s"
+                              for name, running in seen)
+            raise Recusa(f"the test server stopped and left {left} process(es) it started running: ended (in the job "
+                         f"when it stopped: {named or 'none listed'})")
 
 
 def sobe(cmd, porta, limite=30.0, stop_flag=True, **popen):
