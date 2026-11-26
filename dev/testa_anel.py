@@ -1073,7 +1073,6 @@ class TestVoicePedalDryOut(unittest.TestCase):
 
     def hold_producer(self, where):
         entered, release = threading.Event(), threading.Event()
-        self.addCleanup(release.set)
         real = getattr(where[0], where[1])
 
         def held(*args):
@@ -1085,6 +1084,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         producer = threading.Thread(target=self.producer.pista_liga, name="producer", daemon=True)
         producer.start()
         self.addCleanup(producer.join, 5)
+        self.addCleanup(release.set)
         self.assertTrue(entered.wait(3), "the producer never got to the hold")
         return release
 
