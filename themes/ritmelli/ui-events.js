@@ -16,18 +16,10 @@ $('#estante').addEventListener('click', e => {
   else if (b.dataset.role === 'mais' && id) { if (menuBotao === b) fecharMenu(true); else { fecharMenu(false); abrirMenu(b, { tipo: 'disco', id }); } }
   else if (b.dataset.role === 'retentar') { const c = S.jobCorpo[b.dataset.job]; if (c) baixar(c, S.jobAlvo[b.dataset.job]); }
 });
-$('#b-anterior').addEventListener('click', () => cmd('/api/prev'));
-$('#b-proxima').addEventListener('click', () => cmd('/api/next'));
-$('#b-aleatorio').addEventListener('click', () => { const v = !(S.state && S.state.shuffle); ligarChave($('#b-aleatorio'), v); ajustar('shuffle', v); });
-$('#b-repetir').addEventListener('click', () => { const v = !(S.state && S.state.loop); ligarChave($('#b-repetir'), v); ajustar('loop', v); });
-function alternarVoz() { const v = !(S.state && S.state.mic_mute); ligarChave($('#b-cortar'), v); ajustar('mic_mute', v); desenharReceptor(); }
-$('#b-cortar').addEventListener('click', alternarVoz);
-$('#b-nivelar').addEventListener('click', () => { const v = !(S.state && S.state.volume_auto); ligarChave($('#b-nivelar'), v); ajustar('volume_auto', v); });
 if (!scriptsMissing().length) bindVoiceEffects();
 matchMedia('(max-width: 899.98px)').addEventListener('change', () => {
   abrirGaveta(S.gaveta); if (!celular()) abrirPalco(false); else abrirDisco(false); inertPalco(); textoBusca();
 });
-$('#b-tocar').addEventListener('click', alternar);
 $('#mini-tocar').addEventListener('click', alternar);
 function mutarComAviso() {
   alternarVoz();
@@ -328,45 +320,8 @@ document.querySelectorAll('input[type=range]').forEach(r => {
   r.addEventListener('input', barrar, true);
   r.addEventListener('change', barrar, true);
 });
-for (const [fi, oi, k, curva] of FADERS) {
-  const f = $(fi);
-  f.addEventListener('input', () => {
-    const g = curva ? ganhoDaPos(+f.value) : f.value / 100;
-    pintarFader(f); rotularFader(f, $(oi), curva, g); ajustar(k, g);
-    // fone desligado (de antes, quando havia a chave): subir o volume do fone religa
-    if (k === 'mon_vol' && S.state && !S.state.monitor_on && +f.value > 0) ajustar('monitor_on', true);
-  });
-}
-const sk = $('#seek');
-sk.addEventListener('input', () => {
-  S.arrastandoSeek = true;
-  const dur = +sk.max || 0, v = +sk.value;
-  mudar($('#t-pos'), 'textContent', fmt(v));
-  mudar(sk, '--p', dur ? (v / dur * 100).toFixed(1) + '%' : '0%');
-  mudar(sk, '--f', dur ? (v / dur).toFixed(4) : '0');
-  mudar(sk, 'aria-valuetext', I18N.t('deck.timeOf', { pos: fmt(v), total: fmt(dur) }));
-});
-sk.addEventListener('change', async () => {
-  const t = +sk.value;
-  S.pos = t;
-  try { await api('POST', '/api/seek', { t }); } catch (e) { avisar(e.message, true); }
-  setTimeout(() => { S.arrastandoSeek = false; }, 350);
-});
-/* teclado: o passo nativo (0,1 s) nao anda nada numa faixa de 41 min */
-const PASSOS = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5, PageUp: 30, PageDown: -30 };
-sk.addEventListener('keydown', e => {
-  const dur = +sk.max || 0;
-  if (sk.disabled || !dur || e.altKey || e.ctrlKey || e.metaKey) return;
-  let t;
-  if (e.key in PASSOS) t = S.pos + PASSOS[e.key];
-  else if (e.key === 'Home') t = 0;
-  else if (e.key === 'End') t = dur - 3;
-  else return;
-  e.preventDefault();
-  t = clamp(t, 0, Math.max(0, dur - 0.5));
-  S.pos = t; desenharTempo();
-  api('POST', '/api/seek', { t }).catch(err => avisar(err.message, true));
-});
+if (!scriptsMissing().length) bindReceiver();
+if (!scriptsMissing().length) bindTurntable();
 if (!scriptsMissing().length) bindSearch();
 $('#b-cel').addEventListener('click', abrirCelular);
 $('#b-disp').addEventListener('click', abrirDispositivos);

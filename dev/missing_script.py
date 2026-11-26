@@ -39,6 +39,7 @@ WAIT_IN_PAGE = """new Promise(done => {
   if (met(state())) { observer.disconnect(); done(state()); }
 })"""
 DEVTOOLS = re.compile(r"DevTools listening on (ws://\S+)")
+SCRIPT_SRC = re.compile(r'<script src="([^"]+)"')
 CHROME_UP_S = 20.0
 CARD_SHOWS_S = 8.0
 RELOAD_S = 12.0
@@ -329,7 +330,26 @@ async def the_shared_file_fails(tab):
              f"connects ({before}, {after})")]
 
 
-PC = (a_file_that_fails, a_late_call_counts_for_its_page, the_qr_code_survives, transporte_alone, a_dialog_opened_before, the_shared_file_fails)
+async def every_file_brings_the_card(tab):
+    with urllib.request.urlopen(tab.base + THEME, timeout=10) as r:
+        files = [f for f in SCRIPT_SRC.findall(r.read().decode("utf-8")) if f != "transporte.js"]
+    missed = []
+    for name in files:
+        tab.failing = {name}
+        before = tab.contexts
+        await tab.cmd("Page.navigate", url=tab.base + THEME)
+        await tab.tab_reaches(lambda: tab.contexts > before, CARD_SHOWS_S)
+        card = (await tab.page_reaches("s.card", CARD_SHOWS_S)).get("card")
+        calls = [path for loader, path in tab.api_calls if loader == tab.loaders[-1]]
+        if not card or calls:
+            missed.append((name, card, calls))
+    return [(len(files) > 10 and not missed,
+             f"each of the {len(files)} theme files but transporte.js, when it fails, brings the off-air card with no "
+             f"call to the server ({missed or 'all of them'})")]
+
+
+PC = (a_file_that_fails, a_late_call_counts_for_its_page, the_qr_code_survives, transporte_alone, a_dialog_opened_before,
+      the_shared_file_fails, every_file_brings_the_card)
 PHONE = (a_late_pairing_request, a_pairing_that_answers_after_the_failure)
 
 

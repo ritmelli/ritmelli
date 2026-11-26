@@ -42,6 +42,13 @@ FEATURE_HANDLERS = (
     ("voice-effects.js", "ui-events.js", "#desliga-ef", "click"), ("voice-effects.js", "ui-events.js", "#b-efeito", "click"),
     ("voice-effects.js", "ui-events.js", "#b-fechar-gav", "click"),
     ("voice-effects.js", "ui-events.js", "#b-ouvir", "click"), ("voice-effects.js", "ui-events.js", "#mini-ef", "click"),
+    ("turntable.js", "ui-events.js", "#b-anterior", "click"), ("turntable.js", "ui-events.js", "#b-proxima", "click"),
+    ("turntable.js", "ui-events.js", "#b-aleatorio", "click"), ("turntable.js", "ui-events.js", "#b-repetir", "click"),
+    ("turntable.js", "ui-events.js", "#seek", "input"), ("turntable.js", "ui-events.js", "#seek", "change"),
+    ("turntable.js", "ui-events.js", "#seek", "keydown"),
+    ("receiver.js", "ui-events.js", "#b-cortar", "click"), ("receiver.js", "ui-events.js", "#b-nivelar", "click"),
+    ("receiver.js", "ui-events.js", "#f-vol", "input"), ("receiver.js", "ui-events.js", "#f-mon", "input"),
+    ("receiver.js", "ui-events.js", "#f-mic", "input"),
 )
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 EARLIER_FAILURES = (
@@ -108,7 +115,7 @@ async def handler_files(tab, selector, kind):
     urls = {s["scriptId"]: s["url"] for s in tab.scripts}
     listeners = (await tab.cmd("DOMDebugger.getEventListeners", objectId=target))["listeners"]
     return sorted({missing_script.theme_file(urls.get(x["scriptId"], "")) or "index.html" for x in listeners
-                   if x["type"] == kind})
+                   if x["type"] == kind and not x["useCapture"]})
 
 
 async def checks(tab):
