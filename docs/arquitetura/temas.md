@@ -150,7 +150,8 @@ da partida), e que o `queue.js` vê o toque que fecha a busca na mesa.
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits
 como o servidor a monta: cada `<script src="..."></script>` e `<link rel="stylesheet" href="...">` trocado pelo texto
-do arquivo, e a marca do i18n, na página que tem uma, pelo `<script>` dos textos, que conta entre os scripts antes de
+do arquivo, e a marca do i18n, na página que tem uma e no tema com a pasta `i18n/`, pelo `<script>` dos textos (a
+pasta com uma língua só sai 3), que conta entre os scripts antes de
 cada folha. A ferramenta lê o `index.html` com o leitor da própria montagem (o `Template` do `theme_page.py`), então o
 que a montagem recusa sai 3, com a linha e o motivo dela. O `src` de um script e o `href` de uma folha são, além disso,
 um caminho simples dentro do tema, como `gerado/molduras.css`, ou `/t/<tema>/` seguido de um caminho simples, lido da
@@ -167,7 +168,7 @@ antes de um seletor) é uma folha que não se lê.
 Ela sai 0 quando o head só muda código de lugar:
 - todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
-  folha de estilo no mesmo lugar dela;
+  folha de estilo no mesmo lugar dela, colado no texto do lado (sem espaço do HTML entre os dois) nos mesmos lados;
 - os scripts são os mesmos, na mesma ordem, cada um carregado do mesmo jeito (inline ou do mesmo arquivo), com os
   mesmos atributos e o mesmo modo estrito;
 - cada script declara as mesmas funções no alto, pelo nome que o V8 lê (com os escapes `\u` desfeitos); elas podem

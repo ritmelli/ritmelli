@@ -16,8 +16,8 @@ RAIZ = Path(__file__).resolve().parent.parent
 USAGE = """Proof that a change to a theme only moves code: the page put back together on two commits, compared.
 
 The page is the index.html of the theme as the server builds it: every <script src="..."></script> and
-<link rel="stylesheet" href="..."> replaced by the text of its file, and the i18n mark, when the page has one, by the
-<script> of the texts. Every script and stylesheet sits between a line that opens it ([script NAME], [script],
+<link rel="stylesheet" href="..."> replaced by the text of its file, and the i18n mark, when the page has one and
+the theme an i18n folder, by the <script> of the texts (a folder with one language only exits 3). Every script and stylesheet sits between a line that opens it ([script NAME], [script],
 [link NAME], [style] or [i18n texts], with the tag's other attributes when it has any) and a [/script] or [/style]
 line. <base> and <head> are git commits (the head defaults to the working tree).
 
@@ -32,7 +32,8 @@ In a sheet, only CSS whitespace and comments may sit between and around the rule
 
 Exit 0 when the head only moves code: the two pages are the same, or
 - every file of the theme that the page does not read (images, fonts) has the same content;
-- the markup is the same, line by line and in order, with every script and stylesheet in the same place in it;
+- the markup is the same, line by line and in order, with every script and stylesheet in the same place in it,
+  touching the text beside it (with no HTML space between) on the same sides;
 - the head has the same scripts in the same order, each loaded the same way (inline or from the same file), with the
   same attributes and the same strict mode;
 - each script declares the same functions at its top level (they may move inside it: a script's function declarations
