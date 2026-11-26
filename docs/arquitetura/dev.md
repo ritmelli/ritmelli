@@ -84,7 +84,13 @@ montagens), o `congela`, o passo do manifesto (que roda exatamente a chamada do 
 Python do venv e o `throw` do `$LASTEXITCODE`, como o server lê, com um `#requires` contando como linha) e os
 passos das saídas `anterior` e `parcial` não podem ter `if:`; nenhum outro passo cita `build_manifest` ou
 `publica`, em qualquer campo, comentário ou passo desligado (como o server lê); e, nas saídas, o que está em
-comentário do PowerShell não conta. O
+comentário do PowerShell não conta. A chamada do `publica.py` que o `build_manifest.py` monta (o `--setup` e o
+`--url` do setup da versão, a `--saida` igual à `OUTPUT`, o `--notas` e o `--notas-en` com as linhas do `NOTAS` e do
+`NOTAS_EN`, ausentes quando vazios, e o `--parcial` e o `--parcial-info` só com o setup parcial, e o código de saída
+do `publica.py`) o `instalador/atualizacao/testa_parcial.py` confere rodando o script numa pasta de mentira, com um
+`publica.py` que grava o que recebeu; cada caso traz os mutantes do script que ele reprova. O
+`atualizacao/test_contract.py` do `ritmelli-server` roda o mesmo script num build de mentira, até a assinatura de
+ensaio e as notas da versão. O
 `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda em três jobs:
 o Compara: base e o Compara: HEAD capturam em paralelo, pelo `--capture-base` e pelo `--capture`, a base só
 quando o cache do Actions não a tem, e o Compara compara as duas pelo `--compara --head-capture`; o
