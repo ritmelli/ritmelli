@@ -220,8 +220,8 @@ def polarities(node, site, names, negated=False):
 def ends_on(site, loop, own):
     names = set()
     for statement in own:
-        if isinstance(statement, Block) and any(n is site for n in walk(statement)):
-            names |= {a.name for a in statement.items if isinstance(a, Assign)}
+        if isinstance(statement, (Block, Condition)) and any(n is site for n in walk(statement)):
+            names |= {a.name for a in children(statement) if isinstance(a, Assign)}
     for n in own:
         if isinstance(n, If) and n.condition is not None and leaves_loop(n.then) and \
                 polarities(n.condition, site, names) == {True}:
@@ -303,7 +303,9 @@ class PythonLowering:
         if isinstance(test, ast.BoolOp):
             return Condition(self.line(test), [self.condition(v) for v in test.values])
         names = sorted({n.id for n in ast.walk(test) if isinstance(n, ast.Name)})
-        return Condition(self.line(test), [Name(self.line(test), n) for n in names] + self.expression_calls(test),
+        named = [Assign(self.line(n), n.target.id) for n in ast.walk(test) if isinstance(n, ast.NamedExpr)]
+        return Condition(self.line(test), [Name(self.line(test), n) for n in names] + self.expression_calls(test)
+                         + named,
                          not isinstance(test, (ast.Call, ast.NamedExpr, ast.Await)))
 
     def expression_calls(self, expression):
@@ -502,7 +504,7 @@ class PowerShellLowering:
         truth = self.truth(inner)
         if truth is not None:
             return Condition(self.line(node), variables + truth)
-        return Condition(self.line(node), variables + self.parts(node), True)
+        return Condition(self.line(node), variables + [self.node(inner)], True)
 
     def parts(self, node):
         out = []

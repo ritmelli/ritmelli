@@ -153,6 +153,8 @@ CASES = {
         ("the module name of Start-Sleep", {"a.ps1": "Microsoft.PowerShell.Utility\\Write-Output 1\n"},
          {"a.ps1": "Microsoft.PowerShell.Utility\\Start-Sleep 1\n"}),
         ("Start-Sleep by its quoted name", {"a.ps1": "& \"Write-Output\" 1\n"}, {"a.ps1": "& \"Start-Sleep\" 1\n"}),
+        ("a Thread.Sleep joined to another test", {"a.ps1": "if ([System.Threading.Thread]::CurrentThread -and $x) { }\n"},
+         {"a.ps1": "if ([System.Threading.Thread]::Sleep(1) -and $x) { }\n"}),
         ("Start-Sleep in a switch predicate", {"a.ps1": "switch ($x) { { $true } { 'y' } }\n"},
          {"a.ps1": "switch ($x) { { Start-Sleep 1; $true } { 'y' } }\n"}),
         ("a sleep in the iterable of a for", {"a.py": "import time\nfor item in items:\n    pass\n"},
@@ -296,6 +298,16 @@ CASES = {
                   "while True:\n    if check(attempt()):\n        break\n    time.sleep(1)\n"},
          {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
                   "while True:\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a flag set inside a PowerShell condition",
+         {"a.ps1": "function f { try { g } catch { $null } }\n"
+                   "while ($true) { if ($other = f) { }; if ($s) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": "function f { try { g } catch { $null } }\n"
+                   "while ($true) { if ($s = f) { }; if ($s) { break }; Start-Sleep 1 }\n"}),
+        ("a flag set by a walrus",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if (other := attempt()):\n        pass\n    if r:\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if (r := attempt()):\n        pass\n    if r:\n        break\n    time.sleep(1)\n"}),
         ("a flag set with its scope",
          {"a.ps1": "function attempt { try { f } catch { $null } }\ndo { $script:other = attempt; Start-Sleep 1 } until ($done)\n"},
          {"a.ps1": "function attempt { try { f } catch { $null } }\ndo { $script:done = attempt; Start-Sleep 1 } until ($done)\n"}),
@@ -513,6 +525,16 @@ CASES = {
                   "subprocess.run(['powershell', '-Command', code])\n"},
          {"a.py": "import subprocess\ncode = '\\n'.join(['try { f } catch { }', *extra])\n"
                   "subprocess.run(['powershell', '-Command', code])\n"}),
+        ("a catch inside a PowerShell condition", {"a.ps1": "if (try { f } catch [IO.IOException] { }) { }\n"},
+         {"a.ps1": "if (try { f } catch { }) { }\n"}),
+        ("a script joined inside a joined script",
+         {"a.py": "import subprocess\npart = '\\n'.join(['try { f } catch [IO.IOException] { }'])\n"
+                  "code = '\\n'.join([part, 'Get-Date'])\nsubprocess.run(['powershell', '-Command', code])\n"},
+         {"a.py": "import subprocess\npart = '\\n'.join(['try { f } catch { }'])\n"
+                  "code = '\\n'.join([part, 'Get-Date'])\nsubprocess.run(['powershell', '-Command', code])\n"}),
+        ("a windows runner written in capitals",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: Ubuntu-24.04\n    steps:\n      - run: try { f } catch { }\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: Windows-2025\n    steps:\n      - run: try { f } catch { }\n"}),
         ("a windows runner named by an alias",
          {".github/workflows/w.yml": "x: &w [ubuntu-24.04]\njobs:\n  j:\n    runs-on: *w\n    steps:\n"
                                      "      - run: try { f } catch { }\n"},
@@ -575,6 +597,11 @@ CASES = {
          {"a.yml": "runs:\n  steps:\n    - run: echo '--   o pedal ficou de fora'  # no issue\n"}),
         ("ficou de fora in a PowerShell script", {"a.ps1": "# o pedal ficou de fora num comentario\n"},
          {"a.ps1": "'--   o pedal ficou de fora'\n"}),
+        ("ficou de fora in a one-line PowerShell comment",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: \"# '--   o pedal ficou de fora'\"\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: \"Write-Output '--   o pedal ficou de fora'\"\n"}),
         ("ficou de fora in a comment of a quoted step",
          {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
                                      "      - run: \"Write-Output ok\n          # '--   o pedal ficou de fora'\"\n"},
@@ -791,6 +818,9 @@ def test_string_lines():
             ("a field over two lines moves the next line", "n = 1\nps = f'''x {\nn}\nStart-Sleep 1'''\n", 4)):
         items = garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": text + RUN_PS}))
         check(items == [("a.py", line)], f"{label} ({items})")
+    joined = "import subprocess\ncode = ','.join(['$a = 1', value])\nsubprocess.run(['powershell', '-Command', code])\n"
+    problems = garden.measure({"a.py": joined})[1]
+    check(problems == [], f"a value after the separator of a join reads as a value ({problems})")
     items = garden.COUNTERS["skipped_tests"](garden.Tree({"a.ps1": "$x = @'\n'--   o pedal ficou de fora'\n'@\n"}))
     check(items == [("a.ps1", 2)], f"each line of a PowerShell here-string is code at its own line ({items})")
 

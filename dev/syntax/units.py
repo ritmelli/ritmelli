@@ -152,27 +152,38 @@ def escape_end(raw, i):
 
 
 def field_end(raw, i):
-    depth, spec = 0, False
+    depth, spec, debug = 0, False, None
     while True:
         c = raw[i]
-        if c in "'\"" and not spec:
+        if spec:
+            if c == "{":
+                i = field_end(raw, i + 1)[0]
+            elif c == "}":
+                return i, True, debug
+            i += 1
+            continue
+        if c in "'\"":
             quote = raw[i:i + 3] if raw[i:i + 3] in ("'''", '"""') else c
             i += len(quote)
             while raw[i:i + len(quote)] != quote:
                 i += 2 if raw[i] == "\\" else 1
             i += len(quote)
             continue
-        if c == "#" and not spec:
+        if c == "#":
             i = raw.index("\n", i)
             continue
         if c in "([{":
             depth += 1
         elif c in ")]}":
             if depth == 0:
-                return i, spec
+                return i, False, debug
             depth -= 1
         elif c == ":" and depth == 0:
             spec = True
+        elif c == "=" and depth == 0 and raw[i - 1] not in "=!<>" and raw[i + 1] != "=":
+            debug = i + 1
+            while raw[debug] in " \t\r\n":
+                debug += 1
         i += 1
 
 
@@ -197,7 +208,8 @@ def literal_chars(raw, line):
                 out.append((c, rows[i]))
                 i += 2
             else:
-                j, spec = field_end(raw, i + 1)
+                j, spec, debug = field_end(raw, i + 1)
+                out += [(raw[k], rows[k]) for k in range(i + 1, debug or i + 1)]
                 out.append((Field(spec), rows[i]))
                 i = j + 1
         else:
@@ -330,10 +342,12 @@ def joined_script(tokens, source_text, expression, names):
         value = names.value(element)
         if isinstance(value, ast.Constant) and value.value == "":
             built = ("", [])
+        elif joined(value):
+            built = joined_script(tokens, source_text, value, names)
         elif isinstance(value, (ast.Constant, ast.JoinedStr)):
             built = powershell_script(tokens, source_text, value)
         else:
-            chunk = placeholder(text, False)
+            chunk = placeholder(text + separator if k else text, False)
             built = (chunk, [element.lineno] * len(chunk))
         if built is None:
             return None
@@ -405,7 +419,7 @@ def job_default_shell(job, workflow_default):
         return shell
     runs_on = yaml.resolved(job.node("runs-on"))
     texts = [yaml.scalar_text(x) for x in (runs_on.items if isinstance(runs_on, yaml.Sequence) else [runs_on])]
-    if any(t and "windows" in t for t in texts):
+    if any(t and "windows" in t.lower() for t in texts):
         return workflow_default or "pwsh"
     return workflow_default or None
 
@@ -510,7 +524,9 @@ def yaml_pieces(path, text, test_job):
             run = yaml.resolved(written)
             used = next((n for n in (item, written) if isinstance(n, yaml.Alias)), None)
             if used is None:
-                bodies |= set(source.lines_of(run.span.start, run.span.end)) - {source.line(run.span.start)}
+                first = source.line(run.span.start)
+                bodies |= set(source.lines_of(run.span.start, run.span.end)) - {first}
+                cut[first] = min(cut.get(first, len(text)), source.column(run.span.start) - 1)
             shell = shell_of(step, default)
             language = language_of(shell)
             value, offsets = run.value, run.offsets
