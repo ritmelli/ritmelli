@@ -336,6 +336,22 @@ def privates(tree, classes):
     return set().union(*(class_privates(c) for c in tree.body if isinstance(c, ast.ClassDef) and c.name in classes))
 
 
+def instance_dict(node):
+    if isinstance(node, ast.Attribute) and node.attr == "__dict__":
+        return node.value
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "vars"
+            and len(node.args) == 1):
+        return node.args[0]
+    return None
+
+
+def attrgetter_call(node):
+    return isinstance(node, ast.Call) and (
+        (isinstance(node.func, ast.Name) and node.func.id == "attrgetter")
+        or (isinstance(node.func, ast.Attribute) and node.func.attr == "attrgetter"
+            and isinstance(node.func.value, ast.Name) and node.func.value.id == "operator"))
+
+
 def module_reaches(module, tree, names):
     out = []
     own_names_by_node = {}
@@ -359,6 +375,11 @@ def module_reaches(module, tree, names):
     for no in ast.walk(tree):
         if isinstance(no, ast.Attribute) and no.attr in names and not passes(no, no.value, no.attr):
             out.append((module, no.lineno, no.attr))
+        elif isinstance(no, ast.Subscript) and instance_dict(no.value) is not None:
+            out += [(module, no.lineno, n) for n in string_literals(no.slice)
+                    if n in names and not passes(no, instance_dict(no.value), n)]
+        elif attrgetter_call(no):
+            out += [(module, no.lineno, n) for a in no.args for n in string_literals(a) if n in names]
         else:
             out += [(module, no.lineno, n) for n in attr_call_names(no, loop_names)
                     if n in names and not passes(no, call_args(no)[0], n)]
@@ -456,8 +477,10 @@ class ModuleBindings:
                     self.bind(scope, a.asname or a.name, None)
             elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
                 self.bind(scope, n.id, None)
-            elif isinstance(n, ast.ExceptHandler) and n.name:
+            elif isinstance(n, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and n.name:
                 self.bind(scope, n.name, None)
+            elif isinstance(n, ast.MatchMapping) and n.rest:
+                self.bind(scope, n.rest, None)
 
     def function_above(self, scope):
         scope = self.enclosing.get(id(scope))
@@ -683,6 +706,11 @@ CAUGHT = [
     ("set through a captured self",
      "class Owner:\n    def __init__(self):\n        def init():\n            self._x = 0\n        init()\n", "o._x\n"),
     ("a nested class", "class Owner:\n    class _x:\n        pass\n", "o._x\n"),
+    ("operator.attrgetter", OWNER, "import operator\n\n\ndef f(o):\n    return operator.attrgetter('_x')(o)\n"),
+    ("attrgetter imported from operator", OWNER,
+     "from operator import attrgetter\n\n\ndef f(o):\n    return attrgetter('_x')(o)\n"),
+    ("vars()", OWNER, "def f(o):\n    return vars(o)['_x']\n"),
+    ("__dict__", OWNER, "def f(o):\n    return o.__dict__['_x']\n"),
     ("a loop over a set literal", OWNER, "def f(o):\n    for k in {'_x'}:\n        getattr(o, k)\n"),
     ("getattr with the name unpacked", OWNER, "def f(o):\n    return getattr(o, *('_x',))\n"),
     ("object.__getattribute__", OWNER, "def f(o):\n    return object.__getattribute__(o, '_x')\n"),
@@ -697,6 +725,8 @@ NOT_REACHES = [
     ("its own name in a class whose only base is object", OWNER,
      "class Other(object):\n    _x = 0\n\n    def m(self):\n        return self._x\n"),
     ("its own name", OWNER, "class Other:\n    _x = 0\n\n    def m(self):\n        return self._x\n"),
+    ("its own name through its own __dict__", OWNER,
+     "class Other:\n    _x = 0\n\n    def m(self):\n        return self.__dict__['_x']\n"),
     ("its own name, captured", OWNER,
      "class Other:\n    _x = 0\n\n    def m(self):\n        return (lambda: self._x)()\n"),
     ("a class body's names, which its methods do not see", OWNER,
@@ -721,9 +751,6 @@ KNOWN_MISSES = [
      "def f(o):\n    names = {'y': 1}\n    names['_x'] = 2\n    for k in names:\n        getattr(o, k)\n"),
     ("the name in a variable", "def f(o):\n    n = '_x'\n    return getattr(o, n)\n"),
     ("getattr under another name", "def f(o):\n    g = getattr\n    return g(o, '_x')\n"),
-    ("operator.attrgetter", "import operator\n\n\ndef f(o):\n    return operator.attrgetter('_x')(o)\n"),
-    ("vars()", "def f(o):\n    return vars(o)['_x']\n"),
-    ("__dict__", "def f(o):\n    return o.__dict__['_x']\n"),
     ("self rebound in a method",
      "class Other:\n    _x = 0\n\n    def m(self, o):\n        self = o\n        return self._x\n"),
     ("self rebound in a comprehension",
@@ -780,6 +807,8 @@ MODULE_NOT_REACHES = [
     ("a parameter of a nested function that shadows the module", MODULE_OWNER,
      "import owner as e\n\n\ndef f():\n    def g(e):\n        return e._x\n    return g\n"),
     ("a parameter named importlib", MODULE_OWNER, "def f(importlib):\n    return importlib.import_module('owner')._x\n"),
+    ("a match capture that shadows the module", MODULE_OWNER,
+     "import owner as e\n\n\ndef f(x):\n    match x:\n        case {'item': e}:\n            return e._x\n"),
     ("an exception caught as sys", MODULE_OWNER,
      "import sys\n\n\ndef f():\n    try:\n        pass\n    except Exception as sys:\n        return sys.modules['owner']._x\n"),
     ("a parameter named sys", MODULE_OWNER, "def f(sys):\n    return sys.modules['owner']._x\n"),
