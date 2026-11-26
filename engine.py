@@ -2444,7 +2444,8 @@ class Engine:
         with self._qlock:
             if pode is not None and not pode():
                 return None, None
-            start, track = (start() if callable(start) else start), (track() if callable(track) else track)
+            track = track() if callable(track) else track
+            start = self._clamp(self.pos if start is None else start, track)
             antes = self._captura_atual()
             self._cancela_passagem(tudo=True)
             d = self._deck
@@ -3274,7 +3275,7 @@ class Engine:
         _ganho_de, ja medido por quem chama; depois: o leitor comeca quando quem chama soltar as travas (_segue)."""
         alvo, mede = self._ganho_de(track) if ganho is None else ganho
         with self._lock:
-            antes, leitor = self._restart(0.0, track=track, alvo=alvo, paused=False, prato=True, pode=pode)
+            antes, leitor = self._restart(0.0, track=lambda: track, alvo=alvo, paused=False, prato=True, pode=pode)
         if antes is not None:
             self._segue(depois, lambda: (self._comeca(leitor), self._mede_se(track, mede)))
         return antes
@@ -3289,7 +3290,7 @@ class Engine:
         alvo, mede = self._ganho_de(initial)
         if not atual.get("path"):  # da espera para o stream: ainda sem audio, nem leitor
             with self._lock:
-                antes, leitor = self._restart(lambda: self._clamp(self.pos, initial), track=novo, alvo=alvo,
+                antes, leitor = self._restart(None, track=novo, alvo=alvo,
                                               nova_linha=False, pode=lambda: self.track is atual)
             if antes is None:
                 return False
@@ -3482,8 +3483,7 @@ class Engine:
         """O disco do prato a partir de t, numa linha nova. pode(): conferido sob o _qlock antes de mudar qualquer
         coisa (o Anterior confere ali o deck e a linha que viu); falso, nada muda. Volta se mudou."""
         with self._lock:  # o limite pela duracao e o da faixa no prato no mesmo trecho do _qlock
-            antes, leitor = self._restart(lambda: self._clamp(t),
-                                          pode=lambda: self.track is not None and (pode is None or pode()))
+            antes, leitor = self._restart(t, pode=lambda: self.track is not None and (pode is None or pode()))
         self._comeca(leitor)
         return antes is not None
 

@@ -127,13 +127,15 @@ método do `App`, da `Engine`, do `Automatico`, da prateleira ou do `comandos.py
 que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock` só se tenta, com
 `acquire(blocking=False)` (o `with_engine`). As funções que outro roda com as travas na mão contam com elas: as do
 `change_queue`, do `close_switches` e do `concilia` (a `fila_lock` e o `_qlock`), a do `with_engine` (a `fila_lock` e o
-`_lock`), o `pode` dos métodos do motor e o construtor do disco que o `trocar_fonte`, o `preparar` e o `load` (e o
-`_troca`, que o passa ao `load`) recebem (o `_lock` e o `_qlock`), e as funções locais que elas chamam também; e confere
-essas travas no código que roda cada função (o `change_queue` chama a dele dentro do `_qlock`, e cada método público do
-motor que recebe um `pode` o roda sob o `_lock` e o `_qlock`, também pelo `_restart`; o `trocar_fonte`, o `preparar` e o
-`load` chamam o construtor sob as duas e publicam a própria chamada dele ali, não o que montaram na entrada), e que quem
-chama o `change_queue`, o `close_switches` e o `concilia` tem a `fila_lock` na mão, subindo pelas chamadas até o ponto
-de entrada (a thread, a rota); uma função local ou um `lambda` feitos com uma trava na mão não contam com ela (rodam
+`_lock`), o `pode` dos métodos do motor que o declaram (por nome ou pela posição) e o construtor do disco que o
+`trocar_fonte`, o `preparar`, o `load` e o `_restart` (e o `_troca`, que o passa ao `load`) recebem (o `_lock` e o
+`_qlock`; o `espera` passa o disco dele como `lambda: track`, e o começo do `_restart` é um número, ou `None` para a
+posição de agora, que ele limita sob o `_qlock`), e as funções locais que elas chamam também; e confere essas travas no
+código que roda cada função (o `change_queue` chama a dele dentro do `_qlock`, e cada método público do motor que recebe
+um `pode` o roda sob o `_lock` e o `_qlock`, também pelo `_restart`; o `trocar_fonte`, o `preparar` e o `load` chamam o
+construtor sob as duas e publicam a própria chamada dele ali, não o que montaram na entrada), e que quem chama o
+`change_queue`, o `close_switches` e o `concilia` tem a `fila_lock` na mão, subindo pelas chamadas até o ponto de
+entrada (a thread, a rota); uma função local ou um `lambda` feitos com uma trava na mão não contam com ela (rodam
 depois, noutra thread), salvo os que vão para as funções acima. Os ganchos que o App põe no motor (pelo
 `on_silent_stream` ou atribuindo, como o `religar_stream`, o `sonoridade_de` e o `mediu`, também chamados por um nome
 local) contam como o método do App que o App pôs ali, e todo gancho que o motor chama tem de achar o seu. Com a
@@ -151,8 +153,15 @@ ali reprova: um parâmetro de `def` ou de `lambda`, `for`, `with ... as`, `excep
 `nonlocal`, `global`, `del`, uma captura de `match`, uma variável de compreensão ou um segundo `=`. Qualquer outra forma
 (um apelido de outro nome, uma tupla, um método ligado, um `partial`, a chamada passada direto ou devolvida de outra
 fábrica, a mesma função em vagas com travas diferentes, um `or`, um parâmetro repassado a uma vaga que pede travas que a
-sua não tem, ou, na função da vaga ou em qualquer chamada feita com uma trava na mão, uma local que chama outra local,
-mais de um nível) reprova também, com o arquivo e a linha, a forma achada e as que valem.
+sua não tem, um `**nome` ou um `*nome` numa chamada que tem vagas, ou, na função da vaga ou em qualquer chamada feita
+com uma trava na mão, uma local que chama outra local, mais de um nível) reprova também, com o arquivo e a linha, a
+forma achada e as que valem. Com uma trava na mão, ou dentro de uma vaga, a chamada vai a uma função do repo que a
+checagem resolve, a um `def` local ligado uma vez só (a local vence a função do módulo de mesmo nome) ou a um parâmetro
+que é uma vaga da própria função (religado só pela própria chamada, como o `track = track() if callable(track) else
+track`); um nome local ligado duas vezes, a um `lambda` ou de outro jeito, um parâmetro que não é vaga e um `lambda`
+chamado ali mesmo reprovam. A checagem confere as formas desta lista e reprova as outras que reconhece como fora dela,
+mas não promete pegar toda trava tomada: quem promete é a trava de depuração da
+https://github.com/ritmelli/ritmelli/issues/316, que guarda as travas na mão de cada thread e falha na hora.
 
 ## O modelo das travas (`dev/tla/`)
 
@@ -222,24 +231,32 @@ pega o `_qlock`, muda e confere a preparada no mesmo trecho: fora do `App`, nenh
 ou do Mix (atribuição, `update`, subscript ou `del`), e o `dev/test_queue_entries.py` falha se escrever, seguindo as
 entradas e as listas que uma função devolve e as que ela recebe, até nada mais mudar. Ele só segue as formas que o
 código usa. Uma referência à fila, ao Mix, a uma fatia deles ou a uma entrada só aparece assim: lendo um campo ou
-chamando um método ali mesmo (o mutador chamado conta como escrita); comparada ou testada; ligada a um nome por um `=`
-simples ou aos atributos da própria fila e da entrada (`fila`, `fila_ordem`, `mix`, `_mix`, `x`, `entrada`,
-`historico`); passada por posição ou por nome a uma função nomeada, ou devolvida por uma, que ele segue (também por um
-dict ligado a um nome só usado como `**nome` e pelo `args` de uma thread com `target`), com no máximo quatro repasses
-seguidos, a função que recebe e passa adiante (o máximo do código: `App.tocar_entrada`, `App.tocar_remoto`,
-`App._troca`, `App.release_reservation` e `Proximo.resolve`; o teste falha se a cadeia mais funda do código não der
-quatro, para o teto descer junto). Nessa conta, `self.metodo()` só vai à própria classe e às bases dela, `modulo.f()` à
-função do módulo importado, e `obj.metodo()` aos métodos com esse nome que aceitam os argumentos da chamada, nunca a um
-método da própria fila ou da entrada; num laço com um nome só ou com o `enumerate(...)` desempacotado em dois;
-desempacotada de uma chamada ou de uma tupla do mesmo tamanho; ou copiada (`list()`, `sorted()`, uma compreensão, uma
-fatia, `{**x}`). Qualquer outra reprova, com o arquivo e a linha: um `:=`, uma anotação, desempacotar a fila ou o Mix,
-um `*`, o `getattr`, o mutador guardado ou devolvido sem a chamada, uma atribuição encadeada, guardar num atributo que
-não é da fila, sob uma chave ou num dict, numa lista, numa tupla ou num conjunto, passar a uma lambda, o `enumerate` sem
-desempacotar, a própria fila devolvida por uma função, um quinto repasse seguido, e, no `App`, um nome que recebe o
-retorno de um método dele que devolve a própria fila. Dentro do `App`, as entradas da fila só mudam numa função passada
-ao `change_queue`, e a própria fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido dela ou por
-quem a recebe como argumento) só muda ali, em qualquer módulo. A versão de áudio das parecidas entra no Mix do
-Automático como entradas novas (o `_troca_audio`, que não escreve nas que já existem) e na fila pelo
+chamando um método com nome ali mesmo, nunca um dunder (o mutador chamado conta como escrita); comparada ou testada;
+ligada a um nome por um `=` simples ou aos atributos da própria fila e da entrada (`fila`, `fila_ordem`, `mix`, `_mix`,
+`x`, `entrada`, `historico`); passada por posição ou por nome a uma função nomeada, ou devolvida por uma, que ele segue
+(também por um dict ligado a um nome só usado como `**nome` numa chamada a uma função nomeada, e nunca numa função de
+dentro, pelo `args` de uma thread cujo `target` é uma função nomeada, e por uma vaga: o parâmetro que a função chama com
+ela, onde um `def` passado é seguido e um `lambda` só a devolve, compara ou testa), ou, a quem ele não segue, só a
+própria fila ao `len`, ao `reversed` e aos que copiam ou percorrem (`list`, `sorted`, `tuple`, `iter`, `enumerate`,
+`filter`), uma cópia também ao `next`, `min`, `max`, à `Thread` e ao `random.shuffle` (que só reordena uma lista que não
+pode ser a fila), e uma entrada ao `dict`, ao `id`, ao `append`, `insert` ou `extend` de uma lista (que vira uma lista
+de entradas) e a uma classe do repo, com no máximo quatro repasses seguidos, a função que recebe e passa adiante (o
+máximo do código: `App.tocar_entrada`, `App.tocar_remoto`, `App._troca`, `App.release_reservation` e `Proximo.resolve`;
+o teste falha se a cadeia mais funda do código não der quatro, para o teto descer junto). Nessa conta, `self.metodo()`
+só vai à própria classe e às bases dela, `modulo.f()` à função do módulo importado, e `obj.metodo()` aos métodos com
+esse nome que aceitam os argumentos da chamada, nunca a um método da própria fila ou da entrada; num laço com um nome só
+ou com o `enumerate(...)` desempacotado em dois; desempacotada de uma chamada ou de uma tupla do mesmo tamanho; ou
+copiada (`list()`, `sorted()`, uma compreensão, uma fatia, `{**x}`). Qualquer outra reprova, com o arquivo e a linha: um
+`:=`, uma anotação, desempacotar a fila ou o Mix, um `*`, o `getattr`, o mutador guardado ou devolvido sem a chamada,
+uma atribuição encadeada, guardar num atributo que não é da fila, sob uma chave ou num dict, numa lista, numa tupla ou
+num conjunto, passar a uma lambda, o `enumerate` sem desempacotar, a própria fila devolvida por uma função, um quinto
+repasse seguido, um dunder, entregar a quem ele não segue fora da lista acima, e, no `App`, um nome que recebe o retorno
+de um método dele que devolve a própria fila. A checagem confere as formas desta lista e reprova as outras que reconhece
+como fora dela, mas não promete pegar toda escrita: quem promete é a fila e o Mix como um objeto que só muda dentro do
+`change_queue`, a https://github.com/ritmelli/ritmelli/issues/316. Dentro do `App`, as entradas da fila só mudam numa
+função passada ao `change_queue`, e a própria fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido
+dela ou por quem a recebe como argumento) só muda ali, em qualquer módulo. A versão de áudio das parecidas entra no Mix
+do Automático como entradas novas (o `_troca_audio`, que não escreve nas que já existem) e na fila pelo
 `App.apply_audio_version`, que muda a fila pelo `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a
 entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca), a primeira da fila presa e a que uma reserva
 em curso vai tocar (`App.reserva`); o `tocar_da_fila` e a preparação da passagem leem a entrada numa cópia feita sob a

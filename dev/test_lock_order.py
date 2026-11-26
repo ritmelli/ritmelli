@@ -20,9 +20,10 @@ CALLBACKS = {
     ("server.py", "App", "with_engine"): {0: ["fila_lock", "_lock"], "f": ["fila_lock", "_lock"]},
     ("server.py", "App", "close_switches"): {0: QUEUE_HELD, "read": QUEUE_HELD},
     ("comandos.py", None, "concilia"): {1: QUEUE_HELD, "under": QUEUE_HELD, 2: ["fila_lock"], "closed": ["fila_lock"]},
+    ("engine.py", "Engine", "_restart"): {1: ["_lock", "_qlock"], "track": ["_lock", "_qlock"]},
 }
 CALLER_HOLDS = {("server.py", "App", "change_queue"): {"fila_lock"}, ("server.py", "App", "close_switches"): {"fila_lock"},
-                ("comandos.py", None, "concilia"): {"fila_lock"}}
+                ("comandos.py", None, "concilia"): {"fila_lock"}, ("engine.py", "Engine", "_restart"): {"_lock"}}
 ENGINE_GUARD = ["_lock", "_qlock"]
 BUILDERS = {("engine.py", "Engine", "trocar_fonte"): ("novo", 1, ENGINE_GUARD),
             ("engine.py", "Engine", "preparar"): ("track", 0, ENGINE_GUARD),
@@ -251,6 +252,16 @@ def bindings(nodes, name):
                 isinstance(n, ast.MatchMapping) and n.rest == name):
             out.append(("a match capture", n))
     return out
+
+
+def built_by_itself(func, name):
+    stores = [n for n in ast.walk(func) if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Store)]
+    assigns = [n for n in ast.walk(func) if isinstance(n, ast.Assign)
+               and any(t is s for root in n.targets for t in ast.walk(root) for s in stores)]
+    own = [a for a in assigns if any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == name
+                                     for c in ast.walk(a.value))]
+    return len(own) == len(assigns) and sum(len([t for root in a.targets for t in ast.walk(root) if t in stores])
+                                            for a in assigns) == len(stores)
 
 
 def own_bindings(func, name):
@@ -496,14 +507,24 @@ class Walker(ast.NodeVisitor):
                                 f"{', '.join(self.held)}")
 
     def local(self, node):
-        if not isinstance(node.func, ast.Name):
-            return None
+        if isinstance(node.func, ast.Lambda):
+            return None, "a lambda called in place"
+        if not isinstance(node.func, ast.Name) or id(node) in self.table.aliased:
+            return None, None
+        name = node.func.id
         for outer in reversed(self.scopes):
-            for n in ast.walk(outer):
-                if (isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not outer
-                        and n.name == node.func.id):
-                    return n
-        return None
+            found = bindings([n for n in ast.walk(outer) if n is not outer], name)
+            kinds = sorted({k for k, _ in found})
+            if not found:
+                continue
+            if kinds == ["a parameter"] or ("a parameter" in kinds and built_by_itself(outer, name)):
+                if self.is_slot(outer, name):
+                    return None, None
+                return None, f"{name}, a parameter of {outer.name} that is not one of its slots"
+            if len(found) == 1 and kinds == ["a def"]:
+                return found[0][1], None
+            return None, f"{name}, bound {len(found)} times in {outer.name} and the functions inside it ({', '.join(kinds)})"
+        return None, None
 
     def local_locks(self, func):
         locks = set()
@@ -519,11 +540,15 @@ class Walker(ast.NodeVisitor):
         return locks
 
     def follow(self, node):
-        keys = resolve(self.table, node, self.name, self.cls)
+        nested, problem = self.local(node)
+        if problem and id(node) not in self.refused:
+            self.refused.add(id(node))
+            self.bad.append(f"{self.name}:{node.lineno}: {problem}, called with {', '.join(self.held)} held, is not a "
+                            f"form the check reads: call a function of the repo, a local def bound once or a parameter")
+        keys = [] if nested is not None or problem else resolve(self.table, node, self.name, self.cls)
         for key in keys:
             self.followed += 1
             self.against_held(self.summary[key], node, f"{key[1] + '.' if key[1] else ''}{key[2]}")
-        nested = None if keys else self.local(node)
         if nested is not None:
             self.followed += 1
             self.against_held(self.local_locks(nested), node, nested.name)
@@ -558,12 +583,26 @@ class Walker(ast.NodeVisitor):
 
     def slots_of(self, key):
         slots = dict(CALLBACKS.get(key, {}))
-        if key[0] == "engine.py":
-            slots["pode"] = ENGINE_GUARD
+        func = self.table.get(key) if key[0] == "engine.py" else None
+        if func is not None:
+            params = [a.arg for a in func.args.posonlyargs + func.args.args]
+            params = params[1:] if key[1] and params[:1] == ["self"] else params
+            if "pode" in params + [a.arg for a in func.args.kwonlyargs]:
+                slots["pode"] = ENGINE_GUARD
+            if "pode" in params:
+                slots[params.index("pode")] = ENGINE_GUARD
         if key in BUILDERS:
             name, at, locks = BUILDERS[key]
             slots[name] = slots[at] = locks
         return slots
+
+    def is_slot(self, func, name):
+        key = self.keys.get(id(func))
+        if key is None:
+            return False
+        slots, params = self.slots_of(key), [p.arg for p in func.args.posonlyargs + func.args.args]
+        params = params[1:] if key[1] and params[:1] == ["self"] else params
+        return name in slots or (name in params and params.index(name) in slots)
 
     def forwards(self, func, name):
         key = self.keys.get(id(func))
@@ -602,6 +641,8 @@ class Walker(ast.NodeVisitor):
         func = chain[at]
         found = [b for b in bindings([n for n in ast.walk(func) if n is not func], name)]
         where = getattr(func, "name", "a lambda")
+        if len(found) > 1 and "a parameter" in {k for k, _ in found} and built_by_itself(func, name):
+            found = [b for b in found if b[0] == "a parameter"]
         if len(found) != 1:
             return [], (f"{name}, bound {len(found)} times in {where} and the functions inside it "
                         f"({', '.join(sorted({k for k, _ in found}))})")
@@ -637,6 +678,13 @@ class Walker(ast.NodeVisitor):
             for key in resolve(self.table, call, self.name, self.cls):
                 slots = self.slots_of(key)
                 args = list(enumerate(call.args)) + [(k.arg, k.value) for k in call.keywords]
+                spread = [k.value for k in call.keywords if k.arg is None] + [
+                    a for a in call.args if isinstance(a, ast.Starred)]
+                if slots and spread and id(call) not in self.refused:
+                    self.refused.add(id(call))
+                    self.bad.append(f"{self.name}:{call.lineno}: {ast.unparse(spread[0])[:60]}, spread into "
+                                    f"{key[1] + '.' if key[1] else ''}{key[2]}, which has slots, is not a form the "
+                                    f"check reads: pass each slot by name or position")
                 for slot, arg in args:
                     if slot in slots:
                         self.slot_locks = slots[slot]
@@ -1086,6 +1134,8 @@ def self_test(order, before):
             "def f(A, E):\n    pode = (lambda: E.stop()) if A else None\n    E.stop(pode=pode)\n", 1),
         "a shelf method that takes its lock, called with the fila_lock held": (
             "def f(A):\n    with A.fila_lock:\n        A.lib.update()\n", 1),
+        "the shelf's lock inside an engine pode passed by position": (
+            "def f(A, E):\n    E.stop(lambda: A.lib.update())\n", 1),
         "a pode that only reads the platter": ("def f(A, E, tr):\n    E.stop(pode=lambda: E.track is tr)\n", 0),
         "a pode that calls an engine method taking only the _lock": (
             "def f(E):\n    E.stop(pode=lambda: E.reopen())\n", 1),
@@ -1140,6 +1190,11 @@ def self_test(order, before):
     bad, *_ = scan(dict(stubs, **{"case.py": one}), order, before)
     check(bad and not refuses(bad), f"one level of local calls is read: the local that takes the _qlock again is "
                                     f"flagged ({bad[:1]})")
+    shadow = ("def refresh():\n    pass\ndef f(A, E):\n    def refresh():\n        with E._qlock:\n"
+              "            pass\n    with A.fila_lock:\n        A.change_queue(lambda: refresh())\n")
+    bad, *_ = scan(dict(stubs, **{"case.py": shadow}), order, before)
+    check(bad and not refuses(bad), f"a local that shadows a module function is the one a call reaches: the "
+                                    f"local that takes the _qlock again is flagged ({bad[:1]})")
     forwarding = "def concilia(A, under, closed=None):\n    A.change_queue(closed)\n"
     stricter = refusals(dict(stubs, **{"comandos.py": forwarding}), order, before)
     check(bool(stricter), f"a slot parameter handed on to a slot that needs more locks than its own is refused "
@@ -1149,6 +1204,23 @@ def self_test(order, before):
     bad, *_ = scan(dict(stubs, **{"case.py": held}), order, before)
     check(refuses(bad), f"a local called with a lock held that calls another local is refused, more than one level "
                         f"({[b for b in bad if 'form the check' in b][:1]})")
+    called_forms = {
+        "two local defs of one name": (
+            "def f(A, flag):\n    if flag:\n        def helper():\n            pass\n    else:\n"
+            "        def helper():\n            with A.lib.lock:\n                pass\n"
+            "    A.change_queue(lambda: helper())\n"),
+        "a name bound to a lambda": "def f(A, E):\n    helper = lambda: E.stop()\n    A.change_queue(lambda: helper())\n",
+        "a lambda called in place": "def f(A, E):\n    A.change_queue(lambda: (lambda: E.stop())())\n",
+        "a parameter rebound to a lambda": (
+            "def f(E, track=None):\n    track = lambda: E.stop()\n    with E._qlock:\n        track()\n"),
+        "a parameter that is not a slot": "def f(E, cb):\n    with E._qlock:\n        cb()\n",
+        "a dict spread into a call with slots": (
+            "def f(A, E):\n    kw = {'change': lambda: E.stop()}\n    A.change_queue(**kw)\n"),
+    }
+    for what, code in called_forms.items():
+        bad, *_ = scan(dict(stubs, **{"case.py": code}), order, before)
+        check(refuses(bad), f"{what}, called or passed with a lock held or in a slot, is refused as a form the check "
+                            f"does not read ({[b for b in bad if 'form the check' in b][:1]})")
     for what, (code, expected) in callbacks.items():
         bad, *_ = scan(dict(stubs, **{"case.py": code}), order, before)
         check(bool(bad) == bool(expected), f"the check {'flags' if expected else 'accepts'} {what} ({bad})")
@@ -1171,6 +1243,12 @@ def self_test(order, before):
     check(helper != real["server.py"] and bool(bad),
           f"with the shelf's lock taken in the refused stream's shelf_record, which its pode calls, the check fails "
           f"({bad[:1]})")
+    stopping = real["engine.py"].replace("track=lambda: track, alvo=alvo, paused=False",
+                                         "track=lambda: self.stop() or track, alvo=alvo, paused=False", 1)
+    bad, *_ = scan(dict(real, **{"engine.py": stopping}), order, before)
+    check(stopping != real["engine.py"] and bool(bad),
+          f"with the espera's track builder stopping the engine, which takes the _qlock again inside the _restart, the "
+          f"check fails ({bad[:1]})")
     waits = dict(real, **{"engine.py": real["engine.py"].replace("acquire(blocking=False)", "acquire()")})
     bad, *_ = scan(waits, order, before)
     check(waits["engine.py"] != real["engine.py"] and bool(bad),
@@ -1316,8 +1394,8 @@ def main():
              "                novo = self.track = d.track = novo() if callable(novo) else novo\n",
              "                novo = self.track = d.track = (novo(), initial)[1] if callable(novo) else novo\n"),
             ("the trocar_fonte handing the record it built on entry to the _restart",
-             "antes, leitor = self._restart(lambda: self._clamp(self.pos, initial), track=novo,",
-             "antes, leitor = self._restart(lambda: self._clamp(self.pos, initial), track=initial,"),
+             "antes, leitor = self._restart(None, track=novo,",
+             "antes, leitor = self._restart(None, track=initial,"),
             ("the load handing the record it built on entry to the _restart",
              "            antes, leitor = self._restart(self._clamp(start, initial), track=track,",
              "            antes, leitor = self._restart(self._clamp(start, initial), track=initial,")):

@@ -15,16 +15,22 @@ CONTEXTS = {(ast.Assign, "targets"), (ast.Assign, "value"), (ast.AugAssign, "tar
             (ast.Compare, "left"), (ast.Compare, "comparators"), (ast.For, "iter"), (ast.For, "target"),
             (ast.comprehension, "iter"), (ast.comprehension, "target"), (ast.List, "elts"), (ast.Tuple, "elts"),
             (ast.UnaryOp, "operand"), (ast.BinOp, "left"), (ast.BinOp, "right"), (ast.BoolOp, "values"),
-            (ast.If, "test"), (ast.IfExp, "test"), (ast.IfExp, "body"), (ast.IfExp, "orelse"), (ast.Return, "value"),
+            (ast.If, "test"), (ast.While, "test"), (ast.IfExp, "test"), (ast.IfExp, "body"), (ast.IfExp, "orelse"), (ast.Return, "value"),
             (ast.Subscript, "value"), (ast.Dict, "values"), (ast.Lambda, "body"), (ast.FormattedValue, "value"),
             (ast.Expr, "value")}
-ACCEPTED = ("read its fields or call its methods there, compare or test it, bind it to a plain name or to the queue's "
-            "own attributes, pass it to or return it from a named function (at most four hand-offs in a row), loop over it with a plain name or an "
-            "unpacked enumerate(...), unpack it from a call or a tuple of the same length, or copy it (list(), sorted(), "
-            "a comprehension, a slice, {**x})")
+ACCEPTED = ("read its fields or call its named methods there (no dunder), compare or test it, bind it to a plain name or "
+            "to the queue's own attributes, pass it to or return it from a named function or a callback slot (at most "
+            "four hand-offs in a row), hand it to a callee the check does not follow only as QUEUE_READERS, "
+            "LIST_READERS, LIST_SORTERS and ENTRY_READERS list, loop over it with a plain name or an unpacked "
+            "enumerate(...), unpack it from a call or a tuple of the same length, or copy it (list(), sorted(), a "
+            "comprehension, a slice, {**x})")
 APP_CLASSES = {"App", "Automatico", "Reserva", "Proximo"}
 OWN_ATTRS = CONTAINERS | ENTRY_ATTRS | {"historico"}
 MAX_HAND_OFFS = 4
+QUEUE_READERS = {"len", "reversed", "list", "sorted", "tuple", "iter", "enumerate", "filter"}
+LIST_READERS = QUEUE_READERS | {"next", "min", "max", "enumerate", "filter", "Thread"}
+LIST_SORTERS = {"shuffle"}
+ENTRY_READERS = {"dict", "id"}
 
 failures = []
 
@@ -117,8 +123,9 @@ def thread_call(node):
 def spread_dict(func, name):
     found = [n.value for n in own_nodes(func) if isinstance(n, ast.Assign) and len(n.targets) == 1
              and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name]
-    uses = [n for n in own_nodes(func) if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Load)]
-    spreads = [k.value for n in own_nodes(func) if isinstance(n, ast.Call) for k in n.keywords if k.arg is None]
+    uses = [n for n in ast.walk(func) if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Load)]
+    spreads = [k.value for n in own_nodes(func) if isinstance(n, ast.Call) and isinstance(n.func, (ast.Name, ast.Attribute))
+               for k in n.keywords if k.arg is None]
     if len(found) == 1 and isinstance(found[0], ast.Dict) and all(isinstance(k, ast.Constant) for k in found[0].keys) \
             and all(any(u is v for v in spreads) for u in uses):
         return found[0]
@@ -161,14 +168,22 @@ def imports_of(modules):
     return aliases, names
 
 
+OWN_NODES = {}
+
+
 def own_nodes(func, skip=frozenset()):
-    todo = list(ast.iter_child_nodes(func))
+    if not skip and id(func) in OWN_NODES and OWN_NODES[id(func)][0] is func:
+        return OWN_NODES[id(func)][1]
+    out, todo = [], list(ast.iter_child_nodes(func))
     while todo:
         node = todo.pop()
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or id(node) in skip:
             continue
-        yield node
+        out.append(node)
         todo.extend(ast.iter_child_nodes(node))
+    if not skip:
+        OWN_NODES[id(func)] = (func, out)
+    return out
 
 
 class Entries:
@@ -176,6 +191,7 @@ class Entries:
         self.modules, self.attrs, self.owner_only = modules, attrs, owner_only
         self.params, self.cparams, self.walks, self.scopes, self.returns = {}, {}, {}, {}, set()
         self.creturns, self.refused, self.chains = set(), [], []
+        self.slot_lambdas, self.names, self.parents = {}, set(), {}
 
     def walk(self, func):
         if id(func) not in self.walks:
@@ -254,7 +270,7 @@ class Entries:
         if isinstance(node, ast.Call):
             if called(node) in self.returns:
                 return True
-            if isinstance(node.func, ast.Name) and node.func.id == "next" and node.args:
+            if isinstance(node.func, ast.Name) and node.func.id in ("next", "min", "max") and node.args:
                 return self.is_container(node.args[0], scope)
             if isinstance(node.func, ast.Attribute) and node.func.attr == "pop":
                 return self.is_container(node.func.value, scope)
@@ -283,7 +299,9 @@ class Entries:
             scope.containers, scope.entries = set(outer.containers) - own, set(outer.entries) - own
         scope.entries |= self.params.get(func.name, set())
         scope.containers |= self.cparams.get(func.name, set())
-        for _ in range(4):
+        size = None
+        while size != (len(scope.containers), len(scope.entries)):
+            size = len(scope.containers), len(scope.entries)
             for node in self.walk(func):
                 if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and node.value is not None:
                     for root in node.targets if isinstance(node, ast.Assign) else [node.target]:
@@ -309,10 +327,78 @@ class Entries:
                       and node.func.attr in FILLERS and self.is_container(node.func.value, scope)):
                     for a in node.args:
                         scope.entries |= set(targets(a)) if isinstance(a, ast.Name) else set()
+                elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                      and node.func.attr in FILLERS and isinstance(node.func.value, ast.Name)
+                      and any(self.is_entry(a, scope) or self.is_container(a, scope) for a in node.args)):
+                    scope.containers.add(node.func.value.id)
         return scope
 
+    def callback_slots(self, funcs, parents):
+        out = {}
+        for _, func, _, parent in funcs:
+            scope = self.scope_of(func, parent, parents)
+            for n in own_nodes(func):
+                owner = isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and self.param_owner(func, n.func.id)
+                got = {i for i, a in enumerate(n.args) if self.is_entry(a, scope) or self.is_container(a, scope)}                     if owner else set()
+                if got:
+                    out.setdefault((owner.name, n.func.id), set()).update(got)
+        return out
+
+    def param_owner(self, func, name):
+        while func is not None and name not in self.param_names(func):
+            func = self.parents.get(id(func))
+        return func
+
+    def bind_callbacks(self, funcs, parents, by_name, calls):
+        changed = False
+        for (owner, slot), got in self.callback_slots(funcs, parents).items():
+            for target in by_name.get(owner, []):
+                names = self.param_names(target)
+                shift = 1 if names[:1] == ["self"] else 0
+                at = names.index(slot) - shift
+                for _, func, _, _ in funcs:
+                    for node in calls[id(func)]:
+                        if called(node) != owner:
+                            continue
+                        given = [k.value for k in node.keywords if k.arg == slot]
+                        given += [node.args[at]] if 0 <= at < len(node.args) else []
+                        for value in given:
+                            if isinstance(value, ast.Lambda):
+                                inner = [a.arg for a in value.args.args]
+                                self.slot_lambdas[id(value)] = (value, {inner[i] for i in got if i < len(inner)}, func)
+                            elif isinstance(value, (ast.Name, ast.Attribute)) and called(ast.Call(func=value)) in by_name:
+                                name = called(ast.Call(func=value))
+                                for cb in by_name[name]:
+                                    inner = self.param_names(cb)
+                                    off = 1 if isinstance(value, ast.Attribute) and inner[:1] == ["self"] else 0
+                                    new = {inner[i + off] for i in got if i + off < len(inner)}
+                                    new -= self.params.setdefault(name, set())
+                                    if new:
+                                        self.params[name] |= new
+                                        changed = True
+        return changed
+
+    def lambda_refusals(self, module_of):
+        out = []
+        for lam, names, func in self.slot_lambdas.values():
+            parent = {}
+            for node in ast.walk(lam):
+                for child in ast.iter_child_nodes(node):
+                    parent[id(child)] = node
+            for node in ast.walk(lam.body):
+                if not (isinstance(node, ast.Name) and node.id in names):
+                    continue
+                up = parent.get(id(node))
+                if node is lam.body or isinstance(up, (ast.Compare, ast.IfExp, ast.BoolOp)) or (
+                        isinstance(up, ast.UnaryOp) and isinstance(up.op, ast.Not)):
+                    continue
+                out.append(f"{module_of.get(id(func), '?')}:{node.lineno}: an entry handed to a lambda in a callback "
+                           f"slot ({ast.unparse(lam)[:60]}), in {func.name}, is not a form the check reads: the lambda "
+                           f"only returns, compares or tests it")
+        return out
+
     def bind_params(self, funcs, parents):
-        by_name = {}
+        self.parents, by_name = parents, {}
         for f in funcs:
             by_name.setdefault(f[1].name, []).append(f[1])
         calls = {id(f): [n for n in map(thread_call, self.walk(f)) if isinstance(n, ast.Call) and called(n) in by_name]
@@ -338,6 +424,8 @@ class Entries:
                             if new:
                                 into[name] |= new
                                 changed = True
+            if not changed and self.bind_callbacks(funcs, parents, by_name, calls):
+                changed = True
 
     def find_returns(self, funcs, parents):
         found, changed = False, True
@@ -365,14 +453,34 @@ class Entries:
                 for n in ast.walk(func) if isinstance(n, ast.Return) and n.value is not None
                 and (self.mutator(n.value, scope) or (isinstance(n.value, ast.Name) and n.value.id in bound))]
 
-    def same_list(self, node, func):
+    def same_list(self, node, func, seen=frozenset()):
         if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
             node = node.value
         if isinstance(node, ast.Name):
+            if node.id in seen:
+                return False
             values = [n.value for n in own_nodes(func) if isinstance(n, ast.Assign)
                       and any(isinstance(t, ast.Name) and t.id == node.id for t in n.targets)]
-            return bool(values) and all(self.same_list(v, func) for v in values)
+            return bool(values) and all(self.same_list(v, func, seen | {node.id}) for v in values)
         return isinstance(node, ast.Attribute) and node.attr in self.attrs
+
+    def may_be_list(self, node, func, seen=frozenset()):
+        if isinstance(node, ast.IfExp):
+            return self.may_be_list(node.body, func, seen) or self.may_be_list(node.orelse, func, seen)
+        if isinstance(node, ast.BoolOp):
+            return any(self.may_be_list(v, func, seen) for v in node.values)
+        if not isinstance(node, ast.Name):
+            return isinstance(node, ast.Attribute) and node.attr in self.attrs
+        if node.id in seen or node.id in self.param_names(func):
+            return node.id not in seen
+        for n in own_nodes(func):
+            for t in n.targets if isinstance(n, ast.Assign) else []:
+                pairs = list(zip(t.elts, n.value.elts)) if isinstance(t, ast.Tuple) and isinstance(
+                    n.value, ast.Tuple) and len(t.elts) == len(n.value.elts) else [(t, n.value)]
+                if any(isinstance(a, ast.Name) and a.id == node.id and self.may_be_list(b, func, seen | {node.id})
+                       for a, b in pairs):
+                    return True
+        return False
 
     def identity_returns(self, funcs):
         return {func.name for _, func, _, _ in funcs
@@ -386,6 +494,10 @@ class Entries:
                 isinstance(v, ast.Attribute) and v.attr == "app")
         if isinstance(node, ast.Subscript):
             return self.app_ref(node.value, cls)
+        if isinstance(node, ast.IfExp):
+            return self.app_ref(node.body, cls) or self.app_ref(node.orelse, cls)
+        if isinstance(node, ast.BoolOp):
+            return any(self.app_ref(v, cls) for v in node.values)
         return isinstance(node, (ast.Name, ast.Call, ast.ListComp, ast.GeneratorExp, ast.BinOp))
 
     @staticmethod
@@ -401,7 +513,8 @@ class Entries:
             return isinstance(t, (ast.Tuple, ast.List)) and len(t.elts) == len(up.elts)
         if isinstance(holder, ast.keyword) and holder.arg == "args":
             call = parent.get(id(holder))
-            return call is not None and isinstance(call[0], ast.Call) and any(k.arg == "target" for k in call[0].keywords)
+            return call is not None and isinstance(call[0], ast.Call) and any(
+                k.arg == "target" and isinstance(k.value, (ast.Name, ast.Attribute)) for k in call[0].keywords)
         return False
 
     def stored_form(self, node, up, field, parent, func, scope, cls):
@@ -437,6 +550,24 @@ class Entries:
                 return "an entry or a container inside a dict"
         return None
 
+    def unfollowed(self, node, up, field, parent, func, scope):
+        call = parent.get(id(up), (None,))[0] if isinstance(up, ast.keyword) else up
+        if not (isinstance(call, ast.Call) and (up is not call or field == "args")) or node is call.func:
+            return None
+        name = called(call)
+        if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name) and \
+                call.func.value.id in ("dict", "list") and name in MUTATORS | CHANGERS:
+            return None
+        if name in self.names or (isinstance(call.func, ast.Name) and self.param_owner(func, call.func.id)):
+            return None
+        if self.same_list(node, func):
+            ok = name in QUEUE_READERS
+        elif self.is_container(node, scope):
+            ok = name in LIST_READERS or (name in LIST_SORTERS and not self.may_be_list(node, func))
+        else:
+            ok = name in ENTRY_READERS or (isinstance(call.func, ast.Attribute) and name in FILLERS)
+        return None if ok else f"handed to {ast.unparse(call.func)[:40]}, a callee the check does not follow"
+
     def refused_form(self, node, up, field, callees, in_owner=False):
         if in_owner and isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and \
                 isinstance(node.func.value, ast.Name) and node.func.value.id == "self" and node.func.attr in self.same:
@@ -459,6 +590,8 @@ class Entries:
             return "a mutator taken without its call"
         if isinstance(up, ast.Call) and isinstance(up.func, ast.Name) and up.func.id == "getattr":
             return "getattr"
+        if isinstance(up, ast.Attribute) and up.attr.startswith("__") and up.attr.endswith("__"):
+            return f"a dunder method ({up.attr})"
         return None
 
     def refusals(self, module, func, scope, in_owner=False, cls=None):
@@ -477,7 +610,8 @@ class Entries:
                     not isinstance(node, (ast.NamedExpr, ast.Starred)):
                 continue
             form = self.refused_form(node, up, field, callees, in_owner) or \
-                self.stored_form(node, up, field, parent, func, scope, cls)
+                self.stored_form(node, up, field, parent, func, scope, cls) or \
+                self.unfollowed(node, up, field, parent, func, scope)
             if form:
                 out.append(f"{module}:{node.lineno}: {form} ({ast.unparse(up)[:60]}), in {func.name}, is not a form "
                            f"the check reads: {ACCEPTED}")
@@ -556,6 +690,9 @@ class Entries:
             allowed |= {id(n) for n in ast.walk(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
                         and n is not func and n.name in names}
         out, self.same = [], self.identity_returns(funcs)
+        self.names = {f.name for _, f, _, _ in funcs} | {c.name for _, tree in self.modules for c in ast.walk(tree)
+                                                         if isinstance(c, ast.ClassDef)}
+        self.refused += self.lambda_refusals({id(f): m for m, f, _, _ in funcs})
         self.refused += self.hand_offs(funcs, parents)
         for module, func, cls, parent in funcs:
             self.refused += self.refusals(module, func, self.scope_of(func, parent, parents), (module, cls) == OWNER,
@@ -642,7 +779,7 @@ def direct_aliases(func, module, cls, known):
 class QueueChanges(ast.NodeVisitor):
     def __init__(self, module, params):
         self.module, self.params, self.cls, self.stack, self.found, self.passing = module, params, None, [], [], []
-        self.callees, self.bound = set(), []
+        self.callees, self.bound, self.funcs = set(), [], []
 
     def visit_ClassDef(self, node):
         outer, self.cls = self.cls, node.name
@@ -657,7 +794,9 @@ class QueueChanges(ast.NodeVisitor):
         aliases = direct_aliases(node, self.module, self.cls, (parent[2] if parent else set()) | own)
         self.stack.append((allowed, passed_to_change_queue(node), aliases))
         self.bound.append(bound_to(node, self.changer))
+        self.funcs.append(node)
         self.generic_visit(node)
+        self.funcs.pop()
         self.bound.pop()
         self.stack.pop()
 
@@ -736,9 +875,11 @@ class QueueChanges(ast.NodeVisitor):
             self.flag(node, f"list.{node.func.attr}() on the queue")
         if (taken := by_getattr(node)) and taken[1] in CHANGERS and self.queue_ref(taken[0]):
             self.flag(node, f"a .{taken[1]} of the queue taken by getattr")
-        name = called(node)
-        slots = list(enumerate(node.args)) + [(kw.arg, kw.value) for kw in node.keywords]
-        self.passing += [(name, slot, isinstance(node.func, ast.Attribute)) for slot, a in slots if self.queue_ref(a)]
+        call = thread_call(node)
+        slots = list(enumerate(call.args)) + [(kw.arg, kw.value) for kw in call.keywords if kw.arg]
+        slots += spread(self.funcs[-1], call) if self.funcs else []
+        self.passing += [(called(call), slot, isinstance(call.func, ast.Attribute)) for slot, a in slots
+                         if self.queue_ref(a)]
         self.generic_visit(node)
 
 
@@ -762,9 +903,9 @@ def scan(sources, chains=None):
     entry_writes = entries.writes() + owner.writes()
     if chains is not None:
         chains += entries.chains + owner.chains
-    params, changes = {}, []
-    for _ in range(3):
-        passing, changes = [], []
+    params, changes, before = {}, [], None
+    while params != before:
+        before, passing, changes = params, [], []
         for name, tree in modules:
             v = QueueChanges(name, params)
             v.visit(tree)
@@ -801,6 +942,39 @@ class Automatico:
 '''
 
 ENTRY_FORMS = {
+    "an entry in a conditional stored in a dict": (
+        {"case.py": "def f(A, flag):\n    d = {'e': A.fila[0] if flag else None}\n    d['e']['audio'] = True\n"}, 1),
+    "an entry in an or passed to a lambda": (
+        {"case.py": "def f(A):\n    (lambda e: e.update(audio=True))(A.fila[0] or None)\n"}, 1),
+    "an entry handed to a thread whose target is a lambda": (
+        {"case.py": "def f(A):\n    threading.Thread(target=lambda x: x.update(audio=True), args=(A.fila[0],)).start()\n"},
+        1),
+    "an entry in a dict spread into a lambda": (
+        {"case.py": "def f(A):\n    kw = {'e': A.fila[0]}\n    (lambda e: e.update(audio=True))(**kw)\n"}, 1),
+    "an entry in a spread dict a nested function changes": (
+        {"case.py": "def f(A, h):\n    kw = {'e': A.fila[0]}\n    def g():\n        kw['e']['audio'] = True\n    g()\n"
+                    "    h(**kw)\n"}, 1),
+    "an entry appended to a local list, then written through it": (
+        {"case.py": "def f(A):\n    out = []\n    for x in A.mix:\n        out.append(x)\n    out[0]['seen'] = True\n"}, 1),
+    "an entry handed to a callee the check does not follow": (
+        {"case.py": "import operator\ndef f(A):\n    operator.setitem(A.fila[0], 'k', 1)\n"}, 1),
+    "an entry a lambda in a callback slot changes": (
+        {"case.py": "def concilia(A, closed=None):\n    for x in A.fila:\n        closed(x)\n"
+                    "def f(A):\n    concilia(A, closed=lambda x: x.update(audio=True))\n"}, 1),
+    "an entry a named callback in a slot changes": (
+        {"case.py": "def mark(x):\n    x['k'] = 1\ndef concilia(A, closed=None):\n    for x in A.fila:\n        closed(x)\n"
+                    "def f(A):\n    concilia(A, closed=mark)\n"}, 1),
+    "an entry a callback of an enclosing function's slot changes": (
+        {"case.py": "def mark(x):\n    x['k'] = 1\ndef order(items, tempo):\n    def first():\n"
+                    "        return tempo(next(iter(items)))\n    return first()\ndef f(A):\n    order(A.mix, mark)\n"}, 1),
+    "a copy of the queue a sorter reorders": (
+        {"case.py": "import random\ndef f(A):\n    mine = [x for x in A.fila]\n    random.shuffle(mine)\n"}, 0),
+    "an alias of the queue, bound in a tuple, that a sorter reorders": (
+        {"case.py": "import random\ndef f(A, on):\n    q, o = A.fila, A.fila_ordem\n    if on:\n        q = list(q)\n"
+                    "    random.shuffle(q)\n"}, 1),
+    "a name rebound to a slice of itself": ({"case.py": "def f(A):\n    q = A.fila\n    q = q[1:]\n    return q\n"}, 0),
+    "a dunder method called on an entry": (
+        {"case.py": "def f(A):\n    for x in A.fila:\n        x.__init__(title='wrong')\n"}, 1),
     "an entry handed on four times, then changed": (
         {"case.py": "def e(x):\n    x['k'] = 1\ndef d(x):\n    e(x)\ndef c(x):\n    d(x)\ndef b(x):\n    c(x)\n"
                     "def a(x):\n    b(x)\ndef f(A):\n    a(A.fila[0])\n"}, 1),
@@ -927,6 +1101,15 @@ ENTRY_FORMS = {
 }
 
 QUEUE_FORMS = {
+    "the queue handed to a callee the check does not follow": (
+        {"case.py": "import random\ndef f(A):\n    random.shuffle(A.fila)\n"}, 1),
+    "the queue a thread's target clears": (
+        {"case.py": "def cut(q):\n    q.clear()\ndef f(A):\n    threading.Thread(target=cut, args=(A.fila,)).start()\n"}, 1),
+    "the queue a dict spread as **name hands to a helper that clears it": (
+        {"case.py": "def cut(q=None):\n    q.clear()\ndef f(A):\n    kw = {'q': A.fila}\n    cut(**kw)\n"}, 1),
+    "the queue two relays hand to a helper that clears it": (
+        {"case.py": "def cut(q):\n    q.clear()\ndef r2(q):\n    cut(q)\ndef r1(q):\n    r2(q)\ndef f(A):\n    r1(A.fila)\n"}, 1),
+    "a dunder method called on the queue": ({"case.py": "def f(A):\n    A.fila.__setitem__(0, {})\n"}, 1),
     "a name bound to an App method that returns the queue itself": (
         {"server.py": "class App:\n    def live_queue(self):\n        return self.fila\n    def f(self):\n"
                       "        live = self.live_queue()\n        live.clear()\n"}, 1),
@@ -1009,7 +1192,13 @@ REFUSED_FORMS = {
     "an entry stored under a key", "the queue inside a dict", "the queue inside a list", "the queue inside a tuple",
     "an entry passed to a lambda", "the queue passed to a lambda", "enumerate without unpacking",
     "a function of another module that returns the queue itself", "an entry of the queue a helper returns",
-    "an entry handed on five times, the last through another module"}
+    "an entry handed on five times, the last through another module", "a dunder method called on an entry",
+    "a dunder method called on the queue", "an entry in a conditional stored in a dict",
+    "an entry in an or passed to a lambda", "an entry handed to a thread whose target is a lambda",
+    "an entry in a dict spread into a lambda", "an entry in a spread dict a nested function changes",
+    "an entry handed to a callee the check does not follow", "an entry a lambda in a callback slot changes",
+    "the queue handed to a callee the check does not follow",
+    "an alias of the queue, bound in a tuple, that a sorter reorders"}
 
 
 def production_sources():
@@ -1068,6 +1257,17 @@ def main():
           f"with the App's remove_from_queue returning the queue's remove from its change and calling it after, the "
           f"check refuses the form ({got})")
     chains = []
+    for what, module, old, new, pick in (
+            ("the Automatico writing the window it gathered", "automatico.py",
+             "        parecidas = {id(c) for c in janela}\n",
+             "        janela[0]['seen'] = True\n        parecidas = {id(c) for c in janela}\n", 0),
+            ("the Automatico numbering the free Mix it gathered", "automatico.py",
+             "        mix = self._livres()\n", "        mix = self._livres()\n        for m in mix:\n"
+                                                "            m['ordem'] = 0\n", 0),
+            ("the App shuffling its queue itself", "server.py", "random.shuffle(meus)", "random.shuffle(fila)", 2)):
+        changed = sources[module].replace(old, new, 1)
+        got = scan(dict(sources, **{module: changed}))[pick]
+        check(changed != sources[module] and bool(got), f"with {what}, the check fails ({got[:1]})")
     writes, changes, refused = scan(sources, chains)
     deep = max(chains, key=len)
     check(len(deep) - 1 == MAX_HAND_OFFS, f"the deepest hand-off in the code is the {MAX_HAND_OFFS} the check allows "
