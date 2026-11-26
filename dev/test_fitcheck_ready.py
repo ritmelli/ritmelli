@@ -86,12 +86,19 @@ def popen(cmd, *args, **kwargs):
     return child
 
 
+def kill_chrome():
+    for child in started:
+        subprocess.run(["taskkill", "/PID", str(child.pid), "/T", "/F"], capture_output=True)
+
+
 async def kill_chrome_on_the_second_wait(cmd, deadline):
     waits.append(deadline)
-    if len(waits) == 2:
-        for child in started:
-            subprocess.run(["taskkill", "/PID", str(child.pid), "/T", "/F"], capture_output=True)
-    return await real_wait(cmd, deadline)
+    if len(waits) == 2 and sys.argv[2] == "during":
+        kill_chrome()
+    seen = await real_wait(cmd, deadline)
+    if len(waits) == 2 and sys.argv[2] == "after":
+        kill_chrome()
+    return seen
 
 
 subprocess.Popen, fitcheck.wait_notice = popen, kill_chrome_on_the_second_wait
@@ -415,17 +422,18 @@ def fitcheck_timeout_then_chrome_gone():
           f"collected, then says the Chrome went away at the next size, with no traceback (exit {p.returncode})")
 
 
-def ligar_then_chrome_gone():
-    p = subprocess.run([sys.executable, "-c", LIGAR_THEN_GONE, str(ROOT)], cwd=ROOT, env=dict(os.environ, PYTHONUTF8="1"),
-                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
+def ligar_then_chrome_gone(when):
+    p = subprocess.run([sys.executable, "-c", LIGAR_THEN_GONE, str(ROOT), when], cwd=ROOT,
+                       env=dict(os.environ, PYTHONUTF8="1"), capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=180)
     out = p.stdout + p.stderr
     print(out.rstrip())
     line = next((x for x in out.splitlines() if x.startswith("RESULT ")), "")
     result = json.loads(line[len("RESULT "):]) if line else {}
     r = result.get("r", {})
-    check(result.get("waits") == 2 and r.get("ao_ligar") is None and "Traceback" not in out
+    check(result.get("waits") == 2 and (r.get("ao_ligar") is None or when == "after") and "Traceback" not in out
           and any("browser went away" in v for v in r.get("not_ready", [])),
-          f"a Chrome that goes away during the wait after Comecar a enviar ends the check with the Chrome-gone verdict, "
+          f"a Chrome that goes away {when} the wait after Comecar a enviar ends the check with the Chrome-gone verdict, "
           f"with no traceback ({r.get('not_ready')})")
 
 
@@ -461,7 +469,8 @@ def main():
     notice_page_not_ready()
     fitcheck_never_ready()
     fitcheck_timeout_then_chrome_gone()
-    ligar_then_chrome_gone()
+    ligar_then_chrome_gone("during")
+    ligar_then_chrome_gone("after")
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 

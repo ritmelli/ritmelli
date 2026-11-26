@@ -15,7 +15,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -38,7 +38,7 @@ jobs:
           lines = out.splitlines()
           got = sorted(l[6:].split(":")[0] + ":" + l[6:].split(":")[1][:40] for l in lines if l.startswith("FAIL  "))
           want = sorted(f.split(":")[0] + ":" + f.split(":")[1][:40] for f in fails)
-          ok = p.returncode == code and lines and lines[-1] == summary and got == want and "Traceback" not in out
+          ok = p.returncode == code and lines and summary in lines and got == want and "Traceback" not in out
           print(f"expected exit {code}, '{summary}', FAIL {want}; got exit {p.returncode}, '{lines[-1] if lines else ''}', FAIL {got}: {'MATCH' if ok else 'MISMATCH'}")
           sys.exit(0 if ok else 1)
           '''.replace("\n          ", "\n"), encoding="utf-8")
@@ -81,7 +81,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false

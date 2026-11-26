@@ -672,46 +672,51 @@ async def aviso_no_chrome(base, botao):
             if r["not_ready"]:
                 tarefa.cancel()
                 return r
-            await confere_pagina(cmd, url, barrados)
-            if botao == "ligar" and not r["abriu"]:
-                # o Microfone e fone aberto pelo botao dele, e o Comecar a enviar da linha dos dados de uso
-                await js("document.querySelector('#b-disp').click()")
-                for _ in range(50):
-                    if await js("document.querySelector('#dlg-disp').open && !document.querySelector('#dd-met').hidden"):
-                        break
-                    await asyncio.sleep(0.1)
-                await js("document.querySelector('#dd-met-btn').click()")
-                r["ao_ligar"] = await wait_notice(cmd, time.monotonic() + 3.0)
-                if r["ao_ligar"] is None:
-                    r["not_ready"].append(await report_not_ready(cmd, "notice", Ready.CHROME_GONE, READY_CONDITIONS,
-                                                                 events, PRONTA_S))
-                    tarefa.cancel()
-                    return r
-                if r["ao_ligar"]:
+            async def interact():
+                await confere_pagina(cmd, url, barrados)
+                if botao == "ligar" and not r["abriu"]:
+                    # o Microfone e fone aberto pelo botao dele, e o Comecar a enviar da linha dos dados de uso
+                    await js("document.querySelector('#b-disp').click()")
+                    for _ in range(50):
+                        if await js("document.querySelector('#dlg-disp').open && "
+                                    "!document.querySelector('#dd-met').hidden"):
+                            break
+                        await asyncio.sleep(0.1)
+                    await js("document.querySelector('#dd-met-btn').click()")
+                    r["ao_ligar"] = await wait_notice(cmd, time.monotonic() + 3.0)
+                    if r["ao_ligar"] is None:
+                        raise ConnectionError("the DevTools connection ended during the wait for the notice")
+                    if r["ao_ligar"]:
+                        r["foco"] = await js(foco)
+                        # com o aviso na tela, nada foi gravado ainda: a escolha sai do Enviar dele
+                        r["antes_do_enviar"] = (await cmd("Runtime.evaluate", awaitPromise=True, returnByValue=True,
+                                                          expression="fetch('/api/metricas').then(r => r.json())")
+                                                ).get("result", {}).get("value")
+                        await js("document.querySelector('#dlg-metricas button[value=sim]').click()")
+                    # o POST sai do close do aviso: o Chrome fica ate a linha do Microfone e fone mostrar a escolha nova
+                    for _ in range(50):
+                        if await js("!document.querySelector('#dlg-metricas').open && "
+                                    "document.querySelector('#dd-met-btn').dataset.ligar === '0'"):
+                            break
+                        await asyncio.sleep(0.1)
+                elif r["abriu"] and botao:
                     r["foco"] = await js(foco)
-                    # com o aviso na tela, nada foi gravado ainda: a escolha sai do Enviar dele
-                    r["antes_do_enviar"] = (await cmd("Runtime.evaluate", awaitPromise=True, returnByValue=True,
-                                                      expression="fetch('/api/metricas').then(r => r.json())")
-                                            ).get("result", {}).get("value")
-                    await js("document.querySelector('#dlg-metricas button[value=sim]').click()")
-                # o POST sai do close do aviso: o Chrome fica ate a linha do Microfone e fone mostrar a escolha nova
-                for _ in range(50):
-                    if await js("!document.querySelector('#dlg-metricas').open && "
-                                "document.querySelector('#dd-met-btn').dataset.ligar === '0'"):
-                        break
-                    await asyncio.sleep(0.1)
-            elif r["abriu"] and botao:
-                r["foco"] = await js(foco)
-                if botao == "esc":
-                    for tipo in ("keyDown", "keyUp"):
-                        await cmd("Input.dispatchKeyEvent", type=tipo, key="Escape", code="Escape",
-                                  windowsVirtualKeyCode=27, nativeVirtualKeyCode=27)
-                else:
-                    await js(f"document.querySelector('#dlg-metricas button[value={botao}]').click()")
-                await asyncio.sleep(1.0)
-                r["fechou"] = not await js("document.querySelector('#dlg-metricas').open")
-                if botao == "esc":  # o Esc nao escolhe: na proxima abertura, o aviso de novo
-                    r["reabriu"] = await load_and_wait_notice()
+                    if botao == "esc":
+                        for tipo in ("keyDown", "keyUp"):
+                            await cmd("Input.dispatchKeyEvent", type=tipo, key="Escape", code="Escape",
+                                      windowsVirtualKeyCode=27, nativeVirtualKeyCode=27)
+                    else:
+                        await js(f"document.querySelector('#dlg-metricas button[value={botao}]').click()")
+                    await asyncio.sleep(1.0)
+                    r["fechou"] = not await js("document.querySelector('#dlg-metricas').open")
+                    if botao == "esc":  # o Esc nao escolhe: na proxima abertura, o aviso de novo
+                        r["reabriu"] = await load_and_wait_notice()
+
+            try:
+                await interact()
+            except CDP_GONE:
+                r["not_ready"].append(await report_not_ready(cmd, "notice", Ready.CHROME_GONE, READY_CONDITIONS,
+                                                             events, PRONTA_S))
             tarefa.cancel()
     finally:
         fecha_chrome(chrome, prof)

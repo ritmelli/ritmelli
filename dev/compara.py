@@ -447,8 +447,10 @@ def main():
         try:
             erros, instaveis = asyncio.run(prints(a, srv, destino))
         finally:
-            para_servidor(srv)
-            shutil.rmtree(tmp, ignore_errors=True)
+            try:
+                para_servidor(srv)
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
     for e in erros:
         print(f"ERRO   {e}")
     for i in instaveis:
