@@ -1208,15 +1208,15 @@ def the_theme_page_build():
                 '<title>a</title x><script src="first.js"></script><title></title>', {}, "holds a <"),
             "a noscript the browser ends at </noscript data-x>": (
                 '<noscript>b</noscript data-x><script src="first.js"></script></noscript>', {}, "holds a <"),
-            "a file tag in an svg title": ('<svg><title><script src="first.js"></script></title></svg>', {}, "holds a <"),
-            "an svg script with an href": ('<svg><script href="first.js"/></svg>', {}, "inside <svg> or <math>"),
-            "a file tag inside an svg": ('<svg><script src="first.js"></script></svg>', {}, "inside <svg> or <math>"),
+            "a file tag in an svg title": ('<svg><title><script src="first.js"></script></title></svg>', {}, "is inside <svg>"),
+            "an svg script with an href": ('<svg><script href="first.js"/></svg>', {}, "is inside <svg>"),
+            "a file tag inside an svg": ('<svg><script src="first.js"></script></svg>', {}, "is inside <svg>"),
             "a file tag after a breakout in an svg style": (
-                '<svg><style><p><script src="first.js"></script></style></svg>', {}, "holds a <"),
+                '<svg><style><p><script src="first.js"></script></style></svg>', {}, "is inside <svg>"),
             "a file tag after a breakout in an svg script": (
-                '<svg><script><p><script src="first.js"></script></script></svg>', {}, "holds a <"),
+                '<svg><script><p><script src="first.js"></script></script></svg>', {}, "is inside <svg>"),
             "an svg script in an svg style": ('<svg><style><script href="first.js"></script></style></svg>', {},
-                                              "holds a <"),
+                                              "is inside <svg>"),
             "a style the browser ends at </style data-x>": (
                 '<style>a {}</style data-x><script src="first.js"></script></style>', {}, "does not end in </style>"),
             "an inline script the browser ends at </script data-x>": (
@@ -1224,8 +1224,31 @@ def the_theme_page_build():
             "an inline script with <!--": ('<script><!--<script>1</script><script src="first.js"></script></script>', {},
                                            "holds <!--"),
             "an @import in a style of the template": ('<style>@import "first.css";</style>', {}, "has @import"),
-            "an @import in an svg style": ('<svg><style>@import "first.css";</style></svg>', {}, "has @import"),
-            "an inline module": ('<script type=" Module ">import x from "./first.js";</script>', {}, "is a module"),
+            "an @import in an svg style": ('<svg><style>@import "first.css";</style></svg>', {}, "is inside <svg>"),
+            "an svg icon with its own style": ("<svg><style>.a { fill: red; }</style></svg>", {}, "is inside <svg>"),
+            "a reference in an svg style": ('<svg><style>&#64;import "first.css";</style></svg>', {}, "is inside <svg>"),
+            "an svg closed by a </math>": ('<svg></math><script src="first.js"></script></svg>', {}, "does not close"),
+            "a math closed by a </svg>": ('<math></svg><style><p><script src="first.js"></script></style></math>', {},
+                                          "does not close"),
+            "an svg kept open by a foreignObject": (
+                '<svg><foreignObject><span></svg></span></foreignObject><script src="first.js"></script></svg>', {},
+                "is inside <svg>"),
+            "a math kept open by an mi": ('<math><mi><span></math></span></mi><script src="first.js"></script></math>', {},
+                                          "is inside <math>"),
+            "a module in an svg": ('<svg><script type="module">import "./first.js";</script></svg>', {}, "is inside <svg>"),
+            "a module in an svg foreignObject": (
+                '<svg><foreignObject><script type="module">import "./first.js";</script></foreignObject></svg>', {},
+                "is inside <svg>"),
+            "a speculation rule": ('<script type="speculationrules">{"prefetch": [{"urls": ["/first.js"]}]}</script>', {},
+                                   "has a type the build does not read"),
+            "a preload of a script": ('<link rel="preload" as="script" href="first.js">', {}, "preloads a script"),
+            "a preload of a style sheet": ('<link rel="preload" as="style" href="a.css">', {}, "preloads a script"),
+            "a module preload": ('<link rel="modulepreload" href="first.js">', {}, "preloads a script"),
+            "an unknown marked section": ('<![foo]><script src="first.js"></script>', {}, "bogus comment"),
+            "a CDATA section that never ends": ('<![CDATA[ a > <script src="first.js"></script>', {}, "bogus comment"),
+            "a script that is not UTF-8": ('<script src="latin.js"></script>', {"latin.js": b'let s = "caf\xe9";\n'},
+                                           "latin.js is not UTF-8 text"),
+            "an inline module": ('<script type=" Module ">import x from "./first.js";</script>', {}, "has a type the build does not read"),
             "an inline script with an href": ('<script href="first.js"></script>', {}, "fetches its href"),
             "a script name with a numeric reference": ('<script src="a&#xFDD0;b.js"></script>', {"ab.js": "1;\n"},
                                                        "has '&', which is not a whole"),
@@ -1241,7 +1264,8 @@ def the_theme_page_build():
             script.write_text("const first = 1;\n", encoding="utf-8")
             sheet.write_text("a { b: c; }\n", encoding="utf-8")
             for name, text in files.items():
-                (folder / name).write_text(text, encoding="utf-8", newline="")
+                (folder / name).write_bytes(text) if isinstance(text, bytes) else (folder / name).write_text(
+                    text, encoding="utf-8", newline="")
             try:
                 theme_page.inline_files(f"<head>\n{tag}\n", folder)
                 error = "no error"
@@ -1256,7 +1280,8 @@ def the_theme_page_build():
                          encoding="utf-8")
         kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
                 "a title of plain text": ("<title>Ritmelli &amp; co</title>", None),
-                "an svg icon with its own style": ("<svg><style>.a { fill: red; }</style></svg>", None),
+                "an svg icon of shapes": ('<svg viewBox="0 0 8 8"><g><path d="M0 0h8"/><rect width="2"/></g></svg>', None),
+                "a link that is not a sheet": ('<link rel="apple-touch-icon" href="/apple-touch-icon.png">', None),
                 "an svg closed by itself before a file tag": ('<svg/><script src="first.js"></script>',
                                                               "<svg/><script>\nconst first = 1;\n</script>"),
                 "inline scripts with a type, defer or a data block": (
