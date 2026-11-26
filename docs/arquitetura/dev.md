@@ -44,7 +44,13 @@ passos do Compara que, no push, capturam sem calcular as áreas nem resolver a b
 commit (as duas da SignPath no mesmo), o `sparse-checkout` de cada job da `monta.yml` com o que os
 scripts dele leem, a conferência do recurso de versão das DLLs depois da montagem e no job do
 filtro, com os nomes e a tabela de língua do `ritmelli.exe` (`ritmelli.spec`), e o Inno Setup só
-pela ação `.github/actions/inno-setup`. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
+pela ação `.github/actions/inno-setup`. O `dev/test_monta_contract.py` (no STDLIB, então a própria
+`monta.yml` o roda antes de montar) exige os nomes da `monta.yml` que a esteira de publicação do
+`ritmelli-server` lê: o `workflow_dispatch` com os inputs `notas` e `notas_en`, que chegam ao passo do
+manifesto; os jobs `testa`, `testa-atualizador`, `testa-migracao` e `testa-parcial`, pelo nome que a API
+mostra; o passo `congela`, cuja `versao` dá nome aos artefatos; e os artefatos `Ritmelli-<versão>` (a
+pasta `instalador/saida/`) e `ritmelli-exe-<versão>` (o `ritmelli.exe` sozinho), cada um uma vez.
+O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
 cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
 roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo commit que testou,
