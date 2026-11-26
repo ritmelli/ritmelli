@@ -1564,9 +1564,9 @@ class App:
         with self.fila_lock:
             x = self.fila[0] if self.fila else None
             seen = dict(x or {})
-        failed, fonte, t = e.take_prepare_failure(), seen.get("youtube_id") or seen.get("url"), self.passagem_tentada
+        failed, source, t = e.take_prepare_failure(), seen.get("youtube_id") or seen.get("url"), self.passagem_tentada
         if failed is not None:
-            self.passagem_falhou = t if t is not None and t[:2] == (id(tr), failed) else (id(tr), failed, fonte)
+            self.passagem_falhou = t if t is not None and t[1] == failed else (id(tr), failed, source)
         dur = tr.get("duration") if tr else None
         pode = (x is not None and dur and tr.get("path") and not e.loop
                 and cap.status in ("playing", "paused", "buffering"))
@@ -1574,7 +1574,7 @@ class App:
             e.cancelar_pronto()
         if not pode or e.pronto_tag is not None or dur - cap.pos > eng.TRANS_PREP_S:
             return
-        chave = (id(tr), x["qid"], fonte)
+        chave = (id(tr), x["qid"], source)
         if self.preparando is not None or chave == self.passagem_falhou:
             return
         self.preparando = self.passagem_tentada = chave

@@ -178,6 +178,8 @@ RUNS = (
         constants=(("PlaysCanSucceed", "FALSE"),)),
     Run("mutant: overlapping Nexts do not join, and every play raises (two entries leave the queue)", "LocksAndSwitch",
         "invariant OneRemoval", constants=(("NextsJoin", "FALSE"), ("PlaysCanSucceed", "FALSE"))),
+    Run("mutant: a Next that takes its pending switch goes on to reserve and play the next entry", "LocksAndSwitch",
+        "invariant OneRemoval", constants=(("TakenSwitchEndsTheAdvance", "FALSE"),)),
     Run("mutant: a Next does not join an advance that already published its line", "LocksAndSwitch",
         "invariant OneAdvance", invariants=("OneAdvance",), constants=(("NextsJoinAfterPublish", "FALSE"),)),
     Run("mutant: closing the switches drops the pending one without reconciling it", "LocksAndSwitch",

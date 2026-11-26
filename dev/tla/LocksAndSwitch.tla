@@ -6,7 +6,7 @@ CONSTANTS Qids, NoQid, Raised, RIds, GIds,
           ClosingRecordsTheSwitch, FailedSwapReleasesReservation,
           QueueChangeUnderQlock, ReserveReadsProximoWithoutLock, TakingTheSwitchClearsIt, Reopens,
           PreparesAgain, ClosesTheSecondSwitch, MixerTakesOnlyQlock, PlayErrorReachesTheGroup,
-          RaisingNextTakesTheResolvedResult, PlaysCanSucceed
+          RaisingNextTakesTheResolvedResult, PlaysCanSucceed, TakenSwitchEndsTheAdvance
 
 VARIABLES pc, s
 
@@ -49,7 +49,7 @@ Init ==
               res |-> [r \in RIds |-> NoRes], appRes |-> 0, nextRid |-> 1,
               grp |-> [g \in GIds |-> NoGroup], proximo |-> 0, nextGid |-> 1,
               n |-> [x \in Nexts |-> NoNext],
-              overlap |-> FALSE, switched |-> <<>>, closed |-> <<>>, played |-> 0, failed |-> 0, badSwitch |-> FALSE,
+              overlap |-> FALSE, switched |-> <<>>, closed |-> <<>>, played |-> 0, failed |-> 0, taken |-> 0, badSwitch |-> FALSE,
               sqOld |-> 0, pwSeen |-> NoSwitch]
 
 Viva(S, r) == ~S.res[r].feita /\ (S.res[r].tocando \/ S.res[r].line = S.line)
@@ -168,12 +168,12 @@ NextClosesItsSwitch(p) ==
     \/ /\ At(p, "nx_virada_take")
        /\ s.virou /= s.n[p].v
        /\ SectionThenRelease(p, "_qlock", {"fila_lock"})
-       /\ s' = SetN(s, p, "x", s.n[p].vx)
-       /\ Goto(p, "nx_finish")
+       /\ s' = SetN([s EXCEPT !.taken = @ + 1], p, "x", s.n[p].vx)
+       /\ Goto(p, IF TakenSwitchEndsTheAdvance THEN "nx_finish" ELSE "nx_check")
     \/ /\ At(p, "nx_virada_close")
        /\ SectionThenRelease(p, "_qlock", {"fila_lock"})
-       /\ s' = SetN(FechaVirada(s, s.n[p].v), p, "x", s.n[p].vx)
-       /\ Goto(p, "nx_finish")
+       /\ s' = SetN([FechaVirada(s, s.n[p].v) EXCEPT !.taken = @ + 1], p, "x", s.n[p].vx)
+       /\ Goto(p, IF TakenSwitchEndsTheAdvance THEN "nx_finish" ELSE "nx_check")
 
 NextChecksRunning(p) ==
     /\ At(p, "nx_check")
@@ -475,7 +475,7 @@ SwitchClosesOnce ==
 
 SameResult == Quiescent /\ s.overlap => s.n["N1"].res = s.n["N2"].res
 
-OneRemoval == Quiescent /\ s.overlap => s.played + s.failed <= 1
+OneRemoval == Quiescent /\ s.overlap => s.played + s.failed + s.taken <= 1
 
 OneAdvance == SameResult /\ OneRemoval
 

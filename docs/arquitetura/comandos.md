@@ -204,9 +204,10 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   funções do `engine.py` que ele chama), e a falta de impasse; que a virada só vai para a cabeça da fila e que cada uma
   fecha uma vez, e todas fecham; que dois Próximos sobrepostos (o segundo chega com o prato ainda na linha do primeiro,
   ou na linha que o avanço dele publicou) dão um avanço só e o mesmo resultado, também quando o tocar falha (a entrada
-  que o caminho do erro tira da fila conta como um avanço, e uma execução em que todo tocar falha, a `PlaysCanSucceed`
-  desligada, mostra o mutante sem o agrupamento tirando duas); que o Anterior recebe cada disco que saiu do prato uma
-  vez, na ordem em que saiu, e nenhum fica de fora; e que toda reserva resolve, com justiça fraca.
+  que o caminho do erro tira da fila conta como um avanço, e a virada que um Próximo toma como dele também, sem outro
+  avanço depois; uma execução em que todo tocar falha, a `PlaysCanSucceed` desligada, mostra o mutante sem o agrupamento
+  tirando duas); que o Anterior recebe cada disco que saiu do prato uma vez, na ordem em que saiu, e nenhum fica de
+  fora; e que toda reserva resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
 menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em cinco com todas as propriedades, além das sete
