@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 HELPER_ONLY = {"yt_fora", "yt_dlp", "ytmusicapi", "requests"}
 HELPER_ENTRIES = {"andamento": "main"}
-ENTRY = "server"
+ENTRIES = ("ritmelli", "server")
 
 
 def module_name(path):
@@ -22,11 +22,25 @@ def type_checking(node):
         or (isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"))
 
 
-def import_nodes(tree, skip_function=None):
+def helper_mode(node):
+    test = node.test
+    return (isinstance(node, ast.If) and isinstance(test, ast.Compare) and len(test.ops) == 1
+            and isinstance(test.ops[0], ast.Eq) and isinstance(test.comparators[0], ast.Constant)
+            and isinstance(test.comparators[0].value, str) and test.comparators[0].value.startswith("--"))
+
+
+def main_guard(node):
+    test = node.test
+    return (isinstance(node, ast.If) and isinstance(test, ast.Compare) and isinstance(test.left, ast.Name)
+            and test.left.id == "__name__" and isinstance(test.comparators[0], ast.Constant)
+            and test.comparators[0].value == "__main__")
+
+
+def import_nodes(tree, skip_function=None, entry=False):
     todo = list(ast.iter_child_nodes(tree))
     while todo:
         node = todo.pop()
-        if isinstance(node, ast.If) and type_checking(node):
+        if isinstance(node, ast.If) and (type_checking(node) or (entry and helper_mode(node))):
             todo += node.orelse
             continue
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == skip_function:
@@ -36,9 +50,9 @@ def import_nodes(tree, skip_function=None):
         todo += list(ast.iter_child_nodes(node))
 
 
-def loaded_names(tree, package, skip_function=None):
+def loaded_names(tree, package, skip_function=None, entry=False):
     names = set()
-    for s in import_nodes(tree, skip_function):
+    for s in import_nodes(tree, skip_function, entry):
         if isinstance(s, ast.Import):
             names |= {a.name for a in s.names}
             continue
@@ -51,16 +65,27 @@ def loaded_names(tree, package, skip_function=None):
     return {n for n in names if n}
 
 
-def entry_calls(module, tree):
+def process_nodes(tree, entry):
+    todo = list(ast.iter_child_nodes(tree))
+    while todo:
+        node = todo.pop()
+        if isinstance(node, ast.If) and entry and helper_mode(node):
+            todo += node.orelse
+            continue
+        yield node
+        todo += list(ast.iter_child_nodes(node))
+
+
+def entry_calls(module, tree, entry=False):
     aliases = {}
-    for s in import_nodes(tree):
+    for s in import_nodes(tree, entry=entry):
         if isinstance(s, ast.Import):
             aliases |= {(a.asname or a.name): a.name for a in s.names if a.name in HELPER_ENTRIES}
         elif s.module in HELPER_ENTRIES and not s.level:
             aliases |= {(a.asname or a.name): f"{s.module}.{a.name}" for a in s.names
                         if a.name == HELPER_ENTRIES[s.module]}
     found = []
-    for node in ast.walk(tree):
+    for node in process_nodes(tree, entry):
         if not isinstance(node, ast.Call):
             continue
         f = node.func
@@ -72,9 +97,24 @@ def entry_calls(module, tree):
     return found
 
 
+def local_entry_calls(tree, entry):
+    found, todo = [], [(tree, False)]
+    while todo:
+        node, skipped = todo.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == entry:
+            continue
+        if isinstance(node, ast.If) and main_guard(node):
+            todo += [(n, skipped) for n in node.orelse]
+            continue
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == entry:
+            found.append(node.lineno)
+        todo += [(n, skipped) for n in ast.iter_child_nodes(node)]
+    return found
+
+
 def heavy_in_process(files):
     modules = {module_name(p): (text, Path(p).name == "__init__.py") for p, text in files.items() if p.endswith(".py")}
-    seen, todo, found = set(), [ENTRY], []
+    seen, todo, found = set(), list(ENTRIES), []
     while todo:
         name = todo.pop()
         if name in seen or name not in modules:
@@ -83,10 +123,13 @@ def heavy_in_process(files):
         text, is_package = modules[name]
         tree = ast.parse(text)
         package = name if is_package else name.rpartition(".")[0]
-        loaded = loaded_names(tree, package, HELPER_ENTRIES.get(name))
+        loaded = loaded_names(tree, package, HELPER_ENTRIES.get(name), name in ENTRIES)
         found += [(name, m) for m in sorted(loaded) if m.split(".")[0] in HELPER_ONLY]
-        if name not in HELPER_ENTRIES:
-            found += [(name, f"the helper entry {call}()") for _, call in entry_calls(name, tree)]
+        if name in HELPER_ENTRIES:
+            found += [(name, f"its helper entry {HELPER_ENTRIES[name]}() at line {n}")
+                      for n in local_entry_calls(tree, HELPER_ENTRIES[name])]
+        else:
+            found += [(name, f"the helper entry {call}()") for _, call in entry_calls(name, tree, name in ENTRIES)]
         for m in sorted(loaded):
             parts = m.split(".")
             todo += [".".join(parts[:k]) for k in range(1, len(parts) + 1)]
@@ -116,6 +159,20 @@ CASES = [
     ("the server calls the helper's entry in its own process", 1,
      {"server.py": "import andamento as an\nan.main()\n", "andamento.py": "def main():\n    pass\n"}),
     ("a module the server never loads", 0, {"server.py": "import os\n", "yt_tool.py": "import yt_dlp\n"}),
+    ("the entry point loads the helper's library before the server starts", 1,
+     {"ritmelli.py": "import requests\nimport server\n", "server.py": "import os\n"}),
+    ("a helper mode of the entry point runs in its own process", 0,
+     {"ritmelli.py": "import sys\nmodo = sys.argv[1]\nif modo == '--yt':\n    import yt_fora\n"
+                     "elif modo == '--andamento':\n    import andamento\n    andamento.main()\nelse:\n"
+                     "    import server\n", "server.py": "import os\n", "andamento.py": "def main():\n    pass\n"}),
+    ("the server's branch of the entry point", 1,
+     {"ritmelli.py": "import sys\nmodo = sys.argv[1]\nif modo == '--yt':\n    pass\nelse:\n    import requests\n"}),
+    ("the helper module calls its own entry from code the server runs", 1,
+     {"server.py": "import andamento\n", "andamento.py": "def main():\n    from yt_fora import stream_yt\n\n\n"
+                                                         "def ordena():\n    main()\n"}),
+    ("the helper module calls its entry only when run as a script", 0,
+     {"server.py": "import andamento\n", "andamento.py": "def main():\n    pass\n\n\n"
+                                                         "if __name__ == '__main__':\n    main()\n"}),
 ]
 
 

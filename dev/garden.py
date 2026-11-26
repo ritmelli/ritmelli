@@ -1240,6 +1240,8 @@ def verification_names(t=None):
     names = set()
     for p in paths:
         names |= {p, Path(p).name, Path(p).stem}
+    for script, *args in tudo.PASSOS.values():
+        names |= {f"{n} {' '.join(args)}" for n in (script, Path(script).name, Path(script).stem)}
     return names
 
 
@@ -1260,7 +1262,10 @@ def agents_rules(text):
         if line.startswith("|"):
             row = 0 if row is None else row + 1
             if row >= 2:
-                rules.append([n, line.strip().strip("|").split("|")[-1]])
+                cells = line.strip()
+                cells = cells[1:] if cells.startswith("|") else cells
+                cells = cells[:-1] if cells.endswith("|") else cells
+                rules.append([n, cells.split("|")[-1]])
             current = None
             continue
         row = None
@@ -1285,12 +1290,7 @@ def agents_rules_without_check(t):
 
 
 def cites_check(span, tests, jobs):
-    words = span.split()
-    if not words:
-        return False
-    if span.strip() in tests or span.strip() in jobs:
-        return True
-    return words[0] in tests and all(w.startswith("-") for w in words[1:])
+    return " ".join(span.split()) in tests | jobs
 
 
 COUNTERS = {f.__name__: f for f in (

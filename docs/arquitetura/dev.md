@@ -161,7 +161,8 @@ jogando. O Discord se testa num canal fechado de teste, e o `instala-todos` e o 
 
 ## A montagem
 
-Na CI, só o "Monta o instalador" (`monta.yml`) compila o `.iss` e roda a parcial, a migração e o atualizador. A
+Na CI, só o "Monta o instalador" (`monta.yml`) compila o `.iss` e roda a parcial, a migração e o atualizador: a
+regra da pasta protegida no `instalador/ritmelli.iss` se prova na instalação dele. A
 esteira de publicação do `ritmelli-server` acha a execução pelos nomes dos artefatos e dos jobs dele, que o
 `dev/test_monta_contract.py` fixa.
 
