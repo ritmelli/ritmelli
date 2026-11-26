@@ -217,6 +217,9 @@ def caches(tmp):
             M._mix = [{"youtube_id": "aaaaaaaaaa2", "title": "Musica Dois", "duration": 200.0, "channel": "Artista Dois",
                       "ordem": 1}]
             todo = M._a_medir()
+        seen = M.tempo_of(SEMENTE)
+        seen["ini"] = 10.0
+        confere(M.tempo_of(SEMENTE)["ini"] == 120.0, "changing what tempo_of returns doesn't change the measured tempo")
         confere(todo == (None, None),
                 f"a cached empty version is not looked up again, and a known tempo is not measured again ({todo})")
     finally:

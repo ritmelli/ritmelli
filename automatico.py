@@ -6,7 +6,7 @@ video for its audio-only version.
 
 The Automatico owns its state (whether it is on, the seed, the Mix and its base, what stays out, the measured tempos
 and the audio versions, with the two files they are saved in) and changes it under app.fila_lock, in the lock order of
-comandos.py. The App reads it through auto, tempo_of and refuse. The queue changes through App.change_queue, except
+comandos.py. The App reads auto and tempo_of, and records a similar track the user removed with refuse. The queue changes through App.change_queue, except
 the entries _troca_audio changes in place (#211). mix_do is resolved on every call (the test swaps the App's). Its constants live here and the
 music functions (chaves_musica, autores, find_track, track_artists) in music.py; the shelf's folder (pastas.LIB,
 read when it is used) and save_json come from pastas.py, and the error text (yt_msg) from yt_erros.py. What is still
@@ -65,8 +65,8 @@ class Automatico:
         return x.get("youtube_id") or (f"lib:{x['id']}" if x.get("id") else None)
 
     def tempo_of(self, x):
-        c = self.chave_andamento(x)
-        return self._andamentos.get(c) if c else None
+        t = self._andamentos.get(self.chave_andamento(x))
+        return dict(t) if t else None
 
     def refuse(self, x):
         if x.get("auto") and x.get("youtube_id"):
