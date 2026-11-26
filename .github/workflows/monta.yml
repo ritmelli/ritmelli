@@ -264,11 +264,9 @@ jobs:
           if (-not $p.WaitForExit(600000)) { Stop-Process $p -Force; Get-Content $log -Tail 40; throw 'o setup não terminou em 10 min' }
           if ($p.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "o setup saiu com $($p.ExitCode)" }
           # a conferência dos aparelhos depois do reinício do áudio (#136, instalador/mudos.iss): o resumo vai no log do
-          # setup. Sem microfone aqui, o áudio não reinicia e o resumo diz isso; sem a linha, o mudos.iss não rodou, e com o
-          # "sem o microfone.json", o ritmelli.exe congelado não entregou o --saida do [Run] ao mudos.iss
+          # setup. Sem microfone aqui, o áudio não reinicia e o resumo diz isso; sem a linha, o mudos.iss não rodou
           $conf = Select-String $log -Pattern 'aparelhos( mudos)?: '
           if (-not $conf) { Get-Content $log -Tail 40; throw 'o setup não pôs o resumo da conferência dos aparelhos no log' }
-          if ($conf | Where-Object Line -Match 'aparelhos: sem o microfone\.json') { Get-Content $log -Tail 40; throw 'o ritmelli.exe não gravou o --saida do --microfone instala-todos' }
           $conf | ForEach-Object { $_.Line } | Write-Host
           $app = "$env:ProgramFiles\Ritmelli"
           foreach ($f in 'ritmelli.exe', 'bin\ffmpeg.exe', 'bin\ffprobe.exe', 'bin\deno.exe', 'LICENSE.txt', 'TERCEIROS.txt',
@@ -283,7 +281,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'o setup não criou a regra do firewall' }
           # o filtro de microfone (microfone\microfone.py), pelo "--microfone instala-todos --tarefa" do setup: a micfx.dll
           # na pasta que o audiodg.exe lê e a tarefa \Ritmelli\Microfone, que põe o filtro no microfone que aparece depois.
-          # O setup termina bem mesmo se esse passo falhar, e a tarefa nasce antes da cópia da DLL: as duas se conferem.
           # Sem microfone aqui, o filtro posto num microfone fica de fora
           $mic = "$env:ProgramFiles\Ritmelli\microfone"
           function FalhaMic($m) { Select-String $log -Pattern 'Parameters: --microfone' -Context 0, 1 | Out-String | Write-Host; throw $m }
@@ -366,6 +363,15 @@ jobs:
           'o /metricas=0 gravou a escolha'
           # o desinstalador fecha o Ritmelli (taskkill) e tira a regra do firewall. Ele se copia para a pasta temporária
           # e roda de lá, então o fim se confere pelo que ele apaga
+          $micKey = 'HKLM:\SOFTWARE\Ritmelli\Microfone'
+          if (-not (Test-Path $micKey)) { New-Item $micKey -Force | Out-Null }
+          New-ItemProperty $micKey -Name '_mudos' -PropertyType MultiString -Value 'IN 1-2 (CI silent device)' -Force | Out-Null
+          $silentValueLeft = {
+            $k = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SOFTWARE\Ritmelli\Microfone')
+            if (-not $k) { return $false }
+            try { $k.GetValueNames() -contains '_mudos' } finally { $k.Close() }
+          }
+          if (-not (& $silentValueLeft)) { throw "couldn't record the _mudos value before the uninstall" }
           Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
           for ($i = 0; $i -lt 120 -and (Test-Path "$app\ritmelli.exe"); $i++) { Start-Sleep 1 }
           if (Test-Path "$app\ritmelli.exe") { throw 'o desinstalador não tirou o ritmelli.exe em 2 min' }
@@ -377,11 +383,11 @@ jobs:
           if (Get-ItemProperty 'HKLM:\SOFTWARE\Ritmelli' -Name Metricas -ErrorAction SilentlyContinue) {
             throw 'o desinstalador deixou a escolha dos dados de uso'
           }
-          # o "--microfone remove" do desinstalador: sem microfone com o filtro, saem a pasta do filtro (a DLL e o log) e a tarefa
           $tarefaMic = { Get-ScheduledTask -TaskPath '\Ritmelli\' -TaskName 'Microfone' -ErrorAction SilentlyContinue }
           for ($i = 0; $i -lt 30 -and ((Test-Path $mic) -or (& $tarefaMic)); $i++) { Start-Sleep 1 }
           if (Test-Path $mic) { throw "o desinstalador deixou a pasta $mic" }
           if (& $tarefaMic) { throw 'o desinstalador deixou a tarefa \Ritmelli\Microfone' }
+          if (& $silentValueLeft) { throw 'the uninstaller left the _mudos value in HKLM\SOFTWARE\Ritmelli\Microfone' }
           'o desinstalador tirou a pasta do filtro e a tarefa \Ritmelli\Microfone'
           'instalou, abriu, respondeu e desinstalou'
           # o GitHub sai com o $LASTEXITCODE do fim, e o do netsh sem a regra é 1

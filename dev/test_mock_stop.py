@@ -530,7 +530,8 @@ def main():
     flag_only_for_a_server_that_knows_it()
     http_shutdown_with_the_pipe_open()
     server_whose_child_holds_the_track("hangs", "did not stop")
-    server_whose_child_holds_the_track("exits", "left 1 process")
+    server_whose_child_holds_the_track("exits", "left 1 process(es) it started running: ended (in the job when it "
+                                                "stopped: python.exe still running after 10 s)")
     measurement_stopped_by_the_given_kill()
     stop_while_measuring("phone", ["--papel-local", "celular"])
     stop_while_measuring("pc", [])
