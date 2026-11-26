@@ -65,10 +65,8 @@ document.querySelectorAll('input[type=range]').forEach(r => {
 if (scriptLoaded('receiver.js')) bindReceiver();
 if (scriptLoaded('turntable.js')) bindTurntable();
 if (!scriptsMissing().length) bindSearch();
-$('#b-cel').addEventListener('click', abrirCelular);
-$('#b-disp').addEventListener('click', abrirDispositivos);
-$('#dica-ouvir').addEventListener('click', e => { if (e.target.closest('.ir-disp')) abrirDispositivos(); });
-$('#b-desligar').addEventListener('click', desligar);
+if (scriptLoaded('phone.js')) bindPhoneButton();
+if (scriptLoaded('devices.js')) bindDeviceButtons();
 
 function campoDeTexto(t) {
   if (!t || !t.closest) return false;

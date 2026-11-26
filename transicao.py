@@ -16,6 +16,7 @@ FADE_DB = 3.0              # o fade-out comeca onde o nivel deixa de ficar a 3 d
 FADE_MIN_S = 1.5           # queda mais curta que isso e final seco
 FIM_DB = 20.0              # 20 dB abaixo do normal o fade ja acabou para o ouvido: o rabo dele e cortado
 FASE_ANTES_S = 4.0         # no que sai, a fase comeca a ser medida isso antes da virada
+FASE_MIN_S = 4.0
 TEMPO_MAX = 0.05           # a proxima estica ate 5% para casar o andamento: 3,5% (Despacito -> Paper
                            # Planes) e 4,9% (Without Me -> Overdose) passaram sem se notar, e o Hino do Gremio a 6,4% ja soou
                            # diferente do original (21/10); os 8% de antes eram o curso do pitch do toca-discos
@@ -161,6 +162,10 @@ def rampa_saida(sa, virar):
     onde a fase deste e medida: ali a velocidade ja e constante."""
     n_ra = int(min(max(abs(sa - 1) / RAMPA_TAXA, RAMPA_MIN_S), RAMPA_MAX_S) * SR)
     return n_ra, virar - FASE_ANTES_S - 0.5 - n_ra * (1 + sa) / 2 / SR
+
+
+def phase_excerpt_start(before_switch, swap):
+    return min(before_switch, swap - int(FASE_MIN_S * SR))
 
 
 def intro_baixa(niv, ini, pa):

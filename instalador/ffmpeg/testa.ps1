@@ -1,3 +1,4 @@
+# manual: powershell instalador\ffmpeg\testa.ps1 precisa de o ffmpeg completo de antes no instalador\vendor e o venv do build
 # Confere o ffmpeg compilado (bin\) contra o completo de antes, o que o monta.ps1 baixava (fica no vendor\ de quem ja
 # montou o instalador): ver o testa.py. Usa o python do venv do build, que o monta.ps1 cria.
 # Uso: testa.ps1
