@@ -102,7 +102,7 @@ CASES = {
         ("pragma: no cover", {"a.py": "def f():\n    pass\n"}, {"a.py": "def f():  # pragma: no cover\n    pass\n"}),
         ("eslint-disable", {"a.js": "const eslint = 1;\n"}, {"a.js": "// eslint-disable-next-line\nconst a = 1;\n"}),
         ("pragma warning", {"a.cpp": "#pragma once\n"}, {"a.cpp": "#pragma warning(disable: 4996)\n"}),
-        ("continue-on-error", {"a.yml": "steps:\n  - run: echo continue-on-error\n"},
+        ("continue-on-error", {"a.yml": "steps:\n  - run: echo continue-on-error\n    continue-on-error: false\n"},
          {"a.yml": "steps:\n  - run: echo\n    continue-on-error: true\n"}),
         ("SilentlyContinue", {"a.ps1": "$ProgressPreference = 'SilentlyContinue'\n"},
          {"a.ps1": "Get-Item x -ErrorAction SilentlyContinue\n"}),
@@ -277,6 +277,15 @@ CASES = {
          {".github/workflows/w.yml": PY_STEP.replace("JOB", "testa").replace(
              "time.sleep(1)\n", "@unittest.skipIf(X, 'no X (#12)')\n          class T: pass\n")},
          {".github/workflows/w.yml": PY_STEP.replace("JOB", "testa").replace(
+             "time.sleep(1)\n", "@unittest.skipIf(X, 'no X')\n          class T: pass\n")}),
+        ("SkipTest in a one-line Python step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
+                                     "        run: import unittest; raise unittest.SkipTest('no X (#12)')\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
+                                     "        run: \"import unittest; raise unittest.SkipTest('no X')\"\n"}),
+        ("skipIf in a .yaml workflow",
+         {".github/workflows/w.yaml": PY_STEP.replace("JOB", "testa").replace("time.sleep(1)\n", "x = 1\n")},
+         {".github/workflows/w.yaml": PY_STEP.replace("JOB", "testa").replace(
              "time.sleep(1)\n", "@unittest.skipIf(X, 'no X')\n          class T: pass\n")}),
     ],
     "todo_markers": [
@@ -455,8 +464,7 @@ def test_check():
         bad, _ = garden.check({"a": [("x.py", 1), ("x.py", 2)]}, ceilings, base)
         check(len(bad) == 1 and "not a whole number" in bad[0], f"a ceiling that is {label} fails ({bad})")
     _, quiet = garden.check({"a": 1}, {"a": 1}, {"a": 1})
-    check(quiet == ["-- summary: garden: no counter changed against the base (1 counters)"],
-          f"with no change, one line says so ({quiet})")
+    check(quiet == [], f"with no change, no summary line ({quiet})")
 
 
 def test_acceptance():
@@ -524,6 +532,10 @@ def test_description():
         "a proof section only inside an example block": "```markdown\n## Proof\n`python dev/garden.py`\n```\n",
         "a fragment of a link as the issue": good + "\nThe rest stays for now ([details](https://example.org/page#250)).\n",
         "an issues path off GitHub as the issue": good + "\nThe rest stays for now (https://example.org/issues/250).\n",
+        "a host that ends in github.com": good + "\nThe rest stays for now (https://not-github.com/o/r/issues/250).\n",
+        "a fragment after a dash": good + "\nThe rest stays for now (https://example.org/page-#250).\n",
+        "the issue in the next paragraph": good + "\nThe rest stays for now.\n\nSee #250.\n",
+        "the issue in the next list item": good + "\n- The rest stays for now.\n- #250 is another thing.\n",
     }
     for label, body in failing.items():
         check(garden.description_problems(body) != [], f"a proof section with {label} fails")
@@ -533,6 +545,8 @@ def test_description():
           "a prose phrase with its issue passes")
     check(garden.description_problems(good + "\nThe rest stays for now ([details](https://github.com/o/r/issues/250)).\n")
           == [], "a prose phrase with a link to its issue passes")
+    check(garden.description_problems(good + "\nThe rest stays for now, tracked in\nhttps://github.com/o/r/issues/250.\n")
+          == [], "a prose phrase with its issue on the next line of the paragraph passes")
     check(garden.pr_number("pull_request", {"pull_request": {"number": 7}}) == 7, "the PR number of a pull_request")
     check(garden.pr_number("merge_group", {"merge_group": {"head_ref": "refs/heads/gh-readonly-queue/main/pr-246-"
                                                            + "a" * 40}}) == 246, "the PR number of a merge_group entry")
@@ -640,7 +654,7 @@ def test_queue_run():
         check(code == 1 and "comment_lines: the ceiling went up from 1 to 2" in out,
               "the second entry of the queue puts the comment back with the ceiling, and fails against the first entry")
         code, out = run_in(repo, {"GITHUB_EVENT_NAME": "pull_request", "BASE": main, "GITHUB_REF": "refs/pull/9/merge"})
-        check(code == 0 and "-- summary: garden: no counter changed" in out,
+        check(code == 0 and "-- summary:" not in out,
               f"the same tree as a PR against main passes ({out.splitlines()[-1:]})")
 
 

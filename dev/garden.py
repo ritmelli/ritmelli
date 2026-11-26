@@ -24,10 +24,13 @@ A count over its ceiling fails (weeds went in); under it, it fails too until the
 A ceiling over the base's fails as well, so a PR can't raise it along with the weeds. Every counter that changed
 against the base goes to the PR summary as a "-- summary:" line."""
 
-COMMENT_EXTENSIONS = (".py", ".js", ".css", ".ps1", ".yml", ".cpp", ".h", ".iss", ".bat", ".html", ".rc", ".spec",
+COMMENT_EXTENSIONS = (".py", ".js", ".css", ".ps1", ".yml", ".yaml", ".cpp", ".h", ".iss", ".bat", ".html", ".rc", ".spec",
                       ".sh", ".toml", ".psd1", ".isl")
 GARDEN_FILES = ("dev/garden.py", "dev/test_garden.py")
-ISSUE = re.compile(r"(?<![\w/&=])#\d+\b|\bgithub\.com/[\w.-]+/[\w.-]+/issues/\d+\b")
+ISSUE_URL = re.compile(r"(?<![\w.-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+/[\w.-]+/issues/\d+(?![\w-])")
+URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
+SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])#\d+\b")
+PARAGRAPH_START = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\*\*)")
 BLOCK_MARKER = re.compile(r"^\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b")
 KEPT_COMMENT = re.compile(r"^\s*manual:|^\s*i18n-ok\s*$|^ inline-script: [\w-]+\.js $")
 GENERATED_MARKERS = {"molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui)"}
@@ -37,7 +40,7 @@ PIN = re.compile(r"@[0-9a-f]{40}\s*$")
 PIN_VERSION = re.compile(r"^\s*v\d+(?:\.\d+)*\s*$")
 SUPPRESSIONS_IN_COMMENTS = re.compile(r"\bnoqa\b|\btype:\s*ignore\b|\beslint-disable|\bpragma:\s*no\s*cover\b")
 PRAGMA_DISABLE = re.compile(r"#\s*pragma\s+warning\s*\(\s*disable")
-CONTINUE_ON_ERROR = re.compile(r"^\s*(?:-\s+)?continue-on-error\s*:")
+CONTINUE_ON_ERROR = re.compile(r"^\s*(?:-\s+)?continue-on-error\s*:(?!\s*(?:false|'false'|\"false\")\s*$)")
 SILENTLY_CONTINUE = re.compile(r"-ErrorAction\s+SilentlyContinue\b", re.I)
 START_SLEEP = re.compile(r"\bStart-Sleep\b", re.I)
 THEME_TIMER = re.compile(r"\b(?:setTimeout|setInterval|requestIdleCallback)\s*\(")
@@ -325,6 +328,7 @@ def lex_html(text):
 
 
 BLOCK_SCALAR = re.compile(r"^(\s*)(-\s+)?([\w.-]+):\s*[|>][-+]?\s*(?:#.*)?$")
+INLINE_RUN = re.compile(r"^\s*(?:-\s+)?run:\s*([^\s|>].*?)\s*$")
 
 
 def indent_of(line):
@@ -334,6 +338,15 @@ def indent_of(line):
 def key_indent(line):
     stripped = line.lstrip(" ")
     return indent_of(line) + (len(stripped) - len(stripped[1:].lstrip(" ")) if stripped.startswith("-") else 0)
+
+
+def unquote(value):
+    value = value.strip()
+    if len(value) > 1 and value[0] == value[-1] == "'":
+        return value[1:-1].replace("''", "'")
+    if len(value) > 1 and value[0] == value[-1] == '"':
+        return value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    return value
 
 
 def yaml_shell(lines, at):
@@ -374,6 +387,9 @@ def lex_yaml(text):
         out.comments += [Comment(n + 1, n + 1, c.text) for c in lexed.comments]
         n += 1
         if not m:
+            inline = INLINE_RUN.match(out.code[n])
+            if inline:
+                out.runs.append((n - 1, yaml_shell(lines, n - 1), unquote(inline.group(1))))
             continue
         end = n
         while end < len(lines) and (not lines[end].strip() or indent_of(lines[end]) > key_indent(line)):
@@ -393,7 +409,7 @@ def lex_yaml(text):
 
 
 LEXERS = {".py": lex_python, ".spec": lex_python, ".js": lambda t: lex_c(t, js=True), ".css": lambda t: lex_c(t, css=True),
-          ".cpp": lex_c, ".h": lex_c, ".rc": lex_c, ".ps1": lex_powershell, ".psd1": lex_powershell, ".yml": lex_yaml,
+          ".cpp": lex_c, ".h": lex_c, ".rc": lex_c, ".ps1": lex_powershell, ".psd1": lex_powershell, ".yml": lex_yaml, ".yaml": lex_yaml,
           ".iss": lex_iss, ".isl": lex_semicolon, ".bat": lex_bat, ".html": lex_html, ".sh": lex_hash,
           ".toml": lex_hash}
 
@@ -410,7 +426,7 @@ def kept(path, lexed, comment):
         return True
     if comment.start <= 2 and suffix(path) in (".py", ".spec") and ENCODING.search(text):
         return True
-    return suffix(path) == ".yml" and bool(PIN.search(lexed.code.get(comment.start, "").rstrip())) and bool(
+    return suffix(path) in (".yml", ".yaml") and bool(PIN.search(lexed.code.get(comment.start, "").rstrip())) and bool(
         PIN_VERSION.match(text))
 
 
@@ -493,7 +509,7 @@ def docstring_lines(t):
 
 
 def workflow_paths(t):
-    return [p for p in t.paths(".yml") if p.startswith(".github/")]
+    return [p for p in t.paths(".yml", ".yaml") if p.startswith(".github/")]
 
 
 def python_strings(t, path):
@@ -547,7 +563,7 @@ def suppressions(t):
         items += [(p, c.start) for c in lexed.comments if SUPPRESSIONS_IN_COMMENTS.search(c.text)]
         for n, code in code_lines(t, p):
             hits = len(PRAGMA_DISABLE.findall(code)) + len(SILENTLY_CONTINUE.findall(code))
-            if suffix(p) == ".yml" and CONTINUE_ON_ERROR.match(code):
+            if suffix(p) in (".yml", ".yaml") and CONTINUE_ON_ERROR.match(code):
                 hits += 1
             items += [(p, n)] * hits
     return items
@@ -587,7 +603,7 @@ def sleeps(t):
         if tree is not None:
             aliases = sleep_aliases(tree)
             items += [(p, n.lineno) for n in ast.walk(tree) if is_sleep(n, aliases)]
-    for p in t.paths(".yml"):
+    for p in t.paths(".yml", ".yaml"):
         if p.startswith(".github/"):
             for offset, tree, _ in workflow_python(t, p):
                 aliases = sleep_aliases(tree)
@@ -835,10 +851,10 @@ def retries(t):
         if tree is not None:
             items += [(p, n) for n in python_retries(tree)]
             items += [(p, n) for n, s in python_strings(t, p) if START_SLEEP.search(s) and powershell_retries(s)]
-    for p in t.paths(".yml"):
+    for p in t.paths(".yml", ".yaml"):
         if p.startswith(".github/"):
             items += [(p, offset + n) for offset, tree, _ in workflow_python(t, p) for n in python_retries(tree)]
-    for p in t.paths(".ps1", ".psd1", ".yml"):
+    for p in t.paths(".ps1", ".psd1", ".yml", ".yaml"):
         items += [(p, n) for n in powershell_retries(joined_code(t.lexed(p)))]
     for p in t.paths(".js", ".html"):
         items += [(p, n) for n in js_retries(joined_code(t.lexed(p)))]
@@ -876,7 +892,7 @@ def broad_excepts(t):
         tree = t.tree(p)
         if tree is not None:
             items += [(p, n) for n in broad_handlers(tree)]
-    for p in t.paths(".yml"):
+    for p in t.paths(".yml", ".yaml"):
         if p.startswith(".github/"):
             for offset, tree, _ in workflow_python(t, p):
                 items += [(p, offset + n) for n in broad_handlers(tree)]
@@ -887,6 +903,10 @@ def broad_excepts(t):
             items += [(p, n) for n, c in sorted(lexed.code.items())
                       if n > code_start and re.search(r"\bexcept\b", c, re.I)]
     return items
+
+
+def cites_issue(text):
+    return bool(ISSUE_URL.search(text) or SHORT_ISSUE.search(URL.sub(" ", text)))
 
 
 def skip_names(tree):
@@ -907,7 +927,7 @@ def skip_markers(tree, lines):
         target = node.func if isinstance(node, ast.Call) else node
         hit = (isinstance(target, ast.Attribute) and target.attr in SKIP_NAMES) or (
             isinstance(target, ast.Name) and target.id in imported)
-        if hit and (isinstance(node, ast.Call) or id(node) not in called) and not ISSUE.search(
+        if hit and (isinstance(node, ast.Call) or id(node) not in called) and not cites_issue(
                 "\n".join(lines[node.lineno - 1:node.end_lineno])):
             found.append(node.lineno)
     return found
@@ -925,11 +945,11 @@ def skipped_tests(t):
         items += [(p, n) for n in skip_markers(tree, t.files[p].splitlines())]
         raw = t.files[p].splitlines()
         items += [(p, n) for n, s in python_strings(t, p) if (LEFT_OUT.match(s) or KNOWN_FAILURE.match(s))
-                  and not ISSUE.search(s) and not ISSUE.search(raw[n - 1] if n <= len(raw) else "")]
-    for p in t.paths(".yml", ".ps1", ".psd1"):
+                  and not cites_issue(s) and not cites_issue(raw[n - 1] if n <= len(raw) else "")]
+    for p in t.paths(".yml", ".yaml", ".ps1", ".psd1"):
         raw = t.files[p].splitlines()
         items += [(p, n) for n, code in sorted(t.lexed(p).code.items())
-                  if LEFT_OUT_QUOTED.search(code) and not ISSUE.search(raw[n - 1] if n <= len(raw) else code)]
+                  if LEFT_OUT_QUOTED.search(code) and not cites_issue(raw[n - 1] if n <= len(raw) else code)]
     return sorted(set(items))
 
 
@@ -953,7 +973,7 @@ def todo_markers(t):
 
 def prose_justifications(t):
     return sorted({(p, n) for p, n, text in [*comment_texts(t), *markdown_lines(t)]
-                   if PROSE.search(text) and not ISSUE.search(text)})
+                   if PROSE.search(text) and not cites_issue(text)})
 
 
 def non_ascii_identifiers(t):
@@ -1200,8 +1220,6 @@ def check(counts, ceilings, base, added=None):
         elif n < ceiling:
             failures.append(f"{name}: {n}, under the ceiling of {ceiling}: lower \"{name}\" in dev/garden.json to {n}")
     failures += [f"{name}: a ceiling in dev/garden.json for no counter" for name in sorted(set(ceilings) - set(counts))]
-    if base is not None and not summary:
-        summary.append(f"-- summary: garden: no counter changed against the base ({len(counts)} counters)")
     return failures, summary
 
 
@@ -1362,10 +1380,27 @@ def description_problems(body):
     elif not any(has_proof(s) for s in sections):
         problems.append("the proof section has no run, test or screenshot (a command or a test file in `code`, a code "
                         "block, a link to a run or an image)")
-    prose = [(i + 1, re.sub(r"(`+)(?!`).*?(?<!`)\1(?!`)", "", line)) for i, line in outside_fences(lines)]
-    problems += [f"line {n}: \"{PROSE.search(text).group(0)}\" with no issue link: fix it, or link the issue that "
-                 f"tracks it" for n, text in prose if PROSE.search(text) and not ISSUE.search(text)]
+    for chunk in paragraphs(lines):
+        text = " ".join(re.sub(r"(`+)(?!`).*?(?<!`)\1(?!`)", "", line) for _, line in chunk)
+        phrase = PROSE.search(text)
+        if phrase and not cites_issue(text):
+            n = next((i for i, line in chunk if PROSE.search(line)), chunk[0][0]) + 1
+            problems.append(f"line {n}: \"{phrase.group(0)}\" with no issue link: fix it, or link the issue that "
+                            f"tracks it")
     return problems
+
+
+def paragraphs(lines):
+    chunk, previous = [], None
+    for i, line in outside_fences(lines):
+        if chunk and (not line.strip() or PARAGRAPH_START.match(line) or i != previous + 1):
+            yield chunk
+            chunk = []
+        if line.strip():
+            chunk.append((i, line))
+        previous = i
+    if chunk:
+        yield chunk
 
 
 def fetch_description(repo, number):
