@@ -59,7 +59,7 @@ def uploads(jobs):
             if str(s.get("uses", "")).startswith("actions/upload-artifact@") and not switched_off(s.get("if")):
                 w = s.get("with") or {}
                 out.append((EXPRESSION.sub(lambda m: MARK if inner(m.group(0)) in versions else m.group(0),
-                                           str(w.get("name", ""))), w))
+                                           str(w.get("name", ""))), w, "if" in job or "if" in s))
     return out
 
 
@@ -78,18 +78,23 @@ def manifest_step(job):
 
 
 def writes_versao(run):
-    code = [line.split("#", 1)[0] for line in str(run).splitlines()]
-    return any(re.search(r"\$\{?env:GITHUB_OUTPUT\}?", c, re.I) and '"versao=$' in c for c in code)
+    return any(re.search(r"\$\{?env:GITHUB_OUTPUT\}?", c, re.I) and '"versao=$' in c for c in code(run).splitlines())
+
+
+def code(run):
+    return "\n".join(line.split("#", 1)[0] for line in str(run).splitlines())
+
+
+def literal(value):
+    return value[1:-1] if re.fullmatch(r"'[^']*'|\"[^\"$`]*\"", value) else None
 
 
 def output_folder(run):
-    value = re.findall(r"'--saida',\s*('[^']*'|\$\w+)", str(run))
-    if len(value) != 1:
-        return None
-    if value[0].startswith("'"):
-        return value[0][1:-1]
-    assigned = re.findall(rf"^\s*\{value[0]}\s*=\s*'([^']*)'\s*$", str(run), re.M)
-    return assigned[0] if len(assigned) == 1 else None
+    value = re.findall(r"""'--saida',\s*('[^']*'|"[^"]*"|\$\w+)""", code(run))
+    if len(value) != 1 or not value[0].startswith("$"):
+        return literal(value[0]) if len(value) == 1 else None
+    assigned = re.findall(rf"^\s*\{value[0]}\s*(\S?=)\s*(.*?)\s*$", code(run), re.M)
+    return literal(assigned[0][1]) if len(assigned) == 1 and assigned[0][0] == "=" else None
 
 
 def one_literal_file(path, filename):
@@ -120,11 +125,12 @@ def contract_problems(doc):
     problems += [f"the monta job has no {name} output, which the jobs the pipeline requires read"
                  for name in ("anterior", "parcial") if not str((monta.get("outputs") or {}).get(name) or "").strip()]
     run_uploads = uploads(jobs)
-    found = {name: [w for n, w in run_uploads if n == name] for name in (SETUP, EXE)}
+    found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
     problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
-    literal = [n for n, _ in run_uploads if LITERAL_SETUP.fullmatch(n)]
-    if literal:
-        problems.append(f"the run uploads {literal}, which the pipeline would take for the version of the build")
+    problems += [f"the {n} artifact is uploaded only under an if:" for n, _, c in run_uploads if n in found and c]
+    fixed = [n for n, _, _ in run_uploads if LITERAL_SETUP.fullmatch(n)]
+    if fixed:
+        problems.append(f"the run uploads {fixed}, which the pipeline would take for the version of the build")
     if len(found[EXE]) == 1 and not one_literal_file(found[EXE][0].get("path"), "ritmelli.exe"):
         problems.append(f"the {EXE} artifact is not the ritmelli.exe alone ({found[EXE][0].get('path')!r})")
     manifest = manifest_step(monta)
@@ -172,17 +178,28 @@ def main():
     check(contract_problems(spaces) == [], "the version expression written without spaces keeps the contract")
     renamed_step = mutant(doc, lambda d: step_by_id(d["jobs"]["monta"], "congela").update(name="Freeze the app"))
     check(contract_problems(renamed_step) == [], "a congela step renamed (same id) keeps the contract")
-    slash = mutant(doc, lambda d: upload(d, setup)["with"].update(path="instalador/saida"))
-    check(contract_problems(slash) == [], "the Ritmelli artifact path without its final slash keeps the contract")
-    folder = "$saida = 'instalador\\saida'"
+    path = str(upload(doc, setup)["with"]["path"])
+    slash = mutant(doc, lambda d: upload(d, setup)["with"].update(path=path[:-1] if path.endswith("/") else path + "/"))
+    check(contract_problems(slash) == [], "the Ritmelli artifact path with its final slash toggled keeps the contract")
+
+    def edit_run(d, change):
+        step = manifest_step(d["jobs"]["monta"])
+        step.update(run=change(step["run"]))
+
+    def assign_folder(d, value):
+        edit_run(d, lambda run: re.sub(r"^(\s*\$saida\s*=\s*)('[^']*'|\"[^\"]*\")", lambda m: m.group(1) + value, run,
+                                       count=1, flags=re.M))
 
     def move_folder(d):
-        step = manifest_step(d["jobs"]["monta"])
-        step.update(run=step["run"].replace(folder, "$saida = 'instalador\\out'"))
+        assign_folder(d, "'instalador\\out'")
 
     moved = mutant(doc, lambda d: (upload(d, setup)["with"].update(path="instalador/out/"), move_folder(d)))
-    check(folder in manifest_step(doc["jobs"]["monta"])["run"] and contract_problems(moved) == [],
+    check(output_folder(manifest_step(moved["jobs"]["monta"])["run"]) == "instalador\\out"
+          and contract_problems(moved) == [],
           "the --saida of publica.py and the Ritmelli artifact path moved together keep the contract")
+    quoted = mutant(doc, lambda d: assign_folder(d, '"instalador\\saida"'))
+    check('"instalador\\saida"' in manifest_step(quoted["jobs"]["monta"])["run"] and contract_problems(quoted) == [],
+          "the folder of --saida in double quotes keeps the contract")
     other_dir = mutant(doc, lambda d: upload(d, exe)["with"].update(path="dist/app/ritmelli.exe"))
     check(contract_problems(other_dir) == [], "the ritmelli.exe in another folder keeps the contract")
     dotted = mutant(doc, lambda d: upload(d, exe)["with"].update(path="./dist/ritmelli/ritmelli.exe"))
@@ -228,6 +245,12 @@ def main():
         "the ritmelli.exe path with two files": lambda d: upload(d, exe)["with"].update(
             path="dist/ritmelli/ritmelli.exe\ndist/ritmelli/ritmelli2.exe"),
         "the --saida of publica.py alone": move_folder,
+        "the --saida of publica.py commented out": lambda d: edit_run(d, lambda run: run.replace(
+            ", '--saida', $saida)", ") # '--saida', $saida")),
+        "the folder of --saida assigned twice": lambda d: edit_run(d, lambda run: re.sub(
+            r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$saida += '_other'", run, count=1, flags=re.M)),
+        "the ritmelli-exe upload under a condition": lambda d: upload(d, exe).update(
+            {"if": "github.event_name == 'push'"}),
         "the --saida of publica.py": lambda d: manifest_step(d["jobs"]["monta"]).update(
             run=manifest_step(d["jobs"]["monta"])["run"].replace("'--saida', $saida", "'--out', $saida")),
         "a second Ritmelli artifact in another job": lambda d: d["jobs"]["testa"]["steps"].append(
@@ -246,7 +269,12 @@ def main():
             name=f"{j}-renamed"))(job_id)
     mutants["the name of the testa-migracao job"] = lambda d: d["jobs"]["testa-migracao"].update(
         name="migracao (${{ matrix.scenario }})")
-    for base, label in ((doc, ""), (spaces, " (version expression without spaces)")):
+    packed_folder = mutant(doc, lambda d: edit_run(d, lambda run: run.replace("$saida = '", "$saida='")))
+    check("$saida='" in manifest_step(packed_folder["jobs"]["monta"])["run"]
+          and contract_problems(packed_folder) == [],
+          "the folder of --saida assigned without spaces keeps the contract")
+    for base, label in ((doc, ""), (spaces, " (version expression without spaces)"),
+                        (packed_folder, " (folder of --saida assigned without spaces)")):
         for name, change in mutants.items():
             check(contract_problems(mutant(base, change)) != [], f"the check catches {name} changed{label}")
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
