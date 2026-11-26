@@ -27,6 +27,7 @@ MAGIA, VERSAO, TAXA, CANAIS, QUADROS, LEITORES, BATIDA_MS = 0x58464D52, 5, 48000
 VOZ_QUADROS = 16384
 PRESET_BYTES = 65536
 PISTA_QUADROS, PISTA_MS = 16384, 1000
+clock = time.monotonic
 
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 k32.OpenFileMappingW.restype = wintypes.HANDLE
@@ -35,7 +36,6 @@ k32.MapViewOfFile.restype = ctypes.c_void_p
 k32.MapViewOfFile.argtypes = (wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, ctypes.c_size_t)
 k32.UnmapViewOfFile.argtypes = (ctypes.c_void_p,)
 k32.GetTickCount64.restype = ctypes.c_uint64
-clock = time.monotonic
 k32.CloseHandle.argtypes = (wintypes.HANDLE,)
 FILE_MAP_READ, FILE_MAP_WRITE = 0x0004, 0x0002
 
