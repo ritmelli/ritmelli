@@ -36,7 +36,7 @@ const TRANSPORTE = (() => {
     };
   }
 
-  const local = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
+  const local = ['127.0.0.1', 'localhost', '[::1]', '0.0.0.0'].includes(location.hostname);
   return { pedir, eventos, local };
 })();
 /* TRANSPORTE-FIM */
