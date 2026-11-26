@@ -239,7 +239,7 @@ def stamp(t):
 class TestVoicePedalStart(unittest.TestCase):
     def test_pedal_off_while_a_dry_out_is_told(self):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
-        pedal.pedal(True)
+        pedal.sent(pedal.pedal(True))
         calls = []
 
         def clock():
@@ -256,7 +256,7 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         if pedal_on_at is not None:
             now[0] = pedal_on_at
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
         dry = dryouts.RingDryOuts(pedal)
         with mock.patch("sys.stderr", io.StringIO()) as log:
             now[0] = 0.1
@@ -309,7 +309,7 @@ class TestVoicePedalStart(unittest.TestCase):
     def test_the_line_without_a_fill_or_an_empty_read(self):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
-        pedal.pedal(True)
+        pedal.sent(pedal.pedal(True))
         for reads, said in (([0], "came back after 500 ms; it ran dry by 0.50 s after the pedal turned on; "),
                             ([], "came back after 500 ms; the pedal turned on")):
             with self.subTest(reads=reads):
@@ -325,7 +325,7 @@ class TestVoicePedalStart(unittest.TestCase):
     def test_the_bounds_are_not_moved_by_float_error(self):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
-        pedal.pedal(True)
+        pedal.sent(pedal.pedal(True))
         dry = dryouts.RingDryOuts(pedal)
         with mock.patch("sys.stderr", io.StringIO()) as log:
             now[0] = 0.29
@@ -359,7 +359,7 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         dry = dryouts.RingDryOuts(pedal)
         with mock.patch("sys.stderr", io.StringIO()) as log:
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 0.1
             pedal.track(True, stamp(0.1))
             now[0] = 6.0
@@ -379,7 +379,7 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         dry = dryouts.RingDryOuts(pedal)
         with mock.patch("sys.stderr", io.StringIO()) as log:
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 0.1
             pedal.track(True, stamp(0.1))
             now[0] = 6.0
@@ -389,7 +389,7 @@ class TestVoicePedalStart(unittest.TestCase):
             now[0] = 6.101
             dry.read_ring(lambda: 0)
             now[0] = 6.102
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 6.2
             pedal.track(True, stamp(6.112))
             dry.ran_dry(0.1, 1, 0.0)
@@ -410,7 +410,7 @@ class TestVoicePedalStart(unittest.TestCase):
             tell(line)
 
         with mock.patch("sys.stderr", io.StringIO()) as log, mock.patch.object(dryouts, "tell", off_while_told):
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = filled_at
             dry.read_ring(lambda: 1)
             now[0] = read_at
@@ -442,7 +442,7 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal = dryouts.VoicePedalStart(clock=clock)
         dry = dryouts.RingDryOuts(pedal)
         with mock.patch("sys.stderr", io.StringIO()) as log:
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 0.5
             dry.read_ring(lambda: 1)
             now[0] = 0.6
@@ -457,7 +457,7 @@ class TestVoicePedalStart(unittest.TestCase):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         dry = dryouts.RingDryOuts(pedal)
-        pedal.pedal(True)
+        pedal.sent(pedal.pedal(True))
         now[0] = up_at
         with mock.patch.object(dryouts, "tell"):
             pedal.track(True, stamp(up_at))
@@ -485,7 +485,7 @@ class TestVoicePedalStart(unittest.TestCase):
                 pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
                 dry = dryouts.RingDryOuts(pedal)
                 with mock.patch("sys.stderr", io.StringIO()) as log:
-                    pedal.pedal(True)
+                    pedal.sent(pedal.pedal(True))
                     now[0] = 1.0
                     pedal.track(True, stamp(1.0))
                     now[0] = 2.0
@@ -522,7 +522,7 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         dry = dryouts.RingDryOuts(pedal)
         with mock.patch("sys.stderr", io.StringIO()) as log:
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 1.0
             dry.read_ring(lambda: 1)
             now[0] = 1.4
@@ -558,7 +558,7 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         dry = dryouts.RingDryOuts(pedal)
         with mock.patch("sys.stderr", io.StringIO()) as log:
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             pedal.track(True, stamp(1.0))
             for at, step in sorted([(1.2, lambda: dry.read_ring(lambda: 1)), (1.6, lambda: dry.read_ring(lambda: 0)),
                                     (off_at, lambda: pedal.pedal(False))], key=lambda x: x[0]):
@@ -580,7 +580,7 @@ class TestVoicePedalStart(unittest.TestCase):
 
     def test_the_track_is_up_only_once_its_line_is_told(self):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
-        pedal.pedal(True)
+        pedal.sent(pedal.pedal(True))
         seen = []
         with mock.patch.object(dryouts, "tell",
                                side_effect=lambda line: seen.append((pedal.track_up_at, pedal.starting()[1]))):
@@ -593,11 +593,11 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         lines = []
         with mock.patch.object(dryouts, "tell", side_effect=lines.append):
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 2.3
             pedal.pedal(False)
             now[0] = 2.5
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 2.7
             pedal.track(True, stamp(1.5))
             now[0] = 3.5
@@ -611,11 +611,11 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         lines = []
         with mock.patch.object(dryouts, "tell", side_effect=lines.append):
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 2.3
             pedal.pedal(False)
             now[0] = 2.302
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 2.5
             pedal.track(True, stamp(2.312))
         self.assertEqual(lines, ["voice pedal: its voice track came up 0.01 s after the pedal turned on"],
@@ -625,7 +625,7 @@ class TestVoicePedalStart(unittest.TestCase):
         now = [1.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         with mock.patch.object(dryouts, "tell"):
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 2.3
             pedal.pedal(False)
             now[0] = 2.4
@@ -640,13 +640,13 @@ class TestVoicePedalStart(unittest.TestCase):
         now = [1.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         with mock.patch.object(dryouts, "tell"):
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 2.3
             pedal.pedal(False)
             now[0] = 2.4
             pedal.track(True, stamp(1.5))
             now[0] = 3.0
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 3.5
             pedal.track(True, stamp(3.5))
             now[0] = 4.0
@@ -661,11 +661,11 @@ class TestVoicePedalStart(unittest.TestCase):
         now = [1.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         with mock.patch.object(dryouts, "tell"):
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 2.3
             pedal.pedal(False)
             now[0] = 2.302
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = 2.5
             pedal.track(True, stamp(2.312))
             told = pedal.starting(2.0, 2.301)[1]
@@ -679,7 +679,7 @@ class TestVoicePedalStart(unittest.TestCase):
     def test_an_ended_start_is_not_taken_without_a_fill_seen(self):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
-        pedal.pedal(True)
+        pedal.sent(pedal.pedal(True))
         now[0] = 1.0
         pedal.pedal(False)
         now[0] = 2.0
@@ -693,7 +693,7 @@ class TestVoicePedalStart(unittest.TestCase):
         with mock.patch("sys.stderr", io.StringIO()) as log:
             for t, step, *up in steps:
                 now[0] = t
-                {"on": lambda: pedal.pedal(True), "off": lambda: pedal.pedal(False),
+                {"on": lambda: pedal.sent(pedal.pedal(True)), "off": lambda: pedal.pedal(False),
                  "track": lambda: pedal.track(True, stamp((up or [t])[0])), "fill": lambda: dry.read_ring(lambda: 1),
                  "empty": lambda: dry.read_ring(lambda: 0)}[step]()
             now[0] = at
@@ -716,14 +716,40 @@ class TestVoicePedalStart(unittest.TestCase):
         _, log = self.run_starts([(1.0, "on"), (1.5, "off"), (1.502, "on"), (1.6, "off"), (1.7, "track", 1.512)], 1.8)
         self.assertIn("voice pedal: its voice track came up 0.01 s after the pedal turned on", log)
 
+    def test_a_track_up_before_its_start_was_sent_is_not_its(self):
+        now = [1.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            start = pedal.pedal(True)
+            now[0] = 1.2
+            pedal.track(True, stamp(1.05))
+            now[0] = 1.3
+            pedal.sent(start)
+            now[0] = 1.4
+            pedal.pedal(False)
+            now[0] = 1.5
+            pedal.track(True, stamp(1.1))
+        self.assertNotIn("voice pedal:", log.getvalue(), "both tracks came up before the start's liga(True) was sent")
+
+    def test_a_start_sent_again_keeps_when_it_was_first_sent(self):
+        now = [1.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            pedal.sent(pedal.pedal(True))
+            now[0] = 2.0
+            pedal.sent(pedal.pedal(True))
+            now[0] = 2.1
+            pedal.track(True, stamp(1.5))
+        self.assertIn("voice pedal: its voice track came up 0.50 s after the pedal turned on", log.getvalue())
+
     def test_only_the_last_ended_starts_are_kept(self):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         for i in range(3 * dryouts.ENDED_STARTS):
             now[0] = float(i)
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             pedal.pedal(False)
-        self.assertEqual([on for on, _, _ in pedal._ended],
+        self.assertEqual([on for on, *_ in pedal._ended],
                          list(range(2 * dryouts.ENDED_STARTS, 3 * dryouts.ENDED_STARTS)))
 
     def test_a_stamp_from_before_the_wrap_read_after_it(self):
@@ -731,7 +757,7 @@ class TestVoicePedalStart(unittest.TestCase):
         now = [wrap - 1.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         with mock.patch("sys.stderr", io.StringIO()) as log:
-            pedal.pedal(True)
+            pedal.sent(pedal.pedal(True))
             now[0] = wrap + 0.5
             pedal.track(True, stamp(wrap - 0.5))
         self.assertAlmostEqual(pedal.track_up_at, wrap - 0.5, places=3)
@@ -739,7 +765,7 @@ class TestVoicePedalStart(unittest.TestCase):
 
     def test_one_stamp_is_one_start(self):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
-        pedal.pedal(True)
+        pedal.sent(pedal.pedal(True))
         with mock.patch("sys.stderr", io.StringIO()) as log:
             pedal.clock = lambda: 6.0
             pedal.track(False, stamp(5.8))
@@ -896,7 +922,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
 
     def pedal_on(self, seconds_ago):
         self.now -= seconds_ago
-        self.motor.voice_pedal.pedal(True)
+        self.motor.voice_pedal.sent(self.motor.voice_pedal.pedal(True))
         self.now += seconds_ago
 
     def pedal_lines(self):

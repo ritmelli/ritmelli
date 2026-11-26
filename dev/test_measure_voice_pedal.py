@@ -63,7 +63,7 @@ class Refusal(unittest.TestCase):
 
 def track_up_line(after_s):
     pedal = dryouts.VoicePedalStart(clock=lambda: 100.0)
-    pedal.pedal(True)
+    pedal.sent(pedal.pedal(True))
     pedal.clock = lambda: 100.0 + after_s
     with mock.patch("sys.stderr", io.StringIO()) as err:
         pedal.track(True, stamp=1 + round((100.0 + after_s) * 1000) % (2**32 - 1))
@@ -163,7 +163,7 @@ FALLBACK = "Microfone (Realtek(R) Audio)"
 def dry_out_line(count, injector, pedal=False):
     start = dryouts.VoicePedalStart(clock=lambda: 100.0)
     if pedal:
-        start.pedal(True)
+        start.sent(start.pedal(True))
     dry = dryouts.RingDryOuts(start)
     dry.injector = injector
     with mock.patch("sys.stderr", io.StringIO()) as err:

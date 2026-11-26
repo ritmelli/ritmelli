@@ -33,8 +33,14 @@ class VoicePedalStart:
                 start[1] = self.clock()
                 self._ended = (*self._ended, start)[-ENDED_STARTS:]
             self._on = None
-        elif start is None:
-            self._on = [self.clock(), None, None]
+            return None
+        if start is None:
+            start = self._on = [self.clock(), None, None, None]
+        return start
+
+    def sent(self, start):
+        if start is not None and start[3] is None:
+            start[3] = self.clock()
 
     def track(self, live, stamp=None):
         now = self.clock()
@@ -42,10 +48,10 @@ class VoicePedalStart:
         if new:
             up_at = now - (round(now * 1000) - (stamp - 1)) % (2**32 - 1) / 1000 if stamp else now
             on, ended = self._on, self._ended
-            if on is not None and up_at >= on[0] and (on[1] is None or up_at <= on[1] + TICK_S):
+            if on is not None and on[3] is not None and up_at >= on[3] and (on[1] is None or up_at <= on[1] + TICK_S):
                 owner = on
             else:
-                owner = next((e for e in reversed(ended) if e[0] <= up_at <= e[1] + TICK_S), None)
+                owner = next((e for e in reversed(ended) if e[3] is not None and e[3] <= up_at <= e[1] + TICK_S), None)
             if owner is not None:
                 tell(f"voice pedal: its voice track came up {up_at - owner[0]:.2f} s after the pedal turned on")
                 owner[2] = up_at
@@ -61,7 +67,7 @@ class VoicePedalStart:
             start = next((e for e in reversed(ended) if e[0] <= empty_at and e[1] > lo), start)
         if start is None:
             return None, None
-        on_at, off_at, up_at = start
+        on_at, off_at, up_at, _ = start
         if (empty_at is not None and on_at > empty_at) or (lo is not None and off_at is not None and off_at <= lo):
             return on_at, None
         now = self.clock()

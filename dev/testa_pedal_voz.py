@@ -17,6 +17,7 @@ import contextlib
 import importlib
 import importlib.machinery
 import io
+import queue
 import sys
 import threading
 import types
@@ -47,6 +48,10 @@ def com(mod):
     with contextlib.redirect_stderr(io.StringIO()) as log:
         importlib.reload(fx)
     return log.getvalue()
+
+
+def stamp(t):
+    return 1 + round(t * 1000) % (2**32 - 1)
 
 
 class PedalVoz(unittest.TestCase):
@@ -132,6 +137,41 @@ class PedalVoz(unittest.TestCase):
         self.assertIsNone(e.voice_pedal.on_at, "the pedal turned off")
         e._pedal_voz_liga(True)
         self.assertGreaterEqual(e.voice_pedal.on_at, first, "on after off is a new start")
+
+    def test_a_track_of_the_process_still_stopping_is_not_the_next_starts(self):
+        now, entered, release, sent = [1.0], threading.Event(), threading.Event(), queue.SimpleQueue()
+
+        def liga(on):
+            if not on:
+                entered.set()
+                release.wait(5)
+            sent.put(on)
+        self.mod.liga = liga
+        com(self.mod)
+        e = engine.Engine.__new__(engine.Engine)
+        e._pv_fila, e._pv_fechada, e.voice_pedal = None, False, dryouts.VoicePedalStart(clock=lambda: now[0])
+        self.addCleanup(e._pedal_voz_fecha)
+        self.addCleanup(release.set)
+        e._pedal_voz_liga(True)
+        self.assertIs(sent.get(timeout=5), True)
+        now[0] = 1.5
+        e._pedal_voz_liga(False)
+        self.assertTrue(entered.wait(5))
+        now[0] = 2.1
+        e._pedal_voz_liga(True)
+        now[0] = 2.3
+        with contextlib.redirect_stderr(io.StringIO()) as log:
+            e.voice_pedal.track(True, stamp(2.2))
+        self.assertEqual((log.getvalue(), e.voice_pedal.starting()[1]),
+                         ("", "the pedal turned on 0.20 s ago, its voice track isn't up yet"),
+                         "the track came up while the process of the first start was still stopping")
+        now[0] = 2.4
+        release.set()
+        self.assertEqual((sent.get(timeout=5), sent.get(timeout=5)), (False, True))
+        now[0] = 2.6
+        with contextlib.redirect_stderr(io.StringIO()) as log:
+            e.voice_pedal.track(True, stamp(2.5))
+        self.assertIn("voice pedal: its voice track came up 0.40 s after the pedal turned on", log.getvalue())
 
     def test_liga_na_ordem_e_fecha(self):
         com(self.mod)
