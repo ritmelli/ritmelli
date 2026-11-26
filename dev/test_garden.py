@@ -43,6 +43,8 @@ CASES = {
         ("js block", {"a.js": "const t = `/* not */`;\n"}, {"a.js": "/* one\n   two */\nconst t = 1;\n"}, 2),
         ("js block marker", {"a.js": "/* DECK-JS-INICIO */\nx();\n/* DECK-JS-FIM */\n"},
          {"a.js": "/* DECK-JS-INICIO */\nx(); /* why */\n/* DECK-JS-FIM */\n"}),
+        ("prose under a block marker", {"a.js": "/* DECK-JS-INICIO */\nx();\n"},
+         {"a.js": "/* DECK-JS-INICIO\n   the deck, and why it lives here */\nx();\n"}),
         ("css", {"a.css": "a { content: '/* no */'; }\n"}, {"a.css": "a { color: red; } /* why */\n"}),
         ("css generated block", {"a.css": "/* molduras:inicio (gravado) */\na {}\n/* molduras:fim */\n"},
          {"a.css": "/* molduras:inicio (gravado) */\n/* hand */\na {}\n/* molduras:fim */\n"}),
@@ -149,6 +151,10 @@ CASES = {
         ("a catch that reconnects", {"a.html": "<script>\ntry { f(); } catch (e) { setTimeout(() => g(), 1); }\n</script>\n"},
          {"a.html": "<script>\ntry { es = T.eventos(u); } catch (e) { reconT = setTimeout(conectar, 3000); return; }\n"
                     "</script>\n"}),
+        ("the theme's catch on several lines", {"a.js": "try { f(); } catch (e) { report(e); } setTimeout(refresh, 100);\n"},
+         {"a.js": "try {\n  es = T.eventos(u);\n} catch (e) {\n  reconT = setTimeout(conectar, 3000);\n  return;\n}\n"}),
+        ("an onerror function on several lines", {"a.js": "s.onerror = function () {\n  s.remove();\n};\n"},
+         {"a.js": "s.onerror = function () {\n  s.remove();\n  setTimeout(go, 1000);\n};\n"}),
         ("a promise catch that tries again", {"a.js": "fetch(u).then(go);\n"},
          {"a.js": "function go() { fetch(u).catch(() => setTimeout(go, 3000)); }\n"}),
     ],
@@ -174,6 +180,10 @@ CASES = {
          {"dev/t.py": "from unittest import expectedFailure\n@expectedFailure\ndef t():\n    pass\n"}),
         ("ficou de fora", {"dev/t.py": "print('--   o guard ficou de fora: #12')\nr = r'^--\\s.*ficou de fora'\n"},
          {"dev/t.py": "print(f'--   o guard ficou de fora: {e}')\n"}),
+        ("a known failure", {"dev/t.py": "print('known failure #240: theme_rebuild counts a reindented line')\n"
+                                         "ISSUE = 'https://github.com/o/r/issues/255'\n"
+                                         "print(f'known failure, {ISSUE}: a refused dequeue fails the run')\n"},
+         {"dev/t.py": "print('known failure: theme_rebuild counts a reindented line')\n"}),
         ("ficou de fora in a workflow", {"a.yml": "steps:\n  - run: echo 'sem placa, o pedal ficou de fora'\n"},
          {"a.yml": "steps:\n  - run: echo '--   o pedal ficou de fora'\n"}),
     ],
@@ -191,6 +201,14 @@ CASES = {
     "non_ascii_identifiers": [
         ("a name", {"a.py": "x = 'laço'\n"}, {"a.py": "laço = 1\n"}),
         ("an argument", {"a.py": "def f(a):\n    pass\n"}, {"a.py": "def f(ação):\n    pass\n"}),
+        ("an except name", {"a.py": "try:\n    f()\nexcept OSError as e:\n    pass\n"},
+         {"a.py": "try:\n    f()\nexcept OSError as ação:\n    pass\n"}),
+        ("a match capture", {"a.py": "match x:\n    case [a, *b]:\n        pass\n"},
+         {"a.py": "match x:\n    case [a, *ação]:\n        pass\n"}),
+        ("a match as", {"a.py": "match x:\n    case int() as n:\n        pass\n"},
+         {"a.py": "match x:\n    case int() as número:\n        pass\n"}),
+        ("a match mapping rest", {"a.py": "match x:\n    case {'a': 1, **r}:\n        pass\n"},
+         {"a.py": "match x:\n    case {'a': 1, **resto_ç}:\n        pass\n"}),
     ],
     "engine_hooks": [
         ("a new hook", HOOKS_BASE, {**HOOKS_BASE, "engine.py": ENGINE + "\n\ndef fora_extra():\n    pass\n"}),
@@ -291,10 +309,6 @@ def test_check():
                                     base_has_ceilings=False)
     check(failed == [] and measured == ["-- summary: garden a: 2 (-1 against the base)"],
           f"a base from before the scoreboard is measured: the delta of what changed, no ceiling check ({measured})")
-    _, root = garden.git("rev-list", "--max-parents=0", "HEAD")
-    tree = garden.base_tree(root.split()[0])
-    check(bool(tree) and all("\r" not in text for text in tree.values()),
-          f"the base tree is read from git, with its text files ({len(tree)})")
     _, quiet = garden.check({"a": 1}, {"a": 1}, {"a": 1})
     check(quiet == ["-- summary: garden: no counter changed against the base (1 counters)"],
           f"with no change, one line says so ({quiet})")
@@ -327,6 +341,7 @@ def test_description():
         "a link to a run": "## Proof\n\nThe [run](https://github.com/o/r/actions/runs/123) fails on the base.\n",
         "a screenshot": "**Proof**\n\n![the page](https://github.com/user-attachments/assets/1)\n",
         "a code block": "## Proof\n\n```\n$ make\nok\n```\n",
+        "a heading inside the code block": "# Change\n\n## Proof\n\n```bash\n# Before\n$ python dev/x.py\nfails\n```\n",
         "bold sub-labels under the heading": "## Proof\n\n**Before the change** ([run 1](https://github.com/o/r/"
                                              "actions/runs/1)): fails.\n",
         "a label and test names under the heading": "## How it was proved\n\nLocally: `testa_tudo` 30/30 and "
@@ -341,6 +356,7 @@ def test_description():
         "a heading with nothing under it": "## Proof\n## Other\n![a](https://x/a.png)\n",
         "a plain label after it": "Proof: it works.\nNotes: `python dev/x.py` is the next step.\n",
         "an empty code block": "## Proof\n\n```\n```\n",
+        "a code block that never closes": "## Proof\n\n```\npython dev/x.py\n```text\n",
     }
     for label, body in failing.items():
         check(garden.description_problems(body) != [], f"a proof section with {label} fails")
@@ -392,17 +408,40 @@ def test_description_step():
     check(code == 0 and asked == [], "a push has no description to check")
 
 
+def commit(repo, files, message):
+    for path, text in files.items():
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_bytes(text.encode("utf-8"))
+    garden.git("add", "-A", root=repo)
+    garden.git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", message, root=repo)
+    return garden.git("rev-parse", "HEAD", root=repo)[1].strip()
+
+
 def test_base():
-    try:
-        garden.base_ceilings("not-a-commit")
-        raised = False
-    except garden.BaseError:
-        raised = True
-    check(raised, "a base that is not a commit fails instead of reading as a base with no scoreboard")
-    _, root = garden.git("rev-list", "--max-parents=0", "HEAD")
-    first = root.split()[0] if root.split() else ""
-    check(bool(first) and garden.base_ceilings(first) is None, "a real base from before the scoreboard has no ceilings")
-    check(garden.base_ceilings("") is None, "no base, no ceilings")
+    with tempfile.TemporaryDirectory() as d:
+        repo = Path(d)
+        garden.git("init", "-q", root=repo)
+        before = commit(repo, {"a.py": "x = 1  # why\r\n", "engine.py": "x = 1\n"}, "before the scoreboard")
+        after = commit(repo, {"a.py": "x = 1  # why\ny = 2  # and why\n", "dev/garden.json": '{"comment_lines": 2}\n'},
+                       "the scoreboard")
+        try:
+            garden.base_ceilings("not-a-commit", root=repo)
+            raised = False
+        except garden.BaseError:
+            raised = True
+        check(raised, "a base that is not a commit fails instead of reading as a base with no scoreboard")
+        check(garden.base_ceilings(before, root=repo) is None, "a base from before the scoreboard has no ceilings")
+        check(garden.base_ceilings(after, root=repo) == {"comment_lines": 2}, "a base with the scoreboard has its ceilings")
+        check(garden.base_ceilings("", root=repo) is None, "no base, no ceilings")
+        tree = garden.base_tree(before, root=repo)
+        check(tree == {"a.py": "x = 1  # why\n", "engine.py": "x = 1\n"},
+              f"the base tree is read from git, with its text files ({tree})")
+        measured = {k: garden.count_of(v) for k, v in garden.scoreboard(tree).items()}
+        now = garden.scoreboard(garden.base_tree(after, root=repo))
+        ceilings = {k: garden.count_of(v) for k, v in now.items()}
+        failed, summary = garden.check(now, ceilings, measured, base_has_ceilings=False)
+        check(failed == [] and summary == ["-- summary: garden comment_lines: 2 (+1 against the base)"],
+              f"against a measured base, only the counter that changed goes to the summary ({summary})")
 
 
 PASSO = "python dev/testa_tudo.py --passo pr-description"

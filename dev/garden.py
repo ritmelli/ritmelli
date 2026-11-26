@@ -45,12 +45,11 @@ TODO = re.compile(r"\b(?:TODO|FIXME|HACK|XXX)\b")
 PROSE = re.compile(r"risco aceito|accepted risk|sem prova|por enquanto|for now|known issue|sem teste|have no test yet"
                    r"|como antes", re.I)
 LEFT_OUT = re.compile(r"^--\s.*ficou de fora", re.S)
+KNOWN_FAILURE = re.compile(r"^\s*known failure", re.I)
 LEFT_OUT_QUOTED = re.compile(r"(?:^|[\"'])--\s[^\"']*ficou de fora")
 SKIP_NAMES = {"skip", "skipIf", "skipUnless", "expectedFailure", "skipTest", "SkipTest", "xfail", "skipif"}
 BROAD = {"Exception", "BaseException"}
 SLEEP_MODULES = {"time", "asyncio"}
-JS_RETRY = re.compile(r"(?:\bonerror\s*=|\bcatch\s*(?:\([^)]*\))?\s*\{|\.catch\s*\()"
-                      r".*\bsetTimeout\s*\(\s*[A-Za-z_$][\w$]*\s*,")
 PS_LOOP = re.compile(r"\b(?:for|foreach|while|do)\b", re.I)
 PROOF_LABEL = re.compile(r"^(?:how it was (?:proven|proved|tested)|proof\b|prova\b|como foi provado)", re.I)
 SECTION_LABEL = re.compile(r"^\s*(?:#{1,6}\s+(?P<heading>[^:]+?)(?::\s*(?P<rest>.*))?\s*$"
@@ -436,6 +435,8 @@ def comment_lines(t):
         for c in lexed.comments:
             if not kept(p, lexed, c):
                 lines |= set(range(c.start, c.end + 1))
+            elif c.end > c.start and any(text.strip(" */") for text in c.text.splitlines()[1:]):
+                lines |= set(range(c.start + 1, c.end + 1))
         items += [(p, n) for n in sorted(lines)]
     return items
 
@@ -466,12 +467,22 @@ def python_strings(t, path):
     if tree is None or path in GARDEN_FILES:
         return []
     out = []
+    constants = {s.targets[0].id: s.value.value for s in tree.body if isinstance(s, ast.Assign)
+                 and len(s.targets) == 1 and isinstance(s.targets[0], ast.Name) and isinstance(s.value, ast.Constant)
+                 and isinstance(s.value.value, str)}
+
+    def part(v):
+        if isinstance(v, ast.Constant):
+            return str(v.value)
+        if isinstance(v, ast.FormattedValue) and isinstance(v.value, ast.Name):
+            return constants.get(v.value.id, "")
+        return ""
     inside_f_strings = {id(v) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr) for v in node.values}
     for node in ast.walk(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in inside_f_strings:
             out.append((node.lineno, node.value))
         elif isinstance(node, ast.JoinedStr):
-            out.append((node.lineno, "".join(v.value for v in node.values if isinstance(v, ast.Constant))))
+            out.append((node.lineno, "".join(part(v) for v in node.values)))
     return out
 
 
@@ -633,6 +644,30 @@ def powershell_retries(code):
     return found
 
 
+JS_HANDLER = re.compile(r"\bonerror\s*=\s*(?:function\b[^(]*\([^)]*\)\s*|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*)"
+                        r"|\bcatch\s*(?:\([^)]*\))?\s*(?=\{)|\.catch\s*(?=\()")
+JS_RESCHEDULE = re.compile(r"\bsetTimeout\s*\(\s*[A-Za-z_$][\w$]*\s*,")
+
+
+def handler_body(code, start):
+    i = start
+    while i < len(code) and code[i].isspace():
+        i += 1
+    if i < len(code) and code[i] in "{(":
+        end = closing(code, i, code[i], "}" if code[i] == "{" else ")")
+        return i, code[i:end + 1]
+    stop = min((p for p in (code.find(";", i), code.find("\n", i)) if p >= 0), default=len(code))
+    return i, code[i:stop]
+
+
+def js_retries(code):
+    found = []
+    for m in JS_HANDLER.finditer(code):
+        start, body = handler_body(code, m.end())
+        found += [code.count("\n", 0, start + r.start()) + 1 for r in JS_RESCHEDULE.finditer(body)]
+    return found
+
+
 def joined_code(lexed):
     lines = lexed.code
     return "\n".join(lines.get(n, "") for n in range(1, max(lines, default=0) + 1))
@@ -648,7 +683,7 @@ def retries(t):
     for p in t.paths(".ps1", ".psd1", ".yml"):
         items += [(p, n) for n in powershell_retries(joined_code(t.lexed(p)))]
     for p in t.paths(".js", ".html"):
-        items += [(p, n) for n, code in sorted(t.lexed(p).code.items()) if JS_RETRY.search(code)]
+        items += [(p, n) for n in js_retries(joined_code(t.lexed(p)))]
     return items
 
 
@@ -744,7 +779,8 @@ def skipped_tests(t):
                 if isinstance(node, ast.Call) or not any(
                         isinstance(c, ast.Call) and c.func is node for c in ast.walk(tree)):
                     items.append((p, node.lineno))
-        items += [(p, n) for n, s in python_strings(t, p) if LEFT_OUT.match(s) and not ISSUE.search(s)]
+        items += [(p, n) for n, s in python_strings(t, p) if (LEFT_OUT.match(s) or KNOWN_FAILURE.match(s))
+                  and not ISSUE.search(s)]
     for p in t.paths(".yml", ".ps1", ".psd1"):
         items += [(p, n) for n, code in sorted(t.lexed(p).code.items())
                   if LEFT_OUT_QUOTED.search(code) and not ISSUE.search(code)]
@@ -791,6 +827,10 @@ def identifiers(tree):
         elif isinstance(node, (ast.Global, ast.Nonlocal)):
             for name in node.names:
                 yield node, name
+        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name:
+            yield node, node.name
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            yield node, node.rest
 
 
 def non_ascii_identifiers(t):
@@ -904,8 +944,8 @@ def count_of(value):
     return value if isinstance(value, int) else len(value)
 
 
-def git(*args):
-    r = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+def git(*args, root=ROOT):
+    r = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace")
     return r.returncode, r.stdout
 
 
@@ -922,11 +962,11 @@ def working_tree():
     return files
 
 
-def base_tree(base):
-    _, out = git("ls-tree", "-r", "-z", "--name-only", base)
+def base_tree(base, root=ROOT):
+    _, out = git("ls-tree", "-r", "-z", "--name-only", base, root=root)
     paths = [p for p in out.split("\0") if p and (suffix(p) in LEXERS or suffix(p) == ".md" or p in BIG_FILES.values())]
     request = "".join(f"{base}:{p}\n" for p in paths).encode("utf-8")
-    data = subprocess.run(["git", "cat-file", "--batch"], cwd=ROOT, input=request, capture_output=True,
+    data = subprocess.run(["git", "cat-file", "--batch"], cwd=root, input=request, capture_output=True,
                           check=True).stdout
     files, i = {}, 0
     for p in paths:
@@ -956,14 +996,14 @@ class BaseError(Exception):
     pass
 
 
-def base_ceilings(base):
+def base_ceilings(base, root=ROOT):
     if not base:
         return None
-    if git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")[0] != 0:
+    if git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}", root=root)[0] != 0:
         raise BaseError(f"the base {base} is not a commit here: its ceilings can't be read")
-    if git("cat-file", "-e", f"{base}:dev/garden.json")[0] != 0:
+    if git("cat-file", "-e", f"{base}:dev/garden.json", root=root)[0] != 0:
         return None
-    code, out = git("show", f"{base}:dev/garden.json")
+    code, out = git("show", f"{base}:dev/garden.json", root=root)
     if code != 0:
         raise BaseError(f"the dev/garden.json of the base {base} can't be read")
     return json.loads(out)
@@ -1085,21 +1125,55 @@ def ends_section(line, level):
     return bool(SECTION_LABEL.match(line))
 
 
+FENCE_OPEN = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")
+
+
+def fence_closes(line, fence):
+    m = re.match(r"^\s{0,3}(`{3,}|~{3,})\s*$", line)
+    return bool(m) and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence)
+
+
+def blocks(lines):
+    out, fence, body = [], None, []
+    for line in lines:
+        if fence is None:
+            m = FENCE_OPEN.match(line)
+            if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+                fence, body = m.group(1), []
+            else:
+                out.append(("text", line))
+        elif fence_closes(line, fence):
+            out.append(("code", "\n".join(body)))
+            fence = None
+        else:
+            body.append(line)
+    return out
+
+
 def has_proof(text):
-    fenced = re.finditer(r"^\s*(```|~~~)[^\n]*\n(.*?)^\s*\1", text, re.M | re.S)
-    if any(m.group(2).strip() for m in fenced) or RUN_LINK.search(text) or IMAGE.search(text):
+    parts = blocks(text.splitlines())
+    if any(kind == "code" and body.strip() for kind, body in parts):
         return True
-    return any(PROOF_SPAN.search(span) for span in re.findall(r"`([^`\n]+)`", text))
+    prose = "\n".join(body for kind, body in parts if kind == "text")
+    if RUN_LINK.search(prose) or IMAGE.search(prose):
+        return True
+    return any(PROOF_SPAN.search(span) for span in re.findall(r"`([^`\n]+)`", prose))
 
 
 def proof_sections(lines):
     for i, line in enumerate(lines):
         rest = proof_label(line)
         if rest is not None:
-            section, level = [rest], heading_level(line)
+            section, level, fence = [rest], heading_level(line), None
             for nxt in lines[i + 1:]:
-                if ends_section(nxt, level):
+                if fence is None and ends_section(nxt, level):
                     break
+                if fence is None:
+                    m = FENCE_OPEN.match(nxt)
+                    if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+                        fence = m.group(1)
+                elif fence_closes(nxt, fence):
+                    fence = None
                 section.append(nxt)
             yield "\n".join(section)
 
