@@ -793,16 +793,18 @@ def compara(a, pasta):
     if not bloqueia and a.head_capture:
         head = executa(["git", "rev-parse", "HEAD"], limite=60)[1].strip()
         prints = le_captura(a.head_capture, chave_captura(head))
-        agora = pasta / "compara" / "agora"
-        shutil.rmtree(agora, ignore_errors=True)
-        agora.mkdir(parents=True)
-        for png in prints:
-            shutil.copy2(png, agora / png.name)
-        extra = ["--compare-only"]
-        if not prints:
-            print(f"FALHA the capture of the HEAD {head[:12]} is not in {a.head_capture}")
-            md.append(f"- ❌ a captura do HEAD `{head[:12]}` não veio do job Compara: HEAD")
-            bloqueia = True
+        if prints:
+            agora = pasta / "compara" / "agora"
+            shutil.rmtree(agora, ignore_errors=True)
+            agora.mkdir(parents=True)
+            for png in prints:
+                shutil.copy2(png, agora / png.name)
+            extra = ["--compare-only"]
+        else:
+            print(f"--- compara: {a.head_capture} has no capture of the HEAD {head[:12]} with this Chrome and these "
+                  "scripts: the HEAD is captured here", flush=True)
+            md.append(f"- ⚠️ a captura do HEAD `{head[:12]}` do job Compara: HEAD não vale aqui (outro Chrome ou "
+                      "outros scripts): refeita neste job")
     if not bloqueia:
         cod, saida = executa([sys.executable, "dev/compara.py", "--pasta", str(pasta / "compara"), *extra])
         print(f"--- compara of the PR: exits {cod}\n{saida.rstrip()}", flush=True)
