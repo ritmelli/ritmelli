@@ -4,7 +4,8 @@
 Host e da Origin. A rota é a canônica do aiohttp (`/api/library/{iid}`, sem o id), e o `HEAD` vale como o `GET`.
 Rota fora da tabela é só do PC: rota nova nasce fechada, e abrir para o celular ou para o remoto é uma linha
 escrita de propósito. Antes da tabela, cada rota nova da API abria sozinha para o celular pareado, e o
-`/api/effects/reload` (que relê o `fx.py`) ficava ao alcance dele.
+`/api/effects/reload` (que relê o `fx.py`) ficava ao alcance dele. Rota ou campo novo entra no `API.md`, e a
+linha da tabela também; abrir para o celular ou para o remoto é decisão escrita no PR.
 
 Os papéis saem de quem conectou, nunca do Host (que quem pede escreve como quiser):
 

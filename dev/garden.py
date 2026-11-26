@@ -32,7 +32,6 @@ ISSUE_URL = re.compile(r"(?<![\w./-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+
 URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
 SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])(?:[A-Za-z\d-]+/[\w.-]+)?#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
-QUOTED = re.compile(r'"([^"\n]+)"')
 RESULT = re.compile(r"\b(?:pass(?:es|ed)?|fail(?:s|ed)?|successfully|\d+ of \d+|\d+/\d+)\b", re.I)
 OPEN_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s")
 CODE_SPAN = re.compile(r"(`+)(?!`)(?:(?!\n[ \t]*\n).)*?(?<!`)\1(?!`)", re.S)
@@ -1236,34 +1235,42 @@ def measured_module(t, name):
 
 def verification_names(t=None):
     tudo = load_dev_module("testa_tudo") if t is None else measured_module(t, "testa_tudo")
-    paths = [*tudo.STDLIB, *tudo.COMPLETO, *tudo.LONG_TESTS.values(), *tudo.MICROFONE, *tudo.TELA,
-             *(p for p, *_ in tudo.PASSOS.values())]
+    paths = [*tudo.STDLIB, *tudo.COMPLETO, *tudo.LONG_TESTS.values(), *tudo.MICROFONE, *tudo.TELA]
     names = set()
     for p in paths:
         names |= {p, Path(p).name, Path(p).stem}
+    for script, *args in tudo.PASSOS.values():
+        names |= {f"{n} {' '.join(args)}" for n in (script, Path(script).name, Path(script).stem)}
     return names
 
 
 def workflow_jobs(t):
-    names = set()
-    for p in t.paths(".yml", ".yaml"):
-        if p.startswith(".github/workflows/"):
-            try:
-                doc = workflow_yaml.loads(t.files[p], name=Path(p).name)
-            except workflow_yaml.YamlError:
-                continue
-            jobs = doc.get("jobs") if isinstance(doc, dict) else None
-            if isinstance(jobs, dict):
-                names |= set(jobs) | {j.get("name") for j in jobs.values() if isinstance(j, dict) and j.get("name")}
-            if isinstance(doc, dict) and isinstance(doc.get("name"), str):
-                names.add(doc["name"])
-    return names
+    text = t.files.get(".github/workflows/testa.yml")
+    if text is None:
+        return set()
+    doc = workflow_yaml.loads(text, name="testa.yml")
+    jobs = doc.get("jobs") if isinstance(doc, dict) else None
+    if not isinstance(jobs, dict):
+        return set()
+    return set(jobs) | {j.get("name") for j in jobs.values() if isinstance(j, dict) and j.get("name")}
 
 
 def agents_rules(text):
-    rules, current = [], None
+    rules, current, row, width = [], None, None, 0
     for n, line in enumerate(text.splitlines(), 1):
-        if not line.strip() or line.startswith(("#", "|")):
+        if line.startswith("|"):
+            row = 0 if row is None else row + 1
+            cells = line.strip()
+            cells = cells[1:] if cells.startswith("|") else cells
+            cells = (cells[:-1] if cells.endswith("|") else cells).split("|")
+            if row == 0:
+                width = len(cells)
+            elif row >= 2:
+                rules.append([n, cells[width - 1] if len(cells) >= width else ""])
+            current = None
+            continue
+        row = None
+        if not line.strip() or line.startswith("#"):
             current = None
             continue
         if re.match(r"^\s*(?:[-*+]|\d+[.)])\s", line) or current is None:
@@ -1275,15 +1282,16 @@ def agents_rules(text):
 
 
 def agents_rules_without_check(t):
-    valid = verification_names(t) | workflow_jobs(t)
+    tests, jobs = verification_names(t), workflow_jobs(t)
     items = []
     for n, rule in agents_rules(t.files.get("AGENTS.md", "")):
-        cited = {name.replace("\\", "/") for c in re.findall(r"`([^`]+)`", rule) if c.split()
-                 for name in (c.strip(), c.split()[0])}
-        cited |= set(QUOTED.findall(rule))
-        if not cited & valid:
+        if not any(cites_check(span.replace("\\", "/"), tests, jobs) for span in re.findall(r"`([^`]+)`", rule)):
             items.append(("AGENTS.md", n))
     return items
+
+
+def cites_check(span, tests, jobs):
+    return " ".join(span.split()) in tests | jobs
 
 
 COUNTERS = {f.__name__: f for f in (
