@@ -111,6 +111,14 @@ SAMPLES = (
     ("a space put inside a rule", styled("a { color: red; }\n"), styled("a {  color: red; }\n"), []),
     ("the space after + taken out of a calc()", styled("a { padding: calc(14px + env(safe-area-inset-bottom)); }\n"),
      styled("a { padding: calc(14px +env(safe-area-inset-bottom)); }\n"), ["gone", "new"]),
+    ("a length changed", styled("a { padding: 14px; }\n"), styled("a { padding: 15px; }\n"), ["gone", "new"]),
+    ("a color changed", styled("a { color: #fff; }\n"), styled("a { color: #000; }\n"), ["gone", "new"]),
+    ("a comment put inside a length", styled("a { padding: calc(14px + 1px); }\n"),
+     styled("a { padding: calc(14/**/px + 1px); }\n"), ["gone", "new"]),
+    ("a </script> put in a comment of an inlined script",
+     {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "'use strict';\nf();\n"},
+     {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "'use strict'; // </script>\nf();\n"},
+     ["new", "new", "gone"]),
     ("a comment in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px/* c */+ 1px); }\n"), ["gone", "new"]),
     ("a stylesheet with a font moved to another folder", {"index.html": "<link rel='stylesheet' href='base.css'>\n",
@@ -160,7 +168,10 @@ def main():
         ("bindShelfClick moved from shelf.js to the end of start.js", shelf_moved, LEFT),
         ("a line break after the first throw of api.js",
          {"api.js": lambda text, _: text.replace("throw x;", "throw\nx;", 1) if "throw x;" in text else ""},
-         "does not parse"))]
+         "does not parse"),
+        ("a </script> in a comment on the first line of start.js",
+         {"start.js": lambda text, _: text.replace("'use strict';", "'use strict'; // </script>", 1)
+          if "'use strict';" in text else ""}, "gone"))]
     compiles = theme_rebuild.syntax([theme, *(page for _, a, b, _ in samples for page in (a, b)),
                                      *(page for _, page, _ in mutants)])
     results = []

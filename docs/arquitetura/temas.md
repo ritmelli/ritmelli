@@ -79,8 +79,9 @@ confere também que os ouvintes da busca e da gaveta são dos arquivos delas e s
 e que o `queue.js` vê o toque que fecha a busca na mesa.
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois
-commits, com cada `<script src>`, `<link>` e `<!-- inline-script: -->` trocado pelo texto do arquivo, e sai 0 quando o
-head só muda código de lugar:
+commits, com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, como o servidor manda (então
+um `</script>` nesse texto fecha o script ali, como no navegador), e cada `<script src>` e `<link>` trocado pelo texto
+do arquivo, e sai 0 quando o head só muda código de lugar:
 - a marcação é a mesma, na mesma ordem, com cada script e cada folha de estilo no mesmo lugar dela;
 - os scripts são os mesmos, na mesma ordem, cada um com os mesmos atributos e o mesmo modo estrito;
 - cada script declara as mesmas funções no alto (elas podem mudar de lugar dentro dele, porque existem antes de qualquer
@@ -89,10 +90,11 @@ head só muda código de lugar:
 - toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha e numa folha da mesma pasta
   (pode mudar de folha ali: as URLs relativas dela continuam apontando para o mesmo arquivo).
 
-Instruções e regras são comparadas como árvores de sintaxe (o tree-sitter, do `requirements-dev.txt`), sem os
-comentários e os espaços fora de strings e templates. Assim, uma marca de bloco, uma linha em branco ou uma indentação
+Instruções e regras são comparadas como árvores de sintaxe (o tree-sitter, do `requirements-dev.txt`), com o texto de
+cada nó que nenhum filho cobre (o número de um `14px`), sem os comentários e os espaços fora de strings e templates. Assim, uma marca de bloco, uma linha em branco ou uma indentação
 nova não são mudança, e um espaço dentro de um template literal, ou uma marca que junta dois tokens, são. No CSS
-conta também se um token vem depois de espaço (o `calc()` pede os espaços em volta do `+` e do `-`). Declarações de
+conta também se um token vem depois de espaço, de comentário ou de nada (o `calc()` pede os espaços em volta do `+`
+e do `-`, e um comentário parte o `14/**/px`). Declarações de
 função de mesmo nome guardam a ordem (vale a última). A parte do CSS
 que a gramática não conhece (um `@container` dentro de `@media`) também é comparada pelos tokens, e um script que
 não analisa, ou que o V8 (num Chrome sem tela) não compila, é mudança. O resto sai 1, com cada mudança impressa. O `dev/test_theme_rebuild.py`, do COMPLETO do

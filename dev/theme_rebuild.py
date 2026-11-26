@@ -16,8 +16,9 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 USAGE = """Proof that a change to a theme only moves code: the page put back together on two commits, compared.
 
-The page is the index.html of the theme with every <script src>, <link rel="stylesheet"> and <!-- inline-script: -->
-replaced by the text of its file. Every script and stylesheet, from a file or inline, sits between a line that opens it
+The page is the index.html of the theme with every <!-- inline-script: --> made a <script> with the text of its file,
+as the server sends it (so a </script> in that text ends the script there, as in the browser), and every <script src>
+and <link rel="stylesheet"> replaced by the text of its file. Every script and stylesheet, from a file or inline, sits between a line that opens it
 ([script NAME], [inline-script NAME], [script], [link NAME] or [style], with the tag's other attributes when it has
 any) and a [/script] or [/style] line. <base> and <head> are git commits (the head defaults to the working tree).
 
@@ -29,14 +30,15 @@ Exit 0 when the head only moves code: the two pages are the same, or
 - every other top-level statement of the base is in the head, in the same order and in the same script;
 - every style rule of the base is in the head, in the same order, under the same stylesheet attributes and in a
   stylesheet of the same folder (it may move to another stylesheet there: its relative URLs keep their target).
-Statements and rules are compared as syntax trees (tree-sitter), without comments and whitespace outside strings and
-templates, so a block mark, a blank line or a new indentation is no change, while a space inside a template literal,
-or a mark that joins two tokens, is. In CSS, whether a token follows whitespace counts too (calc() needs the spaces
-around + and -). A part the CSS grammar does not know (an @container inside @media) is compared by its tokens too.
+Statements and rules are compared as syntax trees (tree-sitter), with the text of every node that no child covers,
+without comments and whitespace outside strings and templates, so a block mark, a blank line or a new indentation is no change, while a space inside a template literal,
+or a mark that joins two tokens, is. In CSS, whether a token follows whitespace, a comment
+or nothing counts too (calc() needs the spaces around + and -, and a comment splits 14/**/px). A part the CSS grammar does not know (an @container inside @media) is compared by its tokens too.
 Declarations of one name keep their order (the last one wins). A script that V8, in a headless Chrome, does not
 compile, or that tree-sitter does not parse, is a change. Anything else is a change, printed, and the exit is 1."""
 
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
+INLINED = "data-theme-rebuild-inline-script"
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
 SENTINEL = re.compile(r"^\x00(open (\d+)|close)\x00$")
 JS_TYPES = (None, "", "text/javascript")
@@ -95,7 +97,7 @@ class Page:
 class _FileTags(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=False)
-        self.found, self.in_src = [], False
+        self.found, self.in_src, self.open = [], False, []
 
     def handle_starttag(self, tag, attrs):
         first = {}
@@ -105,7 +107,10 @@ class _FileTags(HTMLParser):
             self.in_src = True
             self.found.append(("script", first.pop("src"), first, self.getpos(), self.get_starttag_text()))
         elif tag in ("script", "style"):
-            self.found.append((f"{tag}-open", None, first, self.getpos(), self.get_starttag_text()))
+            name = first.pop(INLINED, None)
+            self.open.append(tag)
+            self.found.append(("inline-script" if name else f"{tag}-open", name, first, self.getpos(),
+                               self.get_starttag_text()))
         elif tag == "link" and (first.get("rel") or "").lower() == "stylesheet" and first.get("href"):
             first.pop("rel")
             self.found.append(("link", first.pop("href"), first, self.getpos(), self.get_starttag_text()))
@@ -113,13 +118,9 @@ class _FileTags(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "script" and self.in_src:
             self.in_src = False
-        elif tag in ("script", "style"):
+        elif self.open and self.open[-1] == tag:
+            self.open.pop()
             self.found.append((f"{tag}-close", None, {}, self.getpos(), None))
-
-    def handle_comment(self, data):
-        inlined = INLINE_SCRIPT.fullmatch(f"<!--{data}-->")
-        if inlined:
-            self.found.append(("inline-script", inlined.group(1), {}, self.getpos(), f"<!--{data}-->"))
 
 
 def header(kind, name, others):
@@ -136,7 +137,8 @@ def block_of(kind, name, others):
 
 
 def assemble(read):
-    page = read("index.html").replace("\r\n", "\n")
+    page = INLINE_SCRIPT.sub(lambda m: f'<script {INLINED}="{m.group(1)}">\n{read(m.group(1))}</script>',
+                             read("index.html").replace("\r\n", "\n"))
     parser = _FileTags()
     parser.feed(page)
     parser.close()
@@ -157,7 +159,7 @@ def assemble(read):
         if kind == "script" and page.startswith("</script>", end):
             end += len("</script>")
         body = f"\n\x00open {number[id(found)]}\x00\n"
-        if kind in ("script", "inline-script", "link"):
+        if kind in ("script", "link"):
             body += f"{read(name)}\n\x00close\x00\n"
         page = page[:begin] + body + page[end:]
     items, current = [], []
@@ -235,15 +237,32 @@ def parsers():
             "style": tree_sitter.Parser(tree_sitter.Language(tree_sitter_css.language()))}
 
 
+def token(kind, start, end, src, spaced):
+    text = src[start:end].decode("utf-8")
+    if spaced is None:
+        return kind, text
+    gap = src[spaced[0]:start].decode("utf-8")
+    spaced[0] = end
+    return kind, text, "space" if any(x.isspace() for x in CSS_COMMENT.sub("", gap)) else "comment" if gap else ""
+
+
+def own(start, end, src, spaced):
+    if spaced is None:
+        text = src[start:end].strip()
+        return [("text", text.decode("utf-8"))] if text else []
+    return [token("text", start + m.start(), start + m.end(), src, spaced) for m in re.finditer(rb"\S+", src[start:end])]
+
+
 def shape(node, src, spaced=None):
     if not node.children:
-        token = node.type, src[node.start_byte:node.end_byte].decode("utf-8")
-        if spaced is None:
-            return token
-        gap = CSS_COMMENT.sub("", src[spaced[0]:node.start_byte].decode("utf-8"))
-        spaced[0] = node.end_byte
-        return *token, any(x.isspace() for x in gap)
-    return node.type, tuple(shape(x, src, spaced) for x in node.children if x.type not in COMMENTS)
+        return token(node.type, node.start_byte, node.end_byte, src, spaced)
+    parts, at = [], node.start_byte
+    for child in node.children:
+        parts += own(at, child.start_byte, src, spaced)
+        if child.type not in COMMENTS:
+            parts.append(shape(child, src, spaced))
+        at = child.end_byte
+    return node.type, tuple(parts + own(at, node.end_byte, src, spaced))
 
 
 def syntax(pages):
