@@ -9,6 +9,7 @@ import subprocess
 import sys
 import types
 from dataclasses import dataclass, field
+from html.entities import html5
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -32,7 +33,8 @@ the gallery use, one list for HTML and one inside <svg>. A <script> or <style> e
 inside the theme, like gerado/base.css. Anything else, and <script/>, <style/>, a <base>, a preload or prefetch
 <link>, a srcdoc, a NUL in a value, a & in a rel, type or as, a & that is no whole reference in a value, a script type
 that is not JavaScript or JSON, an @import, @namespace or @scope in a sheet (even escaped or in a comment),
-or a linked or inlined file that is not in the theme, exits 3, naming the file, the line and the place. In a sheet, only CSS whitespace and comments may sit between and around the rules.
+or a linked or inlined file that is not in the theme, exits 3, naming the file (and, in index.html, the line and the
+place). In a sheet, only CSS whitespace and comments may sit between and around the rules.
 
 Exit 0 when the head only moves code: the two pages are the same, or
 - every file of the theme that the page does not read (images, fonts) has the same content;
@@ -132,7 +134,7 @@ def strict(html, name):
                 refuse(at, "a & in a rel, type or as")
             if element == "script" and type_of(attributes) not in SCRIPT_TYPES:
                 refuse(at, "a script type that is not plain JavaScript or JSON (a module can import files)")
-            if loose := [v for k, v in attributes.items() if "&" in WHOLE_REFERENCE.sub("", v)]:
+            if loose := [v for k, v in attributes.items() if "&" in WHOLE_REFERENCE.sub(known_reference, v)]:
                 refuse(at, f"a & that is not a whole reference in {loose[0]!r}")
             sheet = element == "link" and "stylesheet" in attributes.get("rel", "").lower().split()
             if sheet and attributes["rel"] != "stylesheet":
@@ -150,6 +152,10 @@ def strict(html, name):
                 at = close + len(f"</{element}>")
                 continue
         at = tag.end()
+
+
+def known_reference(m):
+    return "" if m.group(0)[1] == "#" or m.group(0)[1:] in html5 else m.group(0)
 
 
 def body_problem(element, body, from_file):

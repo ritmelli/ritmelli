@@ -238,6 +238,7 @@ DOUBTFUL = (
     ("text inside a <script src>", {"index.html": "<script src=\"x.js\">f();</script>\n"}),
     ("a script inside an svg", {"index.html": "<svg><script src=\"x.js\"></script></svg>\n"}),
     ("a preload of a script", {"index.html": "<link rel=\"preload\" as=\"script\" href=\"x.js\">\n"}),
+    ("a named reference that is not an entity", {"index.html": "<div title=\"&ampx;\"></div>\n"}),
     ("a & that is not a whole reference in a value", {"index.html": "<div title=\"a&b\"></div>\n"}),
     ("a </script in an inlined script", {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "// </script>\n"}),
     ("an escaped separator in an href", {"index.html": "<link rel=\"stylesheet\" href=\"x%5C..%2F..%2Fa.css\">\n"}),
