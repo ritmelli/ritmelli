@@ -1039,9 +1039,18 @@ KNOWN_MISSES = [
                "foreach ($i in (1..5)) { if ($s = attempt $i) { break }; Start-Sleep 1 }\n"},
      (POWERSHELL_SOURCES, r"(?i)foreach[ \t]*\([ \t]*\$\w+[ \t]+in[ \t]+\([ \t]*\d+[ \t]*\.\.")),
 
+    ("sleeps_app", "a script that a loop brings from the other branch of the turn before",
+     {"a.py": "import subprocess\nps = 'Get-Date'\nfor i in range(2):\n    if i:\n"
+              "        subprocess.run(['powershell', '-Command', ps])\n    else:\n        ps = 'Start-Sleep 1'\n"},
+     ((".py",), r"(?m)^([ \t]+)if\b[^\n]*:[ \t]*\n\1[ \t]+\S[^\n]*['\"]-[Cc]ommand['\"],[ \t]*(\w+)\b[^\n]*\n"
+                r"\1else[ \t]*:[ \t]*\n\1[ \t]+\2[ \t]*=[^=]")),
 ]
 
 KNOWN_NOISE = [
+    ("sleeps_app", "a script set in another case of a match, which is no branch to the reader",
+     {"a.py": "import subprocess\nmatch v:\n    case 1:\n        ps = 'Start-Sleep 1'\n    case _:\n"
+              "        subprocess.run(['powershell', '-Command', ps])\n"},
+     ((".py",), r"(?m)^[ \t]*match\b[^\n]*:[ \t]*$")),
     ("sleeps_app", "a type alias, whose value Python runs only when it is asked for",
      {"a.py": "import subprocess\ntype Unused = subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"},
      ((".py",), r"(?im)^[ \t]*type[ \t]+\w+(?:\[[^\]\n]*\])?[ \t]*=[^\n]*['\"]-command['\"]")),
