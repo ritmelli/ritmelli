@@ -205,7 +205,7 @@ async function moverNaFila(qid, to) {
 /* alvo do tamanho do desenho (22/10): o ::after marca a area, mas o Chrome do celular corrige o toque para o
    botao mais perto dentro da area do dedo (no mock, 9 px ao lado do x ainda tirava da fila). O ponto cru do
    pointerdown, que a correcao nao move, tem que cair dentro do ::after; o clique do teclado e o botao sem ::after
-   (no computador) seguem como antes */
+   (no computador) passam sempre */
 let ultimoToque = null;
 addEventListener('pointerdown', e => { ultimoToque = e.pointerType === 'touch' ? { x: e.clientX, y: e.clientY } : null; }, true);
 function noDesenho(b) {
