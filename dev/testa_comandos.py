@@ -653,6 +653,27 @@ async def pede(app, A, metodo, caminho):
     return resp.status, json.loads(resp.body)
 
 
+def off_shelf_play(A, E):
+    print("--- POST /api/library with play, for a video off the shelf: the platter and the state")
+    cmd.limpar_fila(A)
+    app = server.build(A)
+    played = {"youtube_id": "dQw4w9WgXcQ", "play": True, "title": "Live", "channel": "Band",
+              "thumb": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", "duration": 233}
+    fields = ("title", "channel", "thumb", "duration")
+    opened = []
+    with (mock.patch.object(A, "run_download", lambda j, target: None),
+          mock.patch.object(A, "_abre_stream", lambda tr, target, titled: opened.append((tr["id"], target, titled)))):
+        status, answer = asyncio.run(pede_corpo(app, A, "POST", "/api/library", played))
+        ate(lambda: opened)
+        state_status, state = asyncio.run(pede(app, A, "GET", "/api/state"))
+    track = state.get("track") or {}
+    confere(status == 200 and answer.get("streaming") is True and state_status == 200
+            and {k: track.get(k) for k in fields} == {k: played[k] for k in fields} and track.get("stream") is True
+            and opened == [("dQw4w9WgXcQ", "dQw4w9WgXcQ", True)],
+            f"the video plays right away over its stream, and the state shows the body's title, channel, thumb and "
+            f"duration on the platter ({status}, {answer}, {track}, {opened})")
+
+
 def bloco(A, E):
     """O bloco do _mixa: retirado sob o _qlock, renderizado fora dele e publicado so se o deck e a linha ainda sao os
     do prato. Cada caso para o _mixa depois de retirar o bloco (Suspenso), faz a outra operacao e solta."""
@@ -2723,6 +2744,7 @@ def main():
                 avanco(A, E)
                 two_nexts_table(A, E)
                 engine_seams(A, E)
+                off_shelf_play(A, E)
             finally:
                 E.close()
     if falhas:
