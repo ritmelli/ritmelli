@@ -805,6 +805,8 @@ class _Parser:
             if self.ch() == closing:
                 self.i += 1
                 break
+            if self.ch() == ",":
+                self.error("a flow collection with an empty entry")
             entry_start = self.i
             if self.is_explicit_key():
                 self.i += 1

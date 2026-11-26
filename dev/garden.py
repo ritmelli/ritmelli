@@ -490,7 +490,7 @@ def docstring_lines(t):
 
 
 def workflow_paths(t):
-    return [p for p in t.paths(".yml", ".yaml") if p.startswith(".github/")]
+    return [p for p in t.paths(".yml", ".yaml") if not outside_workflows(p)]
 
 
 def python_strings(t, path):
@@ -608,8 +608,7 @@ def unit_items(t, suffixes, rule, workflows_only=False):
 
 
 def outside_workflows(path):
-    return suffix(path) in (".yml", ".yaml") and not path.startswith(".github/") and \
-        Path(path).name not in ("action.yml", "action.yaml")
+    return suffix(path) in (".yml", ".yaml") and not units.has_steps(path)
 
 
 def foreign_code(t, path):

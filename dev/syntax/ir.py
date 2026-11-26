@@ -83,7 +83,7 @@ class Call(Node):
 @dataclass(eq=False)
 class Leave(Node):
     kind: str = ""
-    labeled: bool = False
+    label: str = None
 
 
 @dataclass(eq=False)
@@ -204,9 +204,9 @@ def keeps_output(redirection):
     return redirection.operator[:1] in "23456" and not redirection.operator.endswith("&1")
 
 
-def inside_switch(block):
+def inside_switch(block, label):
     for n in [block, *local(block)] if block is not None else []:
-        if isinstance(n, Leave) and n.kind in ("break", "continue") and not n.labeled:
+        if isinstance(n, Leave) and n.kind in ("break", "continue") and n.label in (None, label):
             n.kind = "switch"
     return block
 
@@ -218,8 +218,10 @@ def leaves_loop(block):
 def polarities(node, site, names, negated=False):
     if node is None:
         return set()
-    if node is site or (isinstance(node, Name) and node.name in names):
+    if node is site:
         return {not negated}
+    if isinstance(node, Name) and node.name in names:
+        return {names[node.name] != negated}
     if isinstance(node, Not):
         return polarities(node.operand, site, names, not negated)
     found = set()
@@ -231,12 +233,12 @@ def polarities(node, site, names, negated=False):
 
 
 def ends_on(site, loop, own):
-    names = set()
+    names = {}
     for statement in own:
         if isinstance(statement, (Block, Condition)):
-            values = [c for c in children(statement) if not isinstance(c, Assign)]
-            if any(polarities(c, site, set()) == {True} for c in values):
-                names |= {a.name for a in children(statement) if isinstance(a, Assign)}
+            found = {p for c in children(statement) if not isinstance(c, Assign) for p in polarities(c, site, {})}
+            if found in ({True}, {False}):
+                names.update({a.name: True in found for a in children(statement) if isinstance(a, Assign)})
     for n in own:
         if isinstance(n, If) and n.condition is not None and leaves_loop(n.then) and \
                 polarities(n.condition, site, names) == {True}:
@@ -277,6 +279,11 @@ def retries(unit):
     return found
 
 
+def postponed_annotations(tree):
+    return any(isinstance(s, ast.ImportFrom) and s.module == "__future__" and
+               any(a.name == "annotations" for a in s.names) for s in getattr(tree, "body", []))
+
+
 class PythonLowering:
     def __init__(self, tree, line_of=None):
         self.tree = tree
@@ -290,6 +297,8 @@ class PythonLowering:
         self.functions = {}
         self.classes = []
         self.in_class_body = False
+        self.postponed = postponed_annotations(tree)
+        self.in_function = False
 
     def unit(self):
         body = self.block(self.tree.body, 1)
@@ -321,11 +330,14 @@ class PythonLowering:
         if isinstance(test, ast.Await):
             return self.condition(test.value)
         if isinstance(test, ast.NamedExpr):
-            return Condition(line, [self.condition(test.value), Assign(line, test.target.id)])
-        named = [Assign(self.line(n), n.target.id) for n in ast.walk(test) if isinstance(n, ast.NamedExpr)]
-        names = sorted({n.id for n in ast.walk(test) if isinstance(n, ast.Name)})
-        return Condition(line, [Condition(line, [Name(line, n) for n in names], True), *self.expression_calls(test),
-                                *named], not isinstance(test, ast.Call))
+            return self.walrus(test)
+        return Condition(line, self.expression_calls(test), not isinstance(test, ast.Call))
+
+    def walrus(self, named):
+        known = isinstance(named.value, ast.Constant)
+        line = self.line(named)
+        return Condition(line, [self.condition(named.value),
+                                Assign(line, named.target.id, known, named.value.value if known else None)])
 
     def expression_calls(self, expression):
         holder = ast.Expr(value=expression)
@@ -339,7 +351,12 @@ class PythonLowering:
             if isinstance(child, ast.Lambda):
                 out.append(Function(self.line(child), "<lambda>", Block(self.line(child), self.calls(child))))
                 continue
-            if isinstance(child, ast.Call):
+            if isinstance(child, ast.NamedExpr):
+                out.append(self.walrus(child))
+            elif isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
+                if not (isinstance(node, ast.Call) and child is node.func):
+                    out.append(Name(self.line(child), child.id))
+            elif isinstance(child, ast.Call):
                 name = self.call_name(child.func)
                 out.append(Call(self.line(child), name, self.is_sleep(child), self.calls(child),
                                 self.call_target(child.func)))
@@ -361,28 +378,42 @@ class PythonLowering:
             return f"{self.classes[-1]}.{f.attr}"
         return ""
 
+    def annotation_runs(self):
+        return not self.in_function and not self.postponed
+
+    def assignment_calls(self, s):
+        if not isinstance(s, ast.AnnAssign):
+            return self.calls(s)
+        evaluated = [s.target, *([s.value] if s.value is not None else []),
+                     *([s.annotation] if self.annotation_runs() else [])]
+        return [c for e in evaluated for c in self.expression_calls(e)]
+
     def defined_now(self, s):
         expressions = list(s.decorator_list)
         if isinstance(s, ast.ClassDef):
             expressions += [*s.bases, *(k.value for k in s.keywords)]
         else:
             arguments = [*s.args.posonlyargs, *s.args.args, *s.args.kwonlyargs, s.args.vararg, s.args.kwarg]
-            expressions += [*s.args.defaults, *(d for d in s.args.kw_defaults if d is not None),
-                            *(a.annotation for a in arguments if a is not None and a.annotation is not None),
-                            *([s.returns] if s.returns is not None else [])]
+            expressions += [*s.args.defaults, *(d for d in s.args.kw_defaults if d is not None)]
+            if not self.postponed:
+                expressions += [*(a.annotation for a in arguments if a is not None and a.annotation is not None),
+                                *([s.returns] if s.returns is not None else [])]
         return Other(self.line(s), [c for e in expressions for c in self.expression_calls(e)])
 
     def statement(self, s):
         line = self.line(s)
         if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
             direct, self.in_class_body = self.in_class_body, False
+            outer, self.in_function = self.in_function, True
             function = Function(line, s.name, self.block(s.body, s.lineno))
+            self.in_function = outer
             if not direct:
                 self.functions.setdefault(s.name, function)
             return Block(line, [self.defined_now(s), function])
         if isinstance(s, ast.ClassDef):
             self.classes.append(s.name)
             items = [self.defined_now(s)]
+            outer, self.in_function = self.in_function, False
             try:
                 for x in s.body:
                     self.in_class_body = isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -393,6 +424,7 @@ class PythonLowering:
                     items.append(node)
             finally:
                 self.classes.pop()
+                self.in_function = outer
             return Block(line, items)
         if isinstance(s, (ast.For, ast.AsyncFor)):
             loop = Loop(line, None, self.block(s.body, s.lineno), self.counts_attempts(s))
@@ -432,23 +464,16 @@ class PythonLowering:
             value = s.value
             plain = not isinstance(s, ast.AugAssign) and value is not None and len(targets) == 1 and \
                 isinstance(targets[0], ast.Name)
-            out = [self.condition(value) if plain else Other(line, self.calls(s))]
+            out = [self.condition(value) if plain else Other(line, self.assignment_calls(s))]
+            if plain and isinstance(s, ast.AnnAssign) and self.annotation_runs():
+                out.append(Other(line, self.expression_calls(s.annotation)))
             for target in targets:
                 for t in ast.walk(target):
                     if isinstance(t, ast.Name):
                         known = isinstance(s, (ast.Assign, ast.AnnAssign)) and isinstance(value, ast.Constant)
                         out.append(Assign(line, t.id, known, value.value if known else None))
-            for named in ast.walk(s):
-                if isinstance(named, ast.NamedExpr):
-                    known = isinstance(named.value, ast.Constant)
-                    out.append(Assign(line, named.target.id, known, named.value.value if known else None))
             return Block(line, out)
-        out = [Other(line, self.calls(s))]
-        for named in ast.walk(s):
-            if isinstance(named, ast.NamedExpr):
-                known = isinstance(named.value, ast.Constant)
-                out.append(Assign(line, named.target.id, known, named.value.value if known else None))
-        return Block(line, out)
+        return Block(line, [Other(line, self.calls(s))])
 
     def counts_attempts(self, loop):
         if isinstance(loop.iter, ast.Call) and isinstance(loop.iter.func, ast.Name) and loop.iter.func.id == "range":
@@ -505,10 +530,24 @@ class PowerShellLowering:
             else:
                 return node
 
+    def flow_label(self, flow):
+        if flow.kind not in ("break", "continue") or flow.value is None:
+            return None
+        value = self.unwrapped(flow.value)
+        if isinstance(value, ps.Bareword):
+            return value.text.lower()
+        if isinstance(value, ps.String) and not value.parts:
+            return value.value.lower()
+        return "?"
+
     def truth(self, node):
         if isinstance(node, ps.Assign) and node.op == "=" and node.value is not None:
-            target = variable_name(node.target.name) if isinstance(node.target, ps.Variable) else None
-            return [self.condition(node.value), *([Assign(self.line(node), target)] if target else [])]
+            target = node.target
+            while isinstance(target, ps.Cast):
+                target = target.operand
+            if not isinstance(target, ps.Variable):
+                return None
+            return [self.condition(node.value), Assign(self.line(node), variable_name(target.name))]
         if isinstance(node, ps.Pipeline) and len(node.elements) == 1 and isinstance(node.elements[0], ps.Command) \
                 and all(keeps_output(r) for r in node.elements[0].redirections):
             return [self.node(node.elements[0])]
@@ -581,9 +620,11 @@ class PowerShellLowering:
                           Block(otherwise.line, [otherwise]) if isinstance(otherwise, If) else otherwise)
             return node
         if isinstance(n, ps.Switch):
-            clauses = [If(self.line(b), Condition(self.line(k), [self.node(k)], True), inside_switch(self.block(b)), None)
-                       for k, b in n.clauses]
-            default = [If(self.line(n.default), None, inside_switch(self.block(n.default)), None)] if n.default else []
+            label = n.label.lower() if n.label else None
+            clauses = [If(self.line(b), Condition(self.line(k), [self.node(k)], True),
+                          inside_switch(self.block(b), label), None) for k, b in n.clauses]
+            default = inside_switch(self.block(n.default), label) if n.default else None
+            default = [If(self.line(n.default), None, default, None)] if n.default else []
             return Block(line, [self.node(n.condition), *clauses, *default])
         if isinstance(n, ps.Try):
             handlers = [Handler(self.line(c), self.broad(c.types), self.block(c.body)) for c in n.catches]
@@ -592,7 +633,7 @@ class PowerShellLowering:
             return Try(line, Block(line, []), [Handler(line, self.broad([n.type] if n.type else []), self.block(n.body))])
         if isinstance(n, ps.Flow):
             inner = [self.node(n.value)] if n.value is not None and not isinstance(n.value, ps.Bareword) else []
-            return Block(line, [*inner, Leave(line, n.kind, isinstance(n.value, ps.Bareword))])
+            return Block(line, [*inner, Leave(line, n.kind, self.flow_label(n))])
         if isinstance(n, ps.Assign):
             target = n.target
             while isinstance(target, ps.Cast):
@@ -631,10 +672,7 @@ class PowerShellLowering:
         return not types or any(t.lower().strip("[]") in POWERSHELL_BROAD for t in types)
 
     def command_name(self, command):
-        name = command.name
-        if name is None and isinstance(command.name_node, ps.String) and not command.name_node.parts:
-            name = command.name_node.value
-        name = (name or "").lower()
+        name = (command.name or "").lower()
         module, _, bare = name.rpartition("\\")
         return bare if module == "microsoft.powershell.utility" else name
 

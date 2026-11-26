@@ -58,6 +58,7 @@ YAML_ERRORS = [
     ("a mapping value after a value", "a: b: c\n"), ("an unclosed quote", "a: 'b\n"),
     ("a sequence entry after a key", "k: - a\n"), ("a block scalar less indented than its key", "a: |\n  x\n b\n"),
     ("an alias to an anchor of an earlier document", "---\na: &x 1\n---\nb: *x\n"),
+    ("an empty entry in a flow collection", "items: [one,,two]\n"),
 ]
 
 
@@ -181,7 +182,8 @@ LITERAL_CASES = ["'a\\nb'", "'\\x41\\101\\N{BULLET}\\q'", "'\\u00e9\\U0001F600'"
                  "f'{{x}} {y!r:>{w}} {z}'", "rf'\\d{x}'", "f'{d[\"k\"]}'", "f\"{d['k']}\"", "f'{x:%H:%M}'",
                  "f'{(lambda: 1)()}'", "f'''{\nx}'''", "f'''a {1 # } b\n} c'''", "f'{x:)>5}'", "f'{x:(>5}'",
                  "f'{x:{d[\"}\"]}}'", "f'{x=}'", "f'{x = !r:>5}'", "f'{a != b} {a == b} {f(k=1)}'",
-                 "f\"{f\"{x}\"}\"", "f\"{\"}\"}\"", "f'{rf\"{x}\\d\"}'", "f\"{f'{{'}\"", "f'{fr\"{\"}\"}\"}'"]
+                 "f\"{f\"{x}\"}\"", "f\"{\"}\"}\"", "f'{rf\"{x}\\d\"}'", "f\"{f'{{'}\"", "f'{fr\"{\"}\"}\"}'",
+                 "f'{rf\"\\{{\"}'", "f'{rf\"\\{d[\"}\"]}\"}'"]
 
 
 def literal_view(raw):

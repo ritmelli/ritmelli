@@ -151,11 +151,16 @@ def escape_end(raw, i):
     return i + 2
 
 
-def string_end(raw, i, formatted):
+def string_end(raw, i, prefix):
+    formatted = "f" in prefix
     quote = raw[i:i + 3] if raw[i:i + 3] in ("'''", '"""') else raw[i]
     i += len(quote)
     while raw[i:i + len(quote)] != quote:
-        if raw[i] == "\\" or (formatted and raw[i:i + 2] in ("{{", "}}")):
+        if raw[i] == "\\" and formatted and raw[i + 1] in "{}":
+            i += 1
+        elif raw[i] == "\\":
+            i += 2
+        elif formatted and raw[i:i + 2] in ("{{", "}}"):
             i += 2
         elif formatted and raw[i] == "{":
             i = field_end(raw, i + 1)[0] + 1
@@ -179,7 +184,7 @@ def field_end(raw, i):
             k = i
             while k > i - 2 and raw[k - 1] in "rRbBfFuU":
                 k -= 1
-            i = string_end(raw, i, "f" in raw[k:i].lower())
+            i = string_end(raw, i, raw[k:i].lower())
             continue
         if c == "#":
             i = raw.index("\n", i)
@@ -300,9 +305,9 @@ class Assignments:
                     plain = isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and targets == [child]
                     at = end_position(node) if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) else \
                         position(child)
-                    self.bind(scope, child.id, at, node.value if plain else None, inner[-1] if inner else None)
+                    self.bind(scope, child.id, at, node.value if plain else None, inner)
                 elif isinstance(child, ast.arg):
-                    self.bind(scope, child.arg, (0, 0), None, None)
+                    self.bind(scope, child.arg, (0, 0), None, ())
                 self.visit(child, child if isinstance(child, SCOPES) else scope, inner)
 
     def reaching(self, name):
@@ -312,16 +317,25 @@ class Assignments:
             bound = None if outer and isinstance(scope, ast.ClassDef) else self.bindings.get((id(scope), name.id))
             if bound:
                 earlier = sorted((b for b in bound if b[0] <= position(name)), key=lambda b: b[0], reverse=True)
+                if outer and len(bound) > 1 and any(b[0] > position(name) for b in bound):
+                    return []
                 if outer and not earlier:
-                    earlier = bound if len(bound) == 1 else []
+                    earlier = bound
                 found, branches = [], {}
-                for _, value, block in earlier:
+                for _, value, blocks in earlier:
+                    if self.other_branch(blocks, chain):
+                        continue
+                    block = blocks[-1] if blocks else None
                     found.append(value)
                     if block is None or block in chain or self.covered(branches, block, chain):
                         break
                 return found
             scope, outer = self.scope_of.get(id(scope)), True
         return []
+
+    def other_branch(self, blocks, chain):
+        taken = {owner: branch for owner, branch in chain if isinstance(self.nodes.get(owner), ast.If)}
+        return any(owner in taken and taken[owner] != branch for owner, branch in blocks)
 
     def covered(self, branches, block, chain):
         owner, branch = block
@@ -335,15 +349,12 @@ class Assignments:
         if isinstance(expression, (ast.Constant, ast.JoinedStr)) or joined(expression):
             return [expression]
         if not isinstance(expression, ast.Name) or depth >= 5:
-            return []
+            return [None]
         out = []
         for value in self.reaching(expression):
-            found = self.values(value, depth + 1) if value is not None else []
-            if not found:
-                return []
-            out += found
-        return out
-
+            out += [v for v in (self.values(value, depth + 1) if value is not None else [None])
+                    if v is not None or None not in out]
+        return out or [None]
 
 
 def joined(expression):
@@ -398,8 +409,8 @@ def embedded_powershell(path, tree, text, file_line=None):
     for _, script_node in found:
         targets = names.values(script_node)
         built = [joined_script(tokens, text, t, names) if joined(t) else powershell_script(tokens, text, t)
-                 for t in targets if id(t) not in seen]
-        if not targets or None in built:
+                 for t in targets if t is not None and id(t) not in seen]
+        if None in targets or None in built:
             line = file_line(script_node.lineno)
             pieces.append(Piece(path, "powershell", "", lambda _, line=line: line, problem=f"{path}:{line}: the "
                                 f"PowerShell reader can't follow the script that Python passes after -Command"))
@@ -454,13 +465,18 @@ def mapping_value(node, key):
     return node.node(key) if isinstance(node, yaml.Mapping) else None
 
 
-def steps_with_shells(root):
+def has_steps(path):
+    return path.startswith(".github/workflows/") or path.rsplit("/", 1)[-1] in ("action.yml", "action.yaml")
+
+
+def steps_with_shells(root, path):
     run = mapping_value(mapping_value(root, "defaults"), "run")
     workflow_default = yaml.scalar_text(mapping_value(run, "shell"))
-    jobs = yaml.resolved(mapping_value(root, "jobs"))
+    jobs = yaml.resolved(mapping_value(root, "jobs")) if path.startswith(".github/workflows/") else None
     groups = [(job, job_default_shell(job, workflow_default))
               for _, job in (jobs.pairs if isinstance(jobs, yaml.Mapping) else [])]
-    groups.append((mapping_value(root, "runs"), workflow_default))
+    if has_steps(path) and not path.startswith(".github/workflows/"):
+        groups.append((mapping_value(root, "runs"), workflow_default))
     found = []
     for owner, default in groups:
         steps = mapping_value(owner, "steps")
@@ -539,7 +555,7 @@ def yaml_pieces(path, text, test_job):
                     if k == "continue-on-error" and not (v is not None and v.strip().lower() == "false"):
                         piece.continue_on_error.append(source.line(key.span.start))
         piece.test_lines |= lines_of_test_jobs(source, root, test_job)
-        for item, step, default in steps_with_shells(root):
+        for item, step, default in steps_with_shells(root, path):
             written = step.node("run")
             run = yaml.resolved(written)
             used = next((n for n in (item, written) if isinstance(n, yaml.Alias)), None)

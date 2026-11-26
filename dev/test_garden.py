@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -51,12 +52,13 @@ ASYNC_RETRY = ("import asyncio\nasync def attempt():\n    try:\n        return a
                "            break\n        await asyncio.sleep(1)\n")
 ACTION = "runs:\n  using: composite\n  steps:\n    - shell: pwsh\n      run: RUN\n"
 ALIASED_JOB = "jobs:\n  test: &t\n    runs-on: windows-2025\n    steps:\n      - run: RUN\n  build: *t\n"
+COMPOSITE_PYTHON_STEP = "runs:\n  using: composite\n  steps:\n    - shell: python\n      run: |\nDOC        x = 1\n"
 
 CASES = {
     "comment_lines": [
         ("a quoted run that goes on to the next line",
-         {"a.yml": "runs:\n  steps:\n    - shell: pwsh\n      run: \"Write-Output 'a #b'\n        'c'\"\n"},
-         {"a.yml": "runs:\n  steps:\n    - shell: pwsh\n      run: \"Write-Output 'a #b'\n        # why\"\n"}),
+         {"action.yml": "runs:\n  steps:\n    - shell: pwsh\n      run: \"Write-Output 'a #b'\n        'c'\"\n"},
+         {"action.yml": "runs:\n  steps:\n    - shell: pwsh\n      run: \"Write-Output 'a #b'\n        # why\"\n"}),
         ("a version comment after a tag is no pin", {"a.yml": "steps:\n  - uses: o/r@" + "a" * 40 + " # v3.2\n"},
          {"a.yml": "steps:\n  - uses: o/r@v3 # v3.2\n"}),
         ("a uses: inside a step name is no pin", {"a.yml": "steps:\n  - uses: o/r@" + "a" * 40 + " # v3.2\n"},
@@ -89,12 +91,12 @@ CASES = {
         ("yml", {"a.yml": "a: 'b # c'\n"}, {"a.yml": "a: b  # why\n"}),
         ("yml pin", {"a.yml": "steps:\n  - uses: o/r@" + "a" * 40 + " # v3.2\n"},
          {"a.yml": "steps:\n  - uses: o/r@v3 # why\n"}),
-        ("yml run block in bash", {"a.yml": "jobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n"
+        ("yml run block in bash", {".github/workflows/a.yml": "jobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n"
                                             "          echo \"## title\"\n"},
-         {"a.yml": "jobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n          # why\n"
+         {".github/workflows/a.yml": "jobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n          # why\n"
                    "          echo hi\n"}),
-        ("yml run block in python", {"a.yml": "runs:\n  steps:\n    - shell: python3 {0}\n      run: |\n        x = '# no'\n"},
-         {"a.yml": "runs:\n  steps:\n    - shell: python3 {0}\n      run: |\n        x = 1  # why\n"}),
+        ("yml run block in python", {"action.yml": "runs:\n  steps:\n    - shell: python3 {0}\n      run: |\n        x = '# no'\n"},
+         {"action.yml": "runs:\n  steps:\n    - shell: python3 {0}\n      run: |\n        x = 1  # why\n"}),
         ("cpp", {"a.cpp": "#pragma once\n#include <x>\nconst char* s = \"// no\";\n"},
          {"a.cpp": "int a = 1; // why\n"}),
         ("h", {"a.h": "#pragma once\n"}, {"a.h": "#pragma once\n/* why */\n"}),
@@ -119,6 +121,8 @@ CASES = {
     "docstring_lines": [
         ("a function", {"a.py": "def f():\n    return '''not a docstring'''\n"},
          {"a.py": "def f():\n    '''Why.'''\n    return 1\n"}),
+        ("a docstring in a Python step of a composite action", {"tools/a/action.yml": COMPOSITE_PYTHON_STEP.replace("DOC", "")},
+         {"tools/a/action.yml": COMPOSITE_PYTHON_STEP.replace("DOC", "        '''Why the step reads it.'''\n")}),
     ],
     "suppressions": [
         ("-EA 0", {"a.ps1": "Get-Item x -EA Stop\n"}, {"a.ps1": "Get-Item x -EA 0\n"}),
@@ -225,6 +229,23 @@ CASES = {
          {"a.py": NESTED_FSTRING.replace("{TAIL}", "; Start-Sleep 1")}),
         ("a composite action outside .github", {"tools/a/action.yml": ACTION.replace("RUN", "Write-Output 1")},
          {"tools/a/action.yml": ACTION.replace("RUN", "Start-Sleep 1")}),
+        ("a script with a raw f-string inside a field", {"a.py": "import subprocess\nps = f'{rf\"\\{{\"}'\n" + RUN_PS},
+         {"a.py": "import subprocess\nps = f'{rf\"\\{{\"}; Start-Sleep 1'\n" + RUN_PS}),
+        ("an annotation that Python keeps as text",
+         {"a.py": "from __future__ import annotations\nimport time\ndef f(x: time.sleep(1)) -> time.sleep(2):\n    pass\n"},
+         {"a.py": "from __future__ import annotations\nimport time\ndef f(x=time.sleep(1)):\n    pass\n"}),
+        ("the annotation of a class variable runs, also inside a function",
+         {"a.py": "import time\ndef f():\n    class A:\n        x: int = 3\n"},
+         {"a.py": "import time\ndef f():\n    class A:\n        x: time.sleep(1) = 3\n"}),
+        ("a sleep in the annotation of a module variable", {"a.py": "import time\nx: int = 3\n"},
+         {"a.py": "import time\nx: time.sleep(1) = 3\n"}),
+        ("the annotation of a local variable never runs", {"a.py": "import time\ndef f():\n    x: time.sleep(1) = 3\n"},
+         {"a.py": "import time\ndef f():\n    x: int = time.sleep(1)\n"}),
+        ("a sleep in the index of an assignment in a PowerShell condition", {"a.ps1": "if ($a[$(Get-Date)] = 1) { }\n"},
+         {"a.ps1": "if ($a[$(Start-Sleep 1)] = 1) { }\n"}),
+        ("a branch's script does not reach the other branch",
+         {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\nelse:\n    " + RUN_PS},
+         {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\n" + RUN_PS}),
     ],
     "sleeps_dev": [
         ("Start-Sleep in a one-line PowerShell step",
@@ -559,6 +580,10 @@ CASES = {
         ("a PowerShell flag passed to a command is no test of it",
          {"a.ps1": ATTEMPT_PS + "while ($true) { $s = attempt; if (Test-Path $s) { break }; Start-Sleep 1 }\n"},
          {"a.ps1": ATTEMPT_PS + "while ($true) { $s = attempt; if ($s) { break }; Start-Sleep 1 }\n"}),
+        ("a flag set from a comparison of the helper, tested negated",
+         {"a.py": ATTEMPT + "while True:\n    done = attempt() is None\n    if not done:\n        break\n"
+                            "    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    done = attempt()\n    if done:\n        break\n    time.sleep(1)\n"}),
         ("a flag set from the negated helper",
          {"a.py": ATTEMPT + "while True:\n    done = not attempt()\n    if done:\n        break\n    time.sleep(1)\n"},
          {"a.py": ATTEMPT + "while True:\n    done = attempt()\n    if done:\n        break\n    time.sleep(1)\n"}),
@@ -606,6 +631,11 @@ CASES = {
         ("a helper whose errors join its output",
          {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt 2>&1) { break }; Start-Sleep 1 }\n"},
          {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt 2>$null) { break }; Start-Sleep 1 }\n"}),
+        ("a Python loop condition that compares the flag",
+         {"a.py": "import time\nwhile running is True:\n    try:\n        f()\n        other = False\n"
+                  "    except OSError:\n        pass\n    time.sleep(1)\n"},
+         {"a.py": "import time\nwhile running is True:\n    try:\n        f()\n        running = False\n"
+                  "    except OSError:\n        pass\n    time.sleep(1)\n"}),
         ("a PowerShell loop condition that compares the flag",
          {"a.ps1": "while ($running -eq $true) { try { f; $other = $false } catch { }; Start-Sleep 1 }\n"},
          {"a.ps1": "while ($running -eq $true) { try { f; $running = $false } catch { }; Start-Sleep 1 }\n"}),
@@ -619,6 +649,43 @@ CASES = {
                       "while not done:\n    time.sleep(1)\n    done = ready()\n"},
          {"a.py": ATTEMPT + "def ready():\n    for m in attempt():\n        return m\n    return None\n"
                       "while not done:\n    time.sleep(1)\n    done = ready()\n"}),
+        ("a quoted label leaves the loop from a switch",
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { :pick switch (1) { 1 { if (attempt) { break 'pick' } } }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { :pick switch (1) { 1 { if (attempt) { break 'outer' } } }; Start-Sleep 1 }\n"}),
+        ("a break that names its own switch leaves only the switch",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt) { :sw switch (1) { 1 { break SW } } }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { if (attempt) { :sw switch (1) { 1 { break outer } } }; Start-Sleep 1 }\n"}),
+        ("a walrus compared to the helper is no flag of it",
+         {"a.py": ATTEMPT + "while True:\n    if (s := other()) == attempt():\n        log()\n    if s:\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    if (s := attempt()) == other():\n        log()\n    if s:\n        break\n    time.sleep(1)\n"}),
+        ("a walrus of the negated helper",
+         {"a.py": ATTEMPT + "while True:\n    if (r := not attempt()) is False:\n        log()\n    if r:\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    if (r := not attempt()) is False:\n        log()\n    if not r:\n        break\n"
+                      "    time.sleep(1)\n"}),
+        ("a walrus beside the helper in an or",
+         {"a.py": ATTEMPT + "while True:\n    a = (b := other()) or attempt()\n    if b:\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    a = (b := other()) or attempt()\n    if a:\n        break\n    time.sleep(1)\n"}),
+        ("a helper that takes its own flag",
+         {"a.py": ATTEMPT + "while True:\n    if (s := other(s)):\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    if (s := attempt(s)):\n        break\n    time.sleep(1)\n"}),
+        ("a flag set from the negated helper and tested negated",
+         {"a.py": ATTEMPT + "while True:\n    done = not attempt()\n    if done:\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    done = not attempt()\n    if not done:\n        break\n    time.sleep(1)\n"}),
+        ("a loop that runs while the negated flag holds",
+         {"a.py": ATTEMPT + "done = True\nwhile not done:\n    done = not attempt()\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "done = True\nwhile done:\n    done = not attempt()\n    time.sleep(1)\n"}),
+        ("a PowerShell flag set from the negated helper and tested negated",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $done = -not (attempt); if ($done) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $done = -not (attempt); if (-not $done) { break }; Start-Sleep 1 }\n"}),
+        ("a PowerShell do-while on the negated flag",
+         {"a.ps1": ATTEMPT_PS + "do { $failed = -not (attempt); Start-Sleep 1 } until ($failed)\n"},
+         {"a.ps1": ATTEMPT_PS + "do { $failed = -not (attempt); Start-Sleep 1 } while ($failed)\n"}),
+        ("a cast assignment that is the test of a PowerShell condition",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if ([bool]$s = other) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if ([bool]$s = attempt) { break }; Start-Sleep 1 }\n"}),
+        ("a cast flag set in a PowerShell condition",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if ([bool]$t = attempt) { }; if ($s) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if ([bool]$s = attempt) { }; if ($s) { break }; Start-Sleep 1 }\n"}),
     ],
     "broad_excepts": [
         ("a PowerShell catch with no type", {"a.ps1": "try { f } catch [IO.IOException] { }\n"},
@@ -707,11 +774,11 @@ CASES = {
                                          "print(f'known failure, {ISSUE}: a refused dequeue fails the run')\n"},
          {"dev/t.py": "print('known failure: theme_rebuild counts a reindented line')\n"}),
         ("ficou de fora in a workflow",
-         {"a.yml": "runs:\n  steps:\n    - run: echo 'sem placa de video, o pedal de troca de voz ficou de fora'\n"},
-         {"a.yml": "runs:\n  steps:\n    - run: echo '--   o pedal de troca de voz ficou de fora'\n"}),
+         {"action.yml": "runs:\n  steps:\n    - run: echo 'sem placa de video, o pedal de troca de voz ficou de fora'\n"},
+         {"action.yml": "runs:\n  steps:\n    - run: echo '--   o pedal de troca de voz ficou de fora'\n"}),
         ("ficou de fora with its issue in the line's comment",
-         {"a.yml": "runs:\n  steps:\n    - run: echo '--   o pedal ficou de fora'  # #219\n"},
-         {"a.yml": "runs:\n  steps:\n    - run: echo '--   o pedal ficou de fora'  # no issue\n"}),
+         {"action.yml": "runs:\n  steps:\n    - run: echo '--   o pedal ficou de fora'  # #219\n"},
+         {"action.yml": "runs:\n  steps:\n    - run: echo '--   o pedal ficou de fora'  # no issue\n"}),
         ("ficou de fora in a PowerShell script", {"a.ps1": "# o pedal ficou de fora num comentario\n"},
          {"a.ps1": "'--   o pedal ficou de fora'\n"}),
         ("ficou de fora in a one-line PowerShell comment",
@@ -886,12 +953,13 @@ CASES = {
 KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/254"
 KNOWN_MISSES = [
     ("broad_excepts", "a JavaScript catch that handles nothing but is not empty",
-     {"a.js": "try { f(); } catch (e) { void e; }\n"}),
+     {"a.js": "try { f(); } catch (e) { void e; }\n"},
+     ((".js", ".html"), r"catch\s*(?:\([^)]*\))?\s*\{\s*void\s+[\w$]+\s*;?\s*\}")),
 
     ("retries", "a JavaScript failure told by an if (index.html, the transport not loaded)",
      {"a.js": "function carregarTransporte() {\n  s.onload = () => {\n"
               "    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }\n"
-              "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"}),
+              "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"}, None),
 ]
 
 
@@ -964,7 +1032,17 @@ def test_unreadable():
             ("script set in both branches of an if inside another if",
              {"a.py": "import subprocess\nps = loader()\nif a:\n    if b:\n        ps = 'Get-Date'\n    else:\n"
                       "        ps = 'Get-Item x'\n" + RUN_PS},
-             "a.py:8: the PowerShell reader can't follow the script")):
+             "a.py:8: the PowerShell reader can't follow the script"),
+            ("script joined from a literal and an unknown value",
+             {"a.py": "import subprocess\npart = 'Start-Sleep 1'\nif flag:\n    part = load()\nps = '\\n'.join([part])\n" + RUN_PS},
+             "a.py:6: the PowerShell reader can't follow the script"),
+            ("module script set again after the function",
+             {"a.py": "import subprocess\nPS = 'Get-Date'\ndef run():\n    subprocess.run(['powershell', '-Command', PS])\n"
+                      "PS = 'Start-Sleep 1'\n"},
+             "a.py:4: the PowerShell reader can't follow the script"),
+            ("Python step of a composite action",
+             {"action.yml": "runs:\n  steps:\n    - shell: python\n      run: this is not Python!\n"},
+             "action.yml:4: the Python reader stops here")):
         try:
             problems = garden.measure(files)[1]
         except ValueError as ex:
@@ -978,6 +1056,10 @@ def test_unreadable():
         except ValueError as ex:
             crashed = repr(ex)
         check(not crashed, f"a testa.yml with {label} does not stop the count ({crashed})")
+    step = "runs:\n  steps:\n    - shell: python\n      run: this is not Python!\n"
+    jobs = "jobs:\n  j:\n    steps:\n      - shell: python\n        run: this is not Python!\n"
+    problems = garden.measure({"config.yml": step, "ci/ci.yml": jobs})[1]
+    check(problems == [], f"a YAML that is no workflow and no action has no steps ({problems})")
 
 
 def test_workflow_python_lines():
@@ -1008,10 +1090,22 @@ def test_workflow_python_lines():
     check(found == [(".github/workflows/w.yml", 9)], f"a retry in a workflow step is listed at its line ({found})")
 
 
+def uses_of(tree, suffixes, pattern):
+    return [f"{path}:{text.count("\n", 0, m.start()) + 1}" for path, text in sorted(tree.items())
+            if path.endswith(suffixes) for m in re.finditer(pattern, text)]
+
+
 def test_known_misses():
-    for name, label, files in KNOWN_MISSES:
+    tree = garden.working_tree(ROOT)
+    for name, label, files, detector in KNOWN_MISSES:
         check(count(name, files) == 0, f"known miss ({KNOWN_MISSES_ISSUE}): {name} does not count {label}; when it "
               f"does, move the case to CASES")
+        if detector:
+            check(bool(uses_of(files, *detector)), f"known miss ({KNOWN_MISSES_ISSUE}): the detector of {label} "
+                  f"finds its own case")
+            used = uses_of(tree, *detector)
+            check(not used, f"known miss ({KNOWN_MISSES_ISSUE}): the repo does not use {label} yet ({used[:3]}); "
+                  f"when it does, make {name} count it and move the case to CASES")
 
 
 def test_check():

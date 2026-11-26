@@ -150,12 +150,6 @@ def utf16(text):
     return [*out, at]
 
 
-def command_name(command):
-    if command.name is None and isinstance(command.name_node, ps.String) and not command.name_node.parts:
-        return command.name_node.value
-    return command.name or ""
-
-
 def ours(text):
     script = ps.parse(text)
     nodes = list(ps.walk(script))
@@ -164,7 +158,7 @@ def ours(text):
     return {
         "comments": sorted([u[c.span.start], u[c.span.end]] for c in script.comments),
         "strings": sorted([u[n.span.start], u[n.span.end]] for n in nodes if isinstance(n, ps.String)),
-        "commands": sorted([u[n.span.start], command_name(n)] for n in nodes if isinstance(n, ps.Command)),
+        "commands": sorted([u[n.span.start], n.name or ""] for n in nodes if isinstance(n, ps.Command)),
         "loops": sorted([("DoUntilStatementAst" if n.until else "DoWhileStatementAst") if isinstance(n, ps.DoLoop)
                          else loops[type(n)], u[n.span.start], u[n.span.end]] for n in nodes
                         if isinstance(n, (ps.DoLoop, *loops))),

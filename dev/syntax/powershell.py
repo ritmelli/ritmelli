@@ -1217,7 +1217,7 @@ class _Parser:
         else:
             name_node = self.bareword()
         name = name_node.text if isinstance(name_node, Bareword) else (
-            name_node.value if isinstance(name_node, String) and not name_node.expandable else None)
+            name_node.value if isinstance(name_node, String) and not name_node.parts else None)
         elements, redirections = [], []
         while True:
             self.ws()
