@@ -31,6 +31,13 @@ import engine as eng
 import sonoridade as so
 
 SR, B, D = so.SR, eng.BLOCK, so.LIMITE_ANTES
+CUSTO_REF = np.random.default_rng(1).standard_normal((B, 2)).astype(np.float32)
+
+
+def bloco_de_referencia():
+    buf = np.zeros((B, 2), np.float32)
+    buf += CUSTO_REF * 0.5
+    return float(np.abs(buf).max())
 
 
 def grava(p, x):
@@ -178,10 +185,19 @@ class TestaMotor(unittest.TestCase):
         self.e.vol, self.e.monitor_on = 1.0, False
         self.e.sonoridade_de = lambda tr: None
         self.e.mediu = lambda tr, v: self.medidos.append((tr.get("id"), v))
+        self.leitores = []
+
+        def reader(*args, ler=self.e._reader):
+            self.leitores.append(threading.current_thread())
+            return ler(*args)
+
+        self.e._reader = reader
+        self.e._onda_pede = lambda track: None
 
     def tearDown(self):
         self.e.stop()
-        time.sleep(0.2)
+        for leitor in self.leitores:
+            leitor.join()
         self.dir.cleanup()
 
     def espera(self, cond, limite=15.0):
@@ -289,19 +305,23 @@ class TestaMotor(unittest.TestCase):
         tr, _ = self.disco(musica(8, -24, picos=0.9), id="baixa", lufs=-24.0)
         self.e.load(tr)
         self.toca(20)
-        ts = []
+        ts, rs = [], []
         for _ in range(400):
             self.espera(lambda: len(self.e._q) > 2 or self.e._eof_gen == self.e._gen, 5)
             t0 = time.perf_counter()
             self.e._mixa(B)
             ts.append(time.perf_counter() - t0)
-        ms = np.array(ts) * 1000
-        median, trimmed = float(np.median(ms)), float(np.sort(ms)[:-4].mean())
-        print(f"\n  _mixa with gain and limiter: median {median:.3f} ms, mean without the 4 slowest {trimmed:.3f}, "
-              f"mean {ms.mean():.3f}, p99 {np.percentile(ms, 99):.3f}", file=sys.stderr)
-        # Trimming four samples tolerates isolated stalls and still checks the cost of the remaining calls.
-        self.assertLess(median, 0.15)
-        self.assertLess(trimmed, 0.3)
+            t0 = time.perf_counter()
+            bloco_de_referencia()
+            rs.append(time.perf_counter() - t0)
+        ms, ref = np.array(ts) * 1000, np.array(rs) * 1000
+        median = float(np.median(ms) / np.median(ref))
+        trimmed = float(np.sort(ms)[:-4].mean() / np.sort(ref)[:-4].mean())
+        print(f"\n  _mixa with gain and limiter: median {np.median(ms):.3f} ms, {median:.1f}x the reference block "
+              f"({np.median(ref):.4f} ms); mean without the 4 slowest {trimmed:.1f}x; p99 {np.percentile(ms, 99):.3f} ms",
+              file=sys.stderr)
+        self.assertLess(median, 50)
+        self.assertLess(trimmed, 80)
 
 
 if __name__ == "__main__":
