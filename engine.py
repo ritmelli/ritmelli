@@ -1230,7 +1230,7 @@ class Engine:
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
         self._prepare_failure_tag = None
         # o servidor religa a parecida do Automatico cujo stream caiu: religar_stream(disco, onde parou, desistir), na
-        # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue, como antes
+        # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue
         self.religar_stream = None
         # o volume automatico (sonoridade.py): as musicas mais baixas sobem ate o alvo, com o limitador na musica (a
         # musica sai sonoridade.LIMITE_ANTES amostras atrasada, sempre). O servidor diz a medida que ja tem de um disco
@@ -2596,7 +2596,7 @@ class Engine:
         t_plano, pos_plano = time.perf_counter(), self.pos
         with self._qlock:
             cauda, cabeca = list(atual.niveis), list(prox.niveis)
-        if not cabeca:  # a proxima nao decodificou: o servidor toca ela no fim, como antes
+        if not cabeca:  # a proxima nao decodificou: a preparacao sai, e ela fica para o avanco normal da fila
             with self._qlock:
                 if self._pronto is prox:
                     self._prepare_failure_tag = self.pronto_tag
@@ -2827,7 +2827,7 @@ class Engine:
             t0 = b1 - tau
             if golpe is not None:  # a virada antes do fecho do canal deste, que vai inteiro depois dela; ela comeca em t0
                 v, silencio, pad = virada(min(t0, golpe - CORTE_ANTES_S - CORTE_RAMPA_S))
-                if v is None:  # o golpe ficou perto demais (plano tardio): a batida depois do fim, como antes
+                if v is None:  # o golpe ficou perto demais (plano tardio): sem golpe, volta a batida do batida_do_fim
                     golpe, b1 = None, a0 + k * pa
                     t0 = b1 - tau
                 else:
@@ -3397,7 +3397,7 @@ class Engine:
     def _pede_pausa(self):
         """Com _qlock: o pause, sem calar os sons por cima. Volta a Pausa."""
         d, p = self._deck, self._pausa
-        if self.track is None or self.ended:  # nada tocando: pausa como antes, sem posicao para gravar
+        if self.track is None or self.ended:  # nada tocando: pausa sem posicao para gravar
             self.paused = True
             p = Pausa(d, d.linha)
             p.resolve()

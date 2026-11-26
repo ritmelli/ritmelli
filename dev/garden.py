@@ -55,8 +55,8 @@ START_SLEEP = re.compile(r"\bStart-Sleep\b", re.I)
 THEME_TIMER = re.compile(r"\b(?:setTimeout|setInterval|requestIdleCallback)\s*\(")
 ANIMATION_FRAME = re.compile(r"\brequestAnimationFrame\s*\(")
 TODO = re.compile(r"\b(?:TODO|FIXME|HACK|XXX)\b")
-PROSE = re.compile(r"\b(?:risco\s+aceito|accepted\s+risk|sem\s+prova|por\s+enquanto|for\s+now|known\s+issue)\b",
-                   re.I)
+PROSE = re.compile(r"\b(?:risco\s+aceito|accepted\s+risk|sem\s+prova|por\s+enquanto|for\s+now|known\s+issue"
+                   r"|sem\s+teste|have\s+no\s+test\s+yet|como\s+antes)\b", re.I)
 LEFT_OUT = re.compile(r"^--\s.*ficou de fora", re.S)
 KNOWN_FAILURE = re.compile(r"^\s*known failure", re.I)
 LEFT_OUT_QUOTED = re.compile(r"[\"']--\s[^\"']*ficou de fora")

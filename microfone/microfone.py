@@ -1027,7 +1027,7 @@ def pede_tarefa(nome, espera_s=60):
     # o audiosrv RUNNING ainda pode ser o de antes do reinicio. Com o prazo da conferencia dela a mais
     fim += ASSENTA_S + CONFERE_MAX_S
     # a consulta leva ~1 s: o prazo dela tem piso de 5 s, para acabar mesmo no fim do saldo. Sem estado (None) antes de
-    # ver a tarefa rodando, segue pelo servico, como antes; depois de ver, conta como rodando ate o Ready
+    # ver a tarefa rodando, segue pelo servico; depois de ver, conta como rodando ate o Ready
     viu = False
     while (rodando := tarefa_rodando(min(10.0, max(5.0, fim - time.monotonic())))) or (rodando is None and viu):
         viu = True
