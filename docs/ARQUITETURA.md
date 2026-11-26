@@ -32,7 +32,8 @@ Os docs de `docs/` ficam em português.
 - [`server.py`](arquitetura/server.md): o servidor, a fila, as passagens, o Automático e o limite de abas.
 - [`comandos.py`](arquitetura/comandos.md): os comandos de música do servidor e o avanço da fila.
 - [`API.md`](../API.md): contrato da API e checklist de todo tema.
-- [`themes/` e `gallery/`](arquitetura/temas.md): as interfaces e a galeria.
+- [`themes/` e `gallery/`](arquitetura/temas.md): as interfaces e a galeria, e o `theme_page.py`, que monta a página de
+  cada uma com os scripts e as folhas dentro.
 - [`dev/`](arquitetura/dev.md): as ferramentas de print, de tela e de pixel art.
 - [`icone/`](arquitetura/icone.md): o ícone do app.
 - [`pastas.py`](arquitetura/pastas.md): onde moram os dados de quem usa, o ffmpeg e o Deno.

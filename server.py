@@ -12,7 +12,6 @@ propria (janela.py), ou no navegador sem o WebView2; --no-browser nao abre nenhu
 import argparse
 import asyncio
 import contextlib
-import hashlib
 import importlib
 import json
 import math
@@ -48,6 +47,7 @@ import metricas as met
 import pareamento as par
 import permissao as perm
 import pastas
+import theme_page
 import sonoridade
 from pastas import save_json
 from music import YT_ID, find_track, segundos, thumb, track_artists, with_audio_version
@@ -56,22 +56,9 @@ from yt_erros import erro_do_video, yt_msg
 
 HERE = Path(__file__).resolve().parent
 LIB = pastas.LIB  # audio baixado; library.json e config.json moram em --data-dir
-THEMES = HERE / "themes"
 # o endereco do tema ate a 0.6.0, quando ele se chamava vitrola (#58): o celular pareado, o atalho na tela inicial e o
 # favorito ainda abrem este, e o servidor leva cada caminho dele para o mesmo no tema de agora (o tema_de_antes)
 TEMA_DE_ANTES = "/t/vitrola"
-INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
-
-
-def inline_scripts(html, folder):
-    return INLINE_SCRIPT.sub(lambda m: f"<script>\n{(folder / m.group(1)).read_text(encoding='utf-8')}</script>", html)
-
-
-def theme_page(page, texts, language):
-    html = inline_scripts(i18n.injeta(page.read_text(encoding="utf-8"), texts, language), page.parent)
-    return html, f'"{hashlib.sha256(html.encode("utf-8")).hexdigest()[:32]}"'
-
-
 YT_URL = re.compile(r"(?:v=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
 PAGINA_FOLGA = 8  # a busca pede tantos a mais na pagina de resultados: canal e playlist ocupam lugar e saem
 TICK = 1 / 15
@@ -2356,7 +2343,7 @@ def build(app_state):
         # o nome, a direcao e a frase podem vir por lingua no meta.json: vao na de quem pede, como a pagina
         lingua = i18n.escolher(request.query.get("lang"), request.headers.get("Accept-Language", ""))
         out = []
-        for d in sorted(p for p in THEMES.iterdir() if (p / "index.html").exists()):
+        for d in sorted(p for p in theme_page.THEMES.iterdir() if (p / "index.html").exists()):
             meta = {}
             if (d / "meta.json").exists():
                 meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
@@ -2535,10 +2522,10 @@ def build(app_state):
 
     @r.get("/t/{slug}/")
     async def theme_index(request):
-        p = THEMES / request.match_info["slug"] / "index.html"
-        if not p.exists() or THEMES not in p.resolve().parents:
+        slug = await asyncio.to_thread(theme_page.theme_of_template, f"{request.match_info['slug']}/index.html")
+        if not slug:
             raise web.HTTPNotFound()
-        return await pagina_com_textos(request, p)
+        return await pagina_com_textos(request, theme_page.THEMES / slug / "index.html")
 
     async def pagina_com_textos(request, p):
         """Uma pagina com a pasta i18n/ ao lado (um tema, a galeria): os textos da lingua de quem abre (i18n.py) vao
@@ -2546,7 +2533,7 @@ def build(app_state):
         volta como 304, sem baixar a pagina de novo"""
         textos = p.parent / "i18n"
         lingua = i18n.escolher(request.query.get("lang"), request.headers.get("Accept-Language", ""))
-        html, etag = await asyncio.get_running_loop().run_in_executor(None, lambda: theme_page(p, textos, lingua))
+        html, etag = await asyncio.get_running_loop().run_in_executor(None, lambda: theme_page.build(p, textos, lingua))
         cab = {"ETag": etag, "Cache-Control": "no-cache", "Vary": "Accept-Language"}
         if etag in (x.strip() for x in request.headers.get("If-None-Match", "").split(",")):
             return web.Response(status=304, headers=cab)
@@ -2556,9 +2543,16 @@ def build(app_state):
     async def theme_redirect(request):
         raise web.HTTPFound(f"/t/{request.match_info['slug']}/")
 
-    app = web.Application(middlewares=[guard])
+    @web.middleware
+    async def built_page_only(request, handler):
+        if isinstance(request.match_info.route.resource, web.StaticResource):
+            if slug := await asyncio.to_thread(theme_page.theme_of_template, request.path.removeprefix("/t/")):
+                raise web.HTTPFound(request.rel_url.with_path(f"/t/{slug}/").with_query(request.rel_url.query))
+        return await handler(request)
+
+    app = web.Application(middlewares=[guard, built_page_only])
     app.add_routes(r)
-    app.router.add_static("/t/", THEMES, show_index=False)
+    app.router.add_static("/t/", theme_page.THEMES, show_index=False)
 
     async def tema_sem_guardar(request, resp):
         # todo arquivo do tema (o .js, o .css, a fonte) como a pagina: o navegador confere com o servidor antes de

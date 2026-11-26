@@ -693,6 +693,27 @@ def test_without_destination(flows):
           "a change to instalador/travas.txt or dev/travas.txt triggers every area")
 
 
+def served_page_sources():
+    sys.path.insert(0, str(ROOT))
+    import i18n
+    import theme_page
+    found = {"server.py", "theme_page.py", "i18n.py"}
+    for folder in ("themes/ritmelli", "gallery"):
+        page = ROOT / folder / "index.html"
+        found |= {f"{folder}/index.html"} | {i18n.arquivo(f"{folder}/i18n", lingua).as_posix() for lingua in i18n.LINGUAS}
+        for _, _, _, name in theme_page.file_tags(page.read_text(encoding="utf-8")):
+            found.add(f"themes/{name.removeprefix('/t/')}" if name.startswith("/t/") else f"{folder}/{name}")
+    return sorted(found)
+
+
+def test_served_page_area():
+    sources = served_page_sources()
+    missing = [path for path in sources if "tela" not in testa_tudo.areas([path])]
+    check(len(sources) > 80 and not missing,
+          f"every file the theme page and the gallery are built from runs the screen jobs ({len(sources)} files; "
+          f"{missing or 'none outside the tela area'})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     flows = workflows(ROOT)
@@ -709,6 +730,7 @@ def main():
     test_build_wiring(flows)
     test_build_base_in_queue()
     test_areas_output()
+    test_served_page_area()
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 
