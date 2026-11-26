@@ -31,8 +31,8 @@ the gallery use, one list for HTML and one inside <svg>. A <script> or <style> e
 <iframe> or <select> holds no <. A script src and a stylesheet href (with rel="stylesheet" alone) are plain paths
 inside the theme, like gerado/base.css. Anything else, and <script/>, <style/>, a <base>, a preload or prefetch
 <link>, a srcdoc, a NUL in a value, a & in a rel, type or as, a & that is no whole reference in a value, a script type
-that is not JavaScript or JSON, or an @import in a sheet (even escaped or in a comment), exits 3, naming the file, the
-line and the place. In a sheet, only CSS whitespace and comments may sit between and around the rules.
+that is not JavaScript or JSON, an @import or @namespace in a sheet (even escaped or in a comment), or a linked
+file that is not in the theme, exits 3, naming the file, the line and the place. In a sheet, only CSS whitespace and comments may sit between and around the rules.
 
 Exit 0 when the head only moves code: the two pages are the same, or
 - every file of the theme that the page does not read (images, fonts) has the same content;
@@ -79,8 +79,8 @@ CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
 HTML_SPACE = " \t\n\r\f"
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
 SENTINEL = re.compile(r"^\x00(open (\d+)|close)\x00$")
-JS_TYPES = (None, "", "text/javascript")
-CSS_TYPES = (None, "", "text/css")
+JS_TYPES = ("", "text/javascript")
+CSS_TYPES = ("", "text/css")
 DECLARATIONS = ("function_declaration", "generator_function_declaration")
 COMMENTS = ("comment", "html_comment")
 RESTRICTED = ("return_statement", "break_statement", "continue_statement", "throw_statement", "yield_expression",
@@ -128,7 +128,7 @@ def strict(html, name):
                 refuse(at, "a srcdoc or a NUL in a value")
             if any("&" in attributes.get(k, "") for k in ("rel", "type", "as")):
                 refuse(at, "a & in a rel, type or as")
-            if element == "script" and attributes.get("type", "").strip(" \t\n\r\f").lower() not in SCRIPT_TYPES:
+            if element == "script" and type_of(attributes) not in SCRIPT_TYPES:
                 refuse(at, "a script type that is not plain JavaScript or JSON (a module can import files)")
             if loose := [v for k, v in attributes.items() if "&" in WHOLE_REFERENCE.sub("", v)]:
                 refuse(at, f"a & that is not a whole reference in {loose[0]!r}")
@@ -154,8 +154,13 @@ def body_problem(element, body, from_file):
     if element == "script":
         return from_file and body or re.search(r"</script|<!--", body, re.I)
     if element == "style":
-        return re.search(r"</style", body, re.I) or "@import" in css_unescape(body).lower()
+        return re.search(r"</style", body, re.I) or sheet_reaches_out(body)
     return "<" in body
+
+
+def sheet_reaches_out(text):
+    read = css_unescape(text).lower()
+    return "@import" in read or "@namespace" in read
 
 
 def css_unescape(text):
@@ -268,11 +273,15 @@ def header(kind, name, others):
 def block_of(kind, name, others):
     if kind in ("link", "style-open"):
         return Block("style", header("link" if kind == "link" else "style", name, others), tuple(others.items()),
-                     others.get("type") in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "",
+                     type_of(others) in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "",
                      source=("file", posixpath.splitext(name)[1].lower()) if kind == "link"
                      else ("inline",))
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
-                 others.get("type") in JS_TYPES, source=("file" if kind == "script" else "inline", name))
+                 type_of(others) in JS_TYPES, source=("file" if kind == "script" else "inline", name))
+
+
+def type_of(attributes):
+    return (attributes.get("type") or "").strip(" \t\n\r\f").lower()
 
 
 def assemble(read, files=None):
@@ -314,11 +323,12 @@ def assemble(read, files=None):
             end += len("</script>")
         body = f"\n\x00open {number[id(found)]}\x00\n"
         if kind in ("script", "link"):
-            if (text := fetch(name)) is not None and kind == "link" and "@import" in css_unescape(text).lower():
-                raise Doubt(f"{name}: an @import, even escaped or in a comment, which fetches a file the tool does not read")
-            if text is None:
-                blocks[number[id(found)]].source += ("not served",)
-            body += f"{text or ''}\n\x00close\x00\n"
+            if (text := fetch(name)) is None:
+                raise Doubt(f"{name}: the page links it, and it is not in the theme (the browser gets a 404)")
+            if kind == "link" and sheet_reaches_out(text):
+                raise Doubt(f"{name}: an @import or @namespace, even escaped or in a comment, which ties the sheet to "
+                            f"something outside its rules")
+            body += f"{text}\n\x00close\x00\n"
         page = page[:begin] + body + page[end:]
     items, current = [], []
     for line in page.split("\n"):

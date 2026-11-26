@@ -99,11 +99,11 @@ sem texto no `<script src>`; o `<title>`, o `<iframe>` e o `<select>` não têm 
 `gerado/molduras.css`, sem `/` no começo, `..`, busca, `#`, `%`, `&` nem `\`. Fora disso ela recusa, com o arquivo, a
 linha e o trecho, e sai 3 (não sei julgar): `<script/>` e `<style/>`, um `<base>`, um `<link>` de preload ou de
 prefetch, um `srcdoc`, um NUL num valor, um `&` num `rel`, `type` ou `as`, um `&` que não é uma referência inteira num
-valor, um script de tipo que não é JavaScript nem JSON (um módulo importa arquivos) e um `@import` numa folha, mesmo
-escapado ou num comentário (ele busca um arquivo que a ferramenta não lê). Um arquivo que não está lá é um script ou uma
-folha que o servidor não entrega, e um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da
-pasta). Numa folha, entre as regras e nas pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab
-vertical antes de um seletor) é uma folha que não se lê.
+valor, um script de tipo que não é JavaScript nem JSON (um módulo importa arquivos) um `@import` ou um `@namespace` numa
+folha, mesmo escapado ou num comentário (o primeiro busca um arquivo que a ferramenta não lê, e o prefixo do segundo só
+vale na folha dele), e um arquivo ligado pela página que não está no tema (o navegador recebe um 404). Um `\r` sozinho
+conta como fim de linha, como no navegador (lido do git ou da pasta). Numa folha, entre as regras e nas pontas, só cabem
+os espaços do CSS e comentários: outro caractere ali (um tab vertical antes de um seletor) é uma folha que não se lê.
 Ela sai 0 quando o head só muda código de lugar:
 - todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
