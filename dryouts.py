@@ -98,7 +98,7 @@ class VoicePedalStart:
         if start is None:
             return None, None
         on_at, off_at, up_at = start
-        if empty_at is not None and on_at > empty_at:
+        if (empty_at is not None and on_at > empty_at) or (lo is not None and off_at is not None and off_at <= lo):
             return on_at, None
         now = self.clock()
         pedal = f"the pedal turned on {now - on_at:.2f} s ago"

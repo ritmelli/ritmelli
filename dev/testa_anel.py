@@ -507,13 +507,48 @@ class TestVoicePedalStart(unittest.TestCase):
         now, pedal, dry = self.pedal_turning_off(0.1, 6.1, 6.2)
         with mock.patch("sys.stderr", io.StringIO()) as log:
             now[0] = 6.3
-            pedal.track(True, stamp(6.24))
+            pedal.track(True, stamp(6.22))
             pedal._ended, pedal._on = pedal._on, None
             dry.read_ring(lambda: 0)
             dry.ran_dry(0.05, 1, 0.0)
             dryouts.LOG.written()
         self.assertEqual(dry.while_pedal_starting, 0, "the start's own track came up 6.0 s before the ring was filled")
         self.assertNotIn("voice pedal: its voice track came up", log.getvalue())
+
+    def test_a_ring_filled_after_the_off_is_not_the_pedals_in_either_phase_of_turning_off(self):
+        for done in (False, True):
+            with self.subTest(turning_off_done=done):
+                now = [0.0]
+                pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+                dry = dryouts.RingDryOuts(pedal)
+                with mock.patch("sys.stderr", io.StringIO()) as log:
+                    pedal.pedal(True)
+                    now[0] = 1.0
+                    pedal.track(True, stamp(1.0))
+                    now[0] = 2.0
+                    pedal._on[1] = now[0]
+                    if done:
+                        pedal._ended, pedal._on = pedal._on, None
+                    now[0] = 2.2
+                    dry.read_ring(lambda: 1)
+                    now[0] = 2.8
+                    dry.read_ring(lambda: 0)
+                    dry.ran_dry(0.6, 1, 0.0)
+                    dryouts.LOG.written()
+                self.assertEqual(dry.while_pedal_starting, 0, "the ring had music 0.2 s after the pedal turned off")
+                self.assertIn("the microphone ring ran dry (", log.getvalue())
+
+    def test_a_track_up_before_the_off_of_a_start_turning_off_is_its(self):
+        now, pedal, dry = self.pedal_turning_off(0.1, 6.1, 6.2)
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            now[0] = 6.3
+            pedal.track(True, stamp(6.21))
+            pedal._ended, pedal._on = pedal._on, None
+            dry.read_ring(lambda: 0)
+            dry.ran_dry(0.05, 1, 0.0)
+            dryouts.LOG.written()
+        self.assertEqual(dry.while_pedal_starting, 1, "the start's track came up 0.01 s after its off, inside TICK_S")
+        self.assertIn("voice pedal: its voice track came up 6.21 s after the pedal turned on", log.getvalue())
 
     def test_a_start_turning_off_is_told_without_a_ring(self):
         now, pedal, _ = self.pedal_turning_off(1.0, 1.5, 2.0)
