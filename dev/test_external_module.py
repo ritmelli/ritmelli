@@ -32,7 +32,8 @@ def fake_module(handle):
 
 def bare_engine():
     e = engine.Engine.__new__(engine.Engine)
-    e.mina_permitida, e._mina, e.error = True, None, None
+    e.mina_permitida, e._mina = True, None
+    e.set_error(None)
     e._mina_lock, e._mina_buf, e._mina_int_n, e._mina_voz_em = threading.Lock(), np.zeros(0, np.float32), 0, -1e9
     return e
 

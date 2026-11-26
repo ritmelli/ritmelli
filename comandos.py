@@ -3,10 +3,10 @@ ponto do disco, tirar, mover e limpar a fila e o volume da musica. A regra de ca
 rota do server.py le o corpo, chama o comando e monta a resposta, e quem nao e rota (os vigias do App) chama o
 mesmo comando. Cada funcao recebe o App do server.py (A); a fila, o historico e a fila_lock sao dele.
 
-O avanco da fila e uma operacao so (avanca): o Proxima (/api/next), o fim do disco (_volta_fila), a virada da
-passagem (_volta_passagem), o stream da parecida que nao abriu (_abre_stream), a parecida que chegou com o prato
-parado (auto_round) e o enfileirar com o prato parado passam por ela, com uma reserva so por deck e linha do prato
-(Reserva).
+Advancing the queue is a single operation (avanca): Next (/api/next), the end of the record (_volta_fila), the
+passage switch (_volta_passagem), the similar track whose stream didn't open (_abre_stream), the similar track that
+arrived with the platter stopped (Automatico.auto_round) and enqueueing with the platter stopped all go through it,
+with one reservation per deck and platter line (Reserva).
 
 Lock order, always this way and never the other: the App's fila_lock, then the engine's _lock (an RLock), then the
 engine's _qlock. Two more come right before the _qlock and are never held with the fila_lock nor the _lock: the
@@ -392,7 +392,7 @@ def pular(A):
         else:
             x = avanca(A, pular=True, grupo=p, visto=p)  # o prato que mudou de linha no meio (o Parar) fica
             if x is CEDEU:
-                with A.proximo_lock, E.state_section():  # o mesmo disco no mesmo deck numa linha nova (um seek): o Proximo
+                with A.proximo_lock, E.state_section():  # the same record on the same deck in a new line (a seek): Next
                     agora = E.line()
                     de_novo = faixa is not None and E.track is faixa and agora.deck is p.deck  # ainda vale
                     if de_novo:

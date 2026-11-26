@@ -136,7 +136,8 @@ Os comandos e o Automático chamam o `App` só pela interface pública dele: `ch
 `remove_if_queued`, `save_history`, `release_reservation`, `close_switches`, `with_engine`, `tempo_of`,
 `search_songs`, `run_helper` e os outros; o que eles ainda escrevem direto no estado do `App` é contado
 abaixo. O servidor chama o Automático pela dele (`ligar_auto`,
-`fetch_mix`, `auto_round`, `run_auto_watcher` e `run_tempo_watcher`), e a prateleira grava pelo `Library.save`.
+`run_auto_watcher` e `run_tempo_watcher`); o `auto_round` e o `fetch_mix` são a volta do vigia das parecidas e a busca
+que ela pede, que os testes chamam pelo `A.automatico`. A prateleira grava pelo `Library.save`.
 
 O `dev/testa_ganchos.py` conta, cada número contra o seu teto, que só desce: os acessos aos nomes privados do motor
 (`ENGINE_CEILING`), do `App` (`APP_CEILING`) e do Automático (`AUTOMATICO_CEILING`) vindos dos outros módulos da

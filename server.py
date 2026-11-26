@@ -549,10 +549,10 @@ class Library:
 
 class App:
     def __init__(self, port, data_dir, mock=False, metricas_teste=False, vigias=True, relogio=True, papel_local="pc"):
-        """vigias=False e relogio=False sao dos testes (dev/testa_comandos.py): sem as threads dos vigias (quem testa
-        chama cada volta, _volta_fila, _volta_passagem e auto_round, a mao) e, no --mock, sem o relogio de 10 ms do
-        MockEngine (quem testa chama o engine._mixa). papel_local="celular" e o --papel-local celular, so no --mock:
-        o Host 127.0.0.1:<porta> passa pelo pareamento como o celular da rede de casa (o guard do build)."""
+        """vigias=False and relogio=False are for the tests (dev/testa_comandos.py): no watcher threads (the test calls
+        each round by hand: _volta_fila, _volta_passagem and Automatico.auto_round) and, with --mock, no 10 ms clock in
+        the MockEngine (the test calls engine._mixa). papel_local="celular" is --papel-local celular, only with --mock:
+        the Host 127.0.0.1:<port> goes through pairing like the phone on the home network (the guard of build)."""
         if papel_local != "pc" and not mock:
             raise ValueError("papel_local only works with mock")
         self.port = port
@@ -1011,7 +1011,7 @@ class App:
             if cap is None:
                 return None
             if reserva is not None:
-                with e.state_section():  # com o _lock na mao, a linha do prato nao muda desde o load
+                with e.state_section():  # with the _lock held, the platter's line hasn't changed since the load
                     reserva.publicada = e.line()
             if entrada is not None:
                 self.remove_from_queue(entrada)
@@ -1261,7 +1261,7 @@ class App:
         Proximos ligados a ela. Uma vez so: a resolvida fica como esta."""
         if r.feita.is_set():
             return
-        with self.engine.state_section():  # o mesmo trecho em que um Proximo se liga a ela (Proximo.liga): nenhum fica de fora
+        with self.engine.state_section():  # the same stretch in which a Next joins it (Proximo.liga): none is left out
             if self.reserva is r:
                 self.reserva = None
             r.entrada = entrada

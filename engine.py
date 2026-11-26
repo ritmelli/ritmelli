@@ -1380,7 +1380,7 @@ class Engine:
         if faltou:
             self._aviso = self._error = _aviso_reserva(faltou)
         elif self._aviso is not None and self._error == self._aviso:
-            self._error = None  # o aparelho escolhido voltou: sai so o aviso, nunca um erro de tocar
+            self._error = None  # the chosen device came back: only the warning leaves, never a playback error
         threading.Thread(target=self._confere_filtro, args=(self.active["mic"],), daemon=True).start()
 
     def _confere_filtro(self, mic):

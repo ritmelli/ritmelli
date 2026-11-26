@@ -523,18 +523,18 @@ class TestaApp(unittest.TestCase):
                 redirect_stdout(io.StringIO()):
             eng.Engine._confere_mudos(m, [UMC_IN])
         self.assertEqual(m._error["key"], "server.devices.silent")
-        self.assertIs(m._aviso, m._error, "e um aviso dos aparelhos: sai quando o audio reabre")
+        self.assertIs(m._aviso, m._error, "a device warning: it leaves when the audio reopens")
         # o audio que reabriu, caiu ou fechou durante a conferencia: o resultado e de antes, e fica de fora
         for muda in ({"_stack": object()}, {"_stack": None}, {"_fechado": True}):
             m = self._motor(_mudos_vistos=True)
-            m._error = m._aviso = "o de antes"
+            m._error = m._aviso = "the earlier one"
 
             def confere(n, m=m, muda=muda):
                 m.__dict__.update(muda)
                 return {"mudos": [UMC_IN]}
             with mock.patch.object(eng, "_confere_fora", confere), redirect_stdout(io.StringIO()):
                 eng.Engine._confere_mudos(m, [UMC_IN])
-            self.assertEqual(m._error, "o de antes", muda)
+            self.assertEqual(m._error, "the earlier one", muda)
             # o audio que caiu durante a conferencia: os do registro ficam para quando ele voltar
             self.assertEqual(m._mudos_vistos, muda.get("_stack", 0) is not None, muda)
         m = self._motor(_stack=None, _mudos_vistos=True)  # o audio fechado (a reabertura que falhou tem o aviso dela)

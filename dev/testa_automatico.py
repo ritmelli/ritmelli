@@ -1,16 +1,17 @@
-r"""Confere o Automatico no App de verdade: o server.App(..., mock=True, vigias=False, relogio=False), no mesmo processo e
-numa pasta temporaria com um andamentos.json conhecido, sem as threads dos vigias nem o relogio do MockEngine. O
-mix_do do App (a busca de parecidas na rede, que no --mock ja volta vazia) vira um falso com seis parecidas de
-andamento conhecido, e o prato recebe uma faixa com youtube_id e sem path (sem path, o motor nao abre leitor): ela e a
-semente. O teste faz o papel do vigia, sempre pelo App: liga o Automatico (ligar_auto), chama a primeira volta
-(auto_round), que pede a busca da semente, faz a busca ele mesmo (fetch_mix, sem thread e sem esperar) e chama a
-segunda volta, que monta a fila na ordem por andamento. Depois, uma medida nova com a primeira da fila presa (a
-passagem para ela ja sendo preparada) e sem ela, e o Automatico desligado. Nada vai a rede nem abre aparelho, e a
-prateleira e a pasta de quem usa nao sao lidas.
+r"""Checks the Automatico on the real App: server.App(..., mock=True, vigias=False, relogio=False), in the same process
+and a temporary folder with a known andamentos.json, without the watcher threads or the MockEngine's clock. The App's
+mix_do (the network search for similar tracks, which already comes back empty with --mock) becomes a fake with six
+similar tracks of known tempo, and the platter gets a track with a youtube_id and no path (without a path the engine
+opens no reader): that is the seed. The test plays the watcher: it turns the Automatico on (ligar_auto), calls the
+first round (A.automatico.auto_round), which asks for the seed's search, runs that search itself
+(A.automatico.fetch_mix, with no thread and no wait) and calls the second round, which builds the queue in tempo
+order. Then a new measure with the head of the queue held (the passage to it already being prepared) and without it,
+and the Automatico turned off. Nothing goes to the network or opens a device, and the user's shelf and folder are not
+read.
 
     python dev/testa_automatico.py
 
-Sai 1 se algo falha."""
+Exits 1 if something fails."""
 import contextlib
 import io
 import json
@@ -65,7 +66,7 @@ def automatico(A, E):
     pedidos = []
 
     def mix_falso(yid):
-        """As parecidas da semente, novas a cada busca (o fetch_mix numera cada uma na ordem do Mix)."""
+        """The seed's similar tracks, new on every search (fetch_mix numbers each one in Mix order)."""
         pedidos.append(yid)
         return [{"youtube_id": v, "title": t, "duration": 200.0, "channel": f"Artista {t.split()[-1]}",
                  "thumb": server.thumb(v)} for v, t in PARECIDAS]

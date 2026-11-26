@@ -1,12 +1,14 @@
-"""O Automatico: com ele ligado, a fila nunca acaba. O ultimo disco que o usuario escolheu e a semente, e as parecidas
-dela (o radio do YouTube Music, pelo mix_do do App) ficam no fim do A seguir, em ordem de andamento (andamento.py). O
-vigia das parecidas (run_auto_watcher, uma auto_round a cada 0,5 s) busca o Mix e monta a fila; o do andamento
-(run_tempo_watcher) mede cada disco uma vez so e troca a parecida que veio como video pela versao so de audio.
+"""The Automatico: while it is on, the queue never runs out. The last record the user chose is the seed, and its
+similar tracks (the YouTube Music radio, through the App's mix_do) sit at the end of Up next, in tempo order
+(andamento.py). The similar-tracks watcher (run_auto_watcher, one auto_round every 0.5 s) fetches the Mix and builds
+the queue; the tempo watcher (run_tempo_watcher) measures each record once and swaps a similar track that came as a
+video for its audio-only version.
 
-O estado do Automatico mora no App (auto, semente, mix, mix_base, ponte, mix_buscando, mix_falhou, fora,
-fora_musica, andamentos, andamentos_versao, versoes), porque a leitura do estado, o save_cfg e o _recusar o leem: o
-Automatico o le e o muda pelo app, sob a app.fila_lock, na ordem das travas do comandos.py, e a fila muda pelo
-App.change_queue, menos as entradas que o _troca_audio troca no lugar (#211). O mix_do chega resolvido a cada chamada (o teste troca o do App). Its constants live here and the
+Most of the Automatico's state still lives on the App (auto, semente, mix, mix_base, ponte, mix_buscando, mix_falhou,
+fora, fora_musica, andamentos, andamentos_versao, versoes), because the state read, save_cfg and _recusar read it; the
+Automatico reads and changes it through the app, under app.fila_lock, in the lock order of comandos.py, and the queue
+changes through App.change_queue, except the entries _troca_audio changes in place (#211). The Mix order counter
+(mix_seq) is its own. mix_do is resolved on every call (the test swaps the App's). Its constants live here and the
 music functions (chaves_musica, autores, find_track, track_artists) in music.py; the shelf's folder (pastas.LIB,
 read when it is used) and save_json come from pastas.py, and the error text (yt_msg) from yt_erros.py. What is still
 the server's (the YouTube process, the helper process) comes through the App's public interface (search_songs,
@@ -164,19 +166,19 @@ class Automatico:
         return entrou
 
     def run_auto_watcher(self):
-        """Com o Automatico ligado, a fila nunca acaba (como no YouTube Music): o ultimo disco que
-        o usuario escolheu (qualquer um que o Automatico nao pos) e a semente, e o radio dela (mix_do)
-        mantem AUTO_FILA parecidas no fim do A seguir. Semente nova troca as parecidas; o que ja
-        tocou nesta sessao nao volta; quando o Mix da semente acaba, segue do Mix da ultima
-        parecida que tocou. As parecidas vao em ordem de andamento (_ordena_auto). Cada volta e o auto_round."""
+        """With the Automatico on, the queue never runs out (as in YouTube Music): the last record the user chose
+        (any one the Automatico did not add) is the seed, and its radio (mix_do) keeps AUTO_FILA similar tracks at
+        the end of Up next. A new seed replaces the similar tracks; what already played this session does not come
+        back; when the seed's Mix runs out, it goes on from the Mix of the last similar track that played. The
+        similar tracks go in tempo order (_ordena_auto). Each round is an auto_round."""
         visto, sinal = None, None
         while True:
             time.sleep(0.5)
             visto, sinal = self.auto_round(visto, sinal)
 
     def auto_round(self, visto=None, sinal=None):
-        """Uma volta do run_auto_watcher. visto: o youtube_id do prato na volta de antes; sinal: o que a ordem por
-        andamento viu da ultima vez que ordenou. Volta os dois da proxima volta."""
+        """One round of run_auto_watcher. visto: the platter's youtube_id in the previous round; sinal: what the tempo
+        order saw the last time it sorted. Returns both for the next round."""
         A = self.app
         e = A.engine
         tr = e.track
@@ -294,11 +296,12 @@ class Automatico:
         return {"ini": r.get("ini"), "fim": r.get("fim")} if r else None
 
     def run_tempo_watcher(self):
-        """Com o Automatico ligado, mede o andamento (_a_medir, _mede_andamento) um disco de cada vez, uma vez so
-        por disco (fica no andamentos.json). So depois de o disco do prato ficar ANDAMENTO_APOS_S tocando (pular
-        de disco em disco nao le nada; buscar nao mede nunca) e nunca com a passagem sendo planejada (a rede do
-        motor e a da medida juntas). Antes da medida, a parecida que veio como video troca pela versao so de
-        audio, quando ha (versao_audio). A medida que chega faz o run_auto_watcher ordenar de novo."""
+        """With the Automatico on, measures the tempo (_a_medir, _mede_andamento) one record at a time, once per record
+        (it stays in andamentos.json). Only after the platter's record has played for ANDAMENTO_APOS_S (skipping from
+        record to record reads nothing; seeking never measures) and never while the passage is being planned (the
+        engine's network and the measuring one together). Before measuring, a similar track that came as a video
+        swaps to its audio-only version when there is one (versao_audio). Each measure that arrives makes
+        run_auto_watcher sort again."""
         A = self.app
         prato, desde = None, 0.0
         while True:

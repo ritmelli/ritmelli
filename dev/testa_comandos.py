@@ -1,16 +1,17 @@
-r"""Confere os comandos de musica (comandos.py) e o avanco da fila no App de verdade: o server.App(..., mock=True,
-vigias=False, relogio=False), no mesmo processo e numa pasta temporaria, sem as threads dos vigias nem o relogio do
-MockEngine. Quem anda o audio e o teste, chamando o engine._mixa(BLOCK); quem faz o papel de cada vigia e o teste,
-chamando a volta dele (_volta_fila, _volta_passagem e auto_round). O leitor do motor e um de mentira (blocos de
-silencio, sem ffmpeg), o som por cima so e anotado e o endereco do stream e recusado: nada vai a rede nem abre
-aparelho, e a prateleira e a pasta de quem usa nao sao lidas. E a leitura do estado (App.leitura) com a virada do
-motor ainda nao conciliada na fila, com o vigia suspenso no meio da conciliacao e com a preparacao bloqueada. E o
-bloco do _mixa parado entre a retirada e a publicacao (Suspenso), com um seek, um load, um resume do fim, uma troca de
-deck, a troca do stream pelo arquivo ou um pedido de pausa no meio.
+r"""Checks the music commands (comandos.py) and the queue advance on the real App: server.App(..., mock=True,
+vigias=False, relogio=False), in the same process and a temporary folder, without the watcher threads or the
+MockEngine's clock. The test moves the audio, calling engine._mixa(BLOCK), and plays each watcher, calling its round
+(_volta_fila, _volta_passagem and Automatico.auto_round). The engine's reader is a fake one (silent blocks, no
+ffmpeg), the sound on top is only recorded and the stream address is refused: nothing goes to the network or opens a
+device, and the user's shelf and folder are not read. Also the state read (App.leitura) with the engine's switch not
+yet reconciled with the queue, with the watcher suspended in the middle of reconciling and with the preparation
+blocked. And the _mixa block stopped between taking and publishing (Suspenso), with a seek, a load, a resume from the
+end, a deck swap, the stream replaced by the file or a pause request in the middle. And the engine's public seams
+(engine_seams).
 
     python dev/testa_comandos.py
 
-Sai 1 se algo falha."""
+Exits 1 if something fails."""
 import asyncio
 import contextlib
 import io
@@ -209,12 +210,12 @@ def voltas(A, E):
             "a volta seguinte, com o mesmo disco visto, nao avanca de novo")
     A.tirar_da_fila(x["qid"])
 
-    # a parecida que chega com o prato parado toca na hora (auto_round)
+    # the similar track that arrives with the platter stopped plays right away (auto_round)
     A.auto, A.semente, A.mix_base = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, "bbbbbbbbbbb"
     A.mix = [{"youtube_id": "aaaaaaaaaaa", "title": "Disco d3", "duration": 120.0, "ordem": 1}]
     visto, sinal = A.automatico.auto_round(None, None)
     confere(no_prato(E) == "d3" and E.track.get("auto") and A.parado_sem_fila is None and fila(A) == [],
-            f"o auto_round: a parecida que chegou com o prato parado toca na hora ({no_prato(E)})")
+            f"auto_round: the similar track that arrived with the platter stopped plays right away ({no_prato(E)})")
     visto, sinal = A.automatico.auto_round(visto, sinal)
     confere(visto == "aaaaaaaaaaa" and A.ponte == "aaaaaaaaaaa",
             "a volta seguinte ve a parecida no prato: o Automatico segue do Mix dela quando o da semente acabar")
@@ -523,10 +524,10 @@ def voltas(A, E):
 
 
 def andamento(A, E):
-    """O run_tempo_watcher de verdade (o do App.automatico), uma volta por caso: a versao de audio e o andamento medidos
-    sao gravados fora da fila_lock; a medida entra na memoria mesmo se a gravacao falha, e a troca na fila e o
-    andamentos_versao so vem com a gravacao feita. Enquanto grava, nada da medida aparece ainda."""
-    print("--- o run_tempo_watcher: a gravacao fora da fila_lock")
+    """The real run_tempo_watcher (App.automatico's), one round per case: the measured audio version and tempo are
+    written outside the fila_lock; the measure enters memory even if the write fails, and the queue swap and
+    andamentos_versao only come once the write is done. While it writes, nothing of the measure shows yet."""
+    print("--- run_tempo_watcher: the write outside the fila_lock")
 
     class Fim(Exception):
         pass
@@ -568,7 +569,7 @@ def andamento(A, E):
             t.join(10)
             A.auto = False
         confere(not t.is_alive() and len(saiu) == 1 and (saiu[0] is disco_cheio if falha else isinstance(saiu[0], Fim)),
-                f"o run_tempo_watcher saiu sozinho, pela {'gravacao que falhou' if falha else 'volta seguinte'} "
+                f"run_tempo_watcher left on its own, through {'the failed write' if falha else 'the next round'} "
                 f"({o_que}, {saiu})")
         confere(gravados == [(caminho, {**antes, yid: medida}, False, antes, versao, [])],
                 f"uma gravacao so, no arquivo certo, com o que havia mais a medida, sem a fila_lock, e com nada da "
