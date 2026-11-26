@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 from aiohttp import ClientSession, web
@@ -31,9 +32,11 @@ sys.argv = ["fitcheck.py", sys.argv[3], "--sizes", "390x844", "--shots", sys.arg
 fitcheck.main()
 """
 LATE_S = fitcheck.AVISO_ESPERA_S + 2
+LATE_ASKED = "/__ritmelli-test-late-notice"
 LATE_NOTICE = ("<script>(() => { const show = HTMLDialogElement.prototype.showModal; "
                "HTMLDialogElement.prototype.showModal = function () { if (this.id !== 'dlg-metricas') "
-               f"return show.call(this); setTimeout(() => show.call(this), {LATE_S * 1000:.0f}); }}; }})();</script>")
+               f"return show.call(this); fetch('{LATE_ASKED}'); "
+               f"setTimeout(() => show.call(this), {LATE_S * 1000:.0f}); }}; }})();</script>")
 HOP_HEADERS = {"host", "origin", "referer", "content-length", "transfer-encoding", "connection", "content-encoding"}
 
 failures = []
@@ -61,6 +64,9 @@ class ThemeProxy:
         return 0
 
     async def forward(self, request):
+        if request.path == LATE_ASKED:
+            self.held.append(request.path)
+            return web.Response(status=204)
         if hold := self.hold_for(request):
             self.held.append(request.path)
             await asyncio.sleep(hold)
@@ -124,16 +130,37 @@ def notice_on_slow_load():
 
 def notice_on_slow_state():
     r, proxy = notice_through({"hold_state_s": LATE_S}, {"boas_vindas": True})
-    check("/api/state" in proxy.held and r["abriu"] is True and not r["erros"],
-          f"with the page's GET /api/state held {LATE_S:.0f} s after the load, the notice is still seen opening: the "
-          f"clock starts at that response ({r})")
+    gap = r["load_to_state_s"]
+    check("/api/state" in proxy.held and gap is not None and gap > fitcheck.AVISO_ESPERA_S and r["abriu"] is True
+          and not r["erros"],
+          f"with the page's GET /api/state ending {gap} s after the load event, more than the "
+          f"{fitcheck.AVISO_ESPERA_S:.0f} s wait, the notice is still seen opening: the clock starts at that response "
+          f"({r})")
 
 
 def notice_late_after_state():
-    r, _ = notice_through({"late_notice": True}, {"boas_vindas": True})
-    check(r["abriu"] is False and not r["not_ready"],
+    r, proxy = notice_through({"late_notice": True}, {"boas_vindas": True})
+    check(LATE_ASKED in proxy.held and r["abriu"] is False and not r["not_ready"],
           f"a notice that opens {LATE_S:.0f} s after the state, past the {fitcheck.AVISO_ESPERA_S:.0f} s wait, fails "
           f"the check ({r})")
+
+
+def probe_past_the_deadline():
+    async def never_answers(method, **params):
+        await asyncio.Event().wait()
+
+    async def notice_open(method, **params):
+        return {"result": {"value": True}}
+
+    start = time.monotonic()
+    late = asyncio.run(fitcheck.wait_notice(never_answers, start + 0.3))
+    took = time.monotonic() - start
+    check(late is False and took < 2, f"a probe whose answer crosses the deadline does not count, and the wait ends at "
+                                      f"the deadline ({late}, {took:.2f} s)")
+    check(asyncio.run(fitcheck.wait_notice(notice_open, time.monotonic() + 0.3)) is True,
+          "a probe that answers open before the deadline counts")
+    check(asyncio.run(fitcheck.wait_notice(notice_open, time.monotonic() - 0.1)) is False,
+          "a deadline already past does not probe")
 
 
 def notice_page_not_ready():
@@ -174,6 +201,7 @@ def fitcheck_never_ready():
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    probe_past_the_deadline()
     notice_on_slow_load()
     notice_on_slow_state()
     notice_late_after_state()

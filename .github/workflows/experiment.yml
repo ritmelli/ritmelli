@@ -75,3 +75,29 @@ jobs:
           git checkout -- pastas.py
           "mutant with the buffered wait: $bad of 3 runs did not match"
           exit $bad
+
+  injected-230-loop:
+    name: compara with injected failures, in a loop
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/python
+        with:
+          requirements: requirements-dev.txt
+      - name: ffmpeg on the PATH
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
+      - name: 8 rounds of the injected failures, each must give its own diagnosis
+        run: |
+          $bad = 0
+          for ($i = 1; $i -le 8; $i++) {
+            $out = python dev/test_compara_not_ready.py 2>&1 | Out-String
+            $verdicts = ($out -split "`n" | Where-Object { $_ -match '^(vazio-\S+: the |ok    |FAIL  )' }) -join "`n"
+            "round $i : exit $LASTEXITCODE"
+            $verdicts
+            if ($LASTEXITCODE -ne 0 -or $out -notmatch 'all passed') { $bad++ }
+          }
+          "injected rounds that did not give the expected diagnoses: $bad of 8"
+          exit $bad
