@@ -131,10 +131,13 @@ que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock
 essas travas no código que roda cada função (o `change_queue` chama a dele dentro do `_qlock`, e cada método público do
 motor que recebe um `pode` o roda sob o `_lock` e o `_qlock`, também pelo `_restart`), e que quem chama o
 `change_queue`, o `close_switches` e o `concilia` tem a `fila_lock` na mão, subindo pelas chamadas até o ponto de
-entrada (a thread, a rota). Com a `fila_lock`, o `_lock` ou o `_qlock` na mão, nem o código nem o que ele chama grava
-arquivo (`save_json`, `_save`, `write_text`, `write_bytes`). Confere também que o `_mixa` e os métodos e as funções do
-`engine.py` que ele chama, das travas do modelo, só pegam o `_qlock` (o `AudioLocks` do `Locks.tla`); o `_slock` dos
-sons por cima não entra no modelo.
+entrada (a thread, a rota); uma função local ou um `lambda` feitos com uma trava na mão não contam com ela (rodam
+depois, noutra thread), salvo os que vão para as funções acima. Os ganchos que o App põe no motor (pelo
+`on_silent_stream` ou atribuindo, como o `religar_stream`, o `sonoridade_de` e o `mediu`, também chamados por um nome
+local) contam como o método do App que o App pôs ali, e todo gancho que o motor chama tem de achar o seu. Com a
+`fila_lock`, o `_lock` ou o `_qlock` na mão, nem o código nem o que ele chama grava arquivo (`save_json`, `_save`,
+`write_text`, `write_bytes`). Confere também que o `_mixa` e os métodos e as funções do `engine.py` que ele chama, das
+travas do modelo, só pegam o `_qlock` (o `AudioLocks` do `Locks.tla`); o `_slock` dos sons por cima não entra no modelo.
 
 ## O modelo das travas (`dev/tla/`)
 
@@ -143,11 +146,12 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
 
 - `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio, o vigia da
   passagem, o tocar de outro disco, o esquecer da prateleira, uma reserva de avanço em curso, duas trocas de lugar na
-  fila (a entrada sai da frente e volta) e o stream que abre sem dar áudio, com uma ou duas entradas e um job. Confere a
-  ordem das travas; que nenhum prato fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na
-  prateleira) e o stream recusado ou sem áudio; que o stream recusado só para ou troca o disco daquela tentativa; que a
-  entrada que uma reserva em curso vai tocar segue na versão que ela leu; e que a entrada da virada pendente tem a mesma
-  versão que o prato toca (as duas corridas da #211).
+  fila (a entrada sai da frente e volta), o stream que abre sem dar áudio e um pulo na barra, com uma ou duas entradas e
+  um job. Confere a ordem das travas; que nenhum prato fica carregando com o job já terminado (em erro, ou baixado com
+  ou sem o disco na prateleira) e o stream recusado ou sem áudio; que o stream recusado só para ou troca o disco daquela
+  tentativa; que a entrega do stream sem áudio só para ou avisa enquanto a espera do arquivo é a da leitura do prato
+  (depois de um pulo na barra, o leitor novo toca); que a entrada que uma reserva em curso vai tocar segue na versão que
+  ela leu; e que a entrada da virada pendente tem a mesma versão que o prato toca (as duas corridas da #211).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o
@@ -159,13 +163,14 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
-menos de 60 s (a `Races211` em três: o download, o stream e a troca, sem as trocas de lugar na fila; as trocas de lugar,
-a reserva, a preparação da passagem e a versão de áudio, sem o job; e os dois juntos, com uma troca de lugar só e sem o
-tocar de outro disco, o esquecer e a reserva), e roda também os mutantes: cada propriedade tem um que desfaz o que ela
-protege, e o mutante tem de ser pego. No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu (`python
-dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um `tla2tools.jar` já
-baixado. As duas corridas da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os passos do
-contraexemplo, um de cada vez.
+menos de 60 s (a `Races211` em quatro: o download, o stream e a troca, sem as trocas de lugar na fila; o download, o
+stream e um pulo na barra, sem as trocas de lugar e sem o tocar de outro disco, o esquecer e a reserva; as trocas de
+lugar, a reserva, a preparação da passagem e a versão de áudio, sem o job; e os dois juntos, com uma troca de lugar só e
+sem o tocar de outro disco, o esquecer e a reserva; o pulo na barra só entra na segunda), e roda também os mutantes:
+cada propriedade tem um que desfaz o que ela protege, e o mutante tem de ser pego. No PR, o job `tla` do `testa.yml`
+roda isso numa máquina ubuntu (`python dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS`
+aponta para um `tla2tools.jar` já baixado. As duas corridas da #211 se repetem no App de verdade no
+`dev/test_races_211.py`, com os passos do contraexemplo, um de cada vez.
 
 ## O que o servidor lê do motor
 
@@ -182,11 +187,12 @@ ou do Mix (atribuição, `update`, subscript ou `del`), e o `dev/test_queue_entr
 módulo. A versão de áudio das parecidas entra no Mix do Automático como entradas novas (o `_troca_audio`, que não
 escreve nas que já existem) e na fila pelo `App.apply_audio_version`, que muda a fila pelo `change_queue` e, no mesmo
 trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca), a
-primeira da fila presa e a que uma reserva em curso vai tocar (`App.reserva`). Os trechos do servidor e dos comandos que
-precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do `release_reservation` e
-do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo `Engine.with_lock`. A falha de preparar a
-próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, e o erro da tela entra pelo `set_error` (o `error` do
-motor só se lê).
+primeira da fila presa e a que uma reserva em curso vai tocar (`App.reserva`); o `tocar_da_fila` e a preparação da
+passagem leem a entrada numa cópia feita sob a `fila_lock`, e uma versão de áudio que chega no meio não mistura o alvo
+de antes com os dados de depois. Os trechos do servidor e dos comandos que precisam do `_qlock` (os do Próximo, da
+reserva, do `concilia`, da troca, do `remember_pos`, do `release_reservation` e do `change_queue`) o pegam pelo
+`Engine.state_section()`, e o `_lock` só pelo `Engine.with_lock`. A falha de preparar a próxima sai do motor pelo
+`take_prepare_failure`, sob o `_qlock`, e o erro da tela entra pelo `set_error` (o `error` do motor só se lê).
 
 Os comandos e o Automático chamam o `App` só pela interface pública dele: `change_queue`, `remove_from_queue`,
 `remove_if_queued`, `save_history`, `release_reservation`, `close_switches`, `with_engine`,

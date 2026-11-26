@@ -1198,7 +1198,7 @@ class Engine:
         self.ended = False
         self.pos = 0.0
         self._error = None
-        self._espera_arquivo = None  # o _gen do stream que falhou com o download a caminho (esperando_arquivo)
+        self._espera_arquivo = None
         # o primeiro som do disco que entrou no prato (09/11, a latencia do pedido falado): espera e load marcam
         # (id, hora do relogio), o _mixa troca pelo (titulo, stream?, entrou, soou) no primeiro bloco dele, e o
         # servidor tira e escreve no log (nada de print no callback)
@@ -2344,7 +2344,7 @@ class Engine:
                 with self._qlock:
                     waits = deck is self._deck and deck.gen == gen
                     if waits:
-                        self._espera_arquivo = gen
+                        self._espera_arquivo = (deck, gen)
                 if waits and self._stream_silent is not None:
                     self._stream_silent(track)
                 return
@@ -3358,7 +3358,7 @@ class Engine:
 
     def esperando_arquivo(self):
         """O stream do disco no prato falhou e ele espera o download para tocar (ver o _reader)."""
-        return self._espera_arquivo is not None and self._espera_arquivo == self._gen
+        return self._espera_arquivo == (self._deck, self._deck.gen)
 
     def abaixa(self, db, ms):
         """Abaixa a musica no jogo db decibeis por ms milissegundos, sem gravar nada: no prazo, ela volta sozinha. Um

@@ -202,10 +202,11 @@ def tocar_da_fila(A, qid):
     entrada, ou None se ela ja tinha saido."""
     with A.fila_lock:
         x = next((y for y in A.fila if y["qid"] == qid), None) if qid else None
+        seen = dict(x or {})
     if x is None:
         return None
     try:
-        return x if A.tocar_entrada(x, entrada=x) else None
+        return x if A.tocar_entrada(seen, entrada=x) else None
     except Exception:
         with A.fila_lock:
             A.remove_if_queued(x)  # a entrada quebrada sai da fila, como antes

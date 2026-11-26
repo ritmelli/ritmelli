@@ -39,7 +39,8 @@ um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez p
   tela avisa e o disco toca quando o download chegar. Se o endereço sai mas o ffmpeg não
   recebe nada dele (o YouTube às vezes responde 403), o leitor marca a espera do arquivo e passa pelo mesmo caminho do
   stream recusado (o `Engine.on_silent_stream`, que o App liga ao `_stream_refused`), enquanto essa espera ainda é a do
-  prato (um pulo na barra depois dela começa um leitor novo, que fica): o prato fica carregando com o aviso e toca o
+  prato, do deck e da leitura dele (um pulo na barra depois dela começa um leitor novo, que fica, e o deck que entra
+  numa passagem não herda a espera do outro): o prato fica carregando com o aviso e toca o
   arquivo quando o download chega, com leitor novo sempre que o arquivo entra no lugar do stream (mesmo perto do fim, e
   mesmo antes de o leitor do stream dizer que não deu áudio), e o aviso do stream sai com ele (outro aviso que veio
   depois fica); se o download falhou, antes ou depois, o prato para.

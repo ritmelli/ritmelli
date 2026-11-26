@@ -240,8 +240,63 @@ def silent_stream_then_a_seek(A, E, readers):
         ended[0].wait(WAIT_S)
     del A._abre_stream
     tr = E.track
-    check(tr is not None and tr.get("job") == j["id"],
-          f"the silent reader's hand-over, late after a seek whose reader has audio, leaves the platter to it ({tr})")
+    check(tr is not None and tr.get("job") == j["id"] and E.error is None,
+          f"the silent reader's hand-over, late after a seek whose reader has audio, leaves the platter to it, without "
+          f"a warning ({tr}, {E.error})")
+
+
+def audio_version_while_an_entry_plays_from_the_queue(A):
+    cmd.limpar_fila(A)
+    entry = {"id": None, "url": None, "title": "similar", "channel": "c", "duration": 300.0, "job": None,
+             "youtube_id": "lllllllllll", "auto": True}
+    head, x = dict(entry, qid="head5", youtube_id="mmmmmmmmmmm"), dict(entry, qid="play5")
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.extend([head, x]))
+    v = {"youtube_id": "nnnnnnnnnnn", "duration": 200, "title": "the audio", "channel": "c"}
+    seen = []
+
+    def remote(j, alvo, meta, **kw):
+        with A.fila_lock:
+            A.automatico._troca_audio("lllllllllll", v)
+        seen.append((alvo, meta.get("youtube_id"), meta.get("title")))
+        return False
+    with mock.patch.object(A, "tocar_remoto", remote):
+        cmd.tocar_da_fila(A, x["qid"])
+    check(x["youtube_id"] == "nnnnnnnnnnn" and seen == [("lllllllllll", "lllllllllll", "similar")],
+          f"an entry played from the queue while the audio version swaps it plays the record it was clicked as, "
+          f"its target and its details from one read ({seen}, the queue's entry now {x['youtube_id']})")
+
+
+def file_wait_after_a_passage_switch(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "kkkkkkkkkkk"
+    j = A.new_job("downloading", True, target)
+    reading, go = threading.Event(), threading.Event()
+    reader, ended = real_stream_reader(E, E._reader)
+    refused, marked = A._stream_refused, []
+
+    def marks(*a, **kw):
+        marked.append(E._gen)
+        return refused(*a, **kw)
+    meta = {"youtube_id": target, "title": "the waiting one", "channel": "c", "duration": 200.0}
+    stream = StreamThread(A)
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
+          mock.patch.object(A, "stream_info", return_value=(dict(meta, url="https://stream.invalid/k", id=target), {})),
+          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: SilentFfmpeg(reading, go)),
+          mock.patch.object(A, "_stream_refused", marks)):
+        check(cmd.play_downloading(A, j, target, meta) and stream.ended.wait(WAIT_S) and reading.wait(WAIT_S),
+              "the stream of the waiting one opened and its reader reads it")
+        go.set()
+        check(len(ended) == 1 and ended[0].wait(WAIT_S) and len(marked) == 1 and E.esperando_arquivo(),
+              f"the stream gave no audio while its download runs, and the platter waits for the file ({marked})")
+    del A._abre_stream
+    prepared_similar(A, E, readers, "wait1")
+    check(E.virou is not None or mix_until_the_switch(E), "the engine switched to the similar track, on the other deck")
+    while E._gen < marked[0]:
+        E.seek(1.0)
+    check(E._gen == marked[0] and not E.esperando_arquivo(),
+          f"the deck that took the platter, at the gen the stream waited on, does not wait for that file "
+          f"(gen {E._gen}, the wait at {marked[0]})")
 
 
 def file_near_the_end_of_a_silent_stream(A, E, readers, device_warning=None):
@@ -511,6 +566,8 @@ def main():
                 audio_version_while_the_engine_switches(A, E, readers)
                 audio_version_while_the_passage_reads_the_source(A, E, readers)
                 audio_version_entries(A, E)
+                audio_version_while_an_entry_plays_from_the_queue(A)
+                file_wait_after_a_passage_switch(A, E, readers)
             finally:
                 E.close()
     failures.extend(harness.falhas)

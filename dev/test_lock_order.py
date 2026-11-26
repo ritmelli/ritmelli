@@ -71,12 +71,13 @@ def nonblocking(call):
     return isinstance(first, ast.Constant) and first.value is False
 
 
-HOOKS = {}
+class Table(dict):
+    def __init__(self, funcs, hooked, aliased):
+        super().__init__(funcs)
+        self.hooked, self.aliased = hooked, aliased
 
 
 def function_table(trees):
-    HOOKS.clear()
-    HOOKS.update(hooks(trees))
     out = {}
     for module, tree in trees.items():
         for n in tree.body:
@@ -86,12 +87,14 @@ def function_table(trees):
                 for f in n.body:
                     if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         out[(module, n.name, f.name)] = f
-    return out
+    return Table(out, *hooks(trees))
 
 
 def resolve(table, call, module, cls):
     f, keys = call.func, []
-    if isinstance(f, ast.Name):
+    if id(call) in table.aliased:
+        keys = [table.aliased[id(call)]]
+    elif isinstance(f, ast.Name):
         keys = [(module, None, f.id)]
     elif isinstance(f, ast.Attribute):
         v, name = f.value, f.attr
@@ -108,26 +111,79 @@ def resolve(table, call, module, cls):
             keys = [("automatico.py", "Automatico", name)]
         elif isinstance(v, ast.Attribute) and v.attr == "lib":
             keys = [("server.py", "Library", name)]
-    keys = [HOOKS.get(k, k) for k in keys]
+    keys = [table.hooked.get(k, k) for k in keys]
     return [k for k in dict.fromkeys(keys) if k in table]
 
 
+def self_attr(node):
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self":
+        return node.attr
+    return None
+
+
 def hooks(trees):
-    setters = {}
-    for f in ast.walk(trees.get("engine.py", ast.Module(body=[], type_ignores=[]))):
-        if (isinstance(f, ast.FunctionDef) and len(f.body) == 1 and isinstance(f.body[0], ast.Assign)
-                and isinstance(f.body[0].targets[0], ast.Attribute) and isinstance(f.body[0].value, ast.Name)):
-            setters[f.name] = f.body[0].targets[0].attr
+    empty = ast.Module(body=[], type_ignores=[])
+    engine, server = trees.get("engine.py", empty), trees.get("server.py", empty)
+    setters, hooked = setters_of(engine), {}
+
+    def bind(attr, value):
+        if isinstance(value, ast.Lambda) and isinstance(value.body, ast.Call):
+            value = value.body.func
+        if self_attr(value):
+            hooked[("engine.py", "Engine", attr)] = ("server.py", "App", self_attr(value))
+    for n in ast.walk(server):
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in setters and n.args:
+            bind(setters[n.func.attr], n.args[0])
+        elif isinstance(n, ast.Assign):
+            for target in n.targets:
+                pairs = (zip(target.elts, n.value.elts) if isinstance(target, ast.Tuple)
+                         and isinstance(n.value, ast.Tuple) else [(target, n.value)])
+                for t, v in pairs:
+                    if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Attribute) and t.value.attr == "engine":
+                        bind(t.attr, v)
+    aliased = {}
+    for func, names in aliases(engine).items():
+        for n in ast.walk(func):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in names:
+                key = ("engine.py", "Engine", names[n.func.id])
+                aliased[id(n)] = hooked.get(key, key)
+    return hooked, aliased
+
+
+def aliases(tree):
     out = {}
-    for call in ast.walk(trees.get("server.py", ast.Module(body=[], type_ignores=[]))):
-        if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.func.attr in setters
-                and call.args):
-            continue
-        f = call.args[0].body.func if isinstance(call.args[0], ast.Lambda) and isinstance(call.args[0].body,
-                                                                                            ast.Call) else call.args[0]
-        if isinstance(f, ast.Attribute):
-            out[("engine.py", "Engine", setters[call.func.attr])] = ("server.py", "App", f.attr)
+    for func in ast.walk(tree):
+        if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            names = {n.targets[0].id: self_attr(n.value) for n in ast.walk(func)
+                     if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)
+                     and self_attr(n.value)}
+            if names:
+                out[func] = names
     return out
+
+
+def setters_of(engine):
+    return {f.name: f.body[0].targets[0].attr for f in ast.walk(engine)
+            if isinstance(f, ast.FunctionDef) and len(f.body) == 1 and isinstance(f.body[0], ast.Assign)
+            and isinstance(f.body[0].targets[0], ast.Attribute) and isinstance(f.body[0].value, ast.Name)}
+
+
+def unresolved_hooks(trees):
+    engine = trees["engine.py"]
+    init, setters = defined(engine, "Engine", "__init__"), setters_of(engine)
+    empty = {t.attr for n in ast.walk(init) if isinstance(n, ast.Assign) and isinstance(n.value, ast.Constant)
+             and n.value.value is None for t in n.targets if self_attr(t)}
+    for name, f in methods(engine, "Engine").items():
+        if name != "__init__" and name not in setters:
+            empty -= {self_attr(t) for n in ast.walk(f) if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign))
+                      for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
+                      for t in (t.elts if isinstance(t, ast.Tuple) else [t])}
+    called = {self_attr(n.func) for n in ast.walk(engine) if isinstance(n, ast.Call) and self_attr(n.func) in empty}
+    for func, names in aliases(engine).items():
+        called |= {names[n.func.id] for n in ast.walk(func) if isinstance(n, ast.Call)
+                   and isinstance(n.func, ast.Name) and names.get(n.func.id) in empty}
+    hooked, _ = hooks(trees)
+    return sorted(a for a in called if ("engine.py", "Engine", a) not in hooked)
 
 
 def summaries(table):
@@ -311,22 +367,24 @@ def defined(tree, cls, name):
     return next((f for f in body if isinstance(f, ast.FunctionDef) and f.name == name), None)
 
 
-def calls_with_locks(node, cls, held, out, passed):
-    if isinstance(node, ast.With):
+def calls_with_locks(node, cls, held, out, passed, root=True):
+    if isinstance(node, (ast.With, ast.AsyncWith)):
         held = held | {lock_of(i.context_expr, cls) for i in node.items} - {None}
-    elif isinstance(node, ast.FunctionDef) and node.name in passed:
-        held = passed[node.name]
+    elif isinstance(node, ast.Lambda) and not root:
+        held = passed.get(id(node), set())
+    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not root:
+        held = passed.get(node.name, set())
     if isinstance(node, ast.Call):
         out.append((node, held))
     if isinstance(node, ast.If) and acquired(node.test, cls):
-        calls_with_locks(node.test, cls, held, out, passed)
+        calls_with_locks(node.test, cls, held, out, passed, False)
         for child in node.body:
-            calls_with_locks(child, cls, held | {acquired(node.test, cls)}, out, passed)
+            calls_with_locks(child, cls, held | {acquired(node.test, cls)}, out, passed, False)
         for child in node.orelse:
-            calls_with_locks(child, cls, held, out, passed)
+            calls_with_locks(child, cls, held, out, passed, False)
         return
     for child in ast.iter_child_nodes(node):
-        calls_with_locks(child, cls, held, out, passed)
+        calls_with_locks(child, cls, held, out, passed, False)
 
 
 def passed_callbacks(func):
@@ -340,8 +398,8 @@ def passed_callbacks(func):
                 continue
             args = list(enumerate(call.args)) + [(kw.arg, kw.value) for kw in call.keywords]
             for slot, arg in args:
-                if slot in slots and isinstance(arg, ast.Name):
-                    out[arg.id] = set(slots[slot]) | CALLER_HOLDS.get(key, set())
+                if slot in slots and isinstance(arg, (ast.Name, ast.Lambda)):
+                    out[arg.id if isinstance(arg, ast.Name) else id(arg)] = set(slots[slot]) | CALLER_HOLDS.get(key, set())
     return out
 
 
@@ -634,10 +692,8 @@ def main():
     check(used == set(order) | before, f"the code takes exactly the locks the model declares ({sorted(used)})")
     trees = {m: ast.parse(sources[m], m) for m in MODULES}
     inside = sources["engine.py"].replace(
-        "                        self._espera_arquivo = gen\n                if waits and self._stream_silent is not None:\n"
-        "                    self._stream_silent(track)\n",
-        "                        self._espera_arquivo = gen\n                    if waits and self._stream_silent is not None:\n"
-        "                        self._stream_silent(track)\n")
+        "                if waits and self._stream_silent is not None:\n                    self._stream_silent(track)\n",
+        "                    if waits and self._stream_silent is not None:\n                        self._stream_silent(track)\n")
     bad, *_ = scan(dict(sources, **{"engine.py": inside}), order, before)
     check(inside != sources["engine.py"] and any("_stream_refused" in b for b in bad),
           f"with the reader handing a silent stream to the App while it holds the _qlock, the check fails, through the "
@@ -647,6 +703,34 @@ def main():
     bad, *_ = scan(dict(sources, **{"engine.py": inside, "server.py": named}), order, before)
     check(named != sources["server.py"] and any("_stream_refused" in b for b in bad),
           f"and so it does with the hook registered as a bound method ({bad[:1]})")
+    hooked, _ = hooks(trees)
+    unresolved = unresolved_hooks(trees)
+    check(not unresolved and len(hooked) >= 4,
+          f"every hook the engine calls resolves to the App method that the App puts on it ({sorted(hooked)}; "
+          f"unresolved {unresolved})")
+    unhooked = sources["server.py"].replace("        self.engine.religar_stream = self.religar_stream\n", "")
+    unresolved = unresolved_hooks(dict(trees, **{"server.py": ast.parse(unhooked)}))
+    check(unhooked != sources["server.py"] and unresolved == ["religar_stream"],
+          f"with the App no longer putting its religar_stream on the engine, the hook check fails ({unresolved})")
+    for what, old, new, callee in (
+            ("the measure handed to the App", "            try:\n                self.mediu(track, float(lufs))\n",
+             "            try:\n                with self._qlock:\n                    self.mediu(track, float(lufs))\n",
+             "App.mediu"),
+            ("the dropped stream handed to the App through a local name",
+             "                religar(track, fim, lambda: self._stream_desistiu(deck, gen, track, fim))\n",
+             "                with self._qlock:\n"
+             "                    religar(track, fim, lambda: self._stream_desistiu(deck, gen, track, fim))\n",
+             "App.religar_stream")):
+        moved = sources["engine.py"].replace(old, new)
+        bad, *_ = scan(dict(sources, **{"engine.py": moved}), order, before)
+        check(moved != sources["engine.py"] and any(callee in b for b in bad),
+              f"with {what} called under the _qlock, the check fails ({[b for b in bad if callee in b][:1]})")
+    later = ("class App:\n    def change_queue(self, change):\n        pass\n    def f(self):\n"
+             "        with self.fila_lock:\n            threading.Thread(target=lambda: self.change_queue(None)).start()\n")
+    callers = caller_failures({"server.py": ast.parse(later)})
+    check(len(callers) == 1 and "App.f" in callers[0],
+          f"a lambda made under the fila_lock that calls the change_queue later, on its own thread, does not count "
+          f"as holding it ({callers})")
     callers = caller_failures(trees)
     check(not callers, f"whoever calls the change_queue, the close_switches and the concilia holds the fila_lock, also "
                        f"up the calls to the entry points ({callers})")
