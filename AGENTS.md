@@ -28,9 +28,9 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   `dev/testa_mock.py` falha enquanto ela não entra.
 - As travas do servidor se pegam numa ordem só: a de [comandos.md](docs/arquitetura/comandos.md#as-travas).
 - O `dev/testa_ganchos.py` conta os ganchos do `engine.py` para o módulo de fora do repo, as rotas `OUT_OF_REPO` do
-  `permissao.py`, os acessos de fora aos privados do motor, do `App`, do Automático e da `Library` e as escritas diretas
-  no estado do `App` e do motor; o `dev/garden.py` segura cada conta no seu teto ([fx.md](docs/arquitetura/fx.md),
-  [comandos.md](docs/arquitetura/comandos.md)).
+  `permissao.py`, os acessos dos outros módulos da raiz aos privados do motor, do `App` e do Automático, os do resto do
+  `server.py` aos da `Library` e as escritas diretas no estado do `App` e do motor; o `dev/garden.py` segura cada conta
+  no seu teto ([fx.md](docs/arquitetura/fx.md), [comandos.md](docs/arquitetura/comandos.md)).
 - As linhas dentro dos blocos `<style>` e `<script>` do `themes/ritmelli/index.html` não sobem: o teto
   `theme_inline_lines` do `dev/garden.py`.
 - PR que só muda código do tema de lugar: `python dev/theme_rebuild.py origin/main` sai 0 só se ele só move código, 1 se
