@@ -146,7 +146,9 @@ def fits(target, call):
     names = names[1:] if names[:1] == ["self"] else names
     if any(isinstance(x, ast.Starred) for x in call.args) or any(k.arg is None for k in call.keywords):
         return True
-    return (len(call.args) <= len(names) or a.vararg is not None) and (
+    required = names[:len(names) - len(a.defaults)]
+    given = len(call.args) + sum(k.arg in required[len(call.args):] for k in call.keywords)
+    return (len(call.args) <= len(names) or a.vararg is not None) and given >= len(required) and (
         a.kwarg is not None or all(k.arg in names + [x.arg for x in a.kwonlyargs] for k in call.keywords))
 
 
@@ -399,6 +401,9 @@ class Entries:
 
     def bind_params(self, funcs, parents):
         self.parents, by_name = parents, {}
+        classes = {c.name: [b.id for b in c.bases if isinstance(b, ast.Name)]
+                   for _, tree in self.modules for c in ast.walk(tree) if isinstance(c, ast.ClassDef)}
+        imports = imports_of(self.modules)
         for f in funcs:
             by_name.setdefault(f[1].name, []).append(f[1])
         calls = {id(f): [n for n in map(thread_call, self.walk(f)) if isinstance(n, ast.Call) and called(n) in by_name]
@@ -407,13 +412,13 @@ class Entries:
         while changed:
             changed = False
             self.scopes.clear()
-            for _, func, _, parent in funcs:
+            for module, func, cls, parent in funcs:
                 if not calls[id(func)]:
                     continue
                 scope = self.scope_of(func, parent, parents)
                 for node in calls[id(func)]:
                     name = called(node)
-                    for target in by_name[name]:
+                    for target in self.callees_of(node, module, cls, scope, funcs, classes, imports) or by_name[name]:
                         names = self.param_names(target)
                         shift = 1 if isinstance(node.func, ast.Attribute) and names[:1] == ["self"] else 0
                         args = [(names[i + shift], a) for i, a in enumerate(node.args) if i + shift < len(names)]
@@ -1086,6 +1091,10 @@ ENTRY_FORMS = {
         {"automatico.py": "class Automatico:\n    def f(self):\n        _, *rest = self._mix\n"
                           "        rest[0]['ordem'] = 1\n"}, 1),
     "an entry of the Mix from unpacking": ({"case.py": "def f(A):\n    x, _ = A.mix[0], None\n    x.update(a=1)\n"}, 1),
+    "an entry passed to a method whose namesake in another class takes more arguments": (
+        {"case.py": "class Auto:\n    def refuse(self, x):\n        return x['qid']\nclass Page:\n"
+                    "    def refuse(self, i, message):\n        return message.count('\\n', 0, i)\n"
+                    "def f(A, auto):\n    auto.refuse(A.fila[0])\n"}, 0),
     "a new dict from an entry":({"case.py": "def f(A):\n    for m in A.mix:\n        m = dict(m, ordem=1)\n"}, 0),
     "a dict that is no entry": ({"case.py": "def f(A):\n    d = {}\n    d['k'] = 1\n    d.update(a=1)\n"}, 0),
     "a helper that writes the entries of the Mix it gets": (

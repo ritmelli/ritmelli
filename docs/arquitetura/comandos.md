@@ -250,27 +250,29 @@ própria fila ao `len`, ao `reversed` e aos que copiam ou percorrem (`list`, `so
 pode ser a fila), e uma entrada ao `dict`, ao `id`, ao `append`, `insert` ou `extend` de uma lista (que vira uma lista
 de entradas) e a uma classe do repo, com no máximo quatro repasses seguidos, a função que recebe e passa adiante (o
 máximo do código: `App.tocar_entrada`, `App.tocar_remoto`, `App._troca`, `App.release_reservation` e `Proximo.resolve`;
-o teste falha se a cadeia mais funda do código não der quatro, para o teto descer junto). Nessa conta, `self.metodo()`
-só vai à própria classe e às bases dela, `modulo.f()` à função do módulo importado, e `obj.metodo()` aos métodos com
-esse nome que aceitam os argumentos da chamada, nunca a um método da própria fila ou da entrada; num laço com um nome só
-ou com o `enumerate(...)` desempacotado em dois; desempacotada de uma chamada ou de uma tupla do mesmo tamanho; ou
-copiada (`list()`, `sorted()`, uma compreensão, uma fatia, `{**x}`). Qualquer outra reprova, com o arquivo e a linha: um
-`:=`, uma anotação, desempacotar a fila ou o Mix, um `*`, o `getattr`, o mutador guardado ou devolvido sem a chamada,
-uma atribuição encadeada, guardar num atributo que não é da fila, sob uma chave ou num dict, numa lista, numa tupla ou
-num conjunto, passar a uma lambda, o `enumerate` sem desempacotar, a própria fila devolvida por uma função, um quinto
-repasse seguido, um dunder, entregar a quem ele não segue fora da lista acima, e, no `App`, um nome que recebe o retorno
-de um método dele que devolve a própria fila. A checagem confere as formas desta lista e reprova as outras que reconhece
-como fora dela, mas não promete pegar toda escrita: quem promete é a fila e o Mix como um objeto que só muda dentro do
-`change_queue`, a https://github.com/ritmelli/ritmelli/issues/316. Dentro do `App`, as entradas da fila só mudam numa
-função passada ao `change_queue`, e a própria fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido
-dela ou por quem a recebe como argumento) só muda ali, em qualquer módulo. A versão de áudio das parecidas entra no Mix
-do Automático como entradas novas (o `_troca_audio`, que não escreve nas que já existem) e na fila pelo
-`App.apply_audio_version`, que muda a fila pelo `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a
-entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca), a primeira da fila presa e a que uma reserva
-em curso vai tocar (`App.reserva`); o `tocar_da_fila` e a preparação da passagem leem a entrada numa cópia feita sob a
-`fila_lock`, e uma versão de áudio que chega no meio não mistura o alvo de antes com os dados de depois. Os trechos do
-servidor e dos comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`,
-do `release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo
+o teste falha se a cadeia mais funda do código não der quatro, para o teto descer junto). Nessa conta, e ao ligar a
+entrada ao parâmetro de quem a recebe, `self.metodo()` só vai à própria classe e às bases dela, `modulo.f()` à função do
+módulo importado, e `obj.metodo()` aos métodos com esse nome que aceitam os argumentos da chamada (todos os
+obrigatórios, e nenhum a mais), nunca a um método da própria fila ou da entrada; a chamada que não chega a nenhum desses
+liga a entrada a toda função com esse nome; num laço com um nome só ou com o `enumerate(...)` desempacotado em dois;
+desempacotada de uma chamada ou de uma tupla do mesmo tamanho; ou copiada (`list()`, `sorted()`, uma compreensão, uma
+fatia, `{**x}`). Qualquer outra reprova, com o arquivo e a linha: um `:=`, uma anotação, desempacotar a fila ou o Mix,
+um `*`, o `getattr`, o mutador guardado ou devolvido sem a chamada, uma atribuição encadeada, guardar num atributo que
+não é da fila, sob uma chave ou num dict, numa lista, numa tupla ou num conjunto, passar a uma lambda, o `enumerate` sem
+desempacotar, a própria fila devolvida por uma função, um quinto repasse seguido, um dunder, entregar a quem ele não
+segue fora da lista acima, e, no `App`, um nome que recebe o retorno de um método dele que devolve a própria fila. A
+checagem confere as formas desta lista e reprova as outras que reconhece como fora dela, mas não promete pegar toda
+escrita: quem promete é a fila e o Mix como um objeto que só muda dentro do `change_queue`, a
+https://github.com/ritmelli/ritmelli/issues/316. Dentro do `App`, as entradas da fila só mudam numa função passada ao
+`change_queue`, e a própria fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido dela ou por quem
+a recebe como argumento) só muda ali, em qualquer módulo. A versão de áudio das parecidas entra no Mix do Automático
+como entradas novas (o `_troca_audio`, que não escreve nas que já existem) e na fila pelo `App.apply_audio_version`, que
+muda a fila pelo `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo
+`qid`, a mesma versão que o prato toca), a primeira da fila presa e a que uma reserva em curso vai tocar
+(`App.reserva`); o `tocar_da_fila` e a preparação da passagem leem a entrada numa cópia feita sob a `fila_lock`, e uma
+versão de áudio que chega no meio não mistura o alvo de antes com os dados de depois. Os trechos do servidor e dos
+comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
+`release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo
 `Engine.with_lock`. A falha de preparar a próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, e o erro da
 tela entra pelo `set_error` (o `error` do motor só se lê).
 
