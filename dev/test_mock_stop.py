@@ -202,7 +202,9 @@ def measurement_stopped_by_the_given_kill():
     pipe = _winapi.CreateNamedPipe(name, _winapi.PIPE_ACCESS_DUPLEX | _winapi.FILE_FLAG_OVERLAPPED, 0, 1, 65536, 65536,
                                    0, _winapi.NULL)
     result, kills, waited_by, connected, broken = [], [], [], False, False
-    measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(Path(name), engine.FFMPEG)))
+    measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(Path(name), engine.FFMPEG)),
+                                 daemon=True)
+    returned = threading.Event()
 
     def kill(p):
         kills.append(p)
@@ -216,7 +218,11 @@ def measurement_stopped_by_the_given_kill():
         p.wait = watched_wait
         engine.mata(p)
 
-    stopping = threading.Thread(target=sonoridade.stop_measurements, args=(kill,))
+    def stop():
+        sonoridade.stop_measurements(kill)
+        returned.set()
+
+    stopping = threading.Thread(target=stop, daemon=True)
     try:
         measuring.start()
         connecting = _winapi.ConnectNamedPipe(pipe, overlapped=True)
@@ -225,7 +231,7 @@ def measurement_stopped_by_the_given_kill():
             writing, _ = _winapi.WriteFile(pipe, endless_wav_header(), overlapped=True)
             writing.GetOverlappedResult(True)
             stopping.start()
-            stopping.join(HOLDER_WAIT_S)
+            returned.wait(HOLDER_WAIT_S)
             measuring.join(HOLDER_WAIT_S)
             try:
                 writing, _ = _winapi.WriteFile(pipe, bytes(1024), overlapped=True)
@@ -234,14 +240,14 @@ def measurement_stopped_by_the_given_kill():
                 broken = True
     finally:
         _winapi.CloseHandle(pipe)
-        measuring.join()
+        measuring.join(HOLDER_WAIT_S)
         if connected:
-            stopping.join()
+            stopping.join(HOLDER_WAIT_S)
     stop_waited = stopping in waited_by
-    check(connected and len(kills) == 1 and stop_waited and result == [None] and broken,
+    check(connected and len(kills) == 1 and stop_waited and returned.is_set() and result == [None] and broken,
           f"stop_measurements ends a measurement still reading its track through the kill it is given (the engine's "
           f"mata) and waits for it: the ffmpeg is gone when it returns (opened {connected}, {len(kills)} kill, "
-          f"waited by the stop {stop_waited}, {result}, gone {broken})")
+          f"waited by the stop {stop_waited}, returned {returned.is_set()}, {result}, gone {broken})")
 
 
 def stop(srv):
