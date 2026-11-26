@@ -231,33 +231,36 @@ if sys.platform == "win32":
         subprocess.Popen = popen
     args, kw = capturado[0]
     marca = tmp / "reabriu.txt"
-    exe, marca_ps = (str(c).replace("'", "''") for c in (atualizador.pastas.APP / "ritmelli.exe", marca))
-    trocado = args[-1].replace(f"Start-Process -FilePath '{exe}'", f"Set-Content -LiteralPath '{marca_ps}' -Value ok")
-    caso("no fim, abre o Ritmelli da pasta do app", trocado != args[-1])
-    leu = trocado.replace("catch{}}while(", "catch{};Write-Output \"estado=$($s.estado)\"}while(")
-    ouvido = leu.replace("(Get-Date) -lt $fim){Start-Sleep 1}",
-                         "(Get-Date) -lt $fim){Write-Output esperando;Start-Sleep 1}")
-    ouve = args[-1] != trocado != leu != ouvido
-    caso("the test hears each state the reopen reads and each wait for the installer", ouve)
-    if ouve:
+    exe, marker_ps = (str(c).replace("'", "''") for c in (atualizador.pastas.APP / "ritmelli.exe", marca))
+    swapped = args[-1].replace(f"Start-Process -FilePath '{exe}'", f"Set-Content -LiteralPath '{marker_ps}' -Value ok")
+    caso("no fim, abre o Ritmelli da pasta do app", swapped != args[-1])
+    with_reads = swapped.replace("catch{}}while(", "catch{};Write-Output \"estado=$($s.estado)\"}while(")
+    heard = with_reads.replace("(Get-Date) -lt $fim){Start-Sleep 1}",
+                               "(Get-Date) -lt $fim){Write-Output esperando;Start-Sleep 1}")
+    hooked = args[-1] != swapped != with_reads != heard
+    caso("the test hears each state the reopen reads and each wait for the installer", hooked)
+
+    def popen_outside_the_job_when_allowed(cmd, **options):
+        try:
+            return popen(cmd, **options)
+        except OSError:
+            return popen(cmd, **dict(options, creationflags=options["creationflags"] & ~0x01000000))
+
+    if hooked:
         atualizador._grava(estado="pronta")
-        kw = dict(kw, stdout=subprocess.PIPE, text=True)
+        reopen = popen_outside_the_job_when_allowed([*args[:-1], heard], **dict(kw, stdout=subprocess.PIPE, text=True))
+        lines = iter(reopen.stdout)
+        seen = next((line.strip() for line in lines if line.strip() == "estado=pronta"), None)
+        caso("antes de o instalador comecar, nao abre", seen and not marca.exists(), seen)
+        installer = popen([sys.executable, "-c", "import sys; sys.stdin.read()"], stdin=subprocess.PIPE)
         try:
-            reabre = popen([*args[:-1], ouvido], **kw)
-        except OSError:  # fora de um job que deixa sair dele (o reabre faz o mesmo)
-            reabre = popen([*args[:-1], ouvido], **dict(kw, creationflags=kw["creationflags"] & ~0x01000000))
-        linhas = iter(reabre.stdout)
-        viu = next((linha.strip() for linha in linhas if linha.strip() == "estado=pronta"), None)
-        caso("antes de o instalador comecar, nao abre", viu and not marca.exists(), viu)
-        instalador = popen([sys.executable, "-c", "import sys; sys.stdin.read()"], stdin=subprocess.PIPE)
-        try:
-            atualizador._grava(estado="instalando", pid=instalador.pid)
-            viu = next((linha.strip() for linha in linhas if linha.strip() == "esperando"), None)
-            caso("com o instalador rodando, espera", viu and not marca.exists(), viu)
+            atualizador._grava(estado="instalando", pid=installer.pid)
+            seen = next((line.strip() for line in lines if line.strip() == "esperando"), None)
+            caso("com o instalador rodando, espera", seen and not marca.exists(), seen)
         finally:
-            instalador.stdin.close()
-            instalador.wait()
-        reabre.communicate()
+            installer.stdin.close()
+            installer.wait()
+        reopen.communicate()
         caso("o instalador terminou: abre (com as flags do reabre, o PowerShell escondido roda)", marca.exists())
 
 print("--- o ao_sair")
