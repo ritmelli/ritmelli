@@ -551,6 +551,10 @@ class PowerShellLowering:
         if isinstance(node, ps.Pipeline) and len(node.elements) == 1 and isinstance(node.elements[0], ps.Command) \
                 and all(keeps_output(r) for r in node.elements[0].redirections):
             return [self.node(node.elements[0])]
+        if isinstance(node, ps.Pipeline) and len(node.elements) == 1 and isinstance(node.elements[0], ps.ExpressionElement) \
+                and all(keeps_output(r) for r in node.elements[0].redirections):
+            element = node.elements[0]
+            return [self.condition(element.expression), *(self.node(r) for r in element.redirections)]
         return None
 
     def condition(self, node):

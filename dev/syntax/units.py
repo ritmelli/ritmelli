@@ -2,6 +2,7 @@ import ast
 import io
 import re
 import tokenize
+from collections import deque
 from dataclasses import dataclass, field
 
 from . import ir
@@ -302,18 +303,23 @@ class Assignments:
                 if not isinstance(child, ast.AST):
                     continue
                 inner = (*blocks, (id(node), field_name)) if isinstance(child, ast.stmt) else blocks
-                self.scope_of[id(child)], self.blocks_of[id(child)], self.nodes[id(child)] = scope, inner, child
+                here = scope
+                if isinstance(node, SCOPES) and field_name not in ("body", "args") or \
+                        isinstance(node, ast.arguments) and field_name in ("defaults", "kw_defaults") or \
+                        isinstance(node, ast.arg):
+                    here = self.scope_of.get(id(scope), scope)
+                self.scope_of[id(child)], self.blocks_of[id(child)], self.nodes[id(child)] = here, inner, child
                 declared = isinstance(node, ast.AnnAssign) and node.value is None and \
-                    not isinstance(scope, FUNCTION_SCOPES)
+                    not isinstance(here, FUNCTION_SCOPES)
                 if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store) and not declared:
                     targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
                     plain = isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and targets == [child]
                     at = end_position(node) if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) else \
                         position(child)
-                    self.bind(scope, child.id, at, node.value if plain else None, inner)
+                    self.bind(here, child.id, at, node.value if plain else None, inner)
                 elif isinstance(child, ast.arg):
                     self.bind(scope, child.arg, (0, 0), None, ())
-                self.visit(child, child if isinstance(child, SCOPES) else scope, inner)
+                self.visit(child, child if isinstance(child, SCOPES) else here, inner)
 
     def reaching(self, name):
         scope, outer = self.scope_of.get(id(name)), False
@@ -393,9 +399,9 @@ def joined_script(tokens, source_text, expression, names):
 
 def evaluated(tree):
     postponed = ir.postponed_annotations(tree)
-    stack = [(tree, False)]
-    while stack:
-        node, in_function = stack.pop()
+    queue = deque([(tree, False)])
+    while queue:
+        node, in_function = queue.popleft()
         yield node
         for name, value in ast.iter_fields(node):
             if name == "annotation" and (postponed or (in_function and isinstance(node, ast.AnnAssign))) or \
@@ -403,8 +409,8 @@ def evaluated(tree):
                 continue
             inside = (in_function or name == "body" and isinstance(node, FUNCTION_SCOPES)) and \
                 not (name == "body" and isinstance(node, ast.ClassDef))
-            stack += [(child, inside) for child in (value if isinstance(value, list) else [value])
-                      if isinstance(child, ast.AST)]
+            queue.extend((child, inside) for child in (value if isinstance(value, list) else [value])
+                         if isinstance(child, ast.AST))
 
 
 def command_lists(tree):
@@ -426,7 +432,7 @@ def embedded_powershell(path, tree, text, file_line=None):
     names = Assignments(tree)
     pieces, seen = [], set()
     for _, script_node in found:
-        targets = names.values(script_node)
+        targets = list(dict.fromkeys(names.values(script_node)))
         built = [joined_script(tokens, text, t, names) if joined(t) else powershell_script(tokens, text, t)
                  for t in targets if t is not None and id(t) not in seen]
         if None in targets or None in built:
@@ -484,8 +490,12 @@ def mapping_value(node, key):
     return node.node(key) if isinstance(node, yaml.Mapping) else None
 
 
+def is_action(path):
+    return path.rsplit("/", 1)[-1] in ("action.yml", "action.yaml")
+
+
 def has_steps(path):
-    return path.startswith(".github/workflows/") or path.rsplit("/", 1)[-1] in ("action.yml", "action.yaml")
+    return path.startswith(".github/workflows/") or is_action(path)
 
 
 def steps_with_shells(root, path):
@@ -494,7 +504,7 @@ def steps_with_shells(root, path):
     jobs = yaml.resolved(mapping_value(root, "jobs")) if path.startswith(".github/workflows/") else None
     groups = [(job, job_default_shell(job, workflow_default))
               for _, job in (jobs.pairs if isinstance(jobs, yaml.Mapping) else [])]
-    if has_steps(path) and not path.startswith(".github/workflows/"):
+    if is_action(path):
         groups.append((mapping_value(root, "runs"), workflow_default))
     found = []
     for owner, default in groups:

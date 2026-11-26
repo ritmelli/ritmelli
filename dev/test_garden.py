@@ -270,11 +270,27 @@ CASES = {
         ("a keyword glued to a string in an f-string field",
          {"a.py": "import subprocess\nps = f'{1 if\"{\"else 2}; Get-Date'\n" + RUN_PS},
          {"a.py": "import subprocess\nps = f'{1 if\"{\"else 2}; Start-Sleep 1'\n" + RUN_PS}),
+        ("a script in a default value is read around the definition",
+         {"a.py": "import subprocess\nps = 'Get-Date'\ndef run(ps=subprocess.run(['powershell', '-Command', ps])):\n    pass\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef run(ps=subprocess.run(['powershell', '-Command', ps])):\n"
+                  "    pass\n"}),
+        ("a script that one command reaches by two paths counts once",
+         {"a.py": "import subprocess\nscript = 'Get-Date'\nif flag:\n    alias = script\nelse:\n    alias = script\n"
+                  "subprocess.run(['powershell', '-Command', alias])\n"},
+         {"a.py": "import subprocess\nscript = 'Start-Sleep 1'\nif flag:\n    alias = script\nelse:\n    alias = script\n"
+                  "subprocess.run(['powershell', '-Command', alias])\n"}),
+        ("a script that one command reaches twice counts once",
+         {"a.py": "import subprocess\nscript = 'Get-Date'\nsubprocess.run(['powershell', '-Command', script])\n"
+                  "if flag:\n    alias = script\nelse:\n    alias = script\nsubprocess.run(['powershell', '-Command', alias])\n"},
+         {"a.py": "import subprocess\nscript = 'Start-Sleep 1'\nsubprocess.run(['powershell', '-Command', script])\n"
+                  "if flag:\n    alias = script\nelse:\n    alias = script\nsubprocess.run(['powershell', '-Command', alias])\n"}),
         ("a branch's script does not reach the other branch",
          {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\nelse:\n    " + RUN_PS},
          {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\n" + RUN_PS}),
     ],
     "sleeps_dev": [
+        ("a composite action inside .github/workflows", {".github/workflows/action.yml": ACTION.replace("RUN", "Write-Output 1")},
+         {".github/workflows/action.yml": ACTION.replace("RUN", "Start-Sleep 1")}),
         ("Start-Sleep in a one-line PowerShell step",
          {".github/workflows/w.yml": "jobs:\n  monta:\n    steps:\n      - shell: pwsh\n"
                                      "        run: \"Write-Output ok # Start-Sleep 1\"\n"},
@@ -347,6 +363,11 @@ CASES = {
         ("requestAnimationFrame", {"themes/t/a.js": "setTimeout(f, 1);\n"}, {"themes/t/a.js": "requestAnimationFrame(f);\n"}),
     ],
     "retries": [
+        ("a redirection of the errors keeps the test of an expression",
+         {"a.ps1": "function attempt { try { Get-Date } catch { $null } }\nwhile ($true) {\n    $done = attempt\n"
+                   "    if (($done) >$null) { break }\n    Start-Sleep 1\n}\n"},
+         {"a.ps1": "function attempt { try { Get-Date } catch { $null } }\nwhile ($true) {\n    $done = attempt\n"
+                   "    if (($done) 2>$null) { break }\n    Start-Sleep 1\n}\n"}),
         ("a loop that stops on the flag its helper sets",
          {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
                   "while not done:\n    other = attempt()\n    time.sleep(1)\n"},
@@ -1021,6 +1042,9 @@ KNOWN_MISSES = [
 ]
 
 KNOWN_NOISE = [
+    ("sleeps_app", "a type alias, whose value Python runs only when it is asked for",
+     {"a.py": "import subprocess\ntype Unused = subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"},
+     ((".py",), r"(?im)^[ \t]*type[ \t]+\w+(?:\[[^\]\n]*\])?[ \t]*=[^\n]*['\"]-command['\"]")),
     ("retries", "a Python index named like the loop's condition, taken for an assignment",
      {"a.py": "import time\nwhile active:\n    try:\n        d[active] = False\n    except OSError:\n        pass\n"
               "    time.sleep(1)\n"},
