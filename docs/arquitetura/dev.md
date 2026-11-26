@@ -199,6 +199,13 @@ regra da pasta protegida no `instalador/ritmelli.iss` se prova na instalação d
 esteira de publicação do `ritmelli-server` acha a execução pelos nomes dos artefatos e dos jobs dele, que o
 `dev/test_monta_contract.py` fixa: renomear um quebra a publicação, e o nome muda junto com o server.
 
+O `dev/test_monta_contract.py` exige os artefatos `Ritmelli-<versão>` e `ritmelli-exe-<versão>` em toda montagem, um
+job mostrado como `testa`, `testa-atualizador` e `testa-migracao` (ou com o sufixo de matriz, `nome (...)`) na
+montagem com a versão anterior, o `testa-parcial` na que tem parcial, e o passo do manifesto. Os casos do
+`build_manifest.py` no `instalador/atualizacao/testa_parcial.py` conferem a chamada do `publica.py` que ele monta
+(`--setup`, `--url`, `--saida`, as notas e a parcial só com o setup parcial), cada um com os mutantes que reprova; o
+`atualizacao/test_contract.py` do `ritmelli-server` roda o script num build de mentira.
+
 ## A fila
 
 A fila de merge da `main` não tem bypass nem `--admin`. O `gh pr merge` cai no auto-merge, que o repo não permite: o
