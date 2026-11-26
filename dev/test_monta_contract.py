@@ -20,6 +20,7 @@ MARK = "<version>"
 EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
 INPUTS = ("notas", "notas_en")
 REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial")
+GATED_JOBS = {"testa-migracao": "anterior", "testa-parcial": "parcial"}
 SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
 STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.([\w-]+)\s*!=\s*''",
@@ -143,6 +144,11 @@ def contract_problems(doc):
     if inner((monta.get("outputs") or {}).get("versao", "")) != inner(VERSION):
         problems.append(f"the versao output of the monta job is not {VERSION}")
     problems += [p for p in (step_output_problem(monta, name) for name in ("anterior", "parcial")) if p]
+    for required, output in GATED_JOBS.items():
+        gated = [j for k, j in jobs.items() if display(k, j) == required or display(k, j).startswith(required + " (")]
+        refs = set(re.findall(r"needs\.monta\.outputs\.([\w-]+)", str(gated[0].get("if", "")))) if gated else set()
+        if output not in refs or not refs <= set(monta.get("outputs") or {}):
+            problems.append(f"the if: of {required} does not read the {output} output of the monta job")
     run_uploads = uploads(jobs)
     found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
     problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
@@ -309,6 +315,10 @@ def main():
         "the parcial the monta step writes": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].replace('"parcial=$', '"partial=$')),
         "the parcial output": lambda d: d["jobs"]["monta"]["outputs"].pop("parcial"),
+        "the output the if: of testa-parcial reads": lambda d: shown(d, "testa-parcial").update(
+            {"if": shown(d, "testa-parcial")["if"].replace("outputs.parcial", "outputs.partial")}),
+        "the output the if: of testa-migracao reads": lambda d: shown(d, "testa-migracao").update(
+            {"if": shown(d, "testa-migracao")["if"].replace("outputs.anterior", "outputs.previous")}),
         "the versao output": lambda d: d["jobs"]["monta"]["outputs"].update(
             versao="${{ steps.freeze.outputs.versao }}"),
         "the Ritmelli artifact name": lambda d: upload(d, setup)["with"].update(name="Ritmelli-build"),
