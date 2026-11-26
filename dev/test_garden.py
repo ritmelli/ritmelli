@@ -425,6 +425,27 @@ CASES = {
          {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
                   "        return None\nfor _ in items:\n"
                   "    import m as _\n    print(_)\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that names _ only as a keyword",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    f(_=_)\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    f(_=None)\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that imports _ under another name",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    from m import _ as y\n    print(_)\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    from m import y as _\n    print(_)\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that deletes _ after reading it",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    print(_)\n    del _\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    print(x)\n    del x\n    if attempt():\n        break\n    time.sleep(1)\n"}),
         ("a redirection of the errors keeps the test of an expression",
          {"a.ps1": "function attempt { try { Get-Date } catch { $null } }\nwhile ($true) {\n    $done = attempt\n"
                    "    if (($done) >$null) { break }\n    Start-Sleep 1\n}\n"},

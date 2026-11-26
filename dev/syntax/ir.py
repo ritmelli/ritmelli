@@ -503,9 +503,17 @@ def reads_underscore(body):
     nodes = [n for s in body for n in ast.walk(s)]
     augmented = {id(n.target) for n in nodes if isinstance(n, ast.AugAssign)}
     names = [n for n in nodes if isinstance(n, ast.Name) and n.id == "_"]
-    rebinds = any(not isinstance(n.ctx, ast.Load) and id(n) not in augmented for n in names) or \
-        any("_" in (getattr(n, "name", None), getattr(n, "asname", None), getattr(n, "arg", None)) for n in nodes)
+    rebinds = any(isinstance(n.ctx, ast.Store) and id(n) not in augmented for n in names) or \
+        any(bound_name(n) == "_" for n in nodes)
     return bool(names) and not rebinds
+
+
+def bound_name(node):
+    if isinstance(node, ast.alias):
+        return node.asname or node.name.split(".")[0]
+    if isinstance(node, ast.arg):
+        return node.arg
+    return getattr(node, "name", None)
 
 
 class PowerShellLowering:
