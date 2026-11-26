@@ -74,14 +74,17 @@ vinda de um passo que a grava no `GITHUB_OUTPUT` (a `parcial`, pelo `Test-Path` 
 `Ritmelli-$env:VERSAO-parcial.exe` na pasta do artefato, entre aspas duplas e com o `VERSAO` do `congela`,
 atribuído uma vez a uma variável que o único comando `Add-Content` do `GITHUB_OUTPUT` com essa chave grava
 depois como `parcial=`; toda chave das saídas tem uma gravação só); e os artefatos `Ritmelli-<versão>` (a
-pasta que o passo do `publica.py` recebe no `--saida`) e `ritmelli-exe-<versão>` (um caminho só, sem curinga,
-que termina no `ritmelli.exe`), cada um uma vez na execução inteira, contados como o server conta (sem o job
-ou o passo desligado), e nenhum outro artefato que a esteira tomaria pela versão (`Ritmelli-1.2.3`), nem outro
-`ritmelli-exe-` seguido de uma versão, nem um nome cuja expressão poderia completar um desses dois prefixos
-(`${{ format('Ritmelli-{0}', …) }}`, `Rit${{ … }}`). Os dois artefatos (que também não podem sair de um job
-que deixe de rodar numa dessas montagens), o `congela`, o passo do `publica.py` e os passos das saídas
-`anterior` e `parcial` não podem ter `if:`, nenhum passo antes do `publica.py` o cita, e o que está em
-comentário do PowerShell não conta (no `--saida`, um comentário também reprova, porque o server o lê cru). O
+pasta `OUTPUT` do `instalador/atualizacao/build_manifest.py`, o script que o passo do manifesto roda e que roda
+o `publica.py`) e `ritmelli-exe-<versão>` (um caminho só, sem curinga, que termina no `ritmelli.exe`), cada um
+uma vez na execução inteira, contados como o server conta (sem o job ou o passo desligado), e nenhum outro
+artefato que a esteira tomaria pela versão (`Ritmelli-1.2.3`), nem outro `ritmelli-exe-` seguido de uma versão,
+nem um nome cuja expressão poderia completar um desses dois prefixos (`${{ format('Ritmelli-{0}', …) }}`,
+`Rit${{ … }}`). Os dois artefatos (que também não podem sair de um job que deixe de rodar numa dessas
+montagens), o `congela`, o passo do manifesto (que roda exatamente a chamada do `build_manifest.py` com o
+Python do venv e o `throw` do `$LASTEXITCODE`, como o server lê, com um `#requires` contando como linha) e os
+passos das saídas `anterior` e `parcial` não podem ter `if:`; nenhum outro passo cita `build_manifest` ou
+`publica`, em qualquer campo, comentário ou passo desligado (como o server lê); e, nas saídas, o que está em
+comentário do PowerShell não conta. O
 `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda em três jobs:
 o Compara: base e o Compara: HEAD capturam em paralelo, pelo `--capture-base` e pelo `--capture`, a base só
 quando o cache do Actions não a tem, e o Compara compara as duas pelo `--compara --head-capture`; o
