@@ -142,64 +142,90 @@ def libera_ou_barra(params, base):
     return "Fetch.failRequest", {"requestId": params["requestId"], "errorReason": "BlockedByClient"}
 
 
-class _ProcessEntry(ctypes.Structure):
-    _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
-                ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
-                ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
-                ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD), ("szExeFile", wintypes.WCHAR * 260)]
+class _BasicLimits(ctypes.Structure):
+    _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD)]
 
 
-def _started_at(kernel, handle):
-    created, exited, kernel_time, user_time = (wintypes.FILETIME() for _ in range(4))
-    if not kernel.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(exited), ctypes.byref(kernel_time),
-                                  ctypes.byref(user_time)):
-        return None
-    return created.dwHighDateTime << 32 | created.dwLowDateTime
+class _Limits(ctypes.Structure):
+    _fields_ = [("BasicLimitInformation", _BasicLimits), ("IoInfo", ctypes.c_uint64 * 6),
+                ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
 
 
-def _end_descendants(srv):
-    own = getattr(srv, "_handle", None)
-    if sys.platform != "win32" or own is None:
-        return
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-    kernel.OpenProcess.restype = wintypes.HANDLE
-    since = _started_at(kernel, wintypes.HANDLE(int(own)))
-    snapshot = kernel.CreateToolhelp32Snapshot(0x2, 0)
-    parents, entry = {}, _ProcessEntry()
-    entry.dwSize = ctypes.sizeof(_ProcessEntry)
-    try:
-        found = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
-        while found:
-            parents.setdefault(entry.th32ParentProcessID, []).append(entry.th32ProcessID)
-            found = kernel.Process32NextW(snapshot, ctypes.byref(entry))
-    finally:
-        kernel.CloseHandle(snapshot)
-    queue, handles = list(parents.get(srv.pid, [])), []
-    while queue:
-        pid = queue.pop()
-        handle = kernel.OpenProcess(0x0001 | 0x0400 | 0x00100000, False, pid)
-        if not handle:
-            continue
-        started = _started_at(kernel, handle)
-        if since is None or started is None or started < since:
-            kernel.CloseHandle(handle)
-            continue
-        handles.append(handle)
-        queue += parents.get(pid, [])
-    for handle in handles:
-        kernel.TerminateProcess(handle, 1)
-    for handle in handles:
-        kernel.WaitForSingleObject(handle, 10000)
-        kernel.CloseHandle(handle)
+class _JobPort(ctypes.Structure):
+    _fields_ = [("CompletionKey", ctypes.c_void_p), ("CompletionPort", wintypes.HANDLE)]
+
+
+def _kernel():
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateJobObjectW.restype = wintypes.HANDLE
+    k.CreateIoCompletionPort.restype = wintypes.HANDLE
+    k.CreateIoCompletionPort.argtypes = (wintypes.HANDLE, wintypes.HANDLE, ctypes.c_size_t, wintypes.DWORD)
+    k.GetQueuedCompletionStatus.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD),
+                                            ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_void_p),
+                                            wintypes.DWORD)
+    return k
+
+
+class _Job:
+    def __init__(self, process):
+        k = self.k = _kernel()
+        self.job = k.CreateJobObjectW(None, None)
+        self.port = k.CreateIoCompletionPort(wintypes.HANDLE(-1), None, 0, 1)
+        port = _JobPort(self.job, self.port)
+        limits = _Limits()
+        limits.BasicLimitInformation.LimitFlags = 0x2000
+        ok = bool(self.job and self.port
+                  and k.SetInformationJobObject(self.job, 7, ctypes.byref(port), ctypes.sizeof(port))
+                  and k.SetInformationJobObject(self.job, 9, ctypes.byref(limits), ctypes.sizeof(limits))
+                  and k.AssignProcessToJobObject(self.job, wintypes.HANDLE(int(process))))
+        if not ok:
+            error = ctypes.get_last_error()
+            k.TerminateProcess(wintypes.HANDLE(int(process)), 1)
+            self.close()
+            raise Recusa(f"o servidor de teste nao entrou num job (erro {error})")
+        ctypes.WinDLL("ntdll").NtResumeProcess(wintypes.HANDLE(int(process)))
+
+    def end(self, seconds=10.0):
+        self.k.TerminateJobObject(self.job, 1)
+        fim = time.monotonic() + seconds
+        try:
+            while True:
+                left = int((fim - time.monotonic()) * 1000)
+                message, key, pid = wintypes.DWORD(), ctypes.c_size_t(), ctypes.c_void_p()
+                if left <= 0 or not self.k.GetQueuedCompletionStatus(self.port, ctypes.byref(message), ctypes.byref(key),
+                                                                       ctypes.byref(pid), left):
+                    raise Recusa(f"os processos do servidor de teste nao sairam em {seconds:g} s")
+                if message.value == 4:
+                    return
+        finally:
+            self.close()
+
+    def close(self):
+        for handle in (self.port, self.job):
+            if handle:
+                self.k.CloseHandle(wintypes.HANDLE(handle))
+        self.port = self.job = None
+
+
+def start_job(cmd, **popen):
+    if sys.platform != "win32":
+        return subprocess.Popen(cmd, **popen), None
+    flags = popen.pop("creationflags", 0)
+    proc = subprocess.Popen(cmd, creationflags=flags | 0x4, **popen)
+    handle = getattr(proc, "_handle", None)
+    return proc, None if handle is None else _Job(handle)
 
 
 class Filho:
     """O servidor --mock que a ferramenta subiu (srv, o Popen) na porta dela. Cada pedido, o /api/shutdown inclusive,
     so com ele vivo e a origem respondendo com o marcador; se nao, so ele sai, pelo handle."""
 
-    def __init__(self, srv, porta):
-        self.srv, self.porta, self.base = srv, porta, f"http://127.0.0.1:{porta}"
+    def __init__(self, srv, porta, job=None):
+        self.srv, self.porta, self.base, self.job = srv, porta, f"http://127.0.0.1:{porta}", job
 
     def confere(self):
         if self.srv.poll() is not None:
@@ -223,7 +249,8 @@ class Filho:
         if self.srv.poll() is None:
             self.srv.kill()
         self.srv.wait()
-        _end_descendants(self.srv)
+        if self.job:
+            self.job.end()
 
     def encerra(self, espera=10):
         """O /api/shutdown, se ele ainda e o --mock que subiu; se nao, ou se ele nao sai, o handle."""
@@ -232,6 +259,9 @@ class Filho:
             self.srv.wait(espera)
         except (Recusa, OSError, ValueError, subprocess.TimeoutExpired):
             self.mata()
+            return
+        if self.job:
+            self.job.end()
 
 
 def sobe(cmd, porta, limite=30.0, **popen):
@@ -242,7 +272,8 @@ def sobe(cmd, porta, limite=30.0, **popen):
         raise Recusa(f"a porta {porta} e a do Ritmelli de verdade: o servidor de teste sobe noutra")
     if porta_responde(porta):
         raise Recusa(f"a porta {porta} ja responde: outro servidor esta nela")
-    f = Filho(subprocess.Popen(cmd, **popen), porta)
+    proc, job = start_job(cmd, **popen)
+    f = Filho(proc, porta, job)
     fim = time.monotonic() + limite
     try:
         while True:

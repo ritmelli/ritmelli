@@ -328,29 +328,32 @@ def starts():
 
 HOLDS = "import sys\nheld = open(sys.argv[1], 'rb')\nprint('ready', flush=True)\nsys.stdin.read()"
 STARTS = ("import subprocess, sys\np = subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2]],"
-          " stdout=subprocess.PIPE)\nprint(p.stdout.readline().decode().strip(), flush=True)\np.wait()")
+          " stdout=subprocess.PIPE)\nprint(p.stdout.readline().decode().strip(), flush=True)\n")
 
 
 def the_tree():
-    print("--- mata ends the child's own children too")
-    with tempfile.TemporaryDirectory(prefix="ritmelli-so-mock-") as folder:
-        held = os.path.join(folder, "held.wav")
-        open(held, "wb").close()
-        parent = subprocess.Popen([sys.executable, "-c", STARTS, HOLDS, held], stdin=subprocess.PIPE,
-                                  stdout=subprocess.PIPE)
-        try:
-            ready = parent.stdout.readline().decode().strip()
-            so_mock.Filho(parent, 0).mata()
+    print("--- mata ends every process the child started, through its job")
+    for title, tail in (("waits for it", "p.wait()"), ("exits and leaves it", "")):
+        with tempfile.TemporaryDirectory(prefix="ritmelli-so-mock-") as folder:
+            held = os.path.join(folder, "held.wav")
+            open(held, "wb").close()
+            parent, job = so_mock.start_job([sys.executable, "-c", STARTS + tail, HOLDS, held],
+                                            stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             try:
-                os.remove(held)
-                gone = True
-            except PermissionError:
-                gone = False
-        finally:
-            parent.stdin.close()
-            parent.stdout.close()
-        check(ready == "ready" and gone,
-              f"a killed child's own child that holds a file ends with it, and the file can go ({ready!r}, {gone})")
+                ready = parent.stdout.readline().decode().strip()
+                if not tail:
+                    parent.wait()
+                so_mock.Filho(parent, 0, job).mata()
+                try:
+                    os.remove(held)
+                    gone = True
+                except PermissionError:
+                    gone = False
+            finally:
+                parent.stdin.close()
+                parent.stdout.close()
+            check(ready == "ready" and gone, f"a child that {title} its own child holding a file: after mata the "
+                                             f"file can go ({ready!r}, {gone})")
 
 
 app_port()
