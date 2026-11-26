@@ -693,7 +693,25 @@ class TestVoicePedalStart(unittest.TestCase):
             now[0] = 6.2
             dry.ran_dry(0.2, 1, 0.0)
         self.assertEqual(dry.while_pedal_starting, 1, "the ring was seen empty 4.9 s after the track came up")
-        self.assertIn("its voice track came up 5.10 s ago", log.getvalue())
+        self.assertIn("its voice track came up 5.10 s ago, with no fill seen, so which came first is not known",
+                      log.getvalue())
+
+    def test_without_a_fill_a_track_up_within_a_tick_of_the_empty_read_has_no_order(self):
+        for up_at, wording in ((6.01, "with no fill seen, so which came first is not known"),
+                               (6.02, "after the ring ran dry")):
+            with self.subTest(up_at=up_at):
+                now = [1.0]
+                pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+                dry = dryouts.RingDryOuts(pedal)
+                with mock.patch("sys.stderr", io.StringIO()) as log:
+                    pedal.sent(pedal.pedal(True))
+                    now[0] = 6.0
+                    dry.read_ring(lambda: 0)
+                    now[0] = up_at
+                    pedal.track(stamp(up_at))
+                    now[0] = 6.2
+                    dry.ran_dry(0.2, 1, 0.0)
+                self.assertIn(f"s ago, {wording}", log.getvalue())
 
     def test_without_a_ring_the_window_ends_now(self):
         now = [0.0]
