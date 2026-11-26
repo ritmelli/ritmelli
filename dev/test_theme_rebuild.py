@@ -143,6 +143,8 @@ SAMPLES = (
     ("two spaces put around the = of a quoted value with a > in the end tag of a script",
      {"index.html": "<script src='x.js'></script>\n", "x.js": "f();\n"},
      {"index.html": "<script src='x.js'></script x  =  \"a>b\">\n", "x.js": "f();\n"}, []),
+    ("a title with a character reference put on a script", {"index.html": "<script src='x.js'></script>\n", "x.js": ""},
+     {"index.html": "<script src='x.js' title='a&amp;b'></script>\n", "x.js": ""}, ["script tag or strict mode"]),
     ("a stylesheet linked with a query", styled(HIDDEN),
      {"index.html": "<link rel='stylesheet' href='a.css?v=2'>\n", "a.css": HIDDEN}, []),
     ("a </script y> in a quoted value of the start tag of a script turned into </script z>",
@@ -188,6 +190,8 @@ DOUBTFUL = (
     ("a comment that never closes", {"index.html": "<script src='x.js'></script>\n<!-- a\n"}),
     ("a CDATA section", {"index.html": "<![CDATA[ a ]]>\n<script src='x.js'></script>\n"}),
     ("a character reference in a src", {"index.html": "<script src='x&#46;js'></script>\n"}),
+    ("a character reference in a src after one in another value",
+     {"index.html": "<script title='src=a' src=x&#46;js></script>\n"}),
     ("a character reference in an href", {"index.html": "<link rel='stylesheet' href='a&#46;css'>\n"}),
     ("a script start tag that never ends", {"index.html": "<script src='x.js'\n"}),
 )

@@ -57,6 +57,8 @@ INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 INLINED = "data-theme-rebuild-inline-script"
 UNCLOSED = "data-theme-rebuild-never-closed"
 CANNOT_JUDGE = 3
+TAG_NAME = re.compile(r"<[^\t\n\f\r />]+")
+RAW_ATTRIBUTE = re.compile(r"""([^\t\n\f\r />"'=][^\t\n\f\r />=]*)(?:[\t\n\f\r ]*=[\t\n\f\r ]*("[^"]*"|'[^']*'|[^\t\n\f\r >]+))?""")
 TEXT_ELEMENT = re.compile(r"<(title|textarea|noscript|xmp|iframe|noembed|noframes|plaintext)(?=[\t\n\f\r />])", re.I)
 ODD_MARKUP = re.compile(r"<base(?=[\t\n\f\r />])|<!(?!--|doctype[\t\n\f\r >])|<\?|</(?![A-Za-z])|<!--", re.I)
 RAW_TEXT = re.compile(r"<!--.*?-->|<(script|style)(?=[\t\n\f\r />])", re.I | re.S)
@@ -171,6 +173,13 @@ class Page:
         return lines
 
 
+def raw_value(tag, wanted):
+    for attribute in RAW_ATTRIBUTE.finditer(tag, TAG_NAME.match(tag).end()):
+        if attribute.group(1).lower() == wanted:
+            return attribute.group(2) or ""
+    return ""
+
+
 class _FileTags(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=False)
@@ -180,7 +189,7 @@ class _FileTags(HTMLParser):
         first = {}
         for name, value in attrs:
             first.setdefault(name, value)
-        if (tag == "script" and first.get("src") or tag == "link") and "&" in self.get_starttag_text():
+        if "&" in raw_value(self.get_starttag_text(), "src" if tag == "script" else "href" if tag == "link" else ""):
             raise Doubt(f"index.html: {self.get_starttag_text()!r}")
         if tag == "script" and first.get("src"):
             self.in_src = True
