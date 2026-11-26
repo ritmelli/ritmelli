@@ -392,10 +392,10 @@ def lex_yaml(text):
             if inline:
                 shell, script = yaml_shell(lines, n - 1), unquote(inline.group(1))
                 out.runs.append((n - 1, shell, script))
-                if not lexed.comments:
-                    run = lexer_for_shell(shell)(script)
-                    out.comments += [Comment(c.start + n - 1, c.end + n - 1, c.text) for c in run.comments]
-                    out.strings += [(k + n - 1, text) for k, text in run.strings]
+                run = lexer_for_shell(shell)(script)
+                out.code[n] = out.code[n][:inline.start(1)] + " ".join(run.code.values())
+                out.comments += [Comment(n, n, c.text) for c in run.comments]
+                out.strings += [(n, text) for _, text in run.strings]
             continue
         end = n
         while end < len(lines) and (not lines[end].strip() or indent_of(lines[end]) > key_indent(line)):

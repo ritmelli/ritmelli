@@ -108,6 +108,11 @@ CASES = {
          {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n        run: \"print(1)\"\n"},
          {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
                                      "        run: \"print(1)  # noqa\"\n"}),
+        ("noqa in a one-line Python step with a YAML comment",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
+                                     "        run: \"print(1)\"  # why\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
+                                     "        run: \"print(1)  # noqa\"  # why\n"}),
         ("SilentlyContinue", {"a.ps1": "$ProgressPreference = 'SilentlyContinue'\n"},
          {"a.ps1": "Get-Item x -ErrorAction SilentlyContinue\n"}),
         ("SilentlyContinue in a Python string", {"a.py": "ps = 'Get-Item x'\n"},
@@ -124,7 +129,12 @@ CASES = {
          {"dev/a.py": "import time\ntime.sleep(1)\n", "microfone/a.py": "import time\ntime.sleep(1)\n"}),
     ],
     "sleeps_dev": [
-        ("in dev/", {"a.py": "import time\ntime.sleep(1)\n"},
+        ("Start-Sleep in a one-line PowerShell step",
+         {".github/workflows/w.yml": "jobs:\n  monta:\n    steps:\n      - shell: pwsh\n"
+                                     "        run: \"Write-Output ok # Start-Sleep 1\"\n"},
+         {".github/workflows/w.yml": "jobs:\n  monta:\n    steps:\n      - shell: pwsh\n"
+                                     "        run: \"Start-Sleep 1 # wait\"\n"}),
+        ("in dev/",{"a.py": "import time\ntime.sleep(1)\n"},
          {"a.py": "import time\ntime.sleep(1)\n", "dev/a.py": "import time\ntime.sleep(1)\n"}),
         ("a tool, not a test", {"dev/testa_x.py": "import time\ntime.sleep(1)\n",
                                 "dev/test_x.py": "import time\ntime.sleep(1)\n",
