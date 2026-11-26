@@ -1120,9 +1120,8 @@ class App:
         """O Future do endereco adiantado de yid (uma vez so), ou None."""
         with self._adi_lock:
             x = self._adiantados.pop(yid, None) if yid else None
-            if x is not None and x[0] is not None:  # a marca do usado: a busca que chega depois (a da LLM, a do
-                self._adiantados[yid] = (None, time.monotonic())  # lote) nao pede de novo o endereco do disco que ja
-                # toca (revisao da r12: um endereco e um ffmpeg orfao a cada uso da antecipada)
+            if x is not None and x[0] is not None:
+                self._adiantados[yid] = (None, time.monotonic())
         return x[0] if x and x[0] is not None and time.monotonic() - x[1] <= ADIANTA_S else None
 
     def _abre_stream(self, tr, target, tem_titulo):

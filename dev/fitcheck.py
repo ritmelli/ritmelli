@@ -489,19 +489,17 @@ async def run(a):
                     erros.clear()
                     events.new_load()
                     ready = await navigate_and_wait(cmd, a.url, PRONTA, barrados, PRONTA_S)
-                    if ready is Ready.CHROME_GONE:
-                        verdict = await report_not_ready(cmd, f"{sz:>10}", ready, READY_CONDITIONS, events, PRONTA_S)
-                        print(f"FALHA  {verdict}; nothing more checked")
-                        falhas += 1
-                        break
-                    await confere_pagina(cmd, a.url, barrados)  # a page that left for another origin is refused here
                     if ready is not Ready.READY:
                         shot = Path(a.shots) / f"not-ready_{sz}.png" if a.shots else None
                         verdict = await report_not_ready(cmd, f"{sz:>10}", ready, READY_CONDITIONS, events, PRONTA_S,
                                                          shot)
-                        print(f"FALHA  {verdict}")
                         falhas += 1
-                        continue
+                        if ready is Ready.TIMED_OUT:
+                            print(f"FALHA  {verdict}")
+                            continue
+                        print(f"FALHA  {verdict}; nothing more checked")
+                        break
+                    await confere_pagina(cmd, a.url, barrados)  # a page that left for another origin is refused here
                     await asyncio.sleep(a.wait)
                     await confere_pagina(cmd, a.url, barrados)
                     if a.js:

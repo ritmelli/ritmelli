@@ -1,4 +1,6 @@
 import asyncio
+import contextlib
+import io
 import os
 import re
 import subprocess
@@ -309,8 +311,27 @@ def fitcheck_never_ready():
         check(shot.is_file() and shot.stat().st_size > 0, "the fitcheck saves a print of the page that was not ready")
 
 
+def timeout_then_disconnect():
+    events = fitcheck.PageEvents()
+    events.page_errors.append("console.error: collected before the timeout")
+
+    async def gone(method, **params):
+        raise ConnectionError("the DevTools connection ended (closed)")
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        verdict = asyncio.run(fitcheck.report_not_ready(gone, "390x844", fitcheck.Ready.TIMED_OUT,
+                                                         fitcheck.READY_CONDITIONS, events, 20.0))
+    text = out.getvalue()
+    check(verdict == "390x844: the theme was not ready in 20 s" and "collected before the timeout" in text
+          and "the conditions did not come: ConnectionError" in text,
+          f"a timeout whose diagnostic finds the connection gone still gives the shared verdict and what it had "
+          f"collected ({verdict})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    timeout_then_disconnect()
     probe_past_the_deadline()
     state_of_this_navigation_only()
     clock_from_the_event_not_from_its_handling()

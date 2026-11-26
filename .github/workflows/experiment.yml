@@ -49,14 +49,14 @@ jobs:
           for ($i = 1; $i -le 5; $i++) { python "$env:RUNNER_TEMP/expect.py" 0 'all passed'; if ($LASTEXITCODE -ne 0) { $bad++ } }
           "fix: $bad of 5 runs did not match"
           exit $bad
-      - name: Mutant without the measurement stop, 3 runs, each fails exactly the two held-track checks
+      - name: Mutant without the measurement stop, 3 runs, each fails exactly the two stops that leave the ffmpeg running
         if: always()
         run: |
           (Get-Content -Raw server.py).Replace("        sonoridade.stop_measurements(eng.mata)`r`n", "").Replace("        sonoridade.stop_measurements(eng.mata)`n", "") | Set-Content -NoNewline -Encoding utf8 server.py
           if (Select-String -Path server.py -Pattern 'sonoridade.stop_measurements' -Quiet) { throw 'the mutant did not apply' }
           $bad = 0
           for ($i = 1; $i -le 3; $i++) {
-            python "$env:RUNNER_TEMP/expect.py" 1 '2 failed' 'phone: the moment the stop returns, nothing holds the track' 'pc: the moment the stop returns, nothing holds the track'
+            python "$env:RUNNER_TEMP/expect.py" 1 '2 failed' 'phone: the server stops by itself and leaves nothing running' 'pc: the server stops by itself and leaves nothing running'
             if ($LASTEXITCODE -ne 0) { $bad++ }
           }
           git checkout -- server.py
