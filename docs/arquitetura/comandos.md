@@ -172,9 +172,8 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   caminho: o `update_track` que põe um dicionário novo no prato, o arquivo do download, o da passagem e o do tocar
   montados antes da trava, e o segundo deck que não recebe o nome. Três execuções mostram, como falhas conhecidas da
   #303, o stream que abre, o disco de um job tocado enquanto baixa e o stream que a passagem prepara, que levam o nome
-  copiado antes, cada uma presa à ação do seu caminho (o `action` do `Run`: o último passo do contraexemplo, que é a
-  publicação que quebra o invariante) (`NameIsCurrentOutsideARename`: fora de uma troca de nome em curso, o disco do
-  prato tem o nome atual).
+  copiado antes e quebram o `NameIsCurrentOutsideARename` (fora de uma troca de nome em curso, o disco do prato tem o
+  nome atual); cada uma fica presa à ação do seu caminho, o último passo do contraexemplo (o `action` do `Run`).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o

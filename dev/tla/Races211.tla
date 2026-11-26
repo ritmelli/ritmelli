@@ -82,7 +82,7 @@ Init ==
                  [] p = "Reserve" -> "rs_take"
                  [] p = "Seek" -> "sk_lock"
                  [] p = "Download" -> "dl_run"
-                 [] p = "Swap" -> "sw_try"
+                 [] p = "Swap" -> "sw_choose"
                  [] p = "Stream" -> "st_wait"
                  [] p = "StreamReader" -> "sr_idle"
                  [] p = "Prepare" -> "pr_start"
@@ -203,6 +203,13 @@ WithEngineTry(p, here, body, wait) ==
     \/ /\ At(p, wait)
        /\ Section(p, "_lock")
        /\ Goto(p, here)
+
+SwapChooses ==
+    /\ At("Swap", "sw_choose")
+    /\ IF shelf
+       THEN pc' = [pc EXCEPT !["Swap"] = "done", !["Stream"] = "done", !["StreamReader"] = "done"]
+       ELSE Goto("Swap", "sw_try")
+    /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
 
 SwapLocks ==
     /\ WithEngineTry("Swap", "sw_try", "sw_close", "sw_wait")
@@ -594,7 +601,7 @@ Quiescent ==
 Step ==
     \/ DownloadEnds \/ DownloadMarksDone \/ DownloadFailedLock \/ DownloadFailedStop
     \/ DownloadDoneRead \/ DownloadDoneSkip \/ DownloadDoneLock \/ DownloadDoneFile
-    \/ SwapLocks \/ SwapCloses \/ SwapPublishes \/ SwapReleases
+    \/ SwapChooses \/ SwapLocks \/ SwapCloses \/ SwapPublishes \/ SwapReleases
     \/ StreamTries \/ StreamOpened \/ StreamReaderStarts \/ StreamReaderEnds \/ StreamRefusedToday \/ StreamRefusedChecksJob
     \/ PlayLocks \/ PlaySwaps \/ ForgetsTheRecord \/ MoveSwaps \/ Reserves \/ Seeks
     \/ MixerTime \/ MixerSwitches

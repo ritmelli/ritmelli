@@ -194,6 +194,16 @@ def section_yields_under_qlock(engine):
     return bool(yields) and all(id(y) in held for y in yields)
 
 
+def value_calls(value):
+    if isinstance(value, ast.Call):
+        return [value]
+    if isinstance(value, ast.BoolOp):
+        return [c for v in value.values for c in value_calls(v)]
+    if isinstance(value, ast.IfExp):
+        return value_calls(value.body) + value_calls(value.orelse)
+    return []
+
+
 def by_getattr(node):
     if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr"
             and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)):
@@ -467,8 +477,8 @@ class Walker(ast.NodeVisitor):
         for n in ast.walk(func):
             if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == arg.id for t in n.targets):
                 out += [m for m in ast.walk(n.value) if isinstance(m, ast.Lambda)]
-                if isinstance(n.value, ast.Call):
-                    out += [m for key in resolve(self.table, n.value, self.name, self.cls)
+                for call in value_calls(n.value):
+                    out += [m for key in resolve(self.table, call, self.name, self.cls)
                             for r in ast.walk(self.table[key]) if isinstance(r, ast.Return) and r.value is not None
                             for m in ast.walk(r.value) if isinstance(m, ast.Lambda)]
         return out
@@ -1098,6 +1108,11 @@ def main():
     check(locked != sources["server.py"] and any("lib_lock" in b for b in bad),
           f"with the passage's builder, which fonte_de returns and the preparar runs under the _qlock, taking the "
           f"shelf's lock, the order check fails ({[b for b in bad if 'lib_lock' in b][:1]})")
+    fallback = locked.replace("novo = self.fonte_de(seen)\n", "novo = self.fonte_de(seen) or None\n", 1)
+    bad, *_ = scan(dict(sources, **{"server.py": fallback}), order, before)
+    check(fallback != locked and any("lib_lock" in b for b in bad),
+          f"and so it does with the builder reached through a fallback, fonte_de(seen) or None "
+          f"({[b for b in bad if 'lib_lock' in b][:1]})")
     guarded = pode_guarantees(trees["engine.py"])
     check(len(guarded) >= 5 and not pode_failures(trees["engine.py"]),
           f"every Engine method that takes a pode runs it under the _lock and the _qlock, also through the methods it "

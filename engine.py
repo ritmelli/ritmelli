@@ -3211,8 +3211,8 @@ class Engine:
         return self._ganho_de(track)
 
     def update_track(self, iid, **fields):
-        """The record iid on the platter or on the prepared deck gets fields (the shelf renamed it), in place under the
-        _qlock: whoever holds the track still holds the engine's record. Returns whether the engine held it."""
+        """The record iid on the platter or on the prepared deck gets fields (the shelf renamed it). Returns whether
+        the engine held it."""
         with self._qlock:
             held = [t for t in (self.track, self._pronto and self._pronto.track) if t and t["id"] == iid]
             for tr in held:

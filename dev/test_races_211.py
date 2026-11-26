@@ -788,20 +788,33 @@ def stream_renamed_while_it_opens(A, E, readers):
 
 
 def downloading_job_played_after_a_rename(A, E, readers):
+    cmd.limpar_fila(A)
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     target = "wwwwwwwwwww"
     j = A.new_job("downloading", True, target)
-    A.lib.add(dict(A.lib.get("d2"), id=target, youtube_id=target, title="the old name"))
-    cmd.update_record(A, target, title="the new name")
+    x = {"id": None, "youtube_id": target, "url": None, "title": "the old name", "channel": "c", "duration": 600.0,
+         "job": j["id"], "qid": "named5"}
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.append(x))
+    remote = A.tocar_remoto
+
+    def shelved_and_renamed_after_the_miss(*a, **kw):
+        A.lib.add(dict(A.lib.get("d2"), id=target, youtube_id=target, title="the old name"))
+        cmd.update_record(A, target, title="the new name")
+        return remote(*a, **kw)
     stream = StreamThread(A)
-    with contextlib.redirect_stderr(io.StringIO()):
-        check(cmd.play_downloading(A, j, target, {"youtube_id": target, "title": "the old name"})
-              and stream.ended.wait(WAIT_S), "the job's record is on the platter and its stream was refused")
+    with (contextlib.redirect_stderr(io.StringIO()),
+          mock.patch.object(A, "tocar_remoto", shelved_and_renamed_after_the_miss)):
+        played = cmd.tocar_da_fila(A, x["qid"])
+        check(played is x and stream.ended.wait(WAIT_S),
+              "the queue's play missed the shelf, the record was shelved and renamed while the job ran, and the job's "
+              "record went on the platter")
     del A._abre_stream
-    check((E.track or {}).get("id") == target, "the job's record is on the platter")
+    check((E.track or {}).get("id") == target and j["status"] == "running",
+          "the job's waiting record is on the platter")
     check(shown_title(A) == "the old name",
-          f"known failure #303: a play of a downloading job whose record was renamed on the shelf puts the request's "
-          f"name on the platter ({shown_title(A)})")
+          f"known failure #303: a play of a downloading job whose record was renamed on the shelf after the play "
+          f"missed it puts the entry's name on the platter ({shown_title(A)})")
 
 
 def prepared_stream_renamed_before_it_is_published(A, E, readers):
