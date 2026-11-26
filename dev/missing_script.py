@@ -55,7 +55,7 @@ class Tab:
         self.seq, self.pending, self.tasks = itertools.count(1), {}, set()
         self.failing, self.holding, self.held = set(), set(), {}
         self.documents, self.api_calls, self.loads, self.contexts, self.loaders = [], [], 0, 0, []
-        self.asked = {}
+        self.asked, self.scripts = {}, []
         self.changed = asyncio.Event()
 
     def spawn(self, coroutine):
@@ -80,6 +80,8 @@ class Tab:
         elif method == "Runtime.executionContextCreated" and m["params"]["context"].get("origin") == self.base:
             self.contexts += 1
             self.changed.set()
+        elif method == "Debugger.scriptParsed":
+            self.scripts.append(m["params"])
 
     async def cmd(self, method, **params):
         n = next(self.seq)

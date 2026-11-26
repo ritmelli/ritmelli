@@ -17,16 +17,37 @@ O código do tema sai aos poucos do `index.html` para arquivos `.js` na pasta do
 o `index.html` carrega por um `<script src>` no lugar em que o bloco estava, sem `defer`: os scripts rodam na mesma
 ordem, e o que um deles declara no alto continua à vista dos de depois. O primeiro é o `shared.js`, carregado no
 `<head>`: o estado da página (`S`), o da mesa de DJ (`MESA`) e os ajudantes de todos (o `$`, o `el`, o `clamp`, o
-`reduz`, o `celular()`, o `toque()`, o `abrirMaleta()` e o `sombrear()`). Já saíram também: o `deck.js` (os toca-discos
+`reduz`, o `celular()`, o `toque()`, o `abrirMaleta()`, o `sombrear()` e o `dialogoAberto()`). Já saíram também: o `deck.js` (os toca-discos
 da mesa), o `mix.js` (o mixer da mesa), o `pedal.js` (os pedais da mesa), o `maleta-vazia.js` (o aviso de vazio do A
 seguir), o `letra-placa.js` (a letra de pixel das placas da mesa), o `prateleira.js` (o título e a contagem da plaqueta
 da prateleira), o `maleta-tit.js` (o título da placa da maleta) e o `mesa-topo.js` (a plaqueta e as teclas do topo da
 mesa em largura par). O `dj-visor.js` (o visor de DJ: a onda do disco que corre sob o ponto fixo do play), o
 `voice-effects.js` (os efeitos de voz: o seletor no receptor e a gaveta de teclas), o `dj-desk.js` (os dois decks da
 mesa de DJ, que se revezam como num set, no computador largo), o `search.js` (a busca e os resultados), o `queue.js` (a
-fila, o A seguir) e o `ui-events.js` (os ouvintes de clique, de tecla e de ponteiro da página) saíram do script
-principal da página, que é estrito: o arquivo tirado dele começa com `'use strict'`, como o script inline que segue
-depois do `<script src>` dele. Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a
+fila, o A seguir) e o `ui-events.js` (os ouvintes de clique, de tecla e de ponteiro das partes que ainda moram no
+`index.html`: o palco, a prateleira, os toca-discos, o teclado) saíram do script principal da página, que é estrito: o
+arquivo tirado dele começa com `'use strict'`, como o script inline que segue depois do `<script src>` dele.
+
+Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
+da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de
+desligar o efeito da barra de baixo) no `voice-effects.js`. O arquivo da parte guarda os ouvintes numa função (o
+`bindSearch()`, o `bindSearchResults()` e o `bindVoiceEffects()`), e quem liga é o lugar em que eles eram registrados
+antes: o `ui-events.js` chama o `bindVoiceEffects()` e o `bindSearch()`, e o `queue.js` chama o `bindSearchResults()`.
+Assim os controles só respondem quando os arquivos de que eles dependem já carregaram (o formulário da busca segue
+`inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos outros no mesmo alvo (o toque fora da busca
+para o evento depois de o ouvinte do `queue.js` na `window` ver o toque). Com um arquivo anterior que faltou
+(`scriptsMissing()`), a chamada não acontece, e o resto do arquivo que chama segue registrando os seus ouvintes até a
+página ir para o aviso de fora do ar.
+
+Todo nome do alto de um script é declarado por um script só. O `dev/theme_scripts.py`, que o `--tela` do
+`dev/testa_tudo.py` roda, abre a página num Chrome sem tela contra um `--mock` e pega cada script como o V8 o leu. Cada
+um vira o corpo de um gerador que é criado e não anda (as declarações nascem e nada roda), e os nomes saem do escopo
+local dele. Um nome declarado em dois scripts (função, `var`, `let`, `const` ou `class`) faz a guarda falhar. Ele
+confere também que os ouvintes da busca e da gaveta são dos arquivos delas e só existem depois do arquivo que os liga,
+e que o `queue.js` vê o toque que fecha a busca na mesa. O `dev/theme_rebuild.py` mostra à parte os blocos que mudaram
+de lugar com outra indentação (os que entraram numa dessas funções).
+
+Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a
 página de novo nos dois commits (cada `<script src>`, `<link>` e `<!-- inline-script: -->` trocado pelo texto do
 arquivo, sem as marcas, com os outros atributos da tag numa linha e cada `'use strict'` como `[strict]`) e sai 0 só com
 as duas páginas iguais, linha a linha; diferentes, ela separa os blocos que só mudaram de lugar das linhas novas ou que
