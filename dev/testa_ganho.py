@@ -299,7 +299,7 @@ class TestaMotor(unittest.TestCase):
         median, trimmed = float(np.median(ms)), float(np.sort(ms)[:-4].mean())
         print(f"\n  _mixa with gain and limiter: median {median:.3f} ms, mean without the 4 slowest {trimmed:.3f}, "
               f"mean {ms.mean():.3f}, p99 {np.percentile(ms, 99):.3f}", file=sys.stderr)
-        # a call or two the runner stalls moves the mean, not the cost of each call; a slowdown that recurs still fails
+        # Trimming four samples tolerates isolated stalls and still checks the cost of the remaining calls.
         self.assertLess(median, 0.15)
         self.assertLess(trimmed, 0.3)
 
