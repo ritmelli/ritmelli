@@ -86,10 +86,12 @@ as duas páginas iguais, linha a linha; diferentes, ela separa os blocos que só
 sumiram (um arquivo novo traz o próprio `[strict]`). O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
 dos dois commits num Chrome sem tela, contra um `--mock` de cada, no tamanho do PC (a mesa) e no de um celular, e
 compara duas tabelas. A primeira tem os ouvintes ligados no fim da carga, na ordem em que entraram (o
-`getEventListeners` do DevTools), com as opções e o texto de cada função: os de cada nó, do `document` e da `window`, e
-os dos outros alvos em que a página pôs um ouvinte (cada `MediaQueryList` pela consulta dela, o `navigator.connection` e
-o resto pelo tipo). A segunda tem cada chamada de `addEventListener` e `removeEventListener` desde o começo da página,
-por alvo e evento, na ordem: um ouvinte posto e tirado antes da leitura aparece nela. Sai 0 só com as tabelas iguais. O
+`getEventListeners` do DevTools), com as opções e o texto de cada função: os de cada nó, do `document`, da `window` e do
+`navigator.connection`, os de cada `MediaQueryList` que a página criou e que tem um ouvinte (pela consulta, numeradas
+quando há mais de uma com a mesma; o `onchange` e o `addListener` entram) e os dos outros alvos em que a página pôs um
+ouvinte, pelo tipo. A segunda tem cada chamada de `addEventListener`, `removeEventListener`, `addListener` e
+`removeListener` desde o começo da página, por alvo e evento, na ordem (um nó pelo caminho da primeira chamada,
+numerado quando outro nó já tinha o mesmo): um ouvinte posto e tirado antes da leitura aparece nela. Sai 0 só com as tabelas iguais. O
 arquivo em que um ouvinte mora não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função,
 mantém as tabelas. O `dev/test_theme_listeners.py`, que o `--tela` roda, confere a leitura numa página própria.
 

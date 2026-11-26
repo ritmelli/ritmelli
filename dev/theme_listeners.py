@@ -20,11 +20,12 @@ working tree) opened in a headless Chrome against a --mock server of each, at th
 size, once the page is connected. Two tables are compared:
 - the listeners on at that moment, read in the order they were added (the DevTools getEventListeners), with the
   capture, passive and once flags and the handler's source text, each line without its indentation: those of every
-  node, the document and the window, and those of the other targets the page added a listener to (each MediaQueryList
-  as matchMedia(<its query>) #<n>, numbered per query in the order of its first add or remove call,
-  navigator.connection, and the rest by their kind);
-- every addEventListener and removeEventListener call the page made since it began, per target and event type, in
-  order, with the options as given and the handler's text: a listener added and removed before the table is read shows
+  node, the document and the window, of navigator.connection, of every MediaQueryList the page made with a listener
+  on (matchMedia(<its query>) #<n>, numbered per query in the order of its first add or remove call, then of its
+  making) and of the other targets the page added a listener to, by their kind;
+- every addEventListener, removeEventListener, addListener and removeListener call the page made since it began, per
+  target and event type, in order, with the options as given and the handler's text (a node by its path at its first
+  call, with #<n> when another node had that path): a listener added and removed before the table is read shows
   here.
 Exit 0 only when both commits give the same tables; otherwise the differences are printed and the exit is 1. The file a
 handler lives in is not compared: moving a handler between files, or into a function, keeps the tables. The <script>
@@ -34,7 +35,9 @@ KEY = "Symbol.for('ritmelli-listeners')"
 RECORDER = """(() => {
   'use strict';
   const add = EventTarget.prototype.addEventListener, remove = EventTarget.prototype.removeEventListener;
-  const calls = [], targets = [];
+  const list = MediaQueryList.prototype, listen = list.addListener, unlisten = list.removeListener;
+  const media = window.matchMedia;
+  const calls = [], targets = [], made = [], nodes = new Map(), paths = new Map();
   const path = e => {
     const parts = [];
     for (let n = e; n && n.nodeType === 1; n = n.parentElement) {
@@ -52,12 +55,21 @@ RECORDER = """(() => {
   const name = t => t === window ? 'window' : t === document ? 'document' : t instanceof Node ? path(t)
     : t instanceof MediaQueryList ? query(t) : t === navigator.connection ? 'navigator.connection'
     : t.constructor.name;
+  const node = t => {
+    if (!nodes.has(t)) {
+      const p = path(t), n = (paths.get(p) ?? 0) + 1;
+      paths.set(p, n);
+      nodes.set(t, n > 1 ? `${p} #${n}` : p);
+    }
+    return nodes.get(t);
+  };
   const options = o => o !== null && typeof o === 'object' ? [o.capture ?? null, o.passive ?? null, o.once ?? null]
     : [o ?? null, null, null];
   const record = (op, target, type, listener, o) => {
     if (!(target instanceof Node) && target !== window && !targets.includes(target)) targets.push(target);
     const handler = typeof listener === 'function' ? listener : listener?.handleEvent ?? listener;
-    calls.push([name(target), type, op, ...options(o), String(handler)]);
+    calls.push([target instanceof Node && target !== document ? node(target) : name(target), type, op, ...options(o),
+                String(handler)]);
   };
   EventTarget.prototype.addEventListener = function addEventListener(type, listener, o) {
     record('add', this ?? window, type, listener, o);
@@ -67,12 +79,27 @@ RECORDER = """(() => {
     record('remove', this ?? window, type, listener, o);
     return remove.call(this, type, listener, o);
   };
-  Object.defineProperty(window, %s, {value: {calls, targets, name}});
+  list.addListener = function addListener(listener) {
+    record('addListener', this, 'change', listener);
+    return listen.call(this, listener);
+  };
+  list.removeListener = function removeListener(listener) {
+    record('removeListener', this, 'change', listener);
+    return unlisten.call(this, listener);
+  };
+  window.matchMedia = function matchMedia(query) {
+    const found = media.call(window, query);
+    made.push(found);
+    return found;
+  };
+  Object.defineProperty(window, %s, {value: {calls, targets, made, name}});
 })()""" % KEY
 READ = """(() => {
-  const {calls, targets, name} = window[%s];
+  const {calls, targets, made, name} = window[%s];
+  const others = [...targets, ...made.filter(m => !targets.includes(m) && Object.keys(getEventListeners(m)).length),
+                  ...(navigator.connection && !targets.includes(navigator.connection) ? [navigator.connection] : [])];
   const rows = [];
-  for (const [where, target] of [['window', window], ['document', document], ...targets.map(t => [name(t), t]),
+  for (const [where, target] of [['window', window], ['document', document], ...others.map(t => [name(t), t]),
                                  ...[...document.querySelectorAll(':not(script)')].map(e => [name(e), e])])
     for (const [kind, list] of Object.entries(getEventListeners(target)))
       for (const x of list) rows.push([where, kind, x.useCapture, x.passive, x.once, String(x.listener)]);
@@ -163,7 +190,7 @@ def main(argv=None):
         made = sum(len(v) for k, v in b.items() if k[0] == "calls")
         print(f"{name}: {args.base} {'connected' if base_ready else 'NOT connected'}, "
               f"{args.head or 'working tree'} {'connected' if head_ready else 'NOT connected'}; "
-              f"{count} listeners, {made} add and remove calls, "
+              f"{count} listeners, {made} calls, "
               f"{len([x for x in diff if not x.startswith('  ')])} target(s) differ")
         print("\n".join(diff))
         same = same and base_ready and head_ready and not diff
