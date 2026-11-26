@@ -241,6 +241,9 @@ class TestaReinicio(unittest.TestCase):
     def setUp(self):
         self.c = Chamadas()
         self.protegida = True
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.folder = Path(tmp.name) / "microfone"
         # nada de verdade: nenhum servico, nenhum regsvr32, nenhuma pasta de programas
         done = types.SimpleNamespace(returncode=0, stdout="", stderr="")
         self.p = [mock.patch.object(filtro.subprocess, "run", self.c("run", done)),
@@ -248,7 +251,7 @@ class TestaReinicio(unittest.TestCase):
                   mock.patch.object(filtro, "_depois_do_reinicio", self.c("confere", {"mudos": [UMC_IN]})),
                   mock.patch.object(filtro, "_protegida", lambda: self.protegida),
                   mock.patch.object(filtro, "_apaga_registro_com", self.c("apaga_com")),
-                  mock.patch.object(filtro, "PASTA", tempfile.gettempdir() + r"\ritmelli-teste-nao-existe"),
+                  mock.patch.object(filtro, "PASTA", str(self.folder)),
                   mock.patch.object(filtro.shutil, "rmtree", self.c("rmtree", REAL_RMTREE))]
         for p in self.p:
             p.start()
@@ -418,13 +421,9 @@ class TestaReinicio(unittest.TestCase):
         self.assertEqual(r, {"mudos": [UMC_IN]})
 
     def test_remove_cleans_up_when_the_audio_service_fails(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        folder = Path(tmp.name) / "microfone"
-        folder.mkdir()
-        (folder / "micfx.dll").write_bytes(b"")
+        self.folder.mkdir()
+        (self.folder / "micfx.dll").write_bytes(b"")
         with mock.patch.object(filtro.subprocess, "run", refusing_powershell("audiosrv")), \
-                mock.patch.object(filtro, "PASTA", str(folder)), \
                 mock.patch.object(filtro, "servico_audio", REAL_AUDIO_SERVICE), \
                 mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
                 mock.patch.object(filtro, "_devolve", lambda ep: True), \
@@ -437,7 +436,31 @@ class TestaReinicio(unittest.TestCase):
         self.assertEqual(caught.exception.code, "the Start of the audio service failed (1): Cannot restart service")
         self.assertEqual(self.c.nomes(), ["rmtree", "tarefa_apaga", "esquece", "grava_mudos"],
                          "the uninstaller still cleans up")
-        self.assertFalse(folder.exists(), "the filter folder goes too")
+        self.assertFalse(self.folder.exists(), "the filter folder goes too")
+
+    def _remove_with_a_refusing_endpoint_builder(self, filter_left):
+        self.c.lista.clear()
+        with mock.patch.object(filtro.subprocess, "run", refusing_powershell("AudioEndpointBuilder")), \
+                mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
+                mock.patch.object(filtro, "_devolve", lambda ep: True), \
+                mock.patch.object(filtro, "tem_filtro", lambda ep: filter_left), \
+                mock.patch.object(filtro, "tarefa_apaga", self.c("tarefa_apaga")), \
+                mock.patch.object(filtro, "_esquece_hospedes", self.c("esquece")), \
+                mock.patch.object(filtro, "grava_mudos", self.c("grava_mudos")), redirect_stderr(io.StringIO()), \
+                self.assertRaises(filtro.FilterNotInstalled) as caught:
+            filtro.remove()
+        return str(caught.exception), caught.exception.check
+
+    def test_remove_reports_the_endpoint_builder_that_does_not_restart(self):
+        reason = "the AudioEndpointBuilder didn't restart (1): Cannot restart service"
+        self.folder.mkdir()
+        (self.folder / "micfx.dll").write_bytes(b"")
+        self.assertEqual(self._remove_with_a_refusing_endpoint_builder(filter_left=False), (reason, None))
+        self.assertEqual(self.c.nomes(), ["servico_audio", "rmtree", "tarefa_apaga", "esquece", "grava_mudos"],
+                         "the uninstaller still cleans up")
+        self.assertFalse(self.folder.exists())
+        self.assertEqual(self._remove_with_a_refusing_endpoint_builder(filter_left=True), (reason, {"mudos": [UMC_IN]}))
+        self.assertEqual(self.c.nomes(), ["servico_audio", "confere"])
 
     def test_remove_reprovada(self):
         """Com a pasta do app reprovada (pastas.pasta_protegida), o remove devolve os microfones e sai com erro, sem
@@ -649,11 +672,17 @@ class TestRepeatedInstallAfterAFailedRestart(unittest.TestCase):
                                             "conferencia": "devices: 1 checked", "mudos": [], "aparelhos": []}))
         self.assertEqual(self.restarts[0], False, "a new microphone: the full restart")
 
+    def test_the_second_run_reports_what_its_restart_did(self):
+        if self.restarts == [False]:
+            self.assertEqual(self.runs[1], (0, {"ok": True}), "#262: no restart, so the second run passes")
+        else:
+            self.assertEqual(self.restarts, [False, False])
+            self.assertEqual((self.runs[1][0], self.runs[1][1]["ok"], self.runs[1][1].get("erro")),
+                             (1, False, "the restart failed"))
+
     @unittest.expectedFailure
-    def test_the_second_run_does_not_pass_without_the_restart(self):
+    def test_the_second_run_tries_the_full_restart_again(self):
         self.assertEqual(self.restarts, [False, False], "#262: the second run must try the full restart again")
-        self.assertEqual((self.runs[1][0], self.runs[1][1]["ok"], self.runs[1][1].get("erro")),
-                         (1, False, "the restart failed"))
 
 
 class TestDiagnosticStreams(unittest.TestCase):

@@ -767,11 +767,13 @@ def _devolve(ep):
 
 
 def remove(filtro=None):
-    """Devolve o original dos microfones (o do filtro, ou todos) e, sem nenhum com o filtro, tira a DLL. O audio do PC
-    so reinicia se algum microfone mudou (o desinstalador chama sempre). Com a pasta do app fora da regra da pasta
-    protegida, os microfones voltam do mesmo jeito (e so registro), mas a DLL de la nao e carregada nem apagada: o
-    registro dela sai pelo winreg, e o comando sai com erro. A conferencia dos aparelhos, se o audio reiniciou, algum
-    microfone segue com o filtro e a pasta passou (_depois_do_reinicio), ou None."""
+    """Restore the original on the microphones (the given one, or all) and, with none left with the filter, take the
+    DLL out. The PC audio restarts only if some microphone changed (the uninstaller always calls it). With the app
+    folder outside the protected folder rule, the microphones are restored the same way (it's only registry), but the
+    DLL there is neither loaded nor deleted: its registration goes through winreg, and the command exits with an
+    error. The cleanup runs even when the restart fails; an AudioEndpointBuilder that didn't restart then raises
+    FilterNotInstalled. Return the device check if the audio restarted, some microphone keeps the filter and the
+    folder passed (_depois_do_reinicio), or None."""
     alvos = [acha(filtro)] if filtro else microfones(todos=True)
     mexeu = False
     for ep, nome, apar in alvos:
@@ -785,10 +787,10 @@ def remove(filtro=None):
         _apaga_registro_com()
     elif not sobrou and os.path.exists(destino):
         subprocess.run([REGSVR32, "/s", "/u", destino], capture_output=True, creationflags=NO_WINDOW)
-    r = None
+    r = restart_error = None
     try:
         if mexeu:
-            reinicia_audio()
+            restart_error = reinicia_audio()
             if sobrou and protegida:
                 r = _depois_do_reinicio()
     finally:
@@ -801,6 +803,8 @@ def remove(filtro=None):
     if not protegida:
         sys.exit(f"the app folder isn't protected ({protegida}): the microphones were restored, and {PASTA} was "
                  "left as it is")
+    if restart_error:
+        raise FilterNotInstalled([restart_error], r)
     return r
 
 
