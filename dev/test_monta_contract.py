@@ -90,6 +90,11 @@ def writes_output(run, key):
     return any(re.search(r"\$\{?env:GITHUB_OUTPUT\}?", c, re.I) and f'"{key}=$' in c for c in code(run).splitlines())
 
 
+def bare(condition):
+    text = str(condition).strip()
+    return inner(text) if "${{" in text or "}}" in text else text
+
+
 def step_output_problem(job, name):
     value = inner((job.get("outputs") or {}).get(name, ""))
     source = re.fullmatch(STEP_OUTPUTS[name], value or "")
@@ -151,7 +156,7 @@ def contract_problems(doc):
         needs = (gated[0].get("needs") or []) if gated else []
         if "monta" not in ([needs] if isinstance(needs, str) else needs):
             problems.append(f"{required} does not need the monta job, so its if: cannot read the monta outputs")
-        if not re.fullmatch(rf"(\$\{{\{{)?\s*needs\.monta\.outputs\.{output}\s*==\s*'true'\s*(\}}\}})?", condition):
+        if not re.fullmatch(rf"needs\.monta\.outputs\.{output}\s*==\s*'true'", bare(condition) or ""):
             problems.append(f"the if: of {required} does not read the {output} output of the monta job")
     run_uploads = uploads(jobs)
     found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
@@ -338,7 +343,9 @@ def main():
             {"if": shown(d, "testa-migracao")["if"].replace("outputs.anterior", "outputs.previous")}),
         "an output the monta job does not declare in the if: of testa-parcial": lambda d: shown(
             d, "testa-parcial").update(
-                {"if": shown(d, "testa-parcial")["if"] + " && needs.monta.outputs.migra == 'true'"}),
+                {"if": bare(shown(d, "testa-parcial")["if"]) + " && needs.monta.outputs.migra == 'true'"}),
+        "the if: of testa-parcial with an unclosed ${{": lambda d: shown(d, "testa-parcial").update(
+            {"if": "${{ " + bare(shown(d, "testa-parcial")["if"])}),
         "the versao output": lambda d: d["jobs"]["monta"]["outputs"].update(
             versao="${{ steps.freeze.outputs.versao }}"),
         "the Ritmelli artifact name": lambda d: upload(d, setup)["with"].update(name="Ritmelli-build"),
@@ -423,11 +430,9 @@ def main():
     check(contract_problems(taken) == [] and contract_problems(taken_renamed) == []
           and source_step(taken_renamed, "parcial")["id"] != "build",
           "renaming the step behind parcial picks an id no other step has")
-    def gate(d, j):
-        return inner(shown(d, j)["if"]) or str(shown(d, j)["if"]).strip()
-
     for form, label in (("${{ %s }}", "wrapped in ${{ }}"), ("%s", "without ${{ }}")):
-        gated_form = mutant(doc, lambda d: [shown(d, j).update({"if": form % gate(d, j)}) for j in GATED_JOBS])
+        gated_form = mutant(doc, lambda d: [shown(d, j).update({"if": form % bare(shown(d, j)["if"])})
+                                            for j in GATED_JOBS])
         check(contract_problems(gated_form) == [], f"the if: of the gated jobs {label} keeps the contract")
     for base, label in ((doc, ""), (spaces, " (version expression without spaces)"),
                         (packed_folder, " (folder of --saida assigned without spaces)"),
