@@ -43,7 +43,8 @@ viu vazio: o `read_ring` guarda a hora de antes da primeira e a de depois da seg
 porque o leitor pode parar e só esvaziá-lo depois; a pista que subiu antes desse intervalo veio antes da seca, a que
 subiu depois dele veio depois, a que subiu dentro dele fica sem ordem, o pedal que ligou depois dele não conta no
 `secas_pedal`, o que ligou dentro dele sai com a nota de que pode ter ligado depois da seca, o que desligou dentro dele
-conta com a subida que acabou e com a pista dela, com a nota de que pode ter desligado antes da seca, e a janela dos
+conta com a subida que acabou e com a pista dela (também a que só foi lida depois de o pedal desligar, mesmo que outra
+pista suba antes de a seca ser classificada), com a nota de que pode ter desligado antes da seca, e a janela dos
 `AFTER_TRACK_S` vale para o começo desse intervalo, e não para a volta da thread; a pista é lida de novo quando a seca
 aparece, para um carimbo que chegou na mesma volta (só para a conta: a mistura da volta segue com o que o `_voz` leu)),
 até `PEDAL_LINES` linhas por subida do pedal (passou disso, a seca sai como as outras, uma linha a cada `QUIET_S`, e a
