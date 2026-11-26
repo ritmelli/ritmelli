@@ -12,7 +12,8 @@ todos os processos dele (a lista cresce até caber), abre um handle de cada um (
 encerrá-lo e espera cada um sair (até 10 s); o processo que passou do prazo, ou que ela não abriu nem conferiu, vira
 a `Recusa`. O resultado fica guardado: o encerramento repetido repete o mesmo resultado, sem dar por parado o que
 recusou. O processo que não entra no job ou não volta a rodar é terminado antes de rodar, e um Ctrl+C durante a
-subida espera o filho entrar no job, que então é encerrado, e segue. Sem isso, o `ffmpeg` órfão segurava um `.wav`
+subida espera até o filho estar no job e o `Filho` sob a limpeza do `sobe`, que então encerra o job inteiro (o neto
+que já segura um arquivo também), e segue. Sem isso, o `ffmpeg` órfão segurava um `.wav`
 da pasta temporária, e apagar a pasta falhava (#244; o `dev/testa_so_mock.py` confere, com o neto que segura um
 arquivo e com o filho que sai e deixa o neto). Os medidores que abrem o anel de verdade
 (`dev/mede_folga.py`, `dev/mede_voz_ao_vivo.py`) são manuais, num Windows de teste, e saem

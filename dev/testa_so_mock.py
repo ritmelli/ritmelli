@@ -389,6 +389,51 @@ def the_tree():
         refused(so_mock.start_job, [sys.executable, "-c", "pass"])
     restored.append(signal.getsignal(signal.SIGINT) is signal.default_int_handler)
     check(all(restored), f"start_job gives the Ctrl+C back as it was, after a stop and after a job that failed ({restored})")
+    with tempfile.TemporaryDirectory(prefix="ritmelli-so-mock-") as folder:
+        held = os.path.join(folder, "held.wav")
+        open(held, "wb").close()
+        made.clear()
+        resume = so_mock._resume
+
+        def resumed_then_interrupted(handle):
+            status = resume(handle)
+            made[-1].stdout.readline()
+            signal.raise_signal(signal.SIGINT)
+            return status
+
+        with mock.patch.object(so_mock.subprocess, "Popen", side_effect=lambda *a, **k: made.append(real(*a, **k))
+                               or made[-1]), mock.patch.object(so_mock, "_resume", resumed_then_interrupted):
+            try:
+                so_mock.start_job([sys.executable, "-c", STARTS + "p.wait()", HOLDS, held],
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                raised = None
+            except KeyboardInterrupt as ex:
+                raised = ex
+        try:
+            os.remove(held)
+            gone = True
+        except PermissionError:
+            gone = False
+        made[0].stdin.close()
+        made[0].stdout.close()
+    check(isinstance(raised, KeyboardInterrupt) and gone,
+          f"a Ctrl+C once the child runs and its own child holds a file: start_job ends the whole job, the file can go, "
+          f"and the Ctrl+C goes on ({raised!r}, {gone})")
+    started, filho = [], so_mock.Filho
+
+    def filho_then_interrupted(*a, **k):
+        started.append(filho(*a, **k))
+        signal.raise_signal(signal.SIGINT)
+        return started[-1]
+
+    with mock.patch.object(so_mock, "Filho", filho_then_interrupted):
+        try:
+            so_mock.sobe([sys.executable, "-c", "import time; time.sleep(60)"], so_mock.free_port(), limite=5)
+            raised = None
+        except KeyboardInterrupt as ex:
+            raised = ex
+    check(isinstance(raised, KeyboardInterrupt) and started and started[0].srv.poll() is not None,
+          f"a Ctrl+C once start_job has given the child back: sobe ends it, and the Ctrl+C goes on ({raised!r})")
     parent, job = so_mock.start_job([sys.executable, "-c", STARTS + "p.wait()", HOLDS, os.devnull],
                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     parent.stdout.readline()
@@ -405,6 +450,27 @@ def the_tree():
     check(unsure is not None and again == unsure,
           f"a process of the job that cannot be opened: the stop is not taken as done, and a second stop says the "
           f"same ({unsure}; {again})")
+    parent, job = so_mock.start_job([sys.executable, "-c", "import sys; sys.stdin.read()"], stdin=subprocess.PIPE)
+    opened, closed = [], set()
+    open_process, close_handle, pids = job.k.OpenProcess, job.k.CloseHandle, job.pids
+
+    def opening(*a):
+        opened.append(open_process(*a))
+        return opened[-1]
+
+    def closing(handle):
+        closed.add(handle.value)
+        return close_handle(handle)
+
+    with mock.patch.object(job.k, "OpenProcess", side_effect=opening), \
+            mock.patch.object(job.k, "CloseHandle", side_effect=closing), \
+            mock.patch.object(job, "pids", side_effect=[pids(), so_mock.Recusa("second list")]):
+        failed = refused(so_mock.Filho(parent, 0, job).mata)
+    parent.stdin.close()
+    parent.wait(10)
+    check(failed is not None and opened and set(opened) <= closed,
+          f"the second list of the job fails: the stop refuses and closes every handle it opened ({failed}; "
+          f"{len(opened)} opened, {len(set(opened) - closed)} left open)")
 
 
 app_port()

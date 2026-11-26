@@ -12,6 +12,7 @@ de agir; no Chrome, o DOCUMENTOS e o libera_ou_barra barram o documento de outra
 Quem sobe o proprio servidor (compara, previews, testa_mock) usa o sobe: a porta recusada antes do Popen se e a 8799 ou
 se alguem ja responde nela, e cada pedido, o /api/shutdown inclusive, so com o filho vivo e o marcador na origem; se
 nao, so o filho sai, pelo handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado."""
+import contextlib
 import ctypes
 import json
 import signal
@@ -206,8 +207,7 @@ class _Job:
                 raise Recusa(f"o job do servidor de teste nao listou os processos (erro {ctypes.get_last_error()})")
             size = max(2 * size, wintypes.DWORD.from_buffer(listed, 0).value)
 
-    def members(self):
-        opened = {}
+    def members(self, opened):
         for pid in self.pids():
             handle = self.k.OpenProcess(0x00100000 | 0x1000, False, pid)
             inside = wintypes.BOOL()
@@ -215,7 +215,7 @@ class _Job:
                 opened[pid] = handle
             elif handle:
                 self.k.CloseHandle(wintypes.HANDLE(handle))
-        return opened, [pid for pid in self.pids() if pid not in opened]
+        return [pid for pid in self.pids() if pid not in opened]
 
     def end(self, seconds=10.0):
         if self.outcome is True:
@@ -237,8 +237,9 @@ class _Job:
         closed.BasicLimitInformation.ActiveProcessLimit = 1
         if not self.k.SetInformationJobObject(self.job, 9, ctypes.byref(closed), ctypes.sizeof(closed)):
             raise Recusa(f"o job do servidor de teste nao fechou para processos novos (erro {ctypes.get_last_error()})")
-        opened, missing = self.members()
+        opened = {}
         try:
+            missing = self.members(opened)
             if not self.k.TerminateJobObject(self.job, 1):
                 raise Recusa(f"o job do servidor de teste nao foi encerrado (erro {ctypes.get_last_error()})")
             fim = time.monotonic() + seconds
@@ -260,45 +261,56 @@ class _Job:
         self.job = None
 
 
-def _drop(proc, job):
-    try:
-        handle = getattr(proc, "_handle", None)
-        if handle is not None:
-            _kernel().TerminateProcess(wintypes.HANDLE(int(handle)), 1)
-            proc.wait(10)
-    finally:
-        job.close()
-
-
-def start_job(cmd, **popen):
-    if sys.platform != "win32":
-        return subprocess.Popen(cmd, **popen), None
-    flags = popen.pop("creationflags", 0)
+@contextlib.contextmanager
+def _ctrl_c_held():
     caught = []
     try:
         previous = [signal.signal(signal.SIGINT, lambda *_: caught.append(True))]
     except ValueError:
         previous = []
     try:
-        job = _Job()
-        proc = None
-        try:
+        yield
+    finally:
+        for handler in previous:
+            signal.signal(signal.SIGINT, handler)
+    if caught:
+        raise KeyboardInterrupt
+
+
+def _drop(proc, job, assigned):
+    try:
+        if assigned:
+            job.end()
+            proc.wait(10)
+        elif getattr(proc, "_handle", None) is not None:
+            _kernel().TerminateProcess(wintypes.HANDLE(int(proc._handle)), 1)
+            proc.wait(10)
+    finally:
+        if job:
+            job.close()
+
+
+def start_job(cmd, **popen):
+    if sys.platform != "win32":
+        return subprocess.Popen(cmd, **popen), None
+    flags = popen.pop("creationflags", 0)
+    proc = job = None
+    assigned = False
+    try:
+        with _ctrl_c_held():
+            job = _Job()
             proc = subprocess.Popen(cmd, creationflags=flags | 0x4, **popen)
             handle = getattr(proc, "_handle", None)
             if handle is not None:
                 job.assign(handle)
+                assigned = True
                 status = _resume(handle) & 0xFFFFFFFF
                 if status:
                     raise Recusa(f"o servidor de teste nao foi retomado (NTSTATUS {status:#010x})")
-            if caught:
-                raise KeyboardInterrupt
-        except BaseException:
-            _drop(proc, job)
-            raise
-    finally:
-        for handler in previous:
-            signal.signal(signal.SIGINT, handler)
-    if getattr(proc, "_handle", None) is None:
+    except BaseException:
+        _drop(proc, job, assigned)
+        raise
+    if not assigned:
         job.close()
         return proc, None
     return proc, job
@@ -358,10 +370,12 @@ def sobe(cmd, porta, limite=30.0, **popen):
         raise Recusa(f"a porta {porta} e a do Ritmelli de verdade: o servidor de teste sobe noutra")
     if porta_responde(porta):
         raise Recusa(f"a porta {porta} ja responde: outro servidor esta nela")
-    proc, job = start_job(cmd, **popen)
-    f = Filho(proc, porta, job)
-    fim = time.monotonic() + limite
+    f = None
     try:
+        with _ctrl_c_held():
+            proc, job = start_job(cmd, **popen)
+            f = Filho(proc, porta, job)
+        fim = time.monotonic() + limite
         while True:
             if f.srv.poll() is not None:
                 raise Recusa(f"o servidor de teste saiu ao subir (codigo {f.srv.returncode})")
@@ -375,7 +389,8 @@ def sobe(cmd, porta, limite=30.0, **popen):
             if f.srv.poll() is None:  # quem respondeu pode ser outro, e o filho ter caido por nao achar a porta
                 return f
     except BaseException:
-        f.mata()
+        if f:
+            f.mata()
         raise
 
 
