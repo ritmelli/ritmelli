@@ -57,6 +57,7 @@ Exits 0 if everything passed and 1 if something failed; in the --tela and the --
 changed (the testa.yml decides).
 """
 import argparse
+import fnmatch
 import hashlib
 import importlib.util
 import json
@@ -218,6 +219,14 @@ TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py",
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
 # renderizacao ou de traducao do tema para outro modulo (posta por quem mantem o repo)
 ETIQUETAS = {"extracao-tema": "tela"}
+
+
+BUILD_PATHS = ("instalador/", "atualiza*.py", "migra.py", "pastas.py", "microfone/microfone.py", "microfone/apo/",
+               "ritmelli.spec", ".github/workflows/monta.yml", ".github/actions/inno-setup/")
+
+
+def touches_build(files):
+    return any(f.startswith(p) if p.endswith("/") else fnmatch.fnmatchcase(f, p) for f in files for p in BUILD_PATHS)
 
 
 def areas(arquivos, etiquetas=()):
@@ -551,6 +560,7 @@ def diz_areas(a):
     disparadas = areas(arquivos, etiquetas)
     print(f"{len(arquivos)} arquivo(s) mudaram desde {a.areas}; etiquetas: {etiquetas or 'nenhuma'}")
     linhas = [f"{area}={'true' if area in disparadas else 'false'}" for area in AREAS]
+    linhas.append(f"monta={'true' if touches_build(arquivos) else 'false'}")
     print("\n".join(linhas))
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
