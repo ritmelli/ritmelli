@@ -64,12 +64,13 @@ class VoicePedalStart:
 
     def starting(self, lo=None, empty_at=None):
         start, ended = self._on, self._ended
-        if lo is not None and empty_at is not None and (start is None or start[0] > empty_at):
-            start = next((e for e in reversed(ended) if e[0] <= empty_at and e[1] > lo), start)
+        off_by = lo if lo is not None else empty_at
+        if empty_at is not None and (start is None or start[0] > empty_at):
+            start = next((e for e in reversed(ended) if e[0] <= empty_at and e[1] > off_by), start)
         if start is None:
             return None, None
         on_at, off_at, up_at, _ = start
-        if (empty_at is not None and on_at > empty_at) or (lo is not None and off_at is not None and off_at <= lo):
+        if (empty_at is not None and on_at > empty_at) or (None not in (off_by, off_at) and off_at <= off_by):
             return on_at, None
         now = self.clock()
         pedal = f"the pedal turned on {now - on_at:.2f} s ago"
