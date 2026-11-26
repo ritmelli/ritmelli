@@ -125,7 +125,7 @@ def run_summary(bash, block, event, states, comment_fails=False, runs=RUNS, queu
         summary, log = tmp / "summary.md", tmp / "log.txt"
         summary.touch()
         log.touch()
-        names = ("TESTES", "BENCH", "CAPTURE", "MICROFONE", "TELA", "COMPARA")
+        names = ("TESTES", "BENCH", "CAPTURE", "MICROFONE", "TELA", "TLA", "COMPARA")
         env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ.get("PATH", ""), GITHUB_EVENT_NAME=event,
                    GITHUB_STEP_SUMMARY=str(summary), FAKE_LOG=str(log), FAKE_PYTHON=Path(sys.executable).as_posix(),
                    FAKE_GH_PY=(tmp / "fake_gh.py").as_posix(), FAKE_RUNS=json.dumps(runs),
@@ -147,8 +147,8 @@ def test_summary_block(all_jobs):
     if not bash:
         return
     block = step_run(all_jobs["testa-o-pr"], "Resumo e resultado")
-    ok6 = ["success"] * 6
-    on_push = ["skipped"] * 5 + ["success"]
+    ok6 = ["success"] * 7
+    on_push = ["skipped"] * 6 + ["success"]
 
     code, out, summary, calls = run_summary(bash, block, "pull_request", ok6)
     comments = [c for c in calls if c.startswith("gh pr comment")]
@@ -163,10 +163,10 @@ def test_summary_block(all_jobs):
 
     code, out, summary, calls = run_summary(bash, block, "push", on_push)
     queries = [c for c in calls if "event=merge_group" in c]
-    check(code == 0 and summary.count("⏭️ neste push") == 5 and "a fila testou" not in summary and QUEUE_URL in summary and "queue/failed" not in summary
+    check(code == 0 and summary.count("⏭️ neste push") == 6 and "a fila testou" not in summary and QUEUE_URL in summary and "queue/failed" not in summary
           and "other-commit" not in summary and len(queries) == 1
           and not any(c.startswith("gh pr comment") for c in calls),
-          f"on the push, the five skipped jobs pass with the passed queue run of that very commit, asked once "
+          f"on the push, the six skipped jobs pass with the passed queue run of that very commit, asked once "
           f"(exit {code}, {len(queries)} queries)")
 
     code, out, summary, calls = run_summary(bash, block, "push", on_push, runs=RUNS[:2])
@@ -178,32 +178,32 @@ def test_summary_block(all_jobs):
           and "nenhuma execução aprovada" not in summary,
           f"on the push, a failed query says so, and not that no queue run passed (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "push", ["skipped"] * 6)
+    code, out, summary, calls = run_summary(bash, block, "push", ["skipped"] * 7)
     check(code != 0, f"on the push, a skipped Compara (no capture) fails the check even with the queue run (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "pull_request", ["skipped"] + ["success"] * 5)
+    code, out, summary, calls = run_summary(bash, block, "pull_request", ["skipped"] + ["success"] * 6)
     check(code != 0 and not any("event=merge_group" in c for c in calls),
           f"on a PR, a skipped job fails the check, and the queue is not asked (exit {code})")
 
     code, out, summary, calls = run_summary(bash, block, "merge_group", ok6, dono="failure")
     check(code != 0, f"a failed needs-owner step fails the check (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "pull_request", ["success", "cancelled"] + ["success"] * 4)
+    code, out, summary, calls = run_summary(bash, block, "pull_request", ["success", "cancelled"] + ["success"] * 5)
     check(code != 0 and not any(c.startswith("gh pr comment") for c in calls) and "cancelada" in summary,
           f"a cancelled job fails the check and leaves the PR comment as it was (exit {code})")
 
 
 def test_shape(all_jobs, text):
     skip = "    if: github.event_name != 'push'"
-    for job in ("testes", "bench", "capture", "microfone", "tela"):
+    for job in ("testes", "bench", "capture", "microfone", "tela", "tla"):
         check(skip in all_jobs.get(job, []), f"the {job} job skips on the push to main")
     for job in ("etiquetas", "compara"):
         check(job in all_jobs and not any(line.startswith("    if:") for line in all_jobs[job]),
               f"the {job} job runs on the push to main")
     needs = next((line for line in all_jobs["testa-o-pr"] if line.startswith("    needs:")), "")
     ids = {n.strip() for n in needs.partition("[")[2].rstrip("]").split(",")}
-    check(ids == {"etiquetas", "testes", "bench", "capture", "microfone", "tela", "compara"},
-          f"the Testa o PR needs the six jobs and the Etiquetas ({needs.strip()})")
+    check(ids == {"etiquetas", "testes", "bench", "capture", "microfone", "tela", "tla", "compara"},
+          f"the Testa o PR needs the seven jobs and the Etiquetas ({needs.strip()})")
     check("--capture" in "".join(all_jobs["compara"]), "the compara job runs the --capture on the push")
     for name in testa_tudo.LONG_TESTS:
         steps = "\n".join(all_jobs.get(name, [])).split("      - ")
@@ -222,6 +222,18 @@ def test_shape(all_jobs, text):
           "the libraries cache key hashes the instalador/travas.txt")
     check(re.search(r"pip install .*-r \$env:REQUIREMENTS -c instalador/travas.txt", action) is not None,
           "the libraries are installed with the instalador/travas.txt as constraints")
+
+
+def test_tla_job(all_jobs):
+    lines = all_jobs.get("tla", [])
+    check("    runs-on: ubuntu-24.04" in lines, "the tla job runs on the ubuntu machine")
+    uses = [line.split("uses:", 1)[1].strip() for line in lines if line.strip().startswith(("- uses:", "uses:"))]
+    check(bool(uses) and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40} # v\d+(\.\d+)*", u) for u in uses),
+          f"every action of the tla job is pinned by its commit sha ({uses})")
+    check(any(u.startswith("actions/setup-java@") for u in uses), "the tla job takes Java from actions/setup-java")
+    steps = "\n".join(lines).split("      - ")
+    runs = [st for st in steps if "python dev/testa_tudo.py --passo tla" in st]
+    check(len(runs) == 1 and "if:" not in runs[0], "the tla job runs the TLC step (--passo tla), with no condition")
 
 
 def requirement(line):
@@ -307,6 +319,7 @@ def main():
     text = WORKFLOW.read_text(encoding="utf-8")
     all_jobs = jobs(text)
     test_shape(all_jobs, text)
+    test_tla_job(all_jobs)
     test_unpinned()
     test_bench_order()
     test_without_destination()

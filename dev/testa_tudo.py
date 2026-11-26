@@ -75,13 +75,13 @@ RAIZ = Path(__file__).resolve().parent.parent
 # so a biblioteca padrao: a monta.yml roda estes antes de instalar as bibliotecas do app
 STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vozes", "pareamento", "grava", "mfx",
                                              "ganchos", "pasta_protegida", "so_mock")] + [
-    "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py"]
+    "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py", "dev/test_lock_order.py"]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
     "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py", "dev/test_compara_not_ready.py",
-    "dev/test_compara_push_steps.py"]
+    "dev/test_compara_push_steps.py", "dev/test_races_211.py"]
 LONG_TESTS = {"bench": "dev/testa_passagem.py", "capture": "dev/test_capture.py"}
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
@@ -107,7 +107,8 @@ JOBS = 4
 # the steps of the testa.yml that run one script of their own, by name (--passo): the protected folder on the real disk
 # (it creates a folder in Program Files and changes its ACL with icacls, so it needs an administrator: the GitHub
 # machine is one; on a PC, only a test Windows) and the usage data notice of the theme
-PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas")}
+PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas"),
+          "tla": ("dev/test_tla.py",)}
 # what the --tela and the --compara run
 TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme_scripts.py")
 # the calls the testa.yml has to make, so every list and step above runs on the PR (sem_destino checks them)

@@ -451,11 +451,30 @@ jobs:
 
   # the required check: always runs, joins the summaries and only passes with the others (the one that does not
   # apply passes without running) and, in a merge_group entry, without the needs-owner label on its PR
+  tla:
+    name: TLA+ model
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12.10'
+      - name: TLC
+        run: python dev/testa_tudo.py --passo tla
+
   testa-o-pr:
     name: Testa o PR
     # always(), not !cancelled(): a skipped job counts as green in the required check, and the cancelled run would pass
     if: ${{ always() }}
-    needs: [etiquetas, testes, bench, capture, microfone, tela, compara]
+    needs: [etiquetas, testes, bench, capture, microfone, tela, tla, compara]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -519,6 +538,7 @@ jobs:
           S_CAPTURE: ${{ needs.capture.result }}
           S_MICROFONE: ${{ needs.microfone.result }}
           S_TELA: ${{ needs.tela.result }}
+          S_TLA: ${{ needs.tla.result }}
           S_COMPARA: ${{ needs.compara.result }}
           R_TESTES: ${{ needs.testes.outputs.resumo }}
           R_BENCH: ${{ needs.bench.outputs.resumo }}
@@ -531,7 +551,7 @@ jobs:
           DONO: ${{ steps.dono.outputs.linha }}
           S_DONO: ${{ steps.dono.outcome }}
         run: |
-          estados=("$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_COMPARA")
+          estados=("$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_TLA" "$S_COMPARA")
           # a cancelled run proved nothing either way: it fails, and leaves the PR comment as the last run that ended wrote it
           for s in "${estados[@]}"; do
             if [ "$s" = cancelled ]; then
@@ -553,7 +573,7 @@ jobs:
           vale() { [ "$1" = success ] || { [ "$2" = pula ] && [ "$1" = skipped ] && [ -n "$fila" ]; }; }
           marca() { if [ "$1" = success ]; then echo "✅"; elif vale "$1" "$2"; then echo "⏭️ neste push"; else echo "❌ ($1)"; fi; }
           ok=true
-          for s in "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA"; do vale "$s" pula || ok=false; done
+          for s in "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_TLA"; do vale "$s" pula || ok=false; done
           for s in "$S_COMPARA" "$S_DONO"; do vale "$s" || ok=false; done
           if $ok; then
             manchete="✅ Testa: tudo passou"
@@ -583,9 +603,9 @@ jobs:
               fi
               echo
             fi
-            echo "| Testes | Banca | Captura | Filtro do microfone | Tela | Compara |"
-            echo "| --- | --- | --- | --- | --- | --- |"
-            echo "| $(marca "$S_TESTES" pula) | $(marca "$S_BENCH" pula) | $(marca "$S_CAPTURE" pula) | $(marca "$S_MICROFONE" pula) | $(marca "$S_TELA" pula) | $(marca "$S_COMPARA") |"
+            echo "| Testes | Banca | Captura | Filtro do microfone | Tela | TLA+ model | Compara |"
+            echo "| --- | --- | --- | --- | --- | --- | --- |"
+            echo "| $(marca "$S_TESTES" pula) | $(marca "$S_BENCH" pula) | $(marca "$S_CAPTURE" pula) | $(marca "$S_MICROFONE" pula) | $(marca "$S_TELA" pula) | $(marca "$S_TLA" pula) | $(marca "$S_COMPARA") |"
             echo
             if [ -n "$DONO" ]; then echo "$DONO"; echo; fi
             printf '%s\n\n' "$R_TESTES" "$R_BENCH" "$R_CAPTURE" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
