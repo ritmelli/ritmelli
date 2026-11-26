@@ -463,6 +463,12 @@ def main():
             "'--saida', $saida)", "'--saida', $saida + '\\sub')")),
         "the only assignment of the --saida folder commented out": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1# \2", run, count=1, flags=re.M)),
+        "testa-atualizador only on push": lambda d: shown(d, "testa-atualizador").update(
+            {"if": "github.event_name == 'push'"}),
+        "testa-atualizador needing a job that runs only on push": lambda d: (
+            d["jobs"].update({free_job(d, "gate"): {"runs-on": "ubuntu-latest", "if": "github.event_name == 'push'",
+                                                    "steps": [{"run": "echo"}]}}),
+            shown(d, "testa-atualizador").update(needs=["monta", [k for k in d["jobs"] if k.startswith("gate")][-1]])),
         "testa-atualizador gated like testa-parcial": lambda d: shown(d, "testa-atualizador").update(
             {"if": shown(d, "testa-parcial")["if"]}),
         "the congela writing to another environment variable": lambda d: step_by_id(
