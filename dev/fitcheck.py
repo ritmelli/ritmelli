@@ -190,13 +190,13 @@ class PageEvents:
     def new_load(self):
         self.browser_errors.clear()
         self.failed_responses.clear()
-        self.state_requests, self.state_done, self.loads = {}, {}, {}
-        self.loader = self.wall_minus_ticks = None
+        self.state_requests, self.state_ok, self.state_done, self.loads = {}, set(), {}, {}
+        self.loader = self.mono_minus_ticks = None
 
     def monotonic_of(self, ticks):
-        if ticks is None or self.wall_minus_ticks is None:
+        if ticks is None or self.mono_minus_ticks is None:
             return None
-        return ticks + self.wall_minus_ticks - time.time() + time.monotonic()
+        return ticks + self.mono_minus_ticks
 
     @property
     def state_at(self):
@@ -215,14 +215,17 @@ class PageEvents:
             self.browser_errors.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
         elif method == "Network.requestWillBeSent":
             if "wallTime" in params and "timestamp" in params:
-                self.wall_minus_ticks = params["wallTime"] - params["timestamp"]
+                self.mono_minus_ticks = params["wallTime"] - params["timestamp"] + time.monotonic() - time.time()
             request = params.get("request", {})
             if request.get("method") == "GET" and urllib.parse.urlsplit(request.get("url", "")).path == "/api/state":
                 self.state_requests[params["requestId"]] = params.get("loaderId")
-        elif method == "Network.responseReceived" and params["response"].get("status", 0) >= 400:
+        elif method == "Network.responseReceived":
             response = params["response"]
-            self.failed_responses.append(f"{response['status']} {response.get('url', '')}")
-        elif method == "Network.loadingFinished" and params.get("requestId") in self.state_requests:
+            if response.get("status", 0) >= 400:
+                self.failed_responses.append(f"{response['status']} {response.get('url', '')}")
+            elif 200 <= response.get("status", 0) < 300:
+                self.state_ok.add(params.get("requestId"))
+        elif method == "Network.loadingFinished" and params.get("requestId") in self.state_requests.keys() & self.state_ok:
             self.state_done.setdefault(self.state_requests[params["requestId"]], params.get("timestamp"))
             self.state_changed.set()
         elif method == "Page.lifecycleEvent" and params.get("name") == "load":
