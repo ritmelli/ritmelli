@@ -152,17 +152,17 @@ o liga uma vez só, e essa ligação é um `=` simples a uma dessas formas ou a 
 cada `return` dele é uma dessas formas (o `fonte_de`), um `def` sem argumento padrão, ou um parâmetro que é a vaga da
 própria função (o `f` do `with_engine`, o `pode` do motor, o `source` do `_troca`). Qualquer outra ligação do mesmo nome
 ali reprova: um parâmetro de `def` ou de `lambda`, `for`, `with ... as`, `except ... as`, `import ... as`, `:=`,
-`nonlocal`, `global`, `del`, uma captura de `match`, uma variável de compreensão ou um segundo `=`. Qualquer outra forma
-(um apelido de outro nome, uma tupla, um método ligado, um `partial`, a chamada passada direto ou devolvida de outra
-fábrica, a mesma função em vagas com travas diferentes, um `or`, um parâmetro repassado a uma vaga que pede travas que a
-sua não tem, um `**nome` ou um `*nome` numa chamada que tem vagas, ou, na função da vaga ou em qualquer chamada feita
-com uma trava na mão, uma local que chama outra local, mais de um nível) reprova também, com o arquivo e a linha, a
-forma achada e as que valem. Com uma trava na mão, ou dentro de uma vaga, a chamada vai a uma função do repo que a
-checagem resolve, a um `def` local ligado uma vez só (a local vence a função do módulo de mesmo nome) ou a um parâmetro
-que é uma vaga da própria função (religado só pela própria chamada, como o `track = track() if callable(track) else
-track`); um nome local ligado duas vezes, a um `lambda` ou de outro jeito, um parâmetro que não é vaga e um `lambda`
-chamado ali mesmo reprovam. A checagem confere as formas desta lista e reprova as outras que reconhece como fora dela,
-mas não promete pegar toda trava tomada: quem promete é a trava de depuração da
+`nonlocal`, `global`, `del`, uma captura de `match`, uma variável de compreensão ou um segundo `=`. As outras formas que
+ela reconhece reprovam também, por exemplo (um apelido de outro nome, uma tupla, um método ligado, um `partial`, a
+chamada passada direto ou devolvida de outra fábrica, a mesma função em vagas com travas diferentes, um `or`, um
+parâmetro repassado a uma vaga que pede travas que a sua não tem, um `**nome` ou um `*nome` numa chamada que tem vagas,
+ou, na função da vaga ou em qualquer chamada feita com uma trava na mão, uma local que chama outra local, mais de um
+nível), com o arquivo e a linha, a forma achada e as que valem. Com uma trava na mão, ou dentro de uma vaga, a chamada
+vai a uma função do repo que a checagem resolve, a um `def` local ligado uma vez só (a local vence a função do módulo de
+mesmo nome) ou a um parâmetro que é uma vaga da própria função (religado só pela própria chamada, como o `track =
+track() if callable(track) else track`); um nome local ligado duas vezes, a um `lambda` ou de outro jeito, um parâmetro
+que não é vaga e um `lambda` chamado ali mesmo reprovam. A checagem confere as formas desta lista e reprova as outras
+que reconhece como fora dela, mas não promete pegar toda trava tomada: quem promete é a trava de depuração da
 https://github.com/ritmelli/ritmelli/issues/316, que guarda as travas na mão de cada thread e falha na hora.
 
 ## O modelo das travas (`dev/tla/`)
@@ -185,20 +185,21 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   com download (`WithTheJobSwitch`, com o download que termina depois de a preparação escolher o stream), e outras duas,
   nas mesmas configurações, conferem todas as outras propriedades. A preparação escolhe a fonte como o `fonte_de` (o
   arquivo da prateleira, o stream do download que corre, ou nenhuma), e a virada publica a que ela escolheu: com o disco
-  já na prateleira antes de a preparação escolher a fonte (`DownloadEndsBeforeTheSourcePick`), a virada leva o arquivo.
-  Como no `download()`, o disco entra na prateleira antes de o job marcar o fim, e o `fonte_de` já o acha ali. O tocar
-  de um disco que baixa lê antes a prateleira, como o `tocar_entrada`: com o disco já ali, a troca fecha a virada
-  pendente e publica o arquivo da prateleira, sem job e sem stream, e uma execução mostra que esse caminho chega ao
-  prato (o `SwapLeavesTheShelfFileOff` quebra no `SwapPublishesTheFile`). O arquivo
-  no prato, como no código, não leva o job (o `dict(item, path=...)` não tem a chave), e o download que termina só
-  entrega o arquivo ao disco do job (`HandoverOnlyOntoTheJobsRecord`). A troca de nome na prateleira (`WithTheRename`: a
-  prateleira, depois o `update_track` sob o `_qlock`) corre contra o download, o stream, a passagem e o tocar da
-  prateleira: quando tudo para, o disco do prato tem o nome atual (`PlatterHasTheCurrentName`), com um mutante por
-  caminho: o `update_track` que põe um dicionário novo no prato, o arquivo do download, o da passagem e o do tocar
-  montados antes da trava, e o segundo deck que não recebe o nome. Três execuções mostram, como falhas conhecidas da
-  #303, o stream que abre, o disco de um job tocado enquanto baixa e o stream que a passagem prepara, que levam o nome
-  copiado antes e quebram o `NameIsCurrentOutsideARename` (fora de uma troca de nome em curso, o disco do prato tem o
-  nome atual); cada uma fica presa à ação do seu caminho, o último passo do contraexemplo (o `action` do `Run`).
+  já na prateleira antes de a preparação escolher a fonte (`DownloadEndsBeforeTheSourcePick`), a virada leva o arquivo;
+  a parecida sem job que a prateleira já tem pelo `youtube_id` também leva o arquivo (`WithTheOtherOnTheShelf`, numa
+  execução só). Como no `download()`, o disco entra na prateleira antes de o job marcar o fim, e o `fonte_de` já o acha
+  ali. O tocar de um disco que baixa lê antes a prateleira, como o `tocar_entrada`: com o disco já ali, a troca fecha a
+  virada pendente e publica o arquivo da prateleira, sem job e sem stream, e uma execução mostra que esse caminho chega
+  ao prato (o `SwapLeavesTheShelfFileOff` quebra no `SwapPublishesTheFile`). O arquivo no prato, como no código, não
+  leva o job (o `dict(item, path=...)` não tem a chave), e o download que termina só entrega o arquivo ao disco do job
+  (`HandoverOnlyOntoTheJobsRecord`). A troca de nome na prateleira (`WithTheRename`: a prateleira, depois o
+  `update_track` sob o `_qlock`) corre contra o download, o stream, a passagem e o tocar da prateleira: quando tudo
+  para, o disco do prato tem o nome atual (`PlatterHasTheCurrentName`), com um mutante por caminho: o `update_track` que
+  põe um dicionário novo no prato, o arquivo do download, o da passagem e o do tocar montados antes da trava, e o
+  segundo deck que não recebe o nome. Três execuções mostram, como falhas conhecidas da #303, o stream que abre, o disco
+  de um job tocado enquanto baixa e o stream que a passagem prepara, que levam o nome copiado antes e quebram o
+  `NameIsCurrentOutsideARename` (fora de uma troca de nome em curso, o disco do prato tem o nome atual); cada uma fica
+  presa à ação do seu caminho, o último passo do contraexemplo (o `action` do `Run`).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o
@@ -212,23 +213,23 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   fora; e que toda reserva resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
-menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em cinco com todas as propriedades, além das dez
-acima (as três da #294 e do controle, as seis da troca de nome e a do acerto na prateleira; a troca de nome com o
-download, o stream e a troca roda em quatro partes, que juntas são a configuração inteira (o `dev/test_tla.py` confere,
-nas execuções da lista, que as partes rodam a troca de nome e que cada escolha do `Races211.cfg` entra uma vez): o
-download que falha, e o que põe o disco na prateleira com o stream que dá áudio, com o stream calado e uma entrada na
-fila, e com o stream calado e duas): o download, o stream e a troca, sem as trocas de lugar na fila, uma vez com o tocar
-de outro disco e outra com o esquecer da prateleira; o download, o stream e um pulo na barra, sem as trocas de lugar e
-sem o tocar de outro disco, o esquecer e a reserva; as trocas de lugar, a reserva, a preparação da passagem e a versão
-de áudio, sem o job; e os dois juntos, com uma troca de lugar só e sem o tocar de outro disco, o esquecer e a reserva; o
-pulo na barra só entra na terceira), e roda também os mutantes: cada propriedade tem um que desfaz o que ela protege, e
-o mutante tem de ser pego. Antes do TLC, ele confere que cada execução do código que passa confere todas as invariantes
-da sua spec (só deixa de fora uma invariante a execução que repete a configuração de uma falha conhecida da #294, e só a
-que essa falha quebra) e o deadlock, e que a de justiça confere o `ReservationsResolve`, sem a simetria e sem a
-reabertura do motor.
-No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu (`python dev/testa_tudo.py
---passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um `tla2tools.jar` já baixado. As duas corridas
-da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os passos do contraexemplo, um de cada vez.
+menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em cinco com todas as propriedades, além das onze
+acima (as três da #294 e do controle, a da parecida que a prateleira já tem, as seis da troca de nome e a do acerto na
+prateleira; a troca de nome com o download, o stream e a troca roda em quatro partes, que juntas são a configuração
+inteira (o `dev/test_tla.py` confere, nas execuções da lista, que as partes rodam a troca de nome e que cada escolha do
+`Races211.cfg` entra uma vez): o download que falha, e o que põe o disco na prateleira com o stream que dá áudio, com o
+stream calado e uma entrada na fila, e com o stream calado e duas): o download, o stream e a troca, sem as trocas de
+lugar na fila, uma vez com o tocar de outro disco e outra com o esquecer da prateleira; o download, o stream e um pulo
+na barra, sem as trocas de lugar e sem o tocar de outro disco, o esquecer e a reserva; as trocas de lugar, a reserva, a
+preparação da passagem e a versão de áudio, sem o job; e os dois juntos, com uma troca de lugar só e sem o tocar de
+outro disco, o esquecer e a reserva; o pulo na barra só entra na terceira), e roda também os mutantes: cada propriedade
+tem um que desfaz o que ela protege, e o mutante tem de ser pego. Antes do TLC, ele confere que cada execução do código
+que passa confere todas as invariantes da sua spec (só deixa de fora uma invariante a execução que repete a configuração
+de uma falha conhecida da #294, e só a que essa falha quebra) e o deadlock, e que a de justiça confere o
+`ReservationsResolve`, sem a simetria e sem a reabertura do motor. No PR, o job `tla` do `testa.yml` roda isso numa
+máquina ubuntu (`python dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um
+`tla2tools.jar` já baixado. As duas corridas da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os
+passos do contraexemplo, um de cada vez.
 
 ## O que o servidor lê do motor
 
@@ -259,23 +260,23 @@ módulo importado, e `obj.metodo()` aos métodos com esse nome que aceitam os ar
 obrigatórios, e nenhum a mais), nunca a um método da própria fila ou da entrada; a chamada que não chega a nenhum desses
 liga a entrada a toda função com esse nome; num laço com um nome só ou com o `enumerate(...)` desempacotado em dois;
 desempacotada de uma chamada ou de uma tupla do mesmo tamanho; ou copiada (`list()`, `sorted()`, uma compreensão, uma
-fatia, `{**x}`). Qualquer outra reprova, com o arquivo e a linha: um `:=`, uma anotação, desempacotar a fila ou o Mix,
-um `*`, o `getattr`, o mutador guardado ou devolvido sem a chamada, uma atribuição encadeada, guardar num atributo que
-não é da fila, sob uma chave ou num dict, numa lista, numa tupla ou num conjunto, passar a uma lambda, o `enumerate` sem
-desempacotar, a própria fila devolvida por uma função, um quinto repasse seguido, um dunder, entregar a quem ele não
-segue fora da lista acima, e, no `App`, um nome que recebe o retorno de um método dele que devolve a própria fila. A
-checagem confere as formas desta lista e reprova as outras que reconhece como fora dela, mas não promete pegar toda
-escrita: quem promete é a fila e o Mix como um objeto que só muda dentro do `change_queue`, a
-https://github.com/ritmelli/ritmelli/issues/316. Dentro do `App`, as entradas da fila só mudam numa função passada ao
-`change_queue`, e a própria fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido dela ou por quem
-a recebe como argumento) só muda ali, em qualquer módulo. A versão de áudio das parecidas entra no Mix do Automático
-como entradas novas (o `_troca_audio`, que não escreve nas que já existem) e na fila pelo `App.apply_audio_version`, que
-muda a fila pelo `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo
-`qid`, a mesma versão que o prato toca), a primeira da fila presa e a que uma reserva em curso vai tocar
-(`App.reserva`); o `tocar_da_fila` e a preparação da passagem leem a entrada numa cópia feita sob a `fila_lock`, e uma
-versão de áudio que chega no meio não mistura o alvo de antes com os dados de depois. Os trechos do servidor e dos
-comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
-`release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo
+fatia, `{**x}`). As outras que ela reconhece reprovam, com o arquivo e a linha, por exemplo: um `:=`, uma anotação,
+desempacotar a fila ou o Mix, um `*`, o `getattr`, o mutador guardado ou devolvido sem a chamada, uma atribuição
+encadeada, guardar num atributo que não é da fila, sob uma chave ou num dict, numa lista, numa tupla ou num conjunto,
+passar a uma lambda, o `enumerate` sem desempacotar, a própria fila devolvida por uma função, um quinto repasse seguido,
+um dunder, entregar a quem ele não segue fora da lista acima, e, no `App`, um nome que recebe o retorno de um método
+dele que devolve a própria fila. A checagem confere as formas desta lista e reprova as outras que reconhece como fora
+dela, mas não promete pegar toda escrita: quem promete é a fila e o Mix como um objeto que só muda dentro do
+`change_queue`, a https://github.com/ritmelli/ritmelli/issues/316. Dentro do `App`, as entradas da fila só mudam numa
+função passada ao `change_queue`, e a própria fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido
+dela ou por quem a recebe como argumento) só muda ali, em qualquer módulo. A versão de áudio das parecidas entra no Mix
+do Automático como entradas novas (o `_troca_audio`, que não escreve nas que já existem) e na fila pelo
+`App.apply_audio_version`, que muda a fila pelo `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a
+entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca), a primeira da fila presa e a que uma reserva
+em curso vai tocar (`App.reserva`); o `tocar_da_fila` e a preparação da passagem leem a entrada numa cópia feita sob a
+`fila_lock`, e uma versão de áudio que chega no meio não mistura o alvo de antes com os dados de depois. Os trechos do
+servidor e dos comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`,
+do `release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo
 `Engine.with_lock`. A falha de preparar a próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, e o erro da
 tela entra pelo `set_error` (o `error` do motor só se lê).
 

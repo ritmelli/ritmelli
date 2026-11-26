@@ -1432,10 +1432,7 @@ class App:
         quando chegar. Parecida do Automatico fora da prateleira toca so pelo stream, sem
         baixar: a prateleira fica com o que o usuario escolheu. entrada, reserva e anterior vao para a troca
         (App._troca): a entrada da fila sai dela so se a troca vale. Volta se trocou."""
-        j = self.jobs.get(x.get("job") or "")
-        it = (self.lib.get(x["id"]) if x.get("id") else None) or \
-             (self.lib.by_youtube(x["youtube_id"]) if x.get("youtube_id") else None) or \
-             (self.lib.get(j["item_id"]) if j and j.get("item_id") else None)
+        j, it = self.shelf_item(x)
         kw = {"historico": historico, "entrada": entrada, "reserva": reserva, "anterior": anterior}
         if it:
             return self.play_item(it, 0.0, extra=marca_auto(x), **kw)
@@ -1488,6 +1485,9 @@ class App:
         return j, self.lib.get(x.get("id")) or (self.lib.by_youtube(x["youtube_id"]) if x.get("youtube_id") else None) \
             or (self.lib.get(j.get("item_id")) if j else None)
 
+    def passage_source(self, x):
+        return x.get("youtube_id") or x.get("url"), (self.shelf_item(x)[1] or {}).get("file")
+
     def fonte_de(self, x):
         """The second deck's record, or None when the passage does not apply (the _vigia_fila plays it at the end):
         from the shelf, a builder of the file's record; else the Automatico's stream or the running download's."""
@@ -1515,7 +1515,8 @@ class App:
                 self.passagem_falhou = chave
                 return
             e = self.engine
-            ganho = e.gain_for(novo() if callable(novo) else novo)
+            ganho = e.gain_for(rec := novo() if callable(novo) else novo)
+            chave = self.last_prepare_key = chave[:2] + ((chave[2][0], rec["file"] if callable(novo) else None),)
 
             def pode():  # sob o _qlock do motor: so le campos em memoria
                 r = self.reserva
@@ -1556,13 +1557,12 @@ class App:
                     and cap.status in ("playing", "paused", "buffering"))
             if pronto is not None and (not pode or x["qid"] != pronto):
                 e.cancelar_pronto()
-        source = (seen.get("youtube_id") or seen.get("url"), (self.shelf_item(seen)[1] or {}).get("file"))
         if failed is not None:
-            self.passagem_falhou = tried if tried is not None and tried[1] == failed else (id(tr), failed, source)
+            self.passagem_falhou = tried if tried is not None and tried[1] == failed else (
+                id(tr), failed, self.passage_source(seen))
         if not pode or (pronto is not None and x["qid"] == pronto) or dur - cap.pos > eng.TRANS_PREP_S:
             return
-        chave = (id(tr), x["qid"], source)
-        if busy is not None or chave == self.passagem_falhou:
+        if busy is not None or (chave := (id(tr), x["qid"], self.passage_source(seen))) == self.passagem_falhou:
             return
         self.preparando = self.last_prepare_key = chave
         threading.Thread(target=self._prepara, args=(tr, x, seen, chave, cap), daemon=True).start()

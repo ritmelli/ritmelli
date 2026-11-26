@@ -508,7 +508,10 @@ def file_wait_after_a_passage_switch(A, E, readers):
               f"the stream gave no audio while its download runs, and the platter waits for the file ({marked})")
     del A._abre_stream
     prepared_similar(A, E, readers, "wait1")
+    warned = E.warn_on(E.track, "the outgoing stream's warning")
     check(E.virou is not None or mix_until_the_switch(E), "the engine switched to the similar track, on the other deck")
+    check(warned and E.error is None,
+          f"the switch to the prepared deck takes the outgoing stream's warning off (put up: {warned}, now {E.error})")
     while E._gen < marked[0]:
         E.seek(1.0)
     check(E._gen == marked[0] and not E.esperando_arquivo(),
@@ -667,7 +670,7 @@ def prepared_similar(A, E, readers, qid):
         A.change_queue(lambda: A.fila.append(x))
     cap = E.captura()
     with contextlib.redirect_stderr(io.StringIO()):
-        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
+        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"], A.passage_source(x)), cap)
     check(E.pronto_tag == x["qid"] and readers.wait("d3"), "the similar track is prepared on the second deck, read")
     return x
 
@@ -694,7 +697,7 @@ def download_done_while_its_stream_is_prepared(A, E, readers):
     cap = E.captura()
     info = {"url": "https://stream.invalid/p", "id": target, "title": "prepared", "duration": 600.0}
     with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "stream_info", return_value=(info, {})):
-        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
+        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"], A.passage_source(x)), cap)
     check(E.pronto_tag == x["qid"], "the downloading entry's stream is prepared on the second deck")
     with (contextlib.redirect_stderr(io.StringIO()),
           mock.patch.object(A, "download", side_effect=lambda *a: A.lib.add(item) or item)):
@@ -726,7 +729,7 @@ def finished_download_after_a_passage_switched_to_its_file(A, E, readers):
     def download(*a):
         A.lib.add(item)
         cap = E.captura()
-        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
+        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"], A.passage_source(x)), cap)
         if E.virou is not None or mix_until_the_switch(E):
             switched.append(E.track)
         return item
@@ -754,7 +757,7 @@ def passage_to_a_shelf_file_renamed_on_the_way(A, E, readers, before_the_publish
     cap = E.captura()
     with (contextlib.redirect_stderr(io.StringIO()),
           mock.patch.object(E, "preparar", renamed_first if before_the_publish else prepare)):
-        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
+        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"], A.passage_source(x)), cap)
     check(E.pronto_tag == x["qid"], "the shelf file is prepared on the second deck")
     if not before_the_publish:
         cmd.update_record(A, iid, title="the new name")
@@ -842,7 +845,7 @@ def prepared_stream_renamed_before_it_is_published(A, E, readers):
     cap = E.captura()
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "stream_info", return_value=(info, {})),
           mock.patch.object(A, "canal_depois", shelved_and_renamed_after_the_build)):
-        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
+        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"], A.passage_source(x)), cap)
     check(E.pronto_tag == x["qid"], "the job's stream is prepared on the second deck")
     check(E.virou is not None or mix_until_the_switch(E), "the engine switched to the prepared stream")
     check((E.track or {}).get("id") == target, "the job's prepared stream is on the platter after the switch")
@@ -1112,6 +1115,36 @@ def stream_prepare_failed_then_the_file_reached_the_shelf(A, E, readers):
           f"the shelf gets its own attempt (launched {launches.qids})")
 
 
+def file_reached_the_shelf_while_the_prepare_picked_its_source(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    cmd.limpar_fila(A)
+    x = {"id": None, "youtube_id": "lllllllllll", "url": None, "title": "similar", "channel": "c", "duration": 600.0,
+         "job": None, "qid": "similar12", "auto": True}
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.append(x))
+    picking, go, pick = threading.Event(), threading.Event(), A.fonte_de
+
+    def picks_after_the_file_came(entry):
+        picking.set()
+        go.wait(WAIT_S)
+        return pick(entry)
+    launches = Launches()
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()):
+        with mock.patch.object(A, "fonte_de", picks_after_the_file_came), \
+                mock.patch.object(E, "preparar", side_effect=RuntimeError("the file would not open")):
+            A._volta_passagem()
+            picking.wait(WAIT_S)
+            A.lib.add({"id": "shelf12", "title": "similar", "file": "shelf12.m4a", "duration": 600.0, "lufs": -14.0,
+                       "youtube_id": "lllllllllll"})
+            go.set()
+            harness.ate(lambda: A.preparando is None)
+        watch(A, launches)
+    A.lib.remove("shelf12")
+    check(launches.qids == [],
+          f"a file that reaches the shelf while the prepare picks its source, and then fails, is keyed by that file: "
+          f"the next poll does not start it again ({A.passagem_falhou}, launched {launches.qids})")
+
+
 def prepared_head_moved_back_during_the_poll(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x, y = (dict(e, auto=False) for e in two_entries(A, 10))
@@ -1263,6 +1296,7 @@ def main():
                 prepare_published_right_after_the_poll(A, E, readers)
                 prepared_head_moved_back_during_the_poll(A, E, readers)
                 stream_prepare_failed_then_the_file_reached_the_shelf(A, E, readers)
+                file_reached_the_shelf_while_the_prepare_picked_its_source(A, E, readers)
                 audio_version_entries(A, E)
                 audio_version_while_an_entry_plays_from_the_queue(A)
                 file_wait_after_a_passage_switch(A, E, readers)

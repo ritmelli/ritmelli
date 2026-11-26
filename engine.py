@@ -3058,7 +3058,7 @@ class Engine:
         prox.ahead = AHEAD
         self.track = prox.track
         self.pos = prox.q[0][0] if prox.q else 0.0
-        self.ended = False
+        self.ended, self._stream_warning = False, None
         self.virou = (sai, prox.track, tag)
         self._virou_em = time.monotonic()
 

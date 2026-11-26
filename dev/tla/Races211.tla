@@ -9,7 +9,7 @@ CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, Stre
           WithTheDrop, WithTheJobSwitch, DownloadEndsBeforeTheSourcePick, PrepareLooksAtTheShelf,
           PassageFileKeepsTheJob, WithTheRename, RenameReplacesTheTrack, RenameReachesThePreparedDeck,
           RecordBuiltUnderTheLock, WithTheJobOnThePlatter, TheJobIsPlayedBeforeItsDownloadEnds,
-          DownloadOutcomes, StreamReaderStartsWith, QueueLengths
+          DownloadOutcomes, StreamReaderStartsWith, QueueLengths, WithTheOtherOnTheShelf
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd, noReader, gen,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying,
@@ -439,9 +439,9 @@ PrepareSource ==
     /\ At("Prepare", "pr_source")
     /\ DownloadEndsBeforeTheSourcePick => (shelf \/ jobStatus /= "running")
     /\ prVer' = IF PrepareChecksTheVersion THEN prVer ELSE ver[prX]
-    /\ \E j \in IF WithTheJobSwitch THEN BOOLEAN ELSE {FALSE} :
+    /\ \E j \in IF WithTheJobSwitch THEN BOOLEAN ELSE {FALSE}, other \in IF WithTheOtherOnTheShelf THEN BOOLEAN ELSE {FALSE} :
           /\ prJob' = j
-          /\ prPath' = CASE ~j -> "stream"
+          /\ prPath' = CASE ~j -> IF other THEN "file" ELSE "stream"
                          [] shelf /\ PrepareLooksAtTheShelf -> "file"
                          [] jobStatus = "running" \/ ~PrepareLooksAtTheShelf -> "stream"
                          [] OTHER -> "none"
@@ -459,8 +459,8 @@ PreparePublishes ==
     /\ IF /\ Head0(fila) = prX /\ virou.tag = NoQid /\ line = prLine /\ track.id = prTrack /\ pronto.qid = NoQid
           /\ (PrepareChecksTheVersion => ver[prX] = prVer) /\ prPath /= "none"
        THEN /\ pronto' = [qid |-> prX, ver |-> prVer, job |-> prJob, path |-> prPath, rec |-> prJob,
-                           name |-> IF prPath = "file" /\ RecordBuiltUnderTheLock THEN shelfName
-                                    ELSE IF prPath = "file" THEN prName ELSE 0]
+                           name |-> IF prPath = "file" /\ prJob /\ RecordBuiltUnderTheLock THEN shelfName
+                                    ELSE IF prPath = "file" /\ prJob THEN prName ELSE 0]
             /\ stalePrepared' = (stalePrepared \/ gen /= prGen)
        ELSE UNCHANGED <<pronto, stalePrepared, prName, plName, stName, srName>>
     /\ Goto("Prepare", "pr_release")

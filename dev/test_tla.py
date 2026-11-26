@@ -153,6 +153,10 @@ RUNS = (
         unchecked=("FinishedDownloadReachesThePlatter",),
         constants=(("WithTheJobSwitch", "TRUE"), ("WithTheMoves", "FALSE"),
                    ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
+    Run("Races211, the code as it is with a similar entry with no job that the shelf already has, which the passage "
+        "prepares from its file", "Races211",
+        constants=(("WithTheOtherOnTheShelf", "TRUE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"),
+                   ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
     Run("Races211, the code as it is with a switch to a job's entry already on the shelf (or failed) when the passage "
         "picked its source", "Races211",
         constants=(("WithTheJobSwitch", "TRUE"), ("DownloadEndsBeforeTheSourcePick", "TRUE"), ("WithTheMoves", "FALSE"),
