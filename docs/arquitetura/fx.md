@@ -26,7 +26,9 @@ liga e desliga com o pedal; sem ele, o app é o mesmo de sempre. O contrato: o e
 `mina.Mina(engine)`, `liga()`, `desliga()`, `microfone(x)` (a voz crua de quem toca, só com
 a voz indo pro jogo) e `tocou(x)`; o módulo devolve a voz pelo `mina_voz` (a fila do jogo e
 do fone, com 0,1 s de folga de rede), cala pelo `mina_cala` e acha a API pela `porta` do
-engine. No `--mock` o pedal não liga.
+engine. Quando a construção ou o `liga()` levantam uma `i18n.Recusa`, a mensagem dela vai para
+a tela como veio; outro `ValueError` vira a `server.mina.notConfigured`, com o texto do erro no
+`{reason}` (o `dev/test_external_module.py` confere). No `--mock` o pedal não liga.
 
 Os ganchos do `engine.py` para o módulo opcional de fora do repo não crescem: nada de função,
 atributo ou chamada nova para ele, e o que ele precisar daqui em diante passa pelo contrato
