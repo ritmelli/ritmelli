@@ -10,50 +10,8 @@ env:
   PYTHONUTF8: '1'
 
 jobs:
-  ganho-in-situ:
-    name: testa_ganho inside the Testes run
-    runs-on: windows-2025
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./.github/actions/python
-        with:
-          requirements: requirements-dev.txt
-      - name: ffmpeg on the PATH
-        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
-      - name: 4 runs of the Testes suite
-        run: |
-          $dir = "$env:RUNNER_TEMP/ganho"
-          New-Item -ItemType Directory -Force $dir | Out-Null
-          for ($i = 1; $i -le 4; $i++) {
-            $env:GANHO_DUMP = "$dir/run-$i.json"
-            $t0 = Get-Date
-            python dev/testa_tudo.py --without-long > "$dir/run-$i.log" 2>&1
-            "suite $i : exit $LASTEXITCODE in $([int]((Get-Date) - $t0).TotalSeconds) s"
-            Select-String -Path "$dir/run-$i.log" -Pattern 'FALHOU|FAIL|falhou' | Select-Object -First 8
-          }
-      - name: Spread
-        if: always()
-        shell: python
-        run: |
-          import glob, json, os, statistics as st
-          for f in sorted(glob.glob(os.path.join(os.environ["RUNNER_TEMP"], "ganho", "run-*.json"))):
-              d = json.load(open(f))
-              ms = sorted(t * 1000 for t in d["wall"])
-              n = len(ms)
-              print(f"{os.path.basename(f)}: mean {st.mean(ms):.3f} median {st.median(ms):.3f} p99 {ms[int(.99 * n)]:.3f} max {ms[-1]:.2f} cpu/call {d['cpu'] * 1000 / n:.3f}")
-              print(d.get("busy", ""))
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: ganho-in-situ
-          path: ${{ runner.temp }}/ganho/
-
   mock-stop:
-    name: mock stop, fix and base
+    name: mock stop, fix and mutants
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
@@ -66,80 +24,48 @@ jobs:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
-      - name: 5 runs on this code
+      - name: The fix, 5 runs, each must pass every check
         if: always()
         run: |
-          $fails = 0
-          for ($i = 1; $i -le 5; $i++) { python dev/test_mock_stop.py; if ($LASTEXITCODE -ne 0) { $fails++ } }
-          "fix: failed runs $fails of 5"
-          exit $fails
-      - name: 10 runs of missing_script on this code
-        if: always()
-        run: |
-          $fails = 0
-          for ($i = 1; $i -le 10; $i++) {
-            $out = python dev/missing_script.py 2>&1
-            $code = $LASTEXITCODE
-            $held = ($out | Select-String -Pattern 'WinError 32').Count
-            "missing_script $i : exit $code, WinError 32 lines $held"
-            if ($code -ne 0) { $fails++; $out | Select-String -Pattern '^FAIL|Error' | Select-Object -First 5 }
+          $bad = 0
+          for ($i = 1; $i -le 5; $i++) {
+            $out = python dev/test_mock_stop.py 2>&1 | Out-String
+            $out
+            if ($LASTEXITCODE -ne 0 -or $out -notmatch 'all passed') { $bad++ }
           }
-          "missing_script: failed runs $fails of 10"
-          exit $fails
-      - name: 3 runs without the measurement stop only
+          "fix: $bad of 5 runs did not pass"
+          exit $bad
+      - name: Mutant without the measurement stop, 3 runs, each must fail only on the held track
         if: always()
         run: |
           (Get-Content -Raw server.py).Replace("        sonoridade.stop_measurements()`r`n", "").Replace("        sonoridade.stop_measurements()`n", "") | Set-Content -NoNewline -Encoding utf8 server.py
           if (Select-String -Path server.py -Pattern 'sonoridade.stop_measurements' -Quiet) { throw 'the mutant did not apply' }
-          $fails = 0
-          for ($i = 1; $i -le 3; $i++) { python dev/test_mock_stop.py; if ($LASTEXITCODE -ne 0) { $fails++ } }
-          "mutant without stop_measurements: failed runs $fails of 3"
-          git checkout -- server.py
-      - name: 3 runs on the base server, sonoridade and so_mock
-        if: always()
-        run: |
-          git show origin/main:server.py > server.py
-          git show origin/main:sonoridade.py > sonoridade.py
-          git show origin/main:dev/so_mock.py > dev/so_mock.py
-          $fails = 0
-          for ($i = 1; $i -le 3; $i++) { python dev/test_mock_stop.py; if ($LASTEXITCODE -ne 0) { $fails++ } }
-          "base: failed runs $fails of 3"
-
-  compara-loop:
-    name: compara capture loop ${{ matrix.shard }}
-    runs-on: windows-2025
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/python
-        with:
-          requirements: requirements-dev.txt
-      - name: ffmpeg on the PATH
-        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
-      - name: 10 captures
-        run: |
-          $root = "$env:RUNNER_TEMP/compara"
-          New-Item -ItemType Directory -Force $root | Out-Null
-          $fails = 0
-          for ($i = 1; $i -le 10; $i++) {
-            $dir = "$root/run-$i"
-            $t0 = Get-Date
-            python dev/compara.py --ref --pasta $dir > "$dir.log" 2>&1
-            $code = $LASTEXITCODE
-            "capture $i : exit $code in $([int]((Get-Date) - $t0).TotalSeconds) s"
-            if ($code -ne 0) { $fails++; Get-Content "$dir.log" | Select-Object -Last 40 } else { Remove-Item -Recurse -Force $dir }
+          $bad = 0
+          for ($i = 1; $i -le 3; $i++) {
+            $out = python dev/test_mock_stop.py 2>&1 | Out-String
+            $out
+            $ok = $out -match 'ok    phone: the shelf loudness measurement opened the track' -and $out -match 'ok    phone: the server stops by itself' -and $out -match 'FAIL  phone: the moment the stop returns, nothing holds the track'
+            if (-not $ok) { $bad++ }
           }
-          "failed captures: $fails of 10"
-          exit $fails
-      - uses: actions/upload-artifact@v7
+          git checkout -- server.py
+          "mutant without stop_measurements: $bad of 3 runs did not fail on the held track"
+          exit $bad
+      - name: Mutant with the buffered stdin wait, 3 runs, each must fail the HTTP shutdown check
         if: always()
-        with:
-          name: compara-${{ matrix.shard }}
-          path: ${{ runner.temp }}/compara/
-          if-no-files-found: ignore
+        run: |
+          (Get-Content -Raw pastas.py).Replace("while os.read(0, 65536):", "while sys.stdin.buffer.read():") | Set-Content -NoNewline -Encoding utf8 pastas.py
+          if (-not (Select-String -Path pastas.py -Pattern 'sys.stdin.buffer.read' -Quiet)) { throw 'the mutant did not apply' }
+          $bad = 0
+          for ($i = 1; $i -le 3; $i++) {
+            $out = python dev/test_mock_stop.py 2>&1 | Out-String
+            $out
+            if ($out -notmatch 'FAIL  pc: the /api/shutdown with the stdin pipe still open') { $bad++ }
+          }
+          git checkout -- pastas.py
+          "mutant with the buffered wait: $bad of 3 runs did not fail the HTTP shutdown check"
+          exit $bad
+      - name: The base server, sonoridade, pastas and so_mock, 2 runs
+        if: always()
+        run: |
+          foreach ($f in 'server.py', 'sonoridade.py', 'pastas.py', 'dev/so_mock.py') { git show "origin/main:$f" > $f }
+          for ($i = 1; $i -le 2; $i++) { python dev/test_mock_stop.py 2>&1 | Out-String }

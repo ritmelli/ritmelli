@@ -105,6 +105,26 @@ def stop_while_measuring(role, extras):
               f"{role}: the moment the stop returns, nothing holds the track and it deletes ({left})")
 
 
+def http_shutdown_with_the_pipe_open():
+    with tempfile.TemporaryDirectory(prefix="ritmelli-mock-stop-http-") as tmp:
+        tmp = Path(tmp)
+        data, _ = shelf_with_one_long_track(tmp)
+        port = so_mock.free_port()
+        with open(tmp / "server.log", "w", encoding="utf-8") as log:
+            srv = so_mock.sobe([sys.executable, str(ROOT / "server.py"), "--mock", "--no-browser", "--port", str(port),
+                                "--data-dir", str(data)], port, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+                               env=dict(os.environ, LOCALAPPDATA=str(tmp / "local")))
+            try:
+                srv.api("POST", "/api/shutdown", espera=5)
+                code = srv.srv.wait(30)
+            finally:
+                srv.encerra()
+        text = (tmp / "server.log").read_text(encoding="utf-8", errors="replace")
+    check(code == 0 and "Fatal Python error" not in text,
+          f"pc: the /api/shutdown with the stdin pipe still open exits cleanly (exit {code}"
+          f"{', ' + text[text.index('Fatal Python error'):][:120] if 'Fatal Python error' in text else ''})")
+
+
 def flag_only_for_a_server_that_knows_it():
     with tempfile.TemporaryDirectory(prefix="ritmelli-old-checkout-") as tmp:
         old = Path(tmp)
@@ -117,6 +137,7 @@ def flag_only_for_a_server_that_knows_it():
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     flag_only_for_a_server_that_knows_it()
+    http_shutdown_with_the_pipe_open()
     stop_while_measuring("phone", ["--papel-local", "celular"])
     stop_while_measuring("pc", [])
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")

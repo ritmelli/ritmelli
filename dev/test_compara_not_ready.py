@@ -28,6 +28,34 @@ sys.argv = ["compara.py", "--ref", "--sizes", sys.argv[2], "--pasta", sys.argv[3
 sys.exit(compara.main())
 """
 
+CHROME_KILLED = r"""
+import subprocess
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "dev"))
+import compara
+import fitcheck
+started = []
+real_popen, real_wait = subprocess.Popen, fitcheck.wait_ready
+
+
+def popen(cmd, *args, **kw):
+    child = real_popen(cmd, *args, **kw)
+    if cmd and cmd[0] == fitcheck.CHROME:
+        started.append(child)
+    return child
+
+
+async def wait_after_killing_chrome(*args, **kw):
+    for child in started:
+        subprocess.run(["taskkill", "/PID", str(child.pid), "/T", "/F"], capture_output=True)
+    return await real_wait(*args, **kw)
+
+
+subprocess.Popen, fitcheck.wait_ready = popen, wait_after_killing_chrome
+sys.argv = ["compara.py", "--ref", "--sizes", "390x844@3", "--pasta", sys.argv[2]]
+sys.exit(compara.main())
+"""
 sys.path.insert(0, str(ROOT / "dev"))
 import compara
 import fitcheck
@@ -111,8 +139,22 @@ def closed_connection(error):
           f"what it collected ({ended})")
 
 
+def chrome_killed_while_waiting():
+    with tempfile.TemporaryDirectory(prefix="ritmelli-chrome-killed-") as tmp:
+        p = subprocess.run([sys.executable, "-c", CHROME_KILLED, str(ROOT), tmp], cwd=ROOT,
+                           env=dict(os.environ, PYTHONUTF8="1"), capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=180)
+    out = p.stdout + p.stderr
+    print(out.rstrip())
+    check(p.returncode != 0 and "vazio-390x844: the Chrome DevTools connection closed before the theme was ready" in out
+          and "not ready in" not in out,
+          f"a real Chrome killed while the capture waits for the theme ends as a Chrome that went away, through the "
+          f"real DevTools reader (exit {p.returncode})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    chrome_killed_while_waiting()
     closed_connection(ConnectionClosedError(None, None))
     closed_connection(ConnectionError("the CDP connection ended: closed"))
     never_ready("390x844", 3, mesa=False)
