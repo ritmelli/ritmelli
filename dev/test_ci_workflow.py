@@ -159,16 +159,28 @@ def test_required_check(flows, text):
             ("the result of the etiquetas job not read", lambda f: step_of(f, "testa-o-pr", "Verdict")["env"].pop("S_ETIQUETAS")),
     ):
         check(required_check_failures(mutated(flows, change)) != [], f"the mutant with {why} fails")
+    with tempfile.TemporaryDirectory(prefix="ritmelli-flows-") as tmp:
+        folder = Path(tmp) / ".github" / "workflows"
+        folder.mkdir(parents=True)
+        (folder / "testa.yml").write_text(text, encoding="utf-8")
+        (folder / "duplicate.yaml").write_text("on: push\njobs:\n  again:\n    name: Testa o PR\n    runs-on: x\n",
+                                               encoding="utf-8")
+        found = required_check_failures(workflows(tmp))
+        check(any("duplicate.yaml" in f for f in found),
+              f"a job named Testa o PR in a .yaml workflow fails ({found})")
 
 
 def test_modes(flows):
     found = testa_tudo.mode_failures(flows)
     check(found == [], f"every mode of REQUIRED_MODES runs in its job and step, with its condition ({found})")
-    for mode, (job, _, step, _) in testa_tudo.REQUIRED_MODES.items():
+    for mode, (job, _, step, _, _) in testa_tudo.REQUIRED_MODES.items():
         for why, change in (
                 ("if: false on its step", lambda s: s.update({"if": "false"})),
                 ("continue-on-error on its step", lambda s: s.update({"continue-on-error": "true"})),
                 ("another command in its step", lambda s: s.update({"run": s["run"].replace(f" {mode}", " --areas")})),
+                ("--help after its command", lambda s: s.update({"run": s["run"].replace(f" {mode}", f" {mode} --help")})),
+                ("its run under if ($false)", lambda s: s.update({"run": "if ($false) {\n" + s["run"] + "}\n"})),
+                ("an exit 0 after its run", lambda s: s.update({"run": s["run"] + "exit 0\n"})),
                 ("its step renamed", lambda s: s.update({"name": s["name"] + " (renamed)"}))):
             found = testa_tudo.mode_failures(mutated(flows, lambda f: change(step_of(f, job, step))))
             check(found != [], f"the mutant with {why} fails the {mode} mode")
@@ -357,6 +369,13 @@ def test_without_destination(flows):
                           "instalador/test_new.py", "instalador/testa-novo.ps1", "microfone/apo/teste/teste_novo.py"],
               f"the lock flags every test of the git ls-files without destination, in or out of dev/, and only them "
               f"({flagged})")
+        echo = mutated(flows, lambda f: next(
+            s for j in f[".github/workflows/monta.yml"]["jobs"].values() for s in job_steps(j)
+            if (s.get("run") or "").startswith("instalador\\testa-atualizador.ps1")).update(
+            {"run": "Write-Output 'instalador\\testa-atualizador.ps1'"}))
+        found = testa_tudo.sem_destino(root=root, files=["instalador/testa-atualizador.ps1"], flows=echo)
+        check(any(f.startswith("instalador/testa-atualizador.ps1 runs nowhere") for f in found),
+              f"a .ps1 test only named in a step, not run by it, has no destination ({found})")
     check(testa_tudo.sem_destino() == [], "every test of the repo has a destination, and the testa.yml calls every mode")
     long_tests = set(testa_tudo.LONG_TESTS.values())
     check(not long_tests & set(testa_tudo.COMPLETO), "no long test is in the COMPLETO (it would run twice)")

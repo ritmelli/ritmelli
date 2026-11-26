@@ -237,9 +237,10 @@ def load(path):
 
 
 def workflows(root=ROOT):
-    """Every workflow of .github/workflows/, by its path from the root (with /)."""
+    """Every workflow of .github/workflows/ (.yml and .yaml), by its path from the root (with /)."""
     root = Path(root)
-    return {p.relative_to(root).as_posix(): load(p) for p in sorted((root / ".github" / "workflows").glob("*.yml"))}
+    found = sorted(p for p in (root / ".github" / "workflows").iterdir() if p.suffix in (".yml", ".yaml"))
+    return {p.relative_to(root).as_posix(): load(p) for p in found}
 
 
 def job_steps(job):

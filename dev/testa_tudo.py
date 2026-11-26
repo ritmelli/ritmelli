@@ -115,17 +115,38 @@ PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("de
 TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme_scripts.py")
 NOT_ON_PUSH = "github.event_name != 'push'"
 AFTER_RUFF = "${{ !cancelled() && steps.ruff.outcome != 'skipped' }}"
+SUMMARY_ARG = r'--resumo "$env:RUNNER_TEMP\resumo.md"'
+COMPARA_RUN = "\n".join((
+    "if ($env:GITHUB_EVENT_NAME -eq 'push') {",
+    f'  python dev/testa_tudo.py --capture "$env:RUNNER_TEMP\\compara-head" --pasta "$env:RUNNER_TEMP\\tela" {SUMMARY_ARG}',
+    "  exit $LASTEXITCODE",
+    "}",
+    'python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\\tela" --ref-cache '
+    f'"$env:RUNNER_TEMP\\compara-ref" {SUMMARY_ARG}',
+    "$cod = $LASTEXITCODE",
+    "if ($cod -eq 2) {",
+    "  Add-Content -Path $env:GITHUB_OUTPUT -Value 'mudou=true' -Encoding utf8",
+    "  if ($env:EXTRACAO -eq 'true') { '::error::the compara prints changed, and the PR has the extracao-tema label'; exit 1 }",
+    "  '::warning::the compara prints changed: the differences are in the compara artifact, for review'",
+    "  exit 0",
+    "}",
+    "exit $cod"))
 REQUIRED_MODES = {
-    "--without-long": ("testes", NOT_ON_PUSH, "Testes", AFTER_RUFF),
-    "--passo disco": ("testes", NOT_ON_PUSH, "Pasta protegida no disco", AFTER_RUFF),
-    "--long bench": ("bench", NOT_ON_PUSH, "Banca", None),
-    "--long capture": ("capture", NOT_ON_PUSH, "Captura", None),
-    "--microfone": ("microfone", NOT_ON_PUSH, "Testes do filtro", "steps.areas.outputs.microfone == 'true'"),
-    "--tela": ("tela", NOT_ON_PUSH, "fitcheck", "steps.areas.outputs.tela == 'true'"),
+    "--without-long": ("testes", NOT_ON_PUSH, "Testes", AFTER_RUFF,
+                       f"python dev/testa_tudo.py --without-long {SUMMARY_ARG}"),
+    "--passo disco": ("testes", NOT_ON_PUSH, "Pasta protegida no disco", AFTER_RUFF,
+                      "python dev/testa_tudo.py --passo disco"),
+    "--long bench": ("bench", NOT_ON_PUSH, "Banca", None, f"python dev/testa_tudo.py --long bench {SUMMARY_ARG}"),
+    "--long capture": ("capture", NOT_ON_PUSH, "Captura", None, f"python dev/testa_tudo.py --long capture {SUMMARY_ARG}"),
+    "--microfone": ("microfone", NOT_ON_PUSH, "Testes do filtro", "steps.areas.outputs.microfone == 'true'",
+                    f"python dev/testa_tudo.py --microfone {SUMMARY_ARG}"),
+    "--tela": ("tela", NOT_ON_PUSH, "fitcheck", "steps.areas.outputs.tela == 'true'",
+               f'python dev/testa_tudo.py --tela --pasta "$env:RUNNER_TEMP\\tela" {SUMMARY_ARG}'),
     "--passo metricas": ("tela", NOT_ON_PUSH, "Aviso dos dados de uso",
-                         "${{ !cancelled() && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}"),
-    "--compara": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'"),
-    "--capture": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'"),
+                         "${{ !cancelled() && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}",
+                         "python dev/testa_tudo.py --passo metricas"),
+    "--compara": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
+    "--capture": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
 }
 REQUIRED_JOB = "testa-o-pr"
 VERDICT_STEP = "Verdict"
@@ -193,7 +214,7 @@ def mode_failures(flows):
     verdict = find_step(required, VERDICT_STEP) or {}
     results = set((verdict.get("env") or {}).values())
     falhas = []
-    for mode, (job_id, job_if, step_name, step_if) in REQUIRED_MODES.items():
+    for mode, (job_id, job_if, step_name, step_if, run) in REQUIRED_MODES.items():
         where = f"the testa.yml mode {mode} (job {job_id}, step \"{step_name}\")"
         job = jobs.get(job_id)
         if job is None:
@@ -215,9 +236,8 @@ def mode_failures(flows):
             falhas.append(f"{where}: the step runs with if: {step.get('if')}, not {step_if}")
         if step.get("continue-on-error") is not None:
             falhas.append(f"{where}: the step has continue-on-error")
-        command = re.compile(rf"\s*python(?:\.exe)?\s+dev/testa_tudo\.py\s+{re.escape(mode)}(?:\s.*)?")
-        if not any(command.fullmatch(line) for line in (step.get("run") or "").splitlines()):
-            falhas.append(f"{where}: the step no longer runs \"python dev/testa_tudo.py {mode}\"")
+        if (step.get("run") or "").rstrip("\n") != run:
+            falhas.append(f"{where}: the step no longer runs exactly {run!r}")
     passos = {f"--passo {n}" for n in PASSOS} | {f"--long {n}" for n in LONG_TESTS}
     falhas += [f"{m} has no row in REQUIRED_MODES" for m in sorted(passos - set(REQUIRED_MODES))]
     return falhas
@@ -235,7 +255,8 @@ def sem_destino(root=RAIZ, files=None, flows=None):
     runs = [step.get("run") or "" for flow in flows.values() for job in (flow.get("jobs") or {}).values()
             for step in job_steps(job)]
     rodam = set(COMPLETO) | set(LONG_TESTS.values()) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
-    called = {f.replace("\\", "/") for run in runs for f in re.findall(r"[\w./\\-]+\.ps1", run)}
+    called = {m.group(1).replace("\\", "/") for run in runs for line in run.splitlines()
+              if (m := re.match(r"\s*(?:&\s*)?(?:\.[/\\])?([\w/\\-]+\.ps1)(?:\s|$)", line))}
     falhas = []
     for rel in sorted(f for f in files if f.endswith((".py", ".ps1"))):
         if not (root / rel).is_file():

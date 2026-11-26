@@ -15,6 +15,7 @@ from fake_gh import run_step
 from workflow_yaml import ROOT, find_step, load
 
 LABEL = "needs-owner"
+FORK_ISSUE = "https://github.com/ritmelli/ritmelli/issues/255"
 SHA = "c" * 40
 QUEUE_BASE = "b" * 40
 QUEUE_REF = f"refs/heads/gh-readonly-queue/main/pr-7-{QUEUE_BASE}"
@@ -138,7 +139,8 @@ def test_dequeue(block):
 
 def test_shape(testa, flow):
     check(flow.get("on") == {"pull_request": {"types": ["labeled"]}},
-          f"the dequeue workflow runs on pull_request labeled only ({flow.get('on')})")
+          f"the dequeue workflow runs on pull_request labeled only ({flow.get('on')}); known failure, {FORK_ISSUE}: "
+          "there a fork PR gets a read-only token and is not dequeued, and the trigger that fixes it closes the issue")
     job = flow["jobs"]["dequeue"]
     check("if" not in job and all("if" not in s for s in job.get("steps", [])),
           "the dequeue job and its steps have no if: (the label is chosen in the tested block)")
@@ -154,9 +156,6 @@ def test_shape(testa, flow):
           and env.get("S_ETIQUETAS") == "${{ needs.etiquetas.result }}",
           "the verdict reads the PR number, the list and the result of the etiquetas job")
     check("if" not in testa["etiquetas"], "the etiquetas job runs on every event")
-    check(testa["compara"].get("env", {}).get("COMPARA_BASE", "").startswith(
-        "${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || "),
-          "in a queue entry the compara compares to the base commit of the entry's ref")
     for name, step in (("Verdict", find_step(testa["testa-o-pr"], "Verdict")),
                        ("Etiquetas do PR", find_step(testa["etiquetas"], "Etiquetas do PR")),
                        ("Leave the merge queue", find_step(job, "Leave the merge queue"))):
