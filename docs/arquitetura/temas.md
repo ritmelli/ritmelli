@@ -9,9 +9,11 @@ do `server.py`), porque o celular pareado, o atalho na tela inicial e os favorit
 
 Todo arquivo de `/t/` sai com `Cache-Control: no-cache`, como a página (o `tema_sem_guardar` do `server.py`): o
 navegador confere cada um com o servidor antes de usar o que guardou, e não usa um `.js` ou um `.css` de antes sem
-conferir (o `dev/testa_mock.py` confere a página, o 304 dela e um `.js`). O `dev/testa_i18n.py` lê o `index.html` e
-todos os `.js` e `.css` da pasta do tema, e cada bloco marcado (`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o
-`/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só, aberto e fechado nele, nessa ordem.
+conferir (o `dev/testa_mock.py` confere a página, o 304 dela, um `.js`, um `.css`, uma fonte e uma imagem). O
+`dev/testa_i18n.py` lê o `index.html` e todos os `.js` e `.css` da pasta do tema: cada bloco marcado
+(`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o `/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só,
+aberto e fechado nele, nessa ordem, e cada `.js` e `.css` fora do `gerado/` tem exatamente um bloco, com a marca
+sozinha na linha dela (o texto que explica o bloco vai num comentário logo abaixo).
 
 Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 Texto novo da interface entra por uma chave nas duas línguas (`i18n/` do tema, `gallery/i18n/` da galeria),
@@ -19,38 +21,107 @@ não escrito direto no HTML ou no JS.
 Quem muda as boas-vindas roda o `dev/fitcheck.py` também com `--boas-vindas`, num `--mock` com `--data-dir`
 novo e uma `library.json` só com `[]`. A janela própria (`janela.py`) se prova no app instalado, no job `testa`
 do `monta.yml`.
-O código do tema sai aos poucos do `index.html` para arquivos `.js` na pasta do tema, um bloco marcado por arquivo, que
-o `index.html` carrega por um `<script src>` no lugar em que o bloco estava, sem `defer`: os scripts rodam na mesma
-ordem, e o que um deles declara no alto continua à vista dos de depois. O primeiro é o `shared.js`, carregado no
-`<head>`: o estado da página (`S`), o da mesa de DJ (`MESA`) e os ajudantes de todos (o `$`, o `el`, o `clamp`, o
-`reduz`, o `celular()`, o `toque()`, o `abrirMaleta()`, o `sombrear()` e o `dialogoAberto()`). Já saíram também: o `deck.js` (os toca-discos
-da mesa), o `mix.js` (o mixer da mesa), o `pedal.js` (os pedais da mesa), o `maleta-vazia.js` (o aviso de vazio do A
-seguir), o `letra-placa.js` (a letra de pixel das placas da mesa), o `prateleira.js` (o título e a contagem da plaqueta
-da prateleira), o `maleta-tit.js` (o título da placa da maleta) e o `mesa-topo.js` (a plaqueta e as teclas do topo da
-mesa em largura par). O `dj-visor.js` (o visor de DJ: a onda do disco que corre sob o ponto fixo do play), o
-`voice-effects.js` (os efeitos de voz: o seletor no receptor e a gaveta de teclas), o `dj-desk.js` (os dois decks da
-mesa de DJ, que se revezam como num set, no computador largo), o `search.js` (a busca e os resultados), o `queue.js` (a
-fila, o A seguir) e o `ui-events.js` (o ponto que chama os binders das partes, e os ouvintes da página toda, como o
-teclado e o voltar) saíram do script principal da página, que é estrito: o arquivo tirado
-dele começa com `'use strict'`, como o script inline que segue depois do `<script src>` dele. Depois do `transporte.js`
-vêm o `desk-scale.js` (a escala do palco da mesa: o `PALCO`, o `ajustarPalco()` e o `rectP()`), o `api.js` (o `api()`
-e o texto das mensagens do servidor), o `notice.js` (o aviso rápido), o `covers.js` (as capas), o `tonearm.js` (o braço
-do toca-discos), o `turntable.js` (o prato e a faixa, com os botões de tocar e a barra do tempo) e, depois do
-`dj-visor.js`, o `receiver.js` (o receptor: os volumes, o Cortar e o Nivelar). Depois do `voice-effects.js` vêm o
-`stage.js` (o palco do celular e a barra de baixo) e o `disc-page.js` (a página do disco no computador), e depois do
-`dj-desk.js`, o `shelf.js` (a prateleira, com o arrastar de um disco até um toca-discos na mesa) e o `commands.js` (o
-`tocar()`, o `cmd()`, o `alternar()` e o `ajustar()`). Depois do `search.js` vem o `options.js` (as opções de um
-disco ou de um resultado), e depois do `queue.js`, o `dialogs.js` (o confirmar, o apagar, o renomear e o Sons rápidos
-de um disco), o `metrics.js` (a linha dos dados de uso e erros no Microfone e fone e o aviso deles), o `devices.js` (o
-Microfone e fone e o desligar), o `phone.js` (o QR, o código e os celulares conectados), o `update.js` (a versão
-nova), o `caps.js` (o que a página pode, pelo caps do servidor), o `connection.js` (a conexão e o aviso de fora do ar),
-o `pairing.js` (o pareamento do celular) e o `welcome.js` (as boas-vindas). Depois do `ui-events.js` vêm o
-`desk-buttons.js` (os botões da mesa de DJ) e o `start.js` (a partida: monta a página e, no `DOMContentLoaded`,
-carrega e conecta), que o servidor põe inline na página (o `inline-script`): eles rodam logo depois do `ui-events.js`,
-sem esperar a rede, como o script em que moravam, e o pareamento aceito no meio da carga já acha o `carregar()`. Os únicos scripts escritos no próprio `index.html` são o `I18N` do `<head>` e a
-linha que aplica os textos e mostra a página (o `i18n-ok`): num arquivo que não carregasse, a página, com o aviso de
-fora do ar, ficaria escondida. Na página servida entram também, pelo `inline-script`, o `script-failed.js`, o
-`desk-buttons.js` e o `start.js`.
+
+O `index.html` do tema, por qualquer nome do mesmo arquivo (outra caixa, o nome 8.3, ponto ou espaço no fim, barra
+dobrada, `::$DATA`, um link físico numa subpasta do tema), leva por 302 à página montada em `/t/<slug>/`, com a mesma
+query: o `built_page_only` do `server.py`, só nos pedidos do static, compara numa thread o arquivo pedido com o
+`index.html` do tema pelo `os.path.samefile`. Essa conferência, a rota do tema e as tags de arquivo passam pela mesma
+porta, o `resolved_inside` do `theme_page.py`: antes de qualquer leitura do disco, o caminho tem de estar, pela
+escrita, dentro de `themes/` (numa tag de arquivo sem `/t/`, dentro da pasta da página), e um `/t///host/share/...`,
+um slug com `%5C` ou um `src="//host/share/x.js"` nunca faz o PC abrir um compartilhamento de rede. O
+`dev/testa_mock.py` confere os nomes e esses endereços.
+
+A página do tema chega inteira numa resposta só. O `index.html` lista os arquivos da pasta do tema, cada um no lugar em
+que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="stylesheet" href="arquivo.css">` por
+folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `server.py` chama) troca cada um por um
+`<script>` ou um `<style>` com o texto do arquivo, sem a marca de ordem de bytes (BOM) do começo, e a página não pede ao
+servidor nenhum script nem nenhuma folha: não existe página com um arquivo faltando. A montagem lê o modelo inteiro por
+uma gramática estrita, que só aceita texto sem `<`, a tag de abertura com atributos `nome="valor"` (ou com aspas
+simples, ou sem aspas, sem retorno de carro nem NUL no valor) separados por espaço ASCII, a tag de fim `</nome>`, o
+comentário `<!-- texto sem -- -->` e o `<!doctype html>`; o texto do `<script>`, do `<style>`, do `<title>` e do
+`<iframe>` vai até o primeiro `</nome>` exato, em ASCII. Ela não imita o navegador: o que fica fora da gramática para a
+montagem, e a página responde 500 com o modelo, a linha e a coluna (`themes/ritmelli/index.html:3:5`), o que ela achou e
+a forma esperada, sem pasta do PC; o log do servidor diz o mesmo.
+
+A gramática só aceita os elementos que o tema e a galeria usam hoje, numa lista para a página e noutra para dentro do
+`<svg>` (o `HTML_ELEMENTS` e o `SVG_ELEMENTS` do `theme_page.py`). Qualquer outra tag, de abertura ou de fim, para a
+montagem com a linha e a coluna e o nome do elemento. Acrescentar um elemento pede um PR com um caso no
+`dev/theme_page_cases.py` que o `dev/theme_page_oracle.py` confere no Chrome. Por isso o tema não tem `<table>`,
+`<frameset>`, `<math>`, `<template>`, `<base>`, `<plaintext>`, `<noscript>` nem `<textarea>`: em cada um, o navegador
+move, descarta ou lê como texto o que a montagem leria.
+
+- na página: `a`, `b`, `body`, `button`, `canvas`, `dialog`, `div`, `form`, `h1`, `h2`, `h3`, `head`, `header`, `html`,
+  `iframe`, `input`, `kbd`, `label`, `li`, `link`, `main`, `meta`, `ol`, `output`, `p`, `script`, `section`, `select`,
+  `small`, `span`, `style`, `svg`, `title`, `ul`;
+- dentro do `<svg>`: `circle`, `g`, `mask`, `path`, `rect`, e o `</svg>` que o fecha.
+
+Depois da gramática, a montagem ainda recusa, e o que escrever no lugar:
+
+- o arquivo que falta, a pasta no lugar dele ou o caminho que sai da pasta da página (ou de `themes/`, com `/t/`): um
+  arquivo que existe ali;
+- o arquivo, ou o próprio `index.html`, que não é texto UTF-8 ou que não se deixa ler: salvá-lo em UTF-8, ou fechar o
+  que o segura;
+- a tag de arquivo com outro atributo, outra ordem, maiúsculas ou algo antes do fim: exatamente
+  `<script src="arquivo.js"></script>` ou `<link rel="stylesheet" href="arquivo.css">`;
+- um `&` no `src` ou no `href` de um `<script>`, de um `<style>` ou de um `<link>` que não abre uma referência nomeada
+  inteira, e toda referência numérica: o nome sem `&`, ou com `&amp;`; e um `&` no `rel`, no `type` ou no `as`: o valor
+  escrito por extenso;
+- o script com `</script` ou `<!--` ou que começa com `#!`, e a folha com `</style`: o texto sem eles;
+- a folha, de arquivo ou escrita na página, com `@import`, mesmo num comentário ou numa string (a folha se lê com os
+  escapes de CSS decodificados): uma tag de arquivo por folha;
+- a folha de outra pasta com um `url()` relativo, uma `\` ou um `image-set(`: só `url()` simples, com `https://`,
+  `http://`, outro esquema, `data:`, `/` ou `#`, ou a folha na pasta da página;
+- o `<link rel="modulepreload">`, o `<link rel="prefetch">` e o `<link rel="preload">` de um script ou de uma folha: a
+  tag de arquivo;
+- o `<script>` escrito na página com um `type` que não é `text/javascript` nem `application/json` (o `module` importa
+  arquivos): um `<script>` sem `type` ou com um desses dois, ou a tag de arquivo;
+- toda tag dentro de um `<select>`, onde um navegador pode descartar ou mover o que a montagem leria (o Chrome de hoje
+  guarda ali o `<link>` e o `<style>`; o leitor antigo do `<select>`, que outros navegadores ainda usam, descarta o
+  `<link>`): o `<select>` vazio, preenchido pelo código do tema;
+- o `srcdoc`, que escreve uma página num atributo: tirá-lo, e pôr no próprio tema o que ele mostrava;
+- a marca `<!-- i18n -->` fora de um comentário só dela (num atributo, num `<style>` ou num `<script>`) ou dentro de um
+  `<svg>` ou de um `<select>`, onde o `<script>` dos textos não entra, e a marca antes do `<!doctype html>`, onde esse
+  `<script>` poria a página em quirks mode: a marca sozinha, como comentário, no `<head>`.
+
+O `dev/testa_mock.py` confere cada caso da lista e cada forma fora da gramática (os casos moram no
+`dev/theme_page_cases.py`). O `dev/theme_page_oracle.py`, que o `--tela` do `dev/testa_tudo.py` roda, abre num Chrome
+sem tela, com os scripts bloqueados pelo cabeçalho `Content-Security-Policy: script-src 'none'` (o Chrome lê a página
+como com o JavaScript ligado, e o `<noscript>` como texto), o tema, a galeria e cada caso que a montagem aceita, e
+reprova quando os `<script>`, `<style>` e `<link>` do DOM, com o `src`, o `href`, o `rel` e o `type`, não são, na mesma
+ordem, os que a montagem leu: uma forma que a gramática aceita e o navegador lê de outro jeito vira falha de teste. O
+`dev/missing_script.py`, que o `--tela` também roda, lê a página e a galeria como o servidor as manda, nas duas línguas,
+de um `--mock` como o PC e de outro como o celular, pela mesma gramática da montagem (o `strict` do `theme_page.py`), e
+reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
+faça ao servidor. O `dev/garden.py` conta as linhas de CSS e
+JS escritas no próprio `index.html` e guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código
+novo do tema vai num arquivo da pasta, e a contagem vai para o resumo do PR.
+
+Os scripts são clássicos, sem `defer`: rodam na ordem da lista, e o que um declara no alto fica à vista dos de depois.
+No `<head>`, logo depois dos textos que o servidor põe no `<!-- i18n -->`, vêm o `i18n.js` (o `I18N`, ver o
+[i18n.md](i18n.md)), o `shared.js` (o estado da página, `S`, o da mesa de DJ, `MESA`, e os ajudantes de todos: o `$`, o
+`el`, o `clamp`, o `reduz`, o `celular()`, o `toque()`, o `abrirMaleta()`, o `sombrear()`, o `dialogoAberto()`, o
+`fmt()`, o `mudar()` e o `ligarChave()`) e o `gerado/pecas.js` (as constantes das peças de pixel, do `dev/pecas.py`).
+No fim do `<body>`, com a marcação inteira já lida, vêm: o `transporte.js` (ver abaixo); o `page-texts.js`, que aplica
+os textos da marcação e mostra a página (a classe `i18n-ok`), antes de qualquer outro ler ou medir a tela; o
+`desk-scale.js` (a escala do palco da mesa: o `PALCO`, o `ajustarPalco()` e o `rectP()`); o `api.js` (o `api()` e o
+texto das mensagens do servidor); o `notice.js` (o aviso rápido); o `covers.js` (as capas); o `tonearm.js` (o braço do
+toca-discos); o `turntable.js` (o prato e a faixa, com os botões de tocar e a barra do tempo); o `dj-visor.js` (o visor
+de DJ: a onda do disco que corre sob o ponto fixo do play); o `receiver.js` (o receptor: os volumes, o Cortar e o
+Nivelar); o `voice-effects.js` (os efeitos de voz: o seletor no receptor e a gaveta de teclas); o `stage.js` (o palco
+do celular e a barra de baixo); o `disc-page.js` (a página do disco no computador); o `dj-desk.js` (os dois decks da
+mesa de DJ, que se revezam como num set, no computador largo); o `shelf.js` (a prateleira, com o arrastar de um disco
+até um toca-discos na mesa); o `commands.js` (o `tocar()`, o `cmd()`, o `alternar()` e o `ajustar()`); o `search.js` (a
+busca e os resultados); o `options.js` (as opções de um disco ou de um resultado); o `queue.js` (a fila, o A seguir); o
+`dialogs.js` (o confirmar, o apagar, o renomear e o Sons rápidos de um disco); o `metrics.js` (a linha dos dados de uso
+e erros no Microfone e fone e o aviso deles); o `devices.js` (o Microfone e fone e o desligar); o `phone.js` (o QR, o
+código e os celulares conectados); o `update.js` (a versão nova); o `caps.js` (o que a página pode, pelo `caps` do
+servidor); o `connection.js` (a conexão e o aviso de fora do ar); o `pairing.js` (o pareamento do celular); o
+`welcome.js` (as boas-vindas); o `ui-events.js` (o ponto que chama os binders das partes, e os ouvintes da página
+toda, como o teclado e o voltar); o `desk-buttons.js` (os botões da mesa de DJ); o `start.js` (a partida: monta a
+página e, no `DOMContentLoaded`, carrega e conecta); e os desenhos de pixel da mesa: o `letra-placa.js` (a letra das
+placas), o `prateleira.js` (o título e a contagem da plaqueta da prateleira), o `maleta-tit.js` (o título da placa da
+maleta), o `mesa-topo.js` (a plaqueta e as teclas do topo em largura par), o `deck.js` (os toca-discos), o
+`maleta-vazia.js` (o aviso de vazio do A seguir), o `mix.js` (o mixer) e o `pedal.js` (os pedais).
 
 Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
 da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de
@@ -61,51 +132,40 @@ no `devices.js`, os das boas-vindas no `welcome.js`, o do pareamento no `pairing
 `desk-buttons.js`. O arquivo da parte guarda os ouvintes em funções, uma por trecho seguido de registros (o
 `bindSearch()`, o `bindSearchResults()`, o `bindVoiceEffects()`, o `bindTurntable()`, o `bindReceiver()`, o
 `bindMiniBar()`, o `bindStageButtons()` e o `bindStageGestures()` do palco, o `bindDiscPage()`, o `bindShelfClick()` e
-o `bindShelf()`, o `bindPhoneButton()`, o `bindDeviceButtons()` e o `bindDeskButtons()`), e quem liga é o lugar em que cada trecho era registrado antes: o `ui-events.js` chama os da busca,
-dos efeitos, do toca-discos, do receptor, do palco, da página do disco, da prateleira, do celular e dos
-dispositivos, o `queue.js` chama o `bindSearchResults()` e o `start.js` chama o `bindDeskButtons()` antes da
-partida. Com um arquivo da base faltando, o `ui-events.js` para no mesmo ponto em que parava, com os
-mesmos ouvintes já registrados, e a partida não roda quando os botões da mesa param no meio (sem o `disc-page.js`, o
-`dj-desk.js` ou, na mesa de DJ, o `queue.js`, de que o `montarMesa()` precisa ao montá-la), como no script único em que os dois moravam. Sem o `shared.js` (sem o `$`), o `connection.js` e o
-`pairing.js` não registram os ouvintes da rede nem tira o `?parear` do endereço: na base, o bloco inteiro parava antes
-deles.
-Assim os controles só respondem quando os arquivos de que eles dependem já carregaram (o formulário da busca segue
-`inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos outros no mesmo alvo (o toque fora da busca
-para o evento depois de o ouvinte do `queue.js` na `window` ver o toque). A busca, os resultados e os efeitos de voz
-só ligam sem nenhum arquivo faltando (`scriptsMissing()`), como antes; o toca-discos, o receptor, o palco, a página
-do disco, a prateleira, o celular e os dispositivos, cujos ouvintes o `ui-events.js` registrava sempre, ligam se o próprio arquivo carregou (`scriptLoaded()`, do `script-failed.js`). Nos
-dois casos o resto do arquivo que chama segue registrando os seus ouvintes até a página ir para o aviso de fora do ar. Os ajudantes de mais de uma parte (o `fmt()`, o
-`mudar()` e o `ligarChave()`) moram no `shared.js`.
+o `bindShelf()`, o `bindPhoneButton()`, o `bindDeviceButtons()` e o `bindDeskButtons()`). Quem as chama é o
+`ui-events.js` (as da busca, dos efeitos, do toca-discos, do receptor, do palco, da página do disco, da prateleira, do
+celular e dos dispositivos), o `queue.js` (o `bindSearchResults()`) e o `start.js` (o `bindDeskButtons()`, antes da
+partida). Cada ouvinte entra na mesma ordem dos outros no mesmo alvo: o toque fora da busca para o evento depois de o
+ouvinte do `queue.js` na `window` ver o toque.
 
 Todo nome do alto de um script é declarado por um script só. O `dev/theme_scripts.py`, que o `--tela` do
-`dev/testa_tudo.py` roda, abre a página num Chrome sem tela contra um `--mock` e pega cada script como o V8 o leu. Cada
-um vira o corpo de um gerador que é criado e não anda (as declarações nascem e nada roda), e os nomes saem do escopo
-local dele. Um nome declarado em dois scripts (função, `var`, `let`, `const` ou `class`) faz a guarda falhar. Ele
-confere também que os ouvintes da busca e da gaveta são dos arquivos delas e só existem depois do arquivo que os liga,
-e que o `queue.js` vê o toque que fecha a busca na mesa.
+`dev/testa_tudo.py` roda, abre a página num Chrome sem tela contra um `--mock` e pega cada script como o V8 o leu,
+com o nome do arquivo dele achado pelo texto. Cada um vira o corpo de um gerador que é criado e não anda (as
+declarações nascem e nada roda), e os nomes saem do escopo local dele. Um nome declarado em dois scripts (função,
+`var`, `let`, `const` ou `class`) faz a guarda falhar. O leitor não vê dois nomes que só um script sem `'use strict'`
+aceita (um `var arguments`, um `const yield`): os dois ficam no teste como falha conhecida da issue #239. Ele confere
+também que cada ouvinte das partes é do arquivo dela, que a página só passa a vigiar a própria visibilidade no
+`DOMContentLoaded`, com o `carregar()` já declarado (uma aba que aparece durante a leitura da página não conecta antes
+da partida), e que o `queue.js` vê o toque que fecha a busca na mesa.
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits,
-com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, como o servidor manda, e cada `<script
-src>` e `<link>` trocado pelo texto do arquivo. Ela só julga a página escrita numa forma estrita, que o navegador lê de
-um jeito só: o `index.html` inteiro é texto sem `<` entre tags; a tag de início é `<nome>` em minúsculas com atributos
-`nome="valor"` (ou só o nome), cada um uma vez, em minúsculas (fora do `<svg>`, onde vale o `viewBox`), separados por
-espaço, tab ou fim de linha; a de fim é `</nome>`; o comentário é `<!--` ... `-->`, sem `<!-->`, `<!--->` nem `--`
-dentro; e o doctype é `<!doctype html>`. Os elementos são os que o tema e a galeria usam, uma lista para o HTML e outra
-para dentro do `<svg>` (`g`, `path`, `rect`, `circle` e `mask`): qualquer outro, de início ou de fim, fica de fora (um
-`<p>` ou um `</p>` tiraria o navegador do `<svg>`). Um `<script>` e um `<style>` acabam no primeiro `</script>` e
-`</style>`, sem outro `</script` ou `</style` antes, sem `<!--` no script (nem nos arquivos que o servidor põe inline) e
-sem texto no `<script src>`; o `<title>`, o `<iframe>` e o `<select>` não têm `<` dentro. O `src` de um script e o
-`href` de uma folha (com `rel="stylesheet"` e nada mais) são um caminho simples dentro do tema, como
-`gerado/molduras.css`, sem `/` no começo, `..`, busca, `#`, `%`, `&` nem `\`. Fora disso ela recusa, com o arquivo (e,
-no `index.html`, a linha e o trecho), e sai 3 (não sei julgar): `<script/>` e `<style/>`, um `<base>`, um `<link>` de
-preload ou de prefetch, um `srcdoc`, um NUL num valor, um `&` num `rel`, `type` ou `as`, um `&` que não é uma referência
-inteira e conhecida (como `&amp;`) num valor, um script de tipo que não é JavaScript nem JSON (um módulo importa
-arquivos) um `@import`, um `@namespace` ou um `@scope` numa folha, mesmo escapado ou num comentário (o primeiro busca um
-arquivo que a ferramenta não lê, o prefixo do segundo só vale na folha dele e o escopo do terceiro depende do elemento
-que guarda a folha), um arquivo ligado pela página que não está no tema (o navegador recebe um 404) e um arquivo que o
-servidor põe inline e não está no tema (ele não monta a página). Um `\r` sozinho conta como fim de linha, como no
-navegador (lido do git ou da pasta). Numa folha, entre as regras e nas pontas, só cabem os espaços do CSS e comentários:
-outro caractere ali (um tab vertical antes de um seletor) é uma folha que não se lê.
+com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, e cada `<script src>` e `<link>`
+trocado pelo texto do arquivo. A ferramenta recusa o que a montagem recusa (o `index.html` passa antes pelo `strict` do
+`theme_page.py`), e, além disso, só julga a página numa forma estrita própria dela: as duas listas de elementos do
+`theme_page.py`, descritas acima, e atributos só `nome="valor"` ou só o nome, sem espaço em volta do `=`, cada um uma
+vez e em minúsculas fora do `<svg>`. O `src` de um script e o `href` de uma folha são, além disso, um caminho simples
+dentro do tema, como `gerado/molduras.css`, ou `/t/<tema>/` seguido de um caminho simples, lido da pasta daquele tema,
+sem `..`, busca, `#`, `%`, `&` nem `\`. Como o servidor põe todo arquivo ligado na página, um script ligado não tem
+`</script`, `<!--` nem `#!` no começo, e uma folha ligada não tem `</style` e passa pela conferência de folha da
+montagem (o `sheet_problem` do `theme_page.py`); um `</ script` ou `</ style` com espaços, num script ou num estilo da
+página ou numa folha ligada, também a faz sair 3, porque o leitor dela fecharia o elemento ali. Fora disso ela recusa,
+com o arquivo (e, no `index.html`, a linha e o trecho), e sai 3 (não sei julgar): um `@namespace` ou um `@scope` numa
+folha, mesmo escapado ou num comentário (o prefixo do primeiro só vale na folha dele e o escopo do segundo depende do
+elemento que guarda a folha), um arquivo ligado pela página que não está no tema (o navegador recebe um 404) e um
+arquivo que o servidor põe inline e não está no tema (ele não monta a página). Um `\r` sozinho conta como fim de
+linha, como no navegador (lido do git ou da pasta).
+Numa folha, entre as regras e nas pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab vertical
+antes de um seletor) é uma folha que não se lê.
 Ela sai 0 quando o head só muda código de lugar:
 - todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
@@ -117,7 +177,7 @@ Ela sai 0 quando o head só muda código de lugar:
 - toda outra instrução do alto está no head, na mesma ordem e no mesmo script;
 - toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha, numa folha da mesma pasta e inline
   ou de arquivo como antes (pode mudar de folha ligada ali, com a mesma extensão: as URLs relativas dela continuam
-  apontando para o mesmo arquivo, e o servidor a entrega com o mesmo tipo) e com os mesmos scripts antes da folha dela
+  apontando para o mesmo arquivo) e com os mesmos scripts antes da folha dela
   (um script vê as regras das folhas que vêm antes dele);
 - as traduções que o servidor põe na página (a pasta `i18n/`, na página com a marca do i18n) são as mesmas linhas, na
   mesma ordem (uma linha repetida também conta: chave repetida é erro no `i18n.ler`), sem o espaço das pontas que o
@@ -155,6 +215,11 @@ mudança. Sai 0 só com as tabelas iguais. O
 arquivo em que um ouvinte mora não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função,
 mantém as tabelas. O `dev/test_theme_listeners.py`, que o `--tela` roda, confere a leitura numa página própria.
 
+Num PR com a etiqueta `extracao-tema`, o job Tela roda as duas provas da base contra o head, nos passos "Only moves
+code" (`dev/testa_tudo.py --passo theme-rebuild --base`) e "Same listeners" (`--passo theme-listeners`), e reprova se
+uma delas não sai 0. A base é a do PR, e na fila o commit logo antes da entrada (a mesma do Compara). O
+`dev/test_ci_workflow.py` confere os dois passos, a condição deles, a base e o comando.
+
 Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `api.js` chama,
 e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o
 `location.hostname` só aparecem nele. O que o tema mostra a cada um vem do `caps` que o servidor manda (no `/api/state`,
@@ -162,35 +227,20 @@ no 401 do pareamento e no começo do SSE; ver o `API.md`), e não do endereço d
 Celular, a versão nova, os dados de uso, as boas-vindas) só aparecem depois de o `caps` dizer que a rota deles abre. O
 401 do pareamento põe o `caps` de antes de parear; pareado, o `/api/state` traz o do celular; o celular desconectado no
 PC volta ao de antes. O endereço só fica com o texto do aviso de fora do ar da página que nunca recebeu um `caps` (a
-guardada, que o navegador reabre com o Ritmelli fechado). A conexão não depende só do `transporte.js`: o começo da
-página chama funções de outros arquivos antes do `carregar()` (o `montarMesa()` e o `montarMostradores()` do
-`dj-desk.js`, o `carregarEfeitos()` do `voice-effects.js`), e sem um deles ela não conecta. Por isso o `onerror` de cada
-`<script src>` chama o `scriptFailed`, do `script-failed.js`, que o servidor põe dentro da página no lugar do `<!--
-inline-script: script-failed.js -->` do `<head>` (ver o `API.md`), antes do primeiro arquivo, e que por isso não tem
-como faltar: os pedidos da carga ao servidor só começam terminada a leitura da página (no `DOMContentLoaded`), e se
-faltou um arquivo eles não começam: a página fecha o diálogo e o pedido do código que um clique abriu, mostra o aviso de
-fora do ar e carrega de novo, no endereço com que abriu, assim que o arquivo responde (conferido a cada 3 s). Só o
-`transporte.js`, quando é o único que falta, fica com a volta dele: o `conectar()` o carrega de novo a cada 3 s, uma
-carga por vez, e com ele de volta a página segue a carga normal, sem recarregar. O `dev/missing_script.py`, que o
-`--tela` do `dev/testa_tudo.py` roda, confere cada um desses casos num Chrome sem tela, contra um `--mock` como o PC e
-outro como um celular sem pareamento, e que cada `<script src>` da página, menos o `transporte.js`, traz o aviso de fora
-do ar quando falha, sem nenhum pedido ao servidor. Para ver o papel do celular sem outro aparelho, o `--mock
---papel-local celular` (ver o `API.md`).
+guardada, que o navegador reabre com o Ritmelli fechado). Quando a conexão cai, a lâmpada pisca e, passados 2,5 s com
+a página na tela, o `mostrarFora()` do `connection.js` abre o aviso de fora do ar com o texto do papel: no PC, que o
+Ritmelli parou de responder e onde fica o log; no celular, o caminho até o computador, com o que o navegador conta da
+conexão. O `dev/missing_script.py` derruba o `--mock` com a página conectada, como o PC e como um celular pareado, nas
+duas línguas, e confere o título e o texto do aviso. Para ver o papel do celular sem outro aparelho, o
+`--mock --papel-local celular` (ver o `API.md`).
 
-Parte do CSS do tema mora em arquivos ao lado do `index.html` (o `deck.css`, por exemplo), cada um com um bloco
-marcado inteiro e carregado por um `<link rel="stylesheet">` sem `media`, no mesmo lugar em que o bloco estava: a
-ordem das folhas e a cascata são as de antes, e os endereços relativos dentro do arquivo (`url(fonts/...)`) continuam
-saindo da pasta do tema. O bloco que estava dentro de um `@media` do `<style>` leva o mesmo `@media` em volta no
-arquivo. O que um gerador de `dev/` desenha
-mora em `gerado/` (o `gerado/molduras.css`, por exemplo): o gerador grava o arquivo inteiro e não mexe no
-`index.html`, e o que se muda à mão ali some na próxima vez que ele roda.
-
-Todo o CSS do tema já mora em arquivos, um bloco marcado por arquivo, e a lista de `<link>` no alto do `index.html` é
-a ordem da cascata: o `base.css` (as letras, as cores e o reset) primeiro, as partes da página (`buttons.css`,
-`top-bar.css`, `phone.css`, ...), a pele por cima delas (`skin-vars.css`, as folhas geradas, `skin-top.css`,
-`skin-case.css`, ...), os arranjos do computador e da mesa de DJ (`desktop-library.css`, `dj-desk.css`, ...) e o
-`reduced-motion.css` perto do fim, antes do `deck.css`, do `mix.css` e do `pedal.css` da mesa. No `index.html` só fica a
-linha que esconde a página até os textos estarem no lugar. O `dev/garden.py` guarda o número de linhas de CSS e JS
-inline que ainda restam no `index.html` (o teto `theme_inline_lines` do `dev/garden.json`): ele só desce, código novo do tema vai num arquivo da
-pasta, e a contagem vai para o resumo do PR. A contagem abaixo do número também falha: o PR que tira código da página
-baixa o número junto.
+Todo o CSS do tema mora em arquivos da pasta, um bloco marcado por arquivo, e a lista de `<link>` no alto do
+`index.html` é a ordem da cascata: o `base.css` (as letras, as cores, o reset e a regra que esconde a página até os
+textos estarem no lugar) primeiro, as partes da página (`buttons.css`, `top-bar.css`, `phone.css`, ...), a pele por
+cima delas (`skin-vars.css`, as folhas geradas, `skin-top.css`, `skin-case.css`, ...), os arranjos do computador e da
+mesa de DJ (`desktop-library.css`, `dj-desk.css`, ...) e o `reduced-motion.css` perto do fim, antes do `deck.css`, do
+`mix.css` e do `pedal.css` da mesa. Como a folha chega dentro da página, os endereços relativos dela (`url(fonts/...)`)
+saem do endereço da página, que é a pasta do tema; por isso a folha de `gerado/` só usa `url(data:...)`. O bloco que
+vale só numa largura leva o `@media` em volta no arquivo. O que um gerador de `dev/` desenha mora em `gerado/` (o
+`gerado/molduras.css`, por exemplo): o gerador grava o arquivo inteiro e não mexe no `index.html`, e o que se muda à mão
+ali some na próxima vez que ele roda.

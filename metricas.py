@@ -131,8 +131,8 @@ def limpa(txt):
 # conexao fechada pelo outro lado, abaixo, deixa passar). O dev/testa_metricas.py confere que nenhum ficou de fora
 NOSSOS = {"andamento", "atualizacao", "atualizador", "automatico", "batida", "comandos", "compasso", "conversor",
           "dryouts", "engine", "fx", "i18n", "janela", "metricas", "microfone", "migra", "music", "pareamento",
-          "pastas", "permissao", "pista", "pistavoz", "ritmelli", "server", "sonoridade", "transicao", "versao",
-          "winvol", "yt_erros", "yt_fora"}
+          "pastas", "permissao", "pista", "pistavoz", "ritmelli", "server", "sonoridade", "theme_page", "transicao",
+          "versao", "winvol", "yt_erros", "yt_fora"}
 
 
 def _arquivo(caminho):

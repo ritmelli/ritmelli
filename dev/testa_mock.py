@@ -1108,25 +1108,215 @@ def answer_of(srv, method, route, body):
         return ex.code, json.loads(ex.read()) if ex.headers.get_content_type() == "application/json" else None
 
 
-def inline_scripts_in_the_page():
+def the_theme_page_build():
     import server
-    print("--- the inline-script comment of a theme page")
+    import theme_page
+    import theme_page_cases
+    print("--- the theme page: every <script src> and stylesheet <link> inline, or no page")
     with tempfile.TemporaryDirectory(prefix="testa_mock_inline_") as t:
         folder = Path(t)
-        page, script = folder / "index.html", folder / "first.js"
-        source = "<head>\n<!-- inline-script: first.js -->\n<script src=\"x.js\"></script>"
+        page, script, sheet = folder / "index.html", folder / "first.js", folder / "a.css"
+        source = '<head>\n<script src="first.js"></script>\n<link rel="stylesheet" href="a.css">\n<script src="/t/ritmelli/i18n.js"></script>'
         page.write_text(source, encoding="utf-8")
         script.write_text("const first = 1;\n", encoding="utf-8")
-        html = server.inline_scripts(source, folder)
-        confere(html == "<head>\n<script>\nconst first = 1;\n</script>\n<script src=\"x.js\"></script>",
-                f"the comment becomes a <script> with the text of the file ({html!r})")
-        sent, etag = server.theme_page(page, folder / "i18n", "en")
+        sheet.write_text("a { b: c; }\n", encoding="utf-8")
+        shared = (theme_page.THEMES / "ritmelli" / "i18n.js").read_text(encoding="utf-8")
+        html = theme_page.inline_files(source, folder)
+        confere(html == f"<head>\n<script>\nconst first = 1;\n</script>\n<style>\na {{ b: c; }}\n</style>\n<script>\n{shared}</script>",
+                f"each tag becomes a <script> or a <style> with the text of its file, a /t/ path from the themes folder ({html[:120]!r})")
+        sent, etag = theme_page.build(page, folder / "i18n", "en")
         stamp = script.stat().st_mtime_ns
         script.write_text("const first = 2;\n", encoding="utf-8")
         os.utime(script, ns=(stamp, stamp))
-        sent_after, etag_after = server.theme_page(page, folder / "i18n", "en")
+        sent_after, etag_after = theme_page.build(page, folder / "i18n", "en")
         confere(sent == html and etag != etag_after and "const first = 2;" in sent_after,
                 "the ETag of the page follows the text it sends, even when the inlined file keeps its mtime")
+        refused = theme_page_cases.REFUSED
+        (folder / "sub").mkdir()
+        for what, (tag, files, said) in refused.items():
+            script.write_text("const first = 1;\n", encoding="utf-8")
+            sheet.write_text("a { b: c; }\n", encoding="utf-8")
+            for name, text in files.items():
+                (folder / name).write_bytes(text) if isinstance(text, bytes) else (folder / name).write_text(
+                    text, encoding="utf-8", newline="")
+            try:
+                theme_page.inline_files(f"<head>\n{tag}\n", folder)
+                error = "no error"
+            except theme_page.ThemePageError as ex:
+                error = str(ex)
+            confere(said in error, f"{what} stops the build of the page ({error})")
+        (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url( 'data:x' ); "
+                                              "f: url(HTTPS://example.com/x.png); }\n", encoding="utf-8")
+        (folder / "a&b.js").write_text("const ab = 1;\n", encoding="utf-8")
+        (folder / "bom.css").write_text("\ufeffa { b: c; }\n", encoding="utf-8")
+        sheet.write_text("a { b: url(fonts/x.woff2); c: image-set(url('y.webp') 2x, 'z.webp' 1x); d: '\\00B7'; }\n",
+                         encoding="utf-8")
+        kept = theme_page_cases.KEPT
+        for what, (tag, expected) in kept.items():
+            try:
+                out = theme_page.inline_files(tag, folder)
+            except theme_page.ThemePageError as ex:
+                out = f"error: {ex}"
+            confere(out == (expected or tag), f"{what} builds as it should ({out[:90]!r})")
+        real = theme_page.THEMES / "ritmelli" / "index.html"
+        refused_read, error = theme_page.strict("<head>\n  <table></table>")
+        theme_read, no_error = theme_page.strict(real.read_text(encoding="utf-8"))
+        confere(refused_read is None and error[:2] == (2, 3) and error[2].startswith("the <table> is not one of the elements")
+                and no_error is None and len(theme_read.found) == 82,
+                f"strict() gives the first refusal with its line and column, or the template it read ({error}, {no_error})")
+        theme_page.build(real, real.parent / "i18n", "en")
+        sheets = sum(tag == "style" for _, _, tag, _ in theme_page.file_tags(real.read_text(encoding="utf-8")))
+        before = theme_page.sheet_problem.cache_info()
+        theme_page.build(real, real.parent / "i18n", "en")
+        after = theme_page.sheet_problem.cache_info()
+        confere(sheets > 0 and after.misses == before.misses and after.hits - before.hits == sheets,
+                f"a second build of the unchanged page reuses the check of each of its {sheets} sheets ({before} -> {after})")
+        asyncio.run(a_missing_file_answers_500(server, folder))
+
+
+async def a_missing_file_answers_500(server, folder):
+    from unittest import mock
+
+    import yarl
+    from aiohttp.test_utils import TestClient, TestServer
+
+    broken = folder / "themes" / "broken"
+    broken.mkdir(parents=True)
+    (broken / "index.html").write_text('<head>\n<script src="gone.js"></script>\n', encoding="utf-8")
+    (broken / "assets").mkdir()
+    os.link(broken / "index.html", broken / "assets" / "alias.html")
+    (folder / "themes" / "latin").mkdir()
+    (folder / "themes" / "latin" / "index.html").write_bytes(b"<head>\n<title>caf\xe9</title>\n")
+    held = folder / "themes" / "held"
+    held.mkdir()
+    (held / "index.html").write_text('<head>\n<script src="held.js"></script>\n', encoding="utf-8")
+    (held / "held.js").write_text("1;\n", encoding="utf-8")
+    for slug, name in (("share", "//unreachable.invalid/share/x.js"), ("tshare", "/t///unreachable.invalid/share/x.js")):
+        (folder / "themes" / slug).mkdir()
+        (folder / "themes" / slug / "index.html").write_text(f'<head>\n<script src="{name}"></script>\n', encoding="utf-8")
+    marked = folder / "themes" / "marked"
+    (marked / "i18n").mkdir(parents=True)
+    (marked / "index.html").write_text("<head>\n<style>/* <!-- i18n --> */</style>\n<!-- i18n -->\n", encoding="utf-8")
+    placed = folder / "themes" / "placed"
+    (placed / "i18n").mkdir(parents=True)
+    (placed / "index.html").write_text('<head><!-- i18n --><script src="gone.js"></script></head>\n', encoding="utf-8")
+    for language in ("en", "pt_BR"):
+        for theme in (marked, placed):
+            (theme / "i18n" / f"i18n_{language}.properties").write_text("a=b\n", encoding="utf-8")
+    read_text = Path.read_text
+
+    def locked(path, *args, **kwargs):
+        if path.name == "held.js":
+            raise PermissionError(13, "Permission denied")
+        return read_text(path, *args, **kwargs)
+    stat_of = os.stat
+
+    def stat_locked(path, *args, **kwargs):
+        if os.fspath(path).endswith("held.js"):
+            raise PermissionError(13, "Permission denied")
+        return stat_of(path, *args, **kwargs)
+    import pareamento as par
+    A = types.SimpleNamespace(engine=types.SimpleNamespace(pos=0.0, levels={}, vol=0.5), port=8801, lan_ip=None,
+                              mock=True, closing=False, papel_local=None,
+                              celulares=par.Pareamento(folder / "celulares.json"), remotos=perm.Remotos(),
+                              metricas=types.SimpleNamespace(erro=lambda *a, **k: None),
+                              atualizacao=types.SimpleNamespace(ao_abrir=lambda: None),
+                              leitura=lambda: ({"status": "idle"}, 0.0), public_jobs=lambda: [],
+                              lib=types.SimpleNamespace(version=1, public=lambda: []),
+                              boas_vindas_pendentes=lambda: True, grava_cfg=lambda **k: None)
+    log = io.StringIO()
+    themes = (folder / "themes").resolve()
+    with mock.patch.object(server.theme_page, "THEMES", themes), contextlib.redirect_stderr(log):
+        A.port = so_mock.free_port()
+        compared = []
+        samefile = os.path.samefile
+
+        def recorded(a, b):
+            compared.append(threading.current_thread() is threading.main_thread())
+            return samefile(a, b)
+        network = []
+        stat, realpath = os.stat, os.path.realpath
+
+        def local_only(real):
+            def read(path, *args, **kwargs):
+                if os.fspath(path).startswith(("\\\\", "//")):
+                    network.append(os.fspath(path))
+                    raise FileNotFoundError(path)
+                return real(path, *args, **kwargs)
+            return read
+        async with TestClient(TestServer(server.build(A), host="127.0.0.1", port=A.port)) as client:
+            resp = await client.get("/t/broken/", headers={"Host": f"localhost:{A.port}"})
+            status, said = resp.status, await resp.text()
+            latin = await client.get("/t/latin/", headers={"Host": f"localhost:{A.port}"})
+            latin = latin.status, await latin.text()
+            unread = {}
+            for what, patched in (("text", mock.patch.object(Path, "read_text", locked)),
+                                  ("metadata", mock.patch.object(os, "stat", stat_locked))):
+                with patched:
+                    before = log.tell()
+                    resp = await client.get("/t/held/", headers={"Host": f"localhost:{A.port}"})
+                    unread[what] = resp.status, await resp.text(), log.getvalue()[before:]
+            with mock.patch.object(server.theme_page.os.path, "samefile", recorded):
+                sent = await client.get("/t/broken/index.html", headers={"Host": f"localhost:{A.port}"},
+                                        allow_redirects=False)
+            alias = await client.get("/t/broken/assets/alias.html?lang=pt_BR", allow_redirects=False,
+                                     headers={"Host": f"localhost:{A.port}"})
+            with mock.patch.object(os, "stat", local_only(stat)), \
+                    mock.patch.object(os.path, "realpath", local_only(realpath)):
+                shares = {name: (await client.get(yarl.URL(name, encoded=True), allow_redirects=False,
+                                                  headers={"Host": f"localhost:{A.port}"})).status
+                          for name in ("/t///unreachable.invalid/share/index.html",
+                                       "/t/%5C%5Cunreachable.invalid%5Cshare/x.png",
+                                       "/t/%5C%5Cunreachable.invalid%5Cshare/")}
+                shares_read, network[:] = network[:], []
+                files = {slug: (resp.status, await resp.text()) for slug in ("share", "tshare")
+                         for resp in [await client.get(f"/t/{slug}/", headers={"Host": f"localhost:{A.port}"})]}
+            resp = await client.get("/t/marked/", headers={"Host": f"localhost:{A.port}"})
+            mark = resp.status, await resp.text()
+            resp = await client.get("/t/placed/", headers={"Host": f"localhost:{A.port}"})
+            placed_at = resp.status, await resp.text()
+    confere(status == 500 and "themes/broken/index.html:2:1 was not built: gone.js is missing from themes/broken" in said
+            and said in log.getvalue() and str(folder) not in said and folder.name not in said,
+            f"through the route, a missing theme file answers 500 with the template, the file and the rule, the log "
+            f"says the same, and no folder of the PC goes out ({status}, {said!r})")
+    confere(latin[0] == 500 and "themes/latin/index.html was not built: index.html is not UTF-8 text" in latin[1]
+            and latin[1] in log.getvalue(),
+            f"a template that is not UTF-8 answers 500 naming it, and the log says the same ({latin})")
+    for what, (code, text, logged) in unread.items():
+        confere(code == 500 and "themes/held/index.html:2:1 was not built: held.js could not be read (Permission denied)"
+                in text and text in logged and str(folder) not in text,
+                f"a theme file whose {what} cannot be read answers 500 naming it, and the log says the same "
+                f"({code}, {text!r})")
+    confere(sent.status == 302 and compared == [False],
+            f"the index.html redirect compares the file off the server's loop ({sent.status}, on the loop: {compared})")
+    confere(alias.status == 302 and alias.headers.get("Location") == "/t/broken/?lang=pt_BR",
+            f"a hard link to the index.html in a subfolder of the theme redirects too ({alias.status}, "
+            f"{alias.headers.get('Location')})")
+    confere(not shares_read and all(code in (403, 404) for code in shares.values()),
+            f"a theme address naming a network share is refused without the PC reading it ({shares}, read: {shares_read})")
+    confere(not network and files["share"][0] == files["tshare"][0] == 500
+            and "//unreachable.invalid/share/x.js is outside themes/share" in files["share"][1]
+            and "/t///unreachable.invalid/share/x.js is outside themes" in files["tshare"][1],
+            f"a file tag naming a network share stops the build without the PC reading it ({files}, read: {network})")
+    confere(mark[0] == 500 and "themes/marked/index.html:2:11 was not built: the <!-- i18n --> mark is read only as a "
+            "comment of its own" in mark[1],
+            f"an i18n mark in a style before the real one stops the build, read before the texts go in ({mark})")
+    confere(placed_at[0] == 500 and "themes/placed/index.html:1:20 was not built: gone.js is missing" in placed_at[1],
+            f"a file tag after the i18n mark on its line is refused at its column in the template, not in the page "
+            f"with the texts in ({placed_at})")
+
+
+def index_names():
+    names = ["/t/ritmelli/index.html", "/t/ritmelli/INDEX.HTML", "/t/ritmelli/index.html.", "/t/ritmelli/index.html%20",
+             "/t/ritmelli//index.html", "/t/ritmelli/./index.html"]
+    if sys.platform == "win32":
+        import ctypes
+        page = RAIZ / "themes" / "ritmelli" / "index.html"
+        short = ctypes.create_unicode_buffer(1024)
+        if ctypes.windll.kernel32.GetShortPathNameW(str(page), short, len(short)):
+            names.append("/t/ritmelli/" + Path(short.value).name)
+        names += ["/t/ritmelli/index.html::$DATA", "/t/other/..%5Critmelli%5Cindex.html"]
+    return names
 
 
 def ao_vivo(srv):
@@ -1134,22 +1324,33 @@ def ao_vivo(srv):
     print("--- no --mock de verdade: o PC e a rede de casa (pelo 127.0.0.2)")
     with so_mock.abre(srv.base + "/t/ritmelli/") as r:
         page, page_cache, etag = r.read().decode("utf-8"), r.headers.get("Cache-Control"), r.headers.get("ETag")
-    confere("function scriptFailed(" in page and "<!-- inline-script:" not in page,
-            "the theme page comes with script-failed.js in place of its inline-script comment")
+    confere("<script src=" not in page and "function bindDeskButtons()" in page,
+            "the theme page comes with the theme's scripts inside it")
     conn = http.client.HTTPConnection("127.0.0.1", srv.porta, timeout=10)
     try:
         conn.request("GET", "/t/ritmelli/", headers={"If-None-Match": etag or ""})
         again = conn.getresponse()
         again.read()
-        conn.request("GET", "/t/ritmelli/shared.js")
-        script = conn.getresponse()
-        script.read()
+        files = {}
+        for name in ("shared.js", "base.css", "fonts/Archivo-latin.woff2", "texturas/veio.webp"):
+            conn.request("GET", f"/t/ritmelli/{name}")
+            answer = conn.getresponse()
+            answer.read()
+            files[name] = (answer.status, answer.getheader("Cache-Control"))
+        index = []
+        for path in index_names():
+            conn.request("GET", f"{path}?lang=pt_BR&parear=123456")
+            answer = conn.getresponse()
+            answer.read()
+            index.append((answer.status, answer.getheader("Location")))
     finally:
         conn.close()
-    confere((page_cache, again.status, again.getheader("Cache-Control"), script.status,
-             script.getheader("Cache-Control")) == ("no-cache", 304, "no-cache", 200, "no-cache"),
+    confere((page_cache, again.status, again.getheader("Cache-Control")) == ("no-cache", 304, "no-cache")
+            and all(x == (200, "no-cache") for x in files.values()),
             f"/t/ answers with Cache-Control: no-cache: the page ({page_cache}), its 304 ({again.status}, "
-            f"{again.getheader('Cache-Control')}) and a .js ({script.status}, {script.getheader('Cache-Control')})")
+            f"{again.getheader('Cache-Control')}) and a .js, a .css, a font and an image ({files})")
+    confere(index == [(302, "/t/ritmelli/?lang=pt_BR&parear=123456")] * len(index_names()),
+            f"every name of the theme's index.html takes to the built page with its query ({index_names()}: {index})")
     confere(srv.api("GET", "/api/state").get("caps") == perm.caps("pc"), "o PC: o /api/state traz o caps do PC")
     confere(srv.api("POST", "/api/volume", {"vol": 0.42}).get("vol") == 0.42
             and srv.api("GET", "/api/state").get("vol") == 0.42, "o PC: o /api/volume muda o volume da musica")
@@ -1349,6 +1550,7 @@ def sem_rede():
         confere(not t.exists(), f"the test folder is removed at the first try, right after the server stops ({t})")
 
 
+sys.stdout.reconfigure(encoding="utf-8")
 tabela()
 check_track_field_routes()
 try:
@@ -1359,7 +1561,7 @@ except ImportError as ex:
 else:
     asyncio.run(papeis_no_guard())
     asyncio.run(papel_local_celular())
-    inline_scripts_in_the_page()
+    the_theme_page_build()
 sem_rede()
 
 print("\nFALHOU: " + "; ".join(falhas) if falhas else "\ntudo ok")

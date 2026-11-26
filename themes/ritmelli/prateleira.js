@@ -1,4 +1,5 @@
-/* PRATELEIRA-JS-INICIO: o titulo e a contagem da plaqueta em letra de pixel (canvas de 1 px por celula, mostrado a 2x) e as
+/* PRATELEIRA-JS-INICIO */
+/* o titulo e a contagem da plaqueta em letra de pixel (canvas de 1 px por celula, mostrado a 2x) e as
    teclas das capas marcadas com o algarismo (o CSS poe o sprite); gerado por integra_prat.py, v18 */
 (() => {
   const { negrita: N, regular: G, desce: D } = LETRA_PLACA, TALT = 9;

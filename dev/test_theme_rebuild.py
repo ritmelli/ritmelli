@@ -10,11 +10,12 @@ CALL, DECLARATION = "globalThis.result = f();", "function f() { return 1; }"
 FOUR_LINES = "function f() {\n  const x = 1;\n  return x;\n}"
 NESTED = "@media (min-width: 1px) {\n  a { color: red; }\n  @container (max-width: 1rem) { .b::after { content: %s; } }\n}\n"
 FONT = "@font-face { font-family: 'A'; src: url(fonts/a.woff2) format('woff2'); }\n"
-PEDAL = '<script src="pedal.js" onerror="scriptFailed(this)"></script>'
+PEDAL = '<script src="pedal.js"></script>'
 HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
 TWO_INLINED = "<!-- inline-script: s.js -->\n<!-- inline-script: t.js -->\n"
 TRANSLATED = {"index.html": "<!-- i18n -->\n", "i18n/i18n_en.properties": "", "i18n/i18n_pt_BR.properties": ""}
-NOTICE = '<script src="notice.js" onerror="scriptFailed(this)"></script>'
+TEXTS = {"i18n/i18n_en.properties": "a=b\n", "i18n/i18n_pt_BR.properties": "a=b\n"}
+NOTICE = '<script src="notice.js"></script>'
 CANNOT = "cannot judge"
 LEFT, CAME = "declaration left its script", "declaration came into the script"
 
@@ -82,8 +83,8 @@ SAMPLES = (
      ["gone", "new"]),
     ("a <style> line reindented inside a template literal", inline("const s = `a\n<style>\nb`;\nf();"),
      inline("const s = `a\n  <style>\nb`;\nf();"), ["gone", "new"]),
-    ("a script that gains an attribute", {"index.html": "<script src=\"x.js\"></script>", "x.js": "x();\n"},
-     {"index.html": "<script src=\"x.js\" defer></script>", "x.js": "x();\n"}, ["script tag or strict mode"]),
+    ("a script that gains an attribute", {"index.html": "<script>\nx();\n</script>"},
+     {"index.html": "<script defer>\nx();\n</script>"}, ["script tag or strict mode"]),
     ("a script with a comment before 'use strict' that loses it",
      {"index.html": "<script src=\"x.js\"></script>", "x.js": "/* c */\n'use strict';\nx();\n"},
      {"index.html": "<script src=\"x.js\"></script>", "x.js": "/* c */\nx();\n"}, ["script tag or strict mode", "gone"]),
@@ -99,11 +100,9 @@ SAMPLES = (
                                                    "a.css": "a { }\nb { }\n", "b.css": "c { }\n"},
      {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n<link rel=\"stylesheet\" href=\"b.css\">\n",
       "a.css": "a { }\n", "b.css": "b { }\nc { }\n"}, []),
-    ("a style rule moved into a stylesheet for print", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n"
-                                                                      "<link rel=\"stylesheet\" href=\"b.css\" media=\"print\">\n",
-                                                        "a.css": "a { }\nb { }\n", "b.css": "c { }\n"},
-     {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n<link rel=\"stylesheet\" href=\"b.css\" media=\"print\">\n",
-      "a.css": "a { }\n", "b.css": "b { }\nc { }\n"}, ["gone", "new"]),
+    ("a style rule moved into a stylesheet for print",
+     {"index.html": "<style>\na { }\nb { }\n</style>\n<style media=\"print\">\nc { }\n</style>\n"},
+     {"index.html": "<style>\na { }\n</style>\n<style media=\"print\">\nb { }\nc { }\n</style>\n"}, ["gone", "new"]),
     ("a block mark put inside a CSS string", styled(".menu::before { content: \"\"; }\n"),
      styled(".menu::before { content: \"/* DIALOGS-INICIO */\"; }\n"), ["gone", "new"]),
     ("a block mark taken out of a stylesheet", styled("/* A-INICIO */\na { color: red; }\n/* A-FIM */\n"),
@@ -147,8 +146,8 @@ SAMPLES = (
     ("two spaces put around the = of a quoted value with a > in the end tag of a script",
      {"index.html": "<script src=\"x.js\"></script>\n", "x.js": "f();\n"},
      {"index.html": "<script src=\"x.js\"></script x  =  \"a>b\">\n", "x.js": "f();\n"}, CANNOT),
-    ("a title with a character reference put on a script", {"index.html": "<script src=\"x.js\"></script>\n", "x.js": ""},
-     {"index.html": "<script src=\"x.js\" title=\"a&amp;b\"></script>\n", "x.js": ""}, ["script tag or strict mode"]),
+    ("a title with a character reference put on a script", {"index.html": "<script>\n</script>\n"},
+     {"index.html": "<script title=\"a&amp;b\">\n</script>\n"}, ["script tag or strict mode"]),
     ("a stylesheet linked with a query", styled(HIDDEN),
      {"index.html": "<link rel=\"stylesheet\" href=\"a.css?v=2\">\n", "a.css": HIDDEN}, CANNOT),
     ("a </script y> in a quoted value of the start tag of a script turned into </script z>",
@@ -173,9 +172,24 @@ SAMPLES = (
      ["gone", "new"]),
     ("a comment in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px/* c */+ 1px); }\n"), ["gone", "new"]),
-    ("a stylesheet with a font moved to another folder", {"index.html": "<link rel=\"stylesheet\" href=\"base.css\">\n",
-                                                          "base.css": FONT},
-     {"index.html": "<link rel=\"stylesheet\" href=\"gerado/base.css\">\n", "gerado/base.css": FONT}, ["gone", "new"]),
+    ("a script whose </ script hides the file tag after it, with that file changed",
+     {"index.html": "<script>//</ script><a title=\"</script><script src=\"/t/other/proof.js\"></script>\">\n",
+      "/t/other/proof.js": "window.proof = 1;\n"},
+     {"index.html": "<script>//</ script><a title=\"</script><script src=\"/t/other/proof.js\"></script>\">\n",
+      "/t/other/proof.js": "window.proof = 2;\n"}, CANNOT),
+    ("a stylesheet that loses its byte order mark", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
+                                                     "a.css": "\ufeffa { color: red; }\n"},
+     {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n", "a.css": "a { color: red; }\n"}, []),
+    ("a page that loses its byte order mark", {"index.html": "\ufeff<p>x</p>\n"}, {"index.html": "<p>x</p>\n"}, []),
+    ("an i18n mark put in a comment of a linked sheet", {**styled("a { color: red; }\n"), **TEXTS},
+     {**styled("/* <!-- i18n --> */\na { color: red; }\n"), **TEXTS}, []),
+    ("a stylesheet moved to another folder", {"index.html": "<link rel=\"stylesheet\" href=\"base.css\">\n",
+                                              "base.css": "a { color: red; }\n"},
+     {"index.html": "<link rel=\"stylesheet\" href=\"gerado/base.css\">\n", "gerado/base.css": "a { color: red; }\n"},
+     ["gone", "new"]),
+    ("a stylesheet with a font moved to another folder, which the server refuses",
+     {"index.html": "<link rel=\"stylesheet\" href=\"base.css\">\n", "base.css": FONT},
+     {"index.html": "<link rel=\"stylesheet\" href=\"gerado/base.css\">\n", "gerado/base.css": FONT}, CANNOT),
     ("a line break put after throw", inline("function g(x) {\n  throw x;\n}"),
      inline("function g(x) {\n  throw\n  x;\n}"), ["does not parse", LEFT, CAME]),
     ("a line break put after the comment between return and its template",
@@ -200,7 +214,29 @@ SAMPLES = (
 DOUBTFUL = (
     ("an href in capitals", {"index.html": "<link rel=\"stylesheet\" HREF=\"ba%73e.css\">\n"}),
     ("an href written twice", {"index.html": "<link rel=\"stylesheet\" href=\"ba%73e.css\" href=\"base.css\">\n"}),
-    ("a stylesheet from the root of the site", {"index.html": "<link rel=\"stylesheet\" href=\"/t/ritmelli/a.css\">\n"}),
+    ("a stylesheet from the root of the site",
+     {"index.html": "<link rel=\"stylesheet\" href=\"/a.css\">\n", "/a.css": "a { b: c; }\n"}),
+    ("a sheet of another theme with a relative url()",
+     {"index.html": "<link rel=\"stylesheet\" href=\"/t/other/x.css\">\n",
+      "/t/other/x.css": "a { background-image: url(image.png); }\n"}),
+    ("a linked script that starts with #!", {"index.html": "<script src=\"s.js\"></script>\n", "s.js": "#!x\nf();\n"}),
+    ("the i18n mark in an attribute", {"index.html": "<meta name=\"note\" content=\"texts go at <!-- i18n -->\">\n"}),
+    ("the i18n mark in an svg", {"index.html": "<svg viewBox=\"0 0 1 1\"><!-- i18n --><path d=\"M0\"></path></svg>\n",
+                                 "i18n/i18n_en.properties": "a=b\n", "i18n/i18n_pt_BR.properties": "a=b\n"}),
+    ("a linked script that starts with a byte order mark and #!",
+     {"index.html": "<script src=\"s.js\"></script>\n", "s.js": "\ufeff#!x\nf();\n"}),
+    ("a file tag the server refuses: another order", {"index.html": "<link href=\"a.css\" rel=\"stylesheet\">\n",
+                                                      "a.css": "a { }\n"}),
+    ("a file tag the server refuses: a space before its >", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\" >\n",
+                                                            "a.css": "a { }\n"}),
+    ("a file tag the server refuses: a two-space gap", {"index.html": "<link rel=\"stylesheet\"  href=\"a.css\">\n",
+                                                        "a.css": "a { }\n"}),
+    ("a file tag the server refuses: />", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\"/>\n", "a.css": "a { }\n"}),
+    ("a file tag the server refuses: a line break in the tag",
+     {"index.html": "<script\nsrc=\"s.js\"></script>\n", "s.js": "f();\n"}),
+    ("a file tag the server refuses: defer", {"index.html": "<script src=\"s.js\" defer></script>\n", "s.js": "f();\n"}),
+    ("a file tag the server refuses: onerror",
+     {"index.html": "<script src=\"s.js\" onerror=\"scriptFailed(this)\"></script>\n", "s.js": "f();\n"}),
     ("an alternate stylesheet", {"index.html": "<link rel=\"alternate stylesheet\" href=\"a.css\">\n"}),
     ("a script from a folder above", {"index.html": "<script src=\"../x.js\"></script>\n"}),
     ("an element the theme does not use", {"index.html": "<marquee>a</marquee>\n<script src=\"x.js\"></script>\n"}),
@@ -228,6 +264,8 @@ DOUBTFUL = (
                                           "a.css": "@sco\\70 e { p { color: red; } }\n"}),
     ("an @import in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
                                            "a.css": "/* @import \"b.css\"; */\n"}),
+    ("a </ style> in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
+                                             "a.css": "/* </ style><script src=\"x.js\"></script> */\n"}),
     ("a value in single quotes", {"index.html": "<script src='x.js'></script>\n"}),
     ("a value with no quotes", {"index.html": "<div id=a></div>\n<script src=\"x.js\"></script>\n"}),
     ("a tag name in capitals", {"index.html": "<SCRIPT src=\"x.js\"></SCRIPT>\n"}),
@@ -280,13 +318,13 @@ def theme_mutant(changes):
 
 
 def swapped(html, _):
-    notice, covers = NOTICE, '<script src="covers.js" onerror="scriptFailed(this)"></script>'
+    notice, covers = NOTICE, '<script src="covers.js"></script>'
     return html.replace(notice, "\0").replace(covers, notice).replace("\0", covers) if covers in html else ""
 
 
 def early(html, _):
-    inlined = "<!-- inline-script: desk-buttons.js -->\n<!-- inline-script: start.js -->\n"
-    ui_events = '<script src="ui-events.js" onerror="scriptFailed(this)"></script>\n'
+    inlined = '<script src="desk-buttons.js"></script>\n<script src="start.js"></script>\n'
+    ui_events = '<script src="ui-events.js"></script>\n'
     return html.replace(inlined, "").replace(ui_events, inlined + ui_events) if inlined in html else ""
 
 
@@ -314,9 +352,6 @@ def main():
         *((f"a {end} in a comment on the first line of start.js",
            {"start.js": lambda text, _, end=end: text.replace("'use strict';", f"'use strict'; // {end}", 1)
             if "'use strict';" in text else ""}, CANNOT) for end in ("</script>", "</script/>", "</script x>")),
-        ("start.js loaded from its file instead of inline",
-         {"index.html": lambda html, _: html.replace("<!-- inline-script: start.js -->", '<script src="start.js"></script>')
-          if "<!-- inline-script: start.js -->" in html else ""}, "script tag or strict mode"),
         ("the </script> of pedal.js taken out",
          {"index.html": lambda html, _: html.replace(PEDAL, PEDAL.removesuffix("</script>")) if PEDAL in html else ""},
          CANNOT),
@@ -344,7 +379,12 @@ def main():
         ("a vertical tab put before the first .btn rule of buttons.css",
          {"buttons.css": lambda text, _: text.replace("\n.btn", "\n\v.btn", 1)}, "does not parse"),
         ("pedal.css linked from the root of the site",
-         {"index.html": lambda html, _: html.replace('href="pedal.css"', 'href="/t/ritmelli/pedal.css"')}, CANNOT),
+         {"index.html": lambda html, _: html.replace('href="pedal.css"', 'href="/t/ritmelli/pedal.css"')}, "gone"),
+        ("a <!-- put in a comment on the first line of start.js",
+         {"start.js": lambda text, _: text.replace("'use strict';", "'use strict'; // <!--", 1)
+          if "'use strict';" in text else ""}, CANNOT),
+        ("a </style> put in a comment of base.css",
+         {"base.css": lambda text, _: "/* </style> */\n" + text}, CANNOT),
         ("the rules of pedal.css moved to the end of mix.css and pedal.css deleted",
          {"mix.css": lambda text, read: text + read("pedal.css"), "pedal.css": lambda *_: None}, CANNOT),
         ("transporte.js renamed",
@@ -377,22 +417,44 @@ def main():
     for title, page in DOUBTFUL:
         unsure = built({**page, "x.js": "f();\n"}.get)
         results.append((isinstance(unsure, theme_rebuild.Doubt), f"{title}: cannot judge ({unsure})"))
+    own = built({"index.html": "<link rel=\"stylesheet\" href=\"/t/ritmelli/a.css\">\n",
+                 "/t/ritmelli/a.css": "a { background-image: url(image.png); }\n"}.get)
+    results.append((isinstance(own, theme_rebuild.Page) and "a.css" in own.read,
+                    f"a /t/ sheet of the page's own folder keeps its relative url() and counts as read by its name in "
+                    f"the theme ({own if isinstance(own, theme_rebuild.Doubt) else sorted(own.read)})"))
+    other = {"index.html": "<link rel=\"stylesheet\" href=\"/t/outro/base.css\">\n",
+             "/t/outro/base.css": "a { background-image: url(image.png); }\n"}
+    kept = theme_rebuild.reader, theme_rebuild.listing
+    theme_rebuild.reader, theme_rebuild.listing = (lambda rev, _: other.get), (lambda rev, _: {})
+    try:
+        code = theme_rebuild.main(["base", "head", "--theme", "outro"])
+    finally:
+        theme_rebuild.reader, theme_rebuild.listing = kept
+    results.append((code == 0, f"--theme outro reads a /t/outro/ sheet as one of the page's own folder ({code})"))
     for page in ("themes/ritmelli/index.html", "gallery/index.html"):
         try:
             theme_rebuild.strict(theme_rebuild.text_of((theme_rebuild.RAIZ / page).read_bytes()), page)
             results.append((True, f"{page} is in the strict form"))
         except theme_rebuild.Doubt as unsure:
             results.append((False, f"{page} is not in the strict form: {unsure}"))
-    refused = [x for x in DOUBTFUL if x[0] in (DOUBTFUL[0][0], "an inline-script that is not in the theme")]
+    for rev in (None, "HEAD"):
+        read = theme_rebuild.reader(rev, "gallery-reader")
+        shared, own = read("/t/ritmelli/i18n.js"), theme_rebuild.reader(rev, "ritmelli")("i18n.js")
+        results.append((shared is not None and shared == own,
+                        f"a /t/ritmelli/ address is read from themes/ritmelli ({'the working tree' if rev is None else rev}, "
+                        f"{len(shared or '')} characters)"))
+    refused = [(title, dict(page), 3) for title, page in DOUBTFUL
+               if title in (DOUBTFUL[0][0], "an inline-script that is not in the theme")]
     kept = theme_rebuild.reader, theme_rebuild.listing
-    for title, page in refused:
-        pages = {"base": inline("f();"), "head": dict(page)}
+    for title, page, expected in [("the same page", inline("f();"), 0), ("a changed script", inline("g();"), 1),
+                                  *refused]:
+        pages = {"base": inline("f();"), "head": page}
         theme_rebuild.reader, theme_rebuild.listing = (lambda rev, _: pages[rev].get), (lambda rev, _: {})
         try:
             code = theme_rebuild.main(["base", "head"])
         finally:
             theme_rebuild.reader, theme_rebuild.listing = kept
-        results.append((code == theme_rebuild.CANNOT_JUDGE, f"the verdict on {title} is {code}"))
+        results.append((code == expected, f"main exits {code} on {title}, {expected} expected"))
     report = theme_rebuild.compare(theme, theme, compiles)
     results.append((not report.changes and report.declarations > 100,
                     f"the theme against itself only moves code ({report.declarations} declarations compared)"))

@@ -2,27 +2,8 @@
 'use strict';
 /* ---------- conexao ---------- */
 let es = null, foraT = null, reconT = null;
-// o transporte.js que nao carregou (o servidor fora quando a pagina abriu): a conexao tenta carregar de novo, uma
-// carga por vez e a cada 3 s, e com ele de volta a pagina segue a carga normal
-let buscandoTransporte = false;
-function carregarTransporte() {
-  if (buscandoTransporte) return;
-  buscandoTransporte = true;
-  const s = document.createElement('script');
-  s.src = 'transporte.js';
-  s.onload = () => {
-    buscandoTransporte = false;
-    // carregou sem definir o TRANSPORTE (o portal do Wi-Fi respondendo com uma pagina, o script cortado): o mesmo
-    // prazo do erro, sem laco
-    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }
-    carregar();
-  };
-  s.onerror = () => { buscandoTransporte = false; s.remove(); reconT = setTimeout(conectar, 3000); };
-  document.head.append(s);
-}
 function conectar() {
   clearTimeout(reconT);
-  if (typeof TRANSPORTE === 'undefined') { carregarTransporte(); return; }
   if (es) es.fechar();
   try { es = TRANSPORTE.eventos('/api/events'); } catch (e) { reconT = setTimeout(conectar, 3000); return; }
   const fonte = es;
@@ -32,7 +13,7 @@ function conectar() {
   es.ao('desconectado', () => {
     // o PC desconectou este celular: a tela do codigo, e o caps de antes de parear vem no 401 do /api/state
     pedirPareamento(true);
-    api('GET', '/api/state').catch(() => {});
+    api('GET', '/api/state').catch(e => { if (e.status !== 401 && e.status !== 0) throw e; });
   });
   es.ao('state', st => {
     online(true); S.state = st;
@@ -73,10 +54,8 @@ function armarFora() {
 }
 // (#107) o celular que muda de rede com o cartao aberto (sai dos dados moveis, liga o Wi-Fi): o texto acompanha
 const redeMudou = () => { if (!$('#fora').hidden && !S.online && !S.desligado && !S.atualizando) mostrarFora(); };
-if (typeof $ === 'function') {
-  addEventListener('online', redeMudou); addEventListener('offline', redeMudou);
-  if (navigator.connection) navigator.connection.addEventListener('change', redeMudou);
-}
+addEventListener('online', redeMudou); addEventListener('offline', redeMudou);
+if (navigator.connection) navigator.connection.addEventListener('change', redeMudou);
 function online(on) {
   if (on === S.online) return;
   S.online = on; agulhasPixel();
@@ -100,7 +79,7 @@ function mostrarFora() {
   if (S.desligado) {
     $('#fora-tt').textContent = I18N.t('offline.offTitle');
     I18N.rico($('#fora-p'), 'offline.offText');
-  } else if (!(S.caps ? S.caps.papel === 'pc' : typeof TRANSPORTE === 'undefined' || TRANSPORTE.local)) {
+  } else if (!(S.caps ? S.caps.papel === 'pc' : TRANSPORTE.local)) {
     // (#107) no celular, o que mais cai e o caminho ate o computador (o celular nos dados moveis, sem Wi-Fi, numa rede
     // de convidados), e nao o Ritmelli: o cartao diz so o que se sabe, e o que o navegador conta da conexao (sem
     // nenhuma; nos dados moveis, o Chrome do Android pela Network Information API)

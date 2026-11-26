@@ -5,7 +5,7 @@ import json
 import re
 import sys
 import tempfile
-import urllib.request
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -34,91 +34,75 @@ KNOWN_FAILURES = (
 )
 BROKEN_SAMPLE = "'use strict';\nlet i = ;"
 FEATURE_HANDLERS = (
-    ("search.js", "ui-events.js", "#q", "input"), ("search.js", "ui-events.js", "#q", "keydown"),
-    ("search.js", "ui-events.js", "#form-busca", "submit"), ("search.js", "ui-events.js", "#b-voltar", "click"),
-    ("search.js", "ui-events.js", "#b-sair-busca", "click"), ("search.js", "ui-events.js", "#b-limpar-q", "click"),
-    ("search.js", "queue.js", "#resultados", "click"), ("search.js", "queue.js", "#resultados", "pointerdown"),
-    ("search.js", "queue.js", "#resultados", "pointermove"), ("search.js", "queue.js", "#resultados", "pointerup"),
-    ("search.js", "queue.js", "#resultados", "pointercancel"),
-    ("voice-effects.js", "ui-events.js", "#gaveta", "click"), ("voice-effects.js", "ui-events.js", "#gaveta-dir", "click"),
-    ("voice-effects.js", "ui-events.js", "#desliga-ef", "click"), ("voice-effects.js", "ui-events.js", "#b-efeito", "click"),
-    ("voice-effects.js", "ui-events.js", "#b-fechar-gav", "click"),
-    ("voice-effects.js", "ui-events.js", "#b-ouvir", "click"), ("voice-effects.js", "ui-events.js", "#mini-ef", "click"),
-    ("turntable.js", "ui-events.js", "#b-anterior", "click"), ("turntable.js", "ui-events.js", "#b-proxima", "click"),
-    ("turntable.js", "ui-events.js", "#b-aleatorio", "click"), ("turntable.js", "ui-events.js", "#b-repetir", "click"),
-    ("turntable.js", "ui-events.js", "#seek", "input"), ("turntable.js", "ui-events.js", "#seek", "change"),
-    ("turntable.js", "ui-events.js", "#seek", "keydown"),
-    ("receiver.js", "ui-events.js", "#b-cortar", "click"), ("receiver.js", "ui-events.js", "#b-nivelar", "click"),
-    ("receiver.js", "ui-events.js", "#f-vol", "input"), ("receiver.js", "ui-events.js", "#f-mon", "input"),
-    ("receiver.js", "ui-events.js", "#f-mic", "input"), ("receiver.js", "ui-events.js", "#mini-cortar", "click"),
-    ("receiver.js", "ui-events.js", "#b-mudo-topo", "click"), ("receiver.js", "ui-events.js", "#palco-cortar", "click"),
-    ("commands.js", "ui-events.js", "#b-tocar", "click"), ("commands.js", "ui-events.js", "#mini-tocar", "click"),
-    ("shelf.js", "ui-events.js", "#estante", "click"), ("shelf.js", "ui-events.js", "#estante", "contextmenu"),
-    ("shelf.js", "ui-events.js", "#estante", "pointerdown"),
-    ("shelf.js", "ui-events.js", "#chips", "click"), ("shelf.js", "ui-events.js", "#chips", "contextmenu"),
-    ("shelf.js", "ui-events.js", "#cartoes", "click"),
-    ("stage.js", "ui-events.js", "#mini-abrir", "click"), ("stage.js", "ui-events.js", "#mini-seta", "click"),
-    ("stage.js", "ui-events.js", "#mini-ant", "click"), ("stage.js", "ui-events.js", "#mini-prox", "click"),
-    ("stage.js", "ui-events.js", "#b-fechar-palco", "click"), ("stage.js", "ui-events.js", "#palco", "pointerdown"),
-    ("disc-page.js", "ui-events.js", "#b-pagina", "click"),
-    ("phone.js", "ui-events.js", "#b-cel", "click"), ("devices.js", "ui-events.js", "#b-disp", "click"),
-    ("devices.js", "ui-events.js", "#dica-ouvir", "click"), ("devices.js", "ui-events.js", "#b-desligar", "click"),
-    ("options.js", "options.js", "#menu", "click"), ("options.js", "options.js", "#menu", "keydown"),
-    ("options.js", "options.js", "#menu", "pointerdown"), ("options.js", "options.js", "#menu-fundo", "click"),
-    ("dialogs.js", "dialogs.js", "#dn-nao", "click"),
-    ("metrics.js", "metrics.js", "#dd-met-btn", "click"), ("metrics.js", "metrics.js", "#dlg-metricas", "close"),
-    ("devices.js", "devices.js", "#dd-mic", "change"), ("devices.js", "devices.js", "#dd-mon", "change"),
-    ("phone.js", "phone.js", "#dlg-cel", "close"), ("phone.js", "phone.js", "#dcel-lista", "click"),
-    ("phone.js", "phone.js", "#dcel-outro", "click"),
-    ("update.js", "update.js", "#b-atualizar", "click"), ("update.js", "update.js", "#da-ok", "click"),
-    ("options.js", "options.js", "#menu", "scroll"), ("options.js", "options.js", "#menu", "pointermove"),
-    ("options.js", "options.js", "#menu", "pointerup"), ("options.js", "options.js", "#menu", "pointercancel"),
-    ("options.js", "options.js", "#menu", "touchmove"), ("options.js", "options.js", "#menu", "click:capture"),
-    ("options.js", "options.js", "document", "pointerdown"), ("options.js", "options.js", "window", "resize"),
-    ("connection.js", "connection.js", "window", "online"), ("connection.js", "connection.js", "window", "offline"),
-    ("pairing.js", "pairing.js", "#form-parear", "submit"),
-    ("welcome.js", "welcome.js", "#dlg-boas", "close"), ("welcome.js", "welcome.js", "#dlg-disp", "close"),
-    ("desk-buttons.js", "ui-events.js", "#tocar-d", "click"), ("desk-buttons.js", "ui-events.js", "#prox-d", "click"),
-    ("desk-buttons.js", "ui-events.js", "#m-aleatorio", "click"), ("desk-buttons.js", "ui-events.js", "#m-repetir", "click"),
-    ("desk-buttons.js", "ui-events.js", "#m-parecidas", "click"), ("desk-buttons.js", "ui-events.js", "#pads-grade", "click"),
-    ("desk-buttons.js", "ui-events.js", "#pads-grade", "contextmenu"),
-    ("desk-buttons.js", "ui-events.js", "#prat-esq", "click"), ("desk-buttons.js", "ui-events.js", "#prat-dir", "click"),
-    ("start.js", "start.js", "document", "DOMContentLoaded"),
-    ("desk-buttons.js", "ui-events.js", "#estante", "scroll"), ("start.js", "start.js", "document", "visibilitychange"),
-    ("connection.js", "connection.js", "navigator.connection", "change"),
-    ("dj-desk.js", "ui-events.js", "mqUnica", "change"),
+    ("search.js", "#q", "input"), ("search.js", "#q", "keydown"),
+    ("search.js", "#form-busca", "submit"), ("search.js", "#b-voltar", "click"),
+    ("search.js", "#b-sair-busca", "click"), ("search.js", "#b-limpar-q", "click"),
+    ("search.js", "#resultados", "click"), ("search.js", "#resultados", "pointerdown"),
+    ("search.js", "#resultados", "pointermove"), ("search.js", "#resultados", "pointerup"),
+    ("search.js", "#resultados", "pointercancel"),
+    ("voice-effects.js", "#gaveta", "click"), ("voice-effects.js", "#gaveta-dir", "click"),
+    ("voice-effects.js", "#desliga-ef", "click"), ("voice-effects.js", "#b-efeito", "click"),
+    ("voice-effects.js", "#b-fechar-gav", "click"),
+    ("voice-effects.js", "#b-ouvir", "click"), ("voice-effects.js", "#mini-ef", "click"),
+    ("turntable.js", "#b-anterior", "click"), ("turntable.js", "#b-proxima", "click"),
+    ("turntable.js", "#b-aleatorio", "click"), ("turntable.js", "#b-repetir", "click"),
+    ("turntable.js", "#seek", "input"), ("turntable.js", "#seek", "change"),
+    ("turntable.js", "#seek", "keydown"),
+    ("receiver.js", "#b-cortar", "click"), ("receiver.js", "#b-nivelar", "click"),
+    ("receiver.js", "#f-vol", "input"), ("receiver.js", "#f-mon", "input"),
+    ("receiver.js", "#f-mic", "input"), ("receiver.js", "#mini-cortar", "click"),
+    ("receiver.js", "#b-mudo-topo", "click"), ("receiver.js", "#palco-cortar", "click"),
+    ("commands.js", "#b-tocar", "click"), ("commands.js", "#mini-tocar", "click"),
+    ("shelf.js", "#estante", "click"), ("shelf.js", "#estante", "contextmenu"),
+    ("shelf.js", "#estante", "pointerdown"),
+    ("shelf.js", "#chips", "click"), ("shelf.js", "#chips", "contextmenu"),
+    ("shelf.js", "#cartoes", "click"),
+    ("stage.js", "#mini-abrir", "click"), ("stage.js", "#mini-seta", "click"),
+    ("stage.js", "#mini-ant", "click"), ("stage.js", "#mini-prox", "click"),
+    ("stage.js", "#b-fechar-palco", "click"), ("stage.js", "#palco", "pointerdown"),
+    ("disc-page.js", "#b-pagina", "click"),
+    ("phone.js", "#b-cel", "click"), ("devices.js", "#b-disp", "click"),
+    ("devices.js", "#dica-ouvir", "click"), ("devices.js", "#b-desligar", "click"),
+    ("options.js", "#menu", "click"), ("options.js", "#menu", "keydown"),
+    ("options.js", "#menu", "pointerdown"), ("options.js", "#menu-fundo", "click"),
+    ("dialogs.js", "#dn-nao", "click"),
+    ("metrics.js", "#dd-met-btn", "click"), ("metrics.js", "#dlg-metricas", "close"),
+    ("devices.js", "#dd-mic", "change"), ("devices.js", "#dd-mon", "change"),
+    ("phone.js", "#dlg-cel", "close"), ("phone.js", "#dcel-lista", "click"),
+    ("phone.js", "#dcel-outro", "click"),
+    ("update.js", "#b-atualizar", "click"), ("update.js", "#da-ok", "click"),
+    ("options.js", "#menu", "scroll"), ("options.js", "#menu", "pointermove"),
+    ("options.js", "#menu", "pointerup"), ("options.js", "#menu", "pointercancel"),
+    ("options.js", "#menu", "touchmove"), ("options.js", "#menu", "click:capture"),
+    ("options.js", "document", "pointerdown"), ("options.js", "window", "resize"),
+    ("connection.js", "window", "online"), ("connection.js", "window", "offline"),
+    ("pairing.js", "#form-parear", "submit"),
+    ("welcome.js", "#dlg-boas", "close"), ("welcome.js", "#dlg-disp", "close"),
+    ("desk-buttons.js", "#tocar-d", "click"), ("desk-buttons.js", "#prox-d", "click"),
+    ("desk-buttons.js", "#m-aleatorio", "click"), ("desk-buttons.js", "#m-repetir", "click"),
+    ("desk-buttons.js", "#m-parecidas", "click"), ("desk-buttons.js", "#pads-grade", "click"),
+    ("desk-buttons.js", "#pads-grade", "contextmenu"),
+    ("desk-buttons.js", "#prat-esq", "click"), ("desk-buttons.js", "#prat-dir", "click"),
+    ("start.js", "document", "DOMContentLoaded"),
+    ("desk-buttons.js", "#estante", "scroll"), ("start.js", "document", "visibilitychange"),
+    ("connection.js", "navigator.connection", "change"),
+    ("dj-desk.js", "mqUnica", "change"),
 )
 SHARED_TARGETS = ("window", "document", "navigator.connection", "mqUnica")
 SHARED_HANDLERS = (("#estante", "scroll"),)
-INLINE_STAYS = (("document", "DOMContentLoaded"),)
-MARK = re.compile(r"/\* ([A-Z0-9-]+)-JS-INICIO \*/")
-RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
-STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
-            ("#seek", "input"), ("#estante", "click"), ("#mini-abrir", "click"), ("#b-pagina", "click"))
-STILL_OFF = (("#b-ouvir", "click"), ("#gaveta", "click"), ("#q", "input"), ("#resultados", "click"))
-FORM_INERT = ("the search form stays inert", "document.getElementById('form-busca')?.inert === true")
-NO_STARTUP = ("the startup does not run", "document.getElementById('mini-cortar')?.innerHTML === ''")
-DESK_ON = (("#tocar-d", "click"), ("#pads-grade", "click"), ("#prat-dir", "click"))
-EARLIER_FAILURES = (
-    ("gerado/pecas.js", (), (), (FORM_INERT,)),
-    ("dj-visor.js", (("#b-disp", "click"),), STILL_OFF, (FORM_INERT,)),
-    ("receiver.js", (("#estante", "click"), ("#mini-tocar", "click")), (("#mini-abrir", "click"), ("#b-disp", "click")),
-     (FORM_INERT,)),
-    ("turntable.js", (("#estante", "click"), ("#mini-tocar", "click"), ("#mini-cortar", "click"), ("#b-pagina", "click")),
-     (("#mini-abrir", "click"), ("#b-disp", "click")), (FORM_INERT,)),
-    ("voice-effects.js", STILL_ON, STILL_OFF, (FORM_INERT,)),
-    ("disc-page.js", DESK_ON, (), (NO_STARTUP,)),
-    ("dj-desk.js", DESK_ON, (), (NO_STARTUP,)),
-    ("queue.js", DESK_ON, (), (NO_STARTUP,)),
-    ("search.js", STILL_ON + (("#rolo-busca", "scroll"),), STILL_OFF,
-     (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"), FORM_INERT)),
-)
+REGISTERED_WHEN = ("(() => { const add = EventTarget.prototype.addEventListener; window.visibilityWhen = [];"
+                   " EventTarget.prototype.addEventListener = function (type, fn, ...rest) {"
+                   " if (this === document && type === 'visibilitychange') window.visibilityWhen.push({"
+                   " readyState: document.readyState, carregar: typeof carregar,"
+                   " connects: String(fn).includes('conectar(') });"
+                   " return add.call(this, type, fn, ...rest); }; })()")
 SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc';"
                " document.getElementById('form-busca').requestSubmit(); })()")
 OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true,"
                  " cancelable: true, composed: true, isPrimary: true, pointerId: 7, pointerType: 'touch', button: 0,"
                  " clientX: 11, clientY: 13}))")
 PAGE_READY_S = 15.0
+INLINE_MARK = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 
 
 async def until(tab, state, condition, seconds):
@@ -152,15 +136,21 @@ async def top_level_names(tab, scripts):
     return {name: where for name, where in owners.items() if len(where) > 1}, errors
 
 
+async def script_name(tab, script):
+    source = (await tab.cmd("Debugger.getScriptSource", scriptId=script["scriptId"]))["scriptSource"]
+    path = urllib.parse.urlsplit(script["url"]).path
+    if path.startswith(missing_script.THEME) and path != missing_script.THEME:
+        return path.removeprefix(missing_script.THEME), source
+    return tab.files.get(source), source
+
+
 async def page_scripts(tab):
     found = []
     for s in tab.scripts:
         aux = s.get("executionContextAuxData") or {}
         if aux.get("isDefault") and so_mock.mesma_origem(s["url"], tab.base):
-            name = missing_script.theme_file(s["url"])
-            label = name if name and not name.startswith("?") else f"index.html:{s['startLine'] + 1}"
-            source = (await tab.cmd("Debugger.getScriptSource", scriptId=s["scriptId"]))["scriptSource"]
-            found.append((label, source))
+            name, source = await script_name(tab, s)
+            found.append((name or f"index.html:{s['startLine'] + 1}", source))
     return found
 
 
@@ -177,17 +167,13 @@ async def handler_files(tab, selector, kind):
 
 
 async def script_file(tab, script_id):
-    url = next((s["url"] for s in tab.scripts if s["scriptId"] == script_id), "")
-    name = missing_script.theme_file(url)
-    if name:
-        return name
-    source = (await tab.cmd("Debugger.getScriptSource", scriptId=script_id))["scriptSource"]
-    mark = MARK.match(source.lstrip())
-    return f"{mark.group(1).lower()}.js" if mark else "index.html"
+    name, _ = await script_name(tab, next(s for s in tab.scripts if s["scriptId"] == script_id))
+    return name or "index.html"
 
 
 async def checks(tab):
     await tab.cmd("Debugger.enable")
+    await tab.cmd("Page.addScriptToEvaluateOnNewDocument", source=REGISTERED_WHEN)
     await missing_script.open_page(tab)
     await tab.tab_reaches(lambda: tab.loads >= 1, PAGE_READY_S)
     ready = await until(tab, "({mesa: typeof MESA !== 'undefined' && MESA.montada, online: typeof S !== 'undefined'"
@@ -215,12 +201,17 @@ async def checks(tab):
                     f"{ready.get('scripts')} in the page; {twice or 'no name twice'}"
                     f"{'; ' + '; '.join(errors) if errors else ''})"))
 
-    for file, _, selector, kind in FEATURE_HANDLERS:
+    for file, selector, kind in FEATURE_HANDLERS:
         files = await handler_files(tab, selector, kind)
         moved = (files == [file] if selector not in SHARED_TARGETS and (selector, kind) not in SHARED_HANDLERS
-                 else bool(files) and file in files
-                 and ("index.html" not in files or (selector, kind) in INLINE_STAYS))
+                 else bool(files) and file in files and "index.html" not in files)
         results.append((moved, f"the {kind} handler of {selector} is in {file} ({files})"))
+
+    registered = [r for r in await tab.js("visibilityWhen") or [] if r.get("connects")]
+    results.append((bool(registered) and all(r == {"readyState": "interactive", "carregar": "function", "connects": True}
+                                             for r in registered),
+                    f"the page starts watching its visibility in the DOMContentLoaded, once carregar() is there, so a "
+                    f"tab shown while the page loads does not connect before it starts ({registered})"))
 
     await tab.js(SEARCH_OPEN)
     opened = await until(tab, "({open: !!S.busca && !document.getElementById('vista-busca').hidden})", "s.open", 5.0)
@@ -231,73 +222,22 @@ async def checks(tab):
     return results
 
 
-def held_until(activation):
-    async def run(tab):
-        await tab.cmd("Debugger.enable")
-        tab.holding.add(activation)
-        await missing_script.open_page(tab)
-        state = await until(tab, f"({{ran: typeof {RAN_BEFORE[activation]} === 'function',"
-                                 " inert: document.getElementById('form-busca')?.inert})", "s.ran", PAGE_READY_S)
-        early = {}
-        for file, at, selector, kind in FEATURE_HANDLERS:
-            if at == activation:
-                files = await handler_files(tab, selector, kind)
-                early[f"{kind} {selector}"] = [f for f in files or [] if f == file]
-        await tab.release(activation, fail=False)
-        results = [(state.get("ran") and not any(early.values()),
-                    f"with {activation} still loading, the handlers it turns on are not on yet ({early})")]
-        if activation == "ui-events.js":
-            results.append((state.get("ran") and state.get("inert") is True,
-                            f"with ui-events.js still loading, the search form is inert ({state})"))
-        return results
-    return run
-
-
-async def startup_with_the_search(tab):
-    await tab.cmd("Debugger.enable")
-    with urllib.request.urlopen(tab.base + missing_script.THEME, timeout=10) as r:
-        page = r.read().decode("utf-8")
-    files = [a["src"] for a, *_ in missing_script.testa_i18n.script_elements(page) if a.get("src")]
-    after = files[files.index("ui-events.js") + 1]
-    tab.holding.add(after)
-    await missing_script.open_page(tab)
-    state = await until(tab, "({on: document.getElementById('form-busca')?.inert === false,"
-                             " carregar: typeof carregar})", "s.on && s.carregar === 'function'", PAGE_READY_S)
-    await tab.release(after, fail=False)
-    return [(state.get("on") and state.get("carregar") == "function",
-             f"with {after}, the first file after ui-events.js, held, carregar() is there by the time the search is on "
-             f"and a pairing can end ({state})")]
-
-
-def after_a_failure(missing, expected, off, page_checks):
-    async def run(tab):
-        await tab.cmd("Debugger.enable")
-        tab.failing.add(missing)
-        tab.holding.add("deck.js")
-        await missing_script.open_page(tab)
-        state = await until(tab, "({ran: !!document.querySelector('script[src=\"deck.js\"]')"
-                                 + "".join(f", {json.dumps(t)}: {e}" for t, e in page_checks) + "})", "s.ran",
-                            PAGE_READY_S)
-        found = {f"{kind} {selector}": await handler_files(tab, selector, kind) for selector, kind in expected}
-        early = {f"{kind} {selector}": await handler_files(tab, selector, kind) for selector, kind in off}
-        await tab.release("deck.js", fail=False)
-        results = [(state.get("ran") and all(found.values()),
-                    f"with {missing} failed and deck.js loading, these handlers are on ({found})"),
-                   (state.get("ran") and not any(early.values()),
-                    f"with {missing} failed and deck.js loading, these handlers are not on ({early})")]
-        results += [(state.get("ran") and state.get(title) is True, f"with {missing} failed, {title} ({state})")
-                    for title, _ in page_checks]
-        return results
-    return run
+def inline_scripts(raiz):
+    found, _ = missing_script.page_files(raiz, missing_script.THEME)
+    files = {text: name for kind, name, text in found or [] if kind == "script"}
+    theme = raiz / "themes" / "ritmelli"
+    for name in INLINE_MARK.findall((theme / "index.html").read_text(encoding="utf-8")):
+        files["\n" + (theme / name).read_text(encoding="utf-8")] = name
+    return files
 
 
 def main(argv=None):
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="The theme's scripts in a headless Chrome against a --mock server of its "
-                                             "own: every top-level name declared by one script only (read by V8), the "
-                                             "search and voice effects handlers in their own files and turned on where "
-                                             "they were, even after an earlier file failed, and the search's outside touch on the mesa. Exit 1 if a check "
-                                             "fails.")
+                                             "own: every top-level name declared by one script only (read by V8), "
+                                             "each handler in the file of its part, the visibility watched from the "
+                                             "DOMContentLoaded and the search's outside touch on the mesa. Exit 1 if a "
+                                             "check fails.")
     ap.add_argument("--raiz", type=Path, default=RAIZ, help="the checkout whose server.py and theme are served")
     args = ap.parse_args(argv)
     results = []
@@ -307,9 +247,12 @@ def main(argv=None):
             srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, raiz=args.raiz.resolve(),
                                         config={"boas_vindas": True})
             try:
-                for run in (checks, *(held_until(a) for a in RAN_BEFORE), startup_with_the_search,
-                            *(after_a_failure(*f) for f in EARLIER_FAILURES)):
-                    results += asyncio.run(missing_script.with_tab(srv, run))
+                files = inline_scripts(args.raiz.resolve())
+
+                async def run(tab):
+                    tab.files = files
+                    return await checks(tab)
+                results += asyncio.run(missing_script.with_tab(srv, run))
             finally:
                 compara.para_servidor(srv)
     for ok, message in results:
