@@ -3,7 +3,9 @@ tracks stretched, on its own, through the real Rubber Band:
 
   - position: under a strong steady tone (as in the tone pair of dev/testa_passagem.py, #197), every attack in the
     output sits where the returned position (phi) says it came from in the input, to within POSITION_TOLERANCE_MS;
-  - level: on broadband noise, no POSITION_WINDOW_MS window at the start of the output drops more than
+  - pitch: after the ramp, at the constant speed, the steady tone is back at its own pitch, so the output did go
+    through the Rubber Band;
+  - level: on broadband noise, no LEVEL_WINDOW_MS window at the start of the output drops more than
     LEVEL_DROP_DB below the input, so the switch from what already played into the stretched audio has no gap;
   - short: an input shorter than the warm-up and the crossfade (SHORT_MS) comes back whole, one output frame per
     position.
@@ -26,16 +28,17 @@ import transicao
 
 SR = engine.SR
 SPEEDS = (1 - transicao.SAI_MAX, 1 + transicao.SAI_MAX)
-DURATION_S = 12.0
+DURATION_S = 22.0
 TONE_HZ = 1201.0
 ATTACK_BAND = (200.0, 500.0)
 ATTACK_EVERY_S = 0.6
 CHECKED_S = 4.0
 POSITION_TOLERANCE_MS = 2.0
 SEARCH_MS = 120.0
-POSITION_WINDOW_MS = 5.0
+LEVEL_WINDOW_MS = 5.0
 LEVEL_CHECKED_S = 0.3
 LEVEL_DROP_DB = 3.0
+PITCH_TOLERANCE_HZ = 5.0
 SHORT_MS = (30.0, 75.0)
 SHORT_SPEED = 1.01
 
@@ -77,7 +80,8 @@ def ramp_samples(speed):
 
 def position(speed, rng):
     x, starts = attacks_input(rng)
-    z, phi = engine.esticar_saida(x, speed, ramp_samples(speed))
+    ramp = ramp_samples(speed)
+    z, phi = engine.esticar_saida(x, speed, ramp)
     xb, zb = band(x[:, 0], ATTACK_BAND), band(z[:, 0], ATTACK_BAND)
     attack, search = int(0.1 * SR), int(SEARCH_MS / 1000 * SR)
     errors = []
@@ -90,19 +94,24 @@ def position(speed, rng):
     check(abs(worst) <= POSITION_TOLERANCE_MS,
           f"position at speed {speed:.4f}: of {len(errors)} attacks in the first {CHECKED_S:.0f} s, the worst plays "
           f"{worst:+.1f} ms before where phi puts it (at most {POSITION_TOLERANCE_MS} ms either way)")
+    tail = z[ramp + SR // 4:ramp + SR // 4 + SR, 0]
+    peak_hz = float(np.fft.rfftfreq(len(tail), 1 / SR)[int(np.argmax(np.abs(np.fft.rfft(tail))))])
+    check(len(tail) == SR and abs(peak_hz - TONE_HZ) <= PITCH_TOLERANCE_HZ,
+          f"pitch at speed {speed:.4f}: the steady tone after the ramp is at {peak_hz:.1f} Hz (its own {TONE_HZ:.0f} Hz, "
+          f"at most {PITCH_TOLERANCE_HZ} Hz off)")
 
 
 def level(speed, rng):
     x = stereo(0.1 * rng.standard_normal(int(DURATION_S * SR)))
     z, _ = engine.esticar_saida(x, speed, ramp_samples(speed))
-    w = int(POSITION_WINDOW_MS / 1000 * SR)
+    w = int(LEVEL_WINDOW_MS / 1000 * SR)
     ref = float(np.sqrt(np.mean(x[:int(LEVEL_CHECKED_S * SR), 0] ** 2)))
     drops = [20 * np.log10(max(float(np.sqrt(np.mean(z[i:i + w, 0] ** 2))), 1e-9) / ref)
              for i in range(0, int(LEVEL_CHECKED_S * SR), w)]
     worst = int(np.argmin(drops))
     check(drops[worst] >= -LEVEL_DROP_DB,
-          f"level at speed {speed:.4f}: the quietest {POSITION_WINDOW_MS:.0f} ms window of the first "
-          f"{LEVEL_CHECKED_S * 1000:.0f} ms, at {worst * POSITION_WINDOW_MS:.0f} ms, is {drops[worst]:+.1f} dB from the "
+          f"level at speed {speed:.4f}: the quietest {LEVEL_WINDOW_MS:.0f} ms window of the first "
+          f"{LEVEL_CHECKED_S * 1000:.0f} ms, at {worst * LEVEL_WINDOW_MS:.0f} ms, is {drops[worst]:+.1f} dB from the "
           f"input (at least -{LEVEL_DROP_DB} dB)")
 
 
