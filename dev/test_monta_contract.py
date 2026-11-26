@@ -459,6 +459,17 @@ def main():
                                            + output_folder(run) + "') #>\n" + m.group(1) + m.group(2), run,
                                            count=1, flags=re.M)),
             move_folder(d)),
+        "a block comment on its own lines with the artifact folder before a --saida moved elsewhere": lambda d: (
+            edit_run(d, lambda run: re.sub(r"^(\s*)(\$args_ = )", lambda m: m.group(1) + "<#\n" + m.group(1)
+                                           + "'--saida', '" + output_folder(run) + "')\n" + m.group(1) + "#>\n"
+                                           + m.group(1) + m.group(2), run, count=1, flags=re.M)),
+            move_folder(d)),
+        "testa-atualizador needing testa-parcial through an always() job": lambda d: (
+            d["jobs"].update({free_job(d, "bridge"): {
+                "runs-on": "ubuntu-latest", "if": "always()", "steps": [{"run": "echo"}],
+                "needs": [next(k for k, j in d["jobs"].items() if j is shown(d, "testa-parcial"))]}}),
+            shown(d, "testa-atualizador").update(
+                needs=["monta", [k for k in d["jobs"] if k.startswith("bridge")][-1]])),
         "the --saida assignment in a block comment": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1<#\n\1\2\n\1#>", run, count=1, flags=re.M)),
         "a comment with the artifact folder before a --saida moved elsewhere": lambda d: (

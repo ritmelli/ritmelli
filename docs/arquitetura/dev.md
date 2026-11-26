@@ -48,8 +48,9 @@ pela ação `.github/actions/inno-setup`. O `dev/test_monta_contract.py` (no STD
 o roda antes de montar) exige os nomes da `monta.yml` que a esteira de publicação do `ritmelli-server` lê: o
 `workflow_dispatch` com os inputs `notas` e `notas_en`, que chegam ao passo do manifesto; os jobs `testa`,
 `testa-atualizador`, `testa-migracao` e `testa-parcial`, pelo nome que a API mostra, cada um mostrado só por
-jobs que rodam (nenhum deles nem um job de que ele depende com `if:` sempre falso); o passo `congela`, cuja
-`versao` dá nome aos artefatos, e as saídas `anterior` e `parcial` do job `monta`, que o `if:` do
+jobs que rodam (nenhum deles nem um job de que ele depende com `if:` sempre falso, nem dependendo, mesmo por
+outro job, do `testa-parcial` ou do `testa-migracao`, que só rodam em parte das montagens); o passo `congela`,
+cuja `versao` dá nome aos artefatos, e as saídas `anterior` e `parcial` do job `monta`, que o `if:` do
 `testa-migracao` e o do `testa-parcial` leem, cada uma vinda de um passo que a grava no `GITHUB_OUTPUT`; e os
 artefatos `Ritmelli-<versão>` (a pasta que o passo do `publica.py` recebe no `--saida`) e
 `ritmelli-exe-<versão>` (um caminho só, sem curinga, que termina no `ritmelli.exe`), cada um uma vez na
