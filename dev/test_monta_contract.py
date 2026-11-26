@@ -52,6 +52,13 @@ def switched_off(condition):
     return condition is False or re.fullmatch(r"(\$\{\{)?\s*false\s*(\}\})?", str(condition).strip(), re.I) is not None
 
 
+def server_mark(name, versions):
+    def server_inner(expression):
+        return " ".join(str(expression).strip().removeprefix("${{").removesuffix("}}").split())
+    return re.sub(r"\$\{\{[^}]*\}\}", lambda m: MARK if server_inner(m.group(0)) in versions else m.group(0),
+                  str(name))
+
+
 def mark(name, versions):
     text = str(name).replace(MARK, "<written version>")
     return EXPRESSION.sub(lambda m: MARK if inner(m.group(0)) in versions else m.group(0), text)
@@ -68,12 +75,13 @@ def uploads(jobs):
         if job_id == "monta":
             versions.add(inner(VERSION))
         loose = {f"needs.{n}.outputs.versao" for n in needs if "versao" in ((jobs.get(n) or {}).get("outputs") or {})}
-        loose |= {inner((job.get("outputs") or {}).get("versao", ""))} - {None}
+        if "versao" in (job.get("outputs") or {}):
+            loose.add(" ".join(str(job["outputs"]["versao"]).strip().removeprefix("${{").removesuffix("}}").split()))
         for s in job_steps(job):
             if str(s.get("uses", "")).startswith("actions/upload-artifact@") and not switched_off(s.get("if")):
                 w = s.get("with") or {}
                 conditional = "if" in job or "if" in s or not all(runs(jobs, job_id, b) for b in BUILDS)
-                out.append((mark(w.get("name", ""), versions), w, conditional, mark(w.get("name", ""), loose)))
+                out.append((mark(w.get("name", ""), versions), w, conditional, server_mark(w.get("name", ""), loose)))
     return out
 
 
@@ -565,6 +573,15 @@ def main():
             s for s in d["jobs"]["monta"]["steps"]
             if str((s.get("with") or {}).get("name", "")).startswith("assinar-app-"))["with"].update(
                 name="ritmelli-exe-0.6.0"),
+        "a second upload named ritmelli-exe-<version> literally": lambda d: d["jobs"]["monta"]["steps"].append(
+            {"uses": upload(d, exe)["uses"], "with": {"name": f"ritmelli-exe-{MARK}", "path": "x/ritmelli.exe"}}),
+        "a second ritmelli-exe named by a versao output written without ${{ }}": lambda d: d["jobs"].update(
+            {free_job(d, "copy"): {"runs-on": "ubuntu-latest", "needs": ["monta"],
+                                   "outputs": {"versao": "steps.v.outputs.versao"},
+                                   "steps": [{"id": "v", "run": "echo"},
+                                             {"uses": upload(d, exe)["uses"],
+                                              "with": {"name": "ritmelli-exe-${{ steps.v.outputs.versao }}",
+                                                       "path": "dist/ritmelli/ritmelli.exe"}}]}}),
         "a parcial=false in a one-line if block": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nif ($env:ANTERIOR) { Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false" -Encoding ascii }\n'),
