@@ -222,6 +222,10 @@ DOUBTFUL = (
     ("an @namespace in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
                                               "a.css": "@namespace svg url(http://www.w3.org/2000/svg);\n"}),
     ("a linked stylesheet that is not in the theme", {"index.html": "<link rel=\"stylesheet\" href=\"gone.css\">\n"}),
+    ("an inline-script that is not in the theme", {"index.html": "<!-- inline-script: gone.js -->\n"}),
+    ("an @scope in a style", {"index.html": "<style>@scope { p { color: red; } }</style>\n"}),
+    ("an @scope in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
+                                          "a.css": "@sco\\70 e { p { color: red; } }\n"}),
     ("an @import in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
                                            "a.css": "/* @import \"b.css\"; */\n"}),
     ("a value in single quotes", {"index.html": "<script src='x.js'></script>\n"}),
@@ -378,14 +382,16 @@ def main():
             results.append((True, f"{page} is in the strict form"))
         except theme_rebuild.Doubt as unsure:
             results.append((False, f"{page} is not in the strict form: {unsure}"))
-    pages = {"base": inline("f();"), "head": dict(DOUBTFUL[0][1])}
+    refused = [x for x in DOUBTFUL if x[0] in (DOUBTFUL[0][0], "an inline-script that is not in the theme")]
     kept = theme_rebuild.reader, theme_rebuild.listing
-    theme_rebuild.reader, theme_rebuild.listing = (lambda rev, _: pages[rev].get), (lambda rev, _: {})
-    try:
-        code = theme_rebuild.main(["base", "head"])
-    finally:
-        theme_rebuild.reader, theme_rebuild.listing = kept
-    results.append((code == theme_rebuild.CANNOT_JUDGE, f"the verdict on {DOUBTFUL[0][0]} is {code}"))
+    for title, page in refused:
+        pages = {"base": inline("f();"), "head": dict(page)}
+        theme_rebuild.reader, theme_rebuild.listing = (lambda rev, _: pages[rev].get), (lambda rev, _: {})
+        try:
+            code = theme_rebuild.main(["base", "head"])
+        finally:
+            theme_rebuild.reader, theme_rebuild.listing = kept
+        results.append((code == theme_rebuild.CANNOT_JUDGE, f"the verdict on {title} is {code}"))
     report = theme_rebuild.compare(theme, theme, compiles)
     results.append((not report.changes and report.declarations > 100,
                     f"the theme against itself only moves code ({report.declarations} declarations compared)"))

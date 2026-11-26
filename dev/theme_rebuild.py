@@ -31,8 +31,8 @@ the gallery use, one list for HTML and one inside <svg>. A <script> or <style> e
 <iframe> or <select> holds no <. A script src and a stylesheet href (with rel="stylesheet" alone) are plain paths
 inside the theme, like gerado/base.css. Anything else, and <script/>, <style/>, a <base>, a preload or prefetch
 <link>, a srcdoc, a NUL in a value, a & in a rel, type or as, a & that is no whole reference in a value, a script type
-that is not JavaScript or JSON, an @import or @namespace in a sheet (even escaped or in a comment), or a linked
-file that is not in the theme, exits 3, naming the file, the line and the place. In a sheet, only CSS whitespace and comments may sit between and around the rules.
+that is not JavaScript or JSON, an @import, @namespace or @scope in a sheet (even escaped or in a comment),
+or a linked or inlined file that is not in the theme, exits 3, naming the file, the line and the place. In a sheet, only CSS whitespace and comments may sit between and around the rules.
 
 Exit 0 when the head only moves code: the two pages are the same, or
 - every file of the theme that the page does not read (images, fonts) has the same content;
@@ -162,7 +162,7 @@ def body_problem(element, body, from_file):
 
 def sheet_reaches_out(text):
     read = css_unescape(text).lower()
-    return "@import" in read or "@namespace" in read
+    return any(rule in read for rule in ("@import", "@namespace", "@scope"))
 
 
 def css_unescape(text):
@@ -300,7 +300,11 @@ def assemble(read, files=None):
         return read(name)
     html = need("index.html")
     strict(html, "index.html")
-    for inlined in INLINE_SCRIPT.findall(html):
+    for marker in INLINE_SCRIPT.finditer(html):
+        inlined = marker.group(1)
+        if read(inlined) is None:
+            raise Doubt(f"index.html, line {html.count(chr(10), 0, marker.start()) + 1}: the inline-script {inlined} is "
+                        f"not in the theme")
         if body_problem("script", need(inlined), False):
             raise Doubt(f"{inlined}: a </script or a <!-- in a script the server puts inline")
     page = INLINE_SCRIPT.sub(lambda m: f'<script {INLINED}="{m.group(1)}">\n{need(m.group(1))}</script>', html)
@@ -328,8 +332,8 @@ def assemble(read, files=None):
             if (text := fetch(name)) is None:
                 raise Doubt(f"{name}: the page links it, and it is not in the theme (the browser gets a 404)")
             if kind == "link" and sheet_reaches_out(text):
-                raise Doubt(f"{name}: an @import or @namespace, even escaped or in a comment, which ties the sheet to "
-                            f"something outside its rules")
+                raise Doubt(f"{name}: an @import, @namespace or @scope, even escaped or in a comment, which ties the "
+                            f"sheet to something outside its rules")
             body += f"{text}\n\x00close\x00\n"
         page = page[:begin] + body + page[end:]
     items, current = [], []
