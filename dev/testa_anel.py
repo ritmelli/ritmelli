@@ -717,11 +717,14 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertIn("voice pedal: its voice track came up 0.01 s after the pedal turned on", log)
 
     def test_only_the_last_ended_starts_are_kept(self):
-        pedal = dryouts.VoicePedalStart(clock=lambda: 1.0)
-        for _ in range(3 * dryouts.ENDED_STARTS):
+        now = [0.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        for i in range(3 * dryouts.ENDED_STARTS):
+            now[0] = float(i)
             pedal.pedal(True)
             pedal.pedal(False)
-        self.assertEqual(len(pedal._ended), dryouts.ENDED_STARTS)
+        self.assertEqual([on for on, _, _ in pedal._ended],
+                         list(range(2 * dryouts.ENDED_STARTS, 3 * dryouts.ENDED_STARTS)))
 
     def test_a_stamp_from_before_the_wrap_read_after_it(self):
         wrap = 2**32 / 1000
