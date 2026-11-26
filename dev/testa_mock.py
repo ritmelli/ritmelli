@@ -40,10 +40,10 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import so_mock  # noqa: E402
+import so_mock
 
 sys.path.insert(0, str(RAIZ))
-import permissao as perm  # noqa: E402
+import permissao as perm
 
 falhas = []
 
@@ -1099,8 +1099,8 @@ def sem_rede():
     do YouTube iriam na hora. Depois, uma busca (o que a pessoa pede vai ao YouTube) tem que cair na armadilha: e ela
     que mostra que a armadilha pega."""
     try:
-        import aiohttp  # noqa: F401
-        import numpy  # noqa: F401
+        import aiohttp
+        import numpy
     except ImportError as ex:
         print(f"--   o --mock sem rede ficou de fora: sem as bibliotecas do servidor ({ex.name})")
         return
@@ -1187,8 +1187,8 @@ def sem_rede():
 tabela()
 campos_da_faixa()
 try:
-    import aiohttp  # noqa: F401
-    import numpy  # noqa: F401
+    import aiohttp
+    import numpy
 except ImportError as ex:
     print(f"--   o guard papel por papel ficou de fora: sem as bibliotecas do app ({ex.name})")
 else:

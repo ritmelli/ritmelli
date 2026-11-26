@@ -480,7 +480,7 @@ class Metricas:
             self.erros.add(chave)
             ev = evento_de_erro(tipo, valor, tb, onde, self.base)
             threading.Thread(target=self._manda_erro, args=(ev,), daemon=True, name="metricas-erro").start()
-        except Exception:  # noqa: BLE001 - o relato de um erro nunca vira outro
+        except Exception:  # o relato de um erro nunca vira outro
             pass
 
     def _manda_erro(self, ev):
@@ -492,7 +492,7 @@ class Metricas:
             self.envia(f"https://{host}/api/{projeto}/envelope/", corpo, {
                 "Content-Type": "application/x-sentry-envelope",
                 "X-Sentry-Auth": f"Sentry sentry_version=7, sentry_key={chave}, sentry_client=ritmelli/{VERSAO}"})
-        except Exception:  # noqa: BLE001 - sem rede, o erro nao vai
+        except Exception:  # sem rede, o erro nao vai
             pass
 
     def _manda_fila(self):
@@ -507,7 +507,7 @@ class Metricas:
         try:
             self.envia(POSTHOG, json.dumps({"api_key": POSTHOG_CHAVE, "batch": lote}).encode("utf-8"),
                        {"Content-Type": "application/json"})
-        except Exception:  # noqa: BLE001 - sem rede: volta para a fila, e o FILA_MAX segura o tamanho
+        except Exception:  # sem rede: volta para a fila, e o FILA_MAX segura o tamanho
             with self._lock:
                 if geracao != self._geracao:
                     return  # desligou durante o envio: o que nao saiu fica fora, como o resto da fila
@@ -525,7 +525,7 @@ class Metricas:
             tocando = e.status() == "playing"
             ef = str(e.effect or SEM_EFEITO)
             mudo = bool(getattr(e, "mic_mute", False))
-        except Exception:  # noqa: BLE001 - o motor fechando
+        except Exception:  # o motor fechando
             return
         if tocando:
             self._uso["musica_s"] += dt
