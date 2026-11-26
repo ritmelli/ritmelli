@@ -32,8 +32,8 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   Automático, os do resto do `server.py` aos privados da `Library` e as escritas diretas no estado do `App` e do motor;
   o `dev/garden.py` segura cada conta no seu teto ([fx.md](docs/arquitetura/fx.md),
   [comandos.md](docs/arquitetura/comandos.md)).
-- As linhas de CSS e JS inline do `themes/ritmelli/index.html` não sobem: o teto `theme_inline_lines` do
-  `dev/garden.py`.
+- As linhas dentro dos blocos `<style>` e `<script>` do `themes/ritmelli/index.html` não sobem: o teto
+  `theme_inline_lines` do `dev/garden.py`.
 - O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`) só passa no "Testa o PR" com uma execução aprovada
   do "Monta o instalador" (`monta.yml`) no head: rode-o na branch (o "Verdict", provado pelo `dev/test_ci_workflow.py`).
   O `dev/test_monta_contract.py` exige os artefatos `Ritmelli-<versão>` e `ritmelli-exe-<versão>` em toda montagem, um
