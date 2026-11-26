@@ -257,6 +257,8 @@ DOUBTFUL = (
                                           "a.css": "@sco\\70 e { p { color: red; } }\n"}),
     ("an @import in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
                                            "a.css": "/* @import \"b.css\"; */\n"}),
+    ("a </ style> in a linked stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n",
+                                             "a.css": "/* </ style><script src=\"x.js\"></script> */\n"}),
     ("a value in single quotes", {"index.html": "<script src='x.js'></script>\n"}),
     ("a value with no quotes", {"index.html": "<div id=a></div>\n<script src=\"x.js\"></script>\n"}),
     ("a tag name in capitals", {"index.html": "<SCRIPT src=\"x.js\"></SCRIPT>\n"}),

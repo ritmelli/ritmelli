@@ -352,7 +352,7 @@ def assemble(read, files=None, theme="ritmelli"):
                 raise Doubt(f"{name}: a </script or a <!-- in a script the server puts inline")
             if kind == "script" and text.startswith("#!"):
                 raise Doubt(f"{name}: a #! at its start, which only a script file read on its own allows")
-            if kind == "link" and re.search(r"</style", text, re.I):
+            if kind == "link" and re.search(r"</\s*style", text, re.I):
                 raise Doubt(f"{name}: a </style in a sheet the server puts inline")
             outside = posixpath.dirname(theme_path(name, theme)) != f"themes/{theme}"
             if kind == "link" and (problem := from_root("theme_page").sheet_problem(text, outside)):
