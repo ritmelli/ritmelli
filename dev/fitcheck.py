@@ -137,6 +137,8 @@ async def wait_ready(cmd, expr, blocked, timeout_s):
             return Ready.CHROME_GONE
         except (RuntimeError, TimeoutError):
             r = {}
+        if blocked:
+            return Ready.LEFT
         if time.monotonic() > deadline:
             return Ready.TIMED_OUT
         if r.get("result", {}).get("value") is True:

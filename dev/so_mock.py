@@ -12,6 +12,7 @@ de agir; no Chrome, o DOCUMENTOS e o libera_ou_barra barram o documento de outra
 Quem sobe o proprio servidor (compara, previews, testa_mock) usa o sobe: a porta recusada antes do Popen se e a 8799 ou
 se alguem ja responde nela, e cada pedido so com o filho vivo e o marcador na origem; se nao, so o filho sai, pelo
 handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado."""
+import ctypes
 import json
 import socket
 import subprocess
@@ -20,6 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from ctypes import wintypes
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -141,6 +143,79 @@ def libera_ou_barra(params, base):
     return "Fetch.failRequest", {"requestId": params["requestId"], "errorReason": "BlockedByClient"}
 
 
+class _ProcessEntry(ctypes.Structure):
+    _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+                ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260)]
+
+
+def _kernel32():
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    k.OpenProcess.restype = wintypes.HANDLE
+    for name in ("Process32FirstW", "Process32NextW"):
+        getattr(k, name).argtypes = (wintypes.HANDLE, ctypes.POINTER(_ProcessEntry))
+    k.CloseHandle.argtypes = (wintypes.HANDLE,)
+    k.TerminateProcess.argtypes = (wintypes.HANDLE, wintypes.UINT)
+    k.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    k.GetProcessTimes.argtypes = (wintypes.HANDLE, *(ctypes.POINTER(wintypes.FILETIME),) * 4)
+    return k
+
+
+def _created(k, handle):
+    times = [wintypes.FILETIME() for _ in range(4)]
+    if not k.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+        return None
+    return times[0].dwHighDateTime << 32 | times[0].dwLowDateTime
+
+
+def _descendants(k, pid):
+    snapshot = k.CreateToolhelp32Snapshot(0x2, 0)
+    parents, entry = {}, _ProcessEntry()
+    entry.dwSize = ctypes.sizeof(_ProcessEntry)
+    try:
+        more = k.Process32FirstW(snapshot, ctypes.byref(entry))
+        while more:
+            parents[entry.th32ProcessID] = entry.th32ParentProcessID
+            more = k.Process32NextW(snapshot, ctypes.byref(entry))
+    finally:
+        k.CloseHandle(snapshot)
+    found, frontier = [], [pid]
+    while frontier:
+        children = [c for c, parent in parents.items() if parent in frontier and c not in found and c != pid]
+        found += children
+        frontier = children
+    return found
+
+
+def kill_tree(popen, espera=10):
+    if sys.platform != "win32":
+        popen.kill()
+        popen.wait()
+        return
+    k = _kernel32()
+    root = k.OpenProcess(0x1000, False, popen.pid)
+    born = _created(k, root) if root else None
+    if root:
+        k.CloseHandle(root)
+    handles = []
+    for pid in _descendants(k, popen.pid) if born is not None else []:
+        h = k.OpenProcess(0x00100000 | 0x1 | 0x1000, False, pid)
+        if h and (_created(k, h) or 0) >= born:
+            handles.append(h)
+        elif h:
+            k.CloseHandle(h)
+    if popen.poll() is None:
+        popen.kill()
+    for h in handles:
+        k.TerminateProcess(h, 1)
+    for h in handles:
+        k.WaitForSingleObject(h, int(espera * 1000))
+        k.CloseHandle(h)
+    popen.wait()
+
+
 class Filho:
     """O servidor --mock que a ferramenta subiu (srv, o Popen) na porta dela. Cada pedido so com ele vivo e a origem
     respondendo com o marcador; se nao, so ele sai, pelo handle."""
@@ -178,9 +253,9 @@ class Filho:
             try:
                 code = self.srv.wait(espera)
             except subprocess.TimeoutExpired:
-                self.mata()
-                raise Recusa(f"the test server did not stop within {espera:g} s of its stdin closing: killed, and the "
-                             "processes it started may still be running") from None
+                kill_tree(self.srv)
+                raise Recusa(f"the test server did not stop within {espera:g} s of its stdin closing: killed with the "
+                             "processes it started") from None
             if live and code != 0:
                 raise Recusa(f"the test server exited with code {code} when its stdin closed, not by its own stop")
             return
