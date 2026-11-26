@@ -443,6 +443,15 @@ class Walker(ast.NodeVisitor):
             self.followed += 1
             self.against_held(self.local_locks(nested), node, nested.name)
 
+    def visit_Module(self, node):
+        for top in node.body:
+            for cls, f in ([(top.name, f) for f in top.body] if isinstance(top, ast.ClassDef) else [(None, top)]):
+                if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    outer, self.cls = self.cls, cls
+                    self.mark_callbacks(f)
+                    self.cls = outer
+        self.generic_visit(node)
+
     def visit_ClassDef(self, node):
         outer, self.cls = self.cls, node.name
         self.generic_visit(node)
@@ -458,6 +467,10 @@ class Walker(ast.NodeVisitor):
         for n in ast.walk(func):
             if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == arg.id for t in n.targets):
                 out += [m for m in ast.walk(n.value) if isinstance(m, ast.Lambda)]
+                if isinstance(n.value, ast.Call):
+                    out += [m for key in resolve(self.table, n.value, self.name, self.cls)
+                            for r in ast.walk(self.table[key]) if isinstance(r, ast.Return) and r.value is not None
+                            for m in ast.walk(r.value) if isinstance(m, ast.Lambda)]
         return out
 
     def mark_callbacks(self, func):
@@ -617,6 +630,14 @@ def builder_held(funcs, name, param, memo):
     return best
 
 
+def builds(value, name):
+    def call(v):
+        return isinstance(v, ast.Call) and isinstance(v.func, ast.Name) and v.func.id == name and not v.args
+    return call(value) or (isinstance(value, ast.IfExp) and call(value.body) and isinstance(value.test, ast.Call)
+                           and called_attr(value.test) == "callable"
+                           and any(isinstance(a, ast.Name) and a.id == name for a in value.test.args))
+
+
 def builder_failures(tree):
     funcs, memo = methods(tree, "Engine"), {}
     out = [f"Engine.{key[2]} calls its builder {name} under {sorted(builder_held(funcs, key[2], name, memo))}, not "
@@ -627,8 +648,7 @@ def builder_failures(tree):
             out += [f"Engine.{key[2]}:{n.lineno} publishes a track that is not its builder's call"
                     for n in ast.walk(funcs[key[2]]) if isinstance(n, ast.Assign)
                     and any(isinstance(t, ast.Attribute) and t.attr == "track" for t in n.targets)
-                    and not any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == name
-                                for c in ast.walk(n.value))]
+                    and not builds(n.value, name)]
             out += [f"Engine.{key[2]}:{n.lineno} hands the _restart a track that is not its builder"
                     for n in ast.walk(funcs[key[2]]) if isinstance(n, ast.Call) and called_attr(n) == "_restart"
                     for kw in n.keywords if kw.arg == "track"
@@ -1051,6 +1071,9 @@ def main():
             ("the preparar publishing the record it built on entry",
              "                d.track = track = track() if callable(track) else initial\n",
              "                d.track = track = initial\n"),
+            ("the trocar_fonte calling its builder but publishing the record it built on entry",
+             "                novo = self.track = d.track = novo() if callable(novo) else novo\n",
+             "                novo = self.track = d.track = (novo(), initial)[1] if callable(novo) else novo\n"),
             ("the trocar_fonte handing the record it built on entry to the _restart",
              "antes, leitor = self._restart(lambda: self._clamp(self.pos, initial), track=novo,",
              "antes, leitor = self._restart(lambda: self._clamp(self.pos, initial), track=initial,"),
@@ -1068,6 +1091,13 @@ def main():
     check(locked != sources["server.py"] and any("lib_lock" in b for b in bad),
           f"with the download's builder taking the shelf's lock, which the engine runs under the _qlock, the order "
           f"check fails ({[b for b in bad if 'lib_lock' in b][:1]})")
+    locked = sources["server.py"].replace(
+        'return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))',
+        'return lambda: self.lib.update(it["id"]) and dict(it, path=str(LIB / it["file"]), **marca_auto(x))', 1)
+    bad, *_ = scan(dict(sources, **{"server.py": locked}), order, before)
+    check(locked != sources["server.py"] and any("lib_lock" in b for b in bad),
+          f"with the passage's builder, which fonte_de returns and the preparar runs under the _qlock, taking the "
+          f"shelf's lock, the order check fails ({[b for b in bad if 'lib_lock' in b][:1]})")
     guarded = pode_guarantees(trees["engine.py"])
     check(len(guarded) >= 5 and not pode_failures(trees["engine.py"]),
           f"every Engine method that takes a pode runs it under the _lock and the _qlock, also through the methods it "

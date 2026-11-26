@@ -127,21 +127,21 @@ método do `App`, da `Engine`, do `Automatico`, da prateleira ou do `comandos.py
 que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock` só se tenta, com
 `acquire(blocking=False)` (o `with_engine`). As funções que outro roda com as travas na mão contam com elas: as do
 `change_queue`, do `close_switches` e do `concilia` (a `fila_lock` e o `_qlock`), a do `with_engine` (a `fila_lock` e o
-`_lock`) o `pode` dos métodos do motor e o construtor do disco que o `trocar_fonte`, o `preparar` e o `load` (e o
-`_troca`, que o passa ao `load`) recebem (o `_lock` e o `_qlock`), e as funções locais que elas chamam também; e confere
-essas travas no código que roda cada função (o `change_queue` chama a dele dentro do `_qlock`, e cada método público do
-motor que recebe um `pode` o roda sob o `_lock` e o `_qlock`, também pelo `_restart`; o `trocar_fonte`, o `preparar` e o
-`load` chamam o construtor sob as duas e publicam o que ele monta ali, não o que montaram na entrada), e que quem chama
-o `change_queue`, o `close_switches` e o `concilia` tem a `fila_lock` na mão, subindo pelas chamadas até o ponto de
-entrada (a thread, a rota); uma função local ou um `lambda` feitos com uma trava na mão não contam com ela (rodam
-depois, noutra thread), salvo os que vão para as funções acima. Os ganchos que o App põe no motor (pelo
-`on_silent_stream` ou atribuindo, como o `religar_stream`, o `sonoridade_de` e o `mediu`, também chamados por um nome
-local) contam como o método do App que o App pôs ali, e todo gancho que o motor chama tem de achar o seu. Com a
-`fila_lock`, o `_lock` ou o `_qlock` na mão, nem o código nem o que ele chama grava arquivo (`save_json`, `_save`,
-`write_text`, `write_bytes`). Nenhuma trava do modelo vai para um nome local (`q = E._qlock`, o `state_section()` ou um
-`with ... as`), para que cada `with` e `acquire` diga a sua. Confere também que o `_mixa` e os métodos e as funções do
-`engine.py` que ele chama, das travas do modelo, só pegam o `_qlock` (o `AudioLocks` do `Locks.tla`); o `_slock` dos
-sons por cima não entra no modelo.
+`_lock`), o `pode` dos métodos do motor e o construtor do disco que o `trocar_fonte`, o `preparar` e o `load` (e o
+`_troca`, que o passa ao `load`) recebem (o `_lock` e o `_qlock`; também o que uma função devolve, como o do
+`fonte_de`), e as funções locais que elas chamam também; e confere essas travas no código que roda cada função (o
+`change_queue` chama a dele dentro do `_qlock`, e cada método público do motor que recebe um `pode` o roda sob o `_lock`
+e o `_qlock`, também pelo `_restart`; o `trocar_fonte`, o `preparar` e o `load` chamam o construtor sob as duas e
+publicam a própria chamada dele ali, não o que montaram na entrada), e que quem chama o `change_queue`, o
+`close_switches` e o `concilia` tem a `fila_lock` na mão, subindo pelas chamadas até o ponto de entrada (a thread, a
+rota); uma função local ou um `lambda` feitos com uma trava na mão não contam com ela (rodam depois, noutra thread),
+salvo os que vão para as funções acima. Os ganchos que o App põe no motor (pelo `on_silent_stream` ou atribuindo, como o
+`religar_stream`, o `sonoridade_de` e o `mediu`, também chamados por um nome local) contam como o método do App que o
+App pôs ali, e todo gancho que o motor chama tem de achar o seu. Com a `fila_lock`, o `_lock` ou o `_qlock` na mão, nem
+o código nem o que ele chama grava arquivo (`save_json`, `_save`, `write_text`, `write_bytes`). Nenhuma trava do modelo
+vai para um nome local (`q = E._qlock`, o `state_section()` ou um `with ... as`), para que cada `with` e `acquire` diga
+a sua. Confere também que o `_mixa` e os métodos e as funções do `engine.py` que ele chama, das travas do modelo, só
+pegam o `_qlock` (o `AudioLocks` do `Locks.tla`); o `_slock` dos sons por cima não entra no modelo.
 
 ## O modelo das travas (`dev/tla/`)
 
@@ -170,9 +170,11 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   prateleira, depois o `update_track` sob o `_qlock`) corre contra o download, o stream, a passagem e o tocar da
   prateleira: quando tudo para, o disco do prato tem o nome atual (`PlatterHasTheCurrentName`), com um mutante por
   caminho: o `update_track` que põe um dicionário novo no prato, o arquivo do download, o da passagem e o do tocar
-  montados antes da trava, e o segundo deck que não recebe o nome. Duas execuções mostram, como falhas conhecidas da
-  #303, o stream que abre e o stream que a passagem prepara, que levam o nome copiado antes
-  (`NameIsCurrentOutsideARename`: fora de uma troca de nome em curso, o disco do prato tem o nome atual).
+  montados antes da trava, e o segundo deck que não recebe o nome. Três execuções mostram, como falhas conhecidas da
+  #303, o stream que abre, o disco de um job tocado enquanto baixa e o stream que a passagem prepara, que levam o nome
+  copiado antes, cada uma presa à ação do seu caminho (o `action` do `Run`: o último passo do contraexemplo, que é a
+  publicação que quebra o invariante) (`NameIsCurrentOutsideARename`: fora de uma troca de nome em curso, o disco do
+  prato tem o nome atual).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o

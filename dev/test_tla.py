@@ -29,6 +29,7 @@ class Run:
     specification: str = None
     symmetry: bool = True
     deadlock: bool = True
+    action: str = None
 
 
 RENAME = (("WithTheRename", "TRUE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"),
@@ -60,10 +61,14 @@ RUNS = (
         constants=RENAME_PLAY + (("RecordBuiltUnderTheLock", "FALSE"),)),
     Run("known failure #303: a rename on the shelf while a job's stream opens: the stream comes in with the name it "
         "copied before", "Races211", "invariant NameIsCurrentOutsideARename",
-        invariants=("NameIsCurrentOutsideARename",), constants=RENAME),
+        invariants=("NameIsCurrentOutsideARename",), action="StreamOpened",
+        constants=RENAME + (("TheJobIsPlayedBeforeItsDownloadEnds", "TRUE"),)),
+    Run("known failure #303: a rename on the shelf before a play of a downloading job publishes its record: the record "
+        "keeps the request's name", "Races211", "invariant NameIsCurrentOutsideARename",
+        invariants=("NameIsCurrentOutsideARename",), action="SwapPublishes", constants=RENAME),
     Run("known failure #303: a rename on the shelf while the passage prepares a job's stream: the stream keeps the "
         "queue entry's name", "Races211", "invariant NameIsCurrentOutsideARename",
-        invariants=("NameIsCurrentOutsideARename",),
+        invariants=("NameIsCurrentOutsideARename",), action="MixerSwitches",
         constants=RENAME + (("WithTheJobSwitch", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"))),
     Run("mutant: a rename on the shelf puts a new track dict on the platter", "Races211",
         "invariant FinishedDownloadReachesThePlatter", invariants=("FinishedDownloadReachesThePlatter",),
@@ -289,12 +294,16 @@ def tlc(java, jar, work, run, index):
 
 
 def report(run, got, text, took):
+    expect = run.expect
+    if run.action:
+        steps = re.findall(r"State \d+: <(\w+) ", text)
+        got, expect = f"{got} by {steps[-1] if steps else '?'}", f"{expect} by {run.action}"
     detail = f"{run.title}: {got}, {states(text)} states, {took:.1f} s"
     if took > LIMIT_S:
         check(False, f"{detail}: over the {LIMIT_S} s limit")
     else:
-        check(got == run.expect, detail + ("" if got == run.expect else f" (expected {run.expect})"))
-    if got != run.expect:
+        check(got == expect, detail + ("" if got == expect else f" (expected {expect})"))
+    if got != expect:
         print("\n".join(text.splitlines()[-80:]), flush=True)
 
 

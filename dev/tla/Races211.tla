@@ -8,7 +8,7 @@ CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, Stre
           OpenedStreamLooksForTheFile, SeekStartsANewLine, WaitKeyedByGen, WithTheForget,
           WithTheDrop, WithTheJobSwitch, DownloadEndsBeforeTheSourcePick, PrepareLooksAtTheShelf,
           PassageFileKeepsTheJob, WithTheRename, RenameReplacesTheTrack, RenameReachesThePreparedDeck,
-          RecordBuiltUnderTheLock, WithTheJobOnThePlatter
+          RecordBuiltUnderTheLock, WithTheJobOnThePlatter, TheJobIsPlayedBeforeItsDownloadEnds
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd, noReader, gen,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying,
@@ -134,6 +134,7 @@ Init ==
 
 DownloadEnds ==
     /\ At("Download", "dl_run")
+    /\ TheJobIsPlayedBeforeItsDownloadEnds => pc["Swap"] \in {"sw_release", "done"}
     /\ \/ jobStatus' = "error" /\ UNCHANGED shelf /\ Goto("Download", "dl_failed")
        \/ UNCHANGED jobStatus /\ shelf' = TRUE /\ Goto("Download", "dl_shelved")
     /\ UNCHANGED <<lockVars, platVars, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying, queueVars, localVars, shelfName, dlName>>

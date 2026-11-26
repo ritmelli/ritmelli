@@ -95,6 +95,10 @@ def renamed_after_the_first_build(A, iid, title, build):
     return built
 
 
+def shown_title(A):
+    return (A.leitura()[0].get("track") or {}).get("title")
+
+
 def play(A, E, readers, iid):
     cmd.tocar(A, iid)
     return readers.wait(iid)
@@ -777,10 +781,27 @@ def stream_renamed_while_it_opens(A, E, readers):
         check(cmd.play_downloading(A, j, target, {"youtube_id": target, "title": "the old name"})
               and stream.ended.wait(WAIT_S), "the job's record is on the platter and its stream opened")
     del A._abre_stream
-    tr = E.track or {}
-    check(str(tr.get("path", "")).startswith("https://") and tr.get("title") == "the old name",
+    check(str((E.track or {}).get("path", "")).startswith("https://"), "the job's stream is on the platter")
+    check(shown_title(A) == "the old name",
           f"known failure #303: a rename on the shelf while the stream opens is undone by the stream's record, built "
-          f"before ({tr.get('title')})")
+          f"before ({shown_title(A)})")
+
+
+def downloading_job_played_after_a_rename(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "wwwwwwwwwww"
+    j = A.new_job("downloading", True, target)
+    A.lib.add(dict(A.lib.get("d2"), id=target, youtube_id=target, title="the old name"))
+    cmd.update_record(A, target, title="the new name")
+    stream = StreamThread(A)
+    with contextlib.redirect_stderr(io.StringIO()):
+        check(cmd.play_downloading(A, j, target, {"youtube_id": target, "title": "the old name"})
+              and stream.ended.wait(WAIT_S), "the job's record is on the platter and its stream was refused")
+    del A._abre_stream
+    check((E.track or {}).get("id") == target, "the job's record is on the platter")
+    check(shown_title(A) == "the old name",
+          f"known failure #303: a play of a downloading job whose record was renamed on the shelf puts the request's "
+          f"name on the platter ({shown_title(A)})")
 
 
 def prepared_stream_renamed_before_it_is_published(A, E, readers):
@@ -793,22 +814,22 @@ def prepared_stream_renamed_before_it_is_published(A, E, readers):
     with A.fila_lock:
         A.change_queue(lambda: A.fila.append(x))
     info = {"url": "https://stream.invalid/v", "id": target, "title": "the old name", "duration": 600.0}
-    prepare = E.preparar
+    channel = A.canal_depois
 
-    def shelved_and_renamed_first(track, *a, **kw):
+    def shelved_and_renamed_after_the_build(d, *a, **kw):
         A.lib.add(dict(A.lib.get("d2"), id=target, youtube_id=target, title="the old name"))
         cmd.update_record(A, target, title="the new name")
-        return prepare(track, *a, **kw)
+        return channel(d, *a, **kw)
     cap = E.captura()
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "stream_info", return_value=(info, {})),
-          mock.patch.object(E, "preparar", shelved_and_renamed_first)):
+          mock.patch.object(A, "canal_depois", shelved_and_renamed_after_the_build)):
         A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
     check(E.pronto_tag == x["qid"], "the job's stream is prepared on the second deck")
     check(E.virou is not None or mix_until_the_switch(E), "the engine switched to the prepared stream")
-    tr = E.track or {}
-    check(tr.get("id") == target and tr.get("title") == "the old name",
+    check((E.track or {}).get("id") == target, "the job's prepared stream is on the platter after the switch")
+    check(shown_title(A) == "the old name",
           f"known failure #303: a rename on the shelf while the passage prepares a job's stream leaves the queue "
-          f"entry's name on the platter after the switch ({tr.get('id')}, {tr.get('title')})")
+          f"entry's name on the platter after the switch ({shown_title(A)})")
 
 
 def play_from_the_shelf_renamed_on_the_way(A, E, readers):
@@ -976,6 +997,7 @@ def main():
                 passage_to_a_shelf_file_renamed_on_the_way(A, E, readers, False)
                 play_from_the_shelf_renamed_on_the_way(A, E, readers)
                 stream_renamed_while_it_opens(A, E, readers)
+                downloading_job_played_after_a_rename(A, E, readers)
                 prepared_stream_renamed_before_it_is_published(A, E, readers)
                 audio_version_during_a_pending_switch(A, E, readers)
                 audio_version_while_the_engine_switches(A, E, readers)
