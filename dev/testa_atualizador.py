@@ -236,24 +236,28 @@ if sys.platform == "win32":
     caso("no fim, abre o Ritmelli da pasta do app", trocado != args[-1])
     ouvido = trocado.replace("catch{}}while(", "catch{};Write-Output \"estado=$($s.estado)\"}while(").replace(
         "(Get-Date) -lt $fim){Start-Sleep 1}", "(Get-Date) -lt $fim){Write-Output esperando;Start-Sleep 1}")
-    caso("the test hears each state the reopen reads and each wait for the installer", ouvido.count("Write-Output") == 2)
-    atualizador._grava(estado="pronta")
-    kw = dict(kw, stdout=subprocess.PIPE, text=True)
-    try:
-        reabre = popen([*args[:-1], ouvido], **kw)
-    except OSError:  # fora de um job que deixa sair dele (o reabre faz o mesmo)
-        reabre = popen([*args[:-1], ouvido], **dict(kw, creationflags=kw["creationflags"] & ~0x01000000))
-    linhas = iter(reabre.stdout)
-    viu = next((linha.strip() for linha in linhas if linha.strip() == "estado=pronta"), None)
-    caso("antes de o instalador comecar, nao abre", viu and not marca.exists(), viu)
-    instalador = popen([sys.executable, "-c", "import sys; sys.stdin.read()"], stdin=subprocess.PIPE)
-    atualizador._grava(estado="instalando", pid=instalador.pid)
-    viu = next((linha.strip() for linha in linhas if linha.strip() == "esperando"), None)
-    caso("com o instalador rodando, espera", viu and not marca.exists(), viu)
-    instalador.stdin.close()
-    instalador.wait()
-    reabre.communicate()
-    caso("o instalador terminou: abre (com as flags do reabre, o PowerShell escondido roda)", marca.exists())
+    ouve = ouvido.count("Write-Output") == 2
+    caso("the test hears each state the reopen reads and each wait for the installer", ouve)
+    if ouve:
+        atualizador._grava(estado="pronta")
+        kw = dict(kw, stdout=subprocess.PIPE, text=True)
+        try:
+            reabre = popen([*args[:-1], ouvido], **kw)
+        except OSError:  # fora de um job que deixa sair dele (o reabre faz o mesmo)
+            reabre = popen([*args[:-1], ouvido], **dict(kw, creationflags=kw["creationflags"] & ~0x01000000))
+        linhas = iter(reabre.stdout)
+        viu = next((linha.strip() for linha in linhas if linha.strip() == "estado=pronta"), None)
+        caso("antes de o instalador comecar, nao abre", viu and not marca.exists(), viu)
+        instalador = popen([sys.executable, "-c", "import sys; sys.stdin.read()"], stdin=subprocess.PIPE)
+        try:
+            atualizador._grava(estado="instalando", pid=instalador.pid)
+            viu = next((linha.strip() for linha in linhas if linha.strip() == "esperando"), None)
+            caso("com o instalador rodando, espera", viu and not marca.exists(), viu)
+        finally:
+            instalador.stdin.close()
+            instalador.wait()
+        reabre.communicate()
+        caso("o instalador terminou: abre (com as flags do reabre, o PowerShell escondido roda)", marca.exists())
 
 print("--- o ao_sair")
 disparos, reaberturas = [], []
