@@ -33,7 +33,7 @@ function Falha($msg) {
 }
 function Estado { try { Get-Content "$pasta\estado.json" -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null } }
 function Responde { try { Invoke-RestMethod "$api/state" -TimeoutSec 2 } catch { $null } }
-function Existe($caminho) { try { Test-Path $caminho } catch [System.UnauthorizedAccessException] { $true } }
+function Existe($caminho) { try { Test-Path -LiteralPath $caminho } catch [System.UnauthorizedAccessException] { $true } }
 # roda o bloco de segundo em segundo ate ele dar algo, ou ate o prazo (e ai da $null)
 function Espera($segundos, [scriptblock]$cond) {
   $fim = (Get-Date).AddSeconds($segundos)
