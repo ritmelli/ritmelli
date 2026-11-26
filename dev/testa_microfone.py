@@ -347,6 +347,23 @@ class TestaMicrofone(unittest.TestCase):
         finally:
             v.fecha()
 
+    def test_reopens_after_the_mic_task_when_the_mic_changed_meanwhile(self):
+        v = VigiaNoAnel()
+        try:
+            def task(mic):
+                v.e.set_devices(mic="Mic2")
+                return {"ok": True}
+            without_filter = {"filtro": False, "melhorias": True, "guid": "{a}"}
+            with mock.patch.object(eng, "_do_microfone", lambda mic: without_filter), \
+                    mock.patch("microfone.microfone.pede_tarefa", task), \
+                    mock.patch.object(v.e, "_confere_mudos") as check_silent:
+                v.e._confere_filtro("Mic")
+            self.assertEqual([m for m, _ in v.aberturas], ["Mic", "Mic2", "Mic2"],
+                             "the task restarted the Windows audio, so the streams of Mic2 died too")
+            check_silent.assert_called_once_with()
+        finally:
+            v.fecha()
+
     def test_injetor_no_ritmo_do_leitor(self):
         anel = AnelFalso()
         anel.liga()

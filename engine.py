@@ -1496,8 +1496,7 @@ class Engine:
                 return
             # os do registro entram nesta, e antes do _reabre: o _confere_filtro que ele abre nao confere junto
             self._mudos_vistos = True
-            if self.active.get("mic") == mic:
-                self._reabre()
+            self._reabre()
         self._confere_mudos()  # todos: o reinicio do audio pode ter deixado qualquer aparelho mudo
 
     def _confere_mudos(self, nomes=None):

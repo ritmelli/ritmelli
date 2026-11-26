@@ -15,8 +15,7 @@ escolheu (o alvo do anel, ver apo/anel.h). Microfone que aparece depois (um fone
 (pede_tarefa), que roda como SYSTEM o instala-todos; quem usa o PC so pode rodar a tarefa, nao mudar. --dll e, sem
 ele, a DLL que vem com o app (dll_padrao); --saida grava o resultado em JSON, com o resumo da conferencia dos
 aparelhos depois do reinicio do audio (confere_aparelhos), que vai para o log do setup, e os que ficaram mudos, que o
-instalador mostra na ultima pagina (instalador/mudos.iss). O executavel nao tem console: o print daqui so aparece
-rodando pelo python.
+instalador mostra na ultima pagina (instalador/mudos.iss).
 
 O instala copia a DLL pra uma pasta que o audiodg.exe (LocalService) consegue ler, registra o COM e o APO
 (regsvr32), pendura o nosso nas vagas de efeito do microfone e guarda o original em
@@ -66,6 +65,19 @@ PASTA = (os.path.join(os.path.dirname(sys.executable), "microfone") if getattr(s
          os.path.join(os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles", r"C:\Program Files"),
                       "Ritmelli", "microfone"))
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # no executavel sem console, nada de janela piscando
+
+
+def _log(text):
+    if sys.stderr is None:
+        return
+    try:
+        print(text, file=sys.stderr, flush=True)
+    except OSError:
+        sys.stderr = None
+
+
+def _result(text):
+    print(text)
 
 
 def _system32():
@@ -227,9 +239,9 @@ def estado():
             sem = (le(p, SEM_MELHORIAS) or (0,))[0]
         marca = ("RITMELLI" + (" (+ maker's MFX)" if mfx else "")) if e_nosso else \
             ("other: " + sfx if sfx else "no SFX")
-        print(f"{nome} ({apar}) {ep}: {marca}{'  [enhancements disabled]' if sem else ''}")
-    print("dll:", os.path.join(PASTA, "micfx.dll"), "exists" if os.path.exists(os.path.join(PASTA, "micfx.dll"))
-          else "missing")
+        _result(f"{nome} ({apar}) {ep}: {marca}{'  [enhancements disabled]' if sem else ''}")
+    dll = os.path.join(PASTA, "micfx.dll")
+    _result(f"dll: {dll} {'exists' if os.path.exists(dll) else 'missing'}")
 
 
 def audio_rodando():
@@ -384,7 +396,7 @@ def grava_mudos(nomes):
     except FileNotFoundError:  # sem a chave ou sem o valor: nada a apagar
         pass
     except OSError as ex:
-        print(f"devices: couldn't record the silent ones ({ex})")
+        _log(f"devices: couldn't record the silent ones ({ex})")
 
 
 def le_mudos():
@@ -425,10 +437,7 @@ def _depois_do_reinicio(assenta_s=ASSENTA_S):
     else:  # None (sem o sounddevice), o erro, ou o tempo que passou
         r = {"conferidos": [], "mudos": [], "falhas": [], "travou": not caixa,
              "resumo": f"devices: not checked ({'no sounddevice' if r is None else r})"}
-    try:
-        print(r["resumo"])
-    except Exception:  # noqa: BLE001, S110 - o resumo tambem vai no --saida: o cano quebrado nao perde a conferencia
-        pass
+    _log(r["resumo"])
     return r
 
 
@@ -670,7 +679,7 @@ def instala(filtro, dll):
     novo = _pendura(ep)
     if novo or parou:
         reinicia_audio(so_servico=not novo)
-    print(f"installed on {nome} ({apar}) {ep}")
+    _log(f"installed on {nome} ({apar}) {ep}")
     return _depois_do_reinicio() if novo or parou else None
 
 
@@ -689,8 +698,7 @@ def instala_todos(dll):
             continue
     if novos or parou:
         reinicia_audio(so_servico=not novos)
-    print(f"filter on {len(microfones(todos=True))} microphones; now: {len(novos)}"
-          f"{'; DLL replaced' if parou else ''}")
+    _log(f"filter on {len(microfones(todos=True))} microphones; now: {len(novos)}{'; DLL replaced' if parou else ''}")
     return _depois_do_reinicio() if novos or parou else None
 
 
@@ -733,7 +741,7 @@ def remove(filtro=None):
     for ep, nome, apar in alvos:
         if _devolve(ep):
             mexeu = True
-            print(f"restored the original on {nome} ({apar}) {ep}")
+            _log(f"restored the original on {nome} ({apar}) {ep}")
     sobrou = [m for m in microfones(todos=True) if tem_filtro(m[0])]
     protegida = _protegida()
     destino = os.path.join(PASTA, "micfx.dll")
@@ -875,18 +883,18 @@ def tarefa_cria():
     """Cria (ou refaz) a tarefa, so no executavel instalado: no codigo-fonte, a tarefa rodaria como SYSTEM um .py que
     o usuario pode mudar. Com a pasta do app fora da regra da pasta protegida, apaga a que existir e volta."""
     if not getattr(sys, "frozen", False):
-        print("the task is only created by the installed executable (from source, run instala-todos as administrator)")
+        _log("the task is only created by the installed executable (from source, run instala-todos as administrator)")
         return
     protegida = _protegida()
     if not protegida:
         tarefa_apaga()
-        print(f"the task {TAREFA} wasn't created, the app folder isn't protected: {protegida}")
+        _log(f"the task {TAREFA} wasn't created, the app folder isn't protected: {protegida}")
         return
     import pastas  # noqa: PLC0415 - the app module (always there in the executable)
     r = pastas.create_task(TAREFA, TAREFA_XML, sys.executable)
     if r.returncode:
         sys.exit(f"couldn't create the task ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
-    print(f"task {TAREFA} created")
+    _log(f"task {TAREFA} created")
 
 
 def tarefa_apaga():
@@ -986,7 +994,7 @@ def main(argv=None):
     ap.add_argument("--aparelho", action="append", help="confere: only this device (repeatable)")
     a = ap.parse_args(argv)
     if a.acao == "confere":  # sem administrador e sem mexer em nada: o app, num processo a parte (engine._confere_fora)
-        print(json.dumps(confere_aparelhos(a.aparelho)))
+        _result(json.dumps(confere_aparelhos(a.aparelho)))
         return 0
     dll = a.dll or dll_padrao()
     res = {"ok": True}
@@ -1033,19 +1041,10 @@ def main(argv=None):
             with open(a.saida, "w", encoding="ascii") as f:
                 json.dump(res, f)
         if not res["ok"]:
-            print(res["erro"], file=sys.stderr)
+            _log(res["erro"])
         rc = 0 if res["ok"] else 1
     finally:
         if r is not None and r["travou"]:
-            # a thread da conferencia segue presa no driver, dentro do PortAudio: o atexit do sounddevice
-            # (Pa_Terminate) poderia travar a saida, e o instalador espera este processo sem prazo. Sai ja, com o
-            # --saida gravado, e tambem quando gravar o --saida ou esvaziar os canos falhou (com erro)
-            for cano in (sys.stdout, sys.stderr):
-                try:
-                    if cano is not None:
-                        cano.flush()
-                except Exception:  # noqa: BLE001 - saindo de qualquer jeito, com erro
-                    rc = 1
             os._exit(rc)
     return rc
 
