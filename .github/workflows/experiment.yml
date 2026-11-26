@@ -24,9 +24,9 @@ jobs:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
-      - name: the reopen case, 15 rounds, with the proxy timed
+      - name: the reopen case, 40 rounds, with the proxy timed and the server stacks when the state is late
         continue-on-error: true
-        run: python dev/experiment_reopen.py . 15
+        run: python dev/experiment_reopen.py . 40
       - name: the whole test_fitcheck_ready, 3 runs
         continue-on-error: true
         run: |
