@@ -51,7 +51,8 @@ def switched_off(condition):
 
 
 def mark(name, versions):
-    return EXPRESSION.sub(lambda m: MARK if inner(m.group(0)) in versions else m.group(0), str(name))
+    text = str(name).replace(MARK, "<written version>")
+    return EXPRESSION.sub(lambda m: MARK if inner(m.group(0)) in versions else m.group(0), text)
 
 
 def uploads(jobs):
@@ -115,7 +116,9 @@ SAIDA = r"""['"]--saida['"],\s*(?:(['"])([^'"]*)\1|\$(\w+))\s*[,)]"""
 
 def output_folder(run):
     run = str(run)
-    found = re.search(SAIDA, run) if re.search(SAIDA, code(run)) else None
+    first = re.search(SAIDA, run)
+    active = first and re.search(SAIDA, code(run[run.rfind("\n", 0, first.start()) + 1:].split("\n", 1)[0]))
+    found = first if active and len(re.findall(SAIDA, code(run))) == 1 else None
     if found and found.group(3):
         if len(re.findall(rf"\${found.group(3)}\s*[-+*/]?=(?!=)", run, re.I)) != 1:
             return None
@@ -137,10 +140,11 @@ def contract_problems(doc):
         problems.append("monta.yml does not run by hand (workflow_dispatch)")
     problems += [f"monta.yml has no {name} input" for name in INPUTS if name not in inputs]
     jobs = doc.get("jobs") or {}
-    names = [display(k, j) for k, j in jobs.items() if not switched_off(j.get("if"))]
     for required in REQUIRED_JOBS:
-        if not any(n == required or n.startswith(required + " (") for n in names):
-            problems.append(f"monta.yml has no job shown as {required}")
+        shown_as = [j for k, j in jobs.items()
+                    if display(k, j) == required or display(k, j).startswith(required + " (")]
+        if not shown_as or any(switched_off(j.get("if")) for j in shown_as):
+            problems.append(f"monta.yml has no job shown as {required}, or one of them is switched off")
     monta = jobs.get("monta") or {}
     congela = step_by_id(monta, "congela")
     if congela is None:
@@ -415,6 +419,18 @@ def main():
             "'--saida', $saida)", "'--saida', $saida + '\\sub')")),
         "the only assignment of the --saida folder commented out": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1# \2", run, count=1, flags=re.M)),
+        "a comment with the artifact folder before a --saida moved elsewhere": lambda d: (
+            edit_run(d, lambda run: re.sub(r"^(\s*)(\$args_ = )", lambda m: m.group(1) + "# '--saida', '"
+                                           + output_folder(run) + "')\n" + m.group(1) + m.group(2), run,
+                                           count=1, flags=re.M)),
+            move_folder(d)),
+        "a second active --saida": lambda d: edit_run(d, lambda run: run.replace(
+            "'--saida', $saida)", "'--saida', $saida, '--saida', 'elsewhere')")),
+        "a switched-off job shown like testa-atualizador": lambda d: d["jobs"].update(
+            {free_job(d, "extra"): dict(copy.deepcopy(shown(d, "testa-atualizador")),
+                                        name="testa-atualizador (extra)", **{"if": "${{ false }}"})}),
+        "the Ritmelli artifact named with the marker itself": lambda d: upload(d, setup)["with"].update(
+            name=f"Ritmelli-{MARK}"),
         "the --saida option left only in a comment": lambda d: edit_run(d, lambda run: run.replace(
             ", '--saida', $saida)", ")\n# '--saida', $saida)")),
         "a comment that assigns the folder of --saida": lambda d: edit_run(d, lambda run: re.sub(
