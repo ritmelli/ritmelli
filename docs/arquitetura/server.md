@@ -21,9 +21,10 @@ ordem das travas está no [`comandos.md`](comandos.md#as-travas).
 O `parse_target` lê o alvo do corpo e confere os campos que ele traz do vídeo (`title`, `channel`, `thumb`,
 `duration` e o alvo, pelo `check_track_fields`) do mesmo jeito para todo papel e antes de olhar a prateleira, na fila
 (`App.enfileirar`) e no `POST /api/library` com `play` (sem ele, só o alvo e o título), e o `PATCH /api/library`
-recusa o nome em Unicode inválido. O corpo de toda rota se lê só pelo `body()`: o `dev/testa_mock.py` acha pelo fonte cada rota
+recusa o nome em Unicode inválido. O corpo de toda rota se lê só pelo `body()`, na própria rota: o `dev/testa_mock.py` acha pelo fonte cada rota
 cujo corpo chega a esses campos e manda a ela os corpos ruins, e falha com a rota que lê o corpo por outro caminho
-(`request.json`, `post`, `text`, `read`, `multipart` ou `content`, nela ou numa função a que ela passa o `request`). O SSE manda o JSON só em ASCII:
+(`request.json`, `post`, `text`, `read`, `multipart` ou `content`, nela ou numa função a que ela passa o `request`, ou o
+`body()` chamado nessa função). O SSE manda o JSON só em ASCII:
 um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez para todas as conexões.
 
 - Tocar um vídeo que não está na prateleira começa na hora pelo stream do YouTube (o
