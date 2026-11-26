@@ -307,6 +307,14 @@ jobs:
         id: tela
         if: steps.areas.outputs.tela == 'true'
         run: python dev/testa_tudo.py --tela --pasta "$env:RUNNER_TEMP\tela" --resumo "$env:RUNNER_TEMP\resumo.md"
+      - name: Only moves code
+        id: rebuild
+        if: ${{ !cancelled() && steps.areas.outputs.extracao == 'true' && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}
+        run: python dev/testa_tudo.py --passo theme-rebuild --base $env:BASE
+      - name: Same listeners
+        id: listeners
+        if: ${{ !cancelled() && steps.areas.outputs.extracao == 'true' && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}
+        run: python dev/testa_tudo.py --passo theme-listeners --base $env:BASE
       # runs even with the fitcheck red, but not without the libraries (its step skipped)
       - name: Aviso dos dados de uso
         id: metricas
@@ -326,10 +334,15 @@ jobs:
         env:
           APLICA: ${{ steps.areas.outputs.tela }}
           METRICAS: ${{ steps.metricas.outcome }}
+          REBUILD: ${{ steps.rebuild.outcome }}
+          LISTENERS: ${{ steps.listeners.outcome }}
         run: |
           if (Test-Path "$env:RUNNER_TEMP\resumo.md") {
             $texto = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md"
             $texto += "`n- $(if ($env:METRICAS -eq 'success') { '✅' } elseif ($env:METRICAS -eq 'failure') { '❌' } else { "não rodou ($env:METRICAS):" }) o aviso dos dados de uso (``fitcheck.py --metricas``)"
+            foreach ($proof in @(@($env:REBUILD, 'only moves code (``theme_rebuild.py``)'), @($env:LISTENERS, 'same listeners (``theme_listeners.py``)'))) {
+              if ($proof[0] -and $proof[0] -ne 'skipped') { $texto += "`n- $(if ($proof[0] -eq 'success') { '✅' } else { '❌' }) $($proof[1])" }
+            }
           }
           elseif ($env:APLICA -ne 'true' -and $env:APLICA) { $texto = '**Tela:** não se aplica (o PR não mexe na tela e não tem a etiqueta extracao-tema)' }
           else { $texto = '**Tela:** ❌ não chegou a rodar (ver a execução)' }

@@ -206,6 +206,12 @@ def test_modes(flows):
             ("compara", "Capture key", "the id of the capture key step removed", lambda s: s.pop("id")),
             ("compara", "compara", "the compara base taken from the event", lambda s: s["env"].update({"BASE_SHA": "${{ env.BASE }}"})),
             ("tela", "fitcheck", "the id of the fitcheck step removed", lambda s: s.pop("id")),
+            *(("tela", step, f"the label test dropped from the {step} step",
+               lambda s: s.update({"if": s["if"].replace("steps.areas.outputs.extracao == 'true' && ", "")}))
+              for step in ("Only moves code", "Same listeners")),
+            *(("tela", step, f"the --base dropped from the {step} step",
+               lambda s: s.update({"run": s["run"].replace(" --base $env:BASE", "")}))
+              for step in ("Only moves code", "Same listeners")),
             ("tela", "O PR mexe na tela?", "the id of the areas step changed",
              lambda s: s.update({"id": "areas-later"})),
             ("compara", "O PR mexe na tela?", "if: false on the areas step", lambda s: s.update({"if": "false"})),

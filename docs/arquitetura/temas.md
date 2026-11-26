@@ -156,6 +156,10 @@ mudança. Sai 0 só com as tabelas iguais. O
 arquivo em que um ouvinte mora não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função,
 mantém as tabelas. O `dev/test_theme_listeners.py`, que o `--tela` roda, confere a leitura numa página própria.
 
+Num PR com a etiqueta `extracao-tema`, o job Tela roda as duas provas da base contra o head, nos passos "Only moves
+code" (`dev/testa_tudo.py --passo theme-rebuild --base`) e "Same listeners" (`--passo theme-listeners`), e reprova se
+uma delas não sai 0. O `dev/test_ci_workflow.py` confere os dois passos, a condição deles e o comando.
+
 Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `api.js` chama,
 e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o
 `location.hostname` só aparecem nele. O que o tema mostra a cada um vem do `caps` que o servidor manda (no `/api/state`,
