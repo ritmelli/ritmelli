@@ -115,6 +115,10 @@ CASES = {
                                 "dev/test_x.py": "import time\ntime.sleep(1)\n",
                                 "instalador/testa-x.ps1": "Start-Sleep 1\n"},
          {"dev/testa_x.py": "import time\ntime.sleep(1)\n", "dev/shot.py": "import time\ntime.sleep(1)\n"}),
+        ("a workflow's test job is a test, its build job is not",
+         {".github/workflows/w.yml": "jobs:\n  testa:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"},
+         {".github/workflows/w.yml": "jobs:\n  testa:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"
+                                     "  monta:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"}),
         ("a workflow", {"instalador/testa-x.ps1": "Start-Sleep 1\n"},
          {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"}),
     ],
@@ -184,6 +188,11 @@ CASES = {
                   "  };\n}\nfunction conectar() { carregar(); }\nfunction avisar() { mostrar(); }\n"},
          {"a.js": "function carregar() {\n  s.onerror = function () {\n    s.remove();\n    setTimeout(conectar, 1000);\n"
                   "  };\n}\nfunction conectar() { carregar(); }\n"}),
+        ("a method with the caller's name is not a call to it",
+         {"a.js": "function carregar() {\n  s.onerror = () => { setTimeout(avisar, 1000); };\n}\n"
+                  "function avisar() { logger.carregar(); }\n"},
+         {"a.js": "function carregar() {\n  s.onerror = () => { setTimeout(avisar, 1000); };\n}\n"
+                  "function avisar() { carregar(); }\n"}),
         ("a handler exits", {"a.py": "import sys, time\nfor w in sizes:\n    try:\n        f(w)\n    except OSError:\n"
                                      "        sys.exit(1)\n    time.sleep(1)\n"},
          {"a.py": "import sys, time\nfor w in sizes:\n    try:\n        f(w)\n    except OSError:\n"
@@ -302,7 +311,9 @@ KNOWN_MISSES = [
     ("broad_excepts", "a PowerShell catch with no type", {"a.ps1": "try { f } catch { }\n"}),
     ("broad_excepts", "a JavaScript catch", {"a.js": "try { f(); } catch (e) { }\n"}),
     ("retries", "a JavaScript failure told by an if (index.html, the transport not loaded)",
-     {"a.js": "s.onload = () => { if (typeof T === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); } };\n"}),
+     {"a.js": "function carregarTransporte() {\n  s.onload = () => {\n"
+              "    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }\n"
+              "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"}),
 ]
 
 
@@ -414,6 +425,9 @@ def test_description():
         "an option alone": "## Proof\n\n`--help`\n",
         "a production file": "## Proof\n\n`engine.py` is fine.\n",
         "a command with nothing to run": "## Proof\n\n`python`\n",
+        "a command alone on the block's first line": "## Proof\n\n```\npython\nAll tests passed.\n```\n",
+        "an issue number inside code": "## Proof\n\n- `python dev/garden.py` fails on the base.\n\n"
+                                        "The rest stays for now (`#250`).\n",
         "a proof hidden in an HTML comment": "## Proof\n<!-- `python dev/garden.py` fails on the base -->\n",
         "a code block that never closes": "## Proof\n\n```\npython dev/x.py\n```text\n",
         "a proof section only inside an example block": "```markdown\n## Proof\n`python dev/garden.py`\n```\n",
@@ -549,7 +563,8 @@ def test_base():
         repo = Path(d)
         garden.git("init", "-q", root=repo)
         garden.git("config", "core.autocrlf", "false", root=repo)
-        before = commit(repo, {"a.py": "x = 1  # why\r\n", "engine.py": "x = 1\n"}, "before the scoreboard")
+        before = commit(repo, {"a.py": "x = 1  # why\r\n", "engine.py": "x = 1\n", "c.iss": "﻿; why\n"},
+                        "before the scoreboard")
         after = commit(repo, {"a.py": "x = 1  # why\ny = 2  # and why\n", "dev/garden.json": '{"comment_lines": 2}\n'},
                        "the scoreboard")
         try:
@@ -569,13 +584,13 @@ def test_base():
               f"a file with a BOM keeps its first line in the count ({seen[:8]!r})")
         (repo / "b.iss").unlink()
         tree = garden.base_tree(before, root=repo)
-        check(tree == {"a.py": "x = 1  # why\n", "engine.py": "x = 1\n"},
-              f"the base tree is read from git, with its text files ({tree})")
+        check(tree == {"a.py": "x = 1  # why\n", "engine.py": "x = 1\n", "c.iss": "; why\n"},
+              f"the base tree is read from git, with its text files and no BOM ({tree})")
         measured = {k: garden.count_of(v) for k, v in garden.scoreboard(tree).items()}
         now = garden.scoreboard(garden.base_tree(after, root=repo))
         ceilings = {k: garden.count_of(v) for k, v in now.items()}
         failed, summary = garden.check(now, ceilings, measured, base_has_ceilings=False)
-        check(failed == [] and summary == ["-- summary: garden comment_lines: 2 (+1 against the base)"],
+        check(failed == [] and summary == ["-- summary: garden comment_lines: 3 (+1 against the base)"],
               f"against a measured base, only the counter that changed goes to the summary ({summary})")
 
 

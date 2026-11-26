@@ -58,10 +58,10 @@ RUN_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/actions/runs/\d+")
 IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)|<img\s|https://github\.com/user-attachments/")
 PROOF_COMMANDS = {"python", "py", "gh", "git", "pwsh", "powershell", "bash", "node", "npm", "ruff", "actionlint"}
 RUNNER_NAMES = {"testa_tudo", "testa_tudo.py", "dev/testa_tudo.py"}
-BLOCK_PROOF = re.compile(r"^\s*(?:\$|>|PS [^>]*>|[A-Z]:\\[^>]*>)\s*\S"
-                         r"|^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)\s"
-                         r"|^\s*(?:ok|FAIL|FALHA)\s|^\s*(?:=+\s*)?\d+ (?:of|de) \d+\b|^\s*(?:=+\s*)?\d+ (?:passed|failed)\b"
-                         r"|^\s*exit(?: code)?\s*[=:]?\s*\d+\b"
+BLOCK_PROOF = re.compile(r"^[ \t]*(?:\$|>|PS [^>\n]*>|[A-Z]:\\[^>\n]*>)[ \t]*\S"
+                         r"|^[ \t]*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)[ \t]+\S"
+                         r"|^[ \t]*(?:ok|FAIL|FALHA)[ \t]|^[ \t]*(?:=+[ \t]*)?\d+ (?:of|de) \d+\b"
+                         r"|^[ \t]*(?:=+[ \t]*)?\d+ (?:passed|failed)\b|^[ \t]*exit(?: code)?[ \t]*[=:]?[ \t]*\d+\b"
                          r"|^Traceback \(most recent call last\)",
                          re.M)
 BIG_FILES = {"engine_py_lines": "engine.py", "server_py_lines": "server.py",
@@ -553,12 +553,36 @@ def sleeps(t):
     return items
 
 
+TEST_JOB = re.compile(r"^(?:test|testa|teste)(?:[-_][\w-]+)?$")
+
+
+def test_job_lines(text):
+    lines, inside, test = set(), False, False
+    for n, line in enumerate(text.splitlines(), 1):
+        if re.match(r"^\S", line):
+            inside, test = line.rstrip() == "jobs:", False
+            continue
+        m = re.match(r"^  ([\w-]+):\s*$", line) if inside else None
+        if m:
+            test = bool(TEST_JOB.match(m.group(1)))
+        if test:
+            lines.add(n)
+    return lines
+
+
+def in_test(t, item):
+    path, line = item
+    if is_test(path):
+        return True
+    return path.startswith(".github/workflows/") and line in test_job_lines(t.files.get(path, ""))
+
+
 def sleeps_app(t):
-    return [i for i in sleeps(t) if not is_dev(i[0]) and not is_test(i[0])]
+    return [i for i in sleeps(t) if not is_dev(i[0]) and not in_test(t, i)]
 
 
 def sleeps_dev(t):
-    return [i for i in sleeps(t) if is_dev(i[0]) and not is_test(i[0])]
+    return [i for i in sleeps(t) if is_dev(i[0]) and not in_test(t, i)]
 
 
 def theme_code(t, pattern):
@@ -742,7 +766,7 @@ def js_retries(code):
     functions = js_functions(code)
     calls = {}
     for name, a, b in functions:
-        calls.setdefault(name, set()).update(re.findall(r"\b([A-Za-z_$][\w$]*)\s*\(", code[a:b]))
+        calls.setdefault(name, set()).update(re.findall(r"(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(", code[a:b]))
     for m in JS_HANDLER.finditer(code):
         start, body = handler_body(code, m.end())
         enclosing = {name for name, a, b in functions if a < m.start() < b}
@@ -1311,7 +1335,8 @@ def description_problems(body):
         problems.append("the proof section has no run, test or screenshot (a command or a test file in `code`, a code "
                         "block, a link to a run or an image)")
     problems += [f"line {n}: \"{PROSE.search(line).group(0)}\" with no issue link: fix it, or link the issue that "
-                 f"tracks it" for n, line in enumerate(lines, 1) if PROSE.search(line) and not ISSUE.search(line)]
+                 f"tracks it" for n, line in enumerate(lines, 1)
+                 if PROSE.search(line) and not ISSUE.search(re.sub(r"`[^`]*`", "", line))]
     return problems
 
 
