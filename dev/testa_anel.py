@@ -242,8 +242,11 @@ class TestVoicePedalStart(unittest.TestCase):
     def test_a_full_log_drops_lines_and_does_not_wait(self):
         release, written = threading.Event(), io.StringIO()
 
+        writing = threading.Event()
+
         class Slow:
             def write(self, text):
+                writing.set()
                 release.wait()
                 return written.write(text)
 
@@ -257,7 +260,7 @@ class TestVoicePedalStart(unittest.TestCase):
             first.start()
             first.join(3.0)
             self.assertFalse(first.is_alive(), "telling a line made its caller wait for the log")
-            self.assertTrue(espera(lambda: log._lines.empty()), "the writer never took the first line")
+            self.assertTrue(writing.wait(3.0), "the writer never took the first line")
             teller = threading.Thread(target=lambda: [log.tell(line) for line in ("second", "third", "fourth")],
                                       daemon=True)
             teller.start()
@@ -269,20 +272,49 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertEqual(written.getvalue().splitlines(),
                          ["first", "second (1 line(s) of the dry-out log dropped before this one)", "third"])
 
-    def test_a_track_up_while_the_thread_was_away_has_no_order(self):
+    def away(self, pedal_on_at, up_at):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
-        pedal.pedal(True)
-        now[0] = 0.8
-        pedal.track(True, 7_000, 0.4)
-        dry = dryouts.RingDryOuts(pedal)
+        if pedal_on_at is not None:
+            now[0] = pedal_on_at
+            pedal.pedal(True)
+        dry = dryouts.RingDryOuts(pedal, 0.03)
         with mock.patch("sys.stderr", io.StringIO()) as log:
+            now[0] = 0.1
+            pedal.track(False)
+            now[0] = 0.756
+            pedal.track(True, 7_000, now[0] - up_at)
             dry.ran_dry(0.656, 1)
-            dry.ran_dry(0.1, 2)
             dryouts.LOG.written()
-        lines = [ln for ln in log.getvalue().splitlines() if "ran dry" in ln]
-        self.assertIn("which came first is not known", lines[0])
-        self.assertNotIn("which came first", lines[1])
+        return dry.while_pedal_starting, log.getvalue()
+
+    def test_a_track_up_after_the_ring_ran_dry(self):
+        counted, log = self.away(0.0, 0.4)
+        self.assertEqual(counted, 1)
+        self.assertIn("came up 0.36 s ago, after the ring ran dry", log)
+
+    def test_a_track_up_as_the_ring_ran_dry_has_no_order(self):
+        counted, log = self.away(0.0, 0.12)
+        self.assertEqual(counted, 1)
+        self.assertIn("which came first is not known", log)
+
+    def test_a_pedal_on_after_the_ring_ran_dry_does_not_count(self):
+        counted, log = self.away(0.45, 0.5)
+        self.assertEqual(counted, 0)
+        self.assertNotIn("voice pedal was starting", log)
+        self.assertIn("the microphone ring ran dry (", log)
+
+    def test_a_pedal_on_as_the_thread_left_may_be_after_the_dry_out(self):
+        counted, log = self.away(0.11, 0.5)
+        self.assertEqual(counted, 1)
+        self.assertIn("(while the thread was away, maybe after the ring ran dry)", log)
+
+    def test_without_stderr_nothing_is_written(self):
+        log = dryouts.Log()
+        with mock.patch("sys.stderr", None), mock.patch("sys.stdout", io.StringIO()) as out:
+            log.tell("a line")
+            log.written()
+        self.assertEqual(out.getvalue(), "")
 
     def test_telling_starts_no_thread(self):
         log = dryouts.Log()
@@ -294,11 +326,11 @@ class TestVoicePedalStart(unittest.TestCase):
         written = io.StringIO()
 
         class Failing:
-            failed = False
+            left = 2
 
             def write(self, text):
-                if not Failing.failed:
-                    Failing.failed = True
+                if Failing.left:
+                    Failing.left -= 1
                     raise OSError("disk full")
                 return written.write(text)
 
@@ -307,14 +339,14 @@ class TestVoicePedalStart(unittest.TestCase):
 
         log = dryouts.Log()
         with mock.patch("sys.stderr", Failing()):
-            log.tell("first")
-            log.tell("second")
+            for line in ("first", "second", "third"):
+                log.tell(line)
             done = threading.Thread(target=log.written, daemon=True)
             done.start()
             done.join(3.0)
         self.assertFalse(done.is_alive(), "the log stopped after a failed write")
         self.assertEqual((log.dropped, written.getvalue().splitlines()),
-                         (1, ["second (1 line(s) of the dry-out log dropped before this one)"]))
+                         (2, ["third (2 line(s) of the dry-out log dropped before this one)"]))
 
     def test_the_track_is_up_only_once_its_line_is_queued(self):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
@@ -399,6 +431,8 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.a.leitor[0].batida = self.tick
 
     def dry_out(self):
+        self.assertTrue(espera(lambda: self.motor.voice_pedal._seen_before == self.now),
+                        "the ring thread never came round at the test's time")
         self.dry_done.clear()
         self.drain.set()
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")

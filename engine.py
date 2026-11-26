@@ -937,7 +937,7 @@ class Injetor:
         self.secas = 0
         self.volta_max = 0.0
         self.voltas = np.zeros(VOLTA_MS, np.int64)
-        self.dry_outs = dryouts.RingDryOuts(motor.voice_pedal)
+        self.dry_outs = dryouts.RingDryOuts(motor.voice_pedal, (INJ_FOLGA + 1) * BLOCK / SR)
         # a mesma medida e mais um pouco por janela, para o evento "audio" (metricas.py): a de cima segue a do
         # /api/state, desde que o Injetor abriu. Na reabertura do leitor perdido, a janela do de antes continua (saude)
         self.saude = saude if saude is not None else metricas.SaudeAudio(SR)
