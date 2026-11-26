@@ -54,11 +54,13 @@ FEATURE_HANDLERS = (
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
             ("#seek", "input"))
+STILL_OFF = (("#b-ouvir", "click"), ("#gaveta", "click"), ("#q", "input"), ("#resultados", "click"))
 FORM_INERT = ("the search form stays inert", "document.getElementById('form-busca')?.inert === true")
 EARLIER_FAILURES = (
-    ("gerado/pecas.js", (), (FORM_INERT,)),
-    ("voice-effects.js", STILL_ON, (FORM_INERT,)),
-    ("search.js", STILL_ON + (("#rolo-busca", "scroll"),),
+    ("gerado/pecas.js", (), (), (FORM_INERT,)),
+    ("dj-visor.js", (("#b-disp", "click"),), STILL_OFF, (FORM_INERT,)),
+    ("voice-effects.js", STILL_ON, STILL_OFF, (FORM_INERT,)),
+    ("search.js", STILL_ON + (("#rolo-busca", "scroll"),), STILL_OFF,
      (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"), FORM_INERT)),
 )
 SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc';"
@@ -186,7 +188,7 @@ def held_until(activation):
     return run
 
 
-def after_a_failure(missing, expected, page_checks):
+def after_a_failure(missing, expected, off, page_checks):
     async def run(tab):
         await tab.cmd("Debugger.enable")
         tab.failing.add(missing)
@@ -196,9 +198,12 @@ def after_a_failure(missing, expected, page_checks):
                                  + "".join(f", {json.dumps(t)}: {e}" for t, e in page_checks) + "})", "s.ran",
                             PAGE_READY_S)
         found = {f"{kind} {selector}": await handler_files(tab, selector, kind) for selector, kind in expected}
+        early = {f"{kind} {selector}": await handler_files(tab, selector, kind) for selector, kind in off}
         await tab.release("deck.js", fail=False)
         results = [(state.get("ran") and all(found.values()),
-                    f"with {missing} failed, the handlers registered after its binder still are ({found})")]
+                    f"with {missing} failed, the handlers registered after its binder still are ({found})"),
+                   (state.get("ran") and not any(early.values()),
+                    f"with {missing} failed, the handlers that wait for every file are not on ({early})")]
         results += [(state.get("ran") and state.get(title) is True, f"with {missing} failed, {title} ({state})")
                     for title, _ in page_checks]
         return results

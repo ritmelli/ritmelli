@@ -16,7 +16,7 @@ $('#estante').addEventListener('click', e => {
   else if (b.dataset.role === 'mais' && id) { if (menuBotao === b) fecharMenu(true); else { fecharMenu(false); abrirMenu(b, { tipo: 'disco', id }); } }
   else if (b.dataset.role === 'retentar') { const c = S.jobCorpo[b.dataset.job]; if (c) baixar(c, S.jobAlvo[b.dataset.job]); }
 });
-if (scriptLoaded('voice-effects.js')) bindVoiceEffects();
+if (!scriptsMissing().length) bindVoiceEffects();
 matchMedia('(max-width: 899.98px)').addEventListener('change', () => {
   abrirGaveta(S.gaveta); if (!celular()) abrirPalco(false); else abrirDisco(false); inertPalco(); textoBusca();
 });
@@ -318,7 +318,7 @@ document.querySelectorAll('input[type=range]').forEach(r => {
 });
 if (scriptLoaded('receiver.js')) bindReceiver();
 if (scriptLoaded('turntable.js')) bindTurntable();
-if (scriptLoaded('search.js')) bindSearch();
+if (!scriptsMissing().length) bindSearch();
 $('#b-cel').addEventListener('click', abrirCelular);
 $('#b-disp').addEventListener('click', abrirDispositivos);
 $('#dica-ouvir').addEventListener('click', e => { if (e.target.closest('.ir-disp')) abrirDispositivos(); });
