@@ -42,7 +42,12 @@ respostas com erro (o `Network.responseReceived`). O `dev/test_compara_not_ready
 de pronto que nunca fecha e confere o diagnóstico, no celular e na mesa; o `dev/test_fitcheck_ready.py` faz o mesmo
 no `fitcheck` e confere o relógio do aviso dos dados de uso: os 6 s contam da resposta do `GET /api/state` da página
 (o aviso só abre depois do estado), e não do `Page.navigate`. Com um script do tema ou o estado atrasados de propósito
-o aviso ainda passa, e um aviso que abre 8 s depois do estado reprova. Todo servidor de teste que o `dev/so_mock.py` sobe recebe o `--stop-on-stdin-eof` e desliga quando o teste fecha a entrada dele, sem pedido: o papel do celular, que o `POST /api/shutdown` recusa, desliga do mesmo jeito. O que não sai em 10 s, ou sai com erro, reprova o teste dizendo isso; um `server.py` mais velho, sem a flag (a base de um `compara`), desliga pelo `POST /api/shutdown`, só enquanto responde como `--mock` (`dev/testa_so_mock.py`, `dev/test_mock_stop.py`). O `dev/test_capture.py` roda o `--capture` de verdade (os prints,
+o aviso ainda passa, e um aviso que abre 8 s depois do estado reprova. Todo servidor de teste que o `dev/so_mock.py` sobe nasce
+suspenso num job do Windows (o que ele abrir fica no job) e recebe o `--stop-on-stdin-eof`: desliga quando o teste
+fecha a entrada dele, sem pedido, e o papel do celular, que o `POST /api/shutdown` recusa, desliga do mesmo jeito.
+Toda parada esvazia o job; o servidor que não sai em 10 s, sai com erro ou deixa processo rodando reprova a
+parada dizendo isso. Um `server.py` mais velho, sem a flag (a base de um `compara`), desliga pelo
+`POST /api/shutdown`, só enquanto responde como `--mock` (`dev/testa_so_mock.py`, `dev/test_mock_stop.py`). O `dev/test_capture.py` roda o `--capture` de verdade (os prints,
 a chave e o `head_cache` que o workflow lê para salvar). O `dev/test_compara_push_steps.py` roda os
 passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O
 `dev/test_release_workflow.py` lê os workflows e as ações locais como YAML: toda action fixada num

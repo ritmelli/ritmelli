@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import io
+import json
 import os
 import re
 import subprocess
@@ -62,6 +63,47 @@ fitcheck.PRONTA = sys.argv[2]
 fitcheck.PRONTA_S = 2.0
 sys.argv = ["fitcheck.py", sys.argv[3], "--sizes", "390x844,768x1024"]
 fitcheck.main()
+"""
+LIGAR_THEN_GONE = r"""
+import asyncio
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "dev"))
+import compara
+import fitcheck
+import so_mock
+started, waits = [], []
+real_popen, real_wait = subprocess.Popen, fitcheck.wait_notice
+
+
+def popen(cmd, *args, **kwargs):
+    child = real_popen(cmd, *args, **kwargs)
+    if cmd and cmd[0] == fitcheck.CHROME:
+        started.append(child)
+    return child
+
+
+async def kill_chrome_on_the_second_wait(cmd, deadline):
+    waits.append(deadline)
+    if len(waits) == 2:
+        for child in started:
+            subprocess.run(["taskkill", "/PID", str(child.pid), "/T", "/F"], capture_output=True)
+    return await real_wait(cmd, deadline)
+
+
+subprocess.Popen, fitcheck.wait_notice = popen, kill_chrome_on_the_second_wait
+with tempfile.TemporaryDirectory(prefix="ritmelli-ligar-gone-") as tmp:
+    with open(Path(tmp) / "server.log", "w", encoding="utf-8") as log:
+        srv = compara.sobe_servidor(Path(tmp), so_mock.free_port(), log,
+                                    config={"boas_vindas": True, "metricas": False}, extras=["--metricas-teste"])
+        try:
+            r = asyncio.run(fitcheck.aviso_no_chrome(srv.base, "ligar"))
+        finally:
+            compara.para_servidor(srv)
+print("RESULT " + json.dumps({"r": r, "waits": len(waits)}))
 """
 LATE_S = fitcheck.AVISO_ESPERA_S + 2
 LATE_ASKED = "/__ritmelli-test-late-notice"
@@ -373,6 +415,20 @@ def fitcheck_timeout_then_chrome_gone():
           f"collected, then says the Chrome went away at the next size, with no traceback (exit {p.returncode})")
 
 
+def ligar_then_chrome_gone():
+    p = subprocess.run([sys.executable, "-c", LIGAR_THEN_GONE, str(ROOT)], cwd=ROOT, env=dict(os.environ, PYTHONUTF8="1"),
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
+    out = p.stdout + p.stderr
+    print(out.rstrip())
+    line = next((x for x in out.splitlines() if x.startswith("RESULT ")), "")
+    result = json.loads(line[len("RESULT "):]) if line else {}
+    r = result.get("r", {})
+    check(result.get("waits") == 2 and r.get("ao_ligar") is None and "Traceback" not in out
+          and any("browser went away" in v for v in r.get("not_ready", [])),
+          f"a Chrome that goes away during the wait after Comecar a enviar ends the check with the Chrome-gone verdict, "
+          f"with no traceback ({r.get('not_ready')})")
+
+
 def timeout_then_disconnect():
     events = fitcheck.PageEvents()
     events.page_errors.append("console.error: collected before the timeout")
@@ -405,6 +461,7 @@ def main():
     notice_page_not_ready()
     fitcheck_never_ready()
     fitcheck_timeout_then_chrome_gone()
+    ligar_then_chrome_gone()
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 

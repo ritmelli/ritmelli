@@ -682,6 +682,11 @@ async def aviso_no_chrome(base, botao):
                     await asyncio.sleep(0.1)
                 await js("document.querySelector('#dd-met-btn').click()")
                 r["ao_ligar"] = await wait_notice(cmd, time.monotonic() + 3.0)
+                if r["ao_ligar"] is None:
+                    r["not_ready"].append(await report_not_ready(cmd, "notice", Ready.CHROME_GONE, READY_CONDITIONS,
+                                                                 events, PRONTA_S))
+                    tarefa.cancel()
+                    return r
                 if r["ao_ligar"]:
                     r["foco"] = await js(foco)
                     # com o aviso na tela, nada foi gravado ainda: a escolha sai do Enviar dele
