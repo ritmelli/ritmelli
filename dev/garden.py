@@ -62,7 +62,8 @@ PROOF_SPAN = re.compile(r"^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|
                         r"|^\s*--[a-z][\w-]*")
 BLOCK_PROOF = re.compile(r"^\s*(?:\$|>|PS [^>]*>|[A-Z]:\\[^>]*>)\s*\S"
                          r"|^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)\s"
-                         r"|^\s*(?:ok|FAIL|FALHA)\s|\b(?:\d+ (?:of|de) \d+|passed|failed|exit(?: code)? ?\d+|Traceback)\b",
+                         r"|^\s*(?:ok|FAIL|FALHA)\s|\b(?:\d+ (?:of|de) \d+|\d+ (?:passed|failed)|exit(?: code)? ?\d+)\b"
+                         r"|^Traceback \(most recent call last\)",
                          re.M)
 BIG_FILES = {"engine_py_lines": "engine.py", "server_py_lines": "server.py",
              "index_html_lines": "themes/ritmelli/index.html", "agents_md_lines": "AGENTS.md"}
@@ -602,6 +603,20 @@ def leaves(body):
     return isinstance(last, (ast.Return, ast.Raise, ast.Break)) or exits(last)
 
 
+def test_names(test):
+    return {n.id for n in ast.walk(test) if isinstance(n, ast.Name)}
+
+
+def assigned_names(body):
+    out = set()
+    for s in body:
+        for n in [s, *local_nodes(s)]:
+            targets = n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(
+                n, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)) else []
+            out |= {t.id for target in targets for t in ast.walk(target) if isinstance(t, ast.Name)}
+    return out
+
+
 def python_retries(tree):
     aliases = sleep_aliases(tree)
     found = []
@@ -611,10 +626,12 @@ def python_retries(tree):
             if not any(is_sleep(n, aliases) for n in inner):
                 continue
             ends = any(isinstance(n, (ast.Return, ast.Break)) for n in inner)
+            guards = {id(s): test_names(n.test) for n in inner if isinstance(n, ast.If) for s in n.body}
             for attempt in (n for n in inner if isinstance(n, ast.Try)):
                 again = [h for h in attempt.handlers if not leaves(h.body)]
                 waits_on_failure = any(is_sleep(n, aliases) for h in again for n in local_nodes(h))
-                if again and (waits_on_failure or ends):
+                stops_on_success = bool(guards.get(id(attempt), set()) & assigned_names(attempt.body))
+                if again and (waits_on_failure or ends or stops_on_success):
                     found.append(loop.lineno)
                     break
     return found
@@ -1028,7 +1045,15 @@ def base_tree(base, root=ROOT):
     return files
 
 
+QUEUE_REF = re.compile(r"^refs/heads/gh-readonly-queue/.+/pr-\d+-([0-9a-f]{40})$")
+
+
 def base_commit():
+    if os.environ.get("GITHUB_EVENT_NAME") == "merge_group":
+        m = QUEUE_REF.match(os.environ.get("GITHUB_REF", ""))
+        if not m:
+            raise BaseError(f"the queue entry's ref {os.environ.get('GITHUB_REF')!r} names no base commit")
+        return m.group(1)
     base = os.environ.get("BASE", "").strip()
     if base:
         return base
@@ -1108,8 +1133,8 @@ def scoreboard(files):
 def run():
     counts = scoreboard(working_tree())
     ceilings = json.loads(CEILINGS.read_text(encoding="utf-8"))
-    base = base_commit()
     try:
+        base = base_commit()
         before = base_ceilings(base)
     except BaseError as ex:
         print(f"FAIL  {ex}")

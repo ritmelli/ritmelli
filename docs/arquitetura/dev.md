@@ -71,8 +71,9 @@ linguagem e as de docstring, as supressões, as esperas do app e as de `dev/`, o
 `except` largos, os testes pulados, as marcas de pendência, a prosa sem issue, os nomes sem ASCII, os acessos que o
 `dev/testa_ganchos.py` conta, as linhas inline do tema, as linhas dos arquivos grandes e do `AGENTS.md` e as regras
 dele sem verificação. Cada número tem um teto no `dev/garden.json`: acima dele, ou abaixo sem o teto descer junto, o
-check reprova, e o teto do PR nunca passa o da base (`$env:BASE`). Cada contador que mudou vai para o resumo do PR
-numa linha `-- summary:`, e o `--list <contador>` mostra onde está cada item. O passo "PR description" do job de
+check reprova, e o teto do PR nunca passa o da base (o `$env:BASE` no PR; na fila, o commit sobre o qual a entrada
+foi montada, que vem no nome da ref dela, como no `compara`). Uma base sem `dev/garden.json` é medida. Cada contador
+que mudou vai para o resumo do PR numa linha `-- summary:`, e o `--list <contador>` mostra onde está cada item. O passo "PR description" do job de
 Testes lê a descrição do PR pela API, no PR e na fila (que pega a edição depois do verde), e reprova sem a seção de
 prova ou com uma frase de justificativa sem link de issue. O `dev/test_garden.py` tem, por contador, um caso que
 sobe e um que não conta.

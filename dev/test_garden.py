@@ -140,6 +140,12 @@ CASES = {
                   "    except E as ex:\n        st = ex.status\n    check(st)\n"},
          {"a.py": "import time\ndef w():\n    for _ in range(50):\n        time.sleep(0.2)\n        try:\n"
                   "            if f():\n                return\n        except RuntimeError:\n            pass\n"}),
+        ("an attempt the success turns off (the phone port of server.py)",
+         {"a.py": "import asyncio\nasync def w():\n    for d in cases:\n        try:\n            st = await f(d)\n"
+                  "        except OSError as e:\n            st = e\n        await asyncio.sleep(1)\n"},
+         {"a.py": "import asyncio\nasync def w():\n    site = None\n    while True:\n        if site is None and ip:\n"
+                  "            try:\n                site = await open_port(ip)\n            except OSError:\n"
+                  "                site = None\n        await asyncio.sleep(5)\n"}),
         ("the success after the try", {"a.py": "import time\nwhile True:\n    try:\n        get()\n    except OSError:\n"
                                                "        pass\n    time.sleep(1)\n"},
          {"a.py": "import time\nwhile True:\n    try:\n        get()\n    except OSError:\n        pass\n"
@@ -360,6 +366,7 @@ def test_description():
         "a link to a run": "## Proof\n\nThe [run](https://github.com/o/r/actions/runs/123) fails on the base.\n",
         "a screenshot": "**Proof**\n\n![the page](https://github.com/user-attachments/assets/1)\n",
         "a code block": "## Proof\n\n```\n$ make\nok\n```\n",
+        "a test runner's output": "## Proof\n\n```\n12 passed in 3.1s\n```\n",
         "a heading inside the code block": "# Change\n\n## Proof\n\n```bash\n# Before\n$ python dev/x.py\nfails\n```\n",
         "bold sub-labels under the heading": "## Proof\n\n**Before the change** ([run 1](https://github.com/o/r/"
                                              "actions/runs/1)): fails.\n",
@@ -376,6 +383,7 @@ def test_description():
         "a plain label after it": "Proof: it works.\nNotes: `python dev/x.py` is the next step.\n",
         "an empty code block": "## Proof\n\n```\n```\n",
         "a code block with no run in it": "## Proof\n\n```\nIt works.\n```\n",
+        "a code block with only a claim": "## Proof\n\n```\nAll tests passed.\n```\n",
         "a code block that never closes": "## Proof\n\n```\npython dev/x.py\n```text\n",
         "a proof section only inside an example block": "```markdown\n## Proof\n`python dev/garden.py`\n```\n",
     }
@@ -427,6 +435,35 @@ def test_description_step():
     check(code == 1 and asked == [], "a pull_request event with no PR number fails")
     code, asked = run_description("push", {}, good)
     check(code == 0 and asked == [], "a push has no description to check")
+
+
+def base_in(env):
+    saved = {k: os.environ.get(k) for k in ("GITHUB_EVENT_NAME", "GITHUB_REF", "BASE")}
+    os.environ.update(env)
+    try:
+        return garden.base_commit()
+    except garden.BaseError:
+        return None
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def test_queue_base():
+    entry = "c" * 40
+    base = base_in({"GITHUB_EVENT_NAME": "merge_group", "GITHUB_REF": f"refs/heads/gh-readonly-queue/main/pr-9-{entry}",
+                    "BASE": "a" * 40})
+    check(base == entry, f"a queue entry is compared to the commit it was built on, not the queue's base ({base})")
+    check(base_in({"GITHUB_EVENT_NAME": "merge_group", "GITHUB_REF": "refs/heads/main", "BASE": "a" * 40}) is None,
+          "a queue entry whose ref names no base fails")
+    check(base_in({"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REF": "refs/pull/9/merge", "BASE": "b" * 40}) == "b" * 40,
+          "a PR is compared to its base")
+    second, _ = garden.check({"a": [("x.py", n) for n in range(10)]}, {"a": 10}, {"a": 9})
+    check(any("went up from 9 to 10" in f for f in second),
+          f"the second entry, after the first one lowered the ceiling to 9, can't put it back to 10 ({second})")
 
 
 def commit(repo, files, message):
@@ -527,6 +564,7 @@ test_check()
 test_acceptance()
 test_description()
 test_base()
+test_queue_base()
 test_description_step()
 WORKFLOW_TEXT = (ROOT / ".github" / "workflows" / "testa.yml").read_text(encoding="utf-8")
 problems = workflow_problems(WORKFLOW_TEXT)
