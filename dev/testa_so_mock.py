@@ -123,10 +123,10 @@ class FakeStdin:
 class FakeChild:
     """The Popen of a child that runs nothing: poll() says whether it is alive; kill() ends it."""
 
-    def __init__(self, alive=True, stops_on_eof=True, piped=True):
+    def __init__(self, alive=True, stops_on_eof=True, piped=True, eof_code=0):
         self.returncode = None if alive else 1
         self.killed = False
-        self.stdin, self.stops_on_eof = FakeStdin() if piped else None, stops_on_eof
+        self.stdin, self.stops_on_eof, self.eof_code = FakeStdin() if piped else None, stops_on_eof, eof_code
 
     def poll(self):
         return self.returncode
@@ -137,7 +137,7 @@ class FakeChild:
 
     def wait(self, timeout=None):
         if self.returncode is None and self.stdin and self.stdin.closed and self.stops_on_eof:
-            self.returncode = 0
+            self.returncode = self.eof_code
         if self.returncode is None:
             raise subprocess.TimeoutExpired("fake child", timeout)
         return self.returncode
@@ -270,6 +270,10 @@ def child(srv):
     msg = refused(f.encerra, espera=1)
     check(stubborn.stdin.closed and stubborn.killed and msg is not None and "did not stop" in msg,
           f"a child that does not exit when its stdin closes: its handle killed, and the stop fails saying so ({msg})")
+    crashed = FakeChild(eof_code=3)
+    msg = refused(so_mock.Filho(crashed, srv.port).encerra, espera=1)
+    check(msg is not None and "code 3" in msg and not crashed.killed,
+          f"a child that exits with an error when its stdin closes: the stop fails saying so ({msg})")
     srv.says(200, {"ok": True})
     old = FakeChild(piped=False)
     f = so_mock.Filho(old, srv.port)

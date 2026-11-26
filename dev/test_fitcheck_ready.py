@@ -162,6 +162,36 @@ def probe_past_the_deadline():
     check(asyncio.run(fitcheck.wait_notice(notice_open, time.monotonic() - 0.1)) is False,
           "a deadline already past does not probe")
 
+    async def open_but_late(method, **params):
+        end = time.monotonic() + 0.4
+        while time.monotonic() < end:
+            pass
+        return {"result": {"value": True}}
+
+    check(asyncio.run(fitcheck.wait_notice(open_but_late, time.monotonic() + 0.2)) is False,
+          "a probe that answers open after the deadline, before its timeout runs, does not count")
+
+
+def state_of_this_navigation_only():
+    def response(request, loader, path="/api/state"):
+        return {"method": "Network.responseReceived",
+                "params": {"requestId": request, "loaderId": loader,
+                           "response": {"status": 200, "url": f"http://127.0.0.1:1{path}"}}}
+
+    def finished(request):
+        return {"method": "Network.loadingFinished", "params": {"requestId": request}}
+
+    events = fitcheck.PageEvents()
+    events.loader = "new"
+    for m in (response("a", "old"), finished("a"), response("b", "new", "/api/library"), finished("b")):
+        events.take(m)
+    stale = events.state_loaded.is_set() or events.state_at is not None
+    for m in (response("c", "new"), finished("c")):
+        events.take(m)
+    check(not stale and events.state_loaded.is_set() and events.state_at is not None,
+          "only the GET /api/state of the current navigation starts the clock, not one of the page before it nor "
+          "another request")
+
 
 def notice_page_not_ready():
     saved = fitcheck.PRONTA_S
@@ -202,6 +232,7 @@ def fitcheck_never_ready():
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     probe_past_the_deadline()
+    state_of_this_navigation_only()
     notice_on_slow_load()
     notice_on_slow_state()
     notice_late_after_state()

@@ -15,6 +15,22 @@ import compara
 import so_mock
 
 TRACK_S = 3600
+GUARD_CROSSED = 97
+REFUSAL_DRIVER = f"""
+import sys
+sys.path.insert(0, sys.argv[1])
+import server
+
+
+def guard_crossed(*args, **kwargs):
+    print("the guard let it through: App was built")
+    sys.exit({GUARD_CROSSED})
+
+
+server.App = guard_crossed
+sys.argv = ["server.py", "--no-browser", "--port", sys.argv[2], *sys.argv[3:]]
+server.main()
+"""
 HOLDER_WAIT_S = 30.0
 
 failures = []
@@ -135,10 +151,10 @@ def refusals_before_start():
                                (["--papel-local", "celular"], "--papel-local only works with --mock"),
                                (["--metricas-teste"], "--metricas-teste only works with --mock"),
                                (["--mock", "--data-dir", str(user_data)], "--mock never uses the user's data")):
-            p = subprocess.run([sys.executable, str(ROOT / "server.py"), "--no-browser", "--port",
-                                str(so_mock.free_port()), *args], cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
-                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
-            check(p.returncode != 0 and expected in p.stderr,
+            p = subprocess.run([sys.executable, "-c", REFUSAL_DRIVER, str(ROOT), str(so_mock.free_port()), *args],
+                               cwd=ROOT, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=120)
+            check(p.returncode not in (0, GUARD_CROSSED) and expected in p.stderr,
                   f"server.py {' '.join(args[:2])}: refused before it starts ({p.returncode}, {p.stderr.strip()[-120:]})")
 
 

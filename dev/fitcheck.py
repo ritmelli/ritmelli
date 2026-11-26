@@ -165,6 +165,8 @@ async def wait_notice(cmd, deadline):
             r = await asyncio.wait_for(cmd("Runtime.evaluate", expression=NOTICE_OPEN, returnByValue=True), left)
         except TimeoutError:
             return False
+        if time.monotonic() > deadline:
+            return False
         if r.get("result", {}).get("value") is True:
             return True
         await asyncio.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
@@ -175,14 +177,14 @@ class PageEvents:
     def __init__(self):
         self.page_errors, self.browser_errors, self.failed_responses = [], [], []
         self.state_requests, self.state_loaded = set(), asyncio.Event()
-        self.load_at = self.state_at = None
+        self.load_at = self.state_at = self.loader = None
 
     def new_load(self):
         self.browser_errors.clear()
         self.failed_responses.clear()
         self.state_requests.clear()
         self.state_loaded.clear()
-        self.load_at = self.state_at = None
+        self.load_at = self.state_at = self.loader = None
 
     def take(self, m):
         method, params = m.get("method"), m.get("params", {})
@@ -195,7 +197,8 @@ class PageEvents:
             response = params["response"]
             if response.get("status", 0) >= 400:
                 self.failed_responses.append(f"{response['status']} {response.get('url', '')}")
-            elif urllib.parse.urlsplit(response.get("url", "")).path == "/api/state":
+            elif (urllib.parse.urlsplit(response.get("url", "")).path == "/api/state" and self.loader
+                  and params.get("loaderId") == self.loader):
                 self.state_requests.add(params["requestId"])
         elif method == "Network.loadingFinished" and params.get("requestId") in self.state_requests:
             if self.state_at is None:
@@ -593,7 +596,7 @@ async def aviso_no_chrome(base, botao):
                 so_mock.confere(url)
                 events.new_load()
                 try:
-                    await cmd("Page.navigate", url=url)
+                    events.loader = (await cmd("Page.navigate", url=url)).get("loaderId")
                     ready = await wait_for_state(events, tarefa, PRONTA_S)
                 except CDP_GONE:
                     ready = Ready.CHROME_GONE

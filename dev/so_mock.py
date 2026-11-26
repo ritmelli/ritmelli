@@ -11,11 +11,7 @@ Quem abre o tema (shot, fitcheck, perfcheck, celular) chama o confere antes de a
 de agir; no Chrome, o DOCUMENTOS e o libera_ou_barra barram o documento de outra origem (o redirecionamento).
 Quem sobe o proprio servidor (compara, previews, testa_mock) usa o sobe: a porta recusada antes do Popen se e a 8799 ou
 se alguem ja responde nela, e cada pedido so com o filho vivo e o marcador na origem; se nao, so o filho sai, pelo
-handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado.
-
-A child started with STOP_FLAG stops when this process closes its stdin, a stop no request carries, so the phone role,
-which the /api/shutdown refuses, stops on its own too. A checkout whose server.py predates the flag (the base of a
-compara) gets the /api/shutdown, only to the live child that answers as a --mock, and its handle otherwise."""
+handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado."""
 import json
 import socket
 import subprocess
@@ -176,17 +172,17 @@ class Filho:
         self.srv.wait()
 
     def encerra(self, espera=10):
-        """Started with STOP_FLAG: closes the child's stdin and waits for it to exit; one that does not exit is a hung
-        server, killed by its handle and raised as a Recusa, since what it started may still hold files. Without the
-        flag: the /api/shutdown, if it is still the --mock that started, and its handle if it does not exit."""
         if self.srv.stdin:
+            live = self.srv.poll() is None
             self.srv.stdin.close()
             try:
-                self.srv.wait(espera)
+                code = self.srv.wait(espera)
             except subprocess.TimeoutExpired:
                 self.mata()
                 raise Recusa(f"the test server did not stop within {espera:g} s of its stdin closing: killed, and the "
                              "processes it started may still be running") from None
+            if live and code != 0:
+                raise Recusa(f"the test server exited with code {code} when its stdin closed, not by its own stop")
             return
         try:
             self.api("POST", "/api/shutdown", espera=5)
