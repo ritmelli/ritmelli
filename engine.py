@@ -393,7 +393,7 @@ def esticar_saida(x, s, n_rampa):
     phi = np.concatenate([[0.0], np.cumsum(vel)[:-1]])
     y = _catmull(x, phi)
     m = len(y)
-    z = y.copy()
+    z = _rubber_band(y, vel)[:m]
     a = min(m, RUBBER_BAND_WARMUP)
     b = min(m, a + RUBBER_BAND_CROSSFADE)
     g = np.linspace(0.0, 1.0, RUBBER_BAND_CROSSFADE, dtype=np.float32)[:b - a, None]
