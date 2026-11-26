@@ -10,8 +10,8 @@ env:
   PYTHONUTF8: '1'
 
 jobs:
-  transporte:
-    name: transporte alone, merge and main
+  reopen:
+    name: notice reopen with the state held, in a loop
     runs-on: windows-2025
     timeout-minutes: 90
     steps:
@@ -24,17 +24,10 @@ jobs:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
-      - name: main alone in a worktree
-        run: |
-          git worktree add --detach "$env:RUNNER_TEMP/main" origin/main
-          git -C "$env:RUNNER_TEMP/main" log --oneline -1
-          git log --oneline -1
-      - name: missing_script, 6 runs, on the merge
+      - name: the reopen case, 15 rounds, with the proxy timed
+        continue-on-error: true
+        run: python dev/experiment_reopen.py . 15
+      - name: the whole test_fitcheck_ready, 3 runs
         continue-on-error: true
         run: |
-          for ($i = 1; $i -le 6; $i++) { python dev/missing_script.py > "$env:RUNNER_TEMP/ms.txt" 2>&1; "merge run $i exit $LASTEXITCODE"; Get-Content "$env:RUNNER_TEMP/ms.txt" | Where-Object { $_ -notmatch '^OK' } | ForEach-Object { Write-Output $_ } }
-      - name: missing_script, 6 runs, on main alone
-        continue-on-error: true
-        working-directory: ${{ runner.temp }}/main
-        run: |
-          for ($i = 1; $i -le 6; $i++) { python dev/missing_script.py > "$env:RUNNER_TEMP/ms.txt" 2>&1; "main run $i exit $LASTEXITCODE"; Get-Content "$env:RUNNER_TEMP/ms.txt" | Where-Object { $_ -notmatch '^OK' } | ForEach-Object { Write-Output $_ } }
+          for ($i = 1; $i -le 3; $i++) { python dev/test_fitcheck_ready.py > "$env:RUNNER_TEMP/r.txt" 2>&1; "run $i exit $LASTEXITCODE"; Get-Content "$env:RUNNER_TEMP/r.txt" | Where-Object { $_ -match '^FAIL|^notice:|S.state|response:' } | ForEach-Object { Write-Output $_ } }
