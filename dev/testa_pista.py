@@ -41,9 +41,9 @@ import numpy as np
 os.environ["MICFX_MAPA"] = f"Local\\RitmelliTestePista-{os.getpid()}"  # nunca o anel do filtro de verdade
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
-import pista  # noqa: E402
-import pistavoz  # noqa: E402
-from microfone import injeta  # noqa: E402
+import pista
+import pistavoz
+from microfone import injeta
 
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 k32.CreateFileMappingW.restype = wintypes.HANDLE

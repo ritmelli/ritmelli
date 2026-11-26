@@ -11,9 +11,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
+import compara
 import so_mock
 
-TRACK_S = 1800
+TRACK_S = 3600
 HOLDER_WAIT_S = 30.0
 
 failures = []
@@ -104,8 +105,18 @@ def stop_while_measuring(role, extras):
               f"{role}: the moment the stop returns, nothing holds the track and it deletes ({left})")
 
 
+def flag_only_for_a_server_that_knows_it():
+    with tempfile.TemporaryDirectory(prefix="ritmelli-old-checkout-") as tmp:
+        old = Path(tmp)
+        (old / "server.py").write_text("print('a server.py from before the stop flag')", encoding="utf-8")
+        check(compara.knows_stop_flag(ROOT) and not compara.knows_stop_flag(old),
+              f"the compara passes {so_mock.STOP_FLAG} to this checkout's server.py and not to an older one, which "
+              "would refuse it")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    flag_only_for_a_server_that_knows_it()
     stop_while_measuring("phone", ["--papel-local", "celular"])
     stop_while_measuring("pc", [])
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")

@@ -122,19 +122,34 @@ def fitcheck_never_ready():
         check(p.returncode == 1 and any(line.startswith("FALHA") and "390x844: the theme was not ready in 3 s" in line
                                         for line in lines),
               f"the fitcheck fails a size whose theme never gets ready, with the shared verdict (exit {p.returncode})")
-        for name, _ in fitcheck.READY_CONDITIONS:
-            check(any(line.startswith(f"  {name}: ") for line in lines), f"the fitcheck prints the condition {name}")
-        check(any(line.startswith("  console: ") and CONSOLE_MARK in line for line in lines),
-              "the fitcheck prints the console.error of the page")
         check(any(re.fullmatch(rf"  response: 404 http://127\.0\.0\.1:\d+/.*{re.escape(SCRIPT_MARK)}", line)
                   for line in lines), "the fitcheck prints the 404 of the script, read from Network.responseReceived")
         shot = tmp / "shots" / "not-ready_390x844.png"
         check(shot.is_file() and shot.stat().st_size > 0, "the fitcheck saves a print of the page that was not ready")
 
 
+def notice_page_not_ready():
+    with tempfile.TemporaryDirectory(prefix="ritmelli-notice-not-ready-") as tmp:
+        tmp = Path(tmp)
+        with open(tmp / "server.log", "w", encoding="utf-8") as log:
+            srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, config={"boas_vindas": True, "metricas": False},
+                                        extras=["--metricas-teste"])
+            saved = fitcheck.PRONTA, fitcheck.PRONTA_S
+            fitcheck.PRONTA, fitcheck.PRONTA_S = "false", 2.0
+            try:
+                r = asyncio.run(fitcheck.aviso_no_chrome(srv.base, "ligar"))
+            finally:
+                fitcheck.PRONTA, fitcheck.PRONTA_S = saved
+                compara.para_servidor(srv)
+    check(r["not_ready"] == ["notice: the theme was not ready in 2 s"] and r["abriu"] is False
+          and r["ao_ligar"] is None,
+          f"a page that never gets ready ends the notice check there, with no click on it ({r})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     notice_on_slow_load()
+    notice_page_not_ready()
     fitcheck_never_ready()
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0

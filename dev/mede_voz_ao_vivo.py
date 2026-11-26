@@ -49,7 +49,7 @@ AQUI = Path(__file__).resolve().parent
 RAIZ = AQUI.parent
 sys.path.insert(0, str(RAIZ))
 sys.path.insert(0, str(AQUI))
-import so_mock  # noqa: E402
+import so_mock
 
 SR = 48000
 ESTALOS = 10           # por fase
@@ -77,24 +77,24 @@ def _espera(cond, s):
 def motor(a):
     """O processo do motor, comandado pela entrada (nenhum | filtro | app | estado | sair); responde 'ok {estado}' com a
     fase no lugar (estado so responde)."""
-    import sounddevice as sd  # noqa: PLC0415
+    import sounddevice as sd
 
-    import engine as eng  # noqa: PLC0415
-    from microfone import injeta, preset  # noqa: PLC0415
+    import engine as eng
+    from microfone import injeta, preset
 
-    eng._processo_acima()  # noqa: SLF001 - a prioridade do app
+    eng._processo_acima()  # a prioridade do app
     pede, projeta = preset.pede, preset.preset
     e = eng.MockEngine("", "")
     e.monitor_on = False
-    e._alvo = injeta.hash_microfone(a.guid)  # noqa: SLF001
+    e._alvo = injeta.hash_microfone(a.guid)
     abertos = []
     if not a.sem_microfone:  # o app deixa o microfone aberto (o filtro fica vivo mesmo com o jogo fechado)
         i, d = eng.find_dev(a.mic, "in")
         s = sd.InputStream(device=i, channels=d["max_input_channels"], samplerate=eng.SR, blocksize=eng.BLOCK,
-                           dtype="float32", extra_settings=eng.WASAPI, callback=e._mic_cb)  # noqa: SLF001
+                           dtype="float32", extra_settings=eng.WASAPI, callback=e._mic_cb)
         s.start()
         abertos.append(s)
-    inj = e._injetor = eng.Injetor(e)  # noqa: SLF001
+    inj = e._injetor = eng.Injetor(e)
     if not _espera(lambda: inj.m is not None and inj.leitores > 0, 10.0):
         print("erro: sem o anel do filtro, ou sem leitor no microfone alvo", flush=True)
         return 1
@@ -119,7 +119,7 @@ def motor(a):
         time.sleep(0.15)
         if cmd != "nenhum":
             e.set_effect(a.efeito)
-            _espera(lambda: (inj.efeito_no_filtro, e.voz_pelo_app()) == ESTADO[cmd], 3.0)  # noqa: B023
+            _espera(lambda: (inj.efeito_no_filtro, e.voz_pelo_app()) == ESTADO[cmd], 3.0)
         time.sleep(0.3)
         responde()
     preset.pede, preset.preset = pede, projeta
@@ -133,13 +133,13 @@ def motor(a):
 
 def mede(a):
     """Toca e grava as fases, com o motor noutro processo; so depois de fechar tudo guarda a captura e faz a conta."""
-    import sounddevice as sd  # noqa: PLC0415
+    import sounddevice as sd
 
-    import engine as eng  # noqa: PLC0415
+    import engine as eng
 
     i_mic, d_mic = eng.find_dev(a.mic, "in")
     i_toca = eng.find_dev(a.toca, "out")[0]
-    st = eng._do_microfone(d_mic["name"])  # noqa: SLF001
+    st = eng._do_microfone(d_mic["name"])
     if not (st and st["filtro"] and st["melhorias"]):
         print(f'"{d_mic["name"]}" sem o filtro pronto (instalado e com as melhorias de audio ligadas): nada tocou')
         return 2
@@ -251,7 +251,7 @@ def fecha(*streams):
         try:
             st.abort()
             st.close()
-        except Exception as ex:  # noqa: BLE001 - fechando: o erro vai pro log e a conta segue
+        except Exception as ex:  # fechando: o erro vai pro log e a conta segue
             print(f"fechando {st}: {ex}", flush=True)
 
 

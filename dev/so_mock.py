@@ -13,8 +13,9 @@ Quem sobe o proprio servidor (compara, previews, testa_mock) usa o sobe: a porta
 se alguem ja responde nela, e cada pedido so com o filho vivo e o marcador na origem; se nao, so o filho sai, pelo
 handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado.
 
-The child stops when this process closes its stdin (STOP_FLAG): no request, so no other process can send it, and the
-phone role, which the /api/shutdown refuses, stops the same way."""
+A child started with STOP_FLAG stops when this process closes its stdin, a stop no request carries, so the phone role,
+which the /api/shutdown refuses, stops on its own too. A checkout whose server.py predates the flag (the base of a
+compara) gets the /api/shutdown, only to the live child that answers as a --mock, and its handle otherwise."""
 import json
 import socket
 import subprocess
@@ -26,7 +27,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pastas import PORTA as PORTA_DO_APP  # noqa: E402 - 8799
+from pastas import PORTA as PORTA_DO_APP  # 8799
 
 # no Fetch.enable do CDP: cada documento (a pagina, um iframe, um redirecionamento dele) para antes do pedido
 DOCUMENTOS = [{"urlPattern": "*", "resourceType": "Document", "requestStage": "Request"}]
@@ -38,7 +39,7 @@ class Recusa(Exception):
 
 
 class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: PLR0913 - a assinatura do urllib
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # a assinatura do urllib
         return None  # o 3xx vira HTTPError, e quem chamou decide
 
 
@@ -175,16 +176,19 @@ class Filho:
         self.srv.wait()
 
     def encerra(self, espera=10):
-        """Closes the child's stdin, the stop of STOP_FLAG, and waits for it to exit; if it does not, its handle."""
-        if self.srv.stdin:
-            self.srv.stdin.close()
+        """Started with STOP_FLAG: closes the child's stdin and waits for it to exit. Without it: the /api/shutdown, if
+        it is still the --mock that started. Either way, a child that does not exit gets its handle killed."""
         try:
+            if self.srv.stdin:
+                self.srv.stdin.close()
+            else:
+                self.api("POST", "/api/shutdown", espera=5)
             self.srv.wait(espera)
-        except subprocess.TimeoutExpired:
+        except (Recusa, OSError, ValueError, subprocess.TimeoutExpired):
             self.mata()
 
 
-def sobe(cmd, porta, limite=30.0, **popen):
+def sobe(cmd, porta, limite=30.0, stop_flag=True, **popen):
     """Sobe o servidor --mock (cmd e popen vao ao Popen) na porta. Antes, recusa a porta do app e a porta em que alguem
     ja responde; depois, so aceita a resposta com o filho vivo e o marcador. Volta o Filho; Recusa, com o filho
     encerrado pelo handle, se nao."""
@@ -192,7 +196,8 @@ def sobe(cmd, porta, limite=30.0, **popen):
         raise Recusa(f"a porta {porta} e a do Ritmelli de verdade: o servidor de teste sobe noutra")
     if porta_responde(porta):
         raise Recusa(f"a porta {porta} ja responde: outro servidor esta nela")
-    f = Filho(subprocess.Popen([*cmd, STOP_FLAG], stdin=subprocess.PIPE, **popen), porta)
+    stop = {"stdin": subprocess.PIPE} if stop_flag else {}
+    f = Filho(subprocess.Popen([*cmd, STOP_FLAG] if stop_flag else cmd, **stop, **popen), porta)
     fim = time.monotonic() + limite
     try:
         while True:

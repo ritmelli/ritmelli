@@ -36,14 +36,14 @@ from unittest import mock
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
-import jsonschema  # noqa: E402
-import numpy as np  # noqa: E402
-from referencing import Registry, Resource  # noqa: E402
+import jsonschema
+import numpy as np
+from referencing import Registry, Resource
 
 with contextlib.redirect_stderr(io.StringIO()):  # o fx avisa das vozes do pedal que faltam: nada disso importa aqui
-    import engine as eng  # noqa: E402
-import permissao as perm  # noqa: E402
-import transicao  # noqa: E402
+    import engine as eng
+import permissao as perm
+import transicao
 
 V1 = RAIZ / "docs" / "protocolo-remoto" / "v1"
 FIX = V1 / "fixtures"

@@ -16,8 +16,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import efeitos as ef  # noqa: E402
-import fx  # noqa: E402
+import efeitos as ef
+import fx
 
 SR, B = fx.SR, 480
 N = 2 * B

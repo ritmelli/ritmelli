@@ -22,11 +22,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import atualizacao as atu  # noqa: E402
-import atualizador  # noqa: E402
-from versao import VERSAO  # noqa: E402
-from Cryptodome.PublicKey import ECC  # noqa: E402
-from Cryptodome.Signature import eddsa  # noqa: E402
+import atualizacao as atu
+import atualizador
+from versao import VERSAO
+from Cryptodome.PublicKey import ECC
+from Cryptodome.Signature import eddsa
 
 falhas = []
 
@@ -267,10 +267,10 @@ caso("Instalar agora: dispara e reabre", len(disparos) == 2 and reaberturas == [
 print("--- a rodada da tarefa com a pasta do app fora da regra da pasta protegida")
 # o executavel instalado de mentira (sys.frozen) com a pasta reprovada; o subprocess.run trocado por um gravador, para
 # nenhum schtasks de verdade rodar: as duas tarefas saem, a propria por ultimo e sem o /end, e nada se grava na pasta
-import subprocess  # noqa: E402
-import types  # noqa: E402
+import subprocess
+import types
 
-from microfone import microfone as mf  # noqa: E402 - antes do sys.frozen: a PASTA dele sai do codigo
+from microfone import microfone as mf  # antes do sys.frozen: a PASTA dele sai do codigo
 
 schtasks = []
 

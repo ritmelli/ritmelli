@@ -146,7 +146,7 @@ class Janela:
     def _hwnd(self):
         try:
             return int(self.w.native.Handle.ToInt64())
-        except Exception:  # noqa: BLE001 - sem a janela nativa, a barra fica a do Windows
+        except Exception:  # sem a janela nativa, a barra fica a do Windows
             return None
 
     def _pinta(self):
@@ -156,7 +156,7 @@ class Janela:
         try:
             from Microsoft.Win32 import SystemEvents
             SystemEvents.UserPreferenceChanged += lambda *_: pinta_barra(self._hwnd())
-        except Exception as ex:  # noqa: BLE001 - so o tema trocado com a janela aberta perde a cor
+        except Exception as ex:  # so o tema trocado com a janela aberta perde a cor
             print(f"window: title bar ({ex})", flush=True)
 
     def _guarda(self):
@@ -175,7 +175,7 @@ class Janela:
         if self.w is not None:
             try:
                 self.w.destroy()
-            except Exception as ex:  # noqa: BLE001 - a janela que ja fechou nao impede o resto de sair
+            except Exception as ex:  # a janela que ja fechou nao impede o resto de sair
                 print(f"window: {ex}", flush=True)
 
     def foco(self):
@@ -189,7 +189,7 @@ class Janela:
             if sys.platform == "win32" and self.w.native is not None:
                 hwnd = int(self.w.native.Handle.ToInt64())
                 ctypes.windll.user32.SetForegroundWindow(ctypes.c_void_p(hwnd))
-        except Exception as ex:  # noqa: BLE001 - trazer para a frente e conforto, nao pode derrubar o pedido
+        except Exception as ex:  # trazer para a frente e conforto, nao pode derrubar o pedido
             print(f"window: focus ({ex})", flush=True)
             return False
         return True
@@ -201,7 +201,7 @@ def se_der(url):
         print("window: no WebView2 runtime; opening the browser", flush=True)
         return None
     try:
-        import webview  # noqa: F401
+        import webview
     except ImportError as ex:
         print(f"window: no pywebview ({ex}); opening the browser", flush=True)
         return None

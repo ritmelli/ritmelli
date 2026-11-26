@@ -53,7 +53,7 @@ import so_mock
 import fitcheck
 from fitcheck import (CHROME, DIAGNOSTIC_DOMAINS, PRONTA, READY_CONDITIONS, PageEvents, Ready,
                       barra_outra_origem, conecta_cdp, fecha_chrome, le_cdp)
-from so_mock import free_port  # noqa: E402
+from so_mock import free_port
 
 RAIZ = Path(__file__).resolve().parent.parent
 # o celular pequeno, o de sempre, o grande e o tablet em pe (abaixo de 900 px tambem e o layout do celular), e o PC
@@ -173,14 +173,19 @@ def sobe_servidor(tmp, porta, log, raiz=RAIZ, config=None, extras=(), env=None):
     # sys.executable e o python de verdade: o "python" do PATH, com a LOCALAPPDATA trocada, instalaria outro
     try:
         return so_mock.sobe([sys.executable, str(raiz / "server.py"), "--mock", "--no-browser", "--port", str(porta),
-                             "--data-dir", str(dados), *extras], porta, cwd=raiz, stdout=log, stderr=subprocess.STDOUT,
+                             "--data-dir", str(dados), *extras], porta, stop_flag=knows_stop_flag(raiz), cwd=raiz,
+                            stdout=log, stderr=subprocess.STDOUT,
                             env=dict(os.environ, **(env or {}), LOCALAPPDATA=str(tmp / "local")))
     except so_mock.Recusa as ex:
         sys.exit(f"{ex} (ver {log.name})")
 
 
+def knows_stop_flag(raiz):
+    return so_mock.STOP_FLAG in (raiz / "server.py").read_text(encoding="utf-8")
+
+
 def para_servidor(srv):
-    """The so_mock.Filho stop: its stdin closed, and its handle if it does not exit."""
+    """The so_mock.Filho stop (Filho.encerra)."""
     srv.encerra()
 
 
@@ -278,7 +283,7 @@ async def prints(a, srv, destino):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{cport}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - o Chrome ainda esta subindo
+            except Exception:  # o Chrome ainda esta subindo
                 time.sleep(0.1)
         if not ws_url:
             sys.exit("chrome headless nao subiu")
@@ -336,9 +341,9 @@ async def prints(a, srv, destino):
                     except so_mock.Recusa as ex:
                         sys.exit(f"{pre}: {ex}")
                     c.events.new_load()
-                    await c.cmd("Page.navigate", url=f"{srv.base}/t/ritmelli/?lang={a.lang}")
-                    ready = await fitcheck.wait_ready(c.cmd, PRONTO + (f" && {DESK_MOUNTED}" if mesa else ""),
-                                                      c.barrados, fitcheck.PRONTA_S)
+                    ready = await fitcheck.navigate_and_wait(c.cmd, f"{srv.base}/t/ritmelli/?lang={a.lang}",
+                                                             PRONTO + (f" && {DESK_MOUNTED}" if mesa else ""),
+                                                             c.barrados, fitcheck.PRONTA_S)
                     if ready is not Ready.READY:
                         await report_not_ready(c, pre, ready, mesa, destino.parent)
                     await asyncio.sleep(1)

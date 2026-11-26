@@ -77,7 +77,7 @@ def canal_do(yid):
         return None
     try:
         return ((ytm().get_song(yid) or {}).get("videoDetails") or {}).get("author") or None
-    except Exception:  # noqa: BLE001 - fica sem o canal, como antes de ter o rapido
+    except Exception:  # fica sem o canal, como antes de ter o rapido
         return None
 
 
@@ -167,9 +167,9 @@ def aquece_ytm():
     try:
         from ytmusicapi import YTMusic
         yt = YTMusic()
-        yt.headers  # noqa: B018 - o visitor id vem no primeiro acesso aos cabecalhos
+        yt.headers  # o visitor id vem no primeiro acesso aos cabecalhos
         _YTM = yt
-    except Exception as ex:  # noqa: BLE001 - sem o aquecido, o pedido abre um cliente novo
+    except Exception as ex:  # sem o aquecido, o pedido abre um cliente novo
         _AQUECE_ERRO = str(ex)[:120] or type(ex).__name__
         return
     if PARALELO_PALAVRAS:
@@ -189,7 +189,7 @@ def pre_conecta(yt, n=2, fresca=False):
         pool = s.get_adapter(YTM_BASE_API).get_connection_with_tls_context(
             requests.Request("POST", YTM_BASE_API).prepare(), cfg["verify"], cfg["proxies"], cfg["cert"])
         liga(pool, n, fresca=fresca)
-    except Exception as ex:  # noqa: BLE001 - sem a segunda, a busca abre a dela
+    except Exception as ex:  # sem a segunda, a busca abre a dela
         print(f"YouTube Music: the second connection didn't open ({str(ex)[:100]})", file=sys.stderr)
 
 
@@ -214,7 +214,7 @@ def liga(pool, n, timeout=5.0, fresca=False):
         try:
             c.timeout = timeout  # sem ele, um connect mudo segurava a thread para sempre (o pedido regrava o dele)
             c.connect()
-        except Exception:  # noqa: BLE001 - a conexao abre na hora do pedido, como antes
+        except Exception:  # a conexao abre na hora do pedido, como antes
             for x in novas[i:]:
                 x.close()
                 pool._put_conn(None)
@@ -237,9 +237,9 @@ def ytm():
         _AQUECE_ERRO = None
     yt = YTMusic()
     try:
-        yt.headers  # noqa: B018 - o visitor id
+        yt.headers  # o visitor id
         _YTM = yt
-    except Exception:  # noqa: BLE001 - sem rede: o pedido segue e o proximo tenta de novo
+    except Exception:  # sem rede: o pedido segue e o proximo tenta de novo
         pass
     return yt
 
@@ -277,7 +277,7 @@ class _Ja:
         def roda():
             try:
                 self.r = f()
-            except BaseException as ex:  # noqa: BLE001 - volta no espera, para quem precisar
+            except BaseException as ex:  # volta no espera, para quem precisar
                 self.ex = ex
             finally:
                 self.feito.set()
@@ -362,7 +362,7 @@ def musica(q, n, yt=None):
     if SUGESTAO:
         try:
             arts, mus = sugestoes(q, yt)
-        except Exception as ex:  # noqa: BLE001 - a busca de sempre
+        except Exception as ex:  # a busca de sempre
             arts, mus = [], []
             print(f"search: the suggestion for {q!r} failed ({str(ex)[:100]})", file=sys.stderr)
         # ate 3 (o "toca X"): a primeira musica sugerida com todas as palavras do pedido no titulo ou no artista
@@ -408,7 +408,7 @@ def faz(p):
             try:
                 info, hdr = stream_yt(p["alvo"], opts_rapido(p["opts"]))
                 _rapido_falhas = 0
-            except Exception as ex:  # noqa: BLE001 - o de sempre logo em seguida, no mesmo processo
+            except Exception as ex:  # o de sempre logo em seguida, no mesmo processo
                 erro_rapido = str(ex)
                 _rapido_falhas = RAPIDO_FALHAS_MAX if "not a bot" in erro_rapido else _rapido_falhas + 1
                 fora = ": turned off in this process" if _rapido_falhas >= RAPIDO_FALHAS_MAX else ""
@@ -445,7 +445,7 @@ def main():
     global _AQUECE
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # o servidor le o cano em utf-8
     try:
-        import ytmusicapi  # noqa: F401 - carregada ja na espera, como o yt-dlp
+        import ytmusicapi  # carregada ja na espera, como o yt-dlp
     except ImportError:
         pass  # sem ela, o radio e a versao de audio voltam erro e o servidor segue com o Mix do YouTube
     else:
@@ -471,11 +471,11 @@ def responde(linha):
         if p.get("op") == "aquece":
             try:
                 aquece(p)
-            except Exception as ex:  # noqa: BLE001 - o pedido de verdade abre a conexao dele, como antes
+            except Exception as ex:  # o pedido de verdade abre a conexao dele, como antes
                 print(f"warmup: failed ({str(ex)[:120]})", file=sys.stderr, flush=True)
             return False
         print(json.dumps({"r": faz(p)}), flush=True)
-    except Exception as ex:  # noqa: BLE001 - o servidor poe o motivo no log e na tela
+    except Exception as ex:  # o servidor poe o motivo no log e na tela
         print(json.dumps({"erro": str(ex) or type(ex).__name__}), flush=True)
     return True
 
@@ -493,7 +493,7 @@ def aquece(p):
         if p.get("rapido") and _rapido_falhas < RAPIDO_FALHAS_MAX:
             try:
                 opts = opts_rapido(opts)
-            except Exception:  # noqa: BLE001 - sem o visitor id o pedido vai pelo de sempre (faz)
+            except Exception:  # sem o visitor id o pedido vai pelo de sempre (faz)
                 pass
         from yt_dlp.networking import Request
         r = _ydl(opts).urlopen(Request("https://www.youtube.com/robots.txt", method="HEAD"))

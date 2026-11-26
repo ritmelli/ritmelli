@@ -50,8 +50,8 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import so_mock  # noqa: E402
-from so_mock import free_port  # noqa: E402,F401 - o compara, o perfcheck e o texturas pegam daqui
+import so_mock
+from so_mock import free_port  # o compara, o perfcheck e o texturas pegam daqui
 
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 SIZES = ("1024x600,1280x650,1280x720,1366x657,1366x768,1436x765,1440x900,1536x730,"
@@ -144,6 +144,14 @@ async def wait_ready(cmd, expr, blocked, timeout_s):
     return Ready.LEFT
 
 
+async def navigate_and_wait(cmd, url, expr, blocked, timeout_s):
+    try:
+        await cmd("Page.navigate", url=url)
+    except CDP_GONE:
+        return Ready.CHROME_GONE
+    return await wait_ready(cmd, expr, blocked, timeout_s)
+
+
 class PageEvents:
     def __init__(self):
         self.page_errors, self.browser_errors, self.failed_responses = [], [], []
@@ -227,7 +235,7 @@ async def le_cdp(ws, pend, evento):
                     f.set_result(m)
             else:
                 evento(m)
-    except Exception as ex:  # noqa: BLE001 - the connection closed, or a message that broke the reading
+    except Exception as ex:  # the connection closed, or a message that broke the reading
         motivo = str(ex) or type(ex).__name__
     for f in pend.values():
         if not f.done():
@@ -368,7 +376,7 @@ async def run(a):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - subindo
+            except Exception:  # subindo
                 time.sleep(0.1)
         async with conecta_cdp(ws_url) as ws:
             seq, pend, barrados, events = [0], {}, [], PageEvents()
@@ -399,8 +407,7 @@ async def run(a):
                     so_mock.confere(a.url)  # antes de cada navegacao: a porta pode ter mudado de dono
                     erros.clear()
                     events.new_load()
-                    await cmd("Page.navigate", url=a.url)
-                    ready = await wait_ready(cmd, PRONTA, barrados, PRONTA_S)
+                    ready = await navigate_and_wait(cmd, a.url, PRONTA, barrados, PRONTA_S)
                     if ready is Ready.CHROME_GONE:
                         verdict = await report_not_ready(cmd, f"{sz:>10}", ready, READY_CONDITIONS, events, PRONTA_S)
                         print(f"FALHA  {verdict}; nothing more checked")
@@ -524,7 +531,7 @@ async def aviso_no_chrome(base, botao):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - subindo
+            except Exception:  # subindo
                 time.sleep(0.1)
         async with conecta_cdp(ws_url) as ws:
             seq, pend, barrados, events = [0], {}, [], PageEvents()
@@ -557,8 +564,7 @@ async def aviso_no_chrome(base, botao):
             async def load_and_wait_notice():
                 so_mock.confere(url)
                 events.new_load()
-                await cmd("Page.navigate", url=url)
-                ready = await wait_ready(cmd, PRONTA, barrados, PRONTA_S)
+                ready = await navigate_and_wait(cmd, url, PRONTA, barrados, PRONTA_S)
                 if ready is not Ready.READY:
                     r["not_ready"].append(await report_not_ready(cmd, "notice", ready, READY_CONDITIONS, events,
                                                                  PRONTA_S))
@@ -570,6 +576,9 @@ async def aviso_no_chrome(base, botao):
                 await cmd(f"{domain}.enable")
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
             r["abriu"] = await load_and_wait_notice()
+            if r["not_ready"]:
+                tarefa.cancel()
+                return r
             await confere_pagina(cmd, url, barrados)
             if botao == "ligar" and not r["abriu"]:
                 # o Microfone e fone aberto pelo botao dele, e o Comecar a enviar da linha dos dados de uso

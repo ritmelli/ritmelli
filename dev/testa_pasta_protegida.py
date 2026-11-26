@@ -28,7 +28,7 @@ from pathlib import Path
 
 RAIZ_REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ_REPO))
-import pastas  # noqa: E402
+import pastas
 
 PROTEGIDA_PS1 = RAIZ_REPO / "instalador" / "protegida.ps1"
 
