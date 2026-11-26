@@ -83,6 +83,8 @@ class VoicePedalStart:
         pedal = f"the pedal turned on {now - on_at:.2f} s ago"
         if lo is not None and on_at > lo:
             pedal += " (after the ring was last filled, maybe after it ran dry)"
+        elif lo is not None and on_at == lo:
+            pedal += " (at the clock reading of the ring's last fill, maybe after it ran dry)"
         elif lo is None and empty_at is not None:
             pedal += " (with no fill seen, maybe after it ran dry)"
         if off_at is not None:
@@ -130,7 +132,7 @@ class RingDryOuts:
         if empty_at is None:
             return ""
         by = math.ceil(round((empty_at - on_at) * 100, 6)) / 100
-        if lo is None:
+        if lo is None or lo <= on_at:
             return f" it ran dry by {by:.2f} s after the pedal turned on;"
         since = math.floor(round((lo - on_at) * 100, 6)) / 100
         return f" it ran dry between {since:.2f} and {by:.2f} s after the pedal turned on;"

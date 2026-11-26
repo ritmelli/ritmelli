@@ -863,6 +863,17 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertEqual(counted, 1, "the first start was on when the ring was seen empty")
         self.assertIn("the pedal turned on 0.75 s ago and off 0.25 s ago, its voice track came up between 0.55 and 0.56 s ago", log)
 
+    def test_a_pedal_on_at_or_after_the_last_fill_may_be_after_the_dry_out(self):
+        for on_at, said in ((1.0, "the pedal turned on 0.30 s ago (at the clock reading of the ring's last fill, maybe "
+                                  "after it ran dry)"),
+                            (1.05, "the pedal turned on 0.25 s ago (after the ring was last filled, maybe after it ran "
+                                   "dry)")):
+            with self.subTest(on_at=on_at):
+                counted, log = self.run_starts([(1.0, "fill"), (on_at, "on"), (1.2, "empty")], 1.3)
+                self.assertEqual(counted, 1)
+                self.assertIn(said, log)
+                self.assertIn(f"it ran dry by {1.2 - on_at:.2f} s after the pedal turned on;", log)
+
     def test_of_two_ended_starts_that_cross_the_dry_out_the_latest_is_told(self):
         counted, log = self.run_starts([(1.0, "on"), (1.05, "track"), (1.3, "fill"), (1.32, "off"), (1.34, "on"),
                                         (1.36, "track"), (1.4, "empty"), (1.45, "off")], 1.5)
