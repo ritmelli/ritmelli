@@ -130,16 +130,16 @@ def check(ok, msg):
 
 
 class ThemeProxy:
-    def __init__(self, target, hold_script_s=0, hold_state_s=0, late_notice=False):
+    def __init__(self, target, hold_page_s=0, hold_state_s=0, late_notice=False):
         self.target, self.port = target, so_mock.free_port()
         self.base = f"http://127.0.0.1:{self.port}"
-        self.hold_script_s, self.hold_state_s, self.late_notice = hold_script_s, hold_state_s, late_notice
+        self.hold_page_s, self.hold_state_s, self.late_notice = hold_page_s, hold_state_s, late_notice
         self.held, self.started = [], threading.Event()
 
     def hold_for(self, request):
         from_browser = "Chrome" in request.headers.get("User-Agent", "")
-        if self.hold_script_s and request.path.startswith("/t/ritmelli/") and request.path.endswith(".js"):
-            return 0 if self.held else self.hold_script_s
+        if self.hold_page_s and request.path == "/t/ritmelli/":
+            return 0 if self.held else self.hold_page_s
         if self.hold_state_s and from_browser and request.path == "/api/state":
             return self.hold_state_s
         return 0
@@ -203,9 +203,9 @@ def notice_through(proxy_options, config, button=None):
 
 
 def notice_on_slow_load():
-    r, proxy = notice_through({"hold_script_s": LATE_S}, {"boas_vindas": True})
+    r, proxy = notice_through({"hold_page_s": LATE_S}, {"boas_vindas": True})
     check(bool(proxy.held) and r["abriu"] is True and not r["erros"],
-          f"with a theme script held {LATE_S:.0f} s ({proxy.held}), longer than the "
+          f"with the theme page, which carries every script, held {LATE_S:.0f} s ({proxy.held}), longer than the "
           f"{fitcheck.AVISO_ESPERA_S:.0f} s wait for the notice, the notice is still seen opening on load ({r})")
 
 
