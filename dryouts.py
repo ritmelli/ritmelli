@@ -1,3 +1,4 @@
+import itertools
 import math
 import queue
 import sys
@@ -120,9 +121,13 @@ class VoicePedalStart:
         return on_at, f"{pedal}, its voice track came up {now - up_at:.2f} s ago"
 
 
+INJECTORS = itertools.count(1)
+
+
 class RingDryOuts:
     def __init__(self, pedal):
         self.pedal = pedal
+        self.injector = next(INJECTORS)
         self.while_pedal_starting = 0
         self.counts = (0, 0, 0.0)
         self._told_at = -1e9
@@ -141,7 +146,8 @@ class RingDryOuts:
 
     def state(self):
         dry_outs, while_pedal_starting, longest = self.counts
-        return {"secas": dry_outs, "secas_pedal": while_pedal_starting, "volta_max_ms": round(longest * 1000, 1)}
+        return {"secas": dry_outs, "secas_pedal": while_pedal_starting, "volta_max_ms": round(longest * 1000, 1),
+                "injetor": self.injector}
 
     def read_ring(self, read):
         before = self.pedal.clock()

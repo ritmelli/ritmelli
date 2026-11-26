@@ -75,10 +75,11 @@ ferramenta atrasou para ler; o fim do ciclo é o último state da janela; o `tic
 um salto nele (a conexão que ficou para trás pula para a volta mais nova) para a medição, porque um state do meio pode
 ter mostrado o anel quebrado; o stream que fecha para a medição, de um anel que mediu a folga e de um anel sem
 interrupção (leitor o tempo todo, o mesmo microfone, e contadores que não voltam, o que pega um `Injetor` aberto de
-novo), ou a medição para e diz qual ciclo. O `dev/test_measure_voice_pedal.py` confere a recusa e a linha de cada ciclo.
-Testes: `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso), `python dev/testa_vozes.py` (o `vozes.json`,
-o que o instalador baixa e o `impedimento()`), `python dev/testa_pista.py` (o processo contra um anel falso; com
-`RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade) e `python dev/testa_conversor.py` (o motor com modelos de
-mentira no processador: o tom deslocado, a onda sem degrau entre blocos, o `ajusta_tom` e o silêncio). O motor e o
-`compasso.py` desligam a telemetria do ONNX Runtime (ver o PRIVACIDADE.md), e os termos da DirectML vão no TERCEIROS
-pelo `instalador/terceiros.py`.
+novo; e o mesmo `injetor` do `/api/state`, o número que cada `RingDryOuts` ganha ao nascer, que pega um aberto de novo
+com os mesmos contadores), ou a medição para e diz qual ciclo. O `dev/test_measure_voice_pedal.py` confere a recusa e a
+linha de cada ciclo. Testes: `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso),
+`python dev/testa_vozes.py` (o `vozes.json`, o que o instalador baixa e o `impedimento()`), `python dev/testa_pista.py`
+(o processo contra um anel falso; com `RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade) e
+`python dev/testa_conversor.py` (o motor com modelos de mentira no processador: o tom deslocado, a onda sem degrau entre
+blocos, o `ajusta_tom` e o silêncio). O motor e o `compasso.py` desligam a telemetria do ONNX Runtime (ver o
+PRIVACIDADE.md), e os termos da DirectML vão no TERCEIROS pelo `instalador/terceiros.py`.

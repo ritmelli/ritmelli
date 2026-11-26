@@ -753,6 +753,10 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertIn("its voice track isn't up yet", told,
                       "a track up in the start that is on isn't the ended start's, even within a tick of its end")
 
+    def test_each_dry_out_count_has_its_own_injector_number(self):
+        counts = [dryouts.RingDryOuts(dryouts.VoicePedalStart()) for _ in range(2)]
+        self.assertEqual(counts[1].state()["injetor"], counts[0].state()["injetor"] + 1)
+
     def test_a_stamp_from_before_the_wrap_read_after_it(self):
         wrap = 2**32 / 1000
         now = [wrap - 1.0]

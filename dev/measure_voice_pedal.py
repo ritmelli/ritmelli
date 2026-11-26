@@ -124,6 +124,8 @@ def interruption(states_seen, mic):
                     f"{st['active_devices']['mic']})")
     for a, b in zip(states_seen, states_seen[1:]):
         a, b = a["microfone"], b["microfone"]
+        if b["injetor"] != a["injetor"]:
+            return f"the ring's injector was opened again (injector {a['injetor']}, then {b['injetor']})"
         dropped = a["folga_min_ms"] is not None and (b["folga_min_ms"] is None or b["folga_min_ms"] > a["folga_min_ms"])
         if any(b[k] < a[k] for k in ("secas", "secas_pedal", "volta_max_ms")) or dropped:
             return "the ring's counters started over (the injector was opened again)"
