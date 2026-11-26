@@ -150,7 +150,7 @@ def check_block_pairs(tema, arquivos):
                   f"that order, in the same file")
 
 
-INLINE_CEILING = {"ritmelli": 1187}
+INLINE_CEILING = {"ritmelli": 825}
 
 
 def inline_lines(html):

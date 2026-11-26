@@ -50,10 +50,19 @@ FEATURE_HANDLERS = (
     ("receiver.js", "ui-events.js", "#f-vol", "input"), ("receiver.js", "ui-events.js", "#f-mon", "input"),
     ("receiver.js", "ui-events.js", "#f-mic", "input"), ("receiver.js", "ui-events.js", "#mini-cortar", "click"),
     ("receiver.js", "ui-events.js", "#b-mudo-topo", "click"), ("receiver.js", "ui-events.js", "#palco-cortar", "click"),
+    ("commands.js", "ui-events.js", "#b-tocar", "click"), ("commands.js", "ui-events.js", "#mini-tocar", "click"),
+    ("shelf.js", "ui-events.js", "#estante", "click"), ("shelf.js", "ui-events.js", "#estante", "contextmenu"),
+    ("shelf.js", "ui-events.js", "#estante", "pointerdown"),
+    ("shelf.js", "ui-events.js", "#chips", "click"), ("shelf.js", "ui-events.js", "#chips", "contextmenu"),
+    ("shelf.js", "ui-events.js", "#cartoes", "click"),
+    ("stage.js", "ui-events.js", "#mini-abrir", "click"), ("stage.js", "ui-events.js", "#mini-seta", "click"),
+    ("stage.js", "ui-events.js", "#mini-ant", "click"), ("stage.js", "ui-events.js", "#mini-prox", "click"),
+    ("stage.js", "ui-events.js", "#b-fechar-palco", "click"), ("stage.js", "ui-events.js", "#palco", "pointerdown"),
+    ("disc-page.js", "ui-events.js", "#b-pagina", "click"),
 )
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
-            ("#seek", "input"))
+            ("#seek", "input"), ("#estante", "click"), ("#mini-abrir", "click"), ("#b-pagina", "click"))
 STILL_OFF = (("#b-ouvir", "click"), ("#gaveta", "click"), ("#q", "input"), ("#resultados", "click"))
 FORM_INERT = ("the search form stays inert", "document.getElementById('form-busca')?.inert === true")
 EARLIER_FAILURES = (
