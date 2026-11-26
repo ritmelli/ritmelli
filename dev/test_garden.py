@@ -391,6 +391,7 @@ CASES = {
     ],
     "prose_justifications": [
         ("in a comment", {"a.py": "print('using the old one for now')\n"}, {"a.py": "x = 1  # for now\n"}),
+        ("risco aceito in a comment", {"a.py": "x = 1  # risco aceito (#119)\n"}, {"a.py": "x = 1  # risco aceito\n"}),
         ("sem teste in a comment", {"a.py": "x = 1  # sem testes de carga aqui\n"}, {"a.py": "x = 1  # sem teste\n"}),
         ("have no test yet in a paragraph",
          {"a.md": "These have no test yet, tracked in [#119](https://github.com/o/r/issues/119).\n"},
