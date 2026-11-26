@@ -23,10 +23,10 @@ import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import atualizacao as atu  # noqa: E402
-from versao import VERSAO  # noqa: E402
-from Cryptodome.PublicKey import ECC  # noqa: E402
-from Cryptodome.Signature import eddsa  # noqa: E402
+import atualizacao as atu
+from versao import VERSAO
+from Cryptodome.PublicKey import ECC
+from Cryptodome.Signature import eddsa
 
 falhas = []
 

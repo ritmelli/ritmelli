@@ -44,8 +44,8 @@ import numpy as np
 AQUI = Path(__file__).resolve().parent
 os.environ["MICFX_MAPA"] = f"Local\\RitmelliTestaFiltro-{os.getpid()}"
 sys.path.insert(0, str(AQUI.parent))
-import fx  # noqa: E402
-from microfone import injeta, preset, voz  # noqa: E402
+import fx
+from microfone import injeta, preset, voz
 
 _P = ctypes.POINTER(ctypes.c_float)
 _dll = ctypes.CDLL(str(AQUI.parent / "microfone" / "apo" / "saida" / "banca_filtro.dll"))
@@ -324,7 +324,7 @@ class BancaHospede(Banca):
     """O hospedeiro do MFX (#49) pela fabrica de verdade, com um fabricante falso por dentro: um APO com
     cancelamento de eco que devolve a entrada pela metade (o "redutor")."""
 
-    def __init__(self, taxa=48000, canais=1):  # noqa: D107 - mesmo molde da Banca, com as funcoes do hospedeiro
+    def __init__(self, taxa=48000, canais=1):  # mesmo molde da Banca, com as funcoes do hospedeiro
         Banca.conta += 1
         self.mapa = f"{os.environ['MICFX_MAPA']}-h{Banca.conta}"
         injeta.MAPA = self.mapa

@@ -75,7 +75,7 @@ for arq in discos:
 
 print("--- o volume do arquivo inteiro (o ebur128 do sonoridade.py, #120)")
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-import sonoridade  # noqa: E402
+import sonoridade
 
 with tempfile.TemporaryDirectory() as tmp:
     tom = Path(tmp) / "tom.wav"   # o de antes e o completo: so ele tem o lavfi que gera o tom
@@ -110,8 +110,8 @@ with tempfile.TemporaryDirectory() as tmp:
                 falhas.append(f"{arq.name} {nome}")
 
 print("--- o que o yt-dlp acha dele")
-from yt_dlp import YoutubeDL  # noqa: E402
-from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor  # noqa: E402
+from yt_dlp import YoutubeDL
+from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
 
 with YoutubeDL({"ffmpeg_location": str(NOVO), "quiet": True}) as ydl:
     pp = FFmpegPostProcessor(ydl)

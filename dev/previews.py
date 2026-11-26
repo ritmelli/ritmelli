@@ -13,11 +13,11 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import compara  # noqa: E402
+import compara
 
 HERE = compara.RAIZ
 sys.path.insert(0, str(HERE))
-import i18n  # noqa: E402
+import i18n
 
 
 def main():

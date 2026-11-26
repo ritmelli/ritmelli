@@ -22,10 +22,10 @@ AQUI = Path(__file__).resolve().parent
 os.environ["MICFX_MAPA"] = f"Local\\RitmelliMedeVoz-{os.getpid()}"
 sys.path.insert(0, str(AQUI.parent))
 sys.path.insert(0, str(AQUI))
-import engine as eng  # noqa: E402
-from testa_filtro import Banca  # noqa: E402
+import engine as eng
+from testa_filtro import Banca
 
-from microfone import injeta, preset  # noqa: E402
+from microfone import injeta, preset
 
 BLOCO = 480
 ESTALO_A_CADA = 25  # blocos: um estalo a cada 250 ms
@@ -44,7 +44,7 @@ def main(argv=None):
     banca = Banca()
     motor = eng.MockEngine("", "")
     motor.monitor_on = False
-    motor._alvo = injeta.hash_microfone("{mede-voz}")  # noqa: SLF001
+    motor._alvo = injeta.hash_microfone("{mede-voz}")
     motor.set_effect(a.efeito)
     entrou, saiu = [], []
     vai = threading.Event()
