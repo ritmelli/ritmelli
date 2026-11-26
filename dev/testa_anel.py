@@ -1109,7 +1109,8 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.motor.voice_pedal.track = turning_off
         self.producer.pista_escreve(eng.np.zeros(2 * eng.BLOCK, eng.np.float32))
         self.assertTrue(espera(lambda: not armed[0]), "the injector never read the frames")
-        self.assertEqual(sum(pushed), 2 * eng.BLOCK, "the pass read the track live and must hear what it read")
+        self.assertTrue(espera(lambda: sum(pushed) == 2 * eng.BLOCK), "the pass read the track live and must hear "
+                        f"what it read, not {sum(pushed)} frames")
 
     def test_a_track_turns_on_with_its_stamp_in_one_write(self):
         self.pedal_on(0.5)
