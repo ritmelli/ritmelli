@@ -19,13 +19,6 @@ function detalheMsg(m) {
   const r = m && m.params && m.params.reason;
   return r ? textoMsg(r) : '';
 }
-function fmt(s) {
-  if (s == null || !isFinite(s)) return '0:00';
-  s = Math.max(0, Math.floor(s));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
-  const p = n => String(n).padStart(2, '0');
-  return h ? `${h}:${p(m)}:${p(x)}` : `${m}:${p(x)}`;
-}
 
 // sobe a cada pareamento aceito: o 401 de um pedido feito antes dele (que chega atrasado) nao volta a tela do codigo
 let geracaoPareamento = 0;

@@ -132,21 +132,6 @@ function desenharTempo() {
   moverBraco();
   tempoMesa();
 }
-const escritos = new WeakMap();
-function mudar(el, chave, v) {
-  let m = escritos.get(el); if (!m) escritos.set(el, m = {});
-  if (m[chave] === v) return;
-  m[chave] = v;
-  if (chave === 'textContent') el.textContent = v;
-  else if (chave.startsWith('--')) el.style.setProperty(chave, v);
-  else el.setAttribute(chave, v);
-}
-
-function ligarChave(b, on) {
-  b.setAttribute('aria-pressed', on ? 'true' : 'false');
-  const l = b.querySelector('.lampada');
-  if (l) l.className = 'lampada' + (on ? (b.id === 'b-cortar' ? ' alerta' : ' acesa') : '');
-}
 function bindTurntable() {
   $('#b-anterior').addEventListener('click', () => cmd('/api/prev'));
   $('#b-proxima').addEventListener('click', () => cmd('/api/next'));

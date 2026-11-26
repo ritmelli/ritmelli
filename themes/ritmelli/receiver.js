@@ -61,6 +61,10 @@ function desenharReceptor() {
 function pintarFader(f) { f.style.setProperty('--p', (f.value / f.max * 100).toFixed(1) + '%'); f.style.setProperty('--f', (f.value / f.max).toFixed(4)); }
 
 function alternarVoz() { const v = !(S.state && S.state.mic_mute); ligarChave($('#b-cortar'), v); ajustar('mic_mute', v); desenharReceptor(); }
+function mutarComAviso() {
+  alternarVoz();
+  avisar(S.state && S.state.mic_mute ? I18N.t('voice.mutedToast') : I18N.t('voice.backToast'));
+}
 function bindReceiver() {
   $('#b-cortar').addEventListener('click', alternarVoz);
   $('#b-nivelar').addEventListener('click', () => { const v = !(S.state && S.state.volume_auto); ligarChave($('#b-nivelar'), v); ajustar('volume_auto', v); });

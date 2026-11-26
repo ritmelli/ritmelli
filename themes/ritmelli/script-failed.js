@@ -3,6 +3,7 @@
 const scriptsFailed = [], firstAddress = location.href;
 function scriptFailed(s) { scriptsFailed.push(s.getAttribute('src')); }
 const scriptsMissing = () => scriptsFailed.filter(f => f !== 'transporte.js');
+const scriptLoaded = f => !scriptsFailed.includes(f);
 document.addEventListener('DOMContentLoaded', () => {
   const missing = scriptsMissing();
   if (!missing.length) return;

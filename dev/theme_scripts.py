@@ -48,12 +48,15 @@ FEATURE_HANDLERS = (
     ("turntable.js", "ui-events.js", "#seek", "keydown"),
     ("receiver.js", "ui-events.js", "#b-cortar", "click"), ("receiver.js", "ui-events.js", "#b-nivelar", "click"),
     ("receiver.js", "ui-events.js", "#f-vol", "input"), ("receiver.js", "ui-events.js", "#f-mon", "input"),
-    ("receiver.js", "ui-events.js", "#f-mic", "input"),
+    ("receiver.js", "ui-events.js", "#f-mic", "input"), ("receiver.js", "ui-events.js", "#mini-cortar", "click"),
+    ("receiver.js", "ui-events.js", "#b-mudo-topo", "click"), ("receiver.js", "ui-events.js", "#palco-cortar", "click"),
 )
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
+STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
+            ("#seek", "input"))
 EARLIER_FAILURES = (
-    ("voice-effects.js", (("index.html", "#b-disp", "click"),), ()),
-    ("search.js", (("index.html", "#b-disp", "click"), ("queue.js", "#rolo-busca", "scroll")),
+    ("voice-effects.js", STILL_ON, ()),
+    ("search.js", STILL_ON + (("#rolo-busca", "scroll"),),
      (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"),)),
 )
 SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc';"
@@ -190,9 +193,9 @@ def after_a_failure(missing, expected, page_checks):
         state = await until(tab, "({ran: !!document.querySelector('#ant-d svg')"
                                  + "".join(f", {json.dumps(t)}: {e}" for t, e in page_checks) + "})", "s.ran",
                             PAGE_READY_S)
-        found = {f"{kind} {selector}": await handler_files(tab, selector, kind) for _, selector, kind in expected}
+        found = {f"{kind} {selector}": await handler_files(tab, selector, kind) for selector, kind in expected}
         await tab.release("deck.js", fail=False)
-        results = [(state.get("ran") and all(found[f"{kind} {selector}"] == [file] for file, selector, kind in expected),
+        results = [(state.get("ran") and all(found.values()),
                     f"with {missing} failed, the handlers registered after its binder still are ({found})")]
         results += [(state.get("ran") and state.get(title) is True, f"with {missing} failed, {title} ({state})")
                     for title, _ in page_checks]

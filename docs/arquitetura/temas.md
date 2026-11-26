@@ -43,9 +43,10 @@ antes: o `ui-events.js` chama os da busca, dos efeitos, do toca-discos e do rece
 `bindSearchResults()`.
 Assim os controles só respondem quando os arquivos de que eles dependem já carregaram (o formulário da busca segue
 `inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos outros no mesmo alvo (o toque fora da busca
-para o evento depois de o ouvinte do `queue.js` na `window` ver o toque). Com um arquivo anterior que faltou
-(`scriptsMissing()`), a chamada não acontece, e o resto do arquivo que chama segue registrando os seus ouvintes até a
-página ir para o aviso de fora do ar.
+para o evento depois de o ouvinte do `queue.js` na `window` ver o toque). Se o arquivo da parte faltou
+(`scriptLoaded()`, do `script-failed.js`), a chamada não acontece, e o resto do arquivo que chama segue registrando os
+seus ouvintes até a página ir para o aviso de fora do ar. Os ajudantes de mais de uma parte (o `fmt()`, o `mudar()` e o
+`ligarChave()`) moram no `shared.js`.
 
 Todo nome do alto de um script é declarado por um script só. O `dev/theme_scripts.py`, que o `--tela` do
 `dev/testa_tudo.py` roda, abre a página num Chrome sem tela contra um `--mock` e pega cada script como o V8 o leu. Cada

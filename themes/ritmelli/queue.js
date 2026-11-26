@@ -284,7 +284,7 @@ for (const sec of document.querySelectorAll('.fila')) {
   });
 }
 
-if (!scriptsMissing().length) bindSearchResults();
+if (scriptLoaded('search.js')) bindSearchResults();
 
 document.querySelectorAll('.rolo').forEach(r => {
   r.addEventListener('scroll', () => { fecharMenu(false); sombrear(r); }, { passive: true });

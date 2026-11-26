@@ -16,15 +16,11 @@ $('#estante').addEventListener('click', e => {
   else if (b.dataset.role === 'mais' && id) { if (menuBotao === b) fecharMenu(true); else { fecharMenu(false); abrirMenu(b, { tipo: 'disco', id }); } }
   else if (b.dataset.role === 'retentar') { const c = S.jobCorpo[b.dataset.job]; if (c) baixar(c, S.jobAlvo[b.dataset.job]); }
 });
-if (!scriptsMissing().length) bindVoiceEffects();
+if (scriptLoaded('voice-effects.js')) bindVoiceEffects();
 matchMedia('(max-width: 899.98px)').addEventListener('change', () => {
   abrirGaveta(S.gaveta); if (!celular()) abrirPalco(false); else abrirDisco(false); inertPalco(); textoBusca();
 });
 $('#mini-tocar').addEventListener('click', alternar);
-function mutarComAviso() {
-  alternarVoz();
-  avisar(S.state && S.state.mic_mute ? I18N.t('voice.mutedToast') : I18N.t('voice.backToast'));
-}
 $('#mini-cortar').addEventListener('click', mutarComAviso);
 $('#b-mudo-topo').addEventListener('click', mutarComAviso);
 $('#b-pagina').addEventListener('click', () => abrirDisco(!S.disco));
@@ -320,9 +316,9 @@ document.querySelectorAll('input[type=range]').forEach(r => {
   r.addEventListener('input', barrar, true);
   r.addEventListener('change', barrar, true);
 });
-if (!scriptsMissing().length) bindReceiver();
-if (!scriptsMissing().length) bindTurntable();
-if (!scriptsMissing().length) bindSearch();
+if (scriptLoaded('receiver.js')) bindReceiver();
+if (scriptLoaded('turntable.js')) bindTurntable();
+if (scriptLoaded('search.js')) bindSearch();
 $('#b-cel').addEventListener('click', abrirCelular);
 $('#b-disp').addEventListener('click', abrirDispositivos);
 $('#dica-ouvir').addEventListener('click', e => { if (e.target.closest('.ir-disp')) abrirDispositivos(); });

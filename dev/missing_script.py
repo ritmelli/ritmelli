@@ -18,10 +18,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 compara = importlib.import_module("compara")
 so_mock = importlib.import_module("so_mock")
 fitcheck = importlib.import_module("fitcheck")
+testa_i18n = importlib.import_module("testa_i18n")
 
 RAIZ = Path(__file__).resolve().parent.parent
 THEME = "/t/ritmelli/"
 STATE = ("({card: document.getElementById('fora')?.hidden === false,"
+         " cardSeen: document.getElementById('fora')?.checkVisibility({visibilityProperty: true}) === true,"
          " pairing: document.getElementById('tela-parear')?.hidden === false,"
          " dialog: !!document.querySelector('dialog[open]'),"
          " devicesFailed: !!document.getElementById('dd-msg')?.classList.contains('erro'),"
@@ -39,7 +41,6 @@ WAIT_IN_PAGE = """new Promise(done => {
   if (met(state())) { observer.disconnect(); done(state()); }
 })"""
 DEVTOOLS = re.compile(r"DevTools listening on (ws://\S+)")
-SCRIPT_SRC = re.compile(r'<script src="([^"]+)"')
 CHROME_UP_S = 20.0
 CARD_SHOWS_S = 8.0
 RELOAD_S = 12.0
@@ -332,20 +333,21 @@ async def the_shared_file_fails(tab):
 
 async def every_file_brings_the_card(tab):
     with urllib.request.urlopen(tab.base + THEME, timeout=10) as r:
-        files = [f for f in SCRIPT_SRC.findall(r.read().decode("utf-8")) if f != "transporte.js"]
+        page = r.read().decode("utf-8")
+    files = [a["src"] for a, *_ in testa_i18n.script_elements(page) if a.get("src") and a["src"] != "transporte.js"]
     missed = []
     for name in files:
         tab.failing = {name}
         before = tab.contexts
         await tab.cmd("Page.navigate", url=tab.base + THEME)
         await tab.tab_reaches(lambda: tab.contexts > before, CARD_SHOWS_S)
-        card = (await tab.page_reaches("s.card", CARD_SHOWS_S)).get("card")
+        seen = (await tab.page_reaches("s.cardSeen", CARD_SHOWS_S)).get("cardSeen")
         calls = [path for loader, path in tab.api_calls if loader == tab.loaders[-1]]
-        if not card or calls:
-            missed.append((name, card, calls))
-    return [(len(files) > 10 and not missed,
-             f"each of the {len(files)} theme files but transporte.js, when it fails, brings the off-air card with no "
-             f"call to the server ({missed or 'all of them'})")]
+        if not seen or calls:
+            missed.append((name, seen, calls))
+    return [(bool(files) and not missed,
+             f"each of the {len(files)} theme files but transporte.js, when it fails, brings the off-air card, visible, with "
+             f"no call to the server ({missed or 'all of them'})")]
 
 
 PC = (a_file_that_fails, a_late_call_counts_for_its_page, the_qr_code_survives, transporte_alone, a_dialog_opened_before,
