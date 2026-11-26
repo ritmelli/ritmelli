@@ -21,6 +21,7 @@ starts is a fake Popen: nothing is run.
 Exits 1 if something fails."""
 import http.server
 import json
+import _thread
 import os
 import signal
 import socket
@@ -401,6 +402,26 @@ def the_tree():
             raised = ex
     check(isinstance(raised, KeyboardInterrupt) and made and made[0].poll() is not None,
           f"a second Ctrl+C as start_job starts its cleanup: the cleanup still ends the child ({raised!r})")
+    made.clear()
+    set_handler, fired = signal.signal, []
+
+    def restored_then_ctrl_c(signum, handler):
+        previous = set_handler(signum, handler)
+        if handler is signal.default_int_handler and not fired:
+            fired.append(True)
+            signal.raise_signal(signal.SIGINT)
+        return previous
+
+    with mock.patch.object(so_mock.subprocess, "Popen", side_effect=lambda *a, **k: made.append(real(*a, **k))
+                           or made[-1]), mock.patch.object(signal, "signal", restored_then_ctrl_c):
+        try:
+            so_mock.start_job([sys.executable, "-c", "import time; time.sleep(60)"])
+            raised = None
+        except KeyboardInterrupt as ex:
+            raised = ex
+    check(fired and isinstance(raised, KeyboardInterrupt) and made and made[0].poll() is not None,
+          f"a Ctrl+C right as start_job gives the Ctrl+C back: the child is still ended, and the Ctrl+C goes on "
+          f"({raised!r})")
     restored = [signal.getsignal(signal.SIGINT) is signal.default_int_handler]
     with mock.patch.object(so_mock, "_Job", side_effect=so_mock.Recusa("no job")):
         refused(so_mock.start_job, [sys.executable, "-c", "pass"])
@@ -484,6 +505,33 @@ def the_tree():
     check(isinstance(raised, KeyboardInterrupt) and took < 10 and started and started[0].srv.poll() is not None,
           f"a Ctrl+C while sobe waits for the answer: the wait stops at once, not at the end of limite, and the child "
           f"is ended ({raised!r}, {took:.1f} s)")
+    started.clear()
+    with socket.socket() as drip:
+        drip.bind(("127.0.0.1", 0))
+        drip.listen()
+
+        def dribble():
+            conn, _ = drip.accept()
+            with conn:
+                conn.sendall(b"HTTP/1.1 200 OK\r\n")
+                for _ in range(30):
+                    conn.sendall(b"X")
+                    time.sleep(0.5)
+
+        threading.Thread(target=dribble, daemon=True).start()
+        threading.Timer(1.0, _thread.interrupt_main).start()
+        begun = time.monotonic()
+        with mock.patch.object(so_mock, "porta_responde", return_value=False), \
+                mock.patch.object(so_mock, "Filho", lambda *a, **k: started.append(filho(*a, **k)) or started[-1]):
+            try:
+                so_mock.sobe([sys.executable, "-c", "import time; time.sleep(60)"], drip.getsockname()[1], limite=30)
+                raised = None
+            except KeyboardInterrupt as ex:
+                raised = ex
+        took = time.monotonic() - begun
+    check(isinstance(raised, KeyboardInterrupt) and took < 10 and started and started[0].srv.poll() is not None,
+          f"a Ctrl+C while the answer comes a byte at a time: sobe stops at once and ends the child ({raised!r}, "
+          f"{took:.1f} s)")
     parent, job = so_mock.start_job([sys.executable, "-c", STARTS + "p.wait()", HOLDS, os.devnull],
                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     parent.stdout.readline()

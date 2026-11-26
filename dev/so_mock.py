@@ -14,11 +14,13 @@ se alguem ja responde nela, e cada pedido, o /api/shutdown inclusive, so com o f
 nao, so o filho sai, pelo handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado."""
 import contextlib
 import ctypes
+import http.client
 import json
 import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -261,28 +263,45 @@ class _Job:
         self.job = None
 
 
+def _hold(caught):
+    try:
+        return [signal.signal(signal.SIGINT, lambda *_: caught.append(True))]
+    except ValueError:
+        return []
+
+
+def _release(previous):
+    for handler in previous:
+        signal.signal(signal.SIGINT, handler)
+
+
 @contextlib.contextmanager
 def _ctrl_c_held(cleanup):
     caught = []
-    try:
-        previous = [signal.signal(signal.SIGINT, lambda *_: caught.append(True))]
-    except ValueError:
-        previous = []
+    previous = _hold(caught)
     try:
         yield caught
         if caught:
             raise KeyboardInterrupt
     except BaseException as ex:
-        cleanup()
+        try:
+            cleanup()
+        finally:
+            _release(previous)
         if caught and not isinstance(ex, KeyboardInterrupt):
             raise KeyboardInterrupt from ex
         raise
-    finally:
-        for handler in previous:
-            signal.signal(signal.SIGINT, handler)
-    if caught:
-        cleanup()
-        raise KeyboardInterrupt
+    try:
+        _release(previous)
+        if caught:
+            raise KeyboardInterrupt
+    except KeyboardInterrupt:
+        held = _hold(caught)
+        try:
+            cleanup()
+        finally:
+            _release(held)
+        raise
 
 
 def _drop(proc, job, assigned):
@@ -382,15 +401,39 @@ def sobe(cmd, porta, limite=30.0, **popen):
         while not caught:
             if f.srv.poll() is not None:
                 raise Recusa(f"o servidor de teste saiu ao subir (codigo {f.srv.returncode})")
-            try:
-                estado(f.base, 2)
-            except OSError:
+            answered = _probe(f.base, caught, fim, limite)
+            if answered is False:
                 if time.monotonic() > fim:
-                    raise Recusa(f"o servidor de teste nao respondeu em {limite:g} s") from None
+                    raise Recusa(f"o servidor de teste nao respondeu em {limite:g} s")
                 time.sleep(0.1)
-                continue
-            if f.srv.poll() is None:  # quem respondeu pode ser outro, e o filho ter caido por nao achar a porta
+            elif answered and f.srv.poll() is None:  # quem respondeu pode ser outro, e o filho ter caido por nao achar a porta
                 return f
+
+
+def _probe(base, caught, fim, limite):
+    answer = []
+
+    def run():
+        try:
+            answer.append(estado(base, 2))
+        except (OSError, Recusa, http.client.HTTPException) as ex:
+            answer.append(ex)
+
+    probe = threading.Thread(target=run, daemon=True)
+    probe.start()
+    while probe.is_alive() and not caught and time.monotonic() <= fim:
+        probe.join(0.1)
+    if caught:
+        return None
+    if probe.is_alive():
+        raise Recusa(f"o servidor de teste nao respondeu em {limite:g} s")
+    if not answer:
+        raise Recusa(f"a consulta ao {base}/api/state parou sem resposta")
+    if isinstance(answer[0], OSError):
+        return False
+    if isinstance(answer[0], BaseException):
+        raise answer[0]
+    return True
 
 
 def sai_se_o_app_ligado(o_que):
