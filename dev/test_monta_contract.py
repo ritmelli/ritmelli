@@ -21,7 +21,7 @@ INPUTS = ("notas", "notas_en")
 REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial")
 SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
-OTHER_VERSION = re.compile(r"Ritmelli-(?:[0-9]|\$\{\{.*?\}\})(?:[0-9.]|\$\{\{.*?\}\})*")
+OTHER_VERSION = re.compile(r"Ritmelli-(?:[0-9]|<version>|\$\{\{.*?\}\})(?:[0-9.]|<version>|\$\{\{.*?\}\})*")
 
 failures = []
 
@@ -134,7 +134,7 @@ def contract_problems(doc):
     found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
     problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
     problems += [f"the {n} artifact is uploaded only under an if:" for n, _, c in run_uploads if n in found and c]
-    fixed = [n for n, _, _ in run_uploads if OTHER_VERSION.fullmatch(n)]
+    fixed = [n for n, _, _ in run_uploads if n != SETUP and OTHER_VERSION.fullmatch(n)]
     if fixed:
         problems.append(f"the run uploads {fixed}, which the pipeline would take for the version of the build")
     if len(found[EXE]) == 1 and not one_literal_file(found[EXE][0].get("path"), "ritmelli.exe"):
@@ -153,9 +153,25 @@ def contract_problems(doc):
         for name, (value, option) in NOTES.items():
             if inner((manifest.get("env") or {}).get(name, "")) != inner(value):
                 problems.append(f"the step that runs publica.py does not get {name} from {value}")
-            if not re.search(rf"@\('{name}', '[a-z_]+', '{option}'\)", run):
+            if not re.search(rf"""@\(['"]{name}['"], ['"][a-z_]+['"], ['"]{option}['"]\)""", code(run)):
                 problems.append(f"the step that runs publica.py does not pass {name} as {option}")
     return problems
+
+
+def comment_notes_loop(run):
+    lines, out, depth = str(run).splitlines(), [], None
+    for line in lines:
+        if depth is None and line.lstrip().startswith("foreach ($n"):
+            depth = 0
+        if depth is not None:
+            depth += line.count("{") - line.count("}")
+            out.append("# " + line)
+            if depth <= 0:
+                depth = None
+                continue
+        else:
+            out.append(line)
+    return "\n".join(out) + "\n"
 
 
 def mutant(doc, change):
@@ -212,6 +228,10 @@ def main():
     forward = mutant(doc, lambda d: edit_run(d, lambda run: run.replace(script, "instalador/atualizacao/publica.py")))
     check(script in manifest_step(doc["jobs"]["monta"])["run"] and contract_problems(forward) == [],
           "the publica.py call written with forward slashes keeps the contract")
+    tuples = mutant(doc, lambda d: edit_run(d, lambda run: run.replace(
+        "@('NOTAS', 'notas', '--notas')", '@("NOTAS", "notas", "--notas")')))
+    check('@("NOTAS", "notas", "--notas")' in manifest_step(tuples["jobs"]["monta"])["run"]
+          and contract_problems(tuples) == [], "the notes tuple in double quotes keeps the contract")
     helper = mutant(doc, lambda d: d["jobs"]["monta"]["steps"].append(
         {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-.1", "path": "x"}}))
     check(contract_problems(helper) == [], "an artifact named Ritmelli-.1, which the pipeline never takes for the "
@@ -270,6 +290,9 @@ def main():
         "a Ritmelli artifact named by a format expression": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, setup)["uses"],
              "with": {"name": "Ritmelli-${{ format('{0}', github.run_number) }}", "path": "x"}}),
+        "a Ritmelli artifact named by the version and a suffix": lambda d: d["jobs"]["monta"]["steps"].append(
+            {"uses": upload(d, setup)["uses"], "with": {"name": setup + ".1", "path": "x"}}),
+        "the notes loop commented out": lambda d: edit_run(d, comment_notes_loop),
         "the congela step under a condition": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
             {"if": "github.event_name == 'push'"}),
         "a Ritmelli artifact named by another expression": lambda d: d["jobs"]["monta"]["steps"].append(
