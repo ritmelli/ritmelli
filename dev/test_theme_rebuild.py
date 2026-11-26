@@ -218,6 +218,9 @@ SAMPLES = (
     ("a comment changed in a script of language JavaScript",
      {"index.html": "<script language=JavaScript>\n/* old */\nf();\n</script>\n"},
      {"index.html": "<script language=JavaScript>\n/* new */\nf();\n</script>\n"}, []),
+    ("a comment changed in a script whose language is javascript written with a reference",
+     {"index.html": "<script language=\"&#106;avascript\">\n/* old */\nf();\n</script>\n"},
+     {"index.html": "<script language=\"&#106;avascript\">\n/* new */\nf();\n</script>\n"}, []),
     ("the text of a paragraph with a whole inline-script comment in its title changed",
      {"index.html": "<p title=\"<!-- inline-script: a.js -->\">x</p>\n", "a.js": "f();\n"},
      {"index.html": "<p title=\"<!-- inline-script: a.js -->\">y</p>\n", "a.js": "f();\n"}, ["gone", "new"]),
@@ -527,6 +530,9 @@ def main():
         finally:
             theme_rebuild.RAIZ = kept
     marked = built({"index.html": "<!-- i18n -->\n"}.get, folder)
+    unmarked = theme_rebuild.compare(built({"index.html": "<p>x</p>\n"}.get, {}),
+                                     built({"index.html": "<p>x</p>\n"}.get, folder), {}).changes
+    results.append((not unmarked, f"an empty i18n folder made in a theme with no mark is no change ({unmarked})"))
     results.append((folder == {"i18n/": "a folder"} and isinstance(marked, theme_rebuild.Doubt),
                     f"an empty i18n folder in the working tree is listed, and with the mark it cannot be judged "
                     f"({folder}, {marked})"))

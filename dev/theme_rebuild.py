@@ -9,6 +9,7 @@ import subprocess
 import sys
 import types
 from dataclasses import dataclass, field
+from html import unescape
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -200,8 +201,9 @@ def type_of(attributes):
 
 def runs(others):
     if "type" in others:
-        return others["type"] == "" or others["type"].strip(HTML_SPACE).lower() in JS_MIME
-    return others.get("language", "") == "" or f"text/{others['language']}".lower() in JS_MIME
+        return others["type"] == "" or unescape(others["type"]).strip(HTML_SPACE).lower() in JS_MIME
+    language = unescape(others.get("language", ""))
+    return language == "" or f"text/{language}".lower() in JS_MIME
 
 
 def attributes(raw):
@@ -514,7 +516,7 @@ def markup(page):
 
 
 def compare_files(report, a, b):
-    for name in sorted((set(a.files) | set(b.files)) - a.read - b.read):
+    for name in sorted((set(a.files) | set(b.files)) - a.read - b.read - {"i18n/"}):
         if a.files.get(name) != b.files.get(name):
             kind = "file gone" if name not in b.files else "file new" if name not in a.files else "file changed"
             report.changes.append((kind, name, []))
