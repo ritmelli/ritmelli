@@ -39,8 +39,15 @@ class Log:
             if dropped > told:
                 line = f"{line} ({dropped - told} line(s) of the dry-out log dropped before this one)"
             try:
-                if sys.stderr is not None:
-                    print(line, file=sys.stderr, flush=True)
+                err = sys.stderr
+                raw = getattr(getattr(err, "buffer", None), "raw", None)
+                if raw is not None:
+                    data = (line + "\n").encode(err.encoding, err.errors)
+                    while data:
+                        data = data[raw.write(data):]
+                    told = dropped
+                elif err is not None:
+                    print(line, file=err, flush=True)
                     told = dropped
             except OSError:
                 self._failed += 1

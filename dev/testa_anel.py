@@ -16,6 +16,7 @@ import ctypes
 import io
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -250,6 +251,24 @@ class TestVoicePedalStart(unittest.TestCase):
 
         pedal.clock = clock
         self.assertIn("turned on 1.00 s ago", pedal.starting()[1])
+
+    def test_a_line_stuck_in_its_write_does_not_stop_python_from_exiting(self):
+        child = "\n".join([
+            "import io, sys, threading",
+            f"sys.path.insert(0, {str(Path(__file__).resolve().parent.parent)!r})",
+            "entered = threading.Event()",
+            "class Stuck(io.RawIOBase):",
+            "    def writable(self):",
+            "        return True",
+            "    def write(self, b):",
+            "        entered.set()",
+            "        threading.Event().wait()",
+            "sys.stderr = io.TextIOWrapper(io.BufferedWriter(Stuck()), line_buffering=True)",
+            "import dryouts",
+            "dryouts.LOG.tell('a dry-out line')",
+            "assert entered.wait(5)"])
+        done = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, timeout=30)
+        self.assertEqual((done.returncode, "_enter_buffered_busy" in done.stderr), (0, False), done.stderr[-400:])
 
     def test_a_full_log_drops_lines_and_does_not_wait(self):
         release, written = threading.Event(), io.StringIO()
