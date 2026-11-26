@@ -70,12 +70,13 @@ depois como `parcial=`; toda chave das saídas tem uma gravação só); e os art
 pasta que o passo do `publica.py` recebe no `--saida`) e `ritmelli-exe-<versão>` (um caminho só, sem curinga,
 que termina no `ritmelli.exe`), cada um uma vez na execução inteira, contados como o server conta (sem o job
 ou o passo desligado), e nenhum outro artefato que a esteira tomaria pela versão (`Ritmelli-1.2.3`), nem outro
-`ritmelli-exe-` seguido de uma versão. Os dois artefatos (que também não podem sair de um job que deixe de
-rodar numa dessas montagens), o `congela`, o passo do `publica.py` e os passos das saídas `anterior` e
-`parcial` não podem ter `if:`, nenhum passo antes do `publica.py` o cita, e o que está em comentário do
-PowerShell não conta (no `--saida`, um comentário também reprova, porque o server o lê cru). O `--tela` junta
-o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda num job à parte, pelo `--compara`,
-com a referência da base no cache do Actions), e o `--areas` é o filtro por caminho do
+`ritmelli-exe-` seguido de uma versão, nem um nome cuja expressão poderia completar um desses dois prefixos
+(`${{ format('Ritmelli-{0}', …) }}`, `Rit${{ … }}`). Os dois artefatos (que também não podem sair de um job
+que deixe de rodar numa dessas montagens), o `congela`, o passo do `publica.py` e os passos das saídas
+`anterior` e `parcial` não podem ter `if:`, nenhum passo antes do `publica.py` o cita, e o que está em
+comentário do PowerShell não conta (no `--saida`, um comentário também reprova, porque o server o lê cru). O
+`--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda num job à parte,
+pelo `--compara`, com a referência da base no cache do Actions), e o `--areas` é o filtro por caminho do
 `.github/workflows/testa.yml`, que roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo
 commit que testou, então o push na `main` roda só a captura do `compara` desse commit para o cache (o
 `--capture`), e o "Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI
