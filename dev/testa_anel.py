@@ -239,6 +239,45 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal.clock = lambda: (pedal.pedal(False), 6.0)[1]
         self.assertIn("turned on 1.00 s ago", pedal.starting()[1])
 
+    def test_a_full_log_drops_lines_and_does_not_wait(self):
+        release, written = threading.Event(), io.StringIO()
+
+        class Slow:
+            def write(self, text):
+                release.wait()
+                return written.write(text)
+
+            def flush(self):
+                pass
+
+        log = dryouts.Log(size=2)
+        self.addCleanup(release.set)
+        with mock.patch("sys.stderr", Slow()):
+            log.tell("first")
+            self.assertTrue(espera(lambda: log._lines.empty()), "the writer never took the first line")
+            teller = threading.Thread(target=lambda: [log.tell(line) for line in ("second", "third", "fourth")])
+            teller.start()
+            teller.join(3.0)
+            self.assertFalse(teller.is_alive(), "a full log made its caller wait")
+            self.assertEqual(log.dropped, 1)
+            release.set()
+            log.written()
+        self.assertEqual(written.getvalue().split(), ["first", "second", "third"])
+
+    def test_one_stamp_is_one_start(self):
+        pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
+        pedal.pedal(True)
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            pedal.clock = lambda: 6.0
+            pedal.track(False, 7_000, 0.2)
+            pedal.clock = lambda: 6.5
+            pedal.track(True, 7_000, 0.7)
+            pedal.track(False, 7_000, 0.7)
+            pedal.track(True, 7_000, 0.7)
+            dryouts.LOG.written()
+        self.assertEqual(log.getvalue().count("its voice track came up"), 1,
+                         "the stamp seen before the track was live, and the track flapping, are the same start")
+
 
 class TestVoicePedalDryOut(unittest.TestCase):
     def setUp(self):
@@ -283,6 +322,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.inj = eng.Injetor(self.motor)
         self.addCleanup(self.inj.para)
         self.addCleanup(self.gate.set)
+        self.addCleanup(dryouts.LOG.written)
         self.assertTrue(espera(lambda: self.inj.folga_min is not None), "the injector never served the reader")
         self.dry_done = threading.Event()
         ran_dry = self.inj.dry_outs.ran_dry
@@ -303,8 +343,12 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.drain.set()
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
 
+    def logged(self):
+        dryouts.LOG.written()
+        return self.log.getvalue()
+
     def plain_lines(self):
-        return self.log.getvalue().count("the microphone ring ran dry (")
+        return self.logged().count("the microphone ring ran dry (")
 
     def seen_up(self):
         self.assertTrue(espera(lambda: self.motor.voice_pedal.track_up_at is not None),
@@ -320,7 +364,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.now += seconds_ago
 
     def pedal_lines(self):
-        return [ln for ln in self.log.getvalue().splitlines() if "while the voice pedal was starting" in ln]
+        return [ln for ln in self.logged().splitlines() if "while the voice pedal was starting" in ln]
 
     def offset(self, line, what):
         return float(re.search(what + r" (\d+\.\d+) s ago", line).group(1))
@@ -338,7 +382,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
                          (2, 2, 0), "each dry-out while the pedal starts is told, without the quiet window")
         self.advance(0.7)
         self.track_up()
-        self.assertIn("its voice track came up 3.70 s after the pedal turned on", self.log.getvalue())
+        self.assertIn("its voice track came up 3.70 s after the pedal turned on", self.logged())
 
     def test_dry_out_after_the_track_came_up(self):
         self.pedal_on(1.0)
@@ -405,7 +449,29 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertTrue(espera(lambda: self.motor.voice_pedal.track_up_at is not None), "the track was not seen")
         self.dry_out()
         self.assertEqual(self.offset(self.pedal_lines()[-1], "came up"), 0.5)
-        self.assertIn("its voice track came up 1.00 s after the pedal turned on", self.log.getvalue())
+        self.assertIn("its voice track came up 1.00 s after the pedal turned on", self.logged())
+
+    def test_a_slow_log_does_not_hold_the_ring(self):
+        release = threading.Event()
+        log = self.log
+
+        class Slow:
+            def write(self, text):
+                release.wait()
+                return log.write(text)
+
+            def flush(self):
+                pass
+
+        self.addCleanup(release.set)
+        self.pedal_on(1.0)
+        with mock.patch("sys.stderr", Slow()):
+            self.dry_out()
+            self.dry_out()
+            self.assertEqual(self.inj.dry_outs.while_pedal_starting, 2, "the ring went on while its log was stuck")
+            release.set()
+            dryouts.LOG.written()
+        self.assertEqual(len(self.pedal_lines()), 2)
 
     def test_dry_out_long_after_the_track_came_up(self):
         self.pedal_on(0.0)

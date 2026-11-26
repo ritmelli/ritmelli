@@ -76,6 +76,8 @@ def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_
     broke = interruption(states_seen, mic)
     if broke:
         return None, f"cycle {n}: {broke}"
+    if states_seen[-1]["microfone"]["folga_min_ms"] is None:
+        return None, f"cycle {n}: the ring never measured its headroom, so its dry-outs weren't counted"
     if not any(ln.startswith("pedal_voz: pronto") for ln in server_lines):
         return None, f"cycle {n}: the voice process never said it was ready within {on_s:.0f} s of the pedal (--on-s)"
     ups = [float(m.group(1)) for ln in server_lines if (m := UP_LINE.search(ln))]

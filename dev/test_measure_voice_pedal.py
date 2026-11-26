@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import dryouts
 import measure_voice_pedal as measure
 
 CPU_ONLY = ["AzureExecutionProvider", "CPUExecutionProvider"]
@@ -34,7 +36,17 @@ class Refusal(unittest.TestCase):
         self.assertEqual(self.run_main(CPU_ONLY, "--provider", "cpu"), "past the check")
 
 
-READY = ["pedal_voz: pronto", "game output: voice pedal: its voice track came up 3.10 s after the pedal turned on"]
+def track_up_line(after_s):
+    pedal = dryouts.VoicePedalStart(clock=lambda: 100.0)
+    pedal.pedal(True)
+    pedal.clock = lambda: 100.0 + after_s
+    with mock.patch("sys.stderr", io.StringIO()) as err:
+        pedal.track(True, stamp=1)
+        dryouts.LOG.written()
+    return err.getvalue().strip()
+
+
+READY = ["pedal_voz: pronto", track_up_line(3.1)]
 FIM = ['fim {"blocos": 74, "secas": 1, "conta_ms_max": 101.1, "voz_taxa": 48000, "providers": '
        '["DmlExecutionProvider", "DmlExecutionProvider", "DmlExecutionProvider", "DmlExecutionProvider"]}']
 MIC = "IN 1"
@@ -78,6 +90,11 @@ class CycleRow(unittest.TestCase):
 
     def test_a_ring_not_yet_measured_goes_on(self):
         self.assertIsNone(row([state(folga=None), state(folga=None), state(folga=12.0)])[1])
+
+    def test_a_ring_never_measured_stops_the_measurement(self):
+        got, problem = row([state(folga=None), state(folga=None)])
+        self.assertIsNone(got)
+        self.assertIn("never measured its headroom", problem)
 
     def test_the_processor_on_purpose(self):
         cpu = [FIM[0].replace("DmlExecutionProvider", "CPUExecutionProvider")]

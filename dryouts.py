@@ -1,9 +1,44 @@
+import queue
 import sys
+import threading
 import time
 
 AFTER_TRACK_S = 5.0
 QUIET_S = 10.0
 PEDAL_LINES = 10
+LOG_LINES = 64
+
+
+class Log:
+    def __init__(self, size=LOG_LINES):
+        self._lines = queue.Queue(size)
+        self._writer = None
+        self._start = threading.Lock()
+        self.dropped = 0
+
+    def tell(self, line):
+        with self._start:
+            if self._writer is None:
+                self._writer = threading.Thread(target=self._write, daemon=True, name="dryouts-log")
+                self._writer.start()
+        try:
+            self._lines.put_nowait(line)
+        except queue.Full:
+            self.dropped += 1
+
+    def written(self):
+        self._lines.join()
+
+    def _write(self):
+        while True:
+            line = self._lines.get()
+            try:
+                print(line, file=sys.stderr, flush=True)
+            finally:
+                self._lines.task_done()
+
+
+LOG = Log()
 
 
 class VoicePedalStart:
@@ -19,11 +54,12 @@ class VoicePedalStart:
             self.on_at = self.clock()
 
     def track(self, live, stamp=None, up_s_ago=0.0):
-        if (stamp and stamp != self._stamp) or (live and not self._live):
+        new = (stamp != self._stamp) if stamp else (live and not self._live)
+        if new:
             self.track_up_at, on_at = self.clock() - up_s_ago, self.on_at
             if on_at is not None and self.track_up_at >= on_at:
-                print(f"voice pedal: its voice track came up {self.track_up_at - on_at:.2f} s after the pedal turned "
-                      "on", file=sys.stderr, flush=True)
+                LOG.tell(f"voice pedal: its voice track came up {self.track_up_at - on_at:.2f} s after the pedal "
+                         "turned on")
         self._live = live
         if stamp is not None:
             self._stamp = stamp
@@ -56,11 +92,11 @@ class RingDryOuts:
                 self._start, self._told_this_start = start, 0
             self._told_this_start += 1
             if self._told_this_start <= PEDAL_LINES:
-                print(f"game output: the microphone ring ran dry while the voice pedal was starting (the thread came "
-                      f"back after {back_s * 1000:.0f} ms; {starting}; {self.while_pedal_starting} of {count} so far)",
-                      file=sys.stderr, flush=True)
+                LOG.tell(f"game output: the microphone ring ran dry while the voice pedal was starting (the thread "
+                         f"came back after {back_s * 1000:.0f} ms; {starting}; {self.while_pedal_starting} of {count} "
+                         "so far)")
                 return
         if self.pedal.clock() - self._told_at > QUIET_S:
             self._told_at = self.pedal.clock()
-            print(f"game output: the microphone ring ran dry (the thread came back after {back_s * 1000:.0f} ms; "
-                  f"{count} so far)", file=sys.stderr, flush=True)
+            LOG.tell(f"game output: the microphone ring ran dry (the thread came back after {back_s * 1000:.0f} ms; "
+                     f"{count} so far)")
