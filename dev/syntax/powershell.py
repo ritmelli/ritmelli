@@ -1820,7 +1820,10 @@ def without_using(name):
 
 def parse(text, name="<powershell>"):
     source = text if isinstance(text, Source) else Source(text, name)
-    return _Parser(source).script()
+    try:
+        return _Parser(source).script()
+    except RecursionError:
+        raise PowerShellError(source, 0, "a nesting too deep to read") from None
 
 
 def walk(node):

@@ -284,6 +284,15 @@ CASES = {
                   "if flag:\n    alias = script\nelse:\n    alias = script\nsubprocess.run(['powershell', '-Command', alias])\n"},
          {"a.py": "import subprocess\nscript = 'Start-Sleep 1'\nsubprocess.run(['powershell', '-Command', script])\n"
                   "if flag:\n    alias = script\nelse:\n    alias = script\nsubprocess.run(['powershell', '-Command', alias])\n"}),
+        ("a walrus in a default value reaches only what comes after it",
+         {"a.py": "import subprocess\ns = 'Get-Date'\ndef f(x=(s := s)):\n    pass\nsubprocess.run(['powershell', '-Command', s])\n"},
+         {"a.py": "import subprocess\ns = 'Start-Sleep 1'\ndef f(x=(s := s)):\n    pass\n"
+                  "subprocess.run(['powershell', '-Command', s])\n"}),
+        ("a joined element that reaches one origin by two paths",
+         {"a.py": "import subprocess\ns = 'Get-Date'\nif flag:\n    part = s\nelse:\n    part = s\n"
+                  "subprocess.run(['powershell', '-Command', '\\n'.join([part])])\n"},
+         {"a.py": "import subprocess\ns = 'Start-Sleep 1'\nif flag:\n    part = s\nelse:\n    part = s\n"
+                  "subprocess.run(['powershell', '-Command', '\\n'.join([part])])\n"}),
         ("a branch's script does not reach the other branch",
          {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\nelse:\n    " + RUN_PS},
          {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\n" + RUN_PS}),
@@ -363,6 +372,16 @@ CASES = {
         ("requestAnimationFrame", {"themes/t/a.js": "setTimeout(f, 1);\n"}, {"themes/t/a.js": "requestAnimationFrame(f);\n"}),
     ],
     "retries": [
+        ("a wait in the default of a lambda runs in the loop",
+         {"a.py": "import time\nwhile True:\n    try:\n        action()\n        break\n    except OSError:\n        pass\n"
+                  "    f = lambda: time.sleep(1)\n"},
+         {"a.py": "import time\nwhile True:\n    try:\n        action()\n        break\n    except OSError:\n        pass\n"
+                  "    f = lambda x=time.sleep(1): x\n"}),
+        ("a for over items whose body uses _",
+         {"a.py": "import time\ndef attempt(item):\n    try:\n        return action(item)\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n    if attempt(_):\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n    if attempt():\n        break\n    time.sleep(1)\n"}),
         ("a redirection of the errors keeps the test of an expression",
          {"a.ps1": "function attempt { try { Get-Date } catch { $null } }\nwhile ($true) {\n    $done = attempt\n"
                    "    if (($done) >$null) { break }\n    Start-Sleep 1\n}\n"},
@@ -1055,6 +1074,9 @@ KNOWN_MISSES = [
     ("suppressions", "a quiet $ErrorActionPreference set by Set-Variable",
      {"a.ps1": "Set-Variable ErrorActionPreference SilentlyContinue\n"},
      (POWERSHELL_SOURCES, r"(?i)\b(?:Set-Variable|sv)\b[^\n]*ErrorActionPreference")),
+    ("suppressions", "a quiet -ErrorAction given by a variable",
+     {"a.ps1": "$quiet = 'SilentlyContinue'\nGet-Item x -ErrorAction $quiet\n"},
+     (POWERSHELL_SOURCES, r"(?i)-(?:ErrorAction|EA)\b[ \t:]+\$[\w:]+")),
 ]
 
 KNOWN_NOISE = [
@@ -1172,6 +1194,10 @@ def test_unreadable():
              {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef f():\n    ps: str\n"
                       "    subprocess.run(['powershell', '-Command', ps])\n"},
              "a.py:5: the PowerShell reader can't follow the script"),
+            ("YAML nested too deep", {".github/workflows/w.yml": "a: " + "[" * 400 + "1" + "]" * 400 + "\n"},
+             ".github/workflows/w.yml:1: the YAML reader stops here"),
+            ("PowerShell nested too deep", {"a.ps1": "$x = " + "(" * 400 + "1" + ")" * 400 + "\n"},
+             "a.ps1:1: the PowerShell reader stops here"),
             ("Python step of a composite action",
              {"action.yml": "runs:\n  steps:\n    - shell: python\n      run: this is not Python!\n"},
              "action.yml:4: the Python reader stops here")):

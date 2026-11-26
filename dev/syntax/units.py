@@ -314,7 +314,8 @@ class Assignments:
                 if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store) and not declared:
                     targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
                     plain = isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and targets == [child]
-                    at = end_position(node) if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) else \
+                    at = end_position(node) if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)) \
+                        else \
                         position(child)
                     self.bind(here, child.id, at, node.value if plain else None, inner)
                 elif isinstance(child, ast.arg):
@@ -377,7 +378,7 @@ def joined_script(tokens, source_text, expression, names):
     separator, text, lines = expression.func.value.value, "", []
     for k, element in enumerate(expression.args[0].elts):
         values = names.values(element)
-        if len(values) > 1:
+        if len(values) > 1 and (None in values or len(set(values)) > 1):
             return None
         value = values[0] if values else None
         if isinstance(value, ast.Constant) and value.value == "":

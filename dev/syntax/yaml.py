@@ -857,7 +857,10 @@ class _Parser:
 
 def parse(text, name="<yaml>"):
     source = text if isinstance(text, Source) else Source(text, name)
-    return _Parser(source).stream()
+    try:
+        return _Parser(source).stream()
+    except RecursionError:
+        raise YamlError(source, 0, "a nesting too deep to read") from None
 
 
 def loads(text, name="<yaml>"):

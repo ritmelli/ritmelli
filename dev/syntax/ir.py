@@ -349,7 +349,9 @@ class PythonLowering:
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 continue
             if isinstance(child, ast.Lambda):
-                out.append(Function(self.line(child), "<lambda>", Block(self.line(child), self.calls(child))))
+                defaults = [*child.args.defaults, *(d for d in child.args.kw_defaults if d is not None)]
+                out += [c for d in defaults for c in self.expression_calls(d)]
+                out.append(Function(self.line(child), "<lambda>", Block(self.line(child), self.expression_calls(child.body))))
                 continue
             if isinstance(child, ast.NamedExpr):
                 out.append(self.walrus(child))
@@ -480,7 +482,7 @@ class PythonLowering:
             return True
         targets = {n.id for n in ast.walk(loop.target) if isinstance(n, ast.Name)}
         used = {n.id for s in loop.body for n in ast.walk(s) if isinstance(n, ast.Name)}
-        return not (targets - {"_"}) & used
+        return not targets & used
 
     def exits(self, call):
         f = call.func
