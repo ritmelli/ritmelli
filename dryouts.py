@@ -23,7 +23,6 @@ class VoicePedalStart:
         self.clock = clock
         self.track_up_at = self._stamp = self._on = None
         self._ended = ()
-        self._live = False
 
     @property
     def on_at(self):
@@ -48,11 +47,10 @@ class VoicePedalStart:
 
     def track(self, live, stamp=None):
         now = self.clock()
-        new = (stamp != self._stamp and stamp != 0) if stamp is not None else (live and not self._live)
-        if new:
+        if stamp and stamp != self._stamp:
             now_ms = round(now * 1000)
-            up_ms = now_ms - (now_ms - (stamp - 1)) % (2**32 - 1) if stamp else now_ms
-            up_at = up_ms / 1000 if stamp else now
+            up_ms = now_ms - (now_ms - (stamp - 1)) % (2**32 - 1)
+            up_at = up_ms / 1000
             on, ended = self._on, self._ended
             if on is not None and up_after(up_ms, on[3]) and (on[1] is None or up_at <= on[1] + TICK_S):
                 owner = on
@@ -62,9 +60,7 @@ class VoicePedalStart:
                 tell(f"voice pedal: its voice track came up {up_at - owner[0]:.2f} s after the pedal turned on")
                 owner[2] = up_at
             self.track_up_at = up_at
-        self._live = live
-        if stamp is not None:
-            self._stamp = stamp
+        self._stamp = stamp
         return live
 
     def starting(self, lo=None, empty_at=None):

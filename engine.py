@@ -1021,7 +1021,7 @@ class Injetor:
     def _solta_efeito(self):
         self.efeito_no_filtro = False
         self.motor._fx_filtro = self.motor._fx_pendente = False
-        self.motor._pista_viva = self.motor.voice_pedal.track(False)
+        self.motor._pista_viva = False
         self._preset = None
         self.voz_taxa = 0  # o anel que vier depois diz a dele
 
