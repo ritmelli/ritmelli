@@ -548,14 +548,15 @@ If you changed the interface, also run `dev/fitcheck.py` against the `--mock` se
 has to pass, as it does on `main`. If you changed the welcome screen, also run it with `--boas-vindas`.
 
 If you changed the audio engine, the server, the filter or the updates, also run the tests that cover your change.
-The description at the top of each file (in Portuguese) says exactly what it checks.
+The description at the top of each test file explains what it checks.
 
 - The audio engine (`engine.py`, `sonoridade.py`, `transicao.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
   `dev/testa_congela.py`, `dev/testa_microfone.py`, `dev/testa_passagens.py` (the week of transition records in
   `logs/passagens/`), `dev/testa_passagem.py` (synthetic pairs through the real engine, one per kind of transition;
   `--codigo <folder>` runs the same pairs against the engine of another checkout, such as the base of your PR),
   `dev/testa_transicao.py` (the transition math, `transicao.py`, on the engine's calls recorded from those pairs;
-  `--grava` records them again) and `dev/testa_anel.py`.
+  `--grava` records them again), `dev/test_stretch_outgoing.py` (`esticar_saida` through the real Rubber Band: where
+  the outgoing track plays and no gap at its start) and `dev/testa_anel.py`.
 - The server and YouTube access (`server.py`, `comandos.py`, `automatico.py`, `yt_fora.py`, `yt_erros.py`):
   `dev/testa_comandos.py`, `dev/testa_automatico.py`, `dev/testa_adianta.py`, `dev/testa_rapido.py`,
   `dev/testa_vivo.py` and `dev/testa_musica.py`.
