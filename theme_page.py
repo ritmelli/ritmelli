@@ -201,11 +201,15 @@ def shown(path):
     return path.resolve().relative_to(root).as_posix() if path.resolve().is_relative_to(root) else path.name
 
 
+def resolved_inside(base, rel):
+    written = base / rel
+    path = written.resolve() if written.is_relative_to(base) else None
+    return path if path is not None and path.is_relative_to(base.resolve()) else None
+
+
 def theme_file(folder, name):
     inside = THEMES if name.startswith("/t/") else folder
-    written = inside / name.removeprefix("/t/")
-    path = written.resolve() if written.is_relative_to(inside) else None
-    if path is None or not path.is_relative_to(inside.resolve()):
+    if not (path := resolved_inside(inside, name.removeprefix("/t/"))):
         raise ThemePageError(f"{name} is outside {shown(inside)}")
     if not path.is_file():
         raise ThemePageError(f"{name} is missing from {shown(inside)}")
@@ -246,13 +250,11 @@ def file_text(folder, tag, name):
 
 
 def theme_of_template(rel):
-    path = THEMES / rel
-    if not path.is_relative_to(THEMES):
-        return None
     with contextlib.suppress(OSError, ValueError):
-        parts = path.resolve().relative_to(THEMES.resolve()).parts
-        if len(parts) >= 2 and os.path.samefile(path, THEMES / parts[0] / "index.html"):
-            return parts[0]
+        if path := resolved_inside(THEMES, rel):
+            parts = path.relative_to(THEMES.resolve()).parts
+            if len(parts) >= 2 and os.path.samefile(THEMES / rel, THEMES / parts[0] / "index.html"):
+                return parts[0]
     return None
 
 

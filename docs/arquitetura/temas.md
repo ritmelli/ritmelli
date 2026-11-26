@@ -23,10 +23,11 @@ do `monta.yml`.
 O `index.html` do tema, por qualquer nome do mesmo arquivo (outra caixa, o nome 8.3, ponto ou espaço no fim, barra
 dobrada, `::$DATA`, um link físico numa subpasta do tema), leva por 302 à página montada em `/t/<slug>/`, com a mesma
 query: o `built_page_only` do `server.py`, só nos pedidos do static, compara numa thread o arquivo pedido com o
-`index.html` do tema pelo `os.path.samefile`. Essa conferência e a rota do tema passam pela mesma porta, o
-`theme_of_template` do `theme_page.py`: antes de qualquer leitura do disco, o caminho pedido tem de estar, pela
-escrita, dentro de `themes/`, e um `/t///host/share/...` ou um slug com `%5C` nunca faz o PC abrir um compartilhamento
-de rede. O `dev/testa_mock.py` confere os nomes e esses endereços.
+`index.html` do tema pelo `os.path.samefile`. Essa conferência, a rota do tema e as tags de arquivo passam pela mesma
+porta, o `resolved_inside` do `theme_page.py`: antes de qualquer leitura do disco, o caminho tem de estar, pela
+escrita, dentro de `themes/` (ou da pasta da página, numa tag de arquivo), e um `/t///host/share/...`, um slug com
+`%5C` ou um `src="//host/share/x.js"` nunca faz o PC abrir um compartilhamento de rede. O `dev/testa_mock.py` confere
+os nomes e esses endereços.
 
 A página do tema chega inteira numa resposta só. O `index.html` lista os arquivos da pasta do tema, cada um no lugar em
 que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="stylesheet" href="arquivo.css">` por

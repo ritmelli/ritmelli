@@ -1238,6 +1238,7 @@ async def a_missing_file_answers_500(server, folder):
                           for name in ("/t///unreachable.invalid/share/index.html",
                                        "/t/%5C%5Cunreachable.invalid%5Cshare/x.png",
                                        "/t/%5C%5Cunreachable.invalid%5Cshare/")}
+                shares_read, network[:] = network[:], []
                 files = {slug: (resp.status, await resp.text()) for slug in ("share", "tshare")
                          for resp in [await client.get(f"/t/{slug}/", headers={"Host": f"localhost:{A.port}"})]}
     confere(status == 500 and "themes/broken/index.html:2:1 was not built: gone.js is missing from themes/broken" in said
@@ -1255,8 +1256,8 @@ async def a_missing_file_answers_500(server, folder):
     confere(alias.status == 302 and alias.headers.get("Location") == "/t/broken/?lang=pt_BR",
             f"a hard link to the index.html in a subfolder of the theme redirects too ({alias.status}, "
             f"{alias.headers.get('Location')})")
-    confere(not network and all(code in (403, 404) for code in shares.values()),
-            f"a theme address naming a network share is refused without the PC reading it ({shares}, read: {network})")
+    confere(not shares_read and all(code in (403, 404) for code in shares.values()),
+            f"a theme address naming a network share is refused without the PC reading it ({shares}, read: {shares_read})")
     confere(not network and files["share"][0] == files["tshare"][0] == 500
             and "//unreachable.invalid/share/x.js is outside themes/share" in files["share"][1]
             and "/t///unreachable.invalid/share/x.js is outside themes" in files["tshare"][1],
