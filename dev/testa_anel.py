@@ -559,7 +559,8 @@ class TestVoicePedalStart(unittest.TestCase):
         dry = dryouts.RingDryOuts(pedal)
         with mock.patch("sys.stderr", io.StringIO()) as log:
             pedal.sent(pedal.pedal(True))
-            pedal.track(True, stamp(1.0))
+            now[0] = 1.05
+            pedal.track(True, stamp(1.05))
             for at, step in sorted([(1.2, lambda: dry.read_ring(lambda: 1)), (1.6, lambda: dry.read_ring(lambda: 0)),
                                     (off_at, lambda: pedal.pedal(False))], key=lambda x: x[0]):
                 now[0] = at
@@ -571,12 +572,13 @@ class TestVoicePedalStart(unittest.TestCase):
     def test_a_pedal_off_before_the_ring_was_seen_empty_may_be_before_the_dry_out(self):
         counted, log = self.pedal_off_at(1.21)
         self.assertEqual(counted, 1)
-        self.assertIn("and off 0.49 s ago (before the ring was seen empty, maybe before it ran dry)", log)
+        self.assertIn("and off 0.49 s ago (before the ring was seen empty, maybe before it ran dry), its voice track came up "
+                      "0.65 s ago", log)
 
     def test_a_pedal_off_after_the_ring_was_seen_empty_has_no_doubt(self):
         counted, log = self.pedal_off_at(1.65)
         self.assertEqual(counted, 1)
-        self.assertIn("and off 0.05 s ago,", log)
+        self.assertIn("and off 0.05 s ago, its voice track came up 0.65 s ago", log)
 
     def test_the_track_is_up_only_once_its_line_is_told(self):
         now = [4.99]
@@ -742,7 +744,8 @@ class TestVoicePedalStart(unittest.TestCase):
 
     def test_a_stamp_in_the_millisecond_its_start_was_sent_is_not_its(self):
         for sent_at, up_at, read_at, told in ((2.4999, 2.4996, 2.6, False), (2.4999, 2.501, 2.6, True),
-                                              (2.5043, 2.505, 2.5075, True), (2.5054, 2.505, 2.5065, False)):
+                                              (2.5043, 2.505, 2.5075, True), (2.5054, 2.505, 2.5065, False),
+                                              (2.5009, 2.5006, 2.6025, False), (2.4999, 2.501, 2.6015, True)):
             with self.subTest(sent_at=sent_at, up_at=up_at, read_at=read_at):
                 now = [2.0]
                 pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
