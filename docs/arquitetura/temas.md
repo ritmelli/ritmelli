@@ -69,7 +69,8 @@ Depois da gramática, a montagem ainda recusa, e o que escrever no lugar:
   que o segura;
 - a tag de arquivo com outro atributo, outra ordem, maiúsculas ou algo antes do fim: exatamente
   `<script src="arquivo.js"></script>`, `<script type="module" src="nome.js"></script>` ou
-  `<link rel="stylesheet" href="arquivo.css">`; e o mesmo módulo em duas tags: uma só;
+  `<link rel="stylesheet" href="arquivo.css">`; e o mesmo módulo em duas tags, ou dois módulos de texto igual (o
+  navegador roda um módulo por endereço): um só;
 - um `&` no `src` ou no `href` de um `<script>`, de um `<style>` ou de um `<link>` que não abre uma referência nomeada
   inteira, e toda referência numérica: o nome sem `&`, ou com `&amp;`; e um `&` no `rel`, no `type` ou no `as`: o valor
   escrito por extenso;
@@ -103,7 +104,10 @@ liberados, e reprova se eles não rodam ou se o Chrome pede ao servidor qualquer
 `dev/missing_script.py`, que o `--tela` também roda, lê a página e a galeria como o servidor as manda, nas duas línguas,
 de um `--mock` como o PC e de outro como o celular, pela mesma gramática da montagem (o `strict` do `theme_page.py`), e
 reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
-faça ao servidor. O `dev/garden.py` conta as linhas de CSS e
+faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sintaxe: cada import e reexportação de um
+módulo nomeia um módulo da página, nenhum arquivo usa `import()`, cada nome importado é usado e não é declarado de
+novo, cada export é importado por outro arquivo do tema, e nenhuma sequência de 8 linhas não triviais aparece em dois
+`.js` do tema. O `dev/garden.py` conta as linhas de CSS e
 JS escritas no próprio `index.html` e guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código
 novo do tema vai num arquivo da pasta, e a contagem vai para o resumo do PR.
 

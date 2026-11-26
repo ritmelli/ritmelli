@@ -1181,9 +1181,22 @@ def a_built_page_reads_only_its_own_modules(folder):
     kinds = [(kind, text.split()[1]) for kind, text in (theme_page.strict(between, True)[0] or read).texts]
     confere(kinds == [("module", "first"), ("script", "mid"), ("module", "const")],
             f"a built page gives each module's text where its import runs, around a classic script ({kinds})")
+    (folder / "spaced.js").write_text("x; ", encoding="utf-8")
+    spaced = theme_page.inline_files('<head>\n<script type="module" src="spaced.js"></script>\n', folder)
+    spaced_read, spaced_error = theme_page.strict(spaced, True)
+    confere('%0Ax;%20"' in spaced and not spaced_error and spaced_read.texts == [("module", "\nx; ")],
+            f"a space at the end of a module goes in its address as %20, which no URL parser drops "
+            f"({spaced_error or spaced_read.texts})")
     imports, first = built.index('{"imports"'), '<script type="module">import "first.js";</script>'
     second = '<script type="module">import "second.js";</script>'
+
+    def mapped(modules):
+        return f'<script type="importmap">{theme_page.import_map(modules)}</script>{first}{second * (len(modules) > 1)}'
     altered = {
+        "a space at the end of a module's address": spaced.replace('%0Ax;%20"', '%0Ax; "', 1),
+        "two modules at one address": mapped({"first.js": "\nconst first = 1;\n", "second.js": "\nconst first = 1;\n"}),
+        "a module without the line break the build puts first": mapped({"first.js": "const first = 1;\n"}),
+        "a module that starts with #!": mapped({"first.js": "\n#!x\n"}),
         "a map without imports": '<script type="importmap">{}</script>',
         "an empty map": '<script type="importmap">{"imports":{}}</script>',
         "a module of the map never imported": built.replace(second, "", 1),

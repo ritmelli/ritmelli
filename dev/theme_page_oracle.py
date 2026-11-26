@@ -23,8 +23,10 @@ RAN = "document.documentElement.dataset.ran || ''"
 NO_SCRIPTS = "script-src 'none'"
 BUILT_SCRIPTS = "script-src 'unsafe-inline' data:"
 MODULES = {"a.js": "import { b } from \"b.js\";\ndocument.documentElement.dataset.ran = `a after ${b}`;\n",
-           "b.js": "export const b = 'b á ç ⋯ ? > # % </script> <!--';\n"}
-MODULE_TEMPLATE = '<head>\n<script type="module" src="a.js"></script>\n<script type="module" src="b.js"></script>\n'
+           "b.js": "export const b = 'b á ç ⋯ ? > # % </script> <!--';\n",
+           "c.js": "document.documentElement.dataset.ran += ' c';",
+           "d.js": "document.documentElement.dataset.ran += ' c'; "}
+MODULE_TEMPLATE = "<head>\n" + "".join(f'<script type="module" src="{name}"></script>\n' for name in MODULES)
 
 
 def pages(raiz):
@@ -110,7 +112,8 @@ def main(argv=None):
                                       f"({len(view)}{'' if view == seen else f'; build {view}, Chrome {seen}'})"))
     built_seen, ran, asked = views[-1]
     asked = [path for path in asked if path != f"/{len(accepted)}"]
-    results.append((built_view(built, True) == built_seen and ran == "a after b á ç ⋯ ? > # % </script> <!--" and not asked,
+    expected_ran = "a after b á ç ⋯ ? > # % </script> <!-- c c"
+    results.append((built_view(built, True) == built_seen and ran == expected_ran and not asked,
                     f"a built page with modules runs them from its import map, asking the server for nothing but the "
                     f"page (ran: {ran!r}, other requests: {asked}, build {built_view(built, True)}, "
                     f"Chrome {built_seen})"))

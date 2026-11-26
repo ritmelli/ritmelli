@@ -1,6 +1,6 @@
 /* PIXEL-JS-INICIO */
 export const cor = (r, g, b, a = 255) => ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
-export const esc = (c, k) => cor((c & 255) * k | 0, ((c >> 8) & 255) * k | 0, ((c >> 16) & 255) * k | 0, c >>> 24);
+const esc = (c, k) => cor((c & 255) * k | 0, ((c >> 8) & 255) * k | 0, ((c >> 16) & 255) * k | 0, c >>> 24);
 export const O = cor(26, 11, 4), O2 = cor(46, 20, 9), SOMBRA = cor(30, 12, 4, 110), SOMBRA_F = cor(30, 12, 4, 80);
 export const M = { M0: cor(248, 190, 140), P1: cor(234, 146, 92), P2: cor(206, 116, 68), P3: cor(184, 94, 52), WF: cor(166, 82, 44),
             P35: cor(150, 70, 38), W6: cor(142, 67, 35), W5: cor(134, 64, 33), P4: cor(120, 52, 26) };
@@ -223,8 +223,9 @@ const ICONE = {
   pausar: ["###...###", "###...###", "###...###", "###...###", "###...###", "###...###", "###...###", "###...###", "###...###",
            "###...###", "###...###", "###...###", "###...###"],
 };
-export const icone = (P, nome, cx, cy, c, k = 1) => {
-  const g = ICONE[nome], w = g[0].length * k, h = g.length * k, x0 = Math.round(cx - w / 2), y0 = Math.round(cy - h / 2);
+export const stamp = (P, g, cx, cy, c, k = 1) => {
+  const w = g[0].length * k, h = g.length * k, x0 = Math.round(cx - w / 2), y0 = Math.round(cy - h / 2);
   g.forEach((l, j) => [...l].forEach((q, i) => { if (q === '#') ret(P, x0 + i * k, y0 + j * k, x0 + (i + 1) * k, y0 + (j + 1) * k, c); }));
 };
+export const icone = (P, nome, cx, cy, c, k = 1) => stamp(P, ICONE[nome], cx, cy, c, k);
 /* PIXEL-JS-FIM */

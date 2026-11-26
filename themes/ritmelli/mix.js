@@ -3,7 +3,7 @@
    de metal escovado com os parafusos, os tres VUs (a janela ambar, o arco, os numeros e a agulha do medidor da
    pagina), os volumes em pe com as marcas e o pino creme, as chaves do set, o crossfader e a placa da transicao
    automatica. Os elementos de verdade seguem ali, transparentes: o clique, o estado e o lugar vem deles. */
-import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACENTO, pincel, px, recorte, solto, caixa, sombraCaixa, lg, icone } from "pixel.js";
+import { glyphs, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, F57, ACENTO, pincel, px, recorte, solto, caixa, sombraCaixa, stamp } from "pixel.js";
 (() => {
   const { gl, larg, texto } = glyphs();
   const AMBAR = [cor(255, 214, 110), cor(252, 186, 72), cor(224, 148, 46)];   // (r06) a canaleta do crossfader no ambar dos volumes (a de baixo lia marrom)
@@ -46,10 +46,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
     repetir: [".......#...", ".########..", "#......#...", "#.........#", "...#......#", "..########.", "...#......."],
     parecidas: [".###...###.", "#...#.#...#", "#....#....#", "#...#.#...#", ".###...###."],
   };
-  const iconeM = (P, nome, cx, cy, c) => {
-    const g = ICM[nome], x0 = Math.round(cx - g[0].length / 2), y0 = Math.round(cy - g.length / 2);
-    g.forEach((l, j) => [...l].forEach((q, i) => { if (q === '#') px(P, x0 + i, y0 + j, c); }));
-  };
+  const iconeM = (P, nome, cx, cy, c) => stamp(P, ICM[nome], cx, cy, c);
 
   const MET = { a: cor(207, 203, 195), b: cor(211, 207, 199), c: cor(215, 211, 203), luz2: cor(224, 221, 214), luz: cor(246, 244, 239), somb: cor(160, 154, 146), somb2: cor(186, 181, 172), sulco: cor(110, 104, 96) };
   const hsM = (a, b, c = 0) => { const h = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453; return h - Math.floor(h); };
@@ -342,8 +339,6 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
   // o rotulo desenhado tem largura fixa (cada palavra numa linha cabe em 46 pixels da letra, com o pixel da letra em 2 do
   // palco, o Windows a 125%): o do fone tem um texto curto so para ele, e o do label segue para o resto
   const TEXTO_DESENHADO = { 'f-mon': I18N.t('mixer.recordInHeadphonesShort') };
-  const ROT0 = { esp: 2, cor: [46, 33, 26], grav: true };
-  const PLACA0 = { esp: 2, grav: false };
   const relM = (el, D) => { const r = rectP(el); return { x0: Math.round((r.left - D.left) / 2), y0: Math.round((r.top - D.top) / 2), x1: Math.round((r.right - D.left) / 2), y1: Math.round((r.bottom - D.top) / 2), h: r.height, w: r.width }; };
   const vis = el => el && !el.hidden && el.offsetParent !== null && getComputedStyle(el).display !== 'none';
   function preparaMx(rec) {
@@ -414,8 +409,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
       };
       for (const e of Object.values(m.txt || {})) e.style.display = 'none';
       // as linhas de cada rotulo antes, para todos ficarem com o meio na mesma altura (o de uma linha no meio do de duas)
-      const RT = ROT0, FR = F8, lg = t => largB(t, FR, RT.esp);
-      const AL = FR.h;
+      const lg = t => largB(t, F8, 2), AL = F8.h;
       let LSr = LS, LH = AL + 4;   // o pixel da letra e a distancia entre as linhas dos rotulos (a placa segue no LS)
       const quebra8 = t => {
         const ps = t.toUpperCase().split(/\s+/), out = [];
@@ -448,8 +442,8 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
         const w = Math.max(...linhas.map(lg)), h = 3 + (linhas.length - 1) * LH + AL + 3;
         cv.width = w; cv.height = h; cv.style.width = w * LSr + 'px'; cv.style.height = h * LSr + 'px';
         const c = cv.getContext('2d'), im = c.createImageData(w, h);
-        if (RT.grav) linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 4 + j * LH, [250, 248, 242], FR, RT.esp));
-        linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 3 + j * LH, RT.cor, FR, RT.esp));
+        linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 4 + j * LH, [250, 248, 242], F8, 2));
+        linhas.forEach((l, j) => textoB(im, l, Math.floor((w - lg(l)) / 2), 3 + j * LH, [46, 33, 26], F8, 2));
         c.putImageData(im, 0, 0);
         // (r05) a linha de base 1 celula acima: o rotulo colava no topo do trilho (e no cursor em 100%); o vao para o VU
         // e para o trilho fica igual
@@ -462,15 +456,13 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
         // vazio pelo meio do alfa
         let cv = m.placaCv;
         if (!cv) { cv = document.createElement('canvas'); cv.className = 'mx-txt mx-placa-px'; cv.setAttribute('aria-hidden', 'true'); m.rec.appendChild(cv); m.placaCv = cv; }
-        const PL = PLACA0, FP = F8, lp = t_ => largB(t_, FP, PL.esp);
-        const t = (m.auto.textContent || '').trim().toUpperCase(), ls = [t];
+        const t = (m.auto.textContent || '').trim().toUpperCase();
         // (r09) 1 fileira vazia em cima (h0 + 1, o canvas 1 pixel acima): o top cai em 1/64 de px do layout, fora da
         // tela, e o Chrome estica a fileira 0 em 1 px de tela; com ela vazia, o acento do A e do til deixa de engordar
-        const g_ = PL.grav ? 1 : 0, LH = FP.h + 5, w = Math.max(...ls.map(lp)) + g_, h0 = 3 + (ls.length - 1) * LH + FP.h + 3 + g_, h = h0 + 1;
+        const w = largB(t, F8, 2), h0 = 3 + F8.h + 3, h = h0 + 1;
         cv.width = w; cv.height = h; cv.style.width = w * LS + 'px'; cv.style.height = h * LS + 'px';
         const c = cv.getContext('2d'), im = c.createImageData(w, h);
-        if (PL.grav) ls.forEach((l, j) => textoB(im, l, Math.floor((w - g_ - lp(l)) / 2), 4 + j * LH, [176, 164, 142], FP, PL.esp));
-        ls.forEach((l, j) => textoB(im, l, Math.floor((w - g_ - lp(l)) / 2) + g_, 4 + j * LH + g_, [15, 8, 5], FP, PL.esp));
+        textoB(im, t, 0, 4, [15, 8, 5], F8, 2);
         c.putImageData(im, 0, 0);
         A.tw = Math.ceil(w * LS / 2); A.thp = h0 * LS; A.el = cv; A.yMax = H - 5;
       }
@@ -952,7 +944,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
     const VEIO = new Set([MT.veio, MT.veioM, MT.veioP]);
     const ve = (a, b) => a >= 0 && b >= 0 && a < P.W && b < P.H && VEIO.has(P.u[b * P.W + a]);
     const sob = (a, b) => ve(a, b - 1) || ve(a, b + 1);
-    const fibra = (ini, fim, fixo, deitado, semente, solto) => {
+    const fibra = (ini, fim, fixo, deitado, semente, loose) => {
       let p = ini + Math.floor(hsM(semente, 0, 91) * 14), n = 0;
       while (p < fim) {
         const tracos = 2 + Math.floor(hsM(semente, n, 92) * 3);
@@ -962,7 +954,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
           // o traco aparece so nos trechos livres de 3 ou mais (entre os controles, ele some e volta)
           const deg = deitado && len >= 8 && hsM(semente, n, 88) < .3 ? (hsM(semente, n, 87) < .5 ? -1 : 1) : 0;
           if (deg) for (let u = Math.floor(cel.length / 2); u < cel.length; u++) cel[u] = [cel[u][0], cel[u][1] + deg];
-          const bom = ([a, b]) => f0(a, b) && (solto || (deitado ? livre(a, b - 1) && livre(a, b + 1) : livre(a - 1, b) && livre(a + 1, b)))
+          const bom = ([a, b]) => f0(a, b) && (loose || (deitado ? livre(a, b - 1) && livre(a, b + 1) : livre(a - 1, b) && livre(a + 1, b)))
             && !(deitado && sob(a, b) && sob(a - 1, b) && sob(a + 1, b));
           const trechos = [];
           let cur = [];
@@ -983,7 +975,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
       }
     };
     linhas.forEach(([y, x0, x1], i) => fibra(x0, x1, y, true, 300 + i * 7 + y, false));
-    colunas.forEach(([x, y0, y1, solto], i) => fibra(y0, y1, x, false, 700 + i * 11 + x, !!solto));
+    colunas.forEach(([x, y0, y1, loose], i) => fibra(y0, y1, x, false, 700 + i * 11 + x, !!loose));
   }
   // a moldura do tubo: o arco de fora (ARCO) em contorno e 4 faixas contadas por erosao de 8 vizinhos a partir dele (cada
   // faixa repete o arco, sem chanfro); o vidro com a quina QVIDRO manda. O brilho da faixa 2 so num arco de ~12 celulas em

@@ -82,9 +82,14 @@ def place(html, i):
     return html.count("\n", 0, i) + 1, i - html.rfind("\n", 0, i)
 
 
+def module_url(text):
+    quoted = urllib.parse.quote(text, safe=URL_KEPT)
+    kept = quoted.rstrip(" ")
+    return MODULE_SOURCE + kept + "%20" * (len(quoted) - len(kept))
+
+
 def import_map(modules):
-    return json.dumps({"imports": {name: MODULE_SOURCE + urllib.parse.quote(text, safe=URL_KEPT)
-                                   for name, text in modules.items()}}, separators=(",", ":"))
+    return json.dumps({"imports": {name: module_url(text) for name, text in modules.items()}}, separators=(",", ":"))
 
 
 def read_import_map(body):
@@ -93,7 +98,10 @@ def read_import_map(body):
         modules = {name: urllib.parse.unquote(url.removeprefix(MODULE_SOURCE), errors="strict")
                    for name, url in imports.items()
                    if re.fullmatch(MODULE_NAME, name) and url.startswith(MODULE_SOURCE)}
-        if modules and len(modules) == len(imports) and import_map(modules) == body:
+        texts = list(modules.values())
+        if (modules and len(modules) == len(imports) and len(set(texts)) == len(texts)
+                and all(text.startswith("\n") and not text.startswith("\n#!") for text in texts)
+                and import_map(modules) == body):
             return modules
     return None
 
