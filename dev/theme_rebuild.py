@@ -75,7 +75,7 @@ class Page:
     items: list
     scripts: list
 
-    def view(self, keep=frozenset(), skip=frozenset()):
+    def view(self, texts=None, skip=frozenset()):
         lines, content = [], []
         for item in self.items:
             if item[0] == "open":
@@ -85,7 +85,7 @@ class Page:
                 lines.append("[/script]")
                 continue
             _, raw, s, k = item
-            text = None if (s, k) in skip else shown(raw, (s, k) in keep)
+            text = None if (s, k) in skip else (texts or {}).get((s, k), shown(raw))
             if text is not None:
                 lines.append(text)
                 content.append((text, s, k))
@@ -235,6 +235,7 @@ def split_reindented(removed, added, kept=(frozenset(), frozenset())):
 class V8:
     def __init__(self, tab):
         self.tab = tab
+        self.debugging = False
 
     async def compiles(self, text):
         made = await self.tab.cmd("Runtime.compileScript", expression=text, sourceURL="", persistScript=False)
@@ -249,6 +250,21 @@ class V8:
 
     async def strict(self, text):
         return not await self.compiles(text + SLOPPY_ONLY)
+
+    async def code_at(self, text, offset):
+        return not await self.compiles(text[:offset] + "#1" + text[offset:])
+
+    async def statements(self, lines):
+        if not self.debugging:
+            await self.tab.cmd("Debugger.enable")
+            self.debugging = True
+        made = await self.tab.cmd("Runtime.compileScript", expression="\n".join(text for text, _ in lines),
+                                  sourceURL="", persistScript=True)
+        if "scriptId" not in made:
+            return None
+        found = await self.tab.cmd("Debugger.getPossibleBreakpoints", restrictToFunction=True,
+                                   start={"scriptId": made["scriptId"], "lineNumber": 0, "columnNumber": 0})
+        return [(lines[x["lineNumber"]][1], x["columnNumber"], x.get("type")) for x in found["locations"]]
 
     async def declarations(self, text):
         made = await self.tab.cmd("Runtime.evaluate", expression=SUSPENDED % text)
@@ -302,28 +318,51 @@ async def starts_inside(v8, script, facts, line):
     return facts.inside[line]
 
 
-async def kept_lines(v8, page, facts):
-    keep = set()
+async def texts_of(v8, page, facts):
+    texts = {}
     for s, script in enumerate(page.scripts):
+        if not script.js:
+            continue
+        offset = 0
         for k, raw in enumerate(script.raw):
+            text = raw
             if (not raw.strip() or raw != raw.rstrip() or MARK.search(raw)) \
-                    and (await starts_inside(v8, script, facts[s], k) or await starts_inside(v8, script, facts[s], k + 1)):
-                keep.add((s, k))
-    return keep
+                    and not await starts_inside(v8, script, facts[s], k + 1):
+                for mark in reversed(list(MARK.finditer(raw))):
+                    if facts[s].inside is not None and await v8.code_at(script.text, offset + mark.start()):
+                        text = text[:mark.start()] + text[mark.end():]
+                text = text.rstrip() if text.strip() else None
+            texts[(s, k)] = text
+            offset += len(raw) + 1
+    return texts
 
 
-def declared(page, facts, keep):
+async def joins_hold(v8, script, f):
+    if not script.js or not f.spans or f.inside is None:
+        return True
+    starts = {first: last for first, last in f.spans}
+    with_holes, without, k = [], [], 0
+    while k < len(script.raw):
+        if k in starts:
+            with_holes.append((";", None))
+            k = starts[k] + 1
+            continue
+        line = (script.raw[k], k)
+        with_holes.append(line)
+        without.append(line)
+        k += 1
+    return await v8.statements(with_holes) == await v8.statements(without)
+
+
+def declared(page, facts, texts):
     found = collections.defaultdict(collections.Counter)
     for s, f in enumerate(facts):
         for first, last in f.spans:
-            found[s][tuple(text for k in range(first, last + 1)
-                           if (text := shown(page.scripts[s].raw[k], (s, k) in keep)) is not None)] += 1
+            found[s][tuple(text for k in range(first, last + 1) if (text := texts.get((s, k))) is not None)] += 1
     return found
 
 
-def shown(raw, kept):
-    if kept:
-        return raw
+def shown(raw):
     text = MARK.sub("", raw).rstrip()
     return text if text.strip() and not TAG.match(text) else None
 
@@ -342,17 +381,23 @@ def title(page, s):
 async def compare(a, b, v8):
     report = Report()
     facts = ([await facts_of(v8, x) for x in a.scripts], [await facts_of(v8, x) for x in b.scripts])
-    keep = (await kept_lines(v8, a, facts[0]), await kept_lines(v8, b, facts[1]))
+    texts = (await texts_of(v8, a, facts[0]), await texts_of(v8, b, facts[1]))
     skip = tuple({(s, k) for s, f in enumerate(side) for first, last in f.spans for k in range(first, last + 1)}
                  for side in facts)
-    ca, cb = a.view(keep[0], skip[0])[1], b.view(keep[1], skip[1])[1]
+    ca, cb = a.view(texts[0], skip[0])[1], b.view(texts[1], skip[1])[1]
     if len(a.scripts) != len(b.scripts):
         report.changes.append(("scripts", f"the base has {len(a.scripts)} and the head {len(b.scripts)}", []))
     for s, (x, y) in enumerate(zip(a.scripts, b.scripts)):
         if (x.others, facts[0][s].strict) != (y.others, facts[1][s].strict):
             report.changes.append(("attributes or strict mode", f"script {s + 1}: {x.header} (strict: "
                                    f"{facts[0][s].strict}) -> {y.header} (strict: {facts[1][s].strict})", []))
-    ours, theirs = declared(a, facts[0], keep[0]), declared(b, facts[1], keep[1])
+    for side, page in ((0, a), (1, b)):
+        for s, script in enumerate(page.scripts):
+            if not await joins_hold(v8, script, facts[side][s]):
+                report.changes.append(("declaration between lines that join", f"{('base', 'head')[side]}, "
+                                       f"{script.header}: without its function declarations the script's "
+                                       "statements change", []))
+    ours, theirs = declared(a, facts[0], texts[0]), declared(b, facts[1], texts[1])
     report.declarations = sum(sum(c.values()) for c in ours.values())
     for s in sorted(set(ours) | set(theirs)):
         for lines in (ours[s] - theirs[s]).elements():
