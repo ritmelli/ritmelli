@@ -596,7 +596,7 @@ class App:
         self._son_lock = threading.Lock()
         self.parado_sem_fila = None  # disco que acabou com a fila vazia: a parecida que chegar toca
         self.preparando = None  # (disco, qid) da passagem sendo preparada (o stream leva 1 a 3 s)
-        self.passagem_falhou = None  # (disco, qid) que nao deu para preparar: toca no fim
+        self.passagem_falhou = None  # (disco, qid) que nao deu para preparar: fica para o avanco normal da fila
         self.closing = False
         # a janela propria (janela.py), quando ha: fechar ela desliga o servidor (pede_desligar), e o servidor que
         # para sozinho fecha ela (main). O loop e o desliga sao do servir e do build
@@ -1530,7 +1530,7 @@ class App:
                 if self.fila and self.fila[0] is x:
                     e.preparar(novo, x["qid"], pode=pode, ganho=ganho, depois=depois)
             self.with_engine(publica)
-        except Exception as ex:  # sem a proxima pronta, ela toca no fim
+        except Exception as ex:  # sem a proxima pronta, ela fica para o avanco normal da fila no fim do disco
             self.passagem_falhou = chave
             print(f"transition: couldn't prepare {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
         finally:

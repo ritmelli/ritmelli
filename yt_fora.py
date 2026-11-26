@@ -214,7 +214,7 @@ def liga(pool, n, timeout=5.0, fresca=False):
         try:
             c.timeout = timeout  # sem ele, um connect mudo segurava a thread para sempre (o pedido regrava o dele)
             c.connect()
-        except Exception:  # a conexao abre na hora do pedido
+        except Exception:  # fecha as que faltam, devolve os lugares vazios ao pool e passa a falha adiante
             for x in novas[i:]:
                 x.close()
                 pool._put_conn(None)

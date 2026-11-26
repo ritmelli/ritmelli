@@ -2596,7 +2596,7 @@ class Engine:
         t_plano, pos_plano = time.perf_counter(), self.pos
         with self._qlock:
             cauda, cabeca = list(atual.niveis), list(prox.niveis)
-        if not cabeca:  # a proxima nao decodificou: o servidor toca ela no fim
+        if not cabeca:  # a proxima nao decodificou: a preparacao sai, e ela fica para o avanco normal da fila
             with self._qlock:
                 if self._pronto is prox:
                     self._prepare_failure_tag = self.pronto_tag
@@ -2827,7 +2827,7 @@ class Engine:
             t0 = b1 - tau
             if golpe is not None:  # a virada antes do fecho do canal deste, que vai inteiro depois dela; ela comeca em t0
                 v, silencio, pad = virada(min(t0, golpe - CORTE_ANTES_S - CORTE_RAMPA_S))
-                if v is None:  # o golpe ficou perto demais (plano tardio): a batida depois do fim
+                if v is None:  # o golpe ficou perto demais (plano tardio): sem golpe, volta a batida do batida_do_fim
                     golpe, b1 = None, a0 + k * pa
                     t0 = b1 - tau
                 else:
