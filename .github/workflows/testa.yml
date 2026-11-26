@@ -154,6 +154,7 @@ jobs:
   # filter, the engine, the effects or their tests
   microfone:
     name: Filtro do microfone
+    needs: etiquetas
     if: github.event_name != 'push'
     runs-on: windows-2025
     timeout-minutes: 25
@@ -172,7 +173,7 @@ jobs:
       - name: O PR mexe no filtro?
         id: areas
         env:
-          BUILD_BASE: ${{ github.event_name == 'merge_group' && format('{0}^1', github.event.merge_group.head_sha) || github.event.pull_request.base.sha }}
+          BUILD_BASE: ${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || github.event.pull_request.base.sha || github.event.before }}
         run: python dev/testa_tudo.py --areas $env:BASE --build-base $env:BUILD_BASE
       - uses: ./.github/actions/python
         if: steps.areas.outputs.microfone == 'true'

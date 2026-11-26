@@ -379,6 +379,8 @@ def test_build_wiring(flows):
         verdict = find_step(jobs["testa-o-pr"], "Verdict") or {}
         areas = find_step(jobs["microfone"], "O PR mexe no filtro?") or {}
         found = []
+        if jobs["microfone"].get("needs") not in ("etiquetas", ["etiquetas"]):
+            found.append("the filter job does not need the etiquetas job, whose queue_base it reads")
         if (jobs["microfone"].get("outputs") or {}).get("monta") != "${{ steps.areas.outputs.monta }}":
             found.append("the filter job does not output monta from its areas step")
         if (verdict.get("env") or {}).get("MONTA") != "${{ needs.microfone.outputs.monta }}":
@@ -394,6 +396,7 @@ def test_build_wiring(flows):
                                  f"({problems(flows)})")
     for name, change in (
             ("the filter job output", lambda f: f[TESTA]["jobs"]["microfone"]["outputs"].pop("monta")),
+            ("the filter job needs", lambda f: f[TESTA]["jobs"]["microfone"].pop("needs")),
             ("the Verdict env", lambda f: find_step(f[TESTA]["jobs"]["testa-o-pr"], "Verdict")["env"].update(
                 MONTA="${{ needs.testes.outputs.monta }}")),
             ("the PR head", lambda f: find_step(f[TESTA]["jobs"]["testa-o-pr"], "Verdict")["env"].pop("PR_HEAD")),

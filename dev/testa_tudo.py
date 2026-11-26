@@ -157,8 +157,8 @@ REQUIRED_ENV = {"--compara": COMPARA_ENV, "--capture": COMPARA_ENV}
 BASE_ENV = "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
 AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE"
 BUILD_AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE --build-base $env:BUILD_BASE"
-BUILD_BASE_ENV = {"BUILD_BASE": "${{ github.event_name == 'merge_group' && format('{0}^1', "
-                                "github.event.merge_group.head_sha) || github.event.pull_request.base.sha }}"}
+BUILD_BASE_ENV = {"BUILD_BASE": "${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || "
+                                "github.event.pull_request.base.sha || github.event.before }}"}
 SCREEN_AREAS_RUN = "\n".join((
     AREAS_RUN,
     "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
