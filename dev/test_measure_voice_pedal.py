@@ -236,6 +236,11 @@ class Main(unittest.TestCase):
         self.assertIsNone(why, "a reader with the ring not open yet is not the filter reading it")
         self.assertEqual(result["cycles"][0]["dry_outs"], 0)
 
+    def test_a_ring_never_open_stops_before_the_pedal(self):
+        why, sent, _ = self.run_main(state(), events=[(1.0, state(anel=False)), (70.0, state(anel=False))])
+        self.assertIn("the filter of IN 1 never read the ring", why)
+        self.assertNotIn(("POST", "/api/settings"), sent)
+
     def test_a_fallback_microphone_after_the_filter_read_stops_before_the_pedal(self):
         why, sent, _ = self.run_main(state(), events=[(1.0, state(mic=FALLBACK))])
         self.assertIn(f"opened the microphone '{FALLBACK}' and not 'IN 1'", why)
