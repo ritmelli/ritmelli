@@ -119,7 +119,7 @@ PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("de
           "pr-description": ("dev/garden.py", "--pr-description")}
 # what the --tela and the --compara run
 TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme_scripts.py",
-        "dev/test_theme_listeners.py")
+        "dev/test_theme_listeners.py", "dev/theme_page_oracle.py")
 NOT_ON_PUSH = "github.event_name != 'push'"
 AFTER_RUFF = "${{ !cancelled() && steps.ruff.outcome != 'skipped' }}"
 SUMMARY_ARG = r'--resumo "$env:RUNNER_TEMP\resumo.md"'
@@ -228,7 +228,8 @@ AREAS = {
                   "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
     "tela": ("themes/", "gallery/", "server.py", "theme_page.py", "i18n.py", "metricas.py", "dev/compara.py",
              "dev/fitcheck.py", "dev/so_mock.py", "dev/missing_script.py", "dev/theme_scripts.py",
-             "dev/theme_listeners.py", "dev/test_theme_listeners.py", "dev/test_capture.py"),
+             "dev/theme_listeners.py", "dev/test_theme_listeners.py", "dev/test_capture.py",
+             "dev/theme_page_oracle.py", "dev/theme_page_cases.py"),
 }
 TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt", "dev/travas.txt")
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
@@ -693,7 +694,8 @@ def fitcheck(pasta):
                     srv.encerra()
         for script, what in (("dev/missing_script.py", "the theme page as the server sends it"),
                              ("dev/theme_scripts.py", "the theme's scripts"),
-                             ("dev/test_theme_listeners.py", "the listener reader of dev/theme_listeners.py")):
+                             ("dev/test_theme_listeners.py", "the listener reader of dev/theme_listeners.py"),
+                             ("dev/theme_page_oracle.py", "the theme page's grammar against Chrome")):
             cod, saida = executa([sys.executable, script])
             print(f"--- {Path(script).stem}: exits {cod}\n{saida.rstrip()}", flush=True)
             if cod != 0:

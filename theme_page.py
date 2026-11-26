@@ -6,7 +6,6 @@ import re
 import sys
 from html import unescape
 from html.entities import html5
-from html.parser import HTMLParser
 from pathlib import Path
 
 import i18n
@@ -21,15 +20,30 @@ URL_START = re.compile(r"url\([ \t\r\n\f]*['\"]?", re.IGNORECASE)
 NOT_PLAIN_OUTSIDE = re.compile(r"\\|image-set\(", re.IGNORECASE)
 NOT_RELATIVE = re.compile(r"[ \t\r\n\f]*(?:https?://|(?!https?:)[a-z][a-z0-9+.-]*:|/|#)", re.IGNORECASE | re.ASCII)
 TEXT_ONLY = ("textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript")
-SPACE = "[ \t\n\f\r]"
-START_TAG = re.compile(rf"<[A-Za-z][A-Za-z0-9-]*(?:{SPACE}+[A-Za-z_:@][-A-Za-z0-9_:.@]*"
-                       rf"""(?:{SPACE}*={SPACE}*(?:"[^"]*"|'[^']*'|[^ \t\n\f\r"'=<>`]+))?)*{SPACE}*/?>""")
-END_TAG = re.compile(r"</[A-Za-z][-.A-Za-z0-9:_]*>")
 FOREIGN = ("svg", "math")
 NOT_IN_FOREIGN = ("script", "style", "link", "foreignobject", "desc", "title", "annotation-xml", "mi", "mo", "mn", "ms",
                   "mtext")
-PLAIN_TEXT = {tag: re.compile(rf"[^<]*</{tag}>", re.IGNORECASE) for tag in TEXT_ONLY}
+NOT_IN_PAGE = {"base": "changes where every address of the page points",
+               "template": "holds markup the browser keeps inert, which the build would still read",
+               "plaintext": "turns the rest of the page into text, where the build would still read tags"}
 SCRIPT_TYPES = ("", "text/javascript", "application/json")
+PLAIN_ATTRIBUTES = ("rel", "type", "as")
+SPACE = "[ \t\n\f\r]"
+ATTRIBUTE_NAME = "[A-Za-z_:@][-A-Za-z0-9_:.@]*"
+VALUE = r"""(?:"[^"]*"|'[^']*'|[^ \t\n\f\r"'=<>`]+)"""
+ATTRIBUTE = re.compile(rf"{SPACE}+({ATTRIBUTE_NAME})(?:{SPACE}*={SPACE}*({VALUE}))?")
+GRAMMAR = {
+    "text": re.compile(r"[^<]+"),
+    "comment": re.compile(r"<!--(?![>-])(?:(?!--)[\s\S])*-->"),
+    "doctype": re.compile(r"<!doctype html>", re.IGNORECASE),
+    "end tag": re.compile(r"</([A-Za-z][A-Za-z0-9-]*)>"),
+    "start tag": re.compile(rf"<([A-Za-z][A-Za-z0-9-]*)((?:{SPACE}+{ATTRIBUTE_NAME}(?:{SPACE}*={SPACE}*{VALUE})?)*)"
+                            rf"{SPACE}*(/?)>"),
+}
+BODY = {tag: re.compile(rf"[^<]*</{tag}>", re.IGNORECASE) for tag in TEXT_ONLY}
+BODY["style"] = re.compile(r"(?:(?!</style)[\s\S])*</style>", re.IGNORECASE)
+BODY["script"] = re.compile(r"(?:(?!</script|<!--)[\s\S])*</script>", re.IGNORECASE)
+EXPECTED = ("text without <, <name attribute=\"value\">, </name>, <!-- text without -- -->, or <!doctype html>")
 
 
 def css_unescape(text):
@@ -52,124 +66,114 @@ def sheet_problem(text, outside_page_folder):
 
 
 class ThemePageError(Exception):
-    pass
+    def __init__(self, message, at=None):
+        super().__init__(message)
+        self.at = at
 
 
-class FileTags(HTMLParser):
+def place(html, i):
+    return html.count("\n", 0, i) + 1, i - html.rfind("\n", 0, i)
+
+
+class Template:
     def __init__(self, html):
-        super().__init__(convert_charrefs=False)
-        self.html, self.found, self.foreign = html, [], []
-        self.lines = [0] + [m.end() for m in re.finditer("\n", html)]
-        self.feed(html)
-        self.close()
+        self.html, self.found, self.elements, self.foreign = html, [], [], []
+        i = 0
+        while i < len(html):
+            i = self.token(i)
 
-    def handle_starttag(self, tag, attrs):
-        raw = self.get_starttag_text()
-        line, column = self.getpos()
-        if not START_TAG.fullmatch(raw):
-            raise ThemePageError(f"the tag {raw[:60]!r} on line {line} is not written as name=\"value\" pairs the "
-                                 f"browser reads the same way: write each attribute as name=\"value\"")
-        at = self.lines[line - 1] + column
-        body = at + len(raw)
-        first = {}
-        for name, value in attrs:
-            first.setdefault(name, value)
+    def refuse(self, i, message):
+        raise ThemePageError(message, place(self.html, i))
+
+    def token(self, i):
+        for kind, form in GRAMMAR.items():
+            if m := form.match(self.html, i):
+                if kind == "start tag":
+                    return self.start_tag(m, i)
+                if kind == "end tag":
+                    self.end_tag(m.group(1).lower(), i)
+                return m.end()
+        self.refuse(i, f"{self.html[i:i + 30]!r} is outside the forms the build reads: write {EXPECTED}")
+
+    def start_tag(self, m, i):
+        tag, raw, body = m.group(1).lower(), m.group(0), m.end()
+        attrs = {}
+        for name, value in ATTRIBUTE.findall(m.group(2)):
+            attrs.setdefault(name.lower(), value[1:-1] if value[:1] in "\"'" and value else value)
         if self.foreign and tag in NOT_IN_FOREIGN:
-            raise ThemePageError(f"the <{tag}> on line {line} is inside <{self.foreign[-1]}>, where the browser reads "
-                                 f"what the build cannot follow: draw it with shapes and attributes only, and put its "
-                                 f"CSS and code in the theme's files")
-        if "srcdoc" in first:
-            raise ThemePageError(f"the tag {raw!r} on line {line} writes a page in an attribute, whose files the "
-                                 f"browser would fetch: put what it shows in the theme")
+            self.refuse(i, f"the <{tag}> is inside <{self.foreign[-1]}>, where the browser reads what the build "
+                           f"cannot follow: draw it with shapes and attributes only, and put its CSS and code in the "
+                           f"theme's files")
+        if tag in NOT_IN_PAGE or "srcdoc" in attrs:
+            why = NOT_IN_PAGE.get(tag, "writes a page in an attribute, whose files the browser would fetch")
+            self.refuse(i, f"the tag {raw[:60]!r} {why}: leave it out")
+        if loose := [a for a in PLAIN_ATTRIBUTES if "&" in attrs.get(a, "")]:
+            self.refuse(i, f"the {loose[0]} of the tag {raw[:60]!r} has an &: write the value itself")
         if tag in FOREIGN:
-            self.foreign.append(tag)
-        elif tag in TEXT_ONLY:
-            if not PLAIN_TEXT[tag].match(self.html, body):
-                raise ThemePageError(f"the <{tag}> on line {line} holds a < or does not end in </{tag}>, which the "
-                                     f"browser can read as markup")
-        elif tag == "style":
-            self.inline_style(line, body)
-        elif tag == "script" and "src" not in first:
-            self.inline_script(raw, line, body, first)
-        elif tag == "script":
-            self.file_tag(raw, at, SCRIPT_TAG, "script", "</script>")
-        elif tag == "link":
-            rel = (first.get("rel") or "").lower().split()
-            if "modulepreload" in rel or "prefetch" in rel or "preload" in rel and (
-                    first.get("as") or "").strip().lower() in ("script", "style"):
-                raise ThemePageError(f"the tag {raw!r} on line {line} preloads or prefetches a file, which the browser "
-                                     f"would fetch: write the file tag")
-            if "stylesheet" in rel:
-                self.file_tag(raw, at, SHEET_TAG, "style", "")
+            if not m.group(3):
+                self.foreign.append(tag)
+            return body
+        if self.foreign:
+            return body
+        if tag == "script" and "src" in attrs:
+            return self.file_tag(i, raw, SCRIPT_TAG, "script", "</script>", attrs)
+        if tag == "link":
+            return self.link(i, raw, attrs)
+        if tag not in BODY:
+            return body
+        if tag == "script" and attrs.get("type", "").strip(" \t\n\r\f").lower() not in SCRIPT_TYPES:
+            self.refuse(i, f"the tag {raw!r} has a type the build does not read for certain (a module can import "
+                           f"files the page would fetch): write a <script> without the type, with "
+                           f"type=\"text/javascript\" or type=\"application/json\", or a file tag")
+        if not (text := BODY[tag].match(self.html, body)):
+            holds = "<!-- or " if tag == "script" else "a < or " if tag in TEXT_ONLY else ""
+            self.refuse(i, f"the <{tag}> holds {holds}does not end in </{tag}>, which the browser can read differently")
+        if tag == "style" and (problem := sheet_problem(text.group(0)[:-8], False)):
+            self.refuse(i, f"the <style> has {problem}")
+        if tag in ("script", "style"):
+            self.elements.append((tag, {a: unescape(attrs[a]) for a in ("src", "href", "rel", "type") if a in attrs}))
+        return text.end()
 
-    def file_tag(self, raw, at, canonical, kind, end):
+    def link(self, i, raw, attrs):
+        rel = attrs.get("rel", "").lower().split()
+        if "modulepreload" in rel or "prefetch" in rel or "preload" in rel and attrs.get("as", "").strip().lower() in (
+                "script", "style"):
+            self.refuse(i, f"the tag {raw!r} preloads or prefetches a file, which the browser would fetch: write the "
+                           f"file tag")
+        if "stylesheet" in rel:
+            return self.file_tag(i, raw, SHEET_TAG, "style", "", attrs)
+        self.elements.append(("link", {a: unescape(attrs[a]) for a in ("src", "href", "rel", "type") if a in attrs}))
+        return i + len(raw)
+
+    def file_tag(self, i, raw, canonical, kind, end, attrs):
         written = canonical.fullmatch(raw)
-        if not written or not self.html.startswith(end, at + len(raw)):
-            raise ThemePageError(f"the tag {raw!r} is not <script src=\"...\"></script> or "
-                                 f"<link rel=\"stylesheet\" href=\"...\">, the only file tags the page puts inline")
+        if not written or not self.html.startswith(end, i + len(raw)):
+            self.refuse(i, f"the tag {raw!r} is not <script src=\"...\"></script> or <link rel=\"stylesheet\" "
+                           f"href=\"...\">, the only file tags the page puts inline")
         value = written.group(1)
         if loose := [m.group(0) for m in REFERENCE.finditer(value) if m.group(0)[1:] not in html5]:
-            raise ThemePageError(f"the tag {raw!r} has {loose[0]!r}, which is not a whole character reference the "
-                                 f"browser reads the same way")
-        self.found.append((at, at + len(raw) + len(end), kind, unescape(value)))
+            self.refuse(i, f"the tag {raw!r} has {loose[0]!r}, which is not a whole character reference the browser "
+                           f"reads the same way")
+        self.found.append((i, i + len(raw) + len(end), kind, unescape(value)))
+        self.elements.append(("script" if kind == "script" else "link",
+                              {a: unescape(attrs[a]) for a in ("src", "href", "rel", "type") if a in attrs}))
+        return i + len(raw) + len(end)
 
-    def inline_style(self, line, body):
-        end = CLOSES_ELEMENT["style"].search(self.html, body)
-        if not end or self.html[end.start():end.start() + 8].lower() != "</style>":
-            raise ThemePageError(f"the <style> on line {line} does not end in </style>, which the browser can read "
-                                 f"differently")
-        if problem := sheet_problem(self.html[body:end.start()], False):
-            raise ThemePageError(f"the <style> on line {line} has {problem}")
-
-    def inline_script(self, raw, line, body, attrs):
-        if (attrs.get("type") or "").strip(" \t\n\r\f").lower() not in SCRIPT_TYPES:
-            raise ThemePageError(f"the tag {raw!r} on line {line} has a type the build does not read for certain (a "
-                                 f"module can import files the page would fetch): write a <script> without the type, "
-                                 f"with type=\"text/javascript\" or type=\"application/json\", or a file tag")
-        end = CLOSES_ELEMENT["script"].search(self.html, body)
-        if not end or self.html[end.start():end.start() + 9].lower() != "</script>":
-            raise ThemePageError(f"the <script> on line {line} holds <!-- or does not end in </script>, which the "
-                                 f"browser can read differently")
-
-    def handle_startendtag(self, tag, attrs):
-        if tag in ("script", "style") and not self.foreign:
-            raise ThemePageError(f"the tag {self.get_starttag_text()!r} on line {self.getpos()[0]} ends in />, which "
-                                 f"the browser ignores and reads what follows as its text: write <{tag}>...</{tag}>")
-        super().handle_startendtag(tag, attrs)
-
-    def parse_endtag(self, i):
-        if not END_TAG.match(self.rawdata, i):
-            raise ThemePageError(f"{self.rawdata[i:i + 20]!r}... on line {self.getpos()[0]} is not an end tag the "
-                                 f"browser reads the same way: write </name>")
-        return super().parse_endtag(i)
-
-    def parse_comment(self, i, report=1):
-        end = super().parse_comment(i, report)
-        if end < 0 or self.rawdata[end - 3:end] != "-->":
-            raise ThemePageError(f"the comment {self.rawdata[i:i + 40]!r}... on line {self.getpos()[0]} does not end "
-                                 f"in -->, which the browser reads differently: write <!-- text -->")
-        return end
-
-    def handle_endtag(self, tag):
+    def end_tag(self, tag, i):
         if tag in FOREIGN and self.foreign:
             if self.foreign[-1] != tag:
-                raise ThemePageError(f"the </{tag}> on line {self.getpos()[0]} does not close the <{self.foreign[-1]}> "
-                                     f"open there, which the browser keeps open: close it with </{self.foreign[-1]}>")
+                self.refuse(i, f"the </{tag}> does not close the <{self.foreign[-1]}> open there, which the browser "
+                               f"keeps open: close it with </{self.foreign[-1]}>")
             self.foreign.pop()
-
-    def handle_comment(self, data):
-        if data.startswith((">", "->")) or "--!>" in data:
-            raise ThemePageError(f"the comment {('<!--' + data)[:40]!r}... ends earlier in the browser, which would "
-                                 f"then read what the build leaves as a comment")
-
-    def parse_marked_section(self, i, report=1):
-        raise ThemePageError(f"{self.rawdata[i:i + 40]!r}... is a bogus comment in the browser that ends at its "
-                             f"first >, which the build cannot read for certain")
 
 
 @functools.lru_cache(maxsize=16)
+def template(html):
+    return Template(html)
+
+
 def file_tags(html):
-    return tuple(FileTags(html).found)
+    return tuple(template(html).found)
 
 
 def shown(path):
@@ -200,17 +204,24 @@ def utf8_text(path, name):
 def inline_files(html, folder):
     parts, done = [], 0
     for start, end, tag, name in file_tags(html):
-        path, text = theme_file(folder, name)
-        if tag == "script" and text.startswith("#!"):
-            raise ThemePageError(f"{name} starts with #!, which only a script file read on its own allows: remove "
-                                 f"that line")
-        if closes := CLOSES_ELEMENT[tag].search(text):
-            raise ThemePageError(f"{name} has {closes.group(0)}, which its <{tag}> cannot hold")
-        if tag == "style" and (problem := sheet_problem(text, path.parent != folder.resolve())):
-            raise ThemePageError(f"{name} has {problem}")
-        parts += [html[done:start], f"<{tag}>\n{text}</{tag}>"]
+        try:
+            parts += [html[done:start], f"<{tag}>\n{file_text(folder, tag, name)}</{tag}>"]
+        except ThemePageError as ex:
+            raise ThemePageError(str(ex), place(html, start)) from ex
         done = end
     return "".join(parts) + html[done:]
+
+
+def file_text(folder, tag, name):
+    path, text = theme_file(folder, name)
+    if tag == "script" and text.startswith("#!"):
+        raise ThemePageError(f"{name} starts with #!, which only a script file read on its own allows: remove that "
+                             f"line")
+    if closes := CLOSES_ELEMENT[tag].search(text):
+        raise ThemePageError(f"{name} has {closes.group(0)}, which its <{tag}> cannot hold")
+    if tag == "style" and (problem := sheet_problem(text, path.parent != folder.resolve())):
+        raise ThemePageError(f"{name} has {problem}")
+    return text
 
 
 def theme_of_template(rel):
@@ -229,6 +240,7 @@ def build(page, texts, language):
         html = inline_files(i18n.injeta(utf8_text(page, page.name), texts, language), page.parent)
     except ThemePageError as ex:
         from aiohttp import web
-        print(f"theme page: {shown(page)} was not built: {ex}", file=sys.stderr, flush=True)
-        raise web.HTTPInternalServerError(text=f"{shown(page)} was not built: {ex}") from ex
+        where = shown(page) + (f":{ex.at[0]}:{ex.at[1]}" if ex.at else "")
+        print(f"theme page: {where} was not built: {ex}", file=sys.stderr, flush=True)
+        raise web.HTTPInternalServerError(text=f"{where} was not built: {ex}") from ex
     return html, f'"{hashlib.sha256(html.encode("utf-8")).hexdigest()[:32]}"'

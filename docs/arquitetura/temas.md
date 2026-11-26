@@ -32,20 +32,22 @@ A página do tema chega inteira numa resposta só. O `index.html` lista os arqui
 que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="stylesheet" href="arquivo.css">` por
 folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `server.py` chama) troca cada um por um
 `<script>` ou um `<style>` com o texto do arquivo, sem a marca de ordem de bytes (BOM) do começo, e a página não pede ao
-servidor nenhum script nem nenhuma folha: não existe página com um arquivo faltando. O que a montagem não lê com certeza
-do jeito que o navegador lê, ela recusa, em vez de imitar o navegador: a página responde 500 com o modelo, o arquivo e a
-regra, sem pasta do PC, e o log do servidor diz o mesmo. Ela recusa, e o que escrever no lugar:
+servidor nenhum script nem nenhuma folha: não existe página com um arquivo faltando. A montagem lê o modelo inteiro por
+uma gramática estrita, que só aceita texto sem `<`, a tag de abertura com atributos `nome="valor"` (ou com aspas
+simples, ou sem aspas) separados por espaço ASCII, a tag de fim `</nome>`, o comentário `<!-- texto sem -- -->` e o
+`<!doctype html>`; o texto do `<script>`, do `<style>` e dos elementos de texto vai até o primeiro `</nome>` exato. Ela
+não imita o navegador: o que fica fora da gramática para a montagem, e a página responde 500 com o modelo, a linha e a
+coluna (`themes/ritmelli/index.html:3:5`), o que ela achou e a forma esperada, sem pasta do PC; o log do servidor diz o
+mesmo. Depois da gramática, ela ainda recusa, e o que escrever no lugar:
 
 - o arquivo que falta, a pasta no lugar dele ou o caminho que sai da pasta da página (ou de `themes/`, com `/t/`): um
   arquivo que existe ali;
 - o arquivo, ou o próprio `index.html`, que não é texto UTF-8 ou que não se deixa ler: salvá-lo em UTF-8, ou fechar o
   que o segura;
-- a tag fora da forma estrita: a de abertura com atributos `nome="valor"` (ou com aspas simples, ou sem aspas) separados
-  por espaço ASCII, a de fim exatamente `</nome>`, e o comentário fechado em `-->`: escrever assim;
 - a tag de arquivo com outro atributo, outra ordem, maiúsculas ou algo antes do fim: exatamente
   `<script src="arquivo.js"></script>` ou `<link rel="stylesheet" href="arquivo.css">`;
 - um `&` no nome do arquivo que não abre uma referência nomeada inteira, e toda referência numérica: o nome sem `&`, ou
-  com `&amp;`;
+  com `&amp;`; e um `&` no `rel`, no `type` ou no `as`: o valor escrito por extenso;
 - o script com `</script` ou `<!--` ou que começa com `#!`, e a folha com `</style`: o texto sem eles;
 - a folha, de arquivo ou escrita na página, com `@import`, mesmo num comentário ou numa string (a folha se lê com os
   escapes de CSS decodificados): uma tag de arquivo por folha;
@@ -53,27 +55,26 @@ regra, sem pasta do PC, e o log do servidor diz o mesmo. Ela recusa, e o que esc
   `http://`, outro esquema, `data:`, `/` ou `#`, ou a folha na pasta da página;
 - o `<link rel="modulepreload">`, o `<link rel="prefetch">` e o `<link rel="preload">` de um script ou de uma folha: a
   tag de arquivo;
-- o `<script/>` e o `<style/>`, que o navegador não fecha ali: `<script>...</script>` e `<style>...</style>`;
 - o `<script>` escrito na página com um `type` que não é `text/javascript` nem `application/json` (o `module` importa
-  arquivos), com `<!--` dentro ou fechado de outro jeito que `</script>`, e o `<style>` fechado de outro jeito que
-  `</style>`: um `<script>` sem `type` ou com um desses dois, com ou sem `defer`, fechado em `</script>`, ou a tag de
-  arquivo;
-- o elemento de texto (`<title>`, `<textarea>`, `<noscript>`, `<iframe>`, `<xmp>`, `<noembed>`, `<noframes>`) com um `<`
-  dentro ou fechado de outro jeito que `</nome>`, e o `srcdoc`, que escreve uma página num atributo: só texto, fechado
-  em `</nome>`, e o conteúdo do `srcdoc` no próprio tema;
+  arquivos): um `<script>` sem `type` ou com um desses dois, ou a tag de arquivo;
+- o `<base>`, que muda para onde aponta cada endereço da página, o `<template>`, cujo conteúdo o navegador deixa inerte,
+  o `<plaintext>`, que faz do resto da página texto, e o `srcdoc`, que escreve uma página num atributo: tirá-los, e pôr
+  no próprio tema o que o `srcdoc` mostrava;
 - dentro de `<svg>` ou `<math>`, o `<script>`, o `<style>`, o `<link>` e os elementos em que o navegador volta a ler
   HTML (`<foreignObject>`, `<desc>`, `<title>`, `<annotation-xml>`, `<mi>`, `<mo>`, `<mn>`, `<ms>`, `<mtext>`), e o
   `</svg>` ou `</math>` que não fecha o que está aberto: o desenho só com formas e atributos, e o CSS e o código nos
-  arquivos do tema;
-- o comentário que o navegador fecha antes do HTMLParser do Python (`<!-->`, `<!--->`, `--!>`) e todo `<![`, que o
-  navegador lê como comentário falso até o primeiro `>`: `<!-- texto -->`.
+  arquivos do tema.
 
-O `dev/testa_mock.py` confere cada caso da lista. O `dev/missing_script.py`, que o
-`--tela` do `dev/testa_tudo.py` roda, lê a página e a galeria como o servidor as manda, nas duas línguas, de um `--mock`
-como o PC e de outro como o celular, e reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um
-pedido de script ou de folha que o Chrome faça ao servidor. O `dev/garden.py` conta as linhas de CSS e JS escritas no
-próprio `index.html` e guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código novo do tema
-vai num arquivo da pasta, e a contagem vai para o resumo do PR.
+O `dev/testa_mock.py` confere cada caso da lista e cada forma fora da gramática (os casos moram no
+`dev/theme_page_cases.py`). O `dev/theme_page_oracle.py`, que o `--tela` do `dev/testa_tudo.py` roda, abre num Chrome
+sem tela, com o JavaScript desligado, o tema, a galeria e cada caso que a montagem aceita, e reprova quando os
+`<script>`, `<style>` e `<link>` do DOM, com o `src`, o `href`, o `rel` e o `type`, não são, na mesma ordem, os que a
+montagem leu: uma forma que a gramática aceita e o navegador lê de outro jeito vira falha de teste. O
+`dev/missing_script.py`, que o `--tela` também roda, lê a página e a galeria como o servidor as manda, nas duas línguas,
+de um `--mock` como o PC e de outro como o celular, e reprova com um `<script src>` ou um `<link rel="stylesheet">`
+nelas ou com um pedido de script ou de folha que o Chrome faça ao servidor. O `dev/garden.py` conta as linhas de CSS e
+JS escritas no próprio `index.html` e guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código
+novo do tema vai num arquivo da pasta, e a contagem vai para o resumo do PR.
 
 Os scripts são clássicos, sem `defer`: rodam na ordem da lista, e o que um declara no alto fica à vista dos de depois.
 No `<head>`, logo depois dos textos que o servidor põe no `<!-- i18n -->`, vêm o `i18n.js` (o `I18N`, ver o

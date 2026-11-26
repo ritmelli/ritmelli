@@ -88,7 +88,9 @@ Python do venv e o `throw` do `$LASTEXITCODE`, como o server lê, com um `#requi
 passos das saídas `anterior` e `parcial` não podem ter `if:`; nenhum outro passo cita `build_manifest` ou
 `publica`, em qualquer campo, comentário ou passo desligado (como o server lê); e, nas saídas, o que está em
 comentário do PowerShell não conta. O
-`--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda em três jobs:
+`--tela` junta o `fitcheck`, o `compara` do jeito do PR e as conferências do tema num Chrome sem tela, entre elas a
+da gramática da página, o `dev/theme_page_oracle.py`, descrita no [temas.md](temas.md) (no `testa.yml` o `compara`
+roda em três jobs:
 o Compara: base e o Compara: HEAD capturam em paralelo, pelo `--capture-base` e pelo `--capture`, a base só
 quando o cache do Actions não a tem, e o Compara compara as duas pelo `--compara --head-capture`; o
 `dev/test_ci_workflow.py` exige a captura da base num job próprio, sem `needs` entre os dois), e o `--areas` é o filtro por caminho do

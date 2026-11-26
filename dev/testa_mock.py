@@ -1100,6 +1100,7 @@ def answer_of(srv, method, route, body):
 def the_theme_page_build():
     import server
     import theme_page
+    import theme_page_cases
     print("--- the theme page: every <script src> and stylesheet <link> inline, or no page")
     with tempfile.TemporaryDirectory(prefix="testa_mock_inline_") as t:
         folder = Path(t)
@@ -1119,174 +1120,7 @@ def the_theme_page_build():
         sent_after, etag_after = theme_page.build(page, folder / "i18n", "en")
         confere(sent == html and etag != etag_after and "const first = 2;" in sent_after,
                 "the ETag of the page follows the text it sends, even when the inlined file keeps its mtime")
-        refused = {
-            "a missing file": ('<script src="gone.js"></script>', {}, "gone.js is missing"),
-            "a file outside the folder": ('<link rel="stylesheet" href="../a.css">', {}, "../a.css is outside"),
-            "a theme path outside the themes": ('<script src="/t/../server.py"></script>', {}, "is outside"),
-            "a script that closes its element": ('<script src="first.js"></script>', {"first.js": "x('</SCRIPT>');\n"},
-                                                 "first.js has </SCRIPT,"),
-            "a script that opens a comment": ('<script src="first.js"></script>', {"first.js": "x('<!--');\n"},
-                                              "first.js has <!--"),
-            "a sheet that closes its element": ('<link rel="stylesheet" href="a.css">', {"a.css": "a { content: '</style>'; }\n"},
-                                                "a.css has </style"),
-            "a script tag with another attribute": ('<script defer src="first.js"></script>', {}, "is not <script src="),
-            "a script tag in capitals": ('<SCRIPT SRC="first.js"></SCRIPT>', {}, "is not <script src="),
-            "a stylesheet link in another order": ('<link href="a.css" rel="stylesheet">', {}, "is not <script src="),
-            "a script tag with a > in an attribute": ('<script title="a > b" src="first.js"></script>', {},
-                                                      "is not <script src="),
-            "a stylesheet link with a > in an attribute": ('<link title="a > b" rel="stylesheet" href="a.css">', {},
-                                                           "is not <script src="),
-            "a script tag with something before its end tag": ('<script src="first.js"> </script>', {},
-                                                               "is not <script src="),
-            "a folder named as a file": ('<script src="sub"></script>', {}, "sub is missing"),
-            "a sheet in a subfolder with a relative url()": ('<link rel="stylesheet" href="sub/b.css">',
-                                                             {"sub/b.css": "a { b: url( 'x.png' ); }\n"}, "relative url()"),
-            "a sheet with an @import": ('<link rel="stylesheet" href="a.css">', {"a.css": '@import "palette.css";\n'},
-                                        "a.css has @import"),
-            "a sheet with an escaped @import": ('<link rel="stylesheet" href="a.css">',
-                                                {"a.css": '@im\\70 ort "palette.css";\n'}, "a.css has @import"),
-            "a sheet in a subfolder with an escaped relative url()": ('<link rel="stylesheet" href="sub/b.css">',
-                                                                      {"sub/b.css": "a { b: \\75rl(x.png); }\n"},
-                                                                      "outside the page's folder"),
-            "a sheet with an @import escaped across a CRLF": ('<link rel="stylesheet" href="a.css">',
-                                                              {"a.css": '@im\\70\r\nort "p.css";\n'}, "a.css has @import"),
-            "a sheet with an escaped quote before an @import": ('<link rel="stylesheet" href="a.css">',
-                                                                {"a.css": '@layer x\\22; @import "p.css";\n'},
-                                                                "a.css has @import"),
-            "a sheet with an @import between strings of escaped quotes": (
-                '<link rel="stylesheet" href="a.css">',
-                {"a.css": 'a { content: "\\""; } @import "p.css"; a { content: "\\""; }\n'}, "a.css has @import"),
-            "a sheet with an @import between strings of /* and */": (
-                '<link rel="stylesheet" href="a.css">',
-                {"a.css": 'a { content: "/*"; } @import "p.css"; a { content: "*/"; }\n'}, "a.css has @import"),
-            "a sheet in a subfolder with /* in a string, then a relative url()": (
-                '<link rel="stylesheet" href="sub/b.css">',
-                {"sub/b.css": '.a { content: "/*"; } .b { background: url(x.png); } /* */\n'}, "relative url()"),
-            "a sheet with a backslash quote before an @import": ('<link rel="stylesheet" href="a.css">',
-                                                                 {"a.css": '@layer x\\"; @import "p.css";\n'},
-                                                                 "a.css has @import"),
-            "a sheet with a backslash apostrophe before an @import": ('<link rel="stylesheet" href="a.css">',
-                                                                      {"a.css": "@layer x\\'; @import 'p.css';\n"},
-                                                                      "a.css has @import"),
-            "a sheet in a subfolder with an escaped ) in a relative url()": ('<link rel="stylesheet" href="sub/b.css">',
-                                                                             {"sub/b.css": "a { b: url(\\)x.png); }\n"},
-                                                                             "outside the page's folder"),
-            "a sheet in a subfolder with an image-set()": (
-                '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": 'a { b: image-set("x.png" 1x); }\n'},
-                "'image-set(' outside the page's folder"),
-            "a sheet in a subfolder with a comment in an image-set()": (
-                '<link rel="stylesheet" href="sub/b.css">',
-                {"sub/b.css": 'a { b: image-set(/* candidate */ "x.png" 1x); }\n'}, "'image-set(' outside the page's folder"),
-            "a sheet in a subfolder with a backslashed quote in a url()": (
-                '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": 'a { b: url(\\"/x.png); }\n'},
-                "outside the page's folder"),
-            "a sheet with @import only in a string": ('<link rel="stylesheet" href="a.css">',
-                                                      {"a.css": 'a::after { content: "\\" @import \\""; }\n'},
-                                                      "a.css has @import"),
-            "a sheet with @import only in a comment": ('<link rel="stylesheet" href="a.css">',
-                                                       {"a.css": "/* @import x; */ a { b: c; }\n"}, "a.css has @import"),
-            "a sheet in a subfolder with url() only inside a string": (
-                '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": 'a::after { content: "url(example.png)"; }\n'},
-                "relative url()"),
-            "a comment the browser ends at <!-->": ('<!--> <script src="first.js"></script> -->', {},
-                                                    "ends earlier in the browser"),
-            "a comment the browser ends at <!--->": ('<!---> <script src="first.js"></script> -->', {},
-                                                     "ends earlier in the browser"),
-            "a comment the browser ends at --!>": ('<!-- a --!> <script src="first.js"></script> -->', {},
-                                                   "ends earlier in the browser"),
-            "a CDATA section, a bogus comment in the browser": (
-                '<![CDATA[ a > <script src="first.js"></script> ]]>', {}, "bogus comment"),
-            "a script name with a reference the browser leaves as it is": ('<script src="copy&notit.js"></script>',
-                                                                           {"copy&notit.js": "1;\n"},
-                                                                           "has '&', which is not a whole"),
-            "a script name with an unknown named reference": ('<script src="a&ampx;b.js"></script>', {},
-                                                              "'&ampx;', which is not a whole"),
-            "a file tag in a textarea": ('<textarea><script src="first.js"></script></textarea>', {}, "holds a <"),
-            "a file tag in the title": ('<title><script src="first.js"></script></title>', {}, "holds a <"),
-            "a file tag in a noscript": ('<noscript><script src="first.js"></script></noscript>', {}, "holds a <"),
-            "a title the browser ends at </title x>": (
-                '<title>a</title x><script src="first.js"></script><title></title>', {}, "holds a <"),
-            "a noscript the browser ends at </noscript data-x>": (
-                '<noscript>b</noscript data-x><script src="first.js"></script></noscript>', {}, "holds a <"),
-            "a file tag in an svg title": ('<svg><title><script src="first.js"></script></title></svg>', {}, "is inside <svg>"),
-            "an svg script with an href": ('<svg><script href="first.js"/></svg>', {}, "is inside <svg>"),
-            "a file tag inside an svg": ('<svg><script src="first.js"></script></svg>', {}, "is inside <svg>"),
-            "a file tag after a breakout in an svg style": (
-                '<svg><style><p><script src="first.js"></script></style></svg>', {}, "is inside <svg>"),
-            "a file tag after a breakout in an svg script": (
-                '<svg><script><p><script src="first.js"></script></script></svg>', {}, "is inside <svg>"),
-            "an svg script in an svg style": ('<svg><style><script href="first.js"></script></style></svg>', {},
-                                              "is inside <svg>"),
-            "a style the browser ends at </style data-x>": (
-                '<style>a {}</style data-x><script src="first.js"></script></style>', {}, "does not end in </style>"),
-            "an inline script the browser ends at </script data-x>": (
-                '<script>1</script data-x><script src="first.js"></script></script>', {}, "does not end in </script>"),
-            "an inline script with <!--": ('<script><!--<script>1</script><script src="first.js"></script></script>', {},
-                                           "holds <!--"),
-            "an @import in a style of the template": ('<style>@import "first.css";</style>', {}, "has @import"),
-            "an @import in an svg style": ('<svg><style>@import "first.css";</style></svg>', {}, "is inside <svg>"),
-            "an svg icon with its own style": ("<svg><style>.a { fill: red; }</style></svg>", {}, "is inside <svg>"),
-            "a reference in an svg style": ('<svg><style>&#64;import "first.css";</style></svg>', {}, "is inside <svg>"),
-            "an svg closed by a </math>": ('<svg></math><script src="first.js"></script></svg>', {}, "does not close"),
-            "a math closed by a </svg>": ('<math></svg><style><p><script src="first.js"></script></style></math>', {},
-                                          "does not close"),
-            "an svg kept open by a foreignObject": (
-                '<svg><foreignObject><span></svg></span></foreignObject><script src="first.js"></script></svg>', {},
-                "is inside <svg>"),
-            "a math kept open by an mi": ('<math><mi><span></math></span></mi><script src="first.js"></script></math>', {},
-                                          "is inside <math>"),
-            "a module in an svg": ('<svg><script type="module">import "./first.js";</script></svg>', {}, "is inside <svg>"),
-            "a module in an svg foreignObject": (
-                '<svg><foreignObject><script type="module">import "./first.js";</script></foreignObject></svg>', {},
-                "is inside <svg>"),
-            "a speculation rule": ('<script type="speculationrules">{"prefetch": [{"urls": ["/first.js"]}]}</script>', {},
-                                   "has a type the build does not read"),
-            "a preload of a script": ('<link rel="preload" as="script" href="first.js">', {}, "preloads or prefetches"),
-            "a preload of a style sheet": ('<link rel="preload" as="style" href="a.css">', {}, "preloads or prefetches"),
-            "a module preload": ('<link rel="modulepreload" href="first.js">', {}, "preloads or prefetches"),
-            "an unknown marked section": ('<![foo]><script src="first.js"></script>', {}, "bogus comment"),
-            "a CDATA section that never ends": ('<![CDATA[ a > <script src="first.js"></script>', {}, "bogus comment"),
-            "a script that is not UTF-8": ('<script src="latin.js"></script>', {"latin.js": b'let s = "caf\xe9";\n'},
-                                           "latin.js is not UTF-8 text"),
-            "a prefetch of a script": ('<link rel="prefetch" as="script" href="first.js">', {}, "preloads or prefetches"),
-            "a prefetch with no as": ('<link rel="prefetch" href="first.js">', {}, "preloads or prefetches"),
-            "a page in a srcdoc": ('<iframe srcdoc="&lt;script src=first.js&gt;&lt;/script&gt;"></iframe>', {},
-                                   "writes a page in an attribute"),
-            "a script ended by />": ("<script/><a title='</script><script src=\"first.js\"></script>'>", {},
-                                     "ends in />"),
-            "a style ended by />": ("<style/><a title='</style><link rel=\"stylesheet\" href=\"a.css\">'>", {},
-                                    "ends in />"),
-            "an end tag with a space before the name": (
-                '<script>/*</ script><a title="*/</script><script src="first.js"></script>">', {}, "is not an end tag"),
-            "a style end tag with a space before the name": (
-                '<style>/*</ style><a title="*/</style><link rel="stylesheet" href="a.css">">', {}, "is not an end tag"),
-            "an svg end tag with a space": ('<svg></ svg><style><b><script src="first.js"></script></b></style>', {},
-                                            "is not an end tag"),
-            "an svg end tag with a no-break space": (
-                '<svg></svg\u00a0><style><b><script src="first.js"></script></b></style>', {}, "is not an end tag"),
-            "an end tag with an attribute": (
-                '</div title="> <div title=\'"> <script src="first.js"></script> <!-- \'> -->', {}, "is not an end tag"),
-            "an attribute with ==": ('<a b=="x><script src="first.js"></script>">', {}, "is not written as name="),
-            "an attribute with a no-break space before the value": (
-                '<a b=\u00a0"x><script src="first.js"></script>">', {}, "is not written as name="),
-            "a tag with a NUL in it": ('<a b="c"\x00 <script><script src="first.js"></script>', {},
-                                       "is not written as name="),
-            "a comment ended by -- >": (
-                '<!-- a -- > <div title=\' --> <script src="first.js"></script> <!-- \'> -->', {}, "does not end in -->"),
-            "a comment that never ends": ('<!-- > <div title=\' <script src="first.js"></script> \'>', {},
-                                          "does not end in -->"),
-            "a script file that starts with #!": ('<script src="first.js"></script>',
-                                                  {"first.js": "#!/usr/bin/env node\n1;\n"}, "starts with #!"),
-            "an inline module": ('<script type=" Module ">import x from "./first.js";</script>', {}, "has a type the build does not read"),
-            "a script name with a numeric reference": ('<script src="a&#xFDD0;b.js"></script>', {"ab.js": "1;\n"},
-                                                       "has '&', which is not a whole"),
-            "a sheet in a subfolder with an http: url() without a host": (
-                '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": "a { b: url(http:cover.png); }\n"},
-                "relative url()"),
-            "a sheet in a subfolder with a no-break space before the / of a url()": (
-                '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": 'a { b: url("\u00a0/cover.png"); }\n'},
-                "relative url()"),
-        }
+        refused = theme_page_cases.REFUSED
         (folder / "sub").mkdir()
         for what, (tag, files, said) in refused.items():
             script.write_text("const first = 1;\n", encoding="utf-8")
@@ -1306,26 +1140,7 @@ def the_theme_page_build():
         (folder / "bom.css").write_text("\ufeffa { b: c; }\n", encoding="utf-8")
         sheet.write_text("a { b: url(fonts/x.woff2); c: image-set(url('y.webp') 2x, 'z.webp' 1x); d: '\\00B7'; }\n",
                          encoding="utf-8")
-        kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
-                "a title of plain text": ("<title>Ritmelli &amp; co</title>", None),
-                "an svg icon of shapes": ('<svg viewBox="0 0 8 8"><g><path d="M0 0h8"/><rect width="2"/></g></svg>', None),
-                "a link that is not a sheet": ('<link rel="apple-touch-icon" href="/apple-touch-icon.png">', None),
-                "an svg closed by itself before a file tag": ('<svg/><script src="first.js"></script>',
-                                                              "<svg/><script>\nconst first = 1;\n</script>"),
-                "inline scripts with a type, defer or a data block": (
-                    '<script type="text/javascript">let a = 1 < 2;</script><script defer>b();</script>'
-                    '<script type="application/json">{"a": "<b>"}</script>', None),
-                "a sheet that starts with a byte order mark": ('<link rel="stylesheet" href="bom.css">',
-                                                               "<style>\na { b: c; }\n</style>"),
-                "a script name with a character reference": ('<script src="a&amp;b.js"></script>',
-                                                             "<script>\nconst ab = 1;\n</script>"),
-                "a sheet of the page folder with a relative url(), an image-set() and an escape": (
-                    '<link rel="stylesheet" href="a.css">',
-                    "<style>\na { b: url(fonts/x.woff2); c: image-set(url('y.webp') 2x, 'z.webp' 1x); d: '\\00B7'; }\n</style>"),
-                "a sheet in a subfolder with data: and # urls": ('<link rel="stylesheet" href="sub/c.css">',
-                                                                 "<style>\na { b: url(data:image/png;base64,AA); c: "
-                                                                 "url(#d); e: url( 'data:x' ); "
-                                                                 "f: url(HTTPS://example.com/x.png); }\n</style>")}
+        kept = theme_page_cases.KEPT
         for what, (tag, expected) in kept.items():
             try:
                 out = theme_page.inline_files(tag, folder)
@@ -1415,14 +1230,14 @@ async def a_missing_file_answers_500(server, folder):
                           for name in ("/t///unreachable.invalid/share/index.html",
                                        "/t/%5C%5Cunreachable.invalid%5Cshare/x.png",
                                        "/t/%5C%5Cunreachable.invalid%5Cshare/")}
-    confere(status == 500 and "themes/broken/index.html was not built: gone.js is missing from themes/broken" in said
+    confere(status == 500 and "themes/broken/index.html:2:1 was not built: gone.js is missing from themes/broken" in said
             and said in log.getvalue() and str(folder) not in said and folder.name not in said,
             f"through the route, a missing theme file answers 500 with the template, the file and the rule, the log "
             f"says the same, and no folder of the PC goes out ({status}, {said!r})")
     confere(latin[0] == 500 and "themes/latin/index.html was not built: index.html is not UTF-8 text" in latin[1]
             and latin[1] in log.getvalue(),
             f"a template that is not UTF-8 answers 500 naming it, and the log says the same ({latin})")
-    confere(unread[0] == 500 and "held.js could not be read (Permission denied)" in unread[1]
+    confere(unread[0] == 500 and "themes/held/index.html:2:1 was not built: held.js could not be read (Permission denied)" in unread[1]
             and unread[1] in log.getvalue() and str(folder) not in unread[1],
             f"a theme file that exists but cannot be read answers 500 naming it, and the log says the same ({unread})")
     confere(sent.status == 302 and compared == [False],
