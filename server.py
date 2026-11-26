@@ -1381,12 +1381,16 @@ class App:
         prateleira ou um video do YouTube, com a capa dele: nada de link de outro endereco para o PC baixar, nem de
         capa que o tema abriria."""
         iid = b.get("id")
-        it = self.lib.get(iid) if isinstance(iid, str) and iid else None
-        j = None
-        if not it:
+        by_id = isinstance(iid, str) and bool(iid)
+        target = yid = j = None
+        if not by_id or b.get("youtube_id") or b.get("url"):
             target, yid = parse_target(b, TRACK_FIELDS)
             if remoto and not yid:
                 raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
+        it = self.lib.get(iid) if by_id else None
+        if not it:
+            if target is None:
+                target, yid = parse_target(b, TRACK_FIELDS)
             it = self.lib.by_youtube(yid) if yid else None
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],

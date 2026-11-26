@@ -193,12 +193,15 @@ def track_field_routes(sources=None):
     parent = {}
     decorated = []
     trees = [(name, ast.parse(source)) for name, source in sources.items()]
+
+    def positional(fn):
+        return [a.arg for a in fn.args.posonlyargs + fn.args.args]
     for name, tree in trees:
         for node in ast.walk(tree):
             for child in ast.iter_child_nodes(node):
                 parent[id(child)] = node
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                is_method = bool(node.args.args) and node.args.args[0].arg == "self"
+                is_method = positional(node)[:1] == ["self"]
                 defs.setdefault((name, node.name, is_method), node)
                 module_of[id(node)] = name
                 if name == "server" and node.decorator_list:
@@ -219,7 +222,7 @@ def track_field_routes(sources=None):
 
     def parameter_for(fn, call, node):
         target, before = callee(module_of[id(fn)], call)
-        params = [a.arg for a in target.args.args] if target else []
+        params = positional(target) if target else []
         pos = before + call.args.index(node) if node in call.args else \
             next((params.index(k.arg) for k in call.keywords if k.value is node and k.arg in params), None)
         if target is None or pos is None or pos >= len(params):
@@ -252,10 +255,11 @@ def track_field_routes(sources=None):
         f = call.func
         if not (isinstance(f, ast.Attribute) and f.attr == "prepare" and isinstance(f.value, ast.Name)):
             return False
-        stores = [n for n in ast.walk(fn) if isinstance(n, ast.Assign)
-                  and any(isinstance(t, ast.Name) and t.id == f.value.id for t in n.targets)]
-        return bool(stores) and all(isinstance(n.value, ast.Call) and ast.unparse(n.value.func) == "web.StreamResponse"
-                                    for n in stores)
+        stores = [n for n in ast.walk(fn) if isinstance(n, ast.Name) and n.id == f.value.id
+                  and not isinstance(n.ctx, ast.Load)]
+        assign = parent.get(id(stores[0])) if len(stores) == 1 else None
+        return (isinstance(assign, ast.Assign) and assign.targets == [stores[0]] and isinstance(assign.value, ast.Call)
+                and ast.unparse(assign.value.func) == "web.StreamResponse")
 
     def follow_body(fn, var, path, read, lost):
         if (id(fn), var) in [(id(f), v) for f, v in path]:
@@ -329,8 +333,8 @@ def track_field_routes(sources=None):
             read, lost = [], list(lost_here)
             for var in bodies:
                 follow_body(fn, var, [], read, lost)
-            if fn.args.args:
-                follow_request(fn, fn.args.args[0].arg, [], lost)
+            if positional(fn):
+                follow_request(fn, positional(fn)[0], [], lost)
             if read:
                 found[route] = read[0]
             if lost:
