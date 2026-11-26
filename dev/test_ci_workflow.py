@@ -133,7 +133,7 @@ def run_summary(bash, block, event, states, comment_fails=False, runs=RUNS, queu
                    FAKE_QUEUE_FAILS="1" if queue_fails else "", GH_TOKEN="x",
                    REPO="ritmelli/ritmelli", PR="7" if event == "pull_request" else "", HEAD=HEAD, RUN_ID="1",
                    ATTEMPT="1", EXECUCAO="https://example.invalid/run", S_DONO=dono, DONO="",
-                   DO_REPO="true" if event == "pull_request" else "false", LINHAS="", MUDARAM="0",
+                   DO_REPO="true" if event == "pull_request" else "false", MUDARAM="0",
                    **{f"S_{n}": s for n, s in zip(names, states)}, **{f"R_{n}": f"resumo {n}" for n in names})
         p = subprocess.run([bash, "--noprofile", "--norc", "-eo", "pipefail", "run.sh"], cwd=tmp, env=env,
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)

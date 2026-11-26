@@ -236,9 +236,9 @@ def track_field_routes(fontes=None):
             while a is not None and a is not fn:
                 gens = (a.generators if isinstance(a, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))
                         else [a] if isinstance(a, ast.For) else [])
-                laço = next((g for g in gens if isinstance(g.target, ast.Name) and g.target.id == nome), None)
-                if laço is not None:
-                    elts = laço.iter.elts if isinstance(laço.iter, (ast.Tuple, ast.List)) else [None]
+                loop = next((g for g in gens if isinstance(g.target, ast.Name) and g.target.id == nome), None)
+                if loop is not None:
+                    elts = loop.iter.elts if isinstance(loop.iter, (ast.Tuple, ast.List)) else [None]
                     ok = all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in elts)
                     return {e.value for e in elts} if ok else None
                 a = pai.get(id(a))

@@ -48,15 +48,17 @@ env:
 
 jobs:
   # the ruff, the COMPLETO of the dev/testa_tudo.py (the libraries of the requirements-dev.txt and the ffmpeg of the
-  # app), the protected folder on the real disk and the line count of the big files against the base
+  # app), the protected folder on the real disk and the check of the PR description (dev/garden.py)
   testes:
     name: Testes
     if: github.event_name != 'push'
     runs-on: windows-2025
     timeout-minutes: 25
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
-      linhas: ${{ steps.resumo.outputs.linhas }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -81,10 +83,11 @@ jobs:
         id: disco
         if: ${{ !cancelled() && steps.ruff.outcome != 'skipped' }}
         run: python dev/testa_tudo.py --passo disco
-      - name: Linhas
-        if: ${{ !cancelled() && env.BASE != '' }}
-        continue-on-error: true
-        run: python dev/testa_tudo.py --linhas $env:BASE --resumo "$env:RUNNER_TEMP\linhas.md"
+      - name: PR description
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python dev/garden.py --pr-description
       - name: Resumo
         id: resumo
         if: always()
@@ -97,9 +100,8 @@ jobs:
           if (Test-Path "$env:RUNNER_TEMP\resumo.md") { $l += Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" }
           $texto = $l -join "`n"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
-          $linhas = if (Test-Path "$env:RUNNER_TEMP\linhas.md") { (Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\linhas.md").Trim() } else { '' }
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim`nlinhas<<$fim`n$linhas`n$fim" -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
   bench:
     name: Banca
@@ -526,7 +528,6 @@ jobs:
           R_MICROFONE: ${{ needs.microfone.outputs.resumo }}
           R_TELA: ${{ needs.tela.outputs.resumo }}
           R_COMPARA: ${{ needs.compara.outputs.resumo }}
-          LINHAS: ${{ needs.testes.outputs.linhas }}
           MUDARAM: ${{ needs.compara.outputs.mudaram }}
           DONO: ${{ steps.dono.outputs.linha }}
           S_DONO: ${{ steps.dono.outcome }}
@@ -590,7 +591,6 @@ jobs:
             if [ -n "$DONO" ]; then echo "$DONO"; echo; fi
             printf '%s\n\n' "$R_TESTES" "$R_BENCH" "$R_CAPTURE" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
             if [ -n "$tempos" ]; then echo "**Tempo de cada job** (alvo: 10 min): $tempos"; echo; fi
-            if [ -n "$LINHAS" ]; then echo "$LINHAS"; echo; fi
             echo "[A execução]($EXECUCAO), no commit \`${HEAD:0:12}\`."
           } > resumo.md
           cat resumo.md >> "$GITHUB_STEP_SUMMARY"

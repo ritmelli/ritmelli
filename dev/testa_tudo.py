@@ -32,8 +32,6 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
                                            the path filter of the testa.yml: says (and writes to GITHUB_OUTPUT) whether
                                            what changed since the base, or a PR label, triggers the filter job and the
                                            screen jobs
-    python dev\testa_tudo.py --linhas <base>
-                                           the line count of the big files (LINHAS) against the base, for the summary
         [--resumo arquivo.md]              appends the result in markdown (the PR summary)
         [--jobs N]                         how many tests run at a time (default 4); the ones in SERIAL always run
                                            one by one, alone, after the others
@@ -75,7 +73,8 @@ RAIZ = Path(__file__).resolve().parent.parent
 # so a biblioteca padrao: a monta.yml roda estes antes de instalar as bibliotecas do app
 STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vozes", "pareamento", "grava", "mfx",
                                              "ganchos", "pasta_protegida", "so_mock")] + [
-    "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py"]
+    "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py", "dev/garden.py",
+    "dev/test_garden.py"]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
@@ -114,8 +113,6 @@ TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme
 INVOCATIONS = ("dev/testa_tudo.py --without-long", "dev/testa_tudo.py --microfone", "dev/testa_tudo.py --tela",
                "dev/testa_tudo.py --compara", "dev/testa_tudo.py --capture") + tuple(
     f"dev/testa_tudo.py --passo {n}" for n in PASSOS) + tuple(f"dev/testa_tudo.py --long {n}" for n in LONG_TESTS)
-# the big files whose line count goes in the summary, against the base (--linhas)
-LINHAS = ("engine.py", "server.py", "themes/ritmelli/index.html", "AGENTS.md")
 # what goes into the key of a compara capture besides the commit and the Chrome version: the scripts that take it and
 # the libraries of the server
 CAPTURA = ("dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py", "requirements.txt", "requirements-dev.txt",
@@ -281,17 +278,16 @@ def falta_para_o_completo():
                     if not (pastas.ferramenta(p) or shutil.which(p))]
 
 
-AGENTS_MAX_LINES = 80
 # a file in the map: a backticked path with a folder or an extension (its first word, before an option)
 MAP_FILE = re.compile(r"^(?:[\w.-]+/)*[\w.-]+(?:/|\.[A-Za-z]\w*)$")
 
 
 def agents_md(path=RAIZ / "AGENTS.md"):
-    """What is wrong with the AGENTS.md: over AGENTS_MAX_LINES lines, or a file in the map table that doesn't exist (in
-    the files column, from the repo root; in the test column, a bare testa_* from dev/, a path from the root, and a
-    bare file name from dev/ or from the root, since a note there may name an app file)."""
+    """What is wrong with the AGENTS.md: a file in the map table that doesn't exist (in the files column, from the repo
+    root; in the test column, a bare testa_* from dev/, a path from the root, and a bare file name from dev/ or from the
+    root, since a note there may name an app file). Its line count is a counter of dev/garden.py."""
     lines = path.read_text(encoding="utf-8").splitlines()
-    problems = [f"AGENTS.md has {len(lines)} lines (at most {AGENTS_MAX_LINES})"] if len(lines) > AGENTS_MAX_LINES else []
+    problems = []
     rows = [line.split("|")[1:-1] for line in lines if line.startswith("|") and not line.startswith("| ---")]
     for files, tests in ((r[1], r[2]) for r in rows[1:] if len(r) == 3):
         cited = [(t, [RAIZ / t]) for t in (c.split()[0] for c in re.findall(r"`([^`]+)`", files)) if MAP_FILE.match(t)]
@@ -590,21 +586,6 @@ def passo(a):
                           env=dict(os.environ, PYTHONUTF8="1")).returncode
 
 
-def linhas(a):
-    """The --linhas: the line count of each file of LINHAS here and the change against the base, in one markdown line
-    for the summary."""
-    partes = []
-    for f in LINHAS:
-        agora = len((RAIZ / f).read_text(encoding="utf-8").splitlines()) if (RAIZ / f).is_file() else 0
-        cod, antes = executa(["git", "show", f"{a.linhas}:{f}"], limite=60)
-        delta = agora - (len(antes.splitlines()) if cod == 0 else 0)
-        partes.append(f"`{f}` {agora}" + (f" ({delta:+d})" if delta else ""))
-    texto = "**Linhas, contra a base:** " + " · ".join(partes)
-    print(texto)
-    escreve(a.resumo, [texto])
-    return 0
-
-
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -619,7 +600,6 @@ def main():
     modo.add_argument("--capture", metavar="DIR", help="only the compara capture of the HEAD, into DIR")
     modo.add_argument("--passo", choices=sorted(PASSOS), help="a step of the testa.yml that runs one script")
     modo.add_argument("--areas", metavar="BASE", help="the areas that what changed since BASE triggers")
-    modo.add_argument("--linhas", metavar="BASE", help="the line count of the big files against BASE")
     ap.add_argument("--base", help="in the --tela and the --compara: the base of the compara (a commit, a branch)")
     ap.add_argument("--pasta", default=str(RAIZ / "logs" / "tela"), help="where the prints and the logs go")
     ap.add_argument("--ref-cache", help="a folder with the capture of the base, read and filled (see above)")
@@ -631,8 +611,6 @@ def main():
         ap.error("the --compara needs the --base")
     if a.areas:
         return diz_areas(a)
-    if a.linhas:
-        return linhas(a)
     if a.passo:
         return passo(a)
     if a.tela:

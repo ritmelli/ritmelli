@@ -2,22 +2,22 @@ r"""Confere que os ganchos do engine.py para o modulo opcional de fora do repo n
 engine.py importa num try com o except ImportError que o troca por None; o nome dele sai do proprio engine.py.
 Gancho, para esta conta: cada nome diferente do engine.py que tem o nome do modulo como uma das palavras dele
 (funcao, metodo, atributo, constante, variavel), cada atributo lido direto do modulo e cada atributo lido de um
-objeto com o nome dele, tambem por um apelido local (x = self._modulo) e pelo getattr. A conta tem de dar o TETO:
-acima dele, entrou gancho novo; abaixo, saiu um, e o TETO desce junto no mesmo PR. Gancho com nome que nao lembra o
+objeto com o nome dele, tambem por um apelido local (x = self._modulo) e pelo getattr. The count is engine_hooks of
+dev/garden.py, held to its ceiling in dev/garden.json: above it a hook went in. Gancho com nome que nao lembra o
 modulo escapa da conta, e a regra vale igual (docs/arquitetura/fx.md). So a biblioteca padrao, lendo o texto do
 engine.py: nada e importado nem tocado.
 
-The same ceiling holds the server routes that only that module calls: the OUT_OF_REPO group of permissao.py, read
-from its text too, has to have exactly ROUTES_CEILING entries. A new route for the module goes through the ones already
-there; one that leaves lowers the ceiling in the same PR.
+It also counts the server routes that only that module calls (out_of_repo_routes): the OUT_OF_REPO group of
+permissao.py, read from its text too, written as a literal and with no route twice. A new route for the module goes
+through the ones already there.
 
 It also ratchets the reaches into the insides of two classes from the other modules at the repo root:
   - the engine's (Engine and MockEngine, in engine.py), from server.py, comandos.py, automatico.py and the rest; the
     interface is Engine.line, on_line, take_switch, drop_prepared, gain_for, update_track, platter_state and
-    tracks_in_use. The count must equal ENGINE_CEILING;
+    tracks_in_use (engine_reaches);
   - the App's (server.App), from comandos.py, automatico.py and the rest; the interface is its public methods
-    (change_queue, remove_from_queue, release_reservation, with_engine, search_songs, run_helper and the others). The
-    count must equal APP_CEILING.
+    (change_queue, remove_from_queue, release_reservation, with_engine, search_songs, run_helper and the others)
+    (app_reaches).
 The private names come from the class's own syntax tree: every method and nested class, every name assigned at the
 class's level (also under an if or a try there) or declared in its __slots__, and every self._x or cls._x its methods
 assign (also by setattr) whose name starts with one underscore (not two). A reach is a read, write or call of one of
@@ -27,23 +27,18 @@ parameter; a staticmethod has none), in a class without a base, reaching a name 
 own _lock is its own); a class with a base gets no pass, so a subclass reading, assigning or overriding an inherited _x
 is a reach.
 What counts is the seam between modules: the class's own module stays out, since an underscore name is private to its
-module. Above the ceiling, a new reach went in: go through the interface. Below it, the PR lowers the ceiling with it.
-Both numbers go to the PR summary (the "-- summary:" lines that dev/testa_tudo.py collects).
+module. Above the ceiling, a new reach went in: go through the interface. This script runs the cases of the counts
+and prints them; dev/garden.py holds them to dev/garden.json and puts what changed in the PR summary.
 
     python dev/testa_ganchos.py
 
-Sai 1 se uma das contas nao bate."""
+Exits 1 if a case fails or a count can't be taken."""
 import ast
 import re
 import sys
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-TETO = 26
-ROUTES_CEILING = 3
-# the reaches into the engine's insides from the modules at the root, other than engine.py; it only goes down
-ENGINE_CEILING = 14
-APP_CEILING = 0
 
 
 def opcionais(arvore):
@@ -350,72 +345,53 @@ def module_reaches(module, tree, names):
     return out
 
 
-def reaches(owner, names):
-    return sorted(r for f in sorted(RAIZ.glob("*.py")) if f.name != owner
-                  for r in module_reaches(f.name, ast.parse(f.read_text(encoding="utf-8")), names))
+def reaches(files, owner, names):
+    return sorted(r for f in sorted(files) if "/" not in f and f.endswith(".py") and f != owner
+                  for r in module_reaches(f, ast.parse(files[f]), names))
 
 
-def ratchet(what, owner, classes, ceiling, ceiling_name):
-    names = privates(ast.parse((RAIZ / owner).read_text(encoding="utf-8")), classes)
-    if not names:
-        print(f"FAIL  {owner} defines no private name in {', '.join(sorted(classes))}: the classes moved or were "
-              "renamed")
-        return True
-    found = reaches(owner, names)
-    per_module = {}
-    for module, _, _ in found:
-        per_module[module] = per_module.get(module, 0) + 1
-    detail = ", ".join(f"{k} {v}" for k, v in per_module.items()) or "none"
-    print(f"-- summary: reaches into the {what}'s insides outside {owner}: {len(found)} "
-          f"(ceiling {ceiling}; {detail})")
-    if len(found) == ceiling:
-        print(f"ok    the reaches into the {what}'s insides did not grow")
-        return False
-    if len(found) > ceiling:
-        print(f"FAIL  {len(found) - ceiling} new reach(es) into the {what}'s insides: go through its public interface "
-              "(docs/arquitetura/comandos.md)")
-    else:
-        print(f"FAIL  fewer reaches into the {what}'s insides: lower {ceiling_name} in dev/testa_ganchos.py to "
-              f"{len(found)} in this same PR")
-    for module, line, name in found:
-        print(f"        {module}:{line} .{name}")
-    return True
+def first_line(text, name):
+    return next((n for n, line in enumerate(text.splitlines(), 1) if name in line), 0)
 
 
-falhou = False
-arvore = ast.parse((RAIZ / "engine.py").read_text(encoding="utf-8"))
-modulos = opcionais(arvore)
-conta = len(set().union(*(ganchos(arvore, m) for m in modulos))) if modulos else 0
-print(f"modulos opcionais no engine.py: {len(modulos)}; ganchos: {conta} (TETO {TETO})")
-if conta > TETO:
-    print(f"FALHA o engine.py ganhou {conta - TETO} gancho(s) para o modulo de fora do repo: o que ele precisa passa "
-          "pelo que ja existe (docs/arquitetura/fx.md)")
-    falhou = True
-elif conta < TETO:
-    print(f"FALHA saiu gancho: baixe o TETO do dev/testa_ganchos.py para {conta} neste mesmo PR")
-    falhou = True
-else:
-    print("ok    os ganchos para o modulo de fora do repo nao cresceram")
+def counts(files):
+    engine, permissao = files.get("engine.py", ""), files.get("permissao.py", "")
+    tree = ast.parse(engine)
+    modules = opcionais(tree)
+    hooks = sorted(set().union(*(ganchos(tree, m) for m in modules))) if modules else []
+    routes = out_of_repo_routes(ast.parse(permissao)) or ()
+    out = {"engine_hooks": [("engine.py", first_line(engine, h)) for h in hooks],
+           "out_of_repo_routes": [("permissao.py", first_line(permissao, r[-1])) for r in sorted(set(routes))]}
+    for key, owner, classes in (("engine_reaches", "engine.py", {"Engine", "MockEngine"}),
+                                ("app_reaches", "server.py", {"App"})):
+        names = privates(ast.parse(files.get(owner, "")), classes)
+        out[key] = [(module, line) for module, line, _ in reaches(files, owner, names)]
+    return out
 
-routes = out_of_repo_routes(ast.parse((RAIZ / "permissao.py").read_text(encoding="utf-8")))
-if routes is None:
-    print("FAIL  permissao.py has no OUT_OF_REPO tuple written as a literal: the routes can't be counted")
-    falhou = True
-else:
-    count = len(set(routes))
-    print(f"routes only the module from outside the repo calls: {count} (ROUTES_CEILING {ROUTES_CEILING})")
-    if count != len(routes):
+
+def repo_files():
+    return {f.name: f.read_text(encoding="utf-8") for f in RAIZ.glob("*.py")}
+
+
+def check_repo():
+    files = repo_files()
+    failed = False
+    for owner, classes in (("engine.py", {"Engine", "MockEngine"}), ("server.py", {"App"})):
+        if not privates(ast.parse(files[owner]), classes):
+            print(f"FAIL  {owner} defines no private name in {', '.join(sorted(classes))}: the classes moved or were "
+                  "renamed")
+            failed = True
+    routes = out_of_repo_routes(ast.parse(files["permissao.py"]))
+    if routes is None:
+        print("FAIL  permissao.py has no OUT_OF_REPO tuple written as a literal: the routes can't be counted")
+        failed = True
+    elif len(set(routes)) != len(routes):
         print("FAIL  OUT_OF_REPO lists the same route twice")
-        falhou = True
-    elif count > ROUTES_CEILING:
-        print(f"FAIL  the server gained {count - ROUTES_CEILING} route(s) for the module from outside the repo: what "
-              "it needs goes through the ones it already has")
-        falhou = True
-    elif count < ROUTES_CEILING:
-        print(f"FAIL  a route left: lower ROUTES_CEILING in dev/testa_ganchos.py to {count} in this same PR")
-        falhou = True
-    else:
-        print("ok    the routes for the module from outside the repo didn't grow")
+        failed = True
+    for key, items in counts(files).items():
+        print(f"{key}: {len(items)} (the ceiling is in dev/garden.json, held by dev/garden.py)")
+    return failed
+
 
 OWNER = "class Owner:\n    def _x(self):\n        pass\n"
 CAUGHT = [
@@ -497,24 +473,26 @@ def case_reaches(owner, other):
     return len(module_reaches("case.py", ast.parse(other), privates(ast.parse(owner), {"Owner"})))
 
 
-cases_failed = False
-for label, owner, other in CAUGHT:
-    if case_reaches(owner, other) != 1:
-        print(f"FAIL  the ratchet no longer counts this reach: {label}")
-        cases_failed = True
-for label, owner, other in NOT_REACHES:
-    if case_reaches(owner, other):
-        print(f"FAIL  the ratchet counts this as a reach: {label}")
-        cases_failed = True
-for label, *sources in KNOWN_MISSES:
-    if case_reaches(*sources) if len(sources) == 2 else case_reaches(OWNER, *sources):
-        print(f"FAIL  the ratchet now counts this reach: {label}; move it from KNOWN_MISSES to CAUGHT and update "
-              f"{KNOWN_MISSES_ISSUE}")
-        cases_failed = True
-falhou |= cases_failed
-if not cases_failed:
-    print(f"ok    the ratchet's own cases: {len(CAUGHT)} counted, {len(NOT_REACHES)} not counted, "
-          f"{len(KNOWN_MISSES)} known misses ({KNOWN_MISSES_ISSUE})")
-falhou |= ratchet("engine", "engine.py", {"Engine", "MockEngine"}, ENGINE_CEILING, "ENGINE_CEILING")
-falhou |= ratchet("App", "server.py", {"App"}, APP_CEILING, "APP_CEILING")
-sys.exit(1 if falhou else 0)
+def check_cases():
+    failed = False
+    for label, owner, other in CAUGHT:
+        if case_reaches(owner, other) != 1:
+            print(f"FAIL  the ratchet no longer counts this reach: {label}")
+            failed = True
+    for label, owner, other in NOT_REACHES:
+        if case_reaches(owner, other):
+            print(f"FAIL  the ratchet counts this as a reach: {label}")
+            failed = True
+    for label, *sources in KNOWN_MISSES:
+        if case_reaches(*sources) if len(sources) == 2 else case_reaches(OWNER, *sources):
+            print(f"FAIL  the ratchet now counts this reach: {label}; move it from KNOWN_MISSES to CAUGHT and update "
+                  f"{KNOWN_MISSES_ISSUE}")
+            failed = True
+    if not failed:
+        print(f"ok    the ratchet's own cases: {len(CAUGHT)} counted, {len(NOT_REACHES)} not counted, "
+              f"{len(KNOWN_MISSES)} known misses ({KNOWN_MISSES_ISSUE})")
+    return failed
+
+
+if __name__ == "__main__":
+    sys.exit(1 if check_cases() | check_repo() else 0)
