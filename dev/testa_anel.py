@@ -611,6 +611,21 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertIn("its voice track came up 1.00 s ago", told,
                       "the second start keeps its own track, and not the one read late for the first")
 
+    def test_an_ended_start_does_not_take_the_next_starts_track_within_a_tick(self):
+        now = [1.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        with mock.patch.object(dryouts.LOG, "tell"):
+            pedal.pedal(True)
+            now[0] = 2.3
+            pedal.pedal(False)
+            now[0] = 2.302
+            pedal.pedal(True)
+            now[0] = 2.5
+            pedal.track(True, stamp(2.312))
+            told = pedal.starting(2.0, 2.301)[1]
+        self.assertIn("its voice track isn't up yet", told,
+                      "a track up in the start that is on isn't the ended start's, even within a tick of its end")
+
     def test_a_stamp_from_before_the_wrap_read_after_it(self):
         wrap = 2**32 / 1000
         now = [wrap - 1.0]
