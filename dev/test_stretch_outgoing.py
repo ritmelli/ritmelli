@@ -5,8 +5,8 @@ tracks stretched, on its own, through the real Rubber Band:
     output sits where the returned position (phi) says it came from in the input, to within POSITION_TOLERANCE_MS;
   - pitch: after the ramp, at the constant speed, the steady tone is back at its own pitch, so the output did go
     through the Rubber Band;
-  - level: on broadband noise, no LEVEL_WINDOW_MS window at the start of the output drops more than
-    LEVEL_DROP_DB below the input, so the switch from what already played into the stretched audio has no gap;
+  - level: on broadband noise, no LEVEL_WINDOW_MS window at the start of the output drops more than LEVEL_DROP_DB
+    below the input, in either channel, so the switch from what already played into the stretched audio has no gap;
   - short: an input shorter than the warm-up and the crossfade (SHORT_MS) comes back whole, one output frame per
     position;
   - incoming level: the same level check on esticar, the next track's stretch, which still starts silent (#264). It is
@@ -120,10 +120,10 @@ def position(speed, rng):
 
 
 def start_drop(x, z, what, speed):
-    w = int(LEVEL_WINDOW_MS / 1000 * SR)
-    ref = float(np.sqrt(np.mean(x[:int(LEVEL_CHECKED_S * SR), 0] ** 2)))
-    drops = [20 * np.log10(max(float(np.sqrt(np.mean(z[i:i + w, 0] ** 2))), 1e-9) / ref)
-             for i in range(0, int(LEVEL_CHECKED_S * SR), w)]
+    w, n = int(LEVEL_WINDOW_MS / 1000 * SR), int(LEVEL_CHECKED_S * SR)
+    ref = np.sqrt(np.mean(x[:n] ** 2, axis=0))
+    drops = [float(np.min(20 * np.log10(np.maximum(np.sqrt(np.mean(z[i:i + w] ** 2, axis=0)), 1e-9) / ref)))
+             for i in range(0, n, w)]
     worst = int(np.argmin(drops))
     msg = (f"{what} at speed {speed:.4f}: the quietest {LEVEL_WINDOW_MS:.0f} ms window of the first "
            f"{LEVEL_CHECKED_S * 1000:.0f} ms, at {worst * LEVEL_WINDOW_MS:.0f} ms, is {drops[worst]:+.1f} dB from the "
