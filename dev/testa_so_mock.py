@@ -354,6 +354,20 @@ def the_tree():
                 parent.stdout.close()
             check(ready == "ready" and gone, f"a child that {title} its own child holding a file: after mata the "
                                              f"file can go ({ready!r}, {gone})")
+    parent, job = so_mock.start_job([sys.executable, "-c", "import sys; sys.stdin.read()"], stdin=subprocess.PIPE)
+    f = so_mock.Filho(parent, so_mock.free_port(), job)
+    f.mata()
+    again = refused(f.encerra, espera=1)
+    parent.stdin.close()
+    check(parent.returncode is not None and again is None,
+          f"mata and then encerra, as the compara does on a failed setup: the second stop raises nothing ({again})")
+    made = []
+    real = subprocess.Popen
+    with mock.patch.object(so_mock.subprocess, "Popen", side_effect=lambda *a, **k: made.append(real(*a, **k)) or made[-1]), \
+            mock.patch.object(so_mock, "_resume", return_value=0xC0000001):
+        msg = refused(so_mock.start_job, [sys.executable, "-c", "pass"])
+    check(msg is not None and made and made[0].poll() is not None,
+          f"a child that cannot be resumed is not left suspended: start_job ends it and says why ({msg})")
 
 
 app_port()

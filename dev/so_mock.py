@@ -155,60 +155,92 @@ class _Limits(ctypes.Structure):
                 ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
 
 
-class _JobPort(ctypes.Structure):
-    _fields_ = [("CompletionKey", ctypes.c_void_p), ("CompletionPort", wintypes.HANDLE)]
+class _Members(ctypes.Structure):
+    _fields_ = [("NumberOfAssignedProcesses", wintypes.DWORD), ("NumberOfProcessIdsInList", wintypes.DWORD),
+                ("ProcessIdList", ctypes.c_size_t * 256)]
 
 
 def _kernel():
     k = ctypes.WinDLL("kernel32", use_last_error=True)
     k.CreateJobObjectW.restype = wintypes.HANDLE
-    k.CreateIoCompletionPort.restype = wintypes.HANDLE
-    k.CreateIoCompletionPort.argtypes = (wintypes.HANDLE, wintypes.HANDLE, ctypes.c_size_t, wintypes.DWORD)
-    k.GetQueuedCompletionStatus.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD),
-                                            ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_void_p),
-                                            wintypes.DWORD)
+    k.OpenProcess.restype = wintypes.HANDLE
     return k
+
+
+class _Accounting(ctypes.Structure):
+    _fields_ = [("TotalUserTime", ctypes.c_int64), ("TotalKernelTime", ctypes.c_int64),
+                ("ThisPeriodTotalUserTime", ctypes.c_int64), ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+                ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
+                ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD)]
+
+
+def _resume(process):
+    return ctypes.WinDLL("ntdll").NtResumeProcess(wintypes.HANDLE(int(process)))
 
 
 class _Job:
     def __init__(self, process):
         k = self.k = _kernel()
         self.job = k.CreateJobObjectW(None, None)
-        self.port = k.CreateIoCompletionPort(wintypes.HANDLE(-1), None, 0, 1)
-        port = _JobPort(self.job, self.port)
         limits = _Limits()
         limits.BasicLimitInformation.LimitFlags = 0x2000
-        ok = bool(self.job and self.port
-                  and k.SetInformationJobObject(self.job, 7, ctypes.byref(port), ctypes.sizeof(port))
+        ok = bool(self.job
                   and k.SetInformationJobObject(self.job, 9, ctypes.byref(limits), ctypes.sizeof(limits))
                   and k.AssignProcessToJobObject(self.job, wintypes.HANDLE(int(process))))
         if not ok:
             error = ctypes.get_last_error()
-            k.TerminateProcess(wintypes.HANDLE(int(process)), 1)
             self.close()
             raise Recusa(f"o servidor de teste nao entrou num job (erro {error})")
-        ctypes.WinDLL("ntdll").NtResumeProcess(wintypes.HANDLE(int(process)))
+
+    def active(self):
+        info = _Accounting()
+        if not self.k.QueryInformationJobObject(self.job, 1, ctypes.byref(info), ctypes.sizeof(info), None):
+            raise Recusa(f"o job do servidor de teste nao respondeu (erro {ctypes.get_last_error()})")
+        return info.ActiveProcesses
+
+    def members(self):
+        listed = _Members()
+        self.k.QueryInformationJobObject(self.job, 3, ctypes.byref(listed), ctypes.sizeof(listed), None)
+        found = []
+        for pid in listed.ProcessIdList[:listed.NumberOfProcessIdsInList]:
+            handle = self.k.OpenProcess(0x00100000 | 0x1000, False, pid)
+            inside = wintypes.BOOL()
+            if handle and self.k.IsProcessInJob(wintypes.HANDLE(handle), self.job, ctypes.byref(inside)) and inside:
+                found.append(handle)
+            elif handle:
+                self.k.CloseHandle(wintypes.HANDLE(handle))
+        return found
 
     def end(self, seconds=10.0):
-        self.k.TerminateJobObject(self.job, 1)
-        fim = time.monotonic() + seconds
+        if not self.job:
+            return
         try:
-            while True:
-                left = int((fim - time.monotonic()) * 1000)
-                message, key, pid = wintypes.DWORD(), ctypes.c_size_t(), ctypes.c_void_p()
-                if left <= 0 or not self.k.GetQueuedCompletionStatus(self.port, ctypes.byref(message), ctypes.byref(key),
-                                                                       ctypes.byref(pid), left):
-                    raise Recusa(f"os processos do servidor de teste nao sairam em {seconds:g} s")
-                if message.value == 4:
-                    return
+            closed = _Limits()
+            closed.BasicLimitInformation.LimitFlags = 0x2000 | 0x8
+            closed.BasicLimitInformation.ActiveProcessLimit = 1
+            if not self.k.SetInformationJobObject(self.job, 9, ctypes.byref(closed), ctypes.sizeof(closed)):
+                raise Recusa(f"o job do servidor de teste nao fechou para processos novos (erro {ctypes.get_last_error()})")
+            handles = self.members()
+            try:
+                if not self.k.TerminateJobObject(self.job, 1):
+                    raise Recusa(f"o job do servidor de teste nao foi encerrado (erro {ctypes.get_last_error()})")
+                fim = time.monotonic() + seconds
+                for handle in handles:
+                    left = max(0, int((fim - time.monotonic()) * 1000))
+                    if self.k.WaitForSingleObject(wintypes.HANDLE(handle), left) != 0:
+                        raise Recusa(f"os processos do servidor de teste nao sairam em {seconds:g} s")
+            finally:
+                for handle in handles:
+                    self.k.CloseHandle(wintypes.HANDLE(handle))
+            if self.active():
+                raise Recusa("o job do servidor de teste ainda tem processos depois de encerrado")
         finally:
             self.close()
 
     def close(self):
-        for handle in (self.port, self.job):
-            if handle:
-                self.k.CloseHandle(wintypes.HANDLE(handle))
-        self.port = self.job = None
+        if self.job:
+            self.k.CloseHandle(wintypes.HANDLE(self.job))
+        self.job = None
 
 
 def start_job(cmd, **popen):
@@ -217,7 +249,21 @@ def start_job(cmd, **popen):
     flags = popen.pop("creationflags", 0)
     proc = subprocess.Popen(cmd, creationflags=flags | 0x4, **popen)
     handle = getattr(proc, "_handle", None)
-    return proc, None if handle is None else _Job(handle)
+    if handle is None:
+        return proc, None
+    job = None
+    try:
+        job = _Job(handle)
+        status = _resume(handle) & 0xFFFFFFFF
+        if status:
+            raise Recusa(f"o servidor de teste nao foi retomado (NTSTATUS {status:#010x})")
+    except BaseException:
+        _kernel().TerminateProcess(wintypes.HANDLE(int(handle)), 1)
+        proc.wait(10)
+        if job:
+            job.close()
+        raise
+    return proc, job
 
 
 class Filho:
@@ -246,11 +292,13 @@ class Filho:
             return json.load(r)
 
     def mata(self):
+        if self.job:
+            self.job.end()
+            self.srv.wait(10)
+            return
         if self.srv.poll() is None:
             self.srv.kill()
         self.srv.wait()
-        if self.job:
-            self.job.end()
 
     def encerra(self, espera=10):
         """O /api/shutdown, se ele ainda e o --mock que subiu; se nao, ou se ele nao sai, o handle."""
