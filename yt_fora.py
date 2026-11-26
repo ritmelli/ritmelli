@@ -77,7 +77,7 @@ def canal_do(yid):
         return None
     try:
         return ((ytm().get_song(yid) or {}).get("videoDetails") or {}).get("author") or None
-    except Exception:  # fica sem o canal, como antes de ter o rapido
+    except Exception:  # a consulta falhou: o disco fica sem o nome do canal
         return None
 
 
@@ -214,7 +214,7 @@ def liga(pool, n, timeout=5.0, fresca=False):
         try:
             c.timeout = timeout  # sem ele, um connect mudo segurava a thread para sempre (o pedido regrava o dele)
             c.connect()
-        except Exception:  # a conexao abre na hora do pedido, como antes
+        except Exception:  # fecha as que faltam, devolve os lugares vazios ao pool e passa a falha adiante
             for x in novas[i:]:
                 x.close()
                 pool._put_conn(None)
@@ -262,7 +262,7 @@ VERSAO = re.compile(r"\b(?:ao vivo|live|remix|slowed|sped up|speed up|acustic[oa
 # pedidos falados (placares r08 a r12b, pedidos distintos: 3 palavras 19 de 24, 4 palavras 8 de 12, 5 ou mais 7 de
 # 7; com 2, 17 de 33), e a busca so saia depois dela voltar. Agora sai junto, numa thread; a sugestao que acerta
 # segue valendo e a busca e jogada fora. A segunda conexao ja fica aberta na reserva (pre_conecta). 0 = a busca so
-# depois da sugestao, como antes
+# depois da sugestao
 PARALELO_PALAVRAS = 3
 
 
@@ -471,7 +471,7 @@ def responde(linha):
         if p.get("op") == "aquece":
             try:
                 aquece(p)
-            except Exception as ex:  # o pedido de verdade abre a conexao dele, como antes
+            except Exception as ex:  # o pedido de verdade abre a conexao dele
                 print(f"warmup: failed ({str(ex)[:120]})", file=sys.stderr, flush=True)
             return False
         print(json.dumps({"r": faz(p)}), flush=True)

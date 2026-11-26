@@ -223,7 +223,7 @@ def tocar_da_fila(A, qid):
         return x if A.tocar_entrada(seen, entrada=x) else None
     except Exception:
         with A.fila_lock:
-            A.remove_if_queued(x)  # a entrada quebrada sai da fila, como antes
+            A.remove_if_queued(x)  # a entrada quebrada sai da fila
         raise
 
 

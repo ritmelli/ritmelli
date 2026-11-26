@@ -512,7 +512,7 @@ def voltas(A, E):
     except cmd.CorpoRecusado:
         confere(True, "o enfileirar sem disco nem video e a recusa do corpo (400)")
 
-    # o erro de tocar a entrada na hora nao e a recusa do corpo: segue para o guard (500), como antes
+    # o erro de tocar a entrada na hora nao e a recusa do corpo: segue para o guard (500)
     cmd.parar(A)
     erro = "o erro de tocar na hora nao e a recusa do corpo (a rota responde 500, como antes)"
     with mock.patch.object(A, "tocar_entrada", side_effect=ValueError("quebrou")):

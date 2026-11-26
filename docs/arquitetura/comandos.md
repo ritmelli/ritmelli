@@ -92,7 +92,7 @@ publicação da preparação pegam a `fila_lock` e o `_lock` do motor pelo `App.
 `Engine.with_lock` do motor; ele nunca espera o `_lock` com a `fila_lock` na mão (o `engine_seams` do
 `dev/testa_comandos.py` confere): com o `_lock` ocupado (a reabertura do áudio, a troca de aparelho), solta a `fila_lock`, espera
 fora e tenta de novo, e a leitura do estado segue respondendo enquanto um vigia ou uma rota no executor espera o `_lock`
-(as rotas que trocam no laço, como o `/api/play`, ainda esperam ali, como antes). O ganho do disco que entra é medido
+(as rotas que trocam no laço, como o `/api/play`, esperam ali). O ganho do disco que entra é medido
 antes, e o leitor que começa, a onda e a medida rodam depois de soltar as duas (o `depois` do `load`, do `espera` e do
 `preparar`).
 
