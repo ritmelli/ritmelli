@@ -240,7 +240,8 @@ class _Job:
             for handle in handles:
                 self.k.WaitForSingleObject(wintypes.HANDLE(handle), max(0, int((fim - time.monotonic()) * 1000)))
             left = self.active()
-            seen = [(self._image(handle), self._running(handle)) for handle in handles] if left else []
+            running = [self._running(handle) for handle in handles] if left else []
+            seen = [(self._image(handle), alive) for handle, alive in zip(handles, running)]
         finally:
             for handle in handles:
                 self.k.CloseHandle(wintypes.HANDLE(handle))
