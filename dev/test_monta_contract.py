@@ -100,6 +100,14 @@ def bare(condition):
     return inner(text) if "${{" in text or "}}" in text else text
 
 
+def partial_probed(job, folder):
+    source = re.fullmatch(STEP_OUTPUTS["parcial"], inner((job.get("outputs") or {}).get("parcial", "")) or "")
+    step = source and step_by_id(job, source.group(1))
+    wanted = normal_path(folder) + "/Ritmelli-$env:VERSAO-parcial.exe"
+    probes = re.findall(r"""Test-Path\s+(?:-Path\s+)?(["'])([^"']+)\1""", code(step.get("run", ""))) if step else []
+    return any(normal_path(path) == wanted for _, path in probes)
+
+
 def step_output_problem(job, name):
     value = inner((job.get("outputs") or {}).get(name, ""))
     source = re.fullmatch(STEP_OUTPUTS[name], value or "")
@@ -195,6 +203,9 @@ def contract_problems(doc):
                 problems.append(f"the if: of {required} does not read the {output} output of the monta job")
     run_uploads = uploads(jobs)
     found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
+    if len(found[SETUP]) == 1 and not partial_probed(monta, found[SETUP][0].get("path")):
+        problems.append("the step behind the parcial output does not Test-Path the partial setup in the "
+                        f"{SETUP} folder")
     problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
     problems += [f"the {n} artifact is uploaded only under an if:" for n, _, c in run_uploads if n in found and c]
     fixed = [n for n, _, _ in run_uploads if n != SETUP and OTHER_VERSION.fullmatch(n)]
@@ -331,7 +342,9 @@ def main():
     def move_folder(d):
         assign_folder(d, "'instalador\\out'")
 
-    moved = mutant(doc, lambda d: (upload(d, setup)["with"].update(path="instalador/out/"), move_folder(d)))
+    moved = mutant(doc, lambda d: (upload(d, setup)["with"].update(path="instalador/out/"), move_folder(d),
+                                   source_step(d, "parcial").update(run=source_step(d, "parcial")["run"].replace(
+                                       'Test-Path "instalador\\saida\\', 'Test-Path "instalador\\out\\'))))
     check(output_folder(manifest_step(moved["jobs"]["monta"])["run"]) == "instalador\\out"
           and contract_problems(moved) == [],
           "the --saida of publica.py and the Ritmelli artifact path moved together keep the contract")
@@ -491,6 +504,8 @@ def main():
             run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(
                 "-Path $env:GITHUB_OUTPUT -Value \"versao=", '-Path "$env:GITHUB_OUTPUT.tmp" -Value "versao=')),
         "the ritmelli-exe upload in a job that needs testa-parcial": lambda d: move_exe_upload(d),
+        "the partial setup the monta step looks for": lambda d: source_step(d, "parcial").update(
+            run=source_step(d, "parcial")["run"].replace("-parcial.exe\"", "-partial.exe\"")),
         "testa-atualizador only on push": lambda d: shown(d, "testa-atualizador").update(
             {"if": "github.event_name == 'push'"}),
         "testa-atualizador needing a job that runs only on push": lambda d: (
