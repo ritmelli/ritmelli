@@ -14,6 +14,8 @@ Each runs at a speed below and one above 1 (A slowed down and sped up, as in the
 
     python dev/test_stretch_outgoing.py
 
+Each verdict also goes to the PR summary (the "-- summary:" lines of dev/testa_tudo.py), with its numbers.
+
 Exits 1 if anything fails."""
 import sys
 from pathlib import Path
@@ -47,6 +49,7 @@ failures = []
 
 def check(ok, msg):
     print(("ok    " if ok else "FAIL  ") + msg)
+    print(f"-- summary: {'ok' if ok else 'FAIL'} {msg}")
     if not ok:
         failures.append(msg)
 
