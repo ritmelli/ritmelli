@@ -1044,9 +1044,29 @@ KNOWN_MISSES = [
               "        subprocess.run(['powershell', '-Command', ps])\n    else:\n        ps = 'Start-Sleep 1'\n"},
      ((".py",), r"(?m)^([ \t]+)if\b[^\n]*:[ \t]*\n\1[ \t]+\S[^\n]*['\"]-[Cc]ommand['\"],[ \t]*(\w+)\b[^\n]*\n"
                 r"\1else[ \t]*:[ \t]*\n\1[ \t]+\2[ \t]*=[^=]")),
+    ("sleeps_app", "a default of an inline parameter of a PowerShell function",
+     {"a.ps1": "function f($x = $(Start-Sleep 1)) { }\n"},
+     (POWERSHELL_SOURCES, r"(?i)\b(?:function|filter)[ \t]+[\w:-]+[ \t]*\([^)\n]*=[ \t]*\$?\(")),
+
+    ("suppressions", "a quiet $ErrorActionPreference set together with another name",
+     {"a.ps1": "$ErrorActionPreference, $x = 'SilentlyContinue', 1\n"},
+     (POWERSHELL_SOURCES, r"(?i)\$(?:global:|script:)?ErrorActionPreference[ \t]*,")),
+
+    ("suppressions", "a quiet $ErrorActionPreference set by Set-Variable",
+     {"a.ps1": "Set-Variable ErrorActionPreference SilentlyContinue\n"},
+     (POWERSHELL_SOURCES, r"(?i)\b(?:Set-Variable|sv)\b[^\n]*ErrorActionPreference")),
 ]
 
 KNOWN_NOISE = [
+    ("sleeps_dev", "a test job inside jobs given by an alias",
+     {".github/workflows/w.yml": "x: &js\n  testes:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"
+                                 "jobs: *js\n"},
+     ((".yml", ".yaml"), r"(?m)^jobs:[ \t]*\*")),
+    ("retries", "a Python annotation with no value named like the loop's condition, taken for an assignment",
+     {"a.py": "import time\nwhile active:\n    try:\n        active: bool\n    except OSError:\n        pass\n"
+              "    time.sleep(1)\n"},
+     ((".py",), r"(?m)^([ \t]*)while[ \t]+(?:not[ \t]+)?(\w+)[ \t]*:[ \t]*\n(?:\1[ \t]+\S[^\n]*\n|[ \t]*\n){0,40}?"
+                r"\1[ \t]+\2[ \t]*:[ \t]*[^=\n]+\n")),
     ("sleeps_app", "a script set in another case of a match, which is no branch to the reader",
      {"a.py": "import subprocess\nmatch v:\n    case 1:\n        ps = 'Start-Sleep 1'\n    case _:\n"
               "        subprocess.run(['powershell', '-Command', ps])\n"},

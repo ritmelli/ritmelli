@@ -627,6 +627,8 @@ class _Parser:
             digits = self.t[self.i + 1:self.i + 1 + size]
             if len(digits) != size or not set(digits) <= HEX:
                 self.error(f"a \\{c} escape needs {size} hexadecimal digits", at)
+            if int(digits, 16) > 0x10FFFF:
+                self.error(f"a \\{c} escape out of the range of Unicode", at)
             chunks.append(chr(int(digits, 16)))
             offsets.append(at)
             self.i += 1 + size

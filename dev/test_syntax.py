@@ -59,6 +59,7 @@ YAML_ERRORS = [
     ("a sequence entry after a key", "k: - a\n"), ("a block scalar less indented than its key", "a: |\n  x\n b\n"),
     ("an alias to an anchor of an earlier document", "---\na: &x 1\n---\nb: *x\n"),
     ("an empty entry in a flow collection", "items: [one,,two]\n"),
+    ("an escape out of the range of Unicode", "a: \"\\UFFFFFFFF\"\n"),
 ]
 
 
