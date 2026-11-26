@@ -716,6 +716,13 @@ class TestVoicePedalStart(unittest.TestCase):
         _, log = self.run_starts([(1.0, "on"), (1.5, "off"), (1.502, "on"), (1.6, "off"), (1.7, "track", 1.512)], 1.8)
         self.assertIn("voice pedal: its voice track came up 0.01 s after the pedal turned on", log)
 
+    def test_a_track_read_after_two_starts_ended_still_finds_the_first(self):
+        counted, log = self.run_starts([(1.0, "on"), (1.3, "fill"), (1.4, "empty"), (1.5, "off"),
+                                        (1.6, "on"), (1.7, "off"), (1.75, "track", 1.2)], 1.75)
+        self.assertEqual(counted, 1)
+        self.assertIn("voice pedal: its voice track came up 0.20 s after the pedal turned on", log)
+        self.assertIn("the pedal turned on 0.75 s ago and off 0.25 s ago, its voice track came up 0.55 s ago", log)
+
     def test_a_track_up_before_its_start_was_sent_is_not_its(self):
         now = [1.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
