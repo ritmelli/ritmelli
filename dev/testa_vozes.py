@@ -92,10 +92,13 @@ class Instalador(unittest.TestCase):
         body = re.search(r"^function CopyPreviousVoice\(.*?^end;$", iss, re.M | re.S).group(0)
         self.assertFalse(swallows_errors(body))
         self.assertTrue(swallows_errors("begin\n  try\n    X := F(Y);\n  except\n    X := 0;\n  end;\nend;"))
+        self.assertTrue(swallows_errors("begin\n  try X := F(Y); except X := 0; end;\nend;"))
+        self.assertFalse(swallows_errors("begin\n  Log('no except here'); // except\n  { except } (* except *)\nend;"))
 
 
 def swallows_errors(body):
-    return re.search(r"^\s*except\b", body, re.M | re.I) is not None
+    code = re.sub(r"'[^']*'|//[^\n]*|\{[^}]*\}|\(\*.*?\*\)", " ", body, flags=re.S)
+    return re.search(r"\bexcept\b", code, re.I) is not None
 
 
 def hashed_outside_the_copy(body):

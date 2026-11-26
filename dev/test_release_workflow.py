@@ -149,7 +149,8 @@ def sparse_problems(doc):
         if sparse is None:
             continue
         listed = {line.strip() for line in sparse.splitlines() if line.strip()}
-        runs = "\n".join(s.get("run", "") for s in job["steps"])
+        after = job["steps"][job["steps"].index(checkout) + 1:]
+        runs = "\n".join(s.get("run", "") for s in after if "if" not in s and not s.get("continue-on-error"))
         needed = {"/" + m.replace("\\", "/") for m in SCRIPT_CALL.findall(runs)}
         if job_id in JOB_SCRIPTS and JOB_SCRIPTS[job_id] not in needed:
             problems.append(f"{job_id} does not run {JOB_SCRIPTS[job_id]}")
@@ -181,6 +182,13 @@ def test_sparse_checkout():
     checkout["sparse-checkout"] = checkout["sparse-checkout"].replace("/vozes.json", "")
     check("testa-migracao needs /vozes.json" in sparse_problems(mutant),
           "the check catches /vozes.json missing with the script called as ./instalador/testa-migracao.ps1")
+    run["run"] = run["run"].replace("./instalador/testa-migracao.ps1", "instalador\\testa-migracao.ps1")
+    for name, change in (("under if: false", {"if": "${{ false }}"}), ("with continue-on-error", {"continue-on-error": True})):
+        disabled = copy.deepcopy(mutant)
+        step = next(s for s in disabled["jobs"]["testa-migracao"]["steps"] if "testa-migracao.ps1" in s.get("run", ""))
+        step.update(change)
+        check("testa-migracao does not run /instalador/testa-migracao.ps1" in sparse_problems(disabled),
+              f"the check catches the testa-migracao step {name}")
     run["run"] = "Write-Host instalador\\testa-migracao.ps1"
     check("testa-migracao does not run /instalador/testa-migracao.ps1" in sparse_problems(mutant),
           "the check catches a step that only prints the script name")
