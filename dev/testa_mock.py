@@ -363,8 +363,13 @@ TRACKER_CASES = (('b = await body(request)\n    return b.get("title")', "found")
                  ('return other.parse(request)', "lost"),
                  ('await other.prepare(request)', "lost"),
                  ('resp = make()\n    await resp.prepare(request)', "lost"),
+                 ('resp = web.StreamResponse()\n    resp: object = make()\n    await resp.prepare(request)', "lost"),
+                 ('resp = web.StreamResponse()\n    for resp in make():\n        pass\n    await resp.prepare(request)',
+                  "lost"),
                  ('resp = web.StreamResponse()\n    await resp.prepare(request)\n    return request.match_info["iid"]',
                   "none"))
+TRACKER_SIGNATURE_CASES = (("request, /", 'return await request.json()', "lost"),
+                           ("request, /", 'b = await body(request)\n    return b.get("title")', "found"))
 
 
 def check_track_field_routes():
@@ -381,12 +386,12 @@ def check_track_field_routes():
     base = ("import comandos as cmd\nasync def body(r): return {}\nasync def reads(r): return await r.json()\n"
             "class App:\n    def keep(self, b):\n        return b['thumb']\n")
     helpers = "def x(A, b):\n    return b['duration']\ndef y(A, b):\n    return list(b.items())\n"
-    for route_body, expected in TRACKER_CASES:
-        source = base + f'@r.post("/api/x")\nasync def x(request):\n    {route_body}\n'
+    for params, route_body, expected in [("request", *c) for c in TRACKER_CASES] + list(TRACKER_SIGNATURE_CASES):
+        source = base + f'@r.post("/api/x")\nasync def x({params}):\n    {route_body}\n'
         found, lost = track_field_routes({"server": source, "comandos": helpers})
         got = "lost" if lost else "found" if found else "none"
-        confere(got == expected, f"the search on the route {route_body.replace(chr(10) + '    ', '; ')}: {expected} "
-                f"({got})")
+        confere(got == expected, f"the search on the route x({params}): {route_body.replace(chr(10) + '    ', '; ')}: "
+                f"{expected} ({got})")
 
 
 def tabela():
@@ -596,7 +601,7 @@ async def papeis_no_guard():
             A.job_rodando, A.run_download, A.job_update = (lambda _: None), (lambda *a: None), (lambda j, **k: None)
             A.new_job = lambda label, play, alvo: labels.append(label) or {"id": "j1"}
             A.tocar_remoto = lambda j, alvo, meta: server.App.tocar_remoto(A, j, alvo, meta)
-            A._troca = lambda tr, **_: platter.append(tr) or True
+            A._troca = lambda tr, **kw: platter.append((tr, kw.get("stream"))) or True
             played = {"youtube_id": "dQw4w9WgXcQ", "play": True, "title": "Live", "channel": "Band",
                       "thumb": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", "duration": 233}
             try:
@@ -608,11 +613,11 @@ async def papeis_no_guard():
                                          **kw)
             finally:
                 del A.job_rodando, A.run_download, A.job_update, A.new_job, A.tocar_remoto, A._troca
-            on_platter = {k: platter[-1].get(k) for k in TRACK_FIELDS} if platter else None
+            on_platter = ({k: platter[-1][0].get(k) for k in TRACK_FIELDS}, platter[-1][1]) if platter else None
             confere(resp.status == 200 and j.get("streaming") is True
-                    and on_platter == {k: played[k] for k in TRACK_FIELDS},
-                    f"{who} plays a video off the shelf right away, with the four fields of the body on the platter "
-                    f"({resp.status}, {j}, {on_platter})")
+                    and on_platter == ({k: played[k] for k in TRACK_FIELDS}, ("dQw4w9WgXcQ", True)),
+                    f"{who} plays a video off the shelf right away over the stream, with the four fields of the body on "
+                    f"the platter ({resp.status}, {j}, {on_platter})")
             resp, j, _ = await manda("PATCH", "/api/library/d1", corpo={"title": "a\ud800b"},
                                      handler=rota[("PATCH", "/api/library/{iid}")], **kw)
             confere(resp.status == 400 and not renamed and j["error"].get("key") == "server.library.badTitle",
@@ -1135,11 +1140,11 @@ def ao_vivo(srv):
         on_shelf = ({**bad, "youtube_id": "djV11Xbc914"} if "youtube_id" in bad
                     else {**bad, "url": bad["url"].replace("dQw4w9WgXcQ", "djV11Xbc914")}
                     if isinstance(bad.get("url"), str) else None)
-        if on_shelf:
-            queue = answer_of(srv, "POST", "/api/queue", on_shelf)
-            library = answer_of(srv, "POST", "/api/library", {**on_shelf, "play": True})
+        for sent in ((on_shelf, {**on_shelf, "id": "d2"}) if on_shelf else ()):
+            queue = answer_of(srv, "POST", "/api/queue", sent)
+            library = answer_of(srv, "POST", "/api/library", {**sent, "play": True})
             confere(queue == library and queue[0] == 400, f"the queue and the shelf with play answer alike to "
-                    f"{str(on_shelf)[:80]}, a record on the shelf (queue {queue}, shelf {library})")
+                    f"{str(sent)[:90]}, a record on the shelf (queue {queue}, shelf {library})")
     queue = answer_of(srv, "POST", "/api/queue", {"youtube_id": "djV11Xbc914", "title": "a-ha", "duration": 30})
     srv.api("DELETE", "/api/queue")
     confere(queue[0] == 200, f"the queue takes the same record with every field right ({queue})")
