@@ -233,7 +233,8 @@ class Main(unittest.TestCase):
         why, _, result = self.run_main([state(), state(0, 0, 9.0, 8.0)], "--cycles", "1",
                                        events=[state(0, 0, 9.0, 10.0)] * 3 + [state(1, 1, 656.0, 0.0)])
         self.assertIsNone(why)
-        self.assertEqual((result["dry_outs"], result["cycles"][0]["new_longest_return_ms"]), (0, None),
+        self.assertEqual((result["dry_outs"], result["cycles"][0]["new_longest_return_ms"],
+                          result["longest_return_ms_since_the_ring_opened"]), (0, None, 9.0),
                          "the dry-out the stream showed past the cut isn't this cycle's")
 
     def test_a_broken_ring_at_the_end_of_a_cycle_stops_the_measurement(self):

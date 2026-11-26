@@ -261,7 +261,7 @@ def main():
               "dry_outs": sum(c["dry_outs"] for c in cycles),
               "dry_outs_while_starting": sum(c["dry_outs_while_starting"] for c in cycles),
               "slowest_track_up_s": max([c["track_up_after_s"] for c in cycles] or [None]),
-              "longest_return_ms_since_the_ring_opened": last["microfone"]["volta_max_ms"],
+              "longest_return_ms_since_the_ring_opened": start["microfone"]["volta_max_ms"],
               "voice_blocks": sum(c["voice_blocks"] or 0 for c in cycles),
               "voice_slowest_block_ms": max(blocks or [0.0]),
               "dry_out_lines": dry, "work": str(work)}
