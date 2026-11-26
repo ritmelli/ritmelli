@@ -8,7 +8,7 @@ passagem (_volta_passagem), o stream da parecida que nao abriu (_abre_stream), a
 parado (_volta_auto) e o enfileirar com o prato parado passam por ela, com uma reserva so por deck e linha do prato
 (Reserva).
 
-With the _qlock held, no engine method that takes the _lock is called. No file is written under the fila_lock.
+No file is written under the fila_lock.
 
 The platter's line is read and checked through the engine's interface (Engine.line, Engine.on_line, with the deck
 and line a Captura already carries), and the switch the engine made on its own is reconciled in one loop

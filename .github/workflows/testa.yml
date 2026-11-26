@@ -449,8 +449,6 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
-  # the required check: always runs, joins the summaries and only passes with the others (the one that does not
-  # apply passes without running) and, in a merge_group entry, without the needs-owner label on its PR
   tla:
     name: TLA+ model
     if: github.event_name != 'push'
@@ -470,6 +468,8 @@ jobs:
       - name: TLC
         run: python dev/testa_tudo.py --passo tla
 
+  # the required check: always runs, joins the summaries and only passes with the others (the one that does not
+  # apply passes without running) and, in a merge_group entry, without the needs-owner label on its PR
   testa-o-pr:
     name: Testa o PR
     # always(), not !cancelled(): a skipped job counts as green in the required check, and the cancelled run would pass

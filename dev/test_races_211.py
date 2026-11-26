@@ -14,6 +14,7 @@ _spec = importlib.util.spec_from_file_location("testa_comandos", ROOT / "dev" / 
 harness = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(harness)
 cmd, eng, pastas, server = harness.cmd, harness.eng, harness.pastas, harness.server
+music = importlib.import_module("music")
 
 WAIT_S = 5
 failures = []
@@ -99,22 +100,71 @@ def finished_download(A, E, readers):
           f"({j['status']}, {E.status()}, {tr.get('id')})")
 
 
-def audio_version_during_a_pending_switch(A, E, readers):
+def finished_download_that_left_the_shelf(A, E, readers):
+    gone = {"id": "gone", "title": "gone", "file": "gone.m4a", "duration": 120.0, "youtube_id": None,
+            "lufs": -14.0, "last_pos": 0}
+    j, loading = download_ends_before_the_swap_and_the_stream_is_refused(
+        A, E, readers, {"return_value": gone}, "ddddddddddd")
+    check(not loading and E.track is None and A.lib.get("gone") is None,
+          f"a download that finished, whose record is no longer on the shelf, and a refused stream stop the platter "
+          f"({j['status']}, {E.status()})")
+
+
+def refused_stream_after_another_record(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "eeeeeeeeeee"
+    j = A.new_job("downloading", True, target)
+    with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "download", side_effect=RuntimeError("x")):
+        A.run_download(j, target)
+    entered, go = threading.Event(), threading.Event()
+    real = A._stream_refused
+
+    def paused(tr, reason):
+        entered.set()
+        go.wait(WAIT_S)
+        real(tr, reason)
+    A._stream_refused = paused
+    stream = StreamThread(A)
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            cmd.play_downloading(A, j, target, {"youtube_id": target, "title": "the failed one"})
+            check(entered.wait(WAIT_S), "the stream was refused while the job's record was on the platter")
+            check(play(A, E, readers, "d2"), "and d2 took the platter before the refusal acted")
+            go.set()
+            check(stream.ended.wait(WAIT_S), "the refusal ended")
+    finally:
+        go.set()
+        del A._abre_stream
+        del A._stream_refused
+    check(E.track is not None and E.track["id"] == "d2" and E.status() == "playing",
+          f"the refused stream of the failed job leaves the record that replaced it playing ({E.status()})")
+
+
+def prepared_similar(A, E, readers, qid):
     cmd.limpar_fila(A)
-    A.lib.update("d3", duration=600.0)
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x = {"id": "d3", "youtube_id": "aaaaaaaaaaa", "url": None, "title": "similar", "channel": "c",
-         "duration": 600.0, "job": None, "qid": "similar1", "auto": True}
+         "duration": 600.0, "job": None, "qid": qid, "auto": True}
     with A.fila_lock:
         A.change_queue(lambda: A.fila.append(x))
     cap = E.captura()
     with contextlib.redirect_stderr(io.StringIO()):
         A._prepara(cap.track, x, (id(cap.track), x["qid"]), cap)
     check(E.pronto_tag == x["qid"] and readers.wait("d3"), "the similar track is prepared on the second deck, read")
+    return x
+
+
+def mix_until_the_switch(E):
     for _ in range(harness.BLOCOS + 5):
         E._mixa(eng.BLOCK)
         if E.virou is not None:
-            break
+            return True
+    return False
+
+
+def audio_version_during_a_pending_switch(A, E, readers):
+    x = prepared_similar(A, E, readers, "similar1")
+    mix_until_the_switch(E)
     check(E.virou is not None and E.virou[2] == x["qid"] and E.track["youtube_id"] == "aaaaaaaaaaa",
           "the engine switched to it on its own, and the watcher has not reconciled it yet")
     playing = E.track["youtube_id"]
@@ -127,16 +177,72 @@ def audio_version_during_a_pending_switch(A, E, readers):
           f"({closed and closed['youtube_id']} in the queue, {playing} on the platter)")
 
 
+def audio_version_while_the_engine_switches(A, E, readers):
+    x = prepared_similar(A, E, readers, "similar2")
+    real = A.automatico._presa
+    inside = []
+
+    def presa():
+        inside.append(E._qlock.locked())
+        if not inside[-1]:
+            mix_until_the_switch(E)
+        return real()
+    v = {"youtube_id": "fffffffffff", "duration": 200, "title": "similar", "channel": "c"}
+    with A.fila_lock, mock.patch.object(A.automatico, "_presa", presa):
+        A.automatico._troca_audio("aaaaaaaaaaa", v)
+    check(inside == [True], f"the audio version reads the pending switch and the held head in one stretch of the "
+                            f"_qlock, where the engine cannot switch ({inside})")
+    check(E.virou is not None or mix_until_the_switch(E), "the engine switched to the similar track")
+    playing = E.track["youtube_id"]
+    closed = cmd.avanca(A, virada=E.virou)
+    check(closed is x and closed["youtube_id"] == playing,
+          f"a switch that comes during the audio version leaves its entry as the platter plays it "
+          f"({closed and closed['youtube_id']} in the queue, {playing} on the platter)")
+
+
+def audio_version_entries(A, E):
+    cmd.limpar_fila(A)
+    entry = {"id": None, "url": None, "title": "similar", "channel": "c", "duration": 300.0, "job": None,
+             "youtube_id": "ggggggggggg", "auto": True}
+    head, tail = dict(entry, qid="head1"), dict(entry, qid="tail1")
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.extend([head, tail]))
+    mixed = {"youtube_id": "ggggggggggg", "title": "mixed", "ordem": 1}
+    plain = {"youtube_id": "hhhhhhhhhhh", "title": "plain", "ordem": 2}
+    mix0, A.mix = A.mix, [mixed, plain]
+    v = {"youtube_id": "iiiiiiiiiii", "duration": 200, "title": "the audio", "channel": "c"}
+    audio = {"youtube_id": "iiiiiiiiiii", "duration": 200, "title": "the audio", "channel": "c", "audio": True,
+             "video": "ggggggggggg", "thumb": music.thumb("iiiiiiiiiii"), "tipo": "ATV"}
+    try:
+        with A.fila_lock:
+            A.apply_audio_version("ggggggggggg", v, lambda: True)
+        check(head == dict(entry, qid="head1"), f"the held head keeps its version ({head})")
+        check(tail == dict(entry, qid="tail1", **audio), f"the entry after it takes the audio version ({tail})")
+        check(mixed == {"ordem": 1, **audio}, f"the Mix entry takes the audio version ({mixed})")
+        with A.fila_lock:
+            A.apply_audio_version("hhhhhhhhhhh", None, lambda: False)
+        check(plain == {"youtube_id": "hhhhhhhhhhh", "title": "plain", "ordem": 2, "audio": True},
+              f"with no audio version, the Mix entry only gets the mark that it was looked up ({plain})")
+    finally:
+        A.mix = mix0
+        cmd.limpar_fila(A)
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         audio = Path(tmp) / "audio"
         with mock.patch.object(server, "LIB", audio), mock.patch.object(pastas, "LIB", audio):
             A, E = harness.monta(Path(tmp))
             readers = Readers(E)
+            A.lib.update("d3", duration=600.0)
             try:
                 failed_download(A, E, readers)
                 finished_download(A, E, readers)
+                finished_download_that_left_the_shelf(A, E, readers)
+                refused_stream_after_another_record(A, E, readers)
                 audio_version_during_a_pending_switch(A, E, readers)
+                audio_version_while_the_engine_switches(A, E, readers)
+                audio_version_entries(A, E)
             finally:
                 E.close()
     failures.extend(harness.falhas)

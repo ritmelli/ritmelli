@@ -147,15 +147,15 @@ def test_summary_block(all_jobs):
     if not bash:
         return
     block = step_run(all_jobs["testa-o-pr"], "Resumo e resultado")
-    ok6 = ["success"] * 7
+    all_ok = ["success"] * 7
     on_push = ["skipped"] * 6 + ["success"]
 
-    code, out, summary, calls = run_summary(bash, block, "pull_request", ok6)
+    code, out, summary, calls = run_summary(bash, block, "pull_request", all_ok)
     comments = [c for c in calls if c.startswith("gh pr comment")]
     check(code == 0 and len(comments) == 1 and "tudo passou" in summary and "| Banca | Captura |" in summary,
           f"a PR whose jobs pass gets one comment, with the Banca and Captura columns, and passes (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "pull_request", ok6, comment_fails=True)
+    code, out, summary, calls = run_summary(bash, block, "pull_request", all_ok, comment_fails=True)
     comments = [c for c in calls if c.startswith("gh pr comment")]
     check(code != 0 and len(comments) == 1 and "GitHub did not confirm the summary comment" in out
           and "não confirmou o comentário do resumo no PR" in summary,
@@ -185,7 +185,7 @@ def test_summary_block(all_jobs):
     check(code != 0 and not any("event=merge_group" in c for c in calls),
           f"on a PR, a skipped job fails the check, and the queue is not asked (exit {code})")
 
-    code, out, summary, calls = run_summary(bash, block, "merge_group", ok6, dono="failure")
+    code, out, summary, calls = run_summary(bash, block, "merge_group", all_ok, dono="failure")
     check(code != 0, f"a failed needs-owner step fails the check (exit {code})")
 
     code, out, summary, calls = run_summary(bash, block, "pull_request", ["success", "cancelled"] + ["success"] * 5)

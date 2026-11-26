@@ -1,21 +1,22 @@
 ------------------------------ MODULE Races211 ------------------------------
 EXTENDS Locks, TLC
 
-CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue
+CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, StreamChecksItsTrack,
+          RefusedStreamStopsWithoutTheFile
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd,
-          jobStatus, stream, swTr, dlSaw,
+          jobStatus, shelf, stream, swTr, dlSaw, wrongTrack,
           fila, ver, virou, closing, preparando,
-          prX, prVer, prLine, prTrack, taPresa, vpSeen
+          prX, prVer, prLine, prTrack, keptHead, pwSeen
 
 lockVars == <<owner, orderBroken>>
 platVars == <<track, nextId, line, pronto, nearEnd>>
-jobVars == <<jobStatus, stream, swTr, dlSaw>>
+jobVars == <<jobStatus, shelf, stream, swTr, dlSaw, wrongTrack>>
 queueVars == <<fila, ver, virou, closing, preparando>>
-localVars == <<prX, prVer, prLine, prTrack, taPresa, vpSeen>>
+localVars == <<prX, prVer, prLine, prTrack, keptHead, pwSeen>>
 vars == <<pc, lockVars, platVars, jobVars, queueVars, localVars>>
 
-Workers == {"Download", "Swap", "Stream", "Prepare", "AudioVersion"}
+Workers == {"Download", "Swap", "Stream", "Prepare", "AudioVersion", "Play", "Forget"}
 Procs == Workers \cup {"Mixer", "PassageWatcher"}
 
 NoTrack == [id |-> 0, job |-> FALSE, qid |-> NoQid, ver |-> "-", path |-> "none"]
@@ -58,6 +59,8 @@ Init ==
                  [] p = "Stream" -> "st_wait"
                  [] p = "Prepare" -> "pr_start"
                  [] p = "AudioVersion" -> "av_start"
+                 [] p = "Play" -> "pl_try"
+                 [] p = "Forget" -> "fg_start"
                  [] p = "Mixer" -> "mx"
                  [] p = "PassageWatcher" -> "pw_idle"]
     /\ track = [id |-> 1, job |-> FALSE, qid |-> NoQid, ver |-> "-", path |-> "file"]
@@ -66,6 +69,8 @@ Init ==
     /\ pronto = NoPronto
     /\ nearEnd = FALSE
     /\ jobStatus = "running"
+    /\ shelf = FALSE
+    /\ wrongTrack = FALSE
     /\ stream = "pending"
     /\ swTr = 0
     /\ dlSaw = 0
@@ -78,14 +83,14 @@ Init ==
     /\ prVer = "-"
     /\ prLine = 0
     /\ prTrack = 0
-    /\ taPresa = NoQid
-    /\ vpSeen = NoSwitch
+    /\ keptHead = NoQid
+    /\ pwSeen = NoSwitch
 
 DownloadEnds ==
     /\ At("Download", "dl_run")
-    /\ \/ jobStatus' = "error" /\ Goto("Download", "dl_failed")
-       \/ jobStatus' = "done" /\ Goto("Download", "dl_done")
-    /\ UNCHANGED <<lockVars, platVars, stream, swTr, dlSaw, queueVars, localVars>>
+    /\ \/ jobStatus' = "error" /\ UNCHANGED shelf /\ Goto("Download", "dl_failed")
+       \/ jobStatus' = "done" /\ shelf' = TRUE /\ Goto("Download", "dl_done")
+    /\ UNCHANGED <<lockVars, platVars, stream, swTr, dlSaw, wrongTrack, queueVars, localVars>>
 
 DownloadFailedLock ==
     /\ At("Download", "dl_failed")
@@ -104,7 +109,7 @@ DownloadDoneRead ==
     /\ At("Download", "dl_done")
     /\ dlSaw' = IF track.job THEN track.id ELSE 0
     /\ Goto("Download", "dl_done_swap")
-    /\ UNCHANGED <<lockVars, platVars, jobStatus, stream, swTr, queueVars, localVars>>
+    /\ UNCHANGED <<lockVars, platVars, jobStatus, shelf, stream, swTr, wrongTrack, queueVars, localVars>>
 
 DownloadDoneSkip ==
     /\ At("Download", "dl_done_swap")
@@ -165,14 +170,14 @@ SwapPublishes ==
     /\ Publish([id |-> nextId, job |-> TRUE, qid |-> NoQid, ver |-> "-", path |-> "none"])
     /\ swTr' = nextId
     /\ Goto("Swap", "sw_release")
-    /\ UNCHANGED <<jobStatus, stream, dlSaw, queueVars, localVars>>
+    /\ UNCHANGED <<jobStatus, shelf, stream, dlSaw, wrongTrack, queueVars, localVars>>
 
 SwapReleases ==
     /\ At("Swap", "sw_release")
     /\ ReleaseAll("Swap", {"fila_lock", "_lock"})
     /\ stream' = "running"
     /\ Goto("Swap", "done")
-    /\ UNCHANGED <<platVars, jobStatus, swTr, dlSaw, queueVars, localVars>>
+    /\ UNCHANGED <<platVars, jobStatus, shelf, swTr, dlSaw, wrongTrack, queueVars, localVars>>
 
 StreamTries ==
     /\ At("Stream", "st_wait")
@@ -180,7 +185,7 @@ StreamTries ==
     /\ \/ track.id /= swTr /\ stream' = "gone" /\ Goto("Stream", "done")
        \/ track.id = swTr /\ Goto("Stream", "st_opened") /\ UNCHANGED stream
        \/ track.id = swTr /\ stream' = "refused" /\ Goto("Stream", "st_refused")
-    /\ UNCHANGED <<lockVars, platVars, jobStatus, swTr, dlSaw, queueVars, localVars>>
+    /\ UNCHANGED <<lockVars, platVars, jobStatus, shelf, swTr, dlSaw, wrongTrack, queueVars, localVars>>
 
 StreamOpened ==
     \/ /\ At("Stream", "st_opened")
@@ -192,7 +197,7 @@ StreamOpened ==
        /\ IF track.id = swTr THEN NewSource("stream") ELSE UNCHANGED platVars
        /\ stream' = "ok"
        /\ Goto("Stream", "done")
-       /\ UNCHANGED <<jobStatus, swTr, dlSaw, queueVars, localVars>>
+       /\ UNCHANGED <<jobStatus, shelf, swTr, dlSaw, wrongTrack, queueVars, localVars>>
 
 StreamRefusedToday ==
     /\ ~StreamFailureChecksJob
@@ -200,32 +205,49 @@ StreamRefusedToday ==
     /\ Goto("Stream", "done")
     /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
 
+ActsOn(cond) == (track.id = swTr \/ ~StreamChecksItsTrack) /\ cond
+
+Flags == wrongTrack' = (wrongTrack \/ track.id /= swTr)
+
 StreamRefusedChecksJob ==
     /\ StreamFailureChecksJob
     /\ \/ /\ At("Stream", "st_refused")
           /\ Acquire("Stream", "_lock")
-          /\ Goto("Stream", "st_refused_stop")
-          /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
-       \/ /\ At("Stream", "st_refused_stop")
-          /\ SectionThenRelease("Stream", "_qlock", {"_lock"})
-          /\ IF track.id = swTr /\ jobStatus = "error"
-             THEN StopPlatter /\ Goto("Stream", "done")
-             ELSE UNCHANGED platVars /\ Goto("Stream", "st_refused_done")
-          /\ UNCHANGED <<jobVars, queueVars, localVars>>
-       \/ /\ At("Stream", "st_refused_done")
-          /\ jobStatus /= "done"
-          /\ Goto("Stream", "done")
-          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
-       \/ /\ At("Stream", "st_refused_done")
-          /\ jobStatus = "done"
-          /\ Acquire("Stream", "_lock")
-          /\ Goto("Stream", "st_refused_file")
+          /\ Goto("Stream", IF jobStatus = "done" /\ shelf THEN "st_refused_file" ELSE "st_refused_stop")
           /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
        \/ /\ At("Stream", "st_refused_file")
           /\ SectionThenRelease("Stream", "_qlock", {"_lock"})
-          /\ IF track.id = swTr THEN NewSource("file") ELSE UNCHANGED platVars
+          /\ \/ ActsOn(TRUE) /\ NewSource("file") /\ Flags
+             \/ ~ActsOn(TRUE) /\ UNCHANGED <<platVars, wrongTrack>>
           /\ Goto("Stream", "done")
-          /\ UNCHANGED <<jobVars, queueVars, localVars>>
+          /\ UNCHANGED <<jobStatus, shelf, stream, swTr, dlSaw, queueVars, localVars>>
+       \/ /\ At("Stream", "st_refused_stop")
+          /\ SectionThenRelease("Stream", "_qlock", {"_lock"})
+          /\ LET noFile == jobStatus = "error" \/ (RefusedStreamStopsWithoutTheFile /\ jobStatus = "done" /\ ~shelf)
+             IN \/ ActsOn(noFile) /\ StopPlatter /\ Flags
+                \/ ~ActsOn(noFile) /\ UNCHANGED <<platVars, wrongTrack>>
+          /\ Goto("Stream", "done")
+          /\ UNCHANGED <<jobStatus, shelf, stream, swTr, dlSaw, queueVars, localVars>>
+
+PlayLocks ==
+    /\ WithEngineTry("Play", "pl_try", "pl_swap", "pl_wait")
+    /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
+
+PlaySwaps ==
+    /\ At("Play", "pl_swap")
+    /\ SectionThenRelease("Play", "_qlock", {"fila_lock", "_lock"})
+    /\ IF virou.tag /= NoQid
+       THEN fila' = Without(fila, virou.tag) /\ virou' = NoSwitch
+       ELSE UNCHANGED <<fila, virou>>
+    /\ Publish([id |-> nextId, job |-> FALSE, qid |-> NoQid, ver |-> "-", path |-> "file"])
+    /\ Goto("Play", "done")
+    /\ UNCHANGED <<jobVars, ver, closing, preparando, localVars>>
+
+ForgetsTheRecord ==
+    /\ At("Forget", "fg_start")
+    /\ shelf' = FALSE
+    /\ Goto("Forget", "done")
+    /\ UNCHANGED <<lockVars, platVars, jobStatus, stream, swTr, dlSaw, wrongTrack, queueVars, localVars>>
 
 MixerTime ==
     /\ ~nearEnd
@@ -250,7 +272,7 @@ PrepareReads ==
             /\ nearEnd' = TRUE
             /\ Goto("Prepare", "pr_mark")
        ELSE UNCHANGED <<prX, prLine, prTrack, nearEnd>> /\ Goto("Prepare", "done")
-    /\ UNCHANGED <<track, nextId, line, pronto, jobVars, queueVars, prVer, taPresa, vpSeen>>
+    /\ UNCHANGED <<track, nextId, line, pronto, jobVars, queueVars, prVer, keptHead, pwSeen>>
 
 PrepareMarks ==
     /\ At("Prepare", "pr_mark")
@@ -262,7 +284,7 @@ PrepareSource ==
     /\ At("Prepare", "pr_source")
     /\ prVer' = ver[prX]
     /\ Goto("Prepare", "pr_try")
-    /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prLine, prTrack, taPresa, vpSeen>>
+    /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prLine, prTrack, keptHead, pwSeen>>
 
 PrepareLocks ==
     /\ WithEngineTry("Prepare", "pr_try", "pr_publish", "pr_wait")
@@ -303,11 +325,11 @@ AudioVersionLocks ==
 AudioVersionToday ==
     /\ ~AudioSwapThroughChangeQueue
     /\ \/ /\ At("AudioVersion", "av_held")
-          /\ taPresa' = Held1
+          /\ keptHead' = Held1
           /\ Goto("AudioVersion", "av_swap")
-          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, vpSeen>>
+          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, pwSeen>>
        \/ /\ At("AudioVersion", "av_swap")
-          /\ \E q \in Qids : ToAudio(q, {taPresa})
+          /\ \E q \in Qids : ToAudio(q, {keptHead})
           /\ Release("AudioVersion", "fila_lock")
           /\ Goto("AudioVersion", "done")
           /\ UNCHANGED <<platVars, jobVars, fila, virou, closing, preparando, localVars>>
@@ -323,9 +345,9 @@ AudioVersionThroughChangeQueue ==
 PassageWatcherSees ==
     /\ At("PassageWatcher", "pw_idle")
     /\ virou.tag /= NoQid
-    /\ vpSeen' = virou
+    /\ pwSeen' = virou
     /\ Goto("PassageWatcher", "pw_lock")
-    /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, taPresa>>
+    /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, keptHead>>
 
 PassageWatcherLocks ==
     /\ At("PassageWatcher", "pw_lock")
@@ -335,14 +357,14 @@ PassageWatcherLocks ==
 
 PassageWatcherTakes ==
     \/ /\ At("PassageWatcher", "pw_take")
-       /\ virou = vpSeen
+       /\ virou = pwSeen
        /\ Section("PassageWatcher", "_qlock")
        /\ virou' = NoSwitch
-       /\ closing' = vpSeen
+       /\ closing' = pwSeen
        /\ Goto("PassageWatcher", "pw_close")
        /\ UNCHANGED <<platVars, jobVars, fila, ver, preparando, localVars>>
     \/ /\ At("PassageWatcher", "pw_take")
-       /\ virou /= vpSeen
+       /\ virou /= pwSeen
        /\ SectionThenRelease("PassageWatcher", "_qlock", {"fila_lock"})
        /\ Goto("PassageWatcher", "pw_idle")
        /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
@@ -365,6 +387,7 @@ Step ==
     \/ DownloadDoneRead \/ DownloadDoneSkip \/ DownloadDoneLock \/ DownloadDoneFile
     \/ SwapLocks \/ SwapCloses \/ SwapPublishes \/ SwapReleases
     \/ StreamTries \/ StreamOpened \/ StreamRefusedToday \/ StreamRefusedChecksJob
+    \/ PlayLocks \/ PlaySwaps \/ ForgetsTheRecord
     \/ MixerTime \/ MixerSwitches
     \/ PrepareReads \/ PrepareMarks \/ PrepareSource \/ PrepareLocks \/ PreparePublishes \/ PrepareReleases
     \/ AudioVersionLocks \/ AudioVersionToday \/ AudioVersionThroughChangeQueue
@@ -386,6 +409,8 @@ NoOrphanLoading ==
 
 NoStaleLoading ==
     Quiescent => ~(track.job /\ track.path = "none" /\ jobStatus = "done" /\ stream = "refused")
+
+StreamActsOnItsAttempt == ~wrongTrack
 
 SwitchEntryMatchesPlatter ==
     \A sw \in {virou, closing} :

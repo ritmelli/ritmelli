@@ -118,23 +118,27 @@ antes.
 
 A ordem está declarada no modelo (`dev/tla/Locks.tla`, o `LockOrder` e o `BeforeQlockOnly`), e o
 `dev/test_lock_order.py` compara com ela cada `with` das travas (e o `_lock.acquire`) do `comandos.py`, do `server.py`,
-do `automatico.py` e do `engine.py`, pela árvore de sintaxe; confere também que o `_mixa` e os métodos da `Engine` que
-ele chama só pegam o `_qlock`.
+do `automatico.py` e do `engine.py`, pela árvore de sintaxe, e também cada chamada feita com uma trava na mão a um
+método do `App`, da `Engine`, do `Automatico` ou do `comandos.py` (com o `_qlock` na mão, nenhum método que pegue o
+`_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock` só se tenta, com `acquire(blocking=False)` (o
+`with_engine`). Confere também que o `_mixa` e os métodos da `Engine` que ele chama só pegam o `_qlock`.
 
 ## O modelo das travas (`dev/tla/`)
 
 O modelo TLA+ descreve as travas e o estado que elas guardam, e o TLC confere todos os caminhos dele. O tempo e a
 posição do disco viram escolha não determinística, e os `qid` são simétricos (`SYMMETRY`). São duas configurações:
 
-- `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio e o vigia
-  da passagem, com uma ou duas entradas e um job. Confere a ordem das travas, que nenhum prato fica carregando com o
-  job já terminado (em erro ou baixado) e o stream recusado, e que a entrada da virada pendente tem a mesma versão que o
-  prato toca (as duas corridas da #211).
+- `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio, o vigia
+  da passagem, o tocar de outro disco e o esquecer da prateleira, com uma ou duas entradas e um job. Confere a ordem das
+  travas; que nenhum prato fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na prateleira)
+  e o stream recusado; que o stream recusado só para ou troca o disco daquela tentativa; e que a entrada da virada
+  pendente tem a mesma versão que o prato toca (as duas corridas da #211).
 - `LocksAndSwitch`: dois Próximos, o mixer, o Parar ou uma mudança da fila, o vigia da passagem e a reabertura do áudio
   segurando o `_lock` (o `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas e a
-  falta de impasse; que cada virada fecha uma vez e só para a cabeça da fila; que dois Próximos sobrepostos dão um avanço
-  só e o mesmo resultado; que o Anterior recebe cada disco uma vez, na ordem em que saiu do prato; e que toda reserva
-  resolve, com justiça fraca.
+  falta de impasse; que a virada só vai para a cabeça da fila e que cada uma fecha uma vez, e todas fecham; que dois
+  Próximos sobrepostos (o segundo chega com o prato ainda na linha do primeiro, ou na linha que o avanço dele publicou)
+  dão um avanço só e o mesmo resultado; que o Anterior recebe cada disco que saiu do prato uma vez, na ordem em que saiu,
+  e nenhum fica de fora; e que toda reserva resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
 menos de 60 s, e roda também os mutantes: cada propriedade tem um que desfaz o que ela protege, e o mutante tem de ser
@@ -152,7 +156,8 @@ motor pelo `take_switch`, a passagem preparada pelo `drop_prepared` (o `cancelar
 leitura do estado pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. Toda mudança da fila passa pelo
 `App.change_queue`, que pega o `_qlock`, muda e confere a preparada no mesmo trecho: fora do `App`, nenhum módulo
 escreve nas entradas da fila ou do Mix (atribuição, `update`, subscript ou `del`), e o `dev/test_queue_entries.py`
-falha se escrever. A versão de áudio das parecidas entra pelo `App.apply_audio_version`, que muda a fila pelo
+falha se escrever; ele falha também com uma mudança da própria fila (atribuição, fatia, `append`, `remove` e afins) fora
+de uma função passada ao `change_queue`. A versão de áudio das parecidas entra pelo `App.apply_audio_version`, que muda a fila pelo
 `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo `qid`, a mesma versão
 que o prato toca) e a primeira da fila presa. O que ainda pega as travas do
 motor por fora (o `_qlock` dos trechos do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do

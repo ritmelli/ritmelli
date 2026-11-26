@@ -2,7 +2,8 @@
 EXTENDS Locks, Integers, TLC
 
 CONSTANTS Qids, NoQid, RIds, GIds,
-          NextsJoin, NextResolvesItsGroup, StopClosesSwitches, FailedSwapReleasesReservation,
+          NextsJoin, NextsJoinAfterPublish, NextResolvesItsGroup, StopClosesSwitches, StopSavesItsRecord,
+          ClosingRecordsTheSwitch, FailedSwapReleasesReservation,
           QueueChangeUnderQlock, ReserveReadsProximoWithoutLock, TakingTheSwitchClearsIt, Reopens
 
 VARIABLES pc, s
@@ -45,7 +46,7 @@ Init ==
               res |-> [r \in RIds |-> NoRes], appRes |-> 0, nextRid |-> 1,
               grp |-> [g \in GIds |-> NoGroup], proximo |-> 0, nextGid |-> 1,
               n |-> [x \in Nexts |-> NoNext],
-              overlap |-> FALSE, switches |-> 0, closes |-> 0, played |-> 0, badSwitch |-> FALSE,
+              overlap |-> FALSE, switched |-> <<>>, closed |-> <<>>, played |-> 0, badSwitch |-> FALSE,
               sqOld |-> 0, pwSeen |-> NoSwitch]
 
 Viva(S, r) == ~S.res[r].feita /\ (S.res[r].tocando \/ S.res[r].line = S.line)
@@ -66,10 +67,19 @@ ReleaseReservation(S, r, e) ==
 Joins(S, g) ==
     LET G == S.grp[g]
         r == G.r
-    IN IF G.feita
+    IN IF ~NextsJoinAfterPublish
+       THEN ~G.feita /\ G.line = S.line
+       ELSE IF G.feita
        THEN G.entrada /= NoQid /\ r /= 0 /\ S.res[r].publicada = S.line
        ELSE \/ G.line = S.line
             \/ r /= 0 /\ ((S.res[r].tocando /\ ~S.res[r].feita) \/ S.res[r].publicada = S.line)
+
+SamePlatter(S, g) ==
+    LET G == S.grp[g]
+        r == G.r
+    IN /\ ~(G.feita /\ G.entrada = NoQid)
+       /\ \/ G.line = S.line
+          \/ r /= 0 /\ ((S.res[r].tocando /\ ~S.res[r].feita) \/ S.res[r].publicada = S.line)
 
 Leave(S) == IF S.track.id /= 0 THEN Append(S.left, S.track.id) ELSE S.left
 
@@ -82,11 +92,13 @@ StopPlatter(S) == [S EXCEPT !.left = Leave(S), !.track = NoTrack, !.line = @ + 1
 SaveHistory(S, id) == IF id = 0 THEN S ELSE [S EXCEPT !.history = Append(@, id)]
 
 FechaVirada(S, v) ==
-    [S EXCEPT !.fila = Without(@, v.tag), !.history = Append(@, v.sai), !.closes = @ + 1]
+    [S EXCEPT !.fila = Without(@, v.tag), !.history = Append(@, v.sai), !.closed = Append(@, v.sai)]
 
 CloseSwitches(S) ==
     IF S.virou.tag = NoQid
     THEN [S EXCEPT !.pronto = NoQid]
+    ELSE IF ~ClosingRecordsTheSwitch
+    THEN [S EXCEPT !.virou = NoSwitch, !.pronto = NoQid]
     ELSE [FechaVirada([S EXCEPT !.virou = NoSwitch], S.virou) EXCEPT !.pronto = NoQid]
 
 HeadOutsideSwitch(S) ==
@@ -116,7 +128,7 @@ NextStarts(p) ==
     /\ At(p, "nx_start")
     /\ SectionBoth(p, "proximo_lock", "_qlock")
     /\ LET q == s.proximo
-           overlapNow == q /= 0 /\ s.grp[q].line = s.line /\ ~s.grp[q].feita
+           overlapNow == q /= 0 /\ SamePlatter(s, q)
            g == s.nextGid
            S0 == [s EXCEPT !.overlap = @ \/ overlapNow]
        IN IF NextsJoin /\ q /= 0 /\ Joins(s, q)
@@ -308,7 +320,7 @@ MixerProc ==
     /\ s.track.id /= 0
     /\ Section("Mixer", "_qlock")
     /\ s' = [Publish(s, s.pronto) EXCEPT !.virou = [tag |-> s.pronto, sai |-> s.track.id],
-                                         !.switches = @ + 1,
+                                         !.switched = Append(@, s.track.id),
                                          !.badSwitch = @ \/ s.pronto /= HeadOutsideSwitch(s)]
     /\ UNCHANGED pc
 
@@ -333,7 +345,8 @@ StopOrChangeProc ==
        /\ Goto("StopOrChange", "st_after")
     \/ /\ At("StopOrChange", "st_after")
        /\ SectionThenRelease("StopOrChange", "_qlock", {"fila_lock", "_lock"})
-       /\ s' = SaveHistory(IF s.appRes /= 0 THEN ReleaseReservation(s, s.appRes, NoQid) ELSE s, s.sqOld)
+       /\ s' = SaveHistory(IF s.appRes /= 0 THEN ReleaseReservation(s, s.appRes, NoQid) ELSE s,
+                          IF StopSavesItsRecord THEN s.sqOld ELSE 0)
        /\ Goto("StopOrChange", "done")
     \/ /\ At("StopOrChange", "ch_lock")
        /\ Acquire("StopOrChange", "fila_lock")
@@ -422,7 +435,10 @@ TypeOK ==
 
 SwitchOnlyToHead == ~s.badSwitch
 
-SwitchClosesOnce == s.closes <= s.switches
+SwitchClosesOnce ==
+    /\ \A i, j \in 1..Len(s.closed) : i /= j => s.closed[i] /= s.closed[j]
+    /\ Range(s.closed) \subseteq Range(s.switched)
+    /\ Quiescent => Range(s.closed) = Range(s.switched)
 
 OneAdvance ==
     Quiescent /\ s.overlap => s.n["N1"].res = s.n["N2"].res /\ s.played <= 1
@@ -432,6 +448,7 @@ Pos(q, x) == CHOOSE k \in 1..Len(q) : q[k] = x
 HistoryOnceInOrder ==
     /\ \A i \in 1..Len(s.history) : s.history[i] \in Range(s.left)
     /\ \A i, j \in 1..Len(s.history) : i < j => Pos(s.left, s.history[i]) < Pos(s.left, s.history[j])
+    /\ Quiescent => s.history = s.left
 
 ReservationsResolve == \A r \in RIds : s.res[r].used ~> s.res[r].feita
 

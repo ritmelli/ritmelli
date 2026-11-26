@@ -40,12 +40,26 @@ RUNS = (
     Run("mutant: the audio version changes the entries outside the change_queue (#211.2)", "Races211",
         "invariant SwitchEntryMatchesPlatter", invariants=("SwitchEntryMatchesPlatter",),
         constants=(("AudioSwapThroughChangeQueue", "FALSE"),)),
+    Run("mutant: a refused stream acts on whatever record the platter holds", "Races211",
+        "invariant StreamActsOnItsAttempt", invariants=("StreamActsOnItsAttempt",),
+        constants=(("StreamChecksItsTrack", "FALSE"),)),
+    Run("mutant: a refused stream waits for a finished download whose record left the shelf", "Races211",
+        "invariant NoStaleLoading", invariants=("NoStaleLoading",),
+        constants=(("RefusedStreamStopsWithoutTheFile", "FALSE"),)),
     Run("LocksAndSwitch, the code as it is", "LocksAndSwitch"),
     Run("LocksAndSwitch, the code as it is: every reservation resolves (weak fairness, no symmetry)",
         "LocksAndSwitch", invariants=(), properties=("ReservationsResolve",), specification="FairSpec",
         symmetry=False, deadlock=False, constants=(("Reopens", "FALSE"),)),
     Run("mutant: overlapping Nexts do not join", "LocksAndSwitch", "invariant OneAdvance",
         constants=(("NextsJoin", "FALSE"),)),
+    Run("mutant: a Next does not join an advance that already published its line", "LocksAndSwitch",
+        "invariant OneAdvance", invariants=("OneAdvance",), constants=(("NextsJoinAfterPublish", "FALSE"),)),
+    Run("mutant: closing the switches drops the pending one without reconciling it", "LocksAndSwitch",
+        "invariant SwitchClosesOnce", invariants=("SwitchClosesOnce",),
+        constants=(("ClosingRecordsTheSwitch", "FALSE"),)),
+    Run("mutant: the Stop does not put its record in the history", "LocksAndSwitch",
+        "invariant HistoryOnceInOrder", invariants=("HistoryOnceInOrder",),
+        constants=(("StopSavesItsRecord", "FALSE"),)),
     Run("mutant: the first Next does not resolve its group", "LocksAndSwitch", "deadlock",
         constants=(("NextResolvesItsGroup", "FALSE"),)),
     Run("mutant: the Stop does not close the pending switch first", "LocksAndSwitch",
@@ -96,6 +110,8 @@ def write_cfg(base, run):
     blocks["CONSTANTS"] = [f"{k} = {v}" for k, v in constants.items()]
     if run.invariants is not None:
         blocks["INVARIANTS"] = list(run.invariants)
+    elif run.expect.startswith("invariant "):
+        blocks["INVARIANTS"] = [run.expect.split()[1]]
     if run.properties:
         blocks["PROPERTIES"] = list(run.properties)
     if run.specification:
