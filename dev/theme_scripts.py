@@ -75,17 +75,20 @@ FEATURE_HANDLERS = (
     ("options.js", "options.js", "document", "pointerdown"), ("options.js", "options.js", "window", "resize"),
     ("connection.js", "connection.js", "window", "online"), ("connection.js", "connection.js", "window", "offline"),
     ("pairing.js", "pairing.js", "#form-parear", "submit"),
-    ("welcome.js", "welcome.js", "#dlg-boas", "close"), ("welcome.js", "welcome.js", "#db-trocar", "click"),
-    ("welcome.js", "welcome.js", "#dlg-disp", "close"), ("welcome.js", "welcome.js", "#db-cel", "click"),
+    ("welcome.js", "welcome.js", "#dlg-boas", "close"), ("welcome.js", "welcome.js", "#dlg-disp", "close"),
     ("desk-buttons.js", "start.js", "#tocar-d", "click"), ("desk-buttons.js", "start.js", "#prox-d", "click"),
     ("desk-buttons.js", "start.js", "#m-aleatorio", "click"), ("desk-buttons.js", "start.js", "#m-repetir", "click"),
     ("desk-buttons.js", "start.js", "#m-parecidas", "click"), ("desk-buttons.js", "start.js", "#pads-grade", "click"),
     ("desk-buttons.js", "start.js", "#pads-grade", "contextmenu"),
     ("desk-buttons.js", "start.js", "#prat-esq", "click"), ("desk-buttons.js", "start.js", "#prat-dir", "click"),
     ("start.js", "start.js", "document", "DOMContentLoaded"),
+    ("desk-buttons.js", "start.js", "#estante", "scroll"), ("start.js", "start.js", "document", "visibilitychange"),
+    ("connection.js", "connection.js", "navigator.connection", "change"),
+    ("dj-desk.js", "start.js", "mqUnica", "change"),
 )
-SHARED_TARGETS = ("window", "document")
-RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
+SHARED_TARGETS = ("window", "document", "navigator.connection", "mqUnica")
+SHARED_HANDLERS = (("#estante", "scroll"),)
+RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos", "start.js": "bindDeskButtons"}
 STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
             ("#seek", "input"), ("#estante", "click"), ("#mini-abrir", "click"), ("#b-pagina", "click"))
 STILL_OFF = (("#b-ouvir", "click"), ("#gaveta", "click"), ("#q", "input"), ("#resultados", "click"))
@@ -200,7 +203,7 @@ async def checks(tab):
 
     for file, _, selector, kind in FEATURE_HANDLERS:
         files = await handler_files(tab, selector, kind)
-        moved = (files == [file] if selector not in SHARED_TARGETS
+        moved = (files == [file] if selector not in SHARED_TARGETS and (selector, kind) not in SHARED_HANDLERS
                  else bool(files) and file in files and "index.html" not in files)
         results.append((moved, f"the {kind} handler of {selector} is in {file} ({files})"))
 
@@ -221,9 +224,10 @@ def held_until(activation):
         state = await until(tab, f"({{ran: typeof {RAN_BEFORE[activation]} === 'function',"
                                  " inert: document.getElementById('form-busca')?.inert})", "s.ran", PAGE_READY_S)
         early = {}
-        for _, at, selector, kind in FEATURE_HANDLERS:
+        for file, at, selector, kind in FEATURE_HANDLERS:
             if at == activation:
-                early[f"{kind} {selector}"] = await handler_files(tab, selector, kind)
+                files = await handler_files(tab, selector, kind)
+                early[f"{kind} {selector}"] = [f for f in files or [] if f == file]
         await tab.release(activation, fail=False)
         results = [(state.get("ran") and not any(early.values()),
                     f"with {activation} still loading, the handlers it turns on are not on yet ({early})")]
