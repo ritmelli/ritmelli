@@ -141,14 +141,55 @@ declarações nascem e nada roda), e os nomes saem do escopo local dele. Um nome
 aceita (um `var arguments`, um `const yield`): os dois ficam no teste como falha conhecida da issue #239. Ele confere
 também que cada ouvinte das partes é do arquivo dela, que a página só passa a vigiar a própria visibilidade no
 `DOMContentLoaded`, com o `carregar()` já declarado (uma aba que aparece durante a leitura da página não conecta antes
-da partida), e que o `queue.js` vê o toque que fecha a busca na mesa. O `dev/theme_rebuild.py` mostra à parte os
-blocos que mudaram de lugar com outra indentação (os que entraram numa dessas funções).
+da partida), e que o `queue.js` vê o toque que fecha a busca na mesa.
 
-Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a
-página de novo nos dois commits (cada `<script src>`, `<link>` e `<!-- inline-script: -->` trocado pelo texto do
-arquivo, sem as marcas, com os outros atributos da tag numa linha e cada `'use strict'` como `[strict]`) e sai 0 só com
-as duas páginas iguais, linha a linha; diferentes, ela separa os blocos que só mudaram de lugar das linhas novas ou que
-sumiram (um arquivo novo traz o próprio `[strict]`). O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
+Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits,
+com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, como o servidor manda, e cada
+`<script src>` e `<link>` trocado pelo texto do arquivo. Ela só julga a página escrita na forma estrita da montagem: a
+gramática e as duas listas de elementos do `theme_page.py`, descritas acima. O `src` de um script e o `href` de uma
+folha são, além disso, um caminho simples dentro do tema, como `gerado/molduras.css`, sem `/` no começo, `..`, busca,
+`#`, `%`, `&` nem `\`. Fora disso ela recusa, com o arquivo (e, no `index.html`, a linha e o trecho), e sai 3 (não sei
+julgar): o que a montagem recusa, um `@namespace` ou um `@scope` numa folha, mesmo escapado ou num comentário (o prefixo
+do primeiro só vale na folha dele e o escopo do segundo depende do elemento que guarda a folha), um arquivo ligado pela
+página que não está no tema (o navegador recebe um 404) e um arquivo que o servidor põe inline e não está no tema (ele
+não monta a página). Um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta). Numa folha,
+entre as regras e nas pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab vertical antes de um
+seletor) é uma folha que não se lê.
+Ela sai 0 quando o head só muda código de lugar:
+- todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
+- a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
+  folha de estilo no mesmo lugar dela;
+- os scripts são os mesmos, na mesma ordem, cada um carregado do mesmo jeito (inline ou do mesmo arquivo), com os
+  mesmos atributos e o mesmo modo estrito;
+- cada script declara as mesmas funções no alto, pelo nome que o V8 lê (com os escapes `\u` desfeitos); elas podem
+  mudar de lugar dentro dele, porque existem antes de qualquer instrução dele rodar, e só nele;
+- toda outra instrução do alto está no head, na mesma ordem e no mesmo script;
+- toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha, numa folha da mesma pasta e inline
+  ou de arquivo como antes (pode mudar de folha ligada ali, com a mesma extensão: as URLs relativas dela continuam
+  apontando para o mesmo arquivo, e o servidor a entrega com o mesmo tipo) e com os mesmos scripts antes da folha dela
+  (um script vê as regras das folhas que vêm antes dele);
+- as traduções que o servidor põe na página (a pasta `i18n/`, na página com a marca do i18n) são as mesmas linhas, na
+  mesma ordem (uma linha repetida também conta: chave repetida é erro no `i18n.ler`), sem o espaço das pontas que o
+  `i18n.ler` também tira (o espaço depois de uma `\` fica), com as linhas quebradas onde o `i18n.ler` as quebra (o
+  `splitlines`, que também quebra num `\v`).
+
+Instruções e regras são comparadas como árvores de sintaxe (o tree-sitter, do `requirements-dev.txt`), com o texto de
+cada nó que nenhum filho cobre (o número de um `14px`), sem os comentários e os espaços fora de strings e templates. A
+quebra de linha logo depois do `return`, do `break`, do `continue`, do `throw`, do `yield`, de um `++` ou `--` e no
+começo de uma função ou de uma seta conta, porque ali ela muda o que o código faz (o `return` seguido de quebra devolve
+`undefined`). Assim, uma marca de bloco, uma linha em branco ou uma indentação nova
+não são mudança, e um espaço dentro de um template literal, ou uma marca que junta dois tokens, são. No CSS
+conta também se um token vem depois de espaço (só os cinco do CSS; outro caractere no vão fica), de comentário ou de
+nada (o `calc()` pede os espaços em volta do `+`
+e do `-`, e um comentário parte o `14/**/px`). Declarações de
+função de mesmo nome guardam a ordem (vale a última). A parte do CSS
+que a gramática não conhece (um `@container` dentro de `@media`) também é comparada pelos tokens, e um script que
+não analisa, ou que o V8 (num Chrome sem tela) não compila, é mudança. O resto sai 1, com cada mudança impressa. O `dev/test_theme_rebuild.py`, do COMPLETO do
+`dev/testa_tudo.py`, confere o veredito em páginas pequenas e no tema com o `notice.js` trocado com o `covers.js`, com o
+`desk-buttons.js` e o `start.js` antes do `ui-events.js` e com o `bindShelfClick` levado do `shelf.js` para o fim do
+`start.js`.
+
+O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
 dos dois commits num Chrome sem tela, contra um `--mock` de cada, no tamanho do PC (a mesa) e no de um celular, e
 compara três tabelas. A primeira tem os ouvintes ligados no fim da carga, na ordem em que entraram (o
 `getEventListeners` do DevTools), com as opções e o texto de cada função: os de cada nó, do `document`, da `window` e do

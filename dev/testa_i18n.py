@@ -262,55 +262,40 @@ def check_theme_rebuild():
     if removed or added != [(4, "new")] or sorted(len(r) for r, _, _ in moved) != [1, 2]:
         falha(f"split_moves: moved {moved}, removed {removed}, added {added}; expected B1 B2 and y moved apart and "
               f"only 'new' added")
-    _, removed, added = theme_rebuild.split_moves(["x", "f();", "g();", "y"],
-                                                  ["x", "y", "function bind() {", "  f();", "  g();", "}"])
-    reindented, removed, added = theme_rebuild.split_reindented(removed, added)
-    if [len(r) for r, _, _ in reindented] != [2] or removed or added != [(2, "function bind() {"), (5, "}")]:
-        falha(f"split_reindented: {reindented}, removed {removed}, added {added}; expected f() and g() moved into "
-              f"bind()")
-    _, removed, added = theme_rebuild.split_moves(["const t = `a", "b`;"],
-                                                  ["function bind() {", "  const t = `a", "  b`;", "}"])
-    _, removed, added = theme_rebuild.split_reindented(removed, added)
-    if any(line == "  b`;" for _, line in added):
-        falha("known failure #240 passes now: theme_rebuild sees a new indentation inside a template literal; make this "
-              "a regular check and close the issue")
-    else:
-        print("known failure #240: theme_rebuild counts a reindented line inside a multi-line template literal as a move")
     files = {"index.html": '<script src="a.js" title="x > y" defer></script>\n<link rel="stylesheet" href="b.css">\n',
              "a.js": "/* A-JS-INICIO */\n'use strict';\nconst a = 1;\n/* A-JS-FIM */\n", "b.css": "b { }\n"}
     lines = theme_rebuild.rebuild(files.__getitem__)
-    if lines != ["[script a.js: [('title', 'x > y'), ('defer', None)]]", "[strict]", "const a = 1;", "b { }"]:
+    if lines != ["[script a.js: [('title', 'x > y'), ('defer', None)]]", "'use strict';", "const a = 1;", "[/script]",
+                 "[link b.css]", "b { }", "[/style]"]:
         falha(f"theme_rebuild.rebuild: {lines}")
     files["a.js"] = "/* A-JS-INICIO */\nconst a = 1;\n/* A-JS-FIM */\n"
     if theme_rebuild.rebuild(files.__getitem__) == lines:
         falha("theme_rebuild.rebuild: a file that loses its 'use strict' rebuilds the same")
-    quoted = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x&quot; type=&quot;j"></script>',
+    quoted = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x&quot; type=&quot;text/javascript"></script>',
                                     "a.js": "const a = 1;\n"}.__getitem__)
-    split = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x" type="j"></script>',
+    split = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x" type="text/javascript"></script>',
                                    "a.js": "const a = 1;\n"}.__getitem__)
     if quoted == split:
         falha(f"theme_rebuild.rebuild: one attribute with &quot; inside rebuilds like two attributes ({quoted})")
-    files = {"index.html": "<!-- inline-script: c.js -->\n<script onerror='f(this)' src='a.js'></script>\n",
+    files = {"index.html": '<!-- inline-script: c.js -->\n<script onerror="f(this)" src="a.js"></script>\n',
              "a.js": "const a = 1;\n", "c.js": "const c = 3;\n"}
     lines = theme_rebuild.rebuild(files.__getitem__)
     files["a.js"] = "const a = 2;\n"
     changed = theme_rebuild.rebuild(files.__getitem__)
-    if lines != ["const c = 3;", "[script a.js: [('onerror', 'f(this)')]]", "const a = 1;"] or changed == lines:
-        falha(f"theme_rebuild.rebuild with src after onerror, in single quotes, and an inline-script: {lines}, "
+    if lines != ["[inline-script c.js]", "const c = 3;", "[/script]", "[script a.js: [('onerror', 'f(this)')]]",
+                 "const a = 1;", "[/script]"] or changed == lines:
+        falha(f"theme_rebuild.rebuild with src after onerror and an inline-script: {lines}, "
               f"then {changed}")
     plain = theme_rebuild.rebuild({"index.html": "<script>\nconst d = 4;\n</script>\n"}.__getitem__)
     typed = theme_rebuild.rebuild({"index.html": '<script type="application/json">\nconst d = 4;\n</script>\n'}.__getitem__)
-    if plain != ["const d = 4;"] or typed == plain:
+    if plain != ["[script]", "const d = 4;", "[/script]"] or typed == plain:
         falha(f"theme_rebuild.rebuild keeps an inline <script> with attributes apart from a bare one: {plain}, {typed}")
     one = theme_rebuild.rebuild({"index.html": "<script>\nwindow.events.push(1)\n(() => window.events.push(2))()\n"
                                                "</script>\n"}.__getitem__)
     two = theme_rebuild.rebuild({"index.html": "<script>\nwindow.events.push(1)\n</script>\n<script>\n"
                                                "(() => window.events.push(2))()\n</script>\n"}.__getitem__)
-    if one != two:
-        falha("known failure #235 passes now: theme_rebuild keeps the script boundaries; make this a regular check and "
-              "close the issue")
-    else:
-        print("known failure #235: theme_rebuild rebuilds two scripts and one script with the same lines the same")
+    if one == two:
+        falha(f"theme_rebuild.rebuild: two scripts and one script with the same lines rebuild the same ({one})")
     print("the theme rebuild checked")
 
 
