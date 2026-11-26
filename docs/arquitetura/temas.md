@@ -12,7 +12,8 @@ navegador confere cada um com o servidor antes de usar o que guardou, e não usa
 conferir (o `dev/testa_mock.py` confere a página, o 304 dela, um `.js`, um `.css`, uma fonte e uma imagem). O
 `dev/testa_i18n.py` lê o `index.html` e todos os `.js` e `.css` da pasta do tema: cada bloco marcado
 (`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o `/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só,
-aberto e fechado nele, nessa ordem, e cada `.js` e `.css` fora do `gerado/` tem exatamente um bloco.
+aberto e fechado nele, nessa ordem, e cada `.js` e `.css` fora do `gerado/` tem exatamente um bloco, com a marca
+sozinha no comentário dela (o texto que explica o bloco vai num comentário logo abaixo).
 
 Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 Texto novo da interface entra por uma chave nas duas línguas (`i18n/` do tema, `gallery/i18n/` da galeria),
@@ -158,7 +159,8 @@ mantém as tabelas. O `dev/test_theme_listeners.py`, que o `--tela` roda, confer
 
 Num PR com a etiqueta `extracao-tema`, o job Tela roda as duas provas da base contra o head, nos passos "Only moves
 code" (`dev/testa_tudo.py --passo theme-rebuild --base`) e "Same listeners" (`--passo theme-listeners`), e reprova se
-uma delas não sai 0. O `dev/test_ci_workflow.py` confere os dois passos, a condição deles e o comando.
+uma delas não sai 0. A base é a do PR, e na fila o commit logo antes da entrada (a mesma do Compara). O
+`dev/test_ci_workflow.py` confere os dois passos, a condição deles, a base e o comando.
 
 Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `api.js` chama,
 e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o

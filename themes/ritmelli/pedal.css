@@ -1,4 +1,5 @@
-/* PEDAL-INICIO: a pedaleira da mesa em pixel art (1 celula = 2 px), como no mock de 20/11: dois paineis de feltro
+/* PEDAL-INICIO */
+/* a pedaleira da mesa em pixel art (1 celula = 2 px), como no mock de 20/11: dois paineis de feltro
    marrom, cada pedal de esmalte num canvas dele (o corpo, os parafusos, o icone, o LED e o nome; o Troca de voz maior,
    com o visor e as duas vozes), o footswitch do app antigo em SVG por cima e, no Troca de voz, o icone na grade de 1 px
    num canvas por cima, tudo sobre o botao de verdade, que fica transparente (o clique, o foco e o nome para o leitor de

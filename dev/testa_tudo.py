@@ -161,16 +161,19 @@ REQUIRED_MODES = {
     "--passo pr-description": ("testes", NOT_ON_PUSH, "PR description", "${{ !cancelled() }}",
                                "python dev/testa_tudo.py --passo pr-description"),
     "--passo theme-rebuild": ("tela", NOT_ON_PUSH, "Only moves code", EXTRACTION,
-                              "python dev/testa_tudo.py --passo theme-rebuild --base $env:BASE"),
+                              "python dev/testa_tudo.py --passo theme-rebuild --base $env:PROOF_BASE"),
     "--passo theme-listeners": ("tela", NOT_ON_PUSH, "Same listeners", EXTRACTION,
-                                "python dev/testa_tudo.py --passo theme-listeners --base $env:BASE"),
+                                "python dev/testa_tudo.py --passo theme-listeners --base $env:PROOF_BASE"),
     "--compara": ("compara", NOT_ON_PUSH, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
     "--capture": ("compara-head", None, "Captura do HEAD", "steps.areas.outputs.roda == 'true'", HEAD_RUN),
     "--capture-base": ("compara-base", NOT_ON_PUSH, "Captura da base", "steps.areas.outputs.roda == 'true'", BASE_RUN),
 }
 COMPARA_ENV = {"EXTRACAO": "${{ steps.areas.outputs.extracao }}", "BASE_SHA": "${{ steps.chave.outputs.base }}"}
+PROOF_BASE_ENV = {"PROOF_BASE": "${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || "
+                                "github.event.pull_request.base.sha }}"}
 REQUIRED_ENV = {"--compara": COMPARA_ENV, "--capture-base": {"BASE_SHA": "${{ steps.chave.outputs.base }}"},
-                "--passo pr-description": {"GH_TOKEN": "${{ github.token }}"}}
+                "--passo pr-description": {"GH_TOKEN": "${{ github.token }}"},
+                "--passo theme-rebuild": PROOF_BASE_ENV, "--passo theme-listeners": PROOF_BASE_ENV}
 BASE_ENV = "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
 AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE"
 BUILD_AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE --build-base $env:BUILD_BASE"
@@ -703,15 +706,17 @@ def fitcheck(pasta):
         for script, what in (("dev/missing_script.py", "a theme file that does not load"),
                              ("dev/theme_scripts.py", "the theme's scripts"),
                              ("dev/test_theme_listeners.py", "the listener reader of dev/theme_listeners.py")):
+            started = time.monotonic()
             cod, saida = executa([sys.executable, script])
-            print(f"--- {Path(script).stem}: exits {cod}\n{saida.rstrip()}", flush=True)
+            took = time.monotonic() - started
+            print(f"--- {Path(script).stem}: exits {cod} in {took:.0f} s\n{saida.rstrip()}", flush=True)
             if cod != 0:
                 bloqueia = True
                 md += [f"<details><summary>❌ {what}: {script} exits {cod}</summary>", "", cerca(cauda(saida)), "",
                        "</details>"]
             else:
                 n = sum(linha.startswith("OK") for linha in saida.splitlines())
-                md.append(f"- ✅ {what}: {n} checks of {script} pass")
+                md.append(f"- ✅ {what}: {n} checks of {script} pass in {took:.0f} s")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return md, bloqueia

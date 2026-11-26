@@ -310,11 +310,15 @@ jobs:
       - name: Only moves code
         id: rebuild
         if: ${{ !cancelled() && steps.areas.outputs.extracao == 'true' && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}
-        run: python dev/testa_tudo.py --passo theme-rebuild --base $env:BASE
+        env:
+          PROOF_BASE: ${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || github.event.pull_request.base.sha }}
+        run: python dev/testa_tudo.py --passo theme-rebuild --base $env:PROOF_BASE
       - name: Same listeners
         id: listeners
         if: ${{ !cancelled() && steps.areas.outputs.extracao == 'true' && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}
-        run: python dev/testa_tudo.py --passo theme-listeners --base $env:BASE
+        env:
+          PROOF_BASE: ${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || github.event.pull_request.base.sha }}
+        run: python dev/testa_tudo.py --passo theme-listeners --base $env:PROOF_BASE
       # runs even with the fitcheck red, but not without the libraries (its step skipped)
       - name: Aviso dos dados de uso
         id: metricas

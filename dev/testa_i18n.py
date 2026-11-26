@@ -157,6 +157,10 @@ def check_one_block(tema, arquivos):
             if len(opened) != 1:
                 falha(f"{tema.name}: {nome} has {len(opened)} INICIO/FIM blocks: every .js and .css of the theme "
                       f"outside gerado/ has exactly one")
+            for m in MARCA_BLOCO.finditer(texto):
+                if texto[m.end():texto.find("*/", m.end())].strip():
+                    falha(f"{tema.name}: {nome}:{texto.count(chr(10), 0, m.start()) + 1}: the mark {m.group(0)[2:].strip()} "
+                          f"shares its comment with text: put the text in a comment of its own")
 
 
 def inline_lines(html):
@@ -324,10 +328,13 @@ def check_tag_and_block_guards():
         check_one_block(Path("ritmelli"), {"index.html": "", "a.css": "a { }\n",
                                            "b.js": "/* B-INICIO */\n/* B-FIM */\n/* C-INICIO */\n/* C-FIM */\n",
                                            "c.css": "/* C-INICIO */\n/* C-FIM */\n", "gerado/d.css": "d { }\n",
-                                           "e.js": "/* e:inicio */\n/* e:fim */\n"})
-    if len(falhas) != antes + 2 or not ("a.css has 0" in falhas[-2] and "b.js has 2" in falhas[-1]):
-        falha(f"check_one_block should fail on a file with no block and one with two, and pass gerado/: "
-              f"{falhas[antes:]}")
+                                           "e.js": "/* e:inicio */\n/* e:fim */\n",
+                                           "f.css": "  /* PRATELEIRA-CARTAO-INICIO (07/11, pedido do dono): o cartao\n"
+                                                    "     da prateleira */\n  /* PRATELEIRA-CARTAO-FIM */\n"})
+    if len(falhas) != antes + 3 or not ("a.css has 0" in falhas[-3] and "b.js has 2" in falhas[-2]
+                                        and "f.css:1: the mark PRATELEIRA-CARTAO-INICIO shares" in falhas[-1]):
+        falha(f"check_one_block should fail on a file with no block, one with two and a mark with text, and pass "
+              f"gerado/: {falhas[antes:]}")
     else:
         del falhas[antes:]
     counted = inline_lines('<SCRIPT>\na\nb\n</SCRIPT>\n<script data-src="a.js">\nc\n</script>\n'

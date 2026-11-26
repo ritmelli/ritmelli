@@ -210,7 +210,10 @@ def test_modes(flows):
                lambda s: s.update({"if": s["if"].replace("steps.areas.outputs.extracao == 'true' && ", "")}))
               for step in ("Only moves code", "Same listeners")),
             *(("tela", step, f"the --base dropped from the {step} step",
-               lambda s: s.update({"run": s["run"].replace(" --base $env:BASE", "")}))
+               lambda s: s.update({"run": s["run"].replace(" --base $env:PROOF_BASE", "")}))
+              for step in ("Only moves code", "Same listeners")),
+            *(("tela", step, f"the base of the group in the {step} step",
+               lambda s: s["env"].update({"PROOF_BASE": "${{ env.BASE }}"}))
               for step in ("Only moves code", "Same listeners")),
             ("tela", "O PR mexe na tela?", "the id of the areas step changed",
              lambda s: s.update({"id": "areas-later"})),
