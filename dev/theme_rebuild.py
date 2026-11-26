@@ -153,7 +153,7 @@ def block_of(kind, name, others):
     if kind in ("link", "style-open"):
         return Block("style", header("link" if kind == "link" else "style", name, others), tuple(others.items()),
                      others.get("type") in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "",
-                     source=("file" if kind == "link" else "inline",))
+                     source=("file", posixpath.splitext(name)[1].lower()) if kind == "link" else ("inline",))
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
                  others.get("type") in JS_TYPES, source=("file" if kind == "script" else "inline", name))
 
@@ -270,7 +270,7 @@ def translations(read, page):
     if i18n.MARCA not in page:
         return ()
     return tuple((language, tuple(TRAILING_SPACE.sub("", line.lstrip())
-                                  for line in read(f"i18n/i18n_{language}.properties").split("\n")
+                                  for line in read(f"i18n/i18n_{language}.properties").splitlines()
                                   if line.strip() and not line.lstrip().startswith(("#", "!"))))
                  for language in i18n.LINGUAS)
 

@@ -14,6 +14,7 @@ PEDAL = '<script src="pedal.js" onerror="scriptFailed(this)"></script>'
 HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
 TWO_INLINED = "<!-- inline-script: s.js -->\n<!-- inline-script: t.js -->\n"
 TRANSLATED = {"index.html": "<!-- i18n -->\n", "i18n/i18n_en.properties": "", "i18n/i18n_pt_BR.properties": ""}
+NEW_FILES = ("transporte-new.js", "base.txt")
 LEFT, CAME = "declaration left its script", "declaration came into the script"
 
 
@@ -167,7 +168,7 @@ SAMPLES = (
 
 def theme_mutant(changes):
     read = theme_rebuild.reader(None, "ritmelli")
-    return lambda name: changes[name](read(name) if name != "transporte-new.js" else "", read) if name in changes \
+    return lambda name: changes[name](read(name) if name not in NEW_FILES else "", read) if name in changes \
         else read(name)
 
 
@@ -224,6 +225,13 @@ def main():
         ("a translation line moved to the end", {"i18n/i18n_en.properties": lambda text, _: text.replace(
             "nav.backToShelf=Back to the shelf\n", "") + "nav.backToShelf=Back to the shelf\n"
             if "nav.backToShelf=" in text else ""}, "translations in another order"),
+        ("base.css renamed to base.txt",
+         {"index.html": lambda html, _: html.replace('href="base.css"', 'href="base.txt"')
+          if 'href="base.css"' in html else "",
+          "base.txt": lambda _, read: read("base.css")}, "gone"),
+        ("a translation put after a vertical tab in a comment", {"i18n/i18n_en.properties": lambda text, _: text.replace(
+            "# Geral:", "#\vnav.backToShelf=Close the app\v# Geral:") if "# Geral:" in text else ""},
+         "translation new"),
         ("transporte.js renamed",
          {"index.html": lambda html, _: html.replace('src="transporte.js"', 'src="transporte-new.js"')
           if 'src="transporte.js"' in html else "",

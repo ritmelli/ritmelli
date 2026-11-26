@@ -95,11 +95,12 @@ ou da pasta). Ela sai 0 quando o head só muda código de lugar:
   instrução dele rodar, e só nele);
 - toda outra instrução do alto está no head, na mesma ordem e no mesmo script;
 - toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha, numa folha da mesma pasta e inline
-  ou de arquivo como antes (pode mudar de folha ligada ali: as URLs relativas dela continuam apontando para o mesmo
-  arquivo);
+  ou de arquivo como antes (pode mudar de folha ligada ali, com a mesma extensão: as URLs relativas dela continuam
+  apontando para o mesmo arquivo, e o servidor a entrega com o mesmo tipo);
 - as traduções que o servidor põe na página (a pasta `i18n/`, na página com a marca do i18n) são as mesmas linhas, na
   mesma ordem (uma linha repetida também conta: chave repetida é erro no `i18n.ler`), sem o espaço das pontas que o
-  `i18n.ler` também tira (o espaço depois de uma `\` fica).
+  `i18n.ler` também tira (o espaço depois de uma `\` fica), com as linhas quebradas onde o `i18n.ler` as quebra (o
+  `splitlines`, que também quebra num `\v`).
 
 Instruções e regras são comparadas como árvores de sintaxe (o tree-sitter, do `requirements-dev.txt`), com o texto de
 cada nó que nenhum filho cobre (o número de um `14px`), sem os comentários e os espaços fora de strings e templates. Assim, uma marca de bloco, uma linha em branco ou uma indentação
