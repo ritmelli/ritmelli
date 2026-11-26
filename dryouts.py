@@ -48,7 +48,7 @@ class VoicePedalStart:
 
     def track(self, live, stamp=None):
         now = self.clock()
-        new = (stamp != self._stamp) if stamp else (live and not self._live)
+        new = (stamp != self._stamp and stamp != 0) if stamp is not None else (live and not self._live)
         if new:
             now_ms = round(now * 1000)
             up_ms = now_ms - (now_ms - (stamp - 1)) % (2**32 - 1) if stamp else now_ms

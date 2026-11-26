@@ -1071,6 +1071,40 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertIn("came up 0.00 s ago, after the ring was last filled, so which came first is not known",
                       self.pedal_lines()[-1])
 
+    def hold_producer(self, where):
+        entered, release = threading.Event(), threading.Event()
+        self.addCleanup(release.set)
+        real = getattr(where[0], where[1])
+
+        def held(*args):
+            if threading.current_thread().name == "producer":
+                entered.set()
+                release.wait(5)
+            return real(*args)
+        self.enterContext(mock.patch.object(where[0], where[1], held))
+        producer = threading.Thread(target=self.producer.pista_liga, name="producer", daemon=True)
+        producer.start()
+        self.addCleanup(producer.join, 5)
+        self.assertTrue(entered.wait(3), "the producer never got to the hold")
+        return release
+
+    def test_a_track_turning_on_is_not_up_before_it_is_on(self):
+        self.pedal_on(0.5)
+        release = self.hold_producer((self.k, "GetTickCount64"))
+        self.dry_out()
+        release.set()
+        self.assertIn("its voice track isn't up yet", self.pedal_lines()[-1])
+
+    def test_a_track_on_before_its_stamp_is_one_start(self):
+        self.pedal_on(0.5)
+        release = self.hold_producer((injeta, "clock"))
+        self.assertTrue(espera(lambda: self.a.pista_ligada == 1 and self.motor._pista_viva))
+        self.dry_out()
+        release.set()
+        self.assertTrue(espera(lambda: self.a.pista_ligou_ms and self.motor.voice_pedal._stamp == self.a.pista_ligou_ms),
+                        "the injector never read the stamp")
+        self.assertEqual(self.logged().count("voice pedal: its voice track came up"), 1, self.logged())
+
     def test_dry_out_long_after_the_track_came_up(self):
         self.pedal_on(0.0)
         self.track_up()
