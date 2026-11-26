@@ -41,11 +41,13 @@ Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o for
 da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de
 desligar o efeito da barra de baixo) no `voice-effects.js`, os do toca-discos no `turntable.js` e os do receptor no
 `receiver.js`, os do palco e da barra de baixo no `stage.js`, o da página do disco no `disc-page.js` e os da
-prateleira no `shelf.js`. O arquivo da parte guarda os ouvintes numa função (o `bindSearch()`, o
-`bindSearchResults()`, o `bindVoiceEffects()`, o `bindTurntable()`, o `bindReceiver()`, o `bindStage()`, o
-`bindDiscPage()` e o `bindShelf()`), e quem liga é o lugar em que eles eram registrados antes: o `ui-events.js` chama
-os da busca, dos efeitos, do toca-discos, do receptor, do palco, da página do disco e da prateleira, e o `queue.js`
-chama o `bindSearchResults()`.
+prateleira no `shelf.js`. O arquivo da parte guarda os ouvintes em funções, uma por trecho seguido de registros (o
+`bindSearch()`, o `bindSearchResults()`, o `bindVoiceEffects()`, o `bindTurntable()`, o `bindReceiver()`, o
+`bindMiniBar()`, o `bindStageButtons()` e o `bindStageGestures()` do palco, o `bindDiscPage()`, o `bindShelfClick()` e
+o `bindShelf()`), e quem liga é o lugar em que cada trecho era registrado antes: o `ui-events.js` chama os da busca,
+dos efeitos, do toca-discos, do receptor, do palco, da página do disco e da prateleira, e o `queue.js` chama o
+`bindSearchResults()`. Com um arquivo da base faltando, o `ui-events.js` para no mesmo ponto em que parava, com os
+mesmos ouvintes já registrados.
 Assim os controles só respondem quando os arquivos de que eles dependem já carregaram (o formulário da busca segue
 `inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos outros no mesmo alvo (o toque fora da busca
 para o evento depois de o ouvinte do `queue.js` na `window` ver o toque). A busca, os resultados e os efeitos de voz
