@@ -1,7 +1,7 @@
 {
-  "comment_lines": 6617,
+  "comment_lines": 6613,
   "docstring_lines": 4076,
-  "suppressions": 34,
+  "suppressions": 33,
   "sleeps_app": 43,
   "sleeps_dev": 67,
   "theme_timers": 30,
@@ -24,6 +24,6 @@
   "engine_py_lines": 3729,
   "server_py_lines": 2712,
   "index_html_lines": 643,
-  "agents_md_lines": 80,
-  "agents_rules_without_check": 10
+  "agents_md_lines": 74,
+  "agents_rules_without_check": 1
 }

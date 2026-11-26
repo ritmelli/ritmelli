@@ -232,6 +232,48 @@ def check_script_tags(tema, html, arquivos):
               f"shared state and helpers load before every other script")
 
 
+def call_spans(text):
+    for m in re.finditer(r"\bI18N\.(t|tp|rico)\(", text):
+        depth, i, quote = 1, m.end(), None
+        while i < len(text) and depth:
+            ch = text[i]
+            if quote:
+                if ch == "\\":
+                    i += 1
+                elif ch == quote:
+                    quote = None
+            elif ch in "'\"`":
+                quote = ch
+            elif ch in "()":
+                depth += 1 if ch == "(" else -1
+            i += 1
+        yield m.group(1), text[m.end():i - 1]
+
+
+def requested_keys(html):
+    pedidas = set(re.findall(rf'data-i18n(?:-[a-z-]+)?="({CHAVE})"', html))
+    sem_marcacao = set(re.findall(rf'data-i18n-[a-z-]+="({CHAVE})"', html))
+    plurais = set()
+    for nome, args in call_spans(html):
+        nela = set(re.findall(rf"['\"]({CHAVE})['\"]", args))
+        plural = set(re.findall(rf"^\s*['\"]({CHAVE})['\"]", args)) if nome == "tp" else set()
+        plurais |= plural
+        pedidas |= nela - plural
+        if nome != "rico":
+            sem_marcacao |= nela
+    return pedidas, plurais, sem_marcacao
+
+
+def check_call_spans():
+    spans = list(call_spans("a = I18N.t(x ? 'a.b'\n  : f('c.d', ')')) + 'e.f';\nI18N.tp('g.h', n); I18N.rico(\n'i.j')"))
+    if spans != [("t", "x ? 'a.b'\n  : f('c.d', ')')"), ("tp", "'g.h', n"), ("rico", "\n'i.j'")]:
+        falha(f"call_spans should read each I18N call to its closing parenthesis, across lines: {spans}")
+    keys = requested_keys("I18N.tp('a.count', n); I18N.t('a.count'); I18N.tp('b.count', n, 'b.label')")
+    if keys[:2] != ({"a.count", "b.label"}, {"a.count", "b.count"}):
+        falha(f"requested_keys should ask for the key of an I18N.t even when an I18N.tp uses it as a plural: {keys}")
+    print("the I18N call reader checked")
+
+
 def check_tag_and_block_guards():
     antes = len(falhas)
     with contextlib.redirect_stdout(io.StringIO()):
@@ -358,19 +400,7 @@ def confere_tema(tema, servidor, efeitos):
     check_block_pairs(tema, arquivos)
     check_script_tags(tema, arquivos["index.html"], arquivos)
     html = "\n".join(arquivos.values())
-    # o que o tema pede: os data-i18n* e as chaves entre aspas nas linhas que chamam o I18N.t, o I18N.tp ou o
-    # I18N.rico (pega o I18N.t(cond ? 'a.b' : 'a.c'))
-    pedidas = set(re.findall(rf'data-i18n(?:-[a-z-]+)?="({CHAVE})"', html))
-    # onde a tag apareceria escrita: os atributos e as linhas do I18N.t sem o I18N.rico
-    sem_marcacao = set(re.findall(rf'data-i18n-[a-z-]+="({CHAVE})"', html))
-    plurais = set()
-    for linha in html.splitlines():
-        if "I18N.t(" in linha or "I18N.tp(" in linha or "I18N.rico(" in linha:
-            nela = set(re.findall(rf"['\"]({CHAVE})['\"]", linha))
-            pedidas |= nela
-            plurais |= set(re.findall(rf"I18N\.tp\(\s*['\"]({CHAVE})['\"]", linha))
-            if "I18N.rico(" not in linha:
-                sem_marcacao |= nela
+    pedidas, plurais, sem_marcacao = requested_keys(html)
     for k in sorted(sem_marcacao):
         if tags(base.get(k, "")):
             falha(f"{tema.name}: {k} has markup, so it goes through data-i18n or I18N.rico, not I18N.t or an attribute")
@@ -381,7 +411,7 @@ def confere_tema(tema, servidor, efeitos):
             falha(f"{tema.name}: the server sends {k} ({onde}), which is not in the files")
         elif params(base[k]) != params(texto):
             falha(f"{tema.name}: {k} has params {sorted(params(base[k]))}, and the server sends {sorted(params(texto))}")
-    for k in sorted(pedidas - plurais):
+    for k in sorted(pedidas):
         if k not in base:
             falha(f"{tema.name}: the theme uses {k}, which is not in the files")
     for k in sorted(plurais):
@@ -712,6 +742,7 @@ def confere_modulo():
 def main():
     confere_modulo()
     check_tag_and_block_guards()
+    check_call_spans()
     check_theme_rebuild()
     temas = [d for d in sorted((RAIZ / "themes").iterdir()) if (d / "i18n").is_dir()]
     if not temas:

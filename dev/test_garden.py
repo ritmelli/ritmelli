@@ -494,18 +494,32 @@ CASES = {
         ("a job of the testa.yml", {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n",
                                     ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n    name: Testa o PR\n"},
          {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n"}),
-        ("a check named in double quotes", {"AGENTS.md": AGENTS_OK + "- Run \"Testa o PR\" before the queue.\n",
-                                            ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n"
-                                                                          "    name: Testa o PR\n"},
-         {"AGENTS.md": AGENTS_OK + "- Run \"Testa o PR\" before the queue.\n"}),
-        ("a workflow by its name", {"AGENTS.md": AGENTS_OK + "- Run \"Monta o instalador\" on the branch.\n",
-                                    ".github/workflows/monta.yml": "name: Monta o instalador\non:\n  push:\njobs:\n"
-                                                                  "  x:\n    runs-on: windows-2025\n"},
-         {"AGENTS.md": AGENTS_OK + "- Run \"Monta o instalador\" on the branch.\n"}),
-        ("a job of another workflow", {"AGENTS.md": AGENTS_OK + "- The `testa-parcial` job of `monta.yml`.\n",
-                                       ".github/workflows/monta.yml": "on:\n  push:\njobs:\n  testa-parcial:\n"
-                                                                     "    runs-on: windows-2025\n"},
-         {"AGENTS.md": AGENTS_OK + "- The `testa-parcial` job of `monta.yml`.\n"}),
+        ("a check named in double quotes is no citation", {"AGENTS.md": AGENTS_OK, ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n    name: Testa o PR\n"},
+         {"AGENTS.md": AGENTS_OK + "- Run \"testa_i18n\" and \"Testa o PR\" before the queue.\n", ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n    name: Testa o PR\n"}),
+        ("the name of another workflow is no check", {"AGENTS.md": AGENTS_OK, ".github/workflows/monta.yml": "name: Monta o instalador\non:\n  push:\njobs:\n  testa-parcial:\n    runs-on: windows-2025\n"},
+         {"AGENTS.md": AGENTS_OK + "- Run `Monta o instalador` on the branch.\n", ".github/workflows/monta.yml": "name: Monta o instalador\non:\n  push:\njobs:\n  testa-parcial:\n    runs-on: windows-2025\n"}),
+        ("a job with words after it is no citation, a registered step with its option is",
+         {"AGENTS.md": AGENTS_OK + "- A rule held by `testa_pasta_protegida --disco`.\n", ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  testes:\n    name: Testes\n"},
+         {"AGENTS.md": AGENTS_OK + "- A rule of the `testes inventado` job.\n", ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  testes:\n    name: Testes\n"}),
+        ("a script registered only as a step, with its option",
+         {"AGENTS.md": "# A\n\n- A rule held by `test_smoke --strict`.\n",
+          "dev/testa_tudo.py": TUDO.replace("PASSOS = {}", "PASSOS = {'smoke': ('dev/test_smoke.py', '--strict')}")},
+         {"AGENTS.md": "# A\n\n- A rule held by `test_smoke`.\n",
+          "dev/testa_tudo.py": TUDO.replace("PASSOS = {}", "PASSOS = {'smoke': ('dev/test_smoke.py', '--strict')}")}),
+        ("a test with an option that is not registered",
+         {"AGENTS.md": AGENTS_OK + "- A rule held by `fitcheck.py --metricas`.\n"},
+         {"AGENTS.md": AGENTS_OK + "- A rule held by `testa_pasta_protegida --dsico`.\n"}),
+        ("a row of the map with no check in its test column",
+         {"AGENTS.md": "# A\n\n| Area | Files | Test |\n| --- | --- | --- |\n| Texts | `i18n.py` | `testa_i18n` |\n"},
+         {"AGENTS.md": "# A\n\n| Area | Files | Test |\n| --- | --- | --- |\n| Texts | `i18n.py` | `testa_i18n` |\n| Window | `janela.py` | `engine.py` |\n"}),
+        ("a row of the map whose test column is empty",
+         {"AGENTS.md": "# A\n\n| Area | Files | Test |\n| --- | --- | --- |\n| Texts | `i18n.py` | `testa_i18n` |\n"},
+         {"AGENTS.md": "# A\n\n| Area | Files | Test |\n| --- | --- | --- |\n| Texts | `i18n.py` | `testa_i18n` |\n| Texts | `testa_i18n` ||\n"}),
+        ("a row of the map without its test column",
+         {"AGENTS.md": "# A\n\n| Area | Files | Test |\n| --- | --- | --- |\n| Texts | `i18n.py` | `testa_i18n` |\n"},
+         {"AGENTS.md": "# A\n\n| Area | Files | Test |\n| --- | --- | --- |\n| Texts | `i18n.py` | `testa_i18n` |\n| Garden | `dev/garden.py` |\n"}),
+        ("a job of another workflow is no check", {"AGENTS.md": AGENTS_OK, ".github/workflows/monta.yml": "name: Monta o instalador\non:\n  push:\njobs:\n  testa-parcial:\n    runs-on: windows-2025\n"},
+         {"AGENTS.md": AGENTS_OK + "- The `testa-parcial` job of `monta.yml`.\n", ".github/workflows/monta.yml": "name: Monta o instalador\non:\n  push:\njobs:\n  testa-parcial:\n    runs-on: windows-2025\n"}),
     ],
 }
 
@@ -744,6 +758,24 @@ def test_description():
     check(garden.description_problems(good + "\nThe rest stays for now, tracked in\n"
                                              "**[#250](https://github.com/o/r/issues/250)**.\n") == [],
           "a prose phrase with its issue in bold on the next line of the paragraph passes")
+    for label, line in [("a closing line", "Closes #280"), ("a closing list item", "- Fixes #12"),
+                        ("closing lines joined", "Closes #1, fixes #2 and resolves o/r#3"),
+                        ("closing lines joined with a comma and an and", "Closes #1, fixes #2, and resolves #3"),
+                        ("closing lines joined with a semicolon", "Closes #1; fixes #2"),
+                        ("a closing line that goes on", "Closes #272: the per-file cases that failed now and then"),
+                        ("a closing line with another issue after it", "Closes #196. #197, the pair, stays open."),
+                        ("a reference with no closing word", "It leaves the cause of #276 open."),
+                        ("a reference to keep", "Refs #276"), ("a closing word in code", "The `fixes #3` text."),
+                        ("a closing word with no issue", "It fixes the loop."), ("a word that ends in fix", "prefixes #4")]:
+        check(garden.description_problems(good + "\n" + line + "\n") == [], f"{label} passes")
+    check(garden.description_problems(good + "\n```\nIt does not fix #9.\n```\n") == [], "a closing word in a code block passes")
+    for label, line in [("the closing word after a negation (#290)", "This PR adds that diagnostic. It does not fix #276."),
+                        ("a closing word after a closing line", "Closes #1. It does not fix #2."),
+                        ("a closing word in a sentence", "This might fix #12 too."),
+                        ("a closing word with a colon and another repo", "It is fixed: o/r#5 in passing."),
+                        ("a closing word with the issue link", "Nothing here resolves https://github.com/o/r/issues/7.")]:
+        problems = garden.description_problems(good + "\n" + line + "\n")
+        check(len(problems) == 1 and "closes the issue" in problems[0], f"{label} fails ({problems})")
     check(garden.pr_number("pull_request", {"pull_request": {"number": 7}}) == 7, "the PR number of a pull_request")
     check(garden.pr_number("merge_group", {"merge_group": {"head_ref": "refs/heads/gh-readonly-queue/main/pr-246-"
                                                            + "a" * 40}}) == 246, "the PR number of a merge_group entry")

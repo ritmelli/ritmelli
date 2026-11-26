@@ -534,7 +534,7 @@ python dev\testa_tudo.py --tela --base origin/main # fitcheck and compara, as th
 `python dev\testa_tudo.py --so-stdlib` runs only the tests that need nothing but the Python standard library, and
 `--without-long` everything but the two long tests (the transition bench, `dev/testa_passagem.py`, and the compara
 capture, `dev/test_capture.py`, about 2 minutes each), which `--long` runs alone; the pull request check runs each in a
-job of its own (Banca and Captura), next to the others. The tests run four at a time, except the ones that measure time, which run one by one after the others (`--jobs 1` runs
+job of its own (Banca and Captura, this one only when the PR touches the screen), next to the others. The tests run four at a time, except the ones that measure time, which run one by one after the others (`--jobs 1` runs
 everything one by one).
 
 A new test is named `dev/test_*.py` (in English; the older ones are `dev/testa_*.py`). Either kind goes into one of
@@ -584,9 +584,11 @@ They all run with the virtual environment active, some need ffmpeg, and `testa_f
 `--mock` included, since a running Ritmelli keeps `voz.dll` open).
 
 The phone pairing (`pareamento.py`) is checked by `dev/testa_pareamento.py`, and `batida.py` runs inside the engine
-that `dev/testa_passagem.py` drives. The rest of the beat analysis (`compasso.py`, `andamento.py`), the window
-(`janela.py`) and the microphone volume (`winvol.py`) have no test yet: if you change them, say in the pull request
-how you checked the change.
+that `dev/testa_passagem.py` drives. The rest of the beat analysis is checked by `dev/test_compasso.py` (how the
+network's 30 s chunks are stitched and how its peaks become beats, with a fake session instead of the model) and
+`dev/test_andamento.py` (the order of the similar tracks by tempo and artist), the microphone volume by
+`dev/test_winvol.py` (with fake Windows devices), and the window (`janela.py`) by the installed app in the `testa`
+job of `monta.yml`.
 
 To change a voice effect, edit its settings in `fx.py`; `microfone/preset.py` turns them into the preset that the C++
 engine (`microfone/apo/voz.h`) runs. A new kind of processing step also needs code in `voz.h`, and
