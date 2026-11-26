@@ -133,6 +133,8 @@ CASES = {
          {"themes/t/a.js": "setTimeout(f, 1);\n"}),
         ("setInterval in index.html", {"themes/t/index.html": "<script>\nf();\n</script>\n"},
          {"themes/t/index.html": "<script>\nsetInterval(f, 1);\n</script>\n"}),
+        ("a timer in an attribute", {"themes/t/index.html": "<div title=\"setTimeout(f, 1)\"></div>\n"},
+         {"themes/t/index.html": "<div title=\"x\"></div>\n<script>\nsetTimeout(f, 1);\n</script>\n"}),
         ("a script commented out", {"themes/t/index.html": "<!--\n<script>\nsetTimeout(f, 1);\n</script>\n-->\n"},
          {"themes/t/index.html": "<script>\nsetTimeout(f, 1);\n</script>\n"}),
         ("requestIdleCallback", {"gallery/a.js": "setTimeout(f, 1);\n"}, {"themes/t/a.js": "requestIdleCallback(f);\n"}),
@@ -280,6 +282,7 @@ CASES = {
          {"a.py": "match x:\n    case int() as número:\n        pass\n"}),
         ("a name the parser folds to ASCII", {"a.py": "K = 1\n"}, {"a.py": "K = 1\n"}),
         ("an imported module", {"a.py": "from modulo import x\n"}, {"a.py": "from módulo import x\n"}),
+        ("a part of a dotted module", {"a.py": "from cafe.api import route\n"}, {"a.py": "from café.api import route\n"}),
         ("the original name of an alias", {"a.py": "import modulo as m\n"}, {"a.py": "import módulo as m\n"}),
         ("an alias", {"a.py": "import modulo as m\n"}, {"a.py": "import modulo as ação\n"}),
         ("a match mapping rest", {"a.py": "match x:\n    case {'a': 1, **r}:\n        pass\n"},
@@ -352,6 +355,12 @@ def test_counters():
             check(after == before + step, f"{name}, {label}: the weed counts {step} ({before} -> {after})")
 
 
+def test_string_lines():
+    two = "ps = ('do{Start-Sleep 1}while($a);'\n      'if($b){Start-Sleep 1}')\n"
+    items = garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": two}))
+    check(items == [("a.py", 1), ("a.py", 2)], f"each fragment of a concatenated string keeps its own line ({items})")
+
+
 def test_known_misses():
     for name, label, files in KNOWN_MISSES:
         check(count(name, files) == 0, f"known miss ({KNOWN_MISSES_ISSUE}): {name} does not count {label}; when it "
@@ -380,10 +389,9 @@ def test_check():
     _, first = garden.check({"a": 1}, {"a": 1}, None)
     check(first == ["-- summary: garden a: 1 (new, no ceiling on the base)"],
           f"with no base at all, every counter goes to the summary ({first})")
-    failed, measured = garden.check({"a": [("x.py", 1)] * 2, "b": 5}, {"a": 2, "b": 5}, {"a": 3, "b": 5},
-                                    base_has_ceilings=False)
+    failed, measured = garden.check({"a": [("x.py", 1)] * 2, "b": 5}, {"a": 2, "b": 5}, {"a": 3, "b": 5})
     check(failed == [] and measured == ["-- summary: garden a: 2 (-1 against the base)"],
-          f"a base from before the scoreboard is measured: the delta of what changed, no ceiling check ({measured})")
+          f"a base from before the scoreboard is measured: the delta of what changed ({measured})")
     for label, ceilings, base in (("NaN", {"a": float("nan")}, {"a": 1}), ("a text", {"a": "2"}, {"a": 1}),
                                   ("a negative number", {"a": -1}, {"a": 1}), ("NaN on the base", {"a": 2},
                                                                               {"a": float("nan")})):
@@ -420,7 +428,7 @@ def test_description():
         "a heading with a list": "## How it was proven\n\n- `gh run view 1` shows the step failing on the base.\n",
         "a link to a run": "## Proof\n\nThe [run](https://github.com/o/r/actions/runs/123) fails on the base.\n",
         "a screenshot": "**Proof**\n\n![the page](https://github.com/user-attachments/assets/1)\n",
-        "a code block": "## Proof\n\n```\n$ make\nok\n```\n",
+        "a code block": "## Proof\n\n```\n$ python dev/testa_i18n.py\nok    the keys\n```\n",
         "a test runner's output": "## Proof\n\n```\n===== 12 passed in 3.1s =====\n```\n",
         "the summary of dev/testa_tudo.py": "## Proof\n\n```\n14 of 14 passed in 37 s, 4 at a time\n```\n",
         "a heading inside the code block": "# Change\n\n## Proof\n\n```bash\n# Before\n$ python dev/x.py\nfails\n```\n",
@@ -442,6 +450,7 @@ def test_description():
         "a plain label after it": "Proof: it works.\nNotes: `python dev/x.py` is the next step.\n",
         "an empty code block": "## Proof\n\n```\n```\n",
         "a code block with no run in it": "## Proof\n\n```\nIt works.\n```\n",
+        "a prompt with no command": "## Proof\n\n```\n> everything passed\n```\n",
         "a code block with only a claim": "## Proof\n\n```\nAll tests passed.\n```\n",
         "a code block that reports a claim": "## Proof\n\n```\nThe reviewer said 12 passed.\n```\n",
         "an option alone": "## Proof\n\n`--help`\n",
@@ -613,9 +622,11 @@ def test_base():
         measured = {k: garden.count_of(v) for k, v in garden.scoreboard(tree).items()}
         now = garden.scoreboard(garden.base_tree(after, root=repo))
         ceilings = {k: garden.count_of(v) for k, v in now.items()}
-        failed, summary = garden.check(now, ceilings, measured, base_has_ceilings=False)
-        check(failed == [] and summary == ["-- summary: garden comment_lines: 3 (+1 against the base)"],
+        failed, summary = garden.check(now, ceilings, measured)
+        check(summary == ["-- summary: garden comment_lines: 3 (+1 against the base)"],
               f"against a measured base, only the counter that changed goes to the summary ({summary})")
+        check(failed == ["comment_lines: the ceiling went up from 2 to 3 in dev/garden.json: a ceiling only goes down"],
+              f"the PR that brings the scoreboard can't raise a count with its first ceilings either ({failed})")
 
 
 PASSO = "python dev/testa_tudo.py --passo pr-description"
@@ -682,6 +693,7 @@ def test_stdlib():
 
 test_counters()
 test_known_misses()
+test_string_lines()
 test_check()
 test_acceptance()
 test_description()

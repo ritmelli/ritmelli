@@ -60,8 +60,8 @@ RUN_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/actions/runs/\d+")
 IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)|<img\s|https://github\.com/user-attachments/")
 PROOF_COMMANDS = {"python", "py", "gh", "git", "pwsh", "powershell", "bash", "node", "npm", "ruff", "actionlint"}
 RUNNER_NAMES = {"testa_tudo", "testa_tudo.py", "dev/testa_tudo.py"}
-BLOCK_PROOF = re.compile(r"^[ \t]*(?:\$|>|PS [^>\n]*>|[A-Z]:\\[^>\n]*>)[ \t]*\S"
-                         r"|^[ \t]*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)[ \t]+\S"
+BLOCK_PROOF = re.compile(r"^[ \t]*(?:(?:\$|>|PS [^>\n]*>|[A-Z]:\\[^>\n]*>)[ \t]*)?"
+                         r"(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)[ \t]+\S"
                          r"|^[ \t]*(?:ok|FAIL|FALHA)[ \t]|^[ \t]*(?:=+[ \t]*)?\d+ (?:of|de) \d+\b"
                          r"|^[ \t]*(?:=+[ \t]*)?\d+ (?:passed|failed)\b|^[ \t]*exit(?: code)?[ \t]*[=:]?[ \t]*\d+\b"
                          r"|^Traceback \(most recent call last\)",
@@ -318,9 +318,8 @@ def lex_html(text):
         offset = text.count("\n", 0, m.start(3))
         kind = m.group(2).lower()
         shift(lex_c(m.group(3), js=kind == "script", css=kind == "style"), offset, out)
-    commented = {n for c in out.comments for n in range(c.start, c.end + 1)}
-    for n, line in enumerate(text.splitlines(), 1):
-        out.code.setdefault(n, "" if n in commented else line)
+    for n in range(1, text.count("\n") + 2):
+        out.code.setdefault(n, "")
     return out
 
 
@@ -511,9 +510,28 @@ def python_strings(t, path):
     return out
 
 
+def python_string_lines(t, path):
+    tree = t.tree(path)
+    if tree is None or path in GARDEN_FILES:
+        return []
+    raw = t.files[path].splitlines()
+    inside_f_strings = {id(v) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr) for v in node.values}
+    out = []
+    for node in ast.walk(tree):
+        literal = isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in inside_f_strings
+        if not (literal or isinstance(node, ast.JoinedStr)):
+            continue
+        for n in range(node.lineno, node.end_lineno + 1):
+            line = raw[n - 1] if n <= len(raw) else ""
+            start = node.col_offset if n == node.lineno else 0
+            end = node.end_col_offset if n == node.end_lineno else len(line)
+            out.append((n, line[start:end]))
+    return out
+
+
 def code_lines(t, path):
     if suffix(path) in (".py", ".spec"):
-        return python_strings(t, path)
+        return python_string_lines(t, path)
     return sorted(t.lexed(path).code.items())
 
 
@@ -939,43 +957,14 @@ def prose_justifications(t):
                    if PROSE.search(text) and not ISSUE.search(text)})
 
 
-def identifiers(tree):
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name):
-            yield node, node.id
-        elif isinstance(node, ast.Attribute):
-            yield node, node.attr
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            yield node, node.name
-        elif isinstance(node, ast.arg):
-            yield node, node.arg
-        elif isinstance(node, ast.keyword) and node.arg:
-            yield node, node.arg
-        elif isinstance(node, ast.alias):
-            yield node, node.name
-            if node.asname:
-                yield node, node.asname
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            yield node, node.module
-        elif isinstance(node, (ast.Global, ast.Nonlocal)):
-            for name in node.names:
-                yield node, name
-        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name:
-            yield node, node.name
-        elif isinstance(node, ast.MatchMapping) and node.rest:
-            yield node, node.rest
-
-
 def non_ascii_identifiers(t):
     items = []
     for p in t.paths(".py", ".spec"):
         tree = t.tree(p)
         if tree is None:
             continue
-        found = {(getattr(n, "lineno", 0), name) for n, name in identifiers(tree) if not name.isascii()}
         tokens = tokenize.generate_tokens(io.StringIO(t.files[p]).readline)
-        found |= {(tok.start[0], tok.string) for tok in tokens if tok.type == tokenize.NAME and not tok.string.isascii()}
-        items += [(p, line) for line, _ in sorted(found)]
+        items += [(p, tok.start[0]) for tok in tokens if tok.type == tokenize.NAME and not tok.string.isascii()]
     return items
 
 
@@ -1177,7 +1166,7 @@ def is_count(value):
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def check(counts, ceilings, base, added=None, base_has_ceilings=True):
+def check(counts, ceilings, base, added=None):
     bad = [f"{name}: the ceiling {value!r} in {where} is not a whole number" for where, values in
            (("dev/garden.json", ceilings), ("the base's dev/garden.json", base or {}))
            for name, value in values.items() if not is_count(value)]
@@ -1195,7 +1184,7 @@ def check(counts, ceilings, base, added=None, base_has_ceilings=True):
         if ceiling is None:
             failures.append(f"{name}: {n}, with no ceiling in dev/garden.json: add \"{name}\": {n}")
             continue
-        if before is not None and base_has_ceilings and ceiling > before:
+        if before is not None and ceiling > before:
             failures.append(f"{name}: the ceiling went up from {before} to {ceiling} in dev/garden.json: a ceiling "
                             f"only goes down")
         if n > ceiling:
@@ -1227,7 +1216,7 @@ def run(root=ROOT):
     measured = before is None and bool(base)
     if measured:
         before = {name: count_of(value) for name, value in scoreboard(base_tree(base, root)).items()}
-    failures, summary = check(counts, ceilings, before, added_lines(base, root), base_has_ceilings=not measured)
+    failures, summary = check(counts, ceilings, before, added_lines(base, root))
     for name, value in counts.items():
         print(f"{'ok  ' if count_of(value) == ceilings.get(name) else 'FAIL'}  {name}: {count_of(value)} "
               f"(ceiling {ceilings.get(name)})")
