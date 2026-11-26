@@ -120,6 +120,10 @@ SAMPLES = (
      styled("a { padding: calc(14px\v+ 1px); }\n"), ["gone", "new"]),
     ("a vertical tab after the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px \v+ 1px); }\n"), ["gone", "new"]),
+    ("a lone carriage return put after return", inline("function d() { return !!x; }"),
+     {"index.html": theme_rebuild.text_of(b"<script>\nfunction d() { return\r!!x; }\n</script>\n")}, [LEFT, CAME]),
+    ("a no-break space put before a button", {"index.html": "<div>\n  <button></button>\n</div>\n"},
+     {"index.html": "<div>\n \u00a0<button></button>\n</div>\n"}, ["gone", "new"]),
     ("a comment in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px/* c */+ 1px); }\n"), ["gone", "new"]),
     ("a stylesheet with a font moved to another folder", {"index.html": "<link rel='stylesheet' href='base.css'>\n",
@@ -180,6 +184,9 @@ def main():
         ("the </script> of pedal.js taken out",
          {"index.html": lambda html, _: html.replace(PEDAL, PEDAL.removesuffix("</script>")) if PEDAL in html else ""},
          "script tag or strict mode"),
+        ("the </script> of pedal.js with an open quote in it",
+         {"index.html": lambda html, _: html.replace(PEDAL, PEDAL.replace("</script>", '</script x=">'))
+          if PEDAL in html else ""}, "script tag or strict mode"),
         ("transporte.js renamed",
          {"index.html": lambda html, _: html.replace('src="transporte.js"', 'src="transporte-new.js"')
           if 'src="transporte.js"' in html else "",

@@ -43,6 +43,7 @@ INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 INLINED = "data-theme-rebuild-inline-script"
 RAW_TEXT = re.compile(r"<!--.*?-->|<(script|style)\b[^>]*>", re.I | re.S)
 CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
+HTML_SPACE = " \t\n\r\f"
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
 SENTINEL = re.compile(r"^\x00(open (\d+)|close)\x00$")
 JS_TYPES = (None, "", "text/javascript")
@@ -54,16 +55,20 @@ CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 MIN_PIECE = 2
 
 
+def text_of(data):
+    return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def reader(rev, theme):
     folder = f"themes/{theme}/"
     if rev is None:
-        return lambda name: (RAIZ / folder / name).read_text(encoding="utf-8")
+        return lambda name: text_of((RAIZ / folder / name).read_bytes())
 
     def show(name):
         out = subprocess.run(["git", "-C", str(RAIZ), "show", f"{rev}:{folder}{name}"], capture_output=True)
         if out.returncode:
             raise SystemExit(f"{rev}: {folder}{name}: {out.stderr.decode(errors='replace').strip()}")
-        return out.stdout.decode("utf-8").replace("\r\n", "\n")
+        return text_of(out.stdout)
     return show
 
 
@@ -152,10 +157,24 @@ def ended_as_the_browser_ends(page):
         end = re.compile(rf"</{opened.group(1)}[\t\n\f\r />]", re.I).search(page, opened.end())
         if not end:
             break
-        close = page.find(">", end.end() - 1)
+        close = tag_end(page, end.end() - 1)
+        if close < 0:
+            break
         out.append(page[at:end.start()] + f"</{opened.group(1).lower()}>")
-        at = close + 1 if close >= 0 else len(page)
+        at = close + 1
     return "".join(out) + page[at:]
+
+
+def tag_end(page, at):
+    while at < len(page) and page[at] != ">":
+        if page[at] == "=":
+            value = at + 1 + len(page[at + 1:]) - len(page[at + 1:].lstrip(HTML_SPACE))
+            if value < len(page) and page[value] in "\"'":
+                at = page.find(page[value], value + 1)
+                if at < 0:
+                    return -1
+        at += 1
+    return at if at < len(page) else -1
 
 
 def assemble(read):
@@ -371,8 +390,8 @@ def markup(page):
             kind = page.blocks[item[1]].kind
             out.append(((kind, order[kind]), None, page.blocks[item[1]].header))
             order[kind] += 1
-        elif item[0] == "line" and item[2] is None and item[1].strip():
-            out.append((("line", item[1].strip()), None, item[1].strip()))
+        elif item[0] == "line" and item[2] is None and item[1].strip(HTML_SPACE):
+            out.append((("line", item[1].strip(HTML_SPACE)), None, item[1].strip(HTML_SPACE)))
     return out
 
 
