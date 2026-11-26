@@ -58,6 +58,10 @@ printed, and the exit is 1."""
 CANNOT_JUDGE = 3
 LEFTOVER_MARKER = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 FILE_KINDS = {"script": "script", "style": "link"}
+JS_MIME = ("application/ecmascript", "application/javascript", "application/x-ecmascript", "application/x-javascript",
+           "text/ecmascript", "text/javascript", "text/javascript1.0", "text/javascript1.1", "text/javascript1.2",
+           "text/javascript1.3", "text/javascript1.4", "text/javascript1.5", "text/jscript", "text/livescript",
+           "text/x-ecmascript", "text/x-javascript")
 PLAIN_PATH = re.compile(r"(?:/t/[A-Za-z0-9_-]+/)?[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+")
 TRAILING_SPACE = re.compile(r"(?<!\\)\s+$")
 CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
@@ -180,7 +184,7 @@ def block_of(kind, name, others):
                      source=("file", posixpath.splitext(name)[1].lower()) if kind == "link"
                      else ("inline",))
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
-                 runs(type_of(others)), source=("file" if kind == "script" else "inline", name))
+                 runs(others), source=("file" if kind == "script" else "inline", name))
 
 
 def edge(text):
@@ -194,8 +198,10 @@ def type_of(attributes):
     return attributes.get("type") or ""
 
 
-def runs(kind):
-    return kind == "" or kind.strip(HTML_SPACE).lower() == "text/javascript"
+def runs(others):
+    if "type" in others:
+        return others["type"] == "" or others["type"].strip(HTML_SPACE).lower() in JS_MIME
+    return others.get("language", "") == "" or f"text/{others['language']}".lower() in JS_MIME
 
 
 def attributes(raw):
@@ -209,17 +215,25 @@ def tags_of(html):
     theme_page = from_root("theme_page")
 
     class Tags(theme_page.Template):
+        def token(self, i):
+            if (m := theme_page.GRAMMAR["comment"].match(self.html, i)) and LEFTOVER_MARKER.fullmatch(m.group(0)):
+                leftover.append(i)
+            return super().token(i)
+
         def start_tag(self, m, i):
             end = super().start_tag(m, i)
             tag, others = m.group(1).lower(), attributes(m.group(2))
             if tag == "style" or tag == "script" and "src" not in others:
                 inline.append((i, end, f"{tag}-open", None, others, m.end(), end - len(tag) - 3))
             return end
-    inline = []
+    inline, leftover = [], []
     try:
         template = Tags(html)
     except theme_page.ThemePageError as refused:
         raise Doubt(f"index.html, line {refused.at[0]}: {refused}, which the server refuses") from refused
+    if leftover:
+        raise Doubt(f"index.html, line {html.count(chr(10), 0, leftover[0]) + 1}: an <!-- inline-script: --> comment, "
+                    f"which servers before theme_page replaced with a file and this one leaves as a comment")
     if unread := [(start, kind) for start, _, kind, _ in template.found if kind not in FILE_KINDS]:
         raise Doubt(f"index.html, line {html.count(chr(10), 0, unread[0][0]) + 1}: a file tag of the kind "
                     f"{unread[0][1]!r}, which this tool does not read")
@@ -242,9 +256,6 @@ def assemble(read, files=None, theme="ritmelli"):
         text = read(name)
         return text if text is None else text.removeprefix("\ufeff")
     html = need("index.html").removeprefix("\ufeff")
-    if leftover := LEFTOVER_MARKER.search(html):
-        raise Doubt(f"index.html, line {html.count(chr(10), 0, leftover.start()) + 1}: an <!-- inline-script: --> "
-                    f"comment, which servers before theme_page replaced with a file and this one leaves as a comment")
     tags = tags_of(html)
     languages = [f"i18n/i18n_{language}.properties" for language in from_root("i18n").LINGUAS]
     if (marked := [x for x in tags if x[2] == "i18n"]) and not any(read(x) is not None for x in languages) and \
