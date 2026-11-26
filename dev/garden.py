@@ -584,9 +584,18 @@ def local_nodes(node):
             yield from local_nodes(child)
 
 
+def exits(node):
+    call = node.value if isinstance(node, ast.Expr) else None
+    if not isinstance(call, ast.Call):
+        return False
+    f = call.func
+    return (isinstance(f, ast.Attribute) and f.attr in ("exit", "_exit") and isinstance(f.value, ast.Name)
+            and f.value.id in ("sys", "os")) or (isinstance(f, ast.Name) and f.id in ("exit", "quit"))
+
+
 def leaves(body):
     last = body[-1] if body else None
-    return isinstance(last, (ast.Return, ast.Raise, ast.Break))
+    return isinstance(last, (ast.Return, ast.Raise, ast.Break)) or exits(last)
 
 
 def python_retries(tree):
@@ -645,7 +654,7 @@ def powershell_retries(code):
 
 
 JS_HANDLER = re.compile(r"\bonerror\s*=\s*(?:function\b[^(]*\([^)]*\)\s*|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*)"
-                        r"|\bcatch\s*(?:\([^)]*\))?\s*(?=\{)|\.catch\s*(?=\()")
+                        r"|\bcatch\s*(?:\([^)]*\))?\s*(?=\{)|\.(?:catch|aoFalhar)\s*(?=\()")
 JS_RESCHEDULE = re.compile(r"\bsetTimeout\s*\(\s*[A-Za-z_$][\w$]*\s*,")
 
 
@@ -660,8 +669,33 @@ def handler_body(code, start):
     return i, code[i:stop]
 
 
+def mask_js_strings(code):
+    out, quote, i = [], None, 0
+    while i < len(code):
+        c = code[i]
+        if quote:
+            if c == "\\" and i + 1 < len(code):
+                out.append("  " if code[i + 1] != "\n" else " \n")
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+                out.append(c)
+            else:
+                out.append("\n" if c == "\n" else " ")
+            if c == "\n" and quote != "`":
+                quote = None
+        else:
+            if c in "'\"`":
+                quote = c
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def js_retries(code):
     found = []
+    code = mask_js_strings(code)
     for m in JS_HANDLER.finditer(code):
         start, body = handler_body(code, m.end())
         found += [code.count("\n", 0, start + r.start()) + 1 for r in JS_RESCHEDULE.finditer(body)]
@@ -1160,8 +1194,26 @@ def has_proof(text):
     return any(PROOF_SPAN.search(span) for span in re.findall(r"`([^`\n]+)`", prose))
 
 
-def proof_sections(lines):
+def fence_opens(line):
+    m = FENCE_OPEN.match(line)
+    return m.group(1) if m and not (m.group(1)[0] == "`" and "`" in m.group(2)) else None
+
+
+def outside_fences(lines):
+    fence = None
     for i, line in enumerate(lines):
+        if fence is None:
+            opened = fence_opens(line)
+            if opened:
+                fence = opened
+            else:
+                yield i, line
+        elif fence_closes(line, fence):
+            fence = None
+
+
+def proof_sections(lines):
+    for i, line in outside_fences(lines):
         rest = proof_label(line)
         if rest is not None:
             section, level, fence = [rest], heading_level(line), None
@@ -1169,9 +1221,7 @@ def proof_sections(lines):
                 if fence is None and ends_section(nxt, level):
                     break
                 if fence is None:
-                    m = FENCE_OPEN.match(nxt)
-                    if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
-                        fence = m.group(1)
+                    fence = fence_opens(nxt)
                 elif fence_closes(nxt, fence):
                     fence = None
                 section.append(nxt)

@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -155,6 +156,16 @@ CASES = {
          {"a.js": "try {\n  es = T.eventos(u);\n} catch (e) {\n  reconT = setTimeout(conectar, 3000);\n  return;\n}\n"}),
         ("an onerror function on several lines", {"a.js": "s.onerror = function () {\n  s.remove();\n};\n"},
          {"a.js": "s.onerror = function () {\n  s.remove();\n  setTimeout(go, 1000);\n};\n"}),
+        ("a handler exits", {"a.py": "import sys, time\nfor w in sizes:\n    try:\n        f(w)\n    except OSError:\n"
+                                     "        sys.exit(1)\n    time.sleep(1)\n"},
+         {"a.py": "import sys, time\nfor w in sizes:\n    try:\n        f(w)\n    except OSError:\n"
+                  "        print('again')\n    time.sleep(1)\n"}),
+        ("a brace and a timer inside strings", {"a.js": "s.onerror = () => { report(\"setTimeout(go, 100)\"); };\n"},
+         {"a.js": "s.onerror = () => { report(\"}\"); setTimeout(go, 100); };\n"}),
+        ("the transport's aoFalhar", {"a.js": "es.aoFalhar(() => { online(false); });\n"},
+         {"a.js": "es.aoFalhar(() => {\n  if (S.pareando) return;\n  fonte.fechar();\n"
+                  "  api('GET', '/api/state').then(() => true, e => e.status !== 401)\n"
+                  "    .then(volta => { if (volta && !S.pareando) reconT = setTimeout(conectar, 3000); });\n});\n"}),
         ("a promise catch that tries again", {"a.js": "fetch(u).then(go);\n"},
          {"a.js": "function go() { fetch(u).catch(() => setTimeout(go, 3000)); }\n"}),
     ],
@@ -251,8 +262,6 @@ KNOWN_MISSES = [
     ("broad_excepts", "a JavaScript catch", {"a.js": "try { f(); } catch (e) { }\n"}),
     ("retries", "a JavaScript failure told by an if (index.html, the transport not loaded)",
      {"a.js": "s.onload = () => { if (typeof T === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); } };\n"}),
-    ("retries", "a JavaScript failure told by a .then (index.html, the pairing check)",
-     {"a.js": "p.then(volta => { if (volta && !S.pareando) reconT = setTimeout(conectar, 3000); });\n"}),
 ]
 
 
@@ -357,6 +366,7 @@ def test_description():
         "a plain label after it": "Proof: it works.\nNotes: `python dev/x.py` is the next step.\n",
         "an empty code block": "## Proof\n\n```\n```\n",
         "a code block that never closes": "## Proof\n\n```\npython dev/x.py\n```text\n",
+        "a proof section only inside an example block": "```markdown\n## Proof\n`python dev/garden.py`\n```\n",
     }
     for label, body in failing.items():
         check(garden.description_problems(body) != [], f"a proof section with {label} fails")
@@ -421,6 +431,7 @@ def test_base():
     with tempfile.TemporaryDirectory() as d:
         repo = Path(d)
         garden.git("init", "-q", root=repo)
+        garden.git("config", "core.autocrlf", "false", root=repo)
         before = commit(repo, {"a.py": "x = 1  # why\r\n", "engine.py": "x = 1\n"}, "before the scoreboard")
         after = commit(repo, {"a.py": "x = 1  # why\ny = 2  # and why\n", "dev/garden.json": '{"comment_lines": 2}\n'},
                        "the scoreboard")
@@ -433,6 +444,8 @@ def test_base():
         check(garden.base_ceilings(before, root=repo) is None, "a base from before the scoreboard has no ceilings")
         check(garden.base_ceilings(after, root=repo) == {"comment_lines": 2}, "a base with the scoreboard has its ceilings")
         check(garden.base_ceilings("", root=repo) is None, "no base, no ceilings")
+        blob = subprocess.run(["git", "cat-file", "-p", f"{before}:a.py"], cwd=repo, capture_output=True).stdout
+        check(blob == b"x = 1  # why\r\n", f"the fixture's blob keeps its CRLF ({blob!r})")
         tree = garden.base_tree(before, root=repo)
         check(tree == {"a.py": "x = 1  # why\n", "engine.py": "x = 1\n"},
               f"the base tree is read from git, with its text files ({tree})")
