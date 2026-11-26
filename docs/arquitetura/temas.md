@@ -9,9 +9,10 @@ do `server.py`), porque o celular pareado, o atalho na tela inicial e os favorit
 
 Todo arquivo de `/t/` sai com `Cache-Control: no-cache`, como a página (o `tema_sem_guardar` do `server.py`): o
 navegador confere cada um com o servidor antes de usar o que guardou, e não usa um `.js` ou um `.css` de antes sem
-conferir (o `dev/testa_mock.py` confere a página, o 304 dela e um `.js`). O `dev/testa_i18n.py` lê o `index.html` e
-todos os `.js` e `.css` da pasta do tema, e cada bloco marcado (`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o
-`/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só, aberto e fechado nele, nessa ordem.
+conferir (o `dev/testa_mock.py` confere a página, o 304 dela, um `.js`, um `.css`, uma fonte e uma imagem). O
+`dev/testa_i18n.py` lê o `index.html` e todos os `.js` e `.css` da pasta do tema: cada bloco marcado
+(`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o `/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só,
+aberto e fechado nele, nessa ordem, e cada `.js` e `.css` fora do `gerado/` tem exatamente um bloco.
 
 Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 Texto novo da interface entra por uma chave nas duas línguas (`i18n/` do tema, `gallery/i18n/` da galeria),

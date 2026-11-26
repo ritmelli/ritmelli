@@ -150,6 +150,15 @@ def check_block_pairs(tema, arquivos):
                   f"that order, in the same file")
 
 
+def check_one_block(tema, arquivos):
+    for nome, texto in arquivos.items():
+        if nome.endswith((".js", ".css")) and not nome.startswith("gerado/"):
+            opened = [m for m in MARCA_BLOCO.finditer(texto) if (m.group(2) or m.group(4).upper()) == "INICIO"]
+            if len(opened) != 1:
+                falha(f"{tema.name}: {nome} has {len(opened)} INICIO/FIM blocks: every .js and .css of the theme "
+                      f"outside gerado/ has exactly one")
+
+
 def inline_lines(html):
     total = 0
     for attrs, _, _, body in script_elements(html, ("script", "style")):
@@ -311,6 +320,16 @@ def check_tag_and_block_guards():
               f"{falhas[antes:]}")
     else:
         del falhas[antes:]
+    with contextlib.redirect_stdout(io.StringIO()):
+        check_one_block(Path("ritmelli"), {"index.html": "", "a.css": "a { }\n",
+                                           "b.js": "/* B-INICIO */\n/* B-FIM */\n/* C-INICIO */\n/* C-FIM */\n",
+                                           "c.css": "/* C-INICIO */\n/* C-FIM */\n", "gerado/d.css": "d { }\n",
+                                           "e.js": "/* e:inicio */\n/* e:fim */\n"})
+    if len(falhas) != antes + 2 or not ("a.css has 0" in falhas[-2] and "b.js has 2" in falhas[-1]):
+        falha(f"check_one_block should fail on a file with no block and one with two, and pass gerado/: "
+              f"{falhas[antes:]}")
+    else:
+        del falhas[antes:]
     counted = inline_lines('<SCRIPT>\na\nb\n</SCRIPT>\n<script data-src="a.js">\nc\n</script>\n'
                            '<script src="x.js"></script>\n<!-- inline-script: y.js -->\n<style>\nd\n</style>\n')
     if counted != 4:
@@ -398,6 +417,7 @@ def confere_tema(tema, servidor, efeitos):
     arquivos = arquivos_do_tema(tema)
     confere_blocos(tema, arquivos)
     check_block_pairs(tema, arquivos)
+    check_one_block(tema, arquivos)
     check_script_tags(tema, arquivos["index.html"], arquivos)
     html = "\n".join(arquivos.values())
     pedidas, plurais, sem_marcacao = requested_keys(html)
