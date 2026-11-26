@@ -55,7 +55,6 @@ SUPPRESSIONS_IN_COMMENTS = re.compile(r"\bnoqa\b|\btype:\s*ignore\b|\beslint-dis
 PRAGMA_DISABLE = re.compile(r"#\s*pragma\s+warning\s*\(\s*disable")
 SILENTLY_CONTINUE = re.compile(r"-ErrorAction\s+SilentlyContinue\b", re.I)
 START_SLEEP = re.compile(r"\bStart-Sleep\b", re.I)
-SCOPE = re.compile(r"^(?:global|script|local|private):", re.I)
 SHELL_PIECES = ("bash", "cmd", "unknown")
 QUIET_ERRORS = {"silentlycontinue", "ignore", "0", "4"}
 THEME_TIMER = re.compile(r"\b(?:setTimeout|setInterval|requestIdleCallback)\s*\(")
@@ -568,7 +567,7 @@ def quiet_errors(piece):
         if isinstance(node, units.ps.Command):
             found += [piece.line_of(p.span.start) for p in error_preference(node)]
         elif isinstance(node, units.ps.Assign) and isinstance(node.target, units.ps.Variable) and \
-                SCOPE.sub("", node.target.name).lower() == "erroractionpreference" and quiet_value(node.value):
+                ir.variable_name(node.target.name) == "erroractionpreference" and quiet_value(node.value):
             found.append(piece.line_of(node.span.start))
     return found
 
@@ -1030,7 +1029,7 @@ def workflow_jobs(t):
         return set()
     try:
         doc = workflow_yaml.loads(text, name="testa.yml")
-    except workflow_yaml.YamlError:
+    except ValueError:
         return set()
     jobs = doc.get("jobs") if isinstance(doc, dict) else None
     if not isinstance(jobs, dict):
@@ -1229,7 +1228,6 @@ def run(root=ROOT):
     before = {name: count_of(value) for name, value in scoreboard(base_tree(base, root)).items()} if base else None
     failures, summary = check(counts, ceilings, before, added_lines(base, root))
     failures = [f"unreadable: {p}" for p in unreadable] + failures
-
     for name, value in counts.items():
         print(f"{'ok  ' if count_of(value) == ceilings.get(name) else 'FAIL'}  {name}: {count_of(value)} "
               f"(ceiling {ceilings.get(name)})")

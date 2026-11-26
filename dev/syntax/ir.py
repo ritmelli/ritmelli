@@ -1,4 +1,5 @@
 import ast
+import re
 from dataclasses import dataclass, field
 
 from . import powershell as ps
@@ -7,6 +8,7 @@ PYTHON_BROAD = {"Exception", "BaseException"}
 POWERSHELL_BROAD = {"exception", "system.exception"}
 SLEEP_MODULES = {"time", "asyncio"}
 PS_SLEEPS = {"start-sleep", "sleep"}
+SCOPE = re.compile(r"^(?:global|script|local|private):", re.I)
 
 
 @dataclass(eq=False)
@@ -99,6 +101,10 @@ class Unit:
     language: str
     body: Block
     functions: dict = field(default_factory=dict)
+
+
+def variable_name(name):
+    return SCOPE.sub("", name).lower()
 
 
 def children(node):
@@ -475,7 +481,7 @@ class PowerShellLowering:
     def truth(self, node):
         if isinstance(node, ps.Assign) and node.op == "=" and node.value is not None:
             calls = self.truth(self.unwrapped(node.value))
-            target = node.target.name.lower() if isinstance(node.target, ps.Variable) else None
+            target = variable_name(node.target.name) if isinstance(node.target, ps.Variable) else None
             return None if calls is None else calls + ([Assign(self.line(node), target)] if target else [])
         if isinstance(node, ps.Pipeline) and node.elements and all(isinstance(e, ps.Command) for e in node.elements):
             return [self.node(e) for e in node.elements]
@@ -486,12 +492,12 @@ class PowerShellLowering:
             return None
         inner = self.unwrapped(node)
         if isinstance(inner, ps.Variable):
-            return Name(self.line(inner), inner.name.lower())
+            return Name(self.line(inner), variable_name(inner.name))
         if isinstance(inner, ps.Unary) and inner.op in ("!", "not"):
             return Not(self.line(inner), self.condition(inner.operand))
         if isinstance(inner, ps.Binary) and inner.op in ("and", "or"):
             return Condition(self.line(inner), [self.condition(inner.left), self.condition(inner.right)])
-        variables = [Name(self.line(node), v) for v in sorted({v.name.lower() for v in ps.walk(inner)
+        variables = [Name(self.line(node), v) for v in sorted({variable_name(v.name) for v in ps.walk(inner)
                                                                if isinstance(v, ps.Variable)})]
         truth = self.truth(inner)
         if truth is not None:
@@ -573,7 +579,7 @@ class PowerShellLowering:
                     t = t.operand
                 if isinstance(t, ps.Variable):
                     known, value = self.constant(n.value) if n.op == "=" else (False, None)
-                    out.append(Assign(line, t.name.lower(), known, value))
+                    out.append(Assign(line, variable_name(t.name), known, value))
             return Block(line, out)
         if isinstance(n, ps.Command):
             name = self.command_name(n)
@@ -609,8 +615,8 @@ class PowerShellLowering:
             inner = inner.elements[0].expression
         if isinstance(inner, ps.Binary) and inner.op == "..":
             return True
-        name = loop.variable.name.lower()
-        return not any(isinstance(v, ps.Variable) and v.name.lower() == name for v in ps.walk(loop.body))
+        name = variable_name(loop.variable.name)
+        return not any(isinstance(v, ps.Variable) and variable_name(v.name) == name for v in ps.walk(loop.body))
 
     def constant(self, value):
         inner = value

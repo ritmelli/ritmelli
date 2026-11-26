@@ -296,6 +296,9 @@ CASES = {
                   "while True:\n    if check(attempt()):\n        break\n    time.sleep(1)\n"},
          {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
                   "while True:\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a flag set with its scope",
+         {"a.ps1": "function attempt { try { f } catch { $null } }\ndo { $script:other = attempt; Start-Sleep 1 } until ($done)\n"},
+         {"a.ps1": "function attempt { try { f } catch { $null } }\ndo { $script:done = attempt; Start-Sleep 1 } until ($done)\n"}),
         ("a do-until on the result of its helper",
          {"a.ps1": "function Get-S { try { f } catch { $null } }\ndo { Start-Sleep 1; $s = Get-S } until (-not $s)\n"},
          {"a.ps1": "function Get-S { try { f } catch { $null } }\ndo { Start-Sleep 1; $s = Get-S } until ($s)\n"}),
@@ -808,6 +811,12 @@ def test_unreadable():
         except ValueError as ex:
             problems = [repr(ex)]
         check(any(p.startswith(place) for p in problems), f"an unreadable {label} is reported at its place ({problems})")
+    try:
+        garden.measure({".github/workflows/testa.yml": "? [a]\n: b\n"})
+        crashed = ""
+    except ValueError as ex:
+        crashed = repr(ex)
+    check(not crashed, f"a testa.yml with a collection as a key does not stop the count ({crashed})")
 
 
 def test_workflow_python_lines():

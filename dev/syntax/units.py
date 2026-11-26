@@ -550,4 +550,3 @@ def python_embedded(path, text, line_of):
     if piece.tree is None:
         return [piece]
     return [piece, *embedded_powershell(path, piece.tree, text, by_line)]
-

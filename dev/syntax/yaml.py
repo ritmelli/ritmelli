@@ -77,11 +77,7 @@ class Stream:
 
 
 def resolved(node):
-    seen = set()
     while isinstance(node, Alias):
-        if id(node) in seen:
-            break
-        seen.add(id(node))
         node = node.target
     return node
 
@@ -91,23 +87,20 @@ def scalar_text(node):
     return node.value if isinstance(node, Scalar) else None
 
 
-def data(node, _stack=()):
+def data(node):
     node = resolved(node)
     if node is None or isinstance(node, Empty):
         return None
     if isinstance(node, Scalar):
         return node.value
-    if id(node) in _stack:
-        raise ValueError("a recursive alias")
-    stack = (*_stack, id(node))
     if isinstance(node, Sequence):
-        return [data(item, stack) for item in node.items]
+        return [data(item) for item in node.items]
     out = {}
     for key, value in node.pairs:
-        k = data(key, stack)
+        k = data(key)
         if isinstance(k, (list, dict)):
             raise ValueError("a collection as a mapping key")
-        out[k] = data(value, stack)
+        out[k] = data(value)
     return out
 
 
