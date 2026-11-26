@@ -13,7 +13,7 @@ VENDOR = Path("instalador", "vendor")
 
 
 def frozen_version():
-    tree = ast.parse(Path("versao.py").read_text(encoding="utf-8"))
+    tree = ast.parse(Path("versao.py").read_bytes())
     for node in tree.body:
         if isinstance(node, ast.Assign) and [getattr(t, "id", None) for t in node.targets] == ["VERSAO"]:
             return ast.literal_eval(node.value)
