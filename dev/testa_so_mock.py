@@ -120,6 +120,17 @@ class FakeStdin:
         self.closed = True
 
 
+class FakeJob:
+    def __init__(self, left=0):
+        self.left, self.ended = left, False
+
+    def left_after(self, seconds):
+        return self.left
+
+    def end(self, seconds=10.0):
+        self.ended = True
+
+
 class FakeChild:
     """The Popen of a child that runs nothing: poll() says whether it is alive; kill() ends it."""
 
@@ -270,6 +281,17 @@ def child(srv):
     msg = refused(f.encerra, espera=1)
     check(stubborn.stdin.closed and stubborn.killed and msg is not None and "did not stop" in msg,
           f"a child that does not exit when its stdin closes: its handle killed, and the stop fails saying so ({msg})")
+    job = FakeJob()
+    so_mock.Filho(FakeChild(), srv.port, job).encerra(espera=1)
+    check(job.ended, "a clean stop still ends the server's job, so nothing it started outlives it")
+    job = FakeJob(left=2)
+    msg = refused(so_mock.Filho(FakeChild(), srv.port, job).encerra, espera=1)
+    check(job.ended and msg is not None and "left 2" in msg,
+          f"a server that stops but leaves processes running fails the stop, with them ended ({msg})")
+    job = FakeJob()
+    hung = FakeChild(stops_on_eof=False)
+    refused(so_mock.Filho(hung, srv.port, job).encerra, espera=1)
+    check(hung.killed and job.ended, "a hung server is killed with its job")
     crashed = FakeChild(eof_code=3)
     msg = refused(so_mock.Filho(crashed, srv.port).encerra, espera=1)
     check(msg is not None and "code 3" in msg and not crashed.killed,

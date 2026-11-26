@@ -33,14 +33,16 @@ sys.argv = ["server.py", "--no-browser", "--port", sys.argv[2], *sys.argv[3:]]
 server.main()
 """
 HOLDER_WAIT_S = 30.0
-HUNG_SERVER = '''
+CHILD_HOLDS_THE_TRACK = '''
 import subprocess
 import sys
 import threading
 child = subprocess.Popen([sys.executable, "-c", "import sys, threading; held = open(sys.argv[1], 'rb'); print('held', flush=True); threading.Event().wait()", sys.argv[1]], stdout=subprocess.PIPE, text=True)
 child.stdout.readline()
 print("ready", flush=True)
-threading.Event().wait()
+if sys.argv[2] == "hangs":
+    threading.Event().wait()
+sys.stdin.buffer.read()
 '''
 
 failures = []
@@ -118,7 +120,7 @@ def stop_while_measuring(role, extras):
             try:
                 measuring = wait_for_ffmpeg_on(wav)
             finally:
-                srv.encerra()
+                stop_error = stop(srv)
         check(bool(measuring), f"{role}: the shelf loudness measurement opened the track with ffmpeg ({measuring})")
         left = holders(wav)
         try:
@@ -126,7 +128,8 @@ def stop_while_measuring(role, extras):
             removed = True
         except PermissionError:
             removed = False
-        check(srv.srv.returncode == 0, f"{role}: the server stops by itself, not killed (exit {srv.srv.returncode})")
+        check(srv.srv.returncode == 0 and stop_error is None,
+              f"{role}: the server stops by itself and leaves nothing running (exit {srv.srv.returncode}, {stop_error})")
         check(removed and not left,
               f"{role}: the moment the stop returns, nothing holds the track and it deletes ({left})")
 
@@ -200,27 +203,31 @@ def measurement_stopped_by_the_given_kill():
           f"for it: nothing holds the track after ({found}, {len(kills)} kill, {result}, {left})")
 
 
-def hung_server_and_its_child():
-    with tempfile.TemporaryDirectory(prefix="ritmelli-hung-server-", ignore_cleanup_errors=True) as tmp:
+def stop(srv):
+    try:
+        srv.encerra()
+    except so_mock.Recusa as ex:
+        return str(ex)
+    return None
+
+
+def server_whose_child_holds_the_track(kind, expected):
+    with tempfile.TemporaryDirectory(prefix=f"ritmelli-{kind}-server-", ignore_cleanup_errors=True) as tmp:
         _, wav = shelf_with_one_long_track(Path(tmp))
-        hung = subprocess.Popen([sys.executable, "-c", HUNG_SERVER, str(wav)], stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, text=True)
-        hung.stdout.readline()
+        proc, job = so_mock.start_job([sys.executable, "-c", CHILD_HOLDS_THE_TRACK, str(wav), kind],
+                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        proc.stdout.readline()
         held = holders(wav)
-        try:
-            so_mock.Filho(hung, so_mock.free_port()).encerra(espera=1)
-            refused = None
-        except so_mock.Recusa as ex:
-            refused = str(ex)
+        refused = stop(so_mock.Filho(proc, so_mock.free_port(), job))
         left = holders(wav)
         try:
             os.remove(wav)
             removed = True
         except PermissionError:
             removed = False
-    check(bool(held) and refused is not None and "did not stop" in refused and not left and removed,
-          f"a server that ignores its closed stdin fails the stop, and the forced stop takes the process it started "
-          f"with it: nothing holds the track after ({held}, {refused}, {left})")
+    check(bool(held) and refused is not None and expected in refused and not left and removed,
+          f"a server that {kind} with a child holding the track fails the stop, and the stop ends that child: nothing "
+          f"holds the track after ({held}, {refused}, {left})")
 
 
 def main():
@@ -228,7 +235,8 @@ def main():
     refusals_before_start()
     flag_only_for_a_server_that_knows_it()
     http_shutdown_with_the_pipe_open()
-    hung_server_and_its_child()
+    server_whose_child_holds_the_track("hangs", "did not stop")
+    server_whose_child_holds_the_track("exits", "left 1 process")
     measurement_stopped_by_the_given_kill()
     stop_while_measuring("phone", ["--papel-local", "celular"])
     stop_while_measuring("pc", [])
