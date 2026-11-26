@@ -724,14 +724,15 @@ class TestVoicePedalStart(unittest.TestCase):
 
                 log = dryouts.Log()
                 with mock.patch("sys.stderr", Err()):
-                    for line in ("first", "second"):
+                    for line in ("first", "second", "third"):
                         log.tell(line)
                     done = threading.Thread(target=log.written, daemon=True)
                     done.start()
                     done.join(3.0)
                 self.assertFalse(done.is_alive(), "the log kept retrying a write that made no progress")
                 self.assertEqual((log.dropped, Raw.out.decode()),
-                                 (1, "second (1 line(s) of the dry-out log dropped before this one)" + os.linesep))
+                                 (1, "second (1 line(s) of the dry-out log dropped before this one)" + os.linesep
+                                  + "third" + os.linesep))
 
     def test_the_track_is_up_only_once_its_line_is_queued(self):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
