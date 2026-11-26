@@ -233,6 +233,11 @@ def version_check_after(job_steps, build, folder, required_if):
     return False
 
 
+def inno_runs(job_steps, required_if):
+    calls = [s for s in job_steps if s.get("uses") == INNO]
+    return len(calls) == 1 and calls[0].get("if") == required_if and not calls[0].get("continue-on-error")
+
+
 def built_monta(step):
     return step.get("id") == "congela"
 
@@ -278,8 +283,12 @@ def test_version_resource():
     check(not version_check_after(mutant["jobs"]["microfone"]["steps"], built_testa, DLL_FOLDERS["microfone"],
                                   DLL_IFS["microfone"]), "the check catches the build and the check both skipped")
     for doc, job in ((monta, "monta"), (testa, "microfone")):
-        names = [s.get("uses") for s in doc["jobs"][job]["steps"]]
-        check(INNO in names, f"the {job} job installs the Inno Setup through {INNO}")
+        check(inno_runs(doc["jobs"][job]["steps"], DLL_IFS[job]),
+              f"the {job} job installs the Inno Setup once through {INNO}, under the if of its build")
+    mutant = copy.deepcopy(monta)
+    next(s for s in mutant["jobs"]["monta"]["steps"] if s.get("uses") == INNO)["if"] = DLL_IFS["microfone"]
+    check(not inno_runs(mutant["jobs"]["monta"]["steps"], DLL_IFS["monta"]),
+          "the check catches the Inno Setup step of the monta job under the if of the filter job")
     copies = [f"{p.name}:{w}" for p in files() if p.parent.name != "inno-setup"
               for w, s in steps(load(p)) if "innosetup-" in s.get("run", "")]
     check(copies == [], f"the Inno Setup is downloaded only in {INNO} ({copies})")

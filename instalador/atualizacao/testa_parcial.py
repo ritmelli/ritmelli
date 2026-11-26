@@ -141,9 +141,10 @@ for nome, pasta in (("o manifesto anterior mexido depois de assinado",
                     "--saida", saida)
     caso(f"recusa {nome}", cod != 0 and "nao confere" in out, out)
 
-cod, out = roda("parcial.py", "--anterior", manifesto_anterior(tmp / "a6", antes, k=key_two, numero=2), "--app-py", app_py,
-                "--app", dist, "--bin", binf, "--saida", saida)
-caso("a previous manifest signed by key 2, labelled 2, is accepted", cod == 0 and (saida / "parcial.json").exists(), out)
+cod, out = roda("parcial.py", "--anterior", manifesto_anterior(tmp / "a6", antes, k=key_two, numero=2),
+                "--app-py", app_py, "--app", dist, "--bin", binf, "--saida", saida)
+caso("a previous manifest signed by key 2, labelled 2, is accepted",
+     cod == 0 and (saida / "parcial.json").exists(), out)
 
 print("--- a parcial no publica.py")
 roda("parcial.py", "--anterior", ant, "--app-py", app_py, "--app", dist, "--bin", binf, "--saida", saida)

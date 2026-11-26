@@ -61,7 +61,8 @@ atu.MANIFESTO = f"{base}/manifest.json"
 chave = ECC.generate(curve="Ed25519")
 outra = ECC.generate(curve="Ed25519")
 key_two = ECC.generate(curve="Ed25519")
-atu.CHAVES = {n: base64.b64encode(k.public_key().export_key(format="raw")).decode() for n, k in ((1, chave), (2, key_two))}
+atu.CHAVES = {n: base64.b64encode(k.public_key().export_key(format="raw")).decode()
+              for n, k in ((1, chave), (2, key_two))}
 
 setup = os.urandom(3 << 20)
 (www / "setup.exe").write_bytes(setup)
