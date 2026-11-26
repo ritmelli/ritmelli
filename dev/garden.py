@@ -69,7 +69,7 @@ PS_STRING = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"`]|`.)*\"", re.S)
 PS_VARIABLE = re.compile(r"\$(\w+)")
 PS_ASSIGNED = re.compile(r"\$(\w+)\s*=(?!=)")
 PROOF_LABEL = re.compile(r"^(?:how it was (?:proven|proved|tested)|proof\b|prova\b|como foi provado|testing\b"
-                         r"|test plan\b)", re.I)
+                         r"|test plan\b|test results\b|verification\b)", re.I)
 SECTION_LABEL = re.compile(r"^\s*(?:#{1,6}\s+(?P<heading>[^:]+?)(?::\s*(?P<rest>.*))?\s*$"
                            r"|\*\*(?P<bold>[^*]+?):?\*\*:?\s*(?P<rest2>.*)$"
                            r"|(?P<plain>[A-Z][\w ,'/-]{1,40}):(?:\s+(?P<rest3>.*))?$)")
@@ -864,7 +864,12 @@ def ps_blocks(code, opener):
 
 JS_HANDLER = re.compile(r"\bonerror\s*=\s*(?:function\b[^(]*\([^)]*\)\s*|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*)"
                         r"|\bcatch\s*(?:\([^)]*\))?\s*(?=\{)|\.(?:catch|aoFalhar)\s*(?=\()")
-JS_RESCHEDULE = re.compile(r"\bsetTimeout\s*\(\s*([A-Za-z_$][\w$]*)\s*,")
+JS_RESCHEDULE = re.compile(r"\bsetTimeout\s*\(\s*(?:(?P<name>[A-Za-z_$][\w$]*)\s*,"
+                           r"|(?:\(\s*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{?\s*(?P<called>[A-Za-z_$][\w$]*)\s*\()")
+
+
+def rescheduled(r):
+    return r.group("name") or r.group("called")
 
 
 def handler_body(code, start):
@@ -948,15 +953,15 @@ def js_retries(code):
         around = [(a, b) for _, a, b in functions if a < m.start() < b]
         enclosing = {name for name, a, b in functions if a < m.start() < b}
         found += [code.count("\n", 0, start + r.start()) + 1 for r in JS_RESCHEDULE.finditer(body)
-                  if (r.group(1) in enclosing or enclosing & calls.get(r.group(1), set()))
-                  and not (around and rescheduled_anyway(code, max(around), r.group(1), (start, start + len(body))))]
+                  if (rescheduled(r) in enclosing or enclosing & calls.get(rescheduled(r), set()))
+                  and not (around and rescheduled_anyway(code, max(around), rescheduled(r), (start, start + len(body))))]
     return found
 
 
 def rescheduled_anyway(code, span, name, handler):
     a, b = span
     for r in JS_RESCHEDULE.finditer(code, a, b):
-        if r.group(1) == name and not handler[0] <= r.start() < handler[1]:
+        if rescheduled(r) == name and not handler[0] <= r.start() < handler[1]:
             between = code[a:r.start()]
             if between.count("{") - between.count("}") == 1:
                 return True

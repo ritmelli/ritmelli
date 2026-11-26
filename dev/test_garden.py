@@ -306,6 +306,9 @@ CASES = {
          {"a.js": "function conectar() {\n  es.aoFalhar(() => {\n    if (S.pareando) return;\n    fonte.fechar();\n"
                   "    api('GET', '/api/state').then(() => true, e => e.status !== 401)\n"
                   "      .then(volta => { if (volta && !S.pareando) reconT = setTimeout(conectar, 3000); });\n  });\n}\n"}),
+        ("a catch that reschedules through an arrow",
+         {"a.js": "function connect(url) {\n  try { open(url); } catch (e) { setTimeout(() => reportError(url), 100); }\n}\n"},
+         {"a.js": "function connect(url) {\n  try { open(url); } catch (e) { setTimeout(() => connect(url), 100); }\n}\n"}),
         ("a promise catch that tries again", {"a.js": "fetch(u).then(go);\n"},
          {"a.js": "function go() { fetch(u).catch(() => setTimeout(go, 3000)); }\n"}),
     ],
@@ -665,6 +668,8 @@ def test_description():
                                              "actions/runs/1)): fails.\n",
         "a checked item": "## Proof\n\n- [x] `python dev/testa_i18n.py` passes.\n",
         "an open item next to a run": "## Proof\n\n- [ ] the phone\n- `python dev/testa_i18n.py` passes.\n",
+        "a Test results heading": "## Test results\n\n`python dev/test_garden.py` passed.\n",
+        "a Verification heading": "## Verification\n\n`python dev/test_garden.py` passed.\n",
         "a Testing heading": "## Testing\n\n`python dev/test_garden.py` passed.\n",
         "a run after a subcommand": "## Proof\n\nruff check . passed.\n",
         "an option after a subcommand": "## Proof\n\ngit diff --check passed.\n",
