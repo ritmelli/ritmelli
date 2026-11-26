@@ -353,7 +353,7 @@ class TestaMicrofone(unittest.TestCase):
             try:
                 other_error = {"key": "server.test.otherError"}
 
-                def task(mic, result=result, v=v, other_error=other_error):
+                def task(mic, result=result, v=v):
                     v.e.set_devices(mic="Mic2")
                     v.e.error = other_error
                     return result

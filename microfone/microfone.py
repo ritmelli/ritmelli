@@ -268,17 +268,22 @@ def servico_audio(acao):
 
 
 def reinicia_audio(so_servico=False):
-    """Depois de mexer nas chaves de efeito: o AudioEndpointBuilder guarda as propriedades dos aparelhos e so as
-    rele quando reinicia (o audiosrv cai junto e volta pelo servico_audio). Com so_servico (#136: so a DLL do filtro
-    mudou, e nenhum microfone ganhou o filtro), so o audiosrv: o audiodg.exe novo ja carrega a DLL nova, e o
-    AudioEndpointBuilder, que desmonta e monta todos os aparelhos, fica como esta."""
+    """After changing the effect keys: the AudioEndpointBuilder keeps the device properties and reads them again only
+    when it restarts (the audiosrv goes down with it and comes back through servico_audio). With so_servico (#136:
+    only the filter DLL changed, and no microphone got the filter), only the audiosrv: the new audiodg.exe already
+    loads the new DLL, and the AudioEndpointBuilder, which tears down and mounts every device, stays as it is.
+    Returns the reason when the AudioEndpointBuilder didn't restart, or None."""
     if so_servico:
         servico_audio("Restart" if audio_rodando() else "Start")  # a troca da DLL ja parou o audio para solta-la
-        return
-    subprocess.run([POWERSHELL, "-NoProfile", "-Command", "Restart-Service AudioEndpointBuilder -Force"],
-                   check=False, capture_output=True, text=True, encoding="oem", errors="replace",
-                   creationflags=NO_WINDOW)
+        return None
+    builder = subprocess.run([POWERSHELL, "-NoProfile", "-Command",
+                              "Restart-Service AudioEndpointBuilder -Force -ErrorAction Stop"], check=False,
+                             capture_output=True, text=True, encoding="oem", errors="replace", creationflags=NO_WINDOW)
     servico_audio("Start")
+    if builder.returncode:
+        return (f"the AudioEndpointBuilder didn't restart ({builder.returncode}): "
+                f"{builder.stderr.strip() or builder.stdout.strip()}")
+    return None
 
 
 # O aparelho mudo (#136): depois de mexer no audio, uma interface USB (a UMC 404HD da Behringer, com o driver
@@ -694,7 +699,7 @@ def instala(filtro, dll):
 
 class FilterNotInstalled(Exception):
     def __init__(self, failures, check):
-        super().__init__("the filter wasn't installed on: " + "; ".join(failures))
+        super().__init__("; ".join(failures))
         self.check = check
 
 
@@ -703,7 +708,8 @@ def instala_todos(dll):
     the DLL if the app's one changed. The PC audio restarts only when something changed: running again with nothing
     new leaves the sound alone, and only a new DLL restarts only the audio service. Returns the device check if the
     audio restarted (confere_aparelhos), or None. A microphone that refuses the filter doesn't stop the others or
-    restart the audio by itself: at the end, FilterNotInstalled carries the check (or None)."""
+    restart the audio by itself, and an AudioEndpointBuilder that doesn't restart fails too: at the end,
+    FilterNotInstalled carries the check (or None)."""
     parou = _prepara_dll(dll)
     novos, failures = [], []
     for m in microfones(todos=True):
@@ -713,9 +719,11 @@ def instala_todos(dll):
         except MissingEndpointProperties:
             continue
         except OSError as ex:
-            failures.append(f"{m[1]} ({m[2]}): {ex}")
+            failures.append(f"the filter wasn't installed on {m[1]} ({m[2]}): {ex}")
     if novos or parou:
-        reinicia_audio(so_servico=not novos)
+        restart_error = reinicia_audio(so_servico=not novos)
+        if restart_error:
+            failures.append(restart_error)
     _log(f"filter on {len(microfones(todos=True))} microphones; now: {len(novos)}{'; DLL replaced' if parou else ''}")
     check = _depois_do_reinicio() if novos or parou else None
     if failures:
@@ -954,6 +962,11 @@ def tarefa_rodando(prazo_s=10.0):
     return True if estado in ("Running", "Queued") else False if estado in ("Ready", "Disabled") else None
 
 
+def _microphone_ready(nome):
+    m = do_microfone(nome)
+    return bool(m and m["filtro"] and m["melhorias"])
+
+
 def pede_tarefa(nome, espera_s=60):
     """Do app, sem administrador: roda a tarefa do instalador e espera o microfone ter o filtro (e as melhorias) e o
     audio do Windows voltar. {ok} ou {ok: False, motivo, detalhe, reopen}: o motivo e um codigo (sem_tarefa,
@@ -968,8 +981,7 @@ def pede_tarefa(nome, espera_s=60):
     ready = False
     while not ready and time.monotonic() < fim:
         time.sleep(1.0)
-        m = do_microfone(nome)
-        ready = bool(m and m["filtro"] and m["melhorias"])
+        ready = _microphone_ready(nome)
     # o filtro aparece no registro antes de a tarefa reiniciar o audio e conferir os aparelhos (#136): ate ela acabar,
     # o audiosrv RUNNING ainda pode ser o de antes do reinicio. Com o prazo da conferencia dela a mais
     fim += ASSENTA_S + CONFERE_MAX_S
@@ -987,8 +999,7 @@ def pede_tarefa(nome, espera_s=60):
         if "RUNNING" in st:
             time.sleep(2.0)  # os aparelhos se enumeram de novo logo depois
             if not ready:
-                m = do_microfone(nome)
-                ready = bool(m and m["filtro"] and m["melhorias"])
+                ready = _microphone_ready(nome)
             return {"ok": True} if ready else {"ok": False, "motivo": "nao_pronto", "reopen": True}
         if time.monotonic() >= fim:
             return {"ok": False, "motivo": "audio"}

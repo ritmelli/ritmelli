@@ -816,7 +816,7 @@ def _aviso_reserva(faltou):
                                                            "headphones until they're reconnected.", chosen=fone)
 
 
-def _erro_da_tarefa(r, mic):
+def _erro_da_tarefa(r):
     """A mensagem da tela quando a tarefa que prepara o microfone nao deu (o motivo do pede_tarefa, em
     microfone/microfone.py)."""
     motivo = r.get("motivo")
@@ -1484,7 +1484,7 @@ class Engine:
         finally:
             self.preparando = None
         if not r.get("ok") and not r.get("reopen"):
-            self._aviso = self.error = _erro_da_tarefa(r, mic)
+            self._aviso = self.error = _erro_da_tarefa(r)
             return
         if self.error == prep:
             self._aviso = self.error = None
