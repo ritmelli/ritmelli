@@ -1099,10 +1099,10 @@ class Injetor:
                                 break
                             m.escreve(self.motor._mixa(BLOCK))
                             fila = self.dry_outs.read_ring(m.na_fila)
-                        servidos = donos
+                        servidos = self.dry_outs.served(donos)
                         prox = time.perf_counter() + BLOCK / SR
                     else:
-                        servidos = ()
+                        servidos = self.dry_outs.served(())
                         if self._teve_leitor and self.perdeu_em is None:
                             self.perdeu_em = time.monotonic()  # o vigia reabre se ele nao voltar (_recupera_leitor)
                         if agora - prox > 0.2:  # voltou de um leitor, ou a thread atrasou: nao corre atras

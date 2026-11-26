@@ -1293,6 +1293,13 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertEqual(state["secas"], self.inj.secas, "the second dry-out was not published before the refill")
         self.assertLess(state["volta_max_ms"], 300, "the dry-out published the longest return from before it was zeroed")
 
+    def test_each_change_of_the_readers_is_in_the_state(self):
+        self.wait_filled()
+        before = self.inj.estado()["leitores_trocados"]
+        for n, (owner, what) in enumerate(((2, "another reader"), (0, "no reader"), (2, "the reader back")), 1):
+            self.a.leitor[0].dono = owner
+            self.assertTrue(espera(lambda n=n: self.inj.estado()["leitores_trocados"] == before + n), what)
+
     def test_the_longest_return_is_published_with_the_counts(self):
         self.pedal_on(1.0)
         hold, held = threading.Event(), threading.Event()

@@ -128,6 +128,7 @@ class RingDryOuts:
     def __init__(self, pedal):
         self.pedal = pedal
         self.injector = next(INJECTORS)
+        self.readers, self._served = 0, ()
         self.while_pedal_starting = 0
         self.counts = (0, 0, 0.0)
         self._told_at = -1e9
@@ -147,7 +148,12 @@ class RingDryOuts:
     def state(self):
         dry_outs, while_pedal_starting, longest = self.counts
         return {"secas": dry_outs, "secas_pedal": while_pedal_starting, "volta_max_ms": round(longest * 1000, 1),
-                "injetor": self.injector}
+                "injetor": self.injector, "leitores_trocados": self.readers}
+
+    def served(self, owners):
+        if owners != self._served:
+            self._served, self.readers = owners, self.readers + 1
+        return owners
 
     def read_ring(self, read):
         before = self.pedal.clock()
@@ -172,9 +178,9 @@ class RingDryOuts:
             if self._told_this_start <= PEDAL_LINES:
                 LOG.tell(f"game output: the microphone ring ran dry while the voice pedal was starting (the thread "
                          f"came back after {back_s * 1000:.0f} ms;{self._bounds(start)} {starting}; "
-                         f"{self.while_pedal_starting} of {count} so far)")
+                         f"{self.while_pedal_starting} of {count} so far, injector {self.injector})")
                 return
         if self.pedal.clock() - self._told_at > QUIET_S:
             self._told_at = self.pedal.clock()
             LOG.tell(f"game output: the microphone ring ran dry (the thread came back after {back_s * 1000:.0f} ms; "
-                     f"{count} so far)")
+                     f"{count} so far, injector {self.injector})")

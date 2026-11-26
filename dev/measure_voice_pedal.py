@@ -20,7 +20,7 @@ ON_S = 8.0
 OFF_S = 4.0
 UP_S = 60.0
 VOICE_SESSIONS = 4
-DRY_LINE = re.compile(r"ran dry .*?(\d+) so far\)")
+DRY_LINE = re.compile(r"ran dry .*?(\d+) so far, injector (\d+)\)")
 UP_LINE = re.compile(r"voice pedal: its voice track came up (\d+\.\d+) s after the pedal turned on")
 
 
@@ -126,6 +126,8 @@ def interruption(states_seen, mic):
         a, b = a["microfone"], b["microfone"]
         if b["injetor"] != a["injetor"]:
             return f"the ring's injector was opened again (injector {a['injetor']}, then {b['injetor']})"
+        if b["leitores_trocados"] != a["leitores_trocados"]:
+            return "the ring's reader changed (a new reader's first empty read is not counted as a dry-out)"
         dropped = a["folga_min_ms"] is not None and (b["folga_min_ms"] is None or b["folga_min_ms"] > a["folga_min_ms"])
         if any(b[k] < a[k] for k in ("secas", "secas_pedal", "volta_max_ms")) or dropped:
             return "the ring's counters started over (the injector was opened again)"
@@ -265,7 +267,8 @@ def main():
                 if job:
                     job.end()
     dry = [ln for ln in lines(work / "server.err")
-           if (m := DRY_LINE.search(ln)) and first < int(m.group(1)) <= start["microfone"]["secas"]]
+           if (m := DRY_LINE.search(ln)) and first < int(m.group(1)) <= start["microfone"]["secas"]
+           and int(m.group(2)) == start["microfone"]["injetor"]]
     blocks = [c["voice_slowest_block_ms"] for c in cycles if c["voice_slowest_block_ms"] is not None]
     result = {"microphone": mic, "voice": voice, "provider": a.provider, "onnxruntime": onnxruntime.__version__,
               "cycles": cycles,

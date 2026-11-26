@@ -62,22 +62,23 @@ checkout, numa porta dele e com dados temporários, e só com o runtime do app (
 `DmlExecutionProvider`, ou com uma versão que não é a que o `instalador/travas.txt` trava, ele se recusa a rodar antes
 de abrir qualquer coisa, a não ser com `--provider cpu`; `--cycles` menor que 1 e um `--on-s` que não é um número
 positivo também são recusados, e o resultado leva a versão que rodou e só as linhas de seca entre o primeiro e o último
-corte (pelo total que cada uma diz); uma voz que não está no `vozes.json` também é recusada antes. Cada ciclo, com o
-pedal ligado por `--on-s` segundos, precisa da voz de verdade (o processo da voz disse `pronto`, sem `erro`, e o `fim`
-do log dele tem blocos e, com `--provider dml`, as quatro sessões no DirectML: o `fim` traz o `Conversor.providers()`),
-da linha da subida da pista no log do servidor (o tempo dela entra na linha do ciclo, e o resultado dá o mais lento,
-`slowest_track_up_s`), de um stream de estado só, aberto depois de escolher o microfone, que dá a base e os estados de
-todos os ciclos: cada `tick` leva a hora da captura da volta dele (`t`, o `time.monotonic` do servidor, o mesmo relógio
-da ferramenta, que sobe o servidor com o próprio Python), e o `state` de uma volta vem logo antes do `tick` dela, então
-cada state tem a hora da volta; uma janela do ciclo leva as voltas até a primeira do fim dela em diante, que fecha a
-janela com o que traz, e a seguinte começa depois dela, então cada volta é de uma janela só, não importa quanto a
-ferramenta atrasou para ler; o fim do ciclo é o último state da janela; o `tick` leva também o número da volta (`n`), e
-um salto nele (a conexão que ficou para trás pula para a volta mais nova) para a medição, porque um state do meio pode
-ter mostrado o anel quebrado; o stream que fecha para a medição, de um anel que mediu a folga e de um anel sem
-interrupção (leitor o tempo todo, o mesmo microfone, e contadores que não voltam, o que pega um `Injetor` aberto de
-novo; e o mesmo `injetor` do `/api/state`, o número que cada `RingDryOuts` ganha ao nascer, que pega um aberto de novo
-com os mesmos contadores), ou a medição para e diz qual ciclo. O `dev/test_measure_voice_pedal.py` confere a recusa e a
-linha de cada ciclo. Testes: `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso),
+corte (pelo total que cada uma diz e pelo injetor, que cada linha também diz); uma voz que não está no `vozes.json`
+também é recusada antes. Cada ciclo, com o pedal ligado por `--on-s` segundos, precisa da voz de verdade (o processo da
+voz disse `pronto`, sem `erro`, e o `fim` do log dele tem blocos e, com `--provider dml`, as quatro sessões no DirectML:
+o `fim` traz o `Conversor.providers()`), da linha da subida da pista no log do servidor (o tempo dela entra na linha do
+ciclo, e o resultado dá o mais lento, `slowest_track_up_s`), de um stream de estado só, aberto depois de escolher o
+microfone, que dá a base e os estados de todos os ciclos: cada `tick` leva a hora da captura da volta dele (`t`, o
+`time.monotonic` do servidor, o mesmo relógio da ferramenta, que sobe o servidor com o próprio Python), e o `state` de
+uma volta vem logo antes do `tick` dela, então cada state tem a hora da volta; uma janela do ciclo leva as voltas até a
+primeira do fim dela em diante, que fecha a janela com o que traz, e a seguinte começa depois dela, então cada volta é
+de uma janela só, não importa quanto a ferramenta atrasou para ler; o fim do ciclo é o último state da janela; o `tick`
+leva também o número da volta (`n`), e um salto nele (a conexão que ficou para trás pula para a volta mais nova) para a
+medição, porque um state do meio pode ter mostrado o anel quebrado; o stream que fecha para a medição, de um anel que
+mediu a folga e de um anel sem interrupção (leitor o tempo todo, o mesmo microfone, e contadores que não voltam, o que
+pega um `Injetor` aberto de novo; e o mesmo `injetor` do `/api/state`, o número que cada `RingDryOuts` ganha ao nascer,
+que pega um aberto de novo com os mesmos contadores; e o mesmo `leitores_trocados`, porque o vazio de um leitor que
+acabou de chegar não conta como seca), ou a medição para e diz qual ciclo. O `dev/test_measure_voice_pedal.py` confere a
+recusa e a linha de cada ciclo. Testes: `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso),
 `python dev/testa_vozes.py` (o `vozes.json`, o que o instalador baixa e o `impedimento()`), `python dev/testa_pista.py`
 (o processo contra um anel falso; com `RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade) e
 `python dev/testa_conversor.py` (o motor com modelos de mentira no processador: o tom deslocado, a onda sem degrau entre

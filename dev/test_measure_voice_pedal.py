@@ -77,10 +77,11 @@ FIM = ['fim {"blocos": 74, "secas": 1, "conta_ms_max": 101.1, "voz_taxa": 48000,
 MIC = "IN 1"
 
 
-def state(secas=0, secas_pedal=0, volta=4.6, folga=20.0, leitores=1, mic=MIC, anel=True, injetor=1):
+def state(secas=0, secas_pedal=0, volta=4.6, folga=20.0, leitores=1, mic=MIC, anel=True, injetor=1, trocados=1):
     return {"active_devices": {"mic": mic}, "microfone": {"anel": anel, "leitores": leitores, "secas": secas,
                                                          "secas_pedal": secas_pedal, "volta_max_ms": volta,
-                                                         "folga_min_ms": folga, "injetor": injetor}}
+                                                         "folga_min_ms": folga, "injetor": injetor,
+                                                         "leitores_trocados": trocados}}
 
 
 def row(states_seen, server_lines=READY, voice_lines=FIM, provider="dml"):
@@ -130,6 +131,7 @@ class CycleRow(unittest.TestCase):
                  "the reader gone and back": [state(), state(leitores=0), state()],
                  "another microphone": [state(), state(mic="Other"), state()],
                  "another injector, the same counters": [state(1, 1, 9.0, 0.0), state(1, 1, 9.0, 0.0, injetor=2)],
+                 "another reader, the same counters": [state(1, 1, 9.0, 0.0), state(1, 1, 9.0, 0.0, trocados=2)],
                  "the injector opened again, the same counters at both ends": [state(2, 0, 9.0, 10.0),
                                                                                state(0, 0, 0.0, None),
                                                                                state(0, 0, 3.1, 30.0),
@@ -159,7 +161,7 @@ def sse(*rounds_sent):
 
 
 FALLBACK = "Microfone (Realtek(R) Audio)"
-DRY = "game output: the microphone ring ran dry (the thread came back after 656 ms; {} so far)"
+DRY = "game output: the microphone ring ran dry (the thread came back after 656 ms; {} so far, injector {})"
 
 
 class Main(unittest.TestCase):
@@ -238,10 +240,10 @@ class Main(unittest.TestCase):
         why, _, result = self.run_main(state(), "--cycles", "1",
                                        events=[(1.0, state(0, 0, 9.0, 10.0)), (15.0, state(0, 0, 9.0, 10.0)),
                                                (20.48, None), (20.52, state(1, 1, 656.0, 10.0))],
-                                       late_lines=[DRY.format(1)])
+                                       late_lines=[DRY.format(1, 1)])
         self.assertIsNone(why)
         self.assertEqual((result["dry_outs"], result["longest_return_ms_since_the_ring_opened"],
-                          result["dry_out_lines"]), (1, 656.0, [DRY.format(1)]),
+                          result["dry_out_lines"]), (1, 656.0, [DRY.format(1, 1)]),
                          "the first round past the end closes the cycle, with what it carries")
 
     def test_each_cycle_takes_the_rounds_of_its_own_window(self):
@@ -263,13 +265,14 @@ class Main(unittest.TestCase):
                           result["longest_return_ms_since_the_ring_opened"]), (0, None, 9.0))
 
     def test_the_result_lists_only_the_dry_outs_between_its_cuts(self):
-        told = [DRY.format(n) for n in (1, 2, 3)]
+        told = [DRY.format(2, 7)] + [DRY.format(n, 1) for n in (1, 2, 3)]
         why, _, result = self.run_main(state(), "--cycles", "1",
                                        events=[(1.0, state(1, 0, 9.0, 10.0)), (15.0, state(2, 0, 656.0, 10.0)),
                                                (25.0, None)],
                                        late_lines=told)
         self.assertIsNone(why)
-        self.assertEqual((result["dry_outs"], result["dry_out_lines"]), (1, [told[1]]))
+        self.assertEqual((result["dry_outs"], result["dry_out_lines"]), (1, [told[2]]),
+                         "only the measured injector's line with a total between the cuts")
 
     def test_a_broken_ring_in_a_cycle_stops_the_measurement(self):
         cases = {"the ring closed": ({"active_devices": {"mic": MIC}, "microfone": {"anel": False, "leitores": 0}},
@@ -278,7 +281,9 @@ class Main(unittest.TestCase):
                  "another microphone": (state(0, 0, 9.0, 10.0, mic=FALLBACK), "the ring had no reader"),
                  "the injector opened again": (state(0, 0, 0.0, None), "the ring's counters started over"),
                  "another injector with the same counters": (state(2, 0, 9.0, 10.0, injetor=2),
-                                                             "the ring's injector was opened again (injector 1, then 2)")}
+                                                             "the ring's injector was opened again (injector 1, then 2)"),
+                 "another reader with the same counters": (state(2, 0, 9.0, 10.0, trocados=2),
+                                                           "the ring's reader changed")}
         for what, (broken, said) in cases.items():
             with self.subTest(what):
                 why, _, result = self.run_main(state(), "--cycles", "1",
