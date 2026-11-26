@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import wave
 from ctypes import wintypes
@@ -97,7 +98,7 @@ def wait_for_ffmpeg_on(path):
 
 
 def stop_while_measuring(role, extras):
-    with tempfile.TemporaryDirectory(prefix=f"ritmelli-mock-stop-{role}-") as tmp:
+    with tempfile.TemporaryDirectory(prefix=f"ritmelli-mock-stop-{role}-", ignore_cleanup_errors=True) as tmp:
         tmp = Path(tmp)
         data, wav = shelf_with_one_long_track(tmp)
         port = so_mock.free_port()
@@ -167,11 +168,35 @@ def flag_only_for_a_server_that_knows_it():
               "would refuse it")
 
 
+def measurement_stopped_by_the_given_kill():
+    sys.path.insert(0, str(ROOT))
+    import engine
+    import sonoridade
+    with tempfile.TemporaryDirectory(prefix="ritmelli-measure-stop-", ignore_cleanup_errors=True) as tmp:
+        _, wav = shelf_with_one_long_track(Path(tmp))
+        result, kills = [], []
+        measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(wav, engine.FFMPEG)))
+        measuring.start()
+        found = wait_for_ffmpeg_on(wav)
+
+        def kill(p):
+            kills.append(p)
+            engine.mata(p)
+
+        sonoridade.stop_measurements(kill)
+        measuring.join(30)
+        left = holders(wav)
+    check(bool(found) and len(kills) == 1 and result == [None] and not left,
+          f"stop_measurements ends a running measurement through the kill it is given (the engine's mata) and waits "
+          f"for it: nothing holds the track after ({found}, {len(kills)} kill, {result}, {left})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     refusals_before_start()
     flag_only_for_a_server_that_knows_it()
     http_shutdown_with_the_pipe_open()
+    measurement_stopped_by_the_given_kill()
     stop_while_measuring("phone", ["--papel-local", "celular"])
     stop_while_measuring("pc", [])
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")

@@ -130,13 +130,13 @@ def mede_arquivo(path, ffmpeg="ffmpeg", criacao=0, startupinfo=None, limite_s=60
     return float(found[-1])
 
 
-def stop_measurements():
+def stop_measurements(kill):
     m = _MEASUREMENTS
     with m.lock:
         m.stopped = True
         running = list(m.running)
     for p in running:
-        p.kill()
+        kill(p)
     for p in running:
         p.wait()
 
