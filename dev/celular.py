@@ -43,8 +43,8 @@ from collections import Counter
 import websockets
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import so_mock  # noqa: E402
-from fitcheck import barra_outra_origem, confere_pagina  # noqa: E402
+import so_mock
+from fitcheck import barra_outra_origem, confere_pagina
 
 BASE = "http://127.0.0.1:9222"
 CATS = ["devtools.timeline", "disabled-by-default-devtools.timeline", "disabled-by-default-devtools.timeline.frame",

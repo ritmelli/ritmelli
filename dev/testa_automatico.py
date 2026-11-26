@@ -24,10 +24,10 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, que nao sao deste teste
-    import automatico as auto_mod  # noqa: E402
-    import engine as eng  # noqa: E402
-    import pastas  # noqa: E402
-    import server  # noqa: E402
+    import automatico as auto_mod
+    import engine as eng
+    import pastas
+    import server
 
 falhas = []
 

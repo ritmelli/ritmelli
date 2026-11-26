@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pastas import PORTA as PORTA_DO_APP  # noqa: E402 - 8799
+from pastas import PORTA as PORTA_DO_APP  # 8799
 
 # no Fetch.enable do CDP: cada documento (a pagina, um iframe, um redirecionamento dele) para antes do pedido
 DOCUMENTOS = [{"urlPattern": "*", "resourceType": "Document", "requestStage": "Request"}]
@@ -34,7 +34,7 @@ class Recusa(Exception):
 
 
 class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: PLR0913 - a assinatura do urllib
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # a assinatura do urllib
         return None  # o 3xx vira HTTPError, e quem chamou decide
 
 

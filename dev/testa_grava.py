@@ -16,7 +16,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
-import pastas  # noqa: E402
+import pastas
 
 falhas = []
 
@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory() as tmp:
         for i in range(200):
             try:
                 pastas.save_json(alvo, {"quem": quem, "i": i, "texto": "x" * 2000})
-            except Exception as ex:  # noqa: BLE001 - o teste conta qualquer uma
+            except Exception as ex:  # o teste conta qualquer uma
                 erros.append(f"{quem} {i}: {ex!r}")
 
     ts = [threading.Thread(target=grava, args=(q,)) for q in ("a", "b")]
@@ -62,7 +62,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     if sys.platform == "win32":
         # aberto por outro por um instante: a troca e recusada e a gravacao tenta de novo
-        f = open(alvo, encoding="utf-8")  # noqa: SIM115 - fica aberto de proposito
+        f = open(alvo, encoding="utf-8")  # fica aberto de proposito
         solta = threading.Timer(0.3, f.close)
         solta.start()
         t0 = time.monotonic()

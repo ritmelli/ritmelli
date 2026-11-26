@@ -20,8 +20,8 @@ from scipy import signal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import aproximar as ap  # noqa: E402
-import efeitos as ef  # noqa: E402
+import aproximar as ap
+import efeitos as ef
 
 SR, B = 48000, 480
 
