@@ -178,10 +178,19 @@ class TestaMotor(unittest.TestCase):
         self.e.vol, self.e.monitor_on = 1.0, False
         self.e.sonoridade_de = lambda tr: None
         self.e.mediu = lambda tr, v: self.medidos.append((tr.get("id"), v))
+        self.leitores = []
+
+        def reader(*args, ler=self.e._reader):
+            self.leitores.append(threading.current_thread())
+            return ler(*args)
+
+        self.e._reader = reader
+        self.e._onda_pede = lambda track: None
 
     def tearDown(self):
         self.e.stop()
-        time.sleep(0.2)
+        for leitor in self.leitores:
+            leitor.join()
         self.dir.cleanup()
 
     def espera(self, cond, limite=15.0):
