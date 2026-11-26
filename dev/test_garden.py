@@ -391,6 +391,12 @@ CASES = {
                   "   (fora da mesa), a mesa inteira */\nlet a = 1;\n"},
          {"a.js": "/* a prova de que a aba voltou em branco: o pixel do meio. Sem prova\n"
                   "   (fora da mesa), a mesa inteira */\nlet a = 1;\n"}),
+        ("an issue in the comment of the line before",
+         {"a.py": "# the old reader stays for now\n# until #119 lands\nx = 1\n"},
+         {"a.py": "a = 1  # issue #119\nb = 2  # for now\n"}),
+        ("the issue on the next line of the paragraph",
+         {"a.md": "The old reader stays for now, until\n[#119](https://github.com/o/r/issues/119) lands.\n"},
+         {"a.md": "The old reader stays for now.\n\nSee #119 for another thing.\n"}),
         ("a map row and a contributing note with no test",
          {"a.md": "| Sem teste | `compasso.py` | o PR diz como conferiu |\nThe window has no test yet: say how you checked.\n"},
          {"a.md": "| Sem teste | `compasso.py` | accepted risk |\n"}),
@@ -477,6 +483,10 @@ CASES = {
                                             ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n"
                                                                           "    name: Testa o PR\n"},
          {"AGENTS.md": AGENTS_OK + "- Run \"Testa o PR\" before the queue.\n"}),
+        ("a workflow by its name", {"AGENTS.md": AGENTS_OK + "- Run \"Monta o instalador\" on the branch.\n",
+                                    ".github/workflows/monta.yml": "name: Monta o instalador\non:\n  push:\njobs:\n"
+                                                                  "  x:\n    runs-on: windows-2025\n"},
+         {"AGENTS.md": AGENTS_OK + "- Run \"Monta o instalador\" on the branch.\n"}),
         ("a job of another workflow", {"AGENTS.md": AGENTS_OK + "- The `testa-parcial` job of `monta.yml`.\n",
                                        ".github/workflows/monta.yml": "on:\n  push:\njobs:\n  testa-parcial:\n"
                                                                      "    runs-on: windows-2025\n"},
@@ -643,6 +653,8 @@ def test_description():
                                              "actions/runs/1)): fails.\n",
         "a checked item": "## Proof\n\n- [x] `python dev/testa_i18n.py` passes.\n",
         "an open item next to a run": "## Proof\n\n- [ ] the phone\n- `python dev/testa_i18n.py` passes.\n",
+        "a run after a subcommand": "## Proof\n\nruff check . passed.\n",
+        "an option after a subcommand": "## Proof\n\ngit diff --check passed.\n",
         "a run told in plain text": "## Proof\n\nRan python dev/test_garden.py successfully.\n",
         "a test named in plain text with its result": "## Proof\n\ntesta_i18n passes 70 of 70.\n",
         "a label and test names under the heading": "## How it was proved\n\nLocally: `testa_tudo` 30/30 and "

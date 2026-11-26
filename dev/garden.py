@@ -1078,9 +1078,11 @@ def comment_texts(t):
 
 def comment_blocks(t):
     for p in t.paths(*COMMENT_EXTENSIONS):
+        code = t.lexed(p).code
         block = []
         for c in sorted(t.lexed(p).comments, key=lambda c: c.start):
-            if block and c.start > block[-1].end + 1:
+            alone = not code.get(c.start, "").strip()
+            if block and not (alone and c.start <= block[-1].end + 1 and not code.get(block[-1].end, "").strip()):
                 yield p, block
                 block = []
             block.append(c)
@@ -1105,9 +1107,15 @@ def todo_markers(t):
     return [(p, n) for p, n, text in [*comment_texts(t), *markdown_lines(t)] if TODO.search(text)]
 
 
+def prose_in_markdown(t):
+    for p in t.paths(".md"):
+        for chunk in paragraphs(t.files[p].splitlines()):
+            if not cites_issue(" ".join(line for _, line in chunk)):
+                yield from ((p, i + 1) for i, line in chunk if PROSE.search(line))
+
+
 def prose_justifications(t):
-    return sorted({*prose_in_comments(t), *((p, n) for p, n, text in markdown_lines(t)
-                                            if PROSE.search(text) and not cites_issue(text))})
+    return sorted({*prose_in_comments(t), *prose_in_markdown(t)})
 
 
 def non_ascii_identifiers(t):
@@ -1219,6 +1227,8 @@ def workflow_jobs(t):
             jobs = doc.get("jobs") if isinstance(doc, dict) else None
             if isinstance(jobs, dict):
                 names |= set(jobs) | {j.get("name") for j in jobs.values() if isinstance(j, dict) and j.get("name")}
+            if isinstance(doc, dict) and isinstance(doc.get("name"), str):
+                names.add(doc["name"])
     return names
 
 
@@ -1510,7 +1520,7 @@ def plain_proof(line):
     if not RESULT.search(line):
         return False
     words = re.findall(r"[\w./\\-]+", line.replace("\\", "/"))
-    return any((w in PROOF_COMMANDS and i + 1 < len(words) and re.search(r"[./]|^-", words[i + 1]))
+    return any((w in PROOF_COMMANDS and any(re.search(r"[./]|^-", a) for a in words[i + 1:i + 4]))
                or w.rstrip(".") in verification_names() for i, w in enumerate(words))
 
 
