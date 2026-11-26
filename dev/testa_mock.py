@@ -318,9 +318,11 @@ def track_field_routes(sources=None):
 
     found, lost_by_route = {}, {}
     for fn in decorated:
-        routes = [(d.func.attr.upper(), d.args[0].value) for d in fn.decorator_list
+        routes = [(d.func.attr.upper(),
+                   d.args[0].value if isinstance(d.args[0], ast.Constant) else ast.unparse(d.args[0]))
+                  for d in fn.decorator_list
                   if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and isinstance(d.func.value, ast.Name)
-                  and d.func.value.id == "r" and d.args and isinstance(d.args[0], ast.Constant)]
+                  and d.func.value.id == "r" and d.args]
         kept = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and len(n.targets) == 1
                 and isinstance(n.targets[0], ast.Name) and isinstance(n.value, ast.Await)
                 and isinstance(n.value.value, ast.Call) and isinstance(n.value.value.func, ast.Name)
@@ -372,8 +374,10 @@ TRACKER_CASES = (('b = await body(request)\n    return b.get("title")', "found")
                   "lost"),
                  ('resp = web.StreamResponse()\n    await resp.prepare(request)\n    return request.match_info["iid"]',
                   "none"))
-TRACKER_SIGNATURE_CASES = (("request, /", 'return await request.json()', "lost"),
-                           ("request, /", 'b = await body(request)\n    return b.get("title")', "found"))
+TRACKER_ROUTE_SHAPE_CASES = (('@r.post("/api/x")', "request, /", 'return await request.json()', "lost"),
+                             ('@r.post("/api/x")', "request, /", 'b = await body(request)\n    return b.get("title")',
+                              "found"),
+                             ('@r.get(PREFIX + "{rest:(?:/.*)?}")', "request", 'return await request.json()', "lost"))
 
 
 def check_track_field_routes():
@@ -390,12 +394,13 @@ def check_track_field_routes():
     base = ("import comandos as cmd\nasync def body(r): return {}\nasync def reads(r): return await r.json()\n"
             "class App:\n    def keep(self, b):\n        return b['thumb']\n")
     helpers = "def x(A, b):\n    return b['duration']\ndef y(A, b):\n    return list(b.items())\n"
-    for params, route_body, expected in [("request", *c) for c in TRACKER_CASES] + list(TRACKER_SIGNATURE_CASES):
-        source = base + f'@r.post("/api/x")\nasync def x({params}):\n    {route_body}\n'
+    for decorator, params, route_body, expected in ([('@r.post("/api/x")', "request", *c) for c in TRACKER_CASES]
+                                                    + list(TRACKER_ROUTE_SHAPE_CASES)):
+        source = base + f'{decorator}\nasync def x({params}):\n    {route_body}\n'
         found, lost = track_field_routes({"server": source, "comandos": helpers})
         got = "lost" if lost else "found" if found else "none"
-        confere(got == expected, f"the search on the route x({params}): {route_body.replace(chr(10) + '    ', '; ')}: "
-                f"{expected} ({got})")
+        confere(got == expected, f"the search on the route {decorator} x({params}): "
+                f"{route_body.replace(chr(10) + '    ', '; ')}: {expected} ({got})")
 
 
 def tabela():
@@ -604,7 +609,7 @@ async def papeis_no_guard():
             labels, platter = [], []
             A.job_rodando, A.run_download, A.job_update = (lambda _: None), (lambda *a: None), (lambda j, **k: None)
             A.new_job = lambda label, play, alvo: labels.append(label) or {"id": "j1"}
-            A.tocar_remoto = lambda j, alvo, meta: server.App.tocar_remoto(A, j, alvo, meta)
+            A.tocar_remoto = lambda j, target, meta: server.App.tocar_remoto(A, j, target, meta)
             A._troca = lambda tr, **kw: platter.append((tr, kw.get("stream"))) or True
             played = {"youtube_id": "dQw4w9WgXcQ", "play": True, "title": "Live", "channel": "Band",
                       "thumb": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", "duration": 233}
@@ -1140,15 +1145,16 @@ def ao_vivo(srv):
     tocando = (srv.api("GET", "/api/state").get("track") or {}).get("id")
     confere((r.get("item") or {}).get("id") == "d2" and tocando == "d2",
             f"a body with every field right still plays the record from the shelf ({r}, playing {tocando})")
-    for bad in BAD_TRACK_BODIES:
+    for bad in (*BAD_TRACK_BODIES, {"url": [], "duration": -1}):
         on_shelf = ({**bad, "youtube_id": "djV11Xbc914"} if "youtube_id" in bad
                     else {**bad, "url": bad["url"].replace("dQw4w9WgXcQ", "djV11Xbc914")}
-                    if isinstance(bad.get("url"), str) else None)
-        for sent in ((on_shelf, {**on_shelf, "id": "d2"}) if on_shelf else ()):
+                    if isinstance(bad.get("url"), str) else bad)
+        for sent in (on_shelf, {**on_shelf, "id": "d2"}):
             queue = answer_of(srv, "POST", "/api/queue", sent)
             library = answer_of(srv, "POST", "/api/library", {**sent, "play": True})
-            confere(queue == library and queue[0] == 400, f"the queue and the shelf with play answer alike to "
-                    f"{str(sent)[:90]}, a record on the shelf (queue {queue}, shelf {library})")
+            keys = [(a[1] or {}).get("error", {}).get("key") for a in (queue, library)]
+            confere(queue[0] == library[0] == 400 and keys[0] == keys[1], f"the queue and the shelf with play refuse "
+                    f"{str(sent)[:90]} alike, with the same message key (queue {queue}, shelf {library})")
     queue = answer_of(srv, "POST", "/api/queue", {"youtube_id": "djV11Xbc914", "title": "a-ha", "duration": 30})
     srv.api("DELETE", "/api/queue")
     confere(queue[0] == 200, f"the queue takes the same record with every field right ({queue})")
