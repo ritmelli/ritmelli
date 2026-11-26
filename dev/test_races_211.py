@@ -1186,7 +1186,7 @@ def similar_on_its_own(A, letter, n):
 
 def shelf_record(letter, n):
     return {"id": f"shelf{n}", "title": "similar", "file": f"shelf{n}.m4a", "duration": 600.0, "lufs": -14.0,
-            "youtube_id": letter * 11}
+            "youtube_id": letter * 11, "added": "2026-11-26T00:00:00"}
 
 
 def gain_failure_of_a_shelf_file(A, E, readers):
@@ -1201,7 +1201,7 @@ def gain_failure_of_a_shelf_file(A, E, readers):
         watch(A, launches)
     key = carried_key(A, x)
     A.lib.remove("shelf13")
-    check(launches.qids == [] and key[2] == ("m" * 11, "shelf13.m4a") and key in A.failed_passages,
+    check(launches.qids == [] and key[2] == ("m" * 11, ("shelf13.m4a", "2026-11-26T00:00:00")) and key in A.failed_passages,
           f"a shelf file whose gain fails is keyed by that file, before the gain, and the next poll does not start it "
           f"again ({A.failed_passages}, launched {launches.qids})")
 
@@ -1281,21 +1281,24 @@ def replacement_shelf_file_after_its_predecessor_failed(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x = similar_on_its_own(A, "p", 19)
     A.lib.add(shelf_record("p", 19))
-    A.failed_passages.add(carried_key(A, x))
+    A.failed_passages.add(failed := carried_key(A, x))
     A.lib.remove("shelf19")
-    A.lib.add(dict(shelf_record("p", 19), id="shelf20", file="shelf20.m4a"))
-    launches = Launches()
+    A.lib.add(dict(shelf_record("p", 19), added="2026-11-26T00:00:01"))
+    launches, want = Launches(), carried_key(A, x)
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
         watch(A, launches)
         cap = E.captura()
         with mock.patch.object(E, "preparar", return_value=True) as prepares:
             A._prepara(cap.track, x, dict(x), cap)
-    A.lib.remove("shelf20")
+    A.lib.remove("shelf19")
     A.failed_passages.clear()
     handed = prepares.call_args.args[0]() if prepares.call_count == 1 and callable(prepares.call_args.args[0]) else None
-    check(launches.qids == [x["qid"]] and (handed or {}).get("file") == "shelf20.m4a",
-          f"a shelf file that replaces one whose prepare failed, for the same entry, gets its own prepare, and the "
-          f"worker hands the new file to the engine (launched {launches.qids}, handed {(handed or {}).get('file')})")
+    key = prepares.call_args.kwargs.get("key") if prepares.call_count == 1 else None
+    check(launches.qids == [x["qid"]] and (handed or {}).get("added") == "2026-11-26T00:00:01"
+          and key == want != failed and want[2][1] == ("shelf19.m4a", "2026-11-26T00:00:01"),
+          f"a shelf file downloaded again under the same name, replacing one whose prepare failed, for the same "
+          f"entry, gets its own prepare, and the worker hands the new record and its own key to the engine (launched "
+          f"{launches.qids}, handed {(handed or {}).get('added')}, key {key})")
 
 
 def engine_failure_through_the_real_prepare(A, E, readers):

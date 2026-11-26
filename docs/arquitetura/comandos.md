@@ -214,21 +214,23 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
 - `PassageFailure`: o vigia da passagem, o preparo que ele começa (que escolhe a fonte depois, como o `_prepara` com o
   `fonte_de`) e o motor que falha o deck preparado, com duas entradas, a cabeça que muda, a versão de áudio e o arquivo
   que chega à prateleira a qualquer hora. A falha leva a chave do preparo que a gerou (o disco, a entrada, a fonte e o
-  arquivo que ele escolheu: o `_prepara` a passa ao `Engine.preparar`, e o motor a devolve pelo `take_prepare_failure`),
-  e o vigia guarda essas chaves num conjunto, as do disco que toca (a chave leva o disco por identidade,
-  `comandos.Identity`, e não pelo `id`, que outro disco pode herdar), sem rotular a falha pelo que viu; ele lê a falha e
-  tira o deck preparado para outra entrada no mesmo trecho do `_qlock` (`take_prepare_failure(keep=)`), e o preparo
-  confere a fonte que escolheu contra o conjunto antes de abrir o stream ou o arquivo (o `fonte_de` recebe a mesma
-  leitura da prateleira). A prateleira ganha, perde e troca o arquivo a qualquer hora (a chave leva o nome do arquivo;
-  dois arquivos só numa execução à parte, com uma fonte só). Confere que uma falha só bloqueia o preparo que a gerou
-  (`FailureBlocksOnlyItsPrepare`) e que a fonte que falhou não começa de novo (`NoRetryOfTheFailedSource`), com oito
-  mutantes: a falha só com a entrada, a falha com a chave da cabeça da fila, o preparo com a chave que o vigia pediu em
-  vez da fonte que ele escolheu, uma falha só guardada (a segunda apaga a primeira), o preparo que não confere a fonte
-  que escolheu, o deck de outra entrada tirado num segundo trecho do `_qlock` depois de ler a falha, o preparo que
-  confere a fonte que escolheu só pela entrada (e recusa o arquivo depois que o stream falhou) e a chave que só diz se
-  há arquivo (e recusa o arquivo que substitui um que falhou). O `dev/test_tla.py` exige de cada spec uma execução do
-  código que passa conferindo todas as invariantes, e da `LocksAndSwitch` e da `PassageFailure` uma com a configuração
-  inteira, sem nenhuma constante mudada.
+  arquivo que ele escolheu, pelo nome e pelo `added` do registro, porque um download de novo sai com o mesmo nome: o
+  `_prepara` a passa ao `Engine.preparar`, e o motor a devolve pelo `take_prepare_failure`), e o vigia guarda essas
+  chaves num conjunto, as do disco que toca (a chave leva o disco por identidade, `comandos.Identity`, e não pelo `id`,
+  que outro disco pode herdar), sem rotular a falha pelo que viu; ele lê a falha e tira o deck preparado para outra
+  entrada no mesmo trecho do `_qlock` (`take_prepare_failure(keep=)`), e o preparo confere a fonte que escolheu contra o
+  conjunto antes de abrir o stream ou o arquivo (o `fonte_de` recebe a mesma leitura da prateleira). A prateleira ganha,
+  perde e troca o arquivo a qualquer hora (os `Files` do modelo são downloads do mesmo nome; dois só numa execução à
+  parte, com uma fonte só). Confere que uma falha só bloqueia o preparo que a gerou (`FailureBlocksOnlyItsPrepare`) e
+  que a fonte que falhou não começa de novo (`NoRetryOfTheFailedSource`), com oito mutantes: a falha só com a entrada, a
+  falha com a chave da cabeça da fila, o preparo com a chave que o vigia pediu em vez da fonte que ele escolheu, uma
+  falha só guardada (a segunda apaga a primeira), o preparo que não confere a fonte que escolheu, o deck de outra
+  entrada tirado num segundo trecho do `_qlock` depois de ler a falha, o preparo que confere a fonte que escolheu só
+  pela entrada (e recusa o arquivo depois que o stream falhou) e a chave só com o nome do arquivo (e recusa o download
+  que substitui um que falhou). O `dev/test_tla.py` exige de cada spec uma execução do código que passa conferindo todas
+  as invariantes, e da `LocksAndSwitch` e da `PassageFailure` as do tamanho que o `WHOLE` pede, lido das constantes que
+  cada execução usa (a `PassageFailure`, uma com duas entradas e duas fontes e outra com dois arquivos), que só mudam
+  conjuntos, nunca o que liga um mutante.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas três, cada execução em
 menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em cinco com todas as propriedades, além das onze

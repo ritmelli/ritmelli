@@ -50,7 +50,7 @@ import pastas
 import theme_page
 import sonoridade
 from pastas import save_json
-from music import YT_ID, find_track, segundos, thumb, track_artists, with_audio_version
+from music import YT_ID, find_track, segundos, shelf_file, thumb, track_artists, with_audio_version
 from versao import VERSAO
 from yt_erros import erro_do_video, yt_msg
 
@@ -1486,7 +1486,7 @@ class App:
             or (self.lib.get(j.get("item_id")) if j else None)
 
     def passage_source(self, x, shelf=None):
-        return x.get("youtube_id") or x.get("url"), ((shelf or self.shelf_item(x))[1] or {}).get("file")
+        return x.get("youtube_id") or x.get("url"), shelf_file((shelf or self.shelf_item(x))[1])
 
     def fonte_de(self, x, shelf=None):
         """The second deck's record, or None when the passage does not apply: the shelf file's builder, or a stream."""

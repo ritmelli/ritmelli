@@ -2,13 +2,13 @@
 EXTENDS TLC
 
 CONSTANTS Entries, Sources, Files, NoFile, NoKey, FailureCarriesTheKey, FailureLabelledByTheHead, PrepareKeysItsPick,
-          FailuresKeptTogether, PickChecksTheFailures, TakeDropsTheStaleDeck, PickMatchesByEntry, FileKeyedByPresence
+          FailuresKeptTogether, PickChecksTheFailures, TakeDropsTheStaleDeck, PickMatchesByEntry, FileKeyedByName
 
-Keys == [e : Entries, src : Sources, file : Files \cup {NoFile, "present"}]
+Keys == [e : Entries, src : Sources, file : Files \cup {NoFile, "name"}]
 
 Symmetry == Permutations(Entries) \cup Permutations(Sources) \cup Permutations(Files)
 
-Label(k) == IF FileKeyedByPresence /\ k.file /= NoFile THEN [k EXCEPT !.file = "present"] ELSE k
+Label(k) == IF FileKeyedByName /\ k.file /= NoFile THEN [k EXCEPT !.file = "name"] ELSE k
 
 VARIABLES head, src, shelf, failed, failedSources, busy, worker, asked, picked, carried, prepared, preparedSource,
           failure, watcher, took, tookHead, tookSrc, tookBusy, tookPronto, blockedOther, retriedTheFailure

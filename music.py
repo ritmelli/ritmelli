@@ -133,6 +133,10 @@ def segundos(txt):
         return None
 
 
+def shelf_file(item):
+    return item and (item["file"], item.get("added"))
+
+
 def with_audio_version(x, v):
     if not v:
         return {**x, "audio": True}

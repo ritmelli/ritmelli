@@ -43,7 +43,8 @@ RENAME_SWITCH = RENAME + (("WithTheJobSwitch", "TRUE"), ("DownloadEndsBeforeTheS
 RENAME_PLAY = (("WithTheRename", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"), ("WithTheMoves", "FALSE"),
                ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE"))
 PART_CONSTANTS = ("DownloadOutcomes", "StreamReaderStartsWith", "QueueLengths")
-WHOLE = ("LocksAndSwitch", "PassageFailure")
+WHOLE = {"LocksAndSwitch": ({"Qids": 2, "RIds": 2, "GIds": 2},),
+         "PassageFailure": ({"Entries": 2, "Sources": 2}, {"Entries": 2, "Files": 2})}
 TWO_FILES = (("Files", "{f1, f2}"), ("Sources", "{s1}"))
 REQUIRED = {
     "Races211": {"TypeOK", "LockOrderKept", "NoOrphanLoading", "NoStaleLoading", "SwitchEntryMatchesPlatter",
@@ -261,11 +262,11 @@ RUNS = (
         constants=(("TakeDropsTheStaleDeck", "FALSE"),)),
     Run("mutant: the prepare matches its pick against the failures by the entry, and refuses a file after its stream "
         "failed", "PassageFailure", "invariant FailureBlocksOnlyItsPrepare", constants=(("PickMatchesByEntry", "TRUE"),)),
-    Run("PassageFailure, the code as it is with two files for the shelf (one source): a file that replaces a failed one "
-        "gets its own prepare", "PassageFailure", constants=TWO_FILES),
-    Run("mutant: the key holds only whether the shelf has a file, and a file that replaces a failed one is refused",
-        "PassageFailure", "invariant FailureBlocksOnlyItsPrepare",
-        constants=TWO_FILES + (("FileKeyedByPresence", "TRUE"),)),
+    Run("PassageFailure, the code as it is with two downloads of the shelf's file under one name (one source): a "
+        "download that replaces a failed one gets its own prepare", "PassageFailure", constants=TWO_FILES),
+    Run("mutant: the key holds the shelf file's name only, and a download under that name that replaces a failed one "
+        "is refused", "PassageFailure", "invariant FailureBlocksOnlyItsPrepare",
+        constants=TWO_FILES + (("FileKeyedByName", "TRUE"),)),
 )
 
 failures = []
@@ -405,6 +406,16 @@ def rename_part_failures(runs, cfg_text):
     return out
 
 
+def set_sizes(cfg_text):
+    constants = (c.split(" = ", 1) for c in parse_cfg(cfg_text).get("CONSTANTS", []))
+    return {name: len(re.findall(r"[^{},\s]+", value)) for name, value in constants if value.startswith("{")}
+
+
+def covers(run, cfg_text, need):
+    sizes = set_sizes(write_cfg(cfg_text, run))
+    return all(name in sizes for name, _ in run.constants) and all(sizes.get(n, 0) >= k for n, k in need.items())
+
+
 def invariant_failures(runs, cfgs):
     out, fair = [], []
     known = {(r.spec, frozenset(r.constants), r.expect.split()[1]) for r in runs
@@ -426,9 +437,10 @@ def invariant_failures(runs, cfgs):
     out += [f"{spec} has no passing run of the code that checks every invariant" for spec in REQUIRED
             if not any(r.spec == spec and r.expect == "pass" and r.specification is None and r.invariants is None
                        and not r.unchecked for r in runs)]
-    out += [f"{spec} has no passing run of its whole configuration" for spec in WHOLE
-            if not any(r.spec == spec and r.expect == "pass" and r.specification is None and r.invariants is None
-                       and not r.constants for r in runs)]
+    out += [f"{spec} has no passing run of the code with at least {need}" for spec, needs in WHOLE.items()
+            for need in needs if not any(r.spec == spec and r.expect == "pass" and r.specification is None
+                                         and r.invariants is None and not r.unchecked and covers(r, cfgs[spec], need)
+                                         for r in runs)]
     return out + ([] if fair else ["no passing run checks ReservationsResolve under FairSpec"])
 
 
@@ -451,6 +463,9 @@ def main():
           "the mutant whose cfg gains a choice the rename runs do not run fails")
     found = invariant_failures(RUNS, cfgs)
     check(found == [], f"every passing run of the code checks every invariant of its spec ({found[:2]})")
+    one_source = dict(cfgs, PassageFailure=cfgs["PassageFailure"].replace("Sources = {s1, s2}", "Sources = {s1}"))
+    check(one_source != cfgs and invariant_failures(RUNS, one_source) != [],
+          "the mutant whose PassageFailure.cfg has one source fails")
     narrower = dict(cfgs, LocksAndSwitch=cfgs["LocksAndSwitch"].replace("    HistoryOnceInOrder\n", "", 1))
     check(narrower != cfgs and invariant_failures(RUNS, narrower) != [],
           "the mutant whose LocksAndSwitch.cfg drops HistoryOnceInOrder fails")
@@ -474,6 +489,11 @@ def main():
             ("the passing run of PassageFailure has one source only",
              [replace(r, constants=(("Sources", "{s1}"),)) if r.spec == "PassageFailure" and r.expect == "pass" else r
               for r in RUNS]),
+            ("the passing run of PassageFailure with two files is gone, and its mutant still runs",
+             [r for r in RUNS if not (r.spec == "PassageFailure" and r.expect == "pass" and r.constants)]),
+            ("the passing runs of PassageFailure turn on a mutant's switch",
+             [replace(r, constants=r.constants + (("FileKeyedByName", "TRUE"),))
+              if r.spec == "PassageFailure" and r.expect == "pass" else r for r in RUNS]),
             ("a run with no known failure leaves out SwitchEntryMatchesPlatter",
              [replace(r, unchecked=("SwitchEntryMatchesPlatter",)) if r is moves else r for r in RUNS])):
         check(invariant_failures(schedule, cfgs) != [], f"the mutant where {name} fails")
