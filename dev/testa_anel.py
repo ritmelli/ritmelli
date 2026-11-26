@@ -682,6 +682,34 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertEqual((log.dropped, written.getvalue().splitlines()),
                          (2, ["third (2 line(s) of the dry-out log dropped before this one)"]))
 
+    def test_a_raw_write_that_makes_no_progress_is_dropped_and_the_log_goes_on(self):
+        for nothing in (None, 0):
+            with self.subTest(nothing=nothing):
+                class Raw:
+                    calls, out = 0, bytearray()
+
+                    def write(self, data):
+                        Raw.calls += 1
+                        if Raw.calls == 1:
+                            return nothing
+                        Raw.out += data[:4]
+                        return min(4, len(data))
+
+                class Err:
+                    encoding, errors = "utf-8", "strict"
+                    buffer = mock.Mock(raw=Raw())
+
+                log = dryouts.Log()
+                with mock.patch("sys.stderr", Err()):
+                    for line in ("first", "second"):
+                        log.tell(line)
+                    done = threading.Thread(target=log.written, daemon=True)
+                    done.start()
+                    done.join(3.0)
+                self.assertFalse(done.is_alive(), "the log kept retrying a write that made no progress")
+                self.assertEqual((log.dropped, Raw.out.decode()),
+                                 (1, "second (1 line(s) of the dry-out log dropped before this one)\n"))
+
     def test_the_track_is_up_only_once_its_line_is_queued(self):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
         pedal.pedal(True)

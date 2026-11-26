@@ -55,7 +55,8 @@ novo) e no fim de cada volta). As linhas não saem da thread do anel: vão para 
 thread só do log, e com a fila cheia, ou com a escrita falhando, a linha se perde e a thread do anel não espera (a
 próxima linha escrita diz quantas se perderam antes dela); a thread do log nasce com ele, e não na primeira linha, e
 escreve direto na camada crua do `stderr` (o `buffer.raw`), sem a trava do buffer, para o Python sair mesmo com uma
-escrita presa. O `dev/testa_anel.py` confere isso com um produtor de verdade (o `injeta.Microfone` que o `pista.py`
+escrita presa; uma escrita que não leva nada da linha (o pipe cheio, sem esperar) conta como perdida, em vez de tentar
+de novo sem parar. O `dev/testa_anel.py` confere isso com um produtor de verdade (o `injeta.Microfone` que o `pista.py`
 usa), uma seca que o próprio teste faz acontecer, a thread do anel parada quando o teste quer e o relógio dele, e o
 `dev/testa_pedal_voz.py` confere o que o motor guarda quando o pedal liga e desliga. O `dev/measure_voice_pedal.py` mede
 isso de verdade (manual: o microfone com o filtro, a placa de vídeo e os modelos, com o Ritmelli desligado), num

@@ -44,7 +44,10 @@ class Log:
                 if raw is not None:
                     data = (line + "\n").encode(err.encoding, err.errors)
                     while data:
-                        data = data[raw.write(data):]
+                        sent = raw.write(data)
+                        if not sent:
+                            raise BlockingIOError("stderr took none of the line")
+                        data = data[sent:]
                     told = dropped
                 elif err is not None:
                     print(line, file=err, flush=True)
