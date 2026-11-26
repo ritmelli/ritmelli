@@ -66,7 +66,7 @@ Toda mudança cobre as que toca, e o PR diz quais: o servidor e o contrato no `A
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
 | Dados de uso | `metricas.py` e o aviso deles no tema | `testa_metricas`; o aviso, `fitcheck.py --metricas` (sobe os próprios `--mock --metricas-teste`, sem rede) |
 | Troca de nome | `migra.py` | `testa_migra` |
-| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` e `missing_script.py` (o `--tela` do `testa_tudo` roda os dois) contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e uma library.json só com `[]` |
+| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py`, `missing_script.py` e `theme_scripts.py` (o `--tela` do `testa_tudo` roda os três) contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e uma library.json só com `[]` |
 | Sem teste | `compasso.py`, `andamento.py`, `janela.py`, `winvol.py` | o PR diz como conferiu |
 
 ## Antes do PR
