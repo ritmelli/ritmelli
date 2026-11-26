@@ -491,7 +491,9 @@ def markup(page):
             kind = page.blocks[item[1]].kind
             block = page.blocks[item[1]]
             edges = f" (before it {block.edges[0]}, after it {block.edges[1]})"
-            out.append(((kind, order[kind], block.edges), None, block.header + edges))
+            data = None if block.code else tuple(block.raw)
+            out.append(((kind, order[kind], block.edges, block.others if kind == "style" else None, data), None,
+                        block.header + edges))
             order[kind] += 1
         elif item[0] == "line" and item[2] is None and item[1].strip(HTML_SPACE):
             out.append((("line", item[1].strip(HTML_SPACE)), None, item[1].strip(HTML_SPACE)))
@@ -532,7 +534,7 @@ def compare(a, b, compiles):
         if (bx.source, bx.others, sx) != (by.source, by.others, sy):
             report.changes.append(("script tag or strict mode", f"script {k + 1}: {bx.header} (strict: {sx}) -> "
                                    f"{by.header} (strict: {sy})", []))
-        if not bx.code and [r.strip() for r in bx.raw if r.strip()] != [r.strip() for r in by.raw if r.strip()]:
+        if not bx.code and bx.raw != by.raw:
             report.changes.append(("script content", f"script {k + 1}: {bx.header}", []))
         mine, theirs = collections.defaultdict(list), collections.defaultdict(list)
         for unit in (parsed_a.get(x) or Parsed()).declarations:
