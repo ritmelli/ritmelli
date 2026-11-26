@@ -1,6 +1,8 @@
+import argparse
 import contextlib
 import copy
 import importlib.util
+import io
 import os
 import re
 import subprocess
@@ -8,6 +10,7 @@ import sys
 import tempfile
 import threading
 from pathlib import Path
+from unittest import mock
 
 from fake_gh import bash, run_step
 from workflow_yaml import YamlError, find_step, job_steps, load, loads, workflows
@@ -24,6 +27,8 @@ REQUIRED_NAME = "Testa o PR"
 TRIGGERS = {"pull_request": {"types": ["opened", "synchronize", "reopened"]}, "push": {"branches": ["main"]},
             "merge_group": None}
 HEAD = "c" * 40
+PR_HEAD = "b" * 40
+BUILD_URL = "https://example.invalid/monta/passed"
 QUEUE_URL = "https://example.invalid/queue/passed"
 RUNS = [{"head_sha": HEAD, "conclusion": "failure", "html_url": "https://example.invalid/queue/failed"},
         {"head_sha": "d" * 40, "conclusion": "success", "html_url": "https://example.invalid/queue/other-commit"},
@@ -259,15 +264,161 @@ def test_shape(flows):
           "the libraries are installed with the instalador/travas.txt as constraints")
 
 
-def run_summary(block, event, states, comment_fails=False, runs=RUNS, queue_fails=False):
+def run_summary(block, event, states, comment_fails=False, runs=RUNS, queue_fails=False, monta="false",
+                build_runs=(), build_fails=False, pr_head=PR_HEAD, fork=False):
     env = {"GITHUB_EVENT_NAME": event, "GH_TOKEN": "x", "REPO": "ritmelli/ritmelli",
            "PR": "7" if event == "pull_request" else "", "HEAD": HEAD, "RUN_ID": "1", "ATTEMPT": "1",
-           "EXECUCAO": "https://example.invalid/run", "DO_REPO": "true" if event == "pull_request" else "false",
-           "LABELS_PR": "" if event == "push" else "7", "LABELS": "[]", "LINHAS": "", "MUDARAM": "0"}
+           "EXECUCAO": "https://example.invalid/run",
+           "DO_REPO": "true" if event == "pull_request" and not fork else "false",
+           "LABELS_PR": "" if event == "push" else "7", "LABELS": "[]", "LINHAS": "", "MUDARAM": "0",
+           "MONTA": "" if event == "push" else monta, "PR_HEAD": PR_HEAD if event == "pull_request" else ""}
     env.update({f"S_{n}": s for n, s in zip(NEEDS, states)})
     env.update({f"R_{n}": f"resumo {n}" for n in NEEDS[1:]})
-    ran = run_step(block, env, {"labels": [], "comment_fails": comment_fails, "runs": runs, "queue_fails": queue_fails})
+    ran = run_step(block, env, {"labels": [], "comment_fails": comment_fails, "runs": runs, "queue_fails": queue_fails,
+                                "build_runs": list(build_runs), "build_fails": build_fails, "pr_head": pr_head})
     return ran.code, ran.out, ran.summary, [" ".join(["gh", *c]) for c in ran.calls]
+
+
+def test_build_gate(block):
+    ok = ["success"] * 7
+    green = {"head_sha": PR_HEAD, "conclusion": "success", "html_url": BUILD_URL}
+    other = {"head_sha": "e" * 40, "conclusion": "success", "html_url": "https://example.invalid/monta/other-commit"}
+    red = {"head_sha": PR_HEAD, "conclusion": "failure", "html_url": "https://example.invalid/monta/failed"}
+
+    def builds(calls):
+        return [c for c in calls if "actions/workflows/monta.yml/runs" in c]
+
+    code, out, summary, calls = run_summary(block, "pull_request", ok)
+    check(code == 0 and not builds(calls), f"a PR that does not change the build passes without asking for monta.yml "
+                                           f"(exit {code})")
+    for event in ("pull_request", "merge_group"):
+        code, out, summary, calls = run_summary(block, event, ok, monta="true", build_runs=[green])
+        check(code == 0 and BUILD_URL in summary and len(builds(calls)) == 1 and f"head_sha={PR_HEAD}" in builds(calls)[0],
+              f"in a {event}, a PR that changes the build passes with the passed monta.yml run on the PR head "
+              f"(exit {code})")
+        code, out, summary, calls = run_summary(block, event, ok, monta="true", build_runs=[other, red])
+        check(code != 0 and "no passed Monta o instalador run" in summary and "other-commit" not in summary,
+              f"in a {event}, a PR that changes the build fails with monta.yml passed only on another commit or "
+              f"failed on its head (exit {code})")
+        code, out, summary, calls = run_summary(block, event, ok, monta="true", build_fails=True)
+        check(code != 0 and "the query of the Monta o instalador runs failed" in summary,
+              f"in a {event}, a failed monta.yml query fails the check and says so (exit {code})")
+        code, out, summary, calls = run_summary(block, event, ok, monta="")
+        check(code != 0 and "did not say whether the PR changes the build" in summary,
+              f"in a {event}, an empty build answer from the filter job fails the check (exit {code})")
+    code, out, summary, calls = run_summary(block, "pull_request", ok, monta="true", fork=True)
+    check(code != 0 and "it comes from a fork, so a maintainer pushes this commit to a branch of ritmelli/ritmelli"
+          in summary, f"a fork PR that changes the build fails and says how a maintainer gets the run (exit {code})")
+    code, out, summary, calls = run_summary(block, "pull_request", ok, monta="true", fork=True, build_runs=[green])
+    check(code == 0 and BUILD_URL in summary,
+          f"a fork PR that changes the build passes once the run on its head is in the repository (exit {code})")
+    code, out, summary, calls = run_summary(block, "merge_group", ok, monta="true", build_runs=[green], pr_head=None)
+    check(code != 0 and "the head of PR 7 did not come" in summary and not builds(calls),
+          f"in a merge_group, a PR head that does not come fails the check (exit {code})")
+    code, out, summary, calls = run_summary(block, "push", ["success"] + ["skipped"] * 5 + ["success"])
+    check(code == 0 and not builds(calls), f"the push to main does not ask for monta.yml (exit {code})")
+
+
+def test_build_base_in_queue():
+    with tempfile.TemporaryDirectory(prefix="ritmelli-queue-") as tmp:
+        repo = Path(tmp)
+
+        def git(*args):
+            return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args], cwd=repo,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+
+        def commit(path, text):
+            (repo / path).parent.mkdir(parents=True, exist_ok=True)
+            (repo / path).write_text(text, encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", path)
+            return git("rev-parse", "HEAD")
+
+        git("init", "-q")
+        main = commit("README.md", "main\n")
+        ahead = commit("instalador/ritmelli.iss", "the PR ahead in the queue\n")
+        commit("dev/notes.txt", "this PR\n")
+        only_ahead = testa_tudo.touches_build(testa_tudo.changed_files(main, cwd=repo))
+        mine = testa_tudo.touches_build(testa_tudo.changed_files(ahead, cwd=repo))
+        check(only_ahead and not mine, "in a queue entry, only the base before its own PR keeps a build change of the "
+                                       "PR ahead out of its monta answer")
+        git("reset", "-q", "--hard", ahead)
+        git("rm", "-q", "instalador/ritmelli.iss")
+        git("commit", "-q", "-m", "this PR undoes the PR ahead")
+        cumulative = testa_tudo.touches_build(testa_tudo.changed_files(main, cwd=repo))
+        mine = testa_tudo.touches_build(testa_tudo.changed_files(ahead, cwd=repo))
+        check(mine and not cumulative, "in a queue entry, a PR that undoes the build change of the PR ahead counts as "
+                                       "a build change against the base before its own PR")
+
+
+def areas_output(changes, build_base=None):
+    calls = []
+
+    def fake_executa(cmd, **kw):
+        calls.append(cmd)
+        return 0, "".join(f"{f}\0" for f in changes[cmd[-2]])
+
+    with tempfile.TemporaryDirectory() as d, mock.patch.object(testa_tudo, "executa", fake_executa), \
+            mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(Path(d) / "out"), "ETIQUETAS": "[]"}), \
+            contextlib.redirect_stdout(io.StringIO()):
+        code = testa_tudo.diz_areas(argparse.Namespace(areas="base", build_base=build_base))
+        written = (Path(d) / "out").read_text(encoding="utf-8").splitlines() if code == 0 else []
+    return code, written, calls
+
+
+def test_areas_output():
+    code, written, calls = areas_output({"base": ["instalador/ritmelli.iss", "server.py"]})
+    check(code == 0 and "monta=true" in written and "tela=true" in written,
+          f"the --areas writes monta=true for a build change, with the other areas ({written})")
+    check(bool(calls) and all("--no-renames" in c for c in calls),
+          "the --areas diffs without renames: a build file renamed out of the build paths still counts")
+    code, written, calls = areas_output({"base": ["server.py"]})
+    check(code == 0 and "monta=false" in written, f"the --areas writes monta=false otherwise ({written})")
+    code, written, calls = areas_output({"base": ["instalador/ritmelli.iss", "server.py"], "before": ["server.py"]},
+                                        build_base="before")
+    check(code == 0 and "monta=false" in written and "tela=true" in written and [c[-2] for c in calls] == ["base", "before"],
+          f"with --build-base, the monta answer comes from its own diff and the other areas from the base ({written})")
+
+
+def test_build_wiring(flows):
+    def problems(f):
+        jobs = f[TESTA]["jobs"]
+        verdict = find_step(jobs["testa-o-pr"], "Verdict") or {}
+        areas = find_step(jobs["microfone"], "O PR mexe no filtro?") or {}
+        found = []
+        if jobs["microfone"].get("needs") not in ("etiquetas", ["etiquetas"]):
+            found.append("the filter job does not need the etiquetas job, whose queue_base it reads")
+        if (jobs["microfone"].get("outputs") or {}).get("monta") != "${{ steps.areas.outputs.monta }}":
+            found.append("the filter job does not output monta from its areas step")
+        if (verdict.get("env") or {}).get("MONTA") != "${{ needs.microfone.outputs.monta }}":
+            found.append("the Verdict does not read monta from the filter job")
+        if (verdict.get("env") or {}).get("PR_HEAD") != "${{ github.event.pull_request.head.sha }}":
+            found.append("the Verdict does not read the PR head")
+        if (areas.get("id") != "areas" or "if" in areas or areas.get("run") != testa_tudo.BUILD_AREAS_RUN
+                or areas.get("env") != testa_tudo.BUILD_BASE_ENV):
+            found.append("the areas step of the filter job does not run the --areas unconditionally")
+        return found
+
+    check(problems(flows) == [], f"the build answer goes from the --areas of the filter job to the Verdict "
+                                 f"({problems(flows)})")
+    for name, change in (
+            ("the filter job output", lambda f: f[TESTA]["jobs"]["microfone"]["outputs"].pop("monta")),
+            ("the filter job needs", lambda f: f[TESTA]["jobs"]["microfone"].pop("needs")),
+            ("the Verdict env", lambda f: find_step(f[TESTA]["jobs"]["testa-o-pr"], "Verdict")["env"].update(
+                MONTA="${{ needs.testes.outputs.monta }}")),
+            ("the PR head", lambda f: find_step(f[TESTA]["jobs"]["testa-o-pr"], "Verdict")["env"].pop("PR_HEAD")),
+            ("the areas step under an if", lambda f: find_step(f[TESTA]["jobs"]["microfone"],
+                                                               "O PR mexe no filtro?").update({"if": "false"})),
+            ("the build base of the queue", lambda f: find_step(f[TESTA]["jobs"]["microfone"],
+                                                                "O PR mexe no filtro?")["env"].update(
+                BUILD_BASE="${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}"))):
+        check(problems(mutated(flows, change)) != [], f"the wiring check catches {name} changed")
+    for path in ("instalador/ritmelli.iss", "atualizador.py", "atualizacao.py", "migra.py", "pastas.py",
+                 "microfone/microfone.py", "microfone/apo/version.rc", "ritmelli.spec", ".github/workflows/monta.yml",
+                 ".github/actions/inno-setup/action.yml"):
+        check(testa_tudo.touches_build([path]), f"a change to {path} counts as a build change")
+    for path in ("dev/testa_tudo.py", ".github/workflows/testa.yml", "server.py", "microfone/injeta.py", "atualiza.txt"):
+        check(not testa_tudo.touches_build([path]), f"a change to {path} alone is not a build change")
 
 
 def test_summary_block(flows):
@@ -326,6 +477,7 @@ def test_summary_block(flows):
     code, out, summary, calls = run_summary(block, "pull_request", ["success", "success", "cancelled"] + ["success"] * 4)
     check(code != 0 and not any(c.startswith("gh pr comment") for c in calls) and "cancelada" in summary,
           f"a cancelled job fails the check and leaves the PR comment as it was (exit {code})")
+    test_build_gate(block)
     cancelled = step_of(flows, "testa-o-pr", "Cancelada")["run"]
     ran = run_step(cancelled, {})
     check(ran.code != 0 and not ran.calls and "cancelada" in ran.summary,
@@ -449,6 +601,9 @@ def main():
     test_bench_order()
     test_without_destination(flows)
     test_summary_block(flows)
+    test_build_wiring(flows)
+    test_build_base_in_queue()
+    test_areas_output()
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 
