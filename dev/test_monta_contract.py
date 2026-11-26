@@ -21,6 +21,7 @@ INPUTS = ("notas", "notas_en")
 REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial")
 SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
+STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.(\w+) != ''", "parcial": r"steps\.([\w-]+)\.outputs\.(parcial)"}
 OTHER_VERSION = re.compile(r"Ritmelli-(?:[0-9]|<version>|\$\{\{.*?\}\})(?:[0-9.]|<version>|\$\{\{.*?\}\})*")
 
 failures = []
@@ -87,7 +88,7 @@ def writes_output(run, key):
 
 def step_output_problem(job, name):
     value = inner((job.get("outputs") or {}).get(name, ""))
-    source = re.match(r"steps\.([\w-]+)\.outputs\.(\w+)\b", value or "")
+    source = re.fullmatch(STEP_OUTPUTS[name], value or "")
     step = source and step_by_id(job, source.group(1))
     if not step or not writes_output(step.get("run", ""), source.group(2)):
         return f"the {name} output of the monta job does not come from a step that writes it to its GITHUB_OUTPUT"
@@ -280,6 +281,10 @@ def main():
         "the Ritmelli upload switched off": lambda d: upload(d, setup).update({"if": "${{ false }}"}),
         "the anterior output": lambda d: d["jobs"]["monta"]["outputs"].pop("anterior"),
         "the anterior output written as a constant": lambda d: d["jobs"]["monta"]["outputs"].update(anterior="false"),
+        "the anterior output inverted": lambda d: d["jobs"]["monta"]["outputs"].update(
+            anterior=d["jobs"]["monta"]["outputs"]["anterior"].replace("!=", "==")),
+        "the parcial output from another key": lambda d: d["jobs"]["monta"]["outputs"].update(
+            parcial="${{ steps.congela.outputs.versao }}"),
         "the id of the step behind the anterior output": lambda d: step_by_id(d["jobs"]["monta"], "anterior").update(
             id="previous"),
         "the parcial the monta step writes": lambda d: step_by_id(d["jobs"]["monta"], "monta").update(
@@ -348,7 +353,8 @@ def main():
     check("$saida='" in manifest_step(packed_folder["jobs"]["monta"])["run"]
           and contract_problems(packed_folder) == [],
           "the folder of --saida assigned without spaces keeps the contract")
-    renamed_job = mutant(doc, lambda d: d["jobs"].update(smoke=dict(d["jobs"].pop("testa"), name="testa")))
+    testa_id = next(k for k, j in doc["jobs"].items() if display(k, j) == "testa")
+    renamed_job = mutant(doc, lambda d: d["jobs"].update(smoke=dict(d["jobs"].pop(testa_id), name="testa")))
     check(contract_problems(renamed_job) == [], "the testa job with another id and the same shown name keeps the "
                                                 "contract")
     item = mutant(doc, lambda d: edit_run(d, lambda run: re.sub(r"\$n\b", "$item", run)))
