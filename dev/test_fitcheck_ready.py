@@ -149,10 +149,14 @@ class Slow(http.server.BaseHTTPRequestHandler):
         pass
 
 
+released = threading.Event()
+
+
 def state_held_upstream():
-    threading.Event().wait(float(sys.argv[2]))
+    released.wait(float(sys.argv[2]))
 
 
+threading.Thread(target=lambda: (sys.stdin.readline(), released.set()), daemon=True).start()
 server = http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), Slow)
 print("listening", flush=True)
 server.serve_forever()
@@ -229,7 +233,8 @@ class ThemeProxy:
         if "Origin" in request.headers:
             headers["Origin"] = self.target
         late = None
-        if self.stacks is not None and request.path == "/api/state" and "Chrome" in request.headers.get("User-Agent", ""):
+        if (self.stacks is not None and request.method == "GET" and request.path == "/api/state"
+                and "Chrome" in request.headers.get("User-Agent", "")):
             late = asyncio.get_running_loop().call_later(LATE_STATE_S, self.stacks.ask)
         try:
             return await self.relay(request, headers, late)
@@ -300,16 +305,22 @@ def notice_through(proxy_options, config, button=None):
 
 def child_stacks(code, stacks, ready, *args):
     child = subprocess.Popen([sys.executable, "-c", code, *args], env=dict(os.environ, **stacks.env()),
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             encoding="utf-8")
     said, came = [], threading.Event()
-    threading.Thread(target=lambda: (said.append(child.stdout.readline()), came.set()), daemon=True).start()
-    if not (came.wait(10) and said[0].strip() == ready):
+    reader = threading.Thread(target=lambda: (said.append(child.stdout.readline()), came.set()), daemon=True)
+    reader.start()
+    if came.wait(10) and said[0].strip() == ready:
+        stacks.accepted.wait(10)
+        return child
+    try:
         child.kill()
+        child.wait()
+        reader.join(10)
         child.communicate()
+    finally:
         stacks.close()
-        raise TimeoutError(f"the child did not say {ready!r} in 10 s ({said})")
-    stacks.accepted.wait(10)
-    return child
+    raise TimeoutError(f"the child did not say {ready!r} in 10 s ({said})")
 
 
 def stacks_of_a_held_process():
@@ -338,7 +349,17 @@ def stacks_of_a_held_process():
 
 def proxy_asks_when_the_state_is_late():
     stacks, port = ServerStacks(), so_mock.free_port()
-    child = child_stacks(SLOW_UPSTREAM, stacks, "listening", str(port), str(LATE_STATE_S + 1))
+    child = child_stacks(SLOW_UPSTREAM, stacks, "listening", str(port), "30")
+    err, held = [], threading.Event()
+
+    def read():
+        for line in child.stderr:
+            err.append(line)
+            if "state_held_upstream" in line:
+                held.set()
+
+    threading.Thread(target=read, daemon=True).start()
+    status, seen = None, False
     try:
         proxy = ThemeProxy(f"http://127.0.0.1:{port}", stacks=stacks)
         loop, stop = asyncio.new_event_loop(), asyncio.Event()
@@ -347,20 +368,25 @@ def proxy_asks_when_the_state_is_late():
         proxy.started.wait(10)
 
         async def state():
-            async with ClientSession() as session, session.get(proxy.base + "/api/state",
-                                                               headers={"User-Agent": "Chrome"}) as r:
-                return r.status
+            async with ClientSession() as session:
+                pending = asyncio.ensure_future(session.get(proxy.base + "/api/state", headers={"User-Agent": "Chrome"}))
+                found = await asyncio.to_thread(held.wait, 10)
+                child.stdin.write("release\n")
+                child.stdin.flush()
+                async with await pending as r:
+                    return r.status, found
 
-        status = asyncio.run(state())
+        status, seen = asyncio.run(state())
         loop.call_soon_threadsafe(stop.set)
         thread.join(10)
     finally:
         child.kill()
-        _, err = child.communicate()
+        child.wait()
         stacks.close()
-    check(status == 200 and stacks.asked and "state_held_upstream" in err,
+    text = "".join(err)
+    check(status == 200 and stacks.asked and seen,
           f"the proxy asks the server for its stacks once its GET /api/state is {LATE_STATE_S:.0f} s late, and they show "
-          f"where the server is held ({status}, asked {stacks.asked}, {err[-300:]!r})")
+          f"where the server is held ({status}, asked {stacks.asked}, {text[-300:]!r})")
 
 
 def notice_on_slow_load():
