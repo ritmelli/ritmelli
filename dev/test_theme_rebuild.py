@@ -173,7 +173,9 @@ SAMPLES = (
                                                           "base.css": FONT},
      {"index.html": "<link rel='stylesheet' href='gerado/base.css'>\n", "gerado/base.css": FONT}, ["gone", "new"]),
     ("a line break put after throw", inline("function g(x) {\n  throw x;\n}"),
-     inline("function g(x) {\n  throw\n  x;\n}"), ["does not parse"]),
+     inline("function g(x) {\n  throw\n  x;\n}"), ["does not parse", LEFT, CAME]),
+    ("a line break put inside the comment between return and its value", inline("function g() { return /* a */ 1; }"),
+     inline("function g() { return /*\n*/ 1; }"), [LEFT, CAME]),
     ("two functions of one name swapped", inline("function f() { return 1; }\nfunction f() { return 2; }\nf();"),
      inline("function f() { return 2; }\nfunction f() { return 1; }\nf();"),
      ["declarations of one name in another order"]),
@@ -181,6 +183,15 @@ SAMPLES = (
 
 
 DOUBTFUL = (
+    ("an escaped separator in an href", {"index.html": "<link rel='stylesheet' href='x%5C..%2F..%2Fa.css'>\n"}),
+    ("a backslash in a src", {"index.html": "<script src='x\\..\\x.js'></script>\n"}),
+    ("a / and a quote in an unquoted value of an end tag",
+     {"index.html": "<script src='x.js'></script x=a/b=\"><p>Visible text</p>\">\n"}),
+    ("an end tag with a value whose quote is not at its start",
+     {"index.html": "<script src='x.js'></script x=x=\"><p>Visible text</p>\">\n"}),
+    ("a quote in an unquoted value of an end tag",{"index.html": "<script src='x.js'></script x=a\"b>\n"}),
+    ("a quote in an attribute name of an end tag", {"index.html": "<script src='x.js'></script a\"b>\n"}),
+    ("a = opening an unquoted value of a start tag", {"index.html": "<script src='x.js' x==a></script>\n"}),
     ("a script inside a textarea", {"index.html": "<textarea><script src='x.js'></script></textarea>\n"}),
     ("a tag inside a closed textarea", {"index.html": "<textarea><b>a</b></textarea>\n<script src='x.js'></script>\n"}),
     ("a title that never closes", {"index.html": "<title>Ritmelli\n<script src='x.js'></script>\n"}),
@@ -264,9 +275,8 @@ def main():
         ("a translation put after a vertical tab in a comment", {"i18n/i18n_en.properties": lambda text, _: text.replace(
             "# Geral:", "#\vnav.backToShelf=Close the app\v# Geral:") if "# Geral:" in text else ""},
          "translation new"),
-        ("the </script> of notice.js ended at its first > by a value with no quote at its start",
-         {"index.html": lambda html, _: html.replace(NOTICE, NOTICE.replace(
-             "</script>", '</script x=x="><p>Visible text</p>">')) if NOTICE in html else ""}, "new"),
+        ("a line break put between return and the template of desenharQR",
+         {"phone.js": lambda text, _: text.replace("  return `<svg", "  return\n`<svg")}, LEFT),
         ("transporte.js renamed",
          {"index.html": lambda html, _: html.replace('src="transporte.js"', 'src="transporte-new.js"')
           if 'src="transporte.js"' in html else "",
@@ -284,7 +294,7 @@ def main():
         results.append((len(head.blocks) == len(theme.blocks) and expected in found,
                         f"the theme with {title} does more than move code ({found})"))
     quiet = {"say": lambda *_: None}
-    for title, head, _ in mutants[:2]:
+    for title, head, _ in [*mutants[:2], *(x for x in mutants if "desenharQR" in x[0])]:
         code = theme_rebuild.judge(theme, head, compiles, **quiet)
         results.append((code == 1, f"the verdict on the theme with {title} is {code}"))
     allowed = next((a, b) for title, a, b, _ in samples if title == "two functions swapped")

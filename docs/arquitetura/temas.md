@@ -98,7 +98,8 @@ não está lá é um script ou uma folha que o servidor não entrega. O que ela 
 não julga: sai 3 e mostra o trecho do `index.html` quando acha um `<base>`, um elemento de texto (`title`, `textarea`,
 `noscript`, `xmp`, `iframe`, `noembed`, `noframes`, `plaintext`) com `<` dentro ou sem o fim dele, um comentário que não
 fecha ou que fecha de um jeito raro (`<!-->`, `<!--->`, `--!>`), um `<!` que não é comentário nem doctype, um `<?`, um
-`</` sem nome, um `&` na tag de um `<script src>` ou de um `<link>`, ou uma tag de script ou de estilo que não acaba.
+`</` sem nome, um `&`, um `%` ou uma `\` no `src` de um script ou no `href` de uma folha, uma aspa, um `<` ou um `=`
+no nome ou no valor sem aspas de um atributo de uma tag de script ou de estilo, ou uma tag dessas que não acaba.
 Ela sai 0 quando o head só muda código de lugar:
 - todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
@@ -117,8 +118,11 @@ Ela sai 0 quando o head só muda código de lugar:
   `splitlines`, que também quebra num `\v`).
 
 Instruções e regras são comparadas como árvores de sintaxe (o tree-sitter, do `requirements-dev.txt`), com o texto de
-cada nó que nenhum filho cobre (o número de um `14px`), sem os comentários e os espaços fora de strings e templates. Assim, uma marca de bloco, uma linha em branco ou uma indentação
-nova não são mudança, e um espaço dentro de um template literal, ou uma marca que junta dois tokens, são. No CSS
+cada nó que nenhum filho cobre (o número de um `14px`), sem os comentários e os espaços fora de strings e templates. A
+quebra de linha logo depois do `return`, do `break`, do `continue`, do `throw`, do `yield`, de um `++` ou `--` e no
+começo de uma função ou de uma seta conta, porque ali ela muda o que o código faz (o `return` seguido de quebra devolve
+`undefined`). Assim, uma marca de bloco, uma linha em branco ou uma indentação nova
+não são mudança, e um espaço dentro de um template literal, ou uma marca que junta dois tokens, são. No CSS
 conta também se um token vem depois de espaço (só os cinco do CSS; outro caractere no vão fica), de comentário ou de
 nada (o `calc()` pede os espaços em volta do `+`
 e do `-`, e um comentário parte o `14/**/px`). Declarações de

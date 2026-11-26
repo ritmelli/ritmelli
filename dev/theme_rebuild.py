@@ -75,6 +75,10 @@ JS_TYPES = (None, "", "text/javascript")
 CSS_TYPES = (None, "", "text/css")
 DECLARATIONS = ("function_declaration", "generator_function_declaration")
 COMMENTS = ("comment", "html_comment")
+RESTRICTED = ("return_statement", "break_statement", "continue_statement", "throw_statement", "yield_expression",
+              "update_expression", "arrow_function", "function_declaration", "function_expression",
+              "generator_function_declaration", "generator_function")
+LINE_TERMINATORS = (b"\n", "\u2028".encode("utf-8"), "\u2029".encode("utf-8"))
 STRICT = ("'use strict'", '"use strict"')
 CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 MIN_PIECE = 2
@@ -189,7 +193,8 @@ class _FileTags(HTMLParser):
         first = {}
         for name, value in attrs:
             first.setdefault(name, value)
-        if "&" in raw_value(self.get_starttag_text(), "src" if tag == "script" else "href" if tag == "link" else ""):
+        if set("&%\\") & set(raw_value(self.get_starttag_text(), "src" if tag == "script" else "href" if tag == "link"
+                                       else "")):
             raise Doubt(f"index.html: {self.get_starttag_text()!r}")
         if tag == "script" and first.get("src"):
             self.in_src = True
@@ -296,6 +301,14 @@ def tag_end(page, at):
             return at
         elif state == "before value":
             state = c if c in "\"'" else state if c in HTML_SPACE else "unquoted"
+            if state == "unquoted" and c in "<=`":
+                doubt(page, at)
+        elif state == "unquoted":
+            if c in "\"'<=`":
+                doubt(page, at)
+            state = "before name" if c in HTML_SPACE else state
+        elif c in "\"'<":
+            doubt(page, at)
         elif c in HTML_SPACE or c == "/":
             state = "after name" if state in ("name", "after name") and c != "/" else "before name"
         elif c == "=" and state in ("name", "after name"):
@@ -464,6 +477,9 @@ def shape(node, src, spaced=None):
         if child.type not in COMMENTS:
             parts.append(shape(child, src, spaced))
         at = child.end_byte
+    if node.type in RESTRICTED and (after := [x for x in node.children[1:] if x.type not in COMMENTS]):
+        gap = src[node.children[0].end_byte:after[0].start_byte]
+        parts.append(("line break", any(x in gap for x in LINE_TERMINATORS)))
     return node.type, tuple(parts + own(at, node.end_byte, src, spaced))
 
 
