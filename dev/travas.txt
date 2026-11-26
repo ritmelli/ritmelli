@@ -1,0 +1,11 @@
+# The exact versions of the dev-only libraries of requirements-dev.txt, and of the dependencies of theirs that
+# instalador/travas.txt does not pin. With them in the libraries cache key, a CI cache hit holds the same libraries a
+# fresh install gets (#231). yt-dlp stays out on purpose: the CI installs the newest on every run, as the app build does
+# (.github/actions/python, instalador/monta.ps1).
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+ml-dtypes==0.7.0
+onnx==1.23.2
+pillow==13.0.0
+referencing==0.37.0
+rpds-py==2026.9.1

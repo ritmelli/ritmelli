@@ -20,9 +20,9 @@ WORKFLOW = ROOT / ".github" / "workflows" / "testa.yml"
 TESTA = ".github/workflows/testa.yml"
 ACTION = ROOT / ".github" / "actions" / "python" / "action.yml"
 TRAVAS = ROOT / "instalador" / "travas.txt"
+DEV_TRAVAS = ROOT / "dev" / "travas.txt"
 REQUIREMENTS = (ROOT / "requirements.txt", ROOT / "requirements-dev.txt")
-KNOWN_UNPINNED_ISSUE = "https://github.com/ritmelli/ritmelli/issues/231"
-KNOWN_UNPINNED = {"yt-dlp", "pillow", "onnx", "jsonschema"}
+ALWAYS_NEWEST = {"yt-dlp"}
 REQUIRED_NAME = "Testa o PR"
 TRIGGERS = {"pull_request": {"types": ["opened", "synchronize", "reopened"]}, "push": {"branches": ["main"]},
             "merge_group": None}
@@ -498,7 +498,8 @@ def requirement(line):
 
 
 def test_unpinned():
-    pinned = {name for name, exact in map(requirement, TRAVAS.read_text(encoding="utf-8").splitlines()) if exact}
+    pinned = {name for travas in (TRAVAS, DEV_TRAVAS)
+              for name, exact in map(requirement, travas.read_text(encoding="utf-8").splitlines()) if exact}
     unpinned = set()
     for req in REQUIREMENTS:
         for line in req.read_text(encoding="utf-8").splitlines():
@@ -507,9 +508,20 @@ def test_unpinned():
             name, exact = requirement(line)
             if name and not exact and name not in pinned:
                 unpinned.add(name)
-    check(unpinned == KNOWN_UNPINNED,
-          f"the libraries the CI installs without a version in instalador/travas.txt are the known ones of "
-          f"{KNOWN_UNPINNED_ISSUE} (now {sorted(unpinned)}; a new one gets a pin, one that got a pin leaves the list)")
+    check(unpinned == ALWAYS_NEWEST,
+          f"every library the CI installs has an exact version, in instalador/travas.txt, dev/travas.txt or its own "
+          f"line, except yt-dlp, which is always the newest (unpinned: {sorted(unpinned)})")
+    dev = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8").splitlines()
+    check("-c dev/travas.txt" in dev, "requirements-dev.txt takes dev/travas.txt as constraints")
+    steps = job_steps(load(ACTION)["runs"])
+    saved = next((i for i, s in enumerate(steps) if (s.get("uses") or "").startswith("actions/cache/save@")), None)
+    newest = [i for i, s in enumerate(steps) if re.search(r'pip install .*--upgrade "yt-dlp\[default\]"', s.get("run") or "")]
+    check(saved is not None and len(newest) == 1 and newest[0] > saved and "if" not in steps[newest[0]],
+          f"the python action installs the newest yt-dlp on every run, after the cache is saved and on a hit too "
+          f"(cache save at {saved}, yt-dlp at {newest})")
+    check(any("'dev/travas.txt'" in (s.get("with") or {}).get("key", "") for s in steps
+              if (s.get("with") or {}).get("key", "").startswith("libs-")),
+          "the libraries cache key hashes the dev/travas.txt")
 
 
 def test_bench_order():

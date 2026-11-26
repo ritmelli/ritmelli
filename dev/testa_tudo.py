@@ -213,7 +213,7 @@ VERDICT_STEP = "Verdict"
 # what goes into the key of a compara capture besides the commit and the Chrome version: the scripts that take it and
 # the libraries of the server
 CAPTURA = ("dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py", "requirements.txt", "requirements-dev.txt",
-           "instalador/travas.txt")
+           "instalador/travas.txt", "dev/travas.txt")
 LONG_TITLES = {"bench": "Banca", "capture": "Captura"}
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva
 # codigo de renderizacao ou de traducao para outro modulo poe o modulo na "tela"
