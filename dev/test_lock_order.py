@@ -47,6 +47,9 @@ def declared(text):
 
 
 def lock_of(node, cls):
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr"
+            and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)):
+        return ATTRS.get(node.args[1].value)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "state_section":
         return "_qlock"
     if isinstance(node, ast.Name):
@@ -66,7 +69,9 @@ def has_lock(node, cls):
     if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
         return any(has_lock(e, cls) for e in node.elts)
     if isinstance(node, ast.Dict):
-        return any(v is not None and has_lock(v, cls) for v in node.values)
+        return any(has_lock(x, cls) for x in [*node.values, *(k for k in node.keys if k is not None)])
+    if isinstance(node, ast.Lambda):
+        return has_lock(node.body, cls)
     if isinstance(node, ast.IfExp):
         return has_lock(node.body, cls) or has_lock(node.orelse, cls)
     if isinstance(node, ast.BoolOp):
@@ -608,11 +613,14 @@ def audio_locks(text):
             lock = lock_of(n.context_expr, AUDIO[0]) if isinstance(n, ast.withitem) else acquired(n, AUDIO[0])
             if lock:
                 taken.setdefault(lock, set()).add(key[1])
-            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                    and isinstance(n.func.value, ast.Name) and n.func.value.id == "self"):
-                todo.append(("self", n.func.attr))
-            elif isinstance(n, ast.Call) and isinstance(n.func, ast.Name):
-                todo.append(("module", n.func.id))
+            if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self":
+                todo.append(("self", n.attr))
+            elif isinstance(n, ast.Name):
+                todo.append(("module", n.id))
+            elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "getattr"
+                  and len(n.args) >= 2 and isinstance(n.args[0], ast.Name) and n.args[0].id == "self"
+                  and isinstance(n.args[1], ast.Constant)):
+                todo.append(("self", n.args[1].value))
     return seen, taken
 
 
@@ -638,41 +646,48 @@ def self_test(order, before):
     cases.update({
         "the fila_lock, then a blocking _lock.acquire()": ("def f(A, e):\n    with A.fila_lock:\n"
                                                            "        e._lock.acquire()\n", 1),
+        "the _qlock taken by getattr, then the fila_lock": (
+            "def f(A, E):\n    with getattr(E, '_qlock'):\n        with A.fila_lock:\n            pass\n", 1),
         "the fila_lock, then a with of the _lock": ("def f(A, e):\n    with A.fila_lock:\n        with e._lock:\n"
                                                     "            pass\n", 1),
     })
+    bound, passed, returned = "bound to a name", "passed as an argument", "returned by a function"
     bindings = {
-        "a lock bound to a local name": "def f(E):\n    q = E._qlock\n    with q:\n        pass\n",
+        "a lock bound to a local name": ("def f(E):\n    q = E._qlock\n    with q:\n        pass\n", bound),
         "a lock bound to a local name in one branch": (
-            "def f(A, E):\n    q = E._lock if A else E._qlock\n    with q:\n        pass\n"),
-        "the _qlock section bound to a local name": "def f(E):\n    s = E.state_section()\n    with s:\n        pass\n",
-        "a lock bound by a with ... as": "def f(E):\n    with E._lock as held:\n        pass\n",
-        "a shelf lock bound to a local name": "class Library:\n    def f(self):\n        held = self.lock\n",
-        "an annotated binding": "def f(E):\n    q: object = E._qlock\n",
-        "a binding in a with (q := ...)": "def f(E):\n    with (q := E._qlock):\n        pass\n",
-        "a lock unpacked from a tuple": "def f(A, E):\n    a, q = A, E._qlock\n",
-        "a lock kept on an attribute": "class Engine:\n    def f(self, E):\n        self.q = E._qlock\n",
-        "a lock as a for target": "def f(A):\n    for lk in (A.fila_lock,):\n        with lk:\n            pass\n",
-        "a lock as a comprehension target": "def f(A):\n    [x.acquire() for x in [A.fila_lock]]\n",
-        "a lock passed as an argument": "def f(A, h):\n    h(A.fila_lock)\n",
-        "a lock as a parameter's default": "def f(A, lk=None):\n    def g(lk=A.fila_lock):\n        pass\n",
-        "a lock handed to a lambda": "def f(A):\n    with (lambda lk: lk)(A.fila_lock):\n        pass\n",
-        "a lock returned by a getter": "class Engine:\n    def _mix_lock(self):\n        return self._lock\n",
-        "a _qlock section returned by a getter": "def f(E):\n    return E.state_section()\n",
-        "a lock returned by a conditional": "def f(A, E):\n    return E._lock if A else E._qlock\n",
-        "a lock returned in a tuple": "def f(E):\n    return (E._lock,)\n",
-        "a lock yielded from a getter": "def f(E):\n    yield from (E._qlock,)\n",
-        "a lock passed in a dict": "def f(A, h):\n    h({'lock': A.fila_lock})\n",
-        "a lock passed by a conditional": "def f(A, E, h):\n    h(E._lock if A else E._qlock)\n",
+            "def f(A, E):\n    q = E._lock if A else E._qlock\n    with q:\n        pass\n", bound),
+        "the _qlock section bound to a local name": (
+            "def f(E):\n    s = E.state_section()\n    with s:\n        pass\n", bound),
+        "a lock bound by a with ... as": ("def f(E):\n    with E._lock as held:\n        pass\n", bound),
+        "a shelf lock bound to a local name": ("class Library:\n    def f(self):\n        held = self.lock\n", bound),
+        "an annotated binding": ("def f(E):\n    q: object = E._qlock\n", bound),
+        "a binding in a with (q := ...)": ("def f(E):\n    with (q := E._qlock):\n        pass\n", bound),
+        "a lock unpacked from a tuple": ("def f(A, E):\n    a, q = A, E._qlock\n", bound),
+        "a lock kept on an attribute": ("class Engine:\n    def f(self, E):\n        self.q = E._qlock\n", bound),
+        "a lock as a for target": ("def f(A):\n    for lk in (A.fila_lock,):\n        with lk:\n            pass\n", bound),
+        "a lock as a comprehension target": ("def f(A):\n    [x.acquire() for x in [A.fila_lock]]\n", bound),
+        "a lock as a parameter's default": ("def f(A, lk=None):\n    def g(lk=A.fila_lock):\n        pass\n", bound),
+        "a lock passed as an argument": ("def f(A, h):\n    h(A.fila_lock)\n", passed),
+        "a lock handed to a lambda": ("def f(A):\n    with (lambda lk: lk)(A.fila_lock):\n        pass\n", passed),
+        "a lock passed in a dict": ("def f(A, h):\n    h({'lock': A.fila_lock})\n", passed),
+        "a lock passed as a dict key": ("def f(A, h):\n    h({A.fila_lock: 1})\n", passed),
+        "a lock passed by a conditional": ("def f(A, E, h):\n    h(E._lock if A else E._qlock)\n", passed),
+        "a lambda returning a lock passed on": ("def f(E, h):\n    h(lambda: E._lock)\n", passed),
+        "a lock returned by a getter": ("class Engine:\n    def _mix_lock(self):\n        return self._lock\n", returned),
+        "a _qlock section returned by a getter": ("def f(E):\n    return E.state_section()\n", returned),
+        "a lock returned by a conditional": ("def f(A, E):\n    return E._lock if A else E._qlock\n", returned),
+        "a lock returned in a tuple": ("def f(E):\n    return (E._lock,)\n", returned),
+        "a lock yielded from a getter": ("def f(E):\n    yield from (E._qlock,)\n", returned),
+        "a lock returned by a lambda": ("def f(E):\n    return lambda: E._lock\n", returned),
         "a lock chosen by an expression in a with": (
-            "def f(A, E):\n    with (E._lock if A else E._qlock):\n        pass\n"),
+            "def f(A, E):\n    with (E._lock if A else E._qlock):\n        pass\n", "taken through an expression"),
         "a lock acquired by hand around a with": (
             "def f(E):\n    E._qlock.acquire()\n    try:\n        with E._lock:\n            pass\n"
-            "    finally:\n        E._qlock.release()\n"),
+            "    finally:\n        E._qlock.release()\n", "acquired by hand"),
     }
-    for what, code in bindings.items():
+    for what, (code, rule) in bindings.items():
         bad = lock_bindings({"case.py": ast.parse(code)})
-        check(bool(bad), f"the binding check flags {what} ({bad})")
+        check(any(rule in b for b in bad), f"the binding check flags {what}, as {rule} ({bad})")
     bad = lock_bindings({"case.py": ast.parse("def f(A, E):\n    d = E._deck\n    n = len(A.fila)\n")})
     check(not bad, f"the binding check accepts names bound to what is not a lock ({bad})")
     calls = {
@@ -774,6 +789,13 @@ def self_test(order, before):
     _, taken = audio_locks(engine)
     check(taken.get("_lock") == {"take_engine_lock"},
           f"the audio check sees the _lock taken by a module function the _mixa calls ({taken})")
+    vira = "    def _vira(self):\n        with self._lock:\n            pass\n"
+    for what, body in (("through a local alias", "        vira = self._vira\n        vira()\n"),
+                       ("through getattr", "        getattr(self, '_vira')()\n"),
+                       ("as a callback", "        run(self._vira)\n")):
+        _, taken = audio_locks("class Engine:\n    def _mixa(self):\n" + body + vira)
+        check(taken.get("_lock") == {"_vira"},
+              f"the audio check sees the _lock taken by a method the _mixa reaches {what} ({taken})")
 
 
 def main():
@@ -860,6 +882,14 @@ def main():
     check(set(taken) == audio, f"the audio thread ({'.'.join(AUDIO)} and the {len(seen) - 1} Engine methods it calls) "
                                f"takes only the AudioLocks of the model, {sorted(audio)} "
                                f"({ {k: sorted(v) for k, v in taken.items()} })")
+    capture = "        with self._qlock:\n            if self._pronto is not None and self.track is not None"
+    aliased = sources["engine.py"].replace(
+        "        b = self._captura(frames)\n", "        capture = self._captura\n        b = capture(frames)\n", 1
+    ).replace(capture, capture.replace("self._qlock", "self._lock, self._qlock"), 1)
+    _, taken = audio_locks(aliased)
+    check(aliased.count("capture = self._captura") == 1 and "_captura" in taken.get("_lock", ()),
+          f"with the _mixa calling the _captura through a local alias and the _captura taking the _lock, the audio "
+          f"check fails ({ {k: sorted(v) for k, v in taken.items()} })")
     bound = lock_bindings(trees)
     check(not bound, f"no lock of the model is bound to a local name in {', '.join(MODULES)}, so every with and "
                      f"acquire names its lock ({bound})")

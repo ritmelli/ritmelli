@@ -158,7 +158,10 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   barra não é publicada depois dele; que a entrada que uma reserva em curso vai tocar segue na versão que ela leu; e que
   a entrada da virada pendente tem a mesma versão que o prato toca (as duas corridas da #211). Duas execuções mostram,
   como falhas conhecidas da #294, o stream que para antes do fim (`WithTheDrop`) e a virada para o stream de um disco
-  com download (`WithTheJobSwitch`).
+  com download (`WithTheJobSwitch`, com o download que termina depois de a preparação escolher o stream), e outras
+  duas, nas mesmas configurações, conferem todas as outras propriedades. A preparação escolhe a fonte como o `fonte_de`
+  (o arquivo da prateleira, o stream do download que corre, ou nenhuma), e a virada publica a que ela escolheu: com o
+  download terminado antes de a preparação ler a entrada (`DownloadEndsBeforeThePassage`), a virada leva o arquivo.
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o

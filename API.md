@@ -268,7 +268,7 @@ Todos respondem `{"ok": true, ...}` ou `{"ok": false, "error": Mensagem}` com st
 | `POST /api/toggle` | - | pausa ou continua; pausar cala também os sons por cima |
 | `POST /api/pause` / `POST /api/resume` | - | idem, explícito |
 | `POST /api/stop` | - | descarrega o arquivo, desliga o `loop` e cala os sons por cima (a voz segue); o disco entra no `history` |
-| `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca, e responde `{"entry": ...}` com a entrada que tocou; logo depois de uma passagem automática, a entrada que acabou de entrar nela; dois sobrepostos podem dividir o avanço, e aí tocam uma só e respondem a mesma quando a espera do segundo devolve a entrada (a regra em [Dois Próximos juntos](#dois-próximos-juntos)); fila vazia, ou o prato que trocou de disco no meio, = 409; a entrada que não toca (sai da fila) = 500, também para o sobreposto que esperava por ela |
+| `POST /api/next` | - | Próxima: tira o primeiro da `queue` e toca, e responde `{"entry": ...}` com a entrada que tocou; logo depois de uma passagem automática, a entrada que acabou de entrar nela; dois sobrepostos podem dividir o avanço, e aí tocam uma só e respondem a mesma quando a espera do segundo devolve a entrada (a regra em [Dois Próximos juntos](#dois-próximos-juntos)); fila vazia, ou o prato que trocou de disco no meio, = 409; a entrada que não toca (sai da fila) = 500, também para o sobreposto que esperava por ela; a do avanço do fim do disco que ele esperava, 409 |
 | `POST /api/prev` | - | Anterior do Spotify: com mais de 3 s de disco (ou nada antes dele), volta ao começo (`{"did": "inicio"}`); senão toca o último do `history`, e o disco do prato vai para o topo da `queue` (`{"did": "anterior"}`); nada no prato nem antes = 409 |
 | `POST /api/seek` | `{"t": 90}` | pula para t segundos |
 | `POST /api/volume` | `{"vol": 0.5}` | só o volume da música no jogo, de 0 a 1 (fora disso, o limite), com a mesma validação do `vol` do `/api/settings`, e grava só ele no `config.json`; responde `{"ok": true, "vol": 0.5}`; sem número, 400. É o volume que o remoto pode mudar |
@@ -328,7 +328,9 @@ caso). O segundo que espera o avanço de outro (o que se junta ao grupo, ou o qu
 s e responde 409 se a espera terminar sem uma entrada: passado o prazo (o primeiro, que fez o avanço, ainda responde a
 entrada que tocou), ou com o avanço sem tocar nada. Se tocar a entrada falha antes de ela entrar no prato (a entrada
 quebrada, que sai da fila), o erro vai para o grupo todo: os dois respondem 500; se um Parar resolveu o avanço antes da
-falha, os dois respondem 409 e o erro vai para o `error` do estado, se o prato segue parado:
+falha, os dois respondem 409 e o erro vai para o `error` do estado, se o prato segue parado. Quando o avanço que os
+dois esperam é o do fim do disco (o vigia reservou antes deles), a falha dele não vai para os Próximos: os dois
+respondem 409, e o erro vai para o `error` do estado:
 
 | o segundo roda | o prato entre os dois | o primeiro responde | o segundo responde |
 |---|---|---|---|
@@ -342,8 +344,9 @@ falha, os dois respondem 409 e o erro vai para o `error` do estado, se o prato s
 | com o primeiro tocando uma entrada que não toca | nada mudou | 500 | 500, o mesmo erro |
 | com o primeiro tocando uma entrada que não toca | um Parar resolveu o avanço antes da falha | 409, com o erro no `error` do estado | 409 |
 | com o primeiro tocando uma entrada que não toca | um Parar e outro disco antes da falha | 409, sem erro no disco novo | 409 |
+| com o primeiro esperando o avanço do fim do disco, que toca uma entrada que não toca | nada mudou | 409 | 409, com o erro no `error` do estado |
 
-O `dev/testa_comandos.py` confere cada linha desta tabela (na primeira das três da entrada que não toca, o erro que a
+O `dev/testa_comandos.py` confere cada linha desta tabela (na primeira das linhas da entrada que não toca, o erro que a
 rota deixa passar, e que o servidor responde com 500, é o mesmo nos dois).
 
 ## Pedal de troca de voz

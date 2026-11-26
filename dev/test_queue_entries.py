@@ -126,6 +126,8 @@ class Entries:
             return any(self.is_container(v, scope) for v in node.values)
         if isinstance(node, ast.IfExp):
             return self.is_container(node.body, scope) or self.is_container(node.orelse, scope)
+        if isinstance(node, ast.NamedExpr):
+            return self.is_container(node.value, scope)
         if isinstance(node, ast.Call) and called(node) in self.creturns:
             return True
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "copy"
@@ -134,6 +136,10 @@ class Entries:
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("list", "sorted",
                                                                                               "reversed", "tuple", "iter"):
             return bool(node.args) and self.is_container(node.args[0], scope)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "filter":
+            return len(node.args) == 2 and self.is_container(node.args[1], scope)
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            return any(self.is_entry(e, scope) for e in node.elts)
         if isinstance(node, (ast.ListComp, ast.GeneratorExp)):
             return self.is_entry(node.elt, self.comp_scope(node, scope))
         return False
@@ -170,6 +176,8 @@ class Entries:
         if isinstance(node, (ast.BoolOp, ast.IfExp)):
             parts = node.values if isinstance(node, ast.BoolOp) else [node.body, node.orelse]
             return any(self.is_entry(p, scope) for p in parts)
+        if isinstance(node, ast.NamedExpr):
+            return self.is_entry(node.value, scope)
         return False
 
     @staticmethod
@@ -310,9 +318,22 @@ def queue_attr(node, module, cls):
             or (isinstance(v, ast.Attribute) and v.attr == "app"))
 
 
+def queue_expr(node, module, cls, known):
+    if isinstance(node, ast.Name):
+        return node.id in known
+    if isinstance(node, ast.IfExp):
+        return queue_expr(node.body, module, cls, known) or queue_expr(node.orelse, module, cls, known)
+    if isinstance(node, ast.BoolOp):
+        return any(queue_expr(v, module, cls, known) for v in node.values)
+    if isinstance(node, ast.NamedExpr):
+        return queue_expr(node.value, module, cls, known)
+    return queue_attr(node, module, cls)
+
+
 def direct_aliases(func, module, cls, known):
     out, before = set(known), -1
-    assigns = [n for n in ast.walk(func) if isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None]
+    assigns = [n for n in ast.walk(func) if isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr))
+               and n.value is not None]
     while len(out) != before:
         before = len(out)
         for node in assigns:
@@ -320,8 +341,7 @@ def direct_aliases(func, module, cls, known):
                 pairs = list(zip(t.elts, node.value.elts)) if (
                     isinstance(t, ast.Tuple) and isinstance(node.value, ast.Tuple)) else [(t, node.value)]
                 for target, value in pairs:
-                    if isinstance(target, ast.Name) and (
-                            queue_attr(value, module, cls) or (isinstance(value, ast.Name) and value.id in out)):
+                    if isinstance(target, ast.Name) and queue_expr(value, module, cls, out):
                         out.add(target.id)
     return out
 
@@ -355,8 +375,7 @@ class QueueChanges(ast.NodeVisitor):
         self.stack.pop()
 
     def queue_ref(self, node):
-        return queue_attr(node, self.module, self.cls) or (
-            isinstance(node, ast.Name) and bool(self.stack) and node.id in self.stack[-1][2])
+        return queue_expr(node, self.module, self.cls, self.stack[-1][2] if self.stack else set())
 
     def flag(self, node, what):
         if not (self.stack and self.stack[-1][0]):
@@ -463,6 +482,12 @@ ENTRY_FORMS = {
         {"case.py": "def f(A, flag):\n    q = A.fila if flag else A.mix\n    q[0].update(title='New')\n"}, 1),
     "an entry bound by an assignment expression": (
         {"case.py": "def f(A):\n    if entry := next(iter(A.fila), None):\n        entry['audio'] = True\n"}, 1),
+    "an entry of a filtered queue": (
+        {"case.py": "def f(A):\n    for x in filter(None, A.fila):\n        x['fixa'] = True\n"}, 1),
+    "an entry wrapped in a list": ({"case.py": "def f(A):\n    y = [A.fila[0]]\n    y[0]['fixa'] = True\n"}, 1),
+    "an entry written on an assignment expression": (
+        {"case.py": "def f(A):\n    (e := A.fila[0]).update(audio=True)\n"}, 1),
+    "an entry of a queue bound inline": ({"case.py": "def f(A):\n    (q := A.fila)[0]['audio'] = True\n"}, 1),
     "an entry found by next()":({"case.py": "def f(A, q):\n    x = next((y for y in A.fila if y['qid'] == q), None)"
                                              "\n    x['fixa'] = True\n"}, 1),
     "an entry of a copy of the Mix": ({"case.py": "def f(A):\n    for m in sorted(A.mix):\n"
@@ -539,6 +564,11 @@ QUEUE_FORMS = {
     "a change_queue callback handed to another function": (
         {"server.py": "class App:\n    def f(self, x):\n        def remove_entry():\n            self.fila.remove(x)\n"
                       "        later(remove_entry)\n        self.change_queue(remove_entry)\n"}, 1),
+    "a queue chosen by a conditional": (
+        {"case.py": "def f(A, flag):\n    q = A.fila if flag else A.fila_ordem\n    q.clear()\n"}, 1),
+    "a queue chosen by a conditional, inline": (
+        {"case.py": "def f(A, flag):\n    (A.fila if flag else A.fila_ordem).clear()\n"}, 1),
+    "a queue bound by an assignment expression": ({"case.py": "def f(A):\n    if q := A.fila:\n        q.clear()\n"}, 1),
     "another class's own fila": ({"fx.py": "class Fx:\n    def f(self):\n        self.fila = []\n"}, 0),
     "the App building its queue in __init__": (
         {"server.py": "class App:\n    def __init__(self):\n        self.fila = []\n"}, 0),
@@ -575,6 +605,12 @@ def main():
     _, got = scan(dict(sources, **{"server.py": direct}))
     check(direct != sources["server.py"] and len(got) == 1,
           f"with the App replacing its queue without change_queue, the check fails ({got})")
+    direct = sources["server.py"].replace("        self.change_queue(remove_entry)\n",
+                                          "        self.change_queue(remove_entry)\n"
+                                          "        if q := self.fila:\n            q.remove(x)\n", 1)
+    _, got = scan(dict(sources, **{"server.py": direct}))
+    check(direct != sources["server.py"] and len(got) == 1,
+          f"with the App removing from its queue through an assignment expression, the check fails ({got})")
     writes, changes = scan(sources)
     check(not writes, f"no module writes an entry of the queue or the Mix outside the {OWNER[1]} ({writes})")
     check(not changes, f"every change to the queue in the {len(sources)} modules goes through change_queue "

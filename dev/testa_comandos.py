@@ -2627,6 +2627,33 @@ def two_nexts_table(A, E):
         confere(ok, f"second Proximo {when}, platter {between}: first {first}, second {second}, platter {platter}, "
                     f"queue {queue} (got {got}{'' if early is None else f', before the first: {name(early)}'})")
 
+    x, y = fresh()
+    held, waiting, waiters = Segura(A, quebra=True), cmd.Proximo.espera, threading.Semaphore(0)
+
+    def waits(p, prazo=None):
+        waiters.release()
+        return waiting(p, prazo)
+    try:
+        with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(cmd.Proximo, "espera", waits):
+            tw, rw = em_thread(cmd.avanca, A, na_tela=True, cede=True)
+            held.dentro.wait(5)
+            E.set_error(None)
+            t1, r1 = em_thread(cmd.pular, A)
+            t2, r2 = em_thread(cmd.pular, A)
+            joined = waiters.acquire(timeout=5) and waiters.acquire(timeout=5)
+            held.solta()
+            for t in (tw, t1, t2):
+                t.join(5)
+    finally:
+        held.fim()
+    confere(joined and rw and rw[0] is x and r1 == [None] and r2 == [None] and no_prato(E) == "d1"
+            and fila(A) == ["d3"] and (E.error or {}).get("key") == "server.queue.playFailed",
+            f"two Proximos waiting on the end of the record's advance, whose entry does not play: both None (409), and "
+            f"the error goes to the state's error ({joined}, {rw!r}, {r1!r}, {r2!r}, {no_prato(E)}, {fila(A)}, "
+            f"{E.error})")
+    cmd.limpar_fila(A)
+    E.set_error(None)
+
 
 def mixa():
     """The MockEngine's own _mixa, block by block with the clock in hand: the music ducked by POST /api/abaixa leaves
