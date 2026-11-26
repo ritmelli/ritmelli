@@ -146,8 +146,8 @@ def contract_problems(doc):
     problems += [p for p in (step_output_problem(monta, name) for name in ("anterior", "parcial")) if p]
     for required, output in GATED_JOBS.items():
         gated = [j for k, j in jobs.items() if display(k, j) == required or display(k, j).startswith(required + " (")]
-        refs = set(re.findall(r"needs\.monta\.outputs\.([\w-]+)", str(gated[0].get("if", "")))) if gated else set()
-        if output not in refs or not refs <= set(monta.get("outputs") or {}):
+        condition = str(gated[0].get("if", "")).strip() if gated else ""
+        if not re.fullmatch(rf"(\$\{{\{{)?\s*needs\.monta\.outputs\.{output}\s*==\s*'true'\s*(\}}\}})?", condition):
             problems.append(f"the if: of {required} does not read the {output} output of the monta job")
     run_uploads = uploads(jobs)
     found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
@@ -204,8 +204,14 @@ def source_step(doc, name):
     return step_by_id(doc["jobs"]["monta"], re.fullmatch(STEP_OUTPUTS[name], value).group(1))
 
 
-def rename_step(doc, old, new):
+def free_id(doc, base):
+    taken = {s.get("id") for s in job_steps(doc["jobs"]["monta"])}
+    return next(f"{base}{n or ''}" for n in range(len(taken) + 1) if f"{base}{n or ''}" not in taken)
+
+
+def rename_step(doc, old, base):
     monta = doc["jobs"]["monta"]
+    new = free_id(doc, base)
     step_by_id(monta, old)["id"] = new
     text = json.dumps(monta).replace(f"steps.{old}.", f"steps.{new}.")
     doc["jobs"]["monta"] = json.loads(text)
@@ -311,7 +317,10 @@ def main():
             parcial=d["jobs"]["monta"]["outputs"]["parcial"].replace("outputs.parcial", "outputs.parcial-exe")),
         "the parcial output from another key": lambda d: d["jobs"]["monta"]["outputs"].update(
             parcial="${{ steps.congela.outputs.versao }}"),
-        "the id of the step behind the anterior output": lambda d: source_step(d, "anterior").update(id="previous"),
+        "the id of the step behind the anterior output": lambda d: source_step(d, "anterior").update(
+            id=free_id(d, "previous")),
+        "the comparison in the if: of testa-parcial": lambda d: shown(d, "testa-parcial").update(
+            {"if": shown(d, "testa-parcial")["if"].replace("==", "!=")}),
         "the parcial the monta step writes": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].replace('"parcial=$', '"partial=$')),
         "the parcial output": lambda d: d["jobs"]["monta"]["outputs"].pop("parcial"),
@@ -374,7 +383,7 @@ def main():
         "the NOTAS_EN the manifest reads": lambda d: manifest_step(d["jobs"]["monta"]).update(
             run=manifest_step(d["jobs"]["monta"])["run"].replace("@('NOTAS_EN',", "@('NOTES_EN',")),
         "the option of the notas": lambda d: manifest_step(d["jobs"]["monta"]).update(
-            run=manifest_step(d["jobs"]["monta"])["run"].replace("'--notas')", "'--notes')")),
+            run=re.sub(r"(['\"])--notas\1\)", "'--notes')", manifest_step(d["jobs"]["monta"])["run"])),
     }
     for job_id in ("testa", "testa-atualizador", "testa-parcial"):
         mutants[f"the shown name of the job {job_id}"] = (lambda j: lambda d: shown(d, j).update(
@@ -401,10 +410,19 @@ def main():
                                            rename_step(d, source_step(d, "parcial")["id"], "build")))
     check(contract_problems(renamed_steps) == [], "the steps behind anterior and parcial with other ids keep the "
                                                   "contract")
+    taken = mutant(doc, lambda d: manifest_step(d["jobs"]["monta"]).update(id="build"))
+    taken_renamed = mutant(taken, lambda d: rename_step(d, source_step(d, "parcial")["id"], "build"))
+    check(contract_problems(taken) == [] and contract_problems(taken_renamed) == []
+          and source_step(taken_renamed, "parcial")["id"] != "build",
+          "renaming the step behind parcial picks an id no other step has")
+    wrapped = mutant(doc, lambda d: [shown(d, j).update({"if": "${{ " + shown(d, j)["if"] + " }}"})
+                                     for j in GATED_JOBS])
+    check(contract_problems(wrapped) == [], "the if: of the gated jobs wrapped in ${{ }} keeps the contract")
     for base, label in ((doc, ""), (spaces, " (version expression without spaces)"),
                         (packed_folder, " (folder of --saida assigned without spaces)"),
                         (renamed_job, " (testa job with another id)"),
-                        (renamed_steps, " (steps behind anterior and parcial with other ids)")):
+                        (renamed_steps, " (steps behind anterior and parcial with other ids)"),
+                        (tuples, " (notes tuple in double quotes)")):
         for name, change in mutants.items():
             check(contract_problems(mutant(base, change)) != [], f"the check catches {name} changed{label}")
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
