@@ -502,6 +502,8 @@ def test_unpinned():
         return {name for name, exact in map(requirement, travas.read_text(encoding="utf-8").splitlines()) if exact}
 
     app, dev_only = pins(TRAVAS), pins(DEV_TRAVAS)
+    held = (app | dev_only) & {"yt-dlp", "yt-dlp-ejs"}
+    check(not held, f"no constraints file pins yt-dlp or yt-dlp-ejs, which the CI upgrades on every run ({sorted(held)})")
     unpinned = set()
     for req, pinned in zip(REQUIREMENTS, (app, app | dev_only)):
         for line in req.read_text(encoding="utf-8").splitlines():
