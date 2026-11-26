@@ -74,8 +74,8 @@ Depois da gramática, a montagem ainda recusa, e o que escrever no lugar:
 - a tag de arquivo com outro atributo, outra ordem, maiúsculas ou algo antes do fim: exatamente
   `<script src="arquivo.js"></script>`, `<script type="module" src="nome.js"></script>` ou
   `<link rel="stylesheet" href="arquivo.css">`; e o mesmo módulo em duas tags: uma só;
-- um `<meta http-equiv="Content-Security-Policy">` numa página com módulos, que pode impedir o navegador de rodar os
-  módulos `data:` do mapa: a política vai num cabeçalho do servidor;
+- um `<meta http-equiv="Content-Security-Policy">` em qualquer página, que impede o navegador de rodar os scripts
+  inline e os módulos `data:` da página quando não libera os dois;
 - um `&` no `src` ou no `href` de um `<script>`, de um `<style>` ou de um `<link>` que não abre uma referência nomeada
   inteira, e toda referência numérica: o nome sem `&`, ou com `&amp;`; e um `&` no `rel`, no `type` ou no `as`: o valor
   escrito por extenso;
@@ -113,12 +113,14 @@ página com um `<meta>` de `Content-Security-Policy` roda o clássico e não os 
 de um `--mock` como o PC e de outro como o celular, pela mesma gramática da montagem (o `strict` do `theme_page.py`), e
 reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
 faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sintaxe:
-- cada import e reexportação de um módulo nomeia um módulo da página e um nome que ele exporta, seguido até a ligação
-  que ele nomeia (pelo `export *`, pela reexportação e pelo import que o módulo exporta de novo); um ciclo de
-  reexportações que não chega a ligação nenhuma, ou um nome que dois `export *` trazem de ligações diferentes, não vale;
+- cada import e reexportação de um módulo nomeia um módulo da página e um nome que ele exporta, sem atributos (o mapa só
+  entrega JavaScript), seguido até a ligação que ele nomeia (pelo `export *`, pela reexportação e pelo import que o
+  módulo exporta de novo); um ciclo de reexportações que não chega a ligação nenhuma, um nome que dois `export *` trazem
+  de ligações diferentes, ou um `export { nome }` de um nome que o módulo não declara nem importa, não vale;
 - cada nome importado é usado e não é declarado de novo, e um módulo não escreve no import nem num nome que ninguém
   declara (o modo estrito lança erro nos dois); cada nome se resolve pelos escopos em volta dele, e uma atribuição por
-  desestruturação não declara nada;
+  desestruturação não declara nada; um módulo não liga `arguments`, `yield` nem outra palavra que o modo estrito
+  reserva, e não repete um parâmetro (o clássico pode);
 - cada export é importado por outro arquivo do tema;
 - um módulo que exporta função não exporta um dado que ele não usa e que um arquivo só importa (o dado fica nesse
   arquivo);
@@ -128,7 +130,8 @@ faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sint
 - cada script se analisa sem erro, nenhum script, clássico ou módulo, usa `import()`, e nenhum arquivo lê um nome que
   só outro módulo declara (um módulo chega a ele só pelo import);
 - nenhum arquivo escreve de novo uma função que um módulo exporta (com os nomes ligados dentro dela trocados) nem
-  monta à mão o objeto que ela devolve, e só o `pixel.js` carrega as fontes do motor (o `fontesProntas`);
+  monta à mão o objeto que ela devolve (o objeto feito de valores que saem, cada um pela mesma chave, de uma chamada à
+  mesma função importada, por qualquer nome, vale), e só o `pixel.js` carrega as fontes do motor (o `fontesProntas`);
 - nenhuma sequência de 8 linhas não triviais aparece em dois `.js` do tema.
 
 O `dev/garden.py` conta as linhas de CSS e
@@ -193,10 +196,10 @@ declarações nascem e nada roda), e os nomes saem do escopo local dele. Um nome
 aceita (um `var arguments`, um `const yield`): os dois ficam no teste como falha conhecida da issue #239. Ele confere
 também que cada ouvinte das partes é do arquivo dela, que a página só passa a vigiar a própria visibilidade no
 `DOMContentLoaded`, com o `carregar()` já declarado (uma aba que aparece durante a leitura da página não conecta antes
-da partida), que o `queue.js` vê o toque que fecha a busca na mesa, e que os canvas do monitor, dos pads, da sombra
-do deck, do título da maleta, da contagem da prateleira e do aviso de vazio, limpos, ficam limpos até um
-`repinta-canvas` e então se pintam de novo (o canvas que o navegador devolve em branco, #119). O do mixer fica de fora:
-com o `--mock` tocando, cada passo das agulhas dos VUs põe de volta a imagem inteira dele.
+da partida), que o `queue.js` vê o toque que fecha a busca na mesa, que cada módulo do mapa da página roda (o
+`import()` de cada nome dele, com o erro de quem falha), e que os canvas dos rótulos do mixer, do
+monitor, dos pads, da sombra do deck, do título da maleta, da contagem da prateleira e do aviso de vazio, limpos,
+ficam limpos até um `repinta-canvas` e então se pintam de novo (o canvas que o navegador devolve em branco, #119).
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits
 como o servidor a monta: cada `<script src="..."></script>` e `<link rel="stylesheet" href="...">` trocado pelo texto

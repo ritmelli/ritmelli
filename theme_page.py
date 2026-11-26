@@ -120,10 +120,10 @@ class Template:
         if self.unimported:
             self.refuse(self.map_at, f"the module {self.unimported[0]} of the import map has no import after the map: "
                                      f"the browser would not run it")
-        if self.policy_at is not None and (self.modules is not None or any(f[2] == "module" for f in self.found)):
-            self.refuse(self.policy_at, "a Content-Security-Policy in a <meta> on a page with modules, which can keep "
-                                        "the browser from running the data: modules of the import map: send the "
-                                        "policy as a header of the server")
+        if self.policy_at is not None:
+            self.refuse(self.policy_at, "a Content-Security-Policy in a <meta>, which keeps the browser from running "
+                                        "the page's inline scripts and data: modules unless it allows both: leave it "
+                                        "out")
         stray = [m.start() for m in re.finditer(re.escape(i18n.MARCA), html) if m.start() not in self.marks]
         if stray and not built:
             self.refuse(stray[0], f"the {i18n.MARCA} mark is read only as a comment of its own, where the server puts "

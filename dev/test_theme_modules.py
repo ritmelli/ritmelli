@@ -215,9 +215,37 @@ def object_values(node):
     found = {}
     for child in node.named_children:
         if child.type == "pair" and (value := child.child_by_field_name("value")).type == "identifier":
-            found[text_of(child.child_by_field_name("key"))] = text_of(value)
+            found[text_of(child.child_by_field_name("key"))] = value
         elif child.type == "shorthand_property_identifier":
-            found[text_of(child)] = text_of(child)
+            found[text_of(child)] = child
+    return found
+
+
+def pattern_key(node):
+    if node.type == "shorthand_property_identifier_pattern":
+        return text_of(node)
+    parent = node.parent
+    while parent is not None and parent.type in DEFAULTS:
+        node, parent = parent, parent.parent
+    return text_of(parent.child_by_field_name("key")) if parent is not None and parent.type == "pair_pattern" else None
+
+
+STRICT_NAMES = frozenset({"arguments", "eval", "yield", "await", "let", "static", "implements", "interface", "package",
+                          "private", "protected", "public"})
+
+
+def strict_problems(root):
+    found = [f"binds {text_of(n)} at line {n.start_point[0] + 1}, which a module, in strict mode, refuses"
+             for what, node, _ in places(root) if what == "binding"
+             for n in pattern_nodes(node) if text_of(n) in STRICT_NAMES]
+    for node in walk(root):
+        if node.type in FUNCTIONS and (name := node.child_by_field_name("name")) and text_of(name) in STRICT_NAMES:
+            found.append(f"binds {text_of(name)} at line {name.start_point[0] + 1}, which a module, in strict mode, "
+                         f"refuses")
+        if node.type == "formal_parameters":
+            names = [text_of(n) for part in node.named_children for n in pattern_nodes(part)]
+            found += [f"has the parameter {n} twice at line {node.start_point[0] + 1}, which a module, in strict "
+                      f"mode, refuses" for n in sorted({n for n in names if names.count(n) > 1})]
     return found
 
 
@@ -282,6 +310,7 @@ def file_facts(text):
     facts = types.SimpleNamespace(imports={}, exports=set(), stars=set(), problems=[], top=set(), values={},
                                   functions=[], objects=[], writes=set(), locals={}, reexports={}, imported_from={},
                                   called={})
+    calls = []
     if root.has_error:
         broken = next(n for n in walk(root) if n.type == "ERROR" or n.is_missing)
         facts.problems.append(f"does not parse at line {broken.start_point[0] + 1}, so the rest of this check would "
@@ -318,8 +347,10 @@ def file_facts(text):
             facts.objects.append((keys, node.start_point[0] + 1, object_values(node)))
         if node.type == "variable_declarator" and (call := node.child_by_field_name("value")) is not None and \
                 call.type == "call_expression" and call.child_by_field_name("function").type == "identifier":
-            facts.called.update({text_of(bound): text_of(call.child_by_field_name("function"))
-                                 for bound in pattern_nodes(node.child_by_field_name("name"))})
+            calls.append((node, call.child_by_field_name("function")))
+        if node.type == "import_attribute":
+            facts.problems.append(f"imports with attributes at line {node.start_point[0] + 1}, which the import map's "
+                                  f"JavaScript does not answer: import the module plainly")
         if node.type == "export_statement":
             if any(c.type == "default" for c in node.children):
                 facts.exports.add("default")
@@ -344,6 +375,15 @@ def file_facts(text):
     for name in imported:
         scopes[name].add(program)
     facts.top = {name for name, where in scopes.items() if program in where}
+    facts.problems += [f"exports {local}, which it does not declare or import"
+                       for local in sorted(set(facts.locals.values())) if local not in facts.top]
+    facts.strict = strict_problems(root)
+    for declarator, function in calls:
+        for bound in pattern_nodes(declarator.child_by_field_name("name")):
+            facts.called[(text_of(bound), key(scope_of(declarator)))] = (resolved(function, scopes) == program
+                                                                        and text_of(function), pattern_key(bound))
+    facts.objects = [(keys, line, {k: (text_of(n), resolved(n, scopes)) for k, n in values.items()})
+                     for keys, line, values in facts.objects]
     facts.reads = {text_of(r) for r in references if resolved(r, scopes) == program}
     facts.free = {text_of(r) for r in references if resolved(r, scopes) is None}
     lefts = [n.child_by_field_name("left") for n in walk(root)
@@ -371,7 +411,9 @@ def origin(facts, module, export, seen=frozenset()):
         return origin(facts, *own.reexports[export], seen)
     if export in own.exports:
         local = own.locals.get(export, export)
-        return origin(facts, *own.imported_from[local], seen) if local in own.imported_from else {(module, local)}
+        if local in own.imported_from:
+            return origin(facts, *own.imported_from[local], seen)
+        return {(module, local)} if export not in own.locals or local in own.top else set()
     if export == "default":
         return set()
     return set().union(*(origin(facts, star, export, seen) for star in sorted(own.stars)))
@@ -397,6 +439,16 @@ def data_problems(facts):
     return problems
 
 
+def composed(facts, own, values, shape, who):
+    factory = origin(facts, *who)
+    for wanted in shape:
+        function, from_key = own.called.get(values.get(wanted), (None, None))
+        if not function or from_key != wanted or function not in own.imported_from or \
+                origin(facts, *own.imported_from[function]) != factory:
+            return False
+    return bool(factory)
+
+
 def rewritten(folder, facts):
     exported, shapes = {}, {}
     for name, own in facts.items():
@@ -413,7 +465,7 @@ def rewritten(folder, facts):
         problems += [f"{file}:{line}: builds by hand what {who[1]} of {who[0]} returns: call {who[1]}"
                      for keys, line, values in own.objects for shape, who in shapes.items()
                      if keys >= shape and who[0] != file
-                     and not all(own.called.get(values.get(k)) == who[1] for k in shape)]
+                     and not composed(facts, own, values, shape, who)]
     return problems
 
 
@@ -426,7 +478,7 @@ def module_problems(folder, page):
     classics = [(name, file_facts(text)) for name, text in classic_texts(folder, read)]
     problems = [f"{name}: {problem}" for name, own in classics for problem in own.problems
                 if "dynamic import()" in problem or "does not parse" in problem or "does not judge" in problem]
-    problems += [f"{name}: {problem}" for name, own in facts.items() for problem in own.problems]
+    problems += [f"{name}: {problem}" for name, own in facts.items() for problem in own.problems + own.strict]
     problems += [f"{name}: imports {target}, which is not a module of the page" for name, own in facts.items()
                  for target in own.imports if target not in facts]
     for name, own in facts.items():
@@ -550,6 +602,35 @@ def samples():
             "a name two export * bring from one binding, one of them an import exported again": (
                 files(uses_x, x_twice, d='import { one } from "e.js";\nexport { one as x };\n',
                       e='export const one = () => {};\nexport { one as x };\n'), []),
+            "an import with attributes": (files('import { b } from "b.js" with { type: "json" };\nb();\n', b),
+                                          ["a.js: imports with attributes at line 1"]),
+            "a local export of a name the module does not declare": (
+                files('import { S as T } from "b.js";\nT();\n', "export { S };\n", "var S = {};\n"),
+                ["b.js: exports S, which it does not declare or import", "a.js: imports S from b.js, which b.js does "
+                 "not export"]),
+            "a module that binds yield": (files(uses_b + "const yield = 1;\ngo(yield);\n", b), ["a.js: binds yield"]),
+            "a module that binds arguments in a function": (
+                files(uses_b + "function f() { var arguments = 1; return arguments; }\nf();\n", b),
+                ["a.js: binds arguments"]),
+            "a module with a parameter twice": (files(uses_b + "function f(q, q) { return q; }\nf();\n", b),
+                                                ["a.js: has the parameter q twice"]),
+            "a classic script that binds yield and has a parameter twice, which it may": (
+                files(uses_b, b, "const yield = 1;\nfunction f(q, q) { return q; }\nf(yield);\n"), []),
+            "an object composed from a factory imported under another name": (
+                files('import { mk as make } from "b.js";\nconst { u, w, h } = make(1);\ngo({ u, w, h, ready: true });\n',
+                      "export function mk(w) { return { u: 1, w, h: 2 }; }\n"), []),
+            "an object composed from a local function named like the factory": (
+                files('import { mk as original } from "b.js";\noriginal(1);\nconst mk = () => ({ u: 1, w: 2, h: 3 });\n'
+                      'const { u, w, h } = mk();\ngo({ u, w, h });\n', "export function mk(w) { return { u: 1, w, h: 2 }; }\n"),
+                ["a.js:3: builds by hand what mk of b.js returns", "a.js:5: builds by hand what mk of b.js returns"]),
+            "an object composed from the factory's values under each other's keys": (
+                files('import { mk } from "b.js";\nconst { u: w, w: u, h } = mk(1);\ngo({ u, w, h });\n',
+                      "export function mk(w) { return { u: 1, w, h: 2 }; }\n"),
+                ["a.js:3: builds by hand what mk of b.js returns"]),
+            "an object composed with a name the factory's value is shadowed by": (
+                files('import { mk } from "b.js";\nconst { u, w, h } = mk(1);\ngo(u, w, h);\n'
+                      'function g(h) { return { u, w, h }; }\ng(1);\n', "export function mk(w) { return { u: 1, w, h: 2 }; }\n"),
+                ["a.js:4: builds by hand what mk of b.js returns"]),
             "an object composed from what the factory returns": (
                 files('import { mk } from "b.js";\nconst { u, w, h } = mk(1);\ngo({ u, w, h, ready: true });\n',
                       "export function mk(w) { return { u: 1, w, h: 2 }; }\n"), []),

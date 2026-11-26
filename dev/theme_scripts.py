@@ -101,7 +101,8 @@ SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc'
 OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true,"
                  " cancelable: true, composed: true, isPrimary: true, pointerId: 7, pointerType: 'touch', button: 0,"
                  " clientX: 11, clientY: 13}))")
-REDRAWN_CANVASES = {"the monitor": "#tv > canvas.tv-px", "the pads": "#pads > canvas.pads-px",
+REDRAWN_CANVASES = {"the mixer's labels": "canvas.mx-rot-px", "the monitor": "#tv > canvas.tv-px",
+                    "the pads": "#pads > canvas.pads-px",
                     "the deck's shadow": "canvas.dk-sombra", "the case title": "canvas.tit-px",
                     "the shelf count": "canvas.conta-px", "the empty case": "canvas.vazia-px"}
 CANVAS_REDRAWN = ("(async () => { const c = document.querySelector(%s);"
@@ -112,6 +113,10 @@ CANVAS_REDRAWN = ("(async () => { const c = document.querySelector(%s);"
                 " const cleared = c.toDataURL(); await frame(); const stays = c.toDataURL() === cleared;"
                 " document.dispatchEvent(new Event('repinta-canvas')); await frame();"
                 " return {canvas: true, drawn: drawn !== cleared, stays, back: c.toDataURL() === drawn}; })()")
+MODULES_RAN = ("(async () => { const map = document.querySelector('script[type=importmap]');"
+               " const names = map ? Object.keys(JSON.parse(map.textContent).imports) : []; const failed = {};"
+               " for (const name of names) { try { await import(name); } catch (e) { failed[name] = String(e); } }"
+               " return {names: names.length, failed}; })()")
 PAGE_READY_S = 15.0
 
 
@@ -211,6 +216,12 @@ async def checks(tab):
                     f"every top-level name of the theme page is declared by one script ({len(scripts)} scripts read, "
                     f"{ready.get('scripts')} in the page; {twice or 'no name twice'}"
                     f"{'; ' + '; '.join(errors) if errors else ''})"))
+
+    ran = (await tab.cmd("Runtime.evaluate", expression=MODULES_RAN, awaitPromise=True,
+                         returnByValue=True)).get("result", {}).get("value") or {}
+    results.append((ran.get("names", 0) > 0 and ran.get("failed") == {},
+                    f"every module of the page's import map runs ({ran.get('names')} in the map; "
+                    f"{ran.get('failed') or 'none failed'})"))
 
     for file, selector, kind in FEATURE_HANDLERS:
         files = await handler_files(tab, selector, kind)
