@@ -539,8 +539,9 @@ everything one by one).
 A new test is named `dev/test_*.py` (in English; the older ones are `dev/testa_*.py`). Either kind goes into one of
 the lists in `dev/testa_tudo.py` (`STDLIB`, `COMPLETO`, `LONG_TESTS`, `MICROFONE`, or `PASSOS` for a step of its own in
 `testa.yml`). A test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
-`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a `dev/test_*.py` or `dev/testa_*.py` that runs
-nowhere, on a `manual:` file that runs in the check, and when `testa.yml` stops calling one of its modes.
+`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a test of the `git ls-files`, in any folder, that
+runs nowhere (a `.ps1` test runs through its `PS1_TESTS` row, a `monta.yml` job and step), on a `manual:` file that runs in the checks, and when a mode of its
+`REQUIRED_MODES` leaves the required check (its job, step, command or condition in `testa.yml`).
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
 [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks

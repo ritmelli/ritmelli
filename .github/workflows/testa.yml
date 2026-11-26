@@ -8,12 +8,6 @@
 #
 # A PR from outside still needs a maintainer to approve the run (the GitHub default), and its token is read only: the
 # summary stays in the run, without the PR comment.
-#
-# The needs-owner label (a PR whose proof needs a physical action, such as plugging in or switching off a device, or a
-# decision of the owner) keeps the PR out of the main: the "Testa o PR" of a merge_group entry fails while its PR has
-# the label. The owner does the proof, removes the label and puts the PR in the queue. The entry reads the labels when
-# its etiquetas job runs, so the gate needs no labeled trigger, and a label put on a PR already in the queue may come
-# too late for its entry: take the PR out of the queue first. On the PR the check only says the queue will refuse it.
 name: Testa
 
 on:
@@ -58,7 +52,7 @@ jobs:
       resumo: ${{ steps.resumo.outputs.resumo }}
       linhas: ${{ steps.resumo.outputs.linhas }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -109,7 +103,7 @@ jobs:
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: ./.github/actions/python
@@ -136,7 +130,7 @@ jobs:
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: ./.github/actions/python
@@ -166,12 +160,12 @@ jobs:
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
       # the area filter needs only the standard library: the libraries come after it, when the area applies
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12.10'
       - name: O PR mexe no filtro?
@@ -185,20 +179,12 @@ jobs:
         if: steps.areas.outputs.microfone == 'true'
         shell: cmd
         run: microfone\apo\compila.bat teste
-      # o mesmo da monta.yml, na pasta do usuário: o dev/testa_aparelho_mudo.py monta e roda em silêncio um setup que
-      # não instala nada, com o instalador/mudos.iss (sem o ISCC, no GitHub, ele reprova em vez de pular)
-      - name: Inno Setup 6.7.3
+      - name: Version resource of the DLLs
         if: steps.areas.outputs.microfone == 'true'
         shell: powershell
-        run: |
-          $ProgressPreference = 'SilentlyContinue'
-          $exe = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
-          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $exe -UseBasicParsing
-          $h = (Get-FileHash $exe -Algorithm SHA256).Hash
-          if ($h -ne '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732') { throw "o Inno Setup veio com hash $h" }
-          $p = Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/SP-' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "o instalador do Inno Setup saiu com $($p.ExitCode)" }
-          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe")) { throw 'o ISCC.exe nao ficou na pasta do usuario' }
+        run: microfone\apo\check_version.ps1 -Folder microfone\apo\saida
+      - uses: ./.github/actions/inno-setup
+        if: steps.areas.outputs.microfone == 'true'
       - name: Testes do filtro
         if: steps.areas.outputs.microfone == 'true'
         run: python dev/testa_tudo.py --microfone --resumo "$env:RUNNER_TEMP\resumo.md"
@@ -226,6 +212,8 @@ jobs:
       pull-requests: read
     outputs:
       lista: ${{ steps.le.outputs.lista }}
+      pr: ${{ steps.le.outputs.pr }}
+      queue_base: ${{ steps.le.outputs.queue_base }}
     steps:
       - name: Etiquetas do PR
         id: le
@@ -235,16 +223,19 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           n="$PR"
+          queue_base=""
           if [ "$GITHUB_EVENT_NAME" = merge_group ]; then
-            n=$(sed -nE 's#.*/pr-([0-9]+)-.*#\1#p' <<< "$GITHUB_REF")
-            [ -n "$n" ] || { echo "::error::no PR number in $GITHUB_REF"; exit 1; }
+            entry='^refs/heads/gh-readonly-queue/.+/pr-([0-9]+)-([0-9a-f]{40})$'
+            n=$(sed -nE "s#$entry#\1#p" <<< "$GITHUB_REF")
+            queue_base=$(sed -nE "s#$entry#\2#p" <<< "$GITHUB_REF")
+            [ -n "$n" ] && [ -n "$queue_base" ] || { echo "::error::no PR number and base commit in $GITHUB_REF"; exit 1; }
           fi
           lista='[]'
           if [ -n "$n" ]; then
             lista=$(gh pr view "$n" -R "$REPO" --json labels --jq '[.labels[].name]') \
               || { echo "::error::the labels of PR $n did not come"; exit 1; }
           fi
-          echo "lista=$lista" >> "$GITHUB_OUTPUT"
+          printf 'lista=%s\npr=%s\nqueue_base=%s\n' "$lista" "$n" "$queue_base" >> "$GITHUB_OUTPUT"
 
   # the screen, part 1 (the --tela of the dev/testa_tudo.py, without --base): the fitcheck in both languages against a
   # --mock with temporary data, and the usage data notice of the theme (the fitcheck --metricas: one --mock
@@ -260,11 +251,11 @@ jobs:
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12.10'
       # the labels of the etiquetas job, the same in the tela and the compara
@@ -296,7 +287,7 @@ jobs:
         run: python dev/testa_tudo.py --passo metricas
       - name: Logs
         if: always() && steps.tela.outcome == 'failure'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: tela
           path: ${{ runner.temp }}/tela/
@@ -332,17 +323,13 @@ jobs:
       resumo: ${{ steps.resumo.outputs.resumo }}
       mudaram: ${{ steps.compara.outputs.prints_mudaram }}
     env:
-      # what the prints are compared to: in a merge_group entry, the tree just before its PR (the first parent of the
-      # entry), so the extracao-tema label of that PR blocks only what that PR changed, not what a PR ahead of it in the
-      # queue changed. This holds for a queue that merges with a merge commit (how this repo merges) or a squash; with
-      # rebase, the first parent would already hold the earlier commits of the same PR
-      COMPARA_BASE: ${{ github.event_name == 'merge_group' && format('{0}^1', github.event.merge_group.head_sha) || github.event.pull_request.base.sha || github.event.before }}
+      COMPARA_BASE: ${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || github.event.pull_request.base.sha || github.event.before }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12.10'
       # (the labels of the etiquetas job, as in the tela)
@@ -376,12 +363,11 @@ jobs:
           $chrome = (Get-Item 'C:\Program Files\Google\Chrome\Application\chrome.exe').VersionInfo.ProductVersion
           $base = ''
           if ($env:GITHUB_EVENT_NAME -ne 'push') {
-            # the base as a commit sha, the way the push to main saves its capture
             $base = git rev-parse --verify "$env:COMPARA_BASE^{commit}"
             if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }
           }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" -Encoding utf8
-      - uses: actions/cache/restore@v6
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         id: ref
         if: steps.areas.outputs.roda == 'true' && github.event_name != 'push'
         with:
@@ -407,7 +393,7 @@ jobs:
             exit 0
           }
           exit $cod
-      - uses: actions/cache/save@v6
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         if: always() && steps.compara.outputs.ref_cache == 'true'
         with:
           path: ${{ runner.temp }}\compara-ref
@@ -418,14 +404,14 @@ jobs:
         run: |
           Remove-Item -Recurse -Force "$env:RUNNER_TEMP\compara-ref" -ErrorAction SilentlyContinue
           Move-Item "$env:RUNNER_TEMP\compara-head" "$env:RUNNER_TEMP\compara-ref"
-      - uses: actions/cache/save@v6
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         if: always() && steps.compara.outputs.head_cache == 'true'
         with:
           path: ${{ runner.temp }}\compara-ref
           key: compara-${{ github.sha }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt') }}
       - name: Prints
         if: always() && (steps.compara.outcome == 'failure' || steps.compara.outputs.mudou == 'true')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: compara
           path: ${{ runner.temp }}/tela/
@@ -449,8 +435,6 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
-  # the required check: always runs, joins the summaries and only passes with the others (the one that does not
-  # apply passes without running) and, in a merge_group entry, without the needs-owner label on its PR
   testa-o-pr:
     name: Testa o PR
     # always(), not !cancelled(): a skipped job counts as green in the required check, and the cancelled run would pass
@@ -462,49 +446,7 @@ jobs:
       actions: read
       pull-requests: write
     steps:
-      # the owner gate: fails a merge_group entry whose PR has the needs-owner label, or whose labels did not come, so
-      # the queue refuses it; on the PR and the push it passes, with a line for the summary when the label is there.
-      # The dev/test_needs_owner.py runs this run block
-      - name: Needs owner
-        id: dono
-        if: ${{ !cancelled() }}
-        env:
-          EVENT: ${{ github.event_name }}
-          LABELS: ${{ needs.etiquetas.outputs.lista }}
-          LABELS_RESULT: ${{ needs.etiquetas.result }}
-        shell: python3 {0}
-        run: |
-          import json
-          import os
-          import sys
-
-          LABEL = "needs-owner"
-          event = os.environ.get("EVENT", "")
-          labels = None
-          if os.environ.get("LABELS_RESULT") == "success":
-              try:
-                  labels = json.loads(os.environ.get("LABELS", ""))
-              except ValueError:
-                  pass
-          if not (isinstance(labels, list) and all(isinstance(x, str) for x in labels)):
-              labels = None
-          code = 0
-          if event == "merge_group" and labels is None:
-              line, code = f"❌ **{LABEL}:** the labels of the PR did not come, so the queue entry fails", 1
-          elif event == "merge_group" and LABEL in labels:
-              line, code = f"❌ **{LABEL}:** the PR has the label (its proof needs the owner): the owner merges it", 1
-          elif labels and LABEL in labels:
-              line = f"⚠️ **{LABEL}:** the merge queue refuses this PR while it has the label: the owner merges it"
-          else:
-              line = ""
-          if line:
-              print(("::error::" if code else "::notice::") + line.replace("*", ""))
-          # the line goes in the summary through the next step (the job summary and the PR comment)
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-              f.write(f"linha={line}\n")
-          sys.exit(code)
-      - name: Resumo e resultado
-        if: ${{ !cancelled() }}
+      - name: Verdict
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -514,6 +456,9 @@ jobs:
           ATTEMPT: ${{ github.run_attempt }}
           EXECUCAO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DO_REPO: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+          LABELS_PR: ${{ needs.etiquetas.outputs.pr }}
+          LABELS: ${{ needs.etiquetas.outputs.lista }}
+          S_ETIQUETAS: ${{ needs.etiquetas.result }}
           S_TESTES: ${{ needs.testes.result }}
           S_BENCH: ${{ needs.bench.result }}
           S_CAPTURE: ${{ needs.capture.result }}
@@ -528,16 +473,41 @@ jobs:
           R_COMPARA: ${{ needs.compara.outputs.resumo }}
           LINHAS: ${{ needs.testes.outputs.linhas }}
           MUDARAM: ${{ needs.compara.outputs.mudaram }}
-          DONO: ${{ steps.dono.outputs.linha }}
-          S_DONO: ${{ steps.dono.outcome }}
         run: |
-          estados=("$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_COMPARA")
+          estados=("$S_ETIQUETAS" "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_COMPARA")
           # a cancelled run proved nothing either way: it fails, and leaves the PR comment as the last run that ended wrote it
           for s in "${estados[@]}"; do
             if [ "$s" = cancelled ]; then
               echo "## ⏹️ Testa: execução cancelada (o comentário do PR fica como estava)" >> "$GITHUB_STEP_SUMMARY"
               exit 1
             fi
+          done
+          avisos=()
+          labels_ok=true
+          if [ -n "$LABELS_PR" ]; then
+            if agora=$(gh pr view "$LABELS_PR" -R "$REPO" --json labels --jq '.labels[].name'); then
+              tem() { grep -Fxq -- "$1" <<< "$agora"; }
+              if tem needs-owner && [ "$GITHUB_EVENT_NAME" = merge_group ]; then
+                avisos+=("❌ **needs-owner:** the PR has the label (its proof needs the owner): the owner merges it")
+                labels_ok=false
+              elif tem needs-owner; then
+                avisos+=("⚠️ **needs-owner:** the merge queue refuses this PR while it has the label: the owner merges it")
+              fi
+              if tem extracao-tema && [[ "$LABELS" != *'"extracao-tema"'* ]]; then
+                avisos+=("❌ **extracao-tema:** the label came after the screen jobs read the labels: run the check again")
+                labels_ok=false
+              fi
+            else
+              avisos+=("❌ **needs-owner:** the labels of PR $LABELS_PR did not come at the verdict: run this job again")
+              labels_ok=false
+            fi
+          elif [ "$GITHUB_EVENT_NAME" = merge_group ]; then
+            avisos+=("❌ **needs-owner:** the queue entry has no PR number, so its labels did not come")
+            labels_ok=false
+          fi
+          if [ "$S_ETIQUETAS" != success ]; then avisos+=("❌ **Etiquetas:** the labels job ended in $S_ETIQUETAS"); fi
+          for a in "${avisos[@]}"; do
+            if [[ "$a" == ❌* ]]; then echo "::error::${a//\*/}"; else echo "::notice::${a//\*/}"; fi
           done
           fila=""
           consulta=""
@@ -552,9 +522,9 @@ jobs:
           fi
           vale() { [ "$1" = success ] || { [ "$2" = pula ] && [ "$1" = skipped ] && [ -n "$fila" ]; }; }
           marca() { if [ "$1" = success ]; then echo "✅"; elif vale "$1" "$2"; then echo "⏭️ neste push"; else echo "❌ ($1)"; fi; }
-          ok=true
+          ok=$labels_ok
           for s in "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA"; do vale "$s" pula || ok=false; done
-          for s in "$S_COMPARA" "$S_DONO"; do vale "$s" || ok=false; done
+          for s in "$S_COMPARA" "$S_ETIQUETAS"; do vale "$s" || ok=false; done
           if $ok; then
             manchete="✅ Testa: tudo passou"
             n=${MUDARAM:-0}
@@ -587,7 +557,7 @@ jobs:
             echo "| --- | --- | --- | --- | --- | --- |"
             echo "| $(marca "$S_TESTES" pula) | $(marca "$S_BENCH" pula) | $(marca "$S_CAPTURE" pula) | $(marca "$S_MICROFONE" pula) | $(marca "$S_TELA" pula) | $(marca "$S_COMPARA") |"
             echo
-            if [ -n "$DONO" ]; then echo "$DONO"; echo; fi
+            for a in "${avisos[@]}"; do echo "$a"; echo; done
             printf '%s\n\n' "$R_TESTES" "$R_BENCH" "$R_CAPTURE" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
             if [ -n "$tempos" ]; then echo "**Tempo de cada job** (alvo: 10 min): $tempos"; echo; fi
             if [ -n "$LINHAS" ]; then echo "$LINHAS"; echo; fi

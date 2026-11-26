@@ -34,9 +34,6 @@
 ; em qualquer coisa: um download que falha volta para a pagina de Pronto, e em silencio o setup sai com 1 e o app de
 ; antes fica inteiro (o [InstallDelete] ainda nao rodou). O /DVozes e o /DLicencaVozes sao o que o vozes_iss.py gera.
 ; Uma atualizacao com as mesmas releases nao baixa nada, e a pasta de uma release que saiu do vozes.json e apagada.
-;
-; When the app changes folders, the voice files come from the previous installation, checked by their sha256
-; (CopiaVozAnterior), and only the missing or mismatching ones are downloaded.
 
 #ifndef Versao
   #error Rode pelo monta.ps1 (falta /DVersao)
@@ -516,35 +513,27 @@ begin
   Result := S;
 end;
 
-// When the app changes folders (see AposentaAnterior), a voice file the previous installation already has comes from
-// it instead of GitHub: it is copied to the {tmp} name the download would use, and the sha256 is checked on that copy
-// (the previous folder may not be protected, so the file is checked after it can no longer change). True if the copy
-// matches; otherwise the copy is deleted and the file is downloaded
-function CopiaVozAnterior(Tag, Nome, Sha: String): Boolean;
+function CopyPreviousVoice(Tag, FileName, Sha: String): Boolean;
 var
-  Origem, Copia: String;
+  Source, TmpCopy: String;
 begin
   Result := False;
   if (PastaAnterior = '') or (CompareText(PastaAnterior, RemoveBackslashUnlessRoot(WizardDirValue)) = 0) then
     Exit;
-  Origem := AddBackslash(PastaAnterior) + 'vozes\' + Tag + '\' + Nome;
-  if not FileExists(Origem) then
+  Source := AddBackslash(PastaAnterior) + 'vozes\' + Tag + '\' + FileName;
+  if not FileExists(Source) then
     Exit;
-  Copia := ExpandConstant('{tmp}\vozes-') + Tag + '-' + Nome;
-  if not FileCopy(Origem, Copia, False) then begin
-    Log('vozes: could not copy ' + Origem + ', downloading it');
+  TmpCopy := ExpandConstant('{tmp}\vozes-') + Tag + '-' + FileName;
+  if not FileCopy(Source, TmpCopy, False) then begin
+    Log('vozes: could not copy ' + Source + ', downloading it');
     Exit;
   end;
-  try
-    Result := CompareText(GetSHA256OfFile(Copia), Sha) = 0;
-  except
-    Result := False;
-  end;
+  Result := CompareText(GetSHA256OfFile(TmpCopy), Sha) = 0;
   if Result then
-    Log('vozes: copied ' + Tag + '\' + Nome + ' from ' + PastaAnterior + ', sha256 matches')
+    Log('vozes: copied ' + Tag + '\' + FileName + ' from ' + PastaAnterior + ', sha256 matches')
   else begin
-    DeleteFile(Copia);
-    Log('vozes: ' + Origem + ' does not match its sha256, downloading it');
+    DeleteFile(TmpCopy);
+    Log('vozes: ' + Source + ' does not match its sha256, downloading it');
   end;
 end;
 
@@ -571,7 +560,7 @@ begin
         Nome := VozCampo(Lista[I], 1);
         Sha := VozCampo(Lista[I], 2);
         if FaltaVoz(Tag + '\' + Nome, Sha) then
-          if not CopiaVozAnterior(Tag, Nome, Sha) then begin
+          if not CopyPreviousVoice(Tag, Nome, Sha) then begin
             Url := 'https://github.com/{#VozesRepo}/releases/download/' + Tag + '/' + Nome;
             Log('vozes: downloading ' + Tag + '\' + Nome);
             if WizardSilent then
