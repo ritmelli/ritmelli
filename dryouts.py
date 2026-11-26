@@ -19,7 +19,8 @@ def up_after(up_ms, sent):
 
 
 def span(first, last):
-    return f"{first:.2f}" if f"{first:.2f}" == f"{last:.2f}" else f"between {first:.2f} and {last:.2f}"
+    low, high = math.floor(round(first * 100, 6)) / 100, math.ceil(round(last * 100, 6)) / 100
+    return f"{low:.2f}" if low == high else f"between {low:.2f} and {high:.2f}"
 
 
 class VoicePedalStart:
@@ -54,7 +55,7 @@ class VoicePedalStart:
         if stamp and stamp != self._stamp:
             now_ms = round(now * 1000)
             up_ms = now_ms - (now_ms - (stamp - 1)) % (2**32 - 1)
-            up_at = min(up_ms / 1000, now)
+            up_at = min((up_ms - 0.5) / 1000, now)
             on, ended = self._on, self._ended
             if on is not None and up_after(up_ms, on[3]) and (on[1] is None or up_at <= on[1] + TICK_S):
                 owner = on
@@ -91,10 +92,10 @@ class VoicePedalStart:
         if up_at is None:
             return on_at, f"{pedal}, its voice track isn't up yet"
         cut, by = (lo, " before the ring was last filled") if lo is not None else (
-            (now, "") if empty_at is None else (empty_at, " before the ring was seen empty"))
+            (now, " ago") if empty_at is None else (empty_at, " before the ring was seen empty"))
         if cut - seen_at > AFTER_TRACK_S:
             return on_at, None
-        up = f"{pedal}, its voice track came up {span(now - up_at, now - seen_at)} s ago"
+        up = f"{pedal}, its voice track came up {span(now - seen_at, now - up_at)} s ago"
         if cut - up_at > AFTER_TRACK_S:
             up += f" (maybe more than {AFTER_TRACK_S:.0f} s{by})"
         if empty_at is not None and up_at > empty_at + TICK_S:

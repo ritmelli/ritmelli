@@ -171,7 +171,7 @@ class PedalVoz(unittest.TestCase):
         now[0] = 2.6
         with contextlib.redirect_stderr(io.StringIO()) as log:
             e.voice_pedal.track(stamp(2.5))
-        self.assertIn("voice pedal: its voice track came up between 0.40 and 0.50 s after the pedal turned on", log.getvalue())
+        self.assertIn("voice pedal: its voice track came up between 0.39 and 0.50 s after the pedal turned on", log.getvalue())
 
     def test_liga_na_ordem_e_fecha(self):
         com(self.mod)

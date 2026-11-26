@@ -97,16 +97,22 @@ class CycleRow(unittest.TestCase):
                                          ["warning", *FIM])
         self.assertIsNone(problem)
         self.assertEqual(got, {"cycle": 3, "dry_outs": 2, "dry_outs_while_starting": 1, "new_longest_return_ms": None,
-                               "track_up_after_s": [3.1, 3.1], "voice_blocks": 74, "voice_track_dry_outs": 1,
+                               "track_up_after_s": [3.09, 3.1], "voice_blocks": 74, "voice_track_dry_outs": 1,
                                "voice_slowest_block_ms": 101.1})
 
     def test_a_track_seen_later_than_its_stamp_gives_its_interval(self):
         got, _ = row([state(), state()], server_lines=["pedal_voz: pronto", track_up_line(3.1, 3.6)])
-        self.assertEqual(got["track_up_after_s"], [3.1, 3.6])
+        self.assertEqual(got["track_up_after_s"], [3.09, 3.6])
 
     def test_the_slowest_track_up_is_the_interval_of_the_slowest(self):
         self.assertEqual(measure.slowest_up([[3.0, 3.9], [3.5, 3.6]]), [3.5, 3.9])
         self.assertIsNone(measure.slowest_up([]))
+
+    def test_a_track_up_keeps_its_real_time_inside_its_interval(self):
+        for after_s, seen_s in ((1.006, 1.014), (1.0096, 1.011)):
+            with self.subTest(after_s=after_s):
+                got, _ = row([state(), state()], server_lines=["pedal_voz: pronto", track_up_line(after_s, seen_s)])
+                self.assertEqual(got["track_up_after_s"], [1.0, 1.02])
 
     def test_a_longer_return_in_the_cycle(self):
         got, _ = row([state(volta=434.0), state(volta=656.0)])
@@ -327,8 +333,8 @@ class Main(unittest.TestCase):
                                                (46.0, None)],
                                        track_ups=[track_up_line(3.2, 3.3), track_up_line(3.1, 3.6)])
         self.assertIsNone(why)
-        self.assertEqual([c["track_up_after_s"] for c in result["cycles"]], [[3.2, 3.3], [3.1, 3.6]])
-        self.assertEqual(result["slowest_track_up_s"], [3.2, 3.6])
+        self.assertEqual([c["track_up_after_s"] for c in result["cycles"]], [[3.19, 3.3], [3.09, 3.6]])
+        self.assertEqual(result["slowest_track_up_s"], [3.19, 3.6])
 
     def test_a_round_after_the_last_cut_is_not_measured(self):
         why, _, result = self.run_main(state(), "--cycles", "1",

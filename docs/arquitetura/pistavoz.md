@@ -32,9 +32,11 @@ escritor carimba a própria subida, mesmo com a pista ainda ligada no anel por u
 `Anel` do `injeta.py` os dois são um campo só, o `pista_estado` de 64 bits (o bit baixo é a pista ligada, os 32 de cima
 o carimbo), que o produtor, o único que os escreve, troca inteiro: a pista liga junto com o carimbo, e desligar zera só
 o bit; o `anel.h` segue com as duas metades, e o filtro só lê o `pista_ligada`), cada subida guarda a pista como um
-intervalo, do carimbo (que, arredondado ao milissegundo, nunca fica depois da leitura que o vê) até a hora em que a
-thread do anel vê o carimbo novo, e a ordem da pista com a seca só sai quando o intervalo inteiro fica de um lado dela
-(a pista vista na mesma hora da última leitura com algo fica sem ordem, porque o relógio pode não separar as duas); e o
+intervalo, do carimbo (que tem a resolução do milissegundo, então o intervalo começa meio milissegundo antes dele, e
+nunca depois da leitura que o vê) até a hora em que a thread do anel vê o carimbo novo, e a ordem da pista com a seca só
+sai quando o intervalo inteiro fica de um lado dela (a pista vista na mesma hora da última leitura com algo fica sem
+ordem, porque o relógio pode não separar as duas); as linhas arredondam o intervalo para fora, o limite de baixo para
+baixo e o de cima para cima, e a ferramenta lê esses limites, que sempre contêm a hora em que a pista subiu; e o
 `Injetor`, a cada carimbo novo, refaz a hora dele com uma leitura só do relógio, depois de ler o carimbo; assim uma
 pista que ligou enquanto a thread do anel estava parada sai com a hora certa, e cada carimbo novo conta como uma subida,
 com a pista viva ou não (a pista desligou e religou, ou ligou e desligou, sem a thread ver); só o carimbo decide, e não
