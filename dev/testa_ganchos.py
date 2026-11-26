@@ -378,13 +378,17 @@ def module_reaches(module, tree, names):
         return isinstance(receiver, ast.Name) and receiver.id in receivers and name in own_names
     loop_names = loop_variable_names(tree)
     bindings = ModuleBindings(tree)
+    applied = {id(no.func) for no in ast.walk(tree) if isinstance(no, ast.Call) and no.args}
     for no, scope in lexical_nodes(tree, tree):
         holder = instance_dict(no.value, bindings, scope) if isinstance(no, ast.Subscript) else None
         if isinstance(no, ast.Attribute) and no.attr in names and not passes(no, no.value, no.attr):
             out.append((module, no.lineno, no.attr))
         elif holder is not None:
             out += [(module, no.lineno, n) for n in string_literals(no.slice) if n in names and not passes(no, holder, n)]
-        elif attrgetter_names(no, bindings, scope):
+        elif isinstance(no, ast.Call) and no.args and attrgetter_names(no.func, bindings, scope):
+            out += [(module, no.lineno, n) for n in attrgetter_names(no.func, bindings, scope)
+                    if n in names and not passes(no, no.args[0], n)]
+        elif id(no) not in applied and attrgetter_names(no, bindings, scope):
             out += [(module, no.lineno, n) for n in attrgetter_names(no, bindings, scope) if n in names]
         else:
             out += [(module, no.lineno, n) for n in attr_call_names(no, loop_names)
@@ -573,6 +577,8 @@ def instance_state(tree, classes):
 
 
 def held_attribute(node, bindings, scope):
+    if isinstance(node, ast.Call) and node.args and attrgetter_names(node.func, bindings, scope):
+        return [(node.args[0], n) for n in attrgetter_names(node.func, bindings, scope)]
     while isinstance(node, ast.Subscript):
         holder = instance_dict(node.value, bindings, scope)
         if holder is not None:
@@ -747,6 +753,8 @@ NOT_REACHES = [
     ("its own name", OWNER, "class Other:\n    _x = 0\n\n    def m(self):\n        return self._x\n"),
     ("a parameter named operator", OWNER, "def f(o, operator):\n    return operator.attrgetter('_x')(o)\n"),
     ("a local function named vars", OWNER, "def f(o):\n    def vars(x):\n        return {}\n    return vars(o)['_x']\n"),
+    ("its own name through attrgetter on its own self", OWNER,
+     "import operator\n\n\nclass Other:\n    _x = 0\n\n    def m(self):\n        return operator.attrgetter('_x')(self)\n"),
     ("its own name through its own __dict__", OWNER,
      "class Other:\n    _x = 0\n\n    def m(self):\n        return self.__dict__['_x']\n"),
     ("its own name, captured", OWNER,
@@ -864,6 +872,8 @@ WRITES_CAUGHT = [
     ("setattr", APP_NAMES, "def f(A):\n    setattr(A, 'x', 1)\n"),
     ("a read-only property", APP_NAMES, "def f(A):\n    A.p = 1\n"),
     ("an item of vars()", APP_NAMES, "def f(A):\n    vars(A)['x'] = 1\n"),
+    ("a container method through attrgetter", APP_NAMES,
+     "import operator\n\n\ndef f(A):\n    operator.attrgetter('x')(A).append(0)\n"),
     ("a container method through __dict__", APP_NAMES, "def f(A, v):\n    A.__dict__['x'].append(v)\n"),
     ("object.__setattr__", APP_NAMES, "def f(A):\n    object.__setattr__(A, 'x', 1)\n"),
     ("delattr in a loop", APP_NAMES, "def f(A):\n    for k in ('x',):\n        delattr(A, k)\n"),
