@@ -403,8 +403,8 @@ def notice_on_slow_load():
     r, proxy = notice_through({"hold_page_s": LATE_S}, {"boas_vindas": True})
     check(bool(proxy.held) and r["abriu"] is True and not r["erros"],
           f"with the theme page, which carries every script, held {LATE_S:.0f} s after its <head> ({proxy.held}), "
-          f"longer than the "
-          f"{fitcheck.AVISO_ESPERA_S:.0f} s wait for the notice, the notice is still seen opening on load ({r})")
+          f"longer than the {fitcheck.AVISO_ESPERA_S:.0f} s wait for the notice, the notice is still seen opening on "
+          f"load ({r})")
 
 
 def notice_on_slow_state():

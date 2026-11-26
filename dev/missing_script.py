@@ -87,7 +87,7 @@ def page_files(raiz, path):
     found = []
     for kind, name in file_tags((folder / "index.html").read_text(encoding="utf-8")).files:
         source = raiz / "themes" / name.removeprefix("/t/") if name.startswith("/t/") else folder / name
-        found.append((kind, name, "\n" + source.read_text(encoding="utf-8")))
+        found.append((kind, name, "\n" + source.read_text(encoding="utf-8-sig")))
     return found
 
 
@@ -101,7 +101,7 @@ class Tab:
         self.ws, self.base = ws, base
         self.seq, self.pending, self.tasks = itertools.count(1), {}, set()
         self.loads, self.contexts, self.scripts, self.thrown, self.failing = 0, 0, [], [], set()
-        self.sent, self.failed = {}, []
+        self.sent, self.failed, self.files_asked = {}, [], []
         self.changed = asyncio.Event()
 
     def spawn(self, coroutine):
@@ -112,6 +112,8 @@ class Tab:
     def on_event(self, m):
         method = m.get("method")
         if method == "Fetch.requestPaused":
+            if m["params"]["resourceType"] in ("Script", "Stylesheet"):
+                self.files_asked.append(urllib.parse.urlsplit(m["params"]["request"]["url"]).path)
             self.spawn(self.route(m["params"]))
         elif method == "Page.loadEventFired":
             self.loads += 1
@@ -258,6 +260,11 @@ async def paired_phone(tab, by_qr):
     return asked.get("pairing") is True and online.get("online") is True
 
 
+def asked_no_file(tab, who):
+    return (not tab.files_asked, f"{who}: the page asked the server for no script and no style sheet "
+                                 f"({tab.files_asked or 'none'})")
+
+
 def the_server_drops(raiz, role, language):
     async def run(tab):
         tab.language = language
@@ -273,6 +280,7 @@ def the_server_drops(raiz, role, language):
         else:
             await open_page(tab, f"?lang={language}")
             ready = (await tab.page_reaches("s.online === true && !s.card", PAGE_READY_S)).get("online") is True
+        results.append(asked_no_file(tab, f"{role} in {language}"))
         tab.srv.mata()
         card = await tab.page_reaches("s.cardSeen", CARD_SHOWS_S)
         title, text = expected_card(raiz, role, language)

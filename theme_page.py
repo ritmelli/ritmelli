@@ -3,20 +3,23 @@ import functools
 import hashlib
 import os
 import re
+from html import unescape
+from html.entities import html5
 from html.parser import HTMLParser
 from pathlib import Path
 
 import i18n
 
 THEMES = Path(__file__).resolve().parent / "themes"
-SCRIPT_TAG = re.compile(r'<script src="[^"]+">')
-SHEET_TAG = re.compile(r'<link rel="stylesheet" href="[^"]+">')
+SCRIPT_TAG = re.compile(r'<script src="([^"]+)">')
+SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
+REFERENCE = re.compile(r"&(?:#[0-9]+;|#[xX][0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)?")
 CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
 CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re.DOTALL)
 URL_START = re.compile(r"url\([ \t\r\n\f]*['\"]?", re.IGNORECASE)
 NOT_PLAIN_OUTSIDE = re.compile(r"\\|image-set\(", re.IGNORECASE)
 NOT_RELATIVE = re.compile(r"[ \t\r\n\f]*(?:https?://|(?!https?:)[a-z][a-z0-9+.-]*:|/|#)", re.IGNORECASE | re.ASCII)
-TEXT_ONLY = ("textarea", "title")
+TEXT_ONLY = ("textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript")
 
 
 def css_unescape(text):
@@ -57,9 +60,9 @@ class FileTags(HTMLParser):
         for name, value in attrs:
             first.setdefault(name, value)
         if tag == "script" and "src" in first:
-            canonical, kind, end, name = SCRIPT_TAG, "script", "</script>", first["src"]
+            canonical, kind, end = SCRIPT_TAG, "script", "</script>"
         elif tag == "link" and "stylesheet" in (first.get("rel") or "").lower().split():
-            canonical, kind, end, name = SHEET_TAG, "style", "", first.get("href")
+            canonical, kind, end = SHEET_TAG, "style", ""
         else:
             return
         raw = self.get_starttag_text()
@@ -69,7 +72,21 @@ class FileTags(HTMLParser):
         if not written or not self.html.startswith(end, at + len(raw)):
             raise ThemePageError(f"the tag {raw!r} is not <script src=\"...\"></script> or "
                                  f"<link rel=\"stylesheet\" href=\"...\">, the only file tags the page puts inline")
-        self.found.append((at, at + len(raw) + len(end), kind, name))
+        value = written.group(1)
+        if loose := [m.group(0) for m in REFERENCE.finditer(value)
+                     if m.group(0) == "&" or m.group(0)[1] != "#" and m.group(0)[1:] not in html5]:
+            raise ThemePageError(f"the tag {raw!r} has {loose[0]!r}, which is not a whole character reference the "
+                                 f"browser reads the same way")
+        self.found.append((at, at + len(raw) + len(end), kind, unescape(value)))
+
+    def handle_comment(self, data):
+        if data.startswith((">", "->")) or "--!>" in data:
+            raise ThemePageError(f"the comment {('<!--' + data)[:40]!r}... ends earlier in the browser, which would "
+                                 f"then read what the build leaves as a comment")
+
+    def unknown_decl(self, data):
+        raise ThemePageError(f"{('<![' + data)[:40]!r}... is a bogus comment in the browser that ends at its first >, "
+                             f"which the build cannot read for certain")
 
 
 @functools.lru_cache(maxsize=16)
@@ -84,7 +101,7 @@ def theme_file(folder, name):
         raise ThemePageError(f"{name} is outside {inside}")
     if not path.is_file():
         raise ThemePageError(f"{name} is missing from {inside}")
-    return path, path.read_text(encoding="utf-8")
+    return path, path.read_text(encoding="utf-8-sig")
 
 
 def inline_files(html, folder):

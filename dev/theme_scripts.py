@@ -2,8 +2,10 @@ import argparse
 import asyncio
 import importlib
 import json
+import re
 import sys
 import tempfile
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -100,6 +102,7 @@ OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEv
                  " cancelable: true, composed: true, isPrimary: true, pointerId: 7, pointerType: 'touch', button: 0,"
                  " clientX: 11, clientY: 13}))")
 PAGE_READY_S = 15.0
+INLINE_MARK = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 
 
 async def until(tab, state, condition, seconds):
@@ -133,13 +136,21 @@ async def top_level_names(tab, scripts):
     return {name: where for name, where in owners.items() if len(where) > 1}, errors
 
 
+async def script_name(tab, script):
+    source = (await tab.cmd("Debugger.getScriptSource", scriptId=script["scriptId"]))["scriptSource"]
+    path = urllib.parse.urlsplit(script["url"]).path
+    if path.startswith(missing_script.THEME) and path != missing_script.THEME:
+        return path.removeprefix(missing_script.THEME), source
+    return tab.files.get(source), source
+
+
 async def page_scripts(tab):
     found = []
     for s in tab.scripts:
         aux = s.get("executionContextAuxData") or {}
         if aux.get("isDefault") and so_mock.mesma_origem(s["url"], tab.base):
-            source = (await tab.cmd("Debugger.getScriptSource", scriptId=s["scriptId"]))["scriptSource"]
-            found.append((tab.files.get(source, f"index.html:{s['startLine'] + 1}"), source))
+            name, source = await script_name(tab, s)
+            found.append((name or f"index.html:{s['startLine'] + 1}", source))
     return found
 
 
@@ -156,8 +167,8 @@ async def handler_files(tab, selector, kind):
 
 
 async def script_file(tab, script_id):
-    source = (await tab.cmd("Debugger.getScriptSource", scriptId=script_id))["scriptSource"]
-    return tab.files.get(source, "index.html")
+    name, _ = await script_name(tab, next(s for s in tab.scripts if s["scriptId"] == script_id))
+    return name or "index.html"
 
 
 async def checks(tab):
@@ -211,6 +222,14 @@ async def checks(tab):
     return results
 
 
+def inline_scripts(raiz):
+    files = {text: name for kind, name, text in missing_script.page_files(raiz, missing_script.THEME) if kind == "script"}
+    theme = raiz / "themes" / "ritmelli"
+    for name in INLINE_MARK.findall((theme / "index.html").read_text(encoding="utf-8")):
+        files["\n" + (theme / name).read_text(encoding="utf-8")] = name
+    return files
+
+
 def main(argv=None):
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="The theme's scripts in a headless Chrome against a --mock server of its "
@@ -227,8 +246,7 @@ def main(argv=None):
             srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, raiz=args.raiz.resolve(),
                                         config={"boas_vindas": True})
             try:
-                files = {text: name for kind, name, text in
-                         missing_script.page_files(args.raiz.resolve(), missing_script.THEME) if kind == "script"}
+                files = inline_scripts(args.raiz.resolve())
 
                 async def run(tab):
                     tab.files = files

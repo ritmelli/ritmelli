@@ -1188,6 +1188,19 @@ def the_theme_page_build():
             "a sheet in a subfolder with url() only inside a string": (
                 '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": 'a::after { content: "url(example.png)"; }\n'},
                 "relative url()"),
+            "a comment the browser ends at <!-->": ('<!--> <script src="first.js"></script> -->', {},
+                                                    "ends earlier in the browser"),
+            "a comment the browser ends at <!--->": ('<!---> <script src="first.js"></script> -->', {},
+                                                     "ends earlier in the browser"),
+            "a comment the browser ends at --!>": ('<!-- a --!> <script src="first.js"></script> -->', {},
+                                                   "ends earlier in the browser"),
+            "a CDATA section, a bogus comment in the browser": (
+                '<![CDATA[ a > <script src="first.js"></script> ]]>', {}, "bogus comment"),
+            "a script name with a reference the browser leaves as it is": ('<script src="copy&notit.js"></script>',
+                                                                           {"copy&notit.js": "1;\n"},
+                                                                           "has '&', which is not a whole"),
+            "a script name with an unknown named reference": ('<script src="a&ampx;b.js"></script>', {},
+                                                              "'&ampx;', which is not a whole"),
             "a sheet in a subfolder with an http: url() without a host": (
                 '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": "a { b: url(http:cover.png); }\n"},
                 "relative url()"),
@@ -1210,11 +1223,15 @@ def the_theme_page_build():
         (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url( 'data:x' ); "
                                               "f: url(HTTPS://example.com/x.png); }\n", encoding="utf-8")
         (folder / "a&b.js").write_text("const ab = 1;\n", encoding="utf-8")
+        (folder / "bom.css").write_text("\ufeffa { b: c; }\n", encoding="utf-8")
         sheet.write_text("a { b: url(fonts/x.woff2); c: image-set(url('y.webp') 2x, 'z.webp' 1x); d: '\\00B7'; }\n",
                          encoding="utf-8")
         kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
                 "a tag written as the text of a textarea": ('<textarea><script src="example.js"></script></textarea>', None),
                 "a tag written as the text of the title": ('<title><script src="example.js"></script></title>', None),
+                "a tag written in a noscript": ('<noscript><script src="example.js"></script></noscript>', None),
+                "a sheet that starts with a byte order mark": ('<link rel="stylesheet" href="bom.css">',
+                                                               "<style>\na { b: c; }\n</style>"),
                 "a script name with a character reference": ('<script src="a&amp;b.js"></script>',
                                                              "<script>\nconst ab = 1;\n</script>"),
                 "a sheet of the page folder with a relative url(), an image-set() and an escape": (
