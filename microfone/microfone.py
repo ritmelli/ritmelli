@@ -543,6 +543,9 @@ class LockedInactiveEndpoint(PermissionError):
     pass
 
 
+INACTIVE_STATES = (2, 4, 8)
+
+
 def _key_exists(path):
     try:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path):
@@ -551,20 +554,25 @@ def _key_exists(path):
         return False
 
 
-def _active(base):
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as k:
-        return (le(k, "DeviceState") or (0,))[0] == 1
+def _inactive(base):
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as k:
+            state, kind = winreg.QueryValueEx(k, "DeviceState")
+    except OSError:
+        return False
+    return kind == winreg.REG_DWORD and (state & 0xF) in INACTIVE_STATES
 
 
 def _open_fx_properties(base):
     """The FxProperties key of the endpoint, created when missing. An endpoint that isn't active, has no FxProperties
     and where Windows denies creating it even to an administrator raises LockedInactiveEndpoint: a device that left the
-    PC, which the filter can't reach. On an active endpoint, or with the key there, the denial stays an error."""
+    PC, which the filter can't reach. On an active endpoint, one whose state can't be read, or with the key there, the
+    denial stays an error."""
     path = base + r"\FxProperties"
     try:
         return winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, path, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE)
     except PermissionError as ex:
-        if _active(base) or _key_exists(path):
+        if not _inactive(base) or _key_exists(path):
             raise
         raise LockedInactiveEndpoint(*ex.args) from ex
 

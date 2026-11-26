@@ -299,7 +299,8 @@ class TestEndpointWithoutFxProperties(Base):
         r = self.reg
         props = r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}\\Properties")
         r.SetValueEx(props, mf.SEM_MELHORIAS, 0, r.REG_DWORD, 0)
-        r.SetValueEx(r.OpenKey(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}"), "DeviceState", 0, r.REG_DWORD, state)
+        if state is not None:
+            r.SetValueEx(r.OpenKey(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}"), "DeviceState", 0, r.REG_DWORD, state)
         if fx_properties:
             r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}\\FxProperties")
         real_create = r.CreateKeyEx
@@ -311,7 +312,7 @@ class TestEndpointWithoutFxProperties(Base):
         self.enterContext(mock.patch.object(r, "CreateKeyEx", create))
 
     def test_a_device_not_present_is_left_out_untouched(self):
-        self._endpoint(4)
+        self._endpoint(0x31000004)
         with self.assertRaises(mf.LockedInactiveEndpoint):
             mf._pendura(EP)
         self.assertNotIn(f"HKLM\\{mf.SALVO}\\{EP}".lower(), self.reg.chaves, "nothing saved for it")
@@ -319,6 +320,24 @@ class TestEndpointWithoutFxProperties(Base):
     def test_an_active_endpoint_still_fails(self):
         self._endpoint(1)
         with self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertNotIsInstance(caught.exception, mf.LockedInactiveEndpoint)
+
+    def test_a_missing_state_still_fails(self):
+        self._endpoint(None)
+        with self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertNotIsInstance(caught.exception, mf.LockedInactiveEndpoint)
+
+    def test_a_state_that_cannot_be_read_still_fails(self):
+        self._endpoint(4)
+        real_query = self.reg.QueryValueEx
+
+        def query(key, name):
+            if name == "DeviceState":
+                raise PermissionError(13, "Access is denied")
+            return real_query(key, name)
+        with mock.patch.object(self.reg, "QueryValueEx", query), self.assertRaises(PermissionError) as caught:
             mf._pendura(EP)
         self.assertNotIsInstance(caught.exception, mf.LockedInactiveEndpoint)
 
