@@ -431,6 +431,41 @@ class TestVoicePedalStart(unittest.TestCase):
                          "the track at 6.112 s is the second start's, and the first one's came up 5.9 s before the ring")
         self.assertIn("the microphone ring ran dry (", log.getvalue())
 
+    def pedal_off_while_its_track_is_told(self, up_at, filled_at, read_at):
+        now = [0.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        dry = dryouts.RingDryOuts(pedal)
+        tell, told = dryouts.LOG.tell, []
+
+        def off_while_told(line):
+            if not told:
+                told.append(line)
+                pedal.pedal(False)
+            tell(line)
+
+        with mock.patch("sys.stderr", io.StringIO()) as log, mock.patch.object(dryouts.LOG, "tell", off_while_told):
+            pedal.pedal(True)
+            now[0] = filled_at
+            dry.read_ring(lambda: 1)
+            now[0] = read_at
+            pedal.track(True, stamp(up_at))
+            now[0] = read_at + 0.05
+            dry.read_ring(lambda: 0)
+            dry.ran_dry(0.05, 1, 0.0)
+            dryouts.LOG.written()
+        self.assertEqual(told, [f"voice pedal: its voice track came up {up_at:.2f} s after the pedal turned on"])
+        return dry.while_pedal_starting, log.getvalue()
+
+    def test_a_pedal_off_while_its_track_is_told_keeps_the_track(self):
+        counted, log = self.pedal_off_while_its_track_is_told(1.5, 1.2, 1.6)
+        self.assertEqual(counted, 1)
+        self.assertIn("its voice track came up 0.15 s ago", log)
+
+    def test_a_pedal_off_while_its_track_is_told_keeps_its_window(self):
+        counted, log = self.pedal_off_while_its_track_is_told(0.1, 6.1, 6.15)
+        self.assertEqual(counted, 0, "the track came up 6.0 s before the ring was last filled")
+        self.assertIn("the microphone ring ran dry (", log)
+
     def ended_start_with_a_track_read_late(self, up_s_ago):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
@@ -538,9 +573,11 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
         pedal.pedal(True)
         seen = []
-        with mock.patch.object(dryouts.LOG, "tell", side_effect=lambda line: seen.append(pedal.track_up_at)):
+        with mock.patch.object(dryouts.LOG, "tell",
+                               side_effect=lambda line: seen.append((pedal.track_up_at, pedal.starting()[1]))):
             pedal.track(True, stamp(5.0))
-        self.assertEqual((seen, pedal.track_up_at), ([None], 5.0))
+        self.assertEqual((seen, pedal.track_up_at),
+                         ([(None, "the pedal turned on 0.00 s ago, its voice track isn't up yet")], 5.0))
 
     def test_a_track_read_after_its_pedal_turned_on_again_is_told_for_its_start(self):
         now = [1.0]
