@@ -419,6 +419,7 @@ def test_description():
         "a label and test names under the heading": "## How it was proved\n\nLocally: `testa_tudo` 30/30 and "
                                                     "`--microfone` 4/4.\n",
     }
+    passing["a phrase quoted as code"] = good + "\nThe check fails on `for now` with no issue link.\n"
     for label, body in passing.items():
         check(garden.description_problems(body) == [], f"a proof section with {label} passes")
     failing = {

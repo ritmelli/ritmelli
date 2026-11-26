@@ -1362,9 +1362,9 @@ def description_problems(body):
     elif not any(has_proof(s) for s in sections):
         problems.append("the proof section has no run, test or screenshot (a command or a test file in `code`, a code "
                         "block, a link to a run or an image)")
-    problems += [f"line {n}: \"{PROSE.search(line).group(0)}\" with no issue link: fix it, or link the issue that "
-                 f"tracks it" for n, line in enumerate(lines, 1)
-                 if PROSE.search(line) and not ISSUE.search(re.sub(r"(`+)(?!`).*?(?<!`)\1(?!`)", "", line))]
+    prose = [(n, re.sub(r"(`+)(?!`).*?(?<!`)\1(?!`)", "", line)) for n, line in enumerate(lines, 1)]
+    problems += [f"line {n}: \"{PROSE.search(text).group(0)}\" with no issue link: fix it, or link the issue that "
+                 f"tracks it" for n, text in prose if PROSE.search(text) and not ISSUE.search(text)]
     return problems
 
 
