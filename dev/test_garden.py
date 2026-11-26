@@ -139,7 +139,7 @@ CASES = {
                                      "        run: \"Write-Output ok # Start-Sleep 1\"\n"},
          {".github/workflows/w.yml": "jobs:\n  monta:\n    steps:\n      - shell: pwsh\n"
                                      "        run: \"Start-Sleep 1 # wait\"\n"}),
-        ("in dev/",{"a.py": "import time\ntime.sleep(1)\n"},
+        ("in dev/", {"a.py": "import time\ntime.sleep(1)\n"},
          {"a.py": "import time\ntime.sleep(1)\n", "dev/a.py": "import time\ntime.sleep(1)\n"}),
         ("a tool, not a test", {"dev/testa_x.py": "import time\ntime.sleep(1)\n",
                                 "dev/test_x.py": "import time\ntime.sleep(1)\n",
@@ -460,9 +460,13 @@ CASES = {
          {"AGENTS.md": "# A\n\n- A rule that `testa_x` holds.\n", "dev/testa_tudo.py": TUDO},
          {"AGENTS.md": "# A\n\n- A rule that `testa_x` holds.\n",
           "dev/testa_tudo.py": TUDO.replace('["dev/testa_x.py"]', "[]")}),
-        ("a job of the testa.yml",{"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n",
+        ("a job of the testa.yml", {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n",
                                     ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n    name: Testa o PR\n"},
          {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n"}),
+        ("a job of another workflow", {"AGENTS.md": AGENTS_OK + "- The `testa-parcial` job of `monta.yml`.\n",
+                                       ".github/workflows/monta.yml": "on:\n  push:\njobs:\n  testa-parcial:\n"
+                                                                     "    runs-on: windows-2025\n"},
+         {"AGENTS.md": AGENTS_OK + "- The `testa-parcial` job of `monta.yml`.\n"}),
     ],
 }
 
@@ -623,6 +627,8 @@ def test_description():
         "a heading inside the code block": "# Change\n\n## Proof\n\n```bash\n# Before\n$ python dev/x.py\nfails\n```\n",
         "bold sub-labels under the heading": "## Proof\n\n**Before the change** ([run 1](https://github.com/o/r/"
                                              "actions/runs/1)): fails.\n",
+        "a checked item": "## Proof\n\n- [x] `python dev/testa_i18n.py` passes.\n",
+        "an open item next to a run": "## Proof\n\n- [ ] the phone\n- `python dev/testa_i18n.py` passes.\n",
         "a label and test names under the heading": "## How it was proved\n\nLocally: `testa_tudo` 30/30 and "
                                                     "`--microfone` 4/4.\n",
     }
@@ -665,7 +671,9 @@ def test_description():
         "an image as an example in code across lines": "## Proof\n\nLike `this\n![a](https://github.com/user-attachments/"
                                                        "assets/1)` here.\n",
         "an image only as an example in code":"## Proof\n\n`![a](https://github.com/user-attachments/assets/1)`\n",
-        "an anchor as the link's target":good + "\nThe rest stays for now ([details](#250)).\n",
+        "only an open checklist item": "## Proof\n\n- [ ] `python dev/testa_i18n.py`\n  ```\n  ok    the keys\n"
+                                       "  ```\n",
+        "an anchor as the link's target": good + "\nThe rest stays for now ([details](#250)).\n",
         "the issue in the next paragraph": good + "\nThe rest stays for now.\n\nSee #250.\n",
         "the issue in the next list item, in bold": good + "\n- The rest stays for now.\n"
                                                      "- **[#250](https://github.com/o/r/issues/250)** is another.\n",

@@ -32,6 +32,7 @@ ISSUE_URL = re.compile(r"(?<![\w./-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+
 URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
 SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
+OPEN_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s")
 CODE_SPAN = re.compile(r"(`+)(?!`)(?:(?!\n[ \t]*\n).)*?(?<!`)\1(?!`)", re.S)
 PARAGRAPH_START = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>)")
 BLOCK_MARKER = re.compile(r"^\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b")
@@ -1188,12 +1189,17 @@ def verification_names(t=None):
 
 
 def workflow_jobs(t):
-    text = t.files.get(".github/workflows/testa.yml")
-    if text is None:
-        return set()
-    doc = workflow_yaml.loads(text, name="testa.yml")
-    jobs = doc.get("jobs") or {}
-    return set(jobs) | {j.get("name") for j in jobs.values() if isinstance(j, dict) and j.get("name")}
+    names = set()
+    for p in t.paths(".yml", ".yaml"):
+        if p.startswith(".github/workflows/"):
+            try:
+                doc = workflow_yaml.loads(t.files[p], name=Path(p).name)
+            except workflow_yaml.YamlError:
+                continue
+            jobs = doc.get("jobs") if isinstance(doc, dict) else None
+            if isinstance(jobs, dict):
+                names |= set(jobs) | {j.get("name") for j in jobs.values() if isinstance(j, dict) and j.get("name")}
+    return names
 
 
 def agents_rules(text):
@@ -1454,8 +1460,20 @@ def blocks(lines):
     return out
 
 
+def without_open_items(lines):
+    out, inside = [], None
+    for line in lines:
+        indent = len(line) - len(line.lstrip())
+        if inside is not None and (not line.strip() or indent > inside):
+            continue
+        inside = indent if OPEN_ITEM.match(line) else None
+        if inside is None:
+            out.append(line)
+    return out
+
+
 def has_proof(text):
-    parts = blocks(text.splitlines())
+    parts = blocks(without_open_items(text.splitlines()))
     if any(kind == "code" and BLOCK_PROOF.search(body) for kind, body in parts):
         return True
     prose = "\n".join(body for kind, body in parts if kind == "text")
