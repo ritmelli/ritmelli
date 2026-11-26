@@ -161,7 +161,9 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   com download (`WithTheJobSwitch`, com o download que termina depois de a preparação escolher o stream), e outras
   duas, nas mesmas configurações, conferem todas as outras propriedades. A preparação escolhe a fonte como o `fonte_de`
   (o arquivo da prateleira, o stream do download que corre, ou nenhuma), e a virada publica a que ela escolheu: com o
-  download terminado antes de a preparação ler a entrada (`DownloadEndsBeforeThePassage`), a virada leva o arquivo.
+  download terminado antes de a preparação escolher a fonte (`DownloadEndsBeforeTheSourcePick`), a virada leva o arquivo.
+  O arquivo no prato, como no código, não leva o job (o `dict(item, path=...)` não tem a chave), e o download que
+  termina só entrega o arquivo ao disco do job (`HandoverOnlyOntoTheJobsRecord`).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o
@@ -173,7 +175,7 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
-menos de 60 s (a `Races211` em cinco: o download, o stream e a troca, sem as trocas de lugar na fila, uma vez com o
+menos de 60 s (a `Races211` em cinco com todas as propriedades, além das três acima: o download, o stream e a troca, sem as trocas de lugar na fila, uma vez com o
 tocar de outro disco e outra com o esquecer da prateleira; o download, o stream e um pulo na barra, sem as trocas de
 lugar e sem o tocar de outro disco, o esquecer e a reserva; as trocas de lugar, a reserva, a preparação da passagem e a
 versão de áudio, sem o job; e os dois juntos, com uma troca de lugar só e sem o tocar de outro disco, o esquecer e a

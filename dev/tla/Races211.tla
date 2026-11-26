@@ -6,7 +6,8 @@ CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, Stre
           SilentStreamGoesToTheApp, WithTheJob, WithTheMoves, AudioVersionKeepsTheReservation,
           FileSwapStartsItsReader, TwoMoves, WithThePlay, WithTheSeek, StreamRefusalChecksItsWait,
           OpenedStreamLooksForTheFile, SeekStartsANewLine, WaitKeyedByGen, WithTheForget,
-          WithTheDrop, WithTheJobSwitch, DownloadEndsBeforeThePassage, PrepareLooksAtTheShelf
+          WithTheDrop, WithTheJobSwitch, DownloadEndsBeforeTheSourcePick, PrepareLooksAtTheShelf,
+          PassageFileKeepsTheJob
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd, noReader, gen,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying,
@@ -55,7 +56,7 @@ StopPlatter ==
     /\ UNCHANGED <<nextId, gen>>
 
 NewSourceWith(path, without) ==
-    /\ track' = [track EXCEPT !.id = nextId, !.path = path]
+    /\ track' = [track EXCEPT !.id = nextId, !.path = path, !.job = track.job /\ path /= "file"]
     /\ nextId' = nextId + 1
     /\ pronto' = IF path = "file" THEN NoPronto ELSE pronto
     /\ noReader' = without
@@ -360,7 +361,8 @@ MixerSwitches ==
     /\ Playing
     /\ Section("Mixer", "_qlock")
     /\ virou' = [tag |-> pronto.qid, sai |-> track.id, ver |-> pronto.ver]
-    /\ Publish([id |-> nextId, job |-> pronto.job, qid |-> pronto.qid, ver |-> pronto.ver, path |-> pronto.path])
+    /\ Publish([id |-> nextId, job |-> pronto.job /\ (PassageFileKeepsTheJob \/ pronto.path /= "file"),
+                qid |-> pronto.qid, ver |-> pronto.ver, path |-> pronto.path])
     /\ UNCHANGED <<pc, jobVars, fila, ver, closing, preparando, localVars>>
 
 PrepareReads ==
@@ -383,7 +385,7 @@ PrepareMarks ==
 
 PrepareSource ==
     /\ At("Prepare", "pr_source")
-    /\ DownloadEndsBeforeThePassage => jobStatus /= "running"
+    /\ DownloadEndsBeforeTheSourcePick => jobStatus /= "running"
     /\ prVer' = IF PrepareChecksTheVersion THEN prVer ELSE ver[prX]
     /\ \E j \in IF WithTheJobSwitch THEN BOOLEAN ELSE {FALSE} :
           /\ prJob' = j
@@ -558,7 +560,7 @@ Loading == track.job /\ (track.path = "none" \/ fileWait = <<track.id, gen>>) /\
 
 NoOrphanLoading == Quiescent => ~(Loading /\ jobStatus = "error")
 
-NoStaleLoading == Quiescent => ~((Loading \/ (track.job /\ noReader)) /\ jobStatus = "done")
+NoStaleLoading == Quiescent => ~((Loading \/ noReader) /\ jobStatus = "done")
 
 StreamActsOnItsAttempt == ~wrongTrack
 
@@ -567,6 +569,8 @@ NoRefusalWhilePlaying == ~refusedPlaying
 NoPassageFromBeforeTheSeek == ~stalePrepared
 
 FinishedDownloadReachesThePlatter == Quiescent => ~(track.job /\ track.path = "stream" /\ FileReady)
+
+HandoverOnlyOntoTheJobsRecord == (pc["Download"] = "dl_done_file" /\ track.id = dlSaw) => track.path /= "file"
 
 ReservedEntryMatchesRead == resQ /= NoQid /\ resQ \in Range(fila) => ver[resQ] = resVer
 

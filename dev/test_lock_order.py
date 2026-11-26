@@ -156,13 +156,37 @@ def function_table(trees):
                 for f in n.body:
                     if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         out[(module, n.name, f.name)] = f
-    return Table(out, *hooks(trees))
+    table = Table(out, *hooks(trees))
+    table.aliased.update(bound_aliases(trees, table))
+    return table
+
+
+def bound_aliases(trees, table):
+    out = {}
+    for module, tree in trees.items():
+        scopes = [(None, n) for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        scopes += [(c.name, f) for c in tree.body if isinstance(c, ast.ClassDef) for f in c.body
+                   if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        for cls, func in scopes:
+            names = {}
+            for n in ast.walk(func):
+                target = n.targets[0] if isinstance(n, ast.Assign) and len(n.targets) == 1 else getattr(n, "target", None)
+                if (isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and isinstance(target, ast.Name)
+                        and isinstance(n.value, ast.Attribute)):
+                    keys = resolve(table, ast.Call(func=n.value, args=[], keywords=[]), module, cls)
+                    if keys:
+                        names[target.id] = keys
+            for n in ast.walk(func):
+                if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in names
+                        and id(n) not in table.aliased):
+                    out[id(n)] = names[n.func.id]
+    return out
 
 
 def resolve(table, call, module, cls):
     f, keys = call.func, []
     if id(call) in table.aliased:
-        keys = [table.aliased[id(call)]]
+        keys = list(table.aliased[id(call)])
     elif isinstance(f, ast.Name):
         keys = [(module, None, f.id)]
     elif isinstance(f, ast.Attribute):
@@ -215,7 +239,7 @@ def hooks(trees):
         for n in ast.walk(func):
             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in names:
                 key = ("engine.py", "Engine", names[n.func.id])
-                aliased[id(n)] = hooked.get(key, key)
+                aliased[id(n)] = [hooked.get(key, key)]
     return hooked, aliased
 
 
@@ -694,6 +718,9 @@ def self_test(order, before):
         "an engine method that takes the _lock, called with the _qlock held": (
             {"engine.py": "class Engine:\n    def stop(self):\n        with self._lock:\n            pass\n",
              "case.py": "def f(A, E):\n    with E._qlock:\n        E.stop()\n"}, 1),
+        "an engine method that takes the _lock, called through a local name with the _qlock held": (
+            {"engine.py": "class Engine:\n    def stop(self):\n        with self._lock:\n            pass\n",
+             "case.py": "def f(A, E):\n    finish = E.stop\n    with E.state_section():\n        finish()\n"}, 1),
         "the change_queue called with the _qlock already held": (
             {"server.py": "class App:\n    def change_queue(self, c):\n        with self.engine._qlock:\n"
                           "            c()\n    def f(self):\n        with self.engine._qlock:\n"
@@ -845,6 +872,13 @@ def main():
         bad, *_ = scan(dict(sources, **{"engine.py": moved}), order, before)
         check(moved != sources["engine.py"] and any(callee in b for b in bad),
               f"with {what} called under the _qlock, the check fails ({[b for b in bad if callee in b][:1]})")
+    hidden = sources["comandos.py"].replace(
+        "        cap = A.engine.stop()\n",
+        "        finish = A.engine.stop\n        with A.engine.state_section():\n            cap = finish()\n", 1)
+    bad, *_ = scan(dict(sources, **{"comandos.py": hidden}), order, before)
+    check(hidden != sources["comandos.py"] and any("Engine.stop" in b for b in bad),
+          f"with the Stop calling the engine's stop through a local name under the _qlock, the check fails "
+          f"({[b for b in bad if 'Engine.stop' in b][:1]})")
     later = ("class App:\n    def change_queue(self, change):\n        pass\n    def f(self):\n"
              "        with self.fila_lock:\n            threading.Thread(target=lambda: self.change_queue(None)).start()\n")
     callers = caller_failures({"server.py": ast.parse(later)})

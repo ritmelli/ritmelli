@@ -283,6 +283,7 @@ class Entries:
             if self.owner_only and (id(func) in allowed or func.name == "__init__"):
                 continue
             scope = self.scope_of(func, parent, parents)
+            callees = {id(n.func) for n in ast.walk(func) if isinstance(n, ast.Call)}
             for node in own_nodes(func, skip if self.owner_only else frozenset()):
                 hit = None
                 if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Delete)):
@@ -296,6 +297,9 @@ class Entries:
                 elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                       and node.func.attr in MUTATORS and self.is_entry(node.func.value, scope)):
                     hit = f".{node.func.attr}()"
+                elif (isinstance(node, ast.Attribute) and node.attr in MUTATORS and id(node) not in callees
+                      and self.is_entry(node.value, scope)):
+                    hit = f"a captured .{node.attr}"
                 elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                       and isinstance(node.func.value, ast.Name) and node.func.value.id == "dict"
                       and node.func.attr in MUTATORS and node.args and self.is_entry(node.args[0], scope)):
@@ -349,6 +353,7 @@ def direct_aliases(func, module, cls, known):
 class QueueChanges(ast.NodeVisitor):
     def __init__(self, module, params):
         self.module, self.params, self.cls, self.stack, self.found, self.passing = module, params, None, [], [], []
+        self.callees = set()
 
     def visit_ClassDef(self, node):
         outer, self.cls = self.cls, node.name
@@ -406,7 +411,13 @@ class QueueChanges(ast.NodeVisitor):
             self.flag(node, "del on the queue")
         self.generic_visit(node)
 
+    def visit_Attribute(self, node):
+        if node.attr in CHANGERS and id(node) not in self.callees and self.queue_ref(node.value):
+            self.flag(node, f"a captured .{node.attr} of the queue")
+        self.generic_visit(node)
+
     def visit_Call(self, node):
+        self.callees.add(id(node.func))
         if isinstance(node.func, ast.Attribute) and node.func.attr in CHANGERS and self.queue_ref(node.func.value):
             self.flag(node, f".{node.func.attr}() on the queue")
         name = called(node)
@@ -487,6 +498,8 @@ ENTRY_FORMS = {
     "an entry wrapped in a list": ({"case.py": "def f(A):\n    y = [A.fila[0]]\n    y[0]['fixa'] = True\n"}, 1),
     "an entry written on an assignment expression": (
         {"case.py": "def f(A):\n    (e := A.fila[0]).update(audio=True)\n"}, 1),
+    "a captured update of an entry": (
+        {"case.py": "def f(A):\n    rewrite = A.fila[0].update\n    rewrite(audio=True)\n"}, 1),
     "an entry of a queue bound inline": ({"case.py": "def f(A):\n    (q := A.fila)[0]['audio'] = True\n"}, 1),
     "an entry found by next()":({"case.py": "def f(A, q):\n    x = next((y for y in A.fila if y['qid'] == q), None)"
                                              "\n    x['fixa'] = True\n"}, 1),
@@ -568,6 +581,10 @@ QUEUE_FORMS = {
         {"case.py": "def f(A, flag):\n    q = A.fila if flag else A.fila_ordem\n    q.clear()\n"}, 1),
     "a queue chosen by a conditional, inline": (
         {"case.py": "def f(A, flag):\n    (A.fila if flag else A.fila_ordem).clear()\n"}, 1),
+    "a captured append of the queue": ({"case.py": "def f(A, x):\n    add = A.fila.append\n    add(x)\n"}, 1),
+    "a captured append of the queue inside the change": (
+        {"case.py": "def f(A, x):\n    def ch():\n        add = A.fila.append\n        add(x)\n    A.change_queue(ch)\n"},
+        0),
     "a queue bound by an assignment expression": ({"case.py": "def f(A):\n    if q := A.fila:\n        q.clear()\n"}, 1),
     "another class's own fila": ({"fx.py": "class Fx:\n    def f(self):\n        self.fila = []\n"}, 0),
     "the App building its queue in __init__": (
@@ -596,6 +613,13 @@ def main():
     got, _ = scan(dict(sources, **{"server.py": direct}))
     check(direct != sources["server.py"] and len(got) == 1,
           f"with the App's audio version writing the entries without change_queue, the check fails ({got})")
+    captured = sources["automatico.py"].replace(
+        "        for x in A.fila:\n            vistas |= music.chaves_musica(x)\n",
+        "        for x in A.fila:\n            mark = x.update\n            mark(seen=True)\n"
+        "            vistas |= music.chaves_musica(x)\n", 1)
+    got, _ = scan(dict(sources, **{"automatico.py": captured}))
+    check(captured != sources["automatico.py"] and len(got) == 1,
+          f"with the Automatico writing a queue entry through its captured update, the check fails ({got})")
     direct = sources["server.py"].replace("self.change_queue(swap_entries)",
                                           "swap_entries()\n        self.change_queue(swap_entries)")
     _, got = scan(dict(sources, **{"server.py": direct}))
