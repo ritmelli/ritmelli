@@ -106,8 +106,10 @@ def partial_probed(job, folder):
     wanted = normal_path(folder) + "/Ritmelli-$env:VERSAO-parcial.exe"
     if not step or inner((step.get("env") or {}).get("VERSAO", "")) != inner(VERSION):
         return False
-    probes = re.findall(r'Test-Path\s+(?:-Path\s+)?"([^"]+)"', code(step.get("run", "")))
-    return any(normal_path(path) == wanted for path in probes)
+    run = code(step.get("run", ""))
+    probes = re.findall(r'^\s*\$(\w+)\s*=\s*Test-Path\s+(?:-Path\s+)?"([^"]+)"\s*$', run, re.M)
+    written = r'"parcial=\$\(\${0}\.ToString\(\)\.ToLower\(\)\)"|"parcial=\${0}"'
+    return any(normal_path(path) == wanted and re.search(written.format(name), run) for name, path in probes)
 
 
 def step_output_problem(job, name):
@@ -504,6 +506,11 @@ def main():
             run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(
                 "-Path $env:GITHUB_OUTPUT -Value \"versao=", '-Path "$env:GITHUB_OUTPUT.tmp" -Value "versao=')),
         "the ritmelli-exe upload in a job that needs testa-parcial": lambda d: move_exe_upload(d),
+        "the partial probe negated": lambda d: source_step(d, "parcial").update(
+            run=re.sub(r'= Test-Path ("[^"]*-parcial\.exe")', r"= -not (Test-Path \1)",
+                       source_step(d, "parcial")["run"])),
+        "the parcial written from another variable": lambda d: source_step(d, "parcial").update(
+            run=source_step(d, "parcial")["run"].replace('"parcial=$($parcial.', '"parcial=$($other.')),
         "the partial setup looked for in single quotes": lambda d: source_step(d, "parcial").update(
             run=re.sub(r'Test-Path "([^"]*-parcial\.exe)"', r"Test-Path '\1'", source_step(d, "parcial")["run"])),
         "the VERSAO of the step behind the parcial output": lambda d: source_step(d, "parcial")["env"].update(
