@@ -104,6 +104,10 @@ class CycleRow(unittest.TestCase):
         got, _ = row([state(), state()], server_lines=["pedal_voz: pronto", track_up_line(3.1, 3.6)])
         self.assertEqual(got["track_up_after_s"], [3.1, 3.6])
 
+    def test_the_slowest_track_up_is_the_interval_of_the_slowest(self):
+        self.assertEqual(measure.slowest_up([[3.0, 3.9], [3.5, 3.6]]), [3.5, 3.9])
+        self.assertIsNone(measure.slowest_up([]))
+
     def test_a_longer_return_in_the_cycle(self):
         got, _ = row([state(volta=434.0), state(volta=656.0)])
         self.assertEqual(got["new_longest_return_ms"], 656.0)
@@ -180,8 +184,9 @@ def dry_out_line(count, injector, pedal=False):
 
 
 class Main(unittest.TestCase):
-    def run_main(self, got, *args, events=(), asked=MIC, late_lines=()):
+    def run_main(self, got, *args, events=(), asked=MIC, late_lines=(), track_ups=()):
         sent = []
+        ups = iter(track_ups)
         work = Path(self.enterContext(tempfile.TemporaryDirectory()))
         err = []
 
@@ -200,7 +205,7 @@ class Main(unittest.TestCase):
             if path == "/api/events":
                 return sse(*events)
             if req.data and json.loads(req.data) == {"effect": "pistavoz"}:
-                err[0].write("\n".join(READY) + "\n")
+                err[0].write("\n".join(["pedal_voz: pronto", next(ups)] if track_ups else READY) + "\n")
                 err[0].flush()
                 logs = work / "local" / "Ritmelli" / "logs"
                 logs.mkdir(parents=True, exist_ok=True)
@@ -314,6 +319,16 @@ class Main(unittest.TestCase):
         self.assertEqual([(c["dry_outs"], c["dry_outs_while_starting"]) for c in result["cycles"]], [(1, 1), (1, 1)],
                          "the round at 21 s closed the first cycle, so the one at 22 s is the second's")
         self.assertEqual((result["dry_outs"], result["dry_outs_while_starting"]), (2, 2))
+
+    def test_the_result_gives_the_slowest_track_up_of_its_cycles(self):
+        why, _, result = self.run_main(state(), "--cycles", "2",
+                                       events=[(1.0, state(0, 0, 9.0, 10.0)), (15.0, state(1, 1, 656.0, 10.0)),
+                                               (21.0, None), (22.0, state(2, 2, 656.0, 10.0)), (45.0, None),
+                                               (46.0, None)],
+                                       track_ups=[track_up_line(3.2, 3.3), track_up_line(3.1, 3.6)])
+        self.assertIsNone(why)
+        self.assertEqual([c["track_up_after_s"] for c in result["cycles"]], [[3.2, 3.3], [3.1, 3.6]])
+        self.assertEqual(result["slowest_track_up_s"], [3.2, 3.6])
 
     def test_a_round_after_the_last_cut_is_not_measured(self):
         why, _, result = self.run_main(state(), "--cycles", "1",

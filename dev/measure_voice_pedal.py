@@ -139,6 +139,10 @@ def interruption(states_seen, mic):
     return None
 
 
+def slowest_up(ups):
+    return [max(up) for up in zip(*ups)] or None
+
+
 def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_S):
     broke = interruption(states_seen, mic)
     if broke:
@@ -282,7 +286,7 @@ def main():
               "cycles": cycles,
               "dry_outs": sum(c["dry_outs"] for c in cycles),
               "dry_outs_while_starting": sum(c["dry_outs_while_starting"] for c in cycles),
-              "slowest_track_up_s": max((c["track_up_after_s"] for c in cycles), key=lambda up: up[1], default=None),
+              "slowest_track_up_s": slowest_up([c["track_up_after_s"] for c in cycles]),
               "longest_return_ms_since_the_ring_opened": start["microfone"]["volta_max_ms"],
               "voice_blocks": sum(c["voice_blocks"] or 0 for c in cycles),
               "voice_slowest_block_ms": max(blocks or [0.0]),
