@@ -1,7 +1,7 @@
 {
-  "comment_lines": 6597,
+  "comment_lines": 6596,
   "docstring_lines": 4024,
-  "suppressions": 34,
+  "suppressions": 33,
   "sleeps_app": 43,
   "sleeps_dev": 67,
   "theme_timers": 30,

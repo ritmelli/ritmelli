@@ -1,6 +1,6 @@
 # Tests each PR on a GitHub Windows machine: the ruff (the pyproject.toml), the tests of the dev/testa_tudo.py and, when
 # the PR touches their area, the tests of the microphone filter and the screen (the fitcheck in one job, the compara in
-# another). The "Testa o PR" job always runs and only passes with the others: it is the required check of the main.
+# three). The "Testa o PR" job always runs and only passes with the others: it is the required check of the main.
 #
 # No paths: in the trigger, because a required check that does not run leaves the PR stuck. The path filter lives inside
 # each job, by the git diff against the base (the AREAS of the dev/testa_tudo.py), and the job that does not apply
@@ -126,6 +126,7 @@ jobs:
 
   capture:
     name: Captura
+    needs: etiquetas
     if: github.event_name != 'push'
     runs-on: windows-2025
     timeout-minutes: 25
@@ -134,19 +135,39 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.12.10'
+      - name: O PR mexe na tela?
+        id: areas
+        env:
+          ETIQUETAS: ${{ needs.etiquetas.outputs.lista }}
+        run: |
+          python dev/testa_tudo.py --areas $env:BASE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "extracao=$extracao" -Encoding utf8
       - uses: ./.github/actions/python
+        if: steps.areas.outputs.tela == 'true'
         with:
           requirements: requirements-dev.txt
       - name: ffmpeg no PATH
+        if: steps.areas.outputs.tela == 'true'
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
       - name: Captura
+        if: steps.areas.outputs.tela == 'true'
         run: python dev/testa_tudo.py --long capture --resumo "$env:RUNNER_TEMP\resumo.md"
       - name: Resumo
         id: resumo
         if: always()
+        env:
+          APLICA: ${{ steps.areas.outputs.tela }}
         run: |
-          $texto = if (Test-Path "$env:RUNNER_TEMP\resumo.md") { Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" } else { '**Captura:** ❌ não chegou a rodar (ver a execução)' }
+          if (Test-Path "$env:RUNNER_TEMP\resumo.md") { $texto = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" }
+          elseif ($env:APLICA -ne 'true' -and $env:APLICA) { $texto = '**Captura:** não se aplica (o PR não mexe na tela e não tem a etiqueta extracao-tema)' }
+          else { $texto = '**Captura:** ❌ não chegou a rodar (ver a execução)' }
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
@@ -316,13 +337,190 @@ jobs:
           $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
 
-  # the screen, part 2 (the --compara of the dev/testa_tudo.py): the reference of the base and the comparison of the PR,
-  # in the same Chrome. The reference comes from the cache when a run already took it with the same commit, scripts,
-  # libraries, Chrome and runner image; if not, from the base in a worktree, and it goes to the cache. A print that
-  # changed blocks only with the extracao-tema label; without it, the differences go in the artifact, for review
+  # the screen, part 2 (the --compara of the dev/testa_tudo.py), in three jobs. The Compara: base and the Compara: HEAD
+  # capture in parallel; the base comes from the cache when a run already took it with the same commit, scripts,
+  # libraries, Chrome and runner image. The Compara compares them. A print that changed blocks only with the
+  # extracao-tema label; without it, the differences go in the artifact, for review. The push only captures the HEAD
+  compara-base:
+    name: 'Compara: base'
+    needs: etiquetas
+    if: github.event_name != 'push'
+    runs-on: windows-2025
+    timeout-minutes: 25
+    outputs:
+      resumo: ${{ steps.resumo.outputs.resumo }}
+    env:
+      COMPARA_BASE: ${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.12.10'
+      - name: O PR mexe na tela?
+        id: areas
+        env:
+          ETIQUETAS: ${{ needs.etiquetas.outputs.lista }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'push') { Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=true" -Encoding utf8; exit 0 }
+          python dev/testa_tudo.py --areas $env:BASE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "extracao=$extracao" -Encoding utf8
+          $tela = Select-String -Path $env:GITHUB_OUTPUT -Pattern '^tela=true$' -Quiet
+          $roda = if ($tela) { 'true' } else { 'false' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=$roda" -Encoding utf8
+      - uses: ./.github/actions/python
+        if: steps.areas.outputs.roda == 'true'
+        with:
+          requirements: requirements-dev.txt
+      - name: ffmpeg no PATH
+        if: steps.areas.outputs.roda == 'true'
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
+      - name: Capture key
+        id: chave
+        if: steps.areas.outputs.roda == 'true'
+        run: |
+          $chrome = (Get-Item 'C:\Program Files\Google\Chrome\Application\chrome.exe').VersionInfo.ProductVersion
+          $base = ''
+          if ($env:GITHUB_EVENT_NAME -ne 'push') {
+            $base = git rev-parse --verify "$env:COMPARA_BASE^{commit}"
+            if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }
+          }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" -Encoding utf8
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        id: ref
+        if: steps.areas.outputs.roda == 'true'
+        with:
+          path: ${{ runner.temp }}\compara-ref
+          key: compara-${{ steps.chave.outputs.base }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt', 'dev/travas.txt') }}
+      - name: Captura da base
+        id: captura
+        if: steps.areas.outputs.roda == 'true'
+        env:
+          BASE_SHA: ${{ steps.chave.outputs.base }}
+        run: python dev/testa_tudo.py --capture-base "$env:RUNNER_TEMP\compara-ref" --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\tela" --resumo "$env:RUNNER_TEMP\resumo.md"
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        if: always() && steps.captura.outputs.ref_cache == 'true'
+        with:
+          path: ${{ runner.temp }}\compara-ref
+          key: ${{ steps.ref.outputs.cache-primary-key }}
+      - name: Logs
+        if: always() && steps.captura.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: compara-base-logs
+          path: ${{ runner.temp }}/tela/
+          retention-days: 7
+          if-no-files-found: ignore
+          overwrite: true
+      - name: Resumo
+        id: resumo
+        if: always()
+        env:
+          APLICA: ${{ steps.areas.outputs.roda }}
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP\resumo.md") { $texto = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" }
+          elseif ($env:APLICA -ne 'true' -and $env:APLICA) { $texto = '' }
+          else { $texto = '**Compara: base:** ❌ não chegou a rodar (ver a execução)' }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
+          $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
+
+  compara-head:
+    name: 'Compara: HEAD'
+    needs: etiquetas
+    runs-on: windows-2025
+    timeout-minutes: 25
+    outputs:
+      resumo: ${{ steps.resumo.outputs.resumo }}
+    env:
+      COMPARA_BASE: ${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.12.10'
+      - name: O PR mexe na tela?
+        id: areas
+        env:
+          ETIQUETAS: ${{ needs.etiquetas.outputs.lista }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'push') { Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=true" -Encoding utf8; exit 0 }
+          python dev/testa_tudo.py --areas $env:BASE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $extracao = if ($env:ETIQUETAS -match '"extracao-tema"') { 'true' } else { 'false' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "extracao=$extracao" -Encoding utf8
+          $tela = Select-String -Path $env:GITHUB_OUTPUT -Pattern '^tela=true$' -Quiet
+          $roda = if ($tela) { 'true' } else { 'false' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=$roda" -Encoding utf8
+      - uses: ./.github/actions/python
+        if: steps.areas.outputs.roda == 'true'
+        with:
+          requirements: requirements-dev.txt
+      - name: ffmpeg no PATH
+        if: steps.areas.outputs.roda == 'true'
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
+      - name: Capture key
+        id: chave
+        if: steps.areas.outputs.roda == 'true'
+        run: |
+          $chrome = (Get-Item 'C:\Program Files\Google\Chrome\Application\chrome.exe').VersionInfo.ProductVersion
+          $base = ''
+          if ($env:GITHUB_EVENT_NAME -ne 'push') {
+            $base = git rev-parse --verify "$env:COMPARA_BASE^{commit}"
+            if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }
+          }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" -Encoding utf8
+      - name: Captura do HEAD
+        id: captura
+        if: steps.areas.outputs.roda == 'true'
+        run: python dev/testa_tudo.py --capture "$env:RUNNER_TEMP\compara-ref" --pasta "$env:RUNNER_TEMP\tela" --resumo "$env:RUNNER_TEMP\resumo.md"
+      - name: HEAD capture
+        if: always() && steps.captura.outputs.head_cache == 'true' && github.event_name != 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: compara-head
+          path: ${{ runner.temp }}/compara-ref/
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        if: always() && steps.captura.outputs.head_cache == 'true' && github.event_name == 'push'
+        with:
+          path: ${{ runner.temp }}\compara-ref
+          key: compara-${{ github.sha }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt', 'dev/travas.txt') }}
+      - name: Logs
+        if: always() && steps.captura.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: compara-head-logs
+          path: ${{ runner.temp }}/tela/
+          retention-days: 7
+          if-no-files-found: ignore
+          overwrite: true
+      - name: Resumo
+        id: resumo
+        if: always()
+        env:
+          APLICA: ${{ steps.areas.outputs.roda }}
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP\resumo.md") { $texto = Get-Content -Raw -Encoding utf8 "$env:RUNNER_TEMP\resumo.md" }
+          elseif ($env:APLICA -ne 'true' -and $env:APLICA) { $texto = '' }
+          else { $texto = '**Compara: HEAD:** ❌ não chegou a rodar (ver a execução)' }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $texto -Encoding utf8
+          $fim = "FIM_$([guid]::NewGuid().ToString('N'))"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "resumo<<$fim`n$texto`n$fim" -Encoding utf8
+
   compara:
     name: Compara
-    needs: etiquetas
+    needs: [etiquetas, compara-base, compara-head]
+    if: github.event_name != 'push'
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
@@ -375,10 +573,15 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" -Encoding utf8
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         id: ref
-        if: steps.areas.outputs.roda == 'true' && github.event_name != 'push'
+        if: steps.areas.outputs.roda == 'true'
         with:
           path: ${{ runner.temp }}\compara-ref
           key: compara-${{ steps.chave.outputs.base }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt', 'dev/travas.txt') }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        if: steps.areas.outputs.roda == 'true'
+        with:
+          name: compara-head
+          path: ${{ runner.temp }}\compara-head
       - name: compara
         id: compara
         if: steps.areas.outputs.roda == 'true'
@@ -386,11 +589,7 @@ jobs:
           EXTRACAO: ${{ steps.areas.outputs.extracao }}
           BASE_SHA: ${{ steps.chave.outputs.base }}
         run: |
-          if ($env:GITHUB_EVENT_NAME -eq 'push') {
-            python dev/testa_tudo.py --capture "$env:RUNNER_TEMP\compara-head" --pasta "$env:RUNNER_TEMP\tela" --resumo "$env:RUNNER_TEMP\resumo.md"
-            exit $LASTEXITCODE
-          }
-          python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\tela" --ref-cache "$env:RUNNER_TEMP\compara-ref" --resumo "$env:RUNNER_TEMP\resumo.md"
+          python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\tela" --ref-cache "$env:RUNNER_TEMP\compara-ref" --head-capture "$env:RUNNER_TEMP\compara-head" --resumo "$env:RUNNER_TEMP\resumo.md"
           $cod = $LASTEXITCODE
           if ($cod -eq 2) {
             Add-Content -Path $env:GITHUB_OUTPUT -Value 'mudou=true' -Encoding utf8
@@ -404,17 +603,6 @@ jobs:
         with:
           path: ${{ runner.temp }}\compara-ref
           key: ${{ steps.ref.outputs.cache-primary-key }}
-      # the path is part of the cache version: the PRs restore into compara-ref, so the HEAD capture is saved from there
-      - name: HEAD capture as a reference
-        if: always() && steps.compara.outputs.head_cache == 'true'
-        run: |
-          Remove-Item -Recurse -Force "$env:RUNNER_TEMP\compara-ref" -ErrorAction SilentlyContinue
-          Move-Item "$env:RUNNER_TEMP\compara-head" "$env:RUNNER_TEMP\compara-ref"
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        if: always() && steps.compara.outputs.head_cache == 'true'
-        with:
-          path: ${{ runner.temp }}\compara-ref
-          key: compara-${{ github.sha }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt', 'dev/travas.txt') }}
       - name: Prints
         if: always() && (steps.compara.outcome == 'failure' || steps.compara.outputs.mudou == 'true')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -464,7 +652,7 @@ jobs:
     name: Testa o PR
     # always(), not !cancelled(): a skipped job counts as green in the required check, and the cancelled run would pass
     if: ${{ always() }}
-    needs: [etiquetas, testes, bench, capture, microfone, tela, tla, compara]
+    needs: [etiquetas, testes, bench, capture, microfone, tela, tla, compara-base, compara-head, compara]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -490,18 +678,22 @@ jobs:
           S_MICROFONE: ${{ needs.microfone.result }}
           S_TELA: ${{ needs.tela.result }}
           S_TLA: ${{ needs.tla.result }}
+          S_COMPARA_BASE: ${{ needs.compara-base.result }}
+          S_COMPARA_HEAD: ${{ needs.compara-head.result }}
           S_COMPARA: ${{ needs.compara.result }}
           R_TESTES: ${{ needs.testes.outputs.resumo }}
           R_BENCH: ${{ needs.bench.outputs.resumo }}
           R_CAPTURE: ${{ needs.capture.outputs.resumo }}
           R_MICROFONE: ${{ needs.microfone.outputs.resumo }}
           R_TELA: ${{ needs.tela.outputs.resumo }}
+          R_COMPARA_BASE: ${{ needs.compara-base.outputs.resumo }}
+          R_COMPARA_HEAD: ${{ needs.compara-head.outputs.resumo }}
           R_COMPARA: ${{ needs.compara.outputs.resumo }}
           MUDARAM: ${{ needs.compara.outputs.mudaram }}
           MONTA: ${{ needs.microfone.outputs.monta }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          estados=("$S_ETIQUETAS" "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_TLA" "$S_COMPARA")
+          estados=("$S_ETIQUETAS" "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_TLA" "$S_COMPARA_BASE" "$S_COMPARA_HEAD" "$S_COMPARA")
           # a cancelled run proved nothing either way: it fails, and leaves the PR comment as the last run that ended wrote it
           for s in "${estados[@]}"; do
             if [ "$s" = cancelled ]; then
@@ -579,8 +771,8 @@ jobs:
           marca() { if [ "$1" = success ]; then echo "✅"; elif vale "$1" "$2"; then echo "⏭️ neste push"; else echo "❌ ($1)"; fi; }
           ok=$labels_ok
           $build_ok || ok=false
-          for s in "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_TLA"; do vale "$s" pula || ok=false; done
-          for s in "$S_COMPARA" "$S_ETIQUETAS"; do vale "$s" || ok=false; done
+          for s in "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_TLA" "$S_COMPARA_BASE" "$S_COMPARA"; do vale "$s" pula || ok=false; done
+          for s in "$S_COMPARA_HEAD" "$S_ETIQUETAS"; do vale "$s" || ok=false; done
           if $ok; then
             manchete="✅ Testa: tudo passou"
             n=${MUDARAM:-0}
@@ -611,10 +803,10 @@ jobs:
             fi
             echo "| Testes | Banca | Captura | Filtro do microfone | Tela | TLA+ model | Compara |"
             echo "| --- | --- | --- | --- | --- | --- | --- |"
-            echo "| $(marca "$S_TESTES" pula) | $(marca "$S_BENCH" pula) | $(marca "$S_CAPTURE" pula) | $(marca "$S_MICROFONE" pula) | $(marca "$S_TELA" pula) | $(marca "$S_TLA" pula) | $(marca "$S_COMPARA") |"
+            echo "| $(marca "$S_TESTES" pula) | $(marca "$S_BENCH" pula) | $(marca "$S_CAPTURE" pula) | $(marca "$S_MICROFONE" pula) | $(marca "$S_TELA" pula) | $(marca "$S_TLA" pula) | $(marca "$S_COMPARA" pula) |"
             echo
             for a in "${avisos[@]}"; do echo "$a"; echo; done
-            printf '%s\n\n' "$R_TESTES" "$R_BENCH" "$R_CAPTURE" "$R_MICROFONE" "$R_TELA" "$R_COMPARA"
+            printf '%s\n\n' "$R_TESTES" "$R_BENCH" "$R_CAPTURE" "$R_MICROFONE" "$R_TELA" "$R_COMPARA_BASE" "$R_COMPARA_HEAD" "$R_COMPARA"
             if [ -n "$tempos" ]; then echo "**Tempo de cada job** (alvo: 10 min): $tempos"; echo; fi
             echo "[A execução]($EXECUCAO), no commit \`${HEAD:0:12}\`."
           } > resumo.md

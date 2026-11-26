@@ -33,7 +33,8 @@ QUEUE_URL = "https://example.invalid/queue/passed"
 RUNS = [{"head_sha": HEAD, "conclusion": "failure", "html_url": "https://example.invalid/queue/failed"},
         {"head_sha": "d" * 40, "conclusion": "success", "html_url": "https://example.invalid/queue/other-commit"},
         {"head_sha": HEAD, "conclusion": "success", "html_url": QUEUE_URL}]
-NEEDS = ("ETIQUETAS", "TESTES", "BENCH", "CAPTURE", "MICROFONE", "TELA", "TLA", "COMPARA")
+NEEDS = ("ETIQUETAS", "TESTES", "BENCH", "CAPTURE", "MICROFONE", "TELA", "TLA", "COMPARA_BASE", "COMPARA_HEAD",
+         "COMPARA")
 
 _spec = importlib.util.spec_from_file_location("testa_tudo", ROOT / "dev" / "testa_tudo.py")
 testa_tudo = importlib.util.module_from_spec(_spec)
@@ -121,7 +122,7 @@ def required_check_failures(flows):
     if set(required.get("needs") or []) != others:
         out.append(f"the required job needs {required.get('needs')}, not every other job ({sorted(others)})")
     env = verdict.get("env") or {}
-    unread = sorted(j for j in others if env.get(f"S_{j.upper()}") != f"${{{{ needs.{j}.result }}}}")
+    unread = sorted(j for j in others if env.get(f"S_{j.upper().replace('-', '_')}") != f"${{{{ needs.{j}.result }}}}")
     if unread:
         out.append(f"the Verdict does not read the result of {unread} in S_<JOB>")
     if "${{" in (verdict.get("run") or ""):
@@ -241,20 +242,22 @@ def test_modes(flows):
 
 def test_shape(flows):
     jobs = flows[TESTA]["jobs"]
-    for job in ("testes", "bench", "capture", "microfone", "tela", "tla"):
+    for job in ("testes", "bench", "capture", "microfone", "tela", "tla", "compara-base", "compara"):
         check(jobs.get(job, {}).get("if") == "github.event_name != 'push'", f"the {job} job skips on the push to main")
-    for job in ("etiquetas", "compara"):
+    for job in ("etiquetas", "compara-head"):
         check(job in jobs and "if" not in jobs[job], f"the {job} job runs on the push to main")
-    saves = [s for s in job_steps(jobs["compara"]) if "steps.compara.outputs.head_cache == 'true'" in (s.get("if") or "")]
-    check(len(saves) == 2, f"the head capture is moved and saved to the cache when the step says head_cache ({len(saves)})")
+    saves = [s for s in job_steps(jobs["compara-head"])
+             if "steps.captura.outputs.head_cache == 'true'" in (s.get("if") or "")]
+    check(len(saves) == 2, f"the head capture is uploaded and saved to the cache when the step says head_cache ({len(saves)})")
     check(not any(re.search(r"\bsleep\b", s.get("run") or "") for s in job_steps(jobs["testa-o-pr"])),
           "the Testa o PR never sleeps")
     capture_files = ", ".join(f"'{f}'" for f in testa_tudo.CAPTURA)
-    keys = [re.search(r"hashFiles\(([^)]*)\)", (s.get("with") or {}).get("key", "")) for s in job_steps(jobs["compara"])
+    keys = [re.search(r"hashFiles\(([^)]*)\)", (s.get("with") or {}).get("key", ""))
+            for job in ("compara-base", "compara-head", "compara") for s in job_steps(jobs[job])
             if (s.get("uses") or "").startswith("actions/cache/")]
     keys = [k.group(1) for k in keys if k]
-    check(len(keys) == 2 and all(k == capture_files for k in keys),
-          f"both compara cache keys hash the CAPTURA files of dev/testa_tudo.py ({len(keys)} keys)")
+    check(len(keys) == 3 and all(k == capture_files for k in keys),
+          f"the three compara cache keys hash the CAPTURA files of dev/testa_tudo.py ({len(keys)} keys)")
     action = load(ACTION)
     steps = job_steps(action["runs"])
     check(any("'instalador/travas.txt'" in (s.get("with") or {}).get("key", "") for s in steps
@@ -273,6 +276,51 @@ def test_tla_job(flows):
     check(any(u.startswith("actions/setup-java@") for u in uses), "the tla job takes Java from actions/setup-java")
 
 
+def compara_job_failures(flows):
+    jobs = flows[TESTA]["jobs"]
+    runs = {job_id: "\n".join(s.get("run") or "" for s in job_steps(job)) for job_id, job in jobs.items()}
+    head = re.compile(r"testa_tudo\.py --capture ")
+    out = [f"the base capture runs in the {j} job" for j, r in runs.items() if "--capture-base" in r and j != "compara-base"]
+    out += [f"the HEAD capture runs in the {j} job" for j, r in runs.items() if head.search(r) and j != "compara-head"]
+    if "--capture-base" not in runs.get("compara-base", "") or not head.search(runs.get("compara-head", "")):
+        out.append("the compara-base job does not capture the base, or the compara-head job the HEAD")
+    for a, b in (("compara-base", "compara-head"), ("compara-head", "compara-base")):
+        if b in (jobs.get(a, {}).get("needs") or []):
+            out.append(f"the {a} job needs the {b} job, so the two captures do not run in parallel")
+    needs = jobs.get("compara", {}).get("needs") or []
+    out += [f"the compara job does not need the {j} job" for j in ("compara-base", "compara-head") if j not in needs]
+    if "--head-capture" not in runs.get("compara", ""):
+        out.append("the compara job does not compare the capture of the compara-head job")
+    return out
+
+
+def test_compara_jobs(flows):
+    found = compara_job_failures(flows)
+    check(found == [], f"the base and the HEAD are captured in jobs of their own, in parallel, and the Compara compares "
+                       f"them ({found})")
+
+    def base_into_head(f):
+        jobs = f[TESTA]["jobs"]
+        step = find_step(jobs["compara-base"], "Captura da base")
+        jobs["compara-base"]["steps"].remove(step)
+        jobs["compara-head"]["steps"].append(step)
+
+    def compara_captures(f):
+        step = step_of(f, "compara", "compara")
+        step["run"] = re.sub(r" --head-capture \S+", "", step["run"])
+
+    for why, change in (
+            ("the base capture moved into the compara-head job", base_into_head),
+            ("the compara-head job needing the compara-base job",
+             lambda f: f[TESTA]["jobs"]["compara-head"].update({"needs": ["etiquetas", "compara-base"]})),
+            ("the compara-base job needing the compara-head job",
+             lambda f: f[TESTA]["jobs"]["compara-base"].update({"needs": ["etiquetas", "compara-head"]})),
+            ("the compara job not needing the compara-base job",
+             lambda f: f[TESTA]["jobs"]["compara"].update({"needs": ["etiquetas", "compara-head"]})),
+            ("the compara job capturing the HEAD itself", compara_captures)):
+        check(compara_job_failures(mutated(flows, change)) != [], f"the mutant with {why} fails")
+
+
 def run_summary(block, event, states, comment_fails=False, runs=RUNS, queue_fails=False, monta="false",
                 build_runs=(), build_fails=False, pr_head=PR_HEAD, fork=False):
     env = {"GITHUB_EVENT_NAME": event, "GH_TOKEN": "x", "REPO": "ritmelli/ritmelli",
@@ -289,7 +337,7 @@ def run_summary(block, event, states, comment_fails=False, runs=RUNS, queue_fail
 
 
 def test_build_gate(block):
-    ok = ["success"] * 8
+    ok = ["success"] * 10
     green = {"head_sha": PR_HEAD, "conclusion": "success", "html_url": BUILD_URL}
     other = {"head_sha": "e" * 40, "conclusion": "success", "html_url": "https://example.invalid/monta/other-commit"}
     red = {"head_sha": PR_HEAD, "conclusion": "failure", "html_url": "https://example.invalid/monta/failed"}
@@ -324,7 +372,7 @@ def test_build_gate(block):
     code, out, summary, calls = run_summary(block, "merge_group", ok, monta="true", build_runs=[green], pr_head=None)
     check(code != 0 and "the head of PR 7 did not come" in summary and not builds(calls),
           f"in a merge_group, a PR head that does not come fails the check (exit {code})")
-    code, out, summary, calls = run_summary(block, "push", ["success"] + ["skipped"] * 6 + ["success"])
+    code, out, summary, calls = run_summary(block, "push", ["success"] + ["skipped"] * 7 + ["success", "skipped"])
     check(code == 0 and not builds(calls), f"the push to main does not ask for monta.yml (exit {code})")
 
 
@@ -387,6 +435,10 @@ def test_areas_output():
                                         build_base="before")
     check(code == 0 and "monta=false" in written and "tela=true" in written and [c[-2] for c in calls] == ["base", "before"],
           f"with --build-base, the monta answer comes from its own diff and the other areas from the base ({written})")
+    for changed, tela in ((["dev/test_capture.py"], True), (["dev/travas.txt"], True), (["docs/arquitetura/dev.md"], False)):
+        code, written, calls = areas_output({"base": changed})
+        check(code == 0 and f"tela={str(tela).lower()}" in written,
+              f"a PR that changes only {changed[0]} {'runs' if tela else 'skips'} the Captura (tela={tela})")
 
 
 def test_build_wiring(flows):
@@ -435,8 +487,8 @@ def test_summary_block(flows):
     if not bash():
         return
     block = step_of(flows, "testa-o-pr", "Verdict")["run"]
-    ok = ["success"] * 8
-    on_push = ["success"] + ["skipped"] * 6 + ["success"]
+    ok = ["success"] * 10
+    on_push = ["success"] + ["skipped"] * 7 + ["success", "skipped"]
 
     code, out, summary, calls = run_summary(block, "pull_request", ok)
     comments = [c for c in calls if c.startswith("gh pr comment")]
@@ -451,10 +503,10 @@ def test_summary_block(flows):
 
     code, out, summary, calls = run_summary(block, "push", on_push)
     queries = [c for c in calls if "event=merge_group" in c]
-    check(code == 0 and summary.count("⏭️ neste push") == 6 and QUEUE_URL in summary and "queue/failed" not in summary
+    check(code == 0 and summary.count("⏭️ neste push") == 7 and QUEUE_URL in summary and "queue/failed" not in summary
           and "other-commit" not in summary and len(queries) == 1
           and not any(c.startswith("gh pr comment") for c in calls),
-          f"on the push, the six skipped jobs pass with the passed queue run of that very commit, asked once "
+          f"on the push, the skipped jobs pass with the passed queue run of that very commit, asked once "
           f"(exit {code}, {len(queries)} queries)")
 
     code, out, summary, calls = run_summary(block, "push", on_push, runs=RUNS[:2])
@@ -466,8 +518,11 @@ def test_summary_block(flows):
           and "nenhuma execução aprovada" not in summary,
           f"on the push, a failed query says so, and not that no queue run passed (exit {code})")
 
-    code, out, summary, calls = run_summary(block, "push", ["success"] + ["skipped"] * 7)
-    check(code != 0, f"on the push, a skipped Compara (no capture) fails the check even with the queue run (exit {code})")
+    code, out, summary, calls = run_summary(block, "push", ["success"] + ["skipped"] * 9)
+    check(code != 0, f"on the push, a skipped Compara: HEAD (no capture) fails the check even with the queue run "
+                     f"(exit {code})")
+    code, out, summary, calls = run_summary(block, "push", on_push[:8] + ["failure", "skipped"])
+    check(code != 0, f"on the push, a failed Compara: HEAD fails the check even with the queue run (exit {code})")
 
     for i, name in enumerate(NEEDS):
         code, out, summary, calls = run_summary(block, "pull_request", ok[:i] + ["failure"] + ok[i + 1:])
@@ -480,10 +535,10 @@ def test_summary_block(flows):
         check(code != 0 and not any("event=merge_group" in c for c in calls),
               f"in a {event}, a skipped etiquetas job fails the check, and the queue is not asked (exit {code})")
 
-    code, out, summary, calls = run_summary(block, "pull_request", ["cancelled"] + ["success"] * 7)
+    code, out, summary, calls = run_summary(block, "pull_request", ["cancelled"] + ["success"] * 9)
     check(code != 0 and not any(c.startswith("gh pr comment") for c in calls) and "cancelada" in summary,
           f"a cancelled etiquetas job fails the check and leaves the PR comment as it was (exit {code})")
-    code, out, summary, calls = run_summary(block, "pull_request", ["success", "success", "cancelled"] + ["success"] * 5)
+    code, out, summary, calls = run_summary(block, "pull_request", ["success", "success", "cancelled"] + ["success"] * 7)
     check(code != 0 and not any(c.startswith("gh pr comment") for c in calls) and "cancelada" in summary,
           f"a cancelled job fails the check and leaves the PR comment as it was (exit {code})")
     test_build_gate(block)
@@ -626,6 +681,7 @@ def main():
     test_modes(flows)
     test_shape(flows)
     test_tla_job(flows)
+    test_compara_jobs(flows)
     test_unpinned()
     test_bench_order()
     test_without_destination(flows)
