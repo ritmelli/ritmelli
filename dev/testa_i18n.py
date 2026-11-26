@@ -137,9 +137,6 @@ def confere_blocos(tema, arquivos):
     print(f"{tema.name}: {len(arquivos)} file(s), {len({b for b, _ in onde})} marked block(s)")
 
 
-MARK_LINE = re.compile(r"[ \t]*/\*[ \t]*\S+[ \t]*\*/[ \t]*\r?")
-
-
 def check_block_pairs(tema, arquivos):
     marks = {}
     for nome, texto in arquivos.items():
@@ -162,7 +159,9 @@ def check_one_block(tema, arquivos):
                       f"outside gerado/ has exactly one")
             for m in MARCA_BLOCO.finditer(texto):
                 start, end = texto.rfind("\n", 0, m.start()) + 1, texto.find("\n", m.end())
-                if not MARK_LINE.fullmatch(texto[start:end if end >= 0 else len(texto)]):
+                mark = m.group(0)[2:].strip()
+                if not re.fullmatch(rf"[ \t]*/\*[ \t]*{re.escape(mark)}[ \t]*\*/[ \t]*\r?",
+                                    texto[start:end if end >= 0 else len(texto)]):
                     falha(f"{tema.name}: {nome}:{texto.count(chr(10), 0, m.start()) + 1}: the mark {m.group(0)[2:].strip()} "
                           f"is not alone on its line: put the text that explains it in a comment of its own below")
 
@@ -335,10 +334,14 @@ def check_tag_and_block_guards():
                                            "e.js": "/* e:inicio */\n/* e:fim */\n",
                                            "f.css": "  /* PRATELEIRA-CARTAO-INICIO (07/11, pedido do dono): o cartao\n"
                                                     "     da prateleira */\n  /* PRATELEIRA-CARTAO-FIM */\n",
-                                           "g.css": "/* G-INICIO */ /* o g */\n/* G-FIM */\n"})
-    if len(falhas) != antes + 4 or not ("a.css has 0" in falhas[-4] and "b.js has 2" in falhas[-3]
-                                        and "f.css:1: the mark PRATELEIRA-CARTAO-INICIO is not alone" in falhas[-2]
-                                        and "g.css:1: the mark G-INICIO is not alone" in falhas[-1]):
+                                           "g.css": "/* G-INICIO */ /* o g */\n/* G-FIM */\n",
+                                           "h.css": "/* H-INICIO:o h */\n/* H-FIM */\n",
+                                           "i.css": "/*I-INICIO*//**/\n/*I-FIM*/\n"})
+    if len(falhas) != antes + 6 or not ("a.css has 0" in falhas[-6] and "b.js has 2" in falhas[-5]
+                                        and "f.css:1: the mark PRATELEIRA-CARTAO-INICIO is not alone" in falhas[-4]
+                                        and "g.css:1: the mark G-INICIO is not alone" in falhas[-3]
+                                        and "h.css:1: the mark H-INICIO is not alone" in falhas[-2]
+                                        and "i.css:1: the mark I-INICIO is not alone" in falhas[-1]):
         falha(f"check_one_block should fail on a file with no block, one with two, a mark with text in its comment "
               f"and a mark with a comment after it, and pass gerado/: {falhas[antes:]}")
     else:
