@@ -245,7 +245,7 @@ def after_a_failure(missing, expected, off, page_checks):
         tab.failing.add(missing)
         tab.holding.add("deck.js")
         await missing_script.open_page(tab)
-        state = await until(tab, "({ran: !!document.querySelector('#ant-d svg')"
+        state = await until(tab, "({ran: !!document.querySelector('script[src=\"deck.js\"]')"
                                  + "".join(f", {json.dumps(t)}: {e}" for t, e in page_checks) + "})", "s.ran",
                             PAGE_READY_S)
         found = {f"{kind} {selector}": await handler_files(tab, selector, kind) for selector, kind in expected}
