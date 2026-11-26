@@ -172,25 +172,43 @@ def probe_past_the_deadline():
           "a probe that answers open after the deadline, before its timeout runs, does not count")
 
 
+def sent(request, loader, ticks, wall, path="/api/state", method="GET"):
+    return {"method": "Network.requestWillBeSent",
+            "params": {"requestId": request, "loaderId": loader, "timestamp": ticks, "wallTime": wall,
+                       "request": {"method": method, "url": f"http://127.0.0.1:1{path}"}}}
+
+
+def finished(request, ticks):
+    return {"method": "Network.loadingFinished", "params": {"requestId": request, "timestamp": ticks}}
+
+
 def state_of_this_navigation_only():
-    def response(request, loader, path="/api/state"):
-        return {"method": "Network.responseReceived",
-                "params": {"requestId": request, "loaderId": loader,
-                           "response": {"status": 200, "url": f"http://127.0.0.1:1{path}"}}}
-
-    def finished(request):
-        return {"method": "Network.loadingFinished", "params": {"requestId": request}}
-
-    events = fitcheck.PageEvents()
+    events, wall = fitcheck.PageEvents(), time.time()
+    for m in (sent("a", "old", 10.0, wall), finished("a", 10.5), sent("b", "new", 11.0, wall + 1, "/api/library"),
+              finished("b", 11.5), sent("c", "new", 12.0, wall + 2, method="POST"), finished("c", 12.5),
+              sent("d", "new", 13.0, wall + 3), finished("d", 13.25)):
+        events.take(m)
+    before = events.state_at
     events.loader = "new"
-    for m in (response("a", "old"), finished("a"), response("b", "new", "/api/library"), finished("b")):
+    expected = wall + 3.25 - time.time() + time.monotonic()
+    check(before is None and events.state_at is not None and abs(events.state_at - expected) < 0.05,
+          "the GET /api/state of the current navigation starts the clock at its own end, even when its events came "
+          "before Page.navigate returned, and not one of the page before it nor another request")
+
+
+def clock_from_the_event_not_from_its_handling():
+    events = fitcheck.PageEvents()
+    events.loader = "now"
+    for m in (sent("a", "now", 100.0, time.time() - 10), finished("a", 101.0)):
         events.take(m)
-    stale = events.state_loaded.is_set() or events.state_at is not None
-    for m in (response("c", "new"), finished("c")):
-        events.take(m)
-    check(not stale and events.state_loaded.is_set() and events.state_at is not None,
-          "only the GET /api/state of the current navigation starts the clock, not one of the page before it nor "
-          "another request")
+
+    async def notice_open(method, **params):
+        return {"result": {"value": True}}
+
+    late = asyncio.run(fitcheck.wait_notice(notice_open, events.state_at + fitcheck.AVISO_ESPERA_S))
+    check(late is False and abs(time.monotonic() - events.state_at - 9) < 0.5,
+          f"state events handled 9 s after the state ended: the {fitcheck.AVISO_ESPERA_S:.0f} s already passed, and a "
+          f"notice open now does not count ({late})")
 
 
 def notice_page_not_ready():
@@ -233,6 +251,7 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8")
     probe_past_the_deadline()
     state_of_this_navigation_only()
+    clock_from_the_event_not_from_its_handling()
     notice_on_slow_load()
     notice_on_slow_state()
     notice_late_after_state()

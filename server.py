@@ -2778,7 +2778,7 @@ def roda(A, a):
         with contextlib.suppress(GracefulExit, KeyboardInterrupt):
             asyncio.run(servir(A, build(A), a.port, rede=not (a.so_local or a.mock)))
     finally:
-        sonoridade.stop_measurements()
+        sonoridade.stop_measurements(eng.mata)
         A.metricas.fecha()  # o uso ate aqui e o que ficou na fila, antes de o audio fechar (no maximo 3 s sem rede)
         A.engine.close()
         if A.janela is not None:

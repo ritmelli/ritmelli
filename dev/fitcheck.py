@@ -153,10 +153,18 @@ async def navigate_and_wait(cmd, url, expr, blocked, timeout_s):
 
 
 async def wait_for_state(events, reader, timeout_s):
-    loaded = asyncio.ensure_future(events.state_loaded.wait())
-    done, _ = await asyncio.wait({loaded, reader}, timeout=timeout_s, return_when=asyncio.FIRST_COMPLETED)
-    loaded.cancel()
-    return Ready.READY if loaded in done else Ready.CHROME_GONE if reader in done else Ready.TIMED_OUT
+    deadline = time.monotonic() + timeout_s
+    while events.state_at is None:
+        events.state_changed.clear()
+        waiter = asyncio.ensure_future(events.state_changed.wait())
+        done, _ = await asyncio.wait({waiter, reader}, timeout=max(0.0, deadline - time.monotonic()),
+                                     return_when=asyncio.FIRST_COMPLETED)
+        waiter.cancel()
+        if reader in done:
+            return Ready.CHROME_GONE
+        if not done:
+            return Ready.TIMED_OUT
+    return Ready.READY
 
 
 async def wait_notice(cmd, deadline):
@@ -176,15 +184,27 @@ async def wait_notice(cmd, deadline):
 class PageEvents:
     def __init__(self):
         self.page_errors, self.browser_errors, self.failed_responses = [], [], []
-        self.state_requests, self.state_loaded = set(), asyncio.Event()
-        self.load_at = self.state_at = self.loader = None
+        self.state_changed = asyncio.Event()
+        self.new_load()
 
     def new_load(self):
         self.browser_errors.clear()
         self.failed_responses.clear()
-        self.state_requests.clear()
-        self.state_loaded.clear()
-        self.load_at = self.state_at = self.loader = None
+        self.state_requests, self.state_done, self.loads = {}, {}, {}
+        self.loader = self.wall_minus_ticks = None
+
+    def monotonic_of(self, ticks):
+        if ticks is None or self.wall_minus_ticks is None:
+            return None
+        return ticks + self.wall_minus_ticks - time.time() + time.monotonic()
+
+    @property
+    def state_at(self):
+        return self.monotonic_of(self.state_done.get(self.loader))
+
+    @property
+    def load_at(self):
+        return self.monotonic_of(self.loads.get(self.loader))
 
     def take(self, m):
         method, params = m.get("method"), m.get("params", {})
@@ -193,19 +213,20 @@ class PageEvents:
         elif method == "Log.entryAdded" and params["entry"].get("level") == "error":
             entry = params["entry"]
             self.browser_errors.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
-        elif method == "Network.responseReceived":
+        elif method == "Network.requestWillBeSent":
+            if "wallTime" in params and "timestamp" in params:
+                self.wall_minus_ticks = params["wallTime"] - params["timestamp"]
+            request = params.get("request", {})
+            if request.get("method") == "GET" and urllib.parse.urlsplit(request.get("url", "")).path == "/api/state":
+                self.state_requests[params["requestId"]] = params.get("loaderId")
+        elif method == "Network.responseReceived" and params["response"].get("status", 0) >= 400:
             response = params["response"]
-            if response.get("status", 0) >= 400:
-                self.failed_responses.append(f"{response['status']} {response.get('url', '')}")
-            elif (urllib.parse.urlsplit(response.get("url", "")).path == "/api/state" and self.loader
-                  and params.get("loaderId") == self.loader):
-                self.state_requests.add(params["requestId"])
+            self.failed_responses.append(f"{response['status']} {response.get('url', '')}")
         elif method == "Network.loadingFinished" and params.get("requestId") in self.state_requests:
-            if self.state_at is None:
-                self.state_at = time.monotonic()
-            self.state_loaded.set()
-        elif method == "Page.loadEventFired" and self.load_at is None:
-            self.load_at = time.monotonic()
+            self.state_done.setdefault(self.state_requests[params["requestId"]], params.get("timestamp"))
+            self.state_changed.set()
+        elif method == "Page.lifecycleEvent" and params.get("name") == "load":
+            self.loads.setdefault(params.get("loaderId"), params.get("timestamp"))
 
 
 def diagnostic_js(conditions):
@@ -609,6 +630,7 @@ async def aviso_no_chrome(base, botao):
             foco = "(e => e && (e.value || e.id || e.tagName))(document.activeElement)"
             for domain in DIAGNOSTIC_DOMAINS:
                 await cmd(f"{domain}.enable")
+            await cmd("Page.setLifecycleEventsEnabled", enabled=True)
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
             r["abriu"] = await load_and_wait_notice()
             if events.load_at is not None and events.state_at is not None:
