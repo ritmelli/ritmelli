@@ -90,11 +90,12 @@ FEATURE_HANDLERS = (
 SHARED_TARGETS = ("window", "document", "navigator.connection", "mqUnica")
 SHARED_HANDLERS = (("#estante", "scroll"),)
 SCRIPT_TAG = re.compile(r'<script src="([^"]+)"></script>')
-REGISTERED_WHEN = ("(() => { const add = EventTarget.prototype.addEventListener; window.registeredWhen = {};"
-                   " EventTarget.prototype.addEventListener = function (type, ...rest) {"
-                   " if (this === document && type === 'visibilitychange') window.registeredWhen[type] ="
-                   " { readyState: document.readyState, carregar: typeof carregar };"
-                   " return add.call(this, type, ...rest); }; })()")
+REGISTERED_WHEN = ("(() => { const add = EventTarget.prototype.addEventListener; window.visibilityWhen = [];"
+                   " EventTarget.prototype.addEventListener = function (type, fn, ...rest) {"
+                   " if (this === document && type === 'visibilitychange') window.visibilityWhen.push({"
+                   " readyState: document.readyState, carregar: typeof carregar,"
+                   " connects: String(fn).includes('conectar(') });"
+                   " return add.call(this, type, fn, ...rest); }; })()")
 SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc';"
                " document.getElementById('form-busca').requestSubmit(); })()")
 OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true,"
@@ -203,8 +204,9 @@ async def checks(tab):
                  else bool(files) and file in files and "index.html" not in files)
         results.append((moved, f"the {kind} handler of {selector} is in {file} ({files})"))
 
-    registered = await tab.js("registeredWhen.visibilitychange")
-    results.append((registered == {"readyState": "interactive", "carregar": "function"},
+    registered = [r for r in await tab.js("visibilityWhen") or [] if r.get("connects")]
+    results.append((bool(registered) and all(r == {"readyState": "interactive", "carregar": "function", "connects": True}
+                                             for r in registered),
                     f"the page starts watching its visibility in the DOMContentLoaded, once carregar() is there, so a "
                     f"tab shown while the page loads does not connect before it starts ({registered})"))
 

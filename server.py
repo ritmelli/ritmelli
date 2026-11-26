@@ -12,6 +12,7 @@ propria (janela.py), ou no navegador sem o WebView2; --no-browser nao abre nenhu
 import argparse
 import asyncio
 import contextlib
+import functools
 import hashlib
 import importlib
 import json
@@ -30,6 +31,7 @@ import uuid
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
+from html.parser import HTMLParser
 from pathlib import Path
 
 from aiohttp import web
@@ -60,13 +62,47 @@ THEMES = HERE / "themes"
 # o endereco do tema ate a 0.6.0, quando ele se chamava vitrola (#58): o celular pareado, o atalho na tela inicial e o
 # favorito ainda abrem este, e o servidor leva cada caminho dele para o mesmo no tema de agora (o tema_de_antes)
 TEMA_DE_ANTES = "/t/vitrola"
-THEME_FILE_TAG = re.compile(r'<script src="([^"]+)"></script>|<link rel="stylesheet" href="([^"]+)">')
-OTHER_FILE_TAG = re.compile(r"<script\b[^>]*\bsrc\b|<link\b[^>]*\bstylesheet\b", re.IGNORECASE)
+SCRIPT_TAG = re.compile(r'<script src="([^"]+)">')
+SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
 CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
+RELATIVE_URL = re.compile(r"""url\(\s*(?!['"]?(?:[a-z][a-z0-9+.-]*:|/|#))""", re.IGNORECASE)
 
 
 class ThemePageError(Exception):
     pass
+
+
+class FileTags(HTMLParser):
+    def __init__(self, html):
+        super().__init__(convert_charrefs=False)
+        self.html, self.found = html, []
+        self.lines = [0] + [m.end() for m in re.finditer("\n", html)]
+        self.feed(html)
+        self.close()
+
+    def handle_starttag(self, tag, attrs):
+        first = {}
+        for name, value in attrs:
+            first.setdefault(name, value)
+        if tag == "script" and "src" in first:
+            canonical, kind, end = SCRIPT_TAG, "script", "</script>"
+        elif tag == "link" and "stylesheet" in (first.get("rel") or "").lower().split():
+            canonical, kind, end = SHEET_TAG, "style", ""
+        else:
+            return
+        raw = self.get_starttag_text()
+        line, column = self.getpos()
+        at = self.lines[line - 1] + column
+        written = canonical.fullmatch(raw)
+        if not written or not self.html.startswith(end, at + len(raw)):
+            raise ThemePageError(f"the tag {raw!r} is not <script src=\"...\"></script> or "
+                                 f"<link rel=\"stylesheet\" href=\"...\">, the only file tags the page puts inline")
+        self.found.append((at, at + len(raw) + len(end), kind, written.group(1)))
+
+
+@functools.lru_cache(maxsize=16)
+def file_tags(html):
+    return tuple(FileTags(html).found)
 
 
 def theme_file(folder, name):
@@ -74,24 +110,22 @@ def theme_file(folder, name):
     path = (inside / name.removeprefix("/t/")).resolve()
     if not path.is_relative_to(inside.resolve()):
         raise ThemePageError(f"{name} is outside {inside}")
-    try:
-        return path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        raise ThemePageError(f"{name} is missing from {inside}") from None
+    if not path.is_file():
+        raise ThemePageError(f"{name} is missing from {inside}")
+    return path, path.read_text(encoding="utf-8")
 
 
 def inline_files(html, folder):
-    if found := OTHER_FILE_TAG.search(THEME_FILE_TAG.sub("", html)):
-        raise ThemePageError(f"the tag at {found.group(0)!r} is not <script src=\"...\"></script> or "
-                             f"<link rel=\"stylesheet\" href=\"...\">, the only file tags the page puts inline")
-
-    def inline(m):
-        name, tag = (m.group(1), "script") if m.group(1) else (m.group(2), "style")
-        text = theme_file(folder, name)
-        if CLOSES_ELEMENT[tag].search(text):
-            raise ThemePageError(f"{name} has {CLOSES_ELEMENT[tag].search(text).group(0)}, which its <{tag}> cannot hold")
-        return f"<{tag}>\n{text}</{tag}>"
-    return THEME_FILE_TAG.sub(inline, html)
+    parts, done = [], 0
+    for start, end, tag, name in file_tags(html):
+        path, text = theme_file(folder, name)
+        if closes := CLOSES_ELEMENT[tag].search(text):
+            raise ThemePageError(f"{name} has {closes.group(0)}, which its <{tag}> cannot hold")
+        if tag == "style" and path.parent != folder.resolve() and RELATIVE_URL.search(text):
+            raise ThemePageError(f"{name} has a relative url(), which the page would resolve from its own folder")
+        parts += [html[done:start], f"<{tag}>\n{text}</{tag}>"]
+        done = end
+    return "".join(parts) + html[done:]
 
 
 def theme_page(page, texts, language):
@@ -2585,6 +2619,10 @@ def build(app_state):
         if etag in (x.strip() for x in request.headers.get("If-None-Match", "").split(",")):
             return web.Response(status=304, headers=cab)
         return web.Response(text=html, content_type="text/html", headers=cab)
+
+    @r.get("/t/{slug}/index.html")
+    async def theme_index_file(request):
+        raise web.HTTPFound(request.rel_url.with_path(f"/t/{request.match_info['slug']}/").with_query(request.rel_url.query))
 
     @r.get("/t/{slug}")
     async def theme_redirect(request):

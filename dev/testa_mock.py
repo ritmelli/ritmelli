@@ -1131,7 +1131,17 @@ def the_theme_page_build():
             "a script tag with another attribute": ('<script defer src="first.js"></script>', {}, "is not <script src="),
             "a script tag in capitals": ('<SCRIPT SRC="first.js"></SCRIPT>', {}, "is not <script src="),
             "a stylesheet link in another order": ('<link href="a.css" rel="stylesheet">', {}, "is not <script src="),
+            "a script tag with a > in an attribute": ('<script title="a > b" src="first.js"></script>', {},
+                                                      "is not <script src="),
+            "a stylesheet link with a > in an attribute": ('<link title="a > b" rel="stylesheet" href="a.css">', {},
+                                                           "is not <script src="),
+            "a script tag with something before its end tag": ('<script src="first.js"> </script>', {},
+                                                               "is not <script src="),
+            "a folder named as a file": ('<script src="sub"></script>', {}, "sub is missing"),
+            "a sheet in a subfolder with a relative url()": ('<link rel="stylesheet" href="sub/b.css">',
+                                                             {"sub/b.css": "a { b: url('x.png'); }\n"}, "relative url()"),
         }
+        (folder / "sub").mkdir()
         for what, (tag, files, said) in refused.items():
             script.write_text("const first = 1;\n", encoding="utf-8")
             sheet.write_text("a { b: c; }\n", encoding="utf-8")
@@ -1143,6 +1153,56 @@ def the_theme_page_build():
             except server.ThemePageError as ex:
                 error = str(ex)
             confere(said in error, f"{what} stops the build of the page ({error})")
+        (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url('data:x'); }\n",
+                                              encoding="utf-8")
+        sheet.write_text("a { b: url(fonts/x.woff2); }\n", encoding="utf-8")
+        kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
+                "a sheet of the page folder with a relative url()": ('<link rel="stylesheet" href="a.css">',
+                                                                     "<style>\na { b: url(fonts/x.woff2); }\n</style>"),
+                "a sheet in a subfolder with data: and # urls": ('<link rel="stylesheet" href="sub/c.css">',
+                                                                 "<style>\na { b: url(data:image/png;base64,AA); c: "
+                                                                 "url(#d); e: url('data:x'); }\n</style>")}
+        for what, (tag, expected) in kept.items():
+            try:
+                out = server.inline_files(tag, folder)
+            except server.ThemePageError as ex:
+                out = f"error: {ex}"
+            confere(out == (expected or tag), f"{what} builds as it should ({out[:90]!r})")
+        asyncio.run(a_missing_file_answers_500(server, folder))
+
+
+async def a_missing_file_answers_500(server, folder):
+    import logging
+    from unittest import mock
+
+    from aiohttp.test_utils import TestClient, TestServer
+
+    broken = folder / "themes" / "broken"
+    broken.mkdir(parents=True)
+    (broken / "index.html").write_text('<head>\n<script src="gone.js"></script>\n', encoding="utf-8")
+    import pareamento as par
+    A = types.SimpleNamespace(engine=types.SimpleNamespace(pos=0.0, levels={}, vol=0.5), port=8801, lan_ip=None,
+                              mock=True, closing=False, papel_local=None,
+                              celulares=par.Pareamento(folder / "celulares.json"), remotos=perm.Remotos(),
+                              metricas=types.SimpleNamespace(erro=lambda *a, **k: None),
+                              atualizacao=types.SimpleNamespace(ao_abrir=lambda: None),
+                              leitura=lambda: ({"status": "idle"}, 0.0), public_jobs=lambda: [],
+                              lib=types.SimpleNamespace(version=1, public=lambda: []),
+                              boas_vindas_pendentes=lambda: True, grava_cfg=lambda **k: None)
+    log = io.StringIO()
+    handler = logging.StreamHandler(log)
+    logger = logging.getLogger("aiohttp.server")
+    with mock.patch.object(server, "THEMES", (folder / "themes").resolve()):
+        logger.addHandler(handler)
+        try:
+            A.port = so_mock.free_port()
+            async with TestClient(TestServer(server.build(A), host="127.0.0.1", port=A.port)) as client:
+                resp = await client.get("/t/broken/", headers={"Host": f"localhost:{A.port}"})
+                status = resp.status
+        finally:
+            logger.removeHandler(handler)
+    confere(status == 500 and "gone.js is missing" in log.getvalue(),
+            f"through the route, a missing theme file answers 500 and the log names it ({status})")
 
 
 def ao_vivo(srv):

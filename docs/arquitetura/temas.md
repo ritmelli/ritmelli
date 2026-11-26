@@ -18,7 +18,8 @@ que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="st
 folha, sem outros atributos. O servidor (o `theme_page` do `server.py`) troca cada um por um `<script>` ou um `<style>`
 com o texto do arquivo, e a página não pede ao servidor nenhum script nem nenhuma folha: não existe página com um
 arquivo faltando. O arquivo que falta ou que sai da pasta, o que traz o que fecharia o elemento em volta dele (`</script`
-ou `<!--` num script, `</style` numa folha) e a tag de arquivo escrita de outro jeito param a montagem no servidor, que
+ou `<!--` num script, `</style` numa folha), a folha de outra pasta com um `url()` relativo (que a página leria a partir
+da pasta dela) e a tag de arquivo escrita de outro jeito param a montagem no servidor, que
 responde 500 e põe no log o nome do arquivo; o `dev/testa_mock.py` confere cada um desses casos. O
 `dev/missing_script.py`, que o `--tela` do `dev/testa_tudo.py` roda, lê a página e a galeria como o servidor as manda,
 nas duas línguas, de um `--mock` como o PC e de outro como o celular, e reprova com um `<script src>` ou um
@@ -110,6 +111,6 @@ textos estarem no lugar) primeiro, as partes da página (`buttons.css`, `top-bar
 cima delas (`skin-vars.css`, as folhas geradas, `skin-top.css`, `skin-case.css`, ...), os arranjos do computador e da
 mesa de DJ (`desktop-library.css`, `dj-desk.css`, ...) e o `reduced-motion.css` perto do fim, antes do `deck.css`, do
 `mix.css` e do `pedal.css` da mesa. Como a folha chega dentro da página, os endereços relativos dela (`url(fonts/...)`)
-saem do endereço da página, que é a pasta do tema. O bloco que vale só numa largura leva o `@media` em volta no
+saem do endereço da página, que é a pasta do tema; por isso a folha de `gerado/` só usa `url(data:...)`. O bloco que vale só numa largura leva o `@media` em volta no
 arquivo. O que um gerador de `dev/` desenha mora em `gerado/` (o `gerado/molduras.css`, por exemplo): o gerador grava o
 arquivo inteiro e não mexe no `index.html`, e o que se muda à mão ali some na próxima vez que ele roda.

@@ -13,7 +13,7 @@ function conectar() {
   es.ao('desconectado', () => {
     // o PC desconectou este celular: a tela do codigo, e o caps de antes de parear vem no 401 do /api/state
     pedirPareamento(true);
-    api('GET', '/api/state').catch(e => { if (e.status !== 401) throw e; });
+    api('GET', '/api/state').catch(e => { if (e.status !== 401 && e.status !== 0) throw e; });
   });
   es.ao('state', st => {
     online(true); S.state = st;
