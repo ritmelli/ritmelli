@@ -31,7 +31,7 @@ from unittest import mock
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import engine as eng  # noqa: E402
+import engine as eng
 
 CABECALHO = 44  # o wav PCM simples que o teste escreve
 

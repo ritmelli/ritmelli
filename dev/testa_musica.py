@@ -18,7 +18,7 @@ import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import yt_fora  # noqa: E402
+import yt_fora
 
 
 class YtmFalso:

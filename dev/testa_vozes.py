@@ -23,9 +23,9 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 sys.path.insert(0, str(RAIZ / "dev"))
 sys.path.insert(0, str(RAIZ / "instalador"))
-import pistavoz  # noqa: E402
-import vozes  # noqa: E402
-import vozes_iss  # noqa: E402
+import pistavoz
+import vozes
+import vozes_iss
 
 M = json.loads((RAIZ / "vozes.json").read_text(encoding="utf-8"))
 
