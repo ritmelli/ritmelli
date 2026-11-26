@@ -95,8 +95,11 @@ def position(speed, rng):
           f"position at speed {speed:.4f}: of {len(errors)} attacks in the first {CHECKED_S:.0f} s, the worst plays "
           f"{worst:+.1f} ms before where phi puts it (at most {POSITION_TOLERANCE_MS} ms either way)")
     tail = z[ramp + SR // 4:ramp + SR // 4 + SR, 0]
+    if len(tail) != SR:
+        check(False, f"pitch at speed {speed:.4f}: {len(tail)} frames after the ramp, where {SR} were expected")
+        return
     peak_hz = float(np.fft.rfftfreq(len(tail), 1 / SR)[int(np.argmax(np.abs(np.fft.rfft(tail))))])
-    check(len(tail) == SR and abs(peak_hz - TONE_HZ) <= PITCH_TOLERANCE_HZ,
+    check(abs(peak_hz - TONE_HZ) <= PITCH_TOLERANCE_HZ,
           f"pitch at speed {speed:.4f}: the steady tone after the ramp is at {peak_hz:.1f} Hz (its own {TONE_HZ:.0f} Hz, "
           f"at most {PITCH_TOLERANCE_HZ} Hz off)")
 
