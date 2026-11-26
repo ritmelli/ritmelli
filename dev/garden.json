@@ -1,9 +1,9 @@
 {
-  "comment_lines": 6568,
-  "docstring_lines": 4048,
+  "comment_lines": 6562,
+  "docstring_lines": 4047,
   "suppressions": 34,
   "sleeps_app": 43,
-  "sleeps_dev": 68,
+  "sleeps_dev": 67,
   "theme_timers": 30,
   "theme_animation_frames": 16,
   "retries": 29,
