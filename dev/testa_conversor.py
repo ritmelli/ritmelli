@@ -25,7 +25,7 @@ from onnx import helper as h
 from onnx import numpy_helper
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import conversor as C  # noqa: E402
+import conversor as C
 
 TOM_HZ = 150.0  # o tom que o FCPE de mentira ouve em todo quadro com som
 SRM, POR_QUADRO = 32000, 320

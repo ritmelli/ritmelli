@@ -32,7 +32,7 @@ import numpy as np
 DEV = Path(__file__).resolve().parent
 RAIZ = DEV.parent
 sys.path.insert(0, str(RAIZ))
-import transicao  # noqa: E402
+import transicao
 
 CASOS = DEV / "testa_transicao.json"
 BANCA = DEV / "testa_passagem.py"

@@ -259,7 +259,7 @@ def rodada(espera_fechar=ESPERA_FECHAR_S):
         try:  # o que o setup nao conseguiu apagar da pasta de antes da troca de nome (migra.py), se ainda sobrou algo
             import migra
             migra.pasta_velha()
-        except Exception as ex:  # noqa: BLE001 - a limpeza nunca segura a atualizacao
+        except Exception as ex:  # a limpeza nunca segura a atualizacao
             log(f"old folder: {type(ex).__name__}: {ex}")
     e = estado()
     if e.get("estado") == "instalando" and not vivo(e.get("pid") or -1):
@@ -456,7 +456,7 @@ def main(args):
         sys.stdout = sys.stderr = f
         try:
             rodada()
-        except Exception as ex:  # noqa: BLE001 - a rodada nunca derruba a tarefa sem dizer por que
+        except Exception as ex:  # a rodada nunca derruba a tarefa sem dizer por que
             log(f"error: {type(ex).__name__}: {ex}")
             _grava(estado="parado", erro=f"{type(ex).__name__}: {ex}")
     return 0
