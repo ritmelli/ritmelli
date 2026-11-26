@@ -516,8 +516,8 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertNotIn("voice pedal: its voice track came up", log.getvalue())
 
     def test_a_ring_filled_after_the_off_is_not_the_pedals_in_either_phase_of_turning_off(self):
-        for done in (False, True):
-            with self.subTest(turning_off_done=done):
+        for done, filled in ((False, 2.0), (True, 2.0), (False, 2.2), (True, 2.2)):
+            with self.subTest(turning_off_done=done, filled=filled):
                 now = [0.0]
                 pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
                 dry = dryouts.RingDryOuts(pedal)
@@ -529,7 +529,7 @@ class TestVoicePedalStart(unittest.TestCase):
                     pedal._on[1] = now[0]
                     if done:
                         pedal._ended, pedal._on = pedal._on, None
-                    now[0] = 2.2
+                    now[0] = filled
                     dry.read_ring(lambda: 1)
                     now[0] = 2.8
                     dry.read_ring(lambda: 0)

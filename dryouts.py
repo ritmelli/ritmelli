@@ -93,7 +93,7 @@ class VoicePedalStart:
 
     def starting(self, lo=None, empty_at=None):
         start, ended = self._on, self._ended
-        if (lo is not None and empty_at is not None and ended is not None and lo < ended[1]
+        if (lo is not None and empty_at is not None and ended is not None
                 and ended[0] <= empty_at and (start is None or start[0] > empty_at)):
             start = ended
         if start is None:
