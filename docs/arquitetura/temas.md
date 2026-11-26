@@ -83,17 +83,19 @@ commits, com cada `<!-- inline-script: -->` virando um `<script>` com o texto do
 `<script src>` e `<link>` trocado pelo texto do arquivo. Um script ou um estilo acaba onde o navegador o acaba: no
 primeiro `</script` ou `</style` seguido de espaço, `/` ou `>` (então um `</script>` num comentário fecha o script ali), e um `<script src>` sem `</script>` engole o texto até o
 próximo, que entra na comparação.
-O fim da tag respeita as aspas de um valor, e um `` sozinho conta como fim de linha, como no navegador (lido do git
+O fim da tag respeita as aspas de um valor, e um `\r` sozinho conta como fim de linha, como no navegador (lido do git
 ou da pasta). Ela sai 0 quando o head só muda código de lugar:
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
   folha de estilo no mesmo lugar dela;
 - os scripts são os mesmos, na mesma ordem, cada um carregado do mesmo jeito (inline ou do mesmo arquivo), com os
-  mesmos atributos e o mesmo modo estrito;
+  mesmos atributos, o mesmo modo estrito e o mesmo número de `<!--` no texto (que muda onde o navegador fecha o script);
 - cada script declara as mesmas funções no alto (elas podem mudar de lugar dentro dele, porque existem antes de qualquer
   instrução dele rodar, e só nele);
 - toda outra instrução do alto está no head, na mesma ordem e no mesmo script;
-- toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha e numa folha da mesma pasta
-  (pode mudar de folha ali: as URLs relativas dela continuam apontando para o mesmo arquivo).
+- toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha, numa folha da mesma pasta e inline
+  ou de arquivo como antes (pode mudar de folha ligada ali: as URLs relativas dela continuam apontando para o mesmo
+  arquivo);
+- as traduções que o servidor põe na página (a pasta `i18n/`, na página com a marca do i18n) são as mesmas.
 
 Instruções e regras são comparadas como árvores de sintaxe (o tree-sitter, do `requirements-dev.txt`), com o texto de
 cada nó que nenhum filho cobre (o número de um `14px`), sem os comentários e os espaços fora de strings e templates. Assim, uma marca de bloco, uma linha em branco ou uma indentação

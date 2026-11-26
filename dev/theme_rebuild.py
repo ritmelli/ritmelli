@@ -30,8 +30,10 @@ Exit 0 when the head only moves code: the two pages are the same, or
 - each script declares the same functions at its top level (they may move inside it: a script's function declarations
   exist before any of its statements runs, and only there);
 - every other top-level statement of the base is in the head, in the same order and in the same script;
-- every style rule of the base is in the head, in the same order, under the same stylesheet attributes and in a
-  stylesheet of the same folder (it may move to another stylesheet there: its relative URLs keep their target).
+- every style rule of the base is in the head, in the same order, under the same stylesheet attributes, in a
+  stylesheet of the same folder and inline or from a file as before (it may move to another linked stylesheet there:
+  its relative URLs keep their target);
+- the translations the server puts in the page (the i18n folder, for a page with the i18n mark) are the same.
 Statements and rules are compared as syntax trees (tree-sitter), with the text of every node that no child covers,
 without comments and whitespace outside strings and templates, so a block mark, a blank line or a new indentation is no change, while a space inside a template literal,
 or a mark that joins two tokens, is. In CSS, whether a token follows whitespace, a comment
@@ -92,6 +94,7 @@ class Block:
 class Page:
     items: list
     blocks: list
+    texts: tuple = ()
 
     def view(self):
         lines = []
@@ -142,7 +145,8 @@ def header(kind, name, others):
 def block_of(kind, name, others):
     if kind in ("link", "style-open"):
         return Block("style", header("link" if kind == "link" else "style", name, others), tuple(others.items()),
-                     others.get("type") in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "")
+                     others.get("type") in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "",
+                     source=("file" if kind == "link" else "inline",))
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
                  others.get("type") in JS_TYPES, source=("file" if kind == "script" else "inline", name))
 
@@ -219,7 +223,18 @@ def assemble(read):
             blocks[current[-1]].raw.append(line)
         else:
             items.append(("line", line, None, None))
-    return Page(items, blocks)
+    return Page(items, blocks, translations(read, page))
+
+
+def translations(read, page):
+    if str(RAIZ) not in sys.path:
+        sys.path.insert(0, str(RAIZ))
+    i18n = importlib.import_module("i18n")
+    if i18n.MARCA not in page:
+        return ()
+    return tuple((language, tuple(line.strip() for line in read(f"i18n/i18n_{language}.properties").split("\n")
+                                  if line.strip() and not line.lstrip().startswith(("#", "!"))))
+                 for language in i18n.LINGUAS)
 
 
 def rebuild(read):
@@ -405,6 +420,9 @@ def compare(a, b, compiles):
         sides.append((scripts, parsed))
     (scripts_a, parsed_a), (scripts_b, parsed_b) = sides
     compare_sequences(report, "markup", markup(a), markup(b), lambda _: "the page", lambda _: "the page")
+    for (language, mine), (_, theirs) in zip(a.texts or [(None, ())] * len(b.texts), b.texts or [(None, ())] * len(a.texts)):
+        report.changes += [("translation gone", language, [x]) for x in mine if x not in theirs]
+        report.changes += [("translation new", language, [x]) for x in theirs if x not in mine]
     if len(scripts_a) != len(scripts_b):
         report.changes.append(("scripts", f"the base has {len(scripts_a)} and the head {len(scripts_b)}", []))
     for page, parsed in ((a, parsed_a), (b, parsed_b)):
@@ -412,7 +430,8 @@ def compare(a, b, compiles):
     for k, (x, y) in enumerate(zip(scripts_a, scripts_b)):
         bx, by = a.blocks[x], b.blocks[y]
         sx, sy = parsed_a[x].strict if x in parsed_a else None, parsed_b[y].strict if y in parsed_b else None
-        if (bx.source, bx.others, bx.ignored, sx) != (by.source, by.others, by.ignored, sy):
+        if (bx.source, bx.others, bx.ignored, bx.text.count("<!--"), sx) != \
+                (by.source, by.others, by.ignored, by.text.count("<!--"), sy):
             report.changes.append(("script tag or strict mode", f"script {k + 1}: {bx.header} (strict: {sx}) -> "
                                    f"{by.header} (strict: {sy})", []))
         if not bx.code and [r.strip() for r in bx.raw if r.strip()] != [r.strip() for r in by.raw if r.strip()]:
@@ -435,7 +454,8 @@ def compare(a, b, compiles):
         units = []
         for page, scripts, parsed in ((a, scripts_a, parsed_a), (b, scripts_b, parsed_b)):
             rank = {n: k for k, n in enumerate(scripts)}
-            units.append([((u.shape, page.blocks[n].others, page.blocks[n].folder) if kind == "style" else u.shape,
+            units.append([((u.shape, page.blocks[n].others, page.blocks[n].folder, page.blocks[n].source)
+                            if kind == "style" else u.shape,
                            rank[n] if kind == "script" else None, u.text)
                           for n, p in sorted(parsed.items()) if page.blocks[n].kind == kind for u in p.units])
         compare_sequences(report, what, *units,

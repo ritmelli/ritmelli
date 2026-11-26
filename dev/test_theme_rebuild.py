@@ -11,7 +11,8 @@ FOUR_LINES = "function f() {\n  const x = 1;\n  return x;\n}"
 NESTED = "@media (min-width: 1px) {\n  a { color: red; }\n  @container (max-width: 1rem) { .b::after { content: %s; } }\n}\n"
 FONT = "@font-face { font-family: 'A'; src: url(fonts/a.woff2) format('woff2'); }\n"
 PEDAL = '<script src="pedal.js" onerror="scriptFailed(this)"></script>'
-LEFT, CAME ="declaration left its script", "declaration came into the script"
+HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
+LEFT, CAME = "declaration left its script", "declaration came into the script"
 
 
 def inline(*scripts):
@@ -124,6 +125,10 @@ SAMPLES = (
      {"index.html": theme_rebuild.text_of(b"<script>\nfunction d() { return\r!!x; }\n</script>\n")}, [LEFT, CAME]),
     ("a no-break space put before a button", {"index.html": "<div>\n  <button></button>\n</div>\n"},
      {"index.html": "<div>\n \u00a0<button></button>\n</div>\n"}, ["gone", "new"]),
+    ("a rule moved from an inline style to a linked stylesheet",
+     {"index.html": f"<style>\n{HIDDEN}\n</style>\n<link rel='stylesheet' href='base.css'>\n", "base.css": "a { }\n"},
+     {"index.html": "<style>\n</style>\n<link rel='stylesheet' href='base.css'>\n", "base.css": HIDDEN + "\na { }\n"},
+     ["gone", "new"]),
     ("a comment in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px/* c */+ 1px); }\n"), ["gone", "new"]),
     ("a stylesheet with a font moved to another folder", {"index.html": "<link rel='stylesheet' href='base.css'>\n",
@@ -187,6 +192,11 @@ def main():
         ("the </script> of pedal.js with an open quote in it",
          {"index.html": lambda html, _: html.replace(PEDAL, PEDAL.replace("</script>", '</script x=">'))
           if PEDAL in html else ""}, "script tag or strict mode"),
+        ("a translation changed", {"i18n/i18n_en.properties": lambda text, _: text.replace(
+            "nav.backToShelf=Back to the shelf", "nav.backToShelf=Close the app") if "nav.backToShelf=" in text else ""},
+         "translation new"),
+        ("a <!-- <script> put at the end of start.js", {"start.js": lambda text, _: text + "// <!-- <script>\n"},
+         "script tag or strict mode"),
         ("transporte.js renamed",
          {"index.html": lambda html, _: html.replace('src="transporte.js"', 'src="transporte-new.js"')
           if 'src="transporte.js"' in html else "",
