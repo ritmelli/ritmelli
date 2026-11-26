@@ -101,7 +101,9 @@ SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc'
 OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true,"
                  " cancelable: true, composed: true, isPrimary: true, pointerId: 7, pointerType: 'touch', button: 0,"
                  " clientX: 11, clientY: 13}))")
-PADS_REDRAWN = ("(async () => { const c = document.querySelector('#pads > canvas.pads-px');"
+REDRAWN_CANVASES = {"the mixer": "canvas.mx-px", "the monitor": "#tv > canvas.tv-px",
+                    "the pads": "#pads > canvas.pads-px"}
+CANVAS_REDRAWN = ("(async () => { const c = document.querySelector(%s);"
                 " if (!c || !c.width) return {canvas: false};"
                 " const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));"
                 " const drawn = c.toDataURL(); c.getContext('2d').clearRect(0, 0, c.width, c.height);"
@@ -227,11 +229,12 @@ async def checks(tab):
     results.append((opened.get("open") and after.get("closed") and after.get("touch") == {"x": 11, "y": 13},
                     f"a touch outside the search on the mesa closes it, and queue.js still sees that touch ({after})"))
 
-    pads = (await tab.cmd("Runtime.evaluate", expression=PADS_REDRAWN, awaitPromise=True,
-                          returnByValue=True)).get("result", {}).get("value") or {}
-    results.append((pads == {"canvas": True, "drawn": True, "stays": True, "back": True},
-                    f"the pads canvas, cleared, stays cleared until a repinta-canvas, and then draws the pads again "
-                    f"({pads})"))
+    for what, selector in REDRAWN_CANVASES.items():
+        seen = (await tab.cmd("Runtime.evaluate", expression=CANVAS_REDRAWN % json.dumps(selector), awaitPromise=True,
+                              returnByValue=True)).get("result", {}).get("value") or {}
+        results.append((seen == {"canvas": True, "drawn": True, "stays": True, "back": True},
+                        f"the canvas of {what}, cleared, stays cleared until a repinta-canvas, and then draws it "
+                        f"again ({seen})"))
     return results
 
 

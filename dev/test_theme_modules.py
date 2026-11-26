@@ -21,7 +21,8 @@ SHORTEST_FUNCTION = 40
 FEWEST_KEYS = 3
 JAVASCRIPT = ("", "text/javascript")
 PARSER = tree_sitter.Parser(tree_sitter.Language(tree_sitter_javascript.language()))
-PATTERNS = ("array_pattern", "object_pattern", "rest_pattern", "pair_pattern", "assignment_pattern")
+DEFAULTS = ("assignment_pattern", "object_assignment_pattern")
+PATTERNS = ("array_pattern", "object_pattern", "rest_pattern", "pair_pattern", *DEFAULTS)
 FUNCTIONS = ("arrow_function", "function_expression", "function", "function_declaration", "generator_function",
              "generator_function_declaration", "class", "class_declaration")
 NAMED = ("function_expression", "function", "function_declaration", "generator_function",
@@ -70,16 +71,22 @@ def ancestors(node):
         yield node
 
 
-def pattern_names(node):
+def pattern_nodes(node):
     if node is None:
-        return set()
+        return []
     if node.type in ("identifier", "shorthand_property_identifier_pattern"):
-        return {text_of(node)}
+        return [node]
     if node.type == "pair_pattern":
-        return pattern_names(node.child_by_field_name("value"))
-    if node.type == "assignment_pattern":
-        return pattern_names(node.child_by_field_name("left"))
-    return set().union(*(pattern_names(child) for child in node.named_children))
+        return pattern_nodes(node.child_by_field_name("value"))
+    if node.type in DEFAULTS:
+        return pattern_nodes(node.child_by_field_name("left"))
+    if node.type in ("array_pattern", "object_pattern", "rest_pattern"):
+        return [found for child in node.named_children for found in pattern_nodes(child)]
+    return []
+
+
+def pattern_names(node):
+    return {text_of(found) for found in pattern_nodes(node)}
 
 
 def owner(node):
@@ -87,7 +94,7 @@ def owner(node):
     while (parent := current.parent) is not None and parent.type in PATTERNS:
         if parent.type == "pair_pattern" and parent.child_by_field_name("value") != current:
             return None
-        if parent.type == "assignment_pattern" and parent.child_by_field_name("left") != current:
+        if parent.type in DEFAULTS and parent.child_by_field_name("left") != current:
             return None
         current = parent
     if parent is None:
@@ -117,6 +124,8 @@ def scope_of(own):
         return own.parent
     if own.type in ("function_declaration", "generator_function_declaration", "class_declaration"):
         return nearest(own, BLOCK_SCOPES)
+    if own.type == "for_in_statement" and text_of(own.child_by_field_name("kind")) == "var":
+        return nearest(own, FUNCTION_SCOPES)
     return own
 
 
@@ -166,19 +175,30 @@ def resolved(node, scopes):
 
 
 def normalized(function):
-    names = {}
+    scopes, declared_at = collections.defaultdict(set), {}
     for node in walk(function):
-        if node.type in NAMES and (own := owner(node)) is not None and (
-                own == function or any(a == function for a in ancestors(own))):
-            names.setdefault(text_of(node), f"${len(names)}")
-    leaves = [names.get(text_of(n), text_of(n)) if n.type in NAMES else text_of(n)
-              for n in walk(function) if not n.children and n.type != "comment"]
+        if node.type in NAMES and node.type != "shorthand_property_identifier" and (own := owner(node)) is not None:
+            scopes[text_of(node)].add(where := key(scope_of(own)))
+            declared_at[key(node)] = where
+    names, leaves = {}, []
+    for node in walk(function):
+        if node.children or node.type == "comment":
+            continue
+        if node.type not in NAMES:
+            leaves.append(text_of(node))
+            continue
+        name = text_of(node)
+        where = declared_at.get(key(node)) or resolved(node, scopes)
+        renamed = names.setdefault((name, where), f"${len(names)}") if where else name
+        leaves.append(renamed if node.type == "identifier" else f"{name}:{renamed}")
     return " ".join(leaves)
 
 
 def object_keys(node):
     found = set()
     for child in node.named_children:
+        if child.type == "comment":
+            continue
         if child.type == "pair":
             found.add(text_of(child.child_by_field_name("key")))
         elif child.type == "shorthand_property_identifier":
@@ -195,8 +215,9 @@ def returned_keys(function):
     if body.type == "parenthesized_expression":
         objects = [c for c in body.named_children if c.type == "object"]
     elif body.type == "statement_block":
-        objects = [c.named_children[0] for c in body.named_children
-                   if c.type == "return_statement" and c.named_children and c.named_children[0].type == "object"]
+        objects = [value for c in body.named_children if c.type == "return_statement"
+                   for value in [next((x for x in c.named_children if x.type != "comment"), None)]
+                   if value is not None and value.type == "object"]
     else:
         objects = [body] if body.type == "object" else []
     return [keys for o in objects if (keys := object_keys(o))]
@@ -205,7 +226,11 @@ def returned_keys(function):
 def file_facts(text):
     root = PARSER.parse(text.encode("utf-8")).root_node
     facts = types.SimpleNamespace(imports={}, exports=set(), stars=set(), problems=[], top=set(), values={},
-                                  functions=[], objects=[], writes=set())
+                                  functions=[], objects=[], writes=set(), locals={}, reexports={})
+    if root.has_error:
+        broken = next(n for n in walk(root) if n.type == "ERROR" or n.is_missing)
+        facts.problems.append(f"does not parse at line {broken.start_point[0] + 1}, so the rest of this check would "
+                              f"read a broken tree")
     for node in walk(root):
         if node.type in ("import_statement", "export_statement") and (source := node.child_by_field_name("source")):
             if (name := literal(source)) is None:
@@ -236,9 +261,16 @@ def file_facts(text):
             elif (declaration := node.child_by_field_name("declaration")) is not None:
                 facts.values |= declared(declaration)
                 facts.exports |= set(declared(declaration))
+            source = literal(node.child_by_field_name("source"))
             for part in walk(node):
                 if part.type == "export_specifier":
-                    facts.exports.add(text_of(part.child_by_field_name("alias") or part.child_by_field_name("name")))
+                    local = text_of(part.child_by_field_name("name"))
+                    public = text_of(part.child_by_field_name("alias") or part.child_by_field_name("name"))
+                    facts.exports.add(public)
+                    if source is None:
+                        facts.locals[public] = local
+                    else:
+                        facts.reexports[public] = (source, local)
                 elif part.type == "namespace_export":
                     facts.exports |= {text_of(c) for c in part.named_children if c.type == "identifier"}
     imported = imported_names(root)
@@ -249,17 +281,17 @@ def file_facts(text):
     facts.top = {name for name, where in scopes.items() if program in where}
     facts.reads = {text_of(r) for r in references if resolved(r, scopes) == program}
     facts.free = {text_of(r) for r in references if resolved(r, scopes) is None}
-    targets = [n.child_by_field_name("left") for n in walk(root)
-               if n.type in ("assignment_expression", "augmented_assignment_expression")]
-    targets += [n.child_by_field_name("argument") for n in walk(root) if n.type == "update_expression"]
-    for target in targets:
-        if target is not None and target.type == "identifier":
-            where = resolved(target, scopes)
-            if where is None:
-                facts.writes.add(text_of(target))
-            elif where == program and text_of(target) in imported:
-                facts.problems.append(f"writes its import {text_of(target)} at line {target.start_point[0] + 1}, "
-                                      f"which throws")
+    lefts = [n.child_by_field_name("left") for n in walk(root)
+             if n.type in ("assignment_expression", "augmented_assignment_expression")
+             or n.type == "for_in_statement" and n.child_by_field_name("kind") is None]
+    lefts += [n.child_by_field_name("argument") for n in walk(root) if n.type == "update_expression"]
+    for target in (found for left in lefts for found in pattern_nodes(left)):
+        where = resolved(target, scopes)
+        if where is None:
+            facts.writes.add(text_of(target))
+        elif where == program and text_of(target) in imported:
+            facts.problems.append(f"writes its import {text_of(target)} at line {target.start_point[0] + 1}, "
+                                  f"which throws")
     again = {name for name in imported if lines.get(name)}
     facts.problems += [f"imports {name}, which it never uses" for name in sorted(imported - facts.reads - again)]
     facts.problems += [f"declares {name} again at line {lines[name]}, over its import" for name in sorted(again)]
@@ -267,8 +299,11 @@ def file_facts(text):
 
 
 def origins(facts, name, seen=frozenset()):
-    own = facts[name]
-    found = {export: {(name, export)} for export in own.exports}
+    own, found = facts[name], {}
+    for export in own.exports:
+        source, local = own.reexports.get(export, (None, None))
+        reached = origins(facts, source, seen | {name}).get(local) if source in facts and source not in seen else None
+        found[export] = reached or {(name, own.locals.get(export, export))}
     for star in sorted(own.stars):
         if star in facts and star not in seen:
             for export, where in origins(facts, star, seen | {name}).items():
@@ -310,8 +345,8 @@ def rewritten(folder, facts):
         own = file_facts(path.read_text(encoding="utf-8-sig"))
         problems += [f"{file}:{line}: writes again {exported[text][1]}, which {exported[text][0]} exports: import it"
                      for text, line in own.functions if text in exported and exported[text][0] != file]
-        problems += [f"{file}:{line}: builds by hand what {shapes[keys][1]} of {shapes[keys][0]} returns: call "
-                     f"{shapes[keys][1]}" for keys, line in own.objects if keys in shapes and shapes[keys][0] != file]
+        problems += [f"{file}:{line}: builds by hand what {who[1]} of {who[0]} returns: call {who[1]}"
+                     for keys, line in own.objects for shape, who in shapes.items() if keys >= shape and who[0] != file]
     return problems
 
 
@@ -323,7 +358,7 @@ def module_problems(folder, page):
     facts = {name: file_facts((folder / name).read_text(encoding="utf-8-sig")) for name in names}
     classics = [(name, file_facts(text)) for name, text in classic_texts(folder, read)]
     problems = [f"{name}: {problem}" for name, own in classics for problem in own.problems
-                if "dynamic import()" in problem]
+                if "dynamic import()" in problem or "does not parse" in problem]
     problems += [f"{name}: {problem}" for name, own in facts.items() for problem in own.problems]
     problems += [f"{name}: imports {target}, which is not a module of the page" for name, own in facts.items()
                  for target in own.imports if target not in facts]
@@ -335,19 +370,21 @@ def module_problems(folder, page):
             for wanted in sorted(wanted_names - {"*"}):
                 if wanted not in found:
                     problems.append(f"{name}: imports {wanted} from {target}, which {target} does not export")
-                elif len(modules := sorted({module for module, _ in found[wanted]})) > 1:
+                elif len(found[wanted]) > 1:
                     problems.append(f"{name}: imports {wanted} from {target}, which export * brings from "
-                                    f"{' and '.join(modules)}: the browser refuses a name it cannot tell apart")
+                                    f"{' and '.join(f'{m} ({n})' for m, n in sorted(found[wanted]))}: the browser "
+                                    f"refuses a name it cannot tell apart")
     for name, own in facts.items():
         used = set().union(*(theirs.imports.get(name, set()) for other, theirs in facts.items() if other != name))
         problems += [f"{name}: exports {export}, which no other file of the theme imports"
                      for export in sorted(own.exports) if export not in used and "*" not in used]
     classic_top = set().union(*(own.top for _, own in classics))
-    for name, own in classics:
+    for name, own in [*classics, *facts.items()]:
         for used_name in sorted(own.free - classic_top):
-            if owners := [module for module, theirs in facts.items() if used_name in theirs.top]:
-                problems.append(f"{name}: uses {used_name}, which only the module {owners[0]} declares: a classic "
-                                f"script does not see a module's names")
+            if owners := [module for module, theirs in facts.items() if module != name and used_name in theirs.top]:
+                problems.append(f"{name}: uses {used_name}, which only the module {owners[0]} declares: "
+                                + ("only an import reaches a module's name" if name in facts else
+                                   "a classic script does not see a module's names"))
     problems += [f"{name}: writes {written}, which no file declares: a module is in strict mode, where that throws"
                  for name, own in facts.items() for written in sorted(own.writes - classic_top)]
     return problems + data_problems(facts) + rewritten(folder, facts)
@@ -430,8 +467,32 @@ def samples():
                                                      d='export const d = () => {};\n'), ["a.js: imports e from b.js"]),
             "a name two export * bring from two modules": (files(uses_x, x_twice, d=x, e=x),
                                                            ["a.js: imports x from b.js, which export * brings from d.js "
-                                                            "and e.js"]),
+                                                            "(x) and e.js (x)"]),
             "a name two export * bring from one module": (files(uses_x, x_twice, d=x, e='export * from "d.js";\n'), []),
+            "a name two export * bring from one binding, re-exported under another name": (
+                files(uses_x, x_twice, d='export { one as x } from "e.js";\n',
+                      e='export const one = () => {};\nexport { one as x };\n'), []),
+            "a name two export * bring from two bindings of one module": (
+                files(uses_x, x_twice, d='export { two as x } from "e.js";\n',
+                      e='export const one = () => {};\nexport const two = () => {};\nexport { one as x };\n'),
+                ["a.js: imports x from b.js, which export * brings from e.js (one) and e.js (two)"]),
+            "an import declared again in a pattern with a default": (
+                files('import { b } from "b.js";\nconst f = ({ b = 1 }) => b;\nf({});\n', b), ["a.js: declares b again"]),
+            "a classic parameter with a default, named like a module's name": (
+                files(uses_b, b, "function f({ b = 1 }) { return b; }\nf({});\n"), []),
+            "a destructured export with a default, which exports only the name it binds": (
+                files('import { p } from "b.js";\np();\n', "const o = {};\nexport const { p = q } = o;\n"), []),
+            "a module that writes its import by destructuring": (files('import { b } from "b.js";\n[b] = [1];\n', b),
+                                                                 ["a.js: writes its import b"]),
+            "a module that writes a name nobody declares in a for of": (files(uses_b + "for (zz of []) go();\n", b),
+                                                                        ["a.js: writes zz, which no file declares"]),
+            "a module that writes a name a for (var ...) of declared": (
+                files(uses_b + "for (var v of []) go();\nv = 2;\n", b), []),
+            "a module that reads another module's name without importing it": (
+                files(uses_b, b, d="export const dd = 1;\nconst secret = 2;\n",
+                      e='import { dd } from "d.js";\ngo(dd, secret);\n'),
+                ["e.js: uses secret, which only the module d.js declares"]),
+            "a module that does not parse": (files(uses_b + "const = ;\n", b), ["a.js: does not parse at line 3"]),
             "a default export, imported": (files('import f from "b.js";\nf();\n', "export default function named() {}\n"),
                                            []),
             "a default export no file imports": (files("go();\n", "export default 1;\n"), ["b.js: exports default"]),
@@ -461,6 +522,14 @@ def samples():
                 files('import { mk } from "b.js";\nmk(1);\nconst o = { u: 2, w: 3, h: 4 };\ngo(o);\n',
                       "export function mk(w) { return { u: 1, w, h: 2 }; }\n"),
                 ["a.js:3: builds by hand what mk of b.js returns"]),
+            "an object built by hand with one key more and a comment": (
+                files('import { mk } from "b.js";\nmk(1);\nconst o = { /* by hand */ u: 2, w: 3, h: 4, extra: 5 };\n'
+                      'go(o);\n', "export function mk(w) { return /* the record */ { u: 1, w, h: 2 }; }\n"),
+                ["a.js:3: builds by hand what mk of b.js returns"]),
+            "a function a module exports, and one with the same shape and other free names": (
+                files('import { f } from "b.js";\nconst g = () => { const inner = y => y * 2; return inner(1) + y + 3 + '
+                      '4 + 5; };\nf(g());\n',
+                      "export const f = () => { const inner = x => x * 2; return inner(1) + x + 3 + 4 + 5; };\n"), []),
             "a module that writes a name nobody declares": (files(uses_b + "x = 1;\n", b),
                                                             ["a.js: writes x, which no file declares"]),
             "a module that writes its import": (files('import { b } from "b.js";\nb = 1;\n', b),

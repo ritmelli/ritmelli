@@ -1285,9 +1285,6 @@ import { glyphs, ruido, fontesProntas, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREM
     }
     requestAnimationFrame(quadroMx);
   }
-  // (#119) o canvas devolvido em branco (repintarCanvas): as chaves do mixer (o chaveE pinta tambem os rotulos e a
-  // placa), do monitor e dos Sons rapidos zeradas, o proximo quadro pinta os tres de novo. As
-  // maletas dos pedais (desenhaGav) guardam a chave no _geo do canvas, que o repintarCanvas zera
   document.addEventListener('repinta-canvas', () => {
     if (mx) mx.chaveE = '';
     if (tvp) tvp.chave = '';

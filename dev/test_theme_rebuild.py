@@ -415,40 +415,65 @@ def built(read, files=None):
         return unsure
 
 
-def theme_mutant(changes):
+class MutantMiss(Exception):
+    pass
+
+
+def once(text, old, new):
+    if (found := text.count(old)) != 1:
+        raise MutantMiss(f"{old!r} is in it {found} time(s), not once")
+    return text.replace(old, new)
+
+
+def theme_mutant(title, changes):
     read = theme_rebuild.reader(None, "ritmelli")
-    return lambda name: changes[name](read(name), read) if name in changes \
-        else read(name)
+
+    def mutated(name):
+        if name not in changes:
+            return read(name)
+        before = read(name)
+        try:
+            after = changes[name](before, read)
+        except MutantMiss as miss:
+            raise MutantMiss(f"the mutant {title!r}, in {name}: {miss}") from miss
+        if after == before:
+            raise MutantMiss(f"the mutant {title!r} leaves {name} as it is")
+        return after
+    return mutated
+
+
+def swap_tags(html, one, other):
+    return once(once(once(html, one, "\0"), other, one), "\0", other)
 
 
 def swapped(html, _):
-    notice, covers = NOTICE, '<script src="covers.js"></script>'
-    return html.replace(notice, "\0").replace(covers, notice).replace("\0", covers) if covers in html else ""
+    return swap_tags(html, NOTICE, '<script src="covers.js"></script>')
 
 
 def early(html, _):
     inlined = '<script src="desk-buttons.js"></script>\n<script src="start.js"></script>\n'
     ui_events = '<script src="ui-events.js"></script>\n'
-    return html.replace(inlined, "").replace(ui_events, inlined + ui_events) if inlined in html else ""
+    return once(once(html, inlined, ""), ui_events, inlined + ui_events)
 
 
 def tag_swap(first, second):
     one, other = (f'<script type="module" src="{name}"></script>' for name in (first, second))
-    return lambda html, _: html.replace(one, "\0").replace(other, one).replace("\0", other) if one in html else ""
+    return lambda html, _: swap_tags(html, one, other)
 
 
 PINCEL = "export function pincel("
 
 
-def pincel(text):
-    start = text.find(PINCEL)
-    return text[start:text.find("\n", start) + 1] if start >= 0 else ""
+def line_of(text, start_marker):
+    once(text, start_marker, start_marker)
+    start = text.index(start_marker)
+    return text[start:text.index("\n", start) + 1]
 
 
 def binder(text):
-    start = text.find("\nfunction bindShelfClick() {\n")
-    end = text.find("\n}\n", start)
-    return text[start + 1:end + 3] if start >= 0 and end >= 0 else ""
+    once(text, "\nfunction bindShelfClick() {\n", "")
+    start = text.index("\nfunction bindShelfClick() {\n")
+    return text[start + 1:text.index("\n}\n", start) + 3]
 
 
 def main():
@@ -457,63 +482,57 @@ def main():
     files = theme_rebuild.listing(None, "ritmelli")
     theme = theme_rebuild.assemble(theme_rebuild.reader(None, "ritmelli"), files)
     other_grain = {**files, "texturas/veio.webp": files["texturas/veio-v.webp"]}
-    shelf_moved = {"shelf.js": lambda text, _: text.replace(binder(text), "") if binder(text) else "",
+    shelf_moved = {"shelf.js": lambda text, _: once(text, binder(text), ""),
                    "start.js": lambda text, read: text + binder(read("shelf.js"))}
-    mutants = [(title, built(theme_mutant(changes), files), expected) for title, changes, expected in (
+    back = "nav.backToShelf=Back to the shelf"
+    mutants = [(title, built(theme_mutant(title, changes), files), expected) for title, changes, expected in (
         ("notice.js and covers.js swapped", {"index.html": swapped}, "moved to another script"),
         ("desk-buttons.js and start.js before ui-events.js", {"index.html": early}, "moved to another script"),
         ("bindShelfClick moved from shelf.js to the end of start.js", shelf_moved, LEFT),
         ("a line break after the first throw of api.js",
-         {"api.js": lambda text, _: text.replace("throw x;", "throw\nx;", 1) if "throw x;" in text else ""},
-         "does not parse"),
+         {"api.js": lambda text, _: once(text, "throw x;", "throw\nx;")}, "does not parse"),
         *((f"a {end} in a comment on the first line of start.js",
-           {"start.js": lambda text, _, end=end: text.replace("'use strict';", f"'use strict'; // {end}", 1)
-            if "'use strict';" in text else ""}, CANNOT) for end in ("</script>", "</script/>", "</script x>")),
+           {"start.js": lambda text, _, end=end: once(text, "'use strict';", f"'use strict'; // {end}")}, CANNOT)
+          for end in ("</script>", "</script/>", "</script x>")),
         ("the </script> of pedal.js taken out",
-         {"index.html": lambda html, _: html.replace(PEDAL, PEDAL.removesuffix("</script>")) if PEDAL in html else ""},
-         CANNOT),
+         {"index.html": lambda html, _: once(html, PEDAL, PEDAL.removesuffix("</script>"))}, CANNOT),
         ("the </script> of pedal.js with an open quote in it",
-         {"index.html": lambda html, _: html.replace(PEDAL, PEDAL.replace("</script>", '</script x=">'))
-          if PEDAL in html else ""}, CANNOT),
-        ("a translation changed", {"i18n/i18n_en.properties": lambda text, _: text.replace(
-            "nav.backToShelf=Back to the shelf", "nav.backToShelf=Close the app") if "nav.backToShelf=" in text else ""},
+         {"index.html": lambda html, _: once(html, PEDAL, PEDAL.replace("</script>", '</script x=">'))}, CANNOT),
+        ("a translation changed",
+         {"i18n/i18n_en.properties": lambda text, _: once(text, back, "nav.backToShelf=Close the app")},
          "translation new"),
-        ("a translation line repeated", {"i18n/i18n_en.properties": lambda text, _: text.replace(
-            "nav.backToShelf=Back to the shelf", "nav.backToShelf=Back to the shelf\nnav.backToShelf=Back to the shelf")
-            if "nav.backToShelf=" in text else ""}, "translation new"),
-        ("a translation line moved to the end", {"i18n/i18n_en.properties": lambda text, _: text.replace(
-            "nav.backToShelf=Back to the shelf\n", "") + "nav.backToShelf=Back to the shelf\n"
-            if "nav.backToShelf=" in text else ""}, "translations in another order"),
+        ("a translation line repeated", {"i18n/i18n_en.properties": lambda text, _: once(text, back, f"{back}\n{back}")},
+         "translation new"),
+        ("a translation line moved to the end",
+         {"i18n/i18n_en.properties": lambda text, _: once(text, f"{back}\n", "") + f"{back}\n"},
+         "translations in another order"),
         ("base.css renamed to base.txt",
-         {"index.html": lambda html, _: html.replace('href="base.css"', 'href="base.txt"')
-          if 'href="base.css"' in html else "",
+         {"index.html": lambda html, _: once(html, 'href="base.css"', 'href="base.txt"'),
           "base.txt": lambda _, read: read("base.css")}, "gone"),
-        ("a translation put after a vertical tab in a comment", {"i18n/i18n_en.properties": lambda text, _: text.replace(
-            "# Geral:", "#\vnav.backToShelf=Close the app\v# Geral:") if "# Geral:" in text else ""},
-         "translation new"),
+        ("a translation put after a vertical tab in a comment", {"i18n/i18n_en.properties": lambda text, _: once(
+            text, "# Geral:", "#\vnav.backToShelf=Close the app\v# Geral:")}, "translation new"),
         ("a line break put between return and the template of desenharQR",
-         {"phone.js": lambda text, _: text.replace("  return `<svg", "  return\n`<svg")}, LEFT),
+         {"phone.js": lambda text, _: once(text, "  return `<svg", "  return\n`<svg")}, LEFT),
         ("a vertical tab put before the first .btn rule of buttons.css",
-         {"buttons.css": lambda text, _: text.replace("\n.btn", "\n\v.btn", 1)}, "does not parse"),
+         {"buttons.css": lambda text, _: once(text, "\n.btn {", "\n\v.btn {")}, "does not parse"),
         ("pedal.css linked from the root of the site",
-         {"index.html": lambda html, _: html.replace('href="pedal.css"', 'href="/t/ritmelli/pedal.css"')}, "gone"),
+         {"index.html": lambda html, _: once(html, 'href="pedal.css"', 'href="/t/ritmelli/pedal.css"')}, "gone"),
         ("a <!-- put in a comment on the first line of start.js",
-         {"start.js": lambda text, _: text.replace("'use strict';", "'use strict'; // <!--", 1)
-          if "'use strict';" in text else ""}, CANNOT),
+         {"start.js": lambda text, _: once(text, "'use strict';", "'use strict'; // <!--")}, CANNOT),
         ("a </style> put in a comment of base.css",
          {"base.css": lambda text, _: "/* </style> */\n" + text}, CANNOT),
         ("the rules of pedal.css moved to the end of mix.css and pedal.css deleted",
          {"mix.css": lambda text, read: text + read("pedal.css"), "pedal.css": lambda *_: None}, CANNOT),
         ("transporte.js renamed",
-         {"index.html": lambda html, _: html.replace('src="transporte.js"', 'src="transporte-new.js"')
-          if 'src="transporte.js"' in html else "",
+         {"index.html": lambda html, _: once(html, 'src="transporte.js"', 'src="transporte-new.js"'),
           "transporte-new.js": lambda _, read: read("transporte.js")}, "script tag or strict mode"),
         ("the deck.js module tagged after mix.js", {"index.html": tag_swap("deck.js", "mix.js")},
          "modules in another order"),
         ("the pincel of pixel.js moved to the end of deck.js",
-         {"pixel.js": lambda text, _: text.replace(pincel(text), "") if pincel(text) else "",
-          "deck.js": lambda text, read: text + pincel(read("pixel.js"))}, "moved out of order"))]
-    same_order = built(theme_mutant({"index.html": tag_swap("deck.js", "maleta-vazia.js")}), files)
+         {"pixel.js": lambda text, _: once(text, line_of(text, PINCEL), ""),
+          "deck.js": lambda text, read: text + line_of(read("pixel.js"), PINCEL)}, "moved out of order"))]
+    same_order = built(theme_mutant("maleta-vazia.js tagged before deck.js",
+                                    {"index.html": tag_swap("deck.js", "maleta-vazia.js")}), files)
     mutants.append(("texturas/veio.webp holding the image of veio-v.webp",
                     built(theme_rebuild.reader(None, "ritmelli"), other_grain), "file changed"))
     pages = [theme, *(page for _, a, b, _ in samples for page in (a, b)), *(page for _, page, _ in mutants)]

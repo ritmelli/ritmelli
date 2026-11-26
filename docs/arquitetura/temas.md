@@ -117,7 +117,8 @@ faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sint
 - cada export é importado por outro arquivo do tema;
 - um módulo que exporta função não exporta um dado que ele não usa e que um arquivo só importa (o dado fica nesse
   arquivo);
-- nenhum script, clássico ou módulo, usa `import()`, e nenhum clássico lê um nome que só um módulo declara;
+- cada script se analisa sem erro, nenhum script, clássico ou módulo, usa `import()`, e nenhum arquivo lê um nome que
+  só outro módulo declara (um módulo chega a ele só pelo import);
 - nenhum arquivo escreve de novo uma função que um módulo exporta (com os nomes ligados dentro dela trocados) nem
   monta à mão o objeto que ela devolve, e só o `pixel.js` carrega as fontes do motor (o `fontesProntas`);
 - nenhuma sequência de 8 linhas não triviais aparece em dois `.js` do tema.
@@ -184,7 +185,9 @@ declarações nascem e nada roda), e os nomes saem do escopo local dele. Um nome
 aceita (um `var arguments`, um `const yield`): os dois ficam no teste como falha conhecida da issue #239. Ele confere
 também que cada ouvinte das partes é do arquivo dela, que a página só passa a vigiar a própria visibilidade no
 `DOMContentLoaded`, com o `carregar()` já declarado (uma aba que aparece durante a leitura da página não conecta antes
-da partida), e que o `queue.js` vê o toque que fecha a busca na mesa.
+da partida), que o `queue.js` vê o toque que fecha a busca na mesa, e que os canvas do mixer, do monitor e dos pads,
+limpos, ficam limpos até um `repinta-canvas` e então se pintam de novo (o canvas que o navegador devolve em branco,
+#119).
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits
 como o servidor a monta: cada `<script src="..."></script>` e `<link rel="stylesheet" href="...">` trocado pelo texto
