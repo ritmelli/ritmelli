@@ -584,9 +584,11 @@ They all run with the virtual environment active, some need ffmpeg, and `testa_f
 `--mock` included, since a running Ritmelli keeps `voz.dll` open).
 
 The phone pairing (`pareamento.py`) is checked by `dev/testa_pareamento.py`, and `batida.py` runs inside the engine
-that `dev/testa_passagem.py` drives. The rest of the beat analysis (`compasso.py`, `andamento.py`), the window
-(`janela.py`) and the microphone volume (`winvol.py`) have no test yet: if you change them, say in the pull request
-how you checked the change.
+that `dev/testa_passagem.py` drives. The rest of the beat analysis is checked by `dev/test_compasso.py` (how the
+network's 30 s chunks are stitched and how its peaks become beats, with a fake session instead of the model) and
+`dev/test_andamento.py` (the order of the similar tracks by tempo and artist), the microphone volume by
+`dev/test_winvol.py` (with fake Windows devices), and the window (`janela.py`) by the installed app in the `testa`
+job of `monta.yml`.
 
 To change a voice effect, edit its settings in `fx.py`; `microfone/preset.py` turns them into the preset that the C++
 engine (`microfone/apo/voz.h`) runs. A new kind of processing step also needs code in `voz.h`, and
