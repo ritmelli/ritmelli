@@ -49,8 +49,8 @@ PAGE_READY_S = 15.0
 CARD_SHOWS_S = 10.0
 
 
-def read_page(html, where):
-    read, error = theme_page.strict(html)
+def read_page(html, where, built=False):
+    read, error = theme_page.strict(html, built)
     return read, error and f"{where}:{error[0]}:{error[1]}: {error[2]}"
 
 
@@ -78,9 +78,14 @@ def reads_as_the_build():
         for name in ("first.js", "second.js"):
             (theme / name).write_text(f"const {name[:-3]} = 1;\n", encoding="utf-8")
         expected, error = page_files(Path(folder), THEME)
+        (theme / "index.html").write_text('<link rel="stylesheet" href="base.css">', encoding="utf-8")
+        (theme / "base.css").write_text("/* <!-- i18n --> */\na { color: red; }\n", encoding="utf-8")
+        built, message = served_page(theme_page.build(theme / "index.html", theme / "i18n", "en")[0], THEME,
+                                     Path(folder))
     names = [name for _, name, _ in expected or []]
     return [(names == ["first.js", "second.js"], f"the file tags of a template are the ones the build reads, past a "
-                                                 f"</ script that ends nothing ({error or names})")]
+                                                 f"</ script that ends nothing ({error or names})"),
+            (built, f"a built page whose sheet holds the i18n mark in a comment is read as served: {message}")]
 
 
 class Tab:
@@ -219,24 +224,26 @@ def pc_pairing_code(srv):
         conn.close()
 
 
+def served_page(html, path, raiz):
+    served, served_error = read_page(html, path, True)
+    expected, error = page_files(raiz, path)
+    if error or served_error:
+        return False, f"{path} and its template are read by the build's grammar ({error or served_error})"
+    left = [f"{kind} {name}" for _, _, kind, name in served.found]
+    lost = first_lost(expected, served.texts)
+    return (not left and expected and not lost,
+            f"{path} has no <script src> and no stylesheet <link> ({left or 'none'}), and the text of its "
+            f"{len(expected)} files inside it, in order ({f'not from {lost} on' if lost else 'all of them'})")
+
+
 def served_pages(srv, role, raiz):
     results = []
     for path in [f"{THEME}?lang={lang}" for lang in LANGUAGES] + [f"{THEME}index.html?lang=en"] + \
             [f"/?lang={lang}" for lang in LANGUAGES]:
         so_mock.confere(srv.base + path)
         with urllib.request.urlopen(srv.base + path, timeout=10) as r:
-            served, served_error = read_page(r.read().decode("utf-8"), path)
-        expected, error = page_files(raiz, path)
-        if error or served_error:
-            results.append((False, f"{role}: {path} and its template are read by the build's grammar "
-                                   f"({error or served_error})"))
-            continue
-        left = [f"{kind} {name}" for _, _, kind, name in served.found]
-        lost = first_lost(expected, served.texts)
-        results.append((not left and expected and not lost,
-                        f"{role}: {path} has no <script src> and no stylesheet <link> ({left or 'none'}), and the "
-                        f"text of its {len(expected)} files inside it, in order "
-                        f"({f'not from {lost} on' if lost else 'all of them'})"))
+            ok, message = served_page(r.read().decode("utf-8"), path, raiz)
+        results.append((ok, f"{role}: {message}"))
     return results
 
 

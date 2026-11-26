@@ -78,7 +78,9 @@ Depois da gramática, a montagem ainda recusa, e o que escrever no lugar:
 - toda tag dentro de um `<select>`, onde um navegador pode descartar ou mover o que a montagem leria (o Chrome de hoje
   guarda ali o `<link>` e o `<style>`; o leitor antigo do `<select>`, que outros navegadores ainda usam, descarta o
   `<link>`): o `<select>` vazio, preenchido pelo código do tema;
-- o `srcdoc`, que escreve uma página num atributo: tirá-lo, e pôr no próprio tema o que ele mostrava.
+- o `srcdoc`, que escreve uma página num atributo: tirá-lo, e pôr no próprio tema o que ele mostrava;
+- a marca `<!-- i18n -->` fora de um comentário só dela (num atributo, num `<style>` ou num `<script>`) ou dentro de um
+  `<svg>` ou de um `<select>`, onde o `<script>` dos textos não entra: a marca sozinha, como comentário, no `<head>`.
 
 O `dev/testa_mock.py` confere cada caso da lista e cada forma fora da gramática (os casos moram no
 `dev/theme_page_cases.py`). O `dev/theme_page_oracle.py`, que o `--tela` do `dev/testa_tudo.py` roda, abre num Chrome
@@ -154,11 +156,13 @@ vez e em minúsculas fora do `<svg>`. O `src` de um script e o `href` de uma fol
 dentro do tema, como `gerado/molduras.css`, ou `/t/<tema>/` seguido de um caminho simples, lido da pasta daquele tema,
 sem `..`, busca, `#`, `%`, `&` nem `\`. Como o servidor põe todo arquivo ligado na página, um script ligado não tem
 `</script`, `<!--` nem `#!` no começo, e uma folha ligada não tem `</style` e passa pela conferência de folha da
-montagem (o `sheet_problem` do `theme_page.py`). Fora disso ela recusa, com o arquivo (e, no `index.html`, a linha e o
-trecho), e sai 3 (não sei julgar): um `@namespace` ou um `@scope` numa folha, mesmo escapado ou num comentário (o
-prefixo do primeiro só vale na folha dele e o escopo do segundo depende do elemento que guarda a folha), um arquivo
-ligado pela página que não está no tema (o navegador recebe um 404) e um arquivo que o servidor põe inline e não está no
-tema (ele não monta a página). Um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta).
+montagem (o `sheet_problem` do `theme_page.py`); um `</ script` ou `</ style` com espaços, num script ou num estilo da
+página ou numa folha ligada, também a faz sair 3, porque o leitor dela fecharia o elemento ali. Fora disso ela recusa,
+com o arquivo (e, no `index.html`, a linha e o trecho), e sai 3 (não sei julgar): um `@namespace` ou um `@scope` numa
+folha, mesmo escapado ou num comentário (o prefixo do primeiro só vale na folha dele e o escopo do segundo depende do
+elemento que guarda a folha), um arquivo ligado pela página que não está no tema (o navegador recebe um 404) e um
+arquivo que o servidor põe inline e não está no tema (ele não monta a página). Um `\r` sozinho conta como fim de
+linha, como no navegador (lido do git ou da pasta).
 Numa folha, entre as regras e nas pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab vertical
 antes de um seletor) é uma folha que não se lê.
 Ela sai 0 quando o head só muda código de lugar:

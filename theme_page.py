@@ -75,15 +75,16 @@ def place(html, i):
 
 
 class Template:
-    def __init__(self, html):
+    def __init__(self, html, built=False):
         self.html, self.found, self.elements, self.texts, self.svg, self.select = html, [], [], [], False, False
         self.marks = set()
         i = 0
         while i < len(html):
             i = self.token(i)
-        if stray := [m.start() for m in re.finditer(re.escape(i18n.MARCA), html) if m.start() not in self.marks]:
+        stray = [m.start() for m in re.finditer(re.escape(i18n.MARCA), html) if m.start() not in self.marks]
+        if stray and not built:
             self.refuse(stray[0], f"the {i18n.MARCA} mark is read only as a comment of its own, where the server puts "
-                                  f"the texts: write it outside any tag, style or script")
+                                  f"the texts: write it outside any tag, <style>, <script>, <svg> or <select>")
 
     def refuse(self, i, message):
         raise ThemePageError(message, place(self.html, i))
@@ -95,7 +96,7 @@ class Template:
                     return self.start_tag(m, i)
                 if kind == "end tag":
                     self.end_tag(m.group(1).lower(), i)
-                if kind == "comment" and m.group(0) == i18n.MARCA:
+                if kind == "comment" and m.group(0) == i18n.MARCA and not self.svg and not self.select:
                     self.marks.add(i)
                 return m.end()
         self.refuse(i, f"{self.html[i:i + 30]!r} is outside the forms the build reads: write {EXPECTED}")
@@ -187,13 +188,13 @@ class Template:
 
 
 @functools.lru_cache(maxsize=16)
-def template(html):
-    return Template(html)
+def template(html, built=False):
+    return Template(html, built)
 
 
-def strict(html):
+def strict(html, built=False):
     try:
-        return template(html), None
+        return template(html, built), None
     except ThemePageError as ex:
         return None, (*ex.at, str(ex))
 
