@@ -118,18 +118,29 @@ def test_late_label(etiquetas_block, verdict_block):
     check(ran.code == 0, f"a {LABEL} label taken off before the verdict lets the entry pass (exit {ran.code})")
 
 
-def dequeue(block, label, pr):
-    return run_step(block, {"GH_TOKEN": "x", "REPO": "ritmelli/ritmelli", "PR": "7", "LABEL": label}, {"pr": pr})
+def dequeue(block, label, pr, refused=False):
+    return run_step(block, {"GH_TOKEN": "x", "REPO": "ritmelli/ritmelli", "PR": "7", "LABEL": label},
+                    {"pr": pr, "mutation_refused": refused})
+
+
+def mutations(ran):
+    return [c for c in ran.asked("api", "graphql") if any("dequeuePullRequest" in a for a in c)]
 
 
 def test_dequeue(block):
-    queued = {"id": "PR_node", "queued": True}
+    queued = {"id": "PR_node", "queued": True, "labels": ["extracao-tema", LABEL]}
     for label in (LABEL, "extracao-tema"):
         ran = dequeue(block, label, queued)
-        mutation = [c for c in ran.asked("api", "graphql") if any("dequeuePullRequest" in a for a in c)]
-        check(ran.code == 0 and len(mutation) == 1 and "id=PR_node" in mutation[0],
+        check(ran.code == 0 and len(mutations(ran)) == 1 and "id=PR_node" in mutations(ran)[0],
               f"the {label} label takes a PR in the merge queue out of it (exit {ran.code})")
-    ran = dequeue(block, LABEL, {"id": "PR_node", "queued": False})
+    ran = dequeue(block, LABEL, {"id": "PR_node", "queued": True, "labels": ["extracao-tema", f"{LABEL}-later"]})
+    check(ran.code == 0 and not mutations(ran) and "no longer on PR 7" in ran.out,
+          f"a late run whose label was already taken off leaves the PR in the queue (exit {ran.code})")
+    ran = dequeue(block, LABEL, queued, refused=True)
+    check(ran.code != 0 and len(mutations(ran)) == 1,
+          f"known failure, {FORK_ISSUE}: a refused dequeue (the read-only token of a fork PR) fails the run and the PR "
+          f"stays in the queue (exit {ran.code})")
+    ran = dequeue(block, LABEL, {"id": "PR_node", "queued": False, "labels": [LABEL]})
     check(ran.code == 0 and len(ran.calls) == 1, f"a PR outside the queue is only looked up (exit {ran.code})")
     ran = dequeue(block, "bug", queued)
     check(ran.code == 0 and not ran.calls, f"another label asks nothing (exit {ran.code})")

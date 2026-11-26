@@ -188,6 +188,22 @@ def test_modes(flows):
         check(found != [], f"the mutant with if: false on the {job} job fails the {mode} mode")
         found = testa_tudo.mode_failures(mutated(flows, lambda f: f[TESTA]["jobs"]["testa-o-pr"]["needs"].remove(job)))
         check(found != [], f"the mutant where the required job does not need {job} fails the {mode} mode")
+    for job, step, why, change in (
+            ("compara", "O PR mexe na tela?", "the id of the areas step removed", lambda s: s.pop("id")),
+            ("compara", "Capture key", "the id of the capture key step removed", lambda s: s.pop("id")),
+            ("compara", "compara", "the compara base taken from the event", lambda s: s["env"].update({"BASE_SHA": "${{ env.BASE }}"})),
+            ("tela", "fitcheck", "the id of the fitcheck step removed", lambda s: s.pop("id")),
+            ("tela", "O PR mexe na tela?", "the id of the areas step changed",
+             lambda s: s.update({"id": "areas-later"}))):
+        found = testa_tudo.mode_failures(mutated(flows, lambda f: change(step_of(f, job, step))))
+        check(found != [], f"the mutant with {why} ({job} job) fails")
+    monta = ".github/workflows/monta.yml"
+    for rel, (job, _, step, _, _) in testa_tudo.PS1_TESTS.items():
+        for why, change in (("if: false on its step", lambda s: s.update({"if": "false"})),
+                            ("if: false on its job", None)):
+            found = testa_tudo.ps1_failures(mutated(flows, lambda f: (
+                change(find_step(f[monta]["jobs"][job], step)) if change else f[monta]["jobs"][job].update({"if": "false"}))))
+            check(found[rel] != [], f"the mutant with {why} fails the {rel} test")
 
 
 def test_shape(flows):
@@ -374,7 +390,7 @@ def test_without_destination(flows):
             if (s.get("run") or "").startswith("instalador\\testa-atualizador.ps1")).update(
             {"run": "Write-Output 'instalador\\testa-atualizador.ps1'"}))
         found = testa_tudo.sem_destino(root=root, files=["instalador/testa-atualizador.ps1"], flows=echo)
-        check(any(f.startswith("instalador/testa-atualizador.ps1 runs nowhere") for f in found),
+        check(any(f.startswith("instalador/testa-atualizador.ps1 (the monta.yml") for f in found),
               f"a .ps1 test only named in a step, not run by it, has no destination ({found})")
     check(testa_tudo.sem_destino() == [], "every test of the repo has a destination, and the testa.yml calls every mode")
     long_tests = set(testa_tudo.LONG_TESTS.values())

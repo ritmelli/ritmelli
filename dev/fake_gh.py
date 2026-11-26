@@ -60,14 +60,16 @@ if args[:2] == ["api", "graphql"]:
     if query.startswith("mutation"):
         if "dequeuePullRequest" not in query or not fields().get("id"):
             sys.exit(f"fake gh: a mutation it does not know: {query}")
+        if conf.get("mutation_refused"):
+            sys.exit("GraphQL: Resource not accessible by integration (dequeuePullRequest)")
         print("{}")
         sys.exit(0)
     pr = conf.get("pr")
     if pr is None:
         sys.exit("HTTP 502")
-    if flag("--jq") != '.data.repository.pullRequest | "\\(.id) \\(.isInMergeQueue)"':
+    if flag("--jq") != '.data.repository.pullRequest | "\\(.id) \\(.isInMergeQueue)", .labels.nodes[].name':
         sys.exit(f"fake gh: a --jq it does not know: {flag('--jq')}")
-    print(f"{pr['id']} {'true' if pr['queued'] else 'false'}")
+    print("\n".join([f"{pr['id']} {'true' if pr['queued'] else 'false'}", *pr.get("labels", [])]))
     sys.exit(0)
 if args[0] != "api":
     sys.exit(f"fake gh: unexpected call: {args}")
@@ -117,8 +119,8 @@ class Ran:
 
 def run_step(run, env, fake=None, cwd=None):
     """Runs the run block with env (on top of the os.environ without the GITHUB_ variables) and the fake gh set by the
-    dict fake: labels (a list, or None when they do not come), comment_fails, runs, queue_fails, pr ({"id", "queued"},
-    or None when it does not come)."""
+    dict fake: labels (a list, or None when they do not come), comment_fails, runs, queue_fails, pr ({"id", "queued",
+    "labels"}, or None when it does not come), mutation_refused."""
     shell = bash()
     if not shell:
         raise RuntimeError("no bash: the Git for Windows one (or bash on the PATH outside Windows) runs the block")

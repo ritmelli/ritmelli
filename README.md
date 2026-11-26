@@ -540,7 +540,7 @@ A new test is named `dev/test_*.py` (in English; the older ones are `dev/testa_*
 the lists in `dev/testa_tudo.py` (`STDLIB`, `COMPLETO`, `LONG_TESTS`, `MICROFONE`, or `PASSOS` for a step of its own in
 `testa.yml`). A test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
 `# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a test of the `git ls-files`, in any folder, that
-runs nowhere (a `.ps1` test runs in a workflow step), on a `manual:` file that runs in the checks, and when a mode of its
+runs nowhere (a `.ps1` test runs through its `PS1_TESTS` row, a `monta.yml` job and step), on a `manual:` file that runs in the checks, and when a mode of its
 `REQUIRED_MODES` leaves the required check (its job, step, command or condition in `testa.yml`).
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see

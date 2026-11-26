@@ -21,11 +21,13 @@ Inno Setup, para o setup de teste do `testa_aparelho_mudo`). No `COMPLETO` e no 
 ou ffmpeg faltando é falha. Todo teste do `git ls-files`, de qualquer pasta (`test*.py`, `testa*.py`,
 `teste*.py` e os `test*.ps1`; todo teste novo, em inglês, nasce `test_*`), tem destino: uma lista, um
 passo próprio do `testa.yml` declarado no `PASSOS` (o `--passo disco` roda o
-`testa_pasta_protegida --disco`), um passo de workflow que roda o `.ps1` ou, quando só roda à mão, o
+`testa_pasta_protegida --disco`), a linha do `PS1_TESTS` para um `.ps1` (o job, o passo, o comando e a
+condição dele no `monta.yml`) ou, quando só roda à mão, o
 comentário `# manual: <comando> precisa de <aparelho>` no topo, antes da docstring (o
 `dev/bumbo.py` tem um). Antes de rodar, o `COMPLETO`, o `--long`, o `--so-stdlib` e o `--microfone`
 falham com o teste sem destino, com o arquivo que tem o `manual:` e roda nos checks, e com o modo do
-`REQUIRED_MODES` que saiu do check exigido: o job, o passo, o comando ou a condição de cada um. O
+`REQUIRED_MODES` que saiu do check exigido: o job, o passo, o comando, o env ou a condição de cada um,
+e o passo que a condição lê pelo `id`. O
 `dev/test_ci_workflow.py` confere o que
 nenhuma execução de PR exercita: o bloco do "Testa o PR" num bash com um `gh` falso (o comentário
 que o GitHub não confirma reprova dizendo isso; no push, os jobs pulados só passam com uma
@@ -57,7 +59,8 @@ decisão do dono) também vale na fila: o passo "Verdict" do "Testa o PR" relê 
 pela API na hora de decidir e reprova a entrada da fila cujo PR a tem ou cujas etiquetas não
 vieram, e também a que tem uma `extracao-tema` que os jobs da tela não viram; no PR ele só avisa
 da `needs-owner` no resumo. Uma dessas duas etiquetas posta num PR que está na fila tira o PR dela
-(o `.github/workflows/dequeue-on-label.yml`). O dono faz a prova, tira a etiqueta e põe o PR na
+(o `.github/workflows/dequeue-on-label.yml`, que confere antes se a etiqueta segue no PR), menos o PR
+de um fork, cujo token só lê (a issue #255). O dono faz a prova, tira a etiqueta e põe o PR na
 fila. O `dev/test_needs_owner.py` roda num bash com um `gh` falso o passo das etiquetas, o
 "Verdict" e o do `dequeue-on-label.yml`, também com a lista que muda entre o job das etiquetas e o
 veredito. A prova de um gatilho do `testa.yml` ou do nome do check exigido se faz no próprio PR

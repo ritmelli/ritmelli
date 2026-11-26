@@ -28,10 +28,14 @@ jobs:
             *) echo "the $LABEL label does not gate the queue"; exit 0 ;;
           esac
           pr=$(gh api graphql -F number="$PR" -f owner="${REPO%%/*}" -f name="${REPO#*/}" \
-            -f query='query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { id isInMergeQueue } } }' \
-            --jq '.data.repository.pullRequest | "\(.id) \(.isInMergeQueue)"')
-          read -r id queued <<< "$pr"
+            -f query='query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { id isInMergeQueue labels(first: 100) { nodes { name } } } } }' \
+            --jq '.data.repository.pullRequest | "\(.id) \(.isInMergeQueue)", .labels.nodes[].name')
+          read -r id queued <<< "$(head -n 1 <<< "$pr")"
           [ -n "$id" ] || { echo "::error::PR $PR did not come from the API"; exit 1; }
+          if ! tail -n +2 <<< "$pr" | grep -Fxq -- "$LABEL"; then
+            echo "the $LABEL label is no longer on PR $PR"
+            exit 0
+          fi
           if [ "$queued" != true ]; then
             echo "PR $PR is not in the merge queue"
             exit 0
