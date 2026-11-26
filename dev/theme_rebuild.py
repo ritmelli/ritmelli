@@ -24,7 +24,7 @@ line. <base> and <head> are git commits (the head defaults to the working tree).
 The tool reads index.html with the build's own reader (theme_page.Template), so a page the build refuses exits 3, with
 the line and the build's reason. On top of it, it exits 3, naming the file, for a file tag whose address is not a plain
 path inside the theme (like gerado/base.css, or /t/<theme>/ and a plain path, read from that theme's folder), a linked
-file that is not in the theme (the browser gets a 404), a script file with a </script or a <!-- or that starts with #!,
+file that is not in the theme (the server does not build the page), a script file with a </script or a <!-- or that starts with #!,
 a sheet file with a </style or that fails the build's sheet check (theme_page.sheet_problem: no @import, and outside the
 page's folder only plain url() values that are not relative), an @import, @namespace or @scope in any sheet (even
 escaped or in a comment), and an <!-- inline-script: --> comment, which servers before theme_page replaced with a file.
@@ -54,8 +54,9 @@ in a headless Chrome, does not compile, or that tree-sitter does not parse, is a
 printed, and the exit is 1."""
 
 CANNOT_JUDGE = 3
-LEFTOVER_MARKER = re.compile(r"<!--\s*inline-script:")
+LEFTOVER_MARKER = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 FILE_KINDS = {"script": "script", "style": "link"}
+EDGE = "\x02"
 PLAIN_PATH = re.compile(r"(?:/t/[A-Za-z0-9_-]+/)?[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+")
 TRAILING_SPACE = re.compile(r"(?<!\\)\s+$")
 CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
@@ -153,7 +154,7 @@ class Page:
                 lines.append(self.blocks[item[1]].header)
             elif item[0] == "close":
                 lines.append(f"[/{self.blocks[item[1]].kind}]")
-            elif (text := MARK.sub("", item[1]).rstrip()).strip():
+            elif (text := MARK.sub("", item[1].replace(EDGE, "")).rstrip()).strip():
                 lines.append(text)
         return lines
 
@@ -231,7 +232,7 @@ def assemble(read, files=None, theme="ritmelli"):
     blocks = [block_of(kind, name, others) for _, _, kind, name, others, _, _ in tags]
     page = html
     for n, (begin, end, kind, name, others, body_start, body_end) in reversed(list(enumerate(tags))):
-        opened, closed = f"\n\x00open {n}\x00\n", "\n\x00close\x00\n"
+        opened, closed = f"{EDGE}\n\x00open {n}\x00\n", f"\n\x00close\x00\n{EDGE}"
         if kind == "i18n":
             page = page[:begin] + opened + closed + page[end:]
             continue
@@ -246,7 +247,7 @@ def assemble(read, files=None, theme="ritmelli"):
             raise Doubt(f"index.html, line {html.count(chr(10), 0, begin) + 1}: {name!r} is not a plain path inside "
                         f"the theme (like gerado/base.css)")
         if (text := fetch(name)) is None:
-            raise Doubt(f"{name}: the page links it, and it is not in the theme (the browser gets a 404)")
+            raise Doubt(f"{name}: the page links it, and it is not in the theme (the server does not build the page)")
         if kind == "script" and closes["script"].search(text):
             raise Doubt(f"{name}: a </script or a <!-- in a script the server puts inline")
         if kind == "script" and text.startswith("#!"):
@@ -466,9 +467,15 @@ def markup(page):
             kind = page.blocks[item[1]].kind
             out.append(((kind, order[kind]), None, page.blocks[item[1]].header))
             order[kind] += 1
-        elif item[0] == "line" and item[2] is None and item[1].strip(HTML_SPACE):
-            out.append((("line", item[1].strip(HTML_SPACE)), None, item[1].strip(HTML_SPACE)))
+        elif item[0] == "line" and item[2] is None and (text := edged(item[1])):
+            out.append((("line", text), None, text))
     return out
+
+
+def edged(line):
+    text = line.strip(EDGE)
+    text = text if line.startswith(EDGE) else text.lstrip(HTML_SPACE)
+    return text if line.endswith(EDGE) else text.rstrip(HTML_SPACE)
 
 
 def compare_files(report, a, b):

@@ -159,7 +159,7 @@ ligado não tem `</script`, `<!--` nem `#!` no começo, e uma folha ligada não 
 folha da montagem (o `sheet_problem` do `theme_page.py`). Fora disso ela recusa, com o arquivo (e, no `index.html`, a
 linha), e sai 3 (não sei julgar): um `@namespace` ou um `@scope` numa folha, mesmo escapado ou num comentário (o
 prefixo do primeiro só vale na folha dele e o escopo do segundo depende do elemento que guarda a folha), um arquivo
-ligado pela página que não está no tema (o navegador recebe um 404) e um comentário `<!-- inline-script: -->`, que os
+ligado pela página que não está no tema (o servidor não monta a página) e um comentário `<!-- inline-script: -->`, que os
 servidores de antes do `theme_page.py` trocavam por um arquivo e o de agora deixa como comentário. Um `\r` sozinho
 conta como fim de linha, como no navegador (lido do git ou da pasta).
 Numa folha, entre as regras e nas pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab vertical
