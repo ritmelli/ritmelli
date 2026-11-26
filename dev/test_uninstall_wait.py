@@ -29,10 +29,11 @@ def uninstall_wait():
 def run(helpers, condition, app):
     code = "\n".join(["$ErrorActionPreference = 'Stop'", *helpers, f"$app = '{app}'", "$pasta = \"$app\\atualizacao\"",
                       f"$cond = {condition}",
+                      "try { $null = Test-Path $pasta; 'direct=ok' } catch { \"direct=$($_.FullyQualifiedErrorId)\" }",
                       "try { \"result=$(& $cond)\" } catch { \"threw=$($_.FullyQualifiedErrorId)\" }"])
     p = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", code], capture_output=True,
                        text=True, encoding="utf-8", errors="replace", timeout=120)
-    return (p.stdout + p.stderr).strip()
+    return (p.stdout + p.stderr).strip().splitlines()
 
 
 def icacls(*args):
@@ -50,7 +51,7 @@ def main():
         app = tmp / "Ritmelli"
         (app / "atualizacao").mkdir(parents=True)
         out = run(helpers, condition, app)
-        check(out == "result=False", f"an update folder still there keeps the wait going ({out})")
+        check(out == ["direct=ok", "result=False"], f"an update folder still there keeps the wait going ({out})")
         icacls(app / "atualizacao", "/deny", f"{ME}:(RA,REA,RD,X)")
         icacls(app, "/deny", f"{ME}:(RD)")
         try:
@@ -58,11 +59,13 @@ def main():
         finally:
             icacls(app, "/reset", "/T", "/Q")
             icacls(app / "atualizacao", "/reset", "/Q")
-        check(out == "result=False", "an update folder whose check is refused (access denied, as while the uninstaller "
-                                     f"deletes it) counts as still there and keeps the wait going ({out})")
+        check(out[:1] == ["direct=ItemExistsUnauthorizedAccessError,Microsoft.PowerShell.Commands.TestPathCommand"],
+              f"the ACL makes a plain Test-Path of the update folder throw access denied, as on CI ({out})")
+        check(out[1:] == ["result=False"], "an update folder whose check is refused (access denied, as while the "
+                                           f"uninstaller deletes it) counts as still there and keeps the wait going ({out})")
         (app / "atualizacao").rmdir()
         out = run(helpers, condition, app)
-        check(out == "result=True", f"with the app and the update folder gone, the wait ends ({out})")
+        check(out[1:] == ["result=True"], f"with the app and the update folder gone, the wait ends ({out})")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
