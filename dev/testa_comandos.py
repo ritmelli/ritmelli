@@ -502,9 +502,10 @@ def voltas(A, E):
         with A.fila_lock:
             A.fila.append({"id": None, "youtube_id": None, "url": None, "title": "quebrada", "qid": "q1", "job": None})
         cmd.pular(A)
-        confere(False, "o pular com a entrada quebrada levanta o erro (a rota responde 500, como antes)")
-    except ValueError:
-        confere(fila(A) == [], "o pular com a entrada quebrada levanta o erro (a rota responde 500, como antes)")
+        confere(False, "a Next to a broken entry raises the queue's play failure (the route answers it as a 500)")
+    except cmd.QueuePlayFailed as ex:
+        confere(fila(A) == [] and isinstance(ex.__cause__, ValueError) and ex.message["key"] == "server.queue.playFailed",
+                f"a Next to a broken entry raises the queue's play failure (the route answers it as a 500) ({ex!r})")
     try:
         cmd.enfileirar(A, {})
         confere(False, "o enfileirar sem disco nem video e a recusa do corpo (400)")
@@ -1348,47 +1349,48 @@ def avanco(A, E):
         toca("d1")
         x, _, _ = cmd.enfileirar(A, {"id": "d2"})
         y, _, _ = cmd.enfileirar(A, {"id": "d3"})
-        s = Segura(A, quebra=quebra)
-        try:
-            t, res = em_thread(cmd.pular, A)
-            s.dentro.wait(5)
+        s, joined, wait = Segura(A, quebra=quebra), threading.Event(), cmd.Proximo.espera
 
+        def joins(self, prazo=None):
+            joined.set()
+            return wait(self, prazo)
+        try:
             async def corre():
-                segundo = asyncio.ensure_future(pede(app, A, "POST", "/api/next"))
-                await asyncio.sleep(0.2)
-                t0 = time.monotonic()
-                st, corpo = await asyncio.wait_for(pede(app, A, "GET", "/api/state"), 2)
-                livre = (st == 200 and time.monotonic() - t0 < 0.5, segundo.done())
-                if invalida is not None:
-                    invalida()
-                s.solta()
-                try:
-                    return livre, await asyncio.wait_for(segundo, 5)
-                except cmd.QueuePlayFailed as ex:
-                    return livre, ex
-            livre, segundo = asyncio.run(corre())
-            t.join(5)
+                off = asyncio.get_running_loop().run_in_executor
+                primeiro = asyncio.ensure_future(pede(app, A, "POST", "/api/next"))
+                await off(None, s.dentro.wait, 5)
+                with mock.patch.object(cmd.Proximo, "espera", joins):
+                    segundo = asyncio.ensure_future(pede(app, A, "POST", "/api/next"))
+                    await off(None, joined.wait, 5)
+                    t0 = time.monotonic()
+                    st, corpo = await asyncio.wait_for(pede(app, A, "GET", "/api/state"), 2)
+                    livre = (st == 200 and time.monotonic() - t0 < 0.5, segundo.done())
+                    if invalida is not None:
+                        invalida()
+                    s.solta()
+                    return livre, await asyncio.wait_for(primeiro, 5), await asyncio.wait_for(segundo, 5)
+            livre, primeiro, segundo = asyncio.run(corre())
         finally:
             s.fim()
-        return x, y, livre, segundo, res
+        return x, y, livre, segundo, primeiro
     x, y, livre, segundo, res = dois_proximos()
     confere(livre == (True, False), f"com o Proximo esperando a reserva de outro, o /api/state responde ({livre})")
-    confere(segundo[0] == 200 and segundo[1]["entry"]["qid"] == x["qid"] and res and res[0] is x
+    confere(segundo[0] == res[0] == 200 and segundo[1]["entry"]["qid"] == res[1]["entry"]["qid"] == x["qid"]
             and no_prato(E) == "d2" and fila(A) == ["d3"],
             f"e os dois Proximos devolvem a mesma entrada: so uma sai da fila ({segundo[0]}, {fila(A)})")
     x, y, livre, segundo, res = dois_proximos(quebra=True)
-    confere(res and isinstance(res[0], ValueError) and type(segundo) is cmd.QueuePlayFailed
-            and segundo.__cause__ is res[0] and fila(A) == ["d3"],
-            f"the broken entry: the Next that waited gets the same error as the first, and it leaves the queue "
-            f"({segundo!r}, {res}, {fila(A)})")
+    confere(segundo[0] == res[0] == 500 and segundo[1] == res[1] and res[1]["error"]["key"] == "server.queue.playFailed"
+            and fila(A) == ["d3"],
+            f"the broken entry: the Next that waited answers the same 500 and message as the first, and it leaves the "
+            f"queue ({segundo}, {res}, {fila(A)})")
     refused = i18n.Recusa("server.queue.empty", "The queue is empty: there's no next record.")
     x, y, livre, segundo, res = dois_proximos(quebra=refused)
-    confere(res == [refused] and type(segundo) is cmd.QueuePlayFailed and segundo.__cause__ is refused
-            and fila(A) == ["d3"],
-            f"an entry refused with a message for the screen: the Next that waited gets the failure, caused by it "
-            f"({segundo!r}, {res}, {fila(A)})")
+    confere(segundo[0] == res[0] == 500 and segundo[1] == res[1]
+            and res[1]["error"]["params"]["reason"] == refused.msg and fila(A) == ["d3"],
+            f"an entry refused with a message for the screen: both Nexts answer the failure, with its message as the "
+            f"reason ({segundo}, {res}, {fila(A)})")
     x, y, livre, segundo, res = dois_proximos(invalida=lambda: E.load(arquivo(A, "d3")))
-    confere(segundo[0] == 409 and res and res[0] is None and no_prato(E) == "d3" and fila(A) == ["d2", "d3"],
+    confere(segundo[0] == res[0] == 409 and no_prato(E) == "d3" and fila(A) == ["d2", "d3"],
             f"o prato trocou no meio: a reserva invalidada nao toca nem tira a entrada, e libera quem esperava "
             f"({segundo[0]}, {no_prato(E)}, {fila(A)})")
 
@@ -1462,7 +1464,8 @@ def avanco(A, E):
             t1.join(5)
             t2.join(5)
         same = (r1 == r2 == [None] and (E.error is None) == then_plays) if stops else (
-            r1 == [refused] and len(r2) == 1 and type(r2[0]) is cmd.QueuePlayFailed and r2[0].__cause__ is refused)
+            len(r1) == len(r2) == 1 and all(type(r[0]) is cmd.QueuePlayFailed and r[0].__cause__ is refused
+                                            for r in (r1, r2)) and r1[0].message == r2[0].message)
         return joined.is_set() and same, (r1, r2, no_prato(E), fila(A), E.error)
     same, seen = joined_next_and_a_play_that_raises(stops=False)
     confere(same and seen[2:4] == ("d1", ["d3"]),
@@ -1605,7 +1608,7 @@ def avanco(A, E):
         for porta in portas:
             porta.set()
         del A.tocar_entrada
-    confere(ficou and r1 and isinstance(r1[0], ValueError) and r2 and r2[0] is x and no_prato(E) == "d2"
+    confere(ficou and r1 and isinstance(r1[0], cmd.QueuePlayFailed) and isinstance(r1[0].__cause__, ValueError) and r2 and r2[0] is x and no_prato(E) == "d2"
             and fila(A) == ["d3"],
             f"a reserva velha que falha deixa na fila a entrada da reserva nova, que toca ({ficou}, {no_prato(E)}, "
             f"{fila(A)})")

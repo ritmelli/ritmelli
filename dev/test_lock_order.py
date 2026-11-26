@@ -208,9 +208,14 @@ def local_assignments(func):
     for n in scope_nodes(func):
         pairs = [(t, n.value) for t in n.targets] if isinstance(n, ast.Assign) else \
             [(n.target, n.value)] if isinstance(n, (ast.AnnAssign, ast.NamedExpr)) and n.value is not None else []
-        for t, v in pairs:
-            for name in [t] if isinstance(t, ast.Name) else [e for e in getattr(t, "elts", []) if isinstance(e, ast.Name)]:
-                assigned.setdefault(name.id, []).append(v)
+        while pairs:
+            t, v = pairs.pop()
+            if isinstance(t, (ast.Tuple, ast.List)) and isinstance(v, (ast.Tuple, ast.List)) and len(t.elts) == len(v.elts):
+                pairs += list(zip(t.elts, v.elts))
+            elif isinstance(t, (ast.Tuple, ast.List)):
+                pairs += [(e, v) for e in t.elts]
+            elif isinstance(t, ast.Name):
+                assigned.setdefault(t.id, []).append(v)
     return assigned
 
 
@@ -228,22 +233,43 @@ def value_parts(value):
 
 def held_callables(func, exprs):
     local = {n.name: n for n in scope_nodes(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    assigned, todo, names, found, calls = local_assignments(func), list(exprs), set(), [], []
+    assigned, todo, names, found, calls, refs = local_assignments(func), list(exprs), set(), [], [], []
     while todo:
         value = todo.pop()
-        found += [m for m in ast.walk(value) if isinstance(m, ast.Lambda)]
-        for part in value_parts(value):
-            if isinstance(part, ast.Call):
+        for part in map(by_getattr, value_parts(value)):
+            if isinstance(part, ast.Lambda):
+                found.append(part)
+            elif isinstance(part, ast.Call):
                 calls.append(part)
+            elif isinstance(part, ast.Attribute):
+                refs.append(part)
             elif isinstance(part, ast.Name) and part.id not in names:
                 names.add(part.id)
                 found += [local[part.id]] if part.id in local else []
                 todo += assigned.get(part.id, [])
-    return found, calls
+    return found, calls, refs
 
 
-def returned_callables(func):
-    return held_callables(func, [n.value for n in scope_nodes(func) if isinstance(n, ast.Return) and n.value])[0]
+def returns_of(func):
+    return [n.value for n in scope_nodes(func) if isinstance(n, ast.Return) and n.value]
+
+
+def own_calls(func):
+    todo, out = list(ast.iter_child_nodes(func)), []
+    while todo:
+        n = todo.pop()
+        if isinstance(n, ast.Call):
+            out.append(n)
+        if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            todo.extend(ast.iter_child_nodes(n))
+    return out
+
+
+def binds(func, name):
+    a = func.args
+    params = [p.arg for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if p]
+    return name in params or name in local_assignments(func) or any(
+        isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name for n in scope_nodes(func))
 
 
 def by_getattr(node):
@@ -436,7 +462,7 @@ class Walker(ast.NodeVisitor):
     def __init__(self, name, order, before, table, summary):
         self.name, self.order, self.before, self.table, self.summary = name, order, before, table, summary
         self.cls, self.held, self.bad, self.used, self.nested, self.followed = None, [], [], set(), 0, 0
-        self.callbacks, self.walked, self.scopes = {}, 0, []
+        self.callbacks, self.walked, self.scopes, self.slot_checked = {}, 0, [], set()
 
     def take(self, lock, line, waits=True):
         self.used.add(lock)
@@ -495,33 +521,53 @@ class Walker(ast.NodeVisitor):
             self.followed += 1
             self.against_held(self.local_locks(nested), node, nested.name)
 
-    def visit_Module(self, node):
+    def premark(self, func, scopes):
+        outer, self.scopes = self.scopes, scopes
+        self.mark_callbacks(func)
+        for n in scope_nodes(func):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                self.premark(n, scopes + [func])
+        self.scopes = outer
+
+    def premark_module(self, node):
         for top in node.body:
             for cls, f in ([(top.name, f) for f in top.body] if isinstance(top, ast.ClassDef) else [(None, top)]):
                 if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     outer, self.cls = self.cls, cls
-                    self.mark_callbacks(f)
+                    self.premark(f, [])
                     self.cls = outer
-        self.generic_visit(node)
 
     def visit_ClassDef(self, node):
         outer, self.cls = self.cls, node.name
         self.generic_visit(node)
         self.cls = outer
 
+    def methods(self, refs, module, cls):
+        return [k for ref in refs for k in resolve(self.table, ast.Call(func=ref, args=[], keywords=[]), module, cls)]
+
     def callables(self, func, arg):
         if isinstance(arg, ast.Lambda):
-            return [arg]
-        if not isinstance(arg, ast.Name):
-            return []
-        found, calls = held_callables(func, [arg])
-        return found + [m for call in calls for key in resolve(self.table, call, self.name, self.cls)
-                        for m in returned_callables(self.table[key])]
+            return [arg], []
+        if isinstance(arg, ast.Name):
+            func = next((f for f in reversed(self.scopes + [func]) if binds(f, arg.id)), func)
+        found, calls, refs = held_callables(func, [arg])
+        keys = self.methods(refs, self.name, self.cls)
+        for key in (k for call in calls for k in resolve(self.table, call, self.name, self.cls)):
+            more, _, back = held_callables(self.table[key], returns_of(self.table[key]))
+            found, keys = found + more, keys + self.methods(back, key[0], key[1])
+        return found, keys
+
+    def against_slot(self, locks, keys, node):
+        outer, self.held = self.held, list(locks)
+        for key in keys:
+            if (id(node), key) not in self.slot_checked:
+                self.slot_checked.add((id(node), key))
+                self.followed += 1
+                self.against_held(self.summary[key], node, f"{key[1] + '.' if key[1] else ''}{key[2]}")
+        self.held = outer
 
     def mark_callbacks(self, func):
-        for call in ast.walk(func):
-            if not isinstance(call, ast.Call):
-                continue
+        for call in own_calls(func):
             for key in resolve(self.table, call, self.name, self.cls):
                 slots = dict(CALLBACKS.get(key, {}))
                 if key[0] == "engine.py":
@@ -532,8 +578,10 @@ class Walker(ast.NodeVisitor):
                 args = list(enumerate(call.args)) + [(k.arg, k.value) for k in call.keywords]
                 for slot, arg in args:
                     if slot in slots:
-                        for target in self.callables(func, arg):
+                        targets, keys = self.callables(func, arg)
+                        for target in targets:
                             self.callbacks[id(target)] = slots[slot]
+                        self.against_slot(slots[slot], keys, call)
 
     def visit_FunctionDef(self, node):
         self.walked += id(node) in self.callbacks
@@ -780,8 +828,12 @@ def scan(sources, order, before):
     table = function_table(trees)
     summary = summaries(table)
     bad, used, nested, followed, walked = [], set(), 0, 0, 0
+    walkers, callbacks = {name: Walker(name, order, before, table, summary) for name in trees}, {}
     for name, tree in trees.items():
-        w = Walker(name, order, before, table, summary)
+        walkers[name].callbacks = callbacks
+        walkers[name].premark_module(tree)
+    for name, tree in trees.items():
+        w = walkers[name]
         w.visit(tree)
         bad += w.bad
         used |= w.used
@@ -1153,6 +1205,24 @@ def main():
     check(chained != locked and any("lib_lock" in b for b in bad),
           f"and through a local name the builder passes on its way, loaded = self.fonte_de(seen); novo = loaded "
           f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    inline = sources["server.py"].replace(
+        'self.engine.trocar_fonte(tr, lambda: dict(item, path=str(LIB / item["file"])))',
+        'self.engine.trocar_fonte(tr, (lambda: self.lib.update(item["id"]) and dict(item)) or None)', 1)
+    bad, *_ = scan(dict(sources, **{"server.py": inline}), order, before)
+    check(inline != sources["server.py"] and any("lib_lock" in b for b in bad),
+          f"and with the download's builder passed inline behind a fallback, (lambda: ...) or None "
+          f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    direct = locked.replace("e.preparar(novo, ", "e.preparar(self.fonte_de(seen), ", 1)
+    bad, *_ = scan(dict(sources, **{"server.py": direct}), order, before)
+    check(direct != locked and any("calls Library.update" in b for b in bad),
+          f"and with the factory's call passed directly, e.preparar(self.fonte_de(seen), ...) "
+          f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    inner = locked.replace("            novo = self.fonte_de(seen)\n", "", 1).replace(
+        "            def publica(depois):\n", "            def publica(depois):\n                novo = self.fonte_de(seen)\n", 1)
+    bad, *_ = scan(dict(sources, **{"server.py": inner}), order, before)
+    check(inner != locked and any("calls Library.update" in b for b in bad),
+          f"and with the factory called inside the nested function that hands its builder on "
+          f"({[b for b in bad if 'lib_lock' in b][:1]})")
     ternary = locked.replace("novo = self.fonte_de(seen)\n", "novo = self.fonte_de(seen) if seen else None\n", 1)
     bad, *_ = scan(dict(sources, **{"server.py": ternary}), order, before)
     check(ternary != locked and any("lib_lock" in b for b in bad),
@@ -1179,6 +1249,37 @@ def main():
     check(shadowed != sources["server.py"] and not any("lib_lock" in b for b in bad),
           f"a nested function's own builder, under the same name, is not taken for the one fonte_de returns "
           f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    helper = ('    def _locked_builder(self):\n        self.lib.update("x")\n        return {}\n\n'
+              '    # passagem para a proxima (a transicao de DJ) --------------------------\n')
+    with_helper = sources["server.py"].replace(
+        "    # passagem para a proxima (a transicao de DJ) --------------------------\n", helper, 1)
+    for what, old, new in (
+            ("the change passed to change_queue", "        self.change_queue(swap_entries)\n",
+             "        self.change_queue(self.lib.update)\n"),
+            ("the download's builder", '                self.engine.trocar_fonte(tr, lambda: dict(item, path=str(LIB / item["file"])))\n',
+             "                self.engine.trocar_fonte(tr, self._locked_builder)\n"),
+            ("the builder fonte_de returns",
+             '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',
+             "            return self._locked_builder\n")):
+        method = with_helper.replace(old, new, 1)
+        bad, *_ = scan(dict(sources, **{"server.py": method}), order, before)
+        check(with_helper != sources["server.py"] and method != with_helper and any("lib_lock" in b for b in bad),
+              f"with {what} as a bound method that takes the shelf's lock, the order check fails "
+              f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    closure = locked.replace("                if self.fila and self.fila[0] is x and x == seen:\n",
+                             "                novo = dict(seen)\n                if self.fila and self.fila[0] is x and x == seen:\n", 1)
+    bad, *_ = scan(dict(sources, **{"server.py": closure}), order, before)
+    check(closure != locked and not any("lib_lock" in b for b in bad),
+          f"a nested function's own novo is the one its call passes, not the outer function's "
+          f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    for what, form, flags in (("in the slot it returns", "            builder, _ = build, (lambda: None)\n", True),
+                              ("in the slot it does not return",
+                               "            builder, _ = (lambda: {}), build\n", False)):
+        paired = named.replace("            return build\n", form + "            return builder\n", 1)
+        bad, *_ = scan(dict(sources, **{"server.py": paired}), order, before)
+        check(paired != named and any("lib_lock" in b for b in bad) == flags,
+              f"a tuple unpacking pairs each name with its value: the shelf-locking builder {what} is "
+              f"{'flagged' if flags else 'not flagged'} ({[b for b in bad if 'lib_lock' in b][:1]})")
     for what, form in (("an annotated name", "            builder: object = build\n"),
                        ("a name unpacked from a tuple", "            builder, _ = build, None\n")):
         held = named.replace("            return build\n", form + "            return builder\n", 1)

@@ -72,8 +72,15 @@ class Reserva:
         return self.entrada
 
 
+def play_failed(x, ex):
+    return i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
+                    title=(x or {}).get("title") or "?", reason=i18n.motivo(ex, 120))
+
+
 class QueuePlayFailed(RuntimeError):
-    pass
+    def __init__(self, message):
+        super().__init__(message["text"])
+        self.message = message
 
 
 class Proximo(Reserva):
@@ -95,7 +102,7 @@ class Proximo(Reserva):
         if not self.feita.wait(AVANCO_ESPERA_S if prazo is None else prazo):
             return None
         if self.error is not None:
-            raise QueuePlayFailed(str(self.error)) from self.error
+            raise QueuePlayFailed(play_failed(self.r and self.r.x, self.error)) from self.error
         return self.entrada
 
     def liga(self, r):
@@ -359,10 +366,11 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
             if outra is None or outra is r or outra.x is not r.x:  # a entrada de outra reserva em curso fica
                 A.remove_if_queued(r.x)
             A.release_reservation(r, None, None if na_tela else ex)
+        warning = play_failed(r.x, ex)
         if not na_tela and (grupo is None or r.error is ex):
+            if pular:
+                raise QueuePlayFailed(warning) from ex
             raise
-        warning = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
-                         title=r.x.get("title") or "?", reason=i18n.motivo(ex, 120))
         if na_tela:
             E.set_error(warning)
             return r.x

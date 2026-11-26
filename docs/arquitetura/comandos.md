@@ -129,10 +129,12 @@ que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock
 `change_queue`, do `close_switches` e do `concilia` (a `fila_lock` e o `_qlock`), a do `with_engine` (a `fila_lock` e o
 `_lock`), o `pode` dos métodos do motor e o construtor do disco que o `trocar_fonte`, o `preparar` e o `load` (e o
 `_troca`, que o passa ao `load`) recebem (o `_lock` e o `_qlock`; também o que uma função devolve, uma lambda ou uma
-função local, como o do `fonte_de`, mesmo atrás de um `or`, de um condicional ou de um nome local que a guarde), e
-as funções locais que elas chamam também; e confere essas travas no código que roda cada função (o
-`change_queue` chama a dele dentro do `_qlock`, e cada método público do motor que recebe um `pode` o roda sob o `_lock`
-e o `_qlock`, também pelo `_restart`; o `trocar_fonte`, o `preparar` e o `load` chamam o construtor sob as duas e
+função local, como o do `fonte_de`, mesmo atrás de um `or`, de um condicional ou de um nome local que a guarde, lido
+no escopo da própria função; o valor passado direto, também atrás de um `or`; e o método passado ou devolvido no
+lugar dela, como `self.x` ou `self.lib.x`, conferido ali contra as travas da vaga; as de todos os módulos marcadas
+antes de andar qualquer um), e as funções locais que elas chamam também; e confere essas travas no código que roda
+cada função (o `change_queue` chama a dele dentro do `_qlock`, e cada método público do motor que recebe um `pode` o roda sob
+o `_lock` e o `_qlock`, também pelo `_restart`; o `trocar_fonte`, o `preparar` e o `load` chamam o construtor sob as duas e
 publicam a própria chamada dele ali, não o que montaram na entrada), e que quem chama o `change_queue`, o
 `close_switches` e o `concilia` tem a `fila_lock` na mão, subindo pelas chamadas até o ponto de entrada (a thread, a
 rota); uma função local ou um `lambda` feitos com uma trava na mão não contam com ela (rodam depois, noutra thread),

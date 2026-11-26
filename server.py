@@ -1501,9 +1501,8 @@ class App:
     # passagem para a proxima (a transicao de DJ) --------------------------
     def fonte_de(self, x):
         """The queue entry's record for the engine's second deck, or None when the passage does not apply (the
-        _vigia_fila plays it at the end): from the shelf, a builder of the file's record; the Automatico's similar
-        one, the stream; one still downloading, the running download's stream. An entry with no download waits for
-        the end."""
+        _vigia_fila plays it at the end, as an entry with no download): from the shelf, a builder of the file's record;
+        the Automatico's similar one, the stream; one still downloading, the running download's stream."""
         j = self.jobs.get(x.get("job") or "")
         it = (self.lib.get(x["id"]) if x.get("id") else None) or \
              (self.lib.by_youtube(x["youtube_id"]) if x.get("youtube_id") else None) or \
@@ -2152,10 +2151,11 @@ def build(app_state):
     # disco ou toca o de antes
     @r.post("/api/next")
     async def next_(_):
-        x = await loop_().run_in_executor(None, cmd.pular, A)  # pode esperar a reserva de outro avanco: fora do laco
-        if not x:
-            return j_err(i18n.msg("server.queue.empty", "The queue is empty: there's no next record."), 409)
-        return j_ok(entry=x)
+        try:
+            x = await loop_().run_in_executor(None, cmd.pular, A)  # pode esperar a reserva de outro avanco: fora do laco
+        except cmd.QueuePlayFailed as ex:
+            return j_err(ex.message, 500)
+        return j_ok(entry=x) if x else j_err(i18n.msg("server.queue.empty", "The queue is empty: there's no next record."), 409)
 
     @r.post("/api/prev")
     async def prev(_):
