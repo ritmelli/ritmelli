@@ -22,7 +22,8 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   precisa do par no `microfone/apo/voz.h` (o `dev/testa_voz.py` falha sem ele).
 - Texto novo da interface nas duas línguas: `themes/ritmelli/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, com as
   mesmas chaves na mesma ordem, e os da galeria em `gallery/i18n/`; a chave `server.*` de cada `i18n.msg` e
-  `i18n.Recusa` do servidor existe em todo tema, com os mesmos parâmetros (o `testa_i18n` confere as duas coisas).
+  `i18n.Recusa` do servidor existe em todo tema com `i18n/`, com os mesmos parâmetros (o `testa_i18n` confere as duas
+  coisas).
 - Rota nova do `server.py` entra na tabela do `permissao.py`, que o `guard` confere: rota fora da tabela é só do PC, e o
   `dev/testa_mock.py` falha enquanto ela não entra.
 - As travas do servidor se pegam numa ordem só: a de [comandos.md](docs/arquitetura/comandos.md#as-travas).
@@ -35,9 +36,10 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   `dev/garden.py`.
 - O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`) só passa no "Testa o PR" com uma execução aprovada
   do "Monta o instalador" (`monta.yml`) no head: rode-o na branch (o "Verdict", provado pelo `dev/test_ci_workflow.py`).
-  O `dev/test_monta_contract.py` exige, em toda montagem, os artefatos `Ritmelli-<versão>` e `ritmelli-exe-<versão>` e
-  um job mostrado como `testa`, `testa-atualizador`, `testa-migracao` e `testa-parcial` (ou com o sufixo de matriz,
-  `nome (...)`), que são o que a publicação procura ([dev.md](docs/arquitetura/dev.md#a-montagem)).
+  O `dev/test_monta_contract.py` exige os artefatos `Ritmelli-<versão>` e `ritmelli-exe-<versão>` em toda montagem, um
+  job mostrado como `testa`, `testa-atualizador` e `testa-migracao` (ou com o sufixo de matriz, `nome (...)`) na
+  montagem com a versão anterior, e o `testa-parcial` na que tem parcial: são o que a publicação procura
+  ([dev.md](docs/arquitetura/dev.md#a-montagem)).
 
 ## O mapa: área, arquivos e teste
 
