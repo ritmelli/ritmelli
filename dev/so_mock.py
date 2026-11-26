@@ -244,27 +244,29 @@ class _Job:
     def end(self, seconds=10.0):
         if not self.job:
             return
+        handles = []
         try:
-            closed = _Limits()
-            closed.BasicLimitInformation.LimitFlags = 0x2000 | 0x8
-            closed.BasicLimitInformation.ActiveProcessLimit = 1
-            if not self.k.SetInformationJobObject(self.job, 9, ctypes.byref(closed), ctypes.sizeof(closed)):
-                raise Recusa(f"the test server job did not close to new processes (error {ctypes.get_last_error()})")
-            handles = self.members()
             try:
+                closed = _Limits()
+                closed.BasicLimitInformation.LimitFlags = 0x2000 | 0x8
+                closed.BasicLimitInformation.ActiveProcessLimit = 1
+                if not self.k.SetInformationJobObject(self.job, 9, ctypes.byref(closed), ctypes.sizeof(closed)):
+                    raise Recusa(f"the test server job did not close to new processes (error "
+                                 f"{ctypes.get_last_error()})")
+                handles = self.members()
+            finally:
                 if not self.k.TerminateJobObject(self.job, 1):
                     raise Recusa(f"the test server job did not end (error {ctypes.get_last_error()})")
-                fim = time.monotonic() + seconds
-                for handle in handles:
-                    left = max(0, int((fim - time.monotonic()) * 1000))
-                    if self.k.WaitForSingleObject(wintypes.HANDLE(handle), left) != 0:
-                        raise Recusa(f"the test server processes did not exit within {seconds:g} s")
-            finally:
-                for handle in handles:
-                    self.k.CloseHandle(wintypes.HANDLE(handle))
+            fim = time.monotonic() + seconds
+            for handle in handles:
+                left = max(0, int((fim - time.monotonic()) * 1000))
+                if self.k.WaitForSingleObject(wintypes.HANDLE(handle), left) != 0:
+                    raise Recusa(f"the test server processes did not exit within {seconds:g} s")
             if self.active():
                 raise Recusa("the test server job still has processes after it ended")
         finally:
+            for handle in handles:
+                self.k.CloseHandle(wintypes.HANDLE(handle))
             self.close()
 
     def close(self):
@@ -292,10 +294,12 @@ def start_job(cmd, **popen):
         if not started:
             try:
                 _kernel().TerminateProcess(wintypes.HANDLE(int(handle)), 1)
-                proc.wait(10)
             finally:
-                if job:
-                    job.close()
+                try:
+                    if job:
+                        job.close()
+                finally:
+                    proc.wait(10)
     return proc, job
 
 

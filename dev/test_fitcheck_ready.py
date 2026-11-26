@@ -60,7 +60,7 @@ async def wait_then_kill_chrome(*args, **kwargs):
 subprocess.Popen, fitcheck.wait_ready = popen, wait_then_kill_chrome
 fitcheck.PRONTA = sys.argv[2]
 fitcheck.PRONTA_S = 2.0
-sys.argv = ["fitcheck.py", sys.argv[3], "--sizes", "390x844"]
+sys.argv = ["fitcheck.py", sys.argv[3], "--sizes", "390x844,768x1024"]
 fitcheck.main()
 """
 LATE_S = fitcheck.AVISO_ESPERA_S + 2
@@ -193,6 +193,12 @@ def probe_past_the_deadline():
           "a probe that answers open before the deadline counts")
     check(asyncio.run(fitcheck.wait_notice(notice_open, time.monotonic() - 0.1)) is False,
           "a deadline already past does not probe")
+
+    async def gone(method, **params):
+        raise ConnectionError("the DevTools connection ended (closed)")
+
+    check(asyncio.run(fitcheck.wait_notice(gone, time.monotonic() + 1)) is None,
+          "a Chrome that goes away during the wait for the notice is told apart from a notice that did not open")
 
     async def open_but_late(method, **params):
         end = time.monotonic() + 0.4
@@ -359,10 +365,12 @@ def fitcheck_timeout_then_chrome_gone():
     verdict = next((i for i, line in enumerate(lines) if line.startswith("FALHA")
                     and "390x844: the theme was not ready in 2 s" in line), None)
     console = next((i for i, line in enumerate(lines) if line.startswith("  console: ") and CONSOLE_MARK in line), None)
+    gone = next((i for i, line in enumerate(lines) if line.startswith("FALHA")
+                 and "768x1024: the Chrome DevTools connection closed" in line), None)
     check(p.returncode == 1 and verdict is not None and console is not None and console < verdict
-          and "Traceback" not in out,
+          and gone is not None and gone > verdict and "Traceback" not in out,
           f"the fitcheck, its Chrome gone right after a timeout, still gives the shared verdict and what it had "
-          f"collected, with no traceback (exit {p.returncode})")
+          f"collected, then says the Chrome went away at the next size, with no traceback (exit {p.returncode})")
 
 
 def timeout_then_disconnect():
