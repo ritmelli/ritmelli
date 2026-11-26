@@ -201,15 +201,33 @@ class _Job:
 
     def members(self):
         listed = _Members()
-        self.k.QueryInformationJobObject(self.job, 3, ctypes.byref(listed), ctypes.sizeof(listed), None)
-        found = []
-        for pid in listed.ProcessIdList[:listed.NumberOfProcessIdsInList]:
-            handle = self.k.OpenProcess(0x00100000 | 0x1000, False, pid)
-            inside = wintypes.BOOL()
-            if handle and self.k.IsProcessInJob(wintypes.HANDLE(handle), self.job, ctypes.byref(inside)) and inside:
-                found.append(handle)
-            elif handle:
-                self.k.CloseHandle(wintypes.HANDLE(handle))
+        if not self.k.QueryInformationJobObject(self.job, 3, ctypes.byref(listed), ctypes.sizeof(listed), None):
+            raise Recusa(f"the test server job did not list its processes (error {ctypes.get_last_error()})")
+        if listed.NumberOfProcessIdsInList < listed.NumberOfAssignedProcesses:
+            raise Recusa(f"the test server job has {listed.NumberOfAssignedProcesses} processes, more than it lists")
+        found, complete = [], False
+        try:
+            for pid in listed.ProcessIdList[:listed.NumberOfProcessIdsInList]:
+                handle = self.k.OpenProcess(0x00100000 | 0x1000, False, pid)
+                if not handle:
+                    error = ctypes.get_last_error()
+                    if error != 87:
+                        raise Recusa(f"a process of the test server job could not be opened (error {error})")
+                    continue
+                inside = wintypes.BOOL()
+                if not self.k.IsProcessInJob(wintypes.HANDLE(handle), self.job, ctypes.byref(inside)):
+                    error = ctypes.get_last_error()
+                    self.k.CloseHandle(wintypes.HANDLE(handle))
+                    raise Recusa(f"a process of the test server job could not be checked (error {error})")
+                if inside:
+                    found.append(handle)
+                else:
+                    self.k.CloseHandle(wintypes.HANDLE(handle))
+            complete = True
+        finally:
+            if not complete:
+                for handle in found:
+                    self.k.CloseHandle(wintypes.HANDLE(handle))
         return found
 
     def left_after(self, seconds):
@@ -263,18 +281,21 @@ def start_job(cmd, **popen):
     handle = getattr(proc, "_handle", None)
     if handle is None:
         return proc, None
-    job = None
+    job, started = None, False
     try:
         job = _Job(handle)
         status = _resume(handle) & 0xFFFFFFFF
         if status:
             raise Recusa(f"the test server was not resumed (NTSTATUS {status:#010x})")
-    except BaseException:
-        _kernel().TerminateProcess(wintypes.HANDLE(int(handle)), 1)
-        proc.wait(10)
-        if job:
-            job.close()
-        raise
+        started = True
+    finally:
+        if not started:
+            try:
+                _kernel().TerminateProcess(wintypes.HANDLE(int(handle)), 1)
+                proc.wait(10)
+            finally:
+                if job:
+                    job.close()
     return proc, job
 
 
@@ -304,38 +325,41 @@ class Filho:
             return json.load(r)
 
     def mata(self):
-        if self.srv.poll() is None:
-            self.srv.kill()
-        self.srv.wait()
-        if self.job:
-            self.job.end()
-
-    def encerra(self, espera=10):
-        if self.srv.stdin:
-            live = self.srv.poll() is None
-            self.srv.stdin.close()
-            try:
-                code = self.srv.wait(espera)
-            except subprocess.TimeoutExpired:
-                self.mata()
-                raise Recusa(f"the test server did not stop within {espera:g} s of its stdin closing: killed with the "
-                             "processes it started") from None
-            left = self.job.left_after(espera) if self.job else 0
+        try:
+            if self.srv.poll() is None:
+                self.srv.kill()
+            self.srv.wait()
+        finally:
             if self.job:
                 self.job.end()
-            if live and code != 0:
-                raise Recusa(f"the test server exited with code {code} when its stdin closed, not by its own stop")
-            if left:
-                raise Recusa(f"the test server stopped and left {left} process(es) it started running: ended")
-            return
+
+    def encerra(self, espera=10):
         try:
-            self.api("POST", "/api/shutdown", espera=5)
-            self.srv.wait(espera)
-        except (Recusa, OSError, ValueError, subprocess.TimeoutExpired):
+            if self.srv.stdin:
+                self._stop_by_stdin(espera)
+                return
+            try:
+                self.api("POST", "/api/shutdown", espera=5)
+                self.srv.wait(espera)
+            except (Recusa, OSError, ValueError, subprocess.TimeoutExpired):
+                self.mata()
+        finally:
+            if self.job:
+                self.job.end()
+
+    def _stop_by_stdin(self, espera):
+        self.srv.stdin.close()
+        try:
+            code = self.srv.wait(espera)
+        except subprocess.TimeoutExpired:
             self.mata()
-            return
-        if self.job:
-            self.job.end()
+            raise Recusa(f"the test server did not stop within {espera:g} s of its stdin closing: killed with the "
+                         "processes it started") from None
+        left = self.job.left_after(espera) if self.job else 0
+        if code != 0:
+            raise Recusa(f"the test server exited with code {code}, not by its own stop")
+        if left:
+            raise Recusa(f"the test server stopped and left {left} process(es) it started running: ended")
 
 
 def sobe(cmd, porta, limite=30.0, stop_flag=True, **popen):

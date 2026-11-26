@@ -230,8 +230,29 @@ def server_whose_child_holds_the_track(kind, expected):
           f"holds the track after ({held}, {refused}, {left})")
 
 
+def resume_that_fails():
+    real_resume, real_popen, started = so_mock._resume, so_mock.subprocess.Popen, []
+
+    def popen(*args, **kwargs):
+        started.append(real_popen(*args, **kwargs))
+        return started[-1]
+
+    so_mock._resume, so_mock.subprocess.Popen = (lambda process: 0xC0000001), popen
+    try:
+        so_mock.start_job([sys.executable, "-c", "print('never runs')"], stdout=subprocess.PIPE, text=True)
+        refused = None
+    except so_mock.Recusa as ex:
+        refused = str(ex)
+    finally:
+        so_mock._resume, so_mock.subprocess.Popen = real_resume, real_popen
+    ended = len(started) == 1 and started[0].poll() is not None
+    check(refused is not None and "not resumed" in refused and ended,
+          f"a server that cannot be resumed is refused and ended, with its job closed ({refused}, ended {ended})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    resume_that_fails()
     refusals_before_start()
     flag_only_for_a_server_that_knows_it()
     http_shutdown_with_the_pipe_open()

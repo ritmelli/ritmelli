@@ -111,3 +111,6 @@ jobs:
           $code = $LASTEXITCODE
           git checkout HEAD -- dev/fitcheck.py
           exit $code
+      - name: Mutant that checks the page's origin before the verdict; the run() test must fail
+        if: always()
+        run: python experiment/run_order_mutant.py

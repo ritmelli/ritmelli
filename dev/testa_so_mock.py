@@ -121,10 +121,12 @@ class FakeStdin:
 
 
 class FakeJob:
-    def __init__(self, left=0):
-        self.left, self.ended = left, False
+    def __init__(self, left=0, query_fails=False):
+        self.left, self.ended, self.query_fails = left, False, query_fails
 
     def left_after(self, seconds):
+        if self.query_fails:
+            raise so_mock.Recusa("the test server job did not list its processes (error 5)")
         return self.left
 
     def end(self, seconds=10.0):
@@ -266,9 +268,10 @@ def child(srv):
     dead = FakeChild(alive=False)
     f = so_mock.Filho(dead, srv.port)
     n = len(srv.requests)
-    f.encerra(espera=1)
-    check(srv.requests[n:] == [] and dead.returncode == 1 and not dead.killed,
-          f"the child already exited: encerra sends nothing and kills nothing ({srv.requests[n:]})")
+    msg = refused(f.encerra, espera=1)
+    check(srv.requests[n:] == [] and not dead.killed and msg is not None and "code 1" in msg,
+          f"a child that already crashed before the stop: encerra sends nothing, kills nothing and fails saying so "
+          f"({srv.requests[n:]}, {msg})")
     alive = FakeChild()
     f = so_mock.Filho(alive, srv.port)
     n = len(srv.requests)
@@ -288,6 +291,21 @@ def child(srv):
     msg = refused(so_mock.Filho(FakeChild(), srv.port, job).encerra, espera=1)
     check(job.ended and msg is not None and "left 2" in msg,
           f"a server that stops but leaves processes running fails the stop, with them ended ({msg})")
+    job = FakeJob(query_fails=True)
+    msg = refused(so_mock.Filho(FakeChild(), srv.port, job).encerra, espera=1)
+    check(job.ended and msg is not None and "did not list" in msg,
+          f"a job query that fails during the stop still ends the job, and the stop fails saying so ({msg})")
+    class KillFails(FakeChild):
+        def kill(self):
+            raise OSError("access denied")
+
+    job = FakeJob()
+    try:
+        so_mock.Filho(KillFails(), srv.port, job).mata()
+        raised = None
+    except OSError as ex:
+        raised = ex
+    check(job.ended and raised is not None, "a kill that fails still ends the job, and the error comes out")
     job = FakeJob()
     hung = FakeChild(stops_on_eof=False)
     refused(so_mock.Filho(hung, srv.port, job).encerra, espera=1)
