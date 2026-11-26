@@ -28,11 +28,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\ganho" | Out-Null
           for ($i = 1; $i -le 4; $i++) {
-            $env:GANHO_DUMP = "$env:RUNNER_TEMP\ganhoun-$i.json"
+            $env:GANHO_DUMP = "$env:RUNNER_TEMP\ganho
+un-$i.json"
             $t0 = Get-Date
-            python dev/testa_tudo.py --without-long > "$env:RUNNER_TEMP\ganhoun-$i.log" 2>&1
+            python dev/testa_tudo.py --without-long > "$env:RUNNER_TEMP\ganho
+un-$i.log" 2>&1
             "suite $i : exit $LASTEXITCODE in $([int]((Get-Date) - $t0).TotalSeconds) s"
-            Select-String -Path "$env:RUNNER_TEMP\ganhoun-$i.log" -Pattern 'FALHOU|FAIL|falhou' | Select-Object -First 8
+            Select-String -Path "$env:RUNNER_TEMP\ganho
+un-$i.log" -Pattern 'FALHOU|FAIL|falhou' | Select-Object -First 8
           }
       - name: Spread
         if: always()
