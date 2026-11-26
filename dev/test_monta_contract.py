@@ -21,7 +21,7 @@ INPUTS = ("notas", "notas_en")
 REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial")
 SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
-LITERAL_SETUP = re.compile(r"Ritmelli-[0-9][0-9.]*")
+OTHER_VERSION = re.compile(r"Ritmelli-(?:[0-9.]|\$\{\{[^}]*\}\})+")
 
 failures = []
 
@@ -45,6 +45,10 @@ def switched_off(condition):
     return condition is False or re.fullmatch(r"(\$\{\{)?\s*false\s*(\}\})?", str(condition).strip(), re.I) is not None
 
 
+def mark(name, versions):
+    return EXPRESSION.sub(lambda m: MARK if inner(m.group(0)) in versions else m.group(0), str(name))
+
+
 def uploads(jobs):
     out = []
     for job in jobs.values():
@@ -58,8 +62,7 @@ def uploads(jobs):
         for s in job_steps(job):
             if str(s.get("uses", "")).startswith("actions/upload-artifact@") and not switched_off(s.get("if")):
                 w = s.get("with") or {}
-                out.append((EXPRESSION.sub(lambda m: MARK if inner(m.group(0)) in versions else m.group(0),
-                                           str(w.get("name", ""))), w, "if" in job or "if" in s))
+                out.append((mark(w.get("name", ""), versions), w, "if" in job or "if" in s))
     return out
 
 
@@ -90,10 +93,10 @@ def literal(value):
 
 
 def output_folder(run):
-    value = re.findall(r"""'--saida',\s*('[^']*'|"[^"]*"|\$\w+)""", code(run))
+    value = re.findall(r"""['"]--saida['"],\s*('[^']*'|"[^"]*"|\$\w+)""", code(run))
     if len(value) != 1 or not value[0].startswith("$"):
         return literal(value[0]) if len(value) == 1 else None
-    assigned = re.findall(rf"^\s*\{value[0]}\s*(\S?=)\s*(.*?)\s*$", code(run), re.M)
+    assigned = re.findall(rf"\{value[0]}\b\s*([-+*/]?=)(?!=)\s*(.*?)\s*$", code(run), re.M | re.I)
     return literal(assigned[0][1]) if len(assigned) == 1 and assigned[0][0] == "=" else None
 
 
@@ -128,7 +131,7 @@ def contract_problems(doc):
     found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
     problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
     problems += [f"the {n} artifact is uploaded only under an if:" for n, _, c in run_uploads if n in found and c]
-    fixed = [n for n, _, _ in run_uploads if LITERAL_SETUP.fullmatch(n)]
+    fixed = [n for n, _, _ in run_uploads if OTHER_VERSION.fullmatch(n)]
     if fixed:
         problems.append(f"the run uploads {fixed}, which the pipeline would take for the version of the build")
     if len(found[EXE]) == 1 and not one_literal_file(found[EXE][0].get("path"), "ritmelli.exe"):
@@ -159,10 +162,9 @@ def mutant(doc, change):
 
 
 def upload(doc, name):
-    marked = EXPRESSION.sub(lambda m: MARK if inner(m.group(0)) == inner(VERSION) else m.group(0), name)
+    versions = {inner(VERSION)}
     return next(s for s in doc["jobs"]["monta"]["steps"]
-                if EXPRESSION.sub(lambda m: MARK if inner(m.group(0)) == inner(VERSION) else m.group(0),
-                                  str((s.get("with") or {}).get("name", ""))) == marked)
+                if mark((s.get("with") or {}).get("name", ""), versions) == mark(name, versions))
 
 
 def main():
@@ -200,6 +202,9 @@ def main():
     quoted = mutant(doc, lambda d: assign_folder(d, '"instalador\\saida"'))
     check('"instalador\\saida"' in manifest_step(quoted["jobs"]["monta"])["run"] and contract_problems(quoted) == [],
           "the folder of --saida in double quotes keeps the contract")
+    option = mutant(doc, lambda d: edit_run(d, lambda run: run.replace("'--saida', $saida", '"--saida", $saida')))
+    check('"--saida", $saida' in manifest_step(option["jobs"]["monta"])["run"] and contract_problems(option) == [],
+          "the --saida option in double quotes keeps the contract")
     other_dir = mutant(doc, lambda d: upload(d, exe)["with"].update(path="dist/app/ritmelli.exe"))
     check(contract_problems(other_dir) == [], "the ritmelli.exe in another folder keeps the contract")
     dotted = mutant(doc, lambda d: upload(d, exe)["with"].update(path="./dist/ritmelli/ritmelli.exe"))
@@ -247,6 +252,12 @@ def main():
         "the --saida of publica.py alone": move_folder,
         "the --saida of publica.py commented out": lambda d: edit_run(d, lambda run: run.replace(
             ", '--saida', $saida)", ") # '--saida', $saida")),
+        "the folder of --saida joined again": lambda d: edit_run(d, lambda run: re.sub(
+            r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$saida = Join-Path $saida 'x'", run, count=1, flags=re.M)),
+        "the folder of --saida assigned again in other case": lambda d: edit_run(d, lambda run: re.sub(
+            r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$Saida = 'instalador_out'", run, count=1, flags=re.M)),
+        "a Ritmelli artifact named by another expression": lambda d: d["jobs"]["monta"]["steps"].append(
+            {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{ github.run_number }}", "path": "x"}}),
         "the folder of --saida assigned twice": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$saida += '_other'", run, count=1, flags=re.M)),
         "the ritmelli-exe upload under a condition": lambda d: upload(d, exe).update(
