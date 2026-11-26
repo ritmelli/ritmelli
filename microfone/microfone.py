@@ -546,11 +546,13 @@ class LockedEndpointNotPresent(PermissionError):
 DEVICE_STATE_NOTPRESENT = 4
 
 
-def _key_exists(path):
+def _key_missing(path):
     try:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path):
-            return True
+            return False
     except FileNotFoundError:
+        return True
+    except OSError:
         return False
 
 
@@ -567,12 +569,12 @@ def _open_fx_properties(base):
     """The FxProperties key of the endpoint, created when missing. An endpoint whose device isn't present (DeviceState
     NOTPRESENT), has no FxProperties and where Windows denies creating it even to an administrator raises
     LockedEndpointNotPresent: a device that left the PC, which the filter can't reach. In any other state, one that
-    can't be read, or with the key there, the denial stays an error."""
+    can't be read, or with the key there or not known to be missing, the denial stays an error."""
     path = base + r"\FxProperties"
     try:
         return winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, path, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE)
     except PermissionError as ex:
-        if not _not_present(base) or _key_exists(path):
+        if not _not_present(base) or not _key_missing(path):
             raise
         raise LockedEndpointNotPresent(*ex.args) from ex
 

@@ -360,6 +360,18 @@ class TestEndpointWithoutFxProperties(Base):
             mf._pendura(EP)
         self.assertIs(caught.exception, self.create_error)
 
+    def test_a_key_that_cannot_be_looked_up_still_fails(self):
+        self._endpoint(0x31000004)
+        real_open = self.reg.OpenKey
+
+        def open_key(root, sub, reserved=0, access=0):
+            if sub.lower().endswith("\\fxproperties"):
+                raise PermissionError(13, "Access is denied")
+            return real_open(root, sub, reserved, access)
+        with mock.patch.object(self.reg, "OpenKey", open_key), self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
     def test_a_denied_key_that_is_there_still_fails(self):
         self._endpoint(4, fx_properties=True)
         with self.assertRaises(PermissionError) as caught:
