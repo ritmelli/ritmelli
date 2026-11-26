@@ -25,6 +25,8 @@ UNICODE_BOMS = ((codecs.BOM_UTF32_LE, "utf-32"), (codecs.BOM_UTF32_BE, "utf-32")
                 (codecs.BOM_UTF16_BE, "utf-16"))
 UTF16_ASCII_RUNS = {"utf-16-le": re.compile(rb"(?:[\t\n\r\x20-\x7e]\x00)+"),
                     "utf-16-be": re.compile(rb"(?:\x00[\t\n\r\x20-\x7e])+")}
+PRINTABLE_RUN = re.compile(rb"[\t\x20-\x7e]{4,}")
+MODEL_WEIGHT_SUFFIXES = frozenset({".onnx"})
 BINARY_SIGNATURES = {suffix: re.compile(signature, re.DOTALL) for suffix, signature in (
     (".png", rb"\x89PNG\r\n\x1a\n"), (".ico", rb"\x00\x00\x01\x00"), (".exe", rb"MZ"), (".onnx", rb"\x08[\x01-\x7f]\x12"),
     (".woff2", rb"wOF2"), (".webp", rb"RIFF....WEBP"))}
@@ -67,8 +69,11 @@ def readings(name, data):
     if b"\0" not in data:
         return [data.decode("utf-8", errors="replace")]
     if has_binary_signature(name, data):
-        return ["\n".join(run.group().decode(encoding) for run in pattern.finditer(data))
-                for encoding, pattern in UTF16_ASCII_RUNS.items()]
+        texts = ["\n".join(run.group().decode(encoding) for run in pattern.finditer(data))
+                 for encoding, pattern in UTF16_ASCII_RUNS.items()]
+        if Path(name).suffix.lower() not in MODEL_WEIGHT_SUFFIXES:
+            texts.append("\n".join(run.group().decode("ascii") for run in PRINTABLE_RUN.finditer(data)))
+        return texts
     return [data.decode(encoding, errors="replace") for encoding in (*UTF16_ASCII_RUNS, "utf-8")]
 
 
@@ -118,7 +123,7 @@ class TrackedFiles(unittest.TestCase):
 class Matcher(unittest.TestCase):
     SINGLE = frozenset({digest("kiwi")})
     PAIR = frozenset({digest("kiwi fruit")})
-    PNG = b"\x89PNG\r\n\x1a\n\x00\x00 kiwi \n"
+    PNG = b"\x89PNG\r\n\x1a\n\x00\x00"
 
     def hits(self, name, data):
         return scan({name: data}, self.SINGLE)
@@ -162,12 +167,22 @@ class Matcher(unittest.TestCase):
             data = (chr(0x4E2D) * 5000 + "\r\nkiwi\r\n").encode(encoding)
             self.assertEqual(self.hits("notes.txt", data), [("notes.txt", 2, digest("kiwi"))], encoding)
 
-    def test_a_signed_binary_is_read_only_for_its_utf16_ascii_runs(self):
+    def test_a_signed_binary_is_read_for_its_printable_and_utf16_ascii_runs(self):
         self.assertEqual(self.hits("docs/Icon.PNG", self.PNG), [])
+        for name, signed in (("docs/Icon.PNG", self.PNG), ("instalador/tool.exe", b"MZ\x90\x00\x03\x00")):
+            self.assertTrue(self.hits(name, signed + b"\x00\x07 a kiwi box \xff\x00"), name)
+            for encoding in UTF16_ASCII_RUNS:
+                self.assertTrue(self.hits(name, signed + "\x01 a Kiwi box ".encode(encoding) + b"\xff\xfe"), (name, encoding))
+        self.assertEqual(self.hits("docs/Icon.PNG", self.PNG + b"\x00kiw\x00"), [])
+
+    def test_model_weights_are_read_only_for_their_utf16_ascii_runs(self):
+        weights = b"\x08\x08\x12\x07pytorch\x00"
+        self.assertEqual(self.hits("modelos/model.onnx", weights + b"\x00\x07 a kiwi box \xff\x00"), [])
         for encoding in UTF16_ASCII_RUNS:
-            embedded = self.PNG + "\x01 a Kiwi box ".encode(encoding) + b"\xff\xfe"
-            self.assertTrue(self.hits("docs/Icon.PNG", embedded), encoding)
-        self.assertEqual(self.hits("instalador/tool.exe", self.PNG), [("instalador/tool.exe", 3, digest("kiwi"))])
+            self.assertTrue(self.hits("modelos/model.onnx", weights + "\x01 a Kiwi box ".encode(encoding)), encoding)
+
+    def test_a_file_without_its_signature_is_read_whole(self):
+        self.assertEqual(self.hits("instalador/tool.exe", self.PNG + b" kiwi \n"), [("instalador/tool.exe", 3, digest("kiwi"))])
         self.assertEqual(self.hits("docs/note.png", b"one\nkiwi"), [("docs/note.png", 2, digest("kiwi"))])
 
     def test_the_scan_names_the_file(self):
