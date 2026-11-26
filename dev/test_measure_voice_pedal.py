@@ -241,6 +241,12 @@ class Main(unittest.TestCase):
         self.assertIn("the filter of IN 1 never read the ring", why)
         self.assertNotIn(("POST", "/api/settings"), sent)
 
+    def test_a_stream_with_no_state_stops_before_the_pedal(self):
+        why, sent, _ = self.run_main(state(), events=[(1.0, None), (70.0, None)])
+        self.assertIn("the filter of IN 1 never read the ring", why)
+        self.assertIn("0 state(s) seen", why)
+        self.assertNotIn(("POST", "/api/settings"), sent)
+
     def test_a_fallback_microphone_after_the_filter_read_stops_before_the_pedal(self):
         why, sent, _ = self.run_main(state(), events=[(1.0, state(mic=FALLBACK))])
         self.assertIn(f"opened the microphone '{FALLBACK}' and not 'IN 1'", why)
