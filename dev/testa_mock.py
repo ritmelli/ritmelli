@@ -1241,15 +1241,43 @@ def the_theme_page_build():
                 "is inside <svg>"),
             "a speculation rule": ('<script type="speculationrules">{"prefetch": [{"urls": ["/first.js"]}]}</script>', {},
                                    "has a type the build does not read"),
-            "a preload of a script": ('<link rel="preload" as="script" href="first.js">', {}, "preloads a script"),
-            "a preload of a style sheet": ('<link rel="preload" as="style" href="a.css">', {}, "preloads a script"),
-            "a module preload": ('<link rel="modulepreload" href="first.js">', {}, "preloads a script"),
+            "a preload of a script": ('<link rel="preload" as="script" href="first.js">', {}, "preloads or prefetches"),
+            "a preload of a style sheet": ('<link rel="preload" as="style" href="a.css">', {}, "preloads or prefetches"),
+            "a module preload": ('<link rel="modulepreload" href="first.js">', {}, "preloads or prefetches"),
             "an unknown marked section": ('<![foo]><script src="first.js"></script>', {}, "bogus comment"),
             "a CDATA section that never ends": ('<![CDATA[ a > <script src="first.js"></script>', {}, "bogus comment"),
             "a script that is not UTF-8": ('<script src="latin.js"></script>', {"latin.js": b'let s = "caf\xe9";\n'},
                                            "latin.js is not UTF-8 text"),
+            "a prefetch of a script": ('<link rel="prefetch" as="script" href="first.js">', {}, "preloads or prefetches"),
+            "a prefetch with no as": ('<link rel="prefetch" href="first.js">', {}, "preloads or prefetches"),
+            "a page in a srcdoc": ('<iframe srcdoc="&lt;script src=first.js&gt;&lt;/script&gt;"></iframe>', {},
+                                   "writes a page in an attribute"),
+            "a script ended by />": ('<script/>/*<a title="*/</script><script src="first.js"></script>">', {},
+                                     "ends in />"),
+            "a style ended by />": ('<style/>/*<a title="*/</style><link rel="stylesheet" href="a.css">">', {},
+                                    "ends in />"),
+            "an end tag with a space before the name": (
+                '<script>/*</ script><a title="*/</script><script src="first.js"></script>">', {}, "is not an end tag"),
+            "a style end tag with a space before the name": (
+                '<style>/*</ style><a title="*/</style><link rel="stylesheet" href="a.css">">', {}, "is not an end tag"),
+            "an svg end tag with a space": ('<svg></ svg><style><b><script src="first.js"></script></b></style>', {},
+                                            "is not an end tag"),
+            "an svg end tag with a no-break space": (
+                '<svg></svg\u00a0><style><b><script src="first.js"></script></b></style>', {}, "is not an end tag"),
+            "an end tag with an attribute": (
+                '</div title="> <div title=\'"> <script src="first.js"></script> <!-- \'> -->', {}, "is not an end tag"),
+            "an attribute with ==": ('<a b=="x><script src="first.js"></script>">', {}, "is not written as name="),
+            "an attribute with a no-break space before the value": (
+                '<a b=\u00a0"x><script src="first.js"></script>">', {}, "is not written as name="),
+            "a tag with a NUL in it": ('<a b="c"\x00 <script><script src="first.js"></script>', {},
+                                       "is not written as name="),
+            "a comment ended by -- >": (
+                '<!-- a -- > <div title=\' --> <script src="first.js"></script> <!-- \'> -->', {}, "does not end in -->"),
+            "a comment that never ends": ('<!-- > <div title=\' <script src="first.js"></script> \'>', {},
+                                          "does not end in -->"),
+            "a script file that starts with #!": ('<script src="first.js"></script>',
+                                                  {"first.js": "#!/usr/bin/env node\n1;\n"}, "starts with #!"),
             "an inline module": ('<script type=" Module ">import x from "./first.js";</script>', {}, "has a type the build does not read"),
-            "an inline script with an href": ('<script href="first.js"></script>', {}, "fetches its href"),
             "a script name with a numeric reference": ('<script src="a&#xFDD0;b.js"></script>', {"ab.js": "1;\n"},
                                                        "has '&', which is not a whole"),
             "a sheet in a subfolder with an http: url() without a host": (
@@ -1326,6 +1354,18 @@ async def a_missing_file_answers_500(server, folder):
     (broken / "index.html").write_text('<head>\n<script src="gone.js"></script>\n', encoding="utf-8")
     (broken / "assets").mkdir()
     os.link(broken / "index.html", broken / "assets" / "alias.html")
+    (folder / "themes" / "latin").mkdir()
+    (folder / "themes" / "latin" / "index.html").write_bytes(b"<head>\n<title>caf\xe9</title>\n")
+    held = folder / "themes" / "held"
+    held.mkdir()
+    (held / "index.html").write_text('<head>\n<script src="held.js"></script>\n', encoding="utf-8")
+    (held / "held.js").write_text("1;\n", encoding="utf-8")
+    read_text = Path.read_text
+
+    def locked(path, *args, **kwargs):
+        if path.name == "held.js":
+            raise PermissionError(13, "Permission denied")
+        return read_text(path, *args, **kwargs)
     import pareamento as par
     A = types.SimpleNamespace(engine=types.SimpleNamespace(pos=0.0, levels={}, vol=0.5), port=8801, lan_ip=None,
                               mock=True, closing=False, papel_local=None,
@@ -1358,6 +1398,11 @@ async def a_missing_file_answers_500(server, folder):
         async with TestClient(TestServer(server.build(A), host="127.0.0.1", port=A.port)) as client:
             resp = await client.get("/t/broken/", headers={"Host": f"localhost:{A.port}"})
             status, said = resp.status, await resp.text()
+            latin = await client.get("/t/latin/", headers={"Host": f"localhost:{A.port}"})
+            latin = latin.status, await latin.text()
+            with mock.patch.object(Path, "read_text", locked):
+                unread = await client.get("/t/held/", headers={"Host": f"localhost:{A.port}"})
+                unread = unread.status, await unread.text()
             with mock.patch.object(server.theme_page.os.path, "samefile", recorded):
                 sent = await client.get("/t/broken/index.html", headers={"Host": f"localhost:{A.port}"},
                                         allow_redirects=False)
@@ -1374,6 +1419,12 @@ async def a_missing_file_answers_500(server, folder):
             and said in log.getvalue() and str(folder) not in said and folder.name not in said,
             f"through the route, a missing theme file answers 500 with the template, the file and the rule, the log "
             f"says the same, and no folder of the PC goes out ({status}, {said!r})")
+    confere(latin[0] == 500 and "themes/latin/index.html was not built: index.html is not UTF-8 text" in latin[1]
+            and latin[1] in log.getvalue(),
+            f"a template that is not UTF-8 answers 500 naming it, and the log says the same ({latin})")
+    confere(unread[0] == 500 and "held.js could not be read (Permission denied)" in unread[1]
+            and unread[1] in log.getvalue() and str(folder) not in unread[1],
+            f"a theme file that exists but cannot be read answers 500 naming it, and the log says the same ({unread})")
     confere(sent.status == 302 and compared == [False],
             f"the index.html redirect compares the file off the server's loop ({sent.status}, on the loop: {compared})")
     confere(alias.status == 302 and alias.headers.get("Location") == "/t/broken/?lang=pt_BR",

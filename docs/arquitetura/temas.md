@@ -38,23 +38,29 @@ regra, sem pasta do PC, e o log do servidor diz o mesmo. Ela recusa, e o que esc
 
 - o arquivo que falta, a pasta no lugar dele ou o caminho que sai da pasta da página (ou de `themes/`, com `/t/`): um
   arquivo que existe ali;
-- o arquivo, ou o próprio `index.html`, que não é texto UTF-8: salvá-lo em UTF-8;
+- o arquivo, ou o próprio `index.html`, que não é texto UTF-8 ou que não se deixa ler: salvá-lo em UTF-8, ou fechar o
+  que o segura;
+- a tag fora da forma estrita: a de abertura com atributos `nome="valor"` (ou com aspas simples, ou sem aspas) separados
+  por espaço ASCII, a de fim exatamente `</nome>`, e o comentário fechado em `-->`: escrever assim;
 - a tag de arquivo com outro atributo, outra ordem, maiúsculas ou algo antes do fim: exatamente
   `<script src="arquivo.js"></script>` ou `<link rel="stylesheet" href="arquivo.css">`;
 - um `&` no nome do arquivo que não abre uma referência nomeada inteira, e toda referência numérica: o nome sem `&`, ou
   com `&amp;`;
-- o script com `</script` ou `<!--`, a folha com `</style`: o texto sem eles;
+- o script com `</script` ou `<!--` ou que começa com `#!`, e a folha com `</style`: o texto sem eles;
 - a folha, de arquivo ou escrita na página, com `@import`, mesmo num comentário ou numa string (a folha se lê com os
   escapes de CSS decodificados): uma tag de arquivo por folha;
 - a folha de outra pasta com um `url()` relativo, uma `\` ou um `image-set(`: só `url()` simples, com `https://`,
   `http://`, outro esquema, `data:`, `/` ou `#`, ou a folha na pasta da página;
-- o `<link rel="modulepreload">` e o `<link rel="preload">` de um script ou de uma folha: a tag de arquivo;
-- o `<script>` escrito na página com `href`, com um `type` que não é `text/javascript` nem `application/json` (o
-  `module` importa arquivos), com `<!--` dentro ou fechado de outro jeito que `</script>`, e o `<style>` fechado de
-  outro jeito que `</style>`: um `<script>` sem `type` ou com um desses dois, com ou sem `defer`, fechado em
-  `</script>`, ou a tag de arquivo;
+- o `<link rel="modulepreload">`, o `<link rel="prefetch">` e o `<link rel="preload">` de um script ou de uma folha: a
+  tag de arquivo;
+- o `<script/>` e o `<style/>`, que o navegador não fecha ali: `<script>...</script>` e `<style>...</style>`;
+- o `<script>` escrito na página com um `type` que não é `text/javascript` nem `application/json` (o `module` importa
+  arquivos), com `<!--` dentro ou fechado de outro jeito que `</script>`, e o `<style>` fechado de outro jeito que
+  `</style>`: um `<script>` sem `type` ou com um desses dois, com ou sem `defer`, fechado em `</script>`, ou a tag de
+  arquivo;
 - o elemento de texto (`<title>`, `<textarea>`, `<noscript>`, `<iframe>`, `<xmp>`, `<noembed>`, `<noframes>`) com um `<`
-  dentro ou fechado de outro jeito que `</nome>`: só texto, fechado em `</nome>`;
+  dentro ou fechado de outro jeito que `</nome>`, e o `srcdoc`, que escreve uma página num atributo: só texto, fechado
+  em `</nome>`, e o conteúdo do `srcdoc` no próprio tema;
 - dentro de `<svg>` ou `<math>`, o `<script>`, o `<style>`, o `<link>` e os elementos em que o navegador volta a ler
   HTML (`<foreignObject>`, `<desc>`, `<title>`, `<annotation-xml>`, `<mi>`, `<mo>`, `<mn>`, `<ms>`, `<mtext>`), e o
   `</svg>` ou `</math>` que não fecha o que está aberto: o desenho só com formas e atributos, e o CSS e o código nos
