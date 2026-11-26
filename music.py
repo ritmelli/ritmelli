@@ -122,3 +122,10 @@ def segundos(txt):
         return s
     except ValueError:
         return None
+
+
+def with_audio_version(x, v):
+    if not v:
+        return {**x, "audio": True}
+    return {**x, **v, "audio": True, "video": x.get("video") or x["youtube_id"], "thumb": thumb(v["youtube_id"]),
+            "tipo": "ATV"}

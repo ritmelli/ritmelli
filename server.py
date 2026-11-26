@@ -50,7 +50,7 @@ import permissao as perm
 import pastas
 import sonoridade
 from pastas import save_json
-from music import YT_ID, busca_de, chaves_musica, mesma_faixa, segundos, thumb
+from music import YT_ID, busca_de, chaves_musica, mesma_faixa, segundos, thumb, with_audio_version
 from versao import VERSAO
 from yt_erros import erro_do_video
 
@@ -1173,10 +1173,7 @@ class App:
                     if e.stop(pode=para_se) is not None:
                         return
                 return
-            self.engine.error = i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play "
-                                                                        "right away ({reason}). It will play as soon "
-                                                                        "as the download finishes.",
-                                         reason=motivo)
+            self._stream_refused(tr, motivo)
             return
         yid = tr["youtube_id"] or info.get("id")
         novo = dict(tr, path=info["url"], headers=hdr, youtube_id=yid,
@@ -1185,6 +1182,22 @@ class App:
                     thumb=tr["thumb"] or thumb(yid), duration=tr["duration"] or info.get("duration"))
         if self.engine.trocar_fonte(tr, novo):
             self.canal_depois(novo, no_prato=True)
+
+    def _stream_refused(self, tr, motivo):
+        e = self.engine
+        j = self.jobs.get(tr["job"])
+
+        def failed_attempt():
+            return e.track is tr and j is not None and j["status"] == "error"
+        if e.stop(pode=failed_attempt) is not None:
+            return
+        it = self.lib.get(j["item_id"]) if j is not None and j["status"] == "done" else None
+        if it is not None and e.trocar_fonte(tr, dict(it, path=str(LIB / it["file"]))):
+            return
+        if e.track is tr:
+            e.error = i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play right away "
+                                                              "({reason}). It will play as soon as the download "
+                                                              "finishes.", reason=motivo)
 
     def religar_stream(self, tr, pos, desistir):
         """O leitor do motor (na thread dele): o stream da parecida do Automatico caiu em pos, sem audio ou antes do
@@ -1302,13 +1315,29 @@ class App:
             e.drop_prepared()
 
     def change_queue(self, change):
-        """With fila_lock: change() changes the queue (and the order the user built) under the engine's _qlock, and the
-        prepared passage is checked in that same stretch (_confere_preparo_sob), so the engine never switches to an
-        entry that is no longer first. Every queue change goes through here. Returns what change returns."""
         with self.engine._qlock:
             r = change()
             self._confere_preparo_sob()
             return r
+
+    def apply_audio_version(self, vid, v, held):
+        e = self.engine
+
+        def wants(x):
+            return x.get("youtube_id") == vid and not x.get("audio")
+
+        in_queue = {id(x) for x in self.fila}
+        for m in self.mix or []:
+            if id(m) not in in_queue and wants(m):
+                m.update(with_audio_version(m, v))
+
+        def swap_entries():
+            switch = e.virou[2] if e.virou is not None else None
+            kept = self.fila[0] if self.fila and held() else None
+            for x in self.fila:
+                if x.get("auto") and x is not kept and x["qid"] != switch and wants(x):
+                    x.update(with_audio_version(x, v))
+        self.change_queue(swap_entries)
 
     # fila (A seguir) --------------------------------------------------------
     def _por_na_fila(self, x, seguir=False):

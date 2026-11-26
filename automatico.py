@@ -60,12 +60,14 @@ class Automatico:
             if lista is None:
                 A.mix_falhou = time.time()
             elif base == A.mix_base:  # a semente nao trocou no meio
+                numbered = []
                 for m in lista:
                     A.mix_seq += 1
-                    m["ordem"] = A.mix_seq
-                    if m["youtube_id"] in A.versoes:  # a versao de audio ja procurada antes
-                        self._poe_versao(m, A.versoes[m["youtube_id"]])
-                A.mix = lista
+                    m = dict(m, ordem=A.mix_seq)
+                    if m["youtube_id"] in A.versoes:
+                        m = music.with_audio_version(m, A.versoes[m["youtube_id"]])
+                    numbered.append(m)
+                A.mix = numbered
 
     def _janela(self, pool, n):
         """As de pool (na ordem do Mix) que cabem na proxima AUTO_JANELA_S, e pelo menos n."""
@@ -221,12 +223,6 @@ class Automatico:
                     A.parado_sem_fila = None
         return visto, sinal
 
-    def _poe_versao(self, x, v):
-        """A parecida passa a tocar a versao so de audio v (sem versao, fica o video e so a marca de procurada)."""
-        x["audio"] = True
-        if v:
-            x.update(v, video=x.get("video") or x["youtube_id"], thumb=music.thumb(v["youtube_id"]), tipo="ATV")
-
     def versao_audio(self, x):
         """A versao so de audio (a faixa do album no YouTube Music) da parecida que veio como video, pela busca de
         musicas com nome e artista: {"youtube_id", "duration", "title", "channel"} da primeira das 3 que e a mesma
@@ -240,13 +236,7 @@ class Automatico:
         return None
 
     def _troca_audio(self, vid, v):
-        """Com fila_lock: a parecida do video vid (no Mix e na fila; a primeira da fila fica se ja esta presa)
-        passa para a versao de audio v."""
-        A = self.app
-        presa = A.fila[0] if A.fila and self._presa() else None
-        for x in list(A.mix or []) + [y for y in A.fila if y.get("auto") and y is not presa]:
-            if x.get("youtube_id") == vid and not x.get("audio"):
-                self._poe_versao(x, v)
+        self.app.apply_audio_version(vid, v, self._presa)
 
     def _a_medir(self):
         """Com fila_lock: o que falta fazer, pela ordem em que faz falta: ("medir", disco) sem andamento ou

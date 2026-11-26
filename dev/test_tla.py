@@ -29,20 +29,17 @@ class Run:
     specification: str = None
     symmetry: bool = True
     deadlock: bool = True
-    known: int = None
 
 
-RACES_SAFE = ("TypeOK", "LockOrderKept")
 RUNS = (
-    Run("Races211, the code as it is: types and lock order", "Races211", invariants=RACES_SAFE),
-    Run("Races211, the code as it is: #211.1, a failed download and a refused stream leave the platter loading",
-        "Races211", "invariant NoOrphanLoading", invariants=("NoOrphanLoading",), known=211),
-    Run("Races211, the code as it is: a finished download and a refused stream leave the platter loading",
-        "Races211", "invariant NoStaleLoading", invariants=("NoStaleLoading",), known=211),
-    Run("Races211, the code as it is: #211.2, the pending switch's entry gets the audio version",
-        "Races211", "invariant SwitchEntryMatchesPlatter", invariants=("SwitchEntryMatchesPlatter",), known=211),
-    Run("Races211 with the fix", "Races211",
-        constants=(("StreamFailureChecksJob", "TRUE"), ("AudioSwapThroughChangeQueue", "TRUE"))),
+    Run("Races211, the code as it is", "Races211"),
+    Run("mutant: a refused stream does not look at the job (#211.1)", "Races211", "invariant NoOrphanLoading",
+        invariants=("NoOrphanLoading",), constants=(("StreamFailureChecksJob", "FALSE"),)),
+    Run("mutant: a refused stream does not look at the job, which finished", "Races211", "invariant NoStaleLoading",
+        invariants=("NoStaleLoading",), constants=(("StreamFailureChecksJob", "FALSE"),)),
+    Run("mutant: the audio version changes the entries outside the change_queue (#211.2)", "Races211",
+        "invariant SwitchEntryMatchesPlatter", invariants=("SwitchEntryMatchesPlatter",),
+        constants=(("AudioSwapThroughChangeQueue", "FALSE"),)),
     Run("LocksAndSwitch, the code as it is", "LocksAndSwitch"),
     Run("LocksAndSwitch, the code as it is: every reservation resolves (weak fairness, no symmetry)",
         "LocksAndSwitch", invariants=(), properties=("ReservationsResolve",), specification="FairSpec",
@@ -159,16 +156,8 @@ def report(run, got, text, took):
     detail = f"{run.title}: {got}, {states(text)} states, {took:.1f} s"
     if took > LIMIT_S:
         check(False, f"{detail}: over the {LIMIT_S} s limit")
-    elif run.known is not None:
-        if got == "pass":
-            check(False, f"known failure #{run.known} passes now: {run.title}; make it a regular check and close "
-                         f"the issue")
-        elif got == run.expect:
-            print(f"known failure #{run.known}: {detail}", flush=True)
-        else:
-            check(False, f"{detail} (expected {run.expect}, the known failure of #{run.known})")
     else:
-        check(got == run.expect, f"{detail}" + ("" if got == run.expect else f" (expected {run.expect})"))
+        check(got == run.expect, detail + ("" if got == run.expect else f" (expected {run.expect})"))
     if got != run.expect:
         print("\n".join(text.splitlines()[-80:]), flush=True)
 

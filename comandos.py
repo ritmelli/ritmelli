@@ -8,16 +8,11 @@ passagem (_volta_passagem), o stream da parecida que nao abriu (_abre_stream), a
 parado (_volta_auto) e o enfileirar com o prato parado passam por ela, com uma reserva so por deck e linha do prato
 (Reserva).
 
-Lock order, always this way and never the other: the App's fila_lock, then the engine's _lock (an RLock), then the
-engine's _qlock. Two more come right before the _qlock and are never held with the fila_lock nor the _lock: the
-App's proximo_lock (the overlapping Proximos, pular) and the shelf's lock (Library.lock: App.remember_pos takes it,
-then the _qlock, and writes the file with the _qlock released). With the _qlock held, no engine method that takes the
-_lock is called, and the audio thread (the _mixa) never takes the fila_lock nor the _lock. No file is written under
-the fila_lock.
+With the _qlock held, no engine method that takes the _lock is called. No file is written under the fila_lock.
 
 The platter's line is read and checked through the engine's interface (Engine.line, Engine.on_line, with the deck
-and line a Captura already carries), the switch the engine made on its own is reconciled in one loop (concilia), and
-every queue change goes through App.change_queue."""
+and line a Captura already carries), and the switch the engine made on its own is reconciled in one loop
+(concilia)."""
 import sys
 import threading
 

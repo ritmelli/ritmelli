@@ -15,7 +15,6 @@ harness = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(harness)
 cmd, eng, pastas, server = harness.cmd, harness.eng, harness.pastas, harness.server
 
-ISSUE = 211
 WAIT_S = 5
 failures = []
 
@@ -24,13 +23,6 @@ def check(ok, msg):
     print(("ok    " if ok else "FAIL  ") + msg, flush=True)
     if not ok:
         failures.append(msg)
-
-
-def known(fixed, what):
-    if fixed:
-        check(False, f"known failure #{ISSUE} passes now: {what}; make it a regular check and close the issue")
-    else:
-        print(f"known failure #{ISSUE}: {what}", flush=True)
 
 
 class Readers:
@@ -93,17 +85,17 @@ def download_ends_before_the_swap_and_the_stream_is_refused(A, E, readers, job_r
 def failed_download(A, E, readers):
     j, loading = download_ends_before_the_swap_and_the_stream_is_refused(
         A, E, readers, {"side_effect": RuntimeError("boom")}, "bbbbbbbbbbb")
-    known(not loading and E.track is None,
-          f"#211.1: a download that failed before the swap and a refused stream leave the platter loading "
-          f"({j['status']}, {E.status()})")
+    check(not loading and E.track is None,
+          f"a download that failed before the swap and a refused stream stop the platter ({j['status']}, "
+          f"{E.status()})")
 
 
 def finished_download(A, E, readers):
     j, loading = download_ends_before_the_swap_and_the_stream_is_refused(
         A, E, readers, {"return_value": A.lib.get("d2")}, "ccccccccccc")
     tr = E.track or {}
-    known(not loading and tr.get("id") == "d2" and str(tr.get("path", "")).endswith("d2.m4a"),
-          f"a download that finished before the swap and a refused stream leave the platter loading "
+    check(not loading and tr.get("id") == "d2" and str(tr.get("path", "")).endswith("d2.m4a"),
+          f"a download that finished before the swap and a refused stream play the downloaded file "
           f"({j['status']}, {E.status()}, {tr.get('id')})")
 
 
@@ -130,9 +122,9 @@ def audio_version_during_a_pending_switch(A, E, readers):
     with A.fila_lock:
         A.automatico._troca_audio("aaaaaaaaaaa", v)
     closed = cmd.avanca(A, virada=E.virou)
-    known(closed is x and closed["youtube_id"] == playing,
-          f"#211.2: the audio version rewrote the entry of the pending switch ({closed and closed['youtube_id']} "
-          f"in the queue, {playing} on the platter)")
+    check(closed is x and closed["youtube_id"] == playing,
+          f"the audio version leaves the entry of the pending switch as the platter plays it "
+          f"({closed and closed['youtube_id']} in the queue, {playing} on the platter)")
 
 
 def main():
