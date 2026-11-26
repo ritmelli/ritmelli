@@ -1,11 +1,3 @@
-"""The names of .github/workflows/monta.yml that the publishing pipeline of ritmelli-server reads, read as YAML: the
-workflow_dispatch trigger with the notas and notas_en inputs, which reach the step that runs publica.py, the jobs it
-requires to have passed (by the name the jobs API shows), the congela step whose versao names the artifacts, the
-anterior and parcial outputs of the monta job and the if: of the two jobs they gate, and the two artifacts it
-downloads. Every check also runs on a mutant of the real file and has to catch it. Standard library only.
-
-    python dev/test_monta_contract.py
-"""
 import copy
 import json
 import re
