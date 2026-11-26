@@ -292,6 +292,142 @@ class TestaMfx(Base):
         self.assertIsNone(self.vaga(0))
 
 
+class TestEndpointWithoutFxProperties(Base):
+    def _endpoint(self, state, fx_properties=False):
+        r = self.reg
+        props = r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}\\Properties")
+        r.SetValueEx(props, mf.SEM_MELHORIAS, 0, r.REG_DWORD, 0)
+        if state is not None:
+            r.SetValueEx(r.OpenKey(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}"), "DeviceState", 0, r.REG_DWORD, state)
+        if fx_properties:
+            r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}\\FxProperties")
+        real_create = r.CreateKeyEx
+        self.create_error = PermissionError(13, "Access is denied")
+
+        def create(root, sub, reserved=0, access=0):
+            if sub.lower().endswith("\\fxproperties"):
+                raise self.create_error
+            return real_create(root, sub, reserved, access)
+        self.enterContext(mock.patch.object(r, "CreateKeyEx", create))
+
+    def test_a_device_not_present_is_left_out_untouched(self):
+        self._endpoint(0x31000004)
+        with self.assertRaises(mf.LockedEndpointNotPresent):
+            mf._pendura(EP)
+        self.assertNotIn(f"HKLM\\{mf.SALVO}\\{EP}".lower(), self.reg.chaves, "nothing saved for it")
+
+    def test_an_active_endpoint_still_fails(self):
+        for state in (1, 0x10000001):
+            with self.subTest(state=hex(state)):
+                self._endpoint(state)
+                with self.assertRaises(PermissionError) as caught:
+                    mf._pendura(EP)
+                self.assertIs(caught.exception, self.create_error)
+
+    def test_a_device_still_in_the_pc_still_fails(self):
+        for state in (0x10000002, 0x20000008):
+            with self.subTest(state=hex(state)):
+                self._endpoint(state)
+                with self.assertRaises(PermissionError) as caught:
+                    mf._pendura(EP)
+                self.assertIs(caught.exception, self.create_error)
+
+    def test_a_state_of_another_type_still_fails(self):
+        self._endpoint(None)
+        r = self.reg
+        r.SetValueEx(r.OpenKey(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}"), "DeviceState", 0, r.REG_SZ, "4")
+        with self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
+    def test_a_missing_state_still_fails(self):
+        self._endpoint(None)
+        with self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
+    def test_a_state_that_cannot_be_read_still_fails(self):
+        self._endpoint(4)
+        real_query = self.reg.QueryValueEx
+
+        def query(key, name):
+            if name == "DeviceState":
+                raise PermissionError(13, "Access is denied")
+            return real_query(key, name)
+        with mock.patch.object(self.reg, "QueryValueEx", query), self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
+    def test_a_key_that_cannot_be_looked_up_still_fails(self):
+        self._endpoint(0x31000004)
+        real_open = self.reg.OpenKey
+
+        def open_key(root, sub, reserved=0, access=0):
+            if sub.lower().endswith("\\fxproperties"):
+                raise PermissionError(13, "Access is denied")
+            return real_open(root, sub, reserved, access)
+        with mock.patch.object(self.reg, "OpenKey", open_key), self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
+    def test_a_denied_key_that_is_there_still_fails(self):
+        self._endpoint(4, fx_properties=True)
+        with self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
+
+class FailedListWriteAfterTheSingleEffect:
+    failing_list = None
+
+    def setUp(self):
+        super().setUp()
+        r = self.reg
+        self.microfone({mf.EFX: (EFX_FM, r.REG_SZ), mf.MFX: (MFX_FM, r.REG_SZ),
+                        mf.MODOS_MFX: ([mf.MODO_PADRAO, mf.MODO_RAW], r.REG_MULTI_SZ)})
+        real_set_value, refused = r.SetValueEx, []
+
+        def set_value(key, name, reserved, kind, value):
+            if name.lower() == self.failing_list.lower() and not refused:
+                refused.append(name)
+                raise OSError("the list write was refused")
+            real_set_value(key, name, reserved, kind, value)
+        with mock.patch.object(r, "SetValueEx", set_value), self.assertRaises(OSError):
+            mf._pendura(EP)
+        self.assertEqual(refused, [self.failing_list])
+        self.assertIsNone(self.le(mf.ASSOCIACAO), "the first run stopped before the association")
+        self.second_run_changed = mf._pendura(EP)
+
+    def test_the_second_run_finishes_the_install(self):
+        self.assertTrue(self.second_run_changed)
+        self.assertEqual((self.le(mf.EFX_LISTA)[-1], self.le(mf.LFX), self.le(mf.ASSOCIACAO)),
+                         (mf.CLSID, mf.CLSID, mf.KSNODETYPE_ANY))
+
+
+class TestFailedEfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
+    failing_list = mf.EFX_LISTA
+
+    def test_the_mfx_list_gets_the_host(self):
+        self.assertEqual((self.le(mf.MFX_LISTA), self.le(mf.MFX), self.vaga(0)), ([HOST0], None, MFX_FM))
+
+    def test_the_maker_efx_survives(self):
+        with self.assertRaises(AssertionError, msg="passed, but it is a known failure (#261): if the fix is on "
+                                                   "purpose, the case leaves the known failures in the same PR"):
+            self.assertEqual((self.le(mf.EFX_LISTA), self.le(mf.EFX)), ([EFX_FM, mf.CLSID], None))
+
+
+class TestFailedMfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
+    failing_list = mf.MFX_LISTA
+
+    def test_the_efx_list_keeps_the_maker(self):
+        self.assertEqual(self.le(mf.EFX_LISTA), [EFX_FM, mf.CLSID])
+
+    def test_the_maker_mfx_survives(self):
+        with self.assertRaises(AssertionError, msg="passed, but it is a known failure (#261): if the fix is on "
+                                                   "purpose, the case leaves the known failures in the same PR"):
+            self.assertEqual((self.le(mf.MFX_LISTA), self.le(mf.MFX), self.vaga(0)), ([HOST0], None, MFX_FM))
+
+
 class Gravador:
     """O subprocess.run de mentira: guarda cada comando e responde como o Windows (o schtasks /query nao acha a
     tarefa). Com reg e inproc, o regsvr32 grava o InprocServer32 do filtro como o de verdade."""

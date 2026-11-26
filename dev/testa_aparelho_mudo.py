@@ -24,9 +24,11 @@ conferencia e sem o arquivo). Com --tela, abre esse setup na tela, com dois apar
 
 Sai 1 se algo falhar.
 """
+import ast
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -35,7 +37,7 @@ import time
 import types
 import unittest
 import winreg
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -209,17 +211,48 @@ class TestaConferencia(unittest.TestCase):
                          ["BEHRINGER UMC 404HD 192k", "Realtek High Definition Audio"], "um por aparelho, na ordem")
 
 
+REAL_AUDIO_SERVICE = filtro.servico_audio
+REAL_RMTREE = shutil.rmtree
+
+
+def refusing_powershell(service, state="Running"):
+    def run(cmd, **kw):
+        line = " ".join(cmd)
+        if f"-Service {service} " in line:
+            return types.SimpleNamespace(returncode=1, stdout="", stderr="Cannot restart service")
+        return types.SimpleNamespace(returncode=0, stdout=state, stderr="")
+    return run
+
+
+class TestAudioService(unittest.TestCase):
+    def test_restart_that_fails_with_the_old_service_running(self):
+        with mock.patch.object(filtro.subprocess, "run", refusing_powershell("audiosrv")), \
+                self.assertRaises(SystemExit) as caught:
+            filtro.servico_audio("Restart")
+        self.assertEqual(caught.exception.code, "the Restart of the audio service failed (1): Cannot restart service")
+        with mock.patch.object(filtro.subprocess, "run", refusing_powershell("nothing")):
+            filtro.servico_audio("Restart")
+        with mock.patch.object(filtro.subprocess, "run", refusing_powershell("nothing", state="Stopped")), \
+                self.assertRaises(SystemExit):
+            filtro.servico_audio("Restart")
+
+
 class TestaReinicio(unittest.TestCase):
     def setUp(self):
         self.c = Chamadas()
         self.protegida = True
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.folder = Path(tmp.name) / "microfone"
         # nada de verdade: nenhum servico, nenhum regsvr32, nenhuma pasta de programas
-        self.p = [mock.patch.object(filtro.subprocess, "run", self.c("run")),
+        done = types.SimpleNamespace(returncode=0, stdout="", stderr="")
+        self.p = [mock.patch.object(filtro.subprocess, "run", self.c("run", done)),
                   mock.patch.object(filtro, "servico_audio", self.c("servico_audio")),
                   mock.patch.object(filtro, "_depois_do_reinicio", self.c("confere", {"mudos": [UMC_IN]})),
                   mock.patch.object(filtro, "_protegida", lambda: self.protegida),
                   mock.patch.object(filtro, "_apaga_registro_com", self.c("apaga_com")),
-                  mock.patch.object(filtro, "PASTA", tempfile.gettempdir() + r"\ritmelli-teste-nao-existe")]
+                  mock.patch.object(filtro, "PASTA", str(self.folder)),
+                  mock.patch.object(filtro.shutil, "rmtree", self.c("rmtree", REAL_RMTREE))]
         for p in self.p:
             p.start()
 
@@ -229,6 +262,27 @@ class TestaReinicio(unittest.TestCase):
 
     def _construtor(self):
         return [a[0] for n, a, _ in self.c.lista if n == "run" and "AudioEndpointBuilder" in " ".join(a[0])]
+
+    def test_endpoint_builder_that_does_not_restart(self):
+        reason = "the AudioEndpointBuilder didn't restart (1): Cannot restart service"
+        with mock.patch.object(filtro.subprocess, "run", self.c("run", refusing_powershell("AudioEndpointBuilder"))):
+            self.assertEqual(filtro.reinicia_audio(), reason)
+            self.assertEqual([a for n, a, _ in self.c.lista if n == "servico_audio"], [("Start",)],
+                             "the audio service still comes back")
+            with mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
+                    mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
+                    mock.patch.object(filtro, "_pendura", lambda ep: True), \
+                    redirect_stderr(io.StringIO()), self.assertRaises(filtro.FilterChangeFailed) as caught:
+                filtro.instala_todos("micfx.dll")
+            self.assertEqual(str(caught.exception), reason)
+            self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
+            with mock.patch.object(filtro, "acha", lambda f: ("{a}", "IN 1", "X")), \
+                    mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
+                    mock.patch.object(filtro, "_pendura", lambda ep: True), \
+                    redirect_stderr(io.StringIO()), self.assertRaises(filtro.FilterChangeFailed) as caught:
+                filtro.instala("IN 1", "micfx.dll")
+            self.assertEqual((str(caught.exception), caught.exception.check), (reason, {"mudos": [UMC_IN]}))
+        self.assertIsNone(filtro.reinicia_audio(), "a restart that worked")
 
     def test_so_o_servico(self):
         for rodando, acao in ((True, "Restart"), (False, "Start")):
@@ -248,7 +302,7 @@ class TestaReinicio(unittest.TestCase):
         with mock.patch.object(filtro, "_prepara_dll", lambda dll: parou), \
                 mock.patch.object(filtro, "microfones", lambda todos=False: mics), \
                 mock.patch.object(filtro, "_pendura", lambda ep: ep in novos), \
-                mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), redirect_stdout(io.StringIO()):
+                mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), redirect_stderr(io.StringIO()):
             return filtro.instala_todos("micfx.dll")
 
     def test_instala_todos(self):
@@ -265,13 +319,94 @@ class TestaReinicio(unittest.TestCase):
         self.assertEqual(self.c.nomes(), [], "nada novo: nem reinicia nem confere")
         self.assertIsNone(r)
 
+    def _install_with(self, mics, pendura, dll_changed=False):
+        self.c.lista.clear()
+        with mock.patch.object(filtro, "_prepara_dll", lambda dll: dll_changed), \
+                mock.patch.object(filtro, "microfones", lambda todos=False: mics), \
+                mock.patch.object(filtro, "_pendura", pendura), \
+                mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), redirect_stderr(io.StringIO()):
+            return filtro.instala_todos("micfx.dll")
+
+    def test_instala_todos_skips_only_the_device_without_properties(self):
+        old = ("{old}", "IN 0", "Old")
+
+        def no_properties(ep):
+            raise filtro.MissingEndpointProperties(2, "The system cannot find the file specified")
+        self.assertIsNone(self._install_with([old], no_properties))
+        self.assertEqual(self.c.nomes(), [])
+
+        def value_gone_later(ep):
+            raise FileNotFoundError(2, "The system cannot find the file specified")
+        with self.assertRaises(filtro.FilterChangeFailed):
+            self._install_with([old], value_gone_later)
+
+    def test_instala_todos_skips_the_locked_endpoint_not_present_only(self):
+        gone = ("{gone}", "Microphone", "High Definition Audio Device")
+
+        def locked(ep):
+            raise filtro.LockedEndpointNotPresent(13, "Access is denied")
+        with mock.patch.object(filtro, "_log") as log:
+            self.assertIsNone(self._install_with([gone], locked))
+        self.assertEqual(self.c.nomes(), [])
+        log.assert_called_once_with("microphones changed: 0; left out: 1")
+
+        def denied(ep):
+            raise PermissionError(13, "Access is denied")
+        with self.assertRaises(filtro.FilterChangeFailed):
+            self._install_with([gone], denied)
+
+    def test_pendura_without_properties(self):
+        with mock.patch.object(filtro.winreg, "OpenKey", side_effect=FileNotFoundError(2, "not found")), \
+                self.assertRaises(filtro.MissingEndpointProperties):
+            filtro._pendura("{old}")
+        with mock.patch.object(filtro.winreg, "OpenKey", return_value=mock.MagicMock()), \
+                mock.patch.object(filtro, "le", lambda k, n: None), \
+                mock.patch.object(filtro.winreg, "CreateKeyEx", side_effect=FileNotFoundError(2, "gone")), \
+                self.assertRaises(FileNotFoundError) as caught:
+            filtro._pendura("{a}")
+        self.assertNotIsInstance(caught.exception, filtro.MissingEndpointProperties,
+                                 "only the Properties key is skipped")
+
+    def test_instala_todos_device_error_fails_after_the_others(self):
+        mics = [("{old}", "IN 0", "Old"), ("{a}", "IN 1", "X"), ("{b}", "IN 2", "Y")]
+        done = []
+
+        def pendura(ep):
+            if ep == "{old}":
+                raise filtro.MissingEndpointProperties(2, "The system cannot find the file specified")
+            if ep == "{a}":
+                raise PermissionError(13, "Access is denied")
+            done.append(ep)
+            return True
+        with self.assertRaises(filtro.FilterChangeFailed) as caught, mock.patch.object(filtro, "_log") as log:
+            self._install_with(mics, pendura)
+        log.assert_called_once_with("microphones changed: 1; left out: 1")
+        self.assertEqual(done, ["{b}"], "the other microphones still get the filter")
+        self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": False}), "the new microphone {b}")
+        self.assertEqual(self.c.nomes(), ["reinicia", "confere"])
+        self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
+        self.assertIn("IN 1 (X): [Errno 13] Access is denied", str(caught.exception))
+        self.assertNotIn("IN 0", str(caught.exception))
+
+    def test_instala_todos_device_error_alone_leaves_the_audio(self):
+        def denied(ep):
+            raise PermissionError(13, "Access is denied")
+        with self.assertRaises(filtro.FilterChangeFailed) as caught:
+            self._install_with([("{a}", "IN 1", "X")], denied)
+        self.assertEqual(self.c.nomes(), [], "a device that keeps refusing doesn't restart the audio on every run")
+        self.assertIsNone(caught.exception.check)
+        with self.assertRaises(filtro.FilterChangeFailed) as caught:
+            self._install_with([("{a}", "IN 1", "X")], denied, dll_changed=True)
+        self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": True}), "only the DLL changed")
+        self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
+
     def test_instala_um(self):
         for parou, novo, quer in ((True, False, True), (False, True, False), (True, True, False), (False, False, None)):
             self.c.lista.clear()
             with mock.patch.object(filtro, "acha", lambda f: ("{a}", "IN 1", "X")), \
                     mock.patch.object(filtro, "_prepara_dll", lambda dll, p=parou: p), \
                     mock.patch.object(filtro, "_pendura", lambda ep, n=novo: n), \
-                    mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), redirect_stdout(io.StringIO()):
+                    mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), redirect_stderr(io.StringIO()):
                 r = filtro.instala("IN 1", "micfx.dll")
             if quer is None:
                 self.assertEqual(self.c.nomes(), [])
@@ -288,18 +423,60 @@ class TestaReinicio(unittest.TestCase):
                 mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), \
                 mock.patch.object(filtro, "tarefa_apaga", self.c("tarefa_apaga")), \
                 mock.patch.object(filtro, "_esquece_hospedes", self.c("esquece")), \
-                mock.patch.object(filtro, "grava_mudos", self.c("grava_mudos")), redirect_stdout(io.StringIO()):
+                mock.patch.object(filtro, "grava_mudos", self.c("grava_mudos")), redirect_stderr(io.StringIO()):
             return filtro.remove()
 
     def test_remove(self):
         r = self._remove(sobra=False)
-        self.assertEqual(self.c.nomes(), ["reinicia", "tarefa_apaga", "esquece", "grava_mudos"],
+        self.assertEqual(self.c.nomes(), ["reinicia", "rmtree", "tarefa_apaga", "esquece", "grava_mudos"],
                          "desinstalando: sem conferencia (nao sobra app para avisar)")
         self.assertEqual(self.c.lista[-1][1], ([],), "e apaga os mudos de antes")
         self.assertIsNone(r)
         r = self._remove(sobra=True)
         self.assertEqual(self.c.nomes(), ["reinicia", "confere"], "sobrou filtro: confere e grava, como ao instalar")
         self.assertEqual(r, {"mudos": [UMC_IN]})
+
+    def test_remove_cleans_up_when_the_audio_service_fails(self):
+        self.folder.mkdir()
+        (self.folder / "micfx.dll").write_bytes(b"")
+        with mock.patch.object(filtro.subprocess, "run", refusing_powershell("audiosrv")), \
+                mock.patch.object(filtro, "servico_audio", REAL_AUDIO_SERVICE), \
+                mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
+                mock.patch.object(filtro, "_devolve", lambda ep: True), \
+                mock.patch.object(filtro, "tem_filtro", lambda ep: False), \
+                mock.patch.object(filtro, "tarefa_apaga", self.c("tarefa_apaga")), \
+                mock.patch.object(filtro, "_esquece_hospedes", self.c("esquece")), \
+                mock.patch.object(filtro, "grava_mudos", self.c("grava_mudos")), redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit) as caught:
+            filtro.remove()
+        self.assertEqual(caught.exception.code, "the Start of the audio service failed (1): Cannot restart service")
+        self.assertEqual(self.c.nomes(), ["rmtree", "tarefa_apaga", "esquece", "grava_mudos"],
+                         "the uninstaller still cleans up")
+        self.assertFalse(self.folder.exists(), "the filter folder goes too")
+
+    def _remove_with_a_refusing_endpoint_builder(self, filter_left):
+        self.c.lista.clear()
+        with mock.patch.object(filtro.subprocess, "run", refusing_powershell("AudioEndpointBuilder")), \
+                mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
+                mock.patch.object(filtro, "_devolve", lambda ep: True), \
+                mock.patch.object(filtro, "tem_filtro", lambda ep: filter_left), \
+                mock.patch.object(filtro, "tarefa_apaga", self.c("tarefa_apaga")), \
+                mock.patch.object(filtro, "_esquece_hospedes", self.c("esquece")), \
+                mock.patch.object(filtro, "grava_mudos", self.c("grava_mudos")), redirect_stderr(io.StringIO()), \
+                self.assertRaises(filtro.FilterChangeFailed) as caught:
+            filtro.remove()
+        return str(caught.exception), caught.exception.check
+
+    def test_remove_reports_the_endpoint_builder_that_does_not_restart(self):
+        reason = "the AudioEndpointBuilder didn't restart (1): Cannot restart service"
+        self.folder.mkdir()
+        (self.folder / "micfx.dll").write_bytes(b"")
+        self.assertEqual(self._remove_with_a_refusing_endpoint_builder(filter_left=False), (reason, None))
+        self.assertEqual(self.c.nomes(), ["servico_audio", "rmtree", "tarefa_apaga", "esquece", "grava_mudos"],
+                         "the uninstaller still cleans up")
+        self.assertFalse(self.folder.exists())
+        self.assertEqual(self._remove_with_a_refusing_endpoint_builder(filter_left=True), (reason, {"mudos": [UMC_IN]}))
+        self.assertEqual(self.c.nomes(), ["servico_audio", "confere"])
 
     def test_remove_reprovada(self):
         """Com a pasta do app reprovada (pastas.pasta_protegida), o remove devolve os microfones e sai com erro, sem
@@ -352,7 +529,7 @@ class TestaRegistro(unittest.TestCase):
         self.assertTrue(self._existe(), "so o valor sai")
 
     def _confere(self, volta):
-        with mock.patch.object(filtro, "confere_aparelhos", volta), redirect_stdout(io.StringIO()) as out:
+        with mock.patch.object(filtro, "confere_aparelhos", volta), redirect_stderr(io.StringIO()) as out:
             r = filtro._depois_do_reinicio(assenta_s=0)
         self.assertEqual(out.getvalue().strip(), r["resumo"], "o log e o resumo, a mesma linha do --saida")
         return r
@@ -376,17 +553,6 @@ class TestaRegistro(unittest.TestCase):
         r = self._confere(lambda: {"conferidos": [MIC, UMC_OUT], "mudos": [], "falhas": [UMC_IN]})
         self.assertEqual(filtro.le_mudos(), [UMC_IN], "o mudo que nem abriu segue sem medida: fica; o que abriu sai")
         self.assertEqual(r["mudos"], [], "o --saida e so de agora")
-
-    def test_resumo_num_cano_quebrado(self):
-        """O print do resumo num cano quebrado nao perde a conferencia: ela volta para o main (o --saida e o os._exit
-        da conferencia presa dependem dela)."""
-        class Quebrado(io.StringIO):
-            def write(self, s):
-                raise BrokenPipeError(32, "Broken pipe")
-        quer = {"conferidos": [MIC], "mudos": [], "falhas": []}
-        with mock.patch.object(filtro, "confere_aparelhos", lambda: quer), mock.patch.object(sys, "stdout", Quebrado()):
-            r = filtro._depois_do_reinicio(assenta_s=0)
-        self.assertEqual((r["conferidos"], r["resumo"]), ([MIC], "devices: 1 checked"))
 
     def test_conferencia_que_quebra_ou_trava(self):
         """Um driver que quebra ou trava na conferencia nao segura a instalacao nem mexe no registro."""
@@ -430,6 +596,21 @@ class TestaLinhaDeComando(unittest.TestCase):
                     mock.patch.object(filtro, "instala_todos", lambda d: None):
                 filtro.main(["instala-todos", "--dll", str(dll), "--saida", str(saida)])
             self.assertEqual(json.loads(saida.read_text("utf-8")), {"ok": True}, "sem reinicio, sem conferencia")
+
+    def test_device_error_writes_ok_false_with_the_check(self):
+        r = {"conferidos": [MIC], "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 1 checked"}
+
+        def install_all(dll):
+            raise filtro.FilterChangeFailed(["the filter wasn't installed on IN 1 (X): [Errno 13] Access is denied"], r)
+        with tempfile.TemporaryDirectory() as tmp:
+            result_file = Path(tmp) / "result.json"
+            with mock.patch.object(filtro, "_migra_registro", lambda: None), \
+                    mock.patch.object(filtro, "instala_todos", install_all), redirect_stderr(io.StringIO()):
+                self.assertEqual(filtro.main(["instala-todos", "--dll", __file__, "--saida", str(result_file)]), 1)
+            self.assertEqual(json.loads(result_file.read_text("ascii")),
+                             {"ok": False,
+                              "erro": "the filter wasn't installed on IN 1 (X): [Errno 13] Access is denied",
+                              "conferencia": "devices: 1 checked", "mudos": [], "aparelhos": []})
 
     def test_conferencia_presa_nao_segura_o_processo(self):
         """O driver que trava deixa a thread da conferencia dentro do PortAudio, e o atexit do sounddevice (o
@@ -478,6 +659,139 @@ class TestaLinhaDeComando(unittest.TestCase):
         """O app roda o ritmelli.py --microfone confere de verdade; com um nome que nao existe, nada abre."""
         r = eng._confere_fora(["nenhum aparelho com este nome (teste)"])
         self.assertEqual(r, {"conferidos": [], "mudos": [], "falhas": []})
+
+
+class TestRepeatedInstallAfterAFailedRestart(unittest.TestCase):
+    def setUp(self):
+        changed = iter([True, False])
+        checked = {"conferidos": [MIC], "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 1 checked"}
+        self.restarts, self.runs = [], []
+
+        def restart(so_servico=False):
+            self.restarts.append(so_servico)
+            return "the restart failed"
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(filtro, "_protegida", lambda: True), \
+                    mock.patch.object(filtro, "_migra_registro", lambda: None), \
+                    mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
+                    mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
+                    mock.patch.object(filtro, "_pendura", lambda ep: next(changed)), \
+                    mock.patch.object(filtro, "reinicia_audio", restart), \
+                    mock.patch.object(filtro, "_depois_do_reinicio", lambda: checked), redirect_stderr(io.StringIO()):
+                for n in (1, 2):
+                    result_file = Path(tmp) / f"result-{n}.json"
+                    code = filtro.main(["instala-todos", "--dll", __file__, "--saida", str(result_file)])
+                    self.runs.append((code, json.loads(result_file.read_text("ascii"))))
+
+    def test_the_first_run_reports_the_failed_restart(self):
+        self.assertEqual(self.runs[0], (1, {"ok": False, "erro": "the restart failed",
+                                            "conferencia": "devices: 1 checked", "mudos": [], "aparelhos": []}))
+        self.assertEqual(self.restarts[0], False, "a new microphone: the full restart")
+
+    def test_the_second_run_reports_what_its_restart_did(self):
+        if self.restarts == [False]:
+            self.assertEqual(self.runs[1], (0, {"ok": True}), "#262: no restart, so the second run passes")
+        else:
+            self.assertEqual(self.restarts, [False, False])
+            self.assertEqual((self.runs[1][0], self.runs[1][1]["ok"], self.runs[1][1].get("erro")),
+                             (1, False, "the restart failed"))
+
+    def test_the_second_run_tries_the_full_restart_again(self):
+        with self.assertRaises(AssertionError, msg="passed, but it is a known failure (#262): if the fix is on "
+                                                   "purpose, the case leaves the known failures in the same PR"):
+            self.assertEqual(self.restarts, [False, False])
+
+
+class TestDiagnosticStreams(unittest.TestCase):
+    def _run(self, child, args, no_console=False, closed_pipes=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            script, result_file = Path(tmp) / "child.py", Path(tmp) / "result.json"
+            script.write_text(child.replace("RAIZ", repr(str(RAIZ))), "utf-8")
+            env = dict(os.environ, NO_CONSOLE="1" if no_console else "")
+            streams = {}
+            if closed_pipes:
+                read_end, write_end = os.pipe()
+                os.close(read_end)
+                streams = {"stdout": write_end, "stderr": write_end}
+            try:
+                p = subprocess.run([sys.executable, str(script), *args(tmp, str(result_file))], env=env, timeout=60,
+                                   **streams)
+            finally:
+                if closed_pipes:
+                    os.close(write_end)
+            return p.returncode, json.loads(result_file.read_text("ascii"))
+
+    def _install(self, **kw):
+        def args(tmp, result_file):
+            return ["instala-todos", "--dll", __file__, "--saida", result_file]
+        return self._run(INSTALL_CHILD, args, **kw)
+
+    def _missing_dll(self, **kw):
+        def args(tmp, result_file):
+            return ["instala-todos", "--dll", str(Path(tmp) / "none.dll"), "--saida", result_file]
+        return self._run(INSTALL_CHILD, args, **kw)
+
+    def _stuck_check(self, **kw):
+        return self._run(TRAVA, lambda tmp, result_file: [result_file], **kw)
+
+    def test_interrupted_result_write_leaves_no_file(self):
+        def broken_dump(obj, f):
+            f.write('{"ok": true,')
+            raise OSError(28, "No space left on device")
+        with tempfile.TemporaryDirectory() as tmp:
+            result_file = Path(tmp) / "result.json"
+            neighbour = Path(tmp) / "result.json.partial"
+            neighbour.write_text("someone else's file", "ascii")
+            with mock.patch.object(filtro, "_protegida", lambda: True), \
+                    mock.patch.object(filtro, "_migra_registro", lambda: None), \
+                    mock.patch.object(filtro, "instala_todos", lambda dll: None), \
+                    mock.patch.object(filtro.json, "dump", broken_dump), self.assertRaises(OSError):
+                filtro.main(["instala-todos", "--dll", __file__, "--saida", str(result_file)])
+            self.assertFalse(result_file.exists(), "the setup reads a half-written result as ok")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["result.json.partial"])
+            self.assertEqual(neighbour.read_text("ascii"), "someone else's file")
+
+    def test_no_console_like_the_executable(self):
+        self.assertEqual(self._install(no_console=True),
+                         (0, {"ok": True, "conferencia": "devices: 1 checked", "mudos": [], "aparelhos": []}))
+        code, res = self._missing_dll(no_console=True)
+        self.assertEqual((code, res["ok"]), (1, False))
+        self.assertIn("the filter DLL isn't at", res["erro"])
+
+    def test_closed_pipes(self):
+        self.assertEqual(self._install(closed_pipes=True),
+                         (0, {"ok": True, "conferencia": "devices: 1 checked", "mudos": [], "aparelhos": []}))
+        code, res = self._missing_dll(closed_pipes=True)
+        self.assertEqual((code, res["ok"]), (1, False))
+        self.assertEqual(self._stuck_check(closed_pipes=True),
+                         (0, {"ok": True, "conferencia": "devices: not checked (still running after 1 s)",
+                              "mudos": [], "aparelhos": []}))
+
+    def test_only_log_and_result_print(self):
+        tree = ast.parse((RAIZ / "microfone" / "microfone.py").read_text("utf-8"))
+        writers = {"_log", "_result"}
+        allowed = {id(n) for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) and f.name in writers
+                   for n in ast.walk(f)}
+        def writes(call):
+            f = call.func
+            if isinstance(f, ast.Name):
+                return f.id == "print"
+            return (isinstance(f, ast.Attribute) and f.attr == "write" and isinstance(f.value, ast.Attribute)
+                    and isinstance(f.value.value, ast.Name) and f.value.value.id == "sys")
+        prints = [n.lineno for n in ast.walk(tree) if isinstance(n, ast.Call) and writes(n) and id(n) not in allowed]
+        self.assertEqual(prints, [], "microfone.py writes outside _log (diagnostics) and _result (the answer)")
+        result_callers = sorted({f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) for n in ast.walk(f)
+                                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_result"})
+        self.assertEqual(result_callers, ["estado", "main"], "only estado and confere answer on stdout")
+        main = next(f for f in tree.body if isinstance(f, ast.FunctionDef) and f.name == "main")
+        confere = next(n for n in ast.walk(main)
+                       if isinstance(n, ast.If) and ast.unparse(n.test) == "a.acao == 'confere'")
+
+        def result_lines(node):
+            return [n.lineno for n in ast.walk(node)
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_result"]
+        self.assertEqual(sorted(result_lines(main)), sorted(line for s in confere.body for line in result_lines(s)),
+                         "main answers on stdout only for confere")
 
 
 class TestaApp(unittest.TestCase):
@@ -568,7 +882,8 @@ class TestaApp(unittest.TestCase):
 
     def test_depois_de_preparar_confere_todos(self):
         sem = {"filtro": False, "melhorias": True, "guid": "{a}"}
-        for r, quer in (({"ok": True}, True), ({"ok": False, "motivo": "audio"}, False)):
+        for r, quer in (({"ok": True}, True), ({"ok": False, "motivo": "audio"}, False),
+                        ({"ok": False, "motivo": "nao_pronto", "reopen": True}, True)):
             m = self._motor()
             ordem = []
             m._reabre.side_effect = lambda m=m: ordem.append(("reabre", m._mudos_vistos))
@@ -579,12 +894,25 @@ class TestaApp(unittest.TestCase):
                 eng.Engine._confere_filtro(m, MIC)
             self.assertEqual(ordem, [("reabre", True), ("confere", ())] if quer else [], r)
             self.assertEqual(m._mudos_vistos, quer, "os do registro entram na de todos; sem ela, ficam para depois")
+            self.assertEqual(m._error is None, quer, f"{r}: after a reopen, the message comes from the reopen")
         m = self._motor(_fechado=True)  # o motor fechou enquanto a tarefa rodava: nem reabre nem confere
         with mock.patch.object(eng, "_do_microfone", lambda mic: sem), \
                 mock.patch.object(filtro, "pede_tarefa", lambda mic: {"ok": True}):
             eng.Engine._confere_filtro(m, MIC)
         m._reabre.assert_not_called()
         m._confere_mudos.assert_not_called()
+
+    def test_refused_microphone_message_after_the_reopen(self):
+        without_filter = {"filtro": False, "melhorias": True, "guid": "{a}"}
+        refused = {"ok": False, "motivo": "nao_pronto", "reopen": True}
+        m = self._motor()
+        with mock.patch.object(eng, "_do_microfone", lambda mic: without_filter), \
+                mock.patch.object(filtro, "pede_tarefa", lambda mic: refused):
+            eng.Engine._confere_filtro(m, MIC)
+            m._reabre.assert_called_once_with()
+            eng.Engine._confere_filtro(m, MIC)
+        self.assertEqual(m._error["key"], "server.mic.notReadyReinstall",
+                         "the check the reopen starts for the refused microphone, still the active one")
 
     def test_registro_depois_de_preparar_que_falhou(self):
         """A preparacao que falhou nao gasta a conferencia dos mudos do registro: ela vem na proxima vez com filtro."""
@@ -626,15 +954,18 @@ class TestaPedeTarefa(unittest.TestCase):
         self.assertEqual(ordem, ["schtasks.exe /run /tn", "tarefa True", "tarefa None", "tarefa False",
                                  "sc.exe query audiosrv"])
 
-    def _pede(self, rodando, sc="STATE : 4 RUNNING", relogio=None):
+    def _pede(self, rodando, sc="STATE : 4 RUNNING", relogio=None, ready=True):
         ordem = []
 
         def run(cmd, **kw):
             ordem.append(os.path.basename(cmd[0]).lower())
             return types.SimpleNamespace(returncode=0, stdout=sc, stderr="")
+
+        def mic(n):
+            return {"filtro": ready(ordem) if callable(ready) else ready, "melhorias": True}
         with mock.patch.object(filtro, "tarefa_existe", lambda: True), \
                 mock.patch.object(filtro.subprocess, "run", run), \
-                mock.patch.object(filtro, "do_microfone", lambda n: {"filtro": True, "melhorias": True}), \
+                mock.patch.object(filtro, "do_microfone", mic), \
                 mock.patch.object(filtro, "tarefa_rodando", rodando), mock.patch.object(filtro.time, "sleep"), \
                 mock.patch.object(filtro.time, "monotonic", relogio or time.monotonic):
             return filtro.pede_tarefa("IN 1"), ordem
@@ -666,6 +997,27 @@ class TestaPedeTarefa(unittest.TestCase):
         r, _ = self._pede(lambda p: False, sc="STATE : 1 STOPPED", relogio=lambda: next(t))
         self.assertEqual(r, {"ok": False, "motivo": "audio"})
 
+    def test_refused_microphone_waits_for_the_task_and_asks_to_reopen(self):
+        running = iter([True, False])
+        t = iter(range(0, 10000, 10))
+        r, order = self._pede(lambda p: next(running), relogio=lambda: next(t), ready=False)
+        self.assertEqual(r, {"ok": False, "motivo": "nao_pronto", "reopen": True})
+        self.assertEqual(order, ["schtasks.exe", "sc.exe"], "the task may have restarted the audio: wait for it")
+        self.assertEqual(next(running, "drained"), "drained")
+
+    def test_microphone_ready_only_after_the_audio_came_back(self):
+        t = iter(range(0, 10000, 10))
+        r, order = self._pede(lambda p: False, relogio=lambda: next(t), ready=lambda calls: "sc.exe" in calls)
+        self.assertEqual(r, {"ok": True}, "the microphone is read again once the audio service is back")
+        self.assertEqual(order, ["schtasks.exe", "sc.exe"])
+
+    def test_microphone_gone_after_the_audio_came_back(self):
+        t = iter(range(0, 10000, 10))
+        r, order = self._pede(lambda p: False, relogio=lambda: next(t), ready=lambda calls: "sc.exe" not in calls)
+        self.assertEqual(r, {"ok": False, "motivo": "nao_pronto", "reopen": True},
+                         "ready before the restart, gone once the audio service is back")
+        self.assertEqual(order, ["schtasks.exe", "sc.exe"])
+
     def test_tarefa_rodando(self):
         for saida, quer in (("Running\r\n", True), ("Queued\r\n", True), ("Ready\r\n", False),
                             ("Disabled\r\n", False), ("", None), ("Unknown\r\n", None)):
@@ -689,23 +1041,39 @@ ISCC = next((p for p in (Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" /
 ACENTO = "Microfone (Áudio Ação)"
 SALA = 'Linha ("Sala" Mixer)'
 
-# o [Run] do setup de teste: o main de verdade do microfone.py, com o instala_todos devolvendo o que o MUDOS_TESTE pede
-# (JSON: a lista dos mudos de uma conferencia de 5 aparelhos, null sem reinicio do audio, ou a conferencia inteira;
-# "sem" nao grava o arquivo, como um microfone.py que quebrou antes)
 AJUDANTE = """import json, os, sys
 from unittest import mock
 sys.path.insert(0, RAIZ)
 from microfone import microfone as filtro
-mudos = os.environ["MUDOS_TESTE"]
-if mudos != "sem":
-    filtro._protegida = lambda: True  # o main confere a pasta do app: a do teste passa
-    r = json.loads(mudos)
+scenario = os.environ["MUDOS_TESTE"]
+if scenario == "sem":
+    sys.exit(1)
+filtro._protegida = lambda: True
+if scenario == "fail":
+    def install_all(dll):
+        sys.exit("a microphone failed (test)")
+elif scenario == "denied":
+    def denied(ep):
+        if ep == "{a}":
+            raise PermissionError(13, "Access is denied")
+        return True
+    checked = {"conferidos": ["a"] * 5, "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 5 checked"}
+    filtro._prepara_dll = lambda dll: False
+    filtro.microfones = lambda todos=False: [("{a}", "IN 1", "X"), ("{b}", "IN 2", "Y")]
+    filtro._pendura = denied
+    filtro.reinicia_audio = lambda so_servico=False: None
+    filtro._depois_do_reinicio = lambda: checked
+    install_all = filtro.instala_todos
+else:
+    r = json.loads(scenario)
     if isinstance(r, list):
         r = {"conferidos": ["a"] * 5, "mudos": r, "falhas": [], "travou": False,
              "resumo": "devices: 5 checked" + ("; silent: " + "; ".join(r) if r else "")}
-    with mock.patch.object(filtro, "_migra_registro", lambda: None), \\
-            mock.patch.object(filtro, "instala_todos", lambda d: r):
-        filtro.main(["instala-todos", "--dll", __file__, "--saida", sys.argv[1]])
+    def install_all(dll):
+        return r
+with mock.patch.object(filtro, "_migra_registro", lambda: None), \\
+        mock.patch.object(filtro, "instala_todos", install_all):
+    sys.exit(filtro.main(sys.argv[2:] + ["--dll", __file__]))
 """
 
 # a conferencia presa num driver, com o atexit que o sounddevice deixa (o Pa_Terminate) travando a saida
@@ -721,6 +1089,28 @@ with mock.patch.object(filtro, "_migra_registro", lambda: None), \\
         mock.patch.object(filtro, "CONFERE_MAX_S", 1.0), \\
         mock.patch.object(filtro, "instala_todos", lambda d: filtro._depois_do_reinicio(assenta_s=0)):
     sys.exit(filtro.main(["instala-todos", "--dll", __file__, "--saida", sys.argv[1]]))
+"""
+
+
+INSTALL_CHILD = """import os, sys
+from unittest import mock
+sys.path.insert(0, RAIZ)
+from microfone import microfone as filtro
+if os.environ.get("NO_CONSOLE"):
+    sys.stdout = sys.stderr = None
+check = filtro._depois_do_reinicio
+checked = {"conferidos": ["IN 1 (X)"], "mudos": [], "falhas": []}
+with mock.patch.object(filtro, "_migra_registro", lambda: None), \\
+        mock.patch.object(filtro, "_protegida", lambda: True), \\
+        mock.patch.object(filtro, "_prepara_dll", lambda dll: True), \\
+        mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \\
+        mock.patch.object(filtro, "_pendura", lambda ep: False), \\
+        mock.patch.object(filtro, "reinicia_audio", lambda so_servico=False: None), \\
+        mock.patch.object(filtro, "confere_aparelhos", lambda: checked), \\
+        mock.patch.object(filtro, "le_mudos", lambda: []), \\
+        mock.patch.object(filtro, "grava_mudos", lambda nomes: None), \\
+        mock.patch.object(filtro, "_depois_do_reinicio", lambda: check(assenta_s=0)):
+    sys.exit(filtro.main(sys.argv[1:]))
 """
 
 
@@ -744,7 +1134,8 @@ def monta_setup(pasta):
         *[x.replace("FinishedLabel=", "FinishedLabelNoIcons=") for x in linhas if "FinishedLabel" in x],
         "[CustomMessages]", *[x for x in linhas if "Abrir" in x],
         "[Run]",
-        f'Filename: "{sys.executable}"; Parameters: """{ajudante}"" ""{{tmp}}\\microfone.json"""; Flags: runhidden',
+        f'Filename: "{sys.executable}"; Parameters: """{ajudante}"" --microfone instala-todos --saida '
+        '""{tmp}\\microfone.json"""; Flags: runhidden',
         'Filename: "{sys}\\cmd.exe"; Parameters: "/c exit"; Description: "{cm:Abrir}"; '
         "Flags: postinstall nowait skipifsilent runhidden",
         # como no ritmelli.iss: o include antes do [Code], que tem o CurStepChanged sem marca
@@ -776,14 +1167,15 @@ class TestaInstalador(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def _log(self, mudos, lingua="en"):
+    def _log(self, mudos, lingua="en", exit_code=0):
         TestaInstalador.n += 1
         log = Path(self.tmp.name) / f"setup-{self.n}.log"
         env = dict(os.environ, MUDOS_TESTE=mudos if isinstance(mudos, str) else json.dumps(mudos))
         r = subprocess.run([str(self.setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/LANG={lingua}",
                             f"/LOG={log}"], env=env, timeout=120)
-        self.assertEqual(r.returncode, 0)
-        return log.read_bytes().decode("utf-8-sig", errors="replace")
+        text = log.read_bytes().decode("utf-8-sig", errors="replace")
+        self.assertEqual(r.returncode, exit_code, text[-2000:])
+        return text
 
     def test_mudos_no_log(self):
         mudos = [UMC_IN, UMC_OUT, ACENTO, SALA]
@@ -813,7 +1205,27 @@ class TestaInstalador(unittest.TestCase):
                       "um aparelho chamado como a chave do JSON nao esconde a lista")
 
     def test_sem_o_arquivo(self):
-        self.assertIn("aparelhos: sem o microfone.json", self._log("sem"))
+        log = self._log("sem", exit_code=9)
+        self.assertIn("aparelhos: sem o microfone.json", log)
+        self.assertIn("mic filter: the setup exits with 9", log)
+
+    def test_failed_filter_fails_the_setup(self):
+        log = self._log("fail", exit_code=9)
+        self.assertIn("aparelhos: sem conferencia", log, "the summary is there, and it is not enough")
+        self.assertIn("mic filter: failed: a microphone failed (test)", log)
+        self.assertRegex(log, r"Parameters: .*--microfone instala-todos.*\s+.*Process exit code: 1\b")
+
+    def test_device_error_fails_the_setup_with_the_summary(self):
+        log = self._log("denied", exit_code=9)
+        self.assertIn("aparelhos: devices: 5 checked", log)
+        self.assertIn("mic filter: failed: the filter wasn't installed on IN 1 (X): [Errno 13] Access is denied", log)
+        self.assertRegex(log, r"Parameters: .*--microfone instala-todos.*\s+.*Process exit code: 1\b")
+
+    def test_filter_ok_logs_it(self):
+        log = self._log([])
+        self.assertIn("mic filter: ok", log)
+        self.assertRegex(log, r"Parameters: .*--microfone instala-todos.*\s+.*Process exit code: 0")
+        self.assertNotIn("the setup exits with", log)
 
 
 if __name__ == "__main__":
