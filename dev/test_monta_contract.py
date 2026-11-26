@@ -541,6 +541,9 @@ def main():
         "a second Add-Content writing parcial=false": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false" -Encoding ascii\n'),
+        "a later parcial write from another variable": lambda d: source_step(d, "parcial").update(
+            run=source_step(d, "parcial")["run"].rstrip("\n")
+            + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "parcial=$($other.ToString())" -Encoding ascii\n'),
         "a second Add-Content writing an empty versao": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
             run=step_by_id(d["jobs"]["monta"], "congela")["run"].rstrip("\n")
             + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "versao=" -Encoding ascii\n'),
