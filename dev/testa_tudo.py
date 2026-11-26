@@ -213,7 +213,7 @@ VERDICT_STEP = "Verdict"
 # what goes into the key of a compara capture besides the commit and the Chrome version: the scripts that take it and
 # the libraries of the server
 CAPTURA = ("dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py", "requirements.txt", "requirements-dev.txt",
-           "instalador/travas.txt")
+           "instalador/travas.txt", "dev/travas.txt")
 LONG_TITLES = {"bench": "Banca", "capture": "Captura"}
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva
 # codigo de renderizacao ou de traducao para outro modulo poe o modulo na "tela"
@@ -223,7 +223,7 @@ AREAS = {
     "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py",
              "dev/missing_script.py", "dev/theme_scripts.py", "dev/theme_listeners.py", "dev/test_theme_listeners.py"),
 }
-TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt")
+TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt", "dev/travas.txt")
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
 # renderizacao ou de traducao do tema para outro modulo (posta por quem mantem o repo)
 ETIQUETAS = {"extracao-tema": "tela"}
