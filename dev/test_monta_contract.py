@@ -117,24 +117,23 @@ def active(run, found):
     return bool(found) and code(run)[found.start():found.end()] == found.group(0)
 
 
-
-
-def condition_holds(condition, build):
+def condition_holds(condition, build, needs):
     if condition is None:
         return True
     text = bare(condition) or ""
     if re.fullmatch(r"(always|success)\(\)", text):
         return True
     gate = re.fullmatch(r"needs\.monta\.outputs\.(\w+)\s*==\s*'true'", text)
-    return bool(gate) and build.get(gate.group(1), False)
+    return bool(gate) and "monta" in needs and build.get(gate.group(1), False)
 
 
 def runs(jobs, job_id, build, seen=()):
     job = jobs.get(job_id)
-    if job is None or job_id in seen or not condition_holds(job.get("if"), build):
+    if job is None or job_id in seen:
         return False
     needs = job.get("needs") or []
-    return all(runs(jobs, n, build, seen + (job_id,)) for n in ([needs] if isinstance(needs, str) else needs))
+    needs = [needs] if isinstance(needs, str) else needs
+    return condition_holds(job.get("if"), build, needs) and all(runs(jobs, n, build, seen + (job_id,)) for n in needs)
 
 
 SAIDA = r"""['"]--saida['"],\s*(?:(['"])([^'"]*)\1|\$(\w+))\s*[,)]"""
@@ -463,6 +462,9 @@ def main():
             "'--saida', $saida)", "'--saida', $saida + '\\sub')")),
         "the only assignment of the --saida folder commented out": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1# \2", run, count=1, flags=re.M)),
+        "testa-atualizador gated by anterior without needing monta": lambda d: shown(d, "testa-atualizador").update(
+            {"if": shown(d, "testa-migracao")["if"],
+             "needs": [next(k for k, j in d["jobs"].items() if j is shown(d, "testa"))]}),
         "testa-atualizador only on push": lambda d: shown(d, "testa-atualizador").update(
             {"if": "github.event_name == 'push'"}),
         "testa-atualizador needing a job that runs only on push": lambda d: (
