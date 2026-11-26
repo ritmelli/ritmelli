@@ -280,7 +280,7 @@ def manifest_call(source, version="0.3.4", notas=None, notas_en=None, partial=Fa
     env = {k: v for k, v in os.environ.items() if k.upper() not in ("NOTAS", "NOTAS_EN", "PYTHONUTF8")}
     env.update({k: v for k, v in (("NOTAS", notas), ("NOTAS_EN", notas_en)) if v is not None})
     p = subprocess.run([sys.executable, str(scripts / "build_manifest.py")], cwd=root, capture_output=True, text=True,
-                       env=env)
+                       errors="replace", env=env)
     record = scripts / "publica-call.json"
     call = json.loads(record.read_text(encoding="utf-8")) if record.exists() else {"options": {}, "notes": {}}
     return p.returncode, call["options"], call["notes"], output, p.stdout + p.stderr
@@ -311,7 +311,7 @@ LONG_NOTES = {"notas": ["á" * 501, *(f"Nota {n}" for n in range(1, 31))],
 
 
 def notes_case(source):
-    runs = [(dict(notas=" Correção do áudio | Nota dois |"), {"notas": ["Correção do áudio", "Nota dois"]}),
+    runs = [(dict(notas=" Correção do  áudio | Nota\ndois |"), {"notas": ["Correção do  áudio", "Nota", "dois"]}),
             (dict(notas_en="Don’t skip this fix|| Note two ", partial=True, partial_info=True),
              {"notas_en": ["Don’t skip this fix", "Note two"]}),
             (dict(notas="|".join(LONG_NOTES["notas"]), notas_en="|".join(LONG_NOTES["notas_en"])),
@@ -393,6 +393,7 @@ MANIFEST_CASES = {
             ("if n.strip()]", "if n.strip()][:30]"),
             ("[n.strip() for n in", "[n.strip()[:500] for n in"),
             ('.split("|")', '.split(",")'),
+            ('"\\n".join(lines)', '"\\n".join(" ".join(line.split()) for line in lines)'),
             ('encoding="utf-8-sig"', 'encoding="cp1252"'),
             ('encoding="utf-8-sig"', 'encoding="cp1252" if variable == "NOTAS_EN" else "utf-8-sig"')]),
     "NOTAS and NOTAS_EN absent, empty or blank give publica.py no notes": (no_notes_case, [
