@@ -77,7 +77,7 @@ def automatico(A, E):
 
     E.load(dict(SEMENTE))
     A.ligar_auto(True)
-    confere(A.auto and A.semente is None and A.mix is None, "o Automatico ligado, antes da primeira volta")
+    confere(A.automatico.auto and A.automatico.semente is None and A.automatico.mix is None, "o Automatico ligado, antes da primeira volta")
 
     # a primeira volta: o disco do prato vira a semente e a busca do Mix dela e pedida (a thread dela fica so pedida:
     # quem busca e o teste, com a semente que a volta passou a ela)
@@ -85,16 +85,16 @@ def automatico(A, E):
         visto, sinal = A.automatico.auto_round(None, None)
     pedida = [(getattr(c.kwargs.get("target"), "__name__", None), c.kwargs.get("args")) for c in thread.call_args_list]
     base = pedida[0][1][0] if pedida and pedida[0][1] else None
-    confere(visto == "sssssssssss" and A.semente == {"youtube_id": "sssssssssss", "title": "Semente Primeira"}
+    confere(visto == "sssssssssss" and A.automatico.semente == {"youtube_id": "sssssssssss", "title": "Semente Primeira"}
             and pedida == [("fetch_mix", ("sssssssssss",))] and thread.return_value.start.call_count == 1
-            and A.mix_base == base and A.mix is None and A.mix_buscando and "sssssssssss" in A.fora and auto() == [],
-            f"a primeira volta: a semente e o disco do prato, e a busca do Mix dela fica pedida ({A.semente}, {pedida})")
+            and A.automatico.mix_base == base and A.automatico.mix is None and A.automatico.mix_buscando and "sssssssssss" in A.automatico.fora and auto() == [],
+            f"a primeira volta: a semente e o disco do prato, e a busca do Mix dela fica pedida ({A.automatico.semente}, {pedida})")
 
     # a busca, pelo mix_do do App (o falso)
     A.automatico.fetch_mix(base)
-    confere(pedidos == ["sssssssssss"] and not A.mix_buscando
-            and [m["youtube_id"] for m in A.mix] == [v for v, _ in PARECIDAS]
-            and [m["ordem"] for m in A.mix] == [1, 2, 3, 4, 5, 6],
+    confere(pedidos == ["sssssssssss"] and not A.automatico.mix_buscando
+            and [m["youtube_id"] for m in A.automatico.mix] == [v for v, _ in PARECIDAS]
+            and [m["ordem"] for m in A.automatico.mix] == [1, 2, 3, 4, 5, 6],
             f"a busca: as parecidas da semente, pelo mix_do do App, numeradas na ordem do Mix ({pedidos})")
 
     # a segunda volta monta a fila na ordem por andamento
@@ -104,7 +104,7 @@ def automatico(A, E):
             f"a segunda volta: cinco parecidas na fila, na ordem por andamento ({auto()})")
     confere(all(x.get("auto_de") == "Semente Primeira" and x.get("qid") and x.get("id") is None for x in A.fila),
             "cada parecida da fila diz de que semente veio e ganhou o seu qid")
-    confere([m["youtube_id"] for m in A.mix] == ["aaaaaaaaaa5"], f"a que nao entrou fica no Mix ({A.mix})")
+    confere([m["youtube_id"] for m in A.automatico.mix] == ["aaaaaaaaaa5"], f"a que nao entrou fica no Mix ({A.automatico.mix})")
     antes = [x["qid"] for x in A.fila]
     visto, sinal = A.automatico.auto_round(visto, sinal)
     confere([x["qid"] for x in A.fila] == antes and pedidos == ["sssssssssss"],
@@ -113,8 +113,8 @@ def automatico(A, E):
     # a medida nova poria a 1 na frente (comeca em 120, como a 3, e vem antes no Mix), mas a primeira da fila esta presa:
     # a passagem para ela ja esta sendo preparada
     with A.fila_lock:
-        A.andamentos["aaaaaaaaaa1"] = {"ini": 120.0, "fim": 131.0}
-        A.andamentos_versao += 1
+        A.automatico.andamentos["aaaaaaaaaa1"] = {"ini": 120.0, "fim": 131.0}
+        A.automatico.andamentos_versao += 1
     A.preparando = (E.track, A.fila[0]["qid"])
     visto, sinal = A.automatico.auto_round(visto, sinal)
     confere(auto() == esperado and A.fila[0]["qid"] == antes[0],
@@ -125,14 +125,34 @@ def automatico(A, E):
     visto, sinal = A.automatico.auto_round(visto, sinal)
     confere(auto() == ["aaaaaaaaaa1", "aaaaaaaaaa6", "aaaaaaaaaa2", "aaaaaaaaaa4", "aaaaaaaaaa3"],
             f"sem a presa, a medida nova reordena a fila ({auto()})")
-    confere([m["youtube_id"] for m in A.mix] == ["aaaaaaaaaa5"] and pedidos == ["sssssssssss"],
+    confere([m["youtube_id"] for m in A.automatico.mix] == ["aaaaaaaaaa5"] and pedidos == ["sssssssssss"],
             "o Mix e o mesmo, sem busca nova")
+
+    removed = next(x for x in A.fila if x["youtube_id"] == "aaaaaaaaaa6")
+    A.tirar_da_fila(removed["qid"], recusar=True)
+    visto, sinal = A.automatico.auto_round(visto, sinal)
+    confere("aaaaaaaaaa6" not in auto() and "aaaaaaaaaa5" in auto() and "aaaaaaaaaa6" in A.automatico.fora,
+            f"a similar track the user takes out stays out, and the next one from the Mix takes its place ({auto()})")
 
     # desligar tira as parecidas da fila
     A.ligar_auto(False)
-    confere(not A.auto and A.fila == [], f"desligado, as parecidas saem da fila ({auto()})")
+    confere(not A.automatico.auto and A.fila == [], f"desligado, as parecidas saem da fila ({auto()})")
     visto, sinal = A.automatico.auto_round(visto, sinal)
     confere(A.fila == [] and pedidos == ["sssssssssss"], "e a volta com o Automatico desligado nao poe nada")
+
+
+def saved_choice(tmp, A):
+    print("--- the Automatico's choice, saved in config.json")
+    confere(A.automatico.auto is True, "a fresh install has the Automatico on")
+    A.ligar_auto(False)
+    A.save_cfg()
+    B, E = monta(tmp)
+    try:
+        confere(B.automatico.auto is False, "the next start keeps the choice the user saved")
+    finally:
+        E.close()
+    A.ligar_auto(True)
+    A.save_cfg()
 
 
 def main():
@@ -141,6 +161,7 @@ def main():
         with mock.patch.object(server, "LIB", audio), mock.patch.object(pastas, "LIB", audio):
             A, E = monta(Path(tmp))
             try:
+                saved_choice(Path(tmp), A)
                 automatico(A, E)
             finally:
                 E.close()
