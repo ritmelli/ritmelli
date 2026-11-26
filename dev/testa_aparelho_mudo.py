@@ -210,6 +210,29 @@ class TestaConferencia(unittest.TestCase):
                          ["BEHRINGER UMC 404HD 192k", "Realtek High Definition Audio"], "um por aparelho, na ordem")
 
 
+def refusing_powershell(service, state="Running"):
+    def run(cmd, **kw):
+        line = " ".join(cmd)
+        if f"-Service {service} " in line:
+            failed = "-ErrorAction Stop" in line
+            return types.SimpleNamespace(returncode=1 if failed else 0, stdout="", stderr="Cannot restart service")
+        return types.SimpleNamespace(returncode=0, stdout=state, stderr="")
+    return run
+
+
+class TestAudioService(unittest.TestCase):
+    def test_restart_that_fails_with_the_old_service_running(self):
+        with mock.patch.object(filtro.subprocess, "run", refusing_powershell("audiosrv")), \
+                self.assertRaises(SystemExit) as caught:
+            filtro.servico_audio("Restart")
+        self.assertEqual(caught.exception.code, "the Restart of the audio service failed (1): Cannot restart service")
+        with mock.patch.object(filtro.subprocess, "run", refusing_powershell("nothing")):
+            filtro.servico_audio("Restart")
+        with mock.patch.object(filtro.subprocess, "run", refusing_powershell("nothing", state="Stopped")), \
+                self.assertRaises(SystemExit):
+            filtro.servico_audio("Restart")
+
+
 class TestaReinicio(unittest.TestCase):
     def setUp(self):
         self.c = Chamadas()
@@ -233,21 +256,25 @@ class TestaReinicio(unittest.TestCase):
         return [a[0] for n, a, _ in self.c.lista if n == "run" and "AudioEndpointBuilder" in " ".join(a[0])]
 
     def test_endpoint_builder_that_does_not_restart(self):
-        failed = types.SimpleNamespace(returncode=1, stdout="", stderr="Cannot restart service")
-        with mock.patch.object(filtro.subprocess, "run", self.c("run", failed)):
-            reason = filtro.reinicia_audio()
-        self.assertEqual(reason, "the AudioEndpointBuilder didn't restart (1): Cannot restart service")
-        self.assertEqual([a for n, a, _ in self.c.lista if n == "servico_audio"], [("Start",)],
-                         "the audio service still comes back")
+        reason = "the AudioEndpointBuilder didn't restart (1): Cannot restart service"
+        with mock.patch.object(filtro.subprocess, "run", self.c("run", refusing_powershell("AudioEndpointBuilder"))):
+            self.assertEqual(filtro.reinicia_audio(), reason)
+            self.assertEqual([a for n, a, _ in self.c.lista if n == "servico_audio"], [("Start",)],
+                             "the audio service still comes back")
+            with mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
+                    mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
+                    mock.patch.object(filtro, "_pendura", lambda ep: True), \
+                    redirect_stderr(io.StringIO()), self.assertRaises(filtro.FilterNotInstalled) as caught:
+                filtro.instala_todos("micfx.dll")
+            self.assertEqual(str(caught.exception), reason)
+            self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
+            with mock.patch.object(filtro, "acha", lambda f: ("{a}", "IN 1", "X")), \
+                    mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
+                    mock.patch.object(filtro, "_pendura", lambda ep: True), \
+                    redirect_stderr(io.StringIO()), self.assertRaises(filtro.FilterNotInstalled) as caught:
+                filtro.instala("IN 1", "micfx.dll")
+            self.assertEqual((str(caught.exception), caught.exception.check), (reason, {"mudos": [UMC_IN]}))
         self.assertIsNone(filtro.reinicia_audio(), "a restart that worked")
-        with mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
-                mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
-                mock.patch.object(filtro, "_pendura", lambda ep: True), \
-                mock.patch.object(filtro, "reinicia_audio", lambda so_servico=False: reason), \
-                redirect_stderr(io.StringIO()), self.assertRaises(filtro.FilterNotInstalled) as caught:
-            filtro.instala_todos("micfx.dll")
-        self.assertEqual(str(caught.exception), reason)
-        self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
 
     def test_so_o_servico(self):
         for rodando, acao in ((True, "Restart"), (False, "Start")):
@@ -503,6 +530,21 @@ class TestaLinhaDeComando(unittest.TestCase):
                     mock.patch.object(filtro, "instala_todos", lambda d: None):
                 filtro.main(["instala-todos", "--dll", str(dll), "--saida", str(saida)])
             self.assertEqual(json.loads(saida.read_text("utf-8")), {"ok": True}, "sem reinicio, sem conferencia")
+
+    @unittest.expectedFailure
+    def test_repeated_install_after_a_failed_restart(self):
+        changed = iter([True, False])
+        checked = {"conferidos": [MIC], "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 1 checked"}
+        with tempfile.TemporaryDirectory() as tmp:
+            args = ["instala-todos", "--dll", __file__, "--saida", str(Path(tmp) / "result.json")]
+            with mock.patch.object(filtro, "_migra_registro", lambda: None), \
+                    mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
+                    mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
+                    mock.patch.object(filtro, "_pendura", lambda ep: next(changed)), \
+                    mock.patch.object(filtro, "reinicia_audio", lambda so_servico=False: "the restart failed"), \
+                    mock.patch.object(filtro, "_depois_do_reinicio", lambda: checked), redirect_stderr(io.StringIO()):
+                codes = filtro.main(args), filtro.main(args)
+        self.assertEqual(codes, (1, 1), "#262: the second run must not pass without the restart that never happened")
 
     def test_device_error_writes_ok_false_with_the_check(self):
         r = {"conferidos": [MIC], "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 1 checked"}

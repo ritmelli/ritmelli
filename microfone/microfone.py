@@ -254,15 +254,20 @@ def audio_rodando():
 
 
 def servico_audio(acao):
-    """Stop, Start ou Restart do servico de audio (o audiodg.exe segura a DLL enquanto ele roda). O Start-Service
-    nao tem -Force (com ele o comando falha calado e o PC fica sem som: 13/11). Confere o estado no fim."""
+    """Stop, Start or Restart of the audio service (audiodg.exe holds the DLL while it runs). Start-Service gets no
+    -Force (with it the command fails silently and the PC is left without sound: 13/11). Exits with an error when the
+    command fails or when the final state isn't the expected one."""
     forca = " -Force" if acao in ("Stop", "Restart") else ""
-    subprocess.run([POWERSHELL, "-NoProfile", "-Command", f"{acao}-Service audiosrv{forca}"], check=False,
-                   capture_output=True, text=True, encoding="oem", errors="replace", creationflags=NO_WINDOW)
+    command = subprocess.run([POWERSHELL, "-NoProfile", "-Command",
+                              f"{acao}-Service audiosrv{forca} -ErrorAction Stop"], check=False, capture_output=True,
+                             text=True, encoding="oem", errors="replace", creationflags=NO_WINDOW)
     estado = subprocess.run([POWERSHELL, "-NoProfile", "-Command", "(Get-Service audiosrv).Status"],
                             capture_output=True, text=True, encoding="oem", errors="replace",
                             creationflags=NO_WINDOW).stdout.strip()
     esperado = "Stopped" if acao == "Stop" else "Running"
+    if command.returncode:
+        sys.exit(f"the {acao} of the audio service failed ({command.returncode}): "
+                 f"{command.stderr.strip() or command.stdout.strip()}")
     if estado != esperado:
         sys.exit(f"the audio service was '{estado}' after the {acao} (expected {esperado})")
 
@@ -691,10 +696,12 @@ def instala(filtro, dll):
     ep, nome, apar = acha(filtro)
     parou = _prepara_dll(dll)
     novo = _pendura(ep)
-    if novo or parou:
-        reinicia_audio(so_servico=not novo)
+    restart_error = reinicia_audio(so_servico=not novo) if novo or parou else None
+    check = _depois_do_reinicio() if novo or parou else None
+    if restart_error:
+        raise FilterNotInstalled([restart_error], check)
     _log(f"installed on {nome} ({apar}) {ep}")
-    return _depois_do_reinicio() if novo or parou else None
+    return check
 
 
 class FilterNotInstalled(Exception):
@@ -962,15 +969,16 @@ def tarefa_rodando(prazo_s=10.0):
     return True if estado in ("Running", "Queued") else False if estado in ("Ready", "Disabled") else None
 
 
-def _microphone_ready(nome):
-    m = do_microfone(nome)
+def _microphone_ready(name):
+    m = do_microfone(name)
     return bool(m and m["filtro"] and m["melhorias"])
 
 
 def pede_tarefa(nome, espera_s=60):
-    """Do app, sem administrador: roda a tarefa do instalador e espera o microfone ter o filtro (e as melhorias) e o
-    audio do Windows voltar. {ok} ou {ok: False, motivo, detalhe, reopen}: o motivo e um codigo (sem_tarefa,
-    tarefa_falhou, nao_pronto, audio), e quem chama poe a frase na lingua da tela (o engine.py)."""
+    """From the app, without administrator: runs the installer's task and waits for the microphone to have the filter
+    (and the enhancements) and for the Windows audio to come back. {ok} or {ok: False, motivo, detalhe, reopen}: the
+    motivo is a code (sem_tarefa, tarefa_falhou, nao_pronto, audio), and the caller words it in the language of the
+    screen (engine.py). With nao_pronto the task may still have restarted the audio, so reopen asks for a reopen."""
     if not tarefa_existe():
         return {"ok": False, "motivo": "sem_tarefa"}
     r = subprocess.run([SCHTASKS, "/run", "/tn", TAREFA], capture_output=True, text=True, encoding="oem",
