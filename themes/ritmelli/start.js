@@ -10,7 +10,6 @@ inertPalco();
 FADERS.forEach(([fi]) => pintarFader($(fi)));
 if (location.hash === '#efeitos' && !celular()) abrirGaveta(true);
 function carregar() {
-  if (scriptsMissing().length) return;
   const geracao = geracaoPareamento;
   Promise.all([api('GET', '/api/state'), api('GET', '/api/library'), api('GET', '/api/jobs')])
     .then(([st, lib, jobs]) => {
@@ -30,11 +29,8 @@ function carregar() {
     .finally(() => { if (!S.pareando && geracao === geracaoPareamento) conectar(); });
 }
 document.addEventListener('DOMContentLoaded', () => {
-  if (scriptsMissing().length) return;
   carregarEfeitos();
   carregar();
-  // registered after carregar(): the browser can run events while it loads the ui-events.js above, and a tab shown in
-  // that gap would connect before the page starts
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { clearTimeout(foraT); return; }
     if (S.desligado || S.pareando) return;

@@ -60,15 +60,42 @@ THEMES = HERE / "themes"
 # o endereco do tema ate a 0.6.0, quando ele se chamava vitrola (#58): o celular pareado, o atalho na tela inicial e o
 # favorito ainda abrem este, e o servidor leva cada caminho dele para o mesmo no tema de agora (o tema_de_antes)
 TEMA_DE_ANTES = "/t/vitrola"
-INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
+THEME_FILE_TAG = re.compile(r'<script src="([^"]+)"></script>|<link rel="stylesheet" href="([^"]+)">')
+OTHER_FILE_TAG = re.compile(r"<script\b[^>]*\bsrc\b|<link\b[^>]*\bstylesheet\b", re.IGNORECASE)
+CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
 
 
-def inline_scripts(html, folder):
-    return INLINE_SCRIPT.sub(lambda m: f"<script>\n{(folder / m.group(1)).read_text(encoding='utf-8')}</script>", html)
+class ThemePageError(Exception):
+    pass
+
+
+def theme_file(folder, name):
+    inside = THEMES if name.startswith("/t/") else folder
+    path = (inside / name.removeprefix("/t/")).resolve()
+    if not path.is_relative_to(inside.resolve()):
+        raise ThemePageError(f"{name} is outside {inside}")
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise ThemePageError(f"{name} is missing from {inside}") from None
+
+
+def inline_files(html, folder):
+    if found := OTHER_FILE_TAG.search(THEME_FILE_TAG.sub("", html)):
+        raise ThemePageError(f"the tag at {found.group(0)!r} is not <script src=\"...\"></script> or "
+                             f"<link rel=\"stylesheet\" href=\"...\">, the only file tags the page puts inline")
+
+    def inline(m):
+        name, tag = (m.group(1), "script") if m.group(1) else (m.group(2), "style")
+        text = theme_file(folder, name)
+        if CLOSES_ELEMENT[tag].search(text):
+            raise ThemePageError(f"{name} has {CLOSES_ELEMENT[tag].search(text).group(0)}, which its <{tag}> cannot hold")
+        return f"<{tag}>\n{text}</{tag}>"
+    return THEME_FILE_TAG.sub(inline, html)
 
 
 def theme_page(page, texts, language):
-    html = inline_scripts(i18n.injeta(page.read_text(encoding="utf-8"), texts, language), page.parent)
+    html = inline_files(i18n.injeta(page.read_text(encoding="utf-8"), texts, language), page.parent)
     return html, f'"{hashlib.sha256(html.encode("utf-8")).hexdigest()[:32]}"'
 
 

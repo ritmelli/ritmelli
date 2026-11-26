@@ -4,19 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- i18n -->
-<script>
-/* os textos da galeria na lingua de quem abre: o servidor poe o I18N_DADOS no lugar do comentario acima (o i18n.py), com
-   os da pasta i18n/ ao lado, como num tema. So texto puro, sem marcacao; a chave que falte nas duas linguas aparece como
-   a propria chave */
-const I18N = (() => {
-  const d = window.I18N_DADOS || { lingua: 'en', textos: {}, reserva: {} };
-  const tem = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-  const t = (k, p) => (tem(d.textos, k) ? d.textos[k] : tem(d.reserva, k) ? d.reserva[k] : k)
-    .replace(/\{(\w+)\}/g, (m, x) => (p && tem(p, x) ? String(p[x]) : m));
-  document.documentElement.lang = d.lingua.replace('_', '-');
-  return { lingua: d.lingua, t };
-})();
-</script>
+<script src="/t/ritmelli/i18n.js"></script>
 <title></title>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
@@ -112,10 +100,7 @@ const I18N = (() => {
 </div>
 <script>
 document.title = I18N.t('gallery.title');
-for (const e of document.querySelectorAll('[data-i18n]')) e.textContent = I18N.t(e.dataset.i18n);
-for (const a of ['title', 'aria-label']) {
-  for (const e of document.querySelectorAll(`[data-i18n-${a}]`)) e.setAttribute(a, I18N.t(e.getAttribute(`data-i18n-${a}`)));
-}
+I18N.aplica();
 const sel = [];
 const grid = document.getElementById('grid');
 const aviso = texto => { const p = document.createElement('p'); p.className = 'empty'; p.textContent = texto; grid.replaceChildren(p); };

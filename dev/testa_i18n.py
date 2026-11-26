@@ -150,13 +150,13 @@ def check_block_pairs(tema, arquivos):
                   f"that order, in the same file")
 
 
-INLINE_CEILING = {"ritmelli": 65}
+INLINE_CEILING = {"ritmelli": 0}
 
 
 def inline_lines(html):
     total = 0
     for attrs, _, _, body in script_elements(html, ("script", "style")):
-        if "src" in attrs or "inline" in attrs:
+        if "src" in attrs:
             continue
         body = body.strip(chr(10))
         total += body.count(chr(10)) + 1 if body.strip() else 0
@@ -174,12 +174,6 @@ def check_inline_ceiling(tema, html):
     elif count < ceiling:
         falha(f"{tema.name}: index.html has {count} lines of inline CSS and JS, under the ceiling of {ceiling}: lower "
               f"INLINE_CEILING in dev/testa_i18n.py to {count}")
-
-
-SHARED_FIRST = {"ritmelli": "shared.js"}
-FAILURE_HANDLER = {"ritmelli": "script-failed.js"}
-ONERROR = "scriptFailed(this)"
-INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 
 
 class _Scripts(HTMLParser):
@@ -206,11 +200,6 @@ class _Scripts(HTMLParser):
         if tag in self.tags:
             self.open = None
 
-    def handle_comment(self, data):
-        inlined = INLINE_SCRIPT.fullmatch(f"<!--{data}-->")
-        if inlined:
-            self.found.append([{"inline": inlined.group(1)}, self.getpos()[0], None, ""])
-
 
 def script_elements(html, tags=("script",)):
     parser = _Scripts(tags)
@@ -219,63 +208,8 @@ def script_elements(html, tags=("script",)):
     return parser.found
 
 
-def check_script_tags(tema, html, arquivos):
-    if tema.name not in SHARED_FIRST:
-        return
-    elements = script_elements(html)
-    for attrs, line, _, _ in elements:
-        name = attrs.get("inline")
-        if name and name not in arquivos:
-            falha(f"{tema.name}: index.html:{line}: the inline-script {name} is not a file of the theme")
-        elif name and "</script" in arquivos[name].lower():
-            falha(f"{tema.name}: {name} has </script, which would close the <script> the server puts it in")
-    order = [attrs.get("inline") or attrs.get("src") for attrs, _, _, _ in elements
-             if attrs.get("inline") or attrs.get("src")]
-    if not order or order[0] != FAILURE_HANDLER[tema.name]:
-        falha(f"{tema.name}: the first script of the index.html with a file is {order[:1]}, not the inline-script "
-              f"{FAILURE_HANDLER[tema.name]}: the onerror of every <script src> calls it")
-    tags = [(attrs, line) for attrs, line, _, _ in elements if attrs.get("src")]
-    for attrs, line in tags:
-        if attrs.get("onerror") != ONERROR:
-            falha(f"{tema.name}: index.html:{line}: the <script src=\"{attrs['src']}\"> has no onerror=\"{ONERROR}\": "
-                  f"a file that does not load would leave the page without a connection")
-        for extra in sorted({"defer", "async", "type", "nomodule"} & attrs.keys()):
-            falha(f"{tema.name}: index.html:{line}: the <script src=\"{attrs['src']}\"> has {extra}: the scripts of "
-                  f"the page run in order, each one before the parser goes on")
-    first = tags[0][0]["src"] if tags else None
-    if first != SHARED_FIRST[tema.name]:
-        falha(f"{tema.name}: the first <script src> of the index.html is {first}, not {SHARED_FIRST[tema.name]}: the "
-              f"shared state and helpers load before every other script")
-
-
 def check_tag_and_block_guards():
     antes = len(falhas)
-    with contextlib.redirect_stdout(io.StringIO()):
-        check_script_tags(Path("ritmelli"), '<!-- inline-script: script-failed.js -->'
-                          '<script src="shared.js" data-onerror="scriptFailed(this)"></script>'
-                          "<script src='queue.js' title='onerror=\"scriptFailed(this)\"'></script>"
-                          '<script src="x.js" onerror="scriptFailed(this)" defer></script>'
-                          '<SCRIPT title="a > b" SRC="deck.js"></SCRIPT>'
-                          '<script src="y.js" onerror="other()" onerror="scriptFailed(this)"></script>'
-                          '<script src="z.js" onerror="scriptFailed(this)" nomodule></script>',
-                          {"script-failed.js": "const ok = 1;\n"})
-    if (len(falhas) != antes + 6 or "has no onerror" not in falhas[-6] or "has defer" not in falhas[-4]
-            or "deck.js" not in falhas[-3] or "y.js" not in falhas[-2] or "has nomodule" not in falhas[-1]):
-        falha(f"check_script_tags should fail on a data-onerror, an onerror in another attribute, a defer, a tag in "
-              f"capitals with a > in an attribute, a repeated onerror and a nomodule: {falhas[antes:]}")
-    else:
-        del falhas[antes:]
-    with contextlib.redirect_stdout(io.StringIO()):
-        check_script_tags(Path("ritmelli"), '<script src="shared.js" onerror="scriptFailed(this)"></script>'
-                          '<!-- inline-script: script-failed.js -->', {"script-failed.js": "x('</script>');\n"})
-        check_script_tags(Path("ritmelli"), '<!-- inline-script: script-failed.js -->'
-                          '<script src="shared.js" onerror="scriptFailed(this)"></script>', {})
-    if (len(falhas) != antes + 3 or "</script" not in falhas[-3] or "not the inline-script" not in falhas[-2]
-            or "not a file of the theme" not in falhas[-1]):
-        falha(f"check_script_tags should fail on a </script in the inlined file, the inline-script after a file and "
-              f"an inline-script that is not a file: {falhas[antes:]}")
-    else:
-        del falhas[antes:]
     with contextlib.redirect_stdout(io.StringIO()):
         check_block_pairs(Path("ritmelli"), {"a.css": "/* X-FIM */\n", "b.css": "/* Y-INICIO */\n",
                                              "c.css": "/* Y-FIM */\n", "d.css": "/* Z-FIM */\n/* Z-INICIO */\n",
@@ -286,10 +220,10 @@ def check_tag_and_block_guards():
     else:
         del falhas[antes:]
     counted = inline_lines('<SCRIPT>\na\nb\n</SCRIPT>\n<script data-src="a.js">\nc\n</script>\n'
-                           '<script src="x.js"></script>\n<!-- inline-script: y.js -->\n<style>\nd\n</style>\n')
+                           '<script src="x.js"></script>\n<style>\nd\n</style>\n')
     if counted != 4:
         falha(f"inline_lines counted {counted} lines, expected 4 (a <SCRIPT> in capitals and a data-src count)")
-    print("the script tag check, the block pair check and the inline count checked")
+    print("the block pair check and the inline count checked")
 
 
 def check_theme_rebuild():
@@ -388,7 +322,6 @@ def confere_tema(tema, servidor, efeitos):
     confere_blocos(tema, arquivos)
     check_block_pairs(tema, arquivos)
     check_inline_ceiling(tema, arquivos["index.html"])
-    check_script_tags(tema, arquivos["index.html"], arquivos)
     html = "\n".join(arquivos.values())
     # o que o tema pede: os data-i18n* e as chaves entre aspas nas linhas que chamam o I18N.t, o I18N.tp ou o
     # I18N.rico (pega o I18N.t(cond ? 'a.b' : 'a.c'))

@@ -3,12 +3,10 @@
 /* ---------- pareamento (no celular): a API responde 401 ate o celular mandar o codigo que o PC mostra. O QR ja
    traz o codigo no link (?parear=), e ai nada se digita ---------- */
 let codigoQR = new URLSearchParams(location.search).get('parear');
-if (typeof $ === 'function') {
-  if (codigoQR) history.replaceState(null, '', location.pathname + location.hash);  // o codigo usado nao fica no historico
-}
+if (codigoQR) history.replaceState(null, '', location.pathname + location.hash);  // o codigo usado nao fica no historico
 function pedirPareamento(desconectado, caps) {
   definirCaps(caps || null);
-  if (S.pareando || scriptsMissing().length) return;
+  if (S.pareando) return;
   S.pareando = true; S.online = false;
   clearTimeout(reconT); clearTimeout(foraT);
   if (es) { es.fechar(); es = null; }

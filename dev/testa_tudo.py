@@ -669,7 +669,7 @@ def fitcheck(pasta):
                             md.append(f"- ✅ fitcheck em {lang}: {n} tamanhos cabem, sem erro no console")
                 finally:
                     srv.encerra()
-        for script, what in (("dev/missing_script.py", "a theme file that does not load"),
+        for script, what in (("dev/missing_script.py", "the theme page as the server sends it"),
                              ("dev/theme_scripts.py", "the theme's scripts")):
             cod, saida = executa([sys.executable, script])
             print(f"--- {Path(script).stem}: exits {cod}\n{saida.rstrip()}", flush=True)

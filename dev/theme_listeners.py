@@ -20,8 +20,7 @@ size, once the page is connected. For every node, the document and the window, t
 read in the order they were added (the DevTools getEventListeners), with the capture, passive and once flags and the
 handler's source text, each line without its indentation. Exit 0 only when both commits give the same table;
 otherwise the differences are printed and the exit is 1. The file a handler lives in is not compared: moving a handler
-between files, or into a function, keeps the table. The <script> tags are left out: their only listener is the
-onerror="scriptFailed(this)" that dev/testa_i18n.py requires on each of them."""
+between files, or into a function, keeps the table. The <script> tags are left out."""
 READ = """(() => {
   const path = e => {
     const parts = [];

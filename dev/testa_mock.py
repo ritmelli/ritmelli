@@ -1097,18 +1097,20 @@ def answer_of(srv, method, route, body):
         return ex.code, json.loads(ex.read()) if ex.headers.get_content_type() == "application/json" else None
 
 
-def inline_scripts_in_the_page():
+def the_theme_page_build():
     import server
-    print("--- the inline-script comment of a theme page")
+    print("--- the theme page: every <script src> and stylesheet <link> inline, or no page")
     with tempfile.TemporaryDirectory(prefix="testa_mock_inline_") as t:
         folder = Path(t)
-        page, script = folder / "index.html", folder / "first.js"
-        source = "<head>\n<!-- inline-script: first.js -->\n<script src=\"x.js\"></script>"
+        page, script, sheet = folder / "index.html", folder / "first.js", folder / "a.css"
+        source = '<head>\n<script src="first.js"></script>\n<link rel="stylesheet" href="a.css">\n<script src="/t/ritmelli/i18n.js"></script>'
         page.write_text(source, encoding="utf-8")
         script.write_text("const first = 1;\n", encoding="utf-8")
-        html = server.inline_scripts(source, folder)
-        confere(html == "<head>\n<script>\nconst first = 1;\n</script>\n<script src=\"x.js\"></script>",
-                f"the comment becomes a <script> with the text of the file ({html!r})")
+        sheet.write_text("a { b: c; }\n", encoding="utf-8")
+        shared = (server.THEMES / "ritmelli" / "i18n.js").read_text(encoding="utf-8")
+        html = server.inline_files(source, folder)
+        confere(html == f"<head>\n<script>\nconst first = 1;\n</script>\n<style>\na {{ b: c; }}\n</style>\n<script>\n{shared}</script>",
+                f"each tag becomes a <script> or a <style> with the text of its file, a /t/ path from the themes folder ({html[:120]!r})")
         sent, etag = server.theme_page(page, folder / "i18n", "en")
         stamp = script.stat().st_mtime_ns
         script.write_text("const first = 2;\n", encoding="utf-8")
@@ -1116,6 +1118,31 @@ def inline_scripts_in_the_page():
         sent_after, etag_after = server.theme_page(page, folder / "i18n", "en")
         confere(sent == html and etag != etag_after and "const first = 2;" in sent_after,
                 "the ETag of the page follows the text it sends, even when the inlined file keeps its mtime")
+        refused = {
+            "a missing file": ('<script src="gone.js"></script>', {}, "gone.js is missing"),
+            "a file outside the folder": ('<link rel="stylesheet" href="../a.css">', {}, "../a.css is outside"),
+            "a theme path outside the themes": ('<script src="/t/../server.py"></script>', {}, "is outside"),
+            "a script that closes its element": ('<script src="first.js"></script>', {"first.js": "x('</SCRIPT>');\n"},
+                                                 "first.js has </SCRIPT,"),
+            "a script that opens a comment": ('<script src="first.js"></script>', {"first.js": "x('<!--');\n"},
+                                              "first.js has <!--"),
+            "a sheet that closes its element": ('<link rel="stylesheet" href="a.css">', {"a.css": "a { content: '</style>'; }\n"},
+                                                "a.css has </style"),
+            "a script tag with another attribute": ('<script defer src="first.js"></script>', {}, "is not <script src="),
+            "a script tag in capitals": ('<SCRIPT SRC="first.js"></SCRIPT>', {}, "is not <script src="),
+            "a stylesheet link in another order": ('<link href="a.css" rel="stylesheet">', {}, "is not <script src="),
+        }
+        for what, (tag, files, said) in refused.items():
+            script.write_text("const first = 1;\n", encoding="utf-8")
+            sheet.write_text("a { b: c; }\n", encoding="utf-8")
+            for name, text in files.items():
+                (folder / name).write_text(text, encoding="utf-8")
+            try:
+                server.inline_files(f"<head>\n{tag}\n", folder)
+                error = "no error"
+            except server.ThemePageError as ex:
+                error = str(ex)
+            confere(said in error, f"{what} stops the build of the page ({error})")
 
 
 def ao_vivo(srv):
@@ -1123,8 +1150,8 @@ def ao_vivo(srv):
     print("--- no --mock de verdade: o PC e a rede de casa (pelo 127.0.0.2)")
     with so_mock.abre(srv.base + "/t/ritmelli/") as r:
         page, page_cache, etag = r.read().decode("utf-8"), r.headers.get("Cache-Control"), r.headers.get("ETag")
-    confere("function scriptFailed(" in page and "<!-- inline-script:" not in page,
-            "the theme page comes with script-failed.js in place of its inline-script comment")
+    confere("<script src=" not in page and "function bindDeskButtons()" in page,
+            "the theme page comes with the theme's scripts inside it")
     conn = http.client.HTTPConnection("127.0.0.1", srv.porta, timeout=10)
     try:
         conn.request("GET", "/t/ritmelli/", headers={"If-None-Match": etag or ""})
@@ -1354,7 +1381,7 @@ except ImportError as ex:
 else:
     asyncio.run(papeis_no_guard())
     asyncio.run(papel_local_celular())
-    inline_scripts_in_the_page()
+    the_theme_page_build()
 sem_rede()
 
 print("\nFALHOU: " + "; ".join(falhas) if falhas else "\ntudo ok")

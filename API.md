@@ -38,11 +38,13 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
   do navegador: a primeira que temos na preferência dele, e o inglês quando ele não pede nenhuma
   das duas. `?lang=en` ou `?lang=pt_BR` no endereço força uma, para testar. O formato do arquivo
   está no `i18n.py`, e o `python dev/testa_i18n.py` confere os arquivos contra o tema.
-- Script que tem de rodar antes de qualquer arquivo do tema (o que trata o arquivo que não carrega), ou logo depois
-  de um, sem esperar a rede (os botões da mesa e a partida, depois do `ui-events.js`): o comentário
-  `<!-- inline-script: <arquivo>.js -->` no `index.html`. A página chega com ele trocado por um `<script>` com o texto
-  desse arquivo da pasta do tema, e o `ETag` dela muda quando o arquivo muda. O `dev/testa_i18n.py` confere que o
-  arquivo existe e não tem `</script>`, e o `dev/testa_mock.py` confere a troca e o `ETag`.
+- Os scripts e as folhas de estilo do tema chegam dentro da página: no `index.html`, cada um é um
+  `<script src="arquivo.js"></script>` ou um `<link rel="stylesheet" href="arquivo.css">`, exatamente assim, com o
+  caminho na pasta da página ou começando por `/t/` (na pasta `themes/`), e a página chega com cada um trocado por um
+  `<script>` ou um `<style>` com o texto do arquivo. O `ETag` dela muda quando um arquivo muda. O arquivo que falta ou
+  sai da pasta, o script com `</script` ou `<!--`, a folha com `</style` e a tag de arquivo escrita de outro jeito não
+  montam a página: a resposta é 500, com o nome do arquivo no log. O `dev/testa_mock.py` confere a troca, o `ETag` e
+  cada recusa, e o `dev/missing_script.py`, a página servida.
 - O tema abre também no celular, pela rede de casa (`http://<ip do PC>:8799/`): nada de
   endereço `127.0.0.1` escrito no tema e nada que dependa de mouse. Pela rede, a API só
   responde ao celular pareado (ver "Celular: pareamento"), e só no que a tabela de "Quem pode cada rota" abre para
