@@ -163,7 +163,7 @@ def contract_problems(doc):
 def comment_notes_loop(run):
     lines, out, depth = str(run).splitlines(), [], None
     for line in lines:
-        if depth is None and line.lstrip().startswith("foreach ($n"):
+        if depth is None and line.lstrip().startswith("foreach") and "NOTAS_EN" in line:
             depth = 0
         if depth is not None:
             depth += line.count("{") - line.count("}")
@@ -174,6 +174,10 @@ def comment_notes_loop(run):
         else:
             out.append(line)
     return "\n".join(out) + "\n"
+
+
+def shown(doc, name):
+    return next(j for k, j in doc["jobs"].items() if display(k, j) == name or display(k, j).startswith(name + " ("))
 
 
 def mutant(doc, change):
@@ -311,7 +315,7 @@ def main():
             {"if": "github.event_name == 'push'"}),
         "the --saida of publica.py": lambda d: manifest_step(d["jobs"]["monta"]).update(
             run=manifest_step(d["jobs"]["monta"])["run"].replace("'--saida', $saida", "'--out', $saida")),
-        "a second Ritmelli artifact in another job": lambda d: d["jobs"]["testa"]["steps"].append(
+        "a second Ritmelli artifact in another job": lambda d: shown(d, "testa")["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{ needs.monta.outputs.versao }}",
                                                          "path": "saida/"}}),
         "the notas of the manifest": lambda d: manifest_step(d["jobs"]["monta"])["env"].pop("NOTAS"),
@@ -323,16 +327,24 @@ def main():
             run=manifest_step(d["jobs"]["monta"])["run"].replace("'--notas')", "'--notes')")),
     }
     for job_id in ("testa", "testa-atualizador", "testa-parcial"):
-        mutants[f"the shown name of the job {job_id}"] = (lambda j: lambda d: d["jobs"][j].update(
+        mutants[f"the shown name of the job {job_id}"] = (lambda j: lambda d: shown(d, j).update(
             name=f"{j}-renamed"))(job_id)
-    mutants["the name of the testa-migracao job"] = lambda d: d["jobs"]["testa-migracao"].update(
+    mutants["the name of the testa-migracao job"] = lambda d: shown(d, "testa-migracao").update(
         name="migracao (${{ matrix.scenario }})")
     packed_folder = mutant(doc, lambda d: edit_run(d, lambda run: run.replace("$saida = '", "$saida='")))
     check("$saida='" in manifest_step(packed_folder["jobs"]["monta"])["run"]
           and contract_problems(packed_folder) == [],
           "the folder of --saida assigned without spaces keeps the contract")
+    renamed_job = mutant(doc, lambda d: d["jobs"].update(smoke=dict(d["jobs"].pop("testa"), name="testa")))
+    check(contract_problems(renamed_job) == [], "the testa job with another id and the same shown name keeps the "
+                                                "contract")
+    item = mutant(doc, lambda d: edit_run(d, lambda run: re.sub(r"\$n\b", "$item", run)))
+    check("$item" in manifest_step(item["jobs"]["monta"])["run"] and contract_problems(item) == []
+          and comment_notes_loop(manifest_step(item["jobs"]["monta"])["run"]).count("# foreach") == 1,
+          "the notes loop with another variable keeps the contract and its mutant still comments it out")
     for base, label in ((doc, ""), (spaces, " (version expression without spaces)"),
-                        (packed_folder, " (folder of --saida assigned without spaces)")):
+                        (packed_folder, " (folder of --saida assigned without spaces)"),
+                        (renamed_job, " (testa job with another id)")):
         for name, change in mutants.items():
             check(contract_problems(mutant(base, change)) != [], f"the check catches {name} changed{label}")
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
