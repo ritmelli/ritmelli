@@ -3,7 +3,7 @@ dela (o radio do YouTube Music, pelo mix_do do App) ficam no fim do A seguir, em
 vigia das parecidas (run_auto_watcher, uma auto_round a cada 0,5 s) busca o Mix e monta a fila; o do andamento
 (run_tempo_watcher) mede cada disco uma vez so e troca a parecida que veio como video pela versao so de audio.
 
-O estado do Automatico mora no App (auto, semente, mix, mix_base, ponte, mix_buscando, mix_falhou, mix_seq, fora,
+O estado do Automatico mora no App (auto, semente, mix, mix_base, ponte, mix_buscando, mix_falhou, fora,
 fora_musica, andamentos, andamentos_versao, versoes), porque a leitura do estado, o save_cfg e o _recusar o leem: o
 Automatico o le e o muda pelo app, sob a app.fila_lock, na ordem das travas do comandos.py, e a fila muda pelo
 App.change_queue. O mix_do chega resolvido a cada chamada (o teste troca o do App). Its constants live here and the
@@ -38,6 +38,7 @@ class Automatico:
     def __init__(self, app, mix_do):
         self.app = app
         self.mix_do = mix_do
+        self.mix_seq = 0
 
     def ligar_auto(self, on):
         """Desligar tira as parecidas da fila; ligar enche na proxima volta do vigia."""
@@ -61,8 +62,8 @@ class Automatico:
                 A.mix_falhou = time.time()
             elif base == A.mix_base:  # a semente nao trocou no meio
                 for m in lista:
-                    A.mix_seq += 1
-                    m["ordem"] = A.mix_seq
+                    self.mix_seq += 1
+                    m["ordem"] = self.mix_seq
                     if m["youtube_id"] in A.versoes:  # a versao de audio ja procurada antes
                         self._poe_versao(m, A.versoes[m["youtube_id"]])
                 A.mix = lista
@@ -203,11 +204,11 @@ class Automatico:
                 if A.mix is None and time.time() - A.mix_falhou >= AUTO_ESPERA_S:
                     A.mix_buscando, base = True, A.mix_base
             # a ordem por andamento se refaz quando muda a fila, o prato, o Mix ou chega uma medida
-            agora = (id(tr), tuple(x["qid"] for x in A.fila), A.andamentos_versao, A.mix_seq,
+            agora = (id(tr), tuple(x["qid"] for x in A.fila), A.andamentos_versao, self.mix_seq,
                      self._presa())
             if agora != sinal and (A.mix or any(x.get("auto") for x in A.fila)):
                 entrou = self._ordena_auto()
-                sinal = (id(tr), tuple(x["qid"] for x in A.fila), A.andamentos_versao, A.mix_seq,
+                sinal = (id(tr), tuple(x["qid"] for x in A.fila), A.andamentos_versao, self.mix_seq,
                          self._presa())
         if base:
             threading.Thread(target=self.fetch_mix, args=(base,), daemon=True).start()

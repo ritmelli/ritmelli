@@ -35,7 +35,7 @@ ENGINE_CEILING = 0
 APP_CEILING = 0
 AUTOMATICO_CEILING = 0
 LIBRARY_CEILING = 0
-APP_WRITES_CEILING = 28
+APP_WRITES_CEILING = 27
 ENGINE_WRITES_CEILING = 16
 
 
@@ -386,20 +386,49 @@ def module_privates(tree):
     return {n for n in out if is_private(n)}
 
 
+COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
+FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+
+
+def lexical_nodes(node, scope):
+    def visit(parts, where):
+        for part in parts:
+            yield part, where
+            yield from lexical_nodes(part, where)
+    for child in ast.iter_child_nodes(node):
+        yield child, scope
+        if isinstance(child, FUNCTIONS):
+            a = child.args
+            yield from visit(a.defaults + [d for d in a.kw_defaults if d] + getattr(child, "decorator_list", []),
+                             scope)
+            yield from visit(child.body if isinstance(child.body, list) else [child.body], child)
+        elif isinstance(child, ast.ClassDef):
+            yield from visit(child.bases + child.keywords + child.decorator_list, scope)
+            yield from visit(child.body, child)
+        elif isinstance(child, COMPREHENSIONS):
+            first, *later = child.generators
+            yield from visit([first.iter], scope)
+            elements = [child.key, child.value] if isinstance(child, ast.DictComp) else [child.elt]
+            yield from visit([first.target, *first.ifs]
+                             + [n for g in later for n in (g.target, g.iter, *g.ifs)] + elements, child)
+        else:
+            yield from lexical_nodes(child, scope)
+
+
 class ModuleBindings:
     def __init__(self, tree, owner_module):
         self.bound = {}
         self.enclosing = {}
-        for n, scope in nodes_with_scope(tree, tree):
-            if isinstance(n, SCOPES):
+        for n, scope in lexical_nodes(tree, tree):
+            if isinstance(n, SCOPES + COMPREHENSIONS):
                 self.enclosing[id(n)] = scope
-                if not isinstance(n, ast.Lambda):
-                    self.bind(scope, n.name, False)
-                if not isinstance(n, ast.ClassDef):
-                    a = n.args
-                    for arg in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg]:
-                        if arg:
-                            self.bind(n, arg.arg, False)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                self.bind(scope, n.name, False)
+            if isinstance(n, FUNCTIONS):
+                a = n.args
+                for arg in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg]:
+                    if arg:
+                        self.bind(n, arg.arg, False)
             elif isinstance(n, ast.Import):
                 for a in n.names:
                     self.bind(scope, a.asname or a.name.split(".")[0], a.name == owner_module)
@@ -431,7 +460,7 @@ def module_private_reaches(module, tree, owner_module, names):
     def the_module(node, scope):
         return isinstance(node, ast.Name) and bindings.is_module(node.id, scope)
     out = []
-    for no, scope in nodes_with_scope(tree, tree):
+    for no, scope in lexical_nodes(tree, tree):
         if isinstance(no, ast.ImportFrom) and no.module == owner_module and not no.level:
             out += [(module, no.lineno, a.name) for a in no.names if a.name in names]
         elif isinstance(no, ast.Attribute) and no.attr in names and the_module(no.value, scope):
@@ -658,6 +687,11 @@ MODULE_CAUGHT = [
     ("an attribute of the module under another name", MODULE_OWNER,
      "import owner as o\n\n\ndef f():\n    return o._x()\n"),
     ("the module imported inside a function", MODULE_OWNER, "def f():\n    import owner\n    return owner._x\n"),
+    ("the module after a comprehension that reuses its name", MODULE_OWNER,
+     "import owner as e\n\nnames = [e for e in ()]\ne._x\n"),
+    ("a default argument", MODULE_OWNER, "import owner as e\n\n\ndef f(e=e._x):\n    return e\n"),
+    ("the first iterable of a comprehension", MODULE_OWNER,
+     "import owner as e\n\nvalues = [e for e in e._x]\n"),
     ("the module seen from a method", MODULE_OWNER,
      "import owner as e\n\n\nclass C:\n    def m(self):\n        return e._x\n"),
     ("a name imported from the module", MODULE_OWNER, "from owner import _x\n"),
@@ -675,6 +709,8 @@ MODULE_NOT_REACHES = [
     ("the same name in another module", MODULE_OWNER, "import other\n\nother._x\n"),
     ("a parameter that shadows the module", MODULE_OWNER,
      "import owner as e\n\n\ndef f(e):\n    return e._x\n"),
+    ("a comprehension variable that shadows the module", MODULE_OWNER,
+     "import owner as e\n\nvalues = [e._x for e in ()]\n"),
     ("a local that shadows the module", MODULE_OWNER,
      "import owner\n\n\ndef f(o):\n    owner = o\n    return owner._x\n"),
 ]

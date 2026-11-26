@@ -599,7 +599,6 @@ class App:
         self.mix_buscando, self.mix_falhou = False, 0.0
         self.fora = set()
         self.fora_musica = set()  # a mesma musica do que esta no fora, em outro video
-        self.mix_seq = 0  # cada parecida do Mix ganha um numero na ordem em que chegou (a ordem do Mix)
         # o andamento do comeco e do fim de cada disco (andamento.py), medido uma vez so: a ordem das parecidas
         self.andamentos_path = data_dir / "andamentos.json"
         self.andamentos = (json.loads(self.andamentos_path.read_text(encoding="utf-8"))
