@@ -79,19 +79,25 @@ confere também que os ouvintes da busca e da gaveta são dos arquivos delas e s
 e que o `queue.js` vê o toque que fecha a busca na mesa.
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois
-commits: cada `<script src>`, `<link>` e `<!-- inline-script: -->` trocado pelo texto do arquivo, sem as marcas, os
-espaços do fim e as linhas em branco, e cada script entre uma linha que o abre (`[script NOME]`, `[inline-script NOME]`
-ou `[script]`, com os outros atributos da tag) e uma `[/script]`. Ela sai 0 quando o head só muda código de lugar: os
-mesmos scripts, na mesma ordem, cada um com os mesmos atributos e o mesmo modo estrito; as mesmas declarações de função
-no alto de cada script (elas podem mudar de lugar dentro dele, porque existem antes de qualquer linha dele rodar, e só
-nele); e toda outra linha da base no head, na mesma ordem e no mesmo script. O resto é mudança e sai 1: um script a mais
-ou a menos (juntar dois ou partir um), uma declaração que foi para outro script, uma linha fora de ordem ou noutro
-script, uma linha com outra indentação (que entrou num bloco), uma linha nova ou que sumiu. O V8, num Chrome sem tela,
-diz o que uma comparação de linhas não diz: o modo estrito de cada script, as declarações de função do alto dele e se
-uma linha começa dentro de um template literal, onde os espaços, a linha em branco e a marca são parte do texto e
-ficam como estão. O `dev/test_theme_rebuild.py`, que o `--tela` roda, confere o veredito em páginas pequenas e no tema
-com o `notice.js` trocado com o `covers.js`, com o `desk-buttons.js` e o `start.js` antes do `ui-events.js` e com o
-`bindShelfClick` levado do `shelf.js` para o fim do `start.js`. O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
+commits, com cada `<script src>`, `<link>` e `<!-- inline-script: -->` trocado pelo texto do arquivo, e sai 0 quando o
+head só muda código de lugar:
+- a marcação é a mesma, na mesma ordem, com cada script e cada folha de estilo no mesmo lugar dela;
+- os scripts são os mesmos, na mesma ordem, cada um com os mesmos atributos e o mesmo modo estrito;
+- cada script declara as mesmas funções no alto (elas podem mudar de lugar dentro dele, porque existem antes de qualquer
+  instrução dele rodar, e só nele);
+- toda outra instrução do alto está no head, na mesma ordem e no mesmo script;
+- toda regra de estilo está no head, na mesma ordem e com os mesmos atributos de folha (pode mudar de folha).
+
+Instruções e regras são comparadas como árvores de sintaxe (o tree-sitter, do `requirements-dev.txt`), sem os
+comentários e os espaços fora de strings e templates. Assim, uma marca de bloco, uma linha em branco ou uma indentação
+nova não são mudança, e um espaço dentro de um template literal, ou uma marca que junta dois tokens, são. A parte do CSS
+que a gramática não conhece (um `@container` dentro de `@media`) também é comparada pelos tokens, e um script que
+não analisa é mudança. O resto sai 1, com cada mudança impressa. O `dev/test_theme_rebuild.py`, do COMPLETO do
+`dev/testa_tudo.py`, confere o veredito em páginas pequenas e no tema com o `notice.js` trocado com o `covers.js`, com o
+`desk-buttons.js` e o `start.js` antes do `ui-events.js` e com o `bindShelfClick` levado do `shelf.js` para o fim do
+`start.js`.
+
+O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
 dos dois commits num Chrome sem tela, contra um `--mock` de cada, no tamanho do PC (a mesa) e no de um celular, e
 compara três tabelas. A primeira tem os ouvintes ligados no fim da carga, na ordem em que entraram (o
 `getEventListeners` do DevTools), com as opções e o texto de cada função: os de cada nó, do `document`, da `window` e do
