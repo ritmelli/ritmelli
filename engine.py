@@ -65,6 +65,7 @@ CURTO_MAX_S = 15  # ate isso o pad toca por cima da musica em vez de trocar
 ABAIXA_MAX_DB = 40.0   # o POST /api/abaixa: ate quanto a musica abaixa no jogo
 ABAIXA_MAX_MS = 30000  # e por quanto tempo no maximo; no prazo, volta sozinha
 SINAL_S, SINAL_HZ, SINAL_DB = 0.4, 880.0, -18.0  # o POST /api/sinal: o bipe curto de teste no microfone
+FILE_TAIL_S = 2.0
 STREAM_CAIU_S = 5.0  # o stream que para mais que isso antes do fim (ou sem audio nenhum) caiu: o servidor religa
 # o stream que congela (13/11: a Toxic parou de chegar em 2:12 com a conexao aberta, e o ffmpeg esperou pra sempre com
 # o Ritmelli carregando): isso sem receber nada e o ffmpeg reconecta uma vez no mesmo endereco e, congelado de novo,
@@ -1142,6 +1143,8 @@ class Injetor:
 
 
 class Engine:
+    _stream_warning = None
+
     def __init__(self, mic, monitor):
         self.devices = {"mic": mic, "monitor": monitor}  # nome, 'default' ou '' (sem fone)
         self.active = dict(self.devices)  # nomes reais abertos
@@ -1236,7 +1239,6 @@ class Engine:
         # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue, como antes
         self.religar_stream = None
         self._stream_silent = None
-        self._stream_warning = None
         # o volume automatico (sonoridade.py): as musicas mais baixas sobem ate o alvo, com o limitador na musica (a
         # musica sai sonoridade.LIMITE_ANTES amostras atrasada, sempre). O servidor diz a medida que ja tem de um disco
         # (sonoridade_de(disco) -> LUFS ou None) e guarda a que o motor mede (mediu(disco, LUFS)); sem os dois, a
@@ -2141,7 +2143,7 @@ class Engine:
 
     @property
     def error(self):
-        return self._error
+        return self._error if self._error is not None else self._stream_warning
 
     def set_error(self, message):
         self._error = message
@@ -2353,7 +2355,7 @@ class Engine:
             if stream and caiu and not track.get("job") and deck is self._deck and religar is not None:
                 religar(track, fim, lambda: self._stream_desistiu(deck, gen, track, fim))
                 return
-            if n == 0:
+            if n == 0 and (stream or not t or not dur or t < dur - FILE_TAIL_S):
                 self._fim_do_leitor(deck, gen, erro=(track, t))
                 return
             if not self._repete(deck, gen):
@@ -2479,8 +2481,9 @@ class Engine:
             self._limitador_zera = True
             self.pos = start
             self.ended = False
-            if nova_linha or self._error is self._stream_warning:
+            if nova_linha:
                 self._error = None
+            self._stream_warning = None
             if nova_linha:
                 self._solta_pausa()
         if not tr.get("path"):  # sem caminho, o disco ainda espera o stream abrir: sem leitor
@@ -3327,10 +3330,9 @@ class Engine:
                 dur = novo.get("duration") or 0
                 self.track = d.track = novo
                 d.ganho_alvo = alvo
-                if self._error is not None and self._error is self._stream_warning:
-                    self._error = None
+                self._stream_warning = None
                 to_file = str(atual.get("path")).startswith("http") and not str(novo.get("path") or "").startswith("http")
-                if self.ended or d.eof_gen == d.gen or (dur and t >= dur - 2 and (not to_file or d.q)):
+                if self.ended or d.eof_gen == d.gen or (not to_file and dur and t >= dur - FILE_TAIL_S):
                     gen = None  # no fim (ou quase): o leitor de agora termina o disco
                 else:
                     d.gen += 1
@@ -3348,7 +3350,7 @@ class Engine:
         with self._qlock:
             if self.track is not track or (waiting and not self.esperando_arquivo()):
                 return False
-            self._error = self._stream_warning = message
+            self._stream_warning = message
             return True
 
     def esperando_arquivo(self):
@@ -3493,7 +3495,7 @@ class Engine:
                 self.loop = False  # o Repetir vale para o disco do prato, e ele saiu
                 self.paused = False
                 self.ended = False
-                self._error = None
+                self._error = self._stream_warning = None
                 self.pos = 0.0
                 self._solta_pausa()
         self.calar_sobre()  # parar cala os sons por cima tambem
@@ -3579,7 +3581,7 @@ class Engine:
             # o microfone que o Windows esta preparando agora (null fora disso)
             "microfone": dict(self._injetor.estado() if self._injetor is not None and self._stack is not None
                               else {"anel": False, "leitores": 0}, preparando=self.preparando),
-            "error": self._error,
+            "error": self.error,
             "mina": self._mina.estado if self._mina is not None else "desligada",
             "visor": {"ondas": self._ondas_versao,
                       "passagens": [p for p in (self._visor_feita, self._visor_pas) if p is not None]},

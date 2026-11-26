@@ -5,7 +5,7 @@ CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, Stre
           RefusedStreamStopsWithoutTheFile, RefusedStreamTriesTheFileFirst, PrepareChecksTheVersion,
           SilentStreamGoesToTheApp, WithTheJob, WithTheMoves, AudioVersionKeepsTheReservation,
           FileSwapStartsItsReader, TwoMoves, WithThePlay, WithTheSeek, StreamRefusalChecksItsWait,
-          OpenedStreamLooksForTheFile, SeekStartsANewLine, WaitKeyedByGen
+          OpenedStreamLooksForTheFile, SeekStartsANewLine, WaitKeyedByGen, WithTheForget
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd, noReader, gen,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying,
@@ -19,7 +19,7 @@ queueVars == <<fila, ver, virou, closing, preparando>>
 localVars == <<prX, prVer, prLine, prTrack, prGen, stalePrepared, keptHead, pwSeen, resQ, resVer>>
 vars == <<pc, lockVars, platVars, jobVars, queueVars, localVars>>
 
-Workers == {"Download", "Swap", "Stream", "Prepare", "AudioVersion", "Play", "Forget", "Move", "Reserve", "Seek"}
+Workers == {"Download", "Swap", "Stream", "Prepare", "AudioVersion", "Play", "Forget", "Move", "Reserve", "Seek", "StreamReader"}
 Procs == Workers \cup {"Mixer", "PassageWatcher"}
 
 NoTrack == [id |-> 0, job |-> FALSE, qid |-> NoQid, ver |-> "-", path |-> "none"]
@@ -66,15 +66,17 @@ Init ==
     /\ owner = [l \in Locks |-> NoProc]
     /\ orderBroken = FALSE
     /\ pc = [p \in Procs |->
-               CASE p \in {"Download", "Swap", "Stream", "Forget"} /\ ~WithTheJob -> "done"
+               CASE p \in {"Download", "Swap", "Stream", "StreamReader", "Forget"} /\ ~WithTheJob -> "done"
                  [] p \in {"Move", "Reserve"} /\ ~WithTheMoves -> "done"
-                 [] p \in {"Play", "Forget", "Reserve"} /\ ~WithThePlay -> "done"
+                 [] p \in {"Play", "Reserve"} /\ ~WithThePlay -> "done"
+                 [] p = "Forget" /\ ~WithTheForget -> "done"
                  [] p = "Seek" /\ ~WithTheSeek -> "done"
                  [] p = "Reserve" -> "rs_take"
                  [] p = "Seek" -> "sk_lock"
                  [] p = "Download" -> "dl_run"
                  [] p = "Swap" -> "sw_try"
                  [] p = "Stream" -> "st_wait"
+                 [] p = "StreamReader" -> "sr_idle"
                  [] p = "Prepare" -> "pr_start"
                  [] p = "AudioVersion" -> "av_start"
                  [] p = "Play" -> "pl_try"
@@ -156,7 +158,7 @@ DownloadDoneFile ==
     /\ At("Download", "dl_done_file")
     /\ SectionThenRelease("Download", "_qlock", {"_lock"})
     /\ IF track.id = dlSaw
-       THEN NewSourceWith("file", ~FileSwapStartsItsReader /\ pc["Stream"] = "st_reading")
+       THEN NewSourceWith("file", ~FileSwapStartsItsReader)
        ELSE UNCHANGED platVars
     /\ Goto("Download", "done")
     /\ UNCHANGED <<jobVars, queueVars, localVars>>
@@ -214,7 +216,7 @@ StreamTries ==
     /\ stream = "running"
     /\ \/ track.id /= swTr /\ stream' = "gone" /\ Goto("Stream", "done")
        \/ track.id = swTr /\ Goto("Stream", "st_opened") /\ UNCHANGED stream
-       \/ track.id = swTr /\ stream' = "refused" /\ Goto("Stream", "st_refused")
+       \/ track.id = swTr /\ stream' = "refused" /\ Goto("Stream", "done")
     /\ UNCHANGED <<lockVars, platVars, jobStatus, shelf, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying, queueVars, localVars>>
 
 StreamOpened ==
@@ -233,7 +235,7 @@ StreamOpened ==
     \/ /\ At("Stream", "st_after")
        /\ IF OpenedStreamLooksForTheFile /\ FileReady
           THEN Goto("Stream", "st_open_file_lock")
-          ELSE \E l \in {"done", "st_reading"} : Goto("Stream", l)
+          ELSE Goto("Stream", "done")
        /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
     \/ /\ At("Stream", "st_open_file_lock")
        /\ Acquire("Stream", "_lock")
@@ -241,21 +243,28 @@ StreamOpened ==
        /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
     \/ /\ At("Stream", "st_open_file")
        /\ SectionThenRelease("Stream", "_qlock", {"_lock"})
-       /\ IF track.id = swTr THEN NewSource("file") ELSE UNCHANGED platVars
+       /\ IF track.id = swTr THEN NewSourceWith("file", ~FileSwapStartsItsReader) ELSE UNCHANGED platVars
        /\ Goto("Stream", "done")
        /\ UNCHANGED <<jobVars, queueVars, localVars>>
-    \/ /\ At("Stream", "st_reading")
-       /\ Section("Stream", "_qlock")
+    \/ /\ At("StreamReader", "st_reading")
+       /\ Section("StreamReader", "_qlock")
        /\ IF track.id = swTr /\ gen = stGen
           THEN /\ fileWait' = <<track.id, gen>> /\ stream' = "silent"
-               /\ Goto("Stream", IF SilentStreamGoesToTheApp THEN "st_refused" ELSE "done")
-          ELSE UNCHANGED <<fileWait, stream>> /\ Goto("Stream", "done")
+               /\ Goto("StreamReader", IF SilentStreamGoesToTheApp THEN "st_refused" ELSE "done")
+          ELSE UNCHANGED <<fileWait, stream>> /\ Goto("StreamReader", "done")
        /\ UNCHANGED <<platVars, jobStatus, shelf, swTr, dlSaw, wrongTrack, stGen, refusedPlaying, queueVars, localVars>>
+
+StreamReaderStarts ==
+    /\ At("StreamReader", "sr_idle")
+    /\ \/ stream = "refused" /\ Goto("StreamReader", "st_refused")
+       \/ stream = "ok" /\ \E l \in {"done", "st_reading"} : Goto("StreamReader", l)
+       \/ stream = "gone" /\ Goto("StreamReader", "done")
+    /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
 
 StreamRefusedToday ==
     /\ ~StreamFailureChecksJob
-    /\ At("Stream", "st_refused")
-    /\ Goto("Stream", "done")
+    /\ At("StreamReader", "st_refused")
+    /\ Goto("StreamReader", "done")
     /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
 
 ActsOn(cond) == (track.id = swTr \/ ~StreamChecksItsTrack) /\ cond
@@ -271,38 +280,38 @@ Refuses == refusedPlaying' = (refusedPlaying \/ (stream = "silent" /\ gen /= stG
 
 StreamRefusedChecksJob ==
     /\ StreamFailureChecksJob
-    /\ \/ /\ At("Stream", "st_refused")
-          /\ Goto("Stream", IF RefusedStreamTriesTheFileFirst /\ FileReady THEN "st_file_lock" ELSE "st_stop_lock")
+    /\ \/ /\ At("StreamReader", "st_refused")
+          /\ Goto("StreamReader", IF RefusedStreamTriesTheFileFirst /\ FileReady THEN "st_file_lock" ELSE "st_stop_lock")
           /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
-       \/ /\ At("Stream", "st_file_lock")
-          /\ Acquire("Stream", "_lock")
-          /\ Goto("Stream", "st_file")
+       \/ /\ At("StreamReader", "st_file_lock")
+          /\ Acquire("StreamReader", "_lock")
+          /\ Goto("StreamReader", "st_file")
           /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
-       \/ /\ At("Stream", "st_file")
-          /\ SectionThenRelease("Stream", "_qlock", {"_lock"})
-          /\ \/ ActsOn(TRUE) /\ NewSource("file") /\ Flags /\ Goto("Stream", "done")
+       \/ /\ At("StreamReader", "st_file")
+          /\ SectionThenRelease("StreamReader", "_qlock", {"_lock"})
+          /\ \/ ActsOn(TRUE) /\ NewSource("file") /\ Flags /\ Goto("StreamReader", "done")
              \/ /\ ~ActsOn(TRUE) /\ UNCHANGED <<platVars, wrongTrack>>
-                /\ Goto("Stream", IF RefusedStreamTriesTheFileFirst THEN "st_stop_lock" ELSE "st_warn")
+                /\ Goto("StreamReader", IF RefusedStreamTriesTheFileFirst THEN "st_stop_lock" ELSE "st_warn")
           /\ UNCHANGED <<jobStatus, shelf, stream, swTr, dlSaw, fileWait, stGen, refusedPlaying, queueVars, localVars>>
-       \/ /\ At("Stream", "st_stop_lock")
-          /\ Acquire("Stream", "_lock")
-          /\ Goto("Stream", "st_stop")
+       \/ /\ At("StreamReader", "st_stop_lock")
+          /\ Acquire("StreamReader", "_lock")
+          /\ Goto("StreamReader", "st_stop")
           /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
-       \/ /\ At("Stream", "st_stop")
-          /\ SectionThenRelease("Stream", "_qlock", {"_lock"})
+       \/ /\ At("StreamReader", "st_stop")
+          /\ SectionThenRelease("StreamReader", "_qlock", {"_lock"})
           /\ LET noFile == jobStatus = "error" \/ (RefusedStreamStopsWithoutTheFile /\ jobStatus = "done" /\ ~shelf)
-             IN \/ ActsOn(noFile /\ Waits) /\ StopPlatter /\ Flags /\ Refuses /\ Goto("Stream", "done")
+             IN \/ ActsOn(noFile /\ Waits) /\ StopPlatter /\ Flags /\ Refuses /\ Goto("StreamReader", "done")
                 \/ /\ ~ActsOn(noFile /\ Waits) /\ UNCHANGED <<platVars, wrongTrack, refusedPlaying>>
-                   /\ Goto("Stream", IF RefusedStreamTriesTheFileFirst THEN "st_warn" ELSE "st_read_shelf")
+                   /\ Goto("StreamReader", IF RefusedStreamTriesTheFileFirst THEN "st_warn" ELSE "st_read_shelf")
           /\ UNCHANGED <<jobStatus, shelf, stream, swTr, dlSaw, fileWait, stGen, queueVars, localVars>>
-       \/ /\ At("Stream", "st_read_shelf")
-          /\ Goto("Stream", IF FileReady THEN "st_file_lock" ELSE "st_warn")
+       \/ /\ At("StreamReader", "st_read_shelf")
+          /\ Goto("StreamReader", IF FileReady THEN "st_file_lock" ELSE "st_warn")
           /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
-       \/ /\ At("Stream", "st_warn")
-          /\ Section("Stream", "_qlock")
+       \/ /\ At("StreamReader", "st_warn")
+          /\ Section("StreamReader", "_qlock")
           /\ \/ ActsOn(Waits) /\ Flags /\ Refuses
              \/ ~ActsOn(Waits) /\ UNCHANGED <<wrongTrack, refusedPlaying>>
-          /\ Goto("Stream", "done")
+          /\ Goto("StreamReader", "done")
           /\ UNCHANGED <<platVars, jobStatus, shelf, stream, swTr, dlSaw, fileWait, stGen, queueVars, localVars>>
 
 PlayLocks ==
@@ -505,7 +514,7 @@ Step ==
     \/ DownloadEnds \/ DownloadFailedLock \/ DownloadFailedStop
     \/ DownloadDoneRead \/ DownloadDoneSkip \/ DownloadDoneLock \/ DownloadDoneFile
     \/ SwapLocks \/ SwapCloses \/ SwapPublishes \/ SwapReleases
-    \/ StreamTries \/ StreamOpened \/ StreamRefusedToday \/ StreamRefusedChecksJob
+    \/ StreamTries \/ StreamOpened \/ StreamReaderStarts \/ StreamRefusedToday \/ StreamRefusedChecksJob
     \/ PlayLocks \/ PlaySwaps \/ ForgetsTheRecord \/ MoveSwaps \/ Reserves \/ Seeks
     \/ MixerTime \/ MixerSwitches
     \/ PrepareReads \/ PrepareMarks \/ PrepareSource \/ PrepareLocks \/ PreparePublishes \/ PrepareReleases

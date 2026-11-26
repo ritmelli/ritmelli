@@ -136,9 +136,10 @@ depois, noutra thread), salvo os que vão para as funções acima. Os ganchos qu
 `on_silent_stream` ou atribuindo, como o `religar_stream`, o `sonoridade_de` e o `mediu`, também chamados por um nome
 local) contam como o método do App que o App pôs ali, e todo gancho que o motor chama tem de achar o seu. Com a
 `fila_lock`, o `_lock` ou o `_qlock` na mão, nem o código nem o que ele chama grava arquivo (`save_json`, `_save`,
-`write_text`, `write_bytes`). Uma trava guardada num nome local (`q = E._qlock`; `with q:`) conta como ela. Confere
-também que o `_mixa` e os métodos e as funções do `engine.py` que ele chama, das travas do modelo, só pegam o `_qlock`
-(o `AudioLocks` do `Locks.tla`); o `_slock` dos sons por cima não entra no modelo.
+`write_text`, `write_bytes`). Nenhuma trava do modelo vai para um nome local (`q = E._qlock`, o `state_section()` ou um
+`with ... as`), para que cada `with` e `acquire` diga a sua. Confere também que o `_mixa` e os métodos e as funções do
+`engine.py` que ele chama, das travas do modelo, só pegam o `_qlock` (o `AudioLocks` do `Locks.tla`); o `_slock` dos
+sons por cima não entra no modelo.
 
 ## O modelo das travas (`dev/tla/`)
 
@@ -147,15 +148,15 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
 
 - `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio, o vigia da
   passagem, o tocar de outro disco, o esquecer da prateleira, uma reserva de avanço em curso, duas trocas de lugar na
-  fila (a entrada sai da frente e volta), o stream que abre sem dar áudio, o que abre com áudio depois de o download ler
-  o prato, e um pulo na barra (sobe a linha e tira a passagem preparada), com uma ou duas entradas e um job. Confere a
-  ordem das travas; que nenhum prato fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na
-  prateleira) e o stream recusado ou sem áudio; que o stream recusado só para ou troca o disco daquela tentativa; que a
-  entrega do stream sem áudio só para ou avisa enquanto a espera do arquivo é a da leitura do prato (depois de um pulo
-  na barra, o leitor novo toca); que o download que terminou chega ao prato também quando o stream abriu no meio; que a
-  passagem lida antes de um pulo na barra não é publicada depois dele; que a entrada que uma reserva em curso vai tocar
-  segue na versão que ela leu; e que a entrada da virada pendente tem a mesma versão que o prato toca (as duas corridas
-  da #211).
+  fila (a entrada sai da frente e volta), o stream que abre sem dar áudio (o leitor dele é um processo à parte, que
+  corre junto de quem abriu o stream), o que abre com áudio depois de o download ler o prato, e um pulo na barra (sobe a
+  linha e tira a passagem preparada), com uma ou duas entradas e um job. Confere a ordem das travas; que nenhum prato
+  fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na prateleira) e o stream recusado ou
+  sem áudio; que o stream recusado só para ou troca o disco daquela tentativa; que a entrega do stream sem áudio só para
+  ou avisa enquanto a espera do arquivo é a da leitura do prato (depois de um pulo na barra, o leitor novo toca); que o
+  download que terminou chega ao prato também quando o stream abriu no meio; que a passagem lida antes de um pulo na
+  barra não é publicada depois dele; que a entrada que uma reserva em curso vai tocar segue na versão que ela leu; e que
+  a entrada da virada pendente tem a mesma versão que o prato toca (as duas corridas da #211).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o
@@ -167,14 +168,15 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
-menos de 60 s (a `Races211` em quatro: o download, o stream e a troca, sem as trocas de lugar na fila; o download, o
-stream e um pulo na barra, sem as trocas de lugar e sem o tocar de outro disco, o esquecer e a reserva; as trocas de
-lugar, a reserva, a preparação da passagem e a versão de áudio, sem o job; e os dois juntos, com uma troca de lugar só e
-sem o tocar de outro disco, o esquecer e a reserva; o pulo na barra só entra na segunda), e roda também os mutantes:
-cada propriedade tem um que desfaz o que ela protege, e o mutante tem de ser pego. No PR, o job `tla` do `testa.yml`
-roda isso numa máquina ubuntu (`python dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS`
-aponta para um `tla2tools.jar` já baixado. As duas corridas da #211 se repetem no App de verdade no
-`dev/test_races_211.py`, com os passos do contraexemplo, um de cada vez.
+menos de 60 s (a `Races211` em cinco: o download, o stream e a troca, sem as trocas de lugar na fila, uma vez com o
+tocar de outro disco e outra com o esquecer da prateleira; o download, o stream e um pulo na barra, sem as trocas de
+lugar e sem o tocar de outro disco, o esquecer e a reserva; as trocas de lugar, a reserva, a preparação da passagem e a
+versão de áudio, sem o job; e os dois juntos, com uma troca de lugar só e sem o tocar de outro disco, o esquecer e a
+reserva; o pulo na barra só entra na segunda), e roda também os mutantes: cada propriedade tem um que desfaz o que ela
+protege, e o mutante tem de ser pego. No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu (`python
+dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um `tla2tools.jar` já
+baixado. As duas corridas da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os passos do
+contraexemplo, um de cada vez.
 
 ## O que o servidor lê do motor
 

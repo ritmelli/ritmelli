@@ -265,33 +265,52 @@ def file_after_a_refused_stream(A, E, readers, device_warning=None):
           f"{'the device warning that came after it' if device_warning else 'none'} ({E.error})")
 
 
-def file_near_the_end_of_a_stream_with_audio(A, E, readers):
+def file_near_the_end_of_a_stream_with_audio(A, E, readers, repeat=False):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
-    target = "qqqqqqqqqqq"
+    target = "qqqqqqqqq22" if repeat else "qqqqqqqqqqq"
     j = A.new_job("downloading", True, target)
     reading, go = threading.Event(), threading.Event()
-    files, fake = [], E._reader
+    opened, done = [], []
 
-    def file_reader(gen, track, start, deck):
-        files.append(track.get("id"))
-        return fake(gen, track, start, deck)
-    reader, ended = real_stream_reader(E, file_reader)
+    def reader(gen, track, start, deck):
+        finished = threading.Event()
+        done.append(finished)
+        try:
+            eng.Engine._reader(E, gen, track, start, deck)
+        finally:
+            finished.set()
+
+    def popen(args, **kw):
+        if "-i" not in args or "-ss" not in args:
+            return AudioFfmpeg(0)
+        path, at = str(args[args.index("-i") + 1]), float(args[args.index("-ss") + 1])
+        opened.append((Path(path).name if not path.startswith("http") else "stream", at > 0))
+        if path.startswith("http"):
+            return HeldAudioFfmpeg(go, reading)
+        if len(opened) == 3:
+            E.set_loop(False)
+        return AudioFfmpeg(0 if at > 0 else 2)
     meta = {"youtube_id": target, "title": "the short one", "channel": "c", "duration": 1.0}
     stream = StreamThread(A)
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
           mock.patch.object(A, "stream_info", return_value=(dict(meta, url="https://stream.invalid/q", id=target), {})),
-          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: HeldAudioFfmpeg(go, reading))):
+          mock.patch.object(eng.subprocess, "Popen", popen)):
         check(cmd.play_downloading(A, j, target, meta) and stream.ended.wait(WAIT_S) and reading.wait(WAIT_S),
               "the short one's stream opened and its reader queued its audio, up to the end, without the end yet")
+        if repeat:
+            E.set_loop(True)
         with mock.patch.object(A, "download", return_value=dict(A.lib.get("d2"), duration=1.0)):
             A.run_download(j, target)
-        tr = E.track or {}
-        check(str(tr.get("path", "")).endswith("d2.m4a") and files == [] and E.error is None,
-              f"the file that comes when the stream's audio already reaches the end starts no reader of its own, and no "
-              f"warning ({files}, {E.error})")
+        check(len(done) >= 2 and done[1].wait(WAIT_S) and done[-1].wait(WAIT_S), "the file's reader ended")
         go.set()
-        ended[0].wait(WAIT_S)
+        done[0].wait(WAIT_S)
     del A._abre_stream
+    tr, d = E.track or {}, E._deck
+    want = [("stream", False), ("d2.m4a", True)] + ([("d2.m4a", False)] if repeat else [])
+    check(str(tr.get("path", "")).endswith("d2.m4a") and opened == want and E.error is None and d.eof_gen == d.gen,
+          f"the file that comes when the stream's audio already reaches the end gets its own reader, whose empty read at "
+          f"the file's end is the end of the record{', and the Repeat plays the file again' if repeat else ''}, with no "
+          f"warning ({opened}, {E.error})")
 
 
 def real_stream_reader(E, fake):
@@ -399,24 +418,33 @@ def file_wait_after_a_passage_switch(A, E, readers):
           f"(gen {E._gen}, the wait at {marked[0]})")
 
 
-def file_near_the_end_of_a_silent_stream(A, E, readers, device_warning=None):
+def file_near_the_end_of_a_silent_stream(A, E, readers, device_warning=None, before=False):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
-    target = "fffffffffff" if device_warning is None else "fffffffff22"
+    case = "1" if device_warning is None else "4" if before else "3"
+    target = "fffffffff" + case * 2
     j = A.new_job("downloading", True, target)
     reader, ended = real_stream_reader(E, E._reader)
+    reading, go = threading.Event(), threading.Event()
     meta = {"youtube_id": target, "title": "the short one", "channel": "c", "duration": 1.5}
-    iid = "short1" if device_warning is None else "short3"
+    iid = "short" + case
     item = {"id": iid, "title": "the short one", "file": f"{iid}.m4a", "duration": 1.5, "lufs": -14.0}
     stream = StreamThread(A)
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
           mock.patch.object(A, "stream_info", return_value=(dict(meta, url="https://stream.invalid/c", id=target), {})),
-          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: AudioFfmpeg(0))):
-        check(cmd.play_downloading(A, j, target, meta) and stream.ended.wait(WAIT_S) and len(ended) == 1
-              and ended[0].wait(WAIT_S), "the short one's stream opened and gave no audio")
-        reason = (E.error or {}).get("params", {}).get("reason")
-        check(isinstance(reason, dict) and reason.get("key") == "server.player.noAudio",
-              f"while it still downloads, the warning gives the reason as a message for the screen ({E.error})")
-        if device_warning is not None:
+          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: SilentFfmpeg(reading, go))):
+        check(cmd.play_downloading(A, j, target, meta) and stream.ended.wait(WAIT_S) and reading.wait(WAIT_S),
+              "the short one's stream opened and its reader reads it")
+        if before:
+            E.set_error(device_warning)
+        go.set()
+        check(len(ended) == 1 and ended[0].wait(WAIT_S), "the short one's stream gave no audio")
+        if before:
+            check(E.error is device_warning, f"a device warning that came first stays over the stream's ({E.error})")
+        else:
+            reason = (E.error or {}).get("params", {}).get("reason")
+            check(isinstance(reason, dict) and reason.get("key") == "server.player.noAudio",
+                  f"while it still downloads, the warning gives the reason as a message for the screen ({E.error})")
+        if device_warning is not None and not before:
             E.set_error(device_warning)
         with mock.patch.object(A, "download", return_value=item):
             A.run_download(j, target)
@@ -425,7 +453,8 @@ def file_near_the_end_of_a_silent_stream(A, E, readers, device_warning=None):
     if device_warning is None:
         check(E.error is None, f"and the warning that it would play once the download finished leaves ({E.error})")
     else:
-        check(E.error is device_warning, f"and a device warning that came after the stream's stays ({E.error})")
+        check(E.error is device_warning, f"and a device warning that came {'before' if before else 'after'} the "
+                                         f"stream's stays ({E.error})")
 
 
 def file_before_the_silent_stream_reports(A, E, readers):
@@ -661,10 +690,13 @@ def main():
                 file_after_a_refused_stream(
                     A, E, readers, server.i18n.msg("server.devices.notFound", "Couldn't find the device."))
                 file_near_the_end_of_a_stream_with_audio(A, E, readers)
+                file_near_the_end_of_a_stream_with_audio(A, E, readers, repeat=True)
                 silent_stream_then_a_seek(A, E, readers)
                 file_near_the_end_of_a_silent_stream(A, E, readers)
                 file_near_the_end_of_a_silent_stream(
                     A, E, readers, server.i18n.msg("server.devices.notFound", "Couldn't find the device."))
+                file_near_the_end_of_a_silent_stream(
+                    A, E, readers, server.i18n.msg("server.devices.notFound", "Couldn't find the device."), before=True)
                 file_before_the_silent_stream_reports(A, E, readers)
                 warning_after_another_record_took_the_platter(A, E, readers)
                 audio_version_during_a_pending_switch(A, E, readers)
