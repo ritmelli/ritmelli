@@ -44,19 +44,12 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - Os scripts e as folhas de estilo do tema chegam dentro da página: no `index.html`, cada um é um
   `<script src="arquivo.js"></script>` ou um `<link rel="stylesheet" href="arquivo.css">`, exatamente assim, com o
   caminho na pasta da página ou começando por `/t/` (na pasta `themes/`), e a página chega com cada um trocado por um
-  `<script>` ou um `<style>` com o texto do arquivo. O `ETag` dela muda quando um arquivo muda. O arquivo que falta ou
-  sai da pasta, o script com `</script` ou `<!--`, a folha com `</style` ou com `@import`, a tag de arquivo escrita de
-  outro jeito, o nome de arquivo com um `&` que não abre uma referência nomeada inteira (o `&amp;` vale; a numérica,
-  não), o comentário que o navegador fecha antes do HTMLParser do Python (`<!-->`, `<!--->`, `--!>`), o `<![`, que o
-  navegador lê como comentário falso até o primeiro `>`, o elemento de texto (`<title>`, `<textarea>`, `<noscript>`,
-  `<iframe>`, `<xmp>`, `<noembed>`, `<noframes>`) com um `<` dentro ou fechado de outro jeito que `</nome>`, e o
-  `<script>` com atributo e sem `src` não montam a página: a resposta é 500, com o nome do arquivo no log. A folha se lê
-  com os escapes de CSS decodificados, também nos comentários e nas strings, e o `@import` escrito só num comentário ou
-  numa string também para a montagem. A folha de outra pasta só leva `url()` simples, com `https://`, `http://`, outro
-  esquema, `data:`, `/` ou `#`: nela, um `url()` relativo, uma `\` ou um `image-set(` também param a montagem, porque a
-  página lê os endereços a partir da pasta dela. O arquivo entra sem a marca de ordem de bytes (BOM) do começo. O
-  `dev/testa_mock.py` confere a troca, o `ETag`, cada recusa e o 500, e o `dev/missing_script.py`, a página servida e,
-  num Chrome sem tela, que ela não pede ao servidor nenhum script nem nenhuma folha.
+  `<script>` ou um `<style>` com o texto do arquivo, sem a marca de ordem de bytes (BOM) do começo. O `ETag` dela muda
+  quando um arquivo muda. O que a montagem não lê com certeza do jeito que o navegador lê, ela recusa: a resposta é 500,
+  com o texto que diz o modelo, o arquivo e a regra (sem pasta do PC), e o log do servidor diz o mesmo. A lista do que
+  ela recusa, e do que escrever no lugar, está no [temas.md](docs/arquitetura/temas.md). O `dev/testa_mock.py` confere a
+  troca, o `ETag`, cada recusa e o 500, e o `dev/missing_script.py`, a página servida e, num Chrome sem tela, que ela
+  não pede ao servidor nenhum script nem nenhuma folha.
 - O tema abre também no celular, pela rede de casa (`http://<ip do PC>:8799/`): nada de
   endereço `127.0.0.1` escrito no tema e nada que dependa de mouse. Pela rede, a API só
   responde ao celular pareado (ver "Celular: pareamento"), e só no que a tabela de "Quem pode cada rota" abre para

@@ -1209,7 +1209,24 @@ def the_theme_page_build():
             "a noscript the browser ends at </noscript data-x>": (
                 '<noscript>b</noscript data-x><script src="first.js"></script></noscript>', {}, "holds a <"),
             "a file tag in an svg title": ('<svg><title><script src="first.js"></script></title></svg>', {}, "holds a <"),
-            "an svg script with an href": ('<svg><script href="first.js"/></svg>', {}, "attributes but no src"),
+            "an svg script with an href": ('<svg><script href="first.js"/></svg>', {}, "inside <svg> or <math>"),
+            "a file tag inside an svg": ('<svg><script src="first.js"></script></svg>', {}, "inside <svg> or <math>"),
+            "a file tag after a breakout in an svg style": (
+                '<svg><style><p><script src="first.js"></script></style></svg>', {}, "holds a <"),
+            "a file tag after a breakout in an svg script": (
+                '<svg><script><p><script src="first.js"></script></script></svg>', {}, "holds a <"),
+            "an svg script in an svg style": ('<svg><style><script href="first.js"></script></style></svg>', {},
+                                              "holds a <"),
+            "a style the browser ends at </style data-x>": (
+                '<style>a {}</style data-x><script src="first.js"></script></style>', {}, "does not end in </style>"),
+            "an inline script the browser ends at </script data-x>": (
+                '<script>1</script data-x><script src="first.js"></script></script>', {}, "does not end in </script>"),
+            "an inline script with <!--": ('<script><!--<script>1</script><script src="first.js"></script></script>', {},
+                                           "holds <!--"),
+            "an @import in a style of the template": ('<style>@import "first.css";</style>', {}, "has @import"),
+            "an @import in an svg style": ('<svg><style>@import "first.css";</style></svg>', {}, "has @import"),
+            "an inline module": ('<script type=" Module ">import x from "./first.js";</script>', {}, "is a module"),
+            "an inline script with an href": ('<script href="first.js"></script>', {}, "fetches its href"),
             "a script name with a numeric reference": ('<script src="a&#xFDD0;b.js"></script>', {"ab.js": "1;\n"},
                                                        "has '&', which is not a whole"),
             "a sheet in a subfolder with an http: url() without a host": (
@@ -1239,6 +1256,12 @@ def the_theme_page_build():
                          encoding="utf-8")
         kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
                 "a title of plain text": ("<title>Ritmelli &amp; co</title>", None),
+                "an svg icon with its own style": ("<svg><style>.a { fill: red; }</style></svg>", None),
+                "an svg closed by itself before a file tag": ('<svg/><script src="first.js"></script>',
+                                                              "<svg/><script>\nconst first = 1;\n</script>"),
+                "inline scripts with a type, defer or a data block": (
+                    '<script type="text/javascript">let a = 1 < 2;</script><script defer>b();</script>'
+                    '<script type="application/json">{"a": "<b>"}</script>', None),
                 "a sheet that starts with a byte order mark": ('<link rel="stylesheet" href="bom.css">',
                                                                "<style>\na { b: c; }\n</style>"),
                 "a script name with a character reference": ('<script src="a&amp;b.js"></script>',
@@ -1268,7 +1291,6 @@ def the_theme_page_build():
 
 
 async def a_missing_file_answers_500(server, folder):
-    import logging
     from unittest import mock
 
     import yarl
@@ -1289,48 +1311,44 @@ async def a_missing_file_answers_500(server, folder):
                               lib=types.SimpleNamespace(version=1, public=lambda: []),
                               boas_vindas_pendentes=lambda: True, grava_cfg=lambda **k: None)
     log = io.StringIO()
-    handler = logging.StreamHandler(log)
-    logger = logging.getLogger("aiohttp.server")
     themes = (folder / "themes").resolve()
-    with mock.patch.object(server.theme_page, "THEMES", themes):
-        logger.addHandler(handler)
-        try:
-            A.port = so_mock.free_port()
-            compared = []
-            samefile = os.path.samefile
+    with mock.patch.object(server.theme_page, "THEMES", themes), contextlib.redirect_stderr(log):
+        A.port = so_mock.free_port()
+        compared = []
+        samefile = os.path.samefile
 
-            def recorded(a, b):
-                compared.append(threading.current_thread() is threading.main_thread())
-                return samefile(a, b)
-            network = []
-            stat, realpath = os.stat, os.path.realpath
+        def recorded(a, b):
+            compared.append(threading.current_thread() is threading.main_thread())
+            return samefile(a, b)
+        network = []
+        stat, realpath = os.stat, os.path.realpath
 
-            def local_only(real):
-                def read(path, *args, **kwargs):
-                    if os.fspath(path).startswith(("\\\\", "//")):
-                        network.append(os.fspath(path))
-                        raise FileNotFoundError(path)
-                    return real(path, *args, **kwargs)
-                return read
-            async with TestClient(TestServer(server.build(A), host="127.0.0.1", port=A.port)) as client:
-                resp = await client.get("/t/broken/", headers={"Host": f"localhost:{A.port}"})
-                status = resp.status
-                with mock.patch.object(server.theme_page.os.path, "samefile", recorded):
-                    sent = await client.get("/t/broken/index.html", headers={"Host": f"localhost:{A.port}"},
-                                            allow_redirects=False)
-                alias = await client.get("/t/broken/assets/alias.html?lang=pt_BR", allow_redirects=False,
-                                         headers={"Host": f"localhost:{A.port}"})
-                with mock.patch.object(os, "stat", local_only(stat)), \
-                        mock.patch.object(os.path, "realpath", local_only(realpath)):
-                    shares = {name: (await client.get(yarl.URL(name, encoded=True), allow_redirects=False,
-                                                      headers={"Host": f"localhost:{A.port}"})).status
-                              for name in ("/t///unreachable.invalid/share/index.html",
-                                           "/t/%5C%5Cunreachable.invalid%5Cshare/x.png",
-                                           "/t/%5C%5Cunreachable.invalid%5Cshare/")}
-        finally:
-            logger.removeHandler(handler)
-    confere(status == 500 and "gone.js is missing" in log.getvalue(),
-            f"through the route, a missing theme file answers 500 and the log names it ({status})")
+        def local_only(real):
+            def read(path, *args, **kwargs):
+                if os.fspath(path).startswith(("\\\\", "//")):
+                    network.append(os.fspath(path))
+                    raise FileNotFoundError(path)
+                return real(path, *args, **kwargs)
+            return read
+        async with TestClient(TestServer(server.build(A), host="127.0.0.1", port=A.port)) as client:
+            resp = await client.get("/t/broken/", headers={"Host": f"localhost:{A.port}"})
+            status, said = resp.status, await resp.text()
+            with mock.patch.object(server.theme_page.os.path, "samefile", recorded):
+                sent = await client.get("/t/broken/index.html", headers={"Host": f"localhost:{A.port}"},
+                                        allow_redirects=False)
+            alias = await client.get("/t/broken/assets/alias.html?lang=pt_BR", allow_redirects=False,
+                                     headers={"Host": f"localhost:{A.port}"})
+            with mock.patch.object(os, "stat", local_only(stat)), \
+                    mock.patch.object(os.path, "realpath", local_only(realpath)):
+                shares = {name: (await client.get(yarl.URL(name, encoded=True), allow_redirects=False,
+                                                  headers={"Host": f"localhost:{A.port}"})).status
+                          for name in ("/t///unreachable.invalid/share/index.html",
+                                       "/t/%5C%5Cunreachable.invalid%5Cshare/x.png",
+                                       "/t/%5C%5Cunreachable.invalid%5Cshare/")}
+    confere(status == 500 and "themes/broken/index.html was not built: gone.js is missing from themes/broken" in said
+            and said in log.getvalue() and str(folder) not in said and folder.name not in said,
+            f"through the route, a missing theme file answers 500 with the template, the file and the rule, the log "
+            f"says the same, and no folder of the PC goes out ({status}, {said!r})")
     confere(sent.status == 302 and compared == [False],
             f"the index.html redirect compares the file off the server's loop ({sent.status}, on the loop: {compared})")
     confere(alias.status == 302 and alias.headers.get("Location") == "/t/broken/?lang=pt_BR",

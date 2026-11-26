@@ -31,25 +31,38 @@ de rede. O `dev/testa_mock.py` confere os nomes e esses endereços.
 A página do tema chega inteira numa resposta só. O `index.html` lista os arquivos da pasta do tema, cada um no lugar em
 que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="stylesheet" href="arquivo.css">` por
 folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `server.py` chama) troca cada um por um
-`<script>` ou um `<style>` com o texto do arquivo, e a página não pede ao servidor nenhum script nem nenhuma folha: não
-existe página com um arquivo faltando. O arquivo que falta ou que sai da pasta, o que traz o que fecharia o elemento em
-volta dele (`</script` ou `<!--` num script, `</style` ou `@import` numa folha), a tag de arquivo escrita de outro
-jeito, o nome de arquivo com um `&` que não abre uma referência nomeada inteira (o `&amp;` vale; a numérica, não), o
-comentário que o navegador fecha antes do HTMLParser do Python (`<!-->`, `<!--->`, `--!>`), o `<![`, que o navegador lê
-como comentário falso até o primeiro `>`, o elemento de texto (`<title>`, `<textarea>`, `<noscript>`, `<iframe>`,
-`<xmp>`, `<noembed>`, `<noframes>`) com um `<` dentro ou fechado de outro jeito que `</nome>`, e o `<script>` com
-atributo e sem `src` param a montagem no servidor, que responde 500 e põe no log o nome do arquivo. O arquivo entra sem
-a marca de ordem de bytes (BOM) do começo. A folha se lê com os escapes de CSS decodificados, também nos comentários e
-nas strings, e o `@import` que aparece em qualquer lugar dela, mesmo só num comentário ou numa string, para a montagem.
-A folha de outra pasta só leva `url()` simples, com `https://`, `http://`, outro esquema, `data:`, `/` ou `#`, porque a
-página lê os endereços a partir da pasta dela: um `url()` relativo, uma `\` ou um `image-set(` nela também param a
-montagem. O que a montagem não distingue com certeza de uma busca, ela recusa; o `dev/testa_mock.py` confere cada um
-desses casos. O `dev/missing_script.py`, que o `--tela` do `dev/testa_tudo.py` roda, lê a página e a galeria como o
-servidor as manda, nas duas línguas, de um `--mock` como o PC e de outro como o celular, e reprova com um `<script src>`
-ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome faça ao servidor. O
-`dev/garden.py` conta as linhas de CSS e JS escritas no próprio `index.html` e guarda o teto delas (o
-`theme_inline_lines` do `dev/garden.json`), que é 0: código novo do tema vai num arquivo da pasta, e a contagem vai para
-o resumo do PR.
+`<script>` ou um `<style>` com o texto do arquivo, sem a marca de ordem de bytes (BOM) do começo, e a página não pede ao
+servidor nenhum script nem nenhuma folha: não existe página com um arquivo faltando. O que a montagem não lê com certeza
+do jeito que o navegador lê, ela recusa, em vez de imitar o navegador: a página responde 500 com o modelo, o arquivo e a
+regra, sem pasta do PC, e o log do servidor diz o mesmo. Ela recusa, e o que escrever no lugar:
+
+- o arquivo que falta, a pasta no lugar dele ou o caminho que sai da pasta da página (ou de `themes/`, com `/t/`): um
+  arquivo que existe ali;
+- a tag de arquivo com outro atributo, outra ordem, maiúsculas ou algo antes do fim: exatamente
+  `<script src="arquivo.js"></script>` ou `<link rel="stylesheet" href="arquivo.css">`;
+- um `&` no nome do arquivo que não abre uma referência nomeada inteira, e toda referência numérica: o nome sem `&`, ou
+  com `&amp;`;
+- o script com `</script` ou `<!--`, a folha com `</style`: o texto sem eles;
+- a folha, de arquivo ou escrita na página, com `@import`, mesmo num comentário ou numa string (a folha se lê com os
+  escapes de CSS decodificados): uma tag de arquivo por folha;
+- a folha de outra pasta com um `url()` relativo, uma `\` ou um `image-set(`: só `url()` simples, com `https://`,
+  `http://`, outro esquema, `data:`, `/` ou `#`, ou a folha na pasta da página;
+- o `<script>` escrito na página com `href`, com `type="module"` (que importa arquivos), com `<!--` dentro ou fechado de
+  outro jeito que `</script>`, e o `<style>` fechado de outro jeito que `</style>`: um `<script>` clássico (com ou sem
+  `type="text/javascript"`, `defer` ou um tipo de dados) fechado em `</script>`, ou a tag de arquivo;
+- o elemento de texto (`<title>`, `<textarea>`, `<noscript>`, `<iframe>`, `<xmp>`, `<noembed>`, `<noframes>`), e o
+  `<style>` ou o `<script>` dentro de `<svg>` ou `<math>`, com um `<` dentro ou fechado de outro jeito que `</nome>`: só
+  texto, fechado em `</nome>`;
+- a tag de arquivo, o `<link>` e o `<script>` com `src` ou `href` dentro de `<svg>` ou `<math>`: a tag fora dele;
+- o comentário que o navegador fecha antes do HTMLParser do Python (`<!-->`, `<!--->`, `--!>`) e o `<![`, que o
+  navegador lê como comentário falso até o primeiro `>`: `<!-- texto -->`.
+
+O `dev/testa_mock.py` confere cada caso da lista. O `dev/missing_script.py`, que o
+`--tela` do `dev/testa_tudo.py` roda, lê a página e a galeria como o servidor as manda, nas duas línguas, de um `--mock`
+como o PC e de outro como o celular, e reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um
+pedido de script ou de folha que o Chrome faça ao servidor. O `dev/garden.py` conta as linhas de CSS e JS escritas no
+próprio `index.html` e guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código novo do tema
+vai num arquivo da pasta, e a contagem vai para o resumo do PR.
 
 Os scripts são clássicos, sem `defer`: rodam na ordem da lista, e o que um declara no alto fica à vista dos de depois.
 No `<head>`, logo depois dos textos que o servidor põe no `<!-- i18n -->`, vêm o `i18n.js` (o `I18N`, ver o
