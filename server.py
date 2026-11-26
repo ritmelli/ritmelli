@@ -65,7 +65,8 @@ TEMA_DE_ANTES = "/t/vitrola"
 SCRIPT_TAG = re.compile(r'<script src="([^"]+)">')
 SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
 CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
-RELATIVE_URL = re.compile(r"""url\(\s*(?!['"]?(?:[a-z][a-z0-9+.-]*:|/|#))""", re.IGNORECASE)
+RELATIVE_URL = re.compile(r"""url\((?!\s*['"]?(?:[a-z][a-z0-9+.-]*:|/|#))""", re.IGNORECASE)
+IMPORT_RULE = re.compile(r"@import\b", re.IGNORECASE)
 
 
 class ThemePageError(Exception):
@@ -121,6 +122,8 @@ def inline_files(html, folder):
         path, text = theme_file(folder, name)
         if closes := CLOSES_ELEMENT[tag].search(text):
             raise ThemePageError(f"{name} has {closes.group(0)}, which its <{tag}> cannot hold")
+        if tag == "style" and IMPORT_RULE.search(text):
+            raise ThemePageError(f"{name} has an @import, which the browser would fetch outside the page")
         if tag == "style" and path.parent != folder.resolve() and RELATIVE_URL.search(text):
             raise ThemePageError(f"{name} has a relative url(), which the page would resolve from its own folder")
         parts += [html[done:start], f"<{tag}>\n{text}</{tag}>"]
@@ -2620,7 +2623,7 @@ def build(app_state):
             return web.Response(status=304, headers=cab)
         return web.Response(text=html, content_type="text/html", headers=cab)
 
-    @r.get("/t/{slug}/index.html")
+    @r.get("/t/{slug}/{index:[Ii][Nn][Dd][Ee][Xx]\\.[Hh][Tt][Mm][Ll]}")
     async def theme_index_file(request):
         raise web.HTTPFound(request.rel_url.with_path(f"/t/{request.match_info['slug']}/").with_query(request.rel_url.query))
 

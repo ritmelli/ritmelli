@@ -12,7 +12,7 @@ maleta do A seguir (--maleta-canto-a a -d, --maleta-dobradica, --maleta-fecho, -
 --maleta-disco-*) no
 themes/ritmelli/gerado/pecas.css, e no themes/ritmelli/gerado/pecas.js os SVGs do pisador (PE_SVG), do LED (LED_SVG), os knobs dos pedais com os ponteiros (KNOBS: o creme, o baquelite e o chicken-head), a chave do "So este disco / Tocar parecidas" (CHAVE_PARECIDAS) e o salvar da
 parecida no prato (SALVAR_PIXEL, com as --salvar-aceso-* do aro). Grava os dois arquivos inteiros, que o index.html
-do tema carrega (o .css por um <link>, o .js por um <script src> antes do script principal, que usa as constantes), e
+do tema carrega (o .css por um <link>, o .js por um <script src> no <head>, antes dos scripts que usam as constantes), e
 nao abre o index.html. Rodado de novo com o mesmo desenho, nao muda nenhum dos dois.
 
 O braco: o tema gira o .braco em volta do pivo (o anguloPara() da o angulo do sulco; parado ele volta
@@ -1347,13 +1347,12 @@ def main():
     bloco = ("/* pecas:inicio (gravado pelo dev/pecas.py: o desenho mora la, nao editar aqui) */\n"
              ".app {\n" + "\n".join(linhas) + "\n}\n/* pecas:fim */")
     mudou = grava_arquivo(GERADO / "pecas.css", bloco + "\n")
-    # as constantes do JS, na ordem em que o script principal do tema as tinha
     js = ",\n".join(f"  {nome}: ['{corpo}', [{', '.join(repr(p) for p in ponteiros)}]]" for nome, (corpo, ponteiros) in knobs.items())
     mudou |= grava_arquivo(GERADO / "pecas.js", (
         "/* gravado pelo dev/pecas.py (o desenho mora la, nao editar aqui): os knobs dos pedais com os ponteiros (KNOBS),\n"
         "   a chave do \"So este disco / Tocar parecidas\" (CHAVE_PARECIDAS), o salvar da parecida no prato (SALVAR_PIXEL),\n"
-        "   o pisador (PE_SVG) e o LED (LED_SVG) dos pedais. O index.html do tema carrega este arquivo antes do script\n"
-        "   principal, que usa as constantes */\n"
+        "   o pisador (PE_SVG) e o LED (LED_SVG) dos pedais. O index.html do tema carrega este arquivo no <head>, antes\n"
+        "   dos scripts que usam as constantes */\n"
         "'use strict';\n"
         f"const KNOBS = {{\n{js}\n}};\n"
         f"const CHAVE_PARECIDAS = '{chave_parecidas()}';\n"

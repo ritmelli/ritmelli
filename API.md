@@ -14,7 +14,7 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
 - `themes/<slug>/index.html`, a página do tema: HTML + CSS + JS puro, sem build. Arquivo
   extra (script `.js`, fonte local, svg, imagem) mora na mesma pasta e se referencia por caminho
   relativo (`./x.svg`, `fonts/x.woff2`), servido em `/t/<slug>/x.svg`; os `.js` e os `.css` entram na página (ver
-  abaixo). O `/t/<slug>/index.html` leva à página montada, em `/t/<slug>/` (302, com a mesma query).
+  abaixo). O `/t/<slug>/index.html`, em qualquer caixa, leva à página montada, em `/t/<slug>/` (302, com a mesma query).
 - Toda resposta de `/t/` sai com `Cache-Control: no-cache`: o navegador confere cada arquivo do tema com o servidor
   antes de usar o que guardou (o que não mudou volta como 304), e não usa uma letra, uma textura ou uma imagem de antes
   sem conferir.
@@ -44,7 +44,7 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
   `<script src="arquivo.js"></script>` ou um `<link rel="stylesheet" href="arquivo.css">`, exatamente assim, com o
   caminho na pasta da página ou começando por `/t/` (na pasta `themes/`), e a página chega com cada um trocado por um
   `<script>` ou um `<style>` com o texto do arquivo. O `ETag` dela muda quando um arquivo muda. O arquivo que falta ou
-  sai da pasta, o script com `</script` ou `<!--`, a folha com `</style`, a folha de outra pasta com um `url()`
+  sai da pasta, o script com `</script` ou `<!--`, a folha com `</style` ou `@import`, a folha de outra pasta com um `url()`
   relativo e a tag de arquivo escrita de outro jeito não montam a página: a resposta é 500, com o nome do arquivo no
   log. O `dev/testa_mock.py` confere a troca, o `ETag`, cada recusa e o 500, e o `dev/missing_script.py`, a página
   servida.

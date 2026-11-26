@@ -1139,7 +1139,9 @@ def the_theme_page_build():
                                                                "is not <script src="),
             "a folder named as a file": ('<script src="sub"></script>', {}, "sub is missing"),
             "a sheet in a subfolder with a relative url()": ('<link rel="stylesheet" href="sub/b.css">',
-                                                             {"sub/b.css": "a { b: url('x.png'); }\n"}, "relative url()"),
+                                                             {"sub/b.css": "a { b: url( 'x.png' ); }\n"}, "relative url()"),
+            "a sheet with an @import": ('<link rel="stylesheet" href="a.css">', {"a.css": '@import "palette.css";\n'},
+                                        "a.css has an @import"),
         }
         (folder / "sub").mkdir()
         for what, (tag, files, said) in refused.items():
@@ -1153,7 +1155,7 @@ def the_theme_page_build():
             except server.ThemePageError as ex:
                 error = str(ex)
             confere(said in error, f"{what} stops the build of the page ({error})")
-        (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url('data:x'); }\n",
+        (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url( 'data:x' ); }\n",
                                               encoding="utf-8")
         sheet.write_text("a { b: url(fonts/x.woff2); }\n", encoding="utf-8")
         kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
@@ -1161,7 +1163,7 @@ def the_theme_page_build():
                                                                      "<style>\na { b: url(fonts/x.woff2); }\n</style>"),
                 "a sheet in a subfolder with data: and # urls": ('<link rel="stylesheet" href="sub/c.css">',
                                                                  "<style>\na { b: url(data:image/png;base64,AA); c: "
-                                                                 "url(#d); e: url('data:x'); }\n</style>")}
+                                                                 "url(#d); e: url( 'data:x' ); }\n</style>")}
         for what, (tag, expected) in kept.items():
             try:
                 out = server.inline_files(tag, folder)
@@ -1220,12 +1222,20 @@ def ao_vivo(srv):
         conn.request("GET", "/t/ritmelli/shared.js")
         script = conn.getresponse()
         script.read()
+        index = []
+        for path in ("/t/ritmelli/index.html", "/t/ritmelli/INDEX.HTML"):
+            conn.request("GET", f"{path}?lang=pt_BR&parear=123456")
+            answer = conn.getresponse()
+            answer.read()
+            index.append((answer.status, answer.getheader("Location")))
     finally:
         conn.close()
     confere((page_cache, again.status, again.getheader("Cache-Control"), script.status,
              script.getheader("Cache-Control")) == ("no-cache", 304, "no-cache", 200, "no-cache"),
             f"/t/ answers with Cache-Control: no-cache: the page ({page_cache}), its 304 ({again.status}, "
             f"{again.getheader('Cache-Control')}) and a .js ({script.status}, {script.getheader('Cache-Control')})")
+    confere(index == [(302, "/t/ritmelli/?lang=pt_BR&parear=123456")] * 2,
+            f"/t/ritmelli/index.html, in any case, takes to the built page with its query ({index})")
     confere(srv.api("GET", "/api/state").get("caps") == perm.caps("pc"), "o PC: o /api/state traz o caps do PC")
     confere(srv.api("POST", "/api/volume", {"vol": 0.42}).get("vol") == 0.42
             and srv.api("GET", "/api/state").get("vol") == 0.42, "o PC: o /api/volume muda o volume da musica")

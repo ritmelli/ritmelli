@@ -18,7 +18,7 @@ que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="st
 folha, sem outros atributos. O servidor (o `theme_page` do `server.py`) troca cada um por um `<script>` ou um `<style>`
 com o texto do arquivo, e a página não pede ao servidor nenhum script nem nenhuma folha: não existe página com um
 arquivo faltando. O arquivo que falta ou que sai da pasta, o que traz o que fecharia o elemento em volta dele (`</script`
-ou `<!--` num script, `</style` numa folha), a folha de outra pasta com um `url()` relativo (que a página leria a partir
+ou `<!--` num script, `</style` ou `@import` numa folha), a folha de outra pasta com um `url()` relativo (que a página leria a partir
 da pasta dela) e a tag de arquivo escrita de outro jeito param a montagem no servidor, que
 responde 500 e põe no log o nome do arquivo; o `dev/testa_mock.py` confere cada um desses casos. O
 `dev/missing_script.py`, que o `--tela` do `dev/testa_tudo.py` roda, lê a página e a galeria como o servidor as manda,
@@ -52,8 +52,7 @@ toda, como o teclado e o voltar); o `desk-buttons.js` (os botões da mesa de DJ)
 página e, no `DOMContentLoaded`, carrega e conecta); e os desenhos de pixel da mesa: o `letra-placa.js` (a letra das
 placas), o `prateleira.js` (o título e a contagem da plaqueta da prateleira), o `maleta-tit.js` (o título da placa da
 maleta), o `mesa-topo.js` (a plaqueta e as teclas do topo em largura par), o `deck.js` (os toca-discos), o
-`maleta-vazia.js` (o aviso de vazio do A seguir), o `mix.js` (o mixer) e o `pedal.js` (os pedais). Quase todos começam
-com `'use strict'`.
+`maleta-vazia.js` (o aviso de vazio do A seguir), o `mix.js` (o mixer) e o `pedal.js` (os pedais).
 
 Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
 da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de

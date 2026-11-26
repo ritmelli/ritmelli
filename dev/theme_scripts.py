@@ -89,7 +89,6 @@ FEATURE_HANDLERS = (
 )
 SHARED_TARGETS = ("window", "document", "navigator.connection", "mqUnica")
 SHARED_HANDLERS = (("#estante", "scroll"),)
-SCRIPT_TAG = re.compile(r'<script src="([^"]+)"></script>')
 REGISTERED_WHEN = ("(() => { const add = EventTarget.prototype.addEventListener; window.visibilityWhen = [];"
                    " EventTarget.prototype.addEventListener = function (type, fn, ...rest) {"
                    " if (this === document && type === 'visibilitychange') window.visibilityWhen.push({"
@@ -162,12 +161,6 @@ async def script_file(tab, script_id):
     return tab.files.get(source, "index.html")
 
 
-def page_files(raiz):
-    folder = raiz / "themes" / "ritmelli"
-    names = SCRIPT_TAG.findall((folder / "index.html").read_text(encoding="utf-8"))
-    return {"\n" + (folder / name).read_text(encoding="utf-8"): name for name in names}
-
-
 async def checks(tab):
     await tab.cmd("Debugger.enable")
     await tab.cmd("Page.addScriptToEvaluateOnNewDocument", source=REGISTERED_WHEN)
@@ -235,7 +228,8 @@ def main(argv=None):
             srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, raiz=args.raiz.resolve(),
                                         config={"boas_vindas": True})
             try:
-                files = page_files(args.raiz.resolve())
+                files = {text: name for kind, name, text in
+                         missing_script.page_files(args.raiz.resolve(), missing_script.THEME) if kind == "script"}
 
                 async def run(tab):
                     tab.files = files

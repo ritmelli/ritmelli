@@ -210,18 +210,14 @@ async def open_page(tab, query=""):
     await tab.tab_reaches(lambda: tab.contexts >= 1, PAGE_READY_S)
 
 
-def pc_call(srv, method, route):
+def pc_pairing_code(srv):
     srv.confere()
     conn = http.client.HTTPConnection("127.0.0.1", srv.porta, timeout=10)
     try:
-        conn.request(method, route, headers={"Host": f"localhost:{srv.porta}"})
-        return json.loads(conn.getresponse().read())
+        conn.request("GET", "/api/pareamento", headers={"Host": f"localhost:{srv.porta}"})
+        return json.loads(conn.getresponse().read())["codigo"]
     finally:
         conn.close()
-
-
-def pc_pairing_code(srv):
-    return pc_call(srv, "GET", "/api/pareamento")["codigo"]
 
 
 def served_pages(srv, role, raiz):
