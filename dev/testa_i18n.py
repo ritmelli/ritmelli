@@ -150,7 +150,7 @@ def check_block_pairs(tema, arquivos):
                   f"that order, in the same file")
 
 
-INLINE_CEILING = {"ritmelli": 1617}
+INLINE_CEILING = {"ritmelli": 1187}
 
 
 def inline_lines(html):
@@ -302,6 +302,20 @@ def check_theme_rebuild():
     if removed or added != [(4, "new")] or sorted(len(r) for r, _, _ in moved) != [1, 2]:
         falha(f"split_moves: moved {moved}, removed {removed}, added {added}; expected B1 B2 and y moved apart and "
               f"only 'new' added")
+    _, removed, added = theme_rebuild.split_moves(["x", "f();", "g();", "y"],
+                                                  ["x", "y", "function bind() {", "  f();", "  g();", "}"])
+    reindented, removed, added = theme_rebuild.split_reindented(removed, added)
+    if [len(r) for r, _, _ in reindented] != [2] or removed or added != [(2, "function bind() {"), (5, "}")]:
+        falha(f"split_reindented: {reindented}, removed {removed}, added {added}; expected f() and g() moved into "
+              f"bind()")
+    _, removed, added = theme_rebuild.split_moves(["const t = `a", "b`;"],
+                                                  ["function bind() {", "  const t = `a", "  b`;", "}"])
+    _, removed, added = theme_rebuild.split_reindented(removed, added)
+    if any(line == "  b`;" for _, line in added):
+        falha("known failure #240 passes now: theme_rebuild sees a new indentation inside a template literal; make this "
+              "a regular check and close the issue")
+    else:
+        print("known failure #240: theme_rebuild counts a reindented line inside a multi-line template literal as a move")
     files = {"index.html": '<script src="a.js" title="x > y" defer></script>\n<link rel="stylesheet" href="b.css">\n',
              "a.js": "/* A-JS-INICIO */\n'use strict';\nconst a = 1;\n/* A-JS-FIM */\n", "b.css": "b { }\n"}
     lines = theme_rebuild.rebuild(files.__getitem__)

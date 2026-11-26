@@ -17,22 +17,57 @@ O código do tema sai aos poucos do `index.html` para arquivos `.js` na pasta do
 o `index.html` carrega por um `<script src>` no lugar em que o bloco estava, sem `defer`: os scripts rodam na mesma
 ordem, e o que um deles declara no alto continua à vista dos de depois. O primeiro é o `shared.js`, carregado no
 `<head>`: o estado da página (`S`), o da mesa de DJ (`MESA`) e os ajudantes de todos (o `$`, o `el`, o `clamp`, o
-`reduz`, o `celular()`, o `toque()`, o `abrirMaleta()` e o `sombrear()`). Já saíram também: o `deck.js` (os toca-discos
+`reduz`, o `celular()`, o `toque()`, o `abrirMaleta()`, o `sombrear()` e o `dialogoAberto()`). Já saíram também: o `deck.js` (os toca-discos
 da mesa), o `mix.js` (o mixer da mesa), o `pedal.js` (os pedais da mesa), o `maleta-vazia.js` (o aviso de vazio do A
 seguir), o `letra-placa.js` (a letra de pixel das placas da mesa), o `prateleira.js` (o título e a contagem da plaqueta
 da prateleira), o `maleta-tit.js` (o título da placa da maleta) e o `mesa-topo.js` (a plaqueta e as teclas do topo da
 mesa em largura par). O `dj-visor.js` (o visor de DJ: a onda do disco que corre sob o ponto fixo do play), o
 `voice-effects.js` (os efeitos de voz: o seletor no receptor e a gaveta de teclas), o `dj-desk.js` (os dois decks da
 mesa de DJ, que se revezam como num set, no computador largo), o `search.js` (a busca e os resultados), o `queue.js` (a
-fila, o A seguir) e o `ui-events.js` (os ouvintes de clique, de tecla e de ponteiro da página) saíram do script
-principal da página, que é estrito: o arquivo tirado dele começa com `'use strict'`, como o script inline que segue
-depois do `<script src>` dele. Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a
+fila, o A seguir) e o `ui-events.js` (os ouvintes de clique, de tecla e de ponteiro das partes que ainda moram no
+`index.html`: o palco, a prateleira, o teclado) saíram do script principal da página, que é estrito: o arquivo tirado
+dele começa com `'use strict'`, como o script inline que segue depois do `<script src>` dele. Depois do `transporte.js`
+vêm o `desk-scale.js` (a escala do palco da mesa: o `PALCO`, o `ajustarPalco()` e o `rectP()`), o `api.js` (o `api()`
+e o texto das mensagens do servidor), o `notice.js` (o aviso rápido), o `covers.js` (as capas), o `tonearm.js` (o braço
+do toca-discos), o `turntable.js` (o prato e a faixa, com os botões de tocar e a barra do tempo) e, depois do
+`dj-visor.js`, o `receiver.js` (o receptor: os volumes, o Cortar e o Nivelar). Inline ficam o `I18N` do `<head>` e a
+linha que aplica os textos e mostra a página (o `i18n-ok`): num arquivo que não carregasse, a página, com o aviso de
+fora do ar, ficaria escondida.
+
+Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
+da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de
+desligar o efeito da barra de baixo) no `voice-effects.js`, os do toca-discos no `turntable.js` e os do receptor no
+`receiver.js`. O arquivo da parte guarda os ouvintes numa função (o `bindSearch()`, o `bindSearchResults()`, o
+`bindVoiceEffects()`, o `bindTurntable()` e o `bindReceiver()`), e quem liga é o lugar em que eles eram registrados
+antes: o `ui-events.js` chama os da busca, dos efeitos, do toca-discos e do receptor, e o `queue.js` chama o
+`bindSearchResults()`.
+Assim os controles só respondem quando os arquivos de que eles dependem já carregaram (o formulário da busca segue
+`inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos outros no mesmo alvo (o toque fora da busca
+para o evento depois de o ouvinte do `queue.js` na `window` ver o toque). A busca, os resultados e os efeitos de voz
+só ligam sem nenhum arquivo faltando (`scriptsMissing()`), como antes; o toca-discos e o receptor, cujos ouvintes o
+`ui-events.js` registrava sempre, ligam se o próprio arquivo carregou (`scriptLoaded()`, do `script-failed.js`). Nos
+dois casos o resto do arquivo que chama segue registrando os seus ouvintes até a página ir para o aviso de fora do ar. Os ajudantes de mais de uma parte (o `fmt()`, o `mudar()` e o
+`ligarChave()`) moram no `shared.js`.
+
+Todo nome do alto de um script é declarado por um script só. O `dev/theme_scripts.py`, que o `--tela` do
+`dev/testa_tudo.py` roda, abre a página num Chrome sem tela contra um `--mock` e pega cada script como o V8 o leu. Cada
+um vira o corpo de um gerador que é criado e não anda (as declarações nascem e nada roda), e os nomes saem do escopo
+local dele. Um nome declarado em dois scripts (função, `var`, `let`, `const` ou `class`) faz a guarda falhar. Ele
+confere também que os ouvintes da busca e da gaveta são dos arquivos delas e só existem depois do arquivo que os liga,
+e que o `queue.js` vê o toque que fecha a busca na mesa. O `dev/theme_rebuild.py` mostra à parte os blocos que mudaram
+de lugar com outra indentação (os que entraram numa dessas funções).
+
+Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a
 página de novo nos dois commits (cada `<script src>`, `<link>` e `<!-- inline-script: -->` trocado pelo texto do
 arquivo, sem as marcas, com os outros atributos da tag numa linha e cada `'use strict'` como `[strict]`) e sai 0 só com
 as duas páginas iguais, linha a linha; diferentes, ela separa os blocos que só mudaram de lugar das linhas novas ou que
-sumiram (um arquivo novo traz o próprio `[strict]`).
+sumiram (um arquivo novo traz o próprio `[strict]`). O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
+dos dois commits num Chrome sem tela, contra um `--mock` de cada, no tamanho do PC (a mesa) e no de um celular, e
+compara os ouvintes de cada nó, do `document` e da `window`, na ordem em que entraram (o `getEventListeners` do
+DevTools), com as opções e o texto de cada função; sai 0 só com as duas tabelas iguais. O arquivo em que um ouvinte mora
+não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função, mantém a tabela.
 
-Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `index.html` chama,
+Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `api.js` chama,
 e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o
 `location.hostname` só aparecem nele. O que o tema mostra a cada um vem do `caps` que o servidor manda (no `/api/state`,
 no 401 do pareamento e no começo do SSE; ver o `API.md`), e não do endereço da página: os controles do PC (o botão
@@ -50,8 +85,9 @@ fora do ar e carrega de novo, no endereço com que abriu, assim que o arquivo re
 `transporte.js`, quando é o único que falta, fica com a volta dele: o `conectar()` o carrega de novo a cada 3 s, uma
 carga por vez, e com ele de volta a página segue a carga normal, sem recarregar. O `dev/missing_script.py`, que o
 `--tela` do `dev/testa_tudo.py` roda, confere cada um desses casos num Chrome sem tela, contra um `--mock` como o PC e
-outro como um celular sem pareamento. Para ver o papel do celular sem outro aparelho, o `--mock --papel-local celular`
-(ver o `API.md`).
+outro como um celular sem pareamento, e que cada `<script src>` da página, menos o `transporte.js`, traz o aviso de fora
+do ar quando falha, sem nenhum pedido ao servidor. Para ver o papel do celular sem outro aparelho, o `--mock
+--papel-local celular` (ver o `API.md`).
 
 Parte do CSS do tema mora em arquivos ao lado do `index.html` (o `deck.css`, por exemplo), cada um com um bloco
 marcado inteiro e carregado por um `<link rel="stylesheet">` sem `media`, no mesmo lugar em que o bloco estava: a

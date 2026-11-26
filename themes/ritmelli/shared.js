@@ -48,4 +48,26 @@ function sombrear(r) {
   const fim = r.scrollHeight - r.clientHeight;
   r.classList.toggle('mais-cima', fim > 1 && r.scrollTop > 2);
 }
+function dialogoAberto() { return !!document.querySelector('dialog[open]') || !$('#fora').hidden || !$('#tela-parear').hidden; }
+function fmt(s) {
+  if (s == null || !isFinite(s)) return '0:00';
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+  const p = n => String(n).padStart(2, '0');
+  return h ? `${h}:${p(m)}:${p(x)}` : `${m}:${p(x)}`;
+}
+const escritos = new WeakMap();
+function mudar(el, chave, v) {
+  let m = escritos.get(el); if (!m) escritos.set(el, m = {});
+  if (m[chave] === v) return;
+  m[chave] = v;
+  if (chave === 'textContent') el.textContent = v;
+  else if (chave.startsWith('--')) el.style.setProperty(chave, v);
+  else el.setAttribute(chave, v);
+}
+function ligarChave(b, on) {
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  const l = b.querySelector('.lampada');
+  if (l) l.className = 'lampada' + (on ? (b.id === 'b-cortar' ? ' alerta' : ' acesa') : '');
+}
 /* SHARED-JS-FIM */

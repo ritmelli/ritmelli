@@ -30,9 +30,10 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
   da tabela é só do PC, e o `dev/testa_mock.py` falha enquanto ela não entra; abrir para o celular ou para o remoto é
   decisão escrita no PR. Rota ou campo novo entra no `API.md`, e a linha da tabela também.
 - As travas do servidor se pegam numa ordem só: a de [comandos.md](docs/arquitetura/comandos.md#as-travas).
-- O `engine.py` não ganha gancho novo para o módulo opcional de fora do repo: o que ele precisa passa pelo que já
-  existe ([fx.md](docs/arquitetura/fx.md)), e o `dev/testa_ganchos.py` falha com um a mais. O mesmo vale para as rotas
-  só dele: o grupo `OUT_OF_REPO` do `permissao.py`, que o `testa_ganchos` também conta.
+- O módulo opcional de fora do repo passa pelos ganchos do `engine.py` e pelas rotas que já existem
+  ([fx.md](docs/arquitetura/fx.md); o grupo `OUT_OF_REPO` do `permissao.py`), e os outros módulos da raiz mexem na
+  `Engine` e no `App` só pela interface pública ([comandos.md](docs/arquitetura/comandos.md)): o `dev/testa_ganchos.py`
+  exige as quatro contas iguais aos tetos (`TETO`, `ROUTES_CEILING`, `ENGINE_CEILING`, `APP_CEILING`).
 - Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 - Mexeu em `instalador/`, nos `atualiza*.py`, no `migra.py`, no `pastas.py`, no `microfone/microfone.py` ou no
   `ritmelli.spec`: rode o "Monta o instalador" (`monta.yml`) na branch. Na CI, só ele compila o `.iss` e roda a parcial,
@@ -43,10 +44,9 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
 
 ## As superfícies de uma mudança
 
-Toda mudança tem de cobrir as que toca, e o PR diz quais: o servidor (`server.py`) e o contrato no `API.md`; o tema no
-PC e no celular (a pasta `themes/ritmelli/`, com o layout do celular abaixo de 900 px); i18n, nas duas línguas; o
-filtro (`microfone/`); o instalador (`instalador/ritmelli.iss`) e a migração de quem já tem o app (`migra.py`); a
-galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
+Toda mudança cobre as que toca, e o PR diz quais: o servidor e o contrato no `API.md`; o tema no PC e no celular
+(`themes/ritmelli/`, layout do celular abaixo de 900 px); i18n, nas duas línguas; o filtro (`microfone/`); o instalador
+(`instalador/`) e a migração de quem já tem o app (`migra.py`); a galeria (`gallery/`, previews no `dev/previews.py`).
 
 ## O mapa: área, arquivos e teste
 
@@ -66,7 +66,7 @@ galeria (`gallery/index.html`, com os previews do `dev/previews.py`).
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
 | Dados de uso | `metricas.py` e o aviso deles no tema | `testa_metricas`; o aviso, `fitcheck.py --metricas` (sobe os próprios `--mock --metricas-teste`, sem rede) |
 | Troca de nome | `migra.py` | `testa_migra` |
-| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py` e `missing_script.py` (o `--tela` do `testa_tudo` roda os dois) contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e uma library.json só com `[]` |
+| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py`, `missing_script.py` e `theme_scripts.py` (o `--tela` do `testa_tudo` roda os três) contra o `--mock`; mudou as boas-vindas, também com `--boas-vindas`, num `--mock` com `--data-dir` novo e uma library.json só com `[]` |
 | Sem teste | `compasso.py`, `andamento.py`, `janela.py`, `winvol.py` | o PR diz como conferiu |
 
 ## Antes do PR

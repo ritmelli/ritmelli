@@ -314,4 +314,136 @@ async function baixar(corpo, alvo) {
     desenharPrateleira();
   } catch (e) { avisar(e.message, true); }
 }
+/* no celular o texto curto cabe no campo mesmo com a fonte do sistema maior (review) */
+function textoBusca() { $('#q').placeholder = I18N.t(celular() ? 'search.promptShort' : 'search.prompt'); }
+/* a busca sai sozinha enquanto digita: depois de uma pausa curta e com 3
+   letras ou mais, para nao mandar uma busca ao YouTube por tecla; link colado vai na hora */
+const BUSCA_PAUSA_MS = 600, BUSCA_MIN = 3;
+let buscaT = 0;
+const jaBuscando = q => S.busca && !S.busca.link && S.busca.q === q && !S.busca.erro;
+/* (#113) na mesa a busca cai como uma gaveta por cima da mesa: clicar fora dela e fora do campo fecha, como um menu
+   suspenso. O clique que fecha so fecha: o pointerdown para aqui (sem o mousedown, o foco, o arrastar de um volume ou de
+   um disco da prateleira), e o click, o menu de contexto e, no toque, os eventos de toque que vem dele sao engolidos. O
+   menu "..." de um resultado, o aviso (com o desfazer) e os dialogos nao contam como fora. A pagina do PC e o celular
+   ficam como estao: la a busca toma o lugar da prateleira, e no celular o voltar ja fecha */
+let foraDaBusca = null, foraDaBuscaAte = 0;   // o ponteiro do clique que fechou, e ate quando o que vem dele e engolido
+const engolindoForaDaBusca = () => foraDaBusca !== null && performance.now() < foraDaBuscaAte;
+// so o que vem do ponteiro: o click do teclado (detail 0) e o do codigo (o .click() das chaves do menu) passam
+function engolirForaDaBusca(e) {
+  if (!engolindoForaDaBusca() || !e.cancelable || !e.isTrusted || (e.type === 'click' && !e.detail)) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+}
+/* no toque o pointerdown parado nao segura o resto: o volume (o input range) anda pelo touchstart e pelo touchmove, e o
+   toque ainda vira click. Estes so existem com a gaveta aberta na mesa (o desenharBusca e o montarMesa chamam), e ate o
+   fim do toque que a fechou: sem passive, a rolagem pelo toque espera por eles */
+function vigiarGavetaDaBusca() {
+  const on = !!(MESA.montada && S.busca) || engolindoForaDaBusca();
+  for (const t of ['touchstart', 'touchmove', 'touchend'])
+    window[on ? 'addEventListener' : 'removeEventListener'](t, engolirForaDaBusca, { capture: true, passive: false });
+}
+function bindSearch() {
+  textoBusca();
+  $('#q').addEventListener('input', () => {
+    clearTimeout(buscaT);
+    const q = $('#q').value.trim();
+    if (ehLink(q)) { buscar(q); return; }
+    if (q.length < BUSCA_MIN) return;
+    buscaT = setTimeout(() => { if (!jaBuscando(q)) buscar(q); }, BUSCA_PAUSA_MS);
+  });
+  // Buscar (o do teclado ou a lupa): busca na hora, sem repetir a que ja saiu; no toque o campo larga
+  // o foco, e o teclado do celular fecha e deixa ver os resultados
+  $('#form-busca').addEventListener('submit', e => {
+    e.preventDefault(); clearTimeout(buscaT); abrirDisco(false);
+    if (toque()) $('#q').blur();
+    const q = $('#q').value.trim();
+    if (!q || !jaBuscando(q)) buscar(q);
+  });
+  // the search form starts inert: while the theme's scripts load, Enter would submit it natively and reload the page
+  $('#form-busca').inert = false;
+  $('#q').addEventListener('keydown', e => { if (e.key === 'Escape' && S.busca) { e.preventDefault(); fecharBusca(); } });
+  $('#b-voltar').addEventListener('click', () => { fecharBusca(); if (!toque()) $('#q').focus(); });
+  /* celular: tocar em qualquer lugar fora do campo fecha o teclado, como nos
+     apps: o aviso de "na fila" ficava escondido atras dele. A seta e o x de dentro do campo seguem
+     com o teclado aberto */
+  document.addEventListener('pointerdown', e => {
+    const q = $('#q');
+    if (e.pointerType === 'touch' && document.activeElement === q && !e.target.closest('.campo-q')) q.blur();
+  }, true);
+  $('#b-sair-busca').addEventListener('click', () => { fecharBusca(); $('#q').value = ''; });
+  addEventListener('pointerdown', e => {
+    if (!e.isPrimary) return;
+    foraDaBusca = null; foraDaBuscaAte = 0;
+    if (e.button !== 0 || !MESA.montada || !S.busca || $('#vista-busca').hidden || dialogoAberto()
+        || e.target.closest('#vista-busca, #form-busca, #menu, #aviso')) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    foraDaBusca = e.pointerId; foraDaBuscaAte = Infinity;   // antes do fecharBusca: os ouvintes do toque ficam ate ele acabar
+    fecharMenu(false); $('#q').blur(); fecharBusca();
+  }, true);
+  for (const t of ['pointerup', 'pointercancel'])
+    addEventListener(t, e => {
+      if (e.pointerId !== foraDaBusca) return;
+      foraDaBuscaAte = performance.now() + 500;
+      setTimeout(vigiarGavetaDaBusca, 600);
+    }, true);
+  addEventListener('click', engolirForaDaBusca, true);
+  addEventListener('contextmenu', engolirForaDaBusca, true);
+  // limpar: no primeiro toque, com ou sem o cursor no campo; o campo fica pronto para a busca nova
+  // (os resultados de antes ficam ate ela sair, como enquanto digita)
+  $('#b-limpar-q').addEventListener('click', () => { clearTimeout(buscaT); const q = $('#q'); q.value = ''; q.focus(); });
+}
+function bindSearchResults() {
+  /* busca: tocar na linha toca, o ⊕ salva, o ... abre as opcoes */
+  $('#resultados').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const li = b.closest('.resultado'); if (!li || !li._r || li._semClique) return;
+    if (b.dataset.role === 'tocar') tocarResultado(li._r);
+    else if (b.dataset.role === 'salvar') salvarResultado(li._r);
+    else if (b.dataset.role === 'mais') { if (menuBotao === b) fecharMenu(true); else { fecharMenu(false); abrirMenu(b, { tipo: 'resultado', r: li._r }); } }
+  });
+  /* puxar a linha para a direita poe na fila, como no Spotify: a faixa ambar
+     aparece por baixo, o celular vibra quando passa do ponto e a linha volta sozinha ao soltar. So
+     no dedo e so com o servidor novo; o pan-y deixa a pagina rolar na vertical */
+  (() => {
+    const ul = $('#resultados'), PONTO = 88;
+    let g = null;
+    ul.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'touch' || !temFila()) return;
+      const li = e.target.closest('.resultado');
+      if (!li || !li._r || e.target.closest('[data-role="mais"], [data-role="salvar"]')) return;
+      g = { li, id: e.pointerId, x0: e.clientX, y0: e.clientY, ativo: false, passou: false };
+    });
+    ul.addEventListener('pointermove', e => {
+      if (!g || e.pointerId !== g.id) return;
+      const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
+      if (!g.ativo) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        if (dx <= 0 || Math.abs(dy) >= Math.abs(dx)) { g = null; return; }   // rolagem, ou para a esquerda
+        g.ativo = true; S.puxandoRes = true;
+        g.li.classList.remove('voltando'); g.li.classList.add('puxando');
+      }
+      const x = dx <= PONTO ? Math.max(0, dx) : PONTO + (dx - PONTO) * .3;
+      g.li.querySelector('.corpo').style.transform = `translateX(${x}px)`;
+      const passou = dx >= PONTO;
+      if (passou !== g.passou) {
+        g.passou = passou; g.li.classList.toggle('vai', passou);
+        if (passou && navigator.vibrate) navigator.vibrate(12);
+      }
+    });
+    function soltar(e, cancelou) {
+      if (!g || e.pointerId !== g.id) return;
+      const { li, ativo, passou } = g;
+      g = null;
+      if (!ativo) return;
+      S.puxandoRes = false;
+      li._semClique = true; setTimeout(() => { li._semClique = false; }, 400);   // o toque que puxou nao toca a linha
+      li.classList.remove('puxando'); li.classList.add('voltando');
+      li.querySelector('.corpo').style.transform = '';
+      setTimeout(() => li.classList.remove('voltando', 'vai'), 260);
+      if (passou && !cancelou) executar('fila', { tipo: 'resultado', r: li._r });
+      if (S.buscaPendente) { S.buscaPendente = false; desenharBusca(); }
+    }
+    ul.addEventListener('pointerup', e => soltar(e, false));
+    ul.addEventListener('pointercancel', e => soltar(e, true));
+  })();
+}
 /* SEARCH-JS-FIM */
