@@ -76,6 +76,15 @@ def callback_escapes(modules):
     return out
 
 
+def bound_to(func, taken):
+    pairs = [(t.id, n.value) for n in ast.walk(func) if isinstance(n, ast.Assign) for t in n.targets
+             if isinstance(t, ast.Name)]
+    bound = set()
+    while more := {t for t, v in pairs if t not in bound and (taken(v) or (isinstance(v, ast.Name) and v.id in bound))}:
+        bound |= more
+    return bound
+
+
 def by_getattr(node):
     if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr"
             and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)):
@@ -275,8 +284,7 @@ class Entries:
         return isinstance(node, ast.Attribute) and node.attr in MUTATORS and self.is_entry(node.value, scope)
 
     def escaping(self, module, func, scope):
-        bound = {t.id for n in ast.walk(func) if isinstance(n, ast.Assign) and self.mutator(n.value, scope)
-                 for t in n.targets if isinstance(t, ast.Name)}
+        bound = bound_to(func, lambda v: self.mutator(v, scope))
         return [f"{module}:{n.lineno}: a mutator of an entry returned from a change_queue callback, in {func.name}"
                 for n in ast.walk(func) if isinstance(n, ast.Return) and n.value is not None
                 and (self.mutator(n.value, scope) or (isinstance(n.value, ast.Name) and n.value.id in bound))]
@@ -305,6 +313,10 @@ class Entries:
                 continue
             scope = self.scope_of(func, parent, parents)
             callees = {id(n.func) for n in ast.walk(func) if isinstance(n, ast.Call)}
+            if self.owner_only:
+                out += [f"{module}:{n.lineno}: a mutator of an entry returned from a change_queue callback, in "
+                        f"{func.name}" for n in ast.walk(func)
+                        if isinstance(n, ast.Lambda) and id(n) in skip and self.mutator(n.body, scope)]
             for node in own_nodes(func, skip if self.owner_only else frozenset()):
                 hit = None
                 if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Delete)):
@@ -390,8 +402,7 @@ class QueueChanges(ast.NodeVisitor):
         own = {n for n in Entries.param_names(node) if n in self.params.get(node.name, set())}
         aliases = direct_aliases(node, self.module, self.cls, (parent[2] if parent else set()) | own)
         self.stack.append((allowed, passed_to_change_queue(node), aliases))
-        self.bound.append({t.id for n in ast.walk(node) if isinstance(n, ast.Assign) and self.changer(n.value)
-                           for t in n.targets if isinstance(t, ast.Name)})
+        self.bound.append(bound_to(node, self.changer))
         self.generic_visit(node)
         self.bound.pop()
         self.stack.pop()
@@ -554,6 +565,15 @@ ENTRY_FORMS = {
     "a mutator of an entry returned from the App's change": (
         {"server.py": "class App:\n    def f(self):\n        def ch():\n            return self.fila[0].update\n"
                       "        self.change_queue(ch)(audio=True)\n"}, 1),
+    "a mutator of an entry returned through a chain of names from the App's change": (
+        {"server.py": "class App:\n    def f(self):\n        def ch():\n            u = self.fila[0].update\n"
+                      "            w = u\n            return w\n        self.change_queue(ch)(audio=True)\n"}, 1),
+    "a mutator of an entry returned by a lambda passed as the App's change": (
+        {"server.py": "class App:\n    def f(self):\n        self.change_queue(lambda: self.fila[0].update)(audio=True)\n"},
+        1),
+    "an update of an entry called in a lambda passed as the App's change": (
+        {"server.py": "class App:\n    def f(self):\n        self.change_queue(lambda: self.fila[0].update(audio=True))\n"},
+        0),
     "an update of an entry taken by getattr": (
         {"case.py": "def f(A):\n    getattr(A.fila[0], 'update')(audio=True)\n"}, 1),
     "an entry of a queue bound inline": ({"case.py": "def f(A):\n    (q := A.fila)[0]['audio'] = True\n"}, 1),
@@ -642,6 +662,9 @@ QUEUE_FORMS = {
         {"case.py": "def f(A, x):\n    def ch():\n        return A.fila.remove\n    A.change_queue(ch)(x)\n"}, 1),
     "a changer of the queue returned through a name from the change": (
         {"case.py": "def f(A, x):\n    def ch():\n        rm = A.fila.remove\n        return rm\n"
+                    "    A.change_queue(ch)(x)\n"}, 1),
+    "a changer of the queue returned through a chain of names from the change": (
+        {"case.py": "def f(A, x):\n    def ch():\n        rm = A.fila.remove\n        r = rm\n        return r\n"
                     "    A.change_queue(ch)(x)\n"}, 1),
     "a changer of the queue returned by a lambda passed as the change": (
         {"case.py": "def f(A, x):\n    A.change_queue(lambda: A.fila.remove)(x)\n"}, 1),

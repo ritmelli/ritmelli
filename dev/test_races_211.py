@@ -239,7 +239,7 @@ def stream_opens_after_the_download_read_the_platter(A, E, readers):
     swap = E.trocar_fonte
 
     def holds(atual, novo):
-        if not atual.get("path") and not str(novo.get("path") or "").startswith("http"):
+        if not atual.get("path") and callable(novo):
             captured.set()
             go.wait(WAIT_S)
         return swap(atual, novo)
@@ -310,9 +310,12 @@ def file_after_the_record_was_renamed_on_the_shelf(A, E, readers):
           mock.patch.object(A, "download", side_effect=lambda *a: A.lib.add(item) or item)):
         A.run_download(j, target)
     tr = E.track or {}
-    check(readers.wait(item["id"]) and str(tr.get("path", "")).endswith("d2.m4a"),
+    check(readers.wait(item["id"]) and str(tr.get("path", "")).endswith("d2.m4a") and tr.get("title") == "a new name",
           f"a rename on the shelf between the download reading the platter and its swap still puts the file on the "
-          f"platter ({tr.get('title')}, {tr.get('path')})")
+          f"platter, with the new name ({tr.get('title')}, {tr.get('path')})")
+    cmd.update_record(A, item["id"], title="the last name")
+    check(E.track is tr and tr.get("title") == "the last name",
+          f"a rename with the file on the platter renames the platter's own track ({(E.track or {}).get('title')})")
 
 
 def file_near_the_end_of_a_stream_with_audio(A, E, readers, repeat=False):
@@ -718,6 +721,50 @@ def finished_download_after_a_passage_switched_to_its_file(A, E, readers):
           f"with no hand-over ({switched and switched[0].get('path')}, {swap.call_count})")
 
 
+def passage_to_a_shelf_file_renamed_on_the_way(A, E, readers, before_the_publish):
+    cmd.limpar_fila(A)
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    iid = "named1" if before_the_publish else "named2"
+    A.lib.add(dict(A.lib.get("d2"), id=iid, title="the old name"))
+    x = {"id": iid, "youtube_id": None, "url": None, "title": "the old name", "channel": "c", "duration": 120.0,
+         "job": None, "qid": iid}
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.append(x))
+    prepare = E.preparar
+
+    def renamed_first(track, *a, **kw):
+        cmd.update_record(A, iid, title="the new name")
+        return prepare(track, *a, **kw)
+    cap = E.captura()
+    with (contextlib.redirect_stderr(io.StringIO()),
+          mock.patch.object(E, "preparar", renamed_first if before_the_publish else prepare)):
+        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
+    check(E.pronto_tag == x["qid"], "the shelf file is prepared on the second deck")
+    if not before_the_publish:
+        cmd.update_record(A, iid, title="the new name")
+    check(E.virou is not None or mix_until_the_switch(E), "the engine switched to the prepared file")
+    tr = E.track or {}
+    when = "between the passage reading the shelf and publishing" if before_the_publish else "with the file prepared"
+    check(tr.get("id") == iid and tr.get("title") == "the new name",
+          f"a rename on the shelf {when} reaches the platter after the switch ({tr.get('id')}, {tr.get('title')})")
+
+
+def play_from_the_shelf_renamed_on_the_way(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    A.lib.add(dict(A.lib.get("d2"), id="named3", title="the old name"))
+    load = E.load
+
+    def renamed_first(track, *a, **kw):
+        cmd.update_record(A, "named3", title="the new name")
+        return load(track, *a, **kw)
+    with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "load", renamed_first):
+        played = A.play_item(A.lib.get("named3"), 0.0)
+    tr = E.track or {}
+    check(played and tr.get("id") == "named3" and tr.get("title") == "the new name",
+          f"a rename on the shelf between a play building the record and the load puts the new name on the platter "
+          f"({tr.get('id')}, {tr.get('title')})")
+
+
 def audio_version_during_a_pending_switch(A, E, readers):
     x = prepared_similar(A, E, readers, "similar1")
     mix_until_the_switch(E)
@@ -864,6 +911,9 @@ def main():
                 warning_after_another_record_took_the_platter(A, E, readers)
                 download_done_while_its_stream_is_prepared(A, E, readers)
                 finished_download_after_a_passage_switched_to_its_file(A, E, readers)
+                passage_to_a_shelf_file_renamed_on_the_way(A, E, readers, True)
+                passage_to_a_shelf_file_renamed_on_the_way(A, E, readers, False)
+                play_from_the_shelf_renamed_on_the_way(A, E, readers)
                 audio_version_during_a_pending_switch(A, E, readers)
                 audio_version_while_the_engine_switches(A, E, readers)
                 audio_version_while_the_passage_reads_the_source(A, E, readers)

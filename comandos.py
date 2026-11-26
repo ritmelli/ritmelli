@@ -201,7 +201,7 @@ def play_finished_file(A, tr):
     j = A.jobs.get(tr["job"]) if tr is not None and tr.get("job") else None
     it = A.lib.get(j["item_id"]) if j is not None and j["status"] == "done" else None
     if it is not None:
-        A.engine.trocar_fonte(tr, dict(it, path=str(pastas.LIB / it["file"])))
+        A.engine.trocar_fonte(tr, lambda: dict(it, path=str(pastas.LIB / it["file"])))
 
 
 def tocar_da_fila(A, qid):

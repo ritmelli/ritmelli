@@ -2444,8 +2444,7 @@ class Engine:
         with self._qlock:
             if pode is not None and not pode():
                 return None, None
-            if callable(start):
-                start = start()
+            start, track = [v() if callable(v) else v for v in (start, track)]
             antes = self._captura_atual()
             self._cancela_passagem(tudo=True)
             d = self._deck
@@ -2505,16 +2504,17 @@ class Engine:
         reserva de avanco, a primeira da fila, o deck e a linha que viu); falso, nada e publicado e volta False.
         ganho: o (alvo, mede) do _ganho_de, ja medido por quem chama (o servidor mede antes de pegar as travas).
         depois: o leitor dela e a medida comecam quando quem chama soltar as travas dele (_segue)."""
-        if not track.get("path"):
+        primeiro = track() if callable(track) else track
+        if not primeiro.get("path"):
             return False
-        alvo, mede = self._ganho_de(track) if ganho is None else ganho  # fora das travas: pergunta ao servidor
-        d = Deck(track)
-        d.gen, d.ahead = 1, PRONTO_AHEAD
-        d.ganho = d.ganho_alvo = alvo  # o deck ainda e so daqui
+        alvo, mede = self._ganho_de(primeiro) if ganho is None else ganho  # fora das travas: pergunta ao servidor
+        d = Deck(primeiro)
+        d.gen, d.ahead, d.ganho, d.ganho_alvo = 1, PRONTO_AHEAD, alvo, alvo
         with self._lock:
             with self._qlock:
                 if self.track is None or (pode is not None and not pode()):
                     return False
+                d.track = track = track() if callable(track) else primeiro
                 self._cancela_passagem()
                 self._pronto, self.pronto_tag = d, tag
                 self._deck.ahead = 10 ** 9  # o fim deste inteiro na memoria para medir (45 s sao ~17 MB)
@@ -3211,14 +3211,13 @@ class Engine:
         return self._ganho_de(track)
 
     def update_track(self, iid, **fields):
-        """The platter's record iid gets fields (the shelf renamed it), in place under the _qlock: whoever holds the
-        track still holds the platter's record. Returns whether the platter held it."""
+        """The record iid on the platter or on the prepared deck gets fields (the shelf renamed it), in place under the
+        _qlock: whoever holds the track still holds the engine's record. Returns whether the engine held it."""
         with self._qlock:
-            tr = self.track
-            if tr is None or tr["id"] != iid:
-                return False
-            tr.update(fields)
-            return True
+            held = [t for t in (self.track, self._pronto and self._pronto.track) if t and t["id"] == iid]
+            for tr in held:
+                tr.update(fields)
+            return bool(held)
 
     def _ganho_de(self, track):
         """Fora das travas (pergunta ao servidor): o ganho do disco pela medida que ja se tem, e se o arquivo local
@@ -3286,15 +3285,16 @@ class Engine:
         return s
 
     def trocar_fonte(self, atual, novo):
-        alvo, mede = self._ganho_de(novo)
+        primeiro = novo() if callable(novo) else novo
+        alvo, mede = self._ganho_de(primeiro)
         if not atual.get("path"):  # da espera para o stream: ainda sem audio, nem leitor
             with self._lock:
-                antes, leitor = self._restart(lambda: self._clamp(self.pos, novo), track=novo, alvo=alvo,
+                antes, leitor = self._restart(lambda: self._clamp(self.pos, primeiro), track=novo, alvo=alvo,
                                               nova_linha=False, pode=lambda: self.track is atual)
             if antes is None:
                 return False
             self._comeca(leitor)
-            self._mede_se(novo, mede)
+            self._mede_se(primeiro, mede)
             return True
         with self._lock:
             with self._qlock:
@@ -3307,8 +3307,8 @@ class Engine:
                     t = bl[2]  # o bloco em curso ja saiu da fila: o leitor novo comeca depois dele
                 else:
                     t = self.pos
-                dur = novo.get("duration") or 0
-                self.track = d.track = novo
+                dur = primeiro.get("duration") or 0
+                novo = self.track = d.track = novo() if callable(novo) else novo
                 d.ganho_alvo = alvo
                 self._stream_warning = None
                 to_file = str(atual.get("path")).startswith("http") and not str(novo.get("path") or "").startswith("http")
@@ -3371,17 +3371,17 @@ class Engine:
         esta no mesmo disco, e outro disco entrando o desliga). Volta a Captura do que estava no prato antes, ou None se
         o pode() (conferido sob o _qlock: o servidor confere ali a reserva de avanco) recusou. ganho: o do _ganho_de,
         ja medido por quem chama; depois: o leitor comeca quando quem chama soltar as travas (_segue)."""
-        alvo, mede = self._ganho_de(track) if ganho is None else ganho
+        primeiro = track() if callable(track) else track
+        alvo, mede = self._ganho_de(primeiro) if ganho is None else ganho
         with self._lock:
-            antes, leitor = self._restart(self._clamp(start, track), track=track, alvo=alvo, paused=paused,
+            antes, leitor = self._restart(self._clamp(start, primeiro), track=track, alvo=alvo, paused=paused,
                                           prato=True, loop=loop, pode=pode)
         if antes is not None:
-            self._segue(depois, lambda: (self._comeca(leitor), self._mede_se(track, mede)))
+            self._segue(depois, lambda: (self._comeca(leitor), self._mede_se(primeiro, mede)))
         return antes
 
     def _clamp(self, t, track=None):
-        t = max(0.0, float(t))
-        dur = (track or self.track or {}).get("duration") or 0
+        t, dur = max(0.0, float(t)), (track or self.track or {}).get("duration") or 0
         return min(t, max(0.0, dur - 0.05)) if dur else t
 
     def pause(self):

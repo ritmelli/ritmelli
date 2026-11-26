@@ -156,9 +156,27 @@ def function_table(trees):
                 for f in n.body:
                     if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         out[(module, n.name, f.name)] = f
-    table = Table(out, *hooks(trees))
+    table = Table(out, hooks(trees), {})
     table.aliased.update(bound_aliases(trees, table))
     return table
+
+
+def with_lock_holds_during_callback(engine):
+    func = defined(engine, "Engine", "with_lock")
+    if func is None:
+        return False
+    callback = func.args.args[-1].arg
+
+    def is_release(n):
+        return (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "release"
+                and lock_of(n.func.value, "Engine") == "_lock")
+    tries = [n.body[0] for n in ast.walk(func) if isinstance(n, ast.If) and acquired(n.test, "Engine") == "_lock"
+             and len(n.body) == 1 and isinstance(n.body[0], ast.Try)]
+    return len(tries) == 1 and any(
+        isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == callback
+        for b in tries[0].body for n in ast.walk(b)) and not any(
+        is_release(n) for b in tries[0].body for n in ast.walk(b)) and any(
+        is_release(n) for b in tries[0].finalbody for n in ast.walk(b))
 
 
 def section_yields_under_qlock(engine):
@@ -281,22 +299,17 @@ def hooks(trees):
                 for t, v in pairs:
                     if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Attribute) and t.value.attr == "engine":
                         bind(t.attr, v)
-    aliased = {}
-    for func, names in aliases(engine).items():
-        for n in ast.walk(func):
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in names:
-                key = ("engine.py", "Engine", names[n.func.id])
-                aliased[id(n)] = [hooked.get(key, key)]
-    return hooked, aliased
+    return hooked
 
 
 def aliases(tree):
     out = {}
     for func in ast.walk(tree):
         if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            names = {n.targets[0].id: self_attr(n.value) for n in ast.walk(func)
-                     if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)
-                     and self_attr(n.value)}
+            names = {}
+            for target, value in bindings_of(func):
+                if self_attr(by_getattr(value)):
+                    names.setdefault(target.id, set()).add(self_attr(by_getattr(value)))
             if names:
                 out[func] = names
     return out
@@ -320,9 +333,9 @@ def unresolved_hooks(trees):
                       for t in (t.elts if isinstance(t, ast.Tuple) else [t])}
     called = {self_attr(n.func) for n in ast.walk(engine) if isinstance(n, ast.Call) and self_attr(n.func) in empty}
     for func, names in aliases(engine).items():
-        called |= {names[n.func.id] for n in ast.walk(func) if isinstance(n, ast.Call)
-                   and isinstance(n.func, ast.Name) and names.get(n.func.id) in empty}
-    hooked, _ = hooks(trees)
+        called |= {a for n in ast.walk(func) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                   for a in names.get(n.func.id, ()) if a in empty}
+    hooked = hooks(trees)
     return sorted(a for a in called if ("engine.py", "Engine", a) not in hooked)
 
 
@@ -768,6 +781,12 @@ def self_test(order, before):
         "an engine method that takes the _lock, called through a local name with the _qlock held": (
             {"engine.py": "class Engine:\n    def stop(self):\n        with self._lock:\n            pass\n",
              "case.py": "def f(A, E):\n    finish = E.stop\n    with E.state_section():\n        finish()\n"}, 1),
+        "an Engine method that takes the _lock, called by the engine with the _qlock held through a name bound in two "
+        "branches": (
+            {"engine.py": "class Engine:\n    def stop(self):\n        with self._lock:\n            pass\n"
+                          "    def esperando_arquivo(self):\n        return True\n"
+                          "    def f(self, c):\n        if c:\n            fn = self.stop\n        else:\n"
+                          "            fn = self.esperando_arquivo\n        with self._qlock:\n            fn()\n"}, 1),
         **{f"an engine method that takes the _lock, called with the _qlock held through {what}": (
             {"engine.py": "class Engine:\n    def stop(self):\n        with self._lock:\n            pass\n",
              "case.py": f"def f(A, E, c):\n{bind}    with E.state_section():\n        {call}\n"}, 1)
@@ -906,7 +925,7 @@ def main():
     bad, *_ = scan(dict(sources, **{"engine.py": inside, "server.py": named}), order, before)
     check(named != sources["server.py"] and any("_stream_refused" in b for b in bad),
           f"and so it does with the hook registered as a bound method ({bad[:1]})")
-    hooked, _ = hooks(trees)
+    hooked = hooks(trees)
     unresolved = unresolved_hooks(trees)
     check(not unresolved and len(hooked) >= 4,
           f"every hook the engine calls resolves to the App method that the App puts on it ({sorted(hooked)}; "
@@ -960,6 +979,15 @@ def main():
     scope = scope_failures(dict(trees, **{"server.py": ast.parse(moved)}))
     check(moved != sources["server.py"] and len(scope) == 1,
           f"with the change_queue running its change before taking the _qlock, the scope check fails ({scope})")
+    check(with_lock_holds_during_callback(trees["engine.py"]),
+          "the engine's with_lock runs its callback inside the try that took the _lock, and releases it only in the "
+          "finally")
+    early = sources["engine.py"].replace(
+        "                        try:\n                            return f(after)\n                        finally:\n"
+        "                            self._lock.release()\n",
+        "                        self._lock.release()\n                        return f(after)\n", 1)
+    check(early != sources["engine.py"] and not with_lock_holds_during_callback(ast.parse(early)),
+          "with the with_lock releasing the _lock before its callback, that check fails")
     check(section_yields_under_qlock(trees["engine.py"]),
           "the engine's state_section yields only inside a with of the _qlock, the lock its callers are counted as holding")
     bare = sources["engine.py"].replace("        with self._qlock:\n            yield\n", "        yield\n", 1)

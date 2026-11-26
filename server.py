@@ -906,7 +906,7 @@ class App:
                             label=item["title"], finished=time.time())
             tr = self.engine.track
             if tr is not None and tr.get("job") == j["id"]:
-                self.engine.trocar_fonte(tr, dict(item, path=str(LIB / item["file"])))
+                self.engine.trocar_fonte(tr, lambda: dict(item, path=str(LIB / item["file"])))
         except Exception as ex:  # o erro vai pra tela
             self.job_update(j, status="error", finished=time.time(),
                             error=i18n.msg("server.download.failed", "The download failed ({reason}). Check the "
@@ -946,9 +946,8 @@ class App:
     def play_item(self, item, start, loop=None, historico=True, extra=None, entrada=None, reserva=None,
                   anterior=False):
         """O disco da prateleira no prato (App._troca). Volta se trocou."""
-        tr = dict(item, path=str(LIB / item["file"]), **(extra or {}))
-        return self._troca(tr, start=start, loop=loop, historico=historico, entrada=entrada, reserva=reserva,
-                           anterior=anterior)
+        return self._troca(lambda: dict(item, path=str(LIB / item["file"]), **(extra or {})), start=start,
+                           loop=loop, historico=historico, entrada=entrada, reserva=reserva, anterior=anterior)
 
     def _troca(self, tr, start=0.0, stream=False, loop=None, historico=True, entrada=None, reserva=None,
                anterior=False):
@@ -962,7 +961,7 @@ class App:
         so com a troca feita), volta ao topo da fila. O Repetir vale para o disco do prato: loop decide, e sem ele o
         motor o desliga se o disco que sai e outro (na mesma publicacao da faixa). A posicao do que saiu e gravada fora
         das travas. Volta se trocou."""
-        e = self.engine
+        e, (tr, build) = self.engine, (tr(), tr) if callable(tr) else (tr, None)
         ganho = e.gain_for(tr)  # fora das travas: o motor pergunta ao servidor
 
         def na_fila():
@@ -990,7 +989,7 @@ class App:
                     return None  # outro avanco mexeu no historico depois da escolha do Anterior
                 pode = (lambda: e.on_line(linha0))  # o prato que ele viu
             cap = (e.espera(tr, pode=pode, ganho=ganho, depois=depois) if stream
-                   else e.load(tr, start=start, pode=pode, loop=loop, ganho=ganho, depois=depois))
+                   else e.load(build or tr, start=start, pode=pode, loop=loop, ganho=ganho, depois=depois))
             if cap is None:
                 return None
             if reserva is not None:
@@ -1146,7 +1145,7 @@ class App:
             return self.lib.get(j["item_id"]) if j is not None and j["status"] == "done" else None
 
         it = shelf_record()
-        if it is not None and e.trocar_fonte(tr, dict(it, path=str(LIB / it["file"]))):
+        if it is not None and e.trocar_fonte(tr, lambda: dict(it, path=str(LIB / it["file"]))):
             return
 
         def no_file_will_come():
@@ -1501,16 +1500,16 @@ class App:
 
     # passagem para a proxima (a transicao de DJ) --------------------------
     def fonte_de(self, x):
-        """O disco da entrada da fila pronto para o segundo deck do motor, ou None quando a passagem
-        nao vale para ela (o _vigia_fila toca no fim, como antes): da prateleira, o arquivo; a parecida
-        do Automatico, o stream; o que o usuario pos e ainda baixa, o stream com o download que ja corre.
-        Entrada sem download nenhum fica para o fim, que o comeca (a passagem nao abre download)."""
+        """The queue entry's record for the engine's second deck, or None when the passage does not apply (the
+        _vigia_fila plays it at the end): from the shelf, a function that builds the file's record, which the engine
+        calls under the _qlock (a rename on the shelf in between reaches it); the Automatico's similar one, the stream;
+        one still downloading, the running download's stream. An entry with no download waits for the end."""
         j = self.jobs.get(x.get("job") or "")
         it = (self.lib.get(x["id"]) if x.get("id") else None) or \
              (self.lib.by_youtube(x["youtube_id"]) if x.get("youtube_id") else None) or \
              (self.lib.get(j["item_id"]) if j and j.get("item_id") else None)
         if it:
-            return dict(it, path=str(LIB / it["file"]), **marca_auto(x))
+            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))
         alvo = x.get("youtube_id") or x.get("url")
         auto = x.get("auto") and x.get("youtube_id")
         if not alvo or not (auto or (j and j["status"] == "running")):
@@ -1532,7 +1531,7 @@ class App:
                 self.passagem_falhou = chave
                 return
             e = self.engine
-            ganho = e.gain_for(novo)
+            ganho = e.gain_for(novo() if callable(novo) else novo)
 
             def pode():  # sob o _qlock do motor: so le campos em memoria
                 r = self.reserva

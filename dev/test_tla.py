@@ -31,6 +31,12 @@ class Run:
     deadlock: bool = True
 
 
+RENAME = (("WithTheRename", "TRUE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"),
+          ("WithTheForget", "FALSE"))
+RENAME_SWITCH = RENAME + (("WithTheJobSwitch", "TRUE"), ("DownloadEndsBeforeTheSourcePick", "TRUE"),
+                          ("WithTheJobOnThePlatter", "FALSE"))
+RENAME_PLAY = (("WithTheRename", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"), ("WithTheMoves", "FALSE"),
+               ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE"))
 RUNS = (
     Run("Races211, the code as it is: the download, the stream and the swap, with another record played", "Races211",
         constants=(("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE"))),
@@ -43,6 +49,27 @@ RUNS = (
     Run("Races211, the code as it is: the job with one queue move", "Races211",
         constants=(("TwoMoves", "FALSE"), ("WithThePlay", "FALSE"),
                    ("WithTheForget", "FALSE"), ("WithTheSeek", "FALSE"))),
+    Run("Races211, the code as it is: the download, the stream and the swap, with the record renamed on the shelf",
+        "Races211", constants=RENAME),
+    Run("Races211, the code as it is: a passage to the job's shelf file, with the record renamed on the shelf",
+        "Races211", constants=RENAME_SWITCH),
+    Run("Races211, the code as it is: the job's record played from the shelf, with the record renamed on the shelf",
+        "Races211", constants=RENAME_PLAY),
+    Run("mutant: the shelf record a play puts on the platter is built before the load takes the _qlock", "Races211",
+        "invariant PlatterHasTheCurrentName", invariants=("PlatterHasTheCurrentName",),
+        constants=RENAME_PLAY + (("RecordBuiltUnderTheLock", "FALSE"),)),
+    Run("mutant: a rename on the shelf puts a new track dict on the platter", "Races211",
+        "invariant FinishedDownloadReachesThePlatter", invariants=("FinishedDownloadReachesThePlatter",),
+        constants=RENAME + (("RenameReplacesTheTrack", "TRUE"),)),
+    Run("mutant: the download's file is built before the swap takes the _qlock", "Races211",
+        "invariant PlatterHasTheCurrentName", invariants=("PlatterHasTheCurrentName",),
+        constants=RENAME + (("RecordBuiltUnderTheLock", "FALSE"),)),
+    Run("mutant: the passage's shelf file is built before it is published", "Races211",
+        "invariant PlatterHasTheCurrentName", invariants=("PlatterHasTheCurrentName",),
+        constants=RENAME_SWITCH + (("RecordBuiltUnderTheLock", "FALSE"),)),
+    Run("mutant: a rename on the shelf leaves the prepared deck's track with the old name", "Races211",
+        "invariant PlatterHasTheCurrentName", invariants=("PlatterHasTheCurrentName",),
+        constants=RENAME_SWITCH + (("RenameReachesThePreparedDeck", "FALSE"),)),
     Run("mutant: a refused stream does not look at the job (#211.1)", "Races211", "invariant NoOrphanLoading",
         invariants=("NoOrphanLoading",),
         constants=(("StreamFailureChecksJob", "FALSE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"))),
@@ -83,8 +110,8 @@ RUNS = (
                     "NoPassageFromBeforeTheSeek", "HandoverOnlyOntoTheJobsRecord"),
         constants=(("WithTheJobSwitch", "TRUE"), ("WithTheMoves", "FALSE"),
                    ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
-    Run("Races211, the code as it is with a switch to a job's entry whose download ended before the passage picked "
-        "its source", "Races211",
+    Run("Races211, the code as it is with a switch to a job's entry already on the shelf (or failed) when the passage "
+        "picked its source", "Races211",
         constants=(("WithTheJobSwitch", "TRUE"), ("DownloadEndsBeforeTheSourcePick", "TRUE"), ("WithTheMoves", "FALSE"),
                    ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
     Run("mutant: the shelf file a passage switches to keeps the job, and the finished download hands it over again",
