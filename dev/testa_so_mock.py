@@ -21,8 +21,11 @@ starts is a fake Popen: nothing is run.
 Exits 1 if something fails."""
 import http.server
 import json
+import os
 import socket
+import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from unittest import mock
@@ -323,7 +326,35 @@ def starts():
           f"another --mock answering on the port while the child exits: refused, the answer isn't the child's ({msg})")
 
 
+HOLDS = "import sys\nheld = open(sys.argv[1], 'rb')\nprint('ready', flush=True)\nsys.stdin.read()"
+STARTS = ("import subprocess, sys\np = subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2]],"
+          " stdout=subprocess.PIPE)\nprint(p.stdout.readline().decode().strip(), flush=True)\np.wait()")
+
+
+def the_tree():
+    print("--- mata ends the child's own children too")
+    with tempfile.TemporaryDirectory(prefix="ritmelli-so-mock-") as folder:
+        held = os.path.join(folder, "held.wav")
+        open(held, "wb").close()
+        parent = subprocess.Popen([sys.executable, "-c", STARTS, HOLDS, held], stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE)
+        try:
+            ready = parent.stdout.readline().decode().strip()
+            so_mock.Filho(parent, 0).mata()
+            try:
+                os.remove(held)
+                gone = True
+            except PermissionError:
+                gone = False
+        finally:
+            parent.stdin.close()
+            parent.stdout.close()
+        check(ready == "ready" and gone,
+              f"a killed child's own child that holds a file ends with it, and the file can go ({ready!r}, {gone})")
+
+
 app_port()
+the_tree()
 fake = FakeServer()
 try:
     state(fake)

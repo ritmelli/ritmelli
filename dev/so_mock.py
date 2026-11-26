@@ -12,6 +12,7 @@ de agir; no Chrome, o DOCUMENTOS e o libera_ou_barra barram o documento de outra
 Quem sobe o proprio servidor (compara, previews, testa_mock) usa o sobe: a porta recusada antes do Popen se e a 8799 ou
 se alguem ja responde nela, e cada pedido, o /api/shutdown inclusive, so com o filho vivo e o marcador na origem; se
 nao, so o filho sai, pelo handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado."""
+import ctypes
 import json
 import socket
 import subprocess
@@ -20,6 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from ctypes import wintypes
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -140,6 +142,58 @@ def libera_ou_barra(params, base):
     return "Fetch.failRequest", {"requestId": params["requestId"], "errorReason": "BlockedByClient"}
 
 
+class _ProcessEntry(ctypes.Structure):
+    _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+                ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD), ("szExeFile", wintypes.WCHAR * 260)]
+
+
+def _started_at(kernel, handle):
+    created, exited, kernel_time, user_time = (wintypes.FILETIME() for _ in range(4))
+    if not kernel.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(exited), ctypes.byref(kernel_time),
+                                  ctypes.byref(user_time)):
+        return None
+    return created.dwHighDateTime << 32 | created.dwLowDateTime
+
+
+def _end_descendants(srv):
+    own = getattr(srv, "_handle", None)
+    if sys.platform != "win32" or own is None:
+        return
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    since = _started_at(kernel, wintypes.HANDLE(int(own)))
+    snapshot = kernel.CreateToolhelp32Snapshot(0x2, 0)
+    parents, entry = {}, _ProcessEntry()
+    entry.dwSize = ctypes.sizeof(_ProcessEntry)
+    try:
+        found = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
+        while found:
+            parents.setdefault(entry.th32ParentProcessID, []).append(entry.th32ProcessID)
+            found = kernel.Process32NextW(snapshot, ctypes.byref(entry))
+    finally:
+        kernel.CloseHandle(snapshot)
+    queue, handles = list(parents.get(srv.pid, [])), []
+    while queue:
+        pid = queue.pop()
+        handle = kernel.OpenProcess(0x0001 | 0x0400 | 0x00100000, False, pid)
+        if not handle:
+            continue
+        started = _started_at(kernel, handle)
+        if since is None or started is None or started < since:
+            kernel.CloseHandle(handle)
+            continue
+        handles.append(handle)
+        queue += parents.get(pid, [])
+    for handle in handles:
+        kernel.TerminateProcess(handle, 1)
+    for handle in handles:
+        kernel.WaitForSingleObject(handle, 10000)
+        kernel.CloseHandle(handle)
+
+
 class Filho:
     """O servidor --mock que a ferramenta subiu (srv, o Popen) na porta dela. Cada pedido, o /api/shutdown inclusive,
     so com ele vivo e a origem respondendo com o marcador; se nao, so ele sai, pelo handle."""
@@ -169,6 +223,7 @@ class Filho:
         if self.srv.poll() is None:
             self.srv.kill()
         self.srv.wait()
+        _end_descendants(self.srv)
 
     def encerra(self, espera=10):
         """O /api/shutdown, se ele ainda e o --mock que subiu; se nao, ou se ele nao sai, o handle."""

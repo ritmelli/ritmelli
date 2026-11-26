@@ -4,7 +4,11 @@ As ferramentas de `dev/` que abrem o tema ou mandam comandos (o `shot`, o `fitch
 `perfcheck`, o `celular`, o `compara`, o `previews` e o `testa_mock`) só falam com um servidor
 `--mock`, pelo `dev/so_mock.py` (só da biblioteca padrão): ele responde `"mock": true` no
 `/api/state`, também no 401 do pareamento, e elas recusam a porta 8799, o servidor sem o
-marcador e o redirecionamento para outra origem. Os medidores que abrem o anel de verdade
+marcador e o redirecionamento para outra origem. O servidor que a ferramenta subiu sai pelo `/api/shutdown`; quando
+não pode (o papel celular, que não chama rota do PC) ou não sai, o `Filho.mata()` mata o processo e, depois, cada
+processo que nasceu dele (o `ffmpeg` que lê a prateleira, por exemplo), e espera cada um sair: sem isso, o `ffmpeg`
+órfão segurava um `.wav` da pasta temporária, e apagar a pasta falhava (#244; o `dev/testa_so_mock.py` confere). Os
+medidores que abrem o anel de verdade
 (`dev/mede_folga.py`, `dev/mede_voz_ao_vivo.py`) são manuais, num Windows de teste, e saem
 antes de abrir o anel quando a 8799 aceita conexão.
 O `dev/mede_esticamento.py` mede, com o `AnelFalso` num processo à parte e sem aparelho, se o
