@@ -47,6 +47,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import winreg
@@ -683,23 +684,34 @@ def instala(filtro, dll):
     return _depois_do_reinicio() if novo or parou else None
 
 
+class FilterNotInstalled(Exception):
+    def __init__(self, failures, check):
+        super().__init__("the filter wasn't installed on: " + "; ".join(failures))
+        self.check = check
+
+
 def instala_todos(dll):
     """Pendura em todo microfone do Windows (ativo, desligado ou desconectado) que nao tem o filtro, e troca a DLL se
     a do app mudou. O audio do PC so reinicia se algo mudou: rodar de novo sem nada novo nao mexe no som, e so a DLL
     nova reinicia so o servico de audio. A conferencia dos aparelhos, se o audio reiniciou (confere_aparelhos), ou
     None."""
     parou = _prepara_dll(dll)
-    novos = []
+    novos, failures = [], []
     for m in microfones(todos=True):
         try:
             if _pendura(m[0]):
                 novos.append(m)
-        except OSError:  # aparelho velho sem as propriedades no registro: fica sem, como estava
+        except FileNotFoundError:
             continue
-    if novos or parou:
-        reinicia_audio(so_servico=not novos)
+        except OSError as ex:
+            failures.append(f"{m[1]} ({m[2]}): {ex}")
+    if novos or failures or parou:
+        reinicia_audio(so_servico=not (novos or failures))
     _log(f"filter on {len(microfones(todos=True))} microphones; now: {len(novos)}{'; DLL replaced' if parou else ''}")
-    return _depois_do_reinicio() if novos or parou else None
+    check = _depois_do_reinicio() if novos or failures or parou else None
+    if failures:
+        raise FilterNotInstalled(failures, check)
+    return check
 
 
 def _devolve(ep):
@@ -1025,6 +1037,9 @@ def main(argv=None):
                 r = instala_todos(dll)
         else:
             r = remove(a.microfone)
+    except FilterNotInstalled as ex:
+        r = ex.check
+        res = {"ok": False, "erro": str(ex)}
     except SystemExit as ex:
         if ex.code not in (None, 0):
             res = {"ok": False, "erro": str(ex.code)}
@@ -1038,10 +1053,14 @@ def main(argv=None):
             res["mudos"] = r["mudos"]
             res["aparelhos"] = aparelhos_de(r["mudos"])
         if a.saida:  # em ASCII (a letra com acento vai escapada): o Pascal do instalador le sem saber de UTF-8
-            partial = a.saida + ".partial"
-            with open(partial, "w", encoding="ascii") as f:
-                json.dump(res, f)
-            os.replace(partial, a.saida)
+            fd, partial = tempfile.mkstemp(suffix=".partial", dir=os.path.dirname(os.path.abspath(a.saida)))
+            try:
+                with open(fd, "w", encoding="ascii") as f:
+                    json.dump(res, f)
+                os.replace(partial, a.saida)
+            finally:
+                if os.path.exists(partial):
+                    os.remove(partial)
         if not res["ok"]:
             _log(res["erro"])
         rc = 0 if res["ok"] else 1

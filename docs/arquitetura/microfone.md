@@ -80,7 +80,9 @@ até tirar o cabo, #136) vai para o registro e para o `--saida`, que o instalado
 de concluído (`instalador/mudos.iss`), com o resumo da conferência no log do setup; o motor
 confere de novo, num processo à parte, e avisa quem usa. O `ok` do `--saida` decide o fim do setup: com o
 `instala-todos` em erro, ou sem o arquivo, o setup sai com 9 (o `GetCustomSetupExitCode` do `mudos.iss`), e a
-esteira reprova. O resultado é o `--saida` e o código de saída; o diagnóstico vai para o stderr, pelo `_log`, e
+esteira reprova. O microfone que recusa o filtro também conta como erro: os outros recebem o filtro, o áudio reinicia
+inteiro e a conferência vai junto no `--saida`; só o aparelho velho sem as propriedades no registro fica de fora sem
+erro. O resultado é o `--saida` e o código de saída; o diagnóstico vai para o stderr, pelo `_log`, e
 some sem mudar o resultado quando não há console (o executável) ou quando o cano fechou. Na desinstalação não há conferência: não
 sobra app para avisar. O `remove` com a pasta reprovada também não confere. Só a DLL nova
 reinicia só o Audiosrv, sem desmontar os aparelhos. Os programas do Windows (`schtasks`, `regsvr32`, `icacls`,

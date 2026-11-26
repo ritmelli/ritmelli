@@ -266,6 +266,42 @@ class TestaReinicio(unittest.TestCase):
         self.assertEqual(self.c.nomes(), [], "nada novo: nem reinicia nem confere")
         self.assertIsNone(r)
 
+    def _install_with(self, mics, pendura):
+        self.c.lista.clear()
+        with mock.patch.object(filtro, "_prepara_dll", lambda dll: False), \
+                mock.patch.object(filtro, "microfones", lambda todos=False: mics), \
+                mock.patch.object(filtro, "_pendura", pendura), \
+                mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), redirect_stderr(io.StringIO()):
+            return filtro.instala_todos("micfx.dll")
+
+    def test_instala_todos_skips_only_the_device_without_properties(self):
+        old = ("{old}", "IN 0", "Old")
+
+        def no_properties(ep):
+            raise FileNotFoundError(2, "The system cannot find the file specified")
+        self.assertIsNone(self._install_with([old], no_properties))
+        self.assertEqual(self.c.nomes(), [])
+
+    def test_instala_todos_device_error_fails_after_the_others(self):
+        mics = [("{old}", "IN 0", "Old"), ("{a}", "IN 1", "X"), ("{b}", "IN 2", "Y")]
+        done = []
+
+        def pendura(ep):
+            if ep == "{old}":
+                raise FileNotFoundError(2, "The system cannot find the file specified")
+            if ep == "{a}":
+                raise PermissionError(13, "Access is denied")
+            done.append(ep)
+            return True
+        with self.assertRaises(filtro.FilterNotInstalled) as caught:
+            self._install_with(mics, pendura)
+        self.assertEqual(done, ["{b}"], "the other microphones still get the filter")
+        self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": False}), "a failed device may be half written")
+        self.assertEqual(self.c.nomes(), ["reinicia", "confere"])
+        self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
+        self.assertIn("IN 1 (X): [Errno 13] Access is denied", str(caught.exception))
+        self.assertNotIn("IN 0", str(caught.exception))
+
     def test_instala_um(self):
         for parou, novo, quer in ((True, False, True), (False, True, False), (True, True, False), (False, False, None)):
             self.c.lista.clear()
@@ -421,6 +457,21 @@ class TestaLinhaDeComando(unittest.TestCase):
                 filtro.main(["instala-todos", "--dll", str(dll), "--saida", str(saida)])
             self.assertEqual(json.loads(saida.read_text("utf-8")), {"ok": True}, "sem reinicio, sem conferencia")
 
+    def test_device_error_writes_ok_false_with_the_check(self):
+        r = {"conferidos": [MIC], "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 1 checked"}
+
+        def install_all(dll):
+            raise filtro.FilterNotInstalled(["IN 1 (X): [Errno 13] Access is denied"], r)
+        with tempfile.TemporaryDirectory() as tmp:
+            result_file = Path(tmp) / "result.json"
+            with mock.patch.object(filtro, "_migra_registro", lambda: None), \
+                    mock.patch.object(filtro, "instala_todos", install_all), redirect_stderr(io.StringIO()):
+                self.assertEqual(filtro.main(["instala-todos", "--dll", __file__, "--saida", str(result_file)]), 1)
+            self.assertEqual(json.loads(result_file.read_text("ascii")),
+                             {"ok": False,
+                              "erro": "the filter wasn't installed on: IN 1 (X): [Errno 13] Access is denied",
+                              "conferencia": "devices: 1 checked", "mudos": [], "aparelhos": []})
+
     def test_conferencia_presa_nao_segura_o_processo(self):
         """O driver que trava deixa a thread da conferencia dentro do PortAudio, e o atexit do sounddevice (o
         Pa_Terminate) travaria a saida do processo, que o instalador espera sem prazo: aqui, um atexit que dorme uma
@@ -508,12 +559,16 @@ class TestDiagnosticStreams(unittest.TestCase):
             raise OSError(28, "No space left on device")
         with tempfile.TemporaryDirectory() as tmp:
             result_file = Path(tmp) / "result.json"
+            neighbour = Path(tmp) / "result.json.partial"
+            neighbour.write_text("someone else's file", "ascii")
             with mock.patch.object(filtro, "_protegida", lambda: True), \
                     mock.patch.object(filtro, "_migra_registro", lambda: None), \
                     mock.patch.object(filtro, "instala_todos", lambda dll: None), \
                     mock.patch.object(filtro.json, "dump", broken_dump), self.assertRaises(OSError):
                 filtro.main(["instala-todos", "--dll", __file__, "--saida", str(result_file)])
             self.assertFalse(result_file.exists(), "the setup reads a half-written result as ok")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["result.json.partial"])
+            self.assertEqual(neighbour.read_text("ascii"), "someone else's file")
 
     def test_no_console_like_the_executable(self):
         self.assertEqual(self._install(no_console=True),
@@ -761,6 +816,16 @@ filtro._protegida = lambda: True
 if scenario == "fail":
     def install_all(dll):
         sys.exit("a microphone failed (test)")
+elif scenario == "denied":
+    def denied(ep):
+        raise PermissionError(13, "Access is denied")
+    checked = {"conferidos": ["a"] * 5, "mudos": [], "falhas": [], "travou": False, "resumo": "devices: 5 checked"}
+    filtro._prepara_dll = lambda dll: False
+    filtro.microfones = lambda todos=False: [("{a}", "IN 1", "X")]
+    filtro._pendura = denied
+    filtro.reinicia_audio = lambda so_servico=False: None
+    filtro._depois_do_reinicio = lambda: checked
+    install_all = filtro.instala_todos
 else:
     r = json.loads(scenario)
     if isinstance(r, list):
@@ -911,6 +976,11 @@ class TestaInstalador(unittest.TestCase):
         self.assertIn("aparelhos: sem conferencia", log, "the summary is there, and it is not enough")
         self.assertIn("mic filter: failed: a microphone failed (test)", log)
         self.assertRegex(log, r"Parameters: .*--microfone instala-todos.*\s+.*Process exit code: 1")
+
+    def test_device_error_fails_the_setup_with_the_summary(self):
+        log = self._log("denied", exit_code=9)
+        self.assertIn("aparelhos: devices: 5 checked", log)
+        self.assertIn("mic filter: failed: the filter wasn't installed on: IN 1 (X): [Errno 13] Access is denied", log)
 
     def test_filter_ok_logs_it(self):
         log = self._log([])
