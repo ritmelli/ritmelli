@@ -37,7 +37,8 @@ def display(job_id, job):
 
 
 def inner(expression):
-    return " ".join(str(expression).strip().removeprefix("${{").removesuffix("}}").split())
+    text = str(expression).strip()
+    return " ".join(text[3:-2].split()) if EXPRESSION.fullmatch(text) else None
 
 
 def switched_off(condition):
@@ -53,7 +54,7 @@ def uploads(jobs):
         versions = {f"needs.{n}.outputs.versao" for n in ([needs] if isinstance(needs, str) else needs)
                     if "versao" in ((jobs.get(n) or {}).get("outputs") or {})}
         if "versao" in (job.get("outputs") or {}):
-            versions.add(inner(job["outputs"]["versao"]))
+            versions |= {inner(job["outputs"]["versao"])} - {None}
         for s in job_steps(job):
             if str(s.get("uses", "")).startswith("actions/upload-artifact@") and not switched_off(s.get("if")):
                 w = s.get("with") or {}
@@ -67,7 +68,7 @@ def normal_path(path):
 
 
 def step_by_id(job, step_id):
-    found = [s for s in job_steps(job) if s.get("id") == step_id]
+    found = [s for s in job_steps(job) if s.get("id") == step_id and not switched_off(s.get("if"))]
     return found[0] if len(found) == 1 else None
 
 
@@ -77,8 +78,8 @@ def manifest_step(job):
 
 
 def writes_versao(run):
-    return any("Add-Content" in line and "-Path $env:GITHUB_OUTPUT" in line and '-Value "versao=$' in line
-               for line in str(run).splitlines())
+    code = [line.split("#", 1)[0] for line in str(run).splitlines()]
+    return any(re.search(r"\$\{?env:GITHUB_OUTPUT\}?", c, re.I) and '"versao=$' in c for c in code)
 
 
 def output_folder(run):
@@ -138,7 +139,7 @@ def contract_problems(doc):
             problems.append(f"the {SETUP} artifact is {found[SETUP][0].get('path')!r}, not the folder publica.py "
                             f"writes the manifest to ({saida})")
         for name, (value, option) in NOTES.items():
-            if (manifest.get("env") or {}).get(name) != value:
+            if inner((manifest.get("env") or {}).get(name, "")) != inner(value):
                 problems.append(f"the step that runs publica.py does not get {name} from {value}")
             if not re.search(rf"@\('{name}', '[a-z_]+', '{option}'\)", run):
                 problems.append(f"the step that runs publica.py does not pass {name} as {option}")
@@ -193,11 +194,20 @@ def main():
         run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(written, reordered)))
     check(written in step_by_id(doc["jobs"]["monta"], "congela")["run"] and contract_problems(swapped) == [],
           "the Add-Content of versao with its parameters swapped keeps the contract")
+    packed = mutant(doc, lambda d: manifest_step(d["jobs"]["monta"])["env"].update(NOTAS="${{inputs.notas}}"))
+    check(contract_problems(packed) == [], "the NOTAS expression written without spaces keeps the contract")
     mutants = {
         "the trigger": lambda d: d.update(on={"push": None}),
         "the notas input": lambda d: d["on"]["workflow_dispatch"]["inputs"].pop("notas"),
         "the notas_en input": lambda d: d["on"]["workflow_dispatch"]["inputs"].pop("notas_en"),
         "the congela step": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(id="freeze"),
+        "the congela step switched off": lambda d: step_by_id(d["jobs"]["monta"], "congela").update({"if": "false"}),
+        "the versao line of congela commented out": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
+            run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(written, "# " + written)),
+        "the versao output written as text": lambda d: d["jobs"]["monta"]["outputs"].update(
+            versao="steps.congela.outputs.versao"),
+        "the NOTAS of the manifest written as text": lambda d: manifest_step(d["jobs"]["monta"])["env"].update(
+            NOTAS="inputs.notas"),
         "the versao the congela step writes": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
             run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace('"versao=$v"', '"version=$v"')),
         "the Ritmelli upload switched off": lambda d: upload(d, setup).update({"if": "${{ false }}"}),
