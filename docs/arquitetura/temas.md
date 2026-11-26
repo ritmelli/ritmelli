@@ -13,7 +13,7 @@ conferir (o `dev/testa_mock.py` confere a página, o 304 dela, um `.js`, um `.cs
 `dev/testa_i18n.py` lê o `index.html` e todos os `.js` e `.css` da pasta do tema: cada bloco marcado
 (`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o `/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só,
 aberto e fechado nele, nessa ordem, e cada `.js` e `.css` fora do `gerado/` tem exatamente um bloco, com a marca
-sozinha no comentário dela (o texto que explica o bloco vai num comentário logo abaixo).
+sozinha na linha dela (o texto que explica o bloco vai num comentário logo abaixo).
 
 Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 Texto novo da interface entra por uma chave nas duas línguas (`i18n/` do tema, `gallery/i18n/` da galeria),
